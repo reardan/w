@@ -5,3 +5,6 @@ I've added the following features:
 - Python-style whitespace syntax with colon and tabs
 - Elimination of semicolons
 - Addition of single hash as line comments
+- Added the rest of the relational operators <=, >, >=
+- multiplicative_expr including * / %
+- improved error handling and messaging
