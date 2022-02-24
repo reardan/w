@@ -4,9 +4,6 @@ W Language
 A self-compiling compiler for a small subset of C.
 
 TODO:
-	<
-	>
-	>=
 	for in range
 	and
 	or
@@ -19,65 +16,8 @@ TODO:
 			object
 */
 
-/* Our library functions. */
-void exit(int);
-int getchar(void);
-void *malloc(int);
-int putchar(int);
-int puterror(int);
 
-/* The first thing defined must be main(). */
-int main1();
-int main():
-	return main1()
-
-
-char *my_realloc(char *old, int oldlen, int newlen):
-	char *new = malloc(newlen)
-	int i = 0
-	while (i <= oldlen - 1):
-		new[i] = old[i]
-		i = i + 1
-
-	return new
-
-/* String functions */
-int strlen(char *c):
-	int length = 0
-	while(c[length]):
-		length = length + 1
-	return length
-
-void reverse(char *s):
-	int i = 0
-	int j = strlen(s)-1
-	int c
-	while(i < j):
-		c = s[i]
-		s[i] = s[j]
-		s[j] = c
-		i = i + 1
-		j = j -1
-
-char* itoa(int n):
-	char *s = "012345678901234567890"
-	int i
-	int sign = n
-	if(n < 0):
-		n = 0-n
-	i = 0
-	while(n > 0):
-		s[i] = n % 10 + '0'
-		i = i + 1
-		n = n / 10
-	if(sign < 0):
-		s[i] = '-'
-		i = i + 1
-	s[i] = 0
-	reverse(s)
-	return s
-
-
+# tokenizer
 int nextc
 char *token
 int token_size
@@ -85,34 +25,40 @@ int token_newline
 int tab_level
 int line_number
 
+# file reading
+int file
+char* filename
 
-int i
-
-
-void put_error(char *s):
-	i = 0
-	while(s[i]):
-		puterror(s[i])
-		i = i + 1
+# used for keeping track of current position in token
+# todo: rename this
+int token_i
 
 
 void error(char *s):
 	put_error(s)
-	puterror(10)
-	put_error("on line number ")
+	put_error(" in ")
+	put_error(filename)
+	put_error(":")
 	put_error(itoa(line_number+1))
 	puterror(10)
 	exit(1)
 
-int get_character():
-	int c = getchar()
+int getc():
+	char* buf = "\x00"
+	int result = read(file, buf, 1)
+	if (result == 0):
+		return (0-1)
+	return buf[0]
 
-#	Handle Newline
+int get_character():
+	int c = getc()
+
+	# Handle Newline
 	if(nextc == 10):
 		tab_level = 0
 		line_number = line_number + 1
 
-#	Handle Tab
+	# Handle Tab
 	if(nextc == 9):
 		tab_level = tab_level + 1
 
@@ -120,13 +66,13 @@ int get_character():
 
 
 void takechar():
-	if (token_size <= i + 1):
-		int x = (i + 10) << 1
-		token = my_realloc(token, token_size, x)
+	if (token_size <= token_i + 1):
+		int x = (token_i + 10) << 1
+		token = realloc(token, token_size, x)
 		token_size = x
 
-	token[i] = nextc
-	i = i + 1
+	token[token_i] = nextc
+	token_i = token_i + 1
 	nextc = get_character()
 
 
@@ -141,17 +87,17 @@ void get_token():
 
 			nextc = get_character()
 
-		i = 0
+		token_i = 0
 		while ((('a' <= nextc) & (nextc <= 'z')) |
 					 (('0' <= nextc) & (nextc <= '9')) | (nextc == '_')):
 			takechar()
 		
-		if (i == 0):
+		if (token_i == 0):
 			while ((nextc == '<') | (nextc == '=') | (nextc == '>') |
 						 (nextc == '|') | (nextc == '&') | (nextc == '!')):
 				takechar()
 
-		if (i == 0):
+		if (token_i == 0):
 			if (nextc == 39):
 				takechar()
 				while (nextc != 39):
@@ -191,7 +137,7 @@ void get_token():
 			else if (nextc != 0-1):
 				takechar()
 
-		token[i] = 0
+		token[token_i] = 0
 
 
 
@@ -261,10 +207,10 @@ int load_int(char *p):
 
 
 void emit(int n, char *s):
-	i = 0
+	int i = 0
 	if (code_size <= codepos + n):
 		int x = (codepos + n) << 1
-		code = my_realloc(code, code_size, x)
+		code = realloc(code, code_size, x)
 		code_size = x
 
 	while (i <= n - 1):
@@ -292,7 +238,7 @@ int sym_lookup(char *s):
 	int t = 0
 	int current_symbol = 0
 	while (t <= table_pos - 1):
-		i = 0
+		int i = 0
 		while ((s[i] == table[t]) & (s[i] != 0)):
 			i = i + 1
 			t = t + 1
@@ -310,11 +256,11 @@ int sym_lookup(char *s):
 
 void sym_declare(char *s, int type, int value):
 	int t = table_pos
-	i = 0
+	int i = 0
 	while (s[i] != 0):
 		if (table_size <= t + 10):
 			int x = (t + 10) << 1
-			table = my_realloc(table, table_size, x)
+			table = realloc(table, table_size, x)
 			table_size = x
 
 		table[t] = s[i]
@@ -327,7 +273,9 @@ void sym_declare(char *s, int type, int value):
 	table_pos = t + 6
 
 
+char *last_global_declaration
 int sym_declare_global(char *s):
+	strcpy(last_global_declaration, s)
 	int current_symbol = sym_lookup(s)
 	if (current_symbol == 0):
 		sym_declare(s, 'U', code_offset)
@@ -342,7 +290,9 @@ void sym_define_global(int current_symbol):
 	int t = current_symbol
 	int v = codepos + code_offset
 	if (table[t + 1] != 'U'):
-		error("symbol redefined")
+		put_error("symbol redefined: '")
+		put_error(last_global_declaration)
+		error("'")
 	i = load_int(table + t + 2) - code_offset
 	while (i):
 		j = load_int(code + i) - code_offset
@@ -387,7 +337,14 @@ void be_start():
 	emit(16, "\x00\x00\x00\x00\x00\x00\x00\x00\x34\x00\x20\x00\x01\x00\x00\x00")
 	emit(16, "\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x80\x04\x08")
 	emit(16, "\x00\x80\x04\x08\x10\x4b\x00\x00\x10\x4b\x00\x00\x07\x00\x00\x00")
-	emit(16, "\x00\x10\x00\x00\xe8\x00\x00\x00\x00\x89\xc3\x31\xc0\x40\xcd\x80")
+	emit(4, "\x00\x10\x00\x00")
+
+	/* setup command line args */
+	emit(5, "\x8d\x44\x24\x04\x50")
+	/* lea eax, [esp+4]; push eax */
+
+	emit(5, "\xe8\x00\x00\x00\x00")
+	/* call [first function ] - set with the save_int() at the end of this func */
 
 	sym_define_global(sym_declare_global("exit"))
 	/* pop %ebx ; pop %ebx ; xor %eax,%eax ; inc %eax ; int $0x80 */
@@ -430,13 +387,14 @@ void be_start():
 	/* mov eax,[esp+16] ; mov ebx,[esp+12] ; mov ecx,[esp+8] ; mov edx,[esp+4] ; int 0x80 ; ret */
 	emit(19, "\x8b\x44\x24\x10\x8b\x5c\x24\x0c\x8b\x4c\x24\x08\x8b\x54\x24\x04\xcd\x80\xc3")
 
-	save_int(code + 85, codepos - 89) /* entry set to first thing in file */
+	# OG: 85, 89
+	save_int(code + 90, codepos - 94) /* entry set to first thing in file */
 
 
 void be_finish():
 	save_int(code + 68, codepos)
 	save_int(code + 72, codepos)
-	i = 0
+	int i = 0
 	while (i <= codepos - 1):
 		putchar(code[i])
 		i = i + 1
@@ -462,7 +420,7 @@ int primary_expr():
 	int type
 	if (('0' <= token[0]) & (token[0] <= '9')):
 		int n = 0
-		i = 0
+		int i = 0
 		while (token[i]):
 			n = (n << 1) + (n << 3) + token[i] - '0'
 			i = i + 1
@@ -575,24 +533,53 @@ int postfix_expr():
 		type = 3
 
 	return type
+
+int multiplicative_expr();
+/*
+unary-operator
+& * + - ~ !
+
+unary-expression
+	postfix-expression
+	unary-operator multiplicative-expression
+*/
+int unary_expression():
+	int type
+	# untested:
+	if (accept("&")):
+		type = multiplicative_expr()
+		return type
+	else if (accept("*")):
+		type = multiplicative_expr()
+		promote(type)
+		return type
+	# untested:
+	else if (accept("!")):
+		type = multiplicative_expr()
+		promote(type)
+		emit(2, "\xf7\xd0") /* not eax */
+		return type
+	else:
+		return postfix_expr()
+
 	
 /*
 TODO: push/pop edx: is it necessary?
 */
 int multiplicative_expr():
-	int type = postfix_expr()
+	int type = unary_expression()
 	while (1):
 		if (accept("*")):
 			binary1(type) /* pop ebx ; imul eax,ebx */
-			type = binary2(postfix_expr(), 4, "\x5b\x0f\xaf\xc3")
+			type = binary2(unary_expression(), 4, "\x5b\x0f\xaf\xc3")
 
 		else if (accept("/")):
 			binary1(type)  /* mov ebx, eax ; pop eax ; xor edx,edx ; idiv ebx */
-			type = binary2(postfix_expr(), 7, "\x89\xc3\x58\x31\xd2\xf7\xfb")
+			type = binary2(unary_expression(), 7, "\x89\xc3\x58\x31\xd2\xf7\xfb")
 
 		else if (accept("%")):
 			binary1(type) /* mov ebx, eax ; pop eax ; idiv ebx ; mov eax,edx */
-			type = binary2(postfix_expr(), 9, "\x89\xc3\x58\x31\xd2\xf7\xfb\x89\xd0")
+			type = binary2(unary_expression(), 9, "\x89\xc3\x58\x31\xd2\xf7\xfb\x89\xd0")
 
 		else:
 			return type
@@ -600,9 +587,9 @@ int multiplicative_expr():
 
 /*
  * additive-expr:
- *         postfix-expr
- *         additive-expr + postfix-expr
- *         additive-expr - postfix-expr
+ *         multiplicative-expr
+ *         additive-expr + multiplicative-expr
+ *         additive-expr - multiplicative-expr
  */
 int additive_expr():
 	int type = multiplicative_expr()
@@ -766,6 +753,8 @@ void type_name():
  *     if ( expression ) statement else statement
  *     while ( expression ) statement
  *     return ;
+ *     return expression ;
+ *     yield expression ;
  *     expr ;
  */
 void statement():
@@ -856,6 +845,13 @@ void statement():
 		be_pop(stack_pos)
 		emit(1, "\xc3") /* ret */
 
+	else if (accept("yield")):
+		if (peek(";") == 0):
+			promote(expression())
+		expect_or_newline(";")
+		be_pop(stack_pos)
+		emit(1, "\xc3") /* ret */
+
 	else:
 		expression()
 		expect_or_newline(";")
@@ -914,15 +910,29 @@ void program():
 			sym_define_global(current_symbol)
 			emit(4, "\x00\x00\x00\x00")
 
-
-int main1():
+void compile(char* fn):
+	filename = fn
+	file = open(filename, 0, 511)
 	line_number = 0
 	tab_level = 0
-	code_offset = 134512640 /* 0x08048000 */
-	be_start()
 	nextc = get_character()
 	get_token()
 	program()
+
+int link(int argc, int argv):
+	last_global_declaration = malloc(8000)
+	code_offset = 134512640 /* 0x08048000 */
+	be_start()
+	int i = 1
+	while (i < argc):
+		int arg = argv + i * 4
+		put_error(*arg)
+		puterror(10)
+		compile(*arg)
+		i = i + 1
 	be_finish()
+
+int main(int argc, int argv):
+	link(argc, argv)
 	return 0
 

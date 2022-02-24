@@ -2,58 +2,6 @@
 Testing Grounds for the W Language
 */
 
-/* Our library functions. */
-void exit(int);
-int getchar(void);
-void *malloc(int);
-int putchar(int);
-int puterror(int);
-
-/* The first thing defined must be main(). */
-int main1();
-int main():
-	return main1()
-
-void print(char *s):
-	int i = 0
-	while(s[i]):
-		putchar(s[i])
-		i = i + 1
-
-int strlen(char *c):
-	int length = 0
-	while(c[length]):
-		length = length + 1
-	return length
-
-void reverse(char *s):
-	int i = 0
-	int j = strlen(s)-1
-	int c
-	while(i < j):
-		c = s[i]
-		s[i] = s[j]
-		s[j] = c
-		i = i + 1
-		j = j -1
-
-char* itoa(int n):
-	char *s = "012345678901234567890"
-	int i
-	int sign = n
-	if(n < 0):
-		n = 0-n
-	i = 0
-	while(n > 0):
-		s[i] = n % 10 + '0'
-		i = i + 1
-		n = n / 10
-	if(sign < 0):
-		s[i] = '-'
-		i = i + 1
-	s[i] = 0
-	reverse(s)
-	return s
 
 
 /* Grounds Start */
@@ -70,20 +18,102 @@ char* itoa(int n):
 
 
 
-int range(int end):
+/*int range(int end):
 	int i = 0
 	if (i <= end):
 		i = i + 1
-		return i
+		yield i
 
 
 int main1():
 	int a = '0'
 	for int x in range(10):
-		puterror(0 + x)
-	char *s = "\x0ahi thar\x0a"
+		puterror(0 + x)*/
+
+/*int main1():
+	char *s = "hi thar\x0a"
 	syscall(4,2,s,strlen(s))
+	return 0*/
+
+
+int main_write():
+	# create file
+	char *filename = "/home/w/git/cc500/test_output.txt"
+	# 511 == 0777
+	int file = open(filename, 2, 511)
+	print("file_handle: ")
+	print(itoa(file))
+	print("\x0a")
+
+	# seek to end
+	int position = seek(file, 0, 2)
+	print("position: ")
+	print(itoa(position))
+	print("\x0a")
+
+	# write to file
+	char *s = "hi thar, derpity derp\x0a"
+	write(file, s)
+
+	# close file
+	close(file)
+
 	return 0
+
+int main_read():
+	int file = open("/home/w/git/cc500/test_output.txt", 0, 511)
+
+	int size = seek(file, 0, 2) + 1
+	print("size: ")
+	print(itoa(size))
+	print("\x0a")
+	char* buf = malloc(size)
+
+	seek(file, 0, 0)
+	read(file, buf, size)
+	close(file)
+	print(buf)
+	return 0
+
+int getc():
+	char* buf = "\x00"
+	int result = read(0, buf, 1)
+	if (result == 0):
+		return (0-1)
+	return buf[0]
+
+void print_arg(int argc):
+	print(argc)
+	print_hex(": ", argc)
+
+
+int main(int argc, int argv):
+	print_hex("argc: ", argc)
+	print_hex("argv: ", argv)
+	int i = 0
+	int arg
+	while (i < argc):
+		arg = argv + i * 4
+		println(*arg)
+		i = i + 1
+
+	return 0
+
+int main_pipe():
+	int c = getc()
+	int i = 300
+	while((i >= 0) & (c >= 0)):
+		putchar(c)
+		i = i - 1
+		c = getc()
+	return 0
+
+
+
+/*int main1():
+	print("Hello, world!\x0a")
+	return 0*/
+
 
 /*
 int main1():
