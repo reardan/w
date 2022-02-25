@@ -1,18 +1,18 @@
 build:
-	./cc500 lib.w cc500.c >cc500v2
+	./cc500 cc500.c >cc500v2
 	chmod +x ./cc500v2
-	./cc500v2 lib.w cc500.c >cc500v3
+	./cc500v2 cc500.c >cc500v3
 	chmod +x ./cc500v3
-	./cc500v3 lib.w cc500.c >cc500v4
+	./cc500v3 cc500.c >cc500v4
 	chmod +x ./cc500v4
-	./cc500v4 lib.w cc500.c >cc500v5
+	./cc500v4 cc500.c >cc500v5
 
 update:
 	./archive.sh
 	mv -f cc500v2 cc500
 
 test: FORCE
-	./cc500 lib.w cc500.c >cc500v2
+	./cc500 cc500.c >cc500v2
 	chmod +x ./cc500v2
 	./cc500v2 test.w >test
 	chmod +x ./test

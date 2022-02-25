@@ -70,7 +70,7 @@ Data Structures:
 	File
 	Stream
 */
-
+import lib
 
 # tokenizer
 int nextc
@@ -1043,10 +1043,6 @@ void compile_save(char* fn):
 	int old_file = file
 	int old_line_number = line_number
 	int old_tab_level = old_tab_level
-
-	put_error("old token: '")
-	put_error(token)
-	put_error("'\x0a")
 
 	compile(fn)
 	close(file)
