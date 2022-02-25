@@ -18,7 +18,6 @@ Import System
 */
 /* Our library functions. */
 void exit(int);
-int getchar(void);
 void *malloc(int);
 int putchar(int);
 int puterror(int);
@@ -39,6 +38,9 @@ char *realloc(char *old, int oldlen, int newlen):
 
 	return new
 
+int free(int mem_address):
+	return 1
+
 int strlen(char *c):
 	int length = 0
 	while(c[length]):
@@ -49,11 +51,19 @@ char* strclone(char *c):
 	int length = strlen(c)
 	return realloc(c, length, length)
 
-void strcpy(char *dst, char *src):
-	while (*src):
-		*dst = *src
+char* strcpy(char *dst, char *src):
+	while (src[0]):
+		dst[0] = src[0]
 		src = src + 1
 		dst = dst + 1
+	return dst
+
+char* strjoin(char* s1, char* s2):
+	int size = strlen(s1) + strlen(s2) + 1
+	char* joined = malloc(size)
+	strcpy(strcpy(joined, s1), s2)
+	return joined
+
 
 void reverse(char *s):
 	int i = 0
@@ -127,6 +137,39 @@ void println(char *s):
 	print(s)
 	putchar(10)
 
+# TODO: figure out why *(char*) is broken
+# (it uses full int instead of zero extending)
+# type is always 2, but needs to be reset to char
+# based on the symbol table
+int starts_with(char *s, char* prefix):
+	while (prefix[0]):
+		if (s[0] == 0):
+			println("*s == 0")
+			return 0
+		if (s[0] != prefix[0]):
+			print("*s = ")
+			println(hex(s[0]))
+			print("*prefix = ")
+			println(hex(prefix[0]))
+			println("*s != *prefix")
+			return 0
+		s = s + 1
+		prefix = prefix + 1
+	return 1
+
+
+int strcmp(char *dst, char *src):
+	while (dst[0] & src[0]):
+		if (dst[0] != src[0]):
+			return 0
+		dst = dst + 1
+		src = src + 1
+	if (dst[0] == src[0]):
+		return 1
+	return 0
+
+
+
 ################################################################################
 int create(char* filename, int permissions):
 	return syscall(8, filename, permissions, 0)
@@ -135,8 +178,8 @@ int create(char* filename, int permissions):
 int open(char *filename, int mode, int permissions)
 	return syscall(5, filename, mode, permissions)
 
-int write(int file, char* s):
-	return syscall(4, file, s, strlen(s))
+int write(int file, char* s, int length):
+	return syscall(4, file, s, length)
 
 int read(int file, char* buf, int size):
 	return syscall(3, file, buf, size)
@@ -148,3 +191,22 @@ int close(int file):
 int seek(int file, int offset, int reference):
 	return syscall(19, file, offset, reference)
 ################################################################################
+
+int open_or_create(char *filename, int mode, int permissions):
+	int file = open(filename, mode, permissions)
+	if (file < 0):
+		file = create(filename, permissions)
+	return file
+
+int write_string(int file, char* s):
+	return write(file, s, strlen(s))
+
+int getchar(int file):
+	char* buf = "\x00"
+	int result = read(file, buf, 1)
+	if (result == 0):
+		return (0-1)
+	return buf[0]
+
+int putc(int file, int c):
+	write(file, &c, 1)

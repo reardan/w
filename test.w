@@ -1,8 +1,10 @@
 /*
 Testing Grounds for the W Language
 */
+import lib
 
-
+int global_int
+char* global_char
 
 /* Grounds Start */
 /*int main1():
@@ -40,7 +42,7 @@ int main_write():
 	# create file
 	char *filename = "/home/w/git/cc500/test_output.txt"
 	# 511 == 0777
-	int file = open(filename, 2, 511)
+	int file = open_or_create(filename, 2, 511)
 	print("file_handle: ")
 	print(itoa(file))
 	print("\x0a")
@@ -52,13 +54,14 @@ int main_write():
 	print("\x0a")
 
 	# write to file
-	char *s = "hi thar, derpity derp\x0a"
-	write(file, s)
+	char *s = "hi thar, derpity derp da derp da derp\x0a"
+	write_string(file, s)
 
 	# close file
 	close(file)
 
 	return 0
+
 
 int main_read():
 	int file = open("/home/w/git/cc500/test_output.txt", 0, 511)
@@ -75,12 +78,6 @@ int main_read():
 	print(buf)
 	return 0
 
-int getc():
-	char* buf = "\x00"
-	int result = read(0, buf, 1)
-	if (result == 0):
-		return (0-1)
-	return buf[0]
 
 void print_arg(int argc):
 	print(argc)
@@ -99,15 +96,31 @@ int main(int argc, int argv):
 
 	return 0
 
-int main_pipe():
-	int c = getc()
-	int i = 300
-	while((i >= 0) & (c >= 0)):
-		putchar(c)
-		i = i - 1
-		c = getc()
-	return 0
+int main_strings(int argc, int argv):
+	if (starts_with("hi there", "hi")):
+		println("it worked!!")
+	else:
+		println("prefix not working...")
 
+	if (strcmp("hi there", "hi there")):
+		println("strcmp worked!")
+
+	if (strcmp("", "")):
+		println("strcmp blank worked!")
+
+	if (strcmp("c", "c")):
+		println("strcmp char worked!")
+
+	if (strcmp("hi there", "hi there1")):
+		println("this shouldn't have worked...")
+
+	if (strcmp("", "h")):
+		println("this shouldn't have worked...")
+
+	if (strcmp("a", "")):
+		println("this shouldn't have worked...")
+
+	return 0
 
 
 /*int main1():

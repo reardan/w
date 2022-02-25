@@ -14,9 +14,9 @@ update:
 test: FORCE
 	./cc500 lib.w cc500.c >cc500v2
 	chmod +x ./cc500v2
-	./cc500v2 lib.w test.w >test
+	./cc500v2 test.w >test
 	chmod +x ./test
-	./test arg1 arg2 arg3 <test_output.txt
+	./test arg1 arg2 arg3 -o output -i=input --input=doubledash
 
 tester: FORCE
 	./cc500 <cc500.c >cc500v2

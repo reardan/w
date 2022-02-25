@@ -3,17 +3,72 @@ Wesley Reardan based on work by Edmund GRIMLEY EVANS <edmundo@rano.org>
 W Language
 A self-compiling compiler for a small subset of C.
 
-TODO:
-	for in range
+TODO
+====
+test:
+	&, *, ! for char + int
+operators:
+	for
+	in
+	range
+	yield
 	and
 	or
+	not
+	import
+
+features:
+	generators
+	repl
+	debugging
+	symbols
+	import
+
+types:
 	float
-	var
-		list
-			string
-		in
-		map
-			object
+
+Data Structures:
+	List
+		String
+		Map
+			Set
+			Object
+		Stack
+		Queue
+		Heap
+			PriorityQueue
+		Node
+		Edge
+		Tree
+			Trie
+		Graph
+		Collection
+		SSTable
+
+	List
+		append
+		appendleft
+		clear
+		copy
+		count
+		extend
+		extendleft
+		index
+		insert
+		pop
+		popleft
+		remove
+		reverse
+		rotate
+
+		LinkedList
+		DoublyLinkedList
+		ArrayList
+		RingBuffer
+		FlatList
+
+	File
+	Stream
 */
 
 
@@ -43,12 +98,10 @@ void error(char *s):
 	puterror(10)
 	exit(1)
 
+
 int getc():
-	char* buf = "\x00"
-	int result = read(file, buf, 1)
-	if (result == 0):
-		return (0-1)
-	return buf[0]
+	return getchar(file)
+
 
 int get_character():
 	int c = getc()
@@ -229,10 +282,42 @@ void be_pop(int n):
 	save_int(code + codepos - 4, n << 2)
 
 
+
+/*
+table: stack of symbols
+symbol format:
+string: symbol\0 
+char: [DULA]
+int: address
+int: type
+*/
 char *table
 int table_size
 int table_pos
 int stack_pos
+int table_struct_size
+
+void print_symbol_table(int t):
+	put_error("printing symbol table since ")
+	put_error(itoa(t))
+	put_error(":\x0a")
+	while (t <= table_pos - 1):
+		char* sym = table + t
+		t = t + strlen(table + t)
+
+		put_error(sym)
+
+		put_error(": type(")
+		puterror(table[t + 6] + '0')
+		put_error(") symtype(")
+		puterror(table[t + 1])
+		put_error(") address(")
+		int address = table + t + 2
+		put_error(hex(*address))
+		put_error(")\x0a")
+
+		t = t + 10
+	
 
 int sym_lookup(char *s):
 	int t = 0
@@ -249,12 +334,11 @@ int sym_lookup(char *s):
 		while (table[t] != 0):
 			t = t + 1
 
-		t = t + 6
+		t = t + 10
 
 	return current_symbol
 
-
-void sym_declare(char *s, int type, int value):
+void sym_declare(char *s, int type, int symtype, int value):
 	int t = table_pos
 	int i = 0
 	while (s[i] != 0):
@@ -268,21 +352,21 @@ void sym_declare(char *s, int type, int value):
 		t = t + 1
 
 	table[t] = 0
-	table[t + 1] = type
+	table[t + 1] = symtype
 	save_int(table + t + 2, value)
-	table_pos = t + 6
+	table[t + 6] = type
+	table_pos = t + 10
 
 
 char *last_global_declaration
-int sym_declare_global(char *s):
+int sym_declare_global(char *s, int type):
 	strcpy(last_global_declaration, s)
 	int current_symbol = sym_lookup(s)
 	if (current_symbol == 0):
-		sym_declare(s, 'U', code_offset)
-		current_symbol = table_pos - 6
+		sym_declare(s, type, 'U', code_offset)
+		current_symbol = table_pos - 10
 
 	return current_symbol
-
 
 void sym_define_global(int current_symbol):
 	int i
@@ -308,7 +392,7 @@ int number_of_args
 void sym_get_value(char *s):
 	int t
 	if ((t = sym_lookup(s)) == 0):
-		put_error("cannot find symbol: '")
+		put_error("Cannot find symbol: '")
 		put_error(token)
 		error("'\x0a")
 	emit(5, "\xb8....") /* mov $n,%eax */
@@ -328,8 +412,14 @@ void sym_get_value(char *s):
 		save_int(code + codepos - 4, k)
 
 	else:
-		error("error getting symbol value")
+		put_error("Error getting symbol value for '")
+		put_error(s)
+		put_error("', table[t + 1]='")
+		puterror(table[t + 1])
+		error("'")
 
+void sym_define_declare_global_function(char* name):
+	sym_define_global(sym_declare_global(name, 4))
 
 void be_start():
 	emit(16, "\x7f\x45\x4c\x46\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00")
@@ -343,23 +433,14 @@ void be_start():
 	emit(5, "\x8d\x44\x24\x04\x50")
 	/* lea eax, [esp+4]; push eax */
 
-	emit(5, "\xe8\x00\x00\x00\x00")
+	emit(5, "\xe8....")
 	/* call [first function ] - set with the save_int() at the end of this func */
 
-	sym_define_global(sym_declare_global("exit"))
+	sym_define_declare_global_function("exit")
 	/* pop %ebx ; pop %ebx ; xor %eax,%eax ; inc %eax ; int $0x80 */
 	emit(7, "\x5b\x5b\x31\xc0\x40\xcd\x80")
 
-	sym_define_global(sym_declare_global("getchar"))
-	/* mov $3,%eax ; xor %ebx,%ebx ; push %ebx ; mov %esp,%ecx */
-	emit(10, "\xb8\x03\x00\x00\x00\x31\xdb\x53\x89\xe1")
-	/* xor %edx,%edx ; inc %edx ; int $0x80 */
-	/* test %eax,%eax ; pop %eax ; jne . + 7 */
-	emit(10, "\x31\xd2\x42\xcd\x80\x85\xc0\x58\x75\x05")
-	/* mov $-1,%eax ; ret */
-	emit(6, "\xb8\xff\xff\xff\xff\xc3")
-
-	sym_define_global(sym_declare_global("malloc"))
+	sym_define_declare_global_function("malloc")
 	/* mov 4(%esp),%eax */
 	emit(4, "\x8b\x44\x24\x04")
 	/* push %eax ; xor %ebx,%ebx ; mov $45,%eax ; int $0x80 */
@@ -371,19 +452,19 @@ void be_start():
 	/* mov $-1,%eax ; ret */
 	emit(6, "\xb8\xff\xff\xff\xff\xc3")
 
-	sym_define_global(sym_declare_global("putchar"))
+	sym_define_declare_global_function("putchar")
 	/* mov $4,%eax ; xor %ebx,%ebx ; inc %ebx */
 	emit(8, "\xb8\x04\x00\x00\x00\x31\xdb\x43")
 	/*  lea 4(%esp),%ecx ; mov %ebx,%edx ; int $0x80 ; ret */
 	emit(9, "\x8d\x4c\x24\x04\x89\xda\xcd\x80\xc3")
 
-	sym_define_global(sym_declare_global("puterror"))
+	sym_define_declare_global_function("puterror")
 	/* mov $4,%eax ; xor %ebx,%ebx ; inc %ebx */
 	emit(8, "\xb8\x04\x00\x00\x00\x31\xdb\x43")
 	/*  lea 4(%esp),%ecx ; mov %ebx,%edx ; inc %ebx ; int $0x80 ; ret */
 	emit(10, "\x8d\x4c\x24\x04\x89\xda\x43\xcd\x80\xc3")
 
-	sym_define_global(sym_declare_global("syscall"))
+	sym_define_declare_global_function("syscall")
 	/* mov eax,[esp+16] ; mov ebx,[esp+12] ; mov ecx,[esp+8] ; mov edx,[esp+4] ; int 0x80 ; ret */
 	emit(19, "\x8b\x44\x24\x10\x8b\x5c\x24\x0c\x8b\x4c\x24\x08\x8b\x54\x24\x04\xcd\x80\xc3")
 
@@ -418,6 +499,7 @@ int expression();
  */
 int primary_expr():
 	int type
+	# Integer constant
 	if (('0' <= token[0]) & (token[0] <= '9')):
 		int n = 0
 		int i = 0
@@ -429,6 +511,7 @@ int primary_expr():
 		save_int(code + codepos - 4, n)
 		type = 3
 
+	# Identifier
 	else if (('a' <= token[0]) & (token[0] <= 'z')):
 		sym_get_value(token)
 		type = 2
@@ -551,6 +634,11 @@ int unary_expression():
 		return type
 	else if (accept("*")):
 		type = multiplicative_expr()
+/*		put_error("unary * type: ")
+		put_error(itoa(type))
+		put_error("\x0alast symbol: ")
+		put_error(last_global_declaration)
+		put_error("\x0a")*/
 		promote(type)
 		return type
 	# untested:
@@ -735,11 +823,24 @@ int expression():
  * type-name:
  *     char *
  *     int
+ *     void
  */
-void type_name():
+int type_name():
+	int type = 0
+	if (peek("char")):
+		type = 3
+	else if (peek("int")):
+		type = 2
+	else if (peek("void")):
+		type = 1
+	else:
+		put_error("unknown type name: '")
+		put_error(token)
+		error("'")
 	get_token()
 	while (accept("*")) {
 	}
+	return type
 
 
 
@@ -755,7 +856,12 @@ void type_name():
  *     return ;
  *     return expression ;
  *     yield expression ;
+ *     "debug;"
  *     expr ;
+ TODO:
+ *     import Root.Subpath.File [as Identifier] ;
+ *     import Root.File.[Ident1, Ident2, Ident3] ;
+ *     new File( arg-list )
  */
 void statement():
 	int p1
@@ -784,8 +890,7 @@ void statement():
 		stack_pos = s
 
 	else if (peek("char") | peek("int")):
-		type_name()
-		sym_declare(token, 'L', stack_pos)
+		sym_declare(token, type_name(), 'L', stack_pos)
 		get_token()
 		if (accept("=")):
 			promote(expression())
@@ -823,8 +928,7 @@ void statement():
 
 	else if (accept("for")):
 		if (peek("char") | peek("int")):
-			type_name()
-			sym_declare(token, 'L', stack_pos)
+			sym_declare(token, type_name(), 'L', stack_pos)
 			get_token()
 			be_push()
 			stack_pos = stack_pos + 1
@@ -852,13 +956,16 @@ void statement():
 		be_pop(stack_pos)
 		emit(1, "\xc3") /* ret */
 
+	else if (accept(";debug;")):
+		expect_or_newline(";")
+		emit(1, "\xcc") /* int 3 */
+
 	else:
 		expression()
 		expect_or_newline(";")
 
 
-
-
+void compile_save(char* fn);
 /*
  * program:
  *     declaration
@@ -879,8 +986,18 @@ void statement():
 void program():
 	int current_symbol
 	while (token[0]):
-		type_name()
-		current_symbol = sym_declare_global(token)
+		# First handle imports
+		if (accept("import")):
+			put_error("importing '")
+			char* with_path = strjoin(token, ".w")
+			put_error(with_path)
+			put_error("'\x0a")
+			compile_save(with_path)
+			free(with_path)
+			expect_or_newline(";")
+
+		# Now variables + functions
+		current_symbol = sym_declare_global(token, type_name())
 		get_token()
 		if (accept(";")):
 			sym_define_global(current_symbol)
@@ -891,9 +1008,9 @@ void program():
 			number_of_args = 0
 			while (accept(")") == 0):
 				number_of_args = number_of_args + 1
-				type_name()
+				int type = type_name()
 				if (peek(")") == 0):
-					sym_declare(token, 'A', number_of_args)
+					sym_declare(token, type, 'A', number_of_args)
 					get_token()
 
 				accept(",") /* ignore trailing comma */
@@ -910,6 +1027,7 @@ void program():
 			sym_define_global(current_symbol)
 			emit(4, "\x00\x00\x00\x00")
 
+
 void compile(char* fn):
 	filename = fn
 	file = open(filename, 0, 511)
@@ -919,18 +1037,47 @@ void compile(char* fn):
 	get_token()
 	program()
 
+
+void compile_save(char* fn):
+	char* old_filename = filename
+	int old_file = file
+	int old_line_number = line_number
+	int old_tab_level = old_tab_level
+
+	put_error("old token: '")
+	put_error(token)
+	put_error("'\x0a")
+
+	compile(fn)
+	close(file)
+
+	filename = old_filename
+	put_error("switching back to '")
+	put_error(filename)
+	put_error("'\x0a")
+	file = old_file
+	line_number = old_line_number
+	tab_level = old_tab_level
+	nextc = get_character()
+	get_token()
+
+
 int link(int argc, int argv):
 	last_global_declaration = malloc(8000)
 	code_offset = 134512640 /* 0x08048000 */
 	be_start()
+
 	int i = 1
 	while (i < argc):
 		int arg = argv + i * 4
+		put_error("compiling '")
 		put_error(*arg)
-		puterror(10)
+		put_error("'\x0a")
 		compile(*arg)
 		i = i + 1
+
 	be_finish()
+
 
 int main(int argc, int argv):
 	link(argc, argv)
