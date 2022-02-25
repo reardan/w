@@ -2,6 +2,7 @@
 Testing Grounds for the W Language
 */
 import lib
+import tokenizer
 
 int global_int
 char* global_char
