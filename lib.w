@@ -8,27 +8,39 @@ Array:
 	length
 	total
 
+Map
+
+
 Object:
 	String
 
 Import System
 	keywords: import Filename
 
+import File
+import File.*
+import File.Open
+import File.[Open, Write]
+from File import Open, Write
+import Directory.File
+import File.Open, Write
 
 */
 /* Our library functions. */
 void exit(int);
 void *malloc(int);
-int putchar(int);
-int puterror(int);
 
-/* The first function implemented must be _main(). */
+
+int verbosity;
+
+
+/* The main wrapper. */
 int main(int argc, int argv);
 int _main(int argc, int argv):
 	exit(main(argc, argv))
 
 
-/* string functions */
+# string functions
 char *realloc(char *old, int oldlen, int newlen):
 	char *new = malloc(newlen)
 	int i = 0
@@ -76,6 +88,7 @@ void reverse(char *s):
 		i = i + 1
 		j = j -1
 
+
 char* itoa(int n):
 	char *s = "012345678901234567890"
 	int i
@@ -95,24 +108,6 @@ char* itoa(int n):
 	return s
 
 
-void print(char *s):
-	int i = 0
-	while(s[i]):
-		putchar(s[i])
-		i = i + 1
-
-
-void put_error(char *s):
-	int i = 0
-	while(s[i]):
-		puterror(s[i])
-		i = i + 1
-
-void print_int(char* c, int v):
-	print(c)
-	print(itoa(v))
-	print("\x0a")
-
 char* hex(int v):
 	char* s = "0x00000000"
 	int i = 7
@@ -128,14 +123,6 @@ char* hex(int v):
 		i = i - 1
 	return s
 
-void print_hex(char* c, int v):
-	print(c)
-	print(hex(v))
-	print("\x0a")
-
-void println(char *s):
-	print(s)
-	putchar(10)
 
 # TODO: figure out why *(char*) is broken
 # (it uses full int instead of zero extending)
@@ -144,14 +131,8 @@ void println(char *s):
 int starts_with(char *s, char* prefix):
 	while (prefix[0]):
 		if (s[0] == 0):
-			println("*s == 0")
 			return 0
 		if (s[0] != prefix[0]):
-			print("*s = ")
-			println(hex(s[0]))
-			print("*prefix = ")
-			println(hex(prefix[0]))
-			println("*s != *prefix")
 			return 0
 		s = s + 1
 		prefix = prefix + 1
@@ -161,12 +142,10 @@ int starts_with(char *s, char* prefix):
 int strcmp(char *dst, char *src):
 	while (dst[0] & src[0]):
 		if (dst[0] != src[0]):
-			return 0
+			return dst[0] - src[0]
 		dst = dst + 1
 		src = src + 1
-	if (dst[0] == src[0]):
-		return 1
-	return 0
+	return dst[0] - src[0]
 
 
 
@@ -192,14 +171,17 @@ int seek(int file, int offset, int reference):
 	return syscall(19, file, offset, reference)
 ################################################################################
 
+
 int open_or_create(char *filename, int mode, int permissions):
 	int file = open(filename, mode, permissions)
 	if (file < 0):
 		file = create(filename, permissions)
 	return file
 
+
 int write_string(int file, char* s):
 	return write(file, s, strlen(s))
+
 
 int getchar(int file):
 	char* buf = "\x00"
@@ -208,5 +190,42 @@ int getchar(int file):
 		return (0-1)
 	return buf[0]
 
-int putc(int file, int c):
-	write(file, &c, 1)
+
+void putc(int file, int c):
+	char* buf = "\x00"
+	buf[0] = c
+	write(file, buf, file)
+	# write(file, &c, 1)
+
+
+void put_char(int c):
+	putc(1, c)
+
+
+void put_error(int c):
+	putc(2, c)
+
+
+void print(char *s):
+	write_string(1, s)
+
+
+void print_error(char* s):
+	write_string(2, s)
+
+
+void print_int(char* c, int v):
+	print_error(c)
+	print_error(itoa(v))
+	print_error("\x0a")
+
+
+void print_hex(char* c, int v):
+	print(c)
+	print(hex(v))
+	print("\x0a")
+
+
+void println(char *s):
+	print(s)
+	put_char(10)

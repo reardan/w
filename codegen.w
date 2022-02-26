@@ -1,13 +1,20 @@
 char *code
 int code_size
 int codepos
+int base_code_offset
 int code_offset
 
-void save_int(char *p, int n):
-	p[0] = n
-	p[1] = n >> 8
-	p[2] = n >> 16
-	p[3] = n >> 24
+
+void save_i(char* p, int v, int n):
+	int i = 0
+	while (i < n):
+		p[i] = v
+		v = v >> 8
+		i = i + 1
+
+
+void save_int(char *p, int v):
+	save_i(p, v, 4)
 
 
 int load_int(char *p):
@@ -15,18 +22,43 @@ int load_int(char *p):
 					((p[2] & 255) << 16) + ((p[3] & 255) << 24))
 
 
-void emit(int n, char *s):
-	int i = 0
+void resize_code(int n):
 	if (code_size <= codepos + n):
 		int x = (codepos + n) << 1
 		code = realloc(code, code_size, x)
 		code_size = x
 
+
+void emit(int n, char *s):
+	resize_code(n)
+	int i = 0
 	while (i <= n - 1):
 		code[codepos] = s[i]
 		codepos = codepos + 1
 		i = i + 1
 
+
+void emit_i(int v, int n):
+	resize_code(n)
+	char* p = code + codepos
+	save_i(p, v, n)
+	codepos = codepos + n
+
+
+void emit_int8(int v):
+	emit_i(v, 1)
+
+
+void emit_int16(int v):
+	emit_i(v, 2)
+
+
+void emit_int32(int v):
+	emit_i(v, 4)
+
+
+void emit_int(int v):
+	emit_int32(v)
 
 
 void be_push():
@@ -41,13 +73,76 @@ void be_pop(int n):
 void sym_define_declare_global_function(char* name); /* defined in symbol_table */
 
 
+void elf_header():
+	/* ELF Header: 52 bytes */
+	/* NIDENT */
+	emit(4, "\x7f\x45\x4c\x46") /* magic */
+	emit(1, "\x01") /* class: 0: none, 1: 32 bit, 2: 64 bit. */
+	emit(1, "\x01") /* data encoding: 0: none, 1: Least signficiant, 2: Most significant */
+	emit(1, "\x01") /* version: always 1 */
+	emit(1, "\x00") /* OS ABI: 0: none (usually used), 1: HP-UX, 2: NetBSD, 3: Linux */
+	emit(1, "\x00") /* ABI VERSION */
+	emit(7, "\x00\x00\x00\x00\x00\x00\x00") /* padding */
+
+	/* ElfHeader32 */
+	emit(2, "\x02\x00") /* type */
+	emit(2, "\x03\x00")  /* machine */
+	emit(4, "\x01\x00\x00\x00") /* version */
+	emit(4, "\x54\x80\x04\x08") /* entry */
+	emit(4, "\x34\x00\x00\x00") /* program header offset */
+	emit(4, "\x00\x00\x00\x00") /* segment header offset */
+	emit(4, "\x00\x00\x00\x00") /* flags */
+	emit(2, "\x34\x00") /* size of this elf header */
+	emit(2, "\x20\x00") /* size per program header */
+	emit(2, "\x01\x00") /* number of program headers */
+	emit(2, "\x28\x00") /* size per section header  */
+	emit(2, "\x00\x00") /* number of section headers */
+	emit(2, "\x00\x00") /* section header string table index */
+
+
+/* ProgramHeader32: 32 bytes */
+void elf_program_header(int type):
+	emit_int(type) /* type: 0: NULL, 1: LOAD, 2: DYNAMIC, ... */
+	emit_int(0) /* offset: where in the elf file the content of this segment is located */
+	emit(4, "\x00\x80\x04\x08") /* vaddr: where first byte will be in memory */
+	emit(4, "\x00\x80\x04\x08") /* paddr: physical memory address, not usually used (e.g. firmware) */
+	emit(4, "\x10\x4b\x00\x00") /* filesz: size of segment in file, 0=no content */
+	emit(4, "\x10\x4b\x00\x00") /* memsz: size of the segment in memory */
+	emit(4, "\x07\x00\x00\x00") /* flags: X, W, R */
+	emit(4, "\x00\x10\x00\x00") /* align: byte boundary e.g. 4/8 */
+
+
+/* SectionHeader32: 40 bytes */
+void elf_section_header(int type):
+	emit_int(0) /* name: string index */
+	emit_int(type) /* type: 2: sym_table, 3: string table */
+	emit_int(0) /* flags: 0x1: write, 0x2: alloc, 0x4: exec */
+	emit_int(0) /* addr */
+	emit_int(0) /* offset */
+	emit_int(0) /* size */
+	emit_int(0) /* link */
+	emit_int(0) /* info (num symbols in symtable, etc.) */
+	emit_int(1) /* addralign (1,2,4,8,16,32 typically used) */
+	emit_int(16) /* entry size */
+	/* # entries = size / entry size */
+
+
+void elf_sym_table_entry(int name, int address, int size, int info, int other):
+	emit_int(name) /* name */
+	emit_int(address) /* address */
+	emit_int(size) /* size */
+	emit(1, "\x00") /* info */
+	emit(1, "\x00") /* other */
+	emit(2, "\x00\x00") /* shndx */
+
+
 void be_start():
-	emit(16, "\x7f\x45\x4c\x46\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00")
-	emit(16, "\x02\x00\x03\x00\x01\x00\x00\x00\x54\x80\x04\x08\x34\x00\x00\x00")
-	emit(16, "\x00\x00\x00\x00\x00\x00\x00\x00\x34\x00\x20\x00\x01\x00\x00\x00")
-	emit(16, "\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x80\x04\x08")
-	emit(16, "\x00\x80\x04\x08\x10\x4b\x00\x00\x10\x4b\x00\x00\x07\x00\x00\x00")
-	emit(4, "\x00\x10\x00\x00")
+	base_code_offset = 134512640 /* 0x08048000 */
+	code_offset = base_code_offset
+
+	elf_header()
+	elf_program_header(1)
+	 /* TODO: Symbol Table Header: 32 bytes */
 
 	/* setup command line args */
 	emit(5, "\x8d\x44\x24\x04\x50")
@@ -72,30 +167,39 @@ void be_start():
 	/* mov $-1,%eax ; ret */
 	emit(6, "\xb8\xff\xff\xff\xff\xc3")
 
-	sym_define_declare_global_function("putchar")
-	/* mov $4,%eax ; xor %ebx,%ebx ; inc %ebx */
-	emit(8, "\xb8\x04\x00\x00\x00\x31\xdb\x43")
-	/*  lea 4(%esp),%ecx ; mov %ebx,%edx ; int $0x80 ; ret */
-	emit(9, "\x8d\x4c\x24\x04\x89\xda\xcd\x80\xc3")
-
-	sym_define_declare_global_function("puterror")
-	/* mov $4,%eax ; xor %ebx,%ebx ; inc %ebx */
-	emit(8, "\xb8\x04\x00\x00\x00\x31\xdb\x43")
-	/*  lea 4(%esp),%ecx ; mov %ebx,%edx ; inc %ebx ; int $0x80 ; ret */
-	emit(10, "\x8d\x4c\x24\x04\x89\xda\x43\xcd\x80\xc3")
-
 	sym_define_declare_global_function("syscall")
 	/* mov eax,[esp+16] ; mov ebx,[esp+12] ; mov ecx,[esp+8] ; mov edx,[esp+4] ; int 0x80 ; ret */
 	emit(19, "\x8b\x44\x24\x10\x8b\x5c\x24\x0c\x8b\x4c\x24\x08\x8b\x54\x24\x04\xcd\x80\xc3")
 
 	# OG: 85, 89
 	save_int(code + 90, codepos - 94) /* entry set to first thing in file */
+	if (verbosity > 0):
+		print_error("codepos - 94: ")
+		print_error(itoa(codepos - 94))
+		print_error("\x0a")
 
 
+int sym_address(char *s);
 void be_finish():
-	save_int(code + 68, codepos)
-	save_int(code + 72, codepos)
-	int i = 0
-	while (i <= codepos - 1):
-		putchar(code[i])
-		i = i + 1
+	if (verbosity > 0):
+		print_error("codepos: '")
+		print_error(hex(codepos))
+		print_error("'\x0a")
+
+	# Store pointer to library _main()
+	int t = sym_address("_main")
+	t = t - code_offset - 94
+
+	if (verbosity > 0):
+		print_error("looking up _main() t = ")
+		print_error(itoa(t))
+		print_error("\x0aold start = ")
+		print_error(itoa(load_int(code + 90)))
+		print_error("\x0a")
+
+	save_int(code + 90, t)
+
+	# Save the size
+	save_int(code + 68, codepos) /* FileSize */
+	save_int(code + 72, codepos) /* MemSize */
+	write(1, code, codepos - 1)

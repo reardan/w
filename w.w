@@ -97,34 +97,37 @@ void compile_save(char* fn):
 	close(file)
 
 	filename = old_filename
-	put_error("switching back to '")
-	put_error(filename)
-	put_error("'\x0a")
 	file = old_file
 	line_number = old_line_number
 	tab_level = old_tab_level
 	nextc = get_character()
 	get_token()
 
+	if (verbosity > 0):
+		print_error("switching back to '")
+		print_error(filename)
+		print_error("'\x0a")
+
 
 int link(int argc, int argv):
 	last_global_declaration = malloc(8000)
-	code_offset = 134512640 /* 0x08048000 */
 	be_start()
 
 	int i = 1
 	while (i < argc):
 		int arg = argv + i * 4
-		put_error("compiling '")
-		put_error(*arg)
-		put_error("'\x0a")
+		print_error("compiling '")
+		print_error(*arg)
+		print_error("'\x0a")
 		compile(*arg)
 		i = i + 1
 
+	emit_debugging_symbols()
 	be_finish()
 
 
 int main(int argc, int argv):
+	verbosity = 0
 	link(argc, argv)
 	return 0
 

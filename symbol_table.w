@@ -11,27 +11,6 @@ int table_size
 int table_pos
 int stack_pos
 int table_struct_size
-
-void print_symbol_table(int t):
-	put_error("printing symbol table since ")
-	put_error(itoa(t))
-	put_error(":\x0a")
-	while (t <= table_pos - 1):
-		char* sym = table + t
-		t = t + strlen(table + t)
-
-		put_error(sym)
-
-		put_error(": type(")
-		puterror(table[t + 6] + '0')
-		put_error(") symtype(")
-		puterror(table[t + 1])
-		put_error(") address(")
-		int address = table + t + 2
-		put_error(hex(*address))
-		put_error(")\x0a")
-
-		t = t + 10
 	
 
 int sym_lookup(char *s):
@@ -52,6 +31,13 @@ int sym_lookup(char *s):
 		t = t + 10
 
 	return current_symbol
+
+
+int sym_address(char *s):
+	int t = sym_lookup(s)
+	return load_int(table + t + 2)
+
+
 
 void sym_declare(char *s, int type, int symtype, int value):
 	int t = table_pos
@@ -83,14 +69,15 @@ int sym_declare_global(char *s, int type):
 
 	return current_symbol
 
+
 void sym_define_global(int current_symbol):
 	int i
 	int j
 	int t = current_symbol
 	int v = codepos + code_offset
 	if (table[t + 1] != 'U'):
-		put_error("symbol redefined: '")
-		put_error(last_global_declaration)
+		print_error("symbol redefined: '")
+		print_error(last_global_declaration)
 		error("'")
 	i = load_int(table + t + 2) - code_offset
 	while (i):
@@ -107,8 +94,8 @@ int number_of_args
 void sym_get_value(char *s):
 	int t
 	if ((t = sym_lookup(s)) == 0):
-		put_error("Cannot find symbol: '")
-		put_error(token)
+		print_error("Cannot find symbol: '")
+		print_error(token)
 		error("'\x0a")
 	emit(5, "\xb8....") /* mov $n,%eax */
 	save_int(code + codepos - 4, load_int(table + t + 2))
@@ -127,12 +114,112 @@ void sym_get_value(char *s):
 		save_int(code + codepos - 4, k)
 
 	else:
-		put_error("Error getting symbol value for '")
-		put_error(s)
-		put_error("', table[t + 1]='")
-		puterror(table[t + 1])
+		print_error("Error getting symbol value for '")
+		print_error(s)
+		print_error("', table[t + 1]='")
+		put_error(table[t + 1])
 		error("'")
 
 
 void sym_define_declare_global_function(char* name):
 	sym_define_global(sym_declare_global(name, 4))
+
+
+void print_symbol_table(int t):
+	print_error("printing symbol table since ")
+	print_error(itoa(t))
+	print_error(":\x0a")
+	int symbol = 0
+	while (t <= table_pos - 1):
+		char* sym = table + t
+		t = t + strlen(table + t)
+
+		print_error(itoa(symbol))
+		print_error(": ")
+		print_error(sym)
+
+		print_error(" type(")
+		put_error(table[t + 6] + '0')
+		print_error(") symtype(")
+		put_error(table[t + 1])
+		print_error(") address(")
+		int address = table + t + 2
+		print_error(hex(*address))
+		print_error(")\x0a")
+
+		t = t + 10
+		symbol = symbol + 1
+
+
+int emit_string_table():
+	print_error("dumping string table\x0a")
+	int t = 0
+	int n = 0
+	while (t <= table_pos - 1):
+		char* sym = table + t
+		n = strlen(table + t)
+		t = t + n
+		emit(n + 1, sym)
+		t = t + 10
+
+
+int emit_symbol_table():
+	print_error("dumping symbol table\x0a")
+	int t = 0
+	int n = 0
+	int symbol = 0
+	int count = 0
+	while (t <= table_pos - 1):
+		char* sym = table + t
+		n = strlen(table + t)
+		t = t + n
+
+		int type = table[t + 6] + '0'
+		int symtype = table[t + 1]
+		int address = table + t + 2
+		elf_sym_table_entry(symbol, *address, 4, 0, 0)
+
+		t = t + 10
+		symbol = symbol + n + 1
+		count = count + 1
+
+	return count
+
+
+void emit_debugging_symbols():
+	# Store start of section header
+	int header_addr = codepos
+
+	# Save section header address + number of sections
+	save_int(code + 32, header_addr)
+	save_i(code + 48, 2, 2)
+	save_i(code + 50, 1, 2)
+
+	# Emit string section header
+	int string_section_header = codepos
+	elf_section_header(3)
+
+	# Emit symbol section header
+	int symbol_section_header = codepos
+	elf_section_header(2)
+
+	# Emit strings
+	int addr = codepos
+	emit_string_table()
+	int length = codepos - addr
+
+	save_int(code + string_section_header + 12, addr)
+	save_int(code + string_section_header + 16, addr)
+	save_int(code + string_section_header + 20, length)
+
+	# Emit symbols
+	int sym_table_addr = codepos
+	int symbol_count = emit_symbol_table()
+	int sym_table_length = codepos - sym_table_addr
+	save_int(code + symbol_section_header + 12, sym_table_addr)
+	save_int(code + symbol_section_header + 16, sym_table_addr)
+	save_int(code + symbol_section_header + 20, sym_table_length)
+	save_int(code + symbol_section_header + 28, symbol_count)
+
+	emit_int8(0) /* placeholder so strings doesn't read beyong file */
+

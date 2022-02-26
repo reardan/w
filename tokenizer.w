@@ -17,12 +17,12 @@ int token_i
 
 
 void error(char *s):
-	put_error(s)
-	put_error(" in ")
-	put_error(filename)
-	put_error(":")
-	put_error(itoa(line_number+1))
-	puterror(10)
+	print_error(s)
+	print_error(" in ")
+	print_error(filename)
+	print_error(":")
+	print_error(itoa(line_number+1))
+	put_error(10)
 	exit(1)
 
 int getc():
@@ -147,19 +147,19 @@ int accept_newline(char *s):
 
 void expect(char *s):
 	if (accept(s) == 0):
-		put_error("'")
-		put_error(s)
-		put_error("' expected, found '")
-		put_error(token)
-		put_error("'")
+		print_error("'")
+		print_error(s)
+		print_error("' expected, found '")
+		print_error(token)
+		print_error("'")
 		error("")
 
 
 void expect_or_newline(char *s):
 	if((accept(s) == 0) & (token_newline == 0)):
-		put_error("'")
-		put_error(s)
-		put_error("' expected, found '")
-		put_error(token)
-		put_error("'")
+		print_error("'")
+		print_error(s)
+		print_error("' expected, found '")
+		print_error(token)
+		print_error("'")
 		error("")

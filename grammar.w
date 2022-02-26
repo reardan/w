@@ -151,11 +151,11 @@ int unary_expression():
 		return type
 	else if (accept("*")):
 		type = multiplicative_expr()
-/*		put_error("unary * type: ")
-		put_error(itoa(type))
-		put_error("\x0alast symbol: ")
-		put_error(last_global_declaration)
-		put_error("\x0a")*/
+/*		print_error("unary * type: ")
+		print_error(itoa(type))
+		print_error("\x0alast symbol: ")
+		print_error(last_global_declaration)
+		print_error("\x0a")*/
 		promote(type)
 		return type
 	# untested:
@@ -351,8 +351,8 @@ int type_name():
 	else if (peek("void")):
 		type = 1
 	else:
-		put_error("unknown type name: '")
-		put_error(token)
+		print_error("unknown type name: '")
+		print_error(token)
 		error("'")
 	get_token()
 	while (accept("*")) {
@@ -473,7 +473,7 @@ void statement():
 		be_pop(stack_pos)
 		emit(1, "\xc3") /* ret */
 
-	else if (accept(";debug;")):
+	else if (accept("debugger")):
 		expect_or_newline(";")
 		emit(1, "\xcc") /* int 3 */
 
@@ -505,10 +505,11 @@ void program():
 	while (token[0]):
 		# First handle imports
 		while (accept("import")):
-			put_error("importing '")
 			char* with_path = strjoin(token, ".w")
-			put_error(with_path)
-			put_error("'\x0a")
+			if (verbosity > 0):
+				print_error("importing '")
+				print_error(with_path)
+				print_error("'\x0a")
 			compile_save(with_path)
 			free(with_path)
 

@@ -2,7 +2,6 @@
 Testing Grounds for the W Language
 */
 import lib
-import tokenizer
 
 int global_int
 char* global_char
@@ -11,11 +10,11 @@ char* global_char
 /*int main1():
 	int a = '0'
 	a = a + strlen("hi there")
-	putchar(a)
-	putchar(10)
+	put_char(a)
+	put_char(10)
 
 	print(itoa(11))
-	putchar(10)
+	put_char(10)
 
 	return 0*/
 
@@ -31,12 +30,16 @@ char* global_char
 int main1():
 	int a = '0'
 	for int x in range(10):
-		puterror(0 + x)*/
+		put_error(0 + x)*/
 
 /*int main1():
 	char *s = "hi thar\x0a"
 	syscall(4,2,s,strlen(s))
 	return 0*/
+
+/*int forgotten_colon()
+	return 0
+*/
 
 
 int main_write():
@@ -85,7 +88,7 @@ void print_arg(int argc):
 	print_hex(": ", argc)
 
 
-int main(int argc, int argv):
+int main_args(int argc, int argv):
 	print_hex("argc: ", argc)
 	print_hex("argv: ", argv)
 	int i = 0
@@ -123,6 +126,12 @@ int main_strings(int argc, int argv):
 
 	return 0
 
+int main(int argc, int argv):
+	print_error("yolo swag life!\x0a")
+	if (strcmp(itoa(0), "0") != 0):
+		println("failed zero check")
+		exit(1)
+	return 0
 
 /*int main1():
 	print("Hello, world!\x0a")
@@ -137,10 +146,10 @@ int main1():
 	c = c + '0'
 	int d = 1 + 2 * 2
 	d = d + '0'
-	putchar('"')
-	putchar(d)
-	putchar('"')
-	putchar(10)
+	put_char('"')
+	put_char(d)
+	put_char('"')
+	put_char(10)
 
 	return 0
 */
@@ -150,15 +159,15 @@ int main1():
 	
 	a = '9'
 	while(a >= '0'):
-		putchar(a)
+		put_char(a)
 		a = a - 1
-	putchar(10)
+	put_char(10)
 	
 	a = '0'
 	while(a <= '9'):
-		putchar(a)
+		put_char(a)
 		a = a + 1
-	putchar(10)
+	put_char(10)
 
 	return 0*/
 

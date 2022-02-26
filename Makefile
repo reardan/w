@@ -18,14 +18,23 @@ test: FORCE
 	chmod +x ./test
 	./test arg1 arg2 arg3 -o output -i=input --input=doubledash
 
-tester: FORCE
-	./w <w.w >wv2
-	chmod +x ./wv2
-	./wv2 w.w >wv3
-	chmod +x ./wv3
-	./wv3 test.w >test
+test1: FORCE
+	./w test.w >test
 	chmod +x ./test
-	./test arg1 arg2 arg3 <test_output.txt
+	./test arg1 arg2 arg3 -o output -i=input --input=doubledash
+
+debug: FORCE
+	./w test.w >test
+	chmod +x ./test
+	gdb -ex run --args test arg1 arg2 arg3
+
+tests: FORCE
+	./w w.w >wv2
+	chmod +x ./wv2
+	./wv2 grammar_test.w >grammar_test
+	chmod +x ./grammar_test
+	./grammar_test arg1 arg2 arg3 -o output -i=input --input=doubledash
+
 
 old:
 	cc w.w
@@ -33,7 +42,7 @@ old:
 	chmod +x ./w
 
 clean:
-	rm -f ./wv2 ./wv3 ./wv4 ./wv5 ./test ./test_output.txt
+	rm -f ./wv2 ./wv3 ./wv4 ./wv5 ./test ./test_output.txt ./grammar_test
 
 
 FORCE:
