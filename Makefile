@@ -18,6 +18,13 @@ test: FORCE
 	chmod +x ./test
 	./test arg1 arg2 arg3 -o output -i=input --input=doubledash
 
+range: FORCE
+	./w w.w >wv2
+	chmod +x ./wv2
+	./wv2 range_test.w >range_test
+	chmod +x ./range_test
+	./range_test
+
 test1: FORCE
 	./w test.w >test
 	chmod +x ./test

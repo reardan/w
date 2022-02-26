@@ -338,18 +338,19 @@ int expression():
 
 /*
  * type-name:
- *     char *
+ *     char
  *     int
  *     void
+ *     * type-name
  */
 int type_name():
 	int type = 0
 	if (peek("char")):
-		type = 3
-	else if (peek("int")):
 		type = 2
-	else if (peek("void")):
+	else if (peek("int")):
 		type = 1
+	else if (peek("void")):
+		type = 0
 	else:
 		print_error("unknown type name: '")
 		print_error(token)
@@ -407,7 +408,7 @@ void statement():
 		stack_pos = s
 
 	else if (peek("char") | peek("int")):
-		sym_declare(token, type_name(), 'L', stack_pos)
+		sym_declare_new(token, type_name(), 'L', stack_pos, 1)
 		get_token()
 		if (accept("=")):
 			promote(expression())
@@ -445,7 +446,7 @@ void statement():
 
 	else if (accept("for")):
 		if (peek("char") | peek("int")):
-			sym_declare(token, type_name(), 'L', stack_pos)
+			sym_declare_new(token, type_name(), 'L', stack_pos, 1)
 			get_token()
 			be_push()
 			stack_pos = stack_pos + 1
@@ -502,6 +503,7 @@ void compile_save(char* fn);
  */
 void program():
 	int current_symbol
+	int function_start
 	while (token[0]):
 		# First handle imports
 		while (accept("import")):
@@ -514,20 +516,22 @@ void program():
 			free(with_path)
 
 		# Now variables + functions
-		current_symbol = sym_declare_global(token, type_name())
+		current_symbol = sym_declare_global(token, type_name(), 1)
 		get_token()
 		if (accept(";")):
 			sym_define_global(current_symbol)
 			emit(4, "\x00\x00\x00\x00")
 
 		else if (accept("(")):
+			table[current_symbol + 10] = 2 /* store function type */
 			int n = table_pos
 			number_of_args = 0
+			function_start = codepos /* keep track of start for length comp */
 			while (accept(")") == 0):
 				number_of_args = number_of_args + 1
 				int type = type_name()
 				if (peek(")") == 0):
-					sym_declare(token, type, 'A', number_of_args)
+					sym_declare_new(token, type, 'A', number_of_args, 2)
 					get_token()
 
 				accept(",") /* ignore trailing comma */
@@ -536,6 +540,8 @@ void program():
 				sym_define_global(current_symbol)
 				statement()
 				emit(1, "\xc3") /* ret */
+				# Store length to symbol table:
+				save_int(table + current_symbol + 14, codepos - function_start)
 
 			table_pos = n
 

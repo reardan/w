@@ -38,6 +38,10 @@ void emit(int n, char *s):
 		i = i + 1
 
 
+void emit_string(char* s):
+	emit(strlen(s) + 1, s)
+
+
 void emit_i(int v, int n):
 	resize_code(n)
 	char* p = code + codepos
@@ -120,20 +124,23 @@ void elf_section_header(int type):
 	emit_int(0) /* addr */
 	emit_int(0) /* offset */
 	emit_int(0) /* size */
-	emit_int(0) /* link */
+	emit_int(1) /* link: strings section that we're linked with */
 	emit_int(0) /* info (num symbols in symtable, etc.) */
 	emit_int(1) /* addralign (1,2,4,8,16,32 typically used) */
 	emit_int(16) /* entry size */
 	/* # entries = size / entry size */
 
 
-void elf_sym_table_entry(int name, int address, int size, int info, int other):
+void elf_sym_table_entry(int name, int address, int size, int binding, int symtype, int type):
 	emit_int(name) /* name */
 	emit_int(address) /* address */
 	emit_int(size) /* size */
-	emit(1, "\x00") /* info */
-	emit(1, "\x00") /* other */
-	emit(2, "\x00\x00") /* shndx */
+	/* binding: 0:local, 1:global, 2:weak */
+	/* symtype: 0:none, 1:object, 2:func, ... */
+	int info = (binding << 4) + (symtype & 15)
+	emit_int8(info) /* info */
+	emit_int8(0) /* other: visibility */
+	emit_int16(type) /* shndx */
 
 
 void be_start():

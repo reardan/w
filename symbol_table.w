@@ -11,6 +11,14 @@ int table_size
 int table_pos
 int stack_pos
 int table_struct_size
+
+
+int symbol_data_size():
+	return 18
+
+
+int next_token(int t):
+	return t + symbol_data_size()
 	
 
 int sym_lookup(char *s):
@@ -28,7 +36,7 @@ int sym_lookup(char *s):
 		while (table[t] != 0):
 			t = t + 1
 
-		t = t + 10
+		t = next_token(t)
 
 	return current_symbol
 
@@ -38,13 +46,19 @@ int sym_address(char *s):
 	return load_int(table + t + 2)
 
 
-
-void sym_declare(char *s, int type, int symtype, int value):
+/*
+s: zero terminated string to declare
+type: variable type e.g. int, char, etc.
+visibility: 'DUAL' defined global-undefined global-a-local
+value: memory address
+symtype: 0:notype, 1:object, 2:func
+*/
+void sym_declare_new(char *s, int type, int visibility, int value, int symtype):
 	int t = table_pos
 	int i = 0
 	while (s[i] != 0):
-		if (table_size <= t + 10):
-			int x = (t + 10) << 1
+		if (table_size <= next_token(t)):
+			int x = next_token(t) << 1
 			table = realloc(table, table_size, x)
 			table_size = x
 
@@ -53,19 +67,20 @@ void sym_declare(char *s, int type, int symtype, int value):
 		t = t + 1
 
 	table[t] = 0
-	table[t + 1] = symtype
+	table[t + 1] = visibility
 	save_int(table + t + 2, value)
 	table[t + 6] = type
-	table_pos = t + 10
+	table[t + 10] = symtype
+	table_pos = next_token(t)
 
 
 char *last_global_declaration
-int sym_declare_global(char *s, int type):
+int sym_declare_global(char *s, int type, int symtype):
 	strcpy(last_global_declaration, s)
 	int current_symbol = sym_lookup(s)
 	if (current_symbol == 0):
-		sym_declare(s, type, 'U', code_offset)
-		current_symbol = table_pos - 10
+		sym_declare_new(s, type, 'U', code_offset, symtype)
+		current_symbol = table_pos - symbol_data_size()
 
 	return current_symbol
 
@@ -122,7 +137,7 @@ void sym_get_value(char *s):
 
 
 void sym_define_declare_global_function(char* name):
-	sym_define_global(sym_declare_global(name, 4))
+	sym_define_global(sym_declare_global(name, 4, 2))
 
 
 void print_symbol_table(int t):
@@ -140,14 +155,16 @@ void print_symbol_table(int t):
 
 		print_error(" type(")
 		put_error(table[t + 6] + '0')
-		print_error(") symtype(")
+		print_error(") visibility(")
 		put_error(table[t + 1])
 		print_error(") address(")
 		int address = table + t + 2
 		print_error(hex(*address))
+		print_error(") symtype(")
+		put_error(table[t + 10] + '0')
 		print_error(")\x0a")
 
-		t = t + 10
+		t = next_token(t)
 		symbol = symbol + 1
 
 
@@ -155,12 +172,16 @@ int emit_string_table():
 	print_error("dumping string table\x0a")
 	int t = 0
 	int n = 0
+	int count = 0
 	while (t <= table_pos - 1):
 		char* sym = table + t
 		n = strlen(table + t)
 		t = t + n
 		emit(n + 1, sym)
-		t = t + 10
+		t = next_token(t)
+		count = count + 1
+
+	return count
 
 
 int emit_symbol_table():
@@ -174,12 +195,17 @@ int emit_symbol_table():
 		n = strlen(table + t)
 		t = t + n
 
-		int type = table[t + 6] + '0'
-		int symtype = table[t + 1]
+		int type = table[t + 6]
+		int visibility = table[t + 1]
+		int binding = 1  /* global by default */
+		if (visibility != 'D'):
+			binding = 0
+		int symtype = table[t + 10]
 		int address = table + t + 2
-		elf_sym_table_entry(symbol, *address, 4, 0, 0)
+		int size = load_int(table + t + 14)
+		elf_sym_table_entry(symbol, *address, size, binding, symtype, type)
 
-		t = t + 10
+		t = next_token(t)
 		symbol = symbol + n + 1
 		count = count + 1
 
@@ -192,8 +218,12 @@ void emit_debugging_symbols():
 
 	# Save section header address + number of sections
 	save_int(code + 32, header_addr)
-	save_i(code + 48, 2, 2)
-	save_i(code + 50, 1, 2)
+	save_i(code + 48, 3, 2) /* number of section headers */
+	save_i(code + 50, 1, 2) /* string index */
+
+	# Emit debug info section header
+	int debug_info_section_header = codepos
+	elf_section_header(1)
 
 	# Emit string section header
 	int string_section_header = codepos
@@ -204,13 +234,24 @@ void emit_debugging_symbols():
 	elf_section_header(2)
 
 	# Emit strings
-	int addr = codepos
-	emit_string_table()
-	int length = codepos - addr
+	int strings_addr = codepos
+	int string_count = emit_string_table()
 
-	save_int(code + string_section_header + 12, addr)
-	save_int(code + string_section_header + 16, addr)
+	# Emit section header name strings
+	save_int(code + string_section_header, codepos - strings_addr)
+	emit_string("strings")
+	save_int(code + symbol_section_header, codepos - strings_addr)
+	emit_string("symbol_table")
+	save_int(code + debug_info_section_header, codepos - strings_addr)
+	emit_string(".debug_info")
+	string_count = string_count + 3
+
+	# Store string strings_addr + length
+	int length = codepos - strings_addr
+	save_int(code + string_section_header + 12, strings_addr)
+	save_int(code + string_section_header + 16, strings_addr)
 	save_int(code + string_section_header + 20, length)
+	save_int(code + string_section_header + 28, string_count)
 
 	# Emit symbols
 	int sym_table_addr = codepos
@@ -221,5 +262,5 @@ void emit_debugging_symbols():
 	save_int(code + symbol_section_header + 20, sym_table_length)
 	save_int(code + symbol_section_header + 28, symbol_count)
 
-	emit_int8(0) /* placeholder so strings doesn't read beyong file */
+	emit_int8(0) /* placeholder so reader doesn't read beyond the end of the file */
 
