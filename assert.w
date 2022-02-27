@@ -6,7 +6,7 @@ void asserts(char* s, int condition):
 
 
 void assert(int condition):
-	if (!condition):
+	if (condition == 0):
 		println("Assertion failed.")
 		exit(1)
 
@@ -17,5 +17,14 @@ void assert_equal(int want, int got):
 		print(itoa(want))
 		print("' got '")
 		print(itoa(got))
+		println("'")
+		exit(1)
+
+void assert_strings_equal(char* want, char* got):
+	if (strcmp(got, want) != 0):
+		print("Assertion failed: wanted '")
+		print(want)
+		print("' got '")
+		print(got)
 		println("'")
 		exit(1)

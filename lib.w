@@ -1,32 +1,10 @@
-/*lib.w
-var: int type (parent object)
+/*
+lib.w
+Our library functions.
 
-String:
-	length
-
-Array:
-	length
-	total
-
-Map
-
-
-Object:
-	String
-
-Import System
-	keywords: import Filename
-
-import File
-import File.*
-import File.Open
-import File.[Open, Write]
-from File import Open, Write
-import Directory.File
-import File.Open, Write
-
+No dependencies except calls provided by the compiler.  May change.
+This should only be functions that are highly common and every application requires.
 */
-/* Our library functions. */
 void exit(int);
 void *malloc(int);
 
@@ -34,8 +12,20 @@ void *malloc(int);
 int verbosity;
 
 
-/* The main wrapper. */
+/*
+The main Undefined declaration.
+This will be provided by the importing program as an entry point to their code.
+*/
 int main(int argc, int argv);
+/*
+The _main() function is what will be called
+
+ELF/PE -> Entry Point directly after main headers.
+Entry Point: Setup argc and argv via assembly.
+Then we call this _main() which passes the command line arguments to main().
+The compiler writes the address of this function
+from the symbol table to the call instruction at the entry point.
+*/
 int _main(int argc, int argv):
 	exit(main(argc, argv))
 
@@ -83,9 +73,9 @@ char* strjoin(char* s1, char* s2):
 	return joined
 
 
-void reverse(char *s):
+void reverse_n(char* s, int n):
 	int i = 0
-	int j = strlen(s)-1
+	int j = n-1
 	int c
 	while(i < j):
 		c = s[i]
@@ -93,6 +83,10 @@ void reverse(char *s):
 		s[j] = c
 		i = i + 1
 		j = j -1
+
+
+void reverse(char *s):
+	reverse_n(s, strlen(s))
 
 
 char* itoa(int n):
@@ -158,7 +152,7 @@ int strcmp(char *dst, char *src):
 
 
 ################################################################################
-int create(char* filename, int permissions):
+int create_file(char* filename, int permissions):
 	return syscall(8, filename, permissions, 0)
 
 /* mode: 0 - read, 1 - write, 2 - readwrite */
@@ -183,7 +177,7 @@ int seek(int file, int offset, int reference):
 int open_or_create(char *filename, int mode, int permissions):
 	int file = open(filename, mode, permissions)
 	if (file < 0):
-		file = create(filename, permissions)
+		file = create_file(filename, permissions)
 	return file
 
 
@@ -250,6 +244,10 @@ void print_string(char* s1, char* s2):
 void println(char *s):
 	print(s)
 	put_char(10)
+
+void println2(char *s):
+	print_error(s)
+	put_error(10)
 
 
 void print_n(char *s, int n):

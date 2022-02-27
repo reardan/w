@@ -1,0 +1,21 @@
+There will be a built in debugger
+
+	w --debug awesomeness.w
+
+will bring up a repl with 'import debugging/debug/debugger'
+
+
+
+	w --debug --break_start
+
+will automatically break at the start of the application (entry/_main/main?)
+
+
+
+	w --debug --break_end
+
+will automatically break after main() returns
+
+
+
+'debugger' statement that generates int3

@@ -1,45 +1,72 @@
 current:
-	testing
-		lookup testing functions from symbol table
-	
+	type table...
+		based on list...done
+		type lookup...done
+		init...done
+		use in grammar...done
+		use in import...
+		store information...
+	type...
+	struct...
+
+	function pointers...
+		local variable calls work
+		passing as arguments doesn't work
+			need a better typing system to handle this
+
+
+done:
+	symbol table...complete!
+	testing...complete!
+	list...complete!
+
+
+major bugs:
+	int*[]
+	*(char*)
+
 
 most important:
-	testing
-	list
+	type
 	struct
+	list
+	new
+	dict
 	range
 	repl
-	dict
 	debugger or symbols
 
 
 features:
-	subdirectory import
-	argument parsing
+	types
 	generators
 	iterators
 	for in range()
 	class instantiation
-	debugging symbols
+	subdirectory import
+	cli argument parsing
+	debugging info
 	debugger
 		asm
 		disasm
-	types
-	streams
-	files
-	make
-	git
+	stream class
+	file class
 	x64
 	windows
+	make
+	git
 	editor
-	function pointers
+	mocking
+	variable arguments
+	default values
 
 
 test:
 	&
 	*
 	!
-	[] for int* or other
+	[] for int* / other
+	char* indirection
 
 statment:
 	new
@@ -55,8 +82,11 @@ data structures:
 	list
 	dict
 	string
+	matrix
 
 types:
 	float
-	const
+	const modifier
 	*
+	dynamic
+

@@ -14,7 +14,6 @@ char *table
 int table_size
 int table_pos
 int stack_pos
-int table_struct_size
 
 
 int symbol_data_size():
@@ -30,7 +29,6 @@ void sym_table_info():
 	print_int0("table_size: ", table_size)
 	print_int0(", table_pos: ", table_pos)
 	print_int0(", stack_pos: ", stack_pos)
-	print_int0(", table_struct_size: ", table_struct_size)
 	print_error(")\x0a")
 
 
@@ -159,6 +157,19 @@ void sym_get_value(char *s):
 	save_int(code + codepos - 4, load_int(table + t + 2))
 
 	char scope_type = table[t + 1]
+	int type = load_int(table + t + 6)
+	int is_indirect_type = (type == 1) | (type == 1)
+	int symtype = load_int(table + t + 10)
+	int ptr_indirect = load_int(table + t + 18)
+	int is_indirect_pointer = (ptr_indirect > 0) & is_indirect_type
+	int is_function = 0 & is_indirect_type & (symtype == 2) & (scope_type == 'A')
+
+	int k = 0
+	if (verbosity >= 2):
+		print_error(s)
+		print_error(": ")
+		sym_info(t)
+
 	/* defined global */
 	if (scope_type == 'D') {
 		# Nothing needed since it directly uses the address from above
@@ -170,22 +181,11 @@ void sym_get_value(char *s):
 
 	/* local variable */
 	else if (scope_type == 'L'):
-		int k = (stack_pos - table[t + 2] - 1) << 2
-		int ptr_indirect = load_int(table + t + 18)
-		int type = load_int(table + t + 6)
-		if ((ptr_indirect > 0) & (type == 1)): /* if pointer indrection */
-			print_error("pointer_indirection for ")
-			warning(s)
-			emit(7, "\x8b\x84\x24....") /* mov eax,[esp+0x22334455] */
-		else:
-			emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
-		save_int(code + codepos - 4, k)
+		k = (stack_pos - table[t + 2] - 1) << 2
 
 	/* argument */
 	else if (scope_type == 'A'):
-		int k = (stack_pos + number_of_args - table[t + 2] + 1) << 2
-		emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
-		save_int(code + codepos - 4, k)
+		k = (stack_pos + number_of_args - table[t + 2] + 1) << 2
 
 	else:
 		print_error("Error getting symbol value for '")
@@ -193,6 +193,17 @@ void sym_get_value(char *s):
 		print_error("', table[t + 1]='")
 		put_error(table[t + 1])
 		error("'")
+
+	if ((scope_type == 'L') | (scope_type == 'A')):
+		if (is_indirect_pointer):
+			if (verbosity >= 0):
+				print_error("pointer_indirection for ")
+				sym_info(t)
+				warning(s)
+			emit(7, "\x8b\x84\x24....") /* mov eax, [esp + ....] */
+		else:
+			emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
+		save_int(code + codepos - 4, k)
 
 
 void sym_define_declare_global_function(char* name):

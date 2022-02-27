@@ -1,14 +1,20 @@
+
+char *last_identifier
+
 void promote(int type):
 	/* 1 = char lval, 2 = int lval, 3 = other */
 	if (type == 1):
 		emit(3, "\x0f\xbe\x00") /* movsbl (%eax),%eax */
 	else if (type == 2):
+		if (verbosity >= 2):
+			print_error("promote(")
+			print_error(last_identifier)
+			print_error(")\x0a")
 		emit(2, "\x8b\x00") /* mov (%eax),%eax */
 
 
 int expression();
 
-char *last_identifier
 /*
  * primary-expr:
  *     identifier
@@ -107,7 +113,8 @@ int binary2(int type, int n, char *s):
 int postfix_expr():
 	int type = primary_expr()
 	if (accept("[")):
-		binary1(type) /* pop %ebx ; add %ebx,%eax */
+		binary1(type)
+		/* pop %ebx ; add %ebx,%eax */
 		binary2(expression(), 3, "\x5b\x01\xd8")
 		expect("]")
 		type = 1
@@ -117,11 +124,15 @@ int postfix_expr():
 		be_push()
 		stack_pos = stack_pos + 1
 		if (accept(")") == 0):
-			promote(expression())
+			int arg_type = expression()
+			if (pointer_indirection == 0):
+				promote(arg_type)
 			be_push()
 			stack_pos = stack_pos + 1
 			while (accept(",")):
-				promote(expression())
+				int arg_type = expression()
+				if (pointer_indirection == 0):
+					promote(arg_type)
 				be_push()
 				stack_pos = stack_pos + 1
 
@@ -344,24 +355,20 @@ typename:
 	void
 	int
 	char
- */
+*/
 int type_name():
 	int type = 0
 	pointer_indirection = 0
-	if (peek("char")):
-		type = 2
-	else if (peek("int")):
-		type = 1
-	else if (peek("void")):
-		type = 0
-	else:
+	type = type_lookup(token)
+	if (type < 0):
 		print_error("unknown type name: '")
 		print_error(token)
 		error("'")
 	get_token()
 	while (accept("*")) {
 		if (type == 1):
-			warning("'*' accepted")
+			if (verbosity > 0):
+				warning("'*' accepted")
 			pointer_indirection = pointer_indirection + 1
 	}
 	return type
@@ -428,7 +435,7 @@ void statement():
 		be_pop(stack_pos - s)
 		stack_pos = s
 
-	else if (peek("char") | peek("int")):
+	else if (type_lookup(token) > 0):
 		sym_declare(token, type_name(), 'L', stack_pos, 1)
 		get_token()
 		if (accept("=")):
@@ -470,7 +477,7 @@ void statement():
 		save_int(code + p2 - 4, codepos - p2)
 
 	else if (accept("for")):
-		if (peek("char") | peek("int")):
+		if (type_lookup(token) > 0):
 			sym_declare(token, type_name(), 'L', stack_pos, 1)
 			pointer_indirection = 0
 			get_token()
@@ -513,6 +520,44 @@ void statement():
 		expect_or_newline(";")
 
 
+/*
+inside program:
+
+struct_declaration identifier :
+	type_name identifier
+	...
+
+*/
+int struct_declaration():
+	int current_symbol
+	int num_fields = 0
+	# parent_expression()
+	if (accept("struct")):
+		int start_tab_level = tab_level
+		print_int("start_tab_level: ", start_tab_level)
+		print_string("struct accepted name: ", token)
+		current_symbol = sym_declare_global(token, 5, 1)
+		get_token()
+		# print_string("token_colon: ", token)
+		expect(":")
+		print_int("tab_level: ", tab_level)
+		while(tab_level > start_tab_level):
+			print_int("tab_level: ", tab_level)
+			print_string("type_token: ", token)
+			int type = type_name()
+			print_int("type_id: ", type)
+
+			current_symbol = sym_declare_global(token, type, 1)
+			print_string("field: ", token)
+			print_error("\x0a")
+			get_token()
+			pointer_indirection = 0
+
+		return 1
+
+	return 0
+
+
 void compile_save(char* fn);
 /*
  * program:
@@ -545,7 +590,12 @@ void program():
 			compile_save(with_path)
 			free(with_path)
 
-		# Now variables + functions
+		# Next handle struct declarations
+		while(struct_declaration()):
+			print_int("struct_declaration=1, current_symbol=", current_symbol)
+
+
+		# Now global variables + functions
 		current_symbol = sym_declare_global(token, type_name(), 1)
 		get_token()
 		if (accept(";")):
@@ -561,7 +611,7 @@ void program():
 				number_of_args = number_of_args + 1
 				int type = type_name()
 				if (peek(")") == 0):
-					sym_declare(token, type, 'A', number_of_args, 2)
+					sym_declare(token, type, 'A', number_of_args, 1)
 					pointer_indirection = 0
 					get_token()
 

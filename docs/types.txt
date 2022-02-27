@@ -25,9 +25,11 @@ type
 					uint64
 					uint128
 
-			float
+			floating point
+				float
+				double
 
-	structure
+	struct
 	proto
 		message
 		service
@@ -41,10 +43,11 @@ type
 			doubly_linked_list
 			ring_buffer
 			flat_list
+		string
 		dict
 			set
 			object
-
+			default_dict
 		node
 		edge
 		tree

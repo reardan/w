@@ -18,25 +18,3 @@ Data Structures:
 
 	File
 	Stream
-
-List
-	append
-	appendleft
-	clear
-	copy
-	count
-	extend
-	extendleft
-	index
-	insert
-	pop
-	popleft
-	remove
-	reverse
-	rotate
-
-	LinkedList
-	DoublyLinkedList
-	ArrayList
-	RingBuffer
-	FlatList

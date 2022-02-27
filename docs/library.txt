@@ -5,9 +5,17 @@ networking
 	protocol
 		http
 		grpc
+		websockets
 	service
 
 editor
 
 graphics
 
+learning
+	classification
+		decision tree
+		random forest
+		neural network
+	clustering
+		kmeans

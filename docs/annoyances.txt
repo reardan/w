@@ -4,3 +4,8 @@ no for loop
 bad typing
 no repl
 no debugger
+malloc is builtin
+no free
+-1 cannot be used, must use 0-1 instead
+cannot use # on end of line comments
+compiler pipes to stdout

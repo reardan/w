@@ -1,0 +1,4 @@
+
+
+Compile in instrumentation
+	Per function: store callstats, time

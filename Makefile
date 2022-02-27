@@ -25,6 +25,34 @@ simple: FORCE
 	chmod +x ./bin/simple
 	./bin/simple
 
+struct_test: FORCE
+	./w w.w >./bin/wv2
+	chmod +x ./bin/wv2
+	./bin/wv2 struct_test.w >./bin/struct_test
+	chmod +x ./bin/struct_test
+	./bin/struct_test
+
+type_table_test: FORCE
+	./w w.w >./bin/wv2
+	chmod +x ./bin/wv2
+	./bin/wv2 type_table_test.w >./bin/type_table_test
+	chmod +x ./bin/type_table_test
+	./bin/type_table_test
+
+grammar: FORCE
+	./w w.w >./bin/wv2
+	chmod +x ./bin/wv2
+	./bin/wv2 grammar_test.w >./bin/grammar_test
+	chmod +x ./bin/grammar_test
+	ddd ./bin/grammar_test
+
+list_test: FORCE
+	./w w.w >./bin/wv2
+	chmod +x ./bin/wv2
+	./bin/wv2 list_test.w >./bin/list_test
+	chmod +x ./bin/list_test
+	./bin/list_test
+
 repl: FORCE
 	./w repl.w >./bin/repl
 	chmod +x ./bin/repl
@@ -50,12 +78,21 @@ debug: FORCE
 tests: FORCE
 	./w w.w >./bin/wv2
 	chmod +x ./bin/wv2
+
 	./bin/wv2 lib_test.w >./bin/lib_test
 	chmod +x ./bin/lib_test
 	./bin/lib_test
 
+	./bin/wv2 grammar_test.w >./bin/grammar_test
+	chmod +x ./bin/grammar_test
+	./bin/grammar_test
+
+	./bin/wv2 list_test.w >./bin/list_test
+	chmod +x ./bin/list_test
+	./bin/list_test
+
 clean:
-	rm -f wv2 wv3 wv4 wv5 test test_output.txt grammar_test
+	rm -f wv2 wv3 wv4 wv5 test test_output.txt grammar_test bin/*
 
 
 FORCE:

@@ -55,14 +55,19 @@ void execute_tests():
 		int test_addr = load_int(symbol_addr + 4)
 		char* name = string_addr + name_index
 		if (starts_with(name, "test_")):
-			print("Running test '")
+			println("")
+			print("Run: '")
 			print(name)
-			print("' (")
+			print("()' -> ")
 			print(hex(test_addr))
-			println(")")
-			int test_func = *test_addr
-			# debugger
-			# test_func()  # 
+			println("")
+			int* test_func = *test_addr
+
+			test_func()
+
+			print("Test '")
+			print(name)
+			println("()' passed!")
 
 		symbol_index = symbol_index + 1
 
@@ -70,6 +75,7 @@ void execute_tests():
 
 int main(int argc, int argv):
 	execute_tests()
+	println("")
 	println("All tests passed!")
 	return 0
 

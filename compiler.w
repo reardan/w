@@ -2,6 +2,8 @@ import lib
 import tokenizer
 import codegen
 import symbol_table
+import assert
+import type_table
 import grammar
 
 
@@ -45,6 +47,7 @@ void compile_save(char* fn):
 
 
 int link(int argc, int argv):
+	push_basic_types()
 	pointer_indirection = 0
 	last_identifier = malloc(8000)
 	last_global_declaration = malloc(8000)
