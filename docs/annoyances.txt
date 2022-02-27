@@ -1,0 +1,6 @@
+still need {} instead of pass
+no for loop
+*/& are broken
+bad typing
+no repl
+no debugger

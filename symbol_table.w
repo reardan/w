@@ -1,10 +1,14 @@
 /*
 table: stack of symbols
 symbol format:
-string: symbol\0 
+string: symbol
+char: \0 
 char: [DULA]
-int: address
-int: type
+int: 2: address
+int: 6: type
+int: 10: symtype
+int: 14: size
+int: 18: pointer indirection level
 */
 char *table
 int table_size
@@ -14,11 +18,37 @@ int table_struct_size
 
 
 int symbol_data_size():
-	return 18
+	return 22
 
 
 int next_token(int t):
 	return t + symbol_data_size()
+
+
+void sym_table_info():
+	print_error("sym_table_info(")
+	print_int0("table_size: ", table_size)
+	print_int0(", table_pos: ", table_pos)
+	print_int0(", stack_pos: ", stack_pos)
+	print_int0(", table_struct_size: ", table_struct_size)
+	print_error(")\x0a")
+
+
+void sym_info(int symbol):
+	print_error("sym_info(")
+	int t = table + symbol
+	print_hex0("address: ", load_int(t + 2))
+	print_error(", visibility: ")
+	put_error(load_i(t + 1 ,1))
+	print_int0(", type: ", load_int(t + 6))
+	print_int0(", symtype: ", load_int(t + 10))
+	print_int0(", size: ", load_int(t + 14))
+	print_int0(", pointer: ", load_int(t + 18))
+	print_error(")\x0a")
+
+
+void sym_last_info():
+	sym_info(table_pos - symbol_data_size())
 	
 
 int sym_lookup(char *s):
@@ -43,17 +73,29 @@ int sym_lookup(char *s):
 
 int sym_address(char *s):
 	int t = sym_lookup(s)
+	if (t == 0):
+		return 0
 	return load_int(table + t + 2)
+
+
+int sym_symtype(char *s):
+	int t = sym_lookup(s)
+	return load_int(table + t + 10)
+
+
+void sym_print_info(char *s):
+	sym_info(sym_lookup(s))
 
 
 /*
 s: zero terminated string to declare
 type: variable type e.g. int, char, etc.
-visibility: 'DUAL' defined global-undefined global-a-local
+visibility: 'DUAL' Defined global, Undefined global, Argument, Local
 value: memory address
 symtype: 0:notype, 1:object, 2:func
 */
-void sym_declare_new(char *s, int type, int visibility, int value, int symtype):
+int pointer_indirection
+void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	int t = table_pos
 	int i = 0
 	while (s[i] != 0):
@@ -69,8 +111,9 @@ void sym_declare_new(char *s, int type, int visibility, int value, int symtype):
 	table[t] = 0
 	table[t + 1] = visibility
 	save_int(table + t + 2, value)
-	table[t + 6] = type
-	table[t + 10] = symtype
+	save_int(table + t + 6, type)
+	save_int(table + t + 10, symtype)
+	save_int(table + t + 18, pointer_indirection)
 	table_pos = next_token(t)
 
 
@@ -79,7 +122,7 @@ int sym_declare_global(char *s, int type, int symtype):
 	strcpy(last_global_declaration, s)
 	int current_symbol = sym_lookup(s)
 	if (current_symbol == 0):
-		sym_declare_new(s, type, 'U', code_offset, symtype)
+		sym_declare(s, type, 'U', code_offset, symtype)
 		current_symbol = table_pos - symbol_data_size()
 
 	return current_symbol
@@ -114,16 +157,32 @@ void sym_get_value(char *s):
 		error("'\x0a")
 	emit(5, "\xb8....") /* mov $n,%eax */
 	save_int(code + codepos - 4, load_int(table + t + 2))
-	if (table[t + 1] == 'D') { /* defined global */
+
+	char scope_type = table[t + 1]
+	/* defined global */
+	if (scope_type == 'D') {
+		# Nothing needed since it directly uses the address from above
 	}
-	else if (table[t + 1] == 'U'): /* undefined global */
+
+	/* undefined global */
+	else if (scope_type == 'U'):
 		save_int(table + t + 2, codepos + code_offset - 4)
-	else if (table[t + 1] == 'L'): /* local variable */
+
+	/* local variable */
+	else if (scope_type == 'L'):
 		int k = (stack_pos - table[t + 2] - 1) << 2
-		emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
+		int ptr_indirect = load_int(table + t + 18)
+		int type = load_int(table + t + 6)
+		if ((ptr_indirect > 0) & (type == 1)): /* if pointer indrection */
+			print_error("pointer_indirection for ")
+			warning(s)
+			emit(7, "\x8b\x84\x24....") /* mov eax,[esp+0x22334455] */
+		else:
+			emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
 		save_int(code + codepos - 4, k)
 
-	else if (table[t + 1] == 'A'): /* argument */
+	/* argument */
+	else if (scope_type == 'A'):
 		int k = (stack_pos + number_of_args - table[t + 2] + 1) << 2
 		emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
 		save_int(code + codepos - 4, k)
@@ -162,6 +221,8 @@ void print_symbol_table(int t):
 		print_error(hex(*address))
 		print_error(") symtype(")
 		put_error(table[t + 10] + '0')
+		print_int0(") size (", load_int(table + t + 14))
+		print_int0(") pointer (", load_int(table + t + 18))
 		print_error(")\x0a")
 
 		t = next_token(t)
@@ -212,6 +273,11 @@ int emit_symbol_table():
 	return count
 
 
+void emit_section_name(char* s, int header_addr, int strings_addr):
+	save_int(code + header_addr, codepos - strings_addr)
+	emit_string(s)
+
+
 void emit_debugging_symbols():
 	# Store start of section header
 	int header_addr = codepos
@@ -238,13 +304,9 @@ void emit_debugging_symbols():
 	int string_count = emit_string_table()
 
 	# Emit section header name strings
-	save_int(code + string_section_header, codepos - strings_addr)
-	emit_string("strings")
-	save_int(code + symbol_section_header, codepos - strings_addr)
-	emit_string("symbol_table")
-	save_int(code + debug_info_section_header, codepos - strings_addr)
-	emit_string(".debug_info")
-	string_count = string_count + 3
+	emit_section_name("strings", string_section_header, strings_addr)
+	emit_section_name("symbol_table", symbol_section_header, strings_addr)
+	emit_section_name(".debug_info", debug_info_section_header, strings_addr)
 
 	# Store string strings_addr + length
 	int length = codepos - strings_addr

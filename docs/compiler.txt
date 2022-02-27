@@ -1,0 +1,19 @@
+w
+	lib
+	compiler
+		tokenizer
+			token
+		codegen
+		symbol_table
+			symbol
+		grammar
+		compiler
+		platform
+			x86
+			x64
+			arm
+		container
+			elf
+			exe
+			bin
+

@@ -17,9 +17,16 @@ void save_int(char *p, int v):
 	save_i(p, v, 4)
 
 
+int load_i(char* p, int n):
+	int result = 0
+	while (n > 0):
+		result = (result << 8) + (p[n - 1] & 255)
+		n = n - 1
+	return result
+
+
 int load_int(char *p):
-	return ((p[0] & 255) + ((p[1] & 255) << 8) +
-					((p[2] & 255) << 16) + ((p[3] & 255) << 24))
+	return load_i(p, 4)
 
 
 void resize_code(int n):
@@ -144,7 +151,7 @@ void elf_sym_table_entry(int name, int address, int size, int binding, int symty
 
 
 void be_start():
-	base_code_offset = 134512640 /* 0x08048000 */
+	base_code_offset = 134512640 /* 0x00804800 */
 	code_offset = base_code_offset
 
 	elf_header()
@@ -178,13 +185,6 @@ void be_start():
 	/* mov eax,[esp+16] ; mov ebx,[esp+12] ; mov ecx,[esp+8] ; mov edx,[esp+4] ; int 0x80 ; ret */
 	emit(19, "\x8b\x44\x24\x10\x8b\x5c\x24\x0c\x8b\x4c\x24\x08\x8b\x54\x24\x04\xcd\x80\xc3")
 
-	# OG: 85, 89
-	save_int(code + 90, codepos - 94) /* entry set to first thing in file */
-	if (verbosity > 0):
-		print_error("codepos - 94: ")
-		print_error(itoa(codepos - 94))
-		print_error("\x0a")
-
 
 int sym_address(char *s);
 void be_finish():
@@ -195,6 +195,8 @@ void be_finish():
 
 	# Store pointer to library _main()
 	int t = sym_address("_main")
+	if (t == 0):
+		error("Failed to find a _main() function. Did you import lib/testing?")
 	t = t - code_offset - 94
 
 	if (verbosity > 0):
@@ -209,4 +211,5 @@ void be_finish():
 	# Save the size
 	save_int(code + 68, codepos) /* FileSize */
 	save_int(code + 72, codepos) /* MemSize */
-	write(1, code, codepos - 1)
+
+	write(1, code, codepos)

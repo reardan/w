@@ -50,8 +50,10 @@ char *realloc(char *old, int oldlen, int newlen):
 
 	return new
 
+
 int free(int mem_address):
 	return 1
+
 
 int strlen(char *c):
 	int length = 0
@@ -59,16 +61,20 @@ int strlen(char *c):
 		length = length + 1
 	return length
 
+
 char* strclone(char *c):
 	int length = strlen(c)
 	return realloc(c, length, length)
+
 
 char* strcpy(char *dst, char *src):
 	while (src[0]):
 		dst[0] = src[0]
 		src = src + 1
 		dst = dst + 1
+	dst[0] = 0
 	return dst
+
 
 char* strjoin(char* s1, char* s2):
 	int size = strlen(s1) + strlen(s2) + 1
@@ -91,11 +97,13 @@ void reverse(char *s):
 
 char* itoa(int n):
 	char *s = "012345678901234567890"
-	int i
+	int i = 0
 	int sign = n
 	if(n < 0):
 		n = 0-n
-	i = 0
+	if (n == 0):
+		s[i] = '0'
+		i = i + 1
 	while(n > 0):
 		s[i] = n % 10 + '0'
 		i = i + 1
@@ -214,18 +222,45 @@ void print_error(char* s):
 	write_string(2, s)
 
 
-void print_int(char* c, int v):
+void print_int0(char* c, int v):
 	print_error(c)
 	print_error(itoa(v))
+
+
+void print_int(char* c, int v):
+	print_int0(c, v)
 	print_error("\x0a")
 
 
+void print_hex0(char* c, int v):
+	print_error(c)
+	print_error(hex(v))
+
 void print_hex(char* c, int v):
-	print(c)
-	print(hex(v))
-	print("\x0a")
+	print_hex0(c, v)
+	print_error("\x0a")
+
+
+void print_string(char* s1, char* s2):
+	print_error(s1)
+	print_error(s2)
+	print_error("\x0a")
 
 
 void println(char *s):
 	print(s)
 	put_char(10)
+
+
+void print_n(char *s, int n):
+	write(1, s, n)
+
+
+void print_words(int addr, int count):
+	int i = 0
+	while (i < count):
+		print(hex(addr))
+		print(": ")
+		println(hex(*addr))
+		addr = addr + 4
+		i = i + 1

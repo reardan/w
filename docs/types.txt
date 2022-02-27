@@ -1,0 +1,58 @@
+# initial type structure:
+type
+	byte
+	int
+
+# future type structure:
+type
+	basic
+		byte
+		number
+			integer
+				int
+					int8
+					int16
+					int24
+					int32
+					int64
+					int128
+
+				uint
+					uint8
+					uint16
+					uint24
+					uint32
+					uint64
+					uint128
+
+			float
+
+	structure
+	proto
+		message
+		service
+
+	data_structure
+		list
+			array_list
+				heap
+					priority_queue
+			linked_list
+			doubly_linked_list
+			ring_buffer
+			flat_list
+		dict
+			set
+			object
+
+		node
+		edge
+		tree
+			trie
+		graph
+		collection
+		sstable
+
+
+	stream
+		file

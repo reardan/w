@@ -1,0 +1,62 @@
+current:
+	testing
+		lookup testing functions from symbol table
+	
+
+most important:
+	testing
+	list
+	struct
+	range
+	repl
+	dict
+	debugger or symbols
+
+
+features:
+	subdirectory import
+	argument parsing
+	generators
+	iterators
+	for in range()
+	class instantiation
+	debugging symbols
+	debugger
+		asm
+		disasm
+	types
+	streams
+	files
+	make
+	git
+	x64
+	windows
+	editor
+	function pointers
+
+
+test:
+	&
+	*
+	!
+	[] for int* or other
+
+statment:
+	new
+	for
+	in
+	range
+	yield
+	and
+	or
+	not
+
+data structures:
+	list
+	dict
+	string
+
+types:
+	float
+	const
+	*

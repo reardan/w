@@ -1,0 +1,42 @@
+Data Structures:
+	List
+		String
+	Map
+		Set
+		Object
+	Stack
+	Queue
+	Heap
+		PriorityQueue
+	Node
+	Edge
+	Tree
+		Trie
+	Graph
+	Collection
+	SSTable
+
+	File
+	Stream
+
+List
+	append
+	appendleft
+	clear
+	copy
+	count
+	extend
+	extendleft
+	index
+	insert
+	pop
+	popleft
+	remove
+	reverse
+	rotate
+
+	LinkedList
+	DoublyLinkedList
+	ArrayList
+	RingBuffer
+	FlatList

@@ -8,6 +8,7 @@ void promote(int type):
 
 int expression();
 
+char *last_identifier
 /*
  * primary-expr:
  *     identifier
@@ -31,6 +32,7 @@ int primary_expr():
 	# Identifier
 	else if (('a' <= token[0]) & (token[0] <= 'z')):
 		sym_get_value(token)
+		strcpy(last_identifier, token)
 		type = 2
 
 	else if (accept("(")) {
@@ -133,6 +135,7 @@ int postfix_expr():
 		type = 3
 
 	return type
+
 
 int multiplicative_expr();
 /*
@@ -337,14 +340,14 @@ int expression():
 
 
 /*
- * type-name:
- *     char
- *     int
- *     void
- *     * type-name
+typename:
+	void
+	int
+	char
  */
 int type_name():
 	int type = 0
+	pointer_indirection = 0
 	if (peek("char")):
 		type = 2
 	else if (peek("int")):
@@ -357,9 +360,31 @@ int type_name():
 		error("'")
 	get_token()
 	while (accept("*")) {
+		if (type == 1):
+			warning("'*' accepted")
+			pointer_indirection = pointer_indirection + 1
 	}
 	return type
 
+
+/*
+import_statement:
+	'import' dotted_as_names
+dotted_as_names:
+	| ','.dotted_as_name+
+dotted_as_name
+	| dotted_name ['as' NAME]
+dotted_name:
+	| dotted_name '.' NAME
+	| NAME
+
+examples:
+	import file.*
+	import file
+	import directory.file
+	import directory.file.[func1, func2, var2]
+
+*/
 
 
 /*
@@ -376,10 +401,6 @@ int type_name():
  *     yield expression ;
  *     "debug;"
  *     expr ;
- TODO:
- *     import Root.Subpath.File [as Identifier] ;
- *     import Root.File.[Ident1, Ident2, Ident3] ;
- *     new File( arg-list )
  */
 void statement():
 	int p1
@@ -408,10 +429,14 @@ void statement():
 		stack_pos = s
 
 	else if (peek("char") | peek("int")):
-		sym_declare_new(token, type_name(), 'L', stack_pos, 1)
+		sym_declare(token, type_name(), 'L', stack_pos, 1)
 		get_token()
 		if (accept("=")):
-			promote(expression())
+			int type = expression()
+			# TODO: Fix to use & instead?  e.g. int*f = &func
+			if (pointer_indirection == 0)
+				promote(type)
+		pointer_indirection = 0
 		expect_or_newline(";")
 		be_push()
 		stack_pos = stack_pos + 1
@@ -446,7 +471,8 @@ void statement():
 
 	else if (accept("for")):
 		if (peek("char") | peek("int")):
-			sym_declare_new(token, type_name(), 'L', stack_pos, 1)
+			sym_declare(token, type_name(), 'L', stack_pos, 1)
+			pointer_indirection = 0
 			get_token()
 			be_push()
 			stack_pos = stack_pos + 1
@@ -475,6 +501,10 @@ void statement():
 		emit(1, "\xc3") /* ret */
 
 	else if (accept("debugger")):
+		expect_or_newline(";")
+		emit(1, "\xcc") /* int 3 */
+
+	else if (accept("tracer")):
 		expect_or_newline(";")
 		emit(1, "\xcc") /* int 3 */
 
@@ -531,7 +561,8 @@ void program():
 				number_of_args = number_of_args + 1
 				int type = type_name()
 				if (peek(")") == 0):
-					sym_declare_new(token, type, 'A', number_of_args, 2)
+					sym_declare(token, type, 'A', number_of_args, 2)
+					pointer_indirection = 0
 					get_token()
 
 				accept(",") /* ignore trailing comma */

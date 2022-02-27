@@ -16,14 +16,19 @@ char* filename
 int token_i
 
 
-void error(char *s):
+void warning(char *s):
 	print_error(s)
 	print_error(" in ")
 	print_error(filename)
 	print_error(":")
 	print_error(itoa(line_number+1))
 	put_error(10)
+
+
+void error(char *s):
+	warning(s)
 	exit(1)
+
 
 int getc():
 	return getchar(file)
