@@ -28,8 +28,10 @@ void test_println():
 
 
 void test_fail():
-	#assert(0)
-	assert(1)
+	#assert1(0)
+	assert1(1)
+	asserts("test_fail", 1)
+	int i
 
 
 void test_reverse_n():

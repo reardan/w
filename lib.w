@@ -34,7 +34,7 @@ int _main(int argc, int argv):
 char *realloc(char *old, int oldlen, int newlen):
 	char *new = malloc(newlen)
 	int i = 0
-	while (i <= oldlen - 1):
+	while (i < oldlen):
 		new[i] = old[i]
 		i = i + 1
 
@@ -52,11 +52,7 @@ int strlen(char *c):
 	return length
 
 
-char* strclone(char *c):
-	int length = strlen(c)
-	return realloc(c, length, length)
-
-
+# Note the return value is the final index, NOT the original dst
 char* strcpy(char *dst, char *src):
 	while (src[0]):
 		dst[0] = src[0]
@@ -66,11 +62,24 @@ char* strcpy(char *dst, char *src):
 	return dst
 
 
+char* strclone(char *c):
+	char *clone = malloc(strlen(c) + 1)
+	strcpy(clone, c)
+	return clone
+
+
 char* strjoin(char* s1, char* s2):
 	int size = strlen(s1) + strlen(s2) + 1
 	char* joined = malloc(size)
 	strcpy(strcpy(joined, s1), s2)
 	return joined
+
+
+# Warning: DANGER!  Not recommended, use string instead.
+# can easily bleed beyond s1 if not enough space is allocated
+char* strappend(char* dst, char* src):
+	dst = dst + strlen(dst)
+	return strcpy(dst, src)
 
 
 void reverse_n(char* s, int n):
@@ -213,6 +222,8 @@ void print(char *s):
 
 
 void print_error(char* s):
+	write_string(2, s)
+void print2(char* s):
 	write_string(2, s)
 
 

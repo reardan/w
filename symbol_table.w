@@ -196,7 +196,7 @@ void sym_get_value(char *s):
 
 	if ((scope_type == 'L') | (scope_type == 'A')):
 		if (is_indirect_pointer):
-			if (verbosity >= 0):
+			if (verbosity >= 1):
 				print_error("pointer_indirection for ")
 				sym_info(t)
 				warning(s)

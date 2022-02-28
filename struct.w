@@ -8,3 +8,9 @@ struct table
 			identifier
 			position
 */
+
+
+
+/*
+inside program()
+*/

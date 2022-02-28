@@ -1,30 +1,32 @@
 
 void asserts(char* s, int condition):
 	if (condition == 0):
-		println(s)
+		println2(s)
 		exit(1)
 
 
-void assert(int condition):
+# todo cannot name the same as the file lol!
+#void assert1(int condition):
+void assert1(int condition):
 	if (condition == 0):
-		println("Assertion failed.")
+		println2("Assertion2 failed.")
 		exit(1)
 
 
 void assert_equal(int want, int got):
 	if (want != got):
-		print("Assertion failed.  wanted '")
-		print(itoa(want))
-		print("' got '")
-		print(itoa(got))
-		println("'")
+		print2("Assertion failed.  wanted '")
+		print2(itoa(want))
+		print2("' got '")
+		print2(itoa(got))
+		println2("'")
 		exit(1)
 
 void assert_strings_equal(char* want, char* got):
 	if (strcmp(got, want) != 0):
-		print("Assertion failed: wanted '")
-		print(want)
-		print("' got '")
-		print(got)
-		println("'")
+		print2("Assertion failed: wanted '")
+		print2(want)
+		print2("' got '")
+		print2(got)
+		println2("'")
 		exit(1)

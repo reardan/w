@@ -28,7 +28,7 @@ push(value):
 
 
 pop():
-	assert(length > 0)
+	assert1(length > 0)
 	for node in iterator():
 		if node.next == end:
 			node.next = null

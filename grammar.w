@@ -13,6 +13,15 @@ void promote(int type):
 		emit(2, "\x8b\x00") /* mov (%eax),%eax */
 
 
+int identifier():
+	if (('a' <= token[0]) & (token[0] <= 'z')):
+		sym_get_value(token)
+		strcpy(last_identifier, token)
+		return 1
+	return 0
+
+
+
 int expression();
 
 /*
@@ -36,27 +45,29 @@ int primary_expr():
 		type = 3
 
 	# Identifier
-	else if (('a' <= token[0]) & (token[0] <= 'z')):
-		sym_get_value(token)
-		strcpy(last_identifier, token)
+	else if (identifier()):
 		type = 2
 
+	# ( expression )
 	else if (accept("(")) {
 		type = expression()
 		if (peek(")") == 0):
 			error("No closing parenthesis")
 	}
+	# int constant
 	else if ((token[0] == 39) & (token[1] != 0) &
 					 (token[2] == 39) & (token[3] == 0)):
 		emit(5, "\xb8....") /* mov $x,%eax */
 		save_int(code + codepos - 4, token[1])
 		type = 3
 
+	# char* constant
 	else if (token[0] == '"'):
 		int i = 0
 		int j = 1
 		int k
 		while (token[j] != '"'):
+			# \x0a formatting
 			if ((token[j] == 92) & (token[j + 1] == 'x')):
 				if (token[j + 2] <= '9'):
 					k = token[j + 2] - '0'
@@ -105,12 +116,15 @@ int binary2(int type, int n, char *s):
 
 
 /*
- * postfix-expr:
- *         primary-expr
- *         postfix-expr [ expression ]
- *         postfix-expr ( expression-list-opt )
+postfix-expr:
+	primary-expr
+	postfix-expr [ expression ]
+	postfix-expr ( expression-list-opt )
+	postfix-expr . identifier
+
  */
 int postfix_expr():
+	print_string("postfix_expr: ", token)
 	int type = primary_expr()
 	if (accept("[")):
 		binary1(type)
@@ -144,6 +158,20 @@ int postfix_expr():
 		be_pop(stack_pos - s)
 		stack_pos = s
 		type = 3
+
+	else if (accept(".")):
+		# For structures, find offset of field name
+		# println2("accepted '.'")
+		print_string("token: ", token)
+		type_print(type)
+
+		# emit(5, "\x05....") /* add eax, ... */
+		# save_int(code + codepos - 4, )
+		get_token()
+		/*while (accept(".")):
+			println2("accepted '.'")
+			print_string("token: ", token)
+			get_token()*/
 
 	return type
 
@@ -406,15 +434,15 @@ examples:
  *     return ;
  *     return expression ;
  *     yield expression ;
- *     "debug;"
- *     expr ;
+ *     debugger ;
+ *     expression ;
  */
 void statement():
 	int p1
 	int p2
 	int if_tab_level
 
-	# Original scope starting with '{' Character
+	# { statement-list-opt }
 	if (accept("{")) {
 		int n = table_pos
 		int s = stack_pos
@@ -424,7 +452,8 @@ void statement():
 		be_pop(stack_pos - s)
 		stack_pos = s
 	}
-	# New scoping based on tabs and ':'
+
+	# : statement-list-tab-scoped
 	else if (accept(":")):
 		int n = table_pos
 		int s = stack_pos
@@ -435,9 +464,13 @@ void statement():
 		be_pop(stack_pos - s)
 		stack_pos = s
 
-	else if (type_lookup(token) > 0):
-		sym_declare(token, type_name(), 'L', stack_pos, 1)
+	# type-name identifier
+	else if (type_lookup(token) >= 0):
+		# println2("statement(): type_lookup(token) >= 0")
+		int type = type_name()
+		sym_declare(token, type, 'L', stack_pos, 1)
 		get_token()
+		# = expression
 		if (accept("=")):
 			int type = expression()
 			# TODO: Fix to use & instead?  e.g. int*f = &func
@@ -446,8 +479,11 @@ void statement():
 		pointer_indirection = 0
 		expect_or_newline(";")
 		be_push()
+		# num_args == 0, size = 1
+		# else: num_args * 4
 		stack_pos = stack_pos + 1
 
+	# if ( expression ) statement else statement
 	else if (accept("if")):
 		if_tab_level = tab_level
 		expect("(")
@@ -464,6 +500,8 @@ void statement():
 			statement()
 		save_int(code + p2 - 4, codepos - p2)
 
+	# while ( expression ) statement
+	# no ':' required ??
 	else if (accept("while")):
 		expect("(")
 		p1 = codepos
@@ -476,8 +514,10 @@ void statement():
 		save_int(code + codepos - 4, p1 - codepos)
 		save_int(code + p2 - 4, codepos - p2)
 
+	# for type-name indentifier in range (int-literal, int-literal): { statement }
+	# for int i in range(0, 10):
 	else if (accept("for")):
-		if (type_lookup(token) > 0):
+		if (type_lookup(token) >= 0):
 			sym_declare(token, type_name(), 'L', stack_pos, 1)
 			pointer_indirection = 0
 			get_token()
@@ -518,10 +558,8 @@ void statement():
 	else:
 		expression()
 		expect_or_newline(";")
-
-
 /*
-inside program:
+inside grammar:
 
 struct_declaration identifier :
 	type_name identifier
@@ -531,26 +569,41 @@ struct_declaration identifier :
 int struct_declaration():
 	int current_symbol
 	int num_fields = 0
+	int type_index = 0
 	# parent_expression()
 	if (accept("struct")):
 		int start_tab_level = tab_level
-		print_int("start_tab_level: ", start_tab_level)
-		print_string("struct accepted name: ", token)
+		if (verbosity >= 0):
+			print_int("start_tab_level: ", start_tab_level)
+			print_string("struct accepted name: ", token)
+			println2("")
 		current_symbol = sym_declare_global(token, 5, 1)
+
+		# emit struct type with token name
+		type_index = type_push(strclone(token))
+		type_print_all()
+
 		get_token()
 		# print_string("token_colon: ", token)
 		expect(":")
-		print_int("tab_level: ", tab_level)
 		while(tab_level > start_tab_level):
-			print_int("tab_level: ", tab_level)
-			print_string("type_token: ", token)
-			int type = type_name()
-			print_int("type_id: ", type)
+			if (verbosity >= 0):
+				print2("type_token: ")
+				print2(token)
+			int field_type = type_name()
+			if (verbosity >= 0):
+				print_int0("[", field_type)
+				println2("]")
 
-			current_symbol = sym_declare_global(token, type, 1)
-			print_string("field: ", token)
-			print_error("\x0a")
+			current_symbol = sym_declare_global(token, field_type, 1)
+			type_add_arg(type_index, strclone(token), field_type)
+			if (verbosity >= 0):
+				print_int("num_fields: ", num_fields)
+				print_string("field: ", token)
+				print_error("\x0a")
+
 			get_token()
+			num_fields = num_fields + 1
 			pointer_indirection = 0
 
 		return 1
@@ -582,20 +635,27 @@ void program():
 	while (token[0]):
 		# First handle imports
 		while (accept("import")):
-			char* with_path = strjoin(token, ".w")
-			if (verbosity > 0):
-				print_error("importing '")
-				print_error(with_path)
-				print_error("'\x0a")
-			compile_save(with_path)
-			free(with_path)
+			# Ignore if we have already imported this type
+			if (type_lookup(token) >= 0):
+				if (verbosity >= 0):
+					print2("Warning: ignoring duplicate imported type: '")
+					print2(token)
+					println2("'")
+				get_token()
+			else:
+				type_push(strclone(token))
+				char* with_path = strjoin(token, ".w")
+				if (verbosity >= 1):
+					print_string("importing ", with_path)
+				compile_save(with_path)
+				free(with_path)
 
 		# Next handle struct declarations
 		while(struct_declaration()):
 			print_int("struct_declaration=1, current_symbol=", current_symbol)
 
-
 		# Now global variables + functions
+		# TODO: variables THEN functions, not both
 		current_symbol = sym_declare_global(token, type_name(), 1)
 		get_token()
 		if (accept(";")):

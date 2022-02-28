@@ -30,6 +30,9 @@ void compile_save(char* fn):
 	int old_line_number = line_number + 1
 	int old_tab_level = old_tab_level
 
+	if (verbosity >= 2):
+		print_string("compiling ", fn)
+
 	compile(fn)
 	close(file)
 
@@ -40,10 +43,8 @@ void compile_save(char* fn):
 	nextc = get_character()
 	get_token()
 
-	if (verbosity > 0):
-		print_error("switching back to '")
-		print_error(filename)
-		print_error("'\x0a")
+	if (verbosity >= 1):
+		print_string("back to ", filename)
 
 
 int link(int argc, int argv):
@@ -65,3 +66,4 @@ int link(int argc, int argv):
 	# print_symbol_table(0)
 	emit_debugging_symbols()
 	be_finish()
+	type_print_all()

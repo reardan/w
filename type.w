@@ -1,21 +1,41 @@
-# name:
-char* name
+/*
+type is the parent for all type classes
+
+type
+	basic
+		char
+		int
+		float
+
+
+
+
+*/
+
+
+/*# name:
+char* _type_name
+
+# index into type list
+int _type_index
 
 # none, variable, function, class
-int symtype
+int _type_symtype
 
-# length of this object
-int length
+# size of this object
+int _type_size
 
 # types of the arguments + return value
-#  in the case of a function
-int* arguments
-int num_arguments
+# in the case of a function
+int* _type_arguments
+int _type_num_arguments
 
 
-void create():
-	name = 0
-	symtype = 0
-	length = 0
-	num_arguments = 0
-	arguments = 0
+void create(char* name):
+	_type_name = name
+	_type_index = 0
+	_type_symtype = 0
+	_type_size = 0
+	_type_arguments = 0
+	_type_num_arguments = 0
+*/

@@ -45,8 +45,9 @@ void die():
 
 
 void resize(int new_capacity):
+	assert1(new_capacity > capacity)
 	array = realloc(array, capacity * 4, new_capacity * 4)
-	assert(array != 0)
+	assert1(array != 0)  /* not sure why this doesn't work */
 	capacity = new_capacity
 
 
@@ -55,11 +56,12 @@ void ensure(int n):
 		resize(max(length * 2, n))
 
 
-void push(int value):
+int push(int value):
 	ensure(1)
 	save_int(array + length * 4, value)
 	# array[length] = value
 	length = length + 1
+	return length - 1
 
 
 int get(int i):

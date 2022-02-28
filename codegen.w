@@ -1,32 +1,11 @@
+import uint
+
+
 char *code
 int code_size
 int codepos
 int base_code_offset
 int code_offset
-
-
-void save_i(char* p, int v, int n):
-	int i = 0
-	while (i < n):
-		p[i] = v
-		v = v >> 8
-		i = i + 1
-
-
-void save_int(char *p, int v):
-	save_i(p, v, 4)
-
-
-int load_i(char* p, int n):
-	int result = 0
-	while (n > 0):
-		result = (result << 8) + (p[n - 1] & 255)
-		n = n - 1
-	return result
-
-
-int load_int(char *p):
-	return load_i(p, 4)
 
 
 void resize_code(int n):
@@ -184,6 +163,16 @@ void be_start():
 	sym_define_declare_global_function("syscall")
 	/* mov eax,[esp+16] ; mov ebx,[esp+12] ; mov ecx,[esp+8] ; mov edx,[esp+4] ; int 0x80 ; ret */
 	emit(19, "\x8b\x44\x24\x10\x8b\x5c\x24\x0c\x8b\x4c\x24\x08\x8b\x54\x24\x04\xcd\x80\xc3")
+
+	sym_define_declare_global_function("syscall6")
+	/* mov eax,[esp+24] ; mov ebx,[esp+20] ; mov ecx,[esp+16] ; mov edx,[esp+12] ; mov esi,[esp+8] ; mov edi,[esp+4] ; int 0x80 ; ret */
+	emit(20, "\x8b\x44\x24\x18\x8b\x5c\x24\x14\x8b\x4c\x24\x10\x8b\x54\x24\x0c\x8b\x74\x24\x08")
+	emit(7, "\x8b\x7c\x24\x04\xcd\x80\xc3")
+
+	sym_define_declare_global_function("syscall7")
+	/* mov eax,[esp+28] ; mov ebx,[esp+24] ; mov ecx,[esp+20] ; mov edx,[esp+16] ; mov esi,[esp+12] ; mov edi,[esp+8] ; mov ebp,[esp+4] ; int 0x80 ; ret */
+	emit(20, "\x8b\x44\x24\x1c\x8b\x5c\x24\x18\x8b\x4c\x24\x14\x8b\x54\x24\x10\x8b\x74\x24\x0c")
+	emit(11, "\x8b\x7c\x24\x08\x8b\x6c\x24\x04\xcd\x80\xc3")
 
 
 int sym_address(char *s);

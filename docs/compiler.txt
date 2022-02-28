@@ -8,6 +8,9 @@ w
 			symbol
 		grammar
 		compiler
+
+
+future
 		platform
 			x86
 			x64

@@ -4,15 +4,29 @@ current:
 		type lookup...done
 		init...done
 		use in grammar...done
-		use in import...
-		store information...
-	type...
+		use in import...done
+			NOTE: assert.assert() not allowed for now
+			should this be the constructor?
 	struct...
-
-	function pointers...
-		local variable calls work
-		passing as arguments doesn't work
-			need a better typing system to handle this
+		type table arguments...done
+		type table field lookup...done
+		type table >3 arguments...done
+		add fields to grammar...untested
+		dot operator...
+			postfix_()
+				migrate to recursive?
+			problem with types being passed through
+			need to get the actual type
+			then we can access via type_get_arg(token) to get the index
+			then use this index*4 in the addition on line 157
+		larger stack space required...
+			inside statement()
+				same problem with types being passed through
+				need to get the actual type
+				then we can access type.num_args
+				
+	type...
+	new...
 
 
 done:
@@ -25,11 +39,14 @@ major bugs:
 	int*[]
 	*(char*)
 
+	function pointers...
+		local variable calls work
+		passing as arguments doesn't work
+			need a better typing system to handle this
+
 
 most important:
 	type
-	struct
-	list
 	new
 	dict
 	range
@@ -52,6 +69,7 @@ features:
 	stream class
 	file class
 	x64
+	net
 	windows
 	make
 	git
@@ -59,6 +77,8 @@ features:
 	mocking
 	variable arguments
 	default values
+	template
+	template strings
 
 
 test:

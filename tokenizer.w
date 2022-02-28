@@ -122,6 +122,7 @@ void get_token():
 				takechar()
 
 		token[token_i] = 0
+	# print_string("token: ", token)
 
 
 int peek(char *s):

@@ -1,4 +1,5 @@
 import testing
+import testing
 
 
 void test_arithmetic():
@@ -142,5 +143,5 @@ binary(type, expression, "\x5b\x01\xd8")
 /*int test_dereference():
 	int x = 1337
 	int* y = &x
-	assert(x - *(y + 10 - 10))
+	assert1(x - *(y + 10 - 10))
 */

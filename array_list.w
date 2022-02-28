@@ -22,7 +22,7 @@ void extend(iterator.any it):
 
 
 any* pop():
-	assert(length > 0)
+	assert1(length > 0)
 	return array[--capacity]
 
 
@@ -43,13 +43,13 @@ any* iterator():
 
 # value = arr[]
 any* get(uint index):
-	assert(index < length)
+	assert1(index < length)
 	return array[index]
 
 
 # arr[index] = value
 any* set(uint index, any* value):
-	assert(index < length)
+	assert1(index < length)
 	array[index] = value
 
 
