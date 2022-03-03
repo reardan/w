@@ -81,6 +81,11 @@ int sym_symtype(char *s):
 	return load_int(table + t + 10)
 
 
+int sym_type(char *s):
+	int t = sym_lookup(s)
+	return load_int(table + t + 6)
+
+
 void sym_print_info(char *s):
 	sym_info(sym_lookup(s))
 
@@ -203,6 +208,10 @@ void sym_get_value(char *s):
 			emit(7, "\x8b\x84\x24....") /* mov eax, [esp + ....] */
 		else:
 			emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
+		int num_args = type_num_args(type)
+		if (num_args > 0):
+			# print_string("num args != 1: ", s)
+			k = k - (num_args - 1) * 4
 		save_int(code + codepos - 4, k)
 
 

@@ -1,9 +1,9 @@
 import lib
 import tokenizer
 import codegen
-import symbol_table
 import assert
 import type_table
+import symbol_table
 import grammar
 
 
@@ -64,6 +64,6 @@ int link(int argc, int argv):
 		i = i + 1
 
 	# print_symbol_table(0)
+	# type_print_all()
 	emit_debugging_symbols()
 	be_finish()
-	type_print_all()

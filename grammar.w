@@ -1,15 +1,42 @@
 
 char *last_identifier
 
+
+void warn_bad_promotion(int want, int got):
+	if (want != got):
+		print2("wanted '")
+		print2(itoa(want))
+		print2("' got ")
+		print2(itoa(got))
+		warning("'")
+	
+
 void promote(int type):
-	/* 1 = char lval, 2 = int lval, 3 = other */
-	if (type == 1):
+	int type_size = type_get_size(type)
+	if (verbosity >= 1):
+		print2("promote(")
+		print2(itoa(type))
+		print2("=")
+		print2(type_get_name(type))
+		print2(", size=")
+		print2(itoa(type_size))
+		print2(", '")
+		print2(last_identifier)
+		println2("')")
+	/* 1 = char lval, 2 = int lval, 3 = no promotion, pointer? */
+	if (type_size == 2):
+		println2("int16")
+		emit(3, "\x0f\xbf\x00") /* movsx eax, word[eax] */
+	else if (type_size == 1):
+		emit(3, "\x0f\xb6\x00") /* movsbl (%eax),%eax */
+	else if (type == 1):
+		# warn_bad_promotion(1, type_size)  # TODO: FIX
 		emit(3, "\x0f\xbe\x00") /* movsbl (%eax),%eax */
-	else if (type == 2):
-		if (verbosity >= 2):
-			print_error("promote(")
-			print_error(last_identifier)
-			print_error(")\x0a")
+		return;
+	else if (type == 3)
+		return;
+	else:
+		warn_bad_promotion(4, type_size)
 		emit(2, "\x8b\x00") /* mov (%eax),%eax */
 
 
@@ -32,6 +59,7 @@ int expression();
  */
 int primary_expr():
 	int type
+	int new_type
 	# Integer constant
 	if (('0' <= token[0]) & (token[0] <= '9')):
 		int n = 0
@@ -45,16 +73,20 @@ int primary_expr():
 		type = 3
 
 	# Identifier
-	else if (identifier()):
+	else if (identifier()) {
 		type = 2
-
+		new_type = sym_type(token)
+		# TODO: fix int type (1)
+		if (new_type != 1):
+			type = new_type
+	}
 	# ( expression )
 	else if (accept("(")) {
 		type = expression()
 		if (peek(")") == 0):
 			error("No closing parenthesis")
 	}
-	# int constant
+	# ??
 	else if ((token[0] == 39) & (token[1] != 0) &
 					 (token[2] == 39) & (token[3] == 0)):
 		emit(5, "\xb8....") /* mov $x,%eax */
@@ -96,7 +128,8 @@ int primary_expr():
 		type = 3
 
 	else:
-		error("Could not find a valid primary expression")
+		print2("Could not find a valid primary expression, token: ")
+		error(token)
 
 	get_token()
 	return type
@@ -124,7 +157,7 @@ postfix-expr:
 
  */
 int postfix_expr():
-	print_string("postfix_expr: ", token)
+	# print_string("postfix_expr: ", token)
 	int type = primary_expr()
 	if (accept("[")):
 		binary1(type)
@@ -161,12 +194,22 @@ int postfix_expr():
 
 	else if (accept(".")):
 		# For structures, find offset of field name
-		# println2("accepted '.'")
-		print_string("token: ", token)
-		type_print(type)
+		int num_args = type_num_args(type)
+		if (num_args > 0):
+			int arg = type_get_arg(type, token)
+			if(arg < 0):
+				print2("struct field '")
+				print2(token)
+				error("' not found")
+			# Return right side field type instead of struct
+			emit(5, "\x05....") /* \x2d add eax,... */
+			/* \x2d: sub eax, ... WRONG use sub instead? */
+			int stack_offset = type_get_field_offset(type, token)
+			save_int(code + codepos - 4, stack_offset)
 
-		# emit(5, "\x05....") /* add eax, ... */
-		# save_int(code + codepos - 4, )
+			# use child type:
+			type = type_get_field_type(type, token)
+
 		get_token()
 		/*while (accept(".")):
 			println2("accepted '.'")
@@ -367,13 +410,24 @@ int expression():
 	if (accept("=")):
 		be_push()
 		stack_pos = stack_pos + 1
-		promote(expression())
-		if (type == 2):
-			emit(3, "\x5b\x89\x03") /* pop %ebx ; mov %eax,(%ebx) */
-		else:
+		int type2 = expression()
+		if (verbosity >= 1):
+			print2("expression() type: ")
+			type_print(type)
+			print_int("expression() type: ", type)
+			print_int("expression() type2: ", type2)
+		
+		promote(type2)
+		int type_size = type_get_size(type2)
+		if (type == 1):
 			emit(3, "\x5b\x88\x03") /* pop %ebx ; mov %al,(%ebx) */
+		else if(type_size == 2):
+			emit(4, "\x5b\x66\x89\x03") /* pop %ebx ; mov %ax,(%ebx) */
+		else:
+			emit(3, "\x5b\x89\x03") /* pop %ebx ; mov %eax,(%ebx) */
 		stack_pos = stack_pos - 1
-		type = 3
+		# type = 3
+		type = type2
 
 	return type
 
@@ -458,15 +512,19 @@ void statement():
 		int n = table_pos
 		int s = stack_pos
 		int start_tab_level = tab_level
+		if (verbosity >= 1):
+			print_int("starting stack_pos: ", stack_pos)
 		while(start_tab_level <= tab_level):
 			statement()
 		table_pos = n
+		if (verbosity >= 1):
+			print_int("ending stack_pos: ", stack_pos)
 		be_pop(stack_pos - s)
 		stack_pos = s
 
 	# type-name identifier
 	else if (type_lookup(token) >= 0):
-		# println2("statement(): type_lookup(token) >= 0")
+		# println2("statement(): type identifier")
 		int type = type_name()
 		sym_declare(token, type, 'L', stack_pos, 1)
 		get_token()
@@ -478,10 +536,18 @@ void statement():
 				promote(type)
 		pointer_indirection = 0
 		expect_or_newline(";")
-		be_push()
-		# num_args == 0, size = 1
-		# else: num_args * 4
-		stack_pos = stack_pos + 1
+
+		# Compute size of struct else use 1 word
+		int size = 1
+		int num_args = type_num_args(type)
+		if (num_args > 0):
+			# print_string("num_args > 0 for ", token)
+			size = num_args
+		int i = 0
+		while (i < size):
+			be_push()
+			i = i + 1
+		stack_pos = stack_pos + size
 
 	# if ( expression ) statement else statement
 	else if (accept("if")):
@@ -526,9 +592,12 @@ void statement():
 		else:
 			error("no variable found in for loop")
 
-		accept("in")
-		promote(expression())
-		statement()
+		expect("in")
+		expect("range")
+		expect("(")
+
+		# promote(expression())
+		# statement()
 
 	else if(accept("pass")):
 		emit(2, "\x89\xff")  /* mov edi,edi ; does not work :( */
@@ -554,6 +623,10 @@ void statement():
 	else if (accept("tracer")):
 		expect_or_newline(";")
 		emit(1, "\xcc") /* int 3 */
+
+	else if (accept("nop")):
+		expect_or_newline(";")
+		emit(2, "\x9090") /* nop; nop */
 
 	else:
 		expression()

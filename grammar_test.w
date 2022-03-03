@@ -7,7 +7,6 @@ void test_arithmetic():
 	assert_equal(7, 2 * 2 + 3)
 
 
-
 void test_int_pointer():
 	int want = 7777
 	int* ip = want
@@ -21,6 +20,21 @@ void test_char_lookup_0():
 	int got = want[0]
 	# debugger
 	assert_equal('a', got)
+
+/*
+void test_nested_if():
+   if (1):
+      if (1):
+         return
+
+   assserts("test_nested_if() failed", 0)
+
+
+void test_nested_while():
+   while (0):
+      while (0):
+         return
+*/
 
 /*
 problem

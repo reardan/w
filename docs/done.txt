@@ -1,0 +1,14 @@
+
+
+
+done:
+	lib...complete!
+	import...complete!
+	type table...complete!
+	struct...complete!
+	symbol table...complete!
+	testing...complete!
+	list...complete!
+	basic net...complete!
+
+

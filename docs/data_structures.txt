@@ -1,20 +1,55 @@
 Data Structures:
-	List
-		String
-	Map
-		Set
-		Object
-	Stack
-	Queue
-	Heap
-		PriorityQueue
-	Node
-	Edge
-	Tree
-		Trie
-	Graph
-	Collection
-	SSTable
+	List, String, Map, Set, Stack, Queue, Heap
+	Graph, Node, Edge, Tree, Trie
+	Matrix, Vector, QuadTree
+	File, Stream, Collection, SSTable
 
-	File
-	Stream
+
+
+Example: Adding data structures together
+
+	# Useful for queueing, and probably lots else
+	list+map[string]
+		substructures:
+			list[string] data
+			map[string][int] index
+		behavior:
+			remove(int):
+				index.remove(data.remove(int))
+			remove_index(string):
+				data.remove(index.remove())
+
+	# How to deal with (int, int) conflict?
+	# Use remove_index() instead of remove()
+	list+map[int]
+	list+list[int]
+			
+
+	# seems like this might be completely useless
+	# as it's just storing the indexes of the data list
+	# which is totally redundant:
+	list+list[string]
+		substructures:
+			list[string] data
+			list[int] index
+		behavior:
+			remove(int):
+				index.remove(list.remove(int))
+			remove_index(int):
+				list.remove(index.remove(int))
+
+	# seems redundant as well:
+	# wait this might not even be possible as map needs two types
+	map+map[string]
+
+	# here are some more interesting examples to think about:
+	# not even sure what these would do, and a bit tricky to think about
+	map+map[string, string]
+	map+map[int, string]
+	map+map[string, int]
+	map+map[int, int]
+
+matrix:
+	
+
+	TODO: determine how to do this more generically for all types

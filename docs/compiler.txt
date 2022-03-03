@@ -1,16 +1,69 @@
+compiler
+	compiler.w
+		# "Globals":
+
+		# Data Structures:
+		list+map[string] lines
+		list+map[token] tokens
+		list+map[symbol] symbols
+		list+map[type] types
+			map index comes from egtype.w: char* name
+
+		accessibility:
+			heap[token*] accessible_tokens
+			heap[symbol*] accessible_symbols
+
+
+grammar.w (current reversed):
+	program()
+	struct_declaration()
+	statement()
+	type_name()
+	expression()
+	bitwise_or_expr()
+	bitwise_and_expr()
+	equality_expr()
+	relational_expr()
+	shift_expr()
+	additive_expr()
+	multiplicative_expr()
+	unary_expression()
+	postfix_expr()
+	binary2()
+	binary1()
+	primary_expr()
+	identifier()
+	promote()
+
+
 w
+	w.w
 	lib
+		lib.w
+		net.w
+		os
+			linux.w
+			windows.w
+			mac.w
 	compiler
-		tokenizer
-			token
-		codegen
-		symbol_table
-			symbol
-		grammar
-		compiler
+		compiler.w
+		token.w
+		codegen.w
+		symbol.w
+	grammar
+		grammar.w
+
+	type
+		type.w
+		iterable.w
+		integer.w
+		string.w
+
 
 
 future
+	codegen
+		codegen.w
 		platform
 			x86
 			x64

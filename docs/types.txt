@@ -1,16 +1,15 @@
 # initial type structure:
 type
-	byte
+	char
 	int
 
 # future type structure:
 type
 	basic
-		byte
 		number
 			integer
 				int
-					int8
+					int8 (alias=char)
 					int16
 					int24
 					int32
@@ -18,7 +17,7 @@ type
 					int128
 
 				uint
-					uint8
+					uint8 (alias=byte)
 					uint16
 					uint24
 					uint32

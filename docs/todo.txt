@@ -1,43 +1,57 @@
 current:
-	type table...
-		based on list...done
-		type lookup...done
-		init...done
-		use in grammar...done
-		use in import...done
-			NOTE: assert.assert() not allowed for now
-			should this be the constructor?
-	struct...
-		type table arguments...done
-		type table field lookup...done
-		type table >3 arguments...done
-		add fields to grammar...untested
-		dot operator...
-			postfix_()
-				migrate to recursive?
-			problem with types being passed through
-			need to get the actual type
-			then we can access via type_get_arg(token) to get the index
-			then use this index*4 in the addition on line 157
-		larger stack space required...
-			inside statement()
-				same problem with types being passed through
-				need to get the actual type
-				then we can access type.num_args
-				
 	type...
-	new...
+		add fields to existing type table
+			compiler.compile -> grammar.program -> 
+		create type.fields for globals declared
+		use the type.fields: for what?
+			meta
+				name
+				size
+			imported lookups
+				e.g.
+				import lib
+				lib.println("hiya!")
 
+		test on a sample type
+		use type.w as it's own type
+		use type.w as the basis for other types
+		change import so it doesn't import globals
+			> import type
+				this will conflict with a lot of names
+				> import type as language_type
+				or only import in relevant files?
+				> private import type
+			type.size
 
-done:
-	symbol table...complete!
-	testing...complete!
-	list...complete!
+	range...
+	debugging...
+		print_stack()
+			get_esp():
+				mov eax,esp
+				ret
+			print_words(esp, 20)
+			even better would be
+				get_context():
+					popad
+		sys_signal
+		segv handler
+		stack parser
+		virtual memory
+	net...
+		split socket / connect
+		server
+			bind
+			listen
+			accept
+		udp
 
 
 major bugs:
 	int*[]
 	*(char*)
+	struct*
+	&
+	int* = int?
 
 	function pointers...
 		local variable calls work
@@ -46,12 +60,14 @@ major bugs:
 
 
 most important:
+	import subdirectory
 	type
 	new
+	symbol
 	dict
 	range
 	repl
-	debugger or symbols
+	debugger or emit info
 
 
 features:
@@ -68,8 +84,9 @@ features:
 		disasm
 	stream class
 	file class
+	template strings
+	int80 -> sysenter
 	x64
-	net
 	windows
 	make
 	git
@@ -78,7 +95,14 @@ features:
 	variable arguments
 	default values
 	template
-	template strings
+	var - dynamic typing
+	inline asm (functions?)
+	refactor
+		rename
+		extract
+		break
+		combine
+	dynamic typing
 
 
 test:

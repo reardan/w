@@ -3,7 +3,7 @@ import type_table
 
 
 void test_type_size():
-	assert_equal(808, type_size())
+	assert_equal(812, type_size())
 
 
 # same as list.test_push_pop()
@@ -16,6 +16,7 @@ void test_list_functions():
 
 
 void push_advanced_types():
+	# these pointer types are deprecated, use * instead
 	type_push("void*")
 	type_push("char**")
 	type_push("int(int,int)")
@@ -23,7 +24,6 @@ void push_advanced_types():
 
 void test_type_push():
 	push_basic_types()
-	assert_equal(3, length)
 
 
 void test_type_lookup():
@@ -36,8 +36,7 @@ void test_type_lookup():
 void test_extra_types():
 	push_basic_types()
 	push_advanced_types()
-	assert_equal(6, length)
-	assert_equal(5, type_lookup("int(int,int)"))
+	assert_equal(length - 1, type_lookup("int(int,int)"))
 
 
 void test_add_get_print_2_fields():
@@ -59,6 +58,7 @@ void test_add_get_print_2_fields():
 	int arg_index2 = type_get_arg(type_index, field2)
 	assert_equal(1, arg_index2)
 
+
 void test_add_get_50_fields():
 	push_basic_types()
 	int type_index = type_push("massive_struct")
@@ -75,5 +75,41 @@ void test_add_get_50_fields():
 	assert_equal(count, load_int(t + 4))
 
 
+void test_type_push_size():
+	push_basic_types()
+
+
+# simulating:
+#
+# struct mixed:
+#	int32 a   # [0] offset
+#	int16 b   # [4]
+#	int32 c   # [6]
+# type_get_field_offset("c") == 6
+void test_type_get_field_offset():
+	push_basic_types()
+	int type_index = type_push("mixed")
+	int int_type = type_lookup("int")
+	int int16_type = type_push_size("int16", 2)
+	type_add_arg(type_index, "a", int_type)
+	type_get_field_offset(type_index, "a")
+	type_add_arg(type_index, "b", int16_type)
+	type_add_arg(type_index, "c", int_type)
+	type_print(type_index)
+	assert_equal(0, type_get_field_offset(type_index, "a"))
+	assert_equal(4, type_get_field_offset(type_index, "b"))
+	assert_equal(6, type_get_field_offset(type_index, "c"))
+
+
+void test_type_with_fields_total_size():
+	push_basic_types()
+	int type_index = type_push_size("mixed", 0)
+	int int_type = type_lookup("int")
+	int int16_type = type_push_size("int16", 2)
+	type_add_arg(type_index, "a", int16_type)
+	type_add_arg(type_index, "b", int_type)
+	type_add_arg(type_index, "c", int16_type)
+	type_add_arg(type_index, "d", int_type)
+	assert_equal(12, type_get_size(type_index))
 
 

@@ -1,5 +1,5 @@
 /*
-Wesley Reardan based on work by Edmund GRIMLEY EVANS <edmundo@rano.org>
+Wesley Reardan
 A self-compiling compiler for the brand new W Language.
 */
 import compiler

@@ -61,3 +61,62 @@ void test_reverse_even():
 void test_large_reverse():
 	int length = 1000
 	# TODO
+
+
+void test_atoi():
+	assert_equal(0, atoi("0"))
+	assert_equal(0, atoi("00"))
+	assert_equal(1, atoi("1"))
+	assert_equal(1, atoi("01"))
+	assert_equal(0-1, atoi("-1"))
+	assert_equal(0-10, atoi("-10"))
+	assert_equal(0-100, atoi("-100"))
+	assert_equal(0-1000, atoi("-1000"))
+	assert_equal(10, atoi("10"))
+	assert_equal(100, atoi("100"))
+	assert_equal(1000, atoi("1000"))
+
+
+void test_intstrlen():
+	assert_equal(5, intstrlen(0-1000))
+	assert_equal(4, intstrlen(0-100))
+	assert_equal(3, intstrlen(0-99))
+	assert_equal(3, intstrlen(0-10))
+	assert_equal(2, intstrlen(0-9))
+	assert_equal(2, intstrlen(0-2))
+	assert_equal(2, intstrlen(0-1))
+	assert_equal(1, intstrlen(0))
+	assert_equal(1, intstrlen(1))
+	assert_equal(1, intstrlen(2))
+	assert_equal(1, intstrlen(9))
+	assert_equal(2, intstrlen(10))
+	assert_equal(2, intstrlen(11))
+	assert_equal(2, intstrlen(99))
+	assert_equal(3, intstrlen(100))
+	assert_equal(4, intstrlen(1000))
+	assert_equal(7, intstrlen(1000000))
+
+
+# Hex
+void test_hex():
+	assert_strings_equal("0x00001337", hex(4919))
+
+
+void test_from_hex():
+	assert_equal(0, from_hex("0"))
+	assert_equal(1, from_hex("1"))
+	assert_equal(31, from_hex("1f"))
+	assert_equal(4919, from_hex("00001337"))
+	assert_equal(305420031, from_hex("123456ff"))
+	# todo: 0x syntax
+	assert_equal(255, from_hex("0xff"))
+	# assert_equal(0x1337, from_hex("1337"))
+
+
+# Net conversions
+void test_ip4_from_string(char* ips):
+	assert_strings_equal("0x7f000001", hex(ip4_from_string("127.0.0.1")))
+	assert_strings_equal("0x00000000", hex(ip4_from_string("0.0.0.0")))
+	assert_strings_equal("0x01010101", hex(ip4_from_string("1.1.1.1")))
+	assert_strings_equal("0xffffffff", hex(ip4_from_string("255.255.255.255")))
+

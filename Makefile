@@ -18,10 +18,29 @@ test: w FORCE
 	chmod +x ./bin/test
 	./bin/test arg1 arg2 arg3 -o output -i=input --input=doubledash
 
+net_basic: w FORCE
+	./bin/wv2 net_basic.w >./bin/net_basic
+	chmod +x ./bin/net_basic
+	./bin/net_basic
+
 net: w FORCE
 	./bin/wv2 net.w >./bin/net
 	chmod +x ./bin/net
 	./bin/net
+
+net_log_socket: FORCE
+	sudo stap -e 'probe syscall.socket { printf("%s[%d] -> %s(%s)\n", execname(), pid(), name, argstr) }'
+
+net_log: FORCE
+	sudo stap -e 'probe syscall.sendto { printf("%s[%d] -> %s(%s)\n", execname(), pid(), name, argstr) }'
+
+log_write: FORCE
+	sudo stap -e 'probe syscall.write { printf("%s[%d] -> %s(%s)\n", execname(), pid(), name, argstr) }'
+
+net_debug: w FORCE
+	./bin/wv2 net.w >./bin/net
+	chmod +x ./bin/net
+	ddd ./bin/net
 
 simple: w FORCE
 	./bin/wv2 simple.w >./bin/simple
@@ -33,10 +52,26 @@ struct_test: w FORCE
 	chmod +x ./bin/struct_test
 	./bin/struct_test
 
+struct_test_debug: w FORCE
+	./bin/wv2 struct_test.w >./bin/struct_test
+	chmod +x ./bin/struct_test
+	ddd ./bin/struct_test
+
+range_test: w FORCE
+	./bin/wv2 range_test.w >./bin/range_test
+	chmod +x ./bin/range_test
+	./bin/range_test
+
 type_table_test: w FORCE
 	./bin/wv2 type_table_test.w >./bin/type_table_test
 	chmod +x ./bin/type_table_test
 	./bin/type_table_test
+
+tcp: w FORCE
+	./bin/wv2 tcp.w >./bin/tcp
+	chmod +x ./bin/tcp
+	./bin/tcp
+	# ddd ./bin/tcp
 
 grammar_test: w FORCE
 	./bin/wv2 grammar_test.w >./bin/grammar_test

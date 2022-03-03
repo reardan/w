@@ -1,0 +1,50 @@
+I'd like to migrate the code base to a tree structure.
+
+The local structure on a per-project basis would be as follows:
+
+
+/
+	w
+		owners
+		w.w
+			compiler
+				compiler.w
+				grammar
+					grammar.w
+					program.w
+					statement.w
+					expression.w
+					identifier.w
+				symbol
+				token
+				codegen
+			type
+				...specified in types.txt
+
+
+
+
+
+Global structure:
+
+/
+	owners admin:w
+	w
+		owners w,?
+	bin
+		TBD
+	users
+		w
+			owners admin:w
+			private
+				owners w,private
+		otheruser
+			owners admin:otheruser
+			private
+				owners otheruser,private
+		... 100 billion users
+	shared
+		owners admin:w
+	experimental
+		owners *, admin:w
+

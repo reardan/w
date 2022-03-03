@@ -18,4 +18,5 @@ will automatically break after main() returns
 
 
 
-'debugger' statement that generates int3
+there already exists a 'debugger' statement that generates int3
+this can then be used in debuggers e.g. gdb to

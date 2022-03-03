@@ -1,0 +1,9 @@
+
+	type table...
+		based on list...done
+		type lookup...done
+		init...done
+		use in grammar...done
+		use in import...done
+			NOTE: assert.assert() not allowed for now
+			should this be the constructor?

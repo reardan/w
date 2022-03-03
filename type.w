@@ -39,3 +39,6 @@ void create(char* name):
 	_type_arguments = 0
 	_type_num_arguments = 0
 */
+
+
+

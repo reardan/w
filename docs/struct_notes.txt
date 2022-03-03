@@ -1,0 +1,60 @@
+	struct...done
+		type table arguments...done
+		type table field lookup...done
+		type table >3 arguments...done
+		add fields to grammar...untested
+		dot operator...done
+			postfix_()
+				migrate to recursive?
+			problem with types being passed through...done
+				need to fix type 1
+			need to get the actual type...done
+			then we can access via type_get_arg(token) to get the index...done
+			then use this index*4 in the addition on line 157...done
+				PROBLEM: now the stack isn't unwound correctly...done
+				actual problem: was being stored as char instead of word
+					in expression()
+		larger stack space required...done
+			inside statement()
+				same problem with types being passed through
+				need to get the actual type
+				then we can access type.num_args
+			PROBLEM: stack is off by two words
+				hypothesis 1: assert_equal_hex...checked
+					tried commenting out one, still have the stack
+				hypothesis 2: assignment...checked
+					removed one assignment + assert_equal
+					same issue
+				hypothesis 3: local stack not being correctly decreased...checked
+					it works fine for the p.x = 1 case
+				hypoyhesis 4: change is adversely affecting e.g. void types
+				hypothesis 5: wrong address being written to
+					this seems likely
+					try sub instead
+						check with struct size = 4
+						forgot we added if(0 &)...
+					sub worked!
+						however fields are backwards
+						fixed ordering by using 4 * (num_args - args - 1)
+					this actually was fail
+						instead what was needed was to move the stack pointer backwards
+						and keep the add
+				hypothesis 6: extra arguments being pushed and not popped
+		regular pointer
+			*
+			[]
+			&
+		struct pointer
+			problem 1) it defines 3 words instead of just 1
+			problem 2) 
+
+	struct mixed field types...done
+		type_size...done!
+		type_table: support mixed field struct pointers...done!
+		use type_get_arg_offset in code base...done!
+			sym_table?
+			grammar
+				postfix_expr()
+					accept(".")
+
+		verify the stack adjustment is using the correct size

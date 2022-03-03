@@ -1,0 +1,39 @@
+
+
+
+char*
+	char* x = "hi there"
+	put_char(x[0])
+	put_char(x[1])
+
+
+list
+	list x
+	x.push(0)
+	x.push(1)
+	print_int("x[1]: ", x[1])
+
+
+map
+	map[int][list[string]] m
+	m[0] = 1
+	m[1] = 2
+
+
+type
+	list[string]
+	list[int]
+	map[int][int]
+	map[int][string]
+
+
+
+
+
+
+
+types
+	indexable
+		list
+		map
+

@@ -28,17 +28,12 @@ struct sock_addr_link_layer:
 	if_index # interf.Index
 	ha_type # ARPHRD_ETHER
 */
+import lib
+import assert
 
-/*
-struct addrinfo:
-	int ai_flags
-	int ai_family
-	int ai_socktype
-	int ai_protocol
-	int addrlen
-	sockaddr* addr
-	char* canon_name
-	addrinfo* next
+
+
+
 
 struct sockaddr_in:
 	int16 family
@@ -47,16 +42,30 @@ struct sockaddr_in:
 	int zero1
 	int zero2
 
+
 struct sockaddr:
 	uint16 family
 	sockaddr_in data
-*/
-import lib
+
+
+struct addrinfo:
+	int ai_flags
+	int ai_family
+	int ai_socktype
+	int ai_protocol
+	int addrlen
+	#sockaddr* addr
+	int addr
+	#char* canon_name
+	int canon_name
+	#addrinfo* next
+	int next
+
+
 
 # https://css.bz/2016/12/08/go-raw-sockets.html
 # https://www.opensourceforu.com/2015/03/a-guide-to-using-raw-sockets/
 
-# https://elixir.bootlin.com/linux/v5.0.21/source/include/linux/socket.h#L379
 # http://linasm.sourceforge.net/docs/syscalls/network.php
 # https://linux.die.net/man/3/getaddrinfo
 int socket(int family, int socket_type, int protocol):
@@ -66,6 +75,10 @@ int socket(int family, int socket_type, int protocol):
 int send_to(int file, char* buf, int size, int flags, char* dest, int len):
 	return syscall7(44, file, buf, size, flags, dest, len)
 
+
+# FIXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+int htons(int arg)
+	return arg
 
 
 # https://github.com/openbsd/src/blob/master/sys/sys/socket.h
@@ -89,14 +102,33 @@ int main(int argc, int argv):
 	int eth_p_all = 3
 	# IPPROTO_RAW
 
+	# https://www.programminglogic.com/sockets-programming-in-c-using-udp-datagrams/
+	# https://chromium.googlesource.com/chromiumos/docs/+/master/constants/syscalls.md
+	# https://cocomelonc.github.io/tutorial/2021/10/17/linux-shellcoding-2.html
 	int udp = 1
 	if (udp):
 		int file = socket(af_inet, sock_dgram, 0)
-		
+		print_int("file: ", file)
+		asserts("Could not open socket", file > 0)
+		int size = 16 /*sizeof serveraddr: todo: addrinfo.size */
+		char* msg = "yo yo yo!\x0a"
+		# debugger
+		sockaddr_in in
+		in.family = af_inet
+		in.port = 3879 /*htons(9999)*/
+		in.ip_address = 16777343 /* htons(127.0.0.1) = 100007F = 16777343 */
+		/* 127.0.0.1 == 7f000001 == 2130706433 */
+		in.zero1 = 0
+		in.zero2 = 0
+		int *inptr = in
+		# debugger
+		# int send_result = send_to(file, msg, strlen(msg), 0, *in, size)
+		int send_result = syscall7(44, file, msg, strlen(msg), 0, inptr, size)
+		print_int("send_result: ", send_result)
 		close(file)
 
 
-	int raw = 0
+	/*int raw = 0
 	if (raw):
 		# TODO: Create Raw Socket
 		int file = socket(af_inet, sock_raw, 0)
@@ -105,6 +137,6 @@ int main(int argc, int argv):
 		int packet = 0
 		int len = 0
 		int addr = 0
-		send_to(file, packet, len, addr)
+		send_to(file, packet, len, addr)*/
 
 	return 0

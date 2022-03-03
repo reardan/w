@@ -1,0 +1,19 @@
+the powerful dot operator
+
+imports:
+	import root.folder.file.*
+
+
+
+expression:
+	type . identifier
+	identifier . identifier
+
+
+
+
+type
+	size (native property)
+	
+
+

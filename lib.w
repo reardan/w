@@ -119,6 +119,33 @@ char* itoa(int n):
 	return s
 
 
+int atoi(char* s):
+	int result = 0
+	int negative = 0
+	if (s[0] == '-'):
+		s = s + 1
+		negative = 1
+	while (s[0] >= '0' & s[0] <= '9'):
+		result = result * 10 + s[0] - '0'
+		s = s + 1
+	if (negative == 1):
+		return 0-result
+	return result
+
+
+int intstrlen(int i):
+	int len = 0
+	if (i == 0):
+		return 1
+	if (i < 0):
+		i = 0-i
+		len = len + 1  /* for '-' */
+	while (i > 0):
+		i = i / 10
+		len = len + 1
+	return len
+
+
 char* hex(int v):
 	char* s = "0x00000000"
 	int i = 7
@@ -133,6 +160,32 @@ char* hex(int v):
 		v = v >> 4
 		i = i - 1
 	return s
+
+
+int from_hex(char* s):
+	int result = 0
+	
+	int i = 0
+	int ch = s[i]
+	while ((ch != 0) & (i < 18)):
+		if (ch >= '0' & ch <= '9'):
+			result = (result << 4) + ch - '0'
+		else if(ch >= 'a' & ch <= 'f'):
+			result = (result << 4) + ch - 'a' + 10
+		i = i + 1
+		ch = s[i]
+	return result
+
+
+int ip4_from_string(char* ips):
+	int ip4 = 0
+	int i = 0
+	while (i < 4):
+		int b = atoi(ips)
+		ip4 = (ip4 << 8) + b
+		ips = ips + intstrlen(b) + 1
+		i = i + 1
+	return ip4
 
 
 # TODO: figure out why *(char*) is broken
@@ -191,7 +244,7 @@ int open_or_create(char *filename, int mode, int permissions):
 
 
 int write_string(int file, char* s):
-	return write(file, s, strlen(s))
+	return write(file, s, strlen(s)) /* +1? */
 
 
 int getchar(int file):
@@ -273,3 +326,8 @@ void print_words(int addr, int count):
 		println(hex(*addr))
 		addr = addr + 4
 		i = i + 1
+
+
+# Testing - uses print_funcs
+
+
