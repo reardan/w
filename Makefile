@@ -18,6 +18,11 @@ test: w FORCE
 	chmod +x ./bin/test
 	./bin/test arg1 arg2 arg3 -o output -i=input --input=doubledash
 
+asm_test: w FORCE
+	./bin/wv2 asm_test.w >./bin/asm_test
+	chmod +x ./bin/asm_test
+	./bin/asm_test
+
 net_basic: w FORCE
 	./bin/wv2 net_basic.w >./bin/net_basic
 	chmod +x ./bin/net_basic
@@ -47,6 +52,11 @@ simple: w FORCE
 	chmod +x ./bin/simple
 	./bin/simple
 
+convert: w FORCE
+	./bin/wv2 convert.w >./bin/convert
+	chmod +x ./bin/convert
+	objdump -d ~/git/net/tcp | ./bin/convert
+
 struct_test: w FORCE
 	./bin/wv2 struct_test.w >./bin/struct_test
 	chmod +x ./bin/struct_test
@@ -71,13 +81,13 @@ tcp: w FORCE
 	./bin/wv2 tcp.w >./bin/tcp
 	chmod +x ./bin/tcp
 	./bin/tcp
-	# ddd ./bin/tcp
+#	ddd ./bin/tcp
 
 grammar_test: w FORCE
 	./bin/wv2 grammar_test.w >./bin/grammar_test
 	chmod +x ./bin/grammar_test
 	./bin/grammar_test
-	# ddd ./bin/grammar_test
+#	ddd ./bin/grammar_test
 
 list_test: w FORCE
 	./bin/wv2 list_test.w >./bin/list_test

@@ -72,5 +72,37 @@ void test_empty_pop():
 	assert_equal(0, got)
 
 
+
+void test_join():
+	push("Hey there!")
+	push("How's it going?")
+	push("Well! And you?")
+	push("Amazing!")
+	push("Have a great day!")
+	push("You too!")
+	println(join(", "))
+	assert_strings_equal("Hey there! How's it going? Well! And you? Amazing! Have a great day! You too!", join(" "))
+
+
+void test_join_simple():
+	create()
+	char* s = "Hey there!"
+	print_hex("s: ", s)
+	push(s)
+	assert_strings_equal(s, join(","))
+
+
+void test_strcmp():
+	asserts("spaces equal", strcmp(" ", " ") == 0)
+
+
+void test_split():
+	create()
+	split_string("1 2 3 4 5 6 7 8 9 10", " ")
+	assert_equal(10, length)
+	assert_strings_equal("1", get(0))
+	assert_strings_equal("10", get(9))
+
+
 # Test failed malloc / free / realloc via mocks
 

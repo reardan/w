@@ -103,6 +103,9 @@ features:
 		break
 		combine
 	dynamic typing
+	parse c headers
+		build structs
+		enum values
 
 
 test:

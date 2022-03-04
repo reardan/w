@@ -250,7 +250,8 @@ void print_symbol_table(int t):
 
 
 int emit_string_table():
-	print_error("dumping string table\x0a")
+	if (verbosity >= 1):
+		print_error("dumping string table\x0a")
 	int t = 0
 	int n = 0
 	int count = 0
@@ -266,7 +267,8 @@ int emit_string_table():
 
 
 int emit_symbol_table():
-	print_error("dumping symbol table\x0a")
+	if (verbosity >= 1):
+		print_error("dumping symbol table\x0a")
 	int t = 0
 	int n = 0
 	int symbol = 0

@@ -52,6 +52,14 @@ int strlen(char *c):
 	return length
 
 
+void strncpy(char* dst, char* src, int n):
+	int i = 0
+	while ((i < n) & (src[i] != 0)):
+		dst[i] = src[i]
+		i = i + 1
+
+
+
 # Note the return value is the final index, NOT the original dst
 char* strcpy(char *dst, char *src):
 	while (src[0]):

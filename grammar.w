@@ -36,7 +36,7 @@ void promote(int type):
 	else if (type == 3)
 		return;
 	else:
-		warn_bad_promotion(4, type_size)
+		# warn_bad_promotion(4, type_size)   # TODO: FIX
 		emit(2, "\x8b\x00") /* mov (%eax),%eax */
 
 
@@ -710,7 +710,7 @@ void program():
 		while (accept("import")):
 			# Ignore if we have already imported this type
 			if (type_lookup(token) >= 0):
-				if (verbosity >= 0):
+				if (verbosity >= 1):
 					print2("Warning: ignoring duplicate imported type: '")
 					print2(token)
 					println2("'")

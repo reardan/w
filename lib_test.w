@@ -23,6 +23,26 @@ void test_itoa_0():
 	assert_equal(strcmp("0", itoa(0)), 0)
 
 
+void test_strcpy():
+	int str = malloc(1000)
+	int cur = str
+	cur = strcpy(cur, "one ")
+	cur = strcpy(cur, "two ")
+	cur = strcpy(cur, "three ")
+	assert_strings_equal("one two three ", str)
+
+
+void test_strncpy():
+	int str = malloc(100)
+	strncpy(str, "abcd1234", 4)
+	assert_strings_equal("abcd", str)
+
+
+void test_starts_with():
+	assert1(starts_with("hi there", "hi"))
+	assert1(starts_with(" 2", " "))
+
+
 void test_println():
 	println("hi there!")
 

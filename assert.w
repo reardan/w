@@ -15,21 +15,21 @@ void assert1(int condition):
 
 void assert_equal(int want, int got):
 	if (want != got):
-		print2("Assertion failed.  wanted '")
+		print2("Assertion failed.  wanted int(")
 		print2(itoa(want))
-		print2("' got '")
+		print2(") got int(")
 		print2(itoa(got))
-		println2("'")
+		println2(")")
 		exit(1)
 
 
 void assert_equal_hex(int want, int got):
 	if (want != got):
-		print2("Assertion failed.  wanted '")
+		print2("Assertion failed.  wanted ")
 		print2(hex(want))
-		print2("' got '")
+		print2(" got ")
 		print2(hex(got))
-		println2("'")
+		println2("")
 		exit(1)
 
 

@@ -1,3 +1,5 @@
+import tokenizer
+
 /*
 mvp for context:
 	single length opcodes 
@@ -9,12 +11,12 @@ mvp for context:
 */
 
 int new_node(char* node_type, char* operator, char* binary):
-	int node = malloc(16)  # TODO: new node()
-	int* i = node
-	i[0] = node_type
-	i[1] = operator
-	i[2] = binary
-	i[3] = 0
+	int node = malloc(16)
+	# int* i = node
+	# i[0] = node_type
+	# i[1] = operator
+	# i[2] = binary
+	# i[3] = 0
 	return node
 
 
@@ -44,54 +46,35 @@ future:
 
 /*
 operator1
-	call
-	int
-	idiv
-	not
-	push
-	pop
-	sete
-	setge
-	setl
-	setle
-	setne
-
+	call int idiv not push pop sete setge setl setle setne
 */
 int operator1():
 	# TODO
 	return 0
 
 /*operator2
-	mov
-	movsbl
-	movsx
-	lea
-	and
-	or
-	xor
-	add
-	sub
-	sar
-	shl
-	shr
-	cmp
-	test
-*/
+	mov movsbl movsx lea and or xor add sub sar shl shr cmp test */
+int operator2():
+	# TODO
+	return 0
 
 /*
 inner_operand:
 	register
 	int_constant
+*/
+int inner_operand() {}
 
+/*
 operand
 	inner_operand
 	[ inner_operand ]
 	[ inner_operand + inner_operand ]
 	[ inner_operand - inner_operand ]
+*/
+int operand() {}
 
-
-	 
-
+/*
 asm-instruction-list:
 	instruction-list instruction
 
@@ -101,8 +84,6 @@ asm-instruction-list:
 
 */
 
-void inner_operand() {}
-void operand() {}
 
 /*
 instruction: 
@@ -110,24 +91,32 @@ instruction:
 	operator1 operand
 	operator2 operand, operand
 */
-void instruction():
+int instruction():
 	# TODO: return_if(operator0())
 	if (operator0()):
-		return
-	if (operator1()):
+		return;
+	else if (operator1()):
 		operand()
-		return
-	if (operator2()):
+		return;
+	else if (operator2()):
 		operand()
 		accept(",")
 		operand()
+	else:
+		return 0;
 
 
-void instruction_list():
+int instruction_list():
 	instruction_list()
 	instruction()
 
 
-void asm():
+int asm():
 	instruction_list()
 
+
+
+char* assemble(char* text):
+	char *output = token
+
+	return output

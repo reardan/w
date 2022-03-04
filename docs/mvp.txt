@@ -1,0 +1,15 @@
+
+
+Compiler
+	Type
+		Dict
+		String
+
+Net
+
+
+
+Platform
+	Linux
+	x86
+	WebAssembly
