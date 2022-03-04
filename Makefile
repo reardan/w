@@ -72,6 +72,11 @@ range_test: w FORCE
 	chmod +x ./bin/range_test
 	./bin/range_test
 
+range_test_debug: w FORCE
+	./bin/wv2 range_test.w >./bin/range_test
+	chmod +x ./bin/range_test
+	ddd ./bin/range_test
+
 type_table_test: w FORCE
 	./bin/wv2 type_table_test.w >./bin/type_table_test
 	chmod +x ./bin/type_table_test

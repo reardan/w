@@ -11,7 +11,7 @@ void warn_bad_promotion(int want, int got):
 		warning("'")
 	
 
-void promote(int type):
+int promote(int type):
 	int type_size = type_get_size(type)
 	if (verbosity >= 1):
 		print2("promote(")
@@ -32,12 +32,12 @@ void promote(int type):
 	else if (type == 1):
 		# warn_bad_promotion(1, type_size)  # TODO: FIX
 		emit(3, "\x0f\xbe\x00") /* movsbl (%eax),%eax */
-		return;
-	else if (type == 3)
-		return;
+	else if (type == 3) {}
 	else:
 		# warn_bad_promotion(4, type_size)   # TODO: FIX
 		emit(2, "\x8b\x00") /* mov (%eax),%eax */
+
+	return type
 
 
 int identifier():
@@ -46,6 +46,73 @@ int identifier():
 		strcpy(last_identifier, token)
 		return 1
 	return 0
+
+
+int int_literal():
+	if ((token[0]) < '0' |  & (token[0] > '9')):
+		return 0
+	int n = 0
+	int i = 0
+	while (token[i]):
+		n = (n << 1) + (n << 3) + token[i] - '0'
+		i = i + 1
+
+	emit(5, "\xb8....") /* mov $x,%eax */
+	save_int(code + codepos - 4, n)
+	return 1
+
+
+
+
+
+
+# like a char_pointer_literal()
+# except it emits the code directly to be executed
+int raw_char_pointer_literal():
+	if (accept("raw\x22") == 0):
+		return 0
+
+
+int process_string_literal():
+	int i = 0
+	int j = 1
+	int k
+	while (token[j] != '"'):
+		# \x0a formatting
+		if ((token[j] == 92) & (token[j + 1] == 'x')):
+			if (token[j + 2] <= '9'):
+				k = token[j + 2] - '0'
+			else:
+				k = token[j + 2] - 'a' + 10
+			k = k << 4
+			if (token[j + 3] <= '9'):
+				k = k + token[j + 3] - '0'
+			else:
+				k = k + token[j + 3] - 'a' + 10
+			token[i] = k
+			j = j + 4
+
+		else:
+			token[i] = token[j]
+			j = j + 1
+
+		i = i + 1
+	return i
+
+
+
+int char_pointer_literal():
+	if (token[0] != '"'):
+		return 0
+	int i = process_string_literal()
+	token[i] = 0
+	/* call ... ; the string ; pop %eax */
+	emit(5, "\xe8....")
+	save_int(code + codepos - 4, i + 1)
+	emit(i + 1, token)
+	emit(1, "\x58")
+
+	return 1
 
 
 
@@ -60,16 +127,8 @@ int expression();
 int primary_expr():
 	int type
 	int new_type
-	# Integer constant
-	if (('0' <= token[0]) & (token[0] <= '9')):
-		int n = 0
-		int i = 0
-		while (token[i]):
-			n = (n << 1) + (n << 3) + token[i] - '0'
-			i = i + 1
-
-		emit(5, "\xb8....") /* mov $x,%eax */
-		save_int(code + codepos - 4, n)
+	# Integer literal
+	if (int_literal()):
 		type = 3
 
 	# Identifier
@@ -86,45 +145,14 @@ int primary_expr():
 		if (peek(")") == 0):
 			error("No closing parenthesis")
 	}
-	# ??
+	# char literal
 	else if ((token[0] == 39) & (token[1] != 0) &
 					 (token[2] == 39) & (token[3] == 0)):
 		emit(5, "\xb8....") /* mov $x,%eax */
 		save_int(code + codepos - 4, token[1])
 		type = 3
 
-	# char* constant
-	else if (token[0] == '"'):
-		int i = 0
-		int j = 1
-		int k
-		while (token[j] != '"'):
-			# \x0a formatting
-			if ((token[j] == 92) & (token[j + 1] == 'x')):
-				if (token[j + 2] <= '9'):
-					k = token[j + 2] - '0'
-				else:
-					k = token[j + 2] - 'a' + 10
-				k = k << 4
-				if (token[j + 3] <= '9'):
-					k = k + token[j + 3] - '0'
-				else:
-					k = k + token[j + 3] - 'a' + 10
-				token[i] = k
-				j = j + 4
-
-			else:
-				token[i] = token[j]
-				j = j + 1
-
-			i = i + 1
-
-		token[i] = 0
-		/* call ... ; the string ; pop %eax */
-		emit(5, "\xe8....")
-		save_int(code + codepos - 4, i + 1)
-		emit(i + 1, token)
-		emit(1, "\x58")
+	else if (char_pointer_literal()):
 		type = 3
 
 	else:
@@ -455,6 +483,82 @@ int type_name():
 	}
 	return type
 
+void statement();
+# while ( expression ) statement
+# no ':' required ??
+int while_statement():
+	int p1
+	int p2
+	if (accept("while") == 0):
+		return 0
+
+	expect("(")
+	p1 = codepos
+	promote(expression())
+	emit(8, "\x85\xc0\x0f\x84....") /* test %eax,%eax ; je ... */
+	p2 = codepos
+	expect(")")
+
+	statement()
+
+	emit(5, "\xe9....") /* jmp ... */
+	save_int(code + codepos - 4, p1 - codepos)
+	save_int(code + p2 - 4, codepos - p2)
+
+	return 1
+
+
+
+/*
+for type-name indentifier in range (int-literal):
+	{ statement }
+
+for int i in range(0, 10):
+*/
+int for_statement():
+	int p1
+	int p2
+	int for_type
+	int max_stack_pos
+	char* for_var = 0
+	# for
+	if (accept("for")):
+		if (type_lookup(token) < 0):
+			error("no variable type found in for loop")
+
+		# int i
+		for_type = type_name()
+		for_var = strclone(token)
+		sym_declare(token, for_type, 'L', stack_pos, 1)
+		pointer_indirection = 0
+		get_token()
+
+		# in range(stop-expression)
+		expect("in")
+		expect("range")
+
+		p1 = codepos
+		promote(expression())  ### mov eax, 10
+
+		# mov ebx,eax
+		emit(2, "\x89\xc3")
+		promote(for_type)
+
+		# cmp eax, ebx; jge 0x200
+		emit(8, "\x39\xd8\x0f\x8d\xf8\x01\x00\x00")
+		p2 = codepos
+
+		# get statements including the ':' new scope starter
+		statement()
+
+		emit(5, "\xe9....") /* jmp ... */
+		save_int(code + codepos - 4, p1 - codepos)
+		save_int(code + p2 - 4, codepos - p2)
+
+
+		return 1
+	return 0
+
 
 /*
 import_statement:
@@ -566,39 +670,8 @@ void statement():
 			statement()
 		save_int(code + p2 - 4, codepos - p2)
 
-	# while ( expression ) statement
-	# no ':' required ??
-	else if (accept("while")):
-		expect("(")
-		p1 = codepos
-		promote(expression())
-		emit(8, "\x85\xc0\x0f\x84....") /* test %eax,%eax ; je ... */
-		p2 = codepos
-		expect(")")
-		statement()
-		emit(5, "\xe9....") /* jmp ... */
-		save_int(code + codepos - 4, p1 - codepos)
-		save_int(code + p2 - 4, codepos - p2)
-
-	# for type-name indentifier in range (int-literal, int-literal): { statement }
-	# for int i in range(0, 10):
-	else if (accept("for")):
-		if (type_lookup(token) >= 0):
-			sym_declare(token, type_name(), 'L', stack_pos, 1)
-			pointer_indirection = 0
-			get_token()
-			be_push()
-			stack_pos = stack_pos + 1
-		else:
-			error("no variable found in for loop")
-
-		expect("in")
-		expect("range")
-		expect("(")
-
-		# promote(expression())
-		# statement()
-
+	else if (while_statement()) {}
+	else if(for_statement()) {}
 	else if(accept("pass")):
 		emit(2, "\x89\xff")  /* mov edi,edi ; does not work :( */
 
@@ -631,8 +704,15 @@ void statement():
 	else:
 		expression()
 		expect_or_newline(";")
+
+
 /*
-inside grammar:
+import
+*/
+
+
+
+/*
 
 struct_declaration identifier :
 	type_name identifier
@@ -685,6 +765,28 @@ int struct_declaration():
 
 
 void compile_save(char* fn);
+
+
+int import_statement():
+	if(accept("import")):
+		# Ignore if we have already imported this type
+		if (type_lookup(token) >= 0):
+			if (verbosity >= 1):
+				print2("Warning: ignoring duplicate imported type: '")
+				print2(token)
+				println2("'")
+			get_token()
+		else:
+			type_push(strclone(token))
+			char* with_path = strjoin(token, ".w")
+			if (verbosity >= 1):
+				print_string("importing ", with_path)
+			compile_save(with_path)
+			free(with_path)
+		return 1
+	return 0
+
+
 /*
  * program:
  *     declaration
@@ -707,21 +809,7 @@ void program():
 	int function_start
 	while (token[0]):
 		# First handle imports
-		while (accept("import")):
-			# Ignore if we have already imported this type
-			if (type_lookup(token) >= 0):
-				if (verbosity >= 1):
-					print2("Warning: ignoring duplicate imported type: '")
-					print2(token)
-					println2("'")
-				get_token()
-			else:
-				type_push(strclone(token))
-				char* with_path = strjoin(token, ".w")
-				if (verbosity >= 1):
-					print_string("importing ", with_path)
-				compile_save(with_path)
-				free(with_path)
+		while (import_statement() ) {}
 
 		# Next handle struct declarations
 		while(struct_declaration()):

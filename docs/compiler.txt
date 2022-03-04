@@ -36,6 +36,48 @@ grammar.w (current reversed):
 	promote()
 
 
+grammar/
+	grammar.w
+	program.w
+	import_declaration()
+	struct_declaration()
+	statement/
+		statement.w
+		statement_list.w
+		typed_identifier.w
+		if.w
+		else.w
+		while.w
+		for.w
+		pass.w
+		return.w
+		yield.w
+		debugger.w
+		tracer.w
+		nop.w
+	expression/
+		expression.w
+		bitwise_or_expr.w
+		bitwise_and_expr.w
+		equality_expr.w
+		relational_expr.w
+		shift_expr.w
+		additive_expr.w
+		multiplicative_expr.w
+		unary_expression.w
+		postfix_expr.w
+		binary2.w
+		binary1.w
+		primary_expression/
+			primary_expr.w
+			identifier.w
+			int_literal.w
+			char_literal.w
+			char_pointer_literal.w
+
+
+
+
 w
 	w.w
 	lib

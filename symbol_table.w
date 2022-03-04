@@ -200,12 +200,15 @@ void sym_get_value(char *s):
 		error("'")
 
 	if ((scope_type == 'L') | (scope_type == 'A')):
+		# Use pointers directly
 		if (is_indirect_pointer):
 			if (verbosity >= 1):
 				print_error("pointer_indirection for ")
 				sym_info(t)
 				warning(s)
 			emit(7, "\x8b\x84\x24....") /* mov eax, [esp + ....] */
+
+		# Otherwise pass reference
 		else:
 			emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
 		int num_args = type_num_args(type)
