@@ -1,5 +1,5 @@
 
-
+/*
 int **indirect
 
 
@@ -18,4 +18,12 @@ int old_main(int arg, int argv):
 int _main(int argc, int argv):
 	int file = syscall(41, 2, 2, 0)
 	syscall7(44, file, "hiya\x0a", 6, 0, 0, 0)
+	exit(0)
+*/
+int main():
+	raw_asm ("\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90")
+	return 0
+
+int _main():
+	main()
 	exit(0)

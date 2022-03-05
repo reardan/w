@@ -1,0 +1,49 @@
+Offloading Engineering
+
+
+Required Knowledge
+	Compiler Theory
+
+
+Project Knowledge
+	Assembly
+		x86
+		x64
+		ARM
+		WebAssembly
+		gpu
+	Testing
+	Debugging
+	Networking
+
+
+Project Acceptance Tests
+	make tests MUST PASS
+	make [project_name]_test MUST PASS
+	manual testing MUST PASS
+
+
+Projects
+	Pointers
+	For..In..Range
+	x64 MVP
+	WebAssembly MVP
+	Signal Handling
+
+
+Secondary Priority Projects
+	GPUAssembly
+	ARM
+	Windows
+	Android
+	Debugging
+	Assembler
+	Disassembler
+	Networking Improvements
+		Network socketcall
+			Deopendant on struct*
+		UDP
+		HTTP
+			Server
+			Client
+

@@ -1,0 +1,57 @@
+Pointers Project
+
+
+Description:
+    You will implement features that enable better handling of pointers by the W Language.
+    Currently, char* and int are two of the main types in use by the compiler.
+    However they are broken in different ways involving the &, *, [] operators.
+    We need to correct the handling of these operators for char, int16, int32, struct.
+
+
+
+Specific Scenarios:
+    value = *char_ptr
+    *char_ptr = value
+    
+    value = int_ptr[3]
+    int_ptr[4] = value
+
+    field_value = struct_ptr.field_name
+    struct_ptr.field_name = new_value
+
+    field_value = struct_list[5].field
+    struct_list[6].field_value = new_value
+
+
+Language Features Touched:
+    &
+    *
+    []
+    struct
+
+
+Project Files:
+    grammar.w
+    pointer_test.w
+
+    codegen.w
+    symbol_table.w
+    type_table.w
+
+
+Functions
+    grammar.w
+        promote()
+        expression()
+        type_name()
+        statement()
+        program()
+
+    symbol_table.w
+        sym_get_value()
+
+
+Acceptance Tests:
+    make tests will pass
+    make pointer_test will pass
+        subset for each milestone

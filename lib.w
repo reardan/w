@@ -107,6 +107,9 @@ void reverse(char *s):
 
 
 char* itoa(int n):
+	# definitely not thread-safe
+	# instead we could use a thread local variable
+	# or just malloc and expect the caller to free
 	char *s = "012345678901234567890"
 	int i = 0
 	int sign = n
@@ -251,6 +254,18 @@ int open_or_create(char *filename, int mode, int permissions):
 	return file
 
 
+# A bit hacky, ideally this would be seek:
+int file_size(int file):
+	int result = seek(file, 0, 2)  /* seek to end to get file size */
+	seek(file, 0, 0) /* seek back to beginning */
+	return result
+
+# A nice function to have would be char* read_filename(char* filename)
+# which would read the entire file in one go, failing with exit(1) if open/read fails.
+# This would use blocks of 1MB and realloc to read the file
+# ensuring that it can work with sockets, etc.
+
+
 int write_string(int file, char* s):
 	return write(file, s, strlen(s)) /* +1? */
 
@@ -284,6 +299,8 @@ void print(char *s):
 
 void print_error(char* s):
 	write_string(2, s)
+
+
 void print2(char* s):
 	write_string(2, s)
 
@@ -302,6 +319,7 @@ void print_hex0(char* c, int v):
 	print_error(c)
 	print_error(hex(v))
 
+
 void print_hex(char* c, int v):
 	print_hex0(c, v)
 	print_error("\x0a")
@@ -317,6 +335,7 @@ void println(char *s):
 	print(s)
 	put_char(10)
 
+
 void println2(char *s):
 	print_error(s)
 	put_error(10)
@@ -326,6 +345,7 @@ void print_n(char *s, int n):
 	write(1, s, n)
 
 
+# Debugging:
 void print_words(int addr, int count):
 	int i = 0
 	while (i < count):
@@ -336,6 +356,10 @@ void print_words(int addr, int count):
 		i = i + 1
 
 
-# Testing - uses print_funcs
+void print_registers():
+	int i
 
+
+void print_stack():
+	int i
 

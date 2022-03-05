@@ -52,6 +52,11 @@ simple: w FORCE
 	chmod +x ./bin/simple
 	./bin/simple
 
+simple_debug: w FORCE
+	./bin/wv2 simple.w >./bin/simple
+	chmod +x ./bin/simple
+	ddd ./bin/simple
+
 convert: w FORCE
 	./bin/wv2 convert.w >./bin/convert
 	chmod +x ./bin/convert
@@ -81,6 +86,11 @@ type_table_test: w FORCE
 	./bin/wv2 type_table_test.w >./bin/type_table_test
 	chmod +x ./bin/type_table_test
 	./bin/type_table_test
+
+whttp: w FORCE
+	./bin/wv2 whttp.w >./bin/whttp
+	chmod +x ./bin/whttp
+	./bin/whttp
 
 tcp: w FORCE
 	./bin/wv2 tcp.w >./bin/tcp

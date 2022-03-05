@@ -37,12 +37,12 @@ current:
 		segv handler
 		stack parser
 		virtual memory
-	net...
-		split socket / connect
-		server
-			bind
-			listen
-			accept
+	net...complete
+		split socket / connect...complete
+		server...complete
+			bind...complete
+			listen...complete
+			accept...complete
 		udp
 
 
@@ -60,8 +60,8 @@ major bugs:
 
 
 most important:
-	import subdirectory
 	type
+	import subdirectory
 	new
 	symbol
 	dict
@@ -72,6 +72,9 @@ most important:
 
 features:
 	types
+	parse c headers
+		build structs
+		enum values
 	generators
 	iterators
 	for in range()
@@ -103,9 +106,6 @@ features:
 		break
 		combine
 	dynamic typing
-	parse c headers
-		build structs
-		enum values
 
 
 test:

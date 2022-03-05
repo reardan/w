@@ -212,6 +212,9 @@ void be_start():
 	sym_define_declare_global_function("socket_accept")
 	emit(29, "\x8b\x54\x24\x04\xb8\x66\x00\x00\x00\xbb\x05\x00\x00\x00\x6a\x00\x6a\x00\x52\x89\xe1\xcd\x80\x89\xc2\x83\xc4\x0c\xc3")
 
+	# debugging
+	
+
 
 
 int sym_address(char *s);
@@ -223,6 +226,11 @@ void be_finish():
 
 	# Store pointer to library _main()
 	int t = sym_address("_main")
+	# As a backup, try to use main()
+	# TODO: should we allow this?
+	# Should we fix the asm so it doesnt crash on return?
+	if (t == 0):
+		t = sym_address("main")
 	if (t == 0):
 		error("Failed to find a _main() function. Did you import lib/testing?")
 	t = t - code_offset - 94

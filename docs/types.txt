@@ -16,7 +16,7 @@ type
 					int64
 					int128
 
-				uint
+				uint (also used as ptr/size)
 					uint8 (alias=byte)
 					uint16
 					uint24
@@ -27,6 +27,7 @@ type
 			floating point
 				float
 				double
+		pointer
 
 	struct
 	proto

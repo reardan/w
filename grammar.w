@@ -11,6 +11,12 @@ void warn_bad_promotion(int want, int got):
 		warning("'")
 	
 
+/*
+1 = char lval
+2 = int lval
+3 = int/ptr/char literal - always a word
+other = type_size
+*/
 int promote(int type):
 	int type_size = type_get_size(type)
 	if (verbosity >= 1):
@@ -23,7 +29,6 @@ int promote(int type):
 		print2(", '")
 		print2(last_identifier)
 		println2("')")
-	/* 1 = char lval, 2 = int lval, 3 = no promotion, pointer? */
 	if (type_size == 2):
 		println2("int16")
 		emit(3, "\x0f\xbf\x00") /* movsx eax, word[eax] */
@@ -61,16 +66,7 @@ int int_literal():
 	save_int(code + codepos - 4, n)
 	return 1
 
-
-
-
-
-
-# like a char_pointer_literal()
-# except it emits the code directly to be executed
-int raw_char_pointer_literal():
-	if (accept("raw\x22") == 0):
-		return 0
+	
 
 
 int process_string_literal():
@@ -98,6 +94,26 @@ int process_string_literal():
 
 		i = i + 1
 	return i
+
+
+
+
+
+
+# like a char_pointer_literal()
+# except it emits the code directly to be executed
+int raw_asm_literal():
+	if (accept("raw_asm") == 0):
+		return 0
+	expect("(")
+	if (token[0] != '"'):
+		error("double quote expected inside raw_asm( ... ) literal")
+
+	int i = process_string_literal()
+	emit(i, token)
+	get_token()
+	expect(")")
+	return 1
 
 
 
@@ -700,6 +716,8 @@ void statement():
 	else if (accept("nop")):
 		expect_or_newline(";")
 		emit(2, "\x9090") /* nop; nop */
+
+	else if(raw_asm_literal()) {}
 
 	else:
 		expression()

@@ -11,3 +11,4 @@ cannot use # on end of line comments
 compiler pipes to stdout
 no break/continue
 nested ifs require {}
+no command arg parsing
