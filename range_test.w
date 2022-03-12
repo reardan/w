@@ -32,21 +32,46 @@ int pint(int val):
 	return val
 
 */
-import lib
-
-# syscall(4, 1, "hello, world!\x0a", 15)
-	# for int32 i in range(10):
+import testing
 
 
-int main():
-	int32 result = 0
-	for int32 i in range i < 10:
-		print_int("i: ", i)
-		print_int("result: ", result)
+void test_for_in_range_basic():
+	int result = 0
+	for int i in range 10:
+		if (verbosity >= 1):
+			print_int("i: ", i)
+			print_int("result: ", result)
 		result = result + 10
-		i = i + 1
-	exit(0)
+	assert_equal(10, i)
+	assert_equal(100, result)
 
 
+void test_zero_value_nested():
+	for int i in range 1:
+		for int j in range 1:
+			assert_equal(0, j)
+			assert_equal(0, i)
 
+
+void test_for_in_range_nested():
+	int result = 0
+	for int i in range 10:
+		for int j in range 10:
+			result = result + 10
+			if (verbosity >= 1):
+				print_int0("i: ", i)
+				print_int0(", j: ", j)
+				print_int(", result: ", result)
+		assert_equal(10, j)
+	assert_equal(10, i)
+	assert_equal(1000, result)
+
+
+void test_for_in_range_tri_nested():
+	int result = 0
+	for int i in range 10:
+		for int j in range 10:
+			for int k in range 10:
+				result = result + 10
+	assert_equal(10000, result)
 

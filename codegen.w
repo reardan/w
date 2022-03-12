@@ -70,6 +70,15 @@ void push_int(int v):
 	push_int32(v)
 
 
+void mov_eax_int32(int v):
+	emit(1, "\xb8")
+	emit_int32(v)
+
+
+void mov_eax_int(int v):
+	mov_eax_int32(v)
+
+
 # todo: delete
 void be_push():
 	emit(1, "\x50") /* push %eax */

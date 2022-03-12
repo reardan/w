@@ -1,7 +1,7 @@
 int variable_declaration():
 	# type-name identifier
 	if (type_lookup(token) >= 0):
-		# println2("statement(): type identifier")
+		# println2("variable_declaration()")
 		int type = typed_identifier()
 		# = expression
 		if (accept("=")):

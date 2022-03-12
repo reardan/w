@@ -1,0 +1,35 @@
+Parse Tree for:
+"for int32 i in range i < 10:"
+
+# Parse Tree:
+for_statement()
+	accept("for")
+	variable_declaration()
+		typed_identifier()  # TODO: refactor out the '='
+			type_name("int")
+			identifier("i")
+	accept("in")
+	accept("range")
+	expression()
+		bitwise_or_expr()
+			bitwise_and_expr()
+				equality_expr()
+					relational_expr()
+						shift_expr()
+							additive_expr()
+								multiplicative_expr()
+									postfix_expr()
+										primary_expr()
+											identifier("i"):
+										primary_expr()
+									postfix_expr()
+								multiplicative_expr()
+							additive_expr()
+						shift_expr()
+					relational_expr("<"):
+						shift_expr()
+							additive_expr()
+								multiplicative_expr()
+									postfix_expr()
+										primary_expr()
+											int_constant("10")

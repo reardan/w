@@ -66,8 +66,8 @@ void statement():
 		save_int(code + p2 - 4, codepos - p2)
 
 	else if (while_statement()) {}
-	else if(for_statement()) {}
-	else if(accept("pass")):
+	else if (for_statement()) {}
+	else if (accept("pass")):
 		emit(2, "\x89\xff")  /* mov edi,edi ; does not work :( */
 
 	else if (accept("return")):
@@ -96,7 +96,7 @@ void statement():
 		expect_or_newline(";")
 		emit(2, "\x9090") /* nop; nop */
 
-	else if(raw_asm_literal()) {}
+	else if (raw_asm_literal()) {}
 
 	else:
 		expression()

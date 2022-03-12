@@ -24,7 +24,10 @@ int expression():
 		else:
 			emit(3, "\x5b\x89\x03") /* pop %ebx ; mov %eax,(%ebx) */
 		stack_pos = stack_pos - 1
+
 		type = 3  # no promotion
 		# type = type2
+		# assert(type == type2)
+		# later: assert(convertable(type, type2))
 
 	return type
