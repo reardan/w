@@ -573,6 +573,34 @@ int typed_identifier():
 	return type
 
 
+int variable_declaration():
+	# type-name identifier
+	if (type_lookup(token) >= 0):
+		# println2("statement(): type identifier")
+		int type = typed_identifier()
+		# = expression
+		if (accept("=")):
+			int type = expression()
+			# TODO: Fix to use & instead?  e.g. int*f = &func
+			if (pointer_indirection == 0)
+				promote(type)
+		pointer_indirection = 0
+
+		# Compute size of struct else use 1 word
+		int size = 1
+		int num_args = type_num_args(type)
+		if (num_args > 0):
+			# print_string("num_args > 0 for ", token)
+			size = num_args
+		int i = 0
+		while (i < size):
+			be_push()
+			i = i + 1
+		stack_pos = stack_pos + size
+		return type
+	return 0-1
+
+
 
 /*
 for type-name indentifier in range (int-literal):
@@ -586,7 +614,7 @@ int for_statement():
 	if (accept("for") == 0):
 		return 0
 
-	int type = typed_identifier()
+	int type = variable_declaration()
 
 	expect("in")
 	expect("range")
@@ -598,6 +626,8 @@ int for_statement():
 	p2 = codepos
 
 	statement() /* will handle ':' scoping */
+
+	 /* increment */
 
 	emit(5, "\xe9....") /* jmp ... */
 	save_int(code + codepos - 4, p1 - codepos)
@@ -653,29 +683,8 @@ void statement():
 		stack_pos = s
 
 	# type-name identifier
-	else if (type_lookup(token) >= 0):
-		# println2("statement(): type identifier")
-		int type = typed_identifier()
-		# = expression
-		if (accept("=")):
-			int type = expression()
-			# TODO: Fix to use & instead?  e.g. int*f = &func
-			if (pointer_indirection == 0)
-				promote(type)
-		pointer_indirection = 0
+	else if (variable_declaration() >= 0):
 		expect_or_newline(";")
-
-		# Compute size of struct else use 1 word
-		int size = 1
-		int num_args = type_num_args(type)
-		if (num_args > 0):
-			# print_string("num_args > 0 for ", token)
-			size = num_args
-		int i = 0
-		while (i < size):
-			be_push()
-			i = i + 1
-		stack_pos = stack_pos + size
 
 	# if ( expression ) statement else statement
 	else if (accept("if")):
