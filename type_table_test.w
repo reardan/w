@@ -3,7 +3,7 @@ import type_table
 
 
 void test_type_size():
-	assert_equal(812, type_size())
+	assert_equal(816, type_size())
 
 
 # same as list.test_push_pop()
@@ -112,4 +112,14 @@ void test_type_with_fields_total_size():
 	type_add_arg(type_index, "d", int_type)
 	assert_equal(12, type_get_size(type_index))
 
+
+
+# Test pointer level
+void test_pointer_level():
+	push_basic_types()
+	int first_pointer = type_lookup_pointer("int", 1)
+	assert1(first_pointer > 0)
+	assert_equal(first_pointer+1, type_lookup_pointer("int", 2))
+	assert_equal(first_pointer+2, type_lookup_pointer("char", 1))
+	assert_equal(first_pointer+3, type_lookup_pointer("char", 2))
 

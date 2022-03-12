@@ -24,12 +24,14 @@ void compile(char* fn):
 	program()
 
 
-void compile_save(char* fn):
+void compile_save(char* fn, int new_wildcard_import):
 	char* old_filename = filename
 	int old_file = file
 	int old_line_number = line_number + 1
 	int old_tab_level = old_tab_level
+	int old_wildcard_import = wildcard_import
 
+	wildcard_import = new_wildcard_import
 	if (verbosity >= 2):
 		print_string("compiling ", fn)
 
@@ -40,10 +42,9 @@ void compile_save(char* fn):
 	file = old_file
 	line_number = old_line_number
 	tab_level = old_tab_level
-	nextc = get_character()
-	get_token()
+	wildcard_import = old_wildcard_import
 
-	if (verbosity >= 1):
+	if (verbosity >= 0):
 		print_string("back to ", filename)
 
 

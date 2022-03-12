@@ -99,6 +99,15 @@ symtype: 0:notype, 1:object, 2:func
 */
 int pointer_indirection
 void sym_declare(char *s, int type, int visibility, int value, int symtype):
+	if (verbosity >= 1):
+		print2(itoa(line_number))
+		print_string0(": sym_declare('", s)
+		print_int0("', type=", type)
+		print_char0(", visibility='", visibility)
+		print_hex0("', value=", value)
+		print_int0(", symtype=", symtype)
+		println2(")")
+
 	int t = table_pos
 	int i = 0
 	while (s[i] != 0):
@@ -202,7 +211,7 @@ void sym_get_value(char *s):
 	if ((scope_type == 'L') | (scope_type == 'A')):
 		# Use pointers directly
 		if (is_indirect_pointer):
-			if (verbosity >= 1):
+			if (verbosity >= 0):
 				print_error("pointer_indirection for ")
 				sym_info(t)
 				warning(s)
@@ -330,7 +339,7 @@ void emit_debugging_symbols():
 
 	# Emit section header name strings
 	emit_section_name("strings", string_section_header, strings_addr)
-	emit_section_name("symbol_table", symbol_section_header, strings_addr)
+	emit_section_name(".symtab", symbol_section_header, strings_addr)
 	emit_section_name(".debug_info", debug_info_section_header, strings_addr)
 
 	# Store string strings_addr + length

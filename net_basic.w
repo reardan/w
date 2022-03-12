@@ -1,5 +1,5 @@
 import lib
-import uint
+import integer
 
 
 # try #3

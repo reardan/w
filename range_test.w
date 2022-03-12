@@ -32,13 +32,18 @@ int pint(int val):
 	return val
 
 */
+import lib
+
+# syscall(4, 1, "hello, world!\x0a", 15)
+	# for int32 i in range(10):
 
 
-int _main():
-	debugger
-	for int i in range(10):
-		syscall(4, 1, "hello, world!\x0a", 15)
-		debugger
+int main():
+	int32 result = 0
+	for int32 i in range i < 10:
+		print_int("i: ", i)
+		print_int("result: ", result)
+		result = result + 10
 		i = i + 1
 	exit(0)
 

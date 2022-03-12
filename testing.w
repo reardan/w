@@ -63,6 +63,7 @@ void execute_tests():
 			println("")
 			int* test_func = *test_addr
 
+			print_hex("test_func: ", test_func)
 			test_func()
 
 			print("Test '")

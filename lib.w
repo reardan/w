@@ -214,6 +214,40 @@ int starts_with(char *s, char* prefix):
 	return 1
 
 
+int ends_with(char *str, char* suffix):
+	# Find end of string
+	char* cur_str = str
+	while (cur_str[0]):
+		cur_str = cur_str + 1
+
+	# Find end of suffix
+	char* cur_suffix = suffix
+	while (cur_suffix[0]):
+		cur_suffix = cur_suffix + 1
+
+	# Reverse backwards through both strings
+	while (cur_str >= str & cur_suffix >= suffix):
+		if (cur_str[0] != cur_suffix[0]):
+			return 0
+		cur_str = cur_str - 1
+		cur_suffix = cur_suffix - 1
+
+	# Return true if we processed the entire suffix
+	if (cur_suffix < suffix):
+		return 1
+	return 0
+
+
+int str_replace(char* str, int search, int replace):
+	int replacement_count = 0
+	while (str[0]):
+		if (str[0] == search):
+			str[0] = replace
+			replacement_count = replacement_count + 1
+		str = str + 1
+	return replacement_count
+
+
 int strcmp(char *dst, char *src):
 	while (dst[0] & src[0]):
 		if (dst[0] != src[0]):
@@ -228,8 +262,8 @@ int strcmp(char *dst, char *src):
 int create_file(char* filename, int permissions):
 	return syscall(8, filename, permissions, 0)
 
-/* mode: 0 - read, 1 - write, 2 - readwrite */
-int open(char *filename, int mode, int permissions)
+# mode: 0 - read, 1 - write, 2 - readwrite
+int open(char *filename, int mode, int permissions):
 	return syscall(5, filename, mode, permissions)
 
 int write(int file, char* s, int length):
@@ -241,9 +275,26 @@ int read(int file, char* buf, int size):
 int close(int file):
 	return syscall(6, file, 0, 0)
 
-/* reference: 0 - beginning, 1 - current position, 2 - end of file */
+# reference: 0 - beginning, 1 - current position, 2 - end of file
 int seek(int file, int offset, int reference):
 	return syscall(19, file, offset, reference)
+
+int mmap(int addr, int length, int prot, int flags):
+	return syscall7(90, addr, length, prot, flags, 0, 0)
+
+int sys_clone(int flags, int child_stack):
+	return syscall(56, flags, child_stack)
+
+# Directory syscalls:
+int mkdir(char* path, int mode):
+	return syscall(39, path, mode, 0)
+
+int rmdir(char* path):
+	return syscall(40, path, 0, 0)
+
+int getdents(int file, char* buf, int count):
+	return syscall(141, file, buf, count)
+
 ################################################################################
 
 
@@ -254,13 +305,14 @@ int open_or_create(char *filename, int mode, int permissions):
 	return file
 
 
-# A bit hacky, ideally this would be seek:
+
+# A bit hacky, ideally this would be fstat:
 int file_size(int file):
 	int result = seek(file, 0, 2)  /* seek to end to get file size */
 	seek(file, 0, 0) /* seek back to beginning */
 	return result
 
-# A nice function to have would be char* read_filename(char* filename)
+# A nice function to have would be char* read_until_empty(char* filename)
 # which would read the entire file in one go, failing with exit(1) if open/read fails.
 # This would use blocks of 1MB and realloc to read the file
 # ensuring that it can work with sockets, etc.
@@ -305,6 +357,11 @@ void print2(char* s):
 	write_string(2, s)
 
 
+void print_char0(char* c, int v):
+	print_error(c)
+	put_error(v)
+
+
 void print_int0(char* c, int v):
 	print_error(c)
 	print_error(itoa(v))
@@ -325,9 +382,13 @@ void print_hex(char* c, int v):
 	print_error("\x0a")
 
 
-void print_string(char* s1, char* s2):
+void print_string0(char* s1, char* s2):
 	print_error(s1)
 	print_error(s2)
+
+
+void print_string(char* s1, char* s2):
+	print_string0(s1, s2)
 	print_error("\x0a")
 
 
@@ -339,6 +400,24 @@ void println(char *s):
 void println2(char *s):
 	print_error(s)
 	put_error(10)
+
+
+void print_color(char* s, int color):
+	print2("\x1b[")
+	print2(itoa(color))
+	print2("m")
+	print2(s)
+	print2("\x1b[0m")
+
+
+void print_color_bg(char* s, int color, int background):
+	print2("\x1b[")
+	print2(itoa(color))
+	print2(";")
+	print2(itoa(background))
+	print2("m")
+	print2(s)
+	print2("\x1b[0m")
 
 
 void print_n(char *s, int n):
@@ -356,10 +435,118 @@ void print_words(int addr, int count):
 		i = i + 1
 
 
-void print_registers():
-	int i
+
+struct register_context:
+	int32 eax
+	int32 ecx
+	int32 edx
+	int32 ebx
+	int32 esp
+	int32 ebp
+	int32 esi
+	int32 edi
 
 
 void print_stack():
-	int i
+	println2("Stack:")
+	register_context context
+	get_context(context)
+	print_words(context.esp, 20)
+
+
+void print_registers():
+	println2("Registers:")
+	register_context context
+	get_context(context)
+	print_hex("eax: ", context.eax)
+	print_hex("ecx: ", context.ecx)
+	print_hex("edx: ", context.edx)
+	print_hex("ebx: ", context.ebx)
+	print_hex("esp: ", context.esp)
+	print_hex("ebp: ", context.ebp)
+	print_hex("esi: ", context.esi)
+	print_hex("edi: ", context.edi)
+	println2("")
+
+
+# /usr/include/asm-generic/errno-base.h
+int translate_syscall_failure(int err):
+	if (err >= 0):
+		return err
+
+	err = 0 - err
+	print2(itoa(err))
+	print2(": ")
+
+	if(err == 1):
+		println2("EPERM: Operation not permitted.")
+	else if(err == 2):
+		println2("ENOENT: No such file or directory.")
+	else if(err == 3):
+		println2("ESRCH: No such process.")
+	else if(err == 4):
+		println2("EINTR: Interrupted system call.")
+	else if(err == 5):
+		println2("EIO: I/O error.")
+	else if(err == 6):
+		println2("ENXIO: No such device or address.")
+	else if(err == 7):
+		println2("E2BIG: Argument list too long.")
+	else if(err == 8):
+		println2("ENOEXEC: Exec format error.")
+	else if(err == 9):
+		println2("EBADF: Bad file number.")
+	else if(err == 10):
+		println2("ECHILD: No child processes.")
+	else if(err == 11):
+		println2("EAGAIN: Try again.")
+	else if(err == 12):
+		println2("ENOMEM: Out of memory.")
+	else if(err == 13):
+		println2("EACCES: Permission denied.")
+	else if(err == 14):
+		println2("EFAULT: Bad address.")
+	else if(err == 15):
+		println2("ENOTBLK: Block device required.")
+	else if(err == 16):
+		println2("EBUSY: Device or resource busy.")
+	else if(err == 17):
+		println2("EEXIST: File exists.")
+	else if(err == 18):
+		println2("EXDEV: Cross-device link.")
+	else if(err == 19):
+		println2("ENODEV: No such device.")
+	else if(err == 20):
+		println2("ENOTDIR: Not a directory.")
+	else if(err == 21):
+		println2("EISDIR: Is a directory.")
+	else if(err == 22):
+		println2("EINVAL: Invalid argument.")
+	else if(err == 23):
+		println2("ENFILE: File table overflow.")
+	else if(err == 24):
+		println2("EMFILE: Too many open files.")
+	else if(err == 25):
+		println2("ENOTTY: Not a typewriter.")
+	else if(err == 26):
+		println2("ETXTBSY: Text file busy.")
+	else if(err == 27):
+		println2("EFBIG: File too large.")
+	else if(err == 28):
+		println2("ENOSPC: No space left on device.")
+	else if(err == 29):
+		println2("ESPIPE: Illegal seek.")
+	else if(err == 30):
+		println2("EROFS: Read-only file system.")
+	else if(err == 31):
+		println2("EMLINK: Too many links.")
+	else if(err == 32):
+		println2("EPIPE: Broken pipe.")
+	else if(err == 33):
+		println2("EDOM: Math argument out of domain of func.")
+	else if(err == 34):
+		println2("ERANGE: Math result not representable.")
+	else:
+		println2("Unknown error number")
+	exit(1)
 

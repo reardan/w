@@ -24,18 +24,31 @@ void test_itoa_0():
 
 
 void test_strcpy():
-	int str = malloc(1000)
-	int cur = str
+	char* str = malloc(1000)
+	char* cur = str
 	cur = strcpy(cur, "one ")
 	cur = strcpy(cur, "two ")
 	cur = strcpy(cur, "three ")
 	assert_strings_equal("one two three ", str)
+	free(str)
+
+
+void test_strcpy2000():
+	char* str = malloc(10000)
+	int i = 0
+	char* cur = str
+	while (i < 2000):
+		cur = strcpy(cur, "one ")
+		i = i + 1
+	assert_strings_equal("one ", str + 1999 * 4)
+	free(str)
 
 
 void test_strncpy():
-	int str = malloc(100)
+	char* str = malloc(100)
 	strncpy(str, "abcd1234", 4)
 	assert_strings_equal("abcd", str)
+	free(str)
 
 
 void test_starts_with():
@@ -115,6 +128,36 @@ void test_intstrlen():
 	assert_equal(3, intstrlen(100))
 	assert_equal(4, intstrlen(1000))
 	assert_equal(7, intstrlen(1000000))
+
+
+void test_ends_with():
+	assert1(ends_with("hi there", "there"))
+	assert1(ends_with("hi there", "bere") == 0)
+	assert1(ends_with("hi", "hi"))
+	assert1(ends_with("ahi", "hi"))
+	assert1(ends_with("hi", "i"))
+	assert1(ends_with("hi", ""))
+
+
+void test_str_replace_path():
+	char* import_path = "path.to.subfolder.file"
+	int count = str_replace(import_path, '.', '/')
+	assert_strings_equal("path/to/subfolder/file", import_path)
+	assert_equal(3, count)
+
+
+void test_str_replace_repeated():
+	char* repeated = ".........."
+	int count = str_replace(repeated, '.', '*')
+	assert_strings_equal("**********", repeated)
+	assert_equal(10, count)
+
+
+void test_str_replace_empty():
+	char* empty = ""
+	int count = str_replace(empty, '.', '*')
+	assert_strings_equal("", empty)
+	assert_equal(0, count)
 
 
 # Hex

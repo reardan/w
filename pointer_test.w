@@ -1,27 +1,83 @@
-# Milestone 1:
-void test_char_ptr():
-    # Currently works:
-    char* char_ptr = "hi"
-    assert_equal('h', char_ptr[0])
-
-    # Doesn't currently work:
-    assert_equal(*char_ptr, 'h')
-    *char_ptr = 'a'
-    assert(strcmp("ai", char_ptr) == 0)
+import testing
 
 
-# Milestone 2:
-void test_int_ptr():
-    int value = 10
-    int *ptr = &value
-    *ptr = 20
-    assert_equal(20, value)
+int func():
+	return 1337
 
 
-# Milestone 3:
+void test_int_func_pointer():
+	int* test_func = func
 
-# Milestone 4: Struct Pointers
+	print_hex("test_func: ", test_func)
+	# print_hex("*test_func: ", *test_func)
+	assert_equal(1337, test_func())
+
+
+
+/* void test_int_pointer():
+	int want = 7777
+	print_hex("want: ", want)
+	print_hex("&want: ", &want)
+	int* ip = &want
+	print_hex("ip: ", ip)
+	int got = *ip
+	print_hex("got: ", got)
+	assert_equal(want, got)
+
+
+void test_char_lookup_0():
+	char* want = "a"
+	int got = want[0]
+	assert_equal('a', got)
+
+
+void test_char_lookup_6():
+	char* want = "hello world"
+	int got = want[6]
+	assert_equal('w', got)
+
+
+void test_char_lookup_hi():
+	char* char_ptr = "hi"
+	assert_equal('h', char_ptr[0])
+	assert_equal('i', char_ptr[1])
+	assert_equal(0, char_ptr[2]) */
+
+
+/* # Milestone 1:
+void test_char_ptr_ms1():
+	# char* dereference does not currently work:
+	# the problem is it retrieves the full integer value
+	# the type needs to be char rathar than char* or int
+	# so that promote() chooses the correct value
+	char* char_ptr = "hi"
+
+	assert_equal_hex('h', *char_ptr)
+	*char_ptr = 'a'
+	# assert(strcmp("ai", char_ptr) == 0) */
+
+
+/* # Milestone 2: ampersand operator
+void test_ptr_to_int_address():
+	int value = 10
+	int *ptr = &value
+	*ptr = 20
+	assert_equal(20, value) */
+
+
+
+/* # Milestone 3: int[]
+void test_int_pointer_brackets():
+	int array_ptr = malloc(4 * 10)
+	array_ptr[0] = 879
+	assert_equal(879, array_ptr[0])
+	array_ptr[2] = 9876
+	assert_equal(9876, array_ptr[2]) */
+
+
 /*
+# Milestone 4: Struct Pointers
+
 void fill_point(point* pt):
 	pt.x = 1
 	pt.y = 2

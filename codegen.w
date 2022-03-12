@@ -1,4 +1,4 @@
-import uint
+import integer
 
 
 char *code
@@ -56,7 +56,26 @@ void emit_int(int v):
 	emit_int32(v)
 
 
+void push_int8(int v):
+	emit_int8("\x6a")
+	emit_int8(v)
+
+
+void push_int32(int v):
+	emit_int8("\x68")
+	emit_int32(v)
+
+
+void push_int(int v):
+	push_int32(v)
+
+
+# todo: delete
 void be_push():
+	emit(1, "\x50") /* push %eax */
+
+
+void push_eax():
 	emit(1, "\x50") /* push %eax */
 
 
@@ -177,7 +196,18 @@ void be_start():
 	sym_define_declare_global_function("syscall7")
 	/* mov eax,[esp+28] ; mov ebx,[esp+24] ; mov ecx,[esp+20] ; mov edx,[esp+16] ; mov esi,[esp+12] ; mov edi,[esp+8] ; mov ebp,[esp+4] ; int 0x80 ; ret */
 	emit(20, "\x8b\x44\x24\x1c\x8b\x5c\x24\x18\x8b\x4c\x24\x14\x8b\x54\x24\x10\x8b\x74\x24\x0c")
-	emit(11, "\x8b\x7c\x24\x08\x8b\x6c\x24\x04\xcd\x80\xc3")
+	emit(10, "\x89\x68\x14\x89\x70\x18\x89\x78\x1c\xc3")
+
+	# debug
+	sym_define_declare_global_function("get_context")
+	# push eax; mov eax,[esp+8] ; mov [eax+4],ecx ; pop ecx ; mov [eax+0],ecx ; mov [eax+8],edx ; mov [eax+12],ebx; mov [eax+16],esp ; mov [eax+20], ebp ; mov [eax+24], esi ; mov [eax+28],edi ; ret
+	emit(20, "\x50\x8b\x44\x24\x08\x89\x48\x04\x59\x89\x08\x89\x50\x08\x89\x58\x0c\x89\x60\x10")
+	emit(10, "\x89\x78\x14\x89\x70\x18\x89\x78\x1c\xc3")
+
+	# push eax ; mov eax,[esp+8] ; mov [eax+4],ecx ; mov [eax+8],edx ; mov [eax+12],ebx ; mov [eax+16],esp ; mov [eax+20],ebp ; mov [eax+24],esi ; mov [eax+28],edi ; pop eax ; ret ; 
+	sym_define_declare_global_function("store_context")
+	emit(20, "\x50\x8b\x44\x24\x08\x89\x48\x04\x89\x50\x08\x89\x58\x0c\x89\x60\x10\x89\x68\x14")
+	emit(9, "\x89\x70\x18\x89\x78\x1c\x58\xc3")
 
 	# endian
 	sym_define_declare_global_function("swap_endian")
@@ -207,14 +237,21 @@ void be_start():
 
 	sym_define_declare_global_function("listen")
 	emit(27, "\x8b\x54\x24\x04\x6a\x00\x52\x89\xe1\xb8\x66\x00\x00\x00\xbb\x04\x00\x00\x00\xcd\x80\x83\xc4\x08\x89\xd0\xc3")
-	# emit(24, "\x8b\x54\x24\x04\xb8\x66\x00\x00\x00\xbb\x04\x00\x00\x00\x6a\x00\x52\x89\xe1\xcd\x80\x83\xc4\x08")
 
 	sym_define_declare_global_function("socket_accept")
 	emit(29, "\x8b\x54\x24\x04\xb8\x66\x00\x00\x00\xbb\x05\x00\x00\x00\x6a\x00\x6a\x00\x52\x89\xe1\xcd\x80\x89\xc2\x83\xc4\x0c\xc3")
 
-	# debugging
+	# thread_i386.s
+	sym_define_declare_global_function("thread_create")
+	emit(54, "\x53\xe8\x15\x00\x00\x00\x8d\x88\xf8\xff\x3f\x00\x8f\x01\xbb\x00\x8f\x01\x80\xb8\x78\x00\x00\x00\xcd\x80\xc3")
 	
+	sym_define_declare_global_function("stack_create")
+	emit(28, "\xbb\x00\x00\x00\x00\xb9\x00\x00\x40\x00\xba\x03\x00\x00\x00\xbe\x22\x01\x00\x00\xb8\xc0\x00\x00\x00\xcd\x80\xc3")
 
+	# function_call(func_ptr)
+	sym_define_declare_global_function("function_call")
+	# mov eax,[esp+4]; jmp eax
+	emit(6, "\x8b\x44\x24\x04\xff\xe0")
 
 
 int sym_address(char *s);
@@ -228,11 +265,11 @@ void be_finish():
 	int t = sym_address("_main")
 	# As a backup, try to use main()
 	# TODO: should we allow this?
-	# Should we fix the asm so it doesnt crash on return?
 	if (t == 0):
 		t = sym_address("main")
 	if (t == 0):
 		error("Failed to find a _main() function. Did you import lib/testing?")
+	# Should we fix the asm so it doesnt crash on return?
 	t = t - code_offset - 94
 
 	if (verbosity > 0):

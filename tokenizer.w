@@ -60,6 +60,17 @@ void takechar():
 	nextc = get_character()
 
 
+# Read UNTIL end of line or end of file
+# (but NOT the newline itself) 
+# Also append a 0 so the string is zero terminated
+void read_until_end():
+	while (nextc != 10 & nextc != 0):
+		takechar()
+	
+	token[token_i] = 0
+	token_i = token_i + 1
+
+
 void get_token():
 	token_newline = 0
 	int w = 1

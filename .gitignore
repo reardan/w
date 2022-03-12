@@ -4,3 +4,4 @@ test
 test_output.txt
 *_test
 bin/
+log/

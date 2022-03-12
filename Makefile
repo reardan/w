@@ -16,7 +16,17 @@ update:
 test: w FORCE
 	./bin/wv2 test.w >./bin/test
 	chmod +x ./bin/test
-	./bin/test arg1 arg2 arg3 -o output -i=input --input=doubledash
+	./bin/test
+
+test_debug: w FORCE
+	./bin/wv2 test.w >./bin/test
+	chmod +x ./bin/test
+	ddd ./bin/test
+
+testing_ground: w FORCE
+	./bin/wv2 testing_ground.w >./bin/testing_ground
+	chmod +x ./bin/testing_ground
+	./bin/testing_ground arg1 arg2 arg3 -o output -i=input --input=doubledash
 
 asm_test: w FORCE
 	./bin/wv2 asm_test.w >./bin/asm_test
@@ -32,6 +42,27 @@ net: w FORCE
 	./bin/wv2 net.w >./bin/net
 	chmod +x ./bin/net
 	./bin/net
+
+pointer_test: w FORCE
+	./bin/wv2 pointer_test.w >./bin/pointer_test
+	chmod +x ./bin/pointer_test
+	./bin/pointer_test
+
+hello: w FORCE
+	./bin/wv2 hello.w >./bin/hello
+	chmod +x ./bin/hello
+	./bin/hello
+
+import_test: w FORCE
+	./bin/wv2 import_test.w >./bin/import_test
+	chmod +x ./bin/import_test
+	./bin/import_test
+
+
+directory_test: w FORCE
+	./bin/wv2 directory_test.w >./bin/directory_test
+	chmod +x ./bin/directory_test
+	./bin/directory_test
 
 net_log_socket: FORCE
 	sudo stap -e 'probe syscall.socket { printf("%s[%d] -> %s(%s)\n", execname(), pid(), name, argstr) }'
@@ -87,6 +118,26 @@ type_table_test: w FORCE
 	chmod +x ./bin/type_table_test
 	./bin/type_table_test
 
+logging: w FORCE
+	./bin/wv2 logging.w >./bin/logging
+	chmod +x ./bin/logging
+	./bin/logging
+
+threading: w FORCE
+	./bin/wv2 threading.w >./bin/threading
+	chmod +x ./bin/threading
+	./bin/threading
+
+threading_test: w FORCE
+	./bin/wv2 threading_test.w >./bin/threading_test
+	chmod +x ./bin/threading_test
+	./bin/threading_test
+
+threading_test_debug: w FORCE
+	./bin/wv2 threading_test.w >./bin/threading_test
+	chmod +x ./bin/threading_test
+	ddd ./bin/threading_test
+
 whttp: w FORCE
 	./bin/wv2 whttp.w >./bin/whttp
 	chmod +x ./bin/whttp
@@ -119,6 +170,11 @@ repl: FORCE
 	chmod +x ./bin/repl
 	./bin/repl test.w >./bin/test
 
+for: w FORCE
+	./bin/wv2 for_test.w >./bin/for_test
+	chmod +x ./bin/for_test
+	./bin/for_test
+
 range: w FORCE
 	./bin/wv2 range_test.w >./bin/range_test
 	chmod +x ./bin/range_test
@@ -143,5 +199,10 @@ clean:
 w: *.w
 	./w w.w >./bin/wv2
 	chmod +x ./bin/wv2
+
+
+# sudo apt install radare2
+asm_codegen_get_context:
+	rasm2 -a x86 -b 32 -C "mov eax,[esp+4]; jmp eax"
 
 FORCE:

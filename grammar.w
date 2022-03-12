@@ -1,10 +1,13 @@
 
 char *last_identifier
+int wildcard_import
 
 
 void warn_bad_promotion(int want, int got):
 	if (want != got):
-		print2("wanted '")
+		print2("promotion type size for ")
+		print2(last_identifier)
+		print2(": wanted '")
 		print2(itoa(want))
 		print2("' got ")
 		print2(itoa(got))
@@ -12,36 +15,83 @@ void warn_bad_promotion(int want, int got):
 	
 
 /*
-1 = char lval
-2 = int lval
-3 = int/ptr/char literal - always a word
+0 = void
+1 = char lval  SWAP
+2 = int lval   SWAP (to 5 for now 'int32')
+3 = int/ptr/char literal - always a word (dont promote!)
 other = type_size
 */
 int promote(int type):
 	int type_size = type_get_size(type)
+	int type_pointer_level = type_get_pointer_level(type)
+
 	if (verbosity >= 1):
-		print2("promote(")
+		print2(itoa(line_number))
+		print2(": promote(")
 		print2(itoa(type))
 		print2("=")
 		print2(type_get_name(type))
 		print2(", size=")
 		print2(itoa(type_size))
+		print2(", pointer_level=")
+		print2(itoa(type_pointer_level))
 		print2(", '")
 		print2(last_identifier)
 		println2("')")
-	if (type_size == 2):
-		println2("int16")
-		emit(3, "\x0f\xbf\x00") /* movsx eax, word[eax] */
-	else if (type_size == 1):
-		emit(3, "\x0f\xb6\x00") /* movsbl (%eax),%eax */
-	else if (type == 1):
-		# warn_bad_promotion(1, type_size)  # TODO: FIX
+
+	# old char:
+	if (type == 1):
 		emit(3, "\x0f\xbe\x00") /* movsbl (%eax),%eax */
-	else if (type == 3) {}
-	else:
-		# warn_bad_promotion(4, type_size)   # TODO: FIX
+	# old int/char*/everything
+	else if (type == 2):
+		emit(2, "\x8b\x00") /* mov (%eax),%eax */
+	# int32:
+	else if (type == 5):
 		emit(2, "\x8b\x00") /* mov (%eax),%eax */
 
+	if (type_pointer_level > 0):
+		emit(2, "\x8b\x00") /* mov (%eax),%eax */
+		return type
+
+	return type
+
+
+/*
+typename:
+	0 = void
+	1 = int
+	2 = char
+*/
+int type_name():
+	int type = 0
+	pointer_indirection = 0
+	type = type_lookup(token)
+	if (type < 0):
+		print_error("unknown type name: '")
+		print_error(token)
+		error("'")
+
+	char* token_copy = strclone(token)
+	get_token()
+
+	int all_pointer_level = 0
+	while (accept("*")) {
+		all_pointer_level = all_pointer_level + 1
+		if (type != 2):
+			if (verbosity >= 1):
+				warning("'*' accepted")
+			pointer_indirection = pointer_indirection + 1
+	}
+	if (all_pointer_level > 0):
+		int next_pointer_type = type_lookup_pointer(token_copy, all_pointer_level)
+		if (verbosity >= 1):
+			print2(itoa(line_number))
+			print2(": FOUND POINTER INDIRECTION DECLARATION: ")
+			print_int(": pointer_type: ", next_pointer_type)
+		# TODO: fix type system so this works:
+		# return next_pointer_type
+
+	free(token_copy)
 	return type
 
 
@@ -54,7 +104,7 @@ int identifier():
 
 
 int int_literal():
-	if ((token[0]) < '0' |  & (token[0] > '9')):
+	if ((token[0]) < '0' |  (token[0] > '9')):
 		return 0
 	int n = 0
 	int i = 0
@@ -65,8 +115,6 @@ int int_literal():
 	emit(5, "\xb8....") /* mov $x,%eax */
 	save_int(code + codepos - 4, n)
 	return 1
-
-	
 
 
 int process_string_literal():
@@ -96,10 +144,6 @@ int process_string_literal():
 	return i
 
 
-
-
-
-
 # like a char_pointer_literal()
 # except it emits the code directly to be executed
 int raw_asm_literal():
@@ -116,7 +160,6 @@ int raw_asm_literal():
 	return 1
 
 
-
 int char_pointer_literal():
 	if (token[0] != '"'):
 		return 0
@@ -129,7 +172,6 @@ int char_pointer_literal():
 	emit(1, "\x58")
 
 	return 1
-
 
 
 int expression();
@@ -149,7 +191,7 @@ int primary_expr():
 
 	# Identifier
 	else if (identifier()) {
-		type = 2
+		type = 5
 		new_type = sym_type(token)
 		# TODO: fix int type (1)
 		if (new_type != 1):
@@ -207,8 +249,9 @@ int postfix_expr():
 		binary1(type)
 		/* pop %ebx ; add %ebx,%eax */
 		binary2(expression(), 3, "\x5b\x01\xd8")
+		/* TODO: pop ebx; mul ebx,{1,4,8,type_size,...}; add eax,ebx */
 		expect("]")
-		type = 1
+		type = 1  # promote to char
 	
 	else if (accept("(")):
 		int s = stack_pos
@@ -231,10 +274,13 @@ int postfix_expr():
 
 		emit(7, "\x8b\x84\x24....") /* mov (n * 4)(%esp),%eax */
 		save_int(code + codepos - 4, (stack_pos - s - 1) << 2)
+		if (type_lookup_pointer(type) > 0):
+			warning("type_lookup_pointer > 0")
+			emit(2, "\x8b\x00") /* mov (%eax),%eax */
 		emit(2, "\xff\xd0") /* call *%eax */
 		be_pop(stack_pos - s)
 		stack_pos = s
-		type = 3
+		type = 3  # dont promote
 
 	else if (accept(".")):
 		# For structures, find offset of field name
@@ -253,6 +299,13 @@ int postfix_expr():
 
 			# use child type:
 			type = type_get_field_type(type, token)
+			if (type < 0):
+				print_int0("child field not found: '", type)
+				error("")
+			if (verbosity >= 1):
+				print2(itoa(line_number))
+				print_string0(": using child type: ", type_get_name(type))
+				print_int(": ", type)
 
 		get_token()
 		/*while (accept(".")):
@@ -266,7 +319,7 @@ int postfix_expr():
 int multiplicative_expr();
 /*
 unary-operator
-& * + - ~ !
+& * + - / !
 
 unary-expression
 	postfix-expression
@@ -277,14 +330,22 @@ int unary_expression():
 	# untested:
 	if (accept("&")):
 		type = multiplicative_expr()
+		char* type_name = type_get_name(type)
+		int pointer_level = type_get_pointer_level(type)
+		type = type_lookup_pointer(type_name, pointer_level + 1)
+		if (type < 0):
+			print_string0("type pointer not found during &: '", type_name)
+			error("'")
 		return type
 	else if (accept("*")):
 		type = multiplicative_expr()
-/*		print_error("unary * type: ")
-		print_error(itoa(type))
-		print_error("\x0alast symbol: ")
-		print_error(last_global_declaration)
-		print_error("\x0a")*/
+		if (verbosity >= 1):
+			print_error(itoa(line_number))
+			print_error(": unary * type: ")
+			print_error(itoa(type))
+			print_error(", last symbol: ")
+			print_error(last_global_declaration)
+			print_error("\x0a")
 		promote(type)
 		return type
 	# untested:
@@ -470,34 +531,11 @@ int expression():
 		else:
 			emit(3, "\x5b\x89\x03") /* pop %ebx ; mov %eax,(%ebx) */
 		stack_pos = stack_pos - 1
-		# type = 3
-		type = type2
+		type = 3  # no promotion
+		# type = type2
 
 	return type
 
-
-/*
-typename:
-	void
-	int
-	char
-*/
-int type_name():
-	int type = 0
-	pointer_indirection = 0
-	type = type_lookup(token)
-	if (type < 0):
-		print_error("unknown type name: '")
-		print_error(token)
-		error("'")
-	get_token()
-	while (accept("*")) {
-		if (type == 1):
-			if (verbosity > 0):
-				warning("'*' accepted")
-			pointer_indirection = pointer_indirection + 1
-	}
-	return type
 
 void statement();
 # while ( expression ) statement
@@ -508,6 +546,7 @@ int while_statement():
 	if (accept("while") == 0):
 		return 0
 
+	# if not expression: jmp after statement block
 	expect("(")
 	p1 = codepos
 	promote(expression())
@@ -517,11 +556,21 @@ int while_statement():
 
 	statement()
 
+	# loop
 	emit(5, "\xe9....") /* jmp ... */
+
+	# backtrace: save jmp out, loop jmp addresses
 	save_int(code + codepos - 4, p1 - codepos)
 	save_int(code + p2 - 4, codepos - p2)
 
 	return 1
+
+
+int typed_identifier():
+	int type = type_name()
+	sym_declare(token, type, 'L', stack_pos, 1)
+	get_token()
+	return type
 
 
 
@@ -534,66 +583,27 @@ for int i in range(0, 10):
 int for_statement():
 	int p1
 	int p2
-	int for_type
-	int max_stack_pos
-	char* for_var = 0
-	# for
-	if (accept("for")):
-		if (type_lookup(token) < 0):
-			error("no variable type found in for loop")
+	if (accept("for") == 0):
+		return 0
 
-		# int i
-		for_type = type_name()
-		for_var = strclone(token)
-		sym_declare(token, for_type, 'L', stack_pos, 1)
-		pointer_indirection = 0
-		get_token()
+	int type = typed_identifier()
 
-		# in range(stop-expression)
-		expect("in")
-		expect("range")
+	expect("in")
+	expect("range")
 
-		p1 = codepos
-		promote(expression())  ### mov eax, 10
+	# if (expression):
+	p1 = codepos
+	promote(expression())
+	emit(8, "\x85\xc0\x0f\x84....") /* test %eax,%eax ; je ... */
+	p2 = codepos
 
-		# mov ebx,eax
-		emit(2, "\x89\xc3")
-		promote(for_type)
+	statement() /* will handle ':' scoping */
 
-		# cmp eax, ebx; jge 0x200
-		emit(8, "\x39\xd8\x0f\x8d\xf8\x01\x00\x00")
-		p2 = codepos
+	emit(5, "\xe9....") /* jmp ... */
+	save_int(code + codepos - 4, p1 - codepos)
+	save_int(code + p2 - 4, codepos - p2)
 
-		# get statements including the ':' new scope starter
-		statement()
-
-		emit(5, "\xe9....") /* jmp ... */
-		save_int(code + codepos - 4, p1 - codepos)
-		save_int(code + p2 - 4, codepos - p2)
-
-
-		return 1
-	return 0
-
-
-/*
-import_statement:
-	'import' dotted_as_names
-dotted_as_names:
-	| ','.dotted_as_name+
-dotted_as_name
-	| dotted_name ['as' NAME]
-dotted_name:
-	| dotted_name '.' NAME
-	| NAME
-
-examples:
-	import file.*
-	import file
-	import directory.file
-	import directory.file.[func1, func2, var2]
-
-*/
+	return 1
 
 
 /*
@@ -645,9 +655,7 @@ void statement():
 	# type-name identifier
 	else if (type_lookup(token) >= 0):
 		# println2("statement(): type identifier")
-		int type = type_name()
-		sym_declare(token, type, 'L', stack_pos, 1)
-		get_token()
+		int type = typed_identifier()
 		# = expression
 		if (accept("=")):
 			int type = expression()
@@ -725,12 +733,6 @@ void statement():
 
 
 /*
-import
-*/
-
-
-
-/*
 
 struct_declaration identifier :
 	type_name identifier
@@ -744,7 +746,7 @@ int struct_declaration():
 	# parent_expression()
 	if (accept("struct")):
 		int start_tab_level = tab_level
-		if (verbosity >= 0):
+		if (verbosity >= 1):
 			print_int("start_tab_level: ", start_tab_level)
 			print_string("struct accepted name: ", token)
 			println2("")
@@ -758,17 +760,17 @@ int struct_declaration():
 		# print_string("token_colon: ", token)
 		expect(":")
 		while(tab_level > start_tab_level):
-			if (verbosity >= 0):
+			if (verbosity >= 1):
 				print2("type_token: ")
 				print2(token)
 			int field_type = type_name()
-			if (verbosity >= 0):
+			if (verbosity >= 1):
 				print_int0("[", field_type)
 				println2("]")
 
 			current_symbol = sym_declare_global(token, field_type, 1)
 			type_add_arg(type_index, strclone(token), field_type)
-			if (verbosity >= 0):
+			if (verbosity >= 1):
 				print_int("num_fields: ", num_fields)
 				print_string("field: ", token)
 				print_error("\x0a")
@@ -785,22 +787,60 @@ int struct_declaration():
 void compile_save(char* fn);
 
 
+
+
+/*
+import_statement:
+	'import' dotted_as_names
+dotted_as_names:
+	| ','.dotted_as_name+
+dotted_as_name
+	| dotted_name ['as' NAME]
+dotted_name:
+	| dotted_name '.' NAME
+	| NAME
+
+examples:
+	import file.*
+	import file
+	import directory.file
+	import directory.file.[func1, func2, var2]
+
+*/
 int import_statement():
 	if(accept("import")):
+		# Strip .* wildcard and set flag
+		int import_wildcard_import = 0
+		read_until_end()
+		if (ends_with(token, ".*")):
+			int len = strlen(token)
+			token[len-2] = 0
+			import_wildcard_import = 1
+
+		# Change . to path separator
+		str_replace(token, '.', '/')
+		
 		# Ignore if we have already imported this type
 		if (type_lookup(token) >= 0):
-			if (verbosity >= 1):
+			if (verbosity >= 0):
 				print2("Warning: ignoring duplicate imported type: '")
 				print2(token)
 				println2("'")
 			get_token()
-		else:
-			type_push(strclone(token))
-			char* with_path = strjoin(token, ".w")
-			if (verbosity >= 1):
-				print_string("importing ", with_path)
-			compile_save(with_path)
-			free(with_path)
+			return 1
+
+		print_string("token: ", token)
+		char* tok = strclone(token)
+		type_push(tok)
+		print_string("cloned token: ", tok)
+		char* with_path = strjoin(tok, ".w")
+		print_string("with_path: ", with_path)
+		if (verbosity >= 0):
+			print_string("importing ", with_path)
+		compile_save(with_path, import_wildcard_import)
+		nextc = get_character()
+		get_token()
+		free(with_path)
 		return 1
 	return 0
 
@@ -849,6 +889,7 @@ void program():
 			while (accept(")") == 0):
 				number_of_args = number_of_args + 1
 				int type = type_name()
+				/* this seems stupid, you could just have (typename) with no identifier */
 				if (peek(")") == 0):
 					sym_declare(token, type, 'A', number_of_args, 1)
 					pointer_indirection = 0

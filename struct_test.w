@@ -135,11 +135,15 @@ void test_mixed_types_reversed():
 
 
 
-
-
-
-
 /*
+void test_double_struct():
+	point p
+	mixed m
+	# test point
+	# test mixed
+*/
+/*
+
 void test_constructor():
 	point pt(1, 2, 3)
 	assert_equal(pt.x, 1)

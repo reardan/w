@@ -1,4 +1,40 @@
 current:
+	'for' type var 'in' 'range' '(' expression ')' ...
+		basic version
+		allocate "struct" on stack:
+			do manually for now, eventually migrate to a proper struct
+			int range_current
+			int range_max
+			int range_interval
+
+
+	debugging advanced (dependant on pointers):
+		sys_signal
+			segv handler
+			stack parser
+
+		virtual memory
+			print virtual memory locations
+
+
+	pointer...
+		working:
+			int*
+			char[0]
+		not working:
+			int[]
+			char* + 2
+		problem:
+			types are misaligned
+				promote() char = 1, int = 2
+				type_name() char = 2, int = 1
+			these all need to be fixed in the grammar
+				e.g. expression() which passes type 3 void (don't promote)
+		another problem:
+			function pointers
+				currently only in testing.w to call the test function
+
+
 	type...
 		add fields to existing type table
 			compiler.compile -> grammar.program -> 
@@ -11,7 +47,6 @@ current:
 				e.g.
 				import lib
 				lib.println("hiya!")
-
 		test on a sample type
 		use type.w as it's own type
 		use type.w as the basis for other types
@@ -23,27 +58,14 @@ current:
 				> private import type
 			type.size
 
-	range...
-	debugging...
-		print_stack()
-			get_esp():
-				mov eax,esp
-				ret
-			print_words(esp, 20)
-			even better would be
-				get_context():
-					popad
-		sys_signal
-		segv handler
-		stack parser
-		virtual memory
-	net...complete
-		split socket / connect...complete
-		server...complete
-			bind...complete
-			listen...complete
-			accept...complete
-		udp
+
+	external library calls...
+		assembler/disassembler library
+
+
+	c_import...
+		grammar parser
+		program parser
 
 
 major bugs:
@@ -61,13 +83,13 @@ major bugs:
 
 most important:
 	type
-	import subdirectory
 	new
 	symbol
 	dict
 	range
 	repl
 	debugger or emit info
+	utf8 string
 
 
 features:
@@ -77,14 +99,26 @@ features:
 		enum values
 	generators
 	iterators
-	for in range()
-	class instantiation
-	subdirectory import
+	for in range() generator
+	class instantiation (new)
 	cli argument parsing
 	debugging info
+		lines accessible via gdb
+		frames accessible via gdb
 	debugger
 		asm
 		disasm
+		server
+			websocket
+		commands
+			step
+			next
+			continue
+			return
+			breakpoint
+			memory
+			inspect
+
 	stream class
 	file class
 	template strings
@@ -97,15 +131,22 @@ features:
 	mocking
 	variable arguments
 	default values
-	template
-	var - dynamic typing
 	inline asm (functions?)
 	refactor
 		rename
 		extract
 		break
 		combine
+	template
 	dynamic typing
+		var
+	net
+		udp
+			sendto
+			recvfrom
+	type <=> json
+	type <=> protobuf
+	global default values
 
 
 test:

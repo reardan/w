@@ -24,7 +24,7 @@ sub classes / specialty versions
 
 */
 import assert
-import uint
+import integer
 import math
 
 # Depends on codegen indirectly for load_int/save_int for now
@@ -70,7 +70,7 @@ int get(int i):
 	return load_int(array + i * 4)
 
 
-int* pop():
+int pop():
 	if(length == 0):
 		return 0 /* null indicates empty: caller should check this */
 	length = length - 1

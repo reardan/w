@@ -12,3 +12,8 @@ compiler pipes to stdout
 no break/continue
 nested ifs require {}
 no command arg parsing
+no warning if file doesn't end in space
+no warning if spaces used instead of tabs
+no warning if function parameters don't match
+no warning if variable types don't match
+if/while required () when using :

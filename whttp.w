@@ -1,6 +1,7 @@
 import lib
 import assert
 
+
 void response_headers(int file, int size):
 	write_string(file, "HTTP/1.1 200 OK\x0a")
 	write_string(file, "Server: whttp\x0a")
