@@ -1,6 +1,6 @@
 void binary1(int type):
 	promote(type)
-	be_push()
+	push_eax()
 	stack_pos = stack_pos + 1
 
 

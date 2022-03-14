@@ -6,7 +6,7 @@
 int expression():
 	int type = bitwise_or_expr()
 	if (accept("=")):
-		be_push()
+		push_eax()
 		stack_pos = stack_pos + 1
 		int type2 = expression()
 		if (verbosity >= 1):

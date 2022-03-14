@@ -28,4 +28,5 @@ done:
 			get_context()
 		print_stack()...complete!
 			print_words(context.esp, 20)
-
+	'for' type var 'in' 'range' '(' expression ')' ...complete!
+		basic version...complete!

@@ -19,7 +19,7 @@ int variable_declaration():
 			size = num_args
 		int i = 0
 		while (i < size):
-			be_push()
+			push_eax()
 			i = i + 1
 		stack_pos = stack_pos + size
 		return type

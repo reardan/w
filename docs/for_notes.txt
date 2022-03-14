@@ -33,3 +33,14 @@ for_statement()
 									postfix_expr()
 										primary_expr()
 											int_constant("10")
+
+
+todo still:
+	allocate "struct" on stack:
+		do manually for now, eventually migrate to a proper struct
+		int range_current
+		int range_max
+		int range_interval
+
+	generator functions
+	store generator stack in parent function

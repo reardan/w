@@ -37,18 +37,17 @@ int promote(int type):
 		print2(last_identifier)
 		println2("')")
 
-	# old char:
-	if (type == 1):
-		emit(3, "\x0f\xbe\x00") /* movsbl (%eax),%eax */
-	# old int/char*/everything
-	else if (type == 2):
-		emit(2, "\x8b\x00") /* mov (%eax),%eax */
-	# int32:
-	else if (type == 5):
-		emit(2, "\x8b\x00") /* mov (%eax),%eax */
 
+	if (type == 1): /* old char: (but is also int type) */
+		emit(3, "\x0f\xbe\x00") /* movsbl eax, [eax] */
+	else if (type == 2): /* old int / char* / everything */
+		emit(2, "\x8b\x00") /* mov eax, [eax] */
+	else if (type == 3) {} /* void: no op */
+	else if (type == 5): /* int32 */
+		emit(2, "\x8b\x00") /* mov eax, [eax] */
 	if (type_pointer_level > 0):
-		emit(2, "\x8b\x00") /* mov (%eax),%eax */
-		return type
+		emit(2, "\x8b\x00") /* mov eax, [eax] */
+		# Lookup pointer_level - 1 and return
+		type = type_lookup_pointer(type, type_pointer_level - 1)
 
 	return type

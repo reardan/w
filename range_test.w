@@ -75,3 +75,10 @@ void test_for_in_range_tri_nested():
 				result = result + 10
 	assert_equal(10000, result)
 
+
+/* void test_for_in_range_with_starter():
+	int result = 0
+	for int i in range 1, 10:
+		result = result + 10
+	assert_equal(90, result) */
+

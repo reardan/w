@@ -19,19 +19,19 @@ int postfix_expr():
 	
 	else if (accept("(")):
 		int s = stack_pos
-		be_push()
+		push_eax()
 		stack_pos = stack_pos + 1
 		if (accept(")") == 0):
 			int arg_type = expression()
 			if (pointer_indirection == 0):
 				promote(arg_type)
-			be_push()
+			push_eax()
 			stack_pos = stack_pos + 1
 			while (accept(",")):
 				int arg_type = expression()
 				if (pointer_indirection == 0):
 					promote(arg_type)
-				be_push()
+				push_eax()
 				stack_pos = stack_pos + 1
 
 			expect(")")

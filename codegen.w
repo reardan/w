@@ -56,13 +56,14 @@ void emit_int(int v):
 	emit_int32(v)
 
 
+################################# x86 opcodes #################################
 void push_int8(int v):
-	emit_int8("\x6a")
+	emit_int8("\x6a") /* push dword 0x12 */
 	emit_int8(v)
 
 
 void push_int32(int v):
-	emit_int8("\x68")
+	emit_int8("\x68") /* push dword 0x12345678 */
 	emit_int32(v)
 
 
@@ -71,7 +72,7 @@ void push_int(int v):
 
 
 void mov_eax_int32(int v):
-	emit(1, "\xb8")
+	emit(1, "\xb8") /* mov eax, 0x12345678 */
 	emit_int32(v)
 
 
@@ -79,18 +80,33 @@ void mov_eax_int(int v):
 	mov_eax_int32(v)
 
 
-# todo: delete
-void be_push():
-	emit(1, "\x50") /* push %eax */
-
-
 void push_eax():
 	emit(1, "\x50") /* push %eax */
+
+
+void lea_eax_esp_plus(int v):
+	emit(3, "\x8d\x84\x24") /* lea eax,[esp+0x12345678] */
+	emit_int(v)
+
+
+void store_stack_var(int variable_offset):
+	emit(3, "\x89\x84\x24") /* mov [esp+0x12345678], eax */
+	emit_int(variable_offset)
 
 
 void be_pop(int n):
 	emit(6, "\x81\xc4....") /* add $(n * 4),%esp */
 	save_int(code + codepos - 4, n << 2)
+
+
+char* compare_opcode(char* opcode_charp):
+	char* result = "\x5b\x39\xc3\x0f\x9c\xc0\x0f\xb6\xc0"
+	/* pop %ebx ; cmp %eax,%ebx ; OPCODE (e.g. "\x9c" for setl %al) ; movzbl %al,%eax */
+	result[4] = opcode_charp[0]
+	return result
+
+
+############################## end of x86 opcodes ##############################
 
 
 void sym_define_declare_global_function(char* name); /* defined in symbol_table */

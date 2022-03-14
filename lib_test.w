@@ -183,3 +183,11 @@ void test_ip4_from_string(char* ips):
 	assert_strings_equal("0x01010101", hex(ip4_from_string("1.1.1.1")))
 	assert_strings_equal("0xffffffff", hex(ip4_from_string("255.255.255.255")))
 
+
+void test_print_registers():
+	print_registers()
+
+
+void test_print_stack():
+	print_stack()
+

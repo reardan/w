@@ -1,20 +1,4 @@
 current:
-	'for' type var 'in' 'range' '(' expression ')' ...
-		basic version
-		allocate "struct" on stack:
-			do manually for now, eventually migrate to a proper struct
-			int range_current
-			int range_max
-			int range_interval
-
-
-	debugging advanced (dependant on pointers):
-		sys_signal
-			segv handler
-			stack parser
-
-		virtual memory
-			print virtual memory locations
 
 
 	pointer...
@@ -57,6 +41,15 @@ current:
 				or only import in relevant files?
 				> private import type
 			type.size
+
+
+	debugging advanced (dependant on pointers):
+		sys_signal
+			segv handler
+			stack parser
+
+		virtual memory
+			print virtual memory locations
 
 
 	external library calls...

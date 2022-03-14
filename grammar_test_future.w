@@ -77,12 +77,12 @@ postfix_expr()
 
 
 	0x0804c14e:  mov    $0x804c0c9,%eax   sym_get_value("func2")
-	0x0804c153:  push   %eax              be_push()
+	0x0804c153:  push   %eax              push_eax()
 	0x0804c154:  mov    $0x0,%eax         ?
 func2(f)
 	0x0804c159:  mov    0x4(%esp),%eax    sym_get_value("f")
 	0x0804c160:  mov    (%eax),%eax         promote(2)
-	0x0804c162:  push   %eax                be_push()
+	0x0804c162:  push   %eax                push_eax()
 	0x0804c163:  mov    0x4(%esp),%eax    postfix_expr()
 	0x0804c16a:  call   *%eax             postfix_expr()
 	0x0804c16c:  add    $0x8,%esp
