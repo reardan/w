@@ -32,6 +32,10 @@ void save_i(char* p, int v, int n):
 		i = i + 1
 
 
+void save_int64(char *p, int v):
+	save_i(p, v, 8)
+
+
 void save_int32(char *p, int v):
 	save_i(p, v, 4)
 
@@ -54,6 +58,10 @@ int load_i(char* p, int n):
 		result = (result << 8) + (p[n - 1] & 255)
 		n = n - 1
 	return result
+
+
+int load_int64(char *p):
+	return load_i(p, 8)
 
 
 int load_int32(char *p):

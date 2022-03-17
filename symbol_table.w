@@ -195,11 +195,11 @@ void sym_get_value(char *s):
 
 	/* local variable */
 	else if (scope_type == 'L'):
-		k = (stack_pos - table[t + 2] - 1) << 2
+		k = (stack_pos - table[t + 2] - 1) << word_size_log2
 
 	/* argument */
 	else if (scope_type == 'A'):
-		k = (stack_pos + number_of_args - table[t + 2] + 1) << 2
+		k = (stack_pos + number_of_args - table[t + 2] + 1) << word_size_log2
 
 	else:
 		print_error("Error getting symbol value for '")
@@ -215,11 +215,14 @@ void sym_get_value(char *s):
 				print_error("pointer_indirection for ")
 				sym_info(t)
 				warning(s)
-			emit(7, "\x8b\x84\x24....") /* mov eax, [esp + ....] */
+			# emit(7, "\x8b\x84\x24....") /* mov eax, [esp + ....] */
+			mov_eax_esp_plus(0) /* 0 is a placeholder */
 
 		# Otherwise pass reference
 		else:
-			emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
+			# emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
+			lea_eax_esp_plus(0) /* 0 is a placeholder */
+			
 		int num_args = type_num_args(type)
 		if (num_args > 0):
 			# print_string("num args != 1: ", s)
@@ -312,14 +315,12 @@ void emit_section_name(char* s, int header_addr, int strings_addr):
 	emit_string(s)
 
 
-void emit_debugging_symbols():
+void emit_debugging_symbols(int word_size):
 	# Store start of section header
 	int header_addr = codepos
 
 	# Save section header address + number of sections
-	save_int(code + 32, header_addr)
-	save_i(code + 48, 3, 2) /* number of section headers */
-	save_i(code + 50, 1, 2) /* string index */
+	elf_save_section_info(word_size, header_addr, 3, 1)
 
 	# Emit debug info section header
 	int debug_info_section_header = codepos

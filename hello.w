@@ -1,2 +1,2 @@
 void _main(int argc):
-	exit(0)
+	exit_w(0)

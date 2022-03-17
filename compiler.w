@@ -1,10 +1,13 @@
 import lib
+import compiler_vars
 import tokenizer
 import codegen
 import assert
 import type_table
 import symbol_table
 import grammar
+
+
 
 
 void compile(char* fn):
@@ -16,7 +19,7 @@ void compile(char* fn):
 		print_error("' not found error '")
 		print_error(itoa(error))
 		print_error("'\x0a")
-		exit(1)
+		exit_w(1)
 	line_number = 0
 	tab_level = 0
 	nextc = get_character()
@@ -49,13 +52,23 @@ void compile_save(char* fn, int new_wildcard_import):
 
 
 int link(int argc, int argv):
+	int i = 1
+	word_size = 4
+	word_size_log2 = 2
+	int first_arg = argv + word_size
+	print_string("argv + word_size: ", *first_arg)
+	if (strcmp(*first_arg, "x64") == 0):
+		println2("Compiling in x64 mode")
+		word_size =  8
+		word_size_log2 = 3
+		i = i + 1
 	push_basic_types()
 	pointer_indirection = 0
 	last_identifier = malloc(8000)
 	last_global_declaration = malloc(8000)
-	be_start()
+	be_start(word_size)
 
-	int i = 1
+
 	while (i < argc):
 		int arg = argv + i * 4
 		print_error("compiling '")
@@ -64,7 +77,7 @@ int link(int argc, int argv):
 		compile(*arg)
 		i = i + 1
 
-	# print_symbol_table(0)
-	# type_print_all()
-	emit_debugging_symbols()
-	be_finish()
+	print_symbol_table(0)
+	type_print_all()
+	emit_debugging_symbols(word_size)
+	be_finish(word_size)

@@ -88,6 +88,21 @@ simple_debug: w FORCE
 	chmod +x ./bin/simple
 	ddd ./bin/simple
 
+x64_test: w FORCE
+	./bin/wv2 x64 x64_test.w >./bin/x64_test
+	chmod +x ./bin/x64_test
+	./bin/x64_test
+
+x64_test_debug: w FORCE
+	./bin/wv2 x64 x64_test.w >./bin/x64_test
+	chmod +x ./bin/x64_test
+	ddd ./bin/x64_test
+
+elf: w FORCE
+	./bin/wv2 elf.w >./bin/elf
+	chmod +x ./bin/elf
+	./bin/elf
+
 convert: w FORCE
 	./bin/wv2 convert.w >./bin/convert
 	chmod +x ./bin/convert
@@ -164,6 +179,16 @@ lib_test: w FORCE
 	./bin/wv2 lib_test.w >./bin/lib_test
 	chmod +x ./bin/lib_test
 	./bin/lib_test
+
+lib_64_test: w FORCE
+	./bin/wv2 x64 lib_test.w >./bin/lib_test
+	chmod +x ./bin/lib_test
+	./bin/lib_test
+
+lib_64_test_debug: w FORCE
+	./bin/wv2 x64 lib_test.w >./bin/lib_test
+	chmod +x ./bin/lib_test
+	ddd ./bin/lib_test
 
 repl: FORCE
 	./w repl.w >./bin/repl

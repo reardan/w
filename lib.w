@@ -5,7 +5,10 @@ Our library functions.
 No dependencies except calls provided by the compiler.  May change.
 This should only be functions that are highly common and every application requires.
 */
-void exit(int);
+import lib.linux
+
+
+void exit_w(int);
 void *malloc(int);
 
 
@@ -27,7 +30,7 @@ The compiler writes the address of this function
 from the symbol table to the call instruction at the entry point.
 */
 int _main(int argc, int argv):
-	exit(main(argc, argv))
+	exit_w(main(argc, argv))
 
 
 # string functions
@@ -257,47 +260,6 @@ int strcmp(char *dst, char *src):
 	return dst[0] - src[0]
 
 
-
-################################################################################
-int create_file(char* filename, int permissions):
-	return syscall(8, filename, permissions, 0)
-
-# mode: 0 - read, 1 - write, 2 - readwrite
-int open(char *filename, int mode, int permissions):
-	return syscall(5, filename, mode, permissions)
-
-int write(int file, char* s, int length):
-	return syscall(4, file, s, length)
-
-int read(int file, char* buf, int size):
-	return syscall(3, file, buf, size)
-
-int close(int file):
-	return syscall(6, file, 0, 0)
-
-# reference: 0 - beginning, 1 - current position, 2 - end of file
-int seek(int file, int offset, int reference):
-	return syscall(19, file, offset, reference)
-
-int mmap(int addr, int length, int prot, int flags):
-	return syscall7(90, addr, length, prot, flags, 0, 0)
-
-int sys_clone(int flags, int child_stack):
-	return syscall(56, flags, child_stack)
-
-# Directory syscalls:
-int mkdir(char* path, int mode):
-	return syscall(39, path, mode, 0)
-
-int rmdir(char* path):
-	return syscall(40, path, 0, 0)
-
-int getdents(int file, char* buf, int count):
-	return syscall(141, file, buf, count)
-
-################################################################################
-
-
 int open_or_create(char *filename, int mode, int permissions):
 	int file = open(filename, mode, permissions)
 	if (file < 0):
@@ -313,7 +275,7 @@ int file_size(int file):
 	return result
 
 # A nice function to have would be char* read_until_empty(char* filename)
-# which would read the entire file in one go, failing with exit(1) if open/read fails.
+# which would read the entire file in one go, failing with exit_w(1) if open/read fails.
 # This would use blocks of 1MB and realloc to read the file
 # ensuring that it can work with sockets, etc.
 
@@ -546,7 +508,205 @@ int translate_syscall_failure(int err):
 		println2("EDOM: Math argument out of domain of func.")
 	else if(err == 34):
 		println2("ERANGE: Math result not representable.")
+	else if(err == 35):
+		println2("EDEADLK: Resource deadlock would occur")
+	else if(err == 36):
+		println2("ENAMETOOLONG: File name too long")
+	else if(err == 37):
+		println2("ENOLCK: No record locks available")
+	else if(err == 38):
+		println2("ENOSYS: Invalid system call number")
+	else if(err == 39):
+		println2("ENOTEMPTY: Directory not empty")
+	else if(err == 40):
+		println2("ELOOP: Too many symbolic links encountered")
+	else if(err == 41):
+		println2("EWOULDBLOCK: Operation would block")
+	else if(err == 42):
+		println2("ENOMSG: No message of desired type")
+	else if(err == 43):
+		println2("EIDRM: Identifier removed")
+	else if(err == 44):
+		println2("ECHRNG: Channel number out of range")
+	else if(err == 45):
+		println2("EL2NSYNC: Level 2 not synchronized")
+	else if(err == 46):
+		println2("EL3HLT: Level 3 halted")
+	else if(err == 47):
+		println2("EL3RST: Level 3 reset")
+	else if(err == 48):
+		println2("ELNRNG: Link number out of range")
+	else if(err == 49):
+		println2("EUNATCH: Protocol driver not attached")
+	else if(err == 50):
+		println2("ENOCSI: No CSI structure available")
+	else if(err == 51):
+		println2("EL2HLT: Level 2 halted")
+	else if(err == 52):
+		println2("EBADE: Invalid exchange")
+	else if(err == 53):
+		println2("EBADR: Invalid request descriptor")
+	else if(err == 54):
+		println2("EXFULL: Exchange full")
+	else if(err == 55):
+		println2("ENOANO: No anode")
+	else if(err == 56):
+		println2("EBADRQC: Invalid request code")
+	else if(err == 57):
+		println2("EBADSLT: Invalid slot")
+	else if(err == 58): 
+		println2("EDEADLOCK: EDEADLOCK")
+	else if(err == 59):
+		println2("EBFONT: Bad font file format")
+	else if(err == 60):
+		println2("ENOSTR: Device not a stream")
+	else if(err == 61):
+		println2("ENODATA: No data available")
+	else if(err == 62):
+		println2("ETIME: Timer expired")
+	else if(err == 63):
+		println2("ENOSR: Out of streams resources")
+	else if(err == 64):
+		println2("ENONET: Machine is not on the network")
+	else if(err == 65):
+		println2("ENOPKG: Package not installed")
+	else if(err == 66):
+		println2("EREMOTE: Object is remote")
+	else if(err == 67):
+		println2("ENOLINK: Link has been severed")
+	else if(err == 68):
+		println2("EADV: Advertise error")
+	else if(err == 69):
+		println2("ESRMNT: Srmount error")
+	else if(err == 70):
+		println2("ECOMM: Communication error on send")
+	else if(err == 71):
+		println2("EPROTO: Protocol error")
+	else if(err == 72):
+		println2("EMULTIHOP: Multihop attempted")
+	else if(err == 73):
+		println2("EDOTDOT: RFS specific error")
+	else if(err == 74):
+		println2("EBADMSG: Not a data message")
+	else if(err == 75):
+		println2("EOVERFLOW: Value too large for defined data type")
+	else if(err == 76):
+		println2("ENOTUNIQ: Name not unique on network")
+	else if(err == 77):
+		println2("EBADFD: File descriptor in bad state")
+	else if(err == 78):
+		println2("EREMCHG: Remote address changed")
+	else if(err == 79):
+		println2("ELIBACC: Can not access a needed shared library")
+	else if(err == 80):
+		println2("ELIBBAD: Accessing a corrupted shared library")
+	else if(err == 81):
+		println2("ELIBSCN: .lib section in a.out corrupted")
+	else if(err == 82):
+		println2("ELIBMAX: Attempting to link in too many shared libraries")
+	else if(err == 83):
+		println2("ELIBEXEC: Cannot exec a shared library directly")
+	else if(err == 84):
+		println2("EILSEQ: Illegal byte sequence")
+	else if(err == 85):
+		println2("ERESTART: Interrupted system call should be restarted")
+	else if(err == 86):
+		println2("ESTRPIPE: Streams pipe error")
+	else if(err == 87):
+		println2("EUSERS: Too many users")
+	else if(err == 88):
+		println2("ENOTSOCK: Socket operation on non-socket")
+	else if(err == 89):
+		println2("EDESTADDRREQ: Destination address required")
+	else if(err == 90):
+		println2("EMSGSIZE: Message too long")
+	else if(err == 91):
+		println2("EPROTOTYPE: Protocol wrong type for socket")
+	else if(err == 92):
+		println2("ENOPROTOOPT: Protocol not available")
+	else if(err == 93):
+		println2("EPROTONOSUPPORT: Protocol not supported")
+	else if(err == 94):
+		println2("ESOCKTNOSUPPORT: Socket type not supported")
+	else if(err == 95):
+		println2("EOPNOTSUPP: Operation not supported on transport endpoint")
+	else if(err == 96):
+		println2("EPFNOSUPPORT: Protocol family not supported")
+	else if(err == 97):
+		println2("EAFNOSUPPORT: Address family not supported by protocol")
+	else if(err == 98):
+		println2("EADDRINUSE: Address already in use")
+	else if(err == 99):
+		println2("EADDRNOTAVAIL: Cannot assign requested address")
+	else if(err == 100):
+		println2("ENETDOWN: Network is down")
+	else if(err == 101):
+		println2("ENETUNREACH: Network is unreachable")
+	else if(err == 102):
+		println2("ENETRESET: Network dropped connection because of reset")
+	else if(err == 103):
+		println2("ECONNABORTED: Software caused connection abort")
+	else if(err == 104):
+		println2("ECONNRESET: Connection reset by peer")
+	else if(err == 105):
+		println2("ENOBUFS: No buffer space available")
+	else if(err == 106):
+		println2("EISCONN: Transport endpoint is already connected")
+	else if(err == 107):
+		println2("ENOTCONN: Transport endpoint is not connected")
+	else if(err == 108):
+		println2("ESHUTDOWN: Cannot send after transport endpoint shutdown")
+	else if(err == 109):
+		println2("ETOOMANYREFS: Too many references: cannot splice")
+	else if(err == 110):
+		println2("ETIMEDOUT: Connection timed out")
+	else if(err == 111):
+		println2("ECONNREFUSED: Connection refused")
+	else if(err == 112):
+		println2("EHOSTDOWN: Host is down")
+	else if(err == 113):
+		println2("EHOSTUNREACH: No route to host")
+	else if(err == 114):
+		println2("EALREADY: Operation already in progress")
+	else if(err == 115):
+		println2("EINPROGRESS: Operation now in progress")
+	else if(err == 116):
+		println2("ESTALE: Stale file handle")
+	else if(err == 117):
+		println2("EUCLEAN: Structure needs cleaning")
+	else if(err == 118):
+		println2("ENOTNAM: Not a XENIX named type file")
+	else if(err == 119):
+		println2("ENAVAIL: No XENIX semaphores available")
+	else if(err == 120):
+		println2("EISNAM: Is a named type file")
+	else if(err == 121):
+		println2("EREMOTEIO: Remote I/O error")
+	else if(err == 122):
+		println2("EDQUOT: Quota exceeded")
+	else if(err == 123):
+		println2("ENOMEDIUM: No medium found")
+	else if(err == 124):
+		println2("EMEDIUMTYPE: Wrong medium type")
+	else if(err == 125):
+		println2("ECANCELED: Operation Canceled")
+	else if(err == 126):
+		println2("ENOKEY: Required key not available")
+	else if(err == 127):
+		println2("EKEYEXPIRED: Key has expired")
+	else if(err == 128):
+		println2("EKEYREVOKED: Key has been revoked")
+	else if(err == 129):
+		println2("EKEYREJECTED: Key was rejected by service")
+	else if(err == 130):
+		println2("EOWNERDEAD: Owner died")
+	else if(err == 131):
+		println2("ENOTRECOVERABLE: State not recoverable")
+	else if(err == 132):
+		println2("ERFKILL: Operation not possible due to RF-kill")
+	else if(err == 133):
+		println2("EHWPOISON: Memory page has hardware error")
 	else:
 		println2("Unknown error number")
-	exit(1)
+	exit_w(1)
 

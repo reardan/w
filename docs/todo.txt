@@ -1,22 +1,7 @@
 current:
-
-
-	pointer...
-		working:
-			int*
-			char[0]
-		not working:
-			int[]
-			char* + 2
-		problem:
-			types are misaligned
-				promote() char = 1, int = 2
-				type_name() char = 2, int = 1
-			these all need to be fixed in the grammar
-				e.g. expression() which passes type 3 void (don't promote)
-		another problem:
-			function pointers
-				currently only in testing.w to call the test function
+	x64
+		syscall x64
+		move machine code gen to codegen.w
 
 
 	type...
@@ -41,6 +26,24 @@ current:
 				or only import in relevant files?
 				> private import type
 			type.size
+
+
+	pointer...
+		working:
+			int*
+			char[0]
+		not working:
+			int[]
+			char* + 2
+		problem:
+			types are misaligned
+				promote() char = 1, int = 2
+				type_name() char = 2, int = 1
+				constant = 3, no promotion (and it's re-used in expression())
+			these all need to be fixed in the grammar
+		another problem:
+			function pointers
+				currently only in testing.w to call the test function
 
 
 	debugging advanced (dependant on pointers):
@@ -85,19 +88,22 @@ most important:
 	utf8 string
 
 
-features:
+mvp features
 	types
 	parse c headers
 		build structs
 		enum values
-	generators
-	iterators
-	for in range() generator
-	class instantiation (new)
-	cli argument parsing
+	class instantiation via new
 	debugging info
 		lines accessible via gdb
 		frames accessible via gdb
+
+
+features:
+	generators
+	iterators
+	for in range() generator
+	cli argument parsing
 	debugger
 		asm
 		disasm

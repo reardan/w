@@ -2,7 +2,7 @@
 void asserts(char* s, int condition):
 	if (condition == 0):
 		println2(s)
-		exit(1)
+		exit_w(1)
 
 
 # todo cannot name the same as the file lol!
@@ -10,7 +10,7 @@ void asserts(char* s, int condition):
 void assert1(int condition):
 	if (condition == 0):
 		println2("Assertion2 failed.")
-		exit(1)
+		exit_w(1)
 
 
 void assert_equal(int want, int got):
@@ -20,7 +20,7 @@ void assert_equal(int want, int got):
 		print2(") got int(")
 		print2(itoa(got))
 		println2(")")
-		exit(1)
+		exit_w(1)
 
 
 void assert_equal_hex(int want, int got):
@@ -30,7 +30,7 @@ void assert_equal_hex(int want, int got):
 		print2(" got ")
 		print2(hex(got))
 		println2("")
-		exit(1)
+		exit_w(1)
 
 
 void assert_strings_equal(char* want, char* got):
@@ -40,4 +40,4 @@ void assert_strings_equal(char* want, char* got):
 		print2("' got '")
 		print2(got)
 		println2("'")
-		exit(1)
+		exit_w(1)

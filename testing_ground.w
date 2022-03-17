@@ -131,7 +131,7 @@ int main(int argc, int argv):
 	print_error("yolo swag life!\x0a")
 	if (strcmp(itoa(0), "0") != 0):
 		println("failed zero check")
-		# exit(1)
+		# exit_w(1)
 	return 0
 
 /*int main1():

@@ -24,11 +24,19 @@ Project Acceptance Tests
 
 
 Projects
+	Types
 	Pointers
-	For..In..Range
+	For..In..Range (current, increment expressions)
 	x64 MVP
 	WebAssembly MVP
 	Signal Handling
+
+
+Data Structure
+	LinkedArray
+	HashMap
+	ParallelList
+	ParallelMap
 
 
 Secondary Priority Projects

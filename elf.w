@@ -1,4 +1,6 @@
-
+import lib
+import assert
+import tokenizer
 import codegen
 
 
@@ -101,4 +103,9 @@ void print_elf_header():
 		print_hex("symbol_info: ", symbol_info)
 
 		symbol_index = symbol_index + 1
+
+
+int main():
+	print_elf_header()
+	return 0
 

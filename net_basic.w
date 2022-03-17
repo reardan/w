@@ -72,4 +72,4 @@ int main2(int argc, int argv):
 	int result = syscall7(44, file, "hiya\x0a", 6, 0, addr, 16)
 	print_int("result = ", result)
 
-	exit(0)
+	exit_w(0)

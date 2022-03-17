@@ -105,3 +105,8 @@ xor edx,edx
 mov eax,
 
 */
+
+import codegen
+
+
+int x86_test_var

@@ -36,11 +36,13 @@ int postfix_expr():
 
 			expect(")")
 
-		emit(7, "\x8b\x84\x24....") /* mov (n * 4)(%esp),%eax */
-		save_int(code + codepos - 4, (stack_pos - s - 1) << 2)
+		# emit(7, "\x8b\x84\x24....") /* mov (n * 4)(%esp),%eax */
+		# save_int(code + codepos - 4, (stack_pos - s - 1) << word_size_log2)
+		mov_eax_esp_plus((stack_pos - s - 1) << word_size_log2)
+
 		if (type_lookup_pointer(type) > 0):
 			warning("type_lookup_pointer > 0")
-			emit(2, "\x8b\x00") /* mov (%eax),%eax */
+			promote_eax()
 		emit(2, "\xff\xd0") /* call *%eax */
 		be_pop(stack_pos - s)
 		stack_pos = s

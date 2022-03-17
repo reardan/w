@@ -29,12 +29,9 @@ int for_statement():
 
 	p1 = codepos
 
-	lea_eax_esp_plus((stack_pos - for_var) * 4)
+	lea_eax_esp_plus((stack_pos - for_var) * word_size)
 	# if (cur < max):
-	# promote(relational_less_than(type))
-	binary1(type)
-	/* pop %ebx ; cmp %eax,%ebx ; setl %al ; movzbl %al,%eax */
-	promote(binary2(shift_expr(), 9, "\x5b\x39\xc3\x0f\x9c\xc0\x0f\xb6\xc0"))
+	promote(generate_relational_code(type, "\x9c"))
 
 	emit(8, "\x85\xc0\x0f\x84....") /* test %eax,%eax ; je ... */
 	p2 = codepos
