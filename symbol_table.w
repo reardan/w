@@ -161,7 +161,7 @@ void sym_define_global(int current_symbol):
 
 int number_of_args
 
-void sym_get_value(char *s):
+int sym_get_value(char *s):
 	int t
 	if ((t = sym_lookup(s)) == 0):
 		print_error("Cannot find symbol: '")
@@ -175,8 +175,10 @@ void sym_get_value(char *s):
 	int is_indirect_type = (type == 1) | (type == 1)
 	int symtype = load_int(table + t + 10)
 	int ptr_indirect = load_int(table + t + 18)
-	int is_indirect_pointer = (ptr_indirect > 0) & is_indirect_type
+	int use_value_directly = (ptr_indirect > 0) & is_indirect_type
 	int is_function = 0 & is_indirect_type & (symtype == 2) & (scope_type == 'A')
+	if (type == 7): /* int32 */
+		use_value_directly = 1
 
 	int k = 0
 	if (verbosity >= 2):
@@ -210,9 +212,9 @@ void sym_get_value(char *s):
 
 	if ((scope_type == 'L') | (scope_type == 'A')):
 		# Use pointers directly
-		if (is_indirect_pointer):
+		if (use_value_directly):
 			if (verbosity >= 0):
-				print_error("pointer_indirection for ")
+				print_error("using value directly for ")
 				sym_info(t)
 				warning(s)
 			# emit(7, "\x8b\x84\x24....") /* mov eax, [esp + ....] */
@@ -228,6 +230,8 @@ void sym_get_value(char *s):
 			# print_string("num args != 1: ", s)
 			k = k - (num_args - 1) * 4
 		save_int(code + codepos - 4, k)
+
+	return type
 
 
 void sym_define_declare_global_function(char* name):

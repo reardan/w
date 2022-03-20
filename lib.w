@@ -8,7 +8,7 @@ This should only be functions that are highly common and every application requi
 import lib.linux
 
 
-void exit_w(int);
+void exit(int);
 void *malloc(int);
 
 
@@ -30,7 +30,7 @@ The compiler writes the address of this function
 from the symbol table to the call instruction at the entry point.
 */
 int _main(int argc, int argv):
-	exit_w(main(argc, argv))
+	exit(main(argc, argv))
 
 
 # string functions
@@ -275,7 +275,7 @@ int file_size(int file):
 	return result
 
 # A nice function to have would be char* read_until_empty(char* filename)
-# which would read the entire file in one go, failing with exit_w(1) if open/read fails.
+# which would read the entire file in one go, failing with exit(1) if open/read fails.
 # This would use blocks of 1MB and realloc to read the file
 # ensuring that it can work with sockets, etc.
 
@@ -332,6 +332,11 @@ void print_int0(char* c, int v):
 void print_int(char* c, int v):
 	print_int0(c, v)
 	print_error("\x0a")
+
+
+void print_int_v1(char* c, int v):
+	if (verbosity >= 1):
+		print_int(c, v)
 
 
 void print_hex0(char* c, int v):
@@ -708,5 +713,5 @@ int translate_syscall_failure(int err):
 		println2("EHWPOISON: Memory page has hardware error")
 	else:
 		println2("Unknown error number")
-	exit_w(1)
+	exit(1)
 

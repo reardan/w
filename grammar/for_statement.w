@@ -33,7 +33,7 @@ int for_statement():
 	# if (cur < max):
 	promote(generate_relational_code(type, "\x9c"))
 
-	emit(8, "\x85\xc0\x0f\x84....") /* test %eax,%eax ; je ... */
+	jmp_zero_int32(1337010)
 	p2 = codepos
 
 	/* ':' scoping + child scope statements */
@@ -41,15 +41,14 @@ int for_statement():
 
 	/* increment */
 	/* inc [for_var] == inc [esp + ((stack_pos-for_var) * 4)] */
-	emit(7, "\xff\x84\x24....") /* inc dword[esp+0x12345678] */
-	save_int(code + codepos - 4, ((stack_pos - for_var) * 4))
+	inc_dword_esp_plus((stack_pos - for_var) * word_size)
 
 	/* jmp back to condition */
-	emit(5, "\xe9....")
-	save_int(code + codepos - 4, p1 - codepos)
+	jmp_int32(1337011)
+	save_int32(code + codepos - 4, p1 - codepos)
 
 	/* save jmp to here if condition failed */
-	save_int(code + p2 - 4, codepos - p2)
+	save_int32(code + p2 - 4, codepos - p2)
 
 	return 1
 

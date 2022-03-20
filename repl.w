@@ -25,4 +25,4 @@ int main(int argc, int argv):
 		# Eval
 		# Print
 
-	exit_w(0)
+	exit(0)

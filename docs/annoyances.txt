@@ -1,5 +1,5 @@
 still need {} instead of pass
-no for loop
+	why is pass even required?? newline should end scope
 */& are broken
 bad typing
 no repl
@@ -17,3 +17,6 @@ no warning if spaces used instead of tabs
 no warning if function parameters don't match
 no warning if variable types don't match
 if/while required () when using :
+no for loop [start, increment] options
+no for loop list iteration
+no generators

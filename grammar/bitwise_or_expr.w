@@ -6,8 +6,8 @@
 int bitwise_or_expr():
 	int type = bitwise_and_expr()
 	while (accept("|")):
-		binary1(type) /* pop %ebx ; or %ebx,%eax */
-		type = binary2(bitwise_and_expr(), 3, "\x5b\x09\xd8")
+		binary1(type) /* or %ebx,%eax */
+		type = binary2_pop(bitwise_and_expr(), 2, "\x09\xd8")
 
 	return type
 

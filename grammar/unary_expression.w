@@ -34,7 +34,7 @@ int unary_expression():
 	else if (accept("!")):
 		type = multiplicative_expr()
 		promote(type)
-		emit(2, "\xf7\xd0") /* not eax */
+		not_eax()
 		return type
 	else:
 		return postfix_expr()

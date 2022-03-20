@@ -19,7 +19,7 @@ void compile(char* fn):
 		print_error("' not found error '")
 		print_error(itoa(error))
 		print_error("'\x0a")
-		exit_w(1)
+		exit(1)
 	line_number = 0
 	tab_level = 0
 	nextc = get_character()
@@ -77,7 +77,7 @@ int link(int argc, int argv):
 		compile(*arg)
 		i = i + 1
 
-	print_symbol_table(0)
+	# print_symbol_table(0)
 	type_print_all()
 	emit_debugging_symbols(word_size)
 	be_finish(word_size)

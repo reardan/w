@@ -46,10 +46,9 @@ int char_pointer_literal():
 		return 0
 	int i = process_string_literal()
 	token[i] = 0
-	/* call ... ; the string ; pop %eax */
-	emit(5, "\xe8....")
-	save_int(code + codepos - 4, i + 1)
+	/* call after ; "the string" ; after: pop %eax */
+	call_relative32(i + 1)
 	emit(i + 1, token)
-	emit(1, "\x58")
+	pop_eax()
 
 	return 1

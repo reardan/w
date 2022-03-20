@@ -64,4 +64,4 @@ int main(int argc, int argv):
 	http_server()
 
 
-	exit_w(0)
+	exit(0)

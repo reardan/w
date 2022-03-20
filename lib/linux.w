@@ -1,4 +1,4 @@
-
+# x86 32 bit Linux syscalls
 
 /* File IO: */
 
@@ -49,6 +49,5 @@ int mmap(int addr, int length, int prot, int flags):
 int sys_clone(int flags, int child_stack):
 	return syscall(56, flags, child_stack)
 
-void exit_w(int error_code):
+void exit(int error_code):
 	syscall(1, error_code, 0, 0)
-

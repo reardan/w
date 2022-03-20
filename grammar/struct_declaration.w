@@ -16,11 +16,11 @@ int struct_declaration():
 			print_int("start_tab_level: ", start_tab_level)
 			print_string("struct accepted name: ", token)
 			println2("")
-		current_symbol = sym_declare_global(token, 5, 1)
 
 		# emit struct type with token name
 		type_index = type_push(strclone(token))
-		type_print_all()
+		current_symbol = sym_declare_global(token, type_index, 1)
+		# type_print_all()
 
 		get_token()
 		# print_string("token_colon: ", token)

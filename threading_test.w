@@ -7,7 +7,7 @@ void dec_value():
 	# todo: add lock / atomic decrement
 	value = value - 1
 	if (value <= 0):
-		exit_w(0)
+		exit(0)
 
 void thread_func():
 	println("Hello from \x1b[93;1mmain\x1b[0m!\x0a\x00")

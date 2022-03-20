@@ -27,7 +27,7 @@ void warning(char *s):
 
 void error(char *s):
 	warning(s)
-	exit_w(1)
+	exit(1)
 
 
 int getc():

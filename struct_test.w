@@ -91,14 +91,14 @@ void test_quad():
 
 
 
-struct mixed:
+/*struct mixed:
 	int32 a
 	int16 b
 	int8 c
 	int32 d
 
 
-/*void test_mixed_types():
+void test_mixed_types():
 	mixed m
 	m.a = 1
 	m.b = 2
@@ -113,10 +113,10 @@ struct mixed:
 	# to do this, have binary data then create a struct pointer to it
 	# then check the values are correct
 
-	# it actually partially checks it due to the cross reading of data*/
+	# it actually partially checks it due to the cross reading of data
+*/
 
-
-void test_mixed_types_reversed():
+/*void test_mixed_types_reversed():
 	mixed m
 	debugger
 	m.d = 4
@@ -132,7 +132,7 @@ void test_mixed_types_reversed():
 	assert_equal_hex(2, m.b)
 	assert_equal_hex(3, m.c)
 	assert_equal_hex(4, m.d)
-
+*/
 
 
 /*

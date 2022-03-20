@@ -11,8 +11,8 @@ int postfix_expr():
 	int type = primary_expr()
 	if (accept("[")):
 		binary1(type)
-		/* pop %ebx ; add %ebx,%eax */
-		binary2(expression(), 3, "\x5b\x01\xd8")
+		/* add %ebx,%eax */
+		binary2_pop(expression(), 2, "\x01\xd8")
 		/* TODO: pop ebx; mul ebx,{1,4,8,type_size,...}; add eax,ebx */
 		expect("]")
 		type = 1  # promote to char
@@ -36,14 +36,12 @@ int postfix_expr():
 
 			expect(")")
 
-		# emit(7, "\x8b\x84\x24....") /* mov (n * 4)(%esp),%eax */
-		# save_int(code + codepos - 4, (stack_pos - s - 1) << word_size_log2)
 		mov_eax_esp_plus((stack_pos - s - 1) << word_size_log2)
 
 		if (type_lookup_pointer(type) > 0):
 			warning("type_lookup_pointer > 0")
 			promote_eax()
-		emit(2, "\xff\xd0") /* call *%eax */
+		call_eax()
 		be_pop(stack_pos - s)
 		stack_pos = s
 		type = 3  # dont promote
@@ -57,13 +55,11 @@ int postfix_expr():
 				print2("struct field '")
 				print2(token)
 				error("' not found")
-			# Return right side field type instead of struct
-			emit(5, "\x05....") /* \x2d add eax,... */
-			/* \x2d: sub eax, ... WRONG use sub instead? */
-			int stack_offset = type_get_field_offset(type, token)
-			save_int(code + codepos - 4, stack_offset)
 
-			# use child type:
+			# Return right side field type instead of struct pointer
+			add_eax_int32(type_get_field_offset(type, token))
+
+			# Use child type insted of struct type:
 			type = type_get_field_type(type, token)
 			if (type < 0):
 				print_int0("child field not found: '", type)

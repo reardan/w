@@ -101,4 +101,4 @@ int main(int argc, int argv):
 	server()
 
 
-	exit_w(0)
+	exit(0)

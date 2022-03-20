@@ -32,7 +32,7 @@ void program():
 		get_token()
 		if (accept(";")):
 			sym_define_global(current_symbol)
-			emit(4, "\x00\x00\x00\x00")
+			emit_zeros(word_size)
 
 		else if (accept("(")):
 			table[current_symbol + 10] = 2 /* store function type */
@@ -53,7 +53,7 @@ void program():
 			if (accept(";") == 0):
 				sym_define_global(current_symbol)
 				statement()
-				emit(1, "\xc3") /* ret */
+				ret()
 				# Store length to symbol table:
 				save_int(table + current_symbol + 14, codepos - function_start)
 
@@ -62,4 +62,4 @@ void program():
 		else:
 			/*error(8)*/
 			sym_define_global(current_symbol)
-			emit(4, "\x00\x00\x00\x00")
+			emit_zeros(word_size)

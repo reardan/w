@@ -17,12 +17,14 @@ int expression():
 		
 		promote(type2)
 		int type_size = type_get_size(type2)
+		pop_ebx()
 		if (type == 1):
-			emit(3, "\x5b\x88\x03") /* pop %ebx ; mov %al,(%ebx) */
+			store_ebx_int8()
 		else if(type_size == 2):
-			emit(4, "\x5b\x66\x89\x03") /* pop %ebx ; mov %ax,(%ebx) */
+			store_ebx_int16()
 		else:
-			emit(3, "\x5b\x89\x03") /* pop %ebx ; mov %eax,(%ebx) */
+			store_ebx_int32()
+
 		stack_pos = stack_pos - 1
 
 		type = 3  # no promotion

@@ -11,18 +11,18 @@ int while_statement():
 	expect("(")
 	p1 = codepos
 	promote(expression())
-	emit(8, "\x85\xc0\x0f\x84....") /* test %eax,%eax ; je ... */
+	jmp_zero_int32(1337008)
 	p2 = codepos
 	expect(")")
 
 	statement()
 
 	# loop
-	emit(5, "\xe9....") /* jmp ... */
+	jmp_int32(1337009)
 
 	# backtrace: save jmp out, loop jmp addresses
-	save_int(code + codepos - 4, p1 - codepos)
-	save_int(code + p2 - 4, codepos - p2)
+	save_int32(code + codepos - 4, p1 - codepos)
+	save_int32(code + p2 - 4, codepos - p2)
 
 	return 1
 

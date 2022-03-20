@@ -85,6 +85,14 @@ int type_lookup_pointer(char* name, int pointer_level):
 	return 0-1
 
 
+int type_lookup_next_pointer(int type_index):
+	return type_lookup_pointer(type_get_name(type_index), type_get_pointer_level(type_index) + 1)
+
+
+int type_lookup_previous_pointer(int type_index):
+	return type_lookup_pointer(type_get_name(type_index), type_get_pointer_level(type_index) - 1)
+
+
 int type_add_arg(int type_index, char* field, int field_type):
 	int t = get(type_index)
 	int num_fields = load_int(t + 4)
@@ -165,11 +173,16 @@ int type_get_field_type(int type_index, char* field):
 void type_print(int type_index):
 	# print_int("type_print: ", type_index)
 	int t = get(type_index)
-	print2("struct ")
-	print2(*t)
-	print2(": ")
 	int i = 0
 	int num_fields = load_int(t + 4)
+	print2((itoa(type_index)))
+	print2(":")
+	if (num_fields > 0):
+		print2("struct ")
+		print2(*t)
+		print2(": ")
+	else:
+		print2(*t)
 	# print_int("num_fields: ", num_fields)
 	if (num_fields <= 0):
 		println2("")
@@ -200,6 +213,8 @@ void type_print_all():
 		print_error(itoa(i))
 		print_error(": ")
 		print_error(*type)
+		for int j in range(type_get_pointer_level(i)):
+			print_error("*")
 		print_error("\x0a")
 		# print_int("len=", strlen(*type))
 		i = i + 1
@@ -214,19 +229,21 @@ void push_basic_types():
 	type_push_size("int", word_size)
 	type_push_size("char", 1)
 	type_push_size("constant", 0)
-	type_push_size("", 0)
+	type_push_size("function", 0)
 
 	# newer types, use these for now until void/int/char are fixed:
-	type_push_size("int32", word_size)
-	type_push_size("pointer", word_size)
 	type_push_size("byte", 1)
 	type_push_size("int16", 2)
+	type_push_size("int32", word_size)
+	type_push_size("pointer", word_size)
 	type_push_size("int8", 1)
 
 	type_push_size("uint", word_size)
 	type_push_size("uint32", word_size)
 	type_push_size("uint16", 2)
 	type_push_size("uint8", 1)
+	type_push_size("byte", 1)
+
 
 	# temporary pointer types
 	# todo: create these dynamically
@@ -234,7 +251,10 @@ void push_basic_types():
 	type_push_pointer("int", word_size, 2)
 	type_push_pointer("char", word_size, 1)
 	type_push_pointer("char", word_size, 2)
+	type_push_pointer("byte", word_size, 1)
+	type_push_pointer("byte", word_size, 2)
 	type_push_pointer("void", word_size, 1)
 	type_push_pointer("void", word_size, 2)
 	type_push_pointer("int32", word_size, 1)
 	type_push_pointer("uint", word_size, 1)
+	type_push_pointer("function", word_size, 1)

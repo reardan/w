@@ -9,3 +9,11 @@ int binary2(int type, int n, char *s):
 	emit(n, s)
 	stack_pos = stack_pos - 1
 	return 3
+
+
+int binary2_pop(int type, int n, char *s):
+	promote(type)
+	emit(1, "\x5b") /* pop ebx */
+	emit(n, s)
+	stack_pos = stack_pos - 1
+	return 3

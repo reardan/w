@@ -5,8 +5,8 @@ int multiplicative_expr():
 	int type = unary_expression()
 	while (1):
 		if (accept("*")):
-			binary1(type) /* pop ebx ; imul eax,ebx */
-			type = binary2(unary_expression(), 4, "\x5b\x0f\xaf\xc3")
+			binary1(type) /* imul eax,ebx */
+			type = binary2_pop(unary_expression(), 3, "\x0f\xaf\xc3")
 
 		else if (accept("/")):
 			binary1(type)  /* mov ebx, eax ; pop eax ; xor edx,edx ; idiv ebx */

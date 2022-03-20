@@ -1,7 +1,22 @@
 current:
-	x64
-		syscall x64
-		move machine code gen to codegen.w
+
+
+	pointer...
+		working:
+			int*
+			char[0]
+		not working:
+			int[]
+			char* + 2
+		problem:
+			types are misaligned
+				promote() char = 1, int = 2
+				type_name() char = 2, int = 1
+				constant = 3, no promotion (and it's re-used in expression())
+			these all need to be fixed in the grammar
+		another problem:
+			function pointers
+				currently only in testing.w to call the test function
 
 
 	type...
@@ -28,22 +43,18 @@ current:
 			type.size
 
 
-	pointer...
-		working:
-			int*
-			char[0]
-		not working:
-			int[]
-			char* + 2
-		problem:
-			types are misaligned
-				promote() char = 1, int = 2
-				type_name() char = 2, int = 1
-				constant = 3, no promotion (and it's re-used in expression())
-			these all need to be fixed in the grammar
-		another problem:
-			function pointers
-				currently only in testing.w to call the test function
+	hash map...
+		based on c programming language...
+		also research other types...
+
+
+
+	struct
+		partial int type e.g. int16
+		struct pointers
+		struct arrays
+		struct of struct
+		linked list via struct
 
 
 	debugging advanced (dependant on pointers):
@@ -56,12 +67,31 @@ current:
 
 
 	external library calls...
-		assembler/disassembler library
+		assembler/disassembler library...
+		threading library...
 
 
 	c_import...
-		grammar parser
-		program parser
+		lexer...
+		parser...
+
+
+	code generation...
+		remaining x64...
+			lib_test...
+			self compiling...
+
+
+		web assembly...
+			hello world...
+			editor...
+				fonts...
+				webgl...
+				renderer...
+				mouse...
+				keyboard...
+			self compiling...
+				advanced assembly...
 
 
 major bugs:

@@ -39,15 +39,38 @@ int promote(int type):
 
 
 	if (type == 1): /* old char: (but is also int type) */
-		emit(3, "\x0f\xbe\x00") /* movsbl eax, [eax] */
+		promote_int8_eax()
 	else if (type == 2): /* old int / char* / everything */
-		emit(2, "\x8b\x00") /* mov eax, [eax] */
+		promote_eax()
 	else if (type == 3) {} /* void: no op */
-	else if (type == 5): /* int32 */
-		emit(2, "\x8b\x00") /* mov eax, [eax] */
-	if (type_pointer_level > 0):
-		emit(2, "\x8b\x00") /* mov eax, [eax] */
+
+	else if (type == 5) {} /* int8 */
+		# promote_int8_eax()
+	else if (type == 6) {} /* int16 */
+		# promote_int16_eax()
+	else if (type == 7) {} /* int32 */
+		# promote_eax()
+
+	else if (type_pointer_level > 0):
+		# promote_int8_eax()
 		# Lookup pointer_level - 1 and return
-		type = type_lookup_pointer(type, type_pointer_level - 1)
+		int new_type = type_lookup_previous_pointer(type)
+		if (verbosity >= 1):
+			print2(itoa(line_number))
+			print2(": type_pointer_level > 0, new_type: ")
+			type_print(new_type)
+
+		if (type == 17): /* char pointer */
+			print_color("promoting char pointer!\x0a", 33)
+			promote_eax()
+			return new_type
+
+		if (type == 23): /* int32 pointer */
+			print_color("promoting int32 pointer!", 33)
+			promote_eax()
+			return new_type
+
+		if (type == 25): /* function pointer */
+			promote_eax()
 
 	return type

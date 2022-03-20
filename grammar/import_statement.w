@@ -47,13 +47,13 @@ int import_statement():
 			get_token()
 			return 1
 
-		print_string("token: ", token)
 		char* tok = strclone(token)
 		type_push(tok)
-		print_string("cloned token: ", tok)
 		char* with_path = strjoin(tok, ".w")
-		print_string("with_path: ", with_path)
-		if (verbosity >= 0):
+		if (verbosity >= 1):
+			print_string("token: ", token)
+			print_string("cloned token: ", tok)
+			print_string("with_path: ", with_path)
 			print_string("importing ", with_path)
 		compile_save(with_path, import_wildcard_import)
 		nextc = get_character()

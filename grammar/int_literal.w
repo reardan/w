@@ -7,6 +7,5 @@ int int_literal():
 		n = (n << 1) + (n << 3) + token[i] - '0'
 		i = i + 1
 
-	emit(5, "\xb8....") /* mov $x,%eax */
-	save_int(code + codepos - 4, n)
+	mov_eax_int(n)
 	return 1
