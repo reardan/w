@@ -23,8 +23,8 @@ sub classes / specialty versions
 	RingBuffer
 
 */
-import assert
-import integer
+import lib.assert
+import code_generator.integer
 import lib.math
 
 # Depends on codegen indirectly for load_int/save_int for now

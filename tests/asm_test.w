@@ -1,5 +1,5 @@
 import lib.testing
-import asm
+import tests.asm
 
 
 /*void test_void():

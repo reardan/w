@@ -5,7 +5,7 @@ print
 loop
 */
 import compiler.compiler
-import assert
+import lib.assert
 
 
 int history_filename

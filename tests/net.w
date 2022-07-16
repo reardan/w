@@ -29,7 +29,7 @@ struct sock_addr_link_layer:
 	ha_type # ARPHRD_ETHER
 */
 import lib.lib
-import assert
+import lib.assert
 
 
 
@@ -68,7 +68,7 @@ struct addrinfo:
 
 # http://linasm.sourceforge.net/docs/syscalls/network.php
 # https://linux.die.net/man/3/getaddrinfo
-int socket(int family, int socket_type, int protocol):
+int socket2(int family, int socket_type, int protocol):
 	return syscall(41, family, socket_type, protocol)
 
 

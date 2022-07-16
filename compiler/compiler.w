@@ -1,8 +1,8 @@
 import lib.lib
-import compiler_vars
+import compiler.compiler_vars
 import compiler.tokenizer
 import codegen
-import assert
+import lib.assert
 import compiler.type_table
 import compiler.symbol_table
 import grammar

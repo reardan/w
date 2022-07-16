@@ -1,4 +1,4 @@
-import integer
+import code_generator.integer
 
 
 char *code

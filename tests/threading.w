@@ -3,7 +3,7 @@
 # new, 256 kb, write|read, anon|private|growsdown
 
 import lib.lib
-import assert
+import lib.assert
 
 
 /* int stack_create():

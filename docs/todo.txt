@@ -9,6 +9,9 @@ current:
 				type_table...done
 				type_table_test...hacked
 				compiler...hacked
+				compiler_vars...untested
+				compiler_test...done
+				type...untested
 
 			import directory.*...
 				delete:
@@ -20,6 +23,12 @@ current:
 			lib_test...done
 			math.w...done
 			testing...done
+			assert...done
+			logging...done
+
+		mov grammar...done
+			grammar_test...done
+			grammar_test_future...done
 
 		move data structures...
 			array_list...done (untested)
@@ -34,12 +43,21 @@ current:
 			x64_test...done
 			pointer_test...done
 			range_test...done
-			net.w...done
 			tcp.w...done
 			whttp.w...done
 			threading.w...done (broken)
+			elf...done
+			asm_test...broken
+			asm...broken
+			hello...done
+			integer_x86...untested
+			net_basic...done
+			net...broken
+			simple...done
+			struct_test...done
+			struct...done
 
-		move debugger...
+		move debugger...done
 			debugging.w...done (untested)
 			context...done
 			convert...done

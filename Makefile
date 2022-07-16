@@ -29,17 +29,17 @@ testing_ground: w FORCE
 	./bin/testing_ground arg1 arg2 arg3 -o output -i=input --input=doubledash
 
 asm_test: w FORCE
-	./bin/wv2 asm_test.w >./bin/asm_test
+	./bin/wv2 tests/asm_test.w >./bin/asm_test
 	chmod +x ./bin/asm_test
 	./bin/asm_test
 
 net_basic: w FORCE
-	./bin/wv2 net_basic.w >./bin/net_basic
+	./bin/wv2 tests/net_basic.w >./bin/net_basic
 	chmod +x ./bin/net_basic
 	./bin/net_basic
 
 net: w FORCE
-	./bin/wv2 net.w >./bin/net
+	./bin/wv2 tests/net.w >./bin/net
 	chmod +x ./bin/net
 	./bin/net
 
@@ -49,7 +49,7 @@ pointer_test: w FORCE
 	./bin/pointer_test
 
 hello: w FORCE
-	./bin/wv2 hello.w >./bin/hello
+	./bin/wv2 tests/hello.w >./bin/hello
 	chmod +x ./bin/hello
 	./bin/hello
 
@@ -79,12 +79,12 @@ net_debug: w FORCE
 	ddd ./bin/net
 
 simple: w FORCE
-	./bin/wv2 simple.w >./bin/simple
+	./bin/wv2 tests/simple.w >./bin/simple
 	chmod +x ./bin/simple
 	./bin/simple
 
 simple_debug: w FORCE
-	./bin/wv2 simple.w >./bin/simple
+	./bin/wv2 tests/simple.w >./bin/simple
 	chmod +x ./bin/simple
 	ddd ./bin/simple
 
@@ -99,7 +99,7 @@ x64_test_debug: w FORCE
 	ddd ./bin/x64_test
 
 elf: w FORCE
-	./bin/wv2 elf.w >./bin/elf
+	./bin/wv2 tests/elf.w >./bin/elf
 	chmod +x ./bin/elf
 	./bin/elf
 
@@ -109,12 +109,12 @@ convert: w FORCE
 	# objdump -d ~/git/net/tcp | ./bin/convert
 
 struct_test: w FORCE
-	./bin/wv2 struct_test.w >./bin/struct_test
+	./bin/wv2 tests/struct_test.w >./bin/struct_test
 	chmod +x ./bin/struct_test
 	./bin/struct_test
 
 struct_test_debug: w FORCE
-	./bin/wv2 struct_test.w >./bin/struct_test
+	./bin/wv2 tests/struct_test.w >./bin/struct_test
 	chmod +x ./bin/struct_test
 	ddd ./bin/struct_test
 
@@ -167,7 +167,7 @@ tcp: w FORCE
 #	ddd ./bin/tcp
 
 grammar_test: w FORCE
-	./bin/wv2 grammar_test.w >./bin/grammar_test
+	./bin/wv2 grammar/grammar_test.w >./bin/grammar_test
 	chmod +x ./bin/grammar_test
 	./bin/grammar_test
 #	ddd ./bin/grammar_test

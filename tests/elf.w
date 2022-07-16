@@ -1,5 +1,5 @@
 import lib.lib
-import assert
+import lib.assert
 import compiler.tokenizer
 import codegen
 

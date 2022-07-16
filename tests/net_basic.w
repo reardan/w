@@ -1,5 +1,5 @@
 import lib.lib
-import integer
+import code_generator.integer
 
 
 # try #3
@@ -20,7 +20,7 @@ struct socketargs:
 	int family
 
 
-int socket(int protocol, int type, int family):
+int socket3(int protocol, int type, int family):
 	println("socket()")
 	socketargs args
 	args.protocol = protocol
@@ -36,11 +36,11 @@ int socket(int protocol, int type, int family):
 
 # try #2
 # https://cocomelonc.github.io/tutorial/2021/10/17/linux-shellcoding-2.html
-int socketcall(int call, int args):
+int socketcall2(int call, int args):
 	return syscall(102, call, args, 0)
 
 
-int socket(int* domain, int type, int protocol):
+int socket2(int* domain, int type, int protocol):
 	# second arg: ???
 	return socketcall(1, domain)  
 

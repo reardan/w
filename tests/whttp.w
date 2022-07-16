@@ -1,5 +1,5 @@
 import lib.lib
-import assert
+import lib.assert
 
 
 void response_headers(int file, int size):
