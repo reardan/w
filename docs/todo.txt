@@ -1,5 +1,20 @@
 current:
+	move compiler...
+		get parent folder import working...done
 
+		move w files...
+			tokenizer...done
+			symbol_table...done
+			type_table...done
+			type_table_test...hacked
+			compiler...hacked
+
+		import X.*...
+			codegen
+			grammar
+
+	move data structures...
+		structures/
 
 	pointer...
 		working:

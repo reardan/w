@@ -21,6 +21,7 @@ dotted_name:
 examples:
 	import file.*
 	import file
+	import directory.*
 	import directory.file
 	import directory.file.[func1, func2, var2]
 

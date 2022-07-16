@@ -4,7 +4,7 @@ eval
 print
 loop
 */
-import compiler
+import compiler.compiler
 import assert
 
 

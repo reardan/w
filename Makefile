@@ -14,7 +14,7 @@ update:
 	mv -f ./bin/wv2 ./w
 
 test: w FORCE
-	./bin/wv2 test.w >./bin/test
+	./bin/wv2 tests/test.w >./bin/test
 	chmod +x ./bin/test
 	./bin/test
 
@@ -129,7 +129,7 @@ range_test_debug: w FORCE
 	ddd ./bin/range_test
 
 type_table_test: w FORCE
-	./bin/wv2 type_table_test.w >./bin/type_table_test
+	./bin/wv2 compiler/type_table_test.w >./bin/type_table_test
 	chmod +x ./bin/type_table_test
 	./bin/type_table_test
 

@@ -1,4 +1,4 @@
-import tokenizer
+import compiler.tokenizer
 
 /*
 mvp for context:

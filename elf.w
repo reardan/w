@@ -1,6 +1,6 @@
 import lib
 import assert
-import tokenizer
+import compiler.tokenizer
 import codegen
 
 

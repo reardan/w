@@ -32,6 +32,9 @@ int rmdir(char* path):
 int getdents(int file, char* buf, int count):
 	return syscall(141, file, buf, count)
 
+int getcwd(char* buf, int size):
+	return syscall(183, buf, size, 0)
+
 /* memory and threading */
 int brk(char* addr):
 	return syscall(45, addr, 0, 0)

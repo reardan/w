@@ -1,5 +1,10 @@
 import testing
-import type_table
+
+/*
+todo: fix this so that it can use self directory
+and it changes the directory then backs out
+*/
+import compiler.type_table
 
 
 void test_type_size():

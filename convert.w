@@ -21,7 +21,7 @@ Disassembly of section .text:
  8049013:	c3                   	ret 
 */
 import lib
-import tokenizer
+import compiler.tokenizer
 import list
 
 int main_args(int argc, int argv):
