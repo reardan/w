@@ -24,7 +24,7 @@ test_debug: w FORCE
 	ddd ./bin/test
 
 testing_ground: w FORCE
-	./bin/wv2 testing_ground.w >./bin/testing_ground
+	./bin/wv2 tests/testing_ground.w >./bin/testing_ground
 	chmod +x ./bin/testing_ground
 	./bin/testing_ground arg1 arg2 arg3 -o output -i=input --input=doubledash
 
@@ -44,7 +44,7 @@ net: w FORCE
 	./bin/net
 
 pointer_test: w FORCE
-	./bin/wv2 pointer_test.w >./bin/pointer_test
+	./bin/wv2 tests/pointer_test.w >./bin/pointer_test
 	chmod +x ./bin/pointer_test
 	./bin/pointer_test
 
@@ -54,13 +54,13 @@ hello: w FORCE
 	./bin/hello
 
 import_test: w FORCE
-	./bin/wv2 import_test.w >./bin/import_test
+	./bin/wv2 tests/import_test.w >./bin/import_test
 	chmod +x ./bin/import_test
 	./bin/import_test
 
 
 directory_test: w FORCE
-	./bin/wv2 directory_test.w >./bin/directory_test
+	./bin/wv2 tests/directory_test.w >./bin/directory_test
 	chmod +x ./bin/directory_test
 	./bin/directory_test
 
@@ -89,12 +89,12 @@ simple_debug: w FORCE
 	ddd ./bin/simple
 
 x64_test: w FORCE
-	./bin/wv2 x64 x64_test.w >./bin/x64_test
+	./bin/wv2 x64 tests/x64_test.w >./bin/x64_test
 	chmod +x ./bin/x64_test
 	./bin/x64_test
 
 x64_test_debug: w FORCE
-	./bin/wv2 x64 x64_test.w >./bin/x64_test
+	./bin/wv2 x64 tests/x64_test.w >./bin/x64_test
 	chmod +x ./bin/x64_test
 	ddd ./bin/x64_test
 
@@ -104,9 +104,9 @@ elf: w FORCE
 	./bin/elf
 
 convert: w FORCE
-	./bin/wv2 convert.w >./bin/convert
+	./bin/wv2 debugger/convert.w >./bin/convert
 	chmod +x ./bin/convert
-	objdump -d ~/git/net/tcp | ./bin/convert
+	# objdump -d ~/git/net/tcp | ./bin/convert
 
 struct_test: w FORCE
 	./bin/wv2 struct_test.w >./bin/struct_test
@@ -119,12 +119,12 @@ struct_test_debug: w FORCE
 	ddd ./bin/struct_test
 
 range_test: w FORCE
-	./bin/wv2 range_test.w >./bin/range_test
+	./bin/wv2 tests/range_test.w >./bin/range_test
 	chmod +x ./bin/range_test
 	./bin/range_test
 
 range_test_debug: w FORCE
-	./bin/wv2 range_test.w >./bin/range_test
+	./bin/wv2 tests/range_test.w >./bin/range_test
 	chmod +x ./bin/range_test
 	ddd ./bin/range_test
 
@@ -138,28 +138,30 @@ logging: w FORCE
 	chmod +x ./bin/logging
 	./bin/logging
 
+# Doesn't seem like these threading modules are in good shape:
 threading: w FORCE
-	./bin/wv2 threading.w >./bin/threading
+	./bin/wv2 tests/threading.w >./bin/threading
 	chmod +x ./bin/threading
 	./bin/threading
 
 threading_test: w FORCE
-	./bin/wv2 threading_test.w >./bin/threading_test
+	./bin/wv2 tests/threading_test.w >./bin/threading_test
 	chmod +x ./bin/threading_test
 	./bin/threading_test
 
 threading_test_debug: w FORCE
-	./bin/wv2 threading_test.w >./bin/threading_test
+	./bin/wv2 tests/threading_test.w >./bin/threading_test
 	chmod +x ./bin/threading_test
 	ddd ./bin/threading_test
 
+
 whttp: w FORCE
-	./bin/wv2 whttp.w >./bin/whttp
+	./bin/wv2 tests/whttp.w >./bin/whttp
 	chmod +x ./bin/whttp
 	./bin/whttp
 
 tcp: w FORCE
-	./bin/wv2 tcp.w >./bin/tcp
+	./bin/wv2 tests/tcp.w >./bin/tcp
 	chmod +x ./bin/tcp
 	./bin/tcp
 #	ddd ./bin/tcp
@@ -171,22 +173,22 @@ grammar_test: w FORCE
 #	ddd ./bin/grammar_test
 
 list_test: w FORCE
-	./bin/wv2 list_test.w >./bin/list_test
+	./bin/wv2 structures/list_test.w >./bin/list_test
 	chmod +x ./bin/list_test
 	./bin/list_test
 
 lib_test: w FORCE
-	./bin/wv2 lib_test.w >./bin/lib_test
+	./bin/wv2 lib/lib_test.w >./bin/lib_test
 	chmod +x ./bin/lib_test
 	./bin/lib_test
 
 lib_64_test: w FORCE
-	./bin/wv2 x64 lib_test.w >./bin/lib_test
+	./bin/wv2 x64 lib/lib_test.w >./bin/lib_test
 	chmod +x ./bin/lib_test
 	./bin/lib_test
 
 lib_64_test_debug: w FORCE
-	./bin/wv2 x64 lib_test.w >./bin/lib_test
+	./bin/wv2 x64 lib/lib_test.w >./bin/lib_test
 	chmod +x ./bin/lib_test
 	ddd ./bin/lib_test
 
@@ -195,8 +197,8 @@ repl: FORCE
 	chmod +x ./bin/repl
 	./bin/repl test.w >./bin/test
 
-for: w FORCE
-	./bin/wv2 for_test.w >./bin/for_test
+for_test: w FORCE
+	./bin/wv2 tests/for_test.w >./bin/for_test
 	chmod +x ./bin/for_test
 	./bin/for_test
 

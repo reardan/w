@@ -20,9 +20,10 @@ Disassembly of section .text:
  8049011:	cd 80                	int    $0x80
  8049013:	c3                   	ret 
 */
-import lib
+import lib.lib
 import compiler.tokenizer
-import list
+import structures.list
+
 
 int main_args(int argc, int argv):
 	int i = 1
@@ -31,6 +32,7 @@ int main_args(int argc, int argv):
 		print_string("arg: ", *arg)
 		i = i + 1
 	return 0
+
 
 int get_char():
 	return getchar(0)
@@ -48,6 +50,7 @@ void setup_tokenizer():
 void read_until_start():
 	while (accept("_start") == 0):
 		get_token()
+
 
 int is_hex_char(int c):
 	if (c >= '0' & c <= '9'):

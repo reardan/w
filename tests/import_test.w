@@ -11,7 +11,7 @@ Long Term how to do these tests:
 3) Profit
 
 */
-import testing
+import lib.testing
 import tests.subfolder
 
 # Test multiple of the same import

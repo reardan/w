@@ -1,20 +1,59 @@
 current:
-	move compiler...
-		get parent folder import working...done
+	clean up directory structure...
+		move compiler...
+			get parent folder import working...done
 
-		move w files...
-			tokenizer...done
-			symbol_table...done
-			type_table...done
-			type_table_test...hacked
-			compiler...hacked
+			move w files...
+				tokenizer...done
+				symbol_table...done
+				type_table...done
+				type_table_test...hacked
+				compiler...hacked
 
-		import X.*...
-			codegen
-			grammar
+			import directory.*...
+				delete:
+					codegen
+					grammar
 
-	move data structures...
-		structures/
+		move lib...done
+			lib.w...done
+			lib_test...done
+			math.w...done
+			testing...done
+
+		move data structures...
+			array_list...done (untested)
+			linked_list...done (untested)
+			list...done
+
+		move test...done
+			testing_grounds...done
+			directory_test...done
+			import_test...done
+			for_test...done
+			x64_test...done
+			pointer_test...done
+			range_test...done
+			net.w...done
+			tcp.w...done
+			whttp.w...done
+			threading.w...done (broken)
+
+		move debugger...
+			debugging.w...done (untested)
+			context...done
+			convert...done
+
+		fix makefile structure...
+			split into sub makefiles
+			fix any build issues
+
+	web debugger...
+		parse tree analyzer...
+		binary analyzer...
+		debugger information...
+		debug in existing debugger...
+		w debugger...
 
 	pointer...
 		working:
@@ -108,6 +147,8 @@ current:
 			self compiling...
 				advanced assembly...
 
+	merge symbol_table + type_table
+		base on hash_map
 
 major bugs:
 	int*[]

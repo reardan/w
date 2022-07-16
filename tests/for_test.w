@@ -1,4 +1,4 @@
-import testing
+import lib.testing
 
 void test_range_one_arg():
 	int result = 0

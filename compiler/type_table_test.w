@@ -1,4 +1,4 @@
-import testing
+import lib.testing
 
 /*
 todo: fix this so that it can use self directory

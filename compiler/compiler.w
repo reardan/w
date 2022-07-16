@@ -1,4 +1,4 @@
-import lib
+import lib.lib
 import compiler_vars
 import compiler.tokenizer
 import codegen
@@ -41,11 +41,11 @@ void compile(char* fn):
 		char* joined = strjoin(cwd, "/")
 		char* joined2 = strjoin(joined, fn)
 		print_string("cwd: ", joined2)
-		free(cwd)
 		free(joined)
 
 		int result = compile_attempt(joined2)
 		if (result == 0):
+			free(cwd)
 			return 0
 
 		# Go back up one directory

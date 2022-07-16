@@ -2,7 +2,7 @@
 Testing Grounds for the W Language
 TODO: refactor all these into the appropriate test files.
 */
-import lib
+import lib.lib
 
 int global_int
 char* global_char

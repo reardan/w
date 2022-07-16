@@ -1,4 +1,4 @@
-import lib
+import lib.lib
 import assert
 
 
@@ -28,11 +28,11 @@ int http_server():
 	int queue_length = 0
 	int listen_result = listen(server_socket)
 	asserts("listen failed: ", listen_result > 0)
-	print_int("now listening on port: ", port)
+	print_int("now listening: http://127.0.0.1:", port)
 	int n = 16000
 	char* buf = malloc(n)
 
-	int file = open("/home/w/git/w/w.html", 0, 511)
+	int file = open("/home/w/git/w/tests/w.html", 0, 511)
 	asserts("Could not open file w.html", file > 0)
 	print_int("file: ", file)
 	int size = file_size(file)

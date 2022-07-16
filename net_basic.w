@@ -1,4 +1,4 @@
-import lib
+import lib.lib
 import integer
 
 

@@ -1,4 +1,4 @@
-import lib
+import lib.lib
 
 
 int main(int arg, char** argv):

@@ -1,5 +1,5 @@
-import testing
-import list
+import lib.testing
+import structures.list
 
 
 void test_create():

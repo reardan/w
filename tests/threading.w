@@ -2,7 +2,7 @@
 # https://nullprogram.com/blog/2016/09/23/
 # new, 256 kb, write|read, anon|private|growsdown
 
-import lib
+import lib.lib
 import assert
 
 

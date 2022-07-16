@@ -1,4 +1,4 @@
-import lib
+import lib.lib
 import assert
 import compiler.tokenizer
 import codegen

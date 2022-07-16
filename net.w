@@ -28,7 +28,7 @@ struct sock_addr_link_layer:
 	if_index # interf.Index
 	ha_type # ARPHRD_ETHER
 */
-import lib
+import lib.lib
 import assert
 
 

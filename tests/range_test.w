@@ -32,7 +32,7 @@ int pint(int val):
 	return val
 
 */
-import testing
+import lib.testing
 
 
 void test_for_in_range_basic():

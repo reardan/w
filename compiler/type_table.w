@@ -13,7 +13,7 @@ struct type:
 
 	should we add total_size + field_size??
 */
-import list
+import structures.list
 
 
 int type_size():
@@ -27,7 +27,6 @@ int type_push_pointer(char* name, int size, int pointer_level):
 	save_int(new_type + 8, size) /* size */
 	save_int(new_type + 12, pointer_level) /* pointer level */
 	return push(new_type)
-
 
 
 int type_push_size(char* name, int size):

@@ -25,7 +25,7 @@ sub classes / specialty versions
 */
 import assert
 import integer
-import math
+import lib.math
 
 # Depends on codegen indirectly for load_int/save_int for now
 # This will be removed once int*[] lookups are working.

@@ -1,6 +1,6 @@
-import lib
+import lib.lib
 import assert
-import list
+import structures.list
 
 
 

@@ -1,4 +1,4 @@
-import lib
+import lib.lib
 
 
 char *logging_filename
