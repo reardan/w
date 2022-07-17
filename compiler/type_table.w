@@ -49,7 +49,7 @@ int type_lookup(char* name):
 		if (strcmp(name, *type) == 0):
 			return i
 		i = i + 1
-	return 0-1
+	return -1
 
 
 char* type_get_name(int type_index):
@@ -81,7 +81,7 @@ int type_lookup_pointer(char* name, int pointer_level):
 		if ((strcmp(name, *t) == 0) & (pointer_level==load_int(t + 12))):
 			return i
 		i = i + 1
-	return 0-1
+	return -1
 
 
 int type_lookup_next_pointer(int type_index):
@@ -135,7 +135,7 @@ int type_get_arg(int type_index, char* field):
 		if (strcmp(field, f) == 0):
 			return i
 		i = i + 1
-	return 0-1
+	return -1
 
 
 # from type_index, return the offset of the field
@@ -152,7 +152,7 @@ int type_get_field_offset(int type_index, char* field):
 		int field_size = type_get_size(field_type)
 		offset = offset + field_size
 		i = i + 1
-	return 0-1
+	return -1
 
 
 # return type.field.type
@@ -166,7 +166,7 @@ int type_get_field_type(int type_index, char* field):
 		if (strcmp(field, f) == 0):
 			return field_type
 		i = i + 1
-	return 0-1
+	return -1
 
 
 void type_print(int type_index):

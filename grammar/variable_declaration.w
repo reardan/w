@@ -26,6 +26,6 @@ int variable_declaration():
 			i = i + 1
 		stack_pos = stack_pos + size
 		return type
-	return 0-1
+	return -1
 
 

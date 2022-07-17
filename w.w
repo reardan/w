@@ -6,7 +6,7 @@ import compiler.compiler
 
 
 int main(int argc, int argv):
-	verbosity = 0-1
+	verbosity = -1
 	link(argc, argv)
 	return 0
 

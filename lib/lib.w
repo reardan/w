@@ -287,7 +287,7 @@ int getchar(int file):
 	char* buf = "\x00"
 	int result = read(file, buf, 1)
 	if (result == 0):
-		return (0-1)
+		return (-1)
 	return buf[0]
 
 

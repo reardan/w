@@ -50,8 +50,8 @@ void test_int_literals():
 
 	int b = 0
 	b = b - 1
-	assert_equal(0-1, b)
+	assert_equal(-1, b)
 
 	int c = -1
-	assert_equal(0-1, b)
+	assert_equal(-1, b)
 	assert_equal(1, c + 2)

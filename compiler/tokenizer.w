@@ -129,7 +129,7 @@ void get_token():
 				nextc = get_character()
 				w = 1
 
-			else if (nextc != 0-1):
+			else if (nextc != -1):
 				takechar()
 
 		token[token_i] = 0
