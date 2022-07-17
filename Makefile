@@ -223,7 +223,7 @@ tests: build lib_test grammar_test list_test type_table_test FORCE
 clean:
 	rm -f wv2 wv3 wv4 wv5 test test_output.txt grammar_test bin/*
 
-w: *.w
+w: *.w */*.w
 	./w w.w >./bin/wv2
 	chmod +x ./bin/wv2
 

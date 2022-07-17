@@ -117,7 +117,6 @@ void get_token():
 
 					nextc = get_character()
 					w = 1
-
 			}
 			# Line Comments
 			else if (nextc == '#'):
@@ -126,7 +125,7 @@ void get_token():
 				while(nextc != 10):
 					nextc = get_character()
 
-				nextc = get_character()
+				# nextc = get_character()
 				w = 1
 
 			else if (nextc != -1):

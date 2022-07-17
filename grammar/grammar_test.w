@@ -55,3 +55,9 @@ void test_int_literals():
 	int c = -1
 	assert_equal(-1, b)
 	assert_equal(1, c + 2)
+
+void test_end_of_line_comments():
+	assert_equal(0, 0) /* block comment */
+	assert_equal(0, 0) # line comment
+	assert_equal(1, 1) #
+
