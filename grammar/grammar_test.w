@@ -37,3 +37,21 @@ void test_func_pointer_variable():
 	int got = f()
 	assert_equal(99, got)
 
+
+void test_int_literals():
+	int a = 0
+	assert_equal(0, a)
+	a = a + 5
+	assert_equal(5, a)
+	a = a + 5
+	assert_equal(10, a)
+	a = a + 7
+	assert_equal(17, a)
+
+	int b = 0
+	b = b - 1
+	assert_equal(0-1, b)
+
+	int c = -1
+	assert_equal(0-1, b)
+	assert_equal(1, c + 2)

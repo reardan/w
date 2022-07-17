@@ -41,21 +41,21 @@ int import_statement():
 		
 		# Ignore if we have already imported this type
 		if (type_lookup(token) >= 0):
-			if (verbosity >= 0):
+			if (verbosity >= 1):
 				print2("Warning: ignoring duplicate imported type: '")
 				print2(token)
 				println2("'")
 			get_token()
 			return 1
 
+		# Store in the type_table with the full path
+		# Shouldnt this be done after the compile??
 		char* tok = strclone(token)
 		type_push(tok)
+
+		# Add the ".w" extension
+		# Shouldnt this be done inside compile*??
 		char* with_path = strjoin(tok, ".w")
-		if (verbosity >= 1):
-			print_string("token: ", token)
-			print_string("cloned token: ", tok)
-			print_string("with_path: ", with_path)
-			print_string("importing ", with_path)
 		compile_save(with_path, import_wildcard_import)
 		nextc = get_character()
 		get_token()

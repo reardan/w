@@ -62,7 +62,6 @@ void strncpy(char* dst, char* src, int n):
 		i = i + 1
 
 
-
 # Note the return value is the final index, NOT the original dst
 char* strcpy(char *dst, char *src):
 	while (src[0]):

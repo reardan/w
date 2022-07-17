@@ -21,43 +21,61 @@ int compile_attempt(char* fn):
 	file = open(filename, 0, 511)
 	if (file < 0):
 		file_not_found_error()
-		return 1
+		return 0
 	line_number = 0
 	tab_level = 0
 	nextc = get_character()
 	get_token()
 	program()
-	return 0
+	return 1
 
 
-void compile(char* fn):
+int compile_joined(char* cwd, char* filename):
+
+	# Compute path based on current directory
+	char* joined = strjoin(cwd, "/")
+
+	char* joined2 = strjoin(joined, filename)
+	print_string("joined: ", joined2)
+	free(joined)
+
+	# Add the .w extension if not already present
+	if (ends_with(joined2, ".w") == 0):
+		char* joined3 = strjoin(joined2, ".w")
+		free(joined2)
+		joined2 = joined3
+
+	# Attempt to compile the path
+	int result = compile_attempt(joined2)
+	free(joined2)
+	return result
+
+
+int compile_file(char* filename):
 	# Get current directory
 	int max_path_size = 4096
 	char* cwd = malloc(max_path_size)
 	getcwd(cwd, max_path_size)
 
+	# While we still have path remaining:
 	while (cwd[0]):
-		# Compute path based on current directory
-		char* joined = strjoin(cwd, "/")
-		char* joined2 = strjoin(joined, fn)
-		print_string("cwd: ", joined2)
-		free(joined)
 
-		int result = compile_attempt(joined2)
-		if (result == 0):
+		# Attempt to compile with this path
+		int result = compile_joined(cwd, filename)
+
+		# If successfull return
+		if (result == 1):
 			free(cwd)
-			return 0
+			return 1
 
 		# Go back up one directory
-		print_string("going up one directory: ", joined2)
 		int index = strlen(cwd) - 1
 		while (index >= 0):
 			if (cwd[index] == '/'):
 				cwd[index] = 0
 				index = 0 /* hacky way to break from loop */
 			index = index - 1
-
-		free(joined2)
+		print_string("went up one directory: ", cwd)
 
 	println2("filesystem root reached, abandoning search")
 	exit(1)
@@ -72,10 +90,10 @@ void compile_save(char* fn, int new_wildcard_import):
 	int old_wildcard_import = wildcard_import
 
 	wildcard_import = new_wildcard_import
-	if (verbosity >= 2):
+	if (verbosity >= 0):
 		print_string("compiling ", fn)
 
-	compile(fn)
+	compile_file(fn)
 	close(file)
 
 	filename = old_filename
@@ -111,7 +129,7 @@ int link(int argc, int argv):
 		print_error("compiling '")
 		print_error(*arg)
 		print_error("'\x0a")
-		compile(*arg)
+		compile_file(*arg)
 		i = i + 1
 
 	# print_symbol_table(0)

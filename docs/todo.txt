@@ -1,77 +1,31 @@
 current:
 	clean up directory structure...
-		move compiler...
-			get parent folder import working...done
+		import directory.*...
+			delete:
+				codegen
+				grammar
 
-			move w files...
-				tokenizer...done
-				symbol_table...done
-				type_table...done
-				type_table_test...hacked
-				compiler...hacked
-				compiler_vars...untested
-				compiler_test...done
-				type...untested
-
-			import directory.*...
-				delete:
-					codegen
-					grammar
-
-		move lib...done
-			lib.w...done
-			lib_test...done
-			math.w...done
-			testing...done
-			assert...done
-			logging...done
-
-		mov grammar...done
-			grammar_test...done
-			grammar_test_future...done
-
-		move data structures...
-			array_list...done (untested)
-			linked_list...done (untested)
-			list...done
-
-		move test...done
-			testing_grounds...done
-			directory_test...done
-			import_test...done
-			for_test...done
-			x64_test...done
-			pointer_test...done
-			range_test...done
-			tcp.w...done
-			whttp.w...done
-			threading.w...done (broken)
-			elf...done
-			asm_test...broken
-			asm...broken
-			hello...done
-			integer_x86...untested
-			net_basic...done
-			net...broken
-			simple...done
-			struct_test...done
-			struct...done
-
-		move debugger...done
-			debugging.w...done (untested)
-			context...done
-			convert...done
+			edge case:
+				directory structure:
+					grammar/
+					grammar.w
+				code:
+					import grammar
+					import grammar.*
+				behavior?
+					1) use grammar.w
+					2) use grammar/
+					3) raise error
+					I think I like behavior #1 the best as the most specific
+					file is chosen.  It would be confusing to the user if the
+					grammar subdirectory was used instead of grammar.w like
+					they were expecting.  At the same time, grammar.file links
+					should still work as expected: breaking the path up.
+				
 
 		fix makefile structure...
 			split into sub makefiles
-			fix any build issues
-
-	web debugger...
-		parse tree analyzer...
-		binary analyzer...
-		debugger information...
-		debug in existing debugger...
-		w debugger...
+			fix any build/import issues
 
 	pointer...
 		working:
@@ -89,7 +43,6 @@ current:
 		another problem:
 			function pointers
 				currently only in testing.w to call the test function
-
 
 	type...
 		add fields to existing type table
@@ -114,11 +67,24 @@ current:
 				> private import type
 			type.size
 
-
 	hash map...
 		based on c programming language...
 		also research other types...
 
+	string data type...
+
+	web debugger...
+		file tree explorer...
+		search...
+		code editor...
+		binary analyzer...
+		task runner...
+			shell execute syscall...
+			fork...
+		debugger information...
+		debug in existing debugger...
+		parse tree analyzer...
+		w debugger...
 
 
 	struct

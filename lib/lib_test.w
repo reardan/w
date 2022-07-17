@@ -1,14 +1,6 @@
 import lib.testing
 
 
-
-
-
-
-
-
-
-
 # Basic test cases
 
 void test_1():
@@ -137,6 +129,7 @@ void test_ends_with():
 	assert1(ends_with("ahi", "hi"))
 	assert1(ends_with("hi", "i"))
 	assert1(ends_with("hi", ""))
+	assert1(ends_with("/home/w/git/w/w.w", ".w"))
 
 
 void test_str_replace_path():

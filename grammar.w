@@ -25,4 +25,4 @@ import grammar.import_statement
 import grammar.program
 
 # no idea why this is necessary:
-int c
+int grammar_no_reason_temp_var
