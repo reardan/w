@@ -4,8 +4,8 @@ eval
 print
 loop
 */
-import compiler
-import assert
+import compiler.compiler
+import lib.assert
 
 
 int history_filename

@@ -2,3 +2,6 @@ compiler/grammar/	the c programming language 2nd edition
 compiler/grammar/	python
 compiler/*	cc500	Edmund GRIMLEY EVANS	edmundo@rano.org
 net/	https://cocomelonc.github.io/tutorial/2021/10/17/linux-shellcoding-2.html
+
+C Interfaces and Implementations https://github.com/drh/cii/tree/master/src
+http://asm.sourceforge.net/syscall.html

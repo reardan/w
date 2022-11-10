@@ -10,5 +10,27 @@ done:
 	testing...complete!
 	list...complete!
 	basic net...complete!
-
-
+	net...complete!
+		split socket / connect...complete!
+		server...complete!
+			bind...complete!
+			listen...complete!
+			accept...complete!
+	import subdirectory...complete!
+		subdirectory...complete!
+			play with directories in unix...complete!
+				getdents...complete!
+				wasn't even necessary lol
+				can just access the file directly
+			grammar: import directoryname.filename...complete!
+	debugging prints...complete!
+		print_registers()...complete!
+			get_context()
+		print_stack()...complete!
+			print_words(context.esp, 20)
+	'for' type var 'in' 'range' '(' expression ')' ...complete!
+		basic version...complete!
+	x64 mvp...complete!
+		syscall x64...complete!
+		move machine code gen to codegen.w...complete!
+		hello world...complete!

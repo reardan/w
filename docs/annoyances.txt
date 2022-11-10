@@ -1,14 +1,23 @@
+DONE! -1 cannot be used, must use 0-1 instead.
+DONE! cannot use # on end of line comments
+if/while required () when using :
+compiler pipes to stdout
+no break/continue
+
 still need {} instead of pass
-no for loop
+	why is pass even required?? newline should end scope
 */& are broken
 bad typing
 no repl
 no debugger
 malloc is builtin
 no free
--1 cannot be used, must use 0-1 instead
-cannot use # on end of line comments
-compiler pipes to stdout
-no break/continue
 nested ifs require {}
 no command arg parsing
+no warning if file doesn't end in space
+no warning if spaces used instead of tabs
+no warning if function parameters don't match
+no warning if variable types don't match
+no for loop [start, increment] options
+no for loop list iteration
+no generators

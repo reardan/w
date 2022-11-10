@@ -1,0 +1,24 @@
+
+web ui
+
+	editor
+		CodeMirror Library
+		send every keystroke
+	debugger
+		built on top of editor
+	visualizer
+		Visualizer
+	repl
+	terminal
+
+
+
+backend server:
+	whttp
+		dict
+		file watching
+		reverse proxy
+	websockets
+		code server
+		repl server
+		command server
