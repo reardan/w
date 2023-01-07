@@ -1,31 +1,4 @@
 current:
-	clean up directory structure...
-		import directory.*...
-			delete:
-				codegen
-				grammar
-
-			edge case:
-				directory structure:
-					grammar/
-					grammar.w
-				code:
-					import grammar
-					import grammar.*
-				behavior?
-					1) use grammar.w
-					2) use grammar/
-					3) raise error
-					I think I like behavior #1 the best as the most specific
-					file is chosen.  It would be confusing to the user if the
-					grammar subdirectory was used instead of grammar.w like
-					they were expecting.  At the same time, grammar.file links
-					should still work as expected: breaking the path up.
-				
-
-		fix makefile structure...
-			split into sub makefiles
-			fix any build/import issues
 
 	pointer...
 		working:
@@ -66,6 +39,34 @@ current:
 				or only import in relevant files?
 				> private import type
 			type.size
+
+	clean up directory structure...
+		import directory.*...
+			delete:
+				codegen
+				grammar
+
+			edge case:
+				directory structure:
+					grammar/
+					grammar.w
+				code:
+					import grammar
+					import grammar.*
+				behavior?
+					1) use grammar.w
+					2) use grammar/
+					3) raise error
+					I think I like behavior #1 the best as the most specific
+					file is chosen.  It would be confusing to the user if the
+					grammar subdirectory was used instead of grammar.w like
+					they were expecting.  At the same time, grammar.file links
+					should still work as expected: breaking the path up.
+				
+
+		fix makefile structure...
+			split into sub makefiles
+			fix any build/import issues
 
 	hash map...
 		based on c programming language...

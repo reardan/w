@@ -36,7 +36,7 @@ int compile_joined(char* cwd, char* filename):
 	char* joined = strjoin(cwd, "/")
 
 	char* joined2 = strjoin(joined, filename)
-	print_string("joined: ", joined2)
+	# print_string("joined: ", joined2)
 	free(joined)
 
 	# Add the .w extension if not already present
@@ -51,7 +51,7 @@ int compile_joined(char* cwd, char* filename):
 	return result
 
 
-int compile_file(char* filename):
+int compile_relative_path(char* filename):
 	# Get current directory
 	int max_path_size = 4096
 	char* cwd = malloc(max_path_size)
@@ -80,6 +80,15 @@ int compile_file(char* filename):
 	println2("filesystem root reached, abandoning search")
 	exit(1)
 
+
+int compile_file(char* filename):
+	# Handle absolute paths by using the filename directly on filesep start
+	if (filename[0] == 47):
+		print2("using filename as path directly: ")
+		println2(filename)
+		return compile_attempt(filename)
+
+	return compile_relative_path(filename)
 
 
 void compile_save(char* fn, int new_wildcard_import):
@@ -133,6 +142,6 @@ int link(int argc, int argv):
 		i = i + 1
 
 	# print_symbol_table(0)
-	type_print_all()
+	# type_print_all()
 	emit_debugging_symbols(word_size)
 	be_finish(word_size)
