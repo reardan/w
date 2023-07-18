@@ -14,6 +14,7 @@ int multiplicative_expr():
 
 		else if (accept("%")):
 			binary1(type) /* mov ebx, eax ; pop eax ; idiv ebx ; mov eax,edx */
+			/* TODO: THIS NEEDS xor,edx,edx */
 			type = binary2(unary_expression(), 9, "\x89\xc3\x58\x31\xd2\xf7\xfb\x89\xd0")
 
 		else:
