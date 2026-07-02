@@ -67,7 +67,8 @@ void statement():
 	else if (for_statement()) {}
 
 	else if (accept("return")):
-		if (peek(";") == 0):
+		# A newline (or end of file) after 'return' means no return value.
+		if ((peek(";") == 0) & (token_newline == 0) & (token[0] != 0)):
 			promote(expression())
 		expect_or_newline(";")
 		be_pop(stack_pos)

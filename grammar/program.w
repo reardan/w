@@ -26,6 +26,10 @@ void program():
 		while(struct_declaration()):
 			print_int("struct_declaration=1, current_symbol=", current_symbol)
 
+		# Imports/structs may have consumed the rest of the file
+		if (token[0] == 0):
+			return;
+
 		# Now global variables + functions
 		# TODO: variables THEN functions, not both
 		current_symbol = sym_declare_global(token, type_name(), 1)

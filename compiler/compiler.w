@@ -95,7 +95,7 @@ void compile_save(char* fn, int new_wildcard_import):
 	char* old_filename = filename
 	int old_file = file
 	int old_line_number = line_number + 1
-	int old_tab_level = old_tab_level
+	int old_tab_level = tab_level
 	int old_wildcard_import = wildcard_import
 
 	wildcard_import = new_wildcard_import
