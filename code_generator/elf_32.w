@@ -83,6 +83,9 @@ void elf_start():
 	emit(5, "\xe8....")
 	/* call [first function ] - set with the save_int() at the end of this func */
 
+	/* exit cleanly if _main returns: mov ebx,eax ; mov eax,252 (exit_group) ; int 0x80 */
+	emit(9, "\x89\xc3\xb8\xfc\x00\x00\x00\xcd\x80")
+
 	define_asm_functions()
 
 
@@ -100,7 +103,6 @@ void elf_finish():
 		t = sym_address("main")
 	if (t == 0):
 		error("Failed to find a _main() function. Did you import lib/testing?")
-	# TODO: fix the asm so it does not crash on return
 	t = t - code_offset - 94
 
 	if (verbosity >= 1):
