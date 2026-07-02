@@ -54,6 +54,10 @@ void program():
 
 				accept(",") /* ignore trailing comma */
 
+			# Record the arity for call-site checks (definitions overwrite
+			# whatever an earlier prototype recorded)
+			save_int(table + current_symbol + 22, number_of_args)
+
 			if (accept(";") == 0):
 				sym_define_global(current_symbol)
 				enclosing_tab_level = 0

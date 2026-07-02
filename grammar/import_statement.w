@@ -1,5 +1,3 @@
-int wildcard_import
-
 # Already-imported module paths, so each file is compiled only once.
 int imported_paths
 int imported_count
@@ -50,13 +48,11 @@ examples:
 */
 int import_statement():
 	if(accept("import")):
-		# Strip .* wildcard and set flag
-		int import_wildcard_import = 0
+		# Strip a trailing .* wildcard; the whole module is imported either way
 		read_until_end()
 		if (ends_with(token, ".*")):
 			int len = strlen(token)
 			token[len-2] = 0
-			import_wildcard_import = 1
 
 		# Change . to path separator
 		str_replace(token, '.', '/')
@@ -76,7 +72,7 @@ int import_statement():
 		# Add the ".w" extension
 		# Shouldnt this be done inside compile*??
 		char* with_path = strjoin(tok, ".w")
-		compile_save(with_path, import_wildcard_import)
+		compile_save(with_path)
 		nextc = get_character()
 		get_token()
 		free(with_path)

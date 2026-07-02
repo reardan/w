@@ -18,6 +18,12 @@ int expression():
 		promote(type2)
 		pop_ebx()
 
+		# Warn when both sides carry concrete types with different pointer
+		# depths; constants (3) and functions (4) have no pointer information.
+		if ((type != 3) & (type != 4) & (type2 != 3) & (type2 != 4)):
+			if (type_get_pointer_level(type) != type_get_pointer_level(type2)):
+				warning("warning: assignment pointer level mismatch")
+
 		# The store width comes from the left-hand side's type
 		int lhs_size = word_size
 		if ((type_get_pointer_level(type) == 0) & (type != 3) & (type != 4)):

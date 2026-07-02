@@ -10,6 +10,10 @@ int code_offset
 int word_size
 int word_size_log2
 
+# Where the finished ELF is written: stdout by default, or the file given
+# with the -o flag.
+int output_fd
+
 
 void resize_code(int n):
 	if (code_size <= codepos + n):

@@ -1,5 +1,4 @@
 import lib.lib
-import compiler.compiler_vars
 import compiler.tokenizer
 import codegen
 import lib.assert
@@ -91,14 +90,12 @@ int compile_file(char* filename):
 	return compile_relative_path(filename)
 
 
-void compile_save(char* fn, int new_wildcard_import):
+void compile_save(char* fn):
 	char* old_filename = filename
 	int old_file = file
 	int old_line_number = line_number + 1
 	int old_tab_level = tab_level
-	int old_wildcard_import = wildcard_import
 
-	wildcard_import = new_wildcard_import
 	if (verbosity >= 0):
 		print_string("compiling ", fn)
 
@@ -109,7 +106,6 @@ void compile_save(char* fn, int new_wildcard_import):
 	file = old_file
 	line_number = old_line_number
 	tab_level = old_tab_level
-	wildcard_import = old_wildcard_import
 
 	if (verbosity >= 0):
 		print_string("back to ", filename)
@@ -132,16 +128,32 @@ int link(int argc, int argv):
 	last_global_declaration = malloc(8000)
 	be_start(word_size)
 
+	output_fd = 1 /* default: write the ELF to stdout */
+	char* output_path = 0
 
 	while (i < argc):
-		int arg = argv + i * 4
-		print_error("compiling '")
-		print_error(*arg)
-		print_error("'\x0a")
-		compile_file(*arg)
+		char** arg = argv + i * 4
+		if (strcmp(*arg, "-o") == 0):
+			i = i + 1
+			asserts("-o requires an output path", i < argc)
+			arg = argv + i * 4
+			output_path = *arg
+		else:
+			print_error("compiling '")
+			print_error(*arg)
+			print_error("'\x0a")
+			compile_file(*arg)
 		i = i + 1
+
+	if (output_path != 0):
+		/* O_WRONLY|O_CREAT|O_TRUNC, mode 0755 so the result is executable */
+		output_fd = open(output_path, 577, 493)
+		asserts("could not open output file", output_fd >= 0)
 
 	# print_symbol_table(0)
 	# type_print_all()
 	emit_debugging_symbols(word_size)
 	be_finish(word_size)
+
+	if (output_path != 0):
+		close(output_fd)

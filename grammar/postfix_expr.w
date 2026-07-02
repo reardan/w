@@ -28,19 +28,44 @@ int postfix_expr():
 			type = element_type
 
 		else if (accept("(")):
+			# Remember the callee's declared arity now; parsing the arguments
+			# below overwrites last_identifier.
+			int expected_args = -1
+			char* callee_name = 0
+			if (type == 4):
+				int callee = sym_lookup(last_identifier)
+				if (callee >= 0):
+					expected_args = sym_num_args(callee)
+					if (expected_args >= 0):
+						callee_name = strclone(last_identifier)
+
 			int s = stack_pos
 			push_eax()
 			stack_pos = stack_pos + 1
+			int passed_args = 0
 			if (accept(")") == 0):
 				promote(expression())
 				push_eax()
 				stack_pos = stack_pos + 1
+				passed_args = 1
 				while (accept(",")):
 					promote(expression())
 					push_eax()
 					stack_pos = stack_pos + 1
+					passed_args = passed_args + 1
 
 				expect(")")
+
+			if (expected_args >= 0):
+				if (passed_args != expected_args):
+					print_error("warning: function '")
+					print_error(callee_name)
+					print_error("' expects ")
+					print_error(itoa(expected_args))
+					print_error(" arguments, got ")
+					warning(itoa(passed_args))
+			if (callee_name != 0):
+				free(callee_name)
 
 			mov_eax_esp_plus((stack_pos - s - 1) << word_size_log2)
 

@@ -9,6 +9,7 @@ int: 6: type
 int: 10: symtype
 int: 14: size
 int: 18: pointer indirection level
+int: 22: number of declared parameters (functions), -1 when unknown
 */
 char *table
 int table_size
@@ -17,7 +18,7 @@ int stack_pos
 
 
 int symbol_data_size():
-	return 22
+	return 26
 
 
 int next_token(int t):
@@ -132,6 +133,7 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 6, type)
 	save_int(table + t + 10, symtype)
 	save_int(table + t + 18, pointer_indirection)
+	save_int(table + t + 22, -1) /* parameter count unknown until a '(...)' is parsed */
 	table_pos = next_token(t)
 
 
@@ -167,6 +169,12 @@ void sym_define_global(int current_symbol):
 
 int number_of_args
 
+# Number of declared parameters for the function symbol at table offset t,
+# or -1 when unknown (e.g. asm runtime stubs without a parameter list).
+int sym_num_args(int t):
+	return load_int(table + t + 22)
+
+
 # Emits code leaving the symbol's ADDRESS in eax and returns its type index.
 # Functions are the exception: their address is their value, so they return
 # the "function" type (4), which promote() leaves untouched.
@@ -175,7 +183,7 @@ int sym_get_value(char *s):
 	if ((t = sym_lookup(s)) < 0):
 		print_error("Cannot find symbol: '")
 		print_error(token)
-		error("'\x0a")
+		error("'")
 	emit(5, "\xb8....") /* mov $n,%eax */
 	save_int(code + codepos - 4, load_int(table + t + 2))
 

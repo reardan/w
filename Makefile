@@ -3,13 +3,19 @@
 build: w
 	./w w.w >./bin/wv2
 	chmod +x ./bin/wv2
-	./bin/wv2 w.w >./bin/wv3
-	chmod +x ./bin/wv3
-	./bin/wv3 w.w >./bin/wv4
-	chmod +x ./bin/wv4
-	./bin/wv4 w.w >./bin/wv5
+	./bin/wv2 w.w -o ./bin/wv3
+	./bin/wv3 w.w -o ./bin/wv4
+	./bin/wv4 w.w -o ./bin/wv5
 
-update:
+# Self-host fixpoint check: wv3, wv4 and wv5 must be byte-identical.
+# This is the cheapest regression guard for a bootstrapped compiler; run it
+# before 'make update' promotes a new seed.
+verify: build
+	cmp ./bin/wv3 ./bin/wv4
+	cmp ./bin/wv4 ./bin/wv5
+	@echo "self-host fixpoint OK: wv3 == wv4 == wv5"
+
+update: verify
 	./archive.sh
 	mv -f ./bin/wv2 ./w
 
@@ -217,7 +223,12 @@ debug: FORCE
 	chmod +x ./bin/test
 	gdb -ex run --args test arg1 arg2 arg3
 
-tests: build lib_test grammar_test list_test type_table_test FORCE
+multilayer_test: w FORCE
+	./bin/wv2 tests/multilayer_test.w >./bin/multilayer_test
+	chmod +x ./bin/multilayer_test
+	./bin/multilayer_test
+
+tests: build verify lib_test grammar_test list_test type_table_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test test hello FORCE
 
 
 clean:

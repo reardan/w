@@ -71,16 +71,26 @@ void read_until_end():
 	token_i = token_i + 1
 
 
+int spaces_warned_line
+
 void get_token():
 	token_newline = 0
 	int w = 1
+	int prev_whitespace
 	while (w):
 		w = 0
 		while ((nextc == ' ') | (nextc == 9) | (nextc == 10)):
+			prev_whitespace = nextc
 			if(nextc == 10):
 				token_newline = 1
 
 			nextc = get_character()
+
+			# Space indentation is invisible to tab_level-based scoping
+			if ((prev_whitespace == 10) & (nextc == ' ')):
+				if (spaces_warned_line != line_number):
+					spaces_warned_line = line_number
+					warning("warning: line indented with spaces instead of tabs")
 
 		token_i = 0
 		while ((('a' <= nextc) & (nextc <= 'z')) |

@@ -118,7 +118,7 @@ void elf_finish_64():
 	save_int64(code + 64 + 32, codepos) /* FileSize */
 	save_int64(code + 72 + 32, codepos) /* MemSize */
 
-	write(1, code, codepos)
+	write(output_fd, code, codepos)
 
 
 void elf_save_section_info_64(int header_addr, int num_sections, int string_index):
