@@ -14,12 +14,11 @@ int variable_declaration():
 				type_print(type2)
 		pointer_indirection = 0
 
-		# Compute size of struct else use 1 word
+		# Reserve enough words for the struct's byte size, else 1 word
 		int size = 1
 		int num_args = type_num_args(type)
 		if (num_args > 0):
-			# print_string("num_args > 0 for ", token)
-			size = num_args
+			size = (type_get_size(type) + word_size - 1) >> word_size_log2
 		int i = 0
 		while (i < size):
 			push_eax()

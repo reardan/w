@@ -17,8 +17,8 @@ int struct_declaration():
 			print_string("struct accepted name: ", token)
 			println2("")
 
-		# emit struct type with token name
-		type_index = type_push(strclone(token))
+		# emit struct type with token name; size starts at 0 and grows per field
+		type_index = type_push_size(strclone(token), 0)
 		current_symbol = sym_declare_global(token, type_index, 1)
 		# type_print_all()
 

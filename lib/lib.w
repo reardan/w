@@ -294,7 +294,7 @@ int getchar(int file):
 void putc(int file, int c):
 	char* buf = "\x00"
 	buf[0] = c
-	write(file, buf, file)
+	write(file, buf, 1)
 	# write(file, &c, 1)
 
 

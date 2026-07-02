@@ -89,10 +89,10 @@ int join(char* delimiter):
 		n = n + strlen(s)
 		i = i + 1
 
-	# join strings together
+	# join strings together: one delimiter between each pair of elements
 	int delimiter_count = 0
-	if (delimiter != 0):
-		delimiter_count = strlen(delimiter) * n
+	if ((delimiter != 0) & (length > 1)):
+		delimiter_count = strlen(delimiter) * (length - 1)
 	int result = malloc(n + delimiter_count + 1)
 	int cur = result
 	i = 0
