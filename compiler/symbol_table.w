@@ -132,6 +132,7 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 2, value)
 	save_int(table + t + 6, type)
 	save_int(table + t + 10, symtype)
+	save_int(table + t + 14, 0) /* size: recycled malloc blocks are not zeroed */
 	save_int(table + t + 18, pointer_indirection)
 	save_int(table + t + 22, -1) /* parameter count unknown until a '(...)' is parsed */
 	table_pos = next_token(t)

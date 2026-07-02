@@ -39,8 +39,57 @@ void test_strcpy2000():
 void test_strncpy():
 	char* str = malloc(100)
 	strncpy(str, "abcd1234", 4)
+	# strncpy copies at most n chars and does not null-terminate
+	str[4] = 0
 	assert_strings_equal("abcd", str)
 	free(str)
+
+
+void test_malloc_free_reuse():
+	char* a = malloc(100)
+	strcpy(a, "hello")
+	free(a)
+	# The freed block should be recycled for an equal-sized request
+	char* b = malloc(100)
+	assert_equal(a, b)
+	free(b)
+
+
+void test_malloc_reuse_loop():
+	# A steady alloc/free cycle must not leak: the same block comes back
+	int first = malloc(1000)
+	free(first)
+	int i = 0
+	while (i < 1000):
+		int p = malloc(1000)
+		assert_equal(first, p)
+		free(p)
+		i = i + 1
+
+
+void test_malloc_split():
+	char* big = malloc(256)
+	free(big)
+	# A smaller request splits the free block instead of growing the heap
+	char* head = malloc(64)
+	assert_equal(big, head)
+	char* rest = malloc(64)
+	assert_equal(big + 72, rest)
+	free(head)
+	free(rest)
+
+
+void test_malloc_zero_and_alignment():
+	int a = malloc(0)
+	int b = malloc(1)
+	assert1(a != 0)
+	assert1(b != 0)
+	assert1(a != b)
+	# Payloads are 8-byte aligned
+	assert_equal(0, a & 7)
+	assert_equal(0, b & 7)
+	free(a)
+	free(b)
 
 
 void test_starts_with():

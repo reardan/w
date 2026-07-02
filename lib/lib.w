@@ -33,6 +33,16 @@ int _main(int argc, int argv):
 	exit(main(argc, argv))
 
 
+# Push the block back onto the allocator's free list.
+int free(int mem_address):
+	if (mem_address == 0):
+		return 0
+	int block = mem_address - 8
+	save_int(block + 4, malloc_free_list)
+	malloc_free_list = block
+	return 1
+
+
 # string functions
 char *realloc(char *old, int oldlen, int newlen):
 	char *new = malloc(newlen)
@@ -41,11 +51,8 @@ char *realloc(char *old, int oldlen, int newlen):
 		new[i] = old[i]
 		i = i + 1
 
+	free(old)
 	return new
-
-
-int free(int mem_address):
-	return 1
 
 
 int strlen(char *c):
@@ -108,11 +115,9 @@ void reverse(char *s):
 	reverse_n(s, strlen(s))
 
 
+# Returns a malloc'd string the caller may free.
 char* itoa(int n):
-	# definitely not thread-safe
-	# instead we could use a thread local variable
-	# or just malloc and expect the caller to free
-	char *s = "012345678901234567890"
+	char *s = malloc(16)
 	int i = 0
 	int sign = n
 	if(n < 0):
@@ -159,8 +164,12 @@ int intstrlen(int i):
 	return len
 
 
+# Returns a malloc'd string the caller may free.
 char* hex(int v):
-	char* s = "0x00000000"
+	char* s = malloc(12)
+	s[0] = '0'
+	s[1] = 'x'
+	s[10] = 0
 	int i = 7
 	int digit
 	while (i >= 0):

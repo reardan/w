@@ -228,7 +228,27 @@ multilayer_test: w FORCE
 	chmod +x ./bin/multilayer_test
 	./bin/multilayer_test
 
-tests: build verify lib_test grammar_test list_test type_table_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test test hello FORCE
+hash_map_test: w FORCE
+	./bin/wv2 structures/hash_map_test.w -o ./bin/hash_map_test
+	./bin/hash_map_test
+
+string_test: w FORCE
+	./bin/wv2 structures/string_test.w -o ./bin/string_test
+	./bin/string_test
+
+array_list_test: w FORCE
+	./bin/wv2 structures/array_list_test.w -o ./bin/array_list_test
+	./bin/array_list_test
+
+linked_list_test: w FORCE
+	./bin/wv2 structures/linked_list_test.w -o ./bin/linked_list_test
+	./bin/linked_list_test
+
+format_test: w FORCE
+	./bin/wv2 lib/format_test.w -o ./bin/format_test
+	./bin/format_test
+
+tests: build verify lib_test grammar_test list_test type_table_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test test hello FORCE
 
 
 clean:
