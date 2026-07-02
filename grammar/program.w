@@ -56,6 +56,7 @@ void program():
 
 			if (accept(";") == 0):
 				sym_define_global(current_symbol)
+				enclosing_tab_level = 0
 				statement()
 				ret()
 				# Store length to symbol table:

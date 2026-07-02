@@ -1,22 +1,6 @@
 
 
-/*int range(int max):
-	int i = 0
-	while (i < max):
-		yield i
-		i = i + 1
-
-
-int main():
-	print("printing two iterated elements: ")
-	int it = range(4)
-	print(itoa(it()))
-	print(", ")
-	print(itoa(it()))
-	println(".")
-	println("printing 0...9: ")
-
-	return 0
+import lib.testing
 
 
 void test_variable_range():
@@ -25,14 +9,6 @@ void test_variable_range():
 	for int i in range(n + 10):
 		c = c + 1
 	assert_equal(20, c)
-
-
-int pint(int val):
-	println2(itoa(val))
-	return val
-
-*/
-import lib.testing
 
 
 void test_for_in_range_basic():
@@ -76,9 +52,60 @@ void test_for_in_range_tri_nested():
 	assert_equal(10000, result)
 
 
-/* void test_for_in_range_with_starter():
+void test_for_in_range_with_starter():
 	int result = 0
 	for int i in range 1, 10:
 		result = result + 10
-	assert_equal(90, result) */
+	assert_equal(90, result)
+
+
+void test_range_start_end():
+	int sum = 0
+	for int i in range(5, 8):
+		sum = sum + i
+	assert_equal(18, sum)
+
+
+void test_range_start_end_step():
+	int sum = 0
+	for int i in range(0, 10, 2):
+		sum = sum + i
+	assert_equal(20, sum)
+	assert_equal(10, i)
+
+
+void test_range_step_expressions():
+	int start = 10
+	int sum = 0
+	for int i in range(start, start * 2, 5):
+		sum = sum + i
+	assert_equal(25, sum)
+
+
+void test_for_break():
+	int c = 0
+	for int i in range 10:
+		if (i == 3):
+			break
+		c = c + 1
+	assert_equal(3, c)
+
+
+void test_for_continue():
+	int c = 0
+	for int i in range 10:
+		if (i % 2 == 0):
+			continue
+		c = c + 1
+	assert_equal(5, c)
+
+
+void test_nested_loop_break():
+	int c = 0
+	for int i in range 3:
+		for int j in range 10:
+			if (j == 2):
+				break
+			c = c + 1
+	assert_equal(6, c)
 

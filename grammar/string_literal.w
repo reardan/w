@@ -17,6 +17,20 @@ int process_string_literal():
 			token[i] = k
 			j = j + 4
 
+		# standard escapes: \n \t \r \0 (anything else is taken literally)
+		else if (token[j] == 92):
+			k = token[j + 1]
+			if (k == 'n'):
+				k = 10
+			else if (k == 't'):
+				k = 9
+			else if (k == 'r'):
+				k = 13
+			else if (k == '0'):
+				k = 0
+			token[i] = k
+			j = j + 2
+
 		else:
 			token[i] = token[j]
 			j = j + 1

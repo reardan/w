@@ -84,6 +84,7 @@ void get_token():
 
 		token_i = 0
 		while ((('a' <= nextc) & (nextc <= 'z')) |
+					 (('A' <= nextc) & (nextc <= 'Z')) |
 					 (('0' <= nextc) & (nextc <= '9')) | (nextc == '_')):
 			takechar()
 		
@@ -96,12 +97,18 @@ void get_token():
 			if (nextc == 39):
 				takechar()
 				while (nextc != 39):
+					# A backslash escapes the next character (e.g. '\'')
+					if (nextc == 92):
+						takechar()
 					takechar()
 				takechar()
 
 			else if (nextc == '"'):
 				takechar()
 				while (nextc != '"'):
+					# A backslash escapes the next character (e.g. \")
+					if (nextc == 92):
+						takechar()
 					takechar()
 				takechar()
 

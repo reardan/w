@@ -7,9 +7,11 @@
  *     if ( expression ) statement
  *     if ( expression ) statement else statement
  *     while ( expression ) statement
+ *     for type-name identifier in range args statement
+ *     break ;
+ *     continue ;
  *     return ;
  *     return expression ;
- *     yield expression ;
  *     debugger ;
  *     expression ;
  */
@@ -30,13 +32,24 @@ void statement():
 	}
 
 	# : statement-list-tab-scoped
-	else if (accept(":")):
+	else if (peek(":")):
+		int block_tab_level = enclosing_tab_level
+		get_token()
 		int n = table_pos
 		int s = stack_pos
 		int start_tab_level = tab_level
 		print_int_v1("starting stack_pos: ", stack_pos)
-		while(start_tab_level <= tab_level):
-			statement()
+		int same_line = 0
+		if (token_newline == 0):
+			# Same-line body: exactly one statement, e.g. "if (x): return"
+			same_line = 1
+			if (token[0] != 0):
+				statement()
+		if (same_line == 0):
+			# An un-indented next line means the block is empty (like 'pass')
+			if (start_tab_level > block_tab_level):
+				while(start_tab_level <= tab_level):
+					statement()
 		table_pos = n
 		print_int_v1("ending stack_pos: ", stack_pos)
 		be_pop(stack_pos - s)
@@ -49,22 +62,43 @@ void statement():
 	# if ( expression ) statement else statement
 	else if (accept("if")):
 		if_tab_level = tab_level
-		expect("(")
 		promote(expression())
 		jmp_zero_int32(1337)
 		p1 = codepos
-		expect(")")
+		enclosing_tab_level = if_tab_level
 		statement()
 		jmp_int32(1337007)
 		p2 = codepos
 		save_int32(code + p1 - 4, codepos - p1)
+		# An 'else' only binds to an 'if' at the same indent level
 		if (peek("else")):
-			get_token()
-			statement()
+			if (tab_level == if_tab_level):
+				get_token()
+				enclosing_tab_level = if_tab_level
+				statement()
 		save_int32(code + p2 - 4, codepos - p2)
 
 	else if (while_statement()) {}
 	else if (for_statement()) {}
+
+	else if (accept("break")):
+		expect_or_newline(";")
+		if (loop_depth == 0):
+			error("'break' outside of a loop")
+		# Unwind block locals pushed since the loop started
+		if (stack_pos > loop_stack_pos):
+			be_pop(stack_pos - loop_stack_pos)
+		jmp_int32(loop_break_chain)
+		loop_break_chain = codepos
+
+	else if (accept("continue")):
+		expect_or_newline(";")
+		if (loop_depth == 0):
+			error("'continue' outside of a loop")
+		if (stack_pos > loop_stack_pos):
+			be_pop(stack_pos - loop_stack_pos)
+		jmp_int32(loop_continue_chain)
+		loop_continue_chain = codepos
 
 	else if (accept("return")):
 		# A newline (or end of file) after 'return' means no return value.
@@ -84,4 +118,3 @@ void statement():
 	else:
 		expression()
 		expect_or_newline(";")
-

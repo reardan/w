@@ -32,5 +32,10 @@ int unary_expression():
 		/* test %eax,%eax ; sete %al ; movzbl %al,%eax */
 		emit(8, "\x85\xc0\x0f\x94\xc0\x0f\xb6\xc0")
 		return 3
+	else if (accept("-")):
+		type = multiplicative_expr()
+		promote(type)
+		neg_eax()
+		return 3
 	else:
 		return postfix_expr()

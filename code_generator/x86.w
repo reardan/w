@@ -149,6 +149,11 @@ void jmp_zero_int32(int v):
 	emit_int32(v)
 
 
+void jmp_nonzero_int32(int v):
+	emit(4, "\x85\xc0\x0f\x85") /* test %eax,%eax ; jne ... */
+	emit_int32(v)
+
+
 void jmp_int32(int v):
 	emit(1, "\xe9") /* jmp ... */
 	emit_int32(v)
@@ -156,6 +161,15 @@ void jmp_int32(int v):
 
 void inc_dword_esp_plus(int v):
 	emit(3, "\xff\x84\x24") /* inc dword[esp+0x12345678] */
+	emit_int(v)
+
+
+void neg_eax():
+	emit(2, "\xf7\xd8") /* neg %eax */
+
+
+void add_dword_esp_plus_eax(int v):
+	emit(3, "\x01\x84\x24") /* add [esp+0x12345678], eax */
 	emit_int(v)
 
 /*

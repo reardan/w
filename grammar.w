@@ -14,6 +14,8 @@ import grammar.relational_expr
 import grammar.equality_expr
 import grammar.bitwise_and_expr
 import grammar.bitwise_or_expr
+import grammar.logical_and_expr
+import grammar.logical_or_expr
 import grammar.expression
 import grammar.while_statement
 import grammar.typed_identifier

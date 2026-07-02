@@ -8,6 +8,14 @@ int int_literal():
 	if (accept("-")):
 		negative = 1
 
+	# Hex literal e.g. 0x1f (lowercase digits)
+	if ((token[0] == '0') & (token[1] == 'x')):
+		n = from_hex(token + 2)
+		if (negative):
+			n = 0-n
+		mov_eax_int(n)
+		return 1
+
 	# Check for digits 0-9
 	if ((token[i]) < '0' | (token[i] > '9')):
 		return 0

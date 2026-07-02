@@ -1,10 +1,10 @@
 /*
  * expression:
- *         bitwise-or-expr
- *         bitwise-or-expr = expression
+ *         logical-or-expr
+ *         logical-or-expr = expression
  */
 int expression():
-	int type = bitwise_or_expr()
+	int type = logical_or_expr()
 	if (accept("=")):
 		push_eax()
 		stack_pos = stack_pos + 1

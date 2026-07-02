@@ -29,6 +29,21 @@ int primary_expr():
 		mov_eax_int(token[1])
 		type = 3 /* constant */
 
+	# escaped char literal e.g. '\n'
+	else if ((token[0] == 39) & (token[1] == 92) &
+					 (token[3] == 39) & (token[4] == 0)):
+		int c = token[2]
+		if (c == 'n'):
+			c = 10
+		else if (c == 't'):
+			c = 9
+		else if (c == 'r'):
+			c = 13
+		else if (c == '0'):
+			c = 0
+		mov_eax_int(c)
+		type = 3 /* constant */
+
 	else if (char_pointer_literal()):
 		type = 3 /* constant: eax already holds the string address */
 
