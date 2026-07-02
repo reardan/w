@@ -49,9 +49,11 @@ void sym_last_info():
 	sym_info(table_pos - symbol_data_size())
 	
 
+# Returns the table offset of the symbol's data block, or -1 when not found.
+# 0 is a valid offset (the first declared symbol), so callers must test for < 0.
 int sym_lookup(char *s):
 	int t = 0
-	int current_symbol = 0
+	int current_symbol = -1
 	while (t <= table_pos - 1):
 		int i = 0
 		while ((s[i] == table[t]) & (s[i] != 0)):
@@ -71,18 +73,22 @@ int sym_lookup(char *s):
 
 int sym_address(char *s):
 	int t = sym_lookup(s)
-	if (t == 0):
+	if (t < 0):
 		return 0
 	return load_int(table + t + 2)
 
 
 int sym_symtype(char *s):
 	int t = sym_lookup(s)
+	if (t < 0):
+		return 0
 	return load_int(table + t + 10)
 
 
 int sym_type(char *s):
 	int t = sym_lookup(s)
+	if (t < 0):
+		return 0
 	return load_int(table + t + 6)
 
 
@@ -133,7 +139,7 @@ char *last_global_declaration
 int sym_declare_global(char *s, int type, int symtype):
 	strcpy(last_global_declaration, s)
 	int current_symbol = sym_lookup(s)
-	if (current_symbol == 0):
+	if (current_symbol < 0):
 		sym_declare(s, type, 'U', code_offset, symtype)
 		current_symbol = table_pos - symbol_data_size()
 
@@ -163,7 +169,7 @@ int number_of_args
 
 int sym_get_value(char *s):
 	int t
-	if ((t = sym_lookup(s)) == 0):
+	if ((t = sym_lookup(s)) < 0):
 		print_error("Cannot find symbol: '")
 		print_error(token)
 		error("'\x0a")
