@@ -7,6 +7,27 @@ void test_arithmetic():
 	assert_equal(7, 2 * 2 + 3)
 
 
+void test_division():
+	assert_equal(3, 7 / 2)
+	assert_equal(0, 1 / 2)
+	int a = -7
+	assert_equal(-3, a / 2)
+	assert_equal(3, a / -2)
+	int b = 7
+	assert_equal(-3, b / -2)
+
+
+void test_modulus():
+	assert_equal(1, 7 % 2)
+	assert_equal(0, 6 % 2)
+	assert_equal(2, 12 % 5)
+	int a = -7
+	assert_equal(-1, a % 2)
+	assert_equal(-1, a % -2)
+	int b = 7
+	assert_equal(1, b % -2)
+
+
 void test_raw_asm():
 	raw_asm ("\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90")
 
