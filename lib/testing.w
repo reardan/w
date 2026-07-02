@@ -61,7 +61,7 @@ void execute_tests():
 			print("()' -> ")
 			print(hex(test_addr))
 			println("")
-			int* test_func = *test_addr
+			int* test_func = test_addr
 
 			print_hex("test_func: ", test_func)
 			test_func()

@@ -91,7 +91,7 @@ void test_quad():
 
 
 
-/*struct mixed:
+struct mixed:
 	int32 a
 	int16 b
 	int8 c
@@ -109,30 +109,17 @@ void test_mixed_types():
 	assert_equal_hex(3, m.c)
 	assert_equal_hex(4, m.d)
 
-	# this doesn't actually check the sizes are correctly implemented
-	# to do this, have binary data then create a struct pointer to it
-	# then check the values are correct
 
-	# it actually partially checks it due to the cross reading of data
-*/
-
-/*void test_mixed_types_reversed():
+void test_mixed_types_reversed():
 	mixed m
-	debugger
 	m.d = 4
-	debugger
 	m.c = 3
-	debugger
 	m.b = 2
-	debugger
 	m.a = 1
-	debugger
 	assert_equal_hex(1, m.a)
-	debugger
 	assert_equal_hex(2, m.b)
 	assert_equal_hex(3, m.c)
 	assert_equal_hex(4, m.d)
-*/
 
 
 /*

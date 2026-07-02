@@ -9,16 +9,10 @@ unary-expression
 */
 int unary_expression():
 	int type
-	# untested:
 	if (accept("&")):
 		type = multiplicative_expr()
-		char* type_name = type_get_name(type)
-		int pointer_level = type_get_pointer_level(type)
-		type = type_lookup_pointer(type_name, pointer_level + 1)
-		if (type < 0):
-			print_string0("type pointer not found during &: '", type_name)
-			error("'")
-		return type
+		# eax already holds the lvalue address; that address is the value here
+		return 3 /* constant */
 	else if (accept("*")):
 		type = multiplicative_expr()
 		if (verbosity >= 1):
@@ -28,13 +22,15 @@ int unary_expression():
 			print_error(", last symbol: ")
 			print_error(last_global_declaration)
 			print_error("\x0a")
-		promote(type)
-		return type
-	# untested:
+		promote(type) /* load the pointer; eax becomes the element's address */
+		if (type_get_pointer_level(type) > 0):
+			return type_lookup_previous_pointer(type)
+		return 1 /* deref of a plain int: word-sized lvalue */
 	else if (accept("!")):
 		type = multiplicative_expr()
 		promote(type)
-		not_eax()
-		return type
+		/* test %eax,%eax ; sete %al ; movzbl %al,%eax */
+		emit(8, "\x85\xc0\x0f\x94\xc0\x0f\xb6\xc0")
+		return 3
 	else:
 		return postfix_expr()

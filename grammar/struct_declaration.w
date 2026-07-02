@@ -34,7 +34,6 @@ int struct_declaration():
 				print_int0("[", field_type)
 				println2("]")
 
-			current_symbol = sym_declare_global(token, field_type, 1)
 			type_add_arg(type_index, strclone(token), field_type)
 			if (verbosity >= 1):
 				print_int("num_fields: ", num_fields)

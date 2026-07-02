@@ -39,18 +39,15 @@ int func1():
 int func2(int* f):
 	return f()
 
-/*void test_func_pointer_argument():
+void test_func_pointer_argument():
 	int *f = func1
-	debugger
 	int got = func2(f)
-	debugger
-	assert_equal(99, got)*/
+	assert_equal(99, got)
 
 
-
-/*void test_func_argument_direct():
+void test_func_argument_direct():
 	int got = func2(func1)
-	assert_equal(99, got)*/
+	assert_equal(99, got)
 
 
 void test_func_pointer_variable():

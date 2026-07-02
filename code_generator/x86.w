@@ -80,6 +80,12 @@ void add_eax_int32(int v):
 	emit_int32(v)
 
 
+/* imul eax, eax, imm32 */
+void imul_eax_int32(int v):
+	emit(2, "\x69\xc0")
+	emit_int32(v)
+
+
 void call_eax():
 	emit(2, "\xff\xd0") /* call *%eax */
 

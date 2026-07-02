@@ -167,6 +167,9 @@ void sym_define_global(int current_symbol):
 
 int number_of_args
 
+# Emits code leaving the symbol's ADDRESS in eax and returns its type index.
+# Functions are the exception: their address is their value, so they return
+# the "function" type (4), which promote() leaves untouched.
 int sym_get_value(char *s):
 	int t
 	if ((t = sym_lookup(s)) < 0):
@@ -178,13 +181,7 @@ int sym_get_value(char *s):
 
 	char scope_type = table[t + 1]
 	int type = load_int(table + t + 6)
-	int is_indirect_type = (type == 1) | (type == 1)
 	int symtype = load_int(table + t + 10)
-	int ptr_indirect = load_int(table + t + 18)
-	int use_value_directly = (ptr_indirect > 0) & is_indirect_type
-	int is_function = 0 & is_indirect_type & (symtype == 2) & (scope_type == 'A')
-	if (type == 7): /* int32 */
-		use_value_directly = 1
 
 	int k = 0
 	if (verbosity >= 2):
@@ -197,7 +194,7 @@ int sym_get_value(char *s):
 		# Nothing needed since it directly uses the address from above
 	}
 
-	/* undefined global */
+	/* undefined global: link this site into the backpatch chain */
 	else if (scope_type == 'U'):
 		save_int(table + t + 2, codepos + code_offset - 4)
 
@@ -217,20 +214,9 @@ int sym_get_value(char *s):
 		error("'")
 
 	if ((scope_type == 'L') | (scope_type == 'A')):
-		# Use pointers directly
-		if (use_value_directly):
-			if (verbosity >= 0):
-				print_error("using value directly for ")
-				sym_info(t)
-				warning(s)
-			# emit(7, "\x8b\x84\x24....") /* mov eax, [esp + ....] */
-			mov_eax_esp_plus(0) /* 0 is a placeholder */
+		# emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
+		lea_eax_esp_plus(0) /* 0 is a placeholder */
 
-		# Otherwise pass reference
-		else:
-			# emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
-			lea_eax_esp_plus(0) /* 0 is a placeholder */
-			
 		# Structs occupy several stack words; point at the lowest address (last
 		# pushed word) so positive field offsets stay inside the struct.
 		int num_args = type_num_args(type)
@@ -238,6 +224,10 @@ int sym_get_value(char *s):
 			int struct_words = (type_get_size(type) + word_size - 1) >> word_size_log2
 			k = k - ((struct_words - 1) << word_size_log2)
 		save_int(code + codepos - 4, k)
+
+	if (symtype == 2):
+		if ((scope_type == 'D') | (scope_type == 'U')):
+			return 4 /* function */
 
 	return type
 

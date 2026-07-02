@@ -13,64 +13,40 @@ void warn_bad_promotion(int want, int got):
 	
 
 /*
-0 = void
-1 = char lval  SWAP
-2 = int lval   SWAP (to 5 for now 'int32')
-3 = int/ptr/char literal - always a word (dont promote!)
-other = type_size
+Convert the lvalue address in eax into an rvalue, sized by its type.
+
+Expression types follow one convention: a real type index means eax holds
+the ADDRESS of a value of that type; "constant" (3) and "function" (4)
+mean eax already holds the value. Structs are used by address, so they
+are never loaded either.
 */
 int promote(int type):
-	int type_size = type_get_size(type)
-	int type_pointer_level = type_get_pointer_level(type)
-
 	if (verbosity >= 1):
 		print2(itoa(line_number))
 		print2(": promote(")
 		print2(itoa(type))
 		print2("=")
 		print2(type_get_name(type))
-		print2(", size=")
-		print2(itoa(type_size))
-		print2(", pointer_level=")
-		print2(itoa(type_pointer_level))
 		print2(", '")
 		print2(last_identifier)
 		println2("')")
 
-
-	if (type == 1): /* old char: (but is also int type) */
-		promote_int8_eax()
-	else if (type == 2): /* old int / char* / everything */
+	if (type == 3): /* constant: already a value */
+		return type
+	if (type == 4): /* function: its address is its value */
+		return type
+	if (type_num_args(type) > 0): /* struct: keep the address */
+		return type
+	if (type_get_pointer_level(type) > 0):
 		promote_eax()
-	else if (type == 3) {} /* void: no op */
+		return type
 
-	else if (type == 5) {} /* int8 */
-		# promote_int8_eax()
-	else if (type == 6) {} /* int16 */
-		# promote_int16_eax()
-	else if (type == 7) {} /* int32 */
-		# promote_eax()
-
-	else if (type_pointer_level > 0):
-		# promote_int8_eax()
-		# Lookup pointer_level - 1 and return
-		int new_type = type_lookup_previous_pointer(type)
-		if (verbosity >= 1):
-			print2(itoa(line_number))
-			print2(": type_pointer_level > 0, new_type: ")
-			type_print(new_type)
-
-		if (type == 17): /* char pointer */
-			print_color("promoting char pointer!\x0a", 33)
-			promote_eax()
-			return new_type
-
-		if (type == 23): /* int32 pointer */
-			print_color("promoting int32 pointer!", 33)
-			promote_eax()
-			return new_type
-
-		if (type == 25): /* function pointer */
-			promote_eax()
-
+	int size = type_get_size(type)
+	if (size == 1):
+		promote_int8_eax()
+	else if (size == 2):
+		promote_int16_eax()
+	else if (size >= 4):
+		promote_eax()
+	/* size 0 (void): nothing to load */
 	return type

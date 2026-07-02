@@ -6,9 +6,7 @@ int variable_declaration():
 		# = expression
 		if (accept("=")):
 			int type2 = expression()
-			# TODO: Fix to use & instead?  e.g. int*f = &func
-			if (pointer_indirection == 0)
-				promote(type2)
+			promote(type2)
 			if (verbosity >= 0):
 				print2("variable declaration = expression() right side type: ")
 				type_print(type2)

@@ -4,7 +4,9 @@ TODO: push/pop edx: is it necessary?
 int multiplicative_expr():
 	int type = unary_expression()
 	while (1):
-		if (accept("*")):
+		# A '*' on a fresh line starts a dereference statement, not a product
+		if (peek("*") & (token_newline == 0)):
+			get_token()
 			binary1(type) /* imul eax,ebx */
 			type = binary2_pop(unary_expression(), 3, "\x0f\xaf\xc3")
 

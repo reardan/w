@@ -1,9 +1,3 @@
-/*
-typename:
-	0 = void
-	1 = int
-	2 = char
-*/
 int type_name():
 	int type = 0
 	pointer_indirection = 0
@@ -15,21 +9,13 @@ int type_name():
 
 	get_token()
 
-	int all_pointer_level = 0
+	# Each '*' wraps the base type in a pointer type, created on demand
+	char* base_name = type_get_name(type)
 	while (accept("*")):
-		all_pointer_level = all_pointer_level + 1
-		if (type != 2):
-			if (verbosity >= 1):
-				warning("'*' accepted")
-			pointer_indirection = pointer_indirection + 1
-	if (all_pointer_level > 0):
-		int next_pointer_type = type_lookup_pointer(type_get_name(type), all_pointer_level)
-		if (verbosity >= 1):
-			print2(itoa(line_number))
-			print2(": FOUND POINTER INDIRECTION DECLARATION: ")
-			print2(": next_pointer_type: ")
-			type_print(next_pointer_type)
-		# TODO: fix type system so this works:
-		# return next_pointer_type
+		pointer_indirection = pointer_indirection + 1
+		int pointer_type = type_lookup_pointer(base_name, pointer_indirection)
+		if (pointer_type < 0):
+			pointer_type = type_push_pointer(base_name, word_size, pointer_indirection)
+		type = pointer_type
 
 	return type

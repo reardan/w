@@ -105,13 +105,13 @@ void get_token():
 					takechar()
 				takechar()
 
-			/* Block Comments */
+			/* Block Comments (bail out on EOF so truncated comments can't hang) */
 			else if (nextc == '/') {
 				takechar()
 				if (nextc == '*'):
 					nextc = get_character()
-					while (nextc != '/'):
-						while (nextc != '*'):
+					while ((nextc != '/') & (nextc != -1)):
+						while ((nextc != '*') & (nextc != -1)):
 							nextc = get_character()
 						nextc = get_character()
 
@@ -122,7 +122,7 @@ void get_token():
 			else if (nextc == '#'):
 				takechar()
 				nextc = get_character()
-				while(nextc != 10):
+				while((nextc != 10) & (nextc != -1)):
 					nextc = get_character()
 
 				# nextc = get_character()
@@ -172,7 +172,8 @@ void expect(char *s):
 
 
 void expect_or_newline(char *s):
-	if((accept(s) == 0) & (token_newline == 0)):
+	# End of file also ends the statement, like a newline would
+	if((accept(s) == 0) & (token_newline == 0) & (token[0] != 0)):
 		print_error("'")
 		print_error(s)
 		print_error("' expected, found '")

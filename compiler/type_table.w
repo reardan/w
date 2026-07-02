@@ -241,11 +241,8 @@ void push_basic_types():
 	type_push_size("uint32", word_size)
 	type_push_size("uint16", 2)
 	type_push_size("uint8", 1)
-	type_push_size("byte", 1)
 
-
-	# temporary pointer types
-	# todo: create these dynamically
+	# Common pointer types; type_name() creates any others on demand
 	type_push_pointer("int", word_size, 1)
 	type_push_pointer("int", word_size, 2)
 	type_push_pointer("char", word_size, 1)
