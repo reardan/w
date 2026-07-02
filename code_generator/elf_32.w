@@ -123,5 +123,5 @@ void elf_finish():
 
 void elf_save_section_info_32(int header_addr, int num_sections, int string_index):
 	save_int(code + 32, header_addr)
-	save_i(code + 48, 3, 2) /* number of section headers */
-	save_i(code + 50, 1, 2) /* string index */
+	save_i(code + 48, num_sections, 2) /* number of section headers */
+	save_i(code + 50, string_index, 2) /* string index */

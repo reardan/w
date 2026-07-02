@@ -45,14 +45,14 @@ int free(int mem_address):
 
 # string functions
 char *realloc(char *old, int oldlen, int newlen):
-	char *new = malloc(newlen)
+	char *grown = malloc(newlen)
 	int i = 0
 	while (i < oldlen):
-		new[i] = old[i]
+		grown[i] = old[i]
 		i = i + 1
 
 	free(old)
-	return new
+	return grown
 
 
 int strlen(char *c):

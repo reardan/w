@@ -37,5 +37,31 @@ int unary_expression():
 		promote(type)
 		neg_eax()
 		return 3
+	else if (accept("new")):
+		# new type-name ( ) — allocates sizeof(type) and yields a type*
+		int base = type_lookup(token)
+		if (base < 0):
+			print2("unknown type after new: '")
+			print2(token)
+			error("'")
+		get_token()
+		if (accept("(")):
+			expect(")")
+
+		# malloc(size), using the same callee-first stack layout as postfix calls
+		sym_get_value("malloc")
+		push_eax()
+		stack_pos = stack_pos + 1
+		mov_eax_int(type_get_size(base))
+		push_eax()
+		stack_pos = stack_pos + 1
+		mov_eax_esp_plus(1 << word_size_log2)
+		call_eax()
+		be_pop(2)
+		stack_pos = stack_pos - 2
+
+		# eax holds the allocation's address as a plain value; the variable
+		# it lands in carries the pointer type.
+		return 3
 	else:
 		return postfix_expr()

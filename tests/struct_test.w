@@ -122,6 +122,34 @@ void test_mixed_types_reversed():
 	assert_equal_hex(4, m.d)
 
 
+void test_new_struct():
+	point* p = new point()
+	p.x = 3
+	p.y = 4
+	assert_equal(3, p.x)
+	assert_equal(4, p.y)
+	free(p)
+
+
+void test_new_without_parens():
+	point* p = new point
+	p.x = 7
+	assert_equal(7, p.x)
+	free(p)
+
+
+void test_new_two_structs_are_distinct():
+	point* a = new point()
+	point* b = new point()
+	assert1(a != b)
+	a.x = 1
+	b.x = 2
+	assert_equal(1, a.x)
+	assert_equal(2, b.x)
+	free(a)
+	free(b)
+
+
 /*
 void test_double_struct():
 	point p

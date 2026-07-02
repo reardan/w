@@ -281,6 +281,7 @@ int emit_string_table():
 	int t = 0
 	int n = 0
 	int count = 0
+	emit_int8(0) /* index 0 must be the empty string */
 	while (t <= table_pos - 1):
 		char* sym = table + t
 		n = strlen(table + t)
@@ -297,14 +298,14 @@ int emit_symbol_table():
 		print_error("dumping symbol table\x0a")
 	int t = 0
 	int n = 0
-	int symbol = 0
-	int count = 0
+	int symbol = 1 /* string table starts with a null byte */
+	int count = 1
+	elf_sym_table_entry(0, 0, 0, 0, 0, 0) /* mandatory null symbol */
 	while (t <= table_pos - 1):
 		char* sym = table + t
 		n = strlen(table + t)
 		t = t + n
 
-		int type = table[t + 6]
 		int visibility = table[t + 1]
 		int binding = 1  /* global by default */
 		if (visibility != 'D'):
@@ -312,7 +313,7 @@ int emit_symbol_table():
 		int symtype = table[t + 10]
 		int address = table + t + 2
 		int size = load_int(table + t + 14)
-		elf_sym_table_entry(symbol, *address, size, binding, symtype, type)
+		elf_sym_table_entry(symbol, *address, size, binding, symtype, 1) /* shndx 1 = .text */
 
 		t = next_token(t)
 		symbol = symbol + n + 1
@@ -326,15 +327,46 @@ void emit_section_name(char* s, int header_addr, int strings_addr):
 	emit_string(s)
 
 
+# Set a section header's file offset and size, and zero the symtab-oriented
+# defaults that only apply to .symtab.
+void section_set_range(int header, int addr, int length):
+	save_int(code + header + 16, addr) /* offset */
+	save_int(code + header + 20, length) /* size */
+	save_int(code + header + 24, 0) /* link */
+	save_int(code + header + 36, 0) /* entry size */
+
+
 void emit_debugging_symbols(int word_size):
+	int text_end = codepos
+
 	# Store start of section header
 	int header_addr = codepos
 
 	# Save section header address + number of sections
-	elf_save_section_info(word_size, header_addr, 3, 1)
+	# Section order: null, text, debug_info, debug_abbrev, debug_line, strings, symtab
+	elf_save_section_info(word_size, header_addr, 7, 5)
+
+	# Mandatory null section 0
+	emit_zeros(40)
+
+	# .text covers the whole loaded image (headers + code + data)
+	int text_section_header = codepos
+	elf_section_header(1)
+	save_int(code + text_section_header + 8, 6) /* flags: alloc + exec */
+	save_int(code + text_section_header + 12, code_offset) /* addr */
+	save_int(code + text_section_header + 16, 0) /* offset */
+	save_int(code + text_section_header + 20, text_end) /* size */
+	save_int(code + text_section_header + 24, 0) /* link */
+	save_int(code + text_section_header + 36, 0) /* entry size */
 
 	# Emit debug info section header
 	int debug_info_section_header = codepos
+	elf_section_header(1)
+
+	int debug_abbrev_section_header = codepos
+	elf_section_header(1)
+
+	int debug_line_section_header = codepos
 	elf_section_header(1)
 
 	# Emit string section header
@@ -352,14 +384,19 @@ void emit_debugging_symbols(int word_size):
 	# Emit section header name strings
 	emit_section_name("strings", string_section_header, strings_addr)
 	emit_section_name(".symtab", symbol_section_header, strings_addr)
+	emit_section_name(".text", text_section_header, strings_addr)
 	emit_section_name(".debug_info", debug_info_section_header, strings_addr)
+	emit_section_name(".debug_abbrev", debug_abbrev_section_header, strings_addr)
+	emit_section_name(".debug_line", debug_line_section_header, strings_addr)
 
 	# Store string strings_addr + length
 	int length = codepos - strings_addr
 	save_int(code + string_section_header + 12, strings_addr)
 	save_int(code + string_section_header + 16, strings_addr)
 	save_int(code + string_section_header + 20, length)
-	save_int(code + string_section_header + 28, string_count)
+	save_int(code + string_section_header + 24, 0) /* link */
+	save_int(code + string_section_header + 28, 0) /* info */
+	save_int(code + string_section_header + 36, 0) /* entry size */
 
 	# Emit symbols
 	int sym_table_addr = codepos
@@ -368,7 +405,21 @@ void emit_debugging_symbols(int word_size):
 	save_int(code + symbol_section_header + 12, sym_table_addr)
 	save_int(code + symbol_section_header + 16, sym_table_addr)
 	save_int(code + symbol_section_header + 20, sym_table_length)
-	save_int(code + symbol_section_header + 28, symbol_count)
+	save_int(code + symbol_section_header + 24, 5) /* link: the strings section */
+	save_int(code + symbol_section_header + 28, 0) /* info: no leading locals */
+
+	# Emit the DWARF payloads
+	int debug_info_addr = codepos
+	debug_info_emit(text_end)
+	section_set_range(debug_info_section_header, debug_info_addr, codepos - debug_info_addr)
+
+	int debug_abbrev_addr = codepos
+	debug_abbrev_emit()
+	section_set_range(debug_abbrev_section_header, debug_abbrev_addr, codepos - debug_abbrev_addr)
+
+	int debug_line_addr = codepos
+	debug_line_emit()
+	section_set_range(debug_line_section_header, debug_line_addr, codepos - debug_line_addr)
 
 	emit_int8(0) /* placeholder so reader doesn't read beyond the end of the file */
 

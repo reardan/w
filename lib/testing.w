@@ -27,7 +27,7 @@ void execute_tests():
 	while (section_index < section_header_count):
 		int section_header_addr = base + section_header_offset + section_index * section_header_size
 		int section_type = load_int(section_header_addr + 4)
-		int section_info = load_int(section_header_addr + 28)
+		int section_size = load_int(section_header_addr + 20)
 
 		int section_addr = base + load_int(section_header_addr + 12)
 
@@ -38,7 +38,7 @@ void execute_tests():
 		# Find Symbol Table Section
 		else if (section_type == 2):
 			symbol_table_addr = section_addr
-			symbol_count = section_info
+			symbol_count = section_size / 16 /* size / entry size */
 		
 		section_index = section_index + 1
 

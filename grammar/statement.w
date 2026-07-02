@@ -20,6 +20,9 @@ void statement():
 	int p2
 	int if_tab_level
 
+	# DWARF line info: the code emitted next belongs to this source line
+	debug_line_note()
+
 	# { statement-list-opt }
 	if (accept("{")) {
 		int n = table_pos

@@ -198,10 +198,14 @@ lib_64_test_debug: w FORCE
 	chmod +x ./bin/lib_test
 	ddd ./bin/lib_test
 
-repl: FORCE
-	./w repl.w >./bin/repl
-	chmod +x ./bin/repl
-	./bin/repl test.w >./bin/test
+repl: w FORCE
+	./bin/wv2 repl.w -o ./bin/repl
+	./bin/repl
+
+repl_test: w FORCE
+	./bin/wv2 repl.w -o ./bin/repl
+	printf 'print("hello from the repl\\x0a")\n:quit\n' | ./bin/repl | grep -q "hello from the repl"
+	@echo "repl test OK"
 
 for_test: w FORCE
 	./bin/wv2 tests/for_test.w >./bin/for_test
