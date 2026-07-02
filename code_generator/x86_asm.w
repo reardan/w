@@ -11,13 +11,13 @@ void define_asm_functions():
 	sym_define_declare_global_function("syscall7")
 	/* mov eax,[esp+28] ; mov ebx,[esp+24] ; mov ecx,[esp+20] ; mov edx,[esp+16] ; mov esi,[esp+12] ; mov edi,[esp+8] ; mov ebp,[esp+4] ; int 0x80 ; ret */
 	emit(20, "\x8b\x44\x24\x1c\x8b\x5c\x24\x18\x8b\x4c\x24\x14\x8b\x54\x24\x10\x8b\x74\x24\x0c")
-	emit(10, "\x89\x68\x14\x89\x70\x18\x89\x78\x1c\xc3")
+	emit(11, "\x8b\x7c\x24\x08\x8b\x6c\x24\x04\xcd\x80\xc3")
 
 	# debug
 	sym_define_declare_global_function("get_context")
 	# push eax; mov eax,[esp+8] ; mov [eax+4],ecx ; pop ecx ; mov [eax+0],ecx ; mov [eax+8],edx ; mov [eax+12],ebx; mov [eax+16],esp ; mov [eax+20], ebp ; mov [eax+24], esi ; mov [eax+28],edi ; ret
 	emit(20, "\x50\x8b\x44\x24\x08\x89\x48\x04\x59\x89\x08\x89\x50\x08\x89\x58\x0c\x89\x60\x10")
-	emit(10, "\x89\x78\x14\x89\x70\x18\x89\x78\x1c\xc3")
+	emit(10, "\x89\x68\x14\x89\x70\x18\x89\x78\x1c\xc3")
 
 	# push eax ; mov eax,[esp+8] ; mov [eax+4],ecx ; mov [eax+8],edx ; mov [eax+12],ebx ; mov [eax+16],esp ; mov [eax+20],ebp ; mov [eax+24],esi ; mov [eax+28],edi ; pop eax ; ret ; 
 	sym_define_declare_global_function("store_context")
@@ -57,11 +57,20 @@ void define_asm_functions():
 	emit(29, "\x8b\x54\x24\x04\xb8\x66\x00\x00\x00\xbb\x05\x00\x00\x00\x6a\x00\x6a\x00\x52\x89\xe1\xcd\x80\x89\xc2\x83\xc4\x0c\xc3")
 
 	# thread_i386.s
+	# thread_create(func): clone with a fresh 4MB stack whose top slot holds func,
+	# so the child's fall-through "ret" jumps straight into func.
+	# The call +25 targets stack_create, which is emitted immediately after.
 	sym_define_declare_global_function("thread_create")
-	emit(54, "\x53\xe8\x15\x00\x00\x00\x8d\x88\xf8\xff\x3f\x00\x8f\x01\xbb\x00\x8f\x01\x80\xb8\x78\x00\x00\x00\xcd\x80\xc3")
-	
+	/* call stack_create ; lea ecx,[eax+0x3ffff0] ; mov edx,[esp+4] ; mov [ecx],edx */
+	emit(17, "\xe8\x19\x00\x00\x00\x8d\x88\xf0\xff\x3f\x00\x8b\x54\x24\x04\x89\x11")
+	/* mov ebx,CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO ; mov eax,120 ; int 0x80 ; ret */
+	emit(13, "\xbb\x00\x8f\x01\x80\xb8\x78\x00\x00\x00\xcd\x80\xc3")
+
+	# stack_create(): mmap2(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
 	sym_define_declare_global_function("stack_create")
-	emit(28, "\xbb\x00\x00\x00\x00\xb9\x00\x00\x40\x00\xba\x03\x00\x00\x00\xbe\x22\x01\x00\x00\xb8\xc0\x00\x00\x00\xcd\x80\xc3")
+	emit(20, "\xbb\x00\x00\x00\x00\xb9\x00\x00\x40\x00\xba\x03\x00\x00\x00\xbe\x22\x01\x00\x00")
+	/* mov edi,-1 ; mov ebp,0 ; mov eax,192 ; int 0x80 ; ret */
+	emit(18, "\xbf\xff\xff\xff\xff\xbd\x00\x00\x00\x00\xb8\xc0\x00\x00\x00\xcd\x80\xc3")
 
 	# function_call(func_ptr)
 	sym_define_declare_global_function("function_call")

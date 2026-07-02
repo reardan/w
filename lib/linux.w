@@ -46,11 +46,18 @@ int malloc(int size):
 		return err
 	return result
 
+# mmap2 (192): register-based 6-arg convention; old_mmap (90) wants an arg struct pointer.
+# fd must be -1 for MAP_ANONYMOUS mappings; offset is in 4096-byte pages.
 int mmap(int addr, int length, int prot, int flags):
-	return syscall7(90, addr, length, prot, flags, 0, 0)
+	return syscall7(192, addr, length, prot, flags, -1, 0)
 
 int sys_clone(int flags, int child_stack):
 	return syscall(56, flags, child_stack)
 
+# exit_group: terminates every thread in the process, like libc exit().
 void exit(int error_code):
+	syscall(252, error_code, 0, 0)
+
+# exit: terminates only the calling thread.
+void thread_exit(int error_code):
 	syscall(1, error_code, 0, 0)

@@ -177,6 +177,17 @@ void test_ip4_from_string(char* ips):
 	assert_strings_equal("0xffffffff", hex(ip4_from_string("255.255.255.255")))
 
 
+void test_mmap():
+	# PROT_READ|PROT_WRITE = 3, MAP_PRIVATE|MAP_ANONYMOUS = 34
+	int page = mmap(0, 4096, 3, 34)
+	# error returns are small negatives (-1..-4095); mapped addresses are anything else
+	asserts("mmap failed", (page > 0) | (page < -4095))
+	save_int(page, 1337)
+	assert_equal(1337, load_int(page))
+	save_int(page + 4092, 42)
+	assert_equal(42, load_int(page + 4092))
+
+
 void test_print_registers():
 	print_registers()
 
