@@ -9,8 +9,13 @@ int expression();
 int primary_expr():
 	int type
 	int new_type
+	# Float literal (must run before int_literal, which only checks the first
+	# character before decoding the whole token)
+	if (float_literal()):
+		type = float32_value_type
+
 	# Integer literal
-	if (int_literal()):
+	else if (int_literal()):
 		type = 3 /* constant */
 
 	# Compile-time constant: the target's word size in bytes (4 or 8),

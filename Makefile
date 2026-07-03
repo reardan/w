@@ -198,6 +198,16 @@ type_table_test: w FORCE
 	chmod +x ./bin/type_table_test
 	./bin/type_table_test
 
+bignum_test: w FORCE
+	./bin/wv2 compiler/bignum_test.w >./bin/bignum_test
+	chmod +x ./bin/bignum_test
+	./bin/bignum_test
+
+float_literal_test: w FORCE
+	./bin/wv2 tests/float_literal_test.w >./bin/float_literal_test
+	chmod +x ./bin/float_literal_test
+	./bin/float_literal_test
+
 logging: w FORCE
 	./bin/wv2 logging.w >./bin/logging
 	chmod +x ./bin/logging
@@ -366,7 +376,7 @@ debug_test: wdbg FORCE
 	printf 'q\n' | ./bin/wdbg tests/debug_fixture.w > /dev/null
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:
