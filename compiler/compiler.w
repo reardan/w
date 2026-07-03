@@ -76,8 +76,10 @@ int compile_relative_path(char* filename):
 			index = index - 1
 		print_string("went up one directory: ", cwd)
 
-	println2("filesystem root reached, abandoning search")
-	exit(1)
+	# error() instead of exit() so a REPL entry importing a missing
+	# module recovers to the prompt instead of killing the session
+	error("filesystem root reached, abandoning search")
+	return 0
 
 
 int compile_file(char* filename):

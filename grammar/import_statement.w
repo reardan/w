@@ -75,6 +75,35 @@ examples:
 	import directory.file.[func1, func2, var2]
 
 */
+# Resolve, register and compile a dotted module path (e.g. "lib.lib").
+# Returns 1 when the module was compiled, 0 when it was already imported.
+# Shared by import_statement() and in-process compilers (the REPL) that
+# preload modules and must keep the registry consistent.
+int import_module(char* dotted):
+	char* path = strclone(dotted)
+	str_replace(path, '.', '/')
+	char* resolved = import_resolve_arch(path)
+	free(path)
+
+	# Ignore if we have already imported this path
+	if (import_lookup(resolved) >= 0):
+		if (verbosity >= 1):
+			print2("Warning: ignoring duplicate import: '")
+			print2(resolved)
+			println2("'")
+		free(resolved)
+		return 0
+
+	import_register(resolved)
+
+	# Add the ".w" extension
+	# Shouldnt this be done inside compile*??
+	char* with_path = strjoin(resolved, ".w")
+	compile_save(with_path)
+	free(with_path)
+	return 1
+
+
 int import_statement():
 	if(accept("import")):
 		# Strip a trailing .* wildcard; the whole module is imported either way
@@ -83,29 +112,9 @@ int import_statement():
 			int len = strlen(token)
 			token[len-2] = 0
 
-		# Change . to path separator
-		str_replace(token, '.', '/')
-
-		char* tok = import_resolve_arch(token)
-
-		# Ignore if we have already imported this path
-		if (import_lookup(tok) >= 0):
-			if (verbosity >= 1):
-				print2("Warning: ignoring duplicate import: '")
-				print2(tok)
-				println2("'")
-			free(tok)
-			get_token()
-			return 1
-
-		import_register(tok)
-
-		# Add the ".w" extension
-		# Shouldnt this be done inside compile*??
-		char* with_path = strjoin(tok, ".w")
-		compile_save(with_path)
-		nextc = get_character()
+		# compile_save clobbers nextc, so only re-read it after a compile
+		if (import_module(token)):
+			nextc = get_character()
 		get_token()
-		free(with_path)
 		return 1
 	return 0
