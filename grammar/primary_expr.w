@@ -15,6 +15,15 @@ int primary_expr():
 	if (literal_type):
 		type = literal_type
 
+	# Bool literals
+	else if (peek("true")):
+		mov_eax_int(1)
+		type = type_value(bool_type)
+
+	else if (peek("false")):
+		mov_eax_int(0)
+		type = type_value(bool_type)
+
 	# Integer literal
 	else if (int_literal()):
 		type = 3 /* constant */

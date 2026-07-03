@@ -7,7 +7,7 @@ int generate_relational_code(int type, int setcc_opcode):
 	if (result_type):
 		return result_type
 	alu_cmp_set(setcc_opcode)
-	return 3
+	return type_value(bool_type)
 
 
 int generate_float_swapped_relational_code(int type, int setcc_opcode):
@@ -18,7 +18,7 @@ int generate_float_swapped_relational_code(int type, int setcc_opcode):
 		return result_type
 	# Integer fallback uses the original signed condition on left/right.
 	alu_cmp_set(0x9c)
-	return 3
+	return type_value(bool_type)
 
 
 /*
@@ -42,7 +42,7 @@ int relational_expr():
 				type = result_type
 			else:
 				alu_cmp_set(0x9e)
-				type = 3
+				type = type_value(bool_type)
 
 		else if(accept("<")):
 			int left_type = binary1(type)
@@ -52,7 +52,7 @@ int relational_expr():
 				type = result_type
 			else:
 				alu_cmp_set(0x9c)
-				type = 3
+				type = type_value(bool_type)
 
 		else if(accept(">=")):
 			int left_type = binary1(type)
@@ -62,7 +62,7 @@ int relational_expr():
 				type = result_type
 			else:
 				alu_cmp_set(0x9d)
-				type = 3
+				type = type_value(bool_type)
 
 		else if(accept(">")):
 			int left_type = binary1(type)
@@ -72,7 +72,7 @@ int relational_expr():
 				type = result_type
 			else:
 				alu_cmp_set(0x9f)
-				type = 3
+				type = type_value(bool_type)
 	
 		else:
 			return type

@@ -3,6 +3,7 @@ char *last_identifier
 
 # Print a type's name followed by its pointer stars, e.g. "char**"
 void print_error_type(int type_index):
+	type_index = type_real(type_index)
 	print_error(type_get_name(type_index))
 	for int i in range(type_get_pointer_level(type_index)):
 		print_error("*")
@@ -18,6 +19,33 @@ void warn_type_mismatch(char* context, int want, int got):
 	print_error("', got '")
 	print_error_type(got)
 	warning("'")
+
+
+int function_signature_matches_symbol(int signature_type, char* function_name):
+	int symbol = sym_lookup(function_name)
+	if (symbol < 0):
+		return 0
+	if (load_int(table + symbol + 10) != 2):
+		return 0
+	if (type_unqualified(type_function_return(signature_type)) != type_unqualified(load_int(table + symbol + 6))):
+		return 0
+	int expected_args = type_function_param_count(signature_type)
+	if (sym_num_args(symbol) != expected_args):
+		return 0
+	int i = 0
+	while (i < expected_args):
+		if (type_unqualified(type_function_param_type(signature_type, i)) != type_unqualified(sym_param_type(symbol, i))):
+			return 0
+		i = i + 1
+	return 1
+
+
+int types_compatible_with_expression(int want, int got):
+	if (got == 4):
+		int signature_type = type_function_pointer_signature(want)
+		if (signature_type >= 0):
+			return function_signature_matches_symbol(signature_type, last_identifier)
+	return types_compatible(want, got)
 
 
 
@@ -40,6 +68,8 @@ int promote(int type):
 		print2(last_identifier)
 		println2("')")
 
+	if (type_is_value(type)):
+		return type_real(type)
 	if (type == 3): /* constant: already a value */
 		return type
 	if (type == 4): /* function: its address is its value */
@@ -79,10 +109,18 @@ int promote(int type):
 
 
 void coerce(int want, int got):
+	want = type_canonical(want)
+	got = type_canonical(got)
+	if ((want == bool_type) & (got != bool_type)):
+		promote(got)
+		alu_test_set(0x95) /* setne */
+		return;
 	int want_kind = type_float_kind(want)
 	int got_kind = type_float_kind(got)
 	if (want == 3):
 		return;
+
+
 	if (want == 4):
 		return;
 	if (got == 4):
@@ -127,3 +165,7 @@ void coerce(int want, int got):
 	if ((got_kind == 2) & (type_get_pointer_level(want) == 0)):
 		movq_xmm0_rax()
 		cvttsd2si_rax_xmm0()
+
+
+void coerce_explicit(int want, int got):
+	coerce(want, got)

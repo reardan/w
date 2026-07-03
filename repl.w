@@ -287,10 +287,13 @@ void repl_entry_item(int entry_symbol):
 
 	# Pure declarations: none of this executes now, but imports and extern
 	# shims emit code, so the entry function jumps over the region
-	if (peek("import") | peek("struct") | peek("c_lib") | peek("extern")):
+	if (peek("import") | peek("type") | peek("struct") | peek("union") | peek("enum") | peek("c_lib") | peek("extern")):
 		int skip = repl_skip_start()
 		if (import_statement()) {}
+		else if (type_alias_declaration()) {}
 		else if (struct_declaration()) {}
+		else if (union_declaration()) {}
+		else if (enum_declaration()) {}
 		else if (extern_statement()) {}
 		repl_skip_end(skip)
 		current_function_symbol = entry_symbol
@@ -298,7 +301,7 @@ void repl_entry_item(int entry_symbol):
 		return;
 
 	# type-name ...: a function definition or a persistent variable
-	if (type_lookup(token) >= 0):
+	if (peek("const") | (type_lookup(token) >= 0)):
 		int decl_type = type_name()
 		if (token[0] == 0):
 			error("identifier expected after type name")
@@ -363,7 +366,7 @@ void repl_entry_item(int entry_symbol):
 	int result_type = expression()
 	promote(result_type)
 	expect_or_newline(";")
-	repl_result_type = result_type
+	repl_result_type = type_real(result_type)
 	# When the expression ends in a call, the callee's declared return
 	# type drives the echo: void stays silent, char* prints as a string
 	if ((result_type == 3) & (last_call_end == codepos)):

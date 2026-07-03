@@ -19,4 +19,4 @@ int logical_or_expr():
 	int booleanize_target = codepos
 	alu_test_set(0x95) /* setne */
 	patch_jump_chain(chain, booleanize_target)
-	return 3
+	return type_value(bool_type)

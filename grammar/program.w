@@ -24,6 +24,9 @@ void function_definition(int current_symbol):
 	# number_of_args counts stack WORDS (struct values span several);
 	# param_count counts declared parameters for arity checks.
 	number_of_args = 0
+	int declared_return_type = load_int(table + current_symbol + 6)
+	if (type_num_args(declared_return_type) > 0):
+		number_of_args = 1
 	int param_count = 0
 	int function_start = codepos /* keep track of start for length comp */
 	while (accept(")") == 0):
@@ -66,15 +69,30 @@ void function_definition(int current_symbol):
 	table_pos = n
 
 
+int global_storage_size(int type):
+	int bytes = word_size
+	int declared_size = type_get_size(type)
+	if ((type_num_args(type) > 0) | (declared_size > word_size)):
+		bytes = declared_size
+	return ((bytes + word_size - 1) >> word_size_log2) << word_size_log2
+
+
 void program():
 	int current_symbol
 	while (token[0]):
 		# First handle imports
 		while (import_statement() ) {}
 
-		# Next handle struct declarations
+		# Type aliases must be available before structs and declarations
+		while(type_alias_declaration()) {}
+
+		# Next handle aggregate declarations
 		while(struct_declaration()):
 			print_int_v1("struct_declaration=1", 1)
+		while(union_declaration()):
+			print_int_v1("union_declaration=1", 1)
+		while(enum_declaration()):
+			print_int_v1("enum_declaration=1", 1)
 
 		# Shared-library declarations (c_lib / extern)
 		while (extern_statement()) {}
@@ -85,11 +103,12 @@ void program():
 
 		# Now global variables + functions
 		# TODO: variables THEN functions, not both
-		current_symbol = sym_declare_global(token, type_name(), 1)
+		int decl_type = type_name()
+		current_symbol = sym_declare_global(token, decl_type, 1)
 		get_token()
 		if (accept(";")):
 			sym_define_global(current_symbol)
-			emit_zeros(word_size)
+			emit_zeros(global_storage_size(decl_type))
 
 		else if (accept("(")):
 			function_definition(current_symbol)
@@ -97,4 +116,4 @@ void program():
 		else:
 			/*error(8)*/
 			sym_define_global(current_symbol)
-			emit_zeros(word_size)
+			emit_zeros(global_storage_size(decl_type))

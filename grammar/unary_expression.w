@@ -8,7 +8,7 @@ void new_store_field(int base_type, int field_index, int arg_type):
 	if (field_index >= type_num_args(base_type)):
 		return;
 	int field_type = type_get_field_type_at(base_type, field_index)
-	if (types_compatible(field_type, arg_type) == 0):
+	if (types_compatible_with_expression(field_type, arg_type) == 0):
 		warn_type_mismatch("constructor argument", field_type, arg_type)
 	coerce(field_type, arg_type)
 	mov_ebx_esp()
@@ -59,12 +59,12 @@ int unary_expression():
 		type = unary_expression()
 		promote(type)
 		alu_test_set(0x95) /* setne */
-		return 3
+		return type_value(bool_type)
 	else if (accept("!")):
 		type = unary_expression()
 		promote(type)
 		alu_test_set(0x94) /* sete */
-		return 3
+		return type_value(bool_type)
 	else if (accept("-")):
 		type = unary_expression()
 		type = promote(type)
@@ -89,6 +89,17 @@ int unary_expression():
 		if (type_float_kind(type) == 1):
 			return float32_value_type
 		return 3
+	else if (accept("cast")):
+		expect("(")
+		int want = type_name()
+		expect(",")
+		type = expression()
+		type = promote(type)
+		if (type_num_args(want) > 0):
+			error("cannot cast to a struct value")
+		coerce_explicit(want, type)
+		expect(")")
+		return type_value(want)
 	else if (accept("new")):
 		# new type-name — allocates sizeof(type) and yields a type*.
 		# new type-name ( args ) also initializes the struct's fields from

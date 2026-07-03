@@ -24,7 +24,10 @@ import grammar.typed_identifier
 import grammar.variable_declaration
 import grammar.for_statement
 import grammar.statement
+import grammar.type_alias_declaration
 import grammar.struct_declaration
+import grammar.union_declaration
+import grammar.enum_declaration
 import grammar.import_statement
 import grammar.extern_statement
 import grammar.program
