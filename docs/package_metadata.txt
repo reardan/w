@@ -1,0 +1,182 @@
+Package metadata design
+
+Goal:
+	Describe packages and modules well enough for tools to validate a W
+	project, explain dependencies, and keep builds reproducible without changing
+	the compiler's current import lookup or any floating-point, codegen, or type
+	behavior.
+
+Non-goals:
+	Do not add compiler import search paths in this design.
+	Do not change dotted import resolution: import a.b still maps to a/b.w after
+	the compiler walks upward from the current working directory until it finds
+	the file, with the existing __arch__ substitution.
+	Do not add dependency fetching, floating-point metadata, code generation
+	metadata, or type-system controls.
+
+Metadata file:
+	Each package root may contain package.wmeta.  The format is deliberately
+	line-oriented so it can be parsed by W tooling later without needing a
+	general-purpose data format parser.
+
+	Blank lines and # comments are ignored.  Top-level fields use:
+
+	package <dotted-name>
+	version <major>.<minor>.<patch>
+	w_language <constraint>
+	root <relative-path>
+
+	Sections end at the next section header:
+
+	modules:
+		<dotted.module>
+		<dotted.module>
+
+	dependencies:
+		<package-name> <constraint>
+		<package-name> <constraint> path <relative-path>
+
+	Example:
+
+	package w
+	version 0.1.0
+	w_language >=0.1.0
+	root .
+
+	modules:
+		w
+		compiler.compiler
+		lib.lib
+		structures.array_list
+
+	dependencies:
+		example.net >=1.2.0 path vendor/example.net
+
+Field meaning:
+	package is the canonical package name.  Use lower-case dotted names for
+	published packages, matching the spelling used by dependency entries.
+
+	version is a SemVer-style project version.  Pre-release and build metadata
+	can be reserved for a later package registry; initial tooling should accept
+	only three decimal components to keep comparison simple.
+
+	w_language is the minimum or bounded W language version the package expects.
+	It describes source compatibility only.  It must not enable language
+	features, change warnings, or switch codegen paths.  The compiler does not
+	currently declare a version, so enforcement must wait until a later stage
+	exposes one, such as w --version.  Until then this field is advisory.
+
+	root is the package's source root relative to package.wmeta.  The first
+	stage should require ".".  Allowing another relative root later gives tools a
+	place to represent repos that keep W sources under src/ without changing the
+	compiler.
+
+	modules is a manifest of public or buildable modules owned by the package.
+	Each entry maps to the current filesystem rule under root.  For example,
+	compiler.compiler means compiler/compiler.w.
+
+	dependencies lists the package graph expected by build tooling.  The optional
+	path field points at an already-present checkout or vendored copy.  It is not
+	a compiler search path; it is an input for future tooling that can validate
+	or assemble an explicit build tree before invoking the compiler.
+
+Dependency and version semantics:
+	Package identity is the package field, not the directory name.
+
+	Versions compare numerically by major, minor, then patch.  The initial
+	constraints should be:
+		=1.2.3 exact version
+		>=1.2.3 minimum version
+		^1.2.3 compatible major range, equivalent to >=1.2.3 and <2.0.0
+		^0.2.3 compatible minor range, equivalent to >=0.2.3 and <0.3.0
+		^0.0.3 exact version, equivalent to =0.0.3
+
+	A dependency is satisfied when the referenced package.wmeta package name
+	matches and its version satisfies the constraint.  If two dependencies select
+	the same package name with incompatible constraints, tooling should fail
+	before compilation.  When all constraints for a package are compatible,
+	tooling should select the highest version satisfying all constraints and
+	record that selected version in the lock file.  The compiler should not try
+	to choose between versions.
+
+	Transitive dependencies are resolved by tooling from metadata files, then
+	recorded in a future lock file.  The lock file should contain package name,
+	version, source location, per-file SHA-256 hashes, and a SHA-256 tree
+	manifest hash.  Tooling must verify those hashes before any build consumes
+	dependency files.  It is intentionally separate from package.wmeta so project
+	intent and machine resolution remain distinct.
+
+Import path implications:
+	Current W source imports remain unchanged.  Metadata can say which modules a
+	package owns and where dependency packages are located, but source files
+	should still import dotted modules exactly as they do today.
+
+	The compiler does not have explicit import search paths, but relative compile
+	requests are still an implicit search path: compile_relative_path starts at
+	the process current working directory and walks up ancestor directories until
+	the requested file is found.  A vendored or assembled tree can therefore
+	silently import a matching file from an ancestor W tree.  metadata_check can
+	validate the assembled tree, but it cannot guarantee which file the current
+	compiler will use unless builds run from an isolated directory outside any
+	other W tree, or a later resolver change stops the upward walk at the
+	package root.
+
+	The first implementation should validate only that declared modules exist
+	under root using the current mapping.  It should not teach the compiler to
+	search dependency directories.  If a later build tool wants external package
+	imports, it can create an explicit temporary or vendored tree whose paths
+	already match the current import mapping, run the compiler from that isolated
+	root, then remove the tree.
+
+	In an assembled tree, each package name maps to a directory using the dotted
+	package name with dots converted to path separators.  For example,
+	example.net maps to example/net.  Because import statements carry only dotted
+	module paths and no package identity, top-level module path ownership must be
+	unique across the complete dependency set.  metadata_check should fail if two
+	packages claim the same top-level module path, or if their assembled paths
+	would otherwise collide.
+
+	Reserved segments keep their current meaning.  __arch__ is still resolved by
+	the compiler target, and metadata must not redefine it.  The checker should
+	expand a declared __arch__ segment to both x86 and x64 and validate that both
+	files exist.  __word_size__ stays a compile-time constant and is not a
+	metadata variable.
+
+Makefile and build integration:
+	The bootstrap path should stay unchanged:
+		make build
+		make verify
+		make tests
+
+	Initial metadata support should be additive:
+		make metadata_check
+
+	metadata_check can validate package.wmeta syntax, version constraints,
+	module existence, duplicate module declarations, and dependency metadata
+	for any path dependencies present in the tree.  It should not be required by
+	build or verify until the checker is self-hosted enough to avoid making the
+	seed compiler bootstrap depend on new tooling.
+
+	Once stable, make tests can depend on metadata_check.  make build should
+	continue compiling w.w directly so bootstrapping remains understandable and
+	package metadata cannot hide a compiler dependency cycle.
+
+	Distribution targets can later package sources plus package.wmeta, while
+	lock-file generation can remain a separate target such as make package_lock.
+
+Staged implementation:
+	1. Land this design and a sample package.wmeta fixture in tests/metadata/ or
+		docs/examples/ if examples become useful.
+	2. Add a standalone metadata parser/checker that validates one package file
+		and path dependencies, with no compiler integration.
+	3. Add package.wmeta for the root repo and any standard-library subpackages
+		only after the checker can prove module paths exist.
+	4. Add make metadata_check and include it in make tests after it is stable.
+	5. Add optional lock-file generation for path dependencies and content
+		hashes.
+	6. Revisit import ergonomics only after metadata validation is useful on its
+		own; any future import changes should be a separate compiler design
+		covering the related backlog items for import aliases,
+		scoped/private imports, and settling import grammar vs grammar.*
+		behavior.
+
