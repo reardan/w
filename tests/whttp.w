@@ -29,19 +29,23 @@ int http_server():
 	char* html = malloc(size)
 	int read_count = read(file, html, size)
 	print_int("read_count: ", read_count)
+	asserts("file read failed: ", read_count >= 0)
+	int body_size = read_count
 
 	while (1):
 		int client_socket = socket_accept_connection(server_socket)
+		asserts("accept failed: ", client_socket >= 0)
 		print_int("client accepted, file: ", client_socket)
 		# todo: gethostbyaddr
 		err = read(client_socket, buf, n)
+		asserts("client read failed: ", err >= 0)
 		print_int("client request length: ", err)
 		# println(buf)
 		# parse_headers(buf)
 		# add gethostbyaddr (lookup peer)
 		println("responding to client")
-		http_write_ok_headers(client_socket, "text/html", size)
-		write(client_socket, html, size)
+		http_write_ok_headers(client_socket, "text/html", body_size)
+		write(client_socket, html, body_size)
 		print_int("closing client file: ", client_socket)
 		close(client_socket)
 

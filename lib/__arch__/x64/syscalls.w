@@ -82,6 +82,10 @@ int sys_listen(int sockfd, int backlog):
 	return syscall(50, sockfd, backlog, 0)
 
 
+int sys_getsockname(int sockfd, int addr, int addrlen):
+	return syscall(51, sockfd, addr, addrlen)
+
+
 int sys_socketpair(int family, int socket_type, int protocol, int fds):
 	return syscall7(53, family, socket_type, protocol, fds, 0, 0)
 

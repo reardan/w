@@ -73,11 +73,16 @@ int server():
 
 
 void read_socket(int file):
-	char *buf = "0000000000000000000000000000000000000000"
+	char* buf = malloc(41)
 	int read_result = read(file, buf, 40)
+	if (read_result < 0):
+		print_int("read_result: ", read_result)
+		free(buf)
+		return
 	buf[read_result] = 0
 	print_int("read_result: ", read_result)
 	print_string("received: ", buf)
+	free(buf)
 
 
 void client():

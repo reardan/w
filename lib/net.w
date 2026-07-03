@@ -90,6 +90,11 @@ int socket_accept_connection(int sockfd):
 	return sys_accept(sockfd, 0, 0)
 
 
+int socket_getsockname_ipv4(int sockfd, sockaddr_in* addr):
+	int addrlen = sockaddr_in_size()
+	return sys_getsockname(sockfd, addr, &addrlen)
+
+
 int socket_set_reuseaddr(int sockfd):
 	int enabled = 1
 	return sys_setsockopt(sockfd, sol_socket(), so_reuseaddr(), &enabled, 4)

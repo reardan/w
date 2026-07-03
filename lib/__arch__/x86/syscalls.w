@@ -87,6 +87,12 @@ struct sys_accept_args:
 	int addrlen
 
 
+struct sys_getsockname_args:
+	int sockfd
+	int addr
+	int addrlen
+
+
 struct sys_socketpair_args:
 	int family
 	int socket_type
@@ -148,6 +154,14 @@ int sys_accept(int sockfd, int addr, int addrlen):
 	args.addr = addr
 	args.addrlen = addrlen
 	return syscall(102, 5, &args, 0)
+
+
+int sys_getsockname(int sockfd, int addr, int addrlen):
+	sys_getsockname_args args
+	args.sockfd = sockfd
+	args.addr = addr
+	args.addrlen = addrlen
+	return syscall(102, 6, &args, 0)
 
 
 int sys_socketpair(int family, int socket_type, int protocol, int fds):
