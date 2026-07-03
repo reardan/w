@@ -6,18 +6,18 @@ int bignum_size():
 	return 4 + bignum_limb_count() * 4
 
 
-int bignum_new():
-	int n = malloc(bignum_size())
-	bignum_clear(n)
-	return n
-
-
 void bignum_clear(int n):
 	save_int(n, 1)
 	int i = 0
 	while (i < bignum_limb_count()):
 		save_int(n + 4 + i * 4, 0)
 		i = i + 1
+
+
+int bignum_new():
+	int n = malloc(bignum_size())
+	bignum_clear(n)
+	return n
 
 
 int bignum_length(int n):
