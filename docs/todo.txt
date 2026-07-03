@@ -70,7 +70,7 @@ current state:
 			debugger statement emits int3
 			DWARF line-number data is emitted for gdb source-line mapping
 		library and data structures:
-			malloc/free/realloc
+			malloc/free/realloc as a library module (lib/memory.w)
 			list
 			hash_map
 			string builder

@@ -37,68 +37,9 @@ int getcwd(char* buf, int size):
 	return syscall(183, buf, size, 0)
 
 /* memory and threading */
+# The heap allocator built on brk lives in lib/memory.w
 int brk(char* addr):
 	return syscall(45, addr, 0, 0)
-
-/*
-Free-list allocator.
-
-Every block has an 8-byte header: [size][next]. size counts payload bytes
-only; next links free blocks (0 ends the list). malloc searches the free
-list first (first fit, splitting large blocks) and only grows the heap with
-brk when nothing fits. free() in lib.w pushes blocks back onto the list.
-*/
-int malloc_free_list
-int malloc_heap_ptr
-int malloc_heap_end
-
-int malloc(int size):
-	if (size < 1):
-		size = 1
-	# Round up to 8 bytes so blocks stay aligned
-	size = ((size + 7) >> 3) << 3
-
-	# First fit from the free list
-	int prev = 0
-	int block = malloc_free_list
-	while (block != 0):
-		int block_size = load_int(block)
-		if (block_size >= size):
-			int next = load_int(block + 4)
-			# Split when the remainder can hold a header and a payload
-			if (block_size >= size + 16):
-				int rest = block + 8 + size
-				save_int(rest, block_size - size - 8)
-				save_int(rest + 4, next)
-				next = rest
-				save_int(block, size)
-			if (prev == 0):
-				malloc_free_list = next
-			else:
-				save_int(prev + 4, next)
-			return block + 8
-		prev = block
-		block = load_int(block + 4)
-
-	# Nothing fits: bump-allocate, growing the heap in 64KB chunks so most
-	# mallocs avoid the two brk syscalls the old allocator paid every time.
-	int needed = size + 8
-	if (malloc_heap_ptr == 0):
-		malloc_heap_ptr = brk(0)
-		malloc_heap_end = malloc_heap_ptr
-	if (malloc_heap_ptr + needed > malloc_heap_end):
-		int chunk = 65536
-		if (needed > chunk):
-			chunk = ((needed + 65535) >> 16) << 16
-		int err = brk(malloc_heap_end + chunk)
-		if (err < 0):
-			return err
-		malloc_heap_end = malloc_heap_end + chunk
-
-	block = malloc_heap_ptr
-	malloc_heap_ptr = malloc_heap_ptr + needed
-	save_int(block, size)
-	return block + 8
 
 # mmap2 (192): register-based 6-arg convention; old_mmap (90) wants an arg struct pointer.
 # fd must be -1 for MAP_ANONYMOUS mappings; offset is in 4096-byte pages.

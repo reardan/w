@@ -79,6 +79,9 @@ done:
 	command-line argument parsing (lib/args.w)...complete!
 		positionals, -flag value, -flag=value, --flag=value...complete!
 		make args_test suite...complete!
+	memory allocator as a library module (lib/memory.w)...complete!
+		malloc, free and realloc in one cohesive module...complete!
+		lib/linux.w keeps only the OS syscall layer...complete!
 	operator precedence...complete!
 		relational operators chain left-associatively...complete!
 		unary operators take unary operands (C model)...complete!

@@ -6,6 +6,7 @@ No dependencies except calls provided by the compiler.  May change.
 This should only be functions that are highly common and every application requires.
 */
 import lib.linux
+import lib.memory
 
 
 void exit(int);
@@ -31,29 +32,6 @@ from the symbol table to the call instruction at the entry point.
 */
 int _main(int argc, int argv):
 	exit(main(argc, argv))
-
-
-# Push the block back onto the allocator's free list.
-int free(int mem_address):
-	if (mem_address == 0):
-		return 0
-	int block = mem_address - 8
-	save_int(block + 4, malloc_free_list)
-	malloc_free_list = block
-	return 1
-
-
-# Raw-memory function like malloc/free, so the block parameter is the
-# untyped word: callers hold blocks as char*, int*, struct pointers, etc.
-char *realloc(int old, int oldlen, int newlen):
-	char *grown = malloc(newlen)
-	int i = 0
-	while (i < oldlen):
-		grown[i] = old[i]
-		i = i + 1
-
-	free(old)
-	return grown
 
 
 int strlen(char *c):

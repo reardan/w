@@ -19,8 +19,8 @@ DONE! warning if file doesn't end in a newline
 DONE! warning if spaces used instead of tabs
 
 DONE! command arg parsing helper (lib/args.w)
+DONE! malloc/free/realloc live in lib/memory.w as a swappable library module
 
 no built-in w --debug debugger
-malloc/free/realloc are still compiler/runtime primitives, not a library abstraction
 no for loop list iteration
 no generators
