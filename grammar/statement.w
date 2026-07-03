@@ -20,6 +20,25 @@
 # statements check their expression against its declared return type.
 int current_function_symbol
 
+
+void copy_struct_return_value(int declared_type):
+	int words = (type_get_size(declared_type) + word_size - 1) >> word_size_log2
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_ebx_esp_plus((stack_pos + number_of_args) << word_size_log2)
+	int i = 0
+	while (i < words):
+		mov_eax_esp_plus(0)
+		if (i > 0):
+			add_eax_int32(i << word_size_log2)
+		promote_eax()
+		if (i > 0):
+			add_ebx_int32(word_size)
+		store_ebx_word()
+		i = i + 1
+	pop_eax()
+	stack_pos = stack_pos - 1
+
 void statement():
 	int p1
 	int p2
@@ -114,9 +133,14 @@ void statement():
 			int return_type = expression()
 			return_type = promote(return_type)
 			int declared_type = load_int(table + current_function_symbol + 6)
-			coerce(declared_type, return_type)
-			if (types_compatible(declared_type, return_type) == 0):
-				warn_type_mismatch("return", declared_type, return_type)
+			if ((type_num_args(declared_type) > 0) & (type_num_args(return_type) > 0)):
+				if (types_compatible(declared_type, return_type) == 0):
+					warn_type_mismatch("return", declared_type, return_type)
+				copy_struct_return_value(declared_type)
+			else:
+				coerce(declared_type, return_type)
+				if (types_compatible(declared_type, return_type) == 0):
+					warn_type_mismatch("return", declared_type, return_type)
 		expect_or_newline(";")
 		be_pop(stack_pos)
 		ret()

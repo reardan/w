@@ -59,12 +59,12 @@ int unary_expression():
 		type = unary_expression()
 		promote(type)
 		alu_test_set(0x95) /* setne */
-		return 3
+		return type_value(bool_type)
 	else if (accept("!")):
 		type = unary_expression()
 		promote(type)
 		alu_test_set(0x94) /* sete */
-		return 3
+		return type_value(bool_type)
 	else if (accept("-")):
 		type = unary_expression()
 		type = promote(type)
@@ -89,6 +89,17 @@ int unary_expression():
 		if (type_float_kind(type) == 1):
 			return float32_value_type
 		return 3
+	else if (accept("cast")):
+		expect("(")
+		int want = type_name()
+		expect(",")
+		type = expression()
+		type = promote(type)
+		if (type_num_args(want) > 0):
+			error("cannot cast to a struct value")
+		coerce_explicit(want, type)
+		expect(")")
+		return type_value(want)
 	else if (accept("new")):
 		# new type-name — allocates sizeof(type) and yields a type*.
 		# new type-name ( args ) also initializes the struct's fields from

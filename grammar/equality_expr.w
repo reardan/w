@@ -15,7 +15,7 @@ int equality_expr():
 				type = result_type
 			else:
 				alu_cmp_set(0x94) /* sete */
-				type = 3
+				type = type_value(bool_type)
 
 		else if (accept("!=")):
 			int left_type = binary1(type)
@@ -25,7 +25,7 @@ int equality_expr():
 				type = result_type
 			else:
 				alu_cmp_set(0x95) /* setne */
-				type = 3
+				type = type_value(bool_type)
 
 		else:
 			return type

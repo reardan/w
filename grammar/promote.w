@@ -3,6 +3,7 @@ char *last_identifier
 
 # Print a type's name followed by its pointer stars, e.g. "char**"
 void print_error_type(int type_index):
+	type_index = type_real(type_index)
 	print_error(type_get_name(type_index))
 	for int i in range(type_get_pointer_level(type_index)):
 		print_error("*")
@@ -40,6 +41,8 @@ int promote(int type):
 		print2(last_identifier)
 		println2("')")
 
+	if (type_is_value(type)):
+		return type_real(type)
 	if (type == 3): /* constant: already a value */
 		return type
 	if (type == 4): /* function: its address is its value */
@@ -79,10 +82,18 @@ int promote(int type):
 
 
 void coerce(int want, int got):
+	want = type_canonical(want)
+	got = type_canonical(got)
+	if ((want == bool_type) & (got != bool_type)):
+		promote(got)
+		alu_test_set(0x95) /* setne */
+		return;
 	int want_kind = type_float_kind(want)
 	int got_kind = type_float_kind(got)
 	if (want == 3):
 		return;
+
+
 	if (want == 4):
 		return;
 	if (got == 4):
@@ -127,3 +138,7 @@ void coerce(int want, int got):
 	if ((got_kind == 2) & (type_get_pointer_level(want) == 0)):
 		movq_xmm0_rax()
 		cvttsd2si_rax_xmm0()
+
+
+void coerce_explicit(int want, int got):
+	coerce(want, got)

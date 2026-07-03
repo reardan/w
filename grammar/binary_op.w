@@ -148,4 +148,4 @@ int float_binary_compare(int left_type, int right_type, int setcc_opcode, int sw
 	else:
 		ucomiss()
 	setcc_movzx_eax(setcc_opcode)
-	return 3
+	return type_value(bool_type)

@@ -8,10 +8,12 @@ int last_call_end
 # Warn when a call argument's type conflicts with the callee's declared
 # parameter type. callee is the callee's symbol table offset (< 0 when the
 # callee is unknown, e.g. calls through pointers); arg_index is 0-based.
-void check_call_argument(int callee, char* callee_name, int arg_index, int arg_type):
-	if (callee < 0):
-		return;
-	int param_type = sym_param_type(callee, arg_index)
+void check_call_argument(int callee, int signature_type, char* callee_name, int arg_index, int arg_type):
+	int param_type = -1
+	if (signature_type >= 0):
+		param_type = type_function_param_type(signature_type, arg_index)
+	else if (callee >= 0):
+		param_type = sym_param_type(callee, arg_index)
 	if (param_type < 0):
 		return;
 	if (types_compatible(param_type, arg_type) == 0):
@@ -50,14 +52,18 @@ void push_call_argument(int arg_type):
 # passed_args lets callers account for hidden arguments, such as a method
 # receiver. callee_type is 4 for direct functions, and a pointer type for
 # indirect calls through function-pointer values.
-int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym, char* callee_name, int declared_return, int passed_args):
+int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym, int signature_type, char* callee_name, int declared_return, int passed_args, int has_return_buffer):
 	int arg_type
 	if (accept(")") == 0):
 		arg_type = expression()
 		arg_type = promote(arg_type)
-		check_call_argument(callee_sym, callee_name, passed_args, arg_type)
-		if (callee_sym >= 0):
-			int param_type = sym_param_type(callee_sym, passed_args)
+		check_call_argument(callee_sym, signature_type, callee_name, passed_args, arg_type)
+		if ((callee_sym >= 0) | (signature_type >= 0)):
+			int param_type = -1
+			if (callee_sym >= 0):
+				param_type = sym_param_type(callee_sym, passed_args)
+			if (signature_type >= 0):
+				param_type = type_function_param_type(signature_type, passed_args)
 			if (param_type >= 0):
 				coerce(param_type, arg_type)
 		push_call_argument(arg_type)
@@ -65,9 +71,13 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 		while (accept(",")):
 			arg_type = expression()
 			arg_type = promote(arg_type)
-			check_call_argument(callee_sym, callee_name, passed_args, arg_type)
-			if (callee_sym >= 0):
-				int param_type = sym_param_type(callee_sym, passed_args)
+			check_call_argument(callee_sym, signature_type, callee_name, passed_args, arg_type)
+			if ((callee_sym >= 0) | (signature_type >= 0)):
+				int param_type = -1
+				if (callee_sym >= 0):
+					param_type = sym_param_type(callee_sym, passed_args)
+				if (signature_type >= 0):
+					param_type = type_function_param_type(signature_type, passed_args)
 				if (param_type >= 0):
 					coerce(param_type, arg_type)
 			push_call_argument(arg_type)
@@ -97,10 +107,11 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 	int type = 3  # call results are plain values
 	last_call_return_type = declared_return
 	last_call_end = codepos
-	if (type_float_kind(declared_return) == 2):
-		type = float64_value_type
-	else if (type_float_kind(declared_return) == 1):
-		type = float32_value_type
+	if (has_return_buffer):
+		lea_eax_esp_plus(0)
+		type = type_value(declared_return)
+	else if (declared_return >= 0):
+		type = type_value(declared_return)
 	return type
 
 
@@ -138,6 +149,7 @@ int postfix_expr():
 			# below overwrites last_identifier.
 			int expected_args = -1
 			int callee_sym = -1
+			int signature_type = -1
 			char* callee_name = 0
 			int declared_return = -1
 			if (type == 4):
@@ -148,19 +160,50 @@ int postfix_expr():
 					if (expected_args >= 0):
 						callee_sym = callee
 						callee_name = strclone(last_identifier)
+			else if (type_get_pointer_level(type) > 0):
+				int base_type = type_lookup_previous_pointer(type)
+				if ((base_type >= 0) & (type_is_function_signature(base_type))):
+					signature_type = base_type
+					declared_return = type_function_return(base_type)
+					expected_args = type_function_param_count(base_type)
+					callee_name = strclone("function pointer")
 
+			int has_return_buffer = 0
 			int s = stack_pos
+			if (declared_return >= 0):
+				if (type_num_args(declared_return) > 0):
+					int words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
+					int j = 0
+					while (j < words):
+						push_eax()
+						j = j + 1
+					stack_pos = stack_pos + words
+					s = stack_pos
+					has_return_buffer = 1
 			push_eax()
 			stack_pos = stack_pos + 1
-			type = parse_call_suffix(type, s, expected_args, callee_sym, callee_name, declared_return, 0)
+			if (has_return_buffer):
+				lea_eax_esp_plus(word_size)
+				push_eax()
+				stack_pos = stack_pos + 1
+			type = parse_call_suffix(type, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 0, has_return_buffer)
 
 		else if (accept(".")):
+			int receiver_struct_value_words = 0
+			int receiver_was_value = type_is_value(type)
+			if (receiver_was_value):
+				int receiver_real_type = type_real(type)
+				if (type_num_args(receiver_real_type) > 0):
+					receiver_struct_value_words = (type_get_size(receiver_real_type) + word_size - 1) >> word_size_log2
+				type = promote(type)
+
 			# Struct pointers are loaded first so fields work through them
 			if (type_get_pointer_level(type) > 0):
 				int element = type_lookup_previous_pointer(type)
 				if (element >= 0):
 					if (type_num_args(element) > 0):
-						promote(type)
+						if (receiver_was_value == 0):
+							promote(type)
 						type = element
 
 			# For structures, find offset of field name
@@ -183,6 +226,12 @@ int postfix_expr():
 						print2(itoa(line_number))
 						print_string0(": using child type: ", type_get_name(type))
 						print_int(": ", type)
+					if (receiver_struct_value_words > 0):
+						if (type_num_args(type) == 0):
+							type = promote(type)
+							be_pop(receiver_struct_value_words)
+							stack_pos = stack_pos - receiver_struct_value_words
+							type = type_value(type)
 				else if (peek("(")):
 					char* prefix = strjoin(type_get_name(type), "_")
 					char* method_symbol = strjoin(prefix, member_name)
@@ -199,6 +248,7 @@ int postfix_expr():
 
 					int expected_args = sym_num_args(callee)
 					int callee_sym = -1
+					int signature_type = -1
 					char* callee_name = 0
 					if (expected_args >= 0):
 						callee_sym = callee
@@ -209,14 +259,33 @@ int postfix_expr():
 					# symbol, then push it as the hidden first argument.
 					push_eax()
 					stack_pos = stack_pos + 1
-					int s = stack_pos
 					sym_get_value(method_symbol)
+					int has_return_buffer = 0
+					int return_words = 0
+					int s = stack_pos
+					if (declared_return >= 0):
+						if (type_num_args(declared_return) > 0):
+							return_words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
+							int j = 0
+							while (j < return_words):
+								push_eax()
+								j = j + 1
+							stack_pos = stack_pos + return_words
+							s = stack_pos
+							has_return_buffer = 1
 					push_eax()
 					stack_pos = stack_pos + 1
-					mov_eax_esp_plus(1 << word_size_log2)
+					if (has_return_buffer):
+						lea_eax_esp_plus(word_size)
+						push_eax()
+						stack_pos = stack_pos + 1
+					if (has_return_buffer):
+						mov_eax_esp_plus((return_words + 2) << word_size_log2)
+					else:
+						mov_eax_esp_plus(1 << word_size_log2)
 
 					int receiver_type = type_lookup_next_pointer(type)
-					check_call_argument(callee_sym, callee_name, 0, receiver_type)
+					check_call_argument(callee_sym, signature_type, callee_name, 0, receiver_type)
 					if (callee_sym >= 0):
 						int param_type = sym_param_type(callee_sym, 0)
 						if (param_type >= 0):
@@ -224,9 +293,10 @@ int postfix_expr():
 					push_call_argument(receiver_type)
 
 					accept("(")
-					type = parse_call_suffix(4, s, expected_args, callee_sym, callee_name, declared_return, 1)
-					be_pop(1)
-					stack_pos = stack_pos - 1
+					type = parse_call_suffix(4, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 1, has_return_buffer)
+					if (has_return_buffer == 0):
+						be_pop(1)
+						stack_pos = stack_pos - 1
 					free(method_symbol)
 				else:
 					print2("struct field '")

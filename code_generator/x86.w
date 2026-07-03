@@ -174,6 +174,13 @@ void mov_ebx_esp():
 	emit(3, "\x8b\x1c\x24")
 
 
+/* mov ebx,[esp+0x12345678] */
+void mov_ebx_esp_plus(int v):
+	emit_x64_opcode()
+	emit(3, "\x8b\x9c\x24")
+	emit_int(v)
+
+
 /* add ebx, 0x12345678 */
 void add_ebx_int32(int v):
 	emit_x64_opcode()

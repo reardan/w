@@ -24,6 +24,9 @@ void function_definition(int current_symbol):
 	# number_of_args counts stack WORDS (struct values span several);
 	# param_count counts declared parameters for arity checks.
 	number_of_args = 0
+	int declared_return_type = load_int(table + current_symbol + 6)
+	if (type_num_args(declared_return_type) > 0):
+		number_of_args = 1
 	int param_count = 0
 	int function_start = codepos /* keep track of start for length comp */
 	while (accept(")") == 0):
@@ -71,6 +74,9 @@ void program():
 	while (token[0]):
 		# First handle imports
 		while (import_statement() ) {}
+
+		# Type aliases must be available before structs and declarations
+		while(type_alias_declaration()) {}
 
 		# Next handle struct declarations
 		while(struct_declaration()):
