@@ -469,8 +469,8 @@ int postfix_expr():
 						error("' not found")
 					free(member_name)
 
-			else:
-				get_token()
+				else:
+					get_token()
 
 		else:
 			return type
