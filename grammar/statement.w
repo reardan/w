@@ -26,7 +26,7 @@ void statement():
 	int if_tab_level
 
 	# DWARF line info: the code emitted next belongs to this source line
-	debug_line_note()
+	debug_line_note(stack_pos)
 
 	# { statement-list-opt }
 	if (accept("{")) {
