@@ -1,5 +1,6 @@
 import lib.lib
 import lib.assert
+import lib.net
 import structures.list
 
 
@@ -41,29 +42,29 @@ void parse_headers(int message):
 void respond1(int client_sock):
 	println("")
 	println("writing data...")
-	char message = "Hi there dude!\x0a"
+	char* message = "Hi there dude!\x0a"
 	write_string(client_sock, message)
 
 
 int server():
-	int server_sock = socket(2, 1, 0)
+	int server_sock = socket_tcp_ipv4()
 	print_int("server socket: ", server_sock)
 	int err
 	println("setsockopt()")
-	err = setsockopt(server_sock)  /*re-use*/
+	err = socket_set_reuseaddr(server_sock)
 	assert_equal(0, err)
 	println("bind()")
-	err = bind(server_sock, 7777)
+	err = socket_bind_ipv4(server_sock, ip4_from_string("127.0.0.1"), 7777)
 	assert_equal(0, err)
 	println("listen()")
 	int queue_length = 0
-	int listen_result = listen(server_sock)
+	int listen_result = socket_listen(server_sock, queue_length)
 	print_int("listen_result ", listen_result)
-	asserts("listen failed: ", listen_result > 0)
+	asserts("listen failed: ", listen_result == 0)
 	# todo: loop
 	while (1):
 		println("accept()")
-		int client_sock = socket_accept(server_sock)
+		int client_sock = socket_accept_connection(server_sock)
 		print_int("client_sock: ", client_sock)
 		write_string(client_sock, "yo yo yo\x0a")
 		# gethostbyaddr
@@ -72,11 +73,16 @@ int server():
 
 
 void read_socket(int file):
-	char *buf = "0000000000000000000000000000000000000000"
+	char* buf = malloc(41)
 	int read_result = read(file, buf, 40)
+	if (read_result < 0):
+		print_int("read_result: ", read_result)
+		free(buf)
+		return
 	buf[read_result] = 0
 	print_int("read_result: ", read_result)
 	print_string("received: ", buf)
+	free(buf)
 
 
 void client():
@@ -85,11 +91,11 @@ void client():
 	print_hex("ip: ", ip)
 
 	println("calling socket()")
-	int file = socket(2, 1, 0)
+	int file = socket_tcp_ipv4()
 	print_int("file: ", file)
 	println("calling connect()")
 	int port = 5555
-	int connect_result = connect(file, ip, port)
+	int connect_result = socket_connect_ipv4(file, ip, port)
 	print_int("connect_result: ", connect_result)
 
 	write_string(file, "How's it going?\x0a")
