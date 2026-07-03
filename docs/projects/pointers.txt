@@ -8,15 +8,12 @@ Description:
     We need to correct the handling of these operators for char, int16, int32, struct.
 
 Current Status:
-    The main pointer milestones are implemented and covered by tests/pointer_test.w.
-    char* indexing and dereference, int* indexing, local &, struct pointer fields, and
-    arrays of structs through pointer indexing are working.
-
-    Still open:
-        struct values as by-value parameters
-        constructor-style new point(1, 2, 3)
-        broader pointer/type compatibility warnings
-        extra regression coverage for multi-level pointers and mixed-width fields
+    Complete. All milestones are implemented and covered by tests/pointer_test.w:
+    char* indexing and dereference, int* indexing, local &, struct pointer fields,
+    arrays of structs through pointer indexing, struct values as by-value
+    parameters (stack copy with mutation isolation), constructor-style
+    new point(1, 2, 3), pointer/type compatibility warnings (make warning_test),
+    and multi-level pointer regression coverage (int**, char**).
 
 
 

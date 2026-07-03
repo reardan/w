@@ -150,6 +150,16 @@ void test_new_two_structs_are_distinct():
 	free(b)
 
 
+void test_new_mixed_constructor():
+	# Constructor stores must respect each field's width and offset
+	mixed* m = new mixed(1, 2, 3, 4)
+	assert_equal_hex(1, m.a)
+	assert_equal_hex(2, m.b)
+	assert_equal_hex(3, m.c)
+	assert_equal_hex(4, m.d)
+	free(m)
+
+
 /*
 void test_double_struct():
 	point p
@@ -158,7 +168,7 @@ void test_double_struct():
 	# test mixed
 */
 /*
-
+value-declaration constructors are not implemented (use new):
 void test_constructor():
 	point pt(1, 2, 3)
 	assert_equal(pt.x, 1)

@@ -130,6 +130,24 @@ void mov_eax_esp_plus(int v):
 	emit_int(v)
 
 
+/* mov ebx,[esp] */
+void mov_ebx_esp():
+	emit_x64_opcode()
+	emit(3, "\x8b\x1c\x24")
+
+
+/* add ebx, 0x12345678 */
+void add_ebx_int32(int v):
+	emit(2, "\x81\xc3")
+	emit_int32(v)
+
+
+/* push dword [eax+0x12345678] */
+void push_eax_plus(int v):
+	emit(2, "\xff\xb0")
+	emit_int32(v)
+
+
 /* mov [esp+0x12345678], eax */
 void store_stack_var(int variable_offset):
 	emit_x64_opcode()

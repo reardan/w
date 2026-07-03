@@ -56,6 +56,10 @@ done:
 	compiler cli...complete!
 		-o output path...complete!
 		no-argument usage message...complete!
+	pointers project...complete!
+		constructor-style new point(1, 2, 3)...complete!
+		struct values as by-value parameters (stack copy)...complete!
+		multi-level pointer regression tests...complete!
 	type compatibility warnings...complete!
 		types_compatible() helper...complete!
 		assignment/initialization/argument/return checks...complete!

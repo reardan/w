@@ -183,6 +183,23 @@ int type_get_field_offset(int type_index, char* field):
 	return -1
 
 
+# Field type by 0-based field index
+int type_get_field_type_at(int type_index, int i):
+	int t = get(type_index)
+	return load_int(t + 20 + 8 * i)
+
+
+# Byte offset of the field at 0-based index i
+int type_get_field_offset_at(int type_index, int i):
+	int t = get(type_index)
+	int offset = 0
+	int j = 0
+	while (j < i):
+		offset = offset + type_get_size(load_int(t + 20 + 8 * j))
+		j = j + 1
+	return offset
+
+
 # return type.field.type
 int type_get_field_type(int type_index, char* field):
 	int t = get(type_index)

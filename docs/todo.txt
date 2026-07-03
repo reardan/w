@@ -40,6 +40,8 @@ current state:
 			struct pointers
 			struct arrays
 			new point() and new point allocate struct storage
+			new point(1, 2, 3) initializes fields in declaration order
+			struct values pass by value (stack copy) as function parameters
 		expressions:
 			&& and || short-circuit expressions
 			! unary operator
@@ -81,8 +83,8 @@ current state:
 			local variables do not persist between entries
 			compile errors exit the process because compiler error() exits
 		pointers and structs:
-			struct values as by-value parameters are not implemented
-			new does not run constructors or initialize fields from arguments
+			new initializes fields from arguments but does not run user constructors
+			struct values cannot be returned by value
 		debugging:
 			DWARF line info exists, but there is no built-in w --debug repl
 			no stack parser, signal handler, or debugger command server yet
@@ -100,9 +102,6 @@ current state:
 			use type.w as the language meta-type
 			support scoped/private imports or import aliases
 			merge symbol_table + type_table on top of hash_map
-		pointer project closure:
-			keep make pointer_test passing
-			decide semantics for struct values passed by value
 		c_import:
 			lexer
 			parser

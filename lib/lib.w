@@ -426,14 +426,14 @@ struct register_context:
 void print_stack():
 	println2("Stack:")
 	register_context context
-	get_context(context)
+	get_context(&context)
 	print_words(context.esp, 20)
 
 
 void print_registers():
 	println2("Registers:")
 	register_context context
-	get_context(context)
+	get_context(&context)
 	print_hex("eax: ", context.eax)
 	print_hex("ecx: ", context.ecx)
 	print_hex("edx: ", context.edx)

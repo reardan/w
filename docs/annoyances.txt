@@ -9,12 +9,13 @@ DONE! assignment pointer-level mismatch warning
 DONE! deeper type compatibility checks (assignment, init, arguments, return)
 DONE! nested ifs covered by tests
 DONE! new type() allocation
+DONE! new type(args) field initialization
+DONE! struct values pass by value
 DONE! for range(start, end, step)
 
 still need {} instead of pass
 	why is pass even required?? newline should end scope
 if/while required () when using :
-pointer and struct edge cases still need more coverage
 repl compile errors exit the process
 no built-in w --debug debugger
 malloc/free/realloc are still compiler/runtime primitives, not a library abstraction

@@ -92,7 +92,7 @@ void test_argument_pointer():
 	assert_equal(pt.z, 3)
 
 
-/* Structs as by-value parameters are not implemented yet:
+# Milestone 5: structs as by-value parameters
 void argument(point pt):
 	assert_equal(1, pt.x)
 	assert_equal(2, pt.y)
@@ -107,14 +107,77 @@ void test_argument():
 	argument(pt)
 
 
-'new' is not implemented yet:
+void mutate_point(point pt):
+	pt.x = 99
+	pt.y = 98
+	pt.z = 97
+
+
+void test_argument_copy_isolation():
+	# The callee mutates its copy; the caller's struct must not change
+	point pt
+	pt.x = 1
+	pt.y = 2
+	pt.z = 3
+	mutate_point(pt)
+	assert_equal(1, pt.x)
+	assert_equal(2, pt.y)
+	assert_equal(3, pt.z)
+
+
+int sum_point_plus(point pt, int extra):
+	return pt.x + pt.y + pt.z + extra
+
+
+int sum_before_point(int extra, point pt):
+	return pt.x + pt.y + pt.z + extra
+
+
+void test_struct_param_with_scalars():
+	# Parameters before and after a multi-word struct must still resolve
+	point pt
+	pt.x = 10
+	pt.y = 20
+	pt.z = 30
+	assert_equal(65, sum_point_plus(pt, 5))
+	assert_equal(67, sum_before_point(7, pt))
+
+
+# Milestone 6: constructor-style new
 void test_pointer():
 	point* ptp = new point(4, 5, 6)
 	assert_equal(ptp.x, 4)
 	assert_equal(ptp.y, 5)
 	assert_equal(ptp.z, 6)
 	free(ptp)
-*/
+
+
+void test_new_constructor_expressions():
+	int base = 10
+	point* ptp = new point(base + 1, base * 2, base - 3)
+	assert_equal(11, ptp.x)
+	assert_equal(20, ptp.y)
+	assert_equal(7, ptp.z)
+	free(ptp)
+
+
+# Milestone 7: multi-level pointers
+void test_int_double_pointer():
+	int value = 55
+	int* p = &value
+	int** pp = &p
+	int* got = *pp
+	assert_equal(55, *got)
+	**pp = 66
+	assert_equal(66, value)
+
+
+void test_char_double_pointer():
+	char* s = "ab"
+	char** sp = &s
+	char* got = *sp
+	assert_equal('a', got[0])
+	assert_equal('b', got[1])
 
 
 void test_array_of_structs():

@@ -19,6 +19,26 @@ void check_call_argument(int callee, char* callee_name, int arg_index, int arg_t
 		warning("'")
 
 
+# Push a call argument onto the stack. Struct values are copied word by
+# word, highest field offset first so field 0 lands at the lowest address
+# (the layout parameter access expects); everything else is the one word
+# in eax.
+void push_call_argument(int arg_type):
+	int arg_words = 1
+	if (type_num_args(arg_type) > 0):
+		arg_words = (type_get_size(arg_type) + word_size - 1) >> word_size_log2
+	if (arg_words == 1):
+		push_eax()
+		stack_pos = stack_pos + 1
+		return;
+	# eax holds the struct's address (promote keeps structs as addresses)
+	int j = arg_words - 1
+	while (j >= 0):
+		push_eax_plus(j << word_size_log2)
+		j = j - 1
+	stack_pos = stack_pos + arg_words
+
+
 /*
 postfix-expr:
 	primary-expr
@@ -71,15 +91,13 @@ int postfix_expr():
 				arg_type = expression()
 				promote(arg_type)
 				check_call_argument(callee_sym, callee_name, 0, arg_type)
-				push_eax()
-				stack_pos = stack_pos + 1
+				push_call_argument(arg_type)
 				passed_args = 1
 				while (accept(",")):
 					arg_type = expression()
 					promote(arg_type)
 					check_call_argument(callee_sym, callee_name, passed_args, arg_type)
-					push_eax()
-					stack_pos = stack_pos + 1
+					push_call_argument(arg_type)
 					passed_args = passed_args + 1
 
 				expect(")")
