@@ -8,6 +8,7 @@ does not distinguish missing paths from permission-denied paths.
 import lib.lib
 
 
+# Returns a malloc'd string the caller may free.
 char* path_clone_range(char* start, int length):
 	char* result = malloc(length + 1)
 	int i = 0
@@ -18,6 +19,7 @@ char* path_clone_range(char* start, int length):
 	return result
 
 
+# Returns a malloc'd string the caller may free.
 char* path_join(char* left, char* right):
 	int left_length = strlen(left)
 	int right_length = strlen(right)
@@ -39,44 +41,46 @@ char* path_join(char* left, char* right):
 	return result
 
 
+# Returns a malloc'd string the caller may free.
 char* path_basename(char* path):
 	int length = strlen(path)
 	if (length == 0):
 		return strclone(".")
 
-	while ((length > 1) & (path[length - 1] == '/')):
+	while ((length > 1) && (path[length - 1] == '/')):
 		length = length - 1
 
-	if ((length == 1) & (path[0] == '/')):
+	if ((length == 1) && (path[0] == '/')):
 		return strclone("/")
 
 	int end = length
 	int start = end - 1
-	while ((start >= 0) & (path[start] != '/')):
+	while ((start >= 0) && (path[start] != '/')):
 		start = start - 1
 	start = start + 1
 	return path_clone_range(path + start, end - start)
 
 
+# Returns a malloc'd string the caller may free.
 char* path_dirname(char* path):
 	int length = strlen(path)
 	if (length == 0):
 		return strclone(".")
 
-	while ((length > 1) & (path[length - 1] == '/')):
+	while ((length > 1) && (path[length - 1] == '/')):
 		length = length - 1
 
-	if ((length == 1) & (path[0] == '/')):
+	if ((length == 1) && (path[0] == '/')):
 		return strclone("/")
 
 	int slash = length - 1
-	while ((slash >= 0) & (path[slash] != '/')):
+	while ((slash >= 0) && (path[slash] != '/')):
 		slash = slash - 1
 
 	if (slash < 0):
 		return strclone(".")
 
-	while ((slash > 0) & (path[slash - 1] == '/')):
+	while ((slash > 0) && (path[slash - 1] == '/')):
 		slash = slash - 1
 
 	if (slash == 0):
@@ -86,7 +90,7 @@ char* path_dirname(char* path):
 
 
 int path_exists(char* path):
-	int file = open(path, 0, 0)
+	int file = open(path, 2048, 0)
 	if (file < 0):
 		return 0
 	close(file)

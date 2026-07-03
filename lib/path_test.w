@@ -13,6 +13,10 @@ void test_path_join_existing_separator():
 	assert_strings_equal("/tmp/file.txt", joined)
 	free(joined)
 
+	joined = path_join("/", "x")
+	assert_strings_equal("/x", joined)
+	free(joined)
+
 
 void test_path_join_absolute_right():
 	char* joined = path_join("/tmp/base", "/var/log")
@@ -33,6 +37,18 @@ void test_path_join_empty_parts():
 void test_path_basename():
 	char* base = path_basename("/tmp/w/file.txt")
 	assert_strings_equal("file.txt", base)
+	free(base)
+
+	base = path_basename("file.txt")
+	assert_strings_equal("file.txt", base)
+	free(base)
+
+	base = path_basename(".")
+	assert_strings_equal(".", base)
+	free(base)
+
+	base = path_basename("..")
+	assert_strings_equal("..", base)
 	free(base)
 
 	base = path_basename("/tmp/w/")
@@ -62,6 +78,14 @@ void test_path_dirname():
 	free(dir)
 
 	dir = path_dirname("/file.txt")
+	assert_strings_equal("/", dir)
+	free(dir)
+
+	dir = path_dirname("a//b")
+	assert_strings_equal("a", dir)
+	free(dir)
+
+	dir = path_dirname("//")
 	assert_strings_equal("/", dir)
 	free(dir)
 
