@@ -272,7 +272,11 @@ format_test: w FORCE
 	./bin/wv2 lib/format_test.w -o ./bin/format_test
 	./bin/format_test
 
-tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test test hello FORCE
+args_test: w FORCE
+	./bin/wv2 lib/args_test.w -o ./bin/args_test
+	./bin/args_test
+
+tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test test hello FORCE
 
 
 clean:

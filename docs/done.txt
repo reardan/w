@@ -76,6 +76,9 @@ done:
 		if/while conditions without parentheses...complete!
 		dedent ends a : block (empty blocks need no keyword)...complete!
 		pass as an explicit no-op statement...complete!
+	command-line argument parsing (lib/args.w)...complete!
+		positionals, -flag value, -flag=value, --flag=value...complete!
+		make args_test suite...complete!
 	operator precedence...complete!
 		relational operators chain left-associatively...complete!
 		unary operators take unary operands (C model)...complete!

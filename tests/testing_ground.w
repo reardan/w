@@ -3,6 +3,8 @@ Testing Grounds for the W Language
 TODO: refactor all these into the appropriate test files.
 */
 import lib.lib
+import lib.assert
+import lib.args
 
 int global_int
 char* global_char
@@ -90,13 +92,12 @@ void print_arg(int argc):
 
 
 int main_args(int argc, int argv):
+	args_init(argc, argv)
 	print_hex("argc: ", argc)
 	print_hex("argv: ", argv)
 	int i = 0
-	int arg
-	while (i < argc):
-		arg = argv + i * 4
-		println(*arg)
+	while (i < args_count()):
+		println(args_get(i))
 		i = i + 1
 
 	return 0
@@ -132,6 +133,15 @@ int main(int argc, int argv):
 	if (strcmp(itoa(0), "0") != 0):
 		println("failed zero check")
 		# exit(1)
+
+	# The Makefile passes: arg1 arg2 arg3 -o output -i=input --input=doubledash
+	if (argc > 1):
+		args_init(argc, argv)
+		asserts("expected 3 positional args", args_positional_count() == 3)
+		asserts("bad -o value", strcmp(args_value("o"), "output") == 0)
+		asserts("bad -i value", strcmp(args_value("i"), "input") == 0)
+		asserts("bad --input value", strcmp(args_value("input"), "doubledash") == 0)
+		println("command line args parsed ok")
 	return 0
 
 /*int main1():

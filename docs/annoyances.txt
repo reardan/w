@@ -18,8 +18,9 @@ DONE! if/while work without () when using :
 DONE! warning if file doesn't end in a newline
 DONE! warning if spaces used instead of tabs
 
+DONE! command arg parsing helper (lib/args.w)
+
 no built-in w --debug debugger
 malloc/free/realloc are still compiler/runtime primitives, not a library abstraction
-no command arg parsing helper
 no for loop list iteration
 no generators
