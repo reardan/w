@@ -80,6 +80,24 @@ void bignum_add_small(int n, int add):
 	bignum_normalize(n)
 
 
+int bignum_low32(int n):
+	return bignum_limb(n, 0) + (bignum_limb(n, 1) << 16)
+
+
+int bignum_bits_32_51(int n):
+	return bignum_limb(n, 2) + ((bignum_limb(n, 3) & 15) << 16)
+
+
+void bignum_set_bit(int n, int bit):
+	int limb = bit / 16
+	if (limb >= bignum_limb_count()):
+		error("bignum overflow")
+	int value = bignum_limb(n, limb) | (1 << (bit % 16))
+	bignum_set_limb(n, limb, value)
+	if (limb + 1 > bignum_length(n)):
+		bignum_set_length(n, limb + 1)
+
+
 void bignum_mul_small(int n, int mul):
 	int carry = 0
 	int i = 0
@@ -186,6 +204,17 @@ int bignum_get_bit(int n, int bit):
 	return (bignum_limb(n, limb) >> (bit % 16)) & 1
 
 
+int bignum_is_power_of_two(int n, int bit):
+	if (bignum_bit_length(n) != bit + 1):
+		return 0
+	int i = 0
+	while (i < bit):
+		if (bignum_get_bit(n, i)):
+			return 0
+		i = i + 1
+	return bignum_get_bit(n, bit)
+
+
 int bignum_floor_log2_ratio(int num, int den):
 	int exponent = bignum_bit_length(num) - bignum_bit_length(den)
 	int scaled_den = bignum_new()
@@ -234,6 +263,32 @@ int bignum_div_scaled_to_int(int num, int den, int shift, int rem):
 	return quotient
 
 
+void bignum_div_scaled_to_bignum(int num, int den, int shift, int rem, int quotient):
+	int dividend = bignum_new()
+	int divisor = bignum_new()
+	bignum_copy(dividend, num)
+	bignum_copy(divisor, den)
+	if (shift >= 0):
+		bignum_shl_bits(dividend, shift)
+	else:
+		bignum_shl_bits(divisor, 0 - shift)
+
+	bignum_clear(rem)
+	bignum_clear(quotient)
+	int bit = bignum_bit_length(dividend) - 1
+	while (bit >= 0):
+		bignum_shl1(rem)
+		if (bignum_get_bit(dividend, bit)):
+			bignum_add_small(rem, 1)
+		if (bignum_cmp(rem, divisor) >= 0):
+			bignum_sub(rem, divisor)
+			bignum_set_bit(quotient, bit)
+		bit = bit - 1
+
+	free(dividend)
+	free(divisor)
+
+
 int bignum_round_up(int rem, int den, int quotient):
 	int twice = bignum_new()
 	bignum_copy(twice, rem)
@@ -243,5 +298,18 @@ int bignum_round_up(int rem, int den, int quotient):
 	if (cmp > 0):
 		return 1
 	if ((cmp == 0) & ((quotient & 1) == 1)):
+		return 1
+	return 0
+
+
+int bignum_round_up_big(int rem, int den, int quotient):
+	int twice = bignum_new()
+	bignum_copy(twice, rem)
+	bignum_shl1(twice)
+	int cmp = bignum_cmp(twice, den)
+	free(twice)
+	if (cmp > 0):
+		return 1
+	if ((cmp == 0) & bignum_get_bit(quotient, 0)):
 		return 1
 	return 0

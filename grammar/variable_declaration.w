@@ -6,7 +6,8 @@ int variable_declaration():
 		# = expression
 		if (accept("=")):
 			int type2 = expression()
-			promote(type2)
+			type2 = promote(type2)
+			coerce(type, type2)
 			if (types_compatible(type, type2) == 0):
 				warn_type_mismatch("initialization", type, type2)
 			if (verbosity >= 0):

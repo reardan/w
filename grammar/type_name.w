@@ -6,6 +6,8 @@ int type_name():
 		print_error("unknown type name: '")
 		print_error(token)
 		error("'")
+	if ((type == float64_type) & (word_size != 8)):
+		error("float64 requires the x64 target")
 
 	get_token()
 
