@@ -22,5 +22,5 @@ DONE! command arg parsing helper (lib/args.w)
 DONE! malloc/free/realloc live in lib/memory.w as a swappable library module
 
 no built-in w --debug debugger
-no for loop list iteration
+no for loop list iteration (design brainstorm: docs/projects/iteration.md)
 no generators

@@ -129,8 +129,8 @@ current state:
 
 	future language features:
 		generators
-		iterators
-		for-in over iterable values
+		iterators (design brainstorm: docs/projects/iteration.md)
+		for-in over iterable values (design brainstorm: docs/projects/iteration.md)
 		yield
 		stream class
 		file class
