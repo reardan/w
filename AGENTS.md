@@ -29,5 +29,11 @@ Compile/run an arbitrary program directly:
 - W source is whitespace-significant: **tabs** for indentation (spaces trigger a warning),
   no semicolons, `#` line comments, blocks open with `:`.
 - Optional debug/trace targets need tools that are **not installed** and are not required
-  for build/test: `gdb`/`ddd` (`*_debug` targets), `radare2` (`asm_codegen_get_context`),
-  `systemtap`/`stap` with sudo (`net_log*`, `log_write`).
+ for build/test: `gdb`/`ddd` (`*_debug` targets), `radare2` (`asm_codegen_get_context`),
+ `systemtap`/`stap` with sudo (`net_log*`, `log_write`).
+- `make tests` includes `dynamic_test`, which produces a **32-bit dynamically linked**
+ binary and needs the i386 loader/libc (`/lib/ld-linux.so.2`, `libc6:i386`). This is
+ preinstalled in the Cursor Cloud snapshot; if the loader is missing, `dynamic_test`
+ fails with `./bin/dynamic_test: not found` — install it per the README
+ (`sudo dpkg --add-architecture i386 && sudo apt-get install -y libc6:i386`). `make build`
+ and `make verify` do not require it.
