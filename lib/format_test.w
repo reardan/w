@@ -46,3 +46,9 @@ void test_hex_verb():
 	close(fd)
 	assert_strings_equal("0x000000ff", buf)
 	free(buf)
+
+
+void test_ftoa():
+	char* got = ftoa(-2.5)
+	assert_strings_equal("-2.500000", got)
+	free(got)

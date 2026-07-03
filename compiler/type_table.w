@@ -16,6 +16,18 @@ struct type:
 import structures.list
 
 
+# Float type indices, set by push_basic_types(). The two "value"
+# pseudo-types follow the constant(3)/function(4) convention: eax already
+# holds the value (raw IEEE-754 bits), not an address. Their names contain
+# a space so no source token can ever look them up.
+int float32_type
+int float64_type
+int float16_type
+int float_type
+int float32_value_type
+int float64_value_type
+
+
 int type_size():
 	return 16 + 8 * 100
 
@@ -112,6 +124,29 @@ int types_compatible(int want, int got):
 	if (strcmp(type_get_name(got), "void") == 0):
 		return 1
 	return strcmp(type_get_name(want), type_get_name(got)) == 0
+
+
+# Float kind of an expression type, as a VALUE after promote(): 0 = not
+# float, 1 = float32 bits in eax, 2 = float64 bits in rax. float16 counts
+# as kind 1 because its load path widens to float32. Pointer types have
+# their own indices, so float* correctly reads as kind 0.
+int type_float_kind(int t):
+	if ((t == float32_type) | (t == float_type) |
+			(t == float16_type) | (t == float32_value_type)):
+		return 1
+	if ((t == float64_type) | (t == float64_value_type)):
+		return 2
+	return 0
+
+
+# Combined operating kind for a binary operator's two operand types:
+# any float64 side means float64, else any float32 side means float32.
+int binary_float_kind(int left_type, int right_type):
+	int lk = type_float_kind(left_type)
+	int rk = type_float_kind(right_type)
+	if (lk > rk):
+		return lk
+	return rk
 
 
 int type_lookup_next_pointer(int type_index):
@@ -294,6 +329,15 @@ void push_basic_types():
 	type_push_size("uint16", 2)
 	type_push_size("uint8", 1)
 
+	# IEEE-754 floating point. 'float' is an alias of float32 by kind (see
+	# type_float_kind); float16 is storage-only (all math in float32).
+	float32_type = type_push_size("float32", 4)
+	float64_type = type_push_size("float64", 8)
+	float16_type = type_push_size("float16", 2)
+	float_type = type_push_size("float", 4)
+	float32_value_type = type_push_size("float32 value", 0)
+	float64_value_type = type_push_size("float64 value", 0)
+
 	# Common pointer types; type_name() creates any others on demand
 	type_push_pointer("int", word_size, 1)
 	type_push_pointer("int", word_size, 2)
@@ -306,3 +350,5 @@ void push_basic_types():
 	type_push_pointer("int32", word_size, 1)
 	type_push_pointer("uint", word_size, 1)
 	type_push_pointer("function", word_size, 1)
+	type_push_pointer("float", word_size, 1)
+	type_push_pointer("float32", word_size, 1)

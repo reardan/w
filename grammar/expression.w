@@ -38,7 +38,8 @@ int expression():
 			print_int("expression() type: ", type)
 			print_int("expression() type2: ", type2)
 		
-		promote(type2)
+		type2 = promote(type2)
+		coerce(type, type2)
 		pop_ebx()
 
 		# Warn when the two sides carry conflicting types; constants (3) and

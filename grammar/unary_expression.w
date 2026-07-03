@@ -10,6 +10,7 @@ void new_store_field(int base_type, int field_index, int arg_type):
 	int field_type = type_get_field_type_at(base_type, field_index)
 	if (types_compatible(field_type, arg_type) == 0):
 		warn_type_mismatch("constructor argument", field_type, arg_type)
+	coerce(field_type, arg_type)
 	mov_ebx_esp()
 	add_ebx_int32(type_get_field_offset_at(base_type, field_index))
 	int field_size = type_get_size(field_type)
@@ -66,13 +67,27 @@ int unary_expression():
 		return 3
 	else if (accept("-")):
 		type = unary_expression()
-		promote(type)
-		neg_eax()
-		return 3
+		type = promote(type)
+		int kind = type_float_kind(type)
+		if (kind == 1):
+			# Avoid a high-bit literal here: x86 and x64 self-hosts parse it
+			# with different signedness, but xor_eax_int32 only needs low bits.
+			xor_eax_int32(1 << 31)
+			return float32_value_type
+		else if (kind == 2):
+			btc_rax_63()
+			return float64_value_type
+		else:
+			neg_eax()
+			return 3
 	else if (accept("+")):
 		# unary plus: load the operand's value, no code beyond the promote
 		type = unary_expression()
-		promote(type)
+		type = promote(type)
+		if (type_float_kind(type) == 2):
+			return float64_value_type
+		if (type_float_kind(type) == 1):
+			return float32_value_type
 		return 3
 	else if (accept("new")):
 		# new type-name — allocates sizeof(type) and yields a type*.
@@ -106,12 +121,12 @@ int unary_expression():
 				push_eax()
 				stack_pos = stack_pos + 1
 				int arg_type = expression()
-				promote(arg_type)
+				arg_type = promote(arg_type)
 				new_store_field(base, 0, arg_type)
 				int field_index = 1
 				while (accept(",")):
 					arg_type = expression()
-					promote(arg_type)
+					arg_type = promote(arg_type)
 					new_store_field(base, field_index, arg_type)
 					field_index = field_index + 1
 				expect(")")

@@ -98,14 +98,22 @@ int postfix_expr():
 			int arg_type
 			if (accept(")") == 0):
 				arg_type = expression()
-				promote(arg_type)
+				arg_type = promote(arg_type)
 				check_call_argument(callee_sym, callee_name, 0, arg_type)
+				if (callee_sym >= 0):
+					int param_type = sym_param_type(callee_sym, 0)
+					if (param_type >= 0):
+						coerce(param_type, arg_type)
 				push_call_argument(arg_type)
 				passed_args = 1
 				while (accept(",")):
 					arg_type = expression()
-					promote(arg_type)
+					arg_type = promote(arg_type)
 					check_call_argument(callee_sym, callee_name, passed_args, arg_type)
+					if (callee_sym >= 0):
+						int param_type = sym_param_type(callee_sym, passed_args)
+						if (param_type >= 0):
+							coerce(param_type, arg_type)
 					push_call_argument(arg_type)
 					passed_args = passed_args + 1
 
@@ -133,6 +141,10 @@ int postfix_expr():
 			type = 3  # call results are plain values
 			last_call_return_type = declared_return
 			last_call_end = codepos
+			if (type_float_kind(declared_return) == 2):
+				type = float64_value_type
+			else if (type_float_kind(declared_return) == 1):
+				type = float32_value_type
 
 		else if (accept(".")):
 			# Struct pointers are loaded first so fields work through them

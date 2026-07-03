@@ -112,8 +112,9 @@ void statement():
 		# A newline (or end of file) after 'return' means no return value.
 		if ((peek(";") == 0) & (token_newline == 0) & (token[0] != 0)):
 			int return_type = expression()
-			promote(return_type)
+			return_type = promote(return_type)
 			int declared_type = load_int(table + current_function_symbol + 6)
+			coerce(declared_type, return_type)
 			if (types_compatible(declared_type, return_type) == 0):
 				warn_type_mismatch("return", declared_type, return_type)
 		expect_or_newline(";")

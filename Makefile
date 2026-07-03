@@ -103,6 +103,12 @@ x64_test: w FORCE
 	chmod +x ./bin/x64_test
 	./bin/x64_test
 
+x64_float_test: w FORCE
+	./bin/wv2 x64 tests/x64_float_test.w >./bin/x64_float_test
+	chmod +x ./bin/x64_float_test
+	./bin/x64_float_test | grep -q "x64 float OK"
+	@echo "x64 float test OK"
+
 build_x64: w FORCE
 	./bin/wv2 x64 w.w -o ./bin/wv2_64
 	./bin/wv2_64 x64 w.w -o ./bin/wv3_64
@@ -116,7 +122,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test x64_test net_64_test dynamic_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test x64_test x64_float_test net_64_test dynamic_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -197,6 +203,33 @@ type_table_test: w FORCE
 	./bin/wv2 compiler/type_table_test.w >./bin/type_table_test
 	chmod +x ./bin/type_table_test
 	./bin/type_table_test
+
+bignum_test: w FORCE
+	./bin/wv2 compiler/bignum_test.w >./bin/bignum_test
+	chmod +x ./bin/bignum_test
+	./bin/bignum_test
+
+float_literal_test: w FORCE
+	./bin/wv2 tests/float_literal_test.w >./bin/float_literal_test
+	chmod +x ./bin/float_literal_test
+	./bin/float_literal_test
+
+float_test: w FORCE
+	./bin/wv2 tests/float_test.w >./bin/float_test
+	chmod +x ./bin/float_test
+	./bin/float_test
+
+float_reference_test: w FORCE
+	cc -std=c99 -O0 -fno-fast-math tests/float_reference.c -o ./bin/float_reference_c
+	./bin/float_reference_c f32 >./bin/float_reference_c32.out
+	./bin/wv2 tests/float_reference.w -o ./bin/float_reference_w32
+	./bin/float_reference_w32 >./bin/float_reference_w32.out
+	diff -u ./bin/float_reference_c32.out ./bin/float_reference_w32.out
+	./bin/float_reference_c f64 >./bin/float_reference_c64.out
+	./bin/wv2 x64 tests/x64_float_reference.w -o ./bin/float_reference_w64
+	./bin/float_reference_w64 >./bin/float_reference_w64.out
+	diff -u ./bin/float_reference_c64.out ./bin/float_reference_w64.out
+	@echo "float reference test OK"
 
 logging: w FORCE
 	./bin/wv2 logging.w >./bin/logging
@@ -386,7 +419,7 @@ debug_test: wdbg FORCE
 	printf 'q\n' | ./bin/wdbg tests/debug_fixture.w > /dev/null
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:

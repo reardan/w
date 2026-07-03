@@ -162,7 +162,7 @@ current state:
 		default values
 		inline asm functions
 		dynamic typing / var
-		float
+		float32/float64/float16 (design: docs/projects/float.md)
 		const modifier
 		utf8 string type
 		type <=> json
