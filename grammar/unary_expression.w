@@ -70,7 +70,9 @@ int unary_expression():
 		type = promote(type)
 		int kind = type_float_kind(type)
 		if (kind == 1):
-			xor_eax_int32(0x80000000)
+			# Avoid a high-bit literal here: x86 and x64 self-hosts parse it
+			# with different signedness, but xor_eax_int32 only needs low bits.
+			xor_eax_int32(1 << 31)
 			return float32_value_type
 		else if (kind == 2):
 			btc_rax_63()
