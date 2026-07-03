@@ -37,6 +37,9 @@ int getdents(int file, char* buf, int count):
 int getcwd(char* buf, int size):
 	return syscall(79, buf, size, 0)
 
+int linux_time(int out):
+	return syscall(201, out, 0, 0)
+
 /* memory and threading */
 # The heap allocator built on brk lives in lib/memory.w
 int brk(char* addr):
