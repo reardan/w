@@ -9,7 +9,7 @@ Current patterns:
 	Raw syscall helpers return Linux's negative errno values directly.
 
 Convention:
-	Use a result when the caller can choose what to do next.
+	Use a wresult when the caller can choose what to do next.
 	Use assert/error/translate_syscall_failure when continuing would be a bug
 	or when the program has no useful local recovery path.
 	Do not add parser, type checker, codegen, exception, or floating-point work
@@ -18,9 +18,9 @@ Convention:
 Library helper:
 	import lib.result
 
-	result has three word fields:
+	wresult has three word fields:
 		ok:    1 for success, 0 for error
-		code:  0 on success, otherwise the error code
+		code:  informational error code; ok is authoritative
 		value: one-word payload on success, 0 on error
 
 	Common helpers:
@@ -32,14 +32,17 @@ Library helper:
 		result_value(r)
 		result_code(r)
 		result_unwrap_or(r, fallback)
+		result_take_or(r, fallback)
 		result_free(r)
 
 Guidelines:
 	Return negative Linux errno values unchanged when wrapping syscalls; this
 	matches existing raw syscall behavior and avoids inventing another errno
 	table.
-	Prefer caller-owned or freshly allocated result* values. Reuse storage with
+	Prefer caller-owned or freshly allocated wresult* values. Reuse storage with
 	result_set_ok() and result_set_error() in hot paths or loops.
+	Use result_take_or() for one-liners where the caller only needs a fallback
+	value and the result can be freed immediately.
 	Keep payloads to one machine word. That word can be an int or a pointer,
 	but callers should document pointer payloads because W does not have generic
 	result types.
@@ -47,7 +50,7 @@ Guidelines:
 	only where callers have a real recovery path.
 
 Example:
-	result* opened = result_new_from_syscall(open(path, 0, 0))
+	wresult* opened = result_new_from_syscall(open(path, 0, 0))
 	if (result_is_error(opened)):
 		print("open failed: ")
 		println(itoa(0 - result_code(opened)))

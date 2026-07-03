@@ -112,7 +112,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test x64_test dynamic_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test result_64_test x64_test dynamic_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -317,6 +317,10 @@ args_test: w FORCE
 result_test: w FORCE
 	./bin/wv2 lib/result_test.w -o ./bin/result_test
 	./bin/result_test
+
+result_64_test: w FORCE
+	./bin/wv2 x64 lib/result_test.w -o ./bin/result_64_test
+	./bin/result_64_test
 
 wdbg: w FORCE
 	./bin/wv2 debugger/debugger.w -o ./bin/wdbg
