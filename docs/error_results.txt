@@ -1,0 +1,60 @@
+error/result convention
+
+Current patterns:
+	compiler.tokenizer.error() reports a compile error and exits; the REPL
+	sets repl_recovery so compile errors longjmp back to the prompt instead.
+	lib.assert helpers print a message and exit(1), so they are for internal
+	invariants and tests rather than caller-visible recoverable failures.
+	lib.translate_syscall_failure() prints a Linux errno description and exits.
+	Raw syscall helpers return Linux's negative errno values directly.
+
+Convention:
+	Use a wresult when the caller can choose what to do next.
+	Use assert/error/translate_syscall_failure when continuing would be a bug
+	or when the program has no useful local recovery path.
+	Do not add parser, type checker, codegen, exception, or floating-point work
+	for result handling; this is a library convention only.
+
+Library helper:
+	import lib.result
+
+	wresult has three word fields:
+		ok:    1 for success, 0 for error
+		code:  informational error code; ok is authoritative
+		value: one-word payload on success, 0 on error
+
+	Common helpers:
+		result_new_ok(value)
+		result_new_error(code)
+		result_new_from_syscall(value)
+		result_is_ok(r)
+		result_is_error(r)
+		result_value(r)
+		result_code(r)
+		result_unwrap_or(r, fallback)
+		result_take_or(r, fallback)
+		result_free(r)
+
+Guidelines:
+	Return negative Linux errno values unchanged when wrapping syscalls; this
+	matches existing raw syscall behavior and avoids inventing another errno
+	table.
+	Prefer caller-owned or freshly allocated wresult* values. Reuse storage with
+	result_set_ok() and result_set_error() in hot paths or loops.
+	Use result_take_or() for one-liners where the caller only needs a fallback
+	value and the result can be freed immediately.
+	Keep payloads to one machine word. That word can be an int or a pointer,
+	but callers should document pointer payloads because W does not have generic
+	result types.
+	Do not retrofit existing fatal APIs broadly. Add result-returning siblings
+	only where callers have a real recovery path.
+
+Example:
+	wresult* opened = result_new_from_syscall(open(path, 0, 0))
+	if (result_is_error(opened)):
+		print("open failed: ")
+		println(itoa(0 - result_code(opened)))
+		result_free(opened)
+		return 1
+	int fd = result_value(opened)
+	result_free(opened)

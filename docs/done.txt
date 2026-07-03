@@ -66,10 +66,17 @@ done:
 		basic version...complete!
 		range(start, end, step)...complete!
 		break/continue...complete!
-	repl...partial!
+	repl...complete!
 		in-process executable-buffer repl...complete!
 		one-line input and :quit...complete!
 		compile-error recovery...complete!
+		multi-line entries (Python-style continuation)...complete!
+		function/struct/extern definitions at the prompt...complete!
+		persistent top-level variables (globals in the buffer)...complete!
+		redefinition via shadowing...complete!
+		bare-expression echo by compile-time type...complete!
+		imports at the prompt (shared import registry)...complete!
+		run a file, then attach the prompt (repl file.w)...complete!
 	compiler cli...complete!
 		-o output path...complete!
 		no-argument usage message...complete!

@@ -41,6 +41,8 @@ int dbg_eval_compile(char* expr):
 	int saved_loop_continue_chain = loop_continue_chain
 	int saved_loop_stack_pos = loop_stack_pos
 	int saved_number_of_args = number_of_args
+	int saved_type_count = length /* structures.list backs the type table */
+	int saved_function_symbol = current_function_symbol
 
 	repl_recovery = 1
 	if (repl_setjmp(repl_jump_buffer)):
@@ -54,6 +56,8 @@ int dbg_eval_compile(char* expr):
 		loop_continue_chain = saved_loop_continue_chain
 		loop_stack_pos = saved_loop_stack_pos
 		number_of_args = saved_number_of_args
+		length = saved_type_count
+		current_function_symbol = saved_function_symbol
 		pointer_indirection = 0
 		close(file)
 		return 0

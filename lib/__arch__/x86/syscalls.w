@@ -37,6 +37,11 @@ int getdents(int file, char* buf, int count):
 int getcwd(char* buf, int size):
 	return syscall(183, buf, size, 0)
 
+# i386 time(2) returns a 32-bit time_t and overflows after 2038-01-19
+# 03:14:07 UTC. Use clock_gettime64 (403) here in the future.
+int linux_time(int* out):
+	return syscall(13, out, 0, 0)
+
 /* memory and threading */
 # The heap allocator built on brk lives in lib/memory.w
 int brk(char* addr):
@@ -55,6 +60,143 @@ int sys_clone(int flags, int child_stack):
 # vdso sigreturn trampoline, so plain W functions work as handlers.
 int rt_sigaction(int signum, int* act, int* oldact):
 	return syscall7(174, signum, act, oldact, 8, 0, 0)
+
+
+/* Socket syscalls use the i386 socketcall(2) multiplexer. */
+struct sys_socket_args:
+	int family
+	int socket_type
+	int protocol
+
+
+struct sys_bind_args:
+	int sockfd
+	int addr
+	int addrlen
+
+
+struct sys_connect_args:
+	int sockfd
+	int addr
+	int addrlen
+
+
+struct sys_listen_args:
+	int sockfd
+	int backlog
+
+
+struct sys_accept_args:
+	int sockfd
+	int addr
+	int addrlen
+
+
+struct sys_getsockname_args:
+	int sockfd
+	int addr
+	int addrlen
+
+
+struct sys_socketpair_args:
+	int family
+	int socket_type
+	int protocol
+	int fds
+
+
+struct sys_sendto_args:
+	int sockfd
+	char* buf
+	int len
+	int flags
+	int addr
+	int addrlen
+
+
+struct sys_setsockopt_args:
+	int sockfd
+	int level
+	int optname
+	int optval
+	int optlen
+
+
+int sys_socket(int family, int socket_type, int protocol):
+	sys_socket_args args
+	args.family = family
+	args.socket_type = socket_type
+	args.protocol = protocol
+	return syscall(102, 1, &args, 0)
+
+
+int sys_bind(int sockfd, int addr, int addrlen):
+	sys_bind_args args
+	args.sockfd = sockfd
+	args.addr = addr
+	args.addrlen = addrlen
+	return syscall(102, 2, &args, 0)
+
+
+int sys_connect(int sockfd, int addr, int addrlen):
+	sys_connect_args args
+	args.sockfd = sockfd
+	args.addr = addr
+	args.addrlen = addrlen
+	return syscall(102, 3, &args, 0)
+
+
+int sys_listen(int sockfd, int backlog):
+	sys_listen_args args
+	args.sockfd = sockfd
+	args.backlog = backlog
+	return syscall(102, 4, &args, 0)
+
+
+int sys_accept(int sockfd, int addr, int addrlen):
+	sys_accept_args args
+	args.sockfd = sockfd
+	args.addr = addr
+	args.addrlen = addrlen
+	return syscall(102, 5, &args, 0)
+
+
+int sys_getsockname(int sockfd, int addr, int addrlen):
+	sys_getsockname_args args
+	args.sockfd = sockfd
+	args.addr = addr
+	args.addrlen = addrlen
+	return syscall(102, 6, &args, 0)
+
+
+int sys_socketpair(int family, int socket_type, int protocol, int fds):
+	sys_socketpair_args args
+	args.family = family
+	args.socket_type = socket_type
+	args.protocol = protocol
+	args.fds = fds
+	return syscall(102, 8, &args, 0)
+
+
+int sys_sendto(int sockfd, char* buf, int len, int flags, int addr, int addrlen):
+	sys_sendto_args args
+	args.sockfd = sockfd
+	args.buf = buf
+	args.len = len
+	args.flags = flags
+	args.addr = addr
+	args.addrlen = addrlen
+	return syscall(102, 11, &args, 0)
+
+
+int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
+	sys_setsockopt_args args
+	args.sockfd = sockfd
+	args.level = level
+	args.optname = optname
+	args.optval = optval
+	args.optlen = optlen
+	return syscall(102, 14, &args, 0)
 
 # exit_group: terminates every thread in the process, like libc exit().
 void exit(int error_code):

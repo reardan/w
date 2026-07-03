@@ -2,6 +2,8 @@ import grammar.promote
 import grammar.type_name
 import grammar.identifier
 import grammar.int_literal
+import compiler.bignum
+import grammar.float_literal
 import grammar.string_literal
 import grammar.primary_expr
 import grammar.binary_op

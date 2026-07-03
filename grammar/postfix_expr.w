@@ -1,3 +1,10 @@
+# Declared return type of the most recently compiled call (-1 when the
+# callee is unknown) and the code position right after its cleanup. Only
+# the REPL reads these, to avoid echoing a void call's garbage result.
+int last_call_return_type
+int last_call_end
+
+
 # Warn when a call argument's type conflicts with the callee's declared
 # parameter type. callee is the callee's symbol table offset (< 0 when the
 # callee is unknown, e.g. calls through pointers); arg_index is 0-based.
@@ -74,9 +81,11 @@ int postfix_expr():
 			int expected_args = -1
 			int callee_sym = -1
 			char* callee_name = 0
+			int declared_return = -1
 			if (type == 4):
 				int callee = sym_lookup(last_identifier)
 				if (callee >= 0):
+					declared_return = load_int(table + callee + 6)
 					expected_args = sym_num_args(callee)
 					if (expected_args >= 0):
 						callee_sym = callee
@@ -89,14 +98,22 @@ int postfix_expr():
 			int arg_type
 			if (accept(")") == 0):
 				arg_type = expression()
-				promote(arg_type)
+				arg_type = promote(arg_type)
 				check_call_argument(callee_sym, callee_name, 0, arg_type)
+				if (callee_sym >= 0):
+					int param_type = sym_param_type(callee_sym, 0)
+					if (param_type >= 0):
+						coerce(param_type, arg_type)
 				push_call_argument(arg_type)
 				passed_args = 1
 				while (accept(",")):
 					arg_type = expression()
-					promote(arg_type)
+					arg_type = promote(arg_type)
 					check_call_argument(callee_sym, callee_name, passed_args, arg_type)
+					if (callee_sym >= 0):
+						int param_type = sym_param_type(callee_sym, passed_args)
+						if (param_type >= 0):
+							coerce(param_type, arg_type)
 					push_call_argument(arg_type)
 					passed_args = passed_args + 1
 
@@ -122,6 +139,12 @@ int postfix_expr():
 			be_pop(stack_pos - s)
 			stack_pos = s
 			type = 3  # call results are plain values
+			last_call_return_type = declared_return
+			last_call_end = codepos
+			if (type_float_kind(declared_return) == 2):
+				type = float64_value_type
+			else if (type_float_kind(declared_return) == 1):
+				type = float32_value_type
 
 		else if (accept(".")):
 			# Struct pointers are loaded first so fields work through them

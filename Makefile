@@ -49,6 +49,10 @@ net: w FORCE
 	chmod +x ./bin/net
 	./bin/net
 
+net_test: w FORCE
+	./bin/wv2 lib/net_test.w -o ./bin/net_test
+	./bin/net_test
+
 pointer_test: w FORCE
 	./bin/wv2 tests/pointer_test.w >./bin/pointer_test
 	chmod +x ./bin/pointer_test
@@ -99,6 +103,12 @@ x64_test: w FORCE
 	chmod +x ./bin/x64_test
 	./bin/x64_test
 
+x64_float_test: w FORCE
+	./bin/wv2 x64 tests/x64_float_test.w >./bin/x64_float_test
+	chmod +x ./bin/x64_float_test
+	./bin/x64_float_test | grep -q "x64 float OK"
+	@echo "x64 float test OK"
+
 build_x64: w FORCE
 	./bin/wv2 x64 w.w -o ./bin/wv2_64
 	./bin/wv2_64 x64 w.w -o ./bin/wv3_64
@@ -112,7 +122,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test x64_test dynamic_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test x64_test x64_float_test net_64_test dynamic_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -194,6 +204,33 @@ type_table_test: w FORCE
 	chmod +x ./bin/type_table_test
 	./bin/type_table_test
 
+bignum_test: w FORCE
+	./bin/wv2 compiler/bignum_test.w >./bin/bignum_test
+	chmod +x ./bin/bignum_test
+	./bin/bignum_test
+
+float_literal_test: w FORCE
+	./bin/wv2 tests/float_literal_test.w >./bin/float_literal_test
+	chmod +x ./bin/float_literal_test
+	./bin/float_literal_test
+
+float_test: w FORCE
+	./bin/wv2 tests/float_test.w >./bin/float_test
+	chmod +x ./bin/float_test
+	./bin/float_test
+
+float_reference_test: w FORCE
+	cc -std=c99 -O0 -fno-fast-math tests/float_reference.c -o ./bin/float_reference_c
+	./bin/float_reference_c f32 >./bin/float_reference_c32.out
+	./bin/wv2 tests/float_reference.w -o ./bin/float_reference_w32
+	./bin/float_reference_w32 >./bin/float_reference_w32.out
+	diff -u ./bin/float_reference_c32.out ./bin/float_reference_w32.out
+	./bin/float_reference_c f64 >./bin/float_reference_c64.out
+	./bin/wv2 x64 tests/x64_float_reference.w -o ./bin/float_reference_w64
+	./bin/float_reference_w64 >./bin/float_reference_w64.out
+	diff -u ./bin/float_reference_c64.out ./bin/float_reference_w64.out
+	@echo "float reference test OK"
+
 logging: w FORCE
 	./bin/wv2 logging.w >./bin/logging
 	chmod +x ./bin/logging
@@ -248,6 +285,18 @@ lib_64_test: w FORCE
 	chmod +x ./bin/lib_test
 	./bin/lib_test
 
+path_64_test: w FORCE
+	./bin/wv2 x64 lib/path_test.w -o ./bin/path_64_test
+	./bin/path_64_test
+
+time_64_test: w FORCE
+	./bin/wv2 x64 lib/time_test.w -o ./bin/time_64_test
+	./bin/time_64_test
+
+net_64_test: w FORCE
+	./bin/wv2 x64 lib/net_test.w -o ./bin/net_64_test
+	./bin/net_64_test
+
 lib_64_test_debug: w FORCE
 	./bin/wv2 x64 lib/lib_test.w >./bin/lib_test
 	chmod +x ./bin/lib_test
@@ -260,9 +309,29 @@ repl: w FORCE
 repl_test: w FORCE
 	./bin/wv2 repl.w -o ./bin/repl
 	printf 'print("hello from the repl\\x0a")\n:quit\n' | ./bin/repl | grep -q "hello from the repl"
-	# A bad line must not kill the process, and later lines must still work
+	# A bad entry must not kill the process, and later entries must still work
 	printf 'this is not valid w\nprint("recovered\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered"
-	printf 'print("no closing paren"\nint x = = 3\nprint("second recovery\\x0a")\n:quit\n' | ./bin/repl | grep -q "second recovery"
+	printf 'int x = = 3\nqq + 1\nprint("second recovery\\x0a")\n:quit\n' | ./bin/repl | grep -q "second recovery"
+	# Multi-line function definitions persist and are callable
+	printf 'int add(int a, int b):\n\treturn a + b\n\nadd(40, 2)\n:quit\n' | ./bin/repl | grep -q "42"
+	# Interactive (pty) sessions auto-indent block bodies: no tabs typed here
+	printf 'int fib(int n):\nif (n < 2):\nreturn n\nreturn fib(n - 1) + fib(n - 2)\n\nfib(10)\n:quit\n' | script -qc './bin/repl' /dev/null | grep -q "55"
+	# Top-level variables persist between entries; bare expressions echo
+	printf 'int x = 5\nx + 1\n:quit\n' | ./bin/repl | grep -q "6"
+	# Redefinition shadows (Python-style rebinding); assignments stay silent
+	printf 'int x = 5\nchar* x = "shadowed"\nx\n:quit\n' | ./bin/repl | grep -q "shadowed"
+	! printf 'int y = 3\ny = 9\n:quit\n' | ./bin/repl | grep -q "9"
+	# Structs, new and imports work at the prompt
+	printf 'struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n' | ./bin/repl | grep -q "7"
+	printf 'import structures.string\nstring* s = string_from("imported")\ns.data\n:quit\n' | ./bin/repl | grep -q "imported"
+	# Errors inside multi-line entries and failed imports both recover
+	printf 'int bad():\n\treturn qq\n\nprint("recovered fn\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered fn"
+	printf 'import no.such.module\nprint("recovered import\\x0a")\n:quit\n' | ./bin/repl 2>/dev/null | grep -q "recovered import"
+	# Run a file, then attach the prompt to its live definitions
+	printf ':quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "fixture main ran"
+	printf 'fixture_helper(21)\nfixture_global\n:quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "42"
+	printf 'fixture_global\n:quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "11"
+	! printf ':quit\n' | ./bin/repl tests/repl_fixture.w --no_main | grep -q "fixture main ran"
 	@echo "repl test OK"
 
 for_test: w FORCE
@@ -302,6 +371,10 @@ array_list_test: w FORCE
 	./bin/wv2 structures/array_list_test.w -o ./bin/array_list_test
 	./bin/array_list_test
 
+json_test: w FORCE
+	./bin/wv2 structures/json_test.w -o ./bin/json_test
+	./bin/json_test
+
 linked_list_test: w FORCE
 	./bin/wv2 structures/linked_list_test.w -o ./bin/linked_list_test
 	./bin/linked_list_test
@@ -310,9 +383,25 @@ format_test: w FORCE
 	./bin/wv2 lib/format_test.w -o ./bin/format_test
 	./bin/format_test
 
+time_test: w FORCE
+	./bin/wv2 lib/time_test.w -o ./bin/time_test
+	./bin/time_test
+
 args_test: w FORCE
 	./bin/wv2 lib/args_test.w -o ./bin/args_test
 	./bin/args_test
+
+path_test: w FORCE
+	./bin/wv2 lib/path_test.w -o ./bin/path_test
+	./bin/path_test
+
+result_test: w FORCE
+	./bin/wv2 lib/result_test.w -o ./bin/result_test
+	./bin/result_test
+
+result_64_test: w FORCE
+	./bin/wv2 x64 lib/result_test.w -o ./bin/result_64_test
+	./bin/result_64_test
 
 wdbg: w FORCE
 	./bin/wv2 debugger/debugger.w -o ./bin/wdbg
@@ -361,7 +450,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test debug_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:
