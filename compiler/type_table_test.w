@@ -84,6 +84,20 @@ void test_type_push_size():
 	push_basic_types()
 
 
+void test_array_and_slice_types():
+	push_basic_types()
+	int int_type = type_lookup("int")
+	int array_type = type_push_array(int_type, 4)
+	int slice_type = type_get_slice(int_type)
+	assert1(type_is_array(array_type))
+	assert1(type_is_slice(slice_type))
+	assert_equal(int_type, type_get_element_type(array_type))
+	assert_equal(int_type, type_get_element_type(slice_type))
+	assert_equal(4, type_get_array_length(array_type))
+	assert1(types_compatible(slice_type, array_type))
+	assert1(types_compatible(slice_type, type_get_slice_value(int_type)))
+
+
 # simulating:
 #
 # struct mixed:

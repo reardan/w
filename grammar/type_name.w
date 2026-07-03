@@ -29,4 +29,21 @@ int type_name():
 			pointer_type = type_push_pointer(base_name, word_size, pointer_indirection)
 		type = pointer_type
 
+	while (accept("[")):
+		if (accept("]")):
+			int slice_type = type_lookup_slice(type)
+			if (slice_type < 0):
+				slice_type = type_push_slice(type)
+			type = slice_type
+		else:
+			int array_length = atoi(token)
+			if (array_length <= 0):
+				error("array length must be positive")
+			get_token()
+			expect("]")
+			int array_type = type_lookup_array(type, array_length)
+			if (array_type < 0):
+				array_type = type_push_array(type, array_length)
+			type = array_type
+
 	return type

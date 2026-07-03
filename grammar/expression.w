@@ -45,8 +45,11 @@ void assign_store_struct(int type):
  *         logical-or-expr = expression
  */
 int expression():
+	expression_lhs_readonly = 0
 	int type = logical_or_expr()
 	if (accept("=")):
+		if (expression_lhs_readonly):
+			error("cannot assign to read-only buffer field")
 		if ((type_is_value(type)) | (type == 3) | (type == 4)):
 			error("assignment target is not assignable")
 		if (type_is_const(type)):

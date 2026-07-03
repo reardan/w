@@ -94,8 +94,8 @@ void repl_scan_line(char* s):
 # ---------------------------------------------------------------------------
 # Reading entries from stdin.
 
-string* repl_line
-string* repl_entry
+string_builder* repl_line
+string_builder* repl_entry
 
 # 1 when stdin is a terminal. Auto-indent only makes sense interactively:
 # piped scripts carry their own explicit tabs.
@@ -115,7 +115,7 @@ int repl_isatty(int fd):
 
 
 # Read one line from stdin into s; returns 0 on end of input.
-int repl_read_line(string* s):
+int repl_read_line(string_builder* s):
 	string_clear(s)
 	int c = getchar(0)
 	if (c == -1):

@@ -115,11 +115,12 @@ void compile_save(char* fn):
 
 int link(int argc, int argv):
 	if (argc < 2):
-		println2("usage: w [x64] <file.w>... [-o output]")
+		println2("usage: w [x64] <file.w>... [-o output] [--bounds=on|off|trap]")
 		exit(1)
 	int i = 1
 	word_size = 4
 	word_size_log2 = 2
+	bounds_mode = 1
 	# argv strides by the HOST pointer size: __word_size__ was baked in
 	# when this compiler binary was itself compiled
 	int first_arg = argv + __word_size__
@@ -144,6 +145,12 @@ int link(int argc, int argv):
 			asserts("-o requires an output path", i < argc)
 			arg = argv + i * __word_size__
 			output_path = *arg
+		else if (strcmp(*arg, "--bounds=on") == 0):
+			bounds_mode = 1
+		else if (strcmp(*arg, "--bounds=trap") == 0):
+			bounds_mode = 1
+		else if (strcmp(*arg, "--bounds=off") == 0):
+			bounds_mode = 0
 		else:
 			print_error("compiling '")
 			print_error(*arg)

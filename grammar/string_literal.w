@@ -1,21 +1,68 @@
-int process_string_literal():
+int string_hex_digit(int c):
+	if ((c >= '0') & (c <= '9')):
+		return c - '0'
+	if ((c >= 'a') & (c <= 'f')):
+		return c - 'a' + 10
+	if ((c >= 'A') & (c <= 'F')):
+		return c - 'A' + 10
+	error("invalid hex digit in string literal")
+	return 0
+
+
+int string_hex_value(int start, int count):
+	int value = 0
 	int i = 0
-	int j = 1
+	while (i < count):
+		value = (value << 4) + string_hex_digit(token[start + i])
+		i = i + 1
+	return value
+
+
+int string_append_utf8(int out, int codepoint):
+	if (codepoint < 0):
+		error("invalid unicode codepoint")
+	if ((codepoint >= 55296) & (codepoint <= 57343)):
+		error("invalid unicode surrogate")
+	if (codepoint > 1114111):
+		error("unicode codepoint out of range")
+	if (codepoint < 128):
+		token[out] = codepoint
+		return out + 1
+	if (codepoint < 2048):
+		token[out] = 192 | (codepoint >> 6)
+		token[out + 1] = 128 | (codepoint & 63)
+		return out + 2
+	if (codepoint < 65536):
+		token[out] = 224 | (codepoint >> 12)
+		token[out + 1] = 128 | ((codepoint >> 6) & 63)
+		token[out + 2] = 128 | (codepoint & 63)
+		return out + 3
+	token[out] = 240 | (codepoint >> 18)
+	token[out + 1] = 128 | ((codepoint >> 12) & 63)
+	token[out + 2] = 128 | ((codepoint >> 6) & 63)
+	token[out + 3] = 128 | (codepoint & 63)
+	return out + 4
+
+
+int process_string_literal_from(int j):
+	int i = 0
 	int k
 	while (token[j] != '"'):
 		# \x0a formatting
 		if ((token[j] == 92) & (token[j + 1] == 'x')):
-			if (token[j + 2] <= '9'):
-				k = token[j + 2] - '0'
-			else:
-				k = token[j + 2] - 'a' + 10
-			k = k << 4
-			if (token[j + 3] <= '9'):
-				k = k + token[j + 3] - '0'
-			else:
-				k = k + token[j + 3] - 'a' + 10
+			k = string_hex_value(j + 2, 2)
 			token[i] = k
 			j = j + 4
+
+		else if ((token[j] == 92) & (token[j + 1] == 'u')):
+			k = string_hex_value(j + 2, 4)
+			i = string_append_utf8(i, k) - 1
+			j = j + 6
+
+		else if ((token[j] == 92) & (token[j + 1] == 'U')):
+			k = string_hex_value(j + 2, 8)
+			i = string_append_utf8(i, k) - 1
+			j = j + 10
 
 		# standard escapes: \n \t \r \0 (anything else is taken literally)
 		else if (token[j] == 92):
@@ -37,6 +84,56 @@ int process_string_literal():
 
 		i = i + 1
 	return i
+
+
+int process_string_literal():
+	return process_string_literal_from(1)
+
+
+int process_prefixed_string_literal():
+	return process_string_literal_from(2)
+
+
+void validate_utf8_literal(int n):
+	int i = 0
+	while (i < n):
+		int c = token[i] & 255
+		int need = 0
+		int codepoint = 0
+		if (c < 128):
+			i = i + 1
+		else if ((c >= 194) & (c <= 223)):
+			need = 1
+			codepoint = c & 31
+		else if ((c >= 224) & (c <= 239)):
+			need = 2
+			codepoint = c & 15
+		else if ((c >= 240) & (c <= 244)):
+			need = 3
+			codepoint = c & 7
+		else:
+			error("invalid UTF-8 string literal")
+		if (need > 0):
+			if (i + need >= n):
+				error("truncated UTF-8 string literal")
+			int j = 1
+			while (j <= need):
+				int d = token[i + j] & 255
+				if ((d < 128) | (d > 191)):
+					error("invalid UTF-8 continuation byte")
+				codepoint = (codepoint << 6) | (d & 63)
+				j = j + 1
+			if ((need == 1) & (codepoint < 128)):
+				error("overlong UTF-8 string literal")
+			if ((need == 2) & (codepoint < 2048)):
+				error("overlong UTF-8 string literal")
+			if ((need == 3) & (codepoint < 65536)):
+				error("overlong UTF-8 string literal")
+			if ((codepoint >= 55296) & (codepoint <= 57343)):
+				error("invalid UTF-8 surrogate")
+			if (codepoint > 1114111):
+				error("UTF-8 codepoint out of range")
+			i = i + need + 1
 
 
 # like a char_pointer_literal()
@@ -65,4 +162,35 @@ int char_pointer_literal():
 	emit(i + 1, token)
 	pop_eax()
 
+	return 1
+
+
+int c_char_pointer_literal():
+	if ((token[0] != 'c') | (token[1] != '"')):
+		return 0
+	int i = process_prefixed_string_literal()
+	token[i] = 0
+	call_relative32(i + 1)
+	emit(i + 1, token)
+	pop_eax()
+	return 1
+
+
+int utf8_string_literal():
+	if ((token[0] != 's') | (token[1] != '"')):
+		return 0
+	int i = process_prefixed_string_literal()
+	validate_utf8_literal(i)
+	token[i] = 0
+	int descriptor_size = 2 * word_size
+	call_relative32(descriptor_size + i + 1)
+	int data_address = code_offset + codepos + descriptor_size
+	if (word_size == 8):
+		emit_int64(data_address)
+		emit_int64(i)
+	else:
+		emit_int32(data_address)
+		emit_int32(i)
+	emit(i + 1, token)
+	pop_eax()
 	return 1

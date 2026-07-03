@@ -27,6 +27,12 @@ void promote_eax():
 	emit(2, "\x8b\x00")
 
 
+/* mov ebx,[ebx] */
+void promote_ebx():
+	emit_x64_opcode()
+	emit(2, "\x8b\x1b")
+
+
 /* movsx eax, byte [eax] */
 void promote_int8_eax():
 	emit_x64_opcode() /* needed ?? */
@@ -154,6 +160,12 @@ void pop_eax():
 	emit(1, "\x58")
 
 
+/* mov eax, ebx */
+void mov_eax_ebx():
+	emit_x64_opcode()
+	emit(2, "\x89\xd8")
+
+
 /* lea eax,[esp+0x12345678] */
 void lea_eax_esp_plus(int v):
 	emit_x64_opcode()
@@ -240,6 +252,14 @@ void add_dword_esp_plus_eax(int v):
 	emit_x64_opcode()
 	emit(3, "\x01\x84\x24") /* add [esp+0x12345678], eax */
 	emit_int(v)
+
+
+/* add word-sized [esp+offset], imm32 */
+void add_stack_word_int32(int offset, int v):
+	emit_x64_opcode()
+	emit(3, "\x81\x84\x24")
+	emit_int(offset)
+	emit_int32(v)
 
 
 ############################ word-width ALU helpers ############################
@@ -336,6 +356,39 @@ void alu_test_set(int setcc_opcode):
 
 void int3():
 	emit(1, "\xcc") /* int3 */
+
+
+/* trap when eax is negative */
+void bounds_check_eax_nonnegative():
+	emit_x64_opcode()
+	emit(2, "\x85\xc0") /* test eax,eax */
+	emit(2, "\x79\x01") /* jns +1 */
+	int3()
+
+
+/* trap unless ebx < eax (index in ebx, length in eax) */
+void bounds_check_ebx_less_eax():
+	emit_x64_opcode()
+	emit(2, "\x39\xc3") /* cmp eax,ebx */
+	emit(2, "\x7c\x01") /* jl +1 */
+	int3()
+
+
+/* trap unless ebx <= eax */
+void bounds_check_ebx_less_equal_eax():
+	emit_x64_opcode()
+	emit(2, "\x39\xc3") /* cmp eax,ebx */
+	emit(2, "\x7e\x01") /* jle +1 */
+	int3()
+
+
+/* trap unless eax <= limit */
+void bounds_check_eax_less_equal_int32(int limit):
+	emit_x64_opcode()
+	emit(1, "\x3d") /* cmp imm32,eax */
+	emit_int32(limit)
+	emit(2, "\x7e\x01") /* jle +1 */
+	int3()
 	
 
 void nop():

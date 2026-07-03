@@ -78,8 +78,18 @@ int promote(int type):
 		return type
 	if (type == float64_value_type):
 		return type
+	if (type == string_value_type):
+		return type
+	if (type_is_array(type)):
+		return type_get_slice_value(type_get_element_type(type))
 	if (type_num_args(type) > 0): /* struct: keep the address */
 		return type
+	if (type_get_kind(type) == type_kind_slice()):
+		promote_eax()
+		return type_get_slice_value(type_get_element_type(type))
+	if (type == string_type):
+		promote_eax()
+		return string_value_type
 	if (type_get_pointer_level(type) > 0):
 		promote_eax()
 		return type

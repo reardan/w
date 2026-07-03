@@ -3,14 +3,14 @@ import structures.string
 
 
 void test_new_is_empty():
-	string* s = string_new()
+	string_builder* s = string_new()
 	assert_equal(0, s.length)
 	assert_equal_hex(0, s.data[0])
 	string_free(s)
 
 
 void test_append():
-	string* s = string_new()
+	string_builder* s = string_new()
 	string_append(s, "hello")
 	string_append(s, ", ")
 	string_append(s, "world")
@@ -20,7 +20,7 @@ void test_append():
 
 
 void test_append_char():
-	string* s = string_new()
+	string_builder* s = string_new()
 	string_append_char(s, 'h')
 	string_append_char(s, 'i')
 	assert1(string_equals(s, "hi"))
@@ -28,14 +28,14 @@ void test_append_char():
 
 
 void test_append_int():
-	string* s = string_from("n=")
+	string_builder* s = string_from("n=")
 	string_append_int(s, -42)
 	assert1(string_equals(s, "n=-42"))
 	string_free(s)
 
 
 void test_growth():
-	string* s = string_new_sized(8)
+	string_builder* s = string_new_sized(8)
 	int i = 0
 	while (i < 100):
 		string_append(s, "0123456789")
@@ -46,7 +46,7 @@ void test_growth():
 
 
 void test_clear():
-	string* s = string_from("something")
+	string_builder* s = string_from("something")
 	string_clear(s)
 	assert_equal(0, s.length)
 	string_append(s, "new")

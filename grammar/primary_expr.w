@@ -34,6 +34,12 @@ int primary_expr():
 		mov_eax_int(word_size)
 		type = 3 /* constant */
 
+	else if (utf8_string_literal()):
+		type = string_value_type
+
+	else if (c_char_pointer_literal()):
+		type = 3 /* constant: eax already holds the string address */
+
 	# Identifier
 	else if ((new_type = identifier()) >= 0) {
 		type = new_type

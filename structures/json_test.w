@@ -13,14 +13,14 @@ void assert_json_int(json_value* value, int want):
 	assert_equal(want, value.int_value)
 
 
-char* json_test_take_string_data(string* s):
+char* json_test_take_string_data(string_builder* s):
 	char* data = s.data
 	free(s)
 	return data
 
 
 char* json_nested_array_text(int depth):
-	string* s = string_new()
+	string_builder* s = string_new()
 	int i = 0
 	while (i < depth):
 		string_append_char(s, '[')

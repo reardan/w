@@ -37,9 +37,9 @@ void json_free(json_value* value);
 json_value* json_parse_value(json_parser* p, int depth);
 json_value* json_parse_object(json_parser* p, int depth);
 json_value* json_parse_array(json_parser* p, int depth);
-void json_append_value(string* out, json_value* value);
-void json_append_object(string* out, json_value* value);
-void json_append_array(string* out, json_value* value);
+void json_append_value(string_builder* out, json_value* value);
+void json_append_object(string_builder* out, json_value* value);
+void json_append_array(string_builder* out, json_value* value);
 
 
 int json_type_null():
@@ -208,7 +208,7 @@ int json_hex_value(int c):
 	return -1
 
 
-void json_append_hex_digit(string* out, int value):
+void json_append_hex_digit(string_builder* out, int value):
 	if (value < 10):
 		string_append_char(out, '0' + value)
 	else:
@@ -242,7 +242,7 @@ int json_match(json_parser* p, char* word):
 	return 1
 
 
-char* json_take_string_data(string* s):
+char* json_take_string_data(string_builder* s):
 	char* data = s.data
 	free(s)
 	return data
@@ -255,7 +255,7 @@ char* json_parse_string_raw(json_parser* p):
 		return 0
 	p.index = p.index + 1
 
-	string* out = string_new()
+	string_builder* out = string_new()
 	while (p.input[p.index] != 0):
 		int c = p.input[p.index]
 		if (c == '"'):
@@ -460,7 +460,7 @@ json_value* json_parse(char* input):
 	return value
 
 
-void json_append_escaped_string(string* out, char* text):
+void json_append_escaped_string(string_builder* out, char* text):
 	string_append_char(out, '"')
 	int i = 0
 	while (text[i] != 0):
@@ -499,7 +499,7 @@ void json_append_escaped_string(string* out, char* text):
 	string_append_char(out, '"')
 
 
-void json_append_object(string* out, json_value* value):
+void json_append_object(string_builder* out, json_value* value):
 	string_append_char(out, '{')
 	int first = 1
 	hash_map* map = value.object_values
@@ -516,7 +516,7 @@ void json_append_object(string* out, json_value* value):
 	string_append_char(out, '}')
 
 
-void json_append_array(string* out, json_value* value):
+void json_append_array(string_builder* out, json_value* value):
 	string_append_char(out, '[')
 	int i = 0
 	while (i < value.array_values.length):
@@ -527,7 +527,7 @@ void json_append_array(string* out, json_value* value):
 	string_append_char(out, ']')
 
 
-void json_append_value(string* out, json_value* value):
+void json_append_value(string_builder* out, json_value* value):
 	if (value == 0):
 		string_append(out, "null")
 	else if (value.type == json_type_null()):
@@ -548,6 +548,6 @@ void json_append_value(string* out, json_value* value):
 
 
 char* json_stringify(json_value* value):
-	string* out = string_new()
+	string_builder* out = string_new()
 	json_append_value(out, value)
 	return json_take_string_data(out)

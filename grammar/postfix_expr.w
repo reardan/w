@@ -3,6 +3,92 @@
 # the REPL reads these, to avoid echoing a void call's garbage result.
 int last_call_return_type
 int last_call_end
+int expression_lhs_readonly
+
+
+int buffer_element_type(int type):
+	if (type_is_string(type)):
+		return type_lookup("char")
+	if (type_is_array(type) | type_is_slice(type)):
+		return type_get_element_type(type)
+	return type_lookup("char")
+
+
+int buffer_result_type(int type):
+	if (type_is_string(type)):
+		return string_value_type
+	return type_get_slice_value(buffer_element_type(type))
+
+
+void buffer_bounds_check():
+	if (bounds_mode == 0):
+		return;
+	bounds_check_eax_nonnegative()
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(word_size)
+	add_eax_int32(word_size)
+	promote_eax()
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	bounds_check_ebx_less_eax()
+	mov_eax_ebx()
+
+
+void buffer_range_bounds_check():
+	if (bounds_mode == 0):
+		return;
+	mov_eax_esp_plus(word_size)
+	bounds_check_eax_nonnegative()
+	mov_eax_esp_plus(0)
+	bounds_check_eax_nonnegative()
+	mov_eax_esp_plus(0)
+	mov_ebx_esp_plus(word_size)
+	bounds_check_ebx_less_equal_eax()
+	mov_eax_esp_plus(2 * word_size)
+	add_eax_int32(word_size)
+	promote_eax()
+	mov_ebx_esp_plus(0)
+	bounds_check_ebx_less_equal_eax()
+
+
+void buffer_push_range_descriptor(int base_type, int start_was_omitted):
+	int element_type = buffer_element_type(base_type)
+	int element_size = type_get_size(element_type)
+	# stack top before this helper: end, start, descriptor
+	sym_get_value("malloc")
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_int(2 * word_size)
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(word_size)
+	call_eax()
+	be_pop(2)
+	stack_pos = stack_pos - 2
+
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(2 * word_size)
+	mov_ebx_esp_plus(word_size)
+	alu_sub()
+	mov_ebx_esp()
+	add_ebx_int32(word_size)
+	store_ebx_word()
+
+	mov_eax_esp_plus(2 * word_size)
+	if (element_size > 1):
+		imul_eax_int32(element_size)
+	mov_ebx_esp_plus(3 * word_size)
+	promote_ebx()
+	alu_add()
+	mov_ebx_esp()
+	store_ebx_word()
+
+	pop_eax()
+	stack_pos = stack_pos - 1
+	be_pop(3)
+	stack_pos = stack_pos - 3
 
 
 # Warn when a call argument's type conflicts with the callee's declared
@@ -127,22 +213,79 @@ int postfix_expr():
 	int type = primary_expr()
 	while (1):
 		if (accept("[")):
-			binary1(type) /* load the base pointer and push it */
-			# The element type drives both index scaling and the load width
-			int element_type = 2 /* char: byte elements by default */
-			if (type_get_pointer_level(type) > 0):
-				int previous_type = type_lookup_previous_pointer(type)
-				if (previous_type >= 0):
-					element_type = previous_type
-			int element_size = type_get_size(element_type)
-			promote(expression())
-			if (element_size > 1):
-				imul_eax_int32(element_size)
-			pop_ebx()
-			alu_add()
-			stack_pos = stack_pos - 1
-			expect("]")
-			type = element_type
+			expression_lhs_readonly = 0
+			if (type_is_buffer(type)):
+				type = promote(type)
+				if (accept(":")):
+					push_eax()
+					stack_pos = stack_pos + 1
+					mov_eax_int(0)
+					push_eax()
+					stack_pos = stack_pos + 1
+					if (accept("]")):
+						mov_eax_esp_plus(word_size)
+						add_eax_int32(word_size)
+						promote_eax()
+					else:
+						promote(expression())
+						expect("]")
+					push_eax()
+					stack_pos = stack_pos + 1
+					buffer_range_bounds_check()
+					buffer_push_range_descriptor(type, 1)
+					type = buffer_result_type(type)
+					expression_lhs_readonly = 1
+				else:
+					push_eax()
+					stack_pos = stack_pos + 1
+					int element_type = buffer_element_type(type)
+					int element_size = type_get_size(element_type)
+					promote(expression())
+					if (accept(":")):
+						push_eax()
+						stack_pos = stack_pos + 1
+						if (accept("]")):
+							mov_eax_esp_plus(word_size)
+							add_eax_int32(word_size)
+							promote_eax()
+						else:
+							promote(expression())
+							expect("]")
+						push_eax()
+						stack_pos = stack_pos + 1
+						buffer_range_bounds_check()
+						buffer_push_range_descriptor(type, 0)
+						type = buffer_result_type(type)
+						expression_lhs_readonly = 1
+					else:
+						buffer_bounds_check()
+						if (element_size > 1):
+							imul_eax_int32(element_size)
+						pop_ebx()
+						promote_ebx()
+						alu_add()
+						stack_pos = stack_pos - 1
+						expect("]")
+						type = element_type
+						expression_lhs_readonly = 0
+			else:
+				binary1(type) /* load the base pointer and push it */
+				# The element type drives both index scaling and the load width
+				int element_type = 2 /* char: byte elements by default */
+				if (type_get_pointer_level(type) > 0):
+					int previous_type = type_lookup_previous_pointer(type)
+					if (previous_type >= 0):
+						element_type = previous_type
+				int element_size = type_get_size(element_type)
+				promote(expression())
+				if (element_size > 1):
+					imul_eax_int32(element_size)
+				pop_ebx()
+				alu_add()
+				stack_pos = stack_pos - 1
+				expect("]")
+				type = element_type
+				expression_lhs_readonly = 0
 
 		else if (accept("(")):
 			# Remember the callee's declared arity now; parsing the arguments
@@ -189,122 +332,141 @@ int postfix_expr():
 			type = parse_call_suffix(type, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 0, has_return_buffer)
 
 		else if (accept(".")):
-			int receiver_struct_value_words = 0
-			int receiver_was_value = type_is_value(type)
-			if (receiver_was_value):
-				int receiver_real_type = type_real(type)
-				if (type_num_args(receiver_real_type) > 0):
-					receiver_struct_value_words = (type_get_size(receiver_real_type) + word_size - 1) >> word_size_log2
-				type = promote(type)
+			expression_lhs_readonly = 0
+			if (type_is_buffer(type)):
+				if (peek("length")):
+					get_token()
+					type = promote(type)
+					add_eax_int32(word_size)
+					type = type_lookup("int")
+					expression_lhs_readonly = 1
+				else if (peek("data")):
+					get_token()
+					type = promote(type)
+					int element_type = buffer_element_type(type)
+					type = type_get_next_pointer(element_type)
+					expression_lhs_readonly = 1
+				else:
+					print2("buffer field '")
+					print2(token)
+					error("' not found")
+			else:
+				int receiver_struct_value_words = 0
+				int receiver_was_value = type_is_value(type)
+				if (receiver_was_value):
+					int receiver_real_type = type_real(type)
+					if (type_num_args(receiver_real_type) > 0):
+						receiver_struct_value_words = (type_get_size(receiver_real_type) + word_size - 1) >> word_size_log2
+					type = promote(type)
 
-			# Struct pointers are loaded first so fields work through them
-			if (type_get_pointer_level(type) > 0):
-				int element = type_lookup_previous_pointer(type)
-				if (element >= 0):
-					if (type_num_args(element) > 0):
-						if (receiver_was_value == 0):
-							promote(type)
-						type = element
+				# Struct pointers are loaded first so fields work through them
+				if (type_get_pointer_level(type) > 0):
+					int element = type_lookup_previous_pointer(type)
+					if (element >= 0):
+						if (type_num_args(element) > 0):
+							if (receiver_was_value == 0):
+								promote(type)
+							type = element
 
-			# For structures, find offset of field name
-			int num_args = type_num_args(type)
-			if (num_args > 0):
-				char* member_name = strclone(token)
-				int arg = type_get_arg(type, member_name)
-				get_token()
+				# For structures, find offset of field name
+				int num_args = type_num_args(type)
+				if (num_args > 0):
+					char* member_name = strclone(token)
+					int arg = type_get_arg(type, member_name)
+					get_token()
 
-				if (arg >= 0):
-					# Return right side field type instead of struct pointer
-					add_eax_int32(type_get_field_offset(type, member_name))
+					if (arg >= 0):
+						# Return right side field type instead of struct pointer
+						add_eax_int32(type_get_field_offset(type, member_name))
 
-					# Use child type insted of struct type:
-					type = type_get_field_type(type, member_name)
-					if (type < 0):
-						print_int0("child field not found: '", type)
-						error("")
-					if (verbosity >= 1):
-						print2(itoa(line_number))
-						print_string0(": using child type: ", type_get_name(type))
-						print_int(": ", type)
-					if (receiver_struct_value_words > 0):
-						if (type_num_args(type) == 0):
-							type = promote(type)
-							be_pop(receiver_struct_value_words)
-							stack_pos = stack_pos - receiver_struct_value_words
-							type = type_value(type)
-				else if (peek("(")):
-					char* prefix = strjoin(type_get_name(type), "_")
-					char* method_symbol = strjoin(prefix, member_name)
-					free(prefix)
-					int callee = sym_lookup(method_symbol)
-					if (callee < 0):
-						print_error("struct method '")
-						print_error(type_get_name(type))
-						print_error(".")
-						print_error(member_name)
-						print_error("' not found; expected function '")
-						print_error(method_symbol)
-						error("'")
+						# Use child type insted of struct type:
+						type = type_get_field_type(type, member_name)
+						if (type < 0):
+							print_int0("child field not found: '", type)
+							error("")
+						if (verbosity >= 1):
+							print2(itoa(line_number))
+							print_string0(": using child type: ", type_get_name(type))
+							print_int(": ", type)
+						if (receiver_struct_value_words > 0):
+							if (type_num_args(type) == 0):
+								type = promote(type)
+								be_pop(receiver_struct_value_words)
+								stack_pos = stack_pos - receiver_struct_value_words
+								type = type_value(type)
+					else if (peek("(")):
+						char* prefix = strjoin(type_get_name(type), "_")
+						char* method_symbol = strjoin(prefix, member_name)
+						free(prefix)
+						int callee = sym_lookup(method_symbol)
+						if (callee < 0):
+							print_error("struct method '")
+							print_error(type_get_name(type))
+							print_error(".")
+							print_error(member_name)
+							print_error("' not found; expected function '")
+							print_error(method_symbol)
+							error("'")
 
-					int expected_args = sym_num_args(callee)
-					int callee_sym = -1
-					int signature_type = -1
-					char* callee_name = 0
-					if (expected_args >= 0):
-						callee_sym = callee
-						callee_name = strclone(method_symbol)
-					int declared_return = load_int(table + callee + 6)
+						int expected_args = sym_num_args(callee)
+						int callee_sym = -1
+						int signature_type = -1
+						char* callee_name = 0
+						if (expected_args >= 0):
+							callee_sym = callee
+							callee_name = strclone(method_symbol)
+						int declared_return = load_int(table + callee + 6)
 
-					int has_return_buffer = 0
-					int return_words = 0
-					if (declared_return >= 0):
-						if (type_num_args(declared_return) > 0):
-							return_words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
-							int j = 0
-							while (j < return_words):
-								push_eax()
-								j = j + 1
-							stack_pos = stack_pos + return_words
-							has_return_buffer = 1
+						int has_return_buffer = 0
+						int return_words = 0
+						if (declared_return >= 0):
+							if (type_num_args(declared_return) > 0):
+								return_words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
+								int j = 0
+								while (j < return_words):
+									push_eax()
+									j = j + 1
+								stack_pos = stack_pos + return_words
+								has_return_buffer = 1
 
-					# Save the receiver address while resolving the method
-					# symbol, then push it as the hidden first source argument.
-					push_eax()
-					stack_pos = stack_pos + 1
-					sym_get_value(method_symbol)
-					int s = stack_pos
-					push_eax()
-					stack_pos = stack_pos + 1
-					if (has_return_buffer):
-						lea_eax_esp_plus(2 << word_size_log2)
+						# Save the receiver address while resolving the method
+						# symbol, then push it as the hidden first source argument.
 						push_eax()
 						stack_pos = stack_pos + 1
-					if (has_return_buffer):
-						mov_eax_esp_plus(2 << word_size_log2)
+						sym_get_value(method_symbol)
+						int s = stack_pos
+						push_eax()
+						stack_pos = stack_pos + 1
+						if (has_return_buffer):
+							lea_eax_esp_plus(2 << word_size_log2)
+							push_eax()
+							stack_pos = stack_pos + 1
+						if (has_return_buffer):
+							mov_eax_esp_plus(2 << word_size_log2)
+						else:
+							mov_eax_esp_plus(1 << word_size_log2)
+
+						int receiver_type = type_lookup_next_pointer(type)
+						check_call_argument(callee_sym, signature_type, callee_name, 0, receiver_type)
+						if (callee_sym >= 0):
+							int param_type = sym_param_type(callee_sym, 0)
+							if (param_type >= 0):
+								coerce(param_type, receiver_type)
+						push_call_argument(receiver_type)
+
+						accept("(")
+						type = parse_call_suffix(4, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 1, has_return_buffer)
+						be_pop(1)
+						stack_pos = stack_pos - 1
+						if (has_return_buffer):
+							lea_eax_esp_plus(0)
+							type = type_value(declared_return)
+						free(method_symbol)
 					else:
-						mov_eax_esp_plus(1 << word_size_log2)
-
-					int receiver_type = type_lookup_next_pointer(type)
-					check_call_argument(callee_sym, signature_type, callee_name, 0, receiver_type)
-					if (callee_sym >= 0):
-						int param_type = sym_param_type(callee_sym, 0)
-						if (param_type >= 0):
-							coerce(param_type, receiver_type)
-					push_call_argument(receiver_type)
-
-					accept("(")
-					type = parse_call_suffix(4, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 1, has_return_buffer)
-					be_pop(1)
-					stack_pos = stack_pos - 1
-					if (has_return_buffer):
-						lea_eax_esp_plus(0)
-						type = type_value(declared_return)
-					free(method_symbol)
-				else:
-					print2("struct field '")
-					print2(member_name)
-					error("' not found")
-				free(member_name)
+						print2("struct field '")
+						print2(member_name)
+						error("' not found")
+					free(member_name)
 
 			else:
 				get_token()

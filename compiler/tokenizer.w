@@ -6,6 +6,7 @@ int token_size
 int token_newline
 int tab_level
 int line_number
+int bounds_mode
 
 # file reading
 int file
@@ -114,6 +115,16 @@ void get_token():
 		while ((('a' <= nextc) & (nextc <= 'z')) |
 					 (('A' <= nextc) & (nextc <= 'Z')) |
 					 (('0' <= nextc) & (nextc <= '9')) | (nextc == '_')):
+			takechar()
+
+		# Prefixed string literals: s"..." is a UTF-8 string descriptor,
+		# c"..." is the legacy char* literal spelling.
+		if ((token_i == 1) & ((token[0] == 's') | (token[0] == 'c')) & (nextc == '"')):
+			takechar()
+			while (nextc != '"'):
+				if (nextc == 92):
+					takechar()
+				takechar()
 			takechar()
 
 		# Float literals: a digit-leading token absorbs a fraction ('3.25')

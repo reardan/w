@@ -42,11 +42,11 @@ void function_definition(int current_symbol):
 			pointer_indirection = 0
 			get_token()
 
-		# A by-value struct occupies several stack words; later
+		# A by-value aggregate occupies several stack words; later
 		# parameters address past all of them
-		if (type_num_args(type) > 0):
-			int struct_words = (type_get_size(type) + word_size - 1) >> word_size_log2
-			number_of_args = number_of_args + struct_words - 1
+		int arg_words = type_stack_words(type)
+		if (arg_words > 1):
+			number_of_args = number_of_args + arg_words - 1
 
 		accept(",") /* ignore trailing comma */
 

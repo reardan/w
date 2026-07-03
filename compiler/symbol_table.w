@@ -250,12 +250,11 @@ int sym_get_value(char *s):
 		# emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
 		lea_eax_esp_plus(0) /* 0 is a placeholder */
 
-		# Structs occupy several stack words; point at the lowest address (last
-		# pushed word) so positive field offsets stay inside the struct.
-		int num_args = type_num_args(type)
-		if (num_args > 0):
-			int struct_words = (type_get_size(type) + word_size - 1) >> word_size_log2
-			k = k - ((struct_words - 1) << word_size_log2)
+		# Aggregates occupy several stack words; point at the lowest address
+		# (last pushed word) so positive offsets stay inside the object.
+		int words = type_stack_words(type)
+		if (words > 1):
+			k = k - ((words - 1) << word_size_log2)
 		save_int(code + codepos - 4, k)
 
 	if (symtype == 2):

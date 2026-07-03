@@ -24,6 +24,21 @@ void new_store_field(int base_type, int field_index, int arg_type):
 		store_ebx_word()
 
 
+void zero_stack_count_bytes():
+	int loop_start = codepos
+	mov_eax_esp_plus(word_size)
+	jmp_zero_int32(0)
+	int done_patch = codepos
+	mov_ebx_esp()
+	mov_eax_int(0)
+	store_ebx_int8()
+	add_stack_word_int32(0, 1)
+	add_stack_word_int32(word_size, -1)
+	jmp_int32(0)
+	save_int32(code + codepos - 4, loop_start - codepos)
+	save_int32(code + done_patch - 4, codepos - done_patch)
+
+
 /*
 unary-operator
 & * + - !
@@ -110,6 +125,67 @@ int unary_expression():
 			print2(token)
 			error("'")
 		get_token()
+		if (accept("[")):
+			int element_size = type_get_size(base)
+			if (element_size <= 0):
+				error("cannot allocate array of zero-sized type")
+			int len_type = expression()
+			promote(len_type)
+			if (bounds_mode != 0):
+				bounds_check_eax_nonnegative()
+				bounds_check_eax_less_equal_int32(1073741823 / element_size)
+			expect("]")
+			push_eax()
+			stack_pos = stack_pos + 1
+
+			# malloc(2 * word_size + length * sizeof(base))
+			sym_get_value("malloc")
+			push_eax()
+			stack_pos = stack_pos + 1
+			mov_eax_esp_plus(word_size)
+			if (element_size > 1):
+				imul_eax_int32(element_size)
+			add_eax_int32(2 * word_size)
+			push_eax()
+			stack_pos = stack_pos + 1
+			mov_eax_esp_plus(word_size)
+			call_eax()
+			be_pop(2)
+			stack_pos = stack_pos - 2
+
+			# descriptor.data = descriptor + header
+			push_eax()
+			stack_pos = stack_pos + 1
+			add_eax_int32(2 * word_size)
+			mov_ebx_esp()
+			store_ebx_word()
+
+			# descriptor.length = saved length
+			mov_eax_esp_plus(word_size)
+			mov_ebx_esp()
+			add_ebx_int32(word_size)
+			store_ebx_word()
+
+			# Zero the payload so new arrays have deterministic contents.
+			mov_eax_esp_plus(word_size)
+			if (element_size > 1):
+				imul_eax_int32(element_size)
+			push_eax()
+			stack_pos = stack_pos + 1
+			mov_eax_esp_plus(word_size)
+			add_eax_int32(2 * word_size)
+			push_eax()
+			stack_pos = stack_pos + 1
+			zero_stack_count_bytes()
+			be_pop(2)
+			stack_pos = stack_pos - 2
+
+			pop_eax()
+			stack_pos = stack_pos - 1
+			be_pop(1)
+			stack_pos = stack_pos - 1
+			return type_get_slice_value(base)
+
 		int has_parens = accept("(")
 
 		# malloc(size), using the same callee-first stack layout as postfix calls

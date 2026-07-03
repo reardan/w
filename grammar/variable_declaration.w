@@ -8,6 +8,8 @@ int variable_declaration():
 		# = expression
 		if (accept("=")):
 			has_initializer = 1
+			if (type_is_array(type)):
+				error("fixed array initializer is not implemented")
 			type2 = expression()
 			type2 = promote(type2)
 			coerce(type, type2)
@@ -19,11 +21,10 @@ int variable_declaration():
 		save_int(table + last_declared_symbol + 2, stack_pos)
 		pointer_indirection = 0
 
-		# Reserve enough words for the struct's byte size, else 1 word
-		int size = 1
+		# Reserve enough words for aggregate storage, else 1 word.
+		int size = type_stack_words(type)
 		int num_args = type_num_args(type)
-		if (num_args > 0):
-			size = (type_get_size(type) + word_size - 1) >> word_size_log2
+		if ((num_args > 0) & (type_is_array(type) == 0)):
 			if (has_initializer):
 				int j = size - 1
 				while (j >= 0):
@@ -31,11 +32,18 @@ int variable_declaration():
 					j = j - 1
 				stack_pos = stack_pos + size
 				return type
+		if (type_is_array(type)):
+			mov_eax_int(0)
 		int i = 0
 		while (i < size):
 			push_eax()
 			i = i + 1
 		stack_pos = stack_pos + size
+		if (type_is_array(type)):
+			lea_eax_esp_plus(2 * word_size)
+			store_stack_var(0)
+			mov_eax_int(type_get_array_length(type))
+			store_stack_var(word_size)
 		return type
 	return -1
 

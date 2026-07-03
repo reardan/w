@@ -34,9 +34,12 @@ int type_kind_function
 int type_kind_union
 int type_kind_enum
 int type_kind_const
+int string_type
+int string_value_type
 
 
 char* type_get_name(int type_index);
+int type_get_size(int type_index);
 int type_get_pointer_level(int type_index);
 int type_lookup_previous_pointer(int type_index);
 
@@ -68,6 +71,79 @@ int type_push_size(char* name, int size):
 	save_int(new_type + 820, 0) /* reserved kind/flags */
 	save_int(new_type + 824, -1) /* function return type */
 	save_int(new_type + 828, -1) /* function parameter count */
+	return push(new_type)
+
+
+int type_kind_array():
+	return 6
+
+
+int type_kind_slice():
+	return 7
+
+
+int type_kind_string():
+	return 8
+
+
+int type_kind_slice_value():
+	return 9
+
+
+char* type_make_array_name(int element_type, int length):
+	char* open = strjoin(type_get_name(element_type), "[")
+	char* n = itoa(length)
+	char* with_len = strjoin(open, n)
+	char* name = strjoin(with_len, "]")
+	free(open)
+	free(n)
+	free(with_len)
+	return name
+
+
+char* type_make_slice_name(int element_type):
+	return strjoin(type_get_name(element_type), "[]")
+
+
+int type_push_array(int element_type, int length):
+	int new_type = malloc(type_size())
+	save_int(new_type, type_make_array_name(element_type, length))
+	save_int(new_type + 4, 0)
+	save_int(new_type + 8, (2 * word_size) + (length * type_get_size(element_type)))
+	save_int(new_type + 12, 0)
+	save_int(new_type + 816, element_type)
+	save_int(new_type + 820, type_kind_array())
+	save_int(new_type + 824, length)
+	save_int(new_type + 828, -1)
+	return push(new_type)
+
+
+int type_push_slice(int element_type):
+	int new_type = malloc(type_size())
+	save_int(new_type, type_make_slice_name(element_type))
+	save_int(new_type + 4, 0)
+	save_int(new_type + 8, word_size)
+	save_int(new_type + 12, 0)
+	save_int(new_type + 816, element_type)
+	save_int(new_type + 820, type_kind_slice())
+	save_int(new_type + 824, -1)
+	save_int(new_type + 828, -1)
+	return push(new_type)
+
+
+int type_push_slice_value(int element_type):
+	int new_type = malloc(type_size())
+	char* storage_name = type_make_slice_name(element_type)
+	char* name = strjoin(storage_name, " value")
+	free(storage_name)
+	save_int(new_type, name)
+	save_int(new_type + 4, 0)
+	save_int(new_type + 8, 0)
+	save_int(new_type + 12, 0)
+	save_int(new_type + 816, element_type)
+	save_int(new_type + 820, type_kind_slice_value())
+	save_int(new_type + 824, -1)
+	save_int(new_type + 828, -1)
 	return push(new_type)
 
 
@@ -191,6 +267,42 @@ void type_set_kind(int type_index, int kind):
 	save_int(t + 820, kind)
 
 
+int type_get_element_type(int type_index):
+	type_index = type_canonical(type_index)
+	int t = get(type_index)
+	return load_int(t + 816)
+
+
+int type_get_array_length(int type_index):
+	type_index = type_canonical(type_index)
+	int t = get(type_index)
+	return load_int(t + 824)
+
+
+int type_is_array(int type_index):
+	return type_get_kind(type_index) == type_kind_array()
+
+
+int type_is_slice(int type_index):
+	int kind = type_get_kind(type_index)
+	return (kind == type_kind_slice()) | (kind == type_kind_slice_value())
+
+
+int type_is_string(int type_index):
+	return type_get_kind(type_index) == type_kind_string()
+
+
+int type_is_buffer(int type_index):
+	return type_is_array(type_index) | type_is_slice(type_index) | type_is_string(type_index)
+
+
+int type_stack_words(int type_index):
+	int size = type_get_size(type_index)
+	if (size <= word_size):
+		return 1
+	return (size + word_size - 1) >> word_size_log2
+
+
 int type_is_function_signature(int type_index):
 	type_index = type_canonical(type_index)
 	return type_get_kind(type_index) == type_kind_function
@@ -257,6 +369,57 @@ int type_function_param_type(int type_index, int i):
 	return load_int(t + 832 + (i << 2))
 
 
+int type_lookup_array(int element_type, int array_length):
+	element_type = type_canonical(element_type)
+	int i = 0
+	while (i < length):
+		int t = get(i)
+		if ((load_int(t + 820) == type_kind_array()) &
+				(type_canonical(load_int(t + 816)) == element_type) &
+				(load_int(t + 824) == array_length)):
+			return i
+		i = i + 1
+	return -1
+
+
+int type_lookup_slice(int element_type):
+	element_type = type_canonical(element_type)
+	int i = 0
+	while (i < length):
+		int t = get(i)
+		if ((load_int(t + 820) == type_kind_slice()) &
+				(type_canonical(load_int(t + 816)) == element_type)):
+			return i
+		i = i + 1
+	return -1
+
+
+int type_lookup_slice_value(int element_type):
+	element_type = type_canonical(element_type)
+	int i = 0
+	while (i < length):
+		int t = get(i)
+		if ((load_int(t + 820) == type_kind_slice_value()) &
+				(type_canonical(load_int(t + 816)) == element_type)):
+			return i
+		i = i + 1
+	return -1
+
+
+int type_get_slice(int element_type):
+	int slice = type_lookup_slice(element_type)
+	if (slice < 0):
+		slice = type_push_slice(type_canonical(element_type))
+	return slice
+
+
+int type_get_slice_value(int element_type):
+	int slice = type_lookup_slice_value(element_type)
+	if (slice < 0):
+		slice = type_push_slice_value(type_canonical(element_type))
+	return slice
+
+
 char* type_get_name(int type_index):
 	type_index = type_real(type_index)
 	int t = get(type_index)
@@ -309,6 +472,16 @@ int types_compatible(int want, int got):
 		return 1
 	if (want == got):
 		return 1
+	if (type_is_string(want) & type_is_string(got)):
+		return 1
+	if (type_is_string(want) | type_is_string(got)):
+		return 0
+	if (type_is_slice(want) & type_is_array(got)):
+		return type_unqualified(type_get_element_type(want)) == type_unqualified(type_get_element_type(got))
+	if (type_is_slice(want) & type_is_slice(got)):
+		return type_unqualified(type_get_element_type(want)) == type_unqualified(type_get_element_type(got))
+	if (type_is_array(want) | type_is_array(got) | type_is_slice(want) | type_is_slice(got)):
+		return 0
 	if (type_get_pointer_level(want) != type_get_pointer_level(got)):
 		return 0
 	if (type_get_pointer_level(want) == 0):
@@ -350,6 +523,14 @@ int binary_float_kind(int left_type, int right_type):
 int type_lookup_next_pointer(int type_index):
 	type_index = type_canonical(type_index)
 	return type_lookup_pointer(type_get_name(type_index), type_get_pointer_level(type_index) + 1)
+
+
+int type_get_next_pointer(int type_index):
+	int pointer_type = type_lookup_next_pointer(type_index)
+	if (pointer_type < 0):
+		type_index = type_canonical(type_index)
+		pointer_type = type_push_pointer(type_get_name(type_index), word_size, type_get_pointer_level(type_index) + 1)
+	return pointer_type
 
 
 int type_lookup_previous_pointer(int type_index):
@@ -560,6 +741,10 @@ void push_basic_types():
 	float_type = type_push_size("float", 4)
 	float32_value_type = type_push_size("float32 value", 0)
 	float64_value_type = type_push_size("float64 value", 0)
+	string_type = type_push_size("string", word_size)
+	type_set_kind(string_type, type_kind_string())
+	string_value_type = type_push_size("string value", 0)
+	type_set_kind(string_value_type, type_kind_string())
 
 	# Common pointer types; type_name() creates any others on demand
 	type_push_pointer("int", word_size, 1)

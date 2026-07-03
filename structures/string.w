@@ -8,16 +8,16 @@ import lib.lib
 import lib.assert
 
 
-struct string:
+struct string_builder:
 	int capacity
 	int length
 	char* data
 
 
-string* string_new_sized(int capacity):
+string_builder* string_new_sized(int capacity):
 	if (capacity < 8):
 		capacity = 8
-	string* s = malloc(12)
+	string_builder* s = malloc(12)
 	s.capacity = capacity
 	s.length = 0
 	s.data = malloc(capacity)
@@ -25,12 +25,12 @@ string* string_new_sized(int capacity):
 	return s
 
 
-string* string_new():
+string_builder* string_new():
 	return string_new_sized(16)
 
 
 # Make sure extra more bytes (plus the terminator) fit.
-void string_reserve(string* s, int extra):
+void string_reserve(string_builder* s, int extra):
 	int needed = s.length + extra + 1
 	if (needed > s.capacity):
 		int new_capacity = s.capacity * 2
@@ -40,7 +40,7 @@ void string_reserve(string* s, int extra):
 		s.capacity = new_capacity
 
 
-void string_append(string* s, char* c):
+void string_append(string_builder* s, char* c):
 	int n = strlen(c)
 	string_reserve(s, n)
 	strcpy(s.data + s.length, c)
@@ -48,34 +48,34 @@ void string_append(string* s, char* c):
 	s.data[s.length] = 0
 
 
-void string_append_char(string* s, int c):
+void string_append_char(string_builder* s, int c):
 	string_reserve(s, 1)
 	s.data[s.length] = c
 	s.length = s.length + 1
 	s.data[s.length] = 0
 
 
-string* string_from(char* c):
-	string* s = string_new_sized(strlen(c) + 1)
+string_builder* string_from(char* c):
+	string_builder* s = string_new_sized(strlen(c) + 1)
 	string_append(s, c)
 	return s
 
 
-void string_append_int(string* s, int v):
+void string_append_int(string_builder* s, int v):
 	char* digits = itoa(v)
 	string_append(s, digits)
 	free(digits)
 
 
-int string_equals(string* s, char* c):
+int string_equals(string_builder* s, char* c):
 	return strcmp(s.data, c) == 0
 
 
-void string_clear(string* s):
+void string_clear(string_builder* s):
 	s.length = 0
 	s.data[0] = 0
 
 
-void string_free(string* s):
+void string_free(string_builder* s):
 	free(s.data)
 	free(s)
