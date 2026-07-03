@@ -112,7 +112,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test x64_test dynamic_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test x64_test dynamic_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -248,6 +248,10 @@ lib_64_test: w FORCE
 	chmod +x ./bin/lib_test
 	./bin/lib_test
 
+path_64_test: w FORCE
+	./bin/wv2 x64 lib/path_test.w -o ./bin/path_64_test
+	./bin/path_64_test
+
 lib_64_test_debug: w FORCE
 	./bin/wv2 x64 lib/lib_test.w >./bin/lib_test
 	chmod +x ./bin/lib_test
@@ -314,6 +318,10 @@ args_test: w FORCE
 	./bin/wv2 lib/args_test.w -o ./bin/args_test
 	./bin/args_test
 
+path_test: w FORCE
+	./bin/wv2 lib/path_test.w -o ./bin/path_test
+	./bin/path_test
+
 wdbg: w FORCE
 	./bin/wv2 debugger/debugger.w -o ./bin/wdbg
 
@@ -330,7 +338,7 @@ debug_test: wdbg FORCE
 	printf 'q\n' | ./bin/wdbg tests/debug_fixture.w > /dev/null
 	@echo "debug test OK"
 
-tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test debug_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test debug_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:
