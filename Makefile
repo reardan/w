@@ -314,6 +314,10 @@ args_test: w FORCE
 	./bin/wv2 lib/args_test.w -o ./bin/args_test
 	./bin/args_test
 
+result_test: w FORCE
+	./bin/wv2 lib/result_test.w -o ./bin/result_test
+	./bin/result_test
+
 wdbg: w FORCE
 	./bin/wv2 debugger/debugger.w -o ./bin/wdbg
 
@@ -330,7 +334,7 @@ debug_test: wdbg FORCE
 	printf 'q\n' | ./bin/wdbg tests/debug_fixture.w > /dev/null
 	@echo "debug test OK"
 
-tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test debug_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test result_test debug_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:
