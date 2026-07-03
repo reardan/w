@@ -52,7 +52,7 @@ done:
 	repl...partial!
 		in-process executable-buffer repl...complete!
 		one-line input and :quit...complete!
-		compile-error recovery...not complete!
+		compile-error recovery...complete!
 	compiler cli...complete!
 		-o output path...complete!
 		no-argument usage message...complete!

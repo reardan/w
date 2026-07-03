@@ -13,14 +13,17 @@ I've added the following features:
 - pointer-aware `&`, `*`, `[]`, and struct field access
 - struct field metadata, mixed-width fields, and `new type()` allocation
 - `for int i in range(...)` with optional start/end/step
-- `break`, `continue`, `&&`, `||`, `!`, unary `-`, hex literals, and string escapes
+- `break`, `continue`, `&&`, `||`, `!`, unary `+`/`-`, hex literals, and string escapes
+- relational chaining and C-style unary precedence
+- deeper type compatibility warnings for assignments, initialization, arguments, and returns
+- constructor-style `new type(args)` and by-value struct parameters
 - hash map, string builder, array list, linked list, and format helpers
-- basic REPL via `make repl`
+- basic REPL via `make repl`, including compile-error recovery
 - DWARF line-number information for gdb
 
 Current major open areas:
-- REPL recovery after compile errors
-- deeper type compatibility checks and import-scoped type metadata
+- import-scoped type metadata
+- REPL local persistence between entries
 - full x64 self-hosting
 - WebAssembly backend
 - built-in debugger / web UI

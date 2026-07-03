@@ -4,8 +4,8 @@ web ui
 current state:
 	repl:
 		make repl builds a terminal REPL
-		make repl_test verifies a simple interaction
-		compile errors still exit the process
+		make repl_test verifies interaction and compile-error recovery
+		compile errors return to the prompt
 	debugging:
 		DWARF line information is emitted for gdb
 		no built-in debugger server or web debugger yet

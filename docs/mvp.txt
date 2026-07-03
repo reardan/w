@@ -9,14 +9,18 @@ Compiler
 		Type table with size, pointer level, and struct fields
 		Pointer-aware &, *, [], and struct field access
 		new type() allocation
+		constructor-style new type(args)
+		struct values passed by value
 		range loops with optional start/end/step
 		break and continue
+		C-style unary precedence and relational chaining
 		Basic REPL
+		REPL compile-error recovery
 		DWARF line information
 		Deeper type compatibility checks
-		REPL compile-error recovery
 
 	Remaining
+		REPL local persistence between entries
 		Dict language/runtime type
 		UTF-8 string type
 		C header parsing / c_import

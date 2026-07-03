@@ -26,11 +26,17 @@ Project Acceptance Tests
 Projects
 	Types (partial)
 		type table has sizes, pointer levels, fields
-		remaining: deeper compatibility checks, type metadata imports
-	Pointers (mostly implemented)
-		remaining: by-value structs, constructor arguments, more edge coverage
+		deeper compatibility warnings are implemented
+		remaining: type metadata imports
+	Pointers (implemented)
+		char*/int*/struct pointer scenarios are covered
+		by-value structs, constructor arguments and multi-level pointer tests pass
 	For..In..Range (implemented)
 		range(end), range(start, end), range(start, end, step)
+	Operator precedence (implemented)
+		relational chaining, unary operand model and unary + are covered
+	REPL error recovery (implemented)
+		compile errors return to the prompt
 	x64 MVP (partial)
 		hello-world/syscall path works
 		remaining: lib_test and self-compiling
