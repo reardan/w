@@ -10,6 +10,7 @@ int: 10: symtype
 int: 14: size
 int: 18: pointer indirection level
 int: 22: number of declared parameters (functions), -1 when unknown
+int: 26: declared parameter types (up to 10 slots of 4 bytes each)
 */
 char *table
 int table_size
@@ -18,7 +19,7 @@ int stack_pos
 
 
 int symbol_data_size():
-	return 26
+	return 66
 
 
 int next_token(int t):
@@ -174,6 +175,24 @@ int number_of_args
 # or -1 when unknown (e.g. asm runtime stubs without a parameter list).
 int sym_num_args(int t):
 	return load_int(table + t + 22)
+
+
+# Parameter type slots per symbol; arguments past the limit are unchecked.
+int sym_max_param_slots():
+	return 10
+
+
+# Declared type of the function's parameter at index i (0-based), or -1
+# when unknown: no parameter list was parsed or the slot was not recorded.
+int sym_param_type(int t, int i):
+	int num_args = load_int(table + t + 22)
+	if (num_args < 0):
+		return -1
+	if (i >= num_args):
+		return -1
+	if (i >= sym_max_param_slots()):
+		return -1
+	return load_int(table + t + 26 + (i << 2))
 
 
 # Emits code leaving the symbol's ADDRESS in eax and returns its type index.

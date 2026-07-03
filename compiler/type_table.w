@@ -84,6 +84,34 @@ int type_lookup_pointer(char* name, int pointer_level):
 	return -1
 
 
+# Return 1 when a value of type 'got' can be stored where 'want' is expected.
+# "constant" (3) and "function" (4) results carry no type information, so
+# they are compatible with everything. Plain "int" (1) doubles as the
+# untyped machine word in a language without casts (addresses, malloc
+# blocks), so it also converts both ways. Scalars convert between widths
+# silently; pointers must agree on depth and base type, except that void*
+# converts to and from any pointer. Distinct struct types never convert.
+int types_compatible(int want, int got):
+	if ((want == 3) | (want == 4) | (want == 1)):
+		return 1
+	if ((got == 3) | (got == 4) | (got == 1)):
+		return 1
+	if (want == got):
+		return 1
+	if (type_get_pointer_level(want) != type_get_pointer_level(got)):
+		return 0
+	if (type_get_pointer_level(want) == 0):
+		# Struct vs scalar or two different structs
+		if ((type_num_args(want) > 0) | (type_num_args(got) > 0)):
+			return 0
+		return 1
+	if (strcmp(type_get_name(want), "void") == 0):
+		return 1
+	if (strcmp(type_get_name(got), "void") == 0):
+		return 1
+	return strcmp(type_get_name(want), type_get_name(got)) == 0
+
+
 int type_lookup_next_pointer(int type_index):
 	return type_lookup_pointer(type_get_name(type_index), type_get_pointer_level(type_index) + 1)
 

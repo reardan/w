@@ -56,6 +56,11 @@ done:
 	compiler cli...complete!
 		-o output path...complete!
 		no-argument usage message...complete!
+	type compatibility warnings...complete!
+		types_compatible() helper...complete!
+		assignment/initialization/argument/return checks...complete!
+		parameter types recorded on function symbols...complete!
+		make warning_test fixture harness...complete!
 	operator precedence...complete!
 		relational operators chain left-associatively...complete!
 		unary operators take unary operands (C model)...complete!

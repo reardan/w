@@ -134,6 +134,21 @@ range_test_debug: w FORCE
 	chmod +x ./bin/range_test
 	ddd ./bin/range_test
 
+# Compile-only fixtures asserting the compiler's type mismatch warnings.
+# warning_fixture.w must produce each expected message; the clean fixture
+# must compile silently.
+warning_test: w FORCE
+	./bin/wv2 tests/warning_fixture.w -o ./bin/warning_fixture 2>./bin/warning_fixture.stderr
+	grep -qF "warning: assignment type mismatch: expected 'char*', got 'int*'" ./bin/warning_fixture.stderr
+	grep -qF "warning: assignment type mismatch: expected 'char*', got 'char**'" ./bin/warning_fixture.stderr
+	grep -qF "warning: initialization type mismatch: expected 'int*', got 'char*'" ./bin/warning_fixture.stderr
+	grep -qF "warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'int*'" ./bin/warning_fixture.stderr
+	grep -qF "warning: return type mismatch: expected 'char*', got 'int*'" ./bin/warning_fixture.stderr
+	grep -qF "warning: assignment type mismatch: expected 'pair', got 'single'" ./bin/warning_fixture.stderr
+	./bin/wv2 tests/warning_clean_fixture.w -o ./bin/warning_clean_fixture 2>./bin/warning_clean_fixture.stderr
+	! grep -q "warning:" ./bin/warning_clean_fixture.stderr
+	@echo "warning test OK"
+
 type_table_test: w FORCE
 	./bin/wv2 compiler/type_table_test.w >./bin/type_table_test
 	chmod +x ./bin/type_table_test
@@ -252,7 +267,7 @@ format_test: w FORCE
 	./bin/wv2 lib/format_test.w -o ./bin/format_test
 	./bin/format_test
 
-tests: build verify lib_test grammar_test list_test type_table_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test test hello FORCE
+tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test test hello FORCE
 
 
 clean:

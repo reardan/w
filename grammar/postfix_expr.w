@@ -1,3 +1,24 @@
+# Warn when a call argument's type conflicts with the callee's declared
+# parameter type. callee is the callee's symbol table offset (< 0 when the
+# callee is unknown, e.g. calls through pointers); arg_index is 0-based.
+void check_call_argument(int callee, char* callee_name, int arg_index, int arg_type):
+	if (callee < 0):
+		return;
+	int param_type = sym_param_type(callee, arg_index)
+	if (param_type < 0):
+		return;
+	if (types_compatible(param_type, arg_type) == 0):
+		print_error("warning: function '")
+		print_error(callee_name)
+		print_error("' argument ")
+		print_error(itoa(arg_index + 1))
+		print_error(" type mismatch: expected '")
+		print_error_type(param_type)
+		print_error("', got '")
+		print_error_type(arg_type)
+		warning("'")
+
+
 /*
 postfix-expr:
 	primary-expr
@@ -31,25 +52,32 @@ int postfix_expr():
 			# Remember the callee's declared arity now; parsing the arguments
 			# below overwrites last_identifier.
 			int expected_args = -1
+			int callee_sym = -1
 			char* callee_name = 0
 			if (type == 4):
 				int callee = sym_lookup(last_identifier)
 				if (callee >= 0):
 					expected_args = sym_num_args(callee)
 					if (expected_args >= 0):
+						callee_sym = callee
 						callee_name = strclone(last_identifier)
 
 			int s = stack_pos
 			push_eax()
 			stack_pos = stack_pos + 1
 			int passed_args = 0
+			int arg_type
 			if (accept(")") == 0):
-				promote(expression())
+				arg_type = expression()
+				promote(arg_type)
+				check_call_argument(callee_sym, callee_name, 0, arg_type)
 				push_eax()
 				stack_pos = stack_pos + 1
 				passed_args = 1
 				while (accept(",")):
-					promote(expression())
+					arg_type = expression()
+					promote(arg_type)
+					check_call_argument(callee_sym, callee_name, passed_args, arg_type)
 					push_eax()
 					stack_pos = stack_pos + 1
 					passed_args = passed_args + 1

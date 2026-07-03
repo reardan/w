@@ -43,8 +43,9 @@ int free(int mem_address):
 	return 1
 
 
-# string functions
-char *realloc(char *old, int oldlen, int newlen):
+# Raw-memory function like malloc/free, so the block parameter is the
+# untyped word: callers hold blocks as char*, int*, struct pointers, etc.
+char *realloc(int old, int oldlen, int newlen):
 	char *grown = malloc(newlen)
 	int i = 0
 	while (i < oldlen):

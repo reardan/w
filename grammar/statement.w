@@ -15,6 +15,10 @@
  *     debugger ;
  *     expression ;
  */
+# Table offset of the function whose body is being parsed; return
+# statements check their expression against its declared return type.
+int current_function_symbol
+
 void statement():
 	int p1
 	int p2
@@ -106,7 +110,11 @@ void statement():
 	else if (accept("return")):
 		# A newline (or end of file) after 'return' means no return value.
 		if ((peek(";") == 0) & (token_newline == 0) & (token[0] != 0)):
-			promote(expression())
+			int return_type = expression()
+			promote(return_type)
+			int declared_type = load_int(table + current_function_symbol + 6)
+			if (types_compatible(declared_type, return_type) == 0):
+				warn_type_mismatch("return", declared_type, return_type)
 		expect_or_newline(";")
 		be_pop(stack_pos)
 		ret()

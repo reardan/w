@@ -86,7 +86,7 @@ void fill_point(point* pt):
 
 void test_argument_pointer():
 	point pt
-	fill_point(pt)
+	fill_point(&pt)
 	assert_equal(pt.x, 1)
 	assert_equal(pt.y, 2)
 	assert_equal(pt.z, 3)

@@ -18,11 +18,10 @@ int expression():
 		promote(type2)
 		pop_ebx()
 
-		# Warn when both sides carry concrete types with different pointer
-		# depths; constants (3) and functions (4) have no pointer information.
-		if ((type != 3) & (type != 4) & (type2 != 3) & (type2 != 4)):
-			if (type_get_pointer_level(type) != type_get_pointer_level(type2)):
-				warning("warning: assignment pointer level mismatch")
+		# Warn when the two sides carry conflicting types; constants (3) and
+		# functions (4) act as wildcards inside types_compatible().
+		if (types_compatible(type, type2) == 0):
+			warn_type_mismatch("assignment", type, type2)
 
 		# The store width comes from the left-hand side's type
 		int lhs_size = word_size
@@ -40,6 +39,5 @@ int expression():
 		stack_pos = stack_pos - 1
 
 		type = 3  # assignment yields the stored value
-		# later: assert(convertable(type, type2))
 
 	return type

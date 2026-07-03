@@ -30,6 +30,10 @@ current state:
 			pointer types are created on demand
 			struct fields store field type and offset information
 			int8, int16, int32 and unsigned integer types are registered
+			types_compatible() checks pointer depth, base type and struct identity
+			assignment, initialization, call-argument and return mismatches warn
+			function symbols record parameter types for call-site checks
+			make warning_test asserts warning output against fixtures
 		struct:
 			local struct values
 			mixed-width struct fields
@@ -79,7 +83,6 @@ current state:
 		pointers and structs:
 			struct values as by-value parameters are not implemented
 			new does not run constructors or initialize fields from arguments
-			pointer/type compatibility warnings are still shallow
 		debugging:
 			DWARF line info exists, but there is no built-in w --debug repl
 			no stack parser, signal handler, or debugger command server yet
@@ -99,7 +102,6 @@ current state:
 			merge symbol_table + type_table on top of hash_map
 		pointer project closure:
 			keep make pointer_test passing
-			add explicit tests for pointer/type mismatch warnings
 			decide semantics for struct values passed by value
 		c_import:
 			lexer

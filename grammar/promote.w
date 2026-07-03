@@ -1,16 +1,25 @@
 char *last_identifier
 
 
-void warn_bad_promotion(int want, int got):
-	if (want != got):
-		print2("promotion type size for ")
-		print2(last_identifier)
-		print2(": wanted '")
-		print2(itoa(want))
-		print2("' got ")
-		print2(itoa(got))
-		warning("'")
-	
+# Print a type's name followed by its pointer stars, e.g. "char**"
+void print_error_type(int type_index):
+	print_error(type_get_name(type_index))
+	for int i in range(type_get_pointer_level(type_index)):
+		print_error("*")
+
+
+# Warn that 'got' does not convert to 'want'; context names the construct
+# (assignment, initialization, return, ...)
+void warn_type_mismatch(char* context, int want, int got):
+	print_error("warning: ")
+	print_error(context)
+	print_error(" type mismatch: expected '")
+	print_error_type(want)
+	print_error("', got '")
+	print_error_type(got)
+	warning("'")
+
+
 
 /*
 Convert the lvalue address in eax into an rvalue, sized by its type.

@@ -13,10 +13,10 @@ Compiler
 		break and continue
 		Basic REPL
 		DWARF line information
+		Deeper type compatibility checks
 
 	Remaining
 		REPL compile-error recovery
-		Deeper type compatibility checks
 		Dict language/runtime type
 		UTF-8 string type
 		C header parsing / c_import

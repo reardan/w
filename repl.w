@@ -37,6 +37,7 @@ int repl_compile_line(char* path):
 
 	int current_symbol = sym_declare_global(name, 1, 2)
 	sym_define_global(current_symbol)
+	current_function_symbol = current_symbol
 	int n = table_pos
 	number_of_args = 0
 	enclosing_tab_level = 0
@@ -111,7 +112,6 @@ int main(int argc, int argv):
 		close(out)
 
 		int address = repl_compile_line(line_path)
-		int* compiled_line = address
-		compiled_line()
+		address()
 
 	return 0

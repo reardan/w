@@ -46,6 +46,9 @@ void program():
 			while (accept(")") == 0):
 				number_of_args = number_of_args + 1
 				int type = type_name()
+				# Record the declared type so call sites can check arguments
+				if (number_of_args <= sym_max_param_slots()):
+					save_int(table + current_symbol + 22 + (number_of_args << 2), type)
 				/* this seems stupid, you could just have (typename) with no identifier */
 				if (peek(")") == 0):
 					sym_declare(token, type, 'A', number_of_args, 1)
@@ -60,6 +63,7 @@ void program():
 
 			if (accept(";") == 0):
 				sym_define_global(current_symbol)
+				current_function_symbol = current_symbol
 				enclosing_tab_level = 0
 				statement()
 				ret()
