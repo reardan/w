@@ -55,3 +55,28 @@ void test_growth():
 	assert_equal(998, array_list_get(a, 499))
 	assert_equal(1998, array_list_get(a, 999))
 	array_list_free(a)
+
+
+void test_iter_empty():
+	array_list* a = array_list_new()
+	int cursor = array_list_iter_begin(a)
+	assert_equal(1, array_list_iter_done(a, cursor))
+	array_list_free(a)
+
+
+void test_iter_values_in_order():
+	array_list* a = array_list_new()
+	array_list_push(a, 4)
+	array_list_push(a, 5)
+	array_list_push(a, 6)
+
+	int cursor = array_list_iter_begin(a)
+	assert_equal(0, array_list_iter_done(a, cursor))
+	assert_equal(4, array_list_iter_value(a, cursor))
+	cursor = array_list_iter_next(a, cursor)
+	assert_equal(5, array_list_iter_value(a, cursor))
+	cursor = array_list_iter_next(a, cursor)
+	assert_equal(6, array_list_iter_value(a, cursor))
+	cursor = array_list_iter_next(a, cursor)
+	assert_equal(1, array_list_iter_done(a, cursor))
+	array_list_free(a)

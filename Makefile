@@ -49,6 +49,10 @@ net: w FORCE
 	chmod +x ./bin/net
 	./bin/net
 
+net_test: w FORCE
+	./bin/wv2 lib/net_test.w -o ./bin/net_test
+	./bin/net_test
+
 pointer_test: w FORCE
 	./bin/wv2 tests/pointer_test.w >./bin/pointer_test
 	chmod +x ./bin/pointer_test
@@ -112,7 +116,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test x64_test dynamic_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test x64_test net_64_test dynamic_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -248,6 +252,18 @@ lib_64_test: w FORCE
 	chmod +x ./bin/lib_test
 	./bin/lib_test
 
+path_64_test: w FORCE
+	./bin/wv2 x64 lib/path_test.w -o ./bin/path_64_test
+	./bin/path_64_test
+
+time_64_test: w FORCE
+	./bin/wv2 x64 lib/time_test.w -o ./bin/time_64_test
+	./bin/time_64_test
+
+net_64_test: w FORCE
+	./bin/wv2 x64 lib/net_test.w -o ./bin/net_64_test
+	./bin/net_64_test
+
 lib_64_test_debug: w FORCE
 	./bin/wv2 x64 lib/lib_test.w >./bin/lib_test
 	chmod +x ./bin/lib_test
@@ -322,6 +338,10 @@ array_list_test: w FORCE
 	./bin/wv2 structures/array_list_test.w -o ./bin/array_list_test
 	./bin/array_list_test
 
+json_test: w FORCE
+	./bin/wv2 structures/json_test.w -o ./bin/json_test
+	./bin/json_test
+
 linked_list_test: w FORCE
 	./bin/wv2 structures/linked_list_test.w -o ./bin/linked_list_test
 	./bin/linked_list_test
@@ -330,9 +350,25 @@ format_test: w FORCE
 	./bin/wv2 lib/format_test.w -o ./bin/format_test
 	./bin/format_test
 
+time_test: w FORCE
+	./bin/wv2 lib/time_test.w -o ./bin/time_test
+	./bin/time_test
+
 args_test: w FORCE
 	./bin/wv2 lib/args_test.w -o ./bin/args_test
 	./bin/args_test
+
+path_test: w FORCE
+	./bin/wv2 lib/path_test.w -o ./bin/path_test
+	./bin/path_test
+
+result_test: w FORCE
+	./bin/wv2 lib/result_test.w -o ./bin/result_test
+	./bin/result_test
+
+result_64_test: w FORCE
+	./bin/wv2 x64 lib/result_test.w -o ./bin/result_64_test
+	./bin/result_64_test
 
 wdbg: w FORCE
 	./bin/wv2 debugger/debugger.w -o ./bin/wdbg
@@ -350,7 +386,7 @@ debug_test: wdbg FORCE
 	printf 'q\n' | ./bin/wdbg tests/debug_fixture.w > /dev/null
 	@echo "debug test OK"
 
-tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:
