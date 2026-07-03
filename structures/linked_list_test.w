@@ -44,3 +44,28 @@ void test_many_elements():
 	assert_equal(0, linked_list_get(list, 0))
 	assert_equal(99, linked_list_get(list, 99))
 	linked_list_free(list)
+
+
+void test_iter_empty():
+	linked_list* list = linked_list_new()
+	int cursor = linked_list_iter_begin(list)
+	assert_equal(1, linked_list_iter_done(list, cursor))
+	linked_list_free(list)
+
+
+void test_iter_values_in_order():
+	linked_list* list = linked_list_new()
+	linked_list_push(list, 7)
+	linked_list_push(list, 8)
+	linked_list_push(list, 9)
+
+	int cursor = linked_list_iter_begin(list)
+	assert_equal(0, linked_list_iter_done(list, cursor))
+	assert_equal(7, linked_list_iter_value(list, cursor))
+	cursor = linked_list_iter_next(list, cursor)
+	assert_equal(8, linked_list_iter_value(list, cursor))
+	cursor = linked_list_iter_next(list, cursor)
+	assert_equal(9, linked_list_iter_value(list, cursor))
+	cursor = linked_list_iter_next(list, cursor)
+	assert_equal(1, linked_list_iter_done(list, cursor))
+	linked_list_free(list)

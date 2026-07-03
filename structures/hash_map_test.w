@@ -59,3 +59,32 @@ void test_growth():
 		free(key)
 		i = i + 1
 	hash_map_free(m)
+
+
+void test_iter_empty():
+	hash_map* m = hash_map_new()
+	int cursor = hash_map_iter_begin(m)
+	assert_equal(1, hash_map_iter_done(m, cursor))
+	hash_map_free(m)
+
+
+void test_iter_keys():
+	hash_map* m = hash_map_new()
+	hash_map_set(m, "one", 1)
+	hash_map_set(m, "two", 2)
+	hash_map_set(m, "three", 3)
+
+	int cursor = hash_map_iter_begin(m)
+	int count = 0
+	int sum = 0
+	while (hash_map_iter_done(m, cursor) == 0):
+		char* key = hash_map_iter_value(m, cursor)
+		assert_equal(1, hash_map_contains(m, key))
+		count = count + 1
+		sum = sum + hash_map_get(m, key)
+		cursor = hash_map_iter_next(m, cursor)
+
+	assert_equal(3, count)
+	assert_equal(6, sum)
+	assert_equal(1, hash_map_iter_done(m, cursor))
+	hash_map_free(m)
