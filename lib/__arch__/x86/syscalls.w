@@ -56,6 +56,129 @@ int sys_clone(int flags, int child_stack):
 int rt_sigaction(int signum, int* act, int* oldact):
 	return syscall7(174, signum, act, oldact, 8, 0, 0)
 
+
+/* Socket syscalls use the i386 socketcall(2) multiplexer. */
+struct sys_socket_args:
+	int family
+	int socket_type
+	int protocol
+
+
+struct sys_bind_args:
+	int sockfd
+	int addr
+	int addrlen
+
+
+struct sys_connect_args:
+	int sockfd
+	int addr
+	int addrlen
+
+
+struct sys_listen_args:
+	int sockfd
+	int backlog
+
+
+struct sys_accept_args:
+	int sockfd
+	int addr
+	int addrlen
+
+
+struct sys_socketpair_args:
+	int family
+	int socket_type
+	int protocol
+	int fds
+
+
+struct sys_sendto_args:
+	int sockfd
+	char* buf
+	int len
+	int flags
+	int addr
+	int addrlen
+
+
+struct sys_setsockopt_args:
+	int sockfd
+	int level
+	int optname
+	int optval
+	int optlen
+
+
+int sys_socket(int family, int socket_type, int protocol):
+	sys_socket_args args
+	args.family = family
+	args.socket_type = socket_type
+	args.protocol = protocol
+	return syscall(102, 1, &args, 0)
+
+
+int sys_bind(int sockfd, int addr, int addrlen):
+	sys_bind_args args
+	args.sockfd = sockfd
+	args.addr = addr
+	args.addrlen = addrlen
+	return syscall(102, 2, &args, 0)
+
+
+int sys_connect(int sockfd, int addr, int addrlen):
+	sys_connect_args args
+	args.sockfd = sockfd
+	args.addr = addr
+	args.addrlen = addrlen
+	return syscall(102, 3, &args, 0)
+
+
+int sys_listen(int sockfd, int backlog):
+	sys_listen_args args
+	args.sockfd = sockfd
+	args.backlog = backlog
+	return syscall(102, 4, &args, 0)
+
+
+int sys_accept(int sockfd, int addr, int addrlen):
+	sys_accept_args args
+	args.sockfd = sockfd
+	args.addr = addr
+	args.addrlen = addrlen
+	return syscall(102, 5, &args, 0)
+
+
+int sys_socketpair(int family, int socket_type, int protocol, int fds):
+	sys_socketpair_args args
+	args.family = family
+	args.socket_type = socket_type
+	args.protocol = protocol
+	args.fds = fds
+	return syscall(102, 8, &args, 0)
+
+
+int sys_sendto(int sockfd, char* buf, int len, int flags, int addr, int addrlen):
+	sys_sendto_args args
+	args.sockfd = sockfd
+	args.buf = buf
+	args.len = len
+	args.flags = flags
+	args.addr = addr
+	args.addrlen = addrlen
+	return syscall(102, 11, &args, 0)
+
+
+int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
+	sys_setsockopt_args args
+	args.sockfd = sockfd
+	args.level = level
+	args.optname = optname
+	args.optval = optval
+	args.optlen = optlen
+	return syscall(102, 14, &args, 0)
+
 # exit_group: terminates every thread in the process, like libc exit().
 void exit(int error_code):
 	syscall(252, error_code, 0, 0)

@@ -56,6 +56,39 @@ int sys_clone(int flags, int child_stack):
 int rt_sigaction(int signum, int* act, int* oldact):
 	return syscall7(13, signum, act, oldact, 8, 0, 0)
 
+
+/* Native socket syscalls on x86-64. */
+int sys_socket(int family, int socket_type, int protocol):
+	return syscall(41, family, socket_type, protocol)
+
+
+int sys_connect(int sockfd, int addr, int addrlen):
+	return syscall(42, sockfd, addr, addrlen)
+
+
+int sys_accept(int sockfd, int addr, int addrlen):
+	return syscall(43, sockfd, addr, addrlen)
+
+
+int sys_sendto(int sockfd, char* buf, int len, int flags, int addr, int addrlen):
+	return syscall7(44, sockfd, buf, len, flags, addr, addrlen)
+
+
+int sys_bind(int sockfd, int addr, int addrlen):
+	return syscall(49, sockfd, addr, addrlen)
+
+
+int sys_listen(int sockfd, int backlog):
+	return syscall(50, sockfd, backlog, 0)
+
+
+int sys_socketpair(int family, int socket_type, int protocol, int fds):
+	return syscall7(53, family, socket_type, protocol, fds, 0, 0)
+
+
+int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
+	return syscall7(54, sockfd, level, optname, optval, optlen, 0)
+
 # exit_group: terminates every thread in the process, like libc exit().
 void exit(int error_code):
 	syscall(231, error_code, 0, 0)
