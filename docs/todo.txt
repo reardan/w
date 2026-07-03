@@ -77,7 +77,11 @@ current state:
 		debugging information:
 			debugger statement emits int3
 			DWARF line-number data is emitted for gdb source-line mapping
-			wdbg in-process debugger (make wdbg, make debug_test)
+			wdbg in-process debugger (make wdbg, make debug_test, w --debug)
+				step/next/stepi/finish, breakpoints (function/line/file:line)
+				locals/args/globals by name, set, x, backtrace, list
+				print compiles and runs W expressions in-process
+				fatal-signal post-mortem stops (segv handler)
 		library and data structures:
 			malloc/free/realloc as a library module (lib/memory.w)
 			list
@@ -114,9 +118,9 @@ current state:
 			new initializes fields from arguments but does not run user constructors
 			struct values cannot be returned by value
 		debugging:
-			wdbg breaks only at 'debugger' statements (plus --break_start/--break_end)
-			no step/next, named breakpoints, or local inspection yet
-			no segv handler or stack parser yet
+			locals are not visible inside print's compiled expressions
+			backtrace is heuristic (return-address scan, no frame pointers)
+			no watchpoints or conditional breakpoints yet
 		x64:
 			threading, sockets and the repl/wdbg stubs are still x86-only
 			DWARF line info still declares address_size 4 (gdb only)
@@ -140,10 +144,10 @@ current state:
 			import enum values
 			lower declarations onto c_lib + extern
 		debugger:
-			fold wdbg into the compiler driver as w --debug
-			step, next, return, named breakpoints, inspect locals
+			bind locals into print's compiled expressions
+			watchpoints and conditional breakpoints
 			asm/disasm helpers
-			segv handler and stack parser
+			x64 wdbg (sigcontext_64, 8-byte slots, x64 stubs)
 		code generation:
 			webassembly hello world
 			webassembly self-compiling

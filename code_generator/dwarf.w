@@ -17,6 +17,11 @@ int debug_line_file_indexes
 int debug_line_count
 int debug_line_capacity
 
+# Stack depth (in words, relative to function entry) at each statement's
+# first instruction. The debugger uses it to address stack variables and
+# to unwind call frames at runtime; it is never emitted into the ELF.
+int debug_line_stack_pos
+
 # Registered source files (cloned names; index = DWARF file number - 1).
 int debug_files
 int debug_file_count
@@ -45,13 +50,17 @@ int debug_line_file_index():
 
 
 # Record that the code being generated at codepos comes from filename:line.
-void debug_line_note():
+# stmt_stack_pos is the symbol table's stack_pos at the statement's start,
+# passed in by the caller because this file is compiled before the symbol
+# table module and cannot reference its globals directly.
+void debug_line_note(int stmt_stack_pos):
 	if (debug_files == 0):
 		debug_files = malloc(256 * 4)
 		debug_line_capacity = 65536
 		debug_line_addresses = malloc(debug_line_capacity * 4)
 		debug_line_lines = malloc(debug_line_capacity * 4)
 		debug_line_file_indexes = malloc(debug_line_capacity * 4)
+		debug_line_stack_pos = malloc(debug_line_capacity * 4)
 	if (debug_line_count >= debug_line_capacity):
 		return;
 
@@ -69,12 +78,95 @@ void debug_line_note():
 		if (load_int(debug_line_addresses + prev * 4) == codepos):
 			save_int(debug_line_lines + prev * 4, line)
 			save_int(debug_line_file_indexes + prev * 4, file_index)
+			save_int(debug_line_stack_pos + prev * 4, stmt_stack_pos)
 			return;
 
 	save_int(debug_line_addresses + debug_line_count * 4, codepos)
 	save_int(debug_line_lines + debug_line_count * 4, line)
 	save_int(debug_line_file_indexes + debug_line_count * 4, file_index)
+	save_int(debug_line_stack_pos + debug_line_count * 4, stmt_stack_pos)
 	debug_line_count = debug_line_count + 1
+
+
+############################ runtime variable notes ############################
+# In-memory records for the in-process debugger (wdbg): where each local
+# variable and argument lives relative to the stack pointer, and how many
+# argument words each function was compiled with. Nothing here is emitted
+# into the ELF; the arrays only matter when the compiler and the debuggee
+# share a process (the repl/wdbg model).
+
+# Locals and arguments: name, stack slot index (the value sym_declare
+# stores), kind ('L' local / 'A' argument), type table index, and the
+# codepos at the declaration site (for picking the innermost shadowing
+# declaration and for scoping names to their function).
+int debug_local_names
+int debug_local_slots
+int debug_local_kinds
+int debug_local_types
+int debug_local_addresses
+int debug_local_count
+int debug_local_capacity
+
+
+void debug_local_note(char* name, int slot, int kind, int type):
+	if (debug_local_capacity == 0):
+		debug_local_capacity = 4096
+		debug_local_names = malloc(debug_local_capacity * 4)
+		debug_local_slots = malloc(debug_local_capacity * 4)
+		debug_local_kinds = malloc(debug_local_capacity * 4)
+		debug_local_types = malloc(debug_local_capacity * 4)
+		debug_local_addresses = malloc(debug_local_capacity * 4)
+	if (debug_local_count >= debug_local_capacity):
+		int old = debug_local_capacity * 4
+		debug_local_capacity = debug_local_capacity * 2
+		int x = debug_local_capacity * 4
+		debug_local_names = realloc(debug_local_names, old, x)
+		debug_local_slots = realloc(debug_local_slots, old, x)
+		debug_local_kinds = realloc(debug_local_kinds, old, x)
+		debug_local_types = realloc(debug_local_types, old, x)
+		debug_local_addresses = realloc(debug_local_addresses, old, x)
+	save_int(debug_local_names + debug_local_count * 4, strclone(name))
+	save_int(debug_local_slots + debug_local_count * 4, slot)
+	save_int(debug_local_kinds + debug_local_count * 4, kind)
+	save_int(debug_local_types + debug_local_count * 4, type)
+	save_int(debug_local_addresses + debug_local_count * 4, codepos)
+	debug_local_count = debug_local_count + 1
+
+
+# Functions: start codepos and the number of argument words the body was
+# compiled with (structs passed by value span several words, so this can
+# differ from the declared parameter count in the symbol table).
+int debug_func_starts
+int debug_func_arg_words
+int debug_func_count
+int debug_func_capacity
+
+
+void debug_func_note(int start, int arg_words):
+	if (debug_func_capacity == 0):
+		debug_func_capacity = 1024
+		debug_func_starts = malloc(debug_func_capacity * 4)
+		debug_func_arg_words = malloc(debug_func_capacity * 4)
+	if (debug_func_count >= debug_func_capacity):
+		int old = debug_func_capacity * 4
+		debug_func_capacity = debug_func_capacity * 2
+		int x = debug_func_capacity * 4
+		debug_func_starts = realloc(debug_func_starts, old, x)
+		debug_func_arg_words = realloc(debug_func_arg_words, old, x)
+	save_int(debug_func_starts + debug_func_count * 4, start)
+	save_int(debug_func_arg_words + debug_func_count * 4, arg_words)
+	debug_func_count = debug_func_count + 1
+
+
+# Argument words for the function whose body starts at codepos 'start',
+# or -1 when unknown (e.g. asm stubs).
+int debug_func_args_at(int start):
+	int i = 0
+	while (i < debug_func_count):
+		if (load_int(debug_func_starts + i * 4) == start):
+			return load_int(debug_func_arg_words + i * 4)
+		i = i + 1
+	return -1
 
 
 void emit_uleb(int v):

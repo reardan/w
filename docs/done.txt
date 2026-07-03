@@ -48,8 +48,20 @@ done:
 			in-process SIGTRAP command loop...complete!
 			continue/registers/stack/line/quit commands...complete!
 			--break_start and --break_end...complete!
-			w --debug driver integration...not complete!
-			step/next and named breakpoints...not complete!
+			w --debug driver integration...complete!
+			step/next/stepi/finish via the eflags trap flag...complete!
+			breakpoints at functions and file:line (int3 patching)...complete!
+				tbreak/delete/list, transparent re-arming...complete!
+			inspect locals/args/globals by name (typed, structs, char*)...complete!
+				compiler records per-statement stack depth + local slots...complete!
+			set variables, x memory dumps (mincore-probed)...complete!
+			heuristic backtrace through stacked return addresses...complete!
+			print evaluates W expressions in-process (repl model)...complete!
+			fatal-signal handler (SIGSEGV & co) with post-mortem loop...complete!
+			source listing (list) and location banners...complete!
+			locals inside evaluated expressions...not complete!
+			watchpoints and conditional breakpoints...not complete!
+			x64 wdbg...not complete!
 	'for' type var 'in' 'range' '(' expression ')' ...complete!
 		basic version...complete!
 		range(start, end, step)...complete!
