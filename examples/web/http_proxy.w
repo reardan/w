@@ -17,7 +17,8 @@ int main(int argc, int argv):
 	int upstream_port = web_arg_port("upstream-port", 8080)
 
 	int server = web_listen_ipv4(ip, port)
-	print_string("proxy listening on ", ip)
+	print_error("proxy listening on http://")
+	print_error(ip)
 	print_int(":", port)
 
 	int client = socket_accept_connection(server)

@@ -13,14 +13,14 @@ make build
 ./bin/wv2 examples/web/http_proxy.w -o ./bin/http_proxy
 ```
 
-Run the JSON HTTP server and client:
+Run the JSON HTTP server and client in separate terminals:
 
 ```
 ./bin/http_server --port=8080
 ./bin/http_client --port=8080 --path=/hello
 ```
 
-Run the proxy in front of the server:
+Run the proxy in front of the server in separate terminals:
 
 ```
 ./bin/http_server --port=8080

@@ -26,7 +26,8 @@ int main(int argc, int argv):
 	char* ip = web_arg_or("ip", "127.0.0.1")
 	int port = web_arg_port("port", 8080)
 	int server = web_listen_ipv4(ip, port)
-	print_string("listening on ", ip)
+	print_error("listening on http://")
+	print_error(ip)
 	print_int(":", port)
 
 	int client = socket_accept_connection(server)
