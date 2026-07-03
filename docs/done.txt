@@ -92,9 +92,12 @@ done:
 		unary operators take unary operands (C model)...complete!
 		unary + ...complete!
 		precedence test matrix in grammar_test...complete!
-	x64 mvp...partial!
+	x64 mvp...complete!
 		syscall x64...complete!
 		move machine code gen to codegen.w...complete!
 		hello world...complete!
-		lib_test on x64...not complete!
-		x64 self-compiling...not complete!
+		lib_test on x64...complete!
+		x64 self-compiling...complete!
+		per-arch modules via reserved __arch__ import segment...complete!
+		__word_size__ compile-time constant...complete!
+		verify_x64 fixpoint (wv2_64 == wv3_64 == wv4_64)...complete!

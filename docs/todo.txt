@@ -97,8 +97,8 @@ current state:
 			no step/next, named breakpoints, or local inspection yet
 			no segv handler or stack parser yet
 		x64:
-			x64 hello-world/syscall path exists
-			full x64 lib_test and self-compiling bootstrap remain open
+			threading, sockets and the repl/wdbg stubs are still x86-only
+			DWARF line info still declares address_size 4 (gdb only)
 		webassembly:
 			no backend implementation yet
 
@@ -121,8 +121,6 @@ current state:
 			asm/disasm helpers
 			segv handler and stack parser
 		code generation:
-			full x64 lib_test
-			x64 self-compiling
 			webassembly hello world
 			webassembly self-compiling
 		directory and build cleanup:

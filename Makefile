@@ -99,6 +99,21 @@ x64_test: w FORCE
 	chmod +x ./bin/x64_test
 	./bin/x64_test
 
+build_x64: w FORCE
+	./bin/wv2 x64 w.w -o ./bin/wv2_64
+	./bin/wv2_64 x64 w.w -o ./bin/wv3_64
+	./bin/wv3_64 x64 w.w -o ./bin/wv4_64
+
+# x64 self-host fixpoint check, mirroring 'verify'. wv2_64 is built by the
+# x86-hosted compiler, so the first cmp also proves the output does not
+# depend on the host word size.
+verify_x64: build_x64
+	cmp ./bin/wv2_64 ./bin/wv3_64
+	cmp ./bin/wv3_64 ./bin/wv4_64
+	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
+
+tests_x64: verify_x64 lib_64_test x64_test FORCE
+
 x64_test_debug: w FORCE
 	./bin/wv2 x64 tests/x64_test.w >./bin/x64_test
 	chmod +x ./bin/x64_test
@@ -292,7 +307,7 @@ debug_test: wdbg FORCE
 	printf 'q\n' | ./bin/wdbg tests/debug_fixture.w > /dev/null
 	@echo "debug test OK"
 
-tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test debug_test test hello FORCE
+tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test debug_test test hello tests_x64 FORCE
 
 
 clean:

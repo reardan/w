@@ -23,11 +23,13 @@ I've added the following features:
 - built-in debugger via `make wdbg`: `./bin/wdbg file.w` traps on `debugger`
   statements into a continue/registers/stack/line command loop
 - `lib/args.w` command-line argument parsing helpers
+- full x64 support: self-hosting fixpoint (`make verify_x64`), `make lib_64_test`,
+  per-architecture modules via the reserved `__arch__` import segment, and a
+  `__word_size__` compile-time constant
 
 Current major open areas:
 - import-scoped type metadata
 - REPL local persistence between entries
-- full x64 self-hosting
 - WebAssembly backend
 - debugger stepping and `w --debug` driver integration / web UI
 - for-in iteration and generators (design: `docs/projects/iteration.md`)

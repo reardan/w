@@ -41,11 +41,7 @@ Platform
 	Done
 		Linux
 		x86
-
-	Partial
-		x64 hello-world/syscall path
+		x64 (lib_test + self-compiling fixpoint, make tests_x64)
 
 	Remaining
-		x64 lib_test
-		x64 self-compiling
 		WebAssembly
