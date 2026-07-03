@@ -1,10 +1,11 @@
 # REPL v1 Design: multi-line entries, persistence, and `repl file.w`
 
-Status: design / plan. Nothing here is implemented yet. Goal: make the
-REPL feel like Python's — you can define functions and structs at the
-prompt, values survive between entries, bare expressions echo their
-result, and `./bin/repl file.w` runs a program and then drops into a
-prompt with all of its symbols live (the `python -i` workflow).
+Status: **implemented** (see `repl.w`, the `repl_test` Makefile target and
+the notes at the bottom). Goal: make the REPL feel like Python's — you can
+define functions and structs at the prompt, values survive between
+entries, bare expressions echo their result, and `./bin/repl file.w` runs
+a program and then drops into a prompt with all of its symbols live (the
+`python -i` workflow).
 
 ## Current state (verified against `repl.w` at head)
 
@@ -242,3 +243,37 @@ stay byte-identical) and the full `make tests`.
 6. File-load-then-attach mode: import-registry fix, `exit(1)` →
    `error()` paths, argv forwarding, `--no-main`.
 7. Test matrix + docs updates.
+
+## Implementation notes (deltas from the plan above)
+
+- **Jump-over regions instead of ordering constraints.** The entry's
+  anonymous function is defined at the start of the entry, and every
+  region that must not execute inline — module code from imports,
+  extern shims, function bodies, global storage words — is wrapped in a
+  `jmp rel32` (`repl_skip_start`/`repl_skip_end` in `repl.w`). This lets
+  declarations and statements interleave freely in one single-pass
+  compile: `int q = 3; q + 4` works, as does a function definition
+  followed by statements in the same entry.
+- **Echo knows call return types.** `expression()` returns "constant"
+  (3) for every call, which would echo a `void` call's garbage eax. The
+  call compiler in `grammar/postfix_expr.w` now records the callee's
+  declared return type (`last_call_return_type`/`last_call_end`); when
+  an entry's bare expression *ends* in a call, that type drives the
+  echo: `print(...)` stays silent, `itoa(5)` prints `5` as a string.
+- **Prototypes resolve, definitions shadow.** `repl_declare_global`
+  reuses an existing 'U' symbol (so a prototype's backpatch chain of
+  pending call sites resolves), but shadows a 'D' one with a fresh
+  symbol.
+- **Loading a file with no `main` is not fatal**: the REPL checks the
+  symbol is defined ('D') before calling, since a 'U' symbol's address
+  slot holds its backpatch chain, and continues to the prompt either
+  way.
+- **Unterminated string literals are rejected by the reader** (the
+  tokenizer cannot recover from one); the scanner treats an open string
+  as a continuation, so multi-line strings still work.
+- The flag is spelled `--no_main` (lib/args flag parsing convention).
+
+Known limitations (documented in `docs/todo.txt`): calls compiled before
+a redefinition keep the old binding; `struct` redefinition keeps the
+first definition because `type_lookup` returns the first match; no line
+editing/history yet.

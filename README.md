@@ -91,7 +91,7 @@ x86-64 system.
 | `lib/` | Standard library: syscalls, memory, strings, math, format, args, assert/testing |
 | `lib/__arch__/{x86,x64}/` | Per-architecture modules (syscalls, register context, ELF introspection) selected by the reserved `__arch__` import segment |
 | `structures/` | hash map, array list, linked list, string builder (+ their tests) |
-| `repl.w` | Interactive REPL: compiles each line into an mmap buffer and calls it |
+| `repl.w` | Interactive REPL: compiles each entry into an mmap buffer and calls it; definitions persist |
 | `debugger/` | `wdbg`, an in-process SIGTRAP debugger driven by `debugger` statements |
 | `tests/` | End-to-end test programs and compile-only warning fixtures |
 | `docs/` | Design notes; `docs/projects/` holds larger design docs |
@@ -127,10 +127,16 @@ Implemented and covered by tests:
 
 Toolchain beyond the compiler:
 
-- **REPL** (`make repl`): each line compiles as the body of a fresh anonymous
-  function into an executable mmap buffer and runs immediately; compile errors
-  roll back via checkpoint instead of killing the process. Known limitation:
-  locals do not persist between lines. `:quit` exits.
+- **REPL** (`make repl`): each entry compiles into an executable mmap buffer
+  and runs immediately. Entries span multiple lines Python-style (a line
+  ending in `:` opens a block, a blank line ends it), so functions, structs,
+  imports and control flow work at the prompt. Top-level declarations become
+  persistent globals; redefining a name shadows the old binding; a bare
+  expression echoes its value. `./bin/repl file.w [args...]` compiles and
+  runs a program first, then attaches the prompt to its live definitions
+  (`--no_main` skips running `main`). Compile errors roll back via
+  checkpoint instead of killing the process. `:quit` exits, `:help` helps
+  (see `docs/projects/repl.md`).
 - **Debugger** (`make wdbg`): `./bin/wdbg file.w` compiles and runs the program
   in-process, trapping on `debugger` statements into a command loop —
   `c`ontinue, `r`egisters, `s`tack, `l`ine, `q`uit (see `debug_test` in the
@@ -176,7 +182,7 @@ archives the old seed to `old/` first.
   `docs/projects/iteration.md` (nothing implemented yet).
 - CUDA backend Stage 2, the PTX emitter — Stages 0–1 (x64 self-hosting and
   dynamic linking to libcuda) are done; see `docs/projects/cuda.md`.
-- REPL local persistence between entries.
+- REPL line editing/history, and evaluating expressions at a wdbg breakpoint.
 - Debugger stepping and a `w --debug` driver integration / web UI.
 - Import-scoped type metadata.
 - WebAssembly backend.
