@@ -5,6 +5,10 @@ current state:
 	repl:
 		make repl builds a terminal REPL
 		make repl_test verifies interaction and compile-error recovery
+		multi-line entries: functions, structs, imports at the prompt
+		top-level declarations persist between entries
+		bare expressions echo their value
+		repl file.w runs a file, then attaches the prompt
 		compile errors return to the prompt
 	debugging:
 		DWARF line information is emitted for gdb

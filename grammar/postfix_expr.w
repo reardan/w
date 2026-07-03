@@ -1,3 +1,10 @@
+# Declared return type of the most recently compiled call (-1 when the
+# callee is unknown) and the code position right after its cleanup. Only
+# the REPL reads these, to avoid echoing a void call's garbage result.
+int last_call_return_type
+int last_call_end
+
+
 # Warn when a call argument's type conflicts with the callee's declared
 # parameter type. callee is the callee's symbol table offset (< 0 when the
 # callee is unknown, e.g. calls through pointers); arg_index is 0-based.
@@ -74,9 +81,11 @@ int postfix_expr():
 			int expected_args = -1
 			int callee_sym = -1
 			char* callee_name = 0
+			int declared_return = -1
 			if (type == 4):
 				int callee = sym_lookup(last_identifier)
 				if (callee >= 0):
+					declared_return = load_int(table + callee + 6)
 					expected_args = sym_num_args(callee)
 					if (expected_args >= 0):
 						callee_sym = callee
@@ -122,6 +131,8 @@ int postfix_expr():
 			be_pop(stack_pos - s)
 			stack_pos = s
 			type = 3  # call results are plain values
+			last_call_return_type = declared_return
+			last_call_end = codepos
 
 		else if (accept(".")):
 			# Struct pointers are loaded first so fields work through them

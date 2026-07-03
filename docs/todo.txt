@@ -90,13 +90,26 @@ current state:
 		repl:
 			make repl builds and runs repl.w
 			make repl_test verifies REPL interaction and error recovery
-			lines compile into an executable mmap buffer and run immediately
+			entries compile into an executable mmap buffer and run immediately
+			multi-line entries (functions, structs, control flow), Python-style:
+				':' opens a block ended by a blank line, brackets keep reading
+			interactive auto-indent (tty only): ':' indents the next line,
+				return/break/continue/pass dedent, a blank line dedents one
+				level and ends the entry at column 0
+			top-level declarations persist between entries (storage in the buffer)
+			redefinition shadows the old symbol (Python-style rebinding)
+			bare expressions echo their value by compile-time type
+			imports and extern/c_lib declarations work at the prompt
+			./bin/repl file.w [args...] runs a file, then attaches the prompt
+				to its live definitions (--no_main skips running main)
 			compile errors roll back state and return to the prompt
 
 	current limitations:
 		repl:
-			one line per entry
-			local variables do not persist between entries
+			calls compiled before a redefinition keep the old binding
+			struct redefinition keeps the first definition (type_lookup
+				returns the first match)
+			no line editing or history (needs termios raw mode)
 		pointers and structs:
 			new initializes fields from arguments but does not run user constructors
 			struct values cannot be returned by value
@@ -111,8 +124,9 @@ current state:
 			no backend implementation yet
 
 	next priorities:
-		repl persistence:
-			persist locals between entries (needs its own design)
+		repl:
+			line editing and history (termios raw mode)
+			evaluate expressions at a wdbg breakpoint
 		type system:
 			finish type.fields usage for globals and imports
 			use type.w as the language meta-type

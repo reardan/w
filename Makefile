@@ -276,9 +276,29 @@ repl: w FORCE
 repl_test: w FORCE
 	./bin/wv2 repl.w -o ./bin/repl
 	printf 'print("hello from the repl\\x0a")\n:quit\n' | ./bin/repl | grep -q "hello from the repl"
-	# A bad line must not kill the process, and later lines must still work
+	# A bad entry must not kill the process, and later entries must still work
 	printf 'this is not valid w\nprint("recovered\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered"
-	printf 'print("no closing paren"\nint x = = 3\nprint("second recovery\\x0a")\n:quit\n' | ./bin/repl | grep -q "second recovery"
+	printf 'int x = = 3\nqq + 1\nprint("second recovery\\x0a")\n:quit\n' | ./bin/repl | grep -q "second recovery"
+	# Multi-line function definitions persist and are callable
+	printf 'int add(int a, int b):\n\treturn a + b\n\nadd(40, 2)\n:quit\n' | ./bin/repl | grep -q "42"
+	# Interactive (pty) sessions auto-indent block bodies: no tabs typed here
+	printf 'int fib(int n):\nif (n < 2):\nreturn n\nreturn fib(n - 1) + fib(n - 2)\n\nfib(10)\n:quit\n' | script -qc './bin/repl' /dev/null | grep -q "55"
+	# Top-level variables persist between entries; bare expressions echo
+	printf 'int x = 5\nx + 1\n:quit\n' | ./bin/repl | grep -q "6"
+	# Redefinition shadows (Python-style rebinding); assignments stay silent
+	printf 'int x = 5\nchar* x = "shadowed"\nx\n:quit\n' | ./bin/repl | grep -q "shadowed"
+	! printf 'int y = 3\ny = 9\n:quit\n' | ./bin/repl | grep -q "9"
+	# Structs, new and imports work at the prompt
+	printf 'struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n' | ./bin/repl | grep -q "7"
+	printf 'import structures.string\nstring* s = string_from("imported")\ns.data\n:quit\n' | ./bin/repl | grep -q "imported"
+	# Errors inside multi-line entries and failed imports both recover
+	printf 'int bad():\n\treturn qq\n\nprint("recovered fn\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered fn"
+	printf 'import no.such.module\nprint("recovered import\\x0a")\n:quit\n' | ./bin/repl 2>/dev/null | grep -q "recovered import"
+	# Run a file, then attach the prompt to its live definitions
+	printf ':quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "fixture main ran"
+	printf 'fixture_helper(21)\nfixture_global\n:quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "42"
+	printf 'fixture_global\n:quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "11"
+	! printf ':quit\n' | ./bin/repl tests/repl_fixture.w --no_main | grep -q "fixture main ran"
 	@echo "repl test OK"
 
 for_test: w FORCE
@@ -366,7 +386,7 @@ debug_test: wdbg FORCE
 	printf 'q\n' | ./bin/wdbg tests/debug_fixture.w > /dev/null
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:
