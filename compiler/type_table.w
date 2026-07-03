@@ -181,6 +181,8 @@ int type_real(int type_index):
 
 int type_get_alias_target(int type_index):
 	type_index = type_real(type_index)
+	if (type_index < 0):
+		return -1
 	int t = get(type_index)
 	if (load_int(t + 820) != type_kind_alias):
 		return -1
@@ -189,6 +191,8 @@ int type_get_alias_target(int type_index):
 
 int type_canonical(int type_index):
 	type_index = type_real(type_index)
+	if (type_index < 0):
+		return type_index
 	int guard = 0
 	while ((type_index >= 0) & (type_get_alias_target(type_index) >= 0) & (guard < 100)):
 		type_index = type_get_alias_target(type_index)
@@ -198,6 +202,8 @@ int type_canonical(int type_index):
 
 int type_get_const_target(int type_index):
 	type_index = type_real(type_index)
+	if (type_index < 0):
+		return -1
 	int t = get(type_index)
 	if (load_int(t + 820) != type_kind_const):
 		return -1
@@ -206,10 +212,14 @@ int type_get_const_target(int type_index):
 
 int type_unqualified(int type_index):
 	type_index = type_canonical(type_index)
+	if (type_index < 0):
+		return type_index
 	int guard = 0
 	while ((type_index >= 0) & (type_get_const_target(type_index) >= 0) & (guard < 100)):
 		type_index = type_get_const_target(type_index)
 		type_index = type_canonical(type_index)
+		if (type_index < 0):
+			return type_index
 		guard = guard + 1
 	return type_index
 
@@ -257,6 +267,8 @@ int type_push_const(int target):
 
 int type_get_kind(int type_index):
 	type_index = type_canonical(type_index)
+	if (type_index < 0):
+		return 0
 	int t = get(type_index)
 	return load_int(t + 820)
 
@@ -269,6 +281,8 @@ void type_set_kind(int type_index, int kind):
 
 int type_get_element_type(int type_index):
 	type_index = type_canonical(type_index)
+	if (type_index < 0):
+		return -1
 	int t = get(type_index)
 	return load_int(t + 816)
 
