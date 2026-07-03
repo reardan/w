@@ -37,6 +37,11 @@ int getdents(int file, char* buf, int count):
 int getcwd(char* buf, int size):
 	return syscall(183, buf, size, 0)
 
+# i386 time(2) returns a 32-bit time_t and overflows after 2038-01-19
+# 03:14:07 UTC. Use clock_gettime64 (403) here in the future.
+int linux_time(int* out):
+	return syscall(13, out, 0, 0)
+
 /* memory and threading */
 # The heap allocator built on brk lives in lib/memory.w
 int brk(char* addr):
