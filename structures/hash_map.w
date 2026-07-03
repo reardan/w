@@ -129,6 +129,7 @@ int hash_map_iter_begin(hash_map* map):
 	return hash_map_iter_find(map, 0)
 
 
+# Do not mutate the map while iterating.
 int hash_map_iter_done(hash_map* map, int cursor):
 	return cursor >= map.capacity
 
@@ -137,7 +138,10 @@ int hash_map_iter_next(hash_map* map, int cursor):
 	return hash_map_iter_find(map, cursor + 1)
 
 
+# Yields keys; call hash_map_get(map, key) for the value.
 int hash_map_iter_value(hash_map* map, int cursor):
+	assert1(cursor < map.capacity)
+	assert1(map.keys[cursor] != 0)
 	return map.keys[cursor]
 
 

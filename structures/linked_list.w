@@ -50,11 +50,13 @@ int linked_list_iter_begin(linked_list* list):
 	return list.head
 
 
+# Do not mutate the list while iterating.
 int linked_list_iter_done(linked_list* list, int cursor):
 	return cursor == 0
 
 
 int linked_list_iter_next(linked_list* list, int cursor):
+	assert1(cursor != 0)
 	linked_list_node* node = cursor
 	return node.next
 

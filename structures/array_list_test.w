@@ -71,14 +71,12 @@ void test_iter_values_in_order():
 	array_list_push(a, 6)
 
 	int cursor = array_list_iter_begin(a)
-	int count = 0
-	int sum = 0
-	while (array_list_iter_done(a, cursor) == 0):
-		count = count + 1
-		sum = sum + array_list_iter_value(a, cursor)
-		cursor = array_list_iter_next(a, cursor)
-
-	assert_equal(3, count)
-	assert_equal(15, sum)
+	assert_equal(0, array_list_iter_done(a, cursor))
+	assert_equal(4, array_list_iter_value(a, cursor))
+	cursor = array_list_iter_next(a, cursor)
+	assert_equal(5, array_list_iter_value(a, cursor))
+	cursor = array_list_iter_next(a, cursor)
+	assert_equal(6, array_list_iter_value(a, cursor))
+	cursor = array_list_iter_next(a, cursor)
 	assert_equal(1, array_list_iter_done(a, cursor))
 	array_list_free(a)
