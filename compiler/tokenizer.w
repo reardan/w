@@ -93,6 +93,9 @@ void read_until_end():
 int spaces_warned_line
 
 void get_token():
+	if (token_size == 0):
+		token_size = 20
+		token = malloc(token_size)
 	token_newline = 0
 	int w = 1
 	int prev_whitespace
@@ -119,13 +122,14 @@ void get_token():
 
 		# Prefixed string literals: s"..." is a UTF-8 string descriptor,
 		# c"..." is the legacy char* literal spelling.
-		if ((token_i == 1) & ((token[0] == 's') | (token[0] == 'c')) & (nextc == '"')):
-			takechar()
-			while (nextc != '"'):
-				if (nextc == 92):
+		if (token_i == 1):
+			if (((token[0] == 's') | (token[0] == 'c')) & (nextc == '"')):
+				takechar()
+				while (nextc != '"'):
+					if (nextc == 92):
+						takechar()
 					takechar()
 				takechar()
-			takechar()
 
 		# Float literals: a digit-leading token absorbs a fraction ('3.25')
 		# and a signed exponent ('1.5e-3', '2E+10') into one token.
