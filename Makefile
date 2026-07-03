@@ -112,7 +112,30 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test x64_test FORCE
+tests_x64: verify_x64 lib_64_test x64_test dynamic_test_x64 FORCE
+
+# Dynamic linking: call libc through extern declarations and check the
+# result against the raw syscall. dynamic_test links the 32-bit libc,
+# dynamic_test_x64 the 64-bit libc.
+dynamic_test: w FORCE
+	./bin/wv2 tests/dynamic_test.w >./bin/dynamic_test
+	chmod +x ./bin/dynamic_test
+	./bin/dynamic_test | grep -q "dynamic linking OK"
+	@echo "dynamic test OK"
+
+dynamic_test_x64: w FORCE
+	./bin/wv2 x64 tests/dynamic_test.w >./bin/dynamic_test_x64
+	chmod +x ./bin/dynamic_test_x64
+	./bin/dynamic_test_x64 | grep -q "dynamic linking OK"
+	@echo "dynamic test x64 OK"
+
+# JIT-load a hand-written PTX kernel through libcuda and run vector add on
+# the GPU. Requires an NVIDIA driver + GPU, so it is not part of 'tests'.
+cuda_smoke: w FORCE
+	./bin/wv2 x64 tests/cuda_smoke.w >./bin/cuda_smoke
+	chmod +x ./bin/cuda_smoke
+	./bin/cuda_smoke | grep -q "cuda vector add OK"
+	@echo "cuda smoke OK"
 
 x64_test_debug: w FORCE
 	./bin/wv2 x64 tests/x64_test.w >./bin/x64_test
@@ -307,7 +330,7 @@ debug_test: wdbg FORCE
 	printf 'q\n' | ./bin/wdbg tests/debug_fixture.w > /dev/null
 	@echo "debug test OK"
 
-tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test debug_test test hello tests_x64 FORCE
+tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test debug_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:

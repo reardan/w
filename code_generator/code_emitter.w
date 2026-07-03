@@ -14,6 +14,13 @@ int word_size_log2
 # with the -o flag.
 int output_fd
 
+# File offset of the program header table and of the rel32 displacement in
+# the entry stub's "call _main". Both shift when the header layout changes
+# (e.g. reserving extra program headers for dynamic linking), so the finish
+# pass patches these recorded positions instead of hardcoded constants.
+int phdr_table_pos
+int entry_call_disp_pos
+
 
 void resize_code(int n):
 	if (code_size <= codepos + n):

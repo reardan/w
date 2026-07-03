@@ -4,6 +4,13 @@ import code_generator.x64_asm
 
 
 int sym_address(char *s);  /* from symbol_table.w */
+void elf_emit_dynamic();   /* from elf_dynamic.w */
+
+
+# One PT_LOAD plus three slots reserved for PT_INTERP / PT_DYNAMIC when the
+# program imports shared libraries; they stay PT_NULL (ignored) otherwise.
+int elf_phdr_count_64():
+	return 4
 
 
 void elf_header_64():
@@ -14,13 +21,13 @@ void elf_header_64():
 	emit_int16(2) /* type */
 	emit_int16(62)  /* machine  3:x86, 62: x64, ?:ARM */
 	emit_int32(1) /* version */
-	emit_int64(base_code_offset + header_size + program_header_size) /* entry */
+	emit_int64(base_code_offset + header_size + program_header_size * elf_phdr_count_64()) /* entry */
 	emit_int64(64) /* program header offset */
 	emit_int64(0) /* segment header offset */
 	emit_int32(0) /* flags */
 	emit_int16(header_size) /* size of this elf header */
 	emit_int16(program_header_size) /* size per program header */
-	emit_int16(1) /* number of program headers */
+	emit_int16(elf_phdr_count_64()) /* number of program headers */
 	emit_int16(section_header_size) /* size per section header  */
 	emit_int16(0) /* number of section headers */
 	emit_int16(0) /* section header string table index */
@@ -74,7 +81,13 @@ void elf_start_64():
 	elf_header(2)
 	elf_header_64()
 
+	# PT_LOAD covers the whole image; the rest start as PT_NULL and are
+	# filled in by elf_emit_dynamic() when there are imports.
+	phdr_table_pos = codepos
 	elf_program_header_64(1)
+	elf_program_header_64(0)
+	elf_program_header_64(0)
+	elf_program_header_64(0)
 
 	/* setup command line args */
 	emit(6, "\x48\x8d\x44\x24\x08\x50")
@@ -82,6 +95,7 @@ void elf_start_64():
 
 	emit(5, "\xe8....")
 	/* call [first function ] - set with the save_int() at the end of this func */
+	entry_call_disp_pos = codepos - 4
 
 	/* exit cleanly if _main returns: mov edi,eax ; mov eax,231 (exit_group) ; syscall */
 	emit(9, "\x89\xc7\xb8\xe7\x00\x00\x00\x0f\x05")
@@ -95,6 +109,10 @@ void elf_finish_64():
 		print_error(hex(codepos))
 		print_error("'\x0a")
 
+	# Append .interp/.dynamic/relocations and fill the reserved program
+	# headers; a no-op when nothing was imported with c_lib/extern.
+	elf_emit_dynamic()
+
 	# Store pointer to library _main()
 	int t = sym_address("_main")
 	# As a backup, try to use main()
@@ -103,20 +121,14 @@ void elf_finish_64():
 		t = sym_address("main")
 	if (t == 0):
 		error("Failed to find a _main() function. Did you import lib/testing?")
-	t = t - code_offset - 94 - 37
+	# rel32 = target - address of the instruction after the 5-byte call
+	t = t - code_offset - entry_call_disp_pos - 4
 
-	if (verbosity >= 1):
-		print_error("looking up _main() t = ")
-		print_error(itoa(t))
-		print_error("\x0aold start = ")
-		print_error(itoa(load_int(code + 90)))
-		print_error("\x0a")
+	save_int32(code + entry_call_disp_pos, t)
 
-	save_int32(code + 90 + 37, t)
-
-	# Save the size
-	save_int64(code + 64 + 32, codepos) /* FileSize */
-	save_int64(code + 72 + 32, codepos) /* MemSize */
+	# Save the size (p_filesz / p_memsz of the PT_LOAD program header)
+	save_int64(code + phdr_table_pos + 32, codepos) /* FileSize */
+	save_int64(code + phdr_table_pos + 40, codepos) /* MemSize */
 
 	write(output_fd, code, codepos)
 
