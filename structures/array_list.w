@@ -55,6 +55,24 @@ int array_list_get(array_list* list, int index):
 	return list.items[index]
 
 
+int array_list_iter_begin(array_list* list):
+	return 0
+
+
+# Do not mutate the list while iterating.
+int array_list_iter_done(array_list* list, int cursor):
+	return cursor >= list.length
+
+
+int array_list_iter_next(array_list* list, int cursor):
+	return cursor + 1
+
+
+int array_list_iter_value(array_list* list, int cursor):
+	assert1(cursor < list.length)
+	return list.items[cursor]
+
+
 void array_list_set(array_list* list, int index, int value):
 	assert1(index < list.length)
 	list.items[index] = value
