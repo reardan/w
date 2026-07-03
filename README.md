@@ -30,3 +30,4 @@ Current major open areas:
 - full x64 self-hosting
 - WebAssembly backend
 - debugger stepping and `w --debug` driver integration / web UI
+- for-in iteration and generators (design: `docs/projects/iteration.md`)

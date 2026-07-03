@@ -130,10 +130,9 @@ current state:
 			split Makefile into smaller files when the project structure settles
 
 	future language features:
-		generators
-		iterators (design brainstorm: docs/projects/iteration.md)
-		for-in over iterable values (design brainstorm: docs/projects/iteration.md)
-		yield
+		generators + yield (design: docs/projects/iteration.md, stackful coroutines)
+		iterators (design: docs/projects/iteration.md, cursor function convention)
+		for-in over iterable values (design: docs/projects/iteration.md)
 		stream class
 		file class
 		template strings
