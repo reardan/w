@@ -385,42 +385,8 @@ void print_words(int addr, int count):
 		print(hex(addr))
 		print(": ")
 		println(hex(*addr))
-		addr = addr + 4
+		addr = addr + __word_size__
 		i = i + 1
-
-
-
-struct register_context:
-	int32 eax
-	int32 ecx
-	int32 edx
-	int32 ebx
-	int32 esp
-	int32 ebp
-	int32 esi
-	int32 edi
-
-
-void print_stack():
-	println2("Stack:")
-	register_context context
-	get_context(&context)
-	print_words(context.esp, 20)
-
-
-void print_registers():
-	println2("Registers:")
-	register_context context
-	get_context(&context)
-	print_hex("eax: ", context.eax)
-	print_hex("ecx: ", context.ecx)
-	print_hex("edx: ", context.edx)
-	print_hex("ebx: ", context.ebx)
-	print_hex("esp: ", context.esp)
-	print_hex("ebp: ", context.ebp)
-	print_hex("esi: ", context.esi)
-	print_hex("edi: ", context.edi)
-	println2("")
 
 
 # /usr/include/asm-generic/errno-base.h
@@ -701,4 +667,9 @@ int translate_syscall_failure(int err):
 	else:
 		println2("Unknown error number")
 	exit(1)
+
+
+# Imported last so the arch modules can call the helpers defined above
+# (the single-pass compiler needs callees declared before use).
+import lib.__arch__.context
 

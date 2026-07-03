@@ -118,7 +118,9 @@ int link(int argc, int argv):
 	int i = 1
 	word_size = 4
 	word_size_log2 = 2
-	int first_arg = argv + word_size
+	# argv strides by the HOST pointer size: __word_size__ was baked in
+	# when this compiler binary was itself compiled
+	int first_arg = argv + __word_size__
 	if (strcmp(*first_arg, "x64") == 0):
 		println2("Compiling in x64 mode")
 		word_size =  8
@@ -134,11 +136,11 @@ int link(int argc, int argv):
 	char* output_path = 0
 
 	while (i < argc):
-		char** arg = argv + i * 4
+		char** arg = argv + i * __word_size__
 		if (strcmp(*arg, "-o") == 0):
 			i = i + 1
 			asserts("-o requires an output path", i < argc)
-			arg = argv + i * 4
+			arg = argv + i * __word_size__
 			output_path = *arg
 		else:
 			print_error("compiling '")

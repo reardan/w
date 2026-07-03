@@ -65,7 +65,12 @@ int load_int64(char *p):
 
 
 int load_int32(char *p):
-	return load_i(p, 4)
+	int result = load_i(p, 4)
+	# Sign-extend on 64-bit hosts so 4-byte fields (e.g. a stored -1) load
+	# with the same int semantics as on 32-bit hosts
+	if (__word_size__ == 8):
+		result = (result << 32) >> 32
+	return result
 
 
 int load_int16(char *p):
