@@ -93,6 +93,9 @@ current state:
 			entries compile into an executable mmap buffer and run immediately
 			multi-line entries (functions, structs, control flow), Python-style:
 				':' opens a block ended by a blank line, brackets keep reading
+			interactive auto-indent (tty only): ':' indents the next line,
+				return/break/continue/pass dedent, a blank line dedents one
+				level and ends the entry at column 0
 			top-level declarations persist between entries (storage in the buffer)
 			redefinition shadows the old symbol (Python-style rebinding)
 			bare expressions echo their value by compile-time type

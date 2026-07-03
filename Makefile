@@ -265,6 +265,8 @@ repl_test: w FORCE
 	printf 'int x = = 3\nqq + 1\nprint("second recovery\\x0a")\n:quit\n' | ./bin/repl | grep -q "second recovery"
 	# Multi-line function definitions persist and are callable
 	printf 'int add(int a, int b):\n\treturn a + b\n\nadd(40, 2)\n:quit\n' | ./bin/repl | grep -q "42"
+	# Interactive (pty) sessions auto-indent block bodies: no tabs typed here
+	printf 'int fib(int n):\nif (n < 2):\nreturn n\nreturn fib(n - 1) + fib(n - 2)\n\nfib(10)\n:quit\n' | script -qc './bin/repl' /dev/null | grep -q "55"
 	# Top-level variables persist between entries; bare expressions echo
 	printf 'int x = 5\nx + 1\n:quit\n' | ./bin/repl | grep -q "6"
 	# Redefinition shadows (Python-style rebinding); assignments stay silent

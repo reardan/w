@@ -97,6 +97,22 @@ void repl_scan_line(char* s):
 string* repl_line
 string* repl_entry
 
+# 1 when stdin is a terminal. Auto-indent only makes sense interactively:
+# piped scripts carry their own explicit tabs.
+int repl_interactive
+
+# Tabs the next continuation line starts with (echoed after the prompt
+# and stored into the entry, so what you see is what compiles).
+int repl_auto_indent
+
+
+# 1 when fd is a terminal: ioctl(fd, TCGETS) only succeeds on ttys.
+int repl_isatty(int fd):
+	char* termios_buf = malloc(64)
+	int result = syscall(54, fd, 0x5401, termios_buf)
+	free(termios_buf)
+	return result == 0
+
 
 # Read one line from stdin into s; returns 0 on end of input.
 int repl_read_line(string* s):
@@ -110,16 +126,66 @@ int repl_read_line(string* s):
 	return 1
 
 
+int repl_count_leading_tabs(char* s):
+	int n = 0
+	while (s[n] == 9):
+		n = n + 1
+	return n
+
+
+# 1 when the line's first token is exactly word (after leading whitespace).
+int repl_first_token_is(char* s, char* word):
+	int i = 0
+	while ((s[i] == 9) | (s[i] == ' ')):
+		i = i + 1
+	int j = 0
+	while (word[j]):
+		if (s[i + j] != word[j]):
+			return 0
+		j = j + 1
+	char c = s[i + j]
+	if ((('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) |
+			(('0' <= c) & (c <= '9')) | (c == '_')):
+		return 0
+	return 1
+
+
+# Update repl_auto_indent from the line just scanned. line_indent is the
+# indent the line actually got (auto tabs plus any the user typed).
+# A ':' opens a deeper level; a line that leaves its block (return,
+# break, continue, pass) comes back out one level, like Python's IDLE.
+void repl_update_indent(char* typed, int line_indent):
+	if (repl_scan_last_char == ':'):
+		repl_auto_indent = line_indent + 1
+	else if (repl_scan_last_char == 0):
+		pass /* blank or comment-only line: keep the current level */
+	else if (repl_first_token_is(typed, "return") | repl_first_token_is(typed, "break") |
+			repl_first_token_is(typed, "continue") | repl_first_token_is(typed, "pass")):
+		repl_auto_indent = line_indent - 1
+		if (repl_auto_indent < 0):
+			repl_auto_indent = 0
+	else:
+		repl_auto_indent = line_indent
+
+
+void repl_print_tabs(int n):
+	for int t in range(n):
+		print("\x09")
+
+
 # Read one entry (possibly several lines) into repl_entry; returns 0 on
 # end of input at the primary prompt. Continuation rules, Python-style:
 # a line whose last significant character is ':' opens a block that ends
 # at the next blank line; unbalanced brackets, an open block comment or
 # an open string literal keep the entry going regardless of blank lines.
+# On a terminal, continuation lines start auto-indented; a blank line
+# dedents one level, and a blank line at column 0 ends the entry.
 int repl_read_entry():
 	string_clear(repl_entry)
 	repl_scan_depth = 0
 	repl_scan_comment = 0
 	repl_scan_string = 0
+	repl_auto_indent = 0
 	print("w> ")
 	if (repl_read_line(repl_line) == 0):
 		return 0
@@ -127,17 +193,30 @@ int repl_read_entry():
 	repl_scan_line(repl_line.data)
 	int block_mode = (repl_scan_last_char == ':')
 	int open_state = (repl_scan_depth > 0) | repl_scan_comment | (repl_scan_string != 0)
+	repl_update_indent(repl_line.data, repl_count_leading_tabs(repl_line.data))
 	while (block_mode | open_state):
 		print(".. ")
+		# Auto-indent applies to block bodies, not bracket/string/comment
+		# continuations, and only when a person is typing
+		int indent = 0
+		if (repl_interactive & block_mode & (open_state == 0)):
+			indent = repl_auto_indent
+		repl_print_tabs(indent)
 		if (repl_read_line(repl_line) == 0):
 			return 1 /* end of input finishes the entry */
 		if (block_mode & (repl_line.length == 0) & (open_state == 0)):
-			return 1 /* a blank line ends a block */
+			if (indent == 0):
+				return 1 /* a blank line at column 0 ends the entry */
+			repl_auto_indent = indent - 1
+			continue /* interactively, a blank line dedents one level */
 		string_append_char(repl_entry, 10)
+		for int t in range(indent):
+			string_append_char(repl_entry, 9)
 		string_append(repl_entry, repl_line.data)
 		repl_scan_line(repl_line.data)
 		if (repl_scan_last_char == ':'):
 			block_mode = 1
+		repl_update_indent(repl_line.data, indent + repl_count_leading_tabs(repl_line.data))
 		open_state = (repl_scan_depth > 0) | repl_scan_comment | (repl_scan_string != 0)
 	return 1
 
@@ -391,7 +470,9 @@ void repl_print_help():
 	println("  int x = 5           a variable that later entries can use")
 	println("  int f(int a):       a function (finish the block, then a blank line)")
 	println("  struct p: / import  structs and modules work too")
-	println("a line ending in ':' opens a block; a blank line ends it")
+	println("a line ending in ':' opens a block and indents automatically;")
+	println("return/break/continue/pass dedent; a blank line dedents one level")
+	println("and ends the entry at column 0")
 	println("a single bare expression echoes its value")
 	println("commands: :quit exits, :help shows this text")
 
@@ -456,6 +537,7 @@ int main(int argc, int argv):
 
 	println("w repl - :quit exits, :help for help")
 
+	repl_interactive = repl_isatty(0)
 	repl_line = string_new()
 	repl_entry = string_new()
 	char* entry_path = "/tmp/w_repl_entry.w"

@@ -130,7 +130,9 @@ Toolchain beyond the compiler:
 - **REPL** (`make repl`): each entry compiles into an executable mmap buffer
   and runs immediately. Entries span multiple lines Python-style (a line
   ending in `:` opens a block, a blank line ends it), so functions, structs,
-  imports and control flow work at the prompt. Top-level declarations become
+  imports and control flow work at the prompt. Interactive sessions
+  auto-indent block bodies (`return`/`break`/`continue`/`pass` dedent, a
+  blank line dedents one level); piped input keeps its explicit tabs. Top-level declarations become
   persistent globals; redefining a name shadows the old binding; a bare
   expression echoes its value. `./bin/repl file.w [args...]` compiles and
   runs a program first, then attaches the prompt to its live definitions

@@ -272,6 +272,15 @@ stay byte-identical) and the full `make tests`.
   tokenizer cannot recover from one); the scanner treats an open string
   as a continuation, so multi-line strings still work.
 - The flag is spelled `--no_main` (lib/args flag parsing convention).
+- **Auto-indent (added after the initial landing).** When stdin is a
+  terminal (`ioctl TCGETS`), continuation lines start with the expected
+  tabs, echoed after the `.. ` prompt and stored into the entry, so what
+  you see is exactly what compiles. A `:` line indents one level; a line
+  whose first token is `return`/`break`/`continue`/`pass` dedents (the
+  IDLE rule); a blank line dedents one level and ends the entry at
+  column 0. Any tabs the user types are added on top of the automatic
+  ones. Piped input is detected as non-interactive and keeps its
+  explicit tabs, so scripted sessions are unaffected.
 
 Known limitations (documented in `docs/todo.txt`): calls compiled before
 a redefinition keep the old binding; `struct` redefinition keeps the
