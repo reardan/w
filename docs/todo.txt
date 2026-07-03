@@ -39,7 +39,9 @@ current state:
 		expressions:
 			&& and || short-circuit expressions
 			! unary operator
-			unary -
+			unary - and unary +
+			unary operators bind tighter than binary and can stack (!!x, -*p, *&x)
+			relational operators chain left-associatively
 			hex literals
 			string escape handling
 			pointer-aware [] and . code generation
@@ -78,9 +80,6 @@ current state:
 			struct values as by-value parameters are not implemented
 			new does not run constructors or initialize fields from arguments
 			pointer/type compatibility warnings are still shallow
-		operator grammar:
-			unary operators still need a full precedence review
-			relational and postfix chaining semantics need more coverage
 		debugging:
 			DWARF line info exists, but there is no built-in w --debug repl
 			no stack parser, signal handler, or debugger command server yet
@@ -93,8 +92,6 @@ current state:
 	next priorities:
 		repl error recovery:
 			rework compiler error handling so a bad line returns to the prompt
-		operator precedence:
-			fix unary/prefix parsing and add targeted grammar tests
 		type system:
 			finish type.fields usage for globals and imports
 			use type.w as the language meta-type

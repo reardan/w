@@ -13,21 +13,23 @@ int generate_relational_code(int type, char* opcode):
  *         relational-expr < shift-expr
  *         relational-expr >= shift-expr
  *         relational-expr > shift-expr
+ *
+ * Chains left-associatively, so a < b < c means (a < b) < c.
  */
 int relational_expr():
 	int type = shift_expr()
 	while (1):
 		if(accept("<=")):
-			return generate_relational_code(type, "\x9e")
+			type = generate_relational_code(type, "\x9e")
 
 		else if(accept("<")):
-			return generate_relational_code(type, "\x9c")
+			type = generate_relational_code(type, "\x9c")
 
 		else if(accept(">=")):
-			return generate_relational_code(type, "\x9d")
+			type = generate_relational_code(type, "\x9d")
 
 		else if(accept(">")):
-			return generate_relational_code(type, "\x9f")
+			type = generate_relational_code(type, "\x9f")
 	
 		else:
 			return type

@@ -230,3 +230,79 @@ void test_not_operator():
 	int a = 0
 	assert_equal(1, !a)
 
+
+void test_relational_values():
+	assert_equal(1, 1 < 2)
+	assert_equal(0, 2 < 1)
+	assert_equal(1, 2 <= 2)
+	assert_equal(0, 3 <= 2)
+	assert_equal(1, 3 > 2)
+	assert_equal(0, 2 > 3)
+	assert_equal(1, 2 >= 2)
+	assert_equal(0, 1 >= 2)
+
+
+void test_relational_left_assoc():
+	# a < b < c chains as (a < b) < c
+	assert_equal(1, 1 < 2 < 3)
+	assert_equal(0, 5 > 3 > 1)
+	assert_equal(1, 5 > 3 >= 1)
+
+
+void test_equality_values():
+	assert_equal(1, 3 == 3)
+	assert_equal(0, 3 == 4)
+	assert_equal(1, 3 != 4)
+	assert_equal(0, 3 != 3)
+	assert_equal(1, 7 % 2 == 1)
+
+
+void test_shift_operators():
+	assert_equal(4, 1 << 2)
+	assert_equal(4, 8 >> 1)
+	assert_equal(2, 16 >> 2 >> 1)
+	# additive binds tighter than shift: (1 + 2) << 3
+	assert_equal(24, 1 + 2 << 3)
+
+
+void test_bitwise_operators():
+	assert_equal(2, 6 & 3)
+	assert_equal(3, 1 | 2)
+	assert_equal(7, 6 | 3)
+	# & binds tighter than |: 4 | (6 & 1)
+	assert_equal(4, 4 | 6 & 1)
+
+
+void test_unary_chains():
+	assert_equal(1, !!5)
+	assert_equal(0, !!0)
+	assert_equal(3, -(-3))
+
+
+void test_unary_binds_tighter_than_binary():
+	int a = 5
+	# (-a) * 2 and (!a) * 3, not -(a * 2) or !(a * 3)
+	assert_equal(-10, -a * 2)
+	assert_equal(0, !a * 3)
+	int z = 0
+	assert_equal(3, !z * 3)
+
+
+void test_unary_plus():
+	assert_equal(5, +5)
+	int a = 7
+	assert_equal(7, +a)
+	assert_equal(12, +a + +5)
+
+
+void test_deref_of_address():
+	int x = 42
+	assert_equal(42, *&x)
+
+
+void test_mixed_precedence():
+	assert_equal(7, 1 + 2 * 3)
+	assert_equal(1, 0 || 2 * 3)
+	assert_equal(1, !0 && 1)
+	assert_equal(-6, -2 * 3)
+
