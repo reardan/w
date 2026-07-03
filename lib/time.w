@@ -1,4 +1,10 @@
+# UTC date/time helpers.
+#
+# On the 32-bit x86 target, time_now() uses Linux time(2), whose i386 time_t is
+# 32 bits. It will report negative values after 2038-01-19 03:14:07 UTC. The
+# future fix is to use clock_gettime64 (syscall 403) on x86.
 import lib.lib
+import lib.assert
 
 
 struct date_time:
@@ -14,7 +20,8 @@ struct date_time:
 
 # Seconds since 1970-01-01 00:00:00 UTC, as reported by Linux time(2).
 int time_now():
-	return linux_time(0)
+	int* out = 0
+	return linux_time(out)
 
 
 int time_is_leap_year(int year):
@@ -43,9 +50,10 @@ int time_days_in_month(int year, int month):
 	return 31
 
 
-# Converts non-negative Unix timestamps to UTC. weekday is 0=Sunday..6=Saturday;
-# year_day is 1-based.
+# Converts non-negative Unix timestamps to UTC; negative inputs assert loudly.
+# weekday is 0=Sunday..6=Saturday; year_day is 1-based.
 void time_utc_from_unix(int timestamp, date_time* out):
+	asserts("time_utc_from_unix requires a non-negative Unix timestamp", timestamp >= 0)
 	int days = timestamp / 86400
 	int remaining = timestamp % 86400
 
@@ -87,6 +95,7 @@ void time_write_2_digits(char* out, int value):
 	out[1] = (value % 10) + '0'
 
 
+# Truncates years >= 10000 to their low four decimal digits.
 void time_write_4_digits(char* out, int value):
 	out[0] = (value / 1000) % 10 + '0'
 	out[1] = (value / 100) % 10 + '0'

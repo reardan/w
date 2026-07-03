@@ -20,6 +20,13 @@ void test_time_leap_years():
 	assert_equal(1, time_is_leap_year(2024))
 
 
+void test_time_days_in_year():
+	assert_equal(365, time_days_in_year(1970))
+	assert_equal(366, time_days_in_year(2000))
+	assert_equal(365, time_days_in_year(1900))
+	assert_equal(366, time_days_in_year(2024))
+
+
 void test_time_days_in_month():
 	assert_equal(31, time_days_in_month(2023, 1))
 	assert_equal(28, time_days_in_month(2023, 2))
@@ -43,6 +50,22 @@ void test_time_known_utc_dates():
 
 	time_utc_from_unix(1709251199, &dt)
 	assert_epoch(&dt, 2024, 2, 29, 23, 59, 59, 4, 60)
+
+	time_utc_from_unix(1703980800, &dt)
+	assert_epoch(&dt, 2023, 12, 31, 0, 0, 0, 0, 365)
+
+	time_utc_from_unix(1735603200, &dt)
+	assert_epoch(&dt, 2024, 12, 31, 0, 0, 0, 2, 366)
+
+	time_utc_from_unix(2147483647, &dt)
+	assert_epoch(&dt, 2038, 1, 19, 3, 14, 7, 2, 19)
+
+
+void test_time_utc_new():
+	date_time* sunday = time_utc_new(946771200)
+	assert_equal(0, sunday.weekday)
+	assert_epoch(sunday, 2000, 1, 2, 0, 0, 0, 0, 2)
+	free(sunday)
 
 
 void test_time_format_utc():
