@@ -1,6 +1,6 @@
 int variable_declaration():
 	# type-name identifier
-	if (type_lookup(token) >= 0):
+	if (peek("const") | (type_lookup(token) >= 0)):
 		# println2("variable_declaration()")
 		int type = typed_identifier()
 		int has_initializer = 0

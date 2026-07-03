@@ -31,6 +31,12 @@ int int64_type
 int uint64_type
 int type_kind_alias
 int type_kind_function
+int type_kind_union
+int type_kind_enum
+int type_kind_const
+
+
+char* type_get_name(int type_index);
 
 
 int type_size():
@@ -112,6 +118,24 @@ int type_canonical(int type_index):
 	return type_index
 
 
+int type_get_const_target(int type_index):
+	type_index = type_real(type_index)
+	int t = get(type_index)
+	if (load_int(t + 820) != type_kind_const):
+		return -1
+	return load_int(t + 816)
+
+
+int type_unqualified(int type_index):
+	type_index = type_canonical(type_index)
+	int guard = 0
+	while ((type_index >= 0) & (type_get_const_target(type_index) >= 0) & (guard < 100)):
+		type_index = type_get_const_target(type_index)
+		type_index = type_canonical(type_index)
+		guard = guard + 1
+	return type_index
+
+
 int type_push_alias(char* name, int target):
 	int real_target = type_canonical(target)
 	int new_type = malloc(type_size())
@@ -132,15 +156,49 @@ int type_push_alias(char* name, int target):
 	return push(new_type)
 
 
+int type_push_const(int target):
+	int real_target = type_canonical(target)
+	char* name = strjoin("const ", type_get_name(real_target))
+	int new_type = malloc(type_size())
+	int target_record = get(real_target)
+	save_int(new_type, name)
+	save_int(new_type + 4, load_int(target_record + 4))
+	save_int(new_type + 8, load_int(target_record + 8))
+	save_int(new_type + 12, load_int(target_record + 12))
+	int i = 0
+	while (i < 100):
+		save_int(new_type + 16 + 8 * i, load_int(target_record + 16 + 8 * i))
+		save_int(new_type + 20 + 8 * i, load_int(target_record + 20 + 8 * i))
+		i = i + 1
+	save_int(new_type + 816, real_target)
+	save_int(new_type + 820, type_kind_const)
+	save_int(new_type + 824, -1)
+	save_int(new_type + 828, -1)
+	return push(new_type)
+
+
 int type_get_kind(int type_index):
-	type_index = type_real(type_index)
+	type_index = type_canonical(type_index)
 	int t = get(type_index)
 	return load_int(t + 820)
+
+
+void type_set_kind(int type_index, int kind):
+	type_index = type_real(type_index)
+	int t = get(type_index)
+	save_int(t + 820, kind)
 
 
 int type_is_function_signature(int type_index):
 	type_index = type_canonical(type_index)
 	return type_get_kind(type_index) == type_kind_function
+
+
+int type_is_const(int type_index):
+	type_index = type_canonical(type_index)
+	if (type_get_kind(type_index) == type_kind_const):
+		return 1
+	return 0
 
 
 int type_push_function(char* name, int return_type, int param_count, int param_types):
@@ -229,8 +287,8 @@ int type_lookup_pointer(char* name, int pointer_level):
 # silently; pointers must agree on depth and base type, except that void*
 # converts to and from any pointer. Distinct struct types never convert.
 int types_compatible(int want, int got):
-	want = type_canonical(want)
-	got = type_canonical(got)
+	want = type_unqualified(want)
+	got = type_unqualified(got)
 	if ((want == 3) | (want == 4) | (want == 1)):
 		return 1
 	if ((got == 3) | (got == 4) | (got == 1)):
@@ -301,8 +359,13 @@ int type_add_arg(int type_index, char* field, int field_type):
 	save_int(t + 16 + 8 * num_fields, field)
 	save_int(t + 20 + 8 * num_fields, field_type)
 	save_int(t + 4, num_fields + 1)
-	# Update total size
-	save_int(t + 8, load_int(t + 8) + type_get_size(field_type))
+	# Update total size. Structs sum fields; unions take the largest field.
+	int field_size = type_get_size(field_type)
+	if (type_get_kind(type_index) == type_kind_union):
+		if (field_size > load_int(t + 8)):
+			save_int(t + 8, field_size)
+	else:
+		save_int(t + 8, load_int(t + 8) + field_size)
 
 
 int type_get_arg(int type_index, char* field):
@@ -346,7 +409,8 @@ int type_get_field_offset(int type_index, char* field):
 			return offset
 		int field_type = load_int(t + 20 + 8 * i)
 		int field_size = type_get_size(field_type)
-		offset = offset + field_size
+		if (type_get_kind(type_index) != type_kind_union):
+			offset = offset + field_size
 		i = i + 1
 	return -1
 
@@ -364,6 +428,8 @@ int type_get_field_offset_at(int type_index, int i):
 	int t = get(type_index)
 	int offset = 0
 	int j = 0
+	if (type_get_kind(type_index) == type_kind_union):
+		return 0
 	while (j < i):
 		offset = offset + type_get_size(load_int(t + 20 + 8 * j))
 		j = j + 1
@@ -448,6 +514,9 @@ void push_basic_types():
 	die() /* reset array */
 	type_kind_alias = 1
 	type_kind_function = 2
+	type_kind_union = 3
+	type_kind_enum = 4
+	type_kind_const = 5
 	type_push_size("void", 0)
 	type_push_size("int", word_size)
 	type_push_size("char", 1)

@@ -49,6 +49,8 @@ int expression():
 	if (accept("=")):
 		if ((type_is_value(type)) | (type == 3) | (type == 4)):
 			error("assignment target is not assignable")
+		if (type_is_const(type)):
+			error("assignment to const")
 		expression_is_assignment = 1
 		push_eax()
 		stack_pos = stack_pos + 1

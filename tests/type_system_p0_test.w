@@ -15,6 +15,18 @@ struct p0_callback_box:
 	binary_op* op
 
 
+union p0_value:
+	int i
+	char* s
+	p0_pair pair
+
+
+enum p0_color:
+	red
+	green = 4
+	blue
+
+
 int p0_add(int a, int b):
 	return a + b
 
@@ -56,10 +68,14 @@ void test_bool_literals_and_coercion():
 void test_cast_and_aliases():
 	size_t n = 42
 	char_buffer text = "typed alias"
+	const int fixed = 6
+	const char* const_text = "constant text"
 	int* p = cast(int*, malloc(4))
 	*p = cast(int, n)
 	assert_equal(42, *p)
 	assert_strings_equal("typed alias", text)
+	assert_equal(6, fixed)
+	assert_strings_equal("constant text", const_text)
 	free(p)
 
 
@@ -90,4 +106,23 @@ void test_typed_function_pointer_field():
 	p0_callback_box box
 	box.op = p0_add
 	assert_equal(11, box.op(5, 6))
+
+
+void test_enum_values():
+	p0_color c = green
+	assert_equal(0, red)
+	assert_equal(4, c)
+	assert_equal(5, blue)
+
+
+void test_union_fields_overlap():
+	p0_value v
+	v.i = 123
+	assert_equal(123, v.i)
+	v.s = "union text"
+	assert_strings_equal("union text", v.s)
+	v.pair.a = 21
+	v.pair.b = 22
+	assert_equal(21, v.pair.a)
+	assert_equal(22, v.pair.b)
 

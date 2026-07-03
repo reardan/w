@@ -78,9 +78,13 @@ void program():
 		# Type aliases must be available before structs and declarations
 		while(type_alias_declaration()) {}
 
-		# Next handle struct declarations
+		# Next handle aggregate declarations
 		while(struct_declaration()):
 			print_int_v1("struct_declaration=1", 1)
+		while(union_declaration()):
+			print_int_v1("union_declaration=1", 1)
+		while(enum_declaration()):
+			print_int_v1("enum_declaration=1", 1)
 
 		# Shared-library declarations (c_lib / extern)
 		while (extern_statement()) {}
@@ -91,7 +95,8 @@ void program():
 
 		# Now global variables + functions
 		# TODO: variables THEN functions, not both
-		current_symbol = sym_declare_global(token, type_name(), 1)
+		int decl_type = type_name()
+		current_symbol = sym_declare_global(token, decl_type, 1)
 		get_token()
 		if (accept(";")):
 			sym_define_global(current_symbol)

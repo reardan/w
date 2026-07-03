@@ -109,6 +109,17 @@ x64_float_test: w FORCE
 	./bin/x64_float_test | grep -q "x64 float OK"
 	@echo "x64 float test OK"
 
+x64_int64_test: w FORCE
+	./bin/wv2 x64 tests/x64_int64_test.w >./bin/x64_int64_test
+	chmod +x ./bin/x64_int64_test
+	./bin/x64_int64_test | grep -q "x64 int64 OK"
+	@echo "x64 int64 test OK"
+
+int64_x86_error_test: w FORCE
+	! ./bin/wv2 tests/x64_int64_test.w -o ./bin/int64_x86_error_test 2>./bin/int64_x86_error_test.stderr
+	grep -qF "int64 requires the x64 target" ./bin/int64_x86_error_test.stderr
+	@echo "int64 x86 error test OK"
+
 build_x64: w FORCE
 	./bin/wv2 x64 w.w -o ./bin/wv2_64
 	./bin/wv2_64 x64 w.w -o ./bin/wv3_64
@@ -122,7 +133,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test x64_test x64_float_test net_64_test dynamic_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test x64_test x64_float_test x64_int64_test net_64_test dynamic_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -186,6 +197,11 @@ type_system_p0_test: w FORCE
 	./bin/wv2 tests/type_system_p0_test.w >./bin/type_system_p0_test
 	chmod +x ./bin/type_system_p0_test
 	./bin/type_system_p0_test
+
+type_system_error_test: w FORCE
+	! ./bin/wv2 tests/type_system_error_fixture.w -o ./bin/type_system_error_fixture 2>./bin/type_system_error_fixture.stderr
+	grep -qF "assignment to const" ./bin/type_system_error_fixture.stderr
+	@echo "type system error test OK"
 
 range_test_debug: w FORCE
 	./bin/wv2 tests/range_test.w >./bin/range_test
@@ -460,7 +476,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test warning_test struct_test struct_method_test pointer_test range_test type_system_p0_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:
