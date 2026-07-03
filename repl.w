@@ -6,10 +6,13 @@ an executable mmap buffer, then called immediately. The standard library is
 compiled into the same buffer at startup, so lines can call print, malloc,
 strjoin and friends directly.
 
+A compile error does not exit: repl_compile_line checkpoints the compiler's
+globals and error() jumps back here (repl_setjmp/repl_longjmp), after which
+the checkpoint rolls back the failed line's code and symbols.
+
 v0 limitations:
 - one line per entry (single-line blocks like "if (1): print(...)" work)
 - locals do not persist between lines
-- a compile error exits the process (the compiler's error() calls exit)
 
 Commands: :quit exits.
 */
@@ -20,8 +23,35 @@ import structures.string
 int repl_counter
 
 
-# Compile the file as the body of a fresh function; returns its address.
+# Compile the file as the body of a fresh function; returns its address,
+# or 0 when the line failed to compile.
 int repl_compile_line(char* path):
+	# Checkpoint everything a failed compile could leave half-updated
+	int saved_codepos = codepos
+	int saved_table_pos = table_pos
+	int saved_stack_pos = stack_pos
+	int saved_loop_depth = loop_depth
+	int saved_loop_break_chain = loop_break_chain
+	int saved_loop_continue_chain = loop_continue_chain
+	int saved_loop_stack_pos = loop_stack_pos
+	int saved_number_of_args = number_of_args
+
+	repl_recovery = 1
+	if (repl_setjmp(repl_jump_buffer)):
+		# error() jumped back: roll back the failed line and skip execution
+		repl_recovery = 0
+		codepos = saved_codepos
+		table_pos = saved_table_pos
+		stack_pos = saved_stack_pos
+		loop_depth = saved_loop_depth
+		loop_break_chain = saved_loop_break_chain
+		loop_continue_chain = saved_loop_continue_chain
+		loop_stack_pos = saved_loop_stack_pos
+		number_of_args = saved_number_of_args
+		pointer_indirection = 0
+		close(file)
+		return 0
+
 	filename = path
 	file = open(path, 0, 511)
 	asserts("could not reopen line buffer", file >= 0)
@@ -48,6 +78,7 @@ int repl_compile_line(char* path):
 	ret()
 	table_pos = n
 	close(file)
+	repl_recovery = 0
 
 	int address = sym_address(name)
 	free(name)
@@ -85,6 +116,10 @@ int main(int argc, int argv):
 	codepos = 0
 	code_offset = buffer
 
+	# Recoverable compile errors: error() jumps here instead of exiting
+	repl_jump_buffer = malloc(12)
+	repl_error_jump = repl_longjmp
+
 	# Runtime support: syscall stubs first, then the library itself
 	define_asm_functions()
 	compile_save("lib/lib.w")
@@ -112,6 +147,7 @@ int main(int argc, int argv):
 		close(out)
 
 		int address = repl_compile_line(line_path)
-		address()
+		if (address):
+			address()
 
 	return 0

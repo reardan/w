@@ -19,10 +19,25 @@ void define_asm_functions():
 	emit(20, "\x50\x8b\x44\x24\x08\x89\x48\x04\x59\x89\x08\x89\x50\x08\x89\x58\x0c\x89\x60\x10")
 	emit(10, "\x89\x68\x14\x89\x70\x18\x89\x78\x1c\xc3")
 
-	# push eax ; mov eax,[esp+8] ; mov [eax+4],ecx ; mov [eax+8],edx ; mov [eax+12],ebx ; mov [eax+16],esp ; mov [eax+20],ebp ; mov [eax+24],esi ; mov [eax+28],edi ; pop eax ; ret ; 
+	# push eax ; mov eax,[esp+8] ; mov [eax+4],ecx ; mov [eax+8],edx ; mov [eax+12],ebx ; mov [eax+16],esp ; mov [eax+20],ebp ; mov [eax+24],esi ; mov [eax+28],edi ; pop eax ; ret ;
 	sym_define_declare_global_function("store_context")
 	emit(20, "\x50\x8b\x44\x24\x08\x89\x48\x04\x89\x50\x08\x89\x58\x0c\x89\x60\x10\x89\x68\x14")
 	emit(9, "\x89\x70\x18\x89\x78\x1c\x58\xc3")
+
+	# repl_setjmp(buf): save return address, caller esp and ebp into the
+	# 12-byte buffer, then return 0. repl_longjmp resumes here returning 1.
+	sym_define_declare_global_function("repl_setjmp")
+	# mov eax,[esp+4] ; mov ecx,[esp] ; mov [eax],ecx ; lea ecx,[esp+4] ;
+	# mov [eax+4],ecx ; mov [eax+8],ebp ; xor eax,eax ; ret
+	emit(20, "\x8b\x44\x24\x04\x8b\x0c\x24\x89\x08\x8d\x4c\x24\x04\x89\x48\x04\x89\x68\x08\x31")
+	emit(2, "\xc0\xc3")
+
+	# repl_longjmp(buf, val): restore esp/ebp and jump to the address saved
+	# by repl_setjmp with val in eax. Like all stubs, the first argument
+	# sits at the highest stack offset.
+	sym_define_declare_global_function("repl_longjmp")
+	# mov eax,[esp+4] ; mov ecx,[esp+8] ; mov esp,[ecx+4] ; mov ebp,[ecx+8] ; jmp [ecx]
+	emit(16, "\x8b\x44\x24\x04\x8b\x4c\x24\x08\x8b\x61\x04\x8b\x69\x08\xff\x21")
 
 	# endian
 	sym_define_declare_global_function("swap_endian")

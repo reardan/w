@@ -74,14 +74,14 @@ current state:
 			format helpers
 		repl:
 			make repl builds and runs repl.w
-			make repl_test verifies a simple REPL interaction
+			make repl_test verifies REPL interaction and error recovery
 			lines compile into an executable mmap buffer and run immediately
+			compile errors roll back state and return to the prompt
 
 	current limitations:
 		repl:
 			one line per entry
 			local variables do not persist between entries
-			compile errors exit the process because compiler error() exits
 		pointers and structs:
 			new initializes fields from arguments but does not run user constructors
 			struct values cannot be returned by value
@@ -95,8 +95,8 @@ current state:
 			no backend implementation yet
 
 	next priorities:
-		repl error recovery:
-			rework compiler error handling so a bad line returns to the prompt
+		repl persistence:
+			persist locals between entries (needs its own design)
 		type system:
 			finish type.fields usage for globals and imports
 			use type.w as the language meta-type

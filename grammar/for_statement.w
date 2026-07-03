@@ -20,7 +20,8 @@ int for_statement():
 
 	mov_eax_int(0) /* default start value for the loop variable */
 	int type = variable_declaration()
-	asserts("type not found in for_statement loop variable", type >= 0)
+	if (type < 0):
+		error("type not found in for_statement loop variable")
 	int for_var = stack_pos
 
 	expect("in")
@@ -38,7 +39,8 @@ int for_statement():
 		num_range_args = num_range_args + 1
 	if (has_parens):
 		expect(")")
-	asserts("range() takes 1-3 arguments", num_range_args <= 3)
+	if (num_range_args > 3):
+		error("range() takes 1-3 arguments")
 
 	# With 2+ arguments the first one is the start: copy it into the loop var
 	int end_slot = for_var + 1

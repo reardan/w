@@ -21,3 +21,9 @@ void define_asm_functions_x64():
 	sym_define_declare_global_function("get_context")
 	sym_define_declare_global_function("store_context")
 	emit(1, "\xc3") /* ret */
+
+	/* mock: always returns 0 (the REPL only targets x86) */
+	sym_define_declare_global_function("repl_setjmp")
+	emit(3, "\x31\xc0\xc3") /* xor eax,eax ; ret */
+	sym_define_declare_global_function("repl_longjmp")
+	emit(1, "\xc3") /* ret */

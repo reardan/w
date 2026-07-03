@@ -25,8 +25,19 @@ void warning(char *s):
 	put_error(10)
 
 
+# REPL error recovery: when repl_recovery is nonzero, error() reports the
+# problem and jumps back to the checkpoint in repl_jump_buffer instead of
+# exiting the process. repl_error_jump holds the repl_longjmp stub as a
+# function pointer: the seed compiler that bootstraps this file predates
+# the stub, so its name cannot be referenced here directly.
+int repl_recovery
+int repl_jump_buffer
+int repl_error_jump
+
 void error(char *s):
 	warning(s)
+	if (repl_recovery):
+		repl_error_jump(repl_jump_buffer, 1)
 	exit(1)
 
 

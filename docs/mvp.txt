@@ -14,9 +14,9 @@ Compiler
 		Basic REPL
 		DWARF line information
 		Deeper type compatibility checks
+		REPL compile-error recovery
 
 	Remaining
-		REPL compile-error recovery
 		Dict language/runtime type
 		UTF-8 string type
 		C header parsing / c_import

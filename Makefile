@@ -220,6 +220,9 @@ repl: w FORCE
 repl_test: w FORCE
 	./bin/wv2 repl.w -o ./bin/repl
 	printf 'print("hello from the repl\\x0a")\n:quit\n' | ./bin/repl | grep -q "hello from the repl"
+	# A bad line must not kill the process, and later lines must still work
+	printf 'this is not valid w\nprint("recovered\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered"
+	printf 'print("no closing paren"\nint x = = 3\nprint("second recovery\\x0a")\n:quit\n' | ./bin/repl | grep -q "second recovery"
 	@echo "repl test OK"
 
 for_test: w FORCE
