@@ -112,11 +112,13 @@ void compile_save(char* fn):
 
 
 int link(int argc, int argv):
+	if (argc < 2):
+		println2("usage: w [x64] <file.w>... [-o output]")
+		exit(1)
 	int i = 1
 	word_size = 4
 	word_size_log2 = 2
 	int first_arg = argv + word_size
-	print_string("argv + word_size: ", *first_arg)
 	if (strcmp(*first_arg, "x64") == 0):
 		println2("Compiling in x64 mode")
 		word_size =  8
