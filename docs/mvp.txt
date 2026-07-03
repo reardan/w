@@ -1,15 +1,47 @@
 
 
 Compiler
-	Type
-		Dict
-		String
+	Done
+		Self-hosted x86 bootstrap
+		Fixpoint verification with make verify
+		-o output path
+		Usage message for missing input
+		Type table with size, pointer level, and struct fields
+		Pointer-aware &, *, [], and struct field access
+		new type() allocation
+		range loops with optional start/end/step
+		break and continue
+		Basic REPL
+		DWARF line information
+
+	Remaining
+		REPL compile-error recovery
+		Deeper type compatibility checks
+		Dict language/runtime type
+		UTF-8 string type
+		C header parsing / c_import
+		Built-in debugger
 
 Net
+	Done
+		Basic sockets
+		Client connect path
+		Server bind/listen/accept path
 
-
+	Remaining
+		UDP helpers
+		HTTP client
+		Socketcall cleanup
 
 Platform
-	Linux
-	x86
-	WebAssembly
+	Done
+		Linux
+		x86
+
+	Partial
+		x64 hello-world/syscall path
+
+	Remaining
+		x64 lib_test
+		x64 self-compiling
+		WebAssembly

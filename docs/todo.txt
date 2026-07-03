@@ -1,250 +1,175 @@
-current:
+current state:
 
-	pointer...
+	build and verification...
 		working:
+			self-hosted x86 bootstrap:
+				./w w.w -> bin/wv2 -> bin/wv3 -> bin/wv4 -> bin/wv5
+			make verify:
+				compares wv3 == wv4 == wv5
+			make tests:
+				runs compiler, grammar, lib, pointer, struct, range,
+				data-structure, import, directory, threading, hello tests
+			make update:
+				archives the current seed and promotes bin/wv2 to ./w
+			compiler CLI:
+				-o output path
+				usage message instead of segfaulting when no input is passed
+
+	language and compiler features working:
+		pointers:
 			int*
-			char[0]
-		not working:
-			int[]
-			char* + 2
-		problem:
-			types are misaligned
-				promote() char = 1, int = 2
-				type_name() char = 2, int = 1
-				constant = 3, no promotion (and it's re-used in expression())
-			these all need to be fixed in the grammar
-		another problem:
-			function pointers
-				currently only in testing.w to call the test function
+			char*
+			char* indexing
+			char* dereference and assignment
+			int* indexing
+			& local address
+			struct pointer fields
+			arrays of structs via pointer indexing
+		type table:
+			type names carry size, pointer level, and field metadata
+			pointer types are created on demand
+			struct fields store field type and offset information
+			int8, int16, int32 and unsigned integer types are registered
+		struct:
+			local struct values
+			mixed-width struct fields
+			struct pointers
+			struct arrays
+			new point() and new point allocate struct storage
+		expressions:
+			&& and || short-circuit expressions
+			! unary operator
+			unary -
+			hex literals
+			string escape handling
+			pointer-aware [] and . code generation
+		control flow:
+			for int i in range N
+			range(end), range(start, end), range(start, end, step)
+			range arguments can be expressions
+			break and continue
+			nested if/loop behavior covered by tests
+		functions:
+			function arity warnings
+			function pointer values can be called
+			function pointer arguments are covered in grammar tests
+		debugging information:
+			debugger statement emits int3
+			DWARF line-number data is emitted for gdb source-line mapping
+		library and data structures:
+			malloc/free/realloc
+			list
+			hash_map
+			string builder
+			array_list
+			linked_list
+			format helpers
+		repl:
+			make repl builds and runs repl.w
+			make repl_test verifies a simple REPL interaction
+			lines compile into an executable mmap buffer and run immediately
 
-	type...
-		add fields to existing type table
-			compiler.compile -> grammar.program -> 
-		create type.fields for globals declared
-		use the type.fields: for what?
-			meta
-				name
-				size
-			imported lookups
-				e.g.
-				import lib
-				lib.println("hiya!")
-		test on a sample type
-		use type.w as it's own type
-		use type.w as the basis for other types
-		change import so it doesn't import globals
-			> import type
-				this will conflict with a lot of names
-				> import type as language_type
-				or only import in relevant files?
-				> private import type
-			type.size
+	current limitations:
+		repl:
+			one line per entry
+			local variables do not persist between entries
+			compile errors exit the process because compiler error() exits
+		pointers and structs:
+			struct values as by-value parameters are not implemented
+			new does not run constructors or initialize fields from arguments
+			pointer/type compatibility warnings are still shallow
+		operator grammar:
+			unary operators still need a full precedence review
+			relational and postfix chaining semantics need more coverage
+		debugging:
+			DWARF line info exists, but there is no built-in w --debug repl
+			no stack parser, signal handler, or debugger command server yet
+		x64:
+			x64 hello-world/syscall path exists
+			full x64 lib_test and self-compiling bootstrap remain open
+		webassembly:
+			no backend implementation yet
 
-	clean up directory structure...
-		import directory.*...
-			delete:
-				codegen
-				grammar
+	next priorities:
+		repl error recovery:
+			rework compiler error handling so a bad line returns to the prompt
+		operator precedence:
+			fix unary/prefix parsing and add targeted grammar tests
+		type system:
+			finish type.fields usage for globals and imports
+			use type.w as the language meta-type
+			support scoped/private imports or import aliases
+			merge symbol_table + type_table on top of hash_map
+		pointer project closure:
+			keep make pointer_test passing
+			add explicit tests for pointer/type mismatch warnings
+			decide semantics for struct values passed by value
+		c_import:
+			lexer
+			parser
+			build structs from C headers
+			import enum values
+		debugger:
+			w --debug entry point
+			step, next, continue, return, breakpoint, memory, inspect
+			asm/disasm helpers
+			segv handler and stack parser
+		code generation:
+			full x64 lib_test
+			x64 self-compiling
+			webassembly hello world
+			webassembly self-compiling
+		directory and build cleanup:
+			settle import grammar vs grammar.* behavior
+			split Makefile into smaller files when the project structure settles
 
-			edge case:
-				directory structure:
-					grammar/
-					grammar.w
-				code:
-					import grammar
-					import grammar.*
-				behavior?
-					1) use grammar.w
-					2) use grammar/
-					3) raise error
-					I think I like behavior #1 the best as the most specific
-					file is chosen.  It would be confusing to the user if the
-					grammar subdirectory was used instead of grammar.w like
-					they were expecting.  At the same time, grammar.file links
-					should still work as expected: breaking the path up.
-				
+	future language features:
+		generators
+		iterators
+		for-in over iterable values
+		yield
+		cli argument parsing helpers
+		stream class
+		file class
+		template strings
+		variable arguments
+		default values
+		inline asm functions
+		dynamic typing / var
+		float
+		const modifier
+		utf8 string type
+		type <=> json
+		type <=> protobuf
+		global default values
 
-		fix makefile structure...
-			split into sub makefiles
-			fix any build/import issues
+	future data structures:
+		dict
+		matrix
 
-	hash map...
-		based on c programming language...
-		also research other types...
+	future platforms:
+		windows
+		arm
+		gpu
 
-	string data type...
+	net:
+		working:
+			basic socket/connect/server paths
+		remaining:
+			udp sendto/recvfrom helpers
+			http client
+			socketcall cleanup
 
-	web debugger...
-		file tree explorer...
-		search...
-		code editor...
-		binary analyzer...
-		task runner...
-			shell execute syscall...
-			fork...
-		debugger information...
-		debug in existing debugger...
-		parse tree analyzer...
-		w debugger...
-
-
-	struct
-		partial int type e.g. int16
-		struct pointers
-		struct arrays
-		struct of struct
-		linked list via struct
-
-
-	debugging advanced (dependant on pointers):
-		sys_signal
-			segv handler
-			stack parser
-
-		virtual memory
-			print virtual memory locations
-
-
-	external library calls...
-		assembler/disassembler library...
-		threading library...
-
-
-	c_import...
-		lexer...
-		parser...
-
-
-	code generation...
-		remaining x64...
-			lib_test...
-			self compiling...
-
-
-		web assembly...
-			hello world...
-			editor...
-				fonts...
-				webgl...
-				renderer...
-				mouse...
-				keyboard...
-			self compiling...
-				advanced assembly...
-
-	merge symbol_table + type_table
-		base on hash_map
-
-major bugs:
-	int*[]
-	*(char*)
-	struct*
-	&
-	int* = int?
-
-	function pointers...
-		local variable calls work
-		passing as arguments doesn't work
-			need a better typing system to handle this
-
-
-most important:
-	type
-	new
-	symbol
-	dict
-	range
-	repl
-	debugger or emit info
-	utf8 string
-
-
-mvp features
-	types
-	parse c headers
-		build structs
-		enum values
-	class instantiation via new
-	debugging info
-		lines accessible via gdb
-		frames accessible via gdb
-
-
-features:
-	generators
-	iterators
-	for in range() generator
-	cli argument parsing
-	debugger
-		asm
-		disasm
-		server
-			websocket
-		commands
-			step
-			next
-			continue
-			return
-			breakpoint
-			memory
-			inspect
-
-	stream class
-	file class
-	template strings
-	int80 -> sysenter
-	x64
-	windows
-	make
-	git
-	editor
-	mocking
-	variable arguments
-	default values
-	inline asm (functions?)
-	refactor
-		rename
-		extract
-		break
-		combine
-	template
-	dynamic typing
-		var
-	net
-		udp
-			sendto
-			recvfrom
-	type <=> json
-	type <=> protobuf
-	global default values
-
-
-test:
-	&
-	*
-	!
-	[] for int* / other
-	char* indirection
-
-statment:
-	new
-	for
-	in
-	range
-	yield
-	and
-	or
-	not
-
-data structures:
-	list
-	dict
-	string
-	matrix
-
-types:
-	float
-	const modifier
-	*
-	dynamic
+	web ui:
+		editor
+		file tree explorer
+		search
+		code editor
+		binary analyzer
+		parse tree analyzer
+		task runner
+			shell execute syscall
+			fork
+		debugger information
+		w debugger
 

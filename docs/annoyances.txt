@@ -1,23 +1,25 @@
 DONE! -1 cannot be used, must use 0-1 instead.
 DONE! cannot use # on end of line comments
-if/while required () when using :
-compiler pipes to stdout
-no break/continue
+DONE! compiler supports -o output path
+DONE! break/continue
+DONE! basic repl
+DONE! free/realloc
+DONE! function arity warnings
+DONE! assignment pointer-level mismatch warning
+DONE! nested ifs covered by tests
+DONE! new type() allocation
+DONE! for range(start, end, step)
 
 still need {} instead of pass
 	why is pass even required?? newline should end scope
-*/& are broken
-bad typing
-no repl
-no debugger
-malloc is builtin
-no free
-nested ifs require {}
-no command arg parsing
+if/while required () when using :
+pointer and struct edge cases still need more coverage
+typing still needs deeper compatibility checks
+repl compile errors exit the process
+no built-in w --debug debugger
+malloc/free/realloc are still compiler/runtime primitives, not a library abstraction
+no command arg parsing helper
 no warning if file doesn't end in space
 no warning if spaces used instead of tabs
-no warning if function parameters don't match
-no warning if variable types don't match
-no for loop [start, increment] options
 no for loop list iteration
 no generators

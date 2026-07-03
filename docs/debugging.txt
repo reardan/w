@@ -1,3 +1,12 @@
+Current state:
+
+	the compiler emits DWARF line-number information for gdb
+	the existing debugger statement emits int3
+	repl.w provides an in-process interactive prompt
+
+
+Future:
+
 There will be a built in debugger
 
 	w --debug awesomeness.w

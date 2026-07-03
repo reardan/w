@@ -5,10 +5,24 @@ done:
 	lib...complete!
 	import...complete!
 	type table...complete!
+		dynamic pointer types...complete!
+		struct field metadata...complete!
 	struct...complete!
+		mixed-width fields...complete!
+		struct pointers...complete!
+		struct arrays via pointer indexing...complete!
+		new type() allocation...complete!
 	symbol table...complete!
+		function arity metadata...complete!
 	testing...complete!
+		make verify fixpoint...complete!
+		make tests umbrella target...complete!
 	list...complete!
+	hash_map...complete!
+	string builder...complete!
+	array_list...complete!
+	linked_list...complete!
+	format helpers...complete!
 	basic net...complete!
 	net...complete!
 		split socket / connect...complete!
@@ -28,9 +42,23 @@ done:
 			get_context()
 		print_stack()...complete!
 			print_words(context.esp, 20)
+	debugging symbols...partial!
+		DWARF line information for gdb source-line mapping...complete!
+		built-in w --debug repl...not complete!
 	'for' type var 'in' 'range' '(' expression ')' ...complete!
 		basic version...complete!
-	x64 mvp...complete!
+		range(start, end, step)...complete!
+		break/continue...complete!
+	repl...partial!
+		in-process executable-buffer repl...complete!
+		one-line input and :quit...complete!
+		compile-error recovery...not complete!
+	compiler cli...complete!
+		-o output path...complete!
+		no-argument usage message...complete!
+	x64 mvp...partial!
 		syscall x64...complete!
 		move machine code gen to codegen.w...complete!
 		hello world...complete!
+		lib_test on x64...not complete!
+		x64 self-compiling...not complete!
