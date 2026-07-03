@@ -81,6 +81,27 @@ void mov_rax_int64(int v):
 	emit_int64(v)
 
 
+/* mov rax, imm64 with the immediate given as two 32-bit halves. The
+   compiler itself may run as a 32-bit process, where a single int cannot
+   carry a full 64-bit pattern (e.g. float64 literal bits). */
+void mov_rax_int64_halves(int lo, int hi):
+	emit(2, "\x48\xb8")
+	emit_int32(lo)
+	emit_int32(hi)
+
+
+/* xor eax, imm32; on x64 this also zeroes the upper half of rax */
+void xor_eax_int32(int v):
+	emit(1, "\x35")
+	emit_int32(v)
+
+
+/* movzx eax, word [eax]: a zero-extending 16-bit load. The promote_int16
+   path sign-extends, which would corrupt float16 bit patterns. */
+void promote_uint16_eax():
+	emit(3, "\x0f\xb7\x00")
+
+
 /* mov eax, 0x12345678 */
 void mov_eax_int(int v):
 	if (word_size == 8):

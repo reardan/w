@@ -115,7 +115,27 @@ void get_token():
 					 (('A' <= nextc) & (nextc <= 'Z')) |
 					 (('0' <= nextc) & (nextc <= '9')) | (nextc == '_')):
 			takechar()
-		
+
+		# Float literals: a digit-leading token absorbs a fraction ('3.25')
+		# and a signed exponent ('1.5e-3', '2E+10') into one token.
+		# Identifiers cannot start with a digit, so nothing else is affected.
+		if (token_i > 0):
+			if (('0' <= token[0]) & (token[0] <= '9')):
+				if (nextc == '.'):
+					takechar()
+					while ((('a' <= nextc) & (nextc <= 'z')) |
+								 (('A' <= nextc) & (nextc <= 'Z')) |
+								 (('0' <= nextc) & (nextc <= '9')) | (nextc == '_')):
+						takechar()
+				# '0x1e - 2' must stay a hex literal minus 2, so hex tokens
+				# never absorb an exponent sign
+				if ((token[1] != 'x') &
+						((token[token_i - 1] == 'e') | (token[token_i - 1] == 'E'))):
+					if ((nextc == '+') | (nextc == '-')):
+						takechar()
+						while (('0' <= nextc) & (nextc <= '9')):
+							takechar()
+
 		if (token_i == 0):
 			while ((nextc == '<') | (nextc == '=') | (nextc == '>') |
 						 (nextc == '|') | (nextc == '&') | (nextc == '!')):
