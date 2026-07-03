@@ -55,6 +55,7 @@ int expression():
 		if (type_is_const(type)):
 			error("assignment to const")
 		expression_is_assignment = 1
+		expression_lhs_readonly = 0
 		push_eax()
 		stack_pos = stack_pos + 1
 		int type2 = expression()

@@ -391,6 +391,23 @@ void bounds_check_eax_less_equal_int32(int limit):
 	int3()
 	
 
+/* trap unless ebx <= eax */
+void bounds_check_ebx_less_equal_eax():
+	emit_x64_opcode()
+	emit(2, "\x39\xc3") /* cmp eax,ebx */
+	emit(2, "\x7e\x01") /* jle +1 */
+	int3()
+
+
+/* trap unless eax <= limit */
+void bounds_check_eax_less_equal_int32(int limit):
+	emit_x64_opcode()
+	emit(1, "\x3d") /* cmp imm32,eax */
+	emit_int32(limit)
+	emit(2, "\x7e\x01") /* jle +1 */
+	int3()
+
+
 void nop():
 	emit(1, "\x90") /* nop */
 

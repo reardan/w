@@ -38,6 +38,7 @@ void buffer_bounds_check():
 void buffer_range_bounds_check():
 	if (bounds_mode == 0):
 		return;
+	# stack top before this helper: end, start, descriptor
 	mov_eax_esp_plus(word_size)
 	bounds_check_eax_nonnegative()
 	mov_eax_esp_plus(0)
