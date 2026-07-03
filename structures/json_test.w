@@ -1,5 +1,6 @@
 import lib.testing
 import structures.json
+import structures.string
 
 
 void assert_json_string(json_value* value, char* want):
@@ -10,6 +11,41 @@ void assert_json_string(json_value* value, char* want):
 void assert_json_int(json_value* value, int want):
 	assert_equal(json_type_int(), value.type)
 	assert_equal(want, value.int_value)
+
+
+char* json_test_take_string_data(string* s):
+	char* data = s.data
+	free(s)
+	return data
+
+
+char* json_nested_array_text(int depth):
+	string* s = string_new()
+	int i = 0
+	while (i < depth):
+		string_append_char(s, '[')
+		i = i + 1
+	string_append_char(s, '0')
+	while (i > 0):
+		string_append_char(s, ']')
+		i = i - 1
+	return json_test_take_string_data(s)
+
+
+void assert_json_parse_fails(char* text):
+	json_value* value = json_parse(text)
+	if (value != 0):
+		json_free(value)
+	assert_equal(0, value)
+
+
+void assert_json_round_trip(char* input, char* want):
+	json_value* root = json_parse(input)
+	assert1(root != 0)
+	char* text = json_stringify(root)
+	assert_strings_equal(want, text)
+	free(text)
+	json_free(root)
 
 
 void test_build_values():
@@ -83,7 +119,60 @@ void test_stringify_object_round_trip():
 	json_free(object)
 
 
+void test_empty_containers_round_trip():
+	assert_json_round_trip("{}", "{}")
+	assert_json_round_trip("[]", "[]")
+
+
+void test_quote_backslash_and_control_round_trip():
+	assert_json_round_trip("\x22quote \x5c\x22 and slash \x5c\x5c\x22", "\x22quote \x5c\x22 and slash \x5c\x5c\x22")
+	assert_json_round_trip("\x22\x5cu0001\x22", "\x22\x5cu0001\x22")
+
+
+void test_unicode_ascii_escape():
+	json_value* root = json_parse("\x22letter \x5cu0041\x22")
+	assert1(root != 0)
+	assert_json_string(root, "letter A")
+	json_free(root)
+	assert_json_parse_fails("\x22\x5cu0080\x22")
+
+
+void test_duplicate_keys_last_wins():
+	json_value* root = json_parse("{\x22a\x22:1,\x22a\x22:2}")
+	assert1(root != 0)
+	assert_json_int(json_object_get(root, "a"), 2)
+	json_free(root)
+
+
+void test_nesting_depth_limit():
+	char* under = json_nested_array_text(json_max_depth())
+	json_value* root = json_parse(under)
+	assert1(root != 0)
+	json_free(root)
+	free(under)
+
+	char* over = json_nested_array_text(json_max_depth() + 1)
+	assert_json_parse_fails(over)
+	free(over)
+
+
+void test_number_limit():
+	json_value* root = json_parse("2147483647")
+	assert1(root != 0)
+	assert_json_int(root, 2147483647)
+	json_free(root)
+	assert_json_parse_fails("2147483648")
+	assert_json_parse_fails("9999999999")
+
+
 void test_invalid_inputs():
-	assert_equal(0, json_parse("{\x22bad\x22:1.5}"))
-	assert_equal(0, json_parse("\x22bad \x5cu escape\x22"))
-	assert_equal(0, json_parse("[01]"))
+	assert_json_parse_fails("")
+	assert_json_parse_fails("garbage")
+	assert_json_parse_fails("null x")
+	assert_json_parse_fails("\x22abc")
+	assert_json_parse_fails("[1")
+	assert_json_parse_fails("{\x22a\x22:1")
+	assert_json_parse_fails("[1 2]")
+	assert_json_parse_fails("{\x22bad\x22:1.5}")
+	assert_json_parse_fails("\x22bad \x5cu escape\x22")
+	assert_json_parse_fails("[01]")

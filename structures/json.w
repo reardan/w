@@ -5,13 +5,12 @@ Supported JSON subset:
 - objects with string keys
 - arrays
 - string, integer, boolean, and null values
-- string escapes: \" \\ \/ \b \f \n \r \t
+- string escapes: \" \\ \/ \b \f \n \r \t and ASCII \uXXXX
 
 Numbers are signed base-10 integers only: floating point, exponents, and
-overflow checks are intentionally out of scope. Unicode \u escapes are not
-decoded. Parsed trees own their children; call json_free() on the root.
-Object serialization walks the backing hash map, so member order is stable for
-one run but is not insertion order.
+values outside the 32-bit signed positive range are rejected. Parsed trees own
+their children; call json_free() on the root. Object serialization walks the
+backing hash map, so member order is deterministic but is not insertion order.
 */
 import lib.lib
 import lib.assert
@@ -34,9 +33,10 @@ struct json_parser:
 	int ok
 
 
-json_value* json_parse_value(json_parser* p);
-json_value* json_parse_object(json_parser* p);
-json_value* json_parse_array(json_parser* p);
+void json_free(json_value* value);
+json_value* json_parse_value(json_parser* p, int depth);
+json_value* json_parse_object(json_parser* p, int depth);
+json_value* json_parse_array(json_parser* p, int depth);
 void json_append_value(string* out, json_value* value);
 void json_append_object(string* out, json_value* value);
 void json_append_array(string* out, json_value* value);
@@ -119,6 +119,10 @@ json_value* json_array():
 
 void json_object_set(json_value* object, char* key, json_value* value):
 	assert1(object.type == json_type_object())
+	if (hash_map_contains(object.object_values, key)):
+		json_value* old_value = hash_map_get(object.object_values, key)
+		if (old_value != value):
+			json_free(old_value)
 	hash_map_set(object.object_values, key, value)
 
 
@@ -190,6 +194,27 @@ int json_is_digit(int c):
 	return (c >= '0') & (c <= '9')
 
 
+int json_max_depth():
+	return 128
+
+
+int json_hex_value(int c):
+	if ((c >= '0') & (c <= '9')):
+		return c - '0'
+	if ((c >= 'a') & (c <= 'f')):
+		return c - 'a' + 10
+	if ((c >= 'A') & (c <= 'F')):
+		return c - 'A' + 10
+	return -1
+
+
+void json_append_hex_digit(string* out, int value):
+	if (value < 10):
+		string_append_char(out, '0' + value)
+	else:
+		string_append_char(out, 'a' + value - 10)
+
+
 void json_skip_ws(json_parser* p):
 	while (json_is_space(p.input[p.index])):
 		p.index = p.index + 1
@@ -259,6 +284,23 @@ char* json_parse_string_raw(json_parser* p):
 				string_append_char(out, '\r')
 			else if (c == 't'):
 				string_append_char(out, '\t')
+			else if (c == 'u'):
+				int value = 0
+				int i = 1
+				while (i <= 4):
+					int digit = json_hex_value(p.input[p.index + i])
+					if (digit < 0):
+						json_fail(p)
+						string_free(out)
+						return 0
+					value = value * 16 + digit
+					i = i + 1
+				if (value > 127):
+					json_fail(p)
+					string_free(out)
+					return 0
+				string_append_char(out, value)
+				p.index = p.index + 4
 			else:
 				json_fail(p)
 				string_free(out)
@@ -297,7 +339,11 @@ json_value* json_parse_number(json_parser* p):
 			return 0
 	else:
 		while (json_is_digit(p.input[p.index])):
-			value = value * 10 + p.input[p.index] - '0'
+			int digit = p.input[p.index] - '0'
+			if ((value > 214748364) | ((value == 214748364) & (digit > 7))):
+				json_fail(p)
+				return 0
+			value = value * 10 + digit
 			p.index = p.index + 1
 
 	if (negative):
@@ -305,7 +351,7 @@ json_value* json_parse_number(json_parser* p):
 	return json_int(value)
 
 
-json_value* json_parse_object(json_parser* p):
+json_value* json_parse_object(json_parser* p, int depth):
 	json_value* object = json_object()
 	p.index = p.index + 1
 	json_skip_ws(p)
@@ -320,7 +366,7 @@ json_value* json_parse_object(json_parser* p):
 		if (json_take(p, ':') == 0):
 			free(key)
 			return object
-		json_value* child = json_parse_value(p)
+		json_value* child = json_parse_value(p, depth)
 		if (p.ok == 0):
 			json_free(child)
 			free(key)
@@ -340,7 +386,7 @@ json_value* json_parse_object(json_parser* p):
 	return object
 
 
-json_value* json_parse_array(json_parser* p):
+json_value* json_parse_array(json_parser* p, int depth):
 	json_value* array = json_array()
 	p.index = p.index + 1
 	json_skip_ws(p)
@@ -349,7 +395,7 @@ json_value* json_parse_array(json_parser* p):
 		return array
 
 	while (p.ok):
-		json_value* child = json_parse_value(p)
+		json_value* child = json_parse_value(p, depth)
 		if (p.ok == 0):
 			json_free(child)
 			return array
@@ -367,13 +413,19 @@ json_value* json_parse_array(json_parser* p):
 	return array
 
 
-json_value* json_parse_value(json_parser* p):
+json_value* json_parse_value(json_parser* p, int depth):
 	json_skip_ws(p)
 	int c = p.input[p.index]
 	if (c == '{'):
-		return json_parse_object(p)
+		if (depth >= json_max_depth()):
+			json_fail(p)
+			return 0
+		return json_parse_object(p, depth + 1)
 	if (c == '['):
-		return json_parse_array(p)
+		if (depth >= json_max_depth()):
+			json_fail(p)
+			return 0
+		return json_parse_array(p, depth + 1)
 	if (c == '"'):
 		return json_parse_string_value(p)
 	if (c == 't'):
@@ -396,7 +448,7 @@ json_value* json_parse_value(json_parser* p):
 
 json_value* json_parse(char* input):
 	json_parser* p = json_parser_new(input)
-	json_value* value = json_parse_value(p)
+	json_value* value = json_parse_value(p, 0)
 	json_skip_ws(p)
 	if (p.input[p.index] != 0):
 		json_fail(p)
@@ -434,6 +486,13 @@ void json_append_escaped_string(string* out, char* text):
 		else if (c == '\t'):
 			string_append_char(out, '\\')
 			string_append_char(out, 't')
+		else if ((c > 0) & (c < 32)):
+			string_append_char(out, '\\')
+			string_append_char(out, 'u')
+			string_append_char(out, '0')
+			string_append_char(out, '0')
+			json_append_hex_digit(out, c / 16)
+			json_append_hex_digit(out, c & 15)
 		else:
 			string_append_char(out, c)
 		i = i + 1
