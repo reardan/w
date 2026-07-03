@@ -8,8 +8,9 @@ Goal:
 
 Non-goals:
 	Do not add compiler import search paths in this design.
-	Do not change dotted import resolution: import a.b still maps to a/b.w from
-	the compiler's active source root, with the existing __arch__ substitution.
+	Do not change dotted import resolution: import a.b still maps to a/b.w after
+	the compiler walks upward from the current working directory until it finds
+	the file, with the existing __arch__ substitution.
 	Do not add dependency fetching, floating-point metadata, code generation
 	metadata, or type-system controls.
 
@@ -61,7 +62,9 @@ Field meaning:
 
 	w_language is the minimum or bounded W language version the package expects.
 	It describes source compatibility only.  It must not enable language
-	features, change warnings, or switch codegen paths.
+	features, change warnings, or switch codegen paths.  The compiler does not
+	currently declare a version, so enforcement must wait until a later stage
+	exposes one, such as w --version.  Until then this field is advisory.
 
 	root is the package's source root relative to package.wmeta.  The first
 	stage should require ".".  Allowing another relative root later gives tools a
@@ -86,31 +89,58 @@ Dependency and version semantics:
 		>=1.2.3 minimum version
 		^1.2.3 compatible major range, equivalent to >=1.2.3 and <2.0.0
 		^0.2.3 compatible minor range, equivalent to >=0.2.3 and <0.3.0
+		^0.0.3 exact version, equivalent to =0.0.3
 
 	A dependency is satisfied when the referenced package.wmeta package name
 	matches and its version satisfies the constraint.  If two dependencies select
 	the same package name with incompatible constraints, tooling should fail
-	before compilation.  The compiler should not try to choose between versions.
+	before compilation.  When all constraints for a package are compatible,
+	tooling should select the highest version satisfying all constraints and
+	record that selected version in the lock file.  The compiler should not try
+	to choose between versions.
 
 	Transitive dependencies are resolved by tooling from metadata files, then
 	recorded in a future lock file.  The lock file should contain package name,
-	version, source location, and content hash.  It is intentionally separate
-	from package.wmeta so project intent and machine resolution remain distinct.
+	version, source location, per-file SHA-256 hashes, and a SHA-256 tree
+	manifest hash.  Tooling must verify those hashes before any build consumes
+	dependency files.  It is intentionally separate from package.wmeta so project
+	intent and machine resolution remain distinct.
 
 Import path implications:
 	Current W source imports remain unchanged.  Metadata can say which modules a
 	package owns and where dependency packages are located, but source files
 	should still import dotted modules exactly as they do today.
 
+	The compiler does not have explicit import search paths, but relative compile
+	requests are still an implicit search path: compile_relative_path starts at
+	the process current working directory and walks up ancestor directories until
+	the requested file is found.  A vendored or assembled tree can therefore
+	silently import a matching file from an ancestor W tree.  metadata_check can
+	validate the assembled tree, but it cannot guarantee which file the current
+	compiler will use unless builds run from an isolated directory outside any
+	other W tree, or a later resolver change stops the upward walk at the
+	package root.
+
 	The first implementation should validate only that declared modules exist
 	under root using the current mapping.  It should not teach the compiler to
 	search dependency directories.  If a later build tool wants external package
 	imports, it can create an explicit temporary or vendored tree whose paths
-	already match the current import mapping, then run the compiler normally.
+	already match the current import mapping, run the compiler from that isolated
+	root, then remove the tree.
+
+	In an assembled tree, each package name maps to a directory using the dotted
+	package name with dots converted to path separators.  For example,
+	example.net maps to example/net.  Because import statements carry only dotted
+	module paths and no package identity, top-level module path ownership must be
+	unique across the complete dependency set.  metadata_check should fail if two
+	packages claim the same top-level module path, or if their assembled paths
+	would otherwise collide.
 
 	Reserved segments keep their current meaning.  __arch__ is still resolved by
-	the compiler target, and metadata must not redefine it.  __word_size__ stays a
-	compile-time constant and is not a metadata variable.
+	the compiler target, and metadata must not redefine it.  The checker should
+	expand a declared __arch__ segment to both x86 and x64 and validate that both
+	files exist.  __word_size__ stays a compile-time constant and is not a
+	metadata variable.
 
 Makefile and build integration:
 	The bootstrap path should stay unchanged:
@@ -145,5 +175,8 @@ Staged implementation:
 	5. Add optional lock-file generation for path dependencies and content
 		hashes.
 	6. Revisit import ergonomics only after metadata validation is useful on its
-		own; any future import changes should be a separate compiler design.
+		own; any future import changes should be a separate compiler design
+		covering the related backlog items for import aliases,
+		scoped/private imports, and settling import grammar vs grammar.*
+		behavior.
 
