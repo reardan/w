@@ -78,6 +78,9 @@ void program():
 				sym_define_global(current_symbol)
 				current_function_symbol = current_symbol
 				enclosing_tab_level = 0
+				# Record the argument word count for the debugger's
+				# runtime argument addressing
+				debug_func_note(function_start, number_of_args)
 				statement()
 				ret()
 				# Store length to symbol table:

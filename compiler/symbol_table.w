@@ -138,6 +138,11 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 22, -1) /* parameter count unknown until a '(...)' is parsed */
 	table_pos = next_token(t)
 
+	# Record where locals and arguments live so the in-process debugger
+	# (wdbg) can inspect them by name at runtime
+	if ((visibility == 'L') | (visibility == 'A')):
+		debug_local_note(s, value, visibility, type)
+
 
 char *last_global_declaration
 int sym_declare_global(char *s, int type, int symtype):

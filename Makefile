@@ -317,17 +317,48 @@ args_test: w FORCE
 wdbg: w FORCE
 	./bin/wv2 debugger/debugger.w -o ./bin/wdbg
 
-# The in-process debugger: compile a fixture with a 'debugger' statement,
+# The in-process debugger: compile fixtures with 'debugger' statements,
 # drive the command loop over stdin, and check each command's output.
 debug_test: wdbg FORCE
+	# basics: trap announcement, registers, location, raw stack, continue
 	printf 'r\nl\nc\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "breakpoint hit at eip="
 	printf 'r\nc\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "eax: 0x"
 	printf 'l\nc\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "debug_fixture.w:9"
-	printf 's\nc\n' | ./bin/wdbg tests/debug_fixture.w | grep -qE "0x[0-9a-f]+: 0x"
+	printf 'st\nc\n' | ./bin/wdbg tests/debug_fixture.w | grep -qE "0x[0-9a-f]+: 0x"
 	printf 'c\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "after breakpoint"
 	printf 'c\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "debuggee main returned 7"
 	printf 'c\nc\n' | ./bin/wdbg tests/debug_fixture.w --break_start | grep -q "after breakpoint"
 	printf 'q\n' | ./bin/wdbg tests/debug_fixture.w > /dev/null
+	# stepping: step, step into a call, next over a call, stepi, finish
+	printf 's\nl\nc\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "debug_fixture.w:10"
+	printf 's\ns\nl\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "debug_fixture2.w:12"
+	printf 'n\nn\nl\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "debug_fixture2.w:22"
+	printf 'si\nl\nc\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "debug_fixture.w:10"
+	printf 's\ns\ns\nfin\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "value returned = 6"
+	printf 's\nl\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w --break_start | grep -q "debug_fixture2.w:17"
+	# breakpoints: by function, file:line, temporary, delete, list
+	printf 'b add\nc\np a\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "a = 3"
+	printf 'b debug_fixture2.w:22\nc\np y\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "y = 9"
+	printf 'tb triple\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "hit breakpoint 1 (temporary)"
+	printf 'b add\nd 1\ni b\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "no breakpoints set"
+	# inspection: locals, args, globals, strings, backtrace, memory, source
+	printf 'p x\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "x = 3"
+	printf 'p message\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "hello wdbg"
+	printf 'i l\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "message ="
+	printf 'i a\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "argc ="
+	printf 'p counter\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "counter = 5"
+	printf 'b add\nc\nbt\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "#1  triple"
+	printf 'x message 1\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -qE "0x[0-9a-f]+: 0x"
+	printf 'list\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "int y = triple(x)"
+	# expression evaluation (the repl model) and writing variables
+	printf 'p add(2, 3)\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "= 5 (0x00000005)"
+	printf 'set x 40\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "debuggee main returned 120"
+	# fatal signals: post-mortem stop, location, and refusal to resume
+	printf 'l\nc\n' | ./bin/wdbg tests/segv_fixture.w | grep -q "fatal signal: SIGSEGV"
+	printf 'l\nc\n' | ./bin/wdbg tests/segv_fixture.w | grep -q "segv_fixture.w:7"
+	printf 'c\n' | ./bin/wdbg tests/segv_fixture.w > /dev/null 2>&1; test $$? -eq 1
+	# the compiler driver runs the same debugger via 'w --debug'
+	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
 tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test debug_test dynamic_test test hello tests_x64 FORCE

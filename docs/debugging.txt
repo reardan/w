@@ -5,37 +5,101 @@ Current state:
 	repl.w provides an in-process interactive prompt
 	repl compile errors return to the prompt
 
-	wdbg (debugger/debugger.w, built with make wdbg) is the built-in debugger:
+	the compiler also records in-memory debug notes for the in-process
+	debugger: per-statement (codepos, file, line, stack depth), per
+	local/argument (name, stack slot, type, declaration site) and per
+	function (start, argument words); see code_generator/dwarf.w
+
+	wdbg (debugger/wdbg.w and the debugger/ modules, built with make wdbg)
+	is the built-in debugger:
 
 		./bin/wdbg file.w
+		./bin/w --debug file.w      (same debugger via the compiler driver)
 
 	compiles file.w into an in-process executable buffer (the repl model),
-	installs a SIGTRAP handler via rt_sigaction, and calls the debuggee's
-	main(). Every 'debugger' statement traps into a command loop:
+	installs SIGTRAP + fatal-signal handlers via rt_sigaction, and calls
+	the debuggee's main(). Every 'debugger' statement, patched breakpoint
+	and fatal signal (SIGSEGV, SIGILL, SIGBUS, SIGFPE) traps into a
+	command loop:
 
+	execution control
 		c / continue    resume the debuggee
-		r / registers   dump the trapped registers from the signal frame
-		s / stack       dump 16 words at the trapped esp
-		l / line        map the trapped eip to file:line via the DWARF notes
-		q / quit        exit
+		s / step        run to the next source line, entering calls
+		n / next        run to the next source line, stepping over calls
+		si / stepi      execute one machine instruction
+		fin / finish    run until the current function returns
+		                (prints the returned value)
+		q / quit        exit wdbg
+		an empty line repeats the previous command
+
+	breakpoints (int3 patched over a statement's first byte, original
+	byte restored while stopped and re-armed via one single-step)
+		b / break <t>   t = function | line | file:line
+		tb / tbreak <t> one-shot breakpoint, deleted when hit
+		d / delete [n]  delete breakpoint n, or all of them
+		i b             list breakpoints
+
+	inspection
+		p / print <x>   local/argument/global by name (typed: structs
+		                print field by field, char* previews the string),
+		                or any W expression compiled in-process and run
+		                against the live debuggee (globals + calls work)
+		set <x> <v>     write a local, argument or global
+		x <addr|name> [n]  dump n memory words; addresses are probed with
+		                mincore first so bad pointers cannot crash wdbg
+		bt / backtrace  heuristic unwind through stacked return addresses
+		st / stack      raw 16 words at the trapped esp
+		r / registers   the trapped register file
+		l / line        current location: function (file:line)
+		list [line]     source listing around the stop
+		i locals|args|breakpoints|registers|functions|files
+
+	how stepping works: the handler sets the x86 trap flag in the signal
+	frame's eflags, so sigreturn raises the next SIGTRAP after one
+	instruction; the handler keeps stepping until the stop condition
+	holds. step/next stop only at recorded statement starts, and next/
+	finish compare esp against the frame base (trapped esp + 4 * the
+	statement's recorded stack depth) to tell the starting frame apart
+	from callees, recursion and callers - no frame pointers needed.
+
+	how locals work: the recorded stack depth of the stopped statement
+	plus each variable's declaration slot reproduce the same
+	esp-relative addressing sym_get_value() compiled into the debuggee.
+
+		local:    esp + (stack_pos - slot - 1) * 4
+		argument: esp + (stack_pos + arg_words - slot + 1) * 4
+
+	fatal signals stop for post-mortem inspection (location, registers,
+	stack, locals, backtrace); resuming is refused and exits with 1.
 
 		./bin/wdbg file.w --break_start
 
-	traps before the debuggee's main runs
+	traps before the debuggee's main runs (stepping from there walks
+	into the debuggee's first statement)
 
 		./bin/wdbg file.w --break_end
 
 	traps after the debuggee's main returns
 
 	make debug_test drives the command loop over stdin against
-	tests/debug_fixture.w and asserts each command's output.
+	tests/debug_fixture.w, tests/debug_fixture2.w and
+	tests/segv_fixture.w, asserting each command's output.
+
+	known limitations:
+		wdbg is x86-only (sigcontext layout, 4-byte slots, asm stubs)
+		locals are not visible inside print's compiled expressions;
+			only as plain 'p name' reads
+		local addresses are exact at statement boundaries, which is
+			where step/next/breakpoints stop
+		finish treats a same-function stop after block-exit pops
+			correctly, but cannot see through frames without line info
 
 
 Future:
 
-	fold wdbg into the compiler driver as 'w --debug file.w'
-	step / next (single-step via eflags trap flag or int3 rewriting)
-	breakpoints at arbitrary file:line positions (patch int3 by address)
-	inspect locals by name (needs DWARF variable info or symbol table walks)
-	segv handler and stack parser
-	repl integration: evaluate expressions at the breakpoint
+	locals bound into evaluated expressions (compile-time preamble
+		reading the trapped stack)
+	watchpoints (single-step scan or debug registers)
+	conditional breakpoints and hit counts
+	web UI debugger
+	x64 support (sigcontext_64 layout, 8-byte slots, x64 asm stubs)

@@ -131,10 +131,14 @@ Toolchain beyond the compiler:
   function into an executable mmap buffer and runs immediately; compile errors
   roll back via checkpoint instead of killing the process. Known limitation:
   locals do not persist between lines. `:quit` exits.
-- **Debugger** (`make wdbg`): `./bin/wdbg file.w` compiles and runs the program
-  in-process, trapping on `debugger` statements into a command loop —
-  `c`ontinue, `r`egisters, `s`tack, `l`ine, `q`uit (see `debug_test` in the
-  Makefile).
+- **Debugger** (`make wdbg`, or `w --debug file.w`): `./bin/wdbg file.w`
+  compiles and runs the program in-process, trapping on `debugger` statements,
+  patched breakpoints and fatal signals into a gdb-flavored command loop:
+  `step`/`next`/`stepi`/`finish`, `break function|line|file:line` (+ `tbreak`,
+  `delete`), `print` of locals/args/globals by name or of any compiled-on-the-
+  fly W expression, `set`, `x`, `backtrace`, `list`, `info locals|args|...`,
+  `registers`, `stack`. SIGSEGV and friends stop for post-mortem inspection.
+  See `docs/debugging.txt` and `debug_test` in the Makefile.
 
 ## How the bootstrap works
 
@@ -177,7 +181,8 @@ archives the old seed to `old/` first.
 - CUDA backend Stage 2, the PTX emitter — Stages 0–1 (x64 self-hosting and
   dynamic linking to libcuda) are done; see `docs/projects/cuda.md`.
 - REPL local persistence between entries.
-- Debugger stepping and a `w --debug` driver integration / web UI.
+- Debugger: locals inside evaluated expressions, watchpoints, a web UI
+  (stepping, breakpoints, variable inspection and `w --debug` are done).
 - Import-scoped type metadata.
 - WebAssembly backend.
 
