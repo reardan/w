@@ -17,8 +17,10 @@ void new_store_field(int base_type, int field_index, int arg_type):
 		store_ebx_int8()
 	else if (field_size == 2):
 		store_ebx_int16()
-	else:
+	else if (field_size == 4):
 		store_ebx_int32()
+	else:
+		store_ebx_word()
 
 
 /*
@@ -55,14 +57,12 @@ int unary_expression():
 		# The tokenizer scans "!!" as one token; it booleanizes like !(!x)
 		type = unary_expression()
 		promote(type)
-		/* test %eax,%eax ; setne %al ; movzbl %al,%eax */
-		emit(8, "\x85\xc0\x0f\x95\xc0\x0f\xb6\xc0")
+		alu_test_set(0x95) /* setne */
 		return 3
 	else if (accept("!")):
 		type = unary_expression()
 		promote(type)
-		/* test %eax,%eax ; sete %al ; movzbl %al,%eax */
-		emit(8, "\x85\xc0\x0f\x94\xc0\x0f\xb6\xc0")
+		alu_test_set(0x94) /* sete */
 		return 3
 	else if (accept("-")):
 		type = unary_expression()

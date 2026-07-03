@@ -55,6 +55,8 @@ int promote(int type):
 		promote_int8_eax()
 	else if (size == 2):
 		promote_int16_eax()
+	else if (size == 4):
+		promote_int32_eax()
 	else if (size >= 4):
 		promote_eax()
 	/* size 0 (void): nothing to load */

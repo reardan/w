@@ -46,7 +46,9 @@ int type_lookup(char* name):
 	int i = 0
 	while (i < length):
 		int type = get(i)
-		if (strcmp(name, *type) == 0):
+		# load_int, not *type: the name pointer occupies 4 bytes, so a full
+		# word load on x64 would drag in the neighboring num_fields field
+		if (strcmp(name, load_int(type)) == 0):
 			return i
 		i = i + 1
 	return -1
@@ -54,7 +56,7 @@ int type_lookup(char* name):
 
 char* type_get_name(int type_index):
 	int t = get(type_index)
-	return *t
+	return load_int(t)
 
 
 int type_num_args(int type_index):
@@ -78,7 +80,7 @@ int type_lookup_pointer(char* name, int pointer_level):
 		int t = get(i)
 		if (verbosity >= 1):
 			print_hex("type_lookup_pointer t: ", t)
-		if ((strcmp(name, *t) == 0) & (pointer_level==load_int(t + 12))):
+		if ((strcmp(name, load_int(t)) == 0) & (pointer_level==load_int(t + 12))):
 			return i
 		i = i + 1
 	return -1
@@ -223,10 +225,10 @@ void type_print(int type_index):
 	print2(":")
 	if (num_fields > 0):
 		print2("struct ")
-		print2(*t)
+		print2(load_int(t))
 		print2(": ")
 	else:
-		print2(*t)
+		print2(load_int(t))
 	# print_int("num_fields: ", num_fields)
 	if (num_fields <= 0):
 		println2("")
@@ -240,7 +242,7 @@ void type_print(int type_index):
 		if (i > 0):
 			print2("; ")
 
-		print2(*field_type_name)
+		print2(load_int(field_type_name))
 		print2(" ")
 		print2(field_name)
 
@@ -256,7 +258,7 @@ void type_print_all():
 		int type = get(i)
 		print_error(itoa(i))
 		print_error(": ")
-		print_error(*type)
+		print_error(load_int(type))
 		for int j in range(type_get_pointer_level(i)):
 			print_error("*")
 		print_error("\x0a")
@@ -264,9 +266,14 @@ void type_print_all():
 		i = i + 1
 
 
-# make sure to change promote() until completely fixed
+# Sizes use the global target word_size: 'int', 'uint' and 'pointer' are
+# word-sized (8 bytes when compiling for x64) while the explicit-width
+# types (int32, int16, ...) keep their fixed sizes on every target.
 void push_basic_types():
-	int word_size = 4
+	# Callers that never pick a target (unit tests) default to 32-bit
+	if (word_size == 0):
+		word_size = 4
+		word_size_log2 = 2
 
 	die() /* reset array */
 	type_push_size("void", 0)
@@ -278,12 +285,12 @@ void push_basic_types():
 	# newer types, use these for now until void/int/char are fixed:
 	type_push_size("byte", 1)
 	type_push_size("int16", 2)
-	type_push_size("int32", word_size)
+	type_push_size("int32", 4)
 	type_push_size("pointer", word_size)
 	type_push_size("int8", 1)
 
 	type_push_size("uint", word_size)
-	type_push_size("uint32", word_size)
+	type_push_size("uint32", 4)
 	type_push_size("uint16", 2)
 	type_push_size("uint8", 1)
 

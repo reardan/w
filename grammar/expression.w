@@ -33,8 +33,10 @@ int expression():
 			store_ebx_int8()
 		else if (lhs_size == 2):
 			store_ebx_int16()
-		else:
+		else if (lhs_size == 4):
 			store_ebx_int32()
+		else:
+			store_ebx_word()
 
 		stack_pos = stack_pos - 1
 

@@ -13,6 +13,12 @@ int primary_expr():
 	if (int_literal()):
 		type = 3 /* constant */
 
+	# Compile-time constant: the target's word size in bytes (4 or 8),
+	# baked in when the enclosing file is compiled
+	else if (peek("__word_size__")):
+		mov_eax_int(word_size)
+		type = 3 /* constant */
+
 	# Identifier
 	else if ((new_type = identifier()) >= 0) {
 		type = new_type

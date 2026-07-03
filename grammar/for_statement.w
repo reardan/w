@@ -64,8 +64,8 @@ int for_statement():
 	push_eax()
 	stack_pos = stack_pos + 1
 	mov_eax_esp_plus((stack_pos - end_slot) << word_size_log2)
-	/* pop %ebx ; cmp %eax,%ebx ; setl %al ; movzbl %al,%eax */
-	emit(9, compare_opcode("\x9c"))
+	pop_ebx()
+	alu_cmp_set(0x9c) /* setl: loop var < end */
 	stack_pos = stack_pos - 1
 	jmp_zero_int32(1337010)
 	p2 = codepos

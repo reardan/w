@@ -282,8 +282,7 @@ void print_symbol_table(int t):
 		print_error(") visibility(")
 		put_error(table[t + 1])
 		print_error(") address(")
-		int address = table + t + 2
-		print_error(hex(*address))
+		print_error(hex(load_int(table + t + 2)))
 		print_error(") symtype(")
 		put_error(table[t + 10] + '0')
 		print_int0(") size (", load_int(table + t + 14))
@@ -319,7 +318,7 @@ int emit_symbol_table():
 	int n = 0
 	int symbol = 1 /* string table starts with a null byte */
 	int count = 1
-	elf_sym_table_entry(0, 0, 0, 0, 0, 0) /* mandatory null symbol */
+	elf_emit_sym_table_entry(0, 0, 0, 0, 0, 0) /* mandatory null symbol */
 	while (t <= table_pos - 1):
 		char* sym = table + t
 		n = strlen(table + t)
@@ -330,9 +329,9 @@ int emit_symbol_table():
 		if (visibility != 'D'):
 			binding = 0
 		int symtype = table[t + 10]
-		int address = table + t + 2
+		int address = load_int(table + t + 2)
 		int size = load_int(table + t + 14)
-		elf_sym_table_entry(symbol, *address, size, binding, symtype, 1) /* shndx 1 = .text */
+		elf_emit_sym_table_entry(symbol, address, size, binding, symtype, 1) /* shndx 1 = .text */
 
 		t = next_token(t)
 		symbol = symbol + n + 1
@@ -349,10 +348,10 @@ void emit_section_name(char* s, int header_addr, int strings_addr):
 # Set a section header's file offset and size, and zero the symtab-oriented
 # defaults that only apply to .symtab.
 void section_set_range(int header, int addr, int length):
-	save_int(code + header + 16, addr) /* offset */
-	save_int(code + header + 20, length) /* size */
-	save_int(code + header + 24, 0) /* link */
-	save_int(code + header + 36, 0) /* entry size */
+	elf_section_set_offset(header, addr)
+	elf_section_set_size(header, length)
+	elf_section_set_link(header, 0)
+	elf_section_set_entsize(header, 0)
 
 
 void emit_debugging_symbols(int word_size):
@@ -366,35 +365,35 @@ void emit_debugging_symbols(int word_size):
 	elf_save_section_info(word_size, header_addr, 7, 5)
 
 	# Mandatory null section 0
-	emit_zeros(40)
+	emit_zeros(elf_section_header_length())
 
 	# .text covers the whole loaded image (headers + code + data)
 	int text_section_header = codepos
-	elf_section_header(1)
-	save_int(code + text_section_header + 8, 6) /* flags: alloc + exec */
-	save_int(code + text_section_header + 12, code_offset) /* addr */
-	save_int(code + text_section_header + 16, 0) /* offset */
-	save_int(code + text_section_header + 20, text_end) /* size */
-	save_int(code + text_section_header + 24, 0) /* link */
-	save_int(code + text_section_header + 36, 0) /* entry size */
+	elf_emit_section_header(1)
+	elf_section_set_flags(text_section_header, 6) /* alloc + exec */
+	elf_section_set_addr(text_section_header, code_offset)
+	elf_section_set_offset(text_section_header, 0)
+	elf_section_set_size(text_section_header, text_end)
+	elf_section_set_link(text_section_header, 0)
+	elf_section_set_entsize(text_section_header, 0)
 
 	# Emit debug info section header
 	int debug_info_section_header = codepos
-	elf_section_header(1)
+	elf_emit_section_header(1)
 
 	int debug_abbrev_section_header = codepos
-	elf_section_header(1)
+	elf_emit_section_header(1)
 
 	int debug_line_section_header = codepos
-	elf_section_header(1)
+	elf_emit_section_header(1)
 
 	# Emit string section header
 	int string_section_header = codepos
-	elf_section_header(3)
+	elf_emit_section_header(3)
 
 	# Emit symbol section header
 	int symbol_section_header = codepos
-	elf_section_header(2)
+	elf_emit_section_header(2)
 
 	# Emit strings
 	int strings_addr = codepos
@@ -410,22 +409,22 @@ void emit_debugging_symbols(int word_size):
 
 	# Store string strings_addr + length
 	int length = codepos - strings_addr
-	save_int(code + string_section_header + 12, strings_addr)
-	save_int(code + string_section_header + 16, strings_addr)
-	save_int(code + string_section_header + 20, length)
-	save_int(code + string_section_header + 24, 0) /* link */
-	save_int(code + string_section_header + 28, 0) /* info */
-	save_int(code + string_section_header + 36, 0) /* entry size */
+	elf_section_set_addr(string_section_header, strings_addr)
+	elf_section_set_offset(string_section_header, strings_addr)
+	elf_section_set_size(string_section_header, length)
+	elf_section_set_link(string_section_header, 0)
+	elf_section_set_info(string_section_header, 0)
+	elf_section_set_entsize(string_section_header, 0)
 
 	# Emit symbols
 	int sym_table_addr = codepos
 	int symbol_count = emit_symbol_table()
 	int sym_table_length = codepos - sym_table_addr
-	save_int(code + symbol_section_header + 12, sym_table_addr)
-	save_int(code + symbol_section_header + 16, sym_table_addr)
-	save_int(code + symbol_section_header + 20, sym_table_length)
-	save_int(code + symbol_section_header + 24, 5) /* link: the strings section */
-	save_int(code + symbol_section_header + 28, 0) /* info: no leading locals */
+	elf_section_set_addr(symbol_section_header, sym_table_addr)
+	elf_section_set_offset(symbol_section_header, sym_table_addr)
+	elf_section_set_size(symbol_section_header, sym_table_length)
+	elf_section_set_link(symbol_section_header, 5) /* link: the strings section */
+	elf_section_set_info(symbol_section_header, 0) /* info: no leading locals */
 
 	# Emit the DWARF payloads
 	int debug_info_addr = codepos

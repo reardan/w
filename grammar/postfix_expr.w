@@ -63,7 +63,7 @@ int postfix_expr():
 			if (element_size > 1):
 				imul_eax_int32(element_size)
 			pop_ebx()
-			emit(2, "\x01\xd8") /* add %ebx,%eax */
+			alu_add()
 			stack_pos = stack_pos - 1
 			expect("]")
 			type = element_type

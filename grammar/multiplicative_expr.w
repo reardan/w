@@ -7,16 +7,19 @@ int multiplicative_expr():
 		# A '*' on a fresh line starts a dereference statement, not a product
 		if (peek("*") & (token_newline == 0)):
 			get_token()
-			binary1(type) /* imul eax,ebx */
-			type = binary2_pop(unary_expression(), 3, "\x0f\xaf\xc3")
+			binary1(type)
+			type = binary2_finish_pop(unary_expression())
+			alu_imul()
 
 		else if (accept("/")):
-			binary1(type)  /* mov ebx, eax ; pop eax ; cdq ; idiv ebx */
-			type = binary2(unary_expression(), 6, "\x89\xc3\x58\x99\xf7\xfb")
+			binary1(type)
+			type = binary2_finish(unary_expression())
+			alu_idiv()
 
 		else if (accept("%")):
-			binary1(type) /* mov ebx, eax ; pop eax ; cdq ; idiv ebx ; mov eax,edx */
-			type = binary2(unary_expression(), 8, "\x89\xc3\x58\x99\xf7\xfb\x89\xd0")
+			binary1(type)
+			type = binary2_finish(unary_expression())
+			alu_imod()
 
 		else:
 			return type

@@ -8,12 +8,14 @@ int additive_expr():
 	int type = multiplicative_expr()
 	while (1):
 		if (accept("+")):
-			binary1(type) /* add %ebx,%eax */
-			type = binary2_pop(multiplicative_expr(), 2, "\x01\xd8")
+			binary1(type)
+			type = binary2_finish_pop(multiplicative_expr())
+			alu_add()
 
 		else if (accept("-")):
-			binary1(type) /* sub %eax,%ebx ; mov %ebx,%eax */
-			type = binary2_pop(multiplicative_expr(), 4, "\x29\xc3\x89\xd8")
+			binary1(type)
+			type = binary2_finish_pop(multiplicative_expr())
+			alu_sub()
 
 		else:
 			return type

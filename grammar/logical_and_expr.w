@@ -18,7 +18,7 @@ int logical_and_expr():
 		chain = codepos
 		promote(bitwise_or_expr())
 
-	/* booleanize: test %eax,%eax ; setne %al ; movzbl %al,%eax */
-	emit(8, "\x85\xc0\x0f\x95\xc0\x0f\xb6\xc0")
-	patch_jump_chain(chain, codepos - 8)
+	int booleanize_target = codepos
+	alu_test_set(0x95) /* setne */
+	patch_jump_chain(chain, booleanize_target)
 	return 3
