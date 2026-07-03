@@ -67,7 +67,7 @@ int expression():
 
 		# Warn when the two sides carry conflicting types; constants (3) and
 		# functions (4) act as wildcards inside types_compatible().
-		if (types_compatible(type, type2) == 0):
+		if (types_compatible_with_expression(type, type2) == 0):
 			warn_type_mismatch("assignment", type, type2)
 
 		# Struct assignment copies the aggregate; scalar stores use lhs width.

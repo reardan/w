@@ -8,7 +8,7 @@ void new_store_field(int base_type, int field_index, int arg_type):
 	if (field_index >= type_num_args(base_type)):
 		return;
 	int field_type = type_get_field_type_at(base_type, field_index)
-	if (types_compatible(field_type, arg_type) == 0):
+	if (types_compatible_with_expression(field_type, arg_type) == 0):
 		warn_type_mismatch("constructor argument", field_type, arg_type)
 	coerce(field_type, arg_type)
 	mov_ebx_esp()

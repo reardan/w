@@ -21,6 +21,33 @@ void warn_type_mismatch(char* context, int want, int got):
 	warning("'")
 
 
+int function_signature_matches_symbol(int signature_type, char* function_name):
+	int symbol = sym_lookup(function_name)
+	if (symbol < 0):
+		return 0
+	if (load_int(table + symbol + 10) != 2):
+		return 0
+	if (type_unqualified(type_function_return(signature_type)) != type_unqualified(load_int(table + symbol + 6))):
+		return 0
+	int expected_args = type_function_param_count(signature_type)
+	if (sym_num_args(symbol) != expected_args):
+		return 0
+	int i = 0
+	while (i < expected_args):
+		if (type_unqualified(type_function_param_type(signature_type, i)) != type_unqualified(sym_param_type(symbol, i))):
+			return 0
+		i = i + 1
+	return 1
+
+
+int types_compatible_with_expression(int want, int got):
+	if (got == 4):
+		int signature_type = type_function_pointer_signature(want)
+		if (signature_type >= 0):
+			return function_signature_matches_symbol(signature_type, last_identifier)
+	return types_compatible(want, got)
+
+
 
 /*
 Convert the lvalue address in eax into an rvalue, sized by its type.

@@ -17,6 +17,9 @@ int type_name():
 
 	get_token()
 
+	if (is_const):
+		type = type_push_const(type)
+
 	# Each '*' wraps the base type in a pointer type, created on demand
 	char* base_name = type_get_name(type)
 	while (accept("*")):
@@ -25,8 +28,5 @@ int type_name():
 		if (pointer_type < 0):
 			pointer_type = type_push_pointer(base_name, word_size, pointer_indirection)
 		type = pointer_type
-
-	if (is_const):
-		type = type_push_const(type)
 
 	return type

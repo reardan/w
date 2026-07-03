@@ -15,6 +15,10 @@ struct p0_callback_box:
 	binary_op* op
 
 
+struct p0_pair_owner:
+	p0_pair pair
+
+
 union p0_value:
 	int i
 	char* s
@@ -25,6 +29,10 @@ enum p0_color:
 	red
 	green = 4
 	blue
+
+
+p0_pair p0_global_pair
+p0_value p0_global_value
 
 
 int p0_add(int a, int b):
@@ -54,6 +62,10 @@ p0_pair p0_forward_pair_value():
 	return p0_make_pair_value()
 
 
+p0_pair p0_pair_owner_make(p0_pair_owner* self):
+	return self.pair
+
+
 void test_bool_literals_and_coercion():
 	bool yes = true
 	bool no = false
@@ -69,13 +81,13 @@ void test_cast_and_aliases():
 	size_t n = 42
 	char_buffer text = "typed alias"
 	const int fixed = 6
-	const char* const_text = "constant text"
+	const int* fixed_ptr = &fixed
 	int* p = cast(int*, malloc(4))
 	*p = cast(int, n)
 	assert_equal(42, *p)
 	assert_strings_equal("typed alias", text)
 	assert_equal(6, fixed)
-	assert_strings_equal("constant text", const_text)
+	assert_equal(6, *fixed_ptr)
 	free(p)
 
 
@@ -93,6 +105,15 @@ void test_struct_return_by_value():
 	p0_pair p = p0_make_pair_value()
 	assert_equal(13, p.a)
 	assert_equal(14, p.b)
+
+
+void test_struct_returning_method():
+	p0_pair_owner owner
+	owner.pair.a = 15
+	owner.pair.b = 16
+	assert_equal(15, owner.make().a)
+	p0_pair p = owner.make()
+	assert_equal(16, p.b)
 
 
 void test_typed_function_pointer_local():
@@ -125,4 +146,15 @@ void test_union_fields_overlap():
 	v.pair.b = 22
 	assert_equal(21, v.pair.a)
 	assert_equal(22, v.pair.b)
+
+
+void test_global_aggregate_storage():
+	p0_global_pair.a = 31
+	p0_global_pair.b = 32
+	assert_equal(31, p0_global_pair.a)
+	assert_equal(32, p0_global_pair.b)
+	p0_global_value.pair.a = 41
+	p0_global_value.pair.b = 42
+	assert_equal(41, p0_global_value.pair.a)
+	assert_equal(42, p0_global_value.pair.b)
 

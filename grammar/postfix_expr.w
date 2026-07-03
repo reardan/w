@@ -16,7 +16,7 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 		param_type = sym_param_type(callee, arg_index)
 	if (param_type < 0):
 		return;
-	if (types_compatible(param_type, arg_type) == 0):
+	if (types_compatible_with_expression(param_type, arg_type) == 0):
 		print_error("warning: function '")
 		print_error(callee_name)
 		print_error("' argument ")
@@ -255,14 +255,8 @@ int postfix_expr():
 						callee_name = strclone(method_symbol)
 					int declared_return = load_int(table + callee + 6)
 
-					# Save the receiver address while resolving the method
-					# symbol, then push it as the hidden first argument.
-					push_eax()
-					stack_pos = stack_pos + 1
-					sym_get_value(method_symbol)
 					int has_return_buffer = 0
 					int return_words = 0
-					int s = stack_pos
 					if (declared_return >= 0):
 						if (type_num_args(declared_return) > 0):
 							return_words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
@@ -271,16 +265,22 @@ int postfix_expr():
 								push_eax()
 								j = j + 1
 							stack_pos = stack_pos + return_words
-							s = stack_pos
 							has_return_buffer = 1
+
+					# Save the receiver address while resolving the method
+					# symbol, then push it as the hidden first source argument.
+					push_eax()
+					stack_pos = stack_pos + 1
+					sym_get_value(method_symbol)
+					int s = stack_pos
 					push_eax()
 					stack_pos = stack_pos + 1
 					if (has_return_buffer):
-						lea_eax_esp_plus(word_size)
+						lea_eax_esp_plus(2 << word_size_log2)
 						push_eax()
 						stack_pos = stack_pos + 1
 					if (has_return_buffer):
-						mov_eax_esp_plus((return_words + 2) << word_size_log2)
+						mov_eax_esp_plus(2 << word_size_log2)
 					else:
 						mov_eax_esp_plus(1 << word_size_log2)
 
@@ -294,9 +294,11 @@ int postfix_expr():
 
 					accept("(")
 					type = parse_call_suffix(4, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 1, has_return_buffer)
-					if (has_return_buffer == 0):
-						be_pop(1)
-						stack_pos = stack_pos - 1
+					be_pop(1)
+					stack_pos = stack_pos - 1
+					if (has_return_buffer):
+						lea_eax_esp_plus(0)
+						type = type_value(declared_return)
 					free(method_symbol)
 				else:
 					print2("struct field '")

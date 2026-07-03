@@ -134,12 +134,12 @@ void statement():
 			return_type = promote(return_type)
 			int declared_type = load_int(table + current_function_symbol + 6)
 			if ((type_num_args(declared_type) > 0) & (type_num_args(return_type) > 0)):
-				if (types_compatible(declared_type, return_type) == 0):
+				if (types_compatible_with_expression(declared_type, return_type) == 0):
 					warn_type_mismatch("return", declared_type, return_type)
 				copy_struct_return_value(declared_type)
 			else:
 				coerce(declared_type, return_type)
-				if (types_compatible(declared_type, return_type) == 0):
+				if (types_compatible_with_expression(declared_type, return_type) == 0):
 					warn_type_mismatch("return", declared_type, return_type)
 		expect_or_newline(";")
 		be_pop(stack_pos)

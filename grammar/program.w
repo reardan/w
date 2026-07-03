@@ -69,6 +69,14 @@ void function_definition(int current_symbol):
 	table_pos = n
 
 
+int global_storage_size(int type):
+	int bytes = word_size
+	int declared_size = type_get_size(type)
+	if ((type_num_args(type) > 0) | (declared_size > word_size)):
+		bytes = declared_size
+	return ((bytes + word_size - 1) >> word_size_log2) << word_size_log2
+
+
 void program():
 	int current_symbol
 	while (token[0]):
@@ -100,7 +108,7 @@ void program():
 		get_token()
 		if (accept(";")):
 			sym_define_global(current_symbol)
-			emit_zeros(word_size)
+			emit_zeros(global_storage_size(decl_type))
 
 		else if (accept("(")):
 			function_definition(current_symbol)
@@ -108,4 +116,4 @@ void program():
 		else:
 			/*error(8)*/
 			sym_define_global(current_symbol)
-			emit_zeros(word_size)
+			emit_zeros(global_storage_size(decl_type))

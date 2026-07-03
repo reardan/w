@@ -7,6 +7,11 @@ struct wide_box:
 	uint64 unsigned_value
 
 
+int64 global_signed_wide
+uint64 global_unsigned_wide
+wide_box global_wide_box
+
+
 int64 make_signed_wide():
 	int64 one = 1
 	return one << 40
@@ -36,8 +41,20 @@ void test_uint64_storage_and_fields():
 	assert_equal(1, box.unsigned_value >> 36)
 
 
+void test_global_int64_storage():
+	global_signed_wide = make_signed_wide()
+	global_unsigned_wide = make_unsigned_wide()
+	global_wide_box.signed_value = global_signed_wide
+	global_wide_box.unsigned_value = global_unsigned_wide
+	assert_equal(1, global_signed_wide >> 40)
+	assert_equal(1, global_unsigned_wide >> 36)
+	assert_equal(1, global_wide_box.signed_value >> 40)
+	assert_equal(1, global_wide_box.unsigned_value >> 36)
+
+
 int main():
 	test_int64_arithmetic_and_returns()
 	test_uint64_storage_and_fields()
+	test_global_int64_storage()
 	println("x64 int64 OK")
 	return 0

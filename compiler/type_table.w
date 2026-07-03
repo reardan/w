@@ -37,6 +37,8 @@ int type_kind_const
 
 
 char* type_get_name(int type_index);
+int type_get_pointer_level(int type_index);
+int type_lookup_previous_pointer(int type_index);
 
 
 int type_size():
@@ -192,6 +194,18 @@ void type_set_kind(int type_index, int kind):
 int type_is_function_signature(int type_index):
 	type_index = type_canonical(type_index)
 	return type_get_kind(type_index) == type_kind_function
+
+
+int type_function_pointer_signature(int type_index):
+	type_index = type_canonical(type_index)
+	if (type_get_pointer_level(type_index) <= 0):
+		return -1
+	int base_type = type_lookup_previous_pointer(type_index)
+	if (base_type < 0):
+		return -1
+	if (type_is_function_signature(base_type)):
+		return base_type
+	return -1
 
 
 int type_is_const(int type_index):

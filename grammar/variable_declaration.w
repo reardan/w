@@ -11,7 +11,7 @@ int variable_declaration():
 			type2 = expression()
 			type2 = promote(type2)
 			coerce(type, type2)
-			if (types_compatible(type, type2) == 0):
+			if (types_compatible_with_expression(type, type2) == 0):
 				warn_type_mismatch("initialization", type, type2)
 			if (verbosity >= 0):
 				print2("variable declaration = expression() right side type: ")

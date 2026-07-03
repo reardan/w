@@ -201,7 +201,15 @@ type_system_p0_test: w FORCE
 type_system_error_test: w FORCE
 	! ./bin/wv2 tests/type_system_error_fixture.w -o ./bin/type_system_error_fixture 2>./bin/type_system_error_fixture.stderr
 	grep -qF "assignment to const" ./bin/type_system_error_fixture.stderr
+	! ./bin/wv2 tests/type_system_const_pointer_error_fixture.w -o ./bin/type_system_const_pointer_error_fixture 2>./bin/type_system_const_pointer_error_fixture.stderr
+	grep -qF "assignment to const" ./bin/type_system_const_pointer_error_fixture.stderr
 	@echo "type system error test OK"
+
+type_system_warning_test: w FORCE
+	./bin/wv2 tests/type_system_warning_fixture.w -o ./bin/type_system_warning_fixture 2>./bin/type_system_warning_fixture.stderr
+	grep -qF "warning: initialization type mismatch: expected 'binary_op_warning*', got 'function'" ./bin/type_system_warning_fixture.stderr
+	grep -qF "warning: assignment type mismatch: expected 'binary_op_warning*', got 'function'" ./bin/type_system_warning_fixture.stderr
+	@echo "type system warning test OK"
 
 range_test_debug: w FORCE
 	./bin/wv2 tests/range_test.w >./bin/range_test
@@ -476,7 +484,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:
