@@ -11,8 +11,9 @@ int primary_expr():
 	int new_type
 	# Float literal (must run before int_literal, which only checks the first
 	# character before decoding the whole token)
-	if (float_literal()):
-		type = float32_value_type
+	int literal_type = float_literal()
+	if (literal_type):
+		type = literal_type
 
 	# Integer literal
 	else if (int_literal()):

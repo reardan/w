@@ -17,13 +17,13 @@ int truncate_float64(float64 f):
 
 void assert_float64_bits(int want_lo, int want_hi, float64 got):
 	char* p = &got
-	assert_equal_hex(want_lo, load_i(p, 4))
-	assert_equal_hex(want_hi, load_i(p + 4, 4))
+	assert_equal_hex(want_lo, load_int32(p))
+	assert_equal_hex(want_hi, load_int32(p + 4))
 
 
 void assert_float32_bits(int want, float32 got):
 	char* p = &got
-	assert_equal_hex(want, load_i(p, 4))
+	assert_equal_hex(want, load_int32(p))
 
 
 int main(int argc, int argv):
@@ -40,5 +40,5 @@ int main(int argc, int argv):
 	assert_strings_equal("3.250000", s)
 	free(s)
 
-	println2("x64 float OK")
+	println("x64 float OK")
 	return 0
