@@ -34,6 +34,9 @@ current state:
 			assignment, initialization, call-argument and return mismatches warn
 			function symbols record parameter types for call-site checks
 			make warning_test asserts warning output against fixtures
+		whitespace hygiene:
+			warning when a line is indented with spaces instead of tabs
+			warning when a file does not end with a newline
 		struct:
 			local struct values
 			mixed-width struct fields
@@ -57,6 +60,8 @@ current state:
 			range arguments can be expressions
 			break and continue
 			nested if/loop behavior covered by tests
+			if/while conditions work with or without parentheses
+			{} blocks, dedent-terminated : blocks, and pass as a no-op
 		functions:
 			function arity warnings
 			function pointer values can be called

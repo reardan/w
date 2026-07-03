@@ -145,6 +145,8 @@ warning_test: w FORCE
 	grep -qF "warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'int*'" ./bin/warning_fixture.stderr
 	grep -qF "warning: return type mismatch: expected 'char*', got 'int*'" ./bin/warning_fixture.stderr
 	grep -qF "warning: assignment type mismatch: expected 'pair', got 'single'" ./bin/warning_fixture.stderr
+	grep -qF "warning: line indented with spaces instead of tabs" ./bin/warning_fixture.stderr
+	grep -qF "warning: file does not end with a newline" ./bin/warning_fixture.stderr
 	./bin/wv2 tests/warning_clean_fixture.w -o ./bin/warning_clean_fixture 2>./bin/warning_clean_fixture.stderr
 	! grep -q "warning:" ./bin/warning_clean_fixture.stderr
 	@echo "warning test OK"

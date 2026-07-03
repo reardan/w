@@ -306,3 +306,45 @@ void test_mixed_precedence():
 	assert_equal(1, !0 && 1)
 	assert_equal(-6, -2 * 3)
 
+
+void test_else_if_without_parens():
+	int a = 2
+	int r = 0
+	if a == 1:
+		r = 1
+	else if a == 2:
+		r = 2
+	else:
+		r = 3
+	assert_equal(2, r)
+
+
+void test_empty_if_body_dedent():
+	# A next line at the same indent means the if body is empty, so the
+	# assignment below runs unconditionally
+	int r = 0
+	if (r == 5):
+	r = 1
+	assert_equal(1, r)
+
+
+void test_pass_statement():
+	int r = 0
+	if (1):
+		pass
+	else:
+		r = 1
+	assert_equal(0, r)
+	if (0): pass
+	while (0): pass
+	assert_equal(0, r)
+
+
+void body_is_only_pass():
+	pass
+
+
+void test_pass_function_body():
+	body_is_only_pass()
+	assert_equal(1, 1)
+

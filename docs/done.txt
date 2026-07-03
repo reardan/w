@@ -69,6 +69,13 @@ done:
 		assignment/initialization/argument/return checks...complete!
 		parameter types recorded on function symbols...complete!
 		make warning_test fixture harness...complete!
+	whitespace warnings...complete!
+		spaces-instead-of-tabs indentation warning...complete!
+		file-does-not-end-with-newline warning...complete!
+	block syntax cleanup...complete!
+		if/while conditions without parentheses...complete!
+		dedent ends a : block (empty blocks need no keyword)...complete!
+		pass as an explicit no-op statement...complete!
 	operator precedence...complete!
 		relational operators chain left-associatively...complete!
 		unary operators take unary operands (C model)...complete!

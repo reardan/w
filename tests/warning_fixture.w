@@ -1,6 +1,7 @@
-# Every construct below compiles but triggers exactly one type warning.
+# Every construct below compiles but triggers exactly one warning.
 # The warning_test Makefile target compiles this file and asserts each
-# expected message appears on stderr.
+# expected message appears on stderr. The file also intentionally ends
+# without a trailing newline to trigger the end-of-file warning.
 import lib.lib
 
 
@@ -52,5 +53,11 @@ void struct_mismatch():
 	p = s
 
 
+# The single leading space below triggers the space-indentation warning
+ int space_indented_global
+
+
 int main():
 	return 0
+
+int no_trailing_newline_after_this

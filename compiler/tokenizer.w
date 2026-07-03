@@ -57,6 +57,13 @@ int get_character():
 	if(nextc == 9):
 		tab_level = tab_level + 1
 
+	# A last line without a newline is invisible to tab_level-based scoping
+	# and can end an indented block with a confusing parse error, so flag it.
+	# nextc is the final character of the file when getc() first reports EOF.
+	if (c == -1):
+		if ((nextc != 10) & (nextc != -1) & (nextc != 0)):
+			warning("warning: file does not end with a newline")
+
 	return c
 
 

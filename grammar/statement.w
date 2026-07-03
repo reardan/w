@@ -4,15 +4,16 @@
  *     : statement-list-tab-scoped
  *     type-name identifier ;
  *     type-name identifier = expression;
- *     if ( expression ) statement
- *     if ( expression ) statement else statement
- *     while ( expression ) statement
+ *     if expression statement                (parentheses optional)
+ *     if expression statement else statement (parentheses optional)
+ *     while expression statement             (parentheses optional)
  *     for type-name identifier in range args statement
  *     break ;
  *     continue ;
  *     return ;
  *     return expression ;
  *     debugger ;
+ *     pass ;
  *     expression ;
  */
 # Table offset of the function whose body is being parsed; return
@@ -66,7 +67,7 @@ void statement():
 	else if (variable_declaration() >= 0):
 		expect_or_newline(";")
 
-	# if ( expression ) statement else statement
+	# if expression statement else statement (parentheses optional)
 	else if (accept("if")):
 		if_tab_level = tab_level
 		promote(expression())
@@ -121,6 +122,10 @@ void statement():
 
 	else if (accept("debugger")):
 		int3()
+		expect_or_newline(";")
+
+	# Explicit no-op, for spelling out an intentionally empty block
+	else if (accept("pass")):
 		expect_or_newline(";")
 
 	else if (raw_asm_literal()):
