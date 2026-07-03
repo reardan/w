@@ -69,6 +69,7 @@ current state:
 		debugging information:
 			debugger statement emits int3
 			DWARF line-number data is emitted for gdb source-line mapping
+			wdbg in-process debugger (make wdbg, make debug_test)
 		library and data structures:
 			malloc/free/realloc as a library module (lib/memory.w)
 			list
@@ -92,8 +93,9 @@ current state:
 			new initializes fields from arguments but does not run user constructors
 			struct values cannot be returned by value
 		debugging:
-			DWARF line info exists, but there is no built-in w --debug repl
-			no stack parser, signal handler, or debugger command server yet
+			wdbg breaks only at 'debugger' statements (plus --break_start/--break_end)
+			no step/next, named breakpoints, or local inspection yet
+			no segv handler or stack parser yet
 		x64:
 			x64 hello-world/syscall path exists
 			full x64 lib_test and self-compiling bootstrap remain open
@@ -114,8 +116,8 @@ current state:
 			build structs from C headers
 			import enum values
 		debugger:
-			w --debug entry point
-			step, next, continue, return, breakpoint, memory, inspect
+			fold wdbg into the compiler driver as w --debug
+			step, next, return, named breakpoints, inspect locals
 			asm/disasm helpers
 			segv handler and stack parser
 		code generation:

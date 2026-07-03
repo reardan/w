@@ -1,32 +1,41 @@
 Current state:
 
 	the compiler emits DWARF line-number information for gdb
-	the existing debugger statement emits int3
+	the debugger statement emits int3
 	repl.w provides an in-process interactive prompt
 	repl compile errors return to the prompt
+
+	wdbg (debugger/debugger.w, built with make wdbg) is the built-in debugger:
+
+		./bin/wdbg file.w
+
+	compiles file.w into an in-process executable buffer (the repl model),
+	installs a SIGTRAP handler via rt_sigaction, and calls the debuggee's
+	main(). Every 'debugger' statement traps into a command loop:
+
+		c / continue    resume the debuggee
+		r / registers   dump the trapped registers from the signal frame
+		s / stack       dump 16 words at the trapped esp
+		l / line        map the trapped eip to file:line via the DWARF notes
+		q / quit        exit
+
+		./bin/wdbg file.w --break_start
+
+	traps before the debuggee's main runs
+
+		./bin/wdbg file.w --break_end
+
+	traps after the debuggee's main returns
+
+	make debug_test drives the command loop over stdin against
+	tests/debug_fixture.w and asserts each command's output.
 
 
 Future:
 
-There will be a built in debugger
-
-	w --debug awesomeness.w
-
-will bring up a repl with 'import debugging/debug/debugger'
-
-
-
-	w --debug --break_start
-
-will automatically break at the start of the application (entry/_main/main?)
-
-
-
-	w --debug --break_end
-
-will automatically break after main() returns
-
-
-
-there already exists a 'debugger' statement that generates int3
-this can then be used in debuggers e.g. gdb to
+	fold wdbg into the compiler driver as 'w --debug file.w'
+	step / next (single-step via eflags trap flag or int3 rewriting)
+	breakpoints at arbitrary file:line positions (patch int3 by address)
+	inspect locals by name (needs DWARF variable info or symbol table walks)
+	segv handler and stack parser
+	repl integration: evaluate expressions at the breakpoint

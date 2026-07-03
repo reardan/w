@@ -49,6 +49,12 @@ int mmap(int addr, int length, int prot, int flags):
 int sys_clone(int flags, int child_stack):
 	return syscall(56, flags, child_stack)
 
+# rt_sigaction (174). sigsetsize must be _NSIG/8 = 8 on i386. When act has
+# no SA_RESTORER the kernel points the signal frame's return address at the
+# vdso sigreturn trampoline, so plain W functions work as handlers.
+int rt_sigaction(int signum, int* act, int* oldact):
+	return syscall7(174, signum, act, oldact, 8, 0, 0)
+
 # exit_group: terminates every thread in the process, like libc exit().
 void exit(int error_code):
 	syscall(252, error_code, 0, 0)

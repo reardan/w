@@ -276,7 +276,23 @@ args_test: w FORCE
 	./bin/wv2 lib/args_test.w -o ./bin/args_test
 	./bin/args_test
 
-tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test test hello FORCE
+wdbg: w FORCE
+	./bin/wv2 debugger/debugger.w -o ./bin/wdbg
+
+# The in-process debugger: compile a fixture with a 'debugger' statement,
+# drive the command loop over stdin, and check each command's output.
+debug_test: wdbg FORCE
+	printf 'r\nl\nc\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "breakpoint hit at eip="
+	printf 'r\nc\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "eax: 0x"
+	printf 'l\nc\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "debug_fixture.w:9"
+	printf 's\nc\n' | ./bin/wdbg tests/debug_fixture.w | grep -qE "0x[0-9a-f]+: 0x"
+	printf 'c\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "after breakpoint"
+	printf 'c\n' | ./bin/wdbg tests/debug_fixture.w | grep -q "debuggee main returned 7"
+	printf 'c\nc\n' | ./bin/wdbg tests/debug_fixture.w --break_start | grep -q "after breakpoint"
+	printf 'q\n' | ./bin/wdbg tests/debug_fixture.w > /dev/null
+	@echo "debug test OK"
+
+tests: build verify lib_test grammar_test list_test type_table_test warning_test struct_test pointer_test range_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test linked_list_test format_test args_test debug_test test hello FORCE
 
 
 clean:

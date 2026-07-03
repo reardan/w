@@ -21,6 +21,7 @@ DONE! warning if spaces used instead of tabs
 DONE! command arg parsing helper (lib/args.w)
 DONE! malloc/free/realloc live in lib/memory.w as a swappable library module
 
-no built-in w --debug debugger
+DONE! built-in debugger: make wdbg, ./bin/wdbg file.w (w --debug integration later)
+
 no for loop list iteration (design brainstorm: docs/projects/iteration.md)
 no generators

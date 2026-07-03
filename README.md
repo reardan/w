@@ -20,10 +20,13 @@ I've added the following features:
 - hash map, string builder, array list, linked list, and format helpers
 - basic REPL via `make repl`, including compile-error recovery
 - DWARF line-number information for gdb
+- built-in debugger via `make wdbg`: `./bin/wdbg file.w` traps on `debugger`
+  statements into a continue/registers/stack/line command loop
+- `lib/args.w` command-line argument parsing helpers
 
 Current major open areas:
 - import-scoped type metadata
 - REPL local persistence between entries
 - full x64 self-hosting
 - WebAssembly backend
-- built-in debugger / web UI
+- debugger stepping and `w --debug` driver integration / web UI

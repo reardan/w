@@ -44,7 +44,12 @@ done:
 			print_words(context.esp, 20)
 	debugging symbols...partial!
 		DWARF line information for gdb source-line mapping...complete!
-		built-in w --debug repl...not complete!
+		built-in debugger (wdbg)...complete!
+			in-process SIGTRAP command loop...complete!
+			continue/registers/stack/line/quit commands...complete!
+			--break_start and --break_end...complete!
+			w --debug driver integration...not complete!
+			step/next and named breakpoints...not complete!
 	'for' type var 'in' 'range' '(' expression ')' ...complete!
 		basic version...complete!
 		range(start, end, step)...complete!
