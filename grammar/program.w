@@ -26,6 +26,9 @@ void program():
 		while(struct_declaration()):
 			print_int("struct_declaration=1, current_symbol=", current_symbol)
 
+		# Shared-library declarations (c_lib / extern)
+		while (extern_statement()) {}
+
 		# Imports/structs may have consumed the rest of the file
 		if (token[0] == 0):
 			return;

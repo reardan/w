@@ -66,6 +66,14 @@ current state:
 			function arity warnings
 			function pointer values can be called
 			function pointer arguments are covered in grammar tests
+		dynamic linking (both targets):
+			c_lib "libc.so.6" registers a DT_NEEDED shared library
+			extern int getpid() declares an imported C function
+			eager GLOB_DAT relocations fill inline GOT slots at load time
+			generated shims convert W's stack convention to cdecl (x86)
+			and System V registers (x64), 16-byte aligned, varargs-safe
+			make dynamic_test / dynamic_test_x64 call libc on both targets
+			make cuda_smoke runs a PTX vector add through libcuda (x64)
 		debugging information:
 			debugger statement emits int3
 			DWARF line-number data is emitted for gdb source-line mapping
@@ -111,10 +119,12 @@ current state:
 			support scoped/private imports or import aliases
 			merge symbol_table + type_table on top of hash_map
 		c_import:
+			runtime path exists: c_lib + extern link shared libraries
 			lexer
 			parser
 			build structs from C headers
 			import enum values
+			lower declarations onto c_lib + extern
 		debugger:
 			fold wdbg into the compiler driver as w --debug
 			step, next, return, named breakpoints, inspect locals

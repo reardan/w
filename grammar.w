@@ -24,6 +24,7 @@ import grammar.for_statement
 import grammar.statement
 import grammar.struct_declaration
 import grammar.import_statement
+import grammar.extern_statement
 import grammar.program
 
 # no idea why this is necessary:

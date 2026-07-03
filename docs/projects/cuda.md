@@ -5,6 +5,13 @@ work: every viable path below assumes a 64-bit host process, because `libcuda.so
 and the CUDA driver API are 64-bit only. Finishing x64 self-hosting (see
 `docs/mvp.txt`) is effectively Stage 0 of this project.
 
+**Status: Stages 0 and 1 are done.** The host side went straight to H1 (real
+dynamic linking, both x86 and x64): `c_lib "libcuda.so.1"` + `extern`
+declarations link the driver API directly (`grammar/extern_statement.w`,
+`code_generator/elf_dynamic.w`, `code_generator/ffi.w`), and `make cuda_smoke`
+runs a hand-written PTX vector add on a real GPU (`tests/cuda_smoke.w`). The
+H3 sidecar was skipped. Next up is Stage 2, the PTX emitter.
+
 ## Context: what W is today
 
 - Single-pass, syntax-directed code generator (cc500 heritage). There is no AST or
@@ -141,7 +148,7 @@ it lives in `libcuda.so`, ships with the driver, and is designed exactly for
 W's static-ELF, syscall-only runtime cannot call any shared library today. Four
 ways in:
 
-### H1: Real dynamic linking in the ELF writer
+### H1: Real dynamic linking in the ELF writer — implemented
 
 Extend `elf_64.w` to emit `PT_INTERP` (ld-linux), `PT_DYNAMIC`, `.dynsym`,
 `.dynstr`, PLT/GOT relocations against `libcuda.so`.
@@ -151,6 +158,15 @@ Extend `elf_64.w` to emit `PT_INTERP` (ld-linux), `PT_DYNAMIC`, `.dynsym`,
 - Con: biggest lift — dynamic section plumbing, relocation types, symbol
   versioning quirks, plus x64 System V calling convention shims (W's internal
   convention is stack-based; libcuda expects args in rdi/rsi/rdx/rcx/r8/r9).
+
+**This is what shipped, on both targets.** Design notes: eager binding (one
+GOT slot per import + one `GLOB_DAT` relocation, no lazy PLT), a generated
+per-import shim that converts W's stack convention to the C ABI (System V
+registers on x64, re-pushed cdecl args on x86, both 16-byte aligned), and
+`DT_HASH`/`.dynsym`/`.dynstr`/`.dynamic` appended to the single load segment
+at finish time. Symbol versioning quirk to know about: libcuda's `_v2` ABI
+revisions (e.g. `cuCtxCreate_v2`, `cuMemAlloc_v2`) must be named explicitly
+in `extern`, since the CUDA headers normally hide that renaming.
 
 ### H2: Hand-rolled dlopen in W
 
@@ -262,13 +278,13 @@ performance-oriented API.
 
 ## Suggested staged path
 
-- **Stage 0 — x64 completion** (already planned; prerequisite): 64-bit
-  self-hosting, `lib_test` on x64, working 64-bit pointers/stack.
-- **Stage 1 — host plumbing spike**: hand-write a vector-add kernel in PTX as a
-  string literal in a W test file; get it loaded and launched through the H3
-  sidecar (or H1 if we choose to go straight there). Proves the driver path with
-  zero compiler changes. Acceptance: `make cuda_smoke` runs vector add on a real
-  GPU.
+- **Stage 0 — x64 completion** (done): 64-bit self-hosting, `lib_test` on x64,
+  working 64-bit pointers/stack.
+- **Stage 1 — host plumbing spike** (done, via H1 directly): hand-written
+  vector-add PTX as a string literal in `tests/cuda_smoke.w`, loaded with
+  `cuModuleLoadData` and launched with `cuLaunchKernel` through `c_lib` /
+  `extern`. Acceptance met: `make cuda_smoke` runs vector add on a real GPU
+  (RTX 4080).
 - **Stage 2 — PTX emitter**: `code_generator/ptx.w` with A1 stack-machine
   emission for straight-line W functions (int/float arithmetic, pointers,
   if/while). Kernel PTX is stored in `.rodata` of the host ELF and passed to
@@ -288,16 +304,19 @@ performance-oriented API.
 
 ## Open questions
 
-- Does the target dev machine have an NVIDIA GPU for CI (`make cuda_test`), or do
-  we need a software fallback path (run the outlined loop body on CPU when
-  `cuInit` fails) so tests pass everywhere?
-- H3 sidecar vs going straight to H1 dynamic linking: is a compiled-C helper
-  acceptable in the repo, even temporarily?
+- CI on machines without an NVIDIA GPU: `make cuda_smoke` needs a driver and a
+  GPU, so it stays out of the default `make tests` for now. Does Stage 3 need
+  a CPU fallback (run the outlined loop body on CPU when `cuInit` fails) so
+  `cuda_test` can join the default suite?
+- ~~H3 sidecar vs going straight to H1 dynamic linking~~ — resolved: went
+  straight to H1; no compiled-C helper in the repo.
 - Float support: W's type table today is integer/pointer-centric; kernels
   without `float`/SSE support on the host side are of limited use. Does float
-  land as part of x64 work or as part of this project?
+  land as part of x64 work or as part of this project? (`cuda_smoke` sidesteps
+  this by storing IEEE-754 bit patterns in integer memory.)
 - Which GPU generation is the floor? PTX target directive (e.g.
-  `.target sm_70`) affects available instructions.
+  `.target sm_70`) affects available instructions. (`cuda_smoke` uses
+  `.target sm_52`, which the driver JIT accepts on newer parts.)
 
 ## References
 
