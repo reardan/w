@@ -103,11 +103,14 @@ x86-64 system.
 Implemented and covered by tests:
 
 - Types: `int`, `char`, pointers (`int*`, `char**`, ...), structs with mixed-width
-  fields, by-value struct parameters, `new type(args)` constructor-style allocation.
+  fields, by-value struct parameters, fixed local arrays (`T[N]`), slices
+  (`T[]`), UTF-8 `string`, `new type(args)` constructor-style allocation, and
+  `new T[n]` heap arrays.
 - Expressions: full C-style operator set — arithmetic, shifts, relational
   (with chaining), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
-  address/deref, `[]` indexing, struct field access, hex literals, string
-  escapes (`\x0a` style).
+  address/deref, `[]` indexing, typed buffer slicing (`start:end`), struct
+  field access, hex literals, C string escapes (`\x0a` style), and UTF-8
+  `s"..."` literals with `\u`/`\U` escapes.
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
   (1–3 args), `break`, `continue`, `return`, `debugger` (emits `int3`).
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved

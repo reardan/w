@@ -4,7 +4,21 @@ Design and implementation plan for adding length-carrying buffers to W:
 fixed stack/global arrays, heap arrays, slices, bounds-check options, and a
 first-class UTF-8 string type.
 
-**Status: planned P0.**
+**Status: MVP implemented.**
+
+Implemented MVP:
+
+- `T[N]` local fixed arrays with inline storage and descriptor headers.
+- `T[]` slices represented as typed descriptor pointers.
+- `new T[n]` heap arrays.
+- `.length`, `.data`, indexing, and sub-slicing for new buffer types.
+- `--bounds=on|off|trap` with inline traps for new buffer indexing.
+- `string` UTF-8 descriptors, `s"..."` literals, `c"..."` legacy C strings,
+  and `lib/utf8.w`.
+
+Still deferred: global/struct fixed arrays, generic typed vectors, full
+compiler-source migration from `"..."` to `string`, escape analysis, and
+grapheme-cluster semantics.
 
 ## Problem statement
 

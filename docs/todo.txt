@@ -25,6 +25,14 @@ current state:
 			& local address
 			struct pointer fields
 			arrays of structs via pointer indexing
+		arrays, slices and strings:
+			fixed local arrays with descriptor headers
+			T[] slices over typed buffers
+			new T[n] heap arrays
+			.length and .data pseudo-fields for buffers
+			bounds traps for arrays, slices and strings
+			UTF-8 string descriptors with s"..." literals
+			c"..." legacy C string literals
 		type table:
 			type names carry size, pointer level, and field metadata
 			pointer types are created on demand
@@ -168,7 +176,7 @@ current state:
 		dynamic typing / var
 		float32/float64/float16 (design: docs/projects/float.md)
 		const modifier
-		utf8 string type
+		migrate default "..." literals from char* to string
 		type <=> json
 		type <=> protobuf
 		global default values

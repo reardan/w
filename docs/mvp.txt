@@ -8,6 +8,7 @@ Compiler
 		Usage message for missing input
 		Type table with size, pointer level, and struct fields
 		Pointer-aware &, *, [], and struct field access
+		Fixed local arrays, slices, heap arrays and UTF-8 string descriptors
 		new type() allocation
 		constructor-style new type(args)
 		struct values passed by value
@@ -23,7 +24,7 @@ Compiler
 
 	Remaining
 		Dict language/runtime type
-		UTF-8 string type
+		Default "..." literal migration from char* to string
 		C header parsing / c_import
 		Built-in debugger
 
