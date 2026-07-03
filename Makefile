@@ -378,7 +378,7 @@ repl_test: w FORCE
 	! printf 'int y = 3\ny = 9\n:quit\n' | ./bin/repl | grep -q "9"
 	# Structs, new and imports work at the prompt
 	printf 'struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n' | ./bin/repl | grep -q "7"
-	printf 'import structures.string\nstring* s = string_from("imported")\ns.data\n:quit\n' | ./bin/repl | grep -q "imported"
+	printf 'import structures.string\nstring_builder* s = string_from("imported")\ns.data\n:quit\n' | ./bin/repl | grep -q "imported"
 	# Errors inside multi-line entries and failed imports both recover
 	printf 'int bad():\n\treturn qq\n\nprint("recovered fn\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered fn"
 	printf 'import no.such.module\nprint("recovered import\\x0a")\n:quit\n' | ./bin/repl 2>/dev/null | grep -q "recovered import"
