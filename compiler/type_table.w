@@ -112,6 +112,10 @@ int type_kind_set():
 	return 11
 
 
+int type_kind_list():
+	return 12
+
+
 char* type_make_array_name(int element_type, int length):
 	char* open = strjoin(type_get_name(element_type), c"[")
 	char* n = itoa(length)
@@ -140,6 +144,21 @@ char* type_make_map_name(int key_type, int value_type):
 
 char* type_make_set_name(int key_type):
 	char* open = strjoin(c"set[", type_get_name(key_type))
+	char* name = strjoin(open, c"]")
+	free(open)
+	return name
+
+
+# Pointer records store the base name without stars, so append them here
+# to keep list[char*] distinguishable from list[char] in diagnostics.
+char* type_make_list_name(int element_type):
+	char* open = strjoin(c"list[", type_get_name(element_type))
+	int stars = type_get_pointer_level(element_type)
+	while (stars > 0):
+		char* with_star = strjoin(open, c"*")
+		free(open)
+		open = with_star
+		stars = stars - 1
 	char* name = strjoin(open, c"]")
 	free(open)
 	return name
@@ -208,6 +227,19 @@ int type_push_set(int key_type):
 	save_int(new_type + 12, 0)
 	save_int(new_type + 816, type_canonical(key_type))
 	save_int(new_type + 820, type_kind_set())
+	save_int(new_type + 824, -1)
+	save_int(new_type + 828, -1)
+	return push(cast(int, new_type))
+
+
+int type_push_list(int element_type):
+	char* new_type = malloc(type_size())
+	save_int(new_type, cast(int, type_make_list_name(element_type)))
+	save_int(new_type + 4, 0)
+	save_int(new_type + 8, word_size)
+	save_int(new_type + 12, 0)
+	save_int(new_type + 816, type_canonical(element_type))
+	save_int(new_type + 820, type_kind_list())
 	save_int(new_type + 824, -1)
 	save_int(new_type + 828, -1)
 	return push(cast(int, new_type))
@@ -389,6 +421,10 @@ int type_is_set(int type_index):
 	return type_get_kind(type_index) == type_kind_set()
 
 
+int type_is_list(int type_index):
+	return type_get_kind(type_index) == type_kind_list()
+
+
 int type_is_buffer(int type_index):
 	return type_is_array(type_index) | type_is_slice(type_index) | type_is_string(type_index)
 
@@ -546,6 +582,18 @@ int type_lookup_set(int key_type):
 	return -1
 
 
+int type_lookup_list(int element_type):
+	element_type = type_canonical(element_type)
+	int i = 0
+	while (i < length):
+		int t = get(i)
+		if ((load_int(t + 820) == type_kind_list()) &
+				(type_canonical(load_int(t + 816)) == element_type)):
+			return i
+		i = i + 1
+	return -1
+
+
 int type_get_slice(int element_type):
 	int slice = type_lookup_slice(element_type)
 	if (slice < 0):
@@ -574,6 +622,13 @@ int type_get_set(int key_type):
 	return set_type
 
 
+int type_get_list(int element_type):
+	int list_type = type_lookup_list(element_type)
+	if (list_type < 0):
+		list_type = type_push_list(type_canonical(element_type))
+	return list_type
+
+
 int type_map_key_type(int type_index):
 	type_index = type_canonical(type_index)
 	int t = get(type_index)
@@ -587,6 +642,12 @@ int type_map_value_type(int type_index):
 
 
 int type_set_key_type(int type_index):
+	type_index = type_canonical(type_index)
+	int t = get(type_index)
+	return load_int(t + 816)
+
+
+int type_list_element_type(int type_index):
 	type_index = type_canonical(type_index)
 	int t = get(type_index)
 	return load_int(t + 816)
@@ -659,6 +720,10 @@ int types_compatible(int want, int got):
 	if (type_is_set(want) & type_is_set(got)):
 		return type_unqualified(type_set_key_type(want)) == type_unqualified(type_set_key_type(got))
 	if (type_is_map(want) | type_is_map(got) | type_is_set(want) | type_is_set(got)):
+		return 0
+	if (type_is_list(want) & type_is_list(got)):
+		return type_unqualified(type_list_element_type(want)) == type_unqualified(type_list_element_type(got))
+	if (type_is_list(want) | type_is_list(got)):
 		return 0
 	if (type_is_slice(want) & type_is_array(got)):
 		return type_unqualified(type_get_element_type(want)) == type_unqualified(type_get_element_type(got))

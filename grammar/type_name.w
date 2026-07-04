@@ -1,3 +1,19 @@
+# Built-in list[T] elements travel through word-typed runtime helpers, so
+# reject element types the runtime cannot store: void, fixed arrays (their
+# descriptors point into the enclosing object) and, until aggregate element
+# support lands, struct values.
+void list_element_type_check(int element_type):
+	int checked = type_unqualified(element_type)
+	if (type_is_array(checked)):
+		error(c"list element type cannot be a fixed-size array")
+	if (type_get_size(checked) <= 0):
+		error(c"list element type must have a size")
+	if (type_num_args(checked) > 0):
+		error(c"list element type cannot be a struct value yet")
+	if (type_stack_words(checked) != 1):
+		error(c"list element type must be word-sized")
+
+
 int type_name():
 	int type = 0
 	int is_const = 0
@@ -18,6 +34,13 @@ int type_name():
 		int set_key_type = type_name()
 		expect(c"]")
 		type = type_get_set(set_key_type)
+	else if (peek(c"list") & (nextc == '[')):
+		get_token()
+		expect(c"[")
+		int list_element = type_name()
+		expect(c"]")
+		list_element_type_check(list_element)
+		type = type_get_list(list_element)
 	else:
 		type = type_lookup(token)
 		if (type < 0):

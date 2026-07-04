@@ -249,6 +249,8 @@ int postfix_expr():
 				hash_index_map_type = map_type
 				hash_index_pending = 1
 				type = type_map_value_type(map_type)
+			else if (type_is_list(type)):
+				type = list_index_suffix(type)
 			else if (type_is_buffer(type)):
 				type = promote(type)
 				if (accept(c":")):
@@ -382,6 +384,23 @@ int postfix_expr():
 				else:
 					print2(c"hash container field '")
 					print2(token)
+					error(c"' not found")
+			else if (type_is_list(type)):
+				if (peek(c"length")):
+					get_token()
+					type = promote(type)
+					add_eax_int32(word_size)
+					type = type_lookup(c"int")
+					expression_lhs_readonly = 1
+				else if (peek(c"push")):
+					get_token()
+					type = list_push_suffix(type)
+				else if (peek(c"pop")):
+					get_token()
+					type = list_pop_suffix(type)
+				else:
+					print_error(str_from_cstr(c"list field '"))
+					print_error(str_from_cstr(token))
 					error(c"' not found")
 			else if (type_is_buffer(type)):
 				if (peek(c"length")):

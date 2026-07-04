@@ -138,6 +138,9 @@ int primary_expr():
 	else if (hash_typed_literal()):
 		type = hash_literal_type
 
+	else if (list_typed_literal()):
+		type = list_literal_type
+
 	# Identifier
 	else if ((new_type = identifier()) >= 0) {
 		type = new_type
