@@ -7,13 +7,13 @@ void emit_x64_opcode():
 ################################# x86 opcodes #################################
 /* push dword 0x12 */
 void push_int8(int v):
-	emit_int8('\x6a')
+	emit_int8(106)
 	emit_int8(v)
 
 
 /* push dword 0x12345678 */
 void push_int32(int v):
-	emit_int8('\x68')
+	emit_int8(104)
 	emit_int32(v)
 
 
