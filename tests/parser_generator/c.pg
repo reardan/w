@@ -35,6 +35,17 @@ literal KW_UNION "union"
 literal KW_ENUM "enum"
 literal KW_SIZEOF "sizeof"
 literal KW_RETURN "return"
+literal KW_IF "if"
+literal KW_ELSE "else"
+literal KW_WHILE "while"
+literal KW_DO "do"
+literal KW_FOR "for"
+literal KW_SWITCH "switch"
+literal KW_CASE "case"
+literal KW_DEFAULT "default"
+literal KW_BREAK "break"
+literal KW_CONTINUE "continue"
+literal KW_GOTO "goto"
 
 literal ELLIPSIS "..."
 literal SHIFT_LEFT_ASSIGN "<<="
@@ -148,17 +159,29 @@ rule parameter_type_list = parameter_list parameter_ellipsis?
 rule parameter_ellipsis = COMMA ELLIPSIS
 rule parameter_list = parameter_declaration parameter_tail*
 rule parameter_tail = COMMA parameter_declaration
-rule parameter_declaration = typedef_name_declaration_specifiers declarator? | declaration_specifiers declarator?
+rule parameter_declaration = typedef_name_declaration_specifiers parameter_declarator? | declaration_specifiers parameter_declarator?
+rule parameter_declarator = declarator | abstract_declarator
 
 rule type_name = typedef_name_specifier_qualifier_list abstract_declarator? | specifier_qualifier_list abstract_declarator?
-rule abstract_declarator = pointer | pointer? direct_abstract_declarator
+rule abstract_declarator = pointer? direct_abstract_declarator | pointer
 rule direct_abstract_declarator = LPAREN abstract_declarator RPAREN direct_abstract_declarator_tail* | direct_abstract_declarator_tail+
 rule direct_abstract_declarator_tail = LBRACK constant_expression? RBRACK | LPAREN parameter_type_list? RPAREN
 
-rule function_definition = declaration_specifiers declarator compound_statement
+rule function_definition = declaration_specifiers declarator compound_statement | typedef_name_declaration_specifiers declarator compound_statement
 rule compound_statement = LBRACE block_item* RBRACE
 rule block_item = declaration | statement
-rule statement = compound_statement | return_statement | expression_statement
+rule statement = compound_statement | if_statement | while_statement | do_statement | for_statement | switch_statement | return_statement | break_statement | continue_statement | goto_statement | labeled_statement | expression_statement
+rule if_statement = KW_IF LPAREN expression RPAREN statement else_part?
+rule else_part = KW_ELSE statement
+rule while_statement = KW_WHILE LPAREN expression RPAREN statement
+rule do_statement = KW_DO statement KW_WHILE LPAREN expression RPAREN SEMI
+rule for_statement = KW_FOR LPAREN for_init expression? SEMI expression? RPAREN statement
+rule for_init = declaration | expression_statement
+rule switch_statement = KW_SWITCH LPAREN expression RPAREN statement
+rule labeled_statement = KW_CASE constant_expression COLON statement | KW_DEFAULT COLON statement | IDENT COLON statement
+rule break_statement = KW_BREAK SEMI
+rule continue_statement = KW_CONTINUE SEMI
+rule goto_statement = KW_GOTO IDENT SEMI
 rule return_statement = KW_RETURN expression? SEMI
 rule expression_statement = expression? SEMI
 
@@ -171,8 +194,10 @@ rule conditional_expression = binary_expression conditional_tail?
 rule conditional_tail = QUESTION expression COLON conditional_expression
 rule binary_expression = unary_expression binary_tail*
 rule binary_tail = binary_operator unary_expression
-rule binary_operator = OR_OR | AND_AND | PIPE | CARET | AMP | EQ_EQ | BANG_EQ | LT | GT | LT_EQ | GT_EQ | SHIFT_LEFT | SHIFT_RIGHT | PLUS | MINUS | STAR | SLASH | PERCENT
-rule unary_expression = postfix_expression | unary_operator unary_expression | KW_SIZEOF unary_expression | KW_SIZEOF LPAREN type_name RPAREN
+rule binary_operator = OR_OR | AND_AND | PIPE | CARET | AMP | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | LT | GT | SHIFT_LEFT | SHIFT_RIGHT | PLUS | MINUS | STAR | SLASH | PERCENT
+rule unary_expression = cast_expression | postfix_expression | unary_operator unary_expression | KW_SIZEOF LPAREN type_name RPAREN | KW_SIZEOF unary_expression
+rule cast_expression = LPAREN cast_type_name RPAREN unary_expression
+rule cast_type_name = specifier_qualifier_list abstract_declarator? | typedef_name_specifier_qualifier_list abstract_declarator
 rule unary_operator = AMP | STAR | PLUS | MINUS | TILDE | BANG
 rule postfix_expression = primary_expression postfix_tail*
 rule postfix_tail = LBRACK expression RBRACK | LPAREN argument_expression_list? RPAREN | DOT IDENT | ARROW IDENT | PLUS_PLUS | MINUS_MINUS
