@@ -77,6 +77,16 @@ int global_storage_size(int type):
 	return ((bytes + word_size - 1) >> word_size_log2) << word_size_log2
 
 
+void emit_global_storage(int type):
+	int bytes = global_storage_size(type)
+	if (type_is_array(type)):
+		emit_target_word(code_offset + codepos + 2 * word_size)
+		emit_target_word(type_get_array_length(type))
+		emit_zeros(bytes - 2 * word_size)
+	else:
+		emit_zeros(bytes)
+
+
 void program():
 	int current_symbol
 	while (token[0]):
@@ -109,7 +119,7 @@ void program():
 		get_token()
 		if (accept(";")):
 			sym_define_global(current_symbol)
-			emit_zeros(global_storage_size(decl_type))
+			emit_global_storage(decl_type)
 
 		else if (accept("(")):
 			function_definition(current_symbol)
@@ -117,4 +127,4 @@ void program():
 		else:
 			/*error(8)*/
 			sym_define_global(current_symbol)
-			emit_zeros(global_storage_size(decl_type))
+			emit_global_storage(decl_type)

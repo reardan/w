@@ -70,6 +70,13 @@ void emit_int64(int v):
 	emit_i(v, 8)
 
 
+void emit_target_word(int v):
+	if (word_size == 8):
+		emit_int64(v)
+	else:
+		emit_int32(v)
+
+
 void emit_int(int v):
 	emit_int32(v)
 

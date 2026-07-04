@@ -2,6 +2,22 @@ import lib.testing
 import lib.utf8
 
 
+int[3] global_values
+
+
+void test_global_array_index_length_and_slice():
+	assert_equal(3, global_values.length)
+	assert_equal(0, global_values[0])
+	global_values[0] = 12
+	global_values[1] = 30
+	global_values[2] = global_values[0] + global_values[1]
+	assert_equal(42, global_values[2])
+	int[] view = global_values
+	assert_equal(3, view.length)
+	view[1] = 99
+	assert_equal(99, global_values[1])
+
+
 void test_stack_array_index_and_length():
 	int[4] values
 	assert_equal(4, values.length)

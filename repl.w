@@ -326,12 +326,7 @@ void repl_entry_item(int entry_symbol):
 		int global_symbol = repl_declare_global(decl_name, decl_type, 1)
 		int gskip = repl_skip_start()
 		sym_define_global(global_symbol)
-		int gsize = word_size
-		if (type_num_args(decl_type) > 0):
-			# By-value structs get their full (word-aligned) size
-			gsize = type_get_size(decl_type)
-			gsize = ((gsize + word_size - 1) >> word_size_log2) << word_size_log2
-		emit_zeros(gsize)
+		emit_global_storage(decl_type)
 		repl_skip_end(gskip)
 		pointer_indirection = 0
 
