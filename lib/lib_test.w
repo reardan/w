@@ -51,19 +51,19 @@ void test_malloc_free_reuse():
 	free(a)
 	# The freed block should be recycled for an equal-sized request
 	char* b = malloc(100)
-	assert_equal(a, b)
+	assert_equal(cast(int, a), cast(int, b))
 	free(b)
 
 
 void test_malloc_reuse_loop():
 	# A steady alloc/free cycle must not leak: the same block comes back
-	int first = malloc(1000)
-	free(first)
+	int first = cast(int, malloc(1000))
+	free(cast(void*, first))
 	int i = 0
 	while (i < 1000):
-		int p = malloc(1000)
+		int p = cast(int, malloc(1000))
 		assert_equal(first, p)
-		free(p)
+		free(cast(void*, p))
 		i = i + 1
 
 
@@ -72,24 +72,24 @@ void test_malloc_split():
 	free(big)
 	# A smaller request splits the free block instead of growing the heap
 	char* head = malloc(64)
-	assert_equal(big, head)
+	assert_equal(cast(int, big), cast(int, head))
 	char* rest = malloc(64)
-	assert_equal(big + 72, rest)
+	assert_equal(big + 72, cast(int, rest))
 	free(head)
 	free(rest)
 
 
 void test_malloc_zero_and_alignment():
-	int a = malloc(0)
-	int b = malloc(1)
+	int a = cast(int, malloc(0))
+	int b = cast(int, malloc(1))
 	assert1(a != 0)
 	assert1(b != 0)
 	assert1(a != b)
 	# Payloads are 8-byte aligned
 	assert_equal(0, a & 7)
 	assert_equal(0, b & 7)
-	free(a)
-	free(b)
+	free(cast(void*, a))
+	free(cast(void*, b))
 
 
 void test_starts_with():
@@ -231,8 +231,8 @@ void test_mmap():
 	int page = mmap(0, 4096, 3, 34)
 	# error returns are small negatives (-1..-4095); mapped addresses are anything else
 	asserts("mmap failed", (page > 0) | (page < -4095))
-	save_int(page, 1337)
-	assert_equal(1337, load_int(page))
+	save_int(cast(char*, page), 1337)
+	assert_equal(1337, load_int(cast(char*, page)))
 	save_int(page + 4092, 42)
 	assert_equal(42, load_int(page + 4092))
 

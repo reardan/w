@@ -62,7 +62,10 @@ int pg_ast_get_metadata(pg_ast_node* node, char* key, int missing):
 	return hash_map_get_default(node.metadata, key, missing)
 
 
-void pg_ast_walk_preorder(pg_ast_node* node, int visitor):
+type pg_ast_visitor = fn(pg_ast_node*) -> void
+
+
+void pg_ast_walk_preorder(pg_ast_node* node, pg_ast_visitor* visitor):
 	if (node == 0):
 		return
 	visitor(node)
@@ -72,7 +75,7 @@ void pg_ast_walk_preorder(pg_ast_node* node, int visitor):
 		i = i + 1
 
 
-void pg_ast_walk_listener(pg_ast_node* node, int enter, int leave):
+void pg_ast_walk_listener(pg_ast_node* node, pg_ast_visitor* enter, pg_ast_visitor* leave):
 	if (node == 0):
 		return
 	enter(node)

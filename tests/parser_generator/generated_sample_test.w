@@ -3,7 +3,7 @@ import libs.extras.parser_generator.runtime
 import bin.generated_sample_parser
 
 
-int traversal_values
+char* traversal_values
 int traversal_count
 
 
@@ -69,7 +69,7 @@ void test_generated_lexer_literals():
 void test_generated_parser_syntax_error():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = sample_parse("", "sample.txt", diagnostics)
-	assert_equal(0, root)
+	assert_equal(0, cast(int, root))
 	assert_equal(1, pg_diagnostics_count(diagnostics))
 	pg_diagnostic* diagnostic = pg_diagnostics_get(diagnostics, 0)
 	assert_strings_equal("syntax error", diagnostic.message)
@@ -125,8 +125,8 @@ void test_listener_sets_parent_links_for_children():
 	assert1(root != 0)
 	pg_ast_node* first_value = pg_ast_child(root, 0)
 	pg_ast_node* first_token = pg_ast_child(first_value, 0)
-	assert_equal(root, first_value.parent)
-	assert_equal(first_value, first_token.parent)
+	assert_equal(cast(int, root), cast(int, first_value.parent))
+	assert_equal(cast(int, first_value), cast(int, first_token.parent))
 
 
 void test_manual_ast_traversal_and_null_noop():

@@ -32,7 +32,7 @@ int elf_symbol_entry_size():
 
 
 int elf_symbol_name_index(int entry):
-	return load_int(entry) /* st_name */
+	return load_int(cast(char*, entry)) /* st_name */
 
 
 int elf_symbol_value(int entry):

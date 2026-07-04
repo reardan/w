@@ -5,7 +5,7 @@ import lib.args
 # Stage the same argument vector the Makefile smoke test passes:
 #   prog arg1 arg2 arg3 -o output -i=input --input=doubledash
 void stage_makefile_args():
-	int argv = malloc(8 * 4)
+	int argv = cast(int, malloc(8 * 4))
 	save_int(argv + 0, "prog")
 	save_int(argv + 4, "arg1")
 	save_int(argv + 8, "arg2")
@@ -22,8 +22,8 @@ void test_args_count_and_program():
 	assert_equal(8, args_count())
 	assert_strings_equal("prog", args_program())
 	assert_strings_equal("arg2", args_get(2))
-	assert_equal(0, args_get(8))
-	assert_equal(0, args_get(0-1))
+	assert_equal(0, cast(int, args_get(8)))
+	assert_equal(0, cast(int, args_get(0-1)))
 
 
 void test_args_positionals():
@@ -32,7 +32,7 @@ void test_args_positionals():
 	assert_strings_equal("arg1", args_positional(0))
 	assert_strings_equal("arg2", args_positional(1))
 	assert_strings_equal("arg3", args_positional(2))
-	assert_equal(0, args_positional(3))
+	assert_equal(0, cast(int, args_positional(3)))
 
 
 void test_args_has_flag():
@@ -49,23 +49,23 @@ void test_args_values():
 	assert_strings_equal("output", args_value("o"))
 	assert_strings_equal("input", args_value("i"))
 	assert_strings_equal("doubledash", args_value("input"))
-	assert_equal(0, args_value("missing"))
+	assert_equal(0, cast(int, args_value("missing")))
 
 
 void test_args_bare_flag_without_value():
-	int argv = malloc(3 * 4)
+	int argv = cast(int, malloc(3 * 4))
 	save_int(argv + 0, "prog")
 	save_int(argv + 4, "file.w")
 	save_int(argv + 8, "-v")
 	args_init(3, argv)
 	assert_equal(1, args_has_flag("v"))
-	assert_equal(0, args_value("v"))
+	assert_equal(0, cast(int, args_value("v")))
 	assert_equal(1, args_positional_count())
 	assert_strings_equal("file.w", args_positional(0))
 
 
 void test_args_flag_value_not_positional():
-	int argv = malloc(4 * 4)
+	int argv = cast(int, malloc(4 * 4))
 	save_int(argv + 0, "prog")
 	save_int(argv + 4, "-o")
 	save_int(argv + 8, "out.bin")

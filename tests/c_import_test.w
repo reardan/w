@@ -12,7 +12,7 @@ void test_c_import_typedef():
 
 void test_c_import_system_file_typedef():
 	FILE* file = 0
-	assert_equal(0, file)
+	assert_equal(0, cast(int, file))
 
 
 void test_c_import_libc_style_typedefs():

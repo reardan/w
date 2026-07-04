@@ -46,8 +46,9 @@ int linked_list_get(linked_list* list, int index):
 	return node.data
 
 
+# Cursors are node addresses carried as untyped words.
 int linked_list_iter_begin(linked_list* list):
-	return list.head
+	return cast(int, list.head)
 
 
 # Do not mutate the list while iterating.
@@ -57,12 +58,12 @@ int linked_list_iter_done(linked_list* list, int cursor):
 
 int linked_list_iter_next(linked_list* list, int cursor):
 	assert1(cursor != 0)
-	linked_list_node* node = cursor
-	return node.next
+	linked_list_node* node = cast(linked_list_node*, cursor)
+	return cast(int, node.next)
 
 
 int linked_list_iter_value(linked_list* list, int cursor):
-	linked_list_node* node = cursor
+	linked_list_node* node = cast(linked_list_node*, cursor)
 	return node.data
 
 

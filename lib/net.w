@@ -92,7 +92,7 @@ int socket_accept_connection(int sockfd):
 
 int socket_getsockname_ipv4(int sockfd, sockaddr_in* addr):
 	int addrlen = sockaddr_in_size()
-	return sys_getsockname(sockfd, addr, &addrlen)
+	return sys_getsockname(sockfd, cast(int, addr), &addrlen)
 
 
 int socket_set_reuseaddr(int sockfd):
@@ -102,7 +102,7 @@ int socket_set_reuseaddr(int sockfd):
 
 int socket_pair(int* fds):
 	char* kernel_fds = malloc(8)
-	int err = sys_socketpair(af_unix(), sock_stream(), 0, kernel_fds)
+	int err = sys_socketpair(af_unix(), sock_stream(), 0, cast(int, kernel_fds))
 	if (err < 0):
 		free(kernel_fds)
 		return err

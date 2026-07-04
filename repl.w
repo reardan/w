@@ -460,7 +460,7 @@ void repl_echo(int value, int type):
 		if (value == 0):
 			println("(null)")
 		else:
-			println(value)
+			println(cast(char*, value))
 		return;
 	if ((pointers > 0) | (type == 4)):
 		println(hex(value))
@@ -502,8 +502,8 @@ int main(int argc, int argv):
 	code_offset = buffer
 
 	# Recoverable compile errors: error() jumps here instead of exiting
-	repl_jump_buffer = malloc(12)
-	repl_error_jump = repl_longjmp
+	repl_jump_buffer = cast(int, malloc(12))
+	repl_error_jump = cast(int, repl_longjmp)
 
 	# Runtime support: syscall stubs first, then the library itself.
 	# import_module (not compile_save) registers the modules, so a loaded
