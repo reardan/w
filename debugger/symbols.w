@@ -105,5 +105,5 @@ void dbg_print_functions():
 				print(digits)
 				free(digits)
 				print(c"\x09")
-				println(table + name_offset)
+				println(str_from_cstr(table + name_offset))
 		t = next_token(t)

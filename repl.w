@@ -459,7 +459,7 @@ void repl_echo(int value, int type):
 		if (value == 0):
 			println(c"(null)")
 		else:
-			println(value)
+			println(str_from_cstr(value))
 		return;
 	if ((pointers > 0) | (type == 4)):
 		println(hex(value))

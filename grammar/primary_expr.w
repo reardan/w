@@ -133,7 +133,7 @@ int primary_expr():
 		type = string_value_type
 
 	else if (c_char_pointer_literal()):
-		type = 3 /* constant: eax already holds the string address */
+		type = type_value(type_lookup_pointer(c"char", 1))
 
 	else if (hash_typed_literal()):
 		type = hash_literal_type

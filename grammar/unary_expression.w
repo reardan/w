@@ -229,11 +229,11 @@ int unary_expression():
 					field_index = field_index + 1
 				expect(c")")
 				if (field_index != type_num_args(base)):
-					print_error(c"warning: new ")
-					print_error(type_get_name(base))
-					print_error(c" expects ")
-					print_error(itoa(type_num_args(base)))
-					print_error(c" arguments, got ")
+					print_error(str_from_cstr(c"warning: new "))
+					print_error(str_from_cstr(type_get_name(base)))
+					print_error(str_from_cstr(c" expects "))
+					print_error(str_from_cstr(itoa(type_num_args(base))))
+					print_error(str_from_cstr(c" arguments, got "))
 					warning(itoa(field_index))
 				pop_eax()
 				stack_pos = stack_pos - 1

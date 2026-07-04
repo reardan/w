@@ -18,11 +18,11 @@ int token_i
 
 
 void warning(char *s):
-	print_error(s)
-	print_error(c" in ")
-	print_error(filename)
-	print_error(c":")
-	print_error(itoa(line_number+1))
+	print_error(str_from_cstr(s))
+	print_error(str_from_cstr(c" in "))
+	print_error(str_from_cstr(filename))
+	print_error(str_from_cstr(c":"))
+	print_error(str_from_cstr(itoa(line_number+1)))
 	put_error(10)
 
 
@@ -233,20 +233,20 @@ int accept_newline(char *s):
 
 void expect(char *s):
 	if (accept(s) == 0):
-		print_error(c"'")
-		print_error(s)
-		print_error(c"' expected, found '")
-		print_error(token)
-		print_error(c"'")
+		print_error(str_from_cstr(c"'"))
+		print_error(str_from_cstr(s))
+		print_error(str_from_cstr(c"' expected, found '"))
+		print_error(str_from_cstr(token))
+		print_error(str_from_cstr(c"'"))
 		error(c"")
 
 
 void expect_or_newline(char *s):
 	# End of file also ends the statement, like a newline would
 	if((accept(s) == 0) & (token_newline == 0) & (token[0] != 0)):
-		print_error(c"'")
-		print_error(s)
-		print_error(c"' expected, found '")
-		print_error(token)
-		print_error(c"'")
+		print_error(str_from_cstr(c"'"))
+		print_error(str_from_cstr(s))
+		print_error(str_from_cstr(c"' expected, found '"))
+		print_error(str_from_cstr(token))
+		print_error(str_from_cstr(c"'"))
 		error(c"")

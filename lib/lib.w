@@ -267,8 +267,23 @@ int file_size(int file):
 # ensuring that it can work with sockets, etc.
 
 
-int write_string(int file, char* s):
-	return write(file, s, strlen(s)) /* +1? */
+int write_string(int file, string s):
+	return write(file, s.data, s.length)
+
+
+void save_word(char* p, int v):
+	if (__word_size__ == 8):
+		save_int64(p, v)
+	else:
+		save_int(p, v)
+
+
+string str_from_cstr(char* s):
+	int descriptor = malloc(2 * __word_size__)
+	save_word(descriptor, s)
+	int length = strlen(s)
+	save_word(descriptor + __word_size__, length)
+	return cast(string, descriptor)
 
 
 int getchar(int file):
@@ -294,69 +309,69 @@ void put_error(int c):
 	putc(2, c)
 
 
-void print(char *s):
+void print(string s):
 	write_string(1, s)
 
 
-void print_error(char* s):
+void print_error(string s):
 	write_string(2, s)
 
 
-void print2(char* s):
+void print2(string s):
 	write_string(2, s)
 
 
-void print_char0(char* c, int v):
+void print_char0(string c, int v):
 	print_error(c)
 	put_error(v)
 
 
-void print_int0(char* c, int v):
+void print_int0(string c, int v):
 	print_error(c)
 	print_error(itoa(v))
 
 
-void print_int(char* c, int v):
+void print_int(string c, int v):
 	print_int0(c, v)
 	print_error(c"\x0a")
 
 
-void print_int_v1(char* c, int v):
+void print_int_v1(string c, int v):
 	if (verbosity >= 1):
 		print_int(c, v)
 
 
-void print_hex0(char* c, int v):
+void print_hex0(string c, int v):
 	print_error(c)
 	print_error(hex(v))
 
 
-void print_hex(char* c, int v):
+void print_hex(string c, int v):
 	print_hex0(c, v)
 	print_error(c"\x0a")
 
 
-void print_string0(char* s1, char* s2):
+void print_string0(string s1, string s2):
 	print_error(s1)
 	print_error(s2)
 
 
-void print_string(char* s1, char* s2):
+void print_string(string s1, string s2):
 	print_string0(s1, s2)
 	print_error(c"\x0a")
 
 
-void println(char *s):
+void println(string s):
 	print(s)
 	put_char(10)
 
 
-void println2(char *s):
+void println2(string s):
 	print_error(s)
 	put_error(10)
 
 
-void print_color(char* s, int color):
+void print_color(string s, int color):
 	print2(c"\x1b[")
 	print2(itoa(color))
 	print2(c"m")
@@ -364,7 +379,7 @@ void print_color(char* s, int color):
 	print2(c"\x1b[0m")
 
 
-void print_color_bg(char* s, int color, int background):
+void print_color_bg(string s, int color, int background):
 	print2(c"\x1b[")
 	print2(itoa(color))
 	print2(c";")

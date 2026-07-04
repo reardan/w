@@ -366,6 +366,15 @@ int type_is_string(int type_index):
 	return type_get_kind(type_index) == type_kind_string()
 
 
+int type_is_char_pointer(int type_index):
+	type_index = type_canonical(type_index)
+	if (type_index < 0):
+		return 0
+	if (type_get_pointer_level(type_index) != 1):
+		return 0
+	return strcmp(type_get_name(type_index), c"char") == 0
+
+
 int type_is_map(int type_index):
 	return type_get_kind(type_index) == type_kind_map()
 
@@ -625,14 +634,16 @@ int types_compatible(int want, int got):
 	got = type_unqualified(got)
 	if ((want == 3) | (want == 4) | (want == 1)):
 		return 1
-	if ((got == 3) | (got == 4) | (got == 1)):
-		return 1
 	if (want == got):
 		return 1
 	if (type_is_string(want) & type_is_string(got)):
 		return 1
+	if (type_is_string(want) & type_is_char_pointer(got)):
+		return 1
 	if (type_is_string(want) | type_is_string(got)):
 		return 0
+	if ((got == 3) | (got == 4) | (got == 1)):
+		return 1
 	if (type_is_map(want) & type_is_map(got)):
 		return (type_unqualified(type_map_key_type(want)) == type_unqualified(type_map_key_type(got))) &
 				(type_unqualified(type_map_value_type(want)) == type_unqualified(type_map_value_type(got)))
@@ -747,7 +758,7 @@ int type_get_arg(int type_index, char* field):
 			print2(c": ")
 			print2(field)
 			print2(c" ?= ")
-			print2(f)
+			print2(str_from_cstr(f))
 			println2(c"")
 		if (strcmp(field, f) == 0):
 			return i
@@ -820,10 +831,10 @@ void type_print(int type_index):
 	print2(c":")
 	if (num_fields > 0):
 		print2(c"struct ")
-		print2(load_int(t))
+		print2(str_from_cstr(load_int(t)))
 		print2(c": ")
 	else:
-		print2(load_int(t))
+		print2(str_from_cstr(load_int(t)))
 	# print_int("num_fields: ", num_fields)
 	if (num_fields <= 0):
 		println2(c"")
@@ -837,9 +848,9 @@ void type_print(int type_index):
 		if (i > 0):
 			print2(c"; ")
 
-		print2(load_int(field_type_name))
+		print2(str_from_cstr(load_int(field_type_name)))
 		print2(c" ")
-		print2(field_name)
+		print2(str_from_cstr(field_name))
 
 		i = i + 1
 
@@ -853,7 +864,7 @@ void type_print_all():
 		int type = get(i)
 		print_error(itoa(i))
 		print_error(c": ")
-		print_error(load_int(type))
+		print_error(str_from_cstr(load_int(type)))
 		for int j in range(type_get_pointer_level(i)):
 			print_error(c"*")
 		print_error(c"\x0a")

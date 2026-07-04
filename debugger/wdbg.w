@@ -367,7 +367,7 @@ void dbg_info_command(int context, int stop_addr, char* arg):
 	else if (strcmp(arg, c"files") == 0):
 		int i = 0
 		while (i < debug_file_count):
-			println(load_int(debug_files + i * 4))
+			println(str_from_cstr(load_int(debug_files + i * 4)))
 			i = i + 1
 	else:
 		println(c"info topics: breakpoints registers locals args functions files")

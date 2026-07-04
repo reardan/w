@@ -56,10 +56,10 @@ void for_iter_call(char* fn_name, int container_slot, int cursor_slot):
 
 
 void for_iter_error_prefix(char* container_name, char* fn_name):
-	print_error(c"type '")
-	print_error(container_name)
-	print_error(c"' is not iterable: ")
-	print_error(fn_name)
+	print_error(str_from_cstr(c"type '"))
+	print_error(str_from_cstr(container_name))
+	print_error(str_from_cstr(c"' is not iterable: "))
+	print_error(str_from_cstr(fn_name))
 
 
 void for_iter_require(char* container_name, char* fn_name, int expected_args, int container_type):
@@ -93,15 +93,15 @@ void for_iter_require(char* container_name, char* fn_name, int expected_args, in
 
 void for_iter_require_struct_pointer(int container_type):
 	if (type_get_pointer_level(container_type) != 1):
-		print_error(c"type '")
+		print_error(str_from_cstr(c"type '"))
 		print_error_type(container_type)
-		print_error(c"' is not iterable: ")
+		print_error(str_from_cstr(c"' is not iterable: "))
 		error(c"expected a pointer to a container struct")
 	int base_type = type_lookup_previous_pointer(container_type)
 	if ((base_type < 0) | (type_num_args(base_type) == 0)):
-		print_error(c"type '")
+		print_error(str_from_cstr(c"type '"))
 		print_error_type(container_type)
-		print_error(c"' is not iterable: ")
+		print_error(str_from_cstr(c"' is not iterable: "))
 		error(c"expected a pointer to a container struct")
 
 

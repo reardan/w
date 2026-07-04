@@ -4,19 +4,19 @@ char *last_identifier
 # Print a type's name followed by its pointer stars, e.g. "char**"
 void print_error_type(int type_index):
 	type_index = type_real(type_index)
-	print_error(type_get_name(type_index))
+	print_error(str_from_cstr(type_get_name(type_index)))
 	for int i in range(type_get_pointer_level(type_index)):
-		print_error(c"*")
+		print_error(str_from_cstr(c"*"))
 
 
 # Warn that 'got' does not convert to 'want'; context names the construct
 # (assignment, initialization, return, ...)
 void warn_type_mismatch(char* context, int want, int got):
-	print_error(c"warning: ")
-	print_error(context)
-	print_error(c" type mismatch: expected '")
+	print_error(str_from_cstr(c"warning: "))
+	print_error(str_from_cstr(context))
+	print_error(str_from_cstr(c" type mismatch: expected '"))
 	print_error_type(want)
-	print_error(c"', got '")
+	print_error(str_from_cstr(c"', got '"))
 	print_error_type(got)
 	warning(c"'")
 
@@ -47,6 +47,22 @@ int types_compatible_with_expression(int want, int got):
 			return function_signature_matches_symbol(signature_type, last_identifier)
 	return types_compatible(want, got)
 
+
+void coerce_cstr_to_string():
+	push_eax()
+	stack_pos = stack_pos + 1
+	sym_get_value(c"str_from_cstr")
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(word_size)
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(word_size)
+	call_eax()
+	be_pop(2)
+	stack_pos = stack_pos - 2
+	be_pop(1)
+	stack_pos = stack_pos - 1
 
 
 /*
@@ -136,6 +152,10 @@ void coerce(int want, int got):
 	if (want == 4):
 		return;
 	if (got == 4):
+		return;
+	if (type_is_string(want)):
+		if (type_is_char_pointer(got)):
+			coerce_cstr_to_string()
 		return;
 	if (want_kind == got_kind):
 		if ((want == float16_type) & (got != float16_type)):

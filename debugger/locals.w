@@ -154,7 +154,7 @@ void dbg_print_typed_value(int addr, int type):
 		while (i < n):
 			if (i > 0):
 				print(c", ")
-			print(load_int(t + 16 + 8 * i)) /* field name */
+			print(str_from_cstr(load_int(t + 16 + 8 * i))) /* field name */
 			print(c" = ")
 			int field_type = type_get_field_type_at(type, i)
 			int width = type_get_size(field_type)
@@ -173,7 +173,7 @@ void dbg_print_typed_value(int addr, int type):
 
 # name = value, for one note.
 void dbg_print_local(int i, int esp):
-	print(dbg_local_name_at(i))
+	print(str_from_cstr(dbg_local_name_at(i)))
 	print(c" = ")
 	dbg_print_typed_value(dbg_local_runtime_addr(i, esp), dbg_local_type(i))
 	put_char(10)

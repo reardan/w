@@ -104,13 +104,13 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 	if (param_type < 0):
 		return;
 	if (types_compatible_with_expression(param_type, arg_type) == 0):
-		print_error(c"warning: function '")
-		print_error(callee_name)
-		print_error(c"' argument ")
-		print_error(itoa(arg_index + 1))
-		print_error(c" type mismatch: expected '")
+		print_error(str_from_cstr(c"warning: function '"))
+		print_error(str_from_cstr(callee_name))
+		print_error(str_from_cstr(c"' argument "))
+		print_error(str_from_cstr(itoa(arg_index + 1)))
+		print_error(str_from_cstr(c" type mismatch: expected '"))
 		print_error_type(param_type)
-		print_error(c"', got '")
+		print_error(str_from_cstr(c"', got '"))
 		print_error_type(arg_type)
 		warning(c"'")
 
@@ -180,11 +180,11 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 
 	if (expected_args >= 0):
 		if (passed_args != expected_args):
-			print_error(c"warning: function '")
-			print_error(callee_name)
-			print_error(c"' expects ")
-			print_error(itoa(expected_args))
-			print_error(c" arguments, got ")
+			print_error(str_from_cstr(c"warning: function '"))
+			print_error(str_from_cstr(callee_name))
+			print_error(str_from_cstr(c"' expects "))
+			print_error(str_from_cstr(itoa(expected_args)))
+			print_error(str_from_cstr(c" arguments, got "))
 			warning(itoa(passed_args))
 	if (callee_name != 0):
 		free(callee_name)
