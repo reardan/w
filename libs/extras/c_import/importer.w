@@ -8,6 +8,7 @@ import compiler.symbol_table
 import code_generator.code_emitter
 import code_generator.dynamic_registry
 import code_generator.ffi
+import structures.string
 import libs.extras.parser_generator.runtime
 import libs.extras.parser_generator.source_writer
 import libs.extras.c_import.generated_c_parser
@@ -16,6 +17,8 @@ import libs.extras.c_import.generated_c_parser
 struct ci_decl_info:
 	int is_typedef
 	int is_extern
+	int is_static
+	int is_inline
 	int base_type
 
 
@@ -98,6 +101,138 @@ int ci_count_token(pg_ast_node* node, int kind):
 	return count
 
 
+int ci_is_header_control(int c):
+	if ((c <= 0) | (c >= 32)):
+		return 0
+	if ((c == 9) | (c == 10) | (c == 13)):
+		return 0
+	return 1
+
+
+int ci_is_ident_start_char(int c):
+	return ((c >= 'a') & (c <= 'z')) | ((c >= 'A') & (c <= 'Z')) | (c == '_')
+
+
+int ci_is_ident_part_char(int c):
+	return ci_is_ident_start_char(c) | ((c >= '0') & (c <= '9'))
+
+
+int ci_known_noop_header_ident(char* name):
+	if (strcmp(name, "__BEGIN_DECLS") == 0):
+		return 1
+	if (strcmp(name, "__END_DECLS") == 0):
+		return 1
+	if (strcmp(name, "__THROW") == 0):
+		return 1
+	if (strcmp(name, "__THROWNL") == 0):
+		return 1
+	if (strcmp(name, "__nonnull") == 0):
+		return 1
+	if (strcmp(name, "__attribute__") == 0):
+		return 1
+	if (strcmp(name, "__attribute_malloc__") == 0):
+		return 1
+	if (strcmp(name, "__wur") == 0):
+		return 1
+	if (strcmp(name, "__restrict") == 0):
+		return 1
+	if (strcmp(name, "__extension__") == 0):
+		return 1
+	if (strcmp(name, "__attr_dealloc") == 0):
+		return 1
+	if (strcmp(name, "__attr_dealloc_fclose") == 0):
+		return 1
+	if (strcmp(name, "__attr_access") == 0):
+		return 1
+	if (strcmp(name, "__fortified_attr_access") == 0):
+		return 1
+	return 0
+
+
+void ci_append_header_space_span(string_builder* out, char* source, int start, int end):
+	while (start < end):
+		if (source[start] == 10):
+			string_append_char(out, 10)
+		else:
+			string_append_char(out, ' ')
+		start = start + 1
+
+
+int ci_skip_quoted_header_text(char* source, int index):
+	int quote = source[index]
+	index = index + 1
+	while ((source[index] != 0) & (source[index] != quote)):
+		if (source[index] == 92):
+			index = index + 1
+			if (source[index] == 0):
+				return index
+		index = index + 1
+	if (source[index] == quote):
+		index = index + 1
+	return index
+
+
+int ci_skip_balanced_header_parens(char* source, int index):
+	if (source[index] != '('):
+		return index
+	int depth = 0
+	while (source[index] != 0):
+		if ((source[index] == '"') | (source[index] == 39)):
+			index = ci_skip_quoted_header_text(source, index)
+		else:
+			if (source[index] == '('):
+				depth = depth + 1
+			else if (source[index] == ')'):
+				depth = depth - 1
+				if (depth == 0):
+					return index + 1
+			index = index + 1
+	return index
+
+
+int ci_skip_inline_header_space(char* source, int index):
+	while ((source[index] == ' ') | (source[index] == 9) | (source[index] == 13)):
+		index = index + 1
+	return index
+
+
+int ci_prepare_known_header_ident_end(char* source, int index):
+	int end = index
+	while (ci_is_ident_part_char(source[end])):
+		end = end + 1
+	int saved = source[end]
+	source[end] = 0
+	int is_known = ci_known_noop_header_ident(source + index)
+	source[end] = saved
+	if (is_known == 0):
+		return index
+	int args = ci_skip_inline_header_space(source, end)
+	if (source[args] == '('):
+		return ci_skip_balanced_header_parens(source, args)
+	return end
+
+
+char* ci_prepare_header_source(char* source):
+	string_builder* out = string_new_sized(strlen(source) + 1)
+	int i = 0
+	while (source[i] != 0):
+		int end = i
+		if (ci_is_ident_start_char(source[i])):
+			end = ci_prepare_known_header_ident_end(source, i)
+		if (end != i):
+			ci_append_header_space_span(out, source, i, end)
+			i = end
+		else:
+			if (ci_is_header_control(source[i])):
+				string_append_char(out, ' ')
+			else:
+				string_append_char(out, source[i])
+			i = i + 1
+	char* prepared = out.data
+	free(out)
+	return prepared
+
+
 int ci_lookup_type(char* name):
 	int type = type_lookup(name)
 	if (type < 0):
@@ -128,6 +263,20 @@ char* ci_first_ident(pg_ast_node* node):
 	if (ident == 0):
 		return 0
 	return ident.text
+
+
+pg_ast_node* ci_declaration_specs(pg_ast_node* node):
+	pg_ast_node* specs = ci_child_ast(node, clang_ast_declaration_specifiers())
+	if (specs == 0):
+		specs = ci_child_ast(node, clang_ast_typedef_name_declaration_specifiers())
+	return specs
+
+
+pg_ast_node* ci_qualifier_specs(pg_ast_node* node):
+	pg_ast_node* specs = ci_child_ast(node, clang_ast_specifier_qualifier_list())
+	if (specs == 0):
+		specs = ci_child_ast(node, clang_ast_typedef_name_specifier_qualifier_list())
+	return specs
 
 
 int ci_primitive_type(pg_ast_node* specs):
@@ -173,7 +322,7 @@ int ci_import_struct(pg_ast_node* specifier):
 		while (i < pg_ast_child_count(body)):
 			pg_ast_node* field_decl = pg_ast_child(body, i)
 			if (ci_is_ast(field_decl, clang_ast_struct_declaration())):
-				pg_ast_node* field_specs = ci_child_ast(field_decl, clang_ast_specifier_qualifier_list())
+				pg_ast_node* field_specs = ci_qualifier_specs(field_decl)
 				int field_base = ci_type_from_specs(field_specs)
 				pg_ast_node* list = ci_child_ast(field_decl, clang_ast_struct_declarator_list())
 				ci_import_struct_declarator_list(type_index, field_base, list)
@@ -209,6 +358,9 @@ int ci_type_from_specs(pg_ast_node* specs):
 	pg_ast_node* enum_spec = ci_find_ast(specs, clang_ast_enum_specifier())
 	if (enum_spec != 0):
 		return ci_import_enum(enum_spec)
+	pg_ast_node* typedef_name = ci_find_token(specs, clang_token_IDENT())
+	if (typedef_name != 0):
+		return ci_lookup_type(typedef_name.text)
 	return ci_primitive_type(specs)
 
 
@@ -243,7 +395,7 @@ ci_declarator_info* ci_read_declarator(int base_type, pg_ast_node* declarator):
 
 
 int ci_parameter_type(pg_ast_node* parameter):
-	pg_ast_node* specs = ci_child_ast(parameter, clang_ast_declaration_specifiers())
+	pg_ast_node* specs = ci_declaration_specs(parameter)
 	int type = ci_type_from_specs(specs)
 	pg_ast_node* declarator = ci_child_ast(parameter, clang_ast_declarator())
 	if (declarator != 0):
@@ -253,7 +405,7 @@ int ci_parameter_type(pg_ast_node* parameter):
 
 
 int ci_parameter_is_void_only(pg_ast_node* parameter):
-	pg_ast_node* specs = ci_child_ast(parameter, clang_ast_declaration_specifiers())
+	pg_ast_node* specs = ci_declaration_specs(parameter)
 	if (ci_has_token(specs, clang_token_KW_VOID()) == 0):
 		return 0
 	return ci_child_ast(parameter, clang_ast_declarator()) == 0
@@ -279,6 +431,19 @@ int ci_lower_params_from(pg_ast_node* params, int sym, int start_count):
 	if ((start_count == 0) & void_only):
 		return 0
 	return param_count
+
+
+int ci_params_have_ellipsis(pg_ast_node* params):
+	return ci_find_ast(params, clang_ast_parameter_ellipsis()) != 0
+
+
+void ci_skip_extern_function(char* name, char* reason):
+	if (verbosity >= 1):
+		print_error("warning: c_import skipped '")
+		print_error(name)
+		print_error("': ")
+		print_error(reason)
+		print_error("\x0a")
 
 
 void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params):
@@ -335,7 +500,12 @@ void ci_import_init_declarators(ci_decl_info* decl, pg_ast_node* node):
 				if (strcmp(type_get_name(decl.base_type), info.name) != 0):
 					type_push_alias(strclone(info.name), info.type)
 			else if (info.is_function):
-				ci_lower_extern_function(info.name, info.type, info.params)
+				if (decl.is_static | decl.is_inline):
+					ci_skip_extern_function(info.name, "static/inline function")
+				else if (ci_params_have_ellipsis(info.params)):
+					ci_skip_extern_function(info.name, "variadic function")
+				else:
+					ci_lower_extern_function(info.name, info.type, info.params)
 		return
 	int i = 0
 	while (i < pg_ast_child_count(node)):
@@ -344,10 +514,12 @@ void ci_import_init_declarators(ci_decl_info* decl, pg_ast_node* node):
 
 
 ci_decl_info* ci_read_decl_info(pg_ast_node* declaration):
-	pg_ast_node* specs = ci_child_ast(declaration, clang_ast_declaration_specifiers())
+	pg_ast_node* specs = ci_declaration_specs(declaration)
 	ci_decl_info* decl = new ci_decl_info()
 	decl.is_typedef = ci_has_token(specs, clang_token_KW_TYPEDEF())
 	decl.is_extern = ci_has_token(specs, clang_token_KW_EXTERN())
+	decl.is_static = ci_has_token(specs, clang_token_KW_STATIC())
+	decl.is_inline = ci_has_token(specs, clang_token_KW_INLINE())
 	decl.base_type = ci_type_from_specs(specs)
 	return decl
 
@@ -361,7 +533,7 @@ void ci_import_declaration(pg_ast_node* declaration):
 void ci_import_translation_unit(pg_ast_node* root):
 	int i = 0
 	while (i < pg_ast_child_count(root)):
-		pg_ast_node* declaration = ci_find_ast(pg_ast_child(root, i), clang_ast_declaration())
+		pg_ast_node* declaration = ci_child_ast(pg_ast_child(root, i), clang_ast_declaration())
 		if (declaration != 0):
 			ci_import_declaration(declaration)
 		i = i + 1
@@ -374,6 +546,7 @@ void c_import_header(char* soname, char* header_path):
 		print_error("c_import: could not read header '")
 		print_error(header_path)
 		error("'")
+	source = ci_prepare_header_source(source)
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = clang_parse(source, header_path, diagnostics)
 	if ((root == 0) | (pg_diagnostics_count(diagnostics) != 0)):

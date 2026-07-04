@@ -59,6 +59,14 @@ void test_parse_c_function_prototypes_and_typedefs():
 	assert_c_parse_text("extern int puts(const char *s);\x0atypedef unsigned long size_t;\x0astatic inline int add(int a, int b) { return a + b; }\x0a", "ffi.h")
 
 
+void test_parse_c_typedef_names_markers_and_annotations():
+	assert_c_parse_text("__BEGIN_DECLS\x0atypedef unsigned long size_t;\x0aextern int remove(const char *__filename) __THROW __nonnull ((1));\x0aextern void *malloc(size_t size) __attribute__ ((__malloc__)) __wur;\x0a__END_DECLS\x0a", "libc_annotations.h")
+
+
+void test_parse_c_skips_odd_control_characters():
+	assert_c_parse_text("extern int close(int fd);\x01\x0a", "control.h")
+
+
 void test_parse_c_struct_union_and_enum_declarations():
 	assert_c_parse_text("typedef struct point { int x; int y; } point;\x0aunion value { int i; char *s; };\x0aenum color { red, green = 4, blue };\x0a", "aggregates.h")
 

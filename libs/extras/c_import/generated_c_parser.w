@@ -239,221 +239,245 @@ int clang_ast_declaration_specifiers():
 int clang_ast_declaration_specifier():
 	return 5
 
-int clang_ast_storage_class_specifier():
+int clang_ast_typedef_name_declaration_specifiers():
 	return 6
 
-int clang_ast_function_specifier():
+int clang_ast_typedef_name_declaration_prefix():
 	return 7
 
-int clang_ast_type_qualifier():
+int clang_ast_typedef_name_declaration_suffix():
 	return 8
 
-int clang_ast_type_specifier():
+int clang_ast_storage_class_specifier():
 	return 9
 
-int clang_ast_primitive_type():
+int clang_ast_function_specifier():
 	return 10
 
-int clang_ast_init_declarator_list():
+int clang_ast_type_qualifier():
 	return 11
 
-int clang_ast_init_declarator_tail():
+int clang_ast_type_specifier():
 	return 12
 
-int clang_ast_init_declarator():
+int clang_ast_typedef_name_specifier():
 	return 13
 
-int clang_ast_initializer_part():
+int clang_ast_primitive_type():
 	return 14
 
-int clang_ast_initializer():
+int clang_ast_declaration_annotation():
 	return 15
 
-int clang_ast_initializer_list():
+int clang_ast_declaration_annotation_args():
 	return 16
 
-int clang_ast_initializer_tail():
+int clang_ast_declaration_annotation_item():
 	return 17
 
-int clang_ast_initializer_item():
+int clang_ast_init_declarator_list():
 	return 18
 
-int clang_ast_initializer_comma():
+int clang_ast_init_declarator_tail():
 	return 19
 
-int clang_ast_designation():
+int clang_ast_init_declarator():
 	return 20
 
-int clang_ast_designator():
+int clang_ast_initializer_part():
 	return 21
 
-int clang_ast_struct_or_union_specifier():
+int clang_ast_initializer():
 	return 22
 
-int clang_ast_struct_or_union():
+int clang_ast_initializer_list():
 	return 23
 
-int clang_ast_struct_body():
+int clang_ast_initializer_tail():
 	return 24
 
-int clang_ast_struct_declaration():
+int clang_ast_initializer_item():
 	return 25
 
-int clang_ast_specifier_qualifier_list():
+int clang_ast_initializer_comma():
 	return 26
 
-int clang_ast_specifier_qualifier():
+int clang_ast_designation():
 	return 27
 
-int clang_ast_struct_declarator_list():
+int clang_ast_designator():
 	return 28
 
-int clang_ast_struct_declarator_tail():
+int clang_ast_struct_or_union_specifier():
 	return 29
 
-int clang_ast_struct_declarator():
+int clang_ast_struct_or_union():
 	return 30
 
-int clang_ast_bit_field():
+int clang_ast_struct_body():
 	return 31
 
-int clang_ast_enum_specifier():
+int clang_ast_struct_declaration():
 	return 32
 
-int clang_ast_enum_body():
+int clang_ast_specifier_qualifier_list():
 	return 33
 
-int clang_ast_enumerator_list():
+int clang_ast_specifier_qualifier():
 	return 34
 
-int clang_ast_enumerator_tail():
+int clang_ast_typedef_name_specifier_qualifier_list():
 	return 35
 
-int clang_ast_enum_comma():
+int clang_ast_struct_declarator_list():
 	return 36
 
-int clang_ast_enumerator():
+int clang_ast_struct_declarator_tail():
 	return 37
 
-int clang_ast_enum_value():
+int clang_ast_struct_declarator():
 	return 38
 
-int clang_ast_declarator():
+int clang_ast_bit_field():
 	return 39
 
-int clang_ast_direct_declarator():
+int clang_ast_enum_specifier():
 	return 40
 
-int clang_ast_direct_declarator_tail():
+int clang_ast_enum_body():
 	return 41
 
-int clang_ast_pointer():
+int clang_ast_enumerator_list():
 	return 42
 
-int clang_ast_type_qualifier_list():
+int clang_ast_enumerator_tail():
 	return 43
 
-int clang_ast_identifier_list():
+int clang_ast_enum_comma():
 	return 44
 
-int clang_ast_identifier_tail():
+int clang_ast_enumerator():
 	return 45
 
-int clang_ast_parameter_type_list():
+int clang_ast_enum_value():
 	return 46
 
-int clang_ast_parameter_ellipsis():
+int clang_ast_declarator():
 	return 47
 
-int clang_ast_parameter_list():
+int clang_ast_direct_declarator():
 	return 48
 
-int clang_ast_parameter_tail():
+int clang_ast_direct_declarator_tail():
 	return 49
 
-int clang_ast_parameter_declaration():
+int clang_ast_pointer():
 	return 50
 
-int clang_ast_type_name():
+int clang_ast_type_qualifier_list():
 	return 51
 
-int clang_ast_abstract_declarator():
+int clang_ast_identifier_list():
 	return 52
 
-int clang_ast_direct_abstract_declarator():
+int clang_ast_identifier_tail():
 	return 53
 
-int clang_ast_direct_abstract_declarator_tail():
+int clang_ast_parameter_type_list():
 	return 54
 
-int clang_ast_function_definition():
+int clang_ast_parameter_ellipsis():
 	return 55
 
-int clang_ast_compound_statement():
+int clang_ast_parameter_list():
 	return 56
 
-int clang_ast_block_item():
+int clang_ast_parameter_tail():
 	return 57
 
-int clang_ast_statement():
+int clang_ast_parameter_declaration():
 	return 58
 
-int clang_ast_return_statement():
+int clang_ast_type_name():
 	return 59
 
-int clang_ast_expression_statement():
+int clang_ast_abstract_declarator():
 	return 60
 
-int clang_ast_constant_expression():
+int clang_ast_direct_abstract_declarator():
 	return 61
 
-int clang_ast_expression():
+int clang_ast_direct_abstract_declarator_tail():
 	return 62
 
-int clang_ast_expression_tail():
+int clang_ast_function_definition():
 	return 63
 
-int clang_ast_assignment_expression():
+int clang_ast_compound_statement():
 	return 64
 
-int clang_ast_assignment_operator():
+int clang_ast_block_item():
 	return 65
 
-int clang_ast_conditional_expression():
+int clang_ast_statement():
 	return 66
 
-int clang_ast_conditional_tail():
+int clang_ast_return_statement():
 	return 67
 
-int clang_ast_binary_expression():
+int clang_ast_expression_statement():
 	return 68
 
-int clang_ast_binary_tail():
+int clang_ast_constant_expression():
 	return 69
 
-int clang_ast_binary_operator():
+int clang_ast_expression():
 	return 70
 
-int clang_ast_unary_expression():
+int clang_ast_expression_tail():
 	return 71
 
-int clang_ast_unary_operator():
+int clang_ast_assignment_expression():
 	return 72
 
-int clang_ast_postfix_expression():
+int clang_ast_assignment_operator():
 	return 73
 
-int clang_ast_postfix_tail():
+int clang_ast_conditional_expression():
 	return 74
 
-int clang_ast_argument_expression_list():
+int clang_ast_conditional_tail():
 	return 75
 
-int clang_ast_argument_tail():
+int clang_ast_binary_expression():
 	return 76
 
-int clang_ast_primary_expression():
+int clang_ast_binary_tail():
 	return 77
+
+int clang_ast_binary_operator():
+	return 78
+
+int clang_ast_unary_expression():
+	return 79
+
+int clang_ast_unary_operator():
+	return 80
+
+int clang_ast_postfix_expression():
+	return 81
+
+int clang_ast_postfix_tail():
+	return 82
+
+int clang_ast_argument_expression_list():
+	return 83
+
+int clang_ast_argument_tail():
+	return 84
+
+int clang_ast_primary_expression():
+	return 85
 
 char* clang_token_name(int kind):
 	if (kind == 0):
@@ -611,11 +635,18 @@ pg_ast_node* clang_parse_external_declaration(pg_token_stream* stream, pg_diagno
 pg_ast_node* clang_parse_declaration(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_declaration_specifiers(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_declaration_specifier(pg_token_stream* stream, pg_diagnostics* diagnostics);
+pg_ast_node* clang_parse_typedef_name_declaration_specifiers(pg_token_stream* stream, pg_diagnostics* diagnostics);
+pg_ast_node* clang_parse_typedef_name_declaration_prefix(pg_token_stream* stream, pg_diagnostics* diagnostics);
+pg_ast_node* clang_parse_typedef_name_declaration_suffix(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_storage_class_specifier(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_function_specifier(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_type_qualifier(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_type_specifier(pg_token_stream* stream, pg_diagnostics* diagnostics);
+pg_ast_node* clang_parse_typedef_name_specifier(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics* diagnostics);
+pg_ast_node* clang_parse_declaration_annotation(pg_token_stream* stream, pg_diagnostics* diagnostics);
+pg_ast_node* clang_parse_declaration_annotation_args(pg_token_stream* stream, pg_diagnostics* diagnostics);
+pg_ast_node* clang_parse_declaration_annotation_item(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_init_declarator_list(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_init_declarator_tail(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_init_declarator(pg_token_stream* stream, pg_diagnostics* diagnostics);
@@ -633,6 +664,7 @@ pg_ast_node* clang_parse_struct_body(pg_token_stream* stream, pg_diagnostics* di
 pg_ast_node* clang_parse_struct_declaration(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_specifier_qualifier_list(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_specifier_qualifier(pg_token_stream* stream, pg_diagnostics* diagnostics);
+pg_ast_node* clang_parse_typedef_name_specifier_qualifier_list(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_struct_declarator_list(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_struct_declarator_tail(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_struct_declarator(pg_token_stream* stream, pg_diagnostics* diagnostics);
@@ -722,6 +754,11 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 				best_kind = 0
 				best_skip = 1
 			length = pg_lexer_matcher_block_comment(input, index)
+			if (length > best_length):
+				best_length = length
+				best_kind = 0
+				best_skip = 1
+			length = pg_lexer_matcher_c_control(input, index)
 			if (length > best_length):
 				best_length = length
 				best_kind = 0
@@ -1314,11 +1351,22 @@ pg_ast_node* clang_parse_external_declaration(pg_token_stream* stream, pg_diagno
 	node = pg_ast_new(clang_ast_external_declaration(), 0, "external_declaration")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_2_0 = clang_parse_declaration_annotation(stream, diagnostics)
 		if (child_2_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_2_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_external_declaration(), 0, "external_declaration")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		if (child_3_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_3_0)
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
@@ -1331,24 +1379,67 @@ pg_ast_node* clang_parse_declaration(pg_token_stream* stream, pg_diagnostics* di
 	node = pg_ast_new(clang_ast_declaration(), 0, "declaration")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_parse_declaration_specifiers(stream, diagnostics)
+		pg_ast_node* child_0_0 = clang_parse_typedef_name_declaration_specifiers(stream, diagnostics)
 		if (child_0_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		int optional_mark_0_1 = pg_token_stream_mark(stream)
 		pg_ast_node* child_0_1 = clang_parse_init_declarator_list(stream, diagnostics)
 		if (child_0_1 == 0):
-			pg_token_stream_rewind(stream, optional_mark_0_1)
+			failed = 1
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
-		if (child_0_2 == 0):
+		int repeat_count_0_2 = 0
+		while (failed == 0):
+			int repeat_mark_0_2 = pg_token_stream_mark(stream)
+			pg_ast_node* child_0_2 = clang_parse_declaration_annotation(stream, diagnostics)
+			if (child_0_2 == 0):
+				pg_token_stream_rewind(stream, repeat_mark_0_2)
+				break
+			pg_ast_add(node, child_0_2)
+			repeat_count_0_2 = repeat_count_0_2 + 1
+	if (failed == 0):
+		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		if (child_0_3 == 0):
 			failed = 1
 		else:
-			pg_ast_add(node, child_0_2)
+			pg_ast_add(node, child_0_3)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_declaration(), 0, "declaration")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_1_0 = clang_parse_declaration_specifiers(stream, diagnostics)
+		if (child_1_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_1_0)
+	if (failed == 0):
+		int optional_mark_1_1 = pg_token_stream_mark(stream)
+		pg_ast_node* child_1_1 = clang_parse_init_declarator_list(stream, diagnostics)
+		if (child_1_1 == 0):
+			pg_token_stream_rewind(stream, optional_mark_1_1)
+		else:
+			pg_ast_add(node, child_1_1)
+	if (failed == 0):
+		int repeat_count_1_2 = 0
+		while (failed == 0):
+			int repeat_mark_1_2 = pg_token_stream_mark(stream)
+			pg_ast_node* child_1_2 = clang_parse_declaration_annotation(stream, diagnostics)
+			if (child_1_2 == 0):
+				pg_token_stream_rewind(stream, repeat_mark_1_2)
+				break
+			pg_ast_add(node, child_1_2)
+			repeat_count_1_2 = repeat_count_1_2 + 1
+	if (failed == 0):
+		pg_ast_node* child_1_3 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		if (child_1_3 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_1_3)
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
@@ -1422,6 +1513,110 @@ pg_ast_node* clang_parse_declaration_specifier(pg_token_stream* stream, pg_diagn
 			failed = 1
 		else:
 			pg_ast_add(node, child_3_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	return 0
+
+pg_ast_node* clang_parse_typedef_name_declaration_specifiers(pg_token_stream* stream, pg_diagnostics* diagnostics):
+	int mark = pg_token_stream_mark(stream)
+	pg_ast_node* node = 0
+	int failed = 0
+	node = pg_ast_new(clang_ast_typedef_name_declaration_specifiers(), 0, "typedef_name_declaration_specifiers")
+	failed = 0
+	if (failed == 0):
+		int repeat_count_0_0 = 0
+		while (failed == 0):
+			int repeat_mark_0_0 = pg_token_stream_mark(stream)
+			pg_ast_node* child_0_0 = clang_parse_typedef_name_declaration_prefix(stream, diagnostics)
+			if (child_0_0 == 0):
+				pg_token_stream_rewind(stream, repeat_mark_0_0)
+				break
+			pg_ast_add(node, child_0_0)
+			repeat_count_0_0 = repeat_count_0_0 + 1
+	if (failed == 0):
+		pg_ast_node* child_0_1 = clang_parse_typedef_name_specifier(stream, diagnostics)
+		if (child_0_1 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_0_1)
+	if (failed == 0):
+		int repeat_count_0_2 = 0
+		while (failed == 0):
+			int repeat_mark_0_2 = pg_token_stream_mark(stream)
+			pg_ast_node* child_0_2 = clang_parse_typedef_name_declaration_suffix(stream, diagnostics)
+			if (child_0_2 == 0):
+				pg_token_stream_rewind(stream, repeat_mark_0_2)
+				break
+			pg_ast_add(node, child_0_2)
+			repeat_count_0_2 = repeat_count_0_2 + 1
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	return 0
+
+pg_ast_node* clang_parse_typedef_name_declaration_prefix(pg_token_stream* stream, pg_diagnostics* diagnostics):
+	int mark = pg_token_stream_mark(stream)
+	pg_ast_node* node = 0
+	int failed = 0
+	node = pg_ast_new(clang_ast_typedef_name_declaration_prefix(), 0, "typedef_name_declaration_prefix")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_0_0 = clang_parse_storage_class_specifier(stream, diagnostics)
+		if (child_0_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_0_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_typedef_name_declaration_prefix(), 0, "typedef_name_declaration_prefix")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_1_0 = clang_parse_type_qualifier(stream, diagnostics)
+		if (child_1_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_1_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_typedef_name_declaration_prefix(), 0, "typedef_name_declaration_prefix")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_2_0 = clang_parse_function_specifier(stream, diagnostics)
+		if (child_2_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_2_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	return 0
+
+pg_ast_node* clang_parse_typedef_name_declaration_suffix(pg_token_stream* stream, pg_diagnostics* diagnostics):
+	int mark = pg_token_stream_mark(stream)
+	pg_ast_node* node = 0
+	int failed = 0
+	node = pg_ast_new(clang_ast_typedef_name_declaration_suffix(), 0, "typedef_name_declaration_suffix")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_0_0 = clang_parse_type_qualifier(stream, diagnostics)
+		if (child_0_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_0_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_typedef_name_declaration_suffix(), 0, "typedef_name_declaration_suffix")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_1_0 = clang_parse_function_specifier(stream, diagnostics)
+		if (child_1_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_1_0)
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
@@ -1583,6 +1778,23 @@ pg_ast_node* clang_parse_type_specifier(pg_token_stream* stream, pg_diagnostics*
 	pg_token_stream_rewind(stream, mark)
 	return 0
 
+pg_ast_node* clang_parse_typedef_name_specifier(pg_token_stream* stream, pg_diagnostics* diagnostics):
+	int mark = pg_token_stream_mark(stream)
+	pg_ast_node* node = 0
+	int failed = 0
+	node = pg_ast_new(clang_ast_typedef_name_specifier(), 0, "typedef_name_specifier")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		if (child_0_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_0_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	return 0
+
 pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics* diagnostics):
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
@@ -1683,6 +1895,135 @@ pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics*
 			failed = 1
 		else:
 			pg_ast_add(node, child_8_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	return 0
+
+pg_ast_node* clang_parse_declaration_annotation(pg_token_stream* stream, pg_diagnostics* diagnostics):
+	int mark = pg_token_stream_mark(stream)
+	pg_ast_node* node = 0
+	int failed = 0
+	node = pg_ast_new(clang_ast_declaration_annotation(), 0, "declaration_annotation")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		if (child_0_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_0_0)
+	if (failed == 0):
+		int optional_mark_0_1 = pg_token_stream_mark(stream)
+		pg_ast_node* child_0_1 = clang_parse_declaration_annotation_args(stream, diagnostics)
+		if (child_0_1 == 0):
+			pg_token_stream_rewind(stream, optional_mark_0_1)
+		else:
+			pg_ast_add(node, child_0_1)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	return 0
+
+pg_ast_node* clang_parse_declaration_annotation_args(pg_token_stream* stream, pg_diagnostics* diagnostics):
+	int mark = pg_token_stream_mark(stream)
+	pg_ast_node* node = 0
+	int failed = 0
+	node = pg_ast_new(clang_ast_declaration_annotation_args(), 0, "declaration_annotation_args")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		if (child_0_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_0_0)
+	if (failed == 0):
+		int repeat_count_0_1 = 0
+		while (failed == 0):
+			int repeat_mark_0_1 = pg_token_stream_mark(stream)
+			pg_ast_node* child_0_1 = clang_parse_declaration_annotation_item(stream, diagnostics)
+			if (child_0_1 == 0):
+				pg_token_stream_rewind(stream, repeat_mark_0_1)
+				break
+			pg_ast_add(node, child_0_1)
+			repeat_count_0_1 = repeat_count_0_1 + 1
+	if (failed == 0):
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		if (child_0_2 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_0_2)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	return 0
+
+pg_ast_node* clang_parse_declaration_annotation_item(pg_token_stream* stream, pg_diagnostics* diagnostics):
+	int mark = pg_token_stream_mark(stream)
+	pg_ast_node* node = 0
+	int failed = 0
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_0_0 = clang_parse_declaration_annotation_args(stream, diagnostics)
+		if (child_0_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_0_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		if (child_1_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_1_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_NUMBER(), "NUMBER")
+		if (child_2_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_2_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_STRING(), "STRING")
+		if (child_3_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_3_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_CHAR_LITERAL(), "CHAR_LITERAL")
+		if (child_4_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_4_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		if (child_5_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_5_0)
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
@@ -2130,7 +2471,7 @@ pg_ast_node* clang_parse_struct_declaration(pg_token_stream* stream, pg_diagnost
 	node = pg_ast_new(clang_ast_struct_declaration(), 0, "struct_declaration")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_parse_specifier_qualifier_list(stream, diagnostics)
+		pg_ast_node* child_0_0 = clang_parse_typedef_name_specifier_qualifier_list(stream, diagnostics)
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2148,6 +2489,30 @@ pg_ast_node* clang_parse_struct_declaration(pg_token_stream* stream, pg_diagnost
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_2)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_struct_declaration(), 0, "struct_declaration")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_1_0 = clang_parse_specifier_qualifier_list(stream, diagnostics)
+		if (child_1_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_1_0)
+	if (failed == 0):
+		int optional_mark_1_1 = pg_token_stream_mark(stream)
+		pg_ast_node* child_1_1 = clang_parse_struct_declarator_list(stream, diagnostics)
+		if (child_1_1 == 0):
+			pg_token_stream_rewind(stream, optional_mark_1_1)
+		else:
+			pg_ast_add(node, child_1_1)
+	if (failed == 0):
+		pg_ast_node* child_1_2 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		if (child_1_2 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_1_2)
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
@@ -2199,6 +2564,43 @@ pg_ast_node* clang_parse_specifier_qualifier(pg_token_stream* stream, pg_diagnos
 			failed = 1
 		else:
 			pg_ast_add(node, child_1_0)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	return 0
+
+pg_ast_node* clang_parse_typedef_name_specifier_qualifier_list(pg_token_stream* stream, pg_diagnostics* diagnostics):
+	int mark = pg_token_stream_mark(stream)
+	pg_ast_node* node = 0
+	int failed = 0
+	node = pg_ast_new(clang_ast_typedef_name_specifier_qualifier_list(), 0, "typedef_name_specifier_qualifier_list")
+	failed = 0
+	if (failed == 0):
+		int repeat_count_0_0 = 0
+		while (failed == 0):
+			int repeat_mark_0_0 = pg_token_stream_mark(stream)
+			pg_ast_node* child_0_0 = clang_parse_type_qualifier(stream, diagnostics)
+			if (child_0_0 == 0):
+				pg_token_stream_rewind(stream, repeat_mark_0_0)
+				break
+			pg_ast_add(node, child_0_0)
+			repeat_count_0_0 = repeat_count_0_0 + 1
+	if (failed == 0):
+		pg_ast_node* child_0_1 = clang_parse_typedef_name_specifier(stream, diagnostics)
+		if (child_0_1 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_0_1)
+	if (failed == 0):
+		int repeat_count_0_2 = 0
+		while (failed == 0):
+			int repeat_mark_0_2 = pg_token_stream_mark(stream)
+			pg_ast_node* child_0_2 = clang_parse_type_qualifier(stream, diagnostics)
+			if (child_0_2 == 0):
+				pg_token_stream_rewind(stream, repeat_mark_0_2)
+				break
+			pg_ast_add(node, child_0_2)
+			repeat_count_0_2 = repeat_count_0_2 + 1
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
@@ -2896,7 +3298,7 @@ pg_ast_node* clang_parse_parameter_declaration(pg_token_stream* stream, pg_diagn
 	node = pg_ast_new(clang_ast_parameter_declaration(), 0, "parameter_declaration")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_parse_declaration_specifiers(stream, diagnostics)
+		pg_ast_node* child_0_0 = clang_parse_typedef_name_declaration_specifiers(stream, diagnostics)
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2911,6 +3313,24 @@ pg_ast_node* clang_parse_parameter_declaration(pg_token_stream* stream, pg_diagn
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_parameter_declaration(), 0, "parameter_declaration")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_1_0 = clang_parse_declaration_specifiers(stream, diagnostics)
+		if (child_1_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_1_0)
+	if (failed == 0):
+		int optional_mark_1_1 = pg_token_stream_mark(stream)
+		pg_ast_node* child_1_1 = clang_parse_declarator(stream, diagnostics)
+		if (child_1_1 == 0):
+			pg_token_stream_rewind(stream, optional_mark_1_1)
+		else:
+			pg_ast_add(node, child_1_1)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
 	return 0
 
 pg_ast_node* clang_parse_type_name(pg_token_stream* stream, pg_diagnostics* diagnostics):
@@ -2920,7 +3340,7 @@ pg_ast_node* clang_parse_type_name(pg_token_stream* stream, pg_diagnostics* diag
 	node = pg_ast_new(clang_ast_type_name(), 0, "type_name")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_parse_specifier_qualifier_list(stream, diagnostics)
+		pg_ast_node* child_0_0 = clang_parse_typedef_name_specifier_qualifier_list(stream, diagnostics)
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2932,6 +3352,24 @@ pg_ast_node* clang_parse_type_name(pg_token_stream* stream, pg_diagnostics* diag
 			pg_token_stream_rewind(stream, optional_mark_0_1)
 		else:
 			pg_ast_add(node, child_0_1)
+	if (failed == 0):
+		return node
+	pg_token_stream_rewind(stream, mark)
+	node = pg_ast_new(clang_ast_type_name(), 0, "type_name")
+	failed = 0
+	if (failed == 0):
+		pg_ast_node* child_1_0 = clang_parse_specifier_qualifier_list(stream, diagnostics)
+		if (child_1_0 == 0):
+			failed = 1
+		else:
+			pg_ast_add(node, child_1_0)
+	if (failed == 0):
+		int optional_mark_1_1 = pg_token_stream_mark(stream)
+		pg_ast_node* child_1_1 = clang_parse_abstract_declarator(stream, diagnostics)
+		if (child_1_1 == 0):
+			pg_token_stream_rewind(stream, optional_mark_1_1)
+		else:
+			pg_ast_add(node, child_1_1)
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)

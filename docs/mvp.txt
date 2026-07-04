@@ -21,11 +21,12 @@ Compiler
 		REPL run-a-file-then-attach mode (repl file.w)
 		DWARF line information
 		Deeper type compatibility checks
+		Declaration-only C header import for typedefs, aggregates, enums and fixed-arity prototypes
 
 	Remaining
 		Dict language/runtime type
 		Default "..." literal migration from char* to string
-		C header parsing / c_import
+		Full C preprocessing and broad raw system-header import
 		Built-in debugger
 
 Net

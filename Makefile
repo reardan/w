@@ -467,6 +467,7 @@ parser_generator_w_test: parser_generator_test FORCE
 
 parser_generator_c_test: parser_generator_test FORCE
 	./bin/parser_generator tests/parser_generator/c.pg -o ./bin/generated_c_parser.w
+	cmp ./bin/generated_c_parser.w ./libs/extras/c_import/generated_c_parser.w
 	./bin/wv2 tests/parser_generator/generated_c_parser_test.w -o ./bin/parser_generator_c_test
 	./bin/parser_generator_c_test
 
