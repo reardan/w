@@ -181,3 +181,103 @@ void test_list_in_map_values():
 	table[c"high"] = list[int]{9}
 	assert_equal(2, table[c"low"].length)
 	assert_equal(9, table[c"high"][0])
+
+
+struct list_test_point:
+	int x
+	int y
+
+
+void test_list_struct_elements_stored_by_value():
+	list[list_test_point] pts = new list[list_test_point]
+	list_test_point p
+	p.x = 1
+	p.y = 2
+	pts.push(p)
+	p.x = 10
+	p.y = 20
+	pts.push(p)
+	assert_equal(2, pts.length)
+	assert_equal(1, pts[0].x)
+	assert_equal(20, pts[1].y)
+	# stored by value: mutating the source must not change the list
+	p.x = 777
+	assert_equal(10, pts[1].x)
+
+
+void test_list_struct_element_writes():
+	list_test_point p
+	p.x = 1
+	p.y = 2
+	list_test_point q
+	q.x = 5
+	q.y = 6
+	list[list_test_point] pts = list[list_test_point]{p, q}
+	# field write in place
+	pts[0].y = 99
+	assert_equal(99, pts[0].y)
+	# whole-element overwrite copies
+	pts[0] = q
+	assert_equal(5, pts[0].x)
+	q.x = 1234
+	assert_equal(5, pts[0].x)
+
+
+void test_list_struct_element_reads_copy():
+	list[list_test_point] pts = new list[list_test_point]
+	list_test_point p
+	p.x = 3
+	p.y = 4
+	pts.push(p)
+	list_test_point copy = pts[0]
+	copy.x = 555
+	assert_equal(3, pts[0].x)
+
+
+void test_list_struct_pop():
+	list_test_point p
+	p.x = 7
+	p.y = 8
+	list[list_test_point] pts = list[list_test_point]{p}
+	list_test_point popped = pts.pop()
+	assert_equal(7, popped.x)
+	assert_equal(8, popped.y)
+	assert_equal(0, pts.length)
+
+
+void test_list_struct_iteration_yields_addresses():
+	list_test_point a
+	a.x = 1
+	a.y = 10
+	list_test_point b
+	b.x = 2
+	b.y = 20
+	list[list_test_point] pts = list[list_test_point]{a, b}
+	int sum = 0
+	for list_test_point* pp in pts:
+		sum = sum + pp.x
+	assert_equal(3, sum)
+	# in-place mutation through the iteration pointer
+	for list_test_point* pm in pts:
+		pm.y = pm.y + 1
+	assert_equal(11, pts[0].y)
+	assert_equal(21, pts[1].y)
+
+
+struct list_test_wide:
+	int a
+	int b
+	int c
+
+
+void test_list_struct_growth():
+	list[list_test_wide] ws = new list[list_test_wide]
+	list_test_wide w
+	for int i in range(100):
+		w.a = i
+		w.b = i * 2
+		w.c = i * 3
+		ws.push(w)
+	assert_equal(100, ws.length)
+	assert_equal(0, ws[0].a)
+	assert_equal(297, ws[99].c)

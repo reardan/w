@@ -252,8 +252,15 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 	int p1
 	int p2
 	int element_type = type_list_element_type(container_type)
-	if (types_compatible_with_expression(loop_var_type, element_type) == 0):
-		warn_type_mismatch(c"for loop variable", loop_var_type, element_type)
+	# Struct elements cannot fit in the word-sized loop variable, so the
+	# loop yields each element's address instead: for point* p in l
+	char* value_call = c"__w_list_iter_value"
+	int loop_value_type = element_type
+	if (type_num_args(element_type) > 0):
+		value_call = c"__w_list_addr"
+		loop_value_type = type_get_next_pointer(element_type)
+	if (types_compatible_with_expression(loop_var_type, loop_value_type) == 0):
+		warn_type_mismatch(c"for loop variable", loop_var_type, loop_value_type)
 
 	# hidden slot: the container pointer
 	push_eax()
@@ -279,8 +286,8 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 	jmp_nonzero_int32(1337018)
 	p2 = codepos
 
-	for_iter_call(c"__w_list_iter_value", container_slot, cursor_slot)
-	coerce(loop_var_type, element_type)
+	for_iter_call(value_call, container_slot, cursor_slot)
+	coerce(loop_var_type, loop_value_type)
 	store_stack_var((stack_pos - for_var) << word_size_log2)
 
 	enclosing_tab_level = for_tab_level

@@ -55,6 +55,27 @@ struct __w_hash_table:
 	char* states
 
 
+# Bytes per value slot. Scalar values (value_size <= word) keep the
+# original one-word-per-slot layout; aggregate values get value_size
+# bytes rounded up to a word multiple, matching W's word-granular
+# struct copies, so structs are stored by value.
+int __w_hash_slot_size(__w_hash_table* table):
+	if (table.value_size < __word_size__):
+		return __word_size__
+	return ((table.value_size + __word_size__ - 1) / __word_size__) * __word_size__
+
+
+char* __w_hash_value_addr(__w_hash_table* table, int i):
+	return cast(char*, table.values) + i * __w_hash_slot_size(table)
+
+
+void __w_hash_value_copy(char* dst, char* src, int count):
+	int i = 0
+	while (i < count):
+		dst[i] = src[i]
+		i = i + 1
+
+
 int __w_hash_key_word():
 	return 1
 
@@ -143,14 +164,19 @@ __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	table.count = 0
 	table.key_kind = key_kind
 	table.value_size = value_size
+	int slot_size = __w_hash_slot_size(table)
 	table.keys = malloc(capacity * __word_size__)
-	table.values = malloc(capacity * __word_size__)
+	table.values = malloc(capacity * slot_size)
 	table.states = malloc(capacity)
 	int i = 0
 	while (i < capacity):
 		table.keys[i] = 0
-		table.values[i] = 0
 		table.states[i] = 0
+		i = i + 1
+	char* value_bytes = cast(char*, table.values)
+	i = 0
+	while (i < capacity * slot_size):
+		value_bytes[i] = 0
 		i = i + 1
 	return table
 
@@ -171,13 +197,15 @@ int __w_hash_table_slot(__w_hash_table* table, int key):
 	return i
 
 
-void __w_hash_table_set_owned(__w_hash_table* table, int key, int value):
+# Rehash helper: the key is already owned (cloned) by the table, and the
+# value is copied slot-wise from its old storage.
+void __w_hash_table_move_owned(__w_hash_table* table, int key, char* value_src):
 	int i = __w_hash_table_slot(table, key)
 	if (table.states[i] != 1):
 		table.states[i] = 1
 		table.keys[i] = key
 		table.count = table.count + 1
-	table.values[i] = value
+	__w_hash_value_copy(__w_hash_value_addr(table, i), value_src, __w_hash_slot_size(table))
 
 
 void __w_hash_table_grow(__w_hash_table* table):
@@ -185,23 +213,28 @@ void __w_hash_table_grow(__w_hash_table* table):
 	int* old_keys = table.keys
 	int* old_values = table.values
 	char* old_states = table.states
+	int slot_size = __w_hash_slot_size(table)
 
 	table.capacity = old_capacity * 2
 	table.count = 0
 	table.keys = malloc(table.capacity * __word_size__)
-	table.values = malloc(table.capacity * __word_size__)
+	table.values = malloc(table.capacity * slot_size)
 	table.states = malloc(table.capacity)
 	int i = 0
 	while (i < table.capacity):
 		table.keys[i] = 0
-		table.values[i] = 0
 		table.states[i] = 0
+		i = i + 1
+	char* value_bytes = cast(char*, table.values)
+	i = 0
+	while (i < table.capacity * slot_size):
+		value_bytes[i] = 0
 		i = i + 1
 
 	i = 0
 	while (i < old_capacity):
 		if (old_states[i] == 1):
-			__w_hash_table_set_owned(table, old_keys[i], old_values[i])
+			__w_hash_table_move_owned(table, old_keys[i], cast(char*, old_values) + i * slot_size)
 		i = i + 1
 	free(old_keys)
 	free(old_values)
@@ -212,7 +245,8 @@ __w_hash_table* __w_map_new(int key_kind, int value_size):
 	return __w_hash_table_new(key_kind, value_size, 16)
 
 
-void __w_map_set(__w_hash_table* table, int key, int value):
+# Insert or find the slot for key, growing and cloning the key as needed.
+int __w_map_insert_slot(__w_hash_table* table, int key):
 	if (table.count * 4 >= table.capacity * 3):
 		__w_hash_table_grow(table)
 	int i = __w_hash_table_slot(table, key)
@@ -220,7 +254,20 @@ void __w_map_set(__w_hash_table* table, int key, int value):
 		table.states[i] = 1
 		table.keys[i] = __w_hash_key_clone(table.key_kind, key)
 		table.count = table.count + 1
-	table.values[i] = value
+	return i
+
+
+void __w_map_set(__w_hash_table* table, int key, int value):
+	int i = __w_map_insert_slot(table, key)
+	int* slot = cast(int*, __w_hash_value_addr(table, i))
+	slot[0] = value
+
+
+# Aggregate values (structs) are passed by address: copy one slot's worth
+# of bytes from value_src into the value storage.
+void __w_map_set_bytes(__w_hash_table* table, int key, char* value_src):
+	int i = __w_map_insert_slot(table, key)
+	__w_hash_value_copy(__w_hash_value_addr(table, i), value_src, __w_hash_slot_size(table))
 
 
 int __w_map_contains(__w_hash_table* table, int key):
@@ -231,7 +278,16 @@ int __w_map_contains(__w_hash_table* table, int key):
 int __w_map_get(__w_hash_table* table, int key):
 	int i = __w_hash_table_slot(table, key)
 	__w_assert(table.states[i] == 1)
-	return table.values[i]
+	int* slot = cast(int*, __w_hash_value_addr(table, i))
+	return slot[0]
+
+
+# Aggregate read: the address of the stored value bytes. Only valid until
+# the next insertion rehashes the table, so callers copy immediately.
+char* __w_map_get_addr(__w_hash_table* table, int key):
+	int i = __w_hash_table_slot(table, key)
+	__w_assert(table.states[i] == 1)
+	return __w_hash_value_addr(table, i)
 
 
 int __w_map_remove(__w_hash_table* table, int key):
@@ -240,7 +296,11 @@ int __w_map_remove(__w_hash_table* table, int key):
 		return 0
 	__w_hash_key_free(table.key_kind, table.keys[i])
 	table.keys[i] = 0
-	table.values[i] = 0
+	char* slot = __w_hash_value_addr(table, i)
+	int j = 0
+	while (j < __w_hash_slot_size(table)):
+		slot[j] = 0
+		j = j + 1
 	table.states[i] = 2
 	table.count = table.count - 1
 	return 1

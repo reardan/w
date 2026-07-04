@@ -522,6 +522,8 @@ hash_table_test: w FORCE
 map_set_builtin_test: w FORCE
 	./bin/wv2 tests/map_set_builtin_test.w -o ./bin/map_set_builtin_test
 	./bin/map_set_builtin_test
+	! ./bin/wv2 tests/map_value_array_error_fixture.w -o ./bin/map_value_array_error_fixture 2>./bin/map_value_array_error_fixture.stderr
+	grep -qF "map value type cannot be a fixed-size array" ./bin/map_value_array_error_fixture.stderr
 
 # Built-in typed list[T]: literals, indexing, push/pop, length, iteration
 list_builtin_test: w FORCE
@@ -535,6 +537,8 @@ list_builtin_test: w FORCE
 	grep -qF "warning: list literal element type mismatch: expected 'char*', got 'int'" ./bin/list_builtin_warning_fixture.stderr
 	! ./bin/wv2 tests/list_array_element_error_fixture.w -o ./bin/list_array_element_error_fixture 2>./bin/list_array_element_error_fixture.stderr
 	grep -qF "list element type cannot be a fixed-size array" ./bin/list_array_element_error_fixture.stderr
+	! ./bin/wv2 tests/list_array_field_error_fixture.w -o ./bin/list_array_field_error_fixture 2>./bin/list_array_field_error_fixture.stderr
+	grep -qF "list element type cannot contain fixed-size array fields" ./bin/list_array_field_error_fixture.stderr
 	! ./bin/wv2 tests/list_field_error_fixture.w -o ./bin/list_field_error_fixture 2>./bin/list_field_error_fixture.stderr
 	grep -qF "list field 'append' not found" ./bin/list_field_error_fixture.stderr
 	./bin/wv2 tests/list_pop_empty_fixture.w -o ./bin/list_pop_empty_fixture

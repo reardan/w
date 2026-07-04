@@ -17,12 +17,20 @@ int expression();
 int list_literal_type
 
 
+# Bytes per element slot. Struct slots round up to a word multiple so W's
+# word-granular struct copies stay inside the element's storage.
+int list_element_slot_size(int element_type):
+	if (type_num_args(element_type) > 0):
+		return type_stack_words(element_type) << word_size_log2
+	return type_get_size(element_type)
+
+
 void list_emit_new_container(int type):
 	sym_get_value(c"__w_list_new")
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
-	mov_eax_int(type_get_size(type_list_element_type(type)))
+	mov_eax_int(list_element_slot_size(type_list_element_type(type)))
 	push_eax()
 	stack_pos = stack_pos + 1
 	hash_call_finish(s)
@@ -77,7 +85,11 @@ int list_push_suffix(int type):
 	push_eax()
 	stack_pos = stack_pos + 1
 	int value_slot = stack_pos
-	sym_get_value(c"__w_list_push")
+	# Struct sources arrive as addresses; copy their bytes into the slot
+	if ((type_num_args(element_type) > 0) & (type_num_args(type_real(got_type)) > 0)):
+		sym_get_value(c"__w_list_push_bytes")
+	else:
+		sym_get_value(c"__w_list_push")
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -90,7 +102,9 @@ int list_push_suffix(int type):
 
 
 # l.pop(): 'pop' has been consumed. Lowers to __w_list_pop(list), which
-# asserts the list is non-empty and returns the removed element.
+# asserts the list is non-empty and returns the removed element. Struct
+# elements come back as the removed slot's address (valid until the next
+# push), so the caller's copy semantics match other struct values.
 int list_pop_suffix(int type):
 	int element_type = type_list_element_type(type_unqualified(type))
 	promote(type)
@@ -100,7 +114,10 @@ int list_pop_suffix(int type):
 	int list_slot = stack_pos
 	expect(c"(")
 	expect(c")")
-	sym_get_value(c"__w_list_pop")
+	if (type_num_args(element_type) > 0):
+		sym_get_value(c"__w_list_pop_addr")
+	else:
+		sym_get_value(c"__w_list_pop")
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -122,7 +139,10 @@ void list_literal_parse_entry(int container_type, int container_slot):
 	push_eax()
 	stack_pos = stack_pos + 1
 	int value_slot = stack_pos
-	sym_get_value(c"__w_list_push")
+	if ((type_num_args(element_type) > 0) & (type_num_args(type_real(got_type)) > 0)):
+		sym_get_value(c"__w_list_push_bytes")
+	else:
+		sym_get_value(c"__w_list_push")
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1

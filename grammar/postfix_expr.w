@@ -420,6 +420,9 @@ int postfix_expr():
 					print2(token)
 					error(c"' not found")
 			else:
+				# A pending map read whose value is a struct must emit the
+				# get call now so eax holds the stored struct's address.
+				type = hash_finalize_pending_read_if_needed(type)
 				int receiver_struct_value_words = 0
 				int receiver_was_value = type_is_value(type)
 				if (receiver_was_value):

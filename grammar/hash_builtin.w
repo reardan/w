@@ -59,7 +59,15 @@ void hash_emit_new_container(int type):
 
 int hash_finish_pending_read():
 	int value_type = type_map_value_type(hash_index_map_type)
-	sym_get_value(c"__w_map_get")
+	# Struct values are stored by value in the table; the read yields the
+	# stored bytes' address, which is exactly how W passes structs around,
+	# so the result keeps the struct's own (address-based) type. Reads
+	# copy immediately; the address is only valid until the next insert.
+	int value_is_struct = type_num_args(value_type) > 0
+	if (value_is_struct):
+		sym_get_value(c"__w_map_get_addr")
+	else:
+		sym_get_value(c"__w_map_get")
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -69,6 +77,8 @@ int hash_finish_pending_read():
 	be_pop(stack_pos - hash_index_base_stack)
 	stack_pos = hash_index_base_stack
 	hash_index_pending = 0
+	if (value_is_struct):
+		return type_canonical(value_type)
 	return type_value(value_type)
 
 
@@ -92,7 +102,11 @@ int hash_finish_pending_assignment():
 	hash_index_key_slot = saved_key_slot
 	hash_index_map_type = saved_map_type
 
-	sym_get_value(c"__w_map_set")
+	# Struct sources arrive as addresses; copy their bytes into the table
+	if ((type_num_args(value_type) > 0) & (type_num_args(type_real(got_type)) > 0)):
+		sym_get_value(c"__w_map_set_bytes")
+	else:
+		sym_get_value(c"__w_map_set")
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1

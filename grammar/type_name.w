@@ -1,17 +1,32 @@
-# Built-in list[T] elements travel through word-typed runtime helpers, so
-# reject element types the runtime cannot store: void, fixed arrays (their
-# descriptors point into the enclosing object) and, until aggregate element
-# support lands, struct values.
+# Built-in list[T] elements are stored by value in byte-addressed slots.
+# Reject element types the runtime cannot copy: void, and fixed arrays
+# (their descriptors point into the enclosing object, so a byte copy
+# would corrupt them). Scalars must fit in a word; structs may span
+# several words but must not contain fixed-array fields.
 void list_element_type_check(int element_type):
 	int checked = type_unqualified(element_type)
 	if (type_is_array(checked)):
 		error(c"list element type cannot be a fixed-size array")
 	if (type_get_size(checked) <= 0):
 		error(c"list element type must have a size")
-	if (type_num_args(checked) > 0):
-		error(c"list element type cannot be a struct value yet")
-	if (type_stack_words(checked) != 1):
-		error(c"list element type must be word-sized")
+	if (type_has_array_field(checked)):
+		error(c"list element type cannot contain fixed-size array fields")
+	if (type_num_args(checked) == 0):
+		if (type_stack_words(checked) != 1):
+			error(c"list element type must be word-sized")
+
+
+# Map values share the list element storage rules, except that scalar
+# values may be any word-or-narrower type (stored in a word slot).
+void map_value_type_check(int value_type):
+	int checked = type_unqualified(value_type)
+	if (type_is_array(checked)):
+		error(c"map value type cannot be a fixed-size array")
+	if (type_has_array_field(checked)):
+		error(c"map value type cannot contain fixed-size array fields")
+	if (type_num_args(checked) == 0):
+		if (type_stack_words(checked) != 1):
+			error(c"map value type must be word-sized")
 
 
 int type_name():
@@ -27,6 +42,7 @@ int type_name():
 		expect(c",")
 		int value_type = type_name()
 		expect(c"]")
+		map_value_type_check(value_type)
 		type = type_get_map(key_type, value_type)
 	else if (peek(c"set") & (nextc == '[')):
 		get_token()

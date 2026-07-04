@@ -86,10 +86,31 @@ void __w_list_push(__w_list* list, int value):
 	list.length = list.length + 1
 
 
+# Aggregate elements (structs) are copied by address: push copies
+# element_size bytes from src into the new slot.
+void __w_list_push_bytes(__w_list* list, char* src):
+	__w_list_ensure(list, 1)
+	char* dst = list.items + list.length * list.element_size
+	int i = 0
+	while (i < list.element_size):
+		dst[i] = src[i]
+		i = i + 1
+	list.length = list.length + 1
+
+
 int __w_list_pop(__w_list* list):
 	__w_list_assert(list.length > 0)
 	list.length = list.length - 1
 	return __w_list_load_word(list.items + list.length * list.element_size, list.element_size)
+
+
+# Aggregate pop: returns the address of the removed element's bytes. The
+# storage stays valid until the next push reuses the slot, so callers must
+# copy before mutating the list.
+char* __w_list_pop_addr(__w_list* list):
+	__w_list_assert(list.length > 0)
+	list.length = list.length - 1
+	return list.items + list.length * list.element_size
 
 
 int __w_list_length(__w_list* list):
