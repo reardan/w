@@ -43,7 +43,7 @@ int dbg_line_stack(int i):
 char* dbg_file_name(int file_index):
 	if ((file_index < 0) | (file_index >= debug_file_count)):
 		return "?"
-	return load_int(debug_files + file_index * 4)
+	return cast(char*, load_int(debug_files + file_index * 4))
 
 
 # 1 when the absolute address lies inside the debuggee's code buffer.
@@ -60,7 +60,7 @@ int dbg_in_debuggee(int addr):
 int dbg_file_index_for(char* name):
 	int i = 0
 	while (i < debug_file_count):
-		char* stored = load_int(debug_files + i * 4)
+		char* stored = cast(char*, load_int(debug_files + i * 4))
 		if (strcmp(stored, name) == 0):
 			return i
 		if (ends_with(stored, name)):

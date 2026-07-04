@@ -231,8 +231,8 @@ int unary_expression():
 				pop_eax()
 				stack_pos = stack_pos - 1
 
-		# eax holds the allocation's address as a plain value; the variable
-		# it lands in carries the pointer type.
-		return 3
+		# eax holds the allocation's address; the expression's type is the
+		# pointer to the allocated type, so mismatched stores warn.
+		return type_value(type_get_next_pointer(base))
 	else:
 		return postfix_expr()

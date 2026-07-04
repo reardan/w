@@ -32,7 +32,7 @@ hash_map* hash_map_new_sized(int capacity):
 	hash_map* map = malloc(16)
 	map.capacity = capacity
 	map.count = 0
-	map.keys = malloc(capacity * 4)
+	map.keys = cast(char**, malloc(capacity * 4))
 	map.values = malloc(capacity * 4)
 	int i = 0
 	while (i < capacity):
@@ -73,7 +73,7 @@ void hash_map_grow(hash_map* map):
 
 	map.capacity = old_capacity * 2
 	map.count = 0
-	map.keys = malloc(map.capacity * 4)
+	map.keys = cast(char**, malloc(map.capacity * 4))
 	map.values = malloc(map.capacity * 4)
 	int i = 0
 	while (i < map.capacity):
@@ -87,7 +87,7 @@ void hash_map_grow(hash_map* map):
 			hash_map_set_ptr(map, old_keys[i], old_values[i])
 		i = i + 1
 
-	free(old_keys)
+	free(cast(void*, old_keys))
 	free(old_values)
 
 
@@ -139,7 +139,7 @@ int hash_map_iter_next(hash_map* map, int cursor):
 
 
 # Yields keys; call hash_map_get(map, key) for the value.
-int hash_map_iter_value(hash_map* map, int cursor):
+char* hash_map_iter_value(hash_map* map, int cursor):
 	assert1(cursor < map.capacity)
 	assert1(map.keys[cursor] != 0)
 	return map.keys[cursor]
@@ -151,6 +151,6 @@ void hash_map_free(hash_map* map):
 		if (map.keys[i] != 0):
 			free(map.keys[i])
 		i = i + 1
-	free(map.keys)
+	free(cast(void*, map.keys))
 	free(map.values)
 	free(map)

@@ -17,10 +17,10 @@ int bp_max():
 	return 64
 
 
-int bp_addrs   /* absolute address, 0 = free slot */
-int bp_bytes   /* original code byte */
-int bp_armeds  /* 1 while the int3 is written into the code */
-int bp_temps   /* 1 = one-shot breakpoint (tbreak) */
+char* bp_addrs   /* absolute address, 0 = free slot */
+char* bp_bytes   /* original code byte */
+char* bp_armeds  /* 1 while the int3 is written into the code */
+char* bp_temps   /* 1 = one-shot breakpoint (tbreak) */
 int bp_used
 
 
@@ -55,12 +55,12 @@ int bp_find(int addr):
 
 
 void bp_write_byte(int addr, int value):
-	char* p = addr
+	char* p = cast(char*, addr)
 	p[0] = value
 
 
 int bp_read_byte(int addr):
-	char* p = addr
+	char* p = cast(char*, addr)
 	return p[0] & 255
 
 

@@ -320,6 +320,10 @@ int postfix_expr():
 				int callee = sym_lookup(last_identifier)
 				if (callee >= 0):
 					declared_return = load_int(table + callee + 6)
+					# asm runtime stubs are declared with the 'function'
+					# pseudo-type: their call results are untyped words
+					if (declared_return == 4):
+						declared_return = -1
 					expected_args = sym_num_args(callee)
 					if (expected_args >= 0):
 						callee_sym = callee

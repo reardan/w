@@ -54,9 +54,15 @@ int type_size():
 	return 16 + 8 * 100 + 56
 
 
+# Raw bytes of a type-table record; the list stores record pointers as
+# untyped words, so this is the one word -> pointer boundary.
+char* type_record(int type_index):
+	return cast(char*, get(type_index))
+
+
 int type_push_pointer(char* name, int size, int pointer_level):
-	int new_type = malloc(type_size())
-	save_int(new_type, name) /* name */
+	char* new_type = malloc(type_size())
+	save_int(new_type, cast(int, name)) /* name */
 	save_int(new_type + 4, 0) /* num_fields */
 	save_int(new_type + 8, size) /* size */
 	save_int(new_type + 12, pointer_level) /* pointer level */
@@ -64,12 +70,12 @@ int type_push_pointer(char* name, int size, int pointer_level):
 	save_int(new_type + 820, 0) /* reserved kind/flags */
 	save_int(new_type + 824, -1) /* function return type */
 	save_int(new_type + 828, -1) /* function parameter count */
-	return push(new_type)
+	return push(cast(int, new_type))
 
 
 int type_push_size(char* name, int size):
-	int new_type = malloc(type_size())
-	save_int(new_type, name) /* name */
+	char* new_type = malloc(type_size())
+	save_int(new_type, cast(int, name)) /* name */
 	save_int(new_type + 4, 0) /* num_fields */
 	save_int(new_type + 8, size) /* size */
 	save_int(new_type + 12, 0) /* pointer level */
@@ -77,7 +83,7 @@ int type_push_size(char* name, int size):
 	save_int(new_type + 820, 0) /* reserved kind/flags */
 	save_int(new_type + 824, -1) /* function return type */
 	save_int(new_type + 828, -1) /* function parameter count */
-	return push(new_type)
+	return push(cast(int, new_type))
 
 
 int type_kind_array():
@@ -138,8 +144,8 @@ char* type_make_set_name(int key_type):
 
 
 int type_push_array(int element_type, int length):
-	int new_type = malloc(type_size())
-	save_int(new_type, type_make_array_name(element_type, length))
+	char* new_type = malloc(type_size())
+	save_int(new_type, cast(int, type_make_array_name(element_type, length)))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, (2 * word_size) + (length * type_get_size(element_type)))
 	save_int(new_type + 12, 0)
@@ -147,12 +153,12 @@ int type_push_array(int element_type, int length):
 	save_int(new_type + 820, type_kind_array())
 	save_int(new_type + 824, length)
 	save_int(new_type + 828, -1)
-	return push(new_type)
+	return push(cast(int, new_type))
 
 
 int type_push_slice(int element_type):
-	int new_type = malloc(type_size())
-	save_int(new_type, type_make_slice_name(element_type))
+	char* new_type = malloc(type_size())
+	save_int(new_type, cast(int, type_make_slice_name(element_type)))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, word_size)
 	save_int(new_type + 12, 0)
@@ -160,15 +166,15 @@ int type_push_slice(int element_type):
 	save_int(new_type + 820, type_kind_slice())
 	save_int(new_type + 824, -1)
 	save_int(new_type + 828, -1)
-	return push(new_type)
+	return push(cast(int, new_type))
 
 
 int type_push_slice_value(int element_type):
-	int new_type = malloc(type_size())
+	char* new_type = malloc(type_size())
 	char* storage_name = type_make_slice_name(element_type)
 	char* name = strjoin(storage_name, " value")
 	free(storage_name)
-	save_int(new_type, name)
+	save_int(new_type, cast(int, name))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, 0)
 	save_int(new_type + 12, 0)
@@ -176,12 +182,12 @@ int type_push_slice_value(int element_type):
 	save_int(new_type + 820, type_kind_slice_value())
 	save_int(new_type + 824, -1)
 	save_int(new_type + 828, -1)
-	return push(new_type)
+	return push(cast(int, new_type))
 
 
 int type_push_map(int key_type, int value_type):
-	int new_type = malloc(type_size())
-	save_int(new_type, type_make_map_name(key_type, value_type))
+	char* new_type = malloc(type_size())
+	save_int(new_type, cast(int, type_make_map_name(key_type, value_type)))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, word_size)
 	save_int(new_type + 12, 0)
@@ -189,12 +195,12 @@ int type_push_map(int key_type, int value_type):
 	save_int(new_type + 820, type_kind_map())
 	save_int(new_type + 824, type_canonical(value_type))
 	save_int(new_type + 828, -1)
-	return push(new_type)
+	return push(cast(int, new_type))
 
 
 int type_push_set(int key_type):
-	int new_type = malloc(type_size())
-	save_int(new_type, type_make_set_name(key_type))
+	char* new_type = malloc(type_size())
+	save_int(new_type, cast(int, type_make_set_name(key_type)))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, word_size)
 	save_int(new_type + 12, 0)
@@ -202,7 +208,7 @@ int type_push_set(int key_type):
 	save_int(new_type + 820, type_kind_set())
 	save_int(new_type + 824, -1)
 	save_int(new_type + 828, -1)
-	return push(new_type)
+	return push(cast(int, new_type))
 
 
 int type_push(char* name):
@@ -212,10 +218,10 @@ int type_push(char* name):
 int type_lookup(char* name):
 	int i = 0
 	while (i < length):
-		int type = get(i)
+		char* type = type_record(i)
 		# load_int, not *type: the name pointer occupies 4 bytes, so a full
 		# word load on x64 would drag in the neighboring num_fields field
-		if (strcmp(name, load_int(type)) == 0):
+		if (strcmp(name, cast(char*, load_int(type))) == 0):
 			return i
 		i = i + 1
 	return -1
@@ -284,9 +290,9 @@ int type_unqualified(int type_index):
 
 int type_push_alias(char* name, int target):
 	int real_target = type_canonical(target)
-	int new_type = malloc(type_size())
-	int target_record = get(real_target)
-	save_int(new_type, name) /* name */
+	char* new_type = malloc(type_size())
+	char* target_record = type_record(real_target)
+	save_int(new_type, cast(int, name)) /* name */
 	save_int(new_type + 4, load_int(target_record + 4)) /* num_fields */
 	save_int(new_type + 8, load_int(target_record + 8)) /* size */
 	save_int(new_type + 12, load_int(target_record + 12)) /* pointer level */
@@ -299,15 +305,15 @@ int type_push_alias(char* name, int target):
 	save_int(new_type + 820, type_kind_alias)
 	save_int(new_type + 824, -1)
 	save_int(new_type + 828, -1)
-	return push(new_type)
+	return push(cast(int, new_type))
 
 
 int type_push_const(int target):
 	int real_target = type_canonical(target)
 	char* name = strjoin("const ", type_get_name(real_target))
-	int new_type = malloc(type_size())
-	int target_record = get(real_target)
-	save_int(new_type, name)
+	char* new_type = malloc(type_size())
+	char* target_record = type_record(real_target)
+	save_int(new_type, cast(int, name))
 	save_int(new_type + 4, load_int(target_record + 4))
 	save_int(new_type + 8, load_int(target_record + 8))
 	save_int(new_type + 12, load_int(target_record + 12))
@@ -320,7 +326,7 @@ int type_push_const(int target):
 	save_int(new_type + 820, type_kind_const)
 	save_int(new_type + 824, -1)
 	save_int(new_type + 828, -1)
-	return push(new_type)
+	return push(cast(int, new_type))
 
 
 int type_get_kind(int type_index):
@@ -408,8 +414,8 @@ int type_is_const(int type_index):
 
 
 int type_push_function(char* name, int return_type, int param_count, int param_types):
-	int new_type = malloc(type_size())
-	save_int(new_type, name)
+	char* new_type = malloc(type_size())
+	save_int(new_type, cast(int, name))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, word_size)
 	save_int(new_type + 12, 0)
@@ -424,7 +430,7 @@ int type_push_function(char* name, int return_type, int param_count, int param_t
 			param_type = load_int(param_types + (i << 2))
 		save_int(new_type + 832 + (i << 2), param_type)
 		i = i + 1
-	return push(new_type)
+	return push(cast(int, new_type))
 
 
 int type_function_return(int type_index):
@@ -560,8 +566,8 @@ int type_set_key_type(int type_index):
 
 char* type_get_name(int type_index):
 	type_index = type_real(type_index)
-	int t = get(type_index)
-	return load_int(t)
+	char* t = type_record(type_index)
+	return cast(char*, load_int(t))
 
 
 int type_num_args(int type_index):
@@ -585,29 +591,32 @@ int type_get_pointer_level(int type_index):
 int type_lookup_pointer(char* name, int pointer_level):
 	int i = 0
 	while (i < length):
-		int t = get(i)
+		char* t = type_record(i)
 		if (verbosity >= 1):
-			print_hex("type_lookup_pointer t: ", t)
-		if ((strcmp(name, load_int(t)) == 0) & (pointer_level==load_int(t + 12))):
+			print_hex("type_lookup_pointer t: ", cast(int, t))
+		if ((strcmp(name, cast(char*, load_int(t))) == 0) & (pointer_level==load_int(t + 12))):
 			return i
 		i = i + 1
 	return -1
 
 
 # Return 1 when a value of type 'got' can be stored where 'want' is expected.
-# "constant" (3) and "function" (4) results carry no type information, so
-# they are compatible with everything. Plain "int" (1) doubles as the
-# untyped machine word in a language without casts (addresses, malloc
-# blocks), so it also converts both ways. Scalars convert between widths
-# silently; pointers must agree on depth and base type, except that void*
-# converts to and from any pointer. Distinct struct types never convert.
+# "constant" (3) results (integer/char/string literals, addresses from '&',
+# untyped call results) carry no type information yet, so they remain
+# compatible with everything until typed literals land. Everything else is
+# checked: "function" (4) values only convert to a matching typed function
+# pointer (see types_compatible_with_expression), scalars convert between
+# widths silently, and pointers must agree on depth and base type, except
+# that void* converts to and from any same-depth pointer. Plain 'int' is a
+# word-sized scalar, not an untyped word: int <-> pointer conversions need
+# an explicit cast(). Distinct struct types never convert.
 int types_compatible(int want, int got):
 	want = type_unqualified(want)
 	got = type_unqualified(got)
-	if ((want == 3) | (want == 4) | (want == 1)):
+	if (got == 3):
 		return 1
-	if ((got == 3) | (got == 4) | (got == 1)):
-		return 1
+	if (got == 4):
+		return 0
 	if (want == got):
 		return 1
 	if (type_is_string(want) & type_is_string(got)):
@@ -696,7 +705,7 @@ int type_add_arg(int type_index, char* field, int field_type):
 		print2("(")
 		print2(itoa(field_type))
 		println2(")")
-	save_int(t + 16 + 8 * num_fields, field)
+	save_int(t + 16 + 8 * num_fields, cast(int, field))
 	save_int(t + 20 + 8 * num_fields, field_type)
 	save_int(t + 4, num_fields + 1)
 	# Update total size. Structs sum fields; unions take the largest field.
@@ -722,7 +731,7 @@ int type_get_arg(int type_index, char* field):
 		print_int("num_fields: ", num_fields)
 	int i = 0
 	while (i < num_fields):
-		int f = load_int(t + 16 + 8 * i)
+		char* f = cast(char*, load_int(t + 16 + 8 * i))
 		if (verbosity > 0):
 			print2(itoa(i))
 			print2(": ")
@@ -744,7 +753,7 @@ int type_get_field_offset(int type_index, char* field):
 	int offset = 0
 	int i = 0
 	while (i < num_fields):
-		int f = load_int(t + 16 + 8 * i)
+		char* f = cast(char*, load_int(t + 16 + 8 * i))
 		if (strcmp(field, f) == 0):
 			return offset
 		int field_type = load_int(t + 20 + 8 * i)
@@ -783,7 +792,7 @@ int type_get_field_type(int type_index, char* field):
 	int num_fields = load_int(t + 4)
 	int i = 0
 	while (i < num_fields):
-		int f = load_int(t + 16 + 8 * i)
+		char* f = cast(char*, load_int(t + 16 + 8 * i))
 		int field_type = load_int(t + 20 + 8 * i)
 		if (strcmp(field, f) == 0):
 			return field_type
@@ -794,31 +803,31 @@ int type_get_field_type(int type_index, char* field):
 void type_print(int type_index):
 	type_index = type_real(type_index)
 	# print_int("type_print: ", type_index)
-	int t = get(type_index)
+	char* t = type_record(type_index)
 	int i = 0
 	int num_fields = load_int(t + 4)
 	print2((itoa(type_index)))
 	print2(":")
 	if (num_fields > 0):
 		print2("struct ")
-		print2(load_int(t))
+		print2(cast(char*, load_int(t)))
 		print2(": ")
 	else:
-		print2(load_int(t))
+		print2(cast(char*, load_int(t)))
 	# print_int("num_fields: ", num_fields)
 	if (num_fields <= 0):
 		println2("")
 		return;
 	print2("(")
 	while (i < num_fields):
-		int field_name = load_int(t + 16 + 8 * i)
+		char* field_name = cast(char*, load_int(t + 16 + 8 * i))
 		int field_type = load_int(t + 20 + 8 * i)
-		int field_type_name = get(field_type)
+		char* field_type_name = type_record(field_type)
 
 		if (i > 0):
 			print2("; ")
 
-		print2(load_int(field_type_name))
+		print2(cast(char*, load_int(field_type_name)))
 		print2(" ")
 		print2(field_name)
 
@@ -831,10 +840,10 @@ void type_print_all():
 	println2("all types:")
 	int i = 0
 	while (i < length):
-		int type = get(i)
+		char* type = type_record(i)
 		print_error(itoa(i))
 		print_error(": ")
-		print_error(load_int(type))
+		print_error(cast(char*, load_int(type)))
 		for int j in range(type_get_pointer_level(i)):
 			print_error("*")
 		print_error("\x0a")

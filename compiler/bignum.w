@@ -7,25 +7,31 @@ int bignum_size():
 
 
 void bignum_clear(int n):
-	save_int(n, 1)
+	save_int(cast(char*, n), 1)
 	int i = 0
 	while (i < bignum_limb_count()):
 		save_int(n + 4 + i * 4, 0)
 		i = i + 1
 
 
+# Bignum handles are untyped words (allocation addresses); this is the
+# one allocation/free boundary for them.
 int bignum_new():
-	int n = malloc(bignum_size())
+	int n = cast(int, malloc(bignum_size()))
 	bignum_clear(n)
 	return n
 
 
+void bignum_free(int n):
+	free(cast(void*, n))
+
+
 int bignum_length(int n):
-	return load_int(n)
+	return load_int(cast(char*, n))
 
 
 void bignum_set_length(int n, int length):
-	save_int(n, length)
+	save_int(cast(char*, n), length)
 
 
 int bignum_limb(int n, int i):
@@ -227,10 +233,10 @@ int bignum_floor_log2_ratio(int num, int den):
 		bignum_shl_bits(scaled_num, 0 - exponent)
 		if (bignum_cmp(scaled_num, den) < 0):
 			exponent = exponent - 1
-		free(scaled_num)
+		bignum_free(scaled_num)
 	else if (bignum_cmp(num, scaled_den) < 0):
 		exponent = exponent - 1
-	free(scaled_den)
+	bignum_free(scaled_den)
 	return exponent
 
 
@@ -258,8 +264,8 @@ int bignum_div_scaled_to_int(int num, int den, int shift, int rem):
 			quotient = quotient + (1 << bit)
 		bit = bit - 1
 
-	free(dividend)
-	free(divisor)
+	bignum_free(dividend)
+	bignum_free(divisor)
 	return quotient
 
 
@@ -285,8 +291,8 @@ void bignum_div_scaled_to_bignum(int num, int den, int shift, int rem, int quoti
 			bignum_set_bit(quotient, bit)
 		bit = bit - 1
 
-	free(dividend)
-	free(divisor)
+	bignum_free(dividend)
+	bignum_free(divisor)
 
 
 int bignum_round_up(int rem, int den, int quotient):
@@ -294,7 +300,7 @@ int bignum_round_up(int rem, int den, int quotient):
 	bignum_copy(twice, rem)
 	bignum_shl1(twice)
 	int cmp = bignum_cmp(twice, den)
-	free(twice)
+	bignum_free(twice)
 	if (cmp > 0):
 		return 1
 	if ((cmp == 0) & ((quotient & 1) == 1)):
@@ -307,7 +313,7 @@ int bignum_round_up_big(int rem, int den, int quotient):
 	bignum_copy(twice, rem)
 	bignum_shl1(twice)
 	int cmp = bignum_cmp(twice, den)
-	free(twice)
+	bignum_free(twice)
 	if (cmp > 0):
 		return 1
 	if ((cmp == 0) & bignum_get_bit(quotient, 0)):

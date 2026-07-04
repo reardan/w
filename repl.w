@@ -341,9 +341,9 @@ void repl_entry_item(int entry_symbol):
 			push_eax()
 			stack_pos = stack_pos + 1
 			int value_type = expression()
-			promote(value_type)
+			value_type = promote(value_type)
 			pop_ebx()
-			if (types_compatible(decl_type, value_type) == 0):
+			if (types_compatible_with_expression(decl_type, value_type) == 0):
 				warn_type_mismatch("initialization", decl_type, value_type)
 			assign_store(decl_type)
 			stack_pos = stack_pos - 1

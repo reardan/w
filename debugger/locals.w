@@ -46,8 +46,8 @@ void dbg_frame_compute(int stop_addr):
 	dbg_frame_ok = 1
 
 
-int dbg_local_name_at(int i):
-	return load_int(debug_local_names + i * 4)
+char* dbg_local_name_at(int i):
+	return cast(char*, load_int(debug_local_names + i * 4))
 
 
 int dbg_local_slot(int i):
@@ -148,13 +148,13 @@ void dbg_print_typed_value(int addr, int type):
 		return;
 	if ((type_get_pointer_level(type) == 0) & (type_num_args(type) > 0)):
 		print("{")
-		int t = get(type)
+		char* t = type_record(type)
 		int n = type_num_args(type)
 		int i = 0
 		while (i < n):
 			if (i > 0):
 				print(", ")
-			print(load_int(t + 16 + 8 * i)) /* field name */
+			print(cast(char*, load_int(t + 16 + 8 * i))) /* field name */
 			print(" = ")
 			int field_type = type_get_field_type_at(type, i)
 			int width = type_get_size(field_type)
@@ -165,7 +165,7 @@ void dbg_print_typed_value(int addr, int type):
 			i = i + 1
 		print("}")
 		return;
-	int v = load_int(addr)
+	int v = load_int(cast(char*, addr))
 	dbg_print_int_value(v)
 	if (dbg_type_is_string(type)):
 		dbg_print_string_preview(v)

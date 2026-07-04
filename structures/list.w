@@ -80,12 +80,12 @@ int pop():
 
 
 # assume strings and join
-int join(char* delimiter):
+char* join(char* delimiter):
 	# loop through array to get total strlen
 	int n = 0
 	int i = 0
 	while (i < length):
-		char* s = get(i)
+		char* s = cast(char*, get(i))
 		n = n + strlen(s)
 		i = i + 1
 
@@ -93,11 +93,11 @@ int join(char* delimiter):
 	int delimiter_count = 0
 	if ((delimiter != 0) & (length > 1)):
 		delimiter_count = strlen(delimiter) * (length - 1)
-	int result = malloc(n + delimiter_count + 1)
-	int cur = result
+	char* result = malloc(n + delimiter_count + 1)
+	char* cur = result
 	i = 0
 	while (i < length):
-		char* s = get(i)
+		char* s = cast(char*, get(i))
 		cur = strcpy(cur, s)
 		if ((delimiter != 0) & (i < length - 1)):
 			cur = strcpy(cur, delimiter)
@@ -114,7 +114,7 @@ void split_string(char* str, char* delimiter):
 		if (starts_with(str, delimiter)):
 			# duplicate
 			str[0] = 0
-			push(strclone(token_start))
+			push(cast(int, strclone(token_start)))
 
 			str = str + strlen(delimiter)
 			token_start = str
@@ -123,4 +123,4 @@ void split_string(char* str, char* delimiter):
 
 	# duplicate
 	str[0] = 0
-	push(strclone(token_start))
+	push(cast(int, strclone(token_start)))

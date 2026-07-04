@@ -27,7 +27,7 @@ int dyn_lib_count
 
 # Imported functions: name and the vaddr of the GOT slot the loader fills.
 char* dyn_import_names
-int dyn_import_got
+char* dyn_import_got
 int dyn_import_count
 
 
@@ -46,12 +46,12 @@ void dyn_add_lib(char* soname):
 	dyn_init()
 	if (dyn_lib_count >= dyn_max_libs()):
 		error("too many c_lib entries")
-	save_i(dyn_lib_names + dyn_lib_count * word_size, strclone(soname), word_size)
+	save_i(dyn_lib_names + dyn_lib_count * word_size, cast(int, strclone(soname)), word_size)
 	dyn_lib_count = dyn_lib_count + 1
 
 
 char* dyn_lib_name(int i):
-	return load_i(dyn_lib_names + i * word_size, word_size)
+	return cast(char*, load_i(dyn_lib_names + i * word_size, word_size))
 
 
 # Returns the import's index, which is also its .dynsym index minus one.
@@ -59,7 +59,7 @@ int dyn_add_import(char* name, int got_vaddr):
 	dyn_init()
 	if (dyn_import_count >= dyn_max_imports()):
 		error("too many extern imports")
-	save_i(dyn_import_names + dyn_import_count * word_size, strclone(name), word_size)
+	save_i(dyn_import_names + dyn_import_count * word_size, cast(int, strclone(name)), word_size)
 	save_i(dyn_import_got + dyn_import_count * word_size, got_vaddr, word_size)
 	int index = dyn_import_count
 	dyn_import_count = dyn_import_count + 1
@@ -67,7 +67,7 @@ int dyn_add_import(char* name, int got_vaddr):
 
 
 char* dyn_import_name(int i):
-	return load_i(dyn_import_names + i * word_size, word_size)
+	return cast(char*, load_i(dyn_import_names + i * word_size, word_size))
 
 
 int dyn_import_got_vaddr(int i):
