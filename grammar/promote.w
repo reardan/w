@@ -51,7 +51,7 @@ int types_compatible_with_expression(int want, int got):
 void coerce_cstr_to_string():
 	push_eax()
 	stack_pos = stack_pos + 1
-	sym_get_value(c"str_from_cstr")
+	sym_get_value(c"str_from_utf8_cstr")
 	push_eax()
 	stack_pos = stack_pos + 1
 	mov_eax_esp_plus(word_size)
