@@ -33,6 +33,16 @@ void test_function_name_rescans_with_following_source():
 	assert_strings_equal("5(6)\n", cpp_test("#define g(x) x\n#define call g\ncall(5)(6)\n"))
 
 
+void test_prescan_expands_argument_that_is_whole_invocation():
+	# glibc math.h pattern: the raw argument is itself a complete macro call
+	# and must be expanded during prescan before ## pastes around it
+	assert_strings_equal("__lgammaf\n", cpp_test("#define CAT(x,y) x ## y\n#define PRE(name) name##f\n#define DECL(function) PRE(function)\nDECL(CAT(__,lgamma))\n"))
+
+
+void test_math_precname_chain_expands():
+	assert_strings_equal("extern float lgammaf_r (float, int *__signgamp); extern float __lgammaf_r (float, int *__signgamp);\n", cpp_test("#define __CONCAT(x,y) x ## y\n#define __MATH_PRECNAME(name,r) name##f##r\n#define __MATHCALL(function,suffix, args) __MATHDECL (float,function,suffix, args)\n#define __MATHDECL(type, function,suffix, args) __MATHDECL_1(type, function,suffix, args); __MATHDECL_1(type, __CONCAT(__,function),suffix, args)\n#define __MATHDECL_1(type, function, suffix, args) extern type __MATH_PRECNAME(function,suffix) args\n__MATHCALL (lgamma,_r, (float, int *__signgamp));\n"))
+
+
 void test_blue_paint_blocks_recursive_function_macro():
 	assert_strings_equal("bar foo (2)\n", cpp_test("#define foo(x) bar x\nfoo(foo) (2)\n"))
 
@@ -65,4 +75,9 @@ void test_stdio_header_preprocesses():
 
 void test_unistd_header_preprocesses():
 	cpp_result* result = cpp_preprocess_file("/usr/include/unistd.h")
+	assert1(strlen(result.text) > 0)
+
+
+void test_math_header_preprocesses():
+	cpp_result* result = cpp_preprocess_file("/usr/include/math.h")
 	assert1(strlen(result.text) > 0)

@@ -23,6 +23,7 @@ struct cpp_macro_args:
 	cpp_token* after
 	cpp_hideset* rparen_hideset
 	int variadic_has_tokens
+	int complete
 
 
 cpp_token* cpp_expand_tokens(hash_map* macros, cpp_token* token);
@@ -150,11 +151,14 @@ cpp_macro_args* cpp_collect_args(cpp_token* lparen):
 	args.after = 0
 	args.rparen_hideset = 0
 	args.variadic_has_tokens = 0
+	args.complete = 0
 	cpp_token current_head
 	current_head.next = 0
 	int depth = 0
 	cpp_token* token = lparen.next
 	while (token != 0):
+		if (token.kind == cpp_token_eof()):
+			break
 		if (cpp_token_is_punct(token, "(")):
 			depth = depth + 1
 			cpp_args_push_token(&current_head, token)
@@ -163,6 +167,7 @@ cpp_macro_args* cpp_collect_args(cpp_token* lparen):
 				array_list_push(args.items, current_head.next)
 				args.after = token.next
 				args.rparen_hideset = token.hideset
+				args.complete = 1
 				return args
 			depth = depth - 1
 			cpp_args_push_token(&current_head, token)
@@ -347,6 +352,14 @@ void cpp_paste_into(cpp_token* left, cpp_token* right):
 	if (pasted == 0):
 		print_error("c preprocessor: invalid token paste: ")
 		print_error(text.data)
+		print_error(" at ")
+		print_error(left.filename)
+		print_error(":")
+		print_error(itoa(left.line))
+		print_error(" / ")
+		print_error(right.filename)
+		print_error(":")
+		print_error(itoa(right.line))
 		error("")
 	left.kind = pasted.kind
 	free(left.text)
@@ -439,7 +452,7 @@ cpp_token* cpp_expand_tokens(hash_map* macros, cpp_token* token):
 				if (macro.is_function):
 					if (cpp_token_is_punct(token.next, "(")):
 						cpp_macro_args* args = cpp_collect_args(token.next)
-						if (args.after != 0):
+						if (args.complete):
 							cpp_normalize_args(macro, args)
 							cpp_hideset* hs = cpp_hideset_intersection(token.hideset, args.rparen_hideset)
 							hs = cpp_hideset_add(hs, token.text)
