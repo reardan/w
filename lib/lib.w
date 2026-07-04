@@ -330,7 +330,7 @@ string str_from_cstr(char* s):
 	save_word(descriptor, cast(int, s))
 	int length = strlen(s)
 	save_word(descriptor + __word_size__, length)
-	return cast(string, descriptor)
+	return cast(string, cast(int, descriptor))
 
 
 int getchar(int file):
