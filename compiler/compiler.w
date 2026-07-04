@@ -5,6 +5,7 @@ import lib.assert
 import compiler.type_table
 import compiler.symbol_table
 import grammar
+import libs.extras.c_import.preprocessor
 
 
 void file_not_found_error():
@@ -115,7 +116,7 @@ void compile_save(char* fn):
 
 int link(int argc, int argv):
 	if (argc < 2):
-		println2("usage: w [x64] <file.w>... [-o output] [--bounds=on|off|trap]")
+		println2("usage: w [x64] [-I path|-Ipath] <file.w>... [-o output] [--bounds=on|off|trap]")
 		exit(1)
 	int i = 1
 	word_size = 4
@@ -140,7 +141,14 @@ int link(int argc, int argv):
 
 	while (i < argc):
 		char** arg = argv + i * __word_size__
-		if (strcmp(*arg, "-o") == 0):
+		if (strcmp(*arg, "-I") == 0):
+			i = i + 1
+			asserts("-I requires an include path", i < argc)
+			arg = argv + i * __word_size__
+			c_import_add_include_path(*arg)
+		else if ((starts_with(*arg, "-I")) & (strlen(*arg) > 2)):
+			c_import_add_include_path(*arg + 2)
+		else if (strcmp(*arg, "-o") == 0):
 			i = i + 1
 			asserts("-o requires an output path", i < argc)
 			arg = argv + i * __word_size__

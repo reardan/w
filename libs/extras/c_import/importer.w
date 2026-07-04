@@ -12,6 +12,7 @@ import structures.string
 import libs.extras.parser_generator.runtime
 import libs.extras.parser_generator.source_writer
 import libs.extras.c_import.generated_c_parser
+import libs.extras.c_import.preprocessor
 
 
 struct ci_decl_info:
@@ -541,7 +542,7 @@ void ci_import_translation_unit(pg_ast_node* root):
 
 void c_import_header(char* soname, char* header_path):
 	dyn_add_lib(soname)
-	char* source = pg_read_file_text(header_path)
+	char* source = ci_preprocess_header(header_path)
 	if (source == 0):
 		print_error("c_import: could not read header '")
 		print_error(header_path)

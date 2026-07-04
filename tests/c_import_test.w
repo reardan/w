@@ -3,6 +3,7 @@ import lib.testing
 c_import "libc.so.6" "tests/c_import_fixture.h"
 c_import "libc.so.6" "/usr/include/x86_64-linux-gnu/bits/types/FILE.h"
 c_import "libc.so.6" "tests/c_import_libc_fixture.h"
+c_import "libc.so.6" "tests/c_import_preprocess_fixture.h"
 
 
 void test_c_import_typedef():
@@ -40,3 +41,14 @@ void test_c_import_enum_values():
 
 void test_c_import_extern_function():
 	assert1(puts("c_import puts OK") >= 0)
+
+
+void test_c_import_preprocessed_header():
+	pp_size_t count = 15
+	pp_point p
+	p.x = 2
+	p.y = 3
+	assert_equal(15, count)
+	assert_equal(2, p.x)
+	assert_equal(3, p.y)
+	assert_equal(12, pp_red)
