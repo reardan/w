@@ -475,6 +475,10 @@ repl_test: w FORCE
 	! printf 'int y = 3\ny = 9\n:quit\n' | ./bin/repl | grep -q "9"
 	# Structs, new and imports work at the prompt
 	printf 'struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n' | ./bin/repl | grep -q "7"
+	# Built-in container declarations work at the prompt (the runtime is
+	# not auto-imported into the REPL's buffer, so import it first)
+	printf 'import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n' | ./bin/repl | grep -q "42"
+	printf 'import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c"a"] = 41\nm[c"a"] + 1\n:quit\n' | ./bin/repl | grep -q "42"
 	printf 'import structures.string\nstring_builder* s = string_from(c"imported")\ns.data\n:quit\n' | ./bin/repl | grep -q "imported"
 	# Errors inside multi-line entries and failed imports both recover
 	printf 'int bad():\n\treturn qq\n\nprint(c"recovered fn\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered fn"
@@ -540,6 +544,29 @@ hash_table_test: w FORCE
 map_set_builtin_test: w FORCE
 	./bin/wv2 tests/map_set_builtin_test.w -o ./bin/map_set_builtin_test
 	./bin/map_set_builtin_test
+	! ./bin/wv2 tests/map_value_array_error_fixture.w -o ./bin/map_value_array_error_fixture 2>./bin/map_value_array_error_fixture.stderr
+	grep -qF "map value type cannot be a fixed-size array" ./bin/map_value_array_error_fixture.stderr
+
+# Built-in typed list[T]: literals, indexing, push/pop, length, iteration
+list_builtin_test: w FORCE
+	./bin/wv2 tests/list_builtin_test.w -o ./bin/list_builtin_test
+	./bin/list_builtin_test
+	./bin/wv2 tests/list_builtin_warning_fixture.w -o ./bin/list_builtin_warning_fixture 2>./bin/list_builtin_warning_fixture.stderr
+	grep -qF "warning: list push type mismatch: expected 'int', got 'char*'" ./bin/list_builtin_warning_fixture.stderr
+	grep -qF "warning: assignment type mismatch: expected 'int', got 'char*'" ./bin/list_builtin_warning_fixture.stderr
+	grep -qF "warning: initialization type mismatch: expected 'list[int]', got 'list[char*]'" ./bin/list_builtin_warning_fixture.stderr
+	grep -qF "warning: for loop variable type mismatch: expected 'char*', got 'int'" ./bin/list_builtin_warning_fixture.stderr
+	grep -qF "warning: list literal element type mismatch: expected 'char*', got 'int'" ./bin/list_builtin_warning_fixture.stderr
+	! ./bin/wv2 tests/list_array_element_error_fixture.w -o ./bin/list_array_element_error_fixture 2>./bin/list_array_element_error_fixture.stderr
+	grep -qF "list element type cannot be a fixed-size array" ./bin/list_array_element_error_fixture.stderr
+	! ./bin/wv2 tests/list_array_field_error_fixture.w -o ./bin/list_array_field_error_fixture 2>./bin/list_array_field_error_fixture.stderr
+	grep -qF "list element type cannot contain fixed-size array fields" ./bin/list_array_field_error_fixture.stderr
+	! ./bin/wv2 tests/list_field_error_fixture.w -o ./bin/list_field_error_fixture 2>./bin/list_field_error_fixture.stderr
+	grep -qF "list field 'append' not found" ./bin/list_field_error_fixture.stderr
+	./bin/wv2 tests/list_pop_empty_fixture.w -o ./bin/list_pop_empty_fixture
+	! ./bin/list_pop_empty_fixture
+	./bin/wv2 tests/list_index_bounds_fixture.w -o ./bin/list_index_bounds_fixture
+	! ./bin/list_index_bounds_fixture
 
 string_test: w FORCE
 	./bin/wv2 structures/string_test.w -o ./bin/string_test
@@ -675,7 +702,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test check_json_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test check_json_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:

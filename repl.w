@@ -301,7 +301,7 @@ void repl_entry_item(int entry_symbol):
 		return;
 
 	# type-name ...: a function definition or a persistent variable
-	if (peek(c"const") | (type_lookup(token) >= 0)):
+	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0)):
 		int decl_type = type_name()
 		if (token[0] == 0):
 			error(c"identifier expected after type name")

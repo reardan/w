@@ -4,7 +4,8 @@ Design and implementation plan for adding length-carrying buffers to W:
 fixed stack/global arrays, heap arrays, slices, bounds-check options, and a
 first-class UTF-8 string type.
 
-**Status: completed except generic typed vectors and escape analysis.**
+**Status: completed except escape analysis. Growable typed vectors landed
+as the built-in `list[T]` (see `docs/projects/typed_containers.md`).**
 
 Implemented MVP:
 
@@ -18,7 +19,7 @@ Implemented MVP:
   `c"..."` legacy C strings, `lib/utf8.w`, string codepoint iteration,
   and `lib/grapheme.w`.
 
-Still deferred: generic typed vectors and escape analysis.
+Still deferred: escape analysis.
 
 ## Problem statement
 

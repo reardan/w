@@ -2,8 +2,11 @@ int expression();
 int hash_literal_type
 
 
-void hash_literal_call_map_set(int container_slot, int key_slot, int value_slot):
-	sym_get_value(c"__w_map_set")
+void hash_literal_call_map_set(int container_slot, int key_slot, int value_slot, int value_is_struct):
+	if (value_is_struct):
+		sym_get_value(c"__w_map_set_bytes")
+	else:
+		sym_get_value(c"__w_map_set")
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -44,7 +47,8 @@ void hash_literal_parse_map_entry(int container_type, int container_slot):
 	push_eax()
 	stack_pos = stack_pos + 1
 	int value_slot = stack_pos
-	hash_literal_call_map_set(container_slot, key_slot, value_slot)
+	int value_is_struct = (type_num_args(value_type) > 0) & (type_num_args(type_real(got_value_type)) > 0)
+	hash_literal_call_map_set(container_slot, key_slot, value_slot, value_is_struct)
 	be_pop(stack_pos - base_stack)
 	stack_pos = base_stack
 
@@ -137,6 +141,9 @@ int primary_expr():
 
 	else if (hash_typed_literal()):
 		type = hash_literal_type
+
+	else if (list_typed_literal()):
+		type = list_literal_type
 
 	# Identifier
 	else if ((new_type = identifier()) >= 0) {

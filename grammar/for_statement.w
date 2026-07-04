@@ -248,6 +248,71 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	stack_pos = stack_pos - 2
 
 
+void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int container_type):
+	int p1
+	int p2
+	int element_type = type_list_element_type(container_type)
+	# Struct elements cannot fit in the word-sized loop variable, so the
+	# loop yields each element's address instead: for point* p in l
+	char* value_call = c"__w_list_iter_value"
+	int loop_value_type = element_type
+	if (type_num_args(element_type) > 0):
+		value_call = c"__w_list_addr"
+		loop_value_type = type_get_next_pointer(element_type)
+	if (types_compatible_with_expression(loop_var_type, loop_value_type) == 0):
+		warn_type_mismatch(c"for loop variable", loop_var_type, loop_value_type)
+
+	# hidden slot: the container pointer
+	push_eax()
+	stack_pos = stack_pos + 1
+	int container_slot = stack_pos
+
+	# hidden slot: cursor = iter_begin(container)
+	for_iter_call(c"__w_list_iter_begin", container_slot, 0)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int cursor_slot = stack_pos
+
+	int outer_break = loop_break_chain
+	int outer_continue = loop_continue_chain
+	int outer_stack = loop_stack_pos
+	loop_break_chain = 0
+	loop_continue_chain = 0
+	loop_stack_pos = stack_pos
+	loop_depth = loop_depth + 1
+
+	p1 = codepos
+	for_iter_call(c"__w_list_iter_done", container_slot, cursor_slot)
+	jmp_nonzero_int32(1337018)
+	p2 = codepos
+
+	for_iter_call(value_call, container_slot, cursor_slot)
+	coerce(loop_var_type, loop_value_type)
+	store_stack_var((stack_pos - for_var) << word_size_log2)
+
+	enclosing_tab_level = for_tab_level
+	statement()
+
+	int increment_target = codepos
+	for_iter_call(c"__w_list_iter_next", container_slot, cursor_slot)
+	store_stack_var((stack_pos - cursor_slot) << word_size_log2)
+
+	jmp_int32(1337019)
+	save_int32(code + codepos - 4, p1 - codepos)
+
+	save_int32(code + p2 - 4, codepos - p2)
+	patch_jump_chain(loop_break_chain, codepos)
+	patch_jump_chain(loop_continue_chain, increment_target)
+
+	loop_break_chain = outer_break
+	loop_continue_chain = outer_continue
+	loop_stack_pos = outer_stack
+	loop_depth = loop_depth - 1
+
+	be_pop(2)
+	stack_pos = stack_pos - 2
+
+
 void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 	int decode_symbol = sym_lookup(c"utf8_decode")
 	int next_symbol = sym_lookup(c"utf8_next")
@@ -324,6 +389,9 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type):
 	container_type = type_unqualified(container_type)
 	if (type_is_map(container_type) | type_is_set(container_type)):
 		for_hash_container_loop(for_var, for_tab_level, loop_var_type, container_type)
+		return;
+	if (type_is_list(container_type)):
+		for_list_loop(for_var, for_tab_level, loop_var_type, container_type)
 		return;
 	if (type_is_string(container_type)):
 		for_string_loop(for_var, for_tab_level, loop_var_type)

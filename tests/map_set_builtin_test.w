@@ -67,3 +67,79 @@ void test_set_iteration_yields_members():
 		sum = sum + value
 	assert_equal(3, count)
 	assert_equal(6, sum)
+
+
+struct map_test_point:
+	int x
+	int y
+
+
+void test_map_struct_values_stored_by_value():
+	map[char*, map_test_point] locations = new map[char*, map_test_point]
+	map_test_point p
+	p.x = 1
+	p.y = 2
+	locations[c"home"] = p
+	p.x = 3
+	p.y = 4
+	locations[c"work"] = p
+	assert_equal(1, locations[c"home"].x)
+	assert_equal(4, locations[c"work"].y)
+	assert_equal(2, locations.length)
+	# stored by value: mutating the source must not change the map
+	p.y = 777
+	assert_equal(4, locations[c"work"].y)
+
+
+void test_map_struct_value_reads_copy():
+	map[char*, map_test_point] m = new map[char*, map_test_point]
+	map_test_point p
+	p.x = 5
+	p.y = 6
+	m[c"a"] = p
+	map_test_point copy = m[c"a"]
+	copy.y = 999
+	assert_equal(6, m[c"a"].y)
+
+
+void test_map_struct_value_overwrite():
+	map[char*, map_test_point] m = new map[char*, map_test_point]
+	map_test_point p
+	p.x = 1
+	p.y = 2
+	m[c"k"] = p
+	p.x = 9
+	m[c"k"] = p
+	assert_equal(9, m[c"k"].x)
+	assert_equal(1, m.length)
+
+
+struct map_test_wide:
+	int a
+	int b
+	int c
+
+
+void test_map_struct_values_survive_rehash():
+	map[int, map_test_wide] table = new map[int, map_test_wide]
+	map_test_wide w
+	for int k in range(50):
+		w.a = k
+		w.b = k + 1
+		w.c = k + 2
+		table[k] = w
+	assert_equal(50, table.length)
+	assert_equal(2, table[0].c)
+	assert_equal(51, table[49].c)
+
+
+void test_map_struct_value_literal():
+	map_test_point p
+	p.x = 1
+	p.y = 2
+	map_test_point q
+	q.x = 3
+	q.y = 4
+	map[char*, map_test_point] m = map[char*, map_test_point]{c"p": p, c"q": q}
+	assert_equal(1, m[c"p"].x)
+	assert_equal(4, m[c"q"].y)

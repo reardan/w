@@ -127,6 +127,10 @@ int unary_expression():
 			int container_type = type_name()
 			hash_emit_new_container(container_type)
 			return type_value(container_type)
+		if (peek(c"list") & (nextc == '[')):
+			int list_container_type = type_name()
+			list_emit_new_container(list_container_type)
+			return type_value(list_container_type)
 		int base = type_lookup(token)
 		if (base < 0):
 			print2(c"unknown type after new: '")
