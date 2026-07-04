@@ -457,6 +457,10 @@ repl_test: w FORCE
 	! printf 'int y = 3\ny = 9\n:quit\n' | ./bin/repl | grep -q "9"
 	# Structs, new and imports work at the prompt
 	printf 'struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n' | ./bin/repl | grep -q "7"
+	# Built-in container declarations work at the prompt (the runtime is
+	# not auto-imported into the REPL's buffer, so import it first)
+	printf 'import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n' | ./bin/repl | grep -q "42"
+	printf 'import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c"a"] = 41\nm[c"a"] + 1\n:quit\n' | ./bin/repl | grep -q "42"
 	printf 'import structures.string\nstring_builder* s = string_from(c"imported")\ns.data\n:quit\n' | ./bin/repl | grep -q "imported"
 	# Errors inside multi-line entries and failed imports both recover
 	printf 'int bad():\n\treturn qq\n\nprint(c"recovered fn\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered fn"
