@@ -134,6 +134,7 @@ int link(int argc, int argv):
 	last_identifier = malloc(8000)
 	last_global_declaration = malloc(8000)
 	be_start(word_size)
+	import_module("structures.hash_table")
 
 	output_fd = 1 /* default: write the ELF to stdout */
 	char* output_path = 0

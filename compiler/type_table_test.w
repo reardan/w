@@ -98,6 +98,31 @@ void test_array_and_slice_types():
 	assert1(types_compatible(slice_type, type_get_slice_value(int_type)))
 
 
+void test_map_and_set_types():
+	push_basic_types()
+	int int_type = type_lookup("int")
+	int char_type = type_lookup("char")
+	int char_ptr_type = type_lookup_pointer("char", 1)
+	int map_type = type_get_map(char_ptr_type, int_type)
+	int same_map = type_get_map(char_ptr_type, int_type)
+	int other_map = type_get_map(int_type, int_type)
+	int set_type = type_get_set(int_type)
+	int same_set = type_get_set(int_type)
+	int other_set = type_get_set(char_type)
+	assert_equal(map_type, same_map)
+	assert1(type_is_map(map_type))
+	assert_equal(char_ptr_type, type_map_key_type(map_type))
+	assert_equal(int_type, type_map_value_type(map_type))
+	assert_equal(__word_size__, type_get_size(map_type))
+	assert1(types_compatible(map_type, same_map))
+	assert_equal(0, types_compatible(map_type, other_map))
+	assert_equal(set_type, same_set)
+	assert1(type_is_set(set_type))
+	assert_equal(int_type, type_set_key_type(set_type))
+	assert1(types_compatible(set_type, same_set))
+	assert_equal(0, types_compatible(set_type, other_set))
+
+
 # simulating:
 #
 # struct mixed:

@@ -73,6 +73,38 @@ int relational_expr():
 			else:
 				alu_cmp_set(0x9f)
 				type = type_value(bool_type)
+
+		else if(accept("in")):
+			int key_type = binary1(type)
+			int key_slot = stack_pos
+			int base_stack = key_slot - 1
+			int container_type = shift_expr()
+			container_type = promote(container_type)
+			container_type = type_unqualified(container_type)
+			int want_key_type = -1
+			char* contains_name = "__w_set_contains"
+			if (type_is_map(container_type)):
+				want_key_type = type_map_key_type(container_type)
+				contains_name = "__w_map_contains"
+			else if (type_is_set(container_type)):
+				want_key_type = type_set_key_type(container_type)
+			else:
+				error("right operand of 'in' must be a map or set")
+			if (types_compatible_with_expression(want_key_type, key_type) == 0):
+				warn_type_mismatch("membership key", want_key_type, key_type)
+			push_eax()
+			stack_pos = stack_pos + 1
+			int container_slot = stack_pos
+			sym_get_value(contains_name)
+			int s = stack_pos
+			push_eax()
+			stack_pos = stack_pos + 1
+			hash_push_stack_slot(container_slot)
+			hash_push_stack_slot(key_slot)
+			hash_call_finish(s)
+			be_pop(stack_pos - base_stack)
+			stack_pos = base_stack
+			type = type_value(bool_type)
 	
 		else:
 			return type

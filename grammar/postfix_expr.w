@@ -215,7 +215,27 @@ int postfix_expr():
 	while (1):
 		if (accept("[")):
 			expression_lhs_readonly = 0
-			if (type_is_buffer(type)):
+			if (type_is_map(type)):
+				int map_type = type_unqualified(type)
+				hash_index_base_stack = stack_pos
+				type = promote(type)
+				push_eax()
+				stack_pos = stack_pos + 1
+				hash_index_map_slot = stack_pos
+				int want_key_type = type_map_key_type(map_type)
+				int got_key_type = expression()
+				got_key_type = promote(got_key_type)
+				coerce(want_key_type, got_key_type)
+				if (types_compatible_with_expression(want_key_type, got_key_type) == 0):
+					warn_type_mismatch("map key", want_key_type, got_key_type)
+				push_eax()
+				stack_pos = stack_pos + 1
+				hash_index_key_slot = stack_pos
+				expect("]")
+				hash_index_map_type = map_type
+				hash_index_pending = 1
+				type = type_map_value_type(map_type)
+			else if (type_is_buffer(type)):
 				type = promote(type)
 				if (accept(":")):
 					push_eax()
@@ -334,7 +354,18 @@ int postfix_expr():
 
 		else if (accept(".")):
 			expression_lhs_readonly = 0
-			if (type_is_buffer(type)):
+			if (type_is_map(type) | type_is_set(type)):
+				if (peek("length")):
+					get_token()
+					type = promote(type)
+					add_eax_int32(word_size)
+					type = type_lookup("int")
+					expression_lhs_readonly = 1
+				else:
+					print2("hash container field '")
+					print2(token)
+					error("' not found")
+			else if (type_is_buffer(type)):
 				if (peek("length")):
 					get_token()
 					type = promote(type)

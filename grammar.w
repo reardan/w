@@ -1,3 +1,4 @@
+import grammar.hash_builtin
 import grammar.promote
 import grammar.type_name
 import grammar.identifier

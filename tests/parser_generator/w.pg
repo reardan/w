@@ -42,6 +42,8 @@ literal KW_UINT "uint"
 literal KW_CAST "cast"
 literal KW_TRUE "true"
 literal KW_FALSE "false"
+literal KW_MAP "map"
+literal KW_SET "set"
 
 literal AND_AND "&&"
 literal OR_OR "||"
@@ -84,7 +86,7 @@ rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | as
 rule import_decl = KW_IMPORT dotted_name
 rule dotted_name = name_token dotted_tail*
 rule dotted_tail = DOT name_token
-rule name_token = IDENT | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE
+rule name_token = IDENT | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET
 rule c_lib_decl = KW_C_LIB STRING
 rule extern_decl = KW_EXTERN type_ref IDENT LPAREN param_list RPAREN
 rule inline_asm_decl = KW_INLINE KW_ASM type_ref STRING LPAREN param_list RPAREN asm_body
@@ -117,8 +119,10 @@ rule param_list = param param_tail* |
 rule param_tail = COMMA param
 rule param = type_ref name_token decl_suffix | type_ref
 
-rule type_ref = KW_CONST type_ref | fn_type pointer_part* array_part* | type_atom pointer_part* array_part*
+rule type_ref = KW_CONST type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | type_atom pointer_part* array_part*
 rule fn_type = KW_FN LPAREN param_type_list RPAREN ARROW type_ref
+rule map_type = KW_MAP LBRACK type_ref COMMA type_ref RBRACK
+rule set_type = KW_SET LBRACK type_ref RBRACK
 rule param_type_list = type_ref param_type_tail* |
 rule param_type_tail = COMMA type_ref
 rule type_atom = KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_BOOL | KW_UINT | IDENT
@@ -149,7 +153,7 @@ rule assignment = binary_expr assign_tail*
 rule assign_tail = gap_many ASSIGN gap_many assignment
 rule binary_expr = unary_expr binary_tail*
 rule binary_tail = gap_many binary_op gap_many unary_expr
-rule binary_op = OR_OR | AND_AND | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | LT | GT | SHIFT_LEFT | SHIFT_RIGHT | PLUS | MINUS | STAR | SLASH | PERCENT | AMP | PIPE
+rule binary_op = OR_OR | AND_AND | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | LT | GT | KW_IN | SHIFT_LEFT | SHIFT_RIGHT | PLUS | MINUS | STAR | SLASH | PERCENT | AMP | PIPE
 rule gap_many = gap_item gap_many |
 rule gap_item = NEWLINE tab_prefix | NEWLINE
 rule unary_expr = unary_op unary_expr | postfix_expr
@@ -159,7 +163,15 @@ rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK expression_
 rule slice_tail = COLON expression_opt |
 rule arg_list = expression arg_tail* |
 rule arg_tail = COMMA expression
-rule primary_expr = NUMBER | STRING | CHAR_LITERAL | cast_expr | new_expr | grouped_expr | range_expr | name_token
+rule primary_expr = NUMBER | STRING | CHAR_LITERAL | cast_expr | new_expr | grouped_expr | range_expr | hash_literal | name_token
+rule hash_literal = map_literal | set_literal
+rule map_literal = map_type LBRACE map_literal_entries RBRACE
+rule map_literal_entries = map_literal_entry map_literal_tail* |
+rule map_literal_tail = COMMA map_literal_entry | COMMA
+rule map_literal_entry = expression COLON expression
+rule set_literal = set_type LBRACE set_literal_entries RBRACE
+rule set_literal_entries = expression set_literal_tail* |
+rule set_literal_tail = COMMA expression | COMMA
 rule grouped_expr = LPAREN expression RPAREN
 rule cast_expr = KW_CAST LPAREN type_ref COMMA expression RPAREN
 rule new_expr = KW_NEW type_ref new_tail

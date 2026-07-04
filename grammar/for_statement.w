@@ -188,16 +188,79 @@ void for_range_loop(int for_var, int for_tab_level):
 	stack_pos = stack_pos - num_range_args
 
 
+void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, int container_type):
+	int p1
+	int p2
+	int key_type = type_set_key_type(container_type)
+	if (type_is_map(container_type)):
+		key_type = type_map_key_type(container_type)
+	if (types_compatible_with_expression(loop_var_type, key_type) == 0):
+		warn_type_mismatch("for loop variable", loop_var_type, key_type)
+
+	# hidden slot: the container pointer
+	push_eax()
+	stack_pos = stack_pos + 1
+	int container_slot = stack_pos
+
+	# hidden slot: cursor = iter_begin(container)
+	for_iter_call("__w_map_iter_begin", container_slot, 0)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int cursor_slot = stack_pos
+
+	int outer_break = loop_break_chain
+	int outer_continue = loop_continue_chain
+	int outer_stack = loop_stack_pos
+	loop_break_chain = 0
+	loop_continue_chain = 0
+	loop_stack_pos = stack_pos
+	loop_depth = loop_depth + 1
+
+	p1 = codepos
+	for_iter_call("__w_map_iter_done", container_slot, cursor_slot)
+	jmp_nonzero_int32(1337014)
+	p2 = codepos
+
+	for_iter_call("__w_map_iter_key", container_slot, cursor_slot)
+	coerce(loop_var_type, key_type)
+	store_stack_var((stack_pos - for_var) << word_size_log2)
+
+	enclosing_tab_level = for_tab_level
+	statement()
+
+	int increment_target = codepos
+	for_iter_call("__w_map_iter_next", container_slot, cursor_slot)
+	store_stack_var((stack_pos - cursor_slot) << word_size_log2)
+
+	jmp_int32(1337015)
+	save_int32(code + codepos - 4, p1 - codepos)
+
+	save_int32(code + p2 - 4, codepos - p2)
+	patch_jump_chain(loop_break_chain, codepos)
+	patch_jump_chain(loop_continue_chain, increment_target)
+
+	loop_break_chain = outer_break
+	loop_continue_chain = outer_continue
+	loop_stack_pos = outer_stack
+	loop_depth = loop_depth - 1
+
+	be_pop(2)
+	stack_pos = stack_pos - 2
+
+
 # The "in <container>" body of for_statement; "for", the loop variable
 # and "in" have already been consumed. Emits the cursor-protocol loop
 # described in the header comment.
-void for_container_loop(int for_var, int for_tab_level):
+void for_container_loop(int for_var, int for_tab_level, int loop_var_type):
 	int p1
 	int p2
 
 	# The iterable is evaluated exactly once, before the body
 	int container_type = promote(expression())
 	container_type = type_unqualified(container_type)
+	if (type_is_map(container_type) | type_is_set(container_type)):
+		for_hash_container_loop(for_var, for_tab_level, loop_var_type, container_type)
+		return;
 	for_iter_require_struct_pointer(container_type)
 
 	char* container_name = type_get_name(container_type)
@@ -295,6 +358,6 @@ int for_statement():
 	if (accept("range")):
 		for_range_loop(for_var, for_tab_level)
 	else:
-		for_container_loop(for_var, for_tab_level)
+		for_container_loop(for_var, for_tab_level, type)
 
 	return 1

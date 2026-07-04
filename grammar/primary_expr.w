@@ -1,4 +1,99 @@
 int expression();
+int hash_literal_type
+
+
+void hash_literal_call_map_set(int container_slot, int key_slot, int value_slot):
+	sym_get_value("__w_map_set")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(container_slot)
+	hash_push_stack_slot(key_slot)
+	hash_push_stack_slot(value_slot)
+	hash_call_finish(s)
+
+
+void hash_literal_call_set_add(int container_slot, int key_slot):
+	sym_get_value("__w_set_add")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(container_slot)
+	hash_push_stack_slot(key_slot)
+	hash_call_finish(s)
+
+
+void hash_literal_parse_map_entry(int container_type, int container_slot):
+	int base_stack = stack_pos
+	int key_type = type_map_key_type(container_type)
+	int value_type = type_map_value_type(container_type)
+	int got_key_type = expression()
+	got_key_type = promote(got_key_type)
+	coerce(key_type, got_key_type)
+	if (types_compatible_with_expression(key_type, got_key_type) == 0):
+		warn_type_mismatch("map literal key", key_type, got_key_type)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int key_slot = stack_pos
+	expect(":")
+	int got_value_type = expression()
+	got_value_type = promote(got_value_type)
+	coerce(value_type, got_value_type)
+	if (types_compatible_with_expression(value_type, got_value_type) == 0):
+		warn_type_mismatch("map literal value", value_type, got_value_type)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int value_slot = stack_pos
+	hash_literal_call_map_set(container_slot, key_slot, value_slot)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+
+
+void hash_literal_parse_set_entry(int container_type, int container_slot):
+	int base_stack = stack_pos
+	int key_type = type_set_key_type(container_type)
+	int got_key_type = expression()
+	got_key_type = promote(got_key_type)
+	coerce(key_type, got_key_type)
+	if (types_compatible_with_expression(key_type, got_key_type) == 0):
+		warn_type_mismatch("set literal key", key_type, got_key_type)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int key_slot = stack_pos
+	hash_literal_call_set_add(container_slot, key_slot)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+
+
+int hash_typed_literal():
+	if (((peek("map") & (nextc == '[')) == 0) & ((peek("set") & (nextc == '[')) == 0)):
+		return 0
+	int container_type = type_name()
+	if ((type_is_map(container_type) == 0) & (type_is_set(container_type) == 0)):
+		return 0
+	expect("{")
+	hash_emit_new_container(container_type)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int container_slot = stack_pos
+	if (peek("}") == 0):
+		if (type_is_map(container_type)):
+			hash_literal_parse_map_entry(container_type, container_slot)
+		else:
+			hash_literal_parse_set_entry(container_type, container_slot)
+		while (accept(",")):
+			if (peek("}")):
+				break
+			if (type_is_map(container_type)):
+				hash_literal_parse_map_entry(container_type, container_slot)
+			else:
+				hash_literal_parse_set_entry(container_type, container_slot)
+	if (peek("}") == 0):
+		error("'}' expected in hash literal")
+	pop_eax()
+	stack_pos = stack_pos - 1
+	hash_literal_type = type_value(container_type)
+	return 1
 
 /*
  * primary-expr:
@@ -39,6 +134,9 @@ int primary_expr():
 
 	else if (c_char_pointer_literal()):
 		type = 3 /* constant: eax already holds the string address */
+
+	else if (hash_typed_literal()):
+		type = hash_literal_type
 
 	# Identifier
 	else if ((new_type = identifier()) >= 0) {
