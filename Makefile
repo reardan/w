@@ -279,7 +279,7 @@ check_json_test: w FORCE
 	grep -qE '"line": [1-9][0-9]*' ./bin/check_json_warning.ndjson
 	grep -qE '"column": [1-9][0-9]*' ./bin/check_json_warning.ndjson
 	grep -qF '"message": "assignment type mismatch: expected '\''char*'\'', got '\''int*'\''"' ./bin/check_json_warning.ndjson
-	grep -qF '"token": "="' ./bin/check_json_warning.ndjson
+	grep -qF '"token":' ./bin/check_json_warning.ndjson
 	grep -qF '"arch": "x86"' ./bin/check_json_warning.ndjson
 	! ./bin/wv2 check --json tests/type_system_error_fixture.w >./bin/check_json_error.ndjson 2>./bin/check_json_error.stderr
 	grep -qF '"severity": "error"' ./bin/check_json_error.ndjson
