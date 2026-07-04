@@ -82,6 +82,7 @@ void program():
 	while (token[0]):
 		# First handle imports
 		while (import_statement() ) {}
+		while (c_import_statement()) {}
 
 		# Type aliases must be available before structs and declarations
 		while(type_alias_declaration()) {}

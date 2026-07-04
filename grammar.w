@@ -29,6 +29,7 @@ import grammar.struct_declaration
 import grammar.union_declaration
 import grammar.enum_declaration
 import grammar.import_statement
+import grammar.c_import_statement
 import grammar.extern_statement
 import grammar.program
 
