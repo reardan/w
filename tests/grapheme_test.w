@@ -10,6 +10,20 @@ void test_combining_mark_cluster():
 	assert_equal(0, grapheme_is_boundary(s, 1))
 
 
+void test_hebrew_combining_mark_cluster():
+	string s = "\u05d0\u05b0x"
+	assert_equal(2, grapheme_count(s))
+	assert_equal(4, grapheme_next(s, 0))
+	assert_equal(0, grapheme_is_boundary(s, 2))
+
+
+void test_devanagari_spacing_mark_cluster():
+	string s = "\u0915\u093ex"
+	assert_equal(2, grapheme_count(s))
+	assert_equal(6, grapheme_next(s, 0))
+	assert_equal(0, grapheme_is_boundary(s, 3))
+
+
 void test_hangul_jamo_cluster():
 	string s = "\u1100\u1161\u11a8!"
 	assert_equal(2, grapheme_count(s))

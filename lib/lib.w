@@ -41,6 +41,53 @@ int strlen(char *c):
 	return length
 
 
+void cstr_invalid_utf8():
+	char* message = c"invalid UTF-8 c string\x0a"
+	write(2, message, strlen(message))
+	exit(1)
+
+
+int cstr_utf8_length_or_die(char* s):
+	int i = 0
+	while (s[i] != 0):
+		int c = s[i] & 255
+		int need = 0
+		int codepoint = 0
+		if (c < 128):
+			i = i + 1
+		else if ((c >= 194) & (c <= 223)):
+			need = 1
+			codepoint = c & 31
+		else if ((c >= 224) & (c <= 239)):
+			need = 2
+			codepoint = c & 15
+		else if ((c >= 240) & (c <= 244)):
+			need = 3
+			codepoint = c & 7
+		else:
+			cstr_invalid_utf8()
+		if (need > 0):
+			int j = 1
+			while (j <= need):
+				int d = s[i + j] & 255
+				if ((d == 0) | (d < 128) | (d > 191)):
+					cstr_invalid_utf8()
+				codepoint = (codepoint << 6) | (d & 63)
+				j = j + 1
+			if ((need == 1) & (codepoint < 128)):
+				cstr_invalid_utf8()
+			if ((need == 2) & (codepoint < 2048)):
+				cstr_invalid_utf8()
+			if ((need == 3) & (codepoint < 65536)):
+				cstr_invalid_utf8()
+			if ((codepoint >= 55296) & (codepoint <= 57343)):
+				cstr_invalid_utf8()
+			if (codepoint > 1114111):
+				cstr_invalid_utf8()
+			i = i + need + 1
+	return i
+
+
 void strncpy(char* dst, char* src, int n):
 	int i = 0
 	while ((i < n) & (src[i] != 0)):
@@ -281,7 +328,7 @@ void save_word(char* p, int v):
 string str_from_cstr(char* s):
 	int descriptor = malloc(2 * __word_size__)
 	save_word(descriptor, s)
-	int length = strlen(s)
+	int length = cstr_utf8_length_or_die(s)
 	save_word(descriptor + __word_size__, length)
 	return cast(string, descriptor)
 

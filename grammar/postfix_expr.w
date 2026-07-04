@@ -116,6 +116,14 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 
 
 void init_array_field_descriptors(int type);
+void coerce_cstr_to_string_call_arg();
+
+
+void coerce_call_argument(int param_type, int arg_type):
+	if (type_is_string(param_type) & type_is_char_pointer(arg_type)):
+		coerce_cstr_to_string_call_arg()
+	else:
+		coerce(param_type, arg_type)
 
 
 # Push a call argument onto the stack. Struct values are copied word by
@@ -158,7 +166,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 			if (signature_type >= 0):
 				param_type = type_function_param_type(signature_type, passed_args)
 			if (param_type >= 0):
-				coerce(param_type, arg_type)
+				coerce_call_argument(param_type, arg_type)
 		push_call_argument(arg_type)
 		passed_args = passed_args + 1
 		while (accept(c",")):
@@ -172,7 +180,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 				if (signature_type >= 0):
 					param_type = type_function_param_type(signature_type, passed_args)
 				if (param_type >= 0):
-					coerce(param_type, arg_type)
+					coerce_call_argument(param_type, arg_type)
 			push_call_argument(arg_type)
 			passed_args = passed_args + 1
 

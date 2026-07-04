@@ -288,6 +288,12 @@ string_utf8_test: w FORCE
 	./bin/string_utf8_test
 	! ./bin/wv2 tests/string_utf8_invalid_fixture.w -o ./bin/string_utf8_invalid_fixture 2>./bin/string_utf8_invalid_fixture.stderr
 	grep -qF "invalid UTF-8 string literal" ./bin/string_utf8_invalid_fixture.stderr
+	./bin/wv2 tests/string_utf8_invalid_cstr_fixture.w -o ./bin/string_utf8_invalid_cstr_fixture
+	! ./bin/string_utf8_invalid_cstr_fixture 2>./bin/string_utf8_invalid_cstr_fixture.stderr
+	grep -qF "invalid UTF-8 c string" ./bin/string_utf8_invalid_cstr_fixture.stderr
+	./bin/wv2 tests/string_utf8_invalid_cstr_arg_fixture.w -o ./bin/string_utf8_invalid_cstr_arg_fixture
+	! ./bin/string_utf8_invalid_cstr_arg_fixture 2>./bin/string_utf8_invalid_cstr_arg_fixture.stderr
+	grep -qF "invalid UTF-8 c string" ./bin/string_utf8_invalid_cstr_arg_fixture.stderr
 	@echo "string utf8 test OK"
 
 grapheme_test: w FORCE
