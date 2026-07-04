@@ -61,3 +61,8 @@ void test_include_next_searches_after_current_directory():
 void test_stdio_header_preprocesses():
 	cpp_result* result = cpp_preprocess_file("/usr/include/stdio.h")
 	assert1(strlen(result.text) > 0)
+
+
+void test_unistd_header_preprocesses():
+	cpp_result* result = cpp_preprocess_file("/usr/include/unistd.h")
+	assert1(strlen(result.text) > 0)
