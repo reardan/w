@@ -3,32 +3,32 @@ import lib.http
 
 
 void web_file_server_usage():
-	println("usage: web_file_server [--ip=127.0.0.1] [--port=8082]")
+	println(c"usage: web_file_server [--ip=127.0.0.1] [--port=8082]")
 
 
 char* web_file_content_type(char* path):
-	if (ends_with(path, ".html")):
-		return "text/html"
-	if (ends_with(path, ".css")):
-		return "text/css"
-	if (ends_with(path, ".js")):
-		return "application/javascript"
-	if (ends_with(path, ".json")):
-		return "application/json"
-	if (ends_with(path, ".txt")):
-		return "text/plain"
-	if (ends_with(path, ".md")):
-		return "text/markdown"
-	return "application/octet-stream"
+	if (ends_with(path, c".html")):
+		return c"text/html"
+	if (ends_with(path, c".css")):
+		return c"text/css"
+	if (ends_with(path, c".js")):
+		return c"application/javascript"
+	if (ends_with(path, c".json")):
+		return c"application/json"
+	if (ends_with(path, c".txt")):
+		return c"text/plain"
+	if (ends_with(path, c".md")):
+		return c"text/markdown"
+	return c"application/octet-stream"
 
 
 void web_file_write_text_response(int client, int status_code, char* reason, char* body):
-	http_write_response_headers(client, status_code, reason, "text/plain", strlen(body), "close")
+	http_write_response_headers(client, status_code, reason, c"text/plain", strlen(body), c"close")
 	write_string(client, body)
 
 
 char* web_file_request_path(char* request):
-	if (starts_with(request, "GET ") == 0):
+	if (starts_with(request, c"GET ") == 0):
 		return 0
 
 	char* path = request + 4
@@ -57,23 +57,23 @@ char* web_file_local_path(char* request_path):
 	while (request_path[0] == '/'):
 		request_path = request_path + 1
 	if (request_path[0] == 0):
-		return "index.html"
+		return c"index.html"
 	return request_path
 
 
 void web_file_stream_file(int client, char* path):
 	int file = open(path, 0, 0)
 	if (file < 0):
-		web_file_write_text_response(client, 404, "Not Found", "not found\n")
+		web_file_write_text_response(client, 404, c"Not Found", c"not found\n")
 		return
 
 	int size = file_size(file)
 	if (size < 0):
 		close(file)
-		web_file_write_text_response(client, 404, "Not Found", "not found\n")
+		web_file_write_text_response(client, 404, c"Not Found", c"not found\n")
 		return
 
-	http_write_response_headers(client, 200, "OK", web_file_content_type(path), size, "close")
+	http_write_response_headers(client, 200, c"OK", web_file_content_type(path), size, c"close")
 
 	char* buf = malloc(web_default_buffer_size())
 	int remaining = size
@@ -82,11 +82,11 @@ void web_file_stream_file(int client, char* path):
 		if (remaining < chunk_size):
 			chunk_size = remaining
 		int read_count = read(file, buf, chunk_size)
-		web_check_syscall("read", read_count)
+		web_check_syscall(c"read", read_count)
 		if (read_count == 0):
 			remaining = 0
 		else:
-			web_check_syscall("write", write(client, buf, read_count))
+			web_check_syscall(c"write", write(client, buf, read_count))
 			remaining = remaining - read_count
 
 	free(buf)
@@ -95,33 +95,33 @@ void web_file_stream_file(int client, char* path):
 
 int main(int argc, int argv):
 	args_init(argc, argv)
-	if (args_has_flag("help")):
+	if (args_has_flag(c"help")):
 		web_file_server_usage()
 		return 0
 
-	char* ip = web_arg_or("ip", "127.0.0.1")
-	int port = web_arg_port("port", 8082)
+	char* ip = web_arg_or(c"ip", c"127.0.0.1")
+	int port = web_arg_port(c"port", 8082)
 	int server = web_listen_ipv4(ip, port)
-	print_error("file server listening on http://")
+	print_error(c"file server listening on http://")
 	print_error(ip)
-	print_int(":", port)
+	print_int(c":", port)
 
 	int client = socket_accept_connection(server)
-	web_check_syscall("accept", client)
+	web_check_syscall(c"accept", client)
 
 	char* request = malloc(web_default_buffer_size() + 1)
 	int request_bytes = read(client, request, web_default_buffer_size())
-	web_check_syscall("read", request_bytes)
+	web_check_syscall(c"read", request_bytes)
 	request[request_bytes] = 0
 
 	char* request_path = web_file_request_path(request)
 	if (request_path == 0):
-		web_file_write_text_response(client, 405, "Method Not Allowed", "method not allowed\n")
+		web_file_write_text_response(client, 405, c"Method Not Allowed", c"method not allowed\n")
 	else if (web_file_path_is_safe(request_path) == 0):
-		web_file_write_text_response(client, 403, "Forbidden", "parent directories are not allowed\n")
+		web_file_write_text_response(client, 403, c"Forbidden", c"parent directories are not allowed\n")
 	else:
 		char* local_path = web_file_local_path(request_path)
-		print_string("serving ", local_path)
+		print_string(c"serving ", local_path)
 		web_file_stream_file(client, local_path)
 
 	free(request)

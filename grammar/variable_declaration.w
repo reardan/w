@@ -1,22 +1,22 @@
 int variable_declaration():
 	# type-name identifier
-	if (peek("const") | (peek("map") & (nextc == '[')) | (peek("set") & (nextc == '[')) | (type_lookup(token) >= 0)):
+	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (type_lookup(token) >= 0)):
 		# println2("variable_declaration()")
 		int type = typed_identifier()
 		int has_initializer = 0
 		int type2 = -1
 		# = expression
-		if (accept("=")):
+		if (accept(c"=")):
 			has_initializer = 1
 			if (type_is_array(type)):
-				error("fixed array initializer is not implemented")
+				error(c"fixed array initializer is not implemented")
 			type2 = expression()
 			type2 = promote(type2)
 			coerce(type, type2)
 			if (types_compatible_with_expression(type, type2) == 0):
-				warn_type_mismatch("initialization", type, type2)
+				warn_type_mismatch(c"initialization", type, type2)
 			if (verbosity >= 0):
-				print2("variable declaration = expression() right side type: ")
+				print2(c"variable declaration = expression() right side type: ")
 				type_print(type2)
 		save_int(table + last_declared_symbol + 2, stack_pos)
 		pointer_indirection = 0
@@ -31,8 +31,11 @@ int variable_declaration():
 					push_eax_plus(j << word_size_log2)
 					j = j - 1
 				stack_pos = stack_pos + size
+				if (type_has_array_field(type)):
+					lea_eax_esp_plus(0)
+					init_array_field_descriptors(type)
 				return type
-		if (type_is_array(type)):
+		if (type_is_array(type) | type_has_array_field(type)):
 			mov_eax_int(0)
 		int i = 0
 		while (i < size):
@@ -44,6 +47,9 @@ int variable_declaration():
 			store_stack_var(0)
 			mov_eax_int(type_get_array_length(type))
 			store_stack_var(word_size)
+		else if (type_has_array_field(type)):
+			lea_eax_esp_plus(0)
+			init_array_field_descriptors(type)
 		return type
 	return -1
 

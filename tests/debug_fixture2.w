@@ -16,7 +16,7 @@ int triple(int n):
 int main(int argc, int argv):
 	counter = 5
 	int x = 3
-	char* message = "hello wdbg"
+	char* message = c"hello wdbg"
 	debugger
 	int y = triple(x)
 	counter = counter + y

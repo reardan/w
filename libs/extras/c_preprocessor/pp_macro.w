@@ -113,7 +113,7 @@ cpp_token* cpp_token_append_list(cpp_token* left, cpp_token* right):
 
 
 cpp_token* cpp_make_placemarker():
-	return cpp_token_new(cpp_token_placemarker(), "", "<macro>", 0, 0, 0)
+	return cpp_token_new(cpp_token_placemarker(), c"", c"<macro>", 0, 0, 0)
 
 
 cpp_token* cpp_arg_token(array_list* args, int index):
@@ -159,10 +159,10 @@ cpp_macro_args* cpp_collect_args(cpp_token* lparen):
 	while (token != 0):
 		if (token.kind == cpp_token_eof()):
 			break
-		if (cpp_token_is_punct(token, "(")):
+		if (cpp_token_is_punct(token, c"(")):
 			depth = depth + 1
 			cpp_args_push_token(&current_head, token)
-		else if (cpp_token_is_punct(token, ")")):
+		else if (cpp_token_is_punct(token, c")")):
 			if (depth == 0):
 				array_list_push(args.items, cast(int, current_head.next))
 				args.after = token.next
@@ -171,7 +171,7 @@ cpp_macro_args* cpp_collect_args(cpp_token* lparen):
 				return args
 			depth = depth - 1
 			cpp_args_push_token(&current_head, token)
-		else if (cpp_token_is_punct(token, ",") & (depth == 0)):
+		else if (cpp_token_is_punct(token, c",") & (depth == 0)):
 			array_list_push(args.items, cast(int, current_head.next))
 			current_head.next = 0
 		else:
@@ -187,7 +187,7 @@ cpp_token* cpp_join_variadic_args(cpp_macro_args* args, int first):
 	int i = first
 	while (i < args.items.length):
 		if (i > first):
-			tail.next = cpp_token_new(cpp_token_punct(), ",", "<macro>", 0, 0, 0)
+			tail.next = cpp_token_new(cpp_token_punct(), c",", c"<macro>", 0, 0, 0)
 			tail = tail.next
 		cpp_token* arg = cpp_arg_token(args.items, i)
 		if (cpp_arg_has_tokens(arg)):
@@ -255,7 +255,7 @@ cpp_token* cpp_stringize_arg(cpp_token* arg):
 		need_space = 0
 		arg = arg.next
 	string_append_char(out, '"')
-	cpp_token* token = cpp_token_new(cpp_token_string(), out.data, "<macro>", 0, 0, 0)
+	cpp_token* token = cpp_token_new(cpp_token_string(), out.data, c"<macro>", 0, 0, 0)
 	string_free(out)
 	return token
 
@@ -287,19 +287,19 @@ cpp_token* cpp_subst_first_pass(hash_map* macros, cpp_macro* macro, cpp_macro_ar
 	while (token != 0):
 		if (token.kind == cpp_token_eof()):
 			break
-		if (cpp_token_is_punct(token, "#") & cpp_token_is_param(macro, token.next)):
+		if (cpp_token_is_punct(token, c"#") & cpp_token_is_param(macro, token.next)):
 			int index = cpp_macro_param_index(macro, token.next.text)
 			tail.next = cpp_stringize_arg(cpp_arg_token(args.items, index))
 			tail = tail.next
 			token = token.next.next
 			last_was_paste = 0
-		else if (cpp_token_is_punct(token, "##") & cpp_token_is_param(macro, token.next)):
+		else if (cpp_token_is_punct(token, c"##") & cpp_token_is_param(macro, token.next)):
 			int index = cpp_macro_param_index(macro, token.next.text)
 			cpp_token* arg = cpp_arg_token(args.items, index)
-			if (cpp_token_is_ident(token.next, "__VA_ARGS__") & (cpp_arg_has_tokens(arg) == 0)):
+			if (cpp_token_is_ident(token.next, c"__VA_ARGS__") & (cpp_arg_has_tokens(arg) == 0)):
 				cpp_token* comma = cpp_remove_last_token(&head)
 				if (comma != 0):
-					if (strcmp(comma.text, ",") != 0):
+					if (strcmp(comma.text, c",") != 0):
 						tail = cpp_token_last(&head)
 						tail.next = comma
 						tail = comma
@@ -315,7 +315,7 @@ cpp_token* cpp_subst_first_pass(hash_map* macros, cpp_macro* macro, cpp_macro_ar
 				token = token.next
 		else if (cpp_token_is_param(macro, token)):
 			int raw = 0
-			if (cpp_token_is_punct(token.next, "##") | last_was_paste):
+			if (cpp_token_is_punct(token.next, c"##") | last_was_paste):
 				raw = 1
 			cpp_token* replacement = cpp_param_replacement(macros, macro, args, token, raw)
 			if (replacement != 0):
@@ -326,7 +326,7 @@ cpp_token* cpp_subst_first_pass(hash_map* macros, cpp_macro* macro, cpp_macro_ar
 		else:
 			tail.next = cpp_token_clone_one(token)
 			tail = tail.next
-			last_was_paste = cpp_token_is_punct(token, "##")
+			last_was_paste = cpp_token_is_punct(token, c"##")
 			token = token.next
 	tail.next = 0
 	return head.next
@@ -350,17 +350,17 @@ void cpp_paste_into(cpp_token* left, cpp_token* right):
 	string_append(text, right.text)
 	cpp_token* pasted = cpp_lex_one_token(text.data)
 	if (pasted == 0):
-		print_error("c preprocessor: invalid token paste: ")
+		print_error(c"c preprocessor: invalid token paste: ")
 		print_error(text.data)
-		print_error(" at ")
+		print_error(c" at ")
 		print_error(left.filename)
-		print_error(":")
+		print_error(c":")
 		print_error(itoa(left.line))
-		print_error(" / ")
+		print_error(c" / ")
 		print_error(right.filename)
-		print_error(":")
+		print_error(c":")
 		print_error(itoa(right.line))
-		error("")
+		error(c"")
 	left.kind = pasted.kind
 	free(left.text)
 	left.text = strclone(pasted.text)
@@ -374,7 +374,7 @@ cpp_token* cpp_process_paste(cpp_token* tokens):
 	cpp_token* tail = &head
 	cpp_token* token = tokens
 	while (token != 0):
-		if (cpp_token_is_punct(token, "##")):
+		if (cpp_token_is_punct(token, c"##")):
 			cpp_token* right = token.next
 			if (right == 0):
 				return head.next
@@ -401,7 +401,7 @@ cpp_token* cpp_process_paste(cpp_token* tokens):
 			else:
 				token = right.next
 		else if (token.kind == cpp_token_placemarker()):
-			if (cpp_token_is_punct(token.next, "##")):
+			if (cpp_token_is_punct(token.next, c"##")):
 				cpp_token* next = token.next
 				token.next = 0
 				tail.next = token
@@ -450,7 +450,7 @@ cpp_token* cpp_expand_tokens(hash_map* macros, cpp_token* token):
 					token = cpp_attach_rest(replacement, token.next)
 					continue
 				if (macro.is_function):
-					if (cpp_token_is_punct(token.next, "(")):
+					if (cpp_token_is_punct(token.next, c"(")):
 						cpp_macro_args* args = cpp_collect_args(token.next)
 						if (args.complete):
 							cpp_normalize_args(macro, args)

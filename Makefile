@@ -157,7 +157,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test x64_test x64_float_test x64_int64_test net_64_test dynamic_test_x64 c_import_libc_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test dynamic_test_x64 c_import_libc_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -265,6 +265,11 @@ warning_test: w FORCE
 	grep -qF "warning: file does not end with a newline" ./bin/warning_fixture.stderr
 	./bin/wv2 tests/warning_clean_fixture.w -o ./bin/warning_clean_fixture 2>./bin/warning_clean_fixture.stderr
 	! grep -q "warning:" ./bin/warning_clean_fixture.stderr
+	./bin/wv2 tests/string_char_warning_fixture.w -o ./bin/string_char_warning_fixture 2>./bin/string_char_warning_fixture.stderr
+	grep -qF "warning: return type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
+	grep -qF "warning: initialization type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
+	grep -qF "warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
+	grep -qF "warning: assignment type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
 	@echo "warning test OK"
 
 # The compiler's own sources are the largest clean fixture: the strict
@@ -312,6 +317,27 @@ array_slice_string_test: w FORCE
 	./bin/wv2 tests/array_slice_string_test.w -o ./bin/array_slice_string_test
 	./bin/array_slice_string_test
 
+array_slice_string_64_test: w FORCE
+	./bin/wv2 x64 tests/array_slice_string_test.w -o ./bin/array_slice_string_64_test
+	./bin/array_slice_string_64_test
+
+string_utf8_test: w FORCE
+	./bin/wv2 tests/string_utf8_test.w -o ./bin/string_utf8_test
+	./bin/string_utf8_test
+	! ./bin/wv2 tests/string_utf8_invalid_fixture.w -o ./bin/string_utf8_invalid_fixture 2>./bin/string_utf8_invalid_fixture.stderr
+	grep -qF "invalid UTF-8 string literal" ./bin/string_utf8_invalid_fixture.stderr
+	./bin/wv2 tests/string_utf8_invalid_cstr_fixture.w -o ./bin/string_utf8_invalid_cstr_fixture
+	! ./bin/string_utf8_invalid_cstr_fixture 2>./bin/string_utf8_invalid_cstr_fixture.stderr
+	grep -qF "invalid UTF-8 c string" ./bin/string_utf8_invalid_cstr_fixture.stderr
+	./bin/wv2 tests/string_utf8_invalid_cstr_arg_fixture.w -o ./bin/string_utf8_invalid_cstr_arg_fixture
+	! ./bin/string_utf8_invalid_cstr_arg_fixture 2>./bin/string_utf8_invalid_cstr_arg_fixture.stderr
+	grep -qF "invalid UTF-8 c string" ./bin/string_utf8_invalid_cstr_arg_fixture.stderr
+	@echo "string utf8 test OK"
+
+grapheme_test: w FORCE
+	./bin/wv2 tests/grapheme_test.w -o ./bin/grapheme_test
+	./bin/grapheme_test
+
 bounds_trap_test: w FORCE
 	./bin/wv2 tests/bounds_trap_test.w -o ./bin/bounds_trap_test
 	! ./bin/bounds_trap_test
@@ -328,6 +354,15 @@ buffer_field_assign_test: w FORCE
 	! ./bin/wv2 tests/buffer_field_assign_test.w -o ./bin/buffer_field_assign_test 2>./bin/buffer_field_assign_test.stderr
 	grep -qF "cannot assign to read-only buffer field" ./bin/buffer_field_assign_test.stderr
 	@echo "buffer field assign test OK"
+
+array_error_test: w FORCE
+	! ./bin/wv2 tests/array_param_error_fixture.w -o ./bin/array_param_error_fixture 2>./bin/array_param_error_fixture.stderr
+	grep -qF "fixed array parameter is not implemented; use T[] instead" ./bin/array_param_error_fixture.stderr
+	! ./bin/wv2 tests/array_union_error_fixture.w -o ./bin/array_union_error_fixture 2>./bin/array_union_error_fixture.stderr
+	grep -qF "fixed array fields are not implemented in unions" ./bin/array_union_error_fixture.stderr
+	! ./bin/wv2 tests/array_constructor_error_fixture.w -o ./bin/array_constructor_error_fixture 2>./bin/array_constructor_error_fixture.stderr
+	grep -qF "cannot initialize fixed-array field in constructor" ./bin/array_constructor_error_fixture.stderr
+	@echo "array error test OK"
 
 logging: w FORCE
 	./bin/wv2 logging.w >./bin/logging
@@ -406,25 +441,26 @@ repl: w FORCE
 
 repl_test: w FORCE
 	./bin/wv2 repl.w -o ./bin/repl
-	printf 'print("hello from the repl\\x0a")\n:quit\n' | ./bin/repl | grep -q "hello from the repl"
+	printf 'print(c"hello from the repl\\x0a")\n:quit\n' | ./bin/repl | grep -q "hello from the repl"
 	# A bad entry must not kill the process, and later entries must still work
-	printf 'this is not valid w\nprint("recovered\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered"
-	printf 'int x = = 3\nqq + 1\nprint("second recovery\\x0a")\n:quit\n' | ./bin/repl | grep -q "second recovery"
+	printf 'this is not valid w\nprint(c"recovered\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered"
+	printf 'int x = = 3\nqq + 1\nprint(c"second recovery\\x0a")\n:quit\n' | ./bin/repl | grep -q "second recovery"
 	# Multi-line function definitions persist and are callable
 	printf 'int add(int a, int b):\n\treturn a + b\n\nadd(40, 2)\n:quit\n' | ./bin/repl | grep -q "42"
 	# Interactive (pty) sessions auto-indent block bodies: no tabs typed here
 	printf 'int fib(int n):\nif (n < 2):\nreturn n\nreturn fib(n - 1) + fib(n - 2)\n\nfib(10)\n:quit\n' | script -qc './bin/repl' /dev/null | grep -q "55"
 	# Top-level variables persist between entries; bare expressions echo
 	printf 'int x = 5\nx + 1\n:quit\n' | ./bin/repl | grep -q "6"
+	printf '"hello string"\n:quit\n' | ./bin/repl | grep -q "hello string"
 	# Redefinition shadows (Python-style rebinding); assignments stay silent
-	printf 'int x = 5\nchar* x = "shadowed"\nx\n:quit\n' | ./bin/repl | grep -q "shadowed"
+	printf 'int x = 5\nchar* x = c"shadowed"\nx\n:quit\n' | ./bin/repl | grep -q "shadowed"
 	! printf 'int y = 3\ny = 9\n:quit\n' | ./bin/repl | grep -q "9"
 	# Structs, new and imports work at the prompt
 	printf 'struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n' | ./bin/repl | grep -q "7"
-	printf 'import structures.string\nstring_builder* s = string_from("imported")\ns.data\n:quit\n' | ./bin/repl | grep -q "imported"
+	printf 'import structures.string\nstring_builder* s = string_from(c"imported")\ns.data\n:quit\n' | ./bin/repl | grep -q "imported"
 	# Errors inside multi-line entries and failed imports both recover
-	printf 'int bad():\n\treturn qq\n\nprint("recovered fn\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered fn"
-	printf 'import no.such.module\nprint("recovered import\\x0a")\n:quit\n' | ./bin/repl 2>/dev/null | grep -q "recovered import"
+	printf 'int bad():\n\treturn qq\n\nprint(c"recovered fn\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered fn"
+	printf 'import no.such.module\nprint(c"recovered import\\x0a")\n:quit\n' | ./bin/repl 2>/dev/null | grep -q "recovered import"
 	# Run a file, then attach the prompt to its live definitions
 	printf ':quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "fixture main ran"
 	printf 'fixture_helper(21)\nfixture_global\n:quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "42"
@@ -592,7 +628,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test warning_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:

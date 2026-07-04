@@ -63,10 +63,10 @@ void test_map_remove_tombstone():
 
 void test_cstr_key_is_cloned():
 	__w_hash_table* m = __w_map_new(__w_hash_key_cstr(), __word_size__)
-	char* key = strclone("mutable")
+	char* key = strclone(c"mutable")
 	__w_map_set(m, cast(int, key), 42)
 	key[0] = 'X'
-	assert_equal(42, __w_map_get(m, "mutable"))
+	assert_equal(42, __w_map_get(m, c"mutable"))
 	free(key)
 	__w_map_free(m)
 

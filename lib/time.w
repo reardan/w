@@ -53,7 +53,7 @@ int time_days_in_month(int year, int month):
 # Converts non-negative Unix timestamps to UTC; negative inputs assert loudly.
 # weekday is 0=Sunday..6=Saturday; year_day is 1-based.
 void time_utc_from_unix(int timestamp, date_time* out):
-	asserts("time_utc_from_unix requires a non-negative Unix timestamp", timestamp >= 0)
+	asserts(c"time_utc_from_unix requires a non-negative Unix timestamp", timestamp >= 0)
 	int days = timestamp / 86400
 	int remaining = timestamp % 86400
 

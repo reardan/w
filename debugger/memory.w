@@ -39,19 +39,19 @@ void dbg_print_string_preview(int addr):
 	if (dbg_mem_readable(addr, 1) == 0):
 		return;
 	char* p = cast(char*, addr)
-	print(" \x22")
+	print(c" \x22")
 	int i = 0
 	while (i < 64):
 		if (dbg_mem_readable(addr + i, 1) == 0):
-			print("\x22...")
+			print(c"\x22...")
 			return;
 		int c = p[i] & 255
 		if (c == 0):
-			print("\x22")
+			print(c"\x22")
 			return;
 		if ((c < 32) | (c > 126)):
-			print("\x22...")
+			print(c"\x22...")
 			return;
 		put_char(c)
 		i = i + 1
-	print("\x22...")
+	print(c"\x22...")

@@ -205,7 +205,7 @@ void debug_line_emit():
 	emit_int8(1) /* line_range */
 	emit_int8(10) /* opcode_base: only standard opcodes 1-9 are used */
 	/* standard_opcode_lengths for opcodes 1..9 */
-	emit(9, "\x00\x01\x01\x01\x01\x00\x00\x00\x01")
+	emit(9, c"\x00\x01\x01\x01\x01\x00\x00\x00\x01")
 	emit_int8(0) /* include_directories: empty */
 	int i = 0
 	while (i < debug_file_count):
@@ -224,7 +224,7 @@ void debug_line_emit():
 		int cur_line = 1
 		int cur_address = load_int(debug_line_addresses)
 		/* DW_LNE_set_address */
-		emit(2, "\x00\x05")
+		emit(2, c"\x00\x05")
 		emit_int8(2)
 		emit_int32(cur_address + code_offset)
 
@@ -252,7 +252,7 @@ void debug_line_emit():
 		emit_uleb(1)
 
 	/* DW_LNE_end_sequence */
-	emit(3, "\x00\x01\x01")
+	emit(3, c"\x00\x01\x01")
 	save_int(code + unit_start, codepos - unit_start - 4)
 
 
@@ -282,7 +282,7 @@ void debug_info_emit(int text_end):
 	emit_int32(0) /* offset into .debug_abbrev */
 	emit_int8(4) /* address size */
 	emit_uleb(1) /* abbrev code 1: the compile unit */
-	char* unit_name = "w"
+	char* unit_name = c"w"
 	if (debug_file_count > 0):
 		unit_name = cast(char*, load_int(debug_files))
 	emit_string(unit_name) /* DW_AT_name */

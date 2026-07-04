@@ -556,176 +556,176 @@ int clang_ast_primary_expression():
 
 char* clang_token_name(int kind):
 	if (kind == 0):
-		return "EOF"
+		return c"EOF"
 	else if (kind == clang_token_STRING()):
-		return "STRING"
+		return c"STRING"
 	else if (kind == clang_token_CHAR_LITERAL()):
-		return "CHAR_LITERAL"
+		return c"CHAR_LITERAL"
 	else if (kind == clang_token_NUMBER()):
-		return "NUMBER"
+		return c"NUMBER"
 	else if (kind == clang_token_IDENT()):
-		return "IDENT"
+		return c"IDENT"
 	else if (kind == clang_token_KW_TYPEDEF()):
-		return "KW_TYPEDEF"
+		return c"KW_TYPEDEF"
 	else if (kind == clang_token_KW_EXTERN()):
-		return "KW_EXTERN"
+		return c"KW_EXTERN"
 	else if (kind == clang_token_KW_STATIC()):
-		return "KW_STATIC"
+		return c"KW_STATIC"
 	else if (kind == clang_token_KW_AUTO()):
-		return "KW_AUTO"
+		return c"KW_AUTO"
 	else if (kind == clang_token_KW_REGISTER()):
-		return "KW_REGISTER"
+		return c"KW_REGISTER"
 	else if (kind == clang_token_KW_INLINE()):
-		return "KW_INLINE"
+		return c"KW_INLINE"
 	else if (kind == clang_token_KW_CONST()):
-		return "KW_CONST"
+		return c"KW_CONST"
 	else if (kind == clang_token_KW_RESTRICT()):
-		return "KW_RESTRICT"
+		return c"KW_RESTRICT"
 	else if (kind == clang_token_KW_VOLATILE()):
-		return "KW_VOLATILE"
+		return c"KW_VOLATILE"
 	else if (kind == clang_token_KW_VOID()):
-		return "KW_VOID"
+		return c"KW_VOID"
 	else if (kind == clang_token_KW_CHAR()):
-		return "KW_CHAR"
+		return c"KW_CHAR"
 	else if (kind == clang_token_KW_SHORT()):
-		return "KW_SHORT"
+		return c"KW_SHORT"
 	else if (kind == clang_token_KW_INT()):
-		return "KW_INT"
+		return c"KW_INT"
 	else if (kind == clang_token_KW_LONG()):
-		return "KW_LONG"
+		return c"KW_LONG"
 	else if (kind == clang_token_KW_FLOAT()):
-		return "KW_FLOAT"
+		return c"KW_FLOAT"
 	else if (kind == clang_token_KW_DOUBLE()):
-		return "KW_DOUBLE"
+		return c"KW_DOUBLE"
 	else if (kind == clang_token_KW_SIGNED()):
-		return "KW_SIGNED"
+		return c"KW_SIGNED"
 	else if (kind == clang_token_KW_UNSIGNED()):
-		return "KW_UNSIGNED"
+		return c"KW_UNSIGNED"
 	else if (kind == clang_token_KW_STRUCT()):
-		return "KW_STRUCT"
+		return c"KW_STRUCT"
 	else if (kind == clang_token_KW_UNION()):
-		return "KW_UNION"
+		return c"KW_UNION"
 	else if (kind == clang_token_KW_ENUM()):
-		return "KW_ENUM"
+		return c"KW_ENUM"
 	else if (kind == clang_token_KW_SIZEOF()):
-		return "KW_SIZEOF"
+		return c"KW_SIZEOF"
 	else if (kind == clang_token_KW_RETURN()):
-		return "KW_RETURN"
+		return c"KW_RETURN"
 	else if (kind == clang_token_KW_IF()):
-		return "KW_IF"
+		return c"KW_IF"
 	else if (kind == clang_token_KW_ELSE()):
-		return "KW_ELSE"
+		return c"KW_ELSE"
 	else if (kind == clang_token_KW_WHILE()):
-		return "KW_WHILE"
+		return c"KW_WHILE"
 	else if (kind == clang_token_KW_DO()):
-		return "KW_DO"
+		return c"KW_DO"
 	else if (kind == clang_token_KW_FOR()):
-		return "KW_FOR"
+		return c"KW_FOR"
 	else if (kind == clang_token_KW_SWITCH()):
-		return "KW_SWITCH"
+		return c"KW_SWITCH"
 	else if (kind == clang_token_KW_CASE()):
-		return "KW_CASE"
+		return c"KW_CASE"
 	else if (kind == clang_token_KW_DEFAULT()):
-		return "KW_DEFAULT"
+		return c"KW_DEFAULT"
 	else if (kind == clang_token_KW_BREAK()):
-		return "KW_BREAK"
+		return c"KW_BREAK"
 	else if (kind == clang_token_KW_CONTINUE()):
-		return "KW_CONTINUE"
+		return c"KW_CONTINUE"
 	else if (kind == clang_token_KW_GOTO()):
-		return "KW_GOTO"
+		return c"KW_GOTO"
 	else if (kind == clang_token_ELLIPSIS()):
-		return "ELLIPSIS"
+		return c"ELLIPSIS"
 	else if (kind == clang_token_SHIFT_LEFT_ASSIGN()):
-		return "SHIFT_LEFT_ASSIGN"
+		return c"SHIFT_LEFT_ASSIGN"
 	else if (kind == clang_token_SHIFT_RIGHT_ASSIGN()):
-		return "SHIFT_RIGHT_ASSIGN"
+		return c"SHIFT_RIGHT_ASSIGN"
 	else if (kind == clang_token_PLUS_PLUS()):
-		return "PLUS_PLUS"
+		return c"PLUS_PLUS"
 	else if (kind == clang_token_MINUS_MINUS()):
-		return "MINUS_MINUS"
+		return c"MINUS_MINUS"
 	else if (kind == clang_token_ARROW()):
-		return "ARROW"
+		return c"ARROW"
 	else if (kind == clang_token_SHIFT_LEFT()):
-		return "SHIFT_LEFT"
+		return c"SHIFT_LEFT"
 	else if (kind == clang_token_SHIFT_RIGHT()):
-		return "SHIFT_RIGHT"
+		return c"SHIFT_RIGHT"
 	else if (kind == clang_token_LT_EQ()):
-		return "LT_EQ"
+		return c"LT_EQ"
 	else if (kind == clang_token_GT_EQ()):
-		return "GT_EQ"
+		return c"GT_EQ"
 	else if (kind == clang_token_EQ_EQ()):
-		return "EQ_EQ"
+		return c"EQ_EQ"
 	else if (kind == clang_token_BANG_EQ()):
-		return "BANG_EQ"
+		return c"BANG_EQ"
 	else if (kind == clang_token_AND_AND()):
-		return "AND_AND"
+		return c"AND_AND"
 	else if (kind == clang_token_OR_OR()):
-		return "OR_OR"
+		return c"OR_OR"
 	else if (kind == clang_token_PLUS_ASSIGN()):
-		return "PLUS_ASSIGN"
+		return c"PLUS_ASSIGN"
 	else if (kind == clang_token_MINUS_ASSIGN()):
-		return "MINUS_ASSIGN"
+		return c"MINUS_ASSIGN"
 	else if (kind == clang_token_STAR_ASSIGN()):
-		return "STAR_ASSIGN"
+		return c"STAR_ASSIGN"
 	else if (kind == clang_token_SLASH_ASSIGN()):
-		return "SLASH_ASSIGN"
+		return c"SLASH_ASSIGN"
 	else if (kind == clang_token_PERCENT_ASSIGN()):
-		return "PERCENT_ASSIGN"
+		return c"PERCENT_ASSIGN"
 	else if (kind == clang_token_AMP_ASSIGN()):
-		return "AMP_ASSIGN"
+		return c"AMP_ASSIGN"
 	else if (kind == clang_token_CARET_ASSIGN()):
-		return "CARET_ASSIGN"
+		return c"CARET_ASSIGN"
 	else if (kind == clang_token_PIPE_ASSIGN()):
-		return "PIPE_ASSIGN"
+		return c"PIPE_ASSIGN"
 	else if (kind == clang_token_PLUS()):
-		return "PLUS"
+		return c"PLUS"
 	else if (kind == clang_token_MINUS()):
-		return "MINUS"
+		return c"MINUS"
 	else if (kind == clang_token_STAR()):
-		return "STAR"
+		return c"STAR"
 	else if (kind == clang_token_SLASH()):
-		return "SLASH"
+		return c"SLASH"
 	else if (kind == clang_token_PERCENT()):
-		return "PERCENT"
+		return c"PERCENT"
 	else if (kind == clang_token_AMP()):
-		return "AMP"
+		return c"AMP"
 	else if (kind == clang_token_PIPE()):
-		return "PIPE"
+		return c"PIPE"
 	else if (kind == clang_token_CARET()):
-		return "CARET"
+		return c"CARET"
 	else if (kind == clang_token_BANG()):
-		return "BANG"
+		return c"BANG"
 	else if (kind == clang_token_TILDE()):
-		return "TILDE"
+		return c"TILDE"
 	else if (kind == clang_token_ASSIGN()):
-		return "ASSIGN"
+		return c"ASSIGN"
 	else if (kind == clang_token_LT()):
-		return "LT"
+		return c"LT"
 	else if (kind == clang_token_GT()):
-		return "GT"
+		return c"GT"
 	else if (kind == clang_token_QUESTION()):
-		return "QUESTION"
+		return c"QUESTION"
 	else if (kind == clang_token_COLON()):
-		return "COLON"
+		return c"COLON"
 	else if (kind == clang_token_SEMI()):
-		return "SEMI"
+		return c"SEMI"
 	else if (kind == clang_token_COMMA()):
-		return "COMMA"
+		return c"COMMA"
 	else if (kind == clang_token_DOT()):
-		return "DOT"
+		return c"DOT"
 	else if (kind == clang_token_LPAREN()):
-		return "LPAREN"
+		return c"LPAREN"
 	else if (kind == clang_token_RPAREN()):
-		return "RPAREN"
+		return c"RPAREN"
 	else if (kind == clang_token_LBRACK()):
-		return "LBRACK"
+		return c"LBRACK"
 	else if (kind == clang_token_RBRACK()):
-		return "RBRACK"
+		return c"RBRACK"
 	else if (kind == clang_token_LBRACE()):
-		return "LBRACE"
+		return c"LBRACE"
 	else if (kind == clang_token_RBRACE()):
-		return "RBRACE"
-	return "<invalid>"
+		return c"RBRACE"
+	return c"<invalid>"
 
 pg_ast_node* clang_parse_translation_unit(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_external_declaration(pg_token_stream* stream, pg_diagnostics* diagnostics);
@@ -905,560 +905,560 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 				best_kind = clang_token_IDENT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "typedef")):
+			if (starts_with(input + index, c"typedef")):
 				length = 7
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_TYPEDEF()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "extern")):
+			if (starts_with(input + index, c"extern")):
 				length = 6
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_EXTERN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "static")):
+			if (starts_with(input + index, c"static")):
 				length = 6
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_STATIC()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "auto")):
+			if (starts_with(input + index, c"auto")):
 				length = 4
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_AUTO()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "register")):
+			if (starts_with(input + index, c"register")):
 				length = 8
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_REGISTER()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "inline")):
+			if (starts_with(input + index, c"inline")):
 				length = 6
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_INLINE()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "const")):
+			if (starts_with(input + index, c"const")):
 				length = 5
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_CONST()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "restrict")):
+			if (starts_with(input + index, c"restrict")):
 				length = 8
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_RESTRICT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "volatile")):
+			if (starts_with(input + index, c"volatile")):
 				length = 8
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_VOLATILE()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "void")):
+			if (starts_with(input + index, c"void")):
 				length = 4
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_VOID()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "char")):
+			if (starts_with(input + index, c"char")):
 				length = 4
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_CHAR()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "short")):
+			if (starts_with(input + index, c"short")):
 				length = 5
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_SHORT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "int")):
+			if (starts_with(input + index, c"int")):
 				length = 3
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_INT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "long")):
+			if (starts_with(input + index, c"long")):
 				length = 4
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_LONG()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "float")):
+			if (starts_with(input + index, c"float")):
 				length = 5
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_FLOAT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "double")):
+			if (starts_with(input + index, c"double")):
 				length = 6
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_DOUBLE()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "signed")):
+			if (starts_with(input + index, c"signed")):
 				length = 6
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_SIGNED()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "unsigned")):
+			if (starts_with(input + index, c"unsigned")):
 				length = 8
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_UNSIGNED()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "struct")):
+			if (starts_with(input + index, c"struct")):
 				length = 6
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_STRUCT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "union")):
+			if (starts_with(input + index, c"union")):
 				length = 5
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_UNION()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "enum")):
+			if (starts_with(input + index, c"enum")):
 				length = 4
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_ENUM()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "sizeof")):
+			if (starts_with(input + index, c"sizeof")):
 				length = 6
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_SIZEOF()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "return")):
+			if (starts_with(input + index, c"return")):
 				length = 6
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_RETURN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "if")):
+			if (starts_with(input + index, c"if")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_IF()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "else")):
+			if (starts_with(input + index, c"else")):
 				length = 4
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_ELSE()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "while")):
+			if (starts_with(input + index, c"while")):
 				length = 5
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_WHILE()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "do")):
+			if (starts_with(input + index, c"do")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_DO()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "for")):
+			if (starts_with(input + index, c"for")):
 				length = 3
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_FOR()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "switch")):
+			if (starts_with(input + index, c"switch")):
 				length = 6
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_SWITCH()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "case")):
+			if (starts_with(input + index, c"case")):
 				length = 4
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_CASE()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "default")):
+			if (starts_with(input + index, c"default")):
 				length = 7
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_DEFAULT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "break")):
+			if (starts_with(input + index, c"break")):
 				length = 5
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_BREAK()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "continue")):
+			if (starts_with(input + index, c"continue")):
 				length = 8
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_CONTINUE()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "goto")):
+			if (starts_with(input + index, c"goto")):
 				length = 4
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_KW_GOTO()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "...")):
+			if (starts_with(input + index, c"...")):
 				length = 3
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_ELLIPSIS()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "<<=")):
+			if (starts_with(input + index, c"<<=")):
 				length = 3
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_SHIFT_LEFT_ASSIGN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, ">>=")):
+			if (starts_with(input + index, c">>=")):
 				length = 3
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_SHIFT_RIGHT_ASSIGN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "++")):
+			if (starts_with(input + index, c"++")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_PLUS_PLUS()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "--")):
+			if (starts_with(input + index, c"--")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_MINUS_MINUS()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "->")):
+			if (starts_with(input + index, c"->")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_ARROW()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "<<")):
+			if (starts_with(input + index, c"<<")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_SHIFT_LEFT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, ">>")):
+			if (starts_with(input + index, c">>")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_SHIFT_RIGHT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "<=")):
+			if (starts_with(input + index, c"<=")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_LT_EQ()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, ">=")):
+			if (starts_with(input + index, c">=")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_GT_EQ()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "==")):
+			if (starts_with(input + index, c"==")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_EQ_EQ()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "!=")):
+			if (starts_with(input + index, c"!=")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_BANG_EQ()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "&&")):
+			if (starts_with(input + index, c"&&")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_AND_AND()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "||")):
+			if (starts_with(input + index, c"||")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_OR_OR()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "+=")):
+			if (starts_with(input + index, c"+=")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_PLUS_ASSIGN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "-=")):
+			if (starts_with(input + index, c"-=")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_MINUS_ASSIGN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "*=")):
+			if (starts_with(input + index, c"*=")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_STAR_ASSIGN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "/=")):
+			if (starts_with(input + index, c"/=")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_SLASH_ASSIGN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "%=")):
+			if (starts_with(input + index, c"%=")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_PERCENT_ASSIGN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "&=")):
+			if (starts_with(input + index, c"&=")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_AMP_ASSIGN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "^=")):
+			if (starts_with(input + index, c"^=")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_CARET_ASSIGN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "|=")):
+			if (starts_with(input + index, c"|=")):
 				length = 2
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_PIPE_ASSIGN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "+")):
+			if (starts_with(input + index, c"+")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_PLUS()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "-")):
+			if (starts_with(input + index, c"-")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_MINUS()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "*")):
+			if (starts_with(input + index, c"*")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_STAR()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "/")):
+			if (starts_with(input + index, c"/")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_SLASH()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "%")):
+			if (starts_with(input + index, c"%")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_PERCENT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "&")):
+			if (starts_with(input + index, c"&")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_AMP()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "|")):
+			if (starts_with(input + index, c"|")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_PIPE()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "^")):
+			if (starts_with(input + index, c"^")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_CARET()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "!")):
+			if (starts_with(input + index, c"!")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_BANG()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "~")):
+			if (starts_with(input + index, c"~")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_TILDE()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "=")):
+			if (starts_with(input + index, c"=")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_ASSIGN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "<")):
+			if (starts_with(input + index, c"<")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_LT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, ">")):
+			if (starts_with(input + index, c">")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_GT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "?")):
+			if (starts_with(input + index, c"?")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_QUESTION()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, ":")):
+			if (starts_with(input + index, c":")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_COLON()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, ";")):
+			if (starts_with(input + index, c";")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_SEMI()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, ",")):
+			if (starts_with(input + index, c",")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_COMMA()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, ".")):
+			if (starts_with(input + index, c".")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_DOT()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "(")):
+			if (starts_with(input + index, c"(")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_LPAREN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, ")")):
+			if (starts_with(input + index, c")")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_RPAREN()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "[")):
+			if (starts_with(input + index, c"[")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_LBRACK()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "]")):
+			if (starts_with(input + index, c"]")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_RBRACK()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "{")):
+			if (starts_with(input + index, c"{")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
 				best_kind = clang_token_LBRACE()
 				best_skip = 0
 			length = 0
-			if (starts_with(input + index, "}")):
+			if (starts_with(input + index, c"}")):
 				length = 1
 			if ((length > 0) & (length >= best_length)):
 				best_length = length
@@ -1470,7 +1470,7 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 				clang_advance_position(input, start, best_length, &line, &column)
 				index = index + best_length
 			else:
-				pg_diagnostics_add(diagnostics, filename, line, column, "invalid character", "known token", pg_substr(input, index, 1))
+				pg_diagnostics_add(diagnostics, filename, line, column, c"invalid character", c"known token", pg_substr(input, index, 1))
 				index = index + 1
 				column = column + 1
 	pg_token_stream_add(stream, pg_token_eof(filename, line, column))
@@ -1487,7 +1487,7 @@ pg_ast_node* clang_parse_translation_unit(pg_token_stream* stream, pg_diagnostic
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_translation_unit(), 0, "translation_unit")
+	node = pg_ast_new(clang_ast_translation_unit(), 0, c"translation_unit")
 	failed = 0
 	if (failed == 0):
 		int repeat_count_0_0 = 0
@@ -1500,7 +1500,7 @@ pg_ast_node* clang_parse_translation_unit(pg_token_stream* stream, pg_diagnostic
 			pg_ast_add(node, child_0_0)
 			repeat_count_0_0 = repeat_count_0_0 + 1
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_EOF(), "EOF")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_EOF(), c"EOF")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -1514,7 +1514,7 @@ pg_ast_node* clang_parse_external_declaration(pg_token_stream* stream, pg_diagno
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_external_declaration(), 0, "external_declaration")
+	node = pg_ast_new(clang_ast_external_declaration(), 0, c"external_declaration")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_declaration(stream, diagnostics)
@@ -1525,7 +1525,7 @@ pg_ast_node* clang_parse_external_declaration(pg_token_stream* stream, pg_diagno
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_external_declaration(), 0, "external_declaration")
+	node = pg_ast_new(clang_ast_external_declaration(), 0, c"external_declaration")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_function_definition(stream, diagnostics)
@@ -1536,7 +1536,7 @@ pg_ast_node* clang_parse_external_declaration(pg_token_stream* stream, pg_diagno
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_external_declaration(), 0, "external_declaration")
+	node = pg_ast_new(clang_ast_external_declaration(), 0, c"external_declaration")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_2_0 = clang_parse_declaration_annotation(stream, diagnostics)
@@ -1547,10 +1547,10 @@ pg_ast_node* clang_parse_external_declaration(pg_token_stream* stream, pg_diagno
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_external_declaration(), 0, "external_declaration")
+	node = pg_ast_new(clang_ast_external_declaration(), 0, c"external_declaration")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_3_0 == 0):
 			failed = 1
 		else:
@@ -1564,7 +1564,7 @@ pg_ast_node* clang_parse_declaration(pg_token_stream* stream, pg_diagnostics* di
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_declaration(), 0, "declaration")
+	node = pg_ast_new(clang_ast_declaration(), 0, c"declaration")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_typedef_name_declaration_specifiers(stream, diagnostics)
@@ -1589,7 +1589,7 @@ pg_ast_node* clang_parse_declaration(pg_token_stream* stream, pg_diagnostics* di
 			pg_ast_add(node, child_0_2)
 			repeat_count_0_2 = repeat_count_0_2 + 1
 	if (failed == 0):
-		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_0_3 == 0):
 			failed = 1
 		else:
@@ -1597,7 +1597,7 @@ pg_ast_node* clang_parse_declaration(pg_token_stream* stream, pg_diagnostics* di
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_declaration(), 0, "declaration")
+	node = pg_ast_new(clang_ast_declaration(), 0, c"declaration")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_declaration_specifiers(stream, diagnostics)
@@ -1623,7 +1623,7 @@ pg_ast_node* clang_parse_declaration(pg_token_stream* stream, pg_diagnostics* di
 			pg_ast_add(node, child_1_2)
 			repeat_count_1_2 = repeat_count_1_2 + 1
 	if (failed == 0):
-		pg_ast_node* child_1_3 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_1_3 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_1_3 == 0):
 			failed = 1
 		else:
@@ -1637,7 +1637,7 @@ pg_ast_node* clang_parse_declaration_specifiers(pg_token_stream* stream, pg_diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_declaration_specifiers(), 0, "declaration_specifiers")
+	node = pg_ast_new(clang_ast_declaration_specifiers(), 0, c"declaration_specifiers")
 	failed = 0
 	if (failed == 0):
 		int repeat_count_0_0 = 0
@@ -1660,7 +1660,7 @@ pg_ast_node* clang_parse_declaration_specifier(pg_token_stream* stream, pg_diagn
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_declaration_specifier(), 0, "declaration_specifier")
+	node = pg_ast_new(clang_ast_declaration_specifier(), 0, c"declaration_specifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_storage_class_specifier(stream, diagnostics)
@@ -1671,7 +1671,7 @@ pg_ast_node* clang_parse_declaration_specifier(pg_token_stream* stream, pg_diagn
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_declaration_specifier(), 0, "declaration_specifier")
+	node = pg_ast_new(clang_ast_declaration_specifier(), 0, c"declaration_specifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_type_specifier(stream, diagnostics)
@@ -1682,7 +1682,7 @@ pg_ast_node* clang_parse_declaration_specifier(pg_token_stream* stream, pg_diagn
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_declaration_specifier(), 0, "declaration_specifier")
+	node = pg_ast_new(clang_ast_declaration_specifier(), 0, c"declaration_specifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_2_0 = clang_parse_type_qualifier(stream, diagnostics)
@@ -1693,7 +1693,7 @@ pg_ast_node* clang_parse_declaration_specifier(pg_token_stream* stream, pg_diagn
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_declaration_specifier(), 0, "declaration_specifier")
+	node = pg_ast_new(clang_ast_declaration_specifier(), 0, c"declaration_specifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_3_0 = clang_parse_function_specifier(stream, diagnostics)
@@ -1710,7 +1710,7 @@ pg_ast_node* clang_parse_typedef_name_declaration_specifiers(pg_token_stream* st
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_typedef_name_declaration_specifiers(), 0, "typedef_name_declaration_specifiers")
+	node = pg_ast_new(clang_ast_typedef_name_declaration_specifiers(), 0, c"typedef_name_declaration_specifiers")
 	failed = 0
 	if (failed == 0):
 		int repeat_count_0_0 = 0
@@ -1747,7 +1747,7 @@ pg_ast_node* clang_parse_typedef_name_declaration_prefix(pg_token_stream* stream
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_typedef_name_declaration_prefix(), 0, "typedef_name_declaration_prefix")
+	node = pg_ast_new(clang_ast_typedef_name_declaration_prefix(), 0, c"typedef_name_declaration_prefix")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_storage_class_specifier(stream, diagnostics)
@@ -1758,7 +1758,7 @@ pg_ast_node* clang_parse_typedef_name_declaration_prefix(pg_token_stream* stream
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_typedef_name_declaration_prefix(), 0, "typedef_name_declaration_prefix")
+	node = pg_ast_new(clang_ast_typedef_name_declaration_prefix(), 0, c"typedef_name_declaration_prefix")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_type_qualifier(stream, diagnostics)
@@ -1769,7 +1769,7 @@ pg_ast_node* clang_parse_typedef_name_declaration_prefix(pg_token_stream* stream
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_typedef_name_declaration_prefix(), 0, "typedef_name_declaration_prefix")
+	node = pg_ast_new(clang_ast_typedef_name_declaration_prefix(), 0, c"typedef_name_declaration_prefix")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_2_0 = clang_parse_function_specifier(stream, diagnostics)
@@ -1786,7 +1786,7 @@ pg_ast_node* clang_parse_typedef_name_declaration_suffix(pg_token_stream* stream
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_typedef_name_declaration_suffix(), 0, "typedef_name_declaration_suffix")
+	node = pg_ast_new(clang_ast_typedef_name_declaration_suffix(), 0, c"typedef_name_declaration_suffix")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_type_qualifier(stream, diagnostics)
@@ -1797,7 +1797,7 @@ pg_ast_node* clang_parse_typedef_name_declaration_suffix(pg_token_stream* stream
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_typedef_name_declaration_suffix(), 0, "typedef_name_declaration_suffix")
+	node = pg_ast_new(clang_ast_typedef_name_declaration_suffix(), 0, c"typedef_name_declaration_suffix")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_function_specifier(stream, diagnostics)
@@ -1814,10 +1814,10 @@ pg_ast_node* clang_parse_storage_class_specifier(pg_token_stream* stream, pg_dia
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_storage_class_specifier(), 0, "storage_class_specifier")
+	node = pg_ast_new(clang_ast_storage_class_specifier(), 0, c"storage_class_specifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_TYPEDEF(), "KW_TYPEDEF")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_TYPEDEF(), c"KW_TYPEDEF")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -1825,10 +1825,10 @@ pg_ast_node* clang_parse_storage_class_specifier(pg_token_stream* stream, pg_dia
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_storage_class_specifier(), 0, "storage_class_specifier")
+	node = pg_ast_new(clang_ast_storage_class_specifier(), 0, c"storage_class_specifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_EXTERN(), "KW_EXTERN")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_EXTERN(), c"KW_EXTERN")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -1836,10 +1836,10 @@ pg_ast_node* clang_parse_storage_class_specifier(pg_token_stream* stream, pg_dia
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_storage_class_specifier(), 0, "storage_class_specifier")
+	node = pg_ast_new(clang_ast_storage_class_specifier(), 0, c"storage_class_specifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_KW_STATIC(), "KW_STATIC")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_KW_STATIC(), c"KW_STATIC")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
@@ -1847,10 +1847,10 @@ pg_ast_node* clang_parse_storage_class_specifier(pg_token_stream* stream, pg_dia
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_storage_class_specifier(), 0, "storage_class_specifier")
+	node = pg_ast_new(clang_ast_storage_class_specifier(), 0, c"storage_class_specifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_KW_AUTO(), "KW_AUTO")
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_KW_AUTO(), c"KW_AUTO")
 		if (child_3_0 == 0):
 			failed = 1
 		else:
@@ -1858,10 +1858,10 @@ pg_ast_node* clang_parse_storage_class_specifier(pg_token_stream* stream, pg_dia
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_storage_class_specifier(), 0, "storage_class_specifier")
+	node = pg_ast_new(clang_ast_storage_class_specifier(), 0, c"storage_class_specifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_KW_REGISTER(), "KW_REGISTER")
+		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_KW_REGISTER(), c"KW_REGISTER")
 		if (child_4_0 == 0):
 			failed = 1
 		else:
@@ -1875,10 +1875,10 @@ pg_ast_node* clang_parse_function_specifier(pg_token_stream* stream, pg_diagnost
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_function_specifier(), 0, "function_specifier")
+	node = pg_ast_new(clang_ast_function_specifier(), 0, c"function_specifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_INLINE(), "KW_INLINE")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_INLINE(), c"KW_INLINE")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -1892,10 +1892,10 @@ pg_ast_node* clang_parse_type_qualifier(pg_token_stream* stream, pg_diagnostics*
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_type_qualifier(), 0, "type_qualifier")
+	node = pg_ast_new(clang_ast_type_qualifier(), 0, c"type_qualifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_CONST(), "KW_CONST")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_CONST(), c"KW_CONST")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -1903,10 +1903,10 @@ pg_ast_node* clang_parse_type_qualifier(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_type_qualifier(), 0, "type_qualifier")
+	node = pg_ast_new(clang_ast_type_qualifier(), 0, c"type_qualifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_RESTRICT(), "KW_RESTRICT")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_RESTRICT(), c"KW_RESTRICT")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -1914,10 +1914,10 @@ pg_ast_node* clang_parse_type_qualifier(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_type_qualifier(), 0, "type_qualifier")
+	node = pg_ast_new(clang_ast_type_qualifier(), 0, c"type_qualifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_KW_VOLATILE(), "KW_VOLATILE")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_KW_VOLATILE(), c"KW_VOLATILE")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
@@ -1931,7 +1931,7 @@ pg_ast_node* clang_parse_type_specifier(pg_token_stream* stream, pg_diagnostics*
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_type_specifier(), 0, "type_specifier")
+	node = pg_ast_new(clang_ast_type_specifier(), 0, c"type_specifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_primitive_type(stream, diagnostics)
@@ -1942,7 +1942,7 @@ pg_ast_node* clang_parse_type_specifier(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_type_specifier(), 0, "type_specifier")
+	node = pg_ast_new(clang_ast_type_specifier(), 0, c"type_specifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_struct_or_union_specifier(stream, diagnostics)
@@ -1953,7 +1953,7 @@ pg_ast_node* clang_parse_type_specifier(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_type_specifier(), 0, "type_specifier")
+	node = pg_ast_new(clang_ast_type_specifier(), 0, c"type_specifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_2_0 = clang_parse_enum_specifier(stream, diagnostics)
@@ -1970,10 +1970,10 @@ pg_ast_node* clang_parse_typedef_name_specifier(pg_token_stream* stream, pg_diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_typedef_name_specifier(), 0, "typedef_name_specifier")
+	node = pg_ast_new(clang_ast_typedef_name_specifier(), 0, c"typedef_name_specifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -1987,10 +1987,10 @@ pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics*
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_primitive_type(), 0, "primitive_type")
+	node = pg_ast_new(clang_ast_primitive_type(), 0, c"primitive_type")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_VOID(), "KW_VOID")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_VOID(), c"KW_VOID")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -1998,10 +1998,10 @@ pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primitive_type(), 0, "primitive_type")
+	node = pg_ast_new(clang_ast_primitive_type(), 0, c"primitive_type")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_CHAR(), "KW_CHAR")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_CHAR(), c"KW_CHAR")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -2009,10 +2009,10 @@ pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primitive_type(), 0, "primitive_type")
+	node = pg_ast_new(clang_ast_primitive_type(), 0, c"primitive_type")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_KW_SHORT(), "KW_SHORT")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_KW_SHORT(), c"KW_SHORT")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
@@ -2020,10 +2020,10 @@ pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primitive_type(), 0, "primitive_type")
+	node = pg_ast_new(clang_ast_primitive_type(), 0, c"primitive_type")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_KW_INT(), "KW_INT")
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_KW_INT(), c"KW_INT")
 		if (child_3_0 == 0):
 			failed = 1
 		else:
@@ -2031,10 +2031,10 @@ pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primitive_type(), 0, "primitive_type")
+	node = pg_ast_new(clang_ast_primitive_type(), 0, c"primitive_type")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_KW_LONG(), "KW_LONG")
+		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_KW_LONG(), c"KW_LONG")
 		if (child_4_0 == 0):
 			failed = 1
 		else:
@@ -2042,10 +2042,10 @@ pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primitive_type(), 0, "primitive_type")
+	node = pg_ast_new(clang_ast_primitive_type(), 0, c"primitive_type")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_KW_FLOAT(), "KW_FLOAT")
+		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_KW_FLOAT(), c"KW_FLOAT")
 		if (child_5_0 == 0):
 			failed = 1
 		else:
@@ -2053,10 +2053,10 @@ pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primitive_type(), 0, "primitive_type")
+	node = pg_ast_new(clang_ast_primitive_type(), 0, c"primitive_type")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_6_0 = clang_match_token(stream, clang_token_KW_DOUBLE(), "KW_DOUBLE")
+		pg_ast_node* child_6_0 = clang_match_token(stream, clang_token_KW_DOUBLE(), c"KW_DOUBLE")
 		if (child_6_0 == 0):
 			failed = 1
 		else:
@@ -2064,10 +2064,10 @@ pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primitive_type(), 0, "primitive_type")
+	node = pg_ast_new(clang_ast_primitive_type(), 0, c"primitive_type")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_7_0 = clang_match_token(stream, clang_token_KW_SIGNED(), "KW_SIGNED")
+		pg_ast_node* child_7_0 = clang_match_token(stream, clang_token_KW_SIGNED(), c"KW_SIGNED")
 		if (child_7_0 == 0):
 			failed = 1
 		else:
@@ -2075,10 +2075,10 @@ pg_ast_node* clang_parse_primitive_type(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primitive_type(), 0, "primitive_type")
+	node = pg_ast_new(clang_ast_primitive_type(), 0, c"primitive_type")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_8_0 = clang_match_token(stream, clang_token_KW_UNSIGNED(), "KW_UNSIGNED")
+		pg_ast_node* child_8_0 = clang_match_token(stream, clang_token_KW_UNSIGNED(), c"KW_UNSIGNED")
 		if (child_8_0 == 0):
 			failed = 1
 		else:
@@ -2092,10 +2092,10 @@ pg_ast_node* clang_parse_declaration_annotation(pg_token_stream* stream, pg_diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_declaration_annotation(), 0, "declaration_annotation")
+	node = pg_ast_new(clang_ast_declaration_annotation(), 0, c"declaration_annotation")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2116,10 +2116,10 @@ pg_ast_node* clang_parse_declaration_annotation_args(pg_token_stream* stream, pg
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_declaration_annotation_args(), 0, "declaration_annotation_args")
+	node = pg_ast_new(clang_ast_declaration_annotation_args(), 0, c"declaration_annotation_args")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2135,7 +2135,7 @@ pg_ast_node* clang_parse_declaration_annotation_args(pg_token_stream* stream, pg
 			pg_ast_add(node, child_0_1)
 			repeat_count_0_1 = repeat_count_0_1 + 1
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -2149,7 +2149,7 @@ pg_ast_node* clang_parse_declaration_annotation_item(pg_token_stream* stream, pg
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, c"declaration_annotation_item")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_declaration_annotation_args(stream, diagnostics)
@@ -2160,10 +2160,10 @@ pg_ast_node* clang_parse_declaration_annotation_item(pg_token_stream* stream, pg
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, c"declaration_annotation_item")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -2171,10 +2171,10 @@ pg_ast_node* clang_parse_declaration_annotation_item(pg_token_stream* stream, pg
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, c"declaration_annotation_item")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_NUMBER(), "NUMBER")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_NUMBER(), c"NUMBER")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
@@ -2182,10 +2182,10 @@ pg_ast_node* clang_parse_declaration_annotation_item(pg_token_stream* stream, pg
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, c"declaration_annotation_item")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_STRING(), "STRING")
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_STRING(), c"STRING")
 		if (child_3_0 == 0):
 			failed = 1
 		else:
@@ -2193,10 +2193,10 @@ pg_ast_node* clang_parse_declaration_annotation_item(pg_token_stream* stream, pg
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, c"declaration_annotation_item")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_CHAR_LITERAL(), "CHAR_LITERAL")
+		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_CHAR_LITERAL(), c"CHAR_LITERAL")
 		if (child_4_0 == 0):
 			failed = 1
 		else:
@@ -2204,10 +2204,10 @@ pg_ast_node* clang_parse_declaration_annotation_item(pg_token_stream* stream, pg
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, "declaration_annotation_item")
+	node = pg_ast_new(clang_ast_declaration_annotation_item(), 0, c"declaration_annotation_item")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_5_0 == 0):
 			failed = 1
 		else:
@@ -2221,7 +2221,7 @@ pg_ast_node* clang_parse_init_declarator_list(pg_token_stream* stream, pg_diagno
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_init_declarator_list(), 0, "init_declarator_list")
+	node = pg_ast_new(clang_ast_init_declarator_list(), 0, c"init_declarator_list")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_init_declarator(stream, diagnostics)
@@ -2248,10 +2248,10 @@ pg_ast_node* clang_parse_init_declarator_tail(pg_token_stream* stream, pg_diagno
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_init_declarator_tail(), 0, "init_declarator_tail")
+	node = pg_ast_new(clang_ast_init_declarator_tail(), 0, c"init_declarator_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2271,7 +2271,7 @@ pg_ast_node* clang_parse_init_declarator(pg_token_stream* stream, pg_diagnostics
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_init_declarator(), 0, "init_declarator")
+	node = pg_ast_new(clang_ast_init_declarator(), 0, c"init_declarator")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_declarator(stream, diagnostics)
@@ -2295,10 +2295,10 @@ pg_ast_node* clang_parse_initializer_part(pg_token_stream* stream, pg_diagnostic
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_initializer_part(), 0, "initializer_part")
+	node = pg_ast_new(clang_ast_initializer_part(), 0, c"initializer_part")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_ASSIGN(), "ASSIGN")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_ASSIGN(), c"ASSIGN")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2318,7 +2318,7 @@ pg_ast_node* clang_parse_initializer(pg_token_stream* stream, pg_diagnostics* di
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_initializer(), 0, "initializer")
+	node = pg_ast_new(clang_ast_initializer(), 0, c"initializer")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_assignment_expression(stream, diagnostics)
@@ -2329,10 +2329,10 @@ pg_ast_node* clang_parse_initializer(pg_token_stream* stream, pg_diagnostics* di
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_initializer(), 0, "initializer")
+	node = pg_ast_new(clang_ast_initializer(), 0, c"initializer")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_LBRACE(), "LBRACE")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_LBRACE(), c"LBRACE")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -2352,7 +2352,7 @@ pg_ast_node* clang_parse_initializer(pg_token_stream* stream, pg_diagnostics* di
 		else:
 			pg_ast_add(node, child_1_2)
 	if (failed == 0):
-		pg_ast_node* child_1_3 = clang_match_token(stream, clang_token_RBRACE(), "RBRACE")
+		pg_ast_node* child_1_3 = clang_match_token(stream, clang_token_RBRACE(), c"RBRACE")
 		if (child_1_3 == 0):
 			failed = 1
 		else:
@@ -2366,7 +2366,7 @@ pg_ast_node* clang_parse_initializer_list(pg_token_stream* stream, pg_diagnostic
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_initializer_list(), 0, "initializer_list")
+	node = pg_ast_new(clang_ast_initializer_list(), 0, c"initializer_list")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_initializer_item(stream, diagnostics)
@@ -2393,10 +2393,10 @@ pg_ast_node* clang_parse_initializer_tail(pg_token_stream* stream, pg_diagnostic
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_initializer_tail(), 0, "initializer_tail")
+	node = pg_ast_new(clang_ast_initializer_tail(), 0, c"initializer_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2416,7 +2416,7 @@ pg_ast_node* clang_parse_initializer_item(pg_token_stream* stream, pg_diagnostic
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_initializer_item(), 0, "initializer_item")
+	node = pg_ast_new(clang_ast_initializer_item(), 0, c"initializer_item")
 	failed = 0
 	if (failed == 0):
 		int optional_mark_0_0 = pg_token_stream_mark(stream)
@@ -2440,10 +2440,10 @@ pg_ast_node* clang_parse_initializer_comma(pg_token_stream* stream, pg_diagnosti
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_initializer_comma(), 0, "initializer_comma")
+	node = pg_ast_new(clang_ast_initializer_comma(), 0, c"initializer_comma")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2457,7 +2457,7 @@ pg_ast_node* clang_parse_designation(pg_token_stream* stream, pg_diagnostics* di
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_designation(), 0, "designation")
+	node = pg_ast_new(clang_ast_designation(), 0, c"designation")
 	failed = 0
 	if (failed == 0):
 		int repeat_count_0_0 = 0
@@ -2472,7 +2472,7 @@ pg_ast_node* clang_parse_designation(pg_token_stream* stream, pg_diagnostics* di
 		if (repeat_count_0_0 == 0):
 			failed = 1
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_ASSIGN(), "ASSIGN")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_ASSIGN(), c"ASSIGN")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -2486,10 +2486,10 @@ pg_ast_node* clang_parse_designator(pg_token_stream* stream, pg_diagnostics* dia
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_designator(), 0, "designator")
+	node = pg_ast_new(clang_ast_designator(), 0, c"designator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACK(), "LBRACK")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACK(), c"LBRACK")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2501,7 +2501,7 @@ pg_ast_node* clang_parse_designator(pg_token_stream* stream, pg_diagnostics* dia
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACK(), "RBRACK")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACK(), c"RBRACK")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -2509,16 +2509,16 @@ pg_ast_node* clang_parse_designator(pg_token_stream* stream, pg_diagnostics* dia
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_designator(), 0, "designator")
+	node = pg_ast_new(clang_ast_designator(), 0, c"designator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_DOT(), "DOT")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_DOT(), c"DOT")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_1_0)
 	if (failed == 0):
-		pg_ast_node* child_1_1 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_1_1 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_1_1 == 0):
 			failed = 1
 		else:
@@ -2532,7 +2532,7 @@ pg_ast_node* clang_parse_struct_or_union_specifier(pg_token_stream* stream, pg_d
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_struct_or_union_specifier(), 0, "struct_or_union_specifier")
+	node = pg_ast_new(clang_ast_struct_or_union_specifier(), 0, c"struct_or_union_specifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_struct_or_union(stream, diagnostics)
@@ -2541,7 +2541,7 @@ pg_ast_node* clang_parse_struct_or_union_specifier(pg_token_stream* stream, pg_d
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -2555,7 +2555,7 @@ pg_ast_node* clang_parse_struct_or_union_specifier(pg_token_stream* stream, pg_d
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_struct_or_union_specifier(), 0, "struct_or_union_specifier")
+	node = pg_ast_new(clang_ast_struct_or_union_specifier(), 0, c"struct_or_union_specifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_struct_or_union(stream, diagnostics)
@@ -2572,7 +2572,7 @@ pg_ast_node* clang_parse_struct_or_union_specifier(pg_token_stream* stream, pg_d
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_struct_or_union_specifier(), 0, "struct_or_union_specifier")
+	node = pg_ast_new(clang_ast_struct_or_union_specifier(), 0, c"struct_or_union_specifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_2_0 = clang_parse_struct_or_union(stream, diagnostics)
@@ -2581,7 +2581,7 @@ pg_ast_node* clang_parse_struct_or_union_specifier(pg_token_stream* stream, pg_d
 		else:
 			pg_ast_add(node, child_2_0)
 	if (failed == 0):
-		pg_ast_node* child_2_1 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_2_1 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_2_1 == 0):
 			failed = 1
 		else:
@@ -2595,10 +2595,10 @@ pg_ast_node* clang_parse_struct_or_union(pg_token_stream* stream, pg_diagnostics
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_struct_or_union(), 0, "struct_or_union")
+	node = pg_ast_new(clang_ast_struct_or_union(), 0, c"struct_or_union")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_STRUCT(), "KW_STRUCT")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_STRUCT(), c"KW_STRUCT")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2606,10 +2606,10 @@ pg_ast_node* clang_parse_struct_or_union(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_struct_or_union(), 0, "struct_or_union")
+	node = pg_ast_new(clang_ast_struct_or_union(), 0, c"struct_or_union")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_UNION(), "KW_UNION")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_UNION(), c"KW_UNION")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -2623,10 +2623,10 @@ pg_ast_node* clang_parse_struct_body(pg_token_stream* stream, pg_diagnostics* di
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_struct_body(), 0, "struct_body")
+	node = pg_ast_new(clang_ast_struct_body(), 0, c"struct_body")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACE(), "LBRACE")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACE(), c"LBRACE")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2642,7 +2642,7 @@ pg_ast_node* clang_parse_struct_body(pg_token_stream* stream, pg_diagnostics* di
 			pg_ast_add(node, child_0_1)
 			repeat_count_0_1 = repeat_count_0_1 + 1
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACE(), "RBRACE")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACE(), c"RBRACE")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -2656,7 +2656,7 @@ pg_ast_node* clang_parse_struct_declaration(pg_token_stream* stream, pg_diagnost
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_struct_declaration(), 0, "struct_declaration")
+	node = pg_ast_new(clang_ast_struct_declaration(), 0, c"struct_declaration")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_typedef_name_specifier_qualifier_list(stream, diagnostics)
@@ -2672,7 +2672,7 @@ pg_ast_node* clang_parse_struct_declaration(pg_token_stream* stream, pg_diagnost
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -2680,7 +2680,7 @@ pg_ast_node* clang_parse_struct_declaration(pg_token_stream* stream, pg_diagnost
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_struct_declaration(), 0, "struct_declaration")
+	node = pg_ast_new(clang_ast_struct_declaration(), 0, c"struct_declaration")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_specifier_qualifier_list(stream, diagnostics)
@@ -2696,7 +2696,7 @@ pg_ast_node* clang_parse_struct_declaration(pg_token_stream* stream, pg_diagnost
 		else:
 			pg_ast_add(node, child_1_1)
 	if (failed == 0):
-		pg_ast_node* child_1_2 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_1_2 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_1_2 == 0):
 			failed = 1
 		else:
@@ -2710,7 +2710,7 @@ pg_ast_node* clang_parse_specifier_qualifier_list(pg_token_stream* stream, pg_di
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_specifier_qualifier_list(), 0, "specifier_qualifier_list")
+	node = pg_ast_new(clang_ast_specifier_qualifier_list(), 0, c"specifier_qualifier_list")
 	failed = 0
 	if (failed == 0):
 		int repeat_count_0_0 = 0
@@ -2733,7 +2733,7 @@ pg_ast_node* clang_parse_specifier_qualifier(pg_token_stream* stream, pg_diagnos
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_specifier_qualifier(), 0, "specifier_qualifier")
+	node = pg_ast_new(clang_ast_specifier_qualifier(), 0, c"specifier_qualifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_type_specifier(stream, diagnostics)
@@ -2744,7 +2744,7 @@ pg_ast_node* clang_parse_specifier_qualifier(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_specifier_qualifier(), 0, "specifier_qualifier")
+	node = pg_ast_new(clang_ast_specifier_qualifier(), 0, c"specifier_qualifier")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_type_qualifier(stream, diagnostics)
@@ -2761,7 +2761,7 @@ pg_ast_node* clang_parse_typedef_name_specifier_qualifier_list(pg_token_stream* 
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_typedef_name_specifier_qualifier_list(), 0, "typedef_name_specifier_qualifier_list")
+	node = pg_ast_new(clang_ast_typedef_name_specifier_qualifier_list(), 0, c"typedef_name_specifier_qualifier_list")
 	failed = 0
 	if (failed == 0):
 		int repeat_count_0_0 = 0
@@ -2798,7 +2798,7 @@ pg_ast_node* clang_parse_struct_declarator_list(pg_token_stream* stream, pg_diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_struct_declarator_list(), 0, "struct_declarator_list")
+	node = pg_ast_new(clang_ast_struct_declarator_list(), 0, c"struct_declarator_list")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_struct_declarator(stream, diagnostics)
@@ -2825,10 +2825,10 @@ pg_ast_node* clang_parse_struct_declarator_tail(pg_token_stream* stream, pg_diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_struct_declarator_tail(), 0, "struct_declarator_tail")
+	node = pg_ast_new(clang_ast_struct_declarator_tail(), 0, c"struct_declarator_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2848,7 +2848,7 @@ pg_ast_node* clang_parse_struct_declarator(pg_token_stream* stream, pg_diagnosti
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_struct_declarator(), 0, "struct_declarator")
+	node = pg_ast_new(clang_ast_struct_declarator(), 0, c"struct_declarator")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_declarator(stream, diagnostics)
@@ -2866,7 +2866,7 @@ pg_ast_node* clang_parse_struct_declarator(pg_token_stream* stream, pg_diagnosti
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_struct_declarator(), 0, "struct_declarator")
+	node = pg_ast_new(clang_ast_struct_declarator(), 0, c"struct_declarator")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_bit_field(stream, diagnostics)
@@ -2883,10 +2883,10 @@ pg_ast_node* clang_parse_bit_field(pg_token_stream* stream, pg_diagnostics* diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_bit_field(), 0, "bit_field")
+	node = pg_ast_new(clang_ast_bit_field(), 0, c"bit_field")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COLON(), "COLON")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COLON(), c"COLON")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2906,16 +2906,16 @@ pg_ast_node* clang_parse_enum_specifier(pg_token_stream* stream, pg_diagnostics*
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_enum_specifier(), 0, "enum_specifier")
+	node = pg_ast_new(clang_ast_enum_specifier(), 0, c"enum_specifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_ENUM(), "KW_ENUM")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_ENUM(), c"KW_ENUM")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -2929,10 +2929,10 @@ pg_ast_node* clang_parse_enum_specifier(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_enum_specifier(), 0, "enum_specifier")
+	node = pg_ast_new(clang_ast_enum_specifier(), 0, c"enum_specifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_ENUM(), "KW_ENUM")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_ENUM(), c"KW_ENUM")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -2946,16 +2946,16 @@ pg_ast_node* clang_parse_enum_specifier(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_enum_specifier(), 0, "enum_specifier")
+	node = pg_ast_new(clang_ast_enum_specifier(), 0, c"enum_specifier")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_KW_ENUM(), "KW_ENUM")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_KW_ENUM(), c"KW_ENUM")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_2_0)
 	if (failed == 0):
-		pg_ast_node* child_2_1 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_2_1 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_2_1 == 0):
 			failed = 1
 		else:
@@ -2969,10 +2969,10 @@ pg_ast_node* clang_parse_enum_body(pg_token_stream* stream, pg_diagnostics* diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_enum_body(), 0, "enum_body")
+	node = pg_ast_new(clang_ast_enum_body(), 0, c"enum_body")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACE(), "LBRACE")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACE(), c"LBRACE")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -2992,7 +2992,7 @@ pg_ast_node* clang_parse_enum_body(pg_token_stream* stream, pg_diagnostics* diag
 		else:
 			pg_ast_add(node, child_0_2)
 	if (failed == 0):
-		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_RBRACE(), "RBRACE")
+		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_RBRACE(), c"RBRACE")
 		if (child_0_3 == 0):
 			failed = 1
 		else:
@@ -3006,7 +3006,7 @@ pg_ast_node* clang_parse_enumerator_list(pg_token_stream* stream, pg_diagnostics
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_enumerator_list(), 0, "enumerator_list")
+	node = pg_ast_new(clang_ast_enumerator_list(), 0, c"enumerator_list")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_enumerator(stream, diagnostics)
@@ -3033,10 +3033,10 @@ pg_ast_node* clang_parse_enumerator_tail(pg_token_stream* stream, pg_diagnostics
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_enumerator_tail(), 0, "enumerator_tail")
+	node = pg_ast_new(clang_ast_enumerator_tail(), 0, c"enumerator_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3056,10 +3056,10 @@ pg_ast_node* clang_parse_enum_comma(pg_token_stream* stream, pg_diagnostics* dia
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_enum_comma(), 0, "enum_comma")
+	node = pg_ast_new(clang_ast_enum_comma(), 0, c"enum_comma")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3073,10 +3073,10 @@ pg_ast_node* clang_parse_enumerator(pg_token_stream* stream, pg_diagnostics* dia
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_enumerator(), 0, "enumerator")
+	node = pg_ast_new(clang_ast_enumerator(), 0, c"enumerator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3097,10 +3097,10 @@ pg_ast_node* clang_parse_enum_value(pg_token_stream* stream, pg_diagnostics* dia
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_enum_value(), 0, "enum_value")
+	node = pg_ast_new(clang_ast_enum_value(), 0, c"enum_value")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_ASSIGN(), "ASSIGN")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_ASSIGN(), c"ASSIGN")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3120,7 +3120,7 @@ pg_ast_node* clang_parse_declarator(pg_token_stream* stream, pg_diagnostics* dia
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_declarator(), 0, "declarator")
+	node = pg_ast_new(clang_ast_declarator(), 0, c"declarator")
 	failed = 0
 	if (failed == 0):
 		int optional_mark_0_0 = pg_token_stream_mark(stream)
@@ -3144,10 +3144,10 @@ pg_ast_node* clang_parse_direct_declarator(pg_token_stream* stream, pg_diagnosti
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_direct_declarator(), 0, "direct_declarator")
+	node = pg_ast_new(clang_ast_direct_declarator(), 0, c"direct_declarator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3165,10 +3165,10 @@ pg_ast_node* clang_parse_direct_declarator(pg_token_stream* stream, pg_diagnosti
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_direct_declarator(), 0, "direct_declarator")
+	node = pg_ast_new(clang_ast_direct_declarator(), 0, c"direct_declarator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -3180,7 +3180,7 @@ pg_ast_node* clang_parse_direct_declarator(pg_token_stream* stream, pg_diagnosti
 		else:
 			pg_ast_add(node, child_1_1)
 	if (failed == 0):
-		pg_ast_node* child_1_2 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_1_2 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_1_2 == 0):
 			failed = 1
 		else:
@@ -3204,10 +3204,10 @@ pg_ast_node* clang_parse_direct_declarator_tail(pg_token_stream* stream, pg_diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_direct_declarator_tail(), 0, "direct_declarator_tail")
+	node = pg_ast_new(clang_ast_direct_declarator_tail(), 0, c"direct_declarator_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACK(), "LBRACK")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACK(), c"LBRACK")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3220,7 +3220,7 @@ pg_ast_node* clang_parse_direct_declarator_tail(pg_token_stream* stream, pg_diag
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACK(), "RBRACK")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACK(), c"RBRACK")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -3228,10 +3228,10 @@ pg_ast_node* clang_parse_direct_declarator_tail(pg_token_stream* stream, pg_diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_direct_declarator_tail(), 0, "direct_declarator_tail")
+	node = pg_ast_new(clang_ast_direct_declarator_tail(), 0, c"direct_declarator_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -3244,7 +3244,7 @@ pg_ast_node* clang_parse_direct_declarator_tail(pg_token_stream* stream, pg_diag
 		else:
 			pg_ast_add(node, child_1_1)
 	if (failed == 0):
-		pg_ast_node* child_1_2 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_1_2 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_1_2 == 0):
 			failed = 1
 		else:
@@ -3252,10 +3252,10 @@ pg_ast_node* clang_parse_direct_declarator_tail(pg_token_stream* stream, pg_diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_direct_declarator_tail(), 0, "direct_declarator_tail")
+	node = pg_ast_new(clang_ast_direct_declarator_tail(), 0, c"direct_declarator_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
@@ -3268,7 +3268,7 @@ pg_ast_node* clang_parse_direct_declarator_tail(pg_token_stream* stream, pg_diag
 		else:
 			pg_ast_add(node, child_2_1)
 	if (failed == 0):
-		pg_ast_node* child_2_2 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_2_2 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_2_2 == 0):
 			failed = 1
 		else:
@@ -3282,10 +3282,10 @@ pg_ast_node* clang_parse_pointer(pg_token_stream* stream, pg_diagnostics* diagno
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_pointer(), 0, "pointer")
+	node = pg_ast_new(clang_ast_pointer(), 0, c"pointer")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_STAR(), "STAR")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_STAR(), c"STAR")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3313,7 +3313,7 @@ pg_ast_node* clang_parse_type_qualifier_list(pg_token_stream* stream, pg_diagnos
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_type_qualifier_list(), 0, "type_qualifier_list")
+	node = pg_ast_new(clang_ast_type_qualifier_list(), 0, c"type_qualifier_list")
 	failed = 0
 	if (failed == 0):
 		int repeat_count_0_0 = 0
@@ -3336,10 +3336,10 @@ pg_ast_node* clang_parse_identifier_list(pg_token_stream* stream, pg_diagnostics
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_identifier_list(), 0, "identifier_list")
+	node = pg_ast_new(clang_ast_identifier_list(), 0, c"identifier_list")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3363,16 +3363,16 @@ pg_ast_node* clang_parse_identifier_tail(pg_token_stream* stream, pg_diagnostics
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_identifier_tail(), 0, "identifier_tail")
+	node = pg_ast_new(clang_ast_identifier_tail(), 0, c"identifier_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -3386,7 +3386,7 @@ pg_ast_node* clang_parse_parameter_type_list(pg_token_stream* stream, pg_diagnos
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_parameter_type_list(), 0, "parameter_type_list")
+	node = pg_ast_new(clang_ast_parameter_type_list(), 0, c"parameter_type_list")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_parameter_list(stream, diagnostics)
@@ -3410,16 +3410,16 @@ pg_ast_node* clang_parse_parameter_ellipsis(pg_token_stream* stream, pg_diagnost
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_parameter_ellipsis(), 0, "parameter_ellipsis")
+	node = pg_ast_new(clang_ast_parameter_ellipsis(), 0, c"parameter_ellipsis")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_ELLIPSIS(), "ELLIPSIS")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_ELLIPSIS(), c"ELLIPSIS")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -3433,7 +3433,7 @@ pg_ast_node* clang_parse_parameter_list(pg_token_stream* stream, pg_diagnostics*
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_parameter_list(), 0, "parameter_list")
+	node = pg_ast_new(clang_ast_parameter_list(), 0, c"parameter_list")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_parameter_declaration(stream, diagnostics)
@@ -3460,10 +3460,10 @@ pg_ast_node* clang_parse_parameter_tail(pg_token_stream* stream, pg_diagnostics*
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_parameter_tail(), 0, "parameter_tail")
+	node = pg_ast_new(clang_ast_parameter_tail(), 0, c"parameter_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3483,7 +3483,7 @@ pg_ast_node* clang_parse_parameter_declaration(pg_token_stream* stream, pg_diagn
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_parameter_declaration(), 0, "parameter_declaration")
+	node = pg_ast_new(clang_ast_parameter_declaration(), 0, c"parameter_declaration")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_typedef_name_declaration_specifiers(stream, diagnostics)
@@ -3501,7 +3501,7 @@ pg_ast_node* clang_parse_parameter_declaration(pg_token_stream* stream, pg_diagn
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_parameter_declaration(), 0, "parameter_declaration")
+	node = pg_ast_new(clang_ast_parameter_declaration(), 0, c"parameter_declaration")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_declaration_specifiers(stream, diagnostics)
@@ -3525,7 +3525,7 @@ pg_ast_node* clang_parse_parameter_declarator(pg_token_stream* stream, pg_diagno
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_parameter_declarator(), 0, "parameter_declarator")
+	node = pg_ast_new(clang_ast_parameter_declarator(), 0, c"parameter_declarator")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_declarator(stream, diagnostics)
@@ -3536,7 +3536,7 @@ pg_ast_node* clang_parse_parameter_declarator(pg_token_stream* stream, pg_diagno
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_parameter_declarator(), 0, "parameter_declarator")
+	node = pg_ast_new(clang_ast_parameter_declarator(), 0, c"parameter_declarator")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_abstract_declarator(stream, diagnostics)
@@ -3553,7 +3553,7 @@ pg_ast_node* clang_parse_type_name(pg_token_stream* stream, pg_diagnostics* diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_type_name(), 0, "type_name")
+	node = pg_ast_new(clang_ast_type_name(), 0, c"type_name")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_typedef_name_specifier_qualifier_list(stream, diagnostics)
@@ -3571,7 +3571,7 @@ pg_ast_node* clang_parse_type_name(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_type_name(), 0, "type_name")
+	node = pg_ast_new(clang_ast_type_name(), 0, c"type_name")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_specifier_qualifier_list(stream, diagnostics)
@@ -3595,7 +3595,7 @@ pg_ast_node* clang_parse_abstract_declarator(pg_token_stream* stream, pg_diagnos
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_abstract_declarator(), 0, "abstract_declarator")
+	node = pg_ast_new(clang_ast_abstract_declarator(), 0, c"abstract_declarator")
 	failed = 0
 	if (failed == 0):
 		int optional_mark_0_0 = pg_token_stream_mark(stream)
@@ -3613,7 +3613,7 @@ pg_ast_node* clang_parse_abstract_declarator(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_abstract_declarator(), 0, "abstract_declarator")
+	node = pg_ast_new(clang_ast_abstract_declarator(), 0, c"abstract_declarator")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_pointer(stream, diagnostics)
@@ -3630,10 +3630,10 @@ pg_ast_node* clang_parse_direct_abstract_declarator(pg_token_stream* stream, pg_
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_direct_abstract_declarator(), 0, "direct_abstract_declarator")
+	node = pg_ast_new(clang_ast_direct_abstract_declarator(), 0, c"direct_abstract_declarator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3645,7 +3645,7 @@ pg_ast_node* clang_parse_direct_abstract_declarator(pg_token_stream* stream, pg_
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -3663,7 +3663,7 @@ pg_ast_node* clang_parse_direct_abstract_declarator(pg_token_stream* stream, pg_
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_direct_abstract_declarator(), 0, "direct_abstract_declarator")
+	node = pg_ast_new(clang_ast_direct_abstract_declarator(), 0, c"direct_abstract_declarator")
 	failed = 0
 	if (failed == 0):
 		int repeat_count_1_0 = 0
@@ -3686,10 +3686,10 @@ pg_ast_node* clang_parse_direct_abstract_declarator_tail(pg_token_stream* stream
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_direct_abstract_declarator_tail(), 0, "direct_abstract_declarator_tail")
+	node = pg_ast_new(clang_ast_direct_abstract_declarator_tail(), 0, c"direct_abstract_declarator_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACK(), "LBRACK")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACK(), c"LBRACK")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3702,7 +3702,7 @@ pg_ast_node* clang_parse_direct_abstract_declarator_tail(pg_token_stream* stream
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACK(), "RBRACK")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACK(), c"RBRACK")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -3710,10 +3710,10 @@ pg_ast_node* clang_parse_direct_abstract_declarator_tail(pg_token_stream* stream
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_direct_abstract_declarator_tail(), 0, "direct_abstract_declarator_tail")
+	node = pg_ast_new(clang_ast_direct_abstract_declarator_tail(), 0, c"direct_abstract_declarator_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -3726,7 +3726,7 @@ pg_ast_node* clang_parse_direct_abstract_declarator_tail(pg_token_stream* stream
 		else:
 			pg_ast_add(node, child_1_1)
 	if (failed == 0):
-		pg_ast_node* child_1_2 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_1_2 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_1_2 == 0):
 			failed = 1
 		else:
@@ -3740,7 +3740,7 @@ pg_ast_node* clang_parse_function_definition(pg_token_stream* stream, pg_diagnos
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_function_definition(), 0, "function_definition")
+	node = pg_ast_new(clang_ast_function_definition(), 0, c"function_definition")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_declaration_specifiers(stream, diagnostics)
@@ -3763,7 +3763,7 @@ pg_ast_node* clang_parse_function_definition(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_function_definition(), 0, "function_definition")
+	node = pg_ast_new(clang_ast_function_definition(), 0, c"function_definition")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_typedef_name_declaration_specifiers(stream, diagnostics)
@@ -3792,10 +3792,10 @@ pg_ast_node* clang_parse_compound_statement(pg_token_stream* stream, pg_diagnost
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_compound_statement(), 0, "compound_statement")
+	node = pg_ast_new(clang_ast_compound_statement(), 0, c"compound_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACE(), "LBRACE")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACE(), c"LBRACE")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -3811,7 +3811,7 @@ pg_ast_node* clang_parse_compound_statement(pg_token_stream* stream, pg_diagnost
 			pg_ast_add(node, child_0_1)
 			repeat_count_0_1 = repeat_count_0_1 + 1
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACE(), "RBRACE")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACE(), c"RBRACE")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -3825,7 +3825,7 @@ pg_ast_node* clang_parse_block_item(pg_token_stream* stream, pg_diagnostics* dia
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_block_item(), 0, "block_item")
+	node = pg_ast_new(clang_ast_block_item(), 0, c"block_item")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_declaration(stream, diagnostics)
@@ -3836,7 +3836,7 @@ pg_ast_node* clang_parse_block_item(pg_token_stream* stream, pg_diagnostics* dia
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_block_item(), 0, "block_item")
+	node = pg_ast_new(clang_ast_block_item(), 0, c"block_item")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_statement(stream, diagnostics)
@@ -3853,7 +3853,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_compound_statement(stream, diagnostics)
@@ -3864,7 +3864,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_if_statement(stream, diagnostics)
@@ -3875,7 +3875,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_2_0 = clang_parse_while_statement(stream, diagnostics)
@@ -3886,7 +3886,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_3_0 = clang_parse_do_statement(stream, diagnostics)
@@ -3897,7 +3897,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_4_0 = clang_parse_for_statement(stream, diagnostics)
@@ -3908,7 +3908,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_5_0 = clang_parse_switch_statement(stream, diagnostics)
@@ -3919,7 +3919,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_6_0 = clang_parse_return_statement(stream, diagnostics)
@@ -3930,7 +3930,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_7_0 = clang_parse_break_statement(stream, diagnostics)
@@ -3941,7 +3941,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_8_0 = clang_parse_continue_statement(stream, diagnostics)
@@ -3952,7 +3952,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_9_0 = clang_parse_goto_statement(stream, diagnostics)
@@ -3963,7 +3963,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_10_0 = clang_parse_labeled_statement(stream, diagnostics)
@@ -3974,7 +3974,7 @@ pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diag
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_statement(), 0, "statement")
+	node = pg_ast_new(clang_ast_statement(), 0, c"statement")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_11_0 = clang_parse_expression_statement(stream, diagnostics)
@@ -3991,16 +3991,16 @@ pg_ast_node* clang_parse_if_statement(pg_token_stream* stream, pg_diagnostics* d
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_if_statement(), 0, "if_statement")
+	node = pg_ast_new(clang_ast_if_statement(), 0, c"if_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_IF(), "KW_IF")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_IF(), c"KW_IF")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -4012,7 +4012,7 @@ pg_ast_node* clang_parse_if_statement(pg_token_stream* stream, pg_diagnostics* d
 		else:
 			pg_ast_add(node, child_0_2)
 	if (failed == 0):
-		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_0_3 == 0):
 			failed = 1
 		else:
@@ -4039,10 +4039,10 @@ pg_ast_node* clang_parse_else_part(pg_token_stream* stream, pg_diagnostics* diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_else_part(), 0, "else_part")
+	node = pg_ast_new(clang_ast_else_part(), 0, c"else_part")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_ELSE(), "KW_ELSE")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_ELSE(), c"KW_ELSE")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -4062,16 +4062,16 @@ pg_ast_node* clang_parse_while_statement(pg_token_stream* stream, pg_diagnostics
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_while_statement(), 0, "while_statement")
+	node = pg_ast_new(clang_ast_while_statement(), 0, c"while_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_WHILE(), "KW_WHILE")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_WHILE(), c"KW_WHILE")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -4083,7 +4083,7 @@ pg_ast_node* clang_parse_while_statement(pg_token_stream* stream, pg_diagnostics
 		else:
 			pg_ast_add(node, child_0_2)
 	if (failed == 0):
-		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_0_3 == 0):
 			failed = 1
 		else:
@@ -4103,10 +4103,10 @@ pg_ast_node* clang_parse_do_statement(pg_token_stream* stream, pg_diagnostics* d
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_do_statement(), 0, "do_statement")
+	node = pg_ast_new(clang_ast_do_statement(), 0, c"do_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_DO(), "KW_DO")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_DO(), c"KW_DO")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -4118,13 +4118,13 @@ pg_ast_node* clang_parse_do_statement(pg_token_stream* stream, pg_diagnostics* d
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_KW_WHILE(), "KW_WHILE")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_KW_WHILE(), c"KW_WHILE")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_2)
 	if (failed == 0):
-		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_0_3 == 0):
 			failed = 1
 		else:
@@ -4136,13 +4136,13 @@ pg_ast_node* clang_parse_do_statement(pg_token_stream* stream, pg_diagnostics* d
 		else:
 			pg_ast_add(node, child_0_4)
 	if (failed == 0):
-		pg_ast_node* child_0_5 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_0_5 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_0_5 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_5)
 	if (failed == 0):
-		pg_ast_node* child_0_6 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_0_6 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_0_6 == 0):
 			failed = 1
 		else:
@@ -4156,16 +4156,16 @@ pg_ast_node* clang_parse_for_statement(pg_token_stream* stream, pg_diagnostics* 
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_for_statement(), 0, "for_statement")
+	node = pg_ast_new(clang_ast_for_statement(), 0, c"for_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_FOR(), "KW_FOR")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_FOR(), c"KW_FOR")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -4184,7 +4184,7 @@ pg_ast_node* clang_parse_for_statement(pg_token_stream* stream, pg_diagnostics* 
 		else:
 			pg_ast_add(node, child_0_3)
 	if (failed == 0):
-		pg_ast_node* child_0_4 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_0_4 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_0_4 == 0):
 			failed = 1
 		else:
@@ -4197,7 +4197,7 @@ pg_ast_node* clang_parse_for_statement(pg_token_stream* stream, pg_diagnostics* 
 		else:
 			pg_ast_add(node, child_0_5)
 	if (failed == 0):
-		pg_ast_node* child_0_6 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_0_6 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_0_6 == 0):
 			failed = 1
 		else:
@@ -4217,7 +4217,7 @@ pg_ast_node* clang_parse_for_init(pg_token_stream* stream, pg_diagnostics* diagn
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_for_init(), 0, "for_init")
+	node = pg_ast_new(clang_ast_for_init(), 0, c"for_init")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_declaration(stream, diagnostics)
@@ -4228,7 +4228,7 @@ pg_ast_node* clang_parse_for_init(pg_token_stream* stream, pg_diagnostics* diagn
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_for_init(), 0, "for_init")
+	node = pg_ast_new(clang_ast_for_init(), 0, c"for_init")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_expression_statement(stream, diagnostics)
@@ -4245,16 +4245,16 @@ pg_ast_node* clang_parse_switch_statement(pg_token_stream* stream, pg_diagnostic
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_switch_statement(), 0, "switch_statement")
+	node = pg_ast_new(clang_ast_switch_statement(), 0, c"switch_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_SWITCH(), "KW_SWITCH")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_SWITCH(), c"KW_SWITCH")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -4266,7 +4266,7 @@ pg_ast_node* clang_parse_switch_statement(pg_token_stream* stream, pg_diagnostic
 		else:
 			pg_ast_add(node, child_0_2)
 	if (failed == 0):
-		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_0_3 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_0_3 == 0):
 			failed = 1
 		else:
@@ -4286,10 +4286,10 @@ pg_ast_node* clang_parse_labeled_statement(pg_token_stream* stream, pg_diagnosti
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_labeled_statement(), 0, "labeled_statement")
+	node = pg_ast_new(clang_ast_labeled_statement(), 0, c"labeled_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_CASE(), "KW_CASE")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_CASE(), c"KW_CASE")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -4301,7 +4301,7 @@ pg_ast_node* clang_parse_labeled_statement(pg_token_stream* stream, pg_diagnosti
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_COLON(), "COLON")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_COLON(), c"COLON")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -4315,16 +4315,16 @@ pg_ast_node* clang_parse_labeled_statement(pg_token_stream* stream, pg_diagnosti
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_labeled_statement(), 0, "labeled_statement")
+	node = pg_ast_new(clang_ast_labeled_statement(), 0, c"labeled_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_DEFAULT(), "KW_DEFAULT")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_KW_DEFAULT(), c"KW_DEFAULT")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_1_0)
 	if (failed == 0):
-		pg_ast_node* child_1_1 = clang_match_token(stream, clang_token_COLON(), "COLON")
+		pg_ast_node* child_1_1 = clang_match_token(stream, clang_token_COLON(), c"COLON")
 		if (child_1_1 == 0):
 			failed = 1
 		else:
@@ -4338,16 +4338,16 @@ pg_ast_node* clang_parse_labeled_statement(pg_token_stream* stream, pg_diagnosti
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_labeled_statement(), 0, "labeled_statement")
+	node = pg_ast_new(clang_ast_labeled_statement(), 0, c"labeled_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_2_0)
 	if (failed == 0):
-		pg_ast_node* child_2_1 = clang_match_token(stream, clang_token_COLON(), "COLON")
+		pg_ast_node* child_2_1 = clang_match_token(stream, clang_token_COLON(), c"COLON")
 		if (child_2_1 == 0):
 			failed = 1
 		else:
@@ -4367,16 +4367,16 @@ pg_ast_node* clang_parse_break_statement(pg_token_stream* stream, pg_diagnostics
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_break_statement(), 0, "break_statement")
+	node = pg_ast_new(clang_ast_break_statement(), 0, c"break_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_BREAK(), "KW_BREAK")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_BREAK(), c"KW_BREAK")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -4390,16 +4390,16 @@ pg_ast_node* clang_parse_continue_statement(pg_token_stream* stream, pg_diagnost
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_continue_statement(), 0, "continue_statement")
+	node = pg_ast_new(clang_ast_continue_statement(), 0, c"continue_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_CONTINUE(), "KW_CONTINUE")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_CONTINUE(), c"KW_CONTINUE")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -4413,22 +4413,22 @@ pg_ast_node* clang_parse_goto_statement(pg_token_stream* stream, pg_diagnostics*
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_goto_statement(), 0, "goto_statement")
+	node = pg_ast_new(clang_ast_goto_statement(), 0, c"goto_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_GOTO(), "KW_GOTO")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_GOTO(), c"KW_GOTO")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -4442,10 +4442,10 @@ pg_ast_node* clang_parse_return_statement(pg_token_stream* stream, pg_diagnostic
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_return_statement(), 0, "return_statement")
+	node = pg_ast_new(clang_ast_return_statement(), 0, c"return_statement")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_RETURN(), "KW_RETURN")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_KW_RETURN(), c"KW_RETURN")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -4458,7 +4458,7 @@ pg_ast_node* clang_parse_return_statement(pg_token_stream* stream, pg_diagnostic
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -4472,7 +4472,7 @@ pg_ast_node* clang_parse_expression_statement(pg_token_stream* stream, pg_diagno
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_expression_statement(), 0, "expression_statement")
+	node = pg_ast_new(clang_ast_expression_statement(), 0, c"expression_statement")
 	failed = 0
 	if (failed == 0):
 		int optional_mark_0_0 = pg_token_stream_mark(stream)
@@ -4482,7 +4482,7 @@ pg_ast_node* clang_parse_expression_statement(pg_token_stream* stream, pg_diagno
 		else:
 			pg_ast_add(node, child_0_0)
 	if (failed == 0):
-		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_SEMI(), "SEMI")
+		pg_ast_node* child_0_1 = clang_match_token(stream, clang_token_SEMI(), c"SEMI")
 		if (child_0_1 == 0):
 			failed = 1
 		else:
@@ -4496,7 +4496,7 @@ pg_ast_node* clang_parse_constant_expression(pg_token_stream* stream, pg_diagnos
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_constant_expression(), 0, "constant_expression")
+	node = pg_ast_new(clang_ast_constant_expression(), 0, c"constant_expression")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_conditional_expression(stream, diagnostics)
@@ -4513,7 +4513,7 @@ pg_ast_node* clang_parse_expression(pg_token_stream* stream, pg_diagnostics* dia
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_expression(), 0, "expression")
+	node = pg_ast_new(clang_ast_expression(), 0, c"expression")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_assignment_expression(stream, diagnostics)
@@ -4540,10 +4540,10 @@ pg_ast_node* clang_parse_expression_tail(pg_token_stream* stream, pg_diagnostics
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_expression_tail(), 0, "expression_tail")
+	node = pg_ast_new(clang_ast_expression_tail(), 0, c"expression_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -4563,7 +4563,7 @@ pg_ast_node* clang_parse_assignment_expression(pg_token_stream* stream, pg_diagn
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_assignment_expression(), 0, "assignment_expression")
+	node = pg_ast_new(clang_ast_assignment_expression(), 0, c"assignment_expression")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_unary_expression(stream, diagnostics)
@@ -4586,7 +4586,7 @@ pg_ast_node* clang_parse_assignment_expression(pg_token_stream* stream, pg_diagn
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_assignment_expression(), 0, "assignment_expression")
+	node = pg_ast_new(clang_ast_assignment_expression(), 0, c"assignment_expression")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_conditional_expression(stream, diagnostics)
@@ -4603,10 +4603,10 @@ pg_ast_node* clang_parse_assignment_operator(pg_token_stream* stream, pg_diagnos
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_assignment_operator(), 0, "assignment_operator")
+	node = pg_ast_new(clang_ast_assignment_operator(), 0, c"assignment_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_ASSIGN(), "ASSIGN")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_ASSIGN(), c"ASSIGN")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -4614,10 +4614,10 @@ pg_ast_node* clang_parse_assignment_operator(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_assignment_operator(), 0, "assignment_operator")
+	node = pg_ast_new(clang_ast_assignment_operator(), 0, c"assignment_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_STAR_ASSIGN(), "STAR_ASSIGN")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_STAR_ASSIGN(), c"STAR_ASSIGN")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -4625,10 +4625,10 @@ pg_ast_node* clang_parse_assignment_operator(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_assignment_operator(), 0, "assignment_operator")
+	node = pg_ast_new(clang_ast_assignment_operator(), 0, c"assignment_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_SLASH_ASSIGN(), "SLASH_ASSIGN")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_SLASH_ASSIGN(), c"SLASH_ASSIGN")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
@@ -4636,10 +4636,10 @@ pg_ast_node* clang_parse_assignment_operator(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_assignment_operator(), 0, "assignment_operator")
+	node = pg_ast_new(clang_ast_assignment_operator(), 0, c"assignment_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_PERCENT_ASSIGN(), "PERCENT_ASSIGN")
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_PERCENT_ASSIGN(), c"PERCENT_ASSIGN")
 		if (child_3_0 == 0):
 			failed = 1
 		else:
@@ -4647,10 +4647,10 @@ pg_ast_node* clang_parse_assignment_operator(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_assignment_operator(), 0, "assignment_operator")
+	node = pg_ast_new(clang_ast_assignment_operator(), 0, c"assignment_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_PLUS_ASSIGN(), "PLUS_ASSIGN")
+		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_PLUS_ASSIGN(), c"PLUS_ASSIGN")
 		if (child_4_0 == 0):
 			failed = 1
 		else:
@@ -4658,10 +4658,10 @@ pg_ast_node* clang_parse_assignment_operator(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_assignment_operator(), 0, "assignment_operator")
+	node = pg_ast_new(clang_ast_assignment_operator(), 0, c"assignment_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_MINUS_ASSIGN(), "MINUS_ASSIGN")
+		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_MINUS_ASSIGN(), c"MINUS_ASSIGN")
 		if (child_5_0 == 0):
 			failed = 1
 		else:
@@ -4669,10 +4669,10 @@ pg_ast_node* clang_parse_assignment_operator(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_assignment_operator(), 0, "assignment_operator")
+	node = pg_ast_new(clang_ast_assignment_operator(), 0, c"assignment_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_6_0 = clang_match_token(stream, clang_token_SHIFT_LEFT_ASSIGN(), "SHIFT_LEFT_ASSIGN")
+		pg_ast_node* child_6_0 = clang_match_token(stream, clang_token_SHIFT_LEFT_ASSIGN(), c"SHIFT_LEFT_ASSIGN")
 		if (child_6_0 == 0):
 			failed = 1
 		else:
@@ -4680,10 +4680,10 @@ pg_ast_node* clang_parse_assignment_operator(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_assignment_operator(), 0, "assignment_operator")
+	node = pg_ast_new(clang_ast_assignment_operator(), 0, c"assignment_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_7_0 = clang_match_token(stream, clang_token_SHIFT_RIGHT_ASSIGN(), "SHIFT_RIGHT_ASSIGN")
+		pg_ast_node* child_7_0 = clang_match_token(stream, clang_token_SHIFT_RIGHT_ASSIGN(), c"SHIFT_RIGHT_ASSIGN")
 		if (child_7_0 == 0):
 			failed = 1
 		else:
@@ -4691,10 +4691,10 @@ pg_ast_node* clang_parse_assignment_operator(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_assignment_operator(), 0, "assignment_operator")
+	node = pg_ast_new(clang_ast_assignment_operator(), 0, c"assignment_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_8_0 = clang_match_token(stream, clang_token_AMP_ASSIGN(), "AMP_ASSIGN")
+		pg_ast_node* child_8_0 = clang_match_token(stream, clang_token_AMP_ASSIGN(), c"AMP_ASSIGN")
 		if (child_8_0 == 0):
 			failed = 1
 		else:
@@ -4702,10 +4702,10 @@ pg_ast_node* clang_parse_assignment_operator(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_assignment_operator(), 0, "assignment_operator")
+	node = pg_ast_new(clang_ast_assignment_operator(), 0, c"assignment_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_9_0 = clang_match_token(stream, clang_token_CARET_ASSIGN(), "CARET_ASSIGN")
+		pg_ast_node* child_9_0 = clang_match_token(stream, clang_token_CARET_ASSIGN(), c"CARET_ASSIGN")
 		if (child_9_0 == 0):
 			failed = 1
 		else:
@@ -4713,10 +4713,10 @@ pg_ast_node* clang_parse_assignment_operator(pg_token_stream* stream, pg_diagnos
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_assignment_operator(), 0, "assignment_operator")
+	node = pg_ast_new(clang_ast_assignment_operator(), 0, c"assignment_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_10_0 = clang_match_token(stream, clang_token_PIPE_ASSIGN(), "PIPE_ASSIGN")
+		pg_ast_node* child_10_0 = clang_match_token(stream, clang_token_PIPE_ASSIGN(), c"PIPE_ASSIGN")
 		if (child_10_0 == 0):
 			failed = 1
 		else:
@@ -4730,7 +4730,7 @@ pg_ast_node* clang_parse_conditional_expression(pg_token_stream* stream, pg_diag
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_conditional_expression(), 0, "conditional_expression")
+	node = pg_ast_new(clang_ast_conditional_expression(), 0, c"conditional_expression")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_binary_expression(stream, diagnostics)
@@ -4754,10 +4754,10 @@ pg_ast_node* clang_parse_conditional_tail(pg_token_stream* stream, pg_diagnostic
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_conditional_tail(), 0, "conditional_tail")
+	node = pg_ast_new(clang_ast_conditional_tail(), 0, c"conditional_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_QUESTION(), "QUESTION")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_QUESTION(), c"QUESTION")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -4769,7 +4769,7 @@ pg_ast_node* clang_parse_conditional_tail(pg_token_stream* stream, pg_diagnostic
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_COLON(), "COLON")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_COLON(), c"COLON")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -4789,7 +4789,7 @@ pg_ast_node* clang_parse_binary_expression(pg_token_stream* stream, pg_diagnosti
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_binary_expression(), 0, "binary_expression")
+	node = pg_ast_new(clang_ast_binary_expression(), 0, c"binary_expression")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_unary_expression(stream, diagnostics)
@@ -4816,7 +4816,7 @@ pg_ast_node* clang_parse_binary_tail(pg_token_stream* stream, pg_diagnostics* di
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_binary_tail(), 0, "binary_tail")
+	node = pg_ast_new(clang_ast_binary_tail(), 0, c"binary_tail")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_binary_operator(stream, diagnostics)
@@ -4839,10 +4839,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_OR_OR(), "OR_OR")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_OR_OR(), c"OR_OR")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -4850,10 +4850,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_AND_AND(), "AND_AND")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_AND_AND(), c"AND_AND")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -4861,10 +4861,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_PIPE(), "PIPE")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_PIPE(), c"PIPE")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
@@ -4872,10 +4872,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_CARET(), "CARET")
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_CARET(), c"CARET")
 		if (child_3_0 == 0):
 			failed = 1
 		else:
@@ -4883,10 +4883,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_AMP(), "AMP")
+		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_AMP(), c"AMP")
 		if (child_4_0 == 0):
 			failed = 1
 		else:
@@ -4894,10 +4894,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_EQ_EQ(), "EQ_EQ")
+		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_EQ_EQ(), c"EQ_EQ")
 		if (child_5_0 == 0):
 			failed = 1
 		else:
@@ -4905,10 +4905,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_6_0 = clang_match_token(stream, clang_token_BANG_EQ(), "BANG_EQ")
+		pg_ast_node* child_6_0 = clang_match_token(stream, clang_token_BANG_EQ(), c"BANG_EQ")
 		if (child_6_0 == 0):
 			failed = 1
 		else:
@@ -4916,10 +4916,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_7_0 = clang_match_token(stream, clang_token_LT_EQ(), "LT_EQ")
+		pg_ast_node* child_7_0 = clang_match_token(stream, clang_token_LT_EQ(), c"LT_EQ")
 		if (child_7_0 == 0):
 			failed = 1
 		else:
@@ -4927,10 +4927,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_8_0 = clang_match_token(stream, clang_token_GT_EQ(), "GT_EQ")
+		pg_ast_node* child_8_0 = clang_match_token(stream, clang_token_GT_EQ(), c"GT_EQ")
 		if (child_8_0 == 0):
 			failed = 1
 		else:
@@ -4938,10 +4938,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_9_0 = clang_match_token(stream, clang_token_LT(), "LT")
+		pg_ast_node* child_9_0 = clang_match_token(stream, clang_token_LT(), c"LT")
 		if (child_9_0 == 0):
 			failed = 1
 		else:
@@ -4949,10 +4949,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_10_0 = clang_match_token(stream, clang_token_GT(), "GT")
+		pg_ast_node* child_10_0 = clang_match_token(stream, clang_token_GT(), c"GT")
 		if (child_10_0 == 0):
 			failed = 1
 		else:
@@ -4960,10 +4960,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_11_0 = clang_match_token(stream, clang_token_SHIFT_LEFT(), "SHIFT_LEFT")
+		pg_ast_node* child_11_0 = clang_match_token(stream, clang_token_SHIFT_LEFT(), c"SHIFT_LEFT")
 		if (child_11_0 == 0):
 			failed = 1
 		else:
@@ -4971,10 +4971,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_12_0 = clang_match_token(stream, clang_token_SHIFT_RIGHT(), "SHIFT_RIGHT")
+		pg_ast_node* child_12_0 = clang_match_token(stream, clang_token_SHIFT_RIGHT(), c"SHIFT_RIGHT")
 		if (child_12_0 == 0):
 			failed = 1
 		else:
@@ -4982,10 +4982,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_13_0 = clang_match_token(stream, clang_token_PLUS(), "PLUS")
+		pg_ast_node* child_13_0 = clang_match_token(stream, clang_token_PLUS(), c"PLUS")
 		if (child_13_0 == 0):
 			failed = 1
 		else:
@@ -4993,10 +4993,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_14_0 = clang_match_token(stream, clang_token_MINUS(), "MINUS")
+		pg_ast_node* child_14_0 = clang_match_token(stream, clang_token_MINUS(), c"MINUS")
 		if (child_14_0 == 0):
 			failed = 1
 		else:
@@ -5004,10 +5004,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_15_0 = clang_match_token(stream, clang_token_STAR(), "STAR")
+		pg_ast_node* child_15_0 = clang_match_token(stream, clang_token_STAR(), c"STAR")
 		if (child_15_0 == 0):
 			failed = 1
 		else:
@@ -5015,10 +5015,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_16_0 = clang_match_token(stream, clang_token_SLASH(), "SLASH")
+		pg_ast_node* child_16_0 = clang_match_token(stream, clang_token_SLASH(), c"SLASH")
 		if (child_16_0 == 0):
 			failed = 1
 		else:
@@ -5026,10 +5026,10 @@ pg_ast_node* clang_parse_binary_operator(pg_token_stream* stream, pg_diagnostics
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_binary_operator(), 0, "binary_operator")
+	node = pg_ast_new(clang_ast_binary_operator(), 0, c"binary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_17_0 = clang_match_token(stream, clang_token_PERCENT(), "PERCENT")
+		pg_ast_node* child_17_0 = clang_match_token(stream, clang_token_PERCENT(), c"PERCENT")
 		if (child_17_0 == 0):
 			failed = 1
 		else:
@@ -5043,7 +5043,7 @@ pg_ast_node* clang_parse_unary_expression(pg_token_stream* stream, pg_diagnostic
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_unary_expression(), 0, "unary_expression")
+	node = pg_ast_new(clang_ast_unary_expression(), 0, c"unary_expression")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_cast_expression(stream, diagnostics)
@@ -5054,7 +5054,7 @@ pg_ast_node* clang_parse_unary_expression(pg_token_stream* stream, pg_diagnostic
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_unary_expression(), 0, "unary_expression")
+	node = pg_ast_new(clang_ast_unary_expression(), 0, c"unary_expression")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_postfix_expression(stream, diagnostics)
@@ -5065,7 +5065,7 @@ pg_ast_node* clang_parse_unary_expression(pg_token_stream* stream, pg_diagnostic
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_unary_expression(), 0, "unary_expression")
+	node = pg_ast_new(clang_ast_unary_expression(), 0, c"unary_expression")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_2_0 = clang_parse_unary_operator(stream, diagnostics)
@@ -5082,16 +5082,16 @@ pg_ast_node* clang_parse_unary_expression(pg_token_stream* stream, pg_diagnostic
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_unary_expression(), 0, "unary_expression")
+	node = pg_ast_new(clang_ast_unary_expression(), 0, c"unary_expression")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_KW_SIZEOF(), "KW_SIZEOF")
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_KW_SIZEOF(), c"KW_SIZEOF")
 		if (child_3_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_3_0)
 	if (failed == 0):
-		pg_ast_node* child_3_1 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_3_1 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_3_1 == 0):
 			failed = 1
 		else:
@@ -5103,7 +5103,7 @@ pg_ast_node* clang_parse_unary_expression(pg_token_stream* stream, pg_diagnostic
 		else:
 			pg_ast_add(node, child_3_2)
 	if (failed == 0):
-		pg_ast_node* child_3_3 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_3_3 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_3_3 == 0):
 			failed = 1
 		else:
@@ -5111,10 +5111,10 @@ pg_ast_node* clang_parse_unary_expression(pg_token_stream* stream, pg_diagnostic
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_unary_expression(), 0, "unary_expression")
+	node = pg_ast_new(clang_ast_unary_expression(), 0, c"unary_expression")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_KW_SIZEOF(), "KW_SIZEOF")
+		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_KW_SIZEOF(), c"KW_SIZEOF")
 		if (child_4_0 == 0):
 			failed = 1
 		else:
@@ -5134,10 +5134,10 @@ pg_ast_node* clang_parse_cast_expression(pg_token_stream* stream, pg_diagnostics
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_cast_expression(), 0, "cast_expression")
+	node = pg_ast_new(clang_ast_cast_expression(), 0, c"cast_expression")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -5149,7 +5149,7 @@ pg_ast_node* clang_parse_cast_expression(pg_token_stream* stream, pg_diagnostics
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -5169,7 +5169,7 @@ pg_ast_node* clang_parse_cast_type_name(pg_token_stream* stream, pg_diagnostics*
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_cast_type_name(), 0, "cast_type_name")
+	node = pg_ast_new(clang_ast_cast_type_name(), 0, c"cast_type_name")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_specifier_qualifier_list(stream, diagnostics)
@@ -5187,7 +5187,7 @@ pg_ast_node* clang_parse_cast_type_name(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_cast_type_name(), 0, "cast_type_name")
+	node = pg_ast_new(clang_ast_cast_type_name(), 0, c"cast_type_name")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_1_0 = clang_parse_typedef_name_specifier_qualifier_list(stream, diagnostics)
@@ -5210,10 +5210,10 @@ pg_ast_node* clang_parse_unary_operator(pg_token_stream* stream, pg_diagnostics*
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_unary_operator(), 0, "unary_operator")
+	node = pg_ast_new(clang_ast_unary_operator(), 0, c"unary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_AMP(), "AMP")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_AMP(), c"AMP")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -5221,10 +5221,10 @@ pg_ast_node* clang_parse_unary_operator(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_unary_operator(), 0, "unary_operator")
+	node = pg_ast_new(clang_ast_unary_operator(), 0, c"unary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_STAR(), "STAR")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_STAR(), c"STAR")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -5232,10 +5232,10 @@ pg_ast_node* clang_parse_unary_operator(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_unary_operator(), 0, "unary_operator")
+	node = pg_ast_new(clang_ast_unary_operator(), 0, c"unary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_PLUS(), "PLUS")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_PLUS(), c"PLUS")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
@@ -5243,10 +5243,10 @@ pg_ast_node* clang_parse_unary_operator(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_unary_operator(), 0, "unary_operator")
+	node = pg_ast_new(clang_ast_unary_operator(), 0, c"unary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_MINUS(), "MINUS")
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_MINUS(), c"MINUS")
 		if (child_3_0 == 0):
 			failed = 1
 		else:
@@ -5254,10 +5254,10 @@ pg_ast_node* clang_parse_unary_operator(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_unary_operator(), 0, "unary_operator")
+	node = pg_ast_new(clang_ast_unary_operator(), 0, c"unary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_TILDE(), "TILDE")
+		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_TILDE(), c"TILDE")
 		if (child_4_0 == 0):
 			failed = 1
 		else:
@@ -5265,10 +5265,10 @@ pg_ast_node* clang_parse_unary_operator(pg_token_stream* stream, pg_diagnostics*
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_unary_operator(), 0, "unary_operator")
+	node = pg_ast_new(clang_ast_unary_operator(), 0, c"unary_operator")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_BANG(), "BANG")
+		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_BANG(), c"BANG")
 		if (child_5_0 == 0):
 			failed = 1
 		else:
@@ -5282,7 +5282,7 @@ pg_ast_node* clang_parse_postfix_expression(pg_token_stream* stream, pg_diagnost
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_postfix_expression(), 0, "postfix_expression")
+	node = pg_ast_new(clang_ast_postfix_expression(), 0, c"postfix_expression")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_primary_expression(stream, diagnostics)
@@ -5309,10 +5309,10 @@ pg_ast_node* clang_parse_postfix_tail(pg_token_stream* stream, pg_diagnostics* d
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_postfix_tail(), 0, "postfix_tail")
+	node = pg_ast_new(clang_ast_postfix_tail(), 0, c"postfix_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACK(), "LBRACK")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_LBRACK(), c"LBRACK")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -5324,7 +5324,7 @@ pg_ast_node* clang_parse_postfix_tail(pg_token_stream* stream, pg_diagnostics* d
 		else:
 			pg_ast_add(node, child_0_1)
 	if (failed == 0):
-		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACK(), "RBRACK")
+		pg_ast_node* child_0_2 = clang_match_token(stream, clang_token_RBRACK(), c"RBRACK")
 		if (child_0_2 == 0):
 			failed = 1
 		else:
@@ -5332,10 +5332,10 @@ pg_ast_node* clang_parse_postfix_tail(pg_token_stream* stream, pg_diagnostics* d
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_postfix_tail(), 0, "postfix_tail")
+	node = pg_ast_new(clang_ast_postfix_tail(), 0, c"postfix_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -5348,7 +5348,7 @@ pg_ast_node* clang_parse_postfix_tail(pg_token_stream* stream, pg_diagnostics* d
 		else:
 			pg_ast_add(node, child_1_1)
 	if (failed == 0):
-		pg_ast_node* child_1_2 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_1_2 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_1_2 == 0):
 			failed = 1
 		else:
@@ -5356,16 +5356,16 @@ pg_ast_node* clang_parse_postfix_tail(pg_token_stream* stream, pg_diagnostics* d
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_postfix_tail(), 0, "postfix_tail")
+	node = pg_ast_new(clang_ast_postfix_tail(), 0, c"postfix_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_DOT(), "DOT")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_DOT(), c"DOT")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_2_0)
 	if (failed == 0):
-		pg_ast_node* child_2_1 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_2_1 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_2_1 == 0):
 			failed = 1
 		else:
@@ -5373,16 +5373,16 @@ pg_ast_node* clang_parse_postfix_tail(pg_token_stream* stream, pg_diagnostics* d
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_postfix_tail(), 0, "postfix_tail")
+	node = pg_ast_new(clang_ast_postfix_tail(), 0, c"postfix_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_ARROW(), "ARROW")
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_ARROW(), c"ARROW")
 		if (child_3_0 == 0):
 			failed = 1
 		else:
 			pg_ast_add(node, child_3_0)
 	if (failed == 0):
-		pg_ast_node* child_3_1 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_3_1 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_3_1 == 0):
 			failed = 1
 		else:
@@ -5390,10 +5390,10 @@ pg_ast_node* clang_parse_postfix_tail(pg_token_stream* stream, pg_diagnostics* d
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_postfix_tail(), 0, "postfix_tail")
+	node = pg_ast_new(clang_ast_postfix_tail(), 0, c"postfix_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_PLUS_PLUS(), "PLUS_PLUS")
+		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_PLUS_PLUS(), c"PLUS_PLUS")
 		if (child_4_0 == 0):
 			failed = 1
 		else:
@@ -5401,10 +5401,10 @@ pg_ast_node* clang_parse_postfix_tail(pg_token_stream* stream, pg_diagnostics* d
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_postfix_tail(), 0, "postfix_tail")
+	node = pg_ast_new(clang_ast_postfix_tail(), 0, c"postfix_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_MINUS_MINUS(), "MINUS_MINUS")
+		pg_ast_node* child_5_0 = clang_match_token(stream, clang_token_MINUS_MINUS(), c"MINUS_MINUS")
 		if (child_5_0 == 0):
 			failed = 1
 		else:
@@ -5418,7 +5418,7 @@ pg_ast_node* clang_parse_argument_expression_list(pg_token_stream* stream, pg_di
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_argument_expression_list(), 0, "argument_expression_list")
+	node = pg_ast_new(clang_ast_argument_expression_list(), 0, c"argument_expression_list")
 	failed = 0
 	if (failed == 0):
 		pg_ast_node* child_0_0 = clang_parse_assignment_expression(stream, diagnostics)
@@ -5445,10 +5445,10 @@ pg_ast_node* clang_parse_argument_tail(pg_token_stream* stream, pg_diagnostics* 
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_argument_tail(), 0, "argument_tail")
+	node = pg_ast_new(clang_ast_argument_tail(), 0, c"argument_tail")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), "COMMA")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_COMMA(), c"COMMA")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -5468,10 +5468,10 @@ pg_ast_node* clang_parse_primary_expression(pg_token_stream* stream, pg_diagnost
 	int mark = pg_token_stream_mark(stream)
 	pg_ast_node* node = 0
 	int failed = 0
-	node = pg_ast_new(clang_ast_primary_expression(), 0, "primary_expression")
+	node = pg_ast_new(clang_ast_primary_expression(), 0, c"primary_expression")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), "IDENT")
+		pg_ast_node* child_0_0 = clang_match_token(stream, clang_token_IDENT(), c"IDENT")
 		if (child_0_0 == 0):
 			failed = 1
 		else:
@@ -5479,10 +5479,10 @@ pg_ast_node* clang_parse_primary_expression(pg_token_stream* stream, pg_diagnost
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primary_expression(), 0, "primary_expression")
+	node = pg_ast_new(clang_ast_primary_expression(), 0, c"primary_expression")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_NUMBER(), "NUMBER")
+		pg_ast_node* child_1_0 = clang_match_token(stream, clang_token_NUMBER(), c"NUMBER")
 		if (child_1_0 == 0):
 			failed = 1
 		else:
@@ -5490,10 +5490,10 @@ pg_ast_node* clang_parse_primary_expression(pg_token_stream* stream, pg_diagnost
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primary_expression(), 0, "primary_expression")
+	node = pg_ast_new(clang_ast_primary_expression(), 0, c"primary_expression")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_STRING(), "STRING")
+		pg_ast_node* child_2_0 = clang_match_token(stream, clang_token_STRING(), c"STRING")
 		if (child_2_0 == 0):
 			failed = 1
 		else:
@@ -5501,10 +5501,10 @@ pg_ast_node* clang_parse_primary_expression(pg_token_stream* stream, pg_diagnost
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primary_expression(), 0, "primary_expression")
+	node = pg_ast_new(clang_ast_primary_expression(), 0, c"primary_expression")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_CHAR_LITERAL(), "CHAR_LITERAL")
+		pg_ast_node* child_3_0 = clang_match_token(stream, clang_token_CHAR_LITERAL(), c"CHAR_LITERAL")
 		if (child_3_0 == 0):
 			failed = 1
 		else:
@@ -5512,10 +5512,10 @@ pg_ast_node* clang_parse_primary_expression(pg_token_stream* stream, pg_diagnost
 	if (failed == 0):
 		return node
 	pg_token_stream_rewind(stream, mark)
-	node = pg_ast_new(clang_ast_primary_expression(), 0, "primary_expression")
+	node = pg_ast_new(clang_ast_primary_expression(), 0, c"primary_expression")
 	failed = 0
 	if (failed == 0):
-		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_LPAREN(), "LPAREN")
+		pg_ast_node* child_4_0 = clang_match_token(stream, clang_token_LPAREN(), c"LPAREN")
 		if (child_4_0 == 0):
 			failed = 1
 		else:
@@ -5527,7 +5527,7 @@ pg_ast_node* clang_parse_primary_expression(pg_token_stream* stream, pg_diagnost
 		else:
 			pg_ast_add(node, child_4_1)
 	if (failed == 0):
-		pg_ast_node* child_4_2 = clang_match_token(stream, clang_token_RPAREN(), "RPAREN")
+		pg_ast_node* child_4_2 = clang_match_token(stream, clang_token_RPAREN(), c"RPAREN")
 		if (child_4_2 == 0):
 			failed = 1
 		else:
@@ -5542,6 +5542,6 @@ pg_ast_node* clang_parse(char* input, char* filename, pg_diagnostics* diagnostic
 	pg_ast_node* root = clang_parse_translation_unit(stream, diagnostics)
 	if (root == 0):
 		pg_token* found = pg_token_stream_furthest(stream)
-		pg_diagnostics_add(diagnostics, found.filename, found.line, found.column, "syntax error", "translation_unit", found.text)
+		pg_diagnostics_add(diagnostics, found.filename, found.line, found.column, c"syntax error", c"translation_unit", found.text)
 	return root
 

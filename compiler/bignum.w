@@ -76,7 +76,7 @@ void bignum_add_small(int n, int add):
 	int i = 0
 	while (carry != 0):
 		if (i >= bignum_limb_count()):
-			error("bignum overflow")
+			error(c"bignum overflow")
 		int value = bignum_limb(n, i) + carry
 		bignum_set_limb(n, i, value & 0xffff)
 		carry = value >> 16
@@ -97,7 +97,7 @@ int bignum_bits_32_51(int n):
 void bignum_set_bit(int n, int bit):
 	int limb = bit / 16
 	if (limb >= bignum_limb_count()):
-		error("bignum overflow")
+		error(c"bignum overflow")
 	int value = bignum_limb(n, limb) | (1 << (bit % 16))
 	bignum_set_limb(n, limb, value)
 	if (limb + 1 > bignum_length(n)):
@@ -115,7 +115,7 @@ void bignum_mul_small(int n, int mul):
 		i = i + 1
 	while (carry != 0):
 		if (i >= bignum_limb_count()):
-			error("bignum overflow")
+			error(c"bignum overflow")
 		bignum_set_limb(n, i, carry & 0xffff)
 		carry = carry >> 16
 		i = i + 1
@@ -140,7 +140,7 @@ void bignum_shl1(int n):
 		i = i + 1
 	if (carry != 0):
 		if (i >= bignum_limb_count()):
-			error("bignum overflow")
+			error(c"bignum overflow")
 		bignum_set_limb(n, i, carry)
 		i = i + 1
 	bignum_set_length(n, i)
@@ -260,7 +260,7 @@ int bignum_div_scaled_to_int(int num, int den, int shift, int rem):
 		if (bignum_cmp(rem, divisor) >= 0):
 			bignum_sub(rem, divisor)
 			if (bit >= 31):
-				error("bignum quotient overflow")
+				error(c"bignum quotient overflow")
 			quotient = quotient + (1 << bit)
 		bit = bit - 1
 

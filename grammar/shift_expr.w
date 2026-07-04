@@ -7,12 +7,12 @@
 int shift_expr():
 	int type = additive_expr()
 	while (1):
-		if (accept("<<")):
+		if (accept(c"<<")):
 			binary1(type)
 			type = binary2_finish(additive_expr())
 			alu_shl()
 
-		else if (accept(">>")):
+		else if (accept(c">>")):
 			binary1(type)
 			type = binary2_finish(additive_expr())
 			alu_sar()

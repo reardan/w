@@ -29,7 +29,7 @@ void test_modulus():
 
 
 void test_raw_asm():
-	raw_asm ("\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90")
+	raw_asm (c"\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90")
 
 
 int func1():
@@ -144,7 +144,7 @@ void test_hex_literals():
 
 
 void test_string_escapes():
-	char* s = "a\n\t\rb"
+	char* s = c"a\n\t\rb"
 	assert_equal_hex('a', s[0])
 	assert_equal_hex(10, s[1])
 	assert_equal_hex(9, s[2])

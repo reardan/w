@@ -429,15 +429,15 @@ json_value* json_parse_value(json_parser* p, int depth):
 	if (c == '"'):
 		return json_parse_string_value(p)
 	if (c == 't'):
-		if (json_match(p, "true")):
+		if (json_match(p, c"true")):
 			return json_bool(1)
 		return 0
 	if (c == 'f'):
-		if (json_match(p, "false")):
+		if (json_match(p, c"false")):
 			return json_bool(0)
 		return 0
 	if (c == 'n'):
-		if (json_match(p, "null")):
+		if (json_match(p, c"null")):
 			return json_null()
 		return 0
 	if ((c == '-') | json_is_digit(c)):
@@ -529,18 +529,18 @@ void json_append_array(string_builder* out, json_value* value):
 
 void json_append_value(string_builder* out, json_value* value):
 	if (value == 0):
-		string_append(out, "null")
+		string_append(out, c"null")
 	else if (value.type == json_type_null()):
-		string_append(out, "null")
+		string_append(out, c"null")
 	else if (value.type == json_type_int()):
 		string_append_int(out, value.int_value)
 	else if (value.type == json_type_string()):
 		json_append_escaped_string(out, value.string_value)
 	else if (value.type == json_type_bool()):
 		if (value.int_value):
-			string_append(out, "true")
+			string_append(out, c"true")
 		else:
-			string_append(out, "false")
+			string_append(out, c"false")
 	else if (value.type == json_type_object()):
 		json_append_object(out, value)
 	else if (value.type == json_type_array()):

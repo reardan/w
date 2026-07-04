@@ -5,7 +5,7 @@
  */
 int bitwise_and_expr():
 	int type = equality_expr()
-	while (accept("&")):
+	while (accept(c"&")):
 		binary1(type)
 		type = binary2_finish_pop(equality_expr())
 		alu_and()

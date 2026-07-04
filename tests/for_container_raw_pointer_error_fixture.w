@@ -21,5 +21,5 @@ int int_iter_value(int* values, int cursor):
 int main():
 	int* values = malloc(4)
 	for int value in values:
-		print_int("value: ", value)
+		print_int(c"value: ", value)
 	return 0

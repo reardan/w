@@ -4,21 +4,21 @@ char *last_identifier
 # Print a type's name followed by its pointer stars, e.g. "char**"
 void print_error_type(int type_index):
 	type_index = type_real(type_index)
-	print_error(type_get_name(type_index))
+	print_error(str_from_cstr(type_get_name(type_index)))
 	for int i in range(type_get_pointer_level(type_index)):
-		print_error("*")
+		print_error(str_from_cstr(c"*"))
 
 
 # Warn that 'got' does not convert to 'want'; context names the construct
 # (assignment, initialization, return, ...)
 void warn_type_mismatch(char* context, int want, int got):
-	print_error("warning: ")
-	print_error(context)
-	print_error(" type mismatch: expected '")
+	print_error(str_from_cstr(c"warning: "))
+	print_error(str_from_cstr(context))
+	print_error(str_from_cstr(c" type mismatch: expected '"))
 	print_error_type(want)
-	print_error("', got '")
+	print_error(str_from_cstr(c"', got '"))
 	print_error_type(got)
-	warning("'")
+	warning(c"'")
 
 
 int function_signature_matches_symbol(int signature_type, char* function_name):
@@ -48,6 +48,44 @@ int types_compatible_with_expression(int want, int got):
 	return types_compatible(want, got)
 
 
+void coerce_cstr_to_string():
+	push_eax()
+	stack_pos = stack_pos + 1
+	sym_get_value(c"str_from_cstr")
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(word_size)
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(word_size)
+	call_eax()
+	be_pop(2)
+	stack_pos = stack_pos - 2
+	be_pop(1)
+	stack_pos = stack_pos - 1
+
+
+void coerce_cstr_to_string_call_arg():
+	push_eax()
+	stack_pos = stack_pos + 1
+	sym_get_value(c"cstr_utf8_length_or_die")
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(word_size)
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(word_size)
+	call_eax()
+	be_pop(2)
+	stack_pos = stack_pos - 2
+
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(word_size)
+	push_eax()
+	stack_pos = stack_pos + 1
+	lea_eax_esp_plus(0)
+
 
 /*
 Convert the lvalue address in eax into an rvalue, sized by its type.
@@ -62,13 +100,13 @@ int promote(int type):
 		return hash_finish_pending_read()
 	if (verbosity >= 1):
 		print2(itoa(line_number))
-		print2(": promote(")
+		print2(c": promote(")
 		print2(itoa(type))
-		print2("=")
+		print2(c"=")
 		print2(type_get_name(type))
-		print2(", '")
+		print2(c", '")
 		print2(last_identifier)
-		println2("')")
+		println2(c"')")
 
 	if (type_is_value(type)):
 		return type_real(type)
@@ -137,6 +175,10 @@ void coerce(int want, int got):
 		return;
 	if (got == 4):
 		return;
+	if (type_is_string(want)):
+		if (type_is_char_pointer(got)):
+			coerce_cstr_to_string()
+		return;
 	if (want_kind == got_kind):
 		if ((want == float16_type) & (got != float16_type)):
 			movd_xmm0_eax()
@@ -160,7 +202,7 @@ void coerce(int want, int got):
 
 	if (want_kind == 2):
 		if (word_size != 8):
-			error("float64 requires the x64 target")
+			error(c"float64 requires the x64 target")
 		if (got_kind == 1):
 			movd_xmm0_eax()
 			cvtss2sd_xmm0()

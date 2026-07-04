@@ -9,5 +9,5 @@ struct point:
 int main():
 	point* p = malloc(8)
 	for int v in p:
-		print_int("v: ", v)
+		print_int(c"v: ", v)
 	return 0

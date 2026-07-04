@@ -3,7 +3,7 @@ int hash_literal_type
 
 
 void hash_literal_call_map_set(int container_slot, int key_slot, int value_slot):
-	sym_get_value("__w_map_set")
+	sym_get_value(c"__w_map_set")
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -14,7 +14,7 @@ void hash_literal_call_map_set(int container_slot, int key_slot, int value_slot)
 
 
 void hash_literal_call_set_add(int container_slot, int key_slot):
-	sym_get_value("__w_set_add")
+	sym_get_value(c"__w_set_add")
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -31,16 +31,16 @@ void hash_literal_parse_map_entry(int container_type, int container_slot):
 	got_key_type = promote(got_key_type)
 	coerce(key_type, got_key_type)
 	if (types_compatible_with_expression(key_type, got_key_type) == 0):
-		warn_type_mismatch("map literal key", key_type, got_key_type)
+		warn_type_mismatch(c"map literal key", key_type, got_key_type)
 	push_eax()
 	stack_pos = stack_pos + 1
 	int key_slot = stack_pos
-	expect(":")
+	expect(c":")
 	int got_value_type = expression()
 	got_value_type = promote(got_value_type)
 	coerce(value_type, got_value_type)
 	if (types_compatible_with_expression(value_type, got_value_type) == 0):
-		warn_type_mismatch("map literal value", value_type, got_value_type)
+		warn_type_mismatch(c"map literal value", value_type, got_value_type)
 	push_eax()
 	stack_pos = stack_pos + 1
 	int value_slot = stack_pos
@@ -56,7 +56,7 @@ void hash_literal_parse_set_entry(int container_type, int container_slot):
 	got_key_type = promote(got_key_type)
 	coerce(key_type, got_key_type)
 	if (types_compatible_with_expression(key_type, got_key_type) == 0):
-		warn_type_mismatch("set literal key", key_type, got_key_type)
+		warn_type_mismatch(c"set literal key", key_type, got_key_type)
 	push_eax()
 	stack_pos = stack_pos + 1
 	int key_slot = stack_pos
@@ -66,30 +66,30 @@ void hash_literal_parse_set_entry(int container_type, int container_slot):
 
 
 int hash_typed_literal():
-	if (((peek("map") & (nextc == '[')) == 0) & ((peek("set") & (nextc == '[')) == 0)):
+	if (((peek(c"map") & (nextc == '[')) == 0) & ((peek(c"set") & (nextc == '[')) == 0)):
 		return 0
 	int container_type = type_name()
 	if ((type_is_map(container_type) == 0) & (type_is_set(container_type) == 0)):
 		return 0
-	expect("{")
+	expect(c"{")
 	hash_emit_new_container(container_type)
 	push_eax()
 	stack_pos = stack_pos + 1
 	int container_slot = stack_pos
-	if (peek("}") == 0):
+	if (peek(c"}") == 0):
 		if (type_is_map(container_type)):
 			hash_literal_parse_map_entry(container_type, container_slot)
 		else:
 			hash_literal_parse_set_entry(container_type, container_slot)
-		while (accept(",")):
-			if (peek("}")):
+		while (accept(c",")):
+			if (peek(c"}")):
 				break
 			if (type_is_map(container_type)):
 				hash_literal_parse_map_entry(container_type, container_slot)
 			else:
 				hash_literal_parse_set_entry(container_type, container_slot)
-	if (peek("}") == 0):
-		error("'}' expected in hash literal")
+	if (peek(c"}") == 0):
+		error(c"'}' expected in hash literal")
 	pop_eax()
 	stack_pos = stack_pos - 1
 	hash_literal_type = type_value(container_type)
@@ -111,11 +111,11 @@ int primary_expr():
 		type = literal_type
 
 	# Bool literals
-	else if (peek("true")):
+	else if (peek(c"true")):
 		mov_eax_int(1)
 		type = type_value(bool_type)
 
-	else if (peek("false")):
+	else if (peek(c"false")):
 		mov_eax_int(0)
 		type = type_value(bool_type)
 
@@ -125,7 +125,7 @@ int primary_expr():
 
 	# Compile-time constant: the target's word size in bytes (4 or 8),
 	# baked in when the enclosing file is compiled
-	else if (peek("__word_size__")):
+	else if (peek(c"__word_size__")):
 		mov_eax_int(word_size)
 		type = 3 /* constant */
 
@@ -133,7 +133,7 @@ int primary_expr():
 		type = string_value_type
 
 	else if (c_char_pointer_literal()):
-		type = 3 /* constant: eax already holds the string address */
+		type = type_value(type_lookup_pointer(c"char", 1))
 
 	else if (hash_typed_literal()):
 		type = hash_literal_type
@@ -143,10 +143,10 @@ int primary_expr():
 		type = new_type
 	}
 	# ( expression )
-	else if (accept("(")) {
+	else if (accept(c"(")) {
 		type = expression()
-		if (peek(")") == 0):
-			error("No closing parenthesis")
+		if (peek(c")") == 0):
+			error(c"No closing parenthesis")
 	}
 	# char literal e.g. 'c'
 	else if ((token[0] == 39) & (token[1] != 0) &
@@ -170,10 +170,10 @@ int primary_expr():
 		type = 3 /* constant */
 
 	else if (char_pointer_literal()):
-		type = 3 /* constant: eax already holds the string address */
+		type = string_value_type
 
 	else:
-		print2("Could not find a valid primary expression, token: ")
+		print2(c"Could not find a valid primary expression, token: ")
 		error(token)
 
 	get_token()

@@ -86,13 +86,13 @@ void bp_disarm(int i):
 # Create and arm a breakpoint; returns the slot index or -1.
 int bp_add(int addr, int temp):
 	if (bp_find(addr) >= 0):
-		println("a breakpoint is already set there")
+		println(c"a breakpoint is already set there")
 		return -1
 	if (bp_used >= bp_max()):
-		println("too many breakpoints")
+		println(c"too many breakpoints")
 		return -1
 	if (bp_read_byte(addr) == 204):
-		println("that statement is already a 'debugger' trap")
+		println(c"that statement is already a 'debugger' trap")
 		return -1
 	int i = bp_used
 	bp_used = bp_used + 1
@@ -105,10 +105,10 @@ int bp_add(int addr, int temp):
 
 void bp_delete(int i):
 	if ((i < 0) | (i >= bp_used)):
-		println("no such breakpoint")
+		println(c"no such breakpoint")
 		return;
 	if (bp_addr(i) == 0):
-		println("no such breakpoint")
+		println(c"no such breakpoint")
 		return;
 	bp_disarm(i)
 	save_int(bp_addrs + i * 4, 0)
@@ -124,17 +124,17 @@ void bp_delete_all():
 
 
 void bp_describe(int i):
-	print("breakpoint ")
+	print(c"breakpoint ")
 	char* digits = itoa(i + 1)
 	print(digits)
 	free(digits)
 	if (bp_is_temp(i)):
-		print(" (temporary)")
-	print(" at ")
+		print(c" (temporary)")
+	print(c" at ")
 	print(dbg_function_name(bp_addr(i)))
-	print(" (")
+	print(c" (")
 	dbg_print_file_line(bp_addr(i))
-	print(")")
+	print(c")")
 
 
 void bp_list():
@@ -147,7 +147,7 @@ void bp_list():
 			shown = shown + 1
 		i = i + 1
 	if (shown == 0):
-		println("no breakpoints set")
+		println(c"no breakpoints set")
 
 
 # Resolve a breakpoint target the user typed into an absolute address:
@@ -157,7 +157,7 @@ void bp_list():
 # Returns 0 when the target does not resolve; the reason is printed.
 int bp_resolve_target(char* arg, int current_file):
 	if (arg[0] == 0):
-		println("usage: break <function | line | file:line>")
+		println(c"usage: break <function | line | file:line>")
 		return 0
 
 	# file:line splits at the last ':'
@@ -175,7 +175,7 @@ int bp_resolve_target(char* arg, int current_file):
 		line_text = arg + colon + 1
 		file_index = dbg_file_index_for(arg)
 		if (file_index < 0):
-			print("unknown file: ")
+			print(c"unknown file: ")
 			println(arg)
 			return 0
 
@@ -184,28 +184,28 @@ int bp_resolve_target(char* arg, int current_file):
 		if ((arg[0] < '0') | (arg[0] > '9')):
 			int f = dbg_global_find(arg)
 			if (f < 0):
-				print("unknown function: ")
+				print(c"unknown function: ")
 				println(arg)
 				return 0
 			if (dbg_sym_symtype(f) != 2):
-				print("not a function: ")
+				print(c"not a function: ")
 				println(arg)
 				return 0
 			return dbg_sym_address(f)
 
 	int line = atoi(line_text)
 	if (line <= 0):
-		print("bad line number: ")
+		print(c"bad line number: ")
 		println(line_text)
 		return 0
 	if (file_index < 0):
-		println("no current file; use file:line")
+		println(c"no current file; use file:line")
 		return 0
 	int entry = dbg_entry_for_line(file_index, line)
 	if (entry < 0):
-		print("no code at ")
+		print(c"no code at ")
 		print(dbg_file_name(file_index))
-		print(":")
+		print(c":")
 		println(line_text)
 		return 0
 	return dbg_line_addr(entry) + code_offset

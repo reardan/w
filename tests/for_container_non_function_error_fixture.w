@@ -24,5 +24,5 @@ int bad_iter_symbol_iter_value(bad_iter_symbol* b, int cursor):
 int main():
 	bad_iter_symbol* b = malloc(4)
 	for int value in b:
-		print_int("value: ", value)
+		print_int(c"value: ", value)
 	return 0

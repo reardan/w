@@ -9,64 +9,64 @@ import structures.list
 # https://datatracker.ietf.org/doc/html/rfc6455#section-5.2
 # https://en.wikipedia.org/wiki/WebSocket
 void websockets_request(int file):
-	write_string(file, "GET /chat HTTP/1.1")
-	write_string(file, "Host: server.example.com")
-	write_string(file, "Upgrade: websocket")
-	write_string(file, "Connection: Upgrade")
-	write_string(file, "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==")
-	write_string(file, "Sec-WebSocket-Protocol: chat, superchat")
-	write_string(file, "Sec-WebSocket-Version: 13")
-	write_string(file, "Origin: http://example.com")
+	write_string(file, c"GET /chat HTTP/1.1")
+	write_string(file, c"Host: server.example.com")
+	write_string(file, c"Upgrade: websocket")
+	write_string(file, c"Connection: Upgrade")
+	write_string(file, c"Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==")
+	write_string(file, c"Sec-WebSocket-Protocol: chat, superchat")
+	write_string(file, c"Sec-WebSocket-Version: 13")
+	write_string(file, c"Origin: http://example.com")
 
 
 void websockets_response(int file):
-	write_string(file, "HTTP/1.1 101 Switching Protocols")
-	write_string(file, "Upgrade: websocket")
-	write_string(file, "Connection: Upgrade")
-	write_string(file, "Sec-WebSocket-Accept: HSmrc0sMlYUkAGmm5OPpG2HaGWk=")
-	write_string(file, "Sec-WebSocket-Protocol: chat")
+	write_string(file, c"HTTP/1.1 101 Switching Protocols")
+	write_string(file, c"Upgrade: websocket")
+	write_string(file, c"Connection: Upgrade")
+	write_string(file, c"Sec-WebSocket-Accept: HSmrc0sMlYUkAGmm5OPpG2HaGWk=")
+	write_string(file, c"Sec-WebSocket-Protocol: chat")
 
 
 void parse_headers(int message):
 	die()
-	println("parsing headers")
-	println("")
-	split_string(message, "\x0a")
+	println(c"parsing headers")
+	println(c"")
+	split_string(message, c"\x0a")
 	int i = 0
 	while (i < length):
 		char* str = get(i)
-		print_string("line: ", str)
+		print_string(c"line: ", str)
 		i = i + 1
 
 
 void respond1(int client_sock):
-	println("")
-	println("writing data...")
-	char* message = "Hi there dude!\x0a"
+	println(c"")
+	println(c"writing data...")
+	char* message = c"Hi there dude!\x0a"
 	write_string(client_sock, message)
 
 
 int server():
 	int server_sock = socket_tcp_ipv4()
-	print_int("server socket: ", server_sock)
+	print_int(c"server socket: ", server_sock)
 	int err
-	println("setsockopt()")
+	println(c"setsockopt()")
 	err = socket_set_reuseaddr(server_sock)
 	assert_equal(0, err)
-	println("bind()")
-	err = socket_bind_ipv4(server_sock, ip4_from_string("127.0.0.1"), 7777)
+	println(c"bind()")
+	err = socket_bind_ipv4(server_sock, ip4_from_string(c"127.0.0.1"), 7777)
 	assert_equal(0, err)
-	println("listen()")
+	println(c"listen()")
 	int queue_length = 0
 	int listen_result = socket_listen(server_sock, queue_length)
-	print_int("listen_result ", listen_result)
-	asserts("listen failed: ", listen_result == 0)
+	print_int(c"listen_result ", listen_result)
+	asserts(c"listen failed: ", listen_result == 0)
 	# todo: loop
 	while (1):
-		println("accept()")
+		println(c"accept()")
 		int client_sock = socket_accept_connection(server_sock)
-		print_int("client_sock: ", client_sock)
-		write_string(client_sock, "yo yo yo\x0a")
+		print_int(c"client_sock: ", client_sock)
+		write_string(client_sock, c"yo yo yo\x0a")
 		# gethostbyaddr
 	close(server_sock)
 	return 0
@@ -76,29 +76,29 @@ void read_socket(int file):
 	char* buf = malloc(41)
 	int read_result = read(file, buf, 40)
 	if (read_result < 0):
-		print_int("read_result: ", read_result)
+		print_int(c"read_result: ", read_result)
 		free(buf)
 		return
 	buf[read_result] = 0
-	print_int("read_result: ", read_result)
-	print_string("received: ", buf)
+	print_int(c"read_result: ", read_result)
+	print_string(c"received: ", buf)
 	free(buf)
 
 
 void client():
-	char* ip_string = "127.1.1.1"
+	char* ip_string = c"127.1.1.1"
 	int ip = ip4_from_string(ip_string)
-	print_hex("ip: ", ip)
+	print_hex(c"ip: ", ip)
 
-	println("calling socket()")
+	println(c"calling socket()")
 	int file = socket_tcp_ipv4()
-	print_int("file: ", file)
-	println("calling connect()")
+	print_int(c"file: ", file)
+	println(c"calling connect()")
 	int port = 5555
 	int connect_result = socket_connect_ipv4(file, ip, port)
-	print_int("connect_result: ", connect_result)
+	print_int(c"connect_result: ", connect_result)
 
-	write_string(file, "How's it going?\x0a")
+	write_string(file, c"How's it going?\x0a")
 	# read_socket(file)
 	close(file)
 

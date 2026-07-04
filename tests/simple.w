@@ -25,7 +25,7 @@ int main():
 */
 
 int _main():
-	char* s =  "hello, world!\x0a"
+	char* s =  c"hello, world!\x0a"
 	int32 write = 4
 	int32 exit = 1
 	syscall(write, 1, s, 15) /* write */

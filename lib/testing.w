@@ -7,7 +7,7 @@ import lib.__arch__.elf_introspect
 
 /* stripped version of elf.print_elf_header() todo: refactor/dedupe */
 void execute_tests():
-	println("Parsing symbol table for 'test_*' symbols.")
+	println(c"Parsing symbol table for 'test_*' symbols.")
 
 	# Use base of executable
 	# TODO: dedupe this constant or come up with alternative method
@@ -43,9 +43,9 @@ void execute_tests():
 		
 		section_index = section_index + 1
 
-	asserts("No symbol table addr", symbol_table_addr > 0)
-	asserts("No symbols found", symbol_count > 0)
-	asserts("No strings found", string_addr > 0)
+	asserts(c"No symbol table addr", symbol_table_addr > 0)
+	asserts(c"No symbols found", symbol_count > 0)
+	asserts(c"No strings found", string_addr > 0)
 
 	# Process Symbol Table Entries
 	int symbol_index = 0
@@ -54,21 +54,21 @@ void execute_tests():
 		int name_index = elf_symbol_name_index(symbol_addr)
 		int test_addr = elf_symbol_value(symbol_addr)
 		char* name = string_addr + name_index
-		if (starts_with(name, "test_")):
-			println("")
-			print("Run: '")
+		if (starts_with(name, c"test_")):
+			println(c"")
+			print(c"Run: '")
 			print(name)
-			print("()' -> ")
+			print(c"()' -> ")
 			print(hex(test_addr))
-			println("")
+			println(c"")
 			int* test_func = cast(int*, test_addr)
 
-			print_hex("test_func: ", test_addr)
+			print_hex(c"test_func: ", test_addr)
 			test_func()
 
-			print("Test '")
+			print(c"Test '")
 			print(name)
-			println("()' passed!")
+			println(c"()' passed!")
 
 		symbol_index = symbol_index + 1
 
@@ -76,8 +76,8 @@ void execute_tests():
 
 int main(int argc, int argv):
 	execute_tests()
-	println("")
-	println("All tests passed!")
+	println(c"")
+	println(c"All tests passed!")
 	return 0
 
 

@@ -47,7 +47,7 @@ void vfprintf(int fd, char* fmt, int* args, int num_args):
 			if (verb == '%'):
 				putc(fd, '%')
 			else:
-				asserts("printf: more verbs than arguments", used < num_args)
+				asserts(c"printf: more verbs than arguments", used < num_args)
 				int value = args[used]
 				used = used + 1
 				if (verb == 'd'):

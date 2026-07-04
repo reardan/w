@@ -24,12 +24,12 @@ int parse_exponent_part(int i):
 		sign = -1
 		i = i + 1
 	if ((token[i] < '0') | (token[i] > '9')):
-		error("invalid float exponent")
+		error(c"invalid float exponent")
 	while ((token[i] >= '0') & (token[i] <= '9')):
 		exponent = exponent * 10 + token[i] - '0'
 		i = i + 1
 	if (token[i] != 0):
-		error("invalid float literal")
+		error(c"invalid float literal")
 	return exponent * sign
 
 
@@ -50,13 +50,13 @@ int float32_bits_from_token():
 				frac_digits = frac_digits + 1
 		else if (token[i] == '.'):
 			if (saw_dot):
-				error("invalid float literal")
+				error(c"invalid float literal")
 			saw_dot = 1
 		else if ((token[i] == 'e') | (token[i] == 'E')):
 			exponent = parse_exponent_part(i + 1)
 			i = strlen(token) - 1
 		else:
-			error("invalid float literal")
+			error(c"invalid float literal")
 		i = i + 1
 
 	exponent = exponent - frac_digits
@@ -116,13 +116,13 @@ void float64_bits_from_token():
 				frac_digits = frac_digits + 1
 		else if (token[i] == '.'):
 			if (saw_dot):
-				error("invalid float literal")
+				error(c"invalid float literal")
 			saw_dot = 1
 		else if ((token[i] == 'e') | (token[i] == 'E')):
 			exponent = parse_exponent_part(i + 1)
 			i = strlen(token) - 1
 		else:
-			error("invalid float literal")
+			error(c"invalid float literal")
 		i = i + 1
 
 	exponent = exponent - frac_digits

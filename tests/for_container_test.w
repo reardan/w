@@ -135,9 +135,9 @@ void test_linked_list_empty():
 
 void test_hash_map_keys():
 	hash_map* m = hash_map_new()
-	hash_map_set(m, "one", 1)
-	hash_map_set(m, "two", 2)
-	hash_map_set(m, "three", 3)
+	hash_map_set(m, c"one", 1)
+	hash_map_set(m, c"two", 2)
+	hash_map_set(m, c"three", 3)
 	int count = 0
 	int sum = 0
 	for char* key in m:

@@ -13,22 +13,22 @@ struct register_context:
 
 
 void print_stack():
-	println2("Stack:")
+	println2(c"Stack:")
 	register_context context
 	get_context(&context)
 	print_words(context.esp, 20)
 
 
 void print_registers():
-	println2("Registers:")
+	println2(c"Registers:")
 	register_context context
 	get_context(&context)
-	print_hex("eax: ", context.eax)
-	print_hex("ecx: ", context.ecx)
-	print_hex("edx: ", context.edx)
-	print_hex("ebx: ", context.ebx)
-	print_hex("esp: ", context.esp)
-	print_hex("ebp: ", context.ebp)
-	print_hex("esi: ", context.esi)
-	print_hex("edi: ", context.edi)
-	println2("")
+	print_hex(c"eax: ", context.eax)
+	print_hex(c"ecx: ", context.ecx)
+	print_hex(c"edx: ", context.edx)
+	print_hex(c"ebx: ", context.ebx)
+	print_hex(c"esp: ", context.esp)
+	print_hex(c"ebp: ", context.ebp)
+	print_hex(c"esi: ", context.esi)
+	print_hex(c"edi: ", context.edi)
+	println2(c"")

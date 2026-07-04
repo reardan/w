@@ -79,13 +79,13 @@ void test_bool_literals_and_coercion():
 
 void test_cast_and_aliases():
 	size_t n = 42
-	char_buffer text = "typed alias"
+	char_buffer text = c"typed alias"
 	const int fixed = 6
 	const int* fixed_ptr = &fixed
 	int* p = cast(int*, malloc(4))
 	*p = cast(int, n)
 	assert_equal(42, *p)
-	assert_strings_equal("typed alias", text)
+	assert_strings_equal(c"typed alias", text)
 	assert_equal(6, fixed)
 	assert_equal(6, *fixed_ptr)
 	free(p)
@@ -155,8 +155,8 @@ void test_union_fields_overlap():
 	p0_value v
 	v.i = 123
 	assert_equal(123, v.i)
-	v.s = "union text"
-	assert_strings_equal("union text", v.s)
+	v.s = c"union text"
+	assert_strings_equal(c"union text", v.s)
 	v.pair.a = 21
 	v.pair.b = 22
 	assert_equal(21, v.pair.a)

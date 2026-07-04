@@ -8,13 +8,13 @@ import grammar
 
 
 void file_not_found_error():
-	print_error("file '")
+	print_error(c"file '")
 	print_error(filename)
-	print_error("' not found error '")
+	print_error(c"' not found error '")
 	# 'file' holds the failed open() result; the old code passed the
 	# error() function itself, which the typed checks now reject
 	print_error(itoa(file))
-	print_error("'\x0a")
+	print_error(c"'\x0a")
 
 
 int compile_attempt(char* fn):
@@ -34,15 +34,15 @@ int compile_attempt(char* fn):
 int compile_joined(char* cwd, char* filename):
 
 	# Compute path based on current directory
-	char* joined = strjoin(cwd, "/")
+	char* joined = strjoin(cwd, c"/")
 
 	char* joined2 = strjoin(joined, filename)
 	# print_string("joined: ", joined2)
 	free(joined)
 
 	# Add the .w extension if not already present
-	if (ends_with(joined2, ".w") == 0):
-		char* joined3 = strjoin(joined2, ".w")
+	if (ends_with(joined2, c".w") == 0):
+		char* joined3 = strjoin(joined2, c".w")
 		free(joined2)
 		joined2 = joined3
 
@@ -76,18 +76,18 @@ int compile_relative_path(char* filename):
 				cwd[index] = 0
 				index = 0 /* hacky way to break from loop */
 			index = index - 1
-		print_string("went up one directory: ", cwd)
+		print_string(c"went up one directory: ", cwd)
 
 	# error() instead of exit() so a REPL entry importing a missing
 	# module recovers to the prompt instead of killing the session
-	error("filesystem root reached, abandoning search")
+	error(c"filesystem root reached, abandoning search")
 	return 0
 
 
 int compile_file(char* filename):
 	# Handle absolute paths by using the filename directly on filesep start
 	if (filename[0] == 47):
-		print2("using filename as path directly: ")
+		print2(c"using filename as path directly: ")
 		println2(filename)
 		return compile_attempt(filename)
 
@@ -101,7 +101,7 @@ void compile_save(char* fn):
 	int old_tab_level = tab_level
 
 	if (verbosity >= 0):
-		print_string("compiling ", fn)
+		print_string(c"compiling ", fn)
 
 	compile_file(fn)
 	close(file)
@@ -112,12 +112,12 @@ void compile_save(char* fn):
 	tab_level = old_tab_level
 
 	if (verbosity >= 0):
-		print_string("back to ", filename)
+		print_string(c"back to ", filename)
 
 
 int link(int argc, int argv):
 	if (argc < 2):
-		println2("usage: w [x64] <file.w>... [-o output] [--bounds=on|off|trap]")
+		println2(c"usage: w [x64] <file.w>... [-o output] [--bounds=on|off|trap]")
 		exit(1)
 	int i = 1
 	word_size = 4
@@ -126,8 +126,8 @@ int link(int argc, int argv):
 	# argv strides by the HOST pointer size: __word_size__ was baked in
 	# when this compiler binary was itself compiled
 	char** first_arg = argv + __word_size__
-	if (strcmp(*first_arg, "x64") == 0):
-		println2("Compiling in x64 mode")
+	if (strcmp(*first_arg, c"x64") == 0):
+		println2(c"Compiling in x64 mode")
 		word_size =  8
 		word_size_log2 = 3
 		i = i + 1
@@ -136,35 +136,35 @@ int link(int argc, int argv):
 	last_identifier = malloc(8000)
 	last_global_declaration = malloc(8000)
 	be_start(word_size)
-	import_module("structures.hash_table")
+	import_module(c"structures.hash_table")
 
 	output_fd = 1 /* default: write the ELF to stdout */
 	char* output_path = 0
 
 	while (i < argc):
 		char** arg = argv + i * __word_size__
-		if (strcmp(*arg, "-o") == 0):
+		if (strcmp(*arg, c"-o") == 0):
 			i = i + 1
-			asserts("-o requires an output path", i < argc)
+			asserts(c"-o requires an output path", i < argc)
 			arg = argv + i * __word_size__
 			output_path = *arg
-		else if (strcmp(*arg, "--bounds=on") == 0):
+		else if (strcmp(*arg, c"--bounds=on") == 0):
 			bounds_mode = 1
-		else if (strcmp(*arg, "--bounds=trap") == 0):
+		else if (strcmp(*arg, c"--bounds=trap") == 0):
 			bounds_mode = 1
-		else if (strcmp(*arg, "--bounds=off") == 0):
+		else if (strcmp(*arg, c"--bounds=off") == 0):
 			bounds_mode = 0
 		else:
-			print_error("compiling '")
+			print_error(c"compiling '")
 			print_error(*arg)
-			print_error("'\x0a")
+			print_error(c"'\x0a")
 			compile_file(*arg)
 		i = i + 1
 
 	if (output_path != 0):
 		/* O_WRONLY|O_CREAT|O_TRUNC, mode 0755 so the result is executable */
 		output_fd = open(output_path, 577, 493)
-		asserts("could not open output file", output_fd >= 0)
+		asserts(c"could not open output file", output_fd >= 0)
 
 	# print_symbol_table(0)
 	# type_print_all()

@@ -55,51 +55,51 @@ int cpp_match_literal(char* input, int index, char* text):
 
 
 int cpp_punct_length(char* input, int index):
-	if (cpp_match_literal(input, index, "...")):
+	if (cpp_match_literal(input, index, c"...")):
 		return 3
-	if (cpp_match_literal(input, index, "<<=")):
+	if (cpp_match_literal(input, index, c"<<=")):
 		return 3
-	if (cpp_match_literal(input, index, ">>=")):
+	if (cpp_match_literal(input, index, c">>=")):
 		return 3
-	if (cpp_match_literal(input, index, "##")):
+	if (cpp_match_literal(input, index, c"##")):
 		return 2
-	if (cpp_match_literal(input, index, "++")):
+	if (cpp_match_literal(input, index, c"++")):
 		return 2
-	if (cpp_match_literal(input, index, "--")):
+	if (cpp_match_literal(input, index, c"--")):
 		return 2
-	if (cpp_match_literal(input, index, "->")):
+	if (cpp_match_literal(input, index, c"->")):
 		return 2
-	if (cpp_match_literal(input, index, "<<")):
+	if (cpp_match_literal(input, index, c"<<")):
 		return 2
-	if (cpp_match_literal(input, index, ">>")):
+	if (cpp_match_literal(input, index, c">>")):
 		return 2
-	if (cpp_match_literal(input, index, "<=")):
+	if (cpp_match_literal(input, index, c"<=")):
 		return 2
-	if (cpp_match_literal(input, index, ">=")):
+	if (cpp_match_literal(input, index, c">=")):
 		return 2
-	if (cpp_match_literal(input, index, "==")):
+	if (cpp_match_literal(input, index, c"==")):
 		return 2
-	if (cpp_match_literal(input, index, "!=")):
+	if (cpp_match_literal(input, index, c"!=")):
 		return 2
-	if (cpp_match_literal(input, index, "&&")):
+	if (cpp_match_literal(input, index, c"&&")):
 		return 2
-	if (cpp_match_literal(input, index, "||")):
+	if (cpp_match_literal(input, index, c"||")):
 		return 2
-	if (cpp_match_literal(input, index, "+=")):
+	if (cpp_match_literal(input, index, c"+=")):
 		return 2
-	if (cpp_match_literal(input, index, "-=")):
+	if (cpp_match_literal(input, index, c"-=")):
 		return 2
-	if (cpp_match_literal(input, index, "*=")):
+	if (cpp_match_literal(input, index, c"*=")):
 		return 2
-	if (cpp_match_literal(input, index, "/=")):
+	if (cpp_match_literal(input, index, c"/=")):
 		return 2
-	if (cpp_match_literal(input, index, "%=")):
+	if (cpp_match_literal(input, index, c"%=")):
 		return 2
-	if (cpp_match_literal(input, index, "&=")):
+	if (cpp_match_literal(input, index, c"&=")):
 		return 2
-	if (cpp_match_literal(input, index, "^=")):
+	if (cpp_match_literal(input, index, c"^=")):
 		return 2
-	if (cpp_match_literal(input, index, "|=")):
+	if (cpp_match_literal(input, index, c"|=")):
 		return 2
 	if (cpp_is_punct_char(input[index])):
 		return 1
@@ -243,13 +243,13 @@ cpp_token* cpp_tokenize_text(char* input, char* filename):
 			index = start + length
 			has_space = 0
 			at_bol = 0
-	cpp_token* eof = cpp_token_new(cpp_token_eof(), "", filename, line, 0, at_bol)
+	cpp_token* eof = cpp_token_new(cpp_token_eof(), c"", filename, line, 0, at_bol)
 	tail.next = eof
 	return head.next
 
 
 cpp_token* cpp_lex_one_token(char* text):
-	cpp_token* token = cpp_tokenize_text(text, "<paste>")
+	cpp_token* token = cpp_tokenize_text(text, c"<paste>")
 	if (token.kind == cpp_token_eof()):
 		return 0
 	if (token.next == 0):

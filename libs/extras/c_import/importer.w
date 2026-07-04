@@ -158,33 +158,33 @@ int ci_is_ident_part_char(int c):
 
 
 int ci_known_noop_header_ident(char* name):
-	if (strcmp(name, "__BEGIN_DECLS") == 0):
+	if (strcmp(name, c"__BEGIN_DECLS") == 0):
 		return 1
-	if (strcmp(name, "__END_DECLS") == 0):
+	if (strcmp(name, c"__END_DECLS") == 0):
 		return 1
-	if (strcmp(name, "__THROW") == 0):
+	if (strcmp(name, c"__THROW") == 0):
 		return 1
-	if (strcmp(name, "__THROWNL") == 0):
+	if (strcmp(name, c"__THROWNL") == 0):
 		return 1
-	if (strcmp(name, "__nonnull") == 0):
+	if (strcmp(name, c"__nonnull") == 0):
 		return 1
-	if (strcmp(name, "__attribute__") == 0):
+	if (strcmp(name, c"__attribute__") == 0):
 		return 1
-	if (strcmp(name, "__attribute_malloc__") == 0):
+	if (strcmp(name, c"__attribute_malloc__") == 0):
 		return 1
-	if (strcmp(name, "__wur") == 0):
+	if (strcmp(name, c"__wur") == 0):
 		return 1
-	if (strcmp(name, "__restrict") == 0):
+	if (strcmp(name, c"__restrict") == 0):
 		return 1
-	if (strcmp(name, "__extension__") == 0):
+	if (strcmp(name, c"__extension__") == 0):
 		return 1
-	if (strcmp(name, "__attr_dealloc") == 0):
+	if (strcmp(name, c"__attr_dealloc") == 0):
 		return 1
-	if (strcmp(name, "__attr_dealloc_fclose") == 0):
+	if (strcmp(name, c"__attr_dealloc_fclose") == 0):
 		return 1
-	if (strcmp(name, "__attr_access") == 0):
+	if (strcmp(name, c"__attr_access") == 0):
 		return 1
-	if (strcmp(name, "__fortified_attr_access") == 0):
+	if (strcmp(name, c"__fortified_attr_access") == 0):
 		return 1
 	return 0
 
@@ -277,15 +277,15 @@ int ci_lookup_type(char* name):
 	int type = type_lookup(name)
 	if (type >= 0):
 		return type
-	if (strcmp(name, "__builtin_va_list") == 0):
-		return type_push_alias(strclone(name), type_get_next_pointer(type_lookup("char")))
-	print_error("c_import: unsupported C type '")
+	if (strcmp(name, c"__builtin_va_list") == 0):
+		return type_push_alias(strclone(name), type_get_next_pointer(type_lookup(c"char")))
+	print_error(c"c_import: unsupported C type '")
 	print_error(name)
-	error("'")
+	error(c"'")
 
 
 int ci_void_pointer_type():
-	return type_get_next_pointer(ci_lookup_type("void"))
+	return type_get_next_pointer(ci_lookup_type(c"void"))
 
 
 int ci_apply_pointers(int type, int count):
@@ -331,7 +331,7 @@ int ci_type_alignment(int type_index):
 # Opaque byte-blob types used for array fields and struct padding.
 int ci_filler_type(int size):
 	char* n = itoa(size)
-	char* name = strjoin("__ci_bytes_", n)
+	char* name = strjoin(c"__ci_bytes_", n)
 	free(n)
 	int existing = type_lookup(name)
 	if (existing >= 0):
@@ -444,23 +444,23 @@ int ci_parse_char_text(char* text):
 
 
 int ci_binary_op_precedence(char* op):
-	if (strcmp(op, "||") == 0):
+	if (strcmp(op, c"||") == 0):
 		return 1
-	if (strcmp(op, "&&") == 0):
+	if (strcmp(op, c"&&") == 0):
 		return 2
-	if (strcmp(op, "|") == 0):
+	if (strcmp(op, c"|") == 0):
 		return 3
-	if (strcmp(op, "^") == 0):
+	if (strcmp(op, c"^") == 0):
 		return 4
-	if (strcmp(op, "&") == 0):
+	if (strcmp(op, c"&") == 0):
 		return 5
-	if ((strcmp(op, "==") == 0) | (strcmp(op, "!=") == 0)):
+	if ((strcmp(op, c"==") == 0) | (strcmp(op, c"!=") == 0)):
 		return 6
-	if ((strcmp(op, "<") == 0) | (strcmp(op, ">") == 0) | (strcmp(op, "<=") == 0) | (strcmp(op, ">=") == 0)):
+	if ((strcmp(op, c"<") == 0) | (strcmp(op, c">") == 0) | (strcmp(op, c"<=") == 0) | (strcmp(op, c">=") == 0)):
 		return 7
-	if ((strcmp(op, "<<") == 0) | (strcmp(op, ">>") == 0)):
+	if ((strcmp(op, c"<<") == 0) | (strcmp(op, c">>") == 0)):
 		return 8
-	if ((strcmp(op, "+") == 0) | (strcmp(op, "-") == 0)):
+	if ((strcmp(op, c"+") == 0) | (strcmp(op, c"-") == 0)):
 		return 9
 	return 10
 
@@ -470,43 +470,43 @@ int ci_xor_value(int left, int right):
 
 
 int ci_apply_binary_op(char* op, int left, int right):
-	if (strcmp(op, "||") == 0):
+	if (strcmp(op, c"||") == 0):
 		return (left != 0) | (right != 0)
-	if (strcmp(op, "&&") == 0):
+	if (strcmp(op, c"&&") == 0):
 		return (left != 0) & (right != 0)
-	if (strcmp(op, "|") == 0):
+	if (strcmp(op, c"|") == 0):
 		return left | right
-	if (strcmp(op, "^") == 0):
+	if (strcmp(op, c"^") == 0):
 		return ci_xor_value(left, right)
-	if (strcmp(op, "&") == 0):
+	if (strcmp(op, c"&") == 0):
 		return left & right
-	if (strcmp(op, "==") == 0):
+	if (strcmp(op, c"==") == 0):
 		return left == right
-	if (strcmp(op, "!=") == 0):
+	if (strcmp(op, c"!=") == 0):
 		return left != right
-	if (strcmp(op, "<") == 0):
+	if (strcmp(op, c"<") == 0):
 		return left < right
-	if (strcmp(op, ">") == 0):
+	if (strcmp(op, c">") == 0):
 		return left > right
-	if (strcmp(op, "<=") == 0):
+	if (strcmp(op, c"<=") == 0):
 		return left <= right
-	if (strcmp(op, ">=") == 0):
+	if (strcmp(op, c">=") == 0):
 		return left >= right
-	if (strcmp(op, "<<") == 0):
+	if (strcmp(op, c"<<") == 0):
 		return left << right
-	if (strcmp(op, ">>") == 0):
+	if (strcmp(op, c">>") == 0):
 		return left >> right
-	if (strcmp(op, "+") == 0):
+	if (strcmp(op, c"+") == 0):
 		return left + right
-	if (strcmp(op, "-") == 0):
+	if (strcmp(op, c"-") == 0):
 		return left - right
-	if (strcmp(op, "*") == 0):
+	if (strcmp(op, c"*") == 0):
 		return left * right
-	if (strcmp(op, "/") == 0):
+	if (strcmp(op, c"/") == 0):
 		if (right == 0):
 			return 0
 		return left / right
-	if (strcmp(op, "%") == 0):
+	if (strcmp(op, c"%") == 0):
 		if (right == 0):
 			return 0
 		return left % right
@@ -612,11 +612,11 @@ int ci_eval_unary(pg_ast_node* node):
 	if (ci_is_ast(first, clang_ast_unary_operator())):
 		pg_ast_node* op_token = pg_ast_child(first, 0)
 		int value = ci_eval_const(pg_ast_child(node, 1))
-		if (strcmp(op_token.text, "-") == 0):
+		if (strcmp(op_token.text, c"-") == 0):
 			return 0 - value
-		if (strcmp(op_token.text, "~") == 0):
+		if (strcmp(op_token.text, c"~") == 0):
 			return 0 - value - 1
-		if (strcmp(op_token.text, "!") == 0):
+		if (strcmp(op_token.text, c"!") == 0):
 			return value == 0
 		return value
 	return ci_eval_const(first)
@@ -729,33 +729,33 @@ int ci_constant_int(pg_ast_node* node):
 
 int ci_primitive_type(pg_ast_node* specs):
 	if (ci_has_token(specs, clang_token_KW_VOID())):
-		return ci_lookup_type("void")
+		return ci_lookup_type(c"void")
 	if (ci_has_token(specs, clang_token_KW_DOUBLE())):
-		return ci_lookup_type("float64")
+		return ci_lookup_type(c"float64")
 	if (ci_has_token(specs, clang_token_KW_FLOAT())):
-		return ci_lookup_type("float32")
+		return ci_lookup_type(c"float32")
 	if (ci_has_token(specs, clang_token_KW_CHAR())):
 		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-			return ci_lookup_type("uint8")
-		return ci_lookup_type("char")
+			return ci_lookup_type(c"uint8")
+		return ci_lookup_type(c"char")
 	if (ci_has_token(specs, clang_token_KW_SHORT())):
 		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-			return ci_lookup_type("uint16")
-		return ci_lookup_type("int16")
+			return ci_lookup_type(c"uint16")
+		return ci_lookup_type(c"int16")
 	if (ci_count_token(specs, clang_token_KW_LONG()) > 1):
 		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-			return ci_lookup_type("uint64")
-		return ci_lookup_type("int64")
+			return ci_lookup_type(c"uint64")
+		return ci_lookup_type(c"int64")
 	# C 'long' follows the target word (ILP32/LP64); C 'int' is always 32-bit
 	if (ci_has_token(specs, clang_token_KW_LONG())):
 		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-			return ci_lookup_type("uint")
-		return ci_lookup_type("int")
+			return ci_lookup_type(c"uint")
+		return ci_lookup_type(c"int")
 	if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-		return ci_lookup_type("uint32")
+		return ci_lookup_type(c"uint32")
 	if (ci_has_token(specs, clang_token_KW_INT()) | ci_has_token(specs, clang_token_KW_SIGNED())):
-		return ci_lookup_type("int32")
-	return ci_lookup_type("int")
+		return ci_lookup_type(c"int32")
+	return ci_lookup_type(c"int")
 
 
 void ci_struct_pad_to(int type_index, int* offset, int alignment):
@@ -765,7 +765,7 @@ void ci_struct_pad_to(int type_index, int* offset, int alignment):
 	if (rem == 0):
 		return
 	int pad = alignment - rem
-	type_add_arg(type_index, ci_unique_name("__ci_pad_"), ci_filler_type(pad))
+	type_add_arg(type_index, ci_unique_name(c"__ci_pad_"), ci_filler_type(pad))
 	*offset = *offset + pad
 
 
@@ -793,7 +793,7 @@ int ci_import_struct(pg_ast_node* specifier):
 	char* name = ci_direct_ident(specifier)
 	int is_named = 1
 	if (name == 0):
-		name = ci_unique_name("__ci_anon_")
+		name = ci_unique_name(c"__ci_anon_")
 		is_named = 0
 	int existing = type_lookup(name)
 	pg_ast_node* body = ci_child_ast(specifier, clang_ast_struct_body())
@@ -823,7 +823,7 @@ int ci_import_struct(pg_ast_node* specifier):
 				pg_ast_node* list = ci_child_ast(field_decl, clang_ast_struct_declarator_list())
 				if (list == 0):
 					# anonymous member: embed the aggregate unnamed
-					ci_struct_add_field(type_index, ci_unique_name("__ci_anon_member_"), field_base, &offset, &max_align, is_union)
+					ci_struct_add_field(type_index, ci_unique_name(c"__ci_anon_member_"), field_base, &offset, &max_align, is_union)
 				else:
 					ci_import_struct_declarator_list(type_index, field_base, list, &offset, &max_align)
 			i = i + 1
@@ -836,7 +836,7 @@ int ci_import_struct(pg_ast_node* specifier):
 				if (rem != 0):
 					rounded = union_size + max_align - rem
 			if (rounded > union_size):
-				type_add_arg(type_index, ci_unique_name("__ci_pad_"), ci_filler_type(rounded))
+				type_add_arg(type_index, ci_unique_name(c"__ci_pad_"), ci_filler_type(rounded))
 		else:
 			ci_struct_pad_to(type_index, &offset, max_align)
 		ci_set_type_alignment(type_index, max_align)
@@ -847,7 +847,7 @@ int ci_import_enum(pg_ast_node* specifier):
 	char* name = ci_direct_ident(specifier)
 	int is_named = 1
 	if (name == 0):
-		name = ci_unique_name("__ci_anon_enum_")
+		name = ci_unique_name(c"__ci_anon_enum_")
 		is_named = 0
 	int type_index = type_lookup(name)
 	if (type_index < 0):
@@ -1030,11 +1030,11 @@ int ci_params_are_old_style(pg_ast_node* params):
 
 void ci_skip_extern_function(char* name, char* reason):
 	if (verbosity >= 1):
-		print_error("warning: c_import skipped '")
+		print_error(c"warning: c_import skipped '")
 		print_error(name)
-		print_error("': ")
+		print_error(c"': ")
 		print_error(reason)
-		print_error("\x0a")
+		print_error(c"\x0a")
 
 
 # Global constants are read with word-sized loads, so they must be emitted
@@ -1059,9 +1059,9 @@ void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params):
 # Declared in headers but provided by the compiler, not exported by libc;
 # importing them would leave unresolvable dynamic relocations.
 int ci_is_compiler_builtin(char* name):
-	if (strcmp(name, "alloca") == 0):
+	if (strcmp(name, c"alloca") == 0):
 		return 1
-	if (starts_with(name, "__builtin_")):
+	if (starts_with(name, c"__builtin_")):
 		return 1
 	return 0
 
@@ -1071,10 +1071,10 @@ void ci_import_function(char* name, int ret_type, pg_ast_node* params):
 		return
 	hash_map_set(ci_imported_functions, name, 1)
 	if (ci_is_compiler_builtin(name)):
-		ci_skip_extern_function(name, "compiler builtin")
+		ci_skip_extern_function(name, c"compiler builtin")
 		return
 	if (sym_lookup(name) >= 0):
-		ci_skip_extern_function(name, "symbol already defined")
+		ci_skip_extern_function(name, c"symbol already defined")
 		return
 	ci_lower_extern_function(name, ret_type, params)
 
@@ -1109,7 +1109,7 @@ void ci_import_struct_declarator_list(int struct_type, int base_type, pg_ast_nod
 		int is_union = type_get_kind(struct_type) == type_kind_union
 		ci_declarator_info* info = ci_read_declarator(base_type, declarator)
 		if (ci_child_ast(node, clang_ast_bit_field()) != 0):
-			ci_skip_extern_function(info.name, "bit-field struct member")
+			ci_skip_extern_function(info.name, c"bit-field struct member")
 			free(info)
 			return
 		if (info.has_array):
@@ -1129,7 +1129,7 @@ void ci_import_struct_declarator_list(int struct_type, int base_type, pg_ast_nod
 						type_add_arg(struct_type, strclone(info.name), ci_filler_type(total))
 					else:
 						type_add_arg(struct_type, strclone(info.name), element)
-						type_add_arg(struct_type, ci_unique_name("__ci_pad_"), ci_filler_type(total - element_size))
+						type_add_arg(struct_type, ci_unique_name(c"__ci_pad_"), ci_filler_type(total - element_size))
 					if (is_union == 0):
 						*offset = *offset + total
 		else:
@@ -1173,18 +1173,18 @@ void ci_import_init_declarators(ci_decl_info* decl, pg_ast_node* node):
 				ci_import_typedef(decl, info)
 			else if (info.is_function):
 				if (decl.is_static | decl.is_inline):
-					ci_skip_extern_function(info.name, "static/inline function")
+					ci_skip_extern_function(info.name, c"static/inline function")
 				else if (info.params == 0):
-					ci_skip_extern_function(info.name, "unspecified parameters")
+					ci_skip_extern_function(info.name, c"unspecified parameters")
 				else if (ci_params_have_ellipsis(info.params)):
-					ci_skip_extern_function(info.name, "variadic function")
+					ci_skip_extern_function(info.name, c"variadic function")
 				else if (ci_params_are_old_style(info.params)):
-					ci_skip_extern_function(info.name, "old-style parameters")
+					ci_skip_extern_function(info.name, c"old-style parameters")
 				else:
 					ci_import_function(info.name, info.type, info.params)
 			else if (info.is_function_pointer == 0):
 				if (decl.is_extern & (verbosity >= 1)):
-					ci_skip_extern_function(info.name, "extern data object")
+					ci_skip_extern_function(info.name, c"extern data object")
 		free(info)
 		return
 	int i = 0
@@ -1240,53 +1240,53 @@ int ci_macro_token_allowed_in_int_expr(cpp_token* token):
 		return 1
 	if (token.kind != cpp_token_punct()):
 		return 0
-	if (strcmp(token.text, "(") == 0):
+	if (strcmp(token.text, c"(") == 0):
 		return 1
-	if (strcmp(token.text, ")") == 0):
+	if (strcmp(token.text, c")") == 0):
 		return 1
-	if (strcmp(token.text, "?") == 0):
+	if (strcmp(token.text, c"?") == 0):
 		return 1
-	if (strcmp(token.text, ":") == 0):
+	if (strcmp(token.text, c":") == 0):
 		return 1
-	if (strcmp(token.text, "+") == 0):
+	if (strcmp(token.text, c"+") == 0):
 		return 1
-	if (strcmp(token.text, "-") == 0):
+	if (strcmp(token.text, c"-") == 0):
 		return 1
-	if (strcmp(token.text, "*") == 0):
+	if (strcmp(token.text, c"*") == 0):
 		return 1
-	if (strcmp(token.text, "/") == 0):
+	if (strcmp(token.text, c"/") == 0):
 		return 1
-	if (strcmp(token.text, "%") == 0):
+	if (strcmp(token.text, c"%") == 0):
 		return 1
-	if (strcmp(token.text, "<<") == 0):
+	if (strcmp(token.text, c"<<") == 0):
 		return 1
-	if (strcmp(token.text, ">>") == 0):
+	if (strcmp(token.text, c">>") == 0):
 		return 1
-	if (strcmp(token.text, "<") == 0):
+	if (strcmp(token.text, c"<") == 0):
 		return 1
-	if (strcmp(token.text, ">") == 0):
+	if (strcmp(token.text, c">") == 0):
 		return 1
-	if (strcmp(token.text, "<=") == 0):
+	if (strcmp(token.text, c"<=") == 0):
 		return 1
-	if (strcmp(token.text, ">=") == 0):
+	if (strcmp(token.text, c">=") == 0):
 		return 1
-	if (strcmp(token.text, "==") == 0):
+	if (strcmp(token.text, c"==") == 0):
 		return 1
-	if (strcmp(token.text, "!=") == 0):
+	if (strcmp(token.text, c"!=") == 0):
 		return 1
-	if (strcmp(token.text, "&") == 0):
+	if (strcmp(token.text, c"&") == 0):
 		return 1
-	if (strcmp(token.text, "^") == 0):
+	if (strcmp(token.text, c"^") == 0):
 		return 1
-	if (strcmp(token.text, "|") == 0):
+	if (strcmp(token.text, c"|") == 0):
 		return 1
-	if (strcmp(token.text, "&&") == 0):
+	if (strcmp(token.text, c"&&") == 0):
 		return 1
-	if (strcmp(token.text, "||") == 0):
+	if (strcmp(token.text, c"||") == 0):
 		return 1
-	if (strcmp(token.text, "!") == 0):
+	if (strcmp(token.text, c"!") == 0):
 		return 1
-	if (strcmp(token.text, "~") == 0):
+	if (strcmp(token.text, c"~") == 0):
 		return 1
 	return 0
 
@@ -1317,7 +1317,7 @@ void ci_export_macro_constant(hash_map* macros, char* name, cpp_macro* macro):
 		return
 	int value = cpp_eval_if_expr(macros, cpp_process_paste(cpp_token_clone_list(macro.body)))
 	hash_map_set(ci_const_values, name, value)
-	int current_symbol = sym_declare_global(name, ci_lookup_type("int"), 1)
+	int current_symbol = sym_declare_global(name, ci_lookup_type(c"int"), 1)
 	sym_define_global(current_symbol)
 	ci_emit_constant(value)
 
@@ -1341,6 +1341,6 @@ void c_import_header(char* soname, char* header_path):
 	pg_ast_node* root = clang_parse(source, header_path, diagnostics)
 	if ((root == 0) | (pg_diagnostics_count(diagnostics) != 0)):
 		pg_diagnostics_print(diagnostics)
-		error("c_import: header parse failed")
+		error(c"c_import: header parse failed")
 	ci_import_translation_unit(root)
 	ci_export_macro_constants(preprocessed.macros)

@@ -1,6 +1,6 @@
 import lib.testing
 
-c_import "libc.so.6" "/usr/include/errno.h"
+c_import "libc.so.6" c"/usr/include/errno.h"
 
 
 void test_c_import_errno_constants():

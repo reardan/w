@@ -72,23 +72,23 @@ void test_time_format_utc():
 	date_time dt
 	time_utc_from_unix(0, &dt)
 	char* epoch = time_format_utc(&dt)
-	assert_strings_equal("1970-01-01 00:00:00", epoch)
+	assert_strings_equal(c"1970-01-01 00:00:00", epoch)
 	free(epoch)
 
 	time_utc_from_unix(1709251199, &dt)
 	char* leap_day = time_format_utc(&dt)
-	assert_strings_equal("2024-02-29 23:59:59", leap_day)
+	assert_strings_equal(c"2024-02-29 23:59:59", leap_day)
 	free(leap_day)
 
 
 void test_time_format_unix_utc():
 	char* formatted = time_format_unix_utc(946684800)
-	assert_strings_equal("2000-01-01 00:00:00", formatted)
+	assert_strings_equal(c"2000-01-01 00:00:00", formatted)
 	free(formatted)
 
 
 void test_time_now_syscall():
 	int before = time_now()
 	int after = time_now()
-	asserts("time_now should be after 2023-11-14", before >= 1700000000)
-	asserts("time_now should not move backwards", after >= before)
+	asserts(c"time_now should be after 2023-11-14", before >= 1700000000)
+	asserts(c"time_now should not move backwards", after >= before)

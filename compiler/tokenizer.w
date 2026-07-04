@@ -18,11 +18,11 @@ int token_i
 
 
 void warning(char *s):
-	print_error(s)
-	print_error(" in ")
-	print_error(filename)
-	print_error(":")
-	print_error(itoa(line_number+1))
+	print_error(str_from_cstr(s))
+	print_error(str_from_cstr(c" in "))
+	print_error(str_from_cstr(filename))
+	print_error(str_from_cstr(c":"))
+	print_error(str_from_cstr(itoa(line_number+1)))
 	put_error(10)
 
 
@@ -63,7 +63,7 @@ int get_character():
 	# nextc is the final character of the file when getc() first reports EOF.
 	if (c == -1):
 		if ((nextc != 10) & (nextc != -1) & (nextc != 0)):
-			warning("warning: file does not end with a newline")
+			warning(c"warning: file does not end with a newline")
 
 	return c
 
@@ -112,7 +112,7 @@ void get_token():
 			if ((prev_whitespace == 10) & (nextc == ' ')):
 				if (spaces_warned_line != line_number):
 					spaces_warned_line = line_number
-					warning("warning: line indented with spaces instead of tabs")
+					warning(c"warning: line indented with spaces instead of tabs")
 
 		token_i = 0
 		while ((('a' <= nextc) & (nextc <= 'z')) |
@@ -233,20 +233,20 @@ int accept_newline(char *s):
 
 void expect(char *s):
 	if (accept(s) == 0):
-		print_error("'")
-		print_error(s)
-		print_error("' expected, found '")
-		print_error(token)
-		print_error("'")
-		error("")
+		print_error(str_from_cstr(c"'"))
+		print_error(str_from_cstr(s))
+		print_error(str_from_cstr(c"' expected, found '"))
+		print_error(str_from_cstr(token))
+		print_error(str_from_cstr(c"'"))
+		error(c"")
 
 
 void expect_or_newline(char *s):
 	# End of file also ends the statement, like a newline would
 	if((accept(s) == 0) & (token_newline == 0) & (token[0] != 0)):
-		print_error("'")
-		print_error(s)
-		print_error("' expected, found '")
-		print_error(token)
-		print_error("'")
-		error("")
+		print_error(str_from_cstr(c"'"))
+		print_error(str_from_cstr(s))
+		print_error(str_from_cstr(c"' expected, found '"))
+		print_error(str_from_cstr(token))
+		print_error(str_from_cstr(c"'"))
+		error(c"")

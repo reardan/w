@@ -26,13 +26,15 @@ current state:
 			struct pointer fields
 			arrays of structs via pointer indexing
 		arrays, slices and strings:
-			fixed local arrays with descriptor headers
+			fixed local/global/struct arrays with descriptor headers
 			T[] slices over typed buffers
 			new T[n] heap arrays
 			.length and .data pseudo-fields for buffers
 			bounds traps for arrays, slices and strings
-			UTF-8 string descriptors with s"..." literals
+			UTF-8 string descriptors with default "..." literals
 			c"..." legacy C string literals
+			UTF-8 decode/encode helpers and string codepoint iteration
+			grapheme cluster counting and boundary helpers
 		type table:
 			type names carry size, pointer level, and field metadata
 			pointer types are created on demand
@@ -72,6 +74,7 @@ current state:
 			for x in <container> cursor-protocol iteration
 				T_iter_begin/done/next/value over any struct pointer
 				array_list, linked_list, hash_map (keys) implement it
+			for int cp in string codepoint iteration
 			break and continue
 			nested if/loop behavior covered by tests
 			if/while conditions work with or without parentheses
@@ -130,7 +133,7 @@ current state:
 			no line editing or history (needs termios raw mode)
 		pointers and structs:
 			new initializes fields from arguments but does not run user constructors
-			struct values cannot be returned by value
+			struct values with fixed-array fields are copied and returned by value
 		debugging:
 			locals are not visible inside print's compiled expressions
 			backtrace is heuristic (return-address scan, no frame pointers)

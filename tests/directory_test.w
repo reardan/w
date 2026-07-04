@@ -19,22 +19,22 @@ struct linux_dirent {
 */
 
 
-char* print_dirent(char* buf):
-	print_int0("inode: ", cast(int, buf))
-	print_int0(", next: ", buf + 4)
+void print_dirent(char* buf):
+	print_int0(c"inode: ", cast(int, buf))
+	print_int0(c", next: ", cast(int, buf + 4))
 	int* len = (buf + 6)
 	int length = len >> 16 /* todo: better word translation */
-	print_int0(", length: ", length)
+	print_int0(c", length: ", length)
 	char* type_ptr = buf + length - 1
 	int type = type_ptr[0]
-	print2(", type: ")
+	print2(c", type: ")
 	if (type == 4):
-		print2("D")
+		print2(c"D")
 	else if (type == 8):
-		print2("F")
+		print2(c"F")
 	else:
-		print_int0("", type)
-	print_string(", name: ", buf + 10)
+		print_int0(c"", type)
+	print_string(c", name: ", buf + 10)
 	return buf + length
 
 
@@ -42,12 +42,12 @@ void read_directory(int file):
 	int buf_size = 10000
 	char* buf = malloc(buf_size)
 	int dents_result = getdents(file, buf, buf_size)
-	print_int("dents_result: ", dents_result)
+	print_int(c"dents_result: ", dents_result)
 	translate_syscall_failure(dents_result)
 	char* cur = buf
 	while (cur < (buf + dents_result)):
 		cur = print_dirent(cur)
-	println2("")
+	println2(c"")
 
 
 int ls_longest_filename
@@ -63,12 +63,12 @@ void print_ent(char* buf, int length):
 		print_color(buf + 10, 33)
 	else:
 		print2(buf + 10)
-	print2(" ")
+	print2(c" ")
 
 
 void print_pad(int length):
 	while (length > 0):
-		print2(" ")
+		print2(c" ")
 		length = length - 1
 
 
@@ -85,7 +85,7 @@ int print_dirent_ls(char* buf, int should_print):
 
 	# Newline if it would extend
 	if (ls_column + str_length >= ls_max_line_length):
-		println2("")
+		println2(c"")
 		ls_column = 0
 
 	int* func = cast(int*, print_ent)
@@ -102,7 +102,7 @@ void print_dirents(char* buf, int max_length, int should_print):
 	ls_column = 0
 	while (cur + index < max_length):
 		index = index + print_dirent_ls(cur + index, should_print)
-	println2("")
+	println2(c"")
 
 
 void ls(int file):
@@ -112,27 +112,27 @@ void ls(int file):
 	int buf_size = 10000
 	char* buf = malloc(buf_size)
 	int dents_result = getdents(file, buf, buf_size)
-	print_int("dents_result: ", dents_result)
+	print_int(c"dents_result: ", dents_result)
 	translate_syscall_failure(dents_result)
 	int max_length = (buf + dents_result)
 
 	# Go through to find longest filename
-	println2("")
+	println2(c"")
 	print_dirents(buf, max_length, 0)
-	println2("")
+	println2(c"")
 
 	# Print entries with justification
 	print_dirents(buf, max_length, 1)
-	println2("")
+	println2(c"")
 
 
 
 void test_directory():
 	# O_DIRECTORY 00200000==65536 must be a directory (fcntl.h) WRONG
 	# 0x00200000==2097152
-	int file = open(".", 65536, 511)
+	int file = open(c".", 65536, 511)
 	translate_syscall_failure(file)
-	print_int("'.' directory file: ", file)
+	print_int(c"'.' directory file: ", file)
 
 	# Now print directory entries
 	# read_directory(file)
@@ -142,7 +142,7 @@ void test_directory():
 
 
 void a_test_mkdir():
-	char* filename = "./test_dir/"
+	char* filename = c"./test_dir/"
 	int file = mkdir(filename, 511)
 	translate_syscall_failure(file)
 	close(file)
@@ -150,6 +150,6 @@ void a_test_mkdir():
 # I know its stupid, but
 # this test depends on the previous test_mkdir()
 void a_test_rmdir():
-	char* filename = "./test_dir/"
+	char* filename = c"./test_dir/"
 	int err = rmdir(filename)
 	translate_syscall_failure(err)

@@ -18,7 +18,7 @@ int cpp_eval_conditional_expr(cpp_expr* expr);
 
 cpp_token* cpp_expr_number_token(int value):
 	char* text = itoa(value)
-	cpp_token* token = cpp_token_new(cpp_token_number(), text, "<expr>", 0, 0, 0)
+	cpp_token* token = cpp_token_new(cpp_token_number(), text, c"<expr>", 0, 0, 0)
 	free(text)
 	return token
 
@@ -34,14 +34,14 @@ cpp_token* cpp_expr_prepare_defined(hash_map* macros, cpp_token* token):
 	while (token != 0):
 		if (token.kind == cpp_token_eof()):
 			break
-		if (cpp_token_is_ident(token, "defined")):
+		if (cpp_token_is_ident(token, c"defined")):
 			int value = 0
-			if (cpp_token_is_punct(token.next, "(")):
+			if (cpp_token_is_punct(token.next, c"(")):
 				cpp_token* name = token.next.next
 				if (name != 0):
 					if (name.kind == cpp_token_ident()):
 						value = cpp_expr_is_defined_name(macros, name.text)
-						if (cpp_token_is_punct(name.next, ")")):
+						if (cpp_token_is_punct(name.next, c")")):
 							token = name.next.next
 						else:
 							token = name.next
@@ -142,9 +142,9 @@ int cpp_expr_accept(cpp_expr* expr, char* text):
 
 
 int cpp_eval_primary(cpp_expr* expr):
-	if (cpp_expr_accept(expr, "(")):
+	if (cpp_expr_accept(expr, c"(")):
 		int value = cpp_eval_conditional_expr(expr)
-		cpp_expr_accept(expr, ")")
+		cpp_expr_accept(expr, c")")
 		return value
 	if (expr.token == 0):
 		return 0
@@ -161,13 +161,13 @@ int cpp_eval_primary(cpp_expr* expr):
 
 
 int cpp_eval_unary(cpp_expr* expr):
-	if (cpp_expr_accept(expr, "+")):
+	if (cpp_expr_accept(expr, c"+")):
 		return cpp_eval_unary(expr)
-	if (cpp_expr_accept(expr, "-")):
+	if (cpp_expr_accept(expr, c"-")):
 		return 0 - cpp_eval_unary(expr)
-	if (cpp_expr_accept(expr, "!")):
+	if (cpp_expr_accept(expr, c"!")):
 		return cpp_eval_unary(expr) == 0
-	if (cpp_expr_accept(expr, "~")):
+	if (cpp_expr_accept(expr, c"~")):
 		return 0 - cpp_eval_unary(expr) - 1
 	return cpp_eval_primary(expr)
 
@@ -175,15 +175,15 @@ int cpp_eval_unary(cpp_expr* expr):
 int cpp_eval_multiplicative(cpp_expr* expr):
 	int value = cpp_eval_unary(expr)
 	while (1):
-		if (cpp_expr_accept(expr, "*")):
+		if (cpp_expr_accept(expr, c"*")):
 			value = value * cpp_eval_unary(expr)
-		else if (cpp_expr_accept(expr, "/")):
+		else if (cpp_expr_accept(expr, c"/")):
 			int right = cpp_eval_unary(expr)
 			if (right == 0):
 				value = 0
 			else:
 				value = value / right
-		else if (cpp_expr_accept(expr, "%")):
+		else if (cpp_expr_accept(expr, c"%")):
 			int right = cpp_eval_unary(expr)
 			if (right == 0):
 				value = 0
@@ -196,9 +196,9 @@ int cpp_eval_multiplicative(cpp_expr* expr):
 int cpp_eval_additive(cpp_expr* expr):
 	int value = cpp_eval_multiplicative(expr)
 	while (1):
-		if (cpp_expr_accept(expr, "+")):
+		if (cpp_expr_accept(expr, c"+")):
 			value = value + cpp_eval_multiplicative(expr)
-		else if (cpp_expr_accept(expr, "-")):
+		else if (cpp_expr_accept(expr, c"-")):
 			value = value - cpp_eval_multiplicative(expr)
 		else:
 			return value
@@ -207,9 +207,9 @@ int cpp_eval_additive(cpp_expr* expr):
 int cpp_eval_shift(cpp_expr* expr):
 	int value = cpp_eval_additive(expr)
 	while (1):
-		if (cpp_expr_accept(expr, "<<")):
+		if (cpp_expr_accept(expr, c"<<")):
 			value = value << cpp_eval_additive(expr)
-		else if (cpp_expr_accept(expr, ">>")):
+		else if (cpp_expr_accept(expr, c">>")):
 			value = value >> cpp_eval_additive(expr)
 		else:
 			return value
@@ -218,13 +218,13 @@ int cpp_eval_shift(cpp_expr* expr):
 int cpp_eval_relational(cpp_expr* expr):
 	int value = cpp_eval_shift(expr)
 	while (1):
-		if (cpp_expr_accept(expr, "<")):
+		if (cpp_expr_accept(expr, c"<")):
 			value = value < cpp_eval_shift(expr)
-		else if (cpp_expr_accept(expr, ">")):
+		else if (cpp_expr_accept(expr, c">")):
 			value = value > cpp_eval_shift(expr)
-		else if (cpp_expr_accept(expr, "<=")):
+		else if (cpp_expr_accept(expr, c"<=")):
 			value = value <= cpp_eval_shift(expr)
-		else if (cpp_expr_accept(expr, ">=")):
+		else if (cpp_expr_accept(expr, c">=")):
 			value = value >= cpp_eval_shift(expr)
 		else:
 			return value
@@ -233,9 +233,9 @@ int cpp_eval_relational(cpp_expr* expr):
 int cpp_eval_equality(cpp_expr* expr):
 	int value = cpp_eval_relational(expr)
 	while (1):
-		if (cpp_expr_accept(expr, "==")):
+		if (cpp_expr_accept(expr, c"==")):
 			value = value == cpp_eval_relational(expr)
-		else if (cpp_expr_accept(expr, "!=")):
+		else if (cpp_expr_accept(expr, c"!=")):
 			value = value != cpp_eval_relational(expr)
 		else:
 			return value
@@ -243,7 +243,7 @@ int cpp_eval_equality(cpp_expr* expr):
 
 int cpp_eval_bitwise_and(cpp_expr* expr):
 	int value = cpp_eval_equality(expr)
-	while (cpp_expr_accept(expr, "&")):
+	while (cpp_expr_accept(expr, c"&")):
 		value = value & cpp_eval_equality(expr)
 	return value
 
@@ -254,21 +254,21 @@ int cpp_bitwise_xor_value(int left, int right):
 
 int cpp_eval_bitwise_xor(cpp_expr* expr):
 	int value = cpp_eval_bitwise_and(expr)
-	while (cpp_expr_accept(expr, "^")):
+	while (cpp_expr_accept(expr, c"^")):
 		value = cpp_bitwise_xor_value(value, cpp_eval_bitwise_and(expr))
 	return value
 
 
 int cpp_eval_bitwise_or(cpp_expr* expr):
 	int value = cpp_eval_bitwise_xor(expr)
-	while (cpp_expr_accept(expr, "|")):
+	while (cpp_expr_accept(expr, c"|")):
 		value = value | cpp_eval_bitwise_xor(expr)
 	return value
 
 
 int cpp_eval_logical_and(cpp_expr* expr):
 	int value = cpp_eval_bitwise_or(expr)
-	while (cpp_expr_accept(expr, "&&")):
+	while (cpp_expr_accept(expr, c"&&")):
 		int right = cpp_eval_bitwise_or(expr)
 		value = (value != 0) & (right != 0)
 	return value
@@ -276,7 +276,7 @@ int cpp_eval_logical_and(cpp_expr* expr):
 
 int cpp_eval_logical_or(cpp_expr* expr):
 	int value = cpp_eval_logical_and(expr)
-	while (cpp_expr_accept(expr, "||")):
+	while (cpp_expr_accept(expr, c"||")):
 		int right = cpp_eval_logical_and(expr)
 		value = (value != 0) | (right != 0)
 	return value
@@ -284,9 +284,9 @@ int cpp_eval_logical_or(cpp_expr* expr):
 
 int cpp_eval_conditional_expr(cpp_expr* expr):
 	int value = cpp_eval_logical_or(expr)
-	if (cpp_expr_accept(expr, "?")):
+	if (cpp_expr_accept(expr, c"?")):
 		int true_value = cpp_eval_conditional_expr(expr)
-		cpp_expr_accept(expr, ":")
+		cpp_expr_accept(expr, c":")
 		int false_value = cpp_eval_conditional_expr(expr)
 		if (value != 0):
 			return true_value

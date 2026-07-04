@@ -22,14 +22,14 @@ int dbg_eval_counter
 # or 0 when the expression failed to compile.
 int dbg_eval_compile(char* expr):
 	# Stage the line in a file: the tokenizer reads from an fd
-	char* path = "/tmp/wdbg_eval.w"
+	char* path = c"/tmp/wdbg_eval.w"
 	int out = create_file(path, 511)
 	if (out < 0):
-		println("could not create /tmp/wdbg_eval.w")
+		println(c"could not create /tmp/wdbg_eval.w")
 		return 0
-	write_string(out, "return ")
+	write_string(out, c"return ")
 	write_string(out, expr)
-	write(out, "\x0a", 1)
+	write(out, c"\x0a", 1)
 	close(out)
 
 	# Checkpoint everything a failed compile could leave half-updated
@@ -64,14 +64,14 @@ int dbg_eval_compile(char* expr):
 
 	filename = path
 	file = open(path, 0, 511)
-	asserts("could not reopen eval buffer", file >= 0)
+	asserts(c"could not reopen eval buffer", file >= 0)
 	line_number = 0
 	tab_level = 0
 	nextc = get_character()
 	get_token()
 
 	char* counter_digits = itoa(dbg_eval_counter)
-	char* name = strjoin("__wdbg_eval_", counter_digits)
+	char* name = strjoin(c"__wdbg_eval_", counter_digits)
 	free(counter_digits)
 	dbg_eval_counter = dbg_eval_counter + 1
 
@@ -102,6 +102,6 @@ void dbg_eval(char* expr):
 	if (f == 0):
 		return;
 	int v = f()
-	print("= ")
+	print(c"= ")
 	dbg_print_int_value(v)
 	put_char(10)

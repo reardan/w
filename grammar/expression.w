@@ -23,6 +23,8 @@ void assign_store(int type):
 
 void assign_store_struct(int type):
 	int words = (type_get_size(type) + word_size - 1) >> word_size_log2
+	push_ebx()
+	stack_pos = stack_pos + 1
 	push_eax()
 	stack_pos = stack_pos + 1
 	int i = 0
@@ -37,6 +39,11 @@ void assign_store_struct(int type):
 		i = i + 1
 	pop_eax()
 	stack_pos = stack_pos - 1
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	if (type_has_array_field(type)):
+		mov_eax_ebx()
+		init_array_field_descriptors(type)
 
 
 /*
@@ -48,27 +55,27 @@ int expression():
 	expression_lhs_readonly = 0
 	int type = logical_or_expr()
 	if (hash_index_pending):
-		if (accept("=")):
+		if (accept(c"=")):
 			expression_is_assignment = 1
 			return hash_finish_pending_assignment()
 		type = hash_finish_pending_read()
-	if (accept("=")):
+	if (accept(c"=")):
 		if (expression_lhs_readonly):
-			error("cannot assign to read-only buffer field")
+			error(c"cannot assign to read-only buffer field")
 		if ((type_is_value(type)) | (type == 3) | (type == 4)):
-			error("assignment target is not assignable")
+			error(c"assignment target is not assignable")
 		if (type_is_const(type)):
-			error("assignment to const")
+			error(c"assignment to const")
 		expression_is_assignment = 1
 		expression_lhs_readonly = 0
 		push_eax()
 		stack_pos = stack_pos + 1
 		int type2 = expression()
 		if (verbosity >= 1):
-			print2("expression() type: ")
+			print2(c"expression() type: ")
 			type_print(type)
-			print_int("expression() type: ", type)
-			print_int("expression() type2: ", type2)
+			print_int(c"expression() type: ", type)
+			print_int(c"expression() type2: ", type2)
 		
 		type2 = promote(type2)
 		coerce(type, type2)
@@ -77,7 +84,7 @@ int expression():
 		# Warn when the two sides carry conflicting types; constants (3) and
 		# functions (4) act as wildcards inside types_compatible().
 		if (types_compatible_with_expression(type, type2) == 0):
-			warn_type_mismatch("assignment", type, type2)
+			warn_type_mismatch(c"assignment", type, type2)
 
 		# Struct assignment copies the aggregate; scalar stores use lhs width.
 		if ((type_num_args(type) > 0) & (type_num_args(type2) > 0)):

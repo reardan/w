@@ -19,19 +19,19 @@ char* takes_char_ptr(char* s):
 
 
 void assignment_base_mismatch():
-	char* cp = "x"
+	char* cp = c"x"
 	int* ip = malloc(4)
 	cp = ip
 
 
 void assignment_level_mismatch():
-	char* cp = "x"
+	char* cp = c"x"
 	char** cpp = &cp
 	cp = cpp
 
 
 void initialization_mismatch():
-	char* cp = "x"
+	char* cp = c"x"
 	int* ip = cp
 
 

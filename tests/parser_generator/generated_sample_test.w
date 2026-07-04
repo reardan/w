@@ -35,7 +35,7 @@ void traversal_leave(pg_ast_node* node):
 
 void test_generated_parser_ast_shape():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
-	pg_ast_node* root = sample_parse("alpha 123 beta", "sample.txt", diagnostics)
+	pg_ast_node* root = sample_parse(c"alpha 123 beta", c"sample.txt", diagnostics)
 	assert1(root != 0)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	assert_equal(sample_ast_list(), root.kind)
@@ -44,13 +44,13 @@ void test_generated_parser_ast_shape():
 	assert_equal(sample_ast_value(), pg_ast_child(root, 1).kind)
 	assert_equal(sample_ast_value(), pg_ast_child(root, 2).kind)
 	assert_equal(sample_token_EOF(), pg_ast_child(root, 3).kind)
-	assert_strings_equal("alpha", pg_ast_child(pg_ast_child(root, 0), 0).text)
-	assert_strings_equal("123", pg_ast_child(pg_ast_child(root, 1), 0).text)
+	assert_strings_equal(c"alpha", pg_ast_child(pg_ast_child(root, 0), 0).text)
+	assert_strings_equal(c"123", pg_ast_child(pg_ast_child(root, 1), 0).text)
 
 
 void test_generated_parser_alternative():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
-	pg_ast_node* root = sample_parse("42", "sample.txt", diagnostics)
+	pg_ast_node* root = sample_parse(c"42", c"sample.txt", diagnostics)
 	assert1(root != 0)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	assert_equal(sample_token_NUMBER(), pg_ast_child(pg_ast_child(root, 0), 0).kind)
@@ -58,36 +58,36 @@ void test_generated_parser_alternative():
 
 void test_generated_lexer_literals():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
-	pg_token_stream* stream = sample_lex("a,b", "sample.txt", diagnostics)
+	pg_token_stream* stream = sample_lex(c"a,b", c"sample.txt", diagnostics)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	assert_equal(sample_token_WORD(), pg_token_stream_la(stream, 1).kind)
 	assert_equal(sample_token_COMMA(), pg_token_stream_la(stream, 2).kind)
 	assert_equal(sample_token_WORD(), pg_token_stream_la(stream, 3).kind)
-	assert_strings_equal(",", pg_token_stream_la(stream, 2).text)
+	assert_strings_equal(c",", pg_token_stream_la(stream, 2).text)
 
 
 void test_generated_parser_syntax_error():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
-	pg_ast_node* root = sample_parse("", "sample.txt", diagnostics)
+	pg_ast_node* root = sample_parse(c"", c"sample.txt", diagnostics)
 	assert_equal(0, cast(int, root))
 	assert_equal(1, pg_diagnostics_count(diagnostics))
 	pg_diagnostic* diagnostic = pg_diagnostics_get(diagnostics, 0)
-	assert_strings_equal("syntax error", diagnostic.message)
-	assert_strings_equal("list", diagnostic.expected)
+	assert_strings_equal(c"syntax error", diagnostic.message)
+	assert_strings_equal(c"list", diagnostic.expected)
 
 
 void test_generated_parser_lexer_error():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
-	pg_ast_node* root = sample_parse("alpha !", "sample.txt", diagnostics)
+	pg_ast_node* root = sample_parse(c"alpha !", c"sample.txt", diagnostics)
 	assert1(root != 0)
 	assert_equal(1, pg_diagnostics_count(diagnostics))
 	pg_diagnostic* diagnostic = pg_diagnostics_get(diagnostics, 0)
-	assert_strings_equal("invalid character", diagnostic.message)
+	assert_strings_equal(c"invalid character", diagnostic.message)
 
 
 void test_visitor_preorder_on_generated_ast():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
-	pg_ast_node* root = sample_parse("alpha 123", "sample.txt", diagnostics)
+	pg_ast_node* root = sample_parse(c"alpha 123", c"sample.txt", diagnostics)
 	assert1(root != 0)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	traversal_reset()
@@ -103,7 +103,7 @@ void test_visitor_preorder_on_generated_ast():
 
 void test_listener_enter_leave_order_on_generated_ast():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
-	pg_ast_node* root = sample_parse("alpha", "sample.txt", diagnostics)
+	pg_ast_node* root = sample_parse(c"alpha", c"sample.txt", diagnostics)
 	assert1(root != 0)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	traversal_reset()
@@ -121,7 +121,7 @@ void test_listener_enter_leave_order_on_generated_ast():
 
 void test_listener_sets_parent_links_for_children():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
-	pg_ast_node* root = sample_parse("alpha 123", "sample.txt", diagnostics)
+	pg_ast_node* root = sample_parse(c"alpha 123", c"sample.txt", diagnostics)
 	assert1(root != 0)
 	pg_ast_node* first_value = pg_ast_child(root, 0)
 	pg_ast_node* first_token = pg_ast_child(first_value, 0)
@@ -130,10 +130,10 @@ void test_listener_sets_parent_links_for_children():
 
 
 void test_manual_ast_traversal_and_null_noop():
-	pg_ast_node* root = pg_ast_new(10, 0, "root")
-	pg_ast_node* left = pg_ast_new(20, 0, "left")
-	pg_ast_node* right = pg_ast_new(30, 0, "right")
-	pg_ast_node* leaf = pg_ast_new(40, 0, "leaf")
+	pg_ast_node* root = pg_ast_new(10, 0, c"root")
+	pg_ast_node* left = pg_ast_new(20, 0, c"left")
+	pg_ast_node* right = pg_ast_new(30, 0, c"right")
+	pg_ast_node* leaf = pg_ast_new(40, 0, c"leaf")
 	pg_ast_add(root, left)
 	pg_ast_add(root, right)
 	pg_ast_add(right, leaf)
