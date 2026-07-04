@@ -28,6 +28,17 @@ Compile/run an arbitrary program directly:
   without extra libc because it's static. Do not delete/replace it except via `make update`.
 - W source is whitespace-significant: **tabs** for indentation (spaces trigger a warning),
   no semicolons, `#` line comments, blocks open with `:`.
+- Built-in containers (`map[K, V]`, `set[K]`, `list[T]`) lower to runtime helpers in
+ `structures/hash_table.w` and `structures/w_list.w`, which the compiler **auto-imports
+ into every program** (`import_module` calls in `compiler/compiler.w`). Those runtime
+ files — like everything under `compiler/`, `grammar/`, and `code_generator/` — are
+ compiled by the committed seed, so they must not use new language syntax until a seed
+ update via `make update`. New syntax is fine in `tests/`, `lib/`, and other consumers
+ once `bin/wv2` is built. Design notes: `docs/projects/typed_containers.md`.
+- When adding language syntax, also extend the parser-generator grammar
+ `tests/parser_generator/w.pg`: the `parser_generator_w_test` target parses **every
+ tracked `.w` file** with a parser generated from that grammar and fails on syntax it
+ does not know.
 - Optional debug/trace targets need tools that are **not installed** and are not required
  for build/test: `gdb`/`ddd` (`*_debug` targets), `radare2` (`asm_codegen_get_context`),
  `systemtap`/`stap` with sudo (`net_log*`, `log_write`).
