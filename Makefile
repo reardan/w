@@ -455,6 +455,7 @@ parser_generator_test: w FORCE
 	./bin/parser_generator_test
 
 parser_generator_w_test: parser_generator_test FORCE
+	git ls-files '*.w' > ./bin/parser_generator_w_files.txt
 	./bin/parser_generator tests/parser_generator/w.pg -o ./bin/generated_w_parser.w
 	./bin/wv2 tests/parser_generator/generated_w_parser_test.w -o ./bin/parser_generator_w_test
 	./bin/parser_generator_w_test

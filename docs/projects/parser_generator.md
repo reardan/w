@@ -73,8 +73,9 @@ does not perform symbol resolution, type checking, or code generation. The
 existing compiler remains the executable source of truth for bootstrapping.
 
 `make parser_generator_w_test` generates `bin/generated_w_parser.w`, compiles
-it, and parses representative inline W programs plus real repository files such
-as `w.w` and `tests/hello.w`.
+it, writes a manifest with `git ls-files '*.w'`, and parses every tracked W
+source file in the repository. The target also keeps smaller inline fixtures for
+specific syntax shapes and explicit checks for `w.w` and `tests/hello.w`.
 
 ## Usage
 

@@ -4,6 +4,9 @@ import libs.extras.parser_generator.source_writer
 import bin.generated_w_parser
 
 
+int parsed_manifest_count
+
+
 void assert_w_parse_text(char* source, char* filename):
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = wlang_parse(source, filename, diagnostics)
@@ -18,6 +21,29 @@ void assert_w_parse_file(char* path):
 	char* source = pg_read_file_text(path)
 	assert1(source != 0)
 	assert_w_parse_text(source, path)
+	parsed_manifest_count = parsed_manifest_count + 1
+
+
+void parse_manifest_path(string_builder* path):
+	if (path.length == 0):
+		return
+	assert_w_parse_file(path.data)
+
+
+void assert_w_parse_manifest(char* manifest_path):
+	int file = open(manifest_path, 0, 0)
+	asserts("could not open W parser manifest", file >= 0)
+	string_builder* path = string_new()
+	int c = getchar(file)
+	while (c != -1):
+		if (c == 10):
+			parse_manifest_path(path)
+			string_clear(path)
+		else:
+			string_append_char(path, c)
+		c = getchar(file)
+	parse_manifest_path(path)
+	close(file)
 
 
 void test_parse_w_import_struct_and_function():
@@ -38,3 +64,9 @@ void test_parse_real_w_entrypoint():
 
 void test_parse_real_hello_fixture():
 	assert_w_parse_file("tests/hello.w")
+
+
+void test_parse_all_tracked_w_files():
+	parsed_manifest_count = 0
+	assert_w_parse_manifest("bin/parser_generator_w_files.txt")
+	assert1(parsed_manifest_count > 100)
