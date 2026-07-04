@@ -26,6 +26,11 @@ struct ci_declarator_info:
 	pg_ast_node* params
 
 
+int ci_type_from_specs(pg_ast_node* specs);
+int ci_import_enumerators(pg_ast_node* node, int enum_type, int value);
+void ci_import_struct_declarator_list(int struct_type, int base_type, pg_ast_node* node);
+
+
 int ci_is_ast(pg_ast_node* node, int kind):
 	if (node == 0):
 		return 0
