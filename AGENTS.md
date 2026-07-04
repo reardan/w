@@ -33,7 +33,8 @@ Compile/run an arbitrary program directly:
  `systemtap`/`stap` with sudo (`net_log*`, `log_write`).
 - `make tests` includes `dynamic_test`, which produces a **32-bit dynamically linked**
  binary and needs the i386 loader/libc (`/lib/ld-linux.so.2`, `libc6:i386`). This is
- preinstalled in the Cursor Cloud snapshot; if the loader is missing, `dynamic_test`
- fails with `./bin/dynamic_test: not found` — install it per the README
- (`sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6:i386`).
+ **not** guaranteed to be present on a fresh VM (observed missing), and it is a system
+ package that the minimal update script intentionally does not install. If the loader is
+ missing, `dynamic_test` fails with `./bin/dynamic_test: not found` — install it per the
+ README (`sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6:i386`).
  `make build` and `make verify` do not require it.
