@@ -103,20 +103,20 @@ x86-64 system.
 Implemented and covered by tests:
 
 - Types: `int`, `char`, pointers (`int*`, `char**`, ...), structs with mixed-width
-  fields, by-value struct parameters, fixed local arrays (`T[N]`), slices
-  (`T[]`), UTF-8 `string`, `new type(args)` constructor-style allocation, and
-  `new T[n]` heap arrays.
+  fields, by-value struct parameters, fixed local/global/struct arrays
+  (`T[N]`), slices (`T[]`), UTF-8 `string`, `new type(args)`
+  constructor-style allocation, and `new T[n]` heap arrays.
 - Expressions: full C-style operator set — arithmetic, shifts, relational
   (with chaining), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
   address/deref, `[]` indexing, typed buffer slicing (`start:end`), struct
-  field access, hex literals, C string escapes (`\x0a` style), and UTF-8
-  `s"..."` literals with `\u`/`\U` escapes.
+  field access, hex literals, UTF-8 `"..."` literals with `\u`/`\U`
+  escapes, and explicit legacy C strings via `c"..."`.
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
   (1–3 args), `for x in <container>` over any struct-pointer type providing
   the four cursor functions `T_iter_begin/done/next/value` (implemented by
   `array_list`, `linked_list` and `hash_map`, which yields keys; see
-  `docs/projects/iteration.md`), `break`, `continue`, `return`, `debugger`
-  (emits `int3`).
+  `docs/projects/iteration.md`), `for int cp in string` codepoint iteration,
+  `break`, `continue`, `return`, `debugger` (emits `int3`).
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).
