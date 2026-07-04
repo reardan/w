@@ -518,9 +518,9 @@ int ci_apply_binary_op(char* op, int left, int right):
 # are stored word-sized because they are heap pointers.
 int ci_eval_binary(pg_ast_node* node):
 	int count = pg_ast_child_count(node)
-	int values = malloc((count + 1) << 2)
-	int precedences = malloc((count + 1) << 2)
-	int ops = malloc((count + 1) * word_size)
+	char* values = malloc((count + 1) << 2)
+	char* precedences = malloc((count + 1) << 2)
+	char* ops = malloc((count + 1) * word_size)
 	int value_top = 0
 	int op_top = 0
 	save_int(values, ci_eval_const(pg_ast_child(node, 0)))
@@ -538,10 +538,10 @@ int ci_eval_binary(pg_ast_node* node):
 			int right = load_int(values + ((value_top - 1) << 2))
 			int left = load_int(values + ((value_top - 2) << 2))
 			value_top = value_top - 2
-			save_int(values + (value_top << 2), ci_apply_binary_op(load_i(ops + (op_top - 1) * word_size, word_size), left, right))
+			save_int(values + (value_top << 2), ci_apply_binary_op(cast(char*, load_i(ops + (op_top - 1) * word_size, word_size)), left, right))
 			value_top = value_top + 1
 			op_top = op_top - 1
-		save_i(ops + op_top * word_size, op, word_size)
+		save_i(ops + op_top * word_size, cast(int, op), word_size)
 		save_int(precedences + (op_top << 2), precedence)
 		op_top = op_top + 1
 		int operand = ci_eval_const(ci_child_ast(tail, clang_ast_unary_expression()))
@@ -552,7 +552,7 @@ int ci_eval_binary(pg_ast_node* node):
 		int right = load_int(values + ((value_top - 1) << 2))
 		int left = load_int(values + ((value_top - 2) << 2))
 		value_top = value_top - 2
-		save_int(values + (value_top << 2), ci_apply_binary_op(load_i(ops + (op_top - 1) * word_size, word_size), left, right))
+		save_int(values + (value_top << 2), ci_apply_binary_op(cast(char*, load_i(ops + (op_top - 1) * word_size, word_size)), left, right))
 		value_top = value_top + 1
 		op_top = op_top - 1
 	int result = load_int(values)
@@ -1325,8 +1325,8 @@ void ci_export_macro_constant(hash_map* macros, char* name, cpp_macro* macro):
 void ci_export_macro_constants(hash_map* macros):
 	int cursor = hash_map_iter_begin(macros)
 	while (hash_map_iter_done(macros, cursor) == 0):
-		char* name = hash_map_iter_value(macros, cursor)
-		cpp_macro* macro = hash_map_get(macros, name)
+		char* name = cast(char*, hash_map_iter_value(macros, cursor))
+		cpp_macro* macro = cast(cpp_macro*, hash_map_get(macros, name))
 		ci_export_macro_constant(macros, name, macro)
 		cursor = hash_map_iter_next(macros, cursor)
 
