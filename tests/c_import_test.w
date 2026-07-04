@@ -3,6 +3,7 @@ import lib.testing
 c_import "libc.so.6" "tests/c_import_fixture.h"
 c_import "libc.so.6" "/usr/include/x86_64-linux-gnu/bits/types/FILE.h"
 c_import "libc.so.6" "tests/c_import_libc_fixture.h"
+c_import "libc.so.6" "tests/c_import_macro_fixture.h"
 
 
 void test_c_import_typedef():
@@ -40,3 +41,13 @@ void test_c_import_enum_values():
 
 void test_c_import_extern_function():
 	assert1(puts("c_import puts OK") >= 0)
+
+
+void test_c_import_macro_constants():
+	assert_equal(77, CI_HEADER_CONSTANT)
+	assert_equal(82, CI_HEADER_OFFSET)
+	assert_equal(77, CI_HEADER_PASTED)
+	ci_macro_int value = CI_HEADER_OFFSET
+	assert_equal(82, value)
+	ci_if_type gated = 3
+	assert_equal(3, gated)
