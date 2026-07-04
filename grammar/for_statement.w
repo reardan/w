@@ -55,13 +55,54 @@ void for_iter_call(char* fn_name, int container_slot, int cursor_slot):
 	stack_pos = s
 
 
-void for_iter_require(char* container_name, char* fn_name):
-	if (sym_lookup(fn_name) < 0):
-		print_error("type '")
-		print_error(container_name)
-		print_error("' is not iterable: ")
-		print_error(fn_name)
+void for_iter_error_prefix(char* container_name, char* fn_name):
+	print_error("type '")
+	print_error(container_name)
+	print_error("' is not iterable: ")
+	print_error(fn_name)
+
+
+void for_iter_require(char* container_name, char* fn_name, int expected_args, int container_type):
+	int symbol = sym_lookup(fn_name)
+	if (symbol < 0):
+		for_iter_error_prefix(container_name, fn_name)
 		error(" not found")
+	if (load_int(table + symbol + 10) != 2):
+		for_iter_error_prefix(container_name, fn_name)
+		error(" is not a function")
+	if (sym_num_args(symbol) != expected_args):
+		for_iter_error_prefix(container_name, fn_name)
+		error(" has wrong arity")
+
+	int return_type = load_int(table + symbol + 6)
+	if ((type_get_size(return_type) == 0) | (type_stack_words(return_type) != 1)):
+		for_iter_error_prefix(container_name, fn_name)
+		error(" must return a word-sized value")
+
+	int param_type = sym_param_type(symbol, 0)
+	if (type_unqualified(param_type) != type_unqualified(container_type)):
+		for_iter_error_prefix(container_name, fn_name)
+		error(" first parameter must match the iterable type")
+
+	if (expected_args == 2):
+		param_type = sym_param_type(symbol, 1)
+		if (type_unqualified(param_type) != type_lookup("int")):
+			for_iter_error_prefix(container_name, fn_name)
+			error(" second parameter must be int")
+
+
+void for_iter_require_struct_pointer(int container_type):
+	if (type_get_pointer_level(container_type) != 1):
+		print_error("type '")
+		print_error_type(container_type)
+		print_error("' is not iterable: ")
+		error("expected a pointer to a container struct")
+	int base_type = type_lookup_previous_pointer(container_type)
+	if ((base_type < 0) | (type_num_args(base_type) == 0)):
+		print_error("type '")
+		print_error_type(container_type)
+		print_error("' is not iterable: ")
+		error("expected a pointer to a container struct")
 
 
 # The "in range" body of for_statement; "for", the loop variable and
@@ -157,11 +198,7 @@ void for_container_loop(int for_var, int for_tab_level):
 	# The iterable is evaluated exactly once, before the body
 	int container_type = promote(expression())
 	container_type = type_unqualified(container_type)
-	if (type_get_pointer_level(container_type) < 1):
-		print_error("type '")
-		print_error_type(container_type)
-		print_error("' is not iterable: ")
-		error("expected a pointer to a container struct")
+	for_iter_require_struct_pointer(container_type)
 
 	char* container_name = type_get_name(container_type)
 	char* iter_prefix = strjoin(container_name, "_iter_")
@@ -170,10 +207,10 @@ void for_container_loop(int for_var, int for_tab_level):
 	char* next_name = strjoin(iter_prefix, "next")
 	char* value_name = strjoin(iter_prefix, "value")
 	free(iter_prefix)
-	for_iter_require(container_name, begin_name)
-	for_iter_require(container_name, done_name)
-	for_iter_require(container_name, next_name)
-	for_iter_require(container_name, value_name)
+	for_iter_require(container_name, begin_name, 1, container_type)
+	for_iter_require(container_name, done_name, 2, container_type)
+	for_iter_require(container_name, next_name, 2, container_type)
+	for_iter_require(container_name, value_name, 2, container_type)
 
 	# hidden slot: the container pointer
 	push_eax()

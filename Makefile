@@ -400,6 +400,16 @@ for_container_test: w FORCE
 	./bin/for_container_test
 	! ./bin/wv2 tests/for_container_error_fixture.w -o ./bin/for_container_error_fixture 2>./bin/for_container_error_fixture.stderr
 	grep -qF "type 'point' is not iterable: point_iter_begin not found" ./bin/for_container_error_fixture.stderr
+	! ./bin/wv2 tests/for_container_raw_pointer_error_fixture.w -o ./bin/for_container_raw_pointer_error_fixture 2>./bin/for_container_raw_pointer_error_fixture.stderr
+	grep -qF "type 'int*' is not iterable: expected a pointer to a container struct" ./bin/for_container_raw_pointer_error_fixture.stderr
+	! ./bin/wv2 tests/for_container_non_function_error_fixture.w -o ./bin/for_container_non_function_error_fixture 2>./bin/for_container_non_function_error_fixture.stderr
+	grep -qF "type 'bad_iter_symbol' is not iterable: bad_iter_symbol_iter_begin is not a function" ./bin/for_container_non_function_error_fixture.stderr
+	! ./bin/wv2 tests/for_container_wrong_arity_error_fixture.w -o ./bin/for_container_wrong_arity_error_fixture 2>./bin/for_container_wrong_arity_error_fixture.stderr
+	grep -qF "type 'bad_iter_arity' is not iterable: bad_iter_arity_iter_begin has wrong arity" ./bin/for_container_wrong_arity_error_fixture.stderr
+	! ./bin/wv2 tests/for_container_void_return_error_fixture.w -o ./bin/for_container_void_return_error_fixture 2>./bin/for_container_void_return_error_fixture.stderr
+	grep -qF "type 'bad_iter_return' is not iterable: bad_iter_return_iter_begin must return a word-sized value" ./bin/for_container_void_return_error_fixture.stderr
+	! ./bin/wv2 tests/for_container_wrong_param_error_fixture.w -o ./bin/for_container_wrong_param_error_fixture 2>./bin/for_container_wrong_param_error_fixture.stderr
+	grep -qF "type 'bad_iter_param' is not iterable: bad_iter_param_iter_begin first parameter must match the iterable type" ./bin/for_container_wrong_param_error_fixture.stderr
 	@echo "for container test OK"
 
 range: w FORCE
