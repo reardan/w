@@ -236,6 +236,11 @@ warning_test: w FORCE
 	grep -qF "warning: file does not end with a newline" ./bin/warning_fixture.stderr
 	./bin/wv2 tests/warning_clean_fixture.w -o ./bin/warning_clean_fixture 2>./bin/warning_clean_fixture.stderr
 	! grep -q "warning:" ./bin/warning_clean_fixture.stderr
+	./bin/wv2 tests/string_char_warning_fixture.w -o ./bin/string_char_warning_fixture 2>./bin/string_char_warning_fixture.stderr
+	grep -qF "warning: return type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
+	grep -qF "warning: initialization type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
+	grep -qF "warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
+	grep -qF "warning: assignment type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
 	@echo "warning test OK"
 
 type_table_test: w FORCE
@@ -381,25 +386,26 @@ repl: w FORCE
 
 repl_test: w FORCE
 	./bin/wv2 repl.w -o ./bin/repl
-	printf 'print("hello from the repl\\x0a")\n:quit\n' | ./bin/repl | grep -q "hello from the repl"
+	printf 'print(c"hello from the repl\\x0a")\n:quit\n' | ./bin/repl | grep -q "hello from the repl"
 	# A bad entry must not kill the process, and later entries must still work
-	printf 'this is not valid w\nprint("recovered\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered"
-	printf 'int x = = 3\nqq + 1\nprint("second recovery\\x0a")\n:quit\n' | ./bin/repl | grep -q "second recovery"
+	printf 'this is not valid w\nprint(c"recovered\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered"
+	printf 'int x = = 3\nqq + 1\nprint(c"second recovery\\x0a")\n:quit\n' | ./bin/repl | grep -q "second recovery"
 	# Multi-line function definitions persist and are callable
 	printf 'int add(int a, int b):\n\treturn a + b\n\nadd(40, 2)\n:quit\n' | ./bin/repl | grep -q "42"
 	# Interactive (pty) sessions auto-indent block bodies: no tabs typed here
 	printf 'int fib(int n):\nif (n < 2):\nreturn n\nreturn fib(n - 1) + fib(n - 2)\n\nfib(10)\n:quit\n' | script -qc './bin/repl' /dev/null | grep -q "55"
 	# Top-level variables persist between entries; bare expressions echo
 	printf 'int x = 5\nx + 1\n:quit\n' | ./bin/repl | grep -q "6"
+	printf '"hello string"\n:quit\n' | ./bin/repl | grep -q "hello string"
 	# Redefinition shadows (Python-style rebinding); assignments stay silent
-	printf 'int x = 5\nchar* x = "shadowed"\nx\n:quit\n' | ./bin/repl | grep -q "shadowed"
+	printf 'int x = 5\nchar* x = c"shadowed"\nx\n:quit\n' | ./bin/repl | grep -q "shadowed"
 	! printf 'int y = 3\ny = 9\n:quit\n' | ./bin/repl | grep -q "9"
 	# Structs, new and imports work at the prompt
 	printf 'struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n' | ./bin/repl | grep -q "7"
-	printf 'import structures.string\nstring_builder* s = string_from("imported")\ns.data\n:quit\n' | ./bin/repl | grep -q "imported"
+	printf 'import structures.string\nstring_builder* s = string_from(c"imported")\ns.data\n:quit\n' | ./bin/repl | grep -q "imported"
 	# Errors inside multi-line entries and failed imports both recover
-	printf 'int bad():\n\treturn qq\n\nprint("recovered fn\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered fn"
-	printf 'import no.such.module\nprint("recovered import\\x0a")\n:quit\n' | ./bin/repl 2>/dev/null | grep -q "recovered import"
+	printf 'int bad():\n\treturn qq\n\nprint(c"recovered fn\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered fn"
+	printf 'import no.such.module\nprint(c"recovered import\\x0a")\n:quit\n' | ./bin/repl 2>/dev/null | grep -q "recovered import"
 	# Run a file, then attach the prompt to its live definitions
 	printf ':quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "fixture main ran"
 	printf 'fixture_helper(21)\nfixture_global\n:quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "42"

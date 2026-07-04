@@ -142,25 +142,41 @@ int raw_asm_literal():
 	if (accept(c"raw_asm") == 0):
 		return 0
 	expect(c"(")
-	if (token[0] != '"'):
+	if ((token[0] != '"') & (((token[0] != 'c') | (token[1] != '"')))):
 		error(c"double quote expected inside raw_asm( ... ) literal")
 
-	int i = process_string_literal()
+	int i
+	if (token[0] == 'c'):
+		i = process_prefixed_string_literal()
+	else:
+		i = process_string_literal()
 	emit(i, token)
 	get_token()
 	expect(c")")
 	return 1
 
 
+void emit_utf8_string_descriptor(int i):
+	token[i] = 0
+	int descriptor_size = 2 * word_size
+	call_relative32(descriptor_size + i + 1)
+	int data_address = code_offset + codepos + descriptor_size
+	if (word_size == 8):
+		emit_int64(data_address)
+		emit_int64(i)
+	else:
+		emit_int32(data_address)
+		emit_int32(i)
+	emit(i + 1, token)
+	pop_eax()
+
+
 int char_pointer_literal():
 	if (token[0] != '"'):
 		return 0
 	int i = process_string_literal()
-	token[i] = 0
-	/* call after ; "the string" ; after: pop %eax */
-	call_relative32(i + 1)
-	emit(i + 1, token)
-	pop_eax()
+	validate_utf8_literal(i)
+	emit_utf8_string_descriptor(i)
 
 	return 1
 
@@ -181,16 +197,5 @@ int utf8_string_literal():
 		return 0
 	int i = process_prefixed_string_literal()
 	validate_utf8_literal(i)
-	token[i] = 0
-	int descriptor_size = 2 * word_size
-	call_relative32(descriptor_size + i + 1)
-	int data_address = code_offset + codepos + descriptor_size
-	if (word_size == 8):
-		emit_int64(data_address)
-		emit_int64(i)
-	else:
-		emit_int32(data_address)
-		emit_int32(i)
-	emit(i + 1, token)
-	pop_eax()
+	emit_utf8_string_descriptor(i)
 	return 1

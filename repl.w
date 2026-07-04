@@ -450,6 +450,10 @@ int repl_compile_entry(char* path):
 void repl_echo(int value, int type):
 	if (type <= 0): /* no result, or void */
 		return;
+	if (type_is_string(type)):
+		write(1, load_int(value), load_int(value + word_size))
+		put_char(10)
+		return;
 	int pointers = type_get_pointer_level(type)
 	if ((pointers == 1) & (strcmp(type_get_name(type), c"char") == 0)):
 		if (value == 0):

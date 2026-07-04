@@ -170,7 +170,7 @@ int primary_expr():
 		type = 3 /* constant */
 
 	else if (char_pointer_literal()):
-		type = 3 /* constant: eax already holds the string address */
+		type = string_value_type
 
 	else:
 		print2(c"Could not find a valid primary expression, token: ")
