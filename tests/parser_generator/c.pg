@@ -3,6 +3,7 @@ parser clang
 skip C_PREPROCESSOR c_preprocessor
 skip LINE_COMMENT c_line_comment
 skip BLOCK_COMMENT block_comment
+skip C_CONTROL c_control
 skip NEWLINE newline
 skip TAB tabs
 
@@ -85,16 +86,23 @@ literal RBRACE "}"
 start translation_unit
 
 rule translation_unit = external_declaration* EOF
-rule external_declaration = declaration | function_definition | SEMI
+rule external_declaration = declaration | function_definition | declaration_annotation | SEMI
 
-rule declaration = declaration_specifiers init_declarator_list? SEMI
+rule declaration = typedef_name_declaration_specifiers init_declarator_list declaration_annotation* SEMI | declaration_specifiers init_declarator_list? declaration_annotation* SEMI
 rule declaration_specifiers = declaration_specifier+
 rule declaration_specifier = storage_class_specifier | type_specifier | type_qualifier | function_specifier
+rule typedef_name_declaration_specifiers = typedef_name_declaration_prefix* typedef_name_specifier typedef_name_declaration_suffix*
+rule typedef_name_declaration_prefix = storage_class_specifier | type_qualifier | function_specifier
+rule typedef_name_declaration_suffix = type_qualifier | function_specifier
 rule storage_class_specifier = KW_TYPEDEF | KW_EXTERN | KW_STATIC | KW_AUTO | KW_REGISTER
 rule function_specifier = KW_INLINE
 rule type_qualifier = KW_CONST | KW_RESTRICT | KW_VOLATILE
 rule type_specifier = primitive_type | struct_or_union_specifier | enum_specifier
+rule typedef_name_specifier = IDENT
 rule primitive_type = KW_VOID | KW_CHAR | KW_SHORT | KW_INT | KW_LONG | KW_FLOAT | KW_DOUBLE | KW_SIGNED | KW_UNSIGNED
+rule declaration_annotation = IDENT declaration_annotation_args?
+rule declaration_annotation_args = LPAREN declaration_annotation_item* RPAREN
+rule declaration_annotation_item = declaration_annotation_args | IDENT | NUMBER | STRING | CHAR_LITERAL | COMMA
 
 rule init_declarator_list = init_declarator init_declarator_tail*
 rule init_declarator_tail = COMMA init_declarator
@@ -111,9 +119,10 @@ rule designator = LBRACK constant_expression RBRACK | DOT IDENT
 rule struct_or_union_specifier = struct_or_union IDENT struct_body | struct_or_union struct_body | struct_or_union IDENT
 rule struct_or_union = KW_STRUCT | KW_UNION
 rule struct_body = LBRACE struct_declaration* RBRACE
-rule struct_declaration = specifier_qualifier_list struct_declarator_list? SEMI
+rule struct_declaration = typedef_name_specifier_qualifier_list struct_declarator_list? SEMI | specifier_qualifier_list struct_declarator_list? SEMI
 rule specifier_qualifier_list = specifier_qualifier+
 rule specifier_qualifier = type_specifier | type_qualifier
+rule typedef_name_specifier_qualifier_list = type_qualifier* typedef_name_specifier type_qualifier*
 rule struct_declarator_list = struct_declarator struct_declarator_tail*
 rule struct_declarator_tail = COMMA struct_declarator
 rule struct_declarator = declarator bit_field? | bit_field
@@ -139,9 +148,9 @@ rule parameter_type_list = parameter_list parameter_ellipsis?
 rule parameter_ellipsis = COMMA ELLIPSIS
 rule parameter_list = parameter_declaration parameter_tail*
 rule parameter_tail = COMMA parameter_declaration
-rule parameter_declaration = declaration_specifiers declarator?
+rule parameter_declaration = typedef_name_declaration_specifiers declarator? | declaration_specifiers declarator?
 
-rule type_name = specifier_qualifier_list abstract_declarator?
+rule type_name = typedef_name_specifier_qualifier_list abstract_declarator? | specifier_qualifier_list abstract_declarator?
 rule abstract_declarator = pointer | pointer? direct_abstract_declarator
 rule direct_abstract_declarator = LPAREN abstract_declarator RPAREN direct_abstract_declarator_tail* | direct_abstract_declarator_tail+
 rule direct_abstract_declarator_tail = LBRACK constant_expression? RBRACK | LPAREN parameter_type_list? RPAREN

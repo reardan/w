@@ -88,14 +88,17 @@ plus typedefs, structs/unions, enums, function prototypes, pointers, arrays,
 function pointers, variadic parameters, simple initializers, and minimal
 function bodies.
 
-The grammar is syntax-only. It does not run the C preprocessor, resolve typedef
-names, evaluate constants, or lower declarations into W symbols. Those steps are
-left to a future compiler-facing `c_import` pass that can walk the generated AST
-and reuse the existing `c_lib` + `extern` FFI path.
+The grammar is syntax-only. It does not run the C preprocessor or evaluate
+constants, but it accepts libc-style declaration markers, common annotation
+tails, typedef-name specifier contexts, and odd control characters seen in raw
+headers. The compiler-facing `c_import` pass prepares raw header text, resolves
+typedef names through the W type table, and lowers the supported declaration
+subset into W types and `c_lib` + `extern` FFI shims.
 
 `make parser_generator_c_test` generates `bin/generated_c_parser.w`, compiles
-it, and runs focused lexer and parser fixtures for the declaration shapes needed
-by the first import milestone.
+it, verifies it matches `libs/extras/c_import/generated_c_parser.w`, and runs
+focused lexer and parser fixtures for the declaration shapes needed by the first
+import milestone.
 
 ## Usage
 

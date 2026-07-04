@@ -93,6 +93,14 @@ int pg_lexer_matcher_tabs(char* input, int index):
 	return index - start
 
 
+int pg_lexer_matcher_c_control(char* input, int index):
+	if ((input[index] <= 0) | (input[index] >= 32)):
+		return 0
+	if ((input[index] == 9) | (input[index] == 10) | (input[index] == 13)):
+		return 0
+	return 1
+
+
 int pg_lexer_matcher_line_comment(char* input, int index):
 	if (input[index] != '#'):
 		return 0
