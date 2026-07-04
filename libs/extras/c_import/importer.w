@@ -746,8 +746,15 @@ int ci_primitive_type(pg_ast_node* specs):
 		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
 			return ci_lookup_type("uint64")
 		return ci_lookup_type("int64")
+	# C 'long' follows the target word (ILP32/LP64); C 'int' is always 32-bit
+	if (ci_has_token(specs, clang_token_KW_LONG())):
+		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
+			return ci_lookup_type("uint")
+		return ci_lookup_type("int")
 	if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-		return ci_lookup_type("uint")
+		return ci_lookup_type("uint32")
+	if (ci_has_token(specs, clang_token_KW_INT()) | ci_has_token(specs, clang_token_KW_SIGNED())):
+		return ci_lookup_type("int32")
 	return ci_lookup_type("int")
 
 
@@ -1030,6 +1037,12 @@ void ci_skip_extern_function(char* name, char* reason):
 		print_error("\x0a")
 
 
+# Global constants are read with word-sized loads, so they must be emitted
+# word-sized (emit_int is always 4 bytes).
+void ci_emit_constant(int value):
+	emit_i(value, word_size)
+
+
 void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params):
 	int sym = sym_declare_global(name, ret_type, 2)
 	int param_count = 0
@@ -1076,7 +1089,7 @@ int ci_import_enumerators(pg_ast_node* node, int enum_type, int value):
 		if (sym_lookup(name) < 0):
 			int current_symbol = sym_declare_global(name, enum_type, 1)
 			sym_define_global(current_symbol)
-			emit_int(value)
+			ci_emit_constant(value)
 		return value + 1
 	int i = 0
 	while (i < pg_ast_child_count(node)):
@@ -1306,7 +1319,7 @@ void ci_export_macro_constant(hash_map* macros, char* name, cpp_macro* macro):
 	hash_map_set(ci_const_values, name, value)
 	int current_symbol = sym_declare_global(name, ci_lookup_type("int"), 1)
 	sym_define_global(current_symbol)
-	emit_int(value)
+	ci_emit_constant(value)
 
 
 void ci_export_macro_constants(hash_map* macros):

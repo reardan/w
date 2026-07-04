@@ -88,6 +88,10 @@ c_import_libc_test: w FORCE
 	./bin/wv2 tests/c_import_libc_test.w -o ./bin/c_import_libc_test
 	./bin/c_import_libc_test
 
+c_import_libc_test_x64: w FORCE
+	./bin/wv2 x64 tests/c_import_libc_test.w -o ./bin/c_import_libc_test_x64
+	./bin/c_import_libc_test_x64
+
 
 directory_test: w FORCE
 	./bin/wv2 tests/directory_test.w >./bin/directory_test
@@ -153,7 +157,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test x64_test x64_float_test x64_int64_test net_64_test dynamic_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test x64_test x64_float_test x64_int64_test net_64_test dynamic_test_x64 c_import_libc_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,

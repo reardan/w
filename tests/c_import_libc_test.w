@@ -15,6 +15,7 @@ c_import "libc.so.6" "/usr/include/ctype.h"
 c_import "libc.so.6" "/usr/include/math.h"
 c_import "libc.so.6" "/usr/include/dirent.h"
 c_import "libc.so.6" "/usr/include/locale.h"
+c_import "libc.so.6" "/usr/include/x86_64-linux-gnu/sys/stat.h"
 
 
 void test_libc_stdio_file_round_trip():
@@ -74,6 +75,23 @@ void test_libc_strtol_and_qsort_absent_collisions():
 	strcpy(copy, "seven")
 	assert_equal(0, strcmp("seven", copy))
 	free(copy)
+
+
+# The kernel fills struct stat, so a correct st_size read proves the
+# imported struct layout (padding and 64-bit members included) matches the
+# C ABI on this target.
+void test_libc_fstat_struct_layout():
+	char* path = "bin/c_import_stat.tmp"
+	int file = open(path, 577, 420)
+	assert_equal(9, write(file, "ninebytes", 9))
+	assert_equal(0, close(file))
+	file = open(path, 0, 0)
+	stat st_buf
+	assert_equal(0, fstat(file, &st_buf))
+	assert_equal(0, close(file))
+	assert_equal(9, st_buf.st_size)
+	assert1(st_buf.st_nlink >= 1)
+	assert_equal(0, remove(path))
 
 
 void test_libc_w_syscall_wrappers_still_win():
