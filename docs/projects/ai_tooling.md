@@ -1,6 +1,6 @@
 # AI Tooling MVP
 
-Status: **plan** for the first implementation milestone of
+Status: **MVP implemented** for the first implementation milestone of
 [reardan/w#25](https://github.com/reardan/w/issues/25) (AI Tooling).
 
 Issue #25 proposes a broad surface: structured diagnostics, a formatter, a
@@ -27,6 +27,21 @@ In scope, in implementation order:
 Deferred (section "Out of scope" below, each with rationale): LSP server,
 `wfmt` (writing mode), semantic indexer + `w-index-mcp`, `w reduce`,
 `w inspect`, Tree-sitter grammar, `w-debug-mcp`/DAP, `w-parsergen-mcp`.
+
+## Implementation status
+
+The MVP described here has landed:
+
+- `w check [--json]` compiles to `/dev/null` and emits NDJSON diagnostics
+  in JSON mode while keeping default human diagnostics byte-compatible.
+- `tools/test_map.w` builds to `bin/wtest`; `wtest changed` and
+  `make test_changed` map changed paths to focused Makefile targets.
+- `tools/mcp/w_toolchain_mcp.py` is a stdlib-only stdio MCP server, registered
+  by `.cursor/mcp.json`.
+- README agent tooling guidance and regression targets (`check_json_test`,
+  `wtest_map_test`, `mcp_test`) are wired into `make tests`.
+
+The out-of-scope items at the end of this document remain deferred.
 
 ## Current state (verified against source at head)
 
@@ -303,7 +318,7 @@ Regression gates for every compiler-touching commit: `make verify`
 `self_host_warning_test` (human text frozen), and full `make tests`
 before merge.
 
-## Sequencing (each step lands green on `make verify` + `make tests`)
+## Sequencing (implemented)
 
 1. `compiler/diagnostics.w` + `check` subcommand + JSON emission for the
    funnel-only messages; human output byte-identical; `check_json_test`.

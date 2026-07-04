@@ -272,6 +272,24 @@ warning_test: w FORCE
 	grep -qF "warning: assignment type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
 	@echo "warning test OK"
 
+check_json_test: w FORCE
+	./bin/wv2 check --json tests/warning_fixture.w >./bin/check_json_warning.ndjson 2>./bin/check_json_warning.stderr
+	grep -qF '"severity": "warning"' ./bin/check_json_warning.ndjson
+	grep -qF '"file": "/workspace/tests/warning_fixture.w"' ./bin/check_json_warning.ndjson
+	grep -qE '"line": [1-9][0-9]*' ./bin/check_json_warning.ndjson
+	grep -qE '"column": [1-9][0-9]*' ./bin/check_json_warning.ndjson
+	grep -qF '"message": "assignment type mismatch: expected '\''char*'\'', got '\''int*'\''"' ./bin/check_json_warning.ndjson
+	grep -qF '"token":' ./bin/check_json_warning.ndjson
+	grep -qF '"arch": "x86"' ./bin/check_json_warning.ndjson
+	! ./bin/wv2 check --json tests/type_system_error_fixture.w >./bin/check_json_error.ndjson 2>./bin/check_json_error.stderr
+	grep -qF '"severity": "error"' ./bin/check_json_error.ndjson
+	grep -qF '"message": "assignment to const"' ./bin/check_json_error.ndjson
+	./bin/wv2 check --json tests/warning_clean_fixture.w >./bin/check_json_clean.ndjson 2>./bin/check_json_clean.stderr
+	test ! -s ./bin/check_json_clean.ndjson
+	./bin/wv2 check --json x64 tests/warning_fixture.w >./bin/check_json_warning_x64.ndjson 2>./bin/check_json_warning_x64.stderr
+	grep -qF '"arch": "x64"' ./bin/check_json_warning_x64.ndjson
+	@echo "check json test OK"
+
 # The compiler's own sources are the largest clean fixture: the strict
 # type checks must not fire anywhere in the self-hosted compile.
 self_host_warning_test: w FORCE
@@ -553,6 +571,35 @@ parser_generator_c_test: parser_generator_test FORCE
 	./bin/wv2 tests/parser_generator/generated_c_parser_test.w -o ./bin/parser_generator_c_test
 	./bin/parser_generator_c_test
 
+wtest: w FORCE
+	./bin/wv2 tools/test_map.w -o ./bin/wtest
+
+test_changed: wtest FORCE
+	git diff --name-only HEAD | ./bin/wtest changed | xargs -r $(MAKE)
+
+wtest_map_test: wtest FORCE
+	printf 'grammar/promote.w\n' | ./bin/wtest changed > ./bin/wtest_map.out
+	printf 'verify\nself_host_warning_test\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	./bin/wtest changed structures/json.w > ./bin/wtest_map.out
+	printf 'json_test\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	./bin/wtest changed tests/warning_fixture.w > ./bin/wtest_map.out
+	printf 'warning_test\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	./bin/wtest changed libs/extras/parser_generator/generator.w > ./bin/wtest_map.out
+	printf 'parser_generator_test\nparser_generator_w_test\nparser_generator_c_test\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	./bin/wtest changed docs/todo.txt > ./bin/wtest_map.out
+	test ! -s ./bin/wtest_map.out
+	./bin/wtest changed unknown/new_file.w > ./bin/wtest_map.out
+	printf 'tests\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	@echo "wtest map test OK"
+
+mcp_test: FORCE
+	@if command -v python3 >/dev/null 2>&1; then python3 tools/mcp/mcp_test.py; else echo "python3 not found; skipping mcp test"; fi
+
 linked_list_test: w FORCE
 	./bin/wv2 structures/linked_list_test.w -o ./bin/linked_list_test
 	./bin/linked_list_test
@@ -628,7 +675,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test check_json_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:

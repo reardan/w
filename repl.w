@@ -403,6 +403,7 @@ int repl_compile_entry(char* path):
 		imported_count = saved_imported_count
 		current_function_symbol = saved_function_symbol
 		pointer_indirection = 0
+		diag_clear()
 		# The failure may have happened inside an imported file
 		if (file != repl_entry_file):
 			close(file)
@@ -414,6 +415,7 @@ int repl_compile_entry(char* path):
 	asserts(c"could not reopen entry buffer", file >= 0)
 	repl_entry_file = file
 	line_number = 0
+	column_number = 0
 	tab_level = 0
 	nextc = get_character()
 	get_token()
