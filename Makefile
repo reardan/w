@@ -209,7 +209,9 @@ type_system_error_test: w FORCE
 	! ./bin/wv2 tests/type_system_const_pointer_error_fixture.w -o ./bin/type_system_const_pointer_error_fixture 2>./bin/type_system_const_pointer_error_fixture.stderr
 	grep -qF "assignment to const" ./bin/type_system_const_pointer_error_fixture.stderr
 	! ./bin/wv2 tests/type_system_cast_error_fixture.w -o ./bin/type_system_cast_error_fixture 2>./bin/type_system_cast_error_fixture.stderr
-	grep -qF "cannot cast a pointer to a sub-word integer" ./bin/type_system_cast_error_fixture.stderr
+	grep -qF "cannot cast an address to a sub-word integer" ./bin/type_system_cast_error_fixture.stderr
+	! ./bin/wv2 tests/type_system_function_cast_error_fixture.w -o ./bin/type_system_function_cast_error_fixture 2>./bin/type_system_function_cast_error_fixture.stderr
+	grep -qF "cannot cast an address to a sub-word integer" ./bin/type_system_function_cast_error_fixture.stderr
 	@echo "type system error test OK"
 
 type_system_warning_test: w FORCE
