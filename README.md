@@ -112,7 +112,11 @@ Implemented and covered by tests:
   field access, hex literals, C string escapes (`\x0a` style), and UTF-8
   `s"..."` literals with `\u`/`\U` escapes.
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
-  (1–3 args), `break`, `continue`, `return`, `debugger` (emits `int3`).
+  (1–3 args), `for x in <container>` over any struct-pointer type providing
+  the four cursor functions `T_iter_begin/done/next/value` (implemented by
+  `array_list`, `linked_list` and `hash_map`, which yields keys; see
+  `docs/projects/iteration.md`), `break`, `continue`, `return`, `debugger`
+  (emits `int3`).
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).
@@ -187,8 +191,9 @@ archives the old seed to `old/` first.
 
 ## Current major open areas
 
-- `for x in <container>` iteration and generators — design in
-  `docs/projects/iteration.md` (nothing implemented yet).
+- Generators (`generator`/`yield`) — design in `docs/projects/iteration.md`;
+  the container half (`for x in <container>` via the cursor protocol) is
+  implemented, generators are not.
 - CUDA backend Stage 2, the PTX emitter — Stages 0–1 (x64 self-hosting and
   dynamic linking to libcuda) are done; see `docs/projects/cuda.md`.
 - REPL line editing/history.

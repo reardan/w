@@ -394,6 +394,24 @@ for_test: w FORCE
 	chmod +x ./bin/for_test
 	./bin/for_test
 
+# Cursor-protocol iteration: for x in <container>
+for_container_test: w FORCE
+	./bin/wv2 tests/for_container_test.w -o ./bin/for_container_test
+	./bin/for_container_test
+	! ./bin/wv2 tests/for_container_error_fixture.w -o ./bin/for_container_error_fixture 2>./bin/for_container_error_fixture.stderr
+	grep -qF "type 'point' is not iterable: point_iter_begin not found" ./bin/for_container_error_fixture.stderr
+	! ./bin/wv2 tests/for_container_raw_pointer_error_fixture.w -o ./bin/for_container_raw_pointer_error_fixture 2>./bin/for_container_raw_pointer_error_fixture.stderr
+	grep -qF "type 'int*' is not iterable: expected a pointer to a container struct" ./bin/for_container_raw_pointer_error_fixture.stderr
+	! ./bin/wv2 tests/for_container_non_function_error_fixture.w -o ./bin/for_container_non_function_error_fixture 2>./bin/for_container_non_function_error_fixture.stderr
+	grep -qF "type 'bad_iter_symbol' is not iterable: bad_iter_symbol_iter_begin is not a function" ./bin/for_container_non_function_error_fixture.stderr
+	! ./bin/wv2 tests/for_container_wrong_arity_error_fixture.w -o ./bin/for_container_wrong_arity_error_fixture 2>./bin/for_container_wrong_arity_error_fixture.stderr
+	grep -qF "type 'bad_iter_arity' is not iterable: bad_iter_arity_iter_begin has wrong arity" ./bin/for_container_wrong_arity_error_fixture.stderr
+	! ./bin/wv2 tests/for_container_void_return_error_fixture.w -o ./bin/for_container_void_return_error_fixture 2>./bin/for_container_void_return_error_fixture.stderr
+	grep -qF "type 'bad_iter_return' is not iterable: bad_iter_return_iter_begin must return a word-sized value" ./bin/for_container_void_return_error_fixture.stderr
+	! ./bin/wv2 tests/for_container_wrong_param_error_fixture.w -o ./bin/for_container_wrong_param_error_fixture 2>./bin/for_container_wrong_param_error_fixture.stderr
+	grep -qF "type 'bad_iter_param' is not iterable: bad_iter_param_iter_begin first parameter must match the iterable type" ./bin/for_container_wrong_param_error_fixture.stderr
+	@echo "for container test OK"
+
 range: w FORCE
 	./bin/wv2 range_test.w >./bin/range_test
 	chmod +x ./bin/range_test
@@ -505,7 +523,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test directory_test multilayer_test threading_test hash_map_test string_test array_list_test json_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:

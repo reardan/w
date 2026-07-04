@@ -1,12 +1,15 @@
 # Iteration & Generators Design: `for x in <container>` and `yield`
 
-Status: design / brainstorm. Nothing here is implemented; this document
-exists so a later change can extend `for` beyond `range` with a protocol
-that eventually covers `array_list`, `linked_list`, `hash_map`, and
-user-defined containers — not just the easy array case — and so
-generators (`yield`) can be planned and implemented together with it,
-since the two features share their consumption syntax, their cleanup
-problems, and (in the recommended shape) one loop lowering.
+Status: the container half is implemented. Design 3 (the cursor/iterator
+function convention) is the iteration protocol: `for x in <container>`
+compiles in `grammar/for_statement.w` via the cursor lowering below, the
+four `_iter_*` functions exist for `array_list`, `linked_list` and
+`hash_map` (keys), and user-defined containers work by defining the same
+four functions (`tests/for_container_test.w`, `make for_container_test`).
+Steps 3-4 of the recommendation at the bottom are done; generators
+(`yield`, steps 1-2 and 5) remain design / brainstorm. The generators
+half is kept here because the two features share their consumption
+syntax, their cleanup problems, and one loop lowering.
 
 Supersedes the iteration notes at the bottom of `docs/for_notes.txt`
 (manual range struct, "generator functions", "store generator stack in

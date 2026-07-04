@@ -66,6 +66,9 @@ current state:
 			for int i in range N
 			range(end), range(start, end), range(start, end, step)
 			range arguments can be expressions
+			for x in <container> cursor-protocol iteration
+				T_iter_begin/done/next/value over any struct pointer
+				array_list, linked_list, hash_map (keys) implement it
 			break and continue
 			nested if/loop behavior covered by tests
 			if/while conditions work with or without parentheses
@@ -165,8 +168,7 @@ current state:
 
 	future language features:
 		generators + yield (design: docs/projects/iteration.md, stackful coroutines)
-		iterators (design: docs/projects/iteration.md, cursor function convention)
-		for-in over iterable values (design: docs/projects/iteration.md)
+		for k, v in map two-variable iteration (docs/projects/iteration.md)
 		stream class
 		file class
 		template strings
