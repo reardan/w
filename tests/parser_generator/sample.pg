@@ -1,0 +1,11 @@
+parser sample
+
+token WORD letters
+token NUMBER digits
+literal COMMA ","
+
+start list
+
+rule value = WORD | NUMBER
+rule list = value value* EOF
+rule pair = value COMMA value EOF
