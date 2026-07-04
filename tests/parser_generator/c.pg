@@ -1,0 +1,172 @@
+parser clang
+
+skip C_PREPROCESSOR c_preprocessor
+skip LINE_COMMENT c_line_comment
+skip BLOCK_COMMENT block_comment
+skip NEWLINE newline
+skip TAB tabs
+
+token STRING c_string
+token CHAR_LITERAL c_char_literal
+token NUMBER c_number
+token IDENT identifier
+
+literal KW_TYPEDEF "typedef"
+literal KW_EXTERN "extern"
+literal KW_STATIC "static"
+literal KW_AUTO "auto"
+literal KW_REGISTER "register"
+literal KW_INLINE "inline"
+literal KW_CONST "const"
+literal KW_RESTRICT "restrict"
+literal KW_VOLATILE "volatile"
+literal KW_VOID "void"
+literal KW_CHAR "char"
+literal KW_SHORT "short"
+literal KW_INT "int"
+literal KW_LONG "long"
+literal KW_FLOAT "float"
+literal KW_DOUBLE "double"
+literal KW_SIGNED "signed"
+literal KW_UNSIGNED "unsigned"
+literal KW_STRUCT "struct"
+literal KW_UNION "union"
+literal KW_ENUM "enum"
+literal KW_SIZEOF "sizeof"
+literal KW_RETURN "return"
+
+literal ELLIPSIS "..."
+literal SHIFT_LEFT_ASSIGN "<<="
+literal SHIFT_RIGHT_ASSIGN ">>="
+literal PLUS_PLUS "++"
+literal MINUS_MINUS "--"
+literal ARROW "->"
+literal SHIFT_LEFT "<<"
+literal SHIFT_RIGHT ">>"
+literal LT_EQ "<="
+literal GT_EQ ">="
+literal EQ_EQ "=="
+literal BANG_EQ "!="
+literal AND_AND "&&"
+literal OR_OR "||"
+literal PLUS_ASSIGN "+="
+literal MINUS_ASSIGN "-="
+literal STAR_ASSIGN "*="
+literal SLASH_ASSIGN "/="
+literal PERCENT_ASSIGN "%="
+literal AMP_ASSIGN "&="
+literal CARET_ASSIGN "^="
+literal PIPE_ASSIGN "|="
+literal PLUS "+"
+literal MINUS "-"
+literal STAR "*"
+literal SLASH "/"
+literal PERCENT "%"
+literal AMP "&"
+literal PIPE "|"
+literal CARET "^"
+literal BANG "!"
+literal TILDE "~"
+literal ASSIGN "="
+literal LT "<"
+literal GT ">"
+literal QUESTION "?"
+literal COLON ":"
+literal SEMI ";"
+literal COMMA ","
+literal DOT "."
+literal LPAREN "("
+literal RPAREN ")"
+literal LBRACK "["
+literal RBRACK "]"
+literal LBRACE "{"
+literal RBRACE "}"
+
+start translation_unit
+
+rule translation_unit = external_declaration* EOF
+rule external_declaration = declaration | function_definition | SEMI
+
+rule declaration = declaration_specifiers init_declarator_list? SEMI
+rule declaration_specifiers = declaration_specifier+
+rule declaration_specifier = storage_class_specifier | type_specifier | type_qualifier | function_specifier
+rule storage_class_specifier = KW_TYPEDEF | KW_EXTERN | KW_STATIC | KW_AUTO | KW_REGISTER
+rule function_specifier = KW_INLINE
+rule type_qualifier = KW_CONST | KW_RESTRICT | KW_VOLATILE
+rule type_specifier = primitive_type | struct_or_union_specifier | enum_specifier
+rule primitive_type = KW_VOID | KW_CHAR | KW_SHORT | KW_INT | KW_LONG | KW_FLOAT | KW_DOUBLE | KW_SIGNED | KW_UNSIGNED
+
+rule init_declarator_list = init_declarator init_declarator_tail*
+rule init_declarator_tail = COMMA init_declarator
+rule init_declarator = declarator initializer_part?
+rule initializer_part = ASSIGN initializer
+rule initializer = assignment_expression | LBRACE initializer_list? initializer_comma? RBRACE
+rule initializer_list = initializer_item initializer_tail*
+rule initializer_tail = COMMA initializer_item
+rule initializer_item = designation? initializer
+rule initializer_comma = COMMA
+rule designation = designator+ ASSIGN
+rule designator = LBRACK constant_expression RBRACK | DOT IDENT
+
+rule struct_or_union_specifier = struct_or_union IDENT struct_body | struct_or_union struct_body | struct_or_union IDENT
+rule struct_or_union = KW_STRUCT | KW_UNION
+rule struct_body = LBRACE struct_declaration* RBRACE
+rule struct_declaration = specifier_qualifier_list struct_declarator_list? SEMI
+rule specifier_qualifier_list = specifier_qualifier+
+rule specifier_qualifier = type_specifier | type_qualifier
+rule struct_declarator_list = struct_declarator struct_declarator_tail*
+rule struct_declarator_tail = COMMA struct_declarator
+rule struct_declarator = declarator bit_field? | bit_field
+rule bit_field = COLON constant_expression
+
+rule enum_specifier = KW_ENUM IDENT enum_body | KW_ENUM enum_body | KW_ENUM IDENT
+rule enum_body = LBRACE enumerator_list? enum_comma? RBRACE
+rule enumerator_list = enumerator enumerator_tail*
+rule enumerator_tail = COMMA enumerator
+rule enum_comma = COMMA
+rule enumerator = IDENT enum_value?
+rule enum_value = ASSIGN constant_expression
+
+rule declarator = pointer? direct_declarator
+rule direct_declarator = IDENT direct_declarator_tail* | LPAREN declarator RPAREN direct_declarator_tail*
+rule direct_declarator_tail = LBRACK constant_expression? RBRACK | LPAREN parameter_type_list? RPAREN | LPAREN identifier_list? RPAREN
+rule pointer = STAR type_qualifier_list? pointer?
+rule type_qualifier_list = type_qualifier+
+rule identifier_list = IDENT identifier_tail*
+rule identifier_tail = COMMA IDENT
+
+rule parameter_type_list = parameter_list parameter_ellipsis?
+rule parameter_ellipsis = COMMA ELLIPSIS
+rule parameter_list = parameter_declaration parameter_tail*
+rule parameter_tail = COMMA parameter_declaration
+rule parameter_declaration = declaration_specifiers declarator?
+
+rule type_name = specifier_qualifier_list abstract_declarator?
+rule abstract_declarator = pointer | pointer? direct_abstract_declarator
+rule direct_abstract_declarator = LPAREN abstract_declarator RPAREN direct_abstract_declarator_tail* | direct_abstract_declarator_tail+
+rule direct_abstract_declarator_tail = LBRACK constant_expression? RBRACK | LPAREN parameter_type_list? RPAREN
+
+rule function_definition = declaration_specifiers declarator compound_statement
+rule compound_statement = LBRACE block_item* RBRACE
+rule block_item = declaration | statement
+rule statement = compound_statement | return_statement | expression_statement
+rule return_statement = KW_RETURN expression? SEMI
+rule expression_statement = expression? SEMI
+
+rule constant_expression = conditional_expression
+rule expression = assignment_expression expression_tail*
+rule expression_tail = COMMA assignment_expression
+rule assignment_expression = unary_expression assignment_operator assignment_expression | conditional_expression
+rule assignment_operator = ASSIGN | STAR_ASSIGN | SLASH_ASSIGN | PERCENT_ASSIGN | PLUS_ASSIGN | MINUS_ASSIGN | SHIFT_LEFT_ASSIGN | SHIFT_RIGHT_ASSIGN | AMP_ASSIGN | CARET_ASSIGN | PIPE_ASSIGN
+rule conditional_expression = binary_expression conditional_tail?
+rule conditional_tail = QUESTION expression COLON conditional_expression
+rule binary_expression = unary_expression binary_tail*
+rule binary_tail = binary_operator unary_expression
+rule binary_operator = OR_OR | AND_AND | PIPE | CARET | AMP | EQ_EQ | BANG_EQ | LT | GT | LT_EQ | GT_EQ | SHIFT_LEFT | SHIFT_RIGHT | PLUS | MINUS | STAR | SLASH | PERCENT
+rule unary_expression = postfix_expression | unary_operator unary_expression | KW_SIZEOF unary_expression | KW_SIZEOF LPAREN type_name RPAREN
+rule unary_operator = AMP | STAR | PLUS | MINUS | TILDE | BANG
+rule postfix_expression = primary_expression postfix_tail*
+rule postfix_tail = LBRACK expression RBRACK | LPAREN argument_expression_list? RPAREN | DOT IDENT | ARROW IDENT | PLUS_PLUS | MINUS_MINUS
+rule argument_expression_list = assignment_expression argument_tail*
+rule argument_tail = COMMA assignment_expression
+rule primary_expression = IDENT | NUMBER | STRING | CHAR_LITERAL | LPAREN expression RPAREN
