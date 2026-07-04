@@ -23,9 +23,11 @@ int current_function_symbol
 
 void copy_struct_return_value(int declared_type):
 	int words = (type_get_size(declared_type) + word_size - 1) >> word_size_log2
+	mov_ebx_esp_plus((stack_pos + number_of_args) << word_size_log2)
+	push_ebx()
+	stack_pos = stack_pos + 1
 	push_eax()
 	stack_pos = stack_pos + 1
-	mov_ebx_esp_plus((stack_pos + number_of_args) << word_size_log2)
 	int i = 0
 	while (i < words):
 		mov_eax_esp_plus(0)
@@ -38,6 +40,11 @@ void copy_struct_return_value(int declared_type):
 		i = i + 1
 	pop_eax()
 	stack_pos = stack_pos - 1
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	if (type_has_array_field(declared_type)):
+		mov_eax_ebx()
+		init_array_field_descriptors(declared_type)
 
 void statement():
 	int p1

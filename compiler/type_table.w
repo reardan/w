@@ -48,6 +48,8 @@ int type_get_kind(int type_index);
 void type_set_kind(int type_index, int kind);
 int type_get_element_type(int type_index);
 int type_get_array_length(int type_index);
+int type_num_args(int type_index);
+int type_get_field_type_at(int type_index, int i);
 
 
 int type_size():
@@ -374,6 +376,23 @@ int type_is_set(int type_index):
 
 int type_is_buffer(int type_index):
 	return type_is_array(type_index) | type_is_slice(type_index) | type_is_string(type_index)
+
+
+int type_has_array_field(int type_index):
+	type_index = type_canonical(type_index)
+	if (type_index < 0):
+		return 0
+	if (type_get_pointer_level(type_index) > 0):
+		return 0
+	if (type_is_array(type_index)):
+		return 1
+	int count = type_num_args(type_index)
+	int i = 0
+	while (i < count):
+		if (type_has_array_field(type_get_field_type_at(type_index, i))):
+			return 1
+		i = i + 1
+	return 0
 
 
 int type_stack_words(int type_index):

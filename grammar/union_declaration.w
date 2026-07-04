@@ -8,6 +8,8 @@ int union_declaration():
 		expect(":")
 		while(tab_level > start_tab_level):
 			int field_type = type_name()
+			if (type_has_array_field(field_type)):
+				error("fixed array fields are not implemented in unions")
 			type_add_arg(type_index, strclone(token), field_type)
 			get_token()
 			pointer_indirection = 0

@@ -1,4 +1,6 @@
 int multiplicative_expr();
+void zero_runtime_object(int bytes);
+void init_array_field_descriptors(int type);
 
 
 # Store the constructor argument in eax into field field_index of the
@@ -8,6 +10,8 @@ void new_store_field(int base_type, int field_index, int arg_type):
 	if (field_index >= type_num_args(base_type)):
 		return;
 	int field_type = type_get_field_type_at(base_type, field_index)
+	if (type_has_array_field(field_type)):
+		error("cannot initialize fixed-array field in constructor")
 	if (types_compatible_with_expression(field_type, arg_type) == 0):
 		warn_type_mismatch("constructor argument", field_type, arg_type)
 	coerce(field_type, arg_type)
@@ -203,6 +207,9 @@ int unary_expression():
 		call_eax()
 		be_pop(2)
 		stack_pos = stack_pos - 2
+		if (type_has_array_field(base)):
+			zero_runtime_object(type_get_size(base))
+			init_array_field_descriptors(base)
 
 		if (has_parens):
 			if (accept(")") == 0):

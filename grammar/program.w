@@ -33,6 +33,8 @@ void function_definition(int current_symbol):
 		param_count = param_count + 1
 		number_of_args = number_of_args + 1
 		int type = type_name()
+		if (type_is_array(type)):
+			error("fixed array parameter is not implemented; use T[] instead")
 		# Record the declared type so call sites can check arguments
 		if (param_count <= sym_max_param_slots()):
 			save_int(table + current_symbol + 22 + (param_count << 2), type)
@@ -69,6 +71,9 @@ void function_definition(int current_symbol):
 	table_pos = n
 
 
+void emit_global_type_storage(int type);
+
+
 int global_storage_size(int type):
 	int bytes = word_size
 	int declared_size = type_get_size(type)
@@ -79,12 +84,23 @@ int global_storage_size(int type):
 
 void emit_global_storage(int type):
 	int bytes = global_storage_size(type)
+	int start = codepos
+	emit_global_type_storage(type)
+	emit_zeros(bytes - (codepos - start))
+
+
+void emit_global_type_storage(int type):
 	if (type_is_array(type)):
 		emit_target_word(code_offset + codepos + 2 * word_size)
 		emit_target_word(type_get_array_length(type))
-		emit_zeros(bytes - 2 * word_size)
+		emit_zeros(type_get_size(type) - 2 * word_size)
+	else if (type_num_args(type) > 0):
+		int i = 0
+		while (i < type_num_args(type)):
+			emit_global_type_storage(type_get_field_type_at(type, i))
+			i = i + 1
 	else:
-		emit_zeros(bytes)
+		emit_zeros(type_get_size(type))
 
 
 void program():

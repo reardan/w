@@ -115,6 +115,9 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 		warning("'")
 
 
+void init_array_field_descriptors(int type);
+
+
 # Push a call argument onto the stack. Struct values are copied word by
 # word, highest field offset first so field 0 lands at the lowest address
 # (the layout parameter access expects); everything else is the one word
@@ -133,6 +136,9 @@ void push_call_argument(int arg_type):
 		push_eax_plus(j << word_size_log2)
 		j = j - 1
 	stack_pos = stack_pos + arg_words
+	if (type_has_array_field(arg_type)):
+		lea_eax_esp_plus(0)
+		init_array_field_descriptors(arg_type)
 
 
 # Parse arguments for a call whose callee address has already been pushed.

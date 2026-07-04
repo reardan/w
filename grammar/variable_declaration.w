@@ -31,8 +31,11 @@ int variable_declaration():
 					push_eax_plus(j << word_size_log2)
 					j = j - 1
 				stack_pos = stack_pos + size
+				if (type_has_array_field(type)):
+					lea_eax_esp_plus(0)
+					init_array_field_descriptors(type)
 				return type
-		if (type_is_array(type)):
+		if (type_is_array(type) | type_has_array_field(type)):
 			mov_eax_int(0)
 		int i = 0
 		while (i < size):
@@ -44,6 +47,9 @@ int variable_declaration():
 			store_stack_var(0)
 			mov_eax_int(type_get_array_length(type))
 			store_stack_var(word_size)
+		else if (type_has_array_field(type)):
+			lea_eax_esp_plus(0)
+			init_array_field_descriptors(type)
 		return type
 	return -1
 

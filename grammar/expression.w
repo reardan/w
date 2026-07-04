@@ -23,6 +23,8 @@ void assign_store(int type):
 
 void assign_store_struct(int type):
 	int words = (type_get_size(type) + word_size - 1) >> word_size_log2
+	push_ebx()
+	stack_pos = stack_pos + 1
 	push_eax()
 	stack_pos = stack_pos + 1
 	int i = 0
@@ -37,6 +39,11 @@ void assign_store_struct(int type):
 		i = i + 1
 	pop_eax()
 	stack_pos = stack_pos - 1
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	if (type_has_array_field(type)):
+		mov_eax_ebx()
+		init_array_field_descriptors(type)
 
 
 /*

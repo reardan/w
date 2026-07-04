@@ -10,6 +10,7 @@ import grammar.primary_expr
 import grammar.binary_op
 import grammar.postfix_expr
 import grammar.unary_expression
+import grammar.array_field_init
 import grammar.multiplicative_expr
 import grammar.additive_expr
 import grammar.shift_expr
