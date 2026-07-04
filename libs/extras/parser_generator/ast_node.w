@@ -39,7 +39,7 @@ void pg_ast_add(pg_ast_node* parent, pg_ast_node* child):
 	if (child == 0):
 		return
 	child.parent = parent
-	array_list_push(parent.children, child)
+	array_list_push(parent.children, cast(int, child))
 
 
 int pg_ast_child_count(pg_ast_node* node):
@@ -47,7 +47,7 @@ int pg_ast_child_count(pg_ast_node* node):
 
 
 pg_ast_node* pg_ast_child(pg_ast_node* node, int index):
-	return array_list_get(node.children, index)
+	return cast(pg_ast_node*, array_list_get(node.children, index))
 
 
 void pg_ast_set_metadata(pg_ast_node* node, char* key, int value):
@@ -62,23 +62,26 @@ int pg_ast_get_metadata(pg_ast_node* node, char* key, int missing):
 	return hash_map_get_default(node.metadata, key, missing)
 
 
-void pg_ast_walk_preorder(pg_ast_node* node, int visitor):
+type pg_ast_visitor = fn(pg_ast_node*) -> void
+
+
+void pg_ast_walk_preorder(pg_ast_node* node, pg_ast_visitor* visitor):
 	if (node == 0):
 		return
 	visitor(node)
 	int i = 0
 	while (i < node.children.length):
-		pg_ast_walk_preorder(array_list_get(node.children, i), visitor)
+		pg_ast_walk_preorder(cast(pg_ast_node*, array_list_get(node.children, i)), visitor)
 		i = i + 1
 
 
-void pg_ast_walk_listener(pg_ast_node* node, int enter, int leave):
+void pg_ast_walk_listener(pg_ast_node* node, pg_ast_visitor* enter, pg_ast_visitor* leave):
 	if (node == 0):
 		return
 	enter(node)
 	int i = 0
 	while (i < node.children.length):
-		pg_ast_walk_listener(array_list_get(node.children, i), enter, leave)
+		pg_ast_walk_listener(cast(pg_ast_node*, array_list_get(node.children, i)), enter, leave)
 		i = i + 1
 	leave(node)
 
@@ -88,7 +91,7 @@ void pg_ast_free(pg_ast_node* node):
 		return
 	int i = 0
 	while (i < node.children.length):
-		pg_ast_free(array_list_get(node.children, i))
+		pg_ast_free(cast(pg_ast_node*, array_list_get(node.children, i)))
 		i = i + 1
 	if (node.text != 0):
 		free(node.text)

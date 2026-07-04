@@ -6,7 +6,7 @@ int type_alias_declaration():
 		int target = -1
 		if (accept(c"fn")):
 			expect(c"(")
-			int params = malloc(40)
+			char* params = malloc(40)
 			int param_count = 0
 			if (accept(c")") == 0):
 				int param_type = type_name()
@@ -20,7 +20,7 @@ int type_alias_declaration():
 			expect(c"-")
 			expect(c">")
 			int return_type = type_name()
-			target = type_push_function(alias_name, return_type, param_count, params)
+			target = type_push_function(alias_name, return_type, param_count, cast(int, params))
 			free(params)
 		else:
 			target = type_name()

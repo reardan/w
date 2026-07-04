@@ -1,5 +1,5 @@
 # Already-imported module paths, so each file is compiled only once.
-int imported_paths
+char* imported_paths
 int imported_count
 
 
@@ -38,7 +38,7 @@ char* import_resolve_arch(char* path):
 int import_lookup(char* path):
 	int i = 0
 	while (i < imported_count):
-		char* p = load_int(imported_paths + i * 4)
+		char* p = cast(char*, load_int(imported_paths + i * 4))
 		if (strcmp(p, path) == 0):
 			return i
 		i = i + 1
@@ -50,7 +50,7 @@ void import_register(char* path):
 	if (imported_paths == 0):
 		imported_paths = malloc(max_imports * 4)
 	assert1(imported_count < max_imports)
-	save_int(imported_paths + imported_count * 4, path)
+	save_int(imported_paths + imported_count * 4, cast(int, path))
 	imported_count = imported_count + 1
 
 

@@ -10,20 +10,20 @@ import code_generator.code_emitter
 import lib.lib
 
 
-# Parallel arrays of recorded mappings.
-int debug_line_addresses
-int debug_line_lines
-int debug_line_file_indexes
+# Parallel arrays of recorded mappings (raw word buffers).
+char* debug_line_addresses
+char* debug_line_lines
+char* debug_line_file_indexes
 int debug_line_count
 int debug_line_capacity
 
 # Stack depth (in words, relative to function entry) at each statement's
 # first instruction. The debugger uses it to address stack variables and
 # to unwind call frames at runtime; it is never emitted into the ELF.
-int debug_line_stack_pos
+char* debug_line_stack_pos
 
 # Registered source files (cloned names; index = DWARF file number - 1).
-int debug_files
+char* debug_files
 int debug_file_count
 int debug_last_file
 
@@ -31,19 +31,19 @@ int debug_last_file
 int debug_line_file_index():
 	# Fast path: the same file as the previous statement
 	if (debug_file_count > 0):
-		char* last = load_int(debug_files + debug_last_file * 4)
+		char* last = cast(char*, load_int(debug_files + debug_last_file * 4))
 		if (strcmp(last, filename) == 0):
 			return debug_last_file
 	int i = 0
 	while (i < debug_file_count):
-		char* name = load_int(debug_files + i * 4)
+		char* name = cast(char*, load_int(debug_files + i * 4))
 		if (strcmp(name, filename) == 0):
 			debug_last_file = i
 			return i
 		i = i + 1
 	if (debug_file_count >= 256):
 		return 0
-	save_int(debug_files + debug_file_count * 4, strclone(filename))
+	save_int(debug_files + debug_file_count * 4, cast(int, strclone(filename)))
 	debug_last_file = debug_file_count
 	debug_file_count = debug_file_count + 1
 	return debug_last_file
@@ -99,11 +99,11 @@ void debug_line_note(int stmt_stack_pos):
 # stores), kind ('L' local / 'A' argument), type table index, and the
 # codepos at the declaration site (for picking the innermost shadowing
 # declaration and for scoping names to their function).
-int debug_local_names
-int debug_local_slots
-int debug_local_kinds
-int debug_local_types
-int debug_local_addresses
+char* debug_local_names
+char* debug_local_slots
+char* debug_local_kinds
+char* debug_local_types
+char* debug_local_addresses
 int debug_local_count
 int debug_local_capacity
 
@@ -125,7 +125,7 @@ void debug_local_note(char* name, int slot, int kind, int type):
 		debug_local_kinds = realloc(debug_local_kinds, old, x)
 		debug_local_types = realloc(debug_local_types, old, x)
 		debug_local_addresses = realloc(debug_local_addresses, old, x)
-	save_int(debug_local_names + debug_local_count * 4, strclone(name))
+	save_int(debug_local_names + debug_local_count * 4, cast(int, strclone(name)))
 	save_int(debug_local_slots + debug_local_count * 4, slot)
 	save_int(debug_local_kinds + debug_local_count * 4, kind)
 	save_int(debug_local_types + debug_local_count * 4, type)
@@ -136,8 +136,8 @@ void debug_local_note(char* name, int slot, int kind, int type):
 # Functions: start codepos and the number of argument words the body was
 # compiled with (structs passed by value span several words, so this can
 # differ from the declared parameter count in the symbol table).
-int debug_func_starts
-int debug_func_arg_words
+char* debug_func_starts
+char* debug_func_arg_words
 int debug_func_count
 int debug_func_capacity
 
@@ -209,7 +209,7 @@ void debug_line_emit():
 	emit_int8(0) /* include_directories: empty */
 	int i = 0
 	while (i < debug_file_count):
-		char* name = load_int(debug_files + i * 4)
+		char* name = cast(char*, load_int(debug_files + i * 4))
 		emit_string(name)
 		emit_uleb(0) /* directory index */
 		emit_uleb(0) /* mtime */
@@ -284,7 +284,7 @@ void debug_info_emit(int text_end):
 	emit_uleb(1) /* abbrev code 1: the compile unit */
 	char* unit_name = c"w"
 	if (debug_file_count > 0):
-		unit_name = load_int(debug_files)
+		unit_name = cast(char*, load_int(debug_files))
 	emit_string(unit_name) /* DW_AT_name */
 	emit_int32(0) /* DW_AT_stmt_list: offset 0 in .debug_line */
 	emit_int32(code_offset) /* DW_AT_low_pc */

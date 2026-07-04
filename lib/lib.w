@@ -326,11 +326,11 @@ void save_word(char* p, int v):
 
 
 string str_from_cstr(char* s):
-	int descriptor = malloc(2 * __word_size__)
-	save_word(descriptor, s)
-	int length = cstr_utf8_length_or_die(s)
+	char* descriptor = malloc(2 * __word_size__)
+	save_word(descriptor, cast(int, s))
+	int length = strlen(s)
 	save_word(descriptor + __word_size__, length)
-	return cast(string, descriptor)
+	return cast(string, cast(int, descriptor))
 
 
 int getchar(int file):

@@ -11,7 +11,9 @@ void file_not_found_error():
 	print_error(c"file '")
 	print_error(filename)
 	print_error(c"' not found error '")
-	print_error(itoa(error))
+	# 'file' holds the failed open() result; the old code passed the
+	# error() function itself, which the typed checks now reject
+	print_error(itoa(file))
 	print_error(c"'\x0a")
 
 
@@ -123,7 +125,7 @@ int link(int argc, int argv):
 	bounds_mode = 1
 	# argv strides by the HOST pointer size: __word_size__ was baked in
 	# when this compiler binary was itself compiled
-	int first_arg = argv + __word_size__
+	char** first_arg = argv + __word_size__
 	if (strcmp(*first_arg, c"x64") == 0):
 		println2(c"Compiling in x64 mode")
 		word_size =  8

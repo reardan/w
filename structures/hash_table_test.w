@@ -64,7 +64,7 @@ void test_map_remove_tombstone():
 void test_cstr_key_is_cloned():
 	__w_hash_table* m = __w_map_new(__w_hash_key_cstr(), __word_size__)
 	char* key = strclone(c"mutable")
-	__w_map_set(m, key, 42)
+	__w_map_set(m, cast(int, key), 42)
 	key[0] = 'X'
 	assert_equal(42, __w_map_get(m, c"mutable"))
 	free(key)
@@ -76,9 +76,9 @@ void test_string_key_contents():
 	string one = s"alpha"
 	string two = s"alpha"
 	string other = s"beta"
-	__w_map_set(m, one, 11)
-	assert_equal(11, __w_map_get(m, two))
-	assert_equal(0, __w_map_contains(m, other))
+	__w_map_set(m, cast(int, one), 11)
+	assert_equal(11, __w_map_get(m, cast(int, two)))
+	assert_equal(0, __w_map_contains(m, cast(int, other)))
 	__w_map_free(m)
 
 

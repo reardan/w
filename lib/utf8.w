@@ -163,16 +163,16 @@ int string_ends_with(string s, string suffix):
 
 string string_from_bytes(char* data, int length):
 	assert1(utf8_validate_bytes(data, length))
-	int descriptor = malloc(2 * __word_size__ + length + 1)
+	char* descriptor = malloc(2 * __word_size__ + length + 1)
 	char* out = descriptor + 2 * __word_size__
-	save_word(descriptor, out)
+	save_word(descriptor, cast(int, out))
 	save_word(descriptor + __word_size__, length)
 	int i = 0
 	while (i < length):
 		out[i] = data[i]
 		i = i + 1
 	out[length] = 0
-	return cast(string, descriptor)
+	return cast(string, cast(int, descriptor))
 
 
 char* cstr(string s):
@@ -185,6 +185,7 @@ char* cstr(string s):
 
 
 void utf8_write(int file, string s):
+	cstr_utf8_length_or_die(s.data)
 	write(file, s.data, s.length)
 
 

@@ -66,25 +66,7 @@ void coerce_cstr_to_string():
 
 
 void coerce_cstr_to_string_call_arg():
-	push_eax()
-	stack_pos = stack_pos + 1
-	sym_get_value(c"cstr_utf8_length_or_die")
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus(word_size)
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus(word_size)
-	call_eax()
-	be_pop(2)
-	stack_pos = stack_pos - 2
-
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus(word_size)
-	push_eax()
-	stack_pos = stack_pos + 1
-	lea_eax_esp_plus(0)
+	coerce_cstr_to_string()
 
 
 /*
@@ -221,5 +203,18 @@ void coerce(int want, int got):
 		cvttsd2si_rax_xmm0()
 
 
+# Conversions requested with cast(T, x). Casts silence the compatibility
+# warnings but still reject conversions that cannot round-trip: address-sized
+# values (pointers and function addresses) only fit in word-sized integers.
 void coerce_explicit(int want, int got):
+	int want_real = type_unqualified(want)
+	int got_real = type_unqualified(got)
+	int got_address_sized = type_get_pointer_level(got_real) > 0
+	if (got_real == 4):
+		got_address_sized = 1
+	if (got_address_sized & (type_get_pointer_level(want_real) == 0)):
+		if ((type_num_args(want_real) == 0) & (type_float_kind(want_real) == 0)):
+			int want_size = type_get_size(want_real)
+			if ((want_size > 0) & (want_size < word_size)):
+				error(c"cannot cast an address to a sub-word integer")
 	coerce(want, got)

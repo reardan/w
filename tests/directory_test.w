@@ -19,9 +19,9 @@ struct linux_dirent {
 */
 
 
-int print_dirent(char* buf):
-	print_int0(c"inode: ", buf)
-	print_int0(c", next: ", buf + 4)
+void print_dirent(char* buf):
+	print_int0(c"inode: ", cast(int, buf))
+	print_int0(c", next: ", cast(int, buf + 4))
 	int* len = (buf + 6)
 	int length = len >> 16 /* todo: better word translation */
 	print_int0(c", length: ", length)
@@ -88,7 +88,7 @@ int print_dirent_ls(char* buf, int should_print):
 		println2(c"")
 		ls_column = 0
 
-	int* func = print_ent
+	int* func = cast(int*, print_ent)
 	func(buf, length)
 	print_pad(ls_longest_filename - str_length)
 	ls_column = ls_column + ls_longest_filename

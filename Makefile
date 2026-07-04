@@ -227,6 +227,10 @@ type_system_error_test: w FORCE
 	grep -qF "assignment to const" ./bin/type_system_error_fixture.stderr
 	! ./bin/wv2 tests/type_system_const_pointer_error_fixture.w -o ./bin/type_system_const_pointer_error_fixture 2>./bin/type_system_const_pointer_error_fixture.stderr
 	grep -qF "assignment to const" ./bin/type_system_const_pointer_error_fixture.stderr
+	! ./bin/wv2 tests/type_system_cast_error_fixture.w -o ./bin/type_system_cast_error_fixture 2>./bin/type_system_cast_error_fixture.stderr
+	grep -qF "cannot cast an address to a sub-word integer" ./bin/type_system_cast_error_fixture.stderr
+	! ./bin/wv2 tests/type_system_function_cast_error_fixture.w -o ./bin/type_system_function_cast_error_fixture 2>./bin/type_system_function_cast_error_fixture.stderr
+	grep -qF "cannot cast an address to a sub-word integer" ./bin/type_system_function_cast_error_fixture.stderr
 	@echo "type system error test OK"
 
 type_system_warning_test: w FORCE
@@ -251,6 +255,12 @@ warning_test: w FORCE
 	grep -qF "warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'int*'" ./bin/warning_fixture.stderr
 	grep -qF "warning: return type mismatch: expected 'char*', got 'int*'" ./bin/warning_fixture.stderr
 	grep -qF "warning: assignment type mismatch: expected 'pair', got 'single'" ./bin/warning_fixture.stderr
+	grep -qF "warning: assignment type mismatch: expected 'char*', got 'int'" ./bin/warning_fixture.stderr
+	grep -qF "warning: assignment type mismatch: expected 'int', got 'char*'" ./bin/warning_fixture.stderr
+	grep -qF "warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'int'" ./bin/warning_fixture.stderr
+	grep -qF "warning: return type mismatch: expected 'char*', got 'int'" ./bin/warning_fixture.stderr
+	grep -qF "warning: initialization type mismatch: expected 'char*', got 'function'" ./bin/warning_fixture.stderr
+	grep -qF "warning: assignment type mismatch: expected 'int', got 'function'" ./bin/warning_fixture.stderr
 	grep -qF "warning: line indented with spaces instead of tabs" ./bin/warning_fixture.stderr
 	grep -qF "warning: file does not end with a newline" ./bin/warning_fixture.stderr
 	./bin/wv2 tests/warning_clean_fixture.w -o ./bin/warning_clean_fixture 2>./bin/warning_clean_fixture.stderr
@@ -261,6 +271,15 @@ warning_test: w FORCE
 	grep -qF "warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
 	grep -qF "warning: assignment type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
 	@echo "warning test OK"
+
+# The compiler's own sources are the largest clean fixture: the strict
+# type checks must not fire anywhere in the self-hosted compile.
+self_host_warning_test: w FORCE
+	./bin/wv2 w.w -o ./bin/self_host_warning_check 2>./bin/self_host_warning_check.stderr
+	! grep -q "warning:" ./bin/self_host_warning_check.stderr
+	./bin/wv2 x64 w.w -o ./bin/self_host_warning_check_64 2>./bin/self_host_warning_check_64.stderr
+	! grep -q "warning:" ./bin/self_host_warning_check_64.stderr
+	@echo "self host warning test OK"
 
 type_table_test: w FORCE
 	./bin/wv2 compiler/type_table_test.w >./bin/type_table_test
@@ -609,7 +628,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:

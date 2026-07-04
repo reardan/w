@@ -91,6 +91,21 @@ void test_cast_and_aliases():
 	free(p)
 
 
+# Explicit casts are the only remaining way to move values between
+# pointers, words and function addresses; the round trips must be
+# loss-free.
+void test_cast_escape_hatch_roundtrip():
+	char* buffer = malloc(4)
+	buffer[0] = 'q'
+	int word = cast(int, buffer)
+	char* back = cast(char*, word)
+	assert_equal('q', back[0])
+	int fn_addr = cast(int, p0_add)
+	binary_op* op = cast(binary_op*, fn_addr)
+	assert_equal(9, op(4, 5))
+	free(buffer)
+
+
 void test_precise_direct_call_return_types():
 	bool b = p0_true()
 	assert_equal(1, b)

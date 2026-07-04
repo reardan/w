@@ -65,7 +65,7 @@ void pg_emit_token_constants(pg_source_writer* writer, pg_grammar* grammar):
 
 	int i = 0
 	while (i < grammar.tokens.length):
-		pg_token_def* token = array_list_get(grammar.tokens, i)
+		pg_token_def* token = cast(pg_token_def*, array_list_get(grammar.tokens, i))
 		pg_emit_dynamic_line_start(writer)
 		pg_source_append(writer, c"int ")
 		pg_source_append(writer, grammar.name)
@@ -84,7 +84,7 @@ void pg_emit_token_constants(pg_source_writer* writer, pg_grammar* grammar):
 
 	i = 0
 	while (i < grammar.literals.length):
-		pg_literal_def* literal = array_list_get(grammar.literals, i)
+		pg_literal_def* literal = cast(pg_literal_def*, array_list_get(grammar.literals, i))
 		pg_emit_dynamic_line_start(writer)
 		pg_source_append(writer, c"int ")
 		pg_source_append(writer, grammar.name)
@@ -105,7 +105,7 @@ void pg_emit_token_constants(pg_source_writer* writer, pg_grammar* grammar):
 void pg_emit_ast_constants(pg_source_writer* writer, pg_grammar* grammar):
 	int i = 0
 	while (i < grammar.rules.length):
-		pg_rule* rule = array_list_get(grammar.rules, i)
+		pg_rule* rule = cast(pg_rule*, array_list_get(grammar.rules, i))
 		pg_emit_dynamic_line_start(writer)
 		pg_source_append(writer, c"int ")
 		pg_source_append(writer, grammar.name)
@@ -136,7 +136,7 @@ void pg_emit_token_name(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_dedent(writer)
 	int i = 0
 	while (i < grammar.tokens.length):
-		pg_token_def* token = array_list_get(grammar.tokens, i)
+		pg_token_def* token = cast(pg_token_def*, array_list_get(grammar.tokens, i))
 		pg_emit_dynamic_line_start(writer)
 		pg_source_append(writer, c"else if (kind == ")
 		pg_emit_token_kind_call(writer, grammar, token.name)
@@ -151,7 +151,7 @@ void pg_emit_token_name(pg_source_writer* writer, pg_grammar* grammar):
 		i = i + 1
 	i = 0
 	while (i < grammar.literals.length):
-		pg_literal_def* literal = array_list_get(grammar.literals, i)
+		pg_literal_def* literal = cast(pg_literal_def*, array_list_get(grammar.literals, i))
 		pg_emit_dynamic_line_start(writer)
 		pg_source_append(writer, c"else if (kind == ")
 		pg_emit_token_kind_call(writer, grammar, literal.name)
@@ -172,7 +172,7 @@ void pg_emit_token_name(pg_source_writer* writer, pg_grammar* grammar):
 void pg_emit_forward_declarations(pg_source_writer* writer, pg_grammar* grammar):
 	int i = 0
 	while (i < grammar.rules.length):
-		pg_rule* rule = array_list_get(grammar.rules, i)
+		pg_rule* rule = cast(pg_rule*, array_list_get(grammar.rules, i))
 		pg_emit_dynamic_line_start(writer)
 		pg_source_append(writer, c"pg_ast_node* ")
 		pg_source_append(writer, grammar.name)
@@ -253,7 +253,7 @@ void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_line(writer, c"int best_skip = 0")
 	int i = 0
 	while (i < grammar.skips.length):
-		pg_token_def* skip = array_list_get(grammar.skips, i)
+		pg_token_def* skip = cast(pg_token_def*, array_list_get(grammar.skips, i))
 		pg_emit_dynamic_line_start(writer)
 		pg_source_append(writer, c"length = pg_lexer_matcher_")
 		pg_source_append(writer, skip.matcher)
@@ -268,7 +268,7 @@ void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
 		i = i + 1
 	i = 0
 	while (i < grammar.tokens.length):
-		pg_token_def* token = array_list_get(grammar.tokens, i)
+		pg_token_def* token = cast(pg_token_def*, array_list_get(grammar.tokens, i))
 		pg_emit_dynamic_line_start(writer)
 		pg_source_append(writer, c"length = pg_lexer_matcher_")
 		pg_source_append(writer, token.matcher)
@@ -286,7 +286,7 @@ void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
 		i = i + 1
 	i = 0
 	while (i < grammar.literals.length):
-		pg_literal_def* literal = array_list_get(grammar.literals, i)
+		pg_literal_def* literal = cast(pg_literal_def*, array_list_get(grammar.literals, i))
 		pg_source_line(writer, c"length = 0")
 		pg_emit_dynamic_line_start(writer)
 		pg_source_append(writer, c"if (starts_with(input + index, ")
@@ -513,7 +513,7 @@ void pg_emit_rule(pg_source_writer* writer, pg_grammar* grammar, pg_rule* rule):
 	pg_source_line(writer, c"int failed = 0")
 	int alt_index = 0
 	while (alt_index < rule.alternatives.length):
-		pg_alternative* alternative = array_list_get(rule.alternatives, alt_index)
+		pg_alternative* alternative = cast(pg_alternative*, array_list_get(rule.alternatives, alt_index))
 		pg_emit_dynamic_line_start(writer)
 		pg_source_append(writer, c"node = pg_ast_new(")
 		pg_emit_ast_kind_call(writer, grammar, rule.name)
@@ -526,7 +526,7 @@ void pg_emit_rule(pg_source_writer* writer, pg_grammar* grammar, pg_rule* rule):
 		while (term_index < alternative.terms.length):
 			pg_source_line(writer, c"if (failed == 0):")
 			pg_source_indent(writer)
-			pg_emit_term(writer, grammar, array_list_get(alternative.terms, term_index), alt_index, term_index)
+			pg_emit_term(writer, grammar, cast(pg_term*, array_list_get(alternative.terms, term_index)), alt_index, term_index)
 			pg_source_dedent(writer)
 			term_index = term_index + 1
 		pg_source_line(writer, c"if (failed == 0):")
@@ -588,7 +588,7 @@ char* pg_generate_parser(pg_grammar* grammar):
 	pg_emit_match_token(writer, grammar)
 	int i = 0
 	while (i < grammar.rules.length):
-		pg_emit_rule(writer, grammar, array_list_get(grammar.rules, i))
+		pg_emit_rule(writer, grammar, cast(pg_rule*, array_list_get(grammar.rules, i)))
 		i = i + 1
 	pg_emit_parse_entry(writer, grammar)
 	return pg_source_take(writer)

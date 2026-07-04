@@ -21,13 +21,13 @@ pg_token_stream* pg_token_stream_new():
 
 
 void pg_token_stream_add(pg_token_stream* stream, pg_token* token):
-	array_list_push(stream.tokens, token)
+	array_list_push(stream.tokens, cast(int, token))
 
 
 pg_token* pg_token_stream_get(pg_token_stream* stream, int index):
 	if (index >= stream.tokens.length):
-		return array_list_get(stream.tokens, stream.tokens.length - 1)
-	return array_list_get(stream.tokens, index)
+		return cast(pg_token*, array_list_get(stream.tokens, stream.tokens.length - 1))
+	return cast(pg_token*, array_list_get(stream.tokens, index))
 
 
 pg_token* pg_token_stream_la(pg_token_stream* stream, int offset):
@@ -71,7 +71,7 @@ void pg_token_stream_free(pg_token_stream* stream):
 		return
 	int i = 0
 	while (i < stream.tokens.length):
-		pg_token_free(array_list_get(stream.tokens, i))
+		pg_token_free(cast(pg_token*, array_list_get(stream.tokens, i)))
 		i = i + 1
 	array_list_free(stream.tokens)
 	free(stream)

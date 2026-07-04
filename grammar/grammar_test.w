@@ -40,18 +40,19 @@ int func2(int* f):
 	return f()
 
 void test_func_pointer_argument():
-	int *f = func1
+	# Untyped word-pointer storage needs the explicit cast escape hatch
+	int *f = cast(int*, func1)
 	int got = func2(f)
 	assert_equal(99, got)
 
 
 void test_func_argument_direct():
-	int got = func2(func1)
+	int got = func2(cast(int*, func1))
 	assert_equal(99, got)
 
 
 void test_func_pointer_variable():
-	int *f = func1
+	int *f = cast(int*, func1)
 	int got = f()
 	assert_equal(99, got)
 

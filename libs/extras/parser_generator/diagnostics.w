@@ -38,7 +38,7 @@ pg_diagnostic* pg_diagnostic_new(char* filename, int line, int column, char* mes
 void pg_diagnostics_add(pg_diagnostics* diagnostics, char* filename, int line, int column, char* message, char* expected, char* found):
 	if (diagnostics == 0):
 		return
-	array_list_push(diagnostics.items, pg_diagnostic_new(filename, line, column, message, expected, found))
+	array_list_push(diagnostics.items, cast(int, pg_diagnostic_new(filename, line, column, message, expected, found)))
 
 
 int pg_diagnostics_count(pg_diagnostics* diagnostics):
@@ -48,7 +48,7 @@ int pg_diagnostics_count(pg_diagnostics* diagnostics):
 
 
 pg_diagnostic* pg_diagnostics_get(pg_diagnostics* diagnostics, int index):
-	return array_list_get(diagnostics.items, index)
+	return cast(pg_diagnostic*, array_list_get(diagnostics.items, index))
 
 
 void pg_diagnostic_print(pg_diagnostic* diagnostic):
@@ -73,7 +73,7 @@ void pg_diagnostics_print(pg_diagnostics* diagnostics):
 		return
 	int i = 0
 	while (i < diagnostics.items.length):
-		pg_diagnostic_print(array_list_get(diagnostics.items, i))
+		pg_diagnostic_print(cast(pg_diagnostic*, array_list_get(diagnostics.items, i)))
 		i = i + 1
 
 
@@ -91,7 +91,7 @@ void pg_diagnostics_free(pg_diagnostics* diagnostics):
 		return
 	int i = 0
 	while (i < diagnostics.items.length):
-		pg_diagnostic_free(array_list_get(diagnostics.items, i))
+		pg_diagnostic_free(cast(pg_diagnostic*, array_list_get(diagnostics.items, i)))
 		i = i + 1
 	array_list_free(diagnostics.items)
 	free(diagnostics)

@@ -19,7 +19,7 @@ int malloc_heap_ptr
 int malloc_heap_end
 
 
-int malloc(int size):
+void* malloc(int size):
 	if (size < 1):
 		size = 1
 	# Round up to 8 bytes so blocks stay aligned
@@ -29,16 +29,16 @@ int malloc(int size):
 	int prev = 0
 	int block = malloc_free_list
 	while (block != 0):
-		int block_size = load_int(block)
+		int block_size = load_int(cast(char*, block))
 		if (block_size >= size):
 			int next = load_int(block + 4)
 			# Split when the remainder can hold a header and a payload
 			if (block_size >= size + 16):
 				int rest = block + 8 + size
-				save_int(rest, block_size - size - 8)
+				save_int(cast(char*, rest), block_size - size - 8)
 				save_int(rest + 4, next)
 				next = rest
-				save_int(block, size)
+				save_int(cast(char*, block), size)
 			if (prev == 0):
 				malloc_free_list = next
 			else:
@@ -59,17 +59,17 @@ int malloc(int size):
 			chunk = ((needed + 65535) >> 16) << 16
 		int err = brk(malloc_heap_end + chunk)
 		if (err < 0):
-			return err
+			return cast(void*, err)
 		malloc_heap_end = malloc_heap_end + chunk
 
 	block = malloc_heap_ptr
 	malloc_heap_ptr = malloc_heap_ptr + needed
-	save_int(block, size)
+	save_int(cast(char*, block), size)
 	return block + 8
 
 
 # Push the block back onto the allocator's free list.
-int free(int mem_address):
+int free(void* mem_address):
 	if (mem_address == 0):
 		return 0
 	int block = mem_address - 8
@@ -78,13 +78,14 @@ int free(int mem_address):
 	return 1
 
 
-# Raw-memory function like malloc/free, so the block parameter is the
-# untyped word: callers hold blocks as char*, int*, struct pointers, etc.
-char *realloc(int old, int oldlen, int newlen):
+# void* accepts any single-level pointer implicitly; word-typed callers
+# cast. The copy loop indexes through char* because void has no size.
+char *realloc(void* old, int oldlen, int newlen):
 	char *grown = malloc(newlen)
+	char *src = old
 	int i = 0
 	while (i < oldlen):
-		grown[i] = old[i]
+		grown[i] = src[i]
 		i = i + 1
 
 	free(old)

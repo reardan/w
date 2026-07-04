@@ -34,7 +34,7 @@ void array_list_ensure(array_list* list, int extra):
 		int new_capacity = list.capacity * 2
 		if (new_capacity < needed):
 			new_capacity = needed
-		list.items = realloc(list.items, list.length * 4, new_capacity * 4)
+		list.items = cast(int*, realloc(list.items, list.length * 4, new_capacity * 4))
 		list.capacity = new_capacity
 
 

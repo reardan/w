@@ -38,7 +38,7 @@ void dbg_print_string_preview(int addr):
 		return;
 	if (dbg_mem_readable(addr, 1) == 0):
 		return;
-	char* p = addr
+	char* p = cast(char*, addr)
 	print(c" \x22")
 	int i = 0
 	while (i < 64):

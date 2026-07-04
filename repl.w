@@ -336,9 +336,9 @@ void repl_entry_item(int entry_symbol):
 			push_eax()
 			stack_pos = stack_pos + 1
 			int value_type = expression()
-			promote(value_type)
+			value_type = promote(value_type)
 			pop_ebx()
-			if (types_compatible(decl_type, value_type) == 0):
+			if (types_compatible_with_expression(decl_type, value_type) == 0):
 				warn_type_mismatch(c"initialization", decl_type, value_type)
 			assign_store(decl_type)
 			stack_pos = stack_pos - 1
@@ -459,7 +459,7 @@ void repl_echo(int value, int type):
 		if (value == 0):
 			println(c"(null)")
 		else:
-			println(str_from_cstr(value))
+			println(str_from_cstr(cast(char*, value)))
 		return;
 	if ((pointers > 0) | (type == 4)):
 		println(hex(value))
@@ -501,8 +501,8 @@ int main(int argc, int argv):
 	code_offset = buffer
 
 	# Recoverable compile errors: error() jumps here instead of exiting
-	repl_jump_buffer = malloc(12)
-	repl_error_jump = repl_longjmp
+	repl_jump_buffer = cast(int, malloc(12))
+	repl_error_jump = cast(int, repl_longjmp)
 
 	# Runtime support: syscall stubs first, then the library itself.
 	# import_module (not compile_save) registers the modules, so a loaded

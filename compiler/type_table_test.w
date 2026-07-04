@@ -167,3 +167,39 @@ void test_pointer_level():
 	assert_equal(first_pointer+2, type_lookup_pointer(c"char", 1))
 	assert_equal(first_pointer+3, type_lookup_pointer(c"char", 2))
 
+
+# The former wildcards: 'int' no longer converts to or from pointers and
+# 'function' values only convert through a signature match or a cast.
+# Only 'constant' (3) stays compatible with everything until typed
+# literals land.
+void test_types_compatible_strictness():
+	push_basic_types()
+	int int_type = type_lookup(c"int")
+	int char_type = type_lookup(c"char")
+	int char_ptr = type_lookup_pointer(c"char", 1)
+	int int_ptr = type_lookup_pointer(c"int", 1)
+	int void_ptr = type_lookup_pointer(c"void", 1)
+	int char_ptr_ptr = type_lookup_pointer(c"char", 2)
+
+	# int <-> pointer requires an explicit cast now
+	assert_equal(0, types_compatible(char_ptr, int_type))
+	assert_equal(0, types_compatible(int_type, char_ptr))
+
+	# constants (integer/char literals, &x) remain untyped for now
+	assert_equal(1, types_compatible(int_type, 3))
+	assert_equal(1, types_compatible(char_ptr, 3))
+
+	# function values only convert via signature match or cast
+	assert_equal(0, types_compatible(int_type, 4))
+	assert_equal(0, types_compatible(char_ptr, 4))
+
+	# scalar widths still convert implicitly; void* still bridges pointers
+	assert_equal(1, types_compatible(int_type, char_type))
+	assert_equal(1, types_compatible(char_ptr, void_ptr))
+	assert_equal(1, types_compatible(void_ptr, int_ptr))
+
+	# pointer depth and base type still matter
+	assert_equal(0, types_compatible(char_ptr, char_ptr_ptr))
+	assert_equal(0, types_compatible(char_ptr, int_ptr))
+	assert_equal(0, types_compatible(void_ptr, char_ptr_ptr))
+

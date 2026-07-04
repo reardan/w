@@ -57,11 +57,11 @@ cpp_macro* cpp_macro_new(char* name):
 cpp_macro* cpp_macro_lookup(hash_map* macros, char* name):
 	if (hash_map_contains(macros, name) == 0):
 		return 0
-	return hash_map_get(macros, name)
+	return cast(cpp_macro*, hash_map_get(macros, name))
 
 
 void cpp_macro_define(hash_map* macros, cpp_macro* macro):
-	hash_map_set(macros, macro.name, macro)
+	hash_map_set(macros, macro.name, cast(int, macro))
 
 
 void cpp_macro_undef(hash_map* macros, char* name):
@@ -83,7 +83,7 @@ void cpp_macro_define_builtin(hash_map* macros, char* name, int builtin):
 int cpp_macro_param_index(cpp_macro* macro, char* name):
 	int i = 0
 	while (i < macro.params.length):
-		char* param = array_list_get(macro.params, i)
+		char* param = cast(char*, array_list_get(macro.params, i))
 		if (strcmp(param, name) == 0):
 			return i
 		i = i + 1
@@ -121,7 +121,7 @@ cpp_token* cpp_arg_token(array_list* args, int index):
 		return 0
 	if (index >= args.length):
 		return 0
-	return array_list_get(args, index)
+	return cast(cpp_token*, array_list_get(args, index))
 
 
 cpp_token* cpp_clone_arg_or_marker(array_list* args, int index):
@@ -164,7 +164,7 @@ cpp_macro_args* cpp_collect_args(cpp_token* lparen):
 			cpp_args_push_token(&current_head, token)
 		else if (cpp_token_is_punct(token, c")")):
 			if (depth == 0):
-				array_list_push(args.items, current_head.next)
+				array_list_push(args.items, cast(int, current_head.next))
 				args.after = token.next
 				args.rparen_hideset = token.hideset
 				args.complete = 1
@@ -172,7 +172,7 @@ cpp_macro_args* cpp_collect_args(cpp_token* lparen):
 			depth = depth - 1
 			cpp_args_push_token(&current_head, token)
 		else if (cpp_token_is_punct(token, c",") & (depth == 0)):
-			array_list_push(args.items, current_head.next)
+			array_list_push(args.items, cast(int, current_head.next))
 			current_head.next = 0
 		else:
 			cpp_args_push_token(&current_head, token)
@@ -211,7 +211,7 @@ void cpp_normalize_args(cpp_macro* macro, cpp_macro_args* args):
 		else:
 			array_list_push(normalized, 0)
 		i = i + 1
-	array_list_push(normalized, cpp_join_variadic_args(args, fixed_count))
+	array_list_push(normalized, cast(int, cpp_join_variadic_args(args, fixed_count)))
 	args.items = normalized
 
 

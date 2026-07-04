@@ -7,13 +7,13 @@ void emit_x64_opcode():
 ################################# x86 opcodes #################################
 /* push dword 0x12 */
 void push_int8(int v):
-	emit_int8(c"\x6a")
+	emit_int8(106)
 	emit_int8(v)
 
 
 /* push dword 0x12345678 */
 void push_int32(int v):
-	emit_int8(c"\x68")
+	emit_int8(104)
 	emit_int32(v)
 
 
@@ -216,7 +216,7 @@ void store_stack_var(int variable_offset):
 /* add esp, (n * word_size) */
 void be_pop(int n):
 	emit_x64_opcode()
-	emit(6, c"\x81\xc4....") 
+	emit(6, c"\x81\xc4....")
 	save_int(code + codepos - 4, n << word_size_log2)
 
 

@@ -60,7 +60,7 @@ void test_push_pop_1000():
 
 	i = 0
 	while (i < len):
-		pop(i)
+		pop()
 		i = i + 1
 	assert_equal(0, length)
 
@@ -74,12 +74,12 @@ void test_empty_pop():
 
 
 void test_join():
-	push(c"Hey there!")
-	push(c"How's it going?")
-	push(c"Well! And you?")
-	push(c"Amazing!")
-	push(c"Have a great day!")
-	push(c"You too!")
+	push(cast(int, c"Hey there!"))
+	push(cast(int, c"How's it going?"))
+	push(cast(int, c"Well! And you?"))
+	push(cast(int, c"Amazing!"))
+	push(cast(int, c"Have a great day!"))
+	push(cast(int, c"You too!"))
 	println(join(c", "))
 	assert_strings_equal(c"Hey there! How's it going? Well! And you? Amazing! Have a great day! You too!", join(c" "))
 
@@ -87,8 +87,8 @@ void test_join():
 void test_join_simple():
 	create()
 	char* s = c"Hey there!"
-	print_hex(c"s: ", s)
-	push(s)
+	print_hex(c"s: ", cast(int, s))
+	push(cast(int, s))
 	assert_strings_equal(s, join(c","))
 
 
@@ -100,8 +100,8 @@ void test_split():
 	create()
 	split_string(c"1 2 3 4 5 6 7 8 9 10", c" ")
 	assert_equal(10, length)
-	assert_strings_equal(c"1", get(0))
-	assert_strings_equal(c"10", get(9))
+	assert_strings_equal(c"1", cast(char*, get(0)))
+	assert_strings_equal(c"10", cast(char*, get(9)))
 
 
 # Test failed malloc / free / realloc via mocks

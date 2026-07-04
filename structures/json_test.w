@@ -36,7 +36,7 @@ void assert_json_parse_fails(char* text):
 	json_value* value = json_parse(text)
 	if (value != 0):
 		json_free(value)
-	assert_equal(0, value)
+	assert_equal(0, cast(int, value))
 
 
 void assert_json_round_trip(char* input, char* want):

@@ -78,9 +78,9 @@ int __w_hash_bytes(int data, int length):
 
 int __w_hash_key_hash(int kind, int key):
 	if (kind == __w_hash_key_cstr()):
-		return __w_hash_bytes(key, __w_strlen(key))
+		return __w_hash_bytes(key, __w_strlen(cast(char*, key)))
 	if (kind == __w_hash_key_string()):
-		return __w_hash_bytes(load_int(key), load_int(key + __word_size__))
+		return __w_hash_bytes(load_int(cast(char*, key)), load_int(key + __word_size__))
 	return key * 33
 
 
@@ -89,8 +89,8 @@ int __w_hash_string_equal(int left, int right):
 	int right_len = load_int(right + __word_size__)
 	if (left_len != right_len):
 		return 0
-	int left_data = load_int(left)
-	int right_data = load_int(right)
+	int left_data = load_int(cast(char*, left))
+	int right_data = load_int(cast(char*, right))
 	int i = 0
 	while (i < left_len):
 		if (left_data[i] != right_data[i]):
@@ -101,7 +101,7 @@ int __w_hash_string_equal(int left, int right):
 
 int __w_hash_key_equal(int kind, int left, int right):
 	if (kind == __w_hash_key_cstr()):
-		return __w_strcmp(left, right) == 0
+		return __w_strcmp(cast(char*, left), cast(char*, right)) == 0
 	if (kind == __w_hash_key_string()):
 		return __w_hash_string_equal(left, right)
 	return left == right
@@ -109,22 +109,22 @@ int __w_hash_key_equal(int kind, int left, int right):
 
 int __w_hash_clone_string(int key):
 	int length = load_int(key + __word_size__)
-	int clone = malloc(2 * __word_size__ + length + 1)
+	char* clone = malloc(2 * __word_size__ + length + 1)
 	int data = clone + 2 * __word_size__
 	save_int(clone, data)
 	save_int(clone + __word_size__, length)
-	int source = load_int(key)
+	int source = load_int(cast(char*, key))
 	int i = 0
 	while (i < length):
 		data[i] = source[i]
 		i = i + 1
 	data[length] = 0
-	return clone
+	return cast(int, clone)
 
 
 int __w_hash_key_clone(int kind, int key):
 	if (kind == __w_hash_key_cstr()):
-		return __w_strclone(key)
+		return cast(int, __w_strclone(cast(char*, key)))
 	if (kind == __w_hash_key_string()):
 		return __w_hash_clone_string(key)
 	return key
@@ -132,7 +132,7 @@ int __w_hash_key_clone(int kind, int key):
 
 void __w_hash_key_free(int kind, int key):
 	if ((kind == __w_hash_key_cstr()) | (kind == __w_hash_key_string())):
-		free(key)
+		free(cast(void*, key))
 
 
 __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):

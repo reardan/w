@@ -59,7 +59,8 @@ void vfprintf(int fd, char* fmt, int* args, int num_args):
 					write(fd, digits, strlen(digits))
 					free(digits)
 				else if (verb == 's'):
-					write(fd, value, strlen(value))
+					char* text = cast(char*, value)
+					write(fd, text, strlen(text))
 				else if (verb == 'c'):
 					putc(fd, value)
 				else:

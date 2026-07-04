@@ -53,6 +53,37 @@ void struct_mismatch():
 	p = s
 
 
+void int_to_pointer_assignment():
+	int word = 5
+	char* cp = "x"
+	cp = word
+
+
+void pointer_to_int_assignment():
+	int word = 5
+	char* cp = "x"
+	word = cp
+
+
+void int_to_pointer_argument():
+	int word = 5
+	takes_char_ptr(word)
+
+
+char* int_to_pointer_return():
+	int word = 5
+	return word
+
+
+void function_to_pointer_initialization():
+	char* cp = takes_char_ptr
+
+
+void function_to_int_assignment():
+	int word = 5
+	word = takes_char_ptr
+
+
 # The single leading space below triggers the space-indentation warning
  int space_indented_global
 

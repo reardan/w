@@ -41,9 +41,12 @@ current state:
 			struct fields store field type and offset information
 			int8, int16, int32 and unsigned integer types are registered
 			types_compatible() checks pointer depth, base type and struct identity
+			int is a word-sized scalar: int <-> pointer conversion requires cast()
+			function values convert only to matching typed function pointers or via cast()
 			assignment, initialization, call-argument and return mismatches warn
 			function symbols record parameter types for call-site checks
 			make warning_test asserts warning output against fixtures
+			make self_host_warning_test keeps the compiler's own compile warning-free
 		whitespace hygiene:
 			warning when a line is indented with spaces instead of tabs
 			warning when a file does not end with a newline

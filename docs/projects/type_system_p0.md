@@ -1,6 +1,24 @@
 # P0 explicit type system
 
-Status: planned.
+Status: in progress.
+
+Completed so far:
+
+- Milestone 1's compatibility item and Milestone 12's shim removal:
+  `types_compatible()` no longer treats `int` as an untyped word or
+  `function` values as universally convertible. `int` <-> pointer and
+  function-value conversions warn unless spelled with an explicit
+  `cast()`; only the `constant` pseudo-type (literals, `&x`) remains a
+  wildcard until typed literals land.
+- Milestone 2 partially: `cast(T, x)` exists, flows through
+  `coerce_explicit()`, rejects struct-value casts and pointer-to-sub-word
+  integer casts, and every previously implicit "int as untyped word" use
+  in the compiler, library, tools and tests is now either a safe implicit
+  conversion (`void*`-based allocator signatures, scalar widening) or an
+  explicit cast. `make self_host_warning_test` keeps the self-hosted
+  compile warning-free on both targets.
+- The committed seed was promoted to a post-P0 compiler so the bootstrap
+  core can use `cast()` itself.
 
 This plan turns W's current permissive, word-centric type checks into an
 explicit type system that remains compatible with the compiler's single-pass
@@ -30,8 +48,9 @@ parser/code-generator architecture.
 - `compiler/symbol_table.w` records function parameter counts and up to ten
   parameter type slots, but direct calls still mostly return the generic
   `constant` pseudo-type after code generation.
-- `constant` and `function` are pseudo-types. `types_compatible()` treats them
-  as broadly compatible, and also treats plain `int` as an untyped word.
+- `constant` and `function` are pseudo-types. `types_compatible()` still
+  treats `constant` (literals, `&x`) as broadly compatible; `int` and
+  `function` wildcards have been removed in favor of explicit casts.
 - Struct values can be locals and by-value parameters, but function returns are
   one register/word today, so struct return-by-value needs an ABI extension.
 - Function pointer values can be called, but their parameter and return types

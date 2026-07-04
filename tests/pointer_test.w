@@ -6,9 +6,10 @@ int func():
 
 
 void test_int_func_pointer():
-	int* test_func = func
+	# Storing a function in a word pointer needs the explicit cast
+	int* test_func = cast(int*, func)
 
-	print_hex(c"test_func: ", test_func)
+	print_hex(c"test_func: ", cast(int, test_func))
 	# print_hex("*test_func: ", *test_func)
 	assert_equal(1337, test_func())
 
@@ -18,7 +19,7 @@ void test_int_pointer():
 	int want = 7777
 	print_hex(c"want: ", want)
 	int* ip = &want
-	print_hex(c"ip: ", ip)
+	print_hex(c"ip: ", cast(int, ip))
 	int got = *ip
 	print_hex(c"got: ", got)
 	assert_equal(want, got)

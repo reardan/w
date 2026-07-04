@@ -66,8 +66,8 @@ int float32_bits_from_token():
 		bignum_mul_pow10(denominator, 0 - exponent)
 
 	if (bignum_is_zero(mantissa)):
-		free(mantissa)
-		free(denominator)
+		bignum_free(mantissa)
+		bignum_free(denominator)
 		return 0
 
 	int bits = 0
@@ -93,9 +93,9 @@ int float32_bits_from_token():
 			quotient = quotient + 1
 		bits = quotient
 
-	free(remainder)
-	free(mantissa)
-	free(denominator)
+	bignum_free(remainder)
+	bignum_free(mantissa)
+	bignum_free(denominator)
 	return bits
 
 
@@ -134,8 +134,8 @@ void float64_bits_from_token():
 	float64_literal_lo = 0
 	float64_literal_hi = 0
 	if (bignum_is_zero(mantissa)):
-		free(mantissa)
-		free(denominator)
+		bignum_free(mantissa)
+		bignum_free(denominator)
 		return;
 
 	int binary_exponent = bignum_floor_log2_ratio(mantissa, denominator)
@@ -159,7 +159,7 @@ void float64_bits_from_token():
 			bignum_sub(quotient, hidden)
 			float64_literal_lo = bignum_low32(quotient)
 			float64_literal_hi = ((binary_exponent + 1023) << 20) + bignum_bits_32_51(quotient)
-			free(hidden)
+			bignum_free(hidden)
 	else:
 		bignum_div_scaled_to_bignum(mantissa, denominator, 1074, remainder, quotient)
 		if (bignum_round_up_big(remainder, denominator, quotient)):
@@ -171,10 +171,10 @@ void float64_bits_from_token():
 			float64_literal_lo = bignum_low32(quotient)
 			float64_literal_hi = bignum_bits_32_51(quotient)
 
-	free(quotient)
-	free(remainder)
-	free(mantissa)
-	free(denominator)
+	bignum_free(quotient)
+	bignum_free(remainder)
+	bignum_free(mantissa)
+	bignum_free(denominator)
 
 
 int float_literal():

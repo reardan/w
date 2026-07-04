@@ -120,15 +120,15 @@ json_value* json_array():
 void json_object_set(json_value* object, char* key, json_value* value):
 	assert1(object.type == json_type_object())
 	if (hash_map_contains(object.object_values, key)):
-		json_value* old_value = hash_map_get(object.object_values, key)
+		json_value* old_value = cast(json_value*, hash_map_get(object.object_values, key))
 		if (old_value != value):
 			json_free(old_value)
-	hash_map_set(object.object_values, key, value)
+	hash_map_set(object.object_values, key, cast(int, value))
 
 
 json_value* json_object_get(json_value* object, char* key):
 	assert1(object.type == json_type_object())
-	return hash_map_get_default(object.object_values, key, 0)
+	return cast(json_value*, hash_map_get_default(object.object_values, key, 0))
 
 
 int json_object_has(json_value* object, char* key):
@@ -138,12 +138,12 @@ int json_object_has(json_value* object, char* key):
 
 void json_array_push(json_value* array, json_value* value):
 	assert1(array.type == json_type_array())
-	array_list_push(array.array_values, value)
+	array_list_push(array.array_values, cast(int, value))
 
 
 json_value* json_array_get(json_value* array, int index):
 	assert1(array.type == json_type_array())
-	return array_list_get(array.array_values, index)
+	return cast(json_value*, array_list_get(array.array_values, index))
 
 
 int json_array_length(json_value* array):
@@ -161,14 +161,14 @@ void json_free(json_value* value):
 		int i = 0
 		while (i < map.capacity):
 			if (map.keys[i] != 0):
-				json_free(map.values[i])
+				json_free(cast(json_value*, map.values[i]))
 			i = i + 1
 		hash_map_free(map)
 	else if (value.type == json_type_array()):
 		array_list* list = value.array_values
 		int i = 0
 		while (i < list.length):
-			json_free(list.items[i])
+			json_free(cast(json_value*, list.items[i]))
 			i = i + 1
 		array_list_free(list)
 	free(value)
@@ -511,7 +511,7 @@ void json_append_object(string_builder* out, json_value* value):
 			first = 0
 			json_append_escaped_string(out, map.keys[i])
 			string_append_char(out, ':')
-			json_append_value(out, map.values[i])
+			json_append_value(out, cast(json_value*, map.values[i]))
 		i = i + 1
 	string_append_char(out, '}')
 
@@ -522,7 +522,7 @@ void json_append_array(string_builder* out, json_value* value):
 	while (i < value.array_values.length):
 		if (i > 0):
 			string_append_char(out, ',')
-		json_append_value(out, value.array_values.items[i])
+		json_append_value(out, cast(json_value*, value.array_values.items[i]))
 		i = i + 1
 	string_append_char(out, ']')
 

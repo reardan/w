@@ -221,7 +221,7 @@ void dbg_backtrace(int context, int stop_addr):
 		int slot = esp + i * 4
 		if (dbg_mem_readable(slot, 4) == 0):
 			return;
-		int v = load_int(slot)
+		int v = load_int(cast(char*, slot))
 		if (dbg_in_debuggee(v)):
 			if (dbg_looks_like_return(v)):
 				print(c"#")
@@ -288,13 +288,13 @@ void dbg_set_command(int context, int stop_addr, char* arg):
 		if (dbg_mem_readable(addr, 4) == 0):
 			println(c"variable is not addressable here")
 			return;
-		save_int(addr, v)
+		save_int(cast(char*, addr), v)
 		dbg_print_local(note, ctx_esp(context))
 		return;
 	int g = dbg_global_find(arg)
 	if (g >= 0):
 		if (dbg_sym_symtype(g) != 2):
-			save_int(dbg_sym_address(g), v)
+			save_int(cast(char*, dbg_sym_address(g)), v)
 			print(arg)
 			print(c" = ")
 			dbg_print_typed_value(dbg_sym_address(g), dbg_sym_type(g))
@@ -316,7 +316,7 @@ void dbg_examine_command(int context, int stop_addr, char* arg):
 	else:
 		int note = dbg_local_find(arg, stop_addr)
 		if (note >= 0):
-			addr = load_int(dbg_local_runtime_addr(note, ctx_esp(context)))
+			addr = load_int(cast(char*, dbg_local_runtime_addr(note, ctx_esp(context))))
 		else:
 			int g = dbg_global_find(arg)
 			if (g < 0):
@@ -326,7 +326,7 @@ void dbg_examine_command(int context, int stop_addr, char* arg):
 			if (dbg_sym_symtype(g) == 2):
 				addr = dbg_sym_address(g)
 			else:
-				addr = load_int(dbg_sym_address(g))
+				addr = load_int(cast(char*, dbg_sym_address(g)))
 	int count = 8
 	if (count_text[0] != 0):
 		count = dbg_number(count_text)
@@ -367,7 +367,7 @@ void dbg_info_command(int context, int stop_addr, char* arg):
 	else if (strcmp(arg, c"files") == 0):
 		int i = 0
 		while (i < debug_file_count):
-			println(str_from_cstr(load_int(debug_files + i * 4)))
+			println(str_from_cstr(cast(char*, load_int(debug_files + i * 4))))
 			i = i + 1
 	else:
 		println(c"info topics: breakpoints registers locals args functions files")
@@ -694,12 +694,16 @@ void wdbg_fatal(int sig):
 	exit(1)
 
 
+# Signal handlers are ordinary W functions taking the signal number.
+type wdbg_signal_handler = fn(int) -> void
+
+
 # struct sigaction { handler, flags, restorer, mask[2] }; no SA_SIGINFO so
 # the handler gets the classic sigcontext frame, no SA_RESTORER so the
 # kernel uses the vdso sigreturn trampoline.
-void wdbg_install_handler(int signum, int handler, int flags):
+void wdbg_install_handler(int signum, wdbg_signal_handler* handler, int flags):
 	int* act = malloc(20)
-	act[0] = handler
+	act[0] = cast(int, handler)
 	act[1] = flags
 	act[2] = 0
 	act[3] = 0
@@ -744,21 +748,21 @@ int wdbg_main(int argc, int argv):
 	int buffer_size = 8388608
 	int buffer = mmap(0, buffer_size, 7, 34) /* RWX, PRIVATE|ANONYMOUS */
 	asserts(c"mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
-	code = buffer
+	code = cast(char*, buffer)
 	code_size = buffer_size
 	codepos = 0
 	code_offset = buffer
 
 	# Recoverable compile errors for the print/eval command: error()
 	# jumps back to the checkpoint instead of exiting
-	repl_jump_buffer = malloc(12)
-	repl_error_jump = repl_longjmp
+	repl_jump_buffer = cast(int, malloc(12))
+	repl_error_jump = cast(int, repl_longjmp)
 
 	# Runtime stubs first, then the target and everything it imports
 	define_asm_functions()
 	compile_file(target)
 
-	int* target_main = sym_address(c"main")
+	int* target_main = cast(int*, sym_address(c"main"))
 	asserts(c"debuggee has no main()", target_main != 0)
 
 	bp_init()

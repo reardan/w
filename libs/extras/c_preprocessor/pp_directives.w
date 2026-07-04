@@ -82,11 +82,11 @@ cpp_preprocessor* cpp_preprocessor_new():
 	pp.active = 1
 	pp.current_file = c"<input>"
 	pp.current_include_index = -1
-	array_list_push(pp.include_paths, c"libs/extras/c_preprocessor/include")
-	array_list_push(pp.include_paths, c"/usr/lib/gcc/x86_64-linux-gnu/14/include")
-	array_list_push(pp.include_paths, c"/usr/lib/gcc/x86_64-linux-gnu/13/include")
-	array_list_push(pp.include_paths, c"/usr/include/x86_64-linux-gnu")
-	array_list_push(pp.include_paths, c"/usr/include")
+	array_list_push(pp.include_paths, cast(int, c"libs/extras/c_preprocessor/include"))
+	array_list_push(pp.include_paths, cast(int, c"/usr/lib/gcc/x86_64-linux-gnu/14/include"))
+	array_list_push(pp.include_paths, cast(int, c"/usr/lib/gcc/x86_64-linux-gnu/13/include"))
+	array_list_push(pp.include_paths, cast(int, c"/usr/include/x86_64-linux-gnu"))
+	array_list_push(pp.include_paths, cast(int, c"/usr/include"))
 	cpp_init_predefined_macros(pp.macros)
 	return pp
 
@@ -117,14 +117,14 @@ char* cpp_angle_header(cpp_token* token, cpp_token* end):
 int cpp_cond_parent_active(cpp_preprocessor* pp):
 	if (pp.conds.length == 0):
 		return 1
-	cpp_cond* cond = array_list_get(pp.conds, pp.conds.length - 1)
+	cpp_cond* cond = cast(cpp_cond*, array_list_get(pp.conds, pp.conds.length - 1))
 	return cond.parent_active
 
 
 cpp_cond* cpp_cond_top(cpp_preprocessor* pp):
 	if (pp.conds.length == 0):
 		return 0
-	return array_list_get(pp.conds, pp.conds.length - 1)
+	return cast(cpp_cond*, array_list_get(pp.conds, pp.conds.length - 1))
 
 
 void cpp_cond_push(cpp_preprocessor* pp, int value):
@@ -133,7 +133,7 @@ void cpp_cond_push(cpp_preprocessor* pp, int value):
 	cond.current_active = cond.parent_active & (value != 0)
 	cond.saw_true = value != 0
 	cond.saw_else = 0
-	array_list_push(pp.conds, cond)
+	array_list_push(pp.conds, cast(int, cond))
 	pp.active = cond.current_active
 
 
@@ -165,7 +165,7 @@ void cpp_cond_else(cpp_preprocessor* pp):
 void cpp_cond_pop(cpp_preprocessor* pp):
 	if (pp.conds.length == 0):
 		return
-	cpp_cond* cond = array_list_pop(pp.conds)
+	cpp_cond* cond = cast(cpp_cond*, array_list_pop(pp.conds))
 	pp.active = cond.parent_active
 
 
@@ -211,11 +211,11 @@ cpp_macro* cpp_parse_define_macro(cpp_token* name, cpp_token* end):
 				body = token.next
 				break
 			if (cpp_token_is_punct(token, c"...")):
-				array_list_push(macro.params, c"__VA_ARGS__")
+				array_list_push(macro.params, cast(int, c"__VA_ARGS__"))
 				macro.is_variadic = 1
 				token = token.next
 			else if (token.kind == cpp_token_ident()):
-				array_list_push(macro.params, token.text)
+				array_list_push(macro.params, cast(int, token.text))
 				token = token.next
 				if (cpp_token_is_punct(token, c"...")):
 					macro.is_variadic = 1
@@ -240,7 +240,7 @@ void cpp_process_define(cpp_preprocessor* pp, cpp_token* directive, cpp_token* e
 char* cpp_find_include_in_paths(cpp_preprocessor* pp, char* name, int start_index, int* found_index):
 	int i = start_index
 	while (i < pp.include_paths.length):
-		char* dir = array_list_get(pp.include_paths, i)
+		char* dir = cast(char*, array_list_get(pp.include_paths, i))
 		char* path = path_join(dir, name)
 		if (path_exists(path)):
 			*found_index = i
