@@ -246,5 +246,5 @@ void coerce_explicit(int want, int got):
 		if ((type_num_args(want_real) == 0) & (type_float_kind(want_real) == 0)):
 			int want_size = type_get_size(want_real)
 			if ((want_size > 0) & (want_size < word_size)):
-				error("cannot cast an address to a sub-word integer")
+				error(c"cannot cast an address to a sub-word integer")
 	coerce(want, got)

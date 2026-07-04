@@ -848,10 +848,10 @@ void type_print(int type_index):
 	print2(c":")
 	if (num_fields > 0):
 		print2(c"struct ")
-		print2(str_from_cstr(load_int(t)))
+		print2(str_from_cstr(cast(char*, load_int(t))))
 		print2(c": ")
 	else:
-		print2(str_from_cstr(load_int(t)))
+		print2(str_from_cstr(cast(char*, load_int(t))))
 	# print_int("num_fields: ", num_fields)
 	if (num_fields <= 0):
 		println2(c"")
@@ -865,7 +865,7 @@ void type_print(int type_index):
 		if (i > 0):
 			print2(c"; ")
 
-		print2(str_from_cstr(load_int(field_type_name)))
+		print2(str_from_cstr(cast(char*, load_int(field_type_name))))
 		print2(c" ")
 		print2(str_from_cstr(field_name))
 
@@ -881,7 +881,7 @@ void type_print_all():
 		char* type = type_record(i)
 		print_error(itoa(i))
 		print_error(c": ")
-		print_error(str_from_cstr(load_int(type)))
+		print_error(str_from_cstr(cast(char*, load_int(type))))
 		for int j in range(type_get_pointer_level(i)):
 			print_error(c"*")
 		print_error(c"\x0a")

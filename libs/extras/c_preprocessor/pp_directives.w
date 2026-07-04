@@ -82,11 +82,11 @@ cpp_preprocessor* cpp_preprocessor_new():
 	pp.active = 1
 	pp.current_file = c"<input>"
 	pp.current_include_index = -1
-	array_list_push(pp.include_paths, c"libs/extras/c_preprocessor/include")
-	array_list_push(pp.include_paths, c"/usr/lib/gcc/x86_64-linux-gnu/14/include")
-	array_list_push(pp.include_paths, c"/usr/lib/gcc/x86_64-linux-gnu/13/include")
-	array_list_push(pp.include_paths, c"/usr/include/x86_64-linux-gnu")
-	array_list_push(pp.include_paths, c"/usr/include")
+	array_list_push(pp.include_paths, cast(int, c"libs/extras/c_preprocessor/include"))
+	array_list_push(pp.include_paths, cast(int, c"/usr/lib/gcc/x86_64-linux-gnu/14/include"))
+	array_list_push(pp.include_paths, cast(int, c"/usr/lib/gcc/x86_64-linux-gnu/13/include"))
+	array_list_push(pp.include_paths, cast(int, c"/usr/include/x86_64-linux-gnu"))
+	array_list_push(pp.include_paths, cast(int, c"/usr/include"))
 	cpp_init_predefined_macros(pp.macros)
 	return pp
 
