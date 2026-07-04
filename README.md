@@ -74,9 +74,9 @@ asserted by `make warning_test`.
 Host requirement: `dynamic_test` (part of `make tests`) produces a 32-bit
 dynamically linked binary, so the host needs the i386 loader and libc
 (`/lib/ld-linux.so.2`; on Debian/Ubuntu:
-`dpkg --add-architecture i386 && apt-get install libc6:i386`). Everything
-else, including the seed and the 64-bit dynamic test, works on a stock
-x86-64 system.
+`sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6:i386`).
+Everything else, including the seed and the 64-bit dynamic test, works on a
+stock x86-64 system.
 
 ## Repository layout
 

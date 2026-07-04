@@ -35,5 +35,5 @@ Compile/run an arbitrary program directly:
  binary and needs the i386 loader/libc (`/lib/ld-linux.so.2`, `libc6:i386`). This is
  preinstalled in the Cursor Cloud snapshot; if the loader is missing, `dynamic_test`
  fails with `./bin/dynamic_test: not found` — install it per the README
- (`sudo dpkg --add-architecture i386 && sudo apt-get install -y libc6:i386`). `make build`
- and `make verify` do not require it.
+ (`sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6:i386`).
+ `make build` and `make verify` do not require it.
