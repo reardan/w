@@ -103,6 +103,10 @@ void test_parse_w_literals_arrays_and_new():
 	assert_w_parse_text("struct point:\x0a\x09int x\x0a\x0avoid test_values():\x0a\x09int values[4]\x0a\x09values[0] = 42\x0a\x09char* s = \x22hello\\x0a\x22\x0a\x09point* p = new point(1)\x0a\x09p.x = values[0]\x0a", "values.w")
 
 
+void test_parse_w_map_and_set_forms():
+	assert_w_parse_text("void test_maps():\x0a\x09map[char*, int] m = map[char*, int]{\x22red\x22: 3, \x22blue\x22: 4}\x0a\x09m[\x22red\x22] = m[\x22red\x22] + 1\x0a\x09if (\x22red\x22 in m):\x0a\x09\x09pass\x0a\x09set[int] s = set[int]{1, 2, 3}\x0a\x09for int x in s:\x0a\x09\x09pass\x0a", "maps_sets.w")
+
+
 void test_parse_w_type_aliases_function_types_and_casts():
 	assert_w_parse_text("type size_t = uint\x0atype binary_op = fn(int, int) -> int\x0a\x0abool is_ready():\x0a\x09return true\x0a\x0avoid test_casts():\x0a\x09size_t n = 42\x0a\x09int* p = cast(int*, malloc(4))\x0a\x09*p = cast(int, n)\x0a", "types.w")
 
