@@ -42,7 +42,11 @@ int repl_jump_buffer
 int repl_error_jump
 
 void error(char *s):
-	warning(s)
+	if (diag_json):
+		diag_append(s)
+		diag_emit(c"error", filename, diag_token_line, diag_token_column, token)
+	else:
+		warning(s)
 	if (repl_recovery):
 		diag_clear()
 		repl_error_jump(repl_jump_buffer, 1)
