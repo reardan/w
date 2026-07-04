@@ -207,6 +207,26 @@ archives the old seed to `old/` first.
   threading modules are still not production-grade and are not covered by the
   x64 test gate.
 
+## Tooling for agents
+
+- Use `./bin/wv2 check --json file.w` for compile-only diagnostics without
+  writing an ELF. Add `x64` after `--json` for the 64-bit target. Output is
+  newline-delimited JSON on stdout with `file`, `line`, `column`, `severity`,
+  `message`, `token`, and `arch`; stderr keeps the usual human progress text.
+- `w check` reports all warnings reached before the first error, then stops at
+  that first error. Multi-error recovery remains out of scope for the
+  single-pass compiler.
+- Use `make test_changed` to run focused tests for files changed from `HEAD`, or
+  call `./bin/wtest changed file...` to list the selected Makefile targets
+  without running them. Docs-only changes produce no targets; unknown paths fall
+  back to `tests`.
+- Cursor can use the committed `.cursor/mcp.json` registration for the
+  stdlib-only `w-toolchain` MCP server. It exposes build, verify, run_tests,
+  check, compile, run, repl_eval, and test_changed tools from the repo root.
+- `make verify` remains the required gate for compiler changes, and `make tests`
+  remains the full pre-merge suite when the host has the i386 libc needed by
+  `dynamic_test`.
+
 ## Current major open areas
 
 - Generators (`generator`/`yield`) — design in `docs/projects/iteration.md`;
