@@ -8,7 +8,7 @@ int func():
 void test_int_func_pointer():
 	int* test_func = func
 
-	print_hex("test_func: ", test_func)
+	print_hex(c"test_func: ", test_func)
 	# print_hex("*test_func: ", *test_func)
 	assert_equal(1337, test_func())
 
@@ -16,28 +16,28 @@ void test_int_func_pointer():
 
 void test_int_pointer():
 	int want = 7777
-	print_hex("want: ", want)
+	print_hex(c"want: ", want)
 	int* ip = &want
-	print_hex("ip: ", ip)
+	print_hex(c"ip: ", ip)
 	int got = *ip
-	print_hex("got: ", got)
+	print_hex(c"got: ", got)
 	assert_equal(want, got)
 
 
 void test_char_lookup_0():
-	char* want = "a"
+	char* want = c"a"
 	int got = want[0]
 	assert_equal('a', got)
 
 
 void test_char_lookup_6():
-	char* want = "hello world"
+	char* want = c"hello world"
 	int got = want[6]
 	assert_equal('w', got)
 
 
 void test_char_lookup_hi():
-	char* char_ptr = "hi"
+	char* char_ptr = c"hi"
 	assert_equal('h', char_ptr[0])
 	assert_equal('i', char_ptr[1])
 	assert_equal(0, char_ptr[2])
@@ -45,11 +45,11 @@ void test_char_lookup_hi():
 
 # Milestone 1:
 void test_char_ptr_ms1():
-	char* char_ptr = "hi"
+	char* char_ptr = c"hi"
 
 	assert_equal_hex('h', *char_ptr)
 	*char_ptr = 'a'
-	assert1(strcmp("ai", char_ptr) == 0)
+	assert1(strcmp(c"ai", char_ptr) == 0)
 
 
 # Milestone 2: ampersand operator
@@ -173,7 +173,7 @@ void test_int_double_pointer():
 
 
 void test_char_double_pointer():
-	char* s = "ab"
+	char* s = c"ab"
 	char** sp = &s
 	char* got = *sp
 	assert_equal('a', got[0])

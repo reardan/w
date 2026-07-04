@@ -29,7 +29,7 @@ int main_args(int argc, int argv):
 	int i = 1
 	while (i < argc):
 		int arg = argv + i * 4
-		print_string("arg: ", *arg)
+		print_string(c"arg: ", *arg)
 		i = i + 1
 	return 0
 
@@ -39,7 +39,7 @@ int get_char():
 
 
 void setup_tokenizer():
-	filename = "stdin"
+	filename = c"stdin"
 	file = 0
 	line_number = 0
 	tab_level = 0
@@ -48,7 +48,7 @@ void setup_tokenizer():
 
 
 void read_until_start():
-	while (accept("_start") == 0):
+	while (accept(c"_start") == 0):
 		get_token()
 
 
@@ -65,8 +65,8 @@ int push_all_tokens():
 		# huge hack lol but it works:
 		if (strlen(token) == 2):
 			if (is_hex_char(token[0]) & is_hex_char(token[1])):
-				char* delimiter = ""
-				delimiter = "\x5cx"
+				char* delimiter = c""
+				delimiter = c"\x5cx"
 				push(strjoin(delimiter, token))
 		get_token()
 
@@ -76,9 +76,9 @@ int main(int argc, int argv):
 	read_until_start()
 	push_all_tokens()
 
-	print("emit(")
+	print(c"emit(")
 	print(itoa(length))
-	print(", \x22") /* quotes */
-	print(join(""))
-	println("\x22)")
+	print(c", \x22") /* quotes */
+	print(join(c""))
+	println(c"\x22)")
 	return 0

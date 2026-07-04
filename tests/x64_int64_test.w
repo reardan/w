@@ -56,5 +56,5 @@ int main():
 	test_int64_arithmetic_and_returns()
 	test_uint64_storage_and_fields()
 	test_global_int64_storage()
-	println("x64 int64 OK")
+	println(c"x64 int64 OK")
 	return 0

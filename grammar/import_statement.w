@@ -13,15 +13,15 @@ void compile_save(char* fn);
 char* import_resolve_arch(char* path):
 	int i = 0
 	while (path[i]):
-		if (starts_with(path + i, "__arch__")):
+		if (starts_with(path + i, c"__arch__")):
 			# Match whole path segments only, not identifiers that merely
 			# contain the sentinel
 			int at_boundary = (i == 0) | (path[i - 1] == '/')
 			char after = path[i + 8]
 			if (at_boundary & ((after == '/') | (after == 0))):
-				char* arch = "x86"
+				char* arch = c"x86"
 				if (word_size == 8):
-					arch = "x64"
+					arch = c"x64"
 				char* result = malloc(strlen(path) + 5)
 				int j = 0
 				while (j < i + 8):
@@ -88,9 +88,9 @@ int import_module(char* dotted):
 	# Ignore if we have already imported this path
 	if (import_lookup(resolved) >= 0):
 		if (verbosity >= 1):
-			print2("Warning: ignoring duplicate import: '")
+			print2(c"Warning: ignoring duplicate import: '")
 			print2(resolved)
-			println2("'")
+			println2(c"'")
 		free(resolved)
 		return 0
 
@@ -98,17 +98,17 @@ int import_module(char* dotted):
 
 	# Add the ".w" extension
 	# Shouldnt this be done inside compile*??
-	char* with_path = strjoin(resolved, ".w")
+	char* with_path = strjoin(resolved, c".w")
 	compile_save(with_path)
 	free(with_path)
 	return 1
 
 
 int import_statement():
-	if(accept("import")):
+	if(accept(c"import")):
 		# Strip a trailing .* wildcard; the whole module is imported either way
 		read_until_end()
-		if (ends_with(token, ".*")):
+		if (ends_with(token, c".*")):
 			int len = strlen(token)
 			token[len-2] = 0
 

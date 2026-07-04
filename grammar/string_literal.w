@@ -5,7 +5,7 @@ int string_hex_digit(int c):
 		return c - 'a' + 10
 	if ((c >= 'A') & (c <= 'F')):
 		return c - 'A' + 10
-	error("invalid hex digit in string literal")
+	error(c"invalid hex digit in string literal")
 	return 0
 
 
@@ -20,11 +20,11 @@ int string_hex_value(int start, int count):
 
 int string_append_utf8(int out, int codepoint):
 	if (codepoint < 0):
-		error("invalid unicode codepoint")
+		error(c"invalid unicode codepoint")
 	if ((codepoint >= 55296) & (codepoint <= 57343)):
-		error("invalid unicode surrogate")
+		error(c"invalid unicode surrogate")
 	if (codepoint > 1114111):
-		error("unicode codepoint out of range")
+		error(c"unicode codepoint out of range")
 	if (codepoint < 128):
 		token[out] = codepoint
 		return out + 1
@@ -112,55 +112,71 @@ void validate_utf8_literal(int n):
 			need = 3
 			codepoint = c & 7
 		else:
-			error("invalid UTF-8 string literal")
+			error(c"invalid UTF-8 string literal")
 		if (need > 0):
 			if (i + need >= n):
-				error("truncated UTF-8 string literal")
+				error(c"truncated UTF-8 string literal")
 			int j = 1
 			while (j <= need):
 				int d = token[i + j] & 255
 				if ((d < 128) | (d > 191)):
-					error("invalid UTF-8 continuation byte")
+					error(c"invalid UTF-8 continuation byte")
 				codepoint = (codepoint << 6) | (d & 63)
 				j = j + 1
 			if ((need == 1) & (codepoint < 128)):
-				error("overlong UTF-8 string literal")
+				error(c"overlong UTF-8 string literal")
 			if ((need == 2) & (codepoint < 2048)):
-				error("overlong UTF-8 string literal")
+				error(c"overlong UTF-8 string literal")
 			if ((need == 3) & (codepoint < 65536)):
-				error("overlong UTF-8 string literal")
+				error(c"overlong UTF-8 string literal")
 			if ((codepoint >= 55296) & (codepoint <= 57343)):
-				error("invalid UTF-8 surrogate")
+				error(c"invalid UTF-8 surrogate")
 			if (codepoint > 1114111):
-				error("UTF-8 codepoint out of range")
+				error(c"UTF-8 codepoint out of range")
 			i = i + need + 1
 
 
 # like a char_pointer_literal()
 # except it emits the code directly to be executed
 int raw_asm_literal():
-	if (accept("raw_asm") == 0):
+	if (accept(c"raw_asm") == 0):
 		return 0
-	expect("(")
-	if (token[0] != '"'):
-		error("double quote expected inside raw_asm( ... ) literal")
+	expect(c"(")
+	if ((token[0] != '"') & (((token[0] != 'c') | (token[1] != '"')))):
+		error(c"double quote expected inside raw_asm( ... ) literal")
 
-	int i = process_string_literal()
+	int i
+	if (token[0] == 'c'):
+		i = process_prefixed_string_literal()
+	else:
+		i = process_string_literal()
 	emit(i, token)
 	get_token()
-	expect(")")
+	expect(c")")
 	return 1
+
+
+void emit_utf8_string_descriptor(int i):
+	token[i] = 0
+	int descriptor_size = 2 * word_size
+	call_relative32(descriptor_size + i + 1)
+	int data_address = code_offset + codepos + descriptor_size
+	if (word_size == 8):
+		emit_int64(data_address)
+		emit_int64(i)
+	else:
+		emit_int32(data_address)
+		emit_int32(i)
+	emit(i + 1, token)
+	pop_eax()
 
 
 int char_pointer_literal():
 	if (token[0] != '"'):
 		return 0
 	int i = process_string_literal()
-	token[i] = 0
-	/* call after ; "the string" ; after: pop %eax */
-	call_relative32(i + 1)
-	emit(i + 1, token)
-	pop_eax()
+	validate_utf8_literal(i)
+	emit_utf8_string_descriptor(i)
 
 	return 1
 
@@ -181,16 +197,5 @@ int utf8_string_literal():
 		return 0
 	int i = process_prefixed_string_literal()
 	validate_utf8_literal(i)
-	token[i] = 0
-	int descriptor_size = 2 * word_size
-	call_relative32(descriptor_size + i + 1)
-	int data_address = code_offset + codepos + descriptor_size
-	if (word_size == 8):
-		emit_int64(data_address)
-		emit_int64(i)
-	else:
-		emit_int32(data_address)
-		emit_int32(i)
-	emit(i + 1, token)
-	pop_eax()
+	emit_utf8_string_descriptor(i)
 	return 1

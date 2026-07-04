@@ -19,7 +19,7 @@ int hash_key_kind_for_type(int type):
 	if (type_get_pointer_level(type) == 1):
 		int base = type_lookup_previous_pointer(type)
 		if (base >= 0):
-			if (strcmp(type_get_name(base), "char") == 0):
+			if (strcmp(type_get_name(base), c"char") == 0):
 				return 2
 	return 1
 
@@ -39,10 +39,10 @@ void hash_push_stack_slot(int slot):
 
 void hash_emit_new_container(int type):
 	int key_type = type_set_key_type(type)
-	char* fn_name = "__w_set_new"
+	char* fn_name = c"__w_set_new"
 	if (type_is_map(type)):
 		key_type = type_map_key_type(type)
-		fn_name = "__w_map_new"
+		fn_name = c"__w_map_new"
 	sym_get_value(fn_name)
 	int s = stack_pos
 	push_eax()
@@ -59,7 +59,7 @@ void hash_emit_new_container(int type):
 
 int hash_finish_pending_read():
 	int value_type = type_map_value_type(hash_index_map_type)
-	sym_get_value("__w_map_get")
+	sym_get_value(c"__w_map_get")
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -83,7 +83,7 @@ int hash_finish_pending_assignment():
 	got_type = promote(got_type)
 	coerce(value_type, got_type)
 	if (types_compatible_with_expression(value_type, got_type) == 0):
-		warn_type_mismatch("map assignment", value_type, got_type)
+		warn_type_mismatch(c"map assignment", value_type, got_type)
 	push_eax()
 	stack_pos = stack_pos + 1
 	int value_slot = stack_pos
@@ -92,7 +92,7 @@ int hash_finish_pending_assignment():
 	hash_index_key_slot = saved_key_slot
 	hash_index_map_type = saved_map_type
 
-	sym_get_value("__w_map_set")
+	sym_get_value(c"__w_map_set")
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1

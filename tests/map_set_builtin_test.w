@@ -3,28 +3,28 @@ import lib.testing
 
 void test_map_new_assignment_and_read():
 	map[char*, int] m = new map[char*, int]
-	m["one"] = 1
-	m["two"] = 2
-	assert_equal(1, m["one"])
-	assert_equal(2, m["two"])
-	assert_equal(3, m["one"] + m["two"])
-	assert_equal(1, "one" in m)
-	assert_equal(0, "gone" in m)
+	m[c"one"] = 1
+	m[c"two"] = 2
+	assert_equal(1, m[c"one"])
+	assert_equal(2, m[c"two"])
+	assert_equal(3, m[c"one"] + m[c"two"])
+	assert_equal(1, c"one" in m)
+	assert_equal(0, c"gone" in m)
 	assert_equal(2, m.length)
 
 
 void test_map_overwrite():
 	map[char*, int] m = new map[char*, int]
-	m["key"] = 10
-	m["key"] = m["key"] + 5
-	assert_equal(15, m["key"])
+	m[c"key"] = 10
+	m[c"key"] = m[c"key"] + 5
+	assert_equal(15, m[c"key"])
 	assert_equal(1, m.length)
 
 
 void test_map_literal():
-	map[char*, int] m = map[char*, int]{"red": 3, "blue": 4}
-	assert_equal(3, m["red"])
-	assert_equal(4, m["blue"])
+	map[char*, int] m = map[char*, int]{c"red": 3, c"blue": 4}
+	assert_equal(3, m[c"red"])
+	assert_equal(4, m[c"blue"])
 	assert_equal(2, m.length)
 
 
@@ -48,7 +48,7 @@ void test_string_keys_compare_by_contents():
 
 
 void test_map_iteration_yields_keys():
-	map[char*, int] m = map[char*, int]{"one": 1, "two": 2, "three": 3}
+	map[char*, int] m = map[char*, int]{c"one": 1, c"two": 2, c"three": 3}
 	int count = 0
 	int sum = 0
 	for char* key in m:

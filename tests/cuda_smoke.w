@@ -35,7 +35,7 @@ int had_error
 
 void check(int err, char* name):
 	if (err != 0):
-		printf("CUDA error %d at %s\x0a", err, name)
+		printf(c"CUDA error %d at %s\x0a", err, name)
 		had_error = 1
 
 
@@ -47,7 +47,7 @@ char* cell():
 
 
 int _main():
-	char* ptx = ".version 6.0\x0a.target sm_52\x0a.address_size 64\x0a.visible .entry vecAdd(.param .u64 a, .param .u64 b, .param .u64 c, .param .u32 n)\x0a{\x0a.reg .pred %p<2>;\x0a.reg .f32 %f<4>;\x0a.reg .b32 %r<6>;\x0a.reg .b64 %rd<11>;\x0ald.param.u64 %rd1, [a];\x0ald.param.u64 %rd2, [b];\x0ald.param.u64 %rd3, [c];\x0ald.param.u32 %r2, [n];\x0amov.u32 %r3, %ntid.x;\x0amov.u32 %r4, %ctaid.x;\x0amov.u32 %r5, %tid.x;\x0amad.lo.s32 %r1, %r4, %r3, %r5;\x0asetp.ge.s32 %p1, %r1, %r2;\x0a@%p1 bra DONE;\x0acvta.to.global.u64 %rd4, %rd1;\x0acvta.to.global.u64 %rd5, %rd2;\x0acvta.to.global.u64 %rd6, %rd3;\x0amul.wide.s32 %rd7, %r1, 4;\x0aadd.s64 %rd8, %rd4, %rd7;\x0aadd.s64 %rd9, %rd5, %rd7;\x0aadd.s64 %rd10, %rd6, %rd7;\x0ald.global.f32 %f1, [%rd8];\x0ald.global.f32 %f2, [%rd9];\x0aadd.f32 %f3, %f1, %f2;\x0ast.global.f32 [%rd10], %f3;\x0aDONE:\x0aret;\x0a}\x0a"
+	char* ptx = c".version 6.0\x0a.target sm_52\x0a.address_size 64\x0a.visible .entry vecAdd(.param .u64 a, .param .u64 b, .param .u64 c, .param .u32 n)\x0a{\x0a.reg .pred %p<2>;\x0a.reg .f32 %f<4>;\x0a.reg .b32 %r<6>;\x0a.reg .b64 %rd<11>;\x0ald.param.u64 %rd1, [a];\x0ald.param.u64 %rd2, [b];\x0ald.param.u64 %rd3, [c];\x0ald.param.u32 %r2, [n];\x0amov.u32 %r3, %ntid.x;\x0amov.u32 %r4, %ctaid.x;\x0amov.u32 %r5, %tid.x;\x0amad.lo.s32 %r1, %r4, %r3, %r5;\x0asetp.ge.s32 %p1, %r1, %r2;\x0a@%p1 bra DONE;\x0acvta.to.global.u64 %rd4, %rd1;\x0acvta.to.global.u64 %rd5, %rd2;\x0acvta.to.global.u64 %rd6, %rd3;\x0amul.wide.s32 %rd7, %r1, 4;\x0aadd.s64 %rd8, %rd4, %rd7;\x0aadd.s64 %rd9, %rd5, %rd7;\x0aadd.s64 %rd10, %rd6, %rd7;\x0ald.global.f32 %f1, [%rd8];\x0ald.global.f32 %f2, [%rd9];\x0aadd.f32 %f3, %f1, %f2;\x0ast.global.f32 [%rd10], %f3;\x0aDONE:\x0aret;\x0a}\x0a"
 
 	int n = 256
 	int bytes = n * 4
@@ -62,35 +62,35 @@ int _main():
 		save_i(h_b + i * 4, 0x40000000, 4)
 		i = i + 1
 
-	check(cuInit(0), "cuInit")
+	check(cuInit(0), c"cuInit")
 	if (had_error):
-		puts("cuda smoke: no CUDA driver available")
+		puts(c"cuda smoke: no CUDA driver available")
 		fflush(0)
 		return 1
 
 	char* dev = cell()
-	check(cuDeviceGet(dev, 0), "cuDeviceGet")
+	check(cuDeviceGet(dev, 0), c"cuDeviceGet")
 	char* ctx = cell()
-	check(cuCtxCreate_v2(ctx, 0, load_i(dev, 8)), "cuCtxCreate")
+	check(cuCtxCreate_v2(ctx, 0, load_i(dev, 8)), c"cuCtxCreate")
 	if (had_error):
-		puts("cuda smoke: could not create a context")
+		puts(c"cuda smoke: could not create a context")
 		fflush(0)
 		return 1
 
 	char* module = cell()
-	check(cuModuleLoadData(module, ptx), "cuModuleLoadData")
+	check(cuModuleLoadData(module, ptx), c"cuModuleLoadData")
 	char* func = cell()
-	check(cuModuleGetFunction(func, load_i(module, 8), "vecAdd"), "cuModuleGetFunction")
+	check(cuModuleGetFunction(func, load_i(module, 8), c"vecAdd"), c"cuModuleGetFunction")
 
 	char* d_a = cell()
 	char* d_b = cell()
 	char* d_c = cell()
-	check(cuMemAlloc_v2(d_a, bytes), "cuMemAlloc a")
-	check(cuMemAlloc_v2(d_b, bytes), "cuMemAlloc b")
-	check(cuMemAlloc_v2(d_c, bytes), "cuMemAlloc c")
+	check(cuMemAlloc_v2(d_a, bytes), c"cuMemAlloc a")
+	check(cuMemAlloc_v2(d_b, bytes), c"cuMemAlloc b")
+	check(cuMemAlloc_v2(d_c, bytes), c"cuMemAlloc c")
 
-	check(cuMemcpyHtoD_v2(load_i(d_a, 8), h_a, bytes), "cuMemcpyHtoD a")
-	check(cuMemcpyHtoD_v2(load_i(d_b, 8), h_b, bytes), "cuMemcpyHtoD b")
+	check(cuMemcpyHtoD_v2(load_i(d_a, 8), h_a, bytes), c"cuMemcpyHtoD a")
+	check(cuMemcpyHtoD_v2(load_i(d_b, 8), h_b, bytes), c"cuMemcpyHtoD b")
 
 	# kernelParams: a void** where each entry points to one argument value.
 	char* pn = cell()
@@ -103,9 +103,9 @@ int _main():
 
 	int threads = 256
 	int blocks = (n + threads - 1) / threads
-	check(cuLaunchKernel(load_i(func, 8), blocks, 1, 1, threads, 1, 1, 0, 0, params, 0), "cuLaunchKernel")
-	check(cuCtxSynchronize(), "cuCtxSynchronize")
-	check(cuMemcpyDtoH_v2(h_c, load_i(d_c, 8), bytes), "cuMemcpyDtoH c")
+	check(cuLaunchKernel(load_i(func, 8), blocks, 1, 1, threads, 1, 1, 0, 0, params, 0), c"cuLaunchKernel")
+	check(cuCtxSynchronize(), c"cuCtxSynchronize")
+	check(cuMemcpyDtoH_v2(h_c, load_i(d_c, 8), bytes), c"cuMemcpyDtoH c")
 
 	# Verify every element equals 3.0f.
 	int ok = 1
@@ -116,14 +116,14 @@ int _main():
 		i = i + 1
 
 	if (had_error):
-		puts("cuda smoke: FAILED (driver error)")
+		puts(c"cuda smoke: FAILED (driver error)")
 		fflush(0)
 		return 1
 	if (ok == 0):
-		puts("cuda smoke: FAILED (wrong results)")
+		puts(c"cuda smoke: FAILED (wrong results)")
 		fflush(0)
 		return 1
 
-	puts("cuda vector add OK")
+	puts(c"cuda vector add OK")
 	fflush(0)
 	return 0

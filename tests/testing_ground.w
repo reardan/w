@@ -47,21 +47,21 @@ int main1():
 
 int main_write():
 	# create file
-	char *filename = "/home/w/git/cc500/test_output.txt"
+	char *filename = c"/home/w/git/cc500/test_output.txt"
 	# 511 == 0777
 	int file = open_or_create(filename, 2, 511)
-	print("file_handle: ")
+	print(c"file_handle: ")
 	print(itoa(file))
-	print("\x0a")
+	print(c"\x0a")
 
 	# seek to end
 	int position = seek(file, 0, 2)
-	print("position: ")
+	print(c"position: ")
 	print(itoa(position))
-	print("\x0a")
+	print(c"\x0a")
 
 	# write to file
-	char *s = "hi thar, derpity derp da derp da derp\x0a"
+	char *s = c"hi thar, derpity derp da derp da derp\x0a"
 	write_string(file, s)
 
 	# close file
@@ -71,12 +71,12 @@ int main_write():
 
 
 int main_read():
-	int file = open("/home/w/git/cc500/test_output.txt", 0, 511)
+	int file = open(c"/home/w/git/cc500/test_output.txt", 0, 511)
 
 	int size = seek(file, 0, 2) + 1
-	print("size: ")
+	print(c"size: ")
 	print(itoa(size))
-	print("\x0a")
+	print(c"\x0a")
 	char* buf = malloc(size)
 
 	seek(file, 0, 0)
@@ -88,13 +88,13 @@ int main_read():
 
 void print_arg(int argc):
 	print(argc)
-	print_hex(": ", argc)
+	print_hex(c": ", argc)
 
 
 int main_args(int argc, int argv):
 	args_init(argc, argv)
-	print_hex("argc: ", argc)
-	print_hex("argv: ", argv)
+	print_hex(c"argc: ", argc)
+	print_hex(c"argv: ", argv)
 	int i = 0
 	while (i < args_count()):
 		println(args_get(i))
@@ -103,45 +103,45 @@ int main_args(int argc, int argv):
 	return 0
 
 int main_strings(int argc, int argv):
-	if (starts_with("hi there", "hi")):
-		println("it worked!!")
+	if (starts_with(c"hi there", c"hi")):
+		println(c"it worked!!")
 	else:
-		println("prefix not working...")
+		println(c"prefix not working...")
 
-	if (strcmp("hi there", "hi there")):
-		println("strcmp worked!")
+	if (strcmp(c"hi there", c"hi there")):
+		println(c"strcmp worked!")
 
-	if (strcmp("", "")):
-		println("strcmp blank worked!")
+	if (strcmp(c"", c"")):
+		println(c"strcmp blank worked!")
 
-	if (strcmp("c", "c")):
-		println("strcmp char worked!")
+	if (strcmp(c"c", c"c")):
+		println(c"strcmp char worked!")
 
-	if (strcmp("hi there", "hi there1")):
-		println("this shouldn't have worked...")
+	if (strcmp(c"hi there", c"hi there1")):
+		println(c"this shouldn't have worked...")
 
-	if (strcmp("", "h")):
-		println("this shouldn't have worked...")
+	if (strcmp(c"", c"h")):
+		println(c"this shouldn't have worked...")
 
-	if (strcmp("a", "")):
-		println("this shouldn't have worked...")
+	if (strcmp(c"a", c"")):
+		println(c"this shouldn't have worked...")
 
 	return 0
 
 int main(int argc, int argv):
-	print_error("yolo swag life!\x0a")
-	if (strcmp(itoa(0), "0") != 0):
-		println("failed zero check")
+	print_error(c"yolo swag life!\x0a")
+	if (strcmp(itoa(0), c"0") != 0):
+		println(c"failed zero check")
 		# exit(1)
 
 	# The Makefile passes: arg1 arg2 arg3 -o output -i=input --input=doubledash
 	if (argc > 1):
 		args_init(argc, argv)
-		asserts("expected 3 positional args", args_positional_count() == 3)
-		asserts("bad -o value", strcmp(args_value("o"), "output") == 0)
-		asserts("bad -i value", strcmp(args_value("i"), "input") == 0)
-		asserts("bad --input value", strcmp(args_value("input"), "doubledash") == 0)
-		println("command line args parsed ok")
+		asserts(c"expected 3 positional args", args_positional_count() == 3)
+		asserts(c"bad -o value", strcmp(args_value(c"o"), c"output") == 0)
+		asserts(c"bad -i value", strcmp(args_value(c"i"), c"input") == 0)
+		asserts(c"bad --input value", strcmp(args_value(c"input"), c"doubledash") == 0)
+		println(c"command line args parsed ok")
 	return 0
 
 /*int main1():

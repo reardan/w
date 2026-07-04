@@ -34,7 +34,7 @@ int generate_float_swapped_relational_code(int type, int setcc_opcode):
 int relational_expr():
 	int type = shift_expr()
 	while (1):
-		if(accept("<=")):
+		if(accept(c"<=")):
 			int left_type = binary1(type)
 			int right_type = binary2_promote_pop(shift_expr())
 			int result_type = float_binary_compare(left_type, right_type, 0x93, 1)
@@ -44,7 +44,7 @@ int relational_expr():
 				alu_cmp_set(0x9e)
 				type = type_value(bool_type)
 
-		else if(accept("<")):
+		else if(accept(c"<")):
 			int left_type = binary1(type)
 			int right_type = binary2_promote_pop(shift_expr())
 			int result_type = float_binary_compare(left_type, right_type, 0x97, 1)
@@ -54,7 +54,7 @@ int relational_expr():
 				alu_cmp_set(0x9c)
 				type = type_value(bool_type)
 
-		else if(accept(">=")):
+		else if(accept(c">=")):
 			int left_type = binary1(type)
 			int right_type = binary2_promote_pop(shift_expr())
 			int result_type = float_binary_compare(left_type, right_type, 0x93, 0)
@@ -64,7 +64,7 @@ int relational_expr():
 				alu_cmp_set(0x9d)
 				type = type_value(bool_type)
 
-		else if(accept(">")):
+		else if(accept(c">")):
 			int left_type = binary1(type)
 			int right_type = binary2_promote_pop(shift_expr())
 			int result_type = float_binary_compare(left_type, right_type, 0x97, 0)
@@ -74,7 +74,7 @@ int relational_expr():
 				alu_cmp_set(0x9f)
 				type = type_value(bool_type)
 
-		else if(accept("in")):
+		else if(accept(c"in")):
 			int key_type = binary1(type)
 			int key_slot = stack_pos
 			int base_stack = key_slot - 1
@@ -82,16 +82,16 @@ int relational_expr():
 			container_type = promote(container_type)
 			container_type = type_unqualified(container_type)
 			int want_key_type = -1
-			char* contains_name = "__w_set_contains"
+			char* contains_name = c"__w_set_contains"
 			if (type_is_map(container_type)):
 				want_key_type = type_map_key_type(container_type)
-				contains_name = "__w_map_contains"
+				contains_name = c"__w_map_contains"
 			else if (type_is_set(container_type)):
 				want_key_type = type_set_key_type(container_type)
 			else:
-				error("right operand of 'in' must be a map or set")
+				error(c"right operand of 'in' must be a map or set")
 			if (types_compatible_with_expression(want_key_type, key_type) == 0):
-				warn_type_mismatch("membership key", want_key_type, key_type)
+				warn_type_mismatch(c"membership key", want_key_type, key_type)
 			push_eax()
 			stack_pos = stack_pos + 1
 			int container_slot = stack_pos

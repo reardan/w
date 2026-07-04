@@ -164,7 +164,7 @@ pg_rule* pg_grammar_find_rule(pg_grammar* grammar, char* name):
 
 
 int pg_grammar_is_token_term(pg_grammar* grammar, char* name):
-	if (strcmp(name, "EOF") == 0):
+	if (strcmp(name, c"EOF") == 0):
 		return 1
 	if (pg_grammar_find_token(grammar, name) != 0):
 		return 1
@@ -174,7 +174,7 @@ int pg_grammar_is_token_term(pg_grammar* grammar, char* name):
 
 
 int pg_grammar_token_kind(pg_grammar* grammar, char* name):
-	if (strcmp(name, "EOF") == 0):
+	if (strcmp(name, c"EOF") == 0):
 		return 0
 	pg_token_def* token = pg_grammar_find_token(grammar, name)
 	if (token != 0):

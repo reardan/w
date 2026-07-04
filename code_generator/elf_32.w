@@ -90,37 +90,37 @@ void elf_start():
 	elf_program_header(0)
 
 	/* setup command line args */
-	emit(5, "\x8d\x44\x24\x04\x50")
+	emit(5, c"\x8d\x44\x24\x04\x50")
 	/* lea eax, [esp+4]; push eax */
 
-	emit(5, "\xe8....")
+	emit(5, c"\xe8....")
 	/* call [first function ] - set with the save_int() at the end of this func */
 	entry_call_disp_pos = codepos - 4
 
 	/* exit cleanly if _main returns: mov ebx,eax ; mov eax,252 (exit_group) ; int 0x80 */
-	emit(9, "\x89\xc3\xb8\xfc\x00\x00\x00\xcd\x80")
+	emit(9, c"\x89\xc3\xb8\xfc\x00\x00\x00\xcd\x80")
 
 	define_asm_functions()
 
 
 void elf_finish():
 	if (verbosity > 0):
-		print_error("codepos: '")
+		print_error(c"codepos: '")
 		print_error(hex(codepos))
-		print_error("'\x0a")
+		print_error(c"'\x0a")
 
 	# Append .interp/.dynamic/relocations and fill the reserved program
 	# headers; a no-op when nothing was imported with c_lib/extern.
 	elf_emit_dynamic()
 
 	# Store pointer to library _main()
-	int t = sym_address("_main")
+	int t = sym_address(c"_main")
 	# As a backup, try to use main()
 	# TODO: should we allow this?
 	if (t == 0):
-		t = sym_address("main")
+		t = sym_address(c"main")
 	if (t == 0):
-		error("Failed to find a _main() function. Did you import lib/testing?")
+		error(c"Failed to find a _main() function. Did you import lib/testing?")
 	# rel32 = target - address of the instruction after the 5-byte call
 	t = t - code_offset - entry_call_disp_pos - 4
 

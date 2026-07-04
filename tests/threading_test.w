@@ -11,7 +11,7 @@ void thread_func():
 void test_thread_create():
 	flag = 0
 	int tid = thread_create(thread_func)
-	asserts("thread_create failed", tid > 0)
+	asserts(c"thread_create failed", tid > 0)
 	# CLONE_VM shares memory, so spin until the child writes the flag.
 	int spins = 0
 	while ((flag == 0) & (spins < 100000000)):

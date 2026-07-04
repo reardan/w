@@ -7,7 +7,7 @@ int logging_file
 
 # Put time string into buffer
 char* get_time_string():
-	return "2022-03-07 08:51:67"
+	return c"2022-03-07 08:51:67"
 
 
 void log(char* str):
@@ -24,7 +24,7 @@ void logging_init(char* directory):
 
 	# Get Time
 	char* time_string = get_time_string()
-	char* dir_joined = strjoin(directory, "/")
+	char* dir_joined = strjoin(directory, c"/")
 	logging_filename = strjoin(dir_joined, time_string)
 	free(dir_joined)
 
@@ -33,8 +33,8 @@ void logging_init(char* directory):
 
 
 int main(int argc, int argv):
-	logging_init("log")
-	log("Hi there!\x0a")
+	logging_init(c"log")
+	log(c"Hi there!\x0a")
 	close(logging_file)
 	return 0
 

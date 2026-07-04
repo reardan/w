@@ -121,18 +121,18 @@ void dbg_print_int_value(int v):
 	char* digits = itoa(v)
 	print(digits)
 	free(digits)
-	print(" (")
+	print(c" (")
 	char* h = hex(v)
 	print(h)
 	free(h)
-	print(")")
+	print(c")")
 
 
 # 1 when the type is char* (one level of pointer over char).
 int dbg_type_is_string(int type):
 	if (type_get_pointer_level(type) != 1):
 		return 0
-	return strcmp(type_get_name(type), "char") == 0
+	return strcmp(type_get_name(type), c"char") == 0
 
 
 # Print the value stored at addr according to its declared type: struct
@@ -140,22 +140,22 @@ int dbg_type_is_string(int type):
 # preview for char*.
 void dbg_print_typed_value(int addr, int type):
 	if (dbg_mem_readable(addr, 4) == 0):
-		print("<unreadable at ")
+		print(c"<unreadable at ")
 		char* h = hex(addr)
 		print(h)
 		free(h)
-		print(">")
+		print(c">")
 		return;
 	if ((type_get_pointer_level(type) == 0) & (type_num_args(type) > 0)):
-		print("{")
+		print(c"{")
 		int t = get(type)
 		int n = type_num_args(type)
 		int i = 0
 		while (i < n):
 			if (i > 0):
-				print(", ")
-			print(load_int(t + 16 + 8 * i)) /* field name */
-			print(" = ")
+				print(c", ")
+			print(str_from_cstr(load_int(t + 16 + 8 * i))) /* field name */
+			print(c" = ")
 			int field_type = type_get_field_type_at(type, i)
 			int width = type_get_size(field_type)
 			if (width > 4):
@@ -163,7 +163,7 @@ void dbg_print_typed_value(int addr, int type):
 			int offset = type_get_field_offset_at(type, i)
 			dbg_print_int_value(load_i(addr + offset, width))
 			i = i + 1
-		print("}")
+		print(c"}")
 		return;
 	int v = load_int(addr)
 	dbg_print_int_value(v)
@@ -173,8 +173,8 @@ void dbg_print_typed_value(int addr, int type):
 
 # name = value, for one note.
 void dbg_print_local(int i, int esp):
-	print(dbg_local_name_at(i))
-	print(" = ")
+	print(str_from_cstr(dbg_local_name_at(i)))
+	print(c" = ")
 	dbg_print_typed_value(dbg_local_runtime_addr(i, esp), dbg_local_type(i))
 	put_char(10)
 
@@ -184,7 +184,7 @@ void dbg_print_local(int i, int esp):
 void dbg_print_frame_vars(int stop_addr, int esp, int kind):
 	dbg_frame_compute(stop_addr)
 	if (dbg_frame_ok == 0):
-		println("no frame info here")
+		println(c"no frame info here")
 		return;
 	int rel = stop_addr - code_offset
 	int printed = 0
@@ -205,6 +205,6 @@ void dbg_print_frame_vars(int stop_addr, int esp, int kind):
 		i = i + 1
 	if (printed == 0):
 		if (kind == 'L'):
-			println("no locals")
+			println(c"no locals")
 		else:
-			println("no args")
+			println(c"no args")

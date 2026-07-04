@@ -37,8 +37,8 @@ int main(int argc, int argv):
 	assert_float32_bits(0x3fa00000, narrowed)
 
 	char* s = f64toa(3.25)
-	assert_strings_equal("3.250000", s)
+	assert_strings_equal(c"3.250000", s)
 	free(s)
 
-	println("x64 float OK")
+	println(c"x64 float OK")
 	return 0

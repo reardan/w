@@ -2,6 +2,91 @@ import lib.testing
 import lib.utf8
 
 
+struct array_holder:
+	int[3] values
+	int marker
+
+
+int[3] global_values
+array_holder global_holder
+
+
+void test_global_array_index_length_and_slice():
+	assert_equal(3, global_values.length)
+	assert_equal(0, global_values[0])
+	global_values[0] = 12
+	global_values[1] = 30
+	global_values[2] = global_values[0] + global_values[1]
+	assert_equal(42, global_values[2])
+	int[] view = global_values
+	assert_equal(3, view.length)
+	view[1] = 99
+	assert_equal(99, global_values[1])
+
+
+void test_global_struct_array_field():
+	assert_equal(3, global_holder.values.length)
+	assert_equal(0, global_holder.values[0])
+	global_holder.values[0] = 6
+	global_holder.values[1] = 7
+	global_holder.values[2] = global_holder.values[0] * global_holder.values[1]
+	assert_equal(42, global_holder.values[2])
+	int[] view = global_holder.values
+	assert_equal(3, view.length)
+	view[2] = 84
+	assert_equal(84, global_holder.values[2])
+
+
+void test_local_struct_array_field():
+	array_holder h
+	assert_equal(3, h.values.length)
+	assert_equal(0, h.values[0])
+	h.values[0] = 10
+	h.values[1] = 20
+	h.marker = 5
+	assert_equal(30, h.values[0] + h.values[1])
+	assert_equal(5, h.marker)
+
+
+void test_heap_struct_array_field():
+	array_holder* h = new array_holder
+	assert_equal(3, h.values.length)
+	assert_equal(0, h.values[0])
+	h.values[0] = 14
+	h.values[1] = 3
+	assert_equal(42, h.values[0] * h.values[1])
+
+
+array_holder make_array_holder():
+	array_holder h
+	h.values[0] = 4
+	h.values[1] = 5
+	h.values[2] = 6
+	h.marker = 70
+	return h
+
+
+void take_array_holder(array_holder h):
+	assert_equal(3, h.values.length)
+	assert_equal(5, h.values[1])
+	h.values[1] = 55
+	assert_equal(55, h.values[1])
+
+
+void test_struct_array_copy_argument_and_return():
+	array_holder a = make_array_holder()
+	assert_equal(3, a.values.length)
+	assert_equal(4, a.values[0])
+	assert_equal(70, a.marker)
+	array_holder b = a
+	assert1(a.values.data != b.values.data)
+	b.values[0] = 40
+	assert_equal(4, a.values[0])
+	assert_equal(40, b.values[0])
+	take_array_holder(a)
+	assert_equal(5, a.values[1])
+
+
 void test_stack_array_index_and_length():
 	int[4] values
 	assert_equal(4, values.length)

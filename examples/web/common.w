@@ -9,7 +9,7 @@ int web_default_buffer_size():
 
 void web_check_syscall(char* name, int result):
 	if (result < 0):
-		print_string(name, " failed")
+		print_string(name, c" failed")
 		translate_syscall_failure(result)
 
 
@@ -26,37 +26,37 @@ int web_arg_port(char* name, int fallback):
 		return fallback
 	int port = atoi(value)
 	if (port <= 0):
-		print_string("bad port for --", name)
+		print_string(c"bad port for --", name)
 		exit(1)
 	return port
 
 
 int web_connect_ipv4(char* ip, int port):
 	int sock = socket_tcp_ipv4()
-	web_check_syscall("socket", sock)
-	web_check_syscall("connect", socket_connect_ipv4(sock, ip4_from_string(ip), port))
+	web_check_syscall(c"socket", sock)
+	web_check_syscall(c"connect", socket_connect_ipv4(sock, ip4_from_string(ip), port))
 	return sock
 
 
 int web_listen_ipv4(char* ip, int port):
 	int sock = socket_tcp_ipv4()
-	web_check_syscall("socket", sock)
-	web_check_syscall("setsockopt", socket_set_reuseaddr(sock))
-	web_check_syscall("bind", socket_bind_ipv4(sock, ip4_from_string(ip), port))
-	web_check_syscall("listen", socket_listen(sock, 8))
+	web_check_syscall(c"socket", sock)
+	web_check_syscall(c"setsockopt", socket_set_reuseaddr(sock))
+	web_check_syscall(c"bind", socket_bind_ipv4(sock, ip4_from_string(ip), port))
+	web_check_syscall(c"listen", socket_listen(sock, 8))
 	return sock
 
 
 void web_write_get_request(int sock, char* host, char* path):
-	write_string(sock, "GET ")
+	write_string(sock, c"GET ")
 	write_string(sock, path)
-	write_string(sock, " HTTP/1.1\x0d\x0a")
-	write_string(sock, "Host: ")
+	write_string(sock, c" HTTP/1.1\x0d\x0a")
+	write_string(sock, c"Host: ")
 	write_string(sock, host)
-	write_string(sock, "\x0d\x0a")
-	write_string(sock, "Accept: application/json\x0d\x0a")
-	write_string(sock, "Connection: close\x0d\x0a")
-	write_string(sock, "\x0d\x0a")
+	write_string(sock, c"\x0d\x0a")
+	write_string(sock, c"Accept: application/json\x0d\x0a")
+	write_string(sock, c"Connection: close\x0d\x0a")
+	write_string(sock, c"\x0d\x0a")
 
 
 char* web_read_all(int file, int capacity):
@@ -69,7 +69,7 @@ char* web_read_all(int file, int capacity):
 			done = 1
 		else:
 			int count = read(file, buf + total, remaining)
-			web_check_syscall("read", count)
+			web_check_syscall(c"read", count)
 			if (count == 0):
 				done = 1
 			else:
@@ -100,11 +100,11 @@ int web_stream_until_close(int from_file, int to_file, int capacity):
 	int done = 0
 	while (done == 0):
 		int count = read(from_file, buf, capacity)
-		web_check_syscall("read", count)
+		web_check_syscall(c"read", count)
 		if (count == 0):
 			done = 1
 		else:
-			web_check_syscall("write", write(to_file, buf, count))
+			web_check_syscall(c"write", write(to_file, buf, count))
 			total = total + count
 	free(buf)
 	return total

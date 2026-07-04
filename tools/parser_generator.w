@@ -10,7 +10,7 @@ import libs.extras.parser_generator.source_writer
 
 
 void parser_generator_usage():
-	println2("usage: parser_generator grammar.pg -o output.w")
+	println2(c"usage: parser_generator grammar.pg -o output.w")
 
 
 int main(int argc, int argv):
@@ -19,15 +19,15 @@ int main(int argc, int argv):
 		parser_generator_usage()
 		return 1
 	char* input_path = args_positional(0)
-	char* output_path = args_value("o")
+	char* output_path = args_value(c"o")
 	if (output_path == 0):
-		output_path = args_value("output")
+		output_path = args_value(c"output")
 	if (output_path == 0):
 		parser_generator_usage()
 		return 1
 	char* input = pg_read_file_text(input_path)
 	if (input == 0):
-		print2("parser_generator: could not read ")
+		print2(c"parser_generator: could not read ")
 		println2(input_path)
 		return 1
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
@@ -37,9 +37,9 @@ int main(int argc, int argv):
 		return 1
 	char* source = pg_generate_parser(grammar)
 	if (pg_write_file_text(output_path, source) == 0):
-		print2("parser_generator: could not write ")
+		print2(c"parser_generator: could not write ")
 		println2(output_path)
 		return 1
-	print2("generated ")
+	print2(c"generated ")
 	println2(output_path)
 	return 0

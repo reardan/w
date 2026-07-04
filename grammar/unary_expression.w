@@ -1,4 +1,6 @@
 int multiplicative_expr();
+void zero_runtime_object(int bytes);
+void init_array_field_descriptors(int type);
 
 
 # Store the constructor argument in eax into field field_index of the
@@ -8,8 +10,10 @@ void new_store_field(int base_type, int field_index, int arg_type):
 	if (field_index >= type_num_args(base_type)):
 		return;
 	int field_type = type_get_field_type_at(base_type, field_index)
+	if (type_has_array_field(field_type)):
+		error(c"cannot initialize fixed-array field in constructor")
 	if (types_compatible_with_expression(field_type, arg_type) == 0):
-		warn_type_mismatch("constructor argument", field_type, arg_type)
+		warn_type_mismatch(c"constructor argument", field_type, arg_type)
 	coerce(field_type, arg_type)
 	mov_ebx_esp()
 	add_ebx_int32(type_get_field_offset_at(base_type, field_index))
@@ -52,35 +56,35 @@ means (-a) * b and unary operators can stack: !!a, -*p, *&x.
 */
 int unary_expression():
 	int type
-	if (accept("&")):
+	if (accept(c"&")):
 		type = unary_expression()
 		# eax already holds the lvalue address; that address is the value here
 		return 3 /* constant */
-	else if (accept("*")):
+	else if (accept(c"*")):
 		type = unary_expression()
 		if (verbosity >= 1):
 			print_error(itoa(line_number))
-			print_error(": unary * type: ")
+			print_error(c": unary * type: ")
 			print_error(itoa(type))
-			print_error(", last symbol: ")
+			print_error(c", last symbol: ")
 			print_error(last_global_declaration)
-			print_error("\x0a")
+			print_error(c"\x0a")
 		promote(type) /* load the pointer; eax becomes the element's address */
 		if (type_get_pointer_level(type) > 0):
 			return type_lookup_previous_pointer(type)
 		return 1 /* deref of a plain int: word-sized lvalue */
-	else if (accept("!!")):
+	else if (accept(c"!!")):
 		# The tokenizer scans "!!" as one token; it booleanizes like !(!x)
 		type = unary_expression()
 		promote(type)
 		alu_test_set(0x95) /* setne */
 		return type_value(bool_type)
-	else if (accept("!")):
+	else if (accept(c"!")):
 		type = unary_expression()
 		promote(type)
 		alu_test_set(0x94) /* sete */
 		return type_value(bool_type)
-	else if (accept("-")):
+	else if (accept(c"-")):
 		type = unary_expression()
 		type = promote(type)
 		int kind = type_float_kind(type)
@@ -95,7 +99,7 @@ int unary_expression():
 		else:
 			neg_eax()
 			return 3
-	else if (accept("+")):
+	else if (accept(c"+")):
 		# unary plus: load the operand's value, no code beyond the promote
 		type = unary_expression()
 		type = promote(type)
@@ -104,46 +108,46 @@ int unary_expression():
 		if (type_float_kind(type) == 1):
 			return float32_value_type
 		return 3
-	else if (accept("cast")):
-		expect("(")
+	else if (accept(c"cast")):
+		expect(c"(")
 		int want = type_name()
-		expect(",")
+		expect(c",")
 		type = expression()
 		type = promote(type)
 		if (type_num_args(want) > 0):
-			error("cannot cast to a struct value")
+			error(c"cannot cast to a struct value")
 		coerce_explicit(want, type)
-		expect(")")
+		expect(c")")
 		return type_value(want)
-	else if (accept("new")):
+	else if (accept(c"new")):
 		# new type-name — allocates sizeof(type) and yields a type*.
 		# new type-name ( args ) also initializes the struct's fields from
 		# the arguments in declaration order.
-		if ((peek("map") & (nextc == '[')) | (peek("set") & (nextc == '['))):
+		if ((peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '['))):
 			int container_type = type_name()
 			hash_emit_new_container(container_type)
 			return type_value(container_type)
 		int base = type_lookup(token)
 		if (base < 0):
-			print2("unknown type after new: '")
+			print2(c"unknown type after new: '")
 			print2(token)
-			error("'")
+			error(c"'")
 		get_token()
-		if (accept("[")):
+		if (accept(c"[")):
 			int element_size = type_get_size(base)
 			if (element_size <= 0):
-				error("cannot allocate array of zero-sized type")
+				error(c"cannot allocate array of zero-sized type")
 			int len_type = expression()
 			promote(len_type)
 			if (bounds_mode != 0):
 				bounds_check_eax_nonnegative()
 				bounds_check_eax_less_equal_int32(1073741823 / element_size)
-			expect("]")
+			expect(c"]")
 			push_eax()
 			stack_pos = stack_pos + 1
 
 			# malloc(2 * word_size + length * sizeof(base))
-			sym_get_value("malloc")
+			sym_get_value(c"malloc")
 			push_eax()
 			stack_pos = stack_pos + 1
 			mov_eax_esp_plus(word_size)
@@ -190,10 +194,10 @@ int unary_expression():
 			stack_pos = stack_pos - 1
 			return type_get_slice_value(base)
 
-		int has_parens = accept("(")
+		int has_parens = accept(c"(")
 
 		# malloc(size), using the same callee-first stack layout as postfix calls
-		sym_get_value("malloc")
+		sym_get_value(c"malloc")
 		push_eax()
 		stack_pos = stack_pos + 1
 		mov_eax_int(type_get_size(base))
@@ -203,9 +207,12 @@ int unary_expression():
 		call_eax()
 		be_pop(2)
 		stack_pos = stack_pos - 2
+		if (type_has_array_field(base)):
+			zero_runtime_object(type_get_size(base))
+			init_array_field_descriptors(base)
 
 		if (has_parens):
-			if (accept(")") == 0):
+			if (accept(c")") == 0):
 				# Constructor arguments: keep the allocation address on the
 				# stack while each argument expression runs, storing every
 				# result into its field.
@@ -215,18 +222,18 @@ int unary_expression():
 				arg_type = promote(arg_type)
 				new_store_field(base, 0, arg_type)
 				int field_index = 1
-				while (accept(",")):
+				while (accept(c",")):
 					arg_type = expression()
 					arg_type = promote(arg_type)
 					new_store_field(base, field_index, arg_type)
 					field_index = field_index + 1
-				expect(")")
+				expect(c")")
 				if (field_index != type_num_args(base)):
-					print_error("warning: new ")
-					print_error(type_get_name(base))
-					print_error(" expects ")
-					print_error(itoa(type_num_args(base)))
-					print_error(" arguments, got ")
+					print_error(str_from_cstr(c"warning: new "))
+					print_error(str_from_cstr(type_get_name(base)))
+					print_error(str_from_cstr(c" expects "))
+					print_error(str_from_cstr(itoa(type_num_args(base))))
+					print_error(str_from_cstr(c" arguments, got "))
 					warning(itoa(field_index))
 				pop_eax()
 				stack_pos = stack_pos - 1

@@ -23,9 +23,11 @@ int current_function_symbol
 
 void copy_struct_return_value(int declared_type):
 	int words = (type_get_size(declared_type) + word_size - 1) >> word_size_log2
+	mov_ebx_esp_plus((stack_pos + number_of_args) << word_size_log2)
+	push_ebx()
+	stack_pos = stack_pos + 1
 	push_eax()
 	stack_pos = stack_pos + 1
-	mov_ebx_esp_plus((stack_pos + number_of_args) << word_size_log2)
 	int i = 0
 	while (i < words):
 		mov_eax_esp_plus(0)
@@ -38,6 +40,11 @@ void copy_struct_return_value(int declared_type):
 		i = i + 1
 	pop_eax()
 	stack_pos = stack_pos - 1
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	if (type_has_array_field(declared_type)):
+		mov_eax_ebx()
+		init_array_field_descriptors(declared_type)
 
 void statement():
 	int p1
@@ -48,10 +55,10 @@ void statement():
 	debug_line_note(stack_pos)
 
 	# { statement-list-opt }
-	if (accept("{")) {
+	if (accept(c"{")) {
 		int n = table_pos
 		int s = stack_pos
-		while (accept("}") == 0):
+		while (accept(c"}") == 0):
 			statement()
 		table_pos = n
 		be_pop(stack_pos - s)
@@ -59,13 +66,13 @@ void statement():
 	}
 
 	# : statement-list-tab-scoped
-	else if (peek(":")):
+	else if (peek(c":")):
 		int block_tab_level = enclosing_tab_level
 		get_token()
 		int n = table_pos
 		int s = stack_pos
 		int start_tab_level = tab_level
-		print_int_v1("starting stack_pos: ", stack_pos)
+		print_int_v1(c"starting stack_pos: ", stack_pos)
 		int same_line = 0
 		if (token_newline == 0):
 			# Same-line body: exactly one statement, e.g. "if (x): return"
@@ -78,16 +85,16 @@ void statement():
 				while(start_tab_level <= tab_level):
 					statement()
 		table_pos = n
-		print_int_v1("ending stack_pos: ", stack_pos)
+		print_int_v1(c"ending stack_pos: ", stack_pos)
 		be_pop(stack_pos - s)
 		stack_pos = s
 
 	# type-name identifier
 	else if (variable_declaration() >= 0):
-		expect_or_newline(";")
+		expect_or_newline(c";")
 
 	# if expression statement else statement (parentheses optional)
-	else if (accept("if")):
+	else if (accept(c"if")):
 		if_tab_level = tab_level
 		promote(expression())
 		jmp_zero_int32(1337)
@@ -98,7 +105,7 @@ void statement():
 		p2 = codepos
 		save_int32(code + p1 - 4, codepos - p1)
 		# An 'else' only binds to an 'if' at the same indent level
-		if (peek("else")):
+		if (peek(c"else")):
 			if (tab_level == if_tab_level):
 				get_token()
 				enclosing_tab_level = if_tab_level
@@ -108,54 +115,54 @@ void statement():
 	else if (while_statement()) {}
 	else if (for_statement()) {}
 
-	else if (accept("break")):
-		expect_or_newline(";")
+	else if (accept(c"break")):
+		expect_or_newline(c";")
 		if (loop_depth == 0):
-			error("'break' outside of a loop")
+			error(c"'break' outside of a loop")
 		# Unwind block locals pushed since the loop started
 		if (stack_pos > loop_stack_pos):
 			be_pop(stack_pos - loop_stack_pos)
 		jmp_int32(loop_break_chain)
 		loop_break_chain = codepos
 
-	else if (accept("continue")):
-		expect_or_newline(";")
+	else if (accept(c"continue")):
+		expect_or_newline(c";")
 		if (loop_depth == 0):
-			error("'continue' outside of a loop")
+			error(c"'continue' outside of a loop")
 		if (stack_pos > loop_stack_pos):
 			be_pop(stack_pos - loop_stack_pos)
 		jmp_int32(loop_continue_chain)
 		loop_continue_chain = codepos
 
-	else if (accept("return")):
+	else if (accept(c"return")):
 		# A newline (or end of file) after 'return' means no return value.
-		if ((peek(";") == 0) & (token_newline == 0) & (token[0] != 0)):
+		if ((peek(c";") == 0) & (token_newline == 0) & (token[0] != 0)):
 			int return_type = expression()
 			return_type = promote(return_type)
 			int declared_type = load_int(table + current_function_symbol + 6)
 			if ((type_num_args(declared_type) > 0) & (type_num_args(return_type) > 0)):
 				if (types_compatible_with_expression(declared_type, return_type) == 0):
-					warn_type_mismatch("return", declared_type, return_type)
+					warn_type_mismatch(c"return", declared_type, return_type)
 				copy_struct_return_value(declared_type)
 			else:
 				coerce(declared_type, return_type)
 				if (types_compatible_with_expression(declared_type, return_type) == 0):
-					warn_type_mismatch("return", declared_type, return_type)
-		expect_or_newline(";")
+					warn_type_mismatch(c"return", declared_type, return_type)
+		expect_or_newline(c";")
 		be_pop(stack_pos)
 		ret()
 
-	else if (accept("debugger")):
+	else if (accept(c"debugger")):
 		int3()
-		expect_or_newline(";")
+		expect_or_newline(c";")
 
 	# Explicit no-op, for spelling out an intentionally empty block
-	else if (accept("pass")):
-		expect_or_newline(";")
+	else if (accept(c"pass")):
+		expect_or_newline(c";")
 
 	else if (raw_asm_literal()):
-		expect_or_newline(";")
+		expect_or_newline(c";")
 
 	else:
 		expression()
-		expect_or_newline(";")
+		expect_or_newline(c";")

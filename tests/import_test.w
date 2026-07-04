@@ -23,7 +23,7 @@ import tests.subfolder
 # Test import filename.symbol_name
 
 void test_basic():
-	println("hello!")
+	println(c"hello!")
 
 void test_subfolder_function():
 	assert_equal(1337, subfolder_value())

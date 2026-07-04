@@ -29,14 +29,14 @@ operator0:
 
 */
 int operator0():
-	if (accept("pushad")):
-		return new_node("operator0", "pushad", "\x60")
-	else if (accept("popad")):
-		return new_node("operator0", "popad", "\x61")
-	else if (accept("ret")):
-		return new_node("operator0", "ret", "\xc3")
-	else if (accept("nop")):
-		return new_node("operator0", "nop", "\x90")
+	if (accept(c"pushad")):
+		return new_node(c"operator0", c"pushad", c"\x60")
+	else if (accept(c"popad")):
+		return new_node(c"operator0", c"popad", c"\x61")
+	else if (accept(c"ret")):
+		return new_node(c"operator0", c"ret", c"\xc3")
+	else if (accept(c"nop")):
+		return new_node(c"operator0", c"nop", c"\x90")
 	return 0  # null
 /*
 future:
@@ -100,7 +100,7 @@ int instruction():
 		return;
 	else if (operator2()):
 		operand()
-		accept(",")
+		accept(c",")
 		operand()
 	else:
 		return 0;

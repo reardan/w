@@ -62,6 +62,62 @@ int utf8_next(string s, int byte_index):
 	return byte_index + 4
 
 
+int utf8_decode(string s, int byte_index):
+	assert1(byte_index >= 0)
+	assert1(byte_index < s.length)
+	int c = s.data[byte_index] & 255
+	if (c < 128):
+		return c
+	int codepoint = 0
+	int need = 0
+	if (c < 224):
+		codepoint = c & 31
+		need = 1
+	else if (c < 240):
+		codepoint = c & 15
+		need = 2
+	else:
+		codepoint = c & 7
+		need = 3
+	int i = 1
+	while (i <= need):
+		codepoint = (codepoint << 6) | (s.data[byte_index + i] & 63)
+		i = i + 1
+	return codepoint
+
+
+int utf8_encode(char* out, int codepoint):
+	assert1(codepoint >= 0)
+	assert1((codepoint < 55296) | (codepoint > 57343))
+	assert1(codepoint <= 1114111)
+	if (codepoint < 128):
+		out[0] = codepoint
+		return 1
+	if (codepoint < 2048):
+		out[0] = 192 | (codepoint >> 6)
+		out[1] = 128 | (codepoint & 63)
+		return 2
+	if (codepoint < 65536):
+		out[0] = 224 | (codepoint >> 12)
+		out[1] = 128 | ((codepoint >> 6) & 63)
+		out[2] = 128 | (codepoint & 63)
+		return 3
+	out[0] = 240 | (codepoint >> 18)
+	out[1] = 128 | ((codepoint >> 12) & 63)
+	out[2] = 128 | ((codepoint >> 6) & 63)
+	out[3] = 128 | (codepoint & 63)
+	return 4
+
+
+int utf8_is_boundary(string s, int byte_index):
+	if ((byte_index < 0) | (byte_index > s.length)):
+		return 0
+	if ((byte_index == 0) | (byte_index == s.length)):
+		return 1
+	int c = s.data[byte_index] & 255
+	return (c < 128) | (c > 191)
+
+
 int utf8_codepoint_count(string s):
 	int count = 0
 	int i = 0
@@ -80,6 +136,43 @@ int utf8_equals(string a, string b):
 			return 0
 		i = i + 1
 	return 1
+
+
+int string_starts_with(string s, string prefix):
+	if (prefix.length > s.length):
+		return 0
+	int i = 0
+	while (i < prefix.length):
+		if (s.data[i] != prefix.data[i]):
+			return 0
+		i = i + 1
+	return 1
+
+
+int string_ends_with(string s, string suffix):
+	if (suffix.length > s.length):
+		return 0
+	int offset = s.length - suffix.length
+	int i = 0
+	while (i < suffix.length):
+		if (s.data[offset + i] != suffix.data[i]):
+			return 0
+		i = i + 1
+	return 1
+
+
+string string_from_bytes(char* data, int length):
+	assert1(utf8_validate_bytes(data, length))
+	int descriptor = malloc(2 * __word_size__ + length + 1)
+	char* out = descriptor + 2 * __word_size__
+	save_word(descriptor, out)
+	save_word(descriptor + __word_size__, length)
+	int i = 0
+	while (i < length):
+		out[i] = data[i]
+		i = i + 1
+	out[length] = 0
+	return cast(string, descriptor)
 
 
 char* cstr(string s):

@@ -53,7 +53,7 @@ cpp_token* cpp_clone_range(cpp_token* start, cpp_token* end):
 
 cpp_token* cpp_body_range(cpp_token* start, cpp_token* end):
 	cpp_token* body = cpp_clone_range(start, end)
-	cpp_token* eof = cpp_token_new(cpp_token_eof(), "", "<macro>", 0, 0, 0)
+	cpp_token* eof = cpp_token_new(cpp_token_eof(), c"", c"<macro>", 0, 0, 0)
 	if (body == 0):
 		return eof
 	cpp_token* last = cpp_token_last(body)
@@ -80,13 +80,13 @@ cpp_preprocessor* cpp_preprocessor_new():
 	pp.conds = array_list_new()
 	pp.output = string_new()
 	pp.active = 1
-	pp.current_file = "<input>"
+	pp.current_file = c"<input>"
 	pp.current_include_index = -1
-	array_list_push(pp.include_paths, "libs/extras/c_preprocessor/include")
-	array_list_push(pp.include_paths, "/usr/lib/gcc/x86_64-linux-gnu/14/include")
-	array_list_push(pp.include_paths, "/usr/lib/gcc/x86_64-linux-gnu/13/include")
-	array_list_push(pp.include_paths, "/usr/include/x86_64-linux-gnu")
-	array_list_push(pp.include_paths, "/usr/include")
+	array_list_push(pp.include_paths, c"libs/extras/c_preprocessor/include")
+	array_list_push(pp.include_paths, c"/usr/lib/gcc/x86_64-linux-gnu/14/include")
+	array_list_push(pp.include_paths, c"/usr/lib/gcc/x86_64-linux-gnu/13/include")
+	array_list_push(pp.include_paths, c"/usr/include/x86_64-linux-gnu")
+	array_list_push(pp.include_paths, c"/usr/include")
 	cpp_init_predefined_macros(pp.macros)
 	return pp
 
@@ -100,10 +100,10 @@ char* cpp_unquote_header(char* text):
 
 char* cpp_angle_header(cpp_token* token, cpp_token* end):
 	string_builder* out = string_new()
-	if (cpp_token_is_punct(token, "<")):
+	if (cpp_token_is_punct(token, c"<")):
 		token = token.next
 	while ((token != 0) & (token != end)):
-		if (cpp_token_is_punct(token, ">")):
+		if (cpp_token_is_punct(token, c">")):
 			char* result = strclone(out.data)
 			string_free(out)
 			return result
@@ -203,26 +203,26 @@ void cpp_render_tokens(cpp_preprocessor* pp, cpp_token* token):
 cpp_macro* cpp_parse_define_macro(cpp_token* name, cpp_token* end):
 	cpp_macro* macro = cpp_macro_new(name.text)
 	cpp_token* body = name.next
-	if (cpp_token_is_punct(name.next, "(") & (name.next.has_space == 0)):
+	if (cpp_token_is_punct(name.next, c"(") & (name.next.has_space == 0)):
 		macro.is_function = 1
 		cpp_token* token = name.next.next
 		while ((token != 0) & (token != end)):
-			if (cpp_token_is_punct(token, ")")):
+			if (cpp_token_is_punct(token, c")")):
 				body = token.next
 				break
-			if (cpp_token_is_punct(token, "...")):
-				array_list_push(macro.params, "__VA_ARGS__")
+			if (cpp_token_is_punct(token, c"...")):
+				array_list_push(macro.params, c"__VA_ARGS__")
 				macro.is_variadic = 1
 				token = token.next
 			else if (token.kind == cpp_token_ident()):
 				array_list_push(macro.params, token.text)
 				token = token.next
-				if (cpp_token_is_punct(token, "...")):
+				if (cpp_token_is_punct(token, c"...")):
 					macro.is_variadic = 1
 					token = token.next
 			else:
 				token = token.next
-			if (cpp_token_is_punct(token, ",")):
+			if (cpp_token_is_punct(token, c",")):
 				token = token.next
 	macro.body = cpp_body_range(body, end)
 	return macro
@@ -281,14 +281,14 @@ void cpp_process_include(cpp_preprocessor* pp, cpp_token* directive, cpp_token* 
 	int found_index = -1
 	char* path = cpp_find_include(pp, name, quoted, include_next, &found_index)
 	if (path == 0):
-		print_error("c preprocessor: include not found: ")
+		print_error(c"c preprocessor: include not found: ")
 		print_error(name)
-		error("")
+		error(c"")
 	cpp_preprocess_file_into(pp, path, found_index)
 
 
 void cpp_process_pragma(cpp_preprocessor* pp, cpp_token* directive):
-	if (cpp_token_is_ident(directive.next, "once")):
+	if (cpp_token_is_ident(directive.next, c"once")):
 		hash_map_set(pp.once_files, pp.current_file, 1)
 
 
@@ -303,39 +303,39 @@ void cpp_process_directive(cpp_preprocessor* pp, cpp_token* hash, cpp_token* end
 		return
 	if (directive.kind == cpp_token_eof()):
 		return
-	if (cpp_token_is_ident(directive, "if")):
+	if (cpp_token_is_ident(directive, c"if")):
 		if (pp.active):
 			cpp_cond_push(pp, cpp_eval_directive_expr(pp, directive, end))
 		else:
 			cpp_cond_push(pp, 0)
-	else if (cpp_token_is_ident(directive, "ifdef")):
+	else if (cpp_token_is_ident(directive, c"ifdef")):
 		cpp_cond_push(pp, cpp_macro_lookup(pp.macros, directive.next.text) != 0)
-	else if (cpp_token_is_ident(directive, "ifndef")):
+	else if (cpp_token_is_ident(directive, c"ifndef")):
 		cpp_cond_push(pp, cpp_macro_lookup(pp.macros, directive.next.text) == 0)
-	else if (cpp_token_is_ident(directive, "elif")):
+	else if (cpp_token_is_ident(directive, c"elif")):
 		cpp_cond_elif(pp, cpp_eval_directive_expr(pp, directive, end))
-	else if (cpp_token_is_ident(directive, "else")):
+	else if (cpp_token_is_ident(directive, c"else")):
 		cpp_cond_else(pp)
-	else if (cpp_token_is_ident(directive, "endif")):
+	else if (cpp_token_is_ident(directive, c"endif")):
 		cpp_cond_pop(pp)
 	else if (pp.active == 0):
 		return
-	else if (cpp_token_is_ident(directive, "define")):
+	else if (cpp_token_is_ident(directive, c"define")):
 		cpp_process_define(pp, directive, end)
-	else if (cpp_token_is_ident(directive, "undef")):
+	else if (cpp_token_is_ident(directive, c"undef")):
 		if (directive.next != 0):
 			if (directive.next.kind == cpp_token_ident()):
 				cpp_macro_undef(pp.macros, directive.next.text)
-	else if (cpp_token_is_ident(directive, "include")):
+	else if (cpp_token_is_ident(directive, c"include")):
 		cpp_process_include(pp, directive, end, 0)
-	else if (cpp_token_is_ident(directive, "include_next")):
+	else if (cpp_token_is_ident(directive, c"include_next")):
 		cpp_process_include(pp, directive, end, 1)
-	else if (cpp_token_is_ident(directive, "pragma")):
+	else if (cpp_token_is_ident(directive, c"pragma")):
 		cpp_process_pragma(pp, directive)
-	else if (cpp_token_is_ident(directive, "error")):
-		print_error("c preprocessor: #error in ")
+	else if (cpp_token_is_ident(directive, c"error")):
+		print_error(c"c preprocessor: #error in ")
 		print_error(pp.current_file)
-		error("")
+		error(c"")
 
 
 void cpp_preprocess_tokens(cpp_preprocessor* pp, cpp_token* token):
@@ -343,7 +343,7 @@ void cpp_preprocess_tokens(cpp_preprocessor* pp, cpp_token* token):
 		if (token.kind == cpp_token_eof()):
 			return
 		cpp_token* next = cpp_next_line(token)
-		if (token.at_bol & cpp_token_is_punct(token, "#")):
+		if (token.at_bol & cpp_token_is_punct(token, c"#")):
 			cpp_process_directive(pp, token, next)
 		else if (pp.active):
 			cpp_token* line = cpp_body_range(token, next)
@@ -356,9 +356,9 @@ void cpp_preprocess_file_into(cpp_preprocessor* pp, char* path, int include_inde
 		return
 	char* source = pg_read_file_text(path)
 	if (source == 0):
-		print_error("c preprocessor: could not read ")
+		print_error(c"c preprocessor: could not read ")
 		print_error(path)
-		error("")
+		error(c"")
 	char* old_file = pp.current_file
 	int old_index = pp.current_include_index
 	pp.current_file = path

@@ -77,7 +77,7 @@ void elf_emit_dynamic():
 	if (dyn_has_imports() == 0):
 		return;
 	if (dyn_lib_count == 0):
-		error("extern used without any c_lib to import from")
+		error(c"extern used without any c_lib to import from")
 
 	int nsym = dyn_import_count + 1   /* index 0 is the reserved null symbol */
 	int i
@@ -85,9 +85,9 @@ void elf_emit_dynamic():
 	# ---- .interp ----
 	int interp_off = codepos
 	if (word_size == 8):
-		emit_string("/lib64/ld-linux-x86-64.so.2")
+		emit_string(c"/lib64/ld-linux-x86-64.so.2")
 	else:
-		emit_string("/lib/ld-linux.so.2")
+		emit_string(c"/lib/ld-linux.so.2")
 	int interp_size = codepos - interp_off
 
 	# ---- .dynstr (string offsets recorded for DT_NEEDED and st_name) ----

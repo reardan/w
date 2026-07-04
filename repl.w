@@ -159,8 +159,8 @@ void repl_update_indent(char* typed, int line_indent):
 		repl_auto_indent = line_indent + 1
 	else if (repl_scan_last_char == 0):
 		pass /* blank or comment-only line: keep the current level */
-	else if (repl_first_token_is(typed, "return") | repl_first_token_is(typed, "break") |
-			repl_first_token_is(typed, "continue") | repl_first_token_is(typed, "pass")):
+	else if (repl_first_token_is(typed, c"return") | repl_first_token_is(typed, c"break") |
+			repl_first_token_is(typed, c"continue") | repl_first_token_is(typed, c"pass")):
 		repl_auto_indent = line_indent - 1
 		if (repl_auto_indent < 0):
 			repl_auto_indent = 0
@@ -170,7 +170,7 @@ void repl_update_indent(char* typed, int line_indent):
 
 void repl_print_tabs(int n):
 	for int t in range(n):
-		print("\x09")
+		print(c"\x09")
 
 
 # Read one entry (possibly several lines) into repl_entry; returns 0 on
@@ -186,7 +186,7 @@ int repl_read_entry():
 	repl_scan_comment = 0
 	repl_scan_string = 0
 	repl_auto_indent = 0
-	print("w> ")
+	print(c"w> ")
 	if (repl_read_line(repl_line) == 0):
 		return 0
 	string_append(repl_entry, repl_line.data)
@@ -195,7 +195,7 @@ int repl_read_entry():
 	int open_state = (repl_scan_depth > 0) | repl_scan_comment | (repl_scan_string != 0)
 	repl_update_indent(repl_line.data, repl_count_leading_tabs(repl_line.data))
 	while (block_mode | open_state):
-		print(".. ")
+		print(c".. ")
 		# Auto-indent applies to block bodies, not bracket/string/comment
 		# continuations, and only when a person is typing
 		int indent = 0
@@ -255,27 +255,27 @@ int repl_declare_global(char* name, int type, int symtype):
 
 # True when the current token begins a non-expression statement.
 int repl_token_is_statement():
-	if (peek("{")):
+	if (peek(c"{")):
 		return 1
-	if (peek(":")):
+	if (peek(c":")):
 		return 1
-	if (peek("if")):
+	if (peek(c"if")):
 		return 1
-	if (peek("while")):
+	if (peek(c"while")):
 		return 1
-	if (peek("for")):
+	if (peek(c"for")):
 		return 1
-	if (peek("break")):
+	if (peek(c"break")):
 		return 1
-	if (peek("continue")):
+	if (peek(c"continue")):
 		return 1
-	if (peek("return")):
+	if (peek(c"return")):
 		return 1
-	if (peek("debugger")):
+	if (peek(c"debugger")):
 		return 1
-	if (peek("pass")):
+	if (peek(c"pass")):
 		return 1
-	if (peek("raw_asm")):
+	if (peek(c"raw_asm")):
 		return 1
 	return 0
 
@@ -287,7 +287,7 @@ void repl_entry_item(int entry_symbol):
 
 	# Pure declarations: none of this executes now, but imports and extern
 	# shims emit code, so the entry function jumps over the region
-	if (peek("import") | peek("type") | peek("struct") | peek("union") | peek("enum") | peek("c_lib") | peek("extern")):
+	if (peek(c"import") | peek(c"type") | peek(c"struct") | peek(c"union") | peek(c"enum") | peek(c"c_lib") | peek(c"extern")):
 		int skip = repl_skip_start()
 		if (import_statement()) {}
 		else if (type_alias_declaration()) {}
@@ -301,15 +301,15 @@ void repl_entry_item(int entry_symbol):
 		return;
 
 	# type-name ...: a function definition or a persistent variable
-	if (peek("const") | (type_lookup(token) >= 0)):
+	if (peek(c"const") | (type_lookup(token) >= 0)):
 		int decl_type = type_name()
 		if (token[0] == 0):
-			error("identifier expected after type name")
+			error(c"identifier expected after type name")
 		char* decl_name = strclone(token)
 		get_token()
 
 		# function definition, e.g. "int add(int a, int b):"
-		if (peek("(")):
+		if (peek(c"(")):
 			int function_symbol = repl_declare_global(decl_name, decl_type, 2)
 			get_token() /* consume the '(' */
 			int fskip = repl_skip_start()
@@ -326,16 +326,11 @@ void repl_entry_item(int entry_symbol):
 		int global_symbol = repl_declare_global(decl_name, decl_type, 1)
 		int gskip = repl_skip_start()
 		sym_define_global(global_symbol)
-		int gsize = word_size
-		if (type_num_args(decl_type) > 0):
-			# By-value structs get their full (word-aligned) size
-			gsize = type_get_size(decl_type)
-			gsize = ((gsize + word_size - 1) >> word_size_log2) << word_size_log2
-		emit_zeros(gsize)
+		emit_global_storage(decl_type)
 		repl_skip_end(gskip)
 		pointer_indirection = 0
 
-		if (accept("=")):
+		if (accept(c"=")):
 			# compile "name = expression" into the entry function
 			sym_get_value(decl_name) /* address into eax */
 			push_eax()
@@ -344,10 +339,10 @@ void repl_entry_item(int entry_symbol):
 			promote(value_type)
 			pop_ebx()
 			if (types_compatible(decl_type, value_type) == 0):
-				warn_type_mismatch("initialization", decl_type, value_type)
+				warn_type_mismatch(c"initialization", decl_type, value_type)
 			assign_store(decl_type)
 			stack_pos = stack_pos - 1
-		expect_or_newline(";")
+		expect_or_newline(c";")
 		free(decl_name)
 		return;
 
@@ -365,7 +360,7 @@ void repl_entry_item(int entry_symbol):
 	last_call_end = -1
 	int result_type = expression()
 	promote(result_type)
-	expect_or_newline(";")
+	expect_or_newline(c";")
 	repl_result_type = type_real(result_type)
 	# When the expression ends in a call, the callee's declared return
 	# type drives the echo: void stays silent, char* prints as a string
@@ -416,7 +411,7 @@ int repl_compile_entry(char* path):
 
 	filename = path
 	file = open(path, 0, 511)
-	asserts("could not reopen entry buffer", file >= 0)
+	asserts(c"could not reopen entry buffer", file >= 0)
 	repl_entry_file = file
 	line_number = 0
 	tab_level = 0
@@ -424,7 +419,7 @@ int repl_compile_entry(char* path):
 	get_token()
 
 	char* counter_digits = itoa(repl_counter)
-	char* name = strjoin("__repl_", counter_digits)
+	char* name = strjoin(c"__repl_", counter_digits)
 	free(counter_digits)
 	repl_counter = repl_counter + 1
 
@@ -455,12 +450,16 @@ int repl_compile_entry(char* path):
 void repl_echo(int value, int type):
 	if (type <= 0): /* no result, or void */
 		return;
+	if (type_is_string(type)):
+		write(1, load_int(value), load_int(value + word_size))
+		put_char(10)
+		return;
 	int pointers = type_get_pointer_level(type)
-	if ((pointers == 1) & (strcmp(type_get_name(type), "char") == 0)):
+	if ((pointers == 1) & (strcmp(type_get_name(type), c"char") == 0)):
 		if (value == 0):
-			println("(null)")
+			println(c"(null)")
 		else:
-			println(value)
+			println(str_from_cstr(value))
 		return;
 	if ((pointers > 0) | (type == 4)):
 		println(hex(value))
@@ -469,15 +468,15 @@ void repl_echo(int value, int type):
 
 
 void repl_print_help():
-	println("entries compile and run immediately; definitions persist:")
-	println("  int x = 5           a variable that later entries can use")
-	println("  int f(int a):       a function (finish the block, then a blank line)")
-	println("  struct p: / import  structs and modules work too")
-	println("a line ending in ':' opens a block and indents automatically;")
-	println("return/break/continue/pass dedent; a blank line dedents one level")
-	println("and ends the entry at column 0")
-	println("a single bare expression echoes its value")
-	println("commands: :quit exits, :help shows this text")
+	println(c"entries compile and run immediately; definitions persist:")
+	println(c"  int x = 5           a variable that later entries can use")
+	println(c"  int f(int a):       a function (finish the block, then a blank line)")
+	println(c"  struct p: / import  structs and modules work too")
+	println(c"a line ending in ':' opens a block and indents automatically;")
+	println(c"return/break/continue/pass dedent; a blank line dedents one level")
+	println(c"and ends the entry at column 0")
+	println(c"a single bare expression echoes its value")
+	println(c"commands: :quit exits, :help shows this text")
 
 
 int main(int argc, int argv):
@@ -495,7 +494,7 @@ int main(int argc, int argv):
 	# needed.
 	int buffer_size = 8388608
 	int buffer = mmap(0, buffer_size, 7, 34) /* RWX, PRIVATE|ANONYMOUS */
-	asserts("mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
+	asserts(c"mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
 	code = buffer + 0
 	code_size = buffer_size
 	codepos = 0
@@ -509,24 +508,24 @@ int main(int argc, int argv):
 	# import_module (not compile_save) registers the modules, so a loaded
 	# file importing lib.lib is not compiled a second time.
 	define_asm_functions()
-	import_module("lib.lib")
-	import_module("lib.assert")
+	import_module(c"lib.lib")
+	import_module(c"lib.assert")
 
 	# Optional target file: compile it into the same buffer and run its
 	# main(), then attach the prompt with all of its symbols live.
 	char* target = 0
 	int i = 1
 	while (i < args_count()):
-		if (ends_with(args_get(i), ".w")):
+		if (ends_with(args_get(i), c".w")):
 			if (target == 0):
 				target = args_get(i)
 		i = i + 1
 	if (target != 0):
 		compile_file(target)
-		if (args_has_flag("no_main") == 0):
+		if (args_has_flag(c"no_main") == 0):
 			# main must be 'D'efined: an undefined prototype's address
 			# slot holds its backpatch chain, not an entry point
-			int main_symbol = sym_lookup("main")
+			int main_symbol = sym_lookup(c"main")
 			int run_main = 0
 			if (main_symbol >= 0):
 				if (table[main_symbol + 1] == 'D'):
@@ -536,35 +535,35 @@ int main(int argc, int argv):
 				# The target sees itself as argv[0]
 				target_main(argc - 1, argv + __word_size__)
 			else:
-				println("(loaded file defines no main; its definitions are available)")
+				println(c"(loaded file defines no main; its definitions are available)")
 
-	println("w repl - :quit exits, :help for help")
+	println(c"w repl - :quit exits, :help for help")
 
 	repl_interactive = repl_isatty(0)
 	repl_line = string_new()
 	repl_entry = string_new()
-	char* entry_path = "/tmp/w_repl_entry.w"
+	char* entry_path = c"/tmp/w_repl_entry.w"
 	while (1):
 		if (repl_read_entry() == 0):
-			println("")
+			println(c"")
 			exit(0)
-		if (string_equals(repl_entry, ":quit")):
+		if (string_equals(repl_entry, c":quit")):
 			exit(0)
-		if (string_equals(repl_entry, ":help")):
+		if (string_equals(repl_entry, c":help")):
 			repl_print_help()
 			continue
 		if (repl_entry.length == 0):
 			continue
 		if (repl_scan_string):
 			# The tokenizer cannot recover from an unterminated string
-			println("unterminated string literal, entry discarded")
+			println(c"unterminated string literal, entry discarded")
 			continue
 
 		# The tokenizer reads from a file, so stage the entry in /tmp
 		int out = create_file(entry_path, 511)
-		asserts("could not create entry buffer", out >= 0)
+		asserts(c"could not create entry buffer", out >= 0)
 		write(out, repl_entry.data, repl_entry.length)
-		write(out, "\x0a", 1)
+		write(out, c"\x0a", 1)
 		close(out)
 
 		int address = repl_compile_entry(entry_path)
