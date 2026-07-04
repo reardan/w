@@ -6,14 +6,14 @@ import lib.args
 #   prog arg1 arg2 arg3 -o output -i=input --input=doubledash
 void stage_makefile_args():
 	char* argv = malloc(8 * 4)
-	save_int(argv + 0, c"prog")
-	save_int(argv + 4, c"arg1")
-	save_int(argv + 8, c"arg2")
-	save_int(argv + 12, c"arg3")
-	save_int(argv + 16, c"-o")
-	save_int(argv + 20, c"output")
-	save_int(argv + 24, c"-i=input")
-	save_int(argv + 28, c"--input=doubledash")
+	save_int(argv + 0, cast(int, c"prog"))
+	save_int(argv + 4, cast(int, c"arg1"))
+	save_int(argv + 8, cast(int, c"arg2"))
+	save_int(argv + 12, cast(int, c"arg3"))
+	save_int(argv + 16, cast(int, c"-o"))
+	save_int(argv + 20, cast(int, c"output"))
+	save_int(argv + 24, cast(int, c"-i=input"))
+	save_int(argv + 28, cast(int, c"--input=doubledash"))
 	args_init(8, cast(int, argv))
 
 
@@ -54,9 +54,9 @@ void test_args_values():
 
 void test_args_bare_flag_without_value():
 	char* argv = malloc(3 * 4)
-	save_int(argv + 0, c"prog")
-	save_int(argv + 4, c"file.w")
-	save_int(argv + 8, c"-v")
+	save_int(argv + 0, cast(int, c"prog"))
+	save_int(argv + 4, cast(int, c"file.w"))
+	save_int(argv + 8, cast(int, c"-v"))
 	args_init(3, cast(int, argv))
 	assert_equal(1, args_has_flag(c"v"))
 	assert_equal(0, cast(int, args_value(c"v")))
@@ -66,10 +66,10 @@ void test_args_bare_flag_without_value():
 
 void test_args_flag_value_not_positional():
 	char* argv = malloc(4 * 4)
-	save_int(argv + 0, c"prog")
-	save_int(argv + 4, c"-o")
-	save_int(argv + 8, c"out.bin")
-	save_int(argv + 12, c"input.w")
+	save_int(argv + 0, cast(int, c"prog"))
+	save_int(argv + 4, cast(int, c"-o"))
+	save_int(argv + 8, cast(int, c"out.bin"))
+	save_int(argv + 12, cast(int, c"input.w"))
 	args_init(4, cast(int, argv))
 	assert_strings_equal(c"out.bin", args_value(c"o"))
 	assert_equal(1, args_positional_count())

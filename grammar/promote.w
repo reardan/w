@@ -78,25 +78,7 @@ void coerce_cstr_to_string():
 
 
 void coerce_cstr_to_string_call_arg():
-	push_eax()
-	stack_pos = stack_pos + 1
-	sym_get_value(c"cstr_utf8_length_or_die")
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus(word_size)
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus(word_size)
-	call_eax()
-	be_pop(2)
-	stack_pos = stack_pos - 2
-
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus(word_size)
-	push_eax()
-	stack_pos = stack_pos + 1
-	lea_eax_esp_plus(0)
+	coerce_cstr_to_string()
 
 
 /*
