@@ -22,7 +22,7 @@ int token_i
 void warning(char *s):
 	if (diag_json):
 		diag_append(s)
-		diag_emit(c"warning", filename, diag_token_line, diag_token_column, token, word_size)
+		diag_emit(c"warning", filename, diag_token_line, diag_token_column, token)
 	else:
 		print_error(str_from_cstr(s))
 		print_error(str_from_cstr(c" in "))

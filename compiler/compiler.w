@@ -129,6 +129,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	int i = start_index
 	word_size = 4
 	word_size_log2 = 2
+	diag_word_size = word_size
 	bounds_mode = 1
 	# argv strides by the HOST pointer size: __word_size__ was baked in
 	# when this compiler binary was itself compiled
@@ -137,6 +138,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		println2(c"Compiling in x64 mode")
 		word_size =  8
 		word_size_log2 = 3
+		diag_word_size = word_size
 		i = i + 1
 	push_basic_types()
 	pointer_indirection = 0

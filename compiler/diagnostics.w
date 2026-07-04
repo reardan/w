@@ -7,6 +7,7 @@ int diag_buffer_size
 int diag_buffer_pos
 int diag_token_line
 int diag_token_column
+int diag_word_size
 
 
 void diag_clear():
@@ -98,12 +99,12 @@ char* diag_strip_warning_prefix(char* message):
 	return message
 
 
-void diag_emit(char* severity, char* file, int line, int column, char* token, int word_size):
+void diag_emit(char* severity, char* file, int line, int column, char* token):
 	char* message = diag_buffer
 	if (strcmp(severity, c"warning") == 0):
 		message = diag_strip_warning_prefix(message)
 	char* arch = c"x86"
-	if (word_size == 8):
+	if (diag_word_size == 8):
 		arch = c"x64"
 	diag_write_cstr(c"{")
 	diag_write_json_field(c"file", file)
