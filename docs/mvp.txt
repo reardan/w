@@ -23,12 +23,24 @@ Compiler
 		REPL run-a-file-then-attach mode (repl file.w)
 		DWARF line information
 		Deeper type compatibility checks
-		Declaration-only C header import for typedefs, aggregates, enums and fixed-arity prototypes
+		Explicit casts as the unsafe-conversion escape hatch
+		Bool, const, type aliases, typed function pointers, enums and unions
+		Struct return-by-value
+		Built-in map and set syntax/runtime
+		Float32/float64 support (float64 x64-only)
+		X64 int64/uint64 support
+		C header import for typedefs, aggregates, enums, macro constants and fixed-arity prototypes
+		C preprocessor for macro expansion, conditionals and include resolution
+		Broad libc/system-header import on x86 and x64
+		Built-in debugger
 
 	Remaining
-		Dict language/runtime type
-		Full C preprocessing and broad raw system-header import
-		Built-in debugger
+		Typed containers or generics
+		Generators / yield
+		Richer map/list ergonomics (delete/get/defaults, array_list literals/indexing)
+		Float16 / bfloat16
+		C import varargs, extern data and float/double ABI shims
+		Structured diagnostics / formatter / editor tooling
 
 Net
 	Done

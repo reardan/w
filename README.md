@@ -102,15 +102,24 @@ stock x86-64 system.
 
 Implemented and covered by tests:
 
-- Types: `int`, `char`, pointers (`int*`, `char**`, ...), structs with mixed-width
-  fields, by-value struct parameters, fixed local/global/struct arrays
-  (`T[N]`), slices (`T[]`), UTF-8 `string`, `new type(args)`
+- Types: `int`, `char`, explicit-width integers through `int32`/`uint32`,
+  x64-only `int64`/`uint64`, `bool`, pointers (`int*`, `char**`, ...),
+  structs with mixed-width fields, by-value struct parameters and returns,
+  `type` aliases, `const`, `enum`, `union`, typed function pointers
+  (`fn(T, ...) -> U`), fixed local/global/struct arrays (`T[N]`), slices
+  (`T[]`), UTF-8 `string`, built-in `map[K, V]` and `set[K]`, `new type(args)`
   constructor-style allocation, and `new T[n]` heap arrays.
+- Floating point: `float`/`float32` on the default target, `float64` on x64
+  (plus x64 float32 narrowing coverage), decimal literals with exponent forms,
+  arithmetic/comparisons, int<->float coercions, function parameters/returns,
+  fields/pointers, `ftoa`, and x64 `f64toa`.
 - Expressions: full C-style operator set — arithmetic, shifts, relational
   (with chaining), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
   address/deref, `[]` indexing, typed buffer slicing (`start:end`), struct
-  field access, hex literals, UTF-8 `"..."` literals with `\u`/`\U`
-  escapes, and explicit legacy C strings via `c"..."`.
+  field access, method-call sugar (`p.move()` -> `point_move(&p, ...)`),
+  map/set indexing and membership with `in`, explicit `cast(T, expr)`, hex
+  literals, UTF-8 `"..."` literals with `\u`/`\U` escapes, and explicit
+  legacy C strings via `c"..."`.
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
   (1–3 args), `for x in <container>` over any struct-pointer type providing
   the four cursor functions `T_iter_begin/done/next/value` (implemented by
@@ -122,8 +131,11 @@ Implemented and covered by tests:
   `__word_size__` is a compile-time constant (4 or 8).
 - FFI: `c_lib "libc.so.6"` plus `extern int puts(char* s)` declarations link
   against shared libraries, with per-arch calling-convention shims (cdecl
-  re-push on x86, System V registers on x64). See `tests/dynamic_test.w` and
-  `tests/cuda_smoke.w`.
+  re-push on x86, System V registers on x64). `c_import "libc.so.6"
+  c"/usr/include/stdio.h"` preprocesses, parses, and imports broad libc/system
+  headers (tested against `stdio.h`, `stdlib.h`, `unistd.h`, `sys/stat.h`, and
+  more on both x86 and x64). See `tests/dynamic_test.w`,
+  `tests/c_import_libc_test.w`, and `tests/cuda_smoke.w`.
 - Raw syscalls via `syscall(...)`. The ELF entry stub calls `_main`:
   `lib/lib.w` provides a `_main` that forwards to your `main(argc, argv)`,
   or a program can define `_main` itself and skip the library entirely
@@ -191,7 +203,9 @@ archives the old seed to `old/` first.
 - Optional targets need tools that are not required for build/test and may be
   absent: `gdb`/`ddd` (`*_debug`), `radare2` (`asm_codegen_get_context`),
   `systemtap` with sudo (`net_log*`, `log_write`), an NVIDIA GPU + driver
-  (`cuda_smoke`). The threading modules are known to be in poor shape.
+  (`cuda_smoke`). `threading_test` covers the basic x86 thread path, but the
+  threading modules are still not production-grade and are not covered by the
+  x64 test gate.
 
 ## Current major open areas
 

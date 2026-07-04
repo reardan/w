@@ -120,3 +120,38 @@ done:
 		per-arch modules via reserved __arch__ import segment...complete!
 		__word_size__ compile-time constant...complete!
 		verify_x64 fixpoint (wv2_64 == wv3_64 == wv4_64)...complete!
+	P0 type-system surface...complete!
+		bool...complete!
+		type aliases...complete!
+		const checks...complete!
+		cast(T, expr) explicit escape hatch...complete!
+		typed function pointers...complete!
+		enum...complete!
+		union...complete!
+		direct-call return typing...complete!
+		struct return-by-value...complete!
+		x64 int64/uint64...complete!
+		strict warnings for int/function conversions...complete!
+	floating point...complete!
+		float/float32 arithmetic and conversions...complete!
+		float64 on x64...complete!
+		exact decimal literals and exponent forms...complete!
+		C reference differential tests...complete!
+		ftoa/f64toa helpers...complete!
+		float16/bfloat16...not complete!
+	arrays slices strings...complete!
+		local/global/struct fixed arrays...complete!
+		slices and heap arrays...complete!
+		default UTF-8 string literals...complete!
+		bounds traps...complete!
+		grapheme helpers...complete!
+	built-in map/set...complete!
+		map[K, V] and set[K] syntax...complete!
+		literals, indexing, assignment, membership and .length...complete!
+		for-in iteration...complete!
+	c_import...complete!
+		C preprocessor with macro expansion, conditionals and includes...complete!
+		ParserGenerator C grammar...complete!
+		typedef/struct/union/enum/prototype import...complete!
+		macro integer constants...complete!
+		broad libc/system-header tests on x86 and x64...complete!

@@ -210,7 +210,7 @@ aggregate path:
 - Add aggregate returns with a hidden destination pointer for return types
   larger than one word. Direct calls reserve a temporary destination, pass it
   as hidden argument 0, and leave `eax` pointing at that destination. This
-  should also unlock future struct return-by-value work.
+  path now supports tested struct return-by-value cases.
 
 This milestone is the safety rail: arrays, slices, and strings should not be
 special-cased into every grammar rule if a common aggregate helper can do the

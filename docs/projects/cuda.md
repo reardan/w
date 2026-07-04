@@ -17,10 +17,11 @@ H3 sidecar was skipped. Next up is Stage 2, the PTX emitter.
 - Single-pass, syntax-directed code generator (cc500 heritage). There is no AST or
   IR — grammar rules in `grammar/*.w` emit machine bytes immediately via
   `code_generator/x86.w` (x64 = same module + REX prefix via `emit_x64_opcode()`).
-- Output is a static ELF executable (`code_generator/elf_32.w` / `elf_64.w`) with a
-  single load segment. No dynamic linking, no `dlopen`, no external symbols —
-  everything outside W is reached through raw syscall stubs
-  (`define_asm_functions()` in `x86_asm.w` / `x64_asm.w`).
+- Output is a static ELF executable by default (`code_generator/elf_32.w` /
+  `elf_64.w`) with a single load segment. Programs that declare `c_lib` /
+  `extern` or use `c_import` instead get PT_INTERP/PT_DYNAMIC records, eager
+  GOT relocations and per-arch C ABI shims, so they can call shared libraries
+  such as libc and libcuda directly.
 - Target selection is a CLI flag (`w x64 file.w` sets `word_size = 8` in
   `compiler/compiler.w`); a `cuda` flag can follow the same pattern.
 - `docs/projects/hiring.txt` already lists `gpu` / `GPUAssembly` knowledge and

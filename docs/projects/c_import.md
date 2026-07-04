@@ -38,6 +38,13 @@ compiler itself:
    macros whose expansion is an integer expression are exported as global
    constants (`ENOENT`, `SEEK_END`, `O_CREAT`, ...).
 
+`make tests` imports broad raw libc/system headers on both targets through
+`tests/c_import_libc_test.w`: `stdio.h`, `stdlib.h`, `string.h`, `unistd.h`,
+`fcntl.h`, `errno.h`, `time.h`, `signal.h`, `ctype.h`, `math.h`, `dirent.h`,
+`locale.h`, and `sys/stat.h`. The same test checks imported function calls,
+macro constants, symbol-collision handling, and C struct layout against a
+kernel-filled `struct stat`.
+
 ## Layout
 
 W's own structs pack fields with no padding, so the importer lays imported

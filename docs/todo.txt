@@ -40,6 +40,8 @@ current state:
 			pointer types are created on demand
 			struct fields store field type and offset information
 			int8, int16, int32 and unsigned integer types are registered
+			bool, type aliases, const, enums, unions and typed fn pointers are registered
+			x64 int64/uint64 arithmetic, fields, globals and returns are covered by tests
 			types_compatible() checks pointer depth, base type and struct identity
 			int is a word-sized scalar: int <-> pointer conversion requires cast()
 			function values convert only to matching typed function pointers or via cast()
@@ -58,6 +60,19 @@ current state:
 			new point() and new point allocate struct storage
 			new point(1, 2, 3) initializes fields in declaration order
 			struct values pass by value (stack copy) as function parameters
+			struct values return by value and can feed field access / method receivers
+		float:
+			float/float32 arithmetic, comparisons, coercions, params and returns work on the default target
+			float64 literals, arithmetic, formatting and returns work on x64
+			x64 tests also cover float32 narrowing from a float64 literal
+			float output is diff-tested against C reference output
+			float16/bfloat16 remain future work
+		built-in map/set:
+			map[K, V] and set[K] types
+			new map/set allocation, typed literals, indexing, assignment and in-membership
+			map and set .length pseudo-field
+			string keys compare by contents
+			for-in iteration over map keys and set members
 		expressions:
 			&& and || short-circuit expressions
 			! unary operator
@@ -67,6 +82,7 @@ current state:
 			hex literals
 			string escape handling
 			pointer-aware [] and . code generation
+			explicit cast(type, expr) escape hatch for unsafe conversions
 		control flow:
 			for int i in range N
 			range(end), range(start, end), range(start, end, step)
@@ -91,6 +107,11 @@ current state:
 			and System V registers (x64), 16-byte aligned, varargs-safe
 			make dynamic_test / dynamic_test_x64 call libc on both targets
 			make cuda_smoke runs a PTX vector add through libcuda (x64)
+		c_import:
+			preprocesses C headers with macro expansion, conditionals and include resolution
+			importer builds typedefs, structs/unions, enum values, macro integer constants and fixed-arity prototypes
+			broad libc/system headers are tested on both targets (stdio, stdlib, string, unistd, fcntl, errno, time, signal, ctype, math, dirent, locale, sys/stat)
+			imported C struct layout is checked against kernel-filled struct stat
 		debugging information:
 			debugger statement emits int3
 			DWARF line-number data is emitted for gdb source-line mapping
@@ -139,7 +160,7 @@ current state:
 			backtrace is heuristic (return-address scan, no frame pointers)
 			no watchpoints or conditional breakpoints yet
 		x64:
-			threading, sockets and the repl/wdbg stubs are still x86-only
+			threading and the repl/wdbg stubs are still x86-only
 			DWARF line info still declares address_size 4 (gdb only)
 		webassembly:
 			no backend implementation yet
@@ -154,12 +175,11 @@ current state:
 			support scoped/private imports or import aliases
 			merge symbol_table + type_table on top of hash_map
 		c_import:
-			runtime path exists: c_lib + extern link shared libraries
-			ParserGenerator lexer/parser exists for header-oriented syntax
-			declaration-only importer builds typedefs, structs/unions, enum values
-			lower fixed-arity function prototypes onto c_lib + extern
-			raw libc-style markers/attributes are tolerated before parsing
-			remaining: include expansion, macro constants, globals, varargs, wider system headers
+			extern data objects (stdin, environ)
+			varargs and old-style declarations
+			float/double ABI shims for imported functions
+			bit-field layout fidelity
+			more system-header torture fixtures as regressions are found
 		debugger:
 			bind locals into print's compiled expressions
 			watchpoints and conditional breakpoints
@@ -182,9 +202,7 @@ current state:
 		default values
 		inline asm functions
 		dynamic typing / var
-		float32/float64/float16 (design: docs/projects/float.md)
-		const modifier
-		migrate default "..." literals from char* to string
+		float16 / bfloat16 (design: docs/projects/float.md)
 		type <=> json
 		type <=> protobuf
 		global default values

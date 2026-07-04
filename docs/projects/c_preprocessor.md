@@ -2,18 +2,17 @@
 
 Deep research on the C preprocessor: what the language requires, how the
 canonical books describe it, how real implementations in C and Python are
-built, and what that means for this repository. `docs/mvp.txt` lists "Full C
-preprocessing and broad raw system-header import" as remaining compiler work,
-and today `c_import` merely skips `#...` lines as lexer trivia
-(`pg_lexer_matcher_c_preprocessor` in `libs/extras/parser_generator/lexer.w`)
-after `ci_prepare_header_source` blanks control characters. This document is
-the design groundwork for closing that gap.
+built, and what that means for this repository. This started as the design
+groundwork for replacing the old `c_import` behavior that merely skipped
+`#...` lines as lexer trivia.
 
-> **Status update:** the subset preprocessor recommended below now exists in
+> **Current status:** the subset preprocessor recommended below now exists in
 > `libs/extras/c_preprocessor/` (option 2: Prosser hide sets, conditionals,
 > include search with `#include_next` and `#pragma once`, GNU comma
 > swallowing, placemarkers), and `c_import` uses it for broad system-header
-> import; see `docs/projects/c_import.md` for the importer that consumes it.
+> import. `make tests` covers the preprocessor directly and through
+> `c_import_libc_test` on both x86 and x64; see `docs/projects/c_import.md`
+> for the importer that consumes it.
 
 Primary sources: K&R "The C Programming Language" 2nd ed. (sections 4.11 and
 A.12), ISO C11 draft N1570 (5.1.1.2 and 6.10), Dave Prosser's X3J11/86-196

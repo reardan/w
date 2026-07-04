@@ -4,6 +4,12 @@ Status: in progress.
 
 Completed so far:
 
+- `bool`, `const`, transparent `type` aliases, `fn(...) -> T` typed function
+  pointers, `enum`, `union`, direct-call return typing and struct
+  return-by-value are implemented and covered by `type_system_p0_test`.
+- `int64`/`uint64` storage, arithmetic, fields, globals and returns are
+  implemented on the x64 target; the 32-bit target rejects them with a clear
+  diagnostic.
 - Milestone 1's compatibility item and Milestone 12's shim removal:
   `types_compatible()` no longer treats `int` as an untyped word or
   `function` values as universally convertible. `int` <-> pointer and
@@ -46,18 +52,21 @@ parser/code-generator architecture.
   alias identity, qualifiers, enum tags, union variants, function signatures,
   or canonical types.
 - `compiler/symbol_table.w` records function parameter counts and up to ten
-  parameter type slots, but direct calls still mostly return the generic
-  `constant` pseudo-type after code generation.
+  parameter type slots. Direct calls now preserve the declared return type for
+  the tested P0 cases, including `bool`, struct pointers and struct returns.
 - `constant` and `function` are pseudo-types. `types_compatible()` still
   treats `constant` (literals, `&x`) as broadly compatible; `int` and
   `function` wildcards have been removed in favor of explicit casts.
-- Struct values can be locals and by-value parameters, but function returns are
-  one register/word today, so struct return-by-value needs an ABI extension.
-- Function pointer values can be called, but their parameter and return types
-  are not represented as a type-table signature.
+- Struct values can be locals, by-value parameters, globals and function
+  returns. Fixed-array-bearing structs are copied by value; fixed arrays are
+  still intentionally rejected as parameters, union fields and constructor
+  arguments.
+- Typed function pointer aliases (`type binary_op = fn(int, int) -> int`) can
+  be stored in locals/fields and called with checked signatures. Generic
+  function values still warn unless converted through a matching typed pointer
+  or an explicit cast.
 - `int`/`uint` are target-word-sized. Explicit widths exist for 8/16/32-bit
-  integers; full `int64`/`uint64` coverage is incomplete outside float64's
-  x64-only raw-bit path.
+  integers on both targets; `int64`/`uint64` are x64-only for arithmetic today.
 
 ## Success criteria
 
@@ -69,7 +78,7 @@ parser/code-generator architecture.
   `int64`/`uint64`.
 - Explicit casts are the only way to silence unsafe conversions.
 - Struct values round-trip through function returns, nested calls, assignment,
-  field access, and method-call chaining.
+  field access and method receivers.
 - x86 rejects unsupported 64-bit value operations with clear diagnostics, or
   implements them with a documented helper convention; x64 supports full
   register-width `int64`/`uint64` arithmetic and comparisons.
