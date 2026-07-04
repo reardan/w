@@ -333,14 +333,6 @@ string str_from_cstr(char* s):
 	return cast(string, descriptor)
 
 
-string str_from_utf8_cstr(char* s):
-	char* descriptor = malloc(2 * __word_size__)
-	save_word(descriptor, cast(int, s))
-	int length = cstr_utf8_length_or_die(s)
-	save_word(descriptor + __word_size__, length)
-	return cast(string, descriptor)
-
-
 int getchar(int file):
 	char* buf = c"\x00"
 	int result = read(file, buf, 1)
