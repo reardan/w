@@ -81,7 +81,7 @@ int __w_hash_key_hash(int kind, int key):
 		return __w_hash_bytes(key, __w_strlen(key))
 	if (kind == __w_hash_key_string()):
 		return __w_hash_bytes(load_int(key), load_int(key + __word_size__))
-	return key * 2654435761
+	return key * 33
 
 
 int __w_hash_string_equal(int left, int right):
