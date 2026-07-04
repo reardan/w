@@ -149,8 +149,7 @@ current state:
 			merge symbol_table + type_table on top of hash_map
 		c_import:
 			runtime path exists: c_lib + extern link shared libraries
-			lexer
-			parser
+			ParserGenerator MVP lexer/parser exists for header-oriented syntax
 			build structs from C headers
 			import enum values
 			lower declarations onto c_lib + extern
