@@ -647,7 +647,15 @@ int types_compatible(int want, int got):
 		return 1
 	if (strcmp(type_get_name(got), "void") == 0):
 		return 1
-	return strcmp(type_get_name(want), type_get_name(got)) == 0
+	if (strcmp(type_get_name(want), type_get_name(got)) == 0):
+		return 1
+	# Pointer entries store the base type's name; aliases of the same base
+	# (e.g. FILE* vs _IO_FILE*) must stay interchangeable.
+	int want_base = type_lookup(type_get_name(want))
+	int got_base = type_lookup(type_get_name(got))
+	if ((want_base < 0) | (got_base < 0)):
+		return 0
+	return type_canonical(want_base) == type_canonical(got_base)
 
 
 # Float kind of an expression type, as a VALUE after promote(): 0 = not

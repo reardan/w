@@ -556,7 +556,7 @@ void pg_emit_parse_entry(pg_source_writer* writer, pg_grammar* grammar):
 	pg_emit_dynamic_line_end(writer)
 	pg_source_line(writer, "if (root == 0):")
 	pg_source_indent(writer)
-	pg_source_line(writer, "pg_token* found = pg_token_stream_peek(stream)")
+	pg_source_line(writer, "pg_token* found = pg_token_stream_furthest(stream)")
 	pg_emit_dynamic_line_start(writer)
 	pg_source_append(writer, "pg_diagnostics_add(diagnostics, found.filename, found.line, found.column, \"syntax error\", ")
 	pg_source_append_w_string(writer, grammar.start_rule)

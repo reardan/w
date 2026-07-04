@@ -9,12 +9,14 @@ import libs.extras.parser_generator.token
 struct pg_token_stream:
 	array_list* tokens
 	int index
+	int max_index
 
 
 pg_token_stream* pg_token_stream_new():
 	pg_token_stream* stream = new pg_token_stream()
 	stream.tokens = array_list_new()
 	stream.index = 0
+	stream.max_index = 0
 	return stream
 
 
@@ -40,6 +42,8 @@ pg_token* pg_token_stream_consume(pg_token_stream* stream):
 	pg_token* token = pg_token_stream_peek(stream)
 	if (stream.index < stream.tokens.length):
 		stream.index = stream.index + 1
+	if (stream.index > stream.max_index):
+		stream.max_index = stream.index
 	return token
 
 
@@ -49,6 +53,13 @@ int pg_token_stream_mark(pg_token_stream* stream):
 
 void pg_token_stream_rewind(pg_token_stream* stream, int mark):
 	stream.index = mark
+
+
+# The token at the deepest point any parse attempt reached. After a failed
+# backtracking parse this is a far better error location than the (fully
+# rewound) current position.
+pg_token* pg_token_stream_furthest(pg_token_stream* stream):
+	return pg_token_stream_get(stream, stream.max_index)
 
 
 int pg_token_stream_done(pg_token_stream* stream):

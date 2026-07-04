@@ -113,8 +113,12 @@ void elf_emit_dynamic():
 	emit_zeros(elf_dyn_syment())
 	i = 0
 	while (i < dyn_import_count):
-		/* binding 1 = global, symtype 2 = func, shndx 0 = SHN_UNDEF */
-		elf_dyn_emit_sym(load_int(imp_str_off + i * 4), 0, 0, 1, 2, 0)
+		/* binding 1 = global or 2 = weak, symtype 2 = func, shndx 0 =
+		   SHN_UNDEF. Weak imports (bulk c_import) let headers declare
+		   functions the library does not export (alloca, crypt, ...): the
+		   loader leaves their GOT slots null instead of refusing to start,
+		   and only an actual call through a null slot faults. */
+		elf_dyn_emit_sym(load_int(imp_str_off + i * 4), 0, 0, dyn_import_get_binding(i), 2, 0)
 		i = i + 1
 
 	# ---- SysV hash: one bucket chaining every symbol so lookups terminate ----
