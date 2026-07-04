@@ -7,13 +7,13 @@ void patch_jump_chain(int chain, int target);
  */
 int logical_and_expr():
 	int type = bitwise_or_expr()
-	if (peek("&&") == 0):
+	if (peek(c"&&") == 0):
 		return type
 
 	# Short-circuit: a zero operand jumps to the booleanize step with eax=0
 	promote(type)
 	int chain = 0
-	while (accept("&&")):
+	while (accept(c"&&")):
 		jmp_zero_int32(chain)
 		chain = codepos
 		promote(bitwise_or_expr())

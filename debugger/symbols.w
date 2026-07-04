@@ -84,7 +84,7 @@ int dbg_global_find(char* name):
 char* dbg_function_name(int addr):
 	int f = dbg_function_at(addr)
 	if (f < 0):
-		return "?"
+		return c"?"
 	return dbg_sym_name(f)
 
 
@@ -100,10 +100,10 @@ void dbg_print_functions():
 				char* h = hex(load_int(table + t + 2))
 				print(h)
 				free(h)
-				print("  ")
+				print(c"  ")
 				char* digits = itoa(load_int(table + t + 14))
 				print(digits)
 				free(digits)
-				print("\x09")
+				print(c"\x09")
 				println(table + name_offset)
 		t = next_token(t)

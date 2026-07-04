@@ -10,12 +10,12 @@ int struct_declaration():
 	int num_fields = 0
 	int type_index = 0
 	# parent_expression()
-	if (accept("struct")):
+	if (accept(c"struct")):
 		int start_tab_level = tab_level
 		if (verbosity >= 1):
-			print_int("start_tab_level: ", start_tab_level)
-			print_string("struct accepted name: ", token)
-			println2("")
+			print_int(c"start_tab_level: ", start_tab_level)
+			print_string(c"struct accepted name: ", token)
+			println2(c"")
 
 		# emit struct type with token name; size starts at 0 and grows per field
 		type_index = type_push_size(strclone(token), 0)
@@ -24,21 +24,21 @@ int struct_declaration():
 
 		get_token()
 		# print_string("token_colon: ", token)
-		expect(":")
+		expect(c":")
 		while(tab_level > start_tab_level):
 			if (verbosity >= 1):
-				print2("type_token: ")
+				print2(c"type_token: ")
 				print2(token)
 			int field_type = type_name()
 			if (verbosity >= 1):
-				print_int0("[", field_type)
-				println2("]")
+				print_int0(c"[", field_type)
+				println2(c"]")
 
 			type_add_arg(type_index, strclone(token), field_type)
 			if (verbosity >= 1):
-				print_int("num_fields: ", num_fields)
-				print_string("field: ", token)
-				print_error("\x0a")
+				print_int(c"num_fields: ", num_fields)
+				print_string(c"field: ", token)
+				print_error(c"\x0a")
 
 			get_token()
 			num_fields = num_fields + 1

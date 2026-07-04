@@ -118,33 +118,33 @@ int ci_is_ident_part_char(int c):
 
 
 int ci_known_noop_header_ident(char* name):
-	if (strcmp(name, "__BEGIN_DECLS") == 0):
+	if (strcmp(name, c"__BEGIN_DECLS") == 0):
 		return 1
-	if (strcmp(name, "__END_DECLS") == 0):
+	if (strcmp(name, c"__END_DECLS") == 0):
 		return 1
-	if (strcmp(name, "__THROW") == 0):
+	if (strcmp(name, c"__THROW") == 0):
 		return 1
-	if (strcmp(name, "__THROWNL") == 0):
+	if (strcmp(name, c"__THROWNL") == 0):
 		return 1
-	if (strcmp(name, "__nonnull") == 0):
+	if (strcmp(name, c"__nonnull") == 0):
 		return 1
-	if (strcmp(name, "__attribute__") == 0):
+	if (strcmp(name, c"__attribute__") == 0):
 		return 1
-	if (strcmp(name, "__attribute_malloc__") == 0):
+	if (strcmp(name, c"__attribute_malloc__") == 0):
 		return 1
-	if (strcmp(name, "__wur") == 0):
+	if (strcmp(name, c"__wur") == 0):
 		return 1
-	if (strcmp(name, "__restrict") == 0):
+	if (strcmp(name, c"__restrict") == 0):
 		return 1
-	if (strcmp(name, "__extension__") == 0):
+	if (strcmp(name, c"__extension__") == 0):
 		return 1
-	if (strcmp(name, "__attr_dealloc") == 0):
+	if (strcmp(name, c"__attr_dealloc") == 0):
 		return 1
-	if (strcmp(name, "__attr_dealloc_fclose") == 0):
+	if (strcmp(name, c"__attr_dealloc_fclose") == 0):
 		return 1
-	if (strcmp(name, "__attr_access") == 0):
+	if (strcmp(name, c"__attr_access") == 0):
 		return 1
-	if (strcmp(name, "__fortified_attr_access") == 0):
+	if (strcmp(name, c"__fortified_attr_access") == 0):
 		return 1
 	return 0
 
@@ -236,9 +236,9 @@ char* ci_prepare_header_source(char* source):
 int ci_lookup_type(char* name):
 	int type = type_lookup(name)
 	if (type < 0):
-		print_error("c_import: unsupported C type '")
+		print_error(c"c_import: unsupported C type '")
 		print_error(name)
-		error("'")
+		error(c"'")
 	return type
 
 
@@ -281,32 +281,32 @@ pg_ast_node* ci_qualifier_specs(pg_ast_node* node):
 
 int ci_primitive_type(pg_ast_node* specs):
 	if (ci_has_token(specs, clang_token_KW_VOID())):
-		return ci_lookup_type("void")
+		return ci_lookup_type(c"void")
 	if (ci_has_token(specs, clang_token_KW_DOUBLE())):
-		return ci_lookup_type("float64")
+		return ci_lookup_type(c"float64")
 	if (ci_has_token(specs, clang_token_KW_FLOAT())):
-		return ci_lookup_type("float32")
+		return ci_lookup_type(c"float32")
 	if (ci_has_token(specs, clang_token_KW_CHAR())):
 		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-			return ci_lookup_type("uint8")
-		return ci_lookup_type("char")
+			return ci_lookup_type(c"uint8")
+		return ci_lookup_type(c"char")
 	if (ci_has_token(specs, clang_token_KW_SHORT())):
 		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-			return ci_lookup_type("uint16")
-		return ci_lookup_type("int16")
+			return ci_lookup_type(c"uint16")
+		return ci_lookup_type(c"int16")
 	if (ci_count_token(specs, clang_token_KW_LONG()) > 1):
 		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-			return ci_lookup_type("uint64")
-		return ci_lookup_type("int64")
+			return ci_lookup_type(c"uint64")
+		return ci_lookup_type(c"int64")
 	if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-		return ci_lookup_type("uint")
-	return ci_lookup_type("int")
+		return ci_lookup_type(c"uint")
+	return ci_lookup_type(c"int")
 
 
 int ci_import_struct(pg_ast_node* specifier):
 	char* name = ci_first_ident(specifier)
 	if (name == 0):
-		error("c_import: anonymous structs/unions are not supported yet")
+		error(c"c_import: anonymous structs/unions are not supported yet")
 	int existing = type_lookup(name)
 	pg_ast_node* body = ci_child_ast(specifier, clang_ast_struct_body())
 	if ((existing >= 0) & (body == 0)):
@@ -333,7 +333,7 @@ int ci_import_struct(pg_ast_node* specifier):
 int ci_import_enum(pg_ast_node* specifier):
 	char* name = ci_first_ident(specifier)
 	if (name == 0):
-		error("c_import: anonymous enums are not supported yet")
+		error(c"c_import: anonymous enums are not supported yet")
 	int type_index = type_lookup(name)
 	if (type_index < 0):
 		type_index = type_push_size(strclone(name), 4)
@@ -439,11 +439,11 @@ int ci_params_have_ellipsis(pg_ast_node* params):
 
 void ci_skip_extern_function(char* name, char* reason):
 	if (verbosity >= 1):
-		print_error("warning: c_import skipped '")
+		print_error(c"warning: c_import skipped '")
 		print_error(name)
-		print_error("': ")
+		print_error(c"': ")
 		print_error(reason)
-		print_error("\x0a")
+		print_error(c"\x0a")
 
 
 void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params):
@@ -501,9 +501,9 @@ void ci_import_init_declarators(ci_decl_info* decl, pg_ast_node* node):
 					type_push_alias(strclone(info.name), info.type)
 			else if (info.is_function):
 				if (decl.is_static | decl.is_inline):
-					ci_skip_extern_function(info.name, "static/inline function")
+					ci_skip_extern_function(info.name, c"static/inline function")
 				else if (ci_params_have_ellipsis(info.params)):
-					ci_skip_extern_function(info.name, "variadic function")
+					ci_skip_extern_function(info.name, c"variadic function")
 				else:
 					ci_lower_extern_function(info.name, info.type, info.params)
 		return
@@ -543,13 +543,13 @@ void c_import_header(char* soname, char* header_path):
 	dyn_add_lib(soname)
 	char* source = pg_read_file_text(header_path)
 	if (source == 0):
-		print_error("c_import: could not read header '")
+		print_error(c"c_import: could not read header '")
 		print_error(header_path)
-		error("'")
+		error(c"'")
 	source = ci_prepare_header_source(source)
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = clang_parse(source, header_path, diagnostics)
 	if ((root == 0) | (pg_diagnostics_count(diagnostics) != 0)):
 		pg_diagnostics_print(diagnostics)
-		error("c_import: header parse failed")
+		error(c"c_import: header parse failed")
 	ci_import_translation_unit(root)

@@ -49,7 +49,7 @@ pg_grammar_reader* pg_reader_new(char* input, char* filename, pg_diagnostics* di
 	reader.line = 1
 	reader.column = 1
 	reader.token_kind = pg_reader_token_eof()
-	reader.token = ""
+	reader.token = c""
 	reader.token_line = 1
 	reader.token_column = 1
 	reader.diagnostics = diagnostics
@@ -112,7 +112,7 @@ void pg_reader_next(pg_grammar_reader* reader):
 	int c = reader.input[reader.index]
 	if (c == 0):
 		reader.token_kind = pg_reader_token_eof()
-		reader.token = ""
+		reader.token = c""
 		return
 	if (pg_lexer_is_ident_start(c)):
 		int start = reader.index
@@ -139,17 +139,17 @@ int pg_reader_is_name(pg_grammar_reader* reader, char* name):
 int pg_reader_is_top_level(pg_grammar_reader* reader):
 	if (reader.token_kind != pg_reader_token_name()):
 		return 0
-	if (strcmp(reader.token, "parser") == 0):
+	if (strcmp(reader.token, c"parser") == 0):
 		return 1
-	if (strcmp(reader.token, "token") == 0):
+	if (strcmp(reader.token, c"token") == 0):
 		return 1
-	if (strcmp(reader.token, "skip") == 0):
+	if (strcmp(reader.token, c"skip") == 0):
 		return 1
-	if (strcmp(reader.token, "literal") == 0):
+	if (strcmp(reader.token, c"literal") == 0):
 		return 1
-	if (strcmp(reader.token, "start") == 0):
+	if (strcmp(reader.token, c"start") == 0):
 		return 1
-	if (strcmp(reader.token, "rule") == 0):
+	if (strcmp(reader.token, c"rule") == 0):
 		return 1
 	return 0
 
@@ -166,13 +166,13 @@ int pg_reader_accept_symbol(pg_grammar_reader* reader, char* symbol):
 int pg_reader_expect_symbol(pg_grammar_reader* reader, char* symbol):
 	if (pg_reader_accept_symbol(reader, symbol)):
 		return 1
-	pg_reader_error(reader, "grammar parse error", symbol)
+	pg_reader_error(reader, c"grammar parse error", symbol)
 	return 0
 
 
 char* pg_reader_take_name(pg_grammar_reader* reader):
 	if (reader.token_kind != pg_reader_token_name()):
-		pg_reader_error(reader, "grammar parse error", "name")
+		pg_reader_error(reader, c"grammar parse error", c"name")
 		return 0
 	char* name = strclone(reader.token)
 	pg_reader_next(reader)
@@ -181,7 +181,7 @@ char* pg_reader_take_name(pg_grammar_reader* reader):
 
 char* pg_reader_take_string(pg_grammar_reader* reader):
 	if (reader.token_kind != pg_reader_token_string()):
-		pg_reader_error(reader, "grammar parse error", "string")
+		pg_reader_error(reader, c"grammar parse error", c"string")
 		return 0
 	char* text = strclone(reader.token)
 	pg_reader_next(reader)
@@ -193,7 +193,7 @@ void pg_reader_parse_rule_body(pg_grammar_reader* reader, pg_rule* rule):
 	while (reader.token_kind != pg_reader_token_eof()):
 		if (pg_reader_is_top_level(reader)):
 			break
-		if (pg_reader_accept_symbol(reader, "|")):
+		if (pg_reader_accept_symbol(reader, c"|")):
 			pg_rule_add_alternative(rule, alternative)
 			alternative = pg_alternative_new()
 		else:
@@ -202,7 +202,7 @@ void pg_reader_parse_rule_body(pg_grammar_reader* reader, pg_rule* rule):
 				return
 			int modifier = 0
 			if (reader.token_kind == pg_reader_token_symbol()):
-				if ((strcmp(reader.token, "?") == 0) | (strcmp(reader.token, "*") == 0) | (strcmp(reader.token, "+") == 0)):
+				if ((strcmp(reader.token, c"?") == 0) | (strcmp(reader.token, c"*") == 0) | (strcmp(reader.token, c"+") == 0)):
 					modifier = reader.token[0]
 					pg_reader_next(reader)
 			pg_alternative_add_term(alternative, pg_term_new(name, modifier))
@@ -212,8 +212,8 @@ void pg_reader_parse_rule_body(pg_grammar_reader* reader, pg_rule* rule):
 pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnostics):
 	pg_grammar_reader* reader = pg_reader_new(input, filename, diagnostics)
 	pg_reader_next(reader)
-	if (pg_reader_is_name(reader, "parser") == 0):
-		pg_reader_error(reader, "grammar must start with parser directive", "parser")
+	if (pg_reader_is_name(reader, c"parser") == 0):
+		pg_reader_error(reader, c"grammar must start with parser directive", c"parser")
 		return 0
 	pg_reader_next(reader)
 	char* parser_name = pg_reader_take_name(reader)
@@ -221,28 +221,28 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 		return 0
 	pg_grammar* grammar = pg_grammar_new(parser_name)
 	while (reader.token_kind != pg_reader_token_eof()):
-		if (pg_reader_is_name(reader, "token")):
+		if (pg_reader_is_name(reader, c"token")):
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
 			char* matcher = pg_reader_take_name(reader)
 			if ((name == 0) | (matcher == 0)):
 				return 0
 			pg_grammar_add_token(grammar, name, matcher)
-		else if (pg_reader_is_name(reader, "skip")):
+		else if (pg_reader_is_name(reader, c"skip")):
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
 			char* matcher = pg_reader_take_name(reader)
 			if ((name == 0) | (matcher == 0)):
 				return 0
 			pg_grammar_add_skip(grammar, name, matcher)
-		else if (pg_reader_is_name(reader, "literal")):
+		else if (pg_reader_is_name(reader, c"literal")):
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
 			char* text = pg_reader_take_string(reader)
 			if ((name == 0) | (text == 0)):
 				return 0
 			pg_grammar_add_literal(grammar, name, text)
-		else if (pg_reader_is_name(reader, "start")):
+		else if (pg_reader_is_name(reader, c"start")):
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
 			if (name == 0):
@@ -250,22 +250,22 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 			if (grammar.start_rule != 0):
 				free(grammar.start_rule)
 			grammar.start_rule = strclone(name)
-		else if (pg_reader_is_name(reader, "rule")):
+		else if (pg_reader_is_name(reader, c"rule")):
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
 			if (name == 0):
 				return 0
-			if (pg_reader_expect_symbol(reader, "=") == 0):
+			if (pg_reader_expect_symbol(reader, c"=") == 0):
 				return 0
 			pg_rule* rule = pg_grammar_add_rule(grammar, name)
 			pg_reader_parse_rule_body(reader, rule)
 		else:
-			pg_reader_error(reader, "unknown grammar directive", "token, skip, literal, start or rule")
+			pg_reader_error(reader, c"unknown grammar directive", c"token, skip, literal, start or rule")
 			return 0
 	if (grammar.rules.length == 0):
-		pg_reader_error(reader, "grammar has no rules", "rule")
+		pg_reader_error(reader, c"grammar has no rules", c"rule")
 		return 0
 	if (pg_grammar_find_rule(grammar, grammar.start_rule) == 0):
-		pg_reader_error(reader, "start rule is not defined", grammar.start_rule)
+		pg_reader_error(reader, c"start rule is not defined", grammar.start_rule)
 		return 0
 	return grammar

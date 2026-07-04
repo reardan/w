@@ -45,7 +45,7 @@ int dyn_has_imports():
 void dyn_add_lib(char* soname):
 	dyn_init()
 	if (dyn_lib_count >= dyn_max_libs()):
-		error("too many c_lib entries")
+		error(c"too many c_lib entries")
 	save_i(dyn_lib_names + dyn_lib_count * word_size, strclone(soname), word_size)
 	dyn_lib_count = dyn_lib_count + 1
 
@@ -58,7 +58,7 @@ char* dyn_lib_name(int i):
 int dyn_add_import(char* name, int got_vaddr):
 	dyn_init()
 	if (dyn_import_count >= dyn_max_imports()):
-		error("too many extern imports")
+		error(c"too many extern imports")
 	save_i(dyn_import_names + dyn_import_count * word_size, strclone(name), word_size)
 	save_i(dyn_import_got + dyn_import_count * word_size, got_vaddr, word_size)
 	int index = dyn_import_count

@@ -9,7 +9,7 @@ int good_binary(int a, int b):
 
 
 char* wrong_return(int a, int b):
-	return "wrong"
+	return c"wrong"
 
 
 int wrong_arity(int a):

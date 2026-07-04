@@ -22,9 +22,9 @@ void test_list_functions():
 
 void push_advanced_types():
 	# these pointer types are deprecated, use * instead
-	type_push("void*")
-	type_push("char**")
-	type_push("int(int,int)")
+	type_push(c"void*")
+	type_push(c"char**")
+	type_push(c"int(int,int)")
 
 
 void test_type_push():
@@ -33,29 +33,29 @@ void test_type_push():
 
 void test_type_lookup():
 	push_basic_types()
-	assert_equal(0, type_lookup("void"))
-	assert_equal(1, type_lookup("int"))
-	assert_equal(2, type_lookup("char"))
+	assert_equal(0, type_lookup(c"void"))
+	assert_equal(1, type_lookup(c"int"))
+	assert_equal(2, type_lookup(c"char"))
 
 
 void test_extra_types():
 	push_basic_types()
 	push_advanced_types()
-	assert_equal(length - 1, type_lookup("int(int,int)"))
+	assert_equal(length - 1, type_lookup(c"int(int,int)"))
 
 
 void test_add_get_print_2_fields():
 	push_basic_types()
-	int type_index = type_push("point")
-	char* field = "x"
-	int int_type = type_lookup("int")
-	print_int("type_index: ", type_index)
+	int type_index = type_push(c"point")
+	char* field = c"x"
+	int int_type = type_lookup(c"int")
+	print_int(c"type_index: ", type_index)
 	type_add_arg(type_index, field, int_type)
 
 	int arg_index = type_get_arg(type_index, field)
 	assert_equal(0, arg_index)
 
-	char* field2 = "y"
+	char* field2 = c"y"
 	type_add_arg(type_index, field2, int_type)
 
 	type_print(type_index)
@@ -66,13 +66,13 @@ void test_add_get_print_2_fields():
 
 void test_add_get_50_fields():
 	push_basic_types()
-	int type_index = type_push("massive_struct")
-	char* field = "field\x00\x00\x00\x00\x00\x00\x00\x00"
+	int type_index = type_push(c"massive_struct")
+	char* field = c"field\x00\x00\x00\x00\x00\x00\x00\x00"
 	int i = 0
 	int count = 50
 	while (i < count):
 		strcpy(field + 5, itoa(i))
-		int int_type = type_lookup("int")
+		int int_type = type_lookup(c"int")
 		type_add_arg(type_index, strclone(field), int_type)
 		i = i + 1
 
@@ -86,7 +86,7 @@ void test_type_push_size():
 
 void test_array_and_slice_types():
 	push_basic_types()
-	int int_type = type_lookup("int")
+	int int_type = type_lookup(c"int")
 	int array_type = type_push_array(int_type, 4)
 	int slice_type = type_get_slice(int_type)
 	assert1(type_is_array(array_type))
@@ -100,9 +100,9 @@ void test_array_and_slice_types():
 
 void test_map_and_set_types():
 	push_basic_types()
-	int int_type = type_lookup("int")
-	int char_type = type_lookup("char")
-	int char_ptr_type = type_lookup_pointer("char", 1)
+	int int_type = type_lookup(c"int")
+	int char_type = type_lookup(c"char")
+	int char_ptr_type = type_lookup_pointer(c"char", 1)
 	int map_type = type_get_map(char_ptr_type, int_type)
 	int same_map = type_get_map(char_ptr_type, int_type)
 	int other_map = type_get_map(int_type, int_type)
@@ -132,28 +132,28 @@ void test_map_and_set_types():
 # type_get_field_offset("c") == 6
 void test_type_get_field_offset():
 	push_basic_types()
-	int type_index = type_push("mixed")
-	int int_type = type_lookup("int")
-	int int16_type = type_push_size("int16", 2)
-	type_add_arg(type_index, "a", int_type)
-	type_get_field_offset(type_index, "a")
-	type_add_arg(type_index, "b", int16_type)
-	type_add_arg(type_index, "c", int_type)
+	int type_index = type_push(c"mixed")
+	int int_type = type_lookup(c"int")
+	int int16_type = type_push_size(c"int16", 2)
+	type_add_arg(type_index, c"a", int_type)
+	type_get_field_offset(type_index, c"a")
+	type_add_arg(type_index, c"b", int16_type)
+	type_add_arg(type_index, c"c", int_type)
 	type_print(type_index)
-	assert_equal(0, type_get_field_offset(type_index, "a"))
-	assert_equal(4, type_get_field_offset(type_index, "b"))
-	assert_equal(6, type_get_field_offset(type_index, "c"))
+	assert_equal(0, type_get_field_offset(type_index, c"a"))
+	assert_equal(4, type_get_field_offset(type_index, c"b"))
+	assert_equal(6, type_get_field_offset(type_index, c"c"))
 
 
 void test_type_with_fields_total_size():
 	push_basic_types()
-	int type_index = type_push_size("mixed", 0)
-	int int_type = type_lookup("int")
-	int int16_type = type_push_size("int16", 2)
-	type_add_arg(type_index, "a", int16_type)
-	type_add_arg(type_index, "b", int_type)
-	type_add_arg(type_index, "c", int16_type)
-	type_add_arg(type_index, "d", int_type)
+	int type_index = type_push_size(c"mixed", 0)
+	int int_type = type_lookup(c"int")
+	int int16_type = type_push_size(c"int16", 2)
+	type_add_arg(type_index, c"a", int16_type)
+	type_add_arg(type_index, c"b", int_type)
+	type_add_arg(type_index, c"c", int16_type)
+	type_add_arg(type_index, c"d", int_type)
 	assert_equal(12, type_get_size(type_index))
 
 
@@ -161,9 +161,9 @@ void test_type_with_fields_total_size():
 # Test pointer level
 void test_pointer_level():
 	push_basic_types()
-	int first_pointer = type_lookup_pointer("int", 1)
+	int first_pointer = type_lookup_pointer(c"int", 1)
 	assert1(first_pointer > 0)
-	assert_equal(first_pointer+1, type_lookup_pointer("int", 2))
-	assert_equal(first_pointer+2, type_lookup_pointer("char", 1))
-	assert_equal(first_pointer+3, type_lookup_pointer("char", 2))
+	assert_equal(first_pointer+1, type_lookup_pointer(c"int", 2))
+	assert_equal(first_pointer+2, type_lookup_pointer(c"char", 1))
+	assert_equal(first_pointer+3, type_lookup_pointer(c"char", 2))
 

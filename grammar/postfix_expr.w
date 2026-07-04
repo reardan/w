@@ -8,10 +8,10 @@ int expression_lhs_readonly
 
 int buffer_element_type(int type):
 	if (type_is_string(type)):
-		return type_lookup("char")
+		return type_lookup(c"char")
 	if (type_is_array(type) | type_is_slice(type)):
 		return type_get_element_type(type)
-	return type_lookup("char")
+	return type_lookup(c"char")
 
 
 int buffer_result_type(int type):
@@ -57,7 +57,7 @@ void buffer_push_range_descriptor(int base_type, int start_was_omitted):
 	int element_type = buffer_element_type(base_type)
 	int element_size = type_get_size(element_type)
 	# stack top before this helper: end, start, descriptor
-	sym_get_value("malloc")
+	sym_get_value(c"malloc")
 	push_eax()
 	stack_pos = stack_pos + 1
 	mov_eax_int(2 * word_size)
@@ -104,15 +104,15 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 	if (param_type < 0):
 		return;
 	if (types_compatible_with_expression(param_type, arg_type) == 0):
-		print_error("warning: function '")
+		print_error(c"warning: function '")
 		print_error(callee_name)
-		print_error("' argument ")
+		print_error(c"' argument ")
 		print_error(itoa(arg_index + 1))
-		print_error(" type mismatch: expected '")
+		print_error(c" type mismatch: expected '")
 		print_error_type(param_type)
-		print_error("', got '")
+		print_error(c"', got '")
 		print_error_type(arg_type)
-		warning("'")
+		warning(c"'")
 
 
 void init_array_field_descriptors(int type);
@@ -147,7 +147,7 @@ void push_call_argument(int arg_type):
 # indirect calls through function-pointer values.
 int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym, int signature_type, char* callee_name, int declared_return, int passed_args, int has_return_buffer):
 	int arg_type
-	if (accept(")") == 0):
+	if (accept(c")") == 0):
 		arg_type = expression()
 		arg_type = promote(arg_type)
 		check_call_argument(callee_sym, signature_type, callee_name, passed_args, arg_type)
@@ -161,7 +161,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 				coerce(param_type, arg_type)
 		push_call_argument(arg_type)
 		passed_args = passed_args + 1
-		while (accept(",")):
+		while (accept(c",")):
 			arg_type = expression()
 			arg_type = promote(arg_type)
 			check_call_argument(callee_sym, signature_type, callee_name, passed_args, arg_type)
@@ -176,15 +176,15 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 			push_call_argument(arg_type)
 			passed_args = passed_args + 1
 
-		expect(")")
+		expect(c")")
 
 	if (expected_args >= 0):
 		if (passed_args != expected_args):
-			print_error("warning: function '")
+			print_error(c"warning: function '")
 			print_error(callee_name)
-			print_error("' expects ")
+			print_error(c"' expects ")
 			print_error(itoa(expected_args))
-			print_error(" arguments, got ")
+			print_error(c" arguments, got ")
 			warning(itoa(passed_args))
 	if (callee_name != 0):
 		free(callee_name)
@@ -219,7 +219,7 @@ postfix-expr:
 int postfix_expr():
 	int type = primary_expr()
 	while (1):
-		if (accept("[")):
+		if (accept(c"[")):
 			expression_lhs_readonly = 0
 			if (type_is_map(type)):
 				int map_type = type_unqualified(type)
@@ -233,29 +233,29 @@ int postfix_expr():
 				got_key_type = promote(got_key_type)
 				coerce(want_key_type, got_key_type)
 				if (types_compatible_with_expression(want_key_type, got_key_type) == 0):
-					warn_type_mismatch("map key", want_key_type, got_key_type)
+					warn_type_mismatch(c"map key", want_key_type, got_key_type)
 				push_eax()
 				stack_pos = stack_pos + 1
 				hash_index_key_slot = stack_pos
-				expect("]")
+				expect(c"]")
 				hash_index_map_type = map_type
 				hash_index_pending = 1
 				type = type_map_value_type(map_type)
 			else if (type_is_buffer(type)):
 				type = promote(type)
-				if (accept(":")):
+				if (accept(c":")):
 					push_eax()
 					stack_pos = stack_pos + 1
 					mov_eax_int(0)
 					push_eax()
 					stack_pos = stack_pos + 1
-					if (accept("]")):
+					if (accept(c"]")):
 						mov_eax_esp_plus(word_size)
 						add_eax_int32(word_size)
 						promote_eax()
 					else:
 						promote(expression())
-						expect("]")
+						expect(c"]")
 					push_eax()
 					stack_pos = stack_pos + 1
 					buffer_range_bounds_check()
@@ -268,16 +268,16 @@ int postfix_expr():
 					int element_type = buffer_element_type(type)
 					int element_size = type_get_size(element_type)
 					promote(expression())
-					if (accept(":")):
+					if (accept(c":")):
 						push_eax()
 						stack_pos = stack_pos + 1
-						if (accept("]")):
+						if (accept(c"]")):
 							mov_eax_esp_plus(word_size)
 							add_eax_int32(word_size)
 							promote_eax()
 						else:
 							promote(expression())
-							expect("]")
+							expect(c"]")
 						push_eax()
 						stack_pos = stack_pos + 1
 						buffer_range_bounds_check()
@@ -292,7 +292,7 @@ int postfix_expr():
 						promote_ebx()
 						alu_add()
 						stack_pos = stack_pos - 1
-						expect("]")
+						expect(c"]")
 						type = element_type
 						expression_lhs_readonly = 0
 			else:
@@ -310,11 +310,11 @@ int postfix_expr():
 				pop_ebx()
 				alu_add()
 				stack_pos = stack_pos - 1
-				expect("]")
+				expect(c"]")
 				type = element_type
 				expression_lhs_readonly = 0
 
-		else if (accept("(")):
+		else if (accept(c"(")):
 			# Remember the callee's declared arity now; parsing the arguments
 			# below overwrites last_identifier.
 			int expected_args = -1
@@ -336,7 +336,7 @@ int postfix_expr():
 					signature_type = base_type
 					declared_return = type_function_return(base_type)
 					expected_args = type_function_param_count(base_type)
-					callee_name = strclone("function pointer")
+					callee_name = strclone(c"function pointer")
 
 			int has_return_buffer = 0
 			int s = stack_pos
@@ -358,36 +358,36 @@ int postfix_expr():
 				stack_pos = stack_pos + 1
 			type = parse_call_suffix(type, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 0, has_return_buffer)
 
-		else if (accept(".")):
+		else if (accept(c".")):
 			expression_lhs_readonly = 0
 			if (type_is_map(type) | type_is_set(type)):
-				if (peek("length")):
+				if (peek(c"length")):
 					get_token()
 					type = promote(type)
 					add_eax_int32(word_size)
-					type = type_lookup("int")
+					type = type_lookup(c"int")
 					expression_lhs_readonly = 1
 				else:
-					print2("hash container field '")
+					print2(c"hash container field '")
 					print2(token)
-					error("' not found")
+					error(c"' not found")
 			else if (type_is_buffer(type)):
-				if (peek("length")):
+				if (peek(c"length")):
 					get_token()
 					type = promote(type)
 					add_eax_int32(word_size)
-					type = type_lookup("int")
+					type = type_lookup(c"int")
 					expression_lhs_readonly = 1
-				else if (peek("data")):
+				else if (peek(c"data")):
 					get_token()
 					type = promote(type)
 					int element_type = buffer_element_type(type)
 					type = type_get_next_pointer(element_type)
 					expression_lhs_readonly = 1
 				else:
-					print2("buffer field '")
+					print2(c"buffer field '")
 					print2(token)
-					error("' not found")
+					error(c"' not found")
 			else:
 				int receiver_struct_value_words = 0
 				int receiver_was_value = type_is_value(type)
@@ -420,31 +420,31 @@ int postfix_expr():
 						# Use child type insted of struct type:
 						type = type_get_field_type(type, member_name)
 						if (type < 0):
-							print_int0("child field not found: '", type)
-							error("")
+							print_int0(c"child field not found: '", type)
+							error(c"")
 						if (verbosity >= 1):
 							print2(itoa(line_number))
-							print_string0(": using child type: ", type_get_name(type))
-							print_int(": ", type)
+							print_string0(c": using child type: ", type_get_name(type))
+							print_int(c": ", type)
 						if (receiver_struct_value_words > 0):
 							if (type_num_args(type) == 0):
 								type = promote(type)
 								be_pop(receiver_struct_value_words)
 								stack_pos = stack_pos - receiver_struct_value_words
 								type = type_value(type)
-					else if (peek("(")):
-						char* prefix = strjoin(type_get_name(type), "_")
+					else if (peek(c"(")):
+						char* prefix = strjoin(type_get_name(type), c"_")
 						char* method_symbol = strjoin(prefix, member_name)
 						free(prefix)
 						int callee = sym_lookup(method_symbol)
 						if (callee < 0):
-							print_error("struct method '")
+							print_error(c"struct method '")
 							print_error(type_get_name(type))
-							print_error(".")
+							print_error(c".")
 							print_error(member_name)
-							print_error("' not found; expected function '")
+							print_error(c"' not found; expected function '")
 							print_error(method_symbol)
-							error("'")
+							error(c"'")
 
 						int expected_args = sym_num_args(callee)
 						int callee_sym = -1
@@ -492,7 +492,7 @@ int postfix_expr():
 								coerce(param_type, receiver_type)
 						push_call_argument(receiver_type)
 
-						accept("(")
+						accept(c"(")
 						type = parse_call_suffix(4, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 1, has_return_buffer)
 						be_pop(1)
 						stack_pos = stack_pos - 1
@@ -501,9 +501,9 @@ int postfix_expr():
 							type = type_value(declared_return)
 						free(method_symbol)
 					else:
-						print2("struct field '")
+						print2(c"struct field '")
 						print2(member_name)
-						error("' not found")
+						error(c"' not found")
 					free(member_name)
 
 				else:

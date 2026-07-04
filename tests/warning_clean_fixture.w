@@ -23,7 +23,7 @@ int pair_sum(pair* p):
 int main():
 	int x = add(1, 2)
 	x = add(x, 4)
-	char* s = first_string("hello")
+	char* s = first_string(c"hello")
 	s = first_string(s)
 	if (x < s[0]):
 		x = s[0]

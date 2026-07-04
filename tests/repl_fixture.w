@@ -12,5 +12,5 @@ int fixture_helper(int a):
 
 int main(int argc, int argv):
 	fixture_global = 11
-	println("fixture main ran")
+	println(c"fixture main ran")
 	return 0

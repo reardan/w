@@ -27,24 +27,24 @@ int next_token(int t):
 
 
 void sym_table_info():
-	print_error("sym_table_info(")
-	print_int0("table_size: ", table_size)
-	print_int0(", table_pos: ", table_pos)
-	print_int0(", stack_pos: ", stack_pos)
-	print_error(")\x0a")
+	print_error(c"sym_table_info(")
+	print_int0(c"table_size: ", table_size)
+	print_int0(c", table_pos: ", table_pos)
+	print_int0(c", stack_pos: ", stack_pos)
+	print_error(c")\x0a")
 
 
 void sym_info(int symbol):
-	print_error("sym_info(")
+	print_error(c"sym_info(")
 	int t = table + symbol
-	print_hex0("address: ", load_int(t + 2))
-	print_error(", visibility: ")
+	print_hex0(c"address: ", load_int(t + 2))
+	print_error(c", visibility: ")
 	put_error(load_i(t + 1 ,1))
-	print_int0(", type: ", load_int(t + 6))
-	print_int0(", symtype: ", load_int(t + 10))
-	print_int0(", size: ", load_int(t + 14))
-	print_int0(", pointer: ", load_int(t + 18))
-	print_error(")\x0a")
+	print_int0(c", type: ", load_int(t + 6))
+	print_int0(c", symtype: ", load_int(t + 10))
+	print_int0(c", size: ", load_int(t + 14))
+	print_int0(c", pointer: ", load_int(t + 18))
+	print_error(c")\x0a")
 
 
 void sym_last_info():
@@ -109,12 +109,12 @@ int pointer_indirection
 void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	if (verbosity >= 1):
 		print2(itoa(line_number))
-		print_string0(": sym_declare('", s)
-		print_int0("', type=", type)
-		print_char0(", visibility='", visibility)
-		print_hex0("', value=", value)
-		print_int0(", symtype=", symtype)
-		println2(")")
+		print_string0(c": sym_declare('", s)
+		print_int0(c"', type=", type)
+		print_char0(c", visibility='", visibility)
+		print_hex0(c"', value=", value)
+		print_int0(c", symtype=", symtype)
+		println2(c")")
 
 	int t = table_pos
 	int i = 0
@@ -161,9 +161,9 @@ void sym_define_global(int current_symbol):
 	int t = current_symbol
 	int v = codepos + code_offset
 	if (table[t + 1] != 'U'):
-		print_error("symbol redefined: '")
+		print_error(c"symbol redefined: '")
 		print_error(last_global_declaration)
-		error("'")
+		error(c"'")
 	i = load_int(table + t + 2) - code_offset
 	while (i):
 		j = load_int(code + i) - code_offset
@@ -206,10 +206,10 @@ int sym_param_type(int t, int i):
 int sym_get_value(char *s):
 	int t
 	if ((t = sym_lookup(s)) < 0):
-		print_error("Cannot find symbol: '")
+		print_error(c"Cannot find symbol: '")
 		print_error(token)
-		error("'")
-	emit(5, "\xb8....") /* mov $n,%eax */
+		error(c"'")
+	emit(5, c"\xb8....") /* mov $n,%eax */
 	save_int(code + codepos - 4, load_int(table + t + 2))
 
 	char scope_type = table[t + 1]
@@ -219,7 +219,7 @@ int sym_get_value(char *s):
 	int k = 0
 	if (verbosity >= 2):
 		print_error(s)
-		print_error(": ")
+		print_error(c": ")
 		sym_info(t)
 
 	/* defined global */
@@ -240,11 +240,11 @@ int sym_get_value(char *s):
 		k = (stack_pos + number_of_args - table[t + 2] + 1) << word_size_log2
 
 	else:
-		print_error("Error getting symbol value for '")
+		print_error(c"Error getting symbol value for '")
 		print_error(s)
-		print_error("', table[t + 1]='")
+		print_error(c"', table[t + 1]='")
 		put_error(table[t + 1])
-		error("'")
+		error(c"'")
 
 	if ((scope_type == 'L') | (scope_type == 'A')):
 		# emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
@@ -269,29 +269,29 @@ void sym_define_declare_global_function(char* name):
 
 
 void print_symbol_table(int t):
-	print_error("printing symbol table since ")
+	print_error(c"printing symbol table since ")
 	print_error(itoa(t))
-	print_error(":\x0a")
+	print_error(c":\x0a")
 	int symbol = 0
 	while (t <= table_pos - 1):
 		char* sym = table + t
 		t = t + strlen(table + t)
 
 		print_error(itoa(symbol))
-		print_error(": ")
+		print_error(c": ")
 		print_error(sym)
 
-		print_error(" type(")
+		print_error(c" type(")
 		put_error(table[t + 6] + '0')
-		print_error(") visibility(")
+		print_error(c") visibility(")
 		put_error(table[t + 1])
-		print_error(") address(")
+		print_error(c") address(")
 		print_error(hex(load_int(table + t + 2)))
-		print_error(") symtype(")
+		print_error(c") symtype(")
 		put_error(table[t + 10] + '0')
-		print_int0(") size (", load_int(table + t + 14))
-		print_int0(") pointer (", load_int(table + t + 18))
-		print_error(")\x0a")
+		print_int0(c") size (", load_int(table + t + 14))
+		print_int0(c") pointer (", load_int(table + t + 18))
+		print_error(c")\x0a")
 
 		t = next_token(t)
 		symbol = symbol + 1
@@ -299,7 +299,7 @@ void print_symbol_table(int t):
 
 int emit_string_table():
 	if (verbosity >= 1):
-		print_error("dumping string table\x0a")
+		print_error(c"dumping string table\x0a")
 	int t = 0
 	int n = 0
 	int count = 0
@@ -317,7 +317,7 @@ int emit_string_table():
 
 int emit_symbol_table():
 	if (verbosity >= 1):
-		print_error("dumping symbol table\x0a")
+		print_error(c"dumping symbol table\x0a")
 	int t = 0
 	int n = 0
 	int symbol = 1 /* string table starts with a null byte */
@@ -404,12 +404,12 @@ void emit_debugging_symbols(int word_size):
 	int string_count = emit_string_table()
 
 	# Emit section header name strings
-	emit_section_name("strings", string_section_header, strings_addr)
-	emit_section_name(".symtab", symbol_section_header, strings_addr)
-	emit_section_name(".text", text_section_header, strings_addr)
-	emit_section_name(".debug_info", debug_info_section_header, strings_addr)
-	emit_section_name(".debug_abbrev", debug_abbrev_section_header, strings_addr)
-	emit_section_name(".debug_line", debug_line_section_header, strings_addr)
+	emit_section_name(c"strings", string_section_header, strings_addr)
+	emit_section_name(c".symtab", symbol_section_header, strings_addr)
+	emit_section_name(c".text", text_section_header, strings_addr)
+	emit_section_name(c".debug_info", debug_info_section_header, strings_addr)
+	emit_section_name(c".debug_abbrev", debug_abbrev_section_header, strings_addr)
+	emit_section_name(c".debug_line", debug_line_section_header, strings_addr)
 
 	# Store string strings_addr + length
 	int length = codepos - strings_addr

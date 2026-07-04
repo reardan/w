@@ -43,7 +43,7 @@ void emit_string(char* s):
 
 
 void emit_string_raw(char* s):
-	print_int("strlen(s)= ", strlen(s))
+	print_int(c"strlen(s)= ", strlen(s))
 	emit(strlen(s), s)
 
 

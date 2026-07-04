@@ -107,10 +107,10 @@ int type_kind_set():
 
 
 char* type_make_array_name(int element_type, int length):
-	char* open = strjoin(type_get_name(element_type), "[")
+	char* open = strjoin(type_get_name(element_type), c"[")
 	char* n = itoa(length)
 	char* with_len = strjoin(open, n)
-	char* name = strjoin(with_len, "]")
+	char* name = strjoin(with_len, c"]")
 	free(open)
 	free(n)
 	free(with_len)
@@ -118,14 +118,14 @@ char* type_make_array_name(int element_type, int length):
 
 
 char* type_make_slice_name(int element_type):
-	return strjoin(type_get_name(element_type), "[]")
+	return strjoin(type_get_name(element_type), c"[]")
 
 
 char* type_make_map_name(int key_type, int value_type):
-	char* open = strjoin("map[", type_get_name(key_type))
-	char* comma = strjoin(open, ", ")
+	char* open = strjoin(c"map[", type_get_name(key_type))
+	char* comma = strjoin(open, c", ")
 	char* value = strjoin(comma, type_get_name(value_type))
-	char* name = strjoin(value, "]")
+	char* name = strjoin(value, c"]")
 	free(open)
 	free(comma)
 	free(value)
@@ -133,8 +133,8 @@ char* type_make_map_name(int key_type, int value_type):
 
 
 char* type_make_set_name(int key_type):
-	char* open = strjoin("set[", type_get_name(key_type))
-	char* name = strjoin(open, "]")
+	char* open = strjoin(c"set[", type_get_name(key_type))
+	char* name = strjoin(open, c"]")
 	free(open)
 	return name
 
@@ -168,7 +168,7 @@ int type_push_slice(int element_type):
 int type_push_slice_value(int element_type):
 	int new_type = malloc(type_size())
 	char* storage_name = type_make_slice_name(element_type)
-	char* name = strjoin(storage_name, " value")
+	char* name = strjoin(storage_name, c" value")
 	free(storage_name)
 	save_int(new_type, name)
 	save_int(new_type + 4, 0)
@@ -306,7 +306,7 @@ int type_push_alias(char* name, int target):
 
 int type_push_const(int target):
 	int real_target = type_canonical(target)
-	char* name = strjoin("const ", type_get_name(real_target))
+	char* name = strjoin(c"const ", type_get_name(real_target))
 	int new_type = malloc(type_size())
 	int target_record = get(real_target)
 	save_int(new_type, name)
@@ -606,7 +606,7 @@ int type_lookup_pointer(char* name, int pointer_level):
 	while (i < length):
 		int t = get(i)
 		if (verbosity >= 1):
-			print_hex("type_lookup_pointer t: ", t)
+			print_hex(c"type_lookup_pointer t: ", t)
 		if ((strcmp(name, load_int(t)) == 0) & (pointer_level==load_int(t + 12))):
 			return i
 		i = i + 1
@@ -653,9 +653,9 @@ int types_compatible(int want, int got):
 		if ((type_num_args(want) > 0) | (type_num_args(got) > 0)):
 			return 0
 		return 1
-	if (strcmp(type_get_name(want), "void") == 0):
+	if (strcmp(type_get_name(want), c"void") == 0):
 		return 1
-	if (strcmp(type_get_name(got), "void") == 0):
+	if (strcmp(type_get_name(got), c"void") == 0):
 		return 1
 	return strcmp(type_get_name(want), type_get_name(got)) == 0
 
@@ -709,12 +709,12 @@ int type_add_arg(int type_index, char* field, int field_type):
 	int max_fields = 100
 	assert1(num_fields < max_fields)
 	if (verbosity > 0):
-		print_int("num_fields: ", num_fields)
-		print2("adding field: ")
+		print_int(c"num_fields: ", num_fields)
+		print2(c"adding field: ")
 		print2(field)
-		print2("(")
+		print2(c"(")
 		print2(itoa(field_type))
-		println2(")")
+		println2(c")")
 	save_int(t + 16 + 8 * num_fields, field)
 	save_int(t + 20 + 8 * num_fields, field_type)
 	save_int(t + 4, num_fields + 1)
@@ -730,25 +730,25 @@ int type_add_arg(int type_index, char* field, int field_type):
 int type_get_arg(int type_index, char* field):
 	type_index = type_canonical(type_index)
 	if (verbosity > 0):
-		print2("type_get_arg(")
+		print2(c"type_get_arg(")
 		print2(itoa(type_index))
-		print2(", '")
+		print2(c", '")
 		print2(field)
-		println2("')")
+		println2(c"')")
 	int t = get(type_index)
 	int num_fields = load_int(t + 4)
 	if (verbosity > 0):
-		print_int("num_fields: ", num_fields)
+		print_int(c"num_fields: ", num_fields)
 	int i = 0
 	while (i < num_fields):
 		int f = load_int(t + 16 + 8 * i)
 		if (verbosity > 0):
 			print2(itoa(i))
-			print2(": ")
+			print2(c": ")
 			print2(field)
-			print2(" ?= ")
+			print2(c" ?= ")
 			print2(f)
-			println2("")
+			println2(c"")
 		if (strcmp(field, f) == 0):
 			return i
 		i = i + 1
@@ -817,46 +817,46 @@ void type_print(int type_index):
 	int i = 0
 	int num_fields = load_int(t + 4)
 	print2((itoa(type_index)))
-	print2(":")
+	print2(c":")
 	if (num_fields > 0):
-		print2("struct ")
+		print2(c"struct ")
 		print2(load_int(t))
-		print2(": ")
+		print2(c": ")
 	else:
 		print2(load_int(t))
 	# print_int("num_fields: ", num_fields)
 	if (num_fields <= 0):
-		println2("")
+		println2(c"")
 		return;
-	print2("(")
+	print2(c"(")
 	while (i < num_fields):
 		int field_name = load_int(t + 16 + 8 * i)
 		int field_type = load_int(t + 20 + 8 * i)
 		int field_type_name = get(field_type)
 
 		if (i > 0):
-			print2("; ")
+			print2(c"; ")
 
 		print2(load_int(field_type_name))
-		print2(" ")
+		print2(c" ")
 		print2(field_name)
 
 		i = i + 1
 
-	println2("")
+	println2(c"")
 
 
 void type_print_all():
-	println2("all types:")
+	println2(c"all types:")
 	int i = 0
 	while (i < length):
 		int type = get(i)
 		print_error(itoa(i))
-		print_error(": ")
+		print_error(c": ")
 		print_error(load_int(type))
 		for int j in range(type_get_pointer_level(i)):
-			print_error("*")
-		print_error("\x0a")
+			print_error(c"*")
+		print_error(c"\x0a")
 		# print_int("len=", strlen(*type))
 		i = i + 1
 
@@ -876,54 +876,54 @@ void push_basic_types():
 	type_kind_union = 3
 	type_kind_enum = 4
 	type_kind_const = 5
-	type_push_size("void", 0)
-	type_push_size("int", word_size)
-	type_push_size("char", 1)
-	type_push_size("constant", 0)
-	type_push_size("function", 0)
-	bool_type = type_push_size("bool", 1)
+	type_push_size(c"void", 0)
+	type_push_size(c"int", word_size)
+	type_push_size(c"char", 1)
+	type_push_size(c"constant", 0)
+	type_push_size(c"function", 0)
+	bool_type = type_push_size(c"bool", 1)
 
 	# newer types, use these for now until void/int/char are fixed:
-	type_push_size("byte", 1)
-	type_push_size("int16", 2)
-	type_push_size("int32", 4)
-	int64_type = type_push_size("int64", 8)
-	type_push_size("pointer", word_size)
-	type_push_size("int8", 1)
+	type_push_size(c"byte", 1)
+	type_push_size(c"int16", 2)
+	type_push_size(c"int32", 4)
+	int64_type = type_push_size(c"int64", 8)
+	type_push_size(c"pointer", word_size)
+	type_push_size(c"int8", 1)
 
-	type_push_size("uint", word_size)
-	type_push_size("uint32", 4)
-	type_push_size("uint16", 2)
-	type_push_size("uint8", 1)
-	uint64_type = type_push_size("uint64", 8)
+	type_push_size(c"uint", word_size)
+	type_push_size(c"uint32", 4)
+	type_push_size(c"uint16", 2)
+	type_push_size(c"uint8", 1)
+	uint64_type = type_push_size(c"uint64", 8)
 
 	# IEEE-754 floating point. 'float' is an alias of float32 by kind (see
 	# type_float_kind); float16 is storage-only (all math in float32).
-	float32_type = type_push_size("float32", 4)
-	float64_type = type_push_size("float64", 8)
-	float16_type = type_push_size("float16", 2)
-	float_type = type_push_size("float", 4)
-	float32_value_type = type_push_size("float32 value", 0)
-	float64_value_type = type_push_size("float64 value", 0)
-	string_type = type_push_size("string", word_size)
+	float32_type = type_push_size(c"float32", 4)
+	float64_type = type_push_size(c"float64", 8)
+	float16_type = type_push_size(c"float16", 2)
+	float_type = type_push_size(c"float", 4)
+	float32_value_type = type_push_size(c"float32 value", 0)
+	float64_value_type = type_push_size(c"float64 value", 0)
+	string_type = type_push_size(c"string", word_size)
 	type_set_kind(string_type, type_kind_string())
-	string_value_type = type_push_size("string value", 0)
+	string_value_type = type_push_size(c"string value", 0)
 	type_set_kind(string_value_type, type_kind_string())
 
 	# Common pointer types; type_name() creates any others on demand
-	type_push_pointer("int", word_size, 1)
-	type_push_pointer("int", word_size, 2)
-	type_push_pointer("char", word_size, 1)
-	type_push_pointer("char", word_size, 2)
-	type_push_pointer("byte", word_size, 1)
-	type_push_pointer("byte", word_size, 2)
-	type_push_pointer("void", word_size, 1)
-	type_push_pointer("void", word_size, 2)
-	type_push_pointer("int32", word_size, 1)
-	type_push_pointer("int64", word_size, 1)
-	type_push_pointer("uint", word_size, 1)
-	type_push_pointer("uint64", word_size, 1)
-	type_push_pointer("bool", word_size, 1)
-	type_push_pointer("function", word_size, 1)
-	type_push_pointer("float", word_size, 1)
-	type_push_pointer("float32", word_size, 1)
+	type_push_pointer(c"int", word_size, 1)
+	type_push_pointer(c"int", word_size, 2)
+	type_push_pointer(c"char", word_size, 1)
+	type_push_pointer(c"char", word_size, 2)
+	type_push_pointer(c"byte", word_size, 1)
+	type_push_pointer(c"byte", word_size, 2)
+	type_push_pointer(c"void", word_size, 1)
+	type_push_pointer(c"void", word_size, 2)
+	type_push_pointer(c"int32", word_size, 1)
+	type_push_pointer(c"int64", word_size, 1)
+	type_push_pointer(c"uint", word_size, 1)
+	type_push_pointer(c"uint64", word_size, 1)
+	type_push_pointer(c"bool", word_size, 1)
+	type_push_pointer(c"function", word_size, 1)
+	type_push_pointer(c"float", word_size, 1)
+	type_push_pointer(c"float32", word_size, 1)

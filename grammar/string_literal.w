@@ -5,7 +5,7 @@ int string_hex_digit(int c):
 		return c - 'a' + 10
 	if ((c >= 'A') & (c <= 'F')):
 		return c - 'A' + 10
-	error("invalid hex digit in string literal")
+	error(c"invalid hex digit in string literal")
 	return 0
 
 
@@ -20,11 +20,11 @@ int string_hex_value(int start, int count):
 
 int string_append_utf8(int out, int codepoint):
 	if (codepoint < 0):
-		error("invalid unicode codepoint")
+		error(c"invalid unicode codepoint")
 	if ((codepoint >= 55296) & (codepoint <= 57343)):
-		error("invalid unicode surrogate")
+		error(c"invalid unicode surrogate")
 	if (codepoint > 1114111):
-		error("unicode codepoint out of range")
+		error(c"unicode codepoint out of range")
 	if (codepoint < 128):
 		token[out] = codepoint
 		return out + 1
@@ -112,43 +112,43 @@ void validate_utf8_literal(int n):
 			need = 3
 			codepoint = c & 7
 		else:
-			error("invalid UTF-8 string literal")
+			error(c"invalid UTF-8 string literal")
 		if (need > 0):
 			if (i + need >= n):
-				error("truncated UTF-8 string literal")
+				error(c"truncated UTF-8 string literal")
 			int j = 1
 			while (j <= need):
 				int d = token[i + j] & 255
 				if ((d < 128) | (d > 191)):
-					error("invalid UTF-8 continuation byte")
+					error(c"invalid UTF-8 continuation byte")
 				codepoint = (codepoint << 6) | (d & 63)
 				j = j + 1
 			if ((need == 1) & (codepoint < 128)):
-				error("overlong UTF-8 string literal")
+				error(c"overlong UTF-8 string literal")
 			if ((need == 2) & (codepoint < 2048)):
-				error("overlong UTF-8 string literal")
+				error(c"overlong UTF-8 string literal")
 			if ((need == 3) & (codepoint < 65536)):
-				error("overlong UTF-8 string literal")
+				error(c"overlong UTF-8 string literal")
 			if ((codepoint >= 55296) & (codepoint <= 57343)):
-				error("invalid UTF-8 surrogate")
+				error(c"invalid UTF-8 surrogate")
 			if (codepoint > 1114111):
-				error("UTF-8 codepoint out of range")
+				error(c"UTF-8 codepoint out of range")
 			i = i + need + 1
 
 
 # like a char_pointer_literal()
 # except it emits the code directly to be executed
 int raw_asm_literal():
-	if (accept("raw_asm") == 0):
+	if (accept(c"raw_asm") == 0):
 		return 0
-	expect("(")
+	expect(c"(")
 	if (token[0] != '"'):
-		error("double quote expected inside raw_asm( ... ) literal")
+		error(c"double quote expected inside raw_asm( ... ) literal")
 
 	int i = process_string_literal()
 	emit(i, token)
 	get_token()
-	expect(")")
+	expect(c")")
 	return 1
 
 

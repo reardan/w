@@ -58,7 +58,7 @@ pg_token* pg_token_make(int kind, char* input, int start, int length, char* file
 
 
 pg_token* pg_token_eof(char* filename, int line, int column):
-	return pg_token_new(pg_token_eof_kind(), "", filename, line, column)
+	return pg_token_new(pg_token_eof_kind(), c"", filename, line, column)
 
 
 void pg_token_free(pg_token* token):

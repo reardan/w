@@ -5,7 +5,7 @@ int int_literal():
 	int i = 0
 
 	# Check to see if theres a negative sign
-	if (accept("-")):
+	if (accept(c"-")):
 		negative = 1
 
 	# Hex literal e.g. 0x1f (lowercase digits)

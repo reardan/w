@@ -62,13 +62,13 @@ void pg_source_append_w_string(pg_source_writer* writer, char* text):
 	while (text[i]):
 		int c = text[i]
 		if (c == '"'):
-			string_append(writer.out, "\\x22")
+			string_append(writer.out, c"\\x22")
 		else if (c == 92):
-			string_append(writer.out, "\\x5c")
+			string_append(writer.out, c"\\x5c")
 		else if (c == 10):
-			string_append(writer.out, "\\x0a")
+			string_append(writer.out, c"\\x0a")
 		else if (c == 9):
-			string_append(writer.out, "\\x09")
+			string_append(writer.out, c"\\x09")
 		else:
 			string_append_char(writer.out, c)
 		i = i + 1

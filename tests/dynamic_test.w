@@ -24,14 +24,14 @@ int _main():
 	int raw_pid = raw_getpid()
 
 	# Nine arguments so the x64 shim exercises its on-stack argument path.
-	printf("stack args: %d %d %d %d %d %d %d %d\x0a", 1, 2, 3, 4, 5, 6, 7, 8)
+	printf(c"stack args: %d %d %d %d %d %d %d %d\x0a", 1, 2, 3, 4, 5, 6, 7, 8)
 
 	int rc = 0
 	if (libc_pid != raw_pid):
-		puts("FAIL: libc getpid disagrees with the raw syscall")
+		puts(c"FAIL: libc getpid disagrees with the raw syscall")
 		rc = 1
 	else:
-		puts("dynamic linking OK")
+		puts(c"dynamic linking OK")
 
 	fflush(0)
 	return rc

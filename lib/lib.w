@@ -272,7 +272,7 @@ int write_string(int file, char* s):
 
 
 int getchar(int file):
-	char* buf = "\x00"
+	char* buf = c"\x00"
 	int result = read(file, buf, 1)
 	if (result == 0):
 		return (-1)
@@ -280,7 +280,7 @@ int getchar(int file):
 
 
 void putc(int file, int c):
-	char* buf = "\x00"
+	char* buf = c"\x00"
 	buf[0] = c
 	write(file, buf, 1)
 	# write(file, &c, 1)
@@ -318,7 +318,7 @@ void print_int0(char* c, int v):
 
 void print_int(char* c, int v):
 	print_int0(c, v)
-	print_error("\x0a")
+	print_error(c"\x0a")
 
 
 void print_int_v1(char* c, int v):
@@ -333,7 +333,7 @@ void print_hex0(char* c, int v):
 
 void print_hex(char* c, int v):
 	print_hex0(c, v)
-	print_error("\x0a")
+	print_error(c"\x0a")
 
 
 void print_string0(char* s1, char* s2):
@@ -343,7 +343,7 @@ void print_string0(char* s1, char* s2):
 
 void print_string(char* s1, char* s2):
 	print_string0(s1, s2)
-	print_error("\x0a")
+	print_error(c"\x0a")
 
 
 void println(char *s):
@@ -357,21 +357,21 @@ void println2(char *s):
 
 
 void print_color(char* s, int color):
-	print2("\x1b[")
+	print2(c"\x1b[")
 	print2(itoa(color))
-	print2("m")
+	print2(c"m")
 	print2(s)
-	print2("\x1b[0m")
+	print2(c"\x1b[0m")
 
 
 void print_color_bg(char* s, int color, int background):
-	print2("\x1b[")
+	print2(c"\x1b[")
 	print2(itoa(color))
-	print2(";")
+	print2(c";")
 	print2(itoa(background))
-	print2("m")
+	print2(c"m")
 	print2(s)
-	print2("\x1b[0m")
+	print2(c"\x1b[0m")
 
 
 void print_n(char *s, int n):
@@ -383,7 +383,7 @@ void print_words(int addr, int count):
 	int i = 0
 	while (i < count):
 		print(hex(addr))
-		print(": ")
+		print(c": ")
 		println(hex(*addr))
 		addr = addr + __word_size__
 		i = i + 1
@@ -396,276 +396,276 @@ int translate_syscall_failure(int err):
 
 	err = 0 - err
 	print2(itoa(err))
-	print2(": ")
+	print2(c": ")
 
 	if(err == 1):
-		println2("EPERM: Operation not permitted.")
+		println2(c"EPERM: Operation not permitted.")
 	else if(err == 2):
-		println2("ENOENT: No such file or directory.")
+		println2(c"ENOENT: No such file or directory.")
 	else if(err == 3):
-		println2("ESRCH: No such process.")
+		println2(c"ESRCH: No such process.")
 	else if(err == 4):
-		println2("EINTR: Interrupted system call.")
+		println2(c"EINTR: Interrupted system call.")
 	else if(err == 5):
-		println2("EIO: I/O error.")
+		println2(c"EIO: I/O error.")
 	else if(err == 6):
-		println2("ENXIO: No such device or address.")
+		println2(c"ENXIO: No such device or address.")
 	else if(err == 7):
-		println2("E2BIG: Argument list too long.")
+		println2(c"E2BIG: Argument list too long.")
 	else if(err == 8):
-		println2("ENOEXEC: Exec format error.")
+		println2(c"ENOEXEC: Exec format error.")
 	else if(err == 9):
-		println2("EBADF: Bad file number.")
+		println2(c"EBADF: Bad file number.")
 	else if(err == 10):
-		println2("ECHILD: No child processes.")
+		println2(c"ECHILD: No child processes.")
 	else if(err == 11):
-		println2("EAGAIN: Try again.")
+		println2(c"EAGAIN: Try again.")
 	else if(err == 12):
-		println2("ENOMEM: Out of memory.")
+		println2(c"ENOMEM: Out of memory.")
 	else if(err == 13):
-		println2("EACCES: Permission denied.")
+		println2(c"EACCES: Permission denied.")
 	else if(err == 14):
-		println2("EFAULT: Bad address.")
+		println2(c"EFAULT: Bad address.")
 	else if(err == 15):
-		println2("ENOTBLK: Block device required.")
+		println2(c"ENOTBLK: Block device required.")
 	else if(err == 16):
-		println2("EBUSY: Device or resource busy.")
+		println2(c"EBUSY: Device or resource busy.")
 	else if(err == 17):
-		println2("EEXIST: File exists.")
+		println2(c"EEXIST: File exists.")
 	else if(err == 18):
-		println2("EXDEV: Cross-device link.")
+		println2(c"EXDEV: Cross-device link.")
 	else if(err == 19):
-		println2("ENODEV: No such device.")
+		println2(c"ENODEV: No such device.")
 	else if(err == 20):
-		println2("ENOTDIR: Not a directory.")
+		println2(c"ENOTDIR: Not a directory.")
 	else if(err == 21):
-		println2("EISDIR: Is a directory.")
+		println2(c"EISDIR: Is a directory.")
 	else if(err == 22):
-		println2("EINVAL: Invalid argument.")
+		println2(c"EINVAL: Invalid argument.")
 	else if(err == 23):
-		println2("ENFILE: File table overflow.")
+		println2(c"ENFILE: File table overflow.")
 	else if(err == 24):
-		println2("EMFILE: Too many open files.")
+		println2(c"EMFILE: Too many open files.")
 	else if(err == 25):
-		println2("ENOTTY: Not a typewriter.")
+		println2(c"ENOTTY: Not a typewriter.")
 	else if(err == 26):
-		println2("ETXTBSY: Text file busy.")
+		println2(c"ETXTBSY: Text file busy.")
 	else if(err == 27):
-		println2("EFBIG: File too large.")
+		println2(c"EFBIG: File too large.")
 	else if(err == 28):
-		println2("ENOSPC: No space left on device.")
+		println2(c"ENOSPC: No space left on device.")
 	else if(err == 29):
-		println2("ESPIPE: Illegal seek.")
+		println2(c"ESPIPE: Illegal seek.")
 	else if(err == 30):
-		println2("EROFS: Read-only file system.")
+		println2(c"EROFS: Read-only file system.")
 	else if(err == 31):
-		println2("EMLINK: Too many links.")
+		println2(c"EMLINK: Too many links.")
 	else if(err == 32):
-		println2("EPIPE: Broken pipe.")
+		println2(c"EPIPE: Broken pipe.")
 	else if(err == 33):
-		println2("EDOM: Math argument out of domain of func.")
+		println2(c"EDOM: Math argument out of domain of func.")
 	else if(err == 34):
-		println2("ERANGE: Math result not representable.")
+		println2(c"ERANGE: Math result not representable.")
 	else if(err == 35):
-		println2("EDEADLK: Resource deadlock would occur")
+		println2(c"EDEADLK: Resource deadlock would occur")
 	else if(err == 36):
-		println2("ENAMETOOLONG: File name too long")
+		println2(c"ENAMETOOLONG: File name too long")
 	else if(err == 37):
-		println2("ENOLCK: No record locks available")
+		println2(c"ENOLCK: No record locks available")
 	else if(err == 38):
-		println2("ENOSYS: Invalid system call number")
+		println2(c"ENOSYS: Invalid system call number")
 	else if(err == 39):
-		println2("ENOTEMPTY: Directory not empty")
+		println2(c"ENOTEMPTY: Directory not empty")
 	else if(err == 40):
-		println2("ELOOP: Too many symbolic links encountered")
+		println2(c"ELOOP: Too many symbolic links encountered")
 	else if(err == 41):
-		println2("EWOULDBLOCK: Operation would block")
+		println2(c"EWOULDBLOCK: Operation would block")
 	else if(err == 42):
-		println2("ENOMSG: No message of desired type")
+		println2(c"ENOMSG: No message of desired type")
 	else if(err == 43):
-		println2("EIDRM: Identifier removed")
+		println2(c"EIDRM: Identifier removed")
 	else if(err == 44):
-		println2("ECHRNG: Channel number out of range")
+		println2(c"ECHRNG: Channel number out of range")
 	else if(err == 45):
-		println2("EL2NSYNC: Level 2 not synchronized")
+		println2(c"EL2NSYNC: Level 2 not synchronized")
 	else if(err == 46):
-		println2("EL3HLT: Level 3 halted")
+		println2(c"EL3HLT: Level 3 halted")
 	else if(err == 47):
-		println2("EL3RST: Level 3 reset")
+		println2(c"EL3RST: Level 3 reset")
 	else if(err == 48):
-		println2("ELNRNG: Link number out of range")
+		println2(c"ELNRNG: Link number out of range")
 	else if(err == 49):
-		println2("EUNATCH: Protocol driver not attached")
+		println2(c"EUNATCH: Protocol driver not attached")
 	else if(err == 50):
-		println2("ENOCSI: No CSI structure available")
+		println2(c"ENOCSI: No CSI structure available")
 	else if(err == 51):
-		println2("EL2HLT: Level 2 halted")
+		println2(c"EL2HLT: Level 2 halted")
 	else if(err == 52):
-		println2("EBADE: Invalid exchange")
+		println2(c"EBADE: Invalid exchange")
 	else if(err == 53):
-		println2("EBADR: Invalid request descriptor")
+		println2(c"EBADR: Invalid request descriptor")
 	else if(err == 54):
-		println2("EXFULL: Exchange full")
+		println2(c"EXFULL: Exchange full")
 	else if(err == 55):
-		println2("ENOANO: No anode")
+		println2(c"ENOANO: No anode")
 	else if(err == 56):
-		println2("EBADRQC: Invalid request code")
+		println2(c"EBADRQC: Invalid request code")
 	else if(err == 57):
-		println2("EBADSLT: Invalid slot")
+		println2(c"EBADSLT: Invalid slot")
 	else if(err == 58): 
-		println2("EDEADLOCK: EDEADLOCK")
+		println2(c"EDEADLOCK: EDEADLOCK")
 	else if(err == 59):
-		println2("EBFONT: Bad font file format")
+		println2(c"EBFONT: Bad font file format")
 	else if(err == 60):
-		println2("ENOSTR: Device not a stream")
+		println2(c"ENOSTR: Device not a stream")
 	else if(err == 61):
-		println2("ENODATA: No data available")
+		println2(c"ENODATA: No data available")
 	else if(err == 62):
-		println2("ETIME: Timer expired")
+		println2(c"ETIME: Timer expired")
 	else if(err == 63):
-		println2("ENOSR: Out of streams resources")
+		println2(c"ENOSR: Out of streams resources")
 	else if(err == 64):
-		println2("ENONET: Machine is not on the network")
+		println2(c"ENONET: Machine is not on the network")
 	else if(err == 65):
-		println2("ENOPKG: Package not installed")
+		println2(c"ENOPKG: Package not installed")
 	else if(err == 66):
-		println2("EREMOTE: Object is remote")
+		println2(c"EREMOTE: Object is remote")
 	else if(err == 67):
-		println2("ENOLINK: Link has been severed")
+		println2(c"ENOLINK: Link has been severed")
 	else if(err == 68):
-		println2("EADV: Advertise error")
+		println2(c"EADV: Advertise error")
 	else if(err == 69):
-		println2("ESRMNT: Srmount error")
+		println2(c"ESRMNT: Srmount error")
 	else if(err == 70):
-		println2("ECOMM: Communication error on send")
+		println2(c"ECOMM: Communication error on send")
 	else if(err == 71):
-		println2("EPROTO: Protocol error")
+		println2(c"EPROTO: Protocol error")
 	else if(err == 72):
-		println2("EMULTIHOP: Multihop attempted")
+		println2(c"EMULTIHOP: Multihop attempted")
 	else if(err == 73):
-		println2("EDOTDOT: RFS specific error")
+		println2(c"EDOTDOT: RFS specific error")
 	else if(err == 74):
-		println2("EBADMSG: Not a data message")
+		println2(c"EBADMSG: Not a data message")
 	else if(err == 75):
-		println2("EOVERFLOW: Value too large for defined data type")
+		println2(c"EOVERFLOW: Value too large for defined data type")
 	else if(err == 76):
-		println2("ENOTUNIQ: Name not unique on network")
+		println2(c"ENOTUNIQ: Name not unique on network")
 	else if(err == 77):
-		println2("EBADFD: File descriptor in bad state")
+		println2(c"EBADFD: File descriptor in bad state")
 	else if(err == 78):
-		println2("EREMCHG: Remote address changed")
+		println2(c"EREMCHG: Remote address changed")
 	else if(err == 79):
-		println2("ELIBACC: Can not access a needed shared library")
+		println2(c"ELIBACC: Can not access a needed shared library")
 	else if(err == 80):
-		println2("ELIBBAD: Accessing a corrupted shared library")
+		println2(c"ELIBBAD: Accessing a corrupted shared library")
 	else if(err == 81):
-		println2("ELIBSCN: .lib section in a.out corrupted")
+		println2(c"ELIBSCN: .lib section in a.out corrupted")
 	else if(err == 82):
-		println2("ELIBMAX: Attempting to link in too many shared libraries")
+		println2(c"ELIBMAX: Attempting to link in too many shared libraries")
 	else if(err == 83):
-		println2("ELIBEXEC: Cannot exec a shared library directly")
+		println2(c"ELIBEXEC: Cannot exec a shared library directly")
 	else if(err == 84):
-		println2("EILSEQ: Illegal byte sequence")
+		println2(c"EILSEQ: Illegal byte sequence")
 	else if(err == 85):
-		println2("ERESTART: Interrupted system call should be restarted")
+		println2(c"ERESTART: Interrupted system call should be restarted")
 	else if(err == 86):
-		println2("ESTRPIPE: Streams pipe error")
+		println2(c"ESTRPIPE: Streams pipe error")
 	else if(err == 87):
-		println2("EUSERS: Too many users")
+		println2(c"EUSERS: Too many users")
 	else if(err == 88):
-		println2("ENOTSOCK: Socket operation on non-socket")
+		println2(c"ENOTSOCK: Socket operation on non-socket")
 	else if(err == 89):
-		println2("EDESTADDRREQ: Destination address required")
+		println2(c"EDESTADDRREQ: Destination address required")
 	else if(err == 90):
-		println2("EMSGSIZE: Message too long")
+		println2(c"EMSGSIZE: Message too long")
 	else if(err == 91):
-		println2("EPROTOTYPE: Protocol wrong type for socket")
+		println2(c"EPROTOTYPE: Protocol wrong type for socket")
 	else if(err == 92):
-		println2("ENOPROTOOPT: Protocol not available")
+		println2(c"ENOPROTOOPT: Protocol not available")
 	else if(err == 93):
-		println2("EPROTONOSUPPORT: Protocol not supported")
+		println2(c"EPROTONOSUPPORT: Protocol not supported")
 	else if(err == 94):
-		println2("ESOCKTNOSUPPORT: Socket type not supported")
+		println2(c"ESOCKTNOSUPPORT: Socket type not supported")
 	else if(err == 95):
-		println2("EOPNOTSUPP: Operation not supported on transport endpoint")
+		println2(c"EOPNOTSUPP: Operation not supported on transport endpoint")
 	else if(err == 96):
-		println2("EPFNOSUPPORT: Protocol family not supported")
+		println2(c"EPFNOSUPPORT: Protocol family not supported")
 	else if(err == 97):
-		println2("EAFNOSUPPORT: Address family not supported by protocol")
+		println2(c"EAFNOSUPPORT: Address family not supported by protocol")
 	else if(err == 98):
-		println2("EADDRINUSE: Address already in use")
+		println2(c"EADDRINUSE: Address already in use")
 	else if(err == 99):
-		println2("EADDRNOTAVAIL: Cannot assign requested address")
+		println2(c"EADDRNOTAVAIL: Cannot assign requested address")
 	else if(err == 100):
-		println2("ENETDOWN: Network is down")
+		println2(c"ENETDOWN: Network is down")
 	else if(err == 101):
-		println2("ENETUNREACH: Network is unreachable")
+		println2(c"ENETUNREACH: Network is unreachable")
 	else if(err == 102):
-		println2("ENETRESET: Network dropped connection because of reset")
+		println2(c"ENETRESET: Network dropped connection because of reset")
 	else if(err == 103):
-		println2("ECONNABORTED: Software caused connection abort")
+		println2(c"ECONNABORTED: Software caused connection abort")
 	else if(err == 104):
-		println2("ECONNRESET: Connection reset by peer")
+		println2(c"ECONNRESET: Connection reset by peer")
 	else if(err == 105):
-		println2("ENOBUFS: No buffer space available")
+		println2(c"ENOBUFS: No buffer space available")
 	else if(err == 106):
-		println2("EISCONN: Transport endpoint is already connected")
+		println2(c"EISCONN: Transport endpoint is already connected")
 	else if(err == 107):
-		println2("ENOTCONN: Transport endpoint is not connected")
+		println2(c"ENOTCONN: Transport endpoint is not connected")
 	else if(err == 108):
-		println2("ESHUTDOWN: Cannot send after transport endpoint shutdown")
+		println2(c"ESHUTDOWN: Cannot send after transport endpoint shutdown")
 	else if(err == 109):
-		println2("ETOOMANYREFS: Too many references: cannot splice")
+		println2(c"ETOOMANYREFS: Too many references: cannot splice")
 	else if(err == 110):
-		println2("ETIMEDOUT: Connection timed out")
+		println2(c"ETIMEDOUT: Connection timed out")
 	else if(err == 111):
-		println2("ECONNREFUSED: Connection refused")
+		println2(c"ECONNREFUSED: Connection refused")
 	else if(err == 112):
-		println2("EHOSTDOWN: Host is down")
+		println2(c"EHOSTDOWN: Host is down")
 	else if(err == 113):
-		println2("EHOSTUNREACH: No route to host")
+		println2(c"EHOSTUNREACH: No route to host")
 	else if(err == 114):
-		println2("EALREADY: Operation already in progress")
+		println2(c"EALREADY: Operation already in progress")
 	else if(err == 115):
-		println2("EINPROGRESS: Operation now in progress")
+		println2(c"EINPROGRESS: Operation now in progress")
 	else if(err == 116):
-		println2("ESTALE: Stale file handle")
+		println2(c"ESTALE: Stale file handle")
 	else if(err == 117):
-		println2("EUCLEAN: Structure needs cleaning")
+		println2(c"EUCLEAN: Structure needs cleaning")
 	else if(err == 118):
-		println2("ENOTNAM: Not a XENIX named type file")
+		println2(c"ENOTNAM: Not a XENIX named type file")
 	else if(err == 119):
-		println2("ENAVAIL: No XENIX semaphores available")
+		println2(c"ENAVAIL: No XENIX semaphores available")
 	else if(err == 120):
-		println2("EISNAM: Is a named type file")
+		println2(c"EISNAM: Is a named type file")
 	else if(err == 121):
-		println2("EREMOTEIO: Remote I/O error")
+		println2(c"EREMOTEIO: Remote I/O error")
 	else if(err == 122):
-		println2("EDQUOT: Quota exceeded")
+		println2(c"EDQUOT: Quota exceeded")
 	else if(err == 123):
-		println2("ENOMEDIUM: No medium found")
+		println2(c"ENOMEDIUM: No medium found")
 	else if(err == 124):
-		println2("EMEDIUMTYPE: Wrong medium type")
+		println2(c"EMEDIUMTYPE: Wrong medium type")
 	else if(err == 125):
-		println2("ECANCELED: Operation Canceled")
+		println2(c"ECANCELED: Operation Canceled")
 	else if(err == 126):
-		println2("ENOKEY: Required key not available")
+		println2(c"ENOKEY: Required key not available")
 	else if(err == 127):
-		println2("EKEYEXPIRED: Key has expired")
+		println2(c"EKEYEXPIRED: Key has expired")
 	else if(err == 128):
-		println2("EKEYREVOKED: Key has been revoked")
+		println2(c"EKEYREVOKED: Key has been revoked")
 	else if(err == 129):
-		println2("EKEYREJECTED: Key was rejected by service")
+		println2(c"EKEYREJECTED: Key was rejected by service")
 	else if(err == 130):
-		println2("EOWNERDEAD: Owner died")
+		println2(c"EOWNERDEAD: Owner died")
 	else if(err == 131):
-		println2("ENOTRECOVERABLE: State not recoverable")
+		println2(c"ENOTRECOVERABLE: State not recoverable")
 	else if(err == 132):
-		println2("ERFKILL: Operation not possible due to RF-kill")
+		println2(c"ERFKILL: Operation not possible due to RF-kill")
 	else if(err == 133):
-		println2("EHWPOISON: Memory page has hardware error")
+		println2(c"EHWPOISON: Memory page has hardware error")
 	else:
-		println2("Unknown error number")
+		println2(c"Unknown error number")
 	exit(1)
 
 

@@ -6,19 +6,19 @@ void print_error_type(int type_index):
 	type_index = type_real(type_index)
 	print_error(type_get_name(type_index))
 	for int i in range(type_get_pointer_level(type_index)):
-		print_error("*")
+		print_error(c"*")
 
 
 # Warn that 'got' does not convert to 'want'; context names the construct
 # (assignment, initialization, return, ...)
 void warn_type_mismatch(char* context, int want, int got):
-	print_error("warning: ")
+	print_error(c"warning: ")
 	print_error(context)
-	print_error(" type mismatch: expected '")
+	print_error(c" type mismatch: expected '")
 	print_error_type(want)
-	print_error("', got '")
+	print_error(c"', got '")
 	print_error_type(got)
-	warning("'")
+	warning(c"'")
 
 
 int function_signature_matches_symbol(int signature_type, char* function_name):
@@ -62,13 +62,13 @@ int promote(int type):
 		return hash_finish_pending_read()
 	if (verbosity >= 1):
 		print2(itoa(line_number))
-		print2(": promote(")
+		print2(c": promote(")
 		print2(itoa(type))
-		print2("=")
+		print2(c"=")
 		print2(type_get_name(type))
-		print2(", '")
+		print2(c", '")
 		print2(last_identifier)
-		println2("')")
+		println2(c"')")
 
 	if (type_is_value(type)):
 		return type_real(type)
@@ -160,7 +160,7 @@ void coerce(int want, int got):
 
 	if (want_kind == 2):
 		if (word_size != 8):
-			error("float64 requires the x64 target")
+			error(c"float64 requires the x64 target")
 		if (got_kind == 1):
 			movd_xmm0_eax()
 			cvtss2sd_xmm0()

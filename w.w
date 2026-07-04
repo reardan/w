@@ -13,7 +13,7 @@ int main(int argc, int argv):
 	verbosity = -1
 	if (argc >= 2):
 		char** first_arg = argv + __word_size__
-		if (strcmp(*first_arg, "--debug") == 0):
+		if (strcmp(*first_arg, c"--debug") == 0):
 			return wdbg_main(argc, argv)
 	link(argc, argv)
 	return 0

@@ -26,7 +26,7 @@ void patch_jump_chain(int chain, int target):
 int while_statement():
 	int p1
 	int p2
-	if (accept("while") == 0):
+	if (accept(c"while") == 0):
 		return 0
 
 	int while_tab_level = tab_level

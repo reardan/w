@@ -46,11 +46,11 @@ void test_int_pointer_verbose():
 
 void setup_tokenizer():
 	file = open()
-	filename = "stdin"
+	filename = c"stdin"
 
 
 
 void test_nop():
 	setup_tokenizer()
-	char* bin = assemble("nop")
+	char* bin = assemble(c"nop")
 	assert_equal(bin[0], 144)  /* 0x90 */

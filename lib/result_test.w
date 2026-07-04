@@ -77,8 +77,8 @@ void test_result_name_available_for_locals():
 
 void test_result_pointer_payload():
 	char* payload = malloc(16)
-	strcpy(payload, "carried")
+	strcpy(payload, c"carried")
 	wresult* r = result_new_ok(payload)
 	char* got = result_take_or(r, 0)
-	assert_strings_equal("carried", got)
+	assert_strings_equal(c"carried", got)
 	free(got)

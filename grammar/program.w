@@ -29,17 +29,17 @@ void function_definition(int current_symbol):
 		number_of_args = 1
 	int param_count = 0
 	int function_start = codepos /* keep track of start for length comp */
-	while (accept(")") == 0):
+	while (accept(c")") == 0):
 		param_count = param_count + 1
 		number_of_args = number_of_args + 1
 		int type = type_name()
 		if (type_is_array(type)):
-			error("fixed array parameter is not implemented; use T[] instead")
+			error(c"fixed array parameter is not implemented; use T[] instead")
 		# Record the declared type so call sites can check arguments
 		if (param_count <= sym_max_param_slots()):
 			save_int(table + current_symbol + 22 + (param_count << 2), type)
 		/* this seems stupid, you could just have (typename) with no identifier */
-		if (peek(")") == 0):
+		if (peek(c")") == 0):
 			sym_declare(token, type, 'A', number_of_args, 1)
 			pointer_indirection = 0
 			get_token()
@@ -50,13 +50,13 @@ void function_definition(int current_symbol):
 		if (arg_words > 1):
 			number_of_args = number_of_args + arg_words - 1
 
-		accept(",") /* ignore trailing comma */
+		accept(c",") /* ignore trailing comma */
 
 	# Record the arity for call-site checks (definitions overwrite
 	# whatever an earlier prototype recorded)
 	save_int(table + current_symbol + 22, param_count)
 
-	if (accept(";") == 0):
+	if (accept(c";") == 0):
 		sym_define_global(current_symbol)
 		current_function_symbol = current_symbol
 		enclosing_tab_level = 0
@@ -115,11 +115,11 @@ void program():
 
 		# Next handle aggregate declarations
 		while(struct_declaration()):
-			print_int_v1("struct_declaration=1", 1)
+			print_int_v1(c"struct_declaration=1", 1)
 		while(union_declaration()):
-			print_int_v1("union_declaration=1", 1)
+			print_int_v1(c"union_declaration=1", 1)
 		while(enum_declaration()):
-			print_int_v1("enum_declaration=1", 1)
+			print_int_v1(c"enum_declaration=1", 1)
 
 		# Shared-library declarations (c_lib / extern)
 		while (extern_statement()) {}
@@ -133,11 +133,11 @@ void program():
 		int decl_type = type_name()
 		current_symbol = sym_declare_global(token, decl_type, 1)
 		get_token()
-		if (accept(";")):
+		if (accept(c";")):
 			sym_define_global(current_symbol)
 			emit_global_storage(decl_type)
 
-		else if (accept("(")):
+		else if (accept(c"(")):
 			function_definition(current_symbol)
 
 		else:

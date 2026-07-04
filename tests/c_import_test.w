@@ -1,8 +1,8 @@
 import lib.testing
 
-c_import "libc.so.6" "tests/c_import_fixture.h"
-c_import "libc.so.6" "/usr/include/x86_64-linux-gnu/bits/types/FILE.h"
-c_import "libc.so.6" "tests/c_import_libc_fixture.h"
+c_import "libc.so.6" c"tests/c_import_fixture.h"
+c_import "libc.so.6" c"/usr/include/x86_64-linux-gnu/bits/types/FILE.h"
+c_import "libc.so.6" c"tests/c_import_libc_fixture.h"
 
 
 void test_c_import_typedef():
@@ -39,4 +39,4 @@ void test_c_import_enum_values():
 
 
 void test_c_import_extern_function():
-	assert1(puts("c_import puts OK") >= 0)
+	assert1(puts(c"c_import puts OK") >= 0)

@@ -45,13 +45,13 @@ char* path_join(char* left, char* right):
 char* path_basename(char* path):
 	int length = strlen(path)
 	if (length == 0):
-		return strclone(".")
+		return strclone(c".")
 
 	while ((length > 1) && (path[length - 1] == '/')):
 		length = length - 1
 
 	if ((length == 1) && (path[0] == '/')):
-		return strclone("/")
+		return strclone(c"/")
 
 	int end = length
 	int start = end - 1
@@ -65,26 +65,26 @@ char* path_basename(char* path):
 char* path_dirname(char* path):
 	int length = strlen(path)
 	if (length == 0):
-		return strclone(".")
+		return strclone(c".")
 
 	while ((length > 1) && (path[length - 1] == '/')):
 		length = length - 1
 
 	if ((length == 1) && (path[0] == '/')):
-		return strclone("/")
+		return strclone(c"/")
 
 	int slash = length - 1
 	while ((slash >= 0) && (path[slash] != '/')):
 		slash = slash - 1
 
 	if (slash < 0):
-		return strclone(".")
+		return strclone(c".")
 
 	while ((slash > 0) && (path[slash - 1] == '/')):
 		slash = slash - 1
 
 	if (slash == 0):
-		return strclone("/")
+		return strclone(c"/")
 
 	return path_clone_range(path, slash)
 

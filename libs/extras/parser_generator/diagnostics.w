@@ -53,19 +53,19 @@ pg_diagnostic* pg_diagnostics_get(pg_diagnostics* diagnostics, int index):
 
 void pg_diagnostic_print(pg_diagnostic* diagnostic):
 	print2(diagnostic.filename)
-	print2(":")
+	print2(c":")
 	print2(itoa(diagnostic.line))
-	print2(":")
+	print2(c":")
 	print2(itoa(diagnostic.column))
-	print2(": ")
+	print2(c": ")
 	print2(diagnostic.message)
 	if (strlen(diagnostic.expected) > 0):
-		print2(": expected ")
+		print2(c": expected ")
 		print2(diagnostic.expected)
 	if (strlen(diagnostic.found) > 0):
-		print2(", found ")
+		print2(c", found ")
 		print2(diagnostic.found)
-	println2("")
+	println2(c"")
 
 
 void pg_diagnostics_print(pg_diagnostics* diagnostics):

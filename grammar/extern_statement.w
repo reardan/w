@@ -16,37 +16,37 @@ import code_generator.ffi
 
 
 int extern_statement():
-	if (accept("c_lib")):
+	if (accept(c"c_lib")):
 		if (token[0] != '"'):
-			error("c_lib expects a \"soname\" string literal")
+			error(c"c_lib expects a \"soname\" string literal")
 		int len = process_string_literal()
 		token[len] = 0
 		dyn_add_lib(token)
 		get_token()
 		return 1
 
-	if (accept("extern")):
+	if (accept(c"extern")):
 		# type_name() consumes the return type and leaves the name in token
 		int ret_type = type_name()
 		char* name = strclone(token)
 		int sym = sym_declare_global(name, ret_type, 2)  /* function symbol */
 		get_token()
-		expect("(")
+		expect(c"(")
 
 		# Parse the parameter list for arity/type checks. Count stack words
 		# (one per scalar/pointer arg); struct-by-value params are not
 		# supported across the C boundary.
 		int saved_table = table_pos
 		int param_count = 0
-		while (accept(")") == 0):
+		while (accept(c")") == 0):
 			param_count = param_count + 1
 			int ptype = type_name()
 			if (param_count <= sym_max_param_slots()):
 				save_int(table + sym + 22 + (param_count << 2), ptype)
 			# Skip the optional parameter name
-			if (peek(")") == 0):
+			if (peek(c")") == 0):
 				get_token()
-			accept(",")
+			accept(c",")
 		# Parameters need no symbols of their own (no body is emitted)
 		table_pos = saved_table
 		save_int(table + sym + 22, param_count)

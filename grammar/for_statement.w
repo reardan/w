@@ -56,9 +56,9 @@ void for_iter_call(char* fn_name, int container_slot, int cursor_slot):
 
 
 void for_iter_error_prefix(char* container_name, char* fn_name):
-	print_error("type '")
+	print_error(c"type '")
 	print_error(container_name)
-	print_error("' is not iterable: ")
+	print_error(c"' is not iterable: ")
 	print_error(fn_name)
 
 
@@ -66,43 +66,43 @@ void for_iter_require(char* container_name, char* fn_name, int expected_args, in
 	int symbol = sym_lookup(fn_name)
 	if (symbol < 0):
 		for_iter_error_prefix(container_name, fn_name)
-		error(" not found")
+		error(c" not found")
 	if (load_int(table + symbol + 10) != 2):
 		for_iter_error_prefix(container_name, fn_name)
-		error(" is not a function")
+		error(c" is not a function")
 	if (sym_num_args(symbol) != expected_args):
 		for_iter_error_prefix(container_name, fn_name)
-		error(" has wrong arity")
+		error(c" has wrong arity")
 
 	int return_type = load_int(table + symbol + 6)
 	if ((type_get_size(return_type) == 0) | (type_stack_words(return_type) != 1)):
 		for_iter_error_prefix(container_name, fn_name)
-		error(" must return a word-sized value")
+		error(c" must return a word-sized value")
 
 	int param_type = sym_param_type(symbol, 0)
 	if (type_unqualified(param_type) != type_unqualified(container_type)):
 		for_iter_error_prefix(container_name, fn_name)
-		error(" first parameter must match the iterable type")
+		error(c" first parameter must match the iterable type")
 
 	if (expected_args == 2):
 		param_type = sym_param_type(symbol, 1)
-		if (type_unqualified(param_type) != type_lookup("int")):
+		if (type_unqualified(param_type) != type_lookup(c"int")):
 			for_iter_error_prefix(container_name, fn_name)
-			error(" second parameter must be int")
+			error(c" second parameter must be int")
 
 
 void for_iter_require_struct_pointer(int container_type):
 	if (type_get_pointer_level(container_type) != 1):
-		print_error("type '")
+		print_error(c"type '")
 		print_error_type(container_type)
-		print_error("' is not iterable: ")
-		error("expected a pointer to a container struct")
+		print_error(c"' is not iterable: ")
+		error(c"expected a pointer to a container struct")
 	int base_type = type_lookup_previous_pointer(container_type)
 	if ((base_type < 0) | (type_num_args(base_type) == 0)):
-		print_error("type '")
+		print_error(c"type '")
 		print_error_type(container_type)
-		print_error("' is not iterable: ")
-		error("expected a pointer to a container struct")
+		print_error(c"' is not iterable: ")
+		error(c"expected a pointer to a container struct")
 
 
 # The "in range" body of for_statement; "for", the loop variable and
@@ -112,20 +112,20 @@ void for_range_loop(int for_var, int for_tab_level):
 	int p1
 	int p2
 
-	int has_parens = accept("(")
+	int has_parens = accept(c"(")
 	int num_range_args = 1
 	promote(expression())
 	push_eax()
 	stack_pos = stack_pos + 1
-	while (accept(",")):
+	while (accept(c",")):
 		promote(expression())
 		push_eax()
 		stack_pos = stack_pos + 1
 		num_range_args = num_range_args + 1
 	if (has_parens):
-		expect(")")
+		expect(c")")
 	if (num_range_args > 3):
-		error("range() takes 1-3 arguments")
+		error(c"range() takes 1-3 arguments")
 
 	# With 2+ arguments the first one is the start: copy it into the loop var
 	int end_slot = for_var + 1
@@ -195,7 +195,7 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	if (type_is_map(container_type)):
 		key_type = type_map_key_type(container_type)
 	if (types_compatible_with_expression(loop_var_type, key_type) == 0):
-		warn_type_mismatch("for loop variable", loop_var_type, key_type)
+		warn_type_mismatch(c"for loop variable", loop_var_type, key_type)
 
 	# hidden slot: the container pointer
 	push_eax()
@@ -203,7 +203,7 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	int container_slot = stack_pos
 
 	# hidden slot: cursor = iter_begin(container)
-	for_iter_call("__w_map_iter_begin", container_slot, 0)
+	for_iter_call(c"__w_map_iter_begin", container_slot, 0)
 	push_eax()
 	stack_pos = stack_pos + 1
 	int cursor_slot = stack_pos
@@ -217,11 +217,11 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	loop_depth = loop_depth + 1
 
 	p1 = codepos
-	for_iter_call("__w_map_iter_done", container_slot, cursor_slot)
+	for_iter_call(c"__w_map_iter_done", container_slot, cursor_slot)
 	jmp_nonzero_int32(1337014)
 	p2 = codepos
 
-	for_iter_call("__w_map_iter_key", container_slot, cursor_slot)
+	for_iter_call(c"__w_map_iter_key", container_slot, cursor_slot)
 	coerce(loop_var_type, key_type)
 	store_stack_var((stack_pos - for_var) << word_size_log2)
 
@@ -229,7 +229,7 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	statement()
 
 	int increment_target = codepos
-	for_iter_call("__w_map_iter_next", container_slot, cursor_slot)
+	for_iter_call(c"__w_map_iter_next", container_slot, cursor_slot)
 	store_stack_var((stack_pos - cursor_slot) << word_size_log2)
 
 	jmp_int32(1337015)
@@ -264,11 +264,11 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type):
 	for_iter_require_struct_pointer(container_type)
 
 	char* container_name = type_get_name(container_type)
-	char* iter_prefix = strjoin(container_name, "_iter_")
-	char* begin_name = strjoin(iter_prefix, "begin")
-	char* done_name = strjoin(iter_prefix, "done")
-	char* next_name = strjoin(iter_prefix, "next")
-	char* value_name = strjoin(iter_prefix, "value")
+	char* iter_prefix = strjoin(container_name, c"_iter_")
+	char* begin_name = strjoin(iter_prefix, c"begin")
+	char* done_name = strjoin(iter_prefix, c"done")
+	char* next_name = strjoin(iter_prefix, c"next")
+	char* value_name = strjoin(iter_prefix, c"value")
 	free(iter_prefix)
 	for_iter_require(container_name, begin_name, 1, container_type)
 	for_iter_require(container_name, done_name, 2, container_type)
@@ -341,7 +341,7 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type):
 
 
 int for_statement():
-	if (accept("for") == 0):
+	if (accept(c"for") == 0):
 		return 0
 
 	int for_tab_level = tab_level
@@ -349,13 +349,13 @@ int for_statement():
 	mov_eax_int(0) /* default start value for the loop variable */
 	int type = variable_declaration()
 	if (type < 0):
-		error("type not found in for_statement loop variable")
+		error(c"type not found in for_statement loop variable")
 	if (type_stack_words(type) != 1):
-		error("for loop variable must be a word-sized type")
+		error(c"for loop variable must be a word-sized type")
 	int for_var = stack_pos
 
-	expect("in")
-	if (accept("range")):
+	expect(c"in")
+	if (accept(c"range")):
 		for_range_loop(for_var, for_tab_level)
 	else:
 		for_container_loop(for_var, for_tab_level, type)

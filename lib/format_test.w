@@ -3,21 +3,21 @@ import lib.format
 
 
 void test_printf_smoke():
-	printf("printf smoke test\n")
-	printf2("%d plus %d", 1, 2)
-	printf("\n")
+	printf(c"printf smoke test\n")
+	printf2(c"%d plus %d", 1, 2)
+	printf(c"\n")
 
 
 void test_vfprintf_to_file():
-	char* path = "/tmp/w_format_test.txt"
+	char* path = c"/tmp/w_format_test.txt"
 	/* O_WRONLY|O_CREAT|O_TRUNC */
 	int fd = open(path, 577, 493)
-	asserts("could not create temp file", fd >= 0)
+	asserts(c"could not create temp file", fd >= 0)
 	int* args = malloc(12)
 	args[0] = 42
-	args[1] = "abc"
+	args[1] = c"abc"
 	args[2] = 'z'
-	vfprintf(fd, "d=%d s=%s c=%c %%", args, 3)
+	vfprintf(fd, c"d=%d s=%s c=%c %%", args, 3)
 	free(args)
 	close(fd)
 
@@ -26,16 +26,16 @@ void test_vfprintf_to_file():
 	int n = read(fd, buf, 99)
 	buf[n] = 0
 	close(fd)
-	assert_strings_equal("d=42 s=abc c=z %", buf)
+	assert_strings_equal(c"d=42 s=abc c=z %", buf)
 	free(buf)
 
 
 void test_hex_verb():
-	char* path = "/tmp/w_format_test.txt"
+	char* path = c"/tmp/w_format_test.txt"
 	int fd = open(path, 577, 493)
 	int* args = malloc(4)
 	args[0] = 255
-	vfprintf(fd, "%x", args, 1)
+	vfprintf(fd, c"%x", args, 1)
 	free(args)
 	close(fd)
 
@@ -44,11 +44,11 @@ void test_hex_verb():
 	int n = read(fd, buf, 99)
 	buf[n] = 0
 	close(fd)
-	assert_strings_equal("0x000000ff", buf)
+	assert_strings_equal(c"0x000000ff", buf)
 	free(buf)
 
 
 void test_ftoa():
 	char* got = ftoa(-2.5)
-	assert_strings_equal("-2.500000", got)
+	assert_strings_equal(c"-2.500000", got)
 	free(got)

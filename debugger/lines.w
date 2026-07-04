@@ -42,7 +42,7 @@ int dbg_line_stack(int i):
 
 char* dbg_file_name(int file_index):
 	if ((file_index < 0) | (file_index >= debug_file_count)):
-		return "?"
+		return c"?"
 	return load_int(debug_files + file_index * 4)
 
 
@@ -93,14 +93,14 @@ int dbg_entry_for_line(int file_index, int line):
 # Print "file:line" for an absolute address (no newline).
 void dbg_print_file_line(int addr):
 	if (dbg_in_debuggee(addr) == 0):
-		print("outside the debuggee")
+		print(c"outside the debuggee")
 		return;
 	int i = dbg_find_line(addr - code_offset)
 	if (i < 0):
-		print("no line info")
+		print(c"no line info")
 		return;
 	print(dbg_file_name(dbg_line_file(i)))
-	print(":")
+	print(c":")
 	char* digits = itoa(dbg_line_line(i))
 	print(digits)
 	free(digits)
@@ -112,7 +112,7 @@ void dbg_print_file_line(int addr):
 void dbg_print_source_range(char* path, int first, int last, int current):
 	int f = open(path, 0, 0)
 	if (f < 0):
-		print("cannot open ")
+		print(c"cannot open ")
 		println(path)
 		return;
 	if (first < 1):
@@ -122,13 +122,13 @@ void dbg_print_source_range(char* path, int first, int last, int current):
 	while ((c != -1) & (line <= last)):
 		if (line >= first):
 			if (line == current):
-				print("-> ")
+				print(c"-> ")
 			else:
-				print("   ")
+				print(c"   ")
 			char* digits = itoa(line)
 			print(digits)
 			free(digits)
-			print("\x09")
+			print(c"\x09")
 		while ((c != 10) & (c != -1)):
 			if (line >= first):
 				put_char(c)

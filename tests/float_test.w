@@ -60,5 +60,5 @@ void test_float32_params_and_returns():
 
 void test_ftoa():
 	char* s = ftoa(3.25)
-	assert_strings_equal("3.250000", s)
+	assert_strings_equal(c"3.250000", s)
 	free(s)
