@@ -6,8 +6,43 @@ stored as words in the MVP; small scalar values occupy the low bits. String
 keys are cloned so map/set ownership does not depend on literal or stack
 lifetimes.
 */
-import lib.lib
-import lib.assert
+import lib.memory
+
+
+int __w_strlen(char* c):
+	int length = 0
+	while(c[length]):
+		length = length + 1
+	return length
+
+
+char* __w_strcpy(char *dst, char *src):
+	while (src[0]):
+		dst[0] = src[0]
+		src = src + 1
+		dst = dst + 1
+	dst[0] = 0
+	return dst
+
+
+int __w_strcmp(char* s1, char* s2):
+	int i = 0
+	while (s1[i] == s2[i]):
+		if (s1[i] == 0):
+			return 0
+		i = i + 1
+	return s1[i] - s2[i]
+
+
+char* __w_strclone(char *c):
+	char *clone = malloc(__w_strlen(c) + 1)
+	__w_strcpy(clone, c)
+	return clone
+
+
+void __w_assert(int condition):
+	if (condition == 0):
+		exit(1)
 
 
 struct __w_hash_table:
@@ -43,7 +78,7 @@ int __w_hash_bytes(int data, int length):
 
 int __w_hash_key_hash(int kind, int key):
 	if (kind == __w_hash_key_cstr()):
-		return __w_hash_bytes(key, strlen(key))
+		return __w_hash_bytes(key, __w_strlen(key))
 	if (kind == __w_hash_key_string()):
 		return __w_hash_bytes(load_int(key), load_int(key + __word_size__))
 	return key * 2654435761
@@ -66,7 +101,7 @@ int __w_hash_string_equal(int left, int right):
 
 int __w_hash_key_equal(int kind, int left, int right):
 	if (kind == __w_hash_key_cstr()):
-		return strcmp(left, right) == 0
+		return __w_strcmp(left, right) == 0
 	if (kind == __w_hash_key_string()):
 		return __w_hash_string_equal(left, right)
 	return left == right
@@ -89,7 +124,7 @@ int __w_hash_clone_string(int key):
 
 int __w_hash_key_clone(int kind, int key):
 	if (kind == __w_hash_key_cstr()):
-		return strclone(key)
+		return __w_strclone(key)
 	if (kind == __w_hash_key_string()):
 		return __w_hash_clone_string(key)
 	return key
@@ -195,7 +230,7 @@ int __w_map_contains(__w_hash_table* table, int key):
 
 int __w_map_get(__w_hash_table* table, int key):
 	int i = __w_hash_table_slot(table, key)
-	assert1(table.states[i] == 1)
+	__w_assert(table.states[i] == 1)
 	return table.values[i]
 
 
@@ -236,8 +271,8 @@ int __w_map_iter_next(__w_hash_table* table, int cursor):
 
 
 int __w_map_iter_key(__w_hash_table* table, int cursor):
-	assert1(cursor < table.capacity)
-	assert1(table.states[cursor] == 1)
+	__w_assert(cursor < table.capacity)
+	__w_assert(table.states[cursor] == 1)
 	return table.keys[cursor]
 
 
