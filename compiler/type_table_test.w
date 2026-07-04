@@ -174,12 +174,12 @@ void test_pointer_level():
 # literals land.
 void test_types_compatible_strictness():
 	push_basic_types()
-	int int_type = type_lookup("int")
-	int char_type = type_lookup("char")
-	int char_ptr = type_lookup_pointer("char", 1)
-	int int_ptr = type_lookup_pointer("int", 1)
-	int void_ptr = type_lookup_pointer("void", 1)
-	int char_ptr_ptr = type_lookup_pointer("char", 2)
+	int int_type = type_lookup(c"int")
+	int char_type = type_lookup(c"char")
+	int char_ptr = type_lookup_pointer(c"char", 1)
+	int int_ptr = type_lookup_pointer(c"int", 1)
+	int void_ptr = type_lookup_pointer(c"void", 1)
+	int char_ptr_ptr = type_lookup_pointer(c"char", 2)
 
 	# int <-> pointer requires an explicit cast now
 	assert_equal(0, types_compatible(char_ptr, int_type))

@@ -74,12 +74,12 @@ void test_empty_pop():
 
 
 void test_join():
-	push(c"Hey there!")
-	push(c"How's it going?")
-	push(c"Well! And you?")
-	push(c"Amazing!")
-	push(c"Have a great day!")
-	push(c"You too!")
+	push(cast(int, c"Hey there!"))
+	push(cast(int, c"How's it going?"))
+	push(cast(int, c"Well! And you?"))
+	push(cast(int, c"Amazing!"))
+	push(cast(int, c"Have a great day!"))
+	push(cast(int, c"You too!"))
 	println(join(c", "))
 	assert_strings_equal(c"Hey there! How's it going? Well! And you? Amazing! Have a great day! You too!", join(c" "))
 

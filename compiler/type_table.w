@@ -653,8 +653,6 @@ int types_compatible(int want, int got):
 		return 1
 	if (type_is_string(want) | type_is_string(got)):
 		return 0
-	if ((got == 3) | (got == 4) | (got == 1)):
-		return 1
 	if (type_is_map(want) & type_is_map(got)):
 		return (type_unqualified(type_map_key_type(want)) == type_unqualified(type_map_key_type(got))) &
 				(type_unqualified(type_map_value_type(want)) == type_unqualified(type_map_value_type(got)))
