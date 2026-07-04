@@ -248,6 +248,70 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	stack_pos = stack_pos - 2
 
 
+void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
+	int decode_symbol = sym_lookup(c"utf8_decode")
+	int next_symbol = sym_lookup(c"utf8_next")
+	if ((decode_symbol < 0) | (next_symbol < 0)):
+		error(c"string iteration requires import lib.utf8")
+	if (types_compatible_with_expression(loop_var_type, type_lookup(c"int")) == 0):
+		warn_type_mismatch(c"for loop variable", loop_var_type, type_lookup(c"int"))
+
+	push_eax()
+	stack_pos = stack_pos + 1
+	int string_slot = stack_pos
+
+	mov_eax_int(0)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int cursor_slot = stack_pos
+
+	int outer_break = loop_break_chain
+	int outer_continue = loop_continue_chain
+	int outer_stack = loop_stack_pos
+	loop_break_chain = 0
+	loop_continue_chain = 0
+	loop_stack_pos = stack_pos
+	loop_depth = loop_depth + 1
+
+	int p1 = codepos
+	mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus((stack_pos - string_slot) << word_size_log2)
+	add_eax_int32(word_size)
+	promote_eax()
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	alu_cmp_set(0x9c)
+	jmp_zero_int32(1337016)
+	int p2 = codepos
+
+	for_iter_call(c"utf8_decode", string_slot, cursor_slot)
+	coerce(loop_var_type, type_lookup(c"int"))
+	store_stack_var((stack_pos - for_var) << word_size_log2)
+
+	enclosing_tab_level = for_tab_level
+	statement()
+
+	int increment_target = codepos
+	for_iter_call(c"utf8_next", string_slot, cursor_slot)
+	store_stack_var((stack_pos - cursor_slot) << word_size_log2)
+
+	jmp_int32(1337017)
+	save_int32(code + codepos - 4, p1 - codepos)
+	save_int32(code + p2 - 4, codepos - p2)
+	patch_jump_chain(loop_break_chain, codepos)
+	patch_jump_chain(loop_continue_chain, increment_target)
+
+	loop_break_chain = outer_break
+	loop_continue_chain = outer_continue
+	loop_stack_pos = outer_stack
+	loop_depth = loop_depth - 1
+
+	be_pop(2)
+	stack_pos = stack_pos - 2
+
+
 # The "in <container>" body of for_statement; "for", the loop variable
 # and "in" have already been consumed. Emits the cursor-protocol loop
 # described in the header comment.
@@ -260,6 +324,9 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type):
 	container_type = type_unqualified(container_type)
 	if (type_is_map(container_type) | type_is_set(container_type)):
 		for_hash_container_loop(for_var, for_tab_level, loop_var_type, container_type)
+		return;
+	if (type_is_string(container_type)):
+		for_string_loop(for_var, for_tab_level, loop_var_type)
 		return;
 	for_iter_require_struct_pointer(container_type)
 
