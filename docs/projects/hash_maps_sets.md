@@ -80,10 +80,19 @@ map/set syntax is allowed in tests and runtime consumers after `bin/wv2` is
 built, but not in `compiler/`, `grammar/`, or `code_generator/` sources before
 a seed update.
 
+## Aggregate values
+
+Struct values are stored by value in byte-addressed slots (see
+`docs/projects/typed_containers.md`): writes copy from the source struct's
+address via `__w_map_set_bytes`, reads return the stored bytes' address via
+`__w_map_get_addr`. Scalar values keep the original one-word slots. Fixed
+arrays and structs containing fixed-array fields are rejected as value
+types because their descriptors point into the enclosing object.
+
 ## Deferred work
 
-- Full aggregate value copying for values larger than one word.
 - Contextual bare literals.
 - Rich pseudo-methods such as `get`, `get_default`, `discard`, and `clear`.
 - Pair iteration after W has tuple or multiple loop-variable support.
+- Struct keys (values are done).
 - Migrating compiler symbol/type tables to built-in maps.

@@ -27,6 +27,7 @@ Compiler
 		Bool, const, type aliases, typed function pointers, enums and unions
 		Struct return-by-value
 		Built-in map and set syntax/runtime
+		Built-in typed list[T] with struct elements and struct map values
 		Float32/float64 support (float64 x64-only)
 		X64 int64/uint64 support
 		C header import for typedefs, aggregates, enums, macro constants and fixed-arity prototypes
@@ -35,9 +36,9 @@ Compiler
 		Built-in debugger
 
 	Remaining
-		Typed containers or generics
+		True generics/templates (built-in typed containers landed instead)
 		Generators / yield
-		Richer map/list ergonomics (delete/get/defaults, array_list literals/indexing)
+		Richer map/list ergonomics (delete/get/defaults, list insert/remove)
 		Float16 / bfloat16
 		C import varargs, extern data and float/double ABI shims
 		Structured diagnostics / formatter / editor tooling

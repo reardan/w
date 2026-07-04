@@ -107,8 +107,10 @@ Implemented and covered by tests:
   structs with mixed-width fields, by-value struct parameters and returns,
   `type` aliases, `const`, `enum`, `union`, typed function pointers
   (`fn(T, ...) -> U`), fixed local/global/struct arrays (`T[N]`), slices
-  (`T[]`), UTF-8 `string`, built-in `map[K, V]` and `set[K]`, `new type(args)`
-  constructor-style allocation, and `new T[n]` heap arrays.
+  (`T[]`), UTF-8 `string`, built-in `map[K, V]`, `set[K]` and growable
+  `list[T]` (struct values stored by value; see
+  `docs/projects/typed_containers.md`), `new type(args)` constructor-style
+  allocation, and `new T[n]` heap arrays.
 - Floating point: `float`/`float32` on the default target, `float64` on x64
   (plus x64 float32 narrowing coverage), decimal literals with exponent forms,
   arithmetic/comparisons, int<->float coercions, function parameters/returns,
@@ -117,13 +119,15 @@ Implemented and covered by tests:
   (with chaining), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
   address/deref, `[]` indexing, typed buffer slicing (`start:end`), struct
   field access, method-call sugar (`p.move()` -> `point_move(&p, ...)`),
-  map/set indexing and membership with `in`, explicit `cast(T, expr)`, hex
-  literals, UTF-8 `"..."` literals with `\u`/`\U` escapes, and explicit
+  map/set indexing and membership with `in`, `list[T]` indexing,
+  `l.push(v)`/`l.pop()` and container `.length`, explicit `cast(T, expr)`,
+  hex literals, UTF-8 `"..."` literals with `\u`/`\U` escapes, and explicit
   legacy C strings via `c"..."`.
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
-  (1–3 args), `for x in <container>` over any struct-pointer type providing
-  the four cursor functions `T_iter_begin/done/next/value` (implemented by
-  `array_list`, `linked_list` and `hash_map`, which yields keys; see
+  (1–3 args), `for x in <container>` over built-in lists/maps/sets and any
+  struct-pointer type providing the four cursor functions
+  `T_iter_begin/done/next/value` (implemented by `array_list`,
+  `linked_list` and `hash_map`, which yields keys; see
   `docs/projects/iteration.md`), `for int cp in string` codepoint iteration,
   `break`, `continue`, `return`, `debugger` (emits `int3`).
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
