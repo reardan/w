@@ -15,6 +15,8 @@ int main(int argc, int argv):
 		char** first_arg = argv + __word_size__
 		if (strcmp(*first_arg, c"--debug") == 0):
 			return wdbg_main(argc, argv)
+		if (strcmp(*first_arg, c"check") == 0):
+			return check_main(argc, argv)
 	link(argc, argv)
 	return 0
 

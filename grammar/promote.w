@@ -4,19 +4,19 @@ char *last_identifier
 # Print a type's name followed by its pointer stars, e.g. "char**"
 void print_error_type(int type_index):
 	type_index = type_real(type_index)
-	print_error(str_from_cstr(type_get_name(type_index)))
+	diag_part(type_get_name(type_index))
 	for int i in range(type_get_pointer_level(type_index)):
-		print_error(str_from_cstr(c"*"))
+		diag_part(c"*")
 
 
 # Warn that 'got' does not convert to 'want'; context names the construct
 # (assignment, initialization, return, ...)
 void warn_type_mismatch(char* context, int want, int got):
-	print_error(str_from_cstr(c"warning: "))
-	print_error(str_from_cstr(context))
-	print_error(str_from_cstr(c" type mismatch: expected '"))
+	diag_part(c"warning: ")
+	diag_part(context)
+	diag_part(c" type mismatch: expected '")
 	print_error_type(want)
-	print_error(str_from_cstr(c"', got '"))
+	diag_part(c"', got '")
 	print_error_type(got)
 	warning(c"'")
 

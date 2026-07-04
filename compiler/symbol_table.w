@@ -161,8 +161,8 @@ void sym_define_global(int current_symbol):
 	int t = current_symbol
 	int v = codepos + code_offset
 	if (table[t + 1] != 'U'):
-		print_error(c"symbol redefined: '")
-		print_error(last_global_declaration)
+		diag_part(c"symbol redefined: '")
+		diag_part(last_global_declaration)
 		error(c"'")
 	i = load_int(table + t + 2) - code_offset
 	while (i):
@@ -206,8 +206,8 @@ int sym_param_type(int t, int i):
 int sym_get_value(char *s):
 	int t
 	if ((t = sym_lookup(s)) < 0):
-		print_error(c"Cannot find symbol: '")
-		print_error(token)
+		diag_part(c"Cannot find symbol: '")
+		diag_part(token)
 		error(c"'")
 	emit(5, c"\xb8....") /* mov $n,%eax */
 	save_int(code + codepos - 4, load_int(table + t + 2))
@@ -240,10 +240,14 @@ int sym_get_value(char *s):
 		k = (stack_pos + number_of_args - table[t + 2] + 1) << word_size_log2
 
 	else:
-		print_error(c"Error getting symbol value for '")
-		print_error(s)
-		print_error(c"', table[t + 1]='")
-		put_error(table[t + 1])
+		diag_part(c"Error getting symbol value for '")
+		diag_part(s)
+		diag_part(c"', table[t + 1]='")
+		char* visibility = malloc(2)
+		visibility[0] = table[t + 1]
+		visibility[1] = 0
+		diag_part(visibility)
+		free(visibility)
 		error(c"'")
 
 	if ((scope_type == 'L') | (scope_type == 'A')):

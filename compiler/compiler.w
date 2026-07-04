@@ -24,6 +24,7 @@ int compile_attempt(char* fn):
 		file_not_found_error()
 		return 0
 	line_number = 0
+	column_number = 0
 	tab_level = 0
 	nextc = get_character()
 	get_token()
@@ -98,6 +99,9 @@ void compile_save(char* fn):
 	char* old_filename = filename
 	int old_file = file
 	int old_line_number = line_number + 1
+	int old_column_number = column_number
+	int old_diag_token_line = diag_token_line
+	int old_diag_token_column = diag_token_column
 	int old_tab_level = tab_level
 
 	if (verbosity >= 0):
@@ -109,23 +113,26 @@ void compile_save(char* fn):
 	filename = old_filename
 	file = old_file
 	line_number = old_line_number
+	column_number = old_column_number
+	diag_token_line = old_diag_token_line
+	diag_token_column = old_diag_token_column
 	tab_level = old_tab_level
 
 	if (verbosity >= 0):
 		print_string(c"back to ", filename)
 
 
-int link(int argc, int argv):
-	if (argc < 2):
+int link_impl(int argc, int argv, int start_index, int check_mode):
+	if (argc <= start_index):
 		println2(c"usage: w [x64] <file.w>... [-o output] [--bounds=on|off|trap]")
 		exit(1)
-	int i = 1
+	int i = start_index
 	word_size = 4
 	word_size_log2 = 2
 	bounds_mode = 1
 	# argv strides by the HOST pointer size: __word_size__ was baked in
 	# when this compiler binary was itself compiled
-	char** first_arg = argv + __word_size__
+	char** first_arg = argv + i * __word_size__
 	if (strcmp(*first_arg, c"x64") == 0):
 		println2(c"Compiling in x64 mode")
 		word_size =  8
@@ -165,11 +172,34 @@ int link(int argc, int argv):
 		/* O_WRONLY|O_CREAT|O_TRUNC, mode 0755 so the result is executable */
 		output_fd = open(output_path, 577, 493)
 		asserts(c"could not open output file", output_fd >= 0)
+	if (check_mode):
+		output_fd = open(c"/dev/null", 577, 493)
+		asserts(c"could not open /dev/null", output_fd >= 0)
 
 	# print_symbol_table(0)
 	# type_print_all()
 	emit_debugging_symbols(word_size)
 	be_finish(word_size)
 
-	if (output_path != 0):
+	if ((output_path != 0) | check_mode):
 		close(output_fd)
+
+	return 0
+
+
+int link(int argc, int argv):
+	return link_impl(argc, argv, 1, 0)
+
+
+int check_main(int argc, int argv):
+	int i = 2
+	diag_json = 0
+	if (i < argc):
+		char** arg = argv + i * __word_size__
+		if (strcmp(*arg, c"--json") == 0):
+			diag_json = 1
+			i = i + 1
+	if (argc <= i):
+		println2(c"usage: w check [--json] [x64] <file.w>... [--bounds=on|off|trap]")
+		exit(1)
+	return link_impl(argc, argv, i, 1)
