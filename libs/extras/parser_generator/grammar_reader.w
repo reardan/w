@@ -143,6 +143,8 @@ int pg_reader_is_top_level(pg_grammar_reader* reader):
 		return 1
 	if (strcmp(reader.token, "token") == 0):
 		return 1
+	if (strcmp(reader.token, "skip") == 0):
+		return 1
 	if (strcmp(reader.token, "literal") == 0):
 		return 1
 	if (strcmp(reader.token, "start") == 0):
@@ -226,6 +228,13 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 			if ((name == 0) | (matcher == 0)):
 				return 0
 			pg_grammar_add_token(grammar, name, matcher)
+		else if (pg_reader_is_name(reader, "skip")):
+			pg_reader_next(reader)
+			char* name = pg_reader_take_name(reader)
+			char* matcher = pg_reader_take_name(reader)
+			if ((name == 0) | (matcher == 0)):
+				return 0
+			pg_grammar_add_skip(grammar, name, matcher)
 		else if (pg_reader_is_name(reader, "literal")):
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
@@ -251,7 +260,7 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 			pg_rule* rule = pg_grammar_add_rule(grammar, name)
 			pg_reader_parse_rule_body(reader, rule)
 		else:
-			pg_reader_error(reader, "unknown grammar directive", "token, literal, start or rule")
+			pg_reader_error(reader, "unknown grammar directive", "token, skip, literal, start or rule")
 			return 0
 	if (grammar.rules.length == 0):
 		pg_reader_error(reader, "grammar has no rules", "rule")

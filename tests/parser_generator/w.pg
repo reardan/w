@@ -1,0 +1,139 @@
+parser wlang
+
+skip LINE_COMMENT line_comment
+skip BLOCK_COMMENT block_comment
+
+token NEWLINE newline
+token TAB tabs
+token STRING string
+token CHAR_LITERAL char_literal
+token NUMBER number
+token IDENT identifier
+
+literal KW_IMPORT "import"
+literal KW_STRUCT "struct"
+literal KW_UNION "union"
+literal KW_ENUM "enum"
+literal KW_TYPE "type"
+literal KW_EXTERN "extern"
+literal KW_C_LIB "c_lib"
+literal KW_IF "if"
+literal KW_ELSE "else"
+literal KW_WHILE "while"
+literal KW_FOR "for"
+literal KW_IN "in"
+literal KW_RANGE "range"
+literal KW_RETURN "return"
+literal KW_BREAK "break"
+literal KW_CONTINUE "continue"
+literal KW_PASS "pass"
+literal KW_DEBUGGER "debugger"
+literal KW_NEW "new"
+literal KW_CONST "const"
+literal KW_INT "int"
+literal KW_CHAR "char"
+literal KW_VOID "void"
+literal KW_STRING "string"
+
+literal AND_AND "&&"
+literal OR_OR "||"
+literal EQ_EQ "=="
+literal BANG_EQ "!="
+literal LT_EQ "<="
+literal GT_EQ ">="
+literal SHIFT_LEFT "<<"
+literal SHIFT_RIGHT ">>"
+literal ARROW "->"
+literal PLUS "+"
+literal MINUS "-"
+literal STAR "*"
+literal SLASH "/"
+literal PERCENT "%"
+literal LT "<"
+literal GT ">"
+literal AMP "&"
+literal PIPE "|"
+literal BANG "!"
+literal ASSIGN "="
+literal DOT "."
+literal COMMA ","
+literal COLON ":"
+literal SEMI ";"
+literal LPAREN "("
+literal RPAREN ")"
+literal LBRACK "["
+literal RBRACK "]"
+literal LBRACE "{"
+literal RBRACE "}"
+
+start program
+
+rule program = separator* top_item* EOF
+rule separator = NEWLINE
+rule top_item = declaration separator* | statement separator*
+
+rule declaration = import_decl | c_lib_decl | extern_decl | struct_decl | union_decl | enum_decl | type_alias_decl | function_decl | global_decl
+rule import_decl = KW_IMPORT dotted_name
+rule dotted_name = IDENT dotted_tail*
+rule dotted_tail = DOT IDENT
+rule c_lib_decl = KW_C_LIB STRING
+rule extern_decl = KW_EXTERN type_ref IDENT LPAREN param_list RPAREN
+rule struct_decl = KW_STRUCT IDENT block
+rule union_decl = KW_UNION IDENT block
+rule enum_decl = KW_ENUM IDENT block
+rule type_alias_decl = KW_TYPE IDENT ASSIGN type_ref
+rule function_decl = type_ref IDENT LPAREN param_list RPAREN function_body
+rule global_decl = type_ref IDENT decl_suffix global_suffix
+rule global_suffix = ASSIGN expression | SEMI | 
+rule function_body = SEMI | block
+rule decl_suffix = LBRACK expression RBRACK |
+
+rule block = COLON block_line*
+rule block_line = NEWLINE tab_prefix statement | NEWLINE
+rule tab_prefix = TAB tab_prefix | TAB
+
+rule param_list = param param_tail* | 
+rule param_tail = COMMA param
+rule param = type_ref IDENT decl_suffix | type_ref
+
+rule type_ref = KW_CONST type_ref | type_atom pointer_part* array_part*
+rule type_atom = KW_INT | KW_CHAR | KW_VOID | KW_STRING | IDENT
+rule pointer_part = STAR
+rule array_part = LBRACK expression_opt RBRACK
+rule expression_opt = expression |
+
+rule statement = if_stmt | else_stmt | while_stmt | for_stmt | return_stmt | break_stmt | continue_stmt | pass_stmt | debugger_stmt | local_decl | expression_stmt | block
+rule if_stmt = KW_IF paren_expression_opt block
+rule else_stmt = KW_ELSE if_stmt | KW_ELSE block
+rule while_stmt = KW_WHILE paren_expression_opt block
+rule for_stmt = KW_FOR for_binding KW_IN expression block
+rule for_binding = type_ref IDENT | IDENT
+rule return_stmt = KW_RETURN expression_opt
+rule break_stmt = KW_BREAK
+rule continue_stmt = KW_CONTINUE
+rule pass_stmt = KW_PASS
+rule debugger_stmt = KW_DEBUGGER
+rule local_decl = type_ref IDENT decl_suffix local_suffix
+rule local_suffix = ASSIGN expression | 
+rule expression_stmt = expression
+
+rule paren_expression_opt = LPAREN expression RPAREN | expression
+rule expression = assignment
+rule assignment = binary_expr assign_tail*
+rule assign_tail = ASSIGN assignment
+rule binary_expr = unary_expr binary_tail*
+rule binary_tail = binary_op unary_expr
+rule binary_op = OR_OR | AND_AND | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | LT | GT | SHIFT_LEFT | SHIFT_RIGHT | PLUS | MINUS | STAR | SLASH | PERCENT | AMP | PIPE
+rule unary_expr = unary_op unary_expr | postfix_expr
+rule unary_op = BANG | MINUS | PLUS | AMP | STAR
+rule postfix_expr = primary_expr postfix_tail*
+rule postfix_tail = LPAREN arg_list RPAREN | DOT IDENT | LBRACK expression_opt slice_tail RBRACK
+rule slice_tail = COLON expression_opt |
+rule arg_list = expression arg_tail* |
+rule arg_tail = COMMA expression
+rule primary_expr = IDENT | NUMBER | STRING | CHAR_LITERAL | type_atom | new_expr | grouped_expr | range_expr | syscall_expr
+rule grouped_expr = LPAREN expression RPAREN
+rule new_expr = KW_NEW type_ref new_tail
+rule new_tail = LPAREN arg_list RPAREN | LBRACK expression RBRACK |
+rule range_expr = KW_RANGE LPAREN arg_list RPAREN
+rule syscall_expr = IDENT LPAREN arg_list RPAREN

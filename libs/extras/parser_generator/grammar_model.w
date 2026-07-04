@@ -4,6 +4,7 @@ In-memory grammar model for the first ParserGenerator milestone.
 The initial grammar language is intentionally small:
 	parser <name>
 	token <NAME> <letters|digits|identifier|any>
+	skip <NAME> <line_comment|block_comment>
 	literal <NAME> "<text>"
 	rule <name> = TERM* (| TERM*)*
 
@@ -18,6 +19,7 @@ struct pg_grammar:
 	char* name
 	char* start_rule
 	array_list* tokens
+	array_list* skips
 	array_list* literals
 	array_list* rules
 
@@ -54,6 +56,7 @@ pg_grammar* pg_grammar_new(char* name):
 	grammar.name = strclone(name)
 	grammar.start_rule = 0
 	grammar.tokens = array_list_new()
+	grammar.skips = array_list_new()
 	grammar.literals = array_list_new()
 	grammar.rules = array_list_new()
 	return grammar
@@ -99,6 +102,12 @@ pg_term* pg_term_new(char* name, int modifier):
 pg_token_def* pg_grammar_add_token(pg_grammar* grammar, char* name, char* matcher):
 	pg_token_def* token = pg_token_def_new(name, matcher, grammar.tokens.length + grammar.literals.length + 1)
 	array_list_push(grammar.tokens, token)
+	return token
+
+
+pg_token_def* pg_grammar_add_skip(pg_grammar* grammar, char* name, char* matcher):
+	pg_token_def* token = pg_token_def_new(name, matcher, 0)
+	array_list_push(grammar.skips, token)
 	return token
 
 
@@ -220,6 +229,10 @@ void pg_grammar_free(pg_grammar* grammar):
 		pg_token_def_free(array_list_get(grammar.tokens, i))
 		i = i + 1
 	i = 0
+	while (i < grammar.skips.length):
+		pg_token_def_free(array_list_get(grammar.skips, i))
+		i = i + 1
+	i = 0
 	while (i < grammar.literals.length):
 		pg_literal_def_free(array_list_get(grammar.literals, i))
 		i = i + 1
@@ -231,6 +244,7 @@ void pg_grammar_free(pg_grammar* grammar):
 	if (grammar.start_rule != 0):
 		free(grammar.start_rule)
 	array_list_free(grammar.tokens)
+	array_list_free(grammar.skips)
 	array_list_free(grammar.literals)
 	array_list_free(grammar.rules)
 	free(grammar)

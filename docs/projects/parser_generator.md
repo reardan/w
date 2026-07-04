@@ -44,11 +44,37 @@ rule list = value value* EOF
 ```
 
 Supported token matchers are runtime helper names such as `letters`, `digits`,
-`identifier`, and `any`, which map to `pg_lexer_matcher_<name>`.
+`identifier`, `number`, `string`, `char_literal`, `newline`, `tabs`, and `any`,
+which map to `pg_lexer_matcher_<name>`. `skip <NAME> <matcher>` declares
+comment or trivia matchers that the generated lexer consumes without emitting a
+token.
 
 Rule terms are token names, literal names, rule names, or `EOF`. A term may end
 with `?`, `*`, or `+`. Alternatives are separated by `|`. Parenthesized groups
 and semantic actions are intentionally left for a later milestone.
+
+Generated lexers use longest-match token selection. This lets a grammar list
+generic identifiers and exact keyword/operator literals together: `integer`
+stays an identifier, while `int` can become a keyword token.
+
+## W grammar
+
+`tests/parser_generator/w.pg` is the first generated-parser grammar for W
+source. It covers the lexical forms used by W source files (comments,
+identifiers, numbers, char/string literals, keywords, operators, newlines, and
+tab runs), plus grammar rules for imports, structs/unions/enums, type aliases,
+extern/c_lib declarations, functions, global/local declarations, blocks,
+control-flow statements, calls, indexing, field access, unary/binary
+expressions, `new`, and `range`.
+
+The generated W parser is intentionally separate from the production compiler:
+it produces a ParserGenerator AST and validates syntax-shaped W input, but it
+does not perform symbol resolution, type checking, or code generation. The
+existing compiler remains the executable source of truth for bootstrapping.
+
+`make parser_generator_w_test` generates `bin/generated_w_parser.w`, compiles
+it, and parses representative inline W programs plus real repository files such
+as `w.w` and `tests/hello.w`.
 
 ## Usage
 
