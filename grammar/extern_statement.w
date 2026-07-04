@@ -17,9 +17,13 @@ import code_generator.ffi
 
 int extern_statement():
 	if (accept(c"c_lib")):
-		if (token[0] != '"'):
+		if ((token[0] != '"') & (((token[0] != 'c') | (token[1] != '"')))):
 			error(c"c_lib expects a \"soname\" string literal")
-		int len = process_string_literal()
+		int len
+		if (token[0] == 'c'):
+			len = process_prefixed_string_literal()
+		else:
+			len = process_string_literal()
 		token[len] = 0
 		dyn_add_lib(token)
 		get_token()
