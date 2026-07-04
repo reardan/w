@@ -8,10 +8,15 @@ import compiler.symbol_table
 import code_generator.code_emitter
 import code_generator.dynamic_registry
 import code_generator.ffi
+import structures.hash_map
 import structures.string
 import libs.extras.parser_generator.runtime
 import libs.extras.parser_generator.source_writer
 import libs.extras.c_import.generated_c_parser
+import libs.extras.c_preprocessor.pp_token
+import libs.extras.c_preprocessor.pp_macro
+import libs.extras.c_preprocessor.pp_expr
+import libs.extras.c_preprocessor.pp_directives
 
 
 struct ci_decl_info:
@@ -539,13 +544,117 @@ void ci_import_translation_unit(pg_ast_node* root):
 		i = i + 1
 
 
+int ci_macro_public_constant_name(char* name):
+	if ((name[0] < 'A') | (name[0] > 'Z')):
+		return 0
+	if (sym_lookup(name) >= 0):
+		return 0
+	if (type_lookup(name) >= 0):
+		return 0
+	return 1
+
+
+int ci_macro_token_allowed_in_int_expr(cpp_token* token):
+	if (token.kind == cpp_token_number()):
+		return 1
+	if (token.kind == cpp_token_char()):
+		return 1
+	if (token.kind != cpp_token_punct()):
+		return 0
+	if (strcmp(token.text, "(") == 0):
+		return 1
+	if (strcmp(token.text, ")") == 0):
+		return 1
+	if (strcmp(token.text, "?") == 0):
+		return 1
+	if (strcmp(token.text, ":") == 0):
+		return 1
+	if (strcmp(token.text, "+") == 0):
+		return 1
+	if (strcmp(token.text, "-") == 0):
+		return 1
+	if (strcmp(token.text, "*") == 0):
+		return 1
+	if (strcmp(token.text, "/") == 0):
+		return 1
+	if (strcmp(token.text, "%") == 0):
+		return 1
+	if (strcmp(token.text, "<<") == 0):
+		return 1
+	if (strcmp(token.text, ">>") == 0):
+		return 1
+	if (strcmp(token.text, "<") == 0):
+		return 1
+	if (strcmp(token.text, ">") == 0):
+		return 1
+	if (strcmp(token.text, "<=") == 0):
+		return 1
+	if (strcmp(token.text, ">=") == 0):
+		return 1
+	if (strcmp(token.text, "==") == 0):
+		return 1
+	if (strcmp(token.text, "!=") == 0):
+		return 1
+	if (strcmp(token.text, "&") == 0):
+		return 1
+	if (strcmp(token.text, "^") == 0):
+		return 1
+	if (strcmp(token.text, "|") == 0):
+		return 1
+	if (strcmp(token.text, "&&") == 0):
+		return 1
+	if (strcmp(token.text, "||") == 0):
+		return 1
+	if (strcmp(token.text, "!") == 0):
+		return 1
+	if (strcmp(token.text, "~") == 0):
+		return 1
+	return 0
+
+
+int ci_macro_body_is_integer_expr(hash_map* macros, cpp_macro* macro):
+	if (macro == 0):
+		return 0
+	if (macro.is_function):
+		return 0
+	if (macro.builtin != cpp_macro_builtin_none()):
+		return 0
+	cpp_token* expanded = cpp_expand_tokens(macros, cpp_process_paste(cpp_token_clone_list(macro.body)))
+	if (expanded == 0):
+		return 0
+	while (expanded != 0):
+		if (expanded.kind == cpp_token_eof()):
+			return 1
+		if (ci_macro_token_allowed_in_int_expr(expanded) == 0):
+			return 0
+		expanded = expanded.next
+	return 1
+
+
+void ci_export_macro_constant(hash_map* macros, char* name, cpp_macro* macro):
+	if (ci_macro_public_constant_name(name) == 0):
+		return
+	if (ci_macro_body_is_integer_expr(macros, macro) == 0):
+		return
+	int value = cpp_eval_if_expr(macros, cpp_process_paste(cpp_token_clone_list(macro.body)))
+	int current_symbol = sym_declare_global(name, ci_lookup_type("int"), 1)
+	sym_define_global(current_symbol)
+	emit_int(value)
+
+
+void ci_export_macro_constants(hash_map* macros):
+	int cursor = hash_map_iter_begin(macros)
+	while (hash_map_iter_done(macros, cursor) == 0):
+		char* name = hash_map_iter_value(macros, cursor)
+		cpp_macro* macro = hash_map_get(macros, name)
+		ci_export_macro_constant(macros, name, macro)
+		cursor = hash_map_iter_next(macros, cursor)
+
+
 void c_import_header(char* soname, char* header_path):
 	dyn_add_lib(soname)
-	char* source = pg_read_file_text(header_path)
-	if (source == 0):
-		print_error("c_import: could not read header '")
-		print_error(header_path)
-		error("'")
+	cpp_result* preprocessed = cpp_preprocess_file(header_path)
+	char* source = preprocessed.text
 	source = ci_prepare_header_source(source)
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = clang_parse(source, header_path, diagnostics)
@@ -553,3 +662,4 @@ void c_import_header(char* soname, char* header_path):
 		pg_diagnostics_print(diagnostics)
 		error("c_import: header parse failed")
 	ci_import_translation_unit(root)
+	ci_export_macro_constants(preprocessed.macros)
