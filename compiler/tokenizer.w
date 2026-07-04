@@ -1,3 +1,4 @@
+import compiler.diagnostics
 
 # tokenizer
 int nextc
@@ -6,6 +7,7 @@ int token_size
 int token_newline
 int tab_level
 int line_number
+int column_number
 int bounds_mode
 
 # file reading
@@ -18,12 +20,16 @@ int token_i
 
 
 void warning(char *s):
-	print_error(str_from_cstr(s))
-	print_error(str_from_cstr(c" in "))
-	print_error(str_from_cstr(filename))
-	print_error(str_from_cstr(c":"))
-	print_error(str_from_cstr(itoa(line_number+1)))
-	put_error(10)
+	if (diag_json):
+		diag_append(s)
+		diag_emit(c"warning", filename, diag_token_line, diag_token_column, token)
+	else:
+		print_error(str_from_cstr(s))
+		print_error(str_from_cstr(c" in "))
+		print_error(str_from_cstr(filename))
+		print_error(str_from_cstr(c":"))
+		print_error(str_from_cstr(itoa(line_number+1)))
+		put_error(10)
 
 
 # REPL error recovery: when repl_recovery is nonzero, error() reports the
@@ -36,8 +42,13 @@ int repl_jump_buffer
 int repl_error_jump
 
 void error(char *s):
-	warning(s)
+	if (diag_json):
+		diag_append(s)
+		diag_emit(c"error", filename, diag_token_line, diag_token_column, token)
+	else:
+		warning(s)
 	if (repl_recovery):
+		diag_clear()
 		repl_error_jump(repl_jump_buffer, 1)
 	exit(1)
 
@@ -53,6 +64,9 @@ int get_character():
 	if(nextc == 10):
 		tab_level = 0
 		line_number = line_number + 1
+		column_number = 0
+	else if ((nextc != 0) & (nextc != -1)):
+		column_number = column_number + 1
 
 	# Handle Tab
 	if(nextc == 9):
@@ -63,6 +77,8 @@ int get_character():
 	# nextc is the final character of the file when getc() first reports EOF.
 	if (c == -1):
 		if ((nextc != 10) & (nextc != -1) & (nextc != 0)):
+			diag_token_line = line_number + 1
+			diag_token_column = column_number + 1
 			warning(c"warning: file does not end with a newline")
 
 	return c
@@ -112,9 +128,13 @@ void get_token():
 			if ((prev_whitespace == 10) & (nextc == ' ')):
 				if (spaces_warned_line != line_number):
 					spaces_warned_line = line_number
+					diag_token_line = line_number + 1
+					diag_token_column = column_number + 1
 					warning(c"warning: line indented with spaces instead of tabs")
 
 		token_i = 0
+		diag_token_line = line_number + 1
+		diag_token_column = column_number + 1
 		while ((('a' <= nextc) & (nextc <= 'z')) |
 					 (('A' <= nextc) & (nextc <= 'Z')) |
 					 (('0' <= nextc) & (nextc <= '9')) | (nextc == '_')):
@@ -233,20 +253,20 @@ int accept_newline(char *s):
 
 void expect(char *s):
 	if (accept(s) == 0):
-		print_error(str_from_cstr(c"'"))
-		print_error(str_from_cstr(s))
-		print_error(str_from_cstr(c"' expected, found '"))
-		print_error(str_from_cstr(token))
-		print_error(str_from_cstr(c"'"))
+		diag_part(c"'")
+		diag_part(s)
+		diag_part(c"' expected, found '")
+		diag_part(token)
+		diag_part(c"'")
 		error(c"")
 
 
 void expect_or_newline(char *s):
 	# End of file also ends the statement, like a newline would
 	if((accept(s) == 0) & (token_newline == 0) & (token[0] != 0)):
-		print_error(str_from_cstr(c"'"))
-		print_error(str_from_cstr(s))
-		print_error(str_from_cstr(c"' expected, found '"))
-		print_error(str_from_cstr(token))
-		print_error(str_from_cstr(c"'"))
+		diag_part(c"'")
+		diag_part(s)
+		diag_part(c"' expected, found '")
+		diag_part(token)
+		diag_part(c"'")
 		error(c"")

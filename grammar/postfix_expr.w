@@ -104,13 +104,13 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 	if (param_type < 0):
 		return;
 	if (types_compatible_with_expression(param_type, arg_type) == 0):
-		print_error(str_from_cstr(c"warning: function '"))
-		print_error(str_from_cstr(callee_name))
-		print_error(str_from_cstr(c"' argument "))
-		print_error(str_from_cstr(itoa(arg_index + 1)))
-		print_error(str_from_cstr(c" type mismatch: expected '"))
+		diag_part(c"warning: function '")
+		diag_part(callee_name)
+		diag_part(c"' argument ")
+		diag_part(itoa(arg_index + 1))
+		diag_part(c" type mismatch: expected '")
 		print_error_type(param_type)
-		print_error(str_from_cstr(c"', got '"))
+		diag_part(c"', got '")
 		print_error_type(arg_type)
 		warning(c"'")
 
@@ -188,11 +188,11 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 
 	if (expected_args >= 0):
 		if (passed_args != expected_args):
-			print_error(str_from_cstr(c"warning: function '"))
-			print_error(str_from_cstr(callee_name))
-			print_error(str_from_cstr(c"' expects "))
-			print_error(str_from_cstr(itoa(expected_args)))
-			print_error(str_from_cstr(c" arguments, got "))
+			diag_part(c"warning: function '")
+			diag_part(callee_name)
+			diag_part(c"' expects ")
+			diag_part(itoa(expected_args))
+			diag_part(c" arguments, got ")
 			warning(itoa(passed_args))
 	if (callee_name != 0):
 		free(callee_name)
@@ -399,8 +399,8 @@ int postfix_expr():
 					get_token()
 					type = list_pop_suffix(type)
 				else:
-					print_error(str_from_cstr(c"list field '"))
-					print_error(str_from_cstr(token))
+					diag_part(c"list field '")
+					diag_part(token)
 					error(c"' not found")
 			else if (type_is_buffer(type)):
 				if (peek(c"length")):

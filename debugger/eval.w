@@ -59,6 +59,7 @@ int dbg_eval_compile(char* expr):
 		length = saved_type_count
 		current_function_symbol = saved_function_symbol
 		pointer_indirection = 0
+		diag_clear()
 		close(file)
 		return 0
 
@@ -66,6 +67,7 @@ int dbg_eval_compile(char* expr):
 	file = open(path, 0, 511)
 	asserts(c"could not reopen eval buffer", file >= 0)
 	line_number = 0
+	column_number = 0
 	tab_level = 0
 	nextc = get_character()
 	get_token()
