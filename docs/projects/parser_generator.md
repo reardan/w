@@ -79,21 +79,20 @@ specific syntax shapes and explicit checks for `w.w` and `tests/hello.w`.
 
 ## C grammar
 
-`tests/parser_generator/c.pg` is the first generated-parser grammar for C
-source. It is intentionally header-oriented so it can grow toward `c_import`
-without changing the production compiler yet. The MVP covers the lexical forms
-needed for common declarations (`//` and `/* */` comments, preprocessor lines,
-C strings, character constants, numbers, identifiers, keywords, and operators)
-plus typedefs, structs/unions, enums, function prototypes, pointers, arrays,
-function pointers, variadic parameters, simple initializers, and minimal
-function bodies.
+`tests/parser_generator/c.pg` is the generated-parser grammar for C source.
+It is header-oriented and, combined with the C preprocessor
+(`libs/extras/c_preprocessor/`), covers full glibc system headers: typedefs,
+structs/unions (bit-fields, anonymous members), enums, function prototypes,
+pointers and function pointers, arrays, abstract declarators in parameter
+lists, variadic parameters, cast and `sizeof` expressions, initializers, and
+the C statement set for `static inline` function bodies.
 
-The grammar is syntax-only. It does not run the C preprocessor or evaluate
-constants, but it accepts libc-style declaration markers, common annotation
-tails, typedef-name specifier contexts, and odd control characters seen in raw
-headers. The compiler-facing `c_import` pass prepares raw header text, resolves
-typedef names through the W type table, and lowers the supported declaration
-subset into W types and `c_lib` + `extern` FFI shims.
+The grammar is syntax-only: `c_import` preprocesses first and evaluates
+constant expressions on the parsed AST afterwards (see
+`docs/projects/c_import.md`). Because the parser has no typedef symbol
+table, casts of bare typedef names parse as call shapes; the importer's
+evaluator resolves those against the W type table. Generated parsers report
+syntax errors at the furthest token any parse attempt reached.
 
 `make parser_generator_c_test` generates `bin/generated_c_parser.w`, compiles
 it, verifies it matches `libs/extras/c_import/generated_c_parser.w`, and runs
