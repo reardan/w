@@ -4,18 +4,33 @@ int type_name():
 	pointer_indirection = 0
 	if (accept("const")):
 		is_const = 1
-	type = type_lookup(token)
-	if (type < 0):
-		print_error("unknown type name: '")
-		print_error(token)
-		error("'")
-	int checked_type = type_unqualified(type)
-	if ((checked_type == float64_type) & (word_size != 8)):
-		error("float64 requires the x64 target")
-	if (((checked_type == int64_type) | (checked_type == uint64_type)) & (word_size != 8)):
-		error("int64 requires the x64 target")
+	if (peek("map") & (nextc == '[')):
+		get_token()
+		expect("[")
+		int key_type = type_name()
+		expect(",")
+		int value_type = type_name()
+		expect("]")
+		type = type_get_map(key_type, value_type)
+	else if (peek("set") & (nextc == '[')):
+		get_token()
+		expect("[")
+		int set_key_type = type_name()
+		expect("]")
+		type = type_get_set(set_key_type)
+	else:
+		type = type_lookup(token)
+		if (type < 0):
+			print_error("unknown type name: '")
+			print_error(token)
+			error("'")
+		int checked_type = type_unqualified(type)
+		if ((checked_type == float64_type) & (word_size != 8)):
+			error("float64 requires the x64 target")
+		if (((checked_type == int64_type) | (checked_type == uint64_type)) & (word_size != 8)):
+			error("int64 requires the x64 target")
 
-	get_token()
+		get_token()
 
 	if (is_const):
 		type = type_push_const(type)

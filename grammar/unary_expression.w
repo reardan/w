@@ -119,6 +119,10 @@ int unary_expression():
 		# new type-name — allocates sizeof(type) and yields a type*.
 		# new type-name ( args ) also initializes the struct's fields from
 		# the arguments in declaration order.
+		if ((peek("map") & (nextc == '[')) | (peek("set") & (nextc == '['))):
+			int container_type = type_name()
+			hash_emit_new_container(container_type)
+			return type_value(container_type)
 		int base = type_lookup(token)
 		if (base < 0):
 			print2("unknown type after new: '")

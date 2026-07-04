@@ -42,6 +42,12 @@ char* type_get_name(int type_index);
 int type_get_size(int type_index);
 int type_get_pointer_level(int type_index);
 int type_lookup_previous_pointer(int type_index);
+int type_canonical(int type_index);
+int type_unqualified(int type_index);
+int type_get_kind(int type_index);
+void type_set_kind(int type_index, int kind);
+int type_get_element_type(int type_index);
+int type_get_array_length(int type_index);
 
 
 int type_size():
@@ -90,6 +96,14 @@ int type_kind_slice_value():
 	return 9
 
 
+int type_kind_map():
+	return 10
+
+
+int type_kind_set():
+	return 11
+
+
 char* type_make_array_name(int element_type, int length):
 	char* open = strjoin(type_get_name(element_type), "[")
 	char* n = itoa(length)
@@ -103,6 +117,24 @@ char* type_make_array_name(int element_type, int length):
 
 char* type_make_slice_name(int element_type):
 	return strjoin(type_get_name(element_type), "[]")
+
+
+char* type_make_map_name(int key_type, int value_type):
+	char* open = strjoin("map[", type_get_name(key_type))
+	char* comma = strjoin(open, ", ")
+	char* value = strjoin(comma, type_get_name(value_type))
+	char* name = strjoin(value, "]")
+	free(open)
+	free(comma)
+	free(value)
+	return name
+
+
+char* type_make_set_name(int key_type):
+	char* open = strjoin("set[", type_get_name(key_type))
+	char* name = strjoin(open, "]")
+	free(open)
+	return name
 
 
 int type_push_array(int element_type, int length):
@@ -142,6 +174,32 @@ int type_push_slice_value(int element_type):
 	save_int(new_type + 12, 0)
 	save_int(new_type + 816, element_type)
 	save_int(new_type + 820, type_kind_slice_value())
+	save_int(new_type + 824, -1)
+	save_int(new_type + 828, -1)
+	return push(new_type)
+
+
+int type_push_map(int key_type, int value_type):
+	int new_type = malloc(type_size())
+	save_int(new_type, type_make_map_name(key_type, value_type))
+	save_int(new_type + 4, 0)
+	save_int(new_type + 8, word_size)
+	save_int(new_type + 12, 0)
+	save_int(new_type + 816, type_canonical(key_type))
+	save_int(new_type + 820, type_kind_map())
+	save_int(new_type + 824, type_canonical(value_type))
+	save_int(new_type + 828, -1)
+	return push(new_type)
+
+
+int type_push_set(int key_type):
+	int new_type = malloc(type_size())
+	save_int(new_type, type_make_set_name(key_type))
+	save_int(new_type + 4, 0)
+	save_int(new_type + 8, word_size)
+	save_int(new_type + 12, 0)
+	save_int(new_type + 816, type_canonical(key_type))
+	save_int(new_type + 820, type_kind_set())
 	save_int(new_type + 824, -1)
 	save_int(new_type + 828, -1)
 	return push(new_type)
@@ -306,6 +364,14 @@ int type_is_string(int type_index):
 	return type_get_kind(type_index) == type_kind_string()
 
 
+int type_is_map(int type_index):
+	return type_get_kind(type_index) == type_kind_map()
+
+
+int type_is_set(int type_index):
+	return type_get_kind(type_index) == type_kind_set()
+
+
 int type_is_buffer(int type_index):
 	return type_is_array(type_index) | type_is_slice(type_index) | type_is_string(type_index)
 
@@ -420,6 +486,32 @@ int type_lookup_slice_value(int element_type):
 	return -1
 
 
+int type_lookup_map(int key_type, int value_type):
+	key_type = type_canonical(key_type)
+	value_type = type_canonical(value_type)
+	int i = 0
+	while (i < length):
+		int t = get(i)
+		if ((load_int(t + 820) == type_kind_map()) &
+				(type_canonical(load_int(t + 816)) == key_type) &
+				(type_canonical(load_int(t + 824)) == value_type)):
+			return i
+		i = i + 1
+	return -1
+
+
+int type_lookup_set(int key_type):
+	key_type = type_canonical(key_type)
+	int i = 0
+	while (i < length):
+		int t = get(i)
+		if ((load_int(t + 820) == type_kind_set()) &
+				(type_canonical(load_int(t + 816)) == key_type)):
+			return i
+		i = i + 1
+	return -1
+
+
 int type_get_slice(int element_type):
 	int slice = type_lookup_slice(element_type)
 	if (slice < 0):
@@ -432,6 +524,38 @@ int type_get_slice_value(int element_type):
 	if (slice < 0):
 		slice = type_push_slice_value(type_canonical(element_type))
 	return slice
+
+
+int type_get_map(int key_type, int value_type):
+	int map_type = type_lookup_map(key_type, value_type)
+	if (map_type < 0):
+		map_type = type_push_map(type_canonical(key_type), type_canonical(value_type))
+	return map_type
+
+
+int type_get_set(int key_type):
+	int set_type = type_lookup_set(key_type)
+	if (set_type < 0):
+		set_type = type_push_set(type_canonical(key_type))
+	return set_type
+
+
+int type_map_key_type(int type_index):
+	type_index = type_canonical(type_index)
+	int t = get(type_index)
+	return load_int(t + 816)
+
+
+int type_map_value_type(int type_index):
+	type_index = type_canonical(type_index)
+	int t = get(type_index)
+	return load_int(t + 824)
+
+
+int type_set_key_type(int type_index):
+	type_index = type_canonical(type_index)
+	int t = get(type_index)
+	return load_int(t + 816)
 
 
 char* type_get_name(int type_index):
@@ -489,6 +613,13 @@ int types_compatible(int want, int got):
 	if (type_is_string(want) & type_is_string(got)):
 		return 1
 	if (type_is_string(want) | type_is_string(got)):
+		return 0
+	if (type_is_map(want) & type_is_map(got)):
+		return (type_unqualified(type_map_key_type(want)) == type_unqualified(type_map_key_type(got))) &
+				(type_unqualified(type_map_value_type(want)) == type_unqualified(type_map_value_type(got)))
+	if (type_is_set(want) & type_is_set(got)):
+		return type_unqualified(type_set_key_type(want)) == type_unqualified(type_set_key_type(got))
+	if (type_is_map(want) | type_is_map(got) | type_is_set(want) | type_is_set(got)):
 		return 0
 	if (type_is_slice(want) & type_is_array(got)):
 		return type_unqualified(type_get_element_type(want)) == type_unqualified(type_get_element_type(got))

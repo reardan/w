@@ -58,6 +58,8 @@ mean eax already holds the value. Structs are used by address, so they
 are never loaded either.
 */
 int promote(int type):
+	if (hash_index_pending):
+		return hash_finish_pending_read()
 	if (verbosity >= 1):
 		print2(itoa(line_number))
 		print2(": promote(")

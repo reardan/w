@@ -47,6 +47,11 @@ void assign_store_struct(int type):
 int expression():
 	expression_lhs_readonly = 0
 	int type = logical_or_expr()
+	if (hash_index_pending):
+		if (accept("=")):
+			expression_is_assignment = 1
+			return hash_finish_pending_assignment()
+		type = hash_finish_pending_read()
 	if (accept("=")):
 		if (expression_lhs_readonly):
 			error("cannot assign to read-only buffer field")
