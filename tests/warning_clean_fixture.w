@@ -20,6 +20,18 @@ int pair_sum(pair* p):
 	return p.a + p.b
 
 
+# cast() is the escape hatch: every conversion the checks would reject
+# compiles silently when spelled explicitly.
+int cast_escape_hatches():
+	char* buffer = malloc(8)
+	int word = cast(int, buffer)      /* pointer -> int */
+	char* back = cast(char*, word)    /* int -> pointer */
+	int* words = cast(int*, buffer)   /* pointer -> pointer */
+	int fn_word = cast(int, add)      /* function -> int */
+	free(back)
+	return fn_word + cast(int, words)
+
+
 int main():
 	int x = add(1, 2)
 	x = add(x, 4)
@@ -31,4 +43,6 @@ int main():
 	p.a = 1
 	p.b = 2
 	x = x + pair_sum(p)
+	if (cast_escape_hatches() == 0):
+		x = 0
 	return x

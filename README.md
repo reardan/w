@@ -130,7 +130,11 @@ Implemented and covered by tests:
   (e.g. `tests/hello.w`).
 - Diagnostics: type-mismatch warnings for assignments, initialization,
   arguments, and returns; style warnings for space-indentation and missing
-  final newline.
+  final newline. `int` is a word-sized scalar, not an untyped word:
+  `int` <-> pointer conversions and function-value stores warn unless
+  written with the explicit `cast(T, expr)` escape hatch (integer
+  literals and `&x` addresses remain untyped for now). The compiler's own
+  sources compile warning-free (`make self_host_warning_test`).
 
 Toolchain beyond the compiler:
 

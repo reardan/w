@@ -179,5 +179,15 @@ void coerce(int want, int got):
 		cvttsd2si_rax_xmm0()
 
 
+# Conversions requested with cast(T, x). Casts silence the compatibility
+# warnings but still reject conversions that cannot round-trip: a pointer
+# only fits in a word-sized integer destination.
 void coerce_explicit(int want, int got):
+	int want_real = type_unqualified(want)
+	int got_real = type_unqualified(got)
+	if ((type_get_pointer_level(got_real) > 0) & (type_get_pointer_level(want_real) == 0)):
+		if ((type_num_args(want_real) == 0) & (type_float_kind(want_real) == 0)):
+			int want_size = type_get_size(want_real)
+			if ((want_size > 0) & (want_size < word_size)):
+				error("cannot cast a pointer to a sub-word integer")
 	coerce(want, got)
