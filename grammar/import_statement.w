@@ -205,22 +205,20 @@ int import_alias_member(int alias_index):
 
 /*
 import_statement:
-	'import' dotted_as_names
-dotted_as_names:
-	| ','.dotted_as_name+
-dotted_as_name
-	| dotted_name ['as' NAME]
+	'import' dotted_name ['.' '*'] ['as' NAME]
 dotted_name:
 	| dotted_name '.' NAME
 	| NAME
 
 examples:
-	import file.*
 	import file
-	import directory.*
 	import directory.file
-	import directory.file.[func1, func2, var2]
+	import directory.file.*
+	import directory.file as alias
 
+not implemented (future):
+	import a, b comma lists
+	import directory.file.[func1, func2, var2] selective imports
 */
 # Dotted module path -> resolved filesystem path (dots to slashes plus the
 # __arch__ substitution). Always returns a fresh allocation.
