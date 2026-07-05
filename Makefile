@@ -712,7 +712,7 @@ wtest_map_test: wtest FORCE
 	printf 'verify\nself_host_warning_test\n' > ./bin/wtest_map.expected
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	./bin/wtest changed structures/json.w > ./bin/wtest_map.out
-	printf 'json_test\njson_codec_test\njson_rpc_test\n' > ./bin/wtest_map.expected
+	printf 'json_test\njson_64_test\njson_codec_test\njson_codec_64_test\njson_rpc_test\njson_rpc_64_test\n' > ./bin/wtest_map.expected
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	./bin/wtest changed tests/warning_fixture.w > ./bin/wtest_map.out
 	printf 'warning_test\n' > ./bin/wtest_map.expected
