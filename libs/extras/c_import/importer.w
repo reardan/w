@@ -1097,6 +1097,35 @@ void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params, int
 		sym_set_got_vaddr(sym, got_vaddr)
 
 
+# Imported data object (e.g. extern FILE* stdout): reserve space in the
+# image and let the loader fill it through a COPY relocation, making the
+# symbol behave like a normal W global. Weak, so objects the library does
+# not export are left zeroed instead of failing at load time. Objects
+# libc initializes at runtime startup (environ, ...) keep their static
+# initial value: W's entry stub never runs __libc_start_main.
+void ci_import_data_object(ci_declarator_info* info):
+	if (hash_map_contains(ci_imported_functions, info.name)):
+		return
+	hash_map_set(ci_imported_functions, info.name, 1)
+	if (sym_lookup(info.name) >= 0):
+		ci_skip_extern_function(info.name, c"symbol already defined")
+		return
+	if (info.has_array):
+		ci_skip_extern_function(info.name, c"extern array object")
+		return
+	int size = type_get_size(info.type)
+	if (size < 1):
+		ci_skip_extern_function(info.name, c"extern data of unknown size")
+		return
+	int sym = sym_declare_global(info.name, info.type, 1)
+	while ((codepos % word_size) != 0):
+		emit_int8(0)
+	sym_define_global(sym)
+	save_int(table + sym + 14, size)
+	dyn_add_import_data(info.name, code_offset + codepos, size, 1)
+	emit_zeros(size)
+
+
 # Declared in headers but provided by the compiler, not exported by libc;
 # importing them would leave unresolvable dynamic relocations.
 int ci_is_compiler_builtin(char* name):
@@ -1225,8 +1254,8 @@ void ci_import_init_declarators(ci_decl_info* decl, pg_ast_node* node):
 				else:
 					ci_import_function(info.name, info.type, info.params, ci_params_have_ellipsis(info.params))
 			else if (info.is_function_pointer == 0):
-				if (decl.is_extern & (verbosity >= 1)):
-					ci_skip_extern_function(info.name, c"extern data object")
+				if (decl.is_extern):
+					ci_import_data_object(info)
 		free(info)
 		return
 	int i = 0

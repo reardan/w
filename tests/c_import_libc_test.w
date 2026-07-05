@@ -66,6 +66,15 @@ void test_libc_macro_constants():
 	assert_equal(8, DT_REG)
 
 
+# stdout/stderr import as data objects (COPY relocations): glibc
+# initializes them statically, so a null pointer means the import failed.
+void test_libc_extern_data_stdio():
+	assert1(stdout != 0)
+	assert1(stderr != 0)
+	assert1(fputs(c"", stdout) >= 0)
+	assert1(fprintf(stdout, c"") >= 0)
+
+
 # snprintf imports as a variadic function: direct calls pass any number
 # of extra arguments, with floats promoted to float64 per the C ABI.
 void test_libc_variadic_snprintf():

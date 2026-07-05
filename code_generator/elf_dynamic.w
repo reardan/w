@@ -107,18 +107,27 @@ void elf_emit_dynamic():
 		i = i + 1
 	int dynstr_size = codepos - dynstr_off
 
-	# ---- .dynsym (null entry, then one undefined func per import) ----
+	# ---- .dynsym (null entry, then one symbol per import) ----
 	emit_dyn_align(8)
 	int dynsym_off = codepos
 	emit_zeros(elf_dyn_syment())
 	i = 0
 	while (i < dyn_import_count):
-		/* binding 1 = global or 2 = weak, symtype 2 = func, shndx 0 =
-		   SHN_UNDEF. Weak imports (bulk c_import) let headers declare
-		   functions the library does not export (alloca, crypt, ...): the
-		   loader leaves their GOT slots null instead of refusing to start,
-		   and only an actual call through a null slot faults. */
-		elf_dyn_emit_sym(load_int(imp_str_off + i * 4), 0, 0, dyn_import_get_binding(i), 2, 0)
+		/* Functions: symtype 2, shndx 0 = SHN_UNDEF, no value. Weak
+		   imports (bulk c_import) let headers declare functions the
+		   library does not export (alloca, crypt, ...): the loader leaves
+		   their GOT slots null instead of refusing to start, and only an
+		   actual call through a null slot faults.
+
+		   Data objects: symtype 1, DEFINED at the reserved copy space
+		   (shndx 1 = .text, which spans the whole loaded image) with the
+		   object's size, so the COPY relocation below resolves against
+		   the library's definition and the library's own references
+		   rebind here. */
+		if (dyn_import_get_symtype(i) == 1):
+			elf_dyn_emit_sym(load_int(imp_str_off + i * 4), dyn_import_got_vaddr(i), dyn_import_get_size(i), dyn_import_get_binding(i), 1, 1)
+		else:
+			elf_dyn_emit_sym(load_int(imp_str_off + i * 4), 0, 0, dyn_import_get_binding(i), 2, 0)
 		i = i + 1
 
 	# ---- SysV hash: one bucket chaining every symbol so lookups terminate ----
@@ -136,25 +145,29 @@ void elf_emit_dynamic():
 			emit_int32(i + 1)
 		i = i + 1
 
-	# ---- relocations: one GLOB_DAT per import, writing its GOT slot ----
+	# ---- relocations: GLOB_DAT per function (writes its GOT slot), ----
+	# ---- COPY per data object (fills its reserved copy space)      ----
 	emit_dyn_align(8)
 	int rel_off = codepos
 	i = 0
 	while (i < dyn_import_count):
 		int got = dyn_import_got_vaddr(i)
 		int symidx = i + 1
+		int rel_type = 6            /* R_386_GLOB_DAT / R_X86_64_GLOB_DAT */
+		if (dyn_import_get_symtype(i) == 1):
+			rel_type = 5            /* R_386_COPY / R_X86_64_COPY */
 		if (word_size == 8):
 			/* Elf64_Rela: r_offset, r_info=(sym<<32)|type, r_addend.
 			   Emitting r_info as two dwords avoids a 64-bit shift on the
 			   x86-hosted compiler. */
 			emit_int64(got)
-			emit_int32(6)        /* R_X86_64_GLOB_DAT */
+			emit_int32(rel_type)
 			emit_int32(symidx)
 			emit_int64(0)
 		else:
 			/* Elf32_Rel: r_offset, r_info=(sym<<8)|type */
 			emit_int32(got)
-			emit_int32((symidx << 8) + 6)   /* R_386_GLOB_DAT */
+			emit_int32((symidx << 8) + rel_type)
 		i = i + 1
 	int rel_size = codepos - rel_off
 
