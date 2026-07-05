@@ -84,10 +84,17 @@ hello: w FORCE
 	chmod +x ./bin/hello
 	./bin/hello
 
+# Imports plus the 'import x as alias' form: the test binary covers the
+# happy paths, the fixtures assert the alias diagnostics.
 import_test: w FORCE
 	./bin/wv2 tests/import_test.w >./bin/import_test
 	chmod +x ./bin/import_test
 	./bin/import_test
+	! ./bin/wv2 tests/import_alias_wrong_module_error_fixture.w -o ./bin/import_alias_wrong_module_error_fixture 2>./bin/import_alias_wrong_module_error_fixture.stderr
+	grep -qF "symbol 'local_helper' is not defined in module imported as 'sub'" ./bin/import_alias_wrong_module_error_fixture.stderr
+	! ./bin/wv2 tests/import_alias_duplicate_error_fixture.w -o ./bin/import_alias_duplicate_error_fixture 2>./bin/import_alias_duplicate_error_fixture.stderr
+	grep -qF "duplicate import alias: 'sub'" ./bin/import_alias_duplicate_error_fixture.stderr
+	@echo "import test OK"
 
 c_import_test: w FORCE
 	./bin/wv2 tests/c_import_test.w >./bin/c_import_test
@@ -286,6 +293,8 @@ warning_test: w FORCE
 	grep -qF "warning: file does not end with a newline" ./bin/warning_fixture.stderr
 	./bin/wv2 tests/warning_clean_fixture.w -o ./bin/warning_clean_fixture 2>./bin/warning_clean_fixture.stderr
 	! grep -q "warning:" ./bin/warning_clean_fixture.stderr
+	./bin/wv2 tests/import_alias_warning_fixture.w -o ./bin/import_alias_warning_fixture 2>./bin/import_alias_warning_fixture.stderr
+	grep -qF "warning: unqualified use of 'subfolder_value' from module imported as 'sub'" ./bin/import_alias_warning_fixture.stderr
 	./bin/wv2 tests/string_char_warning_fixture.w -o ./bin/string_char_warning_fixture 2>./bin/string_char_warning_fixture.stderr
 	grep -qF "warning: return type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
 	grep -qF "warning: initialization type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
@@ -523,6 +532,8 @@ repl_test: w FORCE
 	! printf 'int y = 3\ny = 9\n:quit\n' | ./bin/repl | grep -q "9"
 	# Structs, new and imports work at the prompt
 	printf 'struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n' | ./bin/repl | grep -q "7"
+	# Import aliases bind at the prompt and qualified access resolves
+	printf 'import tests.subfolder as sub\nsub.subfolder_value()\n:quit\n' | ./bin/repl | grep -q "1337"
 	# Built-in container declarations work at the prompt (the runtime is
 	# not auto-imported into the REPL's buffer, so import it first)
 	printf 'import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n' | ./bin/repl | grep -q "42"
