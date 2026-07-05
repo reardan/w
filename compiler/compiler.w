@@ -104,6 +104,16 @@ void compile_save(char* fn):
 	int old_diag_token_column = diag_token_column
 	int old_tab_level = tab_level
 
+	# Import aliases and plain-import records are file-scoped: hide the
+	# importer's entries while the imported file compiles, then drop the
+	# imported file's entries on the way back out.
+	int old_alias_base = import_alias_base
+	int old_alias_count = import_alias_count
+	int old_plain_base = import_plain_base
+	int old_plain_count = import_plain_count
+	import_alias_base = import_alias_count
+	import_plain_base = import_plain_count
+
 	if (verbosity >= 0):
 		print_string(c"compiling ", fn)
 
@@ -117,6 +127,10 @@ void compile_save(char* fn):
 	diag_token_line = old_diag_token_line
 	diag_token_column = old_diag_token_column
 	tab_level = old_tab_level
+	import_alias_base = old_alias_base
+	import_alias_count = old_alias_count
+	import_plain_base = old_plain_base
+	import_plain_count = old_plain_count
 
 	if (verbosity >= 0):
 		print_string(c"back to ", filename)

@@ -67,6 +67,8 @@ void wtest_init_targets():
 	wtest_targets.push(c"c_import_libc_test")
 	wtest_targets.push(c"wexec_test")
 	wtest_targets.push(c"lsp_test")
+	wtest_targets.push(c"metadata_check")
+	wtest_targets.push(c"metadata_test")
 	wtest_targets.push(c"tests")
 
 
@@ -169,6 +171,9 @@ void wtest_map_lib(char* path):
 		wtest_add(path, c"file_test")
 	else if (strcmp(path, c"lib/file.w") == 0):
 		wtest_add(path, c"file_test")
+	else if (strcmp(path, c"lib/wmeta.w") == 0):
+		wtest_add(path, c"metadata_check")
+		wtest_add(path, c"metadata_test")
 	else:
 		wtest_add(path, c"lib_test")
 
@@ -229,7 +234,7 @@ void wtest_map_path(char* path):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):
 		wtest_add_parser_generator(path)
-	else if ((strcmp(path, c"tests/warning_fixture.w") == 0) | (strcmp(path, c"tests/warning_clean_fixture.w") == 0) | (strcmp(path, c"tests/string_char_warning_fixture.w") == 0)):
+	else if ((strcmp(path, c"tests/warning_fixture.w") == 0) | (strcmp(path, c"tests/warning_clean_fixture.w") == 0) | (strcmp(path, c"tests/string_char_warning_fixture.w") == 0) | (strcmp(path, c"tests/import_alias_warning_fixture.w") == 0)):
 		wtest_add(path, c"warning_test")
 	else if (strcmp(path, c"tests/symbols_fixture.w") == 0):
 		wtest_add(path, c"symbols_test")
@@ -246,6 +251,11 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"wexec_test")
 	else if (starts_with(path, c"tools/lsp/")):
 		wtest_add(path, c"lsp_test")
+	else if ((strcmp(path, c"tools/wmeta.w") == 0) | (strcmp(path, c"package.wmeta") == 0)):
+		wtest_add(path, c"metadata_check")
+		wtest_add(path, c"metadata_test")
+	else if (starts_with(path, c"tests/metadata/")):
+		wtest_add(path, c"metadata_test")
 	else if ((strcmp(path, c"build.json") == 0) | (strcmp(path, c"wbuild") == 0)):
 		# The manifest and bootstrap script drive the whole W-native
 		# build, so changes there get the full suite too.

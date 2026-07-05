@@ -85,6 +85,20 @@
 			]
 		},
 		{
+			"name": "wmeta",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/wmeta.w", "-o", "bin/wmeta"]}
+			]
+		},
+		{
+			"name": "metadata_check",
+			"deps": ["wmeta"],
+			"steps": [
+				{"cmd": ["bin/wmeta", "check", "package.wmeta"], "expect_stdout": "wmeta: OK"}
+			]
+		},
+		{
 			"name": "wdbg",
 			"deps": ["wv2"],
 			"steps": [
@@ -101,6 +115,7 @@
 				"x64_test",
 				"dynamic_test",
 				"int64_x86_error_test",
+				"metadata_check",
 				"wdbg",
 				"wexec"
 			]

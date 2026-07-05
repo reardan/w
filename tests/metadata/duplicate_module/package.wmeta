@@ -1,0 +1,8 @@
+# Invalid: the same module is declared twice.
+package example.duplicate
+version 1.0.0
+root .
+
+modules:
+	dup.thing
+	dup.thing

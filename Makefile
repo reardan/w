@@ -92,10 +92,17 @@ hello: w FORCE
 	chmod +x ./bin/hello
 	./bin/hello
 
+# Imports plus the 'import x as alias' form: the test binary covers the
+# happy paths, the fixtures assert the alias diagnostics.
 import_test: w FORCE
 	./bin/wv2 tests/import_test.w >./bin/import_test
 	chmod +x ./bin/import_test
 	./bin/import_test
+	! ./bin/wv2 tests/import_alias_wrong_module_error_fixture.w -o ./bin/import_alias_wrong_module_error_fixture 2>./bin/import_alias_wrong_module_error_fixture.stderr
+	grep -qF "symbol 'local_helper' is not defined in module imported as 'sub'" ./bin/import_alias_wrong_module_error_fixture.stderr
+	! ./bin/wv2 tests/import_alias_duplicate_error_fixture.w -o ./bin/import_alias_duplicate_error_fixture 2>./bin/import_alias_duplicate_error_fixture.stderr
+	grep -qF "duplicate import alias: 'sub'" ./bin/import_alias_duplicate_error_fixture.stderr
+	@echo "import test OK"
 
 c_import_test: w FORCE
 	./bin/wv2 tests/c_import_test.w >./bin/c_import_test
@@ -294,6 +301,8 @@ warning_test: w FORCE
 	grep -qF "warning: file does not end with a newline" ./bin/warning_fixture.stderr
 	./bin/wv2 tests/warning_clean_fixture.w -o ./bin/warning_clean_fixture 2>./bin/warning_clean_fixture.stderr
 	! grep -q "warning:" ./bin/warning_clean_fixture.stderr
+	./bin/wv2 tests/import_alias_warning_fixture.w -o ./bin/import_alias_warning_fixture 2>./bin/import_alias_warning_fixture.stderr
+	grep -qF "warning: unqualified use of 'subfolder_value' from module imported as 'sub'" ./bin/import_alias_warning_fixture.stderr
 	./bin/wv2 tests/string_char_warning_fixture.w -o ./bin/string_char_warning_fixture 2>./bin/string_char_warning_fixture.stderr
 	grep -qF "warning: return type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
 	grep -qF "warning: initialization type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
@@ -551,6 +560,8 @@ repl_test: w FORCE
 	! printf 'int y = 3\ny = 9\n:quit\n' | ./bin/repl | grep -q "9"
 	# Structs, new and imports work at the prompt
 	printf 'struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n' | ./bin/repl | grep -q "7"
+	# Import aliases bind at the prompt and qualified access resolves
+	printf 'import tests.subfolder as sub\nsub.subfolder_value()\n:quit\n' | ./bin/repl | grep -q "1337"
 	# Built-in container declarations work at the prompt (the runtime is
 	# not auto-imported into the REPL's buffer, so import it first)
 	printf 'import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n' | ./bin/repl | grep -q "42"
@@ -823,6 +834,33 @@ wexec_test: w FORCE
 	./bin/wexec hello | grep -q "hello, world!"
 	@echo "wexec test OK"
 
+wmeta: w FORCE
+	./bin/wv2 tools/wmeta.w -o ./bin/wmeta
+
+# Validate the repository's own package metadata (docs/package_metadata.txt).
+metadata_check: wmeta FORCE
+	./bin/wmeta check package.wmeta
+	@echo "metadata check OK"
+
+# Checker behavior against the fixture packages in tests/metadata/: the good
+# package (with a vendored path dependency) passes, each bad fixture fails
+# with its specific diagnostic.
+metadata_test: wmeta FORCE
+	./bin/wmeta check tests/metadata/good/package.wmeta | grep -qF "wmeta: OK package 'example.app' version 1.0.0"
+	! ./bin/wmeta check tests/metadata/bad_version/package.wmeta 2>./bin/wmeta_bad_version.stderr
+	grep -qF "expected three numeric components" ./bin/wmeta_bad_version.stderr
+	! ./bin/wmeta check tests/metadata/missing_module/package.wmeta 2>./bin/wmeta_missing_module.stderr
+	grep -qF "module 'nope.missing' not found" ./bin/wmeta_missing_module.stderr
+	! ./bin/wmeta check tests/metadata/duplicate_module/package.wmeta 2>./bin/wmeta_duplicate_module.stderr
+	grep -qF "duplicate module 'dup.thing'" ./bin/wmeta_duplicate_module.stderr
+	! ./bin/wmeta check tests/metadata/bad_constraint/package.wmeta 2>./bin/wmeta_bad_constraint.stderr
+	grep -qF "does not satisfy constraint ^2.0.0" ./bin/wmeta_bad_constraint.stderr
+	! ./bin/wmeta check tests/metadata/collision/package.wmeta 2>./bin/wmeta_collision.stderr
+	grep -qF "top-level module path 'net' claimed by packages" ./bin/wmeta_collision.stderr
+	! ./bin/wmeta check tests/metadata/no_such_dir/package.wmeta 2>./bin/wmeta_missing_meta.stderr
+	grep -qF "cannot read package.wmeta" ./bin/wmeta_missing_meta.stderr
+	@echo "metadata test OK"
+
 linked_list_test: w FORCE
 	./bin/wv2 structures/linked_list_test.w -o ./bin/linked_list_test
 	./bin/linked_list_test
@@ -938,7 +976,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:

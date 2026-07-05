@@ -1,0 +1,7 @@
+# Invalid: the declared module has no source file under root.
+package example.missingmodule
+version 1.0.0
+root .
+
+modules:
+	nope.missing
