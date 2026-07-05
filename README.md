@@ -88,7 +88,7 @@ stock x86-64 system.
 | `grammar/` | One module per grammar rule; parsing and code emission are fused |
 | `grammar.w`, `codegen.w` | Umbrella modules that import the grammar/ and code_generator/ trees |
 | `code_generator/` | Byte emitter, x86/x64 encoders, ELF32/ELF64 writers, dynamic linking, DWARF |
-| `lib/` | Standard library: syscalls, memory, strings, math, format, args, assert/testing |
+| `lib/` | Standard library: syscalls, memory, strings, math, format, args, env, process (spawn/pipes/wait/timeouts), assert/testing |
 | `lib/__arch__/{x86,x64}/` | Per-architecture modules (syscalls, register context, ELF introspection) selected by the reserved `__arch__` import segment |
 | `structures/` | hash map, array list, linked list, string builder (+ their tests) |
 | `repl.w` | Interactive REPL: compiles each entry into an mmap buffer and calls it; definitions persist |
