@@ -74,7 +74,8 @@ void test_malloc_split():
 	char* head = malloc(64)
 	assert_equal(cast(int, big), cast(int, head))
 	char* rest = malloc(64)
-	assert_equal(big + 72, cast(int, rest))
+	# The split block starts after the first payload plus a two-word header
+	assert_equal(big + 64 + 2 * __word_size__, cast(int, rest))
 	free(head)
 	free(rest)
 

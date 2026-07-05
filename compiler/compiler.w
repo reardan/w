@@ -138,13 +138,15 @@ void compile_save(char* fn):
 
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (argc <= start_index):
-		println2(c"usage: w [x64] <file.w>... [-o output] [--bounds=on|off|trap]")
+		println2(c"usage: w [x64] <file.w>... [-o output] [--bounds=on|off|trap] [--strict]")
 		exit(1)
 	int i = start_index
 	word_size = 4
 	word_size_log2 = 2
 	diag_word_size = word_size
 	bounds_mode = 1
+	strict_mode = 0
+	warning_count = 0
 	# argv strides by the HOST pointer size: __word_size__ was baked in
 	# when this compiler binary was itself compiled
 	char** first_arg = argv + i * __word_size__
@@ -178,6 +180,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			bounds_mode = 1
 		else if (strcmp(*arg, c"--bounds=off") == 0):
 			bounds_mode = 0
+		else if (strcmp(*arg, c"--strict") == 0):
+			strict_mode = 1
 		else:
 			print_error(c"compiling '")
 			print_error(*arg)
@@ -188,6 +192,18 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# On-demand runtime for the to_json/from_json builtins: imported after
 	# all user files so the module's code lands at a top-level boundary
 	json_codec_finish_import()
+
+	# --strict: fail before any output is written so no artifact is
+	# produced when warnings fired. Warnings were already printed with
+	# their usual text; this only adds a summary and the failing exit.
+	# str_from_cstr keeps the message printable when this file is compiled
+	# by the seed, which does not coerce char* call arguments to string.
+	if (strict_mode):
+		if (warning_count > 0):
+			print_error(str_from_cstr(c"error: "))
+			print_error(str_from_cstr(itoa(warning_count)))
+			print_error(str_from_cstr(c" warning(s) treated as errors (--strict)\x0a"))
+			exit(1)
 
 	if (output_path != 0):
 		/* O_WRONLY|O_CREAT|O_TRUNC, mode 0755 so the result is executable */
@@ -221,7 +237,7 @@ int check_main(int argc, int argv):
 			diag_json = 1
 			i = i + 1
 	if (argc <= i):
-		println2(c"usage: w check [--json] [x64] <file.w>... [--bounds=on|off|trap]")
+		println2(c"usage: w check [--json] [x64] <file.w>... [--bounds=on|off|trap] [--strict]")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
 
@@ -355,7 +371,7 @@ int symbols_main(int argc, int argv):
 			diag_json = 1
 			i = i + 1
 	if (argc <= i):
-		println2(c"usage: w symbols [--json] [x64] <file.w>... [--bounds=on|off|trap]")
+		println2(c"usage: w symbols [--json] [x64] <file.w>... [--bounds=on|off|trap] [--strict]")
 		exit(1)
 	link_impl(argc, argv, i, 1)
 	symbols_dump(json)

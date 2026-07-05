@@ -19,9 +19,9 @@
 			"name": "build",
 			"deps": ["wv2"],
 			"steps": [
-				{"cmd": ["bin/wv2", "w.w", "-o", "bin/wv3"]},
-				{"cmd": ["bin/wv3", "w.w", "-o", "bin/wv4"]},
-				{"cmd": ["bin/wv4", "w.w", "-o", "bin/wv5"]}
+				{"cmd": ["bin/wv2", "--strict", "w.w", "-o", "bin/wv3"]},
+				{"cmd": ["bin/wv3", "--strict", "w.w", "-o", "bin/wv4"]},
+				{"cmd": ["bin/wv4", "--strict", "w.w", "-o", "bin/wv5"]}
 			]
 		},
 		{

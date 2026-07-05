@@ -17,10 +17,10 @@ struct array_list:
 array_list* array_list_new_sized(int capacity):
 	if (capacity < 4):
 		capacity = 4
-	array_list* list = malloc(12)
+	array_list* list = new array_list()
 	list.capacity = capacity
 	list.length = 0
-	list.items = malloc(capacity * 4)
+	list.items = malloc(capacity * __word_size__)
 	return list
 
 
@@ -34,7 +34,7 @@ void array_list_ensure(array_list* list, int extra):
 		int new_capacity = list.capacity * 2
 		if (new_capacity < needed):
 			new_capacity = needed
-		list.items = cast(int*, realloc(list.items, list.length * 4, new_capacity * 4))
+		list.items = cast(int*, realloc(list.items, list.length * __word_size__, new_capacity * __word_size__))
 		list.capacity = new_capacity
 
 

@@ -241,6 +241,10 @@ archives the old seed to `old/` first.
   W-native `w-toolchain` MCP server (`make wmcp` builds `bin/wmcp` from
   `tools/mcp/w_toolchain_mcp.w`). It exposes build, verify, run_tests,
   check, compile, run, repl_eval, and test_changed tools from the repo root.
+- Editors can run the W-native LSP server (`make wlsp` builds `bin/wlsp` from
+  `tools/lsp/w_lsp.w`): diagnostics from `w check --json` on open/save and
+  go-to-definition from `w symbols --json`, over stdio Content-Length framing.
+  Scope and editor wiring: `docs/projects/lsp.md`.
 - `make verify` remains the required gate for compiler changes, and `make tests`
   remains the full pre-merge suite when the host has the i386 libc needed by
   `dynamic_test`.

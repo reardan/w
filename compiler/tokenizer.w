@@ -10,6 +10,11 @@ int line_number
 int column_number
 int bounds_mode
 
+# --strict: count warnings during compilation; link_impl() fails the build
+# when any fired. The count is advisory outside strict mode.
+int strict_mode
+int warning_count
+
 # file reading
 int file
 char* filename
@@ -20,6 +25,7 @@ int token_i
 
 
 void warning(char *s):
+	warning_count = warning_count + 1
 	if (diag_json):
 		diag_append(s)
 		diag_emit(c"warning", filename, diag_token_line, diag_token_column, token)

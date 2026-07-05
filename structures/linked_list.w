@@ -18,7 +18,7 @@ struct linked_list:
 
 
 linked_list* linked_list_new():
-	linked_list* list = malloc(12)
+	linked_list* list = new linked_list()
 	list.length = 0
 	list.head = 0
 	list.tail = 0
@@ -26,7 +26,7 @@ linked_list* linked_list_new():
 
 
 void linked_list_push(linked_list* list, int value):
-	linked_list_node* node = malloc(8)
+	linked_list_node* node = new linked_list_node()
 	node.data = value
 	node.next = 0
 	if (list.head == 0):
