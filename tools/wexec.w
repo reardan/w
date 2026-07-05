@@ -35,12 +35,17 @@ exit code), "stdout_file" / "stderr_file" (write the captured stream
 to a path, replacing shell "> file" redirects), and "timeout_ms"
 (0 = no timeout).
 
-Every target runs at most once per invocation and there is no caching:
-like the Makefile's FORCE targets, requesting a target always runs it.
-A step's captured stdout/stderr is re-emitted after the step finishes,
-so output is visible but not interleaved live.
+Every target runs at most once per invocation. Targets that declare
+"inputs" (a list of files and directory prefixes ending in "/") are
+cached by content hash: when the hash of the target definition, its
+input files and its dependencies' keys matches the stamp left in
+bin/.wexec_cache/ — and every declared "outputs" file exists — the
+target is skipped. Targets without "inputs" behave like the Makefile's
+FORCE targets: requesting them always runs them. A step's captured
+stdout/stderr is re-emitted after the step finishes, so output is
+visible but not interleaved live.
 
-Usage: wexec [-f manifest.json] [--list] target...
+Usage: wexec [-f manifest.json] [--list] [--no-cache] [-j N] target...
 
 Design notes: docs/projects/wexec.md
 */
@@ -57,11 +62,15 @@ import structures.hash_map
 json_value* wexec_manifest
 hash_map* wexec_targets      # name -> json_value* of the target object
 hash_map* wexec_states       # name -> 0 unvisited / 1 running / 2 done
+hash_map* wexec_keys         # name -> char* cache key, for targets with "inputs"
 list[char*] wexec_names      # manifest order, for --list
 int wexec_completed          # targets finished this invocation
+int wexec_no_cache           # --no-cache: never skip cached targets
+int wexec_mask32             # keeps the FNV accumulators at 32 bits on x64
 
 
 int wexec_run_target(char* name);
+void wexec_collect_dir(char* path, list[char*] files);
 
 
 void wexec_error(char* message):
@@ -81,7 +90,7 @@ void wexec_error2(char* message, char* detail):
 
 void wexec_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] target...")
+	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] [--no-cache] target...")
 	stream_flush(err)
 
 
@@ -127,6 +136,242 @@ int wexec_str_contains(char* haystack, char* needle):
 			return 1
 		i = i + 1
 	return 0
+
+
+/* Content-hash caching.
+
+A target that declares "inputs" gets a cache key: a 64-bit FNV-style
+hash over its serialized definition, its dependencies' cache keys and
+the contents of every input file (directory entries ending in "/" are
+walked recursively). The key is stamped into bin/.wexec_cache/<name>
+after a successful run; a matching stamp plus existing "outputs" files
+lets the next invocation skip the target. A target whose dependency
+has no cache key (a FORCE-style target) is never cacheable, because a
+fresh dependency run may have changed what this target consumes. */
+
+struct wexec_hash:
+	int h1
+	int h2
+
+
+int wexec_mask32_value():
+	if (__word_size__ == 8):
+		int high = 1 << 16
+		return high * high - 1
+	return -1
+
+
+void wexec_hash_init(wexec_hash* h):
+	# The FNV offset basis (2166136261 as a signed 32-bit value)
+	h.h1 = -2128831035 & wexec_mask32
+	h.h2 = 1000003
+
+
+# Two 32-bit multiplicative rolling hashes with independent multipliers
+# (the FNV prime and a prime from Python's tuple hash). W has no xor
+# operator, so this is polynomial accumulation rather than FNV proper;
+# 64 combined bits is plenty for build staleness detection.
+void wexec_hash_bytes(wexec_hash* h, char* data, int n):
+	int i = 0
+	while (i < n):
+		int byte = data[i] & 255
+		h.h1 = (h.h1 * 16777619 + byte) & wexec_mask32
+		h.h2 = (h.h2 * 1000003 + byte) & wexec_mask32
+		i = i + 1
+
+
+# Strings never contain NUL, so a trailing 0 byte keeps consecutive
+# strings from colliding with their concatenation.
+void wexec_hash_cstr(wexec_hash* h, char* text):
+	wexec_hash_bytes(h, text, strlen(text))
+	char zero = 0
+	wexec_hash_bytes(h, &zero, 1)
+
+
+void wexec_hash_file(wexec_hash* h, char* path):
+	int fd = open(path, 0, 0)
+	if (fd < 0):
+		wexec_hash_cstr(h, c"<missing input>")
+		return
+	char* buffer = malloc(4096)
+	int n = read(fd, buffer, 4096)
+	while (n > 0):
+		wexec_hash_bytes(h, buffer, n)
+		n = read(fd, buffer, 4096)
+	free(buffer)
+	close(fd)
+
+
+void wexec_append_hex(string_builder* s, int value):
+	int shift = 28
+	while (shift >= 0):
+		int nibble = (value >> shift) & 15
+		if (nibble < 10):
+			string_append_char(s, '0' + nibble)
+		else:
+			string_append_char(s, 'a' + nibble - 10)
+		shift = shift - 4
+
+
+char* wexec_hash_hex(wexec_hash* h):
+	string_builder* s = string_new()
+	wexec_append_hex(s, h.h1)
+	wexec_append_hex(s, h.h2)
+	char* text = s.data
+	free(s)
+	return text
+
+
+int wexec_load_uint16(char* p):
+	return (p[0] & 255) + ((p[1] & 255) << 8)
+
+
+# Recursively collect every regular file under path. Uses the classic
+# getdents layout: d_reclen is 2 bytes after ino and off (one word each),
+# the name follows it, and d_type sits in the record's last byte
+# (4 = directory, 8 = regular file).
+void wexec_collect_dir(char* path, list[char*] files):
+	# 65536 = O_DIRECTORY
+	int fd = open(path, 65536, 0)
+	if (fd < 0):
+		return
+	int buffer_size = 65536
+	char* buffer = malloc(buffer_size)
+	int n = getdents(fd, buffer, buffer_size)
+	while (n > 0):
+		int off = 0
+		while (off < n):
+			char* entry = buffer + off
+			int reclen = wexec_load_uint16(entry + 2 * __word_size__)
+			char* entry_name = entry + 2 * __word_size__ + 2
+			int kind = entry[reclen - 1] & 255
+			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
+				string_builder* child = string_new()
+				string_append(child, path)
+				string_append(child, c"/")
+				string_append(child, entry_name)
+				if (kind == 4):
+					wexec_collect_dir(child.data, files)
+					string_free(child)
+				else if (kind == 8):
+					char* owned = child.data
+					free(child)
+					files.push(owned)
+				else:
+					string_free(child)
+			off = off + reclen
+		n = getdents(fd, buffer, buffer_size)
+	free(buffer)
+	close(fd)
+
+
+# Insertion sort: getdents order depends on filesystem state, and the
+# hash must not.
+void wexec_sort_strings(list[char*] files):
+	int i = 1
+	while (i < files.length):
+		char* value = files[i]
+		int j = i - 1
+		while ((j >= 0) && (strcmp(files[j], value) > 0)):
+			files[j + 1] = files[j]
+			j = j - 1
+		files[j + 1] = value
+		i = i + 1
+
+
+char* wexec_stamp_path(char* name):
+	string_builder* s = string_new()
+	string_append(s, c"bin/.wexec_cache/")
+	string_append(s, name)
+	char* path = s.data
+	free(s)
+	return path
+
+
+# Returns the target's cache key, or 0 when the target is not cacheable
+# (no "inputs" declared, or a dependency without a key of its own).
+# Dependencies must have finished before this is called.
+char* wexec_cache_key(char* name, json_value* target):
+	json_value* inputs = json_object_get(target, c"inputs")
+	if (inputs == 0):
+		return 0
+	if (inputs.type != json_type_array()):
+		return 0
+
+	wexec_hash h
+	wexec_hash_init(&h)
+	char* definition = json_stringify(target)
+	wexec_hash_cstr(&h, definition)
+	free(definition)
+
+	json_value* deps = json_object_get(target, c"deps")
+	if (deps != 0):
+		if (deps.type == json_type_array()):
+			int i = 0
+			while (i < json_array_length(deps)):
+				json_value* dep = json_array_get(deps, i)
+				if (dep.type == json_type_string()):
+					char* dep_key = cast(char*, hash_map_get_default(wexec_keys, dep.string_value, 0))
+					if (dep_key == 0):
+						return 0
+					wexec_hash_cstr(&h, dep_key)
+				i = i + 1
+
+	list[char*] files = new list[char*]
+	int i = 0
+	while (i < json_array_length(inputs)):
+		json_value* entry = json_array_get(inputs, i)
+		if (entry.type == json_type_string()):
+			char* path = entry.string_value
+			int n = strlen(path)
+			if ((n > 0) && (path[n - 1] == '/')):
+				char* dir = strclone(path)
+				dir[n - 1] = 0
+				wexec_collect_dir(dir, files)
+				free(dir)
+			else:
+				files.push(path)
+		i = i + 1
+	wexec_sort_strings(files)
+	for char* path in files:
+		wexec_hash_cstr(&h, path)
+		wexec_hash_file(&h, path)
+	return wexec_hash_hex(&h)
+
+
+# A cache hit needs a matching stamp and every declared output present.
+int wexec_cache_fresh(char* name, char* key, json_value* target):
+	char* stamp_path = wexec_stamp_path(name)
+	char* stamp = file_read_text(stamp_path)
+	free(stamp_path)
+	if (stamp == 0):
+		return 0
+	int same = strcmp(stamp, key) == 0
+	free(stamp)
+	if (same == 0):
+		return 0
+	json_value* outputs = json_object_get(target, c"outputs")
+	if (outputs != 0):
+		if (outputs.type == json_type_array()):
+			int i = 0
+			while (i < json_array_length(outputs)):
+				json_value* output = json_array_get(outputs, i)
+				if (output.type == json_type_string()):
+					int fd = open(output.string_value, 0, 0)
+					if (fd < 0):
+						return 0
+					close(fd)
+				i = i + 1
+	return 1
+
+
+void wexec_cache_store(char* name, char* key):
+	# Failure (usually EEXIST) is fine, like wexec_make_dirs.
+	mkdir(c"bin", 493)
+	mkdir(c"bin/.wexec_cache", 493)
+	char* stamp_path = wexec_stamp_path(name)
+	file_write_text(stamp_path, key)
+	free(stamp_path)
 
 
 # execve does no PATH lookup, so commands like "cmp" or "grep" must be
@@ -385,6 +630,19 @@ int wexec_run_target(char* name):
 	if (wexec_run_deps(name, target)):
 		return 1
 
+	char* key = wexec_cache_key(name, target)
+	if (key != 0):
+		hash_map_set(wexec_keys, name, cast(int, key))
+		if ((wexec_no_cache == 0) && wexec_cache_fresh(name, key, target)):
+			wstream* cached_out = stdout_writer()
+			stream_write_cstr(cached_out, c"wexec: target ")
+			stream_write_cstr(cached_out, name)
+			stream_write_line(cached_out, c" (cached)")
+			stream_flush(cached_out)
+			hash_map_set(wexec_states, name, 2)
+			wexec_completed = wexec_completed + 1
+			return 0
+
 	wstream* out = stdout_writer()
 	stream_write_cstr(out, c"wexec: target ")
 	stream_write_line(out, name)
@@ -400,6 +658,8 @@ int wexec_run_target(char* name):
 			if (wexec_run_step(name, i, json_array_get(steps, i))):
 				return 1
 			i = i + 1
+	if (key != 0):
+		wexec_cache_store(name, key)
 	hash_map_set(wexec_states, name, 2)
 	wexec_completed = wexec_completed + 1
 	return 0
@@ -444,6 +704,7 @@ int wexec_load_manifest(char* path):
 
 	wexec_targets = hash_map_new()
 	wexec_states = hash_map_new()
+	wexec_keys = hash_map_new()
 	wexec_names = new list[char*]
 	int i = 0
 	while (i < json_array_length(targets)):
@@ -484,6 +745,7 @@ void wexec_report_ok():
 
 
 int main(int argc, int argv):
+	wexec_mask32 = wexec_mask32_value()
 	char* manifest_path = c"build.json"
 	list[char*] requested = new list[char*]
 	int list_only = 0
@@ -499,6 +761,8 @@ int main(int argc, int argv):
 			manifest_path = *value
 		else if (strcmp(*arg, c"--list") == 0):
 			list_only = 1
+		else if (strcmp(*arg, c"--no-cache") == 0):
+			wexec_no_cache = 1
 		else:
 			requested.push(*arg)
 		i = i + 1

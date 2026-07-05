@@ -3,6 +3,8 @@
 	"targets": [
 		{
 			"name": "wv2",
+			"inputs": ["w.w", "compiler/", "grammar/", "code_generator/", "lib/", "structures/", "libs/", "debugger/"],
+			"outputs": ["bin/wv2"],
 			"steps": [
 				{"cmd": ["./w", "w.w", "-o", "bin/wv2"]}
 			]
@@ -10,6 +12,8 @@
 		{
 			"name": "wexec",
 			"deps": ["wv2"],
+			"inputs": ["tools/wexec.w"],
+			"outputs": ["bin/wexec"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/wexec.w", "-o", "bin/wexec.stage"]},
 				{"cmd": ["mv", "bin/wexec.stage", "bin/wexec"]}
@@ -18,6 +22,8 @@
 		{
 			"name": "build",
 			"deps": ["wv2"],
+			"inputs": [],
+			"outputs": ["bin/wv3", "bin/wv4", "bin/wv5"],
 			"steps": [
 				{"cmd": ["bin/wv2", "w.w", "-o", "bin/wv3"]},
 				{"cmd": ["bin/wv3", "w.w", "-o", "bin/wv4"]},
@@ -27,6 +33,7 @@
 		{
 			"name": "verify",
 			"deps": ["build"],
+			"inputs": [],
 			"steps": [
 				{"cmd": ["cmp", "bin/wv3", "bin/wv4"]},
 				{"cmd": ["cmp", "bin/wv4", "bin/wv5"]},
@@ -670,6 +677,8 @@
 		{
 			"name": "wtest",
 			"deps": ["wv2"],
+			"inputs": ["tools/test_map.w"],
+			"outputs": ["bin/wtest"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/test_map.w", "-o", "bin/wtest"]}
 			]
@@ -703,6 +712,8 @@
 		{
 			"name": "wmcp",
 			"deps": ["wv2"],
+			"inputs": ["tools/mcp/w_toolchain_mcp.w"],
+			"outputs": ["bin/wmcp"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/mcp/w_toolchain_mcp.w", "-o", "bin/wmcp"]}
 			]
@@ -782,6 +793,20 @@
 					"expect_fail": true,
 					"expect_stderr": "command exited 0, expected status 3"
 				},
+				{"cmd": ["printf", "v1\n"], "stdout_file": "bin/wexec_cache_input.txt"},
+				{"cmd": ["rm", "-f", "bin/.wexec_cache/cache_hit", "bin/.wexec_cache/uses_dep", "bin/wexec_cache_out.txt"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "cache_hit"], "reject_stdout": "(cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "cache_hit"], "expect_stdout": "cache_hit (cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "uses_dep"], "reject_stdout": "uses_dep (cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "uses_dep"], "expect_stdout": "uses_dep (cached)"},
+				{"cmd": ["printf", "v2\n"], "stdout_file": "bin/wexec_cache_input.txt"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "cache_hit"], "reject_stdout": "(cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "cache_hit"], "expect_stdout": "cache_hit (cached)"},
+				{"cmd": ["rm", "-f", "bin/wexec_cache_out.txt"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "cache_hit"], "reject_stdout": "(cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "--no-cache", "cache_hit"], "reject_stdout": "(cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "force"], "expect_stdout": "force ran"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "force"], "expect_stdout": "force ran"},
 				{
 					"cmd": ["bin/wexec", "-f", "tests/wexec/good.json"],
 					"expect_fail": true,
@@ -915,6 +940,8 @@
 		{
 			"name": "wdbg",
 			"deps": ["wv2"],
+			"inputs": ["debugger/"],
+			"outputs": ["bin/wdbg"],
 			"steps": [
 				{"cmd": ["bin/wv2", "debugger/debugger.w", "-o", "bin/wdbg"]}
 			]

@@ -1,0 +1,27 @@
+{
+	"targets": [
+		{
+			"name": "cache_hit",
+			"inputs": ["bin/wexec_cache_input.txt"],
+			"outputs": ["bin/wexec_cache_out.txt"],
+			"steps": [
+				{"cmd": ["cp", "bin/wexec_cache_input.txt", "bin/wexec_cache_out.txt"]}
+			]
+		},
+		{
+			"name": "uses_dep",
+			"deps": ["cache_hit"],
+			"inputs": [],
+			"steps": [
+				{"cmd": ["echo", "dep consumer ran"]}
+			]
+		},
+		{
+			"name": "force",
+			"deps": ["cache_hit"],
+			"steps": [
+				{"cmd": ["echo", "force ran"]}
+			]
+		}
+	]
+}
