@@ -148,14 +148,12 @@ json_value* handle_scale(json_value* params, void* ctx):
 
 ## x64 status
 
-All syscall wrappers and the compiler-side codec emission are
-word-size-clean and build for both targets. `poll_test`, `framing_test`,
-`net_test` and `time_test` run on x64. `json_test`, `json_codec_test`,
-`json_rpc_test` and `event_loop_test` are x86-only for now: the
-`structures/` container stack they sit on (`json.w`, `hash_map.w`,
-`array_list.w`) has pre-existing x64 bugs (e.g. `json_object` +
-`json_stringify` segfaults on x64 with no codec involvement), tracked
-separately from this work.
+The whole stack now runs on both targets. The `structures/` container
+word-size bugs that used to break `json.w`, `hash_map.w` and
+`array_list.w` on x64 (hardcoded 4-byte struct sizes and array strides)
+are fixed, so `json_64_test`, `json_codec_64_test`, `json_rpc_64_test`
+and `event_loop_64_test` run in `tests_x64` alongside `poll_64_test`,
+`framing_64_test`, `net_64_test` and `time_64_test`.
 
 ## Out of scope / follow-ons
 
