@@ -157,7 +157,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test dynamic_test_x64 c_import_libc_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test dynamic_test_x64 c_import_libc_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -641,6 +641,12 @@ wtest_map_test: wtest FORCE
 	./bin/wtest changed unknown/new_file.w > ./bin/wtest_map.out
 	printf 'tests\n' > ./bin/wtest_map.expected
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	printf 'lib/stream.w\n' | ./bin/wtest changed > ./bin/wtest_map.out
+	printf 'stream_test\nstream_64_test\nfile_test\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	./bin/wtest changed lib/file.w > ./bin/wtest_map.out
+	printf 'file_test\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	@echo "wtest map test OK"
 
 mcp_test: FORCE
@@ -673,6 +679,34 @@ result_test: w FORCE
 result_64_test: w FORCE
 	./bin/wv2 x64 lib/result_test.w -o ./bin/result_64_test
 	./bin/result_64_test
+
+env_test: w FORCE
+	./bin/wv2 lib/env_test.w -o ./bin/env_test
+	./bin/env_test
+
+env_64_test: w FORCE
+	./bin/wv2 x64 lib/env_test.w -o ./bin/env_64_test
+	./bin/env_64_test
+
+process_test: w FORCE
+	./bin/wv2 lib/process_test.w -o ./bin/process_test
+	./bin/process_test
+
+process_64_test: w FORCE
+	./bin/wv2 x64 lib/process_test.w -o ./bin/process_64_test
+	./bin/process_64_test
+
+stream_test: w FORCE
+	./bin/wv2 lib/stream_test.w -o ./bin/stream_test
+	./bin/stream_test
+
+stream_64_test: w FORCE
+	./bin/wv2 x64 lib/stream_test.w -o ./bin/stream_64_test
+	./bin/stream_64_test
+
+file_test: w FORCE
+	./bin/wv2 lib/file_test.w -o ./bin/file_test
+	./bin/file_test
 
 wdbg: w FORCE
 	./bin/wv2 debugger/debugger.w -o ./bin/wdbg
@@ -721,7 +755,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:

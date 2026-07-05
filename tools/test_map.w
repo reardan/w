@@ -1,115 +1,87 @@
 import lib.lib
+import lib.stream
 import structures.string
 
 
-int target_verify
-int target_lib_test
-int target_lib_64_test
-int target_path_test
-int target_time_test
-int target_result_test
-int target_net_test
-int target_hash_map_test
-int target_hash_table_test
-int target_array_list_test
-int target_linked_list_test
-int target_list_test
-int target_string_test
-int target_json_test
-int target_warning_test
-int target_check_json_test
-int target_symbols_test
-int target_self_host_warning_test
-int target_type_system_error_test
-int target_type_system_warning_test
-int target_repl_test
-int target_debug_test
-int target_c_import_test
-int target_c_preprocessor_test
-int target_c_import_errno_test
-int target_c_import_libc_test
-int target_parser_generator_test
-int target_parser_generator_w_test
-int target_parser_generator_c_test
-int target_tests
+# Ordered registry of Makefile targets wtest knows how to emit. The order
+# here is the output order; the catch-all "tests" target stays last.
+# Adding a target is one push() here plus a mapping rule below.
+list[char*] wtest_targets
+map[char*, int] wtest_enabled
 int wtest_verbose
 
 
+void wtest_init_targets():
+	wtest_targets = new list[char*]
+	wtest_enabled = new map[char*, int]
+	wtest_targets.push(c"verify")
+	wtest_targets.push(c"lib_test")
+	wtest_targets.push(c"path_test")
+	wtest_targets.push(c"time_test")
+	wtest_targets.push(c"result_test")
+	wtest_targets.push(c"lib_64_test")
+	wtest_targets.push(c"warning_test")
+	wtest_targets.push(c"check_json_test")
+	wtest_targets.push(c"symbols_test")
+	wtest_targets.push(c"self_host_warning_test")
+	wtest_targets.push(c"type_system_error_test")
+	wtest_targets.push(c"type_system_warning_test")
+	wtest_targets.push(c"list_test")
+	wtest_targets.push(c"hash_map_test")
+	wtest_targets.push(c"hash_table_test")
+	wtest_targets.push(c"string_test")
+	wtest_targets.push(c"array_list_test")
+	wtest_targets.push(c"json_test")
+	wtest_targets.push(c"parser_generator_test")
+	wtest_targets.push(c"parser_generator_w_test")
+	wtest_targets.push(c"parser_generator_c_test")
+	wtest_targets.push(c"linked_list_test")
+	wtest_targets.push(c"net_test")
+	wtest_targets.push(c"env_test")
+	wtest_targets.push(c"env_64_test")
+	wtest_targets.push(c"process_test")
+	wtest_targets.push(c"process_64_test")
+	wtest_targets.push(c"stream_test")
+	wtest_targets.push(c"stream_64_test")
+	wtest_targets.push(c"file_test")
+	wtest_targets.push(c"repl_test")
+	wtest_targets.push(c"debug_test")
+	wtest_targets.push(c"c_import_test")
+	wtest_targets.push(c"c_preprocessor_test")
+	wtest_targets.push(c"c_import_errno_test")
+	wtest_targets.push(c"c_import_libc_test")
+	wtest_targets.push(c"tests")
+
+
+int wtest_target_known(char* target):
+	for char* known in wtest_targets:
+		if (strcmp(known, target) == 0):
+			return 1
+	return 0
+
+
 void wtest_usage():
-	write(2, c"usage: wtest changed [--verbose] [file...]\x0a", 45)
+	wstream* err = stderr_writer()
+	stream_write_line(err, c"usage: wtest changed [--verbose] [file...]")
+	stream_flush(err)
 
 
 void wtest_note(char* path, char* target):
 	if (wtest_verbose == 0):
 		return
-	write(2, path, strlen(path))
-	write(2, c" -> ", 4)
-	write(2, target, strlen(target))
-	write(2, c"\x0a", 1)
+	wstream* err = stderr_writer()
+	stream_write_cstr(err, path)
+	stream_write_cstr(err, c" -> ")
+	stream_write_line(err, target)
+	stream_flush(err)
 
 
 void wtest_add(char* path, char* target):
 	wtest_note(path, target)
-	if (strcmp(target, c"verify") == 0):
-		target_verify = 1
-	else if (strcmp(target, c"lib_test") == 0):
-		target_lib_test = 1
-	else if (strcmp(target, c"lib_64_test") == 0):
-		target_lib_64_test = 1
-	else if (strcmp(target, c"path_test") == 0):
-		target_path_test = 1
-	else if (strcmp(target, c"time_test") == 0):
-		target_time_test = 1
-	else if (strcmp(target, c"result_test") == 0):
-		target_result_test = 1
-	else if (strcmp(target, c"net_test") == 0):
-		target_net_test = 1
-	else if (strcmp(target, c"hash_map_test") == 0):
-		target_hash_map_test = 1
-	else if (strcmp(target, c"hash_table_test") == 0):
-		target_hash_table_test = 1
-	else if (strcmp(target, c"array_list_test") == 0):
-		target_array_list_test = 1
-	else if (strcmp(target, c"linked_list_test") == 0):
-		target_linked_list_test = 1
-	else if (strcmp(target, c"list_test") == 0):
-		target_list_test = 1
-	else if (strcmp(target, c"string_test") == 0):
-		target_string_test = 1
-	else if (strcmp(target, c"json_test") == 0):
-		target_json_test = 1
-	else if (strcmp(target, c"warning_test") == 0):
-		target_warning_test = 1
-	else if (strcmp(target, c"check_json_test") == 0):
-		target_check_json_test = 1
-	else if (strcmp(target, c"symbols_test") == 0):
-		target_symbols_test = 1
-	else if (strcmp(target, c"self_host_warning_test") == 0):
-		target_self_host_warning_test = 1
-	else if (strcmp(target, c"type_system_error_test") == 0):
-		target_type_system_error_test = 1
-	else if (strcmp(target, c"type_system_warning_test") == 0):
-		target_type_system_warning_test = 1
-	else if (strcmp(target, c"repl_test") == 0):
-		target_repl_test = 1
-	else if (strcmp(target, c"debug_test") == 0):
-		target_debug_test = 1
-	else if (strcmp(target, c"c_import_test") == 0):
-		target_c_import_test = 1
-	else if (strcmp(target, c"c_preprocessor_test") == 0):
-		target_c_preprocessor_test = 1
-	else if (strcmp(target, c"c_import_errno_test") == 0):
-		target_c_import_errno_test = 1
-	else if (strcmp(target, c"c_import_libc_test") == 0):
-		target_c_import_libc_test = 1
-	else if (strcmp(target, c"parser_generator_test") == 0):
-		target_parser_generator_test = 1
-	else if (strcmp(target, c"parser_generator_w_test") == 0):
-		target_parser_generator_w_test = 1
-	else if (strcmp(target, c"parser_generator_c_test") == 0):
-		target_parser_generator_c_test = 1
+	if (wtest_target_known(target)):
+		wtest_enabled[target] = 1
 	else:
-		target_tests = 1
+		wtest_enabled[c"tests"] = 1
 
 
 void wtest_add_compiler(char* path):
@@ -152,6 +124,19 @@ void wtest_map_lib(char* path):
 		wtest_add(path, c"result_test")
 	else if (strcmp(path, c"lib/net.w") == 0):
 		wtest_add(path, c"net_test")
+	else if (strcmp(path, c"lib/env.w") == 0):
+		wtest_add(path, c"env_test")
+		wtest_add(path, c"env_64_test")
+	else if (strcmp(path, c"lib/process.w") == 0):
+		wtest_add(path, c"process_test")
+		wtest_add(path, c"process_64_test")
+	else if (strcmp(path, c"lib/stream.w") == 0):
+		# lib/file.w builds on the stream module.
+		wtest_add(path, c"stream_test")
+		wtest_add(path, c"stream_64_test")
+		wtest_add(path, c"file_test")
+	else if (strcmp(path, c"lib/file.w") == 0):
+		wtest_add(path, c"file_test")
 	else:
 		wtest_add(path, c"lib_test")
 
@@ -212,58 +197,16 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"tests")
 
 
-int wtest_read_line(string_builder* line):
-	string_clear(line)
-	int c = getchar(0)
-	if (c == -1):
-		return 0
-	while ((c != 10) & (c != -1)):
-		string_append_char(line, c)
-		c = getchar(0)
-	return 1
-
-
-void wtest_emit_target(char* target, int enabled):
-	if (enabled == 0):
-		return
-	write(1, target, strlen(target))
-	write(1, c"\x0a", 1)
-
-
 void wtest_emit_targets():
-	wtest_emit_target(c"verify", target_verify)
-	wtest_emit_target(c"lib_test", target_lib_test)
-	wtest_emit_target(c"path_test", target_path_test)
-	wtest_emit_target(c"time_test", target_time_test)
-	wtest_emit_target(c"result_test", target_result_test)
-	wtest_emit_target(c"lib_64_test", target_lib_64_test)
-	wtest_emit_target(c"warning_test", target_warning_test)
-	wtest_emit_target(c"check_json_test", target_check_json_test)
-	wtest_emit_target(c"symbols_test", target_symbols_test)
-	wtest_emit_target(c"self_host_warning_test", target_self_host_warning_test)
-	wtest_emit_target(c"type_system_error_test", target_type_system_error_test)
-	wtest_emit_target(c"type_system_warning_test", target_type_system_warning_test)
-	wtest_emit_target(c"list_test", target_list_test)
-	wtest_emit_target(c"hash_map_test", target_hash_map_test)
-	wtest_emit_target(c"hash_table_test", target_hash_table_test)
-	wtest_emit_target(c"string_test", target_string_test)
-	wtest_emit_target(c"array_list_test", target_array_list_test)
-	wtest_emit_target(c"json_test", target_json_test)
-	wtest_emit_target(c"parser_generator_test", target_parser_generator_test)
-	wtest_emit_target(c"parser_generator_w_test", target_parser_generator_w_test)
-	wtest_emit_target(c"parser_generator_c_test", target_parser_generator_c_test)
-	wtest_emit_target(c"linked_list_test", target_linked_list_test)
-	wtest_emit_target(c"net_test", target_net_test)
-	wtest_emit_target(c"repl_test", target_repl_test)
-	wtest_emit_target(c"debug_test", target_debug_test)
-	wtest_emit_target(c"c_import_test", target_c_import_test)
-	wtest_emit_target(c"c_preprocessor_test", target_c_preprocessor_test)
-	wtest_emit_target(c"c_import_errno_test", target_c_import_errno_test)
-	wtest_emit_target(c"c_import_libc_test", target_c_import_libc_test)
-	wtest_emit_target(c"tests", target_tests)
+	wstream* out = stdout_writer()
+	for char* target in wtest_targets:
+		if (target in wtest_enabled):
+			stream_write_line(out, target)
+	stream_flush(out)
 
 
 int main(int argc, int argv):
+	wtest_init_targets()
 	if (argc < 2):
 		wtest_usage()
 		return 1
@@ -282,8 +225,9 @@ int main(int argc, int argv):
 			saw_file = 1
 		i = i + 1
 	if (saw_file == 0):
+		wstream* in = stdin_reader()
 		string_builder* line = string_new()
-		while (wtest_read_line(line)):
+		while (stream_read_line(in, line)):
 			wtest_map_path(line.data)
 		string_free(line)
 	wtest_emit_targets()
