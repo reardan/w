@@ -65,6 +65,11 @@ int sys_fcntl(int fd, int cmd, int arg):
 int sys_ioctl(int fd, int request, int arg):
 	return syscall(16, fd, request, arg)
 
+# mincore (27): one residency byte per page in vec; fails with -ENOMEM
+# when the range is not fully mapped, which makes it a safe read probe.
+int sys_mincore(int addr, int length, int vec):
+	return syscall(27, addr, length, vec)
+
 # nanosleep (35): req/rem point at { long seconds; long nanoseconds }
 # which matches two W words on x86-64.
 int sys_nanosleep(int req, int rem):

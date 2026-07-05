@@ -142,34 +142,55 @@ int dbg_is_identifier(char* s):
 void wdbg_print_register(char* name, int value):
 	print(name)
 	print(c": ")
-	char* h = hex(value)
+	char* h = hex_word(value)
 	println(h)
 	free(h)
 
 
 void wdbg_print_registers(int context):
-	wdbg_print_register(c"eax", load_int(context + sigcontext_eax()))
-	wdbg_print_register(c"ecx", load_int(context + sigcontext_ecx()))
-	wdbg_print_register(c"edx", load_int(context + sigcontext_edx()))
-	wdbg_print_register(c"ebx", load_int(context + sigcontext_ebx()))
-	wdbg_print_register(c"esp", load_int(context + sigcontext_esp()))
-	wdbg_print_register(c"ebp", load_int(context + sigcontext_ebp()))
-	wdbg_print_register(c"esi", load_int(context + sigcontext_esi()))
-	wdbg_print_register(c"edi", load_int(context + sigcontext_edi()))
-	wdbg_print_register(c"eip", load_int(context + sigcontext_eip()))
-	wdbg_print_register(c"eflags", load_int(context + sigcontext_eflags()))
+	if (__word_size__ == 8):
+		wdbg_print_register(c"rax", ctx_reg(context, sigcontext_eax()))
+		wdbg_print_register(c"rcx", ctx_reg(context, sigcontext_ecx()))
+		wdbg_print_register(c"rdx", ctx_reg(context, sigcontext_edx()))
+		wdbg_print_register(c"rbx", ctx_reg(context, sigcontext_ebx()))
+		wdbg_print_register(c"rsp", ctx_reg(context, sigcontext_esp()))
+		wdbg_print_register(c"rbp", ctx_reg(context, sigcontext_ebp()))
+		wdbg_print_register(c"rsi", ctx_reg(context, sigcontext_esi()))
+		wdbg_print_register(c"rdi", ctx_reg(context, sigcontext_edi()))
+		wdbg_print_register(c"r8", ctx_reg(context, sigcontext_r8()))
+		wdbg_print_register(c"r9", ctx_reg(context, sigcontext_r9()))
+		wdbg_print_register(c"r10", ctx_reg(context, sigcontext_r10()))
+		wdbg_print_register(c"r11", ctx_reg(context, sigcontext_r11()))
+		wdbg_print_register(c"r12", ctx_reg(context, sigcontext_r12()))
+		wdbg_print_register(c"r13", ctx_reg(context, sigcontext_r13()))
+		wdbg_print_register(c"r14", ctx_reg(context, sigcontext_r14()))
+		wdbg_print_register(c"r15", ctx_reg(context, sigcontext_r15()))
+		wdbg_print_register(c"rip", ctx_reg(context, sigcontext_eip()))
+		wdbg_print_register(c"eflags", ctx_reg(context, sigcontext_eflags()))
+		return;
+	wdbg_print_register(c"eax", ctx_reg(context, sigcontext_eax()))
+	wdbg_print_register(c"ecx", ctx_reg(context, sigcontext_ecx()))
+	wdbg_print_register(c"edx", ctx_reg(context, sigcontext_edx()))
+	wdbg_print_register(c"ebx", ctx_reg(context, sigcontext_ebx()))
+	wdbg_print_register(c"esp", ctx_reg(context, sigcontext_esp()))
+	wdbg_print_register(c"ebp", ctx_reg(context, sigcontext_ebp()))
+	wdbg_print_register(c"esi", ctx_reg(context, sigcontext_esi()))
+	wdbg_print_register(c"edi", ctx_reg(context, sigcontext_edi()))
+	wdbg_print_register(c"eip", ctx_reg(context, sigcontext_eip()))
+	wdbg_print_register(c"eflags", ctx_reg(context, sigcontext_eflags()))
 
 
 void wdbg_print_stack(int context):
 	int esp = ctx_esp(context)
 	int i = 0
 	while (i < 16):
-		char* ha = hex(esp + i * 4)
+		int slot = esp + i * __word_size__
+		char* ha = hex_word(slot)
 		print(ha)
 		free(ha)
 		print(c": ")
-		if (dbg_mem_readable(esp + i * 4, 4)):
-			char* hv = hex(load_int(esp + i * 4))
+		if (dbg_mem_readable(slot, __word_size__)):
+			char* hv = hex_word(load_word(slot))
 			println(hv)
 			free(hv)
 		else:
@@ -210,10 +231,10 @@ void dbg_backtrace(int context, int stop_addr):
 	int frame = 1
 	int i = 0
 	while ((i < 2048) & (frame < 16)):
-		int slot = esp + i * 4
-		if (dbg_mem_readable(slot, 4) == 0):
+		int slot = esp + i * __word_size__
+		if (dbg_mem_readable(slot, __word_size__) == 0):
 			return;
-		int v = load_int(cast(char*, slot))
+		int v = load_word(cast(char*, slot))
 		if (dbg_in_debuggee(v)):
 			if (dbg_looks_like_return(v)):
 				print(c"#")
@@ -231,12 +252,13 @@ void dbg_backtrace(int context, int stop_addr):
 void dbg_examine(int addr, int count):
 	int i = 0
 	while (i < count):
-		char* ha = hex(addr + i * 4)
+		int slot = addr + i * __word_size__
+		char* ha = hex_word(slot)
 		print(ha)
 		free(ha)
 		print(c": ")
-		if (dbg_mem_readable(addr + i * 4, 4)):
-			char* hv = hex(load_int(addr + i * 4))
+		if (dbg_mem_readable(slot, __word_size__)):
+			char* hv = hex_word(load_word(slot))
 			println(hv)
 			free(hv)
 		else:
@@ -277,16 +299,16 @@ void dbg_set_command(int context, int stop_addr, char* arg):
 	int note = dbg_local_find(arg, stop_addr)
 	if (note >= 0):
 		int addr = dbg_local_runtime_addr(note, ctx_esp(context))
-		if (dbg_mem_readable(addr, 4) == 0):
+		if (dbg_mem_readable(addr, __word_size__) == 0):
 			println(c"variable is not addressable here")
 			return;
-		save_int(cast(char*, addr), v)
+		save_word(cast(char*, addr), v)
 		dbg_print_local(note, ctx_esp(context))
 		return;
 	int g = dbg_global_find(arg)
 	if (g >= 0):
 		if (dbg_sym_symtype(g) != 2):
-			save_int(cast(char*, dbg_sym_address(g)), v)
+			save_word(cast(char*, dbg_sym_address(g)), v)
 			print(arg)
 			print(c" = ")
 			dbg_print_typed_value(dbg_sym_address(g), dbg_sym_type(g))
@@ -308,7 +330,7 @@ void dbg_examine_command(int context, int stop_addr, char* arg):
 	else:
 		int note = dbg_local_find(arg, stop_addr)
 		if (note >= 0):
-			addr = load_int(cast(char*, dbg_local_runtime_addr(note, ctx_esp(context))))
+			addr = load_word(cast(char*, dbg_local_runtime_addr(note, ctx_esp(context))))
 		else:
 			int g = dbg_global_find(arg)
 			if (g < 0):
@@ -318,7 +340,7 @@ void dbg_examine_command(int context, int stop_addr, char* arg):
 			if (dbg_sym_symtype(g) == 2):
 				addr = dbg_sym_address(g)
 			else:
-				addr = load_int(cast(char*, dbg_sym_address(g)))
+				addr = load_word(cast(char*, dbg_sym_address(g)))
 	int count = 8
 	if (count_text[0] != 0):
 		count = dbg_number(count_text)
@@ -550,7 +572,7 @@ int dbg_step_should_stop(int context, int eip):
 	int esp = ctx_esp(context)
 	int frame_base = dbg_step_esp
 	if (dbg_step_stack >= 0):
-		frame_base = dbg_step_esp + dbg_step_stack * 4
+		frame_base = dbg_step_esp + dbg_step_stack * __word_size__
 
 	if (dbg_step_mode == dbg_step_finish()):
 		return esp > frame_base
@@ -568,7 +590,7 @@ int dbg_step_should_stop(int context, int eip):
 		if (esp > frame_base):
 			return 1 /* returned past the starting frame */
 		if ((eip >= dbg_step_fstart) & (eip < dbg_step_fend)):
-			if (esp == frame_base - dbg_line_stack(entry) * 4):
+			if (esp == frame_base - dbg_line_stack(entry) * __word_size__):
 				return 1 /* a statement boundary of the starting frame */
 		return 0
 	return 1
@@ -577,10 +599,9 @@ int dbg_step_should_stop(int context, int eip):
 # SIGTRAP handler: breakpoints and 'debugger' statements arrive as int3
 # (trapno 3, eip past the int3 byte); trap-flag single-steps arrive as
 # debug exceptions (trapno 1, eip exact). Returning resumes the debuggee
-# through the kernel's vdso sigreturn trampoline.
-void wdbg_trap(int sig):
-	# The sigcontext sits directly after the sig argument on the stack
-	int context = &sig + 4
+# through the kernel's sigreturn path. context points at the sigcontext;
+# the arch-specific entry shims below compute it.
+void wdbg_trap(int sig, int context):
 	int eip = ctx_eip(context)
 
 	# One instruction has executed since a breakpoint was resumed: put its
@@ -606,7 +627,7 @@ void wdbg_trap(int sig):
 			return;
 		# A compiled-in 'debugger' statement (or --break_start/--break_end)
 		print(c"breakpoint hit at eip=")
-		char* h = hex(eip)
+		char* h = hex_word(eip)
 		println(h)
 		free(h)
 		dbg_announce_location(addr)
@@ -653,8 +674,7 @@ void wdbg_trap(int sig):
 
 
 # Fatal signal handler: announce, inspect, never resume.
-void wdbg_fatal(int sig):
-	int context = &sig + 4
+void wdbg_fatal(int sig, int context):
 	dbg_fatal_stop = 1
 	print(c"fatal signal: ")
 	if (sig == 11):
@@ -671,12 +691,12 @@ void wdbg_fatal(int sig):
 		print(digits)
 		free(digits)
 	print(c" at eip=")
-	char* h = hex(ctx_eip(context))
+	char* h = hex_word(ctx_eip(context))
 	print(h)
 	free(h)
 	if (sig == 11):
 		print(c" fault address=")
-		char* fa = hex(load_int(context + sigcontext_cr2()))
+		char* fa = hex_word(ctx_reg(context, sigcontext_cr2()))
 		print(fa)
 		free(fa)
 	put_char(10)
@@ -687,32 +707,93 @@ void wdbg_fatal(int sig):
 	exit(1)
 
 
-# Signal handlers are ordinary W functions taking the signal number.
-type wdbg_signal_handler = fn(int) -> void
+# ---------------------------------------------------------------------------
+# Signal delivery shims.
+#
+# i386: a non-SA_SIGINFO handler is called with the classic frame
+# [restorer][sig][sigcontext...] on the stack, so &sig + 4 is the
+# sigcontext, and the kernel's vdso trampoline performs sigreturn when
+# the handler returns. The *_entry wrappers compute the context and
+# forward to the real two-argument handlers.
+#
+# x86-64: the kernel always builds an rt frame and calls the handler
+# with sig in rdi and the ucontext pointer in rdx, and rt_sigaction
+# requires an SA_RESTORER trampoline. Neither matches a W function, so
+# wdbg emits tiny runtime thunks into an executable page: one per
+# handler converts the register convention into a W stack call of
+# handler(sig, ucontext + 40) - the sigcontext is the uc_mcontext field
+# at offset 40 - and a shared restorer performs rt_sigreturn.
+
+void wdbg_trap_entry(int sig):
+	wdbg_trap(sig, &sig + 4)
 
 
-# struct sigaction { handler, flags, restorer, mask[2] }; no SA_SIGINFO so
-# the handler gets the classic sigcontext frame, no SA_RESTORER so the
-# kernel uses the vdso sigreturn trampoline.
-void wdbg_install_handler(int signum, wdbg_signal_handler* handler, int flags):
-	int* act = malloc(20)
-	act[0] = cast(int, handler)
-	act[1] = flags
-	act[2] = 0
-	act[3] = 0
-	act[4] = 0
+void wdbg_fatal_entry(int sig):
+	wdbg_fatal(sig, &sig + 4)
+
+
+int wdbg_thunk_page
+int wdbg_thunk_pos
+int wdbg_restorer
+
+
+void wdbg_thunk_emit(int n, char* bytes):
+	char* p = cast(char*, wdbg_thunk_page + wdbg_thunk_pos)
+	int i = 0
+	while (i < n):
+		p[i] = bytes[i]
+		i = i + 1
+	wdbg_thunk_pos = wdbg_thunk_pos + n
+
+
+void wdbg_thunk_init():
+	if (wdbg_thunk_page != 0):
+		return;
+	wdbg_thunk_page = mmap(0, 4096, 7, 34) /* RWX, PRIVATE|ANONYMOUS */
+	asserts(c"mmap of signal thunk page failed", (wdbg_thunk_page > 0) | (wdbg_thunk_page < -4095))
+	wdbg_restorer = wdbg_thunk_page
+	/* mov eax,15 ; syscall  (rt_sigreturn) */
+	wdbg_thunk_emit(7, c"\xb8\x0f\x00\x00\x00\x0f\x05")
+
+
+# Emit an x64 thunk calling handler(sig, &uc_mcontext) with the W stack
+# convention (first argument at the highest address). The handler
+# address fits an imm32: the wdbg image loads in the low 2GB.
+int wdbg_emit_handler_thunk(int handler):
+	int addr = wdbg_thunk_page + wdbg_thunk_pos
+	/* push rdi ; lea rax,[rdx+40] ; push rax ; mov eax,imm32 */
+	wdbg_thunk_emit(7, c"\x57\x48\x8d\x42\x28\x50\xb8")
+	save_int32(cast(char*, wdbg_thunk_page + wdbg_thunk_pos), handler)
+	wdbg_thunk_pos = wdbg_thunk_pos + 4
+	/* call rax ; add rsp,16 ; ret  (returns into the restorer) */
+	wdbg_thunk_emit(7, c"\xff\xd0\x48\x83\xc4\x10\xc3")
+	return addr
+
+
+# struct sigaction: on i386 {handler, flags, restorer, mask[2]} with
+# 4-byte fields, no SA_SIGINFO/SA_RESTORER (the vdso trampoline does
+# sigreturn); on x86-64 {handler, flags, restorer, mask} with 8-byte
+# fields, SA_SIGINFO (4) | SA_RESTORER (0x04000000) and the thunks.
+void wdbg_install_handler(int signum, int handler, int flags):
+	int* act = malloc(5 * __word_size__)
+	if (__word_size__ == 8):
+		wdbg_thunk_init()
+		act[0] = wdbg_emit_handler_thunk(handler)
+		act[1] = flags | 4 | 0x04000000
+		act[2] = wdbg_restorer
+		act[3] = 0
+	else:
+		act[0] = handler
+		act[1] = flags
+		act[2] = 0
+		act[3] = 0
+		act[4] = 0
 	int err = rt_sigaction(signum, act, 0)
 	asserts(c"rt_sigaction failed", err == 0)
 	free(act)
 
 
 int wdbg_main(int argc, int argv):
-	# The in-process model is x86-only: the sigcontext layout, the 4-byte
-	# stack slot arithmetic and the runtime asm stubs all assume i386
-	if (__word_size__ != 4):
-		println2(c"wdbg only runs as a 32-bit x86 binary")
-		exit(1)
-
 	args_init(argc, argv)
 
 	# The target is the first argument ending in .w, so the boolean
@@ -729,17 +810,26 @@ int wdbg_main(int argc, int argv):
 		exit(1)
 
 	verbosity = -1
-	word_size = 4
+	# The in-process model runs the debuggee directly, so the target
+	# architecture is the one this binary was compiled for.
+	word_size = __word_size__
 	word_size_log2 = 2
+	if (word_size == 8):
+		word_size_log2 = 3
 	push_basic_types()
 	pointer_indirection = 0
 	last_identifier = malloc(8000)
 	last_global_declaration = malloc(8000)
 
 	# Executable buffer the debuggee runs from; code_offset makes every
-	# embedded address point into this mapping (same model as repl.w)
+	# embedded address point into this mapping (same model as repl.w).
+	# The codegen embeds addresses as 32-bit immediates, so on x64 the
+	# buffer must sit in the low 2GB: MAP_32BIT (0x40).
 	int buffer_size = 8388608
-	int buffer = mmap(0, buffer_size, 7, 34) /* RWX, PRIVATE|ANONYMOUS */
+	int mmap_flags = 34 /* PRIVATE|ANONYMOUS */
+	if (word_size == 8):
+		mmap_flags = 34 + 64
+	int buffer = mmap(0, buffer_size, 7, mmap_flags) /* RWX */
 	asserts(c"mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
 	code = cast(char*, buffer)
 	code_size = buffer_size
@@ -748,11 +838,14 @@ int wdbg_main(int argc, int argv):
 
 	# Recoverable compile errors for the print/eval command: error()
 	# jumps back to the checkpoint instead of exiting
-	repl_jump_buffer = cast(int, malloc(12))
+	repl_jump_buffer = cast(int, malloc(3 * __word_size__))
 	repl_error_jump = cast(int, repl_longjmp)
 
 	# Runtime stubs first, then the target and everything it imports
-	define_asm_functions()
+	if (word_size == 8):
+		define_asm_functions_x64()
+	else:
+		define_asm_functions()
 	compile_file(target)
 	# On-demand runtime for to_json/from_json used by the debuggee
 	json_codec_finish_import()
@@ -766,12 +859,19 @@ int wdbg_main(int argc, int argv):
 
 	# SA_NODEFER (0x40000000) keeps SIGTRAP deliverable inside the
 	# handler, so 'debugger' statements reached through the print/eval
-	# command nest instead of killing the process
-	wdbg_install_handler(5, wdbg_trap, 1073741824) /* SIGTRAP */
-	wdbg_install_handler(4, wdbg_fatal, 0) /* SIGILL */
-	wdbg_install_handler(7, wdbg_fatal, 0) /* SIGBUS */
-	wdbg_install_handler(8, wdbg_fatal, 0) /* SIGFPE */
-	wdbg_install_handler(11, wdbg_fatal, 0) /* SIGSEGV */
+	# command nest instead of killing the process. On x86 the kernel
+	# calls the 1-argument entry wrappers; on x64 the thunks call the
+	# 2-argument handlers directly.
+	int trap_handler = cast(int, wdbg_trap_entry)
+	int fatal_handler = cast(int, wdbg_fatal_entry)
+	if (__word_size__ == 8):
+		trap_handler = cast(int, wdbg_trap)
+		fatal_handler = cast(int, wdbg_fatal)
+	wdbg_install_handler(5, trap_handler, 1073741824) /* SIGTRAP */
+	wdbg_install_handler(4, fatal_handler, 0) /* SIGILL */
+	wdbg_install_handler(7, fatal_handler, 0) /* SIGBUS */
+	wdbg_install_handler(8, fatal_handler, 0) /* SIGFPE */
+	wdbg_install_handler(11, fatal_handler, 0) /* SIGSEGV */
 
 	if (term_isatty(0)):
 		line_edit_history_load(c"~/.wdbg_history")

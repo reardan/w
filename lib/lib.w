@@ -216,6 +216,29 @@ char* hex(int v):
 	return s
 
 
+# Like hex() but shows all 16 digits on a 64-bit target, so addresses
+# above 4GB (e.g. the process stack) display in full.
+char* hex_word(int v):
+	if (__word_size__ != 8):
+		return hex(v)
+	char* s = malloc(20)
+	s[0] = '0'
+	s[1] = 'x'
+	s[18] = 0
+	int i = 15
+	int digit
+	while (i >= 0):
+		digit = (v & 15)
+		if (digit < 10):
+			digit = digit + '0'
+		else:
+			digit = digit - 10 + 'a'
+		s[i + 2] = digit
+		v = v >> 4
+		i = i - 1
+	return s
+
+
 int from_hex(char* s):
 	int result = 0
 	
