@@ -210,3 +210,139 @@ int check_main(int argc, int argv):
 		println2(c"usage: w check [--json] [x64] <file.w>... [--bounds=on|off|trap]")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
+
+
+/*
+w symbols [--json] [x64] <file.w>...
+
+Compiles like 'w check' (output to /dev/null), then dumps the global symbol
+table and user-declared types with their declaration locations. --json emits
+one NDJSON record per entry on stdout, mirroring 'w check --json'. Entries
+without a recorded location (runtime stubs declared before any source file)
+are skipped.
+*/
+
+
+# Type name with pointer stars appended, e.g. "char*". Caller frees.
+char* symbols_type_display(int type):
+	if (type < 0):
+		return strclone(c"<none>")
+	char* name = strclone(type_get_name(type))
+	int stars = type_get_pointer_level(type)
+	while (stars > 0):
+		char* with_star = strjoin(name, c"*")
+		free(name)
+		name = with_star
+		stars = stars - 1
+	return name
+
+
+char* symbols_kind_name(int symtype):
+	if (symtype == 2):
+		return c"function"
+	if (symtype == 1):
+		return c"object"
+	return c"notype"
+
+
+# Kind of a type-table record from its RAW kind tag (type_get_kind would
+# follow alias targets). Only struct/union/enum/alias/fn declarations record
+# locations, so the default is "struct".
+char* symbols_type_kind_name(int type_index):
+	int t = get(type_index)
+	int kind = load_int(t + 820)
+	if (kind == type_kind_alias):
+		return c"alias"
+	if (kind == type_kind_union):
+		return c"union"
+	if (kind == type_kind_enum):
+		return c"enum"
+	if (kind == type_kind_function):
+		return c"fn"
+	return c"struct"
+
+
+void symbols_emit_json(char* name, char* kind, char* type_name, int file_index, int line, int column):
+	char* arch = c"x86"
+	if (diag_word_size == 8):
+		arch = c"x64"
+	diag_write_cstr(c"{")
+	diag_write_json_field(c"name", name)
+	diag_write_cstr(c", ")
+	diag_write_json_field(c"kind", kind)
+	diag_write_cstr(c", ")
+	diag_write_json_field(c"type", type_name)
+	diag_write_cstr(c", ")
+	diag_write_json_field(c"file", debug_file_name(file_index))
+	diag_write_cstr(c", ")
+	diag_write_json_int_field(c"line", line)
+	diag_write_cstr(c", ")
+	diag_write_json_int_field(c"column", column)
+	diag_write_cstr(c", ")
+	diag_write_json_field(c"arch", arch)
+	diag_write_cstr(c"}\x0a")
+
+
+void symbols_emit_human(char* name, char* kind, char* type_name, int file_index, int line, int column):
+	diag_write_cstr(debug_file_name(file_index))
+	diag_write_cstr(c":")
+	char* line_digits = itoa(line)
+	diag_write_cstr(line_digits)
+	free(line_digits)
+	diag_write_cstr(c":")
+	char* column_digits = itoa(column)
+	diag_write_cstr(column_digits)
+	free(column_digits)
+	diag_write_cstr(c": ")
+	diag_write_cstr(kind)
+	diag_write_cstr(c" ")
+	diag_write_cstr(name)
+	diag_write_cstr(c": ")
+	diag_write_cstr(type_name)
+	diag_write_cstr(c"\x0a")
+
+
+void symbols_emit(int json, char* name, char* kind, char* type_name, int file_index, int line, int column):
+	if (json):
+		symbols_emit_json(name, kind, type_name, file_index, line, column)
+	else:
+		symbols_emit_human(name, kind, type_name, file_index, line, column)
+
+
+void symbols_dump(int json):
+	int t = 0
+	while (t <= table_pos - 1):
+		char* sym = table + t
+		t = t + strlen(table + t)
+		int file_index = sym_decl_file_index(t)
+		if (file_index >= 0):
+			char* type_name = symbols_type_display(load_int(table + t + 6))
+			char* kind = symbols_kind_name(load_int(table + t + 10))
+			symbols_emit(json, sym, kind, type_name, file_index, sym_decl_line(t), sym_decl_column(t))
+			free(type_name)
+		t = next_token(t)
+	# User-declared types: structs, unions, enums, and type aliases.
+	# 'length' is the type table's structures.list element count.
+	int i = 0
+	while (i < length):
+		if (type_decl_file_index(i) >= 0):
+			symbols_emit(json, type_get_name(i), symbols_type_kind_name(i), type_get_name(i), type_decl_file_index(i), type_decl_line(i), type_decl_column(i))
+		i = i + 1
+
+
+int symbols_main(int argc, int argv):
+	int i = 2
+	int json = 0
+	diag_json = 0
+	if (i < argc):
+		char** arg = argv + i * __word_size__
+		if (strcmp(*arg, c"--json") == 0):
+			json = 1
+			diag_json = 1
+			i = i + 1
+	if (argc <= i):
+		println2(c"usage: w symbols [--json] [x64] <file.w>... [--bounds=on|off|trap]")
+		exit(1)
+	link_impl(argc, argv, i, 1)
+	symbols_dump(json)
+	return 0

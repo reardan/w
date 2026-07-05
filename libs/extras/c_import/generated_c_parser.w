@@ -257,6 +257,24 @@ int clang_token_LBRACE():
 int clang_token_RBRACE():
 	return 84
 
+int clang_token_C_PREPROCESSOR():
+	return -3
+
+int clang_token_LINE_COMMENT():
+	return -4
+
+int clang_token_BLOCK_COMMENT():
+	return -5
+
+int clang_token_C_CONTROL():
+	return -6
+
+int clang_token_NEWLINE():
+	return -7
+
+int clang_token_TAB():
+	return -8
+
 int clang_ast_translation_unit():
 	return 1
 
@@ -725,6 +743,20 @@ char* clang_token_name(int kind):
 		return c"LBRACE"
 	else if (kind == clang_token_RBRACE()):
 		return c"RBRACE"
+	else if (kind == clang_token_C_PREPROCESSOR()):
+		return c"C_PREPROCESSOR"
+	else if (kind == clang_token_LINE_COMMENT()):
+		return c"LINE_COMMENT"
+	else if (kind == clang_token_BLOCK_COMMENT()):
+		return c"BLOCK_COMMENT"
+	else if (kind == clang_token_C_CONTROL()):
+		return c"C_CONTROL"
+	else if (kind == clang_token_NEWLINE()):
+		return c"NEWLINE"
+	else if (kind == clang_token_TAB()):
+		return c"TAB"
+	else if (kind == pg_token_whitespace_kind()):
+		return c"WHITESPACE"
 	return c"<invalid>"
 
 pg_ast_node* clang_parse_translation_unit(pg_token_stream* stream, pg_diagnostics* diagnostics);
@@ -844,8 +876,13 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 	int column = 1
 	while (input[index] != 0):
 		if (pg_lexer_is_inline_space(input[index])):
-			column = column + 1
-			index = index + 1
+			int ws_start = index
+			int ws_line = line
+			int ws_column = column
+			while (pg_lexer_is_inline_space(input[index])):
+				column = column + 1
+				index = index + 1
+			pg_token_stream_add(stream, pg_token_hide(pg_token_make(pg_token_whitespace_kind(), input, ws_start, index - ws_start, filename, ws_line, ws_column)))
 		else:
 			int start = index
 			int start_line = line
@@ -857,32 +894,32 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 			length = pg_lexer_matcher_c_preprocessor(input, index)
 			if (length > best_length):
 				best_length = length
-				best_kind = 0
+				best_kind = clang_token_C_PREPROCESSOR()
 				best_skip = 1
 			length = pg_lexer_matcher_c_line_comment(input, index)
 			if (length > best_length):
 				best_length = length
-				best_kind = 0
+				best_kind = clang_token_LINE_COMMENT()
 				best_skip = 1
 			length = pg_lexer_matcher_block_comment(input, index)
 			if (length > best_length):
 				best_length = length
-				best_kind = 0
+				best_kind = clang_token_BLOCK_COMMENT()
 				best_skip = 1
 			length = pg_lexer_matcher_c_control(input, index)
 			if (length > best_length):
 				best_length = length
-				best_kind = 0
+				best_kind = clang_token_C_CONTROL()
 				best_skip = 1
 			length = pg_lexer_matcher_newline(input, index)
 			if (length > best_length):
 				best_length = length
-				best_kind = 0
+				best_kind = clang_token_NEWLINE()
 				best_skip = 1
 			length = pg_lexer_matcher_tabs(input, index)
 			if (length > best_length):
 				best_length = length
-				best_kind = 0
+				best_kind = clang_token_TAB()
 				best_skip = 1
 			length = pg_lexer_matcher_c_string(input, index)
 			if (length > best_length):
@@ -1467,13 +1504,16 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 			if (best_length > 0):
 				if (best_skip == 0):
 					pg_token_stream_add(stream, pg_token_make(best_kind, input, start, best_length, filename, start_line, start_column))
+				else:
+					pg_token_stream_add(stream, pg_token_hide(pg_token_make(best_kind, input, start, best_length, filename, start_line, start_column)))
 				clang_advance_position(input, start, best_length, &line, &column)
 				index = index + best_length
 			else:
 				pg_diagnostics_add(diagnostics, filename, line, column, c"invalid character", c"known token", pg_substr(input, index, 1))
+				pg_token_stream_add(stream, pg_token_hide(pg_token_make(pg_token_invalid_kind(), input, index, 1, filename, line, column)))
 				index = index + 1
 				column = column + 1
-	pg_token_stream_add(stream, pg_token_eof(filename, line, column))
+	pg_token_stream_add(stream, pg_token_eof(index, filename, line, column))
 	return stream
 
 pg_ast_node* clang_match_token(pg_token_stream* stream, int kind, char* name):

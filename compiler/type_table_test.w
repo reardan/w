@@ -8,7 +8,7 @@ import compiler.type_table
 
 
 void test_type_size():
-	assert_equal(872, type_size())
+	assert_equal(884, type_size())
 
 
 # same as list.test_push_pop()

@@ -2,6 +2,7 @@
 Deterministic W source writer used by ParserGenerator.
 */
 import lib.lib
+import lib.stream
 import structures.string
 
 
@@ -82,25 +83,26 @@ char* pg_source_take(pg_source_writer* writer):
 	return data
 
 
+# These mirror file_read_text/file_write_text in lib/file.w. This file is in
+# the compiler's import graph, so it must stay compilable by the committed
+# seed; lib/file.w uses list[T], which the seed does not know yet. Delegate
+# to lib.file after the next seed promotion (make update).
 char* pg_read_file_text(char* path):
-	int file = open(path, 0, 0)
-	if (file < 0):
+	wstream* in = stream_open_read(path)
+	if (in == 0):
 		return 0
-	int size = file_size(file)
-	char* data = malloc(size + 1)
-	int count = read(file, data, size)
-	close(file)
-	if (count < 0):
-		free(data)
-		return 0
-	data[count] = 0
-	return data
+	string_builder* contents = string_new()
+	stream_read_all(in, contents)
+	stream_close(in)
+	char* text = contents.data
+	free(contents)
+	return text
 
 
 int pg_write_file_text(char* path, char* text):
-	int file = open(path, 577, 493)
-	if (file < 0):
+	wstream* out = stream_open_write(path)
+	if (out == 0):
 		return 0
-	int count = write(file, text, strlen(text))
-	close(file)
-	return count == strlen(text)
+	stream_write_cstr(out, text)
+	stream_close(out)
+	return 1

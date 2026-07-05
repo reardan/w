@@ -80,6 +80,57 @@ int rt_sigaction(int signum, int* act, int* oldact):
 	return syscall7(174, signum, act, oldact, 8, 0, 0)
 
 
+/* Process management */
+
+# Returns the child pid in the parent and 0 in the child; the child gets a
+# copy-on-write duplicate of the address space and stack.
+int fork():
+	return syscall(2, 0, 0, 0)
+
+# argv and envp are NULL-terminated vectors of char* (word-sized entries).
+# Only returns on failure; on success the process image is replaced.
+int execve(char* path, char** argv, char** envp):
+	return syscall(11, path, argv, envp)
+
+# Reaps a child. pid -1 waits for any child; options 1 is WNOHANG. status
+# receives the raw wait status (may be 0 to discard). rusage should be 0.
+int wait4(int pid, int* status, int options, int rusage):
+	return syscall7(114, pid, status, options, rusage, 0, 0)
+
+# The kernel writes two 32-bit fds (read end, write end) to fds on both
+# architectures, so callers should read them back with load_int32.
+int pipe(int* fds):
+	return syscall(42, fds, 0, 0)
+
+int dup2(int oldfd, int newfd):
+	return syscall(63, oldfd, newfd, 0)
+
+int kill(int pid, int sig):
+	return syscall(37, pid, sig, 0)
+
+int chdir(char* path):
+	return syscall(12, path, 0, 0)
+
+int getpid():
+	return syscall(20, 0, 0, 0)
+
+# req points at a timespec whose two fields (seconds, nanoseconds) are
+# word-sized: 32-bit on i386, 64-bit on x86-64. rem may be 0.
+int nanosleep(int* req, int* rem):
+	return syscall(162, req, rem, 0)
+
+# fds points at an array of pollfd structs: int fd, short events,
+# short revents (8 bytes each on both architectures).
+int poll(int* fds, int nfds, int timeout_ms):
+	return syscall(168, fds, nfds, timeout_ms)
+
+# clock_id 1 is CLOCK_MONOTONIC. out points at a timespec whose two fields
+# (seconds, nanoseconds) are word-sized, like nanosleep's. The i386 variant
+# keeps 32-bit fields; clock_gettime64 (403) is the future 2038 fix.
+int clock_gettime(int clock_id, int* out):
+	return syscall(265, clock_id, out, 0)
+
+
 /* Socket syscalls use the i386 socketcall(2) multiplexer. */
 struct sys_socket_args:
 	int family

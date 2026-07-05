@@ -6,6 +6,8 @@ literal COMMA ","
 
 start list
 
+recover value COMMA
+
 rule value = WORD | NUMBER
 rule list = value value* EOF
 rule pair = value COMMA value EOF

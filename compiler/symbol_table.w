@@ -11,6 +11,9 @@ int: 14: size
 int: 18: pointer indirection level
 int: 22: number of declared parameters (functions), -1 when unknown
 int: 26: declared parameter types (up to 10 slots of 4 bytes each)
+int: 66: declaration file index (dwarf.w debug_files), -1 when unknown
+int: 70: declaration line (1-based)
+int: 74: declaration column (1-based)
 */
 char *table
 int table_size
@@ -19,7 +22,7 @@ int stack_pos
 
 
 int symbol_data_size():
-	return 66
+	return 78
 
 
 int next_token(int t):
@@ -98,6 +101,32 @@ void sym_print_info(char *s):
 	sym_info(sym_lookup(s))
 
 
+# Registered index of the file currently being parsed, or -1 when no source
+# file is active (e.g. runtime stubs declared by be_start before compilation).
+int decl_file_index():
+	if (filename == 0):
+		return -1
+	return debug_line_file_index()
+
+
+int sym_decl_file_index(int t):
+	return load_int(table + t + 66)
+
+
+int sym_decl_line(int t):
+	return load_int(table + t + 70)
+
+
+int sym_decl_column(int t):
+	return load_int(table + t + 74)
+
+
+void sym_set_decl_location(int t, int file_index, int line, int column):
+	save_int(table + t + 66, file_index)
+	save_int(table + t + 70, line)
+	save_int(table + t + 74, column)
+
+
 /*
 s: zero terminated string to declare
 type: variable type e.g. int, char, etc.
@@ -136,6 +165,10 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 14, 0) /* size: recycled malloc blocks are not zeroed */
 	save_int(table + t + 18, pointer_indirection)
 	save_int(table + t + 22, -1) /* parameter count unknown until a '(...)' is parsed */
+	# Declaration location: token position of the name being declared
+	save_int(table + t + 66, decl_file_index())
+	save_int(table + t + 70, diag_token_line)
+	save_int(table + t + 74, diag_token_column)
 	table_pos = next_token(t)
 
 	# Record where locals and arguments live so the in-process debugger
@@ -151,6 +184,10 @@ int sym_declare_global(char *s, int type, int symtype):
 	if (current_symbol < 0):
 		sym_declare(s, type, 'U', code_offset, symtype)
 		current_symbol = table_pos - symbol_data_size()
+	else if (sym_decl_file_index(current_symbol) < 0):
+		# Forward-referenced symbol (e.g. 'main' pre-declared by be_start):
+		# this explicit declaration is the real source location
+		sym_set_decl_location(current_symbol, decl_file_index(), diag_token_line, diag_token_column)
 
 	return current_symbol
 

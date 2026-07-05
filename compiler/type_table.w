@@ -52,8 +52,9 @@ int type_num_args(int type_index);
 int type_get_field_type_at(int type_index, int i);
 
 
+# 16 header + 100 fields * 8 + 56 extended metadata + 12 declaration location
 int type_size():
-	return 16 + 8 * 100 + 56
+	return 16 + 8 * 100 + 56 + 12
 
 
 # Raw bytes of a type-table record; the list stores record pointers as
@@ -62,8 +63,43 @@ char* type_record(int type_index):
 	return cast(char*, get(type_index))
 
 
-int type_push_pointer(char* name, int size, int pointer_level):
+# Allocate a record with the declaration-location fields cleared; the
+# type_push_* constructors fill in everything else. Locations are recorded
+# by the grammar for user-declared types via type_set_decl_location().
+char* type_alloc():
 	char* new_type = malloc(type_size())
+	save_int(new_type + 872, -1) /* declaration file index (dwarf.w debug_files) */
+	save_int(new_type + 876, 0) /* declaration line (1-based) */
+	save_int(new_type + 880, 0) /* declaration column (1-based) */
+	return new_type
+
+
+# These take plain (non-negative) type-table indexes, as returned by the
+# type_push_* constructors.
+void type_set_decl_location(int type_index, int file_index, int line, int column):
+	int t = get(type_index)
+	save_int(t + 872, file_index)
+	save_int(t + 876, line)
+	save_int(t + 880, column)
+
+
+int type_decl_file_index(int type_index):
+	int t = get(type_index)
+	return load_int(t + 872)
+
+
+int type_decl_line(int type_index):
+	int t = get(type_index)
+	return load_int(t + 876)
+
+
+int type_decl_column(int type_index):
+	int t = get(type_index)
+	return load_int(t + 880)
+
+
+int type_push_pointer(char* name, int size, int pointer_level):
+	char* new_type = type_alloc()
 	save_int(new_type, cast(int, name)) /* name */
 	save_int(new_type + 4, 0) /* num_fields */
 	save_int(new_type + 8, size) /* size */
@@ -76,7 +112,7 @@ int type_push_pointer(char* name, int size, int pointer_level):
 
 
 int type_push_size(char* name, int size):
-	char* new_type = malloc(type_size())
+	char* new_type = type_alloc()
 	save_int(new_type, cast(int, name)) /* name */
 	save_int(new_type + 4, 0) /* num_fields */
 	save_int(new_type + 8, size) /* size */
@@ -165,7 +201,7 @@ char* type_make_list_name(int element_type):
 
 
 int type_push_array(int element_type, int length):
-	char* new_type = malloc(type_size())
+	char* new_type = type_alloc()
 	save_int(new_type, cast(int, type_make_array_name(element_type, length)))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, (2 * word_size) + (length * type_get_size(element_type)))
@@ -178,7 +214,7 @@ int type_push_array(int element_type, int length):
 
 
 int type_push_slice(int element_type):
-	char* new_type = malloc(type_size())
+	char* new_type = type_alloc()
 	save_int(new_type, cast(int, type_make_slice_name(element_type)))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, word_size)
@@ -191,7 +227,7 @@ int type_push_slice(int element_type):
 
 
 int type_push_slice_value(int element_type):
-	char* new_type = malloc(type_size())
+	char* new_type = type_alloc()
 	char* storage_name = type_make_slice_name(element_type)
 	char* name = strjoin(storage_name, c" value")
 	free(storage_name)
@@ -207,7 +243,7 @@ int type_push_slice_value(int element_type):
 
 
 int type_push_map(int key_type, int value_type):
-	char* new_type = malloc(type_size())
+	char* new_type = type_alloc()
 	save_int(new_type, cast(int, type_make_map_name(key_type, value_type)))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, word_size)
@@ -220,7 +256,7 @@ int type_push_map(int key_type, int value_type):
 
 
 int type_push_set(int key_type):
-	char* new_type = malloc(type_size())
+	char* new_type = type_alloc()
 	save_int(new_type, cast(int, type_make_set_name(key_type)))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, word_size)
@@ -233,7 +269,7 @@ int type_push_set(int key_type):
 
 
 int type_push_list(int element_type):
-	char* new_type = malloc(type_size())
+	char* new_type = type_alloc()
 	save_int(new_type, cast(int, type_make_list_name(element_type)))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, word_size)
@@ -324,7 +360,7 @@ int type_unqualified(int type_index):
 
 int type_push_alias(char* name, int target):
 	int real_target = type_canonical(target)
-	char* new_type = malloc(type_size())
+	char* new_type = type_alloc()
 	char* target_record = type_record(real_target)
 	save_int(new_type, cast(int, name)) /* name */
 	save_int(new_type + 4, load_int(target_record + 4)) /* num_fields */
@@ -345,7 +381,7 @@ int type_push_alias(char* name, int target):
 int type_push_const(int target):
 	int real_target = type_canonical(target)
 	char* name = strjoin(c"const ", type_get_name(real_target))
-	char* new_type = malloc(type_size())
+	char* new_type = type_alloc()
 	char* target_record = type_record(real_target)
 	save_int(new_type, cast(int, name))
 	save_int(new_type + 4, load_int(target_record + 4))
@@ -478,7 +514,7 @@ int type_is_const(int type_index):
 
 
 int type_push_function(char* name, int return_type, int param_count, int param_types):
-	char* new_type = malloc(type_size())
+	char* new_type = type_alloc()
 	save_int(new_type, cast(int, name))
 	save_int(new_type + 4, 0)
 	save_int(new_type + 8, word_size)

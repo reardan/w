@@ -14,6 +14,20 @@ void assert_w_parse_has_errors(char* source, char* filename):
 	assert1(pg_diagnostics_count(diagnostics) > 0)
 
 
+# Deliberately leaks the stream: freeing ~100k small token blocks per file
+# floods the runtime allocator's first-fit free list and makes the manifest
+# sweep quadratic.
+void assert_w_lex_round_trip(char* source, char* filename):
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_token_stream* stream = wlang_lex(source, filename, diagnostics)
+	char* rebuilt = pg_token_stream_source(stream)
+	if (strcmp(source, rebuilt) != 0):
+		print2(c"lossless round trip failed for ")
+		println2(filename)
+	assert_equal(0, strcmp(source, rebuilt))
+	free(rebuilt)
+
+
 void assert_w_parse_text(char* source, char* filename):
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = wlang_parse(source, filename, diagnostics)
@@ -22,6 +36,7 @@ void assert_w_parse_text(char* source, char* filename):
 	assert1(root != 0)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	assert_equal(wlang_ast_program(), root.kind)
+	assert_w_lex_round_trip(source, filename)
 
 
 void assert_w_parse_file(char* path):
@@ -130,6 +145,78 @@ void test_parse_w_legacy_range_forms():
 void test_parse_w_reports_syntax_and_lexer_errors():
 	assert_w_parse_has_errors(c"int main(:\x0a", c"bad_syntax.w")
 	assert_w_parse_has_errors(c"int main():\x0a\x09@\x0a", c"bad_lexer.w")
+
+
+void test_w_lexer_keeps_comments_and_whitespace_hidden():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_token_stream* stream = wlang_lex(c"# heading\x0aint x /* mid */ = 1\x0a", c"trivia.w", diagnostics)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	# Parser-facing stream skips the trivia entirely
+	assert_equal(wlang_token_NEWLINE(), pg_token_stream_la(stream, 1).kind)
+	assert_equal(wlang_token_KW_INT(), pg_token_stream_la(stream, 2).kind)
+	assert_equal(wlang_token_IDENT(), pg_token_stream_la(stream, 3).kind)
+	assert_equal(wlang_token_ASSIGN(), pg_token_stream_la(stream, 4).kind)
+	# All-channel stream keeps every byte of trivia in order
+	pg_token* comment = pg_token_stream_all_get(stream, 0)
+	assert_equal(wlang_token_LINE_COMMENT(), comment.kind)
+	assert_equal(pg_token_hidden_channel(), comment.channel)
+	assert_strings_equal(c"# heading", comment.text)
+	assert_equal(0, comment.offset)
+	assert_equal(9, comment.length)
+	int i = 0
+	int block_comments = 0
+	int whitespace_runs = 0
+	while (i < pg_token_stream_all_count(stream)):
+		pg_token* token = pg_token_stream_all_get(stream, i)
+		if (token.kind == wlang_token_BLOCK_COMMENT()):
+			block_comments = block_comments + 1
+		if (token.kind == pg_token_whitespace_kind()):
+			whitespace_runs = whitespace_runs + 1
+		i = i + 1
+	assert_equal(1, block_comments)
+	assert_equal(4, whitespace_runs)
+	char* rebuilt = pg_token_stream_source(stream)
+	assert_strings_equal(c"# heading\x0aint x /* mid */ = 1\x0a", rebuilt)
+
+
+void test_w_ast_node_spans():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_ast_node* root = wlang_parse(c"int add(int a, int b):\x0a\x09return a + b\x0a", c"spans.w", diagnostics)
+	assert1(root != 0)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	# Root covers the first token through EOF
+	assert_equal(0, pg_ast_first_token(root).offset)
+	assert_equal(pg_token_eof_kind(), pg_ast_last_token(root).kind)
+	# The function declaration spans "int" through the final NEWLINE
+	pg_ast_node* top_item = pg_ast_child(root, 0)
+	assert_strings_equal(c"int", pg_ast_first_token(top_item).text)
+	assert_equal(0, pg_ast_first_token(top_item).offset)
+	assert_equal(wlang_token_NEWLINE(), pg_ast_last_token(top_item).kind)
+
+
+void test_w_parser_recovers_with_multiple_errors():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	char* source = c"int ok():\x0a\x09return 0\x0a\x0a) bad1\x0a\x0a) bad2\x0a\x0aint also_ok():\x0a\x09return 1\x0a"
+	pg_ast_node* root = wlang_parse(source, c"recover.w", diagnostics)
+	assert1(root != 0)
+	assert_equal(wlang_ast_program(), root.kind)
+	assert_equal(2, pg_diagnostics_count(diagnostics))
+	assert_strings_equal(c"syntax error", pg_diagnostics_get(diagnostics, 0).message)
+	assert_strings_equal(c"top_item", pg_diagnostics_get(diagnostics, 0).expected)
+	assert_strings_equal(c"syntax error", pg_diagnostics_get(diagnostics, 1).message)
+	# Both good functions and both error nodes appear under the program root
+	int i = 0
+	int error_nodes = 0
+	int top_items = 0
+	while (i < pg_ast_child_count(root)):
+		pg_ast_node* child = pg_ast_child(root, i)
+		if (child.kind == pg_ast_error_kind()):
+			error_nodes = error_nodes + 1
+		if (child.kind == wlang_ast_top_item()):
+			top_items = top_items + 1
+		i = i + 1
+	assert_equal(2, error_nodes)
+	assert_equal(2, top_items)
 
 
 void test_parse_real_w_entrypoint():

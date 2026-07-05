@@ -43,9 +43,11 @@ Compile/run an arbitrary program directly:
  for build/test: `gdb`/`ddd` (`*_debug` targets), `radare2` (`asm_codegen_get_context`),
  `systemtap`/`stap` with sudo (`net_log*`, `log_write`).
 - `make tests` includes `dynamic_test`, which produces a **32-bit dynamically linked**
- binary and needs the i386 loader/libc (`/lib/ld-linux.so.2`, `libc6:i386`). This is
- **not** guaranteed to be present on a fresh VM (observed missing), and it is a system
- package that the minimal update script intentionally does not install. If the loader is
- missing, `dynamic_test` fails with `./bin/dynamic_test: not found` — install it per the
- README (`sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6:i386`).
+ binary and needs the i386 loader/libc (`/lib/ld-linux.so.2`, `libc6:i386`). In the
+ Cursor Cloud environment this is **baked into the VM snapshot** (installed once during
+ environment setup), so `make tests` runs out of the box; the minimal update script
+ intentionally does not reinstall it (an apt step on every startup would be a network
+ dependency and a reliability risk). If you ever hit `./bin/dynamic_test: not found`
+ (loader missing, e.g. on a non-snapshot host), install it per the README
+ (`sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6:i386`).
  `make build` and `make verify` do not require it.

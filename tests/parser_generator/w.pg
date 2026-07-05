@@ -79,6 +79,10 @@ literal RBRACE "}"
 
 start program
 
+# On a top-level syntax error, report a diagnostic and resynchronize at the
+# next line that starts at tab level zero (skipping blank and indented lines).
+recover top_item NEWLINE TAB
+
 rule program = separator* top_item* EOF
 rule separator = NEWLINE
 rule top_item = declaration separator* | statement separator*

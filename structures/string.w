@@ -17,7 +17,8 @@ struct string_builder:
 string_builder* string_new_sized(int capacity):
 	if (capacity < 8):
 		capacity = 8
-	string_builder* s = malloc(12)
+	# new sizes the struct per architecture; malloc(12) undersized it on x64.
+	string_builder* s = new string_builder()
 	s.capacity = capacity
 	s.length = 0
 	s.data = malloc(capacity)

@@ -139,6 +139,8 @@ current state:
 			linked_list
 			format helpers
 			command-line argument parsing (lib/args.w)
+			buffered streams, line readers, Content-Length framing (lib/stream.w)
+			whole-file helpers (lib/file.w, design: docs/projects/streams.md)
 		repl:
 			make repl builds and runs repl.w
 			make repl_test verifies REPL interaction and error recovery
@@ -204,8 +206,6 @@ current state:
 
 	future language features:
 		generators + yield (design: docs/projects/iteration.md, stackful coroutines)
-		stream class
-		file class
 		template strings
 		variable arguments
 		default values
