@@ -106,6 +106,12 @@ int nanosleep(int* req, int* rem):
 int poll(int* fds, int nfds, int timeout_ms):
 	return syscall(168, fds, nfds, timeout_ms)
 
+# clock_id 1 is CLOCK_MONOTONIC. out points at a timespec whose two fields
+# (seconds, nanoseconds) are word-sized, like nanosleep's. The i386 variant
+# keeps 32-bit fields; clock_gettime64 (403) is the future 2038 fix.
+int clock_gettime(int clock_id, int* out):
+	return syscall(265, clock_id, out, 0)
+
 
 /* Socket syscalls use the i386 socketcall(2) multiplexer. */
 struct sys_socket_args:
