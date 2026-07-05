@@ -21,8 +21,12 @@ An empty line repeats the previous command.
 Breakpoints (patched int3 bytes with the original byte remembered):
 	b / break <t>     set a breakpoint; t = function | line | file:line
 	tb / tbreak <t>   one-shot breakpoint, deleted when hit
-	d / delete <n>    delete breakpoint n (no argument: delete all)
-	i b               list breakpoints
+	watch <x|addr>    software watchpoint on a variable's word: while any
+	                  exist, resumes single-step statement-by-statement
+	                  and stop with an old -> new report on change (slow)
+	d / delete <n>    delete breakpoint n; d w <n> deletes watchpoint n
+	                  (no argument: delete everything)
+	i b               list breakpoints; i w lists watchpoints
 
 Inspection:
 	p / print <x>     local/arg/global by name, or compile and run any
@@ -65,6 +69,7 @@ import debugger.lines
 import debugger.symbols
 import debugger.locals
 import debugger.breakpoints
+import debugger.watchpoints
 import debugger.eval
 
 
@@ -444,6 +449,40 @@ void dbg_set_command(int pc, int esp, char* arg):
 	println(arg)
 
 
+# watch <name | address>: record the variable's storage word (in the
+# selected frame, for locals) for the software watch scan.
+void dbg_watch_command(int pc, int esp, char* arg):
+	if (arg[0] == 0):
+		println(c"usage: watch <name | address>")
+		return;
+	int addr = 0
+	int note = -1
+	if (((arg[0] >= '0') & (arg[0] <= '9')) | (arg[0] == '-')):
+		addr = dbg_number(arg)
+	else:
+		note = dbg_local_find(arg, pc)
+		if (note >= 0):
+			addr = dbg_local_runtime_addr(note, esp)
+		else:
+			int g = dbg_global_find(arg)
+			if ((g < 0) | (dbg_sym_symtype(g) == 2)):
+				print(c"unknown variable: ")
+				println(arg)
+				return;
+			addr = dbg_sym_address(g)
+	if (dbg_mem_readable(addr, __word_size__) == 0):
+		println(c"address is not readable")
+		return;
+	int w = dbg_watch_add(arg, addr)
+	if (w < 0):
+		return;
+	dbg_watch_describe(w)
+	put_char(10)
+	if (note >= 0):
+		println(c"(watches this frame's stack slot: meaningless after the function returns)")
+	println(c"(software watchpoints single-step the program: expect a slowdown)")
+
+
 # x <addr|name> [count]
 void dbg_examine_command(int pc, int esp, char* arg):
 	char* count_text = dbg_split_word(arg)
@@ -503,6 +542,8 @@ void dbg_info_command(int context, int pc, int esp, char* arg):
 		dbg_print_frame_vars(pc, esp, 'L')
 	else if ((strcmp(arg, c"a") == 0) | (strcmp(arg, c"args") == 0)):
 		dbg_print_frame_vars(pc, esp, 'A')
+	else if ((strcmp(arg, c"w") == 0) | (strcmp(arg, c"watchpoints") == 0)):
+		dbg_watch_list()
 	else if ((strcmp(arg, c"f") == 0) | (strcmp(arg, c"functions") == 0)):
 		dbg_print_functions()
 	else if (strcmp(arg, c"files") == 0):
@@ -511,7 +552,7 @@ void dbg_info_command(int context, int pc, int esp, char* arg):
 			println(str_from_cstr(cast(char*, load_int(debug_files + i * 4))))
 			i = i + 1
 	else:
-		println(c"info topics: breakpoints registers locals args functions files")
+		println(c"info topics: breakpoints watchpoints registers locals args functions files")
 
 
 void dbg_help():
@@ -519,7 +560,8 @@ void dbg_help():
 	println(c"  c/continue  s/step  n/next  si/stepi  fin/finish  q/quit")
 	println(c"breakpoints:")
 	println(c"  b/break <function | line | file:line>   tb/tbreak <target>")
-	println(c"  d/delete [n]   i b (list)")
+	println(c"  watch <name | address> (software watchpoint; slow while set)")
+	println(c"  d/delete [n]   d w [n]   i b / i w (list)")
 	println(c"inspection:")
 	println(c"  p/print <name | expression>   set <name> <value>")
 	println(c"  x <addr | name> [count]   bt/backtrace   st/stack")
@@ -557,6 +599,9 @@ void dbg_prepare_resume(int context, int stop_addr, int mode):
 		dbg_rearm_bp = bp
 		ctx_set_trap_flag(context)
 	else if (mode != dbg_step_none()):
+		ctx_set_trap_flag(context)
+	# Live watchpoints turn every resume into a single-step scan
+	if (dbg_watch_live() > 0):
 		ctx_set_trap_flag(context)
 
 
@@ -626,9 +671,18 @@ void wdbg_command_loop(int context, int stop_addr):
 		else if ((strcmp(command, c"d") == 0) | (strcmp(command, c"delete") == 0)):
 			if ((arg[0] == 0) | (strcmp(arg, c"all") == 0)):
 				bp_delete_all()
-				println(c"all breakpoints deleted")
+				dbg_watch_delete_all()
+				println(c"all breakpoints and watchpoints deleted")
 			else:
-				bp_delete(atoi(arg) - 1)
+				char* wnum = dbg_split_word(arg)
+				if ((strcmp(arg, c"w") == 0) | (strcmp(arg, c"watch") == 0)):
+					if (wnum[0] == 0):
+						dbg_watch_delete_all()
+						println(c"all watchpoints deleted")
+					else:
+						dbg_watch_delete(atoi(wnum) - 1)
+				else:
+					bp_delete(atoi(arg) - 1)
 		else if ((strcmp(command, c"i") == 0) | (strcmp(command, c"info") == 0)):
 			dbg_info_command(context, dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
 		else if ((strcmp(command, c"bt") == 0) | (strcmp(command, c"backtrace") == 0)):
@@ -651,6 +705,8 @@ void wdbg_command_loop(int context, int stop_addr):
 			dbg_set_command(dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
 		else if (strcmp(command, c"x") == 0):
 			dbg_examine_command(dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
+		else if (strcmp(command, c"watch") == 0):
+			dbg_watch_command(dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
 		else if ((strcmp(command, c"h") == 0) | (strcmp(command, c"help") == 0) | (strcmp(command, c"?") == 0)):
 			dbg_help()
 		else:
@@ -777,8 +833,31 @@ void wdbg_trap(int sig, int context):
 		wdbg_stop_loop(context, addr)
 		return;
 
-	# Single-step trap
+	# Single-step trap. The watchpoint scan comes first: at every
+	# statement boundary compare each watched word with its remembered
+	# value and stop on the first change, whatever mode is stepping.
+	if (dbg_watch_live() > 0):
+		if (dbg_in_debuggee(eip)):
+			int wentry = dbg_find_line(eip - code_offset)
+			if (wentry >= 0):
+				if (eip == code_offset + dbg_line_addr(wentry)):
+					int w = dbg_watch_check()
+					if (w >= 0):
+						dbg_watch_report(w)
+						dbg_announce_location(eip)
+						dbg_print_source_at(eip)
+						wdbg_stop_loop(context, eip)
+						return;
 	if (dbg_step_mode == dbg_step_none()):
+		if (dbg_watch_live() > 0):
+			# 'continue' with watchpoints: keep scanning until execution
+			# returns past the resume point into wdbg itself
+			if (dbg_in_debuggee(eip)):
+				ctx_set_trap_flag(context)
+				return;
+			if (ctx_esp(context) <= dbg_step_esp):
+				ctx_set_trap_flag(context)
+				return;
 		# The step only existed to re-arm a breakpoint: full speed again
 		ctx_clear_trap_flag(context)
 		return;
@@ -786,7 +865,8 @@ void wdbg_trap(int sig, int context):
 	if (dbg_step_count > 500000):
 		println(c"step: no source boundary found: continuing")
 		dbg_step_mode = dbg_step_none()
-		ctx_clear_trap_flag(context)
+		if (dbg_watch_live() == 0):
+			ctx_clear_trap_flag(context)
 		return;
 	# Returning past the debuggee's main into wdbg itself ends the step
 	if (dbg_in_debuggee(eip) == 0):
