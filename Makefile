@@ -736,6 +736,14 @@ wexec_test: w FORCE
 	grep -q "not valid JSON" ./bin/wexec_bad.stderr
 	! ./bin/wexec -f tests/wexec/missing_manifest.json anything 2>./bin/wexec_missing.stderr
 	grep -q "cannot read manifest" ./bin/wexec_missing.stderr
+	# extended step fields: expect arrays, reject_*, expect_status, capture files
+	./bin/wexec -f tests/wexec/features.json expect_array rejects status_ok capture_file | grep -q "wexec: OK (4 targets)"
+	! ./bin/wexec -f tests/wexec/features.json expect_array_missing 2>./bin/wexec_features.stderr
+	grep -q "expected stdout to contain: absent" ./bin/wexec_features.stderr
+	! ./bin/wexec -f tests/wexec/features.json reject_present 2>./bin/wexec_features.stderr
+	grep -q "expected stdout to not contain: warning:" ./bin/wexec_features.stderr
+	! ./bin/wexec -f tests/wexec/features.json status_wrong 2>./bin/wexec_features.stderr
+	grep -q "command exited 0, expected status 3" ./bin/wexec_features.stderr
 	# no requested target: usage plus the target list, nonzero exit
 	! ./bin/wexec -f tests/wexec/good.json > ./bin/wexec_noarg.out 2>./bin/wexec_noarg.stderr
 	grep -q "usage: wexec" ./bin/wexec_noarg.stderr

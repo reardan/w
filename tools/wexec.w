@@ -26,9 +26,14 @@ Manifest shape:
 
 Step fields: "cmd" (argv, required; argv[0] is resolved against PATH
 when it contains no slash), "stdin" (text piped to the child),
-"expect_stdout" / "expect_stderr" (a substring the captured stream must
-contain), "expect_fail" (the step must exit nonzero, the manifest's
-version of Make's "! cmd"), and "timeout_ms" (0 = no timeout).
+"expect_stdout" / "expect_stderr" (a substring — or array of
+substrings — the captured stream must contain), "reject_stdout" /
+"reject_stderr" (substring(s) that must NOT appear, the manifest's
+version of "! grep -q"), "expect_fail" (the step must exit nonzero,
+the manifest's version of Make's "! cmd"), "expect_status" (an exact
+exit code), "stdout_file" / "stderr_file" (write the captured stream
+to a path, replacing shell "> file" redirects), and "timeout_ms"
+(0 = no timeout).
 
 Every target runs at most once per invocation and there is no caching:
 like the Makefile's FORCE targets, requesting a target always runs it.
@@ -196,6 +201,21 @@ int wexec_check_status(char* target_name, int step_index, json_value* step, proc
 	if (result.status < 0):
 		wexec_step_error(target_name, step_index, c"command timed out or could not be waited on")
 		return 1
+	json_value* wanted = json_object_get(step, c"expect_status")
+	if (wanted != 0):
+		if (wanted.type != json_type_int()):
+			wexec_step_error(target_name, step_index, c"\"expect_status\" must be an integer")
+			return 1
+		if (result.status != wanted.int_value):
+			string_builder* s = string_new()
+			string_append(s, c"command exited ")
+			string_append_int(s, result.status)
+			string_append(s, c", expected status ")
+			string_append_int(s, wanted.int_value)
+			wexec_step_error(target_name, step_index, s.data)
+			string_free(s)
+			return 1
+		return 0
 	if (wexec_get_flag(step, c"expect_fail")):
 		if (result.status == 0):
 			wexec_step_error(target_name, step_index, c"command was expected to fail but exited 0")
@@ -211,19 +231,69 @@ int wexec_check_status(char* target_name, int step_index, json_value* step, proc
 	return 0
 
 
-int wexec_check_expectation(char* target_name, int step_index, char* stream_name, char* text, char* needle):
-	if (needle == 0):
-		return 0
-	if (wexec_str_contains(text, needle)):
-		return 0
+# reject != 0 inverts the check: the needle must be absent.
+int wexec_check_needle(char* target_name, int step_index, char* stream_name, char* text, char* needle, int reject):
+	int found = wexec_str_contains(text, needle)
+	if (reject == 0):
+		if (found):
+			return 0
+	else:
+		if (found == 0):
+			return 0
 	string_builder* s = string_new()
 	string_append(s, c"expected ")
 	string_append(s, stream_name)
-	string_append(s, c" to contain: ")
+	if (reject):
+		string_append(s, c" to not contain: ")
+	else:
+		string_append(s, c" to contain: ")
 	string_append(s, needle)
 	wexec_step_error(target_name, step_index, s.data)
 	string_free(s)
 	return 1
+
+
+# An expectation field may be a single substring or an array of them.
+int wexec_check_expectation(char* target_name, int step_index, json_value* step, char* key, char* stream_name, char* text, int reject):
+	json_value* value = json_object_get(step, key)
+	if (value == 0):
+		return 0
+	if (value.type == json_type_string()):
+		return wexec_check_needle(target_name, step_index, stream_name, text, value.string_value, reject)
+	if (value.type != json_type_array()):
+		wexec_error2(c"expectation must be a string or array of strings: ", key)
+		return 1
+	int i = 0
+	while (i < json_array_length(value)):
+		json_value* entry = json_array_get(value, i)
+		if (entry.type != json_type_string()):
+			wexec_error2(c"expectation array entries must be strings: ", key)
+			return 1
+		if (wexec_check_needle(target_name, step_index, stream_name, text, entry.string_value, reject)):
+			return 1
+		i = i + 1
+	return 0
+
+
+# "stdout_file" / "stderr_file": save the captured stream to a path,
+# the manifest's version of a "> file" shell redirect.
+int wexec_write_capture(char* target_name, int step_index, json_value* step, char* key, char* data, int length):
+	char* path = wexec_get_string(step, key)
+	if (path == 0):
+		return 0
+	# 577 = O_WRONLY | O_CREAT | O_TRUNC, 420 = rw-r--r--
+	int fd = open(path, 577, 420)
+	if (fd < 0):
+		wexec_step_error(target_name, step_index, c"cannot write capture file")
+		return 1
+	int written = 0
+	if (length > 0):
+		written = write(fd, data, length)
+	close(fd)
+	if (written < length):
+		wexec_step_error(target_name, step_index, c"short write to capture file")
+		return 1
+	return 0
 
 
 int wexec_run_step(char* target_name, int step_index, json_value* step):
@@ -264,11 +334,19 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 		return 1
 
 	wexec_emit_output(result)
-	int failed = wexec_check_status(target_name, step_index, step, result)
+	int failed = wexec_write_capture(target_name, step_index, step, c"stdout_file", result.stdout_text, result.stdout_length)
 	if (failed == 0):
-		failed = wexec_check_expectation(target_name, step_index, c"stdout", result.stdout_text, wexec_get_string(step, c"expect_stdout"))
+		failed = wexec_write_capture(target_name, step_index, step, c"stderr_file", result.stderr_text, result.stderr_length)
 	if (failed == 0):
-		failed = wexec_check_expectation(target_name, step_index, c"stderr", result.stderr_text, wexec_get_string(step, c"expect_stderr"))
+		failed = wexec_check_status(target_name, step_index, step, result)
+	if (failed == 0):
+		failed = wexec_check_expectation(target_name, step_index, step, c"expect_stdout", c"stdout", result.stdout_text, 0)
+	if (failed == 0):
+		failed = wexec_check_expectation(target_name, step_index, step, c"expect_stderr", c"stderr", result.stderr_text, 0)
+	if (failed == 0):
+		failed = wexec_check_expectation(target_name, step_index, step, c"reject_stdout", c"stdout", result.stdout_text, 1)
+	if (failed == 0):
+		failed = wexec_check_expectation(target_name, step_index, step, c"reject_stderr", c"stderr", result.stderr_text, 1)
 	process_result_free(result)
 	return failed
 
