@@ -204,10 +204,14 @@ data words of a failed declaration.
   (via the existing `print_symbol_table`) is cheap and useful.
 - Update `docs/todo.txt` / `docs/ui.txt` limitation lists when done.
 
-Out of scope for v1 (future work): line editing and history (arrow
-keys need termios raw mode), `:load` command as an alias for the file
-mode, evaluating expressions at a wdbg breakpoint (`docs/debugging.txt`
-wishlist), x64 REPL (the setjmp/longjmp stubs are x86-only today).
+Out of scope for v1, since landed: line editing and history
+(`lib/termios.w` raw mode + `lib/line_edit.w`, persisted to
+`~/.w_history`, wired into both the REPL prompt and the wdbg command
+loop), evaluating expressions at a wdbg breakpoint with locals bound in
+(`debugger/eval.w`), and the x64 REPL (real x64
+`repl_setjmp`/`repl_longjmp` stubs, `MAP_32BIT` code buffer,
+`repl_x64`/`repl_test_x64` targets). Still future: a `:load` command as
+an alias for the file mode.
 
 ## H. Testing
 
@@ -282,7 +286,16 @@ stay byte-identical) and the full `make tests`.
   ones. Piped input is detected as non-interactive and keeps its
   explicit tabs, so scripted sessions are unaffected.
 
+- **Line editing and history (added with the x64 work).** On a tty the
+  prompt is a raw-mode readline-style editor (`lib/line_edit.w`):
+  cursor movement, Ctrl-A/E/K/U/W/L, Ctrl-C cancels the line, Ctrl-D on
+  an empty line is EOF, and up/down browse a deduplicated history
+  persisted best-effort to `~/.w_history`. Piped input keeps the plain
+  reader, so scripted sessions are unaffected. The auto-indent tabs are
+  part of the editor's buffer, so editing a recalled line preserves
+  them.
+
 Known limitations (documented in `docs/todo.txt`): calls compiled before
 a redefinition keep the old binding; `struct` redefinition keeps the
-first definition because `type_lookup` returns the first match; no line
-editing/history yet.
+first definition because `type_lookup` returns the first match; the
+line editor redraws a single row (no multi-line wrap).

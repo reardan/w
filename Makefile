@@ -193,7 +193,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test for_container_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test format_64_test args_64_test FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test for_container_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test format_64_test args_64_test repl_test_x64 debug_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -542,6 +542,10 @@ repl: w FORCE
 	./bin/wv2 repl.w -o ./bin/repl
 	./bin/repl
 
+repl_x64: w FORCE
+	./bin/wv2 x64 repl.w -o ./bin/repl64
+	./bin/repl64
+
 repl_test: w FORCE
 	./bin/wv2 repl.w -o ./bin/repl
 	printf 'print(c"hello from the repl\\x0a")\n:quit\n' | ./bin/repl | grep -q "hello from the repl"
@@ -575,7 +579,41 @@ repl_test: w FORCE
 	printf 'fixture_helper(21)\nfixture_global\n:quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "42"
 	printf 'fixture_global\n:quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "11"
 	! printf ':quit\n' | ./bin/repl tests/repl_fixture.w --no_main | grep -q "fixture main ran"
+	# Line editing on a pty: backspace fixes a typo before Enter
+	rm -f ./bin/.w_history
+	printf 'int q = 13\177\1774\nq + 1\n:quit\n' | HOME=./bin script -qc './bin/repl' /dev/null | grep -q "5"
+	# Up-arrow recalls the previous entry and re-runs it
+	test $$(printf 'int x = 41\nx + 1\n\033[A\n:quit\n' | HOME=./bin script -qc './bin/repl' /dev/null | grep -c "42") -eq 2
+	# Accepted lines persist to $$HOME/.w_history
+	grep -q "int x = 41" ./bin/.w_history
+	rm -f ./bin/.w_history
 	@echo "repl test OK"
+
+# The x64 REPL: the same in-process model with 8-byte words; the code
+# buffer sits in the low 2GB (MAP_32BIT) because the codegen embeds
+# addresses as 32-bit immediates.
+repl_test_x64: w FORCE
+	./bin/wv2 x64 repl.w -o ./bin/repl64
+	printf 'print(c"hello from the repl\\x0a")\n:quit\n' | ./bin/repl64 | grep -q "hello from the repl"
+	printf 'this is not valid w\nprint(c"recovered\\x0a")\n:quit\n' | ./bin/repl64 | grep -q "recovered"
+	printf 'int add(int a, int b):\n\treturn a + b\n\nadd(40, 2)\n:quit\n' | ./bin/repl64 | grep -q "42"
+	printf 'int x = 5\nx + 1\n:quit\n' | ./bin/repl64 | grep -q "6"
+	printf '"hello string"\n:quit\n' | ./bin/repl64 | grep -q "hello string"
+	printf 'struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n' | ./bin/repl64 | grep -q "7"
+	printf 'import structures.string\nstring_builder* s = string_from(c"imported")\ns.data\n:quit\n' | ./bin/repl64 | grep -q "imported"
+	printf 'import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n' | ./bin/repl64 | grep -q "42"
+	printf 'import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c"a"] = 41\nm[c"a"] + 1\n:quit\n' | ./bin/repl64 | grep -q "42"
+	printf 'int bad():\n\treturn qq\n\nprint(c"recovered fn\\x0a")\n:quit\n' | ./bin/repl64 | grep -q "recovered fn"
+	printf ':quit\n' | ./bin/repl64 tests/repl_fixture.w | grep -q "fixture main ran"
+	printf 'fixture_helper(21)\nfixture_global\n:quit\n' | ./bin/repl64 tests/repl_fixture.w | grep -q "42"
+	! printf ':quit\n' | ./bin/repl64 tests/repl_fixture.w --no_main | grep -q "fixture main ran"
+	# Line editing and history on a pty (same cases as the x86 repl_test)
+	rm -f ./bin/.w_history
+	printf 'int q = 13\177\1774\nq + 1\n:quit\n' | HOME=./bin script -qc './bin/repl64' /dev/null | grep -q "5"
+	test $$(printf 'int x = 41\nx + 1\n\033[A\n:quit\n' | HOME=./bin script -qc './bin/repl64' /dev/null | grep -c "42") -eq 2
+	grep -q "int x = 41" ./bin/.w_history
+	rm -f ./bin/.w_history
+	@echo "repl x64 test OK"
 
 for_test: w FORCE
 	./bin/wv2 tests/for_test.w >./bin/for_test
@@ -760,6 +798,9 @@ wtest_map_test: wtest FORCE
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	./bin/wtest changed lib/file.w > ./bin/wtest_map.out
 	printf 'file_test\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	./bin/wtest changed lib/line_edit.w > ./bin/wtest_map.out
+	printf 'repl_test\ndebug_test\n' > ./bin/wtest_map.expected
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	./bin/wtest changed tools/wexec.w tests/wexec/good.json > ./bin/wtest_map.out
 	printf 'wexec_test\n' > ./bin/wtest_map.expected
@@ -995,9 +1036,20 @@ debug_test: wdbg FORCE
 	printf 'b add\nc\nbt\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "#1  triple"
 	printf 'x message 1\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -qE "0x[0-9a-f]+: 0x"
 	printf 'list\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "int y = triple(x)"
+	# frame selection: print/set/info address the selected frame's locals
+	printf 'b add\nc\nup\np n\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "n = 3"
+	printf 'b add\nc\nf 2\np message\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "hello wdbg"
+	printf 'b add\nc\nup\ndown\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "#0  add"
+	printf 'b add\nc\nup\nset n 10\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "debuggee main returned 16"
 	# expression evaluation (the repl model) and writing variables
 	printf 'p add(2, 3)\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "= 5 (0x00000005)"
 	printf 'set x 40\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "debuggee main returned 120"
+	# locals and args participate in evaluated expressions
+	printf 'p x * 2 + counter\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "= 11"
+	printf 'b add\nc\np add(a, 39)\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "= 42"
+	# software watchpoints: stop on change, list and delete
+	printf 'watch counter\nc\nc\nq\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "counter changed: 5 (0x00000005) -> 14"
+	printf 'watch counter\nd w 1\ni w\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "no watchpoints set"
 	# fatal signals: post-mortem stop, location, and refusal to resume
 	printf 'l\nc\n' | ./bin/wdbg tests/segv_fixture.w | grep -q "fatal signal: SIGSEGV"
 	printf 'l\nc\n' | ./bin/wdbg tests/segv_fixture.w | grep -q "segv_fixture.w:7"
@@ -1005,6 +1057,63 @@ debug_test: wdbg FORCE
 	# the compiler driver runs the same debugger via 'w --debug'
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
+
+wdbg_x64: w FORCE
+	./bin/wv2 x64 debugger/debugger.w -o ./bin/wdbg64
+
+# The x64 debugger: same in-process model with the 64-bit sigcontext
+# reached through runtime signal thunks (SA_SIGINFO + SA_RESTORER) and
+# 8-byte stack slots.
+debug_test_x64: wdbg_x64 FORCE
+	# basics: trap announcement, registers, location, raw stack, continue
+	printf 'r\nl\nc\n' | ./bin/wdbg64 tests/debug_fixture.w | grep -q "breakpoint hit at eip="
+	printf 'r\nc\n' | ./bin/wdbg64 tests/debug_fixture.w | grep -q "rip: 0x"
+	printf 'l\nc\n' | ./bin/wdbg64 tests/debug_fixture.w | grep -q "debug_fixture.w:9"
+	printf 'st\nc\n' | ./bin/wdbg64 tests/debug_fixture.w | grep -qE "0x[0-9a-f]+: 0x"
+	printf 'c\n' | ./bin/wdbg64 tests/debug_fixture.w | grep -q "after breakpoint"
+	printf 'c\n' | ./bin/wdbg64 tests/debug_fixture.w | grep -q "debuggee main returned 7"
+	printf 'c\nc\n' | ./bin/wdbg64 tests/debug_fixture.w --break_start | grep -q "after breakpoint"
+	printf 'q\n' | ./bin/wdbg64 tests/debug_fixture.w > /dev/null
+	# stepping: step, step into a call, next over a call, stepi, finish
+	printf 's\nl\nc\n' | ./bin/wdbg64 tests/debug_fixture.w | grep -q "debug_fixture.w:10"
+	printf 's\ns\nl\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "debug_fixture2.w:12"
+	printf 'n\nn\nl\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "debug_fixture2.w:22"
+	printf 'si\nl\nc\n' | ./bin/wdbg64 tests/debug_fixture.w | grep -q "debug_fixture.w:10"
+	printf 's\ns\ns\nfin\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "value returned = 6"
+	printf 's\nl\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w --break_start | grep -q "debug_fixture2.w:17"
+	# breakpoints: by function, file:line, temporary, delete, list
+	printf 'b add\nc\np a\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "a = 3"
+	printf 'b debug_fixture2.w:22\nc\np y\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "y = 9"
+	printf 'tb triple\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "hit breakpoint 1 (temporary)"
+	printf 'b add\nd 1\ni b\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "no breakpoints set"
+	# inspection: locals, args, globals, strings, backtrace, memory, source
+	printf 'p x\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "x = 3"
+	printf 'p message\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "hello wdbg"
+	printf 'i l\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "message ="
+	printf 'i a\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "argc ="
+	printf 'p counter\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "counter = 5"
+	printf 'b add\nc\nbt\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "#1  triple"
+	printf 'x message 1\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -qE "0x[0-9a-f]+: 0x"
+	printf 'list\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "int y = triple(x)"
+	# frame selection: print/set/info address the selected frame's locals
+	printf 'b add\nc\nup\np n\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "n = 3"
+	printf 'b add\nc\nf 2\np message\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "hello wdbg"
+	printf 'b add\nc\nup\ndown\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "#0  add"
+	printf 'b add\nc\nup\nset n 10\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "debuggee main returned 16"
+	# expression evaluation (the repl model) and writing variables
+	printf 'p add(2, 3)\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "= 5 (0x00000005)"
+	printf 'set x 40\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "debuggee main returned 120"
+	# locals and args participate in evaluated expressions
+	printf 'p x * 2 + counter\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "= 11"
+	printf 'b add\nc\np add(a, 39)\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "= 42"
+	# software watchpoints: stop on change, list and delete
+	printf 'watch counter\nc\nc\nq\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "counter changed: 5 (0x00000005) -> 14"
+	printf 'watch counter\nd w 1\ni w\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "no watchpoints set"
+	# fatal signals: post-mortem stop, location, and refusal to resume
+	printf 'l\nc\n' | ./bin/wdbg64 tests/segv_fixture.w | grep -q "fatal signal: SIGSEGV"
+	printf 'l\nc\n' | ./bin/wdbg64 tests/segv_fixture.w | grep -q "segv_fixture.w:7"
+	printf 'c\n' | ./bin/wdbg64 tests/segv_fixture.w > /dev/null 2>&1; test $$? -eq 1
+	@echo "debug x64 test OK"
 
 tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 

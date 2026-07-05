@@ -13,7 +13,8 @@ sym_get_value() compiles into the debuggee:
 
 Struct values point at their lowest stack address, exactly like the
 generated code. Addresses are only exact at statement boundaries, which is
-where every stop lands.
+where every stop lands. Stack slots are word-sized: 4 bytes on x86, 8 on
+x64.
 */
 import debugger.symbols
 
@@ -106,14 +107,14 @@ int dbg_local_runtime_addr(int i, int esp):
 	int type = dbg_local_type(i)
 	int k
 	if (dbg_local_kind(i) == 'L'):
-		k = (dbg_frame_stack - slot - 1) * 4
+		k = (dbg_frame_stack - slot - 1) * __word_size__
 	else:
-		k = (dbg_frame_stack + dbg_frame_args - slot + 1) * 4
+		k = (dbg_frame_stack + dbg_frame_args - slot + 1) * __word_size__
 	# Struct values span several words; point at the lowest address so
 	# positive field offsets stay inside, like sym_get_value() does
 	if (type_num_args(type) > 0):
-		int words = (type_get_size(type) + 3) / 4
-		k = k - (words - 1) * 4
+		int words = (type_get_size(type) + __word_size__ - 1) / __word_size__
+		k = k - (words - 1) * __word_size__
 	return esp + k
 
 
@@ -139,9 +140,9 @@ int dbg_type_is_string(int type):
 # values field by field, everything else as one word, with a string
 # preview for char*.
 void dbg_print_typed_value(int addr, int type):
-	if (dbg_mem_readable(addr, 4) == 0):
+	if (dbg_mem_readable(addr, __word_size__) == 0):
 		print(c"<unreadable at ")
-		char* h = hex(addr)
+		char* h = hex_word(addr)
 		print(h)
 		free(h)
 		print(c">")
@@ -158,14 +159,14 @@ void dbg_print_typed_value(int addr, int type):
 			print(c" = ")
 			int field_type = type_get_field_type_at(type, i)
 			int width = type_get_size(field_type)
-			if (width > 4):
-				width = 4
+			if (width > __word_size__):
+				width = __word_size__
 			int offset = type_get_field_offset_at(type, i)
 			dbg_print_int_value(load_i(addr + offset, width))
 			i = i + 1
 		print(c"}")
 		return;
-	int v = load_int(cast(char*, addr))
+	int v = load_word(cast(char*, addr))
 	dbg_print_int_value(v)
 	if (dbg_type_is_string(type)):
 		dbg_print_string_preview(v)

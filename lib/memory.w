@@ -17,6 +17,7 @@ import lib.linux
 int malloc_free_list
 int malloc_heap_ptr
 int malloc_heap_end
+int malloc_mmap_mode /* brk growth failed once: chunks come from mmap now */
 
 
 # Header fields are target words so next holds a full pointer on x64;
@@ -71,10 +72,33 @@ void* malloc(int size):
 		int chunk = 65536
 		if (needed > chunk):
 			chunk = ((needed + 65535) >> 16) << 16
-		int err = brk(malloc_heap_end + chunk)
-		if (err < 0):
-			return cast(void*, err)
-		malloc_heap_end = malloc_heap_end + chunk
+		# brk reports failure by returning the old break, never a negative
+		# errno. Growth can fail when a mapping sits right above the heap
+		# (e.g. the repl/wdbg MAP_32BIT code buffer next to a
+		# low-randomized brk base), so compare the result with the request
+		# (equality: high mmap addresses look negative to signed ordering
+		# on x86); on failure switch to mmap chunks permanently (a later
+		# brk call could otherwise shrink the break below live blocks).
+		int grew = 0
+		if (malloc_mmap_mode == 0):
+			int target = malloc_heap_end + chunk
+			if (brk(cast(char*, target)) == target):
+				grew = 1
+		if (grew):
+			malloc_heap_end = malloc_heap_end + chunk
+		else:
+			malloc_mmap_mode = 1
+			# MAP_32BIT on x64 keeps malloc'd memory addressable by
+			# 32-bit immediates, which the in-process repl/wdbg
+			# expression eval relies on
+			int flags = 34 /* PRIVATE|ANONYMOUS */
+			if (__word_size__ == 8):
+				flags = flags + 64
+			int fresh = mmap(0, chunk, 3, flags)
+			if ((fresh < 0) & (fresh > -4096)):
+				return cast(void*, 0)
+			malloc_heap_ptr = fresh
+			malloc_heap_end = fresh + chunk
 
 	block = malloc_heap_ptr
 	malloc_heap_ptr = malloc_heap_ptr + needed

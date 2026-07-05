@@ -31,6 +31,7 @@ Commands: :quit exits, :help prints a summary.
 import compiler.compiler
 import structures.string
 import lib.args
+import lib.line_edit
 
 
 int repl_counter
@@ -106,24 +107,31 @@ int repl_interactive
 int repl_auto_indent
 
 
-# 1 when fd is a terminal: ioctl(fd, TCGETS) only succeeds on ttys.
-int repl_isatty(int fd):
-	char* termios_buf = malloc(64)
-	int result = syscall(54, fd, 0x5401, termios_buf)
-	free(termios_buf)
-	return result == 0
+# Scratch buffer for the line editor.
+char* repl_read_buffer
 
 
-# Read one line from stdin into s; returns 0 on end of input.
-int repl_read_line(string_builder* s):
-	string_clear(s)
-	int c = getchar(0)
-	if (c == -1):
-		return 0
-	while ((c != 10) & (c != -1)):
-		string_append_char(s, c)
-		c = getchar(0)
-	return 1
+# Read one line into repl_line via the line editor (raw-mode editing and
+# history on a tty, plain reads otherwise). indent > 0 seeds that many
+# editable tabs. Returns the length, -1 on end of input, -2 when the
+# line was discarded with Ctrl-C.
+int repl_prompt_line(char* prompt, int indent):
+	string_clear(repl_line)
+	if (repl_read_buffer == 0):
+		repl_read_buffer = malloc(4096)
+	char* initial = 0
+	if (indent > 0):
+		initial = malloc(indent + 1)
+		for int t in range(indent):
+			initial[t] = 9
+		initial[indent] = 0
+	int n = line_edit_read(prompt, repl_read_buffer, 4096, initial)
+	if (initial != 0):
+		free(initial)
+	if (n < 0):
+		return n
+	string_append(repl_line, repl_read_buffer)
+	return n
 
 
 int repl_count_leading_tabs(char* s):
@@ -168,9 +176,10 @@ void repl_update_indent(char* typed, int line_indent):
 		repl_auto_indent = line_indent
 
 
-void repl_print_tabs(int n):
-	for int t in range(n):
-		print(c"\x09")
+# 1 when the line contains nothing but tabs (or is empty): the user
+# pressed Enter without typing past the auto-indent.
+int repl_line_only_tabs():
+	return repl_count_leading_tabs(repl_line.data) == repl_line.length
 
 
 # Read one entry (possibly several lines) into repl_entry; returns 0 on
@@ -178,45 +187,49 @@ void repl_print_tabs(int n):
 # a line whose last significant character is ':' opens a block that ends
 # at the next blank line; unbalanced brackets, an open block comment or
 # an open string literal keep the entry going regardless of blank lines.
-# On a terminal, continuation lines start auto-indented; a blank line
-# dedents one level, and a blank line at column 0 ends the entry.
+# On a terminal, continuation lines start seeded with editable
+# auto-indent tabs; a blank line dedents one level, and a blank line at
+# column 0 ends the entry. Ctrl-C discards the whole entry.
 int repl_read_entry():
 	string_clear(repl_entry)
 	repl_scan_depth = 0
 	repl_scan_comment = 0
 	repl_scan_string = 0
 	repl_auto_indent = 0
-	print(c"w> ")
-	if (repl_read_line(repl_line) == 0):
+	int r = repl_prompt_line(c"w> ", 0)
+	if (r == -1):
 		return 0
+	if (r == -2):
+		return 1 /* discarded: the empty entry is a no-op */
 	string_append(repl_entry, repl_line.data)
 	repl_scan_line(repl_line.data)
 	int block_mode = (repl_scan_last_char == ':')
 	int open_state = (repl_scan_depth > 0) | repl_scan_comment | (repl_scan_string != 0)
 	repl_update_indent(repl_line.data, repl_count_leading_tabs(repl_line.data))
 	while (block_mode | open_state):
-		print(c".. ")
 		# Auto-indent applies to block bodies, not bracket/string/comment
 		# continuations, and only when a person is typing
 		int indent = 0
 		if (repl_interactive & block_mode & (open_state == 0)):
 			indent = repl_auto_indent
-		repl_print_tabs(indent)
-		if (repl_read_line(repl_line) == 0):
+		r = repl_prompt_line(c".. ", indent)
+		if (r == -1):
 			return 1 /* end of input finishes the entry */
-		if (block_mode & (repl_line.length == 0) & (open_state == 0)):
-			if (indent == 0):
+		if (r == -2):
+			string_clear(repl_entry)
+			return 1 /* Ctrl-C discards the entry */
+		if (block_mode & repl_line_only_tabs() & (open_state == 0)):
+			int tabs = repl_count_leading_tabs(repl_line.data)
+			if (tabs == 0):
 				return 1 /* a blank line at column 0 ends the entry */
-			repl_auto_indent = indent - 1
-			continue /* interactively, a blank line dedents one level */
+			repl_auto_indent = tabs - 1
+			continue /* a tabs-only line dedents to one level above it */
 		string_append_char(repl_entry, 10)
-		for int t in range(indent):
-			string_append_char(repl_entry, 9)
 		string_append(repl_entry, repl_line.data)
 		repl_scan_line(repl_line.data)
 		if (repl_scan_last_char == ':'):
 			block_mode = 1
-		repl_update_indent(repl_line.data, indent + repl_count_leading_tabs(repl_line.data))
+		repl_update_indent(repl_line.data, repl_count_leading_tabs(repl_line.data))
 		open_state = (repl_scan_depth > 0) | repl_scan_comment | (repl_scan_string != 0)
 	return 1
 
@@ -464,7 +477,7 @@ void repl_echo(int value, int type):
 	if (type <= 0): /* no result, or void */
 		return;
 	if (type_is_string(type)):
-		write(1, load_int(value), load_int(value + word_size))
+		write(1, load_word(value), load_word(value + word_size))
 		put_char(10)
 		return;
 	int pointers = type_get_pointer_level(type)
@@ -495,8 +508,12 @@ void repl_print_help():
 int main(int argc, int argv):
 	args_init(argc, argv)
 	verbosity = -1
-	word_size = 4
+	# The in-process model runs compiled entries directly, so the target
+	# architecture is the one this binary was compiled for.
+	word_size = __word_size__
 	word_size_log2 = 2
+	if (word_size == 8):
+		word_size_log2 = 3
 	push_basic_types()
 	pointer_indirection = 0
 	last_identifier = malloc(8000)
@@ -504,9 +521,13 @@ int main(int argc, int argv):
 
 	# Executable buffer the compiled entries run from. code_offset makes
 	# every embedded address point into this mapping, so no relocation is
-	# needed.
+	# needed. The codegen embeds addresses as 32-bit immediates, so on
+	# x64 the buffer must sit in the low 2GB: MAP_32BIT (0x40).
 	int buffer_size = 8388608
-	int buffer = mmap(0, buffer_size, 7, 34) /* RWX, PRIVATE|ANONYMOUS */
+	int mmap_flags = 34 /* PRIVATE|ANONYMOUS */
+	if (word_size == 8):
+		mmap_flags = 34 + 64
+	int buffer = mmap(0, buffer_size, 7, mmap_flags) /* RWX */
 	asserts(c"mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
 	code = buffer + 0
 	code_size = buffer_size
@@ -514,13 +535,16 @@ int main(int argc, int argv):
 	code_offset = buffer
 
 	# Recoverable compile errors: error() jumps here instead of exiting
-	repl_jump_buffer = cast(int, malloc(12))
+	repl_jump_buffer = cast(int, malloc(3 * __word_size__))
 	repl_error_jump = cast(int, repl_longjmp)
 
 	# Runtime support: syscall stubs first, then the library itself.
 	# import_module (not compile_save) registers the modules, so a loaded
 	# file importing lib.lib is not compiled a second time.
-	define_asm_functions()
+	if (word_size == 8):
+		define_asm_functions_x64()
+	else:
+		define_asm_functions()
 	import_module(c"lib.lib")
 	import_module(c"lib.assert")
 
@@ -552,7 +576,9 @@ int main(int argc, int argv):
 
 	println(c"w repl - :quit exits, :help for help")
 
-	repl_interactive = repl_isatty(0)
+	repl_interactive = term_isatty(0)
+	if (repl_interactive):
+		line_edit_history_load(c"~/.w_history")
 	repl_line = string_new()
 	repl_entry = string_new()
 	char* entry_path = c"/tmp/w_repl_entry.w"
