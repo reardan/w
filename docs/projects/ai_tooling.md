@@ -341,22 +341,21 @@ before merge.
 | Criterion | MVP coverage |
 |---|---|
 | Agents get machine-readable diagnostics | `w check --json` (A) |
-| Editors get diagnostics + navigation via LSP | **Deferred** — A is the enabling dependency; NDJSON is already consumable by generic lint runners |
+| Editors get diagnostics + navigation via LSP | `bin/wlsp` (`tools/lsp/w_lsp.w`, see `docs/projects/lsp.md`) — diagnostics from `w check --json`, go-to-definition from `w symbols --json` |
 | Target mapper recommends/runs focused tests | `wtest changed` + `make test_changed` (B) |
 | MCP exposes build/verify/compile/run/warning-test/REPL | `w-toolchain-mcp` (C); warning-test runs via `run_tests(["warning_test"])` |
 | Docs explain which tool to use | README section (D) |
 
 ## Out of scope for the MVP (deferred, with rationale)
 
-- **LSP server**: needs a long-running host process and a language
-  choice with the same trade-off as MCP. A diagnostics-only LSP is a thin
-  adapter over `w check --json` (run on save, translate records to
-  `publishDiagnostics`) and is the natural next milestone; navigation
-  needs the indexer.
-- **Semantic indexer / `w-index-mcp`**: requires recording declaration
-  file/line per symbol in `compiler/symbol_table.w` (grow
-  `symbol_data_size()` — mechanical but compiler-invasive) plus a
-  `w symbols --json` dump mode. Sketched, not built.
+- **LSP server**: since built — `bin/wlsp` (`tools/lsp/w_lsp.w`) is the
+  thin adapter described here: `w check --json` on open/save translated
+  to `publishDiagnostics`, plus go-to-definition over `w symbols --json`
+  (globals, functions, and user types only). See `docs/projects/lsp.md`.
+- **Semantic indexer / `w-index-mcp`**: declaration file/line per symbol
+  is now recorded in `compiler/symbol_table.w` and dumped by
+  `w symbols --json`; a cross-file reference index and `w-index-mcp`
+  remain unbuilt.
 - **`wfmt` (writing mode)**: the two style warnings (spaces indentation,
   missing trailing newline) already surface through `check`; a rewriting
   formatter needs a lossless token stream the single-pass tokenizer does
