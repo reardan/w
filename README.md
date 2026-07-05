@@ -238,7 +238,8 @@ archives the old seed to `old/` first.
   without running them. Docs-only changes produce no targets; unknown paths fall
   back to `tests`.
 - Cursor can use the committed `.cursor/mcp.json` registration for the
-  stdlib-only `w-toolchain` MCP server. It exposes build, verify, run_tests,
+  W-native `w-toolchain` MCP server (`make wmcp` builds `bin/wmcp` from
+  `tools/mcp/w_toolchain_mcp.w`). It exposes build, verify, run_tests,
   check, compile, run, repl_eval, and test_changed tools from the repo root.
 - `make verify` remains the required gate for compiler changes, and `make tests`
   remains the full pre-merge suite when the host has the i386 libc needed by

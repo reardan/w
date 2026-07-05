@@ -281,3 +281,86 @@ void test_list_struct_growth():
 	assert_equal(100, ws.length)
 	assert_equal(0, ws[0].a)
 	assert_equal(297, ws[99].c)
+
+
+void test_list_insert():
+	list[int] l = list[int]{1, 3}
+	l.insert(1, 2)
+	assert_equal(3, l.length)
+	assert_equal(1, l[0])
+	assert_equal(2, l[1])
+	assert_equal(3, l[2])
+	# Insert at both ends
+	l.insert(0, 0)
+	l.insert(4, 4)
+	assert_equal(5, l.length)
+	assert_equal(0, l[0])
+	assert_equal(4, l[4])
+
+
+void test_list_remove():
+	list[int] l = list[int]{10, 20, 30, 40}
+	l.remove(1)
+	assert_equal(3, l.length)
+	assert_equal(10, l[0])
+	assert_equal(30, l[1])
+	assert_equal(40, l[2])
+	l.remove(0)
+	l.remove(1)
+	assert_equal(1, l.length)
+	assert_equal(30, l[0])
+
+
+void test_list_clear():
+	list[int] l = list[int]{1, 2, 3}
+	l.clear()
+	assert_equal(0, l.length)
+	l.push(9)
+	assert_equal(1, l.length)
+	assert_equal(9, l[0])
+
+
+void test_list_membership_int():
+	list[int] l = list[int]{2, 4, 6}
+	assert_equal(1, 2 in l)
+	assert_equal(1, 6 in l)
+	assert_equal(0, 5 in l)
+	l.remove(0)
+	assert_equal(0, 2 in l)
+
+
+void test_list_membership_cstr_contents():
+	list[char*] l = list[char*]{c"alpha", c"beta"}
+	# Compare by contents, not by pointer: build "beta" at runtime
+	char* needle = malloc(5)
+	needle[0] = 'b'
+	needle[1] = 'e'
+	needle[2] = 't'
+	needle[3] = 'a'
+	needle[4] = 0
+	assert_equal(1, needle in l)
+	assert_equal(0, c"gamma" in l)
+	free(needle)
+
+
+struct list_insert_point:
+	int x
+	int y
+
+
+void test_list_insert_struct():
+	list[list_insert_point] pts = new list[list_insert_point]
+	list_insert_point a
+	a.x = 1
+	a.y = 2
+	pts.push(a)
+	list_insert_point b
+	b.x = 5
+	b.y = 6
+	pts.insert(0, b)
+	assert_equal(2, pts.length)
+	assert_equal(5, pts[0].x)
+	assert_equal(1, pts[1].x)
+	pts.remove(0)
+	assert_equal(1, pts.length)
+	assert_equal(1, pts[0].x)

@@ -336,6 +336,22 @@ int __w_map_iter_key(__w_hash_table* table, int cursor):
 	return table.keys[cursor]
 
 
+# Scalar value at the cursor's slot (for "for key, value in map").
+int __w_map_iter_value(__w_hash_table* table, int cursor):
+	__w_assert(cursor < table.capacity)
+	__w_assert(table.states[cursor] == 1)
+	int* slot = cast(int*, __w_hash_value_addr(table, cursor))
+	return slot[0]
+
+
+# Aggregate value: the address of the stored bytes, valid until the next
+# insertion rehashes the table.
+char* __w_map_iter_value_addr(__w_hash_table* table, int cursor):
+	__w_assert(cursor < table.capacity)
+	__w_assert(table.states[cursor] == 1)
+	return __w_hash_value_addr(table, cursor)
+
+
 void __w_map_free(__w_hash_table* table):
 	int i = 0
 	while (i < table.capacity):

@@ -88,8 +88,17 @@ int relational_expr():
 				contains_name = c"__w_map_contains"
 			else if (type_is_set(container_type)):
 				want_key_type = type_set_key_type(container_type)
+			else if (type_is_list(container_type)):
+				want_key_type = type_list_element_type(container_type)
+				if ((type_num_args(want_key_type) > 0) | type_is_string(want_key_type)):
+					error(c"'in' on a list requires scalar or char* elements")
+				# char* elements compare by contents, like map/set keys
+				if (hash_key_kind_for_type(want_key_type) == 2):
+					contains_name = c"__w_list_contains_cstr"
+				else:
+					contains_name = c"__w_list_contains"
 			else:
-				error(c"right operand of 'in' must be a map or set")
+				error(c"right operand of 'in' must be a map, set, or list")
 			if (types_compatible_with_expression(want_key_type, key_type) == 0):
 				warn_type_mismatch(c"membership key", want_key_type, key_type)
 			push_eax()

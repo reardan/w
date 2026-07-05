@@ -105,7 +105,8 @@ non-seekable inputs like `/proc` files.
   `stream_read_byte`/`stream_read_line` — behavior-preserving but
   touches REPL/debugger stdin handling, so it should ride separately.
 - `stat`/`unlink`/`rename` wrappers and richer `lib/path.w` helpers.
-- A W-native MCP server on `frame_read`/`frame_write` + `lib/process.w`.
+- A W-native MCP server on `frame_read`/`frame_write` + `lib/process.w`
+  (since landed as `tools/mcp/w_toolchain_mcp.w`).
 
 ## Tests
 

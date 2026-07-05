@@ -32,11 +32,16 @@ void wtest_init_targets():
 	wtest_targets.push(c"string_test")
 	wtest_targets.push(c"array_list_test")
 	wtest_targets.push(c"json_test")
+	wtest_targets.push(c"json_codec_test")
 	wtest_targets.push(c"parser_generator_test")
 	wtest_targets.push(c"parser_generator_w_test")
 	wtest_targets.push(c"parser_generator_c_test")
 	wtest_targets.push(c"linked_list_test")
 	wtest_targets.push(c"net_test")
+	wtest_targets.push(c"poll_test")
+	wtest_targets.push(c"framing_test")
+	wtest_targets.push(c"json_rpc_test")
+	wtest_targets.push(c"event_loop_test")
 	wtest_targets.push(c"env_test")
 	wtest_targets.push(c"env_64_test")
 	wtest_targets.push(c"process_test")
@@ -125,6 +130,17 @@ void wtest_map_lib(char* path):
 		wtest_add(path, c"result_test")
 	else if (strcmp(path, c"lib/net.w") == 0):
 		wtest_add(path, c"net_test")
+		wtest_add(path, c"poll_test")
+	else if (strcmp(path, c"lib/poll.w") == 0):
+		wtest_add(path, c"poll_test")
+	else if (strcmp(path, c"lib/framing.w") == 0):
+		wtest_add(path, c"framing_test")
+		wtest_add(path, c"json_rpc_test")
+	else if (strcmp(path, c"lib/json_rpc.w") == 0):
+		wtest_add(path, c"json_rpc_test")
+	else if (strcmp(path, c"lib/event_loop.w") == 0):
+		wtest_add(path, c"event_loop_test")
+		wtest_add(path, c"json_rpc_test")
 	else if (strcmp(path, c"lib/env.w") == 0):
 		wtest_add(path, c"env_test")
 		wtest_add(path, c"env_64_test")
@@ -145,6 +161,11 @@ void wtest_map_lib(char* path):
 void wtest_map_structures(char* path):
 	if (strcmp(path, c"structures/json.w") == 0):
 		wtest_add(path, c"json_test")
+		wtest_add(path, c"json_codec_test")
+		wtest_add(path, c"json_rpc_test")
+	else if (strcmp(path, c"structures/json_codec.w") == 0):
+		wtest_add(path, c"json_codec_test")
+		wtest_add(path, c"json_rpc_test")
 	else if (strcmp(path, c"structures/hash_map.w") == 0):
 		wtest_add(path, c"hash_map_test")
 	else if (strcmp(path, c"structures/hash_table.w") == 0):
@@ -186,6 +207,8 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"warning_test")
 	else if (strcmp(path, c"tests/symbols_fixture.w") == 0):
 		wtest_add(path, c"symbols_test")
+	else if (strcmp(path, c"tests/json_codec_test.w") == 0):
+		wtest_add(path, c"json_codec_test")
 	else if (starts_with(path, c"tests/type_system_error")):
 		wtest_add(path, c"type_system_error_test")
 	else if (starts_with(path, c"tests/type_system_warning")):

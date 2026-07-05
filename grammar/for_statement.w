@@ -188,7 +188,9 @@ void for_range_loop(int for_var, int for_tab_level):
 	stack_pos = stack_pos - num_range_args
 
 
-void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, int container_type):
+# value_var is 0 for the one-variable form; otherwise it anchors the
+# stack slot of the value loop variable in "for K key, V value in map".
+void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, int container_type, int value_var, int value_var_type):
 	int p1
 	int p2
 	int key_type = type_set_key_type(container_type)
@@ -196,6 +198,20 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 		key_type = type_map_key_type(container_type)
 	if (types_compatible_with_expression(loop_var_type, key_type) == 0):
 		warn_type_mismatch(c"for loop variable", loop_var_type, key_type)
+
+	char* value_call = c"__w_map_iter_value"
+	int loop_value_type = -1
+	if (value_var != 0):
+		if (type_is_map(container_type) == 0):
+			error(c"sets have no values: use one loop variable")
+		loop_value_type = type_map_value_type(container_type)
+		# Struct values cannot fit the word-sized loop variable; yield
+		# each stored value's address instead: for K k, point* p in m
+		if (type_num_args(loop_value_type) > 0):
+			value_call = c"__w_map_iter_value_addr"
+			loop_value_type = type_get_next_pointer(loop_value_type)
+		if (types_compatible_with_expression(value_var_type, loop_value_type) == 0):
+			warn_type_mismatch(c"for loop value variable", value_var_type, loop_value_type)
 
 	# hidden slot: the container pointer
 	push_eax()
@@ -224,6 +240,11 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	for_iter_call(c"__w_map_iter_key", container_slot, cursor_slot)
 	coerce(loop_var_type, key_type)
 	store_stack_var((stack_pos - for_var) << word_size_log2)
+
+	if (value_var != 0):
+		for_iter_call(value_call, container_slot, cursor_slot)
+		coerce(value_var_type, loop_value_type)
+		store_stack_var((stack_pos - value_var) << word_size_log2)
 
 	enclosing_tab_level = for_tab_level
 	statement()
@@ -377,10 +398,12 @@ void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 	stack_pos = stack_pos - 2
 
 
-# The "in <container>" body of for_statement; "for", the loop variable
+# The "in <container>" body of for_statement; "for", the loop variable(s)
 # and "in" have already been consumed. Emits the cursor-protocol loop
-# described in the header comment.
-void for_container_loop(int for_var, int for_tab_level, int loop_var_type):
+# described in the header comment. value_var is 0 unless a second loop
+# variable was declared ("for K key, V value in map"), which only maps
+# support.
+void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int value_var, int value_var_type):
 	int p1
 	int p2
 
@@ -388,8 +411,10 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type):
 	int container_type = promote(expression())
 	container_type = type_unqualified(container_type)
 	if (type_is_map(container_type) | type_is_set(container_type)):
-		for_hash_container_loop(for_var, for_tab_level, loop_var_type, container_type)
+		for_hash_container_loop(for_var, for_tab_level, loop_var_type, container_type, value_var, value_var_type)
 		return;
+	if (value_var != 0):
+		error(c"only maps support two loop variables")
 	if (type_is_list(container_type)):
 		for_list_loop(for_var, for_tab_level, loop_var_type, container_type)
 		return;
@@ -489,10 +514,24 @@ int for_statement():
 		error(c"for loop variable must be a word-sized type")
 	int for_var = stack_pos
 
+	# Optional second loop variable: for K key, V value in map
+	int value_var = 0
+	int value_type = -1
+	if (accept(c",")):
+		mov_eax_int(0)
+		value_type = variable_declaration()
+		if (value_type < 0):
+			error(c"type not found in for_statement value variable")
+		if (type_stack_words(value_type) != 1):
+			error(c"for loop value variable must be a word-sized type")
+		value_var = stack_pos
+
 	expect(c"in")
 	if (accept(c"range")):
+		if (value_var != 0):
+			error(c"range iteration takes one loop variable")
 		for_range_loop(for_var, for_tab_level)
 	else:
-		for_container_loop(for_var, for_tab_level, type)
+		for_container_loop(for_var, for_tab_level, type, value_var, value_type)
 
 	return 1

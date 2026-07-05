@@ -104,6 +104,70 @@ void test_udp_send_loopback():
 	close(sockfd)
 
 
+void test_socket_recv_stream():
+	int* fds = malloc(__word_size__ * 2)
+	assert_syscall_ok(c"socket_pair", socket_pair(fds))
+
+	char* want = c"pong"
+	assert_equal(strlen(want), write_string(fds[0], want))
+
+	char* got = malloc(16)
+	int received = socket_recv(fds[1], got, 16, 0)
+	assert_equal(strlen(want), received)
+	got[received] = 0
+	assert_strings_equal(want, got)
+
+	close(fds[0])
+	close(fds[1])
+	free(got)
+	free(fds)
+
+
+void test_udp_recvfrom_loopback():
+	int loopback = ip4_from_string(c"127.0.0.1")
+
+	int receiver = socket_udp_ipv4()
+	asserts(c"udp receiver socket failed", receiver >= 0)
+	assert_syscall_ok(c"socket_bind_ipv4", socket_bind_ipv4(receiver, loopback, 0))
+
+	sockaddr_in bound_addr
+	assert_syscall_ok(c"socket_getsockname_ipv4", socket_getsockname_ipv4(receiver, &bound_addr))
+	int port = net_htons(bound_addr.port)
+	asserts(c"ephemeral udp port not assigned", port > 0)
+
+	int sender = socket_udp_ipv4()
+	asserts(c"udp sender socket failed", sender >= 0)
+	char* message = c"ping"
+	assert_equal(strlen(message), socket_send_to_ipv4(sender, message, strlen(message), 0, loopback, port))
+
+	char* got = malloc(16)
+	sockaddr_in from_addr
+	int received = socket_recv_from_ipv4(receiver, got, 16, 0, &from_addr)
+	assert_equal(strlen(message), received)
+	got[received] = 0
+	assert_strings_equal(message, got)
+	assert_equal(af_inet(), from_addr.family)
+
+	close(sender)
+	close(receiver)
+	free(got)
+
+
+void test_socket_set_nonblocking():
+	int* fds = malloc(__word_size__ * 2)
+	assert_syscall_ok(c"socket_pair", socket_pair(fds))
+	assert_syscall_ok(c"socket_set_nonblocking", socket_set_nonblocking(fds[1]))
+
+	char* buf = malloc(8)
+	# EAGAIN is errno 11.
+	assert_equal(0 - 11, socket_recv(fds[1], buf, 8, 0))
+
+	close(fds[0])
+	close(fds[1])
+	free(buf)
+	free(fds)
+
+
 void test_http_response_headers():
 	int* fds = malloc(__word_size__ * 2)
 	assert_syscall_ok(c"socket_pair", socket_pair(fds))

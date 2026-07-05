@@ -136,4 +136,5 @@ pipe spawns, and env vector add/replace/prefix-match semantics.
   5.3+), replacing the WNOHANG sleep loop.
 - Process groups / `setsid` for killing whole trees under a test runner.
 - A W-native `w-toolchain-mcp`, as flagged in
-  `docs/projects/ai_tooling.md`.
+  `docs/projects/ai_tooling.md` (since landed as
+  `tools/mcp/w_toolchain_mcp.w`).
