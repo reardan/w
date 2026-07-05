@@ -73,15 +73,34 @@ binding lets the loader start the program with those GOT slots null
 instead of failing. Explicit `extern` declarations remain strong, so a
 typo there still fails at load time.
 
+## Variadic functions, float ABI and extern data
+
+Variadic functions (`printf`, `snprintf`, ...) import with their fixed
+parameter types; direct calls accept any number of extra arguments and
+emit the platform ABI conversion inline per call site (the float classes
+of the actual arguments select xmm registers and set `al` on x64), with
+the C default argument promotions applied to the variadic tail (float32
+widens to float64). Hand-written declarations use the same syntax as C:
+`extern int printf(char* fmt, ...)`.
+
+Float/double arguments and returns follow the platform ABI: the generated
+shims place them in xmm registers on x64 (returns come back in xmm0) and
+pop x87 `st(0)` float returns on x86. float64 signatures are skipped on
+x86, where the language itself has no float64 support.
+
+`extern` data objects (`stdout`, `environ`, `optind`, ...) import via COPY
+relocations: the image reserves the object's size, the loader fills it with
+the library's initial value before the entry point runs, and the library's
+own references rebind to the copy, so the symbol behaves like a normal W
+global. Hand-written form: `extern void* stdout`. Objects glibc fills in
+its own startup code (`environ`) stay at their static initial value
+because W's entry stub never runs `__libc_start_main`.
+
 ## Known limitations
 
-- Variadic functions (`printf`), old-style declarations and `static
-  inline` bodies are declared-but-skipped; calling them requires a
-  fixed-arity wrapper.
-- Float/double arguments and returns pass through the integer FFI shims,
-  so math functions import but do not follow the floating-point ABI yet.
-- `extern` data objects (`stdin`, `environ`) are not imported (functions
-  only).
+- Old-style declarations and `static inline` bodies are
+  declared-but-skipped.
+- Extern arrays of unknown length (`sys_errlist`) are skipped.
 - Bit-field members are skipped (layout drift within the bit-field region
   of a struct).
 - A cast of a bare typedef name applied to a literal (`(size_t) 42`)

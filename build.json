@@ -377,6 +377,30 @@
 			]
 		},
 		{
+			"name": "float_abi_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/float_abi_test.w", "-o", "bin/float_abi_test"]},
+				{"cmd": ["bin/float_abi_test"], "expect_stdout": "float abi OK"}
+			]
+		},
+		{
+			"name": "varargs_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/varargs_test.w", "-o", "bin/varargs_test"]},
+				{"cmd": ["bin/varargs_test"], "expect_stdout": "varargs OK"}
+			]
+		},
+		{
+			"name": "extern_data_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/extern_data_test.w", "-o", "bin/extern_data_test"]},
+				{"cmd": ["bin/extern_data_test"], "expect_stdout": "extern data OK"}
+			]
+		},
+		{
 			"name": "int64_x86_error_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1417,6 +1441,34 @@
 			]
 		},
 		{
+			"name": "float_abi_test_x64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/float_abi_test.w", "-o", "bin/float_abi_test_x64"]},
+				{"cmd": ["bin/float_abi_test_x64"], "expect_stdout": "float abi OK"},
+				{"cmd": ["bin/wv2", "x64", "tests/x64_float_abi_test.w", "-o", "bin/x64_float_abi_test"]},
+				{"cmd": ["bin/x64_float_abi_test"], "expect_stdout": "x64 float abi OK"},
+				{"cmd": ["bin/wv2", "x64", "tests/x64_c_import_float_test.w", "-o", "bin/x64_c_import_float_test"]},
+				{"cmd": ["bin/x64_c_import_float_test"], "expect_stdout": "x64 c_import float OK"}
+			]
+		},
+		{
+			"name": "varargs_test_x64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/varargs_test.w", "-o", "bin/varargs_test_x64"]},
+				{"cmd": ["bin/varargs_test_x64"], "expect_stdout": "varargs OK"}
+			]
+		},
+		{
+			"name": "extern_data_test_x64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/extern_data_test.w", "-o", "bin/extern_data_test_x64"]},
+				{"cmd": ["bin/extern_data_test_x64"], "expect_stdout": "extern data OK"}
+			]
+		},
+		{
 			"name": "tests_x64",
 			"deps": [
 				"verify_x64",
@@ -1436,6 +1488,9 @@
 				"framing_64_test",
 				"dynamic_test_x64",
 				"c_import_libc_test_x64",
+				"float_abi_test_x64",
+				"varargs_test_x64",
+				"extern_data_test_x64",
 				"list_64_test",
 				"array_list_64_test",
 				"linked_list_64_test",
@@ -1532,6 +1587,9 @@
 				"debug_test",
 				"repl_test",
 				"dynamic_test",
+				"float_abi_test",
+				"varargs_test",
+				"extern_data_test",
 				"test",
 				"hello",
 				"tests_x64"

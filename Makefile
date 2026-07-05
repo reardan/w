@@ -193,7 +193,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test for_container_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test format_64_test args_64_test repl_test_x64 debug_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test for_container_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test format_64_test args_64_test repl_test_x64 debug_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -209,6 +209,52 @@ dynamic_test_x64: w FORCE
 	chmod +x ./bin/dynamic_test_x64
 	./bin/dynamic_test_x64 | grep -q "dynamic linking OK"
 	@echo "dynamic test x64 OK"
+
+# Imported data objects (extern declarations without a parameter list):
+# stdout/stderr/optind arrive via COPY relocations.
+extern_data_test: w FORCE
+	./bin/wv2 tests/extern_data_test.w -o ./bin/extern_data_test
+	./bin/extern_data_test | grep -q "extern data stdout write"
+	./bin/extern_data_test | grep -q "extern data OK"
+	./bin/extern_data_test 2>&1 >/dev/null | grep -q "extern data stderr 42 formatted"
+	@echo "extern data test OK"
+
+extern_data_test_x64: w FORCE
+	./bin/wv2 x64 tests/extern_data_test.w -o ./bin/extern_data_test_x64
+	./bin/extern_data_test_x64 | grep -q "extern data stdout write"
+	./bin/extern_data_test_x64 | grep -q "extern data OK"
+	./bin/extern_data_test_x64 2>&1 >/dev/null | grep -q "extern data stderr 42 formatted"
+	@echo "extern data test x64 OK"
+
+# Variadic C imports (extern ... declarations): integer, string and
+# promoted-float arguments through printf-family functions.
+varargs_test: w FORCE
+	./bin/wv2 tests/varargs_test.w -o ./bin/varargs_test
+	./bin/varargs_test | grep -q "printf: 7 seven 7.25"
+	./bin/varargs_test | grep -q "varargs OK"
+	@echo "varargs test OK"
+
+varargs_test_x64: w FORCE
+	./bin/wv2 x64 tests/varargs_test.w -o ./bin/varargs_test_x64
+	./bin/varargs_test_x64 | grep -q "printf: 7 seven 7.25"
+	./bin/varargs_test_x64 | grep -q "varargs OK"
+	@echo "varargs test x64 OK"
+
+# Floating-point C ABI through the FFI shims: float32 on both targets,
+# float64 (xmm argument/return passing) on x64 only.
+float_abi_test: w FORCE
+	./bin/wv2 tests/float_abi_test.w -o ./bin/float_abi_test
+	./bin/float_abi_test | grep -q "float abi OK"
+	@echo "float abi test OK"
+
+float_abi_test_x64: w FORCE
+	./bin/wv2 x64 tests/float_abi_test.w -o ./bin/float_abi_test_x64
+	./bin/float_abi_test_x64 | grep -q "float abi OK"
+	./bin/wv2 x64 tests/x64_float_abi_test.w -o ./bin/x64_float_abi_test
+	./bin/x64_float_abi_test | grep -q "x64 float abi OK"
+	./bin/wv2 x64 tests/x64_c_import_float_test.w -o ./bin/x64_c_import_float_test
+	./bin/x64_c_import_float_test | grep -q "x64 c_import float OK"
+	@echo "float abi test x64 OK"
 
 # JIT-load a hand-written PTX kernel through libcuda and run vector add on
 # the GPU. Requires an NVIDIA driver + GPU, so it is not part of 'tests'.
@@ -1115,7 +1161,7 @@ debug_test_x64: wdbg_x64 FORCE
 	printf 'c\n' | ./bin/wdbg64 tests/segv_fixture.w > /dev/null 2>&1; test $$? -eq 1
 	@echo "debug x64 test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test test hello tests_x64 FORCE
 
 
 clean:

@@ -19,11 +19,14 @@ Implemented today:
 - Decimal literals with exponent forms and exact-bit regression tests.
 - Differential checks against a C reference program for float32 and float64.
 - `ftoa` and x64 `f64toa` formatting helpers.
+- Floating-point ABI for imported C functions (`extern` and `c_import`):
+  xmm argument/return registers on x64, x87 `st(0)` returns on x86, and
+  float32→float64 promotion for variadic calls (`printf("%f", x)`). See
+  `code_generator/ffi.w` and `float_abi_test` / `varargs_test`.
 
 Still deferred:
 
 - `float16` storage/conversion support and bfloat16.
-- Floating-point ABI support for imported C functions.
 - x64 debugger float display, since `wdbg` is still x86-only.
 
 The milestone sections below are the implementation history/design record. Treat

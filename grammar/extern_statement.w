@@ -1,18 +1,32 @@
 /*
-Top-level declarations for calling shared-library functions:
+Top-level declarations for using shared-library symbols:
 
 	c_lib "libc.so.6"
-	extern int printf(char* fmt)
+	extern int puts(char* s)
+	extern int printf(char* fmt, ...)
+	extern void* stdout
 
 c_lib records a DT_NEEDED soname. extern declares a callable function whose
 address is a generated ABI shim (see code_generator/ffi.w): callers use it
 like any W function, the shim converts the arguments to the platform C ABI
 and jumps through a GOT slot the dynamic loader fills in at load time.
+
+A trailing '...' declares a variadic C function: direct calls accept any
+number of extra arguments and emit the ABI conversion inline per call
+site (grammar/postfix_expr.w), applying the C default argument promotions.
+
+extern without a parameter list imports a data object: the loader fills
+reserved space in the image via a COPY relocation and the symbol behaves
+like a normal W global.
 */
 import grammar.type_name
 import grammar.string_literal
 import code_generator.dynamic_registry
 import code_generator.ffi
+
+
+int extern_max_params():
+	return 255
 
 
 int extern_statement():
@@ -35,16 +49,53 @@ int extern_statement():
 		char* name = strclone(token)
 		int sym = sym_declare_global(name, ret_type, 2)  /* function symbol */
 		get_token()
-		expect(c"(")
 
-		# Parse the parameter list for arity/type checks. Count stack words
-		# (one per scalar/pointer arg); struct-by-value params are not
-		# supported across the C boundary.
+		# No parameter list: an imported data object (e.g. extern void*
+		# stdout). Space for the object is reserved in the image and a COPY
+		# relocation makes the loader fill it with the library's initial
+		# value; the library's own references rebind to this copy (symbol
+		# interposition), so it behaves like a normal W global.
+		if (accept(c"(") == 0):
+			save_int(table + sym + 10, 1)   /* symtype: object */
+			int size = type_get_size(ret_type)
+			if (size < 1):
+				error(c"extern data object needs a sized type")
+			while ((codepos % word_size) != 0):
+				emit_int8(0)
+			sym_define_global(sym)
+			save_int(table + sym + 14, size)
+			dyn_add_import_data(name, code_offset + codepos, size, 0)
+			emit_zeros(size)
+			free(name)
+			return 1
+
+		# Parse the parameter list for arity/type checks and the ABI shim's
+		# argument classes. Struct-by-value params are not supported across
+		# the C boundary.
 		int saved_table = table_pos
 		int param_count = 0
+		int is_variadic = 0
+		char* param_classes = malloc(extern_max_params())
+		int ret_class = ffi_type_class(ret_type)
+		if ((ret_class == 2) & (word_size != 8)):
+			error(c"float64 requires the x64 target")
 		while (accept(c")") == 0):
+			# A trailing '...' marks a variadic C function: calls may pass
+			# any number of extra arguments after the fixed ones.
+			if (accept(c".")):
+				expect(c".")
+				expect(c".")
+				is_variadic = 1
+				expect(c")")
+				break
 			param_count = param_count + 1
+			if (param_count > extern_max_params()):
+				error(c"too many extern parameters")
 			int ptype = type_name()
+			int ptype_class = ffi_type_class(ptype)
+			if ((ptype_class == 2) & (word_size != 8)):
+				error(c"float64 requires the x64 target")
+			param_classes[param_count - 1] = ptype_class
 			if (param_count <= sym_max_param_slots()):
 				save_int(table + sym + 22 + (param_count << 2), ptype)
 			# Skip the optional parameter name
@@ -61,10 +112,18 @@ int extern_statement():
 		emit_zeros(word_size)
 		dyn_add_import(name, got_vaddr)
 
-		# The symbol resolves to the shim entry point
+		# The symbol resolves to the shim entry point. For a variadic
+		# function the shim only covers calls that pass exactly the fixed
+		# parameters (e.g. through a function pointer); direct calls emit
+		# the C ABI conversion inline for the actual argument classes
+		# (see parse_variadic_call_suffix).
 		sym_define_global(sym)
-		emit_ffi_shim(param_count, got_vaddr)
+		emit_ffi_shim(param_count, param_classes, ret_class, got_vaddr)
+		if (is_variadic):
+			sym_set_variadic(sym, param_count)
+			sym_set_got_vaddr(sym, got_vaddr)
 
+		free(param_classes)
 		free(name)
 		return 1
 

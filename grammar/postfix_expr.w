@@ -5,6 +5,11 @@ int last_call_return_type
 int last_call_end
 int expression_lhs_readonly
 
+int extern_max_params();
+int ffi_type_class(int type);
+int ffi_push_promoted_float32();
+void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr);
+
 
 int buffer_element_type(int type):
 	if (type_is_string(type)):
@@ -216,6 +221,77 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 	return type
 
 
+# One argument of a direct call to a variadic C import. Fixed arguments
+# follow the declared parameter types; the variadic tail gets the C
+# default argument promotions (float32 widens to float64). Returns the
+# argument's ABI class (see ffi_type_class).
+int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_args, int fixed_args):
+	int arg_type = expression()
+	arg_type = promote(arg_type)
+	if (type_num_args(type_real(arg_type)) > 0):
+		error(c"struct arguments are not supported in variadic C calls")
+	if (passed_args < fixed_args):
+		check_call_argument(callee_sym, -1, callee_name, passed_args, arg_type)
+		int param_type = sym_param_type(callee_sym, passed_args)
+		int arg_class = type_float_kind(arg_type)
+		if (param_type >= 0):
+			coerce_call_argument(param_type, arg_type)
+			arg_class = ffi_type_class(param_type)
+		push_eax()
+		stack_pos = stack_pos + 1
+		return arg_class
+	# Variadic tail: C default argument promotions
+	int kind = type_float_kind(arg_type)
+	if (kind == 1):
+		# The promoted float64 spans two 32-bit stack words on x86
+		stack_pos = stack_pos + ffi_push_promoted_float32()
+		return 2
+	push_eax()
+	stack_pos = stack_pos + 1
+	if (kind == 2):
+		return 2
+	return 0
+
+
+# Direct call of a variadic C import: parse the arguments, then emit the
+# platform C ABI conversion inline. No per-function stub can cover these
+# calls because the float argument classes differ per call site (on x64
+# they select xmm registers and set al).
+int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int declared_return, int fixed_args):
+	char* arg_classes = malloc(extern_max_params())
+	int passed_args = 0
+	if (accept(c")") == 0):
+		arg_classes[passed_args] = parse_variadic_call_argument(callee_sym, callee_name, passed_args, fixed_args)
+		passed_args = passed_args + 1
+		while (accept(c",")):
+			if (passed_args >= extern_max_params()):
+				error(c"too many arguments in variadic call")
+			arg_classes[passed_args] = parse_variadic_call_argument(callee_sym, callee_name, passed_args, fixed_args)
+			passed_args = passed_args + 1
+		expect(c")")
+
+	if (passed_args < fixed_args):
+		diag_part(c"warning: function '")
+		diag_part(callee_name)
+		diag_part(c"' expects at least ")
+		diag_part(itoa(fixed_args))
+		diag_part(c" arguments, got ")
+		warning(itoa(passed_args))
+	if (callee_name != 0):
+		free(callee_name)
+
+	emit_ffi_call_inline(passed_args, arg_classes, ffi_type_class(declared_return), sym_got_vaddr(callee_sym))
+	free(arg_classes)
+	be_pop(stack_pos - s)
+	stack_pos = s
+	int type = 3  # call results are plain values
+	last_call_return_type = declared_return
+	last_call_end = codepos
+	if (declared_return >= 0):
+		type = type_value(declared_return)
+	return type
+
+
 /*
 postfix-expr:
 	primary-expr
@@ -332,6 +408,7 @@ int postfix_expr():
 			int signature_type = -1
 			char* callee_name = 0
 			int declared_return = -1
+			int variadic_fixed = -1
 			if (type == 4):
 				int callee = sym_lookup(last_identifier)
 				if (callee >= 0):
@@ -344,6 +421,7 @@ int postfix_expr():
 					if (expected_args >= 0):
 						callee_sym = callee
 						callee_name = strclone(last_identifier)
+						variadic_fixed = sym_variadic_fixed_args(callee)
 			else if (type_get_pointer_level(type) > 0):
 				int base_type = type_lookup_previous_pointer(type)
 				if ((base_type >= 0) & (type_is_function_signature(base_type))):
@@ -352,25 +430,30 @@ int postfix_expr():
 					expected_args = type_function_param_count(base_type)
 					callee_name = strclone(c"function pointer")
 
-			int has_return_buffer = 0
-			int s = stack_pos
-			if (declared_return >= 0):
-				if (type_num_args(declared_return) > 0):
-					int words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
-					int j = 0
-					while (j < words):
-						push_eax()
-						j = j + 1
-					stack_pos = stack_pos + words
-					s = stack_pos
-					has_return_buffer = 1
-			push_eax()
-			stack_pos = stack_pos + 1
-			if (has_return_buffer):
-				lea_eax_esp_plus(word_size)
+			if (variadic_fixed >= 0):
+				# Direct call of a variadic C import: the callee is reached
+				# through its GOT slot, so its address in eax is not pushed.
+				type = parse_variadic_call_suffix(stack_pos, callee_sym, callee_name, declared_return, variadic_fixed)
+			else:
+				int has_return_buffer = 0
+				int s = stack_pos
+				if (declared_return >= 0):
+					if (type_num_args(declared_return) > 0):
+						int words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
+						int j = 0
+						while (j < words):
+							push_eax()
+							j = j + 1
+						stack_pos = stack_pos + words
+						s = stack_pos
+						has_return_buffer = 1
 				push_eax()
 				stack_pos = stack_pos + 1
-			type = parse_call_suffix(type, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 0, has_return_buffer)
+				if (has_return_buffer):
+					lea_eax_esp_plus(word_size)
+					push_eax()
+					stack_pos = stack_pos + 1
+				type = parse_call_suffix(type, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 0, has_return_buffer)
 
 		else if (accept(c".")):
 			expression_lhs_readonly = 0

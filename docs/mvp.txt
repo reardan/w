@@ -30,7 +30,8 @@ Compiler
 		Built-in typed list[T] with struct elements and struct map values
 		Float32/float64 support (float64 x64-only)
 		X64 int64/uint64 support
-		C header import for typedefs, aggregates, enums, macro constants and fixed-arity prototypes
+		C header import for typedefs, aggregates, enums, macro constants and prototypes (fixed-arity and variadic)
+		C interop: varargs calls, extern data objects (COPY relocations) and float/double ABI
 		C preprocessor for macro expansion, conditionals and include resolution
 		Broad libc/system-header import on x86 and x64
 		Built-in debugger
@@ -42,7 +43,7 @@ Compiler
 		Generators / yield
 		Richer map/list ergonomics (delete/get/defaults, list insert/remove)
 		Float16 / bfloat16
-		C import varargs, extern data and float/double ABI shims
+		C import old-style declarations and bit-field layout fidelity
 		Formatter, richer LSP features (locals, references, hover), semantic indexer and richer MCP tooling
 
 Net

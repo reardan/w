@@ -66,6 +66,26 @@ void test_libc_macro_constants():
 	assert_equal(8, DT_REG)
 
 
+# stdout/stderr import as data objects (COPY relocations): glibc
+# initializes them statically, so a null pointer means the import failed.
+void test_libc_extern_data_stdio():
+	assert1(stdout != 0)
+	assert1(stderr != 0)
+	assert1(fputs(c"", stdout) >= 0)
+	assert1(fprintf(stdout, c"") >= 0)
+
+
+# snprintf imports as a variadic function: direct calls pass any number
+# of extra arguments, with floats promoted to float64 per the C ABI.
+void test_libc_variadic_snprintf():
+	char* buf = malloc(64)
+	assert_equal(9, snprintf(buf, 64, c"%d %s", 42, c"vararg"))
+	assert_equal(0, strcmp(c"42 vararg", buf))
+	assert_equal(6, snprintf(buf, 64, c"%.1f %d", 1.5, 27))
+	assert_equal(0, strcmp(c"1.5 27", buf))
+	free(buf)
+
+
 void test_libc_strtol_and_qsort_absent_collisions():
 	# strtol comes from libc; W's own atoi/strcmp/malloc stay in charge
 	assert_equal(1234, strtol(c"1234", 0, 10))

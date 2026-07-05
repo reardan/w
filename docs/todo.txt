@@ -119,14 +119,22 @@ current state:
 		dynamic linking (both targets):
 			c_lib "libc.so.6" registers a DT_NEEDED shared library
 			extern int getpid() declares an imported C function
+			extern int printf(char* fmt, ...) declares a variadic C function
+			extern void* stdout imports a data object via a COPY relocation
 			eager GLOB_DAT relocations fill inline GOT slots at load time
 			generated shims convert W's stack convention to cdecl (x86)
-			and System V registers (x64), 16-byte aligned, varargs-safe
+			and System V registers (x64), 16-byte aligned
+			float/double args and returns follow the platform ABI
+			(xmm registers on x64, x87 st(0) returns on x86)
+			variadic calls emit the ABI conversion inline per call site
+			with C default argument promotions (float32 -> float64)
 			make dynamic_test / dynamic_test_x64 call libc on both targets
+			make float_abi_test / varargs_test / extern_data_test cover the ABI
 			make cuda_smoke runs a PTX vector add through libcuda (x64)
 		c_import:
 			preprocesses C headers with macro expansion, conditionals and include resolution
-			importer builds typedefs, structs/unions, enum values, macro integer constants and fixed-arity prototypes
+			importer builds typedefs, structs/unions, enum values, macro integer constants and function prototypes (fixed-arity and variadic)
+			extern data objects (stdout, environ, optind) import as weak COPY relocations
 			broad libc/system headers are tested on both targets (stdio, stdlib, string, unistd, fcntl, errno, time, signal, ctype, math, dirent, locale, sys/stat)
 			imported C struct layout is checked against kernel-filled struct stat
 		debugging information:
@@ -206,10 +214,9 @@ current state:
 			qualified type names through import aliases (f.SomeStruct)
 			merge symbol_table + type_table on top of hash_map
 		c_import:
-			extern data objects (stdin, environ)
-			varargs and old-style declarations
-			float/double ABI shims for imported functions
+			old-style (K&R) declarations
 			bit-field layout fidelity
+			extern arrays of unknown length (sys_errlist)
 			more system-header torture fixtures as regressions are found
 		debugger:
 			conditional breakpoints and hit counts

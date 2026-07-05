@@ -25,11 +25,15 @@ int dyn_max_imports():
 char* dyn_lib_names
 int dyn_lib_count
 
-# Imported functions: name, the vaddr of the GOT slot the loader fills, and
-# the symbol binding (1 = global, 2 = weak).
+# Imported symbols: name, the vaddr the loader writes (a GOT slot for
+# functions, the copy space for data objects), the symbol binding
+# (1 = global, 2 = weak), the ELF symbol type (2 = func, 1 = object) and
+# the object size (0 for functions).
 char* dyn_import_names
 char* dyn_import_got
 char* dyn_import_binding
+char* dyn_import_symtype
+char* dyn_import_size
 int dyn_import_count
 
 
@@ -39,6 +43,8 @@ void dyn_init():
 		dyn_import_names = malloc(dyn_max_imports() * word_size)
 		dyn_import_got = malloc(dyn_max_imports() * word_size)
 		dyn_import_binding = malloc(dyn_max_imports() * 4)
+		dyn_import_symtype = malloc(dyn_max_imports() * 4)
+		dyn_import_size = malloc(dyn_max_imports() * 4)
 
 
 int dyn_has_imports():
@@ -65,6 +71,8 @@ int dyn_add_import(char* name, int got_vaddr):
 	save_i(dyn_import_names + dyn_import_count * word_size, cast(int, strclone(name)), word_size)
 	save_i(dyn_import_got + dyn_import_count * word_size, got_vaddr, word_size)
 	save_i(dyn_import_binding + dyn_import_count * 4, 1, 4)
+	save_i(dyn_import_symtype + dyn_import_count * 4, 2, 4)
+	save_i(dyn_import_size + dyn_import_count * 4, 0, 4)
 	int index = dyn_import_count
 	dyn_import_count = dyn_import_count + 1
 	return index
@@ -79,6 +87,21 @@ int dyn_add_import_weak(char* name, int got_vaddr):
 	return index
 
 
+# Imported data object (extern without a parameter list): copy_vaddr is
+# size bytes reserved in the image; the loader's COPY relocation fills it
+# with the shared library's initial value before the entry point runs, and
+# the library's own references rebind to this copy (symbol interposition),
+# so both sides share one storage location. Weak imports the library does
+# not export are left zeroed instead of failing.
+int dyn_add_import_data(char* name, int copy_vaddr, int size, int weak):
+	int index = dyn_add_import(name, copy_vaddr)
+	if (weak):
+		save_i(dyn_import_binding + index * 4, 2, 4)
+	save_i(dyn_import_symtype + index * 4, 1, 4)
+	save_i(dyn_import_size + index * 4, size, 4)
+	return index
+
+
 char* dyn_import_name(int i):
 	return cast(char*, load_i(dyn_import_names + i * word_size, word_size))
 
@@ -89,3 +112,11 @@ int dyn_import_got_vaddr(int i):
 
 int dyn_import_get_binding(int i):
 	return load_i(dyn_import_binding + i * 4, 4)
+
+
+int dyn_import_get_symtype(int i):
+	return load_i(dyn_import_symtype + i * 4, 4)
+
+
+int dyn_import_get_size(int i):
+	return load_i(dyn_import_size + i * 4, 4)

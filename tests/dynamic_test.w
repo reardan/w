@@ -9,7 +9,7 @@ c_lib "libc.so.6"
 # libc extern of the same name.
 extern int getppid()
 extern int puts(char* s)
-extern int printf(char* fmt, int a, int b, int c, int d, int e, int f, int g, int h)
+extern int printf(char* fmt, ...)
 # The entry stub exits with a raw exit_group syscall, bypassing libc's
 # atexit flush, so buffered stdout must be flushed explicitly.
 extern int fflush(int stream)
@@ -26,7 +26,8 @@ int _main():
 	int libc_pid = getppid()
 	int raw_pid = raw_getppid()
 
-	# Nine arguments so the x64 shim exercises its on-stack argument path.
+	# Nine arguments so the x64 variadic call exercises its on-stack
+	# argument path.
 	printf(c"stack args: %d %d %d %d %d %d %d %d\x0a", 1, 2, 3, 4, 5, 6, 7, 8)
 
 	int rc = 0
