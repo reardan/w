@@ -685,6 +685,9 @@ wtest_map_test: wtest FORCE
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	@echo "wtest map test OK"
 
+rewrite_c_strings: w FORCE
+	./bin/wv2 tools/rewrite_c_string_literals.w -o ./bin/rewrite_c_strings
+
 wmcp: w FORCE
 	./bin/wv2 tools/mcp/w_toolchain_mcp.w -o ./bin/wmcp
 
