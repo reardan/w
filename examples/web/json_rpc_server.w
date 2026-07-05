@@ -33,11 +33,31 @@ json_value* rpc_shutdown(json_value* params, void* ctx):
 	return json_bool(1)
 
 
+# Typed params via the to_json/from_json builtins: params like
+# {"x":3,"y":4} decode straight into a struct, and the struct result
+# encodes back to JSON.
+struct move_params:
+	int x
+	int y
+
+
+json_value* rpc_move(json_value* params, void* ctx):
+	move_params* p = from_json(move_params, params)
+	if (p == 0):
+		return 0
+	move_params moved
+	moved.x = p.x + 1
+	moved.y = p.y + 1
+	free(cast(char*, cast(int, p)))
+	return to_json(moved)
+
+
 int main(int argc, int argv):
 	jsonrpc_server* s = jsonrpc_server_new()
 	s.context = cast(void*, s)
 	jsonrpc_register(s, c"ping", rpc_ping)
 	jsonrpc_register(s, c"add", rpc_add)
+	jsonrpc_register(s, c"move", rpc_move)
 	jsonrpc_register(s, c"shutdown", rpc_shutdown)
 	int status = jsonrpc_serve_blocking(s, 0, 1)
 	jsonrpc_server_free(s)
