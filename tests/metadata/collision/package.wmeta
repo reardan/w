@@ -1,0 +1,11 @@
+# Invalid: this package and the vendored example.net both claim the
+# top-level module path "net".
+package example.collision
+version 1.0.0
+root .
+
+modules:
+	net.helper
+
+dependencies:
+	example.net >=1.0.0 path ../good/vendor/example/net

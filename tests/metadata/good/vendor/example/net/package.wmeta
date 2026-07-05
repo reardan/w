@@ -1,0 +1,7 @@
+# Vendored dependency package for the metadata checker fixtures.
+package example.net
+version 1.2.0
+root .
+
+modules:
+	net.client

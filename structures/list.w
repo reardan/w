@@ -24,15 +24,11 @@ sub classes / specialty versions
 
 */
 import lib.assert
-import code_generator.integer
 import lib.math
-
-# Depends on codegen indirectly for load_int/save_int for now
-# This will be removed once int*[] lookups are working.
 
 int capacity
 int length
-char* array
+int* array
 
 
 void create():
@@ -48,7 +44,7 @@ void die():
 
 void resize(int new_capacity):
 	assert1(new_capacity > capacity)
-	array = realloc(array, capacity * 4, new_capacity * 4)
+	array = cast(int*, realloc(array, capacity * __word_size__, new_capacity * __word_size__))
 	assert1(array != 0)  /* not sure why this doesn't work */
 	capacity = new_capacity
 
@@ -60,22 +56,20 @@ void ensure(int n):
 
 int push(int value):
 	ensure(1)
-	# array[length++] = value
-	save_int(array + length * 4, value)
+	array[length] = value
 	length = length + 1
 	return length - 1
 
 
 int get(int i):
-	return load_int(array + i * 4)
+	return array[i]
 
 
 int pop():
 	if(length == 0):
 		return 0 /* null indicates empty: caller should check this */
 	length = length - 1
-	# int result = array[length]
-	int result = load_int(array + length * 4)
+	int result = array[length]
 	return result
 
 

@@ -36,6 +36,7 @@ Compiler
 		Broad libc/system-header import on x86 and x64
 		Built-in debugger
 		AI tooling MVP: w check --json, changed-file target mapper and w-toolchain MCP
+		LSP MVP: wlsp with check-driven diagnostics and symbols-driven go-to-definition
 
 	Remaining
 		True generics/templates (built-in typed containers landed instead)
@@ -43,7 +44,7 @@ Compiler
 		Richer map/list ergonomics (delete/get/defaults, list insert/remove)
 		Float16 / bfloat16
 		C import old-style declarations and bit-field layout fidelity
-		Formatter, LSP/editor integration, semantic indexer and richer MCP tooling
+		Formatter, richer LSP features (locals, references, hover), semantic indexer and richer MCP tooling
 
 Net
 	Done

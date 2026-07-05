@@ -27,8 +27,7 @@ int dbg_mem_readable(int addr, int n):
 	int length = addr + n - page
 	if (length > 16 * 4096):
 		return 0
-	# mincore (218): fails with -ENOMEM when the range is not fully mapped
-	return syscall7(218, page, length, dbg_mincore_vec, 0, 0, 0) == 0
+	return sys_mincore(page, length, cast(int, dbg_mincore_vec)) == 0
 
 
 # Print a bounded, escaped preview of a C string the debuggee owns, or
