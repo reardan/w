@@ -15,6 +15,11 @@ void *malloc(int);
 
 int verbosity;
 
+# Address of the environment vector (envp) captured at startup. Linux puts
+# envp immediately after argv's NULL terminator on the initial stack. Zero
+# when the program supplies its own _main. Accessors live in lib/env.w.
+int environ_ptr;
+
 
 /*
 The main Undefined declaration.
@@ -31,6 +36,7 @@ The compiler writes the address of this function
 from the symbol table to the call instruction at the entry point.
 */
 int _main(int argc, int argv):
+	environ_ptr = argv + (argc + 1) * __word_size__
 	exit(main(argc, argv))
 
 
