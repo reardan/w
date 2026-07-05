@@ -71,6 +71,12 @@ There is no separate linter or formatter. "Lint" is the compiler's own
 warnings (type mismatches, spaces-instead-of-tabs, missing trailing newline),
 asserted by `make warning_test`.
 
+A W-native build path is being grown to replace the Makefile: `./wbuild`
+bootstraps `tools/wexec.w` (a manifest-driven executor written in W) and runs
+targets from `build.json` — e.g. `./wbuild verify`, `./wbuild tests`,
+`./wbuild --list`. The Makefile remains the complete entry point until every
+target is ported; design notes in `docs/projects/wexec.md`.
+
 Host requirement: `dynamic_test` (part of `make tests`) produces a 32-bit
 dynamically linked binary, so the host needs the i386 loader and libc
 (`/lib/ld-linux.so.2`; on Debian/Ubuntu:
@@ -96,6 +102,7 @@ stock x86-64 system.
 | `tests/` | End-to-end test programs and compile-only warning fixtures |
 | `docs/` | Design notes; `docs/projects/` holds larger design docs |
 | `Makefile` | All build/test/run entry points |
+| `wbuild`, `build.json`, `tools/wexec.w` | W-native build executor (Makefile replacement in progress) |
 | `archive.sh` | Backs up the seed before `make update` promotes a new one |
 
 ## Language snapshot
