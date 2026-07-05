@@ -1,6 +1,11 @@
 int type_alias_declaration():
 	if (accept(c"type")):
 		char* alias_name = strclone(token)
+		# Capture the alias name's position before parsing the target moves
+		# the current token
+		int alias_file = decl_file_index()
+		int alias_line = diag_token_line
+		int alias_column = diag_token_column
 		get_token()
 		expect(c"=")
 		int target = -1
@@ -21,10 +26,11 @@ int type_alias_declaration():
 			expect(c">")
 			int return_type = type_name()
 			target = type_push_function(alias_name, return_type, param_count, cast(int, params))
+			type_set_decl_location(target, alias_file, alias_line, alias_column)
 			free(params)
 		else:
 			target = type_name()
-			type_push_alias(alias_name, target)
+			type_set_decl_location(type_push_alias(alias_name, target), alias_file, alias_line, alias_column)
 		pointer_indirection = 0
 		expect_or_newline(c";")
 		return 1

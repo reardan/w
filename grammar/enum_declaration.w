@@ -2,6 +2,7 @@ int enum_declaration():
 	if (accept(c"enum")):
 		int start_tab_level = tab_level
 		int type_index = type_push_size(strclone(token), 4)
+		type_set_decl_location(type_index, decl_file_index(), diag_token_line, diag_token_column)
 		type_set_kind(type_index, type_kind_enum)
 		sym_declare_global(token, type_index, 1)
 		get_token()
@@ -9,6 +10,8 @@ int enum_declaration():
 		int value = 0
 		while(tab_level > start_tab_level):
 			char* value_name = strclone(token)
+			int value_line = diag_token_line
+			int value_column = diag_token_column
 			get_token()
 			if (accept(c"=")):
 				if ((token[0] == '0') & (token[1] == 'x')):
@@ -17,6 +20,7 @@ int enum_declaration():
 					value = atoi(token)
 				get_token()
 			int current_symbol = sym_declare_global(value_name, type_index, 1)
+			sym_set_decl_location(current_symbol, decl_file_index(), value_line, value_column)
 			sym_define_global(current_symbol)
 			emit_int32(value)
 			value = value + 1

@@ -28,7 +28,21 @@ int debug_file_count
 int debug_last_file
 
 
+# The file registry is also used for declaration locations (symbol/type
+# tables), which can be recorded before the first debug_line_note().
+void debug_files_ensure():
+	if (debug_files == 0):
+		debug_files = malloc(256 * 4)
+
+
+char* debug_file_name(int index):
+	if ((index < 0) | (index >= debug_file_count)):
+		return c""
+	return cast(char*, load_int(debug_files + index * 4))
+
+
 int debug_line_file_index():
+	debug_files_ensure()
 	# Fast path: the same file as the previous statement
 	if (debug_file_count > 0):
 		char* last = cast(char*, load_int(debug_files + debug_last_file * 4))
@@ -54,8 +68,8 @@ int debug_line_file_index():
 # passed in by the caller because this file is compiled before the symbol
 # table module and cannot reference its globals directly.
 void debug_line_note(int stmt_stack_pos):
-	if (debug_files == 0):
-		debug_files = malloc(256 * 4)
+	debug_files_ensure()
+	if (debug_line_addresses == 0):
 		debug_line_capacity = 65536
 		debug_line_addresses = malloc(debug_line_capacity * 4)
 		debug_line_lines = malloc(debug_line_capacity * 4)

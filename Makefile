@@ -290,6 +290,25 @@ check_json_test: w FORCE
 	grep -qF '"arch": "x64"' ./bin/check_json_warning_x64.ndjson
 	@echo "check json test OK"
 
+# Symbol/type declaration metadata dump for LSP/indexer tooling.
+symbols_test: w FORCE
+	./bin/wv2 symbols --json tests/symbols_fixture.w >./bin/symbols_fixture.ndjson 2>./bin/symbols_fixture.stderr
+	grep -qF '"name": "sym_fixture_add", "kind": "function", "type": "int"' ./bin/symbols_fixture.ndjson
+	grep -qF '"name": "sym_fixture_counter", "kind": "object", "type": "int"' ./bin/symbols_fixture.ndjson
+	grep -qF '"name": "sym_fixture_point", "kind": "struct", "type": "sym_fixture_point"' ./bin/symbols_fixture.ndjson
+	grep -qF '"name": "sym_fixture_size", "kind": "alias"' ./bin/symbols_fixture.ndjson
+	grep -qF '"name": "sym_fixture_color", "kind": "enum"' ./bin/symbols_fixture.ndjson
+	grep -qE '"name": "sym_fixture_add".*"file": "[^"]*tests/symbols_fixture.w", "line": 11, "column": 5' ./bin/symbols_fixture.ndjson
+	grep -qE '"name": "sym_fixture_red".*"line": 18, "column": 2' ./bin/symbols_fixture.ndjson
+	grep -qE '"name": "sym_fixture_green".*"line": 19, "column": 2' ./bin/symbols_fixture.ndjson
+	grep -qF '"arch": "x86"' ./bin/symbols_fixture.ndjson
+	./bin/wv2 symbols tests/symbols_fixture.w >./bin/symbols_fixture.txt 2>./bin/symbols_fixture_human.stderr
+	grep -qE 'tests/symbols_fixture.w:11:5: function sym_fixture_add: int' ./bin/symbols_fixture.txt
+	./bin/wv2 symbols --json x64 tests/symbols_fixture.w >./bin/symbols_fixture_x64.ndjson 2>./bin/symbols_fixture_x64.stderr
+	grep -qF '"arch": "x64"' ./bin/symbols_fixture_x64.ndjson
+	grep -qF '"name": "sym_fixture_add", "kind": "function", "type": "int"' ./bin/symbols_fixture_x64.ndjson
+	@echo "symbols test OK"
+
 # The compiler's own sources are the largest clean fixture: the strict
 # type checks must not fire anywhere in the self-hosted compile.
 self_host_warning_test: w FORCE
@@ -702,7 +721,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test check_json_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test linked_list_test format_test time_test args_test result_test net_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:
