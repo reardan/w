@@ -688,6 +688,10 @@ wtest_map_test: wtest FORCE
 rewrite_c_strings: w FORCE
 	./bin/wv2 tools/rewrite_c_string_literals.w -o ./bin/rewrite_c_strings
 
+grapheme_data: w FORCE
+	./bin/wv2 tools/generate_grapheme_data.w -o ./bin/generate_grapheme_data
+	./bin/generate_grapheme_data
+
 wmcp: w FORCE
 	./bin/wv2 tools/mcp/w_toolchain_mcp.w -o ./bin/wmcp
 
