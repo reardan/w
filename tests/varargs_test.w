@@ -39,9 +39,8 @@ int main(int argc, int argv):
 
 	# Ten floats: xmm0..xmm7 plus two stack floats on x64, with a trailing
 	# integer whose position must survive the spill
-	check(c"1 2 3 4 5 6 7 8 9 10 11",
-		snprintf(buf, 128, c"%.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %d",
-			1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11))
+	int spill = snprintf(buf, 128, c"%.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %d", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11)
+	check(c"1 2 3 4 5 6 7 8 9 10 11", spill)
 
 	# A float32 variable widens to float64 (C default argument promotion)
 	float32 f = 7.5

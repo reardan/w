@@ -74,6 +74,30 @@
 			]
 		},
 		{
+			"name": "float_abi_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/float_abi_test.w", "-o", "bin/float_abi_test"]},
+				{"cmd": ["bin/float_abi_test"], "expect_stdout": "float abi OK"}
+			]
+		},
+		{
+			"name": "varargs_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/varargs_test.w", "-o", "bin/varargs_test"]},
+				{"cmd": ["bin/varargs_test"], "expect_stdout": "varargs OK"}
+			]
+		},
+		{
+			"name": "extern_data_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/extern_data_test.w", "-o", "bin/extern_data_test"]},
+				{"cmd": ["bin/extern_data_test"], "expect_stdout": "extern data OK"}
+			]
+		},
+		{
 			"name": "int64_x86_error_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -100,6 +124,9 @@
 				"lib_test",
 				"x64_test",
 				"dynamic_test",
+				"float_abi_test",
+				"varargs_test",
+				"extern_data_test",
 				"int64_x86_error_test",
 				"wdbg",
 				"wexec"

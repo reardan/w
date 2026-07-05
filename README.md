@@ -142,10 +142,15 @@ Implemented and covered by tests:
   `__word_size__` is a compile-time constant (4 or 8).
 - FFI: `c_lib "libc.so.6"` plus `extern int puts(char* s)` declarations link
   against shared libraries, with per-arch calling-convention shims (cdecl
-  re-push on x86, System V registers on x64). `c_import "libc.so.6"
+  re-push on x86, System V registers on x64) that also follow the
+  floating-point ABI (xmm args/returns on x64, x87 returns on x86). Variadic
+  functions (`extern int printf(char* fmt, ...)`) emit the ABI conversion
+  inline per call site with C default argument promotions, and data objects
+  (`extern void* stdout`) import via COPY relocations. `c_import "libc.so.6"
   c"/usr/include/stdio.h"` preprocesses, parses, and imports broad libc/system
   headers (tested against `stdio.h`, `stdlib.h`, `unistd.h`, `sys/stat.h`, and
-  more on both x86 and x64). See `tests/dynamic_test.w`,
+  more on both x86 and x64). See `tests/dynamic_test.w`, `tests/varargs_test.w`,
+  `tests/float_abi_test.w`, `tests/extern_data_test.w`,
   `tests/c_import_libc_test.w`, and `tests/cuda_smoke.w`.
 - Raw syscalls via `syscall(...)`. The ELF entry stub calls `_main`:
   `lib/lib.w` provides a `_main` that forwards to your `main(argc, argv)`,
