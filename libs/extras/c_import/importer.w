@@ -1079,7 +1079,7 @@ void ci_emit_constant(int value):
 	emit_i(value, word_size)
 
 
-void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params):
+void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params, int is_variadic):
 	int sym = sym_declare_global(name, ret_type, 2)
 	int param_count = 0
 	if (params != 0):
@@ -1088,8 +1088,13 @@ void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params):
 	int got_vaddr = code_offset + codepos
 	emit_zeros(word_size)
 	dyn_add_import_weak(name, got_vaddr)
+	# The shim covers fixed-arity calls; direct calls of a variadic import
+	# emit the C ABI conversion inline for the actual argument classes.
 	sym_define_global(sym)
 	emit_ffi_shim(param_count, ci_param_classes, ffi_type_class(ret_type), got_vaddr)
+	if (is_variadic):
+		sym_set_variadic(sym, param_count)
+		sym_set_got_vaddr(sym, got_vaddr)
 
 
 # Declared in headers but provided by the compiler, not exported by libc;
@@ -1102,7 +1107,7 @@ int ci_is_compiler_builtin(char* name):
 	return 0
 
 
-void ci_import_function(char* name, int ret_type, pg_ast_node* params):
+void ci_import_function(char* name, int ret_type, pg_ast_node* params, int is_variadic):
 	if (hash_map_contains(ci_imported_functions, name)):
 		return
 	hash_map_set(ci_imported_functions, name, 1)
@@ -1115,7 +1120,7 @@ void ci_import_function(char* name, int ret_type, pg_ast_node* params):
 	if (ci_signature_needs_x64(ret_type, params)):
 		ci_skip_extern_function(name, c"float64 ABI requires the x64 target")
 		return
-	ci_lower_extern_function(name, ret_type, params)
+	ci_lower_extern_function(name, ret_type, params, is_variadic)
 
 
 int ci_import_enumerators(pg_ast_node* node, int enum_type, int value):
@@ -1215,12 +1220,10 @@ void ci_import_init_declarators(ci_decl_info* decl, pg_ast_node* node):
 					ci_skip_extern_function(info.name, c"static/inline function")
 				else if (info.params == 0):
 					ci_skip_extern_function(info.name, c"unspecified parameters")
-				else if (ci_params_have_ellipsis(info.params)):
-					ci_skip_extern_function(info.name, c"variadic function")
 				else if (ci_params_are_old_style(info.params)):
 					ci_skip_extern_function(info.name, c"old-style parameters")
 				else:
-					ci_import_function(info.name, info.type, info.params)
+					ci_import_function(info.name, info.type, info.params, ci_params_have_ellipsis(info.params))
 			else if (info.is_function_pointer == 0):
 				if (decl.is_extern & (verbosity >= 1)):
 					ci_skip_extern_function(info.name, c"extern data object")

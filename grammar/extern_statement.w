@@ -46,11 +46,20 @@ int extern_statement():
 		# the C boundary.
 		int saved_table = table_pos
 		int param_count = 0
+		int is_variadic = 0
 		char* param_classes = malloc(extern_max_params())
 		int ret_class = ffi_type_class(ret_type)
 		if ((ret_class == 2) & (word_size != 8)):
 			error(c"float64 requires the x64 target")
 		while (accept(c")") == 0):
+			# A trailing '...' marks a variadic C function: calls may pass
+			# any number of extra arguments after the fixed ones.
+			if (accept(c".")):
+				expect(c".")
+				expect(c".")
+				is_variadic = 1
+				expect(c")")
+				break
 			param_count = param_count + 1
 			if (param_count > extern_max_params()):
 				error(c"too many extern parameters")
@@ -75,9 +84,16 @@ int extern_statement():
 		emit_zeros(word_size)
 		dyn_add_import(name, got_vaddr)
 
-		# The symbol resolves to the shim entry point
+		# The symbol resolves to the shim entry point. For a variadic
+		# function the shim only covers calls that pass exactly the fixed
+		# parameters (e.g. through a function pointer); direct calls emit
+		# the C ABI conversion inline for the actual argument classes
+		# (see parse_variadic_call_suffix).
 		sym_define_global(sym)
 		emit_ffi_shim(param_count, param_classes, ret_class, got_vaddr)
+		if (is_variadic):
+			sym_set_variadic(sym, param_count)
+			sym_set_got_vaddr(sym, got_vaddr)
 
 		free(param_classes)
 		free(name)

@@ -14,6 +14,8 @@ int: 26: declared parameter types (up to 10 slots of 4 bytes each)
 int: 66: declaration file index (dwarf.w debug_files), -1 when unknown
 int: 70: declaration line (1-based)
 int: 74: declaration column (1-based)
+int: 78: variadic C import: number of fixed parameters, -1 when not variadic
+int: 82: GOT slot vaddr for extern imports, 0 otherwise
 */
 char *table
 int table_size
@@ -22,7 +24,7 @@ int stack_pos
 
 
 int symbol_data_size():
-	return 78
+	return 86
 
 
 int next_token(int t):
@@ -165,6 +167,8 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 14, 0) /* size: recycled malloc blocks are not zeroed */
 	save_int(table + t + 18, pointer_indirection)
 	save_int(table + t + 22, -1) /* parameter count unknown until a '(...)' is parsed */
+	save_int(table + t + 78, -1) /* not variadic */
+	save_int(table + t + 82, 0)  /* no GOT slot */
 	# Declaration location: token position of the name being declared
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
@@ -217,6 +221,26 @@ int number_of_args
 # or -1 when unknown (e.g. asm runtime stubs without a parameter list).
 int sym_num_args(int t):
 	return load_int(table + t + 22)
+
+
+# Number of fixed parameters of a variadic C import at table offset t, or
+# -1 when the symbol is not variadic.
+int sym_variadic_fixed_args(int t):
+	return load_int(table + t + 78)
+
+
+void sym_set_variadic(int t, int fixed_args):
+	save_int(table + t + 78, fixed_args)
+
+
+# GOT slot vaddr of an extern import (the dynamic loader stores the
+# resolved C function address there), or 0 for ordinary symbols.
+int sym_got_vaddr(int t):
+	return load_int(table + t + 82)
+
+
+void sym_set_got_vaddr(int t, int vaddr):
+	save_int(table + t + 82, vaddr)
 
 
 # Parameter type slots per symbol; arguments past the limit are unchecked.

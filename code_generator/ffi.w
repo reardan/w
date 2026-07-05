@@ -38,6 +38,10 @@ import lib.lib
 int type_get_pointer_level(int type_index);
 int type_float_kind(int t);
 void error(char *s);
+void movd_xmm0_eax();
+void cvtss2sd_xmm0();
+void movq_rax_xmm0();
+void push_eax();
 
 
 # ABI class of a parameter or return type: 0 = integer/pointer word,
@@ -256,3 +260,19 @@ void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr):
 		emit_c_abi_call_x64(n, classes, ret_class, got_vaddr, 8)
 	else:
 		emit_c_abi_call_x86(n, classes, ret_class, got_vaddr, 4)
+
+
+# C variadic calls apply the default argument promotions, so a float32
+# argument widens to float64 before the call. Takes the float32 bits in
+# eax and pushes the promoted value; returns the number of W stack words
+# pushed (a float64 spans two words on x86).
+int ffi_push_promoted_float32():
+	movd_xmm0_eax()
+	cvtss2sd_xmm0()
+	if (word_size == 8):
+		movq_rax_xmm0()
+		push_eax()
+		return 1
+	emit(3, c"\x83\xec\x08")           /* sub esp,8 */
+	emit(5, c"\xf2\x0f\x11\x04\x24")   /* movsd [esp],xmm0 */
+	return 2
