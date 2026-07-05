@@ -68,7 +68,7 @@ def main() -> int:
         for expected in {"build", "verify", "run_tests", "check", "compile", "run", "repl_eval", "test_changed"}:
             assert expected in names
         changed = tool_result(proc, 3, "test_changed", {"files": ["structures/json.w"]})
-        assert changed["targets"] == ["json_test"], changed
+        assert changed["targets"] == ["json_test", "json_rpc_test"], changed
         checked = tool_result(proc, 4, "check", {"file": "tests/hello.w"})
         assert checked["exit_code"] == 0, checked
         assert checked["diagnostics"] == [], checked

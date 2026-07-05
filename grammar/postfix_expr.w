@@ -381,6 +381,12 @@ int postfix_expr():
 					add_eax_int32(word_size)
 					type = type_lookup(c"int")
 					expression_lhs_readonly = 1
+				else if (peek(c"remove")):
+					get_token()
+					type = hash_remove_suffix(type)
+				else if (peek(c"add") & type_is_set(type)):
+					get_token()
+					type = hash_set_add_suffix(type)
 				else:
 					print2(c"hash container field '")
 					print2(token)
@@ -398,6 +404,15 @@ int postfix_expr():
 				else if (peek(c"pop")):
 					get_token()
 					type = list_pop_suffix(type)
+				else if (peek(c"insert")):
+					get_token()
+					type = list_insert_suffix(type)
+				else if (peek(c"remove")):
+					get_token()
+					type = list_remove_suffix(type)
+				else if (peek(c"clear")):
+					get_token()
+					type = list_clear_suffix(type)
 				else:
 					diag_part(c"list field '")
 					diag_part(token)

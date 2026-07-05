@@ -128,6 +128,93 @@ int list_pop_suffix(int type):
 	return type_value(element_type)
 
 
+# l.remove(index): 'remove' has been consumed. Lowers to
+# __w_list_remove(list, index), which shifts the tail left.
+int list_remove_suffix(int type):
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	promote(expression())
+	expect(c")")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int index_slot = stack_pos
+	sym_get_value(c"__w_list_remove")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_push_stack_slot(index_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_lookup(c"void"))
+
+
+# l.insert(index, value): 'insert' has been consumed. Checks the value
+# against the element type and lowers to __w_list_insert(list, index, value).
+int list_insert_suffix(int type):
+	int element_type = type_list_element_type(type_unqualified(type))
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	promote(expression())
+	push_eax()
+	stack_pos = stack_pos + 1
+	int index_slot = stack_pos
+	expect(c",")
+	int got_type = expression()
+	got_type = promote(got_type)
+	coerce(element_type, got_type)
+	if (types_compatible_with_expression(element_type, got_type) == 0):
+		warn_type_mismatch(c"list insert", element_type, got_type)
+	expect(c")")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int value_slot = stack_pos
+	# Struct sources arrive as addresses; copy their bytes into the slot
+	if ((type_num_args(element_type) > 0) & (type_num_args(type_real(got_type)) > 0)):
+		sym_get_value(c"__w_list_insert_bytes")
+	else:
+		sym_get_value(c"__w_list_insert")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_push_stack_slot(index_slot)
+	hash_push_stack_slot(value_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_lookup(c"void"))
+
+
+# l.clear(): 'clear' has been consumed. Lowers to __w_list_clear(list).
+int list_clear_suffix(int type):
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	expect(c")")
+	sym_get_value(c"__w_list_clear")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_lookup(c"void"))
+
+
 void list_literal_parse_entry(int container_type, int container_slot):
 	int base_stack = stack_pos
 	int element_type = type_list_element_type(container_type)

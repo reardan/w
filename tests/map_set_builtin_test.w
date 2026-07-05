@@ -143,3 +143,87 @@ void test_map_struct_value_literal():
 	map[char*, map_test_point] m = map[char*, map_test_point]{c"p": p, c"q": q}
 	assert_equal(1, m[c"p"].x)
 	assert_equal(4, m[c"q"].y)
+
+
+void test_map_remove():
+	map[char*, int] m = map[char*, int]{c"one": 1, c"two": 2, c"three": 3}
+	assert_equal(1, m.remove(c"two"))
+	assert_equal(2, m.length)
+	assert_equal(0, c"two" in m)
+	assert_equal(1, m[c"one"])
+	assert_equal(3, m[c"three"])
+	# Removing a missing key reports false and changes nothing
+	assert_equal(0, m.remove(c"two"))
+	assert_equal(2, m.length)
+	# A removed key can be inserted again
+	m[c"two"] = 22
+	assert_equal(22, m[c"two"])
+	assert_equal(3, m.length)
+
+
+void test_set_add_and_remove():
+	set[int] s = new set[int]
+	s.add(4)
+	s.add(7)
+	s.add(4)
+	assert_equal(2, s.length)
+	assert_equal(1, 4 in s)
+	assert_equal(1, s.remove(4))
+	assert_equal(0, 4 in s)
+	assert_equal(1, s.length)
+	assert_equal(0, s.remove(4))
+
+
+void test_set_add_string_keys():
+	set[char*] s = new set[char*]
+	s.add(c"alpha")
+	s.add(c"beta")
+	assert_equal(1, c"alpha" in s)
+	assert_equal(0, c"gamma" in s)
+	assert_equal(1, s.remove(c"alpha"))
+	assert_equal(0, c"alpha" in s)
+
+
+void test_for_key_value_over_map():
+	map[char*, int] m = map[char*, int]{c"a": 1, c"b": 2, c"c": 3}
+	int key_length_sum = 0
+	int value_sum = 0
+	for char* k, int v in m:
+		key_length_sum = key_length_sum + strlen(k)
+		value_sum = value_sum + v
+	assert_equal(3, key_length_sum)
+	assert_equal(6, value_sum)
+
+
+void test_for_key_value_int_keys():
+	map[int, int] m = new map[int, int]
+	for int i in range(10):
+		m[i] = i * i
+	int checked = 0
+	for int k, int v in m:
+		assert_equal(k * k, v)
+		checked = checked + 1
+	assert_equal(10, checked)
+
+
+struct kv_test_point:
+	int x
+	int y
+
+
+void test_for_key_value_struct_values():
+	map[char*, kv_test_point] m = new map[char*, kv_test_point]
+	kv_test_point p
+	p.x = 1
+	p.y = 2
+	m[c"a"] = p
+	p.x = 3
+	p.y = 4
+	m[c"b"] = p
+	int x_sum = 0
+	int y_sum = 0
+	for char* k, kv_test_point* v in m:
+		x_sum = x_sum + v.x
+		y_sum = y_sum + v.y
+	assert_equal(4, x_sum)
+	assert_equal(6, y_sum)
