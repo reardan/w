@@ -238,6 +238,32 @@ void test_mmap():
 	assert_equal(42, load_int(page + 4092))
 
 
+# The repl/wdbg in-process model maps an 8MB MAP_32BIT code buffer that
+# can land directly above a low-randomized brk base, making every later
+# brk growth fail (brk returns the old break, not an errno). malloc must
+# then fall back to mmap chunks instead of handing out unmapped memory.
+void test_malloc_survives_blocked_brk():
+	# Force the allocator to touch the break first, then wall it off
+	# (page-aligned up: the kernel's initial break need not be aligned,
+	# and an unaligned MAP_FIXED would fail and leave brk growable)
+	free(malloc(16))
+	int break_now = brk(0)
+	int guard_at = (break_now + 4095) / 4096 * 4096
+	# PROT_NONE = 0, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED = 50
+	int guard = mmap(guard_at, 4096, 0, 50)
+	asserts(c"guard mmap failed", guard == guard_at)
+	# Exhaust the current chunk and force several growth cycles
+	int i = 0
+	while (i < 64):
+		char* block = malloc(16384)
+		asserts(c"malloc returned 0 with brk blocked", block != 0)
+		block[0] = i
+		block[16383] = i + 1
+		assert_equal(i, block[0])
+		assert_equal(i + 1, block[16383])
+		i = i + 1
+
+
 void test_print_registers():
 	print_registers()
 
