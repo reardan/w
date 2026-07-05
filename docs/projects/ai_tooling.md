@@ -36,8 +36,9 @@ The MVP described here has landed:
   in JSON mode while keeping default human diagnostics byte-compatible.
 - `tools/test_map.w` builds to `bin/wtest`; `wtest changed` and
   `make test_changed` map changed paths to focused Makefile targets.
-- `tools/mcp/w_toolchain_mcp.py` is a stdlib-only stdio MCP server, registered
-  by `.cursor/mcp.json`.
+- `tools/mcp/w_toolchain_mcp.w` builds to `bin/wmcp`, a W-native stdio MCP
+  server registered by `.cursor/mcp.json`. (It began life as stdlib-only
+  Python and was ported to W once `lib/process.w` landed.)
 - README agent tooling guidance and regression targets (`check_json_test`,
   `wtest_map_test`, `mcp_test`) are wired into `make tests`.
 
@@ -75,9 +76,10 @@ The out-of-scope items at the end of this document remain deferred.
 - **The test API is Makefile targets.** There is no mapping from a
   changed file to its targets; agents run `make tests` (~all targets) or
   guess.
-- **Python 3 is available** and already used for offline codegen in
-  `tools/` (`generate_grapheme_data.py`), but nothing at build or test
-  time depends on it today.
+- **Python 3 is available** and was used for offline codegen in `tools/`
+  when this was written, but nothing at build or test time depends on it.
+  (All `tools/` programs have since been ported to W; the toolchain is
+  seed + make only.)
 
 ## A. Structured diagnostics: `w check [--json]`
 
@@ -239,16 +241,14 @@ stdin, for MCP use.
 
 ## C. `w-toolchain-mcp`
 
-`tools/mcp/w_toolchain_mcp.py`: a stdio MCP server in **stdlib-only
-Python 3** (~250 lines: JSON-RPC 2.0 framing, `initialize`,
-`notifications/initialized`, `tools/list`, `tools/call`). Rationale for
-Python rather than W: an MCP server is a long-running JSON-RPC process
-that spawns and supervises subprocesses with timeouts; `lib/` has no
-fork/exec/wait wrappers today, and adding process management to the
-standard library is real language work that should not gate tooling.
-(`tools/` already contains Python for offline codegen, and the repo's
-no-package-manager rule holds: stdlib only.) A W-native server becomes
-attractive once `lib/` grows spawn support — noted as future work.
+`tools/mcp/w_toolchain_mcp.w` (built by `make wmcp` to `bin/wmcp`): a
+W-native stdio MCP server (JSON-RPC 2.0 over `lib/framing.w`,
+`initialize`, `notifications/initialized`, `tools/list`, `tools/call`).
+The MVP shipped this server in stdlib-only Python 3 because `lib/` had
+no fork/exec/wait wrappers; once `lib/process.w` landed
+(docs/projects/process.md) the server was ported to W behavior-for-
+behavior — subprocesses run through `process_run` with pipes and
+timeouts, and the wire format is unchanged.
 
 Tools, all executed from the repo root with `bin/` ensured and a
 configurable timeout, each returning
@@ -272,8 +272,12 @@ is missing, so a fresh clone works without ceremony.
 Registration is committed as `.cursor/mcp.json`:
 
 ```json
-{"mcpServers": {"w-toolchain": {"command": "python3", "args": ["tools/mcp/w_toolchain_mcp.py"]}}}
+{"mcpServers": {"w-toolchain": {"command": "sh", "args": ["-c", "mkdir -p bin && make -s wmcp >&2 && exec ./bin/wmcp"]}}}
 ```
+
+The registration builds the server from source before launching it, so a
+fresh clone works without ceremony; the build log goes to stderr because
+MCP owns stdout.
 
 ## D. Documentation
 
@@ -307,11 +311,10 @@ New Makefile targets, wired into the `tests` umbrella:
   assert exact target lines (`grammar/promote.w` → `verify`,
   `structures/json.w` → `json_test`, unknown path → `tests`,
   `docs/todo.txt` → empty).
-- `mcp_test`: a Python driver (`tools/mcp/mcp_test.py`) spawns the
-  server, performs the initialize handshake, lists tools, and calls
-  `check` on `tests/hello.w` asserting zero diagnostics. The target
-  skips with a notice when `python3` is absent, so `make tests` keeps
-  working on hosts without it.
+- `mcp_test`: a W driver (`tools/mcp/mcp_test.w`) spawns `bin/wmcp` with
+  piped stdio, performs the initialize handshake, lists tools, and calls
+  `test_changed` and `check` (on `tests/hello.w`, asserting zero
+  diagnostics) end to end.
 
 Regression gates for every compiler-touching commit: `make verify`
 (self-host fixpoint), `warning_test` + `type_system_*_test` +
@@ -328,7 +331,8 @@ before merge.
    symbol_table, expect, postfix_expr, compiler); long-tail migrations as
    mechanical follow-ups.
 4. `tools/test_map.w`, `test_changed` target, `wtest_map_test`.
-5. `tools/mcp/w_toolchain_mcp.py`, `.cursor/mcp.json`, `mcp_test`.
+5. `tools/mcp/w_toolchain_mcp.py`, `.cursor/mcp.json`, `mcp_test`
+   (later ported to `tools/mcp/w_toolchain_mcp.w` / `tools/mcp/mcp_test.w`).
 6. README "Tooling for agents" section; update this doc and
    `docs/mvp.txt`.
 
@@ -381,6 +385,6 @@ before merge.
 - **stdout discipline**: `check` writes NDJSON to stdout and never an
   ELF (`output_fd` = `/dev/null`), so parsers cannot receive mixed
   streams.
-- **Python dependency**: confined to the MCP server and its test, which
-  skips when `python3` is missing; the compiler, `check`, and `wtest`
-  remain seed + make only.
+- **Python dependency**: eliminated. The MCP server and its test are W
+  programs; the whole toolchain — compiler, `check`, `wtest`, MCP —
+  is seed + make only.
