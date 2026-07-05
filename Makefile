@@ -568,6 +568,12 @@ repl_test_x64: w FORCE
 	printf ':quit\n' | ./bin/repl64 tests/repl_fixture.w | grep -q "fixture main ran"
 	printf 'fixture_helper(21)\nfixture_global\n:quit\n' | ./bin/repl64 tests/repl_fixture.w | grep -q "42"
 	! printf ':quit\n' | ./bin/repl64 tests/repl_fixture.w --no_main | grep -q "fixture main ran"
+	# Line editing and history on a pty (same cases as the x86 repl_test)
+	rm -f ./bin/.w_history
+	printf 'int q = 13\177\1774\nq + 1\n:quit\n' | HOME=./bin script -qc './bin/repl64' /dev/null | grep -q "5"
+	test $$(printf 'int x = 41\nx + 1\n\033[A\n:quit\n' | HOME=./bin script -qc './bin/repl64' /dev/null | grep -c "42") -eq 2
+	grep -q "int x = 41" ./bin/.w_history
+	rm -f ./bin/.w_history
 	@echo "repl x64 test OK"
 
 for_test: w FORCE
@@ -714,6 +720,9 @@ wtest_map_test: wtest FORCE
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	./bin/wtest changed lib/file.w > ./bin/wtest_map.out
 	printf 'file_test\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	./bin/wtest changed lib/line_edit.w > ./bin/wtest_map.out
+	printf 'repl_test\ndebug_test\n' > ./bin/wtest_map.expected
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	./bin/wtest changed tools/wexec.w tests/wexec/good.json > ./bin/wtest_map.out
 	printf 'wexec_test\n' > ./bin/wtest_map.expected
@@ -868,9 +877,20 @@ debug_test: wdbg FORCE
 	printf 'b add\nc\nbt\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "#1  triple"
 	printf 'x message 1\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -qE "0x[0-9a-f]+: 0x"
 	printf 'list\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "int y = triple(x)"
+	# frame selection: print/set/info address the selected frame's locals
+	printf 'b add\nc\nup\np n\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "n = 3"
+	printf 'b add\nc\nf 2\np message\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "hello wdbg"
+	printf 'b add\nc\nup\ndown\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "#0  add"
+	printf 'b add\nc\nup\nset n 10\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "debuggee main returned 16"
 	# expression evaluation (the repl model) and writing variables
 	printf 'p add(2, 3)\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "= 5 (0x00000005)"
 	printf 'set x 40\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "debuggee main returned 120"
+	# locals and args participate in evaluated expressions
+	printf 'p x * 2 + counter\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "= 11"
+	printf 'b add\nc\np add(a, 39)\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "= 42"
+	# software watchpoints: stop on change, list and delete
+	printf 'watch counter\nc\nc\nq\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "counter changed: 5 (0x00000005) -> 14"
+	printf 'watch counter\nd w 1\ni w\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "no watchpoints set"
 	# fatal signals: post-mortem stop, location, and refusal to resume
 	printf 'l\nc\n' | ./bin/wdbg tests/segv_fixture.w | grep -q "fatal signal: SIGSEGV"
 	printf 'l\nc\n' | ./bin/wdbg tests/segv_fixture.w | grep -q "segv_fixture.w:7"
@@ -916,9 +936,20 @@ debug_test_x64: wdbg_x64 FORCE
 	printf 'b add\nc\nbt\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "#1  triple"
 	printf 'x message 1\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -qE "0x[0-9a-f]+: 0x"
 	printf 'list\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "int y = triple(x)"
+	# frame selection: print/set/info address the selected frame's locals
+	printf 'b add\nc\nup\np n\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "n = 3"
+	printf 'b add\nc\nf 2\np message\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "hello wdbg"
+	printf 'b add\nc\nup\ndown\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "#0  add"
+	printf 'b add\nc\nup\nset n 10\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "debuggee main returned 16"
 	# expression evaluation (the repl model) and writing variables
 	printf 'p add(2, 3)\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "= 5 (0x00000005)"
 	printf 'set x 40\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "debuggee main returned 120"
+	# locals and args participate in evaluated expressions
+	printf 'p x * 2 + counter\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "= 11"
+	printf 'b add\nc\np add(a, 39)\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "= 42"
+	# software watchpoints: stop on change, list and delete
+	printf 'watch counter\nc\nc\nq\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "counter changed: 5 (0x00000005) -> 14"
+	printf 'watch counter\nd w 1\ni w\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "no watchpoints set"
 	# fatal signals: post-mortem stop, location, and refusal to resume
 	printf 'l\nc\n' | ./bin/wdbg64 tests/segv_fixture.w | grep -q "fatal signal: SIGSEGV"
 	printf 'l\nc\n' | ./bin/wdbg64 tests/segv_fixture.w | grep -q "segv_fixture.w:7"

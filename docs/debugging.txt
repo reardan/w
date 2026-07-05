@@ -10,17 +10,20 @@ Current state:
 	local/argument (name, stack slot, type, declaration site) and per
 	function (start, argument words); see code_generator/dwarf.w
 
-	wdbg (debugger/wdbg.w and the debugger/ modules, built with make wdbg)
-	is the built-in debugger:
+	wdbg (debugger/wdbg.w and the debugger/ modules, built with make wdbg
+	for x86 or make wdbg_x64 for the 64-bit binary) is the built-in
+	debugger:
 
 		./bin/wdbg file.w
+		./bin/wdbg64 file.w         (x64: same model, 8-byte slots)
 		./bin/w --debug file.w      (same debugger via the compiler driver)
 
 	compiles file.w into an in-process executable buffer (the repl model),
 	installs SIGTRAP + fatal-signal handlers via rt_sigaction, and calls
 	the debuggee's main(). Every 'debugger' statement, patched breakpoint
 	and fatal signal (SIGSEGV, SIGILL, SIGBUS, SIGFPE) traps into a
-	command loop:
+	command loop. On a tty the command prompt has readline-style line
+	editing and history (lib/line_edit.w, persisted to ~/.wdbg_history).
 
 	execution control
 		c / continue    resume the debuggee
@@ -36,38 +39,72 @@ Current state:
 	byte restored while stopped and re-armed via one single-step)
 		b / break <t>   t = function | line | file:line
 		tb / tbreak <t> one-shot breakpoint, deleted when hit
-		d / delete [n]  delete breakpoint n, or all of them
+		d / delete [n]  delete breakpoint n, or all breakpoints and
+		                watchpoints with no argument
 		i b             list breakpoints
+
+	watchpoints (software: hardware debug registers need ptrace from a
+	second process, so they are out of reach in-process)
+		watch <x|addr>  watch the variable's word (a local's stack slot
+		                in the selected frame, a global's storage, or a
+		                raw address); while any watchpoint is live every
+		                resume single-steps statement-by-statement and
+		                compares each watched word at statement
+		                boundaries, stopping with an old -> new report -
+		                expect a large slowdown while watchpoints exist
+		d w [n]         delete watchpoint n, or all watchpoints
+		i w             list watchpoints
+	a local's watchpoint address is only meaningful until its frame
+	returns; unreadable addresses stay silent instead of stopping
 
 	inspection
 		p / print <x>   local/argument/global by name (typed: structs
 		                print field by field, char* previews the string),
 		                or any W expression compiled in-process and run
-		                against the live debuggee (globals + calls work)
+		                against the live debuggee; globals, calls and
+		                the locals/args visible at the stop all work
+		                (locals are staged through low-memory scratch
+		                copies and written back, so assignments stick)
 		set <x> <v>     write a local, argument or global
 		x <addr|name> [n]  dump n memory words; addresses are probed with
 		                mincore first so bad pointers cannot crash wdbg
-		bt / backtrace  heuristic unwind through stacked return addresses
+		bt / backtrace  heuristic unwind through stacked return
+		                addresses, printed with frame numbers
+		f / frame [n]   select frame n (as numbered by bt); up / down
+		                move one frame out / in. print, set, x and
+		                i locals/args then address the selected frame's
+		                variables through its statement stack depth
 		st / stack      raw 16 words at the trapped esp
-		r / registers   the trapped register file
+		r / registers   the trapped register file (r8-r15 on x64)
 		l / line        current location: function (file:line)
 		list [line]     source listing around the stop
-		i locals|args|breakpoints|registers|functions|files
+		i locals|args|breakpoints|watchpoints|registers|functions|files
 
 	how stepping works: the handler sets the x86 trap flag in the signal
 	frame's eflags, so sigreturn raises the next SIGTRAP after one
 	instruction; the handler keeps stepping until the stop condition
 	holds. step/next stop only at recorded statement starts, and next/
-	finish compare esp against the frame base (trapped esp + 4 * the
-	statement's recorded stack depth) to tell the starting frame apart
-	from callees, recursion and callers - no frame pointers needed.
+	finish compare esp against the frame base (trapped esp + word size *
+	the statement's recorded stack depth) to tell the starting frame
+	apart from callees, recursion and callers - no frame pointers needed.
 
 	how locals work: the recorded stack depth of the stopped statement
 	plus each variable's declaration slot reproduce the same
-	esp-relative addressing sym_get_value() compiled into the debuggee.
+	esp-relative addressing sym_get_value() compiled into the debuggee
+	(slots are 4 bytes on x86, 8 on x64):
 
-		local:    esp + (stack_pos - slot - 1) * 4
-		argument: esp + (stack_pos + arg_words - slot + 1) * 4
+		local:    esp + (stack_pos - slot - 1) * word
+		argument: esp + (stack_pos + arg_words - slot + 1) * word
+
+	x64 signal delivery: the i386 trick (sigcontext at &sig + 4 in a
+	stack-based signal frame) does not exist on x86-64 - the kernel
+	calls the handler with arguments in registers and rt_sigaction
+	demands SA_RESTORER. wdbg emits tiny runtime thunks into an
+	executable page: one per handler adapts the register convention
+	(SA_SIGINFO: sig in rdi, ucontext* in rdx) into a W stack call of
+	handler(sig, ucontext + uc_mcontext offset), and a shared restorer
+	performs rt_sigreturn. debugger/sigcontext.w selects the i386 or
+	x86-64 sigcontext offsets by __word_size__.
 
 	fatal signals stop for post-mortem inspection (location, registers,
 	stack, locals, backtrace); resuming is refused and exits with 1.
@@ -81,25 +118,25 @@ Current state:
 
 	traps after the debuggee's main returns
 
-	make debug_test drives the command loop over stdin against
-	tests/debug_fixture.w, tests/debug_fixture2.w and
-	tests/segv_fixture.w, asserting each command's output.
+	make debug_test (and debug_test_x64 for ./bin/wdbg64) drives the
+	command loop over stdin against tests/debug_fixture.w,
+	tests/debug_fixture2.w and tests/segv_fixture.w, asserting each
+	command's output.
 
 	known limitations:
-		wdbg is x86-only (sigcontext layout, 4-byte slots, asm stubs)
-		locals are not visible inside print's compiled expressions;
-			only as plain 'p name' reads
 		local addresses are exact at statement boundaries, which is
 			where step/next/breakpoints stop
+		older frames' bases come from the heuristic return-address
+			scan; when a base is unknown the frame's locals are
+			reported as not addressable instead of guessed
+		watchpoints check at statement granularity: a change made and
+			reverted within one statement is invisible
 		finish treats a same-function stop after block-exit pops
 			correctly, but cannot see through frames without line info
 
 
 Future:
 
-	locals bound into evaluated expressions (compile-time preamble
-		reading the trapped stack)
-	watchpoints (single-step scan or debug registers)
 	conditional breakpoints and hit counts
+	hardware watchpoints via an out-of-process ptrace mode
 	web UI debugger
-	x64 support (sigcontext_64 layout, 8-byte slots, x64 asm stubs)

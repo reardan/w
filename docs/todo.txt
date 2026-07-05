@@ -126,10 +126,17 @@ current state:
 			debugger statement emits int3
 			DWARF line-number data is emitted for gdb source-line mapping
 			wdbg in-process debugger (make wdbg, make debug_test, w --debug)
+				x64 build too (make wdbg_x64, make debug_test_x64): 64-bit
+					sigcontext offsets and runtime signal thunks
 				step/next/stepi/finish, breakpoints (function/line/file:line)
 				locals/args/globals by name, set, x, backtrace, list
-				print compiles and runs W expressions in-process
+				print compiles and runs W expressions in-process; locals and
+					args visible at the stop are bound into the expression
+				frame/up/down select a backtrace frame; print/set/x/info
+					locals/args address the selected frame
+				software watchpoints (statement-granularity single-step scan)
 				fatal-signal post-mortem stops (segv handler)
+				line editing and history at the prompt (lib/line_edit.w)
 		library and data structures:
 			malloc/free/realloc as a library module (lib/memory.w)
 			list
@@ -157,30 +164,33 @@ current state:
 			./bin/repl file.w [args...] runs a file, then attaches the prompt
 				to its live definitions (--no_main skips running main)
 			compile errors roll back state and return to the prompt
+			line editing and history on a tty (lib/termios.w raw mode +
+				lib/line_edit.w, history persisted to ~/.w_history)
+			x64 repl (make repl_x64, make repl_test_x64): word-size-aware
+				buffer (MAP_32BIT) and real x64 repl_setjmp/longjmp stubs
 
 	current limitations:
 		repl:
 			calls compiled before a redefinition keep the old binding
 			struct redefinition keeps the first definition (type_lookup
 				returns the first match)
-			no line editing or history (needs termios raw mode)
+			line editing is single-line (no multi-line wrap redraw)
 		pointers and structs:
 			new initializes fields from arguments but does not run user constructors
 			struct values with fixed-array fields are copied and returned by value
 		debugging:
-			locals are not visible inside print's compiled expressions
-			backtrace is heuristic (return-address scan, no frame pointers)
-			no watchpoints or conditional breakpoints yet
+			backtrace is heuristic (return-address scan, no frame pointers),
+				so an older frame's base can be unknown (locals unaddressable)
+			watchpoints are software (statement-granularity single-step
+				scan): large slowdown while any exist
+			no conditional breakpoints yet
 		x64:
-			threading and the repl/wdbg stubs are still x86-only
+			threading is still x86-only
 			DWARF line info still declares address_size 4 (gdb only)
 		webassembly:
 			no backend implementation yet
 
 	next priorities:
-		repl:
-			line editing and history (termios raw mode)
-			evaluate expressions at a wdbg breakpoint
 		type system:
 			finish type.fields usage for globals and imports
 			use type.w as the language meta-type
@@ -193,10 +203,8 @@ current state:
 			bit-field layout fidelity
 			more system-header torture fixtures as regressions are found
 		debugger:
-			bind locals into print's compiled expressions
-			watchpoints and conditional breakpoints
+			conditional breakpoints and hit counts
 			asm/disasm helpers
-			x64 wdbg (sigcontext_64, 8-byte slots, x64 stubs)
 		code generation:
 			webassembly hello world
 			webassembly self-compiling

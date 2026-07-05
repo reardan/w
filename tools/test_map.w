@@ -154,6 +154,11 @@ void wtest_map_lib(char* path):
 		wtest_add(path, c"file_test")
 	else if (strcmp(path, c"lib/file.w") == 0):
 		wtest_add(path, c"file_test")
+	else if ((strcmp(path, c"lib/termios.w") == 0) | (strcmp(path, c"lib/line_edit.w") == 0)):
+		# Terminal raw mode and the line editor are exercised through
+		# their consumers: the repl prompt and the wdbg command loop.
+		wtest_add(path, c"repl_test")
+		wtest_add(path, c"debug_test")
 	else:
 		wtest_add(path, c"lib_test")
 
