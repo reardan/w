@@ -9,6 +9,7 @@ int target_path_test
 int target_time_test
 int target_result_test
 int target_net_test
+int target_poll_test
 int target_hash_map_test
 int target_hash_table_test
 int target_array_list_test
@@ -63,6 +64,8 @@ void wtest_add(char* path, char* target):
 		target_result_test = 1
 	else if (strcmp(target, c"net_test") == 0):
 		target_net_test = 1
+	else if (strcmp(target, c"poll_test") == 0):
+		target_poll_test = 1
 	else if (strcmp(target, c"hash_map_test") == 0):
 		target_hash_map_test = 1
 	else if (strcmp(target, c"hash_table_test") == 0):
@@ -149,6 +152,9 @@ void wtest_map_lib(char* path):
 		wtest_add(path, c"result_test")
 	else if (strcmp(path, c"lib/net.w") == 0):
 		wtest_add(path, c"net_test")
+		wtest_add(path, c"poll_test")
+	else if (strcmp(path, c"lib/poll.w") == 0):
+		wtest_add(path, c"poll_test")
 	else:
 		wtest_add(path, c"lib_test")
 
@@ -248,6 +254,7 @@ void wtest_emit_targets():
 	wtest_emit_target(c"parser_generator_c_test", target_parser_generator_c_test)
 	wtest_emit_target(c"linked_list_test", target_linked_list_test)
 	wtest_emit_target(c"net_test", target_net_test)
+	wtest_emit_target(c"poll_test", target_poll_test)
 	wtest_emit_target(c"repl_test", target_repl_test)
 	wtest_emit_target(c"debug_test", target_debug_test)
 	wtest_emit_target(c"c_import_test", target_c_import_test)

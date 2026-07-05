@@ -24,6 +24,36 @@ int time_now():
 	return linux_time(out)
 
 
+# Matches the kernel timespec on both targets: two words (long seconds,
+# long nanoseconds).
+struct timespec:
+	int seconds
+	int nanoseconds
+
+
+int clock_monotonic():
+	return 1
+
+
+# Milliseconds from the monotonic clock (time since boot). The product
+# wraps a 32-bit int after ~24.8 days on x86, so only use it for relative
+# measurements such as timeouts.
+int time_monotonic_ms():
+	timespec ts
+	int err = sys_clock_gettime(clock_monotonic(), cast(int, &ts))
+	if (err < 0):
+		return err
+	return ts.seconds * 1000 + ts.nanoseconds / 1000000
+
+
+# Sleeps for at least ms milliseconds.
+void sleep_ms(int ms):
+	timespec ts
+	ts.seconds = ms / 1000
+	ts.nanoseconds = (ms % 1000) * 1000000
+	sys_nanosleep(cast(int, &ts), 0)
+
+
 int time_is_leap_year(int year):
 	if ((year % 4) != 0):
 		return 0

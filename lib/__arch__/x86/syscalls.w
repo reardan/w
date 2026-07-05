@@ -55,6 +55,24 @@ int mmap(int addr, int length, int prot, int flags):
 int sys_clone(int flags, int child_stack):
 	return syscall(56, flags, child_stack)
 
+# poll (168): fds points at an array of 8-byte pollfd records.
+# timeout_ms < 0 blocks forever; 0 returns immediately.
+int sys_poll(int fds, int nfds, int timeout_ms):
+	return syscall(168, fds, nfds, timeout_ms)
+
+int sys_fcntl(int fd, int cmd, int arg):
+	return syscall(55, fd, cmd, arg)
+
+# nanosleep (162): req/rem point at { long seconds; long nanoseconds }
+# which matches two W words on i386.
+int sys_nanosleep(int req, int rem):
+	return syscall(162, req, rem, 0)
+
+# clock_gettime (265): the 32-bit timespec is fine for CLOCK_MONOTONIC
+# (seconds since boot), which is this wrapper's intended use.
+int sys_clock_gettime(int clock_id, int ts):
+	return syscall(265, clock_id, ts, 0)
+
 # rt_sigaction (174). sigsetsize must be _NSIG/8 = 8 on i386. When act has
 # no SA_RESTORER the kernel points the signal frame's return address at the
 # vdso sigreturn trampoline, so plain W functions work as handlers.
@@ -122,6 +140,22 @@ struct sys_setsockopt_args:
 	int optlen
 
 
+struct sys_recv_args:
+	int sockfd
+	char* buf
+	int len
+	int flags
+
+
+struct sys_recvfrom_args:
+	int sockfd
+	char* buf
+	int len
+	int flags
+	int addr
+	int addrlen
+
+
 int sys_socket(int family, int socket_type, int protocol):
 	sys_socket_args args
 	args.family = family
@@ -187,6 +221,28 @@ int sys_sendto(int sockfd, char* buf, int len, int flags, int addr, int addrlen)
 	args.addr = addr
 	args.addrlen = addrlen
 	return syscall(102, 11, &args, 0)
+
+
+int sys_recv(int sockfd, char* buf, int len, int flags):
+	sys_recv_args args
+	args.sockfd = sockfd
+	args.buf = buf
+	args.len = len
+	args.flags = flags
+	return syscall(102, 10, &args, 0)
+
+
+# addr/addrlen may be 0 to ignore the sender address; addrlen is an in/out
+# pointer to the address buffer size.
+int sys_recvfrom(int sockfd, char* buf, int len, int flags, int addr, int addrlen):
+	sys_recvfrom_args args
+	args.sockfd = sockfd
+	args.buf = buf
+	args.len = len
+	args.flags = flags
+	args.addr = addr
+	args.addrlen = addrlen
+	return syscall(102, 12, &args, 0)
 
 
 int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
