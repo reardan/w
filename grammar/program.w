@@ -110,16 +110,23 @@ void program():
 		while (import_statement() ) {}
 		while (c_import_statement()) {}
 
-		# Type aliases must be available before structs and declarations
-		while(type_alias_declaration()) {}
-
-		# Next handle aggregate declarations
-		while(struct_declaration()):
-			print_int_v1(c"struct_declaration=1", 1)
-		while(union_declaration()):
-			print_int_v1(c"union_declaration=1", 1)
-		while(enum_declaration()):
-			print_int_v1(c"enum_declaration=1", 1)
+		# Type aliases must be available before structs and declarations.
+		# Aliases and aggregates may appear in any order (e.g. a type alias
+		# right after a struct), so keep dispatching until none make progress.
+		int parsed_declaration = 1
+		while (parsed_declaration):
+			parsed_declaration = 0
+			while(type_alias_declaration()):
+				parsed_declaration = 1
+			while(struct_declaration()):
+				parsed_declaration = 1
+				print_int_v1(c"struct_declaration=1", 1)
+			while(union_declaration()):
+				parsed_declaration = 1
+				print_int_v1(c"union_declaration=1", 1)
+			while(enum_declaration()):
+				parsed_declaration = 1
+				print_int_v1(c"enum_declaration=1", 1)
 
 		# Shared-library declarations (c_lib / extern)
 		while (extern_statement()) {}
