@@ -25,9 +25,9 @@
 			"inputs": [],
 			"outputs": ["bin/wv3", "bin/wv4", "bin/wv5"],
 			"steps": [
-				{"cmd": ["bin/wv2", "w.w", "-o", "bin/wv3"]},
-				{"cmd": ["bin/wv3", "w.w", "-o", "bin/wv4"]},
-				{"cmd": ["bin/wv4", "w.w", "-o", "bin/wv5"]}
+				{"cmd": ["bin/wv2", "--strict", "w.w", "-o", "bin/wv3"]},
+				{"cmd": ["bin/wv3", "--strict", "w.w", "-o", "bin/wv4"]},
+				{"cmd": ["bin/wv4", "--strict", "w.w", "-o", "bin/wv5"]}
 			]
 		},
 		{
@@ -254,6 +254,10 @@
 					"reject_stderr": "warning:"
 				},
 				{
+					"cmd": ["bin/wv2", "tests/import_alias_warning_fixture.w", "-o", "bin/import_alias_warning_fixture"],
+					"expect_stderr": "warning: unqualified use of 'subfolder_value' from module imported as 'sub'"
+				},
+				{
 					"cmd": ["bin/wv2", "tests/string_char_warning_fixture.w", "-o", "bin/string_char_warning_fixture"],
 					"expect_stderr": [
 						"warning: return type mismatch: expected 'char*', got 'string value'",
@@ -262,6 +266,32 @@
 						"warning: assignment type mismatch: expected 'char*', got 'string value'"
 					]
 				}
+			]
+		},
+		{
+			"name": "strict_mode_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["rm", "-f", "bin/strict_mode_fixture"]},
+				{
+					"cmd": ["bin/wv2", "--strict", "tests/warning_fixture.w", "-o", "bin/strict_mode_fixture"],
+					"expect_fail": true,
+					"expect_stderr": [
+						"warning: assignment type mismatch: expected 'char*', got 'int*'",
+						"warning(s) treated as errors (--strict)"
+					]
+				},
+				{"cmd": ["test", "!", "-e", "bin/strict_mode_fixture"]},
+				{
+					"cmd": ["bin/wv2", "--strict", "tests/warning_clean_fixture.w", "-o", "bin/strict_mode_clean"],
+					"reject_stderr": "warning:"
+				},
+				{
+					"cmd": ["bin/wv2", "check", "--strict", "tests/warning_fixture.w"],
+					"expect_fail": true,
+					"expect_stderr": "warning(s) treated as errors (--strict)"
+				},
+				{"cmd": ["bin/wv2", "check", "--strict", "tests/warning_clean_fixture.w"]}
 			]
 		},
 		{
@@ -487,7 +517,17 @@
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/import_test.w", "-o", "bin/import_test"]},
-				{"cmd": ["bin/import_test"]}
+				{"cmd": ["bin/import_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/import_alias_wrong_module_error_fixture.w", "-o", "bin/import_alias_wrong_module_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "symbol 'local_helper' is not defined in module imported as 'sub'"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/import_alias_duplicate_error_fixture.w", "-o", "bin/import_alias_duplicate_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "duplicate import alias: 'sub'"
+				}
 			]
 		},
 		{
@@ -690,7 +730,7 @@
 				{"cmd": ["bin/wtest", "changed"], "stdin": "grammar/promote.w\n", "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "verify\nself_host_warning_test\n"},
 				{"cmd": ["bin/wtest", "changed", "structures/json.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "json_test\njson_codec_test\njson_rpc_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "json_test\njson_64_test\njson_codec_test\njson_codec_64_test\njson_rpc_test\njson_rpc_64_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tests/warning_fixture.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "warning_test\n"},
 				{"cmd": ["bin/wtest", "changed", "libs/extras/parser_generator/generator.w"], "stdout_file": "bin/wtest_map.out"},
@@ -706,7 +746,9 @@
 				{"cmd": ["bin/wtest", "changed", "tools/wexec.w", "tests/wexec/good.json"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec_test\n"},
 				{"cmd": ["bin/wtest", "changed", "build.json"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec_test\ntests\n"}
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec_test\ntests\n"},
+				{"cmd": ["bin/wtest", "changed", "tools/lsp/w_lsp.w"], "stdout_file": "bin/wtest_map.out"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "lsp_test\n"}
 			]
 		},
 		{
@@ -724,6 +766,79 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/mcp/mcp_test.w", "-o", "bin/mcp_test"]},
 				{"cmd": ["bin/mcp_test"]}
+			]
+		},
+		{
+			"name": "wlsp",
+			"deps": ["wv2"],
+			"inputs": ["tools/lsp/w_lsp.w"],
+			"outputs": ["bin/wlsp"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/lsp/w_lsp.w", "-o", "bin/wlsp"]}
+			]
+		},
+		{
+			"name": "lsp_test",
+			"deps": ["wlsp"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/lsp/lsp_test.w", "-o", "bin/lsp_test"]},
+				{"cmd": ["bin/lsp_test"]}
+			]
+		},
+		{
+			"name": "wmeta",
+			"deps": ["wv2"],
+			"inputs": ["tools/wmeta.w"],
+			"outputs": ["bin/wmeta"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/wmeta.w", "-o", "bin/wmeta"]}
+			]
+		},
+		{
+			"name": "metadata_check",
+			"deps": ["wmeta"],
+			"steps": [
+				{"cmd": ["bin/wmeta", "check", "package.wmeta"], "expect_stdout": "wmeta: OK"}
+			]
+		},
+		{
+			"name": "metadata_test",
+			"deps": ["wmeta"],
+			"steps": [
+				{
+					"cmd": ["bin/wmeta", "check", "tests/metadata/good/package.wmeta"],
+					"expect_stdout": "wmeta: OK package 'example.app' version 1.0.0"
+				},
+				{
+					"cmd": ["bin/wmeta", "check", "tests/metadata/bad_version/package.wmeta"],
+					"expect_fail": true,
+					"expect_stderr": "expected three numeric components"
+				},
+				{
+					"cmd": ["bin/wmeta", "check", "tests/metadata/missing_module/package.wmeta"],
+					"expect_fail": true,
+					"expect_stderr": "module 'nope.missing' not found"
+				},
+				{
+					"cmd": ["bin/wmeta", "check", "tests/metadata/duplicate_module/package.wmeta"],
+					"expect_fail": true,
+					"expect_stderr": "duplicate module 'dup.thing'"
+				},
+				{
+					"cmd": ["bin/wmeta", "check", "tests/metadata/bad_constraint/package.wmeta"],
+					"expect_fail": true,
+					"expect_stderr": "does not satisfy constraint ^2.0.0"
+				},
+				{
+					"cmd": ["bin/wmeta", "check", "tests/metadata/collision/package.wmeta"],
+					"expect_fail": true,
+					"expect_stderr": "top-level module path 'net' claimed by packages"
+				},
+				{
+					"cmd": ["bin/wmeta", "check", "tests/metadata/no_such_dir/package.wmeta"],
+					"expect_fail": true,
+					"expect_stderr": "cannot read package.wmeta"
+				}
 			]
 		},
 		{
@@ -1014,6 +1129,7 @@
 				{"cmd": ["bin/repl"], "stdin": "int x = 5\nchar* x = c\"shadowed\"\nx\n:quit\n", "expect_stdout": "shadowed"},
 				{"cmd": ["bin/repl"], "stdin": "int y = 3\ny = 9\n:quit\n", "reject_stdout": "9"},
 				{"cmd": ["bin/repl"], "stdin": "struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n", "expect_stdout": "7"},
+				{"cmd": ["bin/repl"], "stdin": "import tests.subfolder as sub\nsub.subfolder_value()\n:quit\n", "expect_stdout": "1337"},
 				{"cmd": ["bin/repl"], "stdin": "import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl"], "stdin": "import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c\"a\"] = 41\nm[c\"a\"] + 1\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl"], "stdin": "import structures.string\nstring_builder* s = string_from(c\"imported\")\ns.data\n:quit\n", "expect_stdout": "imported"},
@@ -1164,6 +1280,127 @@
 			]
 		},
 		{
+			"name": "list_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "structures/list_test.w", "-o", "bin/list_64_test"]},
+				{"cmd": ["bin/list_64_test"]}
+			]
+		},
+		{
+			"name": "array_list_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "structures/array_list_test.w", "-o", "bin/array_list_64_test"]},
+				{"cmd": ["bin/array_list_64_test"]}
+			]
+		},
+		{
+			"name": "linked_list_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "structures/linked_list_test.w", "-o", "bin/linked_list_64_test"]},
+				{"cmd": ["bin/linked_list_64_test"]}
+			]
+		},
+		{
+			"name": "hash_map_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "structures/hash_map_test.w", "-o", "bin/hash_map_64_test"]},
+				{"cmd": ["bin/hash_map_64_test"]}
+			]
+		},
+		{
+			"name": "hash_table_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "structures/hash_table_test.w", "-o", "bin/hash_table_64_test"]},
+				{"cmd": ["bin/hash_table_64_test"]}
+			]
+		},
+		{
+			"name": "string_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "structures/string_test.w", "-o", "bin/string_64_test"]},
+				{"cmd": ["bin/string_64_test"]}
+			]
+		},
+		{
+			"name": "map_set_builtin_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/map_set_builtin_test.w", "-o", "bin/map_set_builtin_64_test"]},
+				{"cmd": ["bin/map_set_builtin_64_test"]}
+			]
+		},
+		{
+			"name": "list_builtin_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/list_builtin_test.w", "-o", "bin/list_builtin_64_test"]},
+				{"cmd": ["bin/list_builtin_64_test"]}
+			]
+		},
+		{
+			"name": "for_container_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/for_container_test.w", "-o", "bin/for_container_64_test"]},
+				{"cmd": ["bin/for_container_64_test"]}
+			]
+		},
+		{
+			"name": "json_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "structures/json_test.w", "-o", "bin/json_64_test"]},
+				{"cmd": ["bin/json_64_test"]}
+			]
+		},
+		{
+			"name": "json_codec_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/json_codec_test.w", "-o", "bin/json_codec_64_test"]},
+				{"cmd": ["bin/json_codec_64_test"]}
+			]
+		},
+		{
+			"name": "json_rpc_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/json_rpc_test.w", "-o", "bin/json_rpc_64_test"]},
+				{"cmd": ["bin/json_rpc_64_test"]},
+				{"cmd": ["bin/wv2", "x64", "examples/web/json_rpc_server.w", "-o", "bin/json_rpc_server_64"]}
+			]
+		},
+		{
+			"name": "event_loop_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/event_loop_test.w", "-o", "bin/event_loop_64_test"]},
+				{"cmd": ["bin/event_loop_64_test"]}
+			]
+		},
+		{
+			"name": "format_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/format_test.w", "-o", "bin/format_64_test"]},
+				{"cmd": ["bin/format_64_test"]}
+			]
+		},
+		{
+			"name": "args_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/args_test.w", "-o", "bin/args_64_test"]},
+				{"cmd": ["bin/args_64_test"]}
+			]
+		},
+		{
 			"name": "dynamic_test_x64",
 			"deps": ["wv2"],
 			"steps": [
@@ -1198,7 +1435,22 @@
 				"poll_64_test",
 				"framing_64_test",
 				"dynamic_test_x64",
-				"c_import_libc_test_x64"
+				"c_import_libc_test_x64",
+				"list_64_test",
+				"array_list_64_test",
+				"linked_list_64_test",
+				"hash_map_64_test",
+				"hash_table_64_test",
+				"string_64_test",
+				"map_set_builtin_64_test",
+				"list_builtin_64_test",
+				"for_container_64_test",
+				"json_64_test",
+				"json_codec_64_test",
+				"json_rpc_64_test",
+				"event_loop_64_test",
+				"format_64_test",
+				"args_64_test"
 			]
 		},
 		{
@@ -1223,6 +1475,7 @@
 				"buffer_field_assign_test",
 				"array_error_test",
 				"warning_test",
+				"strict_mode_test",
 				"check_json_test",
 				"symbols_test",
 				"self_host_warning_test",
@@ -1257,7 +1510,10 @@
 				"parser_generator_c_test",
 				"wtest_map_test",
 				"mcp_test",
+				"lsp_test",
 				"wexec_test",
+				"metadata_check",
+				"metadata_test",
 				"linked_list_test",
 				"format_test",
 				"time_test",

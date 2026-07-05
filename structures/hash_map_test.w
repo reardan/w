@@ -99,7 +99,7 @@ void test_iter_keys_after_growth():
 		free(key)
 		i = i + 1
 
-	int* seen = malloc(100 * 4)
+	int* seen = malloc(100 * __word_size__)
 	i = 0
 	while (i < 100):
 		seen[i] = 0

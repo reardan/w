@@ -1,0 +1,4 @@
+# Invalid: version must have exactly three numeric components.
+package example.badversion
+version 1.2
+root .

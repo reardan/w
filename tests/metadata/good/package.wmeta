@@ -1,0 +1,12 @@
+# Valid package: fields, modules and a vendored path dependency.
+package example.app
+version 1.0.0
+w_language >=0.1.0
+root .
+
+modules:
+	main
+	sub.util
+
+dependencies:
+	example.net ^1.0.0 path vendor/example/net

@@ -385,6 +385,10 @@ int repl_compile_entry(char* path):
 	int saved_number_of_args = number_of_args
 	int saved_type_count = length /* structures.list backs the type table */
 	int saved_imported_count = imported_count
+	int saved_alias_base = import_alias_base
+	int saved_alias_count = import_alias_count
+	int saved_plain_base = import_plain_base
+	int saved_plain_count = import_plain_count
 	int saved_function_symbol = current_function_symbol
 
 	repl_recovery = 1
@@ -401,6 +405,10 @@ int repl_compile_entry(char* path):
 		number_of_args = saved_number_of_args
 		length = saved_type_count
 		imported_count = saved_imported_count
+		import_alias_base = saved_alias_base
+		import_alias_count = saved_alias_count
+		import_plain_base = saved_plain_base
+		import_plain_count = saved_plain_count
 		current_function_symbol = saved_function_symbol
 		pointer_indirection = 0
 		diag_clear()

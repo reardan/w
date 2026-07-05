@@ -1,5 +1,20 @@
 Package metadata design
 
+Status:
+	Stages 1-4 below are implemented: lib/wmeta.w parses and validates
+	package.wmeta files, tools/wmeta.w is the CLI (wmeta check [file]),
+	the repository root carries a package.wmeta, fixtures live in
+	tests/metadata/, and make metadata_check / make metadata_test run as
+	part of make tests (metadata_check is also a wexec target in
+	build.json). The checker validates fields, three-component versions,
+	the =, >= and ^ constraints, module existence under root (expanding
+	__arch__ to both x86 and x64), vendored path dependencies
+	(recursively: name match, version constraint, cycle-safe), and
+	top-level module path ownership across the loaded package set.
+	Stage 5 (lock files) is not implemented. For stage 6, import aliases
+	landed separately: import a.b as f (grammar/import_statement.w) with
+	checked qualified access and an unqualified-use warning.
+
 Goal:
 	Describe packages and modules well enough for tools to validate a W
 	project, explain dependencies, and keep builds reproducible without changing
@@ -166,17 +181,22 @@ Makefile and build integration:
 
 Staged implementation:
 	1. Land this design and a sample package.wmeta fixture in tests/metadata/ or
-		docs/examples/ if examples become useful.
+		docs/examples/ if examples become useful. [done]
 	2. Add a standalone metadata parser/checker that validates one package file
-		and path dependencies, with no compiler integration.
+		and path dependencies, with no compiler integration. [done:
+		lib/wmeta.w + tools/wmeta.w]
 	3. Add package.wmeta for the root repo and any standard-library subpackages
-		only after the checker can prove module paths exist.
+		only after the checker can prove module paths exist. [done: root
+		package.wmeta]
 	4. Add make metadata_check and include it in make tests after it is stable.
+		[done, plus make metadata_test for the fixtures]
 	5. Add optional lock-file generation for path dependencies and content
 		hashes.
 	6. Revisit import ergonomics only after metadata validation is useful on its
 		own; any future import changes should be a separate compiler design
 		covering the related backlog items for import aliases,
 		scoped/private imports, and settling import grammar vs grammar.*
-		behavior.
+		behavior. [partially done: import a.b as f aliases with checked
+		qualified access and an unqualified-use warning; private imports
+		and the grammar.* question remain open]
 

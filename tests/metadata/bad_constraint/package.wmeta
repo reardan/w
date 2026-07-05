@@ -1,0 +1,7 @@
+# Invalid: the vendored dependency is version 1.2.0, outside ^2.0.0.
+package example.badconstraint
+version 1.0.0
+root .
+
+dependencies:
+	example.net ^2.0.0 path ../good/vendor/example/net
