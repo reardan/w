@@ -685,8 +685,19 @@ wtest_map_test: wtest FORCE
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	@echo "wtest map test OK"
 
-mcp_test: FORCE
-	@if command -v python3 >/dev/null 2>&1; then python3 tools/mcp/mcp_test.py; else echo "python3 not found; skipping mcp test"; fi
+rewrite_c_strings: w FORCE
+	./bin/wv2 tools/rewrite_c_string_literals.w -o ./bin/rewrite_c_strings
+
+grapheme_data: w FORCE
+	./bin/wv2 tools/generate_grapheme_data.w -o ./bin/generate_grapheme_data
+	./bin/generate_grapheme_data
+
+wmcp: w FORCE
+	./bin/wv2 tools/mcp/w_toolchain_mcp.w -o ./bin/wmcp
+
+mcp_test: wmcp FORCE
+	./bin/wv2 tools/mcp/mcp_test.w -o ./bin/mcp_test
+	./bin/mcp_test
 
 linked_list_test: w FORCE
 	./bin/wv2 structures/linked_list_test.w -o ./bin/linked_list_test

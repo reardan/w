@@ -1,1 +1,1 @@
-{"mcpServers": {"w-toolchain": {"command": "python3", "args": ["tools/mcp/w_toolchain_mcp.py"]}}}
+{"mcpServers": {"w-toolchain": {"command": "sh", "args": ["-c", "mkdir -p bin && make -s wmcp >&2 && exec ./bin/wmcp"]}}}

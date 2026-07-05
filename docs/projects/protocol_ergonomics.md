@@ -22,9 +22,10 @@ Everything stacks bottom-up; each layer is usable on its own:
    (~24 days); the event loop compares deadlines with wraparound-safe
    subtraction.
 3. **Framing** (`lib/framing.w`): `frame_reader` buffers a fd and parses
-   `Content-Length: N` headers exactly like the Python MCP reference
-   (`tools/mcp/w_toolchain_mcp.py`): case-insensitive header names, extra
-   headers tolerated, short reads and multiple messages per read handled.
+   `Content-Length: N` headers exactly like the MCP reference server
+   (`tools/mcp/w_toolchain_mcp.w`, originally written in Python):
+   case-insensitive header names, extra headers tolerated, short reads
+   and multiple messages per read handled.
    `frame_take_buffered_message` extracts complete messages without
    blocking, which is what the event-loop path uses; `frame_read_message`
    blocks until a full message arrives.
@@ -160,5 +161,5 @@ separately from this work.
 
 General reflection (a `type.w` meta-type), epoll, floats in
 `structures/json.w` (blocks float fields in codecs), `map[string, V]`
-codec fields, an HTTP client, and a W-native MCP server (feasible now
-that framing + JSON-RPC + event loop exist).
+codec fields, and an HTTP client. The W-native MCP server this stack was
+built for has since landed as `tools/mcp/w_toolchain_mcp.w`.

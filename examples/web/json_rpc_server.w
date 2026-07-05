@@ -1,5 +1,5 @@
 # JSON-RPC 2.0 server over stdio using Content-Length framing — the same
-# wire format as the Python MCP server in tools/mcp/w_toolchain_mcp.py.
+# wire format as the MCP server in tools/mcp/w_toolchain_mcp.w.
 #
 # Build and try it:
 #   ./bin/wv2 examples/web/json_rpc_server.w -o ./bin/json_rpc_server

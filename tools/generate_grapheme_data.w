@@ -1,0 +1,273 @@
+# Emits lib/grapheme_data.w from the committed Unicode Character Database
+# file tools/unicode/UnicodeData.txt.
+#
+# The generator intentionally stays offline: UnicodeData.txt gives us
+# portable ranges for combining marks and spacing marks; the remaining
+# UAX #29 classes used by lib.grapheme are compact algorithmic ranges.
+#
+# Run from the repo root: make grapheme_data
+import lib.lib
+import lib.stream
+import structures.string
+
+
+int gen_max_codepoint():
+	return 1114111
+
+
+# Update together with tools/unicode/UnicodeData.txt.
+char* gen_unicode_version():
+	return c"15.0.0"
+
+
+# Derived general-category classes (0 = none of them).
+int gen_class_control():
+	return 1
+
+
+int gen_class_extend():
+	return 2
+
+
+int gen_class_spacing_mark():
+	return 3
+
+
+# Cc/Zl/Zp are Control, Mn/Me are Extend, Mc is SpacingMark (UAX #29).
+int gen_class_for_category(char* category):
+	if (strcmp(category, c"Cc") == 0):
+		return gen_class_control()
+	if (strcmp(category, c"Zl") == 0):
+		return gen_class_control()
+	if (strcmp(category, c"Zp") == 0):
+		return gen_class_control()
+	if (strcmp(category, c"Mn") == 0):
+		return gen_class_extend()
+	if (strcmp(category, c"Me") == 0):
+		return gen_class_extend()
+	if (strcmp(category, c"Mc") == 0):
+		return gen_class_spacing_mark()
+	return 0
+
+
+int gen_hex_digit(int c):
+	if ((c >= '0') & (c <= '9')):
+		return c - '0'
+	if ((c >= 'a') & (c <= 'f')):
+		return c - 'a' + 10
+	if ((c >= 'A') & (c <= 'F')):
+		return c - 'A' + 10
+	return -1
+
+
+# One class byte per codepoint, filled from UnicodeData.txt. Lines with
+# a "<..., First>" / "<..., Last>" name pair mark a whole range assigned
+# to one category; every other line covers a single codepoint.
+char* gen_load_classes(char* path):
+	int size = gen_max_codepoint() + 1
+	char* classes = malloc(size)
+	int i = 0
+	while (i < size):
+		classes[i] = 0
+		i = i + 1
+
+	wstream* in = stream_open_read(path)
+	if (in == 0):
+		return 0
+	string_builder* line = string_new()
+	int pending_first = -1
+	while (stream_read_line(in, line)):
+		char* text = line.data
+		# Field 0: the codepoint in hex.
+		int cp = 0
+		int j = 0
+		while (text[j] != ';'):
+			cp = cp * 16 + gen_hex_digit(text[j])
+			j = j + 1
+		# Field 1: the character name.
+		j = j + 1
+		int name_start = j
+		while (text[j] != ';'):
+			j = j + 1
+		text[j] = 0
+		char* name = text + name_start
+		# Field 2: the general category.
+		j = j + 1
+		int category_start = j
+		while ((text[j] != ';') & (text[j] != 0)):
+			j = j + 1
+		text[j] = 0
+		char* category = text + category_start
+
+		int cls = gen_class_for_category(category)
+		if (ends_with(name, c", First>")):
+			pending_first = cp
+		else if (ends_with(name, c", Last>")):
+			if (pending_first >= 0):
+				int fill = pending_first
+				while (fill <= cp):
+					classes[fill] = cls
+					fill = fill + 1
+			pending_first = -1
+		else:
+			classes[cp] = cls
+	string_free(line)
+	stream_close(in)
+	return classes
+
+
+# Merges consecutive codepoints of the class into (start, end) pairs,
+# pushed flat onto the returned list.
+list[int] gen_ranges_for(char* classes, int cls):
+	list[int] ranges = new list[int]
+	int start = -1
+	int prev = -1
+	int cp = 0
+	while (cp <= gen_max_codepoint()):
+		if (classes[cp] == cls):
+			if (start < 0):
+				start = cp
+			prev = cp
+		else if (start >= 0):
+			ranges.push(start)
+			ranges.push(prev)
+			start = -1
+		cp = cp + 1
+	if (start >= 0):
+		ranges.push(start)
+		ranges.push(prev)
+	return ranges
+
+
+void gen_blank_lines(wstream* out, int count):
+	int i = 0
+	while (i < count):
+		stream_write_line(out, c"")
+		i = i + 1
+
+
+void gen_prop_function(wstream* out, char* name, int value):
+	stream_write_cstr(out, c"int grapheme_prop_")
+	stream_write_cstr(out, name)
+	stream_write_line(out, c"():")
+	stream_write_cstr(out, c"\treturn ")
+	stream_write_int(out, value)
+	gen_blank_lines(out, 3)
+
+
+void gen_range_checks(wstream* out, list[int] ranges, char* prop):
+	int i = 0
+	while (i < ranges.length):
+		int start = ranges[i]
+		int end = ranges[i + 1]
+		if (start == end):
+			stream_write_cstr(out, c"\tif (cp == ")
+			stream_write_int(out, start)
+			stream_write_line(out, c"):")
+		else:
+			stream_write_cstr(out, c"\tif (grapheme_in_range(cp, ")
+			stream_write_int(out, start)
+			stream_write_cstr(out, c", ")
+			stream_write_int(out, end)
+			stream_write_line(out, c")):")
+		stream_write_cstr(out, c"\t\treturn ")
+		stream_write_line(out, prop)
+		i = i + 2
+
+
+# Prepend stays a compact hardcoded table: UnicodeData.txt does not carry
+# the Grapheme_Cluster_Break property, and these ranges are stable.
+list[int] gen_prepend_ranges():
+	list[int] ranges = new list[int]
+	ranges.push(1536)
+	ranges.push(1541)
+	ranges.push(1757)
+	ranges.push(1757)
+	ranges.push(1807)
+	ranges.push(1807)
+	ranges.push(2192)
+	ranges.push(2193)
+	ranges.push(2274)
+	ranges.push(2274)
+	ranges.push(69821)
+	ranges.push(69821)
+	ranges.push(69837)
+	ranges.push(69837)
+	return ranges
+
+
+void gen_emit(wstream* out, char* classes):
+	stream_write_line(out, c"# Generated by tools/generate_grapheme_data.w from the Unicode database")
+	stream_write_cstr(out, c"# tools/unicode/UnicodeData.txt version ")
+	stream_write_cstr(out, gen_unicode_version())
+	stream_write_line(out, c".")
+	gen_blank_lines(out, 2)
+
+	gen_prop_function(out, c"other", 0)
+	gen_prop_function(out, c"cr", 1)
+	gen_prop_function(out, c"lf", 2)
+	gen_prop_function(out, c"control", 3)
+	gen_prop_function(out, c"extend", 4)
+	gen_prop_function(out, c"zwj", 5)
+	gen_prop_function(out, c"spacing_mark", 6)
+	gen_prop_function(out, c"prepend", 7)
+	gen_prop_function(out, c"l", 8)
+	gen_prop_function(out, c"v", 9)
+	gen_prop_function(out, c"t", 10)
+	gen_prop_function(out, c"lv", 11)
+	gen_prop_function(out, c"lvt", 12)
+	gen_prop_function(out, c"regional_indicator", 13)
+	gen_prop_function(out, c"extended_pictographic", 14)
+
+	stream_write_line(out, c"int grapheme_in_range(int cp, int start, int end):")
+	stream_write_line(out, c"\treturn (cp >= start) & (cp <= end)")
+	gen_blank_lines(out, 2)
+
+	stream_write_line(out, c"int grapheme_is_extended_pictographic(int cp):")
+	stream_write_line(out, c"\tif (grapheme_in_range(cp, 9728, 10175)):")
+	stream_write_line(out, c"\t\treturn 1")
+	stream_write_line(out, c"\tif (grapheme_in_range(cp, 127744, 129791)):")
+	stream_write_line(out, c"\t\treturn 1")
+	stream_write_line(out, c"\treturn 0")
+	gen_blank_lines(out, 2)
+
+	stream_write_line(out, c"int grapheme_property(int cp):")
+	stream_write_line(out, c"\tif (cp == 13):")
+	stream_write_line(out, c"\t\treturn grapheme_prop_cr()")
+	stream_write_line(out, c"\tif (cp == 10):")
+	stream_write_line(out, c"\t\treturn grapheme_prop_lf()")
+	stream_write_line(out, c"\tif (cp == 8205):")
+	stream_write_line(out, c"\t\treturn grapheme_prop_zwj()")
+	gen_range_checks(out, gen_prepend_ranges(), c"grapheme_prop_prepend()")
+	gen_range_checks(out, gen_ranges_for(classes, gen_class_control()), c"grapheme_prop_control()")
+	gen_range_checks(out, gen_ranges_for(classes, gen_class_extend()), c"grapheme_prop_extend()")
+	gen_range_checks(out, gen_ranges_for(classes, gen_class_spacing_mark()), c"grapheme_prop_spacing_mark()")
+	stream_write_line(out, c"\tif (grapheme_in_range(cp, 4352, 4447)):")
+	stream_write_line(out, c"\t\treturn grapheme_prop_l()")
+	stream_write_line(out, c"\tif (grapheme_in_range(cp, 4448, 4519)):")
+	stream_write_line(out, c"\t\treturn grapheme_prop_v()")
+	stream_write_line(out, c"\tif (grapheme_in_range(cp, 4520, 4607)):")
+	stream_write_line(out, c"\t\treturn grapheme_prop_t()")
+	stream_write_line(out, c"\tif (grapheme_in_range(cp, 44032, 55203)):")
+	stream_write_line(out, c"\t\tif (((cp - 44032) % 28) == 0):")
+	stream_write_line(out, c"\t\t\treturn grapheme_prop_lv()")
+	stream_write_line(out, c"\t\treturn grapheme_prop_lvt()")
+	stream_write_line(out, c"\tif (grapheme_in_range(cp, 127462, 127487)):")
+	stream_write_line(out, c"\t\treturn grapheme_prop_regional_indicator()")
+	stream_write_line(out, c"\tif (grapheme_is_extended_pictographic(cp)):")
+	stream_write_line(out, c"\t\treturn grapheme_prop_extended_pictographic()")
+	stream_write_line(out, c"\treturn grapheme_prop_other()")
+
+
+int main(int argc, int argv):
+	char* classes = gen_load_classes(c"tools/unicode/UnicodeData.txt")
+	if (classes == 0):
+		wstream* err = stderr_writer()
+		stream_write_line(err, c"cannot open tools/unicode/UnicodeData.txt (run from the repo root)")
+		stream_flush(err)
+		return 1
+	wstream* out = stream_open_write(c"lib/grapheme_data.w")
+	gen_emit(out, classes)
+	stream_close(out)
+	println2(c"generated lib/grapheme_data.w")
+	return 0
