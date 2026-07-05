@@ -1,0 +1,45 @@
+{
+	"targets": [
+		{
+			"name": "dep",
+			"steps": [
+				{"cmd": ["echo", "dep before main"]}
+			]
+		},
+		{
+			"name": "main",
+			"deps": ["dep"],
+			"steps": [
+				{"cmd": ["echo", "main target ran"], "expect_stdout": "main target ran"},
+				{"cmd": ["cat"], "stdin": "piped to child", "expect_stdout": "piped to child", "timeout_ms": 5000},
+				{"cmd": ["sh", "-c", "echo to stderr >&2"], "expect_stderr": "to stderr"}
+			]
+		},
+		{
+			"name": "fails",
+			"steps": [
+				{"cmd": ["false"]}
+			]
+		},
+		{
+			"name": "expects_fail",
+			"steps": [
+				{"cmd": ["false"], "expect_fail": true}
+			]
+		},
+		{
+			"name": "wrong_output",
+			"steps": [
+				{"cmd": ["echo", "actual text"], "expect_stdout": "text that never appears"}
+			]
+		},
+		{
+			"name": "cycle_a",
+			"deps": ["cycle_b"]
+		},
+		{
+			"name": "cycle_b",
+			"deps": ["cycle_a"]
+		}
+	]
+}

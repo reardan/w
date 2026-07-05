@@ -50,6 +50,7 @@ void wtest_init_targets():
 	wtest_targets.push(c"c_preprocessor_test")
 	wtest_targets.push(c"c_import_errno_test")
 	wtest_targets.push(c"c_import_libc_test")
+	wtest_targets.push(c"wexec_test")
 	wtest_targets.push(c"tests")
 
 
@@ -191,6 +192,13 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"type_system_warning_test")
 	else if (starts_with(path, c"tests/parser_generator/")):
 		wtest_add_parser_generator(path)
+	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):
+		wtest_add(path, c"wexec_test")
+	else if ((strcmp(path, c"build.json") == 0) | (strcmp(path, c"wbuild") == 0)):
+		# The manifest and bootstrap script drive the whole W-native
+		# build, so changes there get the full suite too.
+		wtest_add(path, c"wexec_test")
+		wtest_add(path, c"tests")
 	else if (strcmp(path, c"Makefile") == 0):
 		wtest_add(path, c"tests")
 	else:

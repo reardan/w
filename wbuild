@@ -1,0 +1,19 @@
+#!/bin/sh
+# Bootstrap the W-native build executor (tools/wexec.w) and forward to it.
+#
+# This is the only shell in the W-native build path: the committed seed ./w
+# compiles the compiler, the compiler compiles the executor, and everything
+# after that is described by build.json and run by bin/wexec. There is no
+# caching yet, so each invocation rebuilds bin/wv2 and bin/wexec (a few
+# seconds), exactly like the Makefile's 'w' prerequisite.
+#
+#   ./wbuild tests            run the ported test suite
+#   ./wbuild verify           self-host fixpoint check
+#   ./wbuild --list           show every target in build.json
+#   ./wbuild -f m.json name   use another manifest
+set -e
+cd "$(dirname "$0")"
+mkdir -p bin
+./w w.w -o bin/wv2
+./bin/wv2 tools/wexec.w -o bin/wexec
+exec ./bin/wexec "$@"
