@@ -22,6 +22,7 @@ struct pg_grammar:
 	array_list* skips
 	array_list* literals
 	array_list* rules
+	array_list* recovers
 
 
 struct pg_token_def:
@@ -51,6 +52,17 @@ struct pg_term:
 	int modifier
 
 
+# Error-recovery policy from a "recover <rule> <sync> [<skip>...]" directive.
+# Repetitions (*/+) of rule_name resynchronize on failure: the parser reports
+# a diagnostic, then consumes tokens through the next sync token whose
+# successor is neither the sync token nor one of the skip tokens, wraps the
+# skipped tokens in an "error" node, and resumes the repetition.
+struct pg_recover_def:
+	char* rule_name
+	char* sync_token
+	array_list* skip_tokens
+
+
 pg_grammar* pg_grammar_new(char* name):
 	pg_grammar* grammar = new pg_grammar()
 	grammar.name = strclone(name)
@@ -59,6 +71,7 @@ pg_grammar* pg_grammar_new(char* name):
 	grammar.skips = array_list_new()
 	grammar.literals = array_list_new()
 	grammar.rules = array_list_new()
+	grammar.recovers = array_list_new()
 	return grammar
 
 
@@ -99,14 +112,25 @@ pg_term* pg_term_new(char* name, int modifier):
 	return term
 
 
+pg_recover_def* pg_recover_def_new(char* rule_name, char* sync_token):
+	pg_recover_def* recover = new pg_recover_def()
+	recover.rule_name = strclone(rule_name)
+	recover.sync_token = strclone(sync_token)
+	recover.skip_tokens = array_list_new()
+	return recover
+
+
 pg_token_def* pg_grammar_add_token(pg_grammar* grammar, char* name, char* matcher):
 	pg_token_def* token = pg_token_def_new(name, matcher, grammar.tokens.length + grammar.literals.length + 1)
 	array_list_push(grammar.tokens, cast(int, token))
 	return token
 
 
+# Skip rules produce hidden-channel tokens. They get negative kinds starting
+# at -3 (-1 is the invalid kind, -2 the whitespace kind) so they never collide
+# with EOF (0) or the positive token/literal kinds.
 pg_token_def* pg_grammar_add_skip(pg_grammar* grammar, char* name, char* matcher):
-	pg_token_def* token = pg_token_def_new(name, matcher, 0)
+	pg_token_def* token = pg_token_def_new(name, matcher, 0 - grammar.skips.length - 3)
 	array_list_push(grammar.skips, cast(int, token))
 	return token
 
@@ -115,6 +139,26 @@ pg_literal_def* pg_grammar_add_literal(pg_grammar* grammar, char* name, char* te
 	pg_literal_def* literal = pg_literal_def_new(name, text, grammar.tokens.length + grammar.literals.length + 1)
 	array_list_push(grammar.literals, cast(int, literal))
 	return literal
+
+
+pg_recover_def* pg_grammar_add_recover(pg_grammar* grammar, char* rule_name, char* sync_token):
+	pg_recover_def* recover = pg_recover_def_new(rule_name, sync_token)
+	array_list_push(grammar.recovers, cast(int, recover))
+	return recover
+
+
+void pg_recover_add_skip(pg_recover_def* recover, char* token_name):
+	array_list_push(recover.skip_tokens, cast(int, strclone(token_name)))
+
+
+pg_recover_def* pg_grammar_find_recover(pg_grammar* grammar, char* rule_name):
+	int i = 0
+	while (i < grammar.recovers.length):
+		pg_recover_def* recover = cast(pg_recover_def*, array_list_get(grammar.recovers, i))
+		if (strcmp(recover.rule_name, rule_name) == 0):
+			return recover
+		i = i + 1
+	return 0
 
 
 pg_rule* pg_grammar_add_rule(pg_grammar* grammar, char* name):
@@ -221,6 +265,17 @@ void pg_literal_def_free(pg_literal_def* literal):
 	free(literal)
 
 
+void pg_recover_def_free(pg_recover_def* recover):
+	free(recover.rule_name)
+	free(recover.sync_token)
+	int i = 0
+	while (i < recover.skip_tokens.length):
+		free(cast(char*, array_list_get(recover.skip_tokens, i)))
+		i = i + 1
+	array_list_free(recover.skip_tokens)
+	free(recover)
+
+
 void pg_grammar_free(pg_grammar* grammar):
 	if (grammar == 0):
 		return
@@ -240,6 +295,10 @@ void pg_grammar_free(pg_grammar* grammar):
 	while (i < grammar.rules.length):
 		pg_rule_free(cast(pg_rule*, array_list_get(grammar.rules, i)))
 		i = i + 1
+	i = 0
+	while (i < grammar.recovers.length):
+		pg_recover_def_free(cast(pg_recover_def*, array_list_get(grammar.recovers, i)))
+		i = i + 1
 	free(grammar.name)
 	if (grammar.start_rule != 0):
 		free(grammar.start_rule)
@@ -247,4 +306,5 @@ void pg_grammar_free(pg_grammar* grammar):
 	array_list_free(grammar.skips)
 	array_list_free(grammar.literals)
 	array_list_free(grammar.rules)
+	array_list_free(grammar.recovers)
 	free(grammar)

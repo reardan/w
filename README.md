@@ -220,6 +220,12 @@ archives the old seed to `old/` first.
 - `w check` reports all warnings reached before the first error, then stops at
   that first error. Multi-error recovery remains out of scope for the
   single-pass compiler.
+- Use `./bin/wv2 symbols --json file.w` to dump declaration metadata for
+  go-to-definition and indexing: one NDJSON record per user-declared symbol
+  (functions, globals, enum values) and type (structs, unions, enums, aliases)
+  with `name`, `kind`, `type`, `file`, `line`, `column`, and `arch`. Omit
+  `--json` for a human-readable `file:line:column: kind name: type` listing.
+  Compiler-internal declarations without a source location are skipped.
 - Use `make test_changed` to run focused tests for files changed from `HEAD`, or
   call `./bin/wtest changed file...` to list the selected Makefile targets
   without running them. Docs-only changes produce no targets; unknown paths fall

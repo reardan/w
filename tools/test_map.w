@@ -22,6 +22,7 @@ void wtest_init_targets():
 	wtest_targets.push(c"lib_64_test")
 	wtest_targets.push(c"warning_test")
 	wtest_targets.push(c"check_json_test")
+	wtest_targets.push(c"symbols_test")
 	wtest_targets.push(c"self_host_warning_test")
 	wtest_targets.push(c"type_system_error_test")
 	wtest_targets.push(c"type_system_warning_test")
@@ -182,6 +183,8 @@ void wtest_map_path(char* path):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tests/warning_fixture.w") == 0) | (strcmp(path, c"tests/warning_clean_fixture.w") == 0) | (strcmp(path, c"tests/string_char_warning_fixture.w") == 0)):
 		wtest_add(path, c"warning_test")
+	else if (strcmp(path, c"tests/symbols_fixture.w") == 0):
+		wtest_add(path, c"symbols_test")
 	else if (starts_with(path, c"tests/type_system_error")):
 		wtest_add(path, c"type_system_error_test")
 	else if (starts_with(path, c"tests/type_system_warning")):
