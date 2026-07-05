@@ -1,6 +1,7 @@
 import lib.testing
 import lib.net
 import lib.json_rpc
+import lib.event_loop
 
 
 json_value* rpc_test_handle_add(json_value* params, void* ctx):
@@ -181,3 +182,95 @@ void test_jsonrpc_invalid_request_missing_version():
 	close(fds[0])
 	close(fds[1])
 	free(fds)
+
+
+void test_jsonrpc_event_loop_connection():
+	int* fds = malloc(__word_size__ * 2)
+	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
+	jsonrpc_server* s = rpc_test_server_new()
+	event_loop* loop = event_loop_new()
+
+	asserts(c"socket_set_nonblocking failed", socket_set_nonblocking(fds[1]) >= 0)
+	jsonrpc_attach_connection(s, loop, fds[1], fds[1])
+
+	json_value* add_params = json_array()
+	json_array_push(add_params, json_int(20))
+	json_array_push(add_params, json_int(22))
+	asserts(c"write add", jsonrpc_write_request(fds[0], 1, c"add", add_params) > 0)
+	asserts(c"write shutdown", jsonrpc_write_request(fds[0], 2, c"shutdown", 0) > 0)
+
+	assert_equal(0, event_loop_run(loop))
+
+	frame_reader* r = frame_reader_new(fds[0])
+	json_value* add_response = jsonrpc_read_message(r)
+	json_value* add_result = json_object_get(add_response, c"result")
+	assert_equal(42, add_result.int_value)
+	json_free(add_response)
+	json_value* shutdown_response = jsonrpc_read_message(r)
+	json_value* shutdown_id = json_object_get(shutdown_response, c"id")
+	assert_equal(2, shutdown_id.int_value)
+	json_free(shutdown_response)
+
+	frame_reader_free(r)
+	event_loop_free(loop)
+	jsonrpc_server_free(s)
+	close(fds[0])
+	free(fds)
+
+
+void test_jsonrpc_event_loop_tcp_listener():
+	int loopback = ip4_from_string(c"127.0.0.1")
+
+	int server_fd = socket_tcp_ipv4()
+	asserts(c"tcp socket failed", server_fd >= 0)
+	asserts(c"reuseaddr failed", socket_set_reuseaddr(server_fd) >= 0)
+	asserts(c"bind failed", socket_bind_ipv4(server_fd, loopback, 0) >= 0)
+	asserts(c"listen failed", socket_listen(server_fd, 4) >= 0)
+	sockaddr_in bound_addr
+	asserts(c"getsockname failed", socket_getsockname_ipv4(server_fd, &bound_addr) >= 0)
+	int port = net_htons(bound_addr.port)
+
+	jsonrpc_server* s = rpc_test_server_new()
+	event_loop* loop = event_loop_new()
+	jsonrpc_listener* listener = jsonrpc_serve_listener(s, loop, server_fd)
+
+	# Two clients connect and queue requests before the loop runs; the
+	# listener backlog holds them until the server accepts.
+	int client_a = socket_tcp_ipv4()
+	asserts(c"client a connect failed", socket_connect_ipv4(client_a, loopback, port) >= 0)
+	json_value* add_params = json_array()
+	json_array_push(add_params, json_int(2))
+	json_array_push(add_params, json_int(3))
+	asserts(c"client a write", jsonrpc_write_request(client_a, 1, c"add", add_params) > 0)
+
+	int client_b = socket_tcp_ipv4()
+	asserts(c"client b connect failed", socket_connect_ipv4(client_b, loopback, port) >= 0)
+	asserts(c"client b write", jsonrpc_write_request(client_b, 7, c"echo", json_int(13)) > 0)
+	asserts(c"client b shutdown", jsonrpc_write_request(client_b, 8, c"shutdown", 0) > 0)
+
+	assert_equal(0, event_loop_run(loop))
+
+	frame_reader* reader_a = frame_reader_new(client_a)
+	json_value* response_a = jsonrpc_read_message(reader_a)
+	json_value* result_a = json_object_get(response_a, c"result")
+	assert_equal(5, result_a.int_value)
+	json_free(response_a)
+
+	frame_reader* reader_b = frame_reader_new(client_b)
+	json_value* response_b = jsonrpc_read_message(reader_b)
+	json_value* result_b = json_object_get(response_b, c"result")
+	assert_equal(13, result_b.int_value)
+	json_free(response_b)
+	json_value* shutdown_response = jsonrpc_read_message(reader_b)
+	json_value* shutdown_id = json_object_get(shutdown_response, c"id")
+	assert_equal(8, shutdown_id.int_value)
+	json_free(shutdown_response)
+
+	frame_reader_free(reader_a)
+	frame_reader_free(reader_b)
+	free(cast(char*, listener))
+	event_loop_free(loop)
+	jsonrpc_server_free(s)
+	close(client_a)
+	close(client_b)
+	close(server_fd)

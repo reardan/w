@@ -10,9 +10,12 @@
 # error. Notifications (no id) get no response. Unknown methods answer
 # with error -32601 automatically.
 import lib.lib
+import lib.net
 import lib.framing
+import lib.event_loop
 import structures.json
 import structures.hash_map
+import structures.array_list
 
 
 type jsonrpc_handler = fn(json_value*, void*) -> json_value*
@@ -20,6 +23,7 @@ type jsonrpc_handler = fn(json_value*, void*) -> json_value*
 
 struct jsonrpc_server:
 	hash_map* handlers
+	array_list* connections
 	void* context
 	int running
 
@@ -138,14 +142,10 @@ json_value* jsonrpc_read_message(frame_reader* r):
 jsonrpc_server* jsonrpc_server_new():
 	jsonrpc_server* s = new jsonrpc_server()
 	s.handlers = hash_map_new()
+	s.connections = array_list_new()
 	s.context = 0
 	s.running = 0
 	return s
-
-
-void jsonrpc_server_free(jsonrpc_server* s):
-	hash_map_free(s.handlers)
-	free(s)
 
 
 void jsonrpc_register(jsonrpc_server* s, char* method, jsonrpc_handler* handler):
@@ -232,3 +232,110 @@ int jsonrpc_serve_blocking(jsonrpc_server* s, int in_fd, int out_fd):
 		free(body)
 	frame_reader_free(r)
 	return status
+
+
+/* Event-loop serving: one server can multiplex a listening socket and
+   any number of client connections alongside timers. */
+
+struct jsonrpc_connection:
+	jsonrpc_server* server
+	event_loop* loop
+	frame_reader* reader
+	int in_fd
+	int out_fd
+	int open
+
+
+void jsonrpc_connection_close(jsonrpc_connection* conn):
+	if (conn.open == 0):
+		return
+	conn.open = 0
+	event_loop_remove_fd(conn.loop, conn.in_fd)
+	frame_reader_free(conn.reader)
+	conn.reader = 0
+	close(conn.in_fd)
+	if (conn.out_fd != conn.in_fd):
+		close(conn.out_fd)
+
+
+void jsonrpc_connection_on_readable(int fd, int revents, void* ctx):
+	jsonrpc_connection* conn = cast(jsonrpc_connection*, ctx)
+	int count = frame_reader_fill(conn.reader)
+	# EAGAIN (-11): spurious wakeup on a non-blocking descriptor.
+	if (count == -11):
+		return
+
+	# Handle every message that is now fully buffered before looking at
+	# EOF/errors, so a final burst before close is not lost.
+	int drained = 0
+	while (drained == 0):
+		int length = 0
+		char* body = frame_take_buffered_message(conn.reader, &length)
+		if (body == 0):
+			drained = 1
+		else:
+			jsonrpc_handle_body(conn.server, body, conn.out_fd)
+			free(body)
+
+	if (conn.reader.error | (count <= 0)):
+		jsonrpc_connection_close(conn)
+	if (conn.server.running == 0):
+		event_loop_stop(conn.loop)
+
+
+# Watches an already-connected descriptor pair on the loop. The
+# connection object stays owned by the server (freed in
+# jsonrpc_server_free); its descriptors close on EOF or error.
+jsonrpc_connection* jsonrpc_attach_connection(jsonrpc_server* s, event_loop* loop, int in_fd, int out_fd):
+	jsonrpc_connection* conn = new jsonrpc_connection()
+	conn.server = s
+	conn.loop = loop
+	conn.reader = frame_reader_new(in_fd)
+	conn.in_fd = in_fd
+	conn.out_fd = out_fd
+	conn.open = 1
+	array_list_push(s.connections, cast(int, conn))
+	s.running = 1
+	event_loop_add_fd(loop, in_fd, poll_in(), jsonrpc_connection_on_readable, cast(void*, conn))
+	return conn
+
+
+struct jsonrpc_listener:
+	jsonrpc_server* server
+	event_loop* loop
+	int fd
+
+
+void jsonrpc_listener_on_readable(int fd, int revents, void* ctx):
+	jsonrpc_listener* listener = cast(jsonrpc_listener*, ctx)
+	int client = socket_accept_connection(fd)
+	if (client < 0):
+		return
+	socket_set_nonblocking(client)
+	jsonrpc_attach_connection(listener.server, listener.loop, client, client)
+
+
+# Accepts JSON-RPC clients from a listening socket on the loop. The
+# returned listener is owned by the caller; free it after the loop stops.
+jsonrpc_listener* jsonrpc_serve_listener(jsonrpc_server* s, event_loop* loop, int listen_fd):
+	jsonrpc_listener* listener = new jsonrpc_listener()
+	listener.server = s
+	listener.loop = loop
+	listener.fd = listen_fd
+	s.running = 1
+	event_loop_add_fd(loop, listen_fd, poll_in(), jsonrpc_listener_on_readable, cast(void*, listener))
+	return listener
+
+
+void jsonrpc_server_free(jsonrpc_server* s):
+	int i = 0
+	while (i < s.connections.length):
+		jsonrpc_connection* conn = cast(jsonrpc_connection*, array_list_get(s.connections, i))
+		if (conn.open):
+			if (conn.reader != 0):
+				frame_reader_free(conn.reader)
+		free(cast(char*, conn))
+		i = i + 1
+	array_list_free(s.connections)
+	hash_map_free(s.handlers)
+	free(s)

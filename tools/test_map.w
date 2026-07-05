@@ -12,6 +12,7 @@ int target_net_test
 int target_poll_test
 int target_framing_test
 int target_json_rpc_test
+int target_event_loop_test
 int target_hash_map_test
 int target_hash_table_test
 int target_array_list_test
@@ -72,6 +73,8 @@ void wtest_add(char* path, char* target):
 		target_framing_test = 1
 	else if (strcmp(target, c"json_rpc_test") == 0):
 		target_json_rpc_test = 1
+	else if (strcmp(target, c"event_loop_test") == 0):
+		target_event_loop_test = 1
 	else if (strcmp(target, c"hash_map_test") == 0):
 		target_hash_map_test = 1
 	else if (strcmp(target, c"hash_table_test") == 0):
@@ -165,6 +168,9 @@ void wtest_map_lib(char* path):
 		wtest_add(path, c"framing_test")
 		wtest_add(path, c"json_rpc_test")
 	else if (strcmp(path, c"lib/json_rpc.w") == 0):
+		wtest_add(path, c"json_rpc_test")
+	else if (strcmp(path, c"lib/event_loop.w") == 0):
+		wtest_add(path, c"event_loop_test")
 		wtest_add(path, c"json_rpc_test")
 	else:
 		wtest_add(path, c"lib_test")
@@ -269,6 +275,7 @@ void wtest_emit_targets():
 	wtest_emit_target(c"poll_test", target_poll_test)
 	wtest_emit_target(c"framing_test", target_framing_test)
 	wtest_emit_target(c"json_rpc_test", target_json_rpc_test)
+	wtest_emit_target(c"event_loop_test", target_event_loop_test)
 	wtest_emit_target(c"repl_test", target_repl_test)
 	wtest_emit_target(c"debug_test", target_debug_test)
 	wtest_emit_target(c"c_import_test", target_c_import_test)
