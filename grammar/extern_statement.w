@@ -15,6 +15,10 @@ import code_generator.dynamic_registry
 import code_generator.ffi
 
 
+int extern_max_params():
+	return 255
+
+
 int extern_statement():
 	if (accept(c"c_lib")):
 		if ((token[0] != '"') & (((token[0] != 'c') | (token[1] != '"')))):
@@ -37,14 +41,24 @@ int extern_statement():
 		get_token()
 		expect(c"(")
 
-		# Parse the parameter list for arity/type checks. Count stack words
-		# (one per scalar/pointer arg); struct-by-value params are not
-		# supported across the C boundary.
+		# Parse the parameter list for arity/type checks and the ABI shim's
+		# argument classes. Struct-by-value params are not supported across
+		# the C boundary.
 		int saved_table = table_pos
 		int param_count = 0
+		char* param_classes = malloc(extern_max_params())
+		int ret_class = ffi_type_class(ret_type)
+		if ((ret_class == 2) & (word_size != 8)):
+			error(c"float64 requires the x64 target")
 		while (accept(c")") == 0):
 			param_count = param_count + 1
+			if (param_count > extern_max_params()):
+				error(c"too many extern parameters")
 			int ptype = type_name()
+			int ptype_class = ffi_type_class(ptype)
+			if ((ptype_class == 2) & (word_size != 8)):
+				error(c"float64 requires the x64 target")
+			param_classes[param_count - 1] = ptype_class
 			if (param_count <= sym_max_param_slots()):
 				save_int(table + sym + 22 + (param_count << 2), ptype)
 			# Skip the optional parameter name
@@ -63,8 +77,9 @@ int extern_statement():
 
 		# The symbol resolves to the shim entry point
 		sym_define_global(sym)
-		emit_ffi_shim(param_count, got_vaddr)
+		emit_ffi_shim(param_count, param_classes, ret_class, got_vaddr)
 
+		free(param_classes)
 		free(name)
 		return 1
 

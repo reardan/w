@@ -43,11 +43,18 @@ struct ci_declarator_info:
 	int array_length
 
 
+int extern_max_params();
+
+
 # Session state shared by every c_import statement in one compilation.
 hash_map* ci_imported_functions
 hash_map* ci_const_values
 hash_map* ci_type_alignments
 int ci_anon_counter
+
+# ABI classes (see ffi_type_class) of the parameters most recently lowered
+# by ci_lower_params_from, one byte per parameter.
+char* ci_param_classes
 
 
 void ci_session_init():
@@ -55,6 +62,7 @@ void ci_session_init():
 		ci_imported_functions = hash_map_new()
 		ci_const_values = hash_map_new()
 		ci_type_alignments = hash_map_new()
+		ci_param_classes = malloc(extern_max_params())
 
 
 int ci_type_from_specs(pg_ast_node* specs);
@@ -1010,6 +1018,8 @@ int ci_lower_params_from(pg_ast_node* params, int sym, int start_count):
 			else:
 				int ptype = ci_parameter_type(parameter)
 				param_count = param_count + 1
+				if (param_count <= extern_max_params()):
+					ci_param_classes[param_count - 1] = ffi_type_class(ptype)
 				if (param_count <= sym_max_param_slots()):
 					save_int(table + sym + 22 + (param_count << 2), ptype)
 		else if (parameter.token == 0):
@@ -1022,6 +1032,32 @@ int ci_lower_params_from(pg_ast_node* params, int sym, int start_count):
 
 int ci_params_have_ellipsis(pg_ast_node* params):
 	return ci_find_ast(params, clang_ast_parameter_ellipsis()) != 0
+
+
+# The x86-32 target has no float64 support (see coerce()), so functions
+# whose C ABI involves a double cannot be imported there.
+int ci_params_have_float64(pg_ast_node* params):
+	int i = 0
+	while (i < pg_ast_child_count(params)):
+		pg_ast_node* parameter = pg_ast_child(params, i)
+		if (ci_is_ast(parameter, clang_ast_parameter_declaration())):
+			if (ffi_type_class(ci_parameter_type(parameter)) == 2):
+				return 1
+		else if (parameter.token == 0):
+			if (ci_params_have_float64(parameter)):
+				return 1
+		i = i + 1
+	return 0
+
+
+int ci_signature_needs_x64(int ret_type, pg_ast_node* params):
+	if (word_size == 8):
+		return 0
+	if (ffi_type_class(ret_type) == 2):
+		return 1
+	if (params == 0):
+		return 0
+	return ci_params_have_float64(params)
 
 
 int ci_params_are_old_style(pg_ast_node* params):
@@ -1053,7 +1089,7 @@ void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params):
 	emit_zeros(word_size)
 	dyn_add_import_weak(name, got_vaddr)
 	sym_define_global(sym)
-	emit_ffi_shim(param_count, got_vaddr)
+	emit_ffi_shim(param_count, ci_param_classes, ffi_type_class(ret_type), got_vaddr)
 
 
 # Declared in headers but provided by the compiler, not exported by libc;
@@ -1075,6 +1111,9 @@ void ci_import_function(char* name, int ret_type, pg_ast_node* params):
 		return
 	if (sym_lookup(name) >= 0):
 		ci_skip_extern_function(name, c"symbol already defined")
+		return
+	if (ci_signature_needs_x64(ret_type, params)):
+		ci_skip_extern_function(name, c"float64 ABI requires the x64 target")
 		return
 	ci_lower_extern_function(name, ret_type, params)
 
