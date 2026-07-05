@@ -2,6 +2,7 @@ import grammar.hash_builtin
 import grammar.promote
 import grammar.type_name
 import grammar.list_builtin
+import grammar.json_builtin
 import grammar.identifier
 import grammar.int_literal
 import compiler.bignum

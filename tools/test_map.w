@@ -20,6 +20,7 @@ int target_linked_list_test
 int target_list_test
 int target_string_test
 int target_json_test
+int target_json_codec_test
 int target_warning_test
 int target_check_json_test
 int target_self_host_warning_test
@@ -89,6 +90,8 @@ void wtest_add(char* path, char* target):
 		target_string_test = 1
 	else if (strcmp(target, c"json_test") == 0):
 		target_json_test = 1
+	else if (strcmp(target, c"json_codec_test") == 0):
+		target_json_codec_test = 1
 	else if (strcmp(target, c"warning_test") == 0):
 		target_warning_test = 1
 	else if (strcmp(target, c"check_json_test") == 0):
@@ -179,6 +182,10 @@ void wtest_map_lib(char* path):
 void wtest_map_structures(char* path):
 	if (strcmp(path, c"structures/json.w") == 0):
 		wtest_add(path, c"json_test")
+		wtest_add(path, c"json_codec_test")
+		wtest_add(path, c"json_rpc_test")
+	else if (strcmp(path, c"structures/json_codec.w") == 0):
+		wtest_add(path, c"json_codec_test")
 		wtest_add(path, c"json_rpc_test")
 	else if (strcmp(path, c"structures/hash_map.w") == 0):
 		wtest_add(path, c"hash_map_test")
@@ -219,6 +226,8 @@ void wtest_map_path(char* path):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tests/warning_fixture.w") == 0) | (strcmp(path, c"tests/warning_clean_fixture.w") == 0) | (strcmp(path, c"tests/string_char_warning_fixture.w") == 0)):
 		wtest_add(path, c"warning_test")
+	else if (strcmp(path, c"tests/json_codec_test.w") == 0):
+		wtest_add(path, c"json_codec_test")
 	else if (starts_with(path, c"tests/type_system_error")):
 		wtest_add(path, c"type_system_error_test")
 	else if (starts_with(path, c"tests/type_system_warning")):
@@ -267,6 +276,7 @@ void wtest_emit_targets():
 	wtest_emit_target(c"string_test", target_string_test)
 	wtest_emit_target(c"array_list_test", target_array_list_test)
 	wtest_emit_target(c"json_test", target_json_test)
+	wtest_emit_target(c"json_codec_test", target_json_codec_test)
 	wtest_emit_target(c"parser_generator_test", target_parser_generator_test)
 	wtest_emit_target(c"parser_generator_w_test", target_parser_generator_w_test)
 	wtest_emit_target(c"parser_generator_c_test", target_parser_generator_c_test)

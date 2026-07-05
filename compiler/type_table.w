@@ -867,6 +867,13 @@ int type_get_field_offset(int type_index, char* field):
 	return -1
 
 
+# Field name by 0-based field index
+char* type_get_field_name_at(int type_index, int i):
+	type_index = type_canonical(type_index)
+	int t = get(type_index)
+	return cast(char*, load_int(t + 16 + 8 * i))
+
+
 # Field type by 0-based field index
 int type_get_field_type_at(int type_index, int i):
 	type_index = type_canonical(type_index)

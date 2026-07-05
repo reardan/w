@@ -39,6 +39,27 @@ json_value* rpc_test_handle_shutdown(json_value* params, void* ctx):
 	return json_bool(1)
 
 
+# Typed params via the to_json/from_json builtins: the handler decodes
+# the params object into a struct and encodes a struct result.
+struct rpc_scale_params:
+	int factor
+	list[int] values
+
+
+json_value* rpc_test_handle_scale(json_value* params, void* ctx):
+	rpc_scale_params* p = from_json(rpc_scale_params, params)
+	if (p == 0):
+		return 0
+	rpc_scale_params result
+	result.factor = p.factor
+	result.values = new list[int]
+	int i = 0
+	while (i < p.values.length):
+		result.values.push(p.values[i] * p.factor)
+		i = i + 1
+	return to_json(result)
+
+
 jsonrpc_server* rpc_test_server_new():
 	jsonrpc_server* s = jsonrpc_server_new()
 	s.context = cast(void*, s)
@@ -46,6 +67,7 @@ jsonrpc_server* rpc_test_server_new():
 	jsonrpc_register(s, c"echo", rpc_test_handle_echo)
 	jsonrpc_register(s, c"fail", rpc_test_handle_fail)
 	jsonrpc_register(s, c"note", rpc_test_handle_note)
+	jsonrpc_register(s, c"scale", rpc_test_handle_scale)
 	jsonrpc_register(s, c"shutdown", rpc_test_handle_shutdown)
 	return s
 
@@ -176,6 +198,50 @@ void test_jsonrpc_invalid_request_missing_version():
 	json_value* id = json_object_get(response, c"id")
 	assert_equal(5, id.int_value)
 	json_free(response)
+
+	frame_reader_free(r)
+	jsonrpc_server_free(s)
+	close(fds[0])
+	close(fds[1])
+	free(fds)
+
+
+void test_jsonrpc_typed_params_round_trip():
+	int* fds = malloc(__word_size__ * 2)
+	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
+	jsonrpc_server* s = rpc_test_server_new()
+
+	# Params built from a struct with to_json on the client side
+	rpc_scale_params args
+	args.factor = 3
+	args.values = list[int]{1, 2, 5}
+	asserts(c"write scale", jsonrpc_write_request(fds[0], 1, c"scale", to_json(args)) > 0)
+	# Params that do not decode: the handler returns 0 -> internal error
+	asserts(c"write bad scale", jsonrpc_write_request(fds[0], 2, c"scale", json_int(9)) > 0)
+	asserts(c"write shutdown", jsonrpc_write_request(fds[0], 3, c"shutdown", 0) > 0)
+
+	assert_equal(0, jsonrpc_serve_blocking(s, fds[1], fds[1]))
+
+	frame_reader* r = frame_reader_new(fds[0])
+	json_value* response = jsonrpc_read_message(r)
+	json_value* result = json_object_get(response, c"result")
+	rpc_scale_params* scaled = from_json(rpc_scale_params, result)
+	asserts(c"typed result decodes", cast(int, scaled) != 0)
+	assert_equal(3, scaled.factor)
+	assert_equal(3, scaled.values.length)
+	assert_equal(3, scaled.values[0])
+	assert_equal(6, scaled.values[1])
+	assert_equal(15, scaled.values[2])
+	json_free(response)
+
+	json_value* bad_response = jsonrpc_read_message(r)
+	rpc_test_assert_error_code(bad_response, jsonrpc_error_internal())
+	json_free(bad_response)
+
+	json_value* shutdown_response = jsonrpc_read_message(r)
+	json_value* shutdown_id = json_object_get(shutdown_response, c"id")
+	assert_equal(3, shutdown_id.int_value)
+	json_free(shutdown_response)
 
 	frame_reader_free(r)
 	jsonrpc_server_free(s)
