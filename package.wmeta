@@ -1,0 +1,54 @@
+# Package metadata for the W toolchain (design: docs/package_metadata.txt).
+# Validated by 'make metadata_check' (tools/wmeta.w); the compiler does not
+# read this file, and import resolution is unchanged.
+
+package w
+version 0.1.0
+w_language >=0.1.0
+root .
+
+modules:
+	w
+	codegen
+	grammar
+	repl
+	compiler.compiler
+	lib.args
+	lib.assert
+	lib.env
+	lib.event_loop
+	lib.file
+	lib.format
+	lib.framing
+	lib.grapheme
+	lib.http
+	lib.json_rpc
+	lib.lib
+	lib.linux
+	lib.logging
+	lib.math
+	lib.memory
+	lib.net
+	lib.path
+	lib.poll
+	lib.process
+	lib.result
+	lib.stream
+	lib.testing
+	lib.time
+	lib.utf8
+	lib.wmeta
+	lib.__arch__.context
+	lib.__arch__.elf_introspect
+	lib.__arch__.syscalls
+	structures.array_list
+	structures.hash_map
+	structures.hash_table
+	structures.json
+	structures.json_codec
+	structures.linked_list
+	structures.list
+	structures.string
+	structures.w_list
+	tools.wexec
+	tools.wmeta
