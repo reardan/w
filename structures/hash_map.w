@@ -29,11 +29,11 @@ int hash_map_hash(char* key):
 
 # capacity must be a power of two so the hash can be masked
 hash_map* hash_map_new_sized(int capacity):
-	hash_map* map = malloc(16)
+	hash_map* map = new hash_map()
 	map.capacity = capacity
 	map.count = 0
-	map.keys = cast(char**, malloc(capacity * 4))
-	map.values = malloc(capacity * 4)
+	map.keys = cast(char**, malloc(capacity * __word_size__))
+	map.values = malloc(capacity * __word_size__)
 	int i = 0
 	while (i < capacity):
 		map.keys[i] = 0
@@ -73,8 +73,8 @@ void hash_map_grow(hash_map* map):
 
 	map.capacity = old_capacity * 2
 	map.count = 0
-	map.keys = cast(char**, malloc(map.capacity * 4))
-	map.values = malloc(map.capacity * 4)
+	map.keys = cast(char**, malloc(map.capacity * __word_size__))
+	map.values = malloc(map.capacity * __word_size__)
 	int i = 0
 	while (i < map.capacity):
 		map.keys[i] = 0

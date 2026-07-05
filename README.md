@@ -71,11 +71,14 @@ There is no separate linter or formatter. "Lint" is the compiler's own
 warnings (type mismatches, spaces-instead-of-tabs, missing trailing newline),
 asserted by `make warning_test`.
 
-A W-native build path is being grown to replace the Makefile: `./wbuild`
-bootstraps `tools/wexec.w` (a manifest-driven executor written in W) and runs
-targets from `build.json` — e.g. `./wbuild verify`, `./wbuild tests`,
-`./wbuild --list`. The Makefile remains the complete entry point until every
-target is ported; design notes in `docs/projects/wexec.md`.
+A W-native build path is replacing the Makefile: `./wbuild` bootstraps
+`tools/wexec.w` (a manifest-driven executor written in W) and runs targets
+from `build.json` — e.g. `./wbuild verify`, `./wbuild tests`,
+`./wbuild --list`. The full test suite is ported: targets run in parallel
+(`-j N` to override the CPU-count default) and toolchain targets are
+skipped via content-hash caching when their sources are unchanged
+(`--no-cache` forces reruns). The Makefile remains as the reference entry
+point; design notes in `docs/projects/wexec.md`.
 
 Host requirement: `dynamic_test` (part of `make tests`) produces a 32-bit
 dynamically linked binary, so the host needs the i386 loader and libc
@@ -241,6 +244,10 @@ archives the old seed to `old/` first.
   W-native `w-toolchain` MCP server (`make wmcp` builds `bin/wmcp` from
   `tools/mcp/w_toolchain_mcp.w`). It exposes build, verify, run_tests,
   check, compile, run, repl_eval, and test_changed tools from the repo root.
+- Editors can run the W-native LSP server (`make wlsp` builds `bin/wlsp` from
+  `tools/lsp/w_lsp.w`): diagnostics from `w check --json` on open/save and
+  go-to-definition from `w symbols --json`, over stdio Content-Length framing.
+  Scope and editor wiring: `docs/projects/lsp.md`.
 - `make verify` remains the required gate for compiler changes, and `make tests`
   remains the full pre-merge suite when the host has the i386 libc needed by
   `dynamic_test`.

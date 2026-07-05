@@ -38,9 +38,8 @@ int args_count():
 char* args_get(int i):
 	if ((i < 0) | (i >= args_argc)):
 		return 0
-	# argv entries are word-sized and may point above 4GB (the process
-	# stack), so both the stride and the load must be word-width
-	return cast(char*, load_word(args_argv + i * __word_size__))
+	char** argv = cast(char**, args_argv)
+	return argv[i]
 
 
 char* args_program():

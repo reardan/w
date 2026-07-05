@@ -1,0 +1,50 @@
+{
+	"targets": [
+		{
+			"name": "expect_array",
+			"steps": [
+				{"cmd": ["echo", "one two three"], "expect_stdout": ["one", "three"]}
+			]
+		},
+		{
+			"name": "expect_array_missing",
+			"steps": [
+				{"cmd": ["echo", "one two three"], "expect_stdout": ["one", "absent"]}
+			]
+		},
+		{
+			"name": "rejects",
+			"steps": [
+				{"cmd": ["echo", "clean output"], "reject_stdout": "warning:"},
+				{"cmd": ["sh", "-c", "echo fine >&2"], "reject_stderr": ["warning:", "error:"]}
+			]
+		},
+		{
+			"name": "reject_present",
+			"steps": [
+				{"cmd": ["echo", "warning: boom"], "reject_stdout": "warning:"}
+			]
+		},
+		{
+			"name": "status_ok",
+			"steps": [
+				{"cmd": ["sh", "-c", "exit 3"], "expect_status": 3}
+			]
+		},
+		{
+			"name": "status_wrong",
+			"steps": [
+				{"cmd": ["true"], "expect_status": 3}
+			]
+		},
+		{
+			"name": "capture_file",
+			"steps": [
+				{"cmd": ["echo", "captured line"], "stdout_file": "bin/wexec_capture.out"},
+				{"cmd": ["grep", "-qF", "captured line", "bin/wexec_capture.out"]},
+				{"cmd": ["sh", "-c", "echo err text >&2"], "stderr_file": "bin/wexec_capture.err"},
+				{"cmd": ["grep", "-qF", "err text", "bin/wexec_capture.err"]}
+			]
+		}
+	]
+}

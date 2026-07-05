@@ -3,9 +3,13 @@
 #
 # This is the only shell in the W-native build path: the committed seed ./w
 # compiles the compiler, the compiler compiles the executor, and everything
-# after that is described by build.json and run by bin/wexec. There is no
-# caching yet, so each invocation rebuilds bin/wv2 and bin/wexec (a few
-# seconds), exactly like the Makefile's 'w' prerequisite.
+# after that is described by build.json and run by bin/wexec.
+#
+# The seed compiles only happen when bin/wexec does not exist yet. A warm
+# tree instead runs the manifest's cached 'wv2' and 'wexec' targets, which
+# rebuild the compiler and the executor only when their content hashes say
+# the sources changed (see the caching notes in tools/wexec.w), and then
+# executes the up-to-date executor. 'rm -rf bin' resets everything.
 #
 #   ./wbuild tests            run the ported test suite
 #   ./wbuild verify           self-host fixpoint check
@@ -14,6 +18,9 @@
 set -e
 cd "$(dirname "$0")"
 mkdir -p bin
-./w w.w -o bin/wv2
-./bin/wv2 tools/wexec.w -o bin/wexec
+if [ ! -x bin/wexec ]; then
+	./w w.w -o bin/wv2
+	./bin/wv2 tools/wexec.w -o bin/wexec
+fi
+./bin/wexec wv2 wexec >/dev/null
 exec ./bin/wexec "$@"

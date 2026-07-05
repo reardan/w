@@ -1,0 +1,43 @@
+{
+	"targets": [
+		{
+			"name": "slow_a",
+			"steps": [
+				{"cmd": ["sleep", "0.6"]},
+				{"cmd": ["echo", "slow_a done"]}
+			]
+		},
+		{
+			"name": "slow_b",
+			"steps": [
+				{"cmd": ["sleep", "0.6"]},
+				{"cmd": ["echo", "slow_b done"]}
+			]
+		},
+		{
+			"name": "slow_c",
+			"steps": [
+				{"cmd": ["sleep", "0.6"]},
+				{"cmd": ["echo", "slow_c done"]}
+			]
+		},
+		{
+			"name": "after_ab",
+			"deps": ["slow_a", "slow_b"],
+			"steps": [
+				{"cmd": ["echo", "after slow_a and slow_b"]}
+			]
+		},
+		{
+			"name": "parallel_all",
+			"deps": ["after_ab", "slow_c"]
+		},
+		{
+			"name": "parallel_fails",
+			"deps": ["slow_a"],
+			"steps": [
+				{"cmd": ["false"]}
+			]
+		}
+	]
+}

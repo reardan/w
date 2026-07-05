@@ -16,9 +16,12 @@ Standard commands live in the `Makefile` (targets, not duplicated here):
 - `make wdbg` — build the in-process debugger (`bin/wdbg`).
 
 A W-native build path (`./wbuild`, backed by `tools/wexec.w` + `build.json`;
-see `docs/projects/wexec.md`) is being grown to replace the Makefile. It
-covers `verify` and a subset of tests (`./wbuild --list`); use `make` for
-anything not yet ported.
+see `docs/projects/wexec.md`) is replacing the Makefile. It covers the full
+test suite (`./wbuild tests`, target list via `./wbuild --list`), runs
+independent targets in parallel (`-j N` overrides the CPU-count default) and
+content-hash-caches the toolchain targets (`--no-cache` forces reruns; stamps
+live in `bin/.wexec_cache/`). Only non-test conveniences (`update`,
+`test_changed`, debug/trace targets) still need `make`.
 
 Compile/run an arbitrary program directly:
 `./bin/wv2 file.w -o out && ./out` (prepend `x64` for 64-bit: `./bin/wv2 x64 file.w -o out`).

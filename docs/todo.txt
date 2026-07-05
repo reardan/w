@@ -52,6 +52,13 @@ current state:
 		whitespace hygiene:
 			warning when a line is indented with spaces instead of tabs
 			warning when a file does not end with a newline
+		imports and packages:
+			import a.b as f binds a file-scoped alias; f.name access is
+				checked against the module's declarations (import_test)
+			unqualified use of an alias-only module warns (warning_test)
+			package.wmeta metadata + wmeta checker validate modules and
+				vendored path dependencies (make metadata_check,
+				make metadata_test, design: docs/package_metadata.txt)
 		struct:
 			local struct values
 			mixed-width struct fields
@@ -194,7 +201,9 @@ current state:
 		type system:
 			finish type.fields usage for globals and imports
 			use type.w as the language meta-type
-			support scoped/private imports or import aliases
+			support private imports (aliases + the unqualified-use warning
+				are done; hard hiding needs real module identity)
+			qualified type names through import aliases (f.SomeStruct)
 			merge symbol_table + type_table on top of hash_map
 		c_import:
 			extern data objects (stdin, environ)
