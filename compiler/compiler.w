@@ -313,8 +313,8 @@ void symbols_dump(int json):
 		int file_index = sym_decl_file_index(t)
 		if (file_index >= 0):
 			char* type_name = symbols_type_display(load_int(table + t + 6))
-			symbols_emit(json, sym, symbols_kind_name(load_int(table + t + 10)),
-					type_name, file_index, sym_decl_line(t), sym_decl_column(t))
+			char* kind = symbols_kind_name(load_int(table + t + 10))
+			symbols_emit(json, sym, kind, type_name, file_index, sym_decl_line(t), sym_decl_column(t))
 			free(type_name)
 		t = next_token(t)
 	# User-declared types: structs, unions, enums, and type aliases.
@@ -322,8 +322,7 @@ void symbols_dump(int json):
 	int i = 0
 	while (i < length):
 		if (type_decl_file_index(i) >= 0):
-			symbols_emit(json, type_get_name(i), symbols_type_kind_name(i),
-					type_get_name(i), type_decl_file_index(i), type_decl_line(i), type_decl_column(i))
+			symbols_emit(json, type_get_name(i), symbols_type_kind_name(i), type_get_name(i), type_decl_file_index(i), type_decl_line(i), type_decl_column(i))
 		i = i + 1
 
 
