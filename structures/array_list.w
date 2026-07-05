@@ -78,6 +78,15 @@ void array_list_set(array_list* list, int index, int value):
 	list.items[index] = value
 
 
+void array_list_remove(array_list* list, int index):
+	assert1(index < list.length)
+	int i = index
+	while (i + 1 < list.length):
+		list.items[i] = list.items[i + 1]
+		i = i + 1
+	list.length = list.length - 1
+
+
 void array_list_insert(array_list* list, int index, int value):
 	assert1(index <= list.length)
 	array_list_ensure(list, 1)

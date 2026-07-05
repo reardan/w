@@ -125,3 +125,54 @@ int hash_finalize_pending_read_if_needed(int type):
 	if (hash_index_pending):
 		return hash_finish_pending_read()
 	return type
+
+
+int hash_container_key_type(int container_type):
+	if (type_is_map(container_type)):
+		return type_map_key_type(container_type)
+	return type_set_key_type(container_type)
+
+
+# Shared lowering for the map/set pseudo-methods that take one key
+# argument: parses '(key)', checks it against the container's key type
+# and calls fn_name(container, key). The call result stays in eax.
+void hash_key_call_suffix(int type, char* fn_name, char* context):
+	int container_type = type_unqualified(type)
+	int key_type = hash_container_key_type(container_type)
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int container_slot = stack_pos
+	expect(c"(")
+	int got_type = expression()
+	got_type = promote(got_type)
+	coerce(key_type, got_type)
+	if (types_compatible_with_expression(key_type, got_type) == 0):
+		warn_type_mismatch(context, key_type, got_type)
+	expect(c")")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int key_slot = stack_pos
+	sym_get_value(fn_name)
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(container_slot)
+	hash_push_stack_slot(key_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+
+
+# m.remove(key) / s.remove(key): 'remove' has been consumed. Lowers to
+# __w_map_remove(container, key), which returns 1 when the key existed.
+int hash_remove_suffix(int type):
+	hash_key_call_suffix(type, c"__w_map_remove", c"container remove key")
+	return type_value(bool_type)
+
+
+# s.add(key): 'add' has been consumed. Lowers to __w_set_add(set, key).
+int hash_set_add_suffix(int type):
+	hash_key_call_suffix(type, c"__w_set_add", c"set add key")
+	return type_value(type_lookup(c"void"))

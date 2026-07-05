@@ -145,6 +145,12 @@ int primary_expr():
 	else if (list_typed_literal()):
 		type = list_literal_type
 
+	else if (peek(c"to_json") & (nextc == '(')):
+		type = json_to_json_expr()
+
+	else if (peek(c"from_json") & (nextc == '(')):
+		type = json_from_json_expr()
+
 	# Identifier
 	else if ((new_type = identifier()) >= 0) {
 		type = new_type

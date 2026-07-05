@@ -116,3 +116,35 @@ int socket_send_to_ipv4(int sockfd, char* buf, int len, int flags, int ip_addres
 	sockaddr_in addr
 	sockaddr_in_init(&addr, ip_address, port)
 	return sys_sendto(sockfd, buf, len, flags, &addr, sockaddr_in_size())
+
+
+int socket_recv(int sockfd, char* buf, int len, int flags):
+	return sys_recv(sockfd, buf, len, flags)
+
+
+# Receives one datagram and fills addr with the sender address.
+# Returns the number of bytes received or a negative errno.
+int socket_recv_from_ipv4(int sockfd, char* buf, int len, int flags, sockaddr_in* addr):
+	int addrlen = sockaddr_in_size()
+	return sys_recvfrom(sockfd, buf, len, flags, cast(int, addr), cast(int, &addrlen))
+
+
+int f_getfl():
+	return 3
+
+
+int f_setfl():
+	return 4
+
+
+int o_nonblock():
+	return 2048
+
+
+# After this, read/recv on an empty descriptor returns -EAGAIN (-11)
+# instead of blocking.
+int socket_set_nonblocking(int sockfd):
+	int flags = sys_fcntl(sockfd, f_getfl(), 0)
+	if (flags < 0):
+		return flags
+	return sys_fcntl(sockfd, f_setfl(), flags | o_nonblock())

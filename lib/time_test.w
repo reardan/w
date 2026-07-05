@@ -92,3 +92,16 @@ void test_time_now_syscall():
 	int after = time_now()
 	asserts(c"time_now should be after 2023-11-14", before >= 1700000000)
 	asserts(c"time_now should not move backwards", after >= before)
+
+
+void test_time_monotonic_ms():
+	int before = time_monotonic_ms()
+	int after = time_monotonic_ms()
+	asserts(c"monotonic clock should not move backwards", after >= before)
+
+
+void test_sleep_ms():
+	int start = time_monotonic_ms()
+	sleep_ms(20)
+	int elapsed = time_monotonic_ms() - start
+	asserts(c"sleep_ms returned too early", elapsed >= 15)

@@ -171,6 +171,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			compile_file(*arg)
 		i = i + 1
 
+	# On-demand runtime for the to_json/from_json builtins: imported after
+	# all user files so the module's code lands at a top-level boundary
+	json_codec_finish_import()
+
 	if (output_path != 0):
 		/* O_WRONLY|O_CREAT|O_TRUNC, mode 0755 so the result is executable */
 		output_fd = open(output_path, 577, 493)

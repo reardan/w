@@ -117,6 +117,77 @@ int __w_list_length(__w_list* list):
 	return list.length
 
 
+void __w_list_clear(__w_list* list):
+	list.length = 0
+
+
+# Removes the element at index, shifting the tail left.
+void __w_list_remove(__w_list* list, int index):
+	__w_list_assert(index >= 0)
+	__w_list_assert(index < list.length)
+	char* dst = list.items + index * list.element_size
+	int tail_bytes = (list.length - index - 1) * list.element_size
+	int i = 0
+	while (i < tail_bytes):
+		dst[i] = dst[i + list.element_size]
+		i = i + 1
+	list.length = list.length - 1
+
+
+# Opens a hole at index (0..length inclusive) and returns its address.
+char* __w_list_insert_slot(__w_list* list, int index):
+	__w_list_assert(index >= 0)
+	__w_list_assert(index <= list.length)
+	__w_list_ensure(list, 1)
+	char* base = list.items + index * list.element_size
+	int i = (list.length - index) * list.element_size
+	while (i > 0):
+		i = i - 1
+		base[i + list.element_size] = base[i]
+	list.length = list.length + 1
+	return base
+
+
+void __w_list_insert(__w_list* list, int index, int value):
+	char* slot = __w_list_insert_slot(list, index)
+	__w_list_store_word(slot, list.element_size, value)
+
+
+# Aggregate insert: copies element_size bytes from src into the new slot.
+void __w_list_insert_bytes(__w_list* list, int index, char* src):
+	char* slot = __w_list_insert_slot(list, index)
+	int i = 0
+	while (i < list.element_size):
+		slot[i] = src[i]
+		i = i + 1
+
+
+# Word-compared membership scan for scalar elements.
+int __w_list_contains(__w_list* list, int value):
+	int i = 0
+	while (i < list.length):
+		if (__w_list_load_word(list.items + i * list.element_size, list.element_size) == value):
+			return 1
+		i = i + 1
+	return 0
+
+
+# Content-compared membership for char* elements, matching how map and
+# set keys compare C strings by contents.
+int __w_list_contains_cstr(__w_list* list, int value):
+	char* wanted = cast(char*, value)
+	int i = 0
+	while (i < list.length):
+		char* element = cast(char*, __w_list_load_word(list.items + i * list.element_size, list.element_size))
+		int j = 0
+		while ((element[j] != 0) & (element[j] == wanted[j])):
+			j = j + 1
+		if (element[j] == wanted[j]):
+			return 1
+		i = i + 1
+	return 0
+
+
 int __w_list_iter_begin(__w_list* list):
 	return 0
 

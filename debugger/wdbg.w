@@ -761,6 +761,8 @@ int wdbg_main(int argc, int argv):
 	# Runtime stubs first, then the target and everything it imports
 	define_asm_functions()
 	compile_file(target)
+	# On-demand runtime for to_json/from_json used by the debuggee
+	json_codec_finish_import()
 
 	int* target_main = cast(int*, sym_address(c"main"))
 	asserts(c"debuggee has no main()", target_main != 0)

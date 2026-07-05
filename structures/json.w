@@ -174,6 +174,33 @@ void json_free(json_value* value):
 	free(value)
 
 
+# Deep copy; the result is owned by the caller.
+json_value* json_clone(json_value* value):
+	if (value == 0):
+		return 0
+	if (value.type == json_type_object()):
+		json_value* object = json_object()
+		hash_map* map = value.object_values
+		int i = 0
+		while (i < map.capacity):
+			if (map.keys[i] != 0):
+				json_object_set(object, map.keys[i], json_clone(cast(json_value*, map.values[i])))
+			i = i + 1
+		return object
+	if (value.type == json_type_array()):
+		json_value* array = json_array()
+		int i = 0
+		while (i < json_array_length(value)):
+			json_array_push(array, json_clone(json_array_get(value, i)))
+			i = i + 1
+		return array
+	if (value.type == json_type_string()):
+		return json_string(value.string_value)
+	json_value* copy = json_new(value.type)
+	copy.int_value = value.int_value
+	return copy
+
+
 json_parser* json_parser_new(char* input):
 	json_parser* p = new json_parser()
 	p.input = input

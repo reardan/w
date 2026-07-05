@@ -53,6 +53,22 @@ int mmap(int addr, int length, int prot, int flags):
 int sys_clone(int flags, int child_stack):
 	return syscall(56, flags, child_stack)
 
+# poll (7): fds points at an array of 8-byte pollfd records.
+# timeout_ms < 0 blocks forever; 0 returns immediately.
+int sys_poll(int fds, int nfds, int timeout_ms):
+	return syscall(7, fds, nfds, timeout_ms)
+
+int sys_fcntl(int fd, int cmd, int arg):
+	return syscall(72, fd, cmd, arg)
+
+# nanosleep (35): req/rem point at { long seconds; long nanoseconds }
+# which matches two W words on x86-64.
+int sys_nanosleep(int req, int rem):
+	return syscall(35, req, rem, 0)
+
+int sys_clock_gettime(int clock_id, int ts):
+	return syscall(228, clock_id, ts, 0)
+
 # rt_sigaction (13). sigsetsize must be _NSIG/8 = 8. Unlike i386 the
 # x86-64 kernel has no vdso sigreturn fallback, so real handlers need an
 # SA_RESTORER trampoline in act.
@@ -141,6 +157,17 @@ int sys_getsockname(int sockfd, int addr, int addrlen):
 
 int sys_socketpair(int family, int socket_type, int protocol, int fds):
 	return syscall7(53, family, socket_type, protocol, fds, 0, 0)
+
+
+# recvfrom (45) with a null address doubles as recv on x86-64.
+int sys_recv(int sockfd, char* buf, int len, int flags):
+	return syscall7(45, sockfd, buf, len, flags, 0, 0)
+
+
+# addr/addrlen may be 0 to ignore the sender address; addrlen is an in/out
+# pointer to the address buffer size.
+int sys_recvfrom(int sockfd, char* buf, int len, int flags, int addr, int addrlen):
+	return syscall7(45, sockfd, buf, len, flags, addr, addrlen)
 
 
 int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
