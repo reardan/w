@@ -15,6 +15,14 @@ struct pg_ast_node:
 	array_list* children
 	pg_ast_node* parent
 	hash_map* metadata
+	pg_token* first_token
+	pg_token* last_token
+
+
+# Kind tag for error-recovery nodes holding the tokens skipped while the
+# parser resynchronized. Rule kinds are positive, so -1 never collides.
+int pg_ast_error_kind():
+	return -1
 
 
 pg_ast_node* pg_ast_new(int kind, pg_token* token, char* name):
@@ -26,6 +34,8 @@ pg_ast_node* pg_ast_new(int kind, pg_token* token, char* name):
 	node.children = array_list_new()
 	node.parent = 0
 	node.metadata = 0
+	node.first_token = token
+	node.last_token = token
 	if (token != 0):
 		node.text = strclone(token.text)
 	return node
@@ -35,11 +45,27 @@ pg_ast_node* pg_ast_token(int kind, pg_token* token, char* name):
 	return pg_ast_new(kind, token, name)
 
 
+# Spans grow as children are added: trees are built bottom-up, so a child's
+# span is final by the time it is attached to its parent.
 void pg_ast_add(pg_ast_node* parent, pg_ast_node* child):
 	if (child == 0):
 		return
 	child.parent = parent
 	array_list_push(parent.children, cast(int, child))
+	if (child.first_token != 0):
+		if (parent.first_token == 0):
+			parent.first_token = child.first_token
+		parent.last_token = child.last_token
+
+
+# First/last token covered by this node, or 0 for an empty node (e.g. a rule
+# that matched only optional terms).
+pg_token* pg_ast_first_token(pg_ast_node* node):
+	return node.first_token
+
+
+pg_token* pg_ast_last_token(pg_ast_node* node):
+	return node.last_token
 
 
 int pg_ast_child_count(pg_ast_node* node):

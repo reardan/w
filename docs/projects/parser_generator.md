@@ -46,12 +46,45 @@ rule list = value value* EOF
 Supported token matchers are runtime helper names such as `letters`, `digits`,
 `identifier`, `number`, `string`, `char_literal`, `newline`, `tabs`, and `any`,
 which map to `pg_lexer_matcher_<name>`. `skip <NAME> <matcher>` declares
-comment or trivia matchers that the generated lexer consumes without emitting a
-token.
+comment or trivia matchers. Skip matches are emitted as hidden-channel tokens
+(negative kinds starting at -3): the parser never sees them, but they stay in
+the stream's `all_tokens` list so tools can reproduce the input.
 
 Rule terms are token names, literal names, rule names, or `EOF`. A term may end
 with `?`, `*`, or `+`. Alternatives are separated by `|`. Parenthesized groups
 and semantic actions are intentionally left for a later milestone.
+
+## Lossless token stream
+
+Generated lexers are lossless: inline whitespace runs become hidden tokens
+with the reserved kind `pg_token_whitespace_kind()` (-2), skip rules (comments)
+become hidden tokens with their own kinds, and invalid characters become hidden
+`pg_token_invalid_kind()` (-1) tokens alongside their diagnostic. Every token
+records `offset`/`length` (zero-based byte span) in addition to one-based
+line/column. `pg_token_stream_source()` concatenates all channels back into the
+original input byte for byte; `pg_token_stream_all_count()` /
+`pg_token_stream_all_get()` expose the full stream to tools such as formatters.
+The parser-facing cursor (`peek`/`consume`/`mark`/`rewind`) only sees
+default-channel tokens, so grammar behavior is unchanged.
+
+AST nodes carry spans: `pg_ast_first_token()` / `pg_ast_last_token()` give the
+first and last token a rule node covers (0 for nodes that matched only
+optional terms), maintained as children are attached.
+
+## Error recovery
+
+`recover <rule> <sync-token> [<skip-token>...]` enables multi-error parsing
+for repetitions (`*`/`+`) of `<rule>`. When an iteration fails before EOF, the
+generated parser records a `syntax error` diagnostic at the furthest token any
+attempt reached, wraps the skipped tokens in an `error` node (kind
+`pg_ast_error_kind()`, -1), consumes through the next sync token whose
+successor is neither the sync token nor one of the skip tokens, and resumes
+the repetition. The W grammar uses `recover top_item NEWLINE TAB`, which
+resynchronizes at the next line that starts at tab level zero, so one bad
+top-level construct yields one diagnostic instead of aborting the parse.
+Recovery is intended for repetitions in single-alternative contexts (like the
+start rule); a recovered repetition inside an alternative that later fails
+would leave its diagnostics behind after backtracking.
 
 Generated lexers use longest-match token selection. This lets a grammar list
 generic identifiers and exact keyword/operator literals together: `integer`

@@ -85,6 +85,76 @@ void test_generated_parser_lexer_error():
 	assert_strings_equal(c"invalid character", diagnostic.message)
 
 
+void test_token_offsets_and_channels():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_token_stream* stream = sample_lex(c"alpha  123", c"sample.txt", diagnostics)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	# Parser-facing stream: WORD NUMBER EOF
+	pg_token* word = pg_token_stream_la(stream, 1)
+	assert_equal(0, word.offset)
+	assert_equal(5, word.length)
+	assert_equal(pg_token_default_channel(), word.channel)
+	pg_token* number = pg_token_stream_la(stream, 2)
+	assert_equal(7, number.offset)
+	assert_equal(3, number.length)
+	pg_token* eof = pg_token_stream_la(stream, 3)
+	assert_equal(pg_token_eof_kind(), eof.kind)
+	assert_equal(10, eof.offset)
+	# All-channel stream keeps the whitespace run between the two tokens
+	assert_equal(4, pg_token_stream_all_count(stream))
+	pg_token* space = pg_token_stream_all_get(stream, 1)
+	assert_equal(pg_token_whitespace_kind(), space.kind)
+	assert_equal(pg_token_hidden_channel(), space.channel)
+	assert_equal(5, space.offset)
+	assert_equal(2, space.length)
+	assert_strings_equal(c"  ", space.text)
+
+
+void test_lossless_token_stream_round_trip():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_token_stream* stream = sample_lex(c"alpha  123 , ! beta", c"sample.txt", diagnostics)
+	char* rebuilt = pg_token_stream_source(stream)
+	assert_strings_equal(c"alpha  123 , ! beta", rebuilt)
+
+
+void test_ast_node_spans():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_ast_node* root = sample_parse(c"alpha 123", c"sample.txt", diagnostics)
+	assert1(root != 0)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	# Root spans the whole input including the EOF terminal
+	assert_equal(0, pg_ast_first_token(root).offset)
+	assert_equal(pg_token_eof_kind(), pg_ast_last_token(root).kind)
+	# First value spans just "alpha"
+	pg_ast_node* first_value = pg_ast_child(root, 0)
+	assert_equal(0, pg_ast_first_token(first_value).offset)
+	assert_equal(5, pg_ast_first_token(first_value).length)
+	# Second value spans just "123"
+	pg_ast_node* second_value = pg_ast_child(root, 1)
+	assert_equal(6, pg_ast_first_token(second_value).offset)
+	assert_equal(3, pg_ast_last_token(second_value).length)
+
+
+void test_error_recovery_multi_parse():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_ast_node* root = sample_parse(c"alpha , beta", c"sample.txt", diagnostics)
+	assert1(root != 0)
+	assert_equal(1, pg_diagnostics_count(diagnostics))
+	pg_diagnostic* diagnostic = pg_diagnostics_get(diagnostics, 0)
+	assert_strings_equal(c"syntax error", diagnostic.message)
+	assert_strings_equal(c"value", diagnostic.expected)
+	assert_strings_equal(c",", diagnostic.found)
+	# value(alpha), error(,), value(beta), EOF
+	assert_equal(4, pg_ast_child_count(root))
+	assert_equal(sample_ast_value(), pg_ast_child(root, 0).kind)
+	pg_ast_node* error_node = pg_ast_child(root, 1)
+	assert_equal(pg_ast_error_kind(), error_node.kind)
+	assert_equal(1, pg_ast_child_count(error_node))
+	assert_strings_equal(c",", pg_ast_child(error_node, 0).text)
+	assert_equal(sample_ast_value(), pg_ast_child(root, 2).kind)
+	assert_strings_equal(c"beta", pg_ast_child(pg_ast_child(root, 2), 0).text)
+
+
 void test_visitor_preorder_on_generated_ast():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = sample_parse(c"alpha 123", c"sample.txt", diagnostics)

@@ -151,6 +151,8 @@ int pg_reader_is_top_level(pg_grammar_reader* reader):
 		return 1
 	if (strcmp(reader.token, c"rule") == 0):
 		return 1
+	if (strcmp(reader.token, c"recover") == 0):
+		return 1
 	return 0
 
 
@@ -259,6 +261,16 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 				return 0
 			pg_rule* rule = pg_grammar_add_rule(grammar, name)
 			pg_reader_parse_rule_body(reader, rule)
+		else if (pg_reader_is_name(reader, c"recover")):
+			pg_reader_next(reader)
+			char* name = pg_reader_take_name(reader)
+			char* sync = pg_reader_take_name(reader)
+			if ((name == 0) | (sync == 0)):
+				return 0
+			pg_recover_def* recover = pg_grammar_add_recover(grammar, name, sync)
+			while ((reader.token_kind == pg_reader_token_name()) & (pg_reader_is_top_level(reader) == 0)):
+				pg_recover_add_skip(recover, reader.token)
+				pg_reader_next(reader)
 		else:
 			pg_reader_error(reader, c"unknown grammar directive", c"token, skip, literal, start or rule")
 			return 0
@@ -268,4 +280,21 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 	if (pg_grammar_find_rule(grammar, grammar.start_rule) == 0):
 		pg_reader_error(reader, c"start rule is not defined", grammar.start_rule)
 		return 0
+	int r = 0
+	while (r < grammar.recovers.length):
+		pg_recover_def* recover = cast(pg_recover_def*, array_list_get(grammar.recovers, r))
+		if (pg_grammar_find_rule(grammar, recover.rule_name) == 0):
+			pg_reader_error(reader, c"recover rule is not defined", recover.rule_name)
+			return 0
+		if (pg_grammar_token_kind(grammar, recover.sync_token) <= 0):
+			pg_reader_error(reader, c"recover sync must be a token or literal", recover.sync_token)
+			return 0
+		int s = 0
+		while (s < recover.skip_tokens.length):
+			char* skip_name = cast(char*, array_list_get(recover.skip_tokens, s))
+			if (pg_grammar_token_kind(grammar, skip_name) <= 0):
+				pg_reader_error(reader, c"recover skip must be a token or literal", skip_name)
+				return 0
+			s = s + 1
+		r = r + 1
 	return grammar
