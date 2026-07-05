@@ -760,6 +760,12 @@ wexec_test: w FORCE
 	! ./bin/wexec -f tests/wexec/cache.json --no-cache cache_hit | grep -q "(cached)"
 	./bin/wexec -f tests/wexec/cache.json force | grep -q "force ran"
 	./bin/wexec -f tests/wexec/cache.json force | grep -q "force ran"
+	# parallel scheduler: three 0.6s branches overlap under the default
+	# -j (nproc), -j 1 serializes, failures still abort with exit 1
+	timeout 1.4 ./bin/wexec -f tests/wexec/parallel.json parallel_all | grep -q "wexec: OK (5 targets)"
+	./bin/wexec -j 1 -f tests/wexec/parallel.json parallel_all | grep -q "wexec: OK (5 targets)"
+	! ./bin/wexec -f tests/wexec/parallel.json parallel_fails 2>./bin/wexec_parallel.stderr
+	grep -q "command failed with exit status" ./bin/wexec_parallel.stderr
 	# no requested target: usage plus the target list, nonzero exit
 	! ./bin/wexec -f tests/wexec/good.json > ./bin/wexec_noarg.out 2>./bin/wexec_noarg.stderr
 	grep -q "usage: wexec" ./bin/wexec_noarg.stderr

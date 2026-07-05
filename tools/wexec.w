@@ -61,15 +61,19 @@ import structures.hash_map
 
 json_value* wexec_manifest
 hash_map* wexec_targets      # name -> json_value* of the target object
-hash_map* wexec_states       # name -> 0 unvisited / 1 running / 2 done
+hash_map* wexec_states       # name -> 0 unvisited / 1 visiting / 2 collected
 hash_map* wexec_keys         # name -> char* cache key, for targets with "inputs"
+hash_map* wexec_started      # name -> 1 once launched (or completed inline)
+hash_map* wexec_finished     # name -> 1 once successfully finished
 list[char*] wexec_names      # manifest order, for --list
+list[char*] wexec_closure    # requested targets + deps, dependency order
 int wexec_completed          # targets finished this invocation
 int wexec_no_cache           # --no-cache: never skip cached targets
-int wexec_mask32             # keeps the FNV accumulators at 32 bits on x64
+int wexec_jobs               # max targets in flight (-j), default nproc
+int wexec_mask32             # keeps the hash accumulators at 32 bits on x64
 
 
-int wexec_run_target(char* name);
+int wexec_collect_closure(char* name);
 void wexec_collect_dir(char* path, list[char*] files);
 
 
@@ -90,7 +94,7 @@ void wexec_error2(char* message, char* detail):
 
 void wexec_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] [--no-cache] target...")
+	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] [--no-cache] [-j N] target...")
 	stream_flush(err)
 
 
@@ -596,26 +600,23 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 	return failed
 
 
-int wexec_run_deps(char* name, json_value* target):
-	json_value* deps = json_object_get(target, c"deps")
-	if (deps == 0):
-		return 0
-	if (deps.type != json_type_array()):
-		wexec_error2(c"\"deps\" is not an array in target ", name)
-		return 1
-	int i = 0
-	while (i < json_array_length(deps)):
-		json_value* dep = json_array_get(deps, i)
-		if (dep.type != json_type_string()):
-			wexec_error2(c"\"deps\" entries must be strings in target ", name)
-			return 1
-		if (wexec_run_target(dep.string_value)):
-			return 1
-		i = i + 1
-	return 0
+/* The scheduler.
 
+Targets run as concurrently forked copies of wexec itself: the child
+redirects its stdout/stderr into pipes and runs the target's steps with
+the ordinary sequential machinery, so everything a target prints stays
+attributable to it. The parent polls every worker's pipes, buffers
+output, and prints each target's output in start order (the oldest
+in-flight worker streams live, later ones are held back until it
+finishes), so parallel logs never interleave. Cache keys are computed
+and stamps written by the parent only; a cache hit completes a target
+without forking. The first failure stops new launches, in-flight
+targets are drained, and the run exits 1 — make without -k. */
 
-int wexec_run_target(char* name):
+# Depth-first closure collection: validates deps, diagnoses unknown
+# targets and cycles, and appends every reachable target in dependency
+# order (the serial execution order) to wexec_closure.
+int wexec_collect_closure(char* name):
 	int state = hash_map_get_default(wexec_states, name, 0)
 	if (state == 2):
 		return 0
@@ -627,41 +628,282 @@ int wexec_run_target(char* name):
 		wexec_error2(c"unknown target ", name)
 		return 1
 	hash_map_set(wexec_states, name, 1)
-	if (wexec_run_deps(name, target)):
-		return 1
+	json_value* deps = json_object_get(target, c"deps")
+	if (deps != 0):
+		if (deps.type != json_type_array()):
+			wexec_error2(c"\"deps\" is not an array in target ", name)
+			return 1
+		int i = 0
+		while (i < json_array_length(deps)):
+			json_value* dep = json_array_get(deps, i)
+			if (dep.type != json_type_string()):
+				wexec_error2(c"\"deps\" entries must be strings in target ", name)
+				return 1
+			if (wexec_collect_closure(dep.string_value)):
+				return 1
+			i = i + 1
+	hash_map_set(wexec_states, name, 2)
+	wexec_closure.push(name)
+	return 0
 
+
+int wexec_deps_finished(char* name):
+	json_value* target = cast(json_value*, hash_map_get_default(wexec_targets, name, 0))
+	json_value* deps = json_object_get(target, c"deps")
+	if (deps == 0):
+		return 1
+	int i = 0
+	while (i < json_array_length(deps)):
+		json_value* dep = json_array_get(deps, i)
+		if (hash_map_get_default(wexec_finished, dep.string_value, 0) == 0):
+			return 0
+		i = i + 1
+	return 1
+
+
+void wexec_print_target_header(char* name, char* suffix):
+	wstream* out = stdout_writer()
+	stream_write_cstr(out, c"wexec: target ")
+	stream_write_cstr(out, name)
+	stream_write_line(out, suffix)
+	stream_flush(out)
+
+
+int wexec_run_steps(char* name, json_value* target):
+	json_value* steps = json_object_get(target, c"steps")
+	if (steps == 0):
+		return 0
+	if (steps.type != json_type_array()):
+		wexec_error2(c"\"steps\" is not an array in target ", name)
+		return 1
+	int i = 0
+	while (i < json_array_length(steps)):
+		if (wexec_run_step(name, i, json_array_get(steps, i))):
+			return 1
+		i = i + 1
+	return 0
+
+
+struct wexec_worker:
+	char* name
+	char* key            # cache key to stamp on success, or 0
+	int pid
+	int stdout_fd        # -1 once EOF
+	int stderr_fd
+	process_capture* out_buffer
+	process_capture* err_buffer
+	int out_printed      # bytes already written through to our stdout
+	int err_printed
+	int done
+
+
+void wexec_mark_finished(char* name, char* key):
+	if (key != 0):
+		wexec_cache_store(name, key)
+	hash_map_set(wexec_finished, name, 1)
+	wexec_completed = wexec_completed + 1
+
+
+# Launch one target. Returns 0 when the target completed inline (cache
+# hit or no steps), 1 when a worker was forked, -1 on spawn failure.
+int wexec_launch(char* name, list[wexec_worker*] workers):
+	json_value* target = cast(json_value*, hash_map_get_default(wexec_targets, name, 0))
 	char* key = wexec_cache_key(name, target)
 	if (key != 0):
 		hash_map_set(wexec_keys, name, cast(int, key))
 		if ((wexec_no_cache == 0) && wexec_cache_fresh(name, key, target)):
-			wstream* cached_out = stdout_writer()
-			stream_write_cstr(cached_out, c"wexec: target ")
-			stream_write_cstr(cached_out, name)
-			stream_write_line(cached_out, c" (cached)")
-			stream_flush(cached_out)
-			hash_map_set(wexec_states, name, 2)
+			wexec_print_target_header(name, c" (cached)")
+			hash_map_set(wexec_finished, name, 1)
 			wexec_completed = wexec_completed + 1
 			return 0
-
-	wstream* out = stdout_writer()
-	stream_write_cstr(out, c"wexec: target ")
-	stream_write_line(out, name)
-	stream_flush(out)
-
 	json_value* steps = json_object_get(target, c"steps")
-	if (steps != 0):
-		if (steps.type != json_type_array()):
-			wexec_error2(c"\"steps\" is not an array in target ", name)
+	if (steps == 0):
+		# Aggregate target: nothing to fork.
+		wexec_print_target_header(name, c"")
+		wexec_mark_finished(name, key)
+		return 0
+
+	int out_read = -1
+	int out_write = -1
+	int err_read = -1
+	int err_write = -1
+	if (process_make_pipe(&out_read, &out_write) < 0):
+		wexec_error2(c"cannot create pipes for target ", name)
+		return -1
+	if (process_make_pipe(&err_read, &err_write) < 0):
+		close(out_read)
+		close(out_write)
+		wexec_error2(c"cannot create pipes for target ", name)
+		return -1
+	int pid = fork()
+	if (pid < 0):
+		close(out_read)
+		close(out_write)
+		close(err_read)
+		close(err_write)
+		wexec_error2(c"cannot fork worker for target ", name)
+		return -1
+	if (pid == 0):
+		# Worker: everything we print belongs to this target.
+		close(out_read)
+		close(err_read)
+		process_redirect(out_write, 1)
+		process_redirect(err_write, 2)
+		wexec_print_target_header(name, c"")
+		exit(wexec_run_steps(name, target))
+	close(out_write)
+	close(err_write)
+
+	wexec_worker* w = new wexec_worker()
+	w.name = name
+	w.key = key
+	w.pid = pid
+	w.stdout_fd = out_read
+	w.stderr_fd = err_read
+	w.out_buffer = new process_capture()
+	w.err_buffer = new process_capture()
+	process_capture_init(w.out_buffer)
+	process_capture_init(w.err_buffer)
+	w.out_printed = 0
+	w.err_printed = 0
+	w.done = 0
+	workers.push(w)
+	return 1
+
+
+# Write through any buffered output the worker has not printed yet.
+# Only the oldest unfinished worker streams live; the rest are flushed
+# when they reach the head of the start-order queue.
+void wexec_worker_flush(wexec_worker* w):
+	if (w.out_buffer.length > w.out_printed):
+		write(1, w.out_buffer.data + w.out_printed, w.out_buffer.length - w.out_printed)
+		w.out_printed = w.out_buffer.length
+	if (w.err_buffer.length > w.err_printed):
+		write(2, w.err_buffer.data + w.err_printed, w.err_buffer.length - w.err_printed)
+		w.err_printed = w.err_buffer.length
+
+
+# One read per poll wakeup; returns 1 when the pipe reached EOF.
+int wexec_worker_drain(int fd, process_capture* buffer):
+	return process_capture_read(buffer, fd) <= 0
+
+
+# Drive every requested target (and its dependency closure) to
+# completion with up to wexec_jobs targets in flight. Returns 0 when
+# everything succeeded.
+int wexec_execute(list[char*] requested):
+	for char* name in requested:
+		if (wexec_collect_closure(name)):
 			return 1
-		int i = 0
-		while (i < json_array_length(steps)):
-			if (wexec_run_step(name, i, json_array_get(steps, i))):
+
+	int total = wexec_closure.length
+	list[wexec_worker*] workers = new list[wexec_worker*]
+	int head = 0       # first worker whose output is not fully printed
+	int running = 0
+	int finished = 0
+	int failed = 0
+	char* poll_fds = malloc(2 * wexec_jobs * 8 + 16)
+
+	while (finished < total):
+		# Launch phase: start every ready target, oldest first. Inline
+		# completions (cache hits, aggregates) can ready more targets,
+		# so repeat until a full scan launches nothing.
+		int launched_any = 1
+		while ((failed == 0) && launched_any):
+			launched_any = 0
+			int t = 0
+			while ((t < total) && (running < wexec_jobs)):
+				char* name = wexec_closure[t]
+				if ((hash_map_get_default(wexec_started, name, 0) == 0) && wexec_deps_finished(name)):
+					hash_map_set(wexec_started, name, 1)
+					int outcome = wexec_launch(name, workers)
+					if (outcome < 0):
+						failed = 1
+					else if (outcome == 0):
+						finished = finished + 1
+						launched_any = 1
+					else:
+						running = running + 1
+				t = t + 1
+
+		if (running == 0):
+			# Nothing in flight: done, or blocked behind a failure.
+			if (finished < total):
+				failed = 1
+			if (failed):
+				# Print whatever buffered output is left, in order.
+				while (head < workers.length):
+					wexec_worker_flush(workers[head])
+					head = head + 1
+				free(poll_fds)
 				return 1
+			free(poll_fds)
+			return 0
+
+		# Collect the open pipe fds of every unfinished worker.
+		int nfds = 0
+		int i = head
+		while (i < workers.length):
+			wexec_worker* w = workers[i]
+			if (w.done == 0):
+				if (w.stdout_fd >= 0):
+					process_pollfd_set(poll_fds, nfds, w.stdout_fd, 1)
+					nfds = nfds + 1
+				if (w.stderr_fd >= 0):
+					process_pollfd_set(poll_fds, nfds, w.stderr_fd, 1)
+					nfds = nfds + 1
 			i = i + 1
-	if (key != 0):
-		wexec_cache_store(name, key)
-	hash_map_set(wexec_states, name, 2)
-	wexec_completed = wexec_completed + 1
+		if (nfds > 0):
+			# Bounded wait so reaps of pipe-less workers still happen.
+			poll(cast(int*, poll_fds), nfds, 100)
+		else:
+			process_sleep_ms(2)
+
+		# Drain readable pipes (walking the same fd order the poll set
+		# was built in) and reap workers whose pipes have both closed.
+		int slot = 0
+		i = head
+		while (i < workers.length):
+			wexec_worker* w = workers[i]
+			if (w.done == 0):
+				if (w.stdout_fd >= 0):
+					if (process_pollfd_revents(poll_fds, slot) != 0):
+						if (wexec_worker_drain(w.stdout_fd, w.out_buffer)):
+							close(w.stdout_fd)
+							w.stdout_fd = -1
+					slot = slot + 1
+				if (w.stderr_fd >= 0):
+					if (process_pollfd_revents(poll_fds, slot) != 0):
+						if (wexec_worker_drain(w.stderr_fd, w.err_buffer)):
+							close(w.stderr_fd)
+							w.stderr_fd = -1
+					slot = slot + 1
+				if ((w.stdout_fd < 0) && (w.stderr_fd < 0)):
+					int status = 0
+					int reaped = wait4(w.pid, &status, 0, 0)
+					w.done = 1
+					running = running - 1
+					finished = finished + 1
+					int decoded = process_decode_status(status)
+					if (reaped < 0):
+						decoded = 1
+					if (decoded != 0):
+						failed = 1
+					else:
+						wexec_mark_finished(w.name, w.key)
+			i = i + 1
+
+		# Print phase: stream the head worker live and retire every
+		# finished worker at the front of the start-order queue.
+		while ((head < workers.length) && workers[head].done):
+			wexec_worker_flush(workers[head])
+			head = head + 1
+		if (head < workers.length):
+			wexec_worker_flush(workers[head])
+
+	free(poll_fds)
+	if (failed):
+		return 1
 	return 0
 
 
@@ -705,7 +947,10 @@ int wexec_load_manifest(char* path):
 	wexec_targets = hash_map_new()
 	wexec_states = hash_map_new()
 	wexec_keys = hash_map_new()
+	wexec_started = hash_map_new()
+	wexec_finished = hash_map_new()
 	wexec_names = new list[char*]
+	wexec_closure = new list[char*]
 	int i = 0
 	while (i < json_array_length(targets)):
 		json_value* target = json_array_get(targets, i)
@@ -744,8 +989,29 @@ void wexec_report_ok():
 	string_free(s)
 
 
+# Default parallelism: one target per online CPU.
+int wexec_default_jobs():
+	char* text = file_read_text(c"/proc/cpuinfo")
+	if (text == 0):
+		return 1
+	int count = 0
+	int line_start = 1
+	int i = 0
+	while (text[i] != 0):
+		if (line_start):
+			if (starts_with(text + i, c"processor")):
+				count = count + 1
+		line_start = text[i] == 10
+		i = i + 1
+	free(text)
+	if (count < 1):
+		return 1
+	return count
+
+
 int main(int argc, int argv):
 	wexec_mask32 = wexec_mask32_value()
+	wexec_jobs = 0
 	char* manifest_path = c"build.json"
 	list[char*] requested = new list[char*]
 	int list_only = 0
@@ -763,9 +1029,21 @@ int main(int argc, int argv):
 			list_only = 1
 		else if (strcmp(*arg, c"--no-cache") == 0):
 			wexec_no_cache = 1
+		else if (strcmp(*arg, c"-j") == 0):
+			i = i + 1
+			if (i >= argc):
+				wexec_usage()
+				return 1
+			char** jobs_value = argv + i * __word_size__
+			wexec_jobs = atoi(*jobs_value)
+		else if (starts_with(*arg, c"-j")):
+			char* digits = *arg
+			wexec_jobs = atoi(digits + 2)
 		else:
 			requested.push(*arg)
 		i = i + 1
+	if (wexec_jobs < 1):
+		wexec_jobs = wexec_default_jobs()
 
 	if (wexec_load_manifest(manifest_path)):
 		return 1
@@ -776,8 +1054,7 @@ int main(int argc, int argv):
 		wexec_usage()
 		wexec_list_targets()
 		return 1
-	for char* name in requested:
-		if (wexec_run_target(name)):
-			return 1
+	if (wexec_execute(requested)):
+		return 1
 	wexec_report_ok()
 	return 0

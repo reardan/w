@@ -808,6 +808,19 @@
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "force"], "expect_stdout": "force ran"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "force"], "expect_stdout": "force ran"},
 				{
+					"cmd": ["timeout", "1.4", "bin/wexec", "-f", "tests/wexec/parallel.json", "parallel_all"],
+					"expect_stdout": "wexec: OK (5 targets)"
+				},
+				{
+					"cmd": ["bin/wexec", "-j", "1", "-f", "tests/wexec/parallel.json", "parallel_all"],
+					"expect_stdout": "wexec: OK (5 targets)"
+				},
+				{
+					"cmd": ["bin/wexec", "-f", "tests/wexec/parallel.json", "parallel_fails"],
+					"expect_fail": true,
+					"expect_stderr": "command failed with exit status"
+				},
+				{
 					"cmd": ["bin/wexec", "-f", "tests/wexec/good.json"],
 					"expect_fail": true,
 					"expect_stderr": "usage: wexec",
