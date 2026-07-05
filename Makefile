@@ -64,18 +64,23 @@ framing_test: w FORCE
 	./bin/wv2 lib/framing_test.w -o ./bin/framing_test
 	./bin/framing_test
 
-# x86-only: structures/array_list.w does not pass on x64 yet (word-size
-# assumptions), matching array_list_test being absent from tests_x64.
 event_loop_test: w FORCE
 	./bin/wv2 lib/event_loop_test.w -o ./bin/event_loop_test
 	./bin/event_loop_test
 
-# x86-only: the structures/ containers behind json.w do not pass on x64 yet
-# (see hash_map_test/string_test being absent from tests_x64).
+event_loop_64_test: w FORCE
+	./bin/wv2 x64 lib/event_loop_test.w -o ./bin/event_loop_64_test
+	./bin/event_loop_64_test
+
 json_rpc_test: w FORCE
 	./bin/wv2 lib/json_rpc_test.w -o ./bin/json_rpc_test
 	./bin/json_rpc_test
 	./bin/wv2 examples/web/json_rpc_server.w -o ./bin/json_rpc_server
+
+json_rpc_64_test: w FORCE
+	./bin/wv2 x64 lib/json_rpc_test.w -o ./bin/json_rpc_64_test
+	./bin/json_rpc_64_test
+	./bin/wv2 x64 examples/web/json_rpc_server.w -o ./bin/json_rpc_server_64
 
 pointer_test: w FORCE
 	./bin/wv2 tests/pointer_test.w >./bin/pointer_test
@@ -181,7 +186,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test for_container_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test format_64_test args_64_test FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -485,6 +490,10 @@ list_test: w FORCE
 	chmod +x ./bin/list_test
 	./bin/list_test
 
+list_64_test: w FORCE
+	./bin/wv2 x64 structures/list_test.w -o ./bin/list_64_test
+	./bin/list_64_test
+
 lib_test: w FORCE
 	./bin/wv2 lib/lib_test.w >./bin/lib_test
 	chmod +x ./bin/lib_test
@@ -563,6 +572,12 @@ for_test: w FORCE
 	./bin/for_test
 
 # Cursor-protocol iteration: for x in <container>
+for_container_64_test: w FORCE
+	./bin/wv2 x64 tests/for_container_test.w -o ./bin/for_container_64_test
+	./bin/for_container_64_test
+
+# The compile-error fixtures are arch-independent, so only the x86 target
+# runs them.
 for_container_test: w FORCE
 	./bin/wv2 tests/for_container_test.w -o ./bin/for_container_test
 	./bin/for_container_test
@@ -604,9 +619,22 @@ hash_map_test: w FORCE
 	./bin/wv2 structures/hash_map_test.w -o ./bin/hash_map_test
 	./bin/hash_map_test
 
+hash_map_64_test: w FORCE
+	./bin/wv2 x64 structures/hash_map_test.w -o ./bin/hash_map_64_test
+	./bin/hash_map_64_test
+
 hash_table_test: w FORCE
 	./bin/wv2 structures/hash_table_test.w -o ./bin/hash_table_test
 	./bin/hash_table_test
+
+hash_table_64_test: w FORCE
+	./bin/wv2 x64 structures/hash_table_test.w -o ./bin/hash_table_64_test
+	./bin/hash_table_64_test
+
+# The error fixture is arch-independent, so only the x86 target runs it.
+map_set_builtin_64_test: w FORCE
+	./bin/wv2 x64 tests/map_set_builtin_test.w -o ./bin/map_set_builtin_64_test
+	./bin/map_set_builtin_64_test
 
 map_set_builtin_test: w FORCE
 	./bin/wv2 tests/map_set_builtin_test.w -o ./bin/map_set_builtin_test
@@ -615,6 +643,12 @@ map_set_builtin_test: w FORCE
 	grep -qF "map value type cannot be a fixed-size array" ./bin/map_value_array_error_fixture.stderr
 
 # Built-in typed list[T]: literals, indexing, push/pop, length, iteration
+# The warning/error fixtures are arch-independent, so only the x86 target
+# runs them.
+list_builtin_64_test: w FORCE
+	./bin/wv2 x64 tests/list_builtin_test.w -o ./bin/list_builtin_64_test
+	./bin/list_builtin_64_test
+
 list_builtin_test: w FORCE
 	./bin/wv2 tests/list_builtin_test.w -o ./bin/list_builtin_test
 	./bin/list_builtin_test
@@ -639,20 +673,34 @@ string_test: w FORCE
 	./bin/wv2 structures/string_test.w -o ./bin/string_test
 	./bin/string_test
 
+string_64_test: w FORCE
+	./bin/wv2 x64 structures/string_test.w -o ./bin/string_64_test
+	./bin/string_64_test
+
 array_list_test: w FORCE
 	./bin/wv2 structures/array_list_test.w -o ./bin/array_list_test
 	./bin/array_list_test
+
+array_list_64_test: w FORCE
+	./bin/wv2 x64 structures/array_list_test.w -o ./bin/array_list_64_test
+	./bin/array_list_64_test
 
 json_test: w FORCE
 	./bin/wv2 structures/json_test.w -o ./bin/json_test
 	./bin/json_test
 
-# to_json/from_json builtin round trips (x86 only: structures/json.w and
-# the container runtimes it uses have pre-existing x64 issues, matching
-# json_test)
+json_64_test: w FORCE
+	./bin/wv2 x64 structures/json_test.w -o ./bin/json_64_test
+	./bin/json_64_test
+
+# to_json/from_json builtin round trips
 json_codec_test: w FORCE
 	./bin/wv2 tests/json_codec_test.w -o ./bin/json_codec_test
 	./bin/json_codec_test
+
+json_codec_64_test: w FORCE
+	./bin/wv2 x64 tests/json_codec_test.w -o ./bin/json_codec_64_test
+	./bin/json_codec_64_test
 
 parser_generator_test: w FORCE
 	./bin/wv2 tools/parser_generator.w -o ./bin/parser_generator
@@ -683,7 +731,7 @@ wtest_map_test: wtest FORCE
 	printf 'verify\nself_host_warning_test\n' > ./bin/wtest_map.expected
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	./bin/wtest changed structures/json.w > ./bin/wtest_map.out
-	printf 'json_test\njson_codec_test\njson_rpc_test\n' > ./bin/wtest_map.expected
+	printf 'json_test\njson_64_test\njson_codec_test\njson_codec_64_test\njson_rpc_test\njson_rpc_64_test\n' > ./bin/wtest_map.expected
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	./bin/wtest changed tests/warning_fixture.w > ./bin/wtest_map.out
 	printf 'warning_test\n' > ./bin/wtest_map.expected
@@ -779,9 +827,17 @@ linked_list_test: w FORCE
 	./bin/wv2 structures/linked_list_test.w -o ./bin/linked_list_test
 	./bin/linked_list_test
 
+linked_list_64_test: w FORCE
+	./bin/wv2 x64 structures/linked_list_test.w -o ./bin/linked_list_64_test
+	./bin/linked_list_64_test
+
 format_test: w FORCE
 	./bin/wv2 lib/format_test.w -o ./bin/format_test
 	./bin/format_test
+
+format_64_test: w FORCE
+	./bin/wv2 x64 lib/format_test.w -o ./bin/format_64_test
+	./bin/format_64_test
 
 time_test: w FORCE
 	./bin/wv2 lib/time_test.w -o ./bin/time_test
@@ -790,6 +846,10 @@ time_test: w FORCE
 args_test: w FORCE
 	./bin/wv2 lib/args_test.w -o ./bin/args_test
 	./bin/args_test
+
+args_64_test: w FORCE
+	./bin/wv2 x64 lib/args_test.w -o ./bin/args_64_test
+	./bin/args_64_test
 
 path_test: w FORCE
 	./bin/wv2 lib/path_test.w -o ./bin/path_test

@@ -38,7 +38,8 @@ int args_count():
 char* args_get(int i):
 	if ((i < 0) | (i >= args_argc)):
 		return 0
-	return cast(char*, load_int(args_argv + i * 4))
+	char** argv = cast(char**, args_argv)
+	return argv[i]
 
 
 char* args_program():
