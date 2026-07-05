@@ -826,6 +826,36 @@ wexec_test: w FORCE
 	grep -q "not valid JSON" ./bin/wexec_bad.stderr
 	! ./bin/wexec -f tests/wexec/missing_manifest.json anything 2>./bin/wexec_missing.stderr
 	grep -q "cannot read manifest" ./bin/wexec_missing.stderr
+	# extended step fields: expect arrays, reject_*, expect_status, capture files
+	./bin/wexec -f tests/wexec/features.json expect_array rejects status_ok capture_file | grep -q "wexec: OK (4 targets)"
+	! ./bin/wexec -f tests/wexec/features.json expect_array_missing 2>./bin/wexec_features.stderr
+	grep -q "expected stdout to contain: absent" ./bin/wexec_features.stderr
+	! ./bin/wexec -f tests/wexec/features.json reject_present 2>./bin/wexec_features.stderr
+	grep -q "expected stdout to not contain: warning:" ./bin/wexec_features.stderr
+	! ./bin/wexec -f tests/wexec/features.json status_wrong 2>./bin/wexec_features.stderr
+	grep -q "command exited 0, expected status 3" ./bin/wexec_features.stderr
+	# content-hash caching: a second run hits, changed inputs or missing
+	# outputs miss, --no-cache forces, targets without inputs always run
+	printf 'v1\n' > ./bin/wexec_cache_input.txt
+	rm -f ./bin/.wexec_cache/cache_hit ./bin/.wexec_cache/uses_dep ./bin/wexec_cache_out.txt
+	! ./bin/wexec -f tests/wexec/cache.json cache_hit | grep -q "(cached)"
+	./bin/wexec -f tests/wexec/cache.json cache_hit | grep -q "cache_hit (cached)"
+	! ./bin/wexec -f tests/wexec/cache.json uses_dep | grep -q "uses_dep (cached)"
+	./bin/wexec -f tests/wexec/cache.json uses_dep | grep -q "uses_dep (cached)"
+	printf 'v2\n' > ./bin/wexec_cache_input.txt
+	! ./bin/wexec -f tests/wexec/cache.json cache_hit | grep -q "(cached)"
+	./bin/wexec -f tests/wexec/cache.json cache_hit | grep -q "cache_hit (cached)"
+	rm -f ./bin/wexec_cache_out.txt
+	! ./bin/wexec -f tests/wexec/cache.json cache_hit | grep -q "(cached)"
+	! ./bin/wexec -f tests/wexec/cache.json --no-cache cache_hit | grep -q "(cached)"
+	./bin/wexec -f tests/wexec/cache.json force | grep -q "force ran"
+	./bin/wexec -f tests/wexec/cache.json force | grep -q "force ran"
+	# parallel scheduler: three 0.6s branches overlap under the default
+	# -j (nproc), -j 1 serializes, failures still abort with exit 1
+	timeout 1.4 ./bin/wexec -f tests/wexec/parallel.json parallel_all | grep -q "wexec: OK (5 targets)"
+	./bin/wexec -j 1 -f tests/wexec/parallel.json parallel_all | grep -q "wexec: OK (5 targets)"
+	! ./bin/wexec -f tests/wexec/parallel.json parallel_fails 2>./bin/wexec_parallel.stderr
+	grep -q "command failed with exit status" ./bin/wexec_parallel.stderr
 	# no requested target: usage plus the target list, nonzero exit
 	! ./bin/wexec -f tests/wexec/good.json > ./bin/wexec_noarg.out 2>./bin/wexec_noarg.stderr
 	grep -q "usage: wexec" ./bin/wexec_noarg.stderr
@@ -981,6 +1011,7 @@ tests: build verify lib_test path_test grammar_test list_test type_table_test bi
 
 clean:
 	rm -f wv2 wv3 wv4 wv5 test test_output.txt grammar_test bin/*
+	rm -rf bin/.wexec_cache
 
 w: *.w */*.w
 	./w w.w >./bin/wv2
