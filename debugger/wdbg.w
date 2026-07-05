@@ -55,6 +55,7 @@ dispatches to it for --debug.
 */
 import compiler.compiler
 import lib.args
+import lib.line_edit
 import debugger.sigcontext
 import debugger.memory
 import debugger.lines
@@ -90,19 +91,10 @@ int dbg_fatal_stop /* 1 while stopped on a fatal signal: no resuming */
 char* dbg_last_command
 
 
-# Read one command line from stdin; returns its length or -1 on EOF.
+# Read one command line from stdin with line editing and history on a
+# tty; returns its length, -1 on EOF, -2 when discarded with Ctrl-C.
 int wdbg_read_command(char* buf, int size):
-	int i = 0
-	int c = getchar(0)
-	if (c == -1):
-		return -1
-	while ((c != 10) & (c != -1)):
-		if (i < size - 1):
-			buf[i] = c
-			i = i + 1
-		c = getchar(0)
-	buf[i] = 0
-	return i
+	return line_edit_read(c"wdbg> ", buf, size, 0)
 
 
 # Terminate the first word of s and return the rest (spaces skipped).
@@ -422,8 +414,9 @@ void dbg_prepare_resume(int context, int stop_addr, int mode):
 void wdbg_command_loop(int context, int stop_addr):
 	char* command = malloc(256)
 	while (1):
-		print(c"wdbg> ")
 		int n = wdbg_read_command(command, 256)
+		if (n == -2):
+			continue /* Ctrl-C: fresh prompt, do not repeat the last command */
 		if (n < 0):
 			println(c"(end of input: continuing)")
 			free(command)
@@ -779,6 +772,9 @@ int wdbg_main(int argc, int argv):
 	wdbg_install_handler(7, wdbg_fatal, 0) /* SIGBUS */
 	wdbg_install_handler(8, wdbg_fatal, 0) /* SIGFPE */
 	wdbg_install_handler(11, wdbg_fatal, 0) /* SIGSEGV */
+
+	if (term_isatty(0)):
+		line_edit_history_load(c"~/.wdbg_history")
 
 	println(c"wdbg: 'debugger' statements trap into the command loop (type 'help' for commands)")
 

@@ -63,6 +63,10 @@ int sys_poll(int fds, int nfds, int timeout_ms):
 int sys_fcntl(int fd, int cmd, int arg):
 	return syscall(55, fd, cmd, arg)
 
+# ioctl (54): request values like TCGETS/TCSETS come from lib/termios.w.
+int sys_ioctl(int fd, int request, int arg):
+	return syscall(54, fd, request, arg)
+
 # nanosleep (162): req/rem point at { long seconds; long nanoseconds }
 # which matches two W words on i386.
 int sys_nanosleep(int req, int rem):

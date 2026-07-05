@@ -329,6 +329,12 @@ void save_word(char* p, int v):
 		save_int(p, v)
 
 
+int load_word(char* p):
+	if (__word_size__ == 8):
+		return load_int64(p)
+	return load_int(p)
+
+
 string str_from_cstr(char* s):
 	char* descriptor = malloc(2 * __word_size__)
 	save_word(descriptor, cast(int, s))
