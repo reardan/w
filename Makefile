@@ -1,11 +1,14 @@
 
 
+# The seed stage stays flagless (the committed seed may predate --strict);
+# the self-host stages compile with warnings as errors so unsafe type
+# mismatches fail the build.
 build: w
 	./w w.w >./bin/wv2
 	chmod +x ./bin/wv2
-	./bin/wv2 w.w -o ./bin/wv3
-	./bin/wv3 w.w -o ./bin/wv4
-	./bin/wv4 w.w -o ./bin/wv5
+	./bin/wv2 --strict w.w -o ./bin/wv3
+	./bin/wv3 --strict w.w -o ./bin/wv4
+	./bin/wv4 --strict w.w -o ./bin/wv5
 
 # Self-host fixpoint check: wv3, wv4 and wv5 must be byte-identical.
 # This is the cheapest regression guard for a bootstrapped compiler; run it
@@ -292,6 +295,22 @@ warning_test: w FORCE
 	grep -qF "warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
 	grep -qF "warning: assignment type mismatch: expected 'char*', got 'string value'" ./bin/string_char_warning_fixture.stderr
 	@echo "warning test OK"
+
+# --strict promotes warnings to a failing exit: the warning fixture must
+# fail without leaving an output binary, the clean fixture must still
+# compile silently, and check mode must propagate the failure.
+strict_mode_test: w FORCE
+	rm -f ./bin/strict_mode_fixture
+	! ./bin/wv2 --strict tests/warning_fixture.w -o ./bin/strict_mode_fixture 2>./bin/strict_mode_fixture.stderr
+	grep -qF "warning: assignment type mismatch: expected 'char*', got 'int*'" ./bin/strict_mode_fixture.stderr
+	grep -qF "warning(s) treated as errors (--strict)" ./bin/strict_mode_fixture.stderr
+	test ! -e ./bin/strict_mode_fixture
+	./bin/wv2 --strict tests/warning_clean_fixture.w -o ./bin/strict_mode_clean 2>./bin/strict_mode_clean.stderr
+	! grep -q "warning:" ./bin/strict_mode_clean.stderr
+	! ./bin/wv2 check --strict tests/warning_fixture.w 2>./bin/strict_mode_check.stderr
+	grep -qF "warning(s) treated as errors (--strict)" ./bin/strict_mode_check.stderr
+	./bin/wv2 check --strict tests/warning_clean_fixture.w 2>./bin/strict_mode_check_clean.stderr
+	@echo "strict mode test OK"
 
 check_json_test: w FORCE
 	./bin/wv2 check --json tests/warning_fixture.w >./bin/check_json_warning.ndjson 2>./bin/check_json_warning.stderr
@@ -859,7 +878,7 @@ debug_test: wdbg FORCE
 	printf 'c\n' | ./bin/wv2 --debug tests/debug_fixture.w | grep -q "after breakpoint"
 	@echo "debug test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test test hello tests_x64 FORCE
 
 
 clean:

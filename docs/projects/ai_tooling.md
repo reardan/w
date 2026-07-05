@@ -100,7 +100,12 @@ just go nowhere.
 
 Exit codes: `0` = compiled clean or warnings only, `1` = error. This is
 what `error()` already does; agents distinguish "clean" from "warnings
-only" by the presence of records, not the exit code.
+only" by the presence of records, not the exit code. With `--strict`
+(accepted by `w`, `w check`, and `w symbols`), warnings are promoted to
+a failing exit: after the compile the driver prints
+`error: N warning(s) treated as errors (--strict)` and exits 1 before
+any output is written. The self-host build stages (`make build`,
+`./wbuild build`) compile with `--strict`.
 
 ### Output format
 
