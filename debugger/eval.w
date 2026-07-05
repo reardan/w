@@ -9,18 +9,101 @@ Expressions can read and write the debuggee's globals and call its
 functions. A compile error rolls back cleanly via the repl_setjmp
 recovery hook instead of killing wdbg.
 
-Locals are handled before eval is reached (debugger/locals.w): the
-compiler cannot address another frame's stack slots.
+Locals and arguments visible at the stop are bound as temporary symbols
+so expressions like "x + y * 2" or "add(x, 1)" work on locals too. The
+generated code addresses symbols with 32-bit immediates, and on x64 the
+debuggee's stack sits above 4GB, so each local's value is copied into a
+low-memory scratch slot that the symbol points at; after the expression
+runs the slots are copied back, so assignments to locals stick. The
+bindings are declared after the checkpoint and dropped with the eval
+function's other symbols, so nothing leaks between evaluations.
 */
 import debugger.breakpoints
 
 
 int dbg_eval_counter
 
+# Scratch copies of the bound locals (allocated once, low memory) and
+# the copy-back list: runtime address, scratch address, byte size.
+char* dbg_eval_scratch
+char* dbg_eval_bound_from
+char* dbg_eval_bound_to
+char* dbg_eval_bound_size
+int dbg_eval_bound_count
+
+
+int dbg_eval_bound_max():
+	return 128
+
+
+int dbg_eval_scratch_size():
+	return 8192
+
+
+void dbg_eval_copy(int from, int to, int n):
+	char* src = cast(char*, from)
+	char* dst = cast(char*, to)
+	int i = 0
+	while (i < n):
+		dst[i] = src[i]
+		i = i + 1
+
+
+# Bind every local and argument visible at the stop as a defined global
+# object pointing at a scratch copy of its value. Later declarations win
+# in sym_lookup, so inner shadowing declarations take precedence over
+# outer ones and over real globals, like in the source.
+void dbg_eval_bind_locals(int stop_addr, int esp):
+	dbg_eval_bound_count = 0
+	dbg_frame_compute(stop_addr)
+	if (dbg_frame_ok == 0):
+		return;
+	if (dbg_eval_scratch == 0):
+		dbg_eval_scratch = malloc(dbg_eval_scratch_size())
+		dbg_eval_bound_from = malloc(dbg_eval_bound_max() * __word_size__)
+		dbg_eval_bound_to = malloc(dbg_eval_bound_max() * __word_size__)
+		dbg_eval_bound_size = malloc(dbg_eval_bound_max() * 4)
+	int rel = stop_addr - code_offset
+	int saved_indirection = pointer_indirection
+	int used = 0
+	int i = 0
+	while (i < debug_local_count):
+		if (dbg_local_visible(i, rel)):
+			int type = dbg_local_type(i)
+			int size = __word_size__
+			if ((type_get_pointer_level(type) == 0) & (type_num_args(type) > 0)):
+				# struct value: whole object, rounded up to words
+				size = (type_get_size(type) + __word_size__ - 1) / __word_size__ * __word_size__
+			int addr = dbg_local_runtime_addr(i, esp)
+			if ((used + size <= dbg_eval_scratch_size()) & (dbg_eval_bound_count < dbg_eval_bound_max())):
+				if (dbg_mem_readable(addr, size)):
+					int slot = cast(int, dbg_eval_scratch) + used
+					dbg_eval_copy(addr, slot, size)
+					int b = dbg_eval_bound_count
+					save_word(dbg_eval_bound_from + b * __word_size__, addr)
+					save_word(dbg_eval_bound_to + b * __word_size__, slot)
+					save_int(dbg_eval_bound_size + b * 4, size)
+					dbg_eval_bound_count = b + 1
+					used = used + size
+					pointer_indirection = type_get_pointer_level(type)
+					sym_declare(dbg_local_name_at(i), type, 'D', slot, 1)
+		i = i + 1
+	pointer_indirection = saved_indirection
+
+
+# Copy possibly-assigned scratch values back into the stack slots.
+void dbg_eval_writeback():
+	int b = 0
+	while (b < dbg_eval_bound_count):
+		int from = load_word(dbg_eval_bound_to + b * __word_size__)
+		int to = load_word(dbg_eval_bound_from + b * __word_size__)
+		dbg_eval_copy(from, to, load_int(dbg_eval_bound_size + b * 4))
+		b = b + 1
+
 
 # Compile `return <expr>` as an anonymous function; returns its address,
 # or 0 when the expression failed to compile.
-int dbg_eval_compile(char* expr):
+int dbg_eval_compile(char* expr, int stop_addr, int esp):
 	# Stage the line in a file: the tokenizer reads from an fd
 	char* path = c"/tmp/wdbg_eval.w"
 	int out = create_file(path, 511)
@@ -81,6 +164,7 @@ int dbg_eval_compile(char* expr):
 	sym_define_global(current_symbol)
 	current_function_symbol = current_symbol
 	int n = table_pos
+	dbg_eval_bind_locals(stop_addr, esp)
 	number_of_args = 0
 	stack_pos = 0
 	enclosing_tab_level = 0
@@ -98,12 +182,13 @@ int dbg_eval_compile(char* expr):
 	return address
 
 
-# Evaluate the expression and print its value.
-void dbg_eval(char* expr):
-	int f = dbg_eval_compile(expr)
+# Evaluate the expression at the stop and print its value.
+void dbg_eval(char* expr, int stop_addr, int esp):
+	int f = dbg_eval_compile(expr, stop_addr, esp)
 	if (f == 0):
 		return;
 	int v = f()
+	dbg_eval_writeback()
 	print(c"= ")
 	dbg_print_int_value(v)
 	put_char(10)

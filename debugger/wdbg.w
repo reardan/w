@@ -31,6 +31,9 @@ Inspection:
 	x <addr|name> [n] dump n memory words (addresses probed via /dev/null
 	                  writes, so bad pointers cannot crash wdbg)
 	bt / backtrace    heuristic stack unwind through return addresses
+	f / frame [n]     select frame n (bt numbers); up / down move by one.
+	                  print, set, x and info locals/args then address the
+	                  selected frame's variables
 	st / stack        raw words at the trapped esp
 	r / registers     the trapped register file
 	l / line          current location (function, file:line)
@@ -190,7 +193,7 @@ void wdbg_print_stack(int context):
 		free(ha)
 		print(c": ")
 		if (dbg_mem_readable(slot, __word_size__)):
-			char* hv = hex_word(load_word(slot))
+			char* hv = hex_word(load_word(cast(char*, slot)))
 			println(hv)
 			free(hv)
 		else:
@@ -218,35 +221,158 @@ int dbg_looks_like_return(int v):
 	return 0
 
 
-# Heuristic backtrace: frame 0 is the stop location; older frames come
-# from scanning the stack upward for plausible return addresses. The scan
-# ends at the debuggee's entry function, whose caller is wdbg itself.
-void dbg_backtrace(int context, int stop_addr):
-	print(c"#0  ")
-	dbg_announce_location(stop_addr)
-	int main_at = dbg_function_at(sym_address(c"main"))
-	if (dbg_function_at(stop_addr) == main_at):
+# ---------------------------------------------------------------------------
+# Frame list and selection.
+#
+# At every stop the stack is scanned once (heuristically, through
+# plausible return addresses) into a frame list holding each frame's pc
+# and its frame base: the esp at the frame's function entry, which is
+# the address of the stack slot holding its return address. The scan
+# ends at the debuggee's entry function; its own return address points
+# into wdbg itself and is recognized by the same call-site byte check.
+#
+# frame <n> / up / down select a frame; print, set, x and info
+# locals/args then address that frame's variables through its statement
+# stack depth (esp at a statement boundary = base - depth * word), the
+# same arithmetic frame 0 uses with the trapped esp.
+
+int dbg_fr_max():
+	return 16
+
+char* dbg_fr_pc /* absolute pc per frame (word slots) */
+char* dbg_fr_base /* frame base per frame, 0 = unknown (word slots) */
+int dbg_fr_count
+int dbg_fr_sel
+
+
+void dbg_fr_store(int pc, int base):
+	if (dbg_fr_count >= dbg_fr_max()):
 		return;
+	save_word(dbg_fr_pc + dbg_fr_count * __word_size__, pc)
+	save_word(dbg_fr_base + dbg_fr_count * __word_size__, base)
+	dbg_fr_count = dbg_fr_count + 1
+
+
+# 1 when v looks like a return address into wdbg's own image: readable
+# memory just before it that decodes as the compiler's call *reg form.
+int dbg_looks_like_wdbg_return(int v):
+	if (dbg_in_debuggee(v)):
+		return 0
+	if (dbg_mem_readable(v - 2, 2) == 0):
+		return 0
+	return (bp_read_byte(v - 2) == 255) & (bp_read_byte(v - 1) == 208)
+
+
+void dbg_frames_compute(int context, int stop_addr):
+	if (dbg_fr_pc == 0):
+		dbg_fr_pc = malloc(dbg_fr_max() * __word_size__)
+		dbg_fr_base = malloc(dbg_fr_max() * __word_size__)
+	dbg_fr_count = 0
+	dbg_fr_sel = 0
 	int esp = ctx_esp(context)
-	int frame = 1
+	int base0 = 0
+	if (dbg_in_debuggee(stop_addr)):
+		int entry = dbg_find_line(stop_addr - code_offset)
+		if (entry >= 0):
+			if (dbg_line_stack(entry) >= 0):
+				base0 = esp + dbg_line_stack(entry) * __word_size__
+	dbg_fr_store(stop_addr, base0)
+	int main_at = dbg_function_at(sym_address(c"main"))
+	int outermost = (dbg_function_at(stop_addr) == main_at)
 	int i = 0
-	while ((i < 2048) & (frame < 16)):
+	while ((i < 2048) & (dbg_fr_count < dbg_fr_max())):
 		int slot = esp + i * __word_size__
 		if (dbg_mem_readable(slot, __word_size__) == 0):
 			return;
 		int v = load_word(cast(char*, slot))
-		if (dbg_in_debuggee(v)):
+		if (outermost):
+			# Only the entry function's own base is missing: its return
+			# address is the first plausible wdbg call site on the stack
+			if (dbg_looks_like_wdbg_return(v)):
+				save_word(dbg_fr_base + (dbg_fr_count - 1) * __word_size__, slot)
+				return;
+		else if (dbg_in_debuggee(v)):
 			if (dbg_looks_like_return(v)):
-				print(c"#")
-				char* digits = itoa(frame)
-				print(digits)
-				free(digits)
-				print(c"  ")
-				dbg_announce_location(v - 1)
-				frame = frame + 1
+				# v's slot is the previous frame's function entry esp
+				save_word(dbg_fr_base + (dbg_fr_count - 1) * __word_size__, slot)
+				dbg_fr_store(v - 1, 0)
 				if (dbg_function_at(v - 1) == main_at):
-					return;
+					outermost = 1
 		i = i + 1
+
+
+int dbg_fr_pc_at(int n):
+	return load_word(dbg_fr_pc + n * __word_size__)
+
+
+int dbg_fr_base_at(int n):
+	return load_word(dbg_fr_base + n * __word_size__)
+
+
+# The selected frame's pc: the stop address for frame 0, the address
+# inside the calling statement for older frames.
+int dbg_sel_pc(int stop_addr):
+	if ((dbg_fr_sel <= 0) | (dbg_fr_sel >= dbg_fr_count)):
+		return stop_addr
+	return dbg_fr_pc_at(dbg_fr_sel)
+
+
+# esp at the selected frame's statement boundary, or 0 when the frame's
+# base or line info is unknown (locals cannot be addressed then).
+int dbg_sel_esp(int context):
+	if ((dbg_fr_sel <= 0) | (dbg_fr_sel >= dbg_fr_count)):
+		return ctx_esp(context)
+	int base = dbg_fr_base_at(dbg_fr_sel)
+	if (base == 0):
+		return 0
+	int pc = dbg_fr_pc_at(dbg_fr_sel)
+	if (dbg_in_debuggee(pc) == 0):
+		return 0
+	int entry = dbg_find_line(pc - code_offset)
+	if (entry < 0):
+		return 0
+	int depth = dbg_line_stack(entry)
+	if (depth < 0):
+		return 0
+	return base - depth * __word_size__
+
+
+void dbg_frame_announce(int n):
+	print(c"#")
+	char* digits = itoa(n)
+	print(digits)
+	free(digits)
+	print(c"  ")
+	dbg_announce_location(dbg_fr_pc_at(n))
+
+
+void dbg_frame_select(int context, int n):
+	dbg_fr_sel = n
+	dbg_frame_announce(n)
+	dbg_print_source_at(dbg_fr_pc_at(n))
+	if (n > 0):
+		if (dbg_sel_esp(context) == 0):
+			println(c"(frame base unknown: locals are not addressable here)")
+
+
+# frame [n]: select a frame (no argument: show the selected frame).
+void dbg_frame_command(int context, char* arg):
+	int n = dbg_fr_sel
+	if (arg[0] != 0):
+		n = atoi(arg)
+		if ((n < 0) | (n >= dbg_fr_count)):
+			print(c"no frame ")
+			println(arg)
+			return;
+	dbg_frame_select(context, n)
+
+
+# Heuristic backtrace over the stored frame list.
+void dbg_backtrace():
+	int k = 0
+	while (k < dbg_fr_count):
+		dbg_frame_announce(k)
+		k = k + 1
 
 
 void dbg_examine(int addr, int count):
@@ -258,7 +384,7 @@ void dbg_examine(int addr, int count):
 		free(ha)
 		print(c": ")
 		if (dbg_mem_readable(slot, __word_size__)):
-			char* hv = hex_word(load_word(slot))
+			char* hv = hex_word(load_word(cast(char*, slot)))
 			println(hv)
 			free(hv)
 		else:
@@ -268,15 +394,15 @@ void dbg_examine(int addr, int count):
 
 
 # print <arg>: locals and args by name first, then defined globals, then
-# the expression compiler.
-void dbg_print_command(int context, int stop_addr, char* arg):
+# the expression compiler. pc/esp describe the selected frame.
+void dbg_print_command(int pc, int esp, char* arg):
 	if (arg[0] == 0):
 		println(c"usage: print <name | expression>")
 		return;
 	if (dbg_is_identifier(arg)):
-		int note = dbg_local_find(arg, stop_addr)
+		int note = dbg_local_find(arg, pc)
 		if (note >= 0):
-			dbg_print_local(note, ctx_esp(context))
+			dbg_print_local(note, esp)
 			return;
 		int g = dbg_global_find(arg)
 		if (g >= 0):
@@ -286,24 +412,24 @@ void dbg_print_command(int context, int stop_addr, char* arg):
 				dbg_print_typed_value(dbg_sym_address(g), dbg_sym_type(g))
 				put_char(10)
 				return;
-	dbg_eval(arg)
+	dbg_eval(arg, pc, esp)
 
 
 # set <name> <value>: writes a local, argument or global word.
-void dbg_set_command(int context, int stop_addr, char* arg):
+void dbg_set_command(int pc, int esp, char* arg):
 	char* value_text = dbg_split_word(arg)
 	if ((arg[0] == 0) | (value_text[0] == 0)):
 		println(c"usage: set <name> <value>")
 		return;
 	int v = dbg_number(value_text)
-	int note = dbg_local_find(arg, stop_addr)
+	int note = dbg_local_find(arg, pc)
 	if (note >= 0):
-		int addr = dbg_local_runtime_addr(note, ctx_esp(context))
+		int addr = dbg_local_runtime_addr(note, esp)
 		if (dbg_mem_readable(addr, __word_size__) == 0):
 			println(c"variable is not addressable here")
 			return;
 		save_word(cast(char*, addr), v)
-		dbg_print_local(note, ctx_esp(context))
+		dbg_print_local(note, esp)
 		return;
 	int g = dbg_global_find(arg)
 	if (g >= 0):
@@ -319,7 +445,7 @@ void dbg_set_command(int context, int stop_addr, char* arg):
 
 
 # x <addr|name> [count]
-void dbg_examine_command(int context, int stop_addr, char* arg):
+void dbg_examine_command(int pc, int esp, char* arg):
 	char* count_text = dbg_split_word(arg)
 	if (arg[0] == 0):
 		println(c"usage: x <address | name> [count]")
@@ -328,9 +454,9 @@ void dbg_examine_command(int context, int stop_addr, char* arg):
 	if (((arg[0] >= '0') & (arg[0] <= '9')) | (arg[0] == '-')):
 		addr = dbg_number(arg)
 	else:
-		int note = dbg_local_find(arg, stop_addr)
+		int note = dbg_local_find(arg, pc)
 		if (note >= 0):
-			addr = load_word(cast(char*, dbg_local_runtime_addr(note, ctx_esp(context))))
+			addr = load_word(cast(char*, dbg_local_runtime_addr(note, esp)))
 		else:
 			int g = dbg_global_find(arg)
 			if (g < 0):
@@ -366,16 +492,17 @@ void dbg_list_command(int stop_addr, char* arg):
 	dbg_print_source_range(dbg_file_name(dbg_line_file(entry)), center - 5, center + 5, current)
 
 
-void dbg_info_command(int context, int stop_addr, char* arg):
+# pc/esp describe the selected frame (used by info locals/args).
+void dbg_info_command(int context, int pc, int esp, char* arg):
 	char* rest = dbg_split_word(arg)
 	if ((strcmp(arg, c"b") == 0) | (strcmp(arg, c"breakpoints") == 0)):
 		bp_list()
 	else if ((strcmp(arg, c"r") == 0) | (strcmp(arg, c"registers") == 0)):
 		wdbg_print_registers(context)
 	else if ((strcmp(arg, c"l") == 0) | (strcmp(arg, c"locals") == 0)):
-		dbg_print_frame_vars(stop_addr, ctx_esp(context), 'L')
+		dbg_print_frame_vars(pc, esp, 'L')
 	else if ((strcmp(arg, c"a") == 0) | (strcmp(arg, c"args") == 0)):
-		dbg_print_frame_vars(stop_addr, ctx_esp(context), 'A')
+		dbg_print_frame_vars(pc, esp, 'A')
 	else if ((strcmp(arg, c"f") == 0) | (strcmp(arg, c"functions") == 0)):
 		dbg_print_functions()
 	else if (strcmp(arg, c"files") == 0):
@@ -396,6 +523,7 @@ void dbg_help():
 	println(c"inspection:")
 	println(c"  p/print <name | expression>   set <name> <value>")
 	println(c"  x <addr | name> [count]   bt/backtrace   st/stack")
+	println(c"  f/frame [n]   up   down   (select the frame p/set/x/info use)")
 	println(c"  r/registers   l/line   list [line]")
 	println(c"  i locals | args | breakpoints | registers | functions | files")
 	println(c"an empty line repeats the previous command")
@@ -434,6 +562,7 @@ void dbg_prepare_resume(int context, int stop_addr, int mode):
 
 # Interactive command loop. Returning resumes the debuggee.
 void wdbg_command_loop(int context, int stop_addr):
+	dbg_frames_compute(context, stop_addr)
 	char* command = malloc(256)
 	while (1):
 		int n = wdbg_read_command(command, 256)
@@ -474,9 +603,9 @@ void wdbg_command_loop(int context, int stop_addr):
 		else if ((strcmp(command, c"st") == 0) | (strcmp(command, c"stack") == 0)):
 			wdbg_print_stack(context)
 		else if ((strcmp(command, c"l") == 0) | (strcmp(command, c"line") == 0) | (strcmp(command, c"where") == 0)):
-			dbg_announce_location(stop_addr)
+			dbg_announce_location(dbg_sel_pc(stop_addr))
 		else if (strcmp(command, c"list") == 0):
-			dbg_list_command(stop_addr, arg)
+			dbg_list_command(dbg_sel_pc(stop_addr), arg)
 		else if ((strcmp(command, c"b") == 0) | (strcmp(command, c"break") == 0) | (strcmp(command, c"tb") == 0) | (strcmp(command, c"tbreak") == 0)):
 			int temp = 0
 			if ((command[0] == 't') & (command[1] == 'b')):
@@ -501,15 +630,27 @@ void wdbg_command_loop(int context, int stop_addr):
 			else:
 				bp_delete(atoi(arg) - 1)
 		else if ((strcmp(command, c"i") == 0) | (strcmp(command, c"info") == 0)):
-			dbg_info_command(context, stop_addr, arg)
+			dbg_info_command(context, dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
 		else if ((strcmp(command, c"bt") == 0) | (strcmp(command, c"backtrace") == 0)):
-			dbg_backtrace(context, stop_addr)
+			dbg_backtrace()
+		else if ((strcmp(command, c"f") == 0) | (strcmp(command, c"frame") == 0)):
+			dbg_frame_command(context, arg)
+		else if (strcmp(command, c"up") == 0):
+			if (dbg_fr_sel + 1 >= dbg_fr_count):
+				println(c"no caller frame")
+			else:
+				dbg_frame_select(context, dbg_fr_sel + 1)
+		else if (strcmp(command, c"down") == 0):
+			if (dbg_fr_sel <= 0):
+				println(c"already at the innermost frame")
+			else:
+				dbg_frame_select(context, dbg_fr_sel - 1)
 		else if ((strcmp(command, c"p") == 0) | (strcmp(command, c"print") == 0)):
-			dbg_print_command(context, stop_addr, arg)
+			dbg_print_command(dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
 		else if (strcmp(command, c"set") == 0):
-			dbg_set_command(context, stop_addr, arg)
+			dbg_set_command(dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
 		else if (strcmp(command, c"x") == 0):
-			dbg_examine_command(context, stop_addr, arg)
+			dbg_examine_command(dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
 		else if ((strcmp(command, c"h") == 0) | (strcmp(command, c"help") == 0) | (strcmp(command, c"?") == 0)):
 			dbg_help()
 		else:
@@ -537,6 +678,7 @@ void wdbg_command_loop(int context, int stop_addr):
 									same = 1
 							if (same == 0):
 								stop_addr = reip
+								dbg_frames_compute(context, stop_addr)
 								dbg_announce_location(stop_addr)
 								dbg_print_source_at(stop_addr)
 								continue
