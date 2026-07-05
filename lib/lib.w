@@ -314,10 +314,8 @@ int file_size(int file):
 	seek(file, 0, 0) /* seek back to beginning */
 	return result
 
-# A nice function to have would be char* read_until_empty(char* filename)
-# which would read the entire file in one go, failing with exit(1) if open/read fails.
-# This would use blocks of 1MB and realloc to read the file
-# ensuring that it can work with sockets, etc.
+# Whole-file reads that also work on sockets/pipes live in lib/file.w
+# (file_read_text), built on the buffered streams in lib/stream.w.
 
 
 int write_string(int file, string s):
