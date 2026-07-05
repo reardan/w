@@ -505,6 +505,10 @@ repl: w FORCE
 	./bin/wv2 repl.w -o ./bin/repl
 	./bin/repl
 
+repl_x64: w FORCE
+	./bin/wv2 x64 repl.w -o ./bin/repl64
+	./bin/repl64
+
 repl_test: w FORCE
 	./bin/wv2 repl.w -o ./bin/repl
 	printf 'print(c"hello from the repl\\x0a")\n:quit\n' | ./bin/repl | grep -q "hello from the repl"
@@ -536,7 +540,35 @@ repl_test: w FORCE
 	printf 'fixture_helper(21)\nfixture_global\n:quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "42"
 	printf 'fixture_global\n:quit\n' | ./bin/repl tests/repl_fixture.w | grep -q "11"
 	! printf ':quit\n' | ./bin/repl tests/repl_fixture.w --no_main | grep -q "fixture main ran"
+	# Line editing on a pty: backspace fixes a typo before Enter
+	rm -f ./bin/.w_history
+	printf 'int q = 13\177\1774\nq + 1\n:quit\n' | HOME=./bin script -qc './bin/repl' /dev/null | grep -q "5"
+	# Up-arrow recalls the previous entry and re-runs it
+	test $$(printf 'int x = 41\nx + 1\n\033[A\n:quit\n' | HOME=./bin script -qc './bin/repl' /dev/null | grep -c "42") -eq 2
+	# Accepted lines persist to $$HOME/.w_history
+	grep -q "int x = 41" ./bin/.w_history
+	rm -f ./bin/.w_history
 	@echo "repl test OK"
+
+# The x64 REPL: the same in-process model with 8-byte words; the code
+# buffer sits in the low 2GB (MAP_32BIT) because the codegen embeds
+# addresses as 32-bit immediates.
+repl_test_x64: w FORCE
+	./bin/wv2 x64 repl.w -o ./bin/repl64
+	printf 'print(c"hello from the repl\\x0a")\n:quit\n' | ./bin/repl64 | grep -q "hello from the repl"
+	printf 'this is not valid w\nprint(c"recovered\\x0a")\n:quit\n' | ./bin/repl64 | grep -q "recovered"
+	printf 'int add(int a, int b):\n\treturn a + b\n\nadd(40, 2)\n:quit\n' | ./bin/repl64 | grep -q "42"
+	printf 'int x = 5\nx + 1\n:quit\n' | ./bin/repl64 | grep -q "6"
+	printf '"hello string"\n:quit\n' | ./bin/repl64 | grep -q "hello string"
+	printf 'struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n' | ./bin/repl64 | grep -q "7"
+	printf 'import structures.string\nstring_builder* s = string_from(c"imported")\ns.data\n:quit\n' | ./bin/repl64 | grep -q "imported"
+	printf 'import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n' | ./bin/repl64 | grep -q "42"
+	printf 'import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c"a"] = 41\nm[c"a"] + 1\n:quit\n' | ./bin/repl64 | grep -q "42"
+	printf 'int bad():\n\treturn qq\n\nprint(c"recovered fn\\x0a")\n:quit\n' | ./bin/repl64 | grep -q "recovered fn"
+	printf ':quit\n' | ./bin/repl64 tests/repl_fixture.w | grep -q "fixture main ran"
+	printf 'fixture_helper(21)\nfixture_global\n:quit\n' | ./bin/repl64 tests/repl_fixture.w | grep -q "42"
+	! printf ':quit\n' | ./bin/repl64 tests/repl_fixture.w --no_main | grep -q "fixture main ran"
+	@echo "repl x64 test OK"
 
 for_test: w FORCE
 	./bin/wv2 tests/for_test.w >./bin/for_test
