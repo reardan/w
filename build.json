@@ -709,6 +709,47 @@
 			]
 		},
 		{
+			"name": "standard_numeric_math_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/numeric/math_test.w", "-o", "bin/standard_numeric_math_test"]},
+				{"cmd": ["bin/standard_numeric_math_test"]}
+			]
+		},
+		{
+			"name": "standard_numeric_random_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/numeric/random_test.w", "-o", "bin/standard_numeric_random_test"]},
+				{"cmd": ["bin/standard_numeric_random_test"]}
+			]
+		},
+		{
+			"name": "standard_collections_bisect_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/collections/bisect_test.w", "-o", "bin/standard_collections_bisect_test"]},
+				{"cmd": ["bin/standard_collections_bisect_test"]}
+			]
+		},
+		{
+			"name": "standard_collections_heapq_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/collections/heapq_test.w", "-o", "bin/standard_collections_heapq_test"]},
+				{"cmd": ["bin/standard_collections_heapq_test"]}
+			]
+		},
+		{
+			"name": "standard_numeric_data_tests",
+			"deps": [
+				"standard_numeric_math_test",
+				"standard_numeric_random_test",
+				"standard_collections_bisect_test",
+				"standard_collections_heapq_test"
+			]
+		},
+		{
 			"name": "parser_generator_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1560,6 +1601,7 @@
 				"array_list_test",
 				"json_test",
 				"json_codec_test",
+				"standard_numeric_data_tests",
 				"parser_generator_test",
 				"parser_generator_w_test",
 				"parser_generator_c_test",
