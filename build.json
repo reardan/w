@@ -1041,6 +1041,22 @@
 			]
 		},
 		{
+			"name": "standard_formats_csv_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/formats/csv_test.w", "-o", "bin/standard_formats_csv_test"]},
+				{"cmd": ["bin/standard_formats_csv_test"]}
+			]
+		},
+		{
+			"name": "standard_formats_configparser_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/formats/configparser_test.w", "-o", "bin/standard_formats_configparser_test"]},
+				{"cmd": ["bin/standard_formats_configparser_test"]}
+			]
+		},
+		{
 			"name": "net_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1578,6 +1594,8 @@
 				"process_test",
 				"stream_test",
 				"file_test",
+				"standard_formats_csv_test",
+				"standard_formats_configparser_test",
 				"net_test",
 				"poll_test",
 				"framing_test",
