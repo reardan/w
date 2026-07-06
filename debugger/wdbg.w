@@ -1070,10 +1070,13 @@ int wdbg_main(int argc, int argv):
 		define_asm_functions()
 	compile_file(target)
 	# On-demand runtimes for to_json/from_json and f"..." template
-	# strings used by the debuggee
+	# strings used by the debuggee, plus its queued generic
+	# instantiations
+	generic_finish_instantiations()
 	json_codec_finish_import()
 	template_string_finish_import()
 	var_finish_import()
+	generic_finish_instantiations()
 
 	int* target_main = cast(int*, sym_address(c"main"))
 	asserts(c"debuggee has no main()", target_main != 0)

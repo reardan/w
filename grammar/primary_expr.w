@@ -154,6 +154,10 @@ int primary_expr():
 	else if (peek(c"from_json") & (nextc == '(')):
 		type = json_from_json_expr()
 
+	# Generic function instantiation: 'max[int](...)'
+	else if (generic_call_ready()):
+		type = generic_call_expr()
+
 	# Identifier
 	else if ((new_type = identifier()) >= 0) {
 		type = new_type

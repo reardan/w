@@ -1,5 +1,6 @@
 import grammar.hash_builtin
 import grammar.promote
+import grammar.generic
 import grammar.type_name
 import grammar.list_builtin
 import grammar.json_builtin

@@ -12,6 +12,11 @@ int struct_declaration():
 	# parent_expression()
 	if (accept(c"struct")):
 		int start_tab_level = tab_level
+		# 'struct name[T, ...]:' declares a generic struct: record the
+		# span and skip it; instantiations re-parse it (grammar/generic.w)
+		if (nextc == '['):
+			generic_register_struct()
+			return 1
 		if (verbosity >= 1):
 			print_int(c"start_tab_level: ", start_tab_level)
 			print_string(c"struct accepted name: ", token)

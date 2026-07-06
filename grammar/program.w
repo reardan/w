@@ -241,9 +241,19 @@ void program():
 				generator_declaration()
 				continue;
 
+		# Generic function definitions ('T max[T](T a, T b):'): the scan
+		# looks ahead past the return type for 'name[', capturing and
+		# skipping the definition when it matches. When it does not, the
+		# scanned tokens are rebuilt into generic_scanned_type and the
+		# declared name is the current token (see grammar/generic.w).
+		if (generic_declaration_scan()):
+			continue;
+
 		# Now global variables + functions
 		# TODO: variables THEN functions, not both
-		int decl_type = type_name()
+		int decl_type = generic_scanned_type
+		if (decl_type < 0):
+			decl_type = type_name()
 		current_symbol = sym_declare_global(token, decl_type, 1)
 		get_token()
 		if (accept(c";")):

@@ -192,11 +192,18 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			compile_file(*arg)
 		i = i + 1
 
+	# Queued generic instantiations compile at this top-level boundary,
+	# before the runtime imports so instantiated bodies can rely on the
+	# to_json/template-string finishers below; a second drain afterwards
+	# covers instantiations those runtime modules might request.
+	generic_finish_instantiations()
+
 	# On-demand runtimes for the to_json/from_json builtins and f"..."
 	# template strings: imported after all user files so the modules'
 	# code lands at a top-level boundary
 	json_codec_finish_import()
 	template_string_finish_import()
+	generic_finish_instantiations()
 	var_finish_import()
 
 	# --strict: fail before any output is written so no artifact is

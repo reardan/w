@@ -314,7 +314,7 @@ void repl_entry_item(int entry_symbol):
 		return;
 
 	# type-name ...: a function definition or a persistent variable
-	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0)):
+	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here()):
 		int decl_type = type_name()
 		if (token[0] == 0):
 			error(c"identifier expected after type name")
@@ -464,10 +464,13 @@ int repl_compile_entry(char* path):
 	ret()
 	# On-demand runtimes for to_json/from_json and f"..." template
 	# strings: the modules' functions land after the entry's ret, so
-	# they are never in the execution path
+	# they are never in the execution path. Generic instantiations
+	# requested by this entry compile here too.
+	generic_finish_instantiations()
 	json_codec_finish_import()
 	template_string_finish_import()
 	var_finish_import()
+	generic_finish_instantiations()
 	close(file)
 	repl_recovery = 0
 

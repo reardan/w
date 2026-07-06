@@ -394,6 +394,12 @@ postfix-expr:
  */
 int postfix_expr():
 	int type = primary_expr()
+	# A pending generic instantiation from primary_expr: consume the
+	# signature immediately so nested expressions cannot pick it up.
+	int generic_sig = generic_pending_call_signature
+	char* generic_callee = generic_pending_call_name
+	generic_pending_call_signature = 0
+	generic_pending_call_name = 0
 	while (1):
 		if (accept(c"[")):
 			expression_lhs_readonly = 0
@@ -503,19 +509,28 @@ int postfix_expr():
 			int variadic_fixed = -1
 			int w_variadic_fixed = -1
 			if (type == 4):
-				int callee = sym_lookup(last_identifier)
-				if (callee >= 0):
-					declared_return = load_int(table + callee + 6)
-					# asm runtime stubs are declared with the 'function'
-					# pseudo-type: their call results are untyped words
-					if (declared_return == 4):
-						declared_return = -1
-					expected_args = sym_num_args(callee)
-					if (expected_args >= 0):
-						callee_sym = callee
-						callee_name = strclone(last_identifier)
-						variadic_fixed = sym_variadic_fixed_args(callee)
-						w_variadic_fixed = sym_w_variadic_fixed_args(callee)
+				if (generic_sig > 0):
+					# A not-yet-compiled generic instantiation: the parsed
+					# signature drives the argument checks and return type
+					signature_type = generic_sig
+					declared_return = type_function_return(generic_sig)
+					expected_args = type_function_param_count(generic_sig)
+					callee_name = strclone(generic_callee)
+					generic_sig = 0
+				else:
+					int callee = sym_lookup(last_identifier)
+					if (callee >= 0):
+						declared_return = load_int(table + callee + 6)
+						# asm runtime stubs are declared with the 'function'
+						# pseudo-type: their call results are untyped words
+						if (declared_return == 4):
+							declared_return = -1
+						expected_args = sym_num_args(callee)
+						if (expected_args >= 0):
+							callee_sym = callee
+							callee_name = strclone(last_identifier)
+							variadic_fixed = sym_variadic_fixed_args(callee)
+							w_variadic_fixed = sym_w_variadic_fixed_args(callee)
 			else if (type_get_pointer_level(type) > 0):
 				int base_type = type_lookup_previous_pointer(type)
 				if ((base_type >= 0) & (type_is_function_signature(base_type))):
