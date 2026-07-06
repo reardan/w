@@ -26,6 +26,7 @@ int compile_attempt(char* fn):
 	line_number = 0
 	column_number = 0
 	tab_level = 0
+	byte_offset = 0
 	nextc = get_character()
 	get_token()
 	program()
@@ -103,6 +104,7 @@ void compile_save(char* fn):
 	int old_diag_token_line = diag_token_line
 	int old_diag_token_column = diag_token_column
 	int old_tab_level = tab_level
+	int old_byte_offset = byte_offset
 
 	# Import aliases and plain-import records are file-scoped: hide the
 	# importer's entries while the imported file compiles, then drop the
@@ -127,6 +129,7 @@ void compile_save(char* fn):
 	diag_token_line = old_diag_token_line
 	diag_token_column = old_diag_token_column
 	tab_level = old_tab_level
+	byte_offset = old_byte_offset
 	import_alias_base = old_alias_base
 	import_alias_count = old_alias_count
 	import_plain_base = old_plain_base

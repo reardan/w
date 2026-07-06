@@ -438,6 +438,7 @@ int repl_compile_entry(char* path):
 	line_number = 0
 	column_number = 0
 	tab_level = 0
+	byte_offset = 0
 	nextc = get_character()
 	get_token()
 

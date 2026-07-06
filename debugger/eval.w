@@ -152,6 +152,7 @@ int dbg_eval_compile(char* expr, int stop_addr, int esp):
 	line_number = 0
 	column_number = 0
 	tab_level = 0
+	byte_offset = 0
 	nextc = get_character()
 	get_token()
 

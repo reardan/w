@@ -10,6 +10,18 @@ int line_number
 int column_number
 int bounds_mode
 
+# Byte position in the current file: the number of characters read from
+# the file descriptor so far, reset per file like line_number (see
+# compile_attempt / compile_save). Because of the one-character lookahead
+# in nextc, the offset of nextc itself is byte_offset - 1.
+int byte_offset
+
+# Byte offset of the first character of the current token, recorded by
+# get_token() after skipping whitespace and comments. Generic
+# definitions (grammar/generic.w) use it to re-parse a recorded source
+# span later with type parameters bound.
+int token_start_offset
+
 # --strict: count warnings during compilation; link_impl() fails the build
 # when any fired. The count is advisory outside strict mode.
 int strict_mode
@@ -60,7 +72,11 @@ void error(char *s):
 
 
 int getc():
-	return getchar(file)
+	int c = getchar(file)
+	# EOF consumes nothing, so the offset only advances for real bytes
+	if (c != -1):
+		byte_offset = byte_offset + 1
+	return c
 
 
 int get_character():
@@ -193,6 +209,7 @@ void get_token():
 		token_i = 0
 		diag_token_line = line_number + 1
 		diag_token_column = column_number + 1
+		token_start_offset = byte_offset - 1
 		while ((('a' <= nextc) & (nextc <= 'z')) |
 					 (('A' <= nextc) & (nextc <= 'Z')) |
 					 (('0' <= nextc) & (nextc <= '9')) | (nextc == '_')):
