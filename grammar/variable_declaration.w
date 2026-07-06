@@ -1,6 +1,6 @@
 int variable_declaration():
 	# type-name identifier
-	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0)):
+	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here()):
 		# println2("variable_declaration()")
 		int type = typed_identifier()
 		int has_initializer = 0

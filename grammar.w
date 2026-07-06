@@ -1,13 +1,16 @@
 import grammar.hash_builtin
 import grammar.promote
+import grammar.generic
 import grammar.type_name
 import grammar.list_builtin
 import grammar.json_builtin
+import grammar.var_builtin
 import grammar.identifier
 import grammar.int_literal
 import compiler.bignum
 import grammar.float_literal
 import grammar.string_literal
+import grammar.template_string
 import grammar.primary_expr
 import grammar.binary_op
 import grammar.postfix_expr
@@ -35,6 +38,7 @@ import grammar.enum_declaration
 import grammar.import_statement
 import grammar.c_import_statement
 import grammar.extern_statement
+import grammar.generator_decl
 import grammar.program
 
 # no idea why this is necessary:

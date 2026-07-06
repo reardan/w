@@ -139,6 +139,9 @@ int primary_expr():
 	else if (c_char_pointer_literal()):
 		type = type_value(type_lookup_pointer(c"char", 1))
 
+	else if (template_string_literal()):
+		type = string_value_type
+
 	else if (hash_typed_literal()):
 		type = hash_literal_type
 
@@ -150,6 +153,16 @@ int primary_expr():
 
 	else if (peek(c"from_json") & (nextc == '(')):
 		type = json_from_json_expr()
+
+	# Generic function instantiation: 'max[int](...)'
+	else if (generic_call_ready()):
+		type = generic_call_expr()
+
+	# 'name[...' where nothing knows the name: speculatively a call to a
+	# generic defined later in the file (or a later import); resolved -
+	# or reported - at the end-of-compilation drain
+	else if (generic_forward_call_ready()):
+		type = generic_forward_call_expr()
 
 	# Identifier
 	else if ((new_type = identifier()) >= 0) {

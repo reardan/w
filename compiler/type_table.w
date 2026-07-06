@@ -36,6 +36,8 @@ int type_kind_enum
 int type_kind_const
 int string_type
 int string_value_type
+int var_type
+int var_value_type
 
 
 char* type_get_name(int type_index);
@@ -50,6 +52,7 @@ int type_get_element_type(int type_index);
 int type_get_array_length(int type_index);
 int type_num_args(int type_index);
 int type_get_field_type_at(int type_index, int i);
+int type_float_kind(int t);
 
 
 # 16 header + 100 fields * 8 + 56 extended metadata + 12 declaration location
@@ -150,6 +153,10 @@ int type_kind_set():
 
 int type_kind_list():
 	return 12
+
+
+int type_kind_var():
+	return 13
 
 
 char* type_make_array_name(int element_type, int length):
@@ -461,6 +468,10 @@ int type_is_list(int type_index):
 	return type_get_kind(type_index) == type_kind_list()
 
 
+int type_is_var(int type_index):
+	return type_get_kind(type_index) == type_kind_var()
+
+
 int type_is_buffer(int type_index):
 	return type_is_array(type_index) | type_is_slice(type_index) | type_is_string(type_index)
 
@@ -725,6 +736,45 @@ int type_lookup_pointer(char* name, int pointer_level):
 	return -1
 
 
+# 1 when t is exactly void* (one pointer level over void)
+int type_is_void_pointer(int t):
+	t = type_unqualified(t)
+	if (type_get_pointer_level(t) != 1):
+		return 0
+	return strcmp(type_get_name(t), c"void") == 0
+
+
+# 1 when values of type t convert to and from var: string, char*, and
+# the word-or-narrower int-likes (int, fixed-width ints, char, bool,
+# enums). Floats, structs, containers, and other pointers do not box.
+int type_var_boxable(int t):
+	t = type_unqualified(t)
+	if (type_is_string(t)):
+		return 1
+	if (type_is_char_pointer(t)):
+		return 1
+	if (type_float_kind(t)):
+		return 0
+	if (type_get_pointer_level(t) > 0):
+		return 0
+	if (type_num_args(t) > 0):
+		return 0
+	if (type_is_map(t) | type_is_set(t) | type_is_list(t)):
+		return 0
+	if (type_is_array(t) | type_is_slice(t)):
+		return 0
+	int size = type_get_size(t)
+	return (size == 1) | (size == 2) | (size == 4) | (size == 8)
+
+
+# Unboxing additionally allows void*: the raw box pointer escape hatch
+# used by seed-safe runtime helpers such as print_var.
+int type_var_unboxable(int t):
+	if (type_is_void_pointer(t)):
+		return 1
+	return type_var_boxable(t)
+
+
 # Return 1 when a value of type 'got' can be stored where 'want' is expected.
 # "constant" (3) results (integer/char/string literals, addresses from '&',
 # untyped call results) carry no type information yet, so they remain
@@ -744,6 +794,12 @@ int types_compatible(int want, int got):
 		return 0
 	if (want == got):
 		return 1
+	if (type_is_var(want) & type_is_var(got)):
+		return 1
+	if (type_is_var(want)):
+		return type_var_boxable(got)
+	if (type_is_var(got)):
+		return type_var_unboxable(want)
 	if (type_is_string(want) & type_is_string(got)):
 		return 1
 	if (type_is_string(want) & type_is_char_pointer(got)):
@@ -1048,6 +1104,14 @@ void push_basic_types():
 	type_set_kind(string_type, type_kind_string())
 	string_value_type = type_push_size(c"string value", 0)
 	type_set_kind(string_value_type, type_kind_string())
+
+	# Dynamic 'var': one word holding a pointer to a heap-allocated
+	# tagged box (structures/w_dynamic.w). The value pseudo-type follows
+	# the string convention: eax already holds the box pointer.
+	var_type = type_push_size(c"var", word_size)
+	type_set_kind(var_type, type_kind_var())
+	var_value_type = type_push_size(c"var value", 0)
+	type_set_kind(var_value_type, type_kind_var())
 
 	# Common pointer types; type_name() creates any others on demand
 	type_push_pointer(c"int", word_size, 1)

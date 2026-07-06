@@ -26,6 +26,7 @@ int compile_attempt(char* fn):
 	line_number = 0
 	column_number = 0
 	tab_level = 0
+	byte_offset = 0
 	nextc = get_character()
 	get_token()
 	program()
@@ -103,6 +104,7 @@ void compile_save(char* fn):
 	int old_diag_token_line = diag_token_line
 	int old_diag_token_column = diag_token_column
 	int old_tab_level = tab_level
+	int old_byte_offset = byte_offset
 
 	# Import aliases and plain-import records are file-scoped: hide the
 	# importer's entries while the imported file compiles, then drop the
@@ -127,6 +129,7 @@ void compile_save(char* fn):
 	diag_token_line = old_diag_token_line
 	diag_token_column = old_diag_token_column
 	tab_level = old_tab_level
+	byte_offset = old_byte_offset
 	import_alias_base = old_alias_base
 	import_alias_count = old_alias_count
 	import_plain_base = old_plain_base
@@ -189,9 +192,19 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			compile_file(*arg)
 		i = i + 1
 
-	# On-demand runtime for the to_json/from_json builtins: imported after
-	# all user files so the module's code lands at a top-level boundary
+	# Queued generic instantiations compile at this top-level boundary,
+	# before the runtime imports so instantiated bodies can rely on the
+	# to_json/template-string finishers below; a second drain afterwards
+	# covers instantiations those runtime modules might request.
+	generic_finish_instantiations()
+
+	# On-demand runtimes for the to_json/from_json builtins and f"..."
+	# template strings: imported after all user files so the modules'
+	# code lands at a top-level boundary
 	json_codec_finish_import()
+	template_string_finish_import()
+	generic_finish_instantiations()
+	var_finish_import()
 
 	# --strict: fail before any output is written so no artifact is
 	# produced when warnings fired. Warnings were already printed with

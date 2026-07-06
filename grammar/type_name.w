@@ -29,6 +29,29 @@ void map_value_type_check(int value_type):
 			error(c"map value type must be word-sized")
 
 
+# The '[...]' suffix of a type: '[]' wraps the type in a slice, '[n]'
+# in a fixed array. Shared with grammar/generic.w, whose declaration
+# scan re-builds a type after looking ahead past it.
+int type_name_array_suffix(int type):
+	while (accept(c"[")):
+		if (accept(c"]")):
+			int slice_type = type_lookup_slice(type)
+			if (slice_type < 0):
+				slice_type = type_push_slice(type)
+			type = slice_type
+		else:
+			int array_length = atoi(token)
+			if (array_length <= 0):
+				error(c"array length must be positive")
+			get_token()
+			expect(c"]")
+			int array_type = type_lookup_array(type, array_length)
+			if (array_type < 0):
+				array_type = type_push_array(type, array_length)
+			type = array_type
+	return type
+
+
 int type_name():
 	int type = 0
 	int is_const = 0
@@ -57,11 +80,18 @@ int type_name():
 		expect(c"]")
 		list_element_type_check(list_element)
 		type = type_get_list(list_element)
+	# A bound type parameter of the generic instantiation being compiled
+	else if (generic_subst_lookup(token) >= 0):
+		type = generic_subst_lookup(token)
+		get_token()
+	# A generic struct instantiation: 'pair[int]'
+	else if ((nextc == '[') & (generic_def_lookup(token, 1) >= 0)):
+		type = generic_struct_type()
 	else:
 		type = type_lookup(token)
 		if (type < 0):
-			print_error(c"unknown type name: '")
-			print_error(token)
+			diag_part(c"unknown type name: '")
+			diag_part(token)
 			error(c"'")
 		int checked_type = type_unqualified(type)
 		if ((checked_type == float64_type) & (word_size != 8)):
@@ -83,21 +113,6 @@ int type_name():
 			pointer_type = type_push_pointer(base_name, word_size, pointer_indirection)
 		type = pointer_type
 
-	while (accept(c"[")):
-		if (accept(c"]")):
-			int slice_type = type_lookup_slice(type)
-			if (slice_type < 0):
-				slice_type = type_push_slice(type)
-			type = slice_type
-		else:
-			int array_length = atoi(token)
-			if (array_length <= 0):
-				error(c"array length must be positive")
-			get_token()
-			expect(c"]")
-			int array_type = type_lookup_array(type, array_length)
-			if (array_type < 0):
-				array_type = type_push_array(type, array_length)
-			type = array_type
+	type = type_name_array_suffix(type)
 
 	return type

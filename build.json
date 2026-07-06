@@ -401,6 +401,157 @@
 			]
 		},
 		{
+			"name": "default_args_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/default_args_test.w", "-o", "bin/default_args_test"]},
+				{"cmd": ["bin/default_args_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/default_args_nontrailing_error_fixture.w", "-o", "bin/default_args_nontrailing_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "parameter without a default follows a parameter with a default"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/default_args_nonconstant_error_fixture.w", "-o", "bin/default_args_nonconstant_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "default value for parameter must be a compile-time constant"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/default_args_missing_warning_fixture.w", "-o", "bin/default_args_missing_warning_fixture"],
+					"expect_stderr": "warning: function 'da_no_defaults' expects 2 arguments, got 1"
+				}
+			]
+		},
+		{
+			"name": "default_args_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/default_args_test.w", "-o", "bin/default_args_64_test"]},
+				{"cmd": ["bin/default_args_64_test"]}
+			]
+		},
+		{
+			"name": "varargs_w_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/varargs_w_test.w", "-o", "bin/varargs_w_test"]},
+				{"cmd": ["bin/varargs_w_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/varargs_w_not_last_error_fixture.w", "-o", "bin/varargs_w_not_last_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "variadic parameter must be the last parameter"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/varargs_w_default_error_fixture.w", "-o", "bin/varargs_w_default_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "a variadic parameter cannot follow parameters with default values"
+				}
+			]
+		},
+		{
+			"name": "varargs_w_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/varargs_w_test.w", "-o", "bin/varargs_w_64_test"]},
+				{"cmd": ["bin/varargs_w_64_test"]}
+			]
+		},
+		{
+			"name": "feature_interaction_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/feature_interaction_test.w", "-o", "bin/feature_interaction_test"]},
+				{"cmd": ["bin/feature_interaction_test"]}
+			]
+		},
+		{
+			"name": "feature_interaction_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/feature_interaction_test.w", "-o", "bin/feature_interaction_64_test"]},
+				{"cmd": ["bin/feature_interaction_64_test"]}
+			]
+		},
+		{
+			"name": "dynamic_var_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/dynamic_var_test.w", "-o", "bin/dynamic_var_test"]},
+				{"cmd": ["bin/dynamic_var_test"]},
+				{"cmd": ["bin/wv2", "tests/dynamic_var_trap_fixture.w", "-o", "bin/dynamic_var_trap_fixture"]},
+				{
+					"cmd": ["bin/dynamic_var_trap_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "var runtime error: expected int, got char*"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/dynamic_var_float_error_fixture.w", "-o", "bin/dynamic_var_float_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "cannot convert 'float32' to var"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/dynamic_var_mod_error_fixture.w", "-o", "bin/dynamic_var_mod_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "var operands do not support %"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/dynamic_var_variadic_error_fixture.w", "-o", "bin/dynamic_var_variadic_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "variadic parameter element type cannot be var"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/dynamic_var_default_error_fixture.w", "-o", "bin/dynamic_var_default_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "default values are not supported on var parameters"
+				}
+			]
+		},
+		{
+			"name": "dynamic_var_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/dynamic_var_test.w", "-o", "bin/dynamic_var_64_test"]},
+				{"cmd": ["bin/dynamic_var_64_test"]},
+				{"cmd": ["bin/wv2", "x64", "tests/dynamic_var_trap_fixture.w", "-o", "bin/dynamic_var_trap_fixture_64"]},
+				{
+					"cmd": ["bin/dynamic_var_trap_fixture_64"],
+					"expect_fail": true,
+					"expect_stderr": "var runtime error: expected int, got char*"
+				}
+			]
+		},
+		{
+			"name": "generics_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/generics_test.w", "-o", "bin/generics_test"]},
+				{"cmd": ["bin/generics_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/generics_unknown_param_error_fixture.w", "-o", "bin/generics_unknown_param_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "unknown type name: 'U'"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/generics_arg_count_error_fixture.w", "-o", "bin/generics_arg_count_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "wrong number of type arguments for generic 'pick': expected 1, got 2"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/generics_missing_args_error_fixture.w", "-o", "bin/generics_missing_args_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "generic function 'pick' requires explicit type arguments"
+				}
+			]
+		},
+		{
+			"name": "generics_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/generics_test.w", "-o", "bin/generics_64_test"]},
+				{"cmd": ["bin/generics_64_test"]}
+			]
+		},
+		{
 			"name": "int64_x86_error_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -499,6 +650,42 @@
 			]
 		},
 		{
+			"name": "template_string_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/template_string_test.w", "-o", "bin/template_string_test"]},
+				{"cmd": ["bin/template_string_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/template_string_error_fixture.w", "-o", "bin/template_string_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "unsupported template string expression type: 'int*'"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/template_string_unterminated_fixture.w", "-o", "bin/template_string_unterminated_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "unterminated template string literal"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/template_string_unterminated_expr_fixture.w", "-o", "bin/template_string_unterminated_expr_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'}' expected in template string expression"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/template_string_stray_brace_fixture.w", "-o", "bin/template_string_stray_brace_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "single '}' in template string; use '}}'"
+				}
+			]
+		},
+		{
+			"name": "template_string_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/template_string_test.w", "-o", "bin/template_string_64_test"]},
+				{"cmd": ["bin/template_string_64_test"]}
+			]
+		},
+		{
 			"name": "for_container_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -533,6 +720,24 @@
 					"cmd": ["bin/wv2", "tests/for_container_wrong_param_error_fixture.w", "-o", "bin/for_container_wrong_param_error_fixture"],
 					"expect_fail": true,
 					"expect_stderr": "type 'bad_iter_param' is not iterable: bad_iter_param_iter_begin first parameter must match the iterable type"
+				}
+			]
+		},
+		{
+			"name": "generator_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/generator_test.w", "-o", "bin/generator_test"]},
+				{"cmd": ["bin/generator_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/yield_outside_generator_error_fixture.w", "-o", "bin/yield_outside_generator_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'yield' outside of a generator body"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/generator_return_value_error_fixture.w", "-o", "bin/generator_return_value_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "generators cannot return a value; use yield"
 				}
 			]
 		},
@@ -1157,6 +1362,9 @@
 				{"cmd": ["bin/repl"], "stdin": "import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl"], "stdin": "import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c\"a\"] = 41\nm[c\"a\"] + 1\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl"], "stdin": "import structures.string\nstring_builder* s = string_from(c\"imported\")\ns.data\n:quit\n", "expect_stdout": "imported"},
+				{"cmd": ["bin/repl"], "stdin": "T twice[T](T a):\n\treturn a + a\n\ntwice[int](21)\n:quit\n", "expect_stdout": "42"},
+				{"cmd": ["bin/repl"], "stdin": "struct pt[T]:\n\tT x\n\npt[int] g\ng.x = 7\ng.x\n:quit\n", "expect_stdout": "7"},
+				{"cmd": ["bin/repl"], "stdin": "import tests.generics_helper\nbox[int] b\nb.value = 21\nunbox[int](&b) + helper_boxed_sum(11, 10)\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl"], "stdin": "int bad():\n\treturn qq\n\nprint(c\"recovered fn\\x0a\")\n:quit\n", "expect_stdout": "recovered fn"},
 				{"cmd": ["bin/repl"], "stdin": "import no.such.module\nprint(c\"recovered import\\x0a\")\n:quit\n", "expect_stdout": "recovered import"},
 				{"cmd": ["bin/repl", "tests/repl_fixture.w"], "stdin": ":quit\n", "expect_stdout": "fixture main ran"},
@@ -1376,6 +1584,14 @@
 			]
 		},
 		{
+			"name": "generator_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/generator_test.w", "-o", "bin/generator_64_test"]},
+				{"cmd": ["bin/generator_64_test"]}
+			]
+		},
+		{
 			"name": "json_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1491,6 +1707,8 @@
 				"float_abi_test_x64",
 				"varargs_test_x64",
 				"extern_data_test_x64",
+				"default_args_64_test",
+				"varargs_w_64_test",
 				"list_64_test",
 				"array_list_64_test",
 				"linked_list_64_test",
@@ -1500,6 +1718,11 @@
 				"map_set_builtin_64_test",
 				"list_builtin_64_test",
 				"for_container_64_test",
+				"template_string_64_test",
+				"generator_64_test",
+				"feature_interaction_64_test",
+				"dynamic_var_64_test",
+				"generics_64_test",
 				"json_64_test",
 				"json_codec_64_test",
 				"json_rpc_64_test",
@@ -1544,6 +1767,13 @@
 				"type_system_warning_test",
 				"for_test",
 				"for_container_test",
+				"default_args_test",
+				"varargs_w_test",
+				"template_string_test",
+				"generator_test",
+				"feature_interaction_test",
+				"dynamic_var_test",
+				"generics_test",
 				"import_test",
 				"c_import_test",
 				"c_preprocessor_test",

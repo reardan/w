@@ -313,8 +313,17 @@ void repl_entry_item(int entry_symbol):
 		number_of_args = 0
 		return;
 
+	# Generic function definitions ('T twice[T](T a):'): captured into
+	# the generics registry (no code emitted) and skipped. Each entry is
+	# staged in its own file, so the recorded span stays re-parseable
+	# from later entries.
+	if (generic_declaration_scan_repl()):
+		current_function_symbol = entry_symbol
+		number_of_args = 0
+		return;
+
 	# type-name ...: a function definition or a persistent variable
-	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0)):
+	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here()):
 		int decl_type = type_name()
 		if (token[0] == 0):
 			error(c"identifier expected after type name")
@@ -350,6 +359,9 @@ void repl_entry_item(int entry_symbol):
 			stack_pos = stack_pos + 1
 			int value_type = expression()
 			value_type = promote(value_type)
+			# Conversions the compiler's variable_declaration also
+			# performs (var boxing, cstr-to-string, float widths)
+			coerce(decl_type, value_type)
 			pop_ebx()
 			if (types_compatible_with_expression(decl_type, value_type) == 0):
 				warn_type_mismatch(c"initialization", decl_type, value_type)
@@ -438,6 +450,7 @@ int repl_compile_entry(char* path):
 	line_number = 0
 	column_number = 0
 	tab_level = 0
+	byte_offset = 0
 	nextc = get_character()
 	get_token()
 
@@ -458,9 +471,15 @@ int repl_compile_entry(char* path):
 	be_pop(stack_pos)
 	stack_pos = 0
 	ret()
-	# On-demand runtime for to_json/from_json: the module's functions land
-	# after the entry's ret, so they are never in the execution path
+	# On-demand runtimes for to_json/from_json and f"..." template
+	# strings: the modules' functions land after the entry's ret, so
+	# they are never in the execution path. Generic instantiations
+	# requested by this entry compile here too.
+	generic_finish_instantiations()
 	json_codec_finish_import()
+	template_string_finish_import()
+	var_finish_import()
+	generic_finish_instantiations()
 	close(file)
 	repl_recovery = 0
 
@@ -581,7 +600,11 @@ int main(int argc, int argv):
 		line_edit_history_load(c"~/.w_history")
 	repl_line = string_new()
 	repl_entry = string_new()
-	char* entry_path = c"/tmp/w_repl_entry.w"
+	# Each entry gets its own staging file: generic definitions record
+	# (file, offset) spans that later entries re-parse on instantiation,
+	# so an entry's text must survive subsequent entries.
+	int entry_file_counter = 0
+	char* entry_path = 0
 	while (1):
 		if (repl_read_entry() == 0):
 			println(c"")
@@ -599,6 +622,14 @@ int main(int argc, int argv):
 			continue
 
 		# The tokenizer reads from a file, so stage the entry in /tmp
+		if (entry_path != 0):
+			free(entry_path)
+		char* entry_digits = itoa(entry_file_counter)
+		char* entry_prefix = strjoin(c"/tmp/w_repl_entry_", entry_digits)
+		entry_path = strjoin(entry_prefix, c".w")
+		free(entry_prefix)
+		free(entry_digits)
+		entry_file_counter = entry_file_counter + 1
 		int out = create_file(entry_path, 511)
 		asserts(c"could not create entry buffer", out >= 0)
 		write(out, repl_entry.data, repl_entry.length)

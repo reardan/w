@@ -215,10 +215,79 @@ int pg_lexer_matcher_c_number(char* input, int index):
 	return index - start
 
 
+# Skip a quoted run (string or char literal) inside an f-string
+# expression: index points at the opening delimiter; returns the index
+# right after the closing delimiter (or the end of input).
+int pg_lexer_skip_quoted(char* input, int index, int delimiter):
+	index = index + 1
+	while ((input[index] != 0) & (input[index] != delimiter)):
+		if (input[index] == 92):
+			index = index + 1
+			if (input[index] == 0):
+				return index
+		index = index + 1
+	if (input[index] == delimiter):
+		index = index + 1
+	return index
+
+
+# f"..." template string: the whole literal is one string-like token,
+# including embedded {expression} parts up to the matching close quote.
+# Doubled braces are literal text; inside expressions braces nest and
+# quoted runs (plain/s"/c" strings, brace-free f" strings and char
+# literals) are skipped so their quotes and braces stay inert. Nested
+# f-strings that themselves embed braces are not supported here.
+# Losslessness matters more than validation: an unterminated literal
+# consumes the rest of the input.
+int pg_lexer_match_template_string(char* input, int index):
+	int start = index
+	index = index + 2
+	int depth = 0
+	while (input[index] != 0):
+		int c = input[index]
+		if (c == 92):
+			index = index + 1
+			if (input[index] != 0):
+				index = index + 1
+		else if (depth == 0):
+			if (c == '"'):
+				return index + 1 - start
+			if (c == '{'):
+				if (input[index + 1] == '{'):
+					index = index + 2
+				else:
+					depth = 1
+					index = index + 1
+			else if (c == '}'):
+				# '}}' escape, or a stray '}' the compiler will reject
+				if (input[index + 1] == '}'):
+					index = index + 2
+				else:
+					index = index + 1
+			else:
+				index = index + 1
+		else:
+			if (c == '{'):
+				depth = depth + 1
+				index = index + 1
+			else if (c == '}'):
+				depth = depth - 1
+				index = index + 1
+			else if (c == '"'):
+				index = pg_lexer_skip_quoted(input, index, '"')
+			else if (c == 39):
+				index = pg_lexer_skip_quoted(input, index, 39)
+			else:
+				index = index + 1
+	return index - start
+
+
 int pg_lexer_matcher_string(char* input, int index):
 	int prefix = 0
 	if (((input[index] == 's') | (input[index] == 'c')) & (input[index + 1] == '"')):
 		prefix = 1
+	else if ((input[index] == 'f') & (input[index + 1] == '"')):
+		return pg_lexer_match_template_string(input, index)
 	else if (input[index] != '"'):
 		return 0
 	int start = index

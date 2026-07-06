@@ -193,7 +193,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test for_container_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test format_64_test args_64_test repl_test_x64 debug_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test for_container_64_test template_string_64_test generator_64_test feature_interaction_64_test dynamic_var_64_test generics_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test format_64_test args_64_test repl_test_x64 debug_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -617,6 +617,10 @@ repl_test: w FORCE
 	printf 'import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n' | ./bin/repl | grep -q "42"
 	printf 'import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c"a"] = 41\nm[c"a"] + 1\n:quit\n' | ./bin/repl | grep -q "42"
 	printf 'import structures.string\nstring_builder* s = string_from(c"imported")\ns.data\n:quit\n' | ./bin/repl | grep -q "imported"
+	# Generic definitions persist across entries and instantiate on use
+	printf 'T twice[T](T a):\n\treturn a + a\n\ntwice[int](21)\n:quit\n' | ./bin/repl | grep -q "42"
+	printf 'struct pt[T]:\n\tT x\n\npt[int] g\ng.x = 7\ng.x\n:quit\n' | ./bin/repl | grep -q "7"
+	printf 'import tests.generics_helper\nbox[int] b\nb.value = 21\nunbox[int](&b) + helper_boxed_sum(11, 10)\n:quit\n' | ./bin/repl | grep -q "42"
 	# Errors inside multi-line entries and failed imports both recover
 	printf 'int bad():\n\treturn qq\n\nprint(c"recovered fn\\x0a")\n:quit\n' | ./bin/repl | grep -q "recovered fn"
 	printf 'import no.such.module\nprint(c"recovered import\\x0a")\n:quit\n' | ./bin/repl 2>/dev/null | grep -q "recovered import"
@@ -689,6 +693,116 @@ for_container_test: w FORCE
 	! ./bin/wv2 tests/for_container_wrong_param_error_fixture.w -o ./bin/for_container_wrong_param_error_fixture 2>./bin/for_container_wrong_param_error_fixture.stderr
 	grep -qF "type 'bad_iter_param' is not iterable: bad_iter_param_iter_begin first parameter must match the iterable type" ./bin/for_container_wrong_param_error_fixture.stderr
 	@echo "for container test OK"
+
+# Generators + yield (docs/projects/iteration.md, stackful coroutines)
+generator_64_test: w FORCE
+	./bin/wv2 x64 tests/generator_test.w -o ./bin/generator_64_test
+	./bin/generator_64_test
+
+# The compile-error fixtures are arch-independent, so only the x86 target
+# runs them.
+generator_test: w FORCE
+	./bin/wv2 tests/generator_test.w -o ./bin/generator_test
+	./bin/generator_test
+	! ./bin/wv2 tests/yield_outside_generator_error_fixture.w -o ./bin/yield_outside_generator_error_fixture 2>./bin/yield_outside_generator_error_fixture.stderr
+	grep -qF "'yield' outside of a generator body" ./bin/yield_outside_generator_error_fixture.stderr
+	! ./bin/wv2 tests/generator_return_value_error_fixture.w -o ./bin/generator_return_value_error_fixture 2>./bin/generator_return_value_error_fixture.stderr
+	grep -qF "generators cannot return a value; use yield" ./bin/generator_return_value_error_fixture.stderr
+	@echo "generator test OK"
+
+# Default parameter values ("int times = 1"): runtime behavior plus the
+# compile-error fixtures (arch-independent, so only the x86 target runs
+# them) and the unchanged too-few-arguments warning.
+default_args_test: w FORCE
+	./bin/wv2 tests/default_args_test.w -o ./bin/default_args_test
+	./bin/default_args_test
+	! ./bin/wv2 tests/default_args_nontrailing_error_fixture.w -o ./bin/default_args_nontrailing_error_fixture 2>./bin/default_args_nontrailing_error_fixture.stderr
+	grep -qF "parameter without a default follows a parameter with a default" ./bin/default_args_nontrailing_error_fixture.stderr
+	! ./bin/wv2 tests/default_args_nonconstant_error_fixture.w -o ./bin/default_args_nonconstant_error_fixture 2>./bin/default_args_nonconstant_error_fixture.stderr
+	grep -qF "default value for parameter must be a compile-time constant" ./bin/default_args_nonconstant_error_fixture.stderr
+	./bin/wv2 tests/default_args_missing_warning_fixture.w -o ./bin/default_args_missing_warning_fixture 2>./bin/default_args_missing_warning_fixture.stderr
+	grep -qF "warning: function 'da_no_defaults' expects 2 arguments, got 1" ./bin/default_args_missing_warning_fixture.stderr
+	@echo "default args test OK"
+
+default_args_64_test: w FORCE
+	./bin/wv2 x64 tests/default_args_test.w -o ./bin/default_args_64_test
+	./bin/default_args_64_test
+	@echo "default args test x64 OK"
+
+# W-native variadic functions ("int... values" collected into a slice);
+# distinct from varargs_test, which covers variadic C imports.
+varargs_w_test: w FORCE
+	./bin/wv2 tests/varargs_w_test.w -o ./bin/varargs_w_test
+	./bin/varargs_w_test
+	! ./bin/wv2 tests/varargs_w_not_last_error_fixture.w -o ./bin/varargs_w_not_last_error_fixture 2>./bin/varargs_w_not_last_error_fixture.stderr
+	grep -qF "variadic parameter must be the last parameter" ./bin/varargs_w_not_last_error_fixture.stderr
+	! ./bin/wv2 tests/varargs_w_default_error_fixture.w -o ./bin/varargs_w_default_error_fixture 2>./bin/varargs_w_default_error_fixture.stderr
+	grep -qF "a variadic parameter cannot follow parameters with default values" ./bin/varargs_w_default_error_fixture.stderr
+	@echo "varargs w test OK"
+
+varargs_w_64_test: w FORCE
+	./bin/wv2 x64 tests/varargs_w_test.w -o ./bin/varargs_w_64_test
+	./bin/varargs_w_64_test
+	@echo "varargs w test x64 OK"
+
+# Cross-feature interaction: template strings + default parameter
+# values + W variadics + generators combined in one program.
+feature_interaction_test: w FORCE
+	./bin/wv2 tests/feature_interaction_test.w -o ./bin/feature_interaction_test
+	./bin/feature_interaction_test
+	@echo "feature interaction test OK"
+
+feature_interaction_64_test: w FORCE
+	./bin/wv2 x64 tests/feature_interaction_test.w -o ./bin/feature_interaction_64_test
+	./bin/feature_interaction_64_test
+	@echo "feature interaction test x64 OK"
+
+# Dynamic 'var' type: runtime behavior, the wrong-tag unbox trap, and
+# the compile-error fixtures (the fixtures are arch-independent, so
+# only the x86 target runs them; see dynamic_var_64_test for the x64
+# run). Unrelated to dynamic_test, which checks ELF dynamic linking.
+dynamic_var_test: w FORCE
+	./bin/wv2 tests/dynamic_var_test.w -o ./bin/dynamic_var_test
+	./bin/dynamic_var_test
+	./bin/wv2 tests/dynamic_var_trap_fixture.w -o ./bin/dynamic_var_trap_fixture
+	! ./bin/dynamic_var_trap_fixture 2>./bin/dynamic_var_trap_fixture.stderr
+	grep -qF "var runtime error: expected int, got char*" ./bin/dynamic_var_trap_fixture.stderr
+	! ./bin/wv2 tests/dynamic_var_float_error_fixture.w -o ./bin/dynamic_var_float_error_fixture 2>./bin/dynamic_var_float_error_fixture.stderr
+	grep -qF "cannot convert 'float32' to var" ./bin/dynamic_var_float_error_fixture.stderr
+	! ./bin/wv2 tests/dynamic_var_mod_error_fixture.w -o ./bin/dynamic_var_mod_error_fixture 2>./bin/dynamic_var_mod_error_fixture.stderr
+	grep -qF "var operands do not support %" ./bin/dynamic_var_mod_error_fixture.stderr
+	! ./bin/wv2 tests/dynamic_var_variadic_error_fixture.w -o ./bin/dynamic_var_variadic_error_fixture 2>./bin/dynamic_var_variadic_error_fixture.stderr
+	grep -qF "variadic parameter element type cannot be var" ./bin/dynamic_var_variadic_error_fixture.stderr
+	! ./bin/wv2 tests/dynamic_var_default_error_fixture.w -o ./bin/dynamic_var_default_error_fixture 2>./bin/dynamic_var_default_error_fixture.stderr
+	grep -qF "default values are not supported on var parameters" ./bin/dynamic_var_default_error_fixture.stderr
+	@echo "dynamic var test OK"
+
+dynamic_var_64_test: w FORCE
+	./bin/wv2 x64 tests/dynamic_var_test.w -o ./bin/dynamic_var_64_test
+	./bin/dynamic_var_64_test
+	./bin/wv2 x64 tests/dynamic_var_trap_fixture.w -o ./bin/dynamic_var_trap_fixture_64
+	! ./bin/dynamic_var_trap_fixture_64 2>./bin/dynamic_var_trap_fixture_64.stderr
+	grep -qF "var runtime error: expected int, got char*" ./bin/dynamic_var_trap_fixture_64.stderr
+	@echo "dynamic var test x64 OK"
+
+# Generics with explicit instantiation (docs/projects/generics.md):
+# runtime behavior plus the compile-error fixtures (arch-independent,
+# so only the x86 target runs them).
+generics_test: w FORCE
+	./bin/wv2 tests/generics_test.w -o ./bin/generics_test
+	./bin/generics_test
+	! ./bin/wv2 tests/generics_unknown_param_error_fixture.w -o ./bin/generics_unknown_param_error_fixture 2>./bin/generics_unknown_param_error_fixture.stderr
+	grep -qF "unknown type name: 'U'" ./bin/generics_unknown_param_error_fixture.stderr
+	! ./bin/wv2 tests/generics_arg_count_error_fixture.w -o ./bin/generics_arg_count_error_fixture 2>./bin/generics_arg_count_error_fixture.stderr
+	grep -qF "wrong number of type arguments for generic 'pick': expected 1, got 2" ./bin/generics_arg_count_error_fixture.stderr
+	! ./bin/wv2 tests/generics_missing_args_error_fixture.w -o ./bin/generics_missing_args_error_fixture 2>./bin/generics_missing_args_error_fixture.stderr
+	grep -qF "generic function 'pick' requires explicit type arguments" ./bin/generics_missing_args_error_fixture.stderr
+	@echo "generics test OK"
+
+generics_64_test: w FORCE
+	./bin/wv2 x64 tests/generics_test.w -o ./bin/generics_64_test
+	./bin/generics_64_test
+	@echo "generics test x64 OK"
 
 range: w FORCE
 	./bin/wv2 range_test.w >./bin/range_test
@@ -763,6 +877,26 @@ list_builtin_test: w FORCE
 	! ./bin/list_pop_empty_fixture
 	./bin/wv2 tests/list_index_bounds_fixture.w -o ./bin/list_index_bounds_fixture
 	! ./bin/list_index_bounds_fixture
+
+# f"..." template strings: runtime behavior plus the compile-error
+# fixtures (the fixtures are arch-independent, so only the x86 target
+# runs them; see template_string_64_test for the x64 run).
+template_string_test: w FORCE
+	./bin/wv2 tests/template_string_test.w -o ./bin/template_string_test
+	./bin/template_string_test
+	! ./bin/wv2 tests/template_string_error_fixture.w -o ./bin/template_string_error_fixture 2>./bin/template_string_error_fixture.stderr
+	grep -qF "unsupported template string expression type: 'int*'" ./bin/template_string_error_fixture.stderr
+	! ./bin/wv2 tests/template_string_unterminated_fixture.w -o ./bin/template_string_unterminated_fixture 2>./bin/template_string_unterminated_fixture.stderr
+	grep -qF "unterminated template string literal" ./bin/template_string_unterminated_fixture.stderr
+	! ./bin/wv2 tests/template_string_unterminated_expr_fixture.w -o ./bin/template_string_unterminated_expr_fixture 2>./bin/template_string_unterminated_expr_fixture.stderr
+	grep -qF "'}' expected in template string expression" ./bin/template_string_unterminated_expr_fixture.stderr
+	! ./bin/wv2 tests/template_string_stray_brace_fixture.w -o ./bin/template_string_stray_brace_fixture 2>./bin/template_string_stray_brace_fixture.stderr
+	grep -qF "single '}' in template string; use '}}'" ./bin/template_string_stray_brace_fixture.stderr
+	@echo "template string test OK"
+
+template_string_64_test: w FORCE
+	./bin/wv2 x64 tests/template_string_test.w -o ./bin/template_string_64_test
+	./bin/template_string_64_test
 
 string_test: w FORCE
 	./bin/wv2 structures/string_test.w -o ./bin/string_test
@@ -1161,7 +1295,7 @@ debug_test_x64: wdbg_x64 FORCE
 	printf 'c\n' | ./bin/wdbg64 tests/segv_fixture.w > /dev/null 2>&1; test $$? -eq 1
 	@echo "debug x64 test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test template_string_test generator_test default_args_test varargs_w_test feature_interaction_test dynamic_var_test generics_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test test hello tests_x64 FORCE
 
 
 clean:

@@ -34,12 +34,26 @@ void wtest_init_targets():
 	wtest_targets.push(c"hash_table_64_test")
 	wtest_targets.push(c"string_test")
 	wtest_targets.push(c"string_64_test")
+	wtest_targets.push(c"template_string_test")
+	wtest_targets.push(c"template_string_64_test")
+	wtest_targets.push(c"default_args_test")
+	wtest_targets.push(c"default_args_64_test")
+	wtest_targets.push(c"varargs_w_test")
+	wtest_targets.push(c"varargs_w_64_test")
+	wtest_targets.push(c"feature_interaction_test")
+	wtest_targets.push(c"feature_interaction_64_test")
+	wtest_targets.push(c"dynamic_var_test")
+	wtest_targets.push(c"dynamic_var_64_test")
+	wtest_targets.push(c"generics_test")
+	wtest_targets.push(c"generics_64_test")
 	wtest_targets.push(c"array_list_test")
 	wtest_targets.push(c"array_list_64_test")
 	wtest_targets.push(c"json_test")
 	wtest_targets.push(c"json_64_test")
 	wtest_targets.push(c"json_codec_test")
 	wtest_targets.push(c"json_codec_64_test")
+	wtest_targets.push(c"generator_test")
+	wtest_targets.push(c"generator_64_test")
 	wtest_targets.push(c"parser_generator_test")
 	wtest_targets.push(c"parser_generator_w_test")
 	wtest_targets.push(c"parser_generator_c_test")
@@ -176,6 +190,9 @@ void wtest_map_lib(char* path):
 		# their consumers: the repl prompt and the wdbg command loop.
 		wtest_add(path, c"repl_test")
 		wtest_add(path, c"debug_test")
+	else if (strcmp(path, c"lib/generator.w") == 0):
+		wtest_add(path, c"generator_test")
+		wtest_add(path, c"generator_64_test")
 	else if (strcmp(path, c"lib/wmeta.w") == 0):
 		wtest_add(path, c"metadata_check")
 		wtest_add(path, c"metadata_test")
@@ -214,6 +231,11 @@ void wtest_map_structures(char* path):
 	else if (strcmp(path, c"structures/string.w") == 0):
 		wtest_add(path, c"string_test")
 		wtest_add(path, c"string_64_test")
+		wtest_add(path, c"template_string_test")
+		wtest_add(path, c"template_string_64_test")
+	else if (strcmp(path, c"structures/w_dynamic.w") == 0):
+		wtest_add(path, c"dynamic_var_test")
+		wtest_add(path, c"dynamic_var_64_test")
 	else:
 		wtest_add(path, c"tests")
 
@@ -246,10 +268,31 @@ void wtest_map_path(char* path):
 	else if (strcmp(path, c"tests/json_codec_test.w") == 0):
 		wtest_add(path, c"json_codec_test")
 		wtest_add(path, c"json_codec_64_test")
+	else if (starts_with(path, c"tests/template_string")):
+		wtest_add(path, c"template_string_test")
+		wtest_add(path, c"template_string_64_test")
+	else if (strcmp(path, c"tests/feature_interaction_test.w") == 0):
+		wtest_add(path, c"feature_interaction_test")
+		wtest_add(path, c"feature_interaction_64_test")
+	else if (starts_with(path, c"tests/dynamic_var")):
+		wtest_add(path, c"dynamic_var_test")
+		wtest_add(path, c"dynamic_var_64_test")
+	else if (starts_with(path, c"tests/generics")):
+		wtest_add(path, c"generics_test")
+		wtest_add(path, c"generics_64_test")
+	else if (starts_with(path, c"tests/default_args")):
+		wtest_add(path, c"default_args_test")
+		wtest_add(path, c"default_args_64_test")
+	else if (starts_with(path, c"tests/varargs_w")):
+		wtest_add(path, c"varargs_w_test")
+		wtest_add(path, c"varargs_w_64_test")
 	else if (starts_with(path, c"tests/type_system_error")):
 		wtest_add(path, c"type_system_error_test")
 	else if (starts_with(path, c"tests/type_system_warning")):
 		wtest_add(path, c"type_system_warning_test")
+	else if ((strcmp(path, c"tests/generator_test.w") == 0) | (strcmp(path, c"tests/yield_outside_generator_error_fixture.w") == 0) | (strcmp(path, c"tests/generator_return_value_error_fixture.w") == 0)):
+		wtest_add(path, c"generator_test")
+		wtest_add(path, c"generator_64_test")
 	else if (starts_with(path, c"tests/parser_generator/")):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):

@@ -228,13 +228,17 @@ current state:
 			settle import grammar vs grammar.* behavior
 			split Makefile into smaller files when the project structure settles
 
+	language features (landed):
+		generators + yield (docs/projects/iteration.md, stackful coroutines, x86 + x64)
+		template strings: f"..." with embedded expressions (docs/projects/template_strings.md)
+		variable arguments: T... slices (docs/projects/default_args_variadics.md)
+		default parameter values (docs/projects/default_args_variadics.md)
+		dynamic typing / var (docs/projects/dynamic_var.md)
+		generics/templates with explicit instantiation (docs/projects/generics.md)
+
 	future language features:
-		generators + yield (design: docs/projects/iteration.md, stackful coroutines)
-		template strings
-		variable arguments
-		default values
+		generic type-argument inference at call sites (explicit [T] works)
 		inline asm functions
-		dynamic typing / var
 		float16 / bfloat16 (design: docs/projects/float.md)
 		type <=> json: floats and map[string, V] fields (base feature works)
 		type <=> protobuf

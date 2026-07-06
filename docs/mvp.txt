@@ -38,9 +38,12 @@ Compiler
 		AI tooling MVP: w check --json, changed-file target mapper and w-toolchain MCP
 		LSP MVP: wlsp with check-driven diagnostics and symbols-driven go-to-definition
 
+		True generics/templates with explicit instantiation (monomorphizing re-parse)
+		Generators / yield (stackful coroutines)
+		Template strings, default parameter values, W variadics, dynamic var
+
 	Remaining
-		True generics/templates (built-in typed containers landed instead)
-		Generators / yield
+		Generic type-argument inference (explicit [T] instantiation landed)
 		Richer map/list ergonomics (delete/get/defaults, list insert/remove)
 		Float16 / bfloat16
 		C import old-style declarations and bit-field layout fidelity

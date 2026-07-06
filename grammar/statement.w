@@ -20,6 +20,12 @@
 # statements check their expression against its declared return type.
 int current_function_symbol
 
+# 1 while compiling a generator body (grammar/generator_decl.w): yield
+# is only legal then, and return must not carry a value.
+int in_generator_body
+void emit_generator_yield_call(); /* defined in generator_decl */
+void emit_generator_finish_call(); /* defined in generator_decl */
+
 
 void copy_struct_return_value(int declared_type):
 	int words = (type_get_size(declared_type) + word_size - 1) >> word_size_log2
@@ -137,6 +143,8 @@ void statement():
 	else if (accept(c"return")):
 		# A newline (or end of file) after 'return' means no return value.
 		if ((peek(c";") == 0) & (token_newline == 0) & (token[0] != 0)):
+			if (in_generator_body):
+				error(c"generators cannot return a value; use yield")
 			int return_type = expression()
 			return_type = promote(return_type)
 			int declared_type = load_int(table + current_function_symbol + 6)
@@ -149,8 +157,27 @@ void statement():
 				if (types_compatible_with_expression(declared_type, return_type) == 0):
 					warn_type_mismatch(c"return", declared_type, return_type)
 		expect_or_newline(c";")
-		be_pop(stack_pos)
-		ret()
+		if (in_generator_body):
+			# Finish the generator: __w_gen_return switches back to the
+			# consumer permanently, so no ret / stack unwinding is needed
+			emit_generator_finish_call()
+		else:
+			be_pop(stack_pos)
+			ret()
+
+	# yield expression: store the value into the generator object and
+	# switch back to the consumer until the next gen_next
+	else if (accept(c"yield")):
+		if (in_generator_body == 0):
+			error(c"'yield' outside of a generator body")
+		int yield_type = expression()
+		yield_type = promote(yield_type)
+		int declared_yield_type = load_int(table + current_function_symbol + 6)
+		coerce(declared_yield_type, yield_type)
+		if (types_compatible_with_expression(declared_yield_type, yield_type) == 0):
+			warn_type_mismatch(c"yield", declared_yield_type, yield_type)
+		expect_or_newline(c";")
+		emit_generator_yield_call()
 
 	else if (accept(c"debugger")):
 		int3()
