@@ -334,6 +334,88 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 	stack_pos = stack_pos - 2
 
 
+# Iterate a slice (T[] descriptor): hidden slots hold the descriptor
+# pointer and the running element index; each pass loads the element at
+# data + index * element_size into the loop variable. Fixed arrays reach
+# this path too, because promote() decays them to slice values.
+void for_slice_loop(int for_var, int for_tab_level, int loop_var_type, int container_type):
+	int element_type = type_unqualified(type_get_element_type(container_type))
+	if (type_num_args(element_type) > 0):
+		error(c"slice iteration requires scalar or pointer elements")
+	int element_size = type_get_size(element_type)
+	if (types_compatible_with_expression(loop_var_type, element_type) == 0):
+		warn_type_mismatch(c"for loop variable", loop_var_type, element_type)
+
+	# hidden slot: the slice descriptor pointer
+	push_eax()
+	stack_pos = stack_pos + 1
+	int container_slot = stack_pos
+
+	# hidden slot: the element index
+	mov_eax_int(0)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int index_slot = stack_pos
+
+	int outer_break = loop_break_chain
+	int outer_continue = loop_continue_chain
+	int outer_stack = loop_stack_pos
+	loop_break_chain = 0
+	loop_continue_chain = 0
+	loop_stack_pos = stack_pos
+	loop_depth = loop_depth + 1
+
+	# condition: index < descriptor.length
+	int p1 = codepos
+	mov_eax_esp_plus((stack_pos - index_slot) << word_size_log2)
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus((stack_pos - container_slot) << word_size_log2)
+	add_eax_int32(word_size)
+	promote_eax()
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	alu_cmp_set(0x9c) /* setl: index < length */
+	jmp_zero_int32(1337020)
+	int p2 = codepos
+
+	# loop var = element at data + index * element_size
+	mov_eax_esp_plus((stack_pos - container_slot) << word_size_log2)
+	promote_eax() /* the descriptor's data pointer */
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus((stack_pos - index_slot) << word_size_log2)
+	if (element_size > 1):
+		imul_eax_int32(element_size)
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	alu_add()
+	int value_type = promote(element_type)
+	coerce(loop_var_type, value_type)
+	store_stack_var((stack_pos - for_var) << word_size_log2)
+
+	enclosing_tab_level = for_tab_level
+	statement()
+
+	int increment_target = codepos
+	inc_dword_esp_plus((stack_pos - index_slot) << word_size_log2)
+
+	jmp_int32(1337021)
+	save_int32(code + codepos - 4, p1 - codepos)
+
+	save_int32(code + p2 - 4, codepos - p2)
+	patch_jump_chain(loop_break_chain, codepos)
+	patch_jump_chain(loop_continue_chain, increment_target)
+
+	loop_break_chain = outer_break
+	loop_continue_chain = outer_continue
+	loop_stack_pos = outer_stack
+	loop_depth = loop_depth - 1
+
+	be_pop(2)
+	stack_pos = stack_pos - 2
+
+
 void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 	int decode_symbol = sym_lookup(c"utf8_decode")
 	int next_symbol = sym_lookup(c"utf8_next")
@@ -417,6 +499,9 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 		error(c"only maps support two loop variables")
 	if (type_is_list(container_type)):
 		for_list_loop(for_var, for_tab_level, loop_var_type, container_type)
+		return;
+	if (type_is_slice(container_type)):
+		for_slice_loop(for_var, for_tab_level, loop_var_type, container_type)
 		return;
 	if (type_is_string(container_type)):
 		for_string_loop(for_var, for_tab_level, loop_var_type)
