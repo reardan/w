@@ -42,3 +42,38 @@ void test_generator_with_default_arg():
 	for int x in gen_with_default(10):
 		total = total + x
 	assert_equal(20, total)
+
+# Wave 2: generics + defaults + variadics + template strings combined
+T bigger[T](T a, T b):
+	if (a > b):
+		return a
+	return b
+
+struct box[T]:
+	T value
+
+void test_generic_with_wave1_features():
+	int m = bigger[int](greet(1), vsum(2, 2, 2))
+	assert_equal(6, m)
+	string s = f"max={bigger[int](3, 5)}"
+	assert_equal(0, strcmp(cstr(s), c"max=5"))
+	box[int] b
+	b.value = vsum(1, 2)
+	assert_equal(3, b.value)
+
+# Wave 2: dynamic var interacting with defaults, variadics and f-strings
+void test_var_with_wave1_features():
+	var x = greet(10)
+	assert_equal(15, x)
+	var y = vsum(1, 2, 3)
+	var total = x + y
+	assert_equal(21, total)
+	string s = f"x={x} y={y}"
+	assert_equal(0, strcmp(cstr(s), c"x=15 y=6"))
+
+# var flowing through a generator loop body
+void test_var_accumulates_generator_values():
+	var acc = 0
+	for int v in squares(4):
+		acc = acc + v
+	assert_equal(14, acc)
