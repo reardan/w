@@ -8,6 +8,7 @@
  *     if expression statement else statement (parentheses optional)
  *     while expression statement             (parentheses optional)
  *     for type-name identifier in range args statement
+ *     switch expression : case-clauses       (parentheses optional)
  *     break ;
  *     continue ;
  *     return ;
@@ -120,16 +121,26 @@ void statement():
 
 	else if (while_statement()) {}
 	else if (for_statement()) {}
+	else if (switch_statement()) {}
 
+	# 'break' targets the innermost breakable construct: a switch when
+	# break_in_switch is set (grammar/while_statement.w), a loop otherwise
 	else if (accept(c"break")):
 		expect_or_newline(c";")
-		if (loop_depth == 0):
-			error(c"'break' outside of a loop")
-		# Unwind block locals pushed since the loop started
-		if (stack_pos > loop_stack_pos):
-			be_pop(stack_pos - loop_stack_pos)
-		jmp_int32(loop_break_chain)
-		loop_break_chain = codepos
+		if ((loop_depth == 0) & (switch_depth == 0)):
+			error(c"'break' outside of a loop or switch")
+		if (break_in_switch):
+			# Unwind block locals pushed since the switch started
+			if (stack_pos > switch_stack_pos):
+				be_pop(stack_pos - switch_stack_pos)
+			jmp_int32(switch_break_chain)
+			switch_break_chain = codepos
+		else:
+			# Unwind block locals pushed since the loop started
+			if (stack_pos > loop_stack_pos):
+				be_pop(stack_pos - loop_stack_pos)
+			jmp_int32(loop_break_chain)
+			loop_break_chain = codepos
 
 	else if (accept(c"continue")):
 		expect_or_newline(c";")
