@@ -30,6 +30,7 @@ import grammar.while_statement
 import grammar.typed_identifier
 import grammar.variable_declaration
 import grammar.for_statement
+import grammar.switch_statement
 import grammar.statement
 import grammar.type_alias_declaration
 import grammar.struct_declaration

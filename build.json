@@ -668,6 +668,37 @@
 			]
 		},
 		{
+			"name": "switch_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/switch_test.w", "-o", "bin/switch_test"]},
+				{"cmd": ["bin/switch_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/switch_default_not_last_error_fixture.w", "-o", "bin/switch_default_not_last_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'default' must be the last clause in a switch"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/switch_body_error_fixture.w", "-o", "bin/switch_body_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'case' or 'default' expected in switch body"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/switch_float_error_fixture.w", "-o", "bin/switch_float_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "switch on a float value is not supported"
+				}
+			]
+		},
+		{
+			"name": "switch_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/switch_test.w", "-o", "bin/switch_64_test"]},
+				{"cmd": ["bin/switch_64_test"]}
+			]
+		},
+		{
 			"name": "template_string_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1743,6 +1774,7 @@
 				"string_64_test",
 				"map_set_builtin_64_test",
 				"list_builtin_64_test",
+				"switch_64_test",
 				"for_container_64_test",
 				"compound_assign_64_test",
 				"template_string_64_test",
@@ -1794,6 +1826,7 @@
 				"type_system_warning_test",
 				"for_test",
 				"compound_assign_test",
+				"switch_test",
 				"for_container_test",
 				"default_args_test",
 				"varargs_w_test",

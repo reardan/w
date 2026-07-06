@@ -141,7 +141,10 @@ Implemented and covered by tests:
   `T_iter_begin/done/next/value` (implemented by `array_list`,
   `linked_list` and `hash_map`, which yields keys; see
   `docs/projects/iteration.md`), `for int cp in string` codepoint iteration,
-  `break`, `continue`, `return`, `debugger` (emits `int3`).
+  `switch`/`case`/`default` (multi-value `case a, b:` clauses, implicit
+  break with no fallthrough, `default` last; `break` exits the switch while
+  `continue` targets the enclosing loop), `break`, `continue`, `return`,
+  `debugger` (emits `int3`).
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).
