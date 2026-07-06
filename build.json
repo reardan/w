@@ -521,6 +521,37 @@
 			]
 		},
 		{
+			"name": "generics_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/generics_test.w", "-o", "bin/generics_test"]},
+				{"cmd": ["bin/generics_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/generics_unknown_param_error_fixture.w", "-o", "bin/generics_unknown_param_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "unknown type name: 'U'"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/generics_arg_count_error_fixture.w", "-o", "bin/generics_arg_count_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "wrong number of type arguments for generic 'pick': expected 1, got 2"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/generics_missing_args_error_fixture.w", "-o", "bin/generics_missing_args_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "generic function 'pick' requires explicit type arguments"
+				}
+			]
+		},
+		{
+			"name": "generics_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/generics_test.w", "-o", "bin/generics_64_test"]},
+				{"cmd": ["bin/generics_64_test"]}
+			]
+		},
+		{
 			"name": "int64_x86_error_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1331,6 +1362,9 @@
 				{"cmd": ["bin/repl"], "stdin": "import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl"], "stdin": "import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c\"a\"] = 41\nm[c\"a\"] + 1\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl"], "stdin": "import structures.string\nstring_builder* s = string_from(c\"imported\")\ns.data\n:quit\n", "expect_stdout": "imported"},
+				{"cmd": ["bin/repl"], "stdin": "T twice[T](T a):\n\treturn a + a\n\ntwice[int](21)\n:quit\n", "expect_stdout": "42"},
+				{"cmd": ["bin/repl"], "stdin": "struct pt[T]:\n\tT x\n\npt[int] g\ng.x = 7\ng.x\n:quit\n", "expect_stdout": "7"},
+				{"cmd": ["bin/repl"], "stdin": "import tests.generics_helper\nbox[int] b\nb.value = 21\nunbox[int](&b) + helper_boxed_sum(11, 10)\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl"], "stdin": "int bad():\n\treturn qq\n\nprint(c\"recovered fn\\x0a\")\n:quit\n", "expect_stdout": "recovered fn"},
 				{"cmd": ["bin/repl"], "stdin": "import no.such.module\nprint(c\"recovered import\\x0a\")\n:quit\n", "expect_stdout": "recovered import"},
 				{"cmd": ["bin/repl", "tests/repl_fixture.w"], "stdin": ":quit\n", "expect_stdout": "fixture main ran"},
@@ -1688,6 +1722,7 @@
 				"generator_64_test",
 				"feature_interaction_64_test",
 				"dynamic_var_64_test",
+				"generics_64_test",
 				"json_64_test",
 				"json_codec_64_test",
 				"json_rpc_64_test",
@@ -1738,6 +1773,7 @@
 				"generator_test",
 				"feature_interaction_test",
 				"dynamic_var_test",
+				"generics_test",
 				"import_test",
 				"c_import_test",
 				"c_preprocessor_test",

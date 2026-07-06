@@ -90,8 +90,8 @@ int type_name():
 	else:
 		type = type_lookup(token)
 		if (type < 0):
-			print_error(c"unknown type name: '")
-			print_error(token)
+			diag_part(c"unknown type name: '")
+			diag_part(token)
 			error(c"'")
 		int checked_type = type_unqualified(type)
 		if ((checked_type == float64_type) & (word_size != 8)):

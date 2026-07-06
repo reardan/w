@@ -114,12 +114,12 @@ rule asm_body_lines = asm_body_line asm_body_lines |
 rule asm_body_line = NEWLINE tab_prefix asm_tokens | NEWLINE
 rule asm_tokens = asm_token asm_tokens |
 rule asm_token = name_token | NUMBER | STRING | CHAR_LITERAL | ELLIPSIS | AND_AND | OR_OR | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | SHIFT_LEFT | SHIFT_RIGHT | ARROW | PLUS | MINUS | STAR | SLASH | PERCENT | LT | GT | AMP | PIPE | BANG | ASSIGN | DOT | COMMA | COLON | SEMI | LPAREN | RPAREN | LBRACK | RBRACK | LBRACE | RBRACE
-rule struct_decl = KW_STRUCT IDENT block
+rule struct_decl = KW_STRUCT IDENT generic_opt block
 rule union_decl = KW_UNION IDENT block
 rule enum_decl = KW_ENUM IDENT block
 rule type_alias_decl = KW_TYPE IDENT ASSIGN type_ref
 rule generator_decl = KW_GENERATOR type_ref name_token LPAREN param_list RPAREN function_body
-rule function_decl = type_ref name_token LPAREN param_list RPAREN function_body
+rule function_decl = type_ref name_token generic_opt LPAREN param_list RPAREN function_body
 rule global_decl = type_ref name_token decl_suffix global_suffix
 rule global_suffix = ASSIGN expression | SEMI | 
 rule function_body = SEMI | block
@@ -137,7 +137,13 @@ rule param_tail = COMMA param
 rule param = type_ref ELLIPSIS name_token | type_ref name_token decl_suffix param_default | type_ref
 rule param_default = ASSIGN expression |
 
-rule type_ref = KW_CONST type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | list_type pointer_part* array_part* | type_atom pointer_part* array_part*
+rule type_ref = KW_CONST type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | list_type pointer_part* array_part* | type_atom generic_opt pointer_part* array_part*
+# Generics ([T] parameter lists on definitions, [int] argument lists at
+# instantiation sites). Permissive: type_ref covers both bare parameter
+# names and concrete argument types; PG is syntax-only.
+rule generic_opt = generic_args |
+rule generic_args = LBRACK type_ref generic_arg_tail* RBRACK
+rule generic_arg_tail = COMMA type_ref
 rule fn_type = KW_FN LPAREN param_type_list RPAREN ARROW type_ref
 rule map_type = KW_MAP LBRACK type_ref COMMA type_ref RBRACK
 rule set_type = KW_SET LBRACK type_ref RBRACK
@@ -180,7 +186,7 @@ rule gap_item = NEWLINE tab_prefix | NEWLINE
 rule unary_expr = unary_op unary_expr | postfix_expr
 rule unary_op = BANG | MINUS | PLUS | AMP | STAR
 rule postfix_expr = primary_expr postfix_tail*
-rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK expression_opt slice_tail RBRACK
+rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK
 rule slice_tail = COLON expression_opt |
 rule arg_list = expression arg_tail* |
 rule arg_tail = COMMA expression

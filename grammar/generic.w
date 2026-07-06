@@ -575,8 +575,8 @@ int generic_declaration_scan():
 	pointer_indirection = 0
 	int type = type_lookup(first)
 	if (type < 0):
-		print_error(c"unknown type name: '")
-		print_error(first)
+		diag_part(c"unknown type name: '")
+		diag_part(first)
 		error(c"'")
 	int checked_type = type_unqualified(type)
 	if ((checked_type == float64_type) & (word_size != 8)):
@@ -892,6 +892,37 @@ void generic_resolve_forward(int f):
 		if ((type_num_args(return_type) > 0) & (type_get_pointer_level(return_type) == 0)):
 			generic_forward_error(f, c"returns a struct by value, so it must be defined before the call")
 	generic_forward_merge_chain(f, inst)
+
+
+# Tentative scan for the REPL: like generic_declaration_scan(), but
+# non-committal. The REPL dispatches on the first token only, so a
+# definition like 'T max[T](T a, T b):' is indistinguishable from an
+# expression until the second token. This peeks ahead and rewinds the
+# tokenizer (the staged entry file supports seek) unless the lookahead
+# really is a generic definition, in which case the committed scan runs
+# and registers it. Returns 1 when a definition was captured.
+int generic_declaration_scan_repl():
+	int c0 = token[0]
+	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	if (is_ident == 0):
+		return 0
+	if (peek(c"const") | peek(c"map") | peek(c"set") | peek(c"list")):
+		return 0
+	if (nextc == '['):
+		return 0
+	char* save = generic_reparse_save()
+	get_token()
+	while (accept(c"*")) {}
+	int c1 = token[0]
+	int name_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
+	int is_generic = name_is_ident & (nextc == '[')
+	# rewind: byte_offset (save offset 28) counts consumed bytes, so it
+	# is exactly the fd position the saved lookahead expects
+	seek(file, load_int(save + 28), 0)
+	generic_reparse_restore(save)
+	if (is_generic):
+		return generic_declaration_scan()
+	return 0
 
 
 # Drain cursors: global so repeated drains (the REPL drains once per
