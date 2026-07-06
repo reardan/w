@@ -72,6 +72,26 @@ event_loop_64_test: w FORCE
 	./bin/wv2 x64 lib/event_loop_test.w -o ./bin/event_loop_64_test
 	./bin/event_loop_64_test
 
+task_test: w FORCE
+	./bin/wv2 lib/task_test.w -o ./bin/task_test
+	./bin/task_test
+
+task_64_test: w FORCE
+	./bin/wv2 x64 lib/task_test.w -o ./bin/task_64_test
+	./bin/task_64_test
+
+task_io_test: w FORCE
+	./bin/wv2 lib/task_io_test.w -o ./bin/task_io_test
+	./bin/task_io_test
+	./bin/wv2 examples/web/task_echo_server.w -o ./bin/task_echo_server
+	./bin/task_echo_server
+
+task_io_64_test: w FORCE
+	./bin/wv2 x64 lib/task_io_test.w -o ./bin/task_io_64_test
+	./bin/task_io_64_test
+	./bin/wv2 x64 examples/web/task_echo_server.w -o ./bin/task_echo_server_64
+	./bin/task_echo_server_64
+
 json_rpc_test: w FORCE
 	./bin/wv2 lib/json_rpc_test.w -o ./bin/json_rpc_test
 	./bin/json_rpc_test
@@ -193,7 +213,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test switch_64_test for_container_64_test template_string_64_test generator_64_test feature_interaction_64_test dynamic_var_64_test generics_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test format_64_test args_64_test repl_test_x64 debug_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test switch_64_test for_container_64_test template_string_64_test generator_64_test feature_interaction_64_test dynamic_var_64_test generics_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test task_64_test task_io_64_test format_64_test args_64_test repl_test_x64 debug_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -1314,7 +1334,7 @@ debug_test_x64: wdbg_x64 FORCE
 	printf 'c\n' | ./bin/wdbg64 tests/segv_fixture.w > /dev/null 2>&1; test $$? -eq 1
 	@echo "debug x64 test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test switch_test for_container_test template_string_test generator_test default_args_test varargs_w_test feature_interaction_test dynamic_var_test generics_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test switch_test for_container_test template_string_test generator_test default_args_test varargs_w_test feature_interaction_test dynamic_var_test generics_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test task_test task_io_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test test hello tests_x64 FORCE
 
 
 clean:
