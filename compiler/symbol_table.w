@@ -16,7 +16,10 @@ int: 70: declaration line (1-based)
 int: 74: declaration column (1-based)
 int: 78: variadic C import: number of fixed parameters, -1 when not variadic
 int: 82: GOT slot vaddr for extern imports, 0 otherwise
-int: 86: 1 for generator functions (declared with the 'generator' marker)
+int: 86: default-value bitmask: bit i set when parameter i has a default
+int: 90: default parameter values (up to 10 slots of 4 bytes each)
+int: 130: W variadic function: number of fixed parameters, -1 when not variadic
+int: 134: 1 for generator functions (declared with the 'generator' marker)
 */
 char *table
 int table_size
@@ -25,7 +28,7 @@ int stack_pos
 
 
 int symbol_data_size():
-	return 90
+	return 138
 
 
 int next_token(int t):
@@ -170,7 +173,9 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 22, -1) /* parameter count unknown until a '(...)' is parsed */
 	save_int(table + t + 78, -1) /* not variadic */
 	save_int(table + t + 82, 0)  /* no GOT slot */
-	save_int(table + t + 86, 0)  /* not a generator */
+	save_int(table + t + 86, 0)  /* no parameter defaults */
+	save_int(table + t + 130, -1) /* not a W variadic function */
+	save_int(table + t + 134, 0)  /* not a generator */
 	# Declaration location: token position of the name being declared
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
@@ -235,6 +240,18 @@ void sym_set_variadic(int t, int fixed_args):
 	save_int(table + t + 78, fixed_args)
 
 
+# Number of fixed parameters of a W variadic function ("T... rest") at
+# table offset t, or -1 when the symbol is not a W variadic function.
+# Distinct from sym_variadic_fixed_args: that flag marks variadic C
+# imports, which use the inline C ABI call path instead of a slice.
+int sym_w_variadic_fixed_args(int t):
+	return load_int(table + t + 130)
+
+
+void sym_set_w_variadic(int t, int fixed_args):
+	save_int(table + t + 130, fixed_args)
+
+
 # GOT slot vaddr of an extern import (the dynamic loader stores the
 # resolved C function address there), or 0 for ordinary symbols.
 int sym_got_vaddr(int t):
@@ -248,16 +265,39 @@ void sym_set_got_vaddr(int t, int vaddr):
 # 1 when the symbol at table offset t is a generator function: calling it
 # creates a generator object instead of running the body.
 int sym_is_generator(int t):
-	return load_int(table + t + 86)
+	return load_int(table + t + 134)
 
 
 void sym_set_generator(int t):
-	save_int(table + t + 86, 1)
+	save_int(table + t + 134, 1)
 
 
 # Parameter type slots per symbol; arguments past the limit are unchecked.
 int sym_max_param_slots():
 	return 10
+
+
+# Parameter defaults: bit i of the mask is set when parameter i (0-based)
+# carries a compile-time constant default, stored in the matching value
+# slot. Only the first 10 parameters can have defaults (same limit as the
+# declared-type slots).
+int sym_param_has_default(int t, int i):
+	if (i >= sym_max_param_slots()):
+		return 0
+	return (load_int(table + t + 86) >> i) & 1
+
+
+int sym_param_default(int t, int i):
+	return load_int(table + t + 90 + (i << 2))
+
+
+void sym_set_param_default(int t, int i, int value):
+	save_int(table + t + 86, load_int(table + t + 86) | (1 << i))
+	save_int(table + t + 90 + (i << 2), value)
+
+
+void sym_clear_param_defaults(int t):
+	save_int(table + t + 86, 0)
 
 
 # Declared type of the function's parameter at index i (0-based), or -1

@@ -155,44 +155,135 @@ void push_call_argument(int arg_type):
 		init_array_field_descriptors(arg_type)
 
 
+# One fixed (declared) argument of a call: check it against the declared
+# parameter type, coerce, and push it.
+void parse_fixed_call_argument(int callee_sym, int signature_type, char* callee_name, int arg_index):
+	int arg_type = expression()
+	arg_type = promote(arg_type)
+	check_call_argument(callee_sym, signature_type, callee_name, arg_index, arg_type)
+	if ((callee_sym >= 0) | (signature_type >= 0)):
+		int param_type = -1
+		if (callee_sym >= 0):
+			param_type = sym_param_type(callee_sym, arg_index)
+		if (signature_type >= 0):
+			param_type = type_function_param_type(signature_type, arg_index)
+		if (param_type >= 0):
+			coerce_call_argument(param_type, arg_type)
+	push_call_argument(arg_type)
+
+
+# One trailing argument of a call to a W variadic function: checked and
+# coerced against the variadic parameter's element type, then pushed as a
+# hidden stack slot of the argument buffer (element types are word-sized).
+void parse_variadic_element_argument(char* callee_name, int element_type, int arg_index):
+	int arg_type = expression()
+	arg_type = promote(arg_type)
+	if (types_compatible_with_expression(element_type, arg_type) == 0):
+		diag_part(c"warning: function '")
+		diag_part(callee_name)
+		diag_part(c"' argument ")
+		diag_part(itoa(arg_index + 1))
+		diag_part(c" type mismatch: expected '")
+		print_error_type(element_type)
+		diag_part(c"', got '")
+		print_error_type(arg_type)
+		warning(c"'")
+	coerce_call_argument(element_type, arg_type)
+	push_eax()
+	stack_pos = stack_pos + 1
+
+
 # Parse arguments for a call whose callee address has already been pushed.
 # passed_args lets callers account for hidden arguments, such as a method
 # receiver. callee_type is 4 for direct functions, and a pointer type for
-# indirect calls through function-pointer values.
-int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym, int signature_type, char* callee_name, int declared_return, int passed_args, int has_return_buffer):
-	int arg_type
+# indirect calls through function-pointer values. w_variadic_fixed is the
+# number of fixed parameters of a W variadic callee, or -1 (see the
+# variadic lowering notes in docs/projects/default_args_variadics.md).
+int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym, int signature_type, char* callee_name, int declared_return, int passed_args, int has_return_buffer, int w_variadic_fixed):
+	int variadic_element_type = -1
+	int variadic_values = 0
+	int fixed_words_end = -1
+	if (w_variadic_fixed >= 0):
+		variadic_element_type = type_get_element_type(type_unqualified(sym_param_type(callee_sym, w_variadic_fixed)))
 	if (accept(c")") == 0):
-		arg_type = expression()
-		arg_type = promote(arg_type)
-		check_call_argument(callee_sym, signature_type, callee_name, passed_args, arg_type)
-		if ((callee_sym >= 0) | (signature_type >= 0)):
-			int param_type = -1
-			if (callee_sym >= 0):
-				param_type = sym_param_type(callee_sym, passed_args)
-			if (signature_type >= 0):
-				param_type = type_function_param_type(signature_type, passed_args)
-			if (param_type >= 0):
-				coerce_call_argument(param_type, arg_type)
-		push_call_argument(arg_type)
-		passed_args = passed_args + 1
-		while (accept(c",")):
-			arg_type = expression()
-			arg_type = promote(arg_type)
-			check_call_argument(callee_sym, signature_type, callee_name, passed_args, arg_type)
-			if ((callee_sym >= 0) | (signature_type >= 0)):
-				int param_type = -1
-				if (callee_sym >= 0):
-					param_type = sym_param_type(callee_sym, passed_args)
-				if (signature_type >= 0):
-					param_type = type_function_param_type(signature_type, passed_args)
-				if (param_type >= 0):
-					coerce_call_argument(param_type, arg_type)
-			push_call_argument(arg_type)
+		int more_args = 1
+		while (more_args):
+			if ((w_variadic_fixed >= 0) & (passed_args >= w_variadic_fixed)):
+				if (variadic_values == 0):
+					fixed_words_end = stack_pos
+				parse_variadic_element_argument(callee_name, variadic_element_type, passed_args)
+				variadic_values = variadic_values + 1
+			else:
+				parse_fixed_call_argument(callee_sym, signature_type, callee_name, passed_args)
 			passed_args = passed_args + 1
+			more_args = accept(c",")
 
 		expect(c")")
 
-	if (expected_args >= 0):
+	if (w_variadic_fixed >= 0):
+		if (passed_args - variadic_values < w_variadic_fixed):
+			diag_part(c"warning: function '")
+			diag_part(callee_name)
+			diag_part(c"' expects at least ")
+			diag_part(itoa(w_variadic_fixed))
+			diag_part(c" arguments, got ")
+			warning(itoa(passed_args - variadic_values))
+		if (fixed_words_end < 0):
+			fixed_words_end = stack_pos
+		# The variadic values were pushed left to right, so they sit in
+		# reverse order in memory; reverse them in place so the first
+		# value lands at the lowest address (ordinary slice layout).
+		int i = 0
+		while ((i << 1) < (variadic_values - 1)):
+			mov_eax_esp_plus(i << word_size_log2)
+			mov_ebx_esp_plus((variadic_values - 1 - i) << word_size_log2)
+			store_stack_var((variadic_values - 1 - i) << word_size_log2)
+			store_ebx_stack_var(i << word_size_log2)
+			i = i + 1
+		# Push the {data, length} slice descriptor just below the values
+		mov_eax_int(variadic_values)
+		push_eax()
+		stack_pos = stack_pos + 1
+		lea_eax_esp_plus(word_size)
+		push_eax()
+		stack_pos = stack_pos + 1
+		int descriptor_slot = stack_pos
+		# The values and descriptor sit between the fixed arguments and
+		# the slice argument, but the callee addresses its parameters as
+		# one contiguous block above the return address: re-push copies
+		# of the fixed argument words so the block it sees is contiguous.
+		int fixed_words = fixed_words_end - s - 1
+		int j = 1
+		while (j <= fixed_words):
+			mov_eax_esp_plus((stack_pos - (s + 1 + j)) << word_size_log2)
+			push_eax()
+			stack_pos = stack_pos + 1
+			j = j + 1
+		# The variadic slice parameter: a pointer to the descriptor
+		lea_eax_esp_plus((stack_pos - descriptor_slot) << word_size_log2)
+		push_eax()
+		stack_pos = stack_pos + 1
+
+	# Missing trailing arguments whose parameters all carry defaults are
+	# filled in with the recorded constants (direct calls only: indirect
+	# calls have no symbol to read the defaults from).
+	if ((w_variadic_fixed < 0) & (callee_sym >= 0) & (expected_args > passed_args)):
+		int missing_all_defaulted = 1
+		int check_index = passed_args
+		while (check_index < expected_args):
+			if (sym_param_has_default(callee_sym, check_index) == 0):
+				missing_all_defaulted = 0
+			check_index = check_index + 1
+		if (missing_all_defaulted):
+			while (passed_args < expected_args):
+				mov_eax_int(sym_param_default(callee_sym, passed_args))
+				int default_param_type = sym_param_type(callee_sym, passed_args)
+				if (default_param_type >= 0):
+					coerce(default_param_type, 3)
+				push_call_argument(3)
+				passed_args = passed_args + 1
+
+	if ((expected_args >= 0) & (w_variadic_fixed < 0)):
 		if (passed_args != expected_args):
 			diag_part(c"warning: function '")
 			diag_part(callee_name)
@@ -410,6 +501,7 @@ int postfix_expr():
 			char* callee_name = 0
 			int declared_return = -1
 			int variadic_fixed = -1
+			int w_variadic_fixed = -1
 			if (type == 4):
 				int callee = sym_lookup(last_identifier)
 				if (callee >= 0):
@@ -423,6 +515,7 @@ int postfix_expr():
 						callee_sym = callee
 						callee_name = strclone(last_identifier)
 						variadic_fixed = sym_variadic_fixed_args(callee)
+						w_variadic_fixed = sym_w_variadic_fixed_args(callee)
 			else if (type_get_pointer_level(type) > 0):
 				int base_type = type_lookup_previous_pointer(type)
 				if ((base_type >= 0) & (type_is_function_signature(base_type))):
@@ -462,7 +555,7 @@ int postfix_expr():
 					lea_eax_esp_plus(word_size)
 					push_eax()
 					stack_pos = stack_pos + 1
-				type = parse_call_suffix(type, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 0, has_return_buffer)
+				type = parse_call_suffix(type, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 0, has_return_buffer, w_variadic_fixed)
 
 		else if (accept(c".")):
 			expression_lhs_readonly = 0
@@ -591,9 +684,11 @@ int postfix_expr():
 						int callee_sym = -1
 						int signature_type = -1
 						char* callee_name = 0
+						int w_variadic_fixed = -1
 						if (expected_args >= 0):
 							callee_sym = callee
 							callee_name = strclone(method_symbol)
+							w_variadic_fixed = sym_w_variadic_fixed_args(callee)
 						int declared_return = load_int(table + callee + 6)
 
 						int has_return_buffer = 0
@@ -634,7 +729,7 @@ int postfix_expr():
 						push_call_argument(receiver_type)
 
 						accept(c"(")
-						type = parse_call_suffix(4, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 1, has_return_buffer)
+						type = parse_call_suffix(4, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 1, has_return_buffer, w_variadic_fixed)
 						be_pop(1)
 						stack_pos = stack_pos - 1
 						if (has_return_buffer):
