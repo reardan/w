@@ -650,6 +650,24 @@
 			]
 		},
 		{
+			"name": "compound_assign_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/compound_assign_test.w", "-o", "bin/compound_assign_test"]},
+				{"cmd": ["bin/compound_assign_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/compound_assign_map_error_fixture.w", "-o", "bin/compound_assign_map_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "compound assignment is not supported on map or set index targets"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/compound_assign_struct_error_fixture.w", "-o", "bin/compound_assign_struct_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "compound assignment is not supported on struct values"
+				}
+			]
+		},
+		{
 			"name": "template_string_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1584,6 +1602,14 @@
 			]
 		},
 		{
+			"name": "compound_assign_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/compound_assign_test.w", "-o", "bin/compound_assign_64_test"]},
+				{"cmd": ["bin/compound_assign_64_test"]}
+			]
+		},
+		{
 			"name": "generator_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1718,6 +1744,7 @@
 				"map_set_builtin_64_test",
 				"list_builtin_64_test",
 				"for_container_64_test",
+				"compound_assign_64_test",
 				"template_string_64_test",
 				"generator_64_test",
 				"feature_interaction_64_test",
@@ -1766,6 +1793,7 @@
 				"type_system_error_test",
 				"type_system_warning_test",
 				"for_test",
+				"compound_assign_test",
 				"for_container_test",
 				"default_args_test",
 				"varargs_w_test",

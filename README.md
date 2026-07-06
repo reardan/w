@@ -127,7 +127,9 @@ Implemented and covered by tests:
   fields/pointers, `ftoa`, and x64 `f64toa`.
 - Expressions: full C-style operator set — arithmetic, shifts, relational
   (with chaining), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
-  address/deref, `[]` indexing, typed buffer slicing (`start:end`), struct
+  address/deref, compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`,
+  `|=`, `^=`, `<<=`, `>>=`; integer, float and pointer scalar targets — map
+  index and struct targets are rejected), `[]` indexing, typed buffer slicing (`start:end`), struct
   field access, method-call sugar (`p.move()` -> `point_move(&p, ...)`),
   map/set indexing and membership with `in`, `list[T]` indexing,
   `l.push(v)`/`l.pop()` and container `.length`, explicit `cast(T, expr)`,

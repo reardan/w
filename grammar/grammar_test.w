@@ -349,3 +349,20 @@ void test_pass_function_body():
 	body_is_only_pass()
 	assert_equal(1, 1)
 
+
+# Full coverage lives in tests/compound_assign_test.w; these are basic
+# parse/precedence checks. This file is compiled by bin/wv2, so the new
+# syntax is safe here.
+void test_compound_assignment():
+	int a = 10
+	a += 2 * 3
+	assert_equal(16, a)
+	a >>= 2
+	assert_equal(4, a)
+
+
+void test_compound_assignment_is_expression():
+	int a = 1
+	int r = (a += 4)
+	assert_equal(5, a)
+	assert_equal(5, r)
