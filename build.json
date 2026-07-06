@@ -401,6 +401,62 @@
 			]
 		},
 		{
+			"name": "default_args_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/default_args_test.w", "-o", "bin/default_args_test"]},
+				{"cmd": ["bin/default_args_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/default_args_nontrailing_error_fixture.w", "-o", "bin/default_args_nontrailing_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "parameter without a default follows a parameter with a default"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/default_args_nonconstant_error_fixture.w", "-o", "bin/default_args_nonconstant_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "default value for parameter must be a compile-time constant"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/default_args_missing_warning_fixture.w", "-o", "bin/default_args_missing_warning_fixture"],
+					"expect_stderr": "warning: function 'da_no_defaults' expects 2 arguments, got 1"
+				}
+			]
+		},
+		{
+			"name": "default_args_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/default_args_test.w", "-o", "bin/default_args_64_test"]},
+				{"cmd": ["bin/default_args_64_test"]}
+			]
+		},
+		{
+			"name": "varargs_w_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/varargs_w_test.w", "-o", "bin/varargs_w_test"]},
+				{"cmd": ["bin/varargs_w_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/varargs_w_not_last_error_fixture.w", "-o", "bin/varargs_w_not_last_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "variadic parameter must be the last parameter"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/varargs_w_default_error_fixture.w", "-o", "bin/varargs_w_default_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "a variadic parameter cannot follow parameters with default values"
+				}
+			]
+		},
+		{
+			"name": "varargs_w_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/varargs_w_test.w", "-o", "bin/varargs_w_64_test"]},
+				{"cmd": ["bin/varargs_w_64_test"]}
+			]
+		},
+		{
 			"name": "int64_x86_error_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1527,6 +1583,8 @@
 				"float_abi_test_x64",
 				"varargs_test_x64",
 				"extern_data_test_x64",
+				"default_args_64_test",
+				"varargs_w_64_test",
 				"list_64_test",
 				"array_list_64_test",
 				"linked_list_64_test",
@@ -1581,6 +1639,8 @@
 				"type_system_warning_test",
 				"for_test",
 				"for_container_test",
+				"default_args_test",
+				"varargs_w_test",
 				"template_string_test",
 				"import_test",
 				"c_import_test",

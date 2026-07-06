@@ -130,7 +130,8 @@ rule tab_prefix = TAB tab_prefix | TAB
 
 rule param_list = param param_tail* | 
 rule param_tail = COMMA param
-rule param = type_ref name_token decl_suffix | type_ref
+rule param = type_ref ELLIPSIS name_token | type_ref name_token decl_suffix param_default | type_ref
+rule param_default = ASSIGN expression |
 
 rule type_ref = KW_CONST type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | list_type pointer_part* array_part* | type_atom pointer_part* array_part*
 rule fn_type = KW_FN LPAREN param_type_list RPAREN ARROW type_ref
