@@ -111,8 +111,11 @@ int result_propagate_suffix(int type):
 	int p = codepos
 	# Error path: return the operand pointer, unwinding block locals and
 	# expression temporaries exactly like the 'return' statement does
-	# (stack_pos already counts the slot pushed above).
+	# (stack_pos already counts the slot pushed above). Deferred
+	# statements run first, with the result pointer saved around them,
+	# because '?' is a function exit like any 'return'.
 	mov_eax_esp_plus(0)
+	defer_emit_returning()
 	be_pop(stack_pos)
 	ret()
 	save_int32(code + p - 4, codepos - p)

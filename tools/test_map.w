@@ -42,6 +42,8 @@ void wtest_init_targets():
 	wtest_targets.push(c"varargs_w_64_test")
 	wtest_targets.push(c"feature_interaction_test")
 	wtest_targets.push(c"feature_interaction_64_test")
+	wtest_targets.push(c"feature_combo_test")
+	wtest_targets.push(c"feature_combo_64_test")
 	wtest_targets.push(c"dynamic_var_test")
 	wtest_targets.push(c"dynamic_var_64_test")
 	wtest_targets.push(c"generics_test")
@@ -278,6 +280,9 @@ void wtest_map_path(char* path):
 	else if (strcmp(path, c"tests/feature_interaction_test.w") == 0):
 		wtest_add(path, c"feature_interaction_test")
 		wtest_add(path, c"feature_interaction_64_test")
+	else if (strcmp(path, c"tests/feature_combo_test.w") == 0):
+		wtest_add(path, c"feature_combo_test")
+		wtest_add(path, c"feature_combo_64_test")
 	else if (starts_with(path, c"tests/dynamic_var")):
 		wtest_add(path, c"dynamic_var_test")
 		wtest_add(path, c"dynamic_var_64_test")
