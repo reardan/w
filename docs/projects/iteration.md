@@ -1,15 +1,33 @@
 # Iteration & Generators Design: `for x in <container>` and `yield`
 
-Status: the container half is implemented. Design 3 (the cursor/iterator
+Status: both halves are implemented. Design 3 (the cursor/iterator
 function convention) is the iteration protocol: `for x in <container>`
 compiles in `grammar/for_statement.w` via the cursor lowering below, the
 four `_iter_*` functions exist for `array_list`, `linked_list` and
 `hash_map` (keys), and user-defined containers work by defining the same
 four functions (`tests/for_container_test.w`, `make for_container_test`).
-Steps 3-4 of the recommendation at the bottom are done; generators
-(`yield`, steps 1-2 and 5) remain design / brainstorm. The generators
-half is kept here because the two features share their consumption
-syntax, their cleanup problems, and one loop lowering.
+Steps 3-4 of the recommendation at the bottom are done.
+
+Generators (steps 1-2 and 5) are implemented as stackful coroutines
+(model A): `generator int counter(int n)` declarations parse in
+`grammar/program.w` + `grammar/generator_decl.w`, `yield` in
+`grammar/statement.w`, the runtime (`gen_next`/`gen_value`/`gen_done`/
+`gen_free` plus the `generator_iter_*` cursor adapters) lives in
+`lib/generator.w`, and the `gen_switch` context-switch stub is emitted
+by `code_generator/x86_asm.w` and `x64_asm.w` (both targets work).
+Implementation decisions: 64KB mmap'd generator stacks (not the 4MB
+thread stack); programs must `import lib.generator` before declaring or
+calling a generator (compile error otherwise — no auto-import);
+`return <value>` inside a generator body is a compile error, plain
+`return` finishes the generator; the exhausted body's stack is
+munmap'd automatically by `gen_next`, `gen_free` releases an abandoned
+generator; break-cleanup option (b) shipped — `for` over a generator
+emits `gen_free` on the normal-exit and break edges (`return` out of
+the loop body still leaks the suspended stack). Parameters and yield
+values must be word-sized. Tests: `tests/generator_test.w`
+(`make generator_test`, `make generator_64_test`). The generators half
+is kept here because the two features share their consumption syntax,
+their cleanup problems, and one loop lowering.
 
 Supersedes the iteration notes at the bottom of `docs/for_notes.txt`
 (manual range struct, "generator functions", "store generator stack in
