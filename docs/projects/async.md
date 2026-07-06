@@ -1,10 +1,23 @@
 # Async Design: tasks, awaitable I/O and a single-threaded scheduler
 
-Status: design + staged plan; nothing implemented yet. The load-bearing
-runtime assumption (a plain function suspending its enclosing generator
-from arbitrary call depth via `__w_gen_yield` and a current-task
-global) was validated experimentally on both x86 and x64 with the
-existing, unmodified generator runtime — see "Suspension at depth"
+Status: phases 1-4 are implemented, all as library code — the compiler,
+grammar and seed are untouched. The runtime (task struct, scheduler,
+`task_spawn`/`task_go`/`task_run`, `task_await_fd[_timeout]`,
+`task_sleep_ms`, `task_yield_now`, `task_finish`/`task_result`/
+`task_join`, cancellation-as-resume `task_cancel`, deadlock detection)
+lives in `lib/task.w`; awaitable I/O (`task_read`, `task_read_exact`,
+`task_write_all`, `task_accept`, `task_connect_ipv4`) and the worker-
+process escape hatch (`task_process_run`) in `lib/task_io.w`. Tests:
+`lib/task_test.w` and `lib/task_io_test.w` (`task_test`,
+`task_io_test` + `_64` variants in `build.json` and the Makefile).
+The phase-4 proof-by-comparison example is
+`examples/web/task_echo_server.w` (per-connection tasks speaking
+Content-Length framing; run it bare for an in-process demo,
+`--serve` for a real server on 127.0.0.1:7777). Phase 5 (syntax) is
+deferred as planned; the load-bearing mechanism (suspension from
+arbitrary call depth via `__w_gen_yield` plus the runtime-owned
+current-task global) is validated on both targets by
+`test_suspension_at_arbitrary_depth` — see "Suspension at depth"
 below.
 
 ## Problem statement
@@ -161,10 +174,11 @@ task*           task_spawn(task_scheduler* s, generator* g)
 int             task_run(task_scheduler* s)        # until all tasks done
 void            task_scheduler_free(task_scheduler* s)
 
-# awaits — only legal inside a task
+# awaits — only legal inside a task; each returns a negative error
+# (task_err_cancelled, task_err_timed_out) or the value described
 int  task_await_fd(int fd, int events)             # returns revents
-void task_sleep_ms(int ms)
-void task_yield_now()                              # reschedule, stay ready
+int  task_sleep_ms(int ms)                         # returns 0
+int  task_yield_now()                              # reschedule, stay ready
 
 # task-flavoured I/O (phase 2): retry-on-EAGAIN loops over lib/net.w
 int  task_read(int fd, char* buf, int len)
@@ -234,7 +248,7 @@ do not fit a cooperative loop. The sanctioned answer is **worker
 processes, not threads**: `lib/process.w` + pipes watched by the same
 event loop (`lib/framing.w` frames the messages). Separate address
 spaces need no synchronization, no shared allocator, no ownership
-rules. A `task_process(argv)` convenience (spawn + await exit +
+rules. A `task_process_run(path, argv, out)` convenience (spawn + await exit +
 capture output) belongs in phase 4.
 
 ## Syntax, later, maybe
@@ -287,7 +301,7 @@ Each phase lands independently green (`./wbuild tests`), with
 4. **Proof by port + process workers** — a task-based server example
    (per-connection task speaking the `lib/framing.w` protocol) to
    compare line-by-line against the callback-style connection handling
-   in `lib/json_rpc.w`; `task_process` over `lib/process.w` +
+   in `lib/json_rpc.w`; `task_process_run` over `lib/process.w` +
    `lib/framing.w` for blocking/CPU work.
 5. **Revisit syntax and polish** — decide the `task` marker question
    with usage data; sized stacks if task counts demand; docs update.
