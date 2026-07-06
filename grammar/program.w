@@ -135,6 +135,14 @@ void program():
 		if (token[0] == 0):
 			return;
 
+		# generator declarations: "generator type-name identifier (".
+		# "generator*" is the struct type in a variable declaration, so
+		# only a bare 'generator' token marks a declaration.
+		if (peek(c"generator")):
+			if (nextc != '*'):
+				generator_declaration()
+				continue;
+
 		# Now global variables + functions
 		# TODO: variables THEN functions, not both
 		int decl_type = type_name()

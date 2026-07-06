@@ -42,6 +42,8 @@ void wtest_init_targets():
 	wtest_targets.push(c"json_64_test")
 	wtest_targets.push(c"json_codec_test")
 	wtest_targets.push(c"json_codec_64_test")
+	wtest_targets.push(c"generator_test")
+	wtest_targets.push(c"generator_64_test")
 	wtest_targets.push(c"parser_generator_test")
 	wtest_targets.push(c"parser_generator_w_test")
 	wtest_targets.push(c"parser_generator_c_test")
@@ -178,6 +180,9 @@ void wtest_map_lib(char* path):
 		# their consumers: the repl prompt and the wdbg command loop.
 		wtest_add(path, c"repl_test")
 		wtest_add(path, c"debug_test")
+	else if (strcmp(path, c"lib/generator.w") == 0):
+		wtest_add(path, c"generator_test")
+		wtest_add(path, c"generator_64_test")
 	else if (strcmp(path, c"lib/wmeta.w") == 0):
 		wtest_add(path, c"metadata_check")
 		wtest_add(path, c"metadata_test")
@@ -257,6 +262,9 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"type_system_error_test")
 	else if (starts_with(path, c"tests/type_system_warning")):
 		wtest_add(path, c"type_system_warning_test")
+	else if ((strcmp(path, c"tests/generator_test.w") == 0) | (strcmp(path, c"tests/yield_outside_generator_error_fixture.w") == 0) | (strcmp(path, c"tests/generator_return_value_error_fixture.w") == 0)):
+		wtest_add(path, c"generator_test")
+		wtest_add(path, c"generator_64_test")
 	else if (starts_with(path, c"tests/parser_generator/")):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):

@@ -55,3 +55,16 @@ void define_asm_functions_x64():
 	sym_define_declare_global_function(c"repl_longjmp")
 	# mov rax,[rsp+8] ; mov rcx,[rsp+16] ; mov rsp,[rcx+8] ; mov rbp,[rcx+16] ; jmp [rcx]
 	emit(20, c"\x48\x8b\x44\x24\x08\x48\x8b\x4c\x24\x10\x48\x8b\x61\x08\x48\x8b\x69\x10\xff\x21")
+
+	# gen_switch(int* save_esp_here, int restore_esp): the generator
+	# context switch (docs/projects/iteration.md), x64 flavor. Saves the
+	# callee-saved registers (rbx, rbp, r12-r15) and rsp on the current
+	# stack, stores rsp through arg1, loads arg2 into rsp, restores the
+	# registers saved there and returns on the other stack.
+	sym_define_declare_global_function(c"gen_switch")
+	# push rbx ; push rbp ; push r12 ; push r13 ; push r14 ; push r15 ;
+	# mov rax,[rsp+64] ; mov rcx,[rsp+56]
+	emit(20, c"\x53\x55\x41\x54\x41\x55\x41\x56\x41\x57\x48\x8b\x44\x24\x40\x48\x8b\x4c\x24\x38")
+	# mov [rax],rsp ; mov rsp,rcx ; pop r15 ; pop r14 ; pop r13 ;
+	# pop r12 ; pop rbp ; pop rbx ; ret
+	emit(17, c"\x48\x89\x20\x48\x89\xcc\x41\x5f\x41\x5e\x41\x5d\x41\x5c\x5d\x5b\xc3")

@@ -92,3 +92,15 @@ void define_asm_functions():
 	# mov eax,[esp+4]; jmp eax
 	emit(6, c"\x8b\x44\x24\x04\xff\xe0")
 
+	# gen_switch(int* save_esp_here, int restore_esp): the generator
+	# context switch (docs/projects/iteration.md). Saves the callee-saved
+	# registers and esp on the current stack, stores esp through arg1,
+	# loads arg2 into esp, restores the registers saved there and returns
+	# on the other stack. One stub serves both yield and resume.
+	sym_define_declare_global_function(c"gen_switch")
+	# push ebx ; push esi ; push edi ; push ebp ; mov eax,[esp+24] ;
+	# mov ecx,[esp+20] ; mov [eax],esp ; mov esp,ecx ;
+	# pop ebp ; pop edi ; pop esi ; pop ebx ; ret
+	emit(20, c"\x53\x56\x57\x55\x8b\x44\x24\x18\x8b\x4c\x24\x14\x89\x20\x89\xcc\x5d\x5f\x5e\x5b")
+	emit(1, c"\xc3")
+

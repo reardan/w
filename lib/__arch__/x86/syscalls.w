@@ -52,6 +52,10 @@ int brk(char* addr):
 int mmap(int addr, int length, int prot, int flags):
 	return syscall7(192, addr, length, prot, flags, -1, 0)
 
+# munmap (91): releases a mapping created by mmap. addr must be page-aligned.
+int munmap(int addr, int length):
+	return syscall(91, addr, length, 0)
+
 int sys_clone(int flags, int child_stack):
 	return syscall(56, flags, child_stack)
 
