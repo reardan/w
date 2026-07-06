@@ -161,7 +161,13 @@ void function_definition(int current_symbol):
 		# Record the argument word count for the debugger's
 		# runtime argument addressing
 		debug_func_note(function_start, number_of_args)
+		# Fall-through defers are emitted when the body block closes,
+		# while its locals are still in scope: arm the flag statement()
+		# consumes when it opens the body block.
+		defer_reset()
+		defer_function_body_pending = 1
 		statement()
+		defer_reset()
 		ret()
 		# Store length to symbol table:
 		save_int(table + current_symbol + 14, codepos - function_start)
@@ -232,6 +238,10 @@ void program():
 		# Imports/structs may have consumed the rest of the file
 		if (token[0] == 0):
 			return;
+
+		# 'defer' is only meaningful inside a function body
+		if (peek(c"defer")):
+			error(c"'defer' outside of a function")
 
 		# generator declarations: "generator type-name identifier (".
 		# "generator*" is the struct type in a variable declaration, so

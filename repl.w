@@ -290,6 +290,8 @@ int repl_token_is_statement():
 		return 1
 	if (peek(c"raw_asm")):
 		return 1
+	if (peek(c"defer")):
+		return 1
 	return 0
 
 
@@ -407,6 +409,7 @@ int repl_compile_entry(char* path):
 	int saved_loop_break_chain = loop_break_chain
 	int saved_loop_continue_chain = loop_continue_chain
 	int saved_loop_stack_pos = loop_stack_pos
+	int saved_defer_count = defer_count
 	int saved_number_of_args = number_of_args
 	int saved_type_count = length /* structures.list backs the type table */
 	int saved_imported_count = imported_count
@@ -427,6 +430,7 @@ int repl_compile_entry(char* path):
 		loop_break_chain = saved_loop_break_chain
 		loop_continue_chain = saved_loop_continue_chain
 		loop_stack_pos = saved_loop_stack_pos
+		defer_count = saved_defer_count
 		number_of_args = saved_number_of_args
 		length = saved_type_count
 		imported_count = saved_imported_count
@@ -463,11 +467,16 @@ int repl_compile_entry(char* path):
 	sym_define_global(entry_symbol)
 	current_function_symbol = entry_symbol
 	number_of_args = 0
+	defer_reset()
 	repl_result_type = -1
 
 	while (token[0] != 0):
 		repl_entry_item(entry_symbol)
 
+	# The entry function's implicit end is a function exit: run any
+	# deferred statements registered by this entry (LIFO)
+	defer_emit_all()
+	defer_reset()
 	be_pop(stack_pos)
 	stack_pos = 0
 	ret()

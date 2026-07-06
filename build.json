@@ -742,6 +742,39 @@
 			]
 		},
 		{
+			"name": "defer_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/defer_test.w", "-o", "bin/defer_test"]},
+				{"cmd": ["bin/defer_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/defer_generator_error_fixture.w", "-o", "bin/defer_generator_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'defer' is not supported in generator bodies"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/defer_declaration_error_fixture.w", "-o", "bin/defer_declaration_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "deferred statement cannot declare a variable"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/defer_return_error_fixture.w", "-o", "bin/defer_return_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'return' is not allowed in a deferred statement"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/defer_nested_error_fixture.w", "-o", "bin/defer_nested_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'defer' cannot be nested in a deferred statement"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/defer_top_level_error_fixture.w", "-o", "bin/defer_top_level_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'defer' outside of a function"
+				}
+			]
+		},
+		{
 			"name": "import_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1592,6 +1625,14 @@
 			]
 		},
 		{
+			"name": "defer_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/defer_test.w", "-o", "bin/defer_64_test"]},
+				{"cmd": ["bin/defer_64_test"]}
+			]
+		},
+		{
 			"name": "json_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1720,6 +1761,7 @@
 				"for_container_64_test",
 				"template_string_64_test",
 				"generator_64_test",
+				"defer_64_test",
 				"feature_interaction_64_test",
 				"dynamic_var_64_test",
 				"generics_64_test",
@@ -1771,6 +1813,7 @@
 				"varargs_w_test",
 				"template_string_test",
 				"generator_test",
+				"defer_test",
 				"feature_interaction_test",
 				"dynamic_var_test",
 				"generics_test",

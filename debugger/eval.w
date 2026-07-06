@@ -123,6 +123,7 @@ int dbg_eval_compile(char* expr, int stop_addr, int esp):
 	int saved_loop_break_chain = loop_break_chain
 	int saved_loop_continue_chain = loop_continue_chain
 	int saved_loop_stack_pos = loop_stack_pos
+	int saved_defer_count = defer_count
 	int saved_number_of_args = number_of_args
 	int saved_type_count = length /* structures.list backs the type table */
 	int saved_function_symbol = current_function_symbol
@@ -138,6 +139,7 @@ int dbg_eval_compile(char* expr, int stop_addr, int esp):
 		loop_break_chain = saved_loop_break_chain
 		loop_continue_chain = saved_loop_continue_chain
 		loop_stack_pos = saved_loop_stack_pos
+		defer_count = saved_defer_count
 		number_of_args = saved_number_of_args
 		length = saved_type_count
 		current_function_symbol = saved_function_symbol
@@ -167,6 +169,7 @@ int dbg_eval_compile(char* expr, int stop_addr, int esp):
 	int n = table_pos
 	dbg_eval_bind_locals(stop_addr, esp)
 	number_of_args = 0
+	defer_reset()
 	stack_pos = 0
 	enclosing_tab_level = 0
 	while (token[0] != 0):

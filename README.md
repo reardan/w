@@ -139,7 +139,10 @@ Implemented and covered by tests:
   `T_iter_begin/done/next/value` (implemented by `array_list`,
   `linked_list` and `hash_map`, which yields keys; see
   `docs/projects/iteration.md`), `for int cp in string` codepoint iteration,
-  `break`, `continue`, `return`, `debugger` (emits `int3`).
+  `break`, `continue`, `return`, `debugger` (emits `int3`), and Go-style
+  `defer <call>` (function-scoped, LIFO at every exit; the deferred
+  expression is re-emitted at each exit point, so it is evaluated at exit
+  time — see `docs/projects/defer.md`).
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).
