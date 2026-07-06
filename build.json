@@ -1311,6 +1311,24 @@
 			]
 		},
 		{
+			"name": "task_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/task_test.w", "-o", "bin/task_test"]},
+				{"cmd": ["bin/task_test"]}
+			]
+		},
+		{
+			"name": "task_io_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/task_io_test.w", "-o", "bin/task_io_test"]},
+				{"cmd": ["bin/task_io_test"]},
+				{"cmd": ["bin/wv2", "examples/web/task_echo_server.w", "-o", "bin/task_echo_server"]},
+				{"cmd": ["bin/task_echo_server"], "expect_stdout": "demo: OK"}
+			]
+		},
+		{
 			"name": "json_rpc_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1666,6 +1684,24 @@
 			]
 		},
 		{
+			"name": "task_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/task_test.w", "-o", "bin/task_64_test"]},
+				{"cmd": ["bin/task_64_test"]}
+			]
+		},
+		{
+			"name": "task_io_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/task_io_test.w", "-o", "bin/task_io_64_test"]},
+				{"cmd": ["bin/task_io_64_test"]},
+				{"cmd": ["bin/wv2", "x64", "examples/web/task_echo_server.w", "-o", "bin/task_echo_server_64"]},
+				{"cmd": ["bin/task_echo_server_64"], "expect_stdout": "demo: OK"}
+			]
+		},
+		{
 			"name": "format_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1769,6 +1805,8 @@
 				"json_codec_64_test",
 				"json_rpc_64_test",
 				"event_loop_64_test",
+				"task_64_test",
+				"task_io_64_test",
 				"format_64_test",
 				"args_64_test"
 			]
@@ -1855,6 +1893,8 @@
 				"poll_test",
 				"framing_test",
 				"event_loop_test",
+				"task_test",
+				"task_io_test",
 				"json_rpc_test",
 				"net_basic",
 				"debug_test",
