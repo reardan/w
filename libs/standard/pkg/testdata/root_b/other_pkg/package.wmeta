@@ -1,0 +1,5 @@
+name other_pkg
+version 2.1.0
+root .
+modules:
+	other

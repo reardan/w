@@ -1,0 +1,6 @@
+name Bad.Name
+root .
+modules:
+	bad
+resources:
+	../secret.txt

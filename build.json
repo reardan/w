@@ -1041,6 +1041,14 @@
 			]
 		},
 		{
+			"name": "pkg_standard_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/pkg/pkg_test.w", "-o", "bin/pkg_standard_test"]},
+				{"cmd": ["bin/pkg_standard_test"]}
+			]
+		},
+		{
 			"name": "net_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1578,6 +1586,7 @@
 				"process_test",
 				"stream_test",
 				"file_test",
+				"pkg_standard_test",
 				"net_test",
 				"poll_test",
 				"framing_test",

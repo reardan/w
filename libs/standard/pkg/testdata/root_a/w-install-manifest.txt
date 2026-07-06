@@ -1,0 +1,6 @@
+example_pkg/package.wmeta
+example_pkg/data/message.txt
+example_pkg/data/message.txt
+/absolute
+../escape
+missing.txt

@@ -1,0 +1,5 @@
+name example_pkg
+version 9.0.0
+root .
+modules:
+	shadow

@@ -1,0 +1,2 @@
+hello resource
+second line
