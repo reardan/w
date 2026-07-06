@@ -59,6 +59,7 @@ void wtest_init_targets():
 	wtest_targets.push(c"stream_test")
 	wtest_targets.push(c"stream_64_test")
 	wtest_targets.push(c"file_test")
+	wtest_targets.push(c"standard_net_web_test")
 	wtest_targets.push(c"repl_test")
 	wtest_targets.push(c"debug_test")
 	wtest_targets.push(c"c_import_test")
@@ -239,6 +240,8 @@ void wtest_map_path(char* path):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):
 		wtest_add_parser_generator(path)
+	else if (starts_with(path, c"libs/standard/net/") | starts_with(path, c"libs/standard/web/")):
+		wtest_add(path, c"standard_net_web_test")
 	else if ((strcmp(path, c"tests/warning_fixture.w") == 0) | (strcmp(path, c"tests/warning_clean_fixture.w") == 0) | (strcmp(path, c"tests/string_char_warning_fixture.w") == 0) | (strcmp(path, c"tests/import_alias_warning_fixture.w") == 0)):
 		wtest_add(path, c"warning_test")
 	else if (strcmp(path, c"tests/symbols_fixture.w") == 0):
