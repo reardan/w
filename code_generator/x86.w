@@ -213,6 +213,13 @@ void store_stack_var(int variable_offset):
 	emit_int(variable_offset)
 
 
+/* mov [esp+0x12345678], ebx */
+void store_ebx_stack_var(int variable_offset):
+	emit_x64_opcode()
+	emit(3, c"\x89\x9c\x24")
+	emit_int(variable_offset)
+
+
 /* add esp, (n * word_size) */
 void be_pop(int n):
 	emit_x64_opcode()
