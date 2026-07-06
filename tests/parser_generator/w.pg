@@ -5,6 +5,9 @@ skip BLOCK_COMMENT block_comment
 
 token NEWLINE newline
 token TAB tabs
+# STRING covers plain "...", prefixed s"..."/c"..." and whole f"..."
+# template strings (embedded {expression} parts included, see
+# pg_lexer_match_template_string in libs/extras/parser_generator/lexer.w)
 token STRING string
 token CHAR_LITERAL char_literal
 token NUMBER number
