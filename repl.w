@@ -458,9 +458,11 @@ int repl_compile_entry(char* path):
 	be_pop(stack_pos)
 	stack_pos = 0
 	ret()
-	# On-demand runtime for to_json/from_json: the module's functions land
-	# after the entry's ret, so they are never in the execution path
+	# On-demand runtimes for to_json/from_json and f"..." template
+	# strings: the modules' functions land after the entry's ret, so
+	# they are never in the execution path
 	json_codec_finish_import()
+	template_string_finish_import()
 	close(file)
 	repl_recovery = 0
 

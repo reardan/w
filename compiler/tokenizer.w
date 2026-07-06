@@ -114,6 +114,58 @@ void read_until_end():
 
 int spaces_warned_line
 
+
+/*
+Scan one f"..." template string chunk into the token buffer, starting at
+the current token_i. The chunk is the raw literal text up to and
+including its terminator: the closing '"' or a single '{' that opens an
+embedded expression. Doubled braces ('{{' and '}}') stay doubled in the
+token; grammar/template_string.w collapses them while decoding escapes.
+A backslash escapes the next character, exactly like the other string
+forms, so escaped quotes and braces never terminate the chunk.
+*/
+void take_template_chunk():
+	int done = 0
+	while (done == 0):
+		if (nextc == -1):
+			error(c"unterminated template string literal")
+		else if (nextc == '"'):
+			takechar()
+			done = 1
+		else if (nextc == '{'):
+			takechar()
+			if (nextc == '{'):
+				takechar()
+			else:
+				done = 1
+		else if (nextc == '}'):
+			takechar()
+			if (nextc == '}'):
+				takechar()
+			else:
+				error(c"single '}' in template string; use '}}'")
+		else:
+			if (nextc == 92):
+				takechar()
+				if (nextc == -1):
+					error(c"unterminated template string literal")
+			takechar()
+
+
+# Resume an f-string after an embedded expression: replace the current
+# token (the '}' that closed the expression) with the next literal chunk,
+# which starts at the character right after that '}'. Called only by the
+# template string grammar; ordinary tokens keep flowing through
+# get_token() while the expression itself is parsed.
+void get_token_template_chunk():
+	token_i = 0
+	token_newline = 0
+	diag_token_line = line_number + 1
+	diag_token_column = column_number + 1
+	take_template_chunk()
+	token[token_i] = 0
+
+
 void get_token():
 	if (token_size == 0):
 		token_size = 20
@@ -156,6 +208,12 @@ void get_token():
 						takechar()
 					takechar()
 				takechar()
+
+			# f"..." template string: the token carries the opening chunk,
+			# up to the first embedded '{' expression or the closing quote.
+			else if ((token[0] == 'f') & (nextc == '"')):
+				takechar()
+				take_template_chunk()
 
 		# Float literals: a digit-leading token absorbs a fraction ('3.25')
 		# and a signed exponent ('1.5e-3', '2E+10') into one token.

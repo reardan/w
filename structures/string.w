@@ -72,6 +72,70 @@ int string_equals(string_builder* s, char* c):
 	return strcmp(s.data, c) == 0
 
 
+# Append exactly length bytes from data. Unlike string_append this copies
+# through embedded NUL bytes, so it can carry string descriptor contents.
+void string_append_bytes(string_builder* s, char* data, int length):
+	string_reserve(s, length)
+	int i = 0
+	while (i < length):
+		s.data[s.length + i] = data[i]
+		i = i + 1
+	s.length = s.length + length
+	s.data[s.length] = 0
+
+
+# Append a string descriptor's bytes (data pointer + length pair).
+void string_append_string(string_builder* s, string v):
+	string_append_bytes(s, v.data, v.length)
+
+
+# A {data, length} string descriptor viewing the builder's buffer. The
+# string shares storage with the builder: mutating or freeing the builder
+# invalidates it. See str_from_cstr in lib/lib.w for the layout.
+string string_builder_to_string(string_builder* s):
+	char* descriptor = malloc(2 * __word_size__)
+	save_word(descriptor, cast(int, s.data))
+	save_word(descriptor + __word_size__, s.length)
+	return cast(string, cast(int, descriptor))
+
+
+/*
+Runtime entry points for the compiler's f"..." template string lowering
+(grammar/template_string.w). The __w_ prefix keeps them out of the user
+namespace; the compiler resolves them by name, either directly when the
+program imports structures.string itself or through backpatch chains
+filled in by the deferred import at the end of compilation.
+*/
+
+
+string_builder* __w_template_new():
+	return string_new()
+
+
+void __w_template_bytes(string_builder* s, char* data, int length):
+	string_append_bytes(s, data, length)
+
+
+void __w_template_cstr(string_builder* s, char* text):
+	string_append(s, text)
+
+
+void __w_template_int(string_builder* s, int v):
+	string_append_int(s, v)
+
+
+void __w_template_str(string_builder* s, string v):
+	string_append_string(s, v)
+
+
+# Finish an f-string: hand the accumulated bytes to a string descriptor
+# and free the builder struct (the data buffer now belongs to the string).
+string __w_template_finish(string_builder* s):
+	string result = string_builder_to_string(s)
+	free(s)
+	return result
+
+
 void string_clear(string_builder* s):
 	s.length = 0
 	s.data[0] = 0

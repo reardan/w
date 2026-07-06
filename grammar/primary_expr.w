@@ -139,6 +139,9 @@ int primary_expr():
 	else if (c_char_pointer_literal()):
 		type = type_value(type_lookup_pointer(c"char", 1))
 
+	else if (template_string_literal()):
+		type = string_value_type
+
 	else if (hash_typed_literal()):
 		type = hash_literal_type
 
