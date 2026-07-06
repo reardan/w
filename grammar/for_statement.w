@@ -424,6 +424,12 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	for_iter_require_struct_pointer(container_type)
 
 	char* container_name = type_get_name(container_type)
+	# Generator iterables get gen_free on the loop's exit edges (normal
+	# exit and break) so a broken-out-of loop does not leak the
+	# suspended generator's stack. 'return' out of the body still leaks.
+	int is_generator_loop = 0
+	if (strcmp(container_name, c"generator") == 0):
+		is_generator_loop = 1
 	char* iter_prefix = strjoin(container_name, c"_iter_")
 	char* begin_name = strjoin(iter_prefix, c"begin")
 	char* done_name = strjoin(iter_prefix, c"done")
@@ -483,6 +489,10 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 
 	# break exits here; continue advances the cursor first
 	patch_jump_chain(loop_break_chain, codepos)
+	if (is_generator_loop):
+		# Both exit edges (done and break) land here: release the
+		# generator's stack and object
+		for_iter_call(c"gen_free", container_slot, 0)
 	patch_jump_chain(loop_continue_chain, increment_target)
 
 	loop_break_chain = outer_break

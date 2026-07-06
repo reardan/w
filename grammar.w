@@ -35,6 +35,7 @@ import grammar.enum_declaration
 import grammar.import_statement
 import grammar.c_import_statement
 import grammar.extern_statement
+import grammar.generator_decl
 import grammar.program
 
 # no idea why this is necessary:

@@ -9,6 +9,7 @@ int extern_max_params();
 int ffi_type_class(int type);
 int ffi_push_promoted_float32();
 void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr);
+int generator_call_suffix(int callee_sym, char* callee_name, int expected_args); /* defined in generator_decl */
 
 
 int buffer_element_type(int type):
@@ -430,7 +431,15 @@ int postfix_expr():
 					expected_args = type_function_param_count(base_type)
 					callee_name = strclone(c"function pointer")
 
-			if (variadic_fixed >= 0):
+			int callee_is_generator = 0
+			if (callee_sym >= 0):
+				callee_is_generator = sym_is_generator(callee_sym)
+
+			if (callee_is_generator):
+				# Calling a generator creates the generator object
+				# instead of running the body; the result is generator*
+				type = generator_call_suffix(callee_sym, callee_name, expected_args)
+			else if (variadic_fixed >= 0):
 				# Direct call of a variadic C import: the callee is reached
 				# through its GOT slot, so its address in eax is not pushed.
 				type = parse_variadic_call_suffix(stack_pos, callee_sym, callee_name, declared_return, variadic_fixed)
