@@ -1001,6 +1001,14 @@
 			]
 		},
 		{
+			"name": "cli_argparse_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/cli/argparse_test.w", "-o", "bin/cli_argparse_test"]},
+				{"cmd": ["bin/cli_argparse_test"]}
+			]
+		},
+		{
 			"name": "result_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1573,6 +1581,7 @@
 				"format_test",
 				"time_test",
 				"args_test",
+				"cli_argparse_test",
 				"result_test",
 				"env_test",
 				"process_test",
