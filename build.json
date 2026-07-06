@@ -767,6 +767,8 @@
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "stream_test\nstream_64_test\nfile_test\n"},
 				{"cmd": ["bin/wtest", "changed", "lib/file.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "file_test\n"},
+				{"cmd": ["bin/wtest", "changed", "libs/standard/time/calendar.w"], "stdout_file": "bin/wtest_map.out"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "standard_time_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tools/wexec.w", "tests/wexec/good.json"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec_test\n"},
 				{"cmd": ["bin/wtest", "changed", "build.json"], "stdout_file": "bin/wtest_map.out"},
@@ -990,6 +992,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/time_test.w", "-o", "bin/time_test"]},
 				{"cmd": ["bin/time_test"]}
+			]
+		},
+		{
+			"name": "standard_time_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/time/time_test.w", "-o", "bin/standard_time_test"]},
+				{"cmd": ["bin/standard_time_test"]}
 			]
 		},
 		{
@@ -1572,6 +1582,7 @@
 				"linked_list_test",
 				"format_test",
 				"time_test",
+				"standard_time_test",
 				"args_test",
 				"result_test",
 				"env_test",

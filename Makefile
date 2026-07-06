@@ -845,6 +845,9 @@ wtest_map_test: wtest FORCE
 	./bin/wtest changed lib/file.w > ./bin/wtest_map.out
 	printf 'file_test\n' > ./bin/wtest_map.expected
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	./bin/wtest changed libs/standard/time/calendar.w > ./bin/wtest_map.out
+	printf 'standard_time_test\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
 	./bin/wtest changed lib/line_edit.w > ./bin/wtest_map.out
 	printf 'repl_test\ndebug_test\n' > ./bin/wtest_map.expected
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
@@ -997,6 +1000,10 @@ format_64_test: w FORCE
 time_test: w FORCE
 	./bin/wv2 lib/time_test.w -o ./bin/time_test
 	./bin/time_test
+
+standard_time_test: w FORCE
+	./bin/wv2 libs/standard/time/time_test.w -o ./bin/standard_time_test
+	./bin/standard_time_test
 
 args_test: w FORCE
 	./bin/wv2 lib/args_test.w -o ./bin/args_test
@@ -1161,7 +1168,7 @@ debug_test_x64: wdbg_x64 FORCE
 	printf 'c\n' | ./bin/wdbg64 tests/segv_fixture.w > /dev/null 2>&1; test $$? -eq 1
 	@echo "debug x64 test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test standard_time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test test hello tests_x64 FORCE
 
 
 clean:
