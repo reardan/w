@@ -42,6 +42,8 @@ void wtest_init_targets():
 	wtest_targets.push(c"varargs_w_64_test")
 	wtest_targets.push(c"feature_interaction_test")
 	wtest_targets.push(c"feature_interaction_64_test")
+	wtest_targets.push(c"dynamic_var_test")
+	wtest_targets.push(c"dynamic_var_64_test")
 	wtest_targets.push(c"array_list_test")
 	wtest_targets.push(c"array_list_64_test")
 	wtest_targets.push(c"json_test")
@@ -229,6 +231,9 @@ void wtest_map_structures(char* path):
 		wtest_add(path, c"string_64_test")
 		wtest_add(path, c"template_string_test")
 		wtest_add(path, c"template_string_64_test")
+	else if (strcmp(path, c"structures/w_dynamic.w") == 0):
+		wtest_add(path, c"dynamic_var_test")
+		wtest_add(path, c"dynamic_var_64_test")
 	else:
 		wtest_add(path, c"tests")
 
@@ -267,6 +272,9 @@ void wtest_map_path(char* path):
 	else if (strcmp(path, c"tests/feature_interaction_test.w") == 0):
 		wtest_add(path, c"feature_interaction_test")
 		wtest_add(path, c"feature_interaction_64_test")
+	else if (starts_with(path, c"tests/dynamic_var")):
+		wtest_add(path, c"dynamic_var_test")
+		wtest_add(path, c"dynamic_var_64_test")
 	else if (starts_with(path, c"tests/default_args")):
 		wtest_add(path, c"default_args_test")
 		wtest_add(path, c"default_args_64_test")

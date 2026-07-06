@@ -473,6 +473,54 @@
 			]
 		},
 		{
+			"name": "dynamic_var_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/dynamic_var_test.w", "-o", "bin/dynamic_var_test"]},
+				{"cmd": ["bin/dynamic_var_test"]},
+				{"cmd": ["bin/wv2", "tests/dynamic_var_trap_fixture.w", "-o", "bin/dynamic_var_trap_fixture"]},
+				{
+					"cmd": ["bin/dynamic_var_trap_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "var runtime error: expected int, got char*"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/dynamic_var_float_error_fixture.w", "-o", "bin/dynamic_var_float_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "cannot convert 'float32' to var"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/dynamic_var_mod_error_fixture.w", "-o", "bin/dynamic_var_mod_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "var operands do not support %"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/dynamic_var_variadic_error_fixture.w", "-o", "bin/dynamic_var_variadic_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "variadic parameter element type cannot be var"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/dynamic_var_default_error_fixture.w", "-o", "bin/dynamic_var_default_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "default values are not supported on var parameters"
+				}
+			]
+		},
+		{
+			"name": "dynamic_var_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/dynamic_var_test.w", "-o", "bin/dynamic_var_64_test"]},
+				{"cmd": ["bin/dynamic_var_64_test"]},
+				{"cmd": ["bin/wv2", "x64", "tests/dynamic_var_trap_fixture.w", "-o", "bin/dynamic_var_trap_fixture_64"]},
+				{
+					"cmd": ["bin/dynamic_var_trap_fixture_64"],
+					"expect_fail": true,
+					"expect_stderr": "var runtime error: expected int, got char*"
+				}
+			]
+		},
+		{
 			"name": "int64_x86_error_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1639,6 +1687,7 @@
 				"template_string_64_test",
 				"generator_64_test",
 				"feature_interaction_64_test",
+				"dynamic_var_64_test",
 				"json_64_test",
 				"json_codec_64_test",
 				"json_rpc_64_test",
@@ -1688,6 +1737,7 @@
 				"template_string_test",
 				"generator_test",
 				"feature_interaction_test",
+				"dynamic_var_test",
 				"import_test",
 				"c_import_test",
 				"c_preprocessor_test",

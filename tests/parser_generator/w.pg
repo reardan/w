@@ -51,6 +51,7 @@ literal KW_SET "set"
 literal KW_LIST "list"
 literal KW_GENERATOR "generator"
 literal KW_YIELD "yield"
+literal KW_VAR "var"
 
 literal ELLIPSIS "..."
 literal AND_AND "&&"
@@ -99,7 +100,7 @@ rule import_decl = KW_IMPORT dotted_name import_alias_opt
 rule import_alias_opt = KW_AS name_token |
 rule dotted_name = name_token dotted_tail*
 rule dotted_tail = DOT name_token
-rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD
+rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR
 rule c_lib_decl = KW_C_LIB STRING
 rule extern_decl = KW_EXTERN type_ref IDENT LPAREN extern_param_list RPAREN | KW_EXTERN type_ref IDENT
 rule extern_param_list = param extern_param_tail* | ELLIPSIS |
@@ -143,7 +144,7 @@ rule set_type = KW_SET LBRACK type_ref RBRACK
 rule list_type = KW_LIST LBRACK type_ref RBRACK
 rule param_type_list = type_ref param_type_tail* |
 rule param_type_tail = COMMA type_ref
-rule type_atom = KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_BOOL | KW_UINT | KW_GENERATOR | IDENT
+rule type_atom = KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_BOOL | KW_UINT | KW_GENERATOR | KW_VAR | IDENT
 rule pointer_part = STAR
 rule array_part = LBRACK expression_opt RBRACK
 rule expression_opt = expression |

@@ -237,8 +237,10 @@ int __w_var_cmp(__w_var_box* a, __w_var_box* b):
 
 
 # Readable rendering as a fresh (or shared, for tag 2) C string; used
-# by print_var and f"..." template string interpolation.
-char* __w_var_to_cstr(__w_var_box* b):
+# by print_var and f"..." template string interpolation. Takes void*
+# like __w_var_tag so tests can pass a var directly.
+char* __w_var_to_cstr(void* v):
+	__w_var_box* b = cast(__w_var_box*, cast(int, v))
 	int tag = __w_var_tag_of(b)
 	if (tag == 1):
 		return itoa(b.payload)
@@ -252,6 +254,6 @@ char* __w_var_to_cstr(__w_var_box* b):
 # Print a readable rendering of a var and a newline to stdout. Takes
 # void* (the raw box pointer) so this seed-safe module can accept a var.
 void print_var(void* v):
-	char* text = __w_var_to_cstr(cast(__w_var_box*, cast(int, v)))
+	char* text = __w_var_to_cstr(v)
 	write(1, text, strlen(text))
 	write(1, c"\x0a", 1)
