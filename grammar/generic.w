@@ -4,12 +4,14 @@ Generics with explicit instantiation (docs/projects/generics.md).
 A generic definition ('T max[T](T a, T b):' or 'struct pair[T]:') is not
 compiled where it appears. Instead its source span (file path + byte
 offset, from the tokenizer's token_start_offset) is recorded in a
-registry and the definition's tokens are skipped. Each explicit
-instantiation ('max[int](...)' / 'pair[int]') re-parses the recorded
-span with a substitution table binding the type parameters to the type
-arguments, producing an ordinary monomorphic function or struct under a
-mangled name ('max$int', 'pair$int'). '$' cannot appear in a source
-identifier, so mangled names can never collide with user symbols.
+registry and the definition's tokens are skipped. Each instantiation -
+explicit ('max[int](...)' / 'pair[int]') or inferred from the argument
+types ('max(3, 5)', see the inference block below) - re-parses the
+recorded span with a substitution table binding the type parameters to
+the type arguments, producing an ordinary monomorphic function or
+struct under a mangled name ('max$int', 'pair$int'). '$' cannot appear
+in a source identifier, so mangled names can never collide with user
+symbols.
 
 Struct instantiations only fill the type table (no code is emitted), so
 they run eagerly, nested inside whatever parse triggered them - the same
@@ -30,6 +32,10 @@ int type_name();
 int type_name_array_suffix(int type);
 void function_definition(int current_symbol);
 int import_alias_lookup(char* name);
+int expression();
+void push_call_argument(int arg_type);
+void coerce_call_argument(int param_type, int arg_type);
+void check_call_argument(int callee, int signature_type, char* callee_name, int arg_index, int arg_type);
 
 
 /*
@@ -643,6 +649,382 @@ int generic_inst_signature(int inst):
 
 
 /*
+Type-argument inference (docs/projects/generics.md). When a registered
+generic FUNCTION name is followed directly by '(' instead of '[', the
+type arguments are inferred from the call's argument types.
+
+The definition's parameter SHAPES are extracted once per definition by
+a header-only nested re-parse (the generic_inst_signature() walk) with
+every type parameter bound to a distinct word-sized PLACEHOLDER type
+instead of a concrete one. Each parameter then classifies as:
+- a type-parameter reference with a pointer depth ('T' = depth 0,
+	'T**' = depth 2): the placeholder (or a pointer chain over it) is
+	the parameter's type;
+- a concrete type (no placeholder involved): checked and coerced like
+	an ordinary call argument;
+- opaque: the type mentions a placeholder in a position v1 cannot
+	invert ('list[T]', 'T[]', 'pair[T]*', 'const T*'). Opaque shapes
+	constrain nothing; they are checked against the instantiated
+	signature after the type arguments are known.
+Placeholder names start with '@', which cannot appear in a source
+identifier or in any compiler-generated type name, so any type whose
+name mentions '@' provably depends on a placeholder.
+
+Arguments are parsed left to right. A type-parameter shape strips its
+pointer depth from the argument's promoted type and binds the type
+parameter: the first binding wins and a conflicting later binding is a
+compile error. Untyped constants (integer/char literals, '&'
+addresses) bind 'int' when the parameter is still unbound and are
+coerced to the existing binding otherwise, so 'max(1.5, 2)' works like
+'max[float32](1.5, 2)'. Every type parameter must end up bound, else a
+compile error suggests the explicit 'name[T](...)' syntax. Once bound,
+the call proceeds exactly like an explicit instantiation: mangle,
+intern, signature, emit, backpatch, drain.
+
+Because the arguments are parsed (and pushed) before the callee is
+known, the callee's mov-imm slot is emitted after them and the call
+site cannot push a struct return buffer below the arguments: inferred
+calls whose instantiation returns a struct by value are rejected with
+a hint to use explicit type arguments (forward calls have the same
+restriction, for the same reason). Inference also requires the
+definition to appear before the call: an unregistered name followed by
+'(' is an ordinary unknown symbol.
+*/
+
+# Placeholder type indices for shape extraction, one per type-parameter
+# slot, created on demand and shared by every definition.
+char* generic_infer_placeholders
+
+# Cached shape blocks, indexed by definition: 'int param_count', then
+# two ints (a, b) per parameter:
+#	a >= 0: type-parameter index a, b = pointer depth
+#	a == -1: concrete type, b = the type index
+#	a == -2: opaque (constrains nothing at parse time)
+char* generic_infer_shapes_cache
+
+
+# Parameters recorded per definition and arguments recorded per call;
+# anything past the limit is treated as opaque/unchecked (the parsed
+# signature only records 10 parameter types anyway).
+int generic_infer_max_args():
+	return 16
+
+
+int generic_infer_placeholder(int i):
+	if (generic_infer_placeholders == 0):
+		generic_infer_placeholders = malloc(generic_max_params() << 2)
+		int j = 0
+		while (j < generic_max_params()):
+			save_int(generic_infer_placeholders + (j << 2), -1)
+			j = j + 1
+	int t = load_int(generic_infer_placeholders + (i << 2))
+	if (t < 0):
+		char* index_name = itoa(i)
+		t = type_push_size(strjoin(c"@", index_name), word_size)
+		free(index_name)
+		save_int(generic_infer_placeholders + (i << 2), t)
+	return t
+
+
+# 1 when the type's name mentions a placeholder ('@' cannot appear in
+# any user or compiler-generated type name).
+int generic_infer_mentions_placeholder(int t):
+	char* name = type_get_name(type_real(t))
+	int i = 0
+	while (name[i] != 0):
+		if (name[i] == '@'):
+			return 1
+		i = i + 1
+	return 0
+
+
+# Classify one parsed parameter type into the shape block (see the
+# layout on generic_infer_shapes_cache). Pointer records store the base
+# type's name, so a pointer chain over placeholder i still has name
+# '@i' with a nonzero pointer level.
+void generic_infer_store_shape(char* block, int slot, int param_type, int def):
+	char* e = block + 4 + (slot << 3)
+	int u = type_unqualified(param_type)
+	char* name = type_get_name(u)
+	int n = generic_def_param_count(def)
+	int i = 0
+	while (i < n):
+		if (strcmp(name, type_get_name(generic_infer_placeholder(i))) == 0):
+			save_int(e, i)
+			save_int(e + 4, type_get_pointer_level(u))
+			return;
+		i = i + 1
+	if (generic_infer_mentions_placeholder(u)):
+		save_int(e, -2)
+		save_int(e + 4, 0)
+		return;
+	save_int(e, -1)
+	save_int(e + 4, param_type)
+
+
+# The parameter shapes of a definition, extracted once and cached: a
+# header-only nested re-parse (exactly generic_inst_signature's walk)
+# with the type parameters bound to placeholders instead of concrete
+# types. Safe mid-parse: headers emit no code.
+char* generic_infer_shapes(int def):
+	if (generic_infer_shapes_cache == 0):
+		generic_infer_shapes_cache = malloc(generic_def_max() << 2)
+		int z = 0
+		while (z < generic_def_max()):
+			save_int(generic_infer_shapes_cache + (z << 2), 0)
+			z = z + 1
+	char* cached = cast(char*, load_int(generic_infer_shapes_cache + (def << 2)))
+	if (cached != 0):
+		return cached
+	int n = generic_def_param_count(def)
+	int placeholder_args = cast(int, malloc(generic_max_params() << 2))
+	int i = 0
+	while (i < n):
+		save_int(placeholder_args + (i << 2), generic_infer_placeholder(i))
+		i = i + 1
+	char* save = generic_reparse_save()
+	char* old_subst = generic_subst_swap(generic_subst_make(def, placeholder_args, n))
+	generic_reparse_start(def)
+	type_name() /* the return type; only the parameters matter here */
+	get_token() /* the definition's own name */
+	expect(c"[")
+	while (peek(c"]") == 0):
+		get_token()
+	expect(c"]")
+	expect(c"(")
+	char* block = malloc(4 + (generic_infer_max_args() << 3))
+	int count = 0
+	while (accept(c")") == 0):
+		int param_type = type_name()
+		if (peek(c".")):
+			error(c"variadic parameters are not supported in generic functions")
+		if ((peek(c")") == 0) & (peek(c",") == 0) & (peek(c"=") == 0)):
+			get_token() /* the parameter's name */
+		if (peek(c"=")):
+			error(c"default parameter values are not supported in generic functions")
+		if (count < generic_infer_max_args()):
+			generic_infer_store_shape(block, count, param_type, def)
+		count = count + 1
+		accept(c",")
+	save_int(block, count)
+	close(file)
+	free(generic_subst_swap(old_subst))
+	generic_reparse_restore(save)
+	free(cast(char*, placeholder_args))
+	save_int(generic_infer_shapes_cache + (def << 2), cast(int, block))
+	return block
+
+
+void generic_infer_error_prefix(int def):
+	diag_part(c"generic function '")
+	diag_part(generic_def_name(def))
+	diag_part(c"': ")
+
+
+# The declarable type an explicit '[T]' list would have named for an
+# argument's promoted expression type (value pseudo-types map back to
+# their storage types).
+int generic_infer_declarable(int t):
+	if (t == string_value_type):
+		return string_type
+	if (t == var_value_type):
+		return var_type
+	if (t == float32_value_type):
+		return float32_type
+	if (t == float64_value_type):
+		return float64_type
+	if (type_get_kind(t) == type_kind_slice_value()):
+		return type_get_slice(type_get_element_type(t))
+	return t
+
+
+void generic_infer_pointer_error(int def, int param, int arg_type, int arg_index):
+	generic_infer_error_prefix(def)
+	diag_part(c"cannot infer type parameter '")
+	diag_part(generic_def_param_name(def, param))
+	diag_part(c"' from argument ")
+	diag_part(itoa(arg_index + 1))
+	diag_part(c": expected a pointer, got '")
+	print_error_type(arg_type)
+	error(c"'")
+
+
+# Bind type parameter 'param' from an argument of the promoted type
+# 'arg_type' against a 'T'-with-pointer-depth shape.
+void generic_infer_bind(int def, char* bound, int param, int depth, int arg_type, int arg_index):
+	int existing = load_int(bound + (param << 2))
+	if ((arg_type == 3) & (depth == 0)):
+		# untyped constant: bind 'int' when unbound, else coerce the
+		# value in eax to the existing binding (e.g. int -> float)
+		if (existing < 0):
+			save_int(bound + (param << 2), type_lookup(c"int"))
+		else:
+			coerce(existing, arg_type)
+		return;
+	if (arg_type == 4):
+		generic_infer_error_prefix(def)
+		diag_part(c"cannot infer type parameter '")
+		diag_part(generic_def_param_name(def, param))
+		diag_part(c"' from argument ")
+		diag_part(itoa(arg_index + 1))
+		error(c": a bare function name has no value type; use explicit type arguments")
+	int stripped = generic_infer_declarable(arg_type)
+	int level = 0
+	while (level < depth):
+		if (type_get_pointer_level(stripped) == 0):
+			generic_infer_pointer_error(def, param, arg_type, arg_index)
+		stripped = type_lookup_previous_pointer(stripped)
+		if (stripped < 0):
+			generic_infer_pointer_error(def, param, arg_type, arg_index)
+		level = level + 1
+	stripped = type_unqualified(stripped)
+	if (existing < 0):
+		save_int(bound + (param << 2), stripped)
+		return;
+	if (existing != stripped):
+		generic_infer_error_prefix(def)
+		diag_part(c"conflicting types inferred for type parameter '")
+		diag_part(generic_def_param_name(def, param))
+		diag_part(c"': '")
+		print_error_type(existing)
+		diag_part(c"' vs '")
+		print_error_type(stripped)
+		error(c"'")
+
+
+# A concrete (non-generic) parameter shape: the same check and coercion
+# an ordinary call argument gets (check_call_argument's message).
+void generic_infer_check_concrete(int def, int param_type, int arg_index, int arg_type):
+	if (types_compatible_with_expression(param_type, arg_type) == 0):
+		diag_part(c"warning: function '")
+		diag_part(generic_def_name(def))
+		diag_part(c"' argument ")
+		diag_part(itoa(arg_index + 1))
+		diag_part(c" type mismatch: expected '")
+		print_error_type(param_type)
+		diag_part(c"', got '")
+		print_error_type(arg_type)
+		warning(c"'")
+	coerce_call_argument(param_type, arg_type)
+
+
+# Inferred call 'max(3, 5)': the generic's name is the current token
+# and '(' follows directly. The callee is unknown until the arguments
+# have been parsed, so postfix_expr's callee-first stack layout does
+# not apply: this parses the whole call itself (arguments pushed left
+# to right, then the callee loaded into eax and called) and leaves the
+# closing ')' as the current token for primary_expr's trailing
+# get_token(). Returns the call's value type.
+int generic_call_infer_expr(int def):
+	char* shapes = generic_infer_shapes(def)
+	int shape_count = load_int(shapes)
+	int n = generic_def_param_count(def)
+	char* bound = malloc(n << 2)
+	int i = 0
+	while (i < n):
+		save_int(bound + (i << 2), -1)
+		i = i + 1
+	# per argument: promoted type + a flag for the post-binding check
+	char* arg_records = malloc(generic_infer_max_args() << 3)
+	int s = stack_pos
+	int passed = 0
+	get_token()
+	expect(c"(")
+	if (peek(c")") == 0):
+		int more = 1
+		while (more):
+			int shape_kind = -2
+			int shape_data = 0
+			if ((passed < shape_count) & (passed < generic_infer_max_args())):
+				shape_kind = load_int(shapes + 4 + (passed << 3))
+				shape_data = load_int(shapes + 8 + (passed << 3))
+			int arg_type = expression()
+			arg_type = promote(arg_type)
+			int needs_check = 0
+			if (shape_kind >= 0):
+				generic_infer_bind(def, bound, shape_kind, shape_data, arg_type, passed)
+			else if (shape_kind == -1):
+				generic_infer_check_concrete(def, shape_data, passed, arg_type)
+			else:
+				needs_check = 1
+			if (passed < generic_infer_max_args()):
+				save_int(arg_records + (passed << 3), arg_type)
+				save_int(arg_records + 4 + (passed << 3), needs_check)
+			push_call_argument(arg_type)
+			passed = passed + 1
+			more = accept(c",")
+	if (peek(c")") == 0):
+		diag_part(c"')' expected in call to generic '")
+		diag_part(generic_def_name(def))
+		error(c"'")
+	i = 0
+	while (i < n):
+		if (load_int(bound + (i << 2)) < 0):
+			generic_infer_error_prefix(def)
+			diag_part(c"cannot infer type argument '")
+			diag_part(generic_def_param_name(def, i))
+			diag_part(c"'; use explicit type arguments, e.g. '")
+			diag_part(generic_def_name(def))
+			error(c"[int](...)'")
+		i = i + 1
+	int args = cast(int, malloc(generic_max_params() << 2))
+	i = 0
+	while (i < n):
+		save_int(args + (i << 2), load_int(bound + (i << 2)))
+		i = i + 1
+	free(bound)
+	char* mangled = generic_mangle(generic_def_name(def), args, n)
+	int inst = generic_inst_intern(def, args, n, mangled)
+	int sig = generic_inst_signature(inst)
+	int return_type = type_function_return(sig)
+	if (return_type >= 0):
+		if ((type_num_args(return_type) > 0) & (type_get_pointer_level(return_type) == 0)):
+			# the arguments are already on the stack, so no return
+			# buffer can be pushed below them (the explicit syntax
+			# pushes it before the arguments)
+			generic_infer_error_prefix(def)
+			diag_part(c"inferred call returns a struct by value; use explicit type arguments, e.g. '")
+			diag_part(generic_def_name(def))
+			error(c"[int](...)'")
+	int expected = type_function_param_count(sig)
+	if (passed != expected):
+		diag_part(c"warning: function '")
+		diag_part(generic_inst_mangled(inst))
+		diag_part(c"' expects ")
+		diag_part(itoa(expected))
+		diag_part(c" arguments, got ")
+		warning(itoa(passed))
+	# opaque-shape arguments get their check against the now-concrete
+	# signature (type-parameter shapes match by construction; concrete
+	# shapes were checked while parsing)
+	i = 0
+	while ((i < passed) & (i < generic_infer_max_args())):
+		if (load_int(arg_records + 4 + (i << 3))):
+			check_call_argument(-1, sig, generic_inst_mangled(inst), i, load_int(arg_records + (i << 3)))
+		i = i + 1
+	free(arg_records)
+	# callee: a direct reference when the instantiation's symbol exists
+	# (already compiled, or being compiled right now at the drain);
+	# otherwise a mov-imm slot on the instantiation's backpatch chain,
+	# exactly like the explicit path
+	if (sym_lookup(generic_inst_mangled(inst)) >= 0):
+		sym_get_value(generic_inst_mangled(inst))
+	else:
+		emit(5, c"\xb8....") /* mov $n,%eax */
+		int head = generic_inst_chain(inst)
+		if (head == 0):
+			head = code_offset
+		save_int(code + codepos - 4, head)
+		generic_inst_set_chain(inst, codepos + code_offset - 4)
+	call_eax()
+	be_pop(stack_pos - s)
+	stack_pos = s
+	last_call_return_type = return_type
+	last_call_end = codepos
+	return type_value(return_type)
+
+
+/*
 Call sites. When primary_expr() sees a registered generic function
 name, generic_call_expr() parses the '[type-args]', interns the
 instantiation and leaves the callee's address in eax:
@@ -672,6 +1054,10 @@ int generic_call_ready():
 # expression type (4: function, its address is its value).
 int generic_call_expr():
 	int def = generic_def_lookup(token, 0)
+	if (nextc == '('):
+		# no '[type-args]' list: infer the type arguments from the
+		# call's argument types
+		return generic_call_infer_expr(def)
 	if (nextc != '['):
 		diag_part(c"generic function '")
 		diag_part(token)

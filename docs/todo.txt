@@ -235,9 +235,10 @@ current state:
 		default parameter values (docs/projects/default_args_variadics.md)
 		dynamic typing / var (docs/projects/dynamic_var.md)
 		generics/templates with explicit instantiation (docs/projects/generics.md)
+		generic type-argument inference at call sites (docs/projects/generics.md)
 
 	future language features:
-		generic type-argument inference at call sites (explicit [T] works)
+		generic inference for forward calls, struct constructors and container shapes (pair[T]*, list[T])
 		inline asm functions
 		float16 / bfloat16 (design: docs/projects/float.md)
 		type <=> json: floats and map[string, V] fields (base feature works)

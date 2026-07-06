@@ -1,12 +1,12 @@
 import lib.lib
 
-# Calling a generic function without the explicit '[type-args]'
-# instantiation list.
-T pick[T](T a, T b):
-	if (a > b):
-		return a
-	return b
+# A type parameter that appears only in the return type cannot be
+# inferred from the call's arguments: the call needs the explicit
+# 'make[int]()' instantiation syntax.
+T make[T]():
+	T value = 0
+	return value
 
 
 int main(int argc, char** argv):
-	return pick(1, 2)
+	return make()
