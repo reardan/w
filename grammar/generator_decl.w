@@ -24,6 +24,10 @@ helper symbols it declares.
 */
 
 
+# Defined in grammar/program.w (shared with function_definition)
+int parse_constant_default();
+
+
 # The generator* type for call results and the hidden self parameter.
 # Errors out when lib.generator has not been imported.
 int generator_object_pointer_type():
@@ -86,11 +90,14 @@ void generator_function_definition(int current_symbol):
 	int n = table_pos
 	number_of_args = 0
 	int param_count = 0
+	int saw_default = 0
 	int function_start = codepos
 	while (accept(c")") == 0):
 		param_count = param_count + 1
 		number_of_args = number_of_args + 1
 		int type = type_name()
+		if (accept(c".")):
+			error(c"variadic generator parameters are not supported")
 		if (type_stack_words(type) != 1):
 			error(c"generator parameters must be word-sized")
 		if (type_num_args(type_real(type)) > 0):
@@ -101,6 +108,21 @@ void generator_function_definition(int current_symbol):
 			sym_declare(token, type, 'A', number_of_args, 1)
 			pointer_indirection = 0
 			get_token()
+
+		# "= constant" records a default, exactly like function_definition
+		# in grammar/program.w; generator_call_suffix pushes them for
+		# missing trailing arguments.
+		if (accept(c"=")):
+			if (param_count > sym_max_param_slots()):
+				error(c"default values are only supported on the first 10 parameters")
+			int default_value = parse_constant_default()
+			if (saw_default == 0):
+				sym_clear_param_defaults(current_symbol)
+			saw_default = 1
+			sym_set_param_default(current_symbol, param_count - 1, default_value)
+		else if (saw_default):
+			error(c"parameter without a default follows a parameter with a default")
+
 		accept(c",") /* ignore trailing comma */
 
 	save_int(table + current_symbol + 22, param_count)
@@ -179,6 +201,25 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 			stack_pos = stack_pos + 1
 			passed_args = passed_args + 1
 		expect(c")")
+
+	# Missing trailing arguments whose parameters all carry defaults are
+	# filled in with the recorded constants, like parse_call_suffix
+	if ((callee_sym >= 0) & (expected_args > passed_args)):
+		int missing_all_defaulted = 1
+		int check_index = passed_args
+		while (check_index < expected_args):
+			if (sym_param_has_default(callee_sym, check_index) == 0):
+				missing_all_defaulted = 0
+			check_index = check_index + 1
+		if (missing_all_defaulted):
+			while (passed_args < expected_args):
+				mov_eax_int(sym_param_default(callee_sym, passed_args))
+				int default_param_type = sym_param_type(callee_sym, passed_args)
+				if (default_param_type >= 0):
+					coerce(default_param_type, 3)
+				push_eax()
+				stack_pos = stack_pos + 1
+				passed_args = passed_args + 1
 
 	if (expected_args >= 0):
 		if (passed_args != expected_args):
