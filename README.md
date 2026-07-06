@@ -259,9 +259,9 @@ archives the old seed to `old/` first.
 
 ## Current major open areas
 
-- Generators (`generator`/`yield`) — design in `docs/projects/iteration.md`;
-  the container half (`for x in <container>` via the cursor protocol) is
-  implemented, generators are not.
+- Generic type-argument inference — explicit instantiation (`max[int](a, b)`)
+  is implemented (`docs/projects/generics.md`); inferring `[T]` from the
+  arguments is not.
 - CUDA backend Stage 2, the PTX emitter — Stages 0–1 (x64 self-hosting and
   dynamic linking to libcuda) are done; see `docs/projects/cuda.md`.
 - REPL line editing/history.
