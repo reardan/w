@@ -34,6 +34,8 @@ void wtest_init_targets():
 	wtest_targets.push(c"hash_table_64_test")
 	wtest_targets.push(c"string_test")
 	wtest_targets.push(c"string_64_test")
+	wtest_targets.push(c"template_string_test")
+	wtest_targets.push(c"template_string_64_test")
 	wtest_targets.push(c"array_list_test")
 	wtest_targets.push(c"array_list_64_test")
 	wtest_targets.push(c"json_test")
@@ -214,6 +216,8 @@ void wtest_map_structures(char* path):
 	else if (strcmp(path, c"structures/string.w") == 0):
 		wtest_add(path, c"string_test")
 		wtest_add(path, c"string_64_test")
+		wtest_add(path, c"template_string_test")
+		wtest_add(path, c"template_string_64_test")
 	else:
 		wtest_add(path, c"tests")
 
@@ -246,6 +250,9 @@ void wtest_map_path(char* path):
 	else if (strcmp(path, c"tests/json_codec_test.w") == 0):
 		wtest_add(path, c"json_codec_test")
 		wtest_add(path, c"json_codec_64_test")
+	else if (starts_with(path, c"tests/template_string")):
+		wtest_add(path, c"template_string_test")
+		wtest_add(path, c"template_string_64_test")
 	else if (starts_with(path, c"tests/type_system_error")):
 		wtest_add(path, c"type_system_error_test")
 	else if (starts_with(path, c"tests/type_system_warning")):

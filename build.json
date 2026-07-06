@@ -499,6 +499,42 @@
 			]
 		},
 		{
+			"name": "template_string_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/template_string_test.w", "-o", "bin/template_string_test"]},
+				{"cmd": ["bin/template_string_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/template_string_error_fixture.w", "-o", "bin/template_string_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "unsupported template string expression type: 'int*'"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/template_string_unterminated_fixture.w", "-o", "bin/template_string_unterminated_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "unterminated template string literal"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/template_string_unterminated_expr_fixture.w", "-o", "bin/template_string_unterminated_expr_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'}' expected in template string expression"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/template_string_stray_brace_fixture.w", "-o", "bin/template_string_stray_brace_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "single '}' in template string; use '}}'"
+				}
+			]
+		},
+		{
+			"name": "template_string_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/template_string_test.w", "-o", "bin/template_string_64_test"]},
+				{"cmd": ["bin/template_string_64_test"]}
+			]
+		},
+		{
 			"name": "for_container_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1500,6 +1536,7 @@
 				"map_set_builtin_64_test",
 				"list_builtin_64_test",
 				"for_container_64_test",
+				"template_string_64_test",
 				"json_64_test",
 				"json_codec_64_test",
 				"json_rpc_64_test",
@@ -1544,6 +1581,7 @@
 				"type_system_warning_test",
 				"for_test",
 				"for_container_test",
+				"template_string_test",
 				"import_test",
 				"c_import_test",
 				"c_preprocessor_test",
