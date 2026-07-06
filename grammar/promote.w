@@ -1,6 +1,9 @@
 char *last_identifier
 
 
+void var_coerce(int want, int got);
+
+
 # Print a type's name followed by its pointer stars, e.g. "char**"
 void print_error_type(int type_index):
 	type_index = type_real(type_index)
@@ -102,6 +105,8 @@ int promote(int type):
 		return type
 	if (type == string_value_type):
 		return type
+	if (type == var_value_type):
+		return type
 	if (type_is_array(type)):
 		return type_get_slice_value(type_get_element_type(type))
 	if (type_num_args(type) > 0): /* struct: keep the address */
@@ -112,6 +117,9 @@ int promote(int type):
 	if (type == string_type):
 		promote_eax()
 		return string_value_type
+	if (type == var_type):
+		promote_eax()
+		return var_value_type
 	if (type_get_pointer_level(type) > 0):
 		promote_eax()
 		return type
@@ -143,6 +151,9 @@ int promote(int type):
 void coerce(int want, int got):
 	want = type_canonical(want)
 	got = type_canonical(got)
+	if (type_is_var(type_unqualified(want)) | type_is_var(type_unqualified(got))):
+		var_coerce(type_unqualified(want), type_unqualified(got))
+		return;
 	if ((want == bool_type) & (got != bool_type)):
 		promote(got)
 		alu_test_set(0x95) /* setne */

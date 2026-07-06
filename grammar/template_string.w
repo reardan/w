@@ -27,6 +27,7 @@ once compilation of the user's files is done.
 */
 int expression();
 int import_module(char* dotted);
+void var_emit_to_cstr();
 
 
 # Set when a compiled program used an f-string; the drivers call
@@ -166,6 +167,9 @@ int template_helper_for_type(int got):
 		return 4
 	if (type_is_char_pointer(t)):
 		return 2
+	# var renders through __w_var_to_cstr, then appends as a char*
+	if (type_is_var(t)):
+		return 2
 	if (type_float_kind(t)):
 		template_unsupported(got)
 	if (type_get_pointer_level(t) > 0):
@@ -218,6 +222,8 @@ void template_emit_chunk_append(int length, int builder_slot):
 # the builder with the helper matching its type.
 void template_emit_value_append(int got, int builder_slot):
 	int helper = template_helper_for_type(got)
+	if (type_is_var(type_unqualified(got))):
+		var_emit_to_cstr()
 	int base_stack = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1

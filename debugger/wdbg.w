@@ -1073,6 +1073,7 @@ int wdbg_main(int argc, int argv):
 	# strings used by the debuggee
 	json_codec_finish_import()
 	template_string_finish_import()
+	var_finish_import()
 
 	int* target_main = cast(int*, sym_address(c"main"))
 	asserts(c"debuggee has no main()", target_main != 0)

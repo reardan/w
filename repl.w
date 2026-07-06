@@ -463,6 +463,7 @@ int repl_compile_entry(char* path):
 	# they are never in the execution path
 	json_codec_finish_import()
 	template_string_finish_import()
+	var_finish_import()
 	close(file)
 	repl_recovery = 0
 

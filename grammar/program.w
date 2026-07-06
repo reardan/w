@@ -103,6 +103,8 @@ void function_definition(int current_symbol):
 					type_is_map(elem) | type_is_set(elem) | type_is_list(elem) |
 					(type_get_size(elem) != word_size)):
 				error(c"variadic parameter element type must be word-sized")
+			if (type_is_var(elem)):
+				error(c"variadic parameter element type cannot be var")
 			type = type_get_slice(type)
 			is_w_variadic = 1
 		if (type_is_array(type)):
@@ -128,6 +130,8 @@ void function_definition(int current_symbol):
 		if (accept(c"=")):
 			if (is_w_variadic):
 				error(c"a variadic parameter cannot have a default value")
+			if (type_is_var(type_unqualified(type))):
+				error(c"default values are not supported on var parameters")
 			if (param_count > sym_max_param_slots()):
 				error(c"default values are only supported on the first 10 parameters")
 			int default_value = parse_constant_default()

@@ -9,7 +9,9 @@ int multiplicative_expr():
 			get_token()
 			int left_type = binary1(type)
 			int right_type = binary2_promote_pop(unary_expression())
-			int result_type = float_binary_arithmetic(left_type, right_type, '*')
+			int result_type = var_binary_arithmetic(left_type, right_type, '*')
+			if (result_type == 0):
+				result_type = float_binary_arithmetic(left_type, right_type, '*')
 			if (result_type):
 				type = result_type
 			else:
@@ -19,7 +21,11 @@ int multiplicative_expr():
 		else if (accept(c"/")):
 			int left_type = binary1(type)
 			int right_type = promote(unary_expression())
-			if (binary_float_kind(left_type, right_type)):
+			if (var_binary_operands(left_type, right_type)):
+				pop_ebx()
+				stack_pos = stack_pos - 1
+				type = var_binary_arithmetic(left_type, right_type, '/')
+			else if (binary_float_kind(left_type, right_type)):
 				pop_ebx()
 				stack_pos = stack_pos - 1
 				int result_type = float_binary_arithmetic(left_type, right_type, '/')
@@ -32,6 +38,8 @@ int multiplicative_expr():
 		else if (accept(c"%")):
 			int left_type = binary1(type)
 			int right_type = promote(unary_expression())
+			if (var_binary_operands(left_type, right_type)):
+				error(c"var operands do not support %")
 			if (binary_float_kind(left_type, right_type)):
 				error(c"float operands do not support %")
 			alu_imod()

@@ -194,6 +194,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# code lands at a top-level boundary
 	json_codec_finish_import()
 	template_string_finish_import()
+	var_finish_import()
 
 	# --strict: fail before any output is written so no artifact is
 	# produced when warnings fired. Warnings were already printed with
