@@ -97,7 +97,7 @@ stock x86-64 system.
 | `grammar/` | One module per grammar rule; parsing and code emission are fused |
 | `grammar.w`, `codegen.w` | Umbrella modules that import the grammar/ and code_generator/ trees |
 | `code_generator/` | Byte emitter, x86/x64 encoders, ELF32/ELF64 writers, dynamic linking, DWARF |
-| `lib/` | Standard library: syscalls, memory, strings, math, format, args, env, process (spawn/pipes/wait/timeouts), assert/testing |
+| `lib/` | Standard library: syscalls, memory, strings, math, format, args, env, process (spawn/pipes/wait/timeouts), the generic `wresult[T]` result type, assert/testing |
 | `lib/__arch__/{x86,x64}/` | Per-architecture modules (syscalls, register context, ELF introspection) selected by the reserved `__arch__` import segment |
 | `structures/` | hash map, array list, linked list, string builder (+ their tests) |
 | `repl.w` | Interactive REPL: compiles each entry into an mmap buffer and calls it; definitions persist |
@@ -131,8 +131,10 @@ Implemented and covered by tests:
   field access, method-call sugar (`p.move()` -> `point_move(&p, ...)`),
   map/set indexing and membership with `in`, `list[T]` indexing,
   `l.push(v)`/`l.pop()` and container `.length`, explicit `cast(T, expr)`,
-  hex literals, UTF-8 `"..."` literals with `\u`/`\U` escapes, and explicit
-  legacy C strings via `c"..."`.
+  postfix `?` error propagation on the generic `wresult[T]` result type
+  (unwrap the payload, or return the error to the caller; see
+  `docs/error_results.txt`), hex literals, UTF-8 `"..."` literals with
+  `\u`/`\U` escapes, and explicit legacy C strings via `c"..."`.
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
   (1–3 args), `for x in <container>` over built-in lists/maps/sets and any
   struct-pointer type providing the four cursor functions

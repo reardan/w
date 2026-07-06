@@ -9,52 +9,85 @@ Current patterns:
 	Raw syscall helpers return Linux's negative errno values directly.
 
 Convention:
-	Use a wresult when the caller can choose what to do next.
+	Use a wresult[T] when the caller can choose what to do next.
 	Use assert/error/translate_syscall_failure when continuing would be a bug
 	or when the program has no useful local recovery path.
-	Do not add parser, type checker, codegen, exception, or floating-point work
-	for result handling; this is a library convention only.
+	The compiler supports exactly one construct for result handling: the
+	postfix '?' error-propagation operator described below. Everything else
+	(construction, inspection, freeing) stays a library convention.
 
 Library helper:
 	import lib.result
 
-	wresult has three word fields:
+	wresult[T] is a generic struct (lib/result.w) with three fields:
 		ok:    1 for success, 0 for error
 		code:  informational error code; ok is authoritative
-		value: one-word payload on success, 0 on error
+		value: T payload on success, 0 on error
 
-	Common helpers:
-		result_new_ok(value)
-		result_new_error(code)
-		result_new_from_syscall(value)
-		result_is_ok(r)
-		result_is_error(r)
-		result_value(r)
-		result_code(r)
-		result_unwrap_or(r, fallback)
-		result_take_or(r, fallback)
-		result_free(r)
+	Layout invariant: 'ok' and 'code' are declared first, so their offsets
+	are identical in every instantiation of wresult[T]. The '?' operator
+	relies on this when it propagates an error result across functions
+	whose payload types differ. Do not reorder or insert fields before
+	'value'.
+
+	Payload policy: keep T word-sized — int, pointers, char, bool. The
+	helpers allocate three words per result, and '?' propagation only
+	ever reads 'ok'/'code' from an error, so word-sized payloads keep
+	every instantiation interchangeable on the error path.
+
+	Common helpers (explicit instantiation, like all W generics):
+		result_new_ok[T](value)
+		result_new_error[T](code)
+		result_new_from_syscall(value)   (monomorphic: wresult[int]*)
+		result_is_ok[T](r)
+		result_is_error[T](r)
+		result_value[T](r)
+		result_code[T](r)
+		result_unwrap_or[T](r, fallback)
+		result_take_or[T](r, fallback)
+		result_set_ok[T](r, value)
+		result_set_error[T](r, code)
+		result_free[T](r)
+
+The '?' operator:
+	'expr?' requires expr to be a wresult[T]* and the enclosing function
+	to return some wresult[U]*.
+		ok result:    the expression evaluates to r.value (type T).
+		error result: the function immediately returns r itself — the same
+		pointer, reinterpreted as the function's wresult[U]* return type.
+		The reinterpretation is safe because of the layout invariant, and
+		the payload of an error result is never read.
+	Compile errors: '?' on a non-wresult operand, '?' in a function that
+	does not return a wresult[...]*, '?' outside a function, and '?' in a
+	generator body (generators do not return through 'ret').
+	Implementation: grammar/postfix_expr.w dispatches to
+	result_propagate_suffix() in grammar/statement.w; tests in
+	tests/result_propagate_test.w.
 
 Guidelines:
 	Return negative Linux errno values unchanged when wrapping syscalls; this
 	matches existing raw syscall behavior and avoids inventing another errno
 	table.
-	Prefer caller-owned or freshly allocated wresult* values. Reuse storage with
-	result_set_ok() and result_set_error() in hot paths or loops.
+	Prefer caller-owned or freshly allocated wresult[T]* values. Reuse storage
+	with result_set_ok() and result_set_error() in hot paths or loops.
 	Use result_take_or() for one-liners where the caller only needs a fallback
 	value and the result can be freed immediately.
-	Keep payloads to one machine word. That word can be an int or a pointer,
-	but callers should document pointer payloads because W does not have generic
-	result types.
+	An error result propagated by '?' is owned by whoever finally handles it:
+	free it once at the call site that stops propagating.
 	Do not retrofit existing fatal APIs broadly. Add result-returning siblings
 	only where callers have a real recovery path.
 
 Example:
-	wresult* opened = result_new_from_syscall(open(path, 0, 0))
-	if (result_is_error(opened)):
+	wresult[int]* opened = result_new_from_syscall(open(path, 0, 0))
+	if (result_is_error[int](opened)):
 		print("open failed: ")
-		println(itoa(0 - result_code(opened)))
-		result_free(opened)
+		println(itoa(0 - result_code[int](opened)))
+		result_free[int](opened)
 		return 1
-	int fd = result_value(opened)
-	result_free(opened)
+	int fd = result_value[int](opened)
+	result_free[int](opened)
+
+	# Or, inside a function that itself returns a wresult[...]*:
+	wresult[string]* read_config(char* path):
+		int fd = result_new_from_syscall(open(path, 0, 0))?
+		...

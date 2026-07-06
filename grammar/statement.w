@@ -52,6 +52,78 @@ void copy_struct_return_value(int declared_type):
 		mov_eax_ebx()
 		init_array_field_descriptors(declared_type)
 
+# Postfix '?' error propagation (docs/error_results.txt). The operand
+# must be a wresult[T]* — a pointer to an instantiated generic struct
+# whose type-table name starts with 'wresult$' (grammar/generic.w's
+# mangling; '$' cannot appear in a source identifier, so user structs
+# can never alias the prefix).
+
+# Struct type index behind a wresult[T]* expression type, or -1 when
+# the type is not a pointer to a wresult instantiation.
+int result_propagate_struct(int type):
+	int operand = type_unqualified(type)
+	if (operand < 0):
+		return -1
+	if (type_get_pointer_level(operand) != 1):
+		return -1
+	int base = type_lookup_previous_pointer(operand)
+	if (base < 0):
+		return -1
+	if (type_num_args(base) <= 0):
+		return -1
+	if (starts_with(type_get_name(base), c"wresult$") == 0):
+		return -1
+	return base
+
+
+# 'expr?' with the operand's lvalue/value in eax. Ok results evaluate
+# to the address of the payload field ('value'), typed as the payload
+# (the usual lvalue convention, so later postfix ops chain). Error
+# results make the enclosing function return the operand pointer as its
+# own wresult[U]* result: 'ok'/'code' sit at the same offsets in every
+# instantiation and an error's payload is never read, so the
+# reinterpretation is layout-safe.
+int result_propagate_suffix(int type):
+	if (in_generator_body):
+		error(c"'?' is not supported in generator bodies")
+	if (current_function_symbol < 0):
+		error(c"'?' outside of a function")
+	type = promote(type)
+	int base = result_propagate_struct(type)
+	if (base < 0):
+		diag_part(c"'?' requires a wresult[...]* operand, got '")
+		print_error_type(type)
+		error(c"'")
+	int declared_type = load_int(table + current_function_symbol + 6)
+	if (result_propagate_struct(declared_type) < 0):
+		diag_part(c"'?' requires the enclosing function to return a wresult[...]*, got '")
+		print_error_type(declared_type)
+		error(c"'")
+	int payload_type = type_get_field_type(base, c"value")
+	if (payload_type < 0):
+		error(c"'?' operand struct has no 'value' field")
+	# eax holds the wresult pointer; keep it while testing the ok flag
+	push_eax()
+	stack_pos = stack_pos + 1
+	promote_eax() /* load r.ok: an int at field offset 0 */
+	jmp_nonzero_int32(1337022)
+	int p = codepos
+	# Error path: return the operand pointer, unwinding block locals and
+	# expression temporaries exactly like the 'return' statement does
+	# (stack_pos already counts the slot pushed above).
+	mov_eax_esp_plus(0)
+	be_pop(stack_pos)
+	ret()
+	save_int32(code + p - 4, codepos - p)
+	# Ok path: eax = address of the payload field
+	pop_eax()
+	stack_pos = stack_pos - 1
+	int value_offset = type_get_field_offset(base, c"value")
+	if (value_offset > 0):
+		add_eax_int32(value_offset)
+	return payload_type
+
+
 void statement():
 	int p1
 	int p2

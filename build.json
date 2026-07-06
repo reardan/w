@@ -1214,6 +1214,24 @@
 			]
 		},
 		{
+			"name": "result_propagate_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/result_propagate_test.w", "-o", "bin/result_propagate_test"]},
+				{"cmd": ["bin/result_propagate_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/result_propagate_int_operand_error_fixture.w", "-o", "bin/result_propagate_int_operand_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'?' requires a wresult[...]* operand"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/result_propagate_return_type_error_fixture.w", "-o", "bin/result_propagate_return_type_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'?' requires the enclosing function to return a wresult[...]*"
+				}
+			]
+		},
+		{
 			"name": "env_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1429,6 +1447,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/result_test.w", "-o", "bin/result_64_test"]},
 				{"cmd": ["bin/result_64_test"]}
+			]
+		},
+		{
+			"name": "result_propagate_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/result_propagate_test.w", "-o", "bin/result_propagate_64_test"]},
+				{"cmd": ["bin/result_propagate_64_test"]}
 			]
 		},
 		{
@@ -1692,6 +1718,7 @@
 				"path_64_test",
 				"time_64_test",
 				"result_64_test",
+				"result_propagate_64_test",
 				"env_64_test",
 				"process_64_test",
 				"stream_64_test",
@@ -1804,6 +1831,7 @@
 				"time_test",
 				"args_test",
 				"result_test",
+				"result_propagate_test",
 				"env_test",
 				"process_test",
 				"stream_test",
