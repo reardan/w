@@ -105,6 +105,11 @@ the import go through per-helper backpatch chains, and the drivers
 `var` pay nothing. Programs may also `import structures.w_dynamic`
 explicitly; helpers then resolve directly.
 
+Calling `print_var` / `__w_var_tag` / `__w_var_to_cstr` by name from
+user code requires an explicit `import structures.w_dynamic` (W has no
+implicit function declarations); the compiler-emitted helpers are the
+only ones that resolve through the deferred import's backpatch chains.
+
 ## Interaction with Wave-1 features
 
 - Template strings: `f"{x}"` where `x` is `var` appends via
@@ -122,6 +127,10 @@ explicitly; helpers then resolve directly.
 
 - Locals, parameters, return types and globals all work (globals are
   zero words → null tag; there is no global initializer syntax).
+- The REPL and wdbg support var through the same deferred import. The
+  REPL's persistent-variable initializer now runs `coerce()` like the
+  compiler's `variable_declaration()` does, so `var x = 5` boxes there
+  too (this also fixed cstr-to-string initializers in the REPL).
 - `var`-to-`var` assignment copies the box **pointer** (aliasing) v1;
   rebinding `x = 5` allocates a fresh box, it does not mutate the old
   one, so aliases keep the old value.

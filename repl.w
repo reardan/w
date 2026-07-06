@@ -350,6 +350,9 @@ void repl_entry_item(int entry_symbol):
 			stack_pos = stack_pos + 1
 			int value_type = expression()
 			value_type = promote(value_type)
+			# Conversions the compiler's variable_declaration also
+			# performs (var boxing, cstr-to-string, float widths)
+			coerce(decl_type, value_type)
 			pop_ebx()
 			if (types_compatible_with_expression(decl_type, value_type) == 0):
 				warn_type_mismatch(c"initialization", decl_type, value_type)
