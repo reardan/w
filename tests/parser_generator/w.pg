@@ -103,6 +103,7 @@ literal LBRACK "["
 literal RBRACK "]"
 literal LBRACE "{"
 literal RBRACE "}"
+literal QUESTION "?"
 
 start program
 
@@ -210,7 +211,7 @@ rule gap_item = NEWLINE tab_prefix | NEWLINE
 rule unary_expr = unary_op unary_expr | postfix_expr
 rule unary_op = BANG | MINUS | PLUS | AMP | STAR
 rule postfix_expr = primary_expr postfix_tail*
-rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK
+rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK | QUESTION
 rule slice_tail = COLON expression_opt |
 rule arg_list = expression arg_tail* |
 rule arg_tail = COMMA expression

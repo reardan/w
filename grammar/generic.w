@@ -531,6 +531,59 @@ type of a non-generic declaration whose name is now the current token.
 int generic_scanned_type
 
 
+# Lookahead for a generic function definition whose return type is a
+# generic struct instantiation ('wresult[T]* new_ok[T](T value):').
+# The plain scan cannot claim these: the return type itself starts with
+# "name[", which normally is a type position for type_name(). Peek past
+# the bracketed argument list and the pointer stars; when "name[" (a
+# generic definition header) follows, register and skip the definition
+# like generic_declaration_scan() does. Otherwise rewind the tokenizer
+# (the seek trick generic_declaration_scan_repl uses) so type_name()
+# parses the return type from its first token.
+int generic_declaration_scan_generic_return():
+	if (generic_def_lookup(token, 1) < 0):
+		return 0
+	int first_offset = token_start_offset
+	int first_line = diag_token_line
+	int first_column = diag_token_column
+	char* save = generic_reparse_save()
+	get_token()
+	# Skip the balanced '[...]' type-argument list; the arguments may
+	# reference not-yet-bound type parameters, so only brackets matter.
+	if (peek(c"[")):
+		int depth = 1
+		get_token()
+		while ((depth > 0) & (token[0] != 0)):
+			if (peek(c"[")):
+				depth = depth + 1
+			if (peek(c"]")):
+				depth = depth - 1
+			get_token()
+	while (accept(c"*")) {}
+	int c1 = token[0]
+	int name_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
+	if (name_is_ident & (nextc == '[')):
+		# generic function definition: register and skip
+		char* fname = strclone(token)
+		get_token()
+		int params = cast(int, malloc(generic_max_params() << 2))
+		int n = generic_parse_param_names(params)
+		if (peek(c"(") == 0):
+			diag_part(c"'(' expected after the type parameter list of generic '")
+			diag_part(fname)
+			error(c"'")
+		generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
+		free(cast(char*, load_int(save + 44)))
+		free(save)
+		generic_skip_definition()
+		return 1
+	# Not a definition (e.g. 'wresult[int]* f(...)'): rewind, so the
+	# normal type_name() path parses the generic struct return type.
+	seek(file, load_int(save + 28), 0)
+	generic_reparse_restore(save)
+	return 0
+
+
 int generic_declaration_scan():
 	generic_scanned_type = -1
 	int c0 = token[0]
@@ -542,7 +595,7 @@ int generic_declaration_scan():
 	if (peek(c"const") | peek(c"map") | peek(c"set") | peek(c"list")):
 		return 0
 	if (nextc == '['):
-		return 0
+		return generic_declaration_scan_generic_return()
 	# scan ahead: type '*'* name, generic when '[' follows the name
 	char* first = strclone(token)
 	int first_offset = token_start_offset

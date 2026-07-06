@@ -87,6 +87,9 @@ int type_name():
 	# A generic struct instantiation: 'pair[int]'
 	else if ((nextc == '[') & (generic_def_lookup(token, 1) >= 0)):
 		type = generic_struct_type()
+		# A pointer type argument ('wresult[char*]') leaves its star
+		# count behind; reset so the instance's own stars count from 0
+		pointer_indirection = 0
 	else:
 		type = type_lookup(token)
 		if (type < 0):
