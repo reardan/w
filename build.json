@@ -539,7 +539,7 @@
 				{
 					"cmd": ["bin/wv2", "tests/generics_missing_args_error_fixture.w", "-o", "bin/generics_missing_args_error_fixture"],
 					"expect_fail": true,
-					"expect_stderr": "generic function 'pick' requires explicit type arguments"
+					"expect_stderr": "generic function 'make': cannot infer type argument 'T'"
 				}
 			]
 		},
@@ -549,6 +549,37 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/generics_test.w", "-o", "bin/generics_64_test"]},
 				{"cmd": ["bin/generics_64_test"]}
+			]
+		},
+		{
+			"name": "generics_inference_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/generics_inference_test.w", "-o", "bin/generics_inference_test"]},
+				{"cmd": ["bin/generics_inference_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/generics_infer_conflict_error_fixture.w", "-o", "bin/generics_infer_conflict_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "conflicting types inferred for type parameter 'T': 'int' vs 'char*'"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/generics_infer_struct_shape_error_fixture.w", "-o", "bin/generics_infer_struct_shape_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "generic function 'sum_first': cannot infer type argument 'T'"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/generics_infer_forward_error_fixture.w", "-o", "bin/generics_infer_forward_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "Cannot find symbol: 'later_pick'"
+				}
+			]
+		},
+		{
+			"name": "generics_inference_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/generics_inference_test.w", "-o", "bin/generics_inference_64_test"]},
+				{"cmd": ["bin/generics_inference_64_test"]}
 			]
 		},
 		{
@@ -1851,6 +1882,7 @@
 				"feature_interaction_64_test",
 				"dynamic_var_64_test",
 				"generics_64_test",
+				"generics_inference_64_test",
 				"json_64_test",
 				"json_codec_64_test",
 				"json_rpc_64_test",
@@ -1905,6 +1937,7 @@
 				"feature_interaction_test",
 				"dynamic_var_test",
 				"generics_test",
+				"generics_inference_test",
 				"import_test",
 				"c_import_test",
 				"c_preprocessor_test",

@@ -121,6 +121,11 @@ Implemented and covered by tests:
   `list[T]` (struct values stored by value; see
   `docs/projects/typed_containers.md`), `new type(args)` constructor-style
   allocation, and `new T[n]` heap arrays.
+- Generics: monomorphized generic functions and structs
+  (`T max[T](T a, T b)`, `struct pair[T]`) with explicit instantiation
+  (`max[int](3, 5)`, `pair[int]`) and call-site type-argument inference
+  for functions defined before the call (`max(3, 5)`); see
+  `docs/projects/generics.md`.
 - Floating point: `float`/`float32` on the default target, `float64` on x64
   (plus x64 float32 narrowing coverage), decimal literals with exponent forms,
   arithmetic/comparisons, int<->float coercions, function parameters/returns,
@@ -268,9 +273,12 @@ archives the old seed to `old/` first.
 
 ## Current major open areas
 
-- Generic type-argument inference — explicit instantiation (`max[int](a, b)`)
-  is implemented (`docs/projects/generics.md`); inferring `[T]` from the
-  arguments is not.
+- Generics polish — explicit instantiation (`max[int](a, b)`) and
+  call-site type-argument inference (`max(a, b)`) are implemented
+  (`docs/projects/generics.md`); remaining: inference for forward calls
+  and generic struct constructors, binding through container/struct
+  shapes (`pair[T]*`, `list[T]`), and struct-by-value returns on
+  inferred calls.
 - CUDA backend Stage 2, the PTX emitter — Stages 0–1 (x64 self-hosting and
   dynamic linking to libcuda) are done; see `docs/projects/cuda.md`.
 - REPL line editing/history.

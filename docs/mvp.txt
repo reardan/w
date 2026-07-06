@@ -39,11 +39,12 @@ Compiler
 		LSP MVP: wlsp with check-driven diagnostics and symbols-driven go-to-definition
 
 		True generics/templates with explicit instantiation (monomorphizing re-parse)
+		Generic type-argument inference at call sites (max(3, 5) infers T = int)
 		Generators / yield (stackful coroutines)
 		Template strings, default parameter values, W variadics, dynamic var
 
 	Remaining
-		Generic type-argument inference (explicit [T] instantiation landed)
+		Generic inference for forward calls, struct constructors and container shapes
 		Richer map/list ergonomics (delete/get/defaults, list insert/remove)
 		Float16 / bfloat16
 		C import old-style declarations and bit-field layout fidelity

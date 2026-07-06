@@ -46,6 +46,8 @@ void wtest_init_targets():
 	wtest_targets.push(c"dynamic_var_64_test")
 	wtest_targets.push(c"generics_test")
 	wtest_targets.push(c"generics_64_test")
+	wtest_targets.push(c"generics_inference_test")
+	wtest_targets.push(c"generics_inference_64_test")
 	wtest_targets.push(c"array_list_test")
 	wtest_targets.push(c"array_list_64_test")
 	wtest_targets.push(c"json_test")
@@ -279,6 +281,9 @@ void wtest_map_path(char* path):
 	else if (starts_with(path, c"tests/dynamic_var")):
 		wtest_add(path, c"dynamic_var_test")
 		wtest_add(path, c"dynamic_var_64_test")
+	else if (starts_with(path, c"tests/generics_infer")):
+		wtest_add(path, c"generics_inference_test")
+		wtest_add(path, c"generics_inference_64_test")
 	else if (starts_with(path, c"tests/generics")):
 		wtest_add(path, c"generics_test")
 		wtest_add(path, c"generics_64_test")

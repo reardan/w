@@ -1,5 +1,14 @@
 char *last_identifier
 
+# Declared return type of the most recently compiled call (-1 when the
+# callee is unknown) and the code position right after its cleanup. Only
+# the REPL reads these, to avoid echoing a void call's garbage result.
+# Declared here (before grammar/generic.w) because both the ordinary
+# call paths in postfix_expr.w and the inferred generic call path in
+# generic.w record them.
+int last_call_return_type
+int last_call_end
+
 
 void var_coerce(int want, int got);
 

@@ -1,8 +1,3 @@
-# Declared return type of the most recently compiled call (-1 when the
-# callee is unknown) and the code position right after its cleanup. Only
-# the REPL reads these, to avoid echoing a void call's garbage result.
-int last_call_return_type
-int last_call_end
 int expression_lhs_readonly
 
 int extern_max_params();
