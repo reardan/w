@@ -60,6 +60,7 @@ literal KW_SWITCH "switch"
 # another statement alternative (PG is syntax-only and permissive).
 literal KW_CASE "case"
 literal KW_DEFAULT "default"
+literal KW_DEFER "defer"
 
 literal ELLIPSIS "..."
 literal SHL_ASSIGN "<<="
@@ -118,7 +119,7 @@ rule import_decl = KW_IMPORT dotted_name import_alias_opt
 rule import_alias_opt = KW_AS name_token |
 rule dotted_name = name_token dotted_tail*
 rule dotted_tail = DOT name_token
-rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT
+rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER
 rule c_lib_decl = KW_C_LIB STRING
 rule extern_decl = KW_EXTERN type_ref IDENT LPAREN extern_param_list RPAREN | KW_EXTERN type_ref IDENT
 rule extern_param_list = param extern_param_tail* | ELLIPSIS |
@@ -175,7 +176,7 @@ rule expression_opt = expression |
 
 rule statement = base_statement statement_suffix
 rule statement_suffix = SEMI |
-rule base_statement = if_stmt | else_stmt | while_stmt | switch_stmt | case_stmt | for_stmt | return_stmt | yield_stmt | break_stmt | continue_stmt | pass_stmt | debugger_stmt | local_decl | expression_stmt | block
+rule base_statement = if_stmt | else_stmt | while_stmt | switch_stmt | case_stmt | for_stmt | return_stmt | yield_stmt | defer_stmt | break_stmt | continue_stmt | pass_stmt | debugger_stmt | local_decl | expression_stmt | block
 rule if_stmt = KW_IF paren_expression_opt block
 rule switch_stmt = KW_SWITCH paren_expression_opt block
 rule case_stmt = KW_CASE expression case_value_tail* block | KW_DEFAULT block
@@ -187,6 +188,7 @@ rule for_binding = type_ref IDENT | IDENT
 rule for_binding_tail = COMMA for_binding | 
 rule return_stmt = KW_RETURN expression_opt
 rule yield_stmt = KW_YIELD expression
+rule defer_stmt = KW_DEFER base_statement
 rule break_stmt = KW_BREAK
 rule continue_stmt = KW_CONTINUE
 rule pass_stmt = KW_PASS

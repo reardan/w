@@ -144,7 +144,9 @@ Implemented and covered by tests:
   `switch`/`case`/`default` (multi-value `case a, b:` clauses, implicit
   break with no fallthrough, `default` last; `break` exits the switch while
   `continue` targets the enclosing loop), `break`, `continue`, `return`,
-  `debugger` (emits `int3`).
+  `debugger` (emits `int3`), and Go-style `defer <call>` (function-scoped,
+  LIFO at every exit; the deferred expression is re-emitted at each exit
+  point, so it is evaluated at exit time — see `docs/projects/defer.md`).
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).

@@ -65,8 +65,15 @@ void statement():
 	if (accept(c"{")) {
 		int n = table_pos
 		int s = stack_pos
+		int is_function_body = defer_function_body_pending
+		defer_function_body_pending = 0
 		while (accept(c"}") == 0):
 			statement()
+		# The function body block closing is the fall-through exit: run
+		# the deferred statements (LIFO) while the body's locals are
+		# still in scope
+		if (is_function_body):
+			defer_emit_all()
 		table_pos = n
 		be_pop(stack_pos - s)
 		stack_pos = s
@@ -80,6 +87,8 @@ void statement():
 		int s = stack_pos
 		int start_tab_level = tab_level
 		print_int_v1(c"starting stack_pos: ", stack_pos)
+		int is_function_body = defer_function_body_pending
+		defer_function_body_pending = 0
 		int same_line = 0
 		if (token_newline == 0):
 			# Same-line body: exactly one statement, e.g. "if (x): return"
@@ -91,6 +100,11 @@ void statement():
 			if (start_tab_level > block_tab_level):
 				while(start_tab_level <= tab_level):
 					statement()
+		# The function body block closing is the fall-through exit: run
+		# the deferred statements (LIFO) while the body's locals are
+		# still in scope
+		if (is_function_body):
+			defer_emit_all()
 		table_pos = n
 		print_int_v1(c"ending stack_pos: ", stack_pos)
 		be_pop(stack_pos - s)
@@ -173,6 +187,9 @@ void statement():
 			# consumer permanently, so no ret / stack unwinding is needed
 			emit_generator_finish_call()
 		else:
+			# Deferred statements run before the frame unwinds, with the
+			# already-evaluated return value saved around them
+			defer_emit_returning()
 			be_pop(stack_pos)
 			ret()
 
@@ -197,6 +214,13 @@ void statement():
 	# Explicit no-op, for spelling out an intentionally empty block
 	else if (accept(c"pass")):
 		expect_or_newline(c";")
+
+	# defer <simple-statement>: record the span; it re-parses and runs
+	# at every function exit, LIFO (grammar/defer.w)
+	else if (accept(c"defer")):
+		if (in_generator_body):
+			error(c"'defer' is not supported in generator bodies")
+		defer_register()
 
 	else if (raw_asm_literal()):
 		expect_or_newline(c";")
