@@ -158,6 +158,12 @@ int primary_expr():
 	else if (generic_call_ready()):
 		type = generic_call_expr()
 
+	# 'name[...' where nothing knows the name: speculatively a call to a
+	# generic defined later in the file (or a later import); resolved -
+	# or reported - at the end-of-compilation drain
+	else if (generic_forward_call_ready()):
+		type = generic_forward_call_expr()
+
 	# Identifier
 	else if ((new_type = identifier()) >= 0) {
 		type = new_type

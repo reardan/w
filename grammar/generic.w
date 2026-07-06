@@ -29,6 +29,7 @@ syntax here.
 int type_name();
 int type_name_array_suffix(int type);
 void function_definition(int current_symbol);
+int import_alias_lookup(char* name);
 
 
 /*
@@ -739,14 +740,183 @@ void generic_instantiate_function(int inst):
 		p = next
 
 
-# Drain the instantiation queue at a top-level boundary (end of
-# compilation for the batch compiler; end of an entry for the REPL).
-# Instantiated bodies may request further instantiations, which land at
-# the end of the queue and are processed by the same loop.
+/*
+Forward calls: 'fwd[int](x)' where the generic's definition appears
+later in the file (or a later file). The name is not registered yet, so
+the call is recorded speculatively: type arguments and a private
+backpatch chain, resolved at the drain once every definition has been
+seen. No signature exists at the call site, so these calls skip the
+argument checks (like calls to asm runtime stubs) and cannot return
+structs by value (checked at resolve time).
+layout (24 bytes per entry):
+	0: char* name
+	4: int* type argument indices
+	8: int arg_count
+	12: int chain head
+	16: char* file of the first call site (for the error message)
+	20: int line of the first call site
+*/
+char* generic_forwards
+int generic_forward_count
+
+
+int generic_forward_stride():
+	return 24
+
+
+int generic_forward_max():
+	return 2000
+
+
+char* generic_forward_entry(int f):
+	return generic_forwards + f * generic_forward_stride()
+
+
+# An unknown identifier directly followed by '[' in expression position:
+# only worth trying as a forward generic call when nothing else can
+# claim the name.
+int generic_forward_call_ready():
+	int c0 = token[0]
+	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	if (is_ident == 0):
+		return 0
+	if (nextc != '['):
+		return 0
+	if (sym_lookup(token) >= 0):
+		return 0
+	if (type_lookup(token) >= 0):
+		return 0
+	if (import_alias_lookup(token) >= 0):
+		return 0
+	return 1
+
+
+# The (still unknown) generic's name is the current token; leaves the
+# closing ']' current, like generic_call_expr().
+int generic_forward_call_expr():
+	if (generic_forwards == 0):
+		generic_forwards = malloc(generic_forward_max() * generic_forward_stride())
+	assert1(generic_forward_count < generic_forward_max())
+	char* name = strclone(token)
+	char* call_file = strclone(filename)
+	int call_line = diag_token_line
+	get_token()
+	expect(c"[")
+	int args = cast(int, malloc(generic_max_params() << 2))
+	int arg_count = 0
+	int more = 1
+	while (more):
+		if (arg_count >= generic_max_params()):
+			error(c"too many type arguments")
+		save_int(args + (arg_count << 2), type_name())
+		arg_count = arg_count + 1
+		more = accept(c",")
+	if (peek(c"]") == 0):
+		diag_part(c"']' expected in type argument list, found '")
+		diag_part(token)
+		error(c"'")
+	# a chain slot for this call; merged into the instantiation's chain
+	# once the definition is known
+	emit(5, c"\xb8....") /* mov $n,%eax */
+	save_int(code + codepos - 4, code_offset)
+	char* e = generic_forwards + generic_forward_count * generic_forward_stride()
+	save_int(e, cast(int, name))
+	save_int(e + 4, args)
+	save_int(e + 8, arg_count)
+	save_int(e + 12, codepos + code_offset - 4)
+	save_int(e + 16, cast(int, call_file))
+	save_int(e + 20, call_line)
+	generic_forward_count = generic_forward_count + 1
+	# keep postfix_expr's callee lookup from matching a stale identifier
+	strcpy(last_identifier, c"$forward generic call$")
+	return 4
+
+
+void generic_forward_error(int f, char* message):
+	diag_part(c"generic function '")
+	diag_part(cast(char*, load_int(generic_forward_entry(f))))
+	diag_part(c"' ")
+	diag_part(message)
+	diag_part(c" (called at ")
+	diag_part(cast(char*, load_int(generic_forward_entry(f) + 16)))
+	diag_part(c":")
+	diag_part(itoa(load_int(generic_forward_entry(f) + 20)))
+	error(c")")
+
+
+# Append the forward record's chain to the instantiation's chain: walk
+# the forward chain to its terminating slot (which stores code_offset)
+# and point it at the instantiation's current head.
+void generic_forward_merge_chain(int f, int inst):
+	int head = load_int(generic_forward_entry(f) + 12)
+	int inst_head = generic_inst_chain(inst)
+	if (inst_head != 0):
+		int p = head - code_offset
+		int v = load_int(code + p)
+		while (v != code_offset):
+			p = v - code_offset
+			v = load_int(code + p)
+		save_int(code + p, inst_head)
+	generic_inst_set_chain(inst, head)
+
+
+void generic_resolve_forward(int f):
+	char* e = generic_forward_entry(f)
+	char* name = cast(char*, load_int(e))
+	int args = load_int(e + 4)
+	int arg_count = load_int(e + 8)
+	int def = generic_def_lookup(name, 0)
+	if (def < 0):
+		generic_forward_error(f, c"is not defined")
+	if (arg_count != generic_def_param_count(def)):
+		generic_forward_error(f, c"called with the wrong number of type arguments")
+	char* mangled = generic_mangle(name, args, arg_count)
+	int t = sym_lookup(mangled)
+	if (t >= 0):
+		if (table[t + 1] == 'D'):
+			# already compiled: patch this record's chain directly
+			int address = load_int(table + t + 2)
+			int p = load_int(e + 12) - code_offset
+			while (p):
+				int next = load_int(code + p) - code_offset
+				save_int(code + p, address)
+				p = next
+			free(mangled)
+			free(cast(char*, args))
+			return;
+	int inst = generic_inst_intern(def, args, arg_count, mangled)
+	# The call site had no signature, so it pushed no return buffer:
+	# reject instantiations that would return a struct by value.
+	int return_type = type_function_return(generic_inst_signature(inst))
+	if (return_type >= 0):
+		if ((type_num_args(return_type) > 0) & (type_get_pointer_level(return_type) == 0)):
+			generic_forward_error(f, c"returns a struct by value, so it must be defined before the call")
+	generic_forward_merge_chain(f, inst)
+
+
+# Drain cursors: global so repeated drains (the REPL drains once per
+# entry; link_impl drains again after the runtime imports) resume where
+# the previous drain stopped instead of re-resolving patched records.
+int generic_forwards_resolved
+int generic_insts_compiled
+
+
+# Drain at a top-level boundary (end of compilation for the batch
+# compiler; end of an entry for the REPL). Forward call sites resolve
+# first (every definition has been registered by now), then queued
+# bodies compile; bodies may request further instantiations, which land
+# at the end of the queue and are picked up by the outer loop.
 void generic_finish_instantiations():
-	int i = 0
-	while (i < generic_inst_count):
-		if (generic_inst_done(i) == 0):
-			generic_inst_set_done(i)
-			generic_instantiate_function(i)
-		i = i + 1
+	int progress = 1
+	while (progress):
+		progress = 0
+		while (generic_forwards_resolved < generic_forward_count):
+			generic_resolve_forward(generic_forwards_resolved)
+			generic_forwards_resolved = generic_forwards_resolved + 1
+			progress = 1
+		while (generic_insts_compiled < generic_inst_count):
+			if (generic_inst_done(generic_insts_compiled) == 0):
+				generic_inst_set_done(generic_insts_compiled)
+				generic_instantiate_function(generic_insts_compiled)
+				progress = 1
+			generic_insts_compiled = generic_insts_compiled + 1
