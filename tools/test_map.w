@@ -42,10 +42,14 @@ void wtest_init_targets():
 	wtest_targets.push(c"varargs_w_64_test")
 	wtest_targets.push(c"feature_interaction_test")
 	wtest_targets.push(c"feature_interaction_64_test")
+	wtest_targets.push(c"feature_combo_test")
+	wtest_targets.push(c"feature_combo_64_test")
 	wtest_targets.push(c"dynamic_var_test")
 	wtest_targets.push(c"dynamic_var_64_test")
 	wtest_targets.push(c"generics_test")
 	wtest_targets.push(c"generics_64_test")
+	wtest_targets.push(c"generics_inference_test")
+	wtest_targets.push(c"generics_inference_64_test")
 	wtest_targets.push(c"array_list_test")
 	wtest_targets.push(c"array_list_64_test")
 	wtest_targets.push(c"json_test")
@@ -54,6 +58,8 @@ void wtest_init_targets():
 	wtest_targets.push(c"json_codec_64_test")
 	wtest_targets.push(c"generator_test")
 	wtest_targets.push(c"generator_64_test")
+	wtest_targets.push(c"defer_test")
+	wtest_targets.push(c"defer_64_test")
 	wtest_targets.push(c"parser_generator_test")
 	wtest_targets.push(c"parser_generator_w_test")
 	wtest_targets.push(c"parser_generator_c_test")
@@ -274,9 +280,15 @@ void wtest_map_path(char* path):
 	else if (strcmp(path, c"tests/feature_interaction_test.w") == 0):
 		wtest_add(path, c"feature_interaction_test")
 		wtest_add(path, c"feature_interaction_64_test")
+	else if (strcmp(path, c"tests/feature_combo_test.w") == 0):
+		wtest_add(path, c"feature_combo_test")
+		wtest_add(path, c"feature_combo_64_test")
 	else if (starts_with(path, c"tests/dynamic_var")):
 		wtest_add(path, c"dynamic_var_test")
 		wtest_add(path, c"dynamic_var_64_test")
+	else if (starts_with(path, c"tests/generics_infer")):
+		wtest_add(path, c"generics_inference_test")
+		wtest_add(path, c"generics_inference_64_test")
 	else if (starts_with(path, c"tests/generics")):
 		wtest_add(path, c"generics_test")
 		wtest_add(path, c"generics_64_test")
@@ -293,6 +305,9 @@ void wtest_map_path(char* path):
 	else if ((strcmp(path, c"tests/generator_test.w") == 0) | (strcmp(path, c"tests/yield_outside_generator_error_fixture.w") == 0) | (strcmp(path, c"tests/generator_return_value_error_fixture.w") == 0)):
 		wtest_add(path, c"generator_test")
 		wtest_add(path, c"generator_64_test")
+	else if (starts_with(path, c"tests/defer_")):
+		wtest_add(path, c"defer_test")
+		wtest_add(path, c"defer_64_test")
 	else if (starts_with(path, c"tests/parser_generator/")):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):

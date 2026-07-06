@@ -473,6 +473,22 @@
 			]
 		},
 		{
+			"name": "feature_combo_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/feature_combo_test.w", "-o", "bin/feature_combo_test"]},
+				{"cmd": ["bin/feature_combo_test"]}
+			]
+		},
+		{
+			"name": "feature_combo_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/feature_combo_test.w", "-o", "bin/feature_combo_64_test"]},
+				{"cmd": ["bin/feature_combo_64_test"]}
+			]
+		},
+		{
 			"name": "dynamic_var_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -539,7 +555,7 @@
 				{
 					"cmd": ["bin/wv2", "tests/generics_missing_args_error_fixture.w", "-o", "bin/generics_missing_args_error_fixture"],
 					"expect_fail": true,
-					"expect_stderr": "generic function 'pick' requires explicit type arguments"
+					"expect_stderr": "generic function 'make': cannot infer type argument 'T'"
 				}
 			]
 		},
@@ -549,6 +565,37 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/generics_test.w", "-o", "bin/generics_64_test"]},
 				{"cmd": ["bin/generics_64_test"]}
+			]
+		},
+		{
+			"name": "generics_inference_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/generics_inference_test.w", "-o", "bin/generics_inference_test"]},
+				{"cmd": ["bin/generics_inference_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/generics_infer_conflict_error_fixture.w", "-o", "bin/generics_infer_conflict_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "conflicting types inferred for type parameter 'T': 'int' vs 'char*'"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/generics_infer_struct_shape_error_fixture.w", "-o", "bin/generics_infer_struct_shape_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "generic function 'sum_first': cannot infer type argument 'T'"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/generics_infer_forward_error_fixture.w", "-o", "bin/generics_infer_forward_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "Cannot find symbol: 'later_pick'"
+				}
+			]
+		},
+		{
+			"name": "generics_inference_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/generics_inference_test.w", "-o", "bin/generics_inference_64_test"]},
+				{"cmd": ["bin/generics_inference_64_test"]}
 			]
 		},
 		{
@@ -650,6 +697,55 @@
 			]
 		},
 		{
+			"name": "compound_assign_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/compound_assign_test.w", "-o", "bin/compound_assign_test"]},
+				{"cmd": ["bin/compound_assign_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/compound_assign_map_error_fixture.w", "-o", "bin/compound_assign_map_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "compound assignment is not supported on map or set index targets"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/compound_assign_struct_error_fixture.w", "-o", "bin/compound_assign_struct_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "compound assignment is not supported on struct values"
+				}
+			]
+		},
+		{
+			"name": "switch_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/switch_test.w", "-o", "bin/switch_test"]},
+				{"cmd": ["bin/switch_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/switch_default_not_last_error_fixture.w", "-o", "bin/switch_default_not_last_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'default' must be the last clause in a switch"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/switch_body_error_fixture.w", "-o", "bin/switch_body_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'case' or 'default' expected in switch body"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/switch_float_error_fixture.w", "-o", "bin/switch_float_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "switch on a float value is not supported"
+				}
+			]
+		},
+		{
+			"name": "switch_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/switch_test.w", "-o", "bin/switch_64_test"]},
+				{"cmd": ["bin/switch_64_test"]}
+			]
+		},
+		{
 			"name": "template_string_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -738,6 +834,39 @@
 					"cmd": ["bin/wv2", "tests/generator_return_value_error_fixture.w", "-o", "bin/generator_return_value_error_fixture"],
 					"expect_fail": true,
 					"expect_stderr": "generators cannot return a value; use yield"
+				}
+			]
+		},
+		{
+			"name": "defer_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/defer_test.w", "-o", "bin/defer_test"]},
+				{"cmd": ["bin/defer_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/defer_generator_error_fixture.w", "-o", "bin/defer_generator_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'defer' is not supported in generator bodies"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/defer_declaration_error_fixture.w", "-o", "bin/defer_declaration_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "deferred statement cannot declare a variable"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/defer_return_error_fixture.w", "-o", "bin/defer_return_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'return' is not allowed in a deferred statement"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/defer_nested_error_fixture.w", "-o", "bin/defer_nested_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'defer' cannot be nested in a deferred statement"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/defer_top_level_error_fixture.w", "-o", "bin/defer_top_level_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'defer' outside of a function"
 				}
 			]
 		},
@@ -1214,6 +1343,24 @@
 			]
 		},
 		{
+			"name": "result_propagate_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/result_propagate_test.w", "-o", "bin/result_propagate_test"]},
+				{"cmd": ["bin/result_propagate_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/result_propagate_int_operand_error_fixture.w", "-o", "bin/result_propagate_int_operand_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'?' requires a wresult[...]* operand"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/result_propagate_return_type_error_fixture.w", "-o", "bin/result_propagate_return_type_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'?' requires the enclosing function to return a wresult[...]*"
+				}
+			]
+		},
+		{
 			"name": "env_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1450,6 +1597,14 @@
 			]
 		},
 		{
+			"name": "result_propagate_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/result_propagate_test.w", "-o", "bin/result_propagate_64_test"]},
+				{"cmd": ["bin/result_propagate_64_test"]}
+			]
+		},
+		{
 			"name": "env_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1602,11 +1757,27 @@
 			]
 		},
 		{
+			"name": "compound_assign_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/compound_assign_test.w", "-o", "bin/compound_assign_64_test"]},
+				{"cmd": ["bin/compound_assign_64_test"]}
+			]
+		},
+		{
 			"name": "generator_64_test",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/generator_test.w", "-o", "bin/generator_64_test"]},
 				{"cmd": ["bin/generator_64_test"]}
+			]
+		},
+		{
+			"name": "defer_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/defer_test.w", "-o", "bin/defer_64_test"]},
+				{"cmd": ["bin/defer_64_test"]}
 			]
 		},
 		{
@@ -1728,6 +1899,7 @@
 				"path_64_test",
 				"time_64_test",
 				"result_64_test",
+				"result_propagate_64_test",
 				"env_64_test",
 				"process_64_test",
 				"stream_64_test",
@@ -1753,12 +1925,17 @@
 				"string_64_test",
 				"map_set_builtin_64_test",
 				"list_builtin_64_test",
+				"switch_64_test",
 				"for_container_64_test",
+				"compound_assign_64_test",
 				"template_string_64_test",
 				"generator_64_test",
+				"defer_64_test",
 				"feature_interaction_64_test",
+				"feature_combo_64_test",
 				"dynamic_var_64_test",
 				"generics_64_test",
+				"generics_inference_64_test",
 				"json_64_test",
 				"json_codec_64_test",
 				"json_rpc_64_test",
@@ -1804,14 +1981,19 @@
 				"type_system_error_test",
 				"type_system_warning_test",
 				"for_test",
+				"compound_assign_test",
+				"switch_test",
 				"for_container_test",
 				"default_args_test",
 				"varargs_w_test",
 				"template_string_test",
 				"generator_test",
+				"defer_test",
 				"feature_interaction_test",
+				"feature_combo_test",
 				"dynamic_var_test",
 				"generics_test",
+				"generics_inference_test",
 				"import_test",
 				"c_import_test",
 				"c_preprocessor_test",
@@ -1842,6 +2024,7 @@
 				"time_test",
 				"args_test",
 				"result_test",
+				"result_propagate_test",
 				"env_test",
 				"process_test",
 				"stream_test",

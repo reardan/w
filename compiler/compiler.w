@@ -161,6 +161,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		i = i + 1
 	push_basic_types()
 	pointer_indirection = 0
+	# No function body is being compiled yet: the '?' operator checks
+	# this to reject uses outside a function.
+	current_function_symbol = -1
 	last_identifier = malloc(8000)
 	last_global_declaration = malloc(8000)
 	be_start(word_size)

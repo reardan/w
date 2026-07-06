@@ -8,6 +8,17 @@ int loop_continue_chain
 int loop_stack_pos
 int loop_depth
 
+# Innermost switch context (grammar/switch_statement.w), mirroring the
+# loop globals: 'break' inside a switch exits the switch. break_in_switch
+# says whether the innermost breakable construct is a switch (1) or a
+# loop (0); loops reset it to 0, switches set it to 1, and both
+# save/restore the outer value around their bodies. 'continue' is not
+# affected: it always targets the enclosing loop.
+int switch_break_chain
+int switch_stack_pos
+int switch_depth
+int break_in_switch
+
 # Indent level of the statement owning the next ':' block; used to detect
 # empty blocks and terminate them correctly.
 int enclosing_tab_level
@@ -33,9 +44,11 @@ int while_statement():
 	int outer_break = loop_break_chain
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
+	int outer_in_switch = break_in_switch
 	loop_break_chain = 0
 	loop_continue_chain = 0
 	loop_stack_pos = stack_pos
+	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
 	# if not expression: jmp after statement block
@@ -61,6 +74,7 @@ int while_statement():
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue
 	loop_stack_pos = outer_stack
+	break_in_switch = outer_in_switch
 	loop_depth = loop_depth - 1
 
 	return 1

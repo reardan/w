@@ -1,8 +1,9 @@
-# Generics with Explicit Instantiation
+# Generics with Explicit Instantiation and Call-Site Inference
 
 True generics/templates for W: user-defined generic functions and structs,
-monomorphized per instantiation. Instantiation is always explicit
-(`name[type-args]`); there is no inference from argument types in v1.
+monomorphized per instantiation. Instantiation is explicit
+(`name[type-args]`), or — for generic functions defined before the call
+site — inferred from the call's argument types (`max(3, 5)`).
 
 ```w
 # generic function: type parameters in [] after the name
@@ -17,6 +18,7 @@ struct pair[T]:
 	T second
 
 int m = max[int](3, 5)     # explicit instantiation at the call site
+int n = max(4, 6)          # inferred: T = int (same max$int instantiation)
 pair[int] p                # instantiated struct type
 p.first = 1
 pair[int]* pp = &p
@@ -90,6 +92,63 @@ re-parse**, mirroring what `compile_save()` already does for imports:
    value (the call site pushed no return buffer); defining the generic
    before the call lifts both restrictions.
 
+## Type-argument inference
+
+When a registered generic *function* name is followed directly by `(`
+instead of `[`, the type arguments are inferred from the call's argument
+types (`generic_call_infer_expr()` in `grammar/generic.w`):
+
+1. **Parameter shapes.** The definition's header is re-parsed once per
+   definition (the same header-only nested re-parse the signature uses)
+   with every type parameter bound to a distinct word-sized *placeholder*
+   type instead of a concrete one. Placeholder names start with `@`,
+   which cannot appear in a source identifier or in any
+   compiler-generated type name, so a parsed parameter type provably
+   depends on a placeholder iff its name mentions `@`. Each parameter
+   classifies as a **type-parameter reference** with a pointer depth
+   (`T` = depth 0, `T**` = depth 2 — pointer records store the base
+   type's name, so the chain reduces by name), a **concrete** type, or
+   **opaque** (mentions a placeholder in a position v1 cannot invert:
+   `list[T]`, `T[]`, `pair[T]*`, `const T*`). The shapes are cached per
+   definition.
+2. **Binding.** Arguments are parsed (and pushed) left to right. A
+   type-parameter shape strips its pointer depth from the argument's
+   promoted type (a non-pointer argument for a `T*` parameter is a
+   compile error) and binds the parameter; the first binding wins and a
+   conflicting later binding is a compile error naming the parameter and
+   both types. Untyped constants (integer/char literals, `&` addresses)
+   bind `int` when the parameter is still unbound, and coerce to the
+   existing binding otherwise (`max(1.5, 2)` works like
+   `max[float32](1.5, 2)`; `max(2, 1.5)` binds `int` first and then
+   errors). Value pseudo-types map back to their storage types
+   (`string value` binds `string`, a slice value binds `T[]` itself —
+   binding never digs into container element types). Concrete shapes
+   constrain nothing and get the ordinary argument check and coercion;
+   opaque shapes are checked against the instantiated signature
+   afterwards. Every type parameter must end up bound, else a compile
+   error suggests the explicit syntax.
+3. **Call emission.** After binding, the call proceeds exactly like an
+   explicit instantiation — mangle, intern (so `max(3, 5)` and
+   `max[int](3, 5)` share one `max$int`), signature parse, argument-count
+   check, and the same mov-imm backpatch chain, drained by
+   `generic_finish_instantiations()`. Because the arguments were parsed
+   before the callee was known, the callee's mov-imm slot is emitted
+   after them (no callee word on the stack) and no struct return buffer
+   can be pushed below the arguments: inferred calls whose instantiation
+   returns a struct by value are rejected with a hint to use explicit
+   type arguments, the same restriction forward calls have.
+
+Inference limits (v1): the definition must appear before the call site —
+an unregistered name followed by `(` is an ordinary unknown symbol, so
+forward calls keep requiring explicit `name[T](...)` (mirroring the
+forward-call restriction above); inference covers generic *functions*
+only (generic struct constructors keep explicit arguments); parameters
+whose shape only mentions a type parameter inside another type
+(`pair[T]*`, `list[T]`, `T[]`) do not bind it, so a parameter used only
+in such positions (or only in the return type) needs explicit arguments;
+generic definitions cannot have defaults or variadics (already rejected),
+so those interactions do not arise.
+
 ## Name mangling
 
 `name$arg1$arg2`, where each argument is the canonical type-table name
@@ -114,6 +173,12 @@ in two files compiles once.
 - Generics calling generics (`largest3[T]` calls `max[T]`); recursive
   instantiation resolves through the drain fixpoint.
 - Instantiation before or after the definition in file order.
+- Type-argument inference at call sites (`tests/generics_inference_test.w`):
+  literals, `int`/`char`/`bool` variables, pointer arguments against `T*`
+  shapes, multiple type parameters, mixed generic/concrete parameters,
+  inference inside expressions, nested and recursive inferred calls,
+  inferred calls inside generic bodies, and inferred + explicit calls
+  sharing one instantiation.
 - Cross-file use via `import` (definitions record their file); shared
   instantiations deduplicate across files.
 - The REPL: generic definitions typed at the prompt persist across
@@ -125,8 +190,10 @@ in two files compiles once.
 
 ## Limitations (v1)
 
-- **No inference.** `max(3, 5)` on a generic is a compile error with a
-  hint to write `max[int](...)`.
+- **Inference limits.** See "Type-argument inference" above: definition
+  before the call site, functions only, no struct-by-value returns on
+  inferred calls, and only `T`-with-pointer-depth parameter shapes bind
+  (not `pair[T]*` / `list[T]` / `T[]` / `const T*`).
 - Generic definitions must be at the top level (not nested in functions),
   and a generic function/struct cannot share a name with another generic
   of the same kind (one definition per name; no overloading on parameter
@@ -145,7 +212,8 @@ in two files compiles once.
 
 ## Errors
 
-Asserted by the `generics_test` target (fixture files in `tests/`):
+Asserted by the `generics_test` / `generics_inference_test` targets
+(fixture files in `tests/`):
 
 - `unknown type name: 'U'` — a definition uses an undeclared type
   parameter; surfaces at instantiation time when the span is re-parsed
@@ -153,16 +221,34 @@ Asserted by the `generics_test` target (fixture files in `tests/`):
   template).
 - `wrong number of type arguments for generic 'pick': expected 1, got 2`.
 - `generic function 'pick' requires explicit type arguments, e.g.
-  'pick[int](...)'`.
+  'pick[int](...)'` — a generic function name used without `[` or `(`
+  (e.g. taken as a value).
+- `generic function 'make': cannot infer type argument 'T'; use explicit
+  type arguments, e.g. 'make[int](...)'` — a type parameter no argument
+  binds (only in the return type, or only in an opaque shape such as
+  `pair[T]*`).
+- `generic function 'pick': conflicting types inferred for type parameter
+  'T': 'int' vs 'char*'`.
+- `generic function 'f': cannot infer type parameter 'T' from argument 1:
+  expected a pointer, got 'int'` — a non-pointer argument against a `T*`
+  shape.
+- `generic function 'f': inferred call returns a struct by value; use
+  explicit type arguments, e.g. 'f[int](...)'`.
+- `Cannot find symbol: 'f'` — an inferred (bracket-less) call before the
+  definition; forward calls need explicit `f[int](...)`.
 - `generic function 'f' is not defined (called at file:line)` — a forward
   call whose definition never appeared.
 
 ## Build/test wiring
 
-- `Makefile`: `generics_test` (runtime + error fixtures) and
-  `generics_64_test`, in the `tests` / `tests_x64` aggregates.
+- `Makefile`: `generics_test` and `generics_inference_test` (runtime +
+  error fixtures) with `generics_64_test` / `generics_inference_64_test`,
+  in the `tests` / `tests_x64` aggregates.
 - `build.json`: the same targets and aggregate entries for `./wbuild`.
-- `tools/test_map.w`: `tests/generics*` maps to both targets.
+- `tools/test_map.w`: `tests/generics_infer*` maps to the inference
+  targets, other `tests/generics*` to the base targets.
 - `tests/parser_generator/w.pg`: permissive `generic_opt` / `generic_args`
   rules on struct/function declarations, `type_ref` and postfix
-  expressions, so every tracked `.w` file still parses and round-trips.
+  expressions, so every tracked `.w` file still parses and round-trips
+  (inferred call sites are ordinary calls, so inference needed no grammar
+  change).

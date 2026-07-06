@@ -339,6 +339,12 @@ void alu_or():
 	emit(2, c"\x09\xd8")
 
 
+/* xor %ebx,%eax */
+void alu_xor():
+	emit_x64_opcode()
+	emit(2, c"\x31\xd8")
+
+
 /* cmp %eax,%ebx ; setCC %al ; movzbl %al,%eax
    setcc_opcode is the second setCC byte: 0x9c setl, 0x9d setge, 0x9e setle,
    0x9f setg, 0x94 sete, 0x95 setne */

@@ -52,8 +52,27 @@ literal KW_LIST "list"
 literal KW_GENERATOR "generator"
 literal KW_YIELD "yield"
 literal KW_VAR "var"
+literal KW_SWITCH "switch"
+# 'case' and 'default' are contextual keywords in the compiler (only
+# recognized as clause labels inside a switch body). The PG lexer always
+# tokenizes them as keywords, so they are also listed in name_token to
+# keep them usable as ordinary identifiers, and case_stmt is just
+# another statement alternative (PG is syntax-only and permissive).
+literal KW_CASE "case"
+literal KW_DEFAULT "default"
+literal KW_DEFER "defer"
 
 literal ELLIPSIS "..."
+literal SHL_ASSIGN "<<="
+literal SHR_ASSIGN ">>="
+literal PLUS_ASSIGN "+="
+literal MINUS_ASSIGN "-="
+literal STAR_ASSIGN "*="
+literal SLASH_ASSIGN "/="
+literal PERCENT_ASSIGN "%="
+literal AMP_ASSIGN "&="
+literal PIPE_ASSIGN "|="
+literal CARET_ASSIGN "^="
 literal AND_AND "&&"
 literal OR_OR "||"
 literal EQ_EQ "=="
@@ -84,6 +103,7 @@ literal LBRACK "["
 literal RBRACK "]"
 literal LBRACE "{"
 literal RBRACE "}"
+literal QUESTION "?"
 
 start program
 
@@ -100,7 +120,7 @@ rule import_decl = KW_IMPORT dotted_name import_alias_opt
 rule import_alias_opt = KW_AS name_token |
 rule dotted_name = name_token dotted_tail*
 rule dotted_tail = DOT name_token
-rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR
+rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER
 rule c_lib_decl = KW_C_LIB STRING
 rule extern_decl = KW_EXTERN type_ref IDENT LPAREN extern_param_list RPAREN | KW_EXTERN type_ref IDENT
 rule extern_param_list = param extern_param_tail* | ELLIPSIS |
@@ -113,7 +133,7 @@ rule asm_body = COLON asm_body_lines
 rule asm_body_lines = asm_body_line asm_body_lines |
 rule asm_body_line = NEWLINE tab_prefix asm_tokens | NEWLINE
 rule asm_tokens = asm_token asm_tokens |
-rule asm_token = name_token | NUMBER | STRING | CHAR_LITERAL | ELLIPSIS | AND_AND | OR_OR | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | SHIFT_LEFT | SHIFT_RIGHT | ARROW | PLUS | MINUS | STAR | SLASH | PERCENT | LT | GT | AMP | PIPE | BANG | ASSIGN | DOT | COMMA | COLON | SEMI | LPAREN | RPAREN | LBRACK | RBRACK | LBRACE | RBRACE
+rule asm_token = name_token | NUMBER | STRING | CHAR_LITERAL | ELLIPSIS | SHL_ASSIGN | SHR_ASSIGN | PLUS_ASSIGN | MINUS_ASSIGN | STAR_ASSIGN | SLASH_ASSIGN | PERCENT_ASSIGN | AMP_ASSIGN | PIPE_ASSIGN | CARET_ASSIGN | AND_AND | OR_OR | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | SHIFT_LEFT | SHIFT_RIGHT | ARROW | PLUS | MINUS | STAR | SLASH | PERCENT | LT | GT | AMP | PIPE | BANG | ASSIGN | DOT | COMMA | COLON | SEMI | LPAREN | RPAREN | LBRACK | RBRACK | LBRACE | RBRACE
 rule struct_decl = KW_STRUCT IDENT generic_opt block
 rule union_decl = KW_UNION IDENT block
 rule enum_decl = KW_ENUM IDENT block
@@ -157,8 +177,11 @@ rule expression_opt = expression |
 
 rule statement = base_statement statement_suffix
 rule statement_suffix = SEMI |
-rule base_statement = if_stmt | else_stmt | while_stmt | for_stmt | return_stmt | yield_stmt | break_stmt | continue_stmt | pass_stmt | debugger_stmt | local_decl | expression_stmt | block
+rule base_statement = if_stmt | else_stmt | while_stmt | switch_stmt | case_stmt | for_stmt | return_stmt | yield_stmt | defer_stmt | break_stmt | continue_stmt | pass_stmt | debugger_stmt | local_decl | expression_stmt | block
 rule if_stmt = KW_IF paren_expression_opt block
+rule switch_stmt = KW_SWITCH paren_expression_opt block
+rule case_stmt = KW_CASE expression case_value_tail* block | KW_DEFAULT block
+rule case_value_tail = COMMA expression
 rule else_stmt = KW_ELSE if_stmt | KW_ELSE block
 rule while_stmt = KW_WHILE paren_expression_opt block
 rule for_stmt = KW_FOR for_binding for_binding_tail KW_IN expression block
@@ -166,6 +189,7 @@ rule for_binding = type_ref IDENT | IDENT
 rule for_binding_tail = COMMA for_binding | 
 rule return_stmt = KW_RETURN expression_opt
 rule yield_stmt = KW_YIELD expression
+rule defer_stmt = KW_DEFER base_statement
 rule break_stmt = KW_BREAK
 rule continue_stmt = KW_CONTINUE
 rule pass_stmt = KW_PASS
@@ -177,7 +201,8 @@ rule expression_stmt = expression
 rule paren_expression_opt = LPAREN expression RPAREN | expression
 rule expression = assignment
 rule assignment = binary_expr assign_tail*
-rule assign_tail = gap_many ASSIGN gap_many assignment
+rule assign_tail = gap_many assign_op gap_many assignment
+rule assign_op = ASSIGN | PLUS_ASSIGN | MINUS_ASSIGN | STAR_ASSIGN | SLASH_ASSIGN | PERCENT_ASSIGN | AMP_ASSIGN | PIPE_ASSIGN | CARET_ASSIGN | SHL_ASSIGN | SHR_ASSIGN
 rule binary_expr = unary_expr binary_tail*
 rule binary_tail = gap_many binary_op gap_many unary_expr
 rule binary_op = OR_OR | AND_AND | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | LT | GT | KW_IN | SHIFT_LEFT | SHIFT_RIGHT | PLUS | MINUS | STAR | SLASH | PERCENT | AMP | PIPE
@@ -186,7 +211,7 @@ rule gap_item = NEWLINE tab_prefix | NEWLINE
 rule unary_expr = unary_op unary_expr | postfix_expr
 rule unary_op = BANG | MINUS | PLUS | AMP | STAR
 rule postfix_expr = primary_expr postfix_tail*
-rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK
+rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK | QUESTION
 rule slice_tail = COLON expression_opt |
 rule arg_list = expression arg_tail* |
 rule arg_tail = COMMA expression

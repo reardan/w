@@ -1,6 +1,7 @@
 import grammar.hash_builtin
 import grammar.promote
 import grammar.generic
+import grammar.defer
 import grammar.type_name
 import grammar.list_builtin
 import grammar.json_builtin
@@ -30,6 +31,7 @@ import grammar.while_statement
 import grammar.typed_identifier
 import grammar.variable_declaration
 import grammar.for_statement
+import grammar.switch_statement
 import grammar.statement
 import grammar.type_alias_declaration
 import grammar.struct_declaration

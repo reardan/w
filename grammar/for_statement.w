@@ -138,9 +138,11 @@ void for_range_loop(int for_var, int for_tab_level):
 	int outer_break = loop_break_chain
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
+	int outer_in_switch = break_in_switch
 	loop_break_chain = 0
 	loop_continue_chain = 0
 	loop_stack_pos = stack_pos
+	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
 	# condition: loop var < end
@@ -181,6 +183,7 @@ void for_range_loop(int for_var, int for_tab_level):
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue
 	loop_stack_pos = outer_stack
+	break_in_switch = outer_in_switch
 	loop_depth = loop_depth - 1
 
 	# Discard the hidden range slots (the loop variable itself stays)
@@ -227,9 +230,11 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	int outer_break = loop_break_chain
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
+	int outer_in_switch = break_in_switch
 	loop_break_chain = 0
 	loop_continue_chain = 0
 	loop_stack_pos = stack_pos
+	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
 	p1 = codepos
@@ -263,6 +268,7 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue
 	loop_stack_pos = outer_stack
+	break_in_switch = outer_in_switch
 	loop_depth = loop_depth - 1
 
 	be_pop(2)
@@ -297,9 +303,11 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 	int outer_break = loop_break_chain
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
+	int outer_in_switch = break_in_switch
 	loop_break_chain = 0
 	loop_continue_chain = 0
 	loop_stack_pos = stack_pos
+	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
 	p1 = codepos
@@ -328,6 +336,7 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue
 	loop_stack_pos = outer_stack
+	break_in_switch = outer_in_switch
 	loop_depth = loop_depth - 1
 
 	be_pop(2)
@@ -360,9 +369,11 @@ void for_slice_loop(int for_var, int for_tab_level, int loop_var_type, int conta
 	int outer_break = loop_break_chain
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
+	int outer_in_switch = break_in_switch
 	loop_break_chain = 0
 	loop_continue_chain = 0
 	loop_stack_pos = stack_pos
+	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
 	# condition: index < descriptor.length
@@ -410,6 +421,7 @@ void for_slice_loop(int for_var, int for_tab_level, int loop_var_type, int conta
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue
 	loop_stack_pos = outer_stack
+	break_in_switch = outer_in_switch
 	loop_depth = loop_depth - 1
 
 	be_pop(2)
@@ -436,9 +448,11 @@ void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 	int outer_break = loop_break_chain
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
+	int outer_in_switch = break_in_switch
 	loop_break_chain = 0
 	loop_continue_chain = 0
 	loop_stack_pos = stack_pos
+	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
 	int p1 = codepos
@@ -474,6 +488,7 @@ void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue
 	loop_stack_pos = outer_stack
+	break_in_switch = outer_in_switch
 	loop_depth = loop_depth - 1
 
 	be_pop(2)
@@ -541,9 +556,11 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	int outer_break = loop_break_chain
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
+	int outer_in_switch = break_in_switch
 	loop_break_chain = 0
 	loop_continue_chain = 0
 	loop_stack_pos = stack_pos
+	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
 	# condition: exit once T_iter_done(container, cursor) is true
@@ -583,6 +600,7 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue
 	loop_stack_pos = outer_stack
+	break_in_switch = outer_in_switch
 	loop_depth = loop_depth - 1
 
 	# Discard the hidden container and cursor slots (the loop variable stays)

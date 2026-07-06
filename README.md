@@ -97,7 +97,7 @@ stock x86-64 system.
 | `grammar/` | One module per grammar rule; parsing and code emission are fused |
 | `grammar.w`, `codegen.w` | Umbrella modules that import the grammar/ and code_generator/ trees |
 | `code_generator/` | Byte emitter, x86/x64 encoders, ELF32/ELF64 writers, dynamic linking, DWARF |
-| `lib/` | Standard library: syscalls, memory, strings, math, format, args, env, process (spawn/pipes/wait/timeouts), assert/testing |
+| `lib/` | Standard library: syscalls, memory, strings, math, format, args, env, process (spawn/pipes/wait/timeouts), the generic `wresult[T]` result type, assert/testing |
 | `lib/__arch__/{x86,x64}/` | Per-architecture modules (syscalls, register context, ELF introspection) selected by the reserved `__arch__` import segment |
 | `structures/` | hash map, array list, linked list, string builder (+ their tests) |
 | `repl.w` | Interactive REPL: compiles each entry into an mmap buffer and calls it; definitions persist |
@@ -121,25 +121,39 @@ Implemented and covered by tests:
   `list[T]` (struct values stored by value; see
   `docs/projects/typed_containers.md`), `new type(args)` constructor-style
   allocation, and `new T[n]` heap arrays.
+- Generics: monomorphized generic functions and structs
+  (`T max[T](T a, T b)`, `struct pair[T]`) with explicit instantiation
+  (`max[int](3, 5)`, `pair[int]`) and call-site type-argument inference
+  for functions defined before the call (`max(3, 5)`); see
+  `docs/projects/generics.md`.
 - Floating point: `float`/`float32` on the default target, `float64` on x64
   (plus x64 float32 narrowing coverage), decimal literals with exponent forms,
   arithmetic/comparisons, int<->float coercions, function parameters/returns,
   fields/pointers, `ftoa`, and x64 `f64toa`.
 - Expressions: full C-style operator set — arithmetic, shifts, relational
   (with chaining), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
-  address/deref, `[]` indexing, typed buffer slicing (`start:end`), struct
+  address/deref, compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`,
+  `|=`, `^=`, `<<=`, `>>=`; integer, float and pointer scalar targets — map
+  index and struct targets are rejected), `[]` indexing, typed buffer slicing (`start:end`), struct
   field access, method-call sugar (`p.move()` -> `point_move(&p, ...)`),
   map/set indexing and membership with `in`, `list[T]` indexing,
   `l.push(v)`/`l.pop()` and container `.length`, explicit `cast(T, expr)`,
-  hex literals, UTF-8 `"..."` literals with `\u`/`\U` escapes, and explicit
-  legacy C strings via `c"..."`.
+  postfix `?` error propagation on the generic `wresult[T]` result type
+  (unwrap the payload, or return the error to the caller; see
+  `docs/error_results.txt`), hex literals, UTF-8 `"..."` literals with
+  `\u`/`\U` escapes, and explicit legacy C strings via `c"..."`.
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
   (1–3 args), `for x in <container>` over built-in lists/maps/sets and any
   struct-pointer type providing the four cursor functions
   `T_iter_begin/done/next/value` (implemented by `array_list`,
   `linked_list` and `hash_map`, which yields keys; see
   `docs/projects/iteration.md`), `for int cp in string` codepoint iteration,
-  `break`, `continue`, `return`, `debugger` (emits `int3`).
+  `switch`/`case`/`default` (multi-value `case a, b:` clauses, implicit
+  break with no fallthrough, `default` last; `break` exits the switch while
+  `continue` targets the enclosing loop), `break`, `continue`, `return`,
+  `debugger` (emits `int3`), and Go-style `defer <call>` (function-scoped,
+  LIFO at every exit; the deferred expression is re-emitted at each exit
+  point, so it is evaluated at exit time — see `docs/projects/defer.md`).
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).
@@ -259,9 +273,12 @@ archives the old seed to `old/` first.
 
 ## Current major open areas
 
-- Generic type-argument inference — explicit instantiation (`max[int](a, b)`)
-  is implemented (`docs/projects/generics.md`); inferring `[T]` from the
-  arguments is not.
+- Generics polish — explicit instantiation (`max[int](a, b)`) and
+  call-site type-argument inference (`max(a, b)`) are implemented
+  (`docs/projects/generics.md`); remaining: inference for forward calls
+  and generic struct constructors, binding through container/struct
+  shapes (`pair[T]*`, `list[T]`), and struct-by-value returns on
+  inferred calls.
 - CUDA backend Stage 2, the PTX emitter — Stages 0–1 (x64 self-hosting and
   dynamic linking to libcuda) are done; see `docs/projects/cuda.md`.
 - REPL line editing/history.

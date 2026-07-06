@@ -257,6 +257,17 @@ void get_token():
 						 (nextc == '|') | (nextc == '&') | (nextc == '!')):
 				takechar()
 
+		# Compound assignment operators: '+' '-' '*' '%' '^' merge with a
+		# directly following '=' into one token ('+=', '-=', ...). '/=' is
+		# merged in the comment branch below; '&=', '|=', '<<=' and '>>='
+		# already merge in the loop above.
+		if (token_i == 0):
+			if ((nextc == '+') | (nextc == '-') | (nextc == '*') |
+					(nextc == '%') | (nextc == '^')):
+				takechar()
+				if (nextc == '='):
+					takechar()
+
 		if (token_i == 0):
 			if (nextc == 39):
 				takechar()
@@ -288,6 +299,10 @@ void get_token():
 
 					nextc = get_character()
 					w = 1
+
+				# '/=' compound assignment
+				else if (nextc == '='):
+					takechar()
 			}
 			# Line Comments
 			else if (nextc == '#'):

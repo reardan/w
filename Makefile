@@ -213,7 +213,7 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test for_container_64_test template_string_64_test generator_64_test feature_interaction_64_test dynamic_var_64_test generics_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test task_64_test task_io_64_test format_64_test args_64_test repl_test_x64 debug_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test result_propagate_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 defer_64_test default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test switch_64_test for_container_64_test compound_assign_64_test template_string_64_test generator_64_test feature_interaction_64_test feature_combo_64_test dynamic_var_64_test generics_64_test generics_inference_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test task_64_test task_io_64_test format_64_test args_64_test repl_test_x64 debug_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -690,6 +690,41 @@ for_test: w FORCE
 	chmod +x ./bin/for_test
 	./bin/for_test
 
+# Compound assignment operators (+=, -=, ..., <<=, >>=). The compile-error
+# fixtures are arch-independent, so only the x86 target runs them.
+compound_assign_test: w FORCE
+	./bin/wv2 tests/compound_assign_test.w -o ./bin/compound_assign_test
+	./bin/compound_assign_test
+	! ./bin/wv2 tests/compound_assign_map_error_fixture.w -o ./bin/compound_assign_map_error_fixture 2>./bin/compound_assign_map_error_fixture.stderr
+	grep -qF "compound assignment is not supported on map or set index targets" ./bin/compound_assign_map_error_fixture.stderr
+	! ./bin/wv2 tests/compound_assign_struct_error_fixture.w -o ./bin/compound_assign_struct_error_fixture 2>./bin/compound_assign_struct_error_fixture.stderr
+	grep -qF "compound assignment is not supported on struct values" ./bin/compound_assign_struct_error_fixture.stderr
+	@echo "compound assign test OK"
+
+compound_assign_64_test: w FORCE
+	./bin/wv2 x64 tests/compound_assign_test.w -o ./bin/compound_assign_64_test
+	./bin/compound_assign_64_test
+	@echo "compound assign test x64 OK"
+
+# switch statement: dispatch, implicit break, break/continue interaction
+# with loops, and its compile-error fixtures (arch-independent, so only
+# the x86 target runs them)
+switch_test: w FORCE
+	./bin/wv2 tests/switch_test.w -o ./bin/switch_test
+	./bin/switch_test
+	! ./bin/wv2 tests/switch_default_not_last_error_fixture.w -o ./bin/switch_default_not_last_error_fixture 2>./bin/switch_default_not_last_error_fixture.stderr
+	grep -qF "'default' must be the last clause in a switch" ./bin/switch_default_not_last_error_fixture.stderr
+	! ./bin/wv2 tests/switch_body_error_fixture.w -o ./bin/switch_body_error_fixture 2>./bin/switch_body_error_fixture.stderr
+	grep -qF "'case' or 'default' expected in switch body" ./bin/switch_body_error_fixture.stderr
+	! ./bin/wv2 tests/switch_float_error_fixture.w -o ./bin/switch_float_error_fixture 2>./bin/switch_float_error_fixture.stderr
+	grep -qF "switch on a float value is not supported" ./bin/switch_float_error_fixture.stderr
+	@echo "switch test OK"
+
+switch_64_test: w FORCE
+	./bin/wv2 x64 tests/switch_test.w -o ./bin/switch_64_test
+	./bin/switch_64_test
+	@echo "switch test x64 OK"
+
 # Cursor-protocol iteration: for x in <container>
 for_container_64_test: w FORCE
 	./bin/wv2 x64 tests/for_container_test.w -o ./bin/for_container_64_test
@@ -729,6 +764,29 @@ generator_test: w FORCE
 	! ./bin/wv2 tests/generator_return_value_error_fixture.w -o ./bin/generator_return_value_error_fixture 2>./bin/generator_return_value_error_fixture.stderr
 	grep -qF "generators cannot return a value; use yield" ./bin/generator_return_value_error_fixture.stderr
 	@echo "generator test OK"
+
+# Go-style 'defer' statements (docs/projects/defer.md): runtime behavior
+# plus the compile-error fixtures (arch-independent, so only the x86
+# target runs them).
+defer_test: w FORCE
+	./bin/wv2 tests/defer_test.w -o ./bin/defer_test
+	./bin/defer_test
+	! ./bin/wv2 tests/defer_generator_error_fixture.w -o ./bin/defer_generator_error_fixture 2>./bin/defer_generator_error_fixture.stderr
+	grep -qF "'defer' is not supported in generator bodies" ./bin/defer_generator_error_fixture.stderr
+	! ./bin/wv2 tests/defer_declaration_error_fixture.w -o ./bin/defer_declaration_error_fixture 2>./bin/defer_declaration_error_fixture.stderr
+	grep -qF "deferred statement cannot declare a variable" ./bin/defer_declaration_error_fixture.stderr
+	! ./bin/wv2 tests/defer_return_error_fixture.w -o ./bin/defer_return_error_fixture 2>./bin/defer_return_error_fixture.stderr
+	grep -qF "'return' is not allowed in a deferred statement" ./bin/defer_return_error_fixture.stderr
+	! ./bin/wv2 tests/defer_nested_error_fixture.w -o ./bin/defer_nested_error_fixture 2>./bin/defer_nested_error_fixture.stderr
+	grep -qF "'defer' cannot be nested in a deferred statement" ./bin/defer_nested_error_fixture.stderr
+	! ./bin/wv2 tests/defer_top_level_error_fixture.w -o ./bin/defer_top_level_error_fixture 2>./bin/defer_top_level_error_fixture.stderr
+	grep -qF "'defer' outside of a function" ./bin/defer_top_level_error_fixture.stderr
+	@echo "defer test OK"
+
+defer_64_test: w FORCE
+	./bin/wv2 x64 tests/defer_test.w -o ./bin/defer_64_test
+	./bin/defer_64_test
+	@echo "defer test x64 OK"
 
 # Default parameter values ("int times = 1"): runtime behavior plus the
 # compile-error fixtures (arch-independent, so only the x86 target runs
@@ -777,6 +835,19 @@ feature_interaction_64_test: w FORCE
 	./bin/feature_interaction_64_test
 	@echo "feature interaction test x64 OK"
 
+# Cross-feature interaction: compound assignment + switch + defer +
+# wresult[T]/'?' propagation + generic inference in one program (in
+# particular, the '?' error path must run deferred statements).
+feature_combo_test: w FORCE
+	./bin/wv2 tests/feature_combo_test.w -o ./bin/feature_combo_test
+	./bin/feature_combo_test
+	@echo "feature combo test OK"
+
+feature_combo_64_test: w FORCE
+	./bin/wv2 x64 tests/feature_combo_test.w -o ./bin/feature_combo_64_test
+	./bin/feature_combo_64_test
+	@echo "feature combo test x64 OK"
+
 # Dynamic 'var' type: runtime behavior, the wrong-tag unbox trap, and
 # the compile-error fixtures (the fixtures are arch-independent, so
 # only the x86 target runs them; see dynamic_var_64_test for the x64
@@ -816,13 +887,33 @@ generics_test: w FORCE
 	! ./bin/wv2 tests/generics_arg_count_error_fixture.w -o ./bin/generics_arg_count_error_fixture 2>./bin/generics_arg_count_error_fixture.stderr
 	grep -qF "wrong number of type arguments for generic 'pick': expected 1, got 2" ./bin/generics_arg_count_error_fixture.stderr
 	! ./bin/wv2 tests/generics_missing_args_error_fixture.w -o ./bin/generics_missing_args_error_fixture 2>./bin/generics_missing_args_error_fixture.stderr
-	grep -qF "generic function 'pick' requires explicit type arguments" ./bin/generics_missing_args_error_fixture.stderr
+	grep -qF "generic function 'make': cannot infer type argument 'T'" ./bin/generics_missing_args_error_fixture.stderr
 	@echo "generics test OK"
 
 generics_64_test: w FORCE
 	./bin/wv2 x64 tests/generics_test.w -o ./bin/generics_64_test
 	./bin/generics_64_test
 	@echo "generics test x64 OK"
+
+# Generic type-argument inference (docs/projects/generics.md): calls
+# without '[type-args]' infer them from the argument types. Runtime
+# behavior plus the inference error fixtures (arch-independent, so only
+# the x86 target runs them).
+generics_inference_test: w FORCE
+	./bin/wv2 tests/generics_inference_test.w -o ./bin/generics_inference_test
+	./bin/generics_inference_test
+	! ./bin/wv2 tests/generics_infer_conflict_error_fixture.w -o ./bin/generics_infer_conflict_error_fixture 2>./bin/generics_infer_conflict_error_fixture.stderr
+	grep -qF "conflicting types inferred for type parameter 'T': 'int' vs 'char*'" ./bin/generics_infer_conflict_error_fixture.stderr
+	! ./bin/wv2 tests/generics_infer_struct_shape_error_fixture.w -o ./bin/generics_infer_struct_shape_error_fixture 2>./bin/generics_infer_struct_shape_error_fixture.stderr
+	grep -qF "generic function 'sum_first': cannot infer type argument 'T'" ./bin/generics_infer_struct_shape_error_fixture.stderr
+	! ./bin/wv2 tests/generics_infer_forward_error_fixture.w -o ./bin/generics_infer_forward_error_fixture 2>./bin/generics_infer_forward_error_fixture.stderr
+	grep -qF "Cannot find symbol: 'later_pick'" ./bin/generics_infer_forward_error_fixture.stderr
+	@echo "generics inference test OK"
+
+generics_inference_64_test: w FORCE
+	./bin/wv2 x64 tests/generics_inference_test.w -o ./bin/generics_inference_64_test
+	./bin/generics_inference_64_test
+	@echo "generics inference test x64 OK"
 
 range: w FORCE
 	./bin/wv2 range_test.w >./bin/range_test
@@ -1172,6 +1263,23 @@ result_64_test: w FORCE
 	./bin/wv2 x64 lib/result_test.w -o ./bin/result_64_test
 	./bin/result_64_test
 
+# Postfix '?' error propagation on wresult[T]* (docs/error_results.txt):
+# runtime behavior plus the compile-error fixtures (arch-independent,
+# so only the x86 target runs them).
+result_propagate_test: w FORCE
+	./bin/wv2 tests/result_propagate_test.w -o ./bin/result_propagate_test
+	./bin/result_propagate_test
+	! ./bin/wv2 tests/result_propagate_int_operand_error_fixture.w -o ./bin/result_propagate_int_operand_error_fixture 2>./bin/result_propagate_int_operand_error_fixture.stderr
+	grep -qF "'?' requires a wresult[...]* operand" ./bin/result_propagate_int_operand_error_fixture.stderr
+	! ./bin/wv2 tests/result_propagate_return_type_error_fixture.w -o ./bin/result_propagate_return_type_error_fixture 2>./bin/result_propagate_return_type_error_fixture.stderr
+	grep -qF "'?' requires the enclosing function to return a wresult[...]*" ./bin/result_propagate_return_type_error_fixture.stderr
+	@echo "result propagate test OK"
+
+result_propagate_64_test: w FORCE
+	./bin/wv2 x64 tests/result_propagate_test.w -o ./bin/result_propagate_64_test
+	./bin/result_propagate_64_test
+	@echo "result propagate test x64 OK"
+
 env_test: w FORCE
 	./bin/wv2 lib/env_test.w -o ./bin/env_test
 	./bin/env_test
@@ -1315,7 +1423,7 @@ debug_test_x64: wdbg_x64 FORCE
 	printf 'c\n' | ./bin/wdbg64 tests/segv_fixture.w > /dev/null 2>&1; test $$? -eq 1
 	@echo "debug x64 test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test for_container_test template_string_test generator_test default_args_test varargs_w_test feature_interaction_test dynamic_var_test generics_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test task_test task_io_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test switch_test compound_assign_test for_container_test template_string_test generator_test defer_test default_args_test varargs_w_test feature_interaction_test feature_combo_test dynamic_var_test generics_test generics_inference_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test result_propagate_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test task_test task_io_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test test hello tests_x64 FORCE
 
 
 clean:
