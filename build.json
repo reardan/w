@@ -537,6 +537,24 @@
 			]
 		},
 		{
+			"name": "generator_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/generator_test.w", "-o", "bin/generator_test"]},
+				{"cmd": ["bin/generator_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/yield_outside_generator_error_fixture.w", "-o", "bin/yield_outside_generator_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "'yield' outside of a generator body"
+				},
+				{
+					"cmd": ["bin/wv2", "tests/generator_return_value_error_fixture.w", "-o", "bin/generator_return_value_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "generators cannot return a value; use yield"
+				}
+			]
+		},
+		{
 			"name": "import_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1376,6 +1394,14 @@
 			]
 		},
 		{
+			"name": "generator_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/generator_test.w", "-o", "bin/generator_64_test"]},
+				{"cmd": ["bin/generator_64_test"]}
+			]
+		},
+		{
 			"name": "json_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1500,6 +1526,7 @@
 				"map_set_builtin_64_test",
 				"list_builtin_64_test",
 				"for_container_64_test",
+				"generator_64_test",
 				"json_64_test",
 				"json_codec_64_test",
 				"json_rpc_64_test",
@@ -1544,6 +1571,7 @@
 				"type_system_warning_test",
 				"for_test",
 				"for_container_test",
+				"generator_test",
 				"import_test",
 				"c_import_test",
 				"c_preprocessor_test",

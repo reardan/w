@@ -46,6 +46,8 @@ literal KW_FALSE "false"
 literal KW_MAP "map"
 literal KW_SET "set"
 literal KW_LIST "list"
+literal KW_GENERATOR "generator"
+literal KW_YIELD "yield"
 
 literal ELLIPSIS "..."
 literal AND_AND "&&"
@@ -89,12 +91,12 @@ rule program = separator* top_item* EOF
 rule separator = NEWLINE
 rule top_item = declaration separator* | statement separator*
 
-rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | function_decl | global_decl
+rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | function_decl | global_decl
 rule import_decl = KW_IMPORT dotted_name import_alias_opt
 rule import_alias_opt = KW_AS name_token |
 rule dotted_name = name_token dotted_tail*
 rule dotted_tail = DOT name_token
-rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST
+rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD
 rule c_lib_decl = KW_C_LIB STRING
 rule extern_decl = KW_EXTERN type_ref IDENT LPAREN extern_param_list RPAREN | KW_EXTERN type_ref IDENT
 rule extern_param_list = param extern_param_tail* | ELLIPSIS |
@@ -112,6 +114,7 @@ rule struct_decl = KW_STRUCT IDENT block
 rule union_decl = KW_UNION IDENT block
 rule enum_decl = KW_ENUM IDENT block
 rule type_alias_decl = KW_TYPE IDENT ASSIGN type_ref
+rule generator_decl = KW_GENERATOR type_ref name_token LPAREN param_list RPAREN function_body
 rule function_decl = type_ref name_token LPAREN param_list RPAREN function_body
 rule global_decl = type_ref name_token decl_suffix global_suffix
 rule global_suffix = ASSIGN expression | SEMI | 
@@ -136,14 +139,14 @@ rule set_type = KW_SET LBRACK type_ref RBRACK
 rule list_type = KW_LIST LBRACK type_ref RBRACK
 rule param_type_list = type_ref param_type_tail* |
 rule param_type_tail = COMMA type_ref
-rule type_atom = KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_BOOL | KW_UINT | IDENT
+rule type_atom = KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_BOOL | KW_UINT | KW_GENERATOR | IDENT
 rule pointer_part = STAR
 rule array_part = LBRACK expression_opt RBRACK
 rule expression_opt = expression |
 
 rule statement = base_statement statement_suffix
 rule statement_suffix = SEMI |
-rule base_statement = if_stmt | else_stmt | while_stmt | for_stmt | return_stmt | break_stmt | continue_stmt | pass_stmt | debugger_stmt | local_decl | expression_stmt | block
+rule base_statement = if_stmt | else_stmt | while_stmt | for_stmt | return_stmt | yield_stmt | break_stmt | continue_stmt | pass_stmt | debugger_stmt | local_decl | expression_stmt | block
 rule if_stmt = KW_IF paren_expression_opt block
 rule else_stmt = KW_ELSE if_stmt | KW_ELSE block
 rule while_stmt = KW_WHILE paren_expression_opt block
@@ -151,6 +154,7 @@ rule for_stmt = KW_FOR for_binding for_binding_tail KW_IN expression block
 rule for_binding = type_ref IDENT | IDENT
 rule for_binding_tail = COMMA for_binding | 
 rule return_stmt = KW_RETURN expression_opt
+rule yield_stmt = KW_YIELD expression
 rule break_stmt = KW_BREAK
 rule continue_stmt = KW_CONTINUE
 rule pass_stmt = KW_PASS
