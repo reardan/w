@@ -262,6 +262,11 @@ graphics_gl_smoke_test: w FORCE
 	./bin/graphics_gl_smoke_test | grep -q "graphics gl smoke"
 	@echo "graphics gl smoke test OK"
 
+# Interactive spinning-triangle demo window (close it to exit; needs X).
+graphics_demo: w FORCE
+	./bin/wv2 x64 graphics/demo.w -o ./bin/graphics_demo
+	./bin/graphics_demo
+
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
 # dynamic_test_x64 the 64-bit libc.
