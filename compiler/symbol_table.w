@@ -218,8 +218,8 @@ void sym_define_global_at(int current_symbol, int v):
 		error(c"'")
 	i = load_int(table + t + 2) - code_offset
 	while (i):
-		j = load_int(code + i) - code_offset
-		save_int(code + i, v)
+		j = be_addr_slot_read(i) - code_offset
+		be_addr_slot_write(i, v)
 		i = j
 
 	table[t + 1] = 'D'
@@ -330,8 +330,8 @@ int sym_get_value(char *s):
 		diag_part(c"Cannot find symbol: '")
 		diag_part(token)
 		error(c"'")
-	be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
-	save_int(code + codepos - 4, load_int(table + t + 2))
+	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
+	be_addr_slot_write(codepos - 4, load_int(table + t + 2))
 
 	char scope_type = table[t + 1]
 	int type = load_int(table + t + 6)

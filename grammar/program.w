@@ -220,6 +220,10 @@ void emit_data_global_storage(int type, int vaddr):
 	if (type_is_array(type)):
 		save_i(data + (vaddr - data_offset), vaddr + 2 * word_size, word_size)
 		save_i(data + (vaddr - data_offset + word_size), type_get_array_length(type), word_size)
+		# The header's data pointer is an absolute vaddr in the RW data
+		# segment: record it so the entry stub slides it under PIE
+		# (data_split only runs for the arm64 targets).
+		rebase_note(vaddr)
 	else if (type_num_args(type) > 0):
 		int i = 0
 		while (i < type_num_args(type)):

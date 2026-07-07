@@ -1,0 +1,23 @@
+---
+description: Editing any W source file (.w)
+globs: **/*.w
+alwaysApply: false
+---
+
+# Editing W source
+
+- Indent with **tabs** (spaces are a compiler warning) and keep a trailing
+  newline. Blocks open with `:`, no semicolons, `#` comments.
+- After editing, check the file without producing a binary:
+  `./bin/wv2 check --json <file>` (add `x64` after `--json` for the 64-bit
+  target). Exit 0 with empty stdout means clean. A `postToolUse` hook
+  (`.cursor/hooks.json`) also runs this check automatically after every
+  `.w` edit and injects the diagnostics — treat that feedback as
+  authoritative and fix it before moving on.
+- Fix warnings, not just errors: the self-host build stages compile with
+  `--strict`, so any warning fails `make build`.
+- Pick focused tests with `./bin/wtest changed <file>` (build it with
+  `make wtest`) instead of guessing or running the full suite first.
+- Look up where a symbol is declared with
+  `./bin/wv2 symbols --json <file>` rather than grepping when the file
+  compiles.

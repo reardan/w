@@ -81,8 +81,8 @@ void var_emit_helper_address(int i):
 	int head = load_int(var_chains + i * 4)
 	if (head == 0):
 		head = code_offset
-	be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
-	save_int(code + codepos - 4, head)
+	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
+	be_addr_slot_write(codepos - 4, head)
 	save_int(var_chains + i * 4, codepos + code_offset - 4)
 
 
@@ -285,8 +285,8 @@ void var_patch_chain(int i):
 	int v = sym_address(var_fn_name(i))
 	int p = head - code_offset
 	while (p):
-		int next = load_int(code + p) - code_offset
-		save_int(code + p, v)
+		int next = be_addr_slot_read(p) - code_offset
+		be_addr_slot_write(p, v)
 		p = next
 	save_int(var_chains + i * 4, 0)
 

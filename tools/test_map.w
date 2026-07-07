@@ -87,6 +87,8 @@ void wtest_init_targets():
 	wtest_targets.push(c"c_import_libc_test")
 	wtest_targets.push(c"wexec_test")
 	wtest_targets.push(c"lsp_test")
+	wtest_targets.push(c"mcp_test")
+	wtest_targets.push(c"hook_test")
 	wtest_targets.push(c"metadata_check")
 	wtest_targets.push(c"metadata_test")
 	wtest_targets.push(c"infer_test")
@@ -346,6 +348,13 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"wexec_test")
 	else if (starts_with(path, c"tools/lsp/")):
 		wtest_add(path, c"lsp_test")
+	else if (starts_with(path, c"tools/mcp/") | (strcmp(path, c".cursor/mcp.json") == 0)):
+		wtest_add(path, c"mcp_test")
+	else if (starts_with(path, c"tools/hooks/") | starts_with(path, c".cursor/hooks")):
+		wtest_add(path, c"hook_test")
+	else if (starts_with(path, c".cursor/")):
+		# Rules and skills are agent guidance, not code under test.
+		return
 	else if ((strcmp(path, c"tools/wmeta.w") == 0) | (strcmp(path, c"package.wmeta") == 0)):
 		wtest_add(path, c"metadata_check")
 		wtest_add(path, c"metadata_test")

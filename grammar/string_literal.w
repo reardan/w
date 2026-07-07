@@ -156,22 +156,26 @@ int raw_asm_literal():
 	return 1
 
 
-# A64: emit {data_ptr,len} descriptor + string bytes inline, branch over
-# them with bl (which leaves the descriptor address in x30), and move it to
-# the accumulator. String bytes are padded so the branch target stays
-# 4-byte aligned.
+# A64: the string bytes stay inline in text (branched over, padded so the
+# branch target stays 4-byte aligned), but the {data_ptr,len} descriptor
+# lives in the RW data segment: its data_ptr cell holds an absolute vaddr
+# that the entry stub must slide under PIE, and the text segment is
+# read-execute so it could not be patched there. The cell is recorded in
+# the rebase table and the descriptor's address is materialized with a
+# PC-relative adrp+add.
 void arm64_emit_utf8_string_descriptor(int i):
-	int descriptor_size = 2 * word_size
 	int pad = (4 - ((i + 1) & 3)) & 3
-	int data_bytes = descriptor_size + (i + 1) + pad
-	a64(op(0x94, 0x000000) | (((4 + data_bytes) >> 2) & op(0x03, 0xffffff))) /* bl over the data */
-	int descriptor_addr = code_offset + codepos
-	int data_address = descriptor_addr + descriptor_size
-	emit_int64(data_address)
-	emit_int64(i)
+	int data_bytes = (i + 1) + pad
+	a64(op(0x14, 0x000000) | (((4 + data_bytes) >> 2) & op(0x03, 0xffffff))) /* b over the bytes */
+	int data_address = code_offset + codepos
 	emit(i + 1, token)
 	emit_zeros(pad)
-	a64(op(0xaa, 0x1e03e0)) /* mov x0, x30 (descriptor address) */
+	int desc_vaddr = emit_data_zeros(2 * word_size)
+	save_i(data + (desc_vaddr - data_offset), data_address, word_size)
+	save_i(data + (desc_vaddr - data_offset + word_size), i, word_size)
+	rebase_note(desc_vaddr)
+	be_addr_slot_emit()
+	be_addr_slot_write(codepos - 4, desc_vaddr)
 
 
 void emit_utf8_string_descriptor(int i):

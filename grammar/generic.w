@@ -1063,11 +1063,11 @@ int generic_call_infer_expr(int def):
 	if (sym_lookup(generic_inst_mangled(inst)) >= 0):
 		sym_get_value(generic_inst_mangled(inst))
 	else:
-		be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
+		be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 		int head = generic_inst_chain(inst)
 		if (head == 0):
 			head = code_offset
-		save_int(code + codepos - 4, head)
+		be_addr_slot_write(codepos - 4, head)
 		generic_inst_set_chain(inst, codepos + code_offset - 4)
 	call_eax()
 	be_pop(stack_pos - s)
@@ -1133,11 +1133,11 @@ int generic_call_expr():
 	generic_pending_call_signature = generic_inst_signature(inst)
 	generic_pending_call_name = generic_inst_mangled(inst)
 	# call target: a mov-imm slot on the instantiation's backpatch chain
-	be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
+	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 	int head = generic_inst_chain(inst)
 	if (head == 0):
 		head = code_offset
-	save_int(code + codepos - 4, head)
+	be_addr_slot_write(codepos - 4, head)
 	generic_inst_set_chain(inst, codepos + code_offset - 4)
 	return 4
 
@@ -1174,8 +1174,8 @@ void generic_instantiate_function(int inst):
 	if (head != 0):
 		p = head - code_offset
 	while (p):
-		int next = load_int(code + p) - code_offset
-		save_int(code + p, address)
+		int next = be_addr_slot_read(p) - code_offset
+		be_addr_slot_write(p, address)
 		p = next
 
 
@@ -1256,8 +1256,8 @@ int generic_forward_call_expr():
 		error(c"'")
 	# a chain slot for this call; merged into the instantiation's chain
 	# once the definition is known
-	be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
-	save_int(code + codepos - 4, code_offset)
+	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
+	be_addr_slot_write(codepos - 4, code_offset)
 	char* e = generic_forwards + generic_forward_count * generic_forward_stride()
 	save_int(e, cast(int, name))
 	save_int(e + 4, args)
@@ -1291,11 +1291,11 @@ void generic_forward_merge_chain(int f, int inst):
 	int inst_head = generic_inst_chain(inst)
 	if (inst_head != 0):
 		int p = head - code_offset
-		int v = load_int(code + p)
+		int v = be_addr_slot_read(p)
 		while (v != code_offset):
 			p = v - code_offset
-			v = load_int(code + p)
-		save_int(code + p, inst_head)
+			v = be_addr_slot_read(p)
+		be_addr_slot_write(p, inst_head)
 	generic_inst_set_chain(inst, head)
 
 
@@ -1317,8 +1317,8 @@ void generic_resolve_forward(int f):
 			int address = load_int(table + t + 2)
 			int p = load_int(e + 12) - code_offset
 			while (p):
-				int next = load_int(code + p) - code_offset
-				save_int(code + p, address)
+				int next = be_addr_slot_read(p) - code_offset
+				be_addr_slot_write(p, address)
 				p = next
 			free(mangled)
 			free(cast(char*, args))
