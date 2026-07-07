@@ -243,6 +243,38 @@ arm64_smoke_test: w FORCE
 	$(QEMU_ARM64) ./bin/generator_arm64_test
 	@echo "arm64 smoke test OK"
 
+# Windows x64 (win64) target: cross-compiles to a PE32+ console .exe.
+# See docs/projects/windows.md. The runtime tests need Wine; they are not
+# part of the default 'tests' aggregate for that reason. win64_header_test
+# only inspects the produced file, so it runs anywhere binutils exists.
+WINE ?= wine
+
+win64_header_test: w FORCE
+	./bin/wv2 win64 tests/win64_hello.w -o ./bin/win64_hello.exe
+	objdump -f ./bin/win64_hello.exe | grep -q "pei-x86-64"
+	objdump -p ./bin/win64_hello.exe | grep -q "ExitProcess"
+	objdump -p ./bin/win64_hello.exe | grep -q "kernel32.dll"
+	@echo "win64 header test OK"
+
+win64_hello_test: w FORCE
+	./bin/wv2 win64 tests/win64_hello.w -o ./bin/win64_hello.exe
+	WINEDEBUG=-all $(WINE) ./bin/win64_hello.exe | grep -q "hello from win64"
+	@echo "win64 hello test OK"
+
+win64_smoke_test: w FORCE
+	./bin/wv2 win64 tests/win64_smoke.w -o ./bin/win64_smoke.exe
+	WINEDEBUG=-all $(WINE) ./bin/win64_smoke.exe | grep -q "win64 smoke OK"
+	@echo "win64 smoke test OK"
+
+# Windows twin of dynamic_test: extern/c_lib against msvcrt.dll through
+# the PE import table and the Win64 ABI shims.
+dynamic_test_win64: w FORCE
+	./bin/wv2 win64 tests/dynamic_test_win64.w -o ./bin/dynamic_test_win64.exe
+	WINEDEBUG=-all $(WINE) ./bin/dynamic_test_win64.exe | grep -q "dynamic linking OK"
+	@echo "dynamic test win64 OK"
+
+tests_win64: win64_header_test win64_hello_test win64_smoke_test dynamic_test_win64 FORCE
+
 tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test result_propagate_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 defer_64_test default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test switch_64_test for_container_64_test compound_assign_64_test template_string_64_test generator_64_test feature_interaction_64_test feature_combo_64_test dynamic_var_64_test generics_64_test generics_inference_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test task_64_test task_io_64_test format_64_test args_64_test repl_test_x64 debug_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
