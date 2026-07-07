@@ -28,6 +28,12 @@ int word_size_log2
 # the x86 and x64 targets are wholly unaffected.
 int target_isa
 
+# Target operating system: 0 = linux (ELF), 1 = darwin (Mach-O). Only
+# meaningful with target_isa == 1 today (the arm64_darwin target); the
+# x86-family targets are always Linux. Defaults to 0 so every existing
+# target is wholly unaffected.
+int target_os
+
 # Where the finished ELF is written: stdout by default, or the file given
 # with the -o flag.
 int output_fd

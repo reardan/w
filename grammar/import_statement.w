@@ -44,11 +44,13 @@ char* import_resolve_arch(char* path):
 				char* arch = c"x86"
 				if (target_isa == 1):
 					arch = c"arm64"
+					if (target_os == 1):
+						arch = c"arm64_darwin"
 				else if (word_size == 8):
 					arch = c"x64"
 				# Room for the original path plus the inserted "/<arch>" and
-				# the terminator; arch can be up to 5 chars ("arm64"), which
-				# the old fixed +5 did not cover.
+				# the terminator; the allocation is sized from strlen(arch),
+				# so longer values ("arm64_darwin") are covered.
 				char* result = malloc(strlen(path) + strlen(arch) + 2)
 				int j = 0
 				while (j < i + 8):
