@@ -351,14 +351,12 @@ there is no foreign ABI to be compatible with until the libSystem stage.
   read-only text exposed two latent write-to-literal bugs (`putc`, `getchar`)
   and two test-only in-place literal mutations, all fixed to use stack/heap
   buffers.
-- **Stage 4 (future) — Mach-O + Darwin + signing**, and **Stage 5 (future) —
-  `--pac=full` / arm64e for macOS enforcement**, as described below.
-- **Stage 4 — Mach-O + Darwin syscalls + signing.** `macho_64.w`,
+- **Stage 4 (future) — Mach-O + Darwin syscalls + signing.** `macho_64.w`,
   `arm64_darwin` syscall module, PIE/rebase-table startup, SHA-256 +
   CodeDirectory ad-hoc signing. Acceptance: hello + `lib_test` subset on a
   real Apple Silicon machine (arm64 slice, PAC inert), plus a GitHub-Actions
   macOS arm64 runner job if CI is desired.
-- **Stage 5 — PAC to production.** `--pac=ret` default-on for arm64 targets,
+- **Stage 5 (future) — PAC to production.** `--pac=ret` default-on for arm64 targets,
   `--pac=full` function-pointer signing, arm64e cpusubtype emission,
   negative-test fixtures in the suite (enforced under qemu CI; enforced on
   M3 via the arm64e slice on macOS 26+). Acceptance: full arm64 suite green
