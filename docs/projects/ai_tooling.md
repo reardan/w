@@ -42,7 +42,10 @@ The MVP described here has landed:
 - README agent tooling guidance and regression targets (`check_json_test`,
   `wtest_map_test`, `mcp_test`) are wired into `make tests`.
 
-The out-of-scope items at the end of this document remain deferred.
+The out-of-scope items at the end of this document remain deferred; the
+living backlog (deferred items plus friction found while dogfooding) is
+`docs/projects/ai_tooling_next_steps.md`, kept current by agents per
+`.cursor/rules/ai-tooling-feedback.mdc`.
 
 ## Post-MVP: agent-side configuration (implemented)
 

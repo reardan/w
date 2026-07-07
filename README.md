@@ -271,6 +271,11 @@ archives the old seed to `old/` first.
   holds step-by-step skills (`w-check-diagnostics`, `w-select-tests`,
   `w-debug-wdbg`, `w-repl-explore`) and `.cursor/rules/` holds path-scoped
   rules for W sources, the seed-compiled compiler tree, and tests/fixtures.
+- The tooling backlog lives in `docs/projects/ai_tooling_next_steps.md`.
+  Agents that hit friction or bugs while using the tooling are expected to
+  record them there (`.cursor/rules/ai-tooling-feedback.mdc` makes this an
+  always-on rule), and to move entries into `docs/projects/ai_tooling.md`'s
+  status section when implemented.
 - Cursor IDE can use the committed `.cursor/mcp.json` registration for the
   W-native `w-toolchain` MCP server (`make wmcp` builds `bin/wmcp` from
   `tools/mcp/w_toolchain_mcp.w`). It exposes build, verify, run_tests,
