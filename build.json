@@ -1892,6 +1892,48 @@
 			]
 		},
 		{
+			"name": "win64_header_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "win64", "tests/win64_hello.w", "-o", "bin/win64_hello.exe"]},
+				{"cmd": ["objdump", "-f", "bin/win64_hello.exe"], "expect_stdout": "pei-x86-64"},
+				{"cmd": ["objdump", "-p", "bin/win64_hello.exe"], "expect_stdout": ["ExitProcess", "kernel32.dll"]}
+			]
+		},
+		{
+			"name": "win64_hello_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "win64", "tests/win64_hello.w", "-o", "bin/win64_hello.exe"]},
+				{"cmd": ["wine", "bin/win64_hello.exe"], "expect_stdout": "hello from win64!"}
+			]
+		},
+		{
+			"name": "win64_smoke_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "win64", "tests/win64_smoke.w", "-o", "bin/win64_smoke.exe"]},
+				{"cmd": ["wine", "bin/win64_smoke.exe"], "expect_stdout": "win64 smoke OK"}
+			]
+		},
+		{
+			"name": "dynamic_test_win64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "win64", "tests/dynamic_test_win64.w", "-o", "bin/dynamic_test_win64.exe"]},
+				{"cmd": ["wine", "bin/dynamic_test_win64.exe"], "expect_stdout": "dynamic linking OK"}
+			]
+		},
+		{
+			"name": "tests_win64",
+			"deps": [
+				"win64_header_test",
+				"win64_hello_test",
+				"win64_smoke_test",
+				"dynamic_test_win64"
+			]
+		},
+		{
 			"name": "tests_x64",
 			"deps": [
 				"verify_x64",

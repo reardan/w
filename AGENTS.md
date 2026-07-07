@@ -60,11 +60,19 @@ Compile/run an arbitrary program directly:
  (`sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6:i386`).
  `make build` and `make verify` do not require it.
 - ARM64 backend work needs `qemu-user-static` so ARM64 W-compiler test binaries can
-  run under `qemu-aarch64`; `binutils-aarch64-linux-gnu` is also useful for
-  disassembly during development. Like the i386 dynamic-test support, this should be
-  baked into the Cursor Cloud VM snapshot rather than installed ad hoc by agents. If
-  those tools are missing, run an env setup agent from Cursor web at
-  https://cursor.com/onboard with a prompt such as: "Install qemu-user-static and
-  binutils-aarch64-linux-gnu via apt into the snapshot so ARM64 W-compiler test
-  binaries can run under qemu-aarch64, mirroring how libc6:i386 is baked in for
-  dynamic_test."
+ run under `qemu-aarch64`; `binutils-aarch64-linux-gnu` is also useful for
+ disassembly during development. Like the i386 dynamic-test support, this should be
+ baked into the Cursor Cloud VM snapshot rather than installed ad hoc by agents. If
+ those tools are missing, run an env setup agent from Cursor web at
+ https://cursor.com/onboard with a prompt such as: "Install qemu-user-static and
+ binutils-aarch64-linux-gnu via apt into the snapshot so ARM64 W-compiler test
+ binaries can run under qemu-aarch64, mirroring how libc6:i386 is baked in for
+ dynamic_test."
+- The win64 PE backend (`docs/projects/windows.md`) needs `wine` to run its test
+ binaries (`make tests_win64` / `./wbuild tests_win64`; the win64_header_test
+ structural check works without it). Like qemu for ARM64, wine should be baked
+ into the Cursor Cloud VM snapshot rather than installed ad hoc; if it is missing,
+ run an env setup agent from Cursor web at https://cursor.com/onboard with a
+ prompt such as: "Install wine (wine64) via apt into the snapshot so win64
+ W-compiler test binaries (PE32+ .exe) can run under Wine, mirroring how
+ qemu-user-static is baked in for the ARM64 tests."
