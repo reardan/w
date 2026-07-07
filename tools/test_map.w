@@ -91,6 +91,14 @@ void wtest_init_targets():
 	wtest_targets.push(c"hook_test")
 	wtest_targets.push(c"metadata_check")
 	wtest_targets.push(c"metadata_test")
+	wtest_targets.push(c"infer_test")
+	wtest_targets.push(c"ternary_test")
+	wtest_targets.push(c"print_builtin_test")
+	wtest_targets.push(c"script_mode_test")
+	wtest_targets.push(c"prelude_test")
+	wtest_targets.push(c"list_methods_test")
+	wtest_targets.push(c"str_test")
+	wtest_targets.push(c"math_test")
 	wtest_targets.push(c"tests")
 
 
@@ -204,6 +212,10 @@ void wtest_map_lib(char* path):
 	else if (strcmp(path, c"lib/wmeta.w") == 0):
 		wtest_add(path, c"metadata_check")
 		wtest_add(path, c"metadata_test")
+	else if (strcmp(path, c"lib/str.w") == 0):
+		wtest_add(path, c"str_test")
+	else if (strcmp(path, c"lib/math.w") == 0):
+		wtest_add(path, c"math_test")
 	else:
 		wtest_add(path, c"lib_test")
 
@@ -244,6 +256,10 @@ void wtest_map_structures(char* path):
 	else if (strcmp(path, c"structures/w_dynamic.w") == 0):
 		wtest_add(path, c"dynamic_var_test")
 		wtest_add(path, c"dynamic_var_64_test")
+	else if (strcmp(path, c"structures/prelude.w") == 0):
+		wtest_add(path, c"print_builtin_test")
+		wtest_add(path, c"prelude_test")
+		wtest_add(path, c"script_mode_test")
 	else:
 		wtest_add(path, c"tests")
 
@@ -310,6 +326,22 @@ void wtest_map_path(char* path):
 	else if (starts_with(path, c"tests/defer_")):
 		wtest_add(path, c"defer_test")
 		wtest_add(path, c"defer_64_test")
+	else if (strcmp(path, c"tests/infer_test.w") == 0):
+		wtest_add(path, c"infer_test")
+	else if (strcmp(path, c"tests/ternary_test.w") == 0):
+		wtest_add(path, c"ternary_test")
+	else if (strcmp(path, c"tests/print_builtin_test.w") == 0):
+		wtest_add(path, c"print_builtin_test")
+	else if (starts_with(path, c"tests/script_")):
+		wtest_add(path, c"script_mode_test")
+	else if (strcmp(path, c"tests/prelude_test.w") == 0):
+		wtest_add(path, c"prelude_test")
+	else if (strcmp(path, c"tests/list_methods_test.w") == 0):
+		wtest_add(path, c"list_methods_test")
+	else if (strcmp(path, c"tests/str_test.w") == 0):
+		wtest_add(path, c"str_test")
+	else if (strcmp(path, c"tests/math_test.w") == 0):
+		wtest_add(path, c"math_test")
 	else if (starts_with(path, c"tests/parser_generator/")):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):

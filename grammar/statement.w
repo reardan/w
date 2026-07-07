@@ -300,6 +300,10 @@ void statement():
 	else if (raw_asm_literal()):
 		expect_or_newline(c";")
 
+	# name := expression (type-inferred local declaration)
+	else if (inferred_declaration()):
+		expect_or_newline(c";")
+
 	else:
 		expression()
 		expect_or_newline(c";")
