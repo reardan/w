@@ -44,6 +44,44 @@ The MVP described here has landed:
 
 The out-of-scope items at the end of this document remain deferred.
 
+## Post-MVP: agent-side configuration (implemented)
+
+The MVP built the tools; a follow-up made agents actually reach for them
+by committing the agent-facing configuration Cursor reads from the repo:
+
+- **Edit hook**: `.cursor/hooks.json` registers a `postToolUse` command
+  hook (`.cursor/hooks/check_after_edit.sh`) that bootstraps
+  `tools/hooks/w_check_hook.w` → `bin/whook` and pipes the payload
+  through. After any agent edit to a `.w` file the hook runs
+  `./bin/wv2 check --json` and emits
+  `{"additional_context": "<diagnostics>"}`, so the agent sees compiler
+  feedback without being asked. Compiler-tree modules are checked through
+  `w.w` (they do not compile standalone), `*fixture*` paths are skipped
+  (their diagnostics are intentional), non-edit tools and non-`.w` paths
+  produce `{}`, and every failure path fails open. `postToolUse` is used
+  rather than `afterFileEdit` because only the former has a documented
+  context-injection output field, and both run in Cloud Agents.
+  Asserted by `hook_test` (Makefile + `build.json`, in the `tests`
+  umbrella; `tools/hooks/`, `.cursor/hooks*` map to it in `wtest`).
+- **Skills**: `.cursor/skills/{w-check-diagnostics,w-select-tests,
+  w-debug-wdbg,w-repl-explore}/SKILL.md` — task-scoped SOPs for
+  structured diagnostics, focused test selection, scripted `wdbg`
+  debugging, and scripted REPL exploration.
+- **Rules**: `.cursor/rules/{w-source,compiler-core,tests-and-fixtures}.mdc`
+  — glob-scoped guardrails that auto-attach when the agent touches W
+  sources, the seed-compiled compiler tree, or tests/fixtures.
+- **AGENTS.md**: gained a directive "Tooling for agents" edit loop
+  (check → wtest → full suite; symbols/repl/wdbg instead of
+  grep/throwaway files/print debugging), since AGENTS.md is the one file
+  injected into every agent session.
+- **Bootstrap friction**: `make build` and the tool targets (`wtest`,
+  `wmcp`, `wlsp`, `whook`) now create `bin/` and self-bootstrap `wv2`,
+  so the documented commands work from a fresh clone without ceremony.
+- **MCP caveat**: the committed `.cursor/mcp.json` works in the Cursor
+  IDE, but Cloud Agents only load MCP servers registered in the Cloud
+  Agents dashboard — documented in the README, with the shell commands
+  as the cloud-side equivalent.
+
 ## Current state (verified against source at head)
 
 - **Every diagnostic funnels through two functions**: `warning(char* s)`

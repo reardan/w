@@ -33,9 +33,10 @@ project quickly and make correct changes.
 
 ## Build, verify, test
 
-The `bin/` output directory is `.gitignore`d and Make targets do **not**
-create it — run `mkdir -p bin` first if it is missing (a redirection or
-`chmod` error like `bin/wv2: No such file or directory` means it is missing).
+The `bin/` output directory is `.gitignore`d. `make build`, the tool targets
+(`wtest`, `wmcp`, `wlsp`, `whook`) and `./wbuild` create it; most other one-off
+Make targets do **not** — run `mkdir -p bin` (or `make build`) first if a
+redirection or `chmod` error like `bin/wv2: No such file or directory` appears.
 
 ```sh
 mkdir -p bin
@@ -259,10 +260,25 @@ archives the old seed to `old/` first.
   call `./bin/wtest changed file...` to list the selected Makefile targets
   without running them. Docs-only changes produce no targets; unknown paths fall
   back to `tests`.
-- Cursor can use the committed `.cursor/mcp.json` registration for the
+- A committed Cursor hook (`.cursor/hooks.json` →
+  `.cursor/hooks/check_after_edit.sh` → `tools/hooks/w_check_hook.w`, built to
+  `bin/whook` by `make whook`) runs `w check --json` automatically after every
+  agent edit to a `.w` file and injects the diagnostics back into the agent's
+  context. Compiler-tree files are checked through `w.w` (they do not compile
+  standalone), fixture files are skipped, and the hook fails open. Asserted by
+  `make hook_test`.
+- Agent-facing guidance is committed alongside the code: `.cursor/skills/`
+  holds step-by-step skills (`w-check-diagnostics`, `w-select-tests`,
+  `w-debug-wdbg`, `w-repl-explore`) and `.cursor/rules/` holds path-scoped
+  rules for W sources, the seed-compiled compiler tree, and tests/fixtures.
+- Cursor IDE can use the committed `.cursor/mcp.json` registration for the
   W-native `w-toolchain` MCP server (`make wmcp` builds `bin/wmcp` from
   `tools/mcp/w_toolchain_mcp.w`). It exposes build, verify, run_tests,
   check, compile, run, repl_eval, and test_changed tools from the repo root.
+  Cloud Agents do not load repo `mcp.json` files — register the server in the
+  Cloud Agents dashboard (stdio command:
+  `sh -c "mkdir -p bin && make -s wmcp >&2 && exec ./bin/wmcp"`), or use the
+  equivalent shell commands.
 - Editors can run the W-native LSP server (`make wlsp` builds `bin/wlsp` from
   `tools/lsp/w_lsp.w`): diagnostics from `w check --json` on open/save and
   go-to-definition from `w symbols --json`, over stdio Content-Length framing.
