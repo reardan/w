@@ -213,17 +213,25 @@ void arm64_emit_cstr(int i):
 	a64(op(0xaa, 0x1e03e0)) /* mov x0, x30 (string address) */
 
 
+# Emit token[0..len] (a NUL-terminated blob) inline in the code stream and
+# leave its address in the accumulator. Used by c"..." literals and the
+# f"..." template-string chunk appender. x86 jumps over the bytes with a
+# call and pops the pushed return address; arm64 uses arm64_emit_cstr.
+void be_emit_inline_cstr(int len):
+	if (target_isa == 1):
+		arm64_emit_cstr(len)
+		return
+	call_relative32(len + 1)
+	emit(len + 1, token)
+	pop_eax()
+
+
 int c_char_pointer_literal():
 	if ((token[0] != 'c') | (token[1] != '"')):
 		return 0
 	int i = process_prefixed_string_literal()
 	token[i] = 0
-	if (target_isa == 1):
-		arm64_emit_cstr(i)
-		return 1
-	call_relative32(i + 1)
-	emit(i + 1, token)
-	pop_eax()
+	be_emit_inline_cstr(i)
 	return 1
 
 

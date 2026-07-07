@@ -198,9 +198,7 @@ int template_helper_for_type(int got):
 void template_emit_chunk_append(int length, int builder_slot):
 	int base_stack = stack_pos
 	token[length] = 0
-	call_relative32(length + 1)
-	emit(length + 1, token)
-	pop_eax()
+	be_emit_inline_cstr(length)
 	push_eax()
 	stack_pos = stack_pos + 1
 	int data_slot = stack_pos

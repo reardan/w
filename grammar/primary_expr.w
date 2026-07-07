@@ -133,6 +133,13 @@ int primary_expr():
 		mov_eax_int(word_size)
 		type = 3 /* constant */
 
+	# Compile-time constant: the target instruction set (0 = x86 family,
+	# 1 = arm64). Runtime code that must diverge per ISA reads this, e.g.
+	# the generator context switch saves a different register set.
+	else if (peek(c"__target_isa__")):
+		mov_eax_int(target_isa)
+		type = 3 /* constant */
+
 	else if (utf8_string_literal()):
 		type = string_value_type
 
