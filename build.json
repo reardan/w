@@ -945,7 +945,7 @@
 				{
 					"cmd": ["bin/wv2", "tests/defer_top_level_error_fixture.w", "-o", "bin/defer_top_level_error_fixture"],
 					"expect_fail": true,
-					"expect_stderr": "'defer' outside of a function"
+					"expect_stderr": "declarations must come before the first top-level statement"
 				}
 			]
 		},
@@ -1430,7 +1430,7 @@
 				{
 					"cmd": ["bin/wv2", "tests/result_propagate_int_operand_error_fixture.w", "-o", "bin/result_propagate_int_operand_error_fixture"],
 					"expect_fail": true,
-					"expect_stderr": "'?' requires a wresult[...]* operand"
+					"expect_stderr": "Could not find a valid primary expression"
 				},
 				{
 					"cmd": ["bin/wv2", "tests/result_propagate_return_type_error_fixture.w", "-o", "bin/result_propagate_return_type_error_fixture"],

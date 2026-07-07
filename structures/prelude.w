@@ -12,7 +12,6 @@ Like the other __w_ runtimes this file must stay compatible with the
 oldest compiler that may compile it: plain W only.
 */
 import lib.lib
-import lib.format
 import structures.w_list
 
 
@@ -33,9 +32,34 @@ void __w_print_str(string s):
 	write_string(1, s)
 
 
+# Same fixed six-fraction-digit rendering as lib/format.w's ftoa, kept
+# private here so the prelude never collides with programs that
+# c_import libc's printf (lib/format.w defines a W printf).
 void __w_print_float32(float f):
-	char* s = ftoa(f)
-	write(1, s, strlen(s))
+	char* s = malloc(64)
+	int pos = 0
+	if (f < 0.0):
+		s[pos] = '-'
+		pos = pos + 1
+		f = -f
+	int whole = f
+	char* whole_digits = itoa(whole)
+	strcpy(s + pos, whole_digits)
+	free(whole_digits)
+	pos = strlen(s)
+	s[pos] = '.'
+	pos = pos + 1
+	float frac = f - whole
+	int i = 0
+	while (i < 6):
+		frac = frac * 10.0
+		int digit = frac
+		s[pos] = digit + '0'
+		pos = pos + 1
+		frac = frac - digit
+		i = i + 1
+	s[pos] = 0
+	write(1, s, pos)
 	free(s)
 
 

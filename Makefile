@@ -871,7 +871,7 @@ defer_test: w FORCE
 	! ./bin/wv2 tests/defer_nested_error_fixture.w -o ./bin/defer_nested_error_fixture 2>./bin/defer_nested_error_fixture.stderr
 	grep -qF "'defer' cannot be nested in a deferred statement" ./bin/defer_nested_error_fixture.stderr
 	! ./bin/wv2 tests/defer_top_level_error_fixture.w -o ./bin/defer_top_level_error_fixture 2>./bin/defer_top_level_error_fixture.stderr
-	grep -qF "'defer' outside of a function" ./bin/defer_top_level_error_fixture.stderr
+	grep -qF "declarations must come before the first top-level statement" ./bin/defer_top_level_error_fixture.stderr
 	@echo "defer test OK"
 
 defer_64_test: w FORCE
@@ -1361,7 +1361,7 @@ result_propagate_test: w FORCE
 	./bin/wv2 tests/result_propagate_test.w -o ./bin/result_propagate_test
 	./bin/result_propagate_test
 	! ./bin/wv2 tests/result_propagate_int_operand_error_fixture.w -o ./bin/result_propagate_int_operand_error_fixture 2>./bin/result_propagate_int_operand_error_fixture.stderr
-	grep -qF "'?' requires a wresult[...]* operand" ./bin/result_propagate_int_operand_error_fixture.stderr
+	grep -qF "Could not find a valid primary expression" ./bin/result_propagate_int_operand_error_fixture.stderr
 	! ./bin/wv2 tests/result_propagate_return_type_error_fixture.w -o ./bin/result_propagate_return_type_error_fixture 2>./bin/result_propagate_return_type_error_fixture.stderr
 	grep -qF "'?' requires the enclosing function to return a wresult[...]*" ./bin/result_propagate_return_type_error_fixture.stderr
 	@echo "result propagate test OK"

@@ -309,6 +309,27 @@ int script_declaration_keyword():
 	return 0
 
 
+# 1 when the upcoming statement has the 'type stars name (' shape of a
+# function definition, which cannot appear after the first top-level
+# statement; the scan-ahead gives it a clear diagnostic instead of the
+# statement parser's confusing "';' expected, found '('".
+int script_function_definition_ahead():
+	if ((peek(c"const") | (type_lookup(token) >= 0) | generic_type_starts_here()) == 0):
+		return 0
+	char* save = generic_reparse_save()
+	get_token()
+	while (accept(c"*")) {}
+	int c1 = token[0]
+	int next_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
+	int is_definition = 0
+	if (next_is_ident):
+		if (nextc == '('):
+			is_definition = 1
+	seek(file, load_int(save + 28), 0)
+	generic_reparse_restore(save)
+	return is_definition
+
+
 /*
 Script mode: top-level statements compile into an implicit
 
@@ -339,6 +360,8 @@ void script_main():
 	defer_reset()
 	while (token[0] != 0):
 		if (script_declaration_keyword()):
+			error(c"declarations must come before the first top-level statement")
+		if (script_function_definition_ahead()):
 			error(c"declarations must come before the first top-level statement")
 		statement()
 	# Fall-through exit: run deferred statements, then return 0

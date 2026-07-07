@@ -598,6 +598,16 @@ int main(int argc, int argv):
 		i = i + 1
 	if (target != 0):
 		compile_file(target)
+		# Resolve the deferred runtimes the file may have used (print
+		# builtin, f-strings, json codec, var) before running its main:
+		# the call sites go through backpatch chains until the modules
+		# are imported.
+		generic_finish_instantiations()
+		json_codec_finish_import()
+		template_string_finish_import()
+		prelude_finish_import()
+		var_finish_import()
+		generic_finish_instantiations()
 		if (args_has_flag(c"no_main") == 0):
 			# main must be 'D'efined: an undefined prototype's address
 			# slot holds its backpatch chain, not an entry point
