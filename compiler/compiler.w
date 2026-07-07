@@ -223,6 +223,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# code lands at a top-level boundary
 	json_codec_finish_import()
 	template_string_finish_import()
+	prelude_finish_import()
 	generic_finish_instantiations()
 	var_finish_import()
 

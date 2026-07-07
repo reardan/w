@@ -497,6 +497,7 @@ int repl_compile_entry(char* path):
 	generic_finish_instantiations()
 	json_codec_finish_import()
 	template_string_finish_import()
+	prelude_finish_import()
 	var_finish_import()
 	generic_finish_instantiations()
 	close(file)
