@@ -131,29 +131,55 @@ void coerce_call_argument(int param_type, int arg_type):
 # Push a call argument onto the stack. Struct values are copied word by
 # word, highest field offset first so field 0 lands at the lowest address
 # (the layout parameter access expects); everything else is the one word
-# in eax.
-void push_call_argument(int arg_type):
+# in eax. Structs always take the copy path: even for a struct that fits
+# in a single word (e.g. two float32 fields on x64), eax holds the
+# struct's address (promote keeps structs as addresses), never its bytes.
+#
+# leaked_words counts stack words the argument's own expression left
+# behind (a struct-returning call parks its return buffer on the stack).
+# The callee addresses its parameters as one contiguous block, so the
+# freshly pushed words slide down over the leak and the gap is popped.
+void push_call_argument_compact(int arg_type, int leaked_words):
+	int is_struct = 0
 	int arg_words = 1
 	if (type_num_args(arg_type) > 0):
+		is_struct = 1
 		arg_words = (type_get_size(arg_type) + word_size - 1) >> word_size_log2
-	if (arg_words == 1):
+	if (is_struct == 0):
 		push_eax()
-		stack_pos = stack_pos + 1
-		return;
-	# eax holds the struct's address (promote keeps structs as addresses)
-	int j = arg_words - 1
-	while (j >= 0):
-		push_eax_plus(j << word_size_log2)
-		j = j - 1
+	else:
+		int j = arg_words - 1
+		while (j >= 0):
+			push_eax_plus(j << word_size_log2)
+			j = j - 1
 	stack_pos = stack_pos + arg_words
-	if (type_has_array_field(arg_type)):
-		lea_eax_esp_plus(0)
-		init_array_field_descriptors(arg_type)
+	if (leaked_words > 0):
+		# Slide highest word first: the regions overlap when the leak is
+		# smaller than the argument.
+		int i = arg_words - 1
+		while (i >= 0):
+			mov_eax_esp_plus(i << word_size_log2)
+			store_stack_var((i + leaked_words) << word_size_log2)
+			i = i - 1
+		be_pop(leaked_words)
+		stack_pos = stack_pos - leaked_words
+	if (is_struct):
+		if (type_has_array_field(arg_type)):
+			lea_eax_esp_plus(0)
+			init_array_field_descriptors(arg_type)
+
+
+void push_call_argument(int arg_type):
+	push_call_argument_compact(arg_type, 0)
 
 
 # One fixed (declared) argument of a call: check it against the declared
-# parameter type, coerce, and push it.
+# parameter type, coerce, and push it. An argument expression that is
+# itself a struct-returning call leaves its return buffer on the stack;
+# push_call_argument_compact slides the pushed argument down over that
+# leak so the callee's parameter block stays contiguous.
 void parse_fixed_call_argument(int callee_sym, int signature_type, char* callee_name, int arg_index):
+	int entry_stack_pos = stack_pos
 	int arg_type = expression()
 	arg_type = promote(arg_type)
 	check_call_argument(callee_sym, signature_type, callee_name, arg_index, arg_type)
@@ -165,7 +191,7 @@ void parse_fixed_call_argument(int callee_sym, int signature_type, char* callee_
 			param_type = type_function_param_type(signature_type, arg_index)
 		if (param_type >= 0):
 			coerce_call_argument(param_type, arg_type)
-	push_call_argument(arg_type)
+	push_call_argument_compact(arg_type, stack_pos - entry_stack_pos)
 
 
 # One trailing argument of a call to a W variadic function: checked and

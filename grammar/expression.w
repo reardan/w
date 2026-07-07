@@ -176,6 +176,7 @@ int expression():
 		expression_lhs_readonly = 0
 		push_eax()
 		stack_pos = stack_pos + 1
+		int lhs_slot = stack_pos
 		int type2 = expression()
 		if (verbosity >= 1):
 			print2(c"expression() type: ")
@@ -185,7 +186,16 @@ int expression():
 		
 		type2 = promote(type2)
 		coerce(type, type2)
-		pop_ebx()
+		# A struct-returning call on the right side parks its return
+		# buffer on the stack (eax points into it), burying the saved
+		# lhs address; read it esp-relative instead of popping. The
+		# saved word and the buffer stay counted in stack_pos, so the
+		# enclosing statement's cleanup pops them.
+		int lhs_buried = stack_pos - lhs_slot
+		if (lhs_buried > 0):
+			mov_ebx_esp_plus(lhs_buried << word_size_log2)
+		else:
+			pop_ebx()
 
 		# Warn when the two sides carry conflicting types; constants (3) and
 		# functions (4) act as wildcards inside types_compatible().
@@ -198,7 +208,8 @@ int expression():
 		else:
 			assign_store(type)
 
-		stack_pos = stack_pos - 1
+		if (lhs_buried == 0):
+			stack_pos = stack_pos - 1
 
 		type = type_value(type)  # assignment yields the stored value
 

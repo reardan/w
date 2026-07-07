@@ -354,11 +354,11 @@ int sym_get_value(char *s):
 
 	/* local variable */
 	else if (scope_type == 'L'):
-		k = (stack_pos - table[t + 2] - 1) << word_size_log2
+		k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
 
 	/* argument */
 	else if (scope_type == 'A'):
-		k = (stack_pos + number_of_args - table[t + 2] + 1) << word_size_log2
+		k = (stack_pos + number_of_args - load_int(table + t + 2) + 1) << word_size_log2
 
 	else:
 		diag_part(c"Error getting symbol value for '")
