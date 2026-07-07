@@ -1,8 +1,10 @@
 # Typed Containers
 
 Design and decision record for issue #26 ("Typed Containers or Generics"):
-how W provides typed, growable containers, and why the language extends its
-closed set of built-in containers instead of adding true generics.
+how W first provided typed, growable containers by extending its closed set of
+built-in containers. True generics later landed separately
+(`docs/projects/generics.md`), so the original issue is now satisfied by both
+the built-in container family and user-defined generic functions/structs.
 
 ## Decision: built-in typed containers, not generics
 
@@ -134,16 +136,19 @@ Map value storage is byte-addressed with one slot per entry
 (`__w_hash_slot_size`); scalar values keep the original one-word slots, so
 existing behavior is unchanged.
 
-## Deferred work
+## Follow-up work
 
-- True generics/templates (token-range re-parse monomorphization) — see
-  the decision above.
-- `l.insert(i, v)`, `l.remove(i)`, `l.clear()` and other pseudo-methods.
-- `in` membership for lists (linear scan) if a use case appears.
+Implemented after the first `list[T]` milestone:
+
+- True generics/templates via token-range re-parse monomorphization
+  (`docs/projects/generics.md`).
+- `l.insert(i, v)`, `l.remove(i)`, `l.clear()` pseudo-methods.
+- `in` membership for lists (linear scan).
+
+Still deferred:
+
 - Multi-word scalar elements on x86 (e.g. `list[int64]`).
 - Struct keys for maps and sets (values are done; keys still hash words,
   C strings, or `string` descriptors).
 - Migrating compiler-internal containers (`structures/list.w`, the symbol
-  table) to `list[T]`: blocked until a seed update (`make update`) makes
-  the syntax available inside `compiler/`, `grammar/`, and
-  `code_generator/` sources.
+  table) to `list[T]` where it simplifies the compiler.

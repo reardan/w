@@ -27,7 +27,7 @@ Implemented today:
 Still deferred:
 
 - `float16` storage/conversion support and bfloat16.
-- x64 debugger float display, since `wdbg` is still x86-only.
+- debugger float display (including x64 float64 values).
 
 The milestone sections below are the implementation history/design record. Treat
 the status bullets above and `float_test`, `float_reference_test`, and
@@ -45,8 +45,7 @@ the status bullets above and `float_test`, `float_reference_test`, and
   integer-only bignum arithmetic (no float detour, no double rounding on the
   32-bit target) and support exponent syntax (`1e5`, `1.5e-3`, `2E+10`).
 - **Library float formatting**: `ftoa` and x64 `f64toa` helpers exist. Debugger
-  float decoding remains future work (`wdbg` is x86-only today, so float64
-  decoding also waits for the x64 wdbg port).
+  float decoding remains future work.
 
 ## Core design: float bits ride the existing integer pipeline
 

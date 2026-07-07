@@ -45,7 +45,7 @@ Compiler
 
 	Remaining
 		Generic inference for forward calls, struct constructors and container shapes
-		Richer map/list ergonomics (delete/get/defaults, list insert/remove)
+		Richer container ergonomics (map get/default/discard/clear, contextual bare literals, struct keys)
 		Float16 / bfloat16
 		C import old-style declarations and bit-field layout fidelity
 		Formatter, richer LSP features (locals, references, hover), semantic indexer and richer MCP tooling

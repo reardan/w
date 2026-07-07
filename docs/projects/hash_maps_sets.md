@@ -89,10 +89,17 @@ address via `__w_map_set_bytes`, reads return the stored bytes' address via
 arrays and structs containing fixed-array fields are rejected as value
 types because their descriptors point into the enclosing object.
 
-## Deferred work
+## Follow-up work
+
+Implemented after the MVP:
+
+- `m.remove(key)` / `s.remove(key)`.
+- `s.add(key)`.
+- Two-variable map iteration: `for K k, V v in m`.
+
+Still deferred:
 
 - Contextual bare literals.
 - Rich pseudo-methods such as `get`, `get_default`, `discard`, and `clear`.
-- Pair iteration after W has tuple or multiple loop-variable support.
 - Struct keys (values are done).
 - Migrating compiler symbol/type tables to built-in maps.

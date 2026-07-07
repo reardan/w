@@ -59,9 +59,10 @@ done:
 			print evaluates W expressions in-process (repl model)...complete!
 			fatal-signal handler (SIGSEGV & co) with post-mortem loop...complete!
 			source listing (list) and location banners...complete!
-			locals inside evaluated expressions...not complete!
-			watchpoints and conditional breakpoints...not complete!
-			x64 wdbg...not complete!
+			locals inside evaluated expressions...complete!
+			software watchpoints...complete!
+			conditional breakpoints...not complete!
+			x64 wdbg...complete!
 	'for' type var 'in' 'range' '(' expression ')' ...complete!
 		basic version...complete!
 		range(start, end, step)...complete!
