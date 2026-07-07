@@ -4,6 +4,7 @@
 # the self-host stages compile with warnings as errors so unsafe type
 # mismatches fail the build.
 build: w
+	mkdir -p bin
 	./w w.w >./bin/wv2
 	chmod +x ./bin/wv2
 	./bin/wv2 --strict w.w -o ./bin/wv3
@@ -1090,6 +1091,7 @@ parser_generator_c_test: parser_generator_test FORCE
 	./bin/parser_generator_c_test
 
 wtest: w FORCE
+	@mkdir -p bin; test -x ./bin/wv2 || $(MAKE) -s build
 	./bin/wv2 tools/test_map.w -o ./bin/wtest
 
 test_changed: wtest FORCE
@@ -1131,6 +1133,14 @@ wtest_map_test: wtest FORCE
 	./bin/wtest changed tools/lsp/w_lsp.w > ./bin/wtest_map.out
 	printf 'lsp_test\n' > ./bin/wtest_map.expected
 	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	./bin/wtest changed tools/mcp/w_toolchain_mcp.w > ./bin/wtest_map.out
+	printf 'mcp_test\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	./bin/wtest changed tools/hooks/w_check_hook.w .cursor/hooks.json > ./bin/wtest_map.out
+	printf 'hook_test\n' > ./bin/wtest_map.expected
+	diff -u ./bin/wtest_map.expected ./bin/wtest_map.out
+	./bin/wtest changed .cursor/rules/w-source.mdc .cursor/skills/w-check-diagnostics/SKILL.md > ./bin/wtest_map.out
+	test ! -s ./bin/wtest_map.out
 	@echo "wtest map test OK"
 
 rewrite_c_strings: w FORCE
@@ -1141,6 +1151,7 @@ grapheme_data: w FORCE
 	./bin/generate_grapheme_data
 
 wmcp: w FORCE
+	@mkdir -p bin; test -x ./bin/wv2 || $(MAKE) -s build
 	./bin/wv2 tools/mcp/w_toolchain_mcp.w -o ./bin/wmcp
 
 mcp_test: wmcp FORCE
@@ -1150,11 +1161,45 @@ mcp_test: wmcp FORCE
 # Stdio LSP server (diagnostics from 'check --json', definition from
 # 'symbols --json'; see docs/projects/lsp.md).
 wlsp: w FORCE
+	@mkdir -p bin; test -x ./bin/wv2 || $(MAKE) -s build
 	./bin/wv2 tools/lsp/w_lsp.w -o ./bin/wlsp
 
 lsp_test: wlsp FORCE
 	./bin/wv2 tools/lsp/lsp_test.w -o ./bin/lsp_test
 	./bin/lsp_test
+
+# Cursor postToolUse hook: emits 'check --json' diagnostics back into
+# the agent's context after every .w edit (see .cursor/hooks.json).
+whook: w FORCE
+	@mkdir -p bin; test -x ./bin/wv2 || $(MAKE) -s build
+	./bin/wv2 tools/hooks/w_check_hook.w -o ./bin/whook
+
+hook_test: whook FORCE
+	# a file with warnings produces an additional_context payload
+	cp tests/warning_fixture.w ./bin/hook_edit_sample.w
+	printf '{"hook_event_name":"postToolUse","tool_name":"Write","tool_input":{"path":"bin/hook_edit_sample.w"}}' | ./bin/whook > ./bin/hook_test.out
+	grep -qF '"additional_context"' ./bin/hook_test.out
+	grep -qF 'assignment type mismatch' ./bin/hook_test.out
+	# afterFileEdit-style payloads (file_path at top level) work too
+	printf '{"hook_event_name":"afterFileEdit","file_path":"bin/hook_edit_sample.w","edits":[]}' | ./bin/whook > ./bin/hook_test.out
+	grep -qF 'assignment type mismatch' ./bin/hook_test.out
+	# a clean file, a non-W file, a read tool, and a fixture are silent
+	printf '{"hook_event_name":"postToolUse","tool_name":"StrReplace","tool_input":{"file_path":"tests/hello.w"}}' | ./bin/whook > ./bin/hook_test.out
+	printf '{}\n' > ./bin/hook_test.expected
+	diff -u ./bin/hook_test.expected ./bin/hook_test.out
+	printf '{"hook_event_name":"postToolUse","tool_name":"Write","tool_input":{"path":"README.md"}}' | ./bin/whook > ./bin/hook_test.out
+	diff -u ./bin/hook_test.expected ./bin/hook_test.out
+	printf '{"hook_event_name":"postToolUse","tool_name":"Read","tool_input":{"path":"bin/hook_edit_sample.w"}}' | ./bin/whook > ./bin/hook_test.out
+	diff -u ./bin/hook_test.expected ./bin/hook_test.out
+	printf '{"hook_event_name":"postToolUse","tool_name":"Write","tool_input":{"path":"tests/warning_fixture.w"}}' | ./bin/whook > ./bin/hook_test.out
+	diff -u ./bin/hook_test.expected ./bin/hook_test.out
+	# malformed input fails open
+	printf 'not json' | ./bin/whook > ./bin/hook_test.out
+	diff -u ./bin/hook_test.expected ./bin/hook_test.out
+	# the committed wrapper drives the same path end to end
+	printf '{"hook_event_name":"postToolUse","tool_name":"Write","tool_input":{"path":"bin/hook_edit_sample.w"}}' | ./.cursor/hooks/check_after_edit.sh > ./bin/hook_test.out
+	grep -qF 'assignment type mismatch' ./bin/hook_test.out
+	@echo "hook test OK"
 
 # The W-native build executor (Method-5 manifest runner, see
 # docs/projects/wexec.md). Fixture manifests cover the DAG, expectation
@@ -1452,7 +1497,7 @@ debug_test_x64: wdbg_x64 FORCE
 	printf 'c\n' | ./bin/wdbg64 tests/segv_fixture.w > /dev/null 2>&1; test $$? -eq 1
 	@echo "debug x64 test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test switch_test compound_assign_test for_container_test template_string_test generator_test defer_test default_args_test varargs_w_test feature_interaction_test feature_combo_test dynamic_var_test generics_test generics_inference_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test result_propagate_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test task_test task_io_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test switch_test compound_assign_test for_container_test template_string_test generator_test defer_test default_args_test varargs_w_test feature_interaction_test feature_combo_test dynamic_var_test generics_test generics_inference_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test hook_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test result_propagate_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test task_test task_io_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test test hello tests_x64 FORCE
 
 
 clean:
@@ -1460,6 +1505,7 @@ clean:
 	rm -rf bin/.wexec_cache
 
 w: *.w */*.w
+	mkdir -p bin
 	./w w.w >./bin/wv2
 	chmod +x ./bin/wv2
 
