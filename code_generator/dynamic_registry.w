@@ -59,6 +59,20 @@ int dyn_has_imports():
 	return dyn_import_count > 0
 
 
+# Reserve the in-image slot the loader fills with the resolved import
+# address and return its vaddr. On ELF targets this is a GOT word fixed up
+# by a GLOB_DAT relocation. On the win64 target the slot doubles as the
+# import's one-entry IAT (FirstThunk array): the extra zero word keeps the
+# array null-terminated for loaders that walk it, and pe_64.w points one
+# import descriptor at each slot at finish time.
+int dyn_emit_import_slot():
+	int slot_vaddr = code_offset + codepos
+	emit_zeros(word_size)
+	if (target_os == 2):
+		emit_zeros(8)
+	return slot_vaddr
+
+
 void dyn_add_lib(char* soname):
 	dyn_init()
 	if (dyn_lib_count >= dyn_max_libs()):
@@ -103,6 +117,10 @@ int dyn_add_import_weak(char* name, int got_vaddr):
 # so both sides share one storage location. Weak imports the library does
 # not export are left zeroed instead of failing.
 int dyn_add_import_data(char* name, int copy_vaddr, int size, int weak):
+	# The PE loader has no COPY-relocation equivalent; imported data would
+	# need __imp_-style indirection, which is not implemented yet.
+	if (target_os == 2):
+		error(c"imported data objects are not supported on the win64 target")
 	int index = dyn_add_import(name, copy_vaddr)
 	if (weak):
 		save_i(dyn_import_binding + index * 4, 2, 4)

@@ -148,6 +148,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	word_size_log2 = 2
 	diag_word_size = word_size
 	target_isa = 0
+	target_os = 0
 	arm64_pac = 1
 	bounds_mode = 1
 	strict_mode = 0
@@ -175,6 +176,16 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		# single RWX image so their output stays byte-identical and the
 		# dynamic-linker GOT stays writable.
 		data_split = 1
+		i = i + 1
+	else if (strcmp(*first_arg, c"win64") == 0):
+		println2(c"Compiling in win64 mode")
+		# Windows x64: the x86-64 instruction emitter (target_isa 0,
+		# word_size 8) with the PE32+ container and a kernel32-import
+		# runtime instead of Linux syscalls (docs/projects/windows.md).
+		word_size = 8
+		word_size_log2 = 3
+		diag_word_size = word_size
+		target_os = 2
 		i = i + 1
 	push_basic_types()
 	pointer_indirection = 0
@@ -248,7 +259,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 
 	# print_symbol_table(0)
 	# type_print_all()
-	emit_debugging_symbols(word_size)
+	# The debugging symbols are ELF section headers plus DWARF; the PE
+	# container has neither (CodeView/PDB is a later stage), so win64
+	# executables skip them.
+	if (target_os != 2):
+		emit_debugging_symbols(word_size)
 	be_finish(word_size)
 
 	if ((output_path != 0) | check_mode):

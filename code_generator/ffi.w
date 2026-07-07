@@ -12,6 +12,11 @@ loader fills in before the entry point runs):
                  xmm0..xmm7, the rest on a 16-byte-aligned stack,
                  al = number of vector registers used (varargs contract).
                  Float results come back in xmm0 and are moved to rax.
+  x64  Windows:  the first four args positionally in rcx/rdx/r8/r9 or
+                 xmm0..xmm3, the rest on the stack above the caller's
+                 32-byte shadow space. Float args among the first four
+                 also load their GP register (the win64 varargs
+                 contract). Selected when target_os is 2 (win64).
   x86  cdecl:    all args re-pushed right-to-left onto a 16-byte-aligned
                  stack (float32 bits pass through unchanged; float64 spans
                  two words). Float results come back in st(0) and are
@@ -180,6 +185,79 @@ void emit_c_abi_call_x64(int n, char* classes, int ret_class, int got_vaddr, int
 	emit(1, c"\x5d")               /* pop rbp */
 
 
+############################### x64 Windows ##################################
+
+# mov <gp reg>,[rbp+disp32] for argument registers 0..3 (rcx rdx r8 r9).
+void emit_win64_load_gp_reg(int reg, int disp):
+	if (reg == 0):
+		emit(3, c"\x48\x8b\x8d")   /* mov rcx,[rbp+disp32] */
+	else if (reg == 1):
+		emit(3, c"\x48\x8b\x95")   /* mov rdx,[rbp+disp32] */
+	else if (reg == 2):
+		emit(3, c"\x4c\x8b\x85")   /* mov r8,[rbp+disp32] */
+	else:
+		emit(3, c"\x4c\x8b\x8d")   /* mov r9,[rbp+disp32] */
+	emit_int32(disp)
+
+
+/*
+Microsoft x64 call for n arguments described by classes. Argument slots
+are positional: argument i (i < 4) goes in GP register i or xmm i, the
+rest go on the stack after the 32-byte shadow space. arg_base follows the
+same convention as emit_c_abi_call_x64: rbp-relative offset of the LAST
+argument, 16 inside a stub, 8 inline at a call site.
+*/
+void emit_c_abi_call_win64(int n, char* classes, int ret_class, int got_vaddr, int arg_base):
+	emit(1, c"\x55")               /* push rbp */
+	emit(3, c"\x48\x89\xe5")       /* mov rbp,rsp */
+	emit(4, c"\x48\x83\xe4\xf0")   /* and rsp,-16 */
+
+	# Shadow space plus stack arguments, kept 16-byte aligned so rsp is
+	# aligned at the call instruction.
+	int stack_args = 0
+	if (n > 4):
+		stack_args = n - 4
+	int frame = 32 + (stack_args << 3)
+	if ((frame & 15) != 0):
+		frame = frame + 8
+	emit(3, c"\x48\x81\xec")       /* sub rsp,imm32 */
+	emit_int32(frame)
+
+	# Stack arguments: argument 4 + k lands at [rsp + 32 + 8k]. The whole
+	# 8-byte W word is copied; float32 callees read the low 4 bytes.
+	int i = 4
+	while (i < n):
+		emit(3, c"\x48\x8b\x85")       /* mov rax,[rbp+disp32] */
+		emit_int32(arg_base + ((n - 1 - i) << 3))
+		emit(4, c"\x48\x89\x84\x24")   /* mov [rsp+disp32],rax */
+		emit_int32(32 + ((i - 4) << 3))
+		i = i + 1
+
+	# Register arguments. Float args load both files: variadic callees
+	# fetch them from the GP registers (the win64 va_arg contract) while
+	# fixed callees read the xmm registers and ignore the duplicates.
+	i = 0
+	while (i < 4):
+		if (i < n):
+			int disp = arg_base + ((n - 1 - i) << 3)
+			emit_win64_load_gp_reg(i, disp)
+			if (ffi_arg_class(classes, i) != 0):
+				emit_x64_load_xmm_reg(i, ffi_arg_class(classes, i), disp)
+		i = i + 1
+
+	emit(3, c"\xff\x14\x25")       /* call qword ptr [abs32] */
+	emit_int32(got_vaddr)
+
+	# Float results come back in xmm0; W callers expect the bits in rax.
+	if (ret_class == 1):
+		emit(4, c"\x66\x0f\x7e\xc0")       /* movd eax,xmm0 */
+	else if (ret_class == 2):
+		emit(5, c"\x66\x48\x0f\x7e\xc0")   /* movq rax,xmm0 */
+
+	emit(3, c"\x48\x89\xec")       /* mov rsp,rbp */
+	emit(1, c"\x5d")               /* pop rbp */
+
+
 ################################# x86 cdecl ###################################
 
 /*
@@ -244,7 +322,9 @@ void emit_c_abi_call_x86(int n, char* classes, int ret_class, int got_vaddr, int
 # address) on the stack, converts to the platform C ABI and returns the
 # result W-style in eax/rax.
 void emit_ffi_shim(int n, char* classes, int ret_class, int got_vaddr):
-	if (word_size == 8):
+	if (target_os == 2):
+		emit_c_abi_call_win64(n, classes, ret_class, got_vaddr, 16)
+	else if (word_size == 8):
 		emit_c_abi_call_x64(n, classes, ret_class, got_vaddr, 16)
 	else:
 		emit_c_abi_call_x86(n, classes, ret_class, got_vaddr, 8)
@@ -256,7 +336,9 @@ void emit_ffi_shim(int n, char* classes, int ret_class, int got_vaddr):
 # Used for variadic imports, whose per-call float classes rule out a
 # single per-function stub. The caller still pops its argument words.
 void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr):
-	if (word_size == 8):
+	if (target_os == 2):
+		emit_c_abi_call_win64(n, classes, ret_class, got_vaddr, 8)
+	else if (word_size == 8):
 		emit_c_abi_call_x64(n, classes, ret_class, got_vaddr, 8)
 	else:
 		emit_c_abi_call_x86(n, classes, ret_class, got_vaddr, 4)

@@ -28,6 +28,13 @@ int word_size_log2
 # the x86 and x64 targets are wholly unaffected.
 int target_isa
 
+# Target operating system / executable container: 0 = linux (ELF),
+# 1 = darwin (Mach-O, reserved by docs/projects/arm64.md Stage 4),
+# 2 = windows (PE32+, docs/projects/windows.md). Selects the container
+# writer, the __arch__ library modules and the extern C ABI. Defaults to
+# 0 so the existing Linux targets are wholly unaffected.
+int target_os
+
 # Where the finished ELF is written: stdout by default, or the file given
 # with the -o flag.
 int output_fd
