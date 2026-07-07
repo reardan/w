@@ -59,3 +59,12 @@ Compile/run an arbitrary program directly:
  (loader missing, e.g. on a non-snapshot host), install it per the README
  (`sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6:i386`).
  `make build` and `make verify` do not require it.
+- ARM64 backend work needs `qemu-user-static` so ARM64 W-compiler test binaries can
+  run under `qemu-aarch64`; `binutils-aarch64-linux-gnu` is also useful for
+  disassembly during development. Like the i386 dynamic-test support, this should be
+  baked into the Cursor Cloud VM snapshot rather than installed ad hoc by agents. If
+  those tools are missing, run an env setup agent from Cursor web at
+  https://cursor.com/onboard with a prompt such as: "Install qemu-user-static and
+  binutils-aarch64-linux-gnu via apt into the snapshot so ARM64 W-compiler test
+  binaries can run under qemu-aarch64, mirroring how libc6:i386 is baked in for
+  dynamic_test."
