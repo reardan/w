@@ -1063,7 +1063,7 @@ int generic_call_infer_expr(int def):
 	if (sym_lookup(generic_inst_mangled(inst)) >= 0):
 		sym_get_value(generic_inst_mangled(inst))
 	else:
-		emit(5, c"\xb8....") /* mov $n,%eax */
+		be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
 		int head = generic_inst_chain(inst)
 		if (head == 0):
 			head = code_offset
@@ -1133,7 +1133,7 @@ int generic_call_expr():
 	generic_pending_call_signature = generic_inst_signature(inst)
 	generic_pending_call_name = generic_inst_mangled(inst)
 	# call target: a mov-imm slot on the instantiation's backpatch chain
-	emit(5, c"\xb8....") /* mov $n,%eax */
+	be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
 	int head = generic_inst_chain(inst)
 	if (head == 0):
 		head = code_offset
@@ -1256,7 +1256,7 @@ int generic_forward_call_expr():
 		error(c"'")
 	# a chain slot for this call; merged into the instantiation's chain
 	# once the definition is known
-	emit(5, c"\xb8....") /* mov $n,%eax */
+	be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
 	save_int(code + codepos - 4, code_offset)
 	char* e = generic_forwards + generic_forward_count * generic_forward_stride()
 	save_int(e, cast(int, name))

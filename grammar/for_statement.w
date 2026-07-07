@@ -171,10 +171,10 @@ void for_range_loop(int for_var, int for_tab_level):
 
 	/* jmp back to condition */
 	jmp_int32(1337011)
-	save_int32(code + codepos - 4, p1 - codepos)
+	be_branch_patch(codepos, p1)
 
 	/* save jmp to here if condition failed */
-	save_int32(code + p2 - 4, codepos - p2)
+	be_branch_patch(p2, codepos)
 
 	# break exits here; continue runs the increment first
 	patch_jump_chain(loop_break_chain, codepos)
@@ -259,9 +259,9 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	store_stack_var((stack_pos - cursor_slot) << word_size_log2)
 
 	jmp_int32(1337015)
-	save_int32(code + codepos - 4, p1 - codepos)
+	be_branch_patch(codepos, p1)
 
-	save_int32(code + p2 - 4, codepos - p2)
+	be_branch_patch(p2, codepos)
 	patch_jump_chain(loop_break_chain, codepos)
 	patch_jump_chain(loop_continue_chain, increment_target)
 
@@ -327,9 +327,9 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 	store_stack_var((stack_pos - cursor_slot) << word_size_log2)
 
 	jmp_int32(1337019)
-	save_int32(code + codepos - 4, p1 - codepos)
+	be_branch_patch(codepos, p1)
 
-	save_int32(code + p2 - 4, codepos - p2)
+	be_branch_patch(p2, codepos)
 	patch_jump_chain(loop_break_chain, codepos)
 	patch_jump_chain(loop_continue_chain, increment_target)
 
@@ -412,9 +412,9 @@ void for_slice_loop(int for_var, int for_tab_level, int loop_var_type, int conta
 	inc_dword_esp_plus((stack_pos - index_slot) << word_size_log2)
 
 	jmp_int32(1337021)
-	save_int32(code + codepos - 4, p1 - codepos)
+	be_branch_patch(codepos, p1)
 
-	save_int32(code + p2 - 4, codepos - p2)
+	be_branch_patch(p2, codepos)
 	patch_jump_chain(loop_break_chain, codepos)
 	patch_jump_chain(loop_continue_chain, increment_target)
 
@@ -480,8 +480,8 @@ void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 	store_stack_var((stack_pos - cursor_slot) << word_size_log2)
 
 	jmp_int32(1337017)
-	save_int32(code + codepos - 4, p1 - codepos)
-	save_int32(code + p2 - 4, codepos - p2)
+	be_branch_patch(codepos, p1)
+	be_branch_patch(p2, codepos)
 	patch_jump_chain(loop_break_chain, codepos)
 	patch_jump_chain(loop_continue_chain, increment_target)
 
@@ -584,10 +584,10 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 
 	/* jmp back to condition */
 	jmp_int32(1337013)
-	save_int32(code + codepos - 4, p1 - codepos)
+	be_branch_patch(codepos, p1)
 
 	/* save jmp to here once the iterator is done */
-	save_int32(code + p2 - 4, codepos - p2)
+	be_branch_patch(p2, codepos)
 
 	# break exits here; continue advances the cursor first
 	patch_jump_chain(loop_break_chain, codepos)

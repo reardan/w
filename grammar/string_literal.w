@@ -156,8 +156,29 @@ int raw_asm_literal():
 	return 1
 
 
+# A64: emit {data_ptr,len} descriptor + string bytes inline, branch over
+# them with bl (which leaves the descriptor address in x30), and move it to
+# the accumulator. String bytes are padded so the branch target stays
+# 4-byte aligned.
+void arm64_emit_utf8_string_descriptor(int i):
+	int descriptor_size = 2 * word_size
+	int pad = (4 - ((i + 1) & 3)) & 3
+	int data_bytes = descriptor_size + (i + 1) + pad
+	a64(op(0x94, 0x000000) | (((4 + data_bytes) >> 2) & op(0x03, 0xffffff))) /* bl over the data */
+	int descriptor_addr = code_offset + codepos
+	int data_address = descriptor_addr + descriptor_size
+	emit_int64(data_address)
+	emit_int64(i)
+	emit(i + 1, token)
+	emit_zeros(pad)
+	a64(op(0xaa, 0x1e03e0)) /* mov x0, x30 (descriptor address) */
+
+
 void emit_utf8_string_descriptor(int i):
 	token[i] = 0
+	if (target_isa == 1):
+		arm64_emit_utf8_string_descriptor(i)
+		return
 	int descriptor_size = 2 * word_size
 	call_relative32(descriptor_size + i + 1)
 	int data_address = code_offset + codepos + descriptor_size
@@ -181,14 +202,36 @@ int char_pointer_literal():
 	return 1
 
 
+# A64: emit the C string inline (padded to 4-byte alignment), branch over it
+# with bl, and take the address bl left in x30.
+void arm64_emit_cstr(int i):
+	int pad = (4 - ((i + 1) & 3)) & 3
+	int data_bytes = (i + 1) + pad
+	a64(op(0x94, 0x000000) | (((4 + data_bytes) >> 2) & op(0x03, 0xffffff))) /* bl over the string */
+	emit(i + 1, token)
+	emit_zeros(pad)
+	a64(op(0xaa, 0x1e03e0)) /* mov x0, x30 (string address) */
+
+
+# Emit token[0..len] (a NUL-terminated blob) inline in the code stream and
+# leave its address in the accumulator. Used by c"..." literals and the
+# f"..." template-string chunk appender. x86 jumps over the bytes with a
+# call and pops the pushed return address; arm64 uses arm64_emit_cstr.
+void be_emit_inline_cstr(int len):
+	if (target_isa == 1):
+		arm64_emit_cstr(len)
+		return
+	call_relative32(len + 1)
+	emit(len + 1, token)
+	pop_eax()
+
+
 int c_char_pointer_literal():
 	if ((token[0] != 'c') | (token[1] != '"')):
 		return 0
 	int i = process_prefixed_string_literal()
 	token[i] = 0
-	call_relative32(i + 1)
-	emit(i + 1, token)
-	pop_eax()
+	be_emit_inline_cstr(i)
 	return 1
 
 

@@ -98,7 +98,9 @@ void test_strcmp():
 
 void test_split():
 	create()
-	split_string(c"1 2 3 4 5 6 7 8 9 10", c" ")
+	# split_string tokenizes its input in place, so pass a heap copy: the
+	# string literal is read-only under the W^X code/data split.
+	split_string(strclone(c"1 2 3 4 5 6 7 8 9 10"), c" ")
 	assert_equal(10, length)
 	assert_strings_equal(c"1", cast(char*, get(0)))
 	assert_strings_equal(c"10", cast(char*, get(9)))

@@ -110,9 +110,12 @@ void test_fail():
 
 
 void test_reverse_n():
-	char *hey = c"hey there"
+	# Reverse mutates in place, so operate on a heap copy rather than the
+	# string literal (which lives in the now read-only code segment).
+	char *hey = strclone(c"hey there")
 	reverse_n(hey, 3)
 	assert_strings_equal(c"yeh there", hey)
+	free(hey)
 
 # reverse_n():
 # n > strlen() would have to be checked with O(n)
@@ -122,15 +125,17 @@ void test_reverse_n():
 
 
 void test_reverse_odd():
-	char *me = c"reverseme"
+	char *me = strclone(c"reverseme")
 	reverse(me)
 	assert_strings_equal(c"emesrever", me)
+	free(me)
 
 
 void test_reverse_even():
-	char *me = c"even"
+	char *me = strclone(c"even")
 	reverse(me)
 	assert_strings_equal(c"neve", me)
+	free(me)
 
 
 void test_large_reverse():
@@ -183,17 +188,19 @@ void test_ends_with():
 
 
 void test_str_replace_path():
-	char* import_path = c"path.to.subfolder.file"
+	char* import_path = strclone(c"path.to.subfolder.file")
 	int count = str_replace(import_path, '.', '/')
 	assert_strings_equal(c"path/to/subfolder/file", import_path)
 	assert_equal(3, count)
+	free(import_path)
 
 
 void test_str_replace_repeated():
-	char* repeated = c".........."
+	char* repeated = strclone(c"..........")
 	int count = str_replace(repeated, '.', '*')
 	assert_strings_equal(c"**********", repeated)
 	assert_equal(10, count)
+	free(repeated)
 
 
 void test_str_replace_empty():

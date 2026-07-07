@@ -77,7 +77,7 @@ void template_emit_helper_address(int i):
 	int head = load_int(template_chains + i * 4)
 	if (head == 0):
 		head = code_offset
-	emit(5, c"\xb8....") /* mov $n,%eax */
+	be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
 	save_int(code + codepos - 4, head)
 	save_int(template_chains + i * 4, codepos + code_offset - 4)
 
@@ -198,9 +198,7 @@ int template_helper_for_type(int got):
 void template_emit_chunk_append(int length, int builder_slot):
 	int base_stack = stack_pos
 	token[length] = 0
-	call_relative32(length + 1)
-	emit(length + 1, token)
-	pop_eax()
+	be_emit_inline_cstr(length)
 	push_eax()
 	stack_pos = stack_pos + 1
 	int data_slot = stack_pos

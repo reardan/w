@@ -35,9 +35,14 @@ int __w_gen_stack_size():
 	return 65536
 
 
-# Words gen_switch pushes before saving esp: 4 callee-saved registers
-# on x86 (ebx, esi, edi, ebp), 6 on x64 (rbx, rbp, r12-r15).
+# Words gen_switch pushes before saving the stack pointer: 4 callee-saved
+# registers on x86 (ebx, esi, edi, ebp), 6 on x64 (rbx, rbp, r12-r15), and
+# 0 on arm64 — the A64 gen_switch (code_generator/arm64_asm.w) only saves
+# the resume address (x30), since W keeps no live values in callee-saved
+# registers across calls.
 int __w_gen_switch_regs():
+	if (__target_isa__ == 1):
+		return 0
 	if (__word_size__ == 8):
 		return 6
 	return 4

@@ -118,7 +118,7 @@ int result_propagate_suffix(int type):
 	defer_emit_returning()
 	be_pop(stack_pos)
 	ret()
-	save_int32(code + p - 4, codepos - p)
+	be_branch_patch(p, codepos)
 	# Ok path: eax = address of the payload field
 	pop_eax()
 	stack_pos = stack_pos - 1
@@ -199,14 +199,14 @@ void statement():
 		statement()
 		jmp_int32(1337007)
 		p2 = codepos
-		save_int32(code + p1 - 4, codepos - p1)
+		be_branch_patch(p1, codepos)
 		# An 'else' only binds to an 'if' at the same indent level
 		if (peek(c"else")):
 			if (tab_level == if_tab_level):
 				get_token()
 				enclosing_tab_level = if_tab_level
 				statement()
-		save_int32(code + p2 - 4, codepos - p2)
+		be_branch_patch(p2, codepos)
 
 	else if (while_statement()) {}
 	else if (for_statement()) {}

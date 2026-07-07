@@ -42,9 +42,14 @@ char* import_resolve_arch(char* path):
 			char after = path[i + 8]
 			if (at_boundary & ((after == '/') | (after == 0))):
 				char* arch = c"x86"
-				if (word_size == 8):
+				if (target_isa == 1):
+					arch = c"arm64"
+				else if (word_size == 8):
 					arch = c"x64"
-				char* result = malloc(strlen(path) + 5)
+				# Room for the original path plus the inserted "/<arch>" and
+				# the terminator; arch can be up to 5 chars ("arm64"), which
+				# the old fixed +5 did not cover.
+				char* result = malloc(strlen(path) + strlen(arch) + 2)
 				int j = 0
 				while (j < i + 8):
 					result[j] = path[j]

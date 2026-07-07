@@ -24,12 +24,14 @@ int break_in_switch
 int enclosing_tab_level
 
 
-# Walk a chain of jmp sites (each displacement slot holds the previous
-# site's codepos, 0 ends the chain) and point them all at target.
+# Walk a chain of jmp sites (each site's displacement/immediate field holds
+# the previous site's codepos, 0 ends the chain) and point them all at
+# target. be_branch_link_get / be_branch_patch encapsulate the per-target
+# instruction layout (x86 rel32 vs A64 imm26/imm19).
 void patch_jump_chain(int chain, int target):
 	while (chain):
-		int next_site = load_int32(code + chain - 4)
-		save_int32(code + chain - 4, target - chain)
+		int next_site = be_branch_link_get(chain)
+		be_branch_patch(chain, target)
 		chain = next_site
 
 
@@ -64,8 +66,8 @@ int while_statement():
 	jmp_int32(1337009)
 
 	# backtrace: save jmp out, loop jmp addresses
-	save_int32(code + codepos - 4, p1 - codepos)
-	save_int32(code + p2 - 4, codepos - p2)
+	be_branch_patch(codepos, p1)
+	be_branch_patch(p2, codepos)
 
 	# break exits here; continue re-tests the condition
 	patch_jump_chain(loop_break_chain, codepos)

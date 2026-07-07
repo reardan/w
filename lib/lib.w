@@ -367,18 +367,22 @@ string str_from_cstr(char* s):
 
 
 int getchar(int file):
-	char* buf = c"\x00"
-	int result = read(file, buf, 1)
-	if (result == 0):
+	# Read one byte into a stack slot. The older form read into a c""
+	# literal, which faults (read returns EFAULT) once the code segment is
+	# read-only under the W^X text/data split, making every file look empty.
+	int c = 0
+	int result = read(file, cast(char*, &c), 1)
+	if (result <= 0):
 		return (-1)
-	return buf[0]
+	return c & 255
 
 
 void putc(int file, int c):
-	char* buf = c"\x00"
-	buf[0] = c
-	write(file, buf, 1)
-	# write(file, &c, 1)
+	# Write the low byte of c straight from its stack slot. The older form
+	# mutated a c"" literal in place, which faults once the code segment is
+	# read-only (the W^X text/data split); both targets are little-endian so
+	# the first byte at &c is the character.
+	write(file, cast(char*, &c), 1)
 
 
 void put_char(int c):
