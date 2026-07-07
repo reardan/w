@@ -221,6 +221,9 @@ void test_from_hex():
 	assert_equal(31, from_hex(c"1f"))
 	assert_equal(4919, from_hex(c"00001337"))
 	assert_equal(305420031, from_hex(c"123456ff"))
+	assert_equal(31, from_hex(c"1F"))
+	assert_equal(305420031, from_hex(c"123456FF"))
+	assert_equal(0x1F01, from_hex(c"1f01"))
 	# todo: 0x syntax
 	assert_equal(255, from_hex(c"0xff"))
 	# assert_equal(0x1337, from_hex("1337"))

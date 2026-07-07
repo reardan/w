@@ -81,9 +81,18 @@ void* malloc(int size):
 		# brk call could otherwise shrink the break below live blocks).
 		int grew = 0
 		if (malloc_mmap_mode == 0):
-			int target = malloc_heap_end + chunk
-			if (brk(cast(char*, target)) == target):
-				grew = 1
+			# The program break may be shared with another allocator:
+			# dynamically linked programs (c_lib) pull in glibc, whose
+			# malloc also grows the break. If it moved since our last
+			# growth, extending from the stale end would shrink the break
+			# and unmap the other allocator's live heap. Hand the break
+			# over and use mmap chunks from now on.
+			if (brk(0) != malloc_heap_end):
+				malloc_mmap_mode = 1
+			else:
+				int target = malloc_heap_end + chunk
+				if (brk(cast(char*, target)) == target):
+					grew = 1
 		if (grew):
 			malloc_heap_end = malloc_heap_end + chunk
 		else:

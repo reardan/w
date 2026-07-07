@@ -20,6 +20,9 @@ import code_generator.dynamic_registry
 import lib.lib
 
 
+int sym_address(char *s);  /* from symbol_table.w */
+
+
 void emit_dyn_align(int a):
 	while ((codepos % a) != 0):
 		emit_int8(0)
@@ -200,3 +203,16 @@ void elf_emit_dynamic():
 	# Fill the reserved program headers (PT_INTERP = R, PT_DYNAMIC = R+W).
 	elf_dyn_patch_phdr(1, 3, 4, interp_off, interp_size, 1)
 	elf_dyn_patch_phdr(2, 2, 6, dynamic_off, dynamic_size, 8)
+
+	# A dynamically linked program shares the address space with glibc,
+	# whose sbrk caches the break position and never rechecks it, so a raw
+	# brk from W's allocator goes unnoticed: glibc's next sbrk returns the
+	# stale cached break and both allocators hand out the same memory.
+	# Flip the allocator's initial mode in the image so it mmaps from the
+	# first call and never touches the break.
+	int mmap_mode_vaddr = sym_address(c"malloc_mmap_mode")
+	if (mmap_mode_vaddr):
+		if (data_split & (mmap_mode_vaddr >= data_offset)):
+			save_i(data + (mmap_mode_vaddr - data_offset), 1, word_size)
+		else:
+			save_i(code + (mmap_mode_vaddr - code_offset), 1, word_size)
