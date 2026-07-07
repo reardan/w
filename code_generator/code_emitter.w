@@ -7,6 +7,22 @@ int codepos
 int base_code_offset
 int code_offset
 
+# W^X text/data split (Stage 3 of docs/projects/arm64.md). When data_split
+# is set, mutable global-variable storage is emitted into a separate RW
+# buffer (`data`) mapped at data_offset, so the executable segment stays
+# read-execute and the data segment read-write. The in-process REPL and
+# debugger leave data_split at 0, keeping globals inline in the single
+# executed buffer (their mmap is RWX), so nothing changes for them.
+char *data
+int data_size
+int datapos
+int data_offset
+int data_split
+
+# Active emit destination: 0 = code (the default, executable image),
+# 1 = the RW data segment. Only global-storage emission flips it.
+int emit_target
+
 int word_size
 int word_size_log2
 
@@ -29,14 +45,35 @@ int entry_call_disp_pos
 
 
 void resize_code(int n):
+	if (emit_target == 1):
+		if (data_size <= datapos + n):
+			int x = (datapos + n) << 1
+			data = realloc(data, data_size, x)
+			data_size = x
+		return
 	if (code_size <= codepos + n):
 		int x = (codepos + n) << 1
 		code = realloc(code, code_size, x)
 		code_size = x
 
 
+# Virtual address of the current emit cursor: the data segment when
+# emit_target is 1 (global-variable storage), the code segment otherwise.
+int be_here():
+	if (emit_target == 1):
+		return data_offset + datapos
+	return code_offset + codepos
+
+
 void emit(int n, char *s):
 	resize_code(n)
+	if (emit_target == 1):
+		int di = 0
+		while (di < n):
+			data[datapos] = s[di]
+			datapos = datapos + 1
+			di = di + 1
+		return
 	int i = 0
 	while (i < n):
 		code[codepos] = s[i]
@@ -55,6 +92,10 @@ void emit_string_raw(char* s):
 
 void emit_i(int v, int n):
 	resize_code(n)
+	if (emit_target == 1):
+		save_i(data + datapos, v, n)
+		datapos = datapos + n
+		return
 	char* p = code + codepos
 	save_i(p, v, n)
 	codepos = codepos + n

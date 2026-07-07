@@ -170,6 +170,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		word_size_log2 = 3
 		diag_word_size = word_size
 		target_isa = 1
+		# W^X: arm64 executables get a read-execute code segment and a
+		# separate read-write data segment (Stage 3). x86/x64 keep the
+		# single RWX image so their output stays byte-identical and the
+		# dynamic-linker GOT stays writable.
+		data_split = 1
 		i = i + 1
 	push_basic_types()
 	pointer_indirection = 0

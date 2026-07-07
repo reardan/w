@@ -207,7 +207,10 @@ void sym_define_global(int current_symbol):
 	int i
 	int j
 	int t = current_symbol
-	int v = codepos + code_offset
+	# be_here() is codepos+code_offset for code (functions, enums) and the
+	# data-segment vaddr while global-variable storage is being emitted
+	# (Stage 3 W^X split); identical to the old value when emit_target is 0.
+	int v = be_here()
 	if (table[t + 1] != 'U'):
 		diag_part(c"symbol redefined: '")
 		diag_part(last_global_declaration)

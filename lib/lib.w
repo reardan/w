@@ -375,10 +375,11 @@ int getchar(int file):
 
 
 void putc(int file, int c):
-	char* buf = c"\x00"
-	buf[0] = c
-	write(file, buf, 1)
-	# write(file, &c, 1)
+	# Write the low byte of c straight from its stack slot. The older form
+	# mutated a c"" literal in place, which faults once the code segment is
+	# read-only (the W^X text/data split); both targets are little-endian so
+	# the first byte at &c is the character.
+	write(file, cast(char*, &c), 1)
 
 
 void put_char(int c):

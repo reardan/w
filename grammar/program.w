@@ -180,6 +180,23 @@ void function_definition(int current_symbol):
 
 
 void emit_global_type_storage(int type);
+void emit_global_storage(int type);
+
+
+# Define a mutable global variable's symbol and reserve its storage. With
+# the W^X split active (data_split, set for file output), the storage goes
+# into the RW data segment so the executable image stays read-execute;
+# otherwise it stays inline in the single image, as before. Read-only
+# globals (enum constants, string/JSON blobs) keep using the code segment.
+void define_global_variable(int current_symbol, int decl_type):
+	if (data_split == 0):
+		sym_define_global(current_symbol)
+		emit_global_storage(decl_type)
+		return
+	emit_target = 1
+	sym_define_global(current_symbol)
+	emit_global_storage(decl_type)
+	emit_target = 0
 
 
 int global_storage_size(int type):
@@ -199,7 +216,10 @@ void emit_global_storage(int type):
 
 void emit_global_type_storage(int type):
 	if (type_is_array(type)):
-		emit_target_word(code_offset + codepos + 2 * word_size)
+		# be_here() is the current segment's vaddr, so the descriptor's data
+		# pointer is correct whether storage lives in the code image or the
+		# separate RW data segment (Stage 3 W^X split).
+		emit_target_word(be_here() + 2 * word_size)
 		emit_target_word(type_get_array_length(type))
 		emit_zeros(type_get_size(type) - 2 * word_size)
 	else if (type_num_args(type) > 0):
@@ -271,13 +291,11 @@ void program():
 		current_symbol = sym_declare_global(token, decl_type, 1)
 		get_token()
 		if (accept(c";")):
-			sym_define_global(current_symbol)
-			emit_global_storage(decl_type)
+			define_global_variable(current_symbol, decl_type)
 
 		else if (accept(c"(")):
 			function_definition(current_symbol)
 
 		else:
 			/*error(8)*/
-			sym_define_global(current_symbol)
-			emit_global_storage(decl_type)
+			define_global_variable(current_symbol, decl_type)
