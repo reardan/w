@@ -610,6 +610,39 @@ int postfix_expr():
 				else if (peek(c"clear")):
 					get_token()
 					type = list_clear_suffix(type)
+				else if (peek(c"sort")):
+					get_token()
+					type = list_sort_suffix(type)
+				else if (peek(c"sort_by")):
+					get_token()
+					type = list_sort_by_suffix(type)
+				else if (peek(c"map")):
+					get_token()
+					type = list_map_suffix(type)
+				else if (peek(c"filter")):
+					get_token()
+					type = list_filter_suffix(type)
+				else if (peek(c"reduce")):
+					get_token()
+					type = list_reduce_suffix(type)
+				else if (peek(c"sum")):
+					get_token()
+					type = list_aggregate_suffix(type, c"__w_list_sum", c"sum", type_lookup(c"int"))
+				else if (peek(c"min")):
+					get_token()
+					type = list_aggregate_suffix(type, c"__w_list_min", c"min", type_list_element_type(type_unqualified(type)))
+				else if (peek(c"max")):
+					get_token()
+					type = list_aggregate_suffix(type, c"__w_list_max", c"max", type_list_element_type(type_unqualified(type)))
+				else if (peek(c"reverse")):
+					get_token()
+					type = list_reverse_suffix(type)
+				else if (peek(c"count")):
+					get_token()
+					type = list_scan_suffix(type, c"__w_list_count", c"list count")
+				else if (peek(c"index")):
+					get_token()
+					type = list_scan_suffix(type, c"__w_list_index", c"list index")
 				else:
 					diag_part(c"list field '")
 					diag_part(token)
