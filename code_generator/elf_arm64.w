@@ -74,7 +74,6 @@ void elf_start_arm64():
 	datapos = 0
 	data_size = 4096
 	data = malloc(data_size)
-	emit_target = 0
 
 	elf_header(2)
 	elf_header_arm64()

@@ -367,11 +367,14 @@ string str_from_cstr(char* s):
 
 
 int getchar(int file):
-	char* buf = c"\x00"
-	int result = read(file, buf, 1)
-	if (result == 0):
+	# Read one byte into a stack slot. The older form read into a c""
+	# literal, which faults (read returns EFAULT) once the code segment is
+	# read-only under the W^X text/data split, making every file look empty.
+	int c = 0
+	int result = read(file, cast(char*, &c), 1)
+	if (result <= 0):
 		return (-1)
-	return buf[0]
+	return c & 255
 
 
 void putc(int file, int c):

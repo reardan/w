@@ -181,22 +181,7 @@ void function_definition(int current_symbol):
 
 void emit_global_type_storage(int type);
 void emit_global_storage(int type);
-
-
-# Define a mutable global variable's symbol and reserve its storage. With
-# the W^X split active (data_split, set for file output), the storage goes
-# into the RW data segment so the executable image stays read-execute;
-# otherwise it stays inline in the single image, as before. Read-only
-# globals (enum constants, string/JSON blobs) keep using the code segment.
-void define_global_variable(int current_symbol, int decl_type):
-	if (data_split == 0):
-		sym_define_global(current_symbol)
-		emit_global_storage(decl_type)
-		return
-	emit_target = 1
-	sym_define_global(current_symbol)
-	emit_global_storage(decl_type)
-	emit_target = 0
+void emit_data_global_storage(int type, int base_vaddr);
 
 
 int global_storage_size(int type):
@@ -205,6 +190,39 @@ int global_storage_size(int type):
 	if ((type_num_args(type) > 0) | (declared_size > word_size)):
 		bytes = declared_size
 	return ((bytes + word_size - 1) >> word_size_log2) << word_size_log2
+
+
+# Define a mutable global variable's symbol and reserve its storage. With
+# the W^X split active (data_split, set for the arm64 file target), storage
+# goes into the RW data segment so the executable image stays read-execute;
+# otherwise it stays inline in the single image, as before. Read-only
+# globals (enum constants, string/JSON blobs) keep using the code segment.
+void define_global_variable(int current_symbol, int decl_type):
+	if (data_split == 0):
+		sym_define_global(current_symbol)
+		emit_global_storage(decl_type)
+		return
+	# Reserve the whole record up front so the symbol's address is the data
+	# segment vaddr of its first byte, then fill in the fields.
+	int bytes = global_storage_size(decl_type)
+	int base_vaddr = emit_data_zeros(bytes)
+	sym_define_global_at(current_symbol, base_vaddr)
+	emit_data_global_storage(decl_type, base_vaddr)
+
+
+# Fill an already-reserved data-segment record for a global variable.
+# datapos is rewound to the record start (via a byte cursor) so field
+# writes land in place; array descriptors get a self-referential data
+# pointer using the record's own vaddr.
+void emit_data_global_storage(int type, int base_vaddr):
+	if (type_is_array(type)):
+		# The reserved bytes are already zero; only the descriptor's data
+		# pointer and length need writing. base_vaddr is the descriptor; its
+		# payload follows the two-word header.
+		save_i(data + (base_vaddr - data_offset), base_vaddr + 2 * word_size, word_size)
+		save_i(data + (base_vaddr - data_offset + word_size), type_get_array_length(type), word_size)
+	# Scalars and structs stay zero-initialized, matching the code-segment
+	# path (emit_global_type_storage emits zeros for them).
 
 
 void emit_global_storage(int type):
@@ -216,10 +234,7 @@ void emit_global_storage(int type):
 
 void emit_global_type_storage(int type):
 	if (type_is_array(type)):
-		# be_here() is the current segment's vaddr, so the descriptor's data
-		# pointer is correct whether storage lives in the code image or the
-		# separate RW data segment (Stage 3 W^X split).
-		emit_target_word(be_here() + 2 * word_size)
+		emit_target_word(code_offset + codepos + 2 * word_size)
 		emit_target_word(type_get_array_length(type))
 		emit_zeros(type_get_size(type) - 2 * word_size)
 	else if (type_num_args(type) > 0):

@@ -203,14 +203,15 @@ int sym_declare_global(char *s, int type, int symtype):
 	return current_symbol
 
 
-void sym_define_global(int current_symbol):
+# Define a global symbol at an explicit virtual address v: patch every
+# pending reference (the backpatch chain threaded through the mov-imm / addr
+# slots in `code`) to v and mark the symbol defined. v is a code address for
+# functions and read-only globals, or a data-segment address for mutable
+# globals under the W^X split (Stage 3).
+void sym_define_global_at(int current_symbol, int v):
 	int i
 	int j
 	int t = current_symbol
-	# be_here() is codepos+code_offset for code (functions, enums) and the
-	# data-segment vaddr while global-variable storage is being emitted
-	# (Stage 3 W^X split); identical to the old value when emit_target is 0.
-	int v = be_here()
 	if (table[t + 1] != 'U'):
 		diag_part(c"symbol redefined: '")
 		diag_part(last_global_declaration)
@@ -223,6 +224,10 @@ void sym_define_global(int current_symbol):
 
 	table[t + 1] = 'D'
 	save_int(table + t + 2, v)
+
+
+void sym_define_global(int current_symbol):
+	sym_define_global_at(current_symbol, code_offset + codepos)
 
 
 int number_of_args
