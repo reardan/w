@@ -12,6 +12,7 @@ import code_generator.code_emitter
 void error(char *s);                 /* diagnostics.w */
 void define_asm_functions_arm64();   /* arm64_asm.w */
 void a64(int w);                     /* arm64.w */
+void arm64_entry_rebase_stub();      /* elf_arm64.w */
 
 
 void macho_start_arm64():
@@ -31,10 +32,14 @@ void macho_start_arm64():
 
 	# Entry stub, identical to the arm64 ELF one for now (the Darwin
 	# initial stack layout and exit syscall differ; the real writer
-	# replaces this). bl _main's offset would be patched in finish.
+	# replaces this). The rebase walk is mandatory on Darwin: the kernel
+	# slides the PIE image and nothing else applies rebases. The finish
+	# pass must call arm64_emit_rebase_table() to place the table and
+	# patch the stub's literal. bl _main's offset is patched in finish.
 	a64(op(0x91, 0x0003fc))   # mov x28, sp
 	a64(op(0x91, 0x002389))   # add x9, x28, #8   (&argv[0])
 	a64(op(0xf8, 0x1f8f89))   # str x9, [x28, #-8]!
+	arm64_entry_rebase_stub()
 	arm64_entry_bl_pos = codepos
 	a64(op(0x94, 0x000000))   # bl _main  (offset patched in finish)
 	# exit(_main's return value) if it ever returns: Darwin exit is BSD
