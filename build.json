@@ -1911,6 +1911,30 @@
 			]
 		},
 		{
+			"name": "graphics_math_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "graphics/math_test.w", "-o", "bin/graphics_math_test"]},
+				{"cmd": ["bin/graphics_math_test"]}
+			]
+		},
+		{
+			"name": "graphics_math_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/math_test.w", "-o", "bin/graphics_math_64_test"]},
+				{"cmd": ["bin/graphics_math_64_test"]}
+			]
+		},
+		{
+			"name": "graphics_gl_smoke_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_test"]},
+				{"cmd": ["bin/graphics_gl_smoke_test"], "expect_stdout": "graphics gl smoke"}
+			]
+		},
+		{
 			"name": "dynamic_test_x64",
 			"deps": ["wv2"],
 			"steps": [
@@ -2006,7 +2030,9 @@
 				"task_64_test",
 				"task_io_64_test",
 				"format_64_test",
-				"args_64_test"
+				"args_64_test",
+				"graphics_math_64_test",
+				"graphics_gl_smoke_test"
 			]
 		},
 		{
@@ -2107,6 +2133,7 @@
 				"float_abi_test",
 				"varargs_test",
 				"extern_data_test",
+				"graphics_math_test",
 				"test",
 				"hello",
 				"tests_x64"

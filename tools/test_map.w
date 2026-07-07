@@ -91,6 +91,9 @@ void wtest_init_targets():
 	wtest_targets.push(c"hook_test")
 	wtest_targets.push(c"metadata_check")
 	wtest_targets.push(c"metadata_test")
+	wtest_targets.push(c"graphics_math_test")
+	wtest_targets.push(c"graphics_math_64_test")
+	wtest_targets.push(c"graphics_gl_smoke_test")
 	wtest_targets.push(c"tests")
 
 
@@ -248,6 +251,16 @@ void wtest_map_structures(char* path):
 		wtest_add(path, c"tests")
 
 
+void wtest_map_graphics(char* path):
+	if ((strcmp(path, c"graphics/math.w") == 0) | (strcmp(path, c"graphics/math_test.w") == 0)):
+		wtest_add(path, c"graphics_math_test")
+		wtest_add(path, c"graphics_math_64_test")
+		wtest_add(path, c"graphics_gl_smoke_test")
+	else:
+		# x11.w / gl.w / window.w / gl_smoke_test.w all feed the smoke test
+		wtest_add(path, c"graphics_gl_smoke_test")
+
+
 void wtest_map_path(char* path):
 	if (strlen(path) == 0):
 		return
@@ -261,6 +274,8 @@ void wtest_map_path(char* path):
 		wtest_map_lib(path)
 	else if (starts_with(path, c"structures/")):
 		wtest_map_structures(path)
+	else if (starts_with(path, c"graphics/")):
+		wtest_map_graphics(path)
 	else if (strcmp(path, c"repl.w") == 0):
 		wtest_add(path, c"repl_test")
 	else if (starts_with(path, c"debugger/")):

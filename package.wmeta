@@ -13,6 +13,10 @@ modules:
 	grammar
 	repl
 	compiler.compiler
+	graphics.gl
+	graphics.math
+	graphics.window
+	graphics.x11
 	lib.args
 	lib.assert
 	lib.env
