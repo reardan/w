@@ -297,6 +297,58 @@ int repl_token_is_statement():
 	return 0
 
 
+# 'name := expression' in an entry: a persistent variable whose type is
+# inferred from the initializer, mirroring the typed persistent-variable
+# path below. The initializer compiles into the entry function first
+# (its type is unknown until then); the storage blob is emitted after,
+# jumped over like every other REPL definition.
+int repl_infer_declaration():
+	int c0 = token[0]
+	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	if (is_ident == 0):
+		return 0
+	if ((nextc != ':') & (nextc != ' ') & (nextc != 9)):
+		return 0
+	char* name = strclone(token)
+	char* save = generic_reparse_save()
+	get_token()
+	if (peek(c":=") == 0):
+		free(name)
+		seek(file, load_int(save + 28), 0)
+		generic_reparse_restore(save)
+		return 0
+	free(cast(char*, load_int(save + 44)))
+	free(save)
+	get_token() /* consume ':=' */
+	int got = expression()
+	got = promote(got)
+	int decl_type = inferred_storage_type(got)
+	expect_or_newline(c";")
+	int global_symbol = repl_declare_global(name, decl_type, 1)
+	int gskip = repl_skip_start()
+	sym_define_global(global_symbol)
+	emit_global_storage(decl_type)
+	repl_skip_end(gskip)
+	pointer_indirection = 0
+	# The value (or struct address) is in eax; fetch the storage address
+	# and store through it
+	push_eax()
+	stack_pos = stack_pos + 1
+	sym_get_value(name)
+	push_eax()
+	stack_pos = stack_pos + 1
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	pop_eax()
+	stack_pos = stack_pos - 1
+	if (type_num_args(decl_type) > 0):
+		assign_store_struct(decl_type)
+	else:
+		assign_store(decl_type)
+	free(name)
+	return 1
+
+
 # Compile one top-level item of the entry: a declaration (import, struct,
 # extern, function, persistent variable) or an executable statement.
 void repl_entry_item(int entry_symbol):
@@ -373,6 +425,10 @@ void repl_entry_item(int entry_symbol):
 			stack_pos = stack_pos - 1
 		expect_or_newline(c";")
 		free(decl_name)
+		return;
+
+	# 'name := expression': a persistent variable with an inferred type
+	if (repl_infer_declaration()):
 		return;
 
 	# control flow and other non-expression statements
