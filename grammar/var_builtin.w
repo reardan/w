@@ -81,7 +81,7 @@ void var_emit_helper_address(int i):
 	int head = load_int(var_chains + i * 4)
 	if (head == 0):
 		head = code_offset
-	emit(5, c"\xb8....") /* mov $n,%eax */
+	be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
 	save_int(code + codepos - 4, head)
 	save_int(var_chains + i * 4, codepos + code_offset - 4)
 

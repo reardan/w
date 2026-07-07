@@ -39,8 +39,8 @@ void zero_stack_count_bytes():
 	add_stack_word_int32(0, 1)
 	add_stack_word_int32(word_size, -1)
 	jmp_int32(0)
-	save_int32(code + codepos - 4, loop_start - codepos)
-	save_int32(code + done_patch - 4, codepos - done_patch)
+	be_branch_patch(codepos, loop_start)
+	be_branch_patch(done_patch, codepos)
 
 
 /*

@@ -197,7 +197,10 @@ int json_codec_descriptor(int struct_type):
 		emit_target_word(load_int(aux_addresses + i * 4))
 		i = i + 1
 
-	save_int32(code + p - 4, codepos - p)
+	# The descriptor blob holds unaligned strings; realign so the jump lands
+	# on an instruction boundary (a no-op on x86).
+	be_align_code()
+	be_branch_patch(p, codepos)
 	free(name_addresses)
 	free(aux_addresses)
 	json_codec_cache_store(struct_type, desc_address)
@@ -224,7 +227,7 @@ int json_codec_decode_chain
 int json_codec_emit_chained_call_target(int head):
 	if (head == 0):
 		head = code_offset
-	emit(5, c"\xb8....") /* mov $n,%eax */
+	be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
 	save_int(code + codepos - 4, head)
 	return codepos + code_offset - 4
 

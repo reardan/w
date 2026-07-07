@@ -322,7 +322,7 @@ int sym_get_value(char *s):
 		diag_part(c"Cannot find symbol: '")
 		diag_part(token)
 		error(c"'")
-	emit(5, c"\xb8....") /* mov $n,%eax */
+	be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
 	save_int(code + codepos - 4, load_int(table + t + 2))
 
 	char scope_type = table[t + 1]
@@ -364,15 +364,13 @@ int sym_get_value(char *s):
 		error(c"'")
 
 	if ((scope_type == 'L') | (scope_type == 'A')):
-		# emit(7, "\x8d\x84\x24....") /* lea (n * 4)(%esp),%eax */
-		lea_eax_esp_plus(0) /* 0 is a placeholder */
-
 		# Aggregates occupy several stack words; point at the lowest address
 		# (last pushed word) so positive offsets stay inside the object.
 		int words = type_stack_words(type)
 		if (words > 1):
 			k = k - ((words - 1) << word_size_log2)
-		save_int(code + codepos - 4, k)
+		# lea (n)(%esp),%eax on x86; add x0,x28,#k on arm64
+		be_lea_acc_wstack(k)
 
 	if (symtype == 2):
 		if ((scope_type == 'D') | (scope_type == 'U')):

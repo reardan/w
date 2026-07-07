@@ -147,6 +147,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	word_size = 4
 	word_size_log2 = 2
 	diag_word_size = word_size
+	target_isa = 0
+	arm64_pac = 1
 	bounds_mode = 1
 	strict_mode = 0
 	warning_count = 0
@@ -158,6 +160,16 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		word_size =  8
 		word_size_log2 = 3
 		diag_word_size = word_size
+		i = i + 1
+	else if (strcmp(*first_arg, c"arm64") == 0):
+		println2(c"Compiling in arm64 mode")
+		# AArch64 is a 64-bit target, so it inherits the x64 type system
+		# (8-byte pointers, int64, float64); target_isa selects the A64
+		# instruction emitter and the Mach-O/ELF-arm64 container.
+		word_size = 8
+		word_size_log2 = 3
+		diag_word_size = word_size
+		target_isa = 1
 		i = i + 1
 	push_basic_types()
 	pointer_indirection = 0

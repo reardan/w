@@ -10,6 +10,12 @@ int code_offset
 int word_size
 int word_size_log2
 
+# Target instruction-set family: 0 = x86/x86-64, 1 = arm64 (AArch64).
+# word_size still distinguishes 32- vs 64-bit pointers; target_isa selects
+# which instruction emitter the x86.w helpers dispatch to. Defaults to 0 so
+# the x86 and x64 targets are wholly unaffected.
+int target_isa
+
 # Where the finished ELF is written: stdout by default, or the file given
 # with the -o flag.
 int output_fd

@@ -156,6 +156,10 @@ void function_definition(int current_symbol):
 
 	if (accept(c";") == 0):
 		sym_define_global(current_symbol)
+		# On arm64 sign and push the return address (x30) onto the W stack
+		# so the callee has the same [return-slot | args] layout the x86
+		# backend relies on; emits nothing on the x86 family.
+		be_function_prologue()
 		current_function_symbol = current_symbol
 		enclosing_tab_level = 0
 		# Record the argument word count for the debugger's
