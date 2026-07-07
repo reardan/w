@@ -248,6 +248,86 @@ void emit_global_type_storage(int type):
 		emit_zeros(type_get_size(type))
 
 
+# 1 when the current top-level token cannot open a declaration, so it
+# must begin script mode's implicit main (docs/projects/golf_ergonomics.md).
+# Everything a declaration can start with stays on the declaration path:
+# type names (including const/container/generic-struct types) and
+# generator definitions. Statement keywords, calls, assignments and
+# 'name :=' declarations all fall through to script mode.
+int script_statement_starts_here():
+	if (peek(c"const")):
+		return 0
+	if (peek(c"map") & (nextc == '[')):
+		return 0
+	if (peek(c"set") & (nextc == '[')):
+		return 0
+	if (peek(c"list") & (nextc == '[')):
+		return 0
+	if (type_lookup(token) >= 0):
+		return 0
+	if (generic_type_starts_here()):
+		return 0
+	if (peek(c"generator") & (nextc != '*')):
+		return 0
+	return 1
+
+
+# 1 for tokens that always open a declaration; script mode rejects them
+# after the first top-level statement with a clear error instead of the
+# confusing expression-parse failure they would produce.
+int script_declaration_keyword():
+	if (peek(c"import") | peek(c"struct") | peek(c"union") | peek(c"enum")):
+		return 1
+	if (peek(c"extern") | peek(c"c_lib") | peek(c"c_import")):
+		return 1
+	if (peek(c"generator") & (nextc != '*')):
+		return 1
+	return 0
+
+
+/*
+Script mode: top-level statements compile into an implicit
+
+	int main():
+
+so tiny programs need no entry-point boilerplate. The first top-level
+token that cannot start a declaration opens the function; every
+remaining token in the file must belong to a statement (v1 keeps the
+single-pass emitter simple: declarations must come before the first
+top-level statement). The implicit main plugs into the normal entry
+chain: lib.lib's _main calls it when the prelude or an import pulled
+lib.lib in, and the ELF entry's direct 'main' fallback covers programs
+that never imported anything.
+*/
+void script_main():
+	int int_type = type_lookup(c"int")
+	int current_symbol = sym_declare_global(c"main", int_type, 2)
+	int n = table_pos
+	number_of_args = 0
+	int function_start = codepos
+	save_int(table + current_symbol + 22, 0) /* param_count */
+	sym_set_w_variadic(current_symbol, -1)
+	sym_define_global(current_symbol)
+	be_function_prologue()
+	current_function_symbol = current_symbol
+	enclosing_tab_level = 0
+	debug_func_note(function_start, number_of_args)
+	defer_reset()
+	while (token[0] != 0):
+		if (script_declaration_keyword()):
+			error(c"declarations must come before the first top-level statement")
+		statement()
+	# Fall-through exit: run deferred statements, then return 0
+	defer_emit_all()
+	defer_reset()
+	be_pop(stack_pos)
+	stack_pos = 0
+	mov_eax_int(0)
+	ret()
+	save_int(table + current_symbol + 14, codepos - function_start)
+	table_pos = n
+
+
 void program():
 	int current_symbol
 	while (token[0]):
@@ -278,6 +358,12 @@ void program():
 
 		# Imports/structs may have consumed the rest of the file
 		if (token[0] == 0):
+			return;
+
+		# Script mode: a token that cannot start a declaration begins
+		# the implicit main; it consumes the rest of the file
+		if (script_statement_starts_here()):
+			script_main()
 			return;
 
 		# 'defer' is only meaningful inside a function body
