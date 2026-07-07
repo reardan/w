@@ -36,6 +36,13 @@ char* dyn_import_symtype
 char* dyn_import_size
 int dyn_import_count
 
+# Which library each import belongs to: the index of the most recent c_lib
+# at declaration time, -1 when none was declared yet. ELF symbol resolution
+# is global, so elf_dynamic.w ignores this; container formats that bind
+# imports per library (the PE import directory, a future Mach-O bind table)
+# group by it.
+char* dyn_import_lib
+
 
 void dyn_init():
 	if (dyn_lib_names == 0):
@@ -45,6 +52,7 @@ void dyn_init():
 		dyn_import_binding = malloc(dyn_max_imports() * 4)
 		dyn_import_symtype = malloc(dyn_max_imports() * 4)
 		dyn_import_size = malloc(dyn_max_imports() * 4)
+		dyn_import_lib = malloc(dyn_max_imports() * 4)
 
 
 int dyn_has_imports():
@@ -73,6 +81,7 @@ int dyn_add_import(char* name, int got_vaddr):
 	save_i(dyn_import_binding + dyn_import_count * 4, 1, 4)
 	save_i(dyn_import_symtype + dyn_import_count * 4, 2, 4)
 	save_i(dyn_import_size + dyn_import_count * 4, 0, 4)
+	save_i(dyn_import_lib + dyn_import_count * 4, dyn_lib_count - 1, 4)
 	int index = dyn_import_count
 	dyn_import_count = dyn_import_count + 1
 	return index
@@ -120,3 +129,7 @@ int dyn_import_get_symtype(int i):
 
 int dyn_import_get_size(int i):
 	return load_i(dyn_import_size + i * 4, 4)
+
+
+int dyn_import_get_lib(int i):
+	return load_i(dyn_import_lib + i * 4, 4)
