@@ -251,8 +251,10 @@ void emit_global_type_storage(int type):
 # 1 when the current top-level token cannot open a declaration, so it
 # must begin script mode's implicit main (docs/projects/golf_ergonomics.md).
 # Everything a declaration can start with stays on the declaration path:
-# type names (including const/container/generic-struct types) and
-# generator definitions. Statement keywords, calls, assignments and
+# type names (including const/container/generic-struct types), generator
+# definitions and the 'name name' / 'name* name' shape of a definition
+# whose return type is not yet known (generic type parameters like
+# 'T identity[T](T x)'). Statement keywords, calls, assignments and
 # 'name :=' declarations all fall through to script mode.
 int script_statement_starts_here():
 	if (peek(c"const")):
@@ -268,6 +270,28 @@ int script_statement_starts_here():
 	if (generic_type_starts_here()):
 		return 0
 	if (peek(c"generator") & (nextc != '*')):
+		return 0
+	# Statement keywords are never declaration starts
+	if (peek(c"if") | peek(c"while") | peek(c"for") | peek(c"switch") |
+			peek(c"return") | peek(c"break") | peek(c"continue") | peek(c"yield") |
+			peek(c"pass") | peek(c"debugger") | peek(c"defer")):
+		return 1
+	int c0 = token[0]
+	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	if (is_ident == 0):
+		return 1
+	# 'name name' or 'name * name' is the shape of a declaration whose
+	# type this pass cannot know yet (a generic definition's return type
+	# parameter); no statement juxtaposes two identifiers, so scan one
+	# step ahead with the reparse save/seek/restore trick.
+	char* save = generic_reparse_save()
+	get_token()
+	while (accept(c"*")) {}
+	int c1 = token[0]
+	int next_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
+	seek(file, load_int(save + 28), 0)
+	generic_reparse_restore(save)
+	if (next_is_ident):
 		return 0
 	return 1
 
