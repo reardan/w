@@ -210,19 +210,21 @@ void define_global_variable(int current_symbol, int decl_type):
 	emit_data_global_storage(decl_type, base_vaddr)
 
 
-# Fill an already-reserved data-segment record for a global variable.
-# datapos is rewound to the record start (via a byte cursor) so field
-# writes land in place; array descriptors get a self-referential data
-# pointer using the record's own vaddr.
-void emit_data_global_storage(int type, int base_vaddr):
+# Initialize array descriptors inside an already-zeroed data-segment record
+# at virtual address `vaddr`. Mirrors emit_global_type_storage's recursion:
+# a fixed array gets its {data-pointer, length} header (the payload sits
+# right after it), and a struct recurses into each field at its layout
+# offset. Scalars stay zero. base_vaddr - data_offset maps a vaddr back to
+# the data buffer.
+void emit_data_global_storage(int type, int vaddr):
 	if (type_is_array(type)):
-		# The reserved bytes are already zero; only the descriptor's data
-		# pointer and length need writing. base_vaddr is the descriptor; its
-		# payload follows the two-word header.
-		save_i(data + (base_vaddr - data_offset), base_vaddr + 2 * word_size, word_size)
-		save_i(data + (base_vaddr - data_offset + word_size), type_get_array_length(type), word_size)
-	# Scalars and structs stay zero-initialized, matching the code-segment
-	# path (emit_global_type_storage emits zeros for them).
+		save_i(data + (vaddr - data_offset), vaddr + 2 * word_size, word_size)
+		save_i(data + (vaddr - data_offset + word_size), type_get_array_length(type), word_size)
+	else if (type_num_args(type) > 0):
+		int i = 0
+		while (i < type_num_args(type)):
+			emit_data_global_storage(type_get_field_type_at(type, i), vaddr + type_get_field_offset_at(type, i))
+			i = i + 1
 
 
 void emit_global_storage(int type):
