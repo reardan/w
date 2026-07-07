@@ -213,6 +213,35 @@ verify_x64: build_x64
 	cmp ./bin/wv3_64 ./bin/wv4_64
 	@echo "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"
 
+# AArch64 (arm64) target. The x86-hosted compiler cross-compiles w.w to a
+# 64-bit arm64 ELF (wv2_arm64); running that under qemu recompiles w.w and
+# the result must be byte-identical (self-host fixpoint), the arm64 analog
+# of verify_x64. Requires qemu-user (qemu-aarch64-static); -cpu max provides
+# the FEAT_PAuth/PAuth2/FPAC pointer-authentication the M3 has, so the
+# pac=ret return-address signing is actually enforced. See docs/projects/arm64.md.
+QEMU_ARM64 ?= qemu-aarch64-static -cpu max
+
+build_arm64: w FORCE
+	./bin/wv2 arm64 w.w -o ./bin/wv2_arm64
+	$(QEMU_ARM64) ./bin/wv2_arm64 arm64 w.w -o ./bin/wv3_arm64
+
+verify_arm64: build_arm64
+	cmp ./bin/wv2_arm64 ./bin/wv3_arm64
+	@echo "arm64 self-host fixpoint OK: wv2_arm64 == wv3_arm64"
+
+# A representative slice of the suite compiled to arm64 and run under qemu.
+# Not part of the default 'tests' aggregate because it needs qemu-user.
+arm64_smoke_test: w FORCE
+	./bin/wv2 arm64 lib/lib_test.w -o ./bin/lib_arm64_test
+	$(QEMU_ARM64) ./bin/lib_arm64_test
+	./bin/wv2 arm64 structures/hash_table_test.w -o ./bin/hash_table_arm64_test
+	$(QEMU_ARM64) ./bin/hash_table_arm64_test
+	./bin/wv2 arm64 tests/map_set_builtin_test.w -o ./bin/map_set_builtin_arm64_test
+	$(QEMU_ARM64) ./bin/map_set_builtin_arm64_test
+	./bin/wv2 arm64 tests/generator_test.w -o ./bin/generator_arm64_test
+	$(QEMU_ARM64) ./bin/generator_arm64_test
+	@echo "arm64 smoke test OK"
+
 tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test result_propagate_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 defer_64_test default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test switch_64_test for_container_64_test compound_assign_64_test template_string_64_test generator_64_test feature_interaction_64_test feature_combo_64_test dynamic_var_64_test generics_64_test generics_inference_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test task_64_test task_io_64_test format_64_test args_64_test repl_test_x64 debug_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the

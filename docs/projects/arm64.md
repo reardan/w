@@ -6,9 +6,22 @@ template this plan follows: same grammar, a per-target instruction module, a
 per-target container writer, an `__arch__` runtime split, and a CLI target
 flag (`docs/projects/cuda.md` describes the same pattern for PTX).
 
-**Status: planning.** The core codegen model (dedicated W-stack register +
-PAC-signed return addresses) has been validated with hand-written A64 spikes
-under `qemu-aarch64` with PAC/FPAC enabled; see the appendix.
+**Status: Stages 1–3 implemented.** `w arm64 file.w` compiles to a static
+AArch64 Linux ELF: the A64 emitter (`code_generator/arm64.w`), runtime stubs
+(`arm64_asm.w`), two-segment W^X ELF writer (`elf_arm64.w`) and Darwin-less
+Linux syscalls (`lib/__arch__/arm64/`) are all in place, with `--pac=ret`
+return-address signing on by default. The full toolchain self-hosts: the
+x86 compiler cross-compiles `w.w` to arm64, and running that binary under
+`qemu-aarch64 -cpu max` recompiles `w.w` byte-for-byte (`make verify_arm64`).
+A 34-test slice of the suite passes under qemu (`make arm64_smoke_test`
+covers a representative subset), and `make verify` / `verify_x64` stay
+byte-identical. Stages 4–5 (Mach-O + Darwin syscalls + code signing, and
+`--pac=full` / arm64e for macOS) remain future work. The core codegen model
+was first validated with the hand-written A64 spikes in the appendix.
+
+Build/run: `make build` then `make verify_arm64` (self-host fixpoint) and
+`make arm64_smoke_test`; both need `qemu-aarch64-static`. Compile a single
+program with `./bin/wv2 arm64 file.w -o out && qemu-aarch64-static -cpu max out`.
 
 ## Target definition: what "Apple M3" implies
 
@@ -315,23 +328,31 @@ there is no foreign ABI to be compatible with until the libSystem stage.
   model and PAC sign/auth round-trip verified under `qemu-aarch64 -cpu max`,
   including the negative (corrupted LR traps) and a gcc `pac-ret` reference
   binary under the same emulator.
-- **Stage 1 — A64 emitter + Linux ELF MVP.** `arm64.w`, `arm64_asm.w`,
-  `elf_arm64.w` (e_machine 183, trivial variation of `elf_64.w`),
-  `lib/__arch__/arm64/syscalls.w`, target flag plumbing, the D3 patching
-  abstraction (branch patches, addr slots, inline data). Acceptance:
-  `bin/wv2 arm64 tests/hello.w -o bin/hello_arm64` runs under
-  `qemu-aarch64-static`; `make verify` and `wbuild tests` still pass
-  byte-identically on x86/x64.
-- **Stage 2 — full language on arm64 + cross self-host fixpoint.** Float
-  helpers, generators (`gen_switch`), defer, generics, containers — i.e.
-  make the `_64_test` suite pass as `_arm64_test` twins under qemu (wexec
-  steps just prepend `qemu-aarch64-static` to `cmd`; no executor changes
-  needed, though a `runner` manifest field would be tidier). Fixpoint:
-  `wv2 arm64 w.w -o wv2_a64`, run `wv2_a64` under qemu to emit `wv3_a64`,
-  `cmp` — the arm64 analog of `verify_x64`.
-- **Stage 3 — text/data split.** Two-buffer emitter, globals to the RW
-  segment, on ELF first (all targets get W^X-clean binaries); regression is
-  the entire existing suite.
+- **Stage 1 — A64 emitter + Linux ELF MVP (done).** `code_generator/arm64.w`
+  (the A64 twin of `x86.w`, dispatched on `target_isa`), `arm64_asm.w`
+  (syscall/context/setjmp/gen_switch stubs), `elf_arm64.w` (e_machine 183),
+  `lib/__arch__/arm64/{syscalls,context,elf_introspect}.w`, the `arm64` CLI
+  flag, and the `be_*` patching abstractions (branch patch/link via imm26/
+  imm19, address slots via ldr-literal, inline `bl`+data string literals,
+  function prologue). Every function's prologue signs the return address
+  (`pacia x30,x28`) and the epilogue authenticates it. Kept x86/x64 output
+  byte-identical (`make verify` / `verify_x64`).
+- **Stage 2 — full language + self-host fixpoint (done).** Float codegen in
+  `sse.w` (NEON scalar: `fmov`/`fadd`/…/`scvtf`/`fcvtzs`/`fcvt`), generators
+  (`gen_switch` + `__target_isa__`-aware `__w_gen_switch_regs`), defer,
+  generics, containers, strings. A 34-test slice runs under qemu; the arm64
+  self-host fixpoint (`make verify_arm64`) is byte-identical, the analog of
+  `verify_x64`.
+- **Stage 3 — W^X text/data split (done).** The arm64 ELF now emits a
+  read-execute text segment and a separate read-write data segment (globals
+  reserved via `emit_data_zeros`/`emit_data_word`, addressed at
+  `data_offset`); `sym_define_global_at` places a global's definition in the
+  right segment. x86/x64 keep the single RWX image (byte-identical). The
+  read-only text exposed two latent write-to-literal bugs (`putc`, `getchar`)
+  and two test-only in-place literal mutations, all fixed to use stack/heap
+  buffers.
+- **Stage 4 (future) — Mach-O + Darwin + signing**, and **Stage 5 (future) —
+  `--pac=full` / arm64e for macOS enforcement**, as described below.
 - **Stage 4 — Mach-O + Darwin syscalls + signing.** `macho_64.w`,
   `arm64_darwin` syscall module, PIE/rebase-table startup, SHA-256 +
   CodeDirectory ad-hoc signing. Acceptance: hello + `lib_test` subset on a
