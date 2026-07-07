@@ -715,6 +715,85 @@
 			]
 		},
 		{
+			"name": "infer_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/infer_test.w", "-o", "bin/infer_test"]},
+				{"cmd": ["bin/infer_test"]}
+			]
+		},
+		{
+			"name": "ternary_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ternary_test.w", "-o", "bin/ternary_test"]},
+				{"cmd": ["bin/ternary_test"]}
+			]
+		},
+		{
+			"name": "print_builtin_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/print_builtin_test.w", "-o", "bin/print_builtin_test"]},
+				{
+					"cmd": ["bin/print_builtin_test"],
+					"expect_stdout": ["greeting str via f", "1.250000", "[5, -1, 12]", "[one, two]", "[]", "big"]
+				}
+			]
+		},
+		{
+			"name": "script_mode_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/script_fixture.w", "-o", "bin/script_fixture"]},
+				{
+					"cmd": ["bin/script_fixture"],
+					"expect_stdout": ["20", "nonzero", "[1, 3, 4]", "total=20", "deferred ran last"]
+				},
+				{
+					"cmd": ["bin/wv2", "tests/script_error_fixture.w", "-o", "bin/script_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "declarations must come before the first top-level statement"
+				}
+			]
+		},
+		{
+			"name": "prelude_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/prelude_test.w", "-o", "bin/prelude_test"]},
+				{
+					"cmd": ["bin/prelude_test"],
+					"stdin": "header line\n1 2 3\n-4 and x5\n",
+					"expect_stdout": ["header line", "[1, 2, 3, -4, 5]", "7", "leftover:"]
+				}
+			]
+		},
+		{
+			"name": "list_methods_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/list_methods_test.w", "-o", "bin/list_methods_test"]},
+				{"cmd": ["bin/list_methods_test"]}
+			]
+		},
+		{
+			"name": "str_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/str_test.w", "-o", "bin/str_test"]},
+				{"cmd": ["bin/str_test"]}
+			]
+		},
+		{
+			"name": "math_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/math_test.w", "-o", "bin/math_test"]},
+				{"cmd": ["bin/math_test"]}
+			]
+		},
+		{
 			"name": "switch_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -866,7 +945,7 @@
 				{
 					"cmd": ["bin/wv2", "tests/defer_top_level_error_fixture.w", "-o", "bin/defer_top_level_error_fixture"],
 					"expect_fail": true,
-					"expect_stderr": "'defer' outside of a function"
+					"expect_stderr": "declarations must come before the first top-level statement"
 				}
 			]
 		},
@@ -1414,7 +1493,7 @@
 				{
 					"cmd": ["bin/wv2", "tests/result_propagate_int_operand_error_fixture.w", "-o", "bin/result_propagate_int_operand_error_fixture"],
 					"expect_fail": true,
-					"expect_stderr": "'?' requires a wresult[...]* operand"
+					"expect_stderr": "Could not find a valid primary expression"
 				},
 				{
 					"cmd": ["bin/wv2", "tests/result_propagate_return_type_error_fixture.w", "-o", "bin/result_propagate_return_type_error_fixture"],
@@ -2045,6 +2124,14 @@
 				"type_system_warning_test",
 				"for_test",
 				"compound_assign_test",
+				"infer_test",
+				"ternary_test",
+				"print_builtin_test",
+				"script_mode_test",
+				"prelude_test",
+				"list_methods_test",
+				"str_test",
+				"math_test",
 				"switch_test",
 				"for_container_test",
 				"default_args_test",

@@ -206,6 +206,193 @@ int __w_list_iter_value(__w_list* list, int cursor):
 	return __w_list_load_word(list.items + cursor * list.element_size, list.element_size)
 
 
+# Copy n bytes; staging for aggregate sort_by and reverse.
+void __w_list_copy_bytes(char* dst, char* src, int n):
+	int i = 0
+	while (i < n):
+		dst[i] = src[i]
+		i = i + 1
+
+
+# Scalar ordering for sort/count/index: kind 1 compares words (signed),
+# kind 2 compares char* contents like map and set keys. Negative, zero
+# or positive like strcmp.
+int __w_list_compare_values(int a, int b, int kind):
+	if (kind == 2):
+		char* sa = cast(char*, a)
+		char* sb = cast(char*, b)
+		int j = 0
+		while ((sa[j] != 0) & (sa[j] == sb[j])):
+			j = j + 1
+		return sa[j] - sb[j]
+	if (a < b):
+		return 0 - 1
+	if (a > b):
+		return 1
+	return 0
+
+
+# In-place stable insertion sort over scalar slots. The lists these
+# methods serve are small; no allocation, no recursion.
+void __w_list_sort(__w_list* list, int kind):
+	int i = 1
+	while (i < list.length):
+		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
+		int j = i - 1
+		while (j >= 0):
+			int other = __w_list_load_word(list.items + j * list.element_size, list.element_size)
+			if (__w_list_compare_values(other, value, kind) <= 0):
+				break
+			__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, other)
+			j = j - 1
+		__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, value)
+		i = i + 1
+
+
+# Insertion sort with a caller-provided comparator (negative/zero/
+# positive like strcmp). Scalar elements: the comparator receives
+# element values.
+void __w_list_sort_by(__w_list* list, int comparator):
+	int i = 1
+	while (i < list.length):
+		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
+		int j = i - 1
+		while (j >= 0):
+			int other = __w_list_load_word(list.items + j * list.element_size, list.element_size)
+			if (comparator(other, value) <= 0):
+				break
+			__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, other)
+			j = j - 1
+		__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, value)
+		i = i + 1
+
+
+# Aggregate variant: the comparator receives element ADDRESSES and the
+# moved element is staged in a temp buffer while the tail shifts.
+void __w_list_sort_by_addr(__w_list* list, int comparator):
+	char* temp = malloc(list.element_size)
+	int i = 1
+	while (i < list.length):
+		__w_list_copy_bytes(temp, list.items + i * list.element_size, list.element_size)
+		int j = i - 1
+		while (j >= 0):
+			char* other = list.items + j * list.element_size
+			if (comparator(cast(int, other), cast(int, temp)) <= 0):
+				break
+			__w_list_copy_bytes(other + list.element_size, other, list.element_size)
+			j = j - 1
+		__w_list_copy_bytes(list.items + (j + 1) * list.element_size, temp, list.element_size)
+		i = i + 1
+	free(temp)
+
+
+# New list of f(x) for every x; the compiler passes the result element
+# size because f may map to a different scalar type.
+__w_list* __w_list_map(__w_list* list, int f, int result_element_size):
+	__w_list* result = __w_list_new(result_element_size)
+	int i = 0
+	while (i < list.length):
+		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
+		__w_list_push(result, f(value))
+		i = i + 1
+	return result
+
+
+# New list of the x where f(x) is true.
+__w_list* __w_list_filter(__w_list* list, int f):
+	__w_list* result = __w_list_new(list.element_size)
+	int i = 0
+	while (i < list.length):
+		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
+		if (f(value)):
+			__w_list_push(result, value)
+		i = i + 1
+	return result
+
+
+# Left fold: f(f(f(init, x0), x1), x2)...
+int __w_list_reduce(__w_list* list, int f, int init):
+	int acc = init
+	int i = 0
+	while (i < list.length):
+		acc = f(acc, __w_list_load_word(list.items + i * list.element_size, list.element_size))
+		i = i + 1
+	return acc
+
+
+int __w_list_sum(__w_list* list):
+	int total = 0
+	int i = 0
+	while (i < list.length):
+		total = total + __w_list_load_word(list.items + i * list.element_size, list.element_size)
+		i = i + 1
+	return total
+
+
+int __w_list_min(__w_list* list):
+	__w_list_assert(list.length > 0)
+	int best = __w_list_load_word(list.items, list.element_size)
+	int i = 1
+	while (i < list.length):
+		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
+		if (value < best):
+			best = value
+		i = i + 1
+	return best
+
+
+int __w_list_max(__w_list* list):
+	__w_list_assert(list.length > 0)
+	int best = __w_list_load_word(list.items, list.element_size)
+	int i = 1
+	while (i < list.length):
+		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
+		if (value > best):
+			best = value
+		i = i + 1
+	return best
+
+
+# In-place reversal, any element size (structs included).
+void __w_list_reverse(__w_list* list):
+	if (list.length < 2):
+		return;
+	char* temp = malloc(list.element_size)
+	int i = 0
+	int j = list.length - 1
+	while (i < j):
+		char* a = list.items + i * list.element_size
+		char* b = list.items + j * list.element_size
+		__w_list_copy_bytes(temp, a, list.element_size)
+		__w_list_copy_bytes(a, b, list.element_size)
+		__w_list_copy_bytes(b, temp, list.element_size)
+		i = i + 1
+		j = j - 1
+	free(temp)
+
+
+int __w_list_count(__w_list* list, int value, int kind):
+	int total = 0
+	int i = 0
+	while (i < list.length):
+		int element = __w_list_load_word(list.items + i * list.element_size, list.element_size)
+		if (__w_list_compare_values(element, value, kind) == 0):
+			total = total + 1
+		i = i + 1
+	return total
+
+
+# First index holding the value, or -1.
+int __w_list_index(__w_list* list, int value, int kind):
+	int i = 0
+	while (i < list.length):
+		int element = __w_list_load_word(list.items + i * list.element_size, list.element_size)
+		if (__w_list_compare_values(element, value, kind) == 0):
+			return i
+		i = i + 1
+	return 0 - 1
+
+
 void __w_list_free(__w_list* list):
 	free(list.items)
 	free(list)

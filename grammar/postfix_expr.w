@@ -6,6 +6,7 @@ int ffi_push_promoted_float32();
 void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr);
 int generator_call_suffix(int callee_sym, char* callee_name, int expected_args); /* defined in generator_decl */
 int result_propagate_suffix(int type); /* defined in statement */
+int result_propagate_struct(int type); /* defined in statement */
 
 
 int buffer_element_type(int type):
@@ -609,6 +610,39 @@ int postfix_expr():
 				else if (peek(c"clear")):
 					get_token()
 					type = list_clear_suffix(type)
+				else if (peek(c"sort")):
+					get_token()
+					type = list_sort_suffix(type)
+				else if (peek(c"sort_by")):
+					get_token()
+					type = list_sort_by_suffix(type)
+				else if (peek(c"map")):
+					get_token()
+					type = list_map_suffix(type)
+				else if (peek(c"filter")):
+					get_token()
+					type = list_filter_suffix(type)
+				else if (peek(c"reduce")):
+					get_token()
+					type = list_reduce_suffix(type)
+				else if (peek(c"sum")):
+					get_token()
+					type = list_aggregate_suffix(type, c"__w_list_sum", c"sum", type_lookup(c"int"))
+				else if (peek(c"min")):
+					get_token()
+					type = list_aggregate_suffix(type, c"__w_list_min", c"min", type_list_element_type(type_unqualified(type)))
+				else if (peek(c"max")):
+					get_token()
+					type = list_aggregate_suffix(type, c"__w_list_max", c"max", type_list_element_type(type_unqualified(type)))
+				else if (peek(c"reverse")):
+					get_token()
+					type = list_reverse_suffix(type)
+				else if (peek(c"count")):
+					get_token()
+					type = list_scan_suffix(type, c"__w_list_count", c"list count")
+				else if (peek(c"index")):
+					get_token()
+					type = list_scan_suffix(type, c"__w_list_index", c"list index")
 				else:
 					diag_part(c"list field '")
 					diag_part(token)
@@ -757,8 +791,12 @@ int postfix_expr():
 					get_token()
 
 		# expr? : unwrap a wresult[T]* or propagate the error to the
-		# caller (see result_propagate_suffix in grammar/statement.w)
-		else if (accept(c"?")):
+		# caller (see result_propagate_suffix in grammar/statement.w).
+		# Only a wresult operand claims the '?' here; any other type
+		# leaves it for the conditional expression layer
+		# (grammar/conditional_expr.w).
+		else if (peek(c"?") & (result_propagate_struct(type_real(type)) >= 0)):
+			get_token()
 			expression_lhs_readonly = 0
 			type = result_propagate_suffix(type)
 

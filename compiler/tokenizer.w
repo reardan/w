@@ -268,6 +268,15 @@ void get_token():
 				if (nextc == '='):
 					takechar()
 
+		# ':=' inferred declaration: ':' merges with a directly following
+		# '='. A bare ':' (blocks, slices, map literals, ternary) never has
+		# '=' directly after it, so those keep lexing as single-char tokens.
+		if (token_i == 0):
+			if (nextc == ':'):
+				takechar()
+				if (nextc == '='):
+					takechar()
+
 		if (token_i == 0):
 			if (nextc == 39):
 				takechar()

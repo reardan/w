@@ -161,6 +161,18 @@ int primary_expr():
 	else if (peek(c"from_json") & (nextc == '(')):
 		type = json_from_json_expr()
 
+	# Polymorphic print/println builtin (grammar/print_builtin.w)
+	else if (peek(c"print") & (nextc == '(')):
+		type = print_builtin_expr(0)
+
+	else if (peek(c"println") & (nextc == '(')):
+		type = print_builtin_expr(1)
+
+	# input()/read_all()/ints() prelude helpers, import-free unless a
+	# user symbol shadows the name (grammar/print_builtin.w)
+	else if (prelude_input_ready()):
+		type = prelude_input_expr()
+
 	# Generic function instantiation: 'max[int](...)'
 	else if (generic_call_ready()):
 		type = generic_call_expr()
