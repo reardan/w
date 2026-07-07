@@ -18,28 +18,83 @@ void sym_define_declare_global_function(char* name); /* defined in symbol_table 
 void a64(int w);                                     /* defined in arm64.w */
 
 
+# Darwin (XNU) syscall convention: BSD number in x16, svc #0x80, errors
+# reported by the carry flag with a positive errno in x0. The b.cc skips
+# the neg on success, so callers see the same -errno contract as Linux.
+void arm64_darwin_svc():
+	a64(op(0xd4, 0x001001))   # svc #0x80
+	a64(op(0x54, 0x000043))   # b.cc .+8  (carry clear: success)
+	a64(op(0xcb, 0x0003e0))   # neg x0,x0 (error: return -errno)
+
+
 void define_asm_functions_arm64():
 	# syscall(nr, arg1, arg2, arg3): Linux AArch64 passes the number in x8
-	# and arguments in x0..x2; svc #0 traps. The result (or -errno) is in x0.
+	# and arguments in x0..x2; svc #0 traps. The result (or -errno) is in
+	# x0. Darwin (target_os == 1) wants the number in x16 and svc #0x80,
+	# and its carry-flag error convention is converted to -errno.
 	sym_define_declare_global_function(c"syscall")
-	a64(op(0xf9, 0x400f88))   # ldr x8,[x28,#24]  (nr)
+	if (target_os == 1):
+		a64(op(0xf9, 0x400f90))   # ldr x16,[x28,#24] (nr)
+	else:
+		a64(op(0xf9, 0x400f88))   # ldr x8,[x28,#24]  (nr)
 	a64(op(0xf9, 0x400b80))   # ldr x0,[x28,#16]  (arg1)
 	a64(op(0xf9, 0x400781))   # ldr x1,[x28,#8]   (arg2)
 	a64(op(0xf9, 0x400382))   # ldr x2,[x28,#0]   (arg3)
-	a64(op(0xd4, 0x000001))   # svc #0
+	if (target_os == 1):
+		arm64_darwin_svc()
+	else:
+		a64(op(0xd4, 0x000001))   # svc #0
 	a64(op(0xd6, 0x5f03c0))   # ret
 
 	# syscall7(nr, a1..a6): arguments in x0..x5.
 	sym_define_declare_global_function(c"syscall7")
-	a64(op(0xf9, 0x401b88))   # ldr x8,[x28,#48]  (nr)
+	if (target_os == 1):
+		a64(op(0xf9, 0x401b90))   # ldr x16,[x28,#48] (nr)
+	else:
+		a64(op(0xf9, 0x401b88))   # ldr x8,[x28,#48]  (nr)
 	a64(op(0xf9, 0x401780))   # ldr x0,[x28,#40]  (a1)
 	a64(op(0xf9, 0x401381))   # ldr x1,[x28,#32]  (a2)
 	a64(op(0xf9, 0x400f82))   # ldr x2,[x28,#24]  (a3)
 	a64(op(0xf9, 0x400b83))   # ldr x3,[x28,#16]  (a4)
 	a64(op(0xf9, 0x400784))   # ldr x4,[x28,#8]   (a5)
 	a64(op(0xf9, 0x400385))   # ldr x5,[x28,#0]   (a6)
-	a64(op(0xd4, 0x000001))   # svc #0
+	if (target_os == 1):
+		arm64_darwin_svc()
+	else:
+		a64(op(0xd4, 0x000001))   # svc #0
 	a64(op(0xd6, 0x5f03c0))   # ret
+
+	# Darwin-only helper stubs for the two BSD calls whose return
+	# convention cannot be expressed through the generic stub: fork
+	# reports parent/child in x1 and pipe returns both fds in x0/x1.
+	# Emitted after the shared stubs so the Linux arm64 image stays
+	# byte-identical.
+	if (target_os == 1):
+		# syscall_fork(): fork (2). On success x1 is 0 in the parent and
+		# 1 in the child; fold to the child-sees-0 contract.
+		sym_define_declare_global_function(c"syscall_fork")
+		a64(op(0xd2, 0x800050))   # movz x16,#2
+		a64(op(0xd4, 0x001001))   # svc #0x80
+		a64(op(0x54, 0x000063))   # b.cc .+12 (success)
+		a64(op(0xcb, 0x0003e0))   # neg x0,x0 (error: return -errno)
+		a64(op(0xd6, 0x5f03c0))   # ret
+		a64(op(0xb4, 0x000041))   # cbz x1,.+8 (parent: return the pid)
+		a64(op(0xd2, 0x800000))   # movz x0,#0 (child: return 0)
+		a64(op(0xd6, 0x5f03c0))   # ret
+
+		# syscall_pipe(fds): pipe (42) returns the read end in x0 and the
+		# write end in x1; store them as two 32-bit fds like the other
+		# targets and return 0 (or -errno).
+		sym_define_declare_global_function(c"syscall_pipe")
+		a64(op(0xf9, 0x400389))   # ldr x9,[x28,#0]  (fds)
+		a64(op(0xd2, 0x800550))   # movz x16,#42
+		a64(op(0xd4, 0x001001))   # svc #0x80
+		a64(op(0x54, 0x000063))   # b.cc .+12 (success)
+		a64(op(0xcb, 0x0003e0))   # neg x0,x0 (error: return -errno)
+		a64(op(0xd6, 0x5f03c0))   # ret
+		a64(op(0x29, 0x000520))   # stp w0,w1,[x9]
+		a64(op(0xd2, 0x800000))   # movz x0,#0
+		a64(op(0xd6, 0x5f03c0))   # ret
 
 	# get_context(ctx): store x0..x30 into the 31-slot context struct.
 	# x9 (loaded first) holds the pointer; it is scratch anyway.
