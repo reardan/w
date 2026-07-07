@@ -65,6 +65,14 @@ void wtest_init_targets():
 	wtest_targets.push(c"parser_generator_c_test")
 	wtest_targets.push(c"linked_list_test")
 	wtest_targets.push(c"linked_list_64_test")
+	wtest_targets.push(c"intrusive_list_test")
+	wtest_targets.push(c"intrusive_list_64_test")
+	wtest_targets.push(c"rbtree_test")
+	wtest_targets.push(c"rbtree_64_test")
+	wtest_targets.push(c"bitmap_test")
+	wtest_targets.push(c"bitmap_64_test")
+	wtest_targets.push(c"vtable_test")
+	wtest_targets.push(c"vtable_64_test")
 	wtest_targets.push(c"net_test")
 	wtest_targets.push(c"poll_test")
 	wtest_targets.push(c"framing_test")
@@ -199,6 +207,9 @@ void wtest_map_lib(char* path):
 	else if (strcmp(path, c"lib/generator.w") == 0):
 		wtest_add(path, c"generator_test")
 		wtest_add(path, c"generator_64_test")
+	else if (starts_with(path, c"lib/bitmap")):
+		wtest_add(path, c"bitmap_test")
+		wtest_add(path, c"bitmap_64_test")
 	else if (strcmp(path, c"lib/wmeta.w") == 0):
 		wtest_add(path, c"metadata_check")
 		wtest_add(path, c"metadata_test")
@@ -231,6 +242,15 @@ void wtest_map_structures(char* path):
 	else if (strcmp(path, c"structures/linked_list.w") == 0):
 		wtest_add(path, c"linked_list_test")
 		wtest_add(path, c"linked_list_64_test")
+	else if (starts_with(path, c"structures/intrusive_list")):
+		# rbtree_test consumes container_of from this module.
+		wtest_add(path, c"intrusive_list_test")
+		wtest_add(path, c"intrusive_list_64_test")
+		wtest_add(path, c"rbtree_test")
+		wtest_add(path, c"rbtree_64_test")
+	else if (starts_with(path, c"structures/rbtree")):
+		wtest_add(path, c"rbtree_test")
+		wtest_add(path, c"rbtree_64_test")
 	else if (strcmp(path, c"structures/list.w") == 0):
 		wtest_add(path, c"list_test")
 		wtest_add(path, c"list_64_test")
@@ -308,6 +328,9 @@ void wtest_map_path(char* path):
 	else if (starts_with(path, c"tests/defer_")):
 		wtest_add(path, c"defer_test")
 		wtest_add(path, c"defer_64_test")
+	else if (strcmp(path, c"tests/vtable_test.w") == 0):
+		wtest_add(path, c"vtable_test")
+		wtest_add(path, c"vtable_64_test")
 	else if (starts_with(path, c"tests/parser_generator/")):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):

@@ -15,6 +15,7 @@ modules:
 	compiler.compiler
 	lib.args
 	lib.assert
+	lib.bitmap
 	lib.env
 	lib.event_loop
 	lib.file
@@ -44,9 +45,11 @@ modules:
 	structures.array_list
 	structures.hash_map
 	structures.hash_table
+	structures.intrusive_list
 	structures.json
 	structures.json_codec
 	structures.linked_list
+	structures.rbtree
 	structures.list
 	structures.string
 	structures.w_list

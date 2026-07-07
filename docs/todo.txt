@@ -35,6 +35,14 @@ current state:
 			c"..." legacy C string literals
 			UTF-8 decode/encode helpers and string codepoint iteration
 			grapheme cluster counting and boundary helpers
+			broken (found while writing structures/rbtree_test.w):
+				local int[N] arrays with N >= ~126 silently clobber locals
+					declared after them (both x86 and x64; N=120 fine,
+					N=126..129 reads back 0, N=200 garbage); repro:
+					declare int[128], then two locals, then print them
+				T*[N] pointer-element local arrays miscompile nearby
+					control flow (else-if conditions misevaluate) even
+					for small N; workaround: int[N] + cast, or malloc
 		type table:
 			type names carry size, pointer level, and field metadata
 			pointer types are created on demand

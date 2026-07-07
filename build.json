@@ -1311,6 +1311,38 @@
 			]
 		},
 		{
+			"name": "intrusive_list_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "structures/intrusive_list_test.w", "-o", "bin/intrusive_list_test"]},
+				{"cmd": ["bin/intrusive_list_test"]}
+			]
+		},
+		{
+			"name": "rbtree_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "structures/rbtree_test.w", "-o", "bin/rbtree_test"]},
+				{"cmd": ["bin/rbtree_test"]}
+			]
+		},
+		{
+			"name": "bitmap_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/bitmap_test.w", "-o", "bin/bitmap_test"]},
+				{"cmd": ["bin/bitmap_test"]}
+			]
+		},
+		{
+			"name": "vtable_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/vtable_test.w", "-o", "bin/vtable_test"]},
+				{"cmd": ["bin/vtable_test"]}
+			]
+		},
+		{
 			"name": "format_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1709,6 +1741,38 @@
 			]
 		},
 		{
+			"name": "intrusive_list_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "structures/intrusive_list_test.w", "-o", "bin/intrusive_list_64_test"]},
+				{"cmd": ["bin/intrusive_list_64_test"]}
+			]
+		},
+		{
+			"name": "rbtree_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "structures/rbtree_test.w", "-o", "bin/rbtree_64_test"]},
+				{"cmd": ["bin/rbtree_64_test"]}
+			]
+		},
+		{
+			"name": "bitmap_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/bitmap_test.w", "-o", "bin/bitmap_64_test"]},
+				{"cmd": ["bin/bitmap_64_test"]}
+			]
+		},
+		{
+			"name": "vtable_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/vtable_test.w", "-o", "bin/vtable_64_test"]},
+				{"cmd": ["bin/vtable_64_test"]}
+			]
+		},
+		{
 			"name": "hash_map_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1920,6 +1984,10 @@
 				"list_64_test",
 				"array_list_64_test",
 				"linked_list_64_test",
+				"intrusive_list_64_test",
+				"rbtree_64_test",
+				"bitmap_64_test",
+				"vtable_64_test",
 				"hash_map_64_test",
 				"hash_table_64_test",
 				"string_64_test",
@@ -2020,6 +2088,10 @@
 				"metadata_check",
 				"metadata_test",
 				"linked_list_test",
+				"intrusive_list_test",
+				"rbtree_test",
+				"bitmap_test",
+				"vtable_test",
 				"format_test",
 				"time_test",
 				"args_test",

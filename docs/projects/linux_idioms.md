@@ -1,11 +1,25 @@
 # Linux-inspired improvements: kernel idioms, atomics, lockless structures
 
-Status: design doc, nothing implemented. Combines two design sessions: a
-survey of streams/events/interfaces (which produced the ops-struct vtable
-pattern below, verified against `bin/wv2`) and a review of Linux kernel
-data structures and APIs worth porting. Items are ordered by
-value-to-effort within three tiers: pure library work buildable today,
-work gated on atomics support in the compiler, and Linux API wrappers.
+Status: Tier 1 implemented — intrusive lists
+(`structures/intrusive_list.w`), intrusive red-black tree
+(`structures/rbtree.w`), bitmap + ida (`lib/bitmap.w`), and the
+ops-struct vtable convention as a committed test (`tests/vtable_test.w`),
+each with x86 + x64 test targets (`intrusive_list_test`, `rbtree_test`,
+`bitmap_test`, `vtable_test` + `_64` variants in `build.json` and the
+Makefile). Tiers 2 and 3 remain design-stage. This doc combines two
+design sessions: a survey of streams/events/interfaces (which produced
+the ops-struct vtable pattern below, verified against `bin/wv2`) and a
+review of Linux kernel data structures and APIs worth porting. Items are
+ordered by value-to-effort within three tiers: pure library work
+buildable today, work gated on atomics support in the compiler, and
+Linux API wrappers.
+
+Implementation note: writing `structures/rbtree_test.w` surfaced two
+pre-existing compiler bugs, now recorded in `docs/todo.txt` (arrays
+section): local `int[N]` arrays with N >= ~126 silently clobber locals
+declared after them (x86 and x64), and `T*[N]` pointer-element local
+arrays miscompile nearby control flow. Workaround used by the tests:
+word arrays + `cast`, or a `malloc`'d buffer.
 
 ## Current state (verified against the tree)
 
@@ -247,13 +261,15 @@ if profiling a real multi-threaded workload demands it.
 
 1. `structures/intrusive_list.w` (`list_head` + `container_of` +
    `hlist`) — pure library, immediately useful across the compiler and
-   stdlib, commits to nothing on the threading front.
-2. Formalize the ops-struct/vtable convention (doc + one or two
-   adopters, e.g. a pluggable `wstream` backend or event-loop source);
-   revisit a language-level `interface` once the pattern's boilerplate
-   is measured in practice.
-3. `structures/rbtree.w`, then port the event-loop timer queue to it.
-4. `lib/bitmap.w` + ida.
+   stdlib, commits to nothing on the threading front. **Done.**
+2. Formalize the ops-struct/vtable convention (doc + committed pattern
+   test `tests/vtable_test.w`); adopt in a real consumer (e.g. a
+   pluggable `wstream` backend or event-loop source) and revisit a
+   language-level `interface` once the pattern's boilerplate is
+   measured in practice. **Pattern test done; adopter pending.**
+3. `structures/rbtree.w` — **done**; porting the event-loop timer queue
+   to it is still pending.
+4. `lib/bitmap.w` + ida. **Done.**
 5. The atomics bundle (builtins on all three backends + `sys_futex` +
    futex mutex/condvar + `llist` + SPSC ring) as one project, when
    multi-threading is actually on the table.
