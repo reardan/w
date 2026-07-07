@@ -1106,7 +1106,13 @@
 				{"cmd": ["bin/wtest", "changed", "build.json"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec_test\ntests\n"},
 				{"cmd": ["bin/wtest", "changed", "tools/lsp/w_lsp.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "lsp_test\n"}
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "lsp_test\n"},
+				{"cmd": ["bin/wtest", "changed", "tools/mcp/w_toolchain_mcp.w"], "stdout_file": "bin/wtest_map.out"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "mcp_test\n"},
+				{"cmd": ["bin/wtest", "changed", "tools/hooks/w_check_hook.w", ".cursor/hooks.json"], "stdout_file": "bin/wtest_map.out"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "hook_test\n"},
+				{"cmd": ["bin/wtest", "changed", ".cursor/rules/w-source.mdc", ".cursor/skills/w-check-diagnostics/SKILL.md"], "stdout_file": "bin/wtest_map.out"},
+				{"cmd": ["test", "!", "-s", "bin/wtest_map.out"]}
 			]
 		},
 		{
@@ -1141,6 +1147,63 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/lsp/lsp_test.w", "-o", "bin/lsp_test"]},
 				{"cmd": ["bin/lsp_test"]}
+			]
+		},
+		{
+			"name": "whook",
+			"deps": ["wv2"],
+			"inputs": ["tools/hooks/w_check_hook.w"],
+			"outputs": ["bin/whook"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/hooks/w_check_hook.w", "-o", "bin/whook"]}
+			]
+		},
+		{
+			"name": "hook_test",
+			"deps": ["whook"],
+			"steps": [
+				{"cmd": ["cp", "tests/warning_fixture.w", "bin/hook_edit_sample.w"]},
+				{
+					"cmd": ["bin/whook"],
+					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"path\":\"bin/hook_edit_sample.w\"}}",
+					"expect_stdout": ["additional_context", "assignment type mismatch"]
+				},
+				{
+					"cmd": ["bin/whook"],
+					"stdin": "{\"hook_event_name\":\"afterFileEdit\",\"file_path\":\"bin/hook_edit_sample.w\",\"edits\":[]}",
+					"expect_stdout": "assignment type mismatch"
+				},
+				{
+					"cmd": ["bin/whook"],
+					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"StrReplace\",\"tool_input\":{\"file_path\":\"tests/hello.w\"}}",
+					"stdout_file": "bin/hook_test.out"
+				},
+				{"cmd": ["diff", "-u", "-", "bin/hook_test.out"], "stdin": "{}\n"},
+				{
+					"cmd": ["bin/whook"],
+					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"path\":\"README.md\"}}",
+					"stdout_file": "bin/hook_test.out"
+				},
+				{"cmd": ["diff", "-u", "-", "bin/hook_test.out"], "stdin": "{}\n"},
+				{
+					"cmd": ["bin/whook"],
+					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"path\":\"bin/hook_edit_sample.w\"}}",
+					"stdout_file": "bin/hook_test.out"
+				},
+				{"cmd": ["diff", "-u", "-", "bin/hook_test.out"], "stdin": "{}\n"},
+				{
+					"cmd": ["bin/whook"],
+					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"path\":\"tests/warning_fixture.w\"}}",
+					"stdout_file": "bin/hook_test.out"
+				},
+				{"cmd": ["diff", "-u", "-", "bin/hook_test.out"], "stdin": "{}\n"},
+				{"cmd": ["bin/whook"], "stdin": "not json", "stdout_file": "bin/hook_test.out"},
+				{"cmd": ["diff", "-u", "-", "bin/hook_test.out"], "stdin": "{}\n"},
+				{
+					"cmd": [".cursor/hooks/check_after_edit.sh"],
+					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"path\":\"bin/hook_edit_sample.w\"}}",
+					"expect_stdout": "assignment type mismatch"
+				}
 			]
 		},
 		{
@@ -2058,6 +2121,7 @@
 				"wtest_map_test",
 				"mcp_test",
 				"lsp_test",
+				"hook_test",
 				"wexec_test",
 				"metadata_check",
 				"metadata_test",

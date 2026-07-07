@@ -322,17 +322,67 @@ int arm64_pac
 
 
 # Emit an address slot: on x86 a `mov eax, imm32` whose imm32 doubles as a
-# backpatch-chain cell; on arm64 an ldr-literal that ends in the same
-# contiguous 4-byte cell (code addresses are < 2^31, so ldr w0 zero-extends
-# correctly). The caller writes/threads the cell via save_int/load_int at
-# codepos-4, unchanged across targets.
+# backpatch-chain cell; on arm64 an adrp+add pair, which is PC-relative
+# and therefore slide-proof (PIE groundwork for the Mach-O target — the
+# kernel slides the image and nothing applies relocations, so absolute
+# literals in code would break). The slot's stored value lives split
+# across the two immediates; callers read and thread it through the
+# be_addr_slot_read/write helpers at position codepos-4, the same
+# convention the old contiguous 4-byte cell used (the "cell" is now the
+# add instruction, with the adrp one word before it).
 void be_addr_slot_emit():
 	if (target_isa == 1):
-		a64(op(0x18, 0x000040))   # ldr w0, [pc, #8]
-		a64(op(0x14, 0x000002))   # b .+8
-		emit_int32(0)     # the 4-byte address/link cell
+		a64(op(0x90, 0x000000))   # adrp x0, . (page immediate patched)
+		a64(op(0x91, 0x000000))   # add x0, x0, #0 (pageoff patched)
 		return
 	emit(5, c"\xb8....")   # mov $imm32,%eax
+
+
+# Store value v (a vaddr, or a backpatch-chain link, both < 2^31) into
+# the address slot whose add instruction sits at buffer offset pos. The
+# adrp page immediate is the page delta from the adrp's own vaddr
+# (immhi:immlo, signed 21 bits) and the add imm12 holds the low 12 bits,
+# so ANY 31-bit value round-trips exactly through write+read — required
+# because unfinished slots store chain links, not final addresses.
+void arm64_addr_slot_write(int pos, int v):
+	int adrp_vaddr = code_offset + pos - 4
+	int delta = (v >> 12) - (adrp_vaddr >> 12)
+	int immlo = delta & 3
+	int immhi = (delta >> 2) & 0x7ffff
+	save_int32(code + pos - 4, op(0x90 | (immlo << 5), immhi << 5))
+	save_int32(code + pos, op(0x91, 0x000000) | ((v & 0xfff) << 10))
+
+
+int arm64_addr_slot_read(int pos):
+	int adrp_vaddr = code_offset + pos - 4
+	int word = load_int32(code + pos - 4)
+	int immlo = (word >> 29) & 3
+	int immhi = (word >> 5) & 0x7ffff
+	int delta = (immhi << 2) | immlo
+	if (delta & 0x100000):
+		delta = delta - 0x200000
+	int page = (adrp_vaddr >> 12) + delta
+	int addw = load_int32(code + pos)
+	return (page << 12) | ((addw >> 10) & 0xfff)
+
+
+# Read/write the value threaded through an address slot. pos is the
+# buffer offset of the slot's last 4 bytes (codepos-4 right after
+# be_addr_slot_emit, or a recorded chain link minus code_offset). On the
+# x86 family the slot is a plain imm32 cell, byte-identical to the
+# original save_int/load_int accesses; on arm64 the value is
+# reassembled from the adrp+add immediates.
+void be_addr_slot_write(int pos, int v):
+	if (target_isa == 1):
+		arm64_addr_slot_write(pos, v)
+		return
+	save_int(code + pos, v)
+
+
+int be_addr_slot_read(int pos):
+	if (target_isa == 1):
+		return arm64_addr_slot_read(pos)
+	return load_int(code + pos)
 
 
 # Leave the address of the W-stack slot at byte offset k in the accumulator.

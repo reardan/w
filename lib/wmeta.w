@@ -387,10 +387,16 @@ void wmeta_validate_module(wmeta_check* check, wmeta_package* pkg, char* module,
 	if (arch_pos >= 0):
 		char* x86_path = wmeta_insert_arch(path, arch_pos, c"x86")
 		char* x64_path = wmeta_insert_arch(path, arch_pos, c"x64")
+		char* arm64_path = wmeta_insert_arch(path, arch_pos, c"arm64")
+		char* arm64_darwin_path = wmeta_insert_arch(path, arch_pos, c"arm64_darwin")
 		wmeta_require_module_file(check, pkg, module, x86_path)
 		wmeta_require_module_file(check, pkg, module, x64_path)
+		wmeta_require_module_file(check, pkg, module, arm64_path)
+		wmeta_require_module_file(check, pkg, module, arm64_darwin_path)
 		free(x86_path)
 		free(x64_path)
+		free(arm64_path)
+		free(arm64_darwin_path)
 	else:
 		wmeta_require_module_file(check, pkg, module, path)
 	free(path)

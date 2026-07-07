@@ -141,7 +141,7 @@ void compile_save(char* fn):
 
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (argc <= start_index):
-		println2(c"usage: w [x64] <file.w>... [-o output] [--bounds=on|off|trap] [--strict]")
+		println2(c"usage: w [x64|arm64|arm64_darwin|win64] <file.w>... [-o output] [--bounds=on|off|trap] [--strict]")
 		exit(1)
 	int i = start_index
 	word_size = 4
@@ -186,6 +186,18 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		word_size_log2 = 3
 		diag_word_size = word_size
 		target_os = 2
+		i = i + 1
+	else if (strcmp(*first_arg, c"arm64_darwin") == 0):
+		println2(c"Compiling in arm64_darwin mode")
+		# Same A64 instruction emitter and 64-bit type system as the
+		# arm64 (Linux) target; target_os selects the Darwin syscall
+		# stubs and the Mach-O container writer (Stage 4).
+		word_size = 8
+		word_size_log2 = 3
+		diag_word_size = word_size
+		target_isa = 1
+		target_os = 1
+		data_split = 1
 		i = i + 1
 	push_basic_types()
 	pointer_indirection = 0

@@ -227,8 +227,8 @@ int json_codec_decode_chain
 int json_codec_emit_chained_call_target(int head):
 	if (head == 0):
 		head = code_offset
-	be_addr_slot_emit() /* mov $n,%eax (x86) / ldr-literal cell (arm64) */
-	save_int(code + codepos - 4, head)
+	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
+	be_addr_slot_write(codepos - 4, head)
 	return codepos + code_offset - 4
 
 
@@ -238,8 +238,8 @@ void json_codec_patch_chain(int head, char* fn_name):
 		return;
 	int i = head - code_offset
 	while (i):
-		int j = load_int(code + i) - code_offset
-		save_int(code + i, v)
+		int j = be_addr_slot_read(i) - code_offset
+		be_addr_slot_write(i, v)
 		i = j
 
 

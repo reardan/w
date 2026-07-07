@@ -3,6 +3,7 @@ import code_generator.elf_32
 import code_generator.elf_64
 import code_generator.elf_arm64
 import code_generator.pe_64
+import code_generator.macho_64
 
 
 
@@ -14,7 +15,10 @@ void be_start(int word_size):
 	if (target_os == 2):
 		pe_start_64()
 	else if (target_isa == 1):
-		elf_start_arm64()
+		if (target_os == 1):
+			macho_start_arm64()
+		else:
+			elf_start_arm64()
 	else if (word_size == 8):
 		elf_start_64()
 	else:
@@ -25,7 +29,10 @@ void be_finish(int word_size):
 	if (target_os == 2):
 		pe_finish_64()
 	else if (target_isa == 1):
-		elf_finish_arm64()
+		if (target_os == 1):
+			macho_finish_arm64()
+		else:
+			elf_finish_arm64()
 	else if (word_size == 8):
 		elf_finish_64()
 	else:

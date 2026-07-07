@@ -29,10 +29,11 @@ int word_size_log2
 int target_isa
 
 # Target operating system / executable container: 0 = linux (ELF),
-# 1 = darwin (Mach-O, reserved by docs/projects/arm64.md Stage 4),
-# 2 = windows (PE32+, docs/projects/windows.md). Selects the container
-# writer, the __arch__ library modules and the extern C ABI. Defaults to
-# 0 so the existing Linux targets are wholly unaffected.
+# 1 = darwin (Mach-O, the arm64_darwin target, docs/projects/arm64.md
+# Stage 4), 2 = windows (PE32+, the win64 target,
+# docs/projects/windows.md). Selects the container writer, the __arch__
+# library modules and the extern C ABI. Defaults to 0 so every existing
+# Linux target is wholly unaffected.
 int target_os
 
 # Where the finished ELF is written: stdout by default, or the file given
@@ -109,6 +110,35 @@ void emit_data_word(int v):
 	ensure_data(word_size)
 	save_i(data + datapos, v, word_size)
 	datapos = datapos + word_size
+
+
+# --- Rebase table (PIE groundwork, arm64 targets) ------------------------
+# Pointer-sized cells in the RW data segment that hold absolute linked
+# vaddrs (string-descriptor data pointers, global array headers) are
+# recorded here during compilation. The container writer appends the
+# table (count + entries, one word each) to the data segment and the
+# entry stub adds the load slide to every listed cell at startup, so the
+# image stays correct when the kernel slides it (always 0 for the ET_EXEC
+# ELF; the Mach-O target is mandatorily PIE). Code needs no entries:
+# address materialization is PC-relative (adrp+add) on arm64.
+
+char* rebase_table
+int rebase_table_size
+int rebase_count
+
+
+# Record the vaddr of one pointer-sized data cell whose stored value
+# must be slid at startup.
+void rebase_note(int vaddr):
+	int needed = (rebase_count + 1) * 8
+	if (rebase_table_size < needed):
+		int x = needed << 1
+		if (x < 4096):
+			x = 4096
+		rebase_table = realloc(rebase_table, rebase_table_size, x)
+		rebase_table_size = x
+	save_i(rebase_table + rebase_count * 8, vaddr, 8)
+	rebase_count = rebase_count + 1
 
 
 void emit_int8(int v):
