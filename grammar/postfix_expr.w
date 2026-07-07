@@ -6,6 +6,7 @@ int ffi_push_promoted_float32();
 void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr);
 int generator_call_suffix(int callee_sym, char* callee_name, int expected_args); /* defined in generator_decl */
 int result_propagate_suffix(int type); /* defined in statement */
+int result_propagate_struct(int type); /* defined in statement */
 
 
 int buffer_element_type(int type):
@@ -757,8 +758,12 @@ int postfix_expr():
 					get_token()
 
 		# expr? : unwrap a wresult[T]* or propagate the error to the
-		# caller (see result_propagate_suffix in grammar/statement.w)
-		else if (accept(c"?")):
+		# caller (see result_propagate_suffix in grammar/statement.w).
+		# Only a wresult operand claims the '?' here; any other type
+		# leaves it for the conditional expression layer
+		# (grammar/conditional_expr.w).
+		else if (peek(c"?") & (result_propagate_struct(type_real(type)) >= 0)):
+			get_token()
 			expression_lhs_readonly = 0
 			type = result_propagate_suffix(type)
 
