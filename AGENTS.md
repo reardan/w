@@ -26,10 +26,44 @@ live in `bin/.wexec_cache/`). Only non-test conveniences (`update`,
 Compile/run an arbitrary program directly:
 `./bin/wv2 file.w -o out && ./out` (prepend `x64` for 64-bit: `./bin/wv2 x64 file.w -o out`).
 
+### Tooling for agents — the standard edit loop
+Use the toolchain's structured tools instead of raw compile/test cycles:
+
+1. **After editing a `.w` file**, check it without producing a binary:
+   `./bin/wv2 check --json <file>` (add `x64` after `--json` for 64-bit). Empty
+   stdout + exit 0 = clean. Fix **warnings too** — the self-host build stages
+   compile with `--strict`, so warnings fail `make build`. Compiler-tree modules
+   (`compiler/`, `grammar/`, `code_generator/`) don't compile standalone; check
+   `w.w` instead. A committed `postToolUse` hook (`.cursor/hooks.json` →
+   `tools/hooks/w_check_hook.w`) runs this check automatically after every `.w`
+   edit and injects the diagnostics into the conversation — treat that feedback
+   as authoritative.
+2. **Pick tests from the diff**, don't guess:
+   `git diff --name-only HEAD | ./bin/wtest changed` prints the focused Makefile
+   targets (`make wtest` builds it; `make test_changed` runs them directly).
+   Compiler changes always get `verify` (+ `verify_x64` for codegen/word-size
+   work); docs map to nothing; unknown paths fall back to `tests`.
+3. **Before declaring work done**, run the full suite: `make tests` or
+   `./wbuild tests`.
+4. **Find declarations** with `./bin/wv2 symbols --json <file>` (functions,
+   globals, types with file/line/column) instead of grepping, **answer
+   language-behavior questions** by piping entries + `:quit` into `./bin/repl`,
+   and **debug runtime failures** by scripting `./bin/wdbg` over stdin rather
+   than adding print statements.
+
+Detailed how-tos live in `.cursor/skills/` (`w-check-diagnostics`,
+`w-select-tests`, `w-debug-wdbg`, `w-repl-explore`); path-scoped guardrails in
+`.cursor/rules/`. The `w-toolchain` MCP server (`make wmcp`, registered in
+`.cursor/mcp.json`) exposes build/verify/run_tests/check/compile/run/repl_eval/
+test_changed as tools for the Cursor IDE; Cloud Agents do not load repo
+`mcp.json` files, so in cloud use the equivalent shell commands (or register
+the server in the Cloud Agents dashboard).
+
 ### Non-obvious gotchas
-- The `bin/` output directory is `.gitignore`d and Make targets do **not** create it.
-  It must exist before building (the update script runs `mkdir -p bin`). If you ever see
-  a redirection/`chmod` failure like `bin/wv2: No such file or directory`, run `mkdir -p bin`.
+- The `bin/` output directory is `.gitignore`d. `make build`, the tool targets
+  (`wtest`, `wmcp`, `wlsp`, `whook`) and `./wbuild` create it, but most other
+  one-off Make targets do **not**. If you see a redirection/`chmod` failure like
+  `bin/wv2: No such file or directory`, run `mkdir -p bin` (or `make build`) first.
 - There is **no separate linter**. "Lint" is the compiler's own type/style warnings,
   asserted by the `warning_test` target.
 - The seed `./w` is a **32-bit x86** statically-linked ELF; it runs on this x86_64 host
