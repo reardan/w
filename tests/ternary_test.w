@@ -66,6 +66,20 @@ void test_ternary_in_call_and_index():
 	assert_equal(30, tern_side(0 ? 20 : 30))
 
 
+int tern_pick(int n, int flag):
+	switch (n):
+		case flag ? 1 : 2:
+			return 100
+		default:
+			return 200
+
+
+void test_ternary_in_case_values():
+	assert_equal(100, tern_pick(1, 1))
+	assert_equal(200, tern_pick(1, 0))
+	assert_equal(100, tern_pick(2, 0))
+
+
 void test_ternary_with_inferred_declaration():
 	flag := 1
 	msg := flag ? c"on" : c"off"
