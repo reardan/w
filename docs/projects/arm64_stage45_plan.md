@@ -134,3 +134,26 @@ files over truncating previously-executed ones.
 
 Phase 5 (in-house ad-hoc signing) is unchanged. Phase 7's arm64e slice needs
 re-testing under this policy regime when it lands.
+
+### Native-compiler blocker found: 32-bit pointer tables vs the mandatory 4 GB __PAGEZERO
+
+Running the *compiler itself* natively (`wv2 arm64_darwin w.w -o bin/w_darwin`,
+signed, on the M3) starts and then segfaults in `str_from_cstr` via
+`import_alias_register`: the crash address is the low 32 bits of an mmap'd
+pointer. Root cause: many compiler-internal tables store pointers as 32-bit
+values at 4-byte stride (`save_int(table + i * 4, cast(int, ptr))` — 32+ sites:
+`grammar/import_statement.w` alias/plain tables, `grammar/generic.w`,
+`compiler/type_table.w` packed name fields, `grammar/defer.w`, ...). Every
+existing target keeps the W heap below 4 GB (fixed ELF base + brk; win64
+deliberately stays non-LARGE_ADDRESS_AWARE), so the truncation is lossless
+there. On arm64 macOS it cannot be: the kernel refuses a main executable
+whose `__PAGEZERO` is smaller than 4 GB (verified empirically — SIGKILL at
+exec, same as ld64's `-pagezero_size` floor), so *every* Darwin mmap result
+is ≥ 4 GB and the truncated pointers are garbage.
+
+Consequence: W *programs* that keep pointers in full words run fine natively
+(hello, testing_ground pass), but the compiler needs its pointer tables
+widened to word_size slots before it can self-host on macOS. That refactor
+(mechanical, ~10 files, must keep the x86 seed path and all fixpoints
+byte-identical) is the gate for native-Darwin self-hosting and is not part
+of Phase 4 acceptance.
