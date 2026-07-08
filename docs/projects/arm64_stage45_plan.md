@@ -152,8 +152,23 @@ exec, same as ld64's `-pagezero_size` floor), so *every* Darwin mmap result
 is ≥ 4 GB and the truncated pointers are garbage.
 
 Consequence: W *programs* that keep pointers in full words run fine natively
-(hello, testing_ground pass), but the compiler needs its pointer tables
-widened to word_size slots before it can self-host on macOS. That refactor
-(mechanical, ~10 files, must keep the x86 seed path and all fixpoints
-byte-identical) is the gate for native-Darwin self-hosting and is not part
-of Phase 4 acceptance.
+(hello, testing_ground pass), but the compiler needed its pointer tables
+widened to host-word slots before it could self-host on macOS.
+
+**Resolved the same day**: `save_ptr`/`load_ptr` (`__word_size__`-sized) in
+integer.w, and every pointer-holding table converted — import tables,
+generic def/inst/forward records and reparse-save blocks, type-table
+records (uniform word slots), dwarf `debug_files`/`debug_local_names` (and
+the debugger's readers), and the hash-table string-key descriptor
+accesses. On a 32-bit host `__word_size__` is 4, so seed-compiled layouts
+are unchanged; `verify`/`verify_x64` stayed byte-identical.
+
+With that, **native Darwin self-hosting works**: the compiler cross-built
+as `arm64_darwin`, signed ad-hoc, compiles `w.w` natively on the M3 in
+~4.4 s, its output is byte-identical to the Linux cross-compile of the
+same sources (cross-host determinism), and the natively-built compiler
+reproduces itself (self-host fixpoint on macOS). Note for the future
+native dev loop: `__word_size__` is a *target* constant, so any use of it
+in compiler sources is fixpoint-safe, but it lands in emitted code — never
+run the guards against a source tree being edited concurrently (the
+container build re-reads bind-mounted sources between stages).
