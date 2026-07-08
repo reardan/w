@@ -343,7 +343,7 @@ char* symbols_kind_name(int symtype):
 # locations, so the default is "struct".
 char* symbols_type_kind_name(int type_index):
 	int t = get(type_index)
-	int kind = load_int(t + 820)
+	int kind = load_ptr(t + 205 * __word_size__)
 	if (kind == type_kind_alias):
 		return c"alias"
 	if (kind == type_kind_union):

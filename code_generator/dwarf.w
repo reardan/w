@@ -32,32 +32,32 @@ int debug_last_file
 # tables), which can be recorded before the first debug_line_note().
 void debug_files_ensure():
 	if (debug_files == 0):
-		debug_files = malloc(256 * 4)
+		debug_files = malloc(256 * __word_size__)
 
 
 char* debug_file_name(int index):
 	if ((index < 0) | (index >= debug_file_count)):
 		return c""
-	return cast(char*, load_int(debug_files + index * 4))
+	return cast(char*, load_ptr(debug_files + index * __word_size__))
 
 
 int debug_line_file_index():
 	debug_files_ensure()
 	# Fast path: the same file as the previous statement
 	if (debug_file_count > 0):
-		char* last = cast(char*, load_int(debug_files + debug_last_file * 4))
+		char* last = cast(char*, load_ptr(debug_files + debug_last_file * __word_size__))
 		if (strcmp(last, filename) == 0):
 			return debug_last_file
 	int i = 0
 	while (i < debug_file_count):
-		char* name = cast(char*, load_int(debug_files + i * 4))
+		char* name = cast(char*, load_ptr(debug_files + i * __word_size__))
 		if (strcmp(name, filename) == 0):
 			debug_last_file = i
 			return i
 		i = i + 1
 	if (debug_file_count >= 256):
 		return 0
-	save_int(debug_files + debug_file_count * 4, cast(int, strclone(filename)))
+	save_ptr(debug_files + debug_file_count * __word_size__, cast(int, strclone(filename)))
 	debug_last_file = debug_file_count
 	debug_file_count = debug_file_count + 1
 	return debug_last_file
@@ -125,7 +125,7 @@ int debug_local_capacity
 void debug_local_note(char* name, int slot, int kind, int type):
 	if (debug_local_capacity == 0):
 		debug_local_capacity = 4096
-		debug_local_names = malloc(debug_local_capacity * 4)
+		debug_local_names = malloc(debug_local_capacity * __word_size__)
 		debug_local_slots = malloc(debug_local_capacity * 4)
 		debug_local_kinds = malloc(debug_local_capacity * 4)
 		debug_local_types = malloc(debug_local_capacity * 4)
@@ -139,7 +139,7 @@ void debug_local_note(char* name, int slot, int kind, int type):
 		debug_local_kinds = realloc(debug_local_kinds, old, x)
 		debug_local_types = realloc(debug_local_types, old, x)
 		debug_local_addresses = realloc(debug_local_addresses, old, x)
-	save_int(debug_local_names + debug_local_count * 4, cast(int, strclone(name)))
+	save_ptr(debug_local_names + debug_local_count * __word_size__, cast(int, strclone(name)))
 	save_int(debug_local_slots + debug_local_count * 4, slot)
 	save_int(debug_local_kinds + debug_local_count * 4, kind)
 	save_int(debug_local_types + debug_local_count * 4, type)
@@ -223,7 +223,7 @@ void debug_line_emit():
 	emit_int8(0) /* include_directories: empty */
 	int i = 0
 	while (i < debug_file_count):
-		char* name = cast(char*, load_int(debug_files + i * 4))
+		char* name = cast(char*, load_ptr(debug_files + i * __word_size__))
 		emit_string(name)
 		emit_uleb(0) /* directory index */
 		emit_uleb(0) /* mtime */
@@ -298,7 +298,7 @@ void debug_info_emit(int text_end):
 	emit_uleb(1) /* abbrev code 1: the compile unit */
 	char* unit_name = c"w"
 	if (debug_file_count > 0):
-		unit_name = cast(char*, load_int(debug_files))
+		unit_name = cast(char*, load_ptr(debug_files))
 	emit_string(unit_name) /* DW_AT_name */
 	emit_int32(0) /* DW_AT_stmt_list: offset 0 in .debug_line */
 	emit_int32(code_offset) /* DW_AT_low_pc */

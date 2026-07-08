@@ -45,8 +45,11 @@ char* defer_spans
 int defer_count
 
 
+# One pointer-sized path slot plus three 4-byte ints (offset, line,
+# column). Pointer slots are __word_size__ so the table survives a
+# 64-bit host whose heap sits above 4 GB (arm64 macOS).
 int defer_stride():
-	return 16
+	return __word_size__ + 12
 
 
 int defer_max():
@@ -106,10 +109,10 @@ void defer_register():
 	if (defer_count >= defer_max()):
 		error(c"too many deferred statements in one function")
 	char* e = defer_entry(defer_count)
-	save_int(e, cast(int, strclone(filename)))
-	save_int(e + 4, token_start_offset)
-	save_int(e + 8, diag_token_line - 1)
-	save_int(e + 12, diag_token_column - 1)
+	save_ptr(e, cast(int, strclone(filename)))
+	save_int(e + __word_size__, token_start_offset)
+	save_int(e + __word_size__ + 4, diag_token_line - 1)
+	save_int(e + __word_size__ + 8, diag_token_column - 1)
 	defer_count = defer_count + 1
 	while ((token_newline == 0) & (token[0] != 0)):
 		get_token()
@@ -120,17 +123,17 @@ void defer_register():
 # afterwards the span's first token is current.
 void defer_reparse_start(int i):
 	char* e = defer_entry(i)
-	char* path = cast(char*, load_int(e))
+	char* path = cast(char*, load_ptr(e))
 	file = open(path, 0, 511)
 	if (file < 0):
 		diag_part(c"cannot reopen deferred statement file '")
 		diag_part(path)
 		error(c"'")
 	filename = path
-	seek(file, load_int(e + 4), 0)
-	byte_offset = load_int(e + 4)
-	line_number = load_int(e + 8)
-	column_number = load_int(e + 12)
+	seek(file, load_int(e + __word_size__), 0)
+	byte_offset = load_int(e + __word_size__)
+	line_number = load_int(e + __word_size__ + 4)
+	column_number = load_int(e + __word_size__ + 8)
 	tab_level = 0
 	token_newline = 0
 	# nextc = 0 keeps get_character() from counting the outer parse's

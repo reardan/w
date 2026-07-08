@@ -101,17 +101,17 @@ int __w_hash_key_hash(int kind, int key):
 	if (kind == __w_hash_key_cstr()):
 		return __w_hash_bytes(key, __w_strlen(cast(char*, key)))
 	if (kind == __w_hash_key_string()):
-		return __w_hash_bytes(load_int(cast(char*, key)), load_int(key + __word_size__))
+		return __w_hash_bytes(load_ptr(cast(char*, key)), load_ptr(key + __word_size__))
 	return key * 33
 
 
 int __w_hash_string_equal(int left, int right):
-	int left_len = load_int(left + __word_size__)
-	int right_len = load_int(right + __word_size__)
+	int left_len = load_ptr(left + __word_size__)
+	int right_len = load_ptr(right + __word_size__)
 	if (left_len != right_len):
 		return 0
-	int left_data = load_int(cast(char*, left))
-	int right_data = load_int(cast(char*, right))
+	int left_data = load_ptr(cast(char*, left))
+	int right_data = load_ptr(cast(char*, right))
 	int i = 0
 	while (i < left_len):
 		if (left_data[i] != right_data[i]):
@@ -129,12 +129,12 @@ int __w_hash_key_equal(int kind, int left, int right):
 
 
 int __w_hash_clone_string(int key):
-	int length = load_int(key + __word_size__)
+	int length = load_ptr(key + __word_size__)
 	char* clone = malloc(2 * __word_size__ + length + 1)
 	int data = clone + 2 * __word_size__
-	save_int(clone, data)
-	save_int(clone + __word_size__, length)
-	int source = load_int(cast(char*, key))
+	save_ptr(clone, data)
+	save_ptr(clone + __word_size__, length)
+	int source = load_ptr(cast(char*, key))
 	int i = 0
 	while (i < length):
 		data[i] = source[i]
