@@ -71,6 +71,20 @@ void test_int_pointer_brackets():
 	free(array_ptr)
 
 
+# Dereferencing a parenthesized pointer-arithmetic expression, and the
+# arithmetic's semantics: pointer + int is byte-addressed (unlike C's
+# element scaling), so advancing one int element takes + __word_size__.
+void test_deref_pointer_arithmetic():
+	int x = 1337
+	int* y = &x
+	assert_equal(1337, *(y + 10 - 10))
+	int* a = malloc(__word_size__ * 4)
+	a[0] = 111
+	a[1] = 222
+	assert_equal(222, *(a + __word_size__))
+	free(a)
+
+
 # Milestone 4: Struct Pointers
 
 struct point:

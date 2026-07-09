@@ -1,26 +1,3 @@
-
-
-int generate_relational_code(int type, int setcc_opcode):
-	int left_type = binary1(type)
-	int right_type = binary2_promote_pop(shift_expr())
-	int result_type = float_binary_compare(left_type, right_type, setcc_opcode, 0)
-	if (result_type):
-		return result_type
-	alu_cmp_set(setcc_opcode)
-	return type_value(bool_type)
-
-
-int generate_float_swapped_relational_code(int type, int setcc_opcode):
-	int left_type = binary1(type)
-	int right_type = binary2_promote_pop(shift_expr())
-	int result_type = float_binary_compare(left_type, right_type, setcc_opcode, 1)
-	if (result_type):
-		return result_type
-	# Integer fallback uses the original signed condition on left/right.
-	alu_cmp_set(0x9c)
-	return type_value(bool_type)
-
-
 /*
  * relational-expr:
  *         shift-expr
