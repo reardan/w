@@ -23,6 +23,33 @@ update: verify
 	./archive.sh
 	mv -f ./bin/wv2 ./w
 
+# --- native macOS bootstrap (Apple Silicon; run these on a Mac) ---
+# ./w_darwin is the committed arm64_darwin seed, ad-hoc signed so a fresh
+# checkout runs it directly. Each stage's output is signed on a copy that
+# is renamed over the original (the kernel caches signature state per
+# vnode, so an executed inode must be replaced, never rewritten); the
+# _raw files stay unsigned for the byte-identical fixpoint compare.
+build_darwin: w_darwin FORCE
+	mkdir -p bin
+	./w_darwin arm64_darwin w.w -o ./bin/wv2_darwin_raw
+	cp ./bin/wv2_darwin_raw ./bin/wv2_darwin.signing
+	codesign -f -s - ./bin/wv2_darwin.signing
+	mv -f ./bin/wv2_darwin.signing ./bin/wv2_darwin
+	./bin/wv2_darwin arm64_darwin w.w -o ./bin/wv3_darwin_raw
+	cp ./bin/wv3_darwin_raw ./bin/wv3_darwin.signing
+	codesign -f -s - ./bin/wv3_darwin.signing
+	mv -f ./bin/wv3_darwin.signing ./bin/wv3_darwin
+	./bin/wv3_darwin arm64_darwin w.w -o ./bin/wv4_darwin_raw
+
+verify_darwin: build_darwin
+	cmp ./bin/wv3_darwin_raw ./bin/wv4_darwin_raw
+	@echo "darwin self-host fixpoint OK: wv3_darwin == wv4_darwin"
+
+update_darwin: verify_darwin
+	mkdir -p old
+	cp ./w_darwin ./old/w_darwin_`date '+%d_%m_%y_%H_%M_%S'` 2>/dev/null || true
+	cp -f ./bin/wv3_darwin ./w_darwin
+
 test: w FORCE
 	./bin/wv2 tests/test.w >./bin/test
 	chmod +x ./bin/test
@@ -265,6 +292,15 @@ graphics_demo: w FORCE
 	./bin/wv2 x64 graphics/demo.w -o ./bin/graphics_demo
 	./bin/graphics_demo
 
+# Compile-only guard for the macOS backend: cross-compiles the darwin
+# binaries so Linux CI catches breakage; running them is Mac-side
+# (tools/mac/run_darwin_tests.sh — needs codesign and a GUI session).
+graphics_darwin: w FORCE
+	./bin/wv2 arm64_darwin tests/dynamic_darwin_test.w -o ./bin/dynamic_darwin_test
+	./bin/wv2 arm64_darwin graphics/gl_smoke_test.w -o ./bin/graphics_gl_smoke_darwin
+	./bin/wv2 arm64_darwin graphics/demo.w -o ./bin/graphics_demo_darwin
+	@echo "graphics darwin cross-compile OK"
+
 # Windows x64 (win64) target: cross-compiles to a PE32+ console .exe.
 # See docs/projects/windows.md. The runtime tests need Wine; they are not
 # part of the default 'tests' aggregate for that reason. win64_header_test
@@ -297,7 +333,7 @@ dynamic_test_win64: w FORCE
 
 tests_win64: win64_header_test win64_hello_test win64_smoke_test dynamic_test_win64 FORCE
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test result_propagate_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 defer_64_test default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test switch_64_test for_container_64_test compound_assign_64_test template_string_64_test generator_64_test feature_interaction_64_test feature_combo_64_test dynamic_var_64_test generics_64_test generics_inference_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test task_64_test task_io_64_test format_64_test args_64_test graphics_math_64_test graphics_gl_smoke_test repl_test_x64 debug_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test result_propagate_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 extern_alias_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 defer_64_test default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test switch_64_test for_container_64_test compound_assign_64_test template_string_64_test generator_64_test feature_interaction_64_test feature_combo_64_test dynamic_var_64_test generics_64_test generics_inference_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test task_64_test task_io_64_test format_64_test args_64_test graphics_math_64_test graphics_gl_smoke_test repl_test_x64 debug_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -313,6 +349,22 @@ dynamic_test_x64: w FORCE
 	chmod +x ./bin/dynamic_test_x64
 	./bin/dynamic_test_x64 | grep -q "dynamic linking OK"
 	@echo "dynamic test x64 OK"
+
+# Same check compiled to arm64 (AAPCS64 shims + aarch64 .interp): runs
+# natively on aarch64 hosts (pass QEMU_ARM64= in the w-dev container).
+# Under qemu it needs the aarch64 libc sysroot (qemu-aarch64-static
+# -L /usr/aarch64-linux-gnu), like dynamic_test needs libc6:i386.
+dynamic_test_arm64: w FORCE
+	./bin/wv2 arm64 tests/dynamic_test.w -o ./bin/dynamic_test_arm64
+	$(QEMU_ARM64) ./bin/dynamic_test_arm64 | grep -q "dynamic linking OK"
+	@echo "dynamic test arm64 OK"
+
+# extern alias ('= "symbol"'): a library symbol bound under a different
+# W name, once per call signature.
+extern_alias_test_x64: w FORCE
+	./bin/wv2 x64 tests/extern_alias_test.w -o ./bin/extern_alias_test_x64
+	./bin/extern_alias_test_x64 | grep -q "extern alias OK"
+	@echo "extern alias test x64 OK"
 
 # Imported data objects (extern declarations without a parameter list):
 # stdout/stderr/optind arrive via COPY relocations.
@@ -359,6 +411,13 @@ float_abi_test_x64: w FORCE
 	./bin/wv2 x64 tests/x64_c_import_float_test.w -o ./bin/x64_c_import_float_test
 	./bin/x64_c_import_float_test | grep -q "x64 c_import float OK"
 	@echo "float abi test x64 OK"
+
+# Float args/returns through the AAPCS64 shims (see dynamic_test_arm64
+# for the qemu sysroot note).
+float_abi_test_arm64: w FORCE
+	./bin/wv2 arm64 tests/float_abi_test.w -o ./bin/float_abi_test_arm64
+	$(QEMU_ARM64) ./bin/float_abi_test_arm64 | grep -q "float abi OK"
+	@echo "float abi test arm64 OK"
 
 # JIT-load a hand-written PTX kernel through libcuda and run vector add on
 # the GPU. Requires an NVIDIA driver + GPU, so it is not part of 'tests'.
@@ -1613,7 +1672,7 @@ debug_test_x64: wdbg_x64 FORCE
 	printf 'c\n' | ./bin/wdbg64 tests/segv_fixture.w > /dev/null 2>&1; test $$? -eq 1
 	@echo "debug x64 test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test switch_test compound_assign_test infer_test ternary_test print_builtin_test script_mode_test prelude_test list_methods_test str_test math_test for_container_test template_string_test generator_test defer_test default_args_test varargs_w_test feature_interaction_test feature_combo_test dynamic_var_test generics_test generics_inference_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test hook_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test result_propagate_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test task_test task_io_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test graphics_math_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test switch_test compound_assign_test infer_test ternary_test print_builtin_test script_mode_test prelude_test list_methods_test str_test math_test for_container_test template_string_test generator_test defer_test default_args_test varargs_w_test feature_interaction_test feature_combo_test dynamic_var_test generics_test generics_inference_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test hook_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test result_propagate_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test task_test task_io_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test graphics_math_test graphics_darwin test hello tests_x64 FORCE
 
 
 clean:

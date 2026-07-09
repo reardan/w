@@ -21,6 +21,11 @@ loader fills in before the entry point runs):
                  stack (float32 bits pass through unchanged; float64 spans
                  two words). Float results come back in st(0) and are
                  popped into eax.
+  a64  AAPCS64:  integer args in x0..x7, float args in v0..v7, overflow in
+                 8-byte stack slots (Linux only; arm64_darwin packs stack
+                 args at natural size, so overflow is rejected there).
+                 Float results come back in s0/d0 and are moved to x0.
+                 Selected when target_isa is 1 (both arm64 targets).
 
 Every argument is described by an ABI class so the stub knows which
 register file it belongs to:
@@ -47,6 +52,9 @@ void movd_xmm0_eax();
 void cvtss2sd_xmm0();
 void movq_rax_xmm0();
 void push_eax();
+void a64(int w);
+int op(int msb, int low);
+void arm64_ldr_reg_wsp(int rt, int k);
 
 
 # ABI class of a parameter or return type: 0 = integer/pointer word,
@@ -316,12 +324,136 @@ void emit_c_abi_call_x86(int n, char* classes, int ret_class, int got_vaddr, int
 	emit(1, c"\x5d")           /* pop ebp */
 
 
+############################### AArch64 AAPCS64 ##############################
+
+# ldr S<reg>/D<reg>, [x28, #off] for float argument registers v0..v7. The
+# W stack offset is a multiple of 8, so the scaled unsigned-offset form
+# always fits.
+void emit_arm64_load_fp_reg(int reg, int arg_class, int off):
+	if (arg_class == 2):
+		a64(op(0xfd, 0x400380) | ((off >> 3) << 10) | reg)   # ldr D<reg>,[x28,#off]
+	else:
+		a64(op(0xbd, 0x400380) | ((off >> 2) << 10) | reg)   # ldr S<reg>,[x28,#off]
+
+
+/*
+AAPCS64 call for n arguments described by classes. The arguments sit on
+the W stack (x28) with nothing between them and the stack top: argument i
+of n at [x28 + 8 * (n - 1 - i)]. That layout holds both inside a stub
+(blr enters it with the return address only in x30, never on the W stack)
+and at an inline variadic call site, so one emitter serves both and there
+is no arg_base parameter.
+
+The W stack occupies the memory directly below the real sp (the entry
+stub adopts sp as x28 and never moves sp), so pushing a C frame at sp
+would overwrite the oldest W stack words. Instead the frame is parked
+below x28: saved x29/x30 and the caller's sp at the top, then the
+overflow-argument area, with sp restored after the call. x28 and x29 are
+callee-saved in AAPCS64, so the C callee preserves the W stack pointer
+and the frame anchor.
+*/
+void emit_c_abi_call_arm64(int n, char* classes, int ret_class, int got_vaddr):
+	# Assign each argument a slot: 0..7 = x register, 16 + k = v register
+	# k, -1 = stack. Classification walks left to right (AAPCS64 NGRN/NSRN
+	# counters, matching the SysV walk above).
+	char* slots = 0
+	if (n > 0):
+		slots = malloc(n * 4)
+	int gp_count = 0
+	int fp_count = 0
+	int stack_count = 0
+	int i = 0
+	while (i < n):
+		int slot = 0 - 1
+		if (ffi_arg_class(classes, i) == 0):
+			if (gp_count < 8):
+				slot = gp_count
+				gp_count = gp_count + 1
+		else:
+			if (fp_count < 8):
+				slot = 16 + fp_count
+				fp_count = fp_count + 1
+		if (slot < 0):
+			stack_count = stack_count + 1
+		save_int(slots + (i << 2), slot)
+		i = i + 1
+
+	# Darwin packs on-stack arguments at natural size instead of 8-byte
+	# slots, which the three-class model cannot express; no binding we
+	# author needs overflow arguments, so reject rather than guess.
+	if ((target_os == 1) & (stack_count > 0)):
+		error(c"arm64_darwin extern calls support at most 8 integer and 8 float arguments")
+
+	a64(op(0x91, 0x0003e9))   # mov x9, sp        (the caller's sp)
+	a64(op(0xd1, 0x00838a))   # sub x10, x28, #32
+	a64(op(0x92, 0x7ced4a))   # and x10, x10, #0xfffffffffffffff0
+	a64(op(0x91, 0x00015f))   # mov sp, x10
+	a64(op(0xa9, 0x007bfd))   # stp x29, x30, [sp]
+	a64(op(0xf9, 0x000be9))   # str x9, [sp, #16]  (the caller's sp)
+	a64(op(0x91, 0x0003fd))   # mov x29, sp        (frame anchor)
+
+	# Overflow area: the leftmost overflow argument lands at [sp] (the
+	# AAPCS64 memory order), one 8-byte slot each, size kept 16-aligned.
+	int spill = ((stack_count << 3) + 15) & (0 - 16)
+	if (spill > 0):
+		a64(op(0xd1, 0x0003ff) | (spill << 10))   # sub sp, sp, #spill
+	int k = 0
+	i = 0
+	while (i < n):
+		if (load_int(slots + (i << 2)) < 0):
+			arm64_ldr_reg_wsp(9, (n - 1 - i) << 3)
+			a64(op(0xf9, 0x0003e9) | (k << 10))   # str x9, [sp, #8k]
+			k = k + 1
+		i = i + 1
+
+	# Register arguments (x28-relative, unaffected by the sp moves).
+	i = 0
+	while (i < n):
+		int assigned = load_int(slots + (i << 2))
+		int off = (n - 1 - i) << 3
+		if (assigned >= 16):
+			emit_arm64_load_fp_reg(assigned - 16, ffi_arg_class(classes, i), off)
+		else if (assigned >= 0):
+			arm64_ldr_reg_wsp(assigned, off)
+		i = i + 1
+	if (slots != 0):
+		free(slots)
+
+	# Call through the GOT slot. The adrp page delta is computed at emit
+	# time and survives the PIE slide because the data segment keeps its
+	# fixed distance from the text segment (same math as
+	# arm64_addr_slot_write).
+	int pc = code_offset + codepos
+	int delta = (got_vaddr >> 12) - (pc >> 12)
+	int immlo = delta & 3
+	int immhi = (delta >> 2) & 0x7ffff
+	a64(op(0x90 | (immlo << 5), immhi << 5) | 16)           # adrp x16, page(got)
+	a64(op(0x91, 0x000210) | ((got_vaddr & 0xfff) << 10))   # add x16, x16, #lo12
+	a64(op(0xf9, 0x400210))   # ldr x16, [x16]
+	a64(op(0xd6, 0x3f0200))   # blr x16
+
+	# Float results come back in s0/d0; W callers expect the bits in x0.
+	if (ret_class == 1):
+		a64(op(0x1e, 0x260000))   # fmov w0, s0
+	else if (ret_class == 2):
+		a64(op(0x9e, 0x660000))   # fmov x0, d0
+
+	a64(op(0x91, 0x0003bf))   # mov sp, x29       (drop the overflow area)
+	a64(op(0xf9, 0x400be9))   # ldr x9, [sp, #16]
+	a64(op(0xa9, 0x407bfd))   # ldp x29, x30, [sp]
+	a64(op(0x91, 0x00013f))   # mov sp, x9        (restore the caller's sp)
+
+
 ############################### entry points ##################################
 
 # Stub for an n-argument import: enters with the W frame (args + return
 # address) on the stack, converts to the platform C ABI and returns the
 # result W-style in eax/rax.
 void emit_ffi_shim(int n, char* classes, int ret_class, int got_vaddr):
+	if (target_isa == 1):
+		emit_c_abi_call_arm64(n, classes, ret_class, got_vaddr)
+		a64(op(0xd6, 0x5f03c0))   # ret
+		return
 	if (target_os == 2):
 		emit_c_abi_call_win64(n, classes, ret_class, got_vaddr, 16)
 	else if (word_size == 8):
@@ -336,6 +468,14 @@ void emit_ffi_shim(int n, char* classes, int ret_class, int got_vaddr):
 # Used for variadic imports, whose per-call float classes rule out a
 # single per-function stub. The caller still pops its argument words.
 void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr):
+	if (target_isa == 1):
+		# A variadic callee on Darwin reads its variadic tail from the
+		# stack even when the named arguments fit in registers, which
+		# this register-based conversion cannot express.
+		if (target_os == 1):
+			error(c"variadic extern calls are not supported on arm64_darwin yet")
+		emit_c_abi_call_arm64(n, classes, ret_class, got_vaddr)
+		return
 	if (target_os == 2):
 		emit_c_abi_call_win64(n, classes, ret_class, got_vaddr, 8)
 	else if (word_size == 8):

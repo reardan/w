@@ -1,11 +1,12 @@
 /*
-End-to-end GLX smoke test (x64 only): open a window, compile a GLSL
-program from source strings, draw one interpolated-color triangle
-through a mat4 uniform from graphics.math, and read pixels back to
-verify the rasterized output.
+End-to-end GL smoke test: open a window through the target's backend
+(X11/GLX on x64/arm64, Cocoa on arm64_darwin), compile a GLSL program
+from source strings, draw one interpolated-color triangle through a
+mat4 uniform from graphics.math, and read pixels back to verify the
+rasterized output.
 
-Prints "graphics gl smoke OK" on success. When no X display is
-reachable (headless host) it prints a SKIP line and exits 0, like
+Prints "graphics gl smoke OK" on success. When no display is reachable
+(headless host) it prints a SKIP line and exits 0, like
 tests/cuda_smoke.w does for missing GPUs; the build greps for the
 "graphics gl smoke" prefix so both outcomes keep the suite green while
 a real failure (bad pixels, shader errors) still fails the target.
@@ -47,7 +48,7 @@ void check_channel(char* label, int x, int y, int channel, int want, int toleran
 int main(int argc, int argv):
 	gfx_window* win = gfx_window_open(c"w graphics smoke", 320, 240)
 	if (win == 0):
-		println(c"graphics gl smoke SKIP (no X display)")
+		println(c"graphics gl smoke SKIP (no display)")
 		return 0
 
 	char* version = glGetString(GL_VERSION)
@@ -55,9 +56,11 @@ int main(int argc, int argv):
 	println(version)
 
 	# String shaders: per-vertex color through an interpolator, position
-	# through a mat4 uniform driven by graphics.math.
-	char* vertex_source = c"#version 130\nin vec2 a_pos;\nin vec3 a_color;\nout vec3 v_color;\nuniform mat4 u_mvp;\nvoid main() {\n\tv_color = a_color;\n\tgl_Position = u_mvp * vec4(a_pos, 0.0, 1.0);\n}\n"
-	char* fragment_source = c"#version 130\nin vec3 v_color;\nout vec4 frag_color;\nvoid main() {\n\tfrag_color = vec4(v_color, 1.0);\n}\n"
+	# through a mat4 uniform driven by graphics.math. The bodies compile
+	# as both GLSL 130 (GLX) and 150 (Mac core profile); the backend's
+	# gfx_shader_header() supplies the right "#version" line.
+	char* vertex_source = strjoin(gfx_shader_header(), c"in vec2 a_pos;\nin vec3 a_color;\nout vec3 v_color;\nuniform mat4 u_mvp;\nvoid main() {\n\tv_color = a_color;\n\tgl_Position = u_mvp * vec4(a_pos, 0.0, 1.0);\n}\n")
+	char* fragment_source = strjoin(gfx_shader_header(), c"in vec3 v_color;\nout vec4 frag_color;\nvoid main() {\n\tfrag_color = vec4(v_color, 1.0);\n}\n")
 	int program = gl_create_program(vertex_source, fragment_source)
 	if (program == 0):
 		println(c"graphics gl smoke FAILED (shader build)")

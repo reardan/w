@@ -14,15 +14,23 @@ backends. `README.md` is the detailed orientation doc and `AGENTS.md` the
 agent workflow doc; both are current and authoritative — this file is the
 summary.
 
-**Platform**: the seed is a Linux binary, so the toolchain itself needs
-Linux. On this macOS checkout, run every build/test command inside the
-`w-dev` Docker container via `tools/mac/wdev.sh` (e.g.
-`tools/mac/wdev.sh make verify`; one-time container setup is documented in
-that script's header). The repo is bind-mounted at `/w`, so `bin/`
-artifacts appear on the host. `arm64_darwin` Mach-O binaries are
-cross-compiled in the container, then signed and run natively on the Mac
-with `tools/mac/run_darwin_tests.sh`. On Linux hosts everything runs
-directly (`dynamic_test` additionally needs `libc6:i386`).
+**Platform**: `./w` is a Linux seed; `./w_darwin` is a committed arm64
+Mach-O seed that bootstraps natively on this Mac (`make build_darwin`,
+`verify_darwin`). On this macOS checkout, prefer in this order:
+1. **Locally on the Mac** for anything the native darwin toolchain covers
+   (`make build_darwin` self-hosts; sign + run Mach-O binaries with
+   `tools/mac/run_darwin_tests.sh`).
+2. **ssh host `w`** (x86_64 Linux, clone at `/home/w/w`) for
+   builds/verify/tests that need Linux — everything runs directly there
+   (`dynamic_test` additionally needs `libc6:i386`).
+3. **The `w-dev` Docker container** (`tools/mac/wdev.sh`, repo
+   bind-mounted at `/w`) ONLY when absolutely necessary — i.e. a job
+   neither of the above can do, such as natively executing aarch64-Linux
+   binaries (the container is arm64 Ubuntu; `w` is x86_64). Do not
+   default to it: the emulated seed makes builds very slow.
+
+`arm64_darwin` Mach-O binaries are cross-compiled on Linux, then signed
+and run natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 
 ## Commands
 

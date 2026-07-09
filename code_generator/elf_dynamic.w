@@ -87,7 +87,9 @@ void elf_emit_dynamic():
 
 	# ---- .interp ----
 	int interp_off = codepos
-	if (word_size == 8):
+	if (target_isa == 1):
+		emit_string(c"/lib/ld-linux-aarch64.so.1")
+	else if (word_size == 8):
 		emit_string(c"/lib64/ld-linux-x86-64.so.2")
 	else:
 		emit_string(c"/lib/ld-linux.so.2")
@@ -159,6 +161,11 @@ void elf_emit_dynamic():
 		int rel_type = 6            /* R_386_GLOB_DAT / R_X86_64_GLOB_DAT */
 		if (dyn_import_get_symtype(i) == 1):
 			rel_type = 5            /* R_386_COPY / R_X86_64_COPY */
+		if (target_isa == 1):
+			if (rel_type == 6):
+				rel_type = 1025     /* R_AARCH64_GLOB_DAT */
+			else:
+				rel_type = 1024     /* R_AARCH64_COPY */
 		if (word_size == 8):
 			/* Elf64_Rela: r_offset, r_info=(sym<<32)|type, r_addend.
 			   Emitting r_info as two dwords avoids a 64-bit shift on the
@@ -201,8 +208,14 @@ void elf_emit_dynamic():
 	free(imp_str_off)
 
 	# Fill the reserved program headers (PT_INTERP = R, PT_DYNAMIC = R+W).
-	elf_dyn_patch_phdr(1, 3, 4, interp_off, interp_size, 1)
-	elf_dyn_patch_phdr(2, 2, 6, dynamic_off, dynamic_size, 8)
+	# On the x86 family the reserved slots are 1 and 2; the arm64 writer
+	# uses slot 1 for its R+W data load (patched after this runs), so its
+	# reserved slots are 2 and 3.
+	int interp_slot = 1
+	if (target_isa == 1):
+		interp_slot = 2
+	elf_dyn_patch_phdr(interp_slot, 3, 4, interp_off, interp_size, 1)
+	elf_dyn_patch_phdr(interp_slot + 1, 2, 6, dynamic_off, dynamic_size, 8)
 
 	# A dynamically linked program shares the address space with glibc,
 	# whose sbrk caches the break position and never rechecks it, so a raw

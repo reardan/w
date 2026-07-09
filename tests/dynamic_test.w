@@ -15,8 +15,11 @@ extern int printf(char* fmt, ...)
 extern int fflush(int stream)
 
 
-# getppid syscall number differs by architecture (x86: 64, x64: 110).
+# getppid syscall number differs by architecture (x86: 64, x64: 110,
+# arm64: 173).
 int raw_getppid():
+	if (__target_isa__ == 1):
+		return syscall(173, 0, 0, 0)
 	if (__word_size__ == 8):
 		return syscall(110, 0, 0, 0)
 	return syscall(64, 0, 0, 0)
