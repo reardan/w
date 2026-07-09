@@ -28,9 +28,16 @@ that delivers them cheaply:
   element sizes and word values, so no per-instantiation code is generated.
 
 `list[T]` extends that closed set with the growable vector shape. True
-generics (user-defined parameterized functions and structs) stay deferred;
-if they ever land, the built-in containers keep working unchanged because
-their syntax does not overlap with identifiers.
+generics (user-defined parameterized functions and structs) were deferred
+here as out of scope for *containers* specifically — and later landed for
+a different reason (issue #26's other half): `T max[T](T a, T b)` and
+`struct pair[T]:` with explicit instantiation, plus call-site
+type-argument inference (`max(3, 5)` without `[int]`), are implemented
+per `docs/projects/generics.md`. The two mechanisms coexist as predicted:
+built-in `map`/`set`/`list` stay the closed-set, no-monomorphization path
+for containers, while user-defined generic functions/structs use
+token-range re-parse monomorphization separately; their syntax does not
+overlap.
 
 ## `list[T]`
 
@@ -136,8 +143,6 @@ existing behavior is unchanged.
 
 ## Deferred work
 
-- True generics/templates (token-range re-parse monomorphization) — see
-  the decision above.
 - `l.insert(i, v)`, `l.remove(i)`, `l.clear()` and other pseudo-methods.
 - `in` membership for lists (linear scan) if a use case appears.
 - Multi-word scalar elements on x86 (e.g. `list[int64]`).
