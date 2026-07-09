@@ -85,12 +85,20 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
 - **Bootstrap chain**: seed compiles sources → wv2 → wv3 → wv4 → wv5; byte
   equality of wv3/wv4/wv5 (`./wbuild verify`) is the cheapest strong regression
   guard. A change can pass unit tests while corrupting self-hosting.
-- **Seed constraint**: `w.w`, `grammar.w`, `codegen.w`, `compiler/`,
-  `grammar/`, `code_generator/`, and the auto-imported container runtime
-  (`structures/hash_table.w`, `structures/w_list.w`) are compiled by the
-  committed seed, so they must not use language syntax newer than the seed
-  until `./wbuild update` promotes one. New syntax is fine in `tests/`, `lib/`,
-  and other consumers once `bin/wv2` exists.
+- **Seed constraint**: everything in `w.w`'s transitive import graph is
+  compiled by the committed seed: `w.w`, `grammar.w`, `codegen.w`,
+  `compiler/`, `grammar/`, `code_generator/`, `debugger/`, the
+  auto-imported container runtime (`structures/hash_table.w`,
+  `structures/w_list.w`), `libs/extras/{c_import,c_preprocessor,parser_generator}`
+  (pulled in by the compiler's C-import feature), and any `lib/` file those
+  import. None of it may use language syntax newer than the seed until
+  `./wbuild update` promotes one. New syntax is fine in `tests/` and other
+  leaf consumers once `bin/wv2` exists.
+- **Two seeds, one refresh**: `./w` (Linux) and `./w_darwin` (Mach-O) must be
+  refreshed together — a PR that runs `./wbuild update` must also run
+  `./wbuild update_darwin` (on the Mac), or the darwin cold bootstrap breaks
+  the next time seed-compiled sources use post-seed syntax (this happened
+  with #128/#129).
 - Built-in `map`/`set`/`list` lower to that runtime, which
   `compiler/compiler.w` auto-imports into every program.
 

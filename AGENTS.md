@@ -69,15 +69,20 @@ the server in the Cloud Agents dashboard).
   asserted by the `warning_test` target.
 - The seed `./w` is a **32-bit x86** statically-linked ELF; it runs on this x86_64 host
   without extra libc because it's static. Do not delete/replace it except via `./wbuild update`.
+  The macOS seed `./w_darwin` (arm64 Mach-O, promoted via `./wbuild update_darwin`) must be
+  refreshed **in the same PR** as any `./w` refresh: the two seeds compile the same sources,
+  and a stale darwin seed breaks the Mac cold bootstrap (see #128/#129).
 - W source is whitespace-significant: **tabs** for indentation (spaces trigger a warning),
   no semicolons, `#` line comments, blocks open with `:`.
 - Built-in containers (`map[K, V]`, `set[K]`, `list[T]`) lower to runtime helpers in
  `structures/hash_table.w` and `structures/w_list.w`, which the compiler **auto-imports
  into every program** (`import_module` calls in `compiler/compiler.w`). Those runtime
- files — like everything under `compiler/`, `grammar/`, and `code_generator/` — are
- compiled by the committed seed, so they must not use new language syntax until a seed
- update via `./wbuild update`. New syntax is fine in `tests/`, `lib/`, and other consumers
- once `bin/wv2` is built. Design notes: `docs/projects/typed_containers.md`.
+ files — like everything under `compiler/`, `grammar/`, `code_generator/`, `debugger/`,
+ and `libs/extras/{c_import,c_preprocessor,parser_generator}` (pulled in by the compiler's
+ C-import feature), plus any `lib/` file those import — are compiled by the committed
+ seed, so they must not use new language syntax until a seed update via `./wbuild update`
+ (and `./wbuild update_darwin` for the Mac seed). New syntax is fine in `tests/` and other
+ leaf consumers once `bin/wv2` is built. Design notes: `docs/projects/typed_containers.md`.
 - When adding language syntax, also extend the parser-generator grammar
  `tests/parser_generator/w.pg`: the `parser_generator_w_test` target parses **every
  tracked `.w` file** with a parser generated from that grammar and fails on syntax it
