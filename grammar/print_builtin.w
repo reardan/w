@@ -80,6 +80,10 @@ void print_emit_helper_address(int i):
 	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 	be_addr_slot_write(codepos - 4, head)
 	save_int(print_chains + i * 4, codepos + code_offset - 4)
+	# pac=full: chain slots materialize a callee like sym_get_value does,
+	# so the value needs the same signature (emitted after the chain
+	# bookkeeping so the recorded cell stays the slot's add instruction).
+	be_code_ptr_sign()
 
 
 void print_unsupported(int t):

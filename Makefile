@@ -270,6 +270,39 @@ arm64_smoke_test: w FORCE
 	$(QEMU_ARM64) ./bin/generator_arm64_test
 	@echo "arm64 smoke test OK"
 
+# Stage 5 pointer authentication (docs/projects/arm64.md D6).
+# pac_flag_test only inspects the emitted bytes (no emulator), so it is
+# part of the default 'tests' aggregate; the runtime tests below need
+# qemu-user and stay out, like arm64_smoke_test.
+pac_flag_test: w FORCE
+	sh tools/pac_flag_check.sh ./bin/wv2
+
+# Cross-compile the PAC fixtures as arm64e Mach-O (compile-only guard,
+# like graphics_darwin); tools/mac/run_darwin_tests.sh signs and runs
+# them natively on a Mac, where the corruption fixtures must die.
+pac_darwin: w FORCE
+	./bin/wv2 arm64_darwin --pac=full tests/pac_full_test.w -o ./bin/pac_full_darwin_test
+	./bin/wv2 arm64_darwin --pac=full tests/pac_corrupt_fnptr_test.w -o ./bin/pac_corrupt_fnptr_darwin_test
+	./bin/wv2 arm64_darwin --pac=full tests/pac_corrupt_ret_test.w -o ./bin/pac_corrupt_ret_darwin_test
+
+pac_full_test_arm64: w FORCE
+	./bin/wv2 arm64 --pac=full tests/pac_full_test.w -o ./bin/pac_full_arm64_test
+	$(QEMU_ARM64) ./bin/pac_full_arm64_test | grep -q "pac full OK"
+	@echo "pac full arm64 test OK"
+
+# The corruption fixtures MUST die at the authenticating instruction:
+# qemu -cpu max (FEAT_FPAC) delivers SIGILL (exit 132); macOS reports
+# SIGSEGV/SIGBUS for the same faults. Assert death by signal (>= 128)
+# and that the post-corruption print was never reached.
+pac_corrupt_test_arm64: w FORCE
+	./bin/wv2 arm64 --pac=full tests/pac_corrupt_fnptr_test.w -o ./bin/pac_corrupt_fnptr_arm64_test
+	rc=0; $(QEMU_ARM64) ./bin/pac_corrupt_fnptr_arm64_test > ./bin/pac_corrupt_fnptr.out || rc=$$?; test $$rc -ge 128
+	! grep -q "NOT REACHED" ./bin/pac_corrupt_fnptr.out
+	./bin/wv2 arm64 tests/pac_corrupt_ret_test.w -o ./bin/pac_corrupt_ret_arm64_test
+	rc=0; $(QEMU_ARM64) ./bin/pac_corrupt_ret_arm64_test > ./bin/pac_corrupt_ret.out || rc=$$?; test $$rc -ge 128
+	! grep -q "NOT REACHED" ./bin/pac_corrupt_ret.out
+	@echo "pac corruption tests OK (both fixtures died)"
+
 # graphics.math is pure W (no libm), so it runs on both targets.
 graphics_math_test: w FORCE
 	./bin/wv2 graphics/math_test.w -o ./bin/graphics_math_test
@@ -1672,7 +1705,7 @@ debug_test_x64: wdbg_x64 FORCE
 	printf 'c\n' | ./bin/wdbg64 tests/segv_fixture.w > /dev/null 2>&1; test $$? -eq 1
 	@echo "debug x64 test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test switch_test compound_assign_test infer_test ternary_test print_builtin_test script_mode_test prelude_test list_methods_test str_test math_test for_container_test template_string_test generator_test defer_test default_args_test varargs_w_test feature_interaction_test feature_combo_test dynamic_var_test generics_test generics_inference_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test hook_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test result_propagate_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test task_test task_io_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test graphics_math_test graphics_darwin test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test switch_test compound_assign_test infer_test ternary_test print_builtin_test script_mode_test prelude_test list_methods_test str_test math_test for_container_test template_string_test generator_test defer_test default_args_test varargs_w_test feature_interaction_test feature_combo_test dynamic_var_test generics_test generics_inference_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test hook_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test result_propagate_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test task_test task_io_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test graphics_math_test graphics_darwin pac_flag_test pac_darwin test hello tests_x64 FORCE
 
 
 clean:

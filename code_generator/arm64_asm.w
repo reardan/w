@@ -118,8 +118,13 @@ void define_asm_functions_arm64():
 
 	# repl_setjmp(buf): save the return address, W stack pointer and frame
 	# pointer into a 3-word buffer and return 0. repl_longjmp resumes here.
+	# pac=full: the resume address rests in the buffer signed with the
+	# buffer address as discriminator (arm64.md D6), so a scribbled or
+	# replayed buffer fails authentication in repl_longjmp.
 	sym_define_declare_global_function(c"repl_setjmp")
 	a64(op(0xf9, 0x400389))   # ldr x9,[x28]  (buf)
+	if (arm64_pac == 2):
+		a64(op(0xda, 0xc1013e))   # pacia x30, x9
 	a64(op(0xf9, 0x00013e))   # str x30,[x9,#0]
 	a64(op(0xf9, 0x00053c))   # str x28,[x9,#8]
 	a64(op(0xf9, 0x00093d))   # str x29,[x9,#16]
@@ -132,6 +137,8 @@ void define_asm_functions_arm64():
 	a64(op(0xf9, 0x400380))   # ldr x0,[x28,#0]  (val)
 	a64(op(0xf9, 0x400789))   # ldr x9,[x28,#8]  (buf)
 	a64(op(0xf9, 0x40013e))   # ldr x30,[x9,#0]
+	if (arm64_pac == 2):
+		a64(op(0xda, 0xc1113e))   # autia x30, x9
 	a64(op(0xf9, 0x40053c))   # ldr x28,[x9,#8]
 	a64(op(0xf9, 0x40093d))   # ldr x29,[x9,#16]
 	a64(op(0xd6, 0x5f03c0))   # ret
@@ -142,11 +149,21 @@ void define_asm_functions_arm64():
 	# address (x30) and the W stack pointer (x28) must be preserved. Push the
 	# resume address on the current stack, store x28 through arg1, load arg2
 	# into x28, pop the resume address saved there and return on it.
+	# pac=full: the pushed resume address is signed with ZERO discriminator
+	# (paciza/autiza), not the stack address — __w_gen_create seeds a fresh
+	# generator stack with the body's entry address exactly as it received
+	# it, i.e. already zero-disc signed by materialization, so first resume
+	# and every later suspend/resume authenticate under one convention and
+	# lib/generator.w needs no target-specific code.
 	sym_define_declare_global_function(c"gen_switch")
 	a64(op(0xf9, 0x400789))   # ldr x9,[x28,#8]   (save_wsp_here)
 	a64(op(0xf9, 0x40038a))   # ldr x10,[x28,#0]  (restore_wsp)
+	if (arm64_pac == 2):
+		a64(op(0xda, 0xc123fe))   # paciza x30
 	a64(op(0xf8, 0x1f8f9e))   # str x30,[x28,#-8]!  (push resume address)
 	a64(op(0xf9, 0x00013c))   # str x28,[x9]        (*save_wsp_here = x28)
 	a64(op(0xaa, 0x0a03fc))   # mov x28,x10         (switch stacks)
 	a64(op(0xf8, 0x40879e))   # ldr x30,[x28],#8    (pop resume address)
+	if (arm64_pac == 2):
+		a64(op(0xda, 0xc133fe))   # autiza x30
 	a64(op(0xd6, 0x5f03c0))   # ret

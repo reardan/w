@@ -1076,6 +1076,9 @@ int generic_call_infer_expr(int def):
 			head = code_offset
 		be_addr_slot_write(codepos - 4, head)
 		generic_inst_set_chain(inst, codepos + code_offset - 4)
+		# pac=full: sign the chain-materialized callee like sym_get_value
+		# does (after the chain bookkeeping above)
+		be_code_ptr_sign()
 	call_eax()
 	be_pop(stack_pos - s)
 	stack_pos = s
@@ -1146,6 +1149,8 @@ int generic_call_expr():
 		head = code_offset
 	be_addr_slot_write(codepos - 4, head)
 	generic_inst_set_chain(inst, codepos + code_offset - 4)
+	# pac=full: sign the chain-materialized callee like sym_get_value does
+	be_code_ptr_sign()
 	return 4
 
 
@@ -1276,6 +1281,9 @@ int generic_forward_call_expr():
 	save_ptr(e + 4 * __word_size__, cast(int, call_file))
 	save_ptr(e + 5 * __word_size__, call_line)
 	generic_forward_count = generic_forward_count + 1
+	# pac=full: sign the chain-materialized callee like sym_get_value does
+	# (after the slot position was recorded in the forward entry above)
+	be_code_ptr_sign()
 	# keep postfix_expr's callee lookup from matching a stale identifier
 	strcpy(last_identifier, c"$forward generic call$")
 	return 4

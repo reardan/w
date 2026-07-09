@@ -108,6 +108,14 @@ is a queue, not an archive.
   self-bootstrap `wv2`; the long tail of test targets does not. Extend
   the pattern if fresh-clone friction shows up again, or finish the
   Makefile-to-`wbuild` migration which handles it uniformly.
+- **Nonexistent input files produce a garbled directory-walk error.**
+  `wv2 <typo>.w` prints `file ... not found error '-2'`, walks up
+  directories, and at the filesystem root prints "abandoning search
+  in" followed by garbage bytes (observed on arm64_darwin while
+  bringing up the PAC tests, 2026-07-09; the misspelled path was
+  `tests/hash_table_test.w` for `structures/hash_table_test.w`). A
+  plain "no such file: <path>" before the import-search walk would
+  have saved the confusion.
 
 ## Skills / rules upkeep
 
