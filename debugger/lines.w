@@ -72,6 +72,83 @@ int dbg_file_index_for(char* name):
 	return -1
 
 
+# Levenshtein distance between a and b, for "did you mean" suggestions on
+# an unresolved break/log target.
+int dbg_edit_distance(char* a, char* b):
+	int la = strlen(a)
+	int lb = strlen(b)
+	char* d = malloc((la + 1) * (lb + 1) * 4)
+	int i = 0
+	while (i <= la):
+		save_int(d + i * (lb + 1) * 4, i)
+		i = i + 1
+	int j = 0
+	while (j <= lb):
+		save_int(d + j * 4, j)
+		j = j + 1
+	i = 1
+	while (i <= la):
+		j = 1
+		while (j <= lb):
+			int cost = 1
+			if (a[i - 1] == b[j - 1]):
+				cost = 0
+			int del = load_int(d + ((i - 1) * (lb + 1) + j) * 4) + 1
+			int ins = load_int(d + (i * (lb + 1) + j - 1) * 4) + 1
+			int sub = load_int(d + ((i - 1) * (lb + 1) + j - 1) * 4) + cost
+			int best = del
+			if (ins < best):
+				best = ins
+			if (sub < best):
+				best = sub
+			save_int(d + (i * (lb + 1) + j) * 4, best)
+			j = j + 1
+		i = i + 1
+	int result = load_int(d + (la * (lb + 1) + lb) * 4)
+	free(d)
+	return result
+
+
+# How many edits still count as "similar" for a name of this length.
+int dbg_similar_threshold(int len):
+	if (len <= 3):
+		return 1
+	if (len <= 6):
+		return 2
+	return 3
+
+
+# Trailing path component: what a user is likely to type for a file.
+char* dbg_basename(char* path):
+	int i = strlen(path)
+	while (i > 0):
+		if (path[i - 1] == '/'):
+			return path + i
+		i = i - 1
+	return path
+
+
+# Print "did you mean: a, b" for registered files whose basename is close
+# to name, when any are close enough. No newline when nothing matches.
+void dbg_suggest_files(char* name):
+	char* base = dbg_basename(name)
+	int threshold = dbg_similar_threshold(strlen(base))
+	int shown = 0
+	int i = 0
+	while (i < debug_file_count):
+		char* stored = cast(char*, load_ptr(debug_files + i * __word_size__))
+		if (dbg_edit_distance(base, dbg_basename(stored)) <= threshold):
+			if (shown == 0):
+				print(c"did you mean: ")
+			else:
+				print(c", ")
+			print(stored)
+			shown = shown + 1
+		i = i + 1
+	if (shown > 0):
+		put_char(10)
+
+
 # Entry index of the first statement at or after file:line, or -1 when the
 # file has no code there. Prefers the exact line, else the closest one
 # after it (so a breakpoint on a comment slides down to real code).

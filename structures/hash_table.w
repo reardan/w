@@ -290,6 +290,24 @@ char* __w_map_get_addr(__w_hash_table* table, int key):
 	return __w_hash_value_addr(table, i)
 
 
+# m.get(key, default): scalar value at key, or default when key is absent.
+int __w_map_get_or(__w_hash_table* table, int key, int default_value):
+	int i = __w_hash_table_slot(table, key)
+	if (table.states[i] == 1):
+		int* slot = cast(int*, __w_hash_value_addr(table, i))
+		return slot[0]
+	return default_value
+
+
+# Aggregate get-with-default: the stored value's address at key, or
+# default_addr (the caller's default storage) when key is absent.
+char* __w_map_get_or_addr(__w_hash_table* table, int key, char* default_addr):
+	int i = __w_hash_table_slot(table, key)
+	if (table.states[i] == 1):
+		return __w_hash_value_addr(table, i)
+	return default_addr
+
+
 int __w_map_remove(__w_hash_table* table, int key):
 	int i = __w_hash_table_slot(table, key)
 	if (table.states[i] != 1):

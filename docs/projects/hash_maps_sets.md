@@ -30,6 +30,11 @@ container pointer, not the entries.
 - `m[k] = v` inserts or overwrites.
 - `k in m` and `k in s` test membership and return `bool`.
 - `.length` returns the number of live entries.
+- `m.get(k)` is the same as `m[k]`: it traps on a missing key.
+- `m.get(k, default)` returns `default` instead of trapping when `k` is
+  absent (issue #19).
+- `m.remove(k)` / `s.remove(k)` delete the entry, returning whether it was
+  present; `s.add(k)` inserts a set member.
 - `for K k in m` iterates map keys; values are read with `m[k]`.
 - `for K k, V v in m` iterates keys and values together, one probe per
   entry (see `tests/map_set_builtin_test.w`).
@@ -94,7 +99,6 @@ types because their descriptors point into the enclosing object.
 ## Deferred work
 
 - Contextual bare literals.
-- Rich pseudo-methods such as `get`, `get_default`, `discard`, and `clear`
-  (tracked in issue #19).
+- Further pseudo-methods such as `discard` and `clear`.
 - Struct keys (values are done).
 - Migrating compiler symbol/type tables to built-in maps.
