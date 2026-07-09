@@ -7,6 +7,16 @@ Status: **implemented** — `tools/index/w_index.w` (built as `bin/windex`,
 indexer" and "`w-index-mcp`". `bin/wlsp` (`docs/projects/lsp.md`) uses
 `windex` to add hover, find-references, and rename to the LSP MVP.
 
+The query engine (build/scan/dispatch) now lives in
+`tools/index/w_index_core.w`, shared between the one-shot CLI and the
+persistent `bin/windexd` daemon that caches compiled results across
+queries — see `docs/projects/index_daemon.md` for why (every query used
+to re-run a full `wv2 symbols --json` compile, ~2-17s depending on entry
+scope, even for repeat queries) and its cache/invalidation contract.
+`w_index.w` transparently prefers a warm daemon and falls back to
+building locally, so everything below still describes the query
+semantics regardless of which path served a given call.
+
 ## Why this shape
 
 `w symbols --json` (`compiler/compiler.w`) only ever recorded
@@ -101,10 +111,16 @@ parsed NDJSON array.
   (see "Why this shape" above); a stray column-0 comment inside what
   should be a nested block would truncate a span early.
 - **`callers`/`callees` cost is O(references × declarations)** in the
-  current implementation (a linear scan per candidate) — fine for the
-  CLI's one-shot-per-query usage, not intended for a hot loop.
+  current implementation (a linear scan per candidate) — fine for a
+  single query, but now that `bin/windexd` (`docs/projects/index_daemon.md`)
+  makes repeat queries against the same files cheap, this is the next
+  cost that would show up under a hot loop.
 - **x86 only**, matching `bin/wlsp`: `windex` shells to plain
   `./bin/wv2 symbols --json` (no `x64` support yet).
+- **A `windexd` cache hit still re-scans every file in the closure** —
+  only the `wv2 symbols --json` compile is cached, not the textual
+  reference scan. See `docs/projects/index_daemon.md`'s cache section
+  for measured warm-path costs on a large vs. small entry scope.
 
 ## Testing
 
@@ -113,6 +129,9 @@ parsed NDJSON array.
 - `index_test` (`tools/index/index_test.w`, driving the real
   `bin/windex` binary over `tests/index_fixture.w` and the existing
   `tests/import_alias_warning_fixture.w`) covers every subcommand.
+- `indexd_test` (`tools/index/indexd_test.w`) covers `bin/windexd`
+  directly: query correctness, cache hits, and cache invalidation on
+  file change. See `docs/projects/index_daemon.md`.
 - `index_mcp_test` (`tools/mcp/index_mcp_test.w`) drives `bin/wimcp` over
   stdio: initialize, `tools/list`, and one call per tool.
 - `lsp_test` (`tools/lsp/lsp_test.w`) extends its existing coverage with
