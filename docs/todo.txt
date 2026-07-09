@@ -156,6 +156,9 @@ current state:
 					(condition/ignore/log; docs/projects/debugger_conditional_breakpoints.md)
 				fatal-signal post-mortem stops (segv handler)
 				line editing and history at the prompt (lib/line_edit.w)
+				wdbg --attach <pid>: out-of-process ptrace attach, phase 1
+					(read-only: dump registers/memory/stack, detach;
+					design: docs/projects/debugger_attach.md)
 		library and data structures:
 			malloc/free/realloc as a library module (lib/memory.w)
 			list
@@ -214,7 +217,11 @@ current state:
 			support private imports (aliases + the unqualified-use warning
 				are done; hard hiding needs real module identity)
 			qualified type names through import aliases (f.SomeStruct)
-			merge symbol_table + type_table on top of hash_map
+			type_table migrated to list[int] (issue #96/#119); symbol_table
+				stays a hand-packed byte blob on purpose (table offsets are
+				stable handles threaded through backpatch chains, GOT slots,
+				and debug-location bookkeeping — not a hash_map call site to
+				migrate, see docs/projects/typed_containers.md)
 		c_import:
 			old-style (K&R) declarations
 			bit-field layout fidelity
@@ -222,6 +229,10 @@ current state:
 			more system-header torture fixtures as regressions are found
 		debugger:
 			asm/disasm helpers
+			wdbg --attach phases 2-6: target-access seam, symbol/line
+				recovery, execution control (breakpoints/stepping),
+				locals + hardware watchpoints, restricted expression eval
+				(docs/projects/debugger_attach.md, issue #123)
 		code generation:
 			webassembly hello world
 			webassembly self-compiling
