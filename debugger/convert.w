@@ -21,8 +21,11 @@ Disassembly of section .text:
  8049013:	c3                   	ret 
 */
 import lib.lib
+import lib.str
 import compiler.tokenizer
-import structures.list
+
+
+list[char*] tokens
 
 
 int main_args(int argc, int argv):
@@ -67,18 +70,19 @@ int push_all_tokens():
 			if (is_hex_char(token[0]) & is_hex_char(token[1])):
 				char* delimiter = c""
 				delimiter = c"\x5cx"
-				push(strjoin(delimiter, token))
+				tokens.push(strjoin(delimiter, token))
 		get_token()
 
 
 int main(int argc, int argv):
+	tokens = new list[char*]
 	setup_tokenizer()
 	read_until_start()
 	push_all_tokens()
 
 	print(c"emit(")
-	print(itoa(length))
+	print(itoa(tokens.length))
 	print(c", \x22") /* quotes */
-	print(join(c""))
+	print(join(tokens, c""))
 	println(c"\x22)")
 	return 0
