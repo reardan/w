@@ -51,7 +51,11 @@ Consult these CPython sources first:
 
 ## Non-goals for MVP
 
-- No homegrown cryptographic algorithms.
+- No homegrown cryptographic algorithms. **Superseded by
+  `11_native_http_tls.md`**: the TLS plan implements ChaCha20-Poly1305,
+  SHA-2, HMAC/HKDF, X25519, and verification-only RSA/ECDSA in pure W,
+  with published test vectors. Base64/hex and `getrandom` from this plan
+  are shared deliverables with it.
 - No TLS here; TLS belongs in networking and should use the same crypto backend.
 - No unsafe archive extraction helpers that write outside the destination.
 - No full compression matrix if C libraries are missing in the environment.
