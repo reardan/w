@@ -2,7 +2,6 @@
 Predefined macro setup.
 */
 import lib.lib
-import structures.hash_map
 import code_generator.code_emitter
 import libs.extras.c_preprocessor.pp_token
 import libs.extras.c_preprocessor.pp_lexer
@@ -17,11 +16,11 @@ cpp_token* cpp_init_number_body(int value):
 	return token
 
 
-void cpp_init_define_number(hash_map* macros, char* name, int value):
+void cpp_init_define_number(map[char*, cpp_macro*] macros, char* name, int value):
 	cpp_macro_define_object(macros, name, cpp_init_number_body(value))
 
 
-void cpp_init_define_empty(hash_map* macros, char* name):
+void cpp_init_define_empty(map[char*, cpp_macro*] macros, char* name):
 	cpp_macro_define_object(macros, name, cpp_token_new(cpp_token_eof(), c"", c"<builtin>", 0, 0, 0))
 
 
@@ -31,7 +30,7 @@ int cpp_target_word_size():
 	return __word_size__
 
 
-void cpp_init_predefined_macros(hash_map* macros):
+void cpp_init_predefined_macros(map[char*, cpp_macro*] macros):
 	cpp_init_define_number(macros, c"__STDC__", 1)
 	cpp_init_define_number(macros, c"__STDC_VERSION__", 199901)
 	cpp_init_define_number(macros, c"__STDC_HOSTED__", 1)

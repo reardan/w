@@ -2,8 +2,6 @@
 Macro storage and Prosser-style expansion.
 */
 import lib.lib
-import structures.array_list
-import structures.hash_map
 import structures.string
 import libs.extras.c_preprocessor.pp_token
 import libs.extras.c_preprocessor.pp_lexer
@@ -13,21 +11,21 @@ struct cpp_macro:
 	char* name
 	int is_function
 	int is_variadic
-	array_list* params
+	list[char*] params
 	cpp_token* body
 	int builtin
 
 
 struct cpp_macro_args:
-	array_list* items
+	list[cpp_token*] items
 	cpp_token* after
 	cpp_hideset* rparen_hideset
 	int variadic_has_tokens
 	int complete
 
 
-cpp_token* cpp_expand_tokens(hash_map* macros, cpp_token* token);
-cpp_token* cpp_substitute_macro(hash_map* macros, cpp_macro* macro, cpp_macro_args* args, cpp_hideset* hideset);
+cpp_token* cpp_expand_tokens(map[char*, cpp_macro*] macros, cpp_token* token);
+cpp_token* cpp_substitute_macro(map[char*, cpp_macro*] macros, cpp_macro* macro, cpp_macro_args* args, cpp_hideset* hideset);
 cpp_token* cpp_remove_last_token(cpp_token* head);
 
 
@@ -48,33 +46,36 @@ cpp_macro* cpp_macro_new(char* name):
 	macro.name = strclone(name)
 	macro.is_function = 0
 	macro.is_variadic = 0
-	macro.params = array_list_new()
+	macro.params = new list[char*]
 	macro.body = 0
 	macro.builtin = cpp_macro_builtin_none()
 	return macro
 
 
-cpp_macro* cpp_macro_lookup(hash_map* macros, char* name):
-	if (hash_map_contains(macros, name) == 0):
+# Also matches a name explicitly undefined via cpp_macro_undef (its value
+# is set to 0 rather than the key being removed), which correctly looks
+# up as "not defined" here.
+cpp_macro* cpp_macro_lookup(map[char*, cpp_macro*] macros, char* name):
+	if ((name in macros) == 0):
 		return 0
-	return cast(cpp_macro*, hash_map_get(macros, name))
+	return macros[name]
 
 
-void cpp_macro_define(hash_map* macros, cpp_macro* macro):
-	hash_map_set(macros, macro.name, cast(int, macro))
+void cpp_macro_define(map[char*, cpp_macro*] macros, cpp_macro* macro):
+	macros[macro.name] = macro
 
 
-void cpp_macro_undef(hash_map* macros, char* name):
-	hash_map_set(macros, name, 0)
+void cpp_macro_undef(map[char*, cpp_macro*] macros, char* name):
+	macros[name] = 0
 
 
-void cpp_macro_define_object(hash_map* macros, char* name, cpp_token* body):
+void cpp_macro_define_object(map[char*, cpp_macro*] macros, char* name, cpp_token* body):
 	cpp_macro* macro = cpp_macro_new(name)
 	macro.body = body
 	cpp_macro_define(macros, macro)
 
 
-void cpp_macro_define_builtin(hash_map* macros, char* name, int builtin):
+void cpp_macro_define_builtin(map[char*, cpp_macro*] macros, char* name, int builtin):
 	cpp_macro* macro = cpp_macro_new(name)
 	macro.builtin = builtin
 	cpp_macro_define(macros, macro)
@@ -83,7 +84,7 @@ void cpp_macro_define_builtin(hash_map* macros, char* name, int builtin):
 int cpp_macro_param_index(cpp_macro* macro, char* name):
 	int i = 0
 	while (i < macro.params.length):
-		char* param = cast(char*, array_list_get(macro.params, i))
+		char* param = macro.params[i]
 		if (strcmp(param, name) == 0):
 			return i
 		i = i + 1
@@ -116,15 +117,15 @@ cpp_token* cpp_make_placemarker():
 	return cpp_token_new(cpp_token_placemarker(), c"", c"<macro>", 0, 0, 0)
 
 
-cpp_token* cpp_arg_token(array_list* args, int index):
+cpp_token* cpp_arg_token(list[cpp_token*] args, int index):
 	if (index < 0):
 		return 0
 	if (index >= args.length):
 		return 0
-	return cast(cpp_token*, array_list_get(args, index))
+	return args[index]
 
 
-cpp_token* cpp_clone_arg_or_marker(array_list* args, int index):
+cpp_token* cpp_clone_arg_or_marker(list[cpp_token*] args, int index):
 	cpp_token* arg = cpp_arg_token(args, index)
 	if (arg == 0):
 		return cpp_make_placemarker()
@@ -147,7 +148,7 @@ void cpp_args_push_token(cpp_token* head, cpp_token* token):
 
 cpp_macro_args* cpp_collect_args(cpp_token* lparen):
 	cpp_macro_args* args = new cpp_macro_args()
-	args.items = array_list_new()
+	args.items = new list[cpp_token*]
 	args.after = 0
 	args.rparen_hideset = 0
 	args.variadic_has_tokens = 0
@@ -164,7 +165,7 @@ cpp_macro_args* cpp_collect_args(cpp_token* lparen):
 			cpp_args_push_token(&current_head, token)
 		else if (cpp_token_is_punct(token, c")")):
 			if (depth == 0):
-				array_list_push(args.items, cast(int, current_head.next))
+				args.items.push(current_head.next)
 				args.after = token.next
 				args.rparen_hideset = token.hideset
 				args.complete = 1
@@ -172,7 +173,7 @@ cpp_macro_args* cpp_collect_args(cpp_token* lparen):
 			depth = depth - 1
 			cpp_args_push_token(&current_head, token)
 		else if (cpp_token_is_punct(token, c",") & (depth == 0)):
-			array_list_push(args.items, cast(int, current_head.next))
+			args.items.push(current_head.next)
 			current_head.next = 0
 		else:
 			cpp_args_push_token(&current_head, token)
@@ -202,16 +203,16 @@ cpp_token* cpp_join_variadic_args(cpp_macro_args* args, int first):
 void cpp_normalize_args(cpp_macro* macro, cpp_macro_args* args):
 	if (macro.is_variadic == 0):
 		return
-	array_list* normalized = array_list_new()
+	list[cpp_token*] normalized = new list[cpp_token*]
 	int fixed_count = macro.params.length - 1
 	int i = 0
 	while (i < fixed_count):
 		if (i < args.items.length):
-			array_list_push(normalized, array_list_get(args.items, i))
+			normalized.push(args.items[i])
 		else:
-			array_list_push(normalized, 0)
+			normalized.push(0)
 		i = i + 1
-	array_list_push(normalized, cast(int, cpp_join_variadic_args(args, fixed_count)))
+	normalized.push(cpp_join_variadic_args(args, fixed_count))
 	args.items = normalized
 
 
@@ -268,7 +269,7 @@ int cpp_token_is_param(cpp_macro* macro, cpp_token* token):
 	return cpp_macro_param_index(macro, token.text) >= 0
 
 
-cpp_token* cpp_param_replacement(hash_map* macros, cpp_macro* macro, cpp_macro_args* args, cpp_token* token, int raw):
+cpp_token* cpp_param_replacement(map[char*, cpp_macro*] macros, cpp_macro* macro, cpp_macro_args* args, cpp_token* token, int raw):
 	int index = cpp_macro_param_index(macro, token.text)
 	if (raw):
 		return cpp_clone_arg_or_marker(args.items, index)
@@ -278,7 +279,7 @@ cpp_token* cpp_param_replacement(hash_map* macros, cpp_macro* macro, cpp_macro_a
 	return cpp_expand_tokens(macros, cpp_token_list_without_eof(arg))
 
 
-cpp_token* cpp_subst_first_pass(hash_map* macros, cpp_macro* macro, cpp_macro_args* args):
+cpp_token* cpp_subst_first_pass(map[char*, cpp_macro*] macros, cpp_macro* macro, cpp_macro_args* args):
 	cpp_token head
 	head.next = 0
 	cpp_token* tail = &head
@@ -418,7 +419,7 @@ cpp_token* cpp_process_paste(cpp_token* tokens):
 	return head.next
 
 
-cpp_token* cpp_substitute_macro(hash_map* macros, cpp_macro* macro, cpp_macro_args* args, cpp_hideset* hideset):
+cpp_token* cpp_substitute_macro(map[char*, cpp_macro*] macros, cpp_macro* macro, cpp_macro_args* args, cpp_hideset* hideset):
 	cpp_token* first = cpp_subst_first_pass(macros, macro, args)
 	cpp_token* pasted = cpp_process_paste(first)
 	cpp_token_add_hideset(pasted, hideset)
@@ -433,7 +434,7 @@ cpp_token* cpp_attach_rest(cpp_token* replacement, cpp_token* rest):
 	return replacement
 
 
-cpp_token* cpp_expand_tokens(hash_map* macros, cpp_token* token):
+cpp_token* cpp_expand_tokens(map[char*, cpp_macro*] macros, cpp_token* token):
 	cpp_token head
 	head.next = 0
 	cpp_token* tail = &head

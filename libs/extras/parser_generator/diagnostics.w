@@ -2,7 +2,6 @@
 Structured diagnostics for generated lexers and parsers.
 */
 import lib.lib
-import structures.array_list
 
 
 struct pg_diagnostic:
@@ -15,12 +14,12 @@ struct pg_diagnostic:
 
 
 struct pg_diagnostics:
-	array_list* items
+	list[pg_diagnostic*] items
 
 
 pg_diagnostics* pg_diagnostics_new():
 	pg_diagnostics* diagnostics = new pg_diagnostics()
-	diagnostics.items = array_list_new()
+	diagnostics.items = new list[pg_diagnostic*]
 	return diagnostics
 
 
@@ -38,7 +37,7 @@ pg_diagnostic* pg_diagnostic_new(char* filename, int line, int column, char* mes
 void pg_diagnostics_add(pg_diagnostics* diagnostics, char* filename, int line, int column, char* message, char* expected, char* found):
 	if (diagnostics == 0):
 		return
-	array_list_push(diagnostics.items, cast(int, pg_diagnostic_new(filename, line, column, message, expected, found)))
+	diagnostics.items.push(pg_diagnostic_new(filename, line, column, message, expected, found))
 
 
 int pg_diagnostics_count(pg_diagnostics* diagnostics):
@@ -48,7 +47,7 @@ int pg_diagnostics_count(pg_diagnostics* diagnostics):
 
 
 pg_diagnostic* pg_diagnostics_get(pg_diagnostics* diagnostics, int index):
-	return cast(pg_diagnostic*, array_list_get(diagnostics.items, index))
+	return diagnostics.items[index]
 
 
 void pg_diagnostic_print(pg_diagnostic* diagnostic):
@@ -73,7 +72,7 @@ void pg_diagnostics_print(pg_diagnostics* diagnostics):
 		return
 	int i = 0
 	while (i < diagnostics.items.length):
-		pg_diagnostic_print(cast(pg_diagnostic*, array_list_get(diagnostics.items, i)))
+		pg_diagnostic_print(diagnostics.items[i])
 		i = i + 1
 
 
@@ -91,7 +90,12 @@ void pg_diagnostics_free(pg_diagnostics* diagnostics):
 		return
 	int i = 0
 	while (i < diagnostics.items.length):
-		pg_diagnostic_free(cast(pg_diagnostic*, array_list_get(diagnostics.items, i)))
+		pg_diagnostic_free(diagnostics.items[i])
 		i = i + 1
-	array_list_free(diagnostics.items)
+	# This file is transitively imported by the compiler itself (via
+	# grammar/c_import_statement.w), so it must stick to syntax the seed
+	# already supports (no generic functions) — reach into the
+	# auto-imported __w_list runtime directly, the same pattern
+	# compiler/type_table.w uses for type_table_truncate().
+	__w_list_free(cast(__w_list*, diagnostics.items))
 	free(diagnostics)

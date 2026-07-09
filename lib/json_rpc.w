@@ -13,19 +13,35 @@ import lib.lib
 import lib.net
 import lib.framing
 import lib.event_loop
+import lib.container
 import structures.json
-import structures.hash_map
-import structures.array_list
 
 
 type jsonrpc_handler = fn(json_value*, void*) -> json_value*
 
 
+# Declared ahead of jsonrpc_server so list[jsonrpc_connection*] below has a
+# complete element type (single-pass compiler, no forward struct
+# declarations). server stays void* to break the cycle back to
+# jsonrpc_server*; see jsonrpc_connection_server().
+struct jsonrpc_connection:
+	void* server
+	event_loop* loop
+	frame_reader* reader
+	int in_fd
+	int out_fd
+	int open
+
+
 struct jsonrpc_server:
-	hash_map* handlers
-	array_list* connections
+	map[char*, jsonrpc_handler*] handlers
+	list[jsonrpc_connection*] connections
 	void* context
 	int running
+
+
+jsonrpc_server* jsonrpc_connection_server(jsonrpc_connection* conn):
+	return cast(jsonrpc_server*, conn.server)
 
 
 /* Standard JSON-RPC 2.0 error codes. */
@@ -141,15 +157,15 @@ json_value* jsonrpc_read_message(frame_reader* r):
 
 jsonrpc_server* jsonrpc_server_new():
 	jsonrpc_server* s = new jsonrpc_server()
-	s.handlers = hash_map_new()
-	s.connections = array_list_new()
+	s.handlers = new map[char*, jsonrpc_handler*]
+	s.connections = new list[jsonrpc_connection*]
 	s.context = 0
 	s.running = 0
 	return s
 
 
 void jsonrpc_register(jsonrpc_server* s, char* method, jsonrpc_handler* handler):
-	hash_map_set(s.handlers, method, cast(int, handler))
+	s.handlers[method] = handler
 
 
 # Handlers may call this (via context) to make serve loops return.
@@ -193,8 +209,8 @@ void jsonrpc_handle_body(jsonrpc_server* s, char* body, int out_fd):
 		json_free(message)
 		return
 
-	jsonrpc_handler* handler = cast(jsonrpc_handler*, hash_map_get_default(s.handlers, method.string_value, 0))
-	if (cast(int, handler) == 0):
+	jsonrpc_handler* handler = s.handlers.get(method.string_value, 0)
+	if (handler == 0):
 		if (has_id):
 			jsonrpc_respond_error(out_fd, id, jsonrpc_error_method_not_found(), c"method not found")
 		json_free(message)
@@ -237,15 +253,6 @@ int jsonrpc_serve_blocking(jsonrpc_server* s, int in_fd, int out_fd):
 /* Event-loop serving: one server can multiplex a listening socket and
    any number of client connections alongside timers. */
 
-struct jsonrpc_connection:
-	jsonrpc_server* server
-	event_loop* loop
-	frame_reader* reader
-	int in_fd
-	int out_fd
-	int open
-
-
 void jsonrpc_connection_close(jsonrpc_connection* conn):
 	if (conn.open == 0):
 		return
@@ -260,6 +267,7 @@ void jsonrpc_connection_close(jsonrpc_connection* conn):
 
 void jsonrpc_connection_on_readable(int fd, int revents, void* ctx):
 	jsonrpc_connection* conn = cast(jsonrpc_connection*, ctx)
+	jsonrpc_server* srv = jsonrpc_connection_server(conn)
 	int count = frame_reader_fill(conn.reader)
 	# EAGAIN (-11): spurious wakeup on a non-blocking descriptor.
 	if (count == -11):
@@ -274,12 +282,12 @@ void jsonrpc_connection_on_readable(int fd, int revents, void* ctx):
 		if (body == 0):
 			drained = 1
 		else:
-			jsonrpc_handle_body(conn.server, body, conn.out_fd)
+			jsonrpc_handle_body(srv, body, conn.out_fd)
 			free(body)
 
 	if (conn.reader.error | (count <= 0)):
 		jsonrpc_connection_close(conn)
-	if (conn.server.running == 0):
+	if (srv.running == 0):
 		event_loop_stop(conn.loop)
 
 
@@ -288,13 +296,13 @@ void jsonrpc_connection_on_readable(int fd, int revents, void* ctx):
 # jsonrpc_server_free); its descriptors close on EOF or error.
 jsonrpc_connection* jsonrpc_attach_connection(jsonrpc_server* s, event_loop* loop, int in_fd, int out_fd):
 	jsonrpc_connection* conn = new jsonrpc_connection()
-	conn.server = s
+	conn.server = cast(void*, s)
 	conn.loop = loop
 	conn.reader = frame_reader_new(in_fd)
 	conn.in_fd = in_fd
 	conn.out_fd = out_fd
 	conn.open = 1
-	array_list_push(s.connections, cast(int, conn))
+	s.connections.push(conn)
 	s.running = 1
 	event_loop_add_fd(loop, in_fd, poll_in(), jsonrpc_connection_on_readable, cast(void*, conn))
 	return conn
@@ -330,12 +338,12 @@ jsonrpc_listener* jsonrpc_serve_listener(jsonrpc_server* s, event_loop* loop, in
 void jsonrpc_server_free(jsonrpc_server* s):
 	int i = 0
 	while (i < s.connections.length):
-		jsonrpc_connection* conn = cast(jsonrpc_connection*, array_list_get(s.connections, i))
+		jsonrpc_connection* conn = s.connections[i]
 		if (conn.open):
 			if (conn.reader != 0):
 				frame_reader_free(conn.reader)
 		free(cast(char*, conn))
 		i = i + 1
-	array_list_free(s.connections)
-	hash_map_free(s.handlers)
+	list_free[jsonrpc_connection*](s.connections)
+	map_free[char*, jsonrpc_handler*](s.handlers)
 	free(s)

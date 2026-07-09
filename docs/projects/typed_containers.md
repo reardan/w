@@ -143,7 +143,15 @@ existing behavior is unchanged.
 
 ## Deferred work
 
-- `l.insert(i, v)`, `l.remove(i)`, `l.clear()` and other pseudo-methods.
+- `l.insert(i, v)`, `l.remove(i)`, `l.clear()`, and a `free()`/`destroy()`
+  pseudo-method for `list[T]`/`map[K, V]`/`set[K]`. `lib/container.w`
+  papers over the gap for consumers migrated off the old generic
+  containers (issue #120): `list_remove_at[T]` (shift-and-pop) for
+  `remove(i)`, and `list_free[T]`/`map_free[K, V]` that reach into the
+  auto-imported `__w_list`/`__w_hash_table` runtime directly (the same
+  cast-and-call `compiler/type_table.w` already used for
+  `type_table_truncate()`) in place of a `free()` method. These are
+  workarounds, not a substitute for landing the pseudo-methods properly.
 - `in` membership for lists (linear scan) if a use case appears.
 - Multi-word scalar elements on x86 (e.g. `list[int64]`).
 - Struct keys for maps and sets (values are done; keys still hash words,
@@ -177,16 +185,42 @@ seed, so `map`/`set`/`list[T]` syntax is legal inside `compiler/`,
   throughout codegen. Moving it onto `map[K, V]` would mean giving up
   those raw offset-as-handle semantics across every codegen call site
   that holds one, for no behavioral gain, so it stays as is.
-- Deferred: the parser generator (`libs/extras/parser_generator/`),
+- Done (issue #120): the parser generator (`libs/extras/parser_generator/`),
   `c_import`/`c_preprocessor` (`libs/extras/c_import/`,
   `libs/extras/c_preprocessor/`), `lib/task.w`, `lib/json_rpc.w`,
-  `lib/event_loop.w`, `tools/wexec.w`, and `debugger/convert.w` still use
-  `structures/array_list.w`/`structures/hash_map.w`/`structures/list.w`.
-  These are outside the seed-constrained directories (already buildable
-  with `bin/wv2`, so never blocked), but several call sites use
-  `structures/list.w`'s `.join()`/`.split_string()` or
-  `structures/hash_map.w`'s `get_default()`-style helpers that `list[T]`/
-  `map[K, V]` don't have yet (see the "Deferred work" list above and
-  `hash_maps_sets.md`). Migrating them is left for a follow-up so this
-  first step could land and stay verified independently, per issue #96's
-  guidance to land one subsystem at a time.
+  `lib/event_loop.w`, `tools/wexec.w`, and `debugger/convert.w` are
+  migrated off `structures/array_list.w`/`structures/hash_map.w`/
+  `structures/list.w` onto `list[T]`/`map[K, V]`. `debugger/convert.w`'s
+  `structures/list.w`-specific need (`.join()`/`.split_string()`) is
+  covered by `lib/str.w`'s `join()`/`split()`, added separately for
+  `docs/projects/golf_ergonomics.md`; the other sites needed only
+  `lib/container.w`'s workarounds above, plus `in`-then-index in place
+  of `map`'s `get(key, default)` in a few spots (see below).
+- Seed-transitivity wrinkle found while doing this: none of the above
+  live in `compiler/`, `grammar/`, or `code_generator/`, but
+  `grammar/c_import_statement.w` (compiled by the seed, since it's part
+  of `grammar.w`) imports `libs/extras/c_import/importer.w`, which pulls
+  in the rest of `c_import`/`c_preprocessor` and three parser-generator
+  files (`ast_node.w`, `diagnostics.w`, `token_stream.w`) — so the
+  *committed seed* compiles all of them too, even though they sit
+  outside the seed-constrained directories. The seed predates both
+  user-defined generic functions (`docs/projects/generics.md`) and
+  map's `.get(key, default)` pseudo-method (issue #19), so those seven
+  files avoid both: no calls into `lib/container.w`'s generics (frees
+  are inlined `__w_list_free`/`__w_map_free` casts instead), and
+  `in`-then-index instead of `.get()`. `libs/extras/parser_generator/
+  grammar_model.w` (and its consumers `generator.w`, `grammar_reader.w`)
+  are *not* in this transitive closure, so they use the ordinary
+  `lib/container.w` helpers freely. Verified by rebuilding from
+  `./w` and both self-host fixpoint checks (`./wbuild verify` /
+  `verify_x64`).
+- Still on the old containers, out of issue #120's scope:
+  `structures/json.w` (`hash_map`-backed JSON objects, `array_list`-backed
+  arrays — migrating it touches insertion-order iteration semantics the
+  built-in `map` doesn't guarantee, a bigger question than a mechanical
+  swap) and `tools/index/w_indexd.w`. `structures/array_list_test.w`,
+  `structures/hash_map_test.w`, `structures/list_test.w`,
+  `tests/for_container_test.w`, and `tests/tcp.w` intentionally keep
+  exercising the old containers directly (they're either the containers'
+  own test suites or `for`-loop generality tests), so they're not
+  migration targets at all.
