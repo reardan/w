@@ -1,10 +1,13 @@
 /*
 In-memory grammar model for the first ParserGenerator milestone.
 
-The initial grammar language is intentionally small:
+The grammar language supports named lexer helpers and inline matcher
+expressions:
 	parser <name>
 	token <NAME> <letters|digits|identifier|any>
+	token <NAME> = <matcher expression>
 	skip <NAME> <line_comment|block_comment>
+	fragment <NAME> = <matcher expression>
 	literal <NAME> "<text>"
 	rule <name> = TERM* (| TERM*)*
 
@@ -15,10 +18,57 @@ import lib.lib
 import lib.container
 
 
+int pg_match_expr_string_kind():
+	return 1
+
+
+int pg_match_expr_charset_kind():
+	return 2
+
+
+int pg_match_expr_reference_kind():
+	return 3
+
+
+int pg_match_expr_sequence_kind():
+	return 4
+
+
+int pg_match_expr_alternation_kind():
+	return 5
+
+
+int pg_match_expr_optional_kind():
+	return 6
+
+
+int pg_match_expr_zero_or_more_kind():
+	return 7
+
+
+int pg_match_expr_one_or_more_kind():
+	return 8
+
+
+struct pg_match_expr:
+	int kind
+	char* text
+	char* charset
+	list[pg_match_expr*] children
+	int line
+	int column
+
+
 struct pg_token_def:
 	char* name
 	char* matcher
+	pg_match_expr* expression
 	int kind
+
+
+struct pg_fragment_def:
+	char* name
+	pg_match_expr* expression
 
 
 struct pg_literal_def:
@@ -61,6 +111,7 @@ struct pg_grammar:
 	char* start_rule
 	list[pg_token_def*] tokens
 	list[pg_token_def*] skips
+	list[pg_fragment_def*] fragments
 	list[pg_literal_def*] literals
 	list[pg_rule*] rules
 	list[pg_recover_def*] recovers
@@ -72,18 +123,66 @@ pg_grammar* pg_grammar_new(char* name):
 	grammar.start_rule = 0
 	grammar.tokens = new list[pg_token_def*]
 	grammar.skips = new list[pg_token_def*]
+	grammar.fragments = new list[pg_fragment_def*]
 	grammar.literals = new list[pg_literal_def*]
 	grammar.rules = new list[pg_rule*]
 	grammar.recovers = new list[pg_recover_def*]
 	return grammar
 
 
+pg_match_expr* pg_match_expr_new(int kind, int line, int column):
+	pg_match_expr* expression = new pg_match_expr()
+	expression.kind = kind
+	expression.text = 0
+	expression.charset = 0
+	expression.children = new list[pg_match_expr*]
+	expression.line = line
+	expression.column = column
+	return expression
+
+
+pg_match_expr* pg_match_expr_text_new(int kind, char* text, int line, int column):
+	pg_match_expr* expression = pg_match_expr_new(kind, line, column)
+	expression.text = strclone(text)
+	return expression
+
+
+pg_match_expr* pg_match_expr_charset_new(char* charset, int line, int column):
+	pg_match_expr* expression = pg_match_expr_new(pg_match_expr_charset_kind(), line, column)
+	expression.charset = malloc(128)
+	int i = 0
+	while (i < 128):
+		expression.charset[i] = charset[i]
+		i = i + 1
+	return expression
+
+
+pg_match_expr* pg_match_expr_unary_new(int kind, pg_match_expr* child, int line, int column):
+	pg_match_expr* expression = pg_match_expr_new(kind, line, column)
+	expression.children.push(child)
+	return expression
+
+
+void pg_match_expr_add(pg_match_expr* expression, pg_match_expr* child):
+	expression.children.push(child)
+
+
 pg_token_def* pg_token_def_new(char* name, char* matcher, int kind):
 	pg_token_def* token = new pg_token_def()
 	token.name = strclone(name)
-	token.matcher = strclone(matcher)
+	token.matcher = 0
+	if (matcher != 0):
+		token.matcher = strclone(matcher)
+	token.expression = 0
 	token.kind = kind
 	return token
+
+
+pg_fragment_def* pg_fragment_def_new(char* name, pg_match_expr* expression):
+	pg_fragment_def* fragment = new pg_fragment_def()
+	fragment.name = strclone(name)
+	fragment.expression = expression
+	return fragment
 
 
 pg_literal_def* pg_literal_def_new(char* name, char* text, int kind):
@@ -129,6 +228,13 @@ pg_token_def* pg_grammar_add_token(pg_grammar* grammar, char* name, char* matche
 	return token
 
 
+pg_token_def* pg_grammar_add_token_expression(pg_grammar* grammar, char* name, pg_match_expr* expression):
+	pg_token_def* token = pg_token_def_new(name, 0, grammar.tokens.length + grammar.literals.length + 1)
+	token.expression = expression
+	grammar.tokens.push(token)
+	return token
+
+
 # Skip rules produce hidden-channel tokens. They get negative kinds starting
 # at -3 (-1 is the invalid kind, -2 the whitespace kind) so they never collide
 # with EOF (0) or the positive token/literal kinds.
@@ -136,6 +242,19 @@ pg_token_def* pg_grammar_add_skip(pg_grammar* grammar, char* name, char* matcher
 	pg_token_def* token = pg_token_def_new(name, matcher, 0 - grammar.skips.length - 3)
 	grammar.skips.push(token)
 	return token
+
+
+pg_token_def* pg_grammar_add_skip_expression(pg_grammar* grammar, char* name, pg_match_expr* expression):
+	pg_token_def* token = pg_token_def_new(name, 0, 0 - grammar.skips.length - 3)
+	token.expression = expression
+	grammar.skips.push(token)
+	return token
+
+
+pg_fragment_def* pg_grammar_add_fragment(pg_grammar* grammar, char* name, pg_match_expr* expression):
+	pg_fragment_def* fragment = pg_fragment_def_new(name, expression)
+	grammar.fragments.push(fragment)
+	return fragment
 
 
 pg_literal_def* pg_grammar_add_literal(pg_grammar* grammar, char* name, char* text):
@@ -186,6 +305,16 @@ pg_token_def* pg_grammar_find_token(pg_grammar* grammar, char* name):
 		pg_token_def* token = grammar.tokens[i]
 		if (strcmp(token.name, name) == 0):
 			return token
+		i = i + 1
+	return 0
+
+
+pg_fragment_def* pg_grammar_find_fragment(pg_grammar* grammar, char* name):
+	int i = 0
+	while (i < grammar.fragments.length):
+		pg_fragment_def* fragment = grammar.fragments[i]
+		if (strcmp(fragment.name, name) == 0):
+			return fragment
 		i = i + 1
 	return 0
 
@@ -256,10 +385,34 @@ void pg_rule_free(pg_rule* rule):
 	free(rule)
 
 
+void pg_match_expr_free(pg_match_expr* expression):
+	if (expression == 0):
+		return
+	int i = 0
+	while (i < expression.children.length):
+		pg_match_expr_free(expression.children[i])
+		i = i + 1
+	if (expression.text != 0):
+		free(expression.text)
+	if (expression.charset != 0):
+		free(expression.charset)
+	list_free[pg_match_expr*](expression.children)
+	free(expression)
+
+
 void pg_token_def_free(pg_token_def* token):
 	free(token.name)
-	free(token.matcher)
+	if (token.matcher != 0):
+		free(token.matcher)
+	if (token.expression != 0):
+		pg_match_expr_free(token.expression)
 	free(token)
+
+
+void pg_fragment_def_free(pg_fragment_def* fragment):
+	free(fragment.name)
+	pg_match_expr_free(fragment.expression)
+	free(fragment)
 
 
 void pg_literal_def_free(pg_literal_def* literal):
@@ -291,6 +444,10 @@ void pg_grammar_free(pg_grammar* grammar):
 		pg_token_def_free(grammar.skips[i])
 		i = i + 1
 	i = 0
+	while (i < grammar.fragments.length):
+		pg_fragment_def_free(grammar.fragments[i])
+		i = i + 1
+	i = 0
 	while (i < grammar.literals.length):
 		pg_literal_def_free(grammar.literals[i])
 		i = i + 1
@@ -307,6 +464,7 @@ void pg_grammar_free(pg_grammar* grammar):
 		free(grammar.start_rule)
 	list_free[pg_token_def*](grammar.tokens)
 	list_free[pg_token_def*](grammar.skips)
+	list_free[pg_fragment_def*](grammar.fragments)
 	list_free[pg_literal_def*](grammar.literals)
 	list_free[pg_rule*](grammar.rules)
 	list_free[pg_recover_def*](grammar.recovers)
