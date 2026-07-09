@@ -26,10 +26,6 @@ void wtest_init_targets():
 	wtest_targets.push(c"self_host_warning_test")
 	wtest_targets.push(c"type_system_error_test")
 	wtest_targets.push(c"type_system_warning_test")
-	wtest_targets.push(c"list_test")
-	wtest_targets.push(c"list_64_test")
-	wtest_targets.push(c"hash_map_test")
-	wtest_targets.push(c"hash_map_64_test")
 	wtest_targets.push(c"hash_table_test")
 	wtest_targets.push(c"hash_table_64_test")
 	wtest_targets.push(c"string_test")
@@ -63,8 +59,6 @@ void wtest_init_targets():
 	wtest_targets.push(c"parser_generator_test")
 	wtest_targets.push(c"parser_generator_w_test")
 	wtest_targets.push(c"parser_generator_c_test")
-	wtest_targets.push(c"linked_list_test")
-	wtest_targets.push(c"linked_list_64_test")
 	wtest_targets.push(c"net_test")
 	wtest_targets.push(c"poll_test")
 	wtest_targets.push(c"framing_test")
@@ -251,21 +245,12 @@ void wtest_map_structures(char* path):
 		wtest_add(path, c"json_codec_64_test")
 		wtest_add(path, c"json_rpc_test")
 		wtest_add(path, c"json_rpc_64_test")
-	else if (strcmp(path, c"structures/hash_map.w") == 0):
-		wtest_add(path, c"hash_map_test")
-		wtest_add(path, c"hash_map_64_test")
 	else if (strcmp(path, c"structures/hash_table.w") == 0):
 		wtest_add(path, c"hash_table_test")
 		wtest_add(path, c"hash_table_64_test")
 	else if (strcmp(path, c"structures/array_list.w") == 0):
 		wtest_add(path, c"array_list_test")
 		wtest_add(path, c"array_list_64_test")
-	else if (strcmp(path, c"structures/linked_list.w") == 0):
-		wtest_add(path, c"linked_list_test")
-		wtest_add(path, c"linked_list_64_test")
-	else if (strcmp(path, c"structures/list.w") == 0):
-		wtest_add(path, c"list_test")
-		wtest_add(path, c"list_64_test")
 	else if (strcmp(path, c"structures/string.w") == 0):
 		wtest_add(path, c"string_test")
 		wtest_add(path, c"string_64_test")

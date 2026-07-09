@@ -1,7 +1,7 @@
 import lib.lib
 import lib.assert
 import lib.net
-import structures.list
+import lib.str
 
 
 
@@ -28,15 +28,11 @@ void websockets_response(int file):
 
 
 void parse_headers(int message):
-	die()
 	println(c"parsing headers")
 	println(c"")
-	split_string(message, c"\x0a")
-	int i = 0
-	while (i < length):
-		char* str = get(i)
-		print_string(c"line: ", str)
-		i = i + 1
+	list[char*] lines = split(cast(char*, message), '\n')
+	for char* line in lines:
+		print_string(c"line: ", line)
 
 
 void respond1(int client_sock):
