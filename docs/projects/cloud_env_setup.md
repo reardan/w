@@ -114,10 +114,10 @@ setup:
       That would remove the need for the `unlimited`-stack bootstrap
       entirely, but changes the committed binary and is out of scope for
       env setup — tracked as its own decision.
-- [ ] File the GitHub issue below (agent `gh` is read-only; could not
-      create it automatically).
+- [x] File the GitHub issue below — filed as
+      [#134](https://github.com/reardan/w/issues/134).
 
-## Proposed GitHub issue
+## GitHub issue (filed: #134)
 
 > **Title:** Committed 32-bit seed `./w` segfaults compiling `w.w` at the
 > default 8 MB stack on kernel 6.12 (Cursor Cloud), breaking cold
