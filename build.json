@@ -2015,6 +2015,15 @@
 			]
 		},
 		{
+			"name": "graphics_darwin",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/dynamic_darwin_test.w", "-o", "bin/dynamic_darwin_test"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
+			]
+		},
+		{
 			"name": "dynamic_test_x64",
 			"deps": ["wv2"],
 			"steps": [
@@ -2273,6 +2282,7 @@
 				"varargs_test",
 				"extern_data_test",
 				"graphics_math_test",
+				"graphics_darwin",
 				"test",
 				"hello",
 				"tests_x64"

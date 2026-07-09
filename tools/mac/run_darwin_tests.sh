@@ -20,7 +20,7 @@ cd "$(dirname "$0")/../.."
 
 tests="$*"
 if [ -z "$tests" ]; then
-	tests="bin/hello_darwin"
+	tests="bin/hello_darwin bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin"
 fi
 
 fail=0

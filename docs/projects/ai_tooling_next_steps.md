@@ -32,7 +32,15 @@ is a queue, not an archive.
   hook/LSP/MCP logs less noisy.
 - **Arch-aware checking.** The hook and skills default to the x86 check;
   `lib/__arch__/x64/` files (and x64-only constructs like `int64`)
-  deserve an automatic `check --json x64` pass when touched.
+  deserve an automatic `check --json x64` pass when touched. Got worse
+  with the graphics macOS backend (2026-07-09): `graphics/cocoa.w`
+  declares `float64` extern parameters, so the default check reports
+  "float64 requires the x64 target" on a perfectly healthy file — and
+  there is no way to redirect it, because the target selector does not
+  compose with the command (`wv2 x64 check --json f.w` parses "check"
+  as a filename). Fix both: accept `wv2 <target> check` (or a
+  `--arch=` flag), and infer the target from `__arch__` path segments
+  and per-file markers so the hook picks the right one automatically.
 
 ## Edit-check hook (`bin/whook`)
 

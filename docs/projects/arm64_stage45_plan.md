@@ -172,3 +172,30 @@ native dev loop: `__word_size__` is a *target* constant, so any use of it
 in compiler sources is fixpoint-safe, but it lands in emitted code — never
 run the guards against a source tree being edited concurrently (the
 container build re-reads bind-mounted sources between stages).
+
+## Execution update (2026-07-09): dynamic linking + native graphics landed
+
+The graphics/macOS project (plan in docs/projects/graphics.md, "The
+macOS backend") closed the dynamic-linking gap this plan deferred:
+
+- **AAPCS64 FFI shims** (`code_generator/ffi.w`): x0-x7/v0-v7
+  classification, Linux 8-byte stack spill, C frame parked below the W
+  stack (x28 adopts sp at entry, so a naive push would corrupt the
+  oldest W words). Validated natively on aarch64 (dynamic_test,
+  float_abi_test) and on the M3.
+- **aarch64 ELF dynamic linking** (`elf_dynamic.w`): interp
+  /lib/ld-linux-aarch64.so.1, R_AARCH64_GLOB_DAT/COPY, reserved phdr
+  slots 2/3 (slot 1 is the W^X data load); GOT slots move to the RW
+  data segment on data_split targets.
+- **Mach-O binds** (`code_generator/macho_dynamic.w`): classic
+  LC_DYLD_INFO_ONLY opcodes — probed first: macOS 26.3 dyld still
+  accepts them for main executables across an ad-hoc re-sign, so no
+  chained fixups. Load commands append into the (now 1024-byte)
+  headerpad; the bind stream is __LINKEDIT's payload; the entry rebase
+  stub and dyld binds touch disjoint cells by construction.
+- **extern alias** (`= "symbol"`): one library symbol bound once per
+  call signature — what objc_msgSend needs.
+- **Result**: graphics/demo.w runs as a native arm64 Mach-O app in a
+  real Mac window (AppKit + NSOpenGL 3.2-core via objc_msgSend, GL
+  "4.1 Metal"); the gl smoke test passes its glReadPixels checks
+  natively.

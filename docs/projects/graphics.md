@@ -1,6 +1,8 @@
 # graphics/ — math, OpenGL and windowing for W
 
-Status: stage 1 landed (math + GL/X11 bindings + smoke test).
+Status: stage 1 landed (math + GL/X11 bindings + smoke test), plus the
+native macOS backend (AppKit/NSOpenGL via objc_msgSend — see "The macOS
+backend" below).
 
 ## Goal
 
@@ -50,12 +52,15 @@ FFI bindings through `c_lib` + `extern` (link-time dynamic linking, see
   `x_set_window_attributes`, the `x_event` union) match the x86_64 ABI,
   so the windowing stack is **x64-only**; compile consumers with
   `wv2 x64`.
-- `graphics.gl` binds libGL.so.1 (which also exports GLX): context
-  creation, core GL state, buffers/vertex attributes, shader/program
-  objects and uniforms. Shaders are compiled from GLSL source strings
+- `graphics.gl` holds the GL enums and shader helpers and pulls the
+  per-target binding through `graphics/__arch__/<target>/gl_native.w`:
+  the Linux targets import `graphics.gl_linux` (libGL.so.1, which also
+  exports GLX), arm64_darwin binds the OpenGL framework with the same
+  core-GL extern names. Shaders are compiled from GLSL source strings
   at runtime via `gl_compile_shader` / `gl_link_program` /
   `gl_create_program` (no shader file loader yet — string shaders by
-  design for now).
+  design for now). Portable sources join their bodies (valid GLSL 130
+  and 150) with the backend's `gfx_shader_header()`.
 
 ### graphics.window
 
@@ -67,20 +72,68 @@ The high-level entry point:
 		gfx_window_swap(win)
 	gfx_window_destroy(win)
 
-`gfx_window_open` picks a double-buffered RGBA GLX visual, creates the
-window, registers WM_DELETE_WINDOW and makes a GL context current.
-`gfx_window_poll` drains the X event queue and tracks close/resize,
-last keycode, pointer position and button mask.
+`graphics.window` dispatches to the target's backend through
+`graphics/__arch__/<target>/window_native.w`: x64/arm64 →
+`graphics.window_x11`, arm64_darwin → `graphics.window_cocoa`,
+x86/win64 → `graphics.window_stub` (open reports the gap and returns
+0). On X11, `gfx_window_open` picks a double-buffered RGBA GLX visual,
+creates the window, registers WM_DELETE_WINDOW and makes a GL context
+current; `gfx_window_poll` drains the X event queue and tracks
+close/resize, last keycode, pointer position and button mask.
+
+## The macOS backend (arm64_darwin)
+
+`graphics.cocoa` + `graphics.window_cocoa`, running as a native arm64
+Mach-O app — no X server, no Homebrew, no Metal:
+
+- **AppKit via objc_msgSend.** libobjc is bound directly
+  (`objc_getClass`, `sel_registerName`, autorelease pools) and
+  `objc_msgSend` is aliased once per call signature with the
+  extern-alias syntax (`extern int objc_msg1(...) = "objc_msgSend"`).
+  The NSRect argument of `initWithContentRect:...` is flattened to 4
+  `float64`s (an HFA of 4 doubles occupies v0–v3 exactly like 4 scalar
+  doubles). Hard rule: never bind struct-returning selectors (frame,
+  locationInWindow, …); mask narrow BOOL/ushort returns.
+- **Windowing:** nib-less, delegate-free fixed-size NSWindow; 3.2-core
+  NSOpenGLPixelFormat (GL 4.1 in practice; `gfx_shader_header()` is
+  `"#version 150\n"`); manual event pump
+  (`nextEventMatchingMask:untilDate:inMode:dequeue:` → `sendEvent:`)
+  under per-frame autorelease pools; close detected by polling
+  `isVisible` with `setReleasedWhenClosed:NO`. The core profile
+  mandates a bound VAO, created at open.
+- **Underneath:** the AAPCS64 FFI shims (`code_generator/ffi.w`) and
+  the classic LC_DYLD_INFO_ONLY Mach-O bind stream
+  (`code_generator/macho_dynamic.w`).
+
+Probe results that fixed the design (macOS 26.3, M3 Pro, 2026-07-08):
+
+- dyld still **accepts classic LC_DYLD_INFO_ONLY bind opcodes** for
+  main executables, including across an ad-hoc re-sign — so the writer
+  uses them instead of chained fixups.
+- **NSOpenGL still works**: a 3.2-core pixel format yields
+  `GL_VERSION` "4.1 Metal - 90.5" and renders correctly.
+
+Workflow: cross-compile on Linux
+(`wv2 arm64_darwin graphics/demo.w -o bin/graphics_demo_darwin`), then
+sign + run natively with `tools/mac/run_darwin_tests.sh`. These need a
+GUI session (WindowServer); headless the pixel-format init returns nil
+and programs take the SKIP path.
 
 ## Testing
 
 `graphics_gl_smoke_test` (part of `tests_x64`) renders one
 interpolated-color triangle through a `mat4` uniform from
 graphics.math, reads pixels back with `glReadPixels` and checks both
-the triangle center and the clear-color corner. When no X display is
+the triangle center and the clear-color corner. When no display is
 reachable it prints "graphics gl smoke SKIP" and passes, like
 `cuda_smoke` does for missing GPUs, so headless hosts stay green — a
 real failure (bad pixels, shader errors) still fails the target.
+
+`graphics_darwin` (part of `tests`) cross-compiles the three darwin
+binaries (`dynamic_darwin_test`, `graphics_gl_smoke_darwin`,
+`graphics_demo_darwin`) so Linux CI guards compilation; running them
+is Mac-side via `tools/mac/run_darwin_tests.sh`, whose default set
+includes the first two (the demo is interactive).
 
 ## Compiler/runtime fixes the module surfaced
 

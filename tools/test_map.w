@@ -103,6 +103,7 @@ void wtest_init_targets():
 	wtest_targets.push(c"str_test")
 	wtest_targets.push(c"math_test")
 	wtest_targets.push(c"extern_alias_test_x64")
+	wtest_targets.push(c"graphics_darwin")
 	wtest_targets.push(c"tests")
 
 
@@ -274,8 +275,10 @@ void wtest_map_graphics(char* path):
 		wtest_add(path, c"graphics_math_64_test")
 		wtest_add(path, c"graphics_gl_smoke_test")
 	else:
-		# x11.w / gl.w / window.w / gl_smoke_test.w all feed the smoke test
+		# x11.w / gl*.w / window*.w / cocoa.w / gl_smoke_test.w feed the
+		# smoke test and the darwin cross-compile guard
 		wtest_add(path, c"graphics_gl_smoke_test")
+		wtest_add(path, c"graphics_darwin")
 
 
 void wtest_map_path(char* path):
@@ -360,6 +363,8 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"math_test")
 	else if (strcmp(path, c"tests/extern_alias_test.w") == 0):
 		wtest_add(path, c"extern_alias_test_x64")
+	else if (strcmp(path, c"tests/dynamic_darwin_test.w") == 0):
+		wtest_add(path, c"graphics_darwin")
 	else if (starts_with(path, c"tests/parser_generator/")):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):

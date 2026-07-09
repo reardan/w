@@ -363,9 +363,22 @@ there is no foreign ABI to be compatible with until the libSystem stage.
   negative-test fixtures in the suite (enforced under qemu CI; enforced on
   M3 via the arm64e slice on macOS 26+). Acceptance: full arm64 suite green
   with pac=ret; corruption fixtures die on both qemu and M3.
-- **Deferred (own projects):** libSystem dynamic linking (`c_import` on
-  macOS — Mach-O twin of `elf_dynamic.w`, chained fixups, Darwin variadic
-  ABI, signed imported function pointers per arm64e schema); REPL on arm64
+- **Dynamic linking (landed with the graphics/macOS project, 2026-07):**
+  `c_lib`/`extern` now work on both arm64 targets. AAPCS64 FFI shims in
+  `code_generator/ffi.w` (x0-x7/v0-v7, 8-byte Linux stack spill; the C
+  frame parks below the W stack); aarch64 ELF `.interp`/`.dynamic`
+  (`elf_dynamic.w`, R_AARCH64_GLOB_DAT/COPY, phdr slots 2/3); Mach-O
+  binds via classic LC_DYLD_INFO_ONLY opcodes (`macho_dynamic.w` —
+  macOS 26.3 still accepts them, no chained fixups needed). GOT slots
+  live in the RW data segment (W^X). Caveats: binds only (no extern
+  data objects on arm64 — COPY space lives in the code stream);
+  variadic externs work on arm64 Linux but are rejected on
+  arm64_darwin (Darwin's variadic ABI packs the tail on the stack);
+  arm64_darwin extern calls take at most 8 integer + 8 float args
+  (Darwin packs stack args at natural size); imported function
+  pointers are unsigned (plain arm64, not arm64e).
+- **Deferred (own projects):** full `c_import` on macOS (header-driven
+  bulk imports on top of the above); REPL on arm64
   (in-process; needs an arm64 host and replaces the x64 `MAP_32BIT` hack
   with movz/movk addressing); `wdbg` on arm64 (breakpoints are `brk #0`,
   but there is no x86-style trap flag — stepping needs breakpoint-hopping or
