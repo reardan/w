@@ -99,7 +99,10 @@ types because their descriptors point into the enclosing object.
 ## Deferred work
 
 - Contextual bare literals.
-- Further pseudo-methods such as `discard` and `clear`.
+- Further pseudo-methods such as `discard` and `clear`, and a
+  `free()`/`destroy()` method — `lib/container.w`'s `map_free[K, V]`
+  (reaching into the auto-imported `__w_hash_table` runtime directly)
+  stands in for the latter where issue #120 needed it.
 - Struct keys (values are done).
 - Migrating the compiler's symbol table to a built-in map: it was never
   actually backed by `structures/hash_map.w` to begin with (see
@@ -111,5 +114,11 @@ types because their descriptors point into the enclosing object.
   `list[int]` (issue #96); the remaining `structures/array_list.w`/
   `structures/hash_map.w` consumers (parser generator, c_import/
   c_preprocessor, `lib/task.w`, `lib/json_rpc.w`, `lib/event_loop.w`,
-  `tools/wexec.w`) are deferred to a follow-up, several pending the
-  richer pseudo-methods above.
+  `tools/wexec.w`, `debugger/convert.w`) are migrated too (issue #120;
+  see `typed_containers.md` for the seed-transitivity wrinkle that
+  surfaced along the way). `structures/json.w` and
+  `tools/index/w_indexd.w` still use the old containers and are out of
+  that issue's scope — `structures/json.w` because migrating a
+  `hash_map`-backed JSON object touches insertion-order iteration
+  guarantees the built-in `map` doesn't make, not just a mechanical
+  container swap.
