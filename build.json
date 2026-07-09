@@ -1313,7 +1313,7 @@
 		},
 		{
 			"name": "wimcp",
-			"deps": ["windex"],
+			"deps": ["windex", "windexd"],
 			"inputs": ["tools/mcp/w_index_mcp.w"],
 			"outputs": ["bin/wimcp"],
 			"steps": [
@@ -1322,15 +1322,16 @@
 		},
 		{
 			"name": "index_mcp_test",
-			"deps": ["wimcp"],
+			"deps": ["wimcp", "indexd_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/mcp/index_mcp_test.w", "-o", "bin/index_mcp_test"]},
-				{"cmd": ["bin/index_mcp_test"]}
+				{"cmd": ["bin/index_mcp_test"]},
+				{"cmd": ["bin/stop_windexd"]}
 			]
 		},
 		{
 			"name": "wlsp",
-			"deps": ["wv2", "windex"],
+			"deps": ["wv2", "windex", "windexd"],
 			"inputs": ["tools/lsp/w_lsp.w"],
 			"outputs": ["bin/wlsp"],
 			"steps": [
@@ -1339,10 +1340,11 @@
 		},
 		{
 			"name": "lsp_test",
-			"deps": ["wlsp", "windex"],
+			"deps": ["wlsp", "index_mcp_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/lsp/lsp_test.w", "-o", "bin/lsp_test"]},
-				{"cmd": ["bin/lsp_test"]}
+				{"cmd": ["bin/lsp_test"]},
+				{"cmd": ["bin/stop_windexd"]}
 			]
 		},
 		{
