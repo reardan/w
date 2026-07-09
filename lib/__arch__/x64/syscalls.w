@@ -117,6 +117,13 @@ int dup2(int oldfd, int newfd):
 int kill(int pid, int sig):
 	return syscall(62, pid, sig, 0)
 
+# ptrace (101). request/pid/addr/data follow the classic ptrace(2) ABI.
+# For PTRACE_PEEK* the raw syscall (unlike the glibc wrapper) writes the
+# read word to *data and returns 0, so callers pass a word pointer as data
+# and read it back; for PTRACE_POKE* data is the value to write.
+int sys_ptrace(int request, int pid, int addr, int data):
+	return syscall7(101, request, pid, addr, data, 0, 0)
+
 int chdir(char* path):
 	return syscall(80, path, 0, 0)
 

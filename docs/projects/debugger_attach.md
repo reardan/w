@@ -1,12 +1,58 @@
 # Debugger: Attach to a Running Process (out-of-process ptrace mode)
 
-Status: **design** — no implementation yet.
+Status: **partially implemented** — read-only inspection and execution
+control landed (`debugger/attach.w`, `wdbg --attach <pid> [file.w]`, tests
+in `tools/attach_test.sh` / the `attach_test` build target). Locals/args
+inspection, expression evaluation and hardware watchpoints in attach mode
+are not yet wired; see "Implemented" and "Remaining" below.
 
 Tracks [reardan/w#123](https://github.com/reardan/w/issues/123). This is
 the "out-of-process ptrace mode" design doc that
 `debugger_conditional_breakpoints.md` ("Split off") deferred; hardware
 watchpoints land here as a late phase because they need this
 architecture.
+
+## Implemented
+
+`wdbg --attach <pid> [file.w]` (`debugger/attach.w`) is a self-contained
+ptrace command loop, kept entirely separate from wdbg's in-process signal
+model so it cannot perturb self-hosting (`./wbuild verify` stays
+byte-identical). What works today:
+
+- **Attach / detach / kill.** Attaches with `PTRACE_ATTACH`, stops the
+  process, and on `detach`/`quit` restores any patched bytes and lets it
+  continue; `kill` terminates it. EPERM/ESRCH are reported clearly.
+- **Registers, memory, stack.** `r`, `x <addr> [count]`, `st` via
+  `PTRACE_GETREGS` and `PTRACE_PEEKDATA`.
+- **Symbolization** (`file.w` given, x86 32-bit). The source is recompiled
+  through the same ELF backend that built the on-disk binary
+  (`wdbg_attach_compile` → `link_impl`), so `code_offset` is the load base
+  and the symbol/line tables hold the target's real addresses — no delta.
+  Calibration compares the compiled image's first bytes against the running
+  process and falls back to raw mode on any mismatch. Enables `l`, `bt`,
+  `list`-free source lines, `i functions`, and symbol/`file:line` break
+  targets.
+- **Breakpoints and stepping.** `b <function | file:line | 0xADDR>`, `d`,
+  `c`, `si` via `PTRACE_POKEDATA` int3 patching and a `wait4` stop loop with
+  the disarm / single-step / re-arm dance; `detach` restores original bytes.
+
+Design choice: rather than thread a shared in-process/ptrace "seam" through
+the seed-compiled memory and register modules (original phase 2), attach
+mode is a parallel implementation. That keeps the invasive, self-host-risky
+refactor out of the core while delivering the same capability; the seam can
+still be pursued later if locals/eval reuse justifies it.
+
+## Remaining
+
+- **Locals / args / `set` / frames** in attach mode (original phase 5's
+  variable side). The recompile already yields the `stack_pos` tables, so
+  this is reading stack slots through ptrace and reusing `debugger/locals.w`
+  arithmetic — the main open work item.
+- **Expression evaluation** (`p <expr>`): reads through ptrace; in-target
+  calls stay out of scope.
+- **Hardware watchpoints** via `PTRACE_POKEUSER` on DR0–DR7.
+- **x86-64 and dynamic/PIE symbolization**: today symbolization is x86
+  (32-bit ELF) only; raw mode works regardless of word size.
 
 ## Motivation
 

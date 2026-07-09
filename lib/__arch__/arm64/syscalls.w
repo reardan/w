@@ -145,6 +145,11 @@ int dup2(int oldfd, int newfd):
 int kill(int pid, int sig):
 	return syscall(129, pid, sig, 0)
 
+# ptrace (117). Same classic ABI as x86; wdbg's attach mode only decodes
+# x86/x86-64 register frames, so this wrapper exists for build parity.
+int sys_ptrace(int request, int pid, int addr, int data):
+	return syscall7(117, request, pid, addr, data, 0, 0)
+
 int chdir(char* path):
 	return syscall(49, path, 0, 0)
 

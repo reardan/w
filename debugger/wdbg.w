@@ -61,10 +61,15 @@ instruction, and the handler keeps stepping until the source line changes
 
 usage: wdbg <file.w> [--break_start] [--break_end]
    or: w --debug <file.w> [--break_start] [--break_end]
+   or: wdbg --attach <pid> [file.w]   (control a running process via ptrace)
 
 --break_start traps before the debuggee's main runs; --break_end traps
 after it returns. End of input on stdin continues execution, so piped
 command scripts cannot hang the debuggee.
+
+--attach <pid> attaches to an already-running process instead of starting
+one (debugger/attach.w). Passing the program's source as well lets attach
+mode symbolize addresses; without it, attach runs in raw-address mode.
 
 This file is the whole debugger as a library around wdbg_main();
 debugger/debugger.w wraps it as the standalone wdbg binary and w.w
@@ -81,6 +86,7 @@ import debugger.locals
 import debugger.breakpoints
 import debugger.watchpoints
 import debugger.eval
+import debugger.attach
 
 
 # Stepping state machine, consumed by the SIGTRAP handler.
@@ -1171,8 +1177,26 @@ void wdbg_install_handler(int signum, int handler, int flags):
 	free(act)
 
 
+# Rebuild the debuggee's symbol and line tables for attach mode by compiling
+# its source through the same driver path that produced the on-disk binary
+# (link_impl with the ELF backend). code_offset is then the load base and the
+# tables hold the target's real addresses, so attach needs no remapping. The
+# ELF image goes to /dev/null; only the in-memory tables are kept.
+void wdbg_attach_compile(char* target):
+	int argv = cast(int, malloc(4 * __word_size__))
+	save_word(cast(char*, argv + 0 * __word_size__), cast(int, c"wdbg"))
+	save_word(cast(char*, argv + 1 * __word_size__), cast(int, target))
+	save_word(cast(char*, argv + 2 * __word_size__), cast(int, c"-o"))
+	save_word(cast(char*, argv + 3 * __word_size__), cast(int, c"/dev/null"))
+	link_impl(4, argv, 1, 0)
+
+
 int wdbg_main(int argc, int argv):
 	args_init(argc, argv)
+	# Quiet the compiler driver: wdbg is entered through its own main (not
+	# w.w's, which sets this), so without it the attach-mode recompile and
+	# the in-process compile would print progress noise to stdout.
+	verbosity = -1
 
 	# The target is the first argument ending in .w, so the boolean
 	# --break_* flags can appear on either side of it
@@ -1183,8 +1207,27 @@ int wdbg_main(int argc, int argv):
 			if (target == 0):
 				target = args_get(i)
 		i = i + 1
+
+	# --attach <pid>: control a running process through ptrace instead of
+	# starting one. This is a wholly separate path from the in-process model
+	# below, so it returns here rather than mmapping and running a debuggee.
+	# With a source, compile it exactly as the on-disk binary was built
+	# (wdbg_attach_compile) so the symbol/line tables carry the target's real
+	# addresses; without one, attach in raw-address mode.
+	char* attach_arg = args_value(c"attach")
+	if (attach_arg != 0):
+		int attach_pid = atoi(attach_arg)
+		if (attach_pid <= 0):
+			println2(c"wdbg: --attach needs a process id")
+			exit(1)
+		if (target != 0):
+			wdbg_attach_compile(target)
+			exit(wdbg_attach_run(attach_pid, 1))
+		exit(wdbg_attach_run(attach_pid, 0))
+
 	if (target == 0):
 		println2(c"usage: wdbg <file.w> [--break_start] [--break_end]")
+		println2(c"   or: wdbg --attach <pid> [file.w]")
 		exit(1)
 
 	verbosity = -1

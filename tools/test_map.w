@@ -83,6 +83,7 @@ void wtest_init_targets():
 	wtest_targets.push(c"repl_test_x64")
 	wtest_targets.push(c"debug_test")
 	wtest_targets.push(c"debug_test_x64")
+	wtest_targets.push(c"attach_test")
 	wtest_targets.push(c"c_import_test")
 	wtest_targets.push(c"c_preprocessor_test")
 	wtest_targets.push(c"c_import_errno_test")
@@ -313,8 +314,11 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"debug_test")
 		wtest_add(path, c"debug_test_x64")
 		wtest_add(path, c"debug_mcp_test")
+		wtest_add(path, c"attach_test")
 	else if (strcmp(path, c"tests/debug_no_pause_fixture.w") == 0):
 		wtest_add(path, c"debug_mcp_test")
+	else if ((strcmp(path, c"tests/attach_target_fixture.w") == 0) | (strcmp(path, c"tools/attach_test.sh") == 0)):
+		wtest_add(path, c"attach_test")
 	else if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):

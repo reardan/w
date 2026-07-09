@@ -284,6 +284,12 @@ int kill(int pid, int sig):
 	return -1
 
 
+# ptrace has no win64 equivalent; the stub keeps the debugger's attach
+# module linkable (attach mode is Linux x86/x86-64 only).
+int sys_ptrace(int request, int pid, int addr, int data):
+	return -1
+
+
 int sys_clone(int flags, int child_stack):
 	return -1
 
