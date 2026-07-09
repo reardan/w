@@ -98,6 +98,17 @@ is a queue, not an archive.
   the server must be registered in the Cloud Agents dashboard (stdio
   command: `sh -c "./wbuild wmcp >&2 && exec ./bin/wmcp"`).
   Owner action; until then cloud agents use the shell commands.
+- **Cold `./wbuild` dies on the current Cloud kernel (WIP).** On the
+  Cloud VM (kernel 6.12, `ulimit -s` 8 MB) the committed seed `./w`
+  segfaults compiling `w.w`; under `ulimit -s unlimited` it produces a
+  valid `bin/wv2` but floods ~2.46 GB of NUL bytes to stderr, which the
+  32-bit `bin/wexec` cannot buffer, so the `wv2` target fails. Startup
+  script now bootstraps `bin/wv2` directly (flood → `/dev/null`) and
+  primes the `wexec` `wv2`/`wexec` cache stamps by standing the good
+  compiler in as `./w` and restoring with `git checkout -- w`. Full
+  writeup + proposed issue: `docs/projects/cloud_env_setup.md`. Real fix
+  candidates: promote a flood-free seed via `./wbuild update`, or make
+  `wexec` bound/stream its step capture instead of buffering unboundedly.
 - **Conditional breakpoints/hit counts/logpoints land soon** (design:
   `docs/projects/debugger_conditional_breakpoints.md`). They add new
   stable, grep-able output lines (`logpoint N hit H: expr = value`,

@@ -62,9 +62,20 @@ the server in the Cloud Agents dashboard).
 
 ### Non-obvious gotchas
 - The `bin/` output directory is `.gitignore`d; `./wbuild` creates it itself.
-  If you see a redirection/`chmod` failure like
-  `bin/wv2: No such file or directory` from a hand-run compile, run
-  `mkdir -p bin` (or `./wbuild build`) first.
+	If you see a redirection/`chmod` failure like
+	`bin/wv2: No such file or directory` from a hand-run compile, run
+	`mkdir -p bin` (or `./wbuild build`) first.
+- **Cold `./wbuild` needs the primed cache on the current Cloud kernel.**
+	On this Cloud VM the committed seed `./w` segfaults compiling `w.w` at
+	the default 8 MB stack (and floods stderr under `ulimit -s unlimited`),
+	so the startup update script bootstraps `bin/wv2`/`bin/wexec` and primes
+	`bin/.wexec_cache/{wv2,wexec}` for you — after that every `./wbuild`
+	target runs normally at the default stack. **Consequence:** if you
+	`rm -rf bin` you also delete those primed stamps, and a plain
+	`./wbuild` will hit the seed segfault. To recover, re-run the bootstrap
+	from the update script (or, once, by hand:
+	`bash -c 'ulimit -s unlimited; mkdir -p bin; ./w w.w -o bin/wv2 2>/dev/null; ./bin/wv2 tools/wexec.w -o bin/wexec 2>/dev/null; cp bin/wv2 w; ./bin/wexec wv2 wexec >/dev/null 2>&1; git checkout -- w'`).
+	Full details and the tracking issue: `docs/projects/cloud_env_setup.md`.
 - There is **no separate linter**. "Lint" is the compiler's own type/style warnings,
   asserted by the `warning_test` target.
 - The seed `./w` is a **32-bit x86** statically-linked ELF; it runs on this x86_64 host
