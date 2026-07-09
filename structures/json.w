@@ -9,22 +9,23 @@ Supported JSON subset:
 
 Numbers are signed base-10 integers only: floating point, exponents, and
 values outside the 32-bit signed positive range are rejected. Parsed trees own
-their children; call json_free() on the root. Object serialization walks the
-backing hash map, so member order is deterministic but is not insertion order.
+their children; call json_free() on the root. Objects are backed by the
+built-in map, which iterates in insertion order, so serialization preserves
+the order keys were set (and a parse -> stringify round trip preserves the
+source's member order).
 */
 import lib.lib
 import lib.assert
+import lib.container
 import structures.string
-import structures.hash_map
-import structures.array_list
 
 
 struct json_value:
 	int type
 	int int_value
 	char* string_value
-	hash_map* object_values
-	array_list* array_values
+	map[char*, json_value*] object_values
+	list[json_value*] array_values
 
 
 struct json_parser:
@@ -107,43 +108,43 @@ json_value* json_string(char* text):
 
 json_value* json_object():
 	json_value* value = json_new(json_type_object())
-	value.object_values = hash_map_new()
+	value.object_values = new map[char*, json_value*]
 	return value
 
 
 json_value* json_array():
 	json_value* value = json_new(json_type_array())
-	value.array_values = array_list_new()
+	value.array_values = new list[json_value*]
 	return value
 
 
 void json_object_set(json_value* object, char* key, json_value* value):
 	assert1(object.type == json_type_object())
-	if (hash_map_contains(object.object_values, key)):
-		json_value* old_value = cast(json_value*, hash_map_get(object.object_values, key))
+	if (key in object.object_values):
+		json_value* old_value = object.object_values[key]
 		if (old_value != value):
 			json_free(old_value)
-	hash_map_set(object.object_values, key, cast(int, value))
+	object.object_values[key] = value
 
 
 json_value* json_object_get(json_value* object, char* key):
 	assert1(object.type == json_type_object())
-	return cast(json_value*, hash_map_get_default(object.object_values, key, 0))
+	return object.object_values.get(key, 0)
 
 
 int json_object_has(json_value* object, char* key):
 	assert1(object.type == json_type_object())
-	return hash_map_contains(object.object_values, key)
+	return key in object.object_values
 
 
 void json_array_push(json_value* array, json_value* value):
 	assert1(array.type == json_type_array())
-	array_list_push(array.array_values, cast(int, value))
+	array.array_values.push(value)
 
 
 json_value* json_array_get(json_value* array, int index):
 	assert1(array.type == json_type_array())
-	return cast(json_value*, array_list_get(array.array_values, index))
+	return array.array_values[index]
 
 
 int json_array_length(json_value* array):
@@ -157,20 +158,13 @@ void json_free(json_value* value):
 	if (value.type == json_type_string()):
 		free(value.string_value)
 	else if (value.type == json_type_object()):
-		hash_map* map = value.object_values
-		int i = 0
-		while (i < map.capacity):
-			if (map.keys[i] != 0):
-				json_free(cast(json_value*, map.values[i]))
-			i = i + 1
-		hash_map_free(map)
+		for char* key, json_value* member in value.object_values:
+			json_free(member)
+		map_free[char*, json_value*](value.object_values)
 	else if (value.type == json_type_array()):
-		array_list* list = value.array_values
-		int i = 0
-		while (i < list.length):
-			json_free(cast(json_value*, list.items[i]))
-			i = i + 1
-		array_list_free(list)
+		for json_value* element in value.array_values:
+			json_free(element)
+		list_free[json_value*](value.array_values)
 	free(value)
 
 
@@ -180,12 +174,8 @@ json_value* json_clone(json_value* value):
 		return 0
 	if (value.type == json_type_object()):
 		json_value* object = json_object()
-		hash_map* map = value.object_values
-		int i = 0
-		while (i < map.capacity):
-			if (map.keys[i] != 0):
-				json_object_set(object, map.keys[i], json_clone(cast(json_value*, map.values[i])))
-			i = i + 1
+		for char* key, json_value* member in value.object_values:
+			json_object_set(object, key, json_clone(member))
 		return object
 	if (value.type == json_type_array()):
 		json_value* array = json_array()
@@ -529,17 +519,13 @@ void json_append_escaped_string(string_builder* out, char* text):
 void json_append_object(string_builder* out, json_value* value):
 	string_append_char(out, '{')
 	int first = 1
-	hash_map* map = value.object_values
-	int i = 0
-	while (i < map.capacity):
-		if (map.keys[i] != 0):
-			if (first == 0):
-				string_append_char(out, ',')
-			first = 0
-			json_append_escaped_string(out, map.keys[i])
-			string_append_char(out, ':')
-			json_append_value(out, cast(json_value*, map.values[i]))
-		i = i + 1
+	for char* key, json_value* member in value.object_values:
+		if (first == 0):
+			string_append_char(out, ',')
+		first = 0
+		json_append_escaped_string(out, key)
+		string_append_char(out, ':')
+		json_append_value(out, member)
 	string_append_char(out, '}')
 
 
@@ -549,7 +535,7 @@ void json_append_array(string_builder* out, json_value* value):
 	while (i < value.array_values.length):
 		if (i > 0):
 			string_append_char(out, ',')
-		json_append_value(out, cast(json_value*, value.array_values.items[i]))
+		json_append_value(out, value.array_values[i])
 		i = i + 1
 	string_append_char(out, ']')
 
