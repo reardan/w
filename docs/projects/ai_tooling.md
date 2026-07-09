@@ -311,9 +311,19 @@ cap):
 | `run` | `path, args?, stdin?` | the binary, output captured |
 | `repl_eval` | `entries: string[]` | pipes entries + `:quit` to `./bin/repl` |
 | `test_changed` | `files: string[]` | `./bin/wtest changed <files>`, returns target list |
+| `escape_hatch` (debug only, off by default) | `tool_call_name, parameters?, description?` | logs one NDJSON line to stderr, echoes the arguments back with an empty `result`; never dispatches to a real handler |
 
 Convenience: tools that need `bin/wv2` trigger `./wbuild build` once when it
 is missing, so a fresh clone works without ceremony.
+
+`escape_hatch` exists to probe "what if this tool existed" for a
+theoretical/not-yet-built compiler tool without wiring up a real handler
+first. It is absent from `tools/list` and unreachable by name unless the
+server's environment sets `W_MCP_ESCAPE_HATCH` to a non-empty value other
+than `0` (`mcp_escape_hatch_enabled()` in `tools/mcp/w_toolchain_mcp.w`).
+`bin/wmcp` also works as a one-shot CLI — `./bin/wmcp call <tool>
+['<json-arguments>']` — which runs any tool (including `escape_hatch`,
+once enabled) through the same dispatcher without a JSON-RPC client.
 
 Registration is committed as `.cursor/mcp.json`:
 
@@ -360,7 +370,10 @@ New build targets, wired into the `tests` umbrella:
 - `mcp_test`: a W driver (`tools/mcp/mcp_test.w`) spawns `bin/wmcp` with
   piped stdio, performs the initialize handshake, lists tools, and calls
   `test_changed` and `check` (on `tests/hello.w`, asserting zero
-  diagnostics) end to end.
+  diagnostics) end to end. It also asserts `escape_hatch` is absent from
+  `tools/list` and unreachable by name on a default-env server, then
+  spawns a second server with `W_MCP_ESCAPE_HATCH=1` and calls
+  `escape_hatch` end to end.
 
 Regression gates for every compiler-touching commit: `./wbuild verify`
 (self-host fixpoint), `warning_test` + `type_system_*_test` +

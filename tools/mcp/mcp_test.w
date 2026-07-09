@@ -2,6 +2,7 @@
 # handshake, list tools, and exercise test_changed and check end to end.
 import lib.lib
 import lib.assert
+import lib.env
 import lib.framing
 import lib.process
 import structures.string
@@ -50,6 +51,16 @@ json_value* mcp_test_request(frame_reader* r, int id, char* method, json_value* 
 	return result
 
 
+# Sends a request and returns its error member. Fails the test if the
+# server responds with a result instead of an error.
+json_value* mcp_test_request_error(frame_reader* r, int id, char* method, json_value* params):
+	mcp_test_write(mcp_test_message(id, method, params))
+	json_value* response = mcp_test_read(r)
+	json_value* error = json_object_get(response, c"error")
+	asserts(c"response carries an error", error != 0)
+	return error
+
+
 # Calls a tool and parses the JSON payload out of its text content.
 json_value* mcp_test_tool_result(frame_reader* r, int id, char* name, json_value* arguments):
 	json_value* params = json_object()
@@ -78,19 +89,7 @@ int mcp_test_tools_has(json_value* tools, char* name):
 	return 0
 
 
-int main(int argc, int argv):
-	char** server_argv = strv_new(1)
-	strv_set(server_argv, 0, c"./bin/wmcp")
-	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_pipe()
-	opts.stdout_mode = process_pipe()
-	opts.stderr_mode = process_inherit()
-	mcp_test_server = process_spawn(c"./bin/wmcp", server_argv, opts)
-	free(opts)
-	free(cast(void*, server_argv))
-	asserts(c"server spawned", mcp_test_server != 0)
-	frame_reader* r = frame_reader_new(mcp_test_server.stdout_fd)
-
+json_value* mcp_test_init_params():
 	json_value* init_params = json_object()
 	json_object_set(init_params, c"protocolVersion", json_string(c"2024-11-05"))
 	json_object_set(init_params, c"capabilities", json_object())
@@ -98,7 +97,38 @@ int main(int argc, int argv):
 	json_object_set(client_info, c"name", json_string(c"mcp_test"))
 	json_object_set(client_info, c"version", json_string(c"0"))
 	json_object_set(init_params, c"clientInfo", client_info)
-	json_value* init = mcp_test_request(r, 1, c"initialize", init_params)
+	return init_params
+
+
+# envp of 0 inherits the current environment (spawn_options' own default).
+frame_reader* mcp_test_spawn(char** envp):
+	char** server_argv = strv_new(1)
+	strv_set(server_argv, 0, c"./bin/wmcp")
+	spawn_options* opts = spawn_options_new()
+	opts.stdin_mode = process_pipe()
+	opts.stdout_mode = process_pipe()
+	opts.stderr_mode = process_inherit()
+	opts.env = envp
+	mcp_test_server = process_spawn(c"./bin/wmcp", server_argv, opts)
+	free(opts)
+	free(cast(void*, server_argv))
+	asserts(c"server spawned", mcp_test_server != 0)
+	return frame_reader_new(mcp_test_server.stdout_fd)
+
+
+void mcp_test_shutdown(frame_reader* r):
+	# EOF on stdin makes the server exit its read loop.
+	process_close_stdin(mcp_test_server)
+	int status = process_wait_or_kill(mcp_test_server, 5000)
+	assert_equal(0, status)
+	process_free(mcp_test_server)
+	frame_reader_free(r)
+
+
+int main(int argc, int argv):
+	frame_reader* r = mcp_test_spawn(0)
+
+	json_value* init = mcp_test_request(r, 1, c"initialize", mcp_test_init_params())
 	json_value* server_info = json_object_get(init, c"serverInfo")
 	json_value* server_name = json_object_get(server_info, c"name")
 	assert_strings_equal(c"w-toolchain", server_name.string_value)
@@ -116,6 +146,7 @@ int main(int argc, int argv):
 	asserts(c"tools include run", mcp_test_tools_has(tools, c"run"))
 	asserts(c"tools include repl_eval", mcp_test_tools_has(tools, c"repl_eval"))
 	asserts(c"tools include test_changed", mcp_test_tools_has(tools, c"test_changed"))
+	asserts(c"tools exclude escape_hatch by default", mcp_test_tools_has(tools, c"escape_hatch") == 0)
 
 	json_value* changed_files = json_array()
 	json_array_push(changed_files, json_string(c"structures/json.w"))
@@ -147,11 +178,48 @@ int main(int argc, int argv):
 	assert_equal(0, json_array_length(diagnostics))
 	json_free(checked)
 
-	# EOF on stdin makes the server exit its read loop.
-	process_close_stdin(mcp_test_server)
-	int status = process_wait_or_kill(mcp_test_server, 5000)
-	assert_equal(0, status)
-	process_free(mcp_test_server)
-	frame_reader_free(r)
+	# escape_hatch is unreachable by name too, not just absent from the
+	# listing, when the server was not opted in.
+	json_value* disabled_params = json_object()
+	json_object_set(disabled_params, c"name", json_string(c"escape_hatch"))
+	json_value* disabled_args = json_object()
+	json_object_set(disabled_args, c"tool_call_name", json_string(c"anything"))
+	json_object_set(disabled_params, c"arguments", disabled_args)
+	json_value* disabled_error = mcp_test_request_error(r, 5, c"tools/call", disabled_params)
+	json_value* disabled_message = json_object_get(disabled_error, c"message")
+	assert_strings_equal(c"unknown tool: escape_hatch", disabled_message.string_value)
+
+	mcp_test_shutdown(r)
+
+	# Second server, opted into the debug-only escape hatch.
+	char** enabled_env = env_copy_with(env_current(), c"W_MCP_ESCAPE_HATCH", c"1")
+	frame_reader* r2 = mcp_test_spawn(enabled_env)
+	mcp_test_request(r2, 1, c"initialize", mcp_test_init_params())
+	mcp_test_write(mcp_test_message(0, c"notifications/initialized", json_object()))
+
+	json_value* listed2 = mcp_test_request(r2, 2, c"tools/list", 0)
+	json_value* tools2 = json_object_get(listed2, c"tools")
+	asserts(c"tools include escape_hatch when enabled", mcp_test_tools_has(tools2, c"escape_hatch"))
+
+	json_value* escape_parameters = json_object()
+	json_object_set(escape_parameters, c"file", json_string(c"foo.w"))
+	json_value* escape_args = json_object()
+	json_object_set(escape_args, c"tool_call_name", json_string(c"w_theoretical_tool"))
+	json_object_set(escape_args, c"parameters", escape_parameters)
+	json_object_set(escape_args, c"description", json_string(c"mcp_test probing escape_hatch"))
+	json_value* escaped = mcp_test_tool_result(r2, 3, c"escape_hatch", escape_args)
+	json_value* escape_name = json_object_get(escaped, c"tool_call_name")
+	assert_strings_equal(c"w_theoretical_tool", escape_name.string_value)
+	json_value* escape_description = json_object_get(escaped, c"description")
+	assert_strings_equal(c"mcp_test probing escape_hatch", escape_description.string_value)
+	json_value* escape_result = json_object_get(escaped, c"result")
+	assert_strings_equal(c"", escape_result.string_value)
+	json_value* escape_params_echo = json_object_get(escaped, c"parameters")
+	json_value* escape_file_echo = json_object_get(escape_params_echo, c"file")
+	assert_strings_equal(c"foo.w", escape_file_echo.string_value)
+	json_free(escaped)
+
+	mcp_test_shutdown(r2)
+
 	println2(c"mcp test OK")
 	return 0

@@ -307,7 +307,8 @@ passes; it archives the old seed to `old/` first.
 - Cursor IDE can use the committed `.cursor/mcp.json` registration for two
   W-native MCP servers: `w-toolchain` (`./wbuild wmcp` builds `bin/wmcp`
   from `tools/mcp/w_toolchain_mcp.w`), exposing build, verify, run_tests,
-  check, compile, run, repl_eval, and test_changed; and `w-index`
+  check, compile, run, repl_eval, and test_changed (plus a debug-only
+  `escape_hatch` tool, off by default — see below); and `w-index`
   (`./wbuild wimcp` builds `bin/wimcp` from `tools/mcp/w_index_mcp.w`),
   exposing find_symbol, find_references, get_type, get_struct_fields,
   imports_for, callers, callees, and changed_file_test_targets
@@ -317,6 +318,20 @@ passes; it archives the old seed to `old/` first.
   `sh -c "./wbuild wmcp >&2 && exec ./bin/wmcp"` and
   `sh -c "./wbuild wimcp >&2 && exec ./bin/wimcp"`), or use the equivalent
   shell commands.
+- `bin/wmcp` doubles as a one-shot CLI, bypassing the JSON-RPC/stdio loop:
+  `./bin/wmcp call <tool> ['<json-arguments>']` runs one tool through the
+  same dispatcher and prints its JSON result to stdout — useful for
+  exercising a tool by hand without an MCP client.
+- `w-toolchain`'s `escape_hatch` tool is a debug-only stub, disabled unless
+  `W_MCP_ESCAPE_HATCH` is set in the server's environment (e.g.
+  `W_MCP_ESCAPE_HATCH=1 ./bin/wmcp`): when off it is absent from
+  `tools/list` and unreachable by name; when on, `escape_hatch(tool_call_name,
+  parameters, description)` never dispatches to anything real — it logs one
+  NDJSON line to stderr per call and echoes the arguments back with an
+  empty `result`. It exists to let an agent or human probe "what if this
+  tool existed" (a theoretical compiler tool/function) without anyone
+  having to build a real handler first; see
+  `docs/projects/ai_tooling_next_steps.md`.
 - Editors can run the W-native LSP server (`./wbuild wlsp` builds
   `bin/wlsp` from `tools/lsp/w_lsp.w`): diagnostics from `w check --json`
   on open/save, go-to-definition and hover from `w symbols --json`, and
