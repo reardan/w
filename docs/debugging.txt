@@ -39,9 +39,25 @@ Current state:
 	byte restored while stopped and re-armed via one single-step)
 		b / break <t>   t = function | line | file:line
 		tb / tbreak <t> one-shot breakpoint, deleted when hit
+		condition <n> [<expr>]  stop breakpoint n only when <expr> is
+		                true (no expr clears it); compiled and run
+		                fresh on every hit, same as print's expression
+		                evaluator - a compile error fails closed
+		                (stops, with a diagnostic) instead of never
+		                stopping
+		ignore <n> <count>  skip the next <count> eligible
+		                (condition-true) hits of breakpoint n before
+		                it actually stops
+		log <t> <expr>  logpoint: like break, but the new slot prints
+		                "logpoint n hit h: expr = value" on every
+		                eligible hit and auto-continues instead of
+		                stopping; combine with condition/ignore on
+		                the same slot number for a conditional
+		                logpoint
 		d / delete [n]  delete breakpoint n, or all breakpoints and
 		                watchpoints with no argument
-		i b             list breakpoints
+		i b             list breakpoints, with condition/ignore/hit
+		                fields and log expressions shown when set
 
 	watchpoints (software: hardware debug registers need ptrace from a
 	second process, so they are out of reach in-process)
@@ -137,6 +153,10 @@ Current state:
 
 Future:
 
-	conditional breakpoints and hit counts
+	break similar: fuzzy/suffix matching for unresolved break targets
+
+Split off as separate, lower-priority backlog items (were tracked
+alongside the above in #38, now their own issues):
+
 	hardware watchpoints via an out-of-process ptrace mode
 	web UI debugger

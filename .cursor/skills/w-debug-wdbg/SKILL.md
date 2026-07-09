@@ -33,10 +33,29 @@ printf 'break my_function\nc\nprint x + y*2\nc\n' | ./bin/wdbg file.w
 A crash (SIGSEGV and friends) drops into the same loop for post-mortem
 inspection — run `backtrace`, `info locals`, `x`, `registers` there.
 
+For a bug that only reproduces after many iterations, or to watch a
+value's trajectory across a whole run, prefer a conditional breakpoint or
+a logpoint over stepping/printing by hand:
+
+```sh
+# stop only on the iteration where the condition is true
+printf 'break file.w:42\ncondition 1 i == 4301\nc\nprint x\nc\n' | ./bin/wdbg file.w
+
+# log a value on every hit and auto-continue (no stop-per-iteration cost);
+# runs to completion on a single 'c'
+printf 'log file.w:42 x\nc\n' | ./bin/wdbg file.w
+
+# skip the first N hits, or combine a logpoint with a condition
+printf 'break file.w:42\nignore 1 100\nc\n' | ./bin/wdbg file.w
+printf 'log file.w:42 x\ncondition 1 x < 0\nc\n' | ./bin/wdbg file.w
+```
+
 ## Command reference (see docs/debugging.txt)
 
 - Stepping: `step` / `next` / `stepi` / `finish`, `c` (continue)
 - Breakpoints: `break function|line|file:line`, `tbreak`, `delete`
+- Conditions/logpoints: `condition <n> [<expr>]`, `ignore <n> <count>`,
+  `log <target> <expr>` (auto-continues; combine with `condition`)
 - State: `print <name or any W expression>` (compiled on the fly),
   `set var value`, `x addr`, `backtrace`, `list`,
   `info locals|args|globals|breakpoints`, `registers`, `stack` (`st`)

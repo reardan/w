@@ -21,12 +21,22 @@ An empty line repeats the previous command.
 Breakpoints (patched int3 bytes with the original byte remembered):
 	b / break <t>     set a breakpoint; t = function | line | file:line
 	tb / tbreak <t>   one-shot breakpoint, deleted when hit
+	condition <n> [<expr>]  stop breakpoint n only when <expr> is true
+	                  (no expr clears it); evaluated fresh on every hit
+	                  with the same in-process compiler print uses
+	ignore <n> <count>  skip the next <count> eligible (condition-true)
+	                  hits of breakpoint n before it actually stops
+	log <t> <expr>    logpoint: like break, but eligible hits print
+	                  "logpoint n hit h: expr = value" and auto-continue
+	                  instead of stopping (combine with condition/ignore
+	                  on the same slot number)
 	watch <x|addr>    software watchpoint on a variable's word: while any
 	                  exist, resumes single-step statement-by-statement
 	                  and stop with an old -> new report on change (slow)
 	d / delete <n>    delete breakpoint n; d w <n> deletes watchpoint n
 	                  (no argument: delete everything)
-	i b               list breakpoints; i w lists watchpoints
+	i b               list breakpoints (with condition/ignore/hit counts
+	                  and log expressions when set); i w lists watchpoints
 
 Inspection:
 	p / print <x>     local/arg/global by name, or compile and run any
@@ -483,6 +493,88 @@ void dbg_watch_command(int pc, int esp, char* arg):
 	println(c"(software watchpoints single-step the program: expect a slowdown)")
 
 
+# Source file index at stop_addr, or -1 when unknown: what a bare line
+# number resolves against for break/tbreak/log targets.
+int dbg_current_file(int stop_addr):
+	if (dbg_in_debuggee(stop_addr) == 0):
+		return -1
+	int entry = dbg_find_line(stop_addr - code_offset)
+	if (entry < 0):
+		return -1
+	return dbg_line_file(entry)
+
+
+# condition <n> [<expr>]: set or clear breakpoint n's stop condition.
+void dbg_condition_command(char* arg):
+	char* rest = dbg_split_word(arg)
+	if (arg[0] == 0):
+		println(c"usage: condition <n> [<expr>]")
+		return;
+	int n = atoi(arg) - 1
+	if ((n < 0) | (n >= bp_used)):
+		println(c"no such breakpoint")
+		return;
+	if (bp_addr(n) == 0):
+		println(c"no such breakpoint")
+		return;
+	bp_set_condition(n, rest)
+	print(c"breakpoint ")
+	char* digits = itoa(n + 1)
+	print(digits)
+	free(digits)
+	if (rest[0] == 0):
+		println(c": condition cleared")
+	else:
+		println(c": condition set")
+
+
+# ignore <n> <count>: skip the next <count> eligible (condition-true)
+# hits of breakpoint n before it actually stops.
+void dbg_ignore_command(char* arg):
+	char* count_text = dbg_split_word(arg)
+	if ((arg[0] == 0) | (count_text[0] == 0)):
+		println(c"usage: ignore <n> <count>")
+		return;
+	int n = atoi(arg) - 1
+	if ((n < 0) | (n >= bp_used)):
+		println(c"no such breakpoint")
+		return;
+	if (bp_addr(n) == 0):
+		println(c"no such breakpoint")
+		return;
+	int count = dbg_number(count_text)
+	if (count < 0):
+		count = 0
+	bp_set_ignore(n, count)
+	print(c"breakpoint ")
+	char* digits = itoa(n + 1)
+	print(digits)
+	free(digits)
+	print(c": will ignore the next ")
+	char* cd = itoa(count)
+	print(cd)
+	free(cd)
+	println(c" eligible hits")
+
+
+# log <function | line | file:line> <expr>: like 'break', but the new
+# slot is a logpoint - eligible hits print <expr> and auto-continue.
+void dbg_log_command(int current_file, char* arg):
+	char* expr = dbg_split_word(arg)
+	if ((arg[0] == 0) | (expr[0] == 0)):
+		println(c"usage: log <function | line | file:line> <expr>")
+		return;
+	int addr = bp_resolve_target(arg, current_file)
+	if (addr == 0):
+		return;
+	int slot = bp_add(addr, 0)
+	if (slot < 0):
+		return;
+	bp_set_log(slot, expr)
+	bp_describe(slot)
+	put_char(10)
+
+
 # x <addr|name> [count]
 void dbg_examine_command(int pc, int esp, char* arg):
 	char* count_text = dbg_split_word(arg)
@@ -560,6 +652,8 @@ void dbg_help():
 	println(c"  c/continue  s/step  n/next  si/stepi  fin/finish  q/quit")
 	println(c"breakpoints:")
 	println(c"  b/break <function | line | file:line>   tb/tbreak <target>")
+	println(c"  condition <n> [<expr>]   ignore <n> <count>")
+	println(c"  log <target> <expr> (logpoint: prints and auto-continues)")
 	println(c"  watch <name | address> (software watchpoint; slow while set)")
 	println(c"  d/delete [n]   d w [n]   i b / i w (list)")
 	println(c"inspection:")
@@ -657,17 +751,18 @@ void wdbg_command_loop(int context, int stop_addr):
 				temp = 1
 			if (strcmp(command, c"tbreak") == 0):
 				temp = 1
-			int current_file = -1
-			if (dbg_in_debuggee(stop_addr)):
-				int entry = dbg_find_line(stop_addr - code_offset)
-				if (entry >= 0):
-					current_file = dbg_line_file(entry)
-			int addr = bp_resolve_target(arg, current_file)
+			int addr = bp_resolve_target(arg, dbg_current_file(stop_addr))
 			if (addr != 0):
 				int slot = bp_add(addr, temp)
 				if (slot >= 0):
 					bp_describe(slot)
 					put_char(10)
+		else if (strcmp(command, c"condition") == 0):
+			dbg_condition_command(arg)
+		else if (strcmp(command, c"ignore") == 0):
+			dbg_ignore_command(arg)
+		else if (strcmp(command, c"log") == 0):
+			dbg_log_command(dbg_current_file(stop_addr), arg)
 		else if ((strcmp(command, c"d") == 0) | (strcmp(command, c"delete") == 0)):
 			if ((arg[0] == 0) | (strcmp(arg, c"all") == 0)):
 				bp_delete_all()
@@ -794,6 +889,30 @@ int dbg_step_should_stop(int context, int eip):
 	return 1
 
 
+# A logpoint's eligible hit: evaluate its expression and print one line,
+# never entering the command loop. Sets dbg_eval_ok like dbg_eval_call
+# (0 on a compile error) so the caller can decide whether to keep
+# auto-continuing or fail closed and stop.
+void dbg_log_report(int bp, int addr, int esp):
+	print(c"logpoint ")
+	char* digits = itoa(bp + 1)
+	print(digits)
+	free(digits)
+	print(c" hit ")
+	char* hd = itoa(bp_hits(bp))
+	print(hd)
+	free(hd)
+	print(c": ")
+	print(bp_log_expr(bp))
+	print(c" = ")
+	int v = dbg_eval_call(bp_log_expr(bp), addr, esp)
+	if (dbg_eval_ok):
+		dbg_print_int_value(v)
+		put_char(10)
+	else:
+		println(c"<failed to compile>")
+
+
 # SIGTRAP handler: breakpoints and 'debugger' statements arrive as int3
 # (trapno 3, eip past the int3 byte); trap-flag single-steps arrive as
 # debug exceptions (trapno 1, eip exact). Returning resumes the debuggee
@@ -815,6 +934,43 @@ void wdbg_trap(int sig, int context):
 			# Restore the original byte and rewind eip so it executes
 			bp_disarm(bp)
 			ctx_set_eip(context, addr)
+			bp_hit_increment(bp)
+
+			# Gate the stop: condition -> ignore count -> logpoint. A
+			# condition that fails to compile fails closed (stops, with
+			# a diagnostic) rather than silently never stopping.
+			int stop = 1
+			if (bp_condition(bp) != 0):
+				int cv = dbg_eval_call(bp_condition(bp), addr, ctx_esp(context))
+				if (dbg_eval_ok == 0):
+					print(c"condition on breakpoint ")
+					char* cdigits = itoa(bp + 1)
+					print(cdigits)
+					free(cdigits)
+					println(c" failed to compile: stopping unconditionally")
+					stop = 1
+				else:
+					stop = cv != 0
+			if (stop):
+				if (bp_ignore(bp) > 0):
+					bp_set_ignore(bp, bp_ignore(bp) - 1)
+					stop = 0
+			if (stop):
+				if (bp_is_log(bp)):
+					dbg_log_report(bp, addr, ctx_esp(context))
+					# a log expression compile error falls through to
+					# stop, so a broken logpoint is visible once
+					# instead of silently spinning forever
+					if (dbg_eval_ok):
+						stop = 0
+			if (stop == 0):
+				# Same re-arm dance 'c' uses to resume over an armed
+				# breakpoint: rewinds eip already happened above, so
+				# this just re-establishes the one-step re-arm and any
+				# live-watchpoint single-stepping before returning.
+				dbg_prepare_resume(context, addr, dbg_step_none())
+				return;
+
 			print(c"hit ")
 			bp_describe(bp)
 			put_char(10)
