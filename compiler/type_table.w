@@ -889,6 +889,20 @@ int type_lookup_previous_pointer(int type_index):
 	return type_lookup_pointer(type_get_name(type_index), type_get_pointer_level(type_index) - 1)
 
 
+# Clears an existing struct/union/enum's field list so a redeclaration at
+# the REPL prompt (struct_declaration.w et al.) can re-add fields from
+# scratch under the SAME type_index, instead of pushing a second, later
+# record that type_lookup's first-match scan would never find — type_lookup
+# scans oldest-first everywhere else (derived/memoized type names, e.g.
+# pointer/array records, rely on that), so redefinition reuses the
+# existing record in place rather than changing that scan order.
+void type_reset_for_redefinition(int type_index, int size):
+	int t = get(type_index)
+	save_ptr(t + 1 * __word_size__, 0) /* num_fields */
+	save_ptr(t + 2 * __word_size__, size) /* total_size */
+	save_ptr(t + 3 * __word_size__, 0) /* pointer level */
+
+
 int type_add_arg(int type_index, char* field, int field_type):
 	type_index = type_canonical(type_index)
 	int t = get(type_index)

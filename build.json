@@ -1857,11 +1857,13 @@
 				{"cmd": ["bin/repl"], "stdin": "int x = = 3\nqq + 1\nprint(c\"second recovery\\x0a\")\n:quit\n", "expect_stdout": "second recovery"},
 				{"cmd": ["bin/repl"], "stdin": "int add(int a, int b):\n\treturn a + b\n\nadd(40, 2)\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["script", "-qc", "./bin/repl", "/dev/null"], "stdin": "int fib(int n):\nif (n < 2):\nreturn n\nreturn fib(n - 1) + fib(n - 2)\n\nfib(10)\n:quit\n", "expect_stdout": "55"},
+				{"cmd": ["sh", "-c", "COLUMNS=20 script -qc './bin/repl' /dev/null"], "stdin": "int qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq = 42\nqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq + 1\n:quit\n", "expect_stdout": "43"},
 				{"cmd": ["bin/repl"], "stdin": "int x = 5\nx + 1\n:quit\n", "expect_stdout": "6"},
 				{"cmd": ["bin/repl"], "stdin": "\"hello string\"\n:quit\n", "expect_stdout": "hello string"},
 				{"cmd": ["bin/repl"], "stdin": "int x = 5\nchar* x = c\"shadowed\"\nx\n:quit\n", "expect_stdout": "shadowed"},
 				{"cmd": ["bin/repl"], "stdin": "int y = 3\ny = 9\n:quit\n", "reject_stdout": "9"},
 				{"cmd": ["bin/repl"], "stdin": "struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n", "expect_stdout": "7"},
+				{"cmd": ["bin/repl"], "stdin": "struct pt:\n\tint x\n\tint y\n\nstruct pt:\n\tint x\n\tint y\n\tint z\n\npt* p = new pt(3, 4, 5)\np.z\n:quit\n", "expect_stdout": "5"},
 				{"cmd": ["bin/repl"], "stdin": "import tests.subfolder as sub\nsub.subfolder_value()\n:quit\n", "expect_stdout": "1337"},
 				{"cmd": ["bin/repl"], "stdin": "import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl"], "stdin": "import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c\"a\"] = 41\nm[c\"a\"] + 1\n:quit\n", "expect_stdout": "42"},
@@ -1888,6 +1890,7 @@
 				{"cmd": ["bin/repl64"], "stdin": "int x = 5\nx + 1\n:quit\n", "expect_stdout": "6"},
 				{"cmd": ["bin/repl64"], "stdin": "\"hello string\"\n:quit\n", "expect_stdout": "hello string"},
 				{"cmd": ["bin/repl64"], "stdin": "struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n", "expect_stdout": "7"},
+				{"cmd": ["bin/repl64"], "stdin": "struct pt:\n\tint x\n\tint y\n\nstruct pt:\n\tint x\n\tint y\n\tint z\n\npt* p = new pt(3, 4, 5)\np.z\n:quit\n", "expect_stdout": "5"},
 				{"cmd": ["bin/repl64"], "stdin": "import structures.string\nstring_builder* s = string_from(c\"imported\")\ns.data\n:quit\n", "expect_stdout": "imported"},
 				{"cmd": ["bin/repl64"], "stdin": "import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl64"], "stdin": "import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c\"a\"] = 41\nm[c\"a\"] + 1\n:quit\n", "expect_stdout": "42"},
@@ -1895,7 +1898,8 @@
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w"], "stdin": ":quit\n", "expect_stdout": "fixture main ran"},
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w"], "stdin": "fixture_helper(21)\nfixture_global\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w", "--no_main"], "stdin": ":quit\n", "reject_stdout": "fixture main ran"},
-				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "int q = 13\u007f\u007f4\nq + 1\n:quit\n", "expect_stdout": "5"}
+				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "int q = 13\u007f\u007f4\nq + 1\n:quit\n", "expect_stdout": "5"},
+				{"cmd": ["sh", "-c", "COLUMNS=20 script -qc './bin/repl64' /dev/null"], "stdin": "int qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq = 42\nqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq + 1\n:quit\n", "expect_stdout": "43"}
 			]
 		},
 		{

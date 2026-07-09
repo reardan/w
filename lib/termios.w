@@ -10,8 +10,12 @@ x86-64) is four int32 flag words, a one-byte line discipline and a
 term_raw_mode() saves the original settings the first time it succeeds;
 term_restore() puts them back. Callers must restore before exiting, or
 the shell inherits a terminal with echo and canonical mode off.
+
+term_get_cols() returns the terminal's column count for line editors that
+need to know when a line will wrap (lib/line_edit.w).
 */
 import lib.lib
+import lib.env
 
 
 struct termios:
@@ -89,3 +93,30 @@ void term_restore():
 	if (term_saved_state == 0):
 		return;
 	term_set(term_saved_fd, term_saved_state)
+
+
+int term_tiocgwinsz():
+	return 0x5413
+
+
+# Terminal column count for line editors that need to know when a line
+# will wrap. $COLUMNS wins when set (the readline/bash convention, and a
+# deterministic way to test wrapping without a real pty resize); otherwise
+# the kernel's struct winsize (4 uint16 words: rows, cols, xpixels,
+# ypixels) is read via TIOCGWINSZ, cols at byte offset 2-3, little-endian.
+# Falls back to 80 when neither source is available (e.g. win64's
+# sys_ioctl stub, which always fails).
+int term_get_cols(int fd):
+	char* env_cols = env_get(c"COLUMNS")
+	if (env_cols != 0):
+		int from_env = atoi(env_cols)
+		if (from_env > 0):
+			return from_env
+	char* winsize = malloc(8)
+	int cols = 0
+	if (sys_ioctl(fd, term_tiocgwinsz(), cast(int, winsize)) == 0):
+		cols = (winsize[2] & 255) | ((winsize[3] & 255) << 8)
+	free(winsize)
+	if (cols <= 0):
+		return 80
+	return cols
