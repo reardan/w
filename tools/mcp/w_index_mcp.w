@@ -398,36 +398,28 @@ json_value* imcp_name_files_properties():
 json_value* imcp_tool_schemas():
 	json_value* tools = json_array()
 
-	json_array_push(tools, imcp_tool_schema(c"find_symbol",
-		c"Declaration(s) of 'name' reachable from 'files' via wv2 symbols --json",
-		imcp_name_files_properties()))
-	json_array_push(tools, imcp_tool_schema(c"find_references",
-		c"Every textual occurrence of 'name' across the files 'files' compiles in, with is_declaration flagged",
-		imcp_name_files_properties()))
-	json_array_push(tools, imcp_tool_schema(c"get_type",
-		c"Declared type/kind of 'name' (same data as find_symbol, kept separate for query intent)",
-		imcp_name_files_properties()))
-	json_array_push(tools, imcp_tool_schema(c"get_struct_fields",
-		c"Field name/type/offset for the struct or union named 'name'",
-		imcp_name_files_properties()))
-	json_array_push(tools, imcp_tool_schema(c"callers",
-		c"Functions with a call site to 'name', approximated from indentation-based function spans",
-		imcp_name_files_properties()))
-	json_array_push(tools, imcp_tool_schema(c"callees",
-		c"Functions called from within 'name', approximated from indentation-based function spans",
-		imcp_name_files_properties()))
+	char* find_symbol_desc = c"Declaration(s) of 'name' reachable from 'files' via wv2 symbols --json"
+	json_array_push(tools, imcp_tool_schema(c"find_symbol", find_symbol_desc, imcp_name_files_properties()))
+	char* find_references_desc = c"Every textual occurrence of 'name' across the files 'files' compiles in, with is_declaration flagged"
+	json_array_push(tools, imcp_tool_schema(c"find_references", find_references_desc, imcp_name_files_properties()))
+	char* get_type_desc = c"Declared type/kind of 'name' (same data as find_symbol, kept separate for query intent)"
+	json_array_push(tools, imcp_tool_schema(c"get_type", get_type_desc, imcp_name_files_properties()))
+	char* get_struct_fields_desc = c"Field name/type/offset for the struct or union named 'name'"
+	json_array_push(tools, imcp_tool_schema(c"get_struct_fields", get_struct_fields_desc, imcp_name_files_properties()))
+	char* callers_desc = c"Functions with a call site to 'name', approximated from indentation-based function spans"
+	json_array_push(tools, imcp_tool_schema(c"callers", callers_desc, imcp_name_files_properties()))
+	char* callees_desc = c"Functions called from within 'name', approximated from indentation-based function spans"
+	json_array_push(tools, imcp_tool_schema(c"callees", callees_desc, imcp_name_files_properties()))
 
 	json_value* imports_properties = json_object()
 	json_object_set(imports_properties, c"file", imcp_string_property())
-	json_array_push(tools, imcp_tool_schema(c"imports_for",
-		c"Import statements in 'file' (module path, alias, line), parsed textually",
-		imports_properties))
+	char* imports_for_desc = c"Import statements in 'file' (module path, alias, line), parsed textually"
+	json_array_push(tools, imcp_tool_schema(c"imports_for", imports_for_desc, imports_properties))
 
 	json_value* changed_properties = json_object()
 	json_object_set(changed_properties, c"files", imcp_string_array_property())
-	json_array_push(tools, imcp_tool_schema(c"changed_file_test_targets",
-		c"Map changed files to focused test targets (delegates to bin/wtest changed)",
-		changed_properties))
+	char* changed_desc = c"Map changed files to focused test targets (delegates to bin/wtest changed)"
+	json_array_push(tools, imcp_tool_schema(c"changed_file_test_targets", changed_desc, changed_properties))
 
 	return tools
 
