@@ -28,6 +28,26 @@ char* indexd_test_scratch_file():
 /* connection setup */
 
 
+int indexd_test_port_reachable(int port):
+	if (port <= 0):
+		return 0
+	int sock = socket_tcp_ipv4()
+	if (sock < 0):
+		return 0
+	int reachable = socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0
+	close(sock)
+	return reachable
+
+
+void indexd_test_wait_port_closed(int port):
+	int waited = 0
+	while (waited < indexd_test_timeout_ms()):
+		if (indexd_test_port_reachable(port) == 0):
+			return
+		process_sleep_ms(20)
+		waited = waited + 20
+
+
 # If a previous run (or an unrelated dev session) left a daemon
 # advertised at bin/.windexd.port, ask it to shut down so this test
 # starts from a clean slate instead of racing windexd_already_running().
@@ -38,15 +58,20 @@ void indexd_test_shutdown_stale():
 	int sock = socket_tcp_ipv4()
 	if (sock < 0):
 		return
+	int connected = 0
 	if (socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0):
+		connected = 1
 		jsonrpc_write_request(sock, 1, c"shutdown", 0)
 		frame_reader* r = frame_reader_new(sock)
-		jsonrpc_read_message(r)
+		json_value* response = jsonrpc_read_message(r)
+		json_free(response)
 		frame_reader_free(r)
 	close(sock)
+	if (connected):
+		indexd_test_wait_port_closed(port)
 
 
-int indexd_test_spawn():
+process* indexd_test_spawn(int* port_out):
 	spawn_options* opts = spawn_options_new()
 	opts.stdin_mode = process_null()
 	opts.stdout_mode = process_null()
@@ -64,13 +89,25 @@ int indexd_test_spawn():
 			int sock = socket_tcp_ipv4()
 			if (sock >= 0):
 				if (socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0):
+					asserts(c"spawned windexd still owns reachable port", process_try_wait(p) == process_status_running())
 					close(sock)
-					return port
+					*port_out = port
+					return p
 				close(sock)
 		process_sleep_ms(20)
 		waited = waited + 20
 	asserts(c"windexd never became reachable", 0)
-	return -1
+	*port_out = -1
+	return p
+
+
+void indexd_test_shutdown(process* p, int sock, frame_reader* r):
+	jsonrpc_write_request(sock, 99, c"shutdown", 0)
+	jsonrpc_read_message(r)
+	frame_reader_free(r)
+	close(sock)
+	assert_equal(0, process_wait_or_kill(p, indexd_test_timeout_ms()))
+	process_free(p)
 
 
 /* RPC helpers */
@@ -116,7 +153,8 @@ list[char*] indexd_test_files(char* f):
 
 
 void test_indexd_query_matches_direct_build():
-	int port = indexd_test_spawn()
+	int port = 0
+	process* p = indexd_test_spawn(&port)
 	int sock = socket_tcp_ipv4()
 	asserts(c"client socket", sock >= 0)
 	asserts(c"client connect", socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0)
@@ -130,14 +168,12 @@ void test_indexd_query_matches_direct_build():
 	asserts(c"callers finds at least one call site", caller_records.length >= 1)
 	asserts(c"index_fixture_caller calls index_fixture_helper", indexd_test_has_name(caller_records, c"caller", c"index_fixture_caller"))
 
-	jsonrpc_write_request(sock, 99, c"shutdown", 0)
-	jsonrpc_read_message(r)
-	frame_reader_free(r)
-	close(sock)
+	indexd_test_shutdown(p, sock, r)
 
 
 void test_indexd_cache_invalidates_on_file_change():
-	int port = indexd_test_spawn()
+	int port = 0
+	process* p = indexd_test_spawn(&port)
 	int sock = socket_tcp_ipv4()
 	asserts(c"client socket", sock >= 0)
 	asserts(c"client connect", socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0)
@@ -162,10 +198,7 @@ void test_indexd_cache_invalidates_on_file_change():
 	list[json_value*] b_after = indexd_test_query(sock, r, c"symbol", c"indexd_test_marker_b", files)
 	asserts(c"marker_b found after rewrite", b_after.length == 1)
 
-	jsonrpc_write_request(sock, 99, c"shutdown", 0)
-	jsonrpc_read_message(r)
-	frame_reader_free(r)
-	close(sock)
+	indexd_test_shutdown(p, sock, r)
 
 
 # test_indexd_cache_invalidates_on_file_change only ever queries
@@ -176,7 +209,8 @@ void test_indexd_cache_invalidates_on_file_change():
 # an unchanged-looking query (same target name, same entry file) must
 # show up, not be served from a stale cached scan.
 void test_indexd_scan_cache_reflects_file_changes():
-	int port = indexd_test_spawn()
+	int port = 0
+	process* p = indexd_test_spawn(&port)
 	int sock = socket_tcp_ipv4()
 	asserts(c"client socket", sock >= 0)
 	asserts(c"client connect", socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0)
@@ -199,10 +233,7 @@ void test_indexd_scan_cache_reflects_file_changes():
 	list[json_value*] refs_after = indexd_test_query(sock, r, c"references", c"indexd_scan_target", files)
 	asserts(c"new call site visible after edit (scan cache invalidated)", refs_after.length == 3)
 
-	jsonrpc_write_request(sock, 99, c"shutdown", 0)
-	jsonrpc_read_message(r)
-	frame_reader_free(r)
-	close(sock)
+	indexd_test_shutdown(p, sock, r)
 
 
 int main():
