@@ -157,7 +157,7 @@ rule brace_line = NEWLINE tab_prefix statement | NEWLINE tab_prefix | NEWLINE | 
 rule tab_prefix = TAB tab_prefix | TAB
 
 rule param_list = param param_tail* | 
-rule param_tail = COMMA param
+rule param_tail = COMMA gap_many param
 rule param = type_ref ELLIPSIS name_token | type_ref name_token decl_suffix param_default | type_ref
 rule param_default = ASSIGN expression |
 
@@ -223,7 +223,7 @@ rule postfix_expr = primary_expr postfix_tail*
 rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK | QUESTION gap_many expression COLON expression | QUESTION
 rule slice_tail = COLON expression_opt |
 rule arg_list = expression arg_tail* |
-rule arg_tail = COMMA expression
+rule arg_tail = COMMA gap_many expression
 rule primary_expr = NUMBER | STRING | CHAR_LITERAL | cast_expr | new_expr | grouped_expr | range_expr | hash_literal | name_token
 rule hash_literal = map_literal | set_literal | list_literal
 rule map_literal = map_type LBRACE map_literal_entries RBRACE
