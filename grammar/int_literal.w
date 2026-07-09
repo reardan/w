@@ -8,7 +8,7 @@ int int_literal():
 	if (accept(c"-")):
 		negative = 1
 
-	# Hex literal e.g. 0x1f (lowercase digits)
+	# Hex literal e.g. 0x1f or 0x1F
 	if ((token[0] == '0') & (token[1] == 'x')):
 		n = from_hex(token + 2)
 		if (negative):

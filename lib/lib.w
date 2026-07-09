@@ -249,6 +249,8 @@ int from_hex(char* s):
 			result = (result << 4) + ch - '0'
 		else if(ch >= 'a' & ch <= 'f'):
 			result = (result << 4) + ch - 'a' + 10
+		else if(ch >= 'A' & ch <= 'F'):
+			result = (result << 4) + ch - 'A' + 10
 		i = i + 1
 		ch = s[i]
 	return result
