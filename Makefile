@@ -1584,6 +1584,19 @@ debug_test: wdbg FORCE
 	printf 'b debug_fixture2.w:22\nc\np y\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "y = 9"
 	printf 'tb triple\nc\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "hit breakpoint 1 (temporary)"
 	printf 'b add\nd 1\ni b\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "no breakpoints set"
+	# conditional breakpoints, hit counts and logpoints (tests/debug_fixture3.w
+	# has a 5-iteration loop at line 12, so i runs 0..4)
+	printf 'b debug_fixture3.w:12\ncondition 1 i == 3\nc\np i\nc\nc\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture3.w | grep -q "condition: i == 3, hits: 4"
+	printf 'b debug_fixture3.w:12\ncondition 1 i == 3\nc\np i\nc\nc\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture3.w | grep -q "i = 3 (0x00000003)"
+	printf 'b debug_fixture3.w:12\nignore 1 2\nc\np i\nc\n' | ./bin/wdbg tests/debug_fixture3.w | grep -q "i = 2 (0x00000002)"
+	printf 'b debug_fixture3.w:12\nc\nc\nc\ni b\nc\nc\nc\n' | ./bin/wdbg tests/debug_fixture3.w | grep -q "hits: 3"
+	printf 'tb debug_fixture3.w:12\ncondition 1 i == 4\nc\ni b\np i\nc\nc\n' | ./bin/wdbg tests/debug_fixture3.w | grep -q "i = 4 (0x00000004)"
+	printf 'tb debug_fixture3.w:12\ncondition 1 i == 4\nc\ni b\np i\nc\nc\n' | ./bin/wdbg tests/debug_fixture3.w | grep -q "no breakpoints set"
+	printf 'log debug_fixture3.w:12 i\nc\n' | ./bin/wdbg tests/debug_fixture3.w | grep -c "logpoint 1 hit" | grep -q "^5$$"
+	printf 'log debug_fixture3.w:12 i\nc\n' | ./bin/wdbg tests/debug_fixture3.w | grep -q "logpoint 1 hit 5: i = 4"
+	printf 'log debug_fixture3.w:12 i\ncondition 1 i > 2\nc\n' | ./bin/wdbg tests/debug_fixture3.w | grep -c "logpoint 1 hit" | grep -q "^2$$"
+	printf 'b debug_fixture3.w:12\ncondition 1 i +\nc\n' | ./bin/wdbg tests/debug_fixture3.w | grep -q "failed to compile: stopping unconditionally"
+	printf 'b debug_fixture3.w:12\ncondition 1 i == 3\ncondition 1\nc\np i\nc\n' | ./bin/wdbg tests/debug_fixture3.w | grep -q "i = 0 (0x00000000)"
 	# inspection: locals, args, globals, strings, backtrace, memory, source
 	printf 'p x\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "x = 3"
 	printf 'p message\nc\n' | ./bin/wdbg tests/debug_fixture2.w | grep -q "hello wdbg"
@@ -1643,6 +1656,19 @@ debug_test_x64: wdbg_x64 FORCE
 	printf 'b debug_fixture2.w:22\nc\np y\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "y = 9"
 	printf 'tb triple\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "hit breakpoint 1 (temporary)"
 	printf 'b add\nd 1\ni b\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "no breakpoints set"
+	# conditional breakpoints, hit counts and logpoints (tests/debug_fixture3.w
+	# has a 5-iteration loop at line 12, so i runs 0..4)
+	printf 'b debug_fixture3.w:12\ncondition 1 i == 3\nc\np i\nc\nc\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture3.w | grep -q "condition: i == 3, hits: 4"
+	printf 'b debug_fixture3.w:12\ncondition 1 i == 3\nc\np i\nc\nc\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture3.w | grep -q "i = 3 (0x00000003)"
+	printf 'b debug_fixture3.w:12\nignore 1 2\nc\np i\nc\n' | ./bin/wdbg64 tests/debug_fixture3.w | grep -q "i = 2 (0x00000002)"
+	printf 'b debug_fixture3.w:12\nc\nc\nc\ni b\nc\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture3.w | grep -q "hits: 3"
+	printf 'tb debug_fixture3.w:12\ncondition 1 i == 4\nc\ni b\np i\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture3.w | grep -q "i = 4 (0x00000004)"
+	printf 'tb debug_fixture3.w:12\ncondition 1 i == 4\nc\ni b\np i\nc\nc\n' | ./bin/wdbg64 tests/debug_fixture3.w | grep -q "no breakpoints set"
+	printf 'log debug_fixture3.w:12 i\nc\n' | ./bin/wdbg64 tests/debug_fixture3.w | grep -c "logpoint 1 hit" | grep -q "^5$$"
+	printf 'log debug_fixture3.w:12 i\nc\n' | ./bin/wdbg64 tests/debug_fixture3.w | grep -q "logpoint 1 hit 5: i = 4"
+	printf 'log debug_fixture3.w:12 i\ncondition 1 i > 2\nc\n' | ./bin/wdbg64 tests/debug_fixture3.w | grep -c "logpoint 1 hit" | grep -q "^2$$"
+	printf 'b debug_fixture3.w:12\ncondition 1 i +\nc\n' | ./bin/wdbg64 tests/debug_fixture3.w | grep -q "failed to compile: stopping unconditionally"
+	printf 'b debug_fixture3.w:12\ncondition 1 i == 3\ncondition 1\nc\np i\nc\n' | ./bin/wdbg64 tests/debug_fixture3.w | grep -q "i = 0 (0x00000000)"
 	# inspection: locals, args, globals, strings, backtrace, memory, source
 	printf 'p x\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "x = 3"
 	printf 'p message\nc\n' | ./bin/wdbg64 tests/debug_fixture2.w | grep -q "hello wdbg"

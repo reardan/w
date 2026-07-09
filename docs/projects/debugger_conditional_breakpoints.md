@@ -1,6 +1,8 @@
 # Debugger: Conditional Breakpoints, Hit Counts & Logpoints
 
-Status: **planned** (design only — not yet implemented).
+Status: **implemented** (`debugger/breakpoints.w`, `debugger/eval.w`,
+`debugger/wdbg.w`; tests in `tests/debug_fixture3.w` and the `debug_test`
+/ `debug_test_x64` Makefile targets).
 
 Tracks the active remainder of
 [reardan/w#38](https://github.com/reardan/w/issues/38) after PR #36 landed
@@ -115,16 +117,27 @@ mutations, and prints `= <value>`. Add a non-printing sibling for
 condition/logpoint use:
 
 ```
+int dbg_eval_ok   /* set by dbg_eval_call: 0 = the expression failed to compile */
+
 int dbg_eval_call(char* expr, int stop_addr, int esp):
+    dbg_eval_ok = 0
     int f = dbg_eval_compile(expr, stop_addr, esp)
     if (f == 0):
-        return -1   # compile error: caller decides fail-open vs fail-closed
+        return 0
     int v = f()
     dbg_eval_writeback()
+    dbg_eval_ok = 1
     return v
 ```
 
-`dbg_eval` itself can be rewritten in terms of it (compile error already
+(Implementation note: the sketch above returns a sentinel `-1` on compile
+failure; that collides with a real expression legitimately evaluating to
+`-1`, which is truthy under W's C-like semantics — a condition of
+`i == -1` would then misreport as "failed to compile". The landed version
+uses a separate `dbg_eval_ok` out-of-band flag instead, which callers
+check before trusting the return value.)
+
+`dbg_eval` itself is rewritten in terms of it (a compile error already
 prints its own diagnostic via the normal error path before returning 0,
 so no duplicate message is needed).
 
@@ -307,3 +320,33 @@ and trap handler, not `debugger/sigcontext.w`.
 6. `make verify` (breakpoints.w/eval.w/wdbg.w are outside the seed's
    compiled set — `debugger/` is not in the seed-constrained list in
    `CLAUDE.md` — so no seed-promotion concerns; `make tests` is the gate).
+
+## Implementation notes
+
+- **Functions must be defined before use within a file.** `wdbg.w` is
+  compiled single-pass; a `dbg_eval_call` defined textually after its
+  first caller failed with `Cannot find symbol`. `debugger/eval.w`
+  defines `dbg_eval_call` before `dbg_eval` (which now calls it) for this
+  reason — same convention the rest of the file already follows (every
+  helper is defined before its call site).
+- **`|` is bitwise-or, not short-circuiting `||`.** A first draft of
+  `bp_set_condition(i, expr)` guarded with
+  `if ((expr == 0) | (expr[0] == 0))`; both operands evaluate regardless
+  of the first, so `expr[0]` dereferenced a null pointer whenever
+  `bp_delete` called it with `expr = 0` to clear a condition — a real
+  SIGSEGV crash on every `tbreak`+`condition` combination that reached
+  its actual stop (caught by the manual `tbreak`+`condition` scenario
+  below before it reached a committed test). Fixed with two sequential
+  `if`s so the null case returns before the dereference. Worth flagging
+  for future `debugger/` changes: any guard shaped like
+  `(ptr == 0) | (ptr[0] == ...)` is a latent null-deref, not a safe
+  short-circuit.
+- **Sequencing commands against the initial `debugger` trap.** Every
+  fixture used here starts with a `debugger` statement, so the *first*
+  command read from stdin resumes past that initial stop. Breakpoints,
+  conditions, ignore counts and logpoints must be set *before* that
+  first `c` — setting them after does nothing, since the debuggee will
+  have already run to completion by the time they'd be read. This isn't
+  a code change, but it tripped up hand-writing the manual verification
+  sequences and is worth calling out for anyone scripting `wdbg` for the
+  first time.
