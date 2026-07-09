@@ -1,8 +1,0 @@
-{
-	"version": 1,
-	"hooks": {
-		"postToolUse": [
-			{"command": ".cursor/hooks/check_after_edit.sh", "timeout": 60}
-		]
-	}
-}

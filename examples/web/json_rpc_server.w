@@ -1,5 +1,5 @@
 # JSON-RPC 2.0 server over stdio using Content-Length framing — the same
-# wire format as the MCP server in tools/mcp/w_toolchain_mcp.w.
+# wire format as the W MCP servers (moved out of this repo in July 2026).
 #
 # Build and try it:
 #   ./bin/wv2 examples/web/json_rpc_server.w -o ./bin/json_rpc_server

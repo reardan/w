@@ -1246,170 +1246,12 @@
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec_test\n"},
 				{"cmd": ["bin/wtest", "changed", "build.json"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec_test\ntests\n"},
-				{"cmd": ["bin/wtest", "changed", "tools/lsp/w_lsp.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "lsp_test\n"},
-				{"cmd": ["bin/wtest", "changed", "tools/mcp/w_toolchain_mcp.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "mcp_test\n"},
-				{"cmd": ["bin/wtest", "changed", "tools/index/w_index.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "index_test\nindexd_test\n"},
-				{"cmd": ["bin/wtest", "changed", "tools/mcp/w_index_mcp.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "index_mcp_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tests/import_alias_warning_fixture.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "warning_test\nindex_test\n"},
-				{"cmd": ["bin/wtest", "changed", "tools/mcp/w_debug_mcp.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "debug_mcp_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "warning_test\n"},
 				{"cmd": ["bin/wtest", "changed", "debugger/wdbg.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "debug_test\ndebug_test_x64\nattach_test\ndebug_mcp_test\n"},
-				{"cmd": ["bin/wtest", "changed", "tools/hooks/w_check_hook.w", ".cursor/hooks.json"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "hook_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "debug_test\ndebug_test_x64\nattach_test\n"},
 				{"cmd": ["bin/wtest", "changed", ".cursor/rules/w-source.mdc", ".cursor/skills/w-check-diagnostics/SKILL.md"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["test", "!", "-s", "bin/wtest_map.out"]}
-			]
-		},
-		{
-			"name": "wmcp",
-			"deps": ["wv2"],
-			"inputs": ["tools/mcp/w_toolchain_mcp.w", "tools/mcp/mcp_server.w"],
-			"outputs": ["bin/wmcp"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/mcp/w_toolchain_mcp.w", "-o", "bin/wmcp"]}
-			]
-		},
-		{
-			"name": "mcp_test",
-			"deps": ["wmcp"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/mcp/mcp_test.w", "-o", "bin/mcp_test"]},
-				{"cmd": ["bin/mcp_test"]}
-			]
-		},
-		{
-			"name": "windex",
-			"deps": ["wv2"],
-			"inputs": ["tools/index/w_index.w", "tools/index/w_index_core.w"],
-			"outputs": ["bin/windex"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/index/w_index.w", "-o", "bin/windex"]}
-			]
-		},
-		{
-			"name": "windexd",
-			"deps": ["wv2"],
-			"inputs": ["tools/index/w_indexd.w", "tools/index/w_index_core.w", "tools/index/stop_windexd.w"],
-			"outputs": ["bin/windexd"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/index/stop_windexd.w", "-o", "bin/stop_windexd"]},
-				{"cmd": ["bin/stop_windexd"]},
-				{"cmd": ["bin/wv2", "tools/index/w_indexd.w", "-o", "bin/windexd"]}
-			]
-		},
-		{
-			"name": "index_test",
-			"deps": ["windex", "windexd"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/index/index_test.w", "-o", "bin/index_test"]},
-				{"cmd": ["bin/index_test"]}
-			]
-		},
-		{
-			"name": "indexd_test",
-			"deps": ["index_test"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/index/indexd_test.w", "-o", "bin/indexd_test"]},
-				{"cmd": ["bin/indexd_test"]}
-			]
-		},
-		{
-			"name": "wimcp",
-			"deps": ["windex", "windexd"],
-			"inputs": ["tools/mcp/w_index_mcp.w", "tools/mcp/mcp_server.w"],
-			"outputs": ["bin/wimcp"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/mcp/w_index_mcp.w", "-o", "bin/wimcp"]}
-			]
-		},
-		{
-			"name": "index_mcp_test",
-			"deps": ["wimcp", "indexd_test"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/mcp/index_mcp_test.w", "-o", "bin/index_mcp_test"]},
-				{"cmd": ["bin/index_mcp_test"]},
-				{"cmd": ["bin/stop_windexd"]}
-			]
-		},
-		{
-			"name": "wlsp",
-			"deps": ["wv2", "windex", "windexd"],
-			"inputs": ["tools/lsp/w_lsp.w"],
-			"outputs": ["bin/wlsp"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/lsp/w_lsp.w", "-o", "bin/wlsp"]}
-			]
-		},
-		{
-			"name": "lsp_test",
-			"deps": ["wlsp", "index_mcp_test"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/lsp/lsp_test.w", "-o", "bin/lsp_test"]},
-				{"cmd": ["bin/lsp_test"]},
-				{"cmd": ["bin/stop_windexd"]}
-			]
-		},
-		{
-			"name": "whook",
-			"deps": ["wv2"],
-			"inputs": ["tools/hooks/w_check_hook.w"],
-			"outputs": ["bin/whook"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/hooks/w_check_hook.w", "-o", "bin/whook"]}
-			]
-		},
-		{
-			"name": "hook_test",
-			"deps": ["whook"],
-			"steps": [
-				{"cmd": ["cp", "tests/warning_fixture.w", "bin/hook_edit_sample.w"]},
-				{
-					"cmd": ["bin/whook"],
-					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"path\":\"bin/hook_edit_sample.w\"}}",
-					"expect_stdout": ["additional_context", "assignment type mismatch"]
-				},
-				{
-					"cmd": ["bin/whook"],
-					"stdin": "{\"hook_event_name\":\"afterFileEdit\",\"file_path\":\"bin/hook_edit_sample.w\",\"edits\":[]}",
-					"expect_stdout": "assignment type mismatch"
-				},
-				{
-					"cmd": ["bin/whook"],
-					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"StrReplace\",\"tool_input\":{\"file_path\":\"tests/hello.w\"}}",
-					"stdout_file": "bin/hook_test.out"
-				},
-				{"cmd": ["diff", "-u", "-", "bin/hook_test.out"], "stdin": "{}\n"},
-				{
-					"cmd": ["bin/whook"],
-					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"path\":\"README.md\"}}",
-					"stdout_file": "bin/hook_test.out"
-				},
-				{"cmd": ["diff", "-u", "-", "bin/hook_test.out"], "stdin": "{}\n"},
-				{
-					"cmd": ["bin/whook"],
-					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"path\":\"bin/hook_edit_sample.w\"}}",
-					"stdout_file": "bin/hook_test.out"
-				},
-				{"cmd": ["diff", "-u", "-", "bin/hook_test.out"], "stdin": "{}\n"},
-				{
-					"cmd": ["bin/whook"],
-					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"path\":\"tests/warning_fixture.w\"}}",
-					"stdout_file": "bin/hook_test.out"
-				},
-				{"cmd": ["diff", "-u", "-", "bin/hook_test.out"], "stdin": "{}\n"},
-				{"cmd": ["bin/whook"], "stdin": "not json", "stdout_file": "bin/hook_test.out"},
-				{"cmd": ["diff", "-u", "-", "bin/hook_test.out"], "stdin": "{}\n"},
-				{
-					"cmd": [".cursor/hooks/check_after_edit.sh"],
-					"stdin": "{\"hook_event_name\":\"postToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"path\":\"bin/hook_edit_sample.w\"}}",
-					"expect_stdout": "assignment type mismatch"
-				}
 			]
 		},
 		{
@@ -1736,23 +1578,6 @@
 			"outputs": ["bin/wdbg64"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "debugger/debugger.w", "-o", "bin/wdbg64"]}
-			]
-		},
-		{
-			"name": "wdmcp",
-			"deps": ["wdbg"],
-			"inputs": ["tools/mcp/w_debug_mcp.w", "tools/mcp/mcp_server.w"],
-			"outputs": ["bin/wdmcp"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/mcp/w_debug_mcp.w", "-o", "bin/wdmcp"]}
-			]
-		},
-		{
-			"name": "debug_mcp_test",
-			"deps": ["wdmcp"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tools/mcp/debug_mcp_test.w", "-o", "bin/debug_mcp_test"]},
-				{"cmd": ["bin/debug_mcp_test"]}
 			]
 		},
 		{
@@ -2642,12 +2467,6 @@
 				"parser_generator_w_test",
 				"parser_generator_c_test",
 				"wtest_map_test",
-				"mcp_test",
-				"index_test",
-				"indexd_test",
-				"index_mcp_test",
-				"lsp_test",
-				"hook_test",
 				"wexec_test",
 				"metadata_check",
 				"metadata_test",
@@ -2669,7 +2488,6 @@
 				"json_rpc_test",
 				"net_basic",
 				"debug_test",
-				"debug_mcp_test",
 				"attach_test",
 				"repl_test",
 				"dynamic_test",
