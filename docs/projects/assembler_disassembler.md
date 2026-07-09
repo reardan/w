@@ -100,6 +100,52 @@ Inline `asm` blocks in the language, and REPL/JIT uses, are explicitly
 **out of scope** for this epic — natural follow-ups once the encoder
 exists.
 
+## Phase 0: shared prerequisites (do once, used by every sub-issue)
+
+These are the tasks where skipping them means every arch issue re-does
+the same research or invents its own local copy. They replace/expand the
+"core scaffolding" sub-issue (#1 below).
+
+1. **Instruction inventory + machine-readable corpus.** One sweep over
+   `code_generator/` harvesting every `emit()` / `a64(op())` call and its
+   assembly comment into per-ISA fixture files of `bytes ↔ text` pairs
+   (e.g. `tests/asm/corpus_x86.txt`). This single artifact is:
+   - the *scope definition* for issues 2-5 (what "the compiler subset"
+     concretely is — no per-arch re-research),
+   - the differential-test input for the assemblers,
+   - the seed test vectors for the disassemblers,
+   - an honesty check on the existing comments (any comment that doesn't
+     assemble to its committed bytes is a latent doc bug worth finding
+     before it seeds the tables).
+2. **Canonical text syntax spec.** Write the operand grammar once, in
+   this doc: register names, immediate/hex formatting, memory-operand
+   shape (`[reg+disp]`), size keywords (`byte`/`word`/`dword`/`qword`),
+   label references, and the arm64 flavor. The corpus format (P0.1), the
+   formatter (issue 2), the parser (issue 3) and both extra arches all
+   reference one spec instead of making four drifting ad-hoc decisions.
+3. **Cross-arch binary section reader.** Generalize
+   `lib/__arch__/*/elf_introspect.w` — which introspects the *running
+   binary's own image* via arch dispatch — into a file-based reader that
+   returns `.text` bytes + symbol boundaries for **any** target's binary
+   (ELF32/ELF64/arm64 ELF; Mach-O later) regardless of host arch. Every
+   golden test (issues 2, 4, 5), the stub drift test (issue 7) and
+   wdbg attach symbolization want this; it must exist exactly once.
+4. **Byte-diff test helpers.** `assert_bytes_equal` with a hex-dump diff
+   on failure, plus the corpus fixture loader, in `lib/testing.w` or
+   `libs/asm/test_util.w`. Every round-trip/differential test in every
+   sub-issue asserts on byte buffers; without this each test grows its
+   own hexdump.
+5. **Mechanical seed-compat gate.** A `build.json` target that compiles
+   `libs/asm` with the committed seed `./w` directly. Turns the
+   "seed-safe syntax from day one" rule from review-time tribal
+   knowledge into a cheap automated check that protects the later
+   wdbg/codegen integrations.
+
+One further decision belongs in Phase 0 but needs no research: pick the
+**opcode-table representation** (data-driven struct/list tables shared by
+encode and decode, vs. paired code) before issue 2 starts, since x86,
+x64 and arm64 all inherit the choice.
+
 ## Issue breakdown
 
 One parent (epic) issue tracking the project, with GitHub **sub-issues**
@@ -110,10 +156,16 @@ convention (`Asm:` alongside `Debugger:` / `ParserGenerator:`).
 Epic: **Asm: in-house assembler/disassembler libraries (x86, x64, arm64)**
 — links this doc.
 
-1. **Asm: core scaffolding (`libs/asm/`)** — no ISA knowledge yet.
+1. **Asm: shared foundations (`libs/asm/` + Phase 0)** — no per-ISA
+   encode/decode logic yet.
+   - [ ] instruction inventory → per-ISA corpus fixtures (Phase 0.1)
+   - [ ] canonical text-syntax spec in this doc (Phase 0.2)
+   - [ ] cross-arch binary section reader (Phase 0.3)
+   - [ ] byte-diff test helpers + corpus loader (Phase 0.4)
+   - [ ] seed-compat build gate for `libs/asm` (Phase 0.5)
    - [ ] instruction + operand structs, byte buffer, label/fixup patching
-   - [ ] register name tables (x86/x64/arm64)
-   - [ ] canonical text-syntax spec (documented in this file)
+   - [ ] register name tables (x86/x64/arm64); opcode-table
+         representation decided
    - [ ] build targets + empty test skeletons; retire `tests/asm.w`
          prototype (fold anything useful in)
 2. **Asm: x86 (32-bit) disassembler** — depends on 1.
