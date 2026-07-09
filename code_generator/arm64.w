@@ -264,7 +264,8 @@ int arm64_setcc_cond(int setcc):
 
 
 # CSET encodes the INVERTED condition (CSINC with Rn=Rm=xzr). Flip the low
-# bit without a binary xor operator (which W's grammar lacks).
+# bit without the binary ^ operator, which the committed seed compiling
+# this file does not know yet.
 void arm64_cset(int cond):
 	int inv = cond + 1 - 2 * (cond & 1)
 	a64(op(0x9a, 0x9f07e0) | (inv << 12))   # cset x0, <cond>

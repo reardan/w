@@ -91,6 +91,7 @@ literal LT "<"
 literal GT ">"
 literal AMP "&"
 literal PIPE "|"
+literal CARET "^"
 literal BANG "!"
 literal COLON_ASSIGN ":="
 literal ASSIGN "="
@@ -209,7 +210,7 @@ rule assign_tail = gap_many assign_op gap_many assignment
 rule assign_op = ASSIGN | PLUS_ASSIGN | MINUS_ASSIGN | STAR_ASSIGN | SLASH_ASSIGN | PERCENT_ASSIGN | AMP_ASSIGN | PIPE_ASSIGN | CARET_ASSIGN | SHL_ASSIGN | SHR_ASSIGN
 rule binary_expr = unary_expr binary_tail*
 rule binary_tail = gap_many binary_op gap_many unary_expr
-rule binary_op = OR_OR | AND_AND | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | LT | GT | KW_IN | SHIFT_LEFT | SHIFT_RIGHT | PLUS | MINUS | STAR | SLASH | PERCENT | AMP | PIPE
+rule binary_op = OR_OR | AND_AND | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | LT | GT | KW_IN | SHIFT_LEFT | SHIFT_RIGHT | PLUS | MINUS | STAR | SLASH | PERCENT | AMP | PIPE | CARET
 rule gap_many = gap_item gap_many |
 rule gap_item = NEWLINE tab_prefix | NEWLINE
 rule unary_expr = unary_op unary_expr | postfix_expr

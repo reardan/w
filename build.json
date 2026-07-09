@@ -766,6 +766,14 @@
 			]
 		},
 		{
+			"name": "bitwise_xor_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/bitwise_xor_test.w", "-o", "bin/bitwise_xor_test"]},
+				{"cmd": ["bin/bitwise_xor_test"]}
+			]
+		},
+		{
 			"name": "infer_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2636,6 +2644,7 @@
 				"type_system_warning_test",
 				"for_test",
 				"compound_assign_test",
+				"bitwise_xor_test",
 				"infer_test",
 				"ternary_test",
 				"print_builtin_test",
