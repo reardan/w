@@ -272,3 +272,88 @@ void test_map_get_struct_default():
 	kv_test_point missing = m.get(c"z", fallback)
 	assert_equal(9, missing.x)
 	assert_equal(8, missing.y)
+
+
+void test_map_iterates_in_insertion_order():
+	map[char*, int] m = new map[char*, int]
+	m[c"zebra"] = 1
+	m[c"apple"] = 2
+	m[c"mango"] = 3
+	int step = 0
+	for char* key in m:
+		if (step == 0):
+			assert_strings_equal(c"zebra", key)
+		if (step == 1):
+			assert_strings_equal(c"apple", key)
+		if (step == 2):
+			assert_strings_equal(c"mango", key)
+		step = step + 1
+	assert_equal(3, step)
+
+
+void test_map_update_keeps_insertion_position():
+	map[int, int] m = new map[int, int]
+	m[7] = 70
+	m[3] = 30
+	m[9] = 90
+	m[7] = 71
+	int step = 0
+	for int k in m:
+		if (step == 0):
+			assert_equal(7, k)
+		if (step == 1):
+			assert_equal(3, k)
+		if (step == 2):
+			assert_equal(9, k)
+		step = step + 1
+	assert_equal(3, step)
+	assert_equal(71, m[7])
+
+
+void test_map_remove_reinsert_moves_to_end():
+	map[int, int] m = new map[int, int]
+	m[1] = 10
+	m[2] = 20
+	m[3] = 30
+	m.remove(1)
+	m[1] = 11
+	int step = 0
+	for int k in m:
+		if (step == 0):
+			assert_equal(2, k)
+		if (step == 1):
+			assert_equal(3, k)
+		if (step == 2):
+			assert_equal(1, k)
+		step = step + 1
+	assert_equal(3, step)
+
+
+void test_map_insertion_order_survives_growth():
+	# 100 int keys force several rehashes past the initial capacity of 16;
+	# iteration must still replay the insertion sequence exactly.
+	map[int, int] m = new map[int, int]
+	for int i in range(100):
+		m[i * 7] = i
+	int expect = 0
+	for int k in m:
+		assert_equal(expect * 7, k)
+		expect = expect + 1
+	assert_equal(100, expect)
+
+
+void test_set_iterates_in_insertion_order():
+	set[char*] s = new set[char*]
+	s.add(c"walnut")
+	s.add(c"acorn")
+	s.add(c"pecan")
+	int step = 0
+	for char* member in s:
+		if (step == 0):
+			assert_strings_equal(c"walnut", member)
+		if (step == 1):
+			assert_strings_equal(c"acorn", member)
+		if (step == 2):
+			assert_strings_equal(c"pecan", member)
+		step = step + 1
+	assert_equal(3, step)
