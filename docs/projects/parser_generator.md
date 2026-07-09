@@ -37,6 +37,10 @@ The initial format is line-oriented:
 parser sample
 token WORD letters
 token NUMBER digits
+token IDENT = [a-zA-Z_] [a-zA-Z0-9_-]*
+fragment HEX_DIGIT = [0-9a-fA-F]
+token HEX = "#" ("x" | "X") HEX_DIGIT+
+skip SQL_COMMENT = "--" [^\r\n]*
 literal COMMA ","
 start list
 rule value = WORD | NUMBER
@@ -49,6 +53,28 @@ which map to `pg_lexer_matcher_<name>`. `skip <NAME> <matcher>` declares
 comment or trivia matchers. Skip matches are emitted as hidden-channel tokens
 (negative kinds starting at -3): the parser never sees them, but they stay in
 the stream's `all_tokens` list so tools can reproduce the input.
+
+Tokens and skips may instead use an inline matcher expression after `=`:
+
+```text
+token IDENT = [a-zA-Z_] [a-zA-Z0-9_-]*
+token HEX = "#" ("x" | "X") [0-9a-fA-F]+
+token NEWLINE_TOK = "\r"? "\n"
+token NUMCONST = DECNUM | HEXNUM | CHAR
+```
+
+Matcher expressions are byte-oriented and ASCII-only. They support string
+literals, character classes with ranges and leading `^` negation, grouping,
+alternation (`|`), concatenation, and the `?`, `*`, and `+` suffixes. Standard
+`\n`, `\r`, and `\t` escapes work in strings and classes; a backslash also
+quotes punctuation such as `]`, `-`, `\`, or `"`.
+
+`fragment <NAME> = <expression>` defines a reusable matcher without creating a
+token kind. Expressions may reference fragments or token definitions,
+including tokens backed by an existing named matcher. Forward references are
+allowed; unknown references and reference cycles are errors. A `*` or `+`
+operand must consume at least one byte on every successful match, preventing
+generated matcher loops from stalling.
 
 Rule terms are token names, literal names, rule names, or `EOF`. A term may end
 with `?`, `*`, or `+`. Alternatives are separated by `|`. Parenthesized groups
@@ -86,9 +112,15 @@ Recovery is intended for repetitions in single-alternative contexts (like the
 start rule); a recovered repetition inside an alternative that later fails
 would leave its diagnostics behind after backtracking.
 
-Generated lexers use longest-match token selection. This lets a grammar list
+Generated lexers use longest-match token selection, both among matcher
+alternatives and among token declarations. Equal-length token matches are
+resolved by declaration order. Exact `literal` directives retain their
+existing priority over an equal-length token match, so a grammar can list
 generic identifiers and exact keyword/operator literals together: `integer`
-stays an identifier, while `int` can become a keyword token.
+stays an identifier, while `int` can become a keyword token. Declared
+token/skip/literal rules are attempted before the implicit inline-whitespace
+fallback, allowing a matcher such as `"\r"? "\n"` to consume CRLF as one
+token.
 
 ## W grammar
 
