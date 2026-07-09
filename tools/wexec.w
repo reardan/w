@@ -56,15 +56,14 @@ import lib.process
 import lib.stream
 import structures.string
 import structures.json
-import structures.hash_map
 
 
 json_value* wexec_manifest
-hash_map* wexec_targets      # name -> json_value* of the target object
-hash_map* wexec_states       # name -> 0 unvisited / 1 visiting / 2 collected
-hash_map* wexec_keys         # name -> char* cache key, for targets with "inputs"
-hash_map* wexec_started      # name -> 1 once launched (or completed inline)
-hash_map* wexec_finished     # name -> 1 once successfully finished
+map[char*, json_value*] wexec_targets  # name -> json_value* of the target object
+map[char*, int] wexec_states        # name -> 0 unvisited / 1 visiting / 2 collected
+map[char*, char*] wexec_keys        # name -> char* cache key, for targets with "inputs"
+map[char*, int] wexec_started       # name -> 1 once launched (or completed inline)
+map[char*, int] wexec_finished      # name -> 1 once successfully finished
 list[char*] wexec_names      # manifest order, for --list
 list[char*] wexec_closure    # requested targets + deps, dependency order
 int wexec_completed          # targets finished this invocation
@@ -315,7 +314,7 @@ char* wexec_cache_key(char* name, json_value* target):
 			while (i < json_array_length(deps)):
 				json_value* dep = json_array_get(deps, i)
 				if (dep.type == json_type_string()):
-					char* dep_key = cast(char*, hash_map_get_default(wexec_keys, dep.string_value, 0))
+					char* dep_key = wexec_keys.get(dep.string_value, 0)
 					if (dep_key == 0):
 						return 0
 					wexec_hash_cstr(&h, dep_key)
@@ -617,17 +616,17 @@ targets are drained, and the run exits 1 — make without -k. */
 # targets and cycles, and appends every reachable target in dependency
 # order (the serial execution order) to wexec_closure.
 int wexec_collect_closure(char* name):
-	int state = hash_map_get_default(wexec_states, name, 0)
+	int state = wexec_states.get(name, 0)
 	if (state == 2):
 		return 0
 	if (state == 1):
 		wexec_error2(c"dependency cycle involving target ", name)
 		return 1
-	json_value* target = cast(json_value*, hash_map_get_default(wexec_targets, name, 0))
+	json_value* target = wexec_targets.get(name, 0)
 	if (target == 0):
 		wexec_error2(c"unknown target ", name)
 		return 1
-	hash_map_set(wexec_states, name, 1)
+	wexec_states[name] = 1
 	json_value* deps = json_object_get(target, c"deps")
 	if (deps != 0):
 		if (deps.type != json_type_array()):
@@ -642,20 +641,20 @@ int wexec_collect_closure(char* name):
 			if (wexec_collect_closure(dep.string_value)):
 				return 1
 			i = i + 1
-	hash_map_set(wexec_states, name, 2)
+	wexec_states[name] = 2
 	wexec_closure.push(name)
 	return 0
 
 
 int wexec_deps_finished(char* name):
-	json_value* target = cast(json_value*, hash_map_get_default(wexec_targets, name, 0))
+	json_value* target = wexec_targets.get(name, 0)
 	json_value* deps = json_object_get(target, c"deps")
 	if (deps == 0):
 		return 1
 	int i = 0
 	while (i < json_array_length(deps)):
 		json_value* dep = json_array_get(deps, i)
-		if (hash_map_get_default(wexec_finished, dep.string_value, 0) == 0):
+		if (wexec_finished.get(dep.string_value, 0) == 0):
 			return 0
 		i = i + 1
 	return 1
@@ -700,20 +699,20 @@ struct wexec_worker:
 void wexec_mark_finished(char* name, char* key):
 	if (key != 0):
 		wexec_cache_store(name, key)
-	hash_map_set(wexec_finished, name, 1)
+	wexec_finished[name] = 1
 	wexec_completed = wexec_completed + 1
 
 
 # Launch one target. Returns 0 when the target completed inline (cache
 # hit or no steps), 1 when a worker was forked, -1 on spawn failure.
 int wexec_launch(char* name, list[wexec_worker*] workers):
-	json_value* target = cast(json_value*, hash_map_get_default(wexec_targets, name, 0))
+	json_value* target = wexec_targets.get(name, 0)
 	char* key = wexec_cache_key(name, target)
 	if (key != 0):
-		hash_map_set(wexec_keys, name, cast(int, key))
+		wexec_keys[name] = key
 		if ((wexec_no_cache == 0) && wexec_cache_fresh(name, key, target)):
 			wexec_print_target_header(name, c" (cached)")
-			hash_map_set(wexec_finished, name, 1)
+			wexec_finished[name] = 1
 			wexec_completed = wexec_completed + 1
 			return 0
 	json_value* steps = json_object_get(target, c"steps")
@@ -814,8 +813,8 @@ int wexec_execute(list[char*] requested):
 			int t = 0
 			while ((t < total) && (running < wexec_jobs)):
 				char* name = wexec_closure[t]
-				if ((hash_map_get_default(wexec_started, name, 0) == 0) && wexec_deps_finished(name)):
-					hash_map_set(wexec_started, name, 1)
+				if ((wexec_started.get(name, 0) == 0) && wexec_deps_finished(name)):
+					wexec_started[name] = 1
 					int outcome = wexec_launch(name, workers)
 					if (outcome < 0):
 						failed = 1
@@ -944,11 +943,11 @@ int wexec_load_manifest(char* path):
 		wexec_error2(c"\"targets\" must be an array: ", path)
 		return 1
 
-	wexec_targets = hash_map_new()
-	wexec_states = hash_map_new()
-	wexec_keys = hash_map_new()
-	wexec_started = hash_map_new()
-	wexec_finished = hash_map_new()
+	wexec_targets = new map[char*, json_value*]
+	wexec_states = new map[char*, int]
+	wexec_keys = new map[char*, char*]
+	wexec_started = new map[char*, int]
+	wexec_finished = new map[char*, int]
 	wexec_names = new list[char*]
 	wexec_closure = new list[char*]
 	int i = 0
@@ -961,10 +960,10 @@ int wexec_load_manifest(char* path):
 		if (name == 0):
 			wexec_error2(c"target without a \"name\" string: ", path)
 			return 1
-		if (hash_map_contains(wexec_targets, name)):
+		if (name in wexec_targets):
 			wexec_error2(c"duplicate target ", name)
 			return 1
-		hash_map_set(wexec_targets, name, cast(int, target))
+		wexec_targets[name] = target
 		wexec_names.push(name)
 		i = i + 1
 	wexec_make_dirs()
