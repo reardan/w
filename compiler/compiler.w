@@ -23,6 +23,7 @@ int compile_attempt(char* fn):
 	if (file < 0):
 		file_not_found_error()
 		return 0
+	getchar_reset(file)
 	line_number = 0
 	column_number = 0
 	tab_level = 0
@@ -427,6 +428,7 @@ void symbols_emit_json(char* name, char* kind, char* type_name, int file_index, 
 			diag_write_cstr(c", ")
 			symbols_emit_fields_json(type_index)
 	diag_write_cstr(c"}\x0a")
+	diag_flush()
 
 
 void symbols_emit_human(char* name, char* kind, char* type_name, int file_index, int line, int column):
@@ -446,6 +448,7 @@ void symbols_emit_human(char* name, char* kind, char* type_name, int file_index,
 	diag_write_cstr(c": ")
 	diag_write_cstr(type_name)
 	diag_write_cstr(c"\x0a")
+	diag_flush()
 
 
 void symbols_emit(int json, char* name, char* kind, char* type_name, int file_index, int line, int column, int type_index):

@@ -37,7 +37,7 @@ int inferred_declaration():
 	get_token()
 	if (peek(c":=") == 0):
 		free(name)
-		seek(file, load_ptr(save + 7 * __word_size__), 0)
+		getchar_seek(file, load_ptr(save + 7 * __word_size__))
 		generic_reparse_restore(save)
 		return 0
 	free(cast(char*, load_ptr(save + 11 * __word_size__)))

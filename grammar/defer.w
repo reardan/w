@@ -130,7 +130,8 @@ void defer_reparse_start(int i):
 		diag_part(path)
 		error(c"'")
 	filename = path
-	seek(file, load_int(e + __word_size__), 0)
+	getchar_reset(file)
+	getchar_seek(file, load_int(e + __word_size__))
 	byte_offset = load_int(e + __word_size__)
 	line_number = load_int(e + __word_size__ + 4)
 	column_number = load_int(e + __word_size__ + 8)

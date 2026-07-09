@@ -21,6 +21,18 @@ is a queue, not an archive.
   file-not-found path serializes a corrupt/uninitialized filename buffer
   into the JSON record. Fix the buffer handling in the upward-search
   error path (`compiler/compiler.w` / `compiler/diagnostics.w`).
+- **Array-to-pointer decay is a warning but generates corrupting code.**
+  Found during the buffered-getchar work (issue #113, 2026-07-09):
+  passing a fixed array (`char[8192] buf`) where a `char*` parameter is
+  expected only warns (`argument 2 type mismatch: expected 'char*', got
+  'char[] value'`) but emits the array's *descriptor address* as the
+  pointer, so the callee (here `read(2)`) overwrites the descriptor's
+  {data-pointer, length} header with payload bytes — the data pointer
+  becomes file content and the next index through the array jumps to a
+  garbage address far from the corruption site. Cost hours to trace
+  back. Either implement real decay (pass the descriptor's data
+  pointer) or promote the warning to a hard error; a warning that
+  compiles to memory corruption is the worst of both.
 - **Multi-error reporting.** The compiler stops at the first error
   (single-pass, no recovery). Documented limitation; real fix is parser
   recovery, which stays a research project. Cheap partial win: after an
@@ -101,6 +113,15 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
+- **`indexd_test` is flaky under a parallel `wbuild tests` run.** Seen
+  twice on 2026-07-09: `asserts(c"daemon responded", ...)` fires
+  (jsonrpc_read_message returned 0) while the full suite runs in
+  parallel, but the target passes 8/8 standalone. The windexd port
+  discovery file (`bin/.windexd.port`) and the shutdown RPC are shared
+  state between `index_test`/`indexd_test`/`index_mcp_test`, so a
+  sibling test can shut down or replace the daemon this test spawned.
+  Isolate the port file per test (env var or argv override) or
+  serialize the index tests.
 - **`repl.w` is not warning-free.** `./bin/wv2 repl.w -o /dev/null`
   reports two type warnings at `repl.w:518` (`load_word` argument 1 and
   `write` argument 2, both `char*` vs `int`). Fix them, then consider

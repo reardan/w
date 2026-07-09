@@ -368,7 +368,57 @@ string str_from_cstr(char* s):
 	return cast(string, cast(int, descriptor))
 
 
-int getchar(int file):
+# Buffered getchar (issue #113): read() one 8KB chunk per syscall instead of
+# one byte. State is per-fd so nested opens (imports) stay independent; fds
+# at or above GETCHAR_MAX_FD fall back to the unbuffered path. Buffers are
+# malloc'd lazily on first use and kept for the process lifetime so a reused
+# fd number reuses its buffer. Callers that open() a possibly-recycled fd
+# must call getchar_reset(fd) right after open() to drop stale buffered
+# bytes; callers that reposition a buffered fd must go through
+# getchar_seek() (a raw seek() would silently desync the buffer).
+int GETCHAR_BUF_CAPACITY():
+	return 8192
+
+
+int GETCHAR_MAX_FD():
+	return 256
+
+
+int[256] getchar_buf_addr
+int[256] getchar_pos
+int[256] getchar_limit
+# Kernel file offset of the byte just past the buffered window, i.e. the
+# offset the next read() will fill from. The buffered window therefore
+# covers file offsets [kernel_pos - limit, kernel_pos).
+int[256] getchar_kernel_pos
+
+
+# Invalidate the buffer for a freshly open()ed fd (kernel offset 0).
+void getchar_reset(int file):
+	if ((file >= 0) & (file < GETCHAR_MAX_FD())):
+		getchar_pos[file] = 0
+		getchar_limit[file] = 0
+		getchar_kernel_pos[file] = 0
+
+
+# Reposition a buffered fd to an absolute file offset (seek whence 0).
+# When the target still lies inside the buffered window this is free: it
+# just moves the read position, with no syscall.
+void getchar_seek(int file, int offset):
+	if ((file < 0) | (file >= GETCHAR_MAX_FD())):
+		seek(file, offset, 0)
+		return;
+	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
+	if ((offset >= window_start) & (offset <= getchar_kernel_pos[file])):
+		getchar_pos[file] = offset - window_start
+		return;
+	seek(file, offset, 0)
+	getchar_pos[file] = 0
+	getchar_limit[file] = 0
+	getchar_kernel_pos[file] = offset
+
+
+int getchar_unbuffered(int file):
 	# Read one byte into a stack slot. The older form read into a c""
 	# literal, which faults (read returns EFAULT) once the code segment is
 	# read-only under the W^X text/data split, making every file look empty.
@@ -377,6 +427,24 @@ int getchar(int file):
 	if (result <= 0):
 		return (-1)
 	return c & 255
+
+
+int getchar(int file):
+	if ((file < 0) | (file >= GETCHAR_MAX_FD())):
+		return getchar_unbuffered(file)
+	if (getchar_pos[file] >= getchar_limit[file]):
+		if (getchar_buf_addr[file] == 0):
+			getchar_buf_addr[file] = cast(int, malloc(GETCHAR_BUF_CAPACITY()))
+		int count = read(file, cast(char*, getchar_buf_addr[file]), GETCHAR_BUF_CAPACITY())
+		if (count <= 0):
+			return (-1)
+		getchar_pos[file] = 0
+		getchar_limit[file] = count
+		getchar_kernel_pos[file] = getchar_kernel_pos[file] + count
+	char* buffer = cast(char*, getchar_buf_addr[file])
+	int c = buffer[getchar_pos[file]] & 255
+	getchar_pos[file] = getchar_pos[file] + 1
+	return c
 
 
 void putc(int file, int c):

@@ -115,6 +115,7 @@ void dbg_print_source_range(char* path, int first, int last, int current):
 		print(c"cannot open ")
 		println(path)
 		return;
+	getchar_reset(f)
 	if (first < 1):
 		first = 1
 	int line = 1

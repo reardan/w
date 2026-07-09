@@ -55,6 +55,7 @@ void parse_manifest_path(string_builder* path):
 void assert_w_parse_manifest(char* manifest_path):
 	int file = open(manifest_path, 0, 0)
 	asserts(c"could not open W parser manifest", file >= 0)
+	getchar_reset(file)
 	string_builder* path = string_new()
 	int c = getchar(file)
 	while (c != -1):

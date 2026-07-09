@@ -91,6 +91,7 @@ void line_edit_history_load(char* path):
 	int f = open(resolved, 0, 0)
 	if (f < 0):
 		return;
+	getchar_reset(f)
 	char* line = malloc(4096)
 	int len = 0
 	int c = getchar(f)

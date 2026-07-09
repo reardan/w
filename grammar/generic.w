@@ -356,7 +356,8 @@ void generic_reparse_start(int def):
 		diag_part(path)
 		error(c"'")
 	filename = path
-	seek(file, generic_def_offset(def), 0)
+	getchar_reset(file)
+	getchar_seek(file, generic_def_offset(def))
 	byte_offset = generic_def_offset(def)
 	line_number = generic_def_line(def)
 	column_number = generic_def_column(def)
@@ -592,7 +593,7 @@ int generic_declaration_scan_generic_return():
 		return 1
 	# Not a definition (e.g. 'wresult[int]* f(...)'): rewind, so the
 	# normal type_name() path parses the generic struct return type.
-	seek(file, load_ptr(save + 7 * __word_size__), 0)
+	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
 	return 0
 
@@ -1375,7 +1376,7 @@ int generic_declaration_scan_repl():
 	int is_generic = name_is_ident & (nextc == '[')
 	# rewind: byte_offset (save offset 28) counts consumed bytes, so it
 	# is exactly the fd position the saved lookahead expects
-	seek(file, load_ptr(save + 7 * __word_size__), 0)
+	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
 	if (is_generic):
 		return generic_declaration_scan()
