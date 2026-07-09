@@ -5,7 +5,7 @@
 # symbols dump has no locals or parameters). See docs/projects/lsp.md.
 #
 # Build and run (the server speaks LSP on stdin/stdout):
-#   make wlsp && ./bin/wlsp
+#   ./wbuild wlsp && ./bin/wlsp
 import lib.lib
 import lib.args
 import lib.path

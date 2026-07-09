@@ -273,7 +273,7 @@ int main(int argc, int argv):
 		string_append_int(message, result.status)
 		string_append(message, c"), stderr:\n")
 		whook_append_capped(message, result.stderr_text, whook_max_diagnostics_length())
-	string_append(message, c"\nFix warnings as well as errors: the self-host build stages compile with --strict, so stray warnings fail 'make build'. Re-run './bin/wv2 check --json <file>' after fixing.")
+	string_append(message, c"\nFix warnings as well as errors: the self-host build stages compile with --strict, so stray warnings fail './wbuild build' (and 'make build'). Re-run './bin/wv2 check --json <file>' after fixing.")
 	whook_emit_context(message)
 	string_free(message)
 	process_result_free(result)

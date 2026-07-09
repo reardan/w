@@ -1,9 +1,9 @@
 # Minimal stdio MCP server for the W toolchain: JSON-RPC 2.0 over
 # Content-Length framing, exposing build/verify/test/check/compile/run/
-# repl_eval/test_changed tools that shell out to make and bin/wv2.
+# repl_eval/test_changed tools that shell out to ./wbuild and bin/wv2.
 #
 # Build and register (see .cursor/mcp.json):
-#   make wmcp && ./bin/wmcp
+#   ./wbuild wmcp && ./bin/wmcp
 import lib.lib
 import lib.args
 import lib.path
@@ -108,12 +108,12 @@ int mcp_result_exit_code(json_value* result):
 
 
 # Builds bin/wv2 when missing. Returns 1 when available; otherwise sets
-# mcp_error to the serialized make result and returns 0.
+# mcp_error to the serialized ./wbuild result and returns 0.
 int mcp_ensure_wv2():
 	if (path_exists(c"bin/wv2")):
 		return 1
 	list[char*] words = new list[char*]
-	words.push(c"make")
+	words.push(c"./wbuild")
 	words.push(c"build")
 	json_value* result = mcp_run_cmd(words, 0, 240000)
 	if (result == 0):
@@ -130,7 +130,7 @@ int mcp_ensure_wtest():
 	if (path_exists(c"bin/wtest")):
 		return 1
 	list[char*] words = new list[char*]
-	words.push(c"make")
+	words.push(c"./wbuild")
 	words.push(c"wtest")
 	json_value* result = mcp_run_cmd(words, 0, 180000)
 	if (result == 0):
@@ -181,8 +181,8 @@ int mcp_arch_is_x64(json_value* args):
 	return strcmp(arch, c"x64") == 0
 
 
-# Make targets must match ^[a-z0-9_]+$ so a tool call cannot smuggle
-# arbitrary make arguments.
+# wbuild targets must match ^[a-z0-9_]+$ so a tool call cannot smuggle
+# arbitrary wbuild arguments.
 int mcp_valid_target(char* target):
 	if (target[0] == 0):
 		return 0
@@ -201,14 +201,14 @@ int mcp_valid_target(char* target):
 
 json_value* mcp_tool_build(json_value* args):
 	list[char*] words = new list[char*]
-	words.push(c"make")
+	words.push(c"./wbuild")
 	words.push(c"build")
 	return mcp_run_cmd(words, 0, 240000)
 
 
 json_value* mcp_tool_verify(json_value* args):
 	list[char*] words = new list[char*]
-	words.push(c"make")
+	words.push(c"./wbuild")
 	if (mcp_arch_is_x64(args)):
 		words.push(c"verify_x64")
 	else:
@@ -225,7 +225,7 @@ json_value* mcp_tool_run_tests(json_value* args):
 		mcp_fail(c"targets must be a non-empty array")
 		return 0
 	list[char*] words = new list[char*]
-	words.push(c"make")
+	words.push(c"./wbuild")
 	int i = 0
 	while (i < json_array_length(targets)):
 		json_value* target = json_array_get(targets, i)
@@ -487,15 +487,15 @@ json_value* mcp_tool_schema(char* name, char* description, json_value* propertie
 json_value* mcp_tool_schemas():
 	json_value* tools = json_array()
 
-	json_array_push(tools, mcp_tool_schema(c"build", c"Run make build", json_object()))
+	json_array_push(tools, mcp_tool_schema(c"build", c"Run ./wbuild build", json_object()))
 
 	json_value* verify_properties = json_object()
 	json_object_set(verify_properties, c"arch", mcp_string_property())
-	json_array_push(tools, mcp_tool_schema(c"verify", c"Run make verify or verify_x64", verify_properties))
+	json_array_push(tools, mcp_tool_schema(c"verify", c"Run ./wbuild verify or verify_x64", verify_properties))
 
 	json_value* run_tests_properties = json_object()
 	json_object_set(run_tests_properties, c"targets", mcp_string_array_property())
-	json_array_push(tools, mcp_tool_schema(c"run_tests", c"Run validated Makefile test targets", run_tests_properties))
+	json_array_push(tools, mcp_tool_schema(c"run_tests", c"Run validated wbuild test targets", run_tests_properties))
 
 	json_value* check_properties = json_object()
 	json_object_set(check_properties, c"file", mcp_string_property())
