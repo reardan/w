@@ -2176,6 +2176,76 @@
 			]
 		},
 		{
+			"name": "asm_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/asm_test.w", "-o", "bin/asm_test"]},
+				{"cmd": ["bin/asm_test"]}
+			]
+		},
+		{
+			"name": "convert",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "debugger/convert.w", "-o", "bin/convert"]}
+			]
+		},
+		{
+			"name": "cuda_smoke",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/cuda_smoke.w", "-o", "bin/cuda_smoke"]},
+				{"cmd": ["bin/cuda_smoke"], "expect_stdout": "cuda vector add OK"}
+			]
+		},
+		{
+			"name": "elf",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/elf.w", "-o", "bin/elf"]},
+				{"cmd": ["bin/elf"]}
+			]
+		},
+		{
+			"name": "grapheme_data",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/generate_grapheme_data.w", "-o", "bin/generate_grapheme_data"]},
+				{"cmd": ["bin/generate_grapheme_data"]}
+			]
+		},
+		{
+			"name": "net",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/net.w", "-o", "bin/net"]},
+				{"cmd": ["bin/net"]}
+			]
+		},
+		{
+			"name": "rewrite_c_strings",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/rewrite_c_string_literals.w", "-o", "bin/rewrite_c_strings"]}
+			]
+		},
+		{
+			"name": "simple",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/simple.w", "-o", "bin/simple"]},
+				{"cmd": ["bin/simple"]}
+			]
+		},
+		{
+			"name": "testing_ground",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/testing_ground.w", "-o", "bin/testing_ground"]},
+				{"cmd": ["bin/testing_ground", "arg1", "arg2", "arg3", "-o", "output", "-i=input", "--input=doubledash"]}
+			]
+		},
+		{
 			"name": "tests",
 			"deps": [
 				"build",
