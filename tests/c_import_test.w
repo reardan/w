@@ -79,4 +79,4 @@ void test_c_import_padded_struct_fields():
 
 void test_c_import_function_pointer_typedef():
 	ci_eval_callback callback = 0
-	assert_equal(0, callback)
+	assert_equal(0, cast(int, callback))

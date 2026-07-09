@@ -9,8 +9,11 @@ int slow_step(int n):
 	return n + 1
 
 int main(int argc, int argv):
-	# prctl(PR_SET_PTRACER=0x59616d61, PR_SET_PTRACER_ANY=-1)
-	syscall(172, 0x59616d61, -1)
+	# prctl(PR_SET_PTRACER=0x59616d61, PR_SET_PTRACER_ANY=-1). The syscall()
+	# builtin lowers exactly nr + 3 register args; the padding 0 is required —
+	# with fewer args eax holds garbage and the kernel returns ENOSYS, so the
+	# Yama exemption never engages and attach fails under ptrace_scope=1.
+	syscall(172, 0x59616d61, -1, 0)
 	attach_counter = 1000
 	while (1):
 		attach_counter = slow_step(attach_counter)
