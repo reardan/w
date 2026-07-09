@@ -197,15 +197,6 @@ is a queue, not an archive.
   path exits without a message). Audit compiler exit paths so every
   failure prints at least a one-line diagnostic; a silent exit cost a
   full bisect to find the offending construct.
-- **`lib/testing.w` test discovery is ELF-only.** It walks ELF section
-  headers to find `test_*` symbols, so any testing.w-based test aborts
-  with "No symbol table addr" when compiled `arm64_darwin` and run
-  natively on macOS (observed with `map_set_builtin_test`,
-  `list_builtin_test` 2026-07-09). That caps native darwin testing at
-  the assert-style set in `tools/mac/run_darwin_tests.sh`. Either parse
-  Mach-O `LC_SYMTAB` alongside ELF, or have the compiler emit a static
-  test registry (which would also survive stripped binaries).
-
 ## Skills / rules upkeep
 
 - Keep skill command examples in sync with CLI changes (they are

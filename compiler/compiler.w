@@ -5,6 +5,7 @@ import lib.assert
 import compiler.type_table
 import compiler.symbol_table
 import grammar
+import compiler.test_registry
 
 
 void file_not_found_error():
@@ -273,6 +274,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	prelude_finish_import()
 	generic_finish_instantiations()
 	var_finish_import()
+
+	# Synthesize __w_test_main for lib/testing.w consumers now that every
+	# test_* function is compiled (compiler/test_registry.w, issue #147)
+	test_registry_finish()
 
 	# --strict: fail before any output is written so no artifact is
 	# produced when warnings fired. Warnings were already printed with

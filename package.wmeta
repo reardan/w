@@ -44,7 +44,6 @@ modules:
 	lib.utf8
 	lib.wmeta
 	lib.__arch__.context
-	lib.__arch__.elf_introspect
 	lib.__arch__.syscalls
 	structures.array_list
 	structures.hash_table
