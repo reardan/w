@@ -38,75 +38,64 @@ void coerce_call_argument(int param_type, int arg_type);
 void check_call_argument(int callee, int signature_type, char* callee_name, int arg_index, int arg_type);
 
 
-/*
-Definition registry: one record per generic definition.
-layout (32 bytes per entry):
-	0: char* name
-	4: int kind (0 function, 1 struct)
-	8: char* file (path to reopen for the re-parse)
-	12: int offset (byte offset of the span start)
-	16: int line (0-based, for diagnostics during the re-parse)
-	20: int column (0-based)
-	24: int param_count
-	28: char** param_names
-For functions the span starts at the return type; for structs it starts
-at the struct's name (after the 'struct' keyword).
-*/
-char* generic_defs
-int generic_def_count
+# Definition registry: one record per generic definition. For functions
+# the span starts at the return type; for structs it starts at the
+# struct's name (after the 'struct' keyword). Lazily created, so the
+# count reads through a helper that tolerates the null list.
+struct generic_def_record:
+	char* name
+	int kind          # 0 function, 1 struct
+	char* file        # path to reopen for the re-parse
+	int offset        # byte offset of the span start
+	int line          # 0-based, for diagnostics during the re-parse
+	int column        # 0-based
+	int param_count
+	int param_names   # char** vector of param_count names
 
 
-# Eight pointer-sized slots: name*, kind, file_path*, offset, line,
-# column, param_count, param_names*. Pointer fields need full host
-# words (the heap sits above 4 GB on arm64 macOS); the int fields ride
-# along in word slots so offsets stay uniform. On a 32-bit host this
-# is the original 32-byte layout.
-int generic_def_stride():
-	return 8 * __word_size__
+list[generic_def_record] generic_defs
 
 
-int generic_def_max():
-	return 500
+int generic_def_count():
+	if (cast(int, generic_defs) == 0):
+		return 0
+	return generic_defs.length
 
 
 int generic_max_params():
 	return 8
 
 
-char* generic_def_entry(int def):
-	return generic_defs + def * generic_def_stride()
-
-
 char* generic_def_name(int def):
-	return cast(char*, load_ptr(generic_def_entry(def)))
+	return generic_defs[def].name
 
 
 int generic_def_kind(int def):
-	return load_ptr(generic_def_entry(def) + __word_size__)
+	return generic_defs[def].kind
 
 
 char* generic_def_file(int def):
-	return cast(char*, load_ptr(generic_def_entry(def) + 2 * __word_size__))
+	return generic_defs[def].file
 
 
 int generic_def_offset(int def):
-	return load_ptr(generic_def_entry(def) + 3 * __word_size__)
+	return generic_defs[def].offset
 
 
 int generic_def_line(int def):
-	return load_ptr(generic_def_entry(def) + 4 * __word_size__)
+	return generic_defs[def].line
 
 
 int generic_def_column(int def):
-	return load_ptr(generic_def_entry(def) + 5 * __word_size__)
+	return generic_defs[def].column
 
 
 int generic_def_param_count(int def):
-	return load_ptr(generic_def_entry(def) + 6 * __word_size__)
+	return generic_defs[def].param_count
 
 
 char* generic_def_param_name(int def, int i):
-	int names = load_ptr(generic_def_entry(def) + 7 * __word_size__)
+	int names = generic_defs[def].param_names
 	return cast(char*, load_ptr(names + i * __word_size__))
 
 
@@ -115,7 +104,7 @@ char* generic_def_param_name(int def, int i):
 # the symbol table and the type table do.
 int generic_def_lookup(char* name, int kind):
 	int i = 0
-	while (i < generic_def_count):
+	while (i < generic_def_count()):
 		if (generic_def_kind(i) == kind):
 			if (strcmp(generic_def_name(i), name) == 0):
 				return i
@@ -128,86 +117,78 @@ int generic_def_add(char* name, int kind, char* file_path, int offset, int line,
 		diag_part(c"generic '")
 		diag_part(name)
 		error(c"' redefined")
-	if (generic_defs == 0):
-		generic_defs = malloc(generic_def_max() * generic_def_stride())
-	assert1(generic_def_count < generic_def_max())
-	char* e = generic_defs + generic_def_count * generic_def_stride()
-	save_ptr(e, cast(int, name))
-	save_ptr(e + __word_size__, kind)
-	save_ptr(e + 2 * __word_size__, cast(int, file_path))
-	save_ptr(e + 3 * __word_size__, offset)
-	save_ptr(e + 4 * __word_size__, line)
-	save_ptr(e + 5 * __word_size__, column)
-	save_ptr(e + 6 * __word_size__, param_count)
-	save_ptr(e + 7 * __word_size__, param_names)
-	generic_def_count = generic_def_count + 1
-	return generic_def_count - 1
+	if (cast(int, generic_defs) == 0):
+		generic_defs = new list[generic_def_record]
+	generic_def_record rec
+	rec.name = name
+	rec.kind = kind
+	rec.file = file_path
+	rec.offset = offset
+	rec.line = line
+	rec.column = column
+	rec.param_count = param_count
+	rec.param_names = param_names
+	generic_defs.push(rec)
+	return generic_defs.length - 1
 
 
-/*
-Function instantiation registry / queue.
-layout (28 bytes per entry):
-	0: char* mangled name
-	4: int def (definition registry index)
-	8: int* type argument indices
-	12: int arg_count
-	16: int chain (head of the call-site mov-imm backpatch chain, 0 none)
-	20: int signature (function-signature type index, -1 until parsed)
-	24: int done (1 once the body has been compiled)
-*/
-char* generic_insts
-int generic_inst_count
+# Function instantiation registry / queue. Field access replaces the
+# old hand-packed 7-word-slot blob; records are only ever addressed
+# through their index, so list growth cannot invalidate anything.
+struct generic_inst_record:
+	char* mangled     # mangled name ('max$int')
+	int def           # definition registry index
+	int args          # int* vector of type argument indices
+	int arg_count
+	int chain         # head of the call-site mov-imm backpatch chain, 0 none
+	int signature     # function-signature type index, -1 until parsed
+	int done          # 1 once the body has been compiled
 
 
-# Seven pointer-sized slots: mangled*, def, args*, arg_count, head,
-# sig, done (same uniform-word-slot scheme as generic_def_stride).
-int generic_inst_stride():
-	return 7 * __word_size__
+list[generic_inst_record] generic_insts
 
 
-int generic_inst_max():
-	return 2000
-
-
-char* generic_inst_entry(int inst):
-	return generic_insts + inst * generic_inst_stride()
+int generic_inst_count():
+	if (cast(int, generic_insts) == 0):
+		return 0
+	return generic_insts.length
 
 
 char* generic_inst_mangled(int inst):
-	return cast(char*, load_ptr(generic_inst_entry(inst)))
+	return generic_insts[inst].mangled
 
 
 int generic_inst_def(int inst):
-	return load_ptr(generic_inst_entry(inst) + __word_size__)
+	return generic_insts[inst].def
 
 
 int generic_inst_args(int inst):
-	return load_ptr(generic_inst_entry(inst) + 2 * __word_size__)
+	return generic_insts[inst].args
 
 
 int generic_inst_arg_count(int inst):
-	return load_ptr(generic_inst_entry(inst) + 3 * __word_size__)
+	return generic_insts[inst].arg_count
 
 
 int generic_inst_chain(int inst):
-	return load_ptr(generic_inst_entry(inst) + 4 * __word_size__)
+	return generic_insts[inst].chain
 
 
 void generic_inst_set_chain(int inst, int head):
-	save_ptr(generic_inst_entry(inst) + 4 * __word_size__, head)
+	generic_insts[inst].chain = head
 
 
 int generic_inst_done(int inst):
-	return load_ptr(generic_inst_entry(inst) + 6 * __word_size__)
+	return generic_insts[inst].done
 
 
 void generic_inst_set_done(int inst):
-	save_ptr(generic_inst_entry(inst) + 6 * __word_size__, 1)
+	generic_insts[inst].done = 1
 
 
 int generic_inst_lookup(char* mangled):
 	int i = 0
-	while (i < generic_inst_count):
+	while (i < generic_inst_count()):
 		if (strcmp(generic_inst_mangled(i), mangled) == 0):
 			return i
 		i = i + 1
@@ -223,19 +204,18 @@ int generic_inst_intern(int def, int args, int arg_count, char* mangled):
 		free(mangled)
 		free(cast(char*, args))
 		return existing
-	if (generic_insts == 0):
-		generic_insts = malloc(generic_inst_max() * generic_inst_stride())
-	assert1(generic_inst_count < generic_inst_max())
-	char* e = generic_insts + generic_inst_count * generic_inst_stride()
-	save_ptr(e, cast(int, mangled))
-	save_ptr(e + __word_size__, def)
-	save_ptr(e + 2 * __word_size__, args)
-	save_ptr(e + 3 * __word_size__, arg_count)
-	save_ptr(e + 4 * __word_size__, 0)
-	save_ptr(e + 5 * __word_size__, -1)
-	save_ptr(e + 6 * __word_size__, 0)
-	generic_inst_count = generic_inst_count + 1
-	return generic_inst_count - 1
+	if (cast(int, generic_insts) == 0):
+		generic_insts = new list[generic_inst_record]
+	generic_inst_record rec
+	rec.mangled = mangled
+	rec.def = def
+	rec.args = args
+	rec.arg_count = arg_count
+	rec.chain = 0
+	rec.signature = -1
+	rec.done = 0
+	generic_insts.push(rec)
+	return generic_insts.length - 1
 
 
 /*
@@ -671,7 +651,7 @@ use), so call sites get return-type information and argument checks
 before the body itself is compiled at the drain.
 */
 int generic_inst_signature(int inst):
-	int sig = load_ptr(generic_inst_entry(inst) + 5 * __word_size__)
+	int sig = generic_insts[inst].signature
 	if (sig >= 0):
 		return sig
 	int def = generic_inst_def(inst)
@@ -705,7 +685,7 @@ int generic_inst_signature(int inst):
 	char* sig_name = strjoin(generic_inst_mangled(inst), c" sig")
 	sig = type_push_function(sig_name, return_type, param_count, cast(int, param_types))
 	free(param_types)
-	save_ptr(generic_inst_entry(inst) + 5 * __word_size__, sig)
+	generic_insts[inst].signature = sig
 	return sig
 
 
@@ -756,12 +736,12 @@ definition to appear before the call: an unregistered name followed by
 # slot, created on demand and shared by every definition.
 char* generic_infer_placeholders
 
-# Cached shape blocks, indexed by definition: 'int param_count', then
-# two ints (a, b) per parameter:
+# Cached shape blocks, indexed by definition (0 = not cached yet):
+# 'int param_count', then two ints (a, b) per parameter:
 #	a >= 0: type-parameter index a, b = pointer depth
 #	a == -1: concrete type, b = the type index
 #	a == -2: opaque (constrains nothing at parse time)
-char* generic_infer_shapes_cache
+list[int] generic_infer_shapes_cache
 
 
 # Parameters recorded per definition and arguments recorded per call;
@@ -828,13 +808,11 @@ void generic_infer_store_shape(char* block, int slot, int param_type, int def):
 # with the type parameters bound to placeholders instead of concrete
 # types. Safe mid-parse: headers emit no code.
 char* generic_infer_shapes(int def):
-	if (generic_infer_shapes_cache == 0):
-		generic_infer_shapes_cache = malloc(generic_def_max() * __word_size__)
-		int z = 0
-		while (z < generic_def_max()):
-			save_ptr(generic_infer_shapes_cache + z * __word_size__, 0)
-			z = z + 1
-	char* cached = cast(char*, load_ptr(generic_infer_shapes_cache + def * __word_size__))
+	if (cast(int, generic_infer_shapes_cache) == 0):
+		generic_infer_shapes_cache = new list[int]
+	while (generic_infer_shapes_cache.length <= def):
+		generic_infer_shapes_cache.push(0)
+	char* cached = cast(char*, generic_infer_shapes_cache[def])
 	if (cached != 0):
 		return cached
 	int n = generic_def_param_count(def)
@@ -872,7 +850,7 @@ char* generic_infer_shapes(int def):
 	free(generic_subst_swap(old_subst))
 	generic_reparse_restore(save)
 	free(cast(char*, placeholder_args))
-	save_ptr(generic_infer_shapes_cache + def * __word_size__, cast(int, block))
+	generic_infer_shapes_cache[def] = cast(int, block)
 	return block
 
 
@@ -1104,7 +1082,7 @@ char* generic_pending_call_name
 
 
 int generic_call_ready():
-	if (generic_def_count == 0):
+	if (generic_def_count() == 0):
 		return 0
 	int c0 = token[0]
 	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
@@ -1192,39 +1170,29 @@ void generic_instantiate_function(int inst):
 		p = next
 
 
-/*
-Forward calls: 'fwd[int](x)' where the generic's definition appears
-later in the file (or a later file). The name is not registered yet, so
-the call is recorded speculatively: type arguments and a private
-backpatch chain, resolved at the drain once every definition has been
-seen. No signature exists at the call site, so these calls skip the
-argument checks (like calls to asm runtime stubs) and cannot return
-structs by value (checked at resolve time).
-layout (24 bytes per entry):
-	0: char* name
-	4: int* type argument indices
-	8: int arg_count
-	12: int chain head
-	16: char* file of the first call site (for the error message)
-	20: int line of the first call site
-*/
-char* generic_forwards
-int generic_forward_count
+# Forward calls: 'fwd[int](x)' where the generic's definition appears
+# later in the file (or a later file). The name is not registered yet,
+# so the call is recorded speculatively: type arguments and a private
+# backpatch chain, resolved at the drain once every definition has been
+# seen. No signature exists at the call site, so these calls skip the
+# argument checks (like calls to asm runtime stubs) and cannot return
+# structs by value (checked at resolve time).
+struct generic_forward_record:
+	char* name
+	int args          # int* vector of type argument indices
+	int arg_count
+	int chain         # patch-chain head
+	char* call_file   # first call site, for the error message
+	int call_line
 
 
-# Six pointer-sized slots: name*, args*, arg_count, patch-chain head,
-# call_file*, call_line (same uniform-word-slot scheme as
-# generic_def_stride).
-int generic_forward_stride():
-	return 6 * __word_size__
+list[generic_forward_record] generic_forwards
 
 
-int generic_forward_max():
-	return 2000
-
-
-char* generic_forward_entry(int f):
-	return generic_forwards + f * generic_forward_stride()
+int generic_forward_count():
+	if (cast(int, generic_forwards) == 0):
+		return 0
+	return generic_forwards.length
 
 
 # An unknown identifier directly followed by '[' in expression position:
@@ -1249,9 +1217,8 @@ int generic_forward_call_ready():
 # The (still unknown) generic's name is the current token; leaves the
 # closing ']' current, like generic_call_expr().
 int generic_forward_call_expr():
-	if (generic_forwards == 0):
-		generic_forwards = malloc(generic_forward_max() * generic_forward_stride())
-	assert1(generic_forward_count < generic_forward_max())
+	if (cast(int, generic_forwards) == 0):
+		generic_forwards = new list[generic_forward_record]
 	char* name = strclone(token)
 	char* call_file = strclone(filename)
 	int call_line = diag_token_line
@@ -1274,14 +1241,14 @@ int generic_forward_call_expr():
 	# once the definition is known
 	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 	be_addr_slot_write(codepos - 4, code_offset)
-	char* e = generic_forwards + generic_forward_count * generic_forward_stride()
-	save_ptr(e, cast(int, name))
-	save_ptr(e + __word_size__, args)
-	save_ptr(e + 2 * __word_size__, arg_count)
-	save_ptr(e + 3 * __word_size__, codepos + code_offset - 4)
-	save_ptr(e + 4 * __word_size__, cast(int, call_file))
-	save_ptr(e + 5 * __word_size__, call_line)
-	generic_forward_count = generic_forward_count + 1
+	generic_forward_record rec
+	rec.name = name
+	rec.args = args
+	rec.arg_count = arg_count
+	rec.chain = codepos + code_offset - 4
+	rec.call_file = call_file
+	rec.call_line = call_line
+	generic_forwards.push(rec)
 	# pac=full: sign the chain-materialized callee like sym_get_value does
 	# (after the slot position was recorded in the forward entry above)
 	be_code_ptr_sign()
@@ -1292,13 +1259,13 @@ int generic_forward_call_expr():
 
 void generic_forward_error(int f, char* message):
 	diag_part(c"generic function '")
-	diag_part(cast(char*, load_ptr(generic_forward_entry(f))))
+	diag_part(generic_forwards[f].name)
 	diag_part(c"' ")
 	diag_part(message)
 	diag_part(c" (called at ")
-	diag_part(cast(char*, load_ptr(generic_forward_entry(f) + 4 * __word_size__)))
+	diag_part(generic_forwards[f].call_file)
 	diag_part(c":")
-	diag_part(itoa(load_ptr(generic_forward_entry(f) + 5 * __word_size__)))
+	diag_part(itoa(generic_forwards[f].call_line))
 	error(c")")
 
 
@@ -1306,7 +1273,7 @@ void generic_forward_error(int f, char* message):
 # the forward chain to its terminating slot (which stores code_offset)
 # and point it at the instantiation's current head.
 void generic_forward_merge_chain(int f, int inst):
-	int head = load_ptr(generic_forward_entry(f) + 3 * __word_size__)
+	int head = generic_forwards[f].chain
 	int inst_head = generic_inst_chain(inst)
 	if (inst_head != 0):
 		int p = head - code_offset
@@ -1319,10 +1286,9 @@ void generic_forward_merge_chain(int f, int inst):
 
 
 void generic_resolve_forward(int f):
-	char* e = generic_forward_entry(f)
-	char* name = cast(char*, load_ptr(e))
-	int args = load_ptr(e + __word_size__)
-	int arg_count = load_ptr(e + 2 * __word_size__)
+	char* name = generic_forwards[f].name
+	int args = generic_forwards[f].args
+	int arg_count = generic_forwards[f].arg_count
 	int def = generic_def_lookup(name, 0)
 	if (def < 0):
 		generic_forward_error(f, c"is not defined")
@@ -1334,7 +1300,7 @@ void generic_resolve_forward(int f):
 		if (table[t + 1] == 'D'):
 			# already compiled: patch this record's chain directly
 			int address = load_int(table + t + 2)
-			int p = load_ptr(e + 3 * __word_size__) - code_offset
+			int p = generic_forwards[f].chain - code_offset
 			while (p):
 				int next = be_addr_slot_read(p) - code_offset
 				be_addr_slot_write(p, address)
@@ -1399,11 +1365,11 @@ void generic_finish_instantiations():
 	int progress = 1
 	while (progress):
 		progress = 0
-		while (generic_forwards_resolved < generic_forward_count):
+		while (generic_forwards_resolved < generic_forward_count()):
 			generic_resolve_forward(generic_forwards_resolved)
 			generic_forwards_resolved = generic_forwards_resolved + 1
 			progress = 1
-		while (generic_insts_compiled < generic_inst_count):
+		while (generic_insts_compiled < generic_inst_count()):
 			if (generic_inst_done(generic_insts_compiled) == 0):
 				generic_inst_set_done(generic_insts_compiled)
 				generic_instantiate_function(generic_insts_compiled)

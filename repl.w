@@ -471,7 +471,7 @@ int repl_compile_entry(char* path):
 	int saved_switch_break_chain = switch_break_chain
 	int saved_switch_stack_pos = switch_stack_pos
 	int saved_break_in_switch = break_in_switch
-	int saved_defer_count = defer_count
+	int saved_defer_count = defer_count()
 	int saved_number_of_args = number_of_args
 	int saved_type_count = type_count()
 	int saved_imported_count = imported_count
@@ -496,7 +496,7 @@ int repl_compile_entry(char* path):
 		switch_break_chain = saved_switch_break_chain
 		switch_stack_pos = saved_switch_stack_pos
 		break_in_switch = saved_break_in_switch
-		defer_count = saved_defer_count
+		defer_truncate(saved_defer_count)
 		number_of_args = saved_number_of_args
 		type_table_truncate(saved_type_count)
 		imported_count = saved_imported_count
