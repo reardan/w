@@ -83,3 +83,19 @@ int load_int8(char *p):
 
 int load_int(char *p):
 	return load_int32(p)
+
+
+################## POINTER-SIZED SLOTS ##################
+# For host pointers stored in compiler-internal tables. A pointer slot is
+# __word_size__ bytes (the width of the *running* compiler's pointers, not
+# the target's word_size): 4-byte save_int slots silently truncate on a
+# 64-bit host whose heap sits above 4 GB — every mmap result on arm64
+# macOS, where the kernel mandates a 4 GB __PAGEZERO. Tables holding
+# pointers must stride by __word_size__ and use these accessors.
+
+void save_ptr(char* p, int v):
+	save_i(p, v, __word_size__)
+
+
+int load_ptr(char* p):
+	return load_i(p, __word_size__)

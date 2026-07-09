@@ -457,7 +457,7 @@ strict_mode_test: w FORCE
 check_json_test: w FORCE
 	./bin/wv2 check --json tests/warning_fixture.w >./bin/check_json_warning.ndjson 2>./bin/check_json_warning.stderr
 	grep -qF '"severity": "warning"' ./bin/check_json_warning.ndjson
-	grep -qF '"file": "/workspace/tests/warning_fixture.w"' ./bin/check_json_warning.ndjson
+	grep -qF '"file": "$(CURDIR)/tests/warning_fixture.w"' ./bin/check_json_warning.ndjson
 	grep -qE '"line": [1-9][0-9]*' ./bin/check_json_warning.ndjson
 	grep -qE '"column": [1-9][0-9]*' ./bin/check_json_warning.ndjson
 	grep -qF '"message": "assignment type mismatch: expected '\''char*'\'', got '\''int*'\''"' ./bin/check_json_warning.ndjson

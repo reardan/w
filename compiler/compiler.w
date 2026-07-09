@@ -272,10 +272,12 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 
 	# print_symbol_table(0)
 	# type_print_all()
-	# The debugging symbols are ELF section headers plus DWARF; the PE
-	# container has neither (CodeView/PDB is a later stage), so win64
-	# executables skip them.
-	if (target_os != 2):
+	# The debugging symbols are ELF section headers plus DWARF, and
+	# elf_save_section_info patches the section-header offset into the ELF
+	# header at fixed positions — bytes that belong to load commands in a
+	# Mach-O and to the COFF header in a PE. Only the ELF (Linux) targets
+	# get them; Mach-O and PE debug info are later stages.
+	if (target_os == 0):
 		emit_debugging_symbols(word_size)
 	be_finish(word_size)
 
@@ -341,7 +343,7 @@ char* symbols_kind_name(int symtype):
 # locations, so the default is "struct".
 char* symbols_type_kind_name(int type_index):
 	int t = get(type_index)
-	int kind = load_int(t + 820)
+	int kind = load_ptr(t + 205 * __word_size__)
 	if (kind == type_kind_alias):
 		return c"alias"
 	if (kind == type_kind_union):

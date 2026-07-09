@@ -69,7 +69,7 @@ char* import_resolve_arch(char* path):
 int import_lookup(char* path):
 	int i = 0
 	while (i < imported_count):
-		char* p = cast(char*, load_int(imported_paths + i * 4))
+		char* p = cast(char*, load_ptr(imported_paths + i * __word_size__))
 		if (strcmp(p, path) == 0):
 			return i
 		i = i + 1
@@ -79,18 +79,18 @@ int import_lookup(char* path):
 void import_register(char* path):
 	int max_imports = 1000
 	if (imported_paths == 0):
-		imported_paths = malloc(max_imports * 4)
+		imported_paths = malloc(max_imports * __word_size__)
 	assert1(imported_count < max_imports)
-	save_int(imported_paths + imported_count * 4, cast(int, path))
+	save_ptr(imported_paths + imported_count * __word_size__, cast(int, path))
 	imported_count = imported_count + 1
 
 
 char* import_alias_name(int index):
-	return cast(char*, load_int(import_alias_names + index * 4))
+	return cast(char*, load_ptr(import_alias_names + index * __word_size__))
 
 
 char* import_alias_path(int index):
-	return cast(char*, load_int(import_alias_paths + index * 4))
+	return cast(char*, load_ptr(import_alias_paths + index * __word_size__))
 
 
 # Index of the alias in the current file's scope, or -1.
@@ -106,24 +106,24 @@ int import_alias_lookup(char* name):
 void import_alias_register(char* name, char* path):
 	int max_aliases = 1000
 	if (import_alias_names == 0):
-		import_alias_names = malloc(max_aliases * 4)
-		import_alias_paths = malloc(max_aliases * 4)
+		import_alias_names = malloc(max_aliases * __word_size__)
+		import_alias_paths = malloc(max_aliases * __word_size__)
 	assert1(import_alias_count < max_aliases)
 	if (import_alias_lookup(name) >= 0):
 		diag_part(c"duplicate import alias: '")
 		diag_part(name)
 		error(c"'")
-	save_int(import_alias_names + import_alias_count * 4, cast(int, name))
-	save_int(import_alias_paths + import_alias_count * 4, cast(int, path))
+	save_ptr(import_alias_names + import_alias_count * __word_size__, cast(int, name))
+	save_ptr(import_alias_paths + import_alias_count * __word_size__, cast(int, path))
 	import_alias_count = import_alias_count + 1
 
 
 void import_plain_register(char* path):
 	int max_imports = 1000
 	if (import_plain_paths == 0):
-		import_plain_paths = malloc(max_imports * 4)
+		import_plain_paths = malloc(max_imports * __word_size__)
 	assert1(import_plain_count < max_imports)
-	save_int(import_plain_paths + import_plain_count * 4, cast(int, path))
+	save_ptr(import_plain_paths + import_plain_count * __word_size__, cast(int, path))
 	import_plain_count = import_plain_count + 1
 
 
@@ -148,7 +148,7 @@ int import_path_matches_file(char* module_path, char* file_path):
 int import_plain_imported(char* file_path):
 	int i = import_plain_base
 	while (i < import_plain_count):
-		char* p = cast(char*, load_int(import_plain_paths + i * 4))
+		char* p = cast(char*, load_ptr(import_plain_paths + i * __word_size__))
 		if (import_path_matches_file(p, file_path)):
 			return 1
 		i = i + 1
