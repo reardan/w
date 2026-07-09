@@ -8,56 +8,37 @@
  *
  * Chains left-associatively, so a < b < c means (a < b) < c.
  */
+
+# Shared lowering for one ordered comparison: cc doubles as the setcc byte
+# for the var layer's __w_var_cmp result and for the integer ALU fallback;
+# the float layer takes its own setcc plus an operand swap (< and <= are
+# emitted as the swapped > and >= so unordered compares stay false).
+int relational_op(int type, int cc, int float_cc, int float_swap):
+	int left_type = binary1(type)
+	int right_type = binary2_promote_pop(shift_expr())
+	int result_type = var_binary_compare_order(left_type, right_type, cc)
+	if (result_type == 0):
+		result_type = float_binary_compare(left_type, right_type, float_cc, float_swap)
+	if (result_type):
+		return result_type
+	alu_cmp_set(cc)
+	return type_value(bool_type)
+
+
 int relational_expr():
 	int type = shift_expr()
 	while (1):
 		if(accept(c"<=")):
-			int left_type = binary1(type)
-			int right_type = binary2_promote_pop(shift_expr())
-			int result_type = var_binary_compare_order(left_type, right_type, 0x9e)
-			if (result_type == 0):
-				result_type = float_binary_compare(left_type, right_type, 0x93, 1)
-			if (result_type):
-				type = result_type
-			else:
-				alu_cmp_set(0x9e)
-				type = type_value(bool_type)
+			type = relational_op(type, 0x9e, 0x93, 1)
 
 		else if(accept(c"<")):
-			int left_type = binary1(type)
-			int right_type = binary2_promote_pop(shift_expr())
-			int result_type = var_binary_compare_order(left_type, right_type, 0x9c)
-			if (result_type == 0):
-				result_type = float_binary_compare(left_type, right_type, 0x97, 1)
-			if (result_type):
-				type = result_type
-			else:
-				alu_cmp_set(0x9c)
-				type = type_value(bool_type)
+			type = relational_op(type, 0x9c, 0x97, 1)
 
 		else if(accept(c">=")):
-			int left_type = binary1(type)
-			int right_type = binary2_promote_pop(shift_expr())
-			int result_type = var_binary_compare_order(left_type, right_type, 0x9d)
-			if (result_type == 0):
-				result_type = float_binary_compare(left_type, right_type, 0x93, 0)
-			if (result_type):
-				type = result_type
-			else:
-				alu_cmp_set(0x9d)
-				type = type_value(bool_type)
+			type = relational_op(type, 0x9d, 0x93, 0)
 
 		else if(accept(c">")):
-			int left_type = binary1(type)
-			int right_type = binary2_promote_pop(shift_expr())
-			int result_type = var_binary_compare_order(left_type, right_type, 0x9f)
-			if (result_type == 0):
-				result_type = float_binary_compare(left_type, right_type, 0x97, 0)
-			if (result_type):
-				type = result_type
-			else:
-				alu_cmp_set(0x9f)
-				type = type_value(bool_type)
+			type = relational_op(type, 0x9f, 0x97, 0)
 
 		else if(accept(c"in")):
 			int key_type = binary1(type)
@@ -99,6 +80,6 @@ int relational_expr():
 			be_pop(stack_pos - base_stack)
 			stack_pos = base_stack
 			type = type_value(bool_type)
-	
+
 		else:
 			return type
