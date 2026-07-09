@@ -12,13 +12,16 @@ on macOS 26.3: __PAGEZERO / __TEXT rx / __DATA rw / __LINKEDIT segments,
 zeroed LC_SYMTAB + LC_DYSYMTAB (dyld's classic-relocation fallback walks
 these; zero counts make it a no-op — omitting them crashes dyld), a
 LC_LOAD_DYLINKER for /usr/lib/dyld, LC_UUID, LC_BUILD_VERSION, LC_MAIN,
-and LC_LOAD_DYLIB /usr/lib/libSystem.B.dylib. No symbol from libSystem is
-bound (the runtime stays raw-syscall); dyld just maps it from the shared
-cache and runs its initializers before _main.
+and LC_LOAD_DYLIB /usr/lib/libSystem.B.dylib. The runtime itself stays
+raw-syscall (no libSystem symbol is bound for it); dyld maps libSystem
+from the shared cache and runs its initializers before _main. Programs
+that use c_lib / extern get their imports bound through the classic
+LC_DYLD_INFO_ONLY commands macho_dynamic.w appends.
 
 The output is unsigned; `codesign -s -` on the Mac adds the ad-hoc
-CodeDirectory until macho_sign.w (Phase 5) lands, and the 512-byte pad
-after the load commands is the headroom codesign_allocate needs to insert
+CodeDirectory until macho_sign.w (Phase 5) lands, and the 1024-byte pad
+after the load commands is where macho_dynamic.w appends import load
+commands, with the rest the headroom codesign_allocate needs to insert
 LC_CODE_SIGNATURE without moving the text. Remember the vnode gotcha when
 re-signing in place: the kernel caches signature state per inode, so a
 previously-executed path must be replaced (write to a new file + rename),
@@ -41,6 +44,7 @@ data_offset - code_offset (16 MB) above __TEXT's, so PC-relative distances
 computed from the nominal bases match the mapped image.
 */
 import code_generator.code_emitter
+import code_generator.macho_dynamic
 
 
 void error(char *s);                 /* diagnostics.w */
@@ -192,9 +196,13 @@ void macho_start_arm64():
 	emit_string(c"/usr/lib/libSystem.B.dylib")
 	emit_zeros(56 - 24 - 27)
 
-	# Headerpad: free space after the load commands so codesign_allocate
-	# can insert the 16-byte LC_CODE_SIGNATURE without relinking.
-	emit_zeros(512)
+	# Headerpad: free space after the load commands, where
+	# macho_emit_dynamic appends LC_LOAD_DYLIB / LC_DYLD_INFO_ONLY for
+	# imports and codesign_allocate inserts the 16-byte LC_CODE_SIGNATURE
+	# without relinking.
+	macho_pad_pos = codepos
+	macho_pad_size = 1024
+	emit_zeros(1024)
 
 	# Entry stub, called by dyld as main(argc in x0, argv in x1, ...).
 	# Adopt sp as the W evaluation stack (x28) and push argc then argv,
@@ -245,6 +253,11 @@ void macho_finish_arm64():
 		emit_data_zeros(macho_page_size() - data_pad)
 	int data_size_padded = datapos
 
+	# Imports (c_lib / extern): append their load commands into the
+	# headerpad and build the bind stream that becomes __LINKEDIT's
+	# payload. A no-op for import-free programs.
+	macho_emit_dynamic(text_size, data_size_padded)
+
 	# __TEXT: fileoff 0, vmsize = filesize = padded text.
 	save_int64(code + macho_text_seg_pos + 32, text_size)  /* vmsize */
 	save_int64(code + macho_text_seg_pos + 48, text_size)  /* filesize */
@@ -254,10 +267,18 @@ void macho_finish_arm64():
 	save_int64(code + macho_data_seg_pos + 40, text_size)        /* fileoff */
 	save_int64(code + macho_data_seg_pos + 48, data_size_padded) /* filesize */
 
-	# __LINKEDIT: zero-length tail at the end of the file (vmaddr hi word
-	# 1 was emitted at start; patch the low word past __DATA).
+	# __LINKEDIT: tail of the file (vmaddr hi word 1 was emitted at start;
+	# patch the low word past __DATA). Zero-length unless a bind stream
+	# gives it a payload.
 	save_int32(code + macho_linkedit_seg_pos + 24, 16777216 + data_size_padded)
 	save_int64(code + macho_linkedit_seg_pos + 40, text_size + data_size_padded)
+	if (macho_bind_size > 0):
+		int linkedit_vm = macho_bind_size + macho_page_size() - 1
+		linkedit_vm = linkedit_vm - (linkedit_vm % macho_page_size())
+		save_int64(code + macho_linkedit_seg_pos + 32, linkedit_vm)       /* vmsize */
+		save_int64(code + macho_linkedit_seg_pos + 48, macho_bind_size)   /* filesize */
 
 	write(output_fd, code, codepos)
 	write(output_fd, data, datapos)
+	if (macho_bind_size > 0):
+		write(output_fd, macho_bind_buf, macho_bind_size)
