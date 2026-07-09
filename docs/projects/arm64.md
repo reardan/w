@@ -271,15 +271,16 @@ New `code_generator/macho_64.w` + `macho_sign.w`, dispatched from
   officially bless static binaries (same risk bucket as raw syscalls, same
   mitigation path: the later libSystem stage).
 - **Code signing.** The kernel kills unsigned arm64 binaries. An "ad-hoc"
-  signature is just an embedded SHA-256 CodeDirectory over each 4 KB page,
-  no certificate — entirely computable by W itself. Plan: implement SHA-256
-  in `lib/` (also useful to replace the weak rolling hash in
-  `tools/wexec.w`), and a CodeDirectory writer in `macho_sign.w`
-  (references: ld64 `libcodedirectory.c`, lld's `D96164`). Interim fallback
-  while developing: emit unsigned and require `codesign -s -` on the Mac.
-  Gotcha to remember when the compiler eventually runs *on* macOS: the
-  kernel caches signature validation by vnode, so the writer must
-  `msync(MS_INVALIDATE)` or write-then-rename (Go and lld both hit this).
+  signature is just an embedded SHA-256 CodeDirectory over each **16 KB**
+  page (`pageSizeLog2 = 14`, the arm64 macOS VM page), no certificate —
+  entirely computable by W itself. Implemented: SHA-256 in `lib/sha256.w`
+  (also useful to replace the weak rolling hash in `tools/wexec.w` later),
+  and a CodeDirectory writer in `macho_sign.w` (references: ld64
+  `libcodedirectory.c`, lld's `D96164`). The interim `codesign -s -` host
+  fallback is gone once the Darwin seed self-signs. Gotcha when rewriting
+  a previously-executed path: the kernel caches signature validation by
+  vnode, so prefer write-then-rename (Go and lld both hit this);
+  `run_darwin_tests.sh` copies to a fresh inode before exec.
 - cpusubtype: `CPU_SUBTYPE_ARM64_ALL`, or `CPU_SUBTYPE_ARM64E` + versioned
   ABI bits for the arm64e slice (D6). No fat/universal binaries — one
   architecture per output file, consistent with W's one-target-per-invocation

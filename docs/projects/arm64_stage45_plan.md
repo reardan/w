@@ -64,12 +64,12 @@ arm64 macOS main executables are mandatorily PIE; the kernel slides the image an
 ## Phase 5 — In-house ad-hoc signing
 
 - SHA-256 in `lib/` (pure W; also earmarked to replace the FNV rolling hash in [tools/wexec.w](../../tools/wexec.w) later — out of scope here).
-- `code_generator/macho_sign.w`: ad-hoc CodeDirectory (SHA-256 per 4 KB page, no certificate) embedded in `__LINKEDIT`; references: ld64 `libcodedirectory.c`, lld D96164. Drop the codesign fallback once `codesign -v` passes on W-signed output.
-- Remember the vnode signature-cache gotcha for when the compiler eventually runs on macOS (write-then-rename); harmless now since we write from the container.
+- `code_generator/macho_sign.w`: ad-hoc CodeDirectory (SHA-256 per **16 KB** page — `pageSizeLog2 = 14`, matching the arm64 macOS VM page / what `codesign` emits — no certificate) embedded in `__LINKEDIT`; references: ld64 `libcodedirectory.c`, lld D96164. Drop the host `codesign -s -` fallback once `codesign -v` passes on W-signed output.
+- Remember the vnode signature-cache gotcha for when the compiler eventually runs on macOS (write-then-rename); harmless for cross-compiles that land as new inodes, but `run_darwin_tests.sh` still copies to a fresh inode before exec.
 
 ## Phase 6 — Darwin test target
 
-- `tests_darwin` compile target in [build.json](../../build.json) (in-container: compiles hello + `lib_test` + a smoke subset to `bin/*_darwin`), plus a host-side runner `tools/mac/run_darwin_tests.sh` that signs (until Phase 5 lands) and executes them natively, checking exit codes.
+- `tests_darwin` compile target in [build.json](../../build.json) (in-container: compiles hello + `lib_test` + a smoke subset to `bin/*_darwin`), plus a host-side runner `tools/mac/run_darwin_tests.sh` that executes them natively (Phase 5 self-signs; the runner only does the fresh-inode copy), checking exit codes.
 - Stage 4 acceptance per the doc: hello + lib_test subset green on the M3, arm64 slice, PAC inert.
 
 ## Phase 7 — Stage 5: PAC to production
@@ -88,7 +88,7 @@ arm64 macOS main executables are mandatorily PIE; the kernel slides the image an
 Phase 0 works but is painfully slow on the Mac: the seed `./w` is a 32-bit x86 Linux ELF, so every compiler stage runs under qemu-i386 emulation inside the arm64 Docker VM (~3 minutes per stage; a full `./wbuild verify` approaches 15). The Cursor Cloud environment is native x86_64 — the seed runs at full speed there and `qemu-aarch64-static` is baked into the snapshot — so all phases that need only Linux move to the cloud:
 
 - **Cloud (native x86):** Phases 1–3 (target plumbing, Darwin syscall layer, PIE groundwork), plus the byte-emission side of Phases 4–5 (Mach-O writer, SHA-256, CodeDirectory). All regression guards (`verify`, `verify_x64`, `verify_arm64`, `arm64_smoke_test`, `parser_generator_w_test`) run there at full speed.
-- **This Mac (native arm64/macOS):** acceptance runs only — compile `arm64_darwin` binaries in the `w-dev` container (single compiles are tolerable under emulation), then run them natively: `codesign -s -` fallback and `codesign -v` verification, Mach-O loading, PAC/arm64e enforcement on the M3, `tools/mac/run_darwin_tests.sh` (Phases 4–7 acceptance criteria).
+- **This Mac (native arm64/macOS):** acceptance runs only — compile `arm64_darwin` binaries (native `w_darwin` seed, or the `w-dev` container for cross-checks), then run them natively: `codesign -v` on compiler-emitted signatures, Mach-O loading, PAC/arm64e enforcement on the M3, `tools/mac/run_darwin_tests.sh` (Phases 4–7 acceptance criteria).
 
 The `w-dev` container and `tools/mac/wdev.sh` stay as the local harness for that second half.
 
@@ -128,12 +128,12 @@ bisecting load commands against a working `ld`-linked raw-syscall binary:
 
 Also confirmed in practice: the vnode signature-cache gotcha is not
 theoretical — an inode once executed-and-killed keeps failing after a valid
-re-sign. `tools/mac/run_darwin_tests.sh` therefore signs a fresh copy and
-renames it over the target, and compile targets should prefer new output
-files over truncating previously-executed ones.
+re-sign. `tools/mac/run_darwin_tests.sh` therefore copies each binary to a
+fresh inode before exec, and compile targets should prefer new output files
+over truncating previously-executed ones.
 
-Phase 5 (in-house ad-hoc signing) is unchanged. Phase 7's arm64e slice needs
-re-testing under this policy regime when it lands.
+Phase 7's arm64e slice needs re-testing under this policy regime when it
+lands (done — see the 2026-07-09 Phase 7 update below).
 
 ### Native-compiler blocker found: 32-bit pointer tables vs the mandatory 4 GB __PAGEZERO
 
@@ -232,3 +232,16 @@ New tests: `pac_flag_test` (byte-pattern artifact assertions via
 `tools/pac_flag_check.sh`; default `tests` aggregate), `pac_full_test_arm64`
 and `pac_corrupt_test_arm64` (qemu, outside the `tests` umbrella), `pac_darwin`
 (compile-only arm64e guard; run natively via `run_darwin_tests.sh`).
+
+## Execution update (2026-07-09): Phase 5 in-house signing
+
+Compiler-emitted ad-hoc signatures land in `lib/sha256.w` +
+`code_generator/macho_sign.w`, wired from `macho_finish_arm64`. Page size
+is **16 KB** (`pageSizeLog2 = 14`), not the 4 KB the early plan text
+assumed — matching arm64 macOS VM pages and what host `codesign` emits.
+`tools/mac/run_darwin_tests.sh` no longer calls `codesign -s -`; it only
+copies to a fresh inode before exec.
+
+`update_darwin` has promoted a self-signing `w_darwin` seed;
+`build_darwin` / `wexec_darwin` / `wbuild`'s Darwin bootstrap no longer
+call host `codesign` — only a fresh-inode copy before exec remains.

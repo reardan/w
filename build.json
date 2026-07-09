@@ -54,26 +54,22 @@
 			"outputs": ["bin/wexec_darwin"],
 			"steps": [
 				{"cmd": ["./w_darwin", "arm64_darwin", "w.w", "-o", "bin/wv2_darwin_raw"]},
-				{"cmd": ["cp", "bin/wv2_darwin_raw", "bin/wv2_darwin.signing"]},
-				{"cmd": ["codesign", "-f", "-s", "-", "bin/wv2_darwin.signing"]},
-				{"cmd": ["mv", "-f", "bin/wv2_darwin.signing", "bin/wv2_darwin"]},
+				{"cmd": ["cp", "bin/wv2_darwin_raw", "bin/wv2_darwin.new"]},
+				{"cmd": ["mv", "-f", "bin/wv2_darwin.new", "bin/wv2_darwin"]},
 				{"cmd": ["bin/wv2_darwin", "arm64_darwin", "tools/wexec.w", "-o", "bin/wexec_darwin_raw"]},
-				{"cmd": ["cp", "bin/wexec_darwin_raw", "bin/wexec_darwin.signing"]},
-				{"cmd": ["codesign", "-f", "-s", "-", "bin/wexec_darwin.signing"]},
-				{"cmd": ["mv", "-f", "bin/wexec_darwin.signing", "bin/wexec_darwin"]}
+				{"cmd": ["cp", "bin/wexec_darwin_raw", "bin/wexec_darwin.new"]},
+				{"cmd": ["mv", "-f", "bin/wexec_darwin.new", "bin/wexec_darwin"]}
 			]
 		},
 		{
 			"name": "build_darwin",
 			"steps": [
 				{"cmd": ["./w_darwin", "arm64_darwin", "w.w", "-o", "bin/wv2_darwin_raw"]},
-				{"cmd": ["cp", "bin/wv2_darwin_raw", "bin/wv2_darwin.signing"]},
-				{"cmd": ["codesign", "-f", "-s", "-", "bin/wv2_darwin.signing"]},
-				{"cmd": ["mv", "-f", "bin/wv2_darwin.signing", "bin/wv2_darwin"]},
+				{"cmd": ["cp", "bin/wv2_darwin_raw", "bin/wv2_darwin.new"]},
+				{"cmd": ["mv", "-f", "bin/wv2_darwin.new", "bin/wv2_darwin"]},
 				{"cmd": ["bin/wv2_darwin", "arm64_darwin", "w.w", "-o", "bin/wv3_darwin_raw"]},
-				{"cmd": ["cp", "bin/wv3_darwin_raw", "bin/wv3_darwin.signing"]},
-				{"cmd": ["codesign", "-f", "-s", "-", "bin/wv3_darwin.signing"]},
-				{"cmd": ["mv", "-f", "bin/wv3_darwin.signing", "bin/wv3_darwin"]},
+				{"cmd": ["cp", "bin/wv3_darwin_raw", "bin/wv3_darwin.new"]},
+				{"cmd": ["mv", "-f", "bin/wv3_darwin.new", "bin/wv3_darwin"]},
 				{"cmd": ["bin/wv3_darwin", "arm64_darwin", "w.w", "-o", "bin/wv4_darwin_raw"]}
 			]
 		},
@@ -90,7 +86,8 @@
 			"deps": ["verify_darwin"],
 			"steps": [
 				{"cmd": ["./archive.sh", "w_darwin"]},
-				{"cmd": ["cp", "-f", "bin/wv3_darwin", "w_darwin"]}
+				{"cmd": ["cp", "bin/wv3_darwin", "w_darwin.new"]},
+				{"cmd": ["mv", "-f", "w_darwin.new", "w_darwin"]}
 			]
 		},
 		{

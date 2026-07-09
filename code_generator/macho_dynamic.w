@@ -176,8 +176,8 @@ void macho_emit_dynamic(int text_size, int data_size_padded):
 		# The image now has undefined (imported) symbols.
 		save_int32(code + 24, op(0x00, 0x200084))  /* flags &= ~MH_NOUNDEFS */
 
-	# Patch ncmds / sizeofcmds for the appended commands. codesign still
-	# needs 16 headerpad bytes to insert LC_CODE_SIGNATURE.
+	# Patch ncmds / sizeofcmds for the appended commands. Leave 16
+	# headerpad bytes for macho_finish's LC_CODE_SIGNATURE.
 	int used = macho_lc_pos - macho_pad_pos
 	if (used > macho_pad_size - 16):
 		error(c"Mach-O load commands overflow the headerpad")

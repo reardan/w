@@ -169,20 +169,20 @@ no build.json counterpart. They split into four groups:
   — no executor change needed.
 
 **B. Darwin toolchain** — `build_darwin`, `verify_darwin`, `update_darwin`
-(the seed/verify/promote triad for the `w_darwin` Mach-O seed, codesign
-steps included). **Ported and verified on the M3**: the three targets are
-transcribed into build.json (codesign-on-a-copy dance included), and
-`wbuild` grew a Darwin branch that bootstraps a native Mach-O executor —
-cold, the committed `w_darwin` seed compiles `bin/wv2_darwin` which
-compiles `bin/wexec_darwin` (both ad-hoc signed on a copy renamed over
-the original, never in place, because the kernel caches signature state
-per vnode); warm, the manifest's cached `wexec_darwin` target keeps it
-fresh. `make verify_darwin` and a from-`rm -rf bin` `./wbuild
-verify_darwin` both pass and produce byte-identical
-`wv2/wv3/wv4_darwin_raw` artifacts. `update_darwin` follows the same
-policy as `update`: manifest entry ported (`./archive.sh w_darwin`, then
-`cp -f bin/wv3_darwin w_darwin` — archive.sh grew that seed-name
-argument), **never invoked**, since it overwrites the committed seed.
+(the seed/verify/promote triad for the `w_darwin` Mach-O seed). **Ported
+and verified on the M3**: the three targets are transcribed into
+build.json, and `wbuild` grew a Darwin branch that bootstraps a native
+Mach-O executor — cold, the committed `w_darwin` seed compiles
+`bin/wv2_darwin` which compiles `bin/wexec_darwin`; warm, the manifest's
+cached `wexec_darwin` target keeps it fresh. Once Phase 5 in-house
+signing is in the seed, outputs are self-signed and no host `codesign`
+step is needed (a fresh-inode copy before exec still avoids the vnode
+signature-cache gotcha). `./wbuild verify_darwin` from a clean `bin/`
+produces byte-identical `wv2/wv3/wv4_darwin_raw` artifacts.
+`update_darwin` follows the same policy as `update`: manifest entry
+ported (`./archive.sh w_darwin`, then `cp -f bin/wv3_darwin w_darwin` —
+archive.sh grew that seed-name argument), and is the gate that promotes
+a self-signing seed.
 One deliberate divergence from the Linux chain's idiom: the darwin
 targets declare no `"inputs"`, i.e. they are FORCE-style and never
 cached. That is not laziness — `wexec_collect_dir` parses the *Linux*

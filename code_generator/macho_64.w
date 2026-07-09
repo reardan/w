@@ -148,7 +148,7 @@ void macho_start_arm64():
 	macho_data_seg_pos = codepos
 	macho_segment_64(c"__DATA", 16777216, 1, 0, 0, 3)
 
-	# __LINKEDIT: empty until signing; codesign_allocate grows it in place.
+	# __LINKEDIT: bind stream + ad-hoc signature; sizes patched in finish.
 	macho_linkedit_seg_pos = codepos
 	macho_segment_64(c"__LINKEDIT", 16777216, 1, 0, 0, 1)
 
@@ -172,8 +172,7 @@ void macho_start_arm64():
 	emit_zeros(32 - 12 - 14)
 
 	# LC_UUID: required by dyld. A fixed value is sufficient (dyld checks
-	# presence, not uniqueness); a content hash can replace it when
-	# macho_sign.w brings SHA-256 in Phase 5.
+	# presence, not uniqueness); a content hash is a nice-to-have later.
 	emit_int32(27)     /* LC_UUID */
 	emit_int32(24)     /* cmdsize */
 	emit(16, c"w-arm64-darwin.0")
@@ -208,8 +207,7 @@ void macho_start_arm64():
 
 	# Headerpad: free space after the load commands, where
 	# macho_emit_dynamic appends LC_LOAD_DYLIB / LC_DYLD_INFO_ONLY for
-	# imports and codesign_allocate inserts the 16-byte LC_CODE_SIGNATURE
-	# without relinking.
+	# imports and macho_finish appends the 16-byte LC_CODE_SIGNATURE.
 	macho_pad_pos = codepos
 	macho_pad_size = 1024
 	macho_lc_end = macho_pad_pos

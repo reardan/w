@@ -18,8 +18,8 @@ summary.
 Mach-O seed that bootstraps natively on this Mac (`./wbuild build_darwin`,
 `verify_darwin`). On this macOS checkout, prefer in this order:
 1. **Locally on the Mac** for anything the native darwin toolchain covers
-   (`./wbuild build_darwin` self-hosts; sign + run Mach-O binaries with
-   `tools/mac/run_darwin_tests.sh`).
+   (`./wbuild build_darwin` self-hosts; run Mach-O binaries with
+   `tools/mac/run_darwin_tests.sh` — the compiler self-signs its output).
 2. **ssh host `w`** (x86_64 Linux, clone at `/home/w/w`) for
    builds/verify/tests that need Linux — everything runs directly there
    (`dynamic_test` additionally needs `libc6:i386`).
@@ -29,8 +29,8 @@ Mach-O seed that bootstraps natively on this Mac (`./wbuild build_darwin`,
    binaries (the container is arm64 Ubuntu; `w` is x86_64). Do not
    default to it: the emulated seed makes builds very slow.
 
-`arm64_darwin` Mach-O binaries are cross-compiled on Linux, then signed
-and run natively on the Mac with `tools/mac/run_darwin_tests.sh`.
+`arm64_darwin` Mach-O binaries are self-signed by the compiler and run
+natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 
 ## Commands
 
