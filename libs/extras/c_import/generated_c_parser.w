@@ -759,6 +759,7 @@ char* clang_token_name(int kind):
 		return c"WHITESPACE"
 	return c"<invalid>"
 
+
 pg_ast_node* clang_parse_translation_unit(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_external_declaration(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_declaration(pg_token_stream* stream, pg_diagnostics* diagnostics);
@@ -875,7 +876,631 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 	int line = 1
 	int column = 1
 	while (input[index] != 0):
-		if (pg_lexer_is_inline_space(input[index])):
+		int start = index
+		int start_line = line
+		int start_column = column
+		int length = 0
+		int best_kind = 0
+		int best_length = 0
+		int best_skip = 0
+		length = pg_lexer_matcher_c_preprocessor(input, index)
+		if (length > best_length):
+			best_length = length
+			best_kind = clang_token_C_PREPROCESSOR()
+			best_skip = 1
+		length = pg_lexer_matcher_c_line_comment(input, index)
+		if (length > best_length):
+			best_length = length
+			best_kind = clang_token_LINE_COMMENT()
+			best_skip = 1
+		length = pg_lexer_matcher_block_comment(input, index)
+		if (length > best_length):
+			best_length = length
+			best_kind = clang_token_BLOCK_COMMENT()
+			best_skip = 1
+		length = pg_lexer_matcher_c_control(input, index)
+		if (length > best_length):
+			best_length = length
+			best_kind = clang_token_C_CONTROL()
+			best_skip = 1
+		length = pg_lexer_matcher_newline(input, index)
+		if (length > best_length):
+			best_length = length
+			best_kind = clang_token_NEWLINE()
+			best_skip = 1
+		length = pg_lexer_matcher_tabs(input, index)
+		if (length > best_length):
+			best_length = length
+			best_kind = clang_token_TAB()
+			best_skip = 1
+		length = pg_lexer_matcher_c_string(input, index)
+		if (length > best_length):
+			best_length = length
+			best_kind = clang_token_STRING()
+			best_skip = 0
+		length = pg_lexer_matcher_c_char_literal(input, index)
+		if (length > best_length):
+			best_length = length
+			best_kind = clang_token_CHAR_LITERAL()
+			best_skip = 0
+		length = pg_lexer_matcher_c_number(input, index)
+		if (length > best_length):
+			best_length = length
+			best_kind = clang_token_NUMBER()
+			best_skip = 0
+		length = pg_lexer_matcher_identifier(input, index)
+		if (length > best_length):
+			best_length = length
+			best_kind = clang_token_IDENT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"typedef")):
+			length = 7
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_TYPEDEF()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"extern")):
+			length = 6
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_EXTERN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"static")):
+			length = 6
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_STATIC()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"auto")):
+			length = 4
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_AUTO()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"register")):
+			length = 8
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_REGISTER()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"inline")):
+			length = 6
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_INLINE()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"const")):
+			length = 5
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_CONST()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"restrict")):
+			length = 8
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_RESTRICT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"volatile")):
+			length = 8
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_VOLATILE()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"void")):
+			length = 4
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_VOID()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"char")):
+			length = 4
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_CHAR()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"short")):
+			length = 5
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_SHORT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"int")):
+			length = 3
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_INT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"long")):
+			length = 4
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_LONG()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"float")):
+			length = 5
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_FLOAT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"double")):
+			length = 6
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_DOUBLE()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"signed")):
+			length = 6
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_SIGNED()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"unsigned")):
+			length = 8
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_UNSIGNED()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"struct")):
+			length = 6
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_STRUCT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"union")):
+			length = 5
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_UNION()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"enum")):
+			length = 4
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_ENUM()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"sizeof")):
+			length = 6
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_SIZEOF()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"return")):
+			length = 6
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_RETURN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"if")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_IF()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"else")):
+			length = 4
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_ELSE()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"while")):
+			length = 5
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_WHILE()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"do")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_DO()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"for")):
+			length = 3
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_FOR()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"switch")):
+			length = 6
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_SWITCH()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"case")):
+			length = 4
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_CASE()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"default")):
+			length = 7
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_DEFAULT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"break")):
+			length = 5
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_BREAK()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"continue")):
+			length = 8
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_CONTINUE()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"goto")):
+			length = 4
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_KW_GOTO()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"...")):
+			length = 3
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_ELLIPSIS()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"<<=")):
+			length = 3
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_SHIFT_LEFT_ASSIGN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c">>=")):
+			length = 3
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_SHIFT_RIGHT_ASSIGN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"++")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_PLUS_PLUS()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"--")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_MINUS_MINUS()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"->")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_ARROW()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"<<")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_SHIFT_LEFT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c">>")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_SHIFT_RIGHT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"<=")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_LT_EQ()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c">=")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_GT_EQ()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"==")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_EQ_EQ()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"!=")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_BANG_EQ()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"&&")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_AND_AND()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"||")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_OR_OR()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"+=")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_PLUS_ASSIGN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"-=")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_MINUS_ASSIGN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"*=")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_STAR_ASSIGN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"/=")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_SLASH_ASSIGN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"%=")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_PERCENT_ASSIGN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"&=")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_AMP_ASSIGN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"^=")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_CARET_ASSIGN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"|=")):
+			length = 2
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_PIPE_ASSIGN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"+")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_PLUS()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"-")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_MINUS()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"*")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_STAR()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"/")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_SLASH()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"%")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_PERCENT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"&")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_AMP()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"|")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_PIPE()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"^")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_CARET()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"!")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_BANG()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"~")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_TILDE()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"=")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_ASSIGN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"<")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_LT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c">")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_GT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"?")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_QUESTION()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c":")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_COLON()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c";")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_SEMI()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c",")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_COMMA()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c".")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_DOT()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"(")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_LPAREN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c")")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_RPAREN()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"[")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_LBRACK()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"]")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_RBRACK()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"{")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_LBRACE()
+			best_skip = 0
+		length = 0
+		if (starts_with(input + index, c"}")):
+			length = 1
+		if ((length > 0) & (length >= best_length)):
+			best_length = length
+			best_kind = clang_token_RBRACE()
+			best_skip = 0
+		if (best_length > 0):
+			if (best_skip == 0):
+				pg_token_stream_add(stream, pg_token_make(best_kind, input, start, best_length, filename, start_line, start_column))
+			else:
+				pg_token_stream_add(stream, pg_token_hide(pg_token_make(best_kind, input, start, best_length, filename, start_line, start_column)))
+			clang_advance_position(input, start, best_length, &line, &column)
+			index = index + best_length
+		else if (pg_lexer_is_inline_space(input[index])):
 			int ws_start = index
 			int ws_line = line
 			int ws_column = column
@@ -884,635 +1509,10 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 				index = index + 1
 			pg_token_stream_add(stream, pg_token_hide(pg_token_make(pg_token_whitespace_kind(), input, ws_start, index - ws_start, filename, ws_line, ws_column)))
 		else:
-			int start = index
-			int start_line = line
-			int start_column = column
-			int length = 0
-			int best_kind = 0
-			int best_length = 0
-			int best_skip = 0
-			length = pg_lexer_matcher_c_preprocessor(input, index)
-			if (length > best_length):
-				best_length = length
-				best_kind = clang_token_C_PREPROCESSOR()
-				best_skip = 1
-			length = pg_lexer_matcher_c_line_comment(input, index)
-			if (length > best_length):
-				best_length = length
-				best_kind = clang_token_LINE_COMMENT()
-				best_skip = 1
-			length = pg_lexer_matcher_block_comment(input, index)
-			if (length > best_length):
-				best_length = length
-				best_kind = clang_token_BLOCK_COMMENT()
-				best_skip = 1
-			length = pg_lexer_matcher_c_control(input, index)
-			if (length > best_length):
-				best_length = length
-				best_kind = clang_token_C_CONTROL()
-				best_skip = 1
-			length = pg_lexer_matcher_newline(input, index)
-			if (length > best_length):
-				best_length = length
-				best_kind = clang_token_NEWLINE()
-				best_skip = 1
-			length = pg_lexer_matcher_tabs(input, index)
-			if (length > best_length):
-				best_length = length
-				best_kind = clang_token_TAB()
-				best_skip = 1
-			length = pg_lexer_matcher_c_string(input, index)
-			if (length > best_length):
-				best_length = length
-				best_kind = clang_token_STRING()
-				best_skip = 0
-			length = pg_lexer_matcher_c_char_literal(input, index)
-			if (length > best_length):
-				best_length = length
-				best_kind = clang_token_CHAR_LITERAL()
-				best_skip = 0
-			length = pg_lexer_matcher_c_number(input, index)
-			if (length > best_length):
-				best_length = length
-				best_kind = clang_token_NUMBER()
-				best_skip = 0
-			length = pg_lexer_matcher_identifier(input, index)
-			if (length > best_length):
-				best_length = length
-				best_kind = clang_token_IDENT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"typedef")):
-				length = 7
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_TYPEDEF()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"extern")):
-				length = 6
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_EXTERN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"static")):
-				length = 6
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_STATIC()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"auto")):
-				length = 4
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_AUTO()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"register")):
-				length = 8
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_REGISTER()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"inline")):
-				length = 6
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_INLINE()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"const")):
-				length = 5
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_CONST()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"restrict")):
-				length = 8
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_RESTRICT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"volatile")):
-				length = 8
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_VOLATILE()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"void")):
-				length = 4
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_VOID()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"char")):
-				length = 4
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_CHAR()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"short")):
-				length = 5
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_SHORT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"int")):
-				length = 3
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_INT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"long")):
-				length = 4
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_LONG()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"float")):
-				length = 5
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_FLOAT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"double")):
-				length = 6
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_DOUBLE()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"signed")):
-				length = 6
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_SIGNED()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"unsigned")):
-				length = 8
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_UNSIGNED()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"struct")):
-				length = 6
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_STRUCT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"union")):
-				length = 5
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_UNION()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"enum")):
-				length = 4
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_ENUM()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"sizeof")):
-				length = 6
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_SIZEOF()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"return")):
-				length = 6
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_RETURN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"if")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_IF()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"else")):
-				length = 4
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_ELSE()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"while")):
-				length = 5
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_WHILE()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"do")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_DO()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"for")):
-				length = 3
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_FOR()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"switch")):
-				length = 6
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_SWITCH()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"case")):
-				length = 4
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_CASE()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"default")):
-				length = 7
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_DEFAULT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"break")):
-				length = 5
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_BREAK()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"continue")):
-				length = 8
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_CONTINUE()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"goto")):
-				length = 4
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_KW_GOTO()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"...")):
-				length = 3
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_ELLIPSIS()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"<<=")):
-				length = 3
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_SHIFT_LEFT_ASSIGN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c">>=")):
-				length = 3
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_SHIFT_RIGHT_ASSIGN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"++")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_PLUS_PLUS()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"--")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_MINUS_MINUS()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"->")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_ARROW()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"<<")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_SHIFT_LEFT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c">>")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_SHIFT_RIGHT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"<=")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_LT_EQ()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c">=")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_GT_EQ()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"==")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_EQ_EQ()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"!=")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_BANG_EQ()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"&&")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_AND_AND()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"||")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_OR_OR()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"+=")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_PLUS_ASSIGN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"-=")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_MINUS_ASSIGN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"*=")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_STAR_ASSIGN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"/=")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_SLASH_ASSIGN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"%=")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_PERCENT_ASSIGN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"&=")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_AMP_ASSIGN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"^=")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_CARET_ASSIGN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"|=")):
-				length = 2
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_PIPE_ASSIGN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"+")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_PLUS()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"-")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_MINUS()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"*")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_STAR()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"/")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_SLASH()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"%")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_PERCENT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"&")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_AMP()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"|")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_PIPE()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"^")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_CARET()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"!")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_BANG()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"~")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_TILDE()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"=")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_ASSIGN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"<")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_LT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c">")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_GT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"?")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_QUESTION()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c":")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_COLON()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c";")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_SEMI()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c",")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_COMMA()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c".")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_DOT()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"(")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_LPAREN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c")")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_RPAREN()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"[")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_LBRACK()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"]")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_RBRACK()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"{")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_LBRACE()
-				best_skip = 0
-			length = 0
-			if (starts_with(input + index, c"}")):
-				length = 1
-			if ((length > 0) & (length >= best_length)):
-				best_length = length
-				best_kind = clang_token_RBRACE()
-				best_skip = 0
-			if (best_length > 0):
-				if (best_skip == 0):
-					pg_token_stream_add(stream, pg_token_make(best_kind, input, start, best_length, filename, start_line, start_column))
-				else:
-					pg_token_stream_add(stream, pg_token_hide(pg_token_make(best_kind, input, start, best_length, filename, start_line, start_column)))
-				clang_advance_position(input, start, best_length, &line, &column)
-				index = index + best_length
-			else:
-				pg_diagnostics_add(diagnostics, filename, line, column, c"invalid character", c"known token", pg_substr(input, index, 1))
-				pg_token_stream_add(stream, pg_token_hide(pg_token_make(pg_token_invalid_kind(), input, index, 1, filename, line, column)))
-				index = index + 1
-				column = column + 1
+			pg_diagnostics_add(diagnostics, filename, line, column, c"invalid character", c"known token", pg_substr(input, index, 1))
+			pg_token_stream_add(stream, pg_token_hide(pg_token_make(pg_token_invalid_kind(), input, index, 1, filename, line, column)))
+			index = index + 1
+			column = column + 1
 	pg_token_stream_add(stream, pg_token_eof(index, filename, line, column))
 	return stream
 
