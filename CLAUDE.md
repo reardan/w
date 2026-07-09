@@ -21,8 +21,12 @@ Mach-O seed that bootstraps natively on this Mac (`./wbuild build_darwin`,
    (`./wbuild build_darwin` self-hosts; run Mach-O binaries with
    `tools/mac/run_darwin_tests.sh` — the compiler self-signs its output).
 2. **ssh host `w`** (x86_64 Linux, clone at `/home/w/w`) for
-   builds/verify/tests that need Linux — everything runs directly there
-   (`dynamic_test` additionally needs `libc6:i386`).
+   builds/verify/tests that need Linux — everything runs directly there.
+   The 32-bit dynamically linked tests additionally need `libc6:i386`
+   (`/lib/ld-linux.so.2`): `dynamic_test`, `c_import_test`,
+   `c_import_errno_test`, `c_import_libc_test`, `float_abi_test`,
+   `varargs_test`, `extern_data_test`. `verify_arm64` and the arm64 run
+   targets need `qemu-user-static`.
 3. **The `w-dev` Docker container** (`tools/mac/wdev.sh`, repo
    bind-mounted at `/w`) ONLY when absolutely necessary — i.e. a job
    neither of the above can do, such as natively executing aarch64-Linux

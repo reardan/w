@@ -85,8 +85,10 @@ the server in the Cloud Agents dashboard).
 - The optional debug/trace one-liners need tools that are **not installed** and are not
  required for build/test: `gdb`/`ddd` (hand-debugging a built binary), `radare2`
  (`rasm2` encoding lookups), `systemtap`/`stap` with sudo (syscall-trace one-liners).
-- `./wbuild tests` includes `dynamic_test`, which produces a **32-bit dynamically linked**
- binary and needs the i386 loader/libc (`/lib/ld-linux.so.2`, `libc6:i386`). In the
+- `./wbuild tests` includes targets whose binaries are **32-bit dynamically linked**
+ and need the i386 loader/libc (`/lib/ld-linux.so.2`, `libc6:i386`): `dynamic_test`,
+ `c_import_test`, `c_import_errno_test`, `c_import_libc_test`, `float_abi_test`,
+ `varargs_test`, and `extern_data_test`. In the
  Cursor Cloud environment this is **baked into the VM snapshot** (installed once during
  environment setup), so `./wbuild tests` runs out of the box; the minimal update script
  intentionally does not reinstall it (an apt step on every startup would be a network

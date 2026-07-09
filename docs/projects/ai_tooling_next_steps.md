@@ -148,6 +148,38 @@ is a queue, not an archive.
   `tests/hash_table_test.w` for `structures/hash_table_test.w`). A
   plain "no such file: <path>" before the import-search walk would
   have saved the confusion.
+- **`syscall()` accepts any arity but lowers exactly nr + 3 args, with
+  no diagnostic.** `syscall(172, 0x59616d61, -1)` compiles clean
+  (`w check` too) but leaves garbage in `eax`, so the kernel returns
+  ENOSYS at runtime. This silently broke `attach_target_fixture.w`'s
+  `PR_SET_PTRACER_ANY` prctl, which made `attach_test` fail on any
+  host with `ptrace_scope=1` (found 2026-07-09 on the `w` ssh box).
+  The builtin knows its own arity — a wrong-argument-count warning
+  (like ordinary functions get) would have caught this at edit time.
+- **wexec is fail-fast; one broken target silently cancels the rest of
+  an umbrella run.** During the 2026-07-09 full-suite run, the
+  `c_import_test` failure stopped scheduling with 58 of 116 `tests`
+  targets attempted, and the `attach_test` failure later cut another 10
+  — with no "N targets skipped" summary, so lost coverage is easy to
+  miss. Add a `--keep-going` mode (run everything, summarize failures
+  at the end) for test-suite runs, and print how many targets were
+  skipped when stopping early.
+- **The compiler can exit 1 with no diagnostic at all.** The pre-refresh
+  darwin seed compiling current `w.w` (post-#128 `libs/extras`) printed
+  only the `compiling 'w.w'` banner and exited 1 — nothing on stdout or
+  stderr (2026-07-09; the same constructs in a small probe file produced
+  a proper `list field 'append' not found` error, so some deep error
+  path exits without a message). Audit compiler exit paths so every
+  failure prints at least a one-line diagnostic; a silent exit cost a
+  full bisect to find the offending construct.
+- **`lib/testing.w` test discovery is ELF-only.** It walks ELF section
+  headers to find `test_*` symbols, so any testing.w-based test aborts
+  with "No symbol table addr" when compiled `arm64_darwin` and run
+  natively on macOS (observed with `map_set_builtin_test`,
+  `list_builtin_test` 2026-07-09). That caps native darwin testing at
+  the assert-style set in `tools/mac/run_darwin_tests.sh`. Either parse
+  Mach-O `LC_SYMTAB` alongside ELF, or have the compiler emit a static
+  test registry (which would also survive stripped binaries).
 
 ## Skills / rules upkeep
 
