@@ -314,6 +314,15 @@ dynamic_test_x64: w FORCE
 	./bin/dynamic_test_x64 | grep -q "dynamic linking OK"
 	@echo "dynamic test x64 OK"
 
+# Same check compiled to arm64 (AAPCS64 shims + aarch64 .interp): runs
+# natively on aarch64 hosts (pass QEMU_ARM64= in the w-dev container).
+# Under qemu it needs the aarch64 libc sysroot (qemu-aarch64-static
+# -L /usr/aarch64-linux-gnu), like dynamic_test needs libc6:i386.
+dynamic_test_arm64: w FORCE
+	./bin/wv2 arm64 tests/dynamic_test.w -o ./bin/dynamic_test_arm64
+	$(QEMU_ARM64) ./bin/dynamic_test_arm64 | grep -q "dynamic linking OK"
+	@echo "dynamic test arm64 OK"
+
 # Imported data objects (extern declarations without a parameter list):
 # stdout/stderr/optind arrive via COPY relocations.
 extern_data_test: w FORCE
@@ -359,6 +368,13 @@ float_abi_test_x64: w FORCE
 	./bin/wv2 x64 tests/x64_c_import_float_test.w -o ./bin/x64_c_import_float_test
 	./bin/x64_c_import_float_test | grep -q "x64 c_import float OK"
 	@echo "float abi test x64 OK"
+
+# Float args/returns through the AAPCS64 shims (see dynamic_test_arm64
+# for the qemu sysroot note).
+float_abi_test_arm64: w FORCE
+	./bin/wv2 arm64 tests/float_abi_test.w -o ./bin/float_abi_test_arm64
+	$(QEMU_ARM64) ./bin/float_abi_test_arm64 | grep -q "float abi OK"
+	@echo "float abi test arm64 OK"
 
 # JIT-load a hand-written PTX kernel through libcuda and run vector add on
 # the GPU. Requires an NVIDIA driver + GPU, so it is not part of 'tests'.

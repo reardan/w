@@ -56,6 +56,11 @@ int extern_statement():
 		# value; the library's own references rebind to this copy (symbol
 		# interposition), so it behaves like a normal W global.
 		if (accept(c"(") == 0):
+			# The copy space below is reserved in the code stream, which
+			# W^X arm64 targets map read-execute — the loader's COPY write
+			# would fault. Needs a data-segment home before enabling.
+			if (target_isa == 1):
+				error(c"extern data objects are not supported on arm64 targets yet")
 			save_int(table + sym + 10, 1)   /* symtype: object */
 			int size = type_get_size(ret_type)
 			if (size < 1):
@@ -117,6 +122,7 @@ int extern_statement():
 		# parameters (e.g. through a function pointer); direct calls emit
 		# the C ABI conversion inline for the actual argument classes
 		# (see parse_variadic_call_suffix).
+		be_align_code()
 		sym_define_global(sym)
 		emit_ffi_shim(param_count, param_classes, ret_class, got_vaddr)
 		if (is_variadic):

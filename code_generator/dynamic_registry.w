@@ -66,6 +66,13 @@ int dyn_has_imports():
 # array null-terminated for loaders that walk it, and pe_64.w points one
 # import descriptor at each slot at finish time.
 int dyn_emit_import_slot():
+	# W^X targets (data_split) map the code stream read-execute, so the
+	# loader-written slot must live in the RW data segment instead.
+	if (data_split):
+		int pad = datapos & (word_size - 1)
+		if (pad != 0):
+			emit_data_zeros(word_size - pad)
+		return emit_data_zeros(word_size)
 	int slot_vaddr = code_offset + codepos
 	emit_zeros(word_size)
 	if (target_os == 2):
