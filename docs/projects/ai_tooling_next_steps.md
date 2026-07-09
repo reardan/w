@@ -86,37 +86,12 @@ is a queue, not an archive.
   the server must be registered in the Cloud Agents dashboard (stdio
   command: `sh -c "./wbuild wmcp >&2 && exec ./bin/wmcp"`).
   Owner action; until then cloud agents use the shell commands.
-- **`w-debug-mcp` / DAP.** `wdbg`'s command loop is already scriptable
-  over stdin (see the `w-debug-wdbg` skill); a structured wrapper
-  remains deferred until an agent workflow actually needs programmatic
-  stepping.
-- **`wdbg` silently skips breakpoints on a source with no `debugger`
-  statement and no `--break_start`.** Reproduce: `printf 'break f.w:9\nc\n'
-  | ./bin/wdbg f.w` on a program that has neither — the debuggee races
-  ahead of the piped commands and can crash (or exit) before `break`
-  ever applies; the crash still drops into the command loop for
-  post-mortem inspection, so the failure mode isn't a hang, just a
-  silently-skipped breakpoint. All three debug fixtures
-  (`tests/debug_fixture{,2,3}.w`) have their own `debugger` statement,
-  which is why `debug_test` never hits this. Fixed in the skill doc
-  (`--break_start` now called out explicitly); a real fix would have
-  `wdbg` warn (or auto-pause) when breakpoints/conditions/logpoints are
-  set over stdin with neither a `debugger` statement nor
-  `--break_start` in effect.
 - **Conditional breakpoints/hit counts/logpoints land soon** (design:
   `docs/projects/debugger_conditional_breakpoints.md`). They add new
   stable, grep-able output lines (`logpoint N hit H: expr = value`,
   extended `info breakpoints` fields) to the same text protocol — worth
   keying a future structured wrapper off, and worth a
   `w-debug-wdbg` skill example once merged.
-- **`windex`'s `main`-location quirk.** `w symbols --json` records only
-  the *first* declaration of a name, so a user file's own `main`
-  (overriding `lib/lib.w`'s forward declaration) still reports its
-  location as `lib/lib.w`. `callers`/`callees`/rename targeting `main`
-  itself miscompute; every other function is unaffected. Fixing this
-  properly means teaching the symbol table to update the decl location
-  on a defining redeclaration — a compiler change, not a `windex` one.
-  See `docs/projects/semantic_index.md`.
 - **`callers`/`callees` performance.** `windex_enclosing_function` scans
   every declaration per reference (O(references × declarations)); fine
   for a one-shot CLI/MCP call, but would want an index instead of a

@@ -92,6 +92,7 @@ void wtest_init_targets():
 	wtest_targets.push(c"mcp_test")
 	wtest_targets.push(c"index_test")
 	wtest_targets.push(c"index_mcp_test")
+	wtest_targets.push(c"debug_mcp_test")
 	wtest_targets.push(c"hook_test")
 	wtest_targets.push(c"metadata_check")
 	wtest_targets.push(c"metadata_test")
@@ -310,6 +311,9 @@ void wtest_map_path(char* path):
 	else if (starts_with(path, c"debugger/")):
 		wtest_add(path, c"debug_test")
 		wtest_add(path, c"debug_test_x64")
+		wtest_add(path, c"debug_mcp_test")
+	else if (strcmp(path, c"tests/debug_no_pause_fixture.w") == 0):
+		wtest_add(path, c"debug_mcp_test")
 	else if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):
@@ -399,6 +403,8 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"index_test")
 	else if ((strcmp(path, c"tools/mcp/w_index_mcp.w") == 0) | (strcmp(path, c"tools/mcp/index_mcp_test.w") == 0)):
 		wtest_add(path, c"index_mcp_test")
+	else if ((strcmp(path, c"tools/mcp/w_debug_mcp.w") == 0) | (strcmp(path, c"tools/mcp/debug_mcp_test.w") == 0)):
+		wtest_add(path, c"debug_mcp_test")
 	else if (starts_with(path, c"tools/mcp/") | (strcmp(path, c".cursor/mcp.json") == 0)):
 		wtest_add(path, c"mcp_test")
 	else if (starts_with(path, c"tools/hooks/") | starts_with(path, c".cursor/hooks")):

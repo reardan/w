@@ -393,6 +393,7 @@ before merge.
 | Docs explain which tool to use | README section (D) |
 | Semantic indexer / `w-index-mcp` | `bin/windex` (`tools/index/w_index.w`) and `bin/wimcp` (`tools/mcp/w_index_mcp.w`); see `docs/projects/semantic_index.md` |
 | LSP hover/references/rename | `bin/wlsp`, see `docs/projects/lsp.md` |
+| `w-debug-mcp` | `bin/wdmcp` (`tools/mcp/w_debug_mcp.w`); see `docs/projects/debug_mcp.md` |
 
 ## Out of scope for the MVP (deferred, with rationale)
 
@@ -416,9 +417,13 @@ before merge.
   is mostly `readelf`/`objdump` wrapping.
 - **Tree-sitter grammar**: valuable for editors but external to this
   repo's toolchain; no other MVP piece depends on it.
-- **`w-debug-mcp` / DAP**: wdbg's command loop is already scriptable over
-  stdin (see `debug_test`); structured wrapping is straightforward but
-  not needed for the check/test/build loop the MVP targets.
+- **`w-debug-mcp`**: since built — `bin/wdmcp` (`tools/mcp/w_debug_mcp.w`)
+  keeps a real interactive `wdbg` session alive across MCP tool calls
+  (`debug_start`/`debug_send`/`debug_stop`), unlike the one-shot
+  subprocess-per-call shape of `w-toolchain-mcp`/`w-index-mcp` — needed
+  once an agent workflow (diagnosing a live crash) actually wanted
+  programmatic stepping. DAP proper remains out of scope; see
+  `docs/projects/debug_mcp.md`.
 - **`w-parsergen-mcp`**: ParserGenerator exists, but no agent workflow
   needs it programmatically yet.
 

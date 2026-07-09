@@ -97,15 +97,6 @@ parsed NDJSON array.
 
 - **Textual, not scoped.** A local variable and an unrelated global
   sharing a name are conflated; shadowed identifiers are indistinguishable.
-- **`main` is special.** `lib/lib.w` forward-declares
-  `int main(int argc, int argv);` as the program's entry point contract;
-  `w symbols --json`'s declaration-location tracking records only the
-  *first* declaration of a name, so a user file's own `main` shows up
-  with `main`'s location still pointing at `lib/lib.w`. Callers/callees
-  computed from a file's `main` will not find the right body span. Every
-  other function is unaffected — this is `main`-specific, not a general
-  redefinition bug. Use a differently-named entry point in fixtures/test
-  code that exercises callers/callees (see `tests/index_fixture.w`).
 - **Function spans are indentation-approximated**, not scope-derived
   (see "Why this shape" above); a stray column-0 comment inside what
   should be a nested block would truncate a span early.

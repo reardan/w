@@ -143,6 +143,3 @@ non-identifier position, `textDocument/hover` on a call site in
   in `w symbols --json`; only the response shape is new.
 - Locals/parameters still aren't in `w symbols --json`, so definition,
   hover, references, and rename all stay global-declarations-only.
-- `windex`'s `main`-location quirk (`docs/projects/semantic_index.md`)
-  means references/rename on a call site of `main` work fine, but
-  targeting `main` itself will miss its real declaration site.

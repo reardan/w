@@ -127,10 +127,22 @@ int sym_decl_column(int t):
 	return load_int(table + t + 74)
 
 
+# Tracks the most recently *known-good* declaration location applied to
+# any symbol, whether from sym_declare_global's own bookkeeping or an
+# explicit sym_set_decl_location call right after it (e.g. enum values
+# recording their own line/column). sym_define_global_at reads these to
+# decide what a defining occurrence should move a symbol's location to.
+int sym_last_declared_offset
+int sym_last_declared_line
+int sym_last_declared_column
+
 void sym_set_decl_location(int t, int file_index, int line, int column):
 	save_int(table + t + 66, file_index)
 	save_int(table + t + 70, line)
 	save_int(table + t + 74, column)
+	sym_last_declared_offset = t
+	sym_last_declared_line = line
+	sym_last_declared_column = column
 
 
 /*
@@ -200,6 +212,9 @@ int sym_declare_global(char *s, int type, int symtype):
 		# this explicit declaration is the real source location
 		sym_set_decl_location(current_symbol, decl_file_index(), diag_token_line, diag_token_column)
 
+	sym_last_declared_offset = current_symbol
+	sym_last_declared_line = diag_token_line
+	sym_last_declared_column = diag_token_column
 	return current_symbol
 
 
@@ -216,6 +231,17 @@ void sym_define_global_at(int current_symbol, int v):
 		diag_part(c"symbol redefined: '")
 		diag_part(last_global_declaration)
 		error(c"'")
+	# A defining occurrence is more useful than a bare forward declaration
+	# for navigation (w symbols --json / windex/wlsp go-to-definition): a
+	# prototype like lib.w's 'int main(int argc, int argv);' would
+	# otherwise permanently own the symbol's recorded location even after
+	# the program's real 'main' is defined. Only apply when this call is
+	# reached immediately after THIS symbol's own sym_declare_global (the
+	# ordinary declare-then-maybe-define sequence every function/global
+	# goes through), so an unrelated declaration parsed in between (or a
+	# declaration path that bypasses sym_declare_global) leaves it alone.
+	if (sym_last_declared_offset == current_symbol):
+		sym_set_decl_location(current_symbol, decl_file_index(), sym_last_declared_line, sym_last_declared_column)
 	i = load_int(table + t + 2) - code_offset
 	while (i):
 		j = be_addr_slot_read(i) - code_offset
