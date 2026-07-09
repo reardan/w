@@ -66,6 +66,30 @@ void test_generated_lexer_literals():
 	assert_strings_equal(c",", pg_token_stream_la(stream, 2).text)
 
 
+void test_generated_lexer_doubled_strings_and_sql_comment():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_token_stream* stream = sample_lex(c"'can''t' \"a\"\"b\" -- hidden", c"sample.txt", diagnostics)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	pg_token* single_quoted = pg_token_stream_la(stream, 1)
+	assert_equal(sample_token_SINGLE_QUOTED(), single_quoted.kind)
+	assert_equal(0, single_quoted.offset)
+	assert_equal(8, single_quoted.length)
+	assert_strings_equal(c"'can''t'", single_quoted.text)
+	pg_token* double_quoted = pg_token_stream_la(stream, 2)
+	assert_equal(sample_token_DOUBLE_QUOTED(), double_quoted.kind)
+	assert_equal(9, double_quoted.offset)
+	assert_equal(6, double_quoted.length)
+	assert_strings_equal(c"\"a\"\"b\"", double_quoted.text)
+	assert_equal(pg_token_eof_kind(), pg_token_stream_la(stream, 3).kind)
+	assert_equal(6, pg_token_stream_all_count(stream))
+	pg_token* sql_comment = pg_token_stream_all_get(stream, 4)
+	assert_equal(sample_token_SQL_LINE_COMMENT(), sql_comment.kind)
+	assert_equal(pg_token_hidden_channel(), sql_comment.channel)
+	assert_equal(16, sql_comment.offset)
+	assert_equal(9, sql_comment.length)
+	assert_strings_equal(c"-- hidden", sql_comment.text)
+
+
 void test_generated_parser_syntax_error():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = sample_parse(c"", c"sample.txt", diagnostics)

@@ -1,13 +1,17 @@
 parser sample
 
+skip SQL_LINE_COMMENT sql_line_comment
+
 token WORD letters
 token NUMBER digits
+token SINGLE_QUOTED doubled_quote_string
+token DOUBLE_QUOTED doubled_double_quote_string
 literal COMMA ","
 
 start list
 
 recover value COMMA
 
-rule value = WORD | NUMBER
+rule value = WORD | NUMBER | SINGLE_QUOTED | DOUBLE_QUOTED
 rule list = value value* EOF
 rule pair = value COMMA value EOF
