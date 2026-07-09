@@ -37,6 +37,7 @@ modules:
 	lib.poll
 	lib.process
 	lib.result
+	lib.sha256
 	lib.stream
 	lib.testing
 	lib.time

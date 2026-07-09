@@ -1,19 +1,18 @@
 #!/bin/sh
-# Sign and natively execute arm64_darwin test binaries on the macOS host
-# (Phase 6 of docs/projects/arm64_stage45_plan.md). The binaries are
-# cross-compiled inside the w-dev container (tools/mac/wdev.sh); this half
-# runs on the Mac because only the Mac can codesign and load Mach-O.
+# Natively execute arm64_darwin test binaries on the macOS host (Phase 6 of
+# docs/projects/arm64_stage45_plan.md). The binaries are cross-compiled
+# inside the w-dev container (tools/mac/wdev.sh); this half runs on the Mac
+# because only the Mac can load and exec Mach-O.
 #
 # Usage: tools/mac/run_darwin_tests.sh bin/hello_darwin [bin/more...]
 #        tools/mac/run_darwin_tests.sh          # runs the default set
 #
-# codesign -s - (ad-hoc) is the interim signing path until the in-house
-# CodeDirectory writer (macho_sign.w, Phase 5) lands.
-#
-# Signing happens on a fresh copy which is renamed over the original: the
-# kernel caches code-signature state per vnode, and an inode that was ever
-# executed with a different signature (or killed unsigned) keeps failing
-# even after a valid re-sign (the Go/lld/Chrome write-then-rename gotcha).
+# The compiler self-signs its output (code_generator/macho_sign.w writes an
+# ad-hoc CodeDirectory), so no host `codesign` step is needed — codesign -v
+# accepts the signature as-is. Each binary is still copied to a fresh inode
+# before exec, purely for the vnode gotcha: the kernel caches code-signature
+# state per vnode, so an inode that was ever executed and killed keeps
+# failing even after a valid re-sign (the Go/lld/Chrome rename gotcha).
 set -e
 
 cd "$(dirname "$0")/../.."
@@ -28,12 +27,6 @@ if [ -z "$tests" ]; then
 	must_die="bin/pac_corrupt_fnptr_darwin_test bin/pac_corrupt_ret_darwin_test"
 fi
 
-sign() {
-	cp "$1" "$1.signing"
-	codesign -f -s - "$1.signing"
-	mv -f "$1.signing" "$1"
-}
-
 fail=0
 for t in $tests; do
 	if [ ! -f "$t" ]; then
@@ -41,13 +34,14 @@ for t in $tests; do
 		fail=1
 		continue
 	fi
-	sign "$t"
-	if "./$t"; then
+	cp "$t" "$t.run"
+	if "./$t.run"; then
 		echo "run_darwin_tests: PASS $t"
 	else
 		echo "run_darwin_tests: FAIL $t (exit $?)" >&2
 		fail=1
 	fi
+	rm -f "$t.run"
 done
 
 for t in $must_die; do
@@ -56,9 +50,10 @@ for t in $must_die; do
 		fail=1
 		continue
 	fi
-	sign "$t"
+	cp "$t" "$t.run"
 	rc=0
-	out=$("./$t" 2>&1) || rc=$?
+	out=$("./$t.run" 2>&1) || rc=$?
+	rm -f "$t.run"
 	if [ "$rc" -ge 128 ] && [ "${out#*NOT REACHED}" = "$out" ]; then
 		echo "run_darwin_tests: PASS $t (died with signal exit $rc, as required)"
 	else
