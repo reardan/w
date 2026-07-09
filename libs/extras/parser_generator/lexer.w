@@ -132,6 +132,15 @@ int pg_lexer_matcher_c_line_comment(char* input, int index):
 	return index - start
 
 
+int pg_lexer_matcher_sql_line_comment(char* input, int index):
+	if ((input[index] != '-') | (input[index + 1] != '-')):
+		return 0
+	int start = index
+	while ((input[index] != 0) & (input[index] != 10)):
+		index = index + 1
+	return index - start
+
+
 int pg_lexer_matcher_c_preprocessor(char* input, int index):
 	if (input[index] != '#'):
 		return 0
@@ -317,6 +326,31 @@ int pg_lexer_matcher_char_literal(char* input, int index):
 	if (input[index] == 39):
 		index = index + 1
 	return index - start
+
+
+int pg_lexer_match_doubled_delimiter_string(char* input, int index, int delimiter):
+	if (input[index] != delimiter):
+		return 0
+	int start = index
+	index = index + 1
+	while (input[index] != 0):
+		if (input[index] == delimiter):
+			if (input[index + 1] == delimiter):
+				index = index + 2
+			else:
+				index = index + 1
+				return index - start
+		else:
+			index = index + 1
+	return index - start
+
+
+int pg_lexer_matcher_doubled_quote_string(char* input, int index):
+	return pg_lexer_match_doubled_delimiter_string(input, index, 39)
+
+
+int pg_lexer_matcher_doubled_double_quote_string(char* input, int index):
+	return pg_lexer_match_doubled_delimiter_string(input, index, '"')
 
 
 int pg_lexer_matcher_operator(char* input, int index):
