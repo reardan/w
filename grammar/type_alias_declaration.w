@@ -11,15 +11,15 @@ int type_alias_declaration():
 		int target = -1
 		if (accept(c"fn")):
 			expect(c"(")
-			char* params = malloc(40)
+			char* params = malloc(10 * __word_size__)
 			int param_count = 0
 			if (accept(c")") == 0):
 				int param_type = type_name()
-				save_int(params + (param_count << 2), param_type)
+				save_ptr(params + param_count * __word_size__, param_type)
 				param_count = param_count + 1
 				while (accept(c",")):
 					param_type = type_name()
-					save_int(params + (param_count << 2), param_type)
+					save_ptr(params + param_count * __word_size__, param_type)
 					param_count = param_count + 1
 				expect(c")")
 			expect(c"-")

@@ -48,7 +48,7 @@ void dbg_frame_compute(int stop_addr):
 
 
 char* dbg_local_name_at(int i):
-	return cast(char*, load_int(debug_local_names + i * 4))
+	return cast(char*, load_ptr(debug_local_names + i * __word_size__))
 
 
 int dbg_local_slot(int i):

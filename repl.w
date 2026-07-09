@@ -314,10 +314,10 @@ int repl_infer_declaration():
 	get_token()
 	if (peek(c":=") == 0):
 		free(name)
-		seek(file, load_int(save + 28), 0)
+		seek(file, load_ptr(save + 7 * __word_size__), 0)
 		generic_reparse_restore(save)
 		return 0
-	free(cast(char*, load_int(save + 44)))
+	free(cast(char*, load_ptr(save + 11 * __word_size__)))
 	free(save)
 	get_token() /* consume ':=' */
 	int got = expression()

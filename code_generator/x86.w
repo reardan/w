@@ -145,6 +145,15 @@ void mov_rax_int64_halves(int lo, int hi):
 /* xor eax, imm32; on x64 this also zeroes the upper half of rax */
 void xor_eax_int32(int v):
 	if (target_isa == 1):
+		# Only w9's low 32 bits reach the eor, but the scratch load spills
+		# v into an 8-byte literal, and a bit-31 value (the float sign
+		# mask) folds positive on a 64-bit host and negative on the 32-bit
+		# seed — breaking the arm64 self-host fixpoint. Canonicalize to
+		# the sign-extended-32 form both hosts can represent.
+		int high = (v >> 31) & 1
+		v = v & 2147483647
+		if (high):
+			v = v - 2147483647 - 1
 		arm64_load_scratch(9, v)
 		a64(op(0x4a, 0x090000))   # eor w0,w0,w9 (zero-extends upper half)
 		return

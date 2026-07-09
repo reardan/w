@@ -91,3 +91,84 @@ Phase 0 works but is painfully slow on the Mac: the seed `./w` is a 32-bit x86 L
 - **This Mac (native arm64/macOS):** acceptance runs only — compile `arm64_darwin` binaries in the `w-dev` container (single compiles are tolerable under emulation), then run them natively: `codesign -s -` fallback and `codesign -v` verification, Mach-O loading, PAC/arm64e enforcement on the M3, `tools/mac/run_darwin_tests.sh` (Phases 4–7 acceptance criteria).
 
 The `w-dev` container and `tools/mac/wdev.sh` stay as the local harness for that second half.
+
+## Execution update (2026-07-08): macOS 26 killed LC_UNIXTHREAD — Phase 4 went dyld-loaded
+
+The Phase 4 plan above (and D5 in arm64.md) assumed the known-working dyld-less
+`LC_UNIXTHREAD` construction. That path is dead on macOS 26.3, established
+empirically on this M3 (even Apple's own `ld -static` output dies the same way):
+AppleSystemPolicy SIGKILLs at exec any main executable whose mach header lacks
+`MH_DYLDLINK` — the log signature is
+`ASP: Security policy would not allow process`, with a *valid* ad-hoc signature.
+The kernel side never reports a reason to the process (exit 137, and lldb can't
+launch it either).
+
+What macho_64.w emits instead — the minimal set macOS 26.3 accepts, found by
+bisecting load commands against a working `ld`-linked raw-syscall binary:
+
+- Header flags `MH_NOUNDEFS | MH_DYLDLINK | MH_TWOLEVEL | MH_PIE`.
+- `LC_MAIN` (dyld calls the entry as C-ABI `main(argc, argv, envp, apple)`;
+  the entry stub pushes x0/x1 onto the W stack instead of reading the kernel
+  stack) + `LC_LOAD_DYLINKER /usr/lib/dyld`.
+- `LC_UUID` — dyld hard-requires it (`missing LC_UUID load command`); a fixed
+  value suffices, uniqueness is not checked.
+- `LC_LOAD_DYLIB /usr/lib/libSystem.B.dylib` — dyld refuses a main executable
+  with no dylibs (`must link with at least libSystem.dylib`). Nothing is bound
+  from it; the runtime stays raw-syscall. dyld maps it from the shared cache
+  and runs its initializers before `_main` — harmless.
+- Zeroed `LC_SYMTAB` + `LC_DYSYMTAB`: with no chained-fixups/dyld-info
+  commands, dyld falls back to classic relocations and walks these; zero
+  counts no-op the walk, while *omitting* the commands segfaults dyld inside
+  `forEachRebase_Relocations`.
+- The nominal-base trick: linked addresses stay 32-bit (`0x08048000` base, as
+  on the arm64 ELF target) while the load commands map `__TEXT` at
+  `0x100000000`; the entry-stub rebase walk computes slide = runtime − nominal
+  and absorbs the difference. Both bases are 16 KB-congruent so `adrp` pairs
+  survive the slide.
+
+Also confirmed in practice: the vnode signature-cache gotcha is not
+theoretical — an inode once executed-and-killed keeps failing after a valid
+re-sign. `tools/mac/run_darwin_tests.sh` therefore signs a fresh copy and
+renames it over the target, and compile targets should prefer new output
+files over truncating previously-executed ones.
+
+Phase 5 (in-house ad-hoc signing) is unchanged. Phase 7's arm64e slice needs
+re-testing under this policy regime when it lands.
+
+### Native-compiler blocker found: 32-bit pointer tables vs the mandatory 4 GB __PAGEZERO
+
+Running the *compiler itself* natively (`wv2 arm64_darwin w.w -o bin/w_darwin`,
+signed, on the M3) starts and then segfaults in `str_from_cstr` via
+`import_alias_register`: the crash address is the low 32 bits of an mmap'd
+pointer. Root cause: many compiler-internal tables store pointers as 32-bit
+values at 4-byte stride (`save_int(table + i * 4, cast(int, ptr))` — 32+ sites:
+`grammar/import_statement.w` alias/plain tables, `grammar/generic.w`,
+`compiler/type_table.w` packed name fields, `grammar/defer.w`, ...). Every
+existing target keeps the W heap below 4 GB (fixed ELF base + brk; win64
+deliberately stays non-LARGE_ADDRESS_AWARE), so the truncation is lossless
+there. On arm64 macOS it cannot be: the kernel refuses a main executable
+whose `__PAGEZERO` is smaller than 4 GB (verified empirically — SIGKILL at
+exec, same as ld64's `-pagezero_size` floor), so *every* Darwin mmap result
+is ≥ 4 GB and the truncated pointers are garbage.
+
+Consequence: W *programs* that keep pointers in full words run fine natively
+(hello, testing_ground pass), but the compiler needed its pointer tables
+widened to host-word slots before it could self-host on macOS.
+
+**Resolved the same day**: `save_ptr`/`load_ptr` (`__word_size__`-sized) in
+integer.w, and every pointer-holding table converted — import tables,
+generic def/inst/forward records and reparse-save blocks, type-table
+records (uniform word slots), dwarf `debug_files`/`debug_local_names` (and
+the debugger's readers), and the hash-table string-key descriptor
+accesses. On a 32-bit host `__word_size__` is 4, so seed-compiled layouts
+are unchanged; `verify`/`verify_x64` stayed byte-identical.
+
+With that, **native Darwin self-hosting works**: the compiler cross-built
+as `arm64_darwin`, signed ad-hoc, compiles `w.w` natively on the M3 in
+~4.4 s, its output is byte-identical to the Linux cross-compile of the
+same sources (cross-host determinism), and the natively-built compiler
+reproduces itself (self-host fixpoint on macOS). Note for the future
+native dev loop: `__word_size__` is a *target* constant, so any use of it
+in compiler sources is fixpoint-safe, but it lands in emitted code — never
+run the guards against a source tree being edited concurrently (the
+container build re-reads bind-mounted sources between stages).

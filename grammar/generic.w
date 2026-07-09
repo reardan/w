@@ -56,8 +56,13 @@ char* generic_defs
 int generic_def_count
 
 
+# Eight pointer-sized slots: name*, kind, file_path*, offset, line,
+# column, param_count, param_names*. Pointer fields need full host
+# words (the heap sits above 4 GB on arm64 macOS); the int fields ride
+# along in word slots so offsets stay uniform. On a 32-bit host this
+# is the original 32-byte layout.
 int generic_def_stride():
-	return 32
+	return 8 * __word_size__
 
 
 int generic_def_max():
@@ -73,36 +78,36 @@ char* generic_def_entry(int def):
 
 
 char* generic_def_name(int def):
-	return cast(char*, load_int(generic_def_entry(def)))
+	return cast(char*, load_ptr(generic_def_entry(def)))
 
 
 int generic_def_kind(int def):
-	return load_int(generic_def_entry(def) + 4)
+	return load_ptr(generic_def_entry(def) + __word_size__)
 
 
 char* generic_def_file(int def):
-	return cast(char*, load_int(generic_def_entry(def) + 8))
+	return cast(char*, load_ptr(generic_def_entry(def) + 2 * __word_size__))
 
 
 int generic_def_offset(int def):
-	return load_int(generic_def_entry(def) + 12)
+	return load_ptr(generic_def_entry(def) + 3 * __word_size__)
 
 
 int generic_def_line(int def):
-	return load_int(generic_def_entry(def) + 16)
+	return load_ptr(generic_def_entry(def) + 4 * __word_size__)
 
 
 int generic_def_column(int def):
-	return load_int(generic_def_entry(def) + 20)
+	return load_ptr(generic_def_entry(def) + 5 * __word_size__)
 
 
 int generic_def_param_count(int def):
-	return load_int(generic_def_entry(def) + 24)
+	return load_ptr(generic_def_entry(def) + 6 * __word_size__)
 
 
 char* generic_def_param_name(int def, int i):
-	int names = load_int(generic_def_entry(def) + 28)
-	return cast(char*, load_int(names + (i << 2)))
+	int names = load_ptr(generic_def_entry(def) + 7 * __word_size__)
+	return cast(char*, load_ptr(names + i * __word_size__))
 
 
 # Registered generic of the given kind (0 function, 1 struct) with this
@@ -127,14 +132,14 @@ int generic_def_add(char* name, int kind, char* file_path, int offset, int line,
 		generic_defs = malloc(generic_def_max() * generic_def_stride())
 	assert1(generic_def_count < generic_def_max())
 	char* e = generic_defs + generic_def_count * generic_def_stride()
-	save_int(e, cast(int, name))
-	save_int(e + 4, kind)
-	save_int(e + 8, cast(int, file_path))
-	save_int(e + 12, offset)
-	save_int(e + 16, line)
-	save_int(e + 20, column)
-	save_int(e + 24, param_count)
-	save_int(e + 28, param_names)
+	save_ptr(e, cast(int, name))
+	save_ptr(e + __word_size__, kind)
+	save_ptr(e + 2 * __word_size__, cast(int, file_path))
+	save_ptr(e + 3 * __word_size__, offset)
+	save_ptr(e + 4 * __word_size__, line)
+	save_ptr(e + 5 * __word_size__, column)
+	save_ptr(e + 6 * __word_size__, param_count)
+	save_ptr(e + 7 * __word_size__, param_names)
 	generic_def_count = generic_def_count + 1
 	return generic_def_count - 1
 
@@ -154,8 +159,10 @@ char* generic_insts
 int generic_inst_count
 
 
+# Seven pointer-sized slots: mangled*, def, args*, arg_count, head,
+# sig, done (same uniform-word-slot scheme as generic_def_stride).
 int generic_inst_stride():
-	return 28
+	return 7 * __word_size__
 
 
 int generic_inst_max():
@@ -167,35 +174,35 @@ char* generic_inst_entry(int inst):
 
 
 char* generic_inst_mangled(int inst):
-	return cast(char*, load_int(generic_inst_entry(inst)))
+	return cast(char*, load_ptr(generic_inst_entry(inst)))
 
 
 int generic_inst_def(int inst):
-	return load_int(generic_inst_entry(inst) + 4)
+	return load_ptr(generic_inst_entry(inst) + __word_size__)
 
 
 int generic_inst_args(int inst):
-	return load_int(generic_inst_entry(inst) + 8)
+	return load_ptr(generic_inst_entry(inst) + 2 * __word_size__)
 
 
 int generic_inst_arg_count(int inst):
-	return load_int(generic_inst_entry(inst) + 12)
+	return load_ptr(generic_inst_entry(inst) + 3 * __word_size__)
 
 
 int generic_inst_chain(int inst):
-	return load_int(generic_inst_entry(inst) + 16)
+	return load_ptr(generic_inst_entry(inst) + 4 * __word_size__)
 
 
 void generic_inst_set_chain(int inst, int head):
-	save_int(generic_inst_entry(inst) + 16, head)
+	save_ptr(generic_inst_entry(inst) + 4 * __word_size__, head)
 
 
 int generic_inst_done(int inst):
-	return load_int(generic_inst_entry(inst) + 24)
+	return load_ptr(generic_inst_entry(inst) + 6 * __word_size__)
 
 
 void generic_inst_set_done(int inst):
-	save_int(generic_inst_entry(inst) + 24, 1)
+	save_ptr(generic_inst_entry(inst) + 6 * __word_size__, 1)
 
 
 int generic_inst_lookup(char* mangled):
@@ -220,13 +227,13 @@ int generic_inst_intern(int def, int args, int arg_count, char* mangled):
 		generic_insts = malloc(generic_inst_max() * generic_inst_stride())
 	assert1(generic_inst_count < generic_inst_max())
 	char* e = generic_insts + generic_inst_count * generic_inst_stride()
-	save_int(e, cast(int, mangled))
-	save_int(e + 4, def)
-	save_int(e + 8, args)
-	save_int(e + 12, arg_count)
-	save_int(e + 16, 0)
-	save_int(e + 20, -1)
-	save_int(e + 24, 0)
+	save_ptr(e, cast(int, mangled))
+	save_ptr(e + __word_size__, def)
+	save_ptr(e + 2 * __word_size__, args)
+	save_ptr(e + 3 * __word_size__, arg_count)
+	save_ptr(e + 4 * __word_size__, 0)
+	save_ptr(e + 5 * __word_size__, -1)
+	save_ptr(e + 6 * __word_size__, 0)
 	generic_inst_count = generic_inst_count + 1
 	return generic_inst_count - 1
 
@@ -245,22 +252,22 @@ char* generic_subst_block
 int generic_subst_lookup(char* name):
 	if (generic_subst_block == 0):
 		return -1
-	int n = load_int(generic_subst_block)
+	int n = load_ptr(generic_subst_block)
 	int i = 0
 	while (i < n):
-		if (strcmp(name, cast(char*, load_int(generic_subst_block + 4 + (i << 3)))) == 0):
-			return load_int(generic_subst_block + 8 + (i << 3))
+		if (strcmp(name, cast(char*, load_ptr(generic_subst_block + __word_size__ + i * 2 * __word_size__))) == 0):
+			return load_ptr(generic_subst_block + 2 * __word_size__ + i * 2 * __word_size__)
 		i = i + 1
 	return -1
 
 
 char* generic_subst_make(int def, int args, int arg_count):
-	char* block = malloc(4 + (arg_count << 3))
-	save_int(block, arg_count)
+	char* block = malloc(__word_size__ + arg_count * 2 * __word_size__)
+	save_ptr(block, arg_count)
 	int i = 0
 	while (i < arg_count):
-		save_int(block + 4 + (i << 3), cast(int, generic_def_param_name(def, i)))
-		save_int(block + 8 + (i << 3), load_int(args + (i << 2)))
+		save_ptr(block + __word_size__ + i * 2 * __word_size__, cast(int, generic_def_param_name(def, i)))
+		save_ptr(block + 2 * __word_size__ + i * 2 * __word_size__, load_ptr(args + i * __word_size__))
 		i = i + 1
 	return block
 
@@ -296,45 +303,45 @@ resumes as if nothing happened.
 save block layout: 14 ints (56 bytes).
 */
 char* generic_reparse_save():
-	char* s = malloc(56)
-	save_int(s, cast(int, filename))
-	save_int(s + 4, file)
-	save_int(s + 8, nextc)
-	save_int(s + 12, line_number)
-	save_int(s + 16, column_number)
-	save_int(s + 20, tab_level)
-	save_int(s + 24, token_newline)
-	save_int(s + 28, byte_offset)
-	save_int(s + 32, diag_token_line)
-	save_int(s + 36, diag_token_column)
-	save_int(s + 40, token_start_offset)
-	save_int(s + 44, cast(int, strclone(token)))
-	save_int(s + 48, pointer_indirection)
-	save_int(s + 52, token_i)
+	char* s = malloc(14 * __word_size__)
+	save_ptr(s, cast(int, filename))
+	save_ptr(s + __word_size__, file)
+	save_ptr(s + 2 * __word_size__, nextc)
+	save_ptr(s + 3 * __word_size__, line_number)
+	save_ptr(s + 4 * __word_size__, column_number)
+	save_ptr(s + 5 * __word_size__, tab_level)
+	save_ptr(s + 6 * __word_size__, token_newline)
+	save_ptr(s + 7 * __word_size__, byte_offset)
+	save_ptr(s + 8 * __word_size__, diag_token_line)
+	save_ptr(s + 9 * __word_size__, diag_token_column)
+	save_ptr(s + 10 * __word_size__, token_start_offset)
+	save_ptr(s + 11 * __word_size__, cast(int, strclone(token)))
+	save_ptr(s + 12 * __word_size__, pointer_indirection)
+	save_ptr(s + 13 * __word_size__, token_i)
 	return s
 
 
 void generic_reparse_restore(char* s):
-	filename = cast(char*, load_int(s))
-	file = load_int(s + 4)
-	nextc = load_int(s + 8)
-	line_number = load_int(s + 12)
-	column_number = load_int(s + 16)
-	tab_level = load_int(s + 20)
-	token_newline = load_int(s + 24)
-	byte_offset = load_int(s + 28)
-	diag_token_line = load_int(s + 32)
-	diag_token_column = load_int(s + 36)
-	token_start_offset = load_int(s + 40)
-	char* saved_token = cast(char*, load_int(s + 44))
+	filename = cast(char*, load_ptr(s))
+	file = load_ptr(s + __word_size__)
+	nextc = load_ptr(s + 2 * __word_size__)
+	line_number = load_ptr(s + 3 * __word_size__)
+	column_number = load_ptr(s + 4 * __word_size__)
+	tab_level = load_ptr(s + 5 * __word_size__)
+	token_newline = load_ptr(s + 6 * __word_size__)
+	byte_offset = load_ptr(s + 7 * __word_size__)
+	diag_token_line = load_ptr(s + 8 * __word_size__)
+	diag_token_column = load_ptr(s + 9 * __word_size__)
+	token_start_offset = load_ptr(s + 10 * __word_size__)
+	char* saved_token = cast(char*, load_ptr(s + 11 * __word_size__))
 	int n = strlen(saved_token)
 	if (token_size <= n + 1):
 		int x = (n + 10) << 1
 		token = realloc(token, token_size, x)
 		token_size = x
 	strcpy(token, saved_token)
-	token_i = load_int(s + 52)
-	pointer_indirection = load_int(s + 48)
+	token_i = load_ptr(s + 13 * __word_size__)
+	pointer_indirection = load_ptr(s + 12 * __word_size__)
 	free(saved_token)
 	free(s)
 
@@ -387,7 +394,7 @@ char* generic_mangle(char* base, int args, int arg_count):
 	while (i < arg_count):
 		char* with_sep = strjoin(name, c"$")
 		free(name)
-		char* arg_name = generic_mangle_arg(load_int(args + (i << 2)))
+		char* arg_name = generic_mangle_arg(load_ptr(args + i * __word_size__))
 		name = strjoin(with_sep, arg_name)
 		free(with_sep)
 		free(arg_name)
@@ -411,7 +418,7 @@ int generic_parse_param_names(int params_out):
 			error(c"'")
 		if (n >= generic_max_params()):
 			error(c"too many type parameters")
-		save_int(params_out + (n << 2), cast(int, strclone(token)))
+		save_ptr(params_out + n * __word_size__, cast(int, strclone(token)))
 		n = n + 1
 		get_token()
 		more = accept(c",")
@@ -429,7 +436,7 @@ int generic_parse_type_args(int args_out, int def):
 	while (more):
 		if (n >= generic_max_params()):
 			error(c"too many type arguments")
-		save_int(args_out + (n << 2), type_name())
+		save_ptr(args_out + n * __word_size__, type_name())
 		n = n + 1
 		more = accept(c",")
 	if (peek(c"]") == 0):
@@ -467,7 +474,7 @@ void generic_register_struct():
 	int line = diag_token_line - 1
 	int column = diag_token_column - 1
 	get_token()
-	int params = cast(int, malloc(generic_max_params() << 2))
+	int params = cast(int, malloc(generic_max_params() * __word_size__))
 	int n = generic_parse_param_names(params)
 	expect(c":")
 	generic_def_add(name, 1, strclone(filename), offset, line, column, n, params)
@@ -513,7 +520,7 @@ int generic_instantiate_struct(int def, int args, int arg_count, char* mangled):
 int generic_struct_type():
 	int def = generic_def_lookup(token, 1)
 	get_token()
-	int args = cast(int, malloc(generic_max_params() << 2))
+	int args = cast(int, malloc(generic_max_params() * __word_size__))
 	int arg_count = generic_parse_type_args(args, def)
 	char* mangled = generic_mangle(generic_def_name(def), args, arg_count)
 	int type = type_lookup(mangled)
@@ -572,20 +579,20 @@ int generic_declaration_scan_generic_return():
 		# generic function definition: register and skip
 		char* fname = strclone(token)
 		get_token()
-		int params = cast(int, malloc(generic_max_params() << 2))
+		int params = cast(int, malloc(generic_max_params() * __word_size__))
 		int n = generic_parse_param_names(params)
 		if (peek(c"(") == 0):
 			diag_part(c"'(' expected after the type parameter list of generic '")
 			diag_part(fname)
 			error(c"'")
 		generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
-		free(cast(char*, load_int(save + 44)))
+		free(cast(char*, load_ptr(save + 11 * __word_size__)))
 		free(save)
 		generic_skip_definition()
 		return 1
 	# Not a definition (e.g. 'wresult[int]* f(...)'): rewind, so the
 	# normal type_name() path parses the generic struct return type.
-	seek(file, load_int(save + 28), 0)
+	seek(file, load_ptr(save + 7 * __word_size__), 0)
 	generic_reparse_restore(save)
 	return 0
 
@@ -617,7 +624,7 @@ int generic_declaration_scan():
 		# generic function definition: register and skip
 		char* fname = strclone(token)
 		get_token()
-		int params = cast(int, malloc(generic_max_params() << 2))
+		int params = cast(int, malloc(generic_max_params() * __word_size__))
 		int n = generic_parse_param_names(params)
 		if (peek(c"(") == 0):
 			diag_part(c"'(' expected after the type parameter list of generic '")
@@ -663,7 +670,7 @@ use), so call sites get return-type information and argument checks
 before the body itself is compiled at the drain.
 */
 int generic_inst_signature(int inst):
-	int sig = load_int(generic_inst_entry(inst) + 20)
+	int sig = load_ptr(generic_inst_entry(inst) + 5 * __word_size__)
 	if (sig >= 0):
 		return sig
 	int def = generic_inst_def(inst)
@@ -677,7 +684,7 @@ int generic_inst_signature(int inst):
 		get_token()
 	expect(c"]")
 	expect(c"(")
-	char* param_types = malloc(40)
+	char* param_types = malloc(10 * __word_size__)
 	int param_count = 0
 	while (accept(c")") == 0):
 		int param_type = type_name()
@@ -688,7 +695,7 @@ int generic_inst_signature(int inst):
 		if (peek(c"=")):
 			error(c"default parameter values are not supported in generic functions")
 		if (param_count < 10):
-			save_int(param_types + (param_count << 2), param_type)
+			save_ptr(param_types + param_count * __word_size__, param_type)
 		param_count = param_count + 1
 		accept(c",")
 	close(file)
@@ -697,7 +704,7 @@ int generic_inst_signature(int inst):
 	char* sig_name = strjoin(generic_inst_mangled(inst), c" sig")
 	sig = type_push_function(sig_name, return_type, param_count, cast(int, param_types))
 	free(param_types)
-	save_int(generic_inst_entry(inst) + 20, sig)
+	save_ptr(generic_inst_entry(inst) + 5 * __word_size__, sig)
 	return sig
 
 
@@ -765,17 +772,17 @@ int generic_infer_max_args():
 
 int generic_infer_placeholder(int i):
 	if (generic_infer_placeholders == 0):
-		generic_infer_placeholders = malloc(generic_max_params() << 2)
+		generic_infer_placeholders = malloc(generic_max_params() * __word_size__)
 		int j = 0
 		while (j < generic_max_params()):
-			save_int(generic_infer_placeholders + (j << 2), -1)
+			save_ptr(generic_infer_placeholders + j * __word_size__, -1)
 			j = j + 1
-	int t = load_int(generic_infer_placeholders + (i << 2))
+	int t = load_ptr(generic_infer_placeholders + i * __word_size__)
 	if (t < 0):
 		char* index_name = itoa(i)
 		t = type_push_size(strjoin(c"@", index_name), word_size)
 		free(index_name)
-		save_int(generic_infer_placeholders + (i << 2), t)
+		save_ptr(generic_infer_placeholders + i * __word_size__, t)
 	return t
 
 
@@ -796,23 +803,23 @@ int generic_infer_mentions_placeholder(int t):
 # type's name, so a pointer chain over placeholder i still has name
 # '@i' with a nonzero pointer level.
 void generic_infer_store_shape(char* block, int slot, int param_type, int def):
-	char* e = block + 4 + (slot << 3)
+	char* e = block + __word_size__ + slot * 2 * __word_size__
 	int u = type_unqualified(param_type)
 	char* name = type_get_name(u)
 	int n = generic_def_param_count(def)
 	int i = 0
 	while (i < n):
 		if (strcmp(name, type_get_name(generic_infer_placeholder(i))) == 0):
-			save_int(e, i)
-			save_int(e + 4, type_get_pointer_level(u))
+			save_ptr(e, i)
+			save_ptr(e + __word_size__, type_get_pointer_level(u))
 			return;
 		i = i + 1
 	if (generic_infer_mentions_placeholder(u)):
-		save_int(e, -2)
-		save_int(e + 4, 0)
+		save_ptr(e, -2)
+		save_ptr(e + __word_size__, 0)
 		return;
-	save_int(e, -1)
-	save_int(e + 4, param_type)
+	save_ptr(e, -1)
+	save_ptr(e + __word_size__, param_type)
 
 
 # The parameter shapes of a definition, extracted once and cached: a
@@ -821,19 +828,19 @@ void generic_infer_store_shape(char* block, int slot, int param_type, int def):
 # types. Safe mid-parse: headers emit no code.
 char* generic_infer_shapes(int def):
 	if (generic_infer_shapes_cache == 0):
-		generic_infer_shapes_cache = malloc(generic_def_max() << 2)
+		generic_infer_shapes_cache = malloc(generic_def_max() * __word_size__)
 		int z = 0
 		while (z < generic_def_max()):
-			save_int(generic_infer_shapes_cache + (z << 2), 0)
+			save_ptr(generic_infer_shapes_cache + z * __word_size__, 0)
 			z = z + 1
-	char* cached = cast(char*, load_int(generic_infer_shapes_cache + (def << 2)))
+	char* cached = cast(char*, load_ptr(generic_infer_shapes_cache + def * __word_size__))
 	if (cached != 0):
 		return cached
 	int n = generic_def_param_count(def)
-	int placeholder_args = cast(int, malloc(generic_max_params() << 2))
+	int placeholder_args = cast(int, malloc(generic_max_params() * __word_size__))
 	int i = 0
 	while (i < n):
-		save_int(placeholder_args + (i << 2), generic_infer_placeholder(i))
+		save_ptr(placeholder_args + i * __word_size__, generic_infer_placeholder(i))
 		i = i + 1
 	char* save = generic_reparse_save()
 	char* old_subst = generic_subst_swap(generic_subst_make(def, placeholder_args, n))
@@ -845,7 +852,7 @@ char* generic_infer_shapes(int def):
 		get_token()
 	expect(c"]")
 	expect(c"(")
-	char* block = malloc(4 + (generic_infer_max_args() << 3))
+	char* block = malloc(__word_size__ + generic_infer_max_args() * 2 * __word_size__)
 	int count = 0
 	while (accept(c")") == 0):
 		int param_type = type_name()
@@ -859,12 +866,12 @@ char* generic_infer_shapes(int def):
 			generic_infer_store_shape(block, count, param_type, def)
 		count = count + 1
 		accept(c",")
-	save_int(block, count)
+	save_ptr(block, count)
 	close(file)
 	free(generic_subst_swap(old_subst))
 	generic_reparse_restore(save)
 	free(cast(char*, placeholder_args))
-	save_int(generic_infer_shapes_cache + (def << 2), cast(int, block))
+	save_ptr(generic_infer_shapes_cache + def * __word_size__, cast(int, block))
 	return block
 
 
@@ -905,12 +912,12 @@ void generic_infer_pointer_error(int def, int param, int arg_type, int arg_index
 # Bind type parameter 'param' from an argument of the promoted type
 # 'arg_type' against a 'T'-with-pointer-depth shape.
 void generic_infer_bind(int def, char* bound, int param, int depth, int arg_type, int arg_index):
-	int existing = load_int(bound + (param << 2))
+	int existing = load_ptr(bound + param * __word_size__)
 	if ((arg_type == 3) & (depth == 0)):
 		# untyped constant: bind 'int' when unbound, else coerce the
 		# value in eax to the existing binding (e.g. int -> float)
 		if (existing < 0):
-			save_int(bound + (param << 2), type_lookup(c"int"))
+			save_ptr(bound + param * __word_size__, type_lookup(c"int"))
 		else:
 			coerce(existing, arg_type)
 		return;
@@ -932,7 +939,7 @@ void generic_infer_bind(int def, char* bound, int param, int depth, int arg_type
 		level = level + 1
 	stripped = type_unqualified(stripped)
 	if (existing < 0):
-		save_int(bound + (param << 2), stripped)
+		save_ptr(bound + param * __word_size__, stripped)
 		return;
 	if (existing != stripped):
 		generic_infer_error_prefix(def)
@@ -970,15 +977,15 @@ void generic_infer_check_concrete(int def, int param_type, int arg_index, int ar
 # get_token(). Returns the call's value type.
 int generic_call_infer_expr(int def):
 	char* shapes = generic_infer_shapes(def)
-	int shape_count = load_int(shapes)
+	int shape_count = load_ptr(shapes)
 	int n = generic_def_param_count(def)
-	char* bound = malloc(n << 2)
+	char* bound = malloc(n * __word_size__)
 	int i = 0
 	while (i < n):
-		save_int(bound + (i << 2), -1)
+		save_ptr(bound + i * __word_size__, -1)
 		i = i + 1
 	# per argument: promoted type + a flag for the post-binding check
-	char* arg_records = malloc(generic_infer_max_args() << 3)
+	char* arg_records = malloc(generic_infer_max_args() * 2 * __word_size__)
 	int s = stack_pos
 	int passed = 0
 	get_token()
@@ -989,8 +996,8 @@ int generic_call_infer_expr(int def):
 			int shape_kind = -2
 			int shape_data = 0
 			if ((passed < shape_count) & (passed < generic_infer_max_args())):
-				shape_kind = load_int(shapes + 4 + (passed << 3))
-				shape_data = load_int(shapes + 8 + (passed << 3))
+				shape_kind = load_ptr(shapes + __word_size__ + passed * 2 * __word_size__)
+				shape_data = load_ptr(shapes + 2 * __word_size__ + passed * 2 * __word_size__)
 			int arg_type = expression()
 			arg_type = promote(arg_type)
 			int needs_check = 0
@@ -1001,8 +1008,8 @@ int generic_call_infer_expr(int def):
 			else:
 				needs_check = 1
 			if (passed < generic_infer_max_args()):
-				save_int(arg_records + (passed << 3), arg_type)
-				save_int(arg_records + 4 + (passed << 3), needs_check)
+				save_ptr(arg_records + passed * 2 * __word_size__, arg_type)
+				save_ptr(arg_records + __word_size__ + passed * 2 * __word_size__, needs_check)
 			push_call_argument(arg_type)
 			passed = passed + 1
 			more = accept(c",")
@@ -1012,7 +1019,7 @@ int generic_call_infer_expr(int def):
 		error(c"'")
 	i = 0
 	while (i < n):
-		if (load_int(bound + (i << 2)) < 0):
+		if (load_ptr(bound + i * __word_size__) < 0):
 			generic_infer_error_prefix(def)
 			diag_part(c"cannot infer type argument '")
 			diag_part(generic_def_param_name(def, i))
@@ -1020,10 +1027,10 @@ int generic_call_infer_expr(int def):
 			diag_part(generic_def_name(def))
 			error(c"[int](...)'")
 		i = i + 1
-	int args = cast(int, malloc(generic_max_params() << 2))
+	int args = cast(int, malloc(generic_max_params() * __word_size__))
 	i = 0
 	while (i < n):
-		save_int(args + (i << 2), load_int(bound + (i << 2)))
+		save_ptr(args + i * __word_size__, load_ptr(bound + i * __word_size__))
 		i = i + 1
 	free(bound)
 	char* mangled = generic_mangle(generic_def_name(def), args, n)
@@ -1052,8 +1059,8 @@ int generic_call_infer_expr(int def):
 	# shapes were checked while parsing)
 	i = 0
 	while ((i < passed) & (i < generic_infer_max_args())):
-		if (load_int(arg_records + 4 + (i << 3))):
-			check_call_argument(-1, sig, generic_inst_mangled(inst), i, load_int(arg_records + (i << 3)))
+		if (load_ptr(arg_records + __word_size__ + i * 2 * __word_size__)):
+			check_call_argument(-1, sig, generic_inst_mangled(inst), i, load_ptr(arg_records + i * 2 * __word_size__))
 		i = i + 1
 	free(arg_records)
 	# callee: a direct reference when the instantiation's symbol exists
@@ -1118,7 +1125,7 @@ int generic_call_expr():
 		diag_part(token)
 		error(c"[int](...)'")
 	get_token()
-	int args = cast(int, malloc(generic_max_params() << 2))
+	int args = cast(int, malloc(generic_max_params() * __word_size__))
 	int arg_count = generic_parse_type_args(args, def)
 	char* mangled = generic_mangle(generic_def_name(def), args, arg_count)
 	int t = sym_lookup(mangled)
@@ -1199,8 +1206,11 @@ char* generic_forwards
 int generic_forward_count
 
 
+# Six pointer-sized slots: name*, args*, arg_count, patch-chain head,
+# call_file*, call_line (same uniform-word-slot scheme as
+# generic_def_stride).
 int generic_forward_stride():
-	return 24
+	return 6 * __word_size__
 
 
 int generic_forward_max():
@@ -1241,13 +1251,13 @@ int generic_forward_call_expr():
 	int call_line = diag_token_line
 	get_token()
 	expect(c"[")
-	int args = cast(int, malloc(generic_max_params() << 2))
+	int args = cast(int, malloc(generic_max_params() * __word_size__))
 	int arg_count = 0
 	int more = 1
 	while (more):
 		if (arg_count >= generic_max_params()):
 			error(c"too many type arguments")
-		save_int(args + (arg_count << 2), type_name())
+		save_ptr(args + arg_count * __word_size__, type_name())
 		arg_count = arg_count + 1
 		more = accept(c",")
 	if (peek(c"]") == 0):
@@ -1259,12 +1269,12 @@ int generic_forward_call_expr():
 	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 	be_addr_slot_write(codepos - 4, code_offset)
 	char* e = generic_forwards + generic_forward_count * generic_forward_stride()
-	save_int(e, cast(int, name))
-	save_int(e + 4, args)
-	save_int(e + 8, arg_count)
-	save_int(e + 12, codepos + code_offset - 4)
-	save_int(e + 16, cast(int, call_file))
-	save_int(e + 20, call_line)
+	save_ptr(e, cast(int, name))
+	save_ptr(e + __word_size__, args)
+	save_ptr(e + 2 * __word_size__, arg_count)
+	save_ptr(e + 3 * __word_size__, codepos + code_offset - 4)
+	save_ptr(e + 4 * __word_size__, cast(int, call_file))
+	save_ptr(e + 5 * __word_size__, call_line)
 	generic_forward_count = generic_forward_count + 1
 	# keep postfix_expr's callee lookup from matching a stale identifier
 	strcpy(last_identifier, c"$forward generic call$")
@@ -1273,13 +1283,13 @@ int generic_forward_call_expr():
 
 void generic_forward_error(int f, char* message):
 	diag_part(c"generic function '")
-	diag_part(cast(char*, load_int(generic_forward_entry(f))))
+	diag_part(cast(char*, load_ptr(generic_forward_entry(f))))
 	diag_part(c"' ")
 	diag_part(message)
 	diag_part(c" (called at ")
-	diag_part(cast(char*, load_int(generic_forward_entry(f) + 16)))
+	diag_part(cast(char*, load_ptr(generic_forward_entry(f) + 4 * __word_size__)))
 	diag_part(c":")
-	diag_part(itoa(load_int(generic_forward_entry(f) + 20)))
+	diag_part(itoa(load_ptr(generic_forward_entry(f) + 5 * __word_size__)))
 	error(c")")
 
 
@@ -1287,7 +1297,7 @@ void generic_forward_error(int f, char* message):
 # the forward chain to its terminating slot (which stores code_offset)
 # and point it at the instantiation's current head.
 void generic_forward_merge_chain(int f, int inst):
-	int head = load_int(generic_forward_entry(f) + 12)
+	int head = load_ptr(generic_forward_entry(f) + 3 * __word_size__)
 	int inst_head = generic_inst_chain(inst)
 	if (inst_head != 0):
 		int p = head - code_offset
@@ -1301,9 +1311,9 @@ void generic_forward_merge_chain(int f, int inst):
 
 void generic_resolve_forward(int f):
 	char* e = generic_forward_entry(f)
-	char* name = cast(char*, load_int(e))
-	int args = load_int(e + 4)
-	int arg_count = load_int(e + 8)
+	char* name = cast(char*, load_ptr(e))
+	int args = load_ptr(e + __word_size__)
+	int arg_count = load_ptr(e + 2 * __word_size__)
 	int def = generic_def_lookup(name, 0)
 	if (def < 0):
 		generic_forward_error(f, c"is not defined")
@@ -1315,7 +1325,7 @@ void generic_resolve_forward(int f):
 		if (table[t + 1] == 'D'):
 			# already compiled: patch this record's chain directly
 			int address = load_int(table + t + 2)
-			int p = load_int(e + 12) - code_offset
+			int p = load_ptr(e + 3 * __word_size__) - code_offset
 			while (p):
 				int next = be_addr_slot_read(p) - code_offset
 				be_addr_slot_write(p, address)
@@ -1357,7 +1367,7 @@ int generic_declaration_scan_repl():
 	int is_generic = name_is_ident & (nextc == '[')
 	# rewind: byte_offset (save offset 28) counts consumed bytes, so it
 	# is exactly the fd position the saved lookahead expects
-	seek(file, load_int(save + 28), 0)
+	seek(file, load_ptr(save + 7 * __word_size__), 0)
 	generic_reparse_restore(save)
 	if (is_generic):
 		return generic_declaration_scan()
