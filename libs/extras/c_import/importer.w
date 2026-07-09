@@ -14,7 +14,6 @@ import compiler.symbol_table
 import code_generator.code_emitter
 import code_generator.dynamic_registry
 import code_generator.ffi
-import structures.hash_map
 import structures.string
 import libs.extras.parser_generator.runtime
 import libs.extras.parser_generator.source_writer
@@ -47,9 +46,9 @@ int extern_max_params();
 
 
 # Session state shared by every c_import statement in one compilation.
-hash_map* ci_imported_functions
-hash_map* ci_const_values
-hash_map* ci_type_alignments
+map[char*, int] ci_imported_functions
+map[char*, int] ci_const_values
+map[int, int] ci_type_alignments
 int ci_anon_counter
 
 # ABI classes (see ffi_type_class) of the parameters most recently lowered
@@ -59,9 +58,9 @@ char* ci_param_classes
 
 void ci_session_init():
 	if (ci_imported_functions == 0):
-		ci_imported_functions = hash_map_new()
-		ci_const_values = hash_map_new()
-		ci_type_alignments = hash_map_new()
+		ci_imported_functions = new map[char*, int]
+		ci_const_values = new map[char*, int]
+		ci_type_alignments = new map[int, int]
 		ci_param_classes = malloc(extern_max_params())
 
 
@@ -307,9 +306,7 @@ int ci_apply_pointers(int type, int count):
 # without padding, so imported structs insert explicit filler fields; the
 # alignment of each imported type is recorded here.
 void ci_set_type_alignment(int type_index, int alignment):
-	char* key = itoa(type_index)
-	hash_map_set(ci_type_alignments, key, alignment)
-	free(key)
+	ci_type_alignments[type_index] = alignment
 
 
 int ci_pow2_alignment(int size):
@@ -325,9 +322,9 @@ int ci_type_alignment(int type_index):
 		return 1
 	if (type_get_pointer_level(type_index) > 0):
 		return word_size
-	char* key = itoa(type_index)
-	int recorded = hash_map_get_default(ci_type_alignments, key, 0)
-	free(key)
+	int recorded = 0
+	if (type_index in ci_type_alignments):
+		recorded = ci_type_alignments[type_index]
 	if (recorded != 0):
 		return recorded
 	int size = type_get_size(type_index)
@@ -661,6 +658,14 @@ int ci_eval_postfix(pg_ast_node* node):
 	return ci_eval_const(primary)
 
 
+# .get(key, default) is not supported by the seed compiler this file is
+# transitively compiled by (see ci_session_init); `in` + indexing instead.
+int ci_const_value(char* name):
+	if (name in ci_const_values):
+		return ci_const_values[name]
+	return 0
+
+
 int ci_eval_primary(pg_ast_node* node):
 	pg_ast_node* first = pg_ast_child(node, 0)
 	if (ci_is_token(first, clang_token_NUMBER())):
@@ -668,7 +673,7 @@ int ci_eval_primary(pg_ast_node* node):
 	if (ci_is_token(first, clang_token_CHAR_LITERAL())):
 		return ci_parse_char_text(first.text)
 	if (ci_is_token(first, clang_token_IDENT())):
-		return hash_map_get_default(ci_const_values, first.text, 0)
+		return ci_const_value(first.text)
 	pg_ast_node* expr = ci_child_ast(node, clang_ast_expression())
 	if (expr != 0):
 		return ci_eval_const(expr)
@@ -694,7 +699,7 @@ int ci_eval_const(pg_ast_node* node):
 		if (node.kind == clang_token_CHAR_LITERAL()):
 			return ci_parse_char_text(node.text)
 		if (node.kind == clang_token_IDENT()):
-			return hash_map_get_default(ci_const_values, node.text, 0)
+			return ci_const_value(node.text)
 		return 0
 	if (node.kind == clang_ast_binary_expression()):
 		return ci_eval_binary(node)
@@ -1103,9 +1108,9 @@ void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params, int
 # libc initializes at runtime startup (environ, ...) keep their static
 # initial value: W's entry stub never runs __libc_start_main.
 void ci_import_data_object(ci_declarator_info* info):
-	if (hash_map_contains(ci_imported_functions, info.name)):
+	if (info.name in ci_imported_functions):
 		return
-	hash_map_set(ci_imported_functions, info.name, 1)
+	ci_imported_functions[info.name] = 1
 	if (sym_lookup(info.name) >= 0):
 		ci_skip_extern_function(info.name, c"symbol already defined")
 		return
@@ -1136,9 +1141,9 @@ int ci_is_compiler_builtin(char* name):
 
 
 void ci_import_function(char* name, int ret_type, pg_ast_node* params, int is_variadic):
-	if (hash_map_contains(ci_imported_functions, name)):
+	if (name in ci_imported_functions):
 		return
-	hash_map_set(ci_imported_functions, name, 1)
+	ci_imported_functions[name] = 1
 	if (ci_is_compiler_builtin(name)):
 		ci_skip_extern_function(name, c"compiler builtin")
 		return
@@ -1157,7 +1162,7 @@ int ci_import_enumerators(pg_ast_node* node, int enum_type, int value):
 		pg_ast_node* enum_value = ci_child_ast(node, clang_ast_enum_value())
 		if (enum_value != 0):
 			value = ci_constant_int(enum_value)
-		hash_map_set(ci_const_values, name, value)
+		ci_const_values[name] = value
 		if (sym_lookup(name) < 0):
 			int current_symbol = sym_declare_global(name, enum_type, 1)
 			sym_define_global(current_symbol)
@@ -1361,7 +1366,7 @@ int ci_macro_token_allowed_in_int_expr(cpp_token* token):
 	return 0
 
 
-int ci_macro_body_is_integer_expr(hash_map* macros, cpp_macro* macro):
+int ci_macro_body_is_integer_expr(map[char*, cpp_macro*] macros, cpp_macro* macro):
 	if (macro == 0):
 		return 0
 	if (macro.is_function):
@@ -1380,25 +1385,22 @@ int ci_macro_body_is_integer_expr(hash_map* macros, cpp_macro* macro):
 	return 1
 
 
-void ci_export_macro_constant(hash_map* macros, char* name, cpp_macro* macro):
+void ci_export_macro_constant(map[char*, cpp_macro*] macros, char* name, cpp_macro* macro):
 	if (ci_macro_public_constant_name(name) == 0):
 		return
 	if (ci_macro_body_is_integer_expr(macros, macro) == 0):
 		return
 	int value = cpp_eval_if_expr(macros, cpp_process_paste(cpp_token_clone_list(macro.body)))
-	hash_map_set(ci_const_values, name, value)
+	ci_const_values[name] = value
 	int current_symbol = sym_declare_global(name, ci_lookup_type(c"int"), 1)
 	sym_define_global(current_symbol)
 	ci_emit_constant(value)
 
 
-void ci_export_macro_constants(hash_map* macros):
-	int cursor = hash_map_iter_begin(macros)
-	while (hash_map_iter_done(macros, cursor) == 0):
-		char* name = cast(char*, hash_map_iter_value(macros, cursor))
-		cpp_macro* macro = cast(cpp_macro*, hash_map_get(macros, name))
+void ci_export_macro_constants(map[char*, cpp_macro*] macros):
+	for char* name in macros:
+		cpp_macro* macro = macros[name]
 		ci_export_macro_constant(macros, name, macro)
-		cursor = hash_map_iter_next(macros, cursor)
 
 
 void c_import_header(char* soname, char* header_path):

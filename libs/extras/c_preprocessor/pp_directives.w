@@ -3,8 +3,6 @@ Directive driver for C preprocessing.
 */
 import lib.lib
 import lib.path
-import structures.array_list
-import structures.hash_map
 import structures.string
 import libs.extras.parser_generator.source_writer
 import libs.extras.c_preprocessor.pp_token
@@ -22,10 +20,10 @@ struct cpp_cond:
 
 
 struct cpp_preprocessor:
-	hash_map* macros
-	hash_map* once_files
-	array_list* include_paths
-	array_list* conds
+	map[char*, cpp_macro*] macros
+	map[char*, int] once_files
+	list[char*] include_paths
+	list[cpp_cond*] conds
 	string_builder* output
 	int active
 	char* current_file
@@ -34,7 +32,7 @@ struct cpp_preprocessor:
 
 struct cpp_result:
 	char* text
-	hash_map* macros
+	map[char*, cpp_macro*] macros
 
 
 cpp_token* cpp_clone_range(cpp_token* start, cpp_token* end):
@@ -74,19 +72,19 @@ cpp_token* cpp_next_line(cpp_token* token):
 
 cpp_preprocessor* cpp_preprocessor_new():
 	cpp_preprocessor* pp = new cpp_preprocessor()
-	pp.macros = hash_map_new()
-	pp.once_files = hash_map_new()
-	pp.include_paths = array_list_new()
-	pp.conds = array_list_new()
+	pp.macros = new map[char*, cpp_macro*]
+	pp.once_files = new map[char*, int]
+	pp.include_paths = new list[char*]
+	pp.conds = new list[cpp_cond*]
 	pp.output = string_new()
 	pp.active = 1
 	pp.current_file = c"<input>"
 	pp.current_include_index = -1
-	array_list_push(pp.include_paths, cast(int, c"libs/extras/c_preprocessor/include"))
-	array_list_push(pp.include_paths, cast(int, c"/usr/lib/gcc/x86_64-linux-gnu/14/include"))
-	array_list_push(pp.include_paths, cast(int, c"/usr/lib/gcc/x86_64-linux-gnu/13/include"))
-	array_list_push(pp.include_paths, cast(int, c"/usr/include/x86_64-linux-gnu"))
-	array_list_push(pp.include_paths, cast(int, c"/usr/include"))
+	pp.include_paths.push(c"libs/extras/c_preprocessor/include")
+	pp.include_paths.push(c"/usr/lib/gcc/x86_64-linux-gnu/14/include")
+	pp.include_paths.push(c"/usr/lib/gcc/x86_64-linux-gnu/13/include")
+	pp.include_paths.push(c"/usr/include/x86_64-linux-gnu")
+	pp.include_paths.push(c"/usr/include")
 	cpp_init_predefined_macros(pp.macros)
 	return pp
 
@@ -117,14 +115,14 @@ char* cpp_angle_header(cpp_token* token, cpp_token* end):
 int cpp_cond_parent_active(cpp_preprocessor* pp):
 	if (pp.conds.length == 0):
 		return 1
-	cpp_cond* cond = cast(cpp_cond*, array_list_get(pp.conds, pp.conds.length - 1))
+	cpp_cond* cond = pp.conds[pp.conds.length - 1]
 	return cond.parent_active
 
 
 cpp_cond* cpp_cond_top(cpp_preprocessor* pp):
 	if (pp.conds.length == 0):
 		return 0
-	return cast(cpp_cond*, array_list_get(pp.conds, pp.conds.length - 1))
+	return pp.conds[pp.conds.length - 1]
 
 
 void cpp_cond_push(cpp_preprocessor* pp, int value):
@@ -133,7 +131,7 @@ void cpp_cond_push(cpp_preprocessor* pp, int value):
 	cond.current_active = cond.parent_active & (value != 0)
 	cond.saw_true = value != 0
 	cond.saw_else = 0
-	array_list_push(pp.conds, cast(int, cond))
+	pp.conds.push(cond)
 	pp.active = cond.current_active
 
 
@@ -165,7 +163,7 @@ void cpp_cond_else(cpp_preprocessor* pp):
 void cpp_cond_pop(cpp_preprocessor* pp):
 	if (pp.conds.length == 0):
 		return
-	cpp_cond* cond = cast(cpp_cond*, array_list_pop(pp.conds))
+	cpp_cond* cond = pp.conds.pop()
 	pp.active = cond.parent_active
 
 
@@ -211,11 +209,11 @@ cpp_macro* cpp_parse_define_macro(cpp_token* name, cpp_token* end):
 				body = token.next
 				break
 			if (cpp_token_is_punct(token, c"...")):
-				array_list_push(macro.params, cast(int, c"__VA_ARGS__"))
+				macro.params.push(c"__VA_ARGS__")
 				macro.is_variadic = 1
 				token = token.next
 			else if (token.kind == cpp_token_ident()):
-				array_list_push(macro.params, cast(int, token.text))
+				macro.params.push(token.text)
 				token = token.next
 				if (cpp_token_is_punct(token, c"...")):
 					macro.is_variadic = 1
@@ -240,7 +238,7 @@ void cpp_process_define(cpp_preprocessor* pp, cpp_token* directive, cpp_token* e
 char* cpp_find_include_in_paths(cpp_preprocessor* pp, char* name, int start_index, int* found_index):
 	int i = start_index
 	while (i < pp.include_paths.length):
-		char* dir = cast(char*, array_list_get(pp.include_paths, i))
+		char* dir = pp.include_paths[i]
 		char* path = path_join(dir, name)
 		if (path_exists(path)):
 			*found_index = i
@@ -289,7 +287,7 @@ void cpp_process_include(cpp_preprocessor* pp, cpp_token* directive, cpp_token* 
 
 void cpp_process_pragma(cpp_preprocessor* pp, cpp_token* directive):
 	if (cpp_token_is_ident(directive.next, c"once")):
-		hash_map_set(pp.once_files, pp.current_file, 1)
+		pp.once_files[pp.current_file] = 1
 
 
 int cpp_eval_directive_expr(cpp_preprocessor* pp, cpp_token* directive, cpp_token* end):
@@ -352,7 +350,10 @@ void cpp_preprocess_tokens(cpp_preprocessor* pp, cpp_token* token):
 
 
 void cpp_preprocess_file_into(cpp_preprocessor* pp, char* path, int include_index):
-	if (hash_map_get(pp.once_files, path)):
+	# once_files' only value is 1 (see cpp_process_pragma), so presence
+	# alone means "seen"; .get(key, default) is not supported by the
+	# seed compiler this file is transitively compiled by.
+	if (path in pp.once_files):
 		return
 	char* source = pg_read_file_text(path)
 	if (source == 0):

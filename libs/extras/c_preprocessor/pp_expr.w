@@ -2,14 +2,13 @@
 Integer evaluator for #if / #elif expressions.
 */
 import lib.lib
-import structures.hash_map
 import libs.extras.c_preprocessor.pp_token
 import libs.extras.c_preprocessor.pp_lexer
 import libs.extras.c_preprocessor.pp_macro
 
 
 struct cpp_expr:
-	hash_map* macros
+	map[char*, cpp_macro*] macros
 	cpp_token* token
 
 
@@ -23,11 +22,11 @@ cpp_token* cpp_expr_number_token(int value):
 	return token
 
 
-int cpp_expr_is_defined_name(hash_map* macros, char* name):
+int cpp_expr_is_defined_name(map[char*, cpp_macro*] macros, char* name):
 	return cpp_macro_lookup(macros, name) != 0
 
 
-cpp_token* cpp_expr_prepare_defined(hash_map* macros, cpp_token* token):
+cpp_token* cpp_expr_prepare_defined(map[char*, cpp_macro*] macros, cpp_token* token):
 	cpp_token head
 	head.next = 0
 	cpp_token* tail = &head
@@ -294,7 +293,7 @@ int cpp_eval_conditional_expr(cpp_expr* expr):
 	return value
 
 
-int cpp_eval_if_expr(hash_map* macros, cpp_token* line):
+int cpp_eval_if_expr(map[char*, cpp_macro*] macros, cpp_token* line):
 	cpp_token* prepared = cpp_expr_prepare_defined(macros, line)
 	cpp_token* expanded = cpp_expand_tokens(macros, prepared)
 	cpp_token* zeros = cpp_expr_identifiers_to_zero(expanded)

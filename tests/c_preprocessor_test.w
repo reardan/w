@@ -1,5 +1,4 @@
 import lib.testing
-import structures.array_list
 import libs.extras.c_preprocessor.pp_lexer
 import libs.extras.c_preprocessor.pp_directives
 
@@ -7,6 +6,17 @@ import libs.extras.c_preprocessor.pp_directives
 char* cpp_test(char* source):
 	cpp_result* result = cpp_preprocess_text(source, c"<test>")
 	return result.text
+
+
+# list[char*] has no insert(i, v) pseudo-method yet; push then shift the
+# new value to the front.
+void insert_path_front(list[char*] paths, char* path):
+	paths.push(path)
+	int i = paths.length - 1
+	while (i > 0):
+		paths[i] = paths[i - 1]
+		i = i - 1
+	paths[0] = path
 
 
 void test_object_macro_expands():
@@ -62,8 +72,8 @@ void test_pragma_once_include():
 
 void test_include_next_searches_after_current_directory():
 	cpp_preprocessor* pp = cpp_preprocessor_new()
-	array_list_insert(pp.include_paths, 0, c"tests/c_preprocessor/next2")
-	array_list_insert(pp.include_paths, 0, c"tests/c_preprocessor/next1")
+	insert_path_front(pp.include_paths, c"tests/c_preprocessor/next2")
+	insert_path_front(pp.include_paths, c"tests/c_preprocessor/next1")
 	cpp_preprocess_tokens(pp, cpp_tokenize_text(c"#include <wrap.h>\n", c"<test>"))
 	assert_strings_equal(c"2\n1\n", pp.output.data)
 
