@@ -1857,6 +1857,7 @@
 				{"cmd": ["bin/repl"], "stdin": "int x = = 3\nqq + 1\nprint(c\"second recovery\\x0a\")\n:quit\n", "expect_stdout": "second recovery"},
 				{"cmd": ["bin/repl"], "stdin": "int add(int a, int b):\n\treturn a + b\n\nadd(40, 2)\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["script", "-qc", "./bin/repl", "/dev/null"], "stdin": "int fib(int n):\nif (n < 2):\nreturn n\nreturn fib(n - 1) + fib(n - 2)\n\nfib(10)\n:quit\n", "expect_stdout": "55"},
+				{"cmd": ["sh", "-c", "COLUMNS=20 script -qc './bin/repl' /dev/null"], "stdin": "int qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq = 42\nqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq + 1\n:quit\n", "expect_stdout": "43"},
 				{"cmd": ["bin/repl"], "stdin": "int x = 5\nx + 1\n:quit\n", "expect_stdout": "6"},
 				{"cmd": ["bin/repl"], "stdin": "\"hello string\"\n:quit\n", "expect_stdout": "hello string"},
 				{"cmd": ["bin/repl"], "stdin": "int x = 5\nchar* x = c\"shadowed\"\nx\n:quit\n", "expect_stdout": "shadowed"},
@@ -1897,7 +1898,8 @@
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w"], "stdin": ":quit\n", "expect_stdout": "fixture main ran"},
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w"], "stdin": "fixture_helper(21)\nfixture_global\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w", "--no_main"], "stdin": ":quit\n", "reject_stdout": "fixture main ran"},
-				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "int q = 13\u007f\u007f4\nq + 1\n:quit\n", "expect_stdout": "5"}
+				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "int q = 13\u007f\u007f4\nq + 1\n:quit\n", "expect_stdout": "5"},
+				{"cmd": ["sh", "-c", "COLUMNS=20 script -qc './bin/repl64' /dev/null"], "stdin": "int qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq = 42\nqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq + 1\n:quit\n", "expect_stdout": "43"}
 			]
 		},
 		{

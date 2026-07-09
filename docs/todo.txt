@@ -189,9 +189,8 @@ current state:
 	current limitations:
 		repl:
 			calls compiled before a redefinition keep the old binding
-			struct redefinition keeps the first definition (type_lookup
-				returns the first match)
-			line editing is single-line (no multi-line wrap redraw)
+				(needs a call-site indirection table; tracked in a
+				follow-up issue, out of scope for a REPL-only fix)
 		pointers and structs:
 			new initializes fields from arguments but does not run user constructors
 			struct values with fixed-array fields are copied and returned by value

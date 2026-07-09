@@ -296,6 +296,16 @@ stay byte-identical) and the full `./wbuild tests`.
   them.
 
 Known limitations (documented in `docs/todo.txt`): calls compiled before
-a redefinition keep the old binding; `struct` redefinition keeps the
-first definition because `type_lookup` returns the first match; the
-line editor redraws a single row (no multi-line wrap).
+a redefinition keep the old binding — fixing this needs a persistent
+call-site indirection table, tracked separately since it touches call
+codegen on every architecture rather than being a REPL-only change (see
+the follow-up issue filed alongside this fix). `struct`/`union`/`enum`
+redefinition and the line editor's single-row-only redraw were both
+fixed in the same pass as this limitations note: a repeated
+struct/union/enum name now resets and reuses its existing type-table
+record in place (`type_reset_for_redefinition`,
+`compiler/type_table.w`) instead of being permanently shadowed by the
+first definition, and `lib/line_edit.w`'s redraw now tracks how many
+terminal rows the buffer occupies (`le_prev_rows`, using
+`lib/termios.w`'s new `term_get_cols`) so a wrapped entry redraws
+correctly instead of leaving stale rows on screen.

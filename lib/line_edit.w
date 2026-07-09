@@ -47,6 +47,7 @@ int le_len
 int le_pos
 int le_browse /* history index while browsing, -1 = the live line */
 char* le_stash /* the live line, while browsing history */
+int le_prev_rows /* terminal rows the last le_render call occupied */
 
 
 char* le_history_at(int i):
@@ -156,19 +157,59 @@ int le_display_width(char* buf, int from, int to):
 	return w
 
 
-# Redraw the whole line and park the cursor at le_pos.
+# 0-based terminal row the cursor rests on after writing `chars` columns
+# of output starting at column 1 of an empty row, given a terminal `cols`
+# wide. Terminals defer wrapping until the character *after* the last
+# column is written (the cursor rests at the last column, not a phantom
+# next row), so this is (chars - 1) / cols, not chars / cols.
+int le_row_for_width(int chars, int cols):
+	if (chars <= 0):
+		return 0
+	return (chars - 1) / cols
+
+
+# 1-based column the cursor rests on under the same model.
+int le_col_for_width(int chars, int cols):
+	if (chars <= 0):
+		return 1
+	return (chars - 1) % cols + 1
+
+
+# Write n to fd as an ANSI parameter followed by suffix, e.g. "\x1b[3A".
+void le_write_csi(int n, char* suffix):
+	le_write(c"\x1b[")
+	char* digits = itoa(n)
+	le_write(digits)
+	free(digits)
+	le_write(suffix)
+
+
+# Redraw the whole line and park the cursor at le_pos. Tracks how many
+# terminal rows the buffer (with the prompt) occupies via le_prev_rows, so
+# a buffer that wraps past one row is fully cleared and repainted instead
+# of leaving stale wrapped rows on screen (the single-row assumption this
+# used to make before multi-line wrap support was added).
 void le_render(char* prompt, char* buf):
+	int cols = term_get_cols(0)
+	if (le_prev_rows > 1):
+		le_write_csi(le_prev_rows - 1, c"A")
 	put_char(13)
+	le_write(c"\x1b[J") /* clear cursor to end of screen: covers wrapped rows below too */
 	le_write(prompt)
 	le_write_expanded(buf, 0, le_len)
-	le_write(c"\x1b[K") /* clear anything left over from a longer line */
-	int back = le_display_width(buf, le_pos, le_len)
-	if (back > 0):
-		le_write(c"\x1b[")
-		char* digits = itoa(back)
-		le_write(digits)
-		free(digits)
-		le_write(c"D")
+
+	int prompt_width = strlen(prompt)
+	int total_end = prompt_width + le_display_width(buf, 0, le_len)
+	int total_cursor = prompt_width + le_display_width(buf, 0, le_pos)
+	int end_row = le_row_for_width(total_end, cols)
+	int cursor_row = le_row_for_width(total_cursor, cols)
+	int cursor_col = le_col_for_width(total_cursor, cols)
+
+	if (end_row > cursor_row):
+		le_write_csi(end_row - cursor_row, c"A")
+	le_write_csi(cursor_col, c"G")
+
+	le_prev_rows = end_row + 1
 
 
 # Replace the buffer contents with text; cursor moves to the end.
@@ -289,6 +330,7 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 	if (initial != 0):
 		le_set_line(buf, size, initial)
 	le_browse = -1
+	le_prev_rows = 1
 	le_render(prompt, buf)
 
 	while (1):
