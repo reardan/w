@@ -282,7 +282,7 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 		return 0
 	int r = 0
 	while (r < grammar.recovers.length):
-		pg_recover_def* recover = cast(pg_recover_def*, array_list_get(grammar.recovers, r))
+		pg_recover_def* recover = grammar.recovers[r]
 		if (pg_grammar_find_rule(grammar, recover.rule_name) == 0):
 			pg_reader_error(reader, c"recover rule is not defined", recover.rule_name)
 			return 0
@@ -291,7 +291,7 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 			return 0
 		int s = 0
 		while (s < recover.skip_tokens.length):
-			char* skip_name = cast(char*, array_list_get(recover.skip_tokens, s))
+			char* skip_name = recover.skip_tokens[s]
 			if (pg_grammar_token_kind(grammar, skip_name) <= 0):
 				pg_reader_error(reader, c"recover skip must be a token or literal", skip_name)
 				return 0

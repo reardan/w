@@ -2,8 +2,6 @@
 AST node runtime for generated parsers.
 */
 import lib.lib
-import structures.array_list
-import structures.hash_map
 import libs.extras.parser_generator.token
 
 
@@ -12,9 +10,9 @@ struct pg_ast_node:
 	char* name
 	char* text
 	pg_token* token
-	array_list* children
+	list[pg_ast_node*] children
 	pg_ast_node* parent
-	hash_map* metadata
+	map[char*, int] metadata
 	pg_token* first_token
 	pg_token* last_token
 
@@ -31,7 +29,7 @@ pg_ast_node* pg_ast_new(int kind, pg_token* token, char* name):
 	node.name = strclone(name)
 	node.text = 0
 	node.token = token
-	node.children = array_list_new()
+	node.children = new list[pg_ast_node*]
 	node.parent = 0
 	node.metadata = 0
 	node.first_token = token
@@ -51,7 +49,7 @@ void pg_ast_add(pg_ast_node* parent, pg_ast_node* child):
 	if (child == 0):
 		return
 	child.parent = parent
-	array_list_push(parent.children, cast(int, child))
+	parent.children.push(child)
 	if (child.first_token != 0):
 		if (parent.first_token == 0):
 			parent.first_token = child.first_token
@@ -73,19 +71,24 @@ int pg_ast_child_count(pg_ast_node* node):
 
 
 pg_ast_node* pg_ast_child(pg_ast_node* node, int index):
-	return cast(pg_ast_node*, array_list_get(node.children, index))
+	return node.children[index]
 
 
 void pg_ast_set_metadata(pg_ast_node* node, char* key, int value):
 	if (node.metadata == 0):
-		node.metadata = hash_map_new()
-	hash_map_set(node.metadata, key, value)
+		node.metadata = new map[char*, int]
+	node.metadata[key] = value
 
 
 int pg_ast_get_metadata(pg_ast_node* node, char* key, int missing):
 	if (node.metadata == 0):
 		return missing
-	return hash_map_get_default(node.metadata, key, missing)
+	# .get(key, default) is not supported by the seed compiler yet, and
+	# this file is transitively imported by the compiler itself (via
+	# grammar/c_import_statement.w); `in` + indexing works instead.
+	if (key in node.metadata):
+		return node.metadata[key]
+	return missing
 
 
 type pg_ast_visitor = fn(pg_ast_node*) -> void
@@ -97,7 +100,7 @@ void pg_ast_walk_preorder(pg_ast_node* node, pg_ast_visitor* visitor):
 	visitor(node)
 	int i = 0
 	while (i < node.children.length):
-		pg_ast_walk_preorder(cast(pg_ast_node*, array_list_get(node.children, i)), visitor)
+		pg_ast_walk_preorder(node.children[i], visitor)
 		i = i + 1
 
 
@@ -107,7 +110,7 @@ void pg_ast_walk_listener(pg_ast_node* node, pg_ast_visitor* enter, pg_ast_visit
 	enter(node)
 	int i = 0
 	while (i < node.children.length):
-		pg_ast_walk_listener(cast(pg_ast_node*, array_list_get(node.children, i)), enter, leave)
+		pg_ast_walk_listener(node.children[i], enter, leave)
 		i = i + 1
 	leave(node)
 
@@ -117,12 +120,18 @@ void pg_ast_free(pg_ast_node* node):
 		return
 	int i = 0
 	while (i < node.children.length):
-		pg_ast_free(cast(pg_ast_node*, array_list_get(node.children, i)))
+		pg_ast_free(node.children[i])
 		i = i + 1
 	if (node.text != 0):
 		free(node.text)
 	free(node.name)
-	array_list_free(node.children)
+	# list[T]/map[K, V] have no free() pseudo-method yet; this file is
+	# transitively imported by the compiler itself (via
+	# grammar/c_import_statement.w), so it must stick to syntax the seed
+	# already supports (no generic functions) — reach into the
+	# auto-imported __w_list/__w_hash_table runtime directly, the same
+	# pattern compiler/type_table.w uses for type_table_truncate().
+	__w_list_free(cast(__w_list*, node.children))
 	if (node.metadata != 0):
-		hash_map_free(node.metadata)
+		__w_map_free(cast(__w_hash_table*, node.metadata))
 	free(node)

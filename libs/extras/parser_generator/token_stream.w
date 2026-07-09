@@ -7,37 +7,36 @@ kept in all_tokens, which holds every token in source order so tools like
 formatters can reproduce the input losslessly.
 */
 import lib.lib
-import structures.array_list
 import structures.string
 import libs.extras.parser_generator.token
 
 
 struct pg_token_stream:
-	array_list* tokens
-	array_list* all_tokens
+	list[pg_token*] tokens
+	list[pg_token*] all_tokens
 	int index
 	int max_index
 
 
 pg_token_stream* pg_token_stream_new():
 	pg_token_stream* stream = new pg_token_stream()
-	stream.tokens = array_list_new()
-	stream.all_tokens = array_list_new()
+	stream.tokens = new list[pg_token*]
+	stream.all_tokens = new list[pg_token*]
 	stream.index = 0
 	stream.max_index = 0
 	return stream
 
 
 void pg_token_stream_add(pg_token_stream* stream, pg_token* token):
-	array_list_push(stream.all_tokens, cast(int, token))
+	stream.all_tokens.push(token)
 	if (token.channel == pg_token_default_channel()):
-		array_list_push(stream.tokens, cast(int, token))
+		stream.tokens.push(token)
 
 
 pg_token* pg_token_stream_get(pg_token_stream* stream, int index):
 	if (index >= stream.tokens.length):
-		return cast(pg_token*, array_list_get(stream.tokens, stream.tokens.length - 1))
-	return cast(pg_token*, array_list_get(stream.tokens, index))
+		return stream.tokens[stream.tokens.length - 1]
+	return stream.tokens[index]
 
 
 pg_token* pg_token_stream_la(pg_token_stream* stream, int offset):
@@ -82,7 +81,7 @@ int pg_token_stream_all_count(pg_token_stream* stream):
 
 
 pg_token* pg_token_stream_all_get(pg_token_stream* stream, int index):
-	return cast(pg_token*, array_list_get(stream.all_tokens, index))
+	return stream.all_tokens[index]
 
 
 # Concatenate the text of every token (all channels). With a lossless lexer
@@ -91,7 +90,7 @@ char* pg_token_stream_source(pg_token_stream* stream):
 	string_builder* out = string_new()
 	int i = 0
 	while (i < stream.all_tokens.length):
-		pg_token* token = cast(pg_token*, array_list_get(stream.all_tokens, i))
+		pg_token* token = stream.all_tokens[i]
 		string_append(out, token.text)
 		i = i + 1
 	char* text = out.data
@@ -104,8 +103,13 @@ void pg_token_stream_free(pg_token_stream* stream):
 		return
 	int i = 0
 	while (i < stream.all_tokens.length):
-		pg_token_free(cast(pg_token*, array_list_get(stream.all_tokens, i)))
+		pg_token_free(stream.all_tokens[i])
 		i = i + 1
-	array_list_free(stream.all_tokens)
-	array_list_free(stream.tokens)
+	# This file is transitively imported by the compiler itself (via
+	# grammar/c_import_statement.w), so it must stick to syntax the seed
+	# already supports (no generic functions) — reach into the
+	# auto-imported __w_list runtime directly, the same pattern
+	# compiler/type_table.w uses for type_table_truncate().
+	__w_list_free(cast(__w_list*, stream.all_tokens))
+	__w_list_free(cast(__w_list*, stream.tokens))
 	free(stream)
