@@ -113,6 +113,17 @@ is a queue, not an archive.
 
 ## MCP / LSP / cloud
 
+- **`wdbg` cannot compile any program that uses built-in containers.**
+  The debug-mode compile loses all symbol resolution after the first
+  `new list[T]` in a function: `list[int] items = new list[int]` followed
+  by `items.push(42)` fails with `Cannot find symbol: 'items'`, and with
+  struct element types even the next `list` keyword stops resolving
+  (observed 2026-07-09 while debugging `tests/asm_foundations_test.w`;
+  plain wv2 compiles the same programs fine). Since `list`/`map`/`set`
+  are pervasive, this blocks wdbg on most modern W code — likely the
+  container-runtime auto-import or generic-instantiation re-parse
+  clobbering scope state only in the debugger's compile path. Needs a
+  debugger regression test compiling a container-using debuggee.
 - **`wdbg` rejects valid imported bare returns.** While debugging
   `tools/parser_generator.w`, `./bin/wdbg tools/parser_generator.w ...`
   failed before starting the debuggee with `Cannot find symbol: 'return'

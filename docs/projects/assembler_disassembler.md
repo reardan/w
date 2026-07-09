@@ -1,7 +1,11 @@
 # Assembler / Disassembler Libraries (x86, x64, arm64)
 
-Status: **planning** — no code yet. This doc is the design and the
-issue-breakdown proposal.
+Status: **Phase 0 / foundations implemented** (issue #164): `libs/asm/`
+core (insn model, byte buffer, labels/fixups, register tables, hex +
+corpus utilities, cross-arch ELF section reader), per-ISA corpus
+fixtures in `tests/asm/`, the `asm_seed_gate` seed-compat build gate and
+the `asm_foundations_test` suite. Epic: #163; remaining phases tracked
+in its sub-issues.
 
 ## Why
 
@@ -99,6 +103,38 @@ Rewriting the `*_asm.w` stubs must not perturb self-hosting. Two options:
 Inline `asm` blocks in the language, and REPL/JIT uses, are explicitly
 **out of scope** for this epic — natural follow-ups once the encoder
 exists.
+
+## Canonical text syntax (Phase 0.2)
+
+One grammar shared by the corpus fixtures, the formatter (#165) and the
+text parser (#166). Everything is lowercase.
+
+**x86/x64 (Intel order, dest first):**
+
+- Registers by hardware name: `eax`/`ax`/`al` families, `rax`..`r15`
+  (`libs/asm/registers.w` is the authority).
+- Immediates: decimal (`18`) or hex (`0x12`); negative with leading `-`.
+- Memory operands: `[base]`, `[base+disp]`, `[base-disp]`,
+  `[base+index*scale]`, `[base+index*scale+disp]`; scale ∈ {1,2,4,8}.
+- Size keywords `byte`/`word`/`dword`/`qword` before a memory or
+  immediate operand only where the register operands leave the width
+  ambiguous (`inc dword [esp+4]`, `push dword 0x12`).
+- Operands separated by `,` with no space after the mnemonic's first
+  space (`mov eax,[esp+16]`); instruction sequences join with ` ; `.
+- Labels are bare identifiers in operand position (`jmp target`).
+
+**arm64 (A64):**
+
+- Registers `x0`..`x30`/`w0`..`w30`, `sp`/`wsp`, `xzr`/`wzr`.
+- Immediates prefixed `#` (`add x9,x9,#16`), hex allowed (`#0x80`).
+- Addressing: `[xN]`, `[xN,#imm]`, `[xN,xM]`; condition-coded branches
+  as `b.cc .+8` (dot-relative displacement).
+
+**Corpus fixture format** (`tests/asm/corpus_*.txt`, loaded by
+`asm_corpus_load`): one `hexbytes|text` entry per line (lowercase hex,
+no separators; arm64 words little-endian as stored), `#` comment lines,
+blank lines ignored. `# MISMATCH:`-flagged entries record bytes whose
+source comment disagreed with the actual encoding.
 
 ## Phase 0: shared prerequisites (do once, used by every sub-issue)
 

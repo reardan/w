@@ -1,0 +1,399 @@
+# x86-64 instruction corpus harvested from code_generator/ emit() calls and their assembly comments.
+# Format: hexbytes|intel-assembly-text. One instruction per line where boundaries are certain;
+# multi-instruction sequences use ' ; ' separators in the text field.
+#
+# Conventions:
+# - lowercase hex bytes, no spaces; Intel operand order; [reg+disp] memory form; 0x hex immediates.
+# - Relative branches/calls (jmp, je, jne, jns, jl, jle, call rel32) show the raw rel8/rel32
+#   displacement value from the encoding as the operand, not an absolute target.
+# - Helpers in x86.w shared between the x86 and x64 targets are harvested in their x64 form:
+#   emit_x64_opcode() prepends the REX.W prefix 0x48 when word_size == 8, so source comments
+#   written with 32-bit register names (eax, esp, ...) correspond to 64-bit registers here.
+# - Runtime-parameterized immediates/displacements are instantiated with the example value from
+#   the source comment (op(0x12, 0x345678) = 0x12345678) or a small representative value, and
+#   are flagged with a '# parameterized' comment line.
+
+# ============================================================================
+# code_generator/x64_asm.w : define_asm_functions_x64_portable() -> get_context
+# ============================================================================
+50|push rax
+488b442410|mov rax,[rsp+0x10]
+48894808|mov [rax+0x8],rcx
+59|pop rcx
+488908|mov [rax],rcx
+48895010|mov [rax+0x10],rdx
+48895818|mov [rax+0x18],rbx
+48896020|mov [rax+0x20],rsp
+48896828|mov [rax+0x28],rbp
+48897030|mov [rax+0x30],rsi
+48897838|mov [rax+0x38],rdi
+4c894040|mov [rax+0x40],r8
+4c894848|mov [rax+0x48],r9
+4c895050|mov [rax+0x50],r10
+4c895858|mov [rax+0x58],r11
+4c896060|mov [rax+0x60],r12
+4c896868|mov [rax+0x68],r13
+4c897070|mov [rax+0x70],r14
+4c897878|mov [rax+0x78],r15
+c3|ret
+
+# ============================================================================
+# code_generator/x64_asm.w : define_asm_functions_x64_portable() -> store_context
+# ============================================================================
+50|push rax
+488b442410|mov rax,[rsp+0x10]
+48894808|mov [rax+0x8],rcx
+48895010|mov [rax+0x10],rdx
+48895818|mov [rax+0x18],rbx
+48896020|mov [rax+0x20],rsp
+48896828|mov [rax+0x28],rbp
+48897030|mov [rax+0x30],rsi
+48897838|mov [rax+0x38],rdi
+4c894040|mov [rax+0x40],r8
+4c894848|mov [rax+0x48],r9
+4c895050|mov [rax+0x50],r10
+4c895858|mov [rax+0x58],r11
+4c896060|mov [rax+0x60],r12
+4c896868|mov [rax+0x68],r13
+4c897070|mov [rax+0x70],r14
+4c897878|mov [rax+0x78],r15
+58|pop rax
+c3|ret
+
+# ============================================================================
+# code_generator/x64_asm.w : define_asm_functions_x64_portable() -> repl_setjmp
+# ============================================================================
+488b442408|mov rax,[rsp+0x8]
+488b0c24|mov rcx,[rsp]
+488908|mov [rax],rcx
+488d4c2408|lea rcx,[rsp+0x8]
+48894808|mov [rax+0x8],rcx
+48896810|mov [rax+0x10],rbp
+31c0|xor eax,eax
+c3|ret
+
+# ============================================================================
+# code_generator/x64_asm.w : define_asm_functions_x64_portable() -> repl_longjmp
+# ============================================================================
+488b442408|mov rax,[rsp+0x8]
+488b4c2410|mov rcx,[rsp+0x10]
+488b6108|mov rsp,[rcx+0x8]
+488b6910|mov rbp,[rcx+0x10]
+ff21|jmp [rcx]
+
+# ============================================================================
+# code_generator/x64_asm.w : define_asm_functions_x64_portable() -> gen_switch
+# ============================================================================
+53|push rbx
+55|push rbp
+4154|push r12
+4155|push r13
+4156|push r14
+4157|push r15
+488b442440|mov rax,[rsp+0x40]
+488b4c2438|mov rcx,[rsp+0x38]
+488920|mov [rax],rsp
+4889cc|mov rsp,rcx
+415f|pop r15
+415e|pop r14
+415d|pop r13
+415c|pop r12
+5d|pop rbp
+5b|pop rbx
+c3|ret
+
+# ============================================================================
+# code_generator/x64_asm.w : define_asm_functions_x64() -> syscall
+# ============================================================================
+488b442420|mov rax,[rsp+0x20]
+488b7c2418|mov rdi,[rsp+0x18]
+488b742410|mov rsi,[rsp+0x10]
+488b542408|mov rdx,[rsp+0x8]
+0f05|syscall
+c3|ret
+
+# ============================================================================
+# code_generator/x64_asm.w : define_asm_functions_x64() -> syscall7
+# ============================================================================
+488b442438|mov rax,[rsp+0x38]
+488b7c2430|mov rdi,[rsp+0x30]
+488b742428|mov rsi,[rsp+0x28]
+488b542420|mov rdx,[rsp+0x20]
+4c8b542418|mov r10,[rsp+0x18]
+4c8b442410|mov r8,[rsp+0x10]
+4c8b4c2408|mov r9,[rsp+0x8]
+0f05|syscall
+c3|ret
+
+# ============================================================================
+# code_generator/x86.w : stack pushes and loads (x64 forms)
+# ============================================================================
+# parameterized: push_int8(v), imm8 from source comment example 0x12
+6a12|push 0x12
+# parameterized: push_int32(v), imm32 example op(0x12, 0x345678)
+6878563412|push 0x12345678
+# parameterized: push_eax_plus(v), disp32 example op(0x12, 0x345678)
+ffb078563412|push qword [rax+0x12345678]
+50|push rax
+53|push rbx
+58|pop rax
+5b|pop rbx
+
+# ============================================================================
+# code_generator/x86.w : loads/promotions through rax/rbx (x64 forms)
+# ============================================================================
+488b00|mov rax,[rax]
+488b1b|mov rbx,[rbx]
+480fbe00|movsx rax,byte [rax]
+480fbf00|movsx rax,word [rax]
+486300|movsxd rax,dword [rax]
+0fb700|movzx eax,word [rax]
+0fb6c0|movzx eax,al
+
+# ============================================================================
+# code_generator/x86.w : stores through rbx (x64 forms)
+# ============================================================================
+8903|mov [rbx],eax
+488903|mov [rbx],rax
+668903|mov [rbx],ax
+8803|mov [rbx],al
+
+# ============================================================================
+# code_generator/x86.w : immediates and register moves (x64 forms)
+# ============================================================================
+# parameterized: mov_eax_int32(v), imm32 example op(0x12, 0x345678)
+b878563412|mov eax,0x12345678
+# parameterized: mov_rax_int64(v) / mov_rax_int64_halves(lo, hi), imm64 from source comment example
+48b85634129078563412|mov rax,0x1234567890123456
+# parameterized: xor_eax_int32(v), imm32 example op(0x12, 0x345678)
+3578563412|xor eax,0x12345678
+# parameterized: add_eax_int32(v), imm32 example op(0x12, 0x345678)
+480578563412|add rax,0x12345678
+# parameterized: imul_eax_int32(v), imm32 example op(0x12, 0x345678)
+4869c078563412|imul rax,rax,0x12345678
+# parameterized: add_ebx_int32(v), imm32 example op(0x12, 0x345678)
+4881c378563412|add rbx,0x12345678
+4889d8|mov rax,rbx
+48f7d0|not rax
+48f7d8|neg rax
+
+# ============================================================================
+# code_generator/x86.w : rsp-relative addressing (x64 forms)
+# ============================================================================
+# parameterized: lea_eax_esp_plus(v), disp32 example op(0x12, 0x345678)
+488d842478563412|lea rax,[rsp+0x12345678]
+# parameterized: mov_eax_esp_plus(v), disp32 example op(0x12, 0x345678)
+488b842478563412|mov rax,[rsp+0x12345678]
+488b1c24|mov rbx,[rsp]
+# parameterized: mov_ebx_esp_plus(v), disp32 example op(0x12, 0x345678)
+488b9c2478563412|mov rbx,[rsp+0x12345678]
+# parameterized: store_stack_var(offset), disp32 example op(0x12, 0x345678)
+4889842478563412|mov [rsp+0x12345678],rax
+# parameterized: store_ebx_stack_var(offset), disp32 example op(0x12, 0x345678)
+48899c2478563412|mov [rsp+0x12345678],rbx
+# parameterized: be_pop(n) emits add rsp,(n << 3); example n = 2
+4881c410000000|add rsp,0x10
+# parameterized: add_dword_esp_plus_eax(v), disp32 example op(0x12, 0x345678)
+4801842478563412|add [rsp+0x12345678],rax
+# parameterized: add_stack_word_int32(offset, v), example offset 0x10, imm32 0x12345678
+488184241000000078563412|add qword [rsp+0x10],0x12345678
+# MISMATCH: source comment says "inc dword[esp+op(0x12, 0x345678)]" but on x64 the emitted
+# REX.W prefix makes it the qword form encoded below (parameterized disp32 example)
+48ff842478563412|inc qword [rsp+0x12345678]
+
+# ============================================================================
+# code_generator/x86.w : calls, branches, traps (x64 forms)
+# ============================================================================
+ffd0|call rax
+# parameterized: call_relative32(v), rel32 example op(0x12, 0x345678)
+e878563412|call 0x12345678
+# parameterized: jmp_int32(v), rel32 example op(0x12, 0x345678)
+e978563412|jmp 0x12345678
+# jmp_zero_int32(v): test rax,rax ; je rel32 (rel32 parameterized, example op(0x12, 0x345678))
+4885c0|test rax,rax
+0f8478563412|je 0x12345678
+# jmp_nonzero_int32(v): test rax,rax ; jne rel32 (rel32 parameterized)
+0f8578563412|jne 0x12345678
+cc|int3
+90|nop
+c3|ret
+# bounds_check_eax_nonnegative: test rax,rax ; jns +1 ; int3
+7901|jns 0x1
+# bounds_check_ebx_less_eax / _less_equal_eax: cmp rbx,rax ; jl/jle +1 ; int3
+4839c3|cmp rbx,rax
+7c01|jl 0x1
+7e01|jle 0x1
+# parameterized: bounds_check_eax_less_equal_int32(limit), imm32 example op(0x12, 0x345678)
+483d78563412|cmp rax,0x12345678
+
+# ============================================================================
+# code_generator/x86.w : word-width ALU helpers (x64 forms)
+# ============================================================================
+4801d8|add rax,rbx
+# alu_sub: sub rbx,rax ; mov rax,rbx
+4829c3|sub rbx,rax
+480fafc3|imul rax,rbx
+# alu_idiv: mov rbx,rax ; pop rax ; cqo ; idiv rbx
+4889c3|mov rbx,rax
+4899|cqo
+48f7fb|idiv rbx
+# alu_imod appends: mov rax,rdx
+4889d0|mov rax,rdx
+# alu_shl: mov ecx,eax ; pop rax ; shl rax,cl
+89c1|mov ecx,eax
+48d3e0|shl rax,cl
+# alu_sar: mov ecx,eax ; pop rax ; sar rax,cl
+48d3f8|sar rax,cl
+4821d8|and rax,rbx
+4809d8|or rax,rbx
+4831d8|xor rax,rbx
+# alu_cmp_set(setcc): cmp rbx,rax ; setCC al ; movzx eax,al -- all setcc variants used:
+0f9cc0|setl al
+0f9dc0|setge al
+0f9ec0|setle al
+0f9fc0|setg al
+0f94c0|sete al
+0f95c0|setne al
+
+# ============================================================================
+# code_generator/sse.w : GPR <-> XMM transfers
+# ============================================================================
+# parameterized: movd_xmm(xmm, reg), ModRM = 0xc0 | xmm << 3 | reg * 3; all combinations:
+660f6ec0|movd xmm0,eax
+660f6ec3|movd xmm0,ebx
+660f6ec8|movd xmm1,eax
+660f6ecb|movd xmm1,ebx
+660f7ec0|movd eax,xmm0
+# parameterized: movq_xmm(xmm, reg) (x64 only); all combinations:
+66480f6ec0|movq xmm0,rax
+66480f6ec3|movq xmm0,rbx
+66480f6ec8|movq xmm1,rax
+66480f6ecb|movq xmm1,rbx
+66480f7ec0|movq rax,xmm0
+
+# ============================================================================
+# code_generator/sse.w : float32 arithmetic
+# ============================================================================
+f30f58c1|addss xmm0,xmm1
+f30f5cc1|subss xmm0,xmm1
+f30f59c1|mulss xmm0,xmm1
+f30f5ec1|divss xmm0,xmm1
+
+# ============================================================================
+# code_generator/sse.w : float64 arithmetic
+# ============================================================================
+f20f58c1|addsd xmm0,xmm1
+f20f5cc1|subsd xmm0,xmm1
+f20f59c1|mulsd xmm0,xmm1
+f20f5ec1|divsd xmm0,xmm1
+
+# ============================================================================
+# code_generator/sse.w : comparisons + setcc_movzx_eax
+# ============================================================================
+0f2ec1|ucomiss xmm0,xmm1
+660f2ec1|ucomisd xmm0,xmm1
+# setcc_movzx_eax(setcc): setCC al ; movzx eax,al -- float compare variants:
+0f97c0|seta al
+0f93c0|setae al
+0f94c0|sete al
+0f95c0|setne al
+0fb6c0|movzx eax,al
+
+# ============================================================================
+# code_generator/sse.w : conversions (x64/REX.W forms)
+# ============================================================================
+# parameterized: cvtsi2ss_xmm(xmm, reg), ModRM = 0xc0 | xmm << 3 | reg * 3; all combinations:
+f3480f2ac0|cvtsi2ss xmm0,rax
+f3480f2ac3|cvtsi2ss xmm0,rbx
+f3480f2ac8|cvtsi2ss xmm1,rax
+f3480f2acb|cvtsi2ss xmm1,rbx
+# parameterized: cvtsi2sd_xmm(xmm, reg) (x64 only); all combinations:
+f2480f2ac0|cvtsi2sd xmm0,rax
+f2480f2ac3|cvtsi2sd xmm0,rbx
+f2480f2ac8|cvtsi2sd xmm1,rax
+f2480f2acb|cvtsi2sd xmm1,rbx
+f3480f2cc0|cvttss2si rax,xmm0
+f2480f2cc0|cvttsd2si rax,xmm0
+# parameterized: cvtss2sd_xmm(xmm), ModRM = 0xc0 + xmm * 9; both values:
+f30f5ac0|cvtss2sd xmm0,xmm0
+f30f5ac9|cvtss2sd xmm1,xmm1
+f20f5ac0|cvtsd2ss xmm0,xmm0
+
+# ============================================================================
+# code_generator/sse.w : float16 (F16C, VEX) and sign flips
+# ============================================================================
+c4e27913c0|vcvtph2ps xmm0,xmm0
+c4e3791dc004|vcvtps2ph xmm0,xmm0,0x4
+480fbaf83f|btc rax,0x3f
+
+# ============================================================================
+# code_generator/ffi.w : emit_x64_load_gp_reg (SysV rdi rsi rdx rcx r8 r9)
+# ============================================================================
+# parameterized: disp32 per argument slot; example disp 0x10
+488bbd10000000|mov rdi,[rbp+0x10]
+488bb510000000|mov rsi,[rbp+0x10]
+488b9510000000|mov rdx,[rbp+0x10]
+488b8d10000000|mov rcx,[rbp+0x10]
+4c8b8510000000|mov r8,[rbp+0x10]
+4c8b8d10000000|mov r9,[rbp+0x10]
+
+# ============================================================================
+# code_generator/ffi.w : emit_x64_load_xmm_reg (xmm0..xmm7)
+# ============================================================================
+# parameterized: ModRM = 0x85 + (reg << 3) selects xmm0..xmm7; example disp 0x10, regs 0 and 1
+f30f108510000000|movss xmm0,[rbp+0x10]
+f20f108510000000|movsd xmm0,[rbp+0x10]
+f30f108d10000000|movss xmm1,[rbp+0x10]
+f20f108d10000000|movsd xmm1,[rbp+0x10]
+
+# ============================================================================
+# code_generator/ffi.w : emit_c_abi_call_x64 (System V AMD64 shim)
+# ============================================================================
+55|push rbp
+4889e5|mov rbp,rsp
+4883e4f0|and rsp,-0x10
+4883ec08|sub rsp,0x8
+# parameterized: push qword [rbp+disp32] for overflow args; example disp 0x10
+ffb510000000|push qword [rbp+0x10]
+# parameterized: mov eax,imm32 = number of xmm registers used (varargs contract); example 1
+b801000000|mov eax,0x1
+# parameterized: call qword ptr [abs32] through the GOT slot; example got_vaddr 0x12345678
+ff142578563412|call qword [0x12345678]
+660f7ec0|movd eax,xmm0
+66480f7ec0|movq rax,xmm0
+4889ec|mov rsp,rbp
+5d|pop rbp
+
+# ============================================================================
+# code_generator/ffi.w : emit_c_abi_call_win64 (Microsoft x64 shim)
+# ============================================================================
+# prologue, GOT call, float-result moves and epilogue are byte-identical to the
+# SysV shim above; win64-specific entries follow.
+# emit_win64_load_gp_reg (rcx rdx r8 r9): same encodings as the SysV rcx/rdx/r8/r9 loads above.
+# parameterized: sub rsp,imm32 = 32-byte shadow space + stack args, 16-aligned; example 0x20
+4881ec20000000|sub rsp,0x20
+# parameterized: stack-arg copy, mov rax,[rbp+disp32]; example disp 0x10
+488b8510000000|mov rax,[rbp+0x10]
+# parameterized: mov [rsp+disp32],rax with disp = 32 + 8k; example k = 0
+4889842420000000|mov [rsp+0x20],rax
+
+# ============================================================================
+# code_generator/pe_64.w : pe_emit_entry_stub_64 (win64 entry stub)
+# ============================================================================
+31c0|xor eax,eax
+50|push rax
+# parameterized: push imm32 = pe_empty_args_vaddr (argv = empty args block); example 0x12345678
+6878563412|push 0x12345678
+# parameterized: call rel32, displacement patched in pe_finish_64(); example 0x12345678
+e878563412|call 0x12345678
+89c1|mov ecx,eax
+4883ec28|sub rsp,0x28
+# parameterized: call qword ptr [abs32] = ExitProcess IAT slot; example 0x12345678
+ff142578563412|call qword [0x12345678]
+cc|int3
+
+# ============================================================================
+# Files checked with no x86-64 instruction emissions:
+# - code_generator/macho_64.w (emits arm64 instructions only)
+# - code_generator/elf_dynamic.w (data-only: dynamic tables, no code)
+# ============================================================================
