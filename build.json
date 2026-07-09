@@ -41,6 +41,14 @@
 			]
 		},
 		{
+			"name": "update",
+			"deps": ["verify"],
+			"steps": [
+				{"cmd": ["./archive.sh"]},
+				{"cmd": ["mv", "-f", "bin/wv2", "w"]}
+			]
+		},
+		{
 			"name": "hello",
 			"deps": ["wv2"],
 			"steps": [
