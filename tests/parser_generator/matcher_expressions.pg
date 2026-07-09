@@ -1,0 +1,26 @@
+parser matcher_expr
+
+fragment HEXNUM = HASH_PREFIX HEXDIGIT+
+fragment HASH_PREFIX = "#" ("x" | "X")
+fragment HEXDIGIT = [0-9a-fA-F]
+fragment DECNUM = [0-9]+
+fragment CHAR = "'" [^'\r\n] "'"
+
+skip DASH_COMMENT = "--" [^\r\n]*
+
+token TIE_FIRST = "@"
+token TIE_SECOND = "@"
+token SHORT = "ab"
+token LONG = "abc"
+token ALT = "z" | "zoom"
+token DIGITS digits
+token SIGNED = ("+" | "-") DIGITS
+token PREFIX = "pre"
+token PREFIXED = PREFIX [0-9]+
+token NUMCONST = DECNUM | HEXNUM | CHAR
+token IDENT = [a-zA-Z_] [a-zA-Z0-9_-]*
+token NEWLINE_TOK = "\r"? "\n"
+
+start input
+
+rule input = EOF

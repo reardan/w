@@ -52,6 +52,356 @@ void pg_emit_dynamic_line_end(pg_source_writer* writer):
 	pg_source_append_char(writer, 10)
 
 
+void pg_emit_matcher_name(pg_source_writer* writer, pg_grammar* grammar, char* name):
+	pg_source_append(writer, grammar.name)
+	pg_source_append(writer, c"_matcher_")
+	pg_source_append(writer, name)
+
+
+void pg_emit_matcher_call(pg_source_writer* writer, pg_grammar* grammar, char* name):
+	pg_emit_matcher_name(writer, grammar, name)
+	pg_source_append(writer, c"(input, position)")
+
+
+int pg_matcher_reference_is_expression(pg_grammar* grammar, char* name):
+	pg_token_def* token = pg_grammar_find_token(grammar, name)
+	if (token != 0):
+		return token.expression != 0
+	return pg_grammar_find_fragment(grammar, name) != 0
+
+
+void pg_emit_matcher_reference_call(pg_source_writer* writer, pg_grammar* grammar, char* name):
+	pg_token_def* token = pg_grammar_find_token(grammar, name)
+	if ((token != 0) & (token.expression == 0)):
+		pg_source_append(writer, c"pg_lexer_matcher_")
+		pg_source_append(writer, token.matcher)
+		pg_source_append(writer, c"(input, position)")
+	else:
+		pg_emit_matcher_call(writer, grammar, name)
+
+
+void pg_emit_temp_name(pg_source_writer* writer, char* prefix, int index):
+	pg_source_append(writer, prefix)
+	pg_source_append_int(writer, index)
+
+
+void pg_emit_matcher_charset_condition(pg_source_writer* writer, pg_match_expr* expression, int temp):
+	int first_condition = 1
+	int start = 1
+	while (start < 128):
+		if (expression.charset[start] == 0):
+			start = start + 1
+		else:
+			int end = start
+			while ((end + 1 < 128) & (expression.charset[end + 1] != 0)):
+				end = end + 1
+			if (first_condition == 0):
+				pg_source_append(writer, c" | ")
+			if (start == end):
+				pg_source_append_char(writer, '(')
+				pg_emit_temp_name(writer, c"matcher_char_", temp)
+				pg_source_append(writer, c" == ")
+				pg_source_append_int(writer, start)
+				pg_source_append_char(writer, ')')
+			else:
+				pg_source_append(writer, c"((")
+				pg_emit_temp_name(writer, c"matcher_char_", temp)
+				pg_source_append(writer, c" >= ")
+				pg_source_append_int(writer, start)
+				pg_source_append(writer, c") & (")
+				pg_emit_temp_name(writer, c"matcher_char_", temp)
+				pg_source_append(writer, c" <= ")
+				pg_source_append_int(writer, end)
+				pg_source_append(writer, c"))")
+			first_condition = 0
+			start = end + 1
+	if (first_condition):
+		pg_source_append_char(writer, '0')
+
+
+void pg_emit_match_expression(pg_source_writer* writer, pg_grammar* grammar, pg_match_expr* expression, int* next_temp);
+
+
+void pg_emit_matcher_string(pg_source_writer* writer, pg_match_expr* expression):
+	pg_source_line(writer, c"if (matched):")
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"if (starts_with(input + position, ")
+	pg_emit_c_string_literal(writer, expression.text)
+	pg_source_append(writer, c")):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"position = position + ")
+	pg_source_append_int(writer, strlen(expression.text))
+	pg_emit_dynamic_line_end(writer)
+	pg_source_dedent(writer)
+	pg_source_line(writer, c"else:")
+	pg_source_indent(writer)
+	pg_source_line(writer, c"matched = 0")
+	pg_source_dedent(writer)
+	pg_source_dedent(writer)
+
+
+void pg_emit_matcher_charset(pg_source_writer* writer, pg_match_expr* expression, int* next_temp):
+	int temp = next_temp[0]
+	next_temp[0] = temp + 1
+	pg_source_line(writer, c"if (matched):")
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_emit_temp_name(writer, c"matcher_char_", temp)
+	pg_source_append(writer, c" = input[position] & 255")
+	pg_emit_dynamic_line_end(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"if (")
+	pg_emit_matcher_charset_condition(writer, expression, temp)
+	pg_source_append(writer, c"):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_source_line(writer, c"position = position + 1")
+	pg_source_dedent(writer)
+	pg_source_line(writer, c"else:")
+	pg_source_indent(writer)
+	pg_source_line(writer, c"matched = 0")
+	pg_source_dedent(writer)
+	pg_source_dedent(writer)
+
+
+void pg_emit_matcher_reference(pg_source_writer* writer, pg_grammar* grammar, pg_match_expr* expression, int* next_temp):
+	int temp = next_temp[0]
+	next_temp[0] = temp + 1
+	pg_source_line(writer, c"if (matched):")
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_emit_temp_name(writer, c"matcher_length_", temp)
+	pg_source_append(writer, c" = ")
+	pg_emit_matcher_reference_call(writer, grammar, expression.text)
+	pg_emit_dynamic_line_end(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"if (")
+	pg_emit_temp_name(writer, c"matcher_length_", temp)
+	if (pg_matcher_reference_is_expression(grammar, expression.text)):
+		pg_source_append(writer, c" >= 0):")
+	else:
+		pg_source_append(writer, c" > 0):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"position = position + ")
+	pg_emit_temp_name(writer, c"matcher_length_", temp)
+	pg_emit_dynamic_line_end(writer)
+	pg_source_dedent(writer)
+	pg_source_line(writer, c"else:")
+	pg_source_indent(writer)
+	pg_source_line(writer, c"matched = 0")
+	pg_source_dedent(writer)
+	pg_source_dedent(writer)
+
+
+void pg_emit_matcher_alternation(pg_source_writer* writer, pg_grammar* grammar, pg_match_expr* expression, int* next_temp):
+	int temp = next_temp[0]
+	next_temp[0] = temp + 1
+	pg_source_line(writer, c"if (matched):")
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_emit_temp_name(writer, c"matcher_start_", temp)
+	pg_source_append(writer, c" = position")
+	pg_emit_dynamic_line_end(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_emit_temp_name(writer, c"matcher_best_", temp)
+	pg_source_append(writer, c" = -1")
+	pg_emit_dynamic_line_end(writer)
+	int i = 0
+	while (i < expression.children.length):
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, c"position = ")
+		pg_emit_temp_name(writer, c"matcher_start_", temp)
+		pg_emit_dynamic_line_end(writer)
+		pg_source_line(writer, c"matched = 1")
+		pg_emit_match_expression(writer, grammar, expression.children[i], next_temp)
+		pg_source_line(writer, c"if (matched):")
+		pg_source_indent(writer)
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, c"if (position > ")
+		pg_emit_temp_name(writer, c"matcher_best_", temp)
+		pg_source_append(writer, c"):")
+		pg_emit_dynamic_line_end(writer)
+		pg_source_indent(writer)
+		pg_emit_dynamic_line_start(writer)
+		pg_emit_temp_name(writer, c"matcher_best_", temp)
+		pg_source_append(writer, c" = position")
+		pg_emit_dynamic_line_end(writer)
+		pg_source_dedent(writer)
+		pg_source_dedent(writer)
+		i = i + 1
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"if (")
+	pg_emit_temp_name(writer, c"matcher_best_", temp)
+	pg_source_append(writer, c" >= 0):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"position = ")
+	pg_emit_temp_name(writer, c"matcher_best_", temp)
+	pg_emit_dynamic_line_end(writer)
+	pg_source_line(writer, c"matched = 1")
+	pg_source_dedent(writer)
+	pg_source_line(writer, c"else:")
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"position = ")
+	pg_emit_temp_name(writer, c"matcher_start_", temp)
+	pg_emit_dynamic_line_end(writer)
+	pg_source_line(writer, c"matched = 0")
+	pg_source_dedent(writer)
+	pg_source_dedent(writer)
+
+
+void pg_emit_matcher_optional(pg_source_writer* writer, pg_grammar* grammar, pg_match_expr* expression, int* next_temp):
+	int temp = next_temp[0]
+	next_temp[0] = temp + 1
+	pg_source_line(writer, c"if (matched):")
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_emit_temp_name(writer, c"matcher_start_", temp)
+	pg_source_append(writer, c" = position")
+	pg_emit_dynamic_line_end(writer)
+	pg_emit_match_expression(writer, grammar, expression.children[0], next_temp)
+	pg_source_line(writer, c"if (matched == 0):")
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"position = ")
+	pg_emit_temp_name(writer, c"matcher_start_", temp)
+	pg_emit_dynamic_line_end(writer)
+	pg_source_line(writer, c"matched = 1")
+	pg_source_dedent(writer)
+	pg_source_dedent(writer)
+
+
+void pg_emit_matcher_repeat_tail(pg_source_writer* writer, pg_grammar* grammar, pg_match_expr* child, int* next_temp):
+	int temp = next_temp[0]
+	next_temp[0] = temp + 1
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_emit_temp_name(writer, c"matcher_repeating_", temp)
+	pg_source_append(writer, c" = 1")
+	pg_emit_dynamic_line_end(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"while (")
+	pg_emit_temp_name(writer, c"matcher_repeating_", temp)
+	pg_source_append(writer, c"):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_emit_temp_name(writer, c"matcher_start_", temp)
+	pg_source_append(writer, c" = position")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_line(writer, c"matched = 1")
+	pg_emit_match_expression(writer, grammar, child, next_temp)
+	pg_source_line(writer, c"if (matched == 0):")
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"position = ")
+	pg_emit_temp_name(writer, c"matcher_start_", temp)
+	pg_emit_dynamic_line_end(writer)
+	pg_source_line(writer, c"matched = 1")
+	pg_emit_dynamic_line_start(writer)
+	pg_emit_temp_name(writer, c"matcher_repeating_", temp)
+	pg_source_append(writer, c" = 0")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_dedent(writer)
+	pg_source_dedent(writer)
+
+
+void pg_emit_matcher_repetition(pg_source_writer* writer, pg_grammar* grammar, pg_match_expr* expression, int* next_temp):
+	pg_source_line(writer, c"if (matched):")
+	pg_source_indent(writer)
+	if (expression.kind == pg_match_expr_one_or_more_kind()):
+		pg_emit_match_expression(writer, grammar, expression.children[0], next_temp)
+		pg_source_line(writer, c"if (matched):")
+		pg_source_indent(writer)
+		pg_emit_matcher_repeat_tail(writer, grammar, expression.children[0], next_temp)
+		pg_source_dedent(writer)
+	else:
+		pg_emit_matcher_repeat_tail(writer, grammar, expression.children[0], next_temp)
+	pg_source_dedent(writer)
+
+
+void pg_emit_match_expression(pg_source_writer* writer, pg_grammar* grammar, pg_match_expr* expression, int* next_temp):
+	if (expression.kind == pg_match_expr_string_kind()):
+		pg_emit_matcher_string(writer, expression)
+	else if (expression.kind == pg_match_expr_charset_kind()):
+		pg_emit_matcher_charset(writer, expression, next_temp)
+	else if (expression.kind == pg_match_expr_reference_kind()):
+		pg_emit_matcher_reference(writer, grammar, expression, next_temp)
+	else if (expression.kind == pg_match_expr_sequence_kind()):
+		int i = 0
+		while (i < expression.children.length):
+			pg_emit_match_expression(writer, grammar, expression.children[i], next_temp)
+			i = i + 1
+	else if (expression.kind == pg_match_expr_alternation_kind()):
+		pg_emit_matcher_alternation(writer, grammar, expression, next_temp)
+	else if (expression.kind == pg_match_expr_optional_kind()):
+		pg_emit_matcher_optional(writer, grammar, expression, next_temp)
+	else:
+		pg_emit_matcher_repetition(writer, grammar, expression, next_temp)
+
+
+void pg_emit_expression_matcher(pg_source_writer* writer, pg_grammar* grammar, char* name, pg_match_expr* expression):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_emit_matcher_name(writer, grammar, name)
+	pg_source_append(writer, c"(char* input, int index):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_source_line(writer, c"int position = index")
+	pg_source_line(writer, c"int matched = 1")
+	int next_temp = 0
+	pg_emit_match_expression(writer, grammar, expression, &next_temp)
+	pg_source_line(writer, c"if (matched):")
+	pg_source_indent(writer)
+	pg_source_line(writer, c"return position - index")
+	pg_source_dedent(writer)
+	pg_source_line(writer, c"return -1")
+	pg_source_dedent(writer)
+	pg_source_blank(writer)
+
+
+void pg_emit_expression_matchers(pg_source_writer* writer, pg_grammar* grammar):
+	int i = 0
+	while (i < grammar.tokens.length):
+		pg_token_def* token = grammar.tokens[i]
+		if (token.expression != 0):
+			pg_emit_expression_matcher(writer, grammar, token.name, token.expression)
+		i = i + 1
+	i = 0
+	while (i < grammar.skips.length):
+		pg_token_def* skip = grammar.skips[i]
+		if (skip.expression != 0):
+			pg_emit_expression_matcher(writer, grammar, skip.name, skip.expression)
+		i = i + 1
+	i = 0
+	while (i < grammar.fragments.length):
+		pg_fragment_def* fragment = grammar.fragments[i]
+		pg_emit_expression_matcher(writer, grammar, fragment.name, fragment.expression)
+		i = i + 1
+
+
+void pg_emit_lexer_matcher_call(pg_source_writer* writer, pg_grammar* grammar, pg_token_def* token):
+	if (token.expression != 0):
+		pg_emit_matcher_name(writer, grammar, token.name)
+	else:
+		pg_source_append(writer, c"pg_lexer_matcher_")
+		pg_source_append(writer, token.matcher)
+	pg_source_append(writer, c"(input, index)")
+
+
 void pg_emit_token_constants(pg_source_writer* writer, pg_grammar* grammar):
 	pg_emit_dynamic_line_start(writer)
 	pg_source_append(writer, c"int ")
@@ -209,6 +559,36 @@ void pg_emit_token_name(pg_source_writer* writer, pg_grammar* grammar):
 
 void pg_emit_forward_declarations(pg_source_writer* writer, pg_grammar* grammar):
 	int i = 0
+	while (i < grammar.tokens.length):
+		pg_token_def* token = grammar.tokens[i]
+		if (token.expression != 0):
+			pg_emit_dynamic_line_start(writer)
+			pg_source_append(writer, c"int ")
+			pg_emit_matcher_name(writer, grammar, token.name)
+			pg_source_append(writer, c"(char* input, int index);")
+			pg_emit_dynamic_line_end(writer)
+		i = i + 1
+	i = 0
+	while (i < grammar.skips.length):
+		pg_token_def* skip = grammar.skips[i]
+		if (skip.expression != 0):
+			pg_emit_dynamic_line_start(writer)
+			pg_source_append(writer, c"int ")
+			pg_emit_matcher_name(writer, grammar, skip.name)
+			pg_source_append(writer, c"(char* input, int index);")
+			pg_emit_dynamic_line_end(writer)
+		i = i + 1
+	i = 0
+	while (i < grammar.fragments.length):
+		pg_fragment_def* fragment = grammar.fragments[i]
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, c"int ")
+		pg_emit_matcher_name(writer, grammar, fragment.name)
+		pg_source_append(writer, c"(char* input, int index);")
+		pg_emit_dynamic_line_end(writer)
+		i = i + 1
+	pg_source_blank(writer)
+	i = 0
 	while (i < grammar.rules.length):
 		pg_rule* rule = grammar.rules[i]
 		pg_emit_dynamic_line_start(writer)
@@ -300,9 +680,8 @@ void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	while (i < grammar.skips.length):
 		pg_token_def* skip = grammar.skips[i]
 		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"length = pg_lexer_matcher_")
-		pg_source_append(writer, skip.matcher)
-		pg_source_append(writer, c"(input, index)")
+		pg_source_append(writer, c"length = ")
+		pg_emit_lexer_matcher_call(writer, grammar, skip)
 		pg_emit_dynamic_line_end(writer)
 		pg_source_line(writer, c"if (length > best_length):")
 		pg_source_indent(writer)
@@ -318,9 +697,8 @@ void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	while (i < grammar.tokens.length):
 		pg_token_def* token = grammar.tokens[i]
 		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"length = pg_lexer_matcher_")
-		pg_source_append(writer, token.matcher)
-		pg_source_append(writer, c"(input, index)")
+		pg_source_append(writer, c"length = ")
+		pg_emit_lexer_matcher_call(writer, grammar, token)
 		pg_emit_dynamic_line_end(writer)
 		pg_source_line(writer, c"if (length > best_length):")
 		pg_source_indent(writer)
@@ -751,6 +1129,7 @@ char* pg_generate_parser(pg_grammar* grammar):
 	pg_emit_ast_constants(writer, grammar)
 	pg_emit_token_name(writer, grammar)
 	pg_emit_forward_declarations(writer, grammar)
+	pg_emit_expression_matchers(writer, grammar)
 	pg_emit_advance_position(writer, grammar)
 	pg_emit_lexer(writer, grammar)
 	pg_emit_match_token(writer, grammar)
