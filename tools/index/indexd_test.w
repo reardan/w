@@ -168,8 +168,46 @@ void test_indexd_cache_invalidates_on_file_change():
 	close(sock)
 
 
+# test_indexd_cache_invalidates_on_file_change only ever queries
+# 'symbol' (declaration lookup, windex_index.by_name — never touches
+# the per-file scan cache). This scenario uses 'references', which
+# does go through windex_file_identifiers, to prove that cache's
+# content-hash invalidation independently: a second call site added to
+# an unchanged-looking query (same target name, same entry file) must
+# show up, not be served from a stale cached scan.
+void test_indexd_scan_cache_reflects_file_changes():
+	int port = indexd_test_spawn()
+	int sock = socket_tcp_ipv4()
+	asserts(c"client socket", sock >= 0)
+	asserts(c"client connect", socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0)
+	frame_reader* r = frame_reader_new(sock)
+
+	list[char*] files = indexd_test_files(indexd_test_scratch_file())
+
+	char* v1 = c"import lib.lib\n\nint indexd_scan_target():\n\treturn 1\n\nint indexd_scan_caller_a():\n\treturn indexd_scan_target()\n"
+	asserts(c"scan scratch fixture v1 written", file_write_text(indexd_test_scratch_file(), v1))
+	list[json_value*] refs_first = indexd_test_query(sock, r, c"references", c"indexd_scan_target", files)
+	asserts(c"one declaration plus one call site before edit", refs_first.length == 2)
+
+	# Unchanged content: repeat query must return the same count (scan
+	# cache hit, not an empty/stale miss).
+	list[json_value*] refs_repeat = indexd_test_query(sock, r, c"references", c"indexd_scan_target", files)
+	asserts(c"same reference count on repeat query", refs_repeat.length == 2)
+
+	char* v2 = c"import lib.lib\n\nint indexd_scan_target():\n\treturn 1\n\nint indexd_scan_caller_a():\n\treturn indexd_scan_target()\n\nint indexd_scan_caller_b():\n\treturn indexd_scan_target()\n"
+	asserts(c"scan scratch fixture v2 written", file_write_text(indexd_test_scratch_file(), v2))
+	list[json_value*] refs_after = indexd_test_query(sock, r, c"references", c"indexd_scan_target", files)
+	asserts(c"new call site visible after edit (scan cache invalidated)", refs_after.length == 3)
+
+	jsonrpc_write_request(sock, 99, c"shutdown", 0)
+	jsonrpc_read_message(r)
+	frame_reader_free(r)
+	close(sock)
+
+
 int main():
 	indexd_test_shutdown_stale()
 	test_indexd_query_matches_direct_build()
 	test_indexd_cache_invalidates_on_file_change()
+	test_indexd_scan_cache_reflects_file_changes()
 	return 0

@@ -38,60 +38,6 @@ import structures.array_list
 import tools.index.w_index_core
 
 
-/* content hashing (mirrors tools/wexec.w's wexec_hash) */
-
-
-struct windexd_hash:
-	int h1
-	int h2
-
-
-void windexd_hash_init(windexd_hash* h):
-	h.h1 = -2128831035
-	h.h2 = 1000003
-
-
-void windexd_hash_bytes(windexd_hash* h, char* data, int n):
-	int i = 0
-	while (i < n):
-		int byte = data[i] & 255
-		h.h1 = h.h1 * 16777619 + byte
-		h.h2 = h.h2 * 1000003 + byte
-		i = i + 1
-
-
-void windexd_append_hex(string_builder* s, int value):
-	int shift = 28
-	while (shift >= 0):
-		int nibble = (value >> shift) & 15
-		if (nibble < 10):
-			string_append_char(s, '0' + nibble)
-		else:
-			string_append_char(s, 'a' + nibble - 10)
-		shift = shift - 4
-
-
-# A file that fails to open hashes to a fixed sentinel string rather than
-# erroring, so "the file used to exist and now doesn't" still shows up as
-# a hash mismatch (cache miss -> rebuild) instead of being silently
-# skipped.
-char* windexd_hash_file(char* path):
-	windexd_hash h
-	windexd_hash_init(&h)
-	char* text = file_read_text(path)
-	if (text == 0):
-		windexd_hash_bytes(&h, c"<missing>", 9)
-	else:
-		windexd_hash_bytes(&h, text, strlen(text))
-		free(text)
-	string_builder* s = string_new()
-	windexd_append_hex(s, h.h1)
-	windexd_append_hex(s, h.h2)
-	char* result = strclone(s.data)
-	string_free(s)
-	return result
-
-
 /* cache */
 
 
@@ -137,7 +83,7 @@ char* windexd_hash_key(char* cache_key, char* file):
 int windexd_cache_fresh(char* cache_key, windexd_cache_entry* entry):
 	for char* file in entry.idx.files:
 		char* hkey = windexd_hash_key(cache_key, file)
-		char* current = windexd_hash_file(file)
+		char* current = windex_hash_file(file)
 		int same = 0
 		if (hkey in windexd_file_hashes):
 			same = strcmp(windexd_file_hashes[hkey], current) == 0
@@ -151,7 +97,7 @@ int windexd_cache_fresh(char* cache_key, windexd_cache_entry* entry):
 void windexd_stamp_entry(char* cache_key, windexd_cache_entry* entry):
 	for char* file in entry.idx.files:
 		char* hkey = windexd_hash_key(cache_key, file)
-		windexd_file_hashes[hkey] = windexd_hash_file(file)
+		windexd_file_hashes[hkey] = windex_hash_file(file)
 		free(hkey)
 
 
