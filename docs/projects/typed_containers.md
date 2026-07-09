@@ -148,7 +148,45 @@ existing behavior is unchanged.
 - Multi-word scalar elements on x86 (e.g. `list[int64]`).
 - Struct keys for maps and sets (values are done; keys still hash words,
   C strings, or `string` descriptors).
-- Migrating compiler-internal containers (`structures/list.w`, the symbol
-  table) to `list[T]`: blocked until a seed update (`./wbuild update`) makes
-  the syntax available inside `compiler/`, `grammar/`, and
-  `code_generator/` sources.
+
+## Migrating compiler-internal containers (issue #96)
+
+The seed blocker described in earlier revisions of this doc is resolved:
+`list[T]` landed (#58) and a subsequent `./wbuild update` promoted the
+seed, so `map`/`set`/`list[T]` syntax is legal inside `compiler/`,
+`grammar/`, and `code_generator/` sources.
+
+- Done: `compiler/type_table.w`'s type-record storage now uses
+  `list[int]` (`type_records`) instead of `structures/list.w`'s
+  word-sized generic array. Type-table entries were already stored as
+  untyped words (record pointers cast to `int`), so this was a direct,
+  same-width swap; `type_count()` and `type_table_truncate()` were added
+  as the public surface for the two external readers that used to reach
+  into the transitively-imported `structures/list.w` globals
+  (`compiler/compiler.w`'s `symbols_dump`, and the checkpoint/rollback
+  logic in `debugger/eval.w` and `repl.w`, which now call
+  `type_table_truncate()` to discard type-table entries pushed by a
+  compile that failed and was rolled back — `list[T]`'s `.length` is
+  read-only at the language level, so that helper reaches through to the
+  `__w_list` runtime struct directly).
+- Deferred: `compiler/symbol_table.w` was never built on
+  `structures/hash_map.w` or `structures/array_list.w` — it's a
+  hand-packed, append-only byte blob scanned linearly by
+  `sym_lookup()`, with `t` offsets used as stable handles threaded
+  through backpatch chains, GOT slots, and debug-location bookkeeping
+  throughout codegen. Moving it onto `map[K, V]` would mean giving up
+  those raw offset-as-handle semantics across every codegen call site
+  that holds one, for no behavioral gain, so it stays as is.
+- Deferred: the parser generator (`libs/extras/parser_generator/`),
+  `c_import`/`c_preprocessor` (`libs/extras/c_import/`,
+  `libs/extras/c_preprocessor/`), `lib/task.w`, `lib/json_rpc.w`,
+  `lib/event_loop.w`, `tools/wexec.w`, and `debugger/convert.w` still use
+  `structures/array_list.w`/`structures/hash_map.w`/`structures/list.w`.
+  These are outside the seed-constrained directories (already buildable
+  with `bin/wv2`, so never blocked), but several call sites use
+  `structures/list.w`'s `.join()`/`.split_string()` or
+  `structures/hash_map.w`'s `get_default()`-style helpers that `list[T]`/
+  `map[K, V]` don't have yet (see the "Deferred work" list above and
+  `hash_maps_sets.md`). Migrating them is left for a follow-up so this
+  first step could land and stay verified independently, per issue #96's
+  guidance to land one subsystem at a time.

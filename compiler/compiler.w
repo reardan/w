@@ -365,7 +365,7 @@ char* symbols_kind_name(int symtype):
 # follow alias targets). Only struct/union/enum/alias/fn declarations record
 # locations, so the default is "struct".
 char* symbols_type_kind_name(int type_index):
-	int t = get(type_index)
+	int t = cast(int, type_record(type_index))
 	int kind = load_ptr(t + 205 * __word_size__)
 	if (kind == type_kind_alias):
 		return c"alias"
@@ -468,9 +468,8 @@ void symbols_dump(int json):
 			free(type_name)
 		t = next_token(t)
 	# User-declared types: structs, unions, enums, and type aliases.
-	# 'length' is the type table's structures.list element count.
 	int i = 0
-	while (i < length):
+	while (i < type_count()):
 		if (type_decl_file_index(i) >= 0):
 			symbols_emit(json, type_get_name(i), symbols_type_kind_name(i), type_get_name(i), type_decl_file_index(i), type_decl_line(i), type_decl_column(i), i)
 		i = i + 1

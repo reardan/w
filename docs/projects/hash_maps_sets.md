@@ -101,4 +101,15 @@ types because their descriptors point into the enclosing object.
 - Contextual bare literals.
 - Further pseudo-methods such as `discard` and `clear`.
 - Struct keys (values are done).
-- Migrating compiler symbol/type tables to built-in maps.
+- Migrating the compiler's symbol table to a built-in map: it was never
+  actually backed by `structures/hash_map.w` to begin with (see
+  `typed_containers.md`'s "Migrating compiler-internal containers"
+  section) — it's a hand-packed byte blob scanned linearly, with table
+  offsets used as stable handles across codegen, so there's no hash-map
+  call site there to migrate. The compiler's *type* table did use a
+  generic container (`structures/list.w`) and has been migrated to
+  `list[int]` (issue #96); the remaining `structures/array_list.w`/
+  `structures/hash_map.w` consumers (parser generator, c_import/
+  c_preprocessor, `lib/task.w`, `lib/json_rpc.w`, `lib/event_loop.w`,
+  `tools/wexec.w`) are deferred to a follow-up, several pending the
+  richer pseudo-methods above.
