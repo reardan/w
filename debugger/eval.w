@@ -130,7 +130,7 @@ int dbg_eval_compile(char* expr, int stop_addr, int esp):
 	int saved_break_in_switch = break_in_switch
 	int saved_defer_count = defer_count
 	int saved_number_of_args = number_of_args
-	int saved_type_count = length /* structures.list backs the type table */
+	int saved_type_count = type_count()
 	int saved_function_symbol = current_function_symbol
 
 	repl_recovery = 1
@@ -150,7 +150,7 @@ int dbg_eval_compile(char* expr, int stop_addr, int esp):
 		break_in_switch = saved_break_in_switch
 		defer_count = saved_defer_count
 		number_of_args = saved_number_of_args
-		length = saved_type_count
+		type_table_truncate(saved_type_count)
 		current_function_symbol = saved_function_symbol
 		pointer_indirection = 0
 		diag_clear()

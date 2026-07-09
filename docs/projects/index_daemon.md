@@ -89,24 +89,36 @@ file).
 `stat()`/mtime syscall wrapper — `tools/wexec.w`'s build cache made the
 same choice for the same reason). On every request, every file in the
 cached entry's transitive closure is re-read and rehashed
-(`windexd_hash_file`, the same two-multiplier rolling hash
-`tools/wexec.w`'s `wexec_hash` uses, reimplemented locally rather than
-imported since `wexec.w` owns its own `main()` and this codebase's
-import model has no story for importing a file that defines one — see
-"No library imports across CLI mains" below). Any mismatch — content
-changed, or a previously-present file is now missing — triggers a full
-rebuild of that one entry; other cached entries are untouched.
+(`windex_hash_file`, the same two-multiplier rolling hash
+`tools/wexec.w`'s `wexec_hash` uses, reimplemented in `w_index_core.w`
+rather than imported since `wexec.w` owns its own `main()` and this
+codebase's import model has no story for importing a file that defines
+one — see "No library imports across CLI mains" below). Any mismatch —
+content changed, or a previously-present file is now missing — triggers
+a full rebuild of that one entry; other cached entries are untouched.
 
-This means a **cache hit still re-reads and re-scans every file in the
-closure** (the reference/caller/callee textual scan is not itself
-cached, only the `wv2 symbols --json` compile is) — for a small
-single-file entry this is negligible, but for a large closure like
-`w.w`'s it is measurable:
+**Per-file scan cache** (`windex_file_cache`/`windex_file_identifiers`
+in `w_index_core.w`): a cache-hit index rebuild is not the whole story —
+`windex_cmd_references`/`callers`/`callees` still re-read and
+re-scanned every file in the closure for identifiers on *every* query,
+even repeat queries against the same unchanged files, since only the
+`wv2 symbols --json` compile was cached. `windex_file_identifiers`
+closes that gap: a process-wide (not per-`windex_index`), content-hash
+keyed cache of `windex_scan_all_identifiers`'s output per file, shared
+across every cache entry — the same file appearing in more than one
+entry's transitive closure, or being queried by name after name, now
+gets scanned once. Content-addressed like the index cache: a hash
+mismatch just replaces the entry, no separate invalidation step. The
+returned list is shared, so callers that mutate a hit in place
+(`references`/`callers` add `file`/`is_declaration` fields) clone first
+via `windex_clone_identifier_hit`/`windex_filter_identifiers`; `callees`
+only reads, so it uses the shared list directly.
 
 | Query (`references sym_get_value w.w`, 61 hits) | Time |
 |---|---|
-| Cold (daemon builds it) | 17.0s |
-| Warm (cache hit, closure still rescanned) | 2.15s |
+| Cold (daemon builds it) | 23.9s |
+| Warm, index cache only (pre-scan-cache) | 2.15s |
+| Warm, index + scan cache | 0.10s |
 
 vs. the common case of a single-file entry point:
 
@@ -115,12 +127,11 @@ vs. the common case of a single-file entry point:
 | Cold | 1.87s |
 | Warm | 0.09s |
 
-Both warm results are byte-identical to the cold ones. Caching the
-per-file identifier scan (invalidated per file rather than per cache
-entry) would close most of the remaining 2.15s gap on large closures;
-left as future work rather than built speculatively here, since the
-common agent workflow — repeated queries scoped to the file(s) currently
-being edited — already lands in the sub-100ms range.
+A different symbol name queried against the same already-cached `w.w`
+entry (`callers windex_build w.w`, a cold *index* hit but a warm *scan*
+hit) also lands at 0.09s, confirming the scan cache pays off across
+different queries against the same files, not just identical repeats.
+All warm results are byte-identical to the cold ones.
 
 ## Fallback and auto-start
 
@@ -184,12 +195,22 @@ transparently through the CLI.
 - **No library imports across CLI-`main()` files.** This codebase's
   import model has no precedent for one file with a `main()` importing
   another file that also defines one (confirmed by grep — no existing
-  `.w` file does this). `w_indexd.w` therefore reimplements the small
-  content-hash helper `tools/wexec.w` already has (`wexec_hash` /
-  `windexd_hash`) rather than importing it, since `wexec.w` is itself a
-  `main()`-bearing CLI. If this pattern recurs, factoring `wexec_hash`
-  into a `main()`-free `lib.hash`-style module would remove the
+  `.w` file does this). `w_index_core.w` (`main()`-free, imported by
+  both `w_index.w` and `w_indexd.w`) is where the content-hash helper
+  (`windex_hash_text`/`windex_hash_file`) lives, so the daemon and the
+  per-file scan cache share one implementation — but it is still a
+  second copy of the same rolling hash `tools/wexec.w`'s `wexec_hash`
+  uses, since `wexec.w` is itself a `main()`-bearing CLI and can't be
+  imported. If this pattern recurs elsewhere, factoring `wexec_hash`
+  into a `main()`-free `lib.hash`-style module would remove the last
   duplication for good.
+- **`callers`/`callees` are still O(references × declarations)** per
+  query (`windex_enclosing_function` in `w_index_core.w` does a linear
+  scan of every declaration per reference). The scan cache above removes
+  the *scanning* cost from a hot loop over the same files; this
+  resolution cost is untouched and would now be the next bottleneck a
+  repeated `callers`/`callees` hot loop would hit, per
+  `docs/projects/semantic_index.md`'s existing note on this.
 
 ## Testing
 
@@ -204,13 +225,20 @@ transparently through the CLI.
   build, not just *some* answer.
 - **Cache-hit correctness**: an unchanged repeat query against the same
   entry file returns the same result (not empty, not stale-but-wrong).
-- **Invalidation**: a scratch fixture (`bin/indexd_test_fixture.w`,
-  generated at test time, not a tracked file — mutating a real `tests/`
-  fixture mid-test would be poor practice) is queried, rewritten to
-  rename its one symbol, then queried again with the *same* entry-files
-  cache key; the daemon must stop finding the old name and start finding
-  the new one, proving the freshness check actually rebuilds rather than
+- **Index-cache invalidation**: a scratch fixture (generated at test
+  time, not a tracked file — mutating a real `tests/` fixture mid-test
+  would be poor practice) is queried via `symbol`, rewritten to rename
+  its one symbol, then queried again with the *same* entry-files cache
+  key; the daemon must stop finding the old name and start finding the
+  new one, proving the freshness check actually rebuilds rather than
   serving a stale cached index.
+- **Scan-cache invalidation**: a separate scenario, since `symbol`
+  never touches `windex_file_identifiers` (only `references`/
+  `callers`/`callees` do). Queries `references` for a target function,
+  confirms a repeat query returns the same count (cache hit), then adds
+  a second call site to the same file and confirms the new occurrence
+  is visible on the next query — the scan cache must not serve a stale
+  hit count.
 
 `index_test.w` and `index_mcp_test.w` needed no changes and still pass —
 both exercise `bin/windex`/`bin/wimcp` as black boxes and get

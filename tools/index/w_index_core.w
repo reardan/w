@@ -53,6 +53,72 @@ void windexd_write_port(int port):
 	string_free(s)
 
 
+/* content hashing, shared by the daemon's per-entry freshness check
+   (windexd_cache_fresh) and the per-file scan cache below. Two
+   32-bit multiplicative rolling hashes with independent multipliers
+   (the FNV prime and a prime from Python's tuple hash) — the same
+   scheme tools/wexec.w's wexec_hash uses for its build cache, chosen
+   for the same reason: no mtime/stat() syscall wrapper exists in this
+   codebase, so staleness has to be content-addressed. Reimplemented
+   here rather than imported since wexec.w defines its own main() and
+   this codebase's import model has no story for importing a file that
+   does (see docs/projects/index_daemon.md's known limitations). */
+
+
+struct windex_content_hash:
+	int h1
+	int h2
+
+
+void windex_content_hash_init(windex_content_hash* h):
+	h.h1 = -2128831035
+	h.h2 = 1000003
+
+
+void windex_content_hash_bytes(windex_content_hash* h, char* data, int n):
+	int i = 0
+	while (i < n):
+		int byte = data[i] & 255
+		h.h1 = h.h1 * 16777619 + byte
+		h.h2 = h.h2 * 1000003 + byte
+		i = i + 1
+
+
+void windex_content_hash_append_hex(string_builder* s, int value):
+	int shift = 28
+	while (shift >= 0):
+		int nibble = (value >> shift) & 15
+		if (nibble < 10):
+			string_append_char(s, '0' + nibble)
+		else:
+			string_append_char(s, 'a' + nibble - 10)
+		shift = shift - 4
+
+
+char* windex_hash_text(char* text):
+	windex_content_hash h
+	windex_content_hash_init(&h)
+	windex_content_hash_bytes(&h, text, strlen(text))
+	string_builder* s = string_new()
+	windex_content_hash_append_hex(s, h.h1)
+	windex_content_hash_append_hex(s, h.h2)
+	char* result = strclone(s.data)
+	string_free(s)
+	return result
+
+
+# A file that fails to open hashes to a fixed sentinel string rather
+# than erroring, so "the file used to exist and now doesn't" is a hash
+# mismatch (cache miss) rather than being silently skipped.
+char* windex_hash_file(char* path):
+	char* text = file_read_text(path)
+	if (text == 0):
+		return windex_hash_text(c"<missing>")
+	char* result = windex_hash_text(text)
+	free(text)
+	return result
+
+
 struct windex_index:
 	# Declarations from windex_build(), in 'wv2 symbols --json' order.
 	list[json_value*] decls
@@ -238,6 +304,85 @@ list[json_value*] windex_scan_identifiers(char* text, char* name):
 	return hits
 
 
+/* per-file scan cache: windex_scan_all_identifiers is the expensive
+   part of a query (a full linear scan producing one json_value* per
+   identifier-shaped word), and the same file routinely shows up in
+   more than one query's transitive closure — repeat queries against an
+   unchanged file, and different queries whose entry files overlap,
+   both currently re-scanned it from scratch. This is process-wide
+   (not per windex_index), so it pays off across a daemon's whole
+   lifetime (docs/projects/index_daemon.md); it is a no-op win within
+   one CLI invocation but harmless there too. Content-addressed like
+   the daemon's own cache: no separate invalidation step, a hash
+   mismatch just replaces the entry. */
+
+
+struct windex_file_cache_entry:
+	char* hash
+	list[json_value*] identifiers
+
+
+map[char*, windex_file_cache_entry*] windex_file_cache
+int windex_file_cache_ready
+
+
+# Every identifier-shaped word in 'file' (windex_scan_all_identifiers),
+# reusing a cached scan when the file's content hash has not changed
+# since it was last read. Returns 0 when the file cannot be read.
+#
+# The returned list is shared and reused by later callers against the
+# same unchanged file — callers must treat it as read-only (do not
+# json_free() its elements or json_object_set() onto them); clone first
+# via windex_clone_identifier_hit if a mutable copy is needed.
+list[json_value*] windex_file_identifiers(char* file):
+	if (windex_file_cache_ready == 0):
+		windex_file_cache = new map[char*, windex_file_cache_entry*]
+		windex_file_cache_ready = 1
+	char* text = file_read_text(file)
+	if (text == 0):
+		return 0
+	char* hash = windex_hash_text(text)
+	if (file in windex_file_cache):
+		windex_file_cache_entry* cached = windex_file_cache[file]
+		if (strcmp(cached.hash, hash) == 0):
+			free(hash)
+			free(text)
+			return cached.identifiers
+		free(cached.hash)
+		for json_value* old in cached.identifiers:
+			json_free(old)
+		cached.hash = hash
+		cached.identifiers = windex_scan_all_identifiers(text)
+		free(text)
+		return cached.identifiers
+	list[json_value*] identifiers = windex_scan_all_identifiers(text)
+	free(text)
+	windex_file_cache_entry* entry = new windex_file_cache_entry()
+	entry.hash = hash
+	entry.identifiers = identifiers
+	windex_file_cache[file] = entry
+	return identifiers
+
+
+json_value* windex_clone_identifier_hit(json_value* hit):
+	json_value* clone = json_object()
+	json_object_set(clone, c"name", json_string(strclone(windex_string_member(hit, c"name"))))
+	json_object_set(clone, c"line", json_int(windex_int_member(hit, c"line", 0)))
+	json_object_set(clone, c"column", json_int(windex_int_member(hit, c"column", 0)))
+	return clone
+
+
+# Cloned occurrences of exactly 'name' among a (possibly shared, cached)
+# identifier list — cloning keeps the shared list read-only for callers
+# that mutate hits in place (adding "file"/"is_declaration" fields).
+list[json_value*] windex_filter_identifiers(list[json_value*] all, char* name):
+	list[json_value*] hits = new list[json_value*]
+	for json_value* hit in all:
+		if (strcmp(windex_string_member(hit, c"name"), name) == 0):
+			hits.push(windex_clone_identifier_hit(hit))
+	return hits
+
+
 /* function body spans, approximated from column-0 indentation */
 
 
@@ -363,11 +508,10 @@ void windex_cmd_struct(windex_index* idx, char* name, string_builder* out):
 
 void windex_cmd_references(windex_index* idx, char* name, string_builder* out):
 	for char* file in idx.files:
-		char* text = file_read_text(file)
-		if (text == 0):
+		list[json_value*] all = windex_file_identifiers(file)
+		if (all == 0):
 			continue
-		list[json_value*] hits = windex_scan_identifiers(text, name)
-		free(text)
+		list[json_value*] hits = windex_filter_identifiers(all, name)
 		for json_value* hit in hits:
 			int line = windex_int_member(hit, c"line", 0)
 			int column = windex_int_member(hit, c"column", 0)
@@ -381,11 +525,10 @@ void windex_cmd_references(windex_index* idx, char* name, string_builder* out):
 void windex_cmd_callers(windex_index* idx, char* name, string_builder* out):
 	list[json_value*] refs = new list[json_value*]
 	for char* file in idx.files:
-		char* text = file_read_text(file)
-		if (text == 0):
+		list[json_value*] all = windex_file_identifiers(file)
+		if (all == 0):
 			continue
-		list[json_value*] hits = windex_scan_identifiers(text, name)
-		free(text)
+		list[json_value*] hits = windex_filter_identifiers(all, name)
 		for json_value* hit in hits:
 			json_object_set(hit, c"file", json_string(strclone(file)))
 			refs.push(hit)
@@ -422,11 +565,12 @@ void windex_cmd_callees(windex_index* idx, char* name, string_builder* out):
 		return
 	list[int] boundaries = windex_get_boundaries(idx, file)
 	int end_line = windex_span_end(boundaries, start_line)
-	char* text = file_read_text(file)
-	if (text == 0):
+	list[json_value*] all = windex_file_identifiers(file)
+	if (all == 0):
 		return
-	list[json_value*] all = windex_scan_all_identifiers(text)
-	free(text)
+	# 'all' is the shared per-file cache (windex_file_identifiers) — read
+	# only, do not free its elements; only out_record (built fresh below)
+	# is owned by this loop.
 	for json_value* occ in all:
 		int line = windex_int_member(occ, c"line", 0)
 		int column = windex_int_member(occ, c"column", 0)
@@ -448,7 +592,6 @@ void windex_cmd_callees(windex_index* idx, char* name, string_builder* out):
 					json_object_set(out_record, c"column", json_int(column))
 					windex_emit(out, out_record)
 					json_free(out_record)
-		json_free(occ)
 
 
 # Textual re-parse of 'import a.b[.*][ as alias]' lines (column 0 only);

@@ -11,15 +11,6 @@ void test_type_size():
 	assert_equal(884, type_size())
 
 
-# same as list.test_push_pop()
-void test_list_functions():
-	create()
-	int want = 1234
-	push(want)
-	assert_equal(want, pop())
-	assert_equal(length, 0)
-
-
 void push_advanced_types():
 	# these pointer types are deprecated, use * instead
 	type_push(c"void*")
@@ -41,7 +32,7 @@ void test_type_lookup():
 void test_extra_types():
 	push_basic_types()
 	push_advanced_types()
-	assert_equal(length - 1, type_lookup(c"int(int,int)"))
+	assert_equal(type_count() - 1, type_lookup(c"int(int,int)"))
 
 
 void test_add_get_print_2_fields():
@@ -76,7 +67,7 @@ void test_add_get_50_fields():
 		type_add_arg(type_index, strclone(field), int_type)
 		i = i + 1
 
-	int t = get(type_index)
+	int t = cast(int, type_record(type_index))
 	assert_equal(count, load_int(t + 4))
 
 

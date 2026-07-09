@@ -30,6 +30,11 @@ container pointer, not the entries.
 - `m[k] = v` inserts or overwrites.
 - `k in m` and `k in s` test membership and return `bool`.
 - `.length` returns the number of live entries.
+- `m.get(k)` is the same as `m[k]`: it traps on a missing key.
+- `m.get(k, default)` returns `default` instead of trapping when `k` is
+  absent (issue #19).
+- `m.remove(k)` / `s.remove(k)` delete the entry, returning whether it was
+  present; `s.add(k)` inserts a set member.
 - `for K k in m` iterates map keys; values are read with `m[k]`.
 - `for K k, V v in m` iterates keys and values together, one probe per
   entry (see `tests/map_set_builtin_test.w`).
@@ -94,7 +99,17 @@ types because their descriptors point into the enclosing object.
 ## Deferred work
 
 - Contextual bare literals.
-- Rich pseudo-methods such as `get`, `get_default`, `discard`, and `clear`
-  (tracked in issue #19).
+- Further pseudo-methods such as `discard` and `clear`.
 - Struct keys (values are done).
-- Migrating compiler symbol/type tables to built-in maps.
+- Migrating the compiler's symbol table to a built-in map: it was never
+  actually backed by `structures/hash_map.w` to begin with (see
+  `typed_containers.md`'s "Migrating compiler-internal containers"
+  section) — it's a hand-packed byte blob scanned linearly, with table
+  offsets used as stable handles across codegen, so there's no hash-map
+  call site there to migrate. The compiler's *type* table did use a
+  generic container (`structures/list.w`) and has been migrated to
+  `list[int]` (issue #96); the remaining `structures/array_list.w`/
+  `structures/hash_map.w` consumers (parser generator, c_import/
+  c_preprocessor, `lib/task.w`, `lib/json_rpc.w`, `lib/event_loop.w`,
+  `tools/wexec.w`) are deferred to a follow-up, several pending the
+  richer pseudo-methods above.

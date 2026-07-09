@@ -473,7 +473,7 @@ int repl_compile_entry(char* path):
 	int saved_break_in_switch = break_in_switch
 	int saved_defer_count = defer_count
 	int saved_number_of_args = number_of_args
-	int saved_type_count = length /* structures.list backs the type table */
+	int saved_type_count = type_count()
 	int saved_imported_count = imported_count
 	int saved_alias_base = import_alias_base
 	int saved_alias_count = import_alias_count
@@ -498,7 +498,7 @@ int repl_compile_entry(char* path):
 		break_in_switch = saved_break_in_switch
 		defer_count = saved_defer_count
 		number_of_args = saved_number_of_args
-		length = saved_type_count
+		type_table_truncate(saved_type_count)
 		imported_count = saved_imported_count
 		import_alias_base = saved_alias_base
 		import_alias_count = saved_alias_count
