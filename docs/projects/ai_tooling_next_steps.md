@@ -90,6 +90,19 @@ is a queue, not an archive.
   over stdin (see the `w-debug-wdbg` skill); a structured wrapper
   remains deferred until an agent workflow actually needs programmatic
   stepping.
+- **`wdbg` silently skips breakpoints on a source with no `debugger`
+  statement and no `--break_start`.** Reproduce: `printf 'break f.w:9\nc\n'
+  | ./bin/wdbg f.w` on a program that has neither — the debuggee races
+  ahead of the piped commands and can crash (or exit) before `break`
+  ever applies; the crash still drops into the command loop for
+  post-mortem inspection, so the failure mode isn't a hang, just a
+  silently-skipped breakpoint. All three debug fixtures
+  (`tests/debug_fixture{,2,3}.w`) have their own `debugger` statement,
+  which is why `debug_test` never hits this. Fixed in the skill doc
+  (`--break_start` now called out explicitly); a real fix would have
+  `wdbg` warn (or auto-pause) when breakpoints/conditions/logpoints are
+  set over stdin with neither a `debugger` statement nor
+  `--break_start` in effect.
 - **Conditional breakpoints/hit counts/logpoints land soon** (design:
   `docs/projects/debugger_conditional_breakpoints.md`). They add new
   stable, grep-able output lines (`logpoint N hit H: expr = value`,

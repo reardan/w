@@ -21,6 +21,23 @@ Put a `debugger` statement in the source where you want to stop, or set
 breakpoints from the command loop (`break function`, `break file:line`,
 `tbreak` for one-shot).
 
+**Without a `debugger` statement already in the source, pass
+`--break_start`.** Breakpoints set over stdin only take effect once the
+debuggee starts running; if nothing pauses it first, it races ahead of
+your `break`/`condition`/`log` commands and can run to completion (or
+crash) before any of them apply — the crash still drops into the command
+loop for post-mortem inspection, but every breakpoint you meant to hit
+along the way is silently skipped. `--break_start` stops before `main`
+so commands sent first are guaranteed to land:
+
+```sh
+printf 'break file.w:42\nc\nprint x\nc\n' | ./bin/wdbg file.w --break_start
+```
+
+Only skip `--break_start` when the source already has its own `debugger`
+statement (or you deliberately want the debuggee to run unmanaged until a
+crash for pure post-mortem inspection).
+
 ## Scripting pattern
 
 Pipe commands; each stop consumes the next lines; `c` continues:
