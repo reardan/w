@@ -90,6 +90,12 @@ is a queue, not an archive.
   over stdin (see the `w-debug-wdbg` skill); a structured wrapper
   remains deferred until an agent workflow actually needs programmatic
   stepping.
+- **Conditional breakpoints/hit counts/logpoints land soon** (design:
+  `docs/projects/debugger_conditional_breakpoints.md`). They add new
+  stable, grep-able output lines (`logpoint N hit H: expr = value`,
+  extended `info breakpoints` fields) to the same text protocol — worth
+  keying a future structured wrapper off, and worth a
+  `w-debug-wdbg` skill example once merged.
 - **Semantic index.** `symbols --json` dumps declarations per file; a
   cross-file reference index (and `w-index-mcp`) is still unbuilt.
 - **LSP coverage.** `bin/wlsp` publishes diagnostics and

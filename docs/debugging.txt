@@ -137,6 +137,13 @@ Current state:
 
 Future:
 
-	conditional breakpoints and hit counts
+	conditional breakpoints, hit counts and logpoints (dprintf-style
+		breakpoints that log and auto-continue): the natural next
+		increment, design in docs/projects/debugger_conditional_breakpoints.md
+	break similar: fuzzy/suffix matching for unresolved break targets
+
+Split off as separate, lower-priority backlog items (were tracked
+alongside the above in #38, now their own issues):
+
 	hardware watchpoints via an out-of-process ptrace mode
 	web UI debugger
