@@ -39,6 +39,7 @@ Compiler
 		LSP MVP: wlsp with check-driven diagnostics and symbols-driven go-to-definition
 		Semantic index (windex) and w-index-mcp: cross-file references, callers/callees, struct fields, imports
 		LSP hover, find-references and rename (windex-backed)
+		w-debug-mcp: interactive wdbg session over MCP (debug_start/debug_send/debug_stop)
 
 		True generics/templates with explicit instantiation (monomorphizing re-parse)
 		Generic type-argument inference at call sites (max(3, 5) infers T = int)

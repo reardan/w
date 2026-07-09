@@ -1,8 +1,8 @@
 # Semantic index: `windex` / `w-index-mcp`
 
 Status: **implemented** — `tools/index/w_index.w` (built as `bin/windex`,
-`make windex`) and `tools/mcp/w_index_mcp.w` (built as `bin/wimcp`,
-`make wimcp`), the two deferred items from
+`./wbuild windex`) and `tools/mcp/w_index_mcp.w` (built as `bin/wimcp`,
+`./wbuild wimcp`), the two deferred items from
 [reardan/w#25](https://github.com/reardan/w/issues/25) named "semantic
 indexer" and "`w-index-mcp`". `bin/wlsp` (`docs/projects/lsp.md`) uses
 `windex` to add hover, find-references, and rename to the LSP MVP.
@@ -80,7 +80,7 @@ already are, not a terminal-first one like `w check`.
 
 ## `w-index-mcp` tools
 
-`tools/mcp/w_index_mcp.w` (`make wimcp` → `bin/wimcp`, same JSON-RPC 2.0
+`tools/mcp/w_index_mcp.w` (`./wbuild wimcp` → `bin/wimcp`, same JSON-RPC 2.0
 stdio shape as `w-toolchain-mcp`): `find_symbol`, `find_references`,
 `get_type`, `get_struct_fields`, `callers`, `callees` take
 `{name, files}`; `imports_for` takes `{file}`;

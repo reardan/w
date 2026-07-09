@@ -1251,7 +1251,7 @@
 				{"cmd": ["bin/wtest", "changed", "tools/mcp/w_debug_mcp.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "debug_mcp_test\n"},
 				{"cmd": ["bin/wtest", "changed", "debugger/wdbg.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "debug_test\ndebug_mcp_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "debug_test\ndebug_test_x64\ndebug_mcp_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tools/hooks/w_check_hook.w", ".cursor/hooks.json"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "hook_test\n"},
 				{"cmd": ["bin/wtest", "changed", ".cursor/rules/w-source.mdc", ".cursor/skills/w-check-diagnostics/SKILL.md"], "stdout_file": "bin/wtest_map.out"},

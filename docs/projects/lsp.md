@@ -90,9 +90,7 @@ to 0-based LSP positions; a diagnostic's range spans the reported
   return every match (hover renders the richest one, see above).
 - **References/rename are textual**, not scope-checked — inherited
   directly from `windex`'s contract; see
-  `docs/projects/semantic_index.md`'s "Known limitations" (in particular
-  the `main` special case, which affects caller/callee resolution, not
-  references/rename directly).
+  `docs/projects/semantic_index.md`'s "Known limitations".
 - **x86 only.** The server itself is built for x86 (the structures/
   container stack has known x64 bugs), and it invokes plain
   `wv2 check`/`wv2 symbols`/`windex` — x64-specific diagnostics are out

@@ -1,7 +1,7 @@
 # `w-debug-mcp`
 
 Status: **implemented** — `tools/mcp/w_debug_mcp.w` (built as `bin/wdmcp`,
-`make wdmcp`), the last of the four MCP servers named in
+`./wbuild wdmcp`), the last of the four MCP servers named in
 [reardan/w#25](https://github.com/reardan/w/issues/25). `w-toolchain-mcp`
 and `w-index-mcp` (`docs/projects/semantic_index.md`) shell out to a
 subprocess per tool call; `wdbg`'s command loop doesn't fit that shape —
@@ -67,7 +67,7 @@ waiting) is safe.
 - **One command per `debug_send` call.** No batching; this is the point
   (see "Why this was deferred" above) but means a long, purely mechanical
   sequence costs one round trip per line.
-- **x86 only**, matching `wdbg`'s own build (`make wdbg`) and every other
+- **x86 only**, matching `wdbg`'s own build (`./wbuild wdbg`) and every other
   tool in this project's AI-tooling surface.
 - **No session limit or idle reaper.** A caller that forgets `debug_stop`
   leaves the child process (and its table entry) around until the server
@@ -76,7 +76,7 @@ waiting) is safe.
 
 ## Testing
 
-`tools/mcp/debug_mcp_test.w` (`make debug_mcp_test`) drives the real
+`tools/mcp/debug_mcp_test.w` (`./wbuild debug_mcp_test`) drives the real
 `bin/wdmcp` over stdio: initialize, `tools/list`, then one live session
 against `tests/debug_no_pause_fixture.w` (deliberately has no `debugger`
 statement) — `debug_start` reaching the pre-main pause,
