@@ -297,7 +297,7 @@ dynamic_test_win64: w FORCE
 
 tests_win64: win64_header_test win64_hello_test win64_smoke_test dynamic_test_win64 FORCE
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test result_propagate_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 defer_64_test default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test switch_64_test for_container_64_test compound_assign_64_test template_string_64_test generator_64_test feature_interaction_64_test feature_combo_64_test dynamic_var_64_test generics_64_test generics_inference_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test task_64_test task_io_64_test format_64_test args_64_test graphics_math_64_test graphics_gl_smoke_test repl_test_x64 debug_test_x64 FORCE
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test result_propagate_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 extern_alias_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 defer_64_test default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test switch_64_test for_container_64_test compound_assign_64_test template_string_64_test generator_64_test feature_interaction_64_test feature_combo_64_test dynamic_var_64_test generics_64_test generics_inference_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test task_64_test task_io_64_test format_64_test args_64_test graphics_math_64_test graphics_gl_smoke_test repl_test_x64 debug_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -322,6 +322,13 @@ dynamic_test_arm64: w FORCE
 	./bin/wv2 arm64 tests/dynamic_test.w -o ./bin/dynamic_test_arm64
 	$(QEMU_ARM64) ./bin/dynamic_test_arm64 | grep -q "dynamic linking OK"
 	@echo "dynamic test arm64 OK"
+
+# extern alias ('= "symbol"'): a library symbol bound under a different
+# W name, once per call signature.
+extern_alias_test_x64: w FORCE
+	./bin/wv2 x64 tests/extern_alias_test.w -o ./bin/extern_alias_test_x64
+	./bin/extern_alias_test_x64 | grep -q "extern alias OK"
+	@echo "extern alias test x64 OK"
 
 # Imported data objects (extern declarations without a parameter list):
 # stdout/stderr/optind arrive via COPY relocations.

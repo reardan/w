@@ -2023,6 +2023,14 @@
 			]
 		},
 		{
+			"name": "extern_alias_test_x64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/extern_alias_test.w", "-o", "bin/extern_alias_test_x64"]},
+				{"cmd": ["bin/extern_alias_test_x64"], "expect_stdout": "extern alias OK"}
+			]
+		},
+		{
 			"name": "c_import_libc_test_x64",
 			"deps": ["wv2"],
 			"steps": [
@@ -2120,6 +2128,7 @@
 				"poll_64_test",
 				"framing_64_test",
 				"dynamic_test_x64",
+				"extern_alias_test_x64",
 				"c_import_libc_test_x64",
 				"float_abi_test_x64",
 				"varargs_test_x64",

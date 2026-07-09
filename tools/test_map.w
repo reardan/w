@@ -102,6 +102,7 @@ void wtest_init_targets():
 	wtest_targets.push(c"list_methods_test")
 	wtest_targets.push(c"str_test")
 	wtest_targets.push(c"math_test")
+	wtest_targets.push(c"extern_alias_test_x64")
 	wtest_targets.push(c"tests")
 
 
@@ -357,6 +358,8 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"str_test")
 	else if (strcmp(path, c"tests/math_test.w") == 0):
 		wtest_add(path, c"math_test")
+	else if (strcmp(path, c"tests/extern_alias_test.w") == 0):
+		wtest_add(path, c"extern_alias_test_x64")
 	else if (starts_with(path, c"tests/parser_generator/")):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):

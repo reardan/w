@@ -15,6 +15,12 @@ A trailing '...' declares a variadic C function: direct calls accept any
 number of extra arguments and emit the ABI conversion inline per call
 site (grammar/postfix_expr.w), applying the C default argument promotions.
 
+An '= "symbol"' suffix binds a library symbol under a different W name:
+
+	extern int objc_msg1(void* recv, void* sel, int a) = "objc_msgSend"
+
+so one C symbol can be declared once per call signature.
+
 extern without a parameter list imports a data object: the loader fills
 reserved space in the image via a COPY relocation and the symbol behaves
 like a normal W global.
@@ -111,11 +117,27 @@ int extern_statement():
 		table_pos = saved_table
 		save_int(table + sym + 22, param_count)
 
+		# Optional '= "symbol"' alias: the loader binds import_name while
+		# W code calls the declared name, so one library symbol can be
+		# declared once per call signature (e.g. objc_msgSend).
+		char* import_name = name
+		if (accept(c"=")):
+			if ((token[0] != '"') & (((token[0] != 'c') | (token[1] != '"')))):
+				error(c"extern alias expects a \"symbol\" string literal")
+			int alias_len
+			if (token[0] == 'c'):
+				alias_len = process_prefixed_string_literal()
+			else:
+				alias_len = process_string_literal()
+			token[alias_len] = 0
+			import_name = strclone(token)
+			get_token()
+
 		# GOT slot the loader relocates (one-entry IAT on win64), emitted
 		# just before the shim so its vaddr is known now; execution enters
 		# at the shim, never the slot.
 		int got_vaddr = dyn_emit_import_slot()
-		dyn_add_import(name, got_vaddr)
+		dyn_add_import(import_name, got_vaddr)
 
 		# The symbol resolves to the shim entry point. For a variadic
 		# function the shim only covers calls that pass exactly the fixed
@@ -130,6 +152,8 @@ int extern_statement():
 			sym_set_got_vaddr(sym, got_vaddr)
 
 		free(param_classes)
+		if (import_name != name):
+			free(import_name)
 		free(name)
 		return 1
 
