@@ -39,6 +39,11 @@ int macho_pad_size
 char* macho_bind_buf
 int macho_bind_size
 
+# File offset of the next free load-command byte (past the fixed set and
+# any dynamic-linking commands). macho_sign.w appends LC_CODE_SIGNATURE
+# here. Initialized to macho_pad_pos in macho_start_arm64.
+int macho_lc_end
+
 
 # --- bind stream writer ---
 
@@ -179,6 +184,9 @@ void macho_emit_dynamic(int text_size, int data_size_padded):
 	if (added_cmds > 0):
 		save_int32(code + 16, load_int32(code + 16) + added_cmds)
 		save_int32(code + 20, load_int32(code + 20) + used)
+
+	# LC_CODE_SIGNATURE (macho_sign.w) appends after whatever we used.
+	macho_lc_end = macho_lc_pos
 
 	if (ordinals != 0):
 		free(ordinals)

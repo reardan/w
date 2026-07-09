@@ -18,14 +18,13 @@ from the shared cache and runs its initializers before _main. Programs
 that use c_lib / extern get their imports bound through the classic
 LC_DYLD_INFO_ONLY commands macho_dynamic.w appends.
 
-The output is unsigned; `codesign -s -` on the Mac adds the ad-hoc
-CodeDirectory until macho_sign.w (Phase 5) lands, and the 1024-byte pad
-after the load commands is where macho_dynamic.w appends import load
-commands, with the rest the headroom codesign_allocate needs to insert
-LC_CODE_SIGNATURE without moving the text. Remember the vnode gotcha when
-re-signing in place: the kernel caches signature state per inode, so a
-previously-executed path must be replaced (write to a new file + rename),
-not overwritten.
+The output is self-signed: macho_finish_arm64 appends an LC_CODE_SIGNATURE
+into the 1024-byte headerpad (shared with macho_dynamic.w's import load
+commands) and macho_sign.w writes an ad-hoc CodeDirectory into __LINKEDIT,
+so a cross-compiled binary runs on the Mac with only a chmod +x — no host
+`codesign` step. Remember the vnode gotcha when re-signing in place: the
+kernel caches signature state per inode, so a previously-executed path must
+be replaced (write to a new file + rename), not overwritten.
 
 Addressing: the image is mandatorily PIE, so the kernel slides it and the
 entry stub's rebase walk (shared with the arm64 ELF writer) patches every
@@ -45,6 +44,7 @@ computed from the nominal bases match the mapped image.
 */
 import code_generator.code_emitter
 import code_generator.macho_dynamic
+import code_generator.macho_sign
 
 
 void error(char *s);                 /* diagnostics.w */
@@ -212,6 +212,7 @@ void macho_start_arm64():
 	# without relinking.
 	macho_pad_pos = codepos
 	macho_pad_size = 1024
+	macho_lc_end = macho_pad_pos
 	emit_zeros(1024)
 
 	# Entry stub, called by dyld as main(argc in x0, argv in x1, ...).
@@ -278,17 +279,63 @@ void macho_finish_arm64():
 	save_int64(code + macho_data_seg_pos + 48, data_size_padded) /* filesize */
 
 	# __LINKEDIT: tail of the file (vmaddr hi word 1 was emitted at start;
-	# patch the low word past __DATA). Zero-length unless a bind stream
-	# gives it a payload.
+	# patch the low word past __DATA). It holds the optional bind stream
+	# and the code signature; final sizes are patched in the signing step.
+	int linkedit_fileoff = text_size + data_size_padded
 	save_int32(code + macho_linkedit_seg_pos + 24, 16777216 + data_size_padded)
-	save_int64(code + macho_linkedit_seg_pos + 40, text_size + data_size_padded)
-	if (macho_bind_size > 0):
-		int linkedit_vm = macho_bind_size + macho_page_size() - 1
-		linkedit_vm = linkedit_vm - (linkedit_vm % macho_page_size())
-		save_int64(code + macho_linkedit_seg_pos + 32, linkedit_vm)       /* vmsize */
-		save_int64(code + macho_linkedit_seg_pos + 48, macho_bind_size)   /* filesize */
+	save_int64(code + macho_linkedit_seg_pos + 40, linkedit_fileoff)
 
-	write(output_fd, code, codepos)
-	write(output_fd, data, datapos)
-	if (macho_bind_size > 0):
-		write(output_fd, macho_bind_buf, macho_bind_size)
+	# Sign the image ad-hoc. The signature sits at a 16-byte-aligned offset
+	# past the bind stream; everything before it (headers, code, data, bind,
+	# alignment padding) is hashed, so this must run after every other byte
+	# and load command — including the ones patched just above — is final.
+	int raw_end = linkedit_fileoff + macho_bind_size
+	int code_limit = (raw_end + 15) & (0 - 16)
+	int pad_bytes = code_limit - raw_end
+	char* ident = c"w"
+	int sig_size = macho_sig_length(code_limit, ident)
+
+	# LC_CODE_SIGNATURE into the headerpad (16 bytes reserved by
+	# macho_emit_dynamic's overflow check). dataoff = codeLimit.
+	if (macho_lc_end + 16 > macho_pad_pos + macho_pad_size):
+		error(c"Mach-O headerpad has no room for LC_CODE_SIGNATURE")
+	save_int32(code + macho_lc_end + 0, 29)          /* LC_CODE_SIGNATURE */
+	save_int32(code + macho_lc_end + 4, 16)          /* cmdsize */
+	save_int32(code + macho_lc_end + 8, code_limit)  /* dataoff */
+	save_int32(code + macho_lc_end + 12, sig_size)   /* datasize */
+	save_int32(code + 16, load_int32(code + 16) + 1)   /* ncmds++ */
+	save_int32(code + 20, load_int32(code + 20) + 16)  /* sizeofcmds += 16 */
+
+	# __LINKEDIT now spans the bind stream + alignment pad + signature.
+	int linkedit_filesize = code_limit + sig_size - linkedit_fileoff
+	int linkedit_vm = linkedit_filesize + macho_page_size() - 1
+	linkedit_vm = linkedit_vm - (linkedit_vm % macho_page_size())
+	save_int64(code + macho_linkedit_seg_pos + 32, linkedit_vm)          /* vmsize */
+	save_int64(code + macho_linkedit_seg_pos + 48, linkedit_filesize)    /* filesize */
+
+	# Assemble the hashed file image contiguously (code buffer, then the
+	# separate data buffer, then the bind stream, then alignment zeros) and
+	# hash it into the CodeDirectory.
+	char* img = malloc(code_limit)
+	int p = 0
+	while (p < text_size):
+		img[p] = code[p]
+		p = p + 1
+	int di = 0
+	while (di < data_size_padded):
+		img[text_size + di] = data[di]
+		di = di + 1
+	int bi = 0
+	while (bi < macho_bind_size):
+		img[linkedit_fileoff + bi] = macho_bind_buf[bi]
+		bi = bi + 1
+	int zi = 0
+	while (zi < pad_bytes):
+		img[raw_end + zi] = 0
+		zi = zi + 1
+
+	macho_build_signature(img, code_limit, text_size, ident)
+
+	write(output_fd, img, code_limit)
+	write(output_fd, macho_sig_buf, macho_sig_size)
+	free(img)

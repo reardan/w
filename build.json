@@ -848,6 +848,14 @@
 			]
 		},
 		{
+			"name": "sha256_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/sha256_test.w", "-o", "bin/sha256_test"]},
+				{"cmd": ["bin/sha256_test"]}
+			]
+		},
+		{
 			"name": "switch_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2623,6 +2631,7 @@
 				"list_methods_test",
 				"str_test",
 				"math_test",
+				"sha256_test",
 				"switch_test",
 				"for_container_test",
 				"default_args_test",

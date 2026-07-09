@@ -231,6 +231,8 @@ void wtest_map_lib(char* path):
 		wtest_add(path, c"str_test")
 	else if (strcmp(path, c"lib/math.w") == 0):
 		wtest_add(path, c"math_test")
+	else if (strcmp(path, c"lib/sha256.w") == 0):
+		wtest_add(path, c"sha256_test")
 	else:
 		wtest_add(path, c"lib_test")
 
@@ -381,6 +383,8 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"str_test")
 	else if (strcmp(path, c"tests/math_test.w") == 0):
 		wtest_add(path, c"math_test")
+	else if (strcmp(path, c"tests/sha256_test.w") == 0):
+		wtest_add(path, c"sha256_test")
 	else if (strcmp(path, c"tests/extern_alias_test.w") == 0):
 		wtest_add(path, c"extern_alias_test_x64")
 	else if (strcmp(path, c"tests/dynamic_darwin_test.w") == 0):
