@@ -226,7 +226,8 @@ current state:
 			webassembly self-compiling
 		directory and build cleanup:
 			settle import grammar vs grammar.* behavior
-			split Makefile into smaller files when the project structure settles
+			remove the Makefile once ./wbuild reaches full parity
+				(plan and current gap list: docs/projects/wexec.md)
 
 	language features (landed):
 		generators + yield (docs/projects/iteration.md, stackful coroutines, x86 + x64)

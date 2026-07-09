@@ -121,11 +121,123 @@ wall-clock bound, `-j 1` serialization and failure propagation in
 end to end. `tools/test_map.w` maps executor/manifest/fixture changes
 to `wexec_test`.
 
-## Not yet done (the rest of the migration)
+## Makefile removal plan
 
-- Port the last non-test conveniences: `update` (seed promotion — port
-  last, keeping behavior byte-for-byte), `test_changed` (needs wexec
-  to accept target names on stdin or an equivalent), and the
-  interactive/debug targets that need tools the environment does not
-  install (`ddd`, `gdb`, `stap`, `radare2`).
-- Delete the Makefile once parity is reached and CI runs `./wbuild`.
+Goal: delete the Makefile once `./wbuild`/`build.json` covers every target
+anyone still runs, and every doc/tool that currently says `make X` says
+`./wbuild X` instead. This section is the tracking checklist; each step
+below should land as its own commit rather than as one large migration.
+
+### Gap, measured
+
+Diffing the Makefile's target names against build.json's `"name"` fields
+(147 Makefile targets, 176 in build.json) finds 34 Makefile targets with
+no build.json counterpart. They split into four groups:
+
+**A. Toolchain targets** — `w`, `update`, `test_changed`.
+- `w` (builds `bin/wv2` from the seed) isn't actually a gap: `wbuild`'s own
+  bootstrap does this unconditionally on a cold tree, and build.json's
+  `wv2` target does it warm (every ported target already depends on
+  `wv2`, the same way Makefile targets depended on `w`). Nothing to port;
+  the Makefile's `w` rule just gets dropped with no replacement.
+- `update` (archives the seed via `archive.sh`, then promotes `bin/wv2` to
+  `./w`) should be ported last and byte-for-byte — it mutates the
+  committed seed, so it's the highest-blast-radius target in the file.
+- `test_changed` (`git diff | wtest changed | xargs make`) needs the
+  `wtest changed` output fed into a build run the same way. Simplest
+  path: teach `wbuild` itself (the shell script, not wexec) a
+  `test_changed` verb that pipes `./bin/wtest changed | xargs ./wbuild`
+  — no executor change needed.
+
+**B. Darwin toolchain** — `build_darwin`, `verify_darwin`, `update_darwin`
+(the seed/verify/promote triad for the `w_darwin` Mach-O seed, codesign
+steps included). wexec and build.json are Linux-only today; this needs
+its own manifest entries (or a separate darwin manifest, since the host
+differs) before CLAUDE.md's Mac-first workflow can drop `make`. Must be
+authored and verified on a Mac, not from a Linux-only session.
+
+**C. Interactive/instrumentation targets that don't fit wexec's execution
+model** — `debug`, `net_debug`, `range_test_debug`, `simple_debug`,
+`struct_test_debug`, `threading_test_debug` (launch `ddd`/`gdb -ex run`
+against a freshly built binary), `log_write`, `net_log`, `net_log_socket`
+(`sudo stap -e '...'`, streamed until killed), and the bare `repl` target
+(an interactive prompt — `repl_test` already covers the automated case and
+is ported). These resist mechanical porting: `tools/wexec.w` always
+redirects a step's stdout/stderr into pipes it polls (`process_run` in
+`lib/process.w`) so it can buffer per-target output and check
+`expect_stdout`/`expect_stderr`, which is fundamentally incompatible with
+a full-screen debugger or a prompt that needs a real TTY. Two options:
+  1. Add a step-level opt-out (e.g. `"tty": true`) that execs with
+     inherited stdio instead of piping, forfeiting capture/timeout for
+     that step.
+  2. Leave these as one-line manual instructions in README/AGENTS
+     ("build with `./wbuild <binary-target>`, then run `ddd
+     ./bin/<binary>` yourself") instead of wexec targets — they were
+     never part of `make tests` and don't need to be part of
+     `./wbuild tests` either.
+  Recommendation: option 2. Less code, and matches how the actual
+  regression tests here (`debug_test`, `wdbg`) are already ported without
+  needing a debugger UI.
+
+**D. One-off dev/demo conveniences** — `asm_test`,
+`asm_codegen_get_context`, `convert`, `cuda_smoke`, `elf`,
+`grapheme_data`, `graphics_demo`, `logging`, `net`, `range`,
+`rewrite_c_strings`, `simple`, `tcp`, `testing_ground`, `whttp`: build and
+run a single binary, no interactivity, no `sudo`. Mechanical ports in
+wexec's existing idiom (compile step, run step) — same shape as the 176
+targets already ported. Do these in one pass so the gap count goes to
+zero in one commit rather than piecemeal.
+
+**`clean`**: no manifest entry needed. `wbuild`'s own header comment
+already documents the replacement (`rm -rf bin` resets the world); the
+Makefile's extra `rm -f wv2 wv3 wv4 wv5 test test_output.txt
+grammar_test` only cleans up root-level artifacts that the Makefile
+itself wrote (wexec's outputs all live under `bin/`), so there's nothing
+to port there beyond keeping `rm -rf bin/.wexec_cache` in the doc note.
+
+### Functional (non-doc) dependents on `make`
+
+Two files execute `make` at runtime, not just mention it in prose —
+these block removal even after every target above is ported:
+- `tools/mcp/w_toolchain_mcp.w`: `mcp_ensure_wv2`, `mcp_ensure_wtest`,
+  `mcp_tool_build`, `mcp_tool_verify` and `mcp_tool_run_tests` all
+  `words.push(c"make")` and shell out to it. Swap each for
+  `./wbuild`/`bin/wexec` invocations; the `mcp_valid_target` allowlist
+  regex and JSON plumbing stay as-is, only argv[0] and the
+  verify/verify_x64 argument names change (they must match build.json's
+  target names).
+- `tools/test_map.w`: `wtest_add`'s dispatch has an explicit
+  `strcmp(path, c"Makefile")` branch (currently falls through to the
+  same `tests` catch-all as everything else, so it's behaviorally inert
+  today) and a `build.json`/`wbuild` branch that adds `wexec_test` +
+  `tests`. Delete the Makefile branch once the Makefile is gone — dead
+  code removal, not a behavior change.
+
+### Doc/prose references
+
+`make <target>` phrasing to flip to `./wbuild <target>`, lowest priority
+(do this pass last, once nothing is left to point at):  `README.md` (the
+Quick facts / Build-verify-test / Repository-layout sections currently
+present `make` as primary and `wbuild` as in-progress — invert that),
+`AGENTS.md` (says commands "live in the Makefile"), `CLAUDE.md`'s
+`## Commands` block, `.cursor/skills/{w-debug-wdbg,w-check-diagnostics,
+w-repl-explore,w-select-tests}`, and the scattered single-line mentions in
+`docs/todo.txt`, `docs/package_metadata.txt` and other `docs/projects/*.md`
+files.
+
+### Sequencing
+
+1. Port group D (mechanical, one commit, closes most of the gap).
+2. Port group B, the darwin triad — needs Mac verification, can't be
+   done or verified from a Linux-only session.
+3. Land group C per the recommendation above (doc-only, no executor
+   change needed).
+4. Port group A's `update` and `test_changed` — `update` last and
+   byte-for-byte, since it mutates the committed seed.
+5. Switch `tools/mcp/w_toolchain_mcp.w` off `make`.
+6. Flip README/AGENTS/CLAUDE.md/skills to present `./wbuild` as primary;
+   run a full `./wbuild tests` (plus `verify_x64`, plus the darwin triad
+   on a Mac) as the parity gate before touching the Makefile itself.
+7. Delete `Makefile`, `tools/test_map.w`'s now-dead Makefile branch, and
+   this section's framing; drop the `Makefile` row from README.md's
+   repository-layout table.
