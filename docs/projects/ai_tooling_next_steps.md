@@ -197,14 +197,16 @@ is a queue, not an archive.
   path exits without a message). Audit compiler exit paths so every
   failure prints at least a one-line diagnostic; a silent exit cost a
   full bisect to find the offending construct.
-- **`lib/testing.w` test discovery is ELF-only.** It walks ELF section
-  headers to find `test_*` symbols, so any testing.w-based test aborts
-  with "No symbol table addr" when compiled `arm64_darwin` and run
-  natively on macOS (observed with `map_set_builtin_test`,
-  `list_builtin_test` 2026-07-09). That caps native darwin testing at
-  the assert-style set in `tools/mac/run_darwin_tests.sh`. Either parse
-  Mach-O `LC_SYMTAB` alongside ELF, or have the compiler emit a static
-  test registry (which would also survive stripped binaries).
+- **Transitive-import reliance is invisible until it breaks.** Three
+  times on 2026-07-09 alone, removing an import from one module broke a
+  *different* file that had silently resolved symbols through it:
+  `tools/lsp/w_lsp.w` used `hash_map` via `structures/json.w` (#145),
+  and `bignum_test`/`type_table_test`/`c_preprocessor_test` used
+  `error()`/`word_size` via `lib/testing.w`'s old compiler imports
+  (#147). The unqualified-alias warning covers aliased imports only;
+  plain imports re-export everything silently. A `w check` mode (or
+  `windex` query) that flags symbols resolved from modules the file
+  does not import directly would catch this class before CI does.
 
 ## Skills / rules upkeep
 

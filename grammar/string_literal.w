@@ -208,25 +208,26 @@ int char_pointer_literal():
 
 # A64: emit the C string inline (padded to 4-byte alignment), branch over it
 # with bl, and take the address bl left in x30.
-void arm64_emit_cstr(int i):
+void arm64_emit_cstr(int i, char* s):
 	int pad = (4 - ((i + 1) & 3)) & 3
 	int data_bytes = (i + 1) + pad
 	a64(op(0x94, 0x000000) | (((4 + data_bytes) >> 2) & op(0x03, 0xffffff))) /* bl over the string */
-	emit(i + 1, token)
+	emit(i + 1, s)
 	emit_zeros(pad)
 	a64(op(0xaa, 0x1e03e0)) /* mov x0, x30 (string address) */
 
 
-# Emit token[0..len] (a NUL-terminated blob) inline in the code stream and
-# leave its address in the accumulator. Used by c"..." literals and the
-# f"..." template-string chunk appender. x86 jumps over the bytes with a
-# call and pops the pushed return address; arm64 uses arm64_emit_cstr.
-void be_emit_inline_cstr(int len):
+# Emit s[0..len] (a NUL-terminated blob) inline in the code stream and
+# leave its address in the accumulator. Used by c"..." literals, the
+# f"..." template-string chunk appender, and the synthesized test
+# registry. x86 jumps over the bytes with a call and pops the pushed
+# return address; arm64 uses arm64_emit_cstr.
+void be_emit_inline_cstr(int len, char* s):
 	if (target_isa == 1):
-		arm64_emit_cstr(len)
+		arm64_emit_cstr(len, s)
 		return
 	call_relative32(len + 1)
-	emit(len + 1, token)
+	emit(len + 1, s)
 	pop_eax()
 
 
@@ -235,7 +236,7 @@ int c_char_pointer_literal():
 		return 0
 	int i = process_prefixed_string_literal()
 	token[i] = 0
-	be_emit_inline_cstr(i)
+	be_emit_inline_cstr(i, token)
 	return 1
 
 

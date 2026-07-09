@@ -41,6 +41,13 @@ The MVP described here has landed:
   Python and was ported to W once `lib/process.w` landed.)
 - README agent tooling guidance and regression targets (`check_json_test`,
   `wtest_map_test`, `mcp_test`) are wired into `./wbuild tests`.
+- `lib/testing.w` test discovery is a compiler-synthesized static
+  registry (`compiler/test_registry.w`, issue #147): `__w_test_main`
+  calls each defined zero-argument `test_*` function in definition
+  order, so discovery works on ELF, Mach-O, and PE alike and survives
+  stripped binaries. It replaced the ELF section-header walk that
+  aborted natively on arm64_darwin ("No symbol table addr") and the
+  per-arch `lib/__arch__/*/elf_introspect.w` modules.
 
 The out-of-scope items at the end of this document remain deferred; the
 living backlog (deferred items plus friction found while dogfooding) is

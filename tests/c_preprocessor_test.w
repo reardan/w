@@ -1,4 +1,5 @@
 import lib.testing
+import compiler.tokenizer
 import libs.extras.c_preprocessor.pp_lexer
 import libs.extras.c_preprocessor.pp_directives
 
