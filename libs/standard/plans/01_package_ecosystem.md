@@ -143,7 +143,7 @@ Install manifest file: `w-install-manifest.txt`
 ### Phase 5: tool integration
 
 - Add a small command-line tool under `tools/` only after library APIs are stable.
-- Wire tests into `Makefile` and `build.json`.
+- Wire tests into `build.json`.
 
 ## Compatibility notes from Python
 

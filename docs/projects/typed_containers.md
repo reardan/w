@@ -149,6 +149,6 @@ existing behavior is unchanged.
 - Struct keys for maps and sets (values are done; keys still hash words,
   C strings, or `string` descriptors).
 - Migrating compiler-internal containers (`structures/list.w`, the symbol
-  table) to `list[T]`: blocked until a seed update (`make update`) makes
+  table) to `list[T]`: blocked until a seed update (`./wbuild update`) makes
   the syntax available inside `compiler/`, `grammar/`, and
   `code_generator/` sources.

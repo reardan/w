@@ -142,6 +142,6 @@ string/symbol table emitters.
   `varargs_w_not_last_error_fixture.w`,
   `varargs_w_default_error_fixture.w`.
 - Targets `default_args_test`, `varargs_w_test` (+ `_64_` variants) in
-  both the Makefile and `build.json`; registered in `tools/test_map.w`.
+  `build.json`; registered in `tools/test_map.w`.
 - `tests/parser_generator/w.pg` grew `param_default` (`= expression`)
   and the `type_ref ELLIPSIS name_token` parameter form.

@@ -1,6 +1,6 @@
 # REPL v1 Design: multi-line entries, persistence, and `repl file.w`
 
-Status: **implemented** (see `repl.w`, the `repl_test` Makefile target and
+Status: **implemented** (see `repl.w`, the `repl_test` build target and
 the notes at the bottom). Goal: make the REPL feel like Python's — you can
 define functions and structs at the prompt, values survive between
 entries, bare expressions echo their result, and `./bin/repl file.w` runs
@@ -215,7 +215,7 @@ an alias for the file mode.
 
 ## H. Testing
 
-Extend the `repl_test` Makefile target (piped stdin, grep assertions),
+Extend the `repl_test` target (piped stdin, output assertions),
 one case per feature:
 
 - multi-line function definition, then a call that prints
@@ -230,11 +230,11 @@ one case per feature:
   and a helper function; assert both the main output and a prompt call
   of the helper afterwards; `--no-main` variant
 
-Regression guards: `make verify` (the `program()` refactor and the
+Regression guards: `./wbuild verify` (the `program()` refactor and the
 `expression()` flag touch the compiler, so the self-host fixpoint must
-stay byte-identical) and the full `make tests`.
+stay byte-identical) and the full `./wbuild tests`.
 
-## Sequencing (each step lands green on `make verify` + `repl_test`)
+## Sequencing (each step lands green on `./wbuild verify` + `repl_test`)
 
 1. Extract `function_definition()` from `program()`; gate the struct
    debug print. Pure refactor.

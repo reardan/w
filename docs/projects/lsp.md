@@ -1,7 +1,7 @@
 # W LSP server (MVP)
 
 Status: **MVP implemented** — `tools/lsp/w_lsp.w`, built as `bin/wlsp`
-(`make wlsp`), tested by `make lsp_test` (part of `make tests`).
+(`./wbuild wlsp`), tested by `./wbuild lsp_test` (part of `./wbuild tests`).
 
 `wlsp` is a stdio Language Server Protocol server written in W. It is a
 thin long-running adapter over the compiler's machine-readable
@@ -94,12 +94,12 @@ VS Code (via a minimal extension or a generic LSP client such as
 "Generic LSP Client"): point the server command at
 `/path/to/w/bin/wlsp` for language id `w`.
 
-Build the server first: `make wlsp` (which bootstraps `bin/wv2` if
-needed via `make build`).
+Build the server first: `./wbuild wlsp` (which bootstraps `bin/wv2` if
+needed via `./wbuild build`).
 
 ## Testing
 
-`make lsp_test` compiles `tools/lsp/lsp_test.w` and drives the real
+`./wbuild lsp_test` compiles `tools/lsp/lsp_test.w` and drives the real
 binary over piped stdio (the `mcp_test` pattern): initialize handshake,
 didOpen of `tests/warning_fixture.w` asserting the published warning
 set, didClose clearing it, didOpen of a clean file publishing an empty

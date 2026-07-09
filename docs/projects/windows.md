@@ -11,10 +11,10 @@ flag), reusing the x86-64 instruction emitter unchanged.
 `code_generator/ffi.w`), and the kernel32-backed runtime
 (`lib/__arch__/win64/`) are in place. Hello world, a runtime smoke test
 (heap, files, containers, generators, time) and the msvcrt dynamic-linking
-twin of `dynamic_test` pass under Wine. `make verify` / `verify_x64` /
+twin of `dynamic_test` pass under Wine. `./wbuild verify` / `verify_x64` /
 `verify_arm64` stay byte-identical.
 
-Build/run: `make build` then `make tests_win64` (or `./wbuild tests_win64`);
+Build/run: `./wbuild build` then `./wbuild tests_win64`;
 the runtime tests need `wine` (the header check only needs binutils).
 Compile a single program with
 `./bin/wv2 win64 file.w -o out.exe && wine out.exe`.
@@ -152,7 +152,7 @@ not emitted on win64.
 
 ## Testing
 
-- `make tests_win64` / `./wbuild tests_win64` = `win64_header_test`
+- `./wbuild tests_win64` = `win64_header_test`
   (objdump structural check, no Wine needed) + `win64_hello_test` +
   `win64_smoke_test` (heap growth, strings, file round trip, map/list
   builtins, generators, time) + `dynamic_test_win64` (msvcrt `_getpid`
@@ -160,8 +160,8 @@ not emitted on win64.
   promoted float, `sqrt` float ABI).
 - Wine is the CI/dev proxy for Windows; on Cursor Cloud it should be
   baked into the VM snapshot like qemu (see AGENTS.md).
-- Regression guards: `make verify`, `verify_x64`, `verify_arm64` and the
-  full `make tests` stay green; Linux output is byte-identical because
+- Regression guards: `./wbuild verify`, `verify_x64`, `verify_arm64` and the
+  full `./wbuild tests` stay green; Linux output is byte-identical because
   the win64 paths only activate under the flag.
 
 ## Future work (not "early" scope)

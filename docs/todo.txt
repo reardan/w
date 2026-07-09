@@ -4,12 +4,12 @@ current state:
 		working:
 			self-hosted x86 bootstrap:
 				./w w.w -> bin/wv2 -> bin/wv3 -> bin/wv4 -> bin/wv5
-			make verify:
+			./wbuild verify:
 				compares wv3 == wv4 == wv5
-			make tests:
+			./wbuild tests:
 				runs compiler, grammar, lib, pointer, struct, range,
 				data-structure, import, directory, threading, hello tests
-			make update:
+			./wbuild update:
 				archives the current seed and promotes bin/wv2 to ./w
 			compiler CLI:
 				-o output path
@@ -47,8 +47,8 @@ current state:
 			function values convert only to matching typed function pointers or via cast()
 			assignment, initialization, call-argument and return mismatches warn
 			function symbols record parameter types for call-site checks
-			make warning_test asserts warning output against fixtures
-			make self_host_warning_test keeps the compiler's own compile warning-free
+			./wbuild warning_test asserts warning output against fixtures
+			./wbuild self_host_warning_test keeps the compiler's own compile warning-free
 		whitespace hygiene:
 			warning when a line is indented with spaces instead of tabs
 			warning when a file does not end with a newline
@@ -57,8 +57,8 @@ current state:
 				checked against the module's declarations (import_test)
 			unqualified use of an alias-only module warns (warning_test)
 			package.wmeta metadata + wmeta checker validate modules and
-				vendored path dependencies (make metadata_check,
-				make metadata_test, design: docs/package_metadata.txt)
+				vendored path dependencies (./wbuild metadata_check,
+				./wbuild metadata_test, design: docs/package_metadata.txt)
 		struct:
 			local struct values
 			mixed-width struct fields
@@ -128,9 +128,9 @@ current state:
 			(xmm registers on x64, x87 st(0) returns on x86)
 			variadic calls emit the ABI conversion inline per call site
 			with C default argument promotions (float32 -> float64)
-			make dynamic_test / dynamic_test_x64 call libc on both targets
-			make float_abi_test / varargs_test / extern_data_test cover the ABI
-			make cuda_smoke runs a PTX vector add through libcuda (x64)
+			./wbuild dynamic_test / dynamic_test_x64 call libc on both targets
+			./wbuild float_abi_test / varargs_test / extern_data_test cover the ABI
+			./wbuild cuda_smoke runs a PTX vector add through libcuda (x64)
 		c_import:
 			preprocesses C headers with macro expansion, conditionals and include resolution
 			importer builds typedefs, structs/unions, enum values, macro integer constants and function prototypes (fixed-arity and variadic)
@@ -140,8 +140,8 @@ current state:
 		debugging information:
 			debugger statement emits int3
 			DWARF line-number data is emitted for gdb source-line mapping
-			wdbg in-process debugger (make wdbg, make debug_test, w --debug)
-				x64 build too (make wdbg_x64, make debug_test_x64): 64-bit
+			wdbg in-process debugger (./wbuild wdbg, ./wbuild debug_test, w --debug)
+				x64 build too (./wbuild wdbg_x64, ./wbuild debug_test_x64): 64-bit
 					sigcontext offsets and runtime signal thunks
 				step/next/stepi/finish, breakpoints (function/line/file:line)
 				locals/args/globals by name, set, x, backtrace, list
@@ -164,8 +164,8 @@ current state:
 			buffered streams, line readers, Content-Length framing (lib/stream.w)
 			whole-file helpers (lib/file.w, design: docs/projects/streams.md)
 		repl:
-			make repl builds and runs repl.w
-			make repl_test verifies REPL interaction and error recovery
+			./bin/wv2 repl.w -o bin/repl && ./bin/repl builds and runs repl.w
+			./wbuild repl_test verifies REPL interaction and error recovery
 			entries compile into an executable mmap buffer and run immediately
 			multi-line entries (functions, structs, control flow), Python-style:
 				':' opens a block ended by a blank line, brackets keep reading
@@ -181,7 +181,7 @@ current state:
 			compile errors roll back state and return to the prompt
 			line editing and history on a tty (lib/termios.w raw mode +
 				lib/line_edit.w, history persisted to ~/.w_history)
-			x64 repl (make repl_x64, make repl_test_x64): word-size-aware
+			x64 repl (./bin/wv2 x64 repl.w -o bin/repl64; ./wbuild repl_test_x64): word-size-aware
 				buffer (MAP_32BIT) and real x64 repl_setjmp/longjmp stubs
 
 	current limitations:
@@ -226,8 +226,8 @@ current state:
 			webassembly self-compiling
 		directory and build cleanup:
 			settle import grammar vs grammar.* behavior
-			remove the Makefile once ./wbuild reaches full parity
-				(plan and current gap list: docs/projects/wexec.md)
+			Makefile removed; ./wbuild + build.json is the single build entry
+				point (migration record: docs/projects/wexec.md)
 
 	language features (landed):
 		generators + yield (docs/projects/iteration.md, stackful coroutines, x86 + x64)

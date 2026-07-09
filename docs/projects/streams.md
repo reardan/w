@@ -73,14 +73,14 @@ non-seekable inputs like `/proc` files.
   `stream_read_line` and emits through `stdout_writer()`. The refactor
   also replaced its ~30 `int target_*` flag globals and 60-line `strcmp`
   dispatch chain with an ordered `list[char*]` target registry plus a
-  `map[char*, int]` of enabled targets, so registering a new Makefile
+  `map[char*, int]` of enabled targets, so registering a new build
   target is one `push()` plus a mapping rule.
 - `libs/extras/parser_generator/source_writer.w`'s `pg_read_file_text` /
   `pg_write_file_text` are stream-backed. They cannot delegate to
   `lib/file.w` yet: source_writer sits in the compiler's import graph
   (via c_import's importer), so it must stay compilable by the committed
   seed, and `lib/file.w` uses `list[T]`, which the current seed does not
-  parse. Fold them into `lib.file` after the next `make update`.
+  parse. Fold them into `lib.file` after the next `./wbuild update`.
 
 ## Constraints and notes
 

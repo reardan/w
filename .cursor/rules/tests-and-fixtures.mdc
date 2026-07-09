@@ -6,18 +6,17 @@ alwaysApply: false
 
 # Tests and fixtures
 
-- Find the Makefile target that owns a test file with
+- Find the build target that owns a test file with
   `./bin/wtest changed <file>` and run exactly that target; fall back to
-  `make tests` only when the mapping says so.
+  `./wbuild tests` only when the mapping says so.
 - `*fixture*.w` files are compile-only inputs whose exact diagnostics are
-  asserted by grep in the Makefile (`warning_test`,
+  asserted in `build.json` via `expect_stderr`/`reject_stderr` (`warning_test`,
   `type_system_error_test`, `check_json_test`, ...). Editing one usually
   requires updating the asserted message text or line numbers in the same
   commit. The automatic edit-check hook deliberately skips fixture paths.
 - A new end-to-end test needs: the `tests/foo_test.w` program (use
-  `lib/assert.w` / `lib/testing.w` helpers), a Makefile target, the same
-  target in `build.json`, membership in the `tests` umbrella in both, and
-  a mapping entry in `tools/test_map.w` when a directory rule does not
-  already cover it.
+  `lib/assert.w` / `lib/testing.w` helpers), a target in `build.json`,
+  membership in the `tests` umbrella target, and a mapping entry in
+  `tools/test_map.w` when a directory rule does not already cover it.
 - Test programs may use any syntax the current compiler supports (they
   are compiled with `bin/wv2`, not the seed).

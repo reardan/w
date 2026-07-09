@@ -12,7 +12,7 @@ Current Status:
     char* indexing and dereference, int* indexing, local &, struct pointer fields,
     arrays of structs through pointer indexing, struct values as by-value
     parameters (stack copy with mutation isolation), constructor-style
-    new point(1, 2, 3), pointer/type compatibility warnings (make warning_test),
+    new point(1, 2, 3), pointer/type compatibility warnings (./wbuild warning_test),
     and multi-level pointer regression coverage (int**, char**).
 
 
@@ -60,6 +60,6 @@ Functions
 
 
 Acceptance Tests:
-    make tests will pass
-    make pointer_test will pass
+    ./wbuild tests will pass
+    ./wbuild pointer_test will pass
         subset for each milestone

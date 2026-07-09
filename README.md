@@ -23,31 +23,30 @@ project quickly and make correct changes.
 - **Bootstrap seed**: `./w` at the repo root is a committed, statically linked
   **32-bit x86** ELF binary of the compiler. It runs on x86-64 Linux hosts
   without a 32-bit libc because it is static. Never delete or hand-edit it;
-  it is only replaced via `make update`. `./w_darwin` is its Apple Silicon
-  sibling — an ad-hoc-signed **arm64 Mach-O** seed that bootstraps the
-  toolchain natively on macOS (`make build_darwin` / `verify_darwin` /
-  `update_darwin`).
+  it is only replaced via `./wbuild update`. `./w_darwin` is its Apple
+  Silicon sibling — an ad-hoc-signed **arm64 Mach-O** seed that bootstraps
+  the toolchain natively on macOS (`./wbuild build_darwin` /
+  `verify_darwin` / `update_darwin`).
 - **Output**: static ELF executables by default (x86 via
   `code_generator/elf_32.w`, x86-64 via `elf_64.w`), with DWARF line-number
   info for gdb. Programs declaring `c_lib`/`extern` get PT_INTERP/PT_DYNAMIC
   headers and eager GOT relocations for real dynamic linking against shared
   libraries such as libc (`code_generator/elf_dynamic.w`, `ffi.w`).
-- **No package manager, no services**: everything is driven by `make`.
+- **No package manager, no services**: everything is driven by `./wbuild`,
+  a W-native manifest-driven build executor.
 
 ## Build, verify, test
 
-The `bin/` output directory is `.gitignore`d. `make build`, the tool targets
-(`wtest`, `wmcp`, `wlsp`, `whook`) and `./wbuild` create it; most other one-off
-Make targets do **not** — run `mkdir -p bin` (or `make build`) first if a
-redirection or `chmod` error like `bin/wv2: No such file or directory` appears.
+The `bin/` output directory is `.gitignore`d; `./wbuild` creates it and
+bootstraps everything else it needs from the committed seed (`rm -rf bin`
+resets the world).
 
 ```sh
-mkdir -p bin
-make build       # bootstrap: ./w w.w -> bin/wv2 -> wv3 -> wv4 -> wv5
-make verify      # self-host fixpoint: wv3 == wv4 == wv5 (key regression guard)
-make tests       # full suite: verify, x64 fixpoint, lib/structure/grammar
-                 # tests, warnings, REPL, debugger, dynamic linking, hello
-make update      # after verify: archive current seed, promote bin/wv2 to ./w
+./wbuild build    # bootstrap: ./w w.w -> bin/wv2 -> wv3 -> wv4 -> wv5
+./wbuild verify   # self-host fixpoint: wv3 == wv4 == wv5 (key regression guard)
+./wbuild tests    # full suite: verify, x64 fixpoint, lib/structure/grammar
+                  # tests, warnings, REPL, debugger, dynamic linking, hello
+./wbuild update   # after verify: archive current seed, promote bin/wv2 to ./w
 ```
 
 Compile and run an arbitrary program:
@@ -63,28 +62,44 @@ CLI shape: `w [x64] <file.w>... [-o output]` (see `compiler/compiler.w`).
 Other useful targets:
 
 ```sh
-make repl        # build and launch the interactive REPL (bin/repl)
-make wdbg        # build the in-process debugger (bin/wdbg)
-make verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
-                 # the first cmp also proves output is host-word-size independent
-make warning_test  # asserts the compiler's type/style warnings ("the linter")
-make cuda_smoke  # GPU-only: PTX vector add through libcuda (not part of 'tests')
+./wbuild wdbg        # build the in-process debugger (bin/wdbg)
+./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
+                     # the first cmp also proves output is host-word-size independent
+./wbuild warning_test  # asserts the compiler's type/style warnings ("the linter")
+./wbuild cuda_smoke  # GPU-only: PTX vector add through libcuda (not part of 'tests')
 ```
 
 There is no separate linter or formatter. "Lint" is the compiler's own
 warnings (type mismatches, spaces-instead-of-tabs, missing trailing newline),
-asserted by `make warning_test`.
+asserted by `./wbuild warning_test`.
 
-A W-native build path is replacing the Makefile: `./wbuild` bootstraps
-`tools/wexec.w` (a manifest-driven executor written in W) and runs targets
-from `build.json` — e.g. `./wbuild verify`, `./wbuild tests`,
-`./wbuild --list`. The full test suite is ported: targets run in parallel
-(`-j N` to override the CPU-count default) and toolchain targets are
-skipped via content-hash caching when their sources are unchanged
-(`--no-cache` forces reruns). The Makefile remains as the reference entry
-point; design notes in `docs/projects/wexec.md`.
+`./wbuild` bootstraps `tools/wexec.w` (a manifest-driven executor written
+in W) and runs targets from `build.json` — `./wbuild --list` shows them
+all. Targets run in parallel (`-j N` to override the CPU-count default)
+and toolchain targets are skipped via content-hash caching when their
+sources are unchanged (`--no-cache` forces reruns). Design notes in
+`docs/projects/wexec.md`.
 
-Host requirement: `dynamic_test` (part of `make tests`) produces a 32-bit
+wexec captures each step's stdout/stderr to check expectations, so it
+cannot host a live prompt, a full-screen debugger, or a
+serve-until-Ctrl-C process. Those conveniences are one-liners instead of
+targets:
+
+```sh
+./bin/wv2 repl.w -o bin/repl && ./bin/repl    # interactive REPL prompt
+./bin/wv2 x64 graphics/demo.w -o bin/graphics_demo && ./bin/graphics_demo
+                                    # demo window (X11); close it to exit,
+                                    # or pass --frames N to auto-exit
+./bin/wv2 tests/tcp.w -o bin/tcp && ./bin/tcp       # echo server for hand
+./bin/wv2 tests/whttp.w -o bin/whttp && ./bin/whttp # testing; Ctrl-C ends
+ddd ./bin/<binary>                  # or gdb: debug any freshly built test
+sudo stap -e 'probe syscall.write { printf("%s[%d] -> %s(%s)\n", execname(), pid(), name, argstr) }'
+                                    # trace write syscalls (swap in
+                                    # syscall.socket / syscall.sendto)
+rasm2 -a x86 -b 32 -C "mov eax,[esp+4]; jmp eax"    # encoding lookups
+```
+
+Host requirement: `dynamic_test` (part of `./wbuild tests`) produces a 32-bit
 dynamically linked binary, so the host needs the i386 loader and libc
 (`/lib/ld-linux.so.2`; on Debian/Ubuntu:
 `sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6:i386`).
@@ -109,9 +124,8 @@ stock x86-64 system.
 | `debugger/` | `wdbg`, an in-process SIGTRAP debugger driven by `debugger` statements |
 | `tests/` | End-to-end test programs and compile-only warning fixtures |
 | `docs/` | Design notes; `docs/projects/` holds larger design docs |
-| `Makefile` | All build/test/run entry points |
-| `wbuild`, `build.json`, `tools/wexec.w` | W-native build executor (Makefile replacement in progress) |
-| `archive.sh` | Backs up the seed before `make update` promotes a new one |
+| `wbuild`, `build.json`, `tools/wexec.w` | The build system: W-native manifest-driven executor |
+| `archive.sh` | Backs up a seed before `./wbuild update` / `update_darwin` promotes a new one |
 
 ## Language snapshot
 
@@ -184,11 +198,12 @@ Implemented and covered by tests:
   `int` <-> pointer conversions and function-value stores warn unless
   written with the explicit `cast(T, expr)` escape hatch (integer
   literals and `&x` addresses remain untyped for now). The compiler's own
-  sources compile warning-free (`make self_host_warning_test`).
+  sources compile warning-free (`./wbuild self_host_warning_test`).
 
 Toolchain beyond the compiler:
 
-- **REPL** (`make repl`): each entry compiles into an executable mmap buffer
+- **REPL** (`./bin/wv2 repl.w -o bin/repl && ./bin/repl`): each entry
+  compiles into an executable mmap buffer
   and runs immediately. Entries span multiple lines Python-style (a line
   ending in `:` opens a block, a blank line ends it), so functions, structs,
   imports and control flow work at the prompt. Interactive sessions
@@ -200,14 +215,14 @@ Toolchain beyond the compiler:
   (`--no_main` skips running `main`). Compile errors roll back via
   checkpoint instead of killing the process. `:quit` exits, `:help` helps
   (see `docs/projects/repl.md`).
-- **Debugger** (`make wdbg`, or `w --debug file.w`): `./bin/wdbg file.w`
+- **Debugger** (`./wbuild wdbg`, or `w --debug file.w`): `./bin/wdbg file.w`
   compiles and runs the program in-process, trapping on `debugger` statements,
   patched breakpoints and fatal signals into a gdb-flavored command loop:
   `step`/`next`/`stepi`/`finish`, `break function|line|file:line` (+ `tbreak`,
   `delete`), `print` of locals/args/globals by name or of any compiled-on-the-
   fly W expression, `set`, `x`, `backtrace`, `list`, `info locals|args|...`,
   `registers`, `stack`. SIGSEGV and friends stop for post-mortem inspection.
-  See `docs/debugging.txt` and `debug_test` in the Makefile.
+  See `docs/debugging.txt` and the `debug_test` target.
 
 ## How the bootstrap works
 
@@ -216,31 +231,32 @@ Toolchain beyond the compiler:
 bin/wv2 w.w -o bin/wv3      # wv2 recompiles the sources
 bin/wv3 w.w -o bin/wv4
 bin/wv4 w.w -o bin/wv5
-cmp wv3 wv4 && cmp wv4 wv5  # fixpoint: make verify
+cmp wv3 wv4 && cmp wv4 wv5  # fixpoint: ./wbuild verify
 ```
 
-`make verify` is the cheapest strong regression guard for compiler changes:
-if the compiler still compiles itself to a byte-identical fixpoint, most
-codegen regressions are ruled out. `make verify_x64` does the same for the
-64-bit target, starting from the x86-hosted `wv2` (`bin/wv2 x64 w.w`), so its
-first comparison also proves output does not depend on the host word size.
-Only run `make update` (which replaces the seed) after `verify` passes; it
-archives the old seed to `old/` first.
+`./wbuild verify` is the cheapest strong regression guard for compiler
+changes: if the compiler still compiles itself to a byte-identical fixpoint,
+most codegen regressions are ruled out. `./wbuild verify_x64` does the same
+for the 64-bit target, starting from the x86-hosted `wv2` (`bin/wv2 x64 w.w`),
+so its first comparison also proves output does not depend on the host word
+size. Only run `./wbuild update` (which replaces the seed) after `verify`
+passes; it archives the old seed to `old/` first.
 
 ## Guidance for agents making changes
 
-- Run `make verify` after any compiler/grammar/codegen change and `make tests`
-  before considering work done. A change that breaks self-hosting can pass
-  individual tests while corrupting the bootstrap.
+- Run `./wbuild verify` after any compiler/grammar/codegen change and
+  `./wbuild tests` before considering work done. A change that breaks
+  self-hosting can pass individual tests while corrupting the bootstrap.
 - W source is tab-indented. Editing `.w` files with spaces introduces
   warnings that `warning_test` (and the clean-fixture check) will catch.
 - Because codegen is single-pass with no IR, grammar modules both parse and
   emit; changes to expression/statement handling usually live in
   `grammar/*.w`, while instruction encoding and ELF layout live in
   `code_generator/*.w`.
-- Optional targets need tools that are not required for build/test and may be
-  absent: `gdb`/`ddd` (`*_debug`), `radare2` (`asm_codegen_get_context`),
-  `systemtap` with sudo (`net_log*`, `log_write`), an NVIDIA GPU + driver
+- Some conveniences need tools that are not required for build/test and may
+  be absent: `gdb`/`ddd` (hand-debugging a built binary), `radare2` (`rasm2`
+  encoding lookups), `systemtap` with sudo (syscall-trace one-liners), an
+  NVIDIA GPU + driver
   (`cuda_smoke`). `threading_test` covers the basic x86 thread path, but the
   threading modules are still not production-grade and are not covered by the
   x64 test gate.
@@ -260,17 +276,17 @@ archives the old seed to `old/` first.
   with `name`, `kind`, `type`, `file`, `line`, `column`, and `arch`. Omit
   `--json` for a human-readable `file:line:column: kind name: type` listing.
   Compiler-internal declarations without a source location are skipped.
-- Use `make test_changed` to run focused tests for files changed from `HEAD`, or
-  call `./bin/wtest changed file...` to list the selected Makefile targets
-  without running them. Docs-only changes produce no targets; unknown paths fall
-  back to `tests`.
+- Use `./wbuild test_changed` to run focused tests for files changed from
+  `HEAD`, or call `./bin/wtest changed file...` to list the selected build
+  targets without running them. Docs-only changes produce no targets; unknown
+  paths fall back to `tests`.
 - A committed Cursor hook (`.cursor/hooks.json` →
   `.cursor/hooks/check_after_edit.sh` → `tools/hooks/w_check_hook.w`, built to
-  `bin/whook` by `make whook`) runs `w check --json` automatically after every
-  agent edit to a `.w` file and injects the diagnostics back into the agent's
-  context. Compiler-tree files are checked through `w.w` (they do not compile
-  standalone), fixture files are skipped, and the hook fails open. Asserted by
-  `make hook_test`.
+  `bin/whook` by `./wbuild whook`) runs `w check --json` automatically after
+  every agent edit to a `.w` file and injects the diagnostics back into the
+  agent's context. Compiler-tree files are checked through `w.w` (they do not
+  compile standalone), fixture files are skipped, and the hook fails open.
+  Asserted by `./wbuild hook_test`.
 - Agent-facing guidance is committed alongside the code: `.cursor/skills/`
   holds step-by-step skills (`w-check-diagnostics`, `w-select-tests`,
   `w-debug-wdbg`, `w-repl-explore`) and `.cursor/rules/` holds path-scoped
@@ -281,20 +297,20 @@ archives the old seed to `old/` first.
   always-on rule), and to move entries into `docs/projects/ai_tooling.md`'s
   status section when implemented.
 - Cursor IDE can use the committed `.cursor/mcp.json` registration for the
-  W-native `w-toolchain` MCP server (`make wmcp` builds `bin/wmcp` from
+  W-native `w-toolchain` MCP server (`./wbuild wmcp` builds `bin/wmcp` from
   `tools/mcp/w_toolchain_mcp.w`). It exposes build, verify, run_tests,
   check, compile, run, repl_eval, and test_changed tools from the repo root.
   Cloud Agents do not load repo `mcp.json` files — register the server in the
   Cloud Agents dashboard (stdio command:
-  `sh -c "mkdir -p bin && make -s wmcp >&2 && exec ./bin/wmcp"`), or use the
+  `sh -c "./wbuild wmcp >&2 && exec ./bin/wmcp"`), or use the
   equivalent shell commands.
-- Editors can run the W-native LSP server (`make wlsp` builds `bin/wlsp` from
-  `tools/lsp/w_lsp.w`): diagnostics from `w check --json` on open/save and
+- Editors can run the W-native LSP server (`./wbuild wlsp` builds `bin/wlsp`
+  from `tools/lsp/w_lsp.w`): diagnostics from `w check --json` on open/save and
   go-to-definition from `w symbols --json`, over stdio Content-Length framing.
   Scope and editor wiring: `docs/projects/lsp.md`.
-- `make verify` remains the required gate for compiler changes, and `make tests`
-  remains the full pre-merge suite when the host has the i386 libc needed by
-  `dynamic_test`.
+- `./wbuild verify` remains the required gate for compiler changes, and
+  `./wbuild tests` remains the full pre-merge suite when the host has the
+  i386 libc needed by `dynamic_test`.
 
 ## Current major open areas
 

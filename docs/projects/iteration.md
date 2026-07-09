@@ -5,7 +5,7 @@ function convention) is the iteration protocol: `for x in <container>`
 compiles in `grammar/for_statement.w` via the cursor lowering below, the
 four `_iter_*` functions exist for `array_list`, `linked_list` and
 `hash_map` (keys), and user-defined containers work by defining the same
-four functions (`tests/for_container_test.w`, `make for_container_test`).
+four functions (`tests/for_container_test.w`, `./wbuild for_container_test`).
 Steps 3-4 of the recommendation at the bottom are done.
 
 Generators (steps 1-2 and 5) are implemented as stackful coroutines
@@ -25,7 +25,7 @@ generator; break-cleanup option (b) shipped — `for` over a generator
 emits `gen_free` on the normal-exit and break edges (`return` out of
 the loop body still leaks the suspended stack). Parameters and yield
 values must be word-sized. Tests: `tests/generator_test.w`
-(`make generator_test`, `make generator_64_test`). The generators half
+(`./wbuild generator_test`, `./wbuild generator_64_test`). The generators half
 is kept here because the two features share their consumption syntax,
 their cleanup problems, and one loop lowering.
 

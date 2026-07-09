@@ -21,7 +21,7 @@ Completed so far:
   integer casts, and every previously implicit "int as untyped word" use
   in the compiler, library, tools and tests is now either a safe implicit
   conversion (`void*`-based allocator signatures, scalar widening) or an
-  explicit cast. `make self_host_warning_test` keeps the self-hosted
+  explicit cast. `./wbuild self_host_warning_test` keeps the self-hosted
   compile warning-free on both targets.
 - The committed seed was promoted to a post-P0 compiler so the bootstrap
   core can use `cast()` itself.
@@ -39,8 +39,8 @@ parser/code-generator architecture.
   function pointers, enums, unions, and fixed 64-bit integers.
 - Support struct return-by-value without losing the existing by-value struct
   parameter behavior.
-- Keep x86 and x64 bootstraps deterministic: `make verify`, `make tests`, and
-  `make verify_x64` must stay green at every completed milestone.
+- Keep x86 and x64 bootstraps deterministic: `./wbuild verify`, `./wbuild tests`, and
+  `./wbuild verify_x64` must stay green at every completed milestone.
 
 ## Current constraints
 
@@ -129,7 +129,7 @@ callers should move through `type_*` helpers before layout changes land.
   - struct return-by-value fixture marked expected-fail until implemented,
   - conversion-warning fixture expansion,
   - x64 integer fixture.
-- Add Makefile targets that compile and run these fixtures directly.
+- Add build targets that compile and run these fixtures directly.
 - Record current warning output and expected runtime results.
 
 Exit criteria: new tests document current gaps without destabilizing `tests:`.
@@ -405,10 +405,10 @@ For every milestone:
 - Add a positive runtime fixture under `tests/` or focused compiler unit test
   under `compiler/`.
 - Add compile-only warning/error fixtures when behavior is diagnostic.
-- Run targeted tests first, then `make verify`, then `make tests`.
-- For codegen milestones, also run `make verify_x64` directly while iterating
+- Run targeted tests first, then `./wbuild verify`, then `./wbuild tests`.
+- For codegen milestones, also run `./wbuild verify_x64` directly while iterating
   before the full suite.
-- Do not promote the seed with `make update` until the full P0 stack is stable
+- Do not promote the seed with `./wbuild update` until the full P0 stack is stable
   and the self-host fixpoint is clean.
 
 ## Non-goals for P0

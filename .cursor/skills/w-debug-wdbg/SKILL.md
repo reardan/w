@@ -8,12 +8,12 @@ description: Debug a W program at runtime with the in-process debugger wdbg, scr
 `wdbg` compiles and runs a program in-process, trapping on `debugger`
 statements, patched breakpoints, and fatal signals into a gdb-flavored
 command loop. It is fully scriptable over stdin — no interactive terminal
-needed (this is exactly how `make debug_test` drives it).
+needed (this is exactly how the `debug_test` target drives it).
 
 ## Setup
 
 ```sh
-make wdbg                        # builds bin/wdbg
+./wbuild wdbg                    # builds bin/wdbg
 ./bin/wdbg file.w [args...]      # or: ./bin/wv2 --debug file.w
 ```
 

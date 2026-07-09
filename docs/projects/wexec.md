@@ -310,7 +310,10 @@ each `make` habit" pass instead of two.
    done or verified from a Linux-only session. **Done**, authored and
    verified natively on the M3 (see group B above).
 3. Land group C per the recommendation above (doc-only, no executor
-   change needed). **Pending**, folded into step 6.
+   change needed). **Done**, folded into step 6: README's
+   "Build, verify, test" section now carries the manual one-liners
+   (REPL, graphics demo, tcp/whttp hand-testing servers, gdb/ddd,
+   stap traces, rasm2 lookups).
 4. Port group A's `update` and `test_changed` — `update` last and
    byte-for-byte, since it mutates the committed seed. Both **ported**:
    `test_changed` runs and was verified; `update`'s manifest entry was
@@ -321,10 +324,13 @@ each `make` habit" pass instead of two.
 6. Flip README/AGENTS/CLAUDE.md/skills to present `./wbuild` as primary;
    run a full `./wbuild tests` (plus `verify_x64`, plus the darwin triad
    on a Mac) as the parity gate before touching the Makefile itself.
-   **Blocked** on step 2 (darwin): this repo's own rule is "make sure
-   wbuild is at full parity first," and parity isn't full while the
-   darwin triad is unported. `./wbuild tests` itself passes on Linux as
-   of this writing (see below).
+   **Done**: README, AGENTS.md, CLAUDE.md, `.cursor/skills/*`,
+   `.cursor/rules/*`, `.cursor/mcp.json` (its launch command shelled out
+   to `make -s wmcp`) and the scattered `docs/`/`libs/` mentions all
+   present `./wbuild` as the entry point; group C's manual one-liners
+   landed in README. Historical records (`docs/done.txt`,
+   `docs/mvp.txt`, dated design-doc narratives) intentionally keep their
+   `make` phrasing.
 7. Delete `Makefile`, `tools/test_map.w`'s now-dead Makefile branch, and
    this section's framing; drop the `Makefile` row from README.md's
    repository-layout table. **Blocked** on 2 and 6.

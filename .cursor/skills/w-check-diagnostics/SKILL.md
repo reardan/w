@@ -14,7 +14,7 @@ description: Diagnose W compile errors and warnings with the compiler's structur
 ./bin/wv2 symbols --json file.w      # declaration metadata (go-to-definition)
 ```
 
-`bin/wv2` comes from `make build` (or any `./wbuild` target). No ELF is
+`bin/wv2` comes from `./wbuild build` (or any `./wbuild` target). No ELF is
 written in check mode, so this is the cheapest way to validate an edit.
 
 ## Reading the output
@@ -29,7 +29,7 @@ Limitations to remember:
   error, then it stops**. After fixing the reported error, re-run check —
   there may be more behind it.
 - Warnings matter: the self-host build stages compile with `--strict`,
-  so a stray warning fails `make build`.
+  so a stray warning fails `./wbuild build`.
 
 ## Which file to check
 

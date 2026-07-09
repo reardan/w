@@ -18,8 +18,8 @@ Project Knowledge
 
 
 Project Acceptance Tests
-	make tests MUST PASS
-	make [project_name]_test MUST PASS
+	./wbuild tests MUST PASS
+	./wbuild [project_name]_test MUST PASS
 	manual testing MUST PASS
 
 

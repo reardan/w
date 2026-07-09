@@ -86,7 +86,7 @@ char* pg_source_take(pg_source_writer* writer):
 # These mirror file_read_text/file_write_text in lib/file.w. This file is in
 # the compiler's import graph, so it must stay compilable by the committed
 # seed; lib/file.w uses list[T], which the seed does not know yet. Delegate
-# to lib.file after the next seed promotion (make update).
+# to lib.file after the next seed promotion (./wbuild update).
 char* pg_read_file_text(char* path):
 	wstream* in = stream_open_read(path)
 	if (in == 0):

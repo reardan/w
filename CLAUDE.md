@@ -15,10 +15,10 @@ agent workflow doc; both are current and authoritative — this file is the
 summary.
 
 **Platform**: `./w` is a Linux seed; `./w_darwin` is a committed arm64
-Mach-O seed that bootstraps natively on this Mac (`make build_darwin`,
+Mach-O seed that bootstraps natively on this Mac (`./wbuild build_darwin`,
 `verify_darwin`). On this macOS checkout, prefer in this order:
 1. **Locally on the Mac** for anything the native darwin toolchain covers
-   (`make build_darwin` self-hosts; sign + run Mach-O binaries with
+   (`./wbuild build_darwin` self-hosts; sign + run Mach-O binaries with
    `tools/mac/run_darwin_tests.sh`).
 2. **ssh host `w`** (x86_64 Linux, clone at `/home/w/w`) for
    builds/verify/tests that need Linux — everything runs directly there
@@ -35,36 +35,38 @@ and run natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 ## Commands
 
 ```sh
-make build       # bootstrap: ./w w.w -> bin/wv2 -> wv3 -> wv4 -> wv5
-make verify      # self-host fixpoint (wv3==wv4==wv5) — REQUIRED gate for any compiler change
-make verify_x64  # same for the 64-bit target; run for codegen/word-size work
-make verify_arm64  # same for the ARM64 target
-make tests       # full pre-merge suite
-make update      # ONLY after verify: archives seed, promotes bin/wv2 to ./w
-make repl        # interactive REPL (bin/repl)
-make wdbg        # in-process debugger (bin/wdbg file.w)
+./wbuild build       # bootstrap: ./w w.w -> bin/wv2 -> wv3 -> wv4 -> wv5
+./wbuild verify      # self-host fixpoint (wv3==wv4==wv5) — REQUIRED gate for any compiler change
+./wbuild verify_x64  # same for the 64-bit target; run for codegen/word-size work
+./wbuild verify_arm64  # same for the ARM64 target
+./wbuild tests       # full pre-merge suite
+./wbuild update      # ONLY after verify: archives seed, promotes bin/wv2 to ./w
+./wbuild wdbg        # in-process debugger (bin/wdbg file.w)
+./bin/wv2 repl.w -o bin/repl && ./bin/repl   # interactive REPL
 ```
 
-`./wbuild` is the W-native alternative to make (`./wbuild tests`,
-`./wbuild --list`; parallel + content-hash cached, `--no-cache` to force).
+`./wbuild` runs targets from `build.json` (`./wbuild --list`; parallel +
+content-hash cached, `--no-cache` to force, `rm -rf bin` resets). On this
+Mac it bootstraps a native Mach-O executor from `./w_darwin`; only the
+darwin targets run here — everything else needs Linux.
 
 Compile and run one program: `./bin/wv2 file.w -o out && ./out`
 (insert `x64` before the file for 64-bit).
 
 **Run a single/focused test**: `git diff --name-only HEAD | ./bin/wtest changed`
-prints the exact Makefile targets for your diff (build wtest with `make wtest`);
-`make test_changed` runs them. Don't guess targets.
+prints the exact build targets for your diff (build wtest with `./wbuild wtest`);
+`./wbuild test_changed` runs them. Don't guess targets.
 
 **Check without compiling to a binary**: `./bin/wv2 check --json file.w`
 (NDJSON diagnostics; empty stdout + exit 0 = clean). Fix warnings, not just
 errors — self-host stages build with `--strict`, so any warning fails
-`make build`. There is no separate linter; the compiler's warnings are the
-lint, asserted by `make warning_test`.
+`./wbuild build`. There is no separate linter; the compiler's warnings are the
+lint, asserted by `./wbuild warning_test`.
 
 **Find declarations**: `./bin/wv2 symbols --json file.w` instead of grepping.
 
-Gotcha: `bin/` is gitignored and many one-off make targets don't create it —
-run `mkdir -p bin` (or `make build`) first if you see
+Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
+(`./bin/wv2 ...`) need `mkdir -p bin` (or `./wbuild build`) first if you see
 `bin/...: No such file or directory`.
 
 ## Architecture
@@ -77,13 +79,13 @@ run `mkdir -p bin` (or `make build`) first if you see
   `code_generator/`. `compiler/` holds the driver, tokenizer, symbol and
   type tables. `lib/` is the stdlib, `structures/` the containers.
 - **Bootstrap chain**: seed compiles sources → wv2 → wv3 → wv4 → wv5; byte
-  equality of wv3/wv4/wv5 (`make verify`) is the cheapest strong regression
+  equality of wv3/wv4/wv5 (`./wbuild verify`) is the cheapest strong regression
   guard. A change can pass unit tests while corrupting self-hosting.
 - **Seed constraint**: `w.w`, `grammar.w`, `codegen.w`, `compiler/`,
   `grammar/`, `code_generator/`, and the auto-imported container runtime
   (`structures/hash_table.w`, `structures/w_list.w`) are compiled by the
   committed seed, so they must not use language syntax newer than the seed
-  until `make update` promotes one. New syntax is fine in `tests/`, `lib/`,
+  until `./wbuild update` promotes one. New syntax is fine in `tests/`, `lib/`,
   and other consumers once `bin/wv2` exists.
 - Built-in `map`/`set`/`list` lower to that runtime, which
   `compiler/compiler.w` auto-imports into every program.
@@ -98,11 +100,12 @@ run `mkdir -p bin` (or `make build`) first if you see
 - Diagnostic message text is frozen by `warning_test` and the
   `type_system_*_test` targets; rewording requires updating those fixtures
   in the same commit. `tests/*fixture*.w` files are compile-only inputs
-  whose exact diagnostics are grep-asserted in the Makefile.
+  whose exact diagnostics are asserted (`expect_stderr`/`reject_stderr`)
+  in `build.json`.
 - A new end-to-end test needs: `tests/foo_test.w` (use `lib/assert.w` /
-  `lib/testing.w`), a Makefile target, the same target in `build.json`,
-  membership in the `tests` umbrella in both, and a `tools/test_map.w`
-  entry if no directory rule covers it.
+  `lib/testing.w`), a target in `build.json`, membership in the `tests`
+  umbrella target, and a `tools/test_map.w` entry if no directory rule
+  covers it.
 - The agent tooling here is dogfooded: if you hit friction or bugs in
   `w check`, `wtest`, the edit hook, `wmcp`, or `wlsp`, add an entry to
   `docs/projects/ai_tooling_next_steps.md` in the same PR.

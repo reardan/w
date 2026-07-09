@@ -12,15 +12,15 @@ AArch64 Linux ELF: the A64 emitter (`code_generator/arm64.w`), runtime stubs
 Linux syscalls (`lib/__arch__/arm64/`) are all in place, with `--pac=ret`
 return-address signing on by default. The full toolchain self-hosts: the
 x86 compiler cross-compiles `w.w` to arm64, and running that binary under
-`qemu-aarch64 -cpu max` recompiles `w.w` byte-for-byte (`make verify_arm64`).
-A 34-test slice of the suite passes under qemu (`make arm64_smoke_test`
-covers a representative subset), and `make verify` / `verify_x64` stay
+`qemu-aarch64 -cpu max` recompiles `w.w` byte-for-byte (`./wbuild verify_arm64`).
+A 34-test slice of the suite passes under qemu (`./wbuild arm64_smoke_test`
+covers a representative subset), and `./wbuild verify` / `verify_x64` stay
 byte-identical. Stages 4–5 (Mach-O + Darwin syscalls + code signing, and
 `--pac=full` / arm64e for macOS) remain future work. The core codegen model
 was first validated with the hand-written A64 spikes in the appendix.
 
-Build/run: `make build` then `make verify_arm64` (self-host fixpoint) and
-`make arm64_smoke_test`; both need `qemu-aarch64-static`. Compile a single
+Build/run: `./wbuild build` then `./wbuild verify_arm64` (self-host fixpoint) and
+`./wbuild arm64_smoke_test`; both need `qemu-aarch64-static`. Compile a single
 program with `./bin/wv2 arm64 file.w -o out && qemu-aarch64-static -cpu max out`.
 
 ## Target definition: what "Apple M3" implies
@@ -154,7 +154,7 @@ void push_eax():
 
 This avoids a formal backend interface (which the codebase deliberately does
 not have), keeps the grammar untouched for the common case, and — critically —
-keeps x86/x64 output byte-identical, so `make verify` and `verify_x64` remain
+keeps x86/x64 output byte-identical, so `./wbuild verify` and `verify_x64` remain
 the regression guard for the refactor itself.
 
 What *does* have to change outside `code_generator/` is every place that
@@ -201,7 +201,7 @@ Float support maps cleanly: the "float bits ride the integer pipeline" design
 
 Seed constraint: everything above lives in `code_generator/`, `grammar/`,
 `compiler/` — compiled by the committed seed — but requires **no new W
-syntax**, so no seed update (`make update`) is needed.
+syntax**, so no seed update (`./wbuild update`) is needed.
 
 ### D4: Syscall layer
 
@@ -336,12 +336,12 @@ there is no foreign ABI to be compatible with until the libSystem stage.
   imm19, address slots via ldr-literal, inline `bl`+data string literals,
   function prologue). Every function's prologue signs the return address
   (`pacia x30,x28`) and the epilogue authenticates it. Kept x86/x64 output
-  byte-identical (`make verify` / `verify_x64`).
+  byte-identical (`./wbuild verify` / `verify_x64`).
 - **Stage 2 — full language + self-host fixpoint (done).** Float codegen in
   `sse.w` (NEON scalar: `fmov`/`fadd`/…/`scvtf`/`fcvtzs`/`fcvt`), generators
   (`gen_switch` + `__target_isa__`-aware `__w_gen_switch_regs`), defer,
   generics, containers, strings. A 34-test slice runs under qemu; the arm64
-  self-host fixpoint (`make verify_arm64`) is byte-identical, the analog of
+  self-host fixpoint (`./wbuild verify_arm64`) is byte-identical, the analog of
   `verify_x64`.
 - **Stage 3 — W^X text/data split (done).** The arm64 ELF now emits a
   read-execute text segment and a separate read-write data segment (globals

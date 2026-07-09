@@ -9,7 +9,7 @@ lives in `lib/task.w`; awaitable I/O (`task_read`, `task_read_exact`,
 `task_write_all`, `task_accept`, `task_connect_ipv4`) and the worker-
 process escape hatch (`task_process_run`) in `lib/task_io.w`. Tests:
 `lib/task_test.w` and `lib/task_io_test.w` (`task_test`,
-`task_io_test` + `_64` variants in `build.json` and the Makefile).
+`task_io_test` + `_64` variants in `build.json`).
 The phase-4 proof-by-comparison example is
 `examples/web/task_echo_server.w` (per-connection tasks speaking
 Content-Length framing; run it bare for an in-process demo,
@@ -268,7 +268,7 @@ The MVP adds **no grammar**. Whether syntax ever pays for itself:
 - Bootstrap constraints if syntax lands: nothing under `compiler/`,
   `grammar/`, `code_generator/` or the auto-imported `structures/`
   runtime may *use* the new keywords until a seed update via
-  `make update`; `lib/`, `tests/` and examples may, once `bin/wv2`
+  `./wbuild update`; `lib/`, `tests/` and examples may, once `bin/wv2`
   exists.
 
 Decision: defer. Revisit after phase 4 with real usage experience.

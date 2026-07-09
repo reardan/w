@@ -12,7 +12,7 @@ fully scriptable.
 ## Setup and scripting
 
 ```sh
-./bin/wv2 repl.w -o bin/repl     # or: make repl (builds and attaches a prompt)
+./bin/wv2 repl.w -o bin/repl     # then ./bin/repl attaches a prompt
 printf 'print(c"hi\\x0a")\n:quit\n' | ./bin/repl
 ```
 
