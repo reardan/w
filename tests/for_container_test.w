@@ -2,8 +2,6 @@
 # containers and a user-defined one (docs/projects/iteration.md, design 3).
 import lib.testing
 import structures.array_list
-import structures.linked_list
-import structures.hash_map
 
 
 void test_array_list_sum():
@@ -110,52 +108,6 @@ void test_range_inside_container_loop():
 			sum = sum + 1
 	assert_equal(5, sum)
 	array_list_free(a)
-
-
-void test_linked_list_values_in_order():
-	linked_list* l = linked_list_new()
-	linked_list_push(l, 7)
-	linked_list_push(l, 8)
-	linked_list_push(l, 9)
-	int digits = 0
-	for int x in l:
-		digits = digits * 10 + x
-	assert_equal(789, digits)
-	linked_list_free(l)
-
-
-void test_linked_list_empty():
-	linked_list* l = linked_list_new()
-	int count = 0
-	for int x in l:
-		count = count + 1
-	assert_equal(0, count)
-	linked_list_free(l)
-
-
-void test_hash_map_keys():
-	hash_map* m = hash_map_new()
-	hash_map_set(m, c"one", 1)
-	hash_map_set(m, c"two", 2)
-	hash_map_set(m, c"three", 3)
-	int count = 0
-	int sum = 0
-	for char* key in m:
-		assert_equal(1, hash_map_contains(m, key))
-		count = count + 1
-		sum = sum + hash_map_get(m, key)
-	assert_equal(3, count)
-	assert_equal(6, sum)
-	hash_map_free(m)
-
-
-void test_hash_map_empty():
-	hash_map* m = hash_map_new()
-	int count = 0
-	for char* key in m:
-		count = count + 1
-	assert_equal(0, count)
-	hash_map_free(m)
 
 
 array_list* make_list(int n):

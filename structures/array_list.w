@@ -1,8 +1,11 @@
 /*
-Growable array of word values.
+Growable array of word values; every array_list is an independent heap
+object.
 
-Unlike structures/list.w (a single global list), every array_list is an
-independent heap object.
+Kept (issue #145) as the library exemplar of the T_iter_begin/done/
+next/value cursor protocol that for-in lowers to for user-defined
+containers (docs/projects/iteration.md, tests/for_container_test.w).
+New code should normally use the built-in list[T] instead.
 */
 import lib.lib
 import lib.assert

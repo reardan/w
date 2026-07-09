@@ -47,12 +47,9 @@ modules:
 	lib.__arch__.elf_introspect
 	lib.__arch__.syscalls
 	structures.array_list
-	structures.hash_map
 	structures.hash_table
 	structures.json
 	structures.json_codec
-	structures.linked_list
-	structures.list
 	structures.string
 	structures.w_list
 	tools.wexec

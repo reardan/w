@@ -91,6 +91,14 @@ is a queue, not an archive.
 - **`wtest changed --run`.** Now that `lib/process.w` exists, `wtest`
   could execute the selected targets itself instead of relying on the
   `./wbuild test_changed` xargs pipeline.
+- **Deleting a module should map to `metadata_check`.** Every module
+  listed in `package.wmeta` is verified to resolve to a file, so a
+  deletion under a declared module tree can break it — but only
+  `package.wmeta`/`tools/wmeta.w` edits map to the metadata targets.
+  Retiring `structures/{hash_map,linked_list,list}.w` (#145) passed the
+  full focused gate list and then failed `metadata_check` in CI. Cheap
+  fix: map any deleted `.w` path (or any `structures/`/`lib/` path) to
+  `metadata_check` too.
 - **`.w` diffs should map to `parser_generator_w_test`.** That target
   parses every tracked `.w` file, so ANY `.w` change can break it, but
   `wtest changed` only emits it for `tests/parser_generator/` and
