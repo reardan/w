@@ -103,7 +103,11 @@ void elf_start():
 	define_asm_functions()
 
 
-void elf_finish():
+# Shared elf_finish head for the 32- and 64-bit writers: the codepos
+# trace, the dynamic-section append, and the entry-point call patch
+# (rel32 to _main, falling back to main). The width-specific PT_LOAD
+# size saves stay in each writer.
+void elf_finish_entry_patch():
 	if (verbosity > 0):
 		print_error(c"codepos: '")
 		print_error(hex(codepos))
@@ -124,7 +128,11 @@ void elf_finish():
 	# rel32 = target - address of the instruction after the 5-byte call
 	t = t - code_offset - entry_call_disp_pos - 4
 
-	save_int(code + entry_call_disp_pos, t)
+	save_int32(code + entry_call_disp_pos, t)
+
+
+void elf_finish():
+	elf_finish_entry_patch()
 
 	# Save the size (p_filesz / p_memsz of the PT_LOAD program header)
 	save_int(code + phdr_table_pos + 16, codepos) /* FileSize */

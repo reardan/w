@@ -36,80 +36,34 @@ int float_binary_result_type(int kind):
 	return float32_value_type
 
 
-void float_load_left_xmm0(int type, int kind):
-	int left_kind = type_float_kind(type)
+# Load one operand of a float binary operation into an XMM register at
+# the operation width (kind 2 = float64, otherwise float32), converting
+# from the operand's own representation. reg selects the source GPR:
+# 0 is the operand in eax/rax (the right side), 1 the one in ebx/rbx
+# (the left side, pushed there by binary2_promote_pop).
+void float_load_xmm(int xmm, int reg, int type, int kind):
+	int operand_kind = type_float_kind(type)
 	if (kind == 2):
-		if (left_kind == 2):
-			movq_xmm0_rbx()
-		else if (left_kind == 1):
-			movd_xmm0_ebx()
-			cvtss2sd_xmm0()
+		if (operand_kind == 2):
+			movq_xmm(xmm, reg)
+		else if (operand_kind == 1):
+			movd_xmm(xmm, reg)
+			cvtss2sd_xmm(xmm)
 		else:
-			cvtsi2sd_xmm0_rbx()
+			cvtsi2sd_xmm(xmm, reg)
 	else:
-		if (left_kind == 1):
-			movd_xmm0_ebx()
+		if (operand_kind == 1):
+			movd_xmm(xmm, reg)
 		else:
-			cvtsi2ss_xmm0_ebx()
-
-
-void float_load_right_xmm1(int type, int kind):
-	int right_kind = type_float_kind(type)
-	if (kind == 2):
-		if (right_kind == 2):
-			movq_xmm1_rax()
-		else if (right_kind == 1):
-			movd_xmm1_eax()
-			cvtss2sd_xmm1()
-		else:
-			cvtsi2sd_xmm1_rax()
-	else:
-		if (right_kind == 1):
-			movd_xmm1_eax()
-		else:
-			cvtsi2ss_xmm1_eax()
-
-
-void float_load_left_xmm1(int type, int kind):
-	int left_kind = type_float_kind(type)
-	if (kind == 2):
-		if (left_kind == 2):
-			movq_xmm1_rbx()
-		else if (left_kind == 1):
-			movd_xmm1_ebx()
-			cvtss2sd_xmm1()
-		else:
-			cvtsi2sd_xmm1_rbx()
-	else:
-		if (left_kind == 1):
-			movd_xmm1_ebx()
-		else:
-			cvtsi2ss_xmm1_ebx()
-
-
-void float_load_right_xmm0(int type, int kind):
-	int right_kind = type_float_kind(type)
-	if (kind == 2):
-		if (right_kind == 2):
-			movq_xmm0_rax()
-		else if (right_kind == 1):
-			movd_xmm0_eax()
-			cvtss2sd_xmm0()
-		else:
-			cvtsi2sd_xmm0_rax()
-	else:
-		if (right_kind == 1):
-			movd_xmm0_eax()
-		else:
-			cvtsi2ss_xmm0_eax()
+			cvtsi2ss_xmm(xmm, reg)
 
 
 int float_binary_arithmetic(int left_type, int right_type, int op):
 	int kind = binary_float_kind(left_type, right_type)
 	if (kind == 0):
 		return 0
-	float_load_left_xmm0(left_type, kind)
-	float_load_right_xmm1(right_type, kind)
+	float_load_xmm(0, 1, left_type, kind)
+	float_load_xmm(1, 0, right_type, kind)
 	if (kind == 2):
 		if (op == '+'):
 			addsd()
@@ -138,11 +92,11 @@ int float_binary_compare(int left_type, int right_type, int setcc_opcode, int sw
 	if (kind == 0):
 		return 0
 	if (swap):
-		float_load_right_xmm0(right_type, kind)
-		float_load_left_xmm1(left_type, kind)
+		float_load_xmm(0, 0, right_type, kind)
+		float_load_xmm(1, 1, left_type, kind)
 	else:
-		float_load_left_xmm0(left_type, kind)
-		float_load_right_xmm1(right_type, kind)
+		float_load_xmm(0, 1, left_type, kind)
+		float_load_xmm(1, 0, right_type, kind)
 	if (kind == 2):
 		ucomisd()
 	else:

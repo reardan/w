@@ -23,37 +23,24 @@ void error(char *s);
 
 
 ########################### GPR <-> XMM transfers ############################
+# The GPR -> XMM loads are parameterized by the target xmm (0 or 1) and the
+# source GPR (0 = eax/rax/x0, 1 = ebx/rbx/x1): the x86 reg-reg ModRM is
+# 0xC0 | xmm << 3 | x86-reg (eax is x86 register 0, ebx is 3, hence the
+# reg * 3), and the A64 word ORs the source into Rn (bit 5) and the
+# destination into Rd (bit 0).
+
+/* movd xmm<xmm>, eax/ebx */
+void movd_xmm(int xmm, int reg):
+	if (target_isa == 1):
+		a64(op(0x1e, 0x270000) | (reg << 5) | xmm)   # fmov s<xmm>, w<reg>
+		return
+	emit(3, c"\x66\x0f\x6e")
+	emit_int8(192 + xmm * 8 + reg * 3)
+
 
 /* movd xmm0, eax */
 void movd_xmm0_eax():
-	if (target_isa == 1):
-		a64(op(0x1e, 0x270000))   # fmov s0, w0
-		return
-	emit(4, c"\x66\x0f\x6e\xc0")
-
-
-/* movd xmm0, ebx */
-void movd_xmm0_ebx():
-	if (target_isa == 1):
-		a64(op(0x1e, 0x270020))   # fmov s0, w1
-		return
-	emit(4, c"\x66\x0f\x6e\xc3")
-
-
-/* movd xmm1, eax */
-void movd_xmm1_eax():
-	if (target_isa == 1):
-		a64(op(0x1e, 0x270001))   # fmov s1, w0
-		return
-	emit(4, c"\x66\x0f\x6e\xc8")
-
-
-/* movd xmm1, ebx */
-void movd_xmm1_ebx():
-	if (target_isa == 1):
-		a64(op(0x1e, 0x270021))   # fmov s1, w1
-		return
-	emit(4, c"\x66\x0f\x6e\xcb")
+	movd_xmm(0, 0)
 
 
 /* movd eax, xmm0 */
@@ -64,36 +51,18 @@ void movd_eax_xmm0():
 	emit(4, c"\x66\x0f\x7e\xc0")
 
 
+/* movq xmm<xmm>, rax/rbx (x64 only) */
+void movq_xmm(int xmm, int reg):
+	if (target_isa == 1):
+		a64(op(0x9e, 0x670000) | (reg << 5) | xmm)   # fmov d<xmm>, x<reg>
+		return
+	emit(4, c"\x66\x48\x0f\x6e")
+	emit_int8(192 + xmm * 8 + reg * 3)
+
+
 /* movq xmm0, rax (x64 only) */
 void movq_xmm0_rax():
-	if (target_isa == 1):
-		a64(op(0x9e, 0x670000))   # fmov d0, x0
-		return
-	emit(5, c"\x66\x48\x0f\x6e\xc0")
-
-
-/* movq xmm0, rbx (x64 only) */
-void movq_xmm0_rbx():
-	if (target_isa == 1):
-		a64(op(0x9e, 0x670020))   # fmov d0, x1
-		return
-	emit(5, c"\x66\x48\x0f\x6e\xc3")
-
-
-/* movq xmm1, rax (x64 only) */
-void movq_xmm1_rax():
-	if (target_isa == 1):
-		a64(op(0x9e, 0x670001))   # fmov d1, x0
-		return
-	emit(5, c"\x66\x48\x0f\x6e\xc8")
-
-
-/* movq xmm1, rbx (x64 only) */
-void movq_xmm1_rbx():
-	if (target_isa == 1):
-		a64(op(0x9e, 0x670021))   # fmov d1, x1
-		return
-	emit(5, c"\x66\x48\x0f\x6e\xcb")
+	movq_xmm(0, 0)
 
 
 /* movq rax, xmm0 (x64 only) */
@@ -208,76 +177,37 @@ void setcc_movzx_eax(int setcc_opcode):
 # The int <-> float conversions take the integer at the target word width
 # (REX.W on x64, where int is 8 bytes), matching W's int semantics.
 
+# The int -> float conversions take the same (xmm, reg) parameters as the
+# GPR -> XMM transfers above.
+
+/* cvtsi2ss xmm<xmm>, eax/ebx (rax/rbx on x64) */
+void cvtsi2ss_xmm(int xmm, int reg):
+	if (target_isa == 1):
+		a64(op(0x9e, 0x220000) | (reg << 5) | xmm)   # scvtf s<xmm>, x<reg>
+		return
+	emit(1, c"\xf3")
+	emit_x64_opcode()
+	emit(2, c"\x0f\x2a")
+	emit_int8(192 + xmm * 8 + reg * 3)
+
+
 /* cvtsi2ss xmm0, eax/rax */
 void cvtsi2ss_xmm0_eax():
+	cvtsi2ss_xmm(0, 0)
+
+
+/* cvtsi2sd xmm<xmm>, rax/rbx (x64 only) */
+void cvtsi2sd_xmm(int xmm, int reg):
 	if (target_isa == 1):
-		a64(op(0x9e, 0x220000))   # scvtf s0, x0
+		a64(op(0x9e, 0x620000) | (reg << 5) | xmm)   # scvtf d<xmm>, x<reg>
 		return
-	emit(1, c"\xf3")
-	emit_x64_opcode()
-	emit(3, c"\x0f\x2a\xc0")
-
-
-/* cvtsi2ss xmm0, ebx/rbx */
-void cvtsi2ss_xmm0_ebx():
-	if (target_isa == 1):
-		a64(op(0x9e, 0x220020))   # scvtf s0, x1
-		return
-	emit(1, c"\xf3")
-	emit_x64_opcode()
-	emit(3, c"\x0f\x2a\xc3")
-
-
-/* cvtsi2ss xmm1, eax/rax */
-void cvtsi2ss_xmm1_eax():
-	if (target_isa == 1):
-		a64(op(0x9e, 0x220001))   # scvtf s1, x0
-		return
-	emit(1, c"\xf3")
-	emit_x64_opcode()
-	emit(3, c"\x0f\x2a\xc8")
-
-
-/* cvtsi2ss xmm1, ebx/rbx */
-void cvtsi2ss_xmm1_ebx():
-	if (target_isa == 1):
-		a64(op(0x9e, 0x220021))   # scvtf s1, x1
-		return
-	emit(1, c"\xf3")
-	emit_x64_opcode()
-	emit(3, c"\x0f\x2a\xcb")
+	emit(4, c"\xf2\x48\x0f\x2a")
+	emit_int8(192 + xmm * 8 + reg * 3)
 
 
 /* cvtsi2sd xmm0, rax (x64 only) */
 void cvtsi2sd_xmm0_rax():
-	if (target_isa == 1):
-		a64(op(0x9e, 0x620000))   # scvtf d0, x0
-		return
-	emit(5, c"\xf2\x48\x0f\x2a\xc0")
-
-
-/* cvtsi2sd xmm0, rbx (x64 only) */
-void cvtsi2sd_xmm0_rbx():
-	if (target_isa == 1):
-		a64(op(0x9e, 0x620020))   # scvtf d0, x1
-		return
-	emit(5, c"\xf2\x48\x0f\x2a\xc3")
-
-
-/* cvtsi2sd xmm1, rax (x64 only) */
-void cvtsi2sd_xmm1_rax():
-	if (target_isa == 1):
-		a64(op(0x9e, 0x620001))   # scvtf d1, x0
-		return
-	emit(5, c"\xf2\x48\x0f\x2a\xc8")
-
-
-/* cvtsi2sd xmm1, rbx (x64 only) */
-void cvtsi2sd_xmm1_rbx():
-	if (target_isa == 1):
-		a64(op(0x9e, 0x620021))   # scvtf d1, x1
-		return
-	emit(5, c"\xf2\x48\x0f\x2a\xcb")
+	cvtsi2sd_xmm(0, 0)
 
 
 /* cvttss2si eax/rax, xmm0 (truncating float32 -> int) */
@@ -298,20 +228,18 @@ void cvttsd2si_rax_xmm0():
 	emit(5, c"\xf2\x48\x0f\x2c\xc0")
 
 
+/* cvtss2sd xmm<xmm>, xmm<xmm> (widen in place) */
+void cvtss2sd_xmm(int xmm):
+	if (target_isa == 1):
+		a64(op(0x1e, 0x22c000) | (xmm << 5) | xmm)   # fcvt d<xmm>, s<xmm>
+		return
+	emit(3, c"\xf3\x0f\x5a")
+	emit_int8(192 + xmm * 9)
+
+
 /* cvtss2sd xmm0, xmm0 */
 void cvtss2sd_xmm0():
-	if (target_isa == 1):
-		a64(op(0x1e, 0x22c000))   # fcvt d0, s0
-		return
-	emit(4, c"\xf3\x0f\x5a\xc0")
-
-
-/* cvtss2sd xmm1, xmm1 */
-void cvtss2sd_xmm1():
-	if (target_isa == 1):
-		a64(op(0x1e, 0x22c021))   # fcvt d1, s1
-		return
-	emit(4, c"\xf3\x0f\x5a\xc9")
+	cvtss2sd_xmm(0)
 
 
 /* cvtsd2ss xmm0, xmm0 */

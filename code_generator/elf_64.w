@@ -104,27 +104,7 @@ void elf_start_64():
 
 
 void elf_finish_64():
-	if (verbosity > 0):
-		print_error(c"codepos: '")
-		print_error(hex(codepos))
-		print_error(c"'\x0a")
-
-	# Append .interp/.dynamic/relocations and fill the reserved program
-	# headers; a no-op when nothing was imported with c_lib/extern.
-	elf_emit_dynamic()
-
-	# Store pointer to library _main()
-	int t = sym_address(c"_main")
-	# As a backup, try to use main()
-	# TODO: should we allow this?
-	if (t == 0):
-		t = sym_address(c"main")
-	if (t == 0):
-		error(c"Failed to find a _main() function. Did you import lib/testing?")
-	# rel32 = target - address of the instruction after the 5-byte call
-	t = t - code_offset - entry_call_disp_pos - 4
-
-	save_int32(code + entry_call_disp_pos, t)
+	elf_finish_entry_patch()
 
 	# Save the size (p_filesz / p_memsz of the PT_LOAD program header)
 	save_int64(code + phdr_table_pos + 32, codepos) /* FileSize */
