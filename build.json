@@ -1287,9 +1287,11 @@
 		{
 			"name": "windexd",
 			"deps": ["wv2"],
-			"inputs": ["tools/index/w_indexd.w", "tools/index/w_index_core.w"],
+			"inputs": ["tools/index/w_indexd.w", "tools/index/w_index_core.w", "tools/index/stop_windexd.w"],
 			"outputs": ["bin/windexd"],
 			"steps": [
+				{"cmd": ["bin/wv2", "tools/index/stop_windexd.w", "-o", "bin/stop_windexd"]},
+				{"cmd": ["bin/stop_windexd"]},
 				{"cmd": ["bin/wv2", "tools/index/w_indexd.w", "-o", "bin/windexd"]}
 			]
 		},
