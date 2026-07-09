@@ -150,6 +150,8 @@ current state:
 				frame/up/down select a backtrace frame; print/set/x/info
 					locals/args address the selected frame
 				software watchpoints (statement-granularity single-step scan)
+				conditional breakpoints, hit counts and logpoints
+					(condition/ignore/log; docs/projects/debugger_conditional_breakpoints.md)
 				fatal-signal post-mortem stops (segv handler)
 				line editing and history at the prompt (lib/line_edit.w)
 		library and data structures:
@@ -198,7 +200,6 @@ current state:
 				so an older frame's base can be unknown (locals unaddressable)
 			watchpoints are software (statement-granularity single-step
 				scan): large slowdown while any exist
-			no conditional breakpoints yet
 		x64:
 			threading is still x86-only
 			DWARF line info still declares address_size 4 (gdb only)
@@ -219,7 +220,7 @@ current state:
 			extern arrays of unknown length (sys_errlist)
 			more system-header torture fixtures as regressions are found
 		debugger:
-			conditional breakpoints and hit counts
+			break similar: fuzzy/suffix matching for unresolved break targets
 			asm/disasm helpers
 		code generation:
 			webassembly hello world

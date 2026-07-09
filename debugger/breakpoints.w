@@ -9,6 +9,14 @@ by single-stepping one instruction past it (dbg_rearm_bp).
 
 Slots are identified by a stable 1-based id. Deleted slots keep their id
 out of circulation until wdbg exits.
+
+A slot optionally carries a stop condition (an expression compiled and
+evaluated on every hit; a false value skips the stop), an ignore count
+(skips that many further eligible hits before actually stopping) and a
+log expression (turns the slot into a logpoint: eligible hits print the
+expression's value and auto-continue instead of stopping). The hit count
+tracks every reach of the address regardless of condition. wdbg.w's trap
+handler owns the gating logic; this file only stores the state.
 */
 import debugger.locals
 
@@ -21,6 +29,10 @@ char* bp_addrs   /* absolute address, 0 = free slot */
 char* bp_bytes   /* original code byte */
 char* bp_armeds  /* 1 while the int3 is written into the code */
 char* bp_temps   /* 1 = one-shot breakpoint (tbreak) */
+char* bp_hit_counts    /* times execution reached this address, any condition */
+char* bp_ignore_counts /* eligible (condition-true) hits still to skip */
+char* bp_cond_exprs    /* owned char* condition text (word slots), 0 = none */
+char* bp_log_exprs     /* owned char* logpoint expression (word slots), 0 = not a logpoint */
 int bp_used
 
 
@@ -29,9 +41,17 @@ void bp_init():
 	bp_bytes = malloc(bp_max() * 4)
 	bp_armeds = malloc(bp_max() * 4)
 	bp_temps = malloc(bp_max() * 4)
+	bp_hit_counts = malloc(bp_max() * 4)
+	bp_ignore_counts = malloc(bp_max() * 4)
+	bp_cond_exprs = malloc(bp_max() * __word_size__)
+	bp_log_exprs = malloc(bp_max() * __word_size__)
 	int i = 0
 	while (i < bp_max()):
 		save_int(bp_addrs + i * 4, 0)
+		save_int(bp_hit_counts + i * 4, 0)
+		save_int(bp_ignore_counts + i * 4, 0)
+		save_word(bp_cond_exprs + i * __word_size__, 0)
+		save_word(bp_log_exprs + i * __word_size__, 0)
 		i = i + 1
 	bp_used = 0
 
@@ -42,6 +62,56 @@ int bp_addr(int i):
 
 int bp_is_temp(int i):
 	return load_int(bp_temps + i * 4)
+
+
+int bp_hits(int i):
+	return load_int(bp_hit_counts + i * 4)
+
+
+void bp_hit_increment(int i):
+	save_int(bp_hit_counts + i * 4, bp_hits(i) + 1)
+
+
+int bp_ignore(int i):
+	return load_int(bp_ignore_counts + i * 4)
+
+
+void bp_set_ignore(int i, int count):
+	save_int(bp_ignore_counts + i * 4, count)
+
+
+char* bp_condition(int i):
+	return cast(char*, load_word(bp_cond_exprs + i * __word_size__))
+
+
+# Set (non-empty expr) or clear (0 or "") breakpoint i's stop condition.
+void bp_set_condition(int i, char* expr):
+	char* old = bp_condition(i)
+	if (old != 0):
+		free(old)
+		save_word(bp_cond_exprs + i * __word_size__, 0)
+	if (expr == 0):
+		return;
+	if (expr[0] == 0):
+		return;
+	char* copy = malloc(strlen(expr) + 1)
+	strcpy(copy, expr)
+	save_word(bp_cond_exprs + i * __word_size__, cast(int, copy))
+
+
+char* bp_log_expr(int i):
+	return cast(char*, load_word(bp_log_exprs + i * __word_size__))
+
+
+int bp_is_log(int i):
+	return bp_log_expr(i) != 0
+
+
+# Mark breakpoint i as a logpoint: eligible hits log expr and auto-continue.
+void bp_set_log(int i, char* expr):
+	char* copy = malloc(strlen(expr) + 1)
+	strcpy(copy, expr)
+	save_word(bp_log_exprs + i * __word_size__, cast(int, copy))
 
 
 # Slot index of the breakpoint at an absolute address, or -1.
@@ -112,6 +182,12 @@ void bp_delete(int i):
 		return;
 	bp_disarm(i)
 	save_int(bp_addrs + i * 4, 0)
+	bp_set_condition(i, 0)
+	if (bp_log_expr(i) != 0):
+		free(bp_log_expr(i))
+		save_word(bp_log_exprs + i * __word_size__, 0)
+	save_int(bp_hit_counts + i * 4, 0)
+	save_int(bp_ignore_counts + i * 4, 0)
 
 
 void bp_delete_all():
@@ -120,11 +196,20 @@ void bp_delete_all():
 		if (bp_addr(i) != 0):
 			bp_disarm(i)
 			save_int(bp_addrs + i * 4, 0)
+			bp_set_condition(i, 0)
+			if (bp_log_expr(i) != 0):
+				free(bp_log_expr(i))
+				save_word(bp_log_exprs + i * __word_size__, 0)
+			save_int(bp_hit_counts + i * 4, 0)
+			save_int(bp_ignore_counts + i * 4, 0)
 		i = i + 1
 
 
 void bp_describe(int i):
-	print(c"breakpoint ")
+	if (bp_is_log(i)):
+		print(c"logpoint ")
+	else:
+		print(c"breakpoint ")
 	char* digits = itoa(i + 1)
 	print(digits)
 	free(digits)
@@ -135,6 +220,22 @@ void bp_describe(int i):
 	print(c" (")
 	dbg_print_file_line(bp_addr(i))
 	print(c")")
+	if (bp_condition(i) != 0):
+		print(c", condition: ")
+		print(bp_condition(i))
+	if (bp_is_log(i)):
+		print(c", log: ")
+		print(bp_log_expr(i))
+	if (bp_hits(i) > 0):
+		print(c", hits: ")
+		char* hd = itoa(bp_hits(i))
+		print(hd)
+		free(hd)
+	if (bp_ignore(i) > 0):
+		print(c", ignore: ")
+		char* id = itoa(bp_ignore(i))
+		print(id)
+		free(id)
 
 
 void bp_list():

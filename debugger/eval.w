@@ -22,6 +22,7 @@ import debugger.breakpoints
 
 
 int dbg_eval_counter
+int dbg_eval_ok /* set by dbg_eval_call: 0 = the expression failed to compile */
 
 # Scratch copies of the bound locals (allocated once, low memory) and
 # the copy-back list: runtime address, scratch address, byte size.
@@ -194,13 +195,27 @@ int dbg_eval_compile(char* expr, int stop_addr, int esp):
 	return address
 
 
-# Evaluate the expression at the stop and print its value.
-void dbg_eval(char* expr, int stop_addr, int esp):
+# Non-printing evaluation for conditions and logpoints. Sets dbg_eval_ok
+# to 0 (a compile error already reported its own diagnostic) or 1; the
+# return value is only meaningful when dbg_eval_ok is 1, so callers must
+# check it before trusting a 0 result as "condition false" rather than
+# "condition failed to compile".
+int dbg_eval_call(char* expr, int stop_addr, int esp):
+	dbg_eval_ok = 0
 	int f = dbg_eval_compile(expr, stop_addr, esp)
 	if (f == 0):
-		return;
+		return 0
 	int v = f()
 	dbg_eval_writeback()
+	dbg_eval_ok = 1
+	return v
+
+
+# Evaluate the expression at the stop and print its value.
+void dbg_eval(char* expr, int stop_addr, int esp):
+	int v = dbg_eval_call(expr, stop_addr, esp)
+	if (dbg_eval_ok == 0):
+		return;
 	print(c"= ")
 	dbg_print_int_value(v)
 	put_char(10)

@@ -90,6 +90,12 @@ is a queue, not an archive.
   over stdin (see the `w-debug-wdbg` skill); a structured wrapper
   remains deferred until an agent workflow actually needs programmatic
   stepping.
+- **Conditional breakpoints/hit counts/logpoints land soon** (design:
+  `docs/projects/debugger_conditional_breakpoints.md`). They add new
+  stable, grep-able output lines (`logpoint N hit H: expr = value`,
+  extended `info breakpoints` fields) to the same text protocol — worth
+  keying a future structured wrapper off, and worth a
+  `w-debug-wdbg` skill example once merged.
 - **Semantic index.** `symbols --json` dumps declarations per file; a
   cross-file reference index (and `w-index-mcp`) is still unbuilt.
 - **LSP coverage.** `bin/wlsp` publishes diagnostics and
@@ -116,6 +122,14 @@ is a queue, not an archive.
   content-hash caching on macOS, add per-arch dirent accessors
   (`reclen`/`name`/`kind`) next to each `getdents` shim in
   `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
+- **Nonexistent input files produce a garbled directory-walk error.**
+  `wv2 <typo>.w` prints `file ... not found error '-2'`, walks up
+  directories, and at the filesystem root prints "abandoning search
+  in" followed by garbage bytes (observed on arm64_darwin while
+  bringing up the PAC tests, 2026-07-09; the misspelled path was
+  `tests/hash_table_test.w` for `structures/hash_table_test.w`). A
+  plain "no such file: <path>" before the import-search walk would
+  have saved the confusion.
 
 ## Skills / rules upkeep
 

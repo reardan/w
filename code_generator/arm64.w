@@ -316,8 +316,11 @@ void arm64_bounds_check_eax_less_equal_int32(int limit):
 # x86 family they reproduce the original bytes exactly; on arm64 they emit
 # the A64 form. Kept here so all arch knowledge lives in one file.
 
-# Pointer-authentication level for arm64 return addresses: 1 = pac=ret (the
-# default), 0 = off. Set in link_impl.
+# Pointer-authentication level for arm64: 0 = off, 1 = pac=ret (the
+# default: sign return addresses), 2 = pac=full (additionally sign W
+# function pointers at materialization with the IA key and zero
+# discriminator; indirect calls authenticate with blraaz). Set in
+# link_impl, whole-program (see the --pac pre-scan there).
 int arm64_pac
 
 
@@ -419,6 +422,17 @@ void be_align_code():
 	if (target_isa == 1):
 		while ((codepos & 3) != 0):
 			emit_int8(0)
+
+
+# Sign the code pointer in the accumulator (IA key, zero discriminator).
+# Called by sym_get_value when a function's address becomes a value; the
+# matching authentication is the blraaz in call_eax. Zero discriminator
+# keeps signed function pointers position-independent (struct moves and
+# equality compares keep working) — W's own convention, see arm64.md D6.
+void be_code_ptr_sign():
+	if (target_isa == 1):
+		if (arm64_pac == 2):
+			a64(op(0xda, 0xc123e0))   # paciza x0
 
 
 # Function prologue: sign the return address and push it onto the W stack so

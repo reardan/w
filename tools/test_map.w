@@ -104,6 +104,10 @@ void wtest_init_targets():
 	wtest_targets.push(c"math_test")
 	wtest_targets.push(c"extern_alias_test_x64")
 	wtest_targets.push(c"graphics_darwin")
+	wtest_targets.push(c"pac_flag_test")
+	wtest_targets.push(c"pac_darwin")
+	wtest_targets.push(c"pac_full_test_arm64")
+	wtest_targets.push(c"pac_corrupt_test_arm64")
 	wtest_targets.push(c"tests")
 
 
@@ -365,6 +369,15 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"extern_alias_test_x64")
 	else if (strcmp(path, c"tests/dynamic_darwin_test.w") == 0):
 		wtest_add(path, c"graphics_darwin")
+	else if (strcmp(path, c"tests/pac_full_test.w") == 0):
+		wtest_add(path, c"pac_flag_test")
+		wtest_add(path, c"pac_full_test_arm64")
+		wtest_add(path, c"pac_darwin")
+	else if (starts_with(path, c"tests/pac_corrupt_")):
+		wtest_add(path, c"pac_corrupt_test_arm64")
+		wtest_add(path, c"pac_darwin")
+	else if (strcmp(path, c"tools/pac_flag_check.sh") == 0):
+		wtest_add(path, c"pac_flag_test")
 	else if (starts_with(path, c"tests/parser_generator/")):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):

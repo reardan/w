@@ -430,6 +430,9 @@ void emit_c_abi_call_arm64(int n, char* classes, int ret_class, int got_vaddr):
 	a64(op(0x90 | (immlo << 5), immhi << 5) | 16)           # adrp x16, page(got)
 	a64(op(0x91, 0x000210) | ((got_vaddr & 0xfff) << 10))   # add x16, x16, #lo12
 	a64(op(0xf9, 0x400210))   # ldr x16, [x16]
+	# Deliberately a plain blr even under --pac=full: imported C pointers
+	# are bound unsigned by the dynamic linker (plain arm64 convention),
+	# so there is no signature to authenticate.
 	a64(op(0xd6, 0x3f0200))   # blr x16
 
 	# Float results come back in s0/d0; W callers expect the bits in x0.

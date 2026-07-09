@@ -199,3 +199,36 @@ macOS backend") closed the dynamic-linking gap this plan deferred:
   real Mac window (AppKit + NSOpenGL 3.2-core via objc_msgSend, GL
   "4.1 Metal"); the gl smoke test passes its glReadPixels checks
   natively.
+
+## Execution update (2026-07-09): Phase 7 / Stage 5 landed
+
+Implemented natively on the M3 (the darwin seed toolchain made the
+container loop unnecessary). What matched the plan: `--pac=off|ret|full`
+with `ret` default, paciza-at-materialization + `blraaz` in `call_eax`,
+buffer-address discriminators in `repl_setjmp`/`repl_longjmp`, arm64e
+cpusubtype under `arm64_darwin --pac=full`, corruption fixtures asserted
+dead on both qemu and the M3. What shifted (details in arm64.md's "D6
+execution notes"):
+
+- `--pac` needed a pre-scan before `be_start` (whole-program level; the
+  Mach-O header consumes it), not a positional flag-loop entry.
+- `sym_get_value` is NOT the only materialization point: the print, json
+  and generic chain-slot call targets each needed `be_code_ptr_sign()`
+  after their chain bookkeeping — found the hard way when every print
+  faulted at its first authenticated call.
+- `gen_switch` signs resume addresses with zero discriminator (not the
+  buffer address) so `__w_gen_create`'s seeded entry address — signed at
+  materialization — authenticates under the same convention and
+  lib/generator.w needs no target-specific code.
+- arm64e header bits calibrated against clang on macOS 26: `0x81000002`
+  (versioned ABI, ptrauth version 1). AppleSystemPolicy accepts the ad-hoc
+  signed arm64e slice; the pac=full compiler self-hosts natively as arm64e
+  with byte-identical output.
+- macOS reports the PAC faults as SIGSEGV/SIGBUS (exit 139/138) where qemu
+  reports SIGILL (132); `tools/mac/run_darwin_tests.sh` grew a must-die
+  list asserting death-by-signal instead of exact codes.
+
+New tests: `pac_flag_test` (byte-pattern artifact assertions via
+`tools/pac_flag_check.sh`; default `tests` aggregate), `pac_full_test_arm64`
+and `pac_corrupt_test_arm64` (qemu, outside the `tests` umbrella), `pac_darwin`
+(compile-only arm64e guard; run natively via `run_darwin_tests.sh`).
