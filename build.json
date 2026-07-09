@@ -1269,7 +1269,7 @@
 		{
 			"name": "wmcp",
 			"deps": ["wv2"],
-			"inputs": ["tools/mcp/w_toolchain_mcp.w"],
+			"inputs": ["tools/mcp/w_toolchain_mcp.w", "tools/mcp/mcp_server.w"],
 			"outputs": ["bin/wmcp"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/mcp/w_toolchain_mcp.w", "-o", "bin/wmcp"]}
@@ -1322,7 +1322,7 @@
 		{
 			"name": "wimcp",
 			"deps": ["windex", "windexd"],
-			"inputs": ["tools/mcp/w_index_mcp.w"],
+			"inputs": ["tools/mcp/w_index_mcp.w", "tools/mcp/mcp_server.w"],
 			"outputs": ["bin/wimcp"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/mcp/w_index_mcp.w", "-o", "bin/wimcp"]}
@@ -1749,7 +1749,7 @@
 		{
 			"name": "wdmcp",
 			"deps": ["wdbg"],
-			"inputs": ["tools/mcp/w_debug_mcp.w"],
+			"inputs": ["tools/mcp/w_debug_mcp.w", "tools/mcp/mcp_server.w"],
 			"outputs": ["bin/wdmcp"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/mcp/w_debug_mcp.w", "-o", "bin/wdmcp"]}
