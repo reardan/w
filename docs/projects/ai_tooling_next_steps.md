@@ -94,6 +94,12 @@ is a queue, not an archive.
 
 ## MCP / LSP / cloud
 
+- **`wdbg` rejects valid imported bare returns.** While debugging
+  `tools/parser_generator.w`, `./bin/wdbg tools/parser_generator.w ...`
+  failed before starting the debuggee with `Cannot find symbol: 'return'
+  in libs/extras/parser_generator/diagnostics.w:24`. Add a debugger
+  compile/run regression for imported functions containing bare `return`
+  statements and fix the debugger's symbol-resolution path.
 - **Cloud Agents cannot see `bin/wmcp`.** Repo `mcp.json` is IDE-only;
   the server must be registered in the Cloud Agents dashboard (stdio
   command: `sh -c "./wbuild wmcp >&2 && exec ./bin/wmcp"`).
