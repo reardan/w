@@ -1,4 +1,6 @@
 import lib.testing
+import compiler.tokenizer
+import codegen
 
 /*
 todo: fix this so that it can use self directory

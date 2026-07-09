@@ -1,4 +1,5 @@
 import lib.testing
+import compiler.tokenizer
 import compiler.bignum
 
 
