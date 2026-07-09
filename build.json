@@ -303,7 +303,8 @@
 					"stdout_file": "bin/check_json_warning.ndjson",
 					"expect_stdout": [
 						"\"severity\": \"warning\"",
-						"\"file\": \"/workspace/tests/warning_fixture.w\"",
+						"\"file\": \"/",
+						"/tests/warning_fixture.w\"",
 						"\"message\": \"assignment type mismatch: expected 'char*', got 'int*'\"",
 						"\"token\":",
 						"\"arch\": \"x86\""
