@@ -31,10 +31,12 @@ container pointer, not the entries.
 - `k in m` and `k in s` test membership and return `bool`.
 - `.length` returns the number of live entries.
 - `for K k in m` iterates map keys; values are read with `m[k]`.
+- `for K k, V v in m` iterates keys and values together, one probe per
+  entry (see `tests/map_set_builtin_test.w`).
 - `for K k in s` iterates set members.
 
-Bare contextual literals (`map[char*, int] m = {"a": 1}`), `for k, v in m`,
-and small static literal tables are deferred.
+Bare contextual literals (`map[char*, int] m = {"a": 1}`) and small static
+literal tables are deferred.
 
 ## Runtime layout
 
@@ -92,7 +94,7 @@ types because their descriptors point into the enclosing object.
 ## Deferred work
 
 - Contextual bare literals.
-- Rich pseudo-methods such as `get`, `get_default`, `discard`, and `clear`.
-- Pair iteration after W has tuple or multiple loop-variable support.
+- Rich pseudo-methods such as `get`, `get_default`, `discard`, and `clear`
+  (tracked in issue #19).
 - Struct keys (values are done).
 - Migrating compiler symbol/type tables to built-in maps.

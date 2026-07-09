@@ -383,14 +383,11 @@ two iteration shapes forever.
 
 ## Cross-cutting questions
 
-- **hash_map keys vs values.** W has no tuples, so `for k, v in map`
-  needs either two loop variables (grammar change: parse an optional
-  second `typed_identifier` after a comma) or a decision that `for k in
-  map` yields keys and the body calls `hash_map_get(map, k)` (an extra
-  probe per element). The cursor design has a third option: expose
-  `hash_map_iter_value_at(map, cur)` alongside key access so both are
-  O(1) at the current bucket. Leaning: keys-only first; two-variable
-  syntax later without breaking anything.
+- **hash_map keys vs values.** Landed: `for K k, V v in m` parses an
+  optional second `typed_identifier` after a comma
+  (`grammar/for_statement.w`), and the map cursor exposes value-at-cursor
+  access so both key and value are read in one probe per bucket. Tested
+  in `tests/map_set_builtin_test.w`.
 - **Loop variable typing.** Containers store words, so `for int x in
   list` cannot be checked deeper than "word-sized". When the language
   gains generics or element-type metadata on the container struct, the
@@ -441,7 +438,8 @@ rather than a second iteration mechanism:
    `for int x in counter(5):` work through the existing lowering;
    decide the break-cleanup question (leaning: emit `gen_free` on the
    loop's exit edges when the iterable's static type is `generator`).
-   Revisit two-variable `for k, v in map` afterwards.
+   Two-variable `for k, v in map` landed alongside this (see
+   "Cross-cutting questions" above).
 
 Steps 1-2 and 3-4 are independent and can land in either order; step 5
 needs both. Design 1 is acceptable as a temporary shortcut only if step
