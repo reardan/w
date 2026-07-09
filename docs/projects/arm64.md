@@ -15,9 +15,11 @@ x86 compiler cross-compiles `w.w` to arm64, and running that binary under
 `qemu-aarch64 -cpu max` recompiles `w.w` byte-for-byte (`make verify_arm64`).
 A 34-test slice of the suite passes under qemu (`make arm64_smoke_test`
 covers a representative subset), and `make verify` / `verify_x64` stay
-byte-identical. Stages 4–5 (Mach-O + Darwin syscalls + code signing, and
-`--pac=full` / arm64e for macOS) remain future work. The core codegen model
-was first validated with the hand-written A64 spikes in the appendix.
+byte-identical. Stage 4 (Mach-O + Darwin syscalls + signing, plus native
+Darwin self-hosting and dynamic linking) and Stage 5 (`--pac=off|ret|full`,
+function-pointer signing, arm64e — see the execution notes in D6) are
+landed as well. The core codegen model was first validated with the
+hand-written A64 spikes in the appendix.
 
 Build/run: `make build` then `make verify_arm64` (self-host fixpoint) and
 `make arm64_smoke_test`; both need `qemu-aarch64-static`. Compile a single
@@ -322,6 +324,49 @@ there is no foreign ABI to be compatible with until the libSystem stage.
   address and *must* die (spike 2 in the appendix demonstrates exactly this
   under qemu: exit 132, SIGILL from the failed `autia`).
 
+### D6 execution notes (Stage 5 landed, 2026-07-09)
+
+- `--pac=off|ret|full` parses in a **pre-scan** before `be_start` in
+  `link_impl` (`compiler/compiler.w`), not the positional flag loop: the
+  level must agree across every compiled file (a mixed image traps at
+  runtime) and the Mach-O writer consumes it while emitting the header.
+- Sign-at-materialization lives in `be_code_ptr_sign()`
+  (`code_generator/arm64.w`), called wherever a callee's address becomes a
+  value. That is `sym_get_value` (`compiler/symbol_table.w`) **plus the
+  four chain-slot sites that bypass it**: `print_builtin.w`,
+  `json_builtin.w` and the generic call/forward paths in `generic.w` all
+  emit `be_addr_slot_emit` slots of their own — the initial bring-up missed
+  them and every print faulted at the first `blraaz`. Anything that adds a
+  new chain-slot call target must call `be_code_ptr_sign()` after its chain
+  bookkeeping (the signature word must not become the recorded chain cell).
+- **`gen_switch` deviates from the sketch above**: resume addresses are
+  signed with **zero discriminator** (`paciza`/`autiza`), not the buffer
+  address. `__w_gen_create` (`lib/generator.w`) seeds a fresh generator
+  stack with the body's entry address exactly as it received it — already
+  zero-disc signed by materialization — so one convention covers first
+  resume and every later suspend/resume, and `lib/generator.w` stays free
+  of target-specific code. `repl_setjmp`/`repl_longjmp` do use the buffer
+  address as discriminator as sketched (self-contained in the stubs, x9
+  holds the buffer in both).
+- **arm64e**: cpusubtype `0x81000002` (CPU_SUBTYPE_ARM64E, versioned-ABI
+  bit, ptrauth ABI version 1 — byte-identical to what `clang -arch arm64e`
+  emits on macOS 26). Verified natively on the M3 (macOS 26.3): ad-hoc
+  signed arm64e W binaries load and run with the keys enforced, the
+  corruption fixtures die (SIGSEGV/SIGBUS — macOS's spelling of the same
+  faults qemu reports as SIGILL/132), and the compiler itself built with
+  `--pac=full` self-hosts as arm64e with byte-identical output.
+- **Known limitation**: a W function pointer handed to C code (callback,
+  ObjC IMP) under `--pac=full` is a signed value the C side will call with
+  a plain `blr` — wrong address on Linux, trap on arm64e. Imported C
+  pointers stay unsigned (`blr x16` in `ffi.w`) so *calling* C is fine;
+  *exporting* W code pointers is not. Default stays `ret`, so nothing
+  regresses; revisit if a real consumer needs C callbacks under full.
+- Tests: `pac_flag_test` (byte-pattern artifact assertions — x86 hosts have
+  no aarch64 objdump — via `tools/pac_flag_check.sh`, in the default
+  `tests`), `pac_full_test_arm64` + `pac_corrupt_test_arm64` (qemu,
+  Makefile-only like `arm64_smoke_test`), `pac_darwin` (compile-only arm64e
+  guard) + must-die handling in `tools/mac/run_darwin_tests.sh`.
+
 ## Staged path
 
 - **Stage 0 — model spikes (done, see appendix):** x28-stack + accumulator
@@ -358,11 +403,13 @@ there is no foreign ABI to be compatible with until the libSystem stage.
   CodeDirectory ad-hoc signing. Acceptance: hello + `lib_test` subset on a
   real Apple Silicon machine (arm64 slice, PAC inert), plus a GitHub-Actions
   macOS arm64 runner job if CI is desired.
-- **Stage 5 — PAC to production.** `--pac=ret` default-on for arm64 targets,
-  `--pac=full` function-pointer signing, arm64e cpusubtype emission,
-  negative-test fixtures in the suite (enforced under qemu CI; enforced on
-  M3 via the arm64e slice on macOS 26+). Acceptance: full arm64 suite green
-  with pac=ret; corruption fixtures die on both qemu and M3.
+- **Stage 5 — PAC to production (done, 2026-07-09).** `--pac=ret` default-on
+  for arm64 targets, `--pac=full` function-pointer signing, arm64e
+  cpusubtype emission, negative-test fixtures in the suite (enforced under
+  qemu CI; enforced on M3 via the arm64e slice on macOS 26.3). Acceptance
+  met: full arm64 suite green with pac=ret; corruption fixtures die on both
+  qemu and the M3; the compiler self-hosts natively as arm64e under
+  `--pac=full`. See the D6 execution notes for what shifted in flight.
 - **Dynamic linking (landed with the graphics/macOS project, 2026-07):**
   `c_lib`/`extern` now work on both arm64 targets. AAPCS64 FFI shims in
   `code_generator/ffi.w` (x0-x7/v0-v7, 8-byte Linux stack spill; the C

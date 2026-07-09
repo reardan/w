@@ -229,7 +229,12 @@ int json_codec_emit_chained_call_target(int head):
 		head = code_offset
 	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 	be_addr_slot_write(codepos - 4, head)
-	return codepos + code_offset - 4
+	# pac=full: sign the materialized callee like sym_get_value does; the
+	# chain cell position is captured first so the extra word never lands
+	# inside the chain.
+	int slot = codepos + code_offset - 4
+	be_code_ptr_sign()
+	return slot
 
 
 void json_codec_patch_chain(int head, char* fn_name):

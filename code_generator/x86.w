@@ -202,6 +202,12 @@ void imul_eax_int32(int v):
 
 void call_eax():
 	if (target_isa == 1):
+		if (arm64_pac == 2):
+			# pac=full: every W code pointer was paciza-signed at
+			# materialization (be_code_ptr_sign), so authenticate and
+			# branch. A forged pointer traps here on FPAC hardware.
+			a64(op(0xd6, 0x3f081f))   # blraaz x0
+			return
 		a64(op(0xd6, 0x3f0000))   # blr x0
 		return
 	emit(2, c"\xff\xd0") /* call *%eax */

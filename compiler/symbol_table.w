@@ -382,6 +382,12 @@ int sym_get_value(char *s):
 
 	if (symtype == 2):
 		if ((scope_type == 'D') | (scope_type == 'U')):
+			# pac=full: the address just materialized is now a value —
+			# sign it (paciza; call_eax authenticates with blraaz).
+			# Emitted here, after the 'U' backpatch-chain bookkeeping
+			# above, so the chain's codepos-4 cell stays the add
+			# instruction of the slot, not this extra word.
+			be_code_ptr_sign()
 			return 4 /* function */
 
 	return type

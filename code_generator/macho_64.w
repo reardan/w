@@ -115,7 +115,17 @@ void macho_start_arm64():
 	# mach_header_64
 	emit_int32(op(0xfe, 0xedfacf))  /* magic MH_MAGIC_64 */
 	emit_int32(op(0x01, 0x00000c))  /* cputype CPU_TYPE_ARM64 */
-	emit_int32(0)                   /* cpusubtype CPU_SUBTYPE_ARM64_ALL */
+	# Plain arm64 processes run with the PAC keys disabled (pacia/autia
+	# execute as no-ops), so --pac=full marks the slice arm64e:
+	# CPU_SUBTYPE_ARM64E with the versioned-ABI bit and ptrauth ABI
+	# version 1 (0x81000002 — matches what clang -arch arm64e emits for
+	# a main executable on macOS 26), the ABI macOS 26 opened to third
+	# parties. Nothing inside the binary follows Apple's signing schema —
+	# the mark only turns the keys on for W's own convention.
+	if (arm64_pac == 2):
+		emit_int32(op(0x81, 0x000002))  /* CPU_SUBTYPE_ARM64E, ptrauth ABI v1 */
+	else:
+		emit_int32(0)               /* cpusubtype CPU_SUBTYPE_ARM64_ALL */
 	emit_int32(2)                   /* filetype MH_EXECUTE */
 	emit_int32(11)                  /* ncmds */
 	emit_int32(552)                 /* sizeofcmds: 4*72+24+80+32+24+24+24+56 */

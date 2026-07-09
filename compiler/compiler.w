@@ -141,7 +141,7 @@ void compile_save(char* fn):
 
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (argc <= start_index):
-		println2(c"usage: w [x64|arm64|arm64_darwin|win64] <file.w>... [-o output] [--bounds=on|off|trap] [--strict]")
+		println2(c"usage: w [x64|arm64|arm64_darwin|win64] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	int i = start_index
 	word_size = 4
@@ -199,6 +199,23 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		target_os = 1
 		data_split = 1
 		i = i + 1
+	# --pac is whole-program: signing at materialization and authenticating
+	# at the call site must agree across every compiled file (a mixed image
+	# would trap at runtime), and the Mach-O header consumes the level in
+	# be_start below. So the level is fixed by a pre-scan of the remaining
+	# arguments here; the positional flag loop merely re-applies it.
+	int pac_level = arm64_pac
+	int pac_scan = i
+	while (pac_scan < argc):
+		char** pac_arg = argv + pac_scan * __word_size__
+		if (strcmp(*pac_arg, c"--pac=off") == 0):
+			pac_level = 0
+		else if (strcmp(*pac_arg, c"--pac=ret") == 0):
+			pac_level = 1
+		else if (strcmp(*pac_arg, c"--pac=full") == 0):
+			pac_level = 2
+		pac_scan = pac_scan + 1
+	arm64_pac = pac_level
 	push_basic_types()
 	pointer_indirection = 0
 	# No function body is being compiled yet: the '?' operator checks
@@ -226,6 +243,12 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			bounds_mode = 1
 		else if (strcmp(*arg, c"--bounds=off") == 0):
 			bounds_mode = 0
+		else if (strcmp(*arg, c"--pac=off") == 0):
+			arm64_pac = pac_level
+		else if (strcmp(*arg, c"--pac=ret") == 0):
+			arm64_pac = pac_level
+		else if (strcmp(*arg, c"--pac=full") == 0):
+			arm64_pac = pac_level
 		else if (strcmp(*arg, c"--strict") == 0):
 			strict_mode = 1
 		else:
@@ -300,7 +323,7 @@ int check_main(int argc, int argv):
 			diag_json = 1
 			i = i + 1
 	if (argc <= i):
-		println2(c"usage: w check [--json] [x64] <file.w>... [--bounds=on|off|trap] [--strict]")
+		println2(c"usage: w check [--json] [x64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
 
@@ -434,7 +457,7 @@ int symbols_main(int argc, int argv):
 			diag_json = 1
 			i = i + 1
 	if (argc <= i):
-		println2(c"usage: w symbols [--json] [x64] <file.w>... [--bounds=on|off|trap] [--strict]")
+		println2(c"usage: w symbols [--json] [x64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	link_impl(argc, argv, i, 1)
 	symbols_dump(json)
