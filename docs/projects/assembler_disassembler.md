@@ -1,11 +1,16 @@
 # Assembler / Disassembler Libraries (x86, x64, arm64)
 
-Status: **Phase 0 / foundations implemented** (issue #164): `libs/asm/`
-core (insn model, byte buffer, labels/fixups, register tables, hex +
-corpus utilities, cross-arch ELF section reader), per-ISA corpus
-fixtures in `tests/asm/`, the `asm_seed_gate` seed-compat build gate and
-the `asm_foundations_test` suite. Epic: #163; remaining phases tracked
-in its sub-issues.
+Status: **Phase 0 foundations + x86 disassembler implemented** (issues
+#164, #165). `libs/asm/` has the insn model, byte buffer, labels/fixups,
+register tables, hex + corpus utilities, cross-arch ELF section reader
+(#164), and the x86-32 decoder + Intel-syntax formatter (#165). Coverage
+is proven by `asm_x86_disasm_test`: a 345-entry corpus round-trip plus a
+zero-`.byte` sweep of every function in the self-hosted `bin/wv2`
+(1982 functions / 268k instructions, recognizing the codegen's inline
+string-literal data via the `call`-over-data idiom). `asm_seed_gate`
+keeps the whole library seed-compilable. Epic: #163; remaining phases
+(x86 assembler #166, x64 #167, arm64 #168, wdbg #169, stubgen #170)
+tracked in its sub-issues.
 
 ## Why
 

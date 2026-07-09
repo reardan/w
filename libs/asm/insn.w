@@ -24,6 +24,19 @@ int ASM_ARCH_ARM64():
 	return 2
 
 
+# Register classes (asm_operand.rclass for kind reg)
+int ASM_RCLASS_GP():
+	return 0
+
+
+int ASM_RCLASS_XMM():
+	return 1
+
+
+int ASM_RCLASS_X87():
+	return 2
+
+
 # Operand kinds
 int ASM_OP_NONE():
 	return 0
@@ -55,6 +68,7 @@ One operand. Which fields are meaningful depends on kind:
 struct asm_operand:
 	int kind
 	int reg
+	int rclass    # register class for kind reg (gp/xmm/x87)
 	int base
 	int index
 	int scale
@@ -67,6 +81,7 @@ struct asm_operand:
 void asm_operand_clear(asm_operand* op):
 	op.kind = ASM_OP_NONE()
 	op.reg = -1
+	op.rclass = ASM_RCLASS_GP()
 	op.base = -1
 	op.index = -1
 	op.scale = 1
@@ -85,6 +100,7 @@ struct asm_insn:
 	int arch
 	int address
 	int length
+	int branch_target   # absolute target for rel branches; -1 otherwise
 	char* mnemonic
 	asm_operand op1
 	asm_operand op2
@@ -95,10 +111,37 @@ void asm_insn_clear(asm_insn* insn):
 	insn.arch = ASM_ARCH_X86()
 	insn.address = 0
 	insn.length = 0
+	insn.branch_target = -1
 	insn.mnemonic = 0
 	asm_operand_clear(&insn.op1)
 	asm_operand_clear(&insn.op2)
 	asm_operand_clear(&insn.op3)
+
+
+# Minimal-width lowercase hex ("0x12", not the zero-padded "0x00000012"
+# that lib.hex produces) for a non-negative value — the corpus/canonical
+# immediate form.
+char* asm_hex_min(int v):
+	char* digits = c"0123456789abcdef"
+	char* tmp = malloc(16)
+	int n = 0
+	if (v == 0):
+		tmp[0] = '0'
+		n = 1
+	while (v != 0):
+		tmp[n] = digits[v & 15]
+		n = n + 1
+		v = (v >> 4) & 0x0fffffff
+	char* out = malloc(n + 3)
+	out[0] = '0'
+	out[1] = 'x'
+	int i = 0
+	while (i < n):
+		out[2 + i] = tmp[n - 1 - i]
+		i = i + 1
+	out[2 + n] = 0
+	free(tmp)
+	return out
 
 
 int asm_insn_operand_count(asm_insn* insn):
