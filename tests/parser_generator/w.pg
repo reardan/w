@@ -92,6 +92,7 @@ literal GT ">"
 literal AMP "&"
 literal PIPE "|"
 literal CARET "^"
+literal TILDE "~"
 literal BANG "!"
 literal COLON_ASSIGN ":="
 literal ASSIGN "="
@@ -214,7 +215,7 @@ rule binary_op = OR_OR | AND_AND | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | LT | GT | K
 rule gap_many = gap_item gap_many |
 rule gap_item = NEWLINE tab_prefix | NEWLINE
 rule unary_expr = unary_op unary_expr | postfix_expr
-rule unary_op = BANG | MINUS | PLUS | AMP | STAR
+rule unary_op = BANG | MINUS | PLUS | AMP | STAR | TILDE
 rule postfix_expr = primary_expr postfix_tail*
 # QUESTION expression COLON expression covers the C-style ternary
 # (syntax-only: the compiler gives it real precedence); a bare QUESTION

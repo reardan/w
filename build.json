@@ -774,6 +774,14 @@
 			]
 		},
 		{
+			"name": "bitwise_not_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/bitwise_not_test.w", "-o", "bin/bitwise_not_test"]},
+				{"cmd": ["bin/bitwise_not_test"]}
+			]
+		},
+		{
 			"name": "infer_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2645,6 +2653,7 @@
 				"for_test",
 				"compound_assign_test",
 				"bitwise_xor_test",
+				"bitwise_not_test",
 				"infer_test",
 				"ternary_test",
 				"print_builtin_test",
