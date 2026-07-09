@@ -22,8 +22,15 @@ int struct_declaration():
 			print_string(c"struct accepted name: ", token)
 			println2(c"")
 
-		# emit struct type with token name; size starts at 0 and grows per field
-		type_index = type_push_size(strclone(token), 0)
+		# emit struct type with token name; size starts at 0 and grows per
+		# field. A repeated name (REPL redefinition) reuses and resets the
+		# existing record in place instead of pushing an unreachable
+		# duplicate — see type_reset_for_redefinition.
+		type_index = type_lookup(token)
+		if (type_index < 0):
+			type_index = type_push_size(strclone(token), 0)
+		else:
+			type_reset_for_redefinition(type_index, 0)
 		type_set_decl_location(type_index, decl_file_index(), diag_token_line, diag_token_column)
 		current_symbol = sym_declare_global(token, type_index, 1)
 		# type_print_all()
