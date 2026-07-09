@@ -5,6 +5,12 @@ The compiler lowers built-in syntax to these helpers. Keys and values are
 stored as words in the MVP; small scalar values occupy the low bits. String
 keys are cloned so map/set ownership does not depend on literal or stack
 lifetimes.
+
+Iteration follows INSERTION ORDER (Python-dict semantics): a doubly-linked
+chain through the occupied slots records the order keys were first
+inserted. Updating an existing key keeps its position; removing and
+re-inserting moves it to the end. Rehashing re-inserts in chain order, so
+growth preserves it.
 */
 import lib.memory
 
@@ -53,6 +59,10 @@ struct __w_hash_table:
 	int* keys
 	int* values
 	char* states
+	int* order_next   # slot -> next slot in insertion order, -1 at the tail
+	int* order_prev   # slot -> previous slot, -1 at the head
+	int order_head    # first inserted live slot, -1 when empty
+	int order_tail    # last inserted live slot, -1 when empty
 
 
 # Bytes per value slot. Scalar values (value_size <= word) keep the
@@ -156,10 +166,35 @@ void __w_hash_key_free(int kind, int key):
 		free(cast(void*, key))
 
 
+# Append slot i to the insertion-order chain.
+void __w_hash_order_link(__w_hash_table* table, int i):
+	table.order_next[i] = -1
+	table.order_prev[i] = table.order_tail
+	if (table.order_tail >= 0):
+		table.order_next[table.order_tail] = i
+	else:
+		table.order_head = i
+	table.order_tail = i
+
+
+# Remove slot i from the insertion-order chain.
+void __w_hash_order_unlink(__w_hash_table* table, int i):
+	int p = table.order_prev[i]
+	int n = table.order_next[i]
+	if (p >= 0):
+		table.order_next[p] = n
+	else:
+		table.order_head = n
+	if (n >= 0):
+		table.order_prev[n] = p
+	else:
+		table.order_tail = p
+
+
 __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	if (capacity < 16):
 		capacity = 16
-	__w_hash_table* table = malloc(7 * __word_size__)
+	__w_hash_table* table = malloc(11 * __word_size__)
 	table.capacity = capacity
 	table.count = 0
 	table.key_kind = key_kind
@@ -168,6 +203,12 @@ __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	table.keys = malloc(capacity * __word_size__)
 	table.values = malloc(capacity * slot_size)
 	table.states = malloc(capacity)
+	# Only chain-linked slots are ever read, so the order arrays need no
+	# initialization beyond the empty head/tail sentinels.
+	table.order_next = malloc(capacity * __word_size__)
+	table.order_prev = malloc(capacity * __word_size__)
+	table.order_head = -1
+	table.order_tail = -1
 	int i = 0
 	while (i < capacity):
 		table.keys[i] = 0
@@ -205,6 +246,7 @@ void __w_hash_table_move_owned(__w_hash_table* table, int key, char* value_src):
 		table.states[i] = 1
 		table.keys[i] = key
 		table.count = table.count + 1
+		__w_hash_order_link(table, i)
 	__w_hash_value_copy(__w_hash_value_addr(table, i), value_src, __w_hash_slot_size(table))
 
 
@@ -213,6 +255,9 @@ void __w_hash_table_grow(__w_hash_table* table):
 	int* old_keys = table.keys
 	int* old_values = table.values
 	char* old_states = table.states
+	int* old_next = table.order_next
+	int* old_prev = table.order_prev
+	int old_head = table.order_head
 	int slot_size = __w_hash_slot_size(table)
 
 	table.capacity = old_capacity * 2
@@ -220,6 +265,10 @@ void __w_hash_table_grow(__w_hash_table* table):
 	table.keys = malloc(table.capacity * __word_size__)
 	table.values = malloc(table.capacity * slot_size)
 	table.states = malloc(table.capacity)
+	table.order_next = malloc(table.capacity * __word_size__)
+	table.order_prev = malloc(table.capacity * __word_size__)
+	table.order_head = -1
+	table.order_tail = -1
 	int i = 0
 	while (i < table.capacity):
 		table.keys[i] = 0
@@ -231,14 +280,16 @@ void __w_hash_table_grow(__w_hash_table* table):
 		value_bytes[i] = 0
 		i = i + 1
 
-	i = 0
-	while (i < old_capacity):
-		if (old_states[i] == 1):
-			__w_hash_table_move_owned(table, old_keys[i], cast(char*, old_values) + i * slot_size)
-		i = i + 1
+	# Re-insert by walking the old chain so growth preserves insertion order
+	i = old_head
+	while (i >= 0):
+		__w_hash_table_move_owned(table, old_keys[i], cast(char*, old_values) + i * slot_size)
+		i = old_next[i]
 	free(old_keys)
 	free(old_values)
 	free(old_states)
+	free(old_next)
+	free(old_prev)
 
 
 __w_hash_table* __w_map_new(int key_kind, int value_size):
@@ -246,6 +297,8 @@ __w_hash_table* __w_map_new(int key_kind, int value_size):
 
 
 # Insert or find the slot for key, growing and cloning the key as needed.
+# A new key joins the tail of the insertion-order chain; an existing key
+# keeps its position.
 int __w_map_insert_slot(__w_hash_table* table, int key):
 	if (table.count * 4 >= table.capacity * 3):
 		__w_hash_table_grow(table)
@@ -254,6 +307,7 @@ int __w_map_insert_slot(__w_hash_table* table, int key):
 		table.states[i] = 1
 		table.keys[i] = __w_hash_key_clone(table.key_kind, key)
 		table.count = table.count + 1
+		__w_hash_order_link(table, i)
 	return i
 
 
@@ -321,6 +375,7 @@ int __w_map_remove(__w_hash_table* table, int key):
 		j = j + 1
 	table.states[i] = 2
 	table.count = table.count - 1
+	__w_hash_order_unlink(table, i)
 	return 1
 
 
@@ -328,35 +383,28 @@ int __w_map_length(__w_hash_table* table):
 	return table.count
 
 
-int __w_map_iter_find(__w_hash_table* table, int cursor):
-	while (cursor < table.capacity):
-		if (table.states[cursor] == 1):
-			return cursor
-		cursor = cursor + 1
-	return cursor
-
-
+# The cursor is a slot index on the insertion-order chain; -1 ends the walk.
 int __w_map_iter_begin(__w_hash_table* table):
-	return __w_map_iter_find(table, 0)
+	return table.order_head
 
 
 int __w_map_iter_done(__w_hash_table* table, int cursor):
-	return cursor >= table.capacity
+	return cursor < 0
 
 
 int __w_map_iter_next(__w_hash_table* table, int cursor):
-	return __w_map_iter_find(table, cursor + 1)
+	return table.order_next[cursor]
 
 
 int __w_map_iter_key(__w_hash_table* table, int cursor):
-	__w_assert(cursor < table.capacity)
+	__w_assert(cursor >= 0)
 	__w_assert(table.states[cursor] == 1)
 	return table.keys[cursor]
 
 
 # Scalar value at the cursor's slot (for "for key, value in map").
 int __w_map_iter_value(__w_hash_table* table, int cursor):
-	__w_assert(cursor < table.capacity)
+	__w_assert(cursor >= 0)
 	__w_assert(table.states[cursor] == 1)
 	int* slot = cast(int*, __w_hash_value_addr(table, cursor))
 	return slot[0]
@@ -365,7 +413,7 @@ int __w_map_iter_value(__w_hash_table* table, int cursor):
 # Aggregate value: the address of the stored bytes, valid until the next
 # insertion rehashes the table.
 char* __w_map_iter_value_addr(__w_hash_table* table, int cursor):
-	__w_assert(cursor < table.capacity)
+	__w_assert(cursor >= 0)
 	__w_assert(table.states[cursor] == 1)
 	return __w_hash_value_addr(table, cursor)
 
@@ -379,6 +427,8 @@ void __w_map_free(__w_hash_table* table):
 	free(table.keys)
 	free(table.values)
 	free(table.states)
+	free(table.order_next)
+	free(table.order_prev)
 	free(table)
 
 

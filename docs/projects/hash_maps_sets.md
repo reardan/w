@@ -39,6 +39,9 @@ container pointer, not the entries.
 - `for K k, V v in m` iterates keys and values together, one probe per
   entry (see `tests/map_set_builtin_test.w`).
 - `for K k in s` iterates set members.
+- Iteration follows **insertion order** (Python-dict semantics, issue
+  #145): updating an existing key keeps its position, removing and
+  re-inserting moves it to the end, and rehashing preserves the order.
 
 Bare contextual literals (`map[char*, int] m = {"a": 1}`) and small static
 literal tables are deferred.
@@ -51,6 +54,13 @@ and growth before the table reaches 75% load. Slot states are:
 - `0`: empty
 - `1`: live
 - `2`: tombstone
+
+A doubly-linked chain through the occupied slots (`order_next`/
+`order_prev` plus head/tail indices) records insertion order; the
+`__w_map_iter_*` cursor walks that chain instead of scanning slots, and
+rehashing re-inserts by walking the old chain so growth preserves it.
+Two extra words per slot buy deterministic, insertion-ordered iteration
+on every target.
 
 The first implementation stores word-sized key and value payloads in parallel
 arrays. Smaller scalar values occupy the low bits of a word. Larger aggregate

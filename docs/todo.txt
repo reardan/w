@@ -259,7 +259,7 @@ current state:
 		global default values
 
 	future data structures:
-		dict
+		dict (done: built-in map iterates in insertion order, issue #145)
 		matrix
 
 	future platforms:
