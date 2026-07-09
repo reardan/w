@@ -191,11 +191,145 @@ void for_range_loop(int for_var, int for_tab_level):
 	stack_pos = stack_pos - num_range_args
 
 
+# Emit the cursor-loop scaffold shared by every for-in container shape:
+# hidden container and cursor slots, break/continue context, done-check,
+# loop-variable extraction, body, advance, back-jump, chain patching.
+# The variation points are data; each runtime helper is called by name
+# through for_iter_call, and 0 selects the index-based fallback:
+#   begin_fn   cursor init, begin_fn(container); 0 = index starting at 0
+#   done_fn    exit test, done_fn(container, cursor) nonzero ends the
+#              loop; 0 = keep going while cursor < the word at
+#              container + word_size (slice length / string byte count)
+#   value_fn   loop-variable accessor, value_fn(container, cursor);
+#              0 = load the slice element at data + cursor * element size
+#   next_fn    advance, next_fn(container, cursor) yields the new cursor;
+#              0 = increment the cursor slot in place
+#   free_fn    free_fn(container) on both exit edges (done and break),
+#              e.g. gen_free for generator loops; 0 = nothing
+#   element_type        slice element type, read only when value_fn == 0
+#   value_coerce_type   source type coerced into the loop variable;
+#                       -1 = store the extracted value uncoerced
+#   value_var / value_var_type / value2_fn / value2_coerce_type
+#              second loop variable ("for K k, V v in map"): stack-slot
+#              anchor, declared type, accessor, and coercion source.
+#              value_var == 0 = no second variable.
+void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
+		char* begin_fn, char* done_fn, char* value_fn, char* next_fn, char* free_fn,
+		int element_type, int value_coerce_type,
+		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type):
+	# hidden slot: the container pointer
+	push_eax()
+	stack_pos = stack_pos + 1
+	int container_slot = stack_pos
+
+	# hidden slot: the cursor
+	if (begin_fn != 0):
+		for_iter_call(begin_fn, container_slot, 0)
+	else:
+		mov_eax_int(0)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int cursor_slot = stack_pos
+
+	# Enter a new loop context for break/continue
+	int outer_break = loop_break_chain
+	int outer_continue = loop_continue_chain
+	int outer_stack = loop_stack_pos
+	int outer_in_switch = break_in_switch
+	loop_break_chain = 0
+	loop_continue_chain = 0
+	loop_stack_pos = stack_pos
+	break_in_switch = 0
+	loop_depth = loop_depth + 1
+
+	# condition: exit once done_fn(container, cursor) is true, or once
+	# the index cursor reaches the length word
+	int p1 = codepos
+	if (done_fn != 0):
+		for_iter_call(done_fn, container_slot, cursor_slot)
+		jmp_nonzero_int32(1337012)
+	else:
+		mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
+		push_eax()
+		stack_pos = stack_pos + 1
+		mov_eax_esp_plus((stack_pos - container_slot) << word_size_log2)
+		add_eax_int32(word_size)
+		promote_eax()
+		pop_ebx()
+		stack_pos = stack_pos - 1
+		alu_cmp_set(0x9c) /* setl: cursor < length */
+		jmp_zero_int32(1337012)
+	int p2 = codepos
+
+	# loop var = value_fn(container, cursor), or the slice element at
+	# data + cursor * element_size
+	int extracted_type = value_coerce_type
+	if (value_fn != 0):
+		for_iter_call(value_fn, container_slot, cursor_slot)
+	else:
+		mov_eax_esp_plus((stack_pos - container_slot) << word_size_log2)
+		promote_eax() /* the descriptor's data pointer */
+		push_eax()
+		stack_pos = stack_pos + 1
+		mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
+		int element_size = type_get_size(element_type)
+		if (element_size > 1):
+			imul_eax_int32(element_size)
+		pop_ebx()
+		stack_pos = stack_pos - 1
+		alu_add()
+		extracted_type = promote(element_type)
+	if (extracted_type != -1):
+		coerce(loop_var_type, extracted_type)
+	store_stack_var((stack_pos - for_var) << word_size_log2)
+
+	if (value_var != 0):
+		for_iter_call(value2_fn, container_slot, cursor_slot)
+		coerce(value_var_type, value2_coerce_type)
+		store_stack_var((stack_pos - value_var) << word_size_log2)
+
+	/* ':' scoping + child scope statements */
+	enclosing_tab_level = for_tab_level
+	statement()
+
+	# step (continue lands here): cursor = next_fn(container, cursor),
+	# or an in-place index increment
+	int increment_target = codepos
+	if (next_fn != 0):
+		for_iter_call(next_fn, container_slot, cursor_slot)
+		store_stack_var((stack_pos - cursor_slot) << word_size_log2)
+	else:
+		inc_dword_esp_plus((stack_pos - cursor_slot) << word_size_log2)
+
+	/* jmp back to condition */
+	jmp_int32(1337013)
+	be_branch_patch(codepos, p1)
+
+	/* save jmp to here once the loop is done */
+	be_branch_patch(p2, codepos)
+
+	# break exits here; continue advances the cursor first
+	patch_jump_chain(loop_break_chain, codepos)
+	if (free_fn != 0):
+		# Both exit edges (done and break) land here: release the
+		# container before falling through
+		for_iter_call(free_fn, container_slot, 0)
+	patch_jump_chain(loop_continue_chain, increment_target)
+
+	loop_break_chain = outer_break
+	loop_continue_chain = outer_continue
+	loop_stack_pos = outer_stack
+	break_in_switch = outer_in_switch
+	loop_depth = loop_depth - 1
+
+	# Discard the hidden container and cursor slots (the loop variable stays)
+	be_pop(2)
+	stack_pos = stack_pos - 2
+
+
 # value_var is 0 for the one-variable form; otherwise it anchors the
 # stack slot of the value loop variable in "for K key, V value in map".
 void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, int container_type, int value_var, int value_var_type):
-	int p1
-	int p2
 	int key_type = type_set_key_type(container_type)
 	if (type_is_map(container_type)):
 		key_type = type_map_key_type(container_type)
@@ -216,68 +350,13 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 		if (types_compatible_with_expression(value_var_type, loop_value_type) == 0):
 			warn_type_mismatch(c"for loop value variable", value_var_type, loop_value_type)
 
-	# hidden slot: the container pointer
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
-
-	# hidden slot: cursor = iter_begin(container)
-	for_iter_call(c"__w_map_iter_begin", container_slot, 0)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int cursor_slot = stack_pos
-
-	int outer_break = loop_break_chain
-	int outer_continue = loop_continue_chain
-	int outer_stack = loop_stack_pos
-	int outer_in_switch = break_in_switch
-	loop_break_chain = 0
-	loop_continue_chain = 0
-	loop_stack_pos = stack_pos
-	break_in_switch = 0
-	loop_depth = loop_depth + 1
-
-	p1 = codepos
-	for_iter_call(c"__w_map_iter_done", container_slot, cursor_slot)
-	jmp_nonzero_int32(1337014)
-	p2 = codepos
-
-	for_iter_call(c"__w_map_iter_key", container_slot, cursor_slot)
-	coerce(loop_var_type, key_type)
-	store_stack_var((stack_pos - for_var) << word_size_log2)
-
-	if (value_var != 0):
-		for_iter_call(value_call, container_slot, cursor_slot)
-		coerce(value_var_type, loop_value_type)
-		store_stack_var((stack_pos - value_var) << word_size_log2)
-
-	enclosing_tab_level = for_tab_level
-	statement()
-
-	int increment_target = codepos
-	for_iter_call(c"__w_map_iter_next", container_slot, cursor_slot)
-	store_stack_var((stack_pos - cursor_slot) << word_size_log2)
-
-	jmp_int32(1337015)
-	be_branch_patch(codepos, p1)
-
-	be_branch_patch(p2, codepos)
-	patch_jump_chain(loop_break_chain, codepos)
-	patch_jump_chain(loop_continue_chain, increment_target)
-
-	loop_break_chain = outer_break
-	loop_continue_chain = outer_continue
-	loop_stack_pos = outer_stack
-	break_in_switch = outer_in_switch
-	loop_depth = loop_depth - 1
-
-	be_pop(2)
-	stack_pos = stack_pos - 2
+	for_cursor_loop(for_var, for_tab_level, loop_var_type,
+			c"__w_map_iter_begin", c"__w_map_iter_done", c"__w_map_iter_key", c"__w_map_iter_next", 0,
+			-1, key_type,
+			value_var, value_var_type, value_call, loop_value_type)
 
 
 void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int container_type):
-	int p1
-	int p2
 	int element_type = type_list_element_type(container_type)
 	# Struct elements cannot fit in the word-sized loop variable, so the
 	# loop yields each element's address instead: for point* p in l
@@ -289,58 +368,10 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 	if (types_compatible_with_expression(loop_var_type, loop_value_type) == 0):
 		warn_type_mismatch(c"for loop variable", loop_var_type, loop_value_type)
 
-	# hidden slot: the container pointer
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
-
-	# hidden slot: cursor = iter_begin(container)
-	for_iter_call(c"__w_list_iter_begin", container_slot, 0)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int cursor_slot = stack_pos
-
-	int outer_break = loop_break_chain
-	int outer_continue = loop_continue_chain
-	int outer_stack = loop_stack_pos
-	int outer_in_switch = break_in_switch
-	loop_break_chain = 0
-	loop_continue_chain = 0
-	loop_stack_pos = stack_pos
-	break_in_switch = 0
-	loop_depth = loop_depth + 1
-
-	p1 = codepos
-	for_iter_call(c"__w_list_iter_done", container_slot, cursor_slot)
-	jmp_nonzero_int32(1337018)
-	p2 = codepos
-
-	for_iter_call(value_call, container_slot, cursor_slot)
-	coerce(loop_var_type, loop_value_type)
-	store_stack_var((stack_pos - for_var) << word_size_log2)
-
-	enclosing_tab_level = for_tab_level
-	statement()
-
-	int increment_target = codepos
-	for_iter_call(c"__w_list_iter_next", container_slot, cursor_slot)
-	store_stack_var((stack_pos - cursor_slot) << word_size_log2)
-
-	jmp_int32(1337019)
-	be_branch_patch(codepos, p1)
-
-	be_branch_patch(p2, codepos)
-	patch_jump_chain(loop_break_chain, codepos)
-	patch_jump_chain(loop_continue_chain, increment_target)
-
-	loop_break_chain = outer_break
-	loop_continue_chain = outer_continue
-	loop_stack_pos = outer_stack
-	break_in_switch = outer_in_switch
-	loop_depth = loop_depth - 1
-
-	be_pop(2)
-	stack_pos = stack_pos - 2
+	for_cursor_loop(for_var, for_tab_level, loop_var_type,
+			c"__w_list_iter_begin", c"__w_list_iter_done", value_call, c"__w_list_iter_next", 0,
+			-1, loop_value_type,
+			0, -1, 0, -1)
 
 
 # Iterate a slice (T[] descriptor): hidden slots hold the descriptor
@@ -351,81 +382,13 @@ void for_slice_loop(int for_var, int for_tab_level, int loop_var_type, int conta
 	int element_type = type_unqualified(type_get_element_type(container_type))
 	if (type_num_args(element_type) > 0):
 		error(c"slice iteration requires scalar or pointer elements")
-	int element_size = type_get_size(element_type)
 	if (types_compatible_with_expression(loop_var_type, element_type) == 0):
 		warn_type_mismatch(c"for loop variable", loop_var_type, element_type)
 
-	# hidden slot: the slice descriptor pointer
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
-
-	# hidden slot: the element index
-	mov_eax_int(0)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int index_slot = stack_pos
-
-	int outer_break = loop_break_chain
-	int outer_continue = loop_continue_chain
-	int outer_stack = loop_stack_pos
-	int outer_in_switch = break_in_switch
-	loop_break_chain = 0
-	loop_continue_chain = 0
-	loop_stack_pos = stack_pos
-	break_in_switch = 0
-	loop_depth = loop_depth + 1
-
-	# condition: index < descriptor.length
-	int p1 = codepos
-	mov_eax_esp_plus((stack_pos - index_slot) << word_size_log2)
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - container_slot) << word_size_log2)
-	add_eax_int32(word_size)
-	promote_eax()
-	pop_ebx()
-	stack_pos = stack_pos - 1
-	alu_cmp_set(0x9c) /* setl: index < length */
-	jmp_zero_int32(1337020)
-	int p2 = codepos
-
-	# loop var = element at data + index * element_size
-	mov_eax_esp_plus((stack_pos - container_slot) << word_size_log2)
-	promote_eax() /* the descriptor's data pointer */
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - index_slot) << word_size_log2)
-	if (element_size > 1):
-		imul_eax_int32(element_size)
-	pop_ebx()
-	stack_pos = stack_pos - 1
-	alu_add()
-	int value_type = promote(element_type)
-	coerce(loop_var_type, value_type)
-	store_stack_var((stack_pos - for_var) << word_size_log2)
-
-	enclosing_tab_level = for_tab_level
-	statement()
-
-	int increment_target = codepos
-	inc_dword_esp_plus((stack_pos - index_slot) << word_size_log2)
-
-	jmp_int32(1337021)
-	be_branch_patch(codepos, p1)
-
-	be_branch_patch(p2, codepos)
-	patch_jump_chain(loop_break_chain, codepos)
-	patch_jump_chain(loop_continue_chain, increment_target)
-
-	loop_break_chain = outer_break
-	loop_continue_chain = outer_continue
-	loop_stack_pos = outer_stack
-	break_in_switch = outer_in_switch
-	loop_depth = loop_depth - 1
-
-	be_pop(2)
-	stack_pos = stack_pos - 2
+	for_cursor_loop(for_var, for_tab_level, loop_var_type,
+			0, 0, 0, 0, 0,
+			element_type, -1,
+			0, -1, 0, -1)
 
 
 void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
@@ -436,63 +399,10 @@ void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 	if (types_compatible_with_expression(loop_var_type, type_lookup(c"int")) == 0):
 		warn_type_mismatch(c"for loop variable", loop_var_type, type_lookup(c"int"))
 
-	push_eax()
-	stack_pos = stack_pos + 1
-	int string_slot = stack_pos
-
-	mov_eax_int(0)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int cursor_slot = stack_pos
-
-	int outer_break = loop_break_chain
-	int outer_continue = loop_continue_chain
-	int outer_stack = loop_stack_pos
-	int outer_in_switch = break_in_switch
-	loop_break_chain = 0
-	loop_continue_chain = 0
-	loop_stack_pos = stack_pos
-	break_in_switch = 0
-	loop_depth = loop_depth + 1
-
-	int p1 = codepos
-	mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - string_slot) << word_size_log2)
-	add_eax_int32(word_size)
-	promote_eax()
-	pop_ebx()
-	stack_pos = stack_pos - 1
-	alu_cmp_set(0x9c)
-	jmp_zero_int32(1337016)
-	int p2 = codepos
-
-	for_iter_call(c"utf8_decode", string_slot, cursor_slot)
-	coerce(loop_var_type, type_lookup(c"int"))
-	store_stack_var((stack_pos - for_var) << word_size_log2)
-
-	enclosing_tab_level = for_tab_level
-	statement()
-
-	int increment_target = codepos
-	for_iter_call(c"utf8_next", string_slot, cursor_slot)
-	store_stack_var((stack_pos - cursor_slot) << word_size_log2)
-
-	jmp_int32(1337017)
-	be_branch_patch(codepos, p1)
-	be_branch_patch(p2, codepos)
-	patch_jump_chain(loop_break_chain, codepos)
-	patch_jump_chain(loop_continue_chain, increment_target)
-
-	loop_break_chain = outer_break
-	loop_continue_chain = outer_continue
-	loop_stack_pos = outer_stack
-	break_in_switch = outer_in_switch
-	loop_depth = loop_depth - 1
-
-	be_pop(2)
-	stack_pos = stack_pos - 2
+	for_cursor_loop(for_var, for_tab_level, loop_var_type,
+			0, 0, c"utf8_decode", c"utf8_next", 0,
+			-1, type_lookup(c"int"),
+			0, -1, 0, -1)
 
 
 # The "in <container>" body of for_statement; "for", the loop variable(s)
@@ -501,9 +411,6 @@ void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 # variable was declared ("for K key, V value in map"), which only maps
 # support.
 void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int value_var, int value_var_type):
-	int p1
-	int p2
-
 	# The iterable is evaluated exactly once, before the body
 	int container_type = promote(expression())
 	container_type = type_unqualified(container_type)
@@ -527,9 +434,9 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	# Generator iterables get gen_free on the loop's exit edges (normal
 	# exit and break) so a broken-out-of loop does not leak the
 	# suspended generator's stack. 'return' out of the body still leaks.
-	int is_generator_loop = 0
+	char* free_name = 0
 	if (strcmp(container_name, c"generator") == 0):
-		is_generator_loop = 1
+		free_name = c"gen_free"
 	char* iter_prefix = strjoin(container_name, c"_iter_")
 	char* begin_name = strjoin(iter_prefix, c"begin")
 	char* done_name = strjoin(iter_prefix, c"done")
@@ -541,71 +448,10 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	for_iter_require(container_name, next_name, 2, container_type)
 	for_iter_require(container_name, value_name, 2, container_type)
 
-	# hidden slot: the container pointer
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
-
-	# hidden slot: cursor = T_iter_begin(container)
-	for_iter_call(begin_name, container_slot, 0)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int cursor_slot = stack_pos
-
-	# Enter a new loop context for break/continue
-	int outer_break = loop_break_chain
-	int outer_continue = loop_continue_chain
-	int outer_stack = loop_stack_pos
-	int outer_in_switch = break_in_switch
-	loop_break_chain = 0
-	loop_continue_chain = 0
-	loop_stack_pos = stack_pos
-	break_in_switch = 0
-	loop_depth = loop_depth + 1
-
-	# condition: exit once T_iter_done(container, cursor) is true
-	p1 = codepos
-	for_iter_call(done_name, container_slot, cursor_slot)
-	jmp_nonzero_int32(1337012)
-	p2 = codepos
-
-	# loop var = T_iter_value(container, cursor)
-	for_iter_call(value_name, container_slot, cursor_slot)
-	store_stack_var((stack_pos - for_var) << word_size_log2)
-
-	/* ':' scoping + child scope statements */
-	enclosing_tab_level = for_tab_level
-	statement()
-
-	# step (continue lands here): cursor = T_iter_next(container, cursor)
-	int increment_target = codepos
-	for_iter_call(next_name, container_slot, cursor_slot)
-	store_stack_var((stack_pos - cursor_slot) << word_size_log2)
-
-	/* jmp back to condition */
-	jmp_int32(1337013)
-	be_branch_patch(codepos, p1)
-
-	/* save jmp to here once the iterator is done */
-	be_branch_patch(p2, codepos)
-
-	# break exits here; continue advances the cursor first
-	patch_jump_chain(loop_break_chain, codepos)
-	if (is_generator_loop):
-		# Both exit edges (done and break) land here: release the
-		# generator's stack and object
-		for_iter_call(c"gen_free", container_slot, 0)
-	patch_jump_chain(loop_continue_chain, increment_target)
-
-	loop_break_chain = outer_break
-	loop_continue_chain = outer_continue
-	loop_stack_pos = outer_stack
-	break_in_switch = outer_in_switch
-	loop_depth = loop_depth - 1
-
-	# Discard the hidden container and cursor slots (the loop variable stays)
-	be_pop(2)
-	stack_pos = stack_pos - 2
+	for_cursor_loop(for_var, for_tab_level, loop_var_type,
+			begin_name, done_name, value_name, next_name, free_name,
+			-1, -1,
+			0, -1, 0, -1)
 
 	free(begin_name)
 	free(done_name)
