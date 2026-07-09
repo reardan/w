@@ -1170,39 +1170,29 @@ void generic_instantiate_function(int inst):
 		p = next
 
 
-/*
-Forward calls: 'fwd[int](x)' where the generic's definition appears
-later in the file (or a later file). The name is not registered yet, so
-the call is recorded speculatively: type arguments and a private
-backpatch chain, resolved at the drain once every definition has been
-seen. No signature exists at the call site, so these calls skip the
-argument checks (like calls to asm runtime stubs) and cannot return
-structs by value (checked at resolve time).
-layout (24 bytes per entry):
-	0: char* name
-	4: int* type argument indices
-	8: int arg_count
-	12: int chain head
-	16: char* file of the first call site (for the error message)
-	20: int line of the first call site
-*/
-char* generic_forwards
-int generic_forward_count
+# Forward calls: 'fwd[int](x)' where the generic's definition appears
+# later in the file (or a later file). The name is not registered yet,
+# so the call is recorded speculatively: type arguments and a private
+# backpatch chain, resolved at the drain once every definition has been
+# seen. No signature exists at the call site, so these calls skip the
+# argument checks (like calls to asm runtime stubs) and cannot return
+# structs by value (checked at resolve time).
+struct generic_forward_record:
+	char* name
+	int args          # int* vector of type argument indices
+	int arg_count
+	int chain         # patch-chain head
+	char* call_file   # first call site, for the error message
+	int call_line
 
 
-# Six pointer-sized slots: name*, args*, arg_count, patch-chain head,
-# call_file*, call_line (same uniform-word-slot scheme as
-# generic_def_stride).
-int generic_forward_stride():
-	return 6 * __word_size__
+list[generic_forward_record] generic_forwards
 
 
-int generic_forward_max():
-	return 2000
-
-
-char* generic_forward_entry(int f):
-	return generic_forwards + f * generic_forward_stride()
+int generic_forward_count():
+	if (cast(int, generic_forwards) == 0):
+		return 0
+	return generic_forwards.length
 
 
 # An unknown identifier directly followed by '[' in expression position:
@@ -1227,9 +1217,8 @@ int generic_forward_call_ready():
 # The (still unknown) generic's name is the current token; leaves the
 # closing ']' current, like generic_call_expr().
 int generic_forward_call_expr():
-	if (generic_forwards == 0):
-		generic_forwards = malloc(generic_forward_max() * generic_forward_stride())
-	assert1(generic_forward_count < generic_forward_max())
+	if (cast(int, generic_forwards) == 0):
+		generic_forwards = new list[generic_forward_record]
 	char* name = strclone(token)
 	char* call_file = strclone(filename)
 	int call_line = diag_token_line
@@ -1252,14 +1241,14 @@ int generic_forward_call_expr():
 	# once the definition is known
 	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 	be_addr_slot_write(codepos - 4, code_offset)
-	char* e = generic_forwards + generic_forward_count * generic_forward_stride()
-	save_ptr(e, cast(int, name))
-	save_ptr(e + __word_size__, args)
-	save_ptr(e + 2 * __word_size__, arg_count)
-	save_ptr(e + 3 * __word_size__, codepos + code_offset - 4)
-	save_ptr(e + 4 * __word_size__, cast(int, call_file))
-	save_ptr(e + 5 * __word_size__, call_line)
-	generic_forward_count = generic_forward_count + 1
+	generic_forward_record rec
+	rec.name = name
+	rec.args = args
+	rec.arg_count = arg_count
+	rec.chain = codepos + code_offset - 4
+	rec.call_file = call_file
+	rec.call_line = call_line
+	generic_forwards.push(rec)
 	# pac=full: sign the chain-materialized callee like sym_get_value does
 	# (after the slot position was recorded in the forward entry above)
 	be_code_ptr_sign()
@@ -1270,13 +1259,13 @@ int generic_forward_call_expr():
 
 void generic_forward_error(int f, char* message):
 	diag_part(c"generic function '")
-	diag_part(cast(char*, load_ptr(generic_forward_entry(f))))
+	diag_part(generic_forwards[f].name)
 	diag_part(c"' ")
 	diag_part(message)
 	diag_part(c" (called at ")
-	diag_part(cast(char*, load_ptr(generic_forward_entry(f) + 4 * __word_size__)))
+	diag_part(generic_forwards[f].call_file)
 	diag_part(c":")
-	diag_part(itoa(load_ptr(generic_forward_entry(f) + 5 * __word_size__)))
+	diag_part(itoa(generic_forwards[f].call_line))
 	error(c")")
 
 
@@ -1284,7 +1273,7 @@ void generic_forward_error(int f, char* message):
 # the forward chain to its terminating slot (which stores code_offset)
 # and point it at the instantiation's current head.
 void generic_forward_merge_chain(int f, int inst):
-	int head = load_ptr(generic_forward_entry(f) + 3 * __word_size__)
+	int head = generic_forwards[f].chain
 	int inst_head = generic_inst_chain(inst)
 	if (inst_head != 0):
 		int p = head - code_offset
@@ -1297,10 +1286,9 @@ void generic_forward_merge_chain(int f, int inst):
 
 
 void generic_resolve_forward(int f):
-	char* e = generic_forward_entry(f)
-	char* name = cast(char*, load_ptr(e))
-	int args = load_ptr(e + __word_size__)
-	int arg_count = load_ptr(e + 2 * __word_size__)
+	char* name = generic_forwards[f].name
+	int args = generic_forwards[f].args
+	int arg_count = generic_forwards[f].arg_count
 	int def = generic_def_lookup(name, 0)
 	if (def < 0):
 		generic_forward_error(f, c"is not defined")
@@ -1312,7 +1300,7 @@ void generic_resolve_forward(int f):
 		if (table[t + 1] == 'D'):
 			# already compiled: patch this record's chain directly
 			int address = load_int(table + t + 2)
-			int p = load_ptr(e + 3 * __word_size__) - code_offset
+			int p = generic_forwards[f].chain - code_offset
 			while (p):
 				int next = be_addr_slot_read(p) - code_offset
 				be_addr_slot_write(p, address)
@@ -1377,7 +1365,7 @@ void generic_finish_instantiations():
 	int progress = 1
 	while (progress):
 		progress = 0
-		while (generic_forwards_resolved < generic_forward_count):
+		while (generic_forwards_resolved < generic_forward_count()):
 			generic_resolve_forward(generic_forwards_resolved)
 			generic_forwards_resolved = generic_forwards_resolved + 1
 			progress = 1
