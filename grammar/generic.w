@@ -38,75 +38,64 @@ void coerce_call_argument(int param_type, int arg_type);
 void check_call_argument(int callee, int signature_type, char* callee_name, int arg_index, int arg_type);
 
 
-/*
-Definition registry: one record per generic definition.
-layout (32 bytes per entry):
-	0: char* name
-	4: int kind (0 function, 1 struct)
-	8: char* file (path to reopen for the re-parse)
-	12: int offset (byte offset of the span start)
-	16: int line (0-based, for diagnostics during the re-parse)
-	20: int column (0-based)
-	24: int param_count
-	28: char** param_names
-For functions the span starts at the return type; for structs it starts
-at the struct's name (after the 'struct' keyword).
-*/
-char* generic_defs
-int generic_def_count
+# Definition registry: one record per generic definition. For functions
+# the span starts at the return type; for structs it starts at the
+# struct's name (after the 'struct' keyword). Lazily created, so the
+# count reads through a helper that tolerates the null list.
+struct generic_def_record:
+	char* name
+	int kind          # 0 function, 1 struct
+	char* file        # path to reopen for the re-parse
+	int offset        # byte offset of the span start
+	int line          # 0-based, for diagnostics during the re-parse
+	int column        # 0-based
+	int param_count
+	int param_names   # char** vector of param_count names
 
 
-# Eight pointer-sized slots: name*, kind, file_path*, offset, line,
-# column, param_count, param_names*. Pointer fields need full host
-# words (the heap sits above 4 GB on arm64 macOS); the int fields ride
-# along in word slots so offsets stay uniform. On a 32-bit host this
-# is the original 32-byte layout.
-int generic_def_stride():
-	return 8 * __word_size__
+list[generic_def_record] generic_defs
 
 
-int generic_def_max():
-	return 500
+int generic_def_count():
+	if (cast(int, generic_defs) == 0):
+		return 0
+	return generic_defs.length
 
 
 int generic_max_params():
 	return 8
 
 
-char* generic_def_entry(int def):
-	return generic_defs + def * generic_def_stride()
-
-
 char* generic_def_name(int def):
-	return cast(char*, load_ptr(generic_def_entry(def)))
+	return generic_defs[def].name
 
 
 int generic_def_kind(int def):
-	return load_ptr(generic_def_entry(def) + __word_size__)
+	return generic_defs[def].kind
 
 
 char* generic_def_file(int def):
-	return cast(char*, load_ptr(generic_def_entry(def) + 2 * __word_size__))
+	return generic_defs[def].file
 
 
 int generic_def_offset(int def):
-	return load_ptr(generic_def_entry(def) + 3 * __word_size__)
+	return generic_defs[def].offset
 
 
 int generic_def_line(int def):
-	return load_ptr(generic_def_entry(def) + 4 * __word_size__)
+	return generic_defs[def].line
 
 
 int generic_def_column(int def):
-	return load_ptr(generic_def_entry(def) + 5 * __word_size__)
+	return generic_defs[def].column
 
 
 int generic_def_param_count(int def):
-	return load_ptr(generic_def_entry(def) + 6 * __word_size__)
+	return generic_defs[def].param_count
 
 
 char* generic_def_param_name(int def, int i):
-	int names = load_ptr(generic_def_entry(def) + 7 * __word_size__)
+	int names = generic_defs[def].param_names
 	return cast(char*, load_ptr(names + i * __word_size__))
 
 
@@ -115,7 +104,7 @@ char* generic_def_param_name(int def, int i):
 # the symbol table and the type table do.
 int generic_def_lookup(char* name, int kind):
 	int i = 0
-	while (i < generic_def_count):
+	while (i < generic_def_count()):
 		if (generic_def_kind(i) == kind):
 			if (strcmp(generic_def_name(i), name) == 0):
 				return i
@@ -128,20 +117,19 @@ int generic_def_add(char* name, int kind, char* file_path, int offset, int line,
 		diag_part(c"generic '")
 		diag_part(name)
 		error(c"' redefined")
-	if (generic_defs == 0):
-		generic_defs = malloc(generic_def_max() * generic_def_stride())
-	assert1(generic_def_count < generic_def_max())
-	char* e = generic_defs + generic_def_count * generic_def_stride()
-	save_ptr(e, cast(int, name))
-	save_ptr(e + __word_size__, kind)
-	save_ptr(e + 2 * __word_size__, cast(int, file_path))
-	save_ptr(e + 3 * __word_size__, offset)
-	save_ptr(e + 4 * __word_size__, line)
-	save_ptr(e + 5 * __word_size__, column)
-	save_ptr(e + 6 * __word_size__, param_count)
-	save_ptr(e + 7 * __word_size__, param_names)
-	generic_def_count = generic_def_count + 1
-	return generic_def_count - 1
+	if (cast(int, generic_defs) == 0):
+		generic_defs = new list[generic_def_record]
+	generic_def_record rec
+	rec.name = name
+	rec.kind = kind
+	rec.file = file_path
+	rec.offset = offset
+	rec.line = line
+	rec.column = column
+	rec.param_count = param_count
+	rec.param_names = param_names
+	generic_defs.push(rec)
+	return generic_defs.length - 1
 
 
 /*
@@ -756,12 +744,12 @@ definition to appear before the call: an unregistered name followed by
 # slot, created on demand and shared by every definition.
 char* generic_infer_placeholders
 
-# Cached shape blocks, indexed by definition: 'int param_count', then
-# two ints (a, b) per parameter:
+# Cached shape blocks, indexed by definition (0 = not cached yet):
+# 'int param_count', then two ints (a, b) per parameter:
 #	a >= 0: type-parameter index a, b = pointer depth
 #	a == -1: concrete type, b = the type index
 #	a == -2: opaque (constrains nothing at parse time)
-char* generic_infer_shapes_cache
+list[int] generic_infer_shapes_cache
 
 
 # Parameters recorded per definition and arguments recorded per call;
@@ -828,13 +816,11 @@ void generic_infer_store_shape(char* block, int slot, int param_type, int def):
 # with the type parameters bound to placeholders instead of concrete
 # types. Safe mid-parse: headers emit no code.
 char* generic_infer_shapes(int def):
-	if (generic_infer_shapes_cache == 0):
-		generic_infer_shapes_cache = malloc(generic_def_max() * __word_size__)
-		int z = 0
-		while (z < generic_def_max()):
-			save_ptr(generic_infer_shapes_cache + z * __word_size__, 0)
-			z = z + 1
-	char* cached = cast(char*, load_ptr(generic_infer_shapes_cache + def * __word_size__))
+	if (cast(int, generic_infer_shapes_cache) == 0):
+		generic_infer_shapes_cache = new list[int]
+	while (generic_infer_shapes_cache.length <= def):
+		generic_infer_shapes_cache.push(0)
+	char* cached = cast(char*, generic_infer_shapes_cache[def])
 	if (cached != 0):
 		return cached
 	int n = generic_def_param_count(def)
@@ -872,7 +858,7 @@ char* generic_infer_shapes(int def):
 	free(generic_subst_swap(old_subst))
 	generic_reparse_restore(save)
 	free(cast(char*, placeholder_args))
-	save_ptr(generic_infer_shapes_cache + def * __word_size__, cast(int, block))
+	generic_infer_shapes_cache[def] = cast(int, block)
 	return block
 
 
@@ -1104,7 +1090,7 @@ char* generic_pending_call_name
 
 
 int generic_call_ready():
-	if (generic_def_count == 0):
+	if (generic_def_count() == 0):
 		return 0
 	int c0 = token[0]
 	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
