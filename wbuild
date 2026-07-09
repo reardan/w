@@ -15,12 +15,19 @@
 #   ./wbuild verify           self-host fixpoint check
 #   ./wbuild --list           show every target in build.json
 #   ./wbuild -f m.json name   use another manifest
+#   ./wbuild test_changed     build/run the targets touched by the
+#                             working tree's diff against HEAD
 set -e
 cd "$(dirname "$0")"
 mkdir -p bin
 if [ ! -x bin/wexec ]; then
 	./w w.w -o bin/wv2
 	./bin/wv2 tools/wexec.w -o bin/wexec
+fi
+if [ "$1" = "test_changed" ]; then
+	./bin/wexec wv2 wexec wtest >/dev/null
+	git diff --name-only HEAD | ./bin/wtest changed | xargs -r ./wbuild
+	exit 0
 fi
 ./bin/wexec wv2 wexec >/dev/null
 exec ./bin/wexec "$@"
