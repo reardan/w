@@ -116,7 +116,7 @@ int lsp_int_member(json_value* value, char* key, int missing):
 	json_value* member = lsp_member(value, key)
 	if (member == 0):
 		return missing
-	if (member.type != json_type_int()):
+	if ((member.type != json_type_int()) & (member.type != json_type_bool())):
 		return missing
 	return member.int_value
 
@@ -230,6 +230,20 @@ process_result* lsp_run_wv2(char* subcommand, char* path):
 	strv_set(argv, 2, c"--json")
 	strv_set(argv, 3, path)
 	process_result* result = process_run(c"./bin/wv2", argv, 0, 0, lsp_check_timeout_ms())
+	free(cast(void*, argv))
+	return result
+
+
+# Runs './bin/windex <subcommand> <name> <path>' from the repo root (see
+# docs/projects/semantic_index.md). Used for references and rename, which
+# need occurrences beyond the declarations 'wv2 symbols --json' has.
+process_result* lsp_run_windex(char* subcommand, char* name, char* path):
+	char** argv = strv_new(4)
+	strv_set(argv, 0, c"./bin/windex")
+	strv_set(argv, 1, subcommand)
+	strv_set(argv, 2, name)
+	strv_set(argv, 3, path)
+	process_result* result = process_run(c"./bin/windex", argv, 0, 0, lsp_check_timeout_ms())
 	free(cast(void*, argv))
 	return result
 
@@ -411,6 +425,19 @@ char* lsp_identifier_at(char* text, int line, int character):
 	return path_clone_range(text + start, stop - start)
 
 
+# Identifier at a didOpen/didChange-tracked document's position (or the
+# file on disk), as a malloc'd string, or 0 when there is none.
+char* lsp_identifier_at_position(char* uri, json_value* position):
+	char* text = lsp_document_text(uri)
+	if (text == 0):
+		return 0
+	int line = lsp_int_member(position, c"line", 0)
+	int character = lsp_int_member(position, c"character", 0)
+	char* name = lsp_identifier_at(text, line, character)
+	free(text)
+	return name
+
+
 # Matching 'wv2 symbols --json' records as an array of LSP Locations.
 json_value* lsp_symbol_locations(json_value* records, char* name):
 	json_value* locations = json_array()
@@ -433,20 +460,27 @@ json_value* lsp_symbol_locations(json_value* records, char* name):
 	return locations
 
 
+# Records (whole objects, not Locations) whose "name" equals name.
+list[json_value*] lsp_filter_records(json_value* records, char* name):
+	list[json_value*] matches = new list[json_value*]
+	int i = 0
+	while (i < json_array_length(records)):
+		json_value* record = json_array_get(records, i)
+		char* record_name = lsp_string_member(record, c"name")
+		if (record_name != 0):
+			if (strcmp(record_name, name) == 0):
+				matches.push(record)
+		i = i + 1
+	return matches
+
+
 void lsp_handle_definition(json_value* id, json_value* params):
 	char* uri = lsp_string_member(lsp_member(params, c"textDocument"), c"uri")
 	json_value* position = lsp_member(params, c"position")
 	if ((uri == 0) | (position == 0)):
 		lsp_success(id, json_null())
 		return
-	char* text = lsp_document_text(uri)
-	if (text == 0):
-		lsp_success(id, json_null())
-		return
-	int line = lsp_int_member(position, c"line", 0)
-	int character = lsp_int_member(position, c"character", 0)
-	char* name = lsp_identifier_at(text, line, character)
-	free(text)
+	char* name = lsp_identifier_at_position(uri, position)
 	if (name == 0):
 		lsp_success(id, json_null())
 		return
@@ -480,6 +514,210 @@ void lsp_handle_definition(json_value* id, json_value* params):
 	lsp_success(id, locations)
 
 
+/* hover */
+
+
+# One-line plaintext summary of a 'wv2 symbols --json' record: "kind
+# name: type", plus "{ field: type, ... }" for struct/union records
+# (which carry a "fields" array; see docs/projects/semantic_index.md).
+char* lsp_hover_content(json_value* record):
+	string_builder* out = string_from(lsp_string_member(record, c"kind"))
+	string_append(out, c" ")
+	string_append(out, lsp_string_member(record, c"name"))
+	string_append(out, c": ")
+	string_append(out, lsp_string_member(record, c"type"))
+	json_value* fields = lsp_member(record, c"fields")
+	if (fields != 0):
+		string_append(out, c" { ")
+		int i = 0
+		while (i < json_array_length(fields)):
+			if (i > 0):
+				string_append(out, c", ")
+			json_value* field = json_array_get(fields, i)
+			string_append(out, lsp_string_member(field, c"name"))
+			string_append(out, c": ")
+			string_append(out, lsp_string_member(field, c"type"))
+			i = i + 1
+		string_append(out, c" }")
+	char* content = out.data
+	free(out)
+	return content
+
+
+# The richest match for name: prefers a struct/union/enum/function/alias
+# record over a plain "object" one, since a type's own object symbol and
+# its type-table entry can share a name (see tests/symbols_fixture.w's
+# sym_fixture_point, dumped once as "object" and once as "struct").
+json_value* lsp_best_record(list[json_value*] matches):
+	json_value* best = matches[0]
+	int i = 0
+	while (i < matches.length):
+		if (strcmp(lsp_string_member(matches[i], c"kind"), c"object") != 0):
+			return matches[i]
+		i = i + 1
+	return best
+
+
+void lsp_handle_hover(json_value* id, json_value* params):
+	char* uri = lsp_string_member(lsp_member(params, c"textDocument"), c"uri")
+	json_value* position = lsp_member(params, c"position")
+	if ((uri == 0) | (position == 0)):
+		lsp_success(id, json_null())
+		return
+	char* name = lsp_identifier_at_position(uri, position)
+	if (name == 0):
+		lsp_success(id, json_null())
+		return
+	char* path = lsp_uri_to_path(uri)
+	if (path == 0):
+		free(name)
+		lsp_success(id, json_null())
+		return
+	process_result* result = lsp_run_wv2(c"symbols", path)
+	free(path)
+	if (result == 0):
+		free(name)
+		lsp_success(id, json_null())
+		return
+	if (result.status != 0):
+		process_result_free(result)
+		free(name)
+		lsp_success(id, json_null())
+		return
+	json_value* records = lsp_parse_ndjson(result.stdout_text)
+	process_result_free(result)
+	list[json_value*] matches = lsp_filter_records(records, name)
+	free(name)
+	if (matches.length == 0):
+		json_free(records)
+		lsp_success(id, json_null())
+		return
+	char* content = lsp_hover_content(lsp_best_record(matches))
+	json_free(records)
+	json_value* markup = json_object()
+	json_object_set(markup, c"kind", json_string(c"plaintext"))
+	json_object_set(markup, c"value", json_string_take(content))
+	json_value* hover = json_object()
+	json_object_set(hover, c"contents", markup)
+	lsp_success(id, hover)
+
+
+/* references and rename */
+
+
+# find_references-style records ({name, file, line, column,
+# is_declaration}) for the identifier at uri/position, via
+# './bin/windex references' — or 0 (nothing resolvable) when the position
+# is not on an identifier, the path can't be resolved, or windex fails.
+json_value* lsp_reference_records(json_value* params):
+	char* uri = lsp_string_member(lsp_member(params, c"textDocument"), c"uri")
+	json_value* position = lsp_member(params, c"position")
+	if ((uri == 0) | (position == 0)):
+		return 0
+	char* name = lsp_identifier_at_position(uri, position)
+	if (name == 0):
+		return 0
+	char* path = lsp_uri_to_path(uri)
+	if (path == 0):
+		free(name)
+		return 0
+	process_result* result = lsp_run_windex(c"references", name, path)
+	free(path)
+	free(name)
+	if (result == 0):
+		return 0
+	if (result.status != 0):
+		process_result_free(result)
+		return 0
+	json_value* records = lsp_parse_ndjson(result.stdout_text)
+	process_result_free(result)
+	return records
+
+
+void lsp_handle_references(json_value* id, json_value* params):
+	json_value* records = lsp_reference_records(params)
+	if (records == 0):
+		lsp_success(id, json_array())
+		return
+	int include_declaration = 1
+	json_value* context = lsp_member(params, c"context")
+	if (context != 0):
+		json_value* include = json_object_get(context, c"includeDeclaration")
+		if (include != 0):
+			include_declaration = include.int_value
+	json_value* locations = json_array()
+	int i = 0
+	while (i < json_array_length(records)):
+		json_value* record = json_array_get(records, i)
+		int is_declaration = lsp_int_member(record, c"is_declaration", 0)
+		char* file = lsp_string_member(record, c"file")
+		char* record_name = lsp_string_member(record, c"name")
+		if ((is_declaration == 0) | include_declaration):
+			if ((file != 0) & (record_name != 0)):
+				json_value* location = json_object()
+				char* file_uri = lsp_path_to_uri(file)
+				json_object_set(location, c"uri", json_string(file_uri))
+				free(file_uri)
+				int line = lsp_int_member(record, c"line", 1)
+				int column = lsp_int_member(record, c"column", 1)
+				json_object_set(location, c"range", lsp_range(line, column, strlen(record_name)))
+				json_array_push(locations, location)
+		i = i + 1
+	json_free(records)
+	lsp_success(id, locations)
+
+
+void lsp_handle_rename(json_value* id, json_value* params):
+	char* new_name = lsp_string_member(params, c"newName")
+	if (new_name == 0):
+		lsp_respond_error(id, -32602, c"invalid params: newName is required")
+		return
+	json_value* records = lsp_reference_records(params)
+	if (records == 0):
+		lsp_respond_error(id, -32803, c"no renameable symbol at this position")
+		return
+	if (json_array_length(records) == 0):
+		json_free(records)
+		lsp_respond_error(id, -32803, c"no renameable symbol at this position")
+		return
+
+	# Group one TextEdit per occurrence by file URI.
+	json_value* by_uri = json_object()
+	int i = 0
+	while (i < json_array_length(records)):
+		json_value* record = json_array_get(records, i)
+		char* file = lsp_string_member(record, c"file")
+		char* record_name = lsp_string_member(record, c"name")
+		if ((file != 0) & (record_name != 0)):
+			char* file_uri = lsp_path_to_uri(file)
+			json_value* edits = json_object_get(by_uri, file_uri)
+			if (edits == 0):
+				edits = json_array()
+				json_object_set(by_uri, file_uri, edits)
+			int line = lsp_int_member(record, c"line", 1)
+			int column = lsp_int_member(record, c"column", 1)
+			json_value* edit = json_object()
+			json_object_set(edit, c"range", lsp_range(line, column, strlen(record_name)))
+			json_object_set(edit, c"newText", json_string(strclone(new_name)))
+			json_array_push(edits, edit)
+			free(file_uri)
+		i = i + 1
+	json_free(records)
+
+	json_value* changes = json_object()
+	hash_map* groups = by_uri.object_values
+	int slot = 0
+	while (slot < groups.capacity):
+		if (groups.keys[slot] != 0):
+			json_object_set(changes, groups.keys[slot], json_clone(cast(json_value*, groups.values[slot])))
+		slot = slot + 1
+	json_free(by_uri)
+
+	json_value* workspace_edit = json_object()
+	json_object_set(workspace_edit, c"changes", changes)
+	lsp_success(id, workspace_edit)
+
+
 /* lifecycle and dispatch */
 
 
@@ -491,6 +729,9 @@ void lsp_handle_initialize(json_value* id):
 	json_value* capabilities = json_object()
 	json_object_set(capabilities, c"textDocumentSync", sync)
 	json_object_set(capabilities, c"definitionProvider", json_bool(1))
+	json_object_set(capabilities, c"hoverProvider", json_bool(1))
+	json_object_set(capabilities, c"referencesProvider", json_bool(1))
+	json_object_set(capabilities, c"renameProvider", json_bool(1))
 	json_value* server_info = json_object()
 	json_object_set(server_info, c"name", json_string(c"w-lsp"))
 	json_object_set(server_info, c"version", json_string(c"0.1.0"))
@@ -574,6 +815,12 @@ void lsp_handle(json_value* request):
 		lsp_handle_did_close(params)
 	else if (strcmp(method, c"textDocument/definition") == 0):
 		lsp_handle_definition(id, params)
+	else if (strcmp(method, c"textDocument/hover") == 0):
+		lsp_handle_hover(id, params)
+	else if (strcmp(method, c"textDocument/references") == 0):
+		lsp_handle_references(id, params)
+	else if (strcmp(method, c"textDocument/rename") == 0):
+		lsp_handle_rename(id, params)
 	else if (id != 0):
 		char* message = strjoin(c"method not found: ", method)
 		lsp_respond_error(id, -32601, message)

@@ -1265,6 +1265,14 @@ int wdbg_main(int argc, int argv):
 
 	if (args_has_flag(c"break_start")):
 		debugger
+	else if (saw_debugger_statement == 0):
+		# Nothing will pause the debuggee before it runs: no 'debugger'
+		# statement anywhere in the compiled program, and --break_start
+		# wasn't passed. Any breakpoint/condition/log commands already
+		# queued on stdin have not been read yet (the command loop only
+		# starts on a trap) and will not apply -- the debuggee just runs
+		# to completion or a crash. Warn instead of silently dropping them.
+		println2(c"wdbg: no --break_start and no 'debugger' statement in the program; it will run unmanaged until a trap or crash, so breakpoints queued on stdin before then will not apply")
 
 	int result = target_main(argc, argv)
 

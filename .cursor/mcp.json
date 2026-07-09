@@ -1,1 +1,5 @@
-{"mcpServers": {"w-toolchain": {"command": "sh", "args": ["-c", "./wbuild wmcp >&2 && exec ./bin/wmcp"]}}}
+{"mcpServers": {
+	"w-toolchain": {"command": "sh", "args": ["-c", "./wbuild wmcp >&2 && exec ./bin/wmcp"]},
+	"w-index": {"command": "sh", "args": ["-c", "./wbuild wimcp >&2 && exec ./bin/wimcp"]},
+	"w-debug": {"command": "sh", "args": ["-c", "./wbuild wdmcp >&2 && exec ./bin/wdmcp"]}
+}}

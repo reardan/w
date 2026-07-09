@@ -273,9 +273,17 @@ passes; it archives the old seed to `old/` first.
 - Use `./bin/wv2 symbols --json file.w` to dump declaration metadata for
   go-to-definition and indexing: one NDJSON record per user-declared symbol
   (functions, globals, enum values) and type (structs, unions, enums, aliases)
-  with `name`, `kind`, `type`, `file`, `line`, `column`, and `arch`. Omit
+  with `name`, `kind`, `type`, `file`, `line`, `column`, and `arch` (structs
+  and unions also carry a `fields` array of `{name, type, offset}`). Omit
   `--json` for a human-readable `file:line:column: kind name: type` listing.
   Compiler-internal declarations without a source location are skipped.
+- Use `./bin/windex` (`./wbuild windex`) for cross-file queries
+  `symbols --json` doesn't answer: `references`/`callers`/`callees <name>
+  <file...>`, `struct <name> <file...>` (fields), and `imports <file>`.
+  NDJSON only, no human mode. It's a textual index layered over
+  `symbols --json` — see `docs/projects/semantic_index.md` for the exact
+  contract and known gaps (not scope-checked, indentation-approximated
+  call spans).
 - Use `./wbuild test_changed` to run focused tests for files changed from
   `HEAD`, or call `./bin/wtest changed file...` to list the selected build
   targets without running them. Docs-only changes produce no targets; unknown
@@ -296,18 +304,24 @@ passes; it archives the old seed to `old/` first.
   record them there (`.cursor/rules/ai-tooling-feedback.mdc` makes this an
   always-on rule), and to move entries into `docs/projects/ai_tooling.md`'s
   status section when implemented.
-- Cursor IDE can use the committed `.cursor/mcp.json` registration for the
-  W-native `w-toolchain` MCP server (`./wbuild wmcp` builds `bin/wmcp` from
-  `tools/mcp/w_toolchain_mcp.w`). It exposes build, verify, run_tests,
-  check, compile, run, repl_eval, and test_changed tools from the repo root.
-  Cloud Agents do not load repo `mcp.json` files — register the server in the
-  Cloud Agents dashboard (stdio command:
-  `sh -c "./wbuild wmcp >&2 && exec ./bin/wmcp"`), or use the
-  equivalent shell commands.
-- Editors can run the W-native LSP server (`./wbuild wlsp` builds `bin/wlsp`
-  from `tools/lsp/w_lsp.w`): diagnostics from `w check --json` on open/save and
-  go-to-definition from `w symbols --json`, over stdio Content-Length framing.
-  Scope and editor wiring: `docs/projects/lsp.md`.
+- Cursor IDE can use the committed `.cursor/mcp.json` registration for two
+  W-native MCP servers: `w-toolchain` (`./wbuild wmcp` builds `bin/wmcp`
+  from `tools/mcp/w_toolchain_mcp.w`), exposing build, verify, run_tests,
+  check, compile, run, repl_eval, and test_changed; and `w-index`
+  (`./wbuild wimcp` builds `bin/wimcp` from `tools/mcp/w_index_mcp.w`),
+  exposing find_symbol, find_references, get_type, get_struct_fields,
+  imports_for, callers, callees, and changed_file_test_targets
+  (`docs/projects/semantic_index.md`). Both run from the repo root. Cloud
+  Agents do not load repo `mcp.json` files — register them in the Cloud
+  Agents dashboard (stdio commands:
+  `sh -c "./wbuild wmcp >&2 && exec ./bin/wmcp"` and
+  `sh -c "./wbuild wimcp >&2 && exec ./bin/wimcp"`), or use the equivalent
+  shell commands.
+- Editors can run the W-native LSP server (`./wbuild wlsp` builds
+  `bin/wlsp` from `tools/lsp/w_lsp.w`): diagnostics from `w check --json`
+  on open/save, go-to-definition and hover from `w symbols --json`, and
+  find-references/rename from `windex`, over stdio Content-Length
+  framing. Scope and editor wiring: `docs/projects/lsp.md`.
 - `./wbuild verify` remains the required gate for compiler changes, and
   `./wbuild tests` remains the full pre-merge suite when the host has the
   i386 libc needed by `dynamic_test`.

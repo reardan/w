@@ -21,6 +21,11 @@
 # statements check their expression against its declared return type.
 int current_function_symbol
 
+# Set once the first 'debugger' statement is parsed, anywhere in the
+# compiled program (reachable or not) -- a static proxy for "this program
+# can pause itself without --break_start". Read by debugger/wdbg.w.
+int saw_debugger_statement
+
 # 1 while compiling a generator body (grammar/generator_decl.w): yield
 # is only legal then, and return must not carry a value.
 int in_generator_body
@@ -283,6 +288,9 @@ void statement():
 		emit_generator_yield_call()
 
 	else if (accept(c"debugger")):
+		# wdbg reads this to know whether the program can pause itself
+		# without --break_start (see wdbg_main in debugger/wdbg.w).
+		saw_debugger_statement = 1
 		int3()
 		expect_or_newline(c";")
 

@@ -86,21 +86,18 @@ is a queue, not an archive.
   the server must be registered in the Cloud Agents dashboard (stdio
   command: `sh -c "./wbuild wmcp >&2 && exec ./bin/wmcp"`).
   Owner action; until then cloud agents use the shell commands.
-- **`w-debug-mcp` / DAP.** `wdbg`'s command loop is already scriptable
-  over stdin (see the `w-debug-wdbg` skill); a structured wrapper
-  remains deferred until an agent workflow actually needs programmatic
-  stepping.
 - **Conditional breakpoints/hit counts/logpoints land soon** (design:
   `docs/projects/debugger_conditional_breakpoints.md`). They add new
   stable, grep-able output lines (`logpoint N hit H: expr = value`,
   extended `info breakpoints` fields) to the same text protocol — worth
   keying a future structured wrapper off, and worth a
   `w-debug-wdbg` skill example once merged.
-- **Semantic index.** `symbols --json` dumps declarations per file; a
-  cross-file reference index (and `w-index-mcp`) is still unbuilt.
-- **LSP coverage.** `bin/wlsp` publishes diagnostics and
-  go-to-definition only; references, hover, and rename all want the
-  semantic index above.
+- **`callers`/`callees` performance.** `windex_enclosing_function` scans
+  every declaration per reference (O(references × declarations)); fine
+  for a one-shot CLI/MCP call, but would want an index instead of a
+  linear scan if a workflow ever calls it in a loop over many symbols.
+- **`windex` covers x86 only**, matching `bin/wlsp` (shells to plain
+  `wv2 symbols --json`, no `x64` arg support yet).
 
 ## Cleanup observed while dogfooding
 
