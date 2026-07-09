@@ -1,8 +1,11 @@
 # AI Tooling — next steps
 
-A living backlog for the agent-facing toolchain (`w check`, `w symbols`,
-`bin/wtest`, the edit-check hook, `bin/wmcp`, `bin/wlsp`, skills/rules).
-The implemented baseline is documented in `docs/projects/ai_tooling.md`.
+A living backlog for the agent-facing toolchain surfaces in this repo
+(`w check`, `w symbols`, `bin/wtest`, skills/rules). The implemented
+baseline is documented in `docs/projects/ai_tooling.md`. The integrations
+built on these surfaces (`wlsp`, the MCP servers, `windex`, the
+edit-check hook) moved out of this repo in July 2026; their backlog
+moved with them.
 
 **How this file is maintained** (enforced by
 `.cursor/rules/ai-tooling-feedback.mdc`): when an agent or contributor
@@ -54,28 +57,6 @@ is a queue, not an archive.
   `--arch=` flag), and infer the target from `__arch__` path segments
   and per-file markers so the hook picks the right one automatically.
 
-## Edit-check hook (`bin/whook`)
-
-- **Cache compiler-tree checks.** Every edit under `compiler/`,
-  `grammar/`, `code_generator/` re-checks `w.w` (~3s). A content-hash
-  stamp (same idea as `bin/.wexec_cache/`) could skip re-checks when the
-  tree is unchanged since the last clean result.
-- **Suggest tests alongside diagnostics.** The hook already knows the
-  edited path; appending `bin/wtest changed <file>` output to the
-  injected context would put the focused targets in front of the agent
-  at exactly the right moment.
-- **Tool-name matcher.** Cursor does not exhaustively document
-  `postToolUse` tool names, so the hook filters inside the script
-  (substring match on write/edit/replace). Once the names are
-  documented, add a `matcher` to `.cursor/hooks.json` and drop the
-  in-script heuristic. Revisit `afterFileEdit` if it ever gains a
-  documented context-injection output.
-- **Considered and deliberately skipped:** a `beforeShellExecution`
-  nudge that intercepts bare `./wbuild tests` and suggests `test_changed`
-  (fights the agent on a legitimate command), and a `stop`-hook
-  "loop until verify is green" flow (the `stop` hook is not wired for
-  Cloud Agents). Revisit with evidence of need.
-
 ## Test selection (`bin/wtest`)
 
 - **Unmapped paths fall back to the full suite.** `tools/test_map.w`
@@ -111,7 +92,7 @@ is a queue, not an archive.
   update to every `.w` fixture in `wtest_map_test` (about 15 of its
   expected-output stdins), which is why it did not ride along in #151.
 
-## MCP / LSP / cloud
+## Debugger surface (consumed by the external integration tools)
 
 - **`wdbg` rejects valid imported bare returns.** While debugging
   `tools/parser_generator.w`, `./bin/wdbg tools/parser_generator.w ...`
@@ -119,39 +100,20 @@ is a queue, not an archive.
   in libs/extras/parser_generator/diagnostics.w:24`. Add a debugger
   compile/run regression for imported functions containing bare `return`
   statements and fix the debugger's symbol-resolution path.
-- **Cloud Agents cannot see `bin/wmcp`.** Repo `mcp.json` is IDE-only;
-  the server must be registered in the Cloud Agents dashboard (stdio
-  command: `sh -c "./wbuild wmcp >&2 && exec ./bin/wmcp"`).
-  Owner action; until then cloud agents use the shell commands.
 - **Conditional breakpoints/hit counts/logpoints land soon** (design:
   `docs/projects/debugger_conditional_breakpoints.md`). They add new
   stable, grep-able output lines (`logpoint N hit H: expr = value`,
   extended `info breakpoints` fields) to the same text protocol — worth
   keying a future structured wrapper off, and worth a
   `w-debug-wdbg` skill example once merged.
-- **`callers`/`callees` performance.** `windex_enclosing_function` scans
-  every declaration per reference (O(references × declarations)); fine
-  for a one-shot CLI/MCP call, but would want an index instead of a
-  linear scan if a workflow ever calls it in a loop over many symbols.
-- **`windex` covers x86 only**, matching `bin/wlsp` (shells to plain
-  `wv2 symbols --json`, no `x64` arg support yet).
 
 ## Cleanup observed while dogfooding
 
-- **`indexd_test` is flaky under a parallel `wbuild tests` run.** Seen
-  twice on 2026-07-09: `asserts(c"daemon responded", ...)` fires
-  (jsonrpc_read_message returned 0) while the full suite runs in
-  parallel, but the target passes 8/8 standalone. The windexd port
-  discovery file (`bin/.windexd.port`) and the shutdown RPC are shared
-  state between `index_test`/`indexd_test`/`index_mcp_test`, so a
-  sibling test can shut down or replace the daemon this test spawned.
-  Isolate the port file per test (env var or argv override) or
-  serialize the index tests.
 - **`repl.w` is not warning-free.** `./bin/wv2 repl.w -o /dev/null`
   reports two type warnings at `repl.w:518` (`load_word` argument 1 and
   `write` argument 2, both `char*` vs `int`). Fix them, then consider
   extending the warning-free gate (`self_host_warning_test`) to
-  `repl.w`, `debugger/`, and `tools/`.
+  `repl.w`, `debugger/`, and the remaining `tools/`.
 - **One-off targets assuming `bin/` exists — resolved.** The
   Makefile-to-`wbuild` migration handles it uniformly: `wbuild` and the
   manifest's `dirs` create `bin/` for every target.

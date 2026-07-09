@@ -119,7 +119,9 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
   umbrella target, and a `tools/test_map.w` entry if no directory rule
   covers it.
 - The agent tooling here is dogfooded: if you hit friction or bugs in
-  `w check`, `wtest`, the edit hook, `wmcp`, or `wlsp`, add an entry to
-  `docs/projects/ai_tooling_next_steps.md` in the same PR.
+  `w check`, `wtest`, or the other agent-facing surfaces, add an entry to
+  `docs/projects/ai_tooling_next_steps.md` in the same PR. (The LSP/MCP/
+  index/hook integrations built on those surfaces moved out of this repo
+  in July 2026.)
 - Design docs for major features live in `docs/projects/*.md`;
   `docs/todo.txt` tracks the working/missing inventory.

@@ -83,13 +83,6 @@ void wtest_init_targets():
 	wtest_targets.push(c"c_import_errno_test")
 	wtest_targets.push(c"c_import_libc_test")
 	wtest_targets.push(c"wexec_test")
-	wtest_targets.push(c"lsp_test")
-	wtest_targets.push(c"mcp_test")
-	wtest_targets.push(c"index_test")
-	wtest_targets.push(c"indexd_test")
-	wtest_targets.push(c"index_mcp_test")
-	wtest_targets.push(c"debug_mcp_test")
-	wtest_targets.push(c"hook_test")
 	wtest_targets.push(c"metadata_check")
 	wtest_targets.push(c"metadata_test")
 	wtest_targets.push(c"graphics_math_test")
@@ -300,10 +293,7 @@ void wtest_map_path(char* path):
 	else if (starts_with(path, c"debugger/")):
 		wtest_add(path, c"debug_test")
 		wtest_add(path, c"debug_test_x64")
-		wtest_add(path, c"debug_mcp_test")
 		wtest_add(path, c"attach_test")
-	else if (strcmp(path, c"tests/debug_no_pause_fixture.w") == 0):
-		wtest_add(path, c"debug_mcp_test")
 	else if ((strcmp(path, c"tests/attach_target_fixture.w") == 0) | (strcmp(path, c"tools/attach_test.sh") == 0)):
 		wtest_add(path, c"attach_test")
 	else if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
@@ -314,11 +304,8 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"warning_test")
 	else if (strcmp(path, c"tests/import_alias_warning_fixture.w") == 0):
 		wtest_add(path, c"warning_test")
-		wtest_add(path, c"index_test")
 	else if (strcmp(path, c"tests/symbols_fixture.w") == 0):
 		wtest_add(path, c"symbols_test")
-	else if (strcmp(path, c"tests/index_fixture.w") == 0):
-		wtest_add(path, c"index_test")
 	else if (strcmp(path, c"tests/json_codec_test.w") == 0):
 		wtest_add(path, c"json_codec_test")
 		wtest_add(path, c"json_codec_64_test")
@@ -395,24 +382,6 @@ void wtest_map_path(char* path):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):
 		wtest_add(path, c"wexec_test")
-	else if (starts_with(path, c"tools/lsp/")):
-		wtest_add(path, c"lsp_test")
-	else if (starts_with(path, c"tools/index/")):
-		wtest_add(path, c"index_test")
-		wtest_add(path, c"indexd_test")
-	else if (strcmp(path, c"tools/mcp/mcp_server.w") == 0):
-		# Shared protocol plumbing: exercise all three MCP servers.
-		wtest_add(path, c"mcp_test")
-		wtest_add(path, c"index_mcp_test")
-		wtest_add(path, c"debug_mcp_test")
-	else if ((strcmp(path, c"tools/mcp/w_index_mcp.w") == 0) | (strcmp(path, c"tools/mcp/index_mcp_test.w") == 0)):
-		wtest_add(path, c"index_mcp_test")
-	else if ((strcmp(path, c"tools/mcp/w_debug_mcp.w") == 0) | (strcmp(path, c"tools/mcp/debug_mcp_test.w") == 0)):
-		wtest_add(path, c"debug_mcp_test")
-	else if (starts_with(path, c"tools/mcp/") | (strcmp(path, c".cursor/mcp.json") == 0)):
-		wtest_add(path, c"mcp_test")
-	else if (starts_with(path, c"tools/hooks/") | starts_with(path, c".cursor/hooks")):
-		wtest_add(path, c"hook_test")
 	else if (starts_with(path, c".cursor/")):
 		# Rules and skills are agent guidance, not code under test.
 		return

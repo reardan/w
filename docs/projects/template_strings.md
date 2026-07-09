@@ -147,6 +147,6 @@ copy, compose `strclone(cstr(s))`.
 Ownership note for f-string results: `__w_template_finish` frees the
 builder struct but the returned descriptor (2 words) and its data
 buffer belong to the caller. On one-shot CLI exit paths, letting
-process exit reclaim them is fine (see `w_toolchain_mcp.w`'s `call`
+process exit reclaim them is fine (see `w_toolchain_mcp.w`'s `call`, moved out of this repo in July 2026,
 usage); in long-running servers, prefer builders you `string_free`, or
 free `cstr(s)`'s result via the data pointer when done.

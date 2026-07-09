@@ -5,9 +5,11 @@ alwaysApply: true
 
 # AI tooling feedback loop
 
-The agent tooling in this repo (`w check --json`, `bin/wtest`, the
-edit-check hook, `bin/wmcp`, `bin/wlsp`, the skills in `.cursor/skills/`)
-is dogfooded: the agents that use it are expected to maintain its backlog.
+The agent tooling in this repo (`w check --json`, `w symbols --json`,
+`bin/wtest`, the skills in `.cursor/skills/`) is dogfooded: the agents
+that use it are expected to maintain its backlog. (The LSP/MCP/index/hook
+integrations built on these surfaces moved out of this repo in July 2026;
+file issues about them where they now live.)
 
 - If you hit friction, a bug, a missing capability, or have an
   improvement idea while using any of these tools, add a short entry

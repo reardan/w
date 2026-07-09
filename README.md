@@ -277,24 +277,10 @@ passes; it archives the old seed to `old/` first.
   and unions also carry a `fields` array of `{name, type, offset}`). Omit
   `--json` for a human-readable `file:line:column: kind name: type` listing.
   Compiler-internal declarations without a source location are skipped.
-- Use `./bin/windex` (`./wbuild windex`) for cross-file queries
-  `symbols --json` doesn't answer: `references`/`callers`/`callees <name>
-  <file...>`, `struct <name> <file...>` (fields), and `imports <file>`.
-  NDJSON only, no human mode. It's a textual index layered over
-  `symbols --json` — see `docs/projects/semantic_index.md` for the exact
-  contract and known gaps (not scope-checked, indentation-approximated
-  call spans).
 - Use `./wbuild test_changed` to run focused tests for files changed from
   `HEAD`, or call `./bin/wtest changed file...` to list the selected build
   targets without running them. Docs-only changes produce no targets; unknown
   paths fall back to `tests`.
-- A committed Cursor hook (`.cursor/hooks.json` →
-  `.cursor/hooks/check_after_edit.sh` → `tools/hooks/w_check_hook.w`, built to
-  `bin/whook` by `./wbuild whook`) runs `w check --json` automatically after
-  every agent edit to a `.w` file and injects the diagnostics back into the
-  agent's context. Compiler-tree files are checked through `w.w` (they do not
-  compile standalone), fixture files are skipped, and the hook fails open.
-  Asserted by `./wbuild hook_test`.
 - Agent-facing guidance is committed alongside the code: `.cursor/skills/`
   holds step-by-step skills (`w-check-diagnostics`, `w-select-tests`,
   `w-debug-wdbg`, `w-repl-explore`) and `.cursor/rules/` holds path-scoped
@@ -304,39 +290,13 @@ passes; it archives the old seed to `old/` first.
   record them there (`.cursor/rules/ai-tooling-feedback.mdc` makes this an
   always-on rule), and to move entries into `docs/projects/ai_tooling.md`'s
   status section when implemented.
-- Cursor IDE can use the committed `.cursor/mcp.json` registration for two
-  W-native MCP servers: `w-toolchain` (`./wbuild wmcp` builds `bin/wmcp`
-  from `tools/mcp/w_toolchain_mcp.w`), exposing build, verify, run_tests,
-  check, compile, run, repl_eval, and test_changed (plus a debug-only
-  `escape_hatch` tool, off by default — see below); and `w-index`
-  (`./wbuild wimcp` builds `bin/wimcp` from `tools/mcp/w_index_mcp.w`),
-  exposing find_symbol, find_references, get_type, get_struct_fields,
-  imports_for, callers, callees, and changed_file_test_targets
-  (`docs/projects/semantic_index.md`). Both run from the repo root. Cloud
-  Agents do not load repo `mcp.json` files — register them in the Cloud
-  Agents dashboard (stdio commands:
-  `sh -c "./wbuild wmcp >&2 && exec ./bin/wmcp"` and
-  `sh -c "./wbuild wimcp >&2 && exec ./bin/wimcp"`), or use the equivalent
-  shell commands.
-- `bin/wmcp` doubles as a one-shot CLI, bypassing the JSON-RPC/stdio loop:
-  `./bin/wmcp call <tool> ['<json-arguments>']` runs one tool through the
-  same dispatcher and prints its JSON result to stdout — useful for
-  exercising a tool by hand without an MCP client.
-- `w-toolchain`'s `escape_hatch` tool is a debug-only stub, disabled unless
-  `W_MCP_ESCAPE_HATCH` is set in the server's environment (e.g.
-  `W_MCP_ESCAPE_HATCH=1 ./bin/wmcp`): when off it is absent from
-  `tools/list` and unreachable by name; when on, `escape_hatch(tool_call_name,
-  parameters, description)` never dispatches to anything real — it logs one
-  NDJSON line to stderr per call and echoes the arguments back with an
-  empty `result`. It exists to let an agent or human probe "what if this
-  tool existed" (a theoretical compiler tool/function) without anyone
-  having to build a real handler first; see
-  `docs/projects/ai_tooling_next_steps.md`.
-- Editors can run the W-native LSP server (`./wbuild wlsp` builds
-  `bin/wlsp` from `tools/lsp/w_lsp.w`): diagnostics from `w check --json`
-  on open/save, go-to-definition and hover from `w symbols --json`, and
-  find-references/rename from `windex`, over stdio Content-Length
-  framing. Scope and editor wiring: `docs/projects/lsp.md`.
+- The editor/agent integration layer built on these surfaces — the LSP
+  server (`wlsp`), the `w-toolchain`/`w-index`/`w-debug` MCP servers, the
+  semantic index (`windex`/`windexd`), and the post-edit check hook
+  (`whook`) — moved out of this repo in July 2026 to keep it focused on
+  the core compiler/toolchain. Those tools still consume this repo's
+  stable surfaces (`w check --json`, `w symbols --json`, `bin/wtest`,
+  `bin/wdbg`, `./wbuild`) and run with cwd = a checkout of this repo.
 - `./wbuild verify` remains the required gate for compiler changes, and
   `./wbuild tests` remains the full pre-merge suite when the host has the
   i386 libc needed by `dynamic_test`.

@@ -36,10 +36,8 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
    stdout + exit 0 = clean. Fix **warnings too** — the self-host build stages
    compile with `--strict`, so warnings fail `./wbuild build`. Compiler-tree modules
    (`compiler/`, `grammar/`, `code_generator/`) don't compile standalone; check
-   `w.w` instead. A committed `postToolUse` hook (`.cursor/hooks.json` →
-   `tools/hooks/w_check_hook.w`) runs this check automatically after every `.w`
-   edit and injects the diagnostics into the conversation — treat that feedback
-   as authoritative.
+   `w.w` instead. (An automatic post-edit check hook built on this surface
+   is maintained with the external integration tools, out of this repo.)
 2. **Pick tests from the diff**, don't guess:
    `git diff --name-only HEAD | ./bin/wtest changed` prints the focused build
    targets (`./wbuild wtest` builds it; `./wbuild test_changed` runs them directly).
@@ -54,11 +52,11 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
 
 Detailed how-tos live in `.cursor/skills/` (`w-check-diagnostics`,
 `w-select-tests`, `w-debug-wdbg`, `w-repl-explore`); path-scoped guardrails in
-`.cursor/rules/`. The `w-toolchain` MCP server (`./wbuild wmcp`, registered in
-`.cursor/mcp.json`) exposes build/verify/run_tests/check/compile/run/repl_eval/
-test_changed as tools for the Cursor IDE; Cloud Agents do not load repo
-`mcp.json` files, so in cloud use the equivalent shell commands (or register
-the server in the Cloud Agents dashboard).
+`.cursor/rules/`. The editor/agent integration layer built on these surfaces
+(the `w-toolchain`/`w-index`/`w-debug` MCP servers, the `wlsp` LSP server,
+the `windex` semantic index, and the post-edit check hook) moved out of
+this repo in July 2026 — use the shell commands above directly when
+working in this repo.
 
 ### Non-obvious gotchas
 - The `bin/` output directory is `.gitignore`d; `./wbuild` creates it itself.

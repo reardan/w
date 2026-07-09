@@ -3,6 +3,16 @@
 Status: **MVP implemented** for the first implementation milestone of
 [reardan/w#25](https://github.com/reardan/w/issues/25) (AI Tooling).
 
+> **July 2026 update**: the integration layer this doc describes beyond
+> the compiler surfaces — the MCP servers (`wmcp`/`wimcp`/`wdmcp`), the
+> LSP server (`wlsp`), the semantic index (`windex`/`windexd`) and the
+> edit-check hook (`whook`) — moved out of this repo, along with their
+> design docs (`lsp.md`, `semantic_index.md`, `index_daemon.md`,
+> `debug_mcp.md`) and their backlog. `w check --json`, `w symbols --json`
+> and `bin/wtest` remain here. Sections below covering the moved tools
+> are kept as the historical design record; their paths refer to this
+> repo's layout at the time.
+
 Issue #25 proposes a broad surface: structured diagnostics, a formatter, a
 target mapper, a semantic indexer, a reducer, an inspector, an LSP server,
 and four MCP servers. This document scopes the MVP: the smallest slice that
