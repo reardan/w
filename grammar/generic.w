@@ -132,70 +132,63 @@ int generic_def_add(char* name, int kind, char* file_path, int offset, int line,
 	return generic_defs.length - 1
 
 
-/*
-Function instantiation registry / queue.
-layout (28 bytes per entry):
-	0: char* mangled name
-	4: int def (definition registry index)
-	8: int* type argument indices
-	12: int arg_count
-	16: int chain (head of the call-site mov-imm backpatch chain, 0 none)
-	20: int signature (function-signature type index, -1 until parsed)
-	24: int done (1 once the body has been compiled)
-*/
-char* generic_insts
-int generic_inst_count
+# Function instantiation registry / queue. Field access replaces the
+# old hand-packed 7-word-slot blob; records are only ever addressed
+# through their index, so list growth cannot invalidate anything.
+struct generic_inst_record:
+	char* mangled     # mangled name ('max$int')
+	int def           # definition registry index
+	int args          # int* vector of type argument indices
+	int arg_count
+	int chain         # head of the call-site mov-imm backpatch chain, 0 none
+	int signature     # function-signature type index, -1 until parsed
+	int done          # 1 once the body has been compiled
 
 
-# Seven pointer-sized slots: mangled*, def, args*, arg_count, head,
-# sig, done (same uniform-word-slot scheme as generic_def_stride).
-int generic_inst_stride():
-	return 7 * __word_size__
+list[generic_inst_record] generic_insts
 
 
-int generic_inst_max():
-	return 2000
-
-
-char* generic_inst_entry(int inst):
-	return generic_insts + inst * generic_inst_stride()
+int generic_inst_count():
+	if (cast(int, generic_insts) == 0):
+		return 0
+	return generic_insts.length
 
 
 char* generic_inst_mangled(int inst):
-	return cast(char*, load_ptr(generic_inst_entry(inst)))
+	return generic_insts[inst].mangled
 
 
 int generic_inst_def(int inst):
-	return load_ptr(generic_inst_entry(inst) + __word_size__)
+	return generic_insts[inst].def
 
 
 int generic_inst_args(int inst):
-	return load_ptr(generic_inst_entry(inst) + 2 * __word_size__)
+	return generic_insts[inst].args
 
 
 int generic_inst_arg_count(int inst):
-	return load_ptr(generic_inst_entry(inst) + 3 * __word_size__)
+	return generic_insts[inst].arg_count
 
 
 int generic_inst_chain(int inst):
-	return load_ptr(generic_inst_entry(inst) + 4 * __word_size__)
+	return generic_insts[inst].chain
 
 
 void generic_inst_set_chain(int inst, int head):
-	save_ptr(generic_inst_entry(inst) + 4 * __word_size__, head)
+	generic_insts[inst].chain = head
 
 
 int generic_inst_done(int inst):
-	return load_ptr(generic_inst_entry(inst) + 6 * __word_size__)
+	return generic_insts[inst].done
 
 
 void generic_inst_set_done(int inst):
-	save_ptr(generic_inst_entry(inst) + 6 * __word_size__, 1)
+	generic_insts[inst].done = 1
 
 
 int generic_inst_lookup(char* mangled):
 	int i = 0
-	while (i < generic_inst_count):
+	while (i < generic_inst_count()):
 		if (strcmp(generic_inst_mangled(i), mangled) == 0):
 			return i
 		i = i + 1
@@ -211,19 +204,18 @@ int generic_inst_intern(int def, int args, int arg_count, char* mangled):
 		free(mangled)
 		free(cast(char*, args))
 		return existing
-	if (generic_insts == 0):
-		generic_insts = malloc(generic_inst_max() * generic_inst_stride())
-	assert1(generic_inst_count < generic_inst_max())
-	char* e = generic_insts + generic_inst_count * generic_inst_stride()
-	save_ptr(e, cast(int, mangled))
-	save_ptr(e + __word_size__, def)
-	save_ptr(e + 2 * __word_size__, args)
-	save_ptr(e + 3 * __word_size__, arg_count)
-	save_ptr(e + 4 * __word_size__, 0)
-	save_ptr(e + 5 * __word_size__, -1)
-	save_ptr(e + 6 * __word_size__, 0)
-	generic_inst_count = generic_inst_count + 1
-	return generic_inst_count - 1
+	if (cast(int, generic_insts) == 0):
+		generic_insts = new list[generic_inst_record]
+	generic_inst_record rec
+	rec.mangled = mangled
+	rec.def = def
+	rec.args = args
+	rec.arg_count = arg_count
+	rec.chain = 0
+	rec.signature = -1
+	rec.done = 0
+	generic_insts.push(rec)
+	return generic_insts.length - 1
 
 
 /*
@@ -659,7 +651,7 @@ use), so call sites get return-type information and argument checks
 before the body itself is compiled at the drain.
 */
 int generic_inst_signature(int inst):
-	int sig = load_ptr(generic_inst_entry(inst) + 5 * __word_size__)
+	int sig = generic_insts[inst].signature
 	if (sig >= 0):
 		return sig
 	int def = generic_inst_def(inst)
@@ -693,7 +685,7 @@ int generic_inst_signature(int inst):
 	char* sig_name = strjoin(generic_inst_mangled(inst), c" sig")
 	sig = type_push_function(sig_name, return_type, param_count, cast(int, param_types))
 	free(param_types)
-	save_ptr(generic_inst_entry(inst) + 5 * __word_size__, sig)
+	generic_insts[inst].signature = sig
 	return sig
 
 
@@ -1389,7 +1381,7 @@ void generic_finish_instantiations():
 			generic_resolve_forward(generic_forwards_resolved)
 			generic_forwards_resolved = generic_forwards_resolved + 1
 			progress = 1
-		while (generic_insts_compiled < generic_inst_count):
+		while (generic_insts_compiled < generic_inst_count()):
 			if (generic_inst_done(generic_insts_compiled) == 0):
 				generic_inst_set_done(generic_insts_compiled)
 				generic_instantiate_function(generic_insts_compiled)
