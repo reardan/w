@@ -59,7 +59,7 @@ is a queue, not an archive.
   in-script heuristic. Revisit `afterFileEdit` if it ever gains a
   documented context-injection output.
 - **Considered and deliberately skipped:** a `beforeShellExecution`
-  nudge that intercepts bare `make tests` and suggests `test_changed`
+  nudge that intercepts bare `./wbuild tests` and suggests `test_changed`
   (fights the agent on a legitimate command), and a `stop`-hook
   "loop until verify is green" flow (the `stop` hook is not wired for
   Cloud Agents). Revisit with evidence of need.
@@ -72,19 +72,19 @@ is a queue, not an archive.
   `git ls-files | ./bin/wtest changed --verbose` and add rules where a
   focused target exists (e.g. `tools/test_map.w` -> `wtest_map_test`).
 - **Registry drift.** The target registry is hand-maintained in
-  `wtest_init_targets()`; a target added only to the Makefile and
-  `build.json` silently falls back to `tests`. Either parse the
-  Makefile/manifest at runtime (the original design-doc idea) or add a
-  test that diffs the registry against `./wbuild --list`.
+  `wtest_init_targets()`; a target added only to `build.json` silently
+  falls back to `tests`. Either parse the manifest at runtime (the
+  original design-doc idea) or add a test that diffs the registry
+  against `./wbuild --list`.
 - **`wtest changed --run`.** Now that `lib/process.w` exists, `wtest`
   could execute the selected targets itself instead of relying on the
-  `make test_changed` xargs pipeline.
+  `./wbuild test_changed` xargs pipeline.
 
 ## MCP / LSP / cloud
 
 - **Cloud Agents cannot see `bin/wmcp`.** Repo `mcp.json` is IDE-only;
   the server must be registered in the Cloud Agents dashboard (stdio
-  command: `sh -c "mkdir -p bin && make -s wmcp >&2 && exec ./bin/wmcp"`).
+  command: `sh -c "./wbuild wmcp >&2 && exec ./bin/wmcp"`).
   Owner action; until then cloud agents use the shell commands.
 - **`w-debug-mcp` / DAP.** `wdbg`'s command loop is already scriptable
   over stdin (see the `w-debug-wdbg` skill); a structured wrapper
@@ -109,11 +109,19 @@ is a queue, not an archive.
   `write` argument 2, both `char*` vs `int`). Fix them, then consider
   extending the warning-free gate (`self_host_warning_test`) to
   `repl.w`, `debugger/`, and `tools/`.
-- **One-off Make targets still assume `bin/` exists.** `make build` and
-  the tool targets (`wtest`, `wmcp`, `wlsp`, `whook`) now create it and
-  self-bootstrap `wv2`; the long tail of test targets does not. Extend
-  the pattern if fresh-clone friction shows up again, or finish the
-  Makefile-to-`wbuild` migration which handles it uniformly.
+- **One-off targets assuming `bin/` exists — resolved.** The
+  Makefile-to-`wbuild` migration handles it uniformly: `wbuild` and the
+  manifest's `dirs` create `bin/` for every target.
+- **wexec directory hashing is Linux-layout only.** Found while porting
+  the darwin triad: `wexec_collect_dir` (tools/wexec.w) parses the Linux
+  getdents record layout, so on macOS — where the `getdents` shim
+  returns raw Darwin `getdirentries64` records (see the NOTE in
+  `lib/__arch__/arm64_darwin/syscalls.w`) — a directory input silently
+  hashes as an empty file list. The darwin build targets therefore
+  declare no directory `"inputs"` (FORCE-style, always run). To unlock
+  content-hash caching on macOS, add per-arch dirent accessors
+  (`reclen`/`name`/`kind`) next to each `getdents` shim in
+  `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
 - **Nonexistent input files produce a garbled directory-walk error.**
   `wv2 <typo>.w` prints `file ... not found error '-2'`, walks up
   directories, and at the filesystem root prints "abandoning search
@@ -131,4 +139,4 @@ is a queue, not an archive.
   would catch drift once the compiler grows a help text.
 - Candidate new skills as workflows stabilize: ARM64 testing under
   `qemu-aarch64` (see `docs/projects/arm64.md`), seed updates
-  (`make update` discipline), and C interop debugging (`c_import`).
+  (`./wbuild update` discipline), and C interop debugging (`c_import`).

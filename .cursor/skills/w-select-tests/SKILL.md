@@ -1,6 +1,6 @@
 ---
 name: w-select-tests
-description: Map changed files to the smallest useful set of test targets in the W repository. Use after any code change, before running tests, instead of defaulting to the full `make tests` suite.
+description: Map changed files to the smallest useful set of test targets in the W repository. Use after any code change, before running tests, instead of defaulting to the full `./wbuild tests` suite.
 ---
 
 # Selecting the right W tests
@@ -8,17 +8,16 @@ description: Map changed files to the smallest useful set of test targets in the
 ## Commands
 
 ```sh
-make wtest                                   # build bin/wtest once
+./wbuild wtest                               # build bin/wtest once
 ./bin/wtest changed path/to/file.w ...       # print the focused targets
 git diff --name-only HEAD | ./bin/wtest changed   # targets for the whole diff
-make test_changed                            # same, and runs them
+./wbuild test_changed                        # same, and runs them
 ./bin/wtest changed --verbose ...            # explain file -> target mapping
 ```
 
-Run the printed targets with `make <targets>` or `./wbuild <targets>`
-(`./wbuild` runs independent targets in parallel and content-hash-caches
-toolchain builds; `-j N` overrides the parallelism, `--no-cache` forces
-reruns).
+Run the printed targets with `./wbuild <targets>` (independent targets
+run in parallel and toolchain builds are content-hash-cached; `-j N`
+overrides the parallelism, `--no-cache` forces reruns).
 
 ## Interpreting the mapping
 
@@ -34,6 +33,6 @@ reruns).
 ## The full gate
 
 Focused targets are for iteration. Before declaring work done, run the
-full suite: `make tests` or `./wbuild tests` (includes `verify`, x64
+full suite: `./wbuild tests` (includes `verify`, x64
 fixpoint, stdlib/structures, REPL, debugger, dynamic linking, MCP/LSP
 and hook tests).

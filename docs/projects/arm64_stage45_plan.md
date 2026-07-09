@@ -28,9 +28,9 @@ flowchart LR
 Docker Desktop is installed but not running. Set up a persistent dev container:
 
 - Start Docker; register binfmt handlers once per VM boot: `docker run --privileged --rm tonistiigi/binfmt --install 386,amd64` (the `F` flag preloads static qemu, so nothing to install in the dev container for x86 emulation).
-- Dev container: `docker run -d --name w-dev -v "$PWD":/w -w /w ubuntu:24.04 sleep infinity`; `apt-get install make qemu-user-static file` inside.
-- Small wrapper script (e.g. `tools/mac/wdev.sh`) so `./tools/mac/wdev.sh make verify` execs into the container.
-- Validate the baseline in-container: `mkdir -p bin && make build && make verify && make verify_arm64 && make arm64_smoke_test`. Since the container is arm64, try running arm64 test binaries natively (`QEMU_ARM64=` override) — check `grep paca /proc/cpuinfo` first; if the Docker VM doesn't expose PAuth, keep the default `qemu-aarch64-static -cpu max`.
+- Dev container: `docker run -d --name w-dev -v "$PWD":/w -w /w ubuntu:24.04 sleep infinity`; `apt-get install qemu-user-static file` inside.
+- Small wrapper script (e.g. `tools/mac/wdev.sh`) so `./tools/mac/wdev.sh ./wbuild verify` execs into the container.
+- Validate the baseline in-container: `mkdir -p bin && ./wbuild build && ./wbuild verify && ./wbuild verify_arm64 && ./wbuild arm64_smoke_test`. Since the container is arm64, try running arm64 test binaries natively (`QEMU_ARM64=` override) — check `grep paca /proc/cpuinfo` first; if the Docker VM doesn't expose PAuth, keep the default `qemu-aarch64-static -cpu max`.
 - Skip `dynamic_test`/x64 c_import tests if i386 dynamic libc proves troublesome under emulation; they are not touched by this work (the guards that matter are `verify`, `verify_x64`, `verify_arm64`).
 
 ## Phase 1 — Target plumbing: `arm64_darwin`
@@ -69,7 +69,7 @@ arm64 macOS main executables are mandatorily PIE; the kernel slides the image an
 
 ## Phase 6 — Darwin test target
 
-- `tests_darwin` compile target in [build.json](../../build.json)/Makefile (in-container: compiles hello + `lib_test` + a smoke subset to `bin/*_darwin`), plus a host-side runner `tools/mac/run_darwin_tests.sh` that signs (until Phase 5 lands) and executes them natively, checking exit codes.
+- `tests_darwin` compile target in [build.json](../../build.json) (in-container: compiles hello + `lib_test` + a smoke subset to `bin/*_darwin`), plus a host-side runner `tools/mac/run_darwin_tests.sh` that signs (until Phase 5 lands) and executes them natively, checking exit codes.
 - Stage 4 acceptance per the doc: hello + lib_test subset green on the M3, arm64 slice, PAC inert.
 
 ## Phase 7 — Stage 5: PAC to production
@@ -81,11 +81,11 @@ arm64 macOS main executables are mandatorily PIE; the kernel slides the image an
 
 ## Regression guards (every phase)
 
-`make verify`, `verify_x64`, `verify_arm64` stay byte-identical in the container; `arm64_smoke_test` green; `parser_generator_w_test` covers any `.w` file additions (no new syntax planned).
+`./wbuild verify`, `verify_x64`, `verify_arm64` stay byte-identical in the container; `arm64_smoke_test` green; `parser_generator_w_test` covers any `.w` file additions (no new syntax planned).
 
 ## Execution update (2026-07-07): cloud-first split
 
-Phase 0 works but is painfully slow on the Mac: the seed `./w` is a 32-bit x86 Linux ELF, so every compiler stage runs under qemu-i386 emulation inside the arm64 Docker VM (~3 minutes per stage; a full `make verify` approaches 15). The Cursor Cloud environment is native x86_64 — the seed runs at full speed there and `qemu-aarch64-static` is baked into the snapshot — so all phases that need only Linux move to the cloud:
+Phase 0 works but is painfully slow on the Mac: the seed `./w` is a 32-bit x86 Linux ELF, so every compiler stage runs under qemu-i386 emulation inside the arm64 Docker VM (~3 minutes per stage; a full `./wbuild verify` approaches 15). The Cursor Cloud environment is native x86_64 — the seed runs at full speed there and `qemu-aarch64-static` is baked into the snapshot — so all phases that need only Linux move to the cloud:
 
 - **Cloud (native x86):** Phases 1–3 (target plumbing, Darwin syscall layer, PIE groundwork), plus the byte-emission side of Phases 4–5 (Mach-O writer, SHA-256, CodeDirectory). All regression guards (`verify`, `verify_x64`, `verify_arm64`, `arm64_smoke_test`, `parser_generator_w_test`) run there at full speed.
 - **This Mac (native arm64/macOS):** acceptance runs only — compile `arm64_darwin` binaries in the `w-dev` container (single compiles are tolerable under emulation), then run them natively: `codesign -s -` fallback and `codesign -v` verification, Mach-O loading, PAC/arm64e enforcement on the M3, `tools/mac/run_darwin_tests.sh` (Phases 4–7 acceptance criteria).
@@ -230,5 +230,5 @@ execution notes"):
 
 New tests: `pac_flag_test` (byte-pattern artifact assertions via
 `tools/pac_flag_check.sh`; default `tests` aggregate), `pac_full_test_arm64`
-and `pac_corrupt_test_arm64` (qemu, Makefile-only), `pac_darwin`
+and `pac_corrupt_test_arm64` (qemu, outside the `tests` umbrella), `pac_darwin`
 (compile-only arm64e guard; run natively via `run_darwin_tests.sh`).

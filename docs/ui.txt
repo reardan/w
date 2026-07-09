@@ -3,8 +3,8 @@ web ui
 
 current state:
 	repl:
-		make repl builds a terminal REPL
-		make repl_test verifies interaction and compile-error recovery
+		./bin/wv2 repl.w -o bin/repl builds a terminal REPL
+		./wbuild repl_test verifies interaction and compile-error recovery
 		multi-line entries: functions, structs, imports at the prompt
 		top-level declarations persist between entries
 		bare expressions echo their value

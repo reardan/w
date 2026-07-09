@@ -2,7 +2,7 @@
 
 This project now has two layers of floating-point regression coverage:
 
-1. **Local C differential smoke tests** (`make float_reference_test`): compile
+1. **Local C differential smoke tests** (`./wbuild float_reference_test`): compile
    `tests/float_reference.c` with the host C compiler, compile matching W
    programs, and diff their raw bit-pattern output. This keeps the everyday
    suite fast and validates W against the platform's IEEE implementation for

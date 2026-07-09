@@ -174,7 +174,7 @@ void fence()
 Builtin-as-function-call keeps the grammar untouched (no
 `tests/parser_generator/w.pg` change needed) but the recognition lives
 in seed-compiled code, so the builtins themselves must be implemented
-without new syntax until a `make update`.
+without new syntax until a `./wbuild update`.
 
 That plus a `sys_futex` wrapper (currently absent from all three
 `lib/__arch__/*/syscalls.w`) gives the glibc/musl-style userspace mutex
@@ -232,7 +232,7 @@ if profiling a real multi-threaded workload demands it.
 
 - `structures/hash_table.w` and `structures/w_list.w` are auto-imported
   into every program and compiled by the committed seed, so changes to
-  them cannot use new language syntax until a `make update`. Everything
+  them cannot use new language syntax until a `./wbuild update`. Everything
   proposed here lands in **new files** (`structures/intrusive_list.w`,
   `structures/rbtree.w`, `lib/bitmap.w`, `lib/atomic.w`, ...) which
   have no such restriction — though anything the compiler itself would

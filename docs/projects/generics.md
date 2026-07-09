@@ -241,7 +241,7 @@ Asserted by the `generics_test` / `generics_inference_test` targets
 
 ## Build/test wiring
 
-- `Makefile`: `generics_test` and `generics_inference_test` (runtime +
+- `build.json`: `generics_test` and `generics_inference_test` (runtime +
   error fixtures) with `generics_64_test` / `generics_inference_64_test`,
   in the `tests` / `tests_x64` aggregates.
 - `build.json`: the same targets and aggregate entries for `./wbuild`.

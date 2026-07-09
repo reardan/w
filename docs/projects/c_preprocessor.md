@@ -10,7 +10,7 @@ groundwork for replacing the old `c_import` behavior that merely skipped
 > `libs/extras/c_preprocessor/` (option 2: Prosser hide sets, conditionals,
 > include search with `#include_next` and `#pragma once`, GNU comma
 > swallowing, placemarkers), and `c_import` uses it for broad system-header
-> import. `make tests` covers the preprocessor directly and through
+> import. `./wbuild tests` covers the preprocessor directly and through
 > `c_import_libc_test` on both x86 and x64; see `docs/projects/c_import.md`
 > for the importer that consumes it.
 

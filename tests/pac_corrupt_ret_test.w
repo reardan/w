@@ -3,7 +3,7 @@
 # epilogue's autia (FPAC hardware faults immediately — qemu -cpu max
 # and Apple Silicon alike). The victim's W-stack frame is
 # [return slot][x], so one word above the sole local is the slot the
-# prologue pushed. The Makefile asserts this process dies by signal.
+# prologue pushed. pac_corrupt_test_arm64 asserts death by signal.
 import lib.lib
 
 

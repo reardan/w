@@ -5,7 +5,7 @@
 # portable ranges for combining marks and spacing marks; the remaining
 # UAX #29 classes used by lib.grapheme are compact algorithmic ranges.
 #
-# Run from the repo root: make grapheme_data
+# Run from the repo root: ./wbuild grapheme_data
 import lib.lib
 import lib.stream
 import structures.string

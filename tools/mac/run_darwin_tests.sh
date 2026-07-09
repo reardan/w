@@ -22,7 +22,7 @@ tests="$*"
 must_die=""
 if [ -z "$tests" ]; then
 	tests="bin/hello_darwin bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin bin/pac_full_darwin_test"
-	# arm64e corruption fixtures (make pac_darwin): pointer authentication
+	# arm64e corruption fixtures (./wbuild pac_darwin): pointer authentication
 	# is enforced natively, so these MUST die by signal before reaching
 	# their NOT REACHED print.
 	must_die="bin/pac_corrupt_fnptr_darwin_test bin/pac_corrupt_ret_darwin_test"

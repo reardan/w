@@ -134,7 +134,7 @@ int main(int argc, int argv):
 		println(c"failed zero check")
 		# exit(1)
 
-	# The Makefile passes: arg1 arg2 arg3 -o output -i=input --input=doubledash
+	# The testing_ground target passes: arg1 arg2 arg3 -o output -i=input --input=doubledash
 	if (argc > 1):
 		args_init(argc, argv)
 		asserts(c"expected 3 positional args", args_positional_count() == 3)

@@ -1,11 +1,11 @@
 /*
-wexec: the W-native build executor — the MVP replacement for the Makefile.
+wexec: the W-native build executor — the replacement for the old Makefile.
 
 wexec reads a static JSON manifest (build.json by default) describing
 build/test targets, resolves their dependency DAG depth-first, and runs
 each target's steps as child processes via lib.process. It deliberately
 knows nothing about W itself: the manifest spells out every command, so
-porting a Makefile rule is a mechanical transcription and the executor
+porting a Makefile rule was a mechanical transcription and the executor
 core stays small enough to trust.
 
 Manifest shape:
@@ -40,7 +40,7 @@ Every target runs at most once per invocation. Targets that declare
 cached by content hash: when the hash of the target definition, its
 input files and its dependencies' keys matches the stamp left in
 bin/.wexec_cache/ — and every declared "outputs" file exists — the
-target is skipped. Targets without "inputs" behave like the Makefile's
+target is skipped. Targets without "inputs" behave like make-style
 FORCE targets: requesting them always runs them. A step's captured
 stdout/stderr is re-emitted after the step finishes, so output is
 visible but not interleaved live.

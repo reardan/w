@@ -70,7 +70,7 @@ The committed seed compiler `./w` must compile the current compiler sources.
 All compiler changes must therefore be written using syntax the old seed
 already understands. New array/slice/string syntax may be used in tests and
 library modules compiled by `bin/wv2`, but not in `compiler/`, `grammar/`, or
-`code_generator/` until after `make verify` passes and a later `make update`
+`code_generator/` until after `./wbuild verify` passes and a later `./wbuild update`
 promotes the new seed.
 
 This also means raw `"..."` literals cannot immediately change from `char*` to
@@ -288,7 +288,7 @@ w --bounds=trap file.w
 
 Recommended defaults:
 
-- `on` for debug/test builds and for `make tests`.
+- `on` for debug/test builds and for `./wbuild tests`.
 - `trap` as the implementation mode for `on`: failed checks branch to an
   inline trap sequence that works without importing `lib.lib`.
 - `off` removes generated checks but keeps type-aware scaling.
@@ -370,8 +370,8 @@ Add focused tests before using the new syntax in compiler sources:
   - invalid UTF-8 and invalid codepoint compile errors;
   - `cstr`, equality, starts/ends, codepoint iteration.
 - Extend `warning_test` for the new conversion warnings.
-- Run `make verify`, `make tests`, and `make verify_x64` before any seed
-  update. Only after the fixpoint is stable should `make update` promote a seed
+- Run `./wbuild verify`, `./wbuild tests`, and `./wbuild verify_x64` before any seed
+  update. Only after the fixpoint is stable should `./wbuild update` promote a seed
   that understands the new syntax.
 
 ## Known MVP limitations

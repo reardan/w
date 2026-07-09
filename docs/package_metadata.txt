@@ -4,8 +4,8 @@ Status:
 	Stages 1-4 below are implemented: lib/wmeta.w parses and validates
 	package.wmeta files, tools/wmeta.w is the CLI (wmeta check [file]),
 	the repository root carries a package.wmeta, fixtures live in
-	tests/metadata/, and make metadata_check / make metadata_test run as
-	part of make tests (metadata_check is also a wexec target in
+	tests/metadata/, and ./wbuild metadata_check / ./wbuild metadata_test run as
+	part of ./wbuild tests (metadata_check is also a wexec target in
 	build.json). The checker validates fields, three-component versions,
 	the =, >= and ^ constraints, module existence under root (expanding
 	__arch__ to both x86 and x64), vendored path dependencies
@@ -157,14 +157,14 @@ Import path implications:
 	files exist.  __word_size__ stays a compile-time constant and is not a
 	metadata variable.
 
-Makefile and build integration:
+Build integration:
 	The bootstrap path should stay unchanged:
-		make build
-		make verify
-		make tests
+		./wbuild build
+		./wbuild verify
+		./wbuild tests
 
 	Initial metadata support should be additive:
-		make metadata_check
+		./wbuild metadata_check
 
 	metadata_check can validate package.wmeta syntax, version constraints,
 	module existence, duplicate module declarations, and dependency metadata
@@ -172,12 +172,12 @@ Makefile and build integration:
 	build or verify until the checker is self-hosted enough to avoid making the
 	seed compiler bootstrap depend on new tooling.
 
-	Once stable, make tests can depend on metadata_check.  make build should
+	Once stable, ./wbuild tests can depend on metadata_check.  ./wbuild build should
 	continue compiling w.w directly so bootstrapping remains understandable and
 	package metadata cannot hide a compiler dependency cycle.
 
 	Distribution targets can later package sources plus package.wmeta, while
-	lock-file generation can remain a separate target such as make package_lock.
+	lock-file generation can remain a separate target such as ./wbuild package_lock.
 
 Staged implementation:
 	1. Land this design and a sample package.wmeta fixture in tests/metadata/ or
@@ -188,8 +188,8 @@ Staged implementation:
 	3. Add package.wmeta for the root repo and any standard-library subpackages
 		only after the checker can prove module paths exist. [done: root
 		package.wmeta]
-	4. Add make metadata_check and include it in make tests after it is stable.
-		[done, plus make metadata_test for the fixtures]
+	4. Add ./wbuild metadata_check and include it in ./wbuild tests after it is stable.
+		[done, plus ./wbuild metadata_test for the fixtures]
 	5. Add optional lock-file generation for path dependencies and content
 		hashes.
 	6. Revisit import ergonomics only after metadata validation is useful on its

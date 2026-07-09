@@ -2,7 +2,7 @@
 
 Status: **implemented** (`debugger/breakpoints.w`, `debugger/eval.w`,
 `debugger/wdbg.w`; tests in `tests/debug_fixture3.w` and the `debug_test`
-/ `debug_test_x64` Makefile targets).
+/ `debug_test_x64` build targets).
 
 Tracks the active remainder of
 [reardan/w#38](https://github.com/reardan/w/issues/38) after PR #36 landed
@@ -281,8 +281,8 @@ Extend `tests/debug_fixture.w` / `tests/debug_fixture2.w` (or add a
 `tests/debug_fixture3.w` with a small counting loop, since the existing
 fixtures are straight-line/one-call shaped) with a loop whose body a
 condition/ignore/logpoint can target, then add `debug_test` (and
-`debug_test_x64`) Makefile assertions in the same `grep -q`/`grep -qE`
-style as the existing 31:
+`debug_test_x64`) assertions in the same style
+as the existing 31:
 
 - `condition <n> <expr>` stops only on the iteration where `<expr>` is
   true (assert the reported local's value at the stop).
@@ -317,9 +317,9 @@ and trap handler, not `debugger/sigcontext.w`.
 5. Docs: `docs/debugging.txt`, `.cursor/skills/w-debug-wdbg/SKILL.md`,
    `docs/projects/ai_tooling_next_steps.md` (one-line pointer),
    `docs/todo.txt` (move this out of "next priorities" once merged).
-6. `make verify` (breakpoints.w/eval.w/wdbg.w are outside the seed's
+6. `./wbuild verify` (breakpoints.w/eval.w/wdbg.w are outside the seed's
    compiled set — `debugger/` is not in the seed-constrained list in
-   `CLAUDE.md` — so no seed-promotion concerns; `make tests` is the gate).
+   `CLAUDE.md` — so no seed-promotion concerns; `./wbuild tests` is the gate).
 
 ## Implementation notes
 

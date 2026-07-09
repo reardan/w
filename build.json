@@ -41,6 +41,59 @@
 			]
 		},
 		{
+			"name": "update",
+			"deps": ["verify"],
+			"steps": [
+				{"cmd": ["./archive.sh"]},
+				{"cmd": ["mv", "-f", "bin/wv2", "w"]}
+			]
+		},
+		{
+			"name": "wexec_darwin",
+			"inputs": ["tools/wexec.w", "w_darwin"],
+			"outputs": ["bin/wexec_darwin"],
+			"steps": [
+				{"cmd": ["./w_darwin", "arm64_darwin", "w.w", "-o", "bin/wv2_darwin_raw"]},
+				{"cmd": ["cp", "bin/wv2_darwin_raw", "bin/wv2_darwin.signing"]},
+				{"cmd": ["codesign", "-f", "-s", "-", "bin/wv2_darwin.signing"]},
+				{"cmd": ["mv", "-f", "bin/wv2_darwin.signing", "bin/wv2_darwin"]},
+				{"cmd": ["bin/wv2_darwin", "arm64_darwin", "tools/wexec.w", "-o", "bin/wexec_darwin_raw"]},
+				{"cmd": ["cp", "bin/wexec_darwin_raw", "bin/wexec_darwin.signing"]},
+				{"cmd": ["codesign", "-f", "-s", "-", "bin/wexec_darwin.signing"]},
+				{"cmd": ["mv", "-f", "bin/wexec_darwin.signing", "bin/wexec_darwin"]}
+			]
+		},
+		{
+			"name": "build_darwin",
+			"steps": [
+				{"cmd": ["./w_darwin", "arm64_darwin", "w.w", "-o", "bin/wv2_darwin_raw"]},
+				{"cmd": ["cp", "bin/wv2_darwin_raw", "bin/wv2_darwin.signing"]},
+				{"cmd": ["codesign", "-f", "-s", "-", "bin/wv2_darwin.signing"]},
+				{"cmd": ["mv", "-f", "bin/wv2_darwin.signing", "bin/wv2_darwin"]},
+				{"cmd": ["bin/wv2_darwin", "arm64_darwin", "w.w", "-o", "bin/wv3_darwin_raw"]},
+				{"cmd": ["cp", "bin/wv3_darwin_raw", "bin/wv3_darwin.signing"]},
+				{"cmd": ["codesign", "-f", "-s", "-", "bin/wv3_darwin.signing"]},
+				{"cmd": ["mv", "-f", "bin/wv3_darwin.signing", "bin/wv3_darwin"]},
+				{"cmd": ["bin/wv3_darwin", "arm64_darwin", "w.w", "-o", "bin/wv4_darwin_raw"]}
+			]
+		},
+		{
+			"name": "verify_darwin",
+			"deps": ["build_darwin"],
+			"steps": [
+				{"cmd": ["cmp", "bin/wv3_darwin_raw", "bin/wv4_darwin_raw"]},
+				{"cmd": ["echo", "darwin self-host fixpoint OK: wv3_darwin == wv4_darwin"]}
+			]
+		},
+		{
+			"name": "update_darwin",
+			"deps": ["verify_darwin"],
+			"steps": [
+				{"cmd": ["./archive.sh", "w_darwin"]},
+				{"cmd": ["cp", "-f", "bin/wv3_darwin", "w_darwin"]}
+			]
+		},
+		{
 			"name": "hello",
 			"deps": ["wv2"],
 			"steps": [
@@ -1612,6 +1665,15 @@
 			]
 		},
 		{
+			"name": "wdbg_x64",
+			"deps": ["wv2"],
+			"inputs": ["debugger/"],
+			"outputs": ["bin/wdbg64"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "debugger/debugger.w", "-o", "bin/wdbg64"]}
+			]
+		},
+		{
 			"name": "debug_test",
 			"deps": ["wdbg"],
 			"steps": [
@@ -1634,6 +1696,14 @@
 				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b debug_fixture2.w:22\nc\np y\nc\n", "expect_stdout": "y = 9"},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "tb triple\nc\nc\n", "expect_stdout": "hit breakpoint 1 (temporary)"},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nd 1\ni b\nc\n", "expect_stdout": "no breakpoints set"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture3.w"], "stdin": "b debug_fixture3.w:12\ncondition 1 i == 3\nc\np i\nc\nc\nc\nc\nc\n", "expect_stdout": ["condition: i == 3, hits: 4", "i = 3 (0x00000003)"]},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture3.w"], "stdin": "b debug_fixture3.w:12\nignore 1 2\nc\np i\nc\n", "expect_stdout": "i = 2 (0x00000002)"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture3.w"], "stdin": "b debug_fixture3.w:12\nc\nc\nc\ni b\nc\nc\nc\n", "expect_stdout": "hits: 3"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture3.w"], "stdin": "tb debug_fixture3.w:12\ncondition 1 i == 4\nc\ni b\np i\nc\nc\n", "expect_stdout": ["i = 4 (0x00000004)", "no breakpoints set"]},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture3.w"], "stdin": "log debug_fixture3.w:12 i\nc\n", "expect_stdout": "logpoint 1 hit 5: i = 4", "reject_stdout": "logpoint 1 hit 6"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture3.w"], "stdin": "log debug_fixture3.w:12 i\ncondition 1 i > 2\nc\n", "expect_stdout": ["logpoint 1 hit 4: i = 3", "logpoint 1 hit 5: i = 4"], "reject_stdout": "logpoint 1 hit 3"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture3.w"], "stdin": "b debug_fixture3.w:12\ncondition 1 i +\nc\n", "expect_stdout": "failed to compile: stopping unconditionally"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture3.w"], "stdin": "b debug_fixture3.w:12\ncondition 1 i == 3\ncondition 1\nc\np i\nc\n", "expect_stdout": "i = 0 (0x00000000)"},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "p x\nc\n", "expect_stdout": "x = 3"},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "p message\nc\n", "expect_stdout": "hello wdbg"},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "i l\nc\n", "expect_stdout": "message ="},
@@ -1643,12 +1713,75 @@
 				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "x message 1\nc\n", "stdout_file": "bin/debug_test_x.out"},
 				{"cmd": ["grep", "-qE", "0x[0-9a-f]+: 0x", "bin/debug_test_x.out"]},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "list\nc\n", "expect_stdout": "int y = triple(x)"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nc\nup\np n\nc\nc\nc\n", "expect_stdout": "n = 3"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nc\nf 2\np message\nc\nc\nc\n", "expect_stdout": "hello wdbg"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nc\nup\ndown\nc\nc\nc\n", "expect_stdout": "#0  add"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nc\nup\nset n 10\nc\nc\nc\n", "expect_stdout": "debuggee main returned 16"},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "p add(2, 3)\nc\n", "expect_stdout": "= 5 (0x00000005)"},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "set x 40\nc\n", "expect_stdout": "debuggee main returned 120"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "p x * 2 + counter\nc\n", "expect_stdout": "= 11"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nc\np add(a, 39)\nc\nc\nc\n", "expect_stdout": "= 42"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "watch counter\nc\nc\nq\n", "expect_stdout": "counter changed: 5 (0x00000005) -> 14"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "watch counter\nd w 1\ni w\nc\n", "expect_stdout": "no watchpoints set"},
 				{"cmd": ["bin/wdbg", "tests/segv_fixture.w"], "stdin": "l\nc\n", "expect_status": 1, "expect_stdout": "fatal signal: SIGSEGV"},
 				{"cmd": ["bin/wdbg", "tests/segv_fixture.w"], "stdin": "l\nc\n", "expect_status": 1, "expect_stdout": "segv_fixture.w:7"},
 				{"cmd": ["bin/wdbg", "tests/segv_fixture.w"], "stdin": "c\n", "expect_status": 1},
 				{"cmd": ["bin/wv2", "--debug", "tests/debug_fixture.w"], "stdin": "c\n", "expect_stdout": "after breakpoint"}
+			]
+		},
+		{
+			"name": "debug_test_x64",
+			"deps": ["wdbg_x64"],
+			"steps": [
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture.w"], "stdin": "r\nl\nc\n", "expect_stdout": "breakpoint hit at eip="},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture.w"], "stdin": "r\nc\n", "expect_stdout": "rip: 0x"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture.w"], "stdin": "l\nc\n", "expect_stdout": "debug_fixture.w:9"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture.w"], "stdin": "st\nc\n", "stdout_file": "bin/debug_test_x64_st.out"},
+				{"cmd": ["grep", "-qE", "0x[0-9a-f]+: 0x", "bin/debug_test_x64_st.out"]},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture.w"], "stdin": "c\n", "expect_stdout": "after breakpoint"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture.w"], "stdin": "c\n", "expect_stdout": "debuggee main returned 7"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture.w", "--break_start"], "stdin": "c\nc\n", "expect_stdout": "after breakpoint"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture.w"], "stdin": "q\n"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture.w"], "stdin": "s\nl\nc\n", "expect_stdout": "debug_fixture.w:10"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "s\ns\nl\nc\n", "expect_stdout": "debug_fixture2.w:12"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "n\nn\nl\nc\n", "expect_stdout": "debug_fixture2.w:22"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture.w"], "stdin": "si\nl\nc\n", "expect_stdout": "debug_fixture.w:10"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "s\ns\ns\nfin\nc\n", "expect_stdout": "value returned = 6"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w", "--break_start"], "stdin": "s\nl\nc\nc\n", "expect_stdout": "debug_fixture2.w:17"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\np a\nc\nc\nc\n", "expect_stdout": "a = 3"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b debug_fixture2.w:22\nc\np y\nc\n", "expect_stdout": "y = 9"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "tb triple\nc\nc\n", "expect_stdout": "hit breakpoint 1 (temporary)"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nd 1\ni b\nc\n", "expect_stdout": "no breakpoints set"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture3.w"], "stdin": "b debug_fixture3.w:12\ncondition 1 i == 3\nc\np i\nc\nc\nc\nc\nc\n", "expect_stdout": ["condition: i == 3, hits: 4", "i = 3 (0x00000003)"]},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture3.w"], "stdin": "b debug_fixture3.w:12\nignore 1 2\nc\np i\nc\n", "expect_stdout": "i = 2 (0x00000002)"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture3.w"], "stdin": "b debug_fixture3.w:12\nc\nc\nc\ni b\nc\nc\nc\n", "expect_stdout": "hits: 3"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture3.w"], "stdin": "tb debug_fixture3.w:12\ncondition 1 i == 4\nc\ni b\np i\nc\nc\n", "expect_stdout": ["i = 4 (0x00000004)", "no breakpoints set"]},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture3.w"], "stdin": "log debug_fixture3.w:12 i\nc\n", "expect_stdout": "logpoint 1 hit 5: i = 4", "reject_stdout": "logpoint 1 hit 6"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture3.w"], "stdin": "log debug_fixture3.w:12 i\ncondition 1 i > 2\nc\n", "expect_stdout": ["logpoint 1 hit 4: i = 3", "logpoint 1 hit 5: i = 4"], "reject_stdout": "logpoint 1 hit 3"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture3.w"], "stdin": "b debug_fixture3.w:12\ncondition 1 i +\nc\n", "expect_stdout": "failed to compile: stopping unconditionally"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture3.w"], "stdin": "b debug_fixture3.w:12\ncondition 1 i == 3\ncondition 1\nc\np i\nc\n", "expect_stdout": "i = 0 (0x00000000)"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "p x\nc\n", "expect_stdout": "x = 3"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "p message\nc\n", "expect_stdout": "hello wdbg"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "i l\nc\n", "expect_stdout": "message ="},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "i a\nc\n", "expect_stdout": "argc ="},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "p counter\nc\n", "expect_stdout": "counter = 5"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\nbt\nc\nc\nc\n", "expect_stdout": "#1  triple"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "x message 1\nc\n", "stdout_file": "bin/debug_test_x64_x.out"},
+				{"cmd": ["grep", "-qE", "0x[0-9a-f]+: 0x", "bin/debug_test_x64_x.out"]},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "list\nc\n", "expect_stdout": "int y = triple(x)"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\nup\np n\nc\nc\nc\n", "expect_stdout": "n = 3"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\nf 2\np message\nc\nc\nc\n", "expect_stdout": "hello wdbg"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\nup\ndown\nc\nc\nc\n", "expect_stdout": "#0  add"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\nup\nset n 10\nc\nc\nc\n", "expect_stdout": "debuggee main returned 16"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "p add(2, 3)\nc\n", "expect_stdout": "= 5 (0x00000005)"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "set x 40\nc\n", "expect_stdout": "debuggee main returned 120"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "p x * 2 + counter\nc\n", "expect_stdout": "= 11"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\np add(a, 39)\nc\nc\nc\n", "expect_stdout": "= 42"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "watch counter\nc\nc\nq\n", "expect_stdout": "counter changed: 5 (0x00000005) -> 14"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "watch counter\nd w 1\ni w\nc\n", "expect_stdout": "no watchpoints set"},
+				{"cmd": ["bin/wdbg64", "tests/segv_fixture.w"], "stdin": "l\nc\n", "expect_status": 1, "expect_stdout": "fatal signal: SIGSEGV"},
+				{"cmd": ["bin/wdbg64", "tests/segv_fixture.w"], "stdin": "l\nc\n", "expect_status": 1, "expect_stdout": "segv_fixture.w:7"},
+				{"cmd": ["bin/wdbg64", "tests/segv_fixture.w"], "stdin": "c\n", "expect_status": 1}
 			]
 		},
 		{
@@ -1682,6 +1815,27 @@
 			]
 		},
 		{
+			"name": "repl_test_x64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "repl.w", "-o", "bin/repl64"]},
+				{"cmd": ["bin/repl64"], "stdin": "print(c\"hello from the repl\\x0a\")\n:quit\n", "expect_stdout": "hello from the repl"},
+				{"cmd": ["bin/repl64"], "stdin": "this is not valid w\nprint(c\"recovered\\x0a\")\n:quit\n", "expect_stdout": "recovered"},
+				{"cmd": ["bin/repl64"], "stdin": "int add(int a, int b):\n\treturn a + b\n\nadd(40, 2)\n:quit\n", "expect_stdout": "42"},
+				{"cmd": ["bin/repl64"], "stdin": "int x = 5\nx + 1\n:quit\n", "expect_stdout": "6"},
+				{"cmd": ["bin/repl64"], "stdin": "\"hello string\"\n:quit\n", "expect_stdout": "hello string"},
+				{"cmd": ["bin/repl64"], "stdin": "struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n", "expect_stdout": "7"},
+				{"cmd": ["bin/repl64"], "stdin": "import structures.string\nstring_builder* s = string_from(c\"imported\")\ns.data\n:quit\n", "expect_stdout": "imported"},
+				{"cmd": ["bin/repl64"], "stdin": "import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n", "expect_stdout": "42"},
+				{"cmd": ["bin/repl64"], "stdin": "import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c\"a\"] = 41\nm[c\"a\"] + 1\n:quit\n", "expect_stdout": "42"},
+				{"cmd": ["bin/repl64"], "stdin": "int bad():\n\treturn qq\n\nprint(c\"recovered fn\\x0a\")\n:quit\n", "expect_stdout": "recovered fn"},
+				{"cmd": ["bin/repl64", "tests/repl_fixture.w"], "stdin": ":quit\n", "expect_stdout": "fixture main ran"},
+				{"cmd": ["bin/repl64", "tests/repl_fixture.w"], "stdin": "fixture_helper(21)\nfixture_global\n:quit\n", "expect_stdout": "42"},
+				{"cmd": ["bin/repl64", "tests/repl_fixture.w", "--no_main"], "stdin": ":quit\n", "reject_stdout": "fixture main ran"},
+				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "int q = 13\u007f\u007f4\nq + 1\n:quit\n", "expect_stdout": "5"}
+			]
+		},
+		{
 			"name": "dynamic_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1705,6 +1859,58 @@
 				{"cmd": ["cmp", "bin/wv2_64", "bin/wv3_64"]},
 				{"cmd": ["cmp", "bin/wv3_64", "bin/wv4_64"]},
 				{"cmd": ["echo", "x64 self-host fixpoint OK: wv2_64 == wv3_64 == wv4_64"]}
+			]
+		},
+		{
+			"name": "build_arm64",
+			"deps": ["wv2"],
+			"inputs": ["tools/run_arm64.sh"],
+			"outputs": ["bin/wv2_arm64", "bin/wv3_arm64"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "w.w", "-o", "bin/wv2_arm64"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/wv2_arm64", "arm64", "w.w", "-o", "bin/wv3_arm64"]}
+			]
+		},
+		{
+			"name": "verify_arm64",
+			"deps": ["build_arm64"],
+			"inputs": [],
+			"steps": [
+				{"cmd": ["cmp", "bin/wv2_arm64", "bin/wv3_arm64"]},
+				{"cmd": ["echo", "arm64 self-host fixpoint OK: wv2_arm64 == wv3_arm64"]}
+			]
+		},
+		{
+			"name": "arm64_smoke_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "lib/lib_test.w", "-o", "bin/lib_arm64_test"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/lib_arm64_test"]},
+				{"cmd": ["bin/wv2", "arm64", "structures/hash_table_test.w", "-o", "bin/hash_table_arm64_test"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/hash_table_arm64_test"]},
+				{"cmd": ["bin/wv2", "arm64", "tests/map_set_builtin_test.w", "-o", "bin/map_set_builtin_arm64_test"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/map_set_builtin_arm64_test"]},
+				{"cmd": ["bin/wv2", "arm64", "tests/generator_test.w", "-o", "bin/generator_arm64_test"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/generator_arm64_test"]},
+				{"cmd": ["echo", "arm64 smoke test OK"]}
+			]
+		},
+		{
+			"name": "dynamic_test_arm64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "tests/dynamic_test.w", "-o", "bin/dynamic_test_arm64"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/dynamic_test_arm64"], "expect_stdout": "dynamic linking OK"},
+				{"cmd": ["echo", "dynamic test arm64 OK"]}
+			]
+		},
+		{
+			"name": "float_abi_test_arm64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "tests/float_abi_test.w", "-o", "bin/float_abi_test_arm64"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/float_abi_test_arm64"], "expect_stdout": "float abi OK"},
+				{"cmd": ["echo", "float abi test arm64 OK"]}
 			]
 		},
 		{
@@ -2040,6 +2246,26 @@
 			]
 		},
 		{
+			"name": "pac_full_test_arm64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "--pac=full", "tests/pac_full_test.w", "-o", "bin/pac_full_arm64_test"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/pac_full_arm64_test"], "expect_stdout": "pac full OK"},
+				{"cmd": ["echo", "pac full arm64 test OK"]}
+			]
+		},
+		{
+			"name": "pac_corrupt_test_arm64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "--pac=full", "tests/pac_corrupt_fnptr_test.w", "-o", "bin/pac_corrupt_fnptr_arm64_test"]},
+				{"cmd": ["sh", "-c", "sh tools/run_arm64.sh bin/pac_corrupt_fnptr_arm64_test; test $? -ge 128"], "reject_stdout": "NOT REACHED"},
+				{"cmd": ["bin/wv2", "arm64", "tests/pac_corrupt_ret_test.w", "-o", "bin/pac_corrupt_ret_arm64_test"]},
+				{"cmd": ["sh", "-c", "sh tools/run_arm64.sh bin/pac_corrupt_ret_arm64_test; test $? -ge 128"], "reject_stdout": "NOT REACHED"},
+				{"cmd": ["echo", "pac corruption tests OK (both fixtures died)"]}
+			]
+		},
+		{
 			"name": "dynamic_test_x64",
 			"deps": ["wv2"],
 			"steps": [
@@ -2187,8 +2413,80 @@
 				"task_io_64_test",
 				"format_64_test",
 				"args_64_test",
+				"repl_test_x64",
+				"debug_test_x64",
 				"graphics_math_64_test",
 				"graphics_gl_smoke_test"
+			]
+		},
+		{
+			"name": "asm_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/asm_test.w", "-o", "bin/asm_test"]},
+				{"cmd": ["bin/asm_test"]}
+			]
+		},
+		{
+			"name": "convert",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "debugger/convert.w", "-o", "bin/convert"]}
+			]
+		},
+		{
+			"name": "cuda_smoke",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/cuda_smoke.w", "-o", "bin/cuda_smoke"]},
+				{"cmd": ["bin/cuda_smoke"], "expect_stdout": "cuda vector add OK"}
+			]
+		},
+		{
+			"name": "elf",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/elf.w", "-o", "bin/elf"]},
+				{"cmd": ["bin/elf"]}
+			]
+		},
+		{
+			"name": "grapheme_data",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/generate_grapheme_data.w", "-o", "bin/generate_grapheme_data"]},
+				{"cmd": ["bin/generate_grapheme_data"]}
+			]
+		},
+		{
+			"name": "net",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/net.w", "-o", "bin/net"]},
+				{"cmd": ["bin/net"]}
+			]
+		},
+		{
+			"name": "rewrite_c_strings",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/rewrite_c_string_literals.w", "-o", "bin/rewrite_c_strings"]}
+			]
+		},
+		{
+			"name": "simple",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/simple.w", "-o", "bin/simple"]},
+				{"cmd": ["bin/simple"]}
+			]
+		},
+		{
+			"name": "testing_ground",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/testing_ground.w", "-o", "bin/testing_ground"]},
+				{"cmd": ["bin/testing_ground", "arg1", "arg2", "arg3", "-o", "output", "-i=input", "--input=doubledash"]}
 			]
 		},
 		{

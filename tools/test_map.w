@@ -3,7 +3,7 @@ import lib.stream
 import structures.string
 
 
-# Ordered registry of Makefile targets wtest knows how to emit. The order
+# Ordered registry of build targets wtest knows how to emit. The order
 # here is the output order; the catch-all "tests" target stays last.
 # Adding a target is one push() here plus a mapping rule below.
 list[char*] wtest_targets
@@ -80,7 +80,9 @@ void wtest_init_targets():
 	wtest_targets.push(c"stream_64_test")
 	wtest_targets.push(c"file_test")
 	wtest_targets.push(c"repl_test")
+	wtest_targets.push(c"repl_test_x64")
 	wtest_targets.push(c"debug_test")
+	wtest_targets.push(c"debug_test_x64")
 	wtest_targets.push(c"c_import_test")
 	wtest_targets.push(c"c_preprocessor_test")
 	wtest_targets.push(c"c_import_errno_test")
@@ -302,8 +304,10 @@ void wtest_map_path(char* path):
 		wtest_map_graphics(path)
 	else if (strcmp(path, c"repl.w") == 0):
 		wtest_add(path, c"repl_test")
+		wtest_add(path, c"repl_test_x64")
 	else if (starts_with(path, c"debugger/")):
 		wtest_add(path, c"debug_test")
+		wtest_add(path, c"debug_test_x64")
 	else if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):
@@ -400,8 +404,6 @@ void wtest_map_path(char* path):
 		# The manifest and bootstrap script drive the whole W-native
 		# build, so changes there get the full suite too.
 		wtest_add(path, c"wexec_test")
-		wtest_add(path, c"tests")
-	else if (strcmp(path, c"Makefile") == 0):
 		wtest_add(path, c"tests")
 	else:
 		wtest_add(path, c"tests")

@@ -10,8 +10,8 @@ Current state:
 	local/argument (name, stack slot, type, declaration site) and per
 	function (start, argument words); see code_generator/dwarf.w
 
-	wdbg (debugger/wdbg.w and the debugger/ modules, built with make wdbg
-	for x86 or make wdbg_x64 for the 64-bit binary) is the built-in
+	wdbg (debugger/wdbg.w and the debugger/ modules, built with ./wbuild wdbg
+	for x86 or ./wbuild wdbg_x64 for the 64-bit binary) is the built-in
 	debugger:
 
 		./bin/wdbg file.w
@@ -134,7 +134,7 @@ Current state:
 
 	traps after the debuggee's main returns
 
-	make debug_test (and debug_test_x64 for ./bin/wdbg64) drives the
+	./wbuild debug_test (and debug_test_x64 for ./bin/wdbg64) drives the
 	command loop over stdin against tests/debug_fixture.w,
 	tests/debug_fixture2.w and tests/segv_fixture.w, asserting each
 	command's output.

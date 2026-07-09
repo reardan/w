@@ -136,10 +136,10 @@ lib/math.w grows `abs`, `sign`, `gcd`, `pow` (integer, by squaring).
 
 ## Acceptance
 
-- `make verify` — self-host fixpoint (wv3 == wv4 == wv5) with every
+- `./wbuild verify` — self-host fixpoint (wv3 == wv4 == wv5) with every
   feature active; the compiler sources themselves now compile through
   the print builtin.
-- `make tests` / `./wbuild tests` — full suite, including the new
+- `./wbuild tests` / `./wbuild tests` — full suite, including the new
   targets: infer_test, ternary_test, print_builtin_test,
   script_mode_test, prelude_test, list_methods_test, str_test,
   math_test.
@@ -148,4 +148,4 @@ lib/math.w grows `abs`, `sign`, `gcd`, `pow` (integer, by squaring).
   still parses every tracked `.w` file.
 - Seed compatibility: all compiler/grammar/structures changes are in
   seed-understood syntax; new syntax appears only in tests/. No
-  `make update` in this batch.
+  `./wbuild update` in this batch.

@@ -1,4 +1,4 @@
-# The prelude input helpers, driven by piped stdin (see the Makefile /
+# The prelude input helpers, driven by piped stdin (see the
 # build.json target): input() takes the first line, ints() scans every
 # integer out of the rest, read_all() drains what remains.
 header := input()

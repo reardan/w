@@ -15,7 +15,7 @@ Linux-first syscalls, no package manager today, no closures, and tests driven by
 
 - Public imports should use paths like `import libs.standard.text.re`.
 - Module tests should live beside the module when possible, for example
-  `libs/standard/text/re_test.w`, and also be wired into `Makefile`/`build.json`.
+  `libs/standard/text/re_test.w`, and also be wired into `build.json`.
 - Prefer pure W first. Use `c_import`/`extern` only when a feature is too large
   to implement safely in W at this stage, and document the C dependency.
 - MVP APIs should be small, deterministic, and well-tested before adding

@@ -15,9 +15,9 @@ alwaysApply: false
   `.w` edit and injects the diagnostics — treat that feedback as
   authoritative and fix it before moving on.
 - Fix warnings, not just errors: the self-host build stages compile with
-  `--strict`, so any warning fails `make build`.
+  `--strict`, so any warning fails `./wbuild build`.
 - Pick focused tests with `./bin/wtest changed <file>` (build it with
-  `make wtest`) instead of guessing or running the full suite first.
+  `./wbuild wtest`) instead of guessing or running the full suite first.
 - Look up where a symbol is declared with
   `./bin/wv2 symbols --json <file>` rather than grepping when the file
   compiles.

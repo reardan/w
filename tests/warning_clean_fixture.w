@@ -1,4 +1,4 @@
-# Cleanly typed program: the warning_test Makefile target asserts that
+# Cleanly typed program: the warning_test build target asserts that
 # compiling this file produces no warnings on stderr.
 import lib.lib
 

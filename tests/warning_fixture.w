@@ -1,5 +1,5 @@
 # Every construct below compiles but triggers exactly one warning.
-# The warning_test Makefile target compiles this file and asserts each
+# The warning_test build target compiles this file and asserts each
 # expected message appears on stderr. The file also intentionally ends
 # without a trailing newline to trigger the end-of-file warning.
 import lib.lib

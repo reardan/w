@@ -6,7 +6,7 @@ the GPU work: the type names and kind helpers chosen here map 1:1 onto PTX
 `code_generator/ptx.w` (see `docs/projects/cuda.md`, Stage 2, and its open
 question "Float support: W's type table today is integer/pointer-centric").
 
-**Status: float32/float64 implemented and covered by `make tests`; float16 and
+**Status: float32/float64 implemented and covered by `./wbuild tests`; float16 and
 bfloat16 remain deferred.**
 
 Implemented today:
@@ -298,21 +298,21 @@ words on request:
   indexing, float16 store/load round-trips and precision truncation (e.g.
   `1.0009765625` → nearest half).
 - Compile-only error fixture for "float64 requires the x64 target"
-  (pattern: `warning_test` in the Makefile).
+  (pattern: `warning_test` in `build.json`).
 - `tests/x64_float_test.w`: float64 smoke test in the style of
   `tests/x64_test.w` (exit code / printed output), including exact float64
   literal bits (e.g. `0.1` → `0x3FB999999999999A` checked as two 32-bit
   halves), since `lib.testing`'s ELF-symtab discovery hardcodes the 32-bit
   base address and does not work on the x64 backend yet.
-- Makefile: `float_test`, `bignum_test`, `x64_float_test` targets, added to
+- build.json: `float_test`, `bignum_test`, `x64_float_test` targets, added to
   the `tests:` umbrella.
 
 ## Milestone 9 — Verify, docs, commit
 
-- `make build verify tests` — the self-host fixpoint (`wv3 == wv4 == wv5`)
+- `./wbuild build verify tests` — the self-host fixpoint (`wv3 == wv4 == wv5`)
   must still hold since the compiler source itself uses no float syntax
   (bignum is pure integer code); all existing tests plus the new float
-  targets green. Fix and re-run until clean. `make verify_x64` must also
+  targets green. Fix and re-run until clean. `./wbuild verify_x64` must also
   stay green (it is part of `tests` via `tests_x64`).
 - Docs bookkeeping per repo convention: update the `float` line in
   `docs/todo.txt`, add an entry to `docs/done.txt`, note the float64/x64

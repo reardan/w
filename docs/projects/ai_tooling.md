@@ -16,8 +16,8 @@ In scope, in implementation order:
 
 1. **`w check [--json]`** — compile-only mode with structured NDJSON
    diagnostics (file, line, column, severity, message, token, arch).
-2. **`wtest changed`** — map changed files to the smallest useful Makefile
-   targets, with `make tests` as the fallback.
+2. **`wtest changed`** — map changed files to the smallest useful build
+   targets, with `./wbuild tests` as the fallback.
 3. **`w-toolchain-mcp`** — a dependency-free stdio MCP server exposing
    build / verify / check / compile / run / run_tests / repl_eval /
    test_changed.
@@ -35,12 +35,12 @@ The MVP described here has landed:
 - `w check [--json]` compiles to `/dev/null` and emits NDJSON diagnostics
   in JSON mode while keeping default human diagnostics byte-compatible.
 - `tools/test_map.w` builds to `bin/wtest`; `wtest changed` and
-  `make test_changed` map changed paths to focused Makefile targets.
+  `./wbuild test_changed` map changed paths to focused build targets.
 - `tools/mcp/w_toolchain_mcp.w` builds to `bin/wmcp`, a W-native stdio MCP
   server registered by `.cursor/mcp.json`. (It began life as stdlib-only
   Python and was ported to W once `lib/process.w` landed.)
 - README agent tooling guidance and regression targets (`check_json_test`,
-  `wtest_map_test`, `mcp_test`) are wired into `make tests`.
+  `wtest_map_test`, `mcp_test`) are wired into `./wbuild tests`.
 
 The out-of-scope items at the end of this document remain deferred; the
 living backlog (deferred items plus friction found while dogfooding) is
@@ -64,7 +64,7 @@ by committing the agent-facing configuration Cursor reads from the repo:
   produce `{}`, and every failure path fails open. `postToolUse` is used
   rather than `afterFileEdit` because only the former has a documented
   context-injection output field, and both run in Cloud Agents.
-  Asserted by `hook_test` (Makefile + `build.json`, in the `tests`
+  Asserted by `hook_test` (`build.json`, in the `tests`
   umbrella; `tools/hooks/`, `.cursor/hooks*` map to it in `wtest`).
 - **Skills**: `.cursor/skills/{w-check-diagnostics,w-select-tests,
   w-debug-wdbg,w-repl-explore}/SKILL.md` — task-scoped SOPs for
@@ -77,9 +77,9 @@ by committing the agent-facing configuration Cursor reads from the repo:
   (check → wtest → full suite; symbols/repl/wdbg instead of
   grep/throwaway files/print debugging), since AGENTS.md is the one file
   injected into every agent session.
-- **Bootstrap friction**: `make build` and the tool targets (`wtest`,
-  `wmcp`, `wlsp`, `whook`) now create `bin/` and self-bootstrap `wv2`,
-  so the documented commands work from a fresh clone without ceremony.
+- **Bootstrap friction**: `./wbuild` creates `bin/` and self-bootstraps
+  `wv2` for every target, so the documented commands work from a fresh
+  clone without ceremony.
 - **MCP caveat**: the committed `.cursor/mcp.json` works in the Cursor
   IDE, but Cloud Agents only load MCP servers registered in the Cloud
   Agents dashboard — documented in the README, with the shell commands
@@ -115,7 +115,7 @@ by committing the agent-facing configuration Cursor reads from the repo:
   `self_host_warning_test` requires a warning-free self-compile. Any
   diagnostics work must keep default output byte-identical.
 - **The test API is Makefile targets.** There is no mapping from a
-  changed file to its targets; agents run `make tests` (~all targets) or
+  changed file to its targets; agents run `./wbuild tests` (~all targets) or
   guess.
 - **Python 3 is available** and was used for offline codegen in `tools/`
   when this was written, but nothing at build or test time depends on it.
@@ -145,7 +145,7 @@ only" by the presence of records, not the exit code. With `--strict`
 (accepted by `w`, `w check`, and `w symbols`), warnings are promoted to
 a failing exit: after the compile the driver prints
 `error: N warning(s) treated as errors (--strict)` and exits 1 before
-any output is written. The self-host build stages (`make build`,
+any output is written. The self-host build stages (`./wbuild build`,
 `./wbuild build`) compile with `--strict`.
 
 ### Output format
@@ -244,8 +244,9 @@ explicitly out of scope, documented in the README section.
 
 A W program, `tools/test_map.w`, compiled to `bin/wtest` — dogfooding the
 language for its own tooling, and it needs no capability W lacks (read
-Makefile, read stdin, print). W cannot spawn `git` or `make`, so the tool
-*prints* targets and a Makefile target does the orchestration:
+Makefile, read stdin, print). W could not spawn `git` or `make` at the
+time, so the tool *prints* targets and a build target does the
+orchestration:
 
 ```make
 test_changed: w FORCE
@@ -276,7 +277,6 @@ test_changed: w FORCE
    - `libs/extras/parser_generator/*`, `tools/parser_generator.w` →
      `parser_generator_test parser_generator_w_test
      parser_generator_c_test`
-   - `Makefile` → `tests`
    - `docs/*`, `*.md`, `*.txt` → nothing
 4. **Fallback**: any other file → `tests`.
 
@@ -287,7 +287,7 @@ stdin, for MCP use.
 
 ## C. `w-toolchain-mcp`
 
-`tools/mcp/w_toolchain_mcp.w` (built by `make wmcp` to `bin/wmcp`): a
+`tools/mcp/w_toolchain_mcp.w` (built by `./wbuild wmcp` to `bin/wmcp`): a
 W-native stdio MCP server (JSON-RPC 2.0 over `lib/framing.w`,
 `initialize`, `notifications/initialized`, `tools/list`, `tools/call`).
 The MVP shipped this server in stdlib-only Python 3 because `lib/` had
@@ -303,22 +303,22 @@ cap):
 
 | Tool | Arguments | Runs |
 |---|---|---|
-| `build` | — | `make build` |
-| `verify` | `arch?` | `make verify` / `make verify_x64` |
-| `run_tests` | `targets: string[]` | `make <targets>` (names validated against `^[a-z0-9_]+$`) |
+| `build` | — | `./wbuild build` |
+| `verify` | `arch?` | `./wbuild verify` / `./wbuild verify_x64` |
+| `run_tests` | `targets: string[]` | `./wbuild <targets>` (names validated against `^[a-z0-9_]+$`) |
 | `check` | `file, arch?` | `./bin/wv2 check --json [x64] <file>`, NDJSON parsed into a diagnostics array |
 | `compile` | `file, arch?, output?` | `./bin/wv2 [x64] <file> -o <output>` |
 | `run` | `path, args?, stdin?` | the binary, output captured |
 | `repl_eval` | `entries: string[]` | pipes entries + `:quit` to `./bin/repl` |
 | `test_changed` | `files: string[]` | `./bin/wtest changed <files>`, returns target list |
 
-Convenience: tools that need `bin/wv2` trigger `make build` once when it
+Convenience: tools that need `bin/wv2` trigger `./wbuild build` once when it
 is missing, so a fresh clone works without ceremony.
 
 Registration is committed as `.cursor/mcp.json`:
 
 ```json
-{"mcpServers": {"w-toolchain": {"command": "sh", "args": ["-c", "mkdir -p bin && make -s wmcp >&2 && exec ./bin/wmcp"]}}}
+{"mcpServers": {"w-toolchain": {"command": "sh", "args": ["-c", "./wbuild wmcp >&2 && exec ./bin/wmcp"]}}}
 ```
 
 The registration builds the server from source before launching it, so a
@@ -328,9 +328,9 @@ MCP owns stdout.
 ## D. Documentation
 
 - README gains a **"Tooling for agents"** section: which tool for which
-  workflow (`w check --json` to diagnose a file, `make test_changed` /
+  workflow (`w check --json` to diagnose a file, `./wbuild test_changed` /
   `wtest changed` to pick tests, the MCP server for programmatic access,
-  `make verify` before merge as always), plus the first-error-only
+  `./wbuild verify` before merge as always), plus the first-error-only
   limitation of `check`.
 - This document is updated per phase from plan to implemented, in the
   style of `docs/projects/repl.md`.
@@ -339,7 +339,7 @@ MCP owns stdout.
 
 ## Testing
 
-New Makefile targets, wired into the `tests` umbrella:
+New build targets, wired into the `tests` umbrella:
 
 - `check_json_test`:
   - `w check --json tests/warning_fixture.w` exits 0 and yields records
@@ -362,9 +362,9 @@ New Makefile targets, wired into the `tests` umbrella:
   `test_changed` and `check` (on `tests/hello.w`, asserting zero
   diagnostics) end to end.
 
-Regression gates for every compiler-touching commit: `make verify`
+Regression gates for every compiler-touching commit: `./wbuild verify`
 (self-host fixpoint), `warning_test` + `type_system_*_test` +
-`self_host_warning_test` (human text frozen), and full `make tests`
+`self_host_warning_test` (human text frozen), and full `./wbuild tests`
 before merge.
 
 ## Sequencing (implemented)
@@ -388,7 +388,7 @@ before merge.
 |---|---|
 | Agents get machine-readable diagnostics | `w check --json` (A) |
 | Editors get diagnostics + navigation via LSP | `bin/wlsp` (`tools/lsp/w_lsp.w`, see `docs/projects/lsp.md`) — diagnostics from `w check --json`, go-to-definition from `w symbols --json` |
-| Target mapper recommends/runs focused tests | `wtest changed` + `make test_changed` (B) |
+| Target mapper recommends/runs focused tests | `wtest changed` + `./wbuild test_changed` (B) |
 | MCP exposes build/verify/compile/run/warning-test/REPL | `w-toolchain-mcp` (C); warning-test runs via `run_tests(["warning_test"])` |
 | Docs explain which tool to use | README section (D) |
 
@@ -419,9 +419,9 @@ before merge.
 ## Risks and mitigations
 
 - **Self-host fixpoint breakage**: every compiler change is gated on
-  `make verify`; diagnostics code is compile-time-only and deterministic.
+  `./wbuild verify`; diagnostics code is compile-time-only and deterministic.
 - **Seed compatibility**: new compiler modules are compiled by the
-  committed seed `./w` on every `make build`; `compiler/diagnostics.w`
+  committed seed `./w` on every `./wbuild build`; `compiler/diagnostics.w`
   restricts itself to constructs the existing `compiler/` modules already
   use (globals, functions, `realloc` buffers — no new syntax).
 - **Frozen human output**: the human path through `warning()`/`error()`

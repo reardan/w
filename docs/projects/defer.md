@@ -2,8 +2,8 @@
 
 Go-style `defer` for W (v1). Implemented in `grammar/defer.w`, parsed in
 `grammar/statement.w`, tested by `tests/defer_test.w` and the
-`tests/defer_*_error_fixture.w` compile-error fixtures (`make defer_test`,
-`make defer_64_test`).
+`tests/defer_*_error_fixture.w` compile-error fixtures (`./wbuild defer_test`,
+`./wbuild defer_64_test`).
 
 ```w
 int first_byte_of(char* path):

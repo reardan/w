@@ -8,7 +8,7 @@ and the CUDA driver API are 64-bit only. Finishing x64 self-hosting (see
 **Status: Stages 0 and 1 are done.** The host side went straight to H1 (real
 dynamic linking, both x86 and x64): `c_lib "libcuda.so.1"` + `extern`
 declarations link the driver API directly (`grammar/extern_statement.w`,
-`code_generator/elf_dynamic.w`, `code_generator/ffi.w`), and `make cuda_smoke`
+`code_generator/elf_dynamic.w`, `code_generator/ffi.w`), and `./wbuild cuda_smoke`
 runs a hand-written PTX vector add on a real GPU (`tests/cuda_smoke.w`). The
 H3 sidecar was skipped. Next up is Stage 2, the PTX emitter.
 
@@ -284,7 +284,7 @@ performance-oriented API.
 - **Stage 1 — host plumbing spike** (done, via H1 directly): hand-written
   vector-add PTX as a string literal in `tests/cuda_smoke.w`, loaded with
   `cuModuleLoadData` and launched with `cuLaunchKernel` through `c_lib` /
-  `extern`. Acceptance met: `make cuda_smoke` runs vector add on a real GPU
+  `extern`. Acceptance met: `./wbuild cuda_smoke` runs vector add on a real GPU
   (RTX 4080).
 - **Stage 2 — PTX emitter**: `code_generator/ptx.w` with A1 stack-machine
   emission for straight-line W functions (int/float arithmetic, pointers,
@@ -293,7 +293,7 @@ performance-oriented API.
   NVRTC-compiled CUDA C version of the same kernel (Option B as oracle).
 - **Stage 3 — `gpu for` (M2)**: outlining pass, parameter capture, guard
   insertion, launch-config heuristic, managed-memory allocation. Acceptance:
-  `make cuda_test` — vector add, saxpy, reduction (atomics), all verified
+  `./wbuild cuda_test` — vector add, saxpy, reduction (atomics), all verified
   against CPU results.
 - **Stage 4 — quality**: A2 virtual-register emission, explicit memory API,
   `gpu float*` types, error handling for `CUresult` codes, multi-GPU device
@@ -305,8 +305,8 @@ performance-oriented API.
 
 ## Open questions
 
-- CI on machines without an NVIDIA GPU: `make cuda_smoke` needs a driver and a
-  GPU, so it stays out of the default `make tests` for now. Does Stage 3 need
+- CI on machines without an NVIDIA GPU: `./wbuild cuda_smoke` needs a driver and a
+  GPU, so it stays out of the default `./wbuild tests` for now. Does Stage 3 need
   a CPU fallback (run the outlined loop body on CPU when `cuInit` fails) so
   `cuda_test` can join the default suite?
 - ~~H3 sidecar vs going straight to H1 dynamic linking~~ — resolved: went

@@ -68,7 +68,7 @@ the builder's data buffer; `__w_template_finish` frees only the builder
 struct, the bytes belong to the resulting string).
 
 Everything is plain word-sized function calls, so x86 and x64 work from the
-same lowering (`make template_string_test` / `template_string_64_test`).
+same lowering (`./wbuild template_string_test` / `template_string_64_test`).
 
 ## Supported expression types (v1)
 

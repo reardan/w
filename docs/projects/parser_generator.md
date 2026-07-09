@@ -105,7 +105,7 @@ it produces a ParserGenerator AST and validates syntax-shaped W input, but it
 does not perform symbol resolution, type checking, or code generation. The
 existing compiler remains the executable source of truth for bootstrapping.
 
-`make parser_generator_w_test` generates `bin/generated_w_parser.w`, compiles
+`./wbuild parser_generator_w_test` generates `bin/generated_w_parser.w`, compiles
 it, writes a manifest with `git ls-files '*.w'`, and parses every tracked W
 source file in the repository. The target also keeps smaller inline fixtures for
 specific syntax shapes and explicit checks for `w.w` and `tests/hello.w`.
@@ -127,7 +127,7 @@ table, casts of bare typedef names parse as call shapes; the importer's
 evaluator resolves those against the W type table. Generated parsers report
 syntax errors at the furthest token any parse attempt reached.
 
-`make parser_generator_c_test` generates `bin/generated_c_parser.w`, compiles
+`./wbuild parser_generator_c_test` generates `bin/generated_c_parser.w`, compiles
 it, verifies it matches `libs/extras/c_import/generated_c_parser.w`, and runs
 focused lexer and parser fixtures for the declaration shapes needed by the first
 import milestone.
@@ -142,5 +142,5 @@ mkdir -p bin
 ./bin/parser_generator_test
 ```
 
-The Makefile wraps this as `make parser_generator_test`, and `make tests` now
+`./wbuild parser_generator_test` wraps this, and `./wbuild tests` now
 includes that target.

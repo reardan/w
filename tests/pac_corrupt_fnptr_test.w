@@ -1,7 +1,7 @@
 # Negative fixture for --pac=full on arm64: flipping a bit inside the
 # PAC signature field of a stored function pointer MUST kill the
 # process at the authenticating call (blraaz faults on FPAC hardware —
-# qemu -cpu max and Apple Silicon alike). The Makefile asserts this
+# qemu -cpu max and Apple Silicon alike). pac_corrupt_test_arm64 asserts this
 # process dies by signal; reaching the final println means pointer
 # authentication silently passed a forged pointer.
 import lib.lib

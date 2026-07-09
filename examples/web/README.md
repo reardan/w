@@ -7,7 +7,7 @@ Build them from the repository root:
 
 ```
 mkdir -p bin
-make build
+./wbuild build
 ./bin/wv2 examples/web/http_server.w -o ./bin/http_server
 ./bin/wv2 examples/web/http_client.w -o ./bin/http_client
 ./bin/wv2 examples/web/http_proxy.w -o ./bin/http_proxy

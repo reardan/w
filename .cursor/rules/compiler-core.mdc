@@ -7,14 +7,14 @@ alwaysApply: false
 # Compiler-tree changes
 
 - These files are compiled by the committed seed binary `./w` on every
-  `make build`. They must not use language syntax newer than the seed;
-  new syntax is only usable here after a seed update via `make update`.
+  `./wbuild build`. They must not use language syntax newer than the seed;
+  new syntax is only usable here after a seed update via `./wbuild update`.
 - Grammar/codegen modules do not compile standalone — diagnose them
   through the entry point: `./bin/wv2 check --json w.w`. (The edit hook
   does this mapping automatically.)
-- Gate every change on `make verify` (self-host fixpoint, wv3 == wv4 ==
-  wv5) and `make self_host_warning_test` (the compiler sources must stay
-  warning-free). Run `make verify_x64` when codegen or word-size behavior
+- Gate every change on `./wbuild verify` (self-host fixpoint, wv3 == wv4 ==
+  wv5) and `./wbuild self_host_warning_test` (the compiler sources must stay
+  warning-free). Run `./wbuild verify_x64` when codegen or word-size behavior
   is involved. `./bin/wtest changed <file>` prints exactly this set.
 - Human-readable diagnostic text is frozen by `warning_test` and the
   `type_system_*_test` targets — never reword existing messages without
@@ -22,5 +22,5 @@ alwaysApply: false
 - New language syntax must also be added to the parser-generator grammar
   `tests/parser_generator/w.pg`; `parser_generator_w_test` parses every
   tracked `.w` file and fails on syntax it does not know.
-- Run the full `make tests` (or `./wbuild tests`) before considering the
+- Run the full `./wbuild tests` before considering the
   change done.

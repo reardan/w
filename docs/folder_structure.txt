@@ -4,7 +4,7 @@ Current state:
 	The codebase already has compiler/, grammar/, code_generator/, lib/,
 	structures/, tests/, and debugger/ directories.  The remaining cleanup is
 	to settle import semantics for cases like grammar.w vs grammar/* and then
-	split the Makefile once the structure stops moving.
+	split the build manifest (build.json) once the structure stops moving.
 
 The local structure on a per-project basis would be as follows:
 

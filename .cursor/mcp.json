@@ -1,1 +1,1 @@
-{"mcpServers": {"w-toolchain": {"command": "sh", "args": ["-c", "mkdir -p bin && make -s wmcp >&2 && exec ./bin/wmcp"]}}}
+{"mcpServers": {"w-toolchain": {"command": "sh", "args": ["-c", "./wbuild wmcp >&2 && exec ./bin/wmcp"]}}}
