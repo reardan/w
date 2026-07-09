@@ -91,6 +91,17 @@ is a queue, not an archive.
 - **`wtest changed --run`.** Now that `lib/process.w` exists, `wtest`
   could execute the selected targets itself instead of relying on the
   `./wbuild test_changed` xargs pipeline.
+- **`.w` diffs should map to `parser_generator_w_test`.** That target
+  parses every tracked `.w` file, so ANY `.w` change can break it, but
+  `wtest changed` only emits it for `tests/parser_generator/` and
+  `libs/extras/parser_generator/` paths. A `grammar/for_statement.w`
+  refactor that introduced multi-line parameter lists (existing
+  compiler syntax, but unmodeled in `w.pg`) passed every target `wtest
+  changed` listed and then failed `parser_generator_w_test` in CI
+  (PR #151, 2026-07-09). Cheap fix: `wtest_map_path` adds
+  `parser_generator_w_test` for every `*.w` path — plus the matching
+  update to every `.w` fixture in `wtest_map_test` (about 15 of its
+  expected-output stdins), which is why it did not ride along in #151.
 
 ## MCP / LSP / cloud
 
