@@ -378,7 +378,33 @@ char* symbols_type_kind_name(int type_index):
 	return c"struct"
 
 
-void symbols_emit_json(char* name, char* kind, char* type_name, int file_index, int line, int column):
+# Struct/union field list as a JSON array: [{"name", "type", "offset"}...].
+# type_index must be a struct or union; callers check the kind first.
+void symbols_emit_fields_json(int type_index):
+	diag_write_json_string(c"fields")
+	diag_write_cstr(c": [")
+	int n = type_num_args(type_index)
+	int i = 0
+	while (i < n):
+		if (i > 0):
+			diag_write_cstr(c", ")
+		char* field_type = symbols_type_display(type_get_field_type_at(type_index, i))
+		diag_write_cstr(c"{")
+		diag_write_json_field(c"name", type_get_field_name_at(type_index, i))
+		diag_write_cstr(c", ")
+		diag_write_json_field(c"type", field_type)
+		diag_write_cstr(c", ")
+		diag_write_json_int_field(c"offset", type_get_field_offset_at(type_index, i))
+		diag_write_cstr(c"}")
+		free(field_type)
+		i = i + 1
+	diag_write_cstr(c"]")
+
+
+# type_index is the declared type's own index for a type-table entry (so
+# struct/union kinds can carry a "fields" array), or -1 for symbol-table
+# entries (functions, globals, enum constants), which have no fields.
+void symbols_emit_json(char* name, char* kind, char* type_name, int file_index, int line, int column, int type_index):
 	char* arch = c"x86"
 	if (diag_word_size == 8):
 		arch = c"x64"
@@ -396,6 +422,10 @@ void symbols_emit_json(char* name, char* kind, char* type_name, int file_index, 
 	diag_write_json_int_field(c"column", column)
 	diag_write_cstr(c", ")
 	diag_write_json_field(c"arch", arch)
+	if (type_index >= 0):
+		if ((strcmp(kind, c"struct") == 0) | (strcmp(kind, c"union") == 0)):
+			diag_write_cstr(c", ")
+			symbols_emit_fields_json(type_index)
 	diag_write_cstr(c"}\x0a")
 
 
@@ -418,9 +448,9 @@ void symbols_emit_human(char* name, char* kind, char* type_name, int file_index,
 	diag_write_cstr(c"\x0a")
 
 
-void symbols_emit(int json, char* name, char* kind, char* type_name, int file_index, int line, int column):
+void symbols_emit(int json, char* name, char* kind, char* type_name, int file_index, int line, int column, int type_index):
 	if (json):
-		symbols_emit_json(name, kind, type_name, file_index, line, column)
+		symbols_emit_json(name, kind, type_name, file_index, line, column, type_index)
 	else:
 		symbols_emit_human(name, kind, type_name, file_index, line, column)
 
@@ -434,7 +464,7 @@ void symbols_dump(int json):
 		if (file_index >= 0):
 			char* type_name = symbols_type_display(load_int(table + t + 6))
 			char* kind = symbols_kind_name(load_int(table + t + 10))
-			symbols_emit(json, sym, kind, type_name, file_index, sym_decl_line(t), sym_decl_column(t))
+			symbols_emit(json, sym, kind, type_name, file_index, sym_decl_line(t), sym_decl_column(t), -1)
 			free(type_name)
 		t = next_token(t)
 	# User-declared types: structs, unions, enums, and type aliases.
@@ -442,7 +472,7 @@ void symbols_dump(int json):
 	int i = 0
 	while (i < length):
 		if (type_decl_file_index(i) >= 0):
-			symbols_emit(json, type_get_name(i), symbols_type_kind_name(i), type_get_name(i), type_decl_file_index(i), type_decl_line(i), type_decl_column(i))
+			symbols_emit(json, type_get_name(i), symbols_type_kind_name(i), type_get_name(i), type_decl_file_index(i), type_decl_line(i), type_decl_column(i), i)
 		i = i + 1
 
 

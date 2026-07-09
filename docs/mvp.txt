@@ -37,6 +37,8 @@ Compiler
 		Built-in debugger
 		AI tooling MVP: w check --json, changed-file target mapper and w-toolchain MCP
 		LSP MVP: wlsp with check-driven diagnostics and symbols-driven go-to-definition
+		Semantic index (windex) and w-index-mcp: cross-file references, callers/callees, struct fields, imports
+		LSP hover, find-references and rename (windex-backed)
 
 		True generics/templates with explicit instantiation (monomorphizing re-parse)
 		Generic type-argument inference at call sites (max(3, 5) infers T = int)
@@ -48,7 +50,7 @@ Compiler
 		Richer map/list ergonomics (delete/get/defaults, list insert/remove)
 		Float16 / bfloat16
 		C import old-style declarations and bit-field layout fidelity
-		Formatter, richer LSP features (locals, references, hover), semantic indexer and richer MCP tooling
+		Formatter; LSP locals/parameters coverage and completion (need symbols --json to record them)
 
 Net
 	Done

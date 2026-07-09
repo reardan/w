@@ -96,11 +96,20 @@ is a queue, not an archive.
   extended `info breakpoints` fields) to the same text protocol — worth
   keying a future structured wrapper off, and worth a
   `w-debug-wdbg` skill example once merged.
-- **Semantic index.** `symbols --json` dumps declarations per file; a
-  cross-file reference index (and `w-index-mcp`) is still unbuilt.
-- **LSP coverage.** `bin/wlsp` publishes diagnostics and
-  go-to-definition only; references, hover, and rename all want the
-  semantic index above.
+- **`windex`'s `main`-location quirk.** `w symbols --json` records only
+  the *first* declaration of a name, so a user file's own `main`
+  (overriding `lib/lib.w`'s forward declaration) still reports its
+  location as `lib/lib.w`. `callers`/`callees`/rename targeting `main`
+  itself miscompute; every other function is unaffected. Fixing this
+  properly means teaching the symbol table to update the decl location
+  on a defining redeclaration — a compiler change, not a `windex` one.
+  See `docs/projects/semantic_index.md`.
+- **`callers`/`callees` performance.** `windex_enclosing_function` scans
+  every declaration per reference (O(references × declarations)); fine
+  for a one-shot CLI/MCP call, but would want an index instead of a
+  linear scan if a workflow ever calls it in a loop over many symbols.
+- **`windex` covers x86 only**, matching `bin/wlsp` (shells to plain
+  `wv2 symbols --json`, no `x64` arg support yet).
 
 ## Cleanup observed while dogfooding
 

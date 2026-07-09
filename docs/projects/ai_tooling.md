@@ -391,6 +391,8 @@ before merge.
 | Target mapper recommends/runs focused tests | `wtest changed` + `./wbuild test_changed` (B) |
 | MCP exposes build/verify/compile/run/warning-test/REPL | `w-toolchain-mcp` (C); warning-test runs via `run_tests(["warning_test"])` |
 | Docs explain which tool to use | README section (D) |
+| Semantic indexer / `w-index-mcp` | `bin/windex` (`tools/index/w_index.w`) and `bin/wimcp` (`tools/mcp/w_index_mcp.w`); see `docs/projects/semantic_index.md` |
+| LSP hover/references/rename | `bin/wlsp`, see `docs/projects/lsp.md` |
 
 ## Out of scope for the MVP (deferred, with rationale)
 
@@ -398,10 +400,14 @@ before merge.
   thin adapter described here: `w check --json` on open/save translated
   to `publishDiagnostics`, plus go-to-definition over `w symbols --json`
   (globals, functions, and user types only). See `docs/projects/lsp.md`.
-- **Semantic indexer / `w-index-mcp`**: declaration file/line per symbol
-  is now recorded in `compiler/symbol_table.w` and dumped by
-  `w symbols --json`; a cross-file reference index and `w-index-mcp`
-  remain unbuilt.
+- **Semantic indexer / `w-index-mcp`**: since built — `bin/windex`
+  (`tools/index/w_index.w`) layers cross-file references, callers/
+  callees, struct fields, and imports over `w symbols --json` plus a
+  textual scan, and `bin/wimcp` (`tools/mcp/w_index_mcp.w`) exposes it
+  as `find_symbol`/`find_references`/`get_type`/`get_struct_fields`/
+  `imports_for`/`callers`/`callees`/`changed_file_test_targets`. See
+  `docs/projects/semantic_index.md` for the exact contract and known
+  gaps (textual reference finding, indentation-approximated call spans).
 - **`wfmt` (writing mode)**: the two style warnings (spaces indentation,
   missing trailing newline) already surface through `check`; a rewriting
   formatter needs a lossless token stream the single-pass tokenizer does
