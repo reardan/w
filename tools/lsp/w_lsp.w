@@ -479,29 +479,25 @@ void lsp_handle_definition(json_value* id, json_value* params):
 	if (name == 0):
 		lsp_success(id, json_null())
 		return
+	defer free(name)
 
 	char* path = lsp_uri_to_path(uri)
 	if (path == 0):
-		free(name)
 		lsp_success(id, json_null())
 		return
 	process_result* result = lsp_run_wv2(c"symbols", path)
 	free(path)
 	if (result == 0):
-		free(name)
 		lsp_success(id, json_null())
 		return
+	defer process_result_free(result)
 	# Nonzero exit means the compile failed before the symbol dump ran.
 	if (result.status != 0):
-		process_result_free(result)
-		free(name)
 		lsp_success(id, json_null())
 		return
 	json_value* records = lsp_parse_ndjson(result.stdout_text)
-	process_result_free(result)
 	json_value* locations = lsp_symbol_locations(records, name)
 	json_free(records)
-	free(name)
 	if (json_array_length(locations) == 0):
 		json_free(locations)
 		lsp_success(id, json_null())
@@ -563,32 +559,27 @@ void lsp_handle_hover(json_value* id, json_value* params):
 	if (name == 0):
 		lsp_success(id, json_null())
 		return
+	defer free(name)
 	char* path = lsp_uri_to_path(uri)
 	if (path == 0):
-		free(name)
 		lsp_success(id, json_null())
 		return
 	process_result* result = lsp_run_wv2(c"symbols", path)
 	free(path)
 	if (result == 0):
-		free(name)
 		lsp_success(id, json_null())
 		return
+	defer process_result_free(result)
 	if (result.status != 0):
-		process_result_free(result)
-		free(name)
 		lsp_success(id, json_null())
 		return
 	json_value* records = lsp_parse_ndjson(result.stdout_text)
-	process_result_free(result)
+	defer json_free(records)
 	list[json_value*] matches = lsp_filter_records(records, name)
-	free(name)
 	if (matches.length == 0):
-		json_free(records)
 		lsp_success(id, json_null())
 		return
 	char* content = lsp_hover_content(lsp_best_record(matches))
-	json_free(records)
 	json_value* markup = json_object()
 	json_object_set(markup, c"kind", json_string(c"plaintext"))
 	json_object_set(markup, c"value", json_string_take(content))
@@ -612,21 +603,18 @@ json_value* lsp_reference_records(json_value* params):
 	char* name = lsp_identifier_at_position(uri, position)
 	if (name == 0):
 		return 0
+	defer free(name)
 	char* path = lsp_uri_to_path(uri)
 	if (path == 0):
-		free(name)
 		return 0
 	process_result* result = lsp_run_windex(c"references", name, path)
 	free(path)
-	free(name)
 	if (result == 0):
 		return 0
+	defer process_result_free(result)
 	if (result.status != 0):
-		process_result_free(result)
 		return 0
-	json_value* records = lsp_parse_ndjson(result.stdout_text)
-	process_result_free(result)
-	return records
+	return lsp_parse_ndjson(result.stdout_text)
 
 
 void lsp_handle_references(json_value* id, json_value* params):
@@ -671,8 +659,8 @@ void lsp_handle_rename(json_value* id, json_value* params):
 	if (records == 0):
 		lsp_respond_error(id, -32803, c"no renameable symbol at this position")
 		return
+	defer json_free(records)
 	if (json_array_length(records) == 0):
-		json_free(records)
 		lsp_respond_error(id, -32803, c"no renameable symbol at this position")
 		return
 
@@ -697,7 +685,6 @@ void lsp_handle_rename(json_value* id, json_value* params):
 			json_array_push(edits, edit)
 			free(file_uri)
 		i = i + 1
-	json_free(records)
 
 	json_value* changes = json_object()
 	for char* group_uri, json_value* group in by_uri.object_values:

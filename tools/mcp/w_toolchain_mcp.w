@@ -13,6 +13,7 @@ import lib.lib
 import lib.args
 import lib.env
 import lib.path
+import lib.utf8
 import structures.string
 import structures.json
 import tools.mcp.mcp_server
@@ -197,6 +198,7 @@ json_value* mcp_tool_repl_eval(json_value* args):
 			return build_result
 		json_free(build_result)
 	string_builder* stdin_text = string_new()
+	defer string_free(stdin_text)
 	json_value* entries = mcp_arg_array(args, c"entries")
 	if (entries != 0):
 		int i = 0
@@ -204,7 +206,6 @@ json_value* mcp_tool_repl_eval(json_value* args):
 			json_value* entry = json_array_get(entries, i)
 			if (entry.type != json_type_string()):
 				mcp_fail(c"entries must be strings")
-				string_free(stdin_text)
 				return 0
 			if (i > 0):
 				string_append(stdin_text, c"\n")
@@ -213,9 +214,7 @@ json_value* mcp_tool_repl_eval(json_value* args):
 	string_append(stdin_text, c"\n:quit\n")
 	list[char*] words = new list[char*]
 	words.push(c"./bin/repl")
-	json_value* result = mcp_run_cmd(words, stdin_text.data, mcp_default_timeout_ms())
-	string_free(stdin_text)
-	return result
+	return mcp_run_cmd(words, stdin_text.data, mcp_default_timeout_ms())
 
 
 json_value* mcp_tool_test_changed(json_value* args):
@@ -423,9 +422,9 @@ int mcp_cli_call():
 			println2(c"invalid json arguments")
 			return 1
 	if (mcp_tool_known(name) == 0):
-		char* message = strjoin(c"unknown tool: ", name)
-		println2(message)
-		free(message)
+		# One-shot CLI exit path: the f-string's buffer is reclaimed by
+		# process exit, so no free is needed (cstr borrows, issue #146).
+		println2(cstr(f"unknown tool: {name}"))
 		return 1
 	mcp_fail(c"tool failed")
 	json_value* result = mcp_call_tool(name, tool_args)

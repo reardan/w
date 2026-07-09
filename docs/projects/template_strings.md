@@ -133,3 +133,20 @@ only pre-existing syntax. F-string syntax itself appears only under `tests/`.
   `template_string_unterminated_fixture.w` (no closing quote),
   `template_string_unterminated_expr_fixture.w` (unclosed `{`),
   `template_string_stray_brace_fixture.w` (single `}`).
+
+## string -> char* interop (the #146 seam)
+
+f-strings produce `string` descriptors while much of the ecosystem
+(`structures/json.w`, `lib/process.w`, `lib/lib.w`) takes `char*`. The
+escape hatch is `cstr(s)` (`lib/utf8.w`): a **borrowing** view — it
+asserts the descriptor's data is NUL-terminated with no interior NULs
+and returns `s.data` directly, so the pointer lives exactly as long as
+the string's buffer and must not be freed independently. For an owned
+copy, compose `strclone(cstr(s))`.
+
+Ownership note for f-string results: `__w_template_finish` frees the
+builder struct but the returned descriptor (2 words) and its data
+buffer belong to the caller. On one-shot CLI exit paths, letting
+process exit reclaim them is fine (see `w_toolchain_mcp.w`'s `call`
+usage); in long-running servers, prefer builders you `string_free`, or
+free `cstr(s)`'s result via the data pointer when done.
