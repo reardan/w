@@ -14,10 +14,11 @@ backends. `README.md` is the detailed orientation doc and `AGENTS.md` the
 agent workflow doc; both are current and authoritative — this file is the
 summary.
 
-**Platform**: the seed is a Linux binary, so the toolchain itself needs
-Linux. On this macOS checkout, prefer in this order:
+**Platform**: `./w` is a Linux seed; `./w_darwin` is a committed arm64
+Mach-O seed that bootstraps natively on this Mac (`make build_darwin`,
+`verify_darwin`). On this macOS checkout, prefer in this order:
 1. **Locally on the Mac** for anything the native darwin toolchain covers
-   (`bin/wv2_darwin` self-hosts; sign + run Mach-O binaries with
+   (`make build_darwin` self-hosts; sign + run Mach-O binaries with
    `tools/mac/run_darwin_tests.sh`).
 2. **ssh host `w`** (x86_64 Linux, clone at `/home/w/w`) for
    builds/verify/tests that need Linux — everything runs directly there

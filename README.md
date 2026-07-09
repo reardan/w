@@ -23,7 +23,10 @@ project quickly and make correct changes.
 - **Bootstrap seed**: `./w` at the repo root is a committed, statically linked
   **32-bit x86** ELF binary of the compiler. It runs on x86-64 Linux hosts
   without a 32-bit libc because it is static. Never delete or hand-edit it;
-  it is only replaced via `make update`.
+  it is only replaced via `make update`. `./w_darwin` is its Apple Silicon
+  sibling — an ad-hoc-signed **arm64 Mach-O** seed that bootstraps the
+  toolchain natively on macOS (`make build_darwin` / `verify_darwin` /
+  `update_darwin`).
 - **Output**: static ELF executables by default (x86 via
   `code_generator/elf_32.w`, x86-64 via `elf_64.w`), with DWARF line-number
   info for gdb. Programs declaring `c_lib`/`extern` get PT_INTERP/PT_DYNAMIC
@@ -93,6 +96,7 @@ stock x86-64 system.
 | Path | Contents |
 |---|---|
 | `w` | Committed 32-bit static ELF seed binary of the compiler |
+| `w_darwin` | Committed arm64 Mach-O seed (ad-hoc signed) for native macOS bootstrap |
 | `w.w` | Compiler entry point (imports `compiler.compiler`, calls `link()`) |
 | `compiler/` | Driver, tokenizer, symbol table, type table |
 | `grammar/` | One module per grammar rule; parsing and code emission are fused |
