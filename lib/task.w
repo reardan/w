@@ -42,7 +42,7 @@ import lib.assert
 import lib.generator
 import lib.poll
 import lib.event_loop
-import structures.array_list
+import lib.container
 
 
 int task_state_ready():
@@ -95,8 +95,8 @@ struct task:
 
 struct task_scheduler:
 	event_loop* loop
-	array_list* ready  # task* queue, FIFO
-	array_list* tasks  # every spawned task, freed by task_scheduler_free
+	list[task*] ready  # task* queue, FIFO
+	list[task*] tasks  # every spawned task, freed by task_scheduler_free
 	int active_count   # tasks not yet done
 
 
@@ -117,7 +117,7 @@ task* task_current():
 
 void task_make_ready(task_scheduler* s, task* t):
 	t.state = task_state_ready()
-	array_list_push(s.ready, cast(int, t))
+	s.ready.push(t)
 
 
 # Event-loop callback: the fd a task waited on became ready. Fires at
@@ -185,7 +185,7 @@ void task_resume(task_scheduler* s, task* t):
 		t.wait_timer_id = event_loop_add_timer(s.loop, t.wait_ms, task_on_timer, cast(void*, t))
 	else if (t.state == task_state_ready()):
 		# task_yield_now: straight back onto the queue.
-		array_list_push(s.ready, cast(int, t))
+		s.ready.push(t)
 	else if (t.state == task_state_waiting_task()):
 		# Registered as the target's joiner; completion wakes it.
 		return
@@ -196,8 +196,8 @@ void task_resume(task_scheduler* s, task* t):
 task_scheduler* task_scheduler_new():
 	task_scheduler* s = new task_scheduler()
 	s.loop = event_loop_new()
-	s.ready = array_list_new()
-	s.tasks = array_list_new()
+	s.ready = new list[task*]
+	s.tasks = new list[task*]
 	s.active_count = 0
 	return s
 
@@ -218,8 +218,8 @@ task* task_spawn(task_scheduler* s, generator* g):
 	t.joiner = 0
 	t.join_target = 0
 	t.sched = cast(void*, s)
-	array_list_push(s.tasks, cast(int, t))
-	array_list_push(s.ready, cast(int, t))
+	s.tasks.push(t)
+	s.ready.push(t)
 	s.active_count = s.active_count + 1
 	return t
 
@@ -235,13 +235,13 @@ task* task_go(generator* g):
 int task_run(task_scheduler* s):
 	while (s.active_count > 0):
 		while (s.ready.length > 0):
-			task* t = cast(task*, array_list_get(s.ready, 0))
-			array_list_remove(s.ready, 0)
+			task* t = s.ready[0]
+			list_remove_at[task*](s.ready, 0)
 			task_resume(s, t)
 		if (s.active_count == 0):
 			return 0
-		int watches = event_loop_active_count(s.loop, s.loop.watches)
-		int timers = event_loop_active_count(s.loop, s.loop.timers)
+		int watches = event_loop_active_count[event_watch*](s.loop, s.loop.watches)
+		int timers = event_loop_active_count[event_timer*](s.loop, s.loop.timers)
 		if ((watches == 0) & (timers == 0)):
 			return task_err_deadlock()
 		int fired = event_loop_run_once(s.loop, -1)
@@ -258,13 +258,13 @@ int task_run(task_scheduler* s):
 void task_scheduler_free(task_scheduler* s):
 	int i = 0
 	while (i < s.tasks.length):
-		task* t = cast(task*, array_list_get(s.tasks, i))
+		task* t = s.tasks[i]
 		if (cast(int, t.gen) != 0):
 			gen_free(t.gen)
 		free(cast(void*, t))
 		i = i + 1
-	array_list_free(s.tasks)
-	array_list_free(s.ready)
+	list_free[task*](s.tasks)
+	list_free[task*](s.ready)
 	event_loop_free(s.loop)
 	free(cast(void*, s))
 

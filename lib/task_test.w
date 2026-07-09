@@ -4,6 +4,7 @@
 import lib.testing
 import lib.net
 import lib.task
+import lib.container
 
 
 /* A task completes and delivers its result. */
@@ -52,13 +53,13 @@ void test_suspension_at_arbitrary_depth():
 /* Two tasks alternate through task_yield_now: FIFO fairness. */
 
 struct order_log:
-	array_list* entries
+	list[int] entries
 
 
 generator int yielding_pusher(order_log* log, int id, int rounds):
 	int i = 0
 	while (i < rounds):
-		array_list_push(log.entries, id)
+		log.entries.push(id)
 		task_yield_now()
 		i = i + 1
 
@@ -66,7 +67,7 @@ generator int yielding_pusher(order_log* log, int id, int rounds):
 void test_yield_now_interleaves_tasks():
 	task_scheduler* s = task_scheduler_new()
 	order_log* log = new order_log()
-	log.entries = array_list_new()
+	log.entries = new list[int]
 	task_spawn(s, yielding_pusher(log, 1, 3))
 	task_spawn(s, yielding_pusher(log, 2, 3))
 	assert_equal(0, task_run(s))
@@ -74,9 +75,9 @@ void test_yield_now_interleaves_tasks():
 	int i = 0
 	while (i < 6):
 		# 1,2,1,2,1,2: strict alternation under FIFO scheduling.
-		assert_equal(1 + (i & 1), array_list_get(log.entries, i))
+		assert_equal(1 + (i & 1), log.entries[i])
 		i = i + 1
-	array_list_free(log.entries)
+	list_free[int](log.entries)
 	free(cast(void*, log))
 	task_scheduler_free(s)
 
@@ -85,20 +86,20 @@ void test_yield_now_interleaves_tasks():
 
 generator int sleep_then_push(order_log* log, int id, int ms):
 	assert_equal(0, task_sleep_ms(ms))
-	array_list_push(log.entries, id)
+	log.entries.push(id)
 
 
 void test_sleeps_wake_in_deadline_order():
 	task_scheduler* s = task_scheduler_new()
 	order_log* log = new order_log()
-	log.entries = array_list_new()
+	log.entries = new list[int]
 	task_spawn(s, sleep_then_push(log, 1, 40))
 	task_spawn(s, sleep_then_push(log, 2, 5))
 	assert_equal(0, task_run(s))
 	assert_equal(2, log.entries.length)
-	assert_equal(2, array_list_get(log.entries, 0))
-	assert_equal(1, array_list_get(log.entries, 1))
-	array_list_free(log.entries)
+	assert_equal(2, log.entries[0])
+	assert_equal(1, log.entries[1])
+	list_free[int](log.entries)
 	free(cast(void*, log))
 	task_scheduler_free(s)
 

@@ -9,7 +9,7 @@ import lib.lib
 import lib.poll
 import lib.time
 import lib.math
-import structures.array_list
+import lib.container
 
 
 # fd, revents, context
@@ -43,16 +43,16 @@ struct event_timer:
 
 
 struct event_loop:
-	array_list* watches
-	array_list* timers
+	list[event_watch*] watches
+	list[event_timer*] timers
 	int next_timer_id
 	int running
 
 
 event_loop* event_loop_new():
 	event_loop* loop = new event_loop()
-	loop.watches = array_list_new()
-	loop.timers = array_list_new()
+	loop.watches = new list[event_watch*]
+	loop.timers = new list[event_timer*]
 	loop.next_timer_id = 1
 	loop.running = 0
 	return loop
@@ -61,21 +61,21 @@ event_loop* event_loop_new():
 void event_loop_free(event_loop* loop):
 	int i = 0
 	while (i < loop.watches.length):
-		free(cast(char*, array_list_get(loop.watches, i)))
+		free(cast(char*, loop.watches[i]))
 		i = i + 1
 	i = 0
 	while (i < loop.timers.length):
-		free(cast(char*, array_list_get(loop.timers, i)))
+		free(cast(char*, loop.timers[i]))
 		i = i + 1
-	array_list_free(loop.watches)
-	array_list_free(loop.timers)
+	list_free[event_watch*](loop.watches)
+	list_free[event_timer*](loop.timers)
 	free(loop)
 
 
 event_watch* event_loop_find_watch(event_loop* loop, int fd):
 	int i = 0
 	while (i < loop.watches.length):
-		event_watch* watch = cast(event_watch*, array_list_get(loop.watches, i))
+		event_watch* watch = loop.watches[i]
 		if ((watch.fd == fd) & watch.active):
 			return watch
 		i = i + 1
@@ -89,7 +89,7 @@ void event_loop_add_fd(event_loop* loop, int fd, int events, event_fd_cb* callba
 	watch.callback = callback
 	watch.context = context
 	watch.active = 1
-	array_list_push(loop.watches, cast(int, watch))
+	loop.watches.push(watch)
 
 
 # Changes the interest mask of an existing watch.
@@ -120,7 +120,7 @@ int event_loop_add_timer_full(event_loop* loop, int delay_ms, int interval_ms, e
 	timer.callback = callback
 	timer.context = context
 	timer.active = 1
-	array_list_push(loop.timers, cast(int, timer))
+	loop.timers.push(timer)
 	return timer.id
 
 
@@ -138,7 +138,7 @@ int event_loop_add_interval(event_loop* loop, int interval_ms, event_timer_cb* c
 int event_loop_cancel_timer(event_loop* loop, int timer_id):
 	int i = 0
 	while (i < loop.timers.length):
-		event_timer* timer = cast(event_timer*, array_list_get(loop.timers, i))
+		event_timer* timer = loop.timers[i]
 		if ((timer.id == timer_id) & timer.active):
 			timer.active = 0
 			return 1
@@ -151,22 +151,22 @@ void event_loop_stop(event_loop* loop):
 
 
 # Drops entries marked inactive. Never called during dispatch.
-void event_loop_compact(event_loop* loop, array_list* entries):
+void event_loop_compact[T](event_loop* loop, list[T] entries):
 	int i = 0
 	while (i < entries.length):
-		event_entry* entry = cast(event_entry*, array_list_get(entries, i))
+		event_entry* entry = cast(event_entry*, entries[i])
 		if (entry.active == 0):
 			free(cast(char*, entry))
-			array_list_remove(entries, i)
+			list_remove_at[T](entries, i)
 		else:
 			i = i + 1
 
 
-int event_loop_active_count(event_loop* loop, array_list* entries):
+int event_loop_active_count[T](event_loop* loop, list[T] entries):
 	int count = 0
 	int i = 0
 	while (i < entries.length):
-		event_entry* entry = cast(event_entry*, array_list_get(entries, i))
+		event_entry* entry = cast(event_entry*, entries[i])
 		if (entry.active):
 			count = count + 1
 		i = i + 1
@@ -182,7 +182,7 @@ int event_loop_next_timer_delay(event_loop* loop):
 	int now = time_monotonic_ms()
 	int i = 0
 	while (i < loop.timers.length):
-		event_timer* timer = cast(event_timer*, array_list_get(loop.timers, i))
+		event_timer* timer = loop.timers[i]
 		if (timer.active):
 			int delay = timer.fire_at_ms - now
 			if (delay < 0):
@@ -203,7 +203,7 @@ int event_loop_fire_due_timers(event_loop* loop):
 	int now = time_monotonic_ms()
 	int i = 0
 	while (i < loop.timers.length):
-		event_timer* timer = cast(event_timer*, array_list_get(loop.timers, i))
+		event_timer* timer = loop.timers[i]
 		int due = timer.fire_at_ms - now
 		if (timer.active & (due <= 0)):
 			if (timer.interval_ms > 0):
@@ -220,8 +220,8 @@ int event_loop_fire_due_timers(event_loop* loop):
 # timer is due sooner; -1 waits indefinitely), fires due timers, then
 # dispatches fd callbacks. Returns callbacks fired, or a negative errno.
 int event_loop_run_once(event_loop* loop, int max_wait_ms):
-	event_loop_compact(loop, loop.watches)
-	event_loop_compact(loop, loop.timers)
+	event_loop_compact[event_watch*](loop, loop.watches)
+	event_loop_compact[event_timer*](loop, loop.timers)
 
 	int timeout = max_wait_ms
 	int timer_delay = event_loop_next_timer_delay(loop)
@@ -237,7 +237,7 @@ int event_loop_run_once(event_loop* loop, int max_wait_ms):
 		fds = pollfd_new_array(watch_count)
 		int i = 0
 		while (i < watch_count):
-			event_watch* watch = cast(event_watch*, array_list_get(loop.watches, i))
+			event_watch* watch = loop.watches[i]
 			pollfd_set(fds, i, watch.fd, watch.events)
 			i = i + 1
 
@@ -254,7 +254,7 @@ int event_loop_run_once(event_loop* loop, int max_wait_ms):
 
 	int i = 0
 	while (i < watch_count):
-		event_watch* watch = cast(event_watch*, array_list_get(loop.watches, i))
+		event_watch* watch = loop.watches[i]
 		pollfd* entry = pollfd_at(fds, i)
 		int revents = entry.revents
 		if (watch.active & (revents != 0)):
@@ -272,7 +272,7 @@ int event_loop_run_once(event_loop* loop, int max_wait_ms):
 int event_loop_run(event_loop* loop):
 	loop.running = 1
 	while (loop.running):
-		if ((event_loop_active_count(loop, loop.watches) == 0) & (event_loop_active_count(loop, loop.timers) == 0)):
+		if ((event_loop_active_count[event_watch*](loop, loop.watches) == 0) & (event_loop_active_count[event_timer*](loop, loop.timers) == 0)):
 			loop.running = 0
 			return 0
 		int result = event_loop_run_once(loop, -1)

@@ -5,6 +5,7 @@
 import lib.testing
 import lib.task
 import lib.task_io
+import lib.container
 
 
 int loopback_ip():
@@ -31,7 +32,7 @@ int listen_on_loopback(int* port_out):
    echo back, and record the round-trip in a shared log. */
 
 struct echo_state:
-	array_list* log    # completion order, by client id
+	list[int] log      # completion order, by client id
 	int connections    # handlers started
 	int port
 
@@ -74,13 +75,13 @@ generator int echo_client(echo_state* state, int id):
 	free(reply)
 	free(message)
 	close(fd)
-	array_list_push(state.log, id)
+	state.log.push(id)
 	task_finish(id)
 
 
 void test_echo_server_with_concurrent_clients():
 	echo_state* state = new echo_state()
-	state.log = array_list_new()
+	state.log = new list[int]
 	state.connections = 0
 	int listen_fd = listen_on_loopback(&state.port)
 
@@ -96,13 +97,13 @@ void test_echo_server_with_concurrent_clients():
 	int seen = 0
 	int i = 0
 	while (i < 3):
-		seen = seen | (1 << array_list_get(state.log, i))
+		seen = seen | (1 << state.log[i])
 		i = i + 1
 	assert_equal(2 + 4 + 8, seen)
 
 	task_scheduler_free(s)
 	close(listen_fd)
-	array_list_free(state.log)
+	list_free[int](state.log)
 	free(cast(void*, state))
 
 
@@ -220,7 +221,7 @@ void test_process_output_captured():
 
 
 struct order_log2:
-	array_list* entries
+	list[int] entries
 
 
 generator int run_sleep_process(order_log2* log):
@@ -230,17 +231,17 @@ generator int run_sleep_process(order_log2* log):
 	int status = task_process_run(c"/bin/sleep", argv, 0)
 	assert_equal(0, status)
 	free(cast(void*, argv))
-	array_list_push(log.entries, 1)
+	log.entries.push(1)
 
 
 generator int quick_sleeper(order_log2* log):
 	assert_equal(0, task_sleep_ms(20))
-	array_list_push(log.entries, 2)
+	log.entries.push(2)
 
 
 void test_process_wait_does_not_block_other_tasks():
 	order_log2* log = new order_log2()
-	log.entries = array_list_new()
+	log.entries = new list[int]
 
 	task_scheduler* s = task_scheduler_new()
 	task_spawn(s, run_sleep_process(log))
@@ -249,9 +250,9 @@ void test_process_wait_does_not_block_other_tasks():
 
 	# The 20ms task finished while the 200ms child was still running.
 	assert_equal(2, log.entries.length)
-	assert_equal(2, array_list_get(log.entries, 0))
-	assert_equal(1, array_list_get(log.entries, 1))
+	assert_equal(2, log.entries[0])
+	assert_equal(1, log.entries[1])
 
 	task_scheduler_free(s)
-	array_list_free(log.entries)
+	list_free[int](log.entries)
 	free(cast(void*, log))
