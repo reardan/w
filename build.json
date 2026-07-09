@@ -1243,7 +1243,7 @@
 				{"cmd": ["bin/wtest", "changed", "tools/mcp/w_toolchain_mcp.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "mcp_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tools/index/w_index.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "index_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "index_test\nindexd_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tools/mcp/w_index_mcp.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "index_mcp_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tests/import_alias_warning_fixture.w"], "stdout_file": "bin/wtest_map.out"},
@@ -1278,10 +1278,19 @@
 		{
 			"name": "windex",
 			"deps": ["wv2"],
-			"inputs": ["tools/index/w_index.w"],
+			"inputs": ["tools/index/w_index.w", "tools/index/w_index_core.w"],
 			"outputs": ["bin/windex"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/index/w_index.w", "-o", "bin/windex"]}
+			]
+		},
+		{
+			"name": "windexd",
+			"deps": ["wv2"],
+			"inputs": ["tools/index/w_indexd.w", "tools/index/w_index_core.w"],
+			"outputs": ["bin/windexd"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/index/w_indexd.w", "-o", "bin/windexd"]}
 			]
 		},
 		{
@@ -1290,6 +1299,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/index/index_test.w", "-o", "bin/index_test"]},
 				{"cmd": ["bin/index_test"]}
+			]
+		},
+		{
+			"name": "indexd_test",
+			"deps": ["windex", "windexd"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/index/indexd_test.w", "-o", "bin/indexd_test"]},
+				{"cmd": ["bin/indexd_test"]}
 			]
 		},
 		{
@@ -2630,6 +2647,7 @@
 				"wtest_map_test",
 				"mcp_test",
 				"index_test",
+				"indexd_test",
 				"index_mcp_test",
 				"lsp_test",
 				"hook_test",

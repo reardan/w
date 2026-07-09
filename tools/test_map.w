@@ -91,6 +91,7 @@ void wtest_init_targets():
 	wtest_targets.push(c"lsp_test")
 	wtest_targets.push(c"mcp_test")
 	wtest_targets.push(c"index_test")
+	wtest_targets.push(c"indexd_test")
 	wtest_targets.push(c"index_mcp_test")
 	wtest_targets.push(c"debug_mcp_test")
 	wtest_targets.push(c"hook_test")
@@ -401,6 +402,7 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"lsp_test")
 	else if (starts_with(path, c"tools/index/")):
 		wtest_add(path, c"index_test")
+		wtest_add(path, c"indexd_test")
 	else if ((strcmp(path, c"tools/mcp/w_index_mcp.w") == 0) | (strcmp(path, c"tools/mcp/index_mcp_test.w") == 0)):
 		wtest_add(path, c"index_mcp_test")
 	else if ((strcmp(path, c"tools/mcp/w_debug_mcp.w") == 0) | (strcmp(path, c"tools/mcp/debug_mcp_test.w") == 0)):
