@@ -58,7 +58,11 @@ Consult these CPython sources first:
 
 - No full `asyncio` integration in this plan; concurrency owns that.
 - No browser-grade HTTP stack.
-- No TLS implementation from scratch.
+- No TLS implementation from scratch. **Superseded by
+  `11_native_http_tls.md`**, which implements TLS 1.3, X.509, DNS, the
+  HTTP/1.1 client, and SSE in pure W; phase 6 below (bind OpenSSL) is
+  dropped, and this plan's client/URL phases should follow the API
+  sketches in plan 11.
 - No complete email MIME policy engine in the first pass.
 
 ## API sketch
