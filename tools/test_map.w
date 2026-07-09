@@ -80,7 +80,9 @@ void wtest_init_targets():
 	wtest_targets.push(c"stream_64_test")
 	wtest_targets.push(c"file_test")
 	wtest_targets.push(c"repl_test")
+	wtest_targets.push(c"repl_test_x64")
 	wtest_targets.push(c"debug_test")
+	wtest_targets.push(c"debug_test_x64")
 	wtest_targets.push(c"c_import_test")
 	wtest_targets.push(c"c_preprocessor_test")
 	wtest_targets.push(c"c_import_errno_test")
@@ -302,8 +304,10 @@ void wtest_map_path(char* path):
 		wtest_map_graphics(path)
 	else if (strcmp(path, c"repl.w") == 0):
 		wtest_add(path, c"repl_test")
+		wtest_add(path, c"repl_test_x64")
 	else if (starts_with(path, c"debugger/")):
 		wtest_add(path, c"debug_test")
+		wtest_add(path, c"debug_test_x64")
 	else if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):

@@ -348,3 +348,37 @@ before; `asm_test`'s segfault and `cuda_smoke`'s compile error are
 pre-existing and were identical under `make`), and
 `./wbuild verify_darwin` matches `make verify_darwin` byte-for-byte on
 the M3.
+
+### Post-deletion audit: the gaps the group list missed
+
+Re-diffing the deleted Makefile's full target set against the manifest
+(after merging main's PAC/logpoint work) found coverage the group A–D
+itemization had silently skipped, all ported now:
+
+- **arm64 family** — `build_arm64`, `verify_arm64`, `arm64_smoke_test`,
+  `dynamic_test_arm64`, `float_abi_test_arm64`, plus main's
+  `pac_full_test_arm64` and `pac_corrupt_test_arm64`. The Makefile's
+  `QEMU_ARM64 ?= qemu-aarch64-static -cpu max` override convention
+  became `tools/run_arm64.sh` (runs natively on arm64-Linux hosts like
+  the w-dev container, under qemu elsewhere; `QEMU_ARM64` env still
+  overrides). The corruption fixtures keep the Makefile's exact
+  "died by signal" assertion via `sh -c '...; test $? -ge 128'`. All
+  stay out of the `tests` umbrella (they need qemu or an arm64 host),
+  exactly as under make.
+- **`wdbg_x64`, `debug_test_x64`, `repl_test_x64`** — existed only in
+  the Makefile; `debug_test_x64` and `repl_test_x64` were members of the
+  Makefile's `tests_x64` umbrella and are members of the manifest's now.
+  `repl_test_x64` follows the same porting precedent as `repl_test`
+  (the `HOME=./bin` pty history assertions became a single
+  `script -qc` line-editing case).
+- **`debug_test` itself had drifted**: PR #36's frame-selection,
+  compound-expression and watchpoint assertions, and PR #99's
+  conditional-breakpoint/hit-count/logpoint assertions, were added to
+  the Makefile only. Both blocks are in the manifest's `debug_test`
+  (and `debug_test_x64`) now; the `grep -c ... = N` logpoint counts are
+  expressed as expect/reject on the numbered "logpoint 1 hit N" lines.
+- **Still dead, not ported** (reference root-level files that moved,
+  broken under `make` too, or are commented-out experiments): `test1`,
+  `test_debug`, `threading` (`tests/threading.w` is an entirely
+  commented-out clone() experiment), joining `logging` and `range` from
+  the group D notes.
