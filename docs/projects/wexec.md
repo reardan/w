@@ -333,15 +333,18 @@ each `make` habit" pass instead of two.
    `make` phrasing.
 7. Delete `Makefile`, `tools/test_map.w`'s now-dead Makefile branch, and
    this section's framing; drop the `Makefile` row from README.md's
-   repository-layout table. **Blocked** on 2 and 6.
+   repository-layout table. **Done.**
 
-Status as of this writing: group A (`test_changed` verified, `update`
-ported but intentionally unrun) and group D are ported, the MCP server
-no longer shells out to `make`, and a from-clean `./wbuild tests` run
-passes (this container needed `libc6:i386` installed first for the
-32-bit dynamic-linking tests — same host requirement `dynamic_test`
-already documents for `make tests`; two pre-existing failures,
-`asm_test`'s segfault and `cuda_smoke`'s compile error, are unrelated to
-this migration and reproduce identically under `make`). The darwin
-triad is the only remaining gap before the Makefile can actually go —
-it needs a session with Mac access to author and verify.
+Status: complete — the Makefile is deleted and `./wbuild`/`build.json`
+is the only build entry point. This section stays as the record of what
+moved where: groups A and D are ported (`update`/`update_darwin`
+intentionally never invoked — seed promotion is a maintainer decision),
+group B was authored and verified natively on a Mac, group C became
+manual one-liners documented in README, and the MCP server, hook, LSP
+and `.cursor/mcp.json` all bootstrap through `./wbuild`. The parity
+gate ran on both hosts: a from-clean `./wbuild tests` passes on Linux
+(host needs `libc6:i386` for the 32-bit dynamic-linking tests, same as
+before; `asm_test`'s segfault and `cuda_smoke`'s compile error are
+pre-existing and were identical under `make`), and
+`./wbuild verify_darwin` matches `make verify_darwin` byte-for-byte on
+the M3.

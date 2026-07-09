@@ -3,7 +3,7 @@ import lib.stream
 import structures.string
 
 
-# Ordered registry of Makefile targets wtest knows how to emit. The order
+# Ordered registry of build targets wtest knows how to emit. The order
 # here is the output order; the catch-all "tests" target stays last.
 # Adding a target is one push() here plus a mapping rule below.
 list[char*] wtest_targets
@@ -387,8 +387,6 @@ void wtest_map_path(char* path):
 		# The manifest and bootstrap script drive the whole W-native
 		# build, so changes there get the full suite too.
 		wtest_add(path, c"wexec_test")
-		wtest_add(path, c"tests")
-	else if (strcmp(path, c"Makefile") == 0):
 		wtest_add(path, c"tests")
 	else:
 		wtest_add(path, c"tests")

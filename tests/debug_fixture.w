@@ -1,4 +1,4 @@
-# Debuggee for the wdbg debug_test Makefile target: hits one breakpoint
+# Debuggee for the wdbg debug_test build target: hits one breakpoint
 # via the 'debugger' statement, then returns 7.
 import lib.lib
 

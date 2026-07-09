@@ -1,5 +1,5 @@
 # Compile-only fixture: each statement below must produce the type warning
-# the list_builtin_test Makefile target greps for.
+# the list_builtin_test build target greps for.
 import lib.lib
 
 

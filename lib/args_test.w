@@ -2,7 +2,7 @@ import lib.testing
 import lib.args
 
 
-# Stage the same argument vector the Makefile smoke test passes:
+# Stage the same argument vector the testing_ground target passes:
 #   prog arg1 arg2 arg3 -o output -i=input --input=doubledash
 void stage_makefile_args():
 	char** argv = cast(char**, malloc(8 * __word_size__))

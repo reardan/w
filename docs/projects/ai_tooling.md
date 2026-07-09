@@ -277,7 +277,6 @@ test_changed: w FORCE
    - `libs/extras/parser_generator/*`, `tools/parser_generator.w` →
      `parser_generator_test parser_generator_w_test
      parser_generator_c_test`
-   - `Makefile` → `tests`
    - `docs/*`, `*.md`, `*.txt` → nothing
 4. **Fallback**: any other file → `tests`.
 
