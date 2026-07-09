@@ -348,14 +348,9 @@ void lsp_check_document(char* uri):
 	json_free(records)
 
 	list[char*] published = new list[char*]
-	hash_map* groups = by_uri.object_values
-	int slot = 0
-	while (slot < groups.capacity):
-		if (groups.keys[slot] != 0):
-			char* file_uri = groups.keys[slot]
-			lsp_publish(file_uri, json_clone(cast(json_value*, groups.values[slot])))
-			published.push(strclone(file_uri))
-		slot = slot + 1
+	for char* group_uri, json_value* group in by_uri.object_values:
+		lsp_publish(group_uri, json_clone(group))
+		published.push(strclone(group_uri))
 	json_free(by_uri)
 
 	if (uri in lsp_published):
@@ -705,12 +700,8 @@ void lsp_handle_rename(json_value* id, json_value* params):
 	json_free(records)
 
 	json_value* changes = json_object()
-	hash_map* groups = by_uri.object_values
-	int slot = 0
-	while (slot < groups.capacity):
-		if (groups.keys[slot] != 0):
-			json_object_set(changes, groups.keys[slot], json_clone(cast(json_value*, groups.values[slot])))
-		slot = slot + 1
+	for char* group_uri, json_value* group in by_uri.object_values:
+		json_object_set(changes, group_uri, json_clone(group))
 	json_free(by_uri)
 
 	json_value* workspace_edit = json_object()

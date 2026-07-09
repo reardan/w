@@ -127,8 +127,7 @@ types because their descriptors point into the enclosing object.
   `tools/wexec.w`, `debugger/convert.w`) are migrated too (issue #120;
   see `typed_containers.md` for the seed-transitivity wrinkle that
   surfaced along the way). `structures/json.w` and
-  `tools/index/w_indexd.w` still use the old containers and are out of
-  that issue's scope — `structures/json.w` because migrating a
-  `hash_map`-backed JSON object touches insertion-order iteration
-  guarantees the built-in `map` doesn't make, not just a mechanical
-  container swap.
+  `tools/index/w_indexd.w` followed in issue #145, once built-in `map`
+  iteration became insertion-ordered — JSON objects now serialize in
+  insertion order, so the swap preserved (and improved) the ordering
+  guarantee.
