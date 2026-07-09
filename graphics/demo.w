@@ -1,9 +1,10 @@
 /*
-Spinning-triangle demo for the graphics module (x64 only):
+Spinning-triangle demo for the graphics module (any 64-bit target with
+a window backend — X11/GLX on x64/arm64, Cocoa on arm64_darwin):
 
 	./bin/wv2 x64 graphics/demo.w -o bin/graphics_demo && ./bin/graphics_demo
 
-Opens a 640x480 GLX window and draws an interpolated-color triangle
+Opens a 640x480 window and draws an interpolated-color triangle
 rotating through a mat4 uniform from graphics.math, using string
 shaders. Runs until the window is closed (or --frames N for a fixed
 number of frames, handy for unattended runs).
@@ -27,8 +28,10 @@ int main(int argc, int argv):
 	if (win == 0):
 		return 1
 
-	char* vertex_source = c"#version 130\nin vec2 a_pos;\nin vec3 a_color;\nout vec3 v_color;\nuniform mat4 u_mvp;\nvoid main() {\n\tv_color = a_color;\n\tgl_Position = u_mvp * vec4(a_pos, 0.0, 1.0);\n}\n"
-	char* fragment_source = c"#version 130\nin vec3 v_color;\nout vec4 frag_color;\nvoid main() {\n\tfrag_color = vec4(v_color, 1.0);\n}\n"
+	# Shader bodies valid as both GLSL 130 (GLX) and 150 (Mac core
+	# profile); the backend's gfx_shader_header() picks the version line.
+	char* vertex_source = strjoin(gfx_shader_header(), c"in vec2 a_pos;\nin vec3 a_color;\nout vec3 v_color;\nuniform mat4 u_mvp;\nvoid main() {\n\tv_color = a_color;\n\tgl_Position = u_mvp * vec4(a_pos, 0.0, 1.0);\n}\n")
+	char* fragment_source = strjoin(gfx_shader_header(), c"in vec3 v_color;\nout vec4 frag_color;\nvoid main() {\n\tfrag_color = vec4(v_color, 1.0);\n}\n")
 	int program = gl_create_program(vertex_source, fragment_source)
 	if (program == 0):
 		gfx_window_destroy(win)
