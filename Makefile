@@ -243,8 +243,6 @@ arm64_smoke_test: w FORCE
 	$(QEMU_ARM64) ./bin/generator_arm64_test
 	@echo "arm64 smoke test OK"
 
-tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test result_propagate_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 defer_64_test default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test switch_64_test for_container_64_test compound_assign_64_test template_string_64_test generator_64_test feature_interaction_64_test feature_combo_64_test dynamic_var_64_test generics_64_test generics_inference_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test task_64_test task_io_64_test format_64_test args_64_test graphics_math_64_test graphics_gl_smoke_test repl_test_x64 debug_test_x64 FORCE
-
 # graphics.math is pure W (no libm), so it runs on both targets.
 graphics_math_test: w FORCE
 	./bin/wv2 graphics/math_test.w -o ./bin/graphics_math_test
@@ -266,6 +264,40 @@ graphics_gl_smoke_test: w FORCE
 graphics_demo: w FORCE
 	./bin/wv2 x64 graphics/demo.w -o ./bin/graphics_demo
 	./bin/graphics_demo
+
+# Windows x64 (win64) target: cross-compiles to a PE32+ console .exe.
+# See docs/projects/windows.md. The runtime tests need Wine; they are not
+# part of the default 'tests' aggregate for that reason. win64_header_test
+# only inspects the produced file, so it runs anywhere binutils exists.
+WINE ?= wine
+
+win64_header_test: w FORCE
+	./bin/wv2 win64 tests/win64_hello.w -o ./bin/win64_hello.exe
+	objdump -f ./bin/win64_hello.exe | grep -q "pei-x86-64"
+	objdump -p ./bin/win64_hello.exe | grep -q "ExitProcess"
+	objdump -p ./bin/win64_hello.exe | grep -q "kernel32.dll"
+	@echo "win64 header test OK"
+
+win64_hello_test: w FORCE
+	./bin/wv2 win64 tests/win64_hello.w -o ./bin/win64_hello.exe
+	WINEDEBUG=-all $(WINE) ./bin/win64_hello.exe | grep -q "hello from win64"
+	@echo "win64 hello test OK"
+
+win64_smoke_test: w FORCE
+	./bin/wv2 win64 tests/win64_smoke.w -o ./bin/win64_smoke.exe
+	WINEDEBUG=-all $(WINE) ./bin/win64_smoke.exe | grep -q "win64 smoke OK"
+	@echo "win64 smoke test OK"
+
+# Windows twin of dynamic_test: extern/c_lib against msvcrt.dll through
+# the PE import table and the Win64 ABI shims.
+dynamic_test_win64: w FORCE
+	./bin/wv2 win64 tests/dynamic_test_win64.w -o ./bin/dynamic_test_win64.exe
+	WINEDEBUG=-all $(WINE) ./bin/dynamic_test_win64.exe | grep -q "dynamic linking OK"
+	@echo "dynamic test win64 OK"
+
+tests_win64: win64_header_test win64_hello_test win64_smoke_test dynamic_test_win64 FORCE
+
+tests_x64: verify_x64 lib_64_test path_64_test time_64_test result_64_test result_propagate_64_test env_64_test process_64_test stream_64_test array_slice_string_64_test x64_test x64_float_test x64_int64_test net_64_test poll_64_test framing_64_test dynamic_test_x64 c_import_libc_test_x64 float_abi_test_x64 varargs_test_x64 extern_data_test_x64 defer_64_test default_args_64_test varargs_w_64_test list_64_test array_list_64_test linked_list_64_test hash_map_64_test hash_table_64_test string_64_test map_set_builtin_64_test list_builtin_64_test switch_64_test for_container_64_test compound_assign_64_test template_string_64_test generator_64_test feature_interaction_64_test feature_combo_64_test dynamic_var_64_test generics_64_test generics_inference_64_test json_64_test json_codec_64_test json_rpc_64_test event_loop_64_test task_64_test task_io_64_test format_64_test args_64_test graphics_math_64_test graphics_gl_smoke_test repl_test_x64 debug_test_x64 FORCE
 
 # Dynamic linking: call libc through extern declarations and check the
 # result against the raw syscall. dynamic_test links the 32-bit libc,
@@ -758,6 +790,68 @@ compound_assign_64_test: w FORCE
 	./bin/compound_assign_64_test
 	@echo "compound assign test x64 OK"
 
+# 'name := expression' type-inferred local declarations
+infer_test: w FORCE
+	./bin/wv2 tests/infer_test.w -o ./bin/infer_test
+	./bin/infer_test
+
+# C-style ternary conditional expressions, including coexistence with
+# the wresult '?' propagation suffix
+ternary_test: w FORCE
+	./bin/wv2 tests/ternary_test.w -o ./bin/ternary_test
+	./bin/ternary_test
+
+# Polymorphic print/println builtin: format dispatch by static type
+print_builtin_test: w FORCE
+	./bin/wv2 tests/print_builtin_test.w -o ./bin/print_builtin_test
+	./bin/print_builtin_test > ./bin/print_builtin_test.out
+	grep -qFx "greeting str via f" ./bin/print_builtin_test.out
+	grep -qFx "1.250000" ./bin/print_builtin_test.out
+	grep -qFx "[5, -1, 12]" ./bin/print_builtin_test.out
+	grep -qFx "[one, two]" ./bin/print_builtin_test.out
+	grep -qFx "[]" ./bin/print_builtin_test.out
+	grep -qFx "big" ./bin/print_builtin_test.out
+	@echo "print builtin test OK"
+
+# Script mode: top-level statements compile into an implicit main; a
+# declaration after the first statement is a clear compile error
+script_mode_test: w FORCE
+	./bin/wv2 tests/script_fixture.w -o ./bin/script_fixture
+	./bin/script_fixture > ./bin/script_fixture.out
+	grep -qFx "20" ./bin/script_fixture.out
+	grep -qFx "nonzero" ./bin/script_fixture.out
+	grep -qFx "[1, 3, 4]" ./bin/script_fixture.out
+	grep -qFx "total=20" ./bin/script_fixture.out
+	grep -qFx "deferred ran last" ./bin/script_fixture.out
+	! ./bin/wv2 tests/script_error_fixture.w -o ./bin/script_error_fixture 2>./bin/script_error_fixture.stderr
+	grep -qF "declarations must come before the first top-level statement" ./bin/script_error_fixture.stderr
+	@echo "script mode test OK"
+
+# input()/ints()/read_all() prelude helpers, fed by piped stdin
+prelude_test: w FORCE
+	./bin/wv2 tests/prelude_test.w -o ./bin/prelude_test
+	printf 'header line\n1 2 3\n-4 and x5\n' | ./bin/prelude_test > ./bin/prelude_test.out
+	grep -qFx "header line" ./bin/prelude_test.out
+	grep -qFx "[1, 2, 3, -4, 5]" ./bin/prelude_test.out
+	grep -qFx "7" ./bin/prelude_test.out
+	@echo "prelude test OK"
+
+# list[T] algorithm methods: sort, sort_by, map, filter, reduce, sum,
+# min, max, reverse, count, index
+list_methods_test: w FORCE
+	./bin/wv2 tests/list_methods_test.w -o ./bin/list_methods_test
+	./bin/list_methods_test
+
+# lib/str.w: substring, index_of, split, replace, join
+str_test: w FORCE
+	./bin/wv2 tests/str_test.w -o ./bin/str_test
+	./bin/str_test
+
+# lib/math.w: min, max, abs, sign, gcd, pow
+math_test: w FORCE
+	./bin/wv2 tests/math_test.w -o ./bin/math_test
+	./bin/math_test
+
 # switch statement: dispatch, implicit break, break/continue interaction
 # with loops, and its compile-error fixtures (arch-independent, so only
 # the x86 target runs them)
@@ -832,7 +926,7 @@ defer_test: w FORCE
 	! ./bin/wv2 tests/defer_nested_error_fixture.w -o ./bin/defer_nested_error_fixture 2>./bin/defer_nested_error_fixture.stderr
 	grep -qF "'defer' cannot be nested in a deferred statement" ./bin/defer_nested_error_fixture.stderr
 	! ./bin/wv2 tests/defer_top_level_error_fixture.w -o ./bin/defer_top_level_error_fixture 2>./bin/defer_top_level_error_fixture.stderr
-	grep -qF "'defer' outside of a function" ./bin/defer_top_level_error_fixture.stderr
+	grep -qF "declarations must come before the first top-level statement" ./bin/defer_top_level_error_fixture.stderr
 	@echo "defer test OK"
 
 defer_64_test: w FORCE
@@ -1366,7 +1460,7 @@ result_propagate_test: w FORCE
 	./bin/wv2 tests/result_propagate_test.w -o ./bin/result_propagate_test
 	./bin/result_propagate_test
 	! ./bin/wv2 tests/result_propagate_int_operand_error_fixture.w -o ./bin/result_propagate_int_operand_error_fixture 2>./bin/result_propagate_int_operand_error_fixture.stderr
-	grep -qF "'?' requires a wresult[...]* operand" ./bin/result_propagate_int_operand_error_fixture.stderr
+	grep -qF "Could not find a valid primary expression" ./bin/result_propagate_int_operand_error_fixture.stderr
 	! ./bin/wv2 tests/result_propagate_return_type_error_fixture.w -o ./bin/result_propagate_return_type_error_fixture 2>./bin/result_propagate_return_type_error_fixture.stderr
 	grep -qF "'?' requires the enclosing function to return a wresult[...]*" ./bin/result_propagate_return_type_error_fixture.stderr
 	@echo "result propagate test OK"
@@ -1519,7 +1613,7 @@ debug_test_x64: wdbg_x64 FORCE
 	printf 'c\n' | ./bin/wdbg64 tests/segv_fixture.w > /dev/null 2>&1; test $$? -eq 1
 	@echo "debug x64 test OK"
 
-tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test switch_test compound_assign_test for_container_test template_string_test generator_test defer_test default_args_test varargs_w_test feature_interaction_test feature_combo_test dynamic_var_test generics_test generics_inference_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test hook_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test result_propagate_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test task_test task_io_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test graphics_math_test test hello tests_x64 FORCE
+tests: build verify lib_test path_test grammar_test list_test type_table_test bignum_test float_literal_test float_test float_reference_test array_slice_string_test string_utf8_test grapheme_test bounds_trap_test range_bounds_trap_test buffer_field_assign_test array_error_test warning_test strict_mode_test check_json_test symbols_test self_host_warning_test int64_x86_error_test struct_test struct_method_test pointer_test range_test type_system_p0_test type_system_error_test type_system_warning_test for_test switch_test compound_assign_test infer_test ternary_test print_builtin_test script_mode_test prelude_test list_methods_test str_test math_test for_container_test template_string_test generator_test defer_test default_args_test varargs_w_test feature_interaction_test feature_combo_test dynamic_var_test generics_test generics_inference_test import_test c_import_test c_preprocessor_test c_import_errno_test c_import_libc_test directory_test multilayer_test threading_test hash_map_test hash_table_test map_set_builtin_test list_builtin_test string_test array_list_test json_test json_codec_test parser_generator_test parser_generator_w_test parser_generator_c_test wtest_map_test mcp_test lsp_test hook_test wexec_test metadata_check metadata_test linked_list_test format_test time_test args_test result_test result_propagate_test env_test process_test stream_test file_test net_test poll_test framing_test event_loop_test task_test task_io_test json_rpc_test net_basic debug_test repl_test dynamic_test float_abi_test varargs_test extern_data_test graphics_math_test test hello tests_x64 FORCE
 
 
 clean:

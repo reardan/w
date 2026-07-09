@@ -252,6 +252,133 @@ void emit_global_type_storage(int type):
 		emit_zeros(type_get_size(type))
 
 
+# 1 when the current top-level token cannot open a declaration, so it
+# must begin script mode's implicit main (docs/projects/golf_ergonomics.md).
+# Everything a declaration can start with stays on the declaration path:
+# type names (including const/container/generic-struct types), generator
+# definitions and the 'name name' / 'name* name' shape of a definition
+# whose return type is not yet known (generic type parameters like
+# 'T identity[T](T x)'). Statement keywords, calls, assignments and
+# 'name :=' declarations all fall through to script mode.
+int script_statement_starts_here():
+	if (peek(c"const")):
+		return 0
+	if (peek(c"map") & (nextc == '[')):
+		return 0
+	if (peek(c"set") & (nextc == '[')):
+		return 0
+	if (peek(c"list") & (nextc == '[')):
+		return 0
+	if (type_lookup(token) >= 0):
+		return 0
+	if (generic_type_starts_here()):
+		return 0
+	if (peek(c"generator") & (nextc != '*')):
+		return 0
+	# Statement keywords are never declaration starts
+	if (peek(c"if") | peek(c"while") | peek(c"for") | peek(c"switch") |
+			peek(c"return") | peek(c"break") | peek(c"continue") | peek(c"yield") |
+			peek(c"pass") | peek(c"debugger") | peek(c"defer")):
+		return 1
+	int c0 = token[0]
+	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	if (is_ident == 0):
+		return 1
+	# 'name name' or 'name * name' is the shape of a declaration whose
+	# type this pass cannot know yet (a generic definition's return type
+	# parameter); no statement juxtaposes two identifiers, so scan one
+	# step ahead with the reparse save/seek/restore trick.
+	char* save = generic_reparse_save()
+	get_token()
+	while (accept(c"*")) {}
+	int c1 = token[0]
+	int next_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
+	seek(file, load_int(save + 28), 0)
+	generic_reparse_restore(save)
+	if (next_is_ident):
+		return 0
+	return 1
+
+
+# 1 for tokens that always open a declaration; script mode rejects them
+# after the first top-level statement with a clear error instead of the
+# confusing expression-parse failure they would produce.
+int script_declaration_keyword():
+	if (peek(c"import") | peek(c"struct") | peek(c"union") | peek(c"enum")):
+		return 1
+	if (peek(c"extern") | peek(c"c_lib") | peek(c"c_import")):
+		return 1
+	if (peek(c"generator") & (nextc != '*')):
+		return 1
+	return 0
+
+
+# 1 when the upcoming statement has the 'type stars name (' shape of a
+# function definition, which cannot appear after the first top-level
+# statement; the scan-ahead gives it a clear diagnostic instead of the
+# statement parser's confusing "';' expected, found '('".
+int script_function_definition_ahead():
+	if ((peek(c"const") | (type_lookup(token) >= 0) | generic_type_starts_here()) == 0):
+		return 0
+	char* save = generic_reparse_save()
+	get_token()
+	while (accept(c"*")) {}
+	int c1 = token[0]
+	int next_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
+	int is_definition = 0
+	if (next_is_ident):
+		if (nextc == '('):
+			is_definition = 1
+	seek(file, load_int(save + 28), 0)
+	generic_reparse_restore(save)
+	return is_definition
+
+
+/*
+Script mode: top-level statements compile into an implicit
+
+	int main():
+
+so tiny programs need no entry-point boilerplate. The first top-level
+token that cannot start a declaration opens the function; every
+remaining token in the file must belong to a statement (v1 keeps the
+single-pass emitter simple: declarations must come before the first
+top-level statement). The implicit main plugs into the normal entry
+chain: lib.lib's _main calls it when the prelude or an import pulled
+lib.lib in, and the ELF entry's direct 'main' fallback covers programs
+that never imported anything.
+*/
+void script_main():
+	int int_type = type_lookup(c"int")
+	int current_symbol = sym_declare_global(c"main", int_type, 2)
+	int n = table_pos
+	number_of_args = 0
+	int function_start = codepos
+	save_int(table + current_symbol + 22, 0) /* param_count */
+	sym_set_w_variadic(current_symbol, -1)
+	sym_define_global(current_symbol)
+	be_function_prologue()
+	current_function_symbol = current_symbol
+	enclosing_tab_level = 0
+	debug_func_note(function_start, number_of_args)
+	defer_reset()
+	while (token[0] != 0):
+		if (script_declaration_keyword()):
+			error(c"declarations must come before the first top-level statement")
+		if (script_function_definition_ahead()):
+			error(c"declarations must come before the first top-level statement")
+		statement()
+	# Fall-through exit: run deferred statements, then return 0
+	defer_emit_all()
+	defer_reset()
+	be_pop(stack_pos)
+	stack_pos = 0
+	mov_eax_int(0)
+	ret()
+	save_int(table + current_symbol + 14, codepos - function_start)
+	table_pos = n
+
+
 void program():
 	int current_symbol
 	while (token[0]):
@@ -282,6 +409,12 @@ void program():
 
 		# Imports/structs may have consumed the rest of the file
 		if (token[0] == 0):
+			return;
+
+		# Script mode: a token that cannot start a declaration begins
+		# the implicit main; it consumes the rest of the file
+		if (script_statement_starts_here()):
+			script_main()
 			return;
 
 		# 'defer' is only meaningful inside a function body

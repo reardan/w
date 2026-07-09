@@ -120,13 +120,13 @@ int compound_assign_apply(int op, int left_type, int right_type):
 
 /*
  * expression:
- *         logical-or-expr
- *         logical-or-expr = expression
- *         logical-or-expr op= expression
+ *         conditional-expr
+ *         conditional-expr = expression
+ *         conditional-expr op= expression
  */
 int expression():
 	expression_lhs_readonly = 0
-	int type = logical_or_expr()
+	int type = conditional_expr()
 	if (hash_index_pending):
 		if (accept(c"=")):
 			expression_is_assignment = 1

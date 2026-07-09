@@ -12,6 +12,7 @@ The call emission reuses the callee-first stack layout helpers from
 grammar/hash_builtin.w (hash_push_stack_slot, hash_call_finish).
 */
 int expression();
+int inferred_storage_type(int got); /* defined in variable_declaration */
 
 
 int list_literal_type
@@ -213,6 +214,315 @@ int list_clear_suffix(int type):
 	be_pop(stack_pos - base_stack)
 	stack_pos = base_stack
 	return type_value(type_lookup(c"void"))
+
+
+# Element comparison kind for sort/count/index: 1 signed word compare,
+# 2 char* contents (the map/set key rule). Aggregates, strings, floats
+# and containers have no built-in ordering and are rejected.
+int list_scalar_kind(int element_type, char* what):
+	int t = type_unqualified(element_type)
+	if ((type_num_args(t) > 0) | type_is_string(t) | (type_float_kind(t) != 0) |
+			type_is_map(t) | type_is_set(t) | type_is_list(t) |
+			type_is_array(t) | type_is_slice(t)):
+		diag_part(c"list ")
+		diag_part(what)
+		diag_part(c" requires int-like or char* elements, got '")
+		print_error_type(element_type)
+		error(c"'")
+	return hash_key_kind_for_type(t)
+
+
+# map/filter/reduce pass elements to the callback as word values, so
+# aggregate elements (copied by address) are out.
+void list_require_scalar_elements(int element_type, char* what):
+	int t = type_unqualified(element_type)
+	if ((type_num_args(t) > 0) | type_is_string(t) |
+			type_is_array(t) | type_is_slice(t)):
+		diag_part(c"list ")
+		diag_part(what)
+		diag_part(c" requires scalar elements, got '")
+		print_error_type(element_type)
+		error(c"'")
+
+
+# Callback arguments must be a named function (type 4) or a value
+# holding a function address (fn alias pointers included).
+void list_check_callback(int got, char* what):
+	if (got == 4):
+		return;
+	if (type_get_pointer_level(type_real(got)) > 0):
+		return;
+	diag_part(c"list ")
+	diag_part(what)
+	diag_part(c" expects a function, got '")
+	print_error_type(got)
+	error(c"'")
+
+
+# Declared return type of the callback just parsed (type in got, its
+# address in eax): a named function's symbol-table return type, or the
+# fn signature's return type for typed pointers. Unknown callees (plain
+# int*/asm stubs) default to int.
+int list_callback_return_type(int got):
+	if (got == 4):
+		int callee = sym_lookup(last_identifier)
+		if (callee >= 0):
+			int declared = load_int(table + callee + 6)
+			if ((declared >= 0) & (declared != 4)):
+				return type_unqualified(declared)
+		return type_lookup(c"int")
+	int sig = type_function_pointer_signature(type_real(got))
+	if (sig >= 0):
+		return type_unqualified(type_function_return(sig))
+	return type_lookup(c"int")
+
+
+# l.sort(): 'sort' has been consumed. In-place ascending insertion sort;
+# int-like elements compare as signed words, char* elements by contents.
+int list_sort_suffix(int type):
+	int element_type = type_list_element_type(type_unqualified(type))
+	int kind = list_scalar_kind(element_type, c"sort")
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	expect(c")")
+	sym_get_value(c"__w_list_sort")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	mov_eax_int(kind)
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_lookup(c"void"))
+
+
+# l.sort_by(f): 'sort_by' has been consumed. f returns negative/zero/
+# positive like strcmp. Scalar elements pass values to f; aggregate
+# elements pass element addresses.
+int list_sort_by_suffix(int type):
+	int element_type = type_list_element_type(type_unqualified(type))
+	int is_aggregate = type_num_args(type_unqualified(element_type)) > 0
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	int got = expression()
+	got = promote(got)
+	list_check_callback(got, c"sort_by")
+	expect(c")")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int fn_slot = stack_pos
+	if (is_aggregate):
+		sym_get_value(c"__w_list_sort_by_addr")
+	else:
+		sym_get_value(c"__w_list_sort_by")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_push_stack_slot(fn_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_lookup(c"void"))
+
+
+# l.map(f): 'map' has been consumed. Returns a NEW list whose element
+# type is f's declared return type.
+int list_map_suffix(int type):
+	int element_type = type_list_element_type(type_unqualified(type))
+	list_require_scalar_elements(element_type, c"map")
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	int got = expression()
+	got = promote(got)
+	list_check_callback(got, c"map")
+	int result_element = list_callback_return_type(got)
+	list_require_scalar_elements(result_element, c"map result")
+	if (type_get_size(result_element) == 0):
+		error(c"list map callback must return a value")
+	expect(c")")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int fn_slot = stack_pos
+	sym_get_value(c"__w_list_map")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_push_stack_slot(fn_slot)
+	mov_eax_int(list_element_slot_size(result_element))
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_get_list(type_canonical(result_element)))
+
+
+# l.filter(f): 'filter' has been consumed. Returns a NEW list of the
+# same element type holding the elements where f(x) is true.
+int list_filter_suffix(int type):
+	int element_type = type_list_element_type(type_unqualified(type))
+	list_require_scalar_elements(element_type, c"filter")
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	int got = expression()
+	got = promote(got)
+	list_check_callback(got, c"filter")
+	expect(c")")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int fn_slot = stack_pos
+	sym_get_value(c"__w_list_filter")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_push_stack_slot(fn_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_get_list(type_canonical(element_type)))
+
+
+# l.reduce(f, init): 'reduce' has been consumed. Left fold; the result
+# type is the init expression's type.
+int list_reduce_suffix(int type):
+	int element_type = type_list_element_type(type_unqualified(type))
+	list_require_scalar_elements(element_type, c"reduce")
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	int got = expression()
+	got = promote(got)
+	list_check_callback(got, c"reduce")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int fn_slot = stack_pos
+	expect(c",")
+	int got_init = expression()
+	got_init = promote(got_init)
+	int result_type = inferred_storage_type(got_init)
+	if (type_num_args(result_type) > 0):
+		error(c"list reduce init must be a scalar value")
+	expect(c")")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int init_slot = stack_pos
+	sym_get_value(c"__w_list_reduce")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_push_stack_slot(fn_slot)
+	hash_push_stack_slot(init_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(result_type)
+
+
+# Shared lowering for the no-argument aggregations: sum, min and max.
+int list_aggregate_suffix(int type, char* helper_name, char* what, int result_type):
+	int element_type = type_list_element_type(type_unqualified(type))
+	int kind = list_scalar_kind(element_type, what)
+	if (kind != 1):
+		diag_part(c"list ")
+		diag_part(what)
+		error(c" requires int-like elements")
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	expect(c")")
+	sym_get_value(helper_name)
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(result_type)
+
+
+# l.reverse(): 'reverse' has been consumed. In-place, any element type.
+int list_reverse_suffix(int type):
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	expect(c")")
+	sym_get_value(c"__w_list_reverse")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_lookup(c"void"))
+
+
+# Shared lowering for l.count(x) and l.index(x): the value coerces to
+# the element type; char* elements compare by contents.
+int list_scan_suffix(int type, char* helper_name, char* what):
+	int element_type = type_list_element_type(type_unqualified(type))
+	int kind = list_scalar_kind(element_type, what)
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	int got = expression()
+	got = promote(got)
+	coerce(element_type, got)
+	if (types_compatible_with_expression(element_type, got) == 0):
+		warn_type_mismatch(what, element_type, got)
+	expect(c")")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int value_slot = stack_pos
+	sym_get_value(helper_name)
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_push_stack_slot(value_slot)
+	mov_eax_int(kind)
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_lookup(c"int"))
 
 
 void list_literal_parse_entry(int container_type, int container_slot):

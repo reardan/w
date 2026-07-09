@@ -92,6 +92,7 @@ literal GT ">"
 literal AMP "&"
 literal PIPE "|"
 literal BANG "!"
+literal COLON_ASSIGN ":="
 literal ASSIGN "="
 literal DOT "."
 literal COMMA ","
@@ -177,7 +178,7 @@ rule expression_opt = expression |
 
 rule statement = base_statement statement_suffix
 rule statement_suffix = SEMI |
-rule base_statement = if_stmt | else_stmt | while_stmt | switch_stmt | case_stmt | for_stmt | return_stmt | yield_stmt | defer_stmt | break_stmt | continue_stmt | pass_stmt | debugger_stmt | local_decl | expression_stmt | block
+rule base_statement = if_stmt | else_stmt | while_stmt | switch_stmt | case_stmt | for_stmt | return_stmt | yield_stmt | defer_stmt | break_stmt | continue_stmt | pass_stmt | debugger_stmt | local_decl | infer_decl | expression_stmt | block
 rule if_stmt = KW_IF paren_expression_opt block
 rule switch_stmt = KW_SWITCH paren_expression_opt block
 rule case_stmt = KW_CASE expression case_value_tail* block | KW_DEFAULT block
@@ -196,6 +197,8 @@ rule pass_stmt = KW_PASS
 rule debugger_stmt = KW_DEBUGGER
 rule local_decl = type_ref name_token decl_suffix local_suffix
 rule local_suffix = ASSIGN expression | 
+# 'name := expression' type-inferred local declaration
+rule infer_decl = name_token COLON_ASSIGN expression
 rule expression_stmt = expression
 
 rule paren_expression_opt = LPAREN expression RPAREN | expression
@@ -211,7 +214,10 @@ rule gap_item = NEWLINE tab_prefix | NEWLINE
 rule unary_expr = unary_op unary_expr | postfix_expr
 rule unary_op = BANG | MINUS | PLUS | AMP | STAR
 rule postfix_expr = primary_expr postfix_tail*
-rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK | QUESTION
+# QUESTION expression COLON expression covers the C-style ternary
+# (syntax-only: the compiler gives it real precedence); a bare QUESTION
+# is the wresult '?' unwrap/propagate suffix.
+rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK | QUESTION gap_many expression COLON expression | QUESTION
 rule slice_tail = COLON expression_opt |
 rule arg_list = expression arg_tail* |
 rule arg_tail = COMMA expression

@@ -36,6 +36,13 @@ char* dyn_import_symtype
 char* dyn_import_size
 int dyn_import_count
 
+# Which library each import belongs to: the index of the most recent c_lib
+# at declaration time, -1 when none was declared yet. ELF symbol resolution
+# is global, so elf_dynamic.w ignores this; container formats that bind
+# imports per library (the PE import directory, a future Mach-O bind table)
+# group by it.
+char* dyn_import_lib
+
 
 void dyn_init():
 	if (dyn_lib_names == 0):
@@ -45,10 +52,25 @@ void dyn_init():
 		dyn_import_binding = malloc(dyn_max_imports() * 4)
 		dyn_import_symtype = malloc(dyn_max_imports() * 4)
 		dyn_import_size = malloc(dyn_max_imports() * 4)
+		dyn_import_lib = malloc(dyn_max_imports() * 4)
 
 
 int dyn_has_imports():
 	return dyn_import_count > 0
+
+
+# Reserve the in-image slot the loader fills with the resolved import
+# address and return its vaddr. On ELF targets this is a GOT word fixed up
+# by a GLOB_DAT relocation. On the win64 target the slot doubles as the
+# import's one-entry IAT (FirstThunk array): the extra zero word keeps the
+# array null-terminated for loaders that walk it, and pe_64.w points one
+# import descriptor at each slot at finish time.
+int dyn_emit_import_slot():
+	int slot_vaddr = code_offset + codepos
+	emit_zeros(word_size)
+	if (target_os == 2):
+		emit_zeros(8)
+	return slot_vaddr
 
 
 void dyn_add_lib(char* soname):
@@ -73,6 +95,7 @@ int dyn_add_import(char* name, int got_vaddr):
 	save_i(dyn_import_binding + dyn_import_count * 4, 1, 4)
 	save_i(dyn_import_symtype + dyn_import_count * 4, 2, 4)
 	save_i(dyn_import_size + dyn_import_count * 4, 0, 4)
+	save_i(dyn_import_lib + dyn_import_count * 4, dyn_lib_count - 1, 4)
 	int index = dyn_import_count
 	dyn_import_count = dyn_import_count + 1
 	return index
@@ -94,6 +117,10 @@ int dyn_add_import_weak(char* name, int got_vaddr):
 # so both sides share one storage location. Weak imports the library does
 # not export are left zeroed instead of failing.
 int dyn_add_import_data(char* name, int copy_vaddr, int size, int weak):
+	# The PE loader has no COPY-relocation equivalent; imported data would
+	# need __imp_-style indirection, which is not implemented yet.
+	if (target_os == 2):
+		error(c"imported data objects are not supported on the win64 target")
 	int index = dyn_add_import(name, copy_vaddr)
 	if (weak):
 		save_i(dyn_import_binding + index * 4, 2, 4)
@@ -120,3 +147,7 @@ int dyn_import_get_symtype(int i):
 
 int dyn_import_get_size(int i):
 	return load_i(dyn_import_size + i * 4, 4)
+
+
+int dyn_import_get_lib(int i):
+	return load_i(dyn_import_lib + i * 4, 4)

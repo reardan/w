@@ -42,7 +42,9 @@ char* import_resolve_arch(char* path):
 			char after = path[i + 8]
 			if (at_boundary & ((after == '/') | (after == 0))):
 				char* arch = c"x86"
-				if (target_isa == 1):
+				if (target_os == 2):
+					arch = c"win64"
+				else if (target_isa == 1):
 					arch = c"arm64"
 					if (target_os == 1):
 						arch = c"arm64_darwin"

@@ -1085,8 +1085,7 @@ void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params, int
 	if (params != 0):
 		param_count = ci_lower_params_from(params, sym, 0)
 	save_int(table + sym + 22, param_count)
-	int got_vaddr = code_offset + codepos
-	emit_zeros(word_size)
+	int got_vaddr = dyn_emit_import_slot()
 	dyn_add_import_weak(name, got_vaddr)
 	# The shim covers fixed-arity calls; direct calls of a variadic import
 	# emit the C ABI conversion inline for the actual argument classes.

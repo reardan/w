@@ -106,10 +106,10 @@ int extern_statement():
 		table_pos = saved_table
 		save_int(table + sym + 22, param_count)
 
-		# GOT slot the loader relocates, emitted just before the shim so its
-		# vaddr is known now; execution enters at the shim, never the slot.
-		int got_vaddr = code_offset + codepos
-		emit_zeros(word_size)
+		# GOT slot the loader relocates (one-entry IAT on win64), emitted
+		# just before the shim so its vaddr is known now; execution enters
+		# at the shim, never the slot.
+		int got_vaddr = dyn_emit_import_slot()
 		dyn_add_import(name, got_vaddr)
 
 		# The symbol resolves to the shim entry point. For a variadic

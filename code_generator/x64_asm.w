@@ -4,17 +4,11 @@ import code_generator.code_emitter
 void sym_define_declare_global_function(char* name); /* defined in symbol_table */
 
 
-void define_asm_functions_x64():
-	sym_define_declare_global_function(c"syscall")
-	/* mov rax,[rsp+32] ; mov rdi,[rsp+24] ; mov rsi,[rsp+16] ; mov rdx,[rsp+8] ; syscall ; ret */
-	emit(20, c"\x48\x8b\x44\x24\x20\x48\x8b\x7c\x24\x18\x48\x8b\x74\x24\x10\x48\x8b\x54\x24\x08")
-	emit(3, c"\x0f\x05\xc3")
-
-	sym_define_declare_global_function(c"syscall7")
-	/* mov rax,[rsp+56] ; mov rdi,[rsp+48] ; mov rsi,[rsp+40] ; mov rdx,[rsp+32] ; mov r10,[rsp+24] ; mov r8,[rsp+16] ; mov r9,[rsp+8] ; syscall ; ret */
-	emit(20, c"\x48\x8b\x44\x24\x38\x48\x8b\x7c\x24\x30\x48\x8b\x74\x24\x28\x48\x8b\x54\x24\x20")
-	emit(18, c"\x4c\x8b\x54\x24\x18\x4c\x8b\x44\x24\x10\x4c\x8b\x4c\x24\x08\x0f\x05\xc3")
-
+# The OS-independent x64 stubs: pure register/stack operations with no
+# syscall instructions, shared between the Linux ELF target
+# (define_asm_functions_x64 below) and the win64 PE target
+# (code_generator/pe_64.w), which must not emit the Linux syscall stubs.
+void define_asm_functions_x64_portable():
 	# get_context(ctx): fill the 16-word context struct at ctx with the
 	# caller's registers. rcx is saved before the pushed rax is popped
 	# through it, so the stored rsp is the value at function entry.
@@ -68,3 +62,17 @@ void define_asm_functions_x64():
 	# mov [rax],rsp ; mov rsp,rcx ; pop r15 ; pop r14 ; pop r13 ;
 	# pop r12 ; pop rbp ; pop rbx ; ret
 	emit(17, c"\x48\x89\x20\x48\x89\xcc\x41\x5f\x41\x5e\x41\x5d\x41\x5c\x5d\x5b\xc3")
+
+
+void define_asm_functions_x64():
+	sym_define_declare_global_function(c"syscall")
+	/* mov rax,[rsp+32] ; mov rdi,[rsp+24] ; mov rsi,[rsp+16] ; mov rdx,[rsp+8] ; syscall ; ret */
+	emit(20, c"\x48\x8b\x44\x24\x20\x48\x8b\x7c\x24\x18\x48\x8b\x74\x24\x10\x48\x8b\x54\x24\x08")
+	emit(3, c"\x0f\x05\xc3")
+
+	sym_define_declare_global_function(c"syscall7")
+	/* mov rax,[rsp+56] ; mov rdi,[rsp+48] ; mov rsi,[rsp+40] ; mov rdx,[rsp+32] ; mov r10,[rsp+24] ; mov r8,[rsp+16] ; mov r9,[rsp+8] ; syscall ; ret */
+	emit(20, c"\x48\x8b\x44\x24\x38\x48\x8b\x7c\x24\x30\x48\x8b\x74\x24\x28\x48\x8b\x54\x24\x20")
+	emit(18, c"\x4c\x8b\x54\x24\x18\x4c\x8b\x44\x24\x10\x4c\x8b\x4c\x24\x08\x0f\x05\xc3")
+
+	define_asm_functions_x64_portable()
