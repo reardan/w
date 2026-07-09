@@ -45,14 +45,14 @@ void zero_stack_count_bytes():
 
 /*
 unary-operator
-& * + - !
+& * + - ! ~
 
 unary-expression
 	postfix-expression
 	unary-operator unary-expression
 
 Unary operators bind tighter than any binary operator, so -a * b
-means (-a) * b and unary operators can stack: !!a, -*p, *&x.
+means (-a) * b and unary operators can stack: !!a, -*p, *&x, ~-a.
 */
 int unary_expression():
 	int type
@@ -84,6 +84,15 @@ int unary_expression():
 		promote(type)
 		alu_test_set(0x94) /* sete */
 		return type_value(bool_type)
+	else if (accept(c"~")):
+		type = unary_expression()
+		type = promote(type)
+		if (type_is_var(type_unqualified(type))):
+			error(c"var operands do not support ~")
+		if (type_float_kind(type)):
+			error(c"float operands do not support ~")
+		not_eax()
+		return 3
 	else if (accept(c"-")):
 		type = unary_expression()
 		type = promote(type)

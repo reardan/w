@@ -373,6 +373,8 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"defer_64_test")
 	else if (strcmp(path, c"tests/bitwise_xor_test.w") == 0):
 		wtest_add(path, c"bitwise_xor_test")
+	else if (strcmp(path, c"tests/bitwise_not_test.w") == 0):
+		wtest_add(path, c"bitwise_not_test")
 	else if (strcmp(path, c"tests/infer_test.w") == 0):
 		wtest_add(path, c"infer_test")
 	else if (strcmp(path, c"tests/ternary_test.w") == 0):
