@@ -20,6 +20,28 @@
 set -e
 cd "$(dirname "$0")"
 mkdir -p bin
+# On macOS the Linux seed ./w cannot run; bootstrap a native Mach-O
+# executor from the committed arm64_darwin seed instead. Every executed
+# stage is ad-hoc signed on a copy that is renamed over the original
+# (the kernel caches signature state per vnode, so an executed inode
+# must be replaced, never rewritten). A warm tree refreshes through the
+# manifest's cached 'wexec_darwin' target, then runs bin/wexec_darwin;
+# only the darwin targets work here — everything else in build.json
+# runs Linux binaries, same as before this branch existed.
+if [ "$(uname -s)" = "Darwin" ]; then
+	if [ ! -x bin/wexec_darwin ]; then
+		./w_darwin arm64_darwin w.w -o bin/wv2_darwin_raw
+		cp bin/wv2_darwin_raw bin/wv2_darwin.signing
+		codesign -f -s - bin/wv2_darwin.signing
+		mv -f bin/wv2_darwin.signing bin/wv2_darwin
+		bin/wv2_darwin arm64_darwin tools/wexec.w -o bin/wexec_darwin_raw
+		cp bin/wexec_darwin_raw bin/wexec_darwin.signing
+		codesign -f -s - bin/wexec_darwin.signing
+		mv -f bin/wexec_darwin.signing bin/wexec_darwin
+	fi
+	./bin/wexec_darwin wexec_darwin >/dev/null
+	exec ./bin/wexec_darwin "$@"
+fi
 if [ ! -x bin/wexec ]; then
 	./w w.w -o bin/wv2
 	./bin/wv2 tools/wexec.w -o bin/wexec

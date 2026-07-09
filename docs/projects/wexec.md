@@ -149,14 +149,18 @@ no build.json counterpart. They split into four groups:
   judgment call for whoever's doing the promotion, not something to do
   as a side effect of a build-system migration. Verified narrowly
   instead: `archive.sh` itself (which the `update` rule already ran
-  as-is before this change) only works when `./old/` already exists —
-  it has no `mkdir -p`, so `cp w $filename` fails on a from-clean
-  checkout while the script still prints "Backed up to ..." and exits
-  0 regardless, because the `cp` failure is never checked. That's a
-  pre-existing bug in `archive.sh`, unchanged by this port (ported
-  byte-for-byte, not fixed) — flagged here since a botched backup that
-  *looks* like it succeeded is worth a maintainer's attention before
-  the next real `make update` / `./wbuild update`.
+  as-is before this change) only worked when `./old/` already existed —
+  it had no `mkdir -p`, so `cp w $filename` failed on a from-clean
+  checkout while the script still printed "Backed up to ..." and exited
+  0 regardless, because the `cp` failure is never checked. The darwin
+  port (group B) fixed the main failure mode as a side effect:
+  `archive.sh` now takes the seed filename as an argument (default `w`,
+  `update_darwin` passes `w_darwin`) and does the `mkdir -p ./old` the
+  Makefile's `update_darwin` rule did inline, so the backup can no
+  longer no-op just because `./old/` is missing. A failed `cp` itself
+  is still unchecked — same tolerance the Makefile's own
+  `update_darwin` expressed with `|| true` — so a maintainer promoting
+  a seed should still glance at the "Backed up to" line.
 - `test_changed` (`git diff | wtest changed | xargs make`) needs the
   `wtest changed` output fed into a build run the same way. **Ported**:
   `wbuild` (the shell script, not wexec) now special-cases a
@@ -166,13 +170,34 @@ no build.json counterpart. They split into four groups:
 
 **B. Darwin toolchain** — `build_darwin`, `verify_darwin`, `update_darwin`
 (the seed/verify/promote triad for the `w_darwin` Mach-O seed, codesign
-steps included). wexec and build.json are Linux-only today; this needs
-its own manifest entries (or a separate darwin manifest, since the host
-differs) before CLAUDE.md's Mac-first workflow can drop `make`. **Not yet
-ported** — must be authored and verified on a Mac (`make build_darwin`
-and friends only run there), which blocks it from a Linux-only session.
-This is the long pole for actually deleting the Makefile: everything
-else in this list can be done and verified from Linux.
+steps included). **Ported and verified on the M3**: the three targets are
+transcribed into build.json (codesign-on-a-copy dance included), and
+`wbuild` grew a Darwin branch that bootstraps a native Mach-O executor —
+cold, the committed `w_darwin` seed compiles `bin/wv2_darwin` which
+compiles `bin/wexec_darwin` (both ad-hoc signed on a copy renamed over
+the original, never in place, because the kernel caches signature state
+per vnode); warm, the manifest's cached `wexec_darwin` target keeps it
+fresh. `make verify_darwin` and a from-`rm -rf bin` `./wbuild
+verify_darwin` both pass and produce byte-identical
+`wv2/wv3/wv4_darwin_raw` artifacts. `update_darwin` follows the same
+policy as `update`: manifest entry ported (`./archive.sh w_darwin`, then
+`cp -f bin/wv3_darwin w_darwin` — archive.sh grew that seed-name
+argument), **never invoked**, since it overwrites the committed seed.
+One deliberate divergence from the Linux chain's idiom: the darwin
+targets declare no `"inputs"`, i.e. they are FORCE-style and never
+cached. That is not laziness — `wexec_collect_dir` parses the *Linux*
+getdents record layout, and Darwin's `getdirentries64` records differ
+(see the NOTE in `lib/__arch__/arm64_darwin/syscalls.w`), so a
+directory input on macOS silently hashes as an empty file list. Caching
+`verify_darwin` on such a key would return "cached" after real source
+changes — a false-green on the one target whose entire job is to be a
+gate. Always-run matches the Makefile's FORCE behavior exactly; if the
+rebuild cost ever matters, the fix is per-arch dirent accessors next to
+`getdents` in `lib/__arch__/*/syscalls.w`, and only then `"inputs"` on
+the darwin targets. (`wexec_darwin` itself *is* cached, on plain-file
+inputs only — `tools/wexec.w` + the seed — which file-hashes correctly
+on Darwin; a `lib/` edit won't refresh it, `rm -rf bin` or `--no-cache`
+will.)
 
 **C. Targets that don't fit wexec's execution model** — some because
 they're genuinely interactive, some because they never terminate on
@@ -282,8 +307,8 @@ each `make` habit" pass instead of two.
 
 1. Port group D (mechanical, one commit, closes most of the gap). **Done.**
 2. Port group B, the darwin triad — needs Mac verification, can't be
-   done or verified from a Linux-only session. **Blocked** on running
-   this step from a Mac.
+   done or verified from a Linux-only session. **Done**, authored and
+   verified natively on the M3 (see group B above).
 3. Land group C per the recommendation above (doc-only, no executor
    change needed). **Pending**, folded into step 6.
 4. Port group A's `update` and `test_changed` — `update` last and
