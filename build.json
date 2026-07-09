@@ -1295,7 +1295,7 @@
 		},
 		{
 			"name": "index_test",
-			"deps": ["windex"],
+			"deps": ["windex", "windexd"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/index/index_test.w", "-o", "bin/index_test"]},
 				{"cmd": ["bin/index_test"]}
@@ -1303,7 +1303,7 @@
 		},
 		{
 			"name": "indexd_test",
-			"deps": ["windex", "windexd"],
+			"deps": ["index_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/index/indexd_test.w", "-o", "bin/indexd_test"]},
 				{"cmd": ["bin/indexd_test"]}

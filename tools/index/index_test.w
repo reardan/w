@@ -3,13 +3,99 @@
 # NDJSON it prints, and assert on the records.
 import lib.lib
 import lib.assert
+import lib.file
 import lib.process
+import lib.net
+import lib.framing
+import lib.json_rpc
 import structures.string
 import structures.json
+import tools.index.w_index_core
 
 
 int index_test_timeout_ms():
 	return 30000
+
+
+char* index_test_spawn_lock_file():
+	return c"bin/.windexd.spawn.lock"
+
+
+int index_test_spawned_pid():
+	char* text = file_read_text(index_test_spawn_lock_file())
+	if (text == 0):
+		return -1
+	int pid = atoi(text)
+	free(text)
+	return pid
+
+
+int index_test_port_reachable(int port):
+	if (port <= 0):
+		return 0
+	int sock = socket_tcp_ipv4()
+	if (sock < 0):
+		return 0
+	int reachable = socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0
+	close(sock)
+	return reachable
+
+
+void index_test_wait_port_closed(int port):
+	int waited = 0
+	while (waited < index_test_timeout_ms()):
+		if (index_test_port_reachable(port) == 0):
+			return
+		process_sleep_ms(20)
+		waited = waited + 20
+
+
+int index_test_wait_daemon_exit(int pid):
+	if (pid <= 0):
+		return 1
+	int waited = 0
+	while (waited < index_test_timeout_ms()):
+		if (kill(pid, 0) < 0):
+			return 1
+		process_sleep_ms(20)
+		waited = waited + 20
+	return 0
+
+
+int index_test_try_shutdown_port(int port):
+	if (port <= 0):
+		return 0
+	int sock = socket_tcp_ipv4()
+	if (sock < 0):
+		return 0
+	int connected = 0
+	if (socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0):
+		connected = 1
+		jsonrpc_write_request(sock, 1, c"shutdown", 0)
+		frame_reader* r = frame_reader_new(sock)
+		jsonrpc_read_message(r)
+		frame_reader_free(r)
+	close(sock)
+	if (connected):
+		index_test_wait_port_closed(port)
+	return connected
+
+
+void index_test_shutdown_daemon():
+	int pid = index_test_spawned_pid()
+	int waited = 0
+	while (waited < index_test_timeout_ms()):
+		if (index_test_try_shutdown_port(windexd_read_port())):
+			index_test_wait_daemon_exit(pid)
+			return
+		if (pid <= 0):
+			return
+		if ((pid > 0) & (kill(pid, 0) < 0)):
+			return
+		process_sleep_ms(20)
+		waited = waited + 20
+	if ((pid > 0) & (kill(pid, 0) >= 0)):
+		kill(pid, sigkill())
 
 
 list[json_value*] index_test_parse_ndjson(char* text):
@@ -71,6 +157,8 @@ int index_test_int(json_value* record, char* key):
 
 
 int main(int argc, int argv):
+	index_test_shutdown_daemon()
+
 	# symbol: find_symbol on a plain helper function
 	list[json_value*] symbol_records = index_test_run(index_test_args(c"symbol", c"index_fixture_helper", c"tests/index_fixture.w"))
 	assert_equal(1, symbol_records.length)
@@ -123,5 +211,6 @@ int main(int argc, int argv):
 	assert_strings_equal(c"sub", index_test_string(alias_import_records[0], c"alias"))
 	assert_equal(4, index_test_int(alias_import_records[0], c"line"))
 
+	index_test_shutdown_daemon()
 	println2(c"index test OK")
 	return 0

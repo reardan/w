@@ -28,6 +28,26 @@ char* indexd_test_scratch_file():
 /* connection setup */
 
 
+int indexd_test_port_reachable(int port):
+	if (port <= 0):
+		return 0
+	int sock = socket_tcp_ipv4()
+	if (sock < 0):
+		return 0
+	int reachable = socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0
+	close(sock)
+	return reachable
+
+
+void indexd_test_wait_port_closed(int port):
+	int waited = 0
+	while (waited < indexd_test_timeout_ms()):
+		if (indexd_test_port_reachable(port) == 0):
+			return
+		process_sleep_ms(20)
+		waited = waited + 20
+
+
 # If a previous run (or an unrelated dev session) left a daemon
 # advertised at bin/.windexd.port, ask it to shut down so this test
 # starts from a clean slate instead of racing windexd_already_running().
@@ -38,12 +58,17 @@ void indexd_test_shutdown_stale():
 	int sock = socket_tcp_ipv4()
 	if (sock < 0):
 		return
+	int connected = 0
 	if (socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0):
+		connected = 1
 		jsonrpc_write_request(sock, 1, c"shutdown", 0)
 		frame_reader* r = frame_reader_new(sock)
-		jsonrpc_read_message(r)
+		json_value* response = jsonrpc_read_message(r)
+		json_free(response)
 		frame_reader_free(r)
 	close(sock)
+	if (connected):
+		indexd_test_wait_port_closed(port)
 
 
 process* indexd_test_spawn(int* port_out):
@@ -64,6 +89,7 @@ process* indexd_test_spawn(int* port_out):
 			int sock = socket_tcp_ipv4()
 			if (sock >= 0):
 				if (socket_connect_ipv4(sock, ip4_from_string(c"127.0.0.1"), port) >= 0):
+					asserts(c"spawned windexd still owns reachable port", process_try_wait(p) == process_status_running())
 					close(sock)
 					*port_out = port
 					return p
