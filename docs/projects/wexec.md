@@ -141,10 +141,22 @@ no build.json counterpart. They split into four groups:
   `wv2`, the same way Makefile targets depended on `w`). Nothing to port;
   the Makefile's `w` rule just gets dropped with no replacement.
 - `update` (archives the seed via `archive.sh`, then promotes `bin/wv2` to
-  `./w`) should be ported last and byte-for-byte — it mutates the
-  committed seed, so it's the highest-blast-radius target in the file.
-  **Not yet ported** — deliberately left for a dedicated change with its
-  own review, not bundled with the rest of this migration.
+  `./w`) is the highest-blast-radius target in the file: it mutates the
+  committed seed. **Manifest entry ported** (`deps: ["verify"]`, then
+  `./archive.sh` and `mv -f bin/wv2 w`, byte-for-byte the same two
+  commands the Makefile ran) but **deliberately never invoked** —
+  running `./wbuild update` for real promotes a new seed, which is a
+  judgment call for whoever's doing the promotion, not something to do
+  as a side effect of a build-system migration. Verified narrowly
+  instead: `archive.sh` itself (which the `update` rule already ran
+  as-is before this change) only works when `./old/` already exists —
+  it has no `mkdir -p`, so `cp w $filename` fails on a from-clean
+  checkout while the script still prints "Backed up to ..." and exits
+  0 regardless, because the `cp` failure is never checked. That's a
+  pre-existing bug in `archive.sh`, unchanged by this port (ported
+  byte-for-byte, not fixed) — flagged here since a botched backup that
+  *looks* like it succeeded is worth a maintainer's attention before
+  the next real `make update` / `./wbuild update`.
 - `test_changed` (`git diff | wtest changed | xargs make`) needs the
   `wtest changed` output fed into a build run the same way. **Ported**:
   `wbuild` (the shell script, not wexec) now special-cases a
@@ -275,28 +287,30 @@ each `make` habit" pass instead of two.
 3. Land group C per the recommendation above (doc-only, no executor
    change needed). **Pending**, folded into step 6.
 4. Port group A's `update` and `test_changed` — `update` last and
-   byte-for-byte, since it mutates the committed seed. `test_changed`
-   **done**. `update` **deliberately deferred**: it's the one step that
-   overwrites the committed `./w` seed, so it gets its own change and
-   its own review rather than riding along with this batch.
+   byte-for-byte, since it mutates the committed seed. Both **ported**:
+   `test_changed` runs and was verified; `update`'s manifest entry was
+   added and reasoned through (see above) but never actually invoked —
+   promoting the seed is a maintainer decision, not a migration side
+   effect.
 5. Switch `tools/mcp/w_toolchain_mcp.w` off `make`. **Done**, see above.
 6. Flip README/AGENTS/CLAUDE.md/skills to present `./wbuild` as primary;
    run a full `./wbuild tests` (plus `verify_x64`, plus the darwin triad
    on a Mac) as the parity gate before touching the Makefile itself.
-   **Blocked** on step 2 (darwin) and step 4's `update`: this repo's own
-   rule is "make sure wbuild is at full parity first," and parity isn't
-   full while those two are outstanding. `./wbuild tests` itself passes
-   on Linux as of this writing (see below).
+   **Blocked** on step 2 (darwin): this repo's own rule is "make sure
+   wbuild is at full parity first," and parity isn't full while the
+   darwin triad is unported. `./wbuild tests` itself passes on Linux as
+   of this writing (see below).
 7. Delete `Makefile`, `tools/test_map.w`'s now-dead Makefile branch, and
    this section's framing; drop the `Makefile` row from README.md's
-   repository-layout table. **Blocked** on 2, 4 and 6.
+   repository-layout table. **Blocked** on 2 and 6.
 
-Status as of this writing: groups A (`test_changed`) and D are ported,
-the MCP server no longer shells out to `make`, and a from-clean
-`./wbuild tests` run passes (this container needed `libc6:i386`
-installed first for the 32-bit dynamic-linking tests — same host
-requirement `dynamic_test` already documents for `make tests`; two
-pre-existing failures, `asm_test`'s segfault and `cuda_smoke`'s compile
-error, are unrelated to this migration and reproduce identically under
-`make`). Darwin porting and the `update` target are the remaining gaps
-before the Makefile can actually go.
+Status as of this writing: group A (`test_changed` verified, `update`
+ported but intentionally unrun) and group D are ported, the MCP server
+no longer shells out to `make`, and a from-clean `./wbuild tests` run
+passes (this container needed `libc6:i386` installed first for the
+32-bit dynamic-linking tests — same host requirement `dynamic_test`
+already documents for `make tests`; two pre-existing failures,
+`asm_test`'s segfault and `cuda_smoke`'s compile error, are unrelated to
+this migration and reproduce identically under `make`). The darwin
+triad is the only remaining gap before the Makefile can actually go —
+it needs a session with Mac access to author and verify.
