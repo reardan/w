@@ -176,3 +176,63 @@ int hash_remove_suffix(int type):
 int hash_set_add_suffix(int type):
 	hash_key_call_suffix(type, c"__w_set_add", c"set add key")
 	return type_value(type_lookup(c"void"))
+
+
+# m.get(key) / m.get(key, default): 'get' has been consumed.
+#   m.get(key)          traps on a missing key, same as m[key]
+#   m.get(key, default) evaluates default and returns it instead of trapping
+int hash_get_suffix(int type):
+	int container_type = type_unqualified(type)
+	int value_type = type_map_value_type(container_type)
+	int key_type = type_map_key_type(container_type)
+	int value_is_struct = type_num_args(value_type) > 0
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int container_slot = stack_pos
+	expect(c"(")
+	int got_type = expression()
+	got_type = promote(got_type)
+	coerce(key_type, got_type)
+	if (types_compatible_with_expression(key_type, got_type) == 0):
+		warn_type_mismatch(c"map get key", key_type, got_type)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int key_slot = stack_pos
+	int has_default = 0
+	int default_slot = 0
+	if (accept(c",")):
+		has_default = 1
+		int default_got = expression()
+		default_got = promote(default_got)
+		coerce(value_type, default_got)
+		if (types_compatible_with_expression(value_type, default_got) == 0):
+			warn_type_mismatch(c"map get default", value_type, default_got)
+		push_eax()
+		stack_pos = stack_pos + 1
+		default_slot = stack_pos
+	expect(c")")
+
+	char* fn_name = c"__w_map_get"
+	if (has_default):
+		fn_name = c"__w_map_get_or"
+		if (value_is_struct):
+			fn_name = c"__w_map_get_or_addr"
+	else if (value_is_struct):
+		fn_name = c"__w_map_get_addr"
+	sym_get_value(fn_name)
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(container_slot)
+	hash_push_stack_slot(key_slot)
+	if (has_default):
+		hash_push_stack_slot(default_slot)
+	hash_call_finish(s)
+
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	if (value_is_struct):
+		return type_canonical(value_type)
+	return type_value(value_type)

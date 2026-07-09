@@ -37,7 +37,9 @@ Current state:
 
 	breakpoints (int3 patched over a statement's first byte, original
 	byte restored while stopped and re-armed via one single-step)
-		b / break <t>   t = function | line | file:line
+		b / break <t>   t = function | line | file:line; an unresolved
+		                function or file target prints a "did you
+		                mean:" list of close-by names (edit distance)
 		tb / tbreak <t> one-shot breakpoint, deleted when hit
 		condition <n> [<expr>]  stop breakpoint n only when <expr> is
 		                true (no expr clears it); compiled and run
@@ -150,10 +152,6 @@ Current state:
 		finish treats a same-function stop after block-exit pops
 			correctly, but cannot see through frames without line info
 
-
-Future:
-
-	break similar: fuzzy/suffix matching for unresolved break targets
 
 Split off as separate, lower-priority backlog items (were tracked
 alongside the above in #38, now their own issues):

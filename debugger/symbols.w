@@ -88,6 +88,31 @@ char* dbg_function_name(int addr):
 	return dbg_sym_name(f)
 
 
+# Print "did you mean: a, b" for defined functions whose name is close to
+# name, when any are close enough. No newline when nothing matches.
+void dbg_suggest_functions(char* name):
+	int threshold = dbg_similar_threshold(strlen(name))
+	int shown = 0
+	int t = 0
+	while (t <= table_pos - 1):
+		int name_offset = t
+		while (table[t] != 0):
+			t = t + 1
+		if (table[t + 1] == 'D'):
+			if (load_int(table + t + 10) == 2):
+				char* candidate = table + name_offset
+				if (dbg_edit_distance(name, candidate) <= threshold):
+					if (shown == 0):
+						print(c"did you mean: ")
+					else:
+						print(c", ")
+					print(candidate)
+					shown = shown + 1
+		t = next_token(t)
+	if (shown > 0):
+		put_char(10)
+
+
 # List the debuggee's defined functions with address and size.
 void dbg_print_functions():
 	int t = 0

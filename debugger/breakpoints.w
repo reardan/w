@@ -278,6 +278,7 @@ int bp_resolve_target(char* arg, int current_file):
 		if (file_index < 0):
 			print(c"unknown file: ")
 			println(arg)
+			dbg_suggest_files(arg)
 			return 0
 
 	# Function name: no colon and not a number
@@ -287,6 +288,7 @@ int bp_resolve_target(char* arg, int current_file):
 			if (f < 0):
 				print(c"unknown function: ")
 				println(arg)
+				dbg_suggest_functions(arg)
 				return 0
 			if (dbg_sym_symtype(f) != 2):
 				print(c"not a function: ")

@@ -227,3 +227,48 @@ void test_for_key_value_struct_values():
 		y_sum = y_sum + v.y
 	assert_equal(4, x_sum)
 	assert_equal(6, y_sum)
+
+
+void test_map_get():
+	map[char*, int] m = map[char*, int]{c"one": 1, c"two": 2}
+	assert_equal(1, m.get(c"one"))
+	assert_equal(2, m.get(c"two"))
+
+
+void test_map_get_with_default():
+	map[char*, int] m = map[char*, int]{c"one": 1}
+	assert_equal(1, m.get(c"one", 99))
+	assert_equal(99, m.get(c"missing", 99))
+	# a present key still overrides the default even when it is falsy
+	map[char*, int] zero_map = map[char*, int]{c"zero": 0}
+	assert_equal(0, zero_map.get(c"zero", 5))
+
+
+void test_map_get_struct_values():
+	map[char*, kv_test_point] m = new map[char*, kv_test_point]
+	kv_test_point p
+	p.x = 1
+	p.y = 2
+	m[c"a"] = p
+	kv_test_point got = m.get(c"a")
+	assert_equal(1, got.x)
+	assert_equal(2, got.y)
+	# reads copy: mutating the result must not change the stored value
+	got.y = 999
+	assert_equal(2, m[c"a"].y)
+
+
+void test_map_get_struct_default():
+	map[char*, kv_test_point] m = new map[char*, kv_test_point]
+	kv_test_point stored
+	stored.x = 1
+	stored.y = 2
+	m[c"a"] = stored
+	kv_test_point fallback
+	fallback.x = 9
+	fallback.y = 8
+	kv_test_point present = m.get(c"a", fallback)
+	assert_equal(1, present.x)
+	kv_test_point missing = m.get(c"z", fallback)
+	assert_equal(9, missing.x)
+	assert_equal(8, missing.y)
