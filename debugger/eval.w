@@ -160,6 +160,7 @@ int dbg_eval_compile(char* expr, int stop_addr, int esp):
 	filename = path
 	file = open(path, 0, 511)
 	asserts(c"could not reopen eval buffer", file >= 0)
+	getchar_reset(file)
 	line_number = 0
 	column_number = 0
 	tab_level = 0

@@ -314,7 +314,7 @@ int repl_infer_declaration():
 	get_token()
 	if (peek(c":=") == 0):
 		free(name)
-		seek(file, load_ptr(save + 7 * __word_size__), 0)
+		getchar_seek(file, load_ptr(save + 7 * __word_size__))
 		generic_reparse_restore(save)
 		return 0
 	free(cast(char*, load_ptr(save + 11 * __word_size__)))
@@ -516,6 +516,7 @@ int repl_compile_entry(char* path):
 	filename = path
 	file = open(path, 0, 511)
 	asserts(c"could not reopen entry buffer", file >= 0)
+	getchar_reset(file)
 	repl_entry_file = file
 	line_number = 0
 	column_number = 0

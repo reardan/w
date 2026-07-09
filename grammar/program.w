@@ -293,7 +293,7 @@ int script_statement_starts_here():
 	while (accept(c"*")) {}
 	int c1 = token[0]
 	int next_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
-	seek(file, load_ptr(save + 7 * __word_size__), 0)
+	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
 	if (next_is_ident):
 		return 0
@@ -329,7 +329,7 @@ int script_function_definition_ahead():
 	if (next_is_ident):
 		if (nextc == '('):
 			is_definition = 1
-	seek(file, load_ptr(save + 7 * __word_size__), 0)
+	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
 	return is_definition
 

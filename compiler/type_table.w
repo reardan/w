@@ -625,9 +625,13 @@ int type_lookup_slice(int element_type):
 	int i = 0
 	while (i < type_records.length):
 		int t = type_records[i]
-		if ((load_ptr(t + 205 * __word_size__) == type_kind_slice()) &
-				(type_canonical(load_ptr(t + 204 * __word_size__)) == element_type)):
-			return i
+		# Check the kind alone first: '&' does not short-circuit, and for
+		# other kinds slot 204/206 may hold a non-type value (an array
+		# entry keeps its length in slot 206), which must never reach
+		# type_canonical() as a type index.
+		if (load_ptr(t + 205 * __word_size__) == type_kind_slice()):
+			if (type_canonical(load_ptr(t + 204 * __word_size__)) == element_type):
+				return i
 		i = i + 1
 	return -1
 
@@ -637,9 +641,9 @@ int type_lookup_slice_value(int element_type):
 	int i = 0
 	while (i < type_records.length):
 		int t = type_records[i]
-		if ((load_ptr(t + 205 * __word_size__) == type_kind_slice_value()) &
-				(type_canonical(load_ptr(t + 204 * __word_size__)) == element_type)):
-			return i
+		if (load_ptr(t + 205 * __word_size__) == type_kind_slice_value()):
+			if (type_canonical(load_ptr(t + 204 * __word_size__)) == element_type):
+				return i
 		i = i + 1
 	return -1
 
@@ -650,10 +654,10 @@ int type_lookup_map(int key_type, int value_type):
 	int i = 0
 	while (i < type_records.length):
 		int t = type_records[i]
-		if ((load_ptr(t + 205 * __word_size__) == type_kind_map()) &
-				(type_canonical(load_ptr(t + 204 * __word_size__)) == key_type) &
-				(type_canonical(load_ptr(t + 206 * __word_size__)) == value_type)):
-			return i
+		if (load_ptr(t + 205 * __word_size__) == type_kind_map()):
+			if ((type_canonical(load_ptr(t + 204 * __word_size__)) == key_type) &
+					(type_canonical(load_ptr(t + 206 * __word_size__)) == value_type)):
+				return i
 		i = i + 1
 	return -1
 
@@ -663,9 +667,9 @@ int type_lookup_set(int key_type):
 	int i = 0
 	while (i < type_records.length):
 		int t = type_records[i]
-		if ((load_ptr(t + 205 * __word_size__) == type_kind_set()) &
-				(type_canonical(load_ptr(t + 204 * __word_size__)) == key_type)):
-			return i
+		if (load_ptr(t + 205 * __word_size__) == type_kind_set()):
+			if (type_canonical(load_ptr(t + 204 * __word_size__)) == key_type):
+				return i
 		i = i + 1
 	return -1
 
@@ -675,9 +679,9 @@ int type_lookup_list(int element_type):
 	int i = 0
 	while (i < type_records.length):
 		int t = type_records[i]
-		if ((load_ptr(t + 205 * __word_size__) == type_kind_list()) &
-				(type_canonical(load_ptr(t + 204 * __word_size__)) == element_type)):
-			return i
+		if (load_ptr(t + 205 * __word_size__) == type_kind_list()):
+			if (type_canonical(load_ptr(t + 204 * __word_size__)) == element_type):
+				return i
 		i = i + 1
 	return -1
 
