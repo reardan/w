@@ -68,6 +68,9 @@ list[list[int]] grid = new list[list[int]]
 - `l[i]` reads or writes element `i`; out-of-range indexes abort.
 - `l.push(v)` appends; `l.pop()` removes and returns the last element
   (aborts when empty).
+- `l.insert(i, v)` inserts `v` at index `i`; `l.remove(i)` removes and
+  returns the element at index `i` (shift-and-pop); `l.clear()` empties
+  the list without freeing its backing storage.
 - `.length` returns the element count.
 - `for T x in l` iterates elements in order.
 - Struct elements iterate by address: `for point* p in l` (a word-sized
@@ -143,15 +146,15 @@ existing behavior is unchanged.
 
 ## Deferred work
 
-- `l.insert(i, v)`, `l.remove(i)`, `l.clear()`, and a `free()`/`destroy()`
-  pseudo-method for `list[T]`/`map[K, V]`/`set[K]`. `lib/container.w`
-  papers over the gap for consumers migrated off the old generic
-  containers (issue #120): `list_remove_at[T]` (shift-and-pop) for
-  `remove(i)`, and `list_free[T]`/`map_free[K, V]` that reach into the
+- `l.insert(i, v)`, `l.remove(i)` and `l.clear()` have landed (see
+  `list[T]`'s Syntax section above); a `free()`/`destroy()` pseudo-method
+  for `list[T]`/`map[K, V]`/`set[K]` has not. `lib/container.w` papers
+  over that remaining gap for consumers migrated off the old generic
+  containers (issue #120): `list_free[T]`/`map_free[K, V]` reach into the
   auto-imported `__w_list`/`__w_hash_table` runtime directly (the same
   cast-and-call `compiler/type_table.w` already used for
-  `type_table_truncate()`) in place of a `free()` method. These are
-  workarounds, not a substitute for landing the pseudo-methods properly.
+  `type_table_truncate()`) in place of a `free()` method. This is a
+  workaround, not a substitute for landing the pseudo-method properly.
 - `in` membership for lists (linear scan) if a use case appears.
 - Multi-word scalar elements on x86 (e.g. `list[int64]`).
 - Struct keys for maps and sets (values are done; keys still hash words,

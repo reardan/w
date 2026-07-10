@@ -379,7 +379,6 @@ passes; it archives the old seed to `old/` first.
   inferred calls.
 - CUDA backend Stage 2, the PTX emitter — Stages 0–1 (x64 self-hosting and
   dynamic linking to libcuda) are done; see `docs/projects/cuda.md`.
-- REPL line editing/history.
 - Debugger: locals inside evaluated expressions, watchpoints, a web UI
   (stepping, breakpoints, variable inspection, expression evaluation at a
   breakpoint and `w --debug` are done).
