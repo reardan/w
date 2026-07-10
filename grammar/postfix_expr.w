@@ -880,7 +880,16 @@ int postfix_expr():
 					free(member_name)
 
 				else:
-					get_token()
+					# cc500 heritage: '.member' on a non-struct expression
+					# used to be silently ignored, so a typo'd field or a
+					# method chained onto a non-struct result (for example
+					# an int- or void-returning call) compiled into a call
+					# through a garbage receiver and crashed at runtime.
+					diag_part(c"member '")
+					diag_part(token)
+					diag_part(c"' on non-struct type '")
+					print_error_type(type)
+					error(c"'")
 
 		# expr? : unwrap a wresult[T]* or propagate the error to the
 		# caller (see result_propagate_suffix in grammar/statement.w).
