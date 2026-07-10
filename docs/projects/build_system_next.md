@@ -8,6 +8,16 @@ lays out four improvement directions, roughly ordered from pragmatic to
 research-grade — including a staged version of the grammar+VCS
 integrated build idea.
 
+**Scope constraint (2026-07-10): W does not support versioning yet.**
+`package.wmeta` carries version fields and constraints (stages 1–4 of
+`docs/package_metadata.txt`), but lock files (stage 5), dependency
+fetching, and any cross-version resolution are unimplemented. Every
+part of this doc that depends on version identity or commit history —
+direction 4b and the cross-commit queries built on it — is therefore
+**deferred until versioning is in place**. The in-scope near-term work
+is directions 1, 4a, and 3, all of which key purely off the current
+working tree's content and need no versioning story at all.
+
 ## Where the system stands today
 
 The shape is already good — a Ninja-like two-layer split that most
@@ -235,6 +245,14 @@ Build on the tokenizer + `symbols` machinery. Then:
   untouched.
 
 ### 4b. The VCS half: a persistent semantic index over git history
+### (deferred — blocked on W versioning support)
+
+Everything in this stage assumes stable identity across versions of the
+tree — commit-ranged queries, result reuse across history, definitions
+tracked through renames. W's versioning story is metadata-only today
+(no lock files, no cross-version resolution), so this stage should not
+start until that lands; 4a and 4c below are deliberately shaped so they
+don't wait for it. Recorded here as the eventual destination:
 
 Maintain an index (a `bin/.windex`-style cache, derived and
 regenerable) mapping definition-hash → {defining file/commit, direct
@@ -253,8 +271,10 @@ hashes, the index is naturally append-only and shared-cache-friendly
 
 ### 4c. Realtime maintenance
 
-A small watcher (or the editor-hook path the AI tooling already uses)
-re-runs `defhash` on save and folds the result into the index. W files
+Working-tree only — needs 4a's `defhash` but none of 4b's history
+integration, so it is not blocked on versioning. A small watcher (or
+the editor-hook path the AI tooling already uses) re-runs `defhash` on
+save and folds the result into a working-tree index. W files
 are small and the tokenizer is fast — re-hashing a saved file is
 sub-millisecond, so tree-sitter-grade incremental parsing is
 unnecessary; whole-file re-lex on save *is* realtime at this scale.
@@ -290,8 +310,11 @@ non-incremental compile so the fixpoint guarantee is never diluted.
    fine-grained (4a) — that's when a shared cache pays off most and
    mis-invalidation risk is lowest. The ssh remote-run MVP can ride
    along.
-4. **4b/4c** as the index and watcher mature; **Direction 2** (tracing)
-   whenever hermeticity or undeclared-input bugs actually bite —
-   it's the best *audit* for the derived graph even if it never becomes
-   the primary key source.
-5. **4d** only if a concrete need for sub-second self-compiles appears.
+4. **4c** (working-tree watcher) once 4a exists; **Direction 2**
+   (tracing) whenever hermeticity or undeclared-input bugs actually
+   bite — it's the best *audit* for the derived graph even if it never
+   becomes the primary key source.
+5. **4b** only after W versioning support lands (see the scope
+   constraint at the top) — the history-integrated index is the
+   destination, not the near-term work.
+6. **4d** only if a concrete need for sub-second self-compiles appears.
