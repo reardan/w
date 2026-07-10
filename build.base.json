@@ -1057,6 +1057,10 @@
 				{"cmd": ["bin/wdbg", "tests/segv_fixture.w"], "stdin": "c\n", "expect_status": 1},
 				{"cmd": ["bin/wdbg", "tests/segv_fixture.w"], "stdin": "c\n", "expect_status": 1, "expect_stderr": "no --break_start and no 'debugger' statement"},
 				{"cmd": ["bin/wdbg", "tests/segv_fixture.w", "--break_start"], "stdin": "c\nc\n", "expect_status": 1, "reject_stderr": "no --break_start and no 'debugger' statement"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture4.w"], "stdin": "l\nc\n", "expect_stdout": "debug_fixture4.w:20"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture4.w"], "stdin": "p total\nc\n", "expect_stdout": "total = 42"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture4.w"], "stdin": "s\nl\nc\n", "expect_stdout": "debug_fixture4.w:21"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture4.w"], "stdin": "c\n", "expect_stdout": ["containers ok", "debuggee main returned 43"]},
 				{"cmd": ["bin/wv2", "--debug", "tests/debug_fixture.w"], "stdin": "c\n", "expect_stdout": "after breakpoint"}
 			]
 		},
@@ -1115,7 +1119,11 @@
 				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "watch counter\nd w 1\ni w\nc\n", "expect_stdout": "no watchpoints set"},
 				{"cmd": ["bin/wdbg64", "tests/segv_fixture.w"], "stdin": "l\nc\n", "expect_status": 1, "expect_stdout": "fatal signal: SIGSEGV"},
 				{"cmd": ["bin/wdbg64", "tests/segv_fixture.w"], "stdin": "l\nc\n", "expect_status": 1, "expect_stdout": "segv_fixture.w:7"},
-				{"cmd": ["bin/wdbg64", "tests/segv_fixture.w"], "stdin": "c\n", "expect_status": 1}
+				{"cmd": ["bin/wdbg64", "tests/segv_fixture.w"], "stdin": "c\n", "expect_status": 1},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "l\nc\n", "expect_stdout": "debug_fixture4.w:20"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "p total\nc\n", "expect_stdout": "total = 42"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "s\nl\nc\n", "expect_stdout": "debug_fixture4.w:21"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "c\n", "expect_stdout": ["containers ok", "debuggee main returned 43"]}
 			]
 		},
 		{
