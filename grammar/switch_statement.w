@@ -77,6 +77,8 @@ int switch_statement():
 				int value_type = promote(expression())
 				if (types_compatible_with_expression(scrutinee_type, value_type) == 0):
 					warn_type_mismatch(c"case", scrutinee_type, value_type)
+				if (type_decays_to_pointer(scrutinee_type, value_type)):
+					promote_eax()
 				pop_ebx()
 				stack_pos = stack_pos - 1
 				alu_cmp_set(0x94) /* sete: scrutinee == value */

@@ -47,11 +47,6 @@ char* __w_strclone(char *c):
 	return clone
 
 
-void __w_assert(int condition):
-	if (condition == 0):
-		exit(1)
-
-
 struct __w_hash_table:
 	int capacity
 	int count
@@ -97,6 +92,21 @@ int __w_hash_key_cstr():
 
 int __w_hash_key_string():
 	return 3
+
+
+# Missing-key trap (issue #188): says which key was missing before
+# exiting. char* and string keys print their contents; scalar keys print
+# as integers. The trap helpers live in structures/w_list.w.
+void __w_map_missing_key(__w_hash_table* table, int key):
+	__w_trap_cstr(c"map key not found: ")
+	if (table.key_kind == __w_hash_key_cstr()):
+		__w_trap_cstr(cast(char*, key))
+	else if (table.key_kind == __w_hash_key_string()):
+		write(2, cast(char*, load_ptr(cast(char*, key))), load_ptr(key + __word_size__))
+	else:
+		__w_trap_int(key)
+	__w_trap_cstr(c"\n")
+	exit(1)
 
 
 int __w_hash_bytes(int data, int length):
@@ -342,7 +352,8 @@ int __w_map_contains(__w_hash_table* table, int key):
 
 int __w_map_get(__w_hash_table* table, int key):
 	int i = __w_hash_table_slot(table, key)
-	__w_assert(table.states[i] == 1)
+	if (table.states[i] != 1):
+		__w_map_missing_key(table, key)
 	int* slot = cast(int*, __w_hash_value_addr(table, i))
 	return slot[0]
 
@@ -351,7 +362,8 @@ int __w_map_get(__w_hash_table* table, int key):
 # the next insertion rehashes the table, so callers copy immediately.
 char* __w_map_get_addr(__w_hash_table* table, int key):
 	int i = __w_hash_table_slot(table, key)
-	__w_assert(table.states[i] == 1)
+	if (table.states[i] != 1):
+		__w_map_missing_key(table, key)
 	return __w_hash_value_addr(table, i)
 
 
@@ -432,15 +444,19 @@ int __w_map_iter_next(__w_hash_table* table, int cursor):
 
 
 int __w_map_iter_key(__w_hash_table* table, int cursor):
-	__w_assert(cursor >= 0)
-	__w_assert(table.states[cursor] == 1)
+	if (cursor < 0):
+		__w_trap(c"invalid map iterator")
+	if (table.states[cursor] != 1):
+		__w_trap(c"invalid map iterator")
 	return table.keys[cursor]
 
 
 # Scalar value at the cursor's slot (for "for key, value in map").
 int __w_map_iter_value(__w_hash_table* table, int cursor):
-	__w_assert(cursor >= 0)
-	__w_assert(table.states[cursor] == 1)
+	if (cursor < 0):
+		__w_trap(c"invalid map iterator")
+	if (table.states[cursor] != 1):
+		__w_trap(c"invalid map iterator")
 	int* slot = cast(int*, __w_hash_value_addr(table, cursor))
 	return slot[0]
 
@@ -448,8 +464,10 @@ int __w_map_iter_value(__w_hash_table* table, int cursor):
 # Aggregate value: the address of the stored bytes, valid until the next
 # insertion rehashes the table.
 char* __w_map_iter_value_addr(__w_hash_table* table, int cursor):
-	__w_assert(cursor >= 0)
-	__w_assert(table.states[cursor] == 1)
+	if (cursor < 0):
+		__w_trap(c"invalid map iterator")
+	if (table.states[cursor] != 1):
+		__w_trap(c"invalid map iterator")
 	return __w_hash_value_addr(table, cursor)
 
 

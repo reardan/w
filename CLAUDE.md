@@ -44,7 +44,7 @@ natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 ./wbuild verify_x64  # same for the 64-bit target; run for codegen/word-size work
 ./wbuild verify_arm64  # same for the ARM64 target
 ./wbuild tests       # full pre-merge suite
-./wbuild update      # ONLY after verify: archives seed, promotes bin/wv2 to ./w
+./wbuild update      # ONLY after verify: archives seed, promotes the bin/wv3 fixpoint to ./w
 ./wbuild wdbg        # in-process debugger (bin/wdbg file.w)
 ./bin/wv2 repl.w -o bin/repl && ./bin/repl   # interactive REPL
 ```

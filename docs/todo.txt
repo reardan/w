@@ -10,7 +10,7 @@ current state:
 				runs compiler, grammar, lib, pointer, struct, range,
 				data-structure, import, directory, threading, hello tests
 			./wbuild update:
-				archives the current seed and promotes bin/wv2 to ./w
+				archives the current seed and promotes the bin/wv3 fixpoint to ./w
 			compiler CLI:
 				-o output path
 				usage message instead of segfaulting when no input is passed
@@ -31,6 +31,7 @@ current state:
 			new T[n] heap arrays
 			.length and .data pseudo-fields for buffers
 			bounds traps for arrays, slices and strings
+			array-to-pointer decay (T[N]/T[] pass their data pointer where T* or void* is expected)
 			UTF-8 string descriptors with default "..." literals
 			c"..." legacy C string literals
 			UTF-8 decode/encode helpers and string codepoint iteration
@@ -81,7 +82,7 @@ current state:
 			m.remove(key), s.remove(key) and s.add(key) pseudo-methods
 			m.get(key) (traps like m[key]) and m.get(key, default) pseudo-methods
 			m.add(key) / m.add(key, delta) counter accumulation from zero (integer values)
-			m[k] op= v compound assignment (key evaluated once, missing key traps)
+			m[k] op= v compound assignment (key evaluated once, missing key traps; the trap names the key)
 			m.keys(), m.values() and s.keys() insertion-order list snapshots
 			string keys compare by contents
 			for-in iteration over map keys and set members
@@ -90,6 +91,7 @@ current state:
 			list[T] typed lists with literals, indexing, push/pop and .length
 			l.insert(i, v), l.remove(i) and l.clear() pseudo-methods
 			x in l membership (content compare for char* elements)
+			runtime traps say what trapped on stderr before exit(1) (index echoes index and length; pop/min/max on empty say so)
 		type <=> json:
 			to_json(struct) / from_json(T, value) compiler-generated codecs
 			descriptors from the type table, runtime in structures/json_codec.w

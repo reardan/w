@@ -24,18 +24,6 @@ is a queue, not an archive.
   file-not-found path serializes a corrupt/uninitialized filename buffer
   into the JSON record. Fix the buffer handling in the upward-search
   error path (`compiler/compiler.w` / `compiler/diagnostics.w`).
-- **Array-to-pointer decay is a warning but generates corrupting code.**
-  Found during the buffered-getchar work (issue #113, 2026-07-09):
-  passing a fixed array (`char[8192] buf`) where a `char*` parameter is
-  expected only warns (`argument 2 type mismatch: expected 'char*', got
-  'char[] value'`) but emits the array's *descriptor address* as the
-  pointer, so the callee (here `read(2)`) overwrites the descriptor's
-  {data-pointer, length} header with payload bytes — the data pointer
-  becomes file content and the next index through the array jumps to a
-  garbage address far from the corruption site. Cost hours to trace
-  back. Either implement real decay (pass the descriptor's data
-  pointer) or promote the warning to a hard error; a warning that
-  compiles to memory corruption is the worst of both.
 - **Multi-error reporting.** The compiler stops at the first error
   (single-pass, no recovery). Documented limitation; real fix is parser
   recovery, which stays a research project. Cheap partial win: after an

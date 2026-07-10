@@ -45,7 +45,8 @@
 			"deps": ["verify"],
 			"steps": [
 				{"cmd": ["./archive.sh"]},
-				{"cmd": ["mv", "-f", "bin/wv2", "w"]}
+				{"cmd": ["cp", "bin/wv3", "w.new"]},
+				{"cmd": ["mv", "-f", "w.new", "w"]}
 			]
 		},
 		{
@@ -186,6 +187,14 @@
 			]
 		},
 		{
+			"name": "array_decay_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/array_decay_test.w", "-o", "bin/array_decay_test"]},
+				{"cmd": ["bin/array_decay_test"]}
+			]
+		},
+		{
 			"name": "string_utf8_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -234,6 +243,20 @@
 				{"cmd": ["bin/wv2", "tests/range_bounds_trap_test.w", "-o", "bin/range_bounds_trap_test"]},
 				{"cmd": ["bin/range_bounds_trap_test"], "expect_fail": true},
 				{"cmd": ["bin/wv2", "--bounds=off", "tests/range_bounds_trap_test.w", "-o", "bin/range_bounds_trap_test_off"]}
+			]
+		},
+		{
+			"name": "container_trap_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/map_trap_fixture.w", "-o", "bin/map_trap_fixture"]},
+				{"cmd": ["bin/map_trap_fixture"], "expect_fail": true, "expect_stderr": "map key not found: banana"},
+				{"cmd": ["bin/wv2", "tests/map_trap_int_key_fixture.w", "-o", "bin/map_trap_int_key_fixture"]},
+				{"cmd": ["bin/map_trap_int_key_fixture"], "expect_fail": true, "expect_stderr": "map key not found: -42"},
+				{"cmd": ["bin/wv2", "tests/list_trap_fixture.w", "-o", "bin/list_trap_fixture"]},
+				{"cmd": ["bin/list_trap_fixture"], "expect_fail": true, "expect_stderr": "list index out of range: index 5, length 2"},
+				{"cmd": ["bin/wv2", "tests/list_pop_trap_fixture.w", "-o", "bin/list_pop_trap_fixture"]},
+				{"cmd": ["bin/list_pop_trap_fixture"], "expect_fail": true, "expect_stderr": "pop on empty list"}
 			]
 		},
 		{
@@ -2264,6 +2287,14 @@
 			]
 		},
 		{
+			"name": "array_decay_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/array_decay_test.w", "-o", "bin/array_decay_64_test"]},
+				{"cmd": ["bin/array_decay_64_test"]}
+			]
+		},
+		{
 			"name": "x64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2626,6 +2657,7 @@
 				"process_64_test",
 				"stream_64_test",
 				"array_slice_string_64_test",
+				"array_decay_64_test",
 				"x64_test",
 				"x64_float_test",
 				"x64_int64_test",
@@ -2832,10 +2864,12 @@
 				"float_test",
 				"float_reference_test",
 				"array_slice_string_test",
+				"array_decay_test",
 				"string_utf8_test",
 				"grapheme_test",
 				"bounds_trap_test",
 				"range_bounds_trap_test",
+				"container_trap_test",
 				"buffer_field_assign_test",
 				"array_error_test",
 				"warning_test",

@@ -67,6 +67,17 @@ int relational_expr():
 				error(c"right operand of 'in' must be a map, set, or list")
 			if (types_compatible_with_expression(want_key_type, key_type) == 0):
 				warn_type_mismatch(c"membership key", want_key_type, key_type)
+			if (type_decays_to_pointer(want_key_type, key_type)):
+				# The key was pushed before the container's key type was
+				# known: decay the descriptor address in its slot to the
+				# data pointer. eax (the container) is saved around it.
+				push_eax()
+				stack_pos = stack_pos + 1
+				mov_eax_esp_plus((stack_pos - key_slot) << word_size_log2)
+				promote_eax()
+				store_stack_var((stack_pos - key_slot) << word_size_log2)
+				pop_eax()
+				stack_pos = stack_pos - 1
 			push_eax()
 			stack_pos = stack_pos + 1
 			int container_slot = stack_pos

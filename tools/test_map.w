@@ -35,6 +35,7 @@ void wtest_init_targets():
 	wtest_targets.push(c"type_system_warning_test")
 	wtest_targets.push(c"hash_table_test")
 	wtest_targets.push(c"hash_table_64_test")
+	wtest_targets.push(c"container_trap_test")
 	wtest_targets.push(c"string_test")
 	wtest_targets.push(c"string_64_test")
 	wtest_targets.push(c"template_string_test")
@@ -55,6 +56,8 @@ void wtest_init_targets():
 	wtest_targets.push(c"generics_inference_64_test")
 	wtest_targets.push(c"array_list_test")
 	wtest_targets.push(c"array_list_64_test")
+	wtest_targets.push(c"array_decay_test")
+	wtest_targets.push(c"array_decay_64_test")
 	wtest_targets.push(c"json_test")
 	wtest_targets.push(c"json_64_test")
 	wtest_targets.push(c"json_codec_test")
@@ -311,6 +314,7 @@ void wtest_map_structures(char* path):
 	else if (strcmp(path, c"structures/hash_table.w") == 0):
 		wtest_add(path, c"hash_table_test")
 		wtest_add(path, c"hash_table_64_test")
+		wtest_add(path, c"container_trap_test")
 	else if (strcmp(path, c"structures/array_list.w") == 0):
 		wtest_add(path, c"array_list_test")
 		wtest_add(path, c"array_list_64_test")
@@ -486,6 +490,11 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"script_mode_test")
 	else if (strcmp(path, c"tests/prelude_test.w") == 0):
 		wtest_add(path, c"prelude_test")
+	else if ((strcmp(path, c"tests/map_trap_fixture.w") == 0) | (strcmp(path, c"tests/map_trap_int_key_fixture.w") == 0) | (strcmp(path, c"tests/list_trap_fixture.w") == 0) | (strcmp(path, c"tests/list_pop_trap_fixture.w") == 0)):
+		wtest_add(path, c"container_trap_test")
+	else if (strcmp(path, c"tests/array_decay_test.w") == 0):
+		wtest_add(path, c"array_decay_test")
+		wtest_add(path, c"array_decay_64_test")
 	else if (strcmp(path, c"tests/list_methods_test.w") == 0):
 		wtest_add(path, c"list_methods_test")
 	else if (strcmp(path, c"tests/str_test.w") == 0):

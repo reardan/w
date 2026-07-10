@@ -19,13 +19,57 @@ struct __w_list:
 	char* items
 
 
-void __w_list_assert(int condition):
-	if (condition == 0):
-		exit(1)
+# Runtime trap output (issue #188): container misuse dies with a one-line
+# diagnostic on stderr instead of a silent exit(1). write() is the syscall
+# wrapper already reachable through lib.memory's import graph.
+void __w_trap_cstr(char* s):
+	int length = 0
+	while (s[length]):
+		length = length + 1
+	write(2, s, length)
+
+
+void __w_trap_int(int value):
+	char* buf = malloc(24)
+	int end = 24
+	int i = end
+	# Work with non-positive magnitudes so the minimum word needs no negation
+	int v = value
+	if (v > 0):
+		v = 0 - v
+	while (1):
+		i = i - 1
+		int q = v / 10
+		buf[i] = '0' - (v - q * 10)
+		v = q
+		if (v == 0):
+			break
+	if (value < 0):
+		i = i - 1
+		buf[i] = '-'
+	write(2, buf + i, end - i)
+	free(buf)
+
+
+void __w_trap(char* message):
+	__w_trap_cstr(message)
+	__w_trap_cstr(c"\n")
+	exit(1)
+
+
+void __w_list_index_trap(char* what, int index, int length):
+	__w_trap_cstr(what)
+	__w_trap_cstr(c": index ")
+	__w_trap_int(index)
+	__w_trap_cstr(c", length ")
+	__w_trap_int(length)
+	__w_trap_cstr(c"\n")
+	exit(1)
 
 
 __w_list* __w_list_new(int element_size):
-	__w_list_assert(element_size > 0)
+	if (element_size <= 0):
+		__w_trap(c"list element size must be positive")
 	int capacity = 8
 	__w_list* list = malloc(4 * __word_size__)
 	list.capacity = capacity
@@ -48,8 +92,10 @@ void __w_list_ensure(__w_list* list, int extra):
 # Address of element index; the compiler reads and writes elements through
 # this so l[i] is a normal lvalue of the element type.
 char* __w_list_addr(__w_list* list, int index):
-	__w_list_assert(index >= 0)
-	__w_list_assert(index < list.length)
+	if (index < 0):
+		__w_list_index_trap(c"list index out of range", index, list.length)
+	if (index >= list.length):
+		__w_list_index_trap(c"list index out of range", index, list.length)
 	return list.items + index * list.element_size
 
 
@@ -99,7 +145,8 @@ void __w_list_push_bytes(__w_list* list, char* src):
 
 
 int __w_list_pop(__w_list* list):
-	__w_list_assert(list.length > 0)
+	if (list.length == 0):
+		__w_trap(c"pop on empty list")
 	list.length = list.length - 1
 	return __w_list_load_word(list.items + list.length * list.element_size, list.element_size)
 
@@ -108,7 +155,8 @@ int __w_list_pop(__w_list* list):
 # storage stays valid until the next push reuses the slot, so callers must
 # copy before mutating the list.
 char* __w_list_pop_addr(__w_list* list):
-	__w_list_assert(list.length > 0)
+	if (list.length == 0):
+		__w_trap(c"pop on empty list")
 	list.length = list.length - 1
 	return list.items + list.length * list.element_size
 
@@ -123,8 +171,10 @@ void __w_list_clear(__w_list* list):
 
 # Removes the element at index, shifting the tail left.
 void __w_list_remove(__w_list* list, int index):
-	__w_list_assert(index >= 0)
-	__w_list_assert(index < list.length)
+	if (index < 0):
+		__w_list_index_trap(c"list remove index out of range", index, list.length)
+	if (index >= list.length):
+		__w_list_index_trap(c"list remove index out of range", index, list.length)
 	char* dst = list.items + index * list.element_size
 	int tail_bytes = (list.length - index - 1) * list.element_size
 	int i = 0
@@ -136,8 +186,10 @@ void __w_list_remove(__w_list* list, int index):
 
 # Opens a hole at index (0..length inclusive) and returns its address.
 char* __w_list_insert_slot(__w_list* list, int index):
-	__w_list_assert(index >= 0)
-	__w_list_assert(index <= list.length)
+	if (index < 0):
+		__w_list_index_trap(c"list insert index out of range", index, list.length)
+	if (index > list.length):
+		__w_list_index_trap(c"list insert index out of range", index, list.length)
 	__w_list_ensure(list, 1)
 	char* base = list.items + index * list.element_size
 	int i = (list.length - index) * list.element_size
@@ -202,7 +254,8 @@ int __w_list_iter_next(__w_list* list, int cursor):
 
 
 int __w_list_iter_value(__w_list* list, int cursor):
-	__w_list_assert(cursor < list.length)
+	if (cursor >= list.length):
+		__w_list_index_trap(c"list iterator out of range", cursor, list.length)
 	return __w_list_load_word(list.items + cursor * list.element_size, list.element_size)
 
 
@@ -330,7 +383,8 @@ int __w_list_sum(__w_list* list):
 
 
 int __w_list_min(__w_list* list):
-	__w_list_assert(list.length > 0)
+	if (list.length == 0):
+		__w_trap(c"min on empty list")
 	int best = __w_list_load_word(list.items, list.element_size)
 	int i = 1
 	while (i < list.length):
@@ -342,7 +396,8 @@ int __w_list_min(__w_list* list):
 
 
 int __w_list_max(__w_list* list):
-	__w_list_assert(list.length > 0)
+	if (list.length == 0):
+		__w_trap(c"max on empty list")
 	int best = __w_list_load_word(list.items, list.element_size)
 	int i = 1
 	while (i < list.length):
