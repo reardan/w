@@ -65,6 +65,13 @@ is a queue, not an archive.
   as a filename). Fix both: accept `wv2 <target> check` (or a
   `--arch=` flag), and infer the target from `__arch__` path segments
   and per-file markers so the hook picks the right one automatically.
+- **Library modules cannot be checked standalone.** `./bin/wv2 check
+  --json libs/standard/crypto/sha2.w` (hit while adding the TLS crypto
+  modules, #195, 2026-07-10) fails with `Failed to find a _main()
+  function` — `check` fully compiles, so a main-less library file can
+  only be checked through a program that imports it (its `_test.w`).
+  A `check` mode that stops after semantic analysis (no entry-point
+  requirement) would let hooks check library modules directly.
 
 ## Test selection (`bin/wtest`)
 
