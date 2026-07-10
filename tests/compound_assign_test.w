@@ -34,6 +34,37 @@ void test_compound_int_locals():
 	assert_equal(18, a)
 
 
+# arm64 regression for #174: arm64_add_x9_imm pre-set imm12 bit 0 in its
+# base word, so any even immediate in 1..4095 reaching it encoded
+# #(imm|1) — off by one. Odd immediates (the ±1 hot path) masked it.
+# Sweep even constants across the add/sub immediate range on locals,
+# globals and pointer targets, the operand shapes the [wsp+k] += imm
+# fast path serves.
+void test_compound_even_constants():
+	int a = 100
+	a += 2
+	assert_equal(102, a)
+	a -= 16
+	assert_equal(86, a)
+	a += 4094
+	assert_equal(4180, a)
+	a -= 4094
+	assert_equal(86, a)
+	a -= 2
+	assert_equal(84, a)
+	g_total = 50
+	g_total += 8
+	assert_equal(58, g_total)
+	g_total -= 40
+	assert_equal(18, g_total)
+	int v = 6
+	int* p = &v
+	*p += 10
+	assert_equal(16, v)
+	*p -= 4
+	assert_equal(12, v)
+
+
 void test_compound_negative_operands():
 	int d = -7
 	d /= 2

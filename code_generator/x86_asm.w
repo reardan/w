@@ -22,7 +22,9 @@ void define_asm_functions():
 	# push eax ; mov eax,[esp+8] ; mov [eax+4],ecx ; mov [eax+8],edx ; mov [eax+12],ebx ; mov [eax+16],esp ; mov [eax+20],ebp ; mov [eax+24],esi ; mov [eax+28],edi ; pop eax ; ret ;
 	sym_define_declare_global_function(c"store_context")
 	emit(20, c"\x50\x8b\x44\x24\x08\x89\x48\x04\x89\x50\x08\x89\x58\x0c\x89\x60\x10\x89\x68\x14")
-	emit(9, c"\x89\x70\x18\x89\x78\x1c\x58\xc3")
+	# the length was 9 for this 8-byte string until #170's drift test:
+	# emit() copied the terminating NUL as a stray trailing byte
+	emit(8, c"\x89\x70\x18\x89\x78\x1c\x58\xc3")
 
 	# repl_setjmp(buf): save return address, caller esp and ebp into the
 	# 12-byte buffer, then return 0. repl_longjmp resumes here returning 1.
@@ -41,10 +43,14 @@ void define_asm_functions():
 
 	# endian
 	sym_define_declare_global_function(c"swap_endian")
+	/* mov eax,[esp+4] ; bswap eax ; ret */
 	emit(7, c"\x8b\x44\x24\x04\x0f\xc8\xc3")
 
+	# the shift targeted ebx (d3 fb) until #175, returning the swapped
+	# halfword stuck in eax's high bits and clobbering ebx
 	sym_define_declare_global_function(c"swap_endian16")
-	emit(11, c"\x8b\x44\x24\x04\x0f\xc8\xb1\x10\xd3\xfb\xc3")
+	/* mov eax,[esp+4] ; bswap eax ; mov cl,0x10 ; sar eax,cl ; ret */
+	emit(11, c"\x8b\x44\x24\x04\x0f\xc8\xb1\x10\xd3\xf8\xc3")
 
 	# tcp.asm
 	sym_define_declare_global_function(c"socket_connect")

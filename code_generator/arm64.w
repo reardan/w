@@ -86,12 +86,15 @@ void arm64_str_reg_wsp(int rt, int k):
 
 
 # add x9, x9, #imm (imm may be negative); used by the [esp+k] += imm helpers.
+# The base words carry Rn=Rd=x9 only (0x129); until #174 they pre-set imm12
+# bit 0 (0x529, copied from the +1 increment), so every even immediate
+# OR'd in below encoded #(imm|1).
 void arm64_add_x9_imm(int imm):
 	if ((imm >= 0) & (imm <= 4095)):
-		a64(op(0x91, 0x000529) | (imm << 10))   # add x9,x9,#imm
+		a64(op(0x91, 0x000129) | (imm << 10))   # add x9,x9,#imm
 		return
 	if ((imm < 0) & (0 - imm <= 4095)):
-		a64(op(0xd1, 0x000529) | ((0 - imm) << 10))   # sub x9,x9,#(-imm)
+		a64(op(0xd1, 0x000129) | ((0 - imm) << 10))   # sub x9,x9,#(-imm)
 		return
 	arm64_load_scratch(10, imm)
 	a64(op(0x8b, 0x0a0129))   # add x9,x9,x10

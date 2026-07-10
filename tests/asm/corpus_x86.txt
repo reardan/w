@@ -316,11 +316,13 @@ ff21|jmp [ecx]
 c3|ret
 
 # --- swap_endian16 ---
-# NOTE: the shift targets ebx (d3 fb), not eax; no source comment to compare against.
+# NOTE: the shift targeted ebx (d3 fb) until #175 -- the copy-paste from
+# connect()'s inline byte swap left the swapped halfword stuck in eax's
+# high bits; the stub now shifts eax.
 8b442404|mov eax,[esp+4]
 0fc8|bswap eax
 b110|mov cl,0x10
-d3fb|sar ebx,cl
+d3f8|sar eax,cl
 c3|ret
 
 # --- socket_connect (no per-instruction comment; decoded from bytes) ---
