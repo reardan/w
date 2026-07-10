@@ -106,6 +106,7 @@ void __w_map_missing_key(__w_hash_table* table, int key):
 	else:
 		__w_trap_int(key)
 	__w_trap_cstr(c"\n")
+	print_stack_trace()
 	exit(1)
 
 

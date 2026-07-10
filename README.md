@@ -247,6 +247,15 @@ Toolchain beyond the compiler:
   fly W expression, `set`, `x`, `backtrace`, `list`, `info locals|args|...`,
   `registers`, `stack`. SIGSEGV and friends stop for post-mortem inspection.
   See `docs/debugging.txt` and the `debug_test` target.
+- **Runtime stack traces** (`lib/stack_trace.w`): assertion failures
+  (`lib/assert.w`) and container traps (missing map key, list index out of
+  range, pop on empty list) print a symbolized stack trace to stderr —
+  `at function (file:line)` per frame — before exiting. Programs can call
+  `print_stack_trace()` / `stack_trace_collect()` directly. Symbols come
+  from the binary's own mapped `.symtab` and DWARF `.debug_line` sections
+  (ELF targets emit them unconditionally); unwinding uses the debugger's
+  no-frame-pointer return-address scan. On targets without those sections
+  (Mach-O, PE) the trace is silently skipped. See `stack_trace_test`.
 
 ## How the bootstrap works
 

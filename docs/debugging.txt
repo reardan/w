@@ -158,3 +158,30 @@ alongside the above in #38, now their own issues):
 
 	hardware watchpoints via an out-of-process ptrace mode
 	web UI debugger
+
+Runtime stack traces (lib/stack_trace.w):
+
+	print_stack_trace() writes a symbolized trace of the calling thread
+	to stderr; stack_trace_collect/symbol/line/file expose the pieces.
+	Assertion failures (lib/assert.w) and the container runtime's trap
+	paths (structures/w_list.w, structures/hash_table.w) call it before
+	exiting, so a "map key not found" now says where.
+
+	The unwinder is the debugger's no-frame-pointer heuristic run
+	in-process: repl_setjmp supplies the W stack pointer, stack words
+	are scanned upward, and values are kept when they land inside a
+	defined function's [start, start+size) and the preceding bytes
+	decode as one of the compiler's call forms. mincore() probes every
+	page first, so the scan cannot fault.
+
+	Symbols are read from the running binary's own image: the ELF
+	writers map the whole file - .symtab, string table and DWARF
+	.debug_line included - as one PT_LOAD segment, and the ELF header
+	is found by walking pages down from a code address. Mach-O and PE
+	binaries carry no such sections yet, and arm64 pointer
+	authentication signs stacked return addresses, so those
+	configurations collect zero frames and print nothing: the trap
+	paths stay safe everywhere.
+
+	./wbuild stack_trace_test (and stack_trace_64_test) assert the
+	recovered chain against a known call layout.

@@ -182,7 +182,7 @@
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/map_trap_fixture.w", "-o", "bin/map_trap_fixture"]},
-				{"cmd": ["bin/map_trap_fixture"], "expect_fail": true, "expect_stderr": "map key not found: banana"},
+				{"cmd": ["bin/map_trap_fixture"], "expect_fail": true, "expect_stderr": ["map key not found: banana", "stack trace (most recent call first):", "at main ("]},
 				{"cmd": ["bin/wv2", "tests/map_trap_int_key_fixture.w", "-o", "bin/map_trap_int_key_fixture"]},
 				{"cmd": ["bin/map_trap_int_key_fixture"], "expect_fail": true, "expect_stderr": "map key not found: -42"},
 				{"cmd": ["bin/wv2", "tests/list_trap_fixture.w", "-o", "bin/list_trap_fixture"]},
@@ -264,7 +264,7 @@
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "deps", "tests/deps_fixture.w"], "stdout_file": "bin/deps_test.out"},
-				{"cmd": ["diff", "-u", "-", "bin/deps_test.out"], "stdin": "structures/hash_table.w\nlib/memory.w\nlib/linux.w\ncode_generator/integer.w\nlib/__arch__/x86/syscalls.w\nstructures/w_list.w\ntests/deps_fixture.w\nlib/lib.w\nlib/__arch__/x86/context.w\nlib/assert.w\nstructures/prelude.w\n"},
+				{"cmd": ["diff", "-u", "-", "bin/deps_test.out"], "stdin": "structures/hash_table.w\nlib/memory.w\nlib/linux.w\ncode_generator/integer.w\nlib/__arch__/x86/syscalls.w\nstructures/w_list.w\nlib/stack_trace.w\ntests/deps_fixture.w\nlib/lib.w\nlib/__arch__/x86/context.w\nlib/assert.w\nstructures/prelude.w\n"},
 				{"cmd": ["bin/wv2", "deps", "--json", "tests/deps_fixture.w"], "expect_stdout": ["{\"file\": \"tests/deps_fixture.w\"}", "{\"file\": \"lib/assert.w\"}", "{\"file\": \"structures/hash_table.w\"}"]},
 				{"cmd": ["bin/wv2", "deps", "tests/type_system_error_fixture.w"], "expect_fail": true, "expect_stderr": "assignment to const"},
 				{"cmd": ["bin/wv2", "deps"], "expect_fail": true, "expect_stderr": "usage: w deps"}
@@ -1432,6 +1432,7 @@
 				"result_propagate_64_test",
 				"retry_64_test",
 				"sse_64_test",
+				"stack_trace_64_test",
 				"stats_64_test",
 				"stream_64_test",
 				"string_64_test",
@@ -1713,6 +1714,7 @@
 				"sha256_test",
 				"sha2_test",
 				"sse_test",
+				"stack_trace_test",
 				"stats_test",
 				"str_test",
 				"stream_test",
@@ -2438,6 +2440,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/sse_test.w", "-o", "bin/sse_test"]},
 				{"cmd": ["bin/sse_test"]}
+			]
+		},
+		{
+			"name": "stack_trace_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/stack_trace_test.w", "-o", "bin/stack_trace_64_test"]},
+				{"cmd": ["bin/stack_trace_64_test"]}
+			]
+		},
+		{
+			"name": "stack_trace_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/stack_trace_test.w", "-o", "bin/stack_trace_test"]},
+				{"cmd": ["bin/stack_trace_test"]}
 			]
 		},
 		{
