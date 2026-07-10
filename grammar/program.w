@@ -24,23 +24,10 @@ int parse_constant_default():
 	int value = 0
 	if (accept(c"-")):
 		negative = 1
-	# char literal e.g. 'c'
-	if ((token[0] == 39) & (token[1] != 0) & (token[1] != 92) &
-			(token[2] == 39) & (token[3] == 0)):
-		value = token[1]
-	# escaped char literal e.g. '\n'
-	else if ((token[0] == 39) & (token[1] == 92) &
-			(token[3] == 39) & (token[4] == 0)):
-		int c = token[2]
-		if (c == 'n'):
-			c = 10
-		else if (c == 't'):
-			c = 9
-		else if (c == 'r'):
-			c = 13
-		else if (c == '0'):
-			c = 0
-		value = c
+	# char literal e.g. 'c', '\n' or '\x41'; grammar/string_literal.w
+	# decodes and validates the token
+	if (token[0] == 39):
+		value = char_literal_value()
 	else if ((token[0] == '0') & (token[1] == 'x')):
 		value = from_hex(token + 2)
 	else if (('0' <= token[0]) & (token[0] <= '9')):
