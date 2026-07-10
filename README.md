@@ -152,10 +152,13 @@ Implemented and covered by tests:
 - Expressions: full C-style operator set — arithmetic, shifts, relational
   (with chaining), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
   address/deref, compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`,
-  `|=`, `^=`, `<<=`, `>>=`; integer, float and pointer scalar targets — map
-  index and struct targets are rejected), `[]` indexing, typed buffer slicing (`start:end`), struct
+  `|=`, `^=`, `<<=`, `>>=`; integer, float and pointer scalar targets,
+  including map index targets `m[k] += v` with the key evaluated once —
+  struct targets are rejected), `[]` indexing, typed buffer slicing (`start:end`), struct
   field access, method-call sugar (`p.move()` -> `point_move(&p, ...)`),
-  map/set indexing and membership with `in`, `list[T]` indexing,
+  map/set indexing and membership with `in`, counter-style
+  `m.add(key)`/`m.add(key, delta)` accumulating integer map values from
+  zero for missing keys, `list[T]` indexing,
   `l.push(v)`/`l.pop()` and container `.length`, explicit `cast(T, expr)`,
   postfix `?` error propagation on the generic `wresult[T]` result type
   (unwrap the payload, or return the error to the caller; see

@@ -748,7 +748,7 @@
 				{
 					"cmd": ["bin/wv2", "tests/compound_assign_map_error_fixture.w", "-o", "bin/compound_assign_map_error_fixture"],
 					"expect_fail": true,
-					"expect_stderr": "compound assignment is not supported on map or set index targets"
+					"expect_stderr": "compound assignment is not supported on struct values"
 				},
 				{
 					"cmd": ["bin/wv2", "tests/compound_assign_struct_error_fixture.w", "-o", "bin/compound_assign_struct_error_fixture"],
@@ -1104,6 +1104,11 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/map_set_builtin_test.w", "-o", "bin/map_set_builtin_test"]},
 				{"cmd": ["bin/map_set_builtin_test"]},
+				{
+					"cmd": ["bin/wv2", "tests/map_add_error_fixture.w", "-o", "bin/map_add_error_fixture"],
+					"expect_fail": true,
+					"expect_stderr": "map add requires an integer value type"
+				},
 				{
 					"cmd": ["bin/wv2", "tests/map_value_array_error_fixture.w", "-o", "bin/map_value_array_error_fixture"],
 					"expect_fail": true,

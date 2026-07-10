@@ -357,3 +357,119 @@ void test_set_iterates_in_insertion_order():
 			assert_strings_equal(c"pecan", member)
 		step = step + 1
 	assert_equal(3, step)
+
+
+void test_map_compound_assignment_ops():
+	map[char*, int] m = new map[char*, int]
+	m[c"n"] = 10
+	m[c"n"] += 5
+	assert_equal(15, m[c"n"])
+	m[c"n"] -= 3
+	assert_equal(12, m[c"n"])
+	m[c"n"] *= 2
+	assert_equal(24, m[c"n"])
+	m[c"n"] /= 5
+	assert_equal(4, m[c"n"])
+	m[c"n"] %= 3
+	assert_equal(1, m[c"n"])
+	m[c"n"] <<= 4
+	assert_equal(16, m[c"n"])
+	m[c"n"] >>= 2
+	assert_equal(4, m[c"n"])
+	m[c"n"] |= 3
+	assert_equal(7, m[c"n"])
+	m[c"n"] &= 6
+	assert_equal(6, m[c"n"])
+	m[c"n"] ^= 5
+	assert_equal(3, m[c"n"])
+	assert_equal(1, m.length)
+
+
+int compound_key_calls
+int compound_key_value
+
+
+int compound_next_key():
+	compound_key_calls = compound_key_calls + 1
+	return compound_key_value
+
+
+void test_map_compound_assignment_key_evaluated_once():
+	map[int, int] m = new map[int, int]
+	m[7] = 1
+	compound_key_calls = 0
+	compound_key_value = 7
+	m[compound_next_key()] += 2
+	assert_equal(1, compound_key_calls)
+	assert_equal(3, m[7])
+
+
+void test_map_compound_assignment_yields_stored_value():
+	map[int, int] m = new map[int, int]
+	m[1] = 2
+	int got = m[1] += 3
+	assert_equal(5, got)
+	assert_equal(5, m[1])
+
+
+void test_map_compound_assignment_rhs_reads_same_map():
+	map[int, int] m = new map[int, int]
+	m[1] = 10
+	m[2] = 4
+	m[1] += m[2]
+	assert_equal(14, m[1])
+	m[1] += m[1]
+	assert_equal(28, m[1])
+
+
+void test_map_compound_assignment_string_keys():
+	map[string, int] m = new map[string, int]
+	string a = s"alpha"
+	string b = s"alpha"
+	m[a] = 9
+	m[b] += 3
+	assert_equal(12, m[a])
+	assert_equal(1, m.length)
+
+
+void test_map_compound_assignment_keeps_insertion_position():
+	map[int, int] m = new map[int, int]
+	m[7] = 70
+	m[3] = 30
+	m[7] += 1
+	int step = 0
+	for int k in m:
+		if (step == 0):
+			assert_equal(7, k)
+		if (step == 1):
+			assert_equal(3, k)
+		step = step + 1
+	assert_equal(2, step)
+
+
+void test_map_add_counts_from_zero():
+	map[char*, int] counts = new map[char*, int]
+	counts.add(c"apple")
+	counts.add(c"apple", 4)
+	counts.add(c"pear", 2)
+	assert_equal(5, counts[c"apple"])
+	assert_equal(2, counts[c"pear"])
+	assert_equal(2, counts.length)
+
+
+void test_map_add_returns_updated_value():
+	map[int, int] m = new map[int, int]
+	assert_equal(3, m.add(9, 3))
+	assert_equal(5, m.add(9, 2))
+	assert_equal(4, m.add(9, -1))
+
+
+void test_map_add_survives_growth():
+	# 100 inserts through add force rehashes; counts must accumulate and
+	# freshly claimed slots must start from zero.
+	map[int, int] m = new map[int, int]
+	for int i in range(100):
+		m.add(i % 10)
+	assert_equal(10, m.length)
+	assert_equal(10, m[0])
+	assert_equal(10, m[9])
