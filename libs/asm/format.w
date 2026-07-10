@@ -48,11 +48,19 @@ char* asm_fmt_size_keyword(int size):
 char* asm_fmt_mem(int arch, asm_operand* op):
 	char* inner = c""
 	int wrote = 0
-	if (op.base >= 0):
-		inner = asm_reg_name(arch, op.base, 4)
+	# Address registers are the arch's pointer width: 64-bit on x64.
+	int addr_size = 4
+	if (arch == ASM_ARCH_X64()):
+		addr_size = 8
+	if (op.base == ASM_BASE_RIP()):
+		# x64 RIP-relative base (mod=0 rm=5); prints as [rip+disp].
+		inner = c"rip"
+		wrote = 1
+	else if (op.base >= 0):
+		inner = asm_reg_name(arch, op.base, addr_size)
 		wrote = 1
 	if (op.index >= 0):
-		char* idx = asm_reg_name(arch, op.index, 4)
+		char* idx = asm_reg_name(arch, op.index, addr_size)
 		char* term = strjoin(idx, strjoin(c"*", itoa(op.scale)))
 		if (wrote):
 			inner = strjoin(inner, strjoin(c"+", term))
@@ -119,6 +127,9 @@ char* asm_fmt_operand(asm_insn* insn, asm_operand* op, int has_mem):
 		return body
 	if (op.kind == ASM_OP_IMM()):
 		char* body = asm_fmt_num(op.imm)
+		if (op.size == 8):
+			# 64-bit immediate (movabs): value carried as imm_hi:imm.
+			body = asm_hex_min64(op.imm_hi, op.imm)
 		# push imm8/imm32 is the one form that shows a size keyword on a
 		# lone immediate; pushw pins its width via the mnemonic instead.
 		if (strcmp(insn.mnemonic, c"push") == 0):

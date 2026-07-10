@@ -23,10 +23,43 @@ struct asm_x86_dec:
 	char* bytes
 	int length
 	int pos
-	int mode        # operand word size (4 = x86)
-	int opsize      # 2 when 0x66 seen, else mode
+	int mode        # operand word size (4 = x86, 8 = x64)
+	int opsize      # operand size in bytes for the current instruction
 	int rep         # 0xf2 / 0xf3 mandatory-prefix byte, or 0
 	int seg         # segment-override byte, or 0
+	int pfx66       # 1 when the 0x66 prefix was seen (SSE mandatory prefix)
+	int rex         # x64 REX prefix byte (0x40-0x4f), or 0
+
+
+# REX bit accessors: W selects 64-bit operand size; R/X/B extend the
+# ModRM reg, SIB index and ModRM rm-or-base register numbers to 8-15.
+int asm_x86_rex_w(asm_x86_dec* d):
+	return (d.rex >> 3) & 1
+
+
+int asm_x86_rex_r(asm_x86_dec* d):
+	return (d.rex >> 2) & 1
+
+
+int asm_x86_rex_x(asm_x86_dec* d):
+	return (d.rex >> 1) & 1
+
+
+int asm_x86_rex_b(asm_x86_dec* d):
+	return d.rex & 1
+
+
+# The ModRM reg field, extended by REX.R in x64.
+int asm_x86_reg_field(asm_x86_dec* d, int modrm):
+	return ((modrm >> 3) & 7) | (asm_x86_rex_r(d) << 3)
+
+
+# push/pop/near-call/near-jmp default to 64-bit operand size in x64
+# regardless of REX.W (only a 0x66 prefix shrinks them to 16-bit).
+int asm_x86_stack_opsize(asm_x86_dec* d):
+	if (d.mode == 8 & d.pfx66 == 0):
+		return 8
+	return d.opsize
 
 
 int asm_x86_u8(asm_x86_dec* d):
@@ -92,8 +125,10 @@ void asm_x86_set_imm(asm_operand* op, int value, int size):
 void asm_x86_decode_rm(asm_x86_dec* d, int modrm, asm_operand* rm, int rm_class, int rm_size):
 	int mod = (modrm >> 6) & 3
 	int rm_field = modrm & 7
+	int rex_b = asm_x86_rex_b(d)
+	int rex_x = asm_x86_rex_x(d)
 	if (mod == 3):
-		asm_x86_set_reg(rm, rm_class, rm_field, rm_size)
+		asm_x86_set_reg(rm, rm_class, rm_field | (rex_b << 3), rm_size)
 		return
 	rm.kind = ASM_OP_MEM()
 	rm.size = rm_size
@@ -106,22 +141,27 @@ void asm_x86_decode_rm(asm_x86_dec* d, int modrm, asm_operand* rm, int rm_class,
 		# SIB byte
 		int sib = asm_x86_u8(d)
 		int scale = 1 << ((sib >> 6) & 3)
-		int index = (sib >> 3) & 7
-		int base = sib & 7
-		if (index != 4):
-			rm.index = index
+		int index_lo = (sib >> 3) & 7
+		int base_lo = sib & 7
+		# index field 4 with REX.X clear means "no index" (rsp cannot be an
+		# index); r12 (4 | REX.X) IS a valid index.
+		if (index_lo != 4 | rex_x != 0):
+			rm.index = index_lo | (rex_x << 3)
 			rm.scale = scale
-		if (base == 5 & mod == 0):
+		if (base_lo == 5 & mod == 0):
+			# no base: absolute disp32 (SIB form) — same on x86 and x64.
 			rm.disp = asm_x86_u32(d)
 			rm.disp_size = 4
 		else:
-			rm.base = base
+			rm.base = base_lo | (rex_b << 3)
 	else if (rm_field == 5 & mod == 0):
-		# disp32 absolute (no base)
+		# mod=0 rm=5: [rip+disp32] on x64, absolute [disp32] on x86.
+		if (d.mode == 8):
+			rm.base = ASM_BASE_RIP()
 		rm.disp = asm_x86_u32(d)
 		rm.disp_size = 4
 	else:
-		rm.base = rm_field
+		rm.base = rm_field | (rex_b << 3)
 	if (mod == 1):
 		rm.disp = asm_x86_s8(d)
 		rm.disp_size = 1
@@ -134,7 +174,7 @@ void asm_x86_decode_rm(asm_x86_dec* d, int modrm, asm_operand* rm, int rm_class,
 # current operand size.
 void asm_x86_modrm_gp(asm_x86_dec* d, asm_operand* reg, asm_operand* rm):
 	int modrm = asm_x86_u8(d)
-	asm_x86_set_reg(reg, ASM_RCLASS_GP(), (modrm >> 3) & 7, d.opsize)
+	asm_x86_set_reg(reg, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), d.opsize)
 	asm_x86_decode_rm(d, modrm, rm, ASM_RCLASS_GP(), d.opsize)
 
 
@@ -274,10 +314,29 @@ char* asm_x86_sse_alu(int rep, int op):
 	return 0
 
 
+char* asm_x86_grp8_mnemonic(int ext);
+
 # Decode a 0f-prefixed opcode. Returns bytes consumed for the whole
 # instruction, or 0 if unrecognized (caller emits .byte).
 int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 	int op = asm_x86_u8(d)
+
+	# syscall (0f 05)
+	if (op == 0x05):
+		insn.mnemonic = c"syscall"
+		return d.pos - start
+
+	# grp8 bit-test with imm8 (0f ba): bt/bts/btr/btc r/m, imm8
+	if (op == 0xba):
+		int modrm = asm_x86_u8(d)
+		int ext = (modrm >> 3) & 7
+		char* g8 = asm_x86_grp8_mnemonic(ext)
+		if (cast(int, g8) == 0):
+			return 0
+		insn.mnemonic = g8
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), d.opsize)
+		asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
+		return d.pos - start
 
 	# Jcc rel32
 	if (op >= 0x80 & op <= 0x8f):
@@ -295,7 +354,7 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 	# bswap r32
 	if (op >= 0xc8 & op <= 0xcf):
 		insn.mnemonic = c"bswap"
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), op - 0xc8, d.opsize)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0xc8) | (asm_x86_rex_b(d) << 3), d.opsize)
 		return d.pos - start
 
 	# movzx / movsx r32, r/m8|r/m16
@@ -308,7 +367,7 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		else:
 			insn.mnemonic = c"movsx"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (modrm >> 3) & 7, d.opsize)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), d.opsize)
 		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP(), src_size)
 		return d.pos - start
 
@@ -325,20 +384,25 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		else:
 			insn.mnemonic = c"ucomiss"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), (modrm >> 3) & 7, 16)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
 		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM(), 16)
 		return d.pos - start
 
-	# movd xmm, r/m32  (66 0f 6e)  and  movd r/m32, xmm  (66 0f 7e)
-	if ((op == 0x6e | op == 0x7e) & d.opsize == 2):
+	# movd/movq xmm, r/m (66 0f 6e) and r/m, xmm (66 0f 7e). REX.W selects
+	# the 64-bit (movq) form and widens the GP operand.
+	if ((op == 0x6e | op == 0x7e) & d.pfx66):
+		int gsize = 4
 		insn.mnemonic = c"movd"
+		if (asm_x86_rex_w(d)):
+			gsize = 8
+			insn.mnemonic = c"movq"
 		int modrm = asm_x86_u8(d)
 		asm_operand xmm
 		asm_operand_clear(&xmm)
-		asm_x86_set_reg(&xmm, ASM_RCLASS_XMM(), (modrm >> 3) & 7, 16)
+		asm_x86_set_reg(&xmm, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
 		asm_operand rm
 		asm_operand_clear(&rm)
-		asm_x86_decode_rm(d, modrm, &rm, ASM_RCLASS_GP(), 4)
+		asm_x86_decode_rm(d, modrm, &rm, ASM_RCLASS_GP(), gsize)
 		if (op == 0x6e):
 			insn.op1 = xmm
 			insn.op2 = rm
@@ -347,30 +411,50 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 			insn.op2 = xmm
 		return d.pos - start
 
-	# movsd store: f2 0f 11  xmm -> r/m
-	if (op == 0x11 & d.rep == 0xf2):
-		insn.mnemonic = c"movsd"
+	# movss/movsd load: f3/f2 0f 10  r/m -> xmm
+	if (op == 0x10 & (d.rep == 0xf2 | d.rep == 0xf3)):
+		if (d.rep == 0xf2):
+			insn.mnemonic = c"movsd"
+		else:
+			insn.mnemonic = c"movss"
+		int modrm = asm_x86_u8(d)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM(), 16)
+		return d.pos - start
+
+	# movss/movsd store: f3/f2 0f 11  xmm -> r/m
+	if (op == 0x11 & (d.rep == 0xf2 | d.rep == 0xf3)):
+		if (d.rep == 0xf2):
+			insn.mnemonic = c"movsd"
+		else:
+			insn.mnemonic = c"movss"
 		int modrm = asm_x86_u8(d)
 		asm_operand xmm
 		asm_operand_clear(&xmm)
-		asm_x86_set_reg(&xmm, ASM_RCLASS_XMM(), (modrm >> 3) & 7, 16)
+		asm_x86_set_reg(&xmm, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_XMM(), 16)
 		insn.op2 = xmm
 		return d.pos - start
 
-	# cvtsi2ss xmm, r/m32  (f3 0f 2a)
-	if (op == 0x2a & d.rep == 0xf3):
-		insn.mnemonic = c"cvtsi2ss"
+	# cvtsi2ss/cvtsi2sd xmm, r/m (f3/f2 0f 2a). REX.W widens the GP source.
+	if (op == 0x2a & (d.rep == 0xf3 | d.rep == 0xf2)):
+		if (d.rep == 0xf2):
+			insn.mnemonic = c"cvtsi2sd"
+		else:
+			insn.mnemonic = c"cvtsi2ss"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), (modrm >> 3) & 7, 16)
-		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP(), 4)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP(), d.opsize)
 		return d.pos - start
 
-	# cvttss2si r32, xmm  (f3 0f 2c)
-	if (op == 0x2c & d.rep == 0xf3):
-		insn.mnemonic = c"cvttss2si"
+	# cvttss2si/cvttsd2si r32, xmm (f3/f2 0f 2c). REX.W widens the GP dest.
+	if (op == 0x2c & (d.rep == 0xf3 | d.rep == 0xf2)):
+		if (d.rep == 0xf2):
+			insn.mnemonic = c"cvttsd2si"
+		else:
+			insn.mnemonic = c"cvttss2si"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (modrm >> 3) & 7, 4)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), d.opsize)
 		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM(), 16)
 		return d.pos - start
 
@@ -379,7 +463,7 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 	if (cast(int, sse) != 0):
 		insn.mnemonic = sse
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), (modrm >> 3) & 7, 16)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
 		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM(), 16)
 		return d.pos - start
 
@@ -440,17 +524,27 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	dec.length = length
 	dec.pos = 0
 	dec.mode = mode
-	dec.opsize = mode
+	# x64's default operand size is 32-bit (REX.W promotes it to 64); x86's
+	# is its word size. 0x66 makes it 16-bit either way.
+	if (mode == 8):
+		dec.opsize = 4
+	else:
+		dec.opsize = mode
 	dec.rep = 0
 	dec.seg = 0
+	dec.pfx66 = 0
+	dec.rex = 0
 	asm_x86_dec* d = &dec
 
-	# Prefixes
+	# Prefixes. A REX prefix (0x40-0x4f, x64 only) must be the last prefix
+	# before the opcode, so consuming it ends the scan; REX.W then overrides
+	# the operand size to 64-bit.
 	int scanning = 1
 	while (scanning):
 		int p = asm_x86_peek(d)
 		if (p == 0x66):
 			dec.opsize = 2
+			dec.pfx66 = 1
 			dec.pos = dec.pos + 1
 		else if (p == 0x67):
 			dec.pos = dec.pos + 1
@@ -460,6 +554,12 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		else if (p == 0x64 | p == 0x65):
 			dec.seg = p
 			dec.pos = dec.pos + 1
+		else if (mode == 8 & p >= 0x40 & p <= 0x4f):
+			dec.rex = p
+			dec.pos = dec.pos + 1
+			if ((p >> 3) & 1):
+				dec.opsize = 8
+			scanning = 0
 		else:
 			scanning = 0
 
@@ -490,7 +590,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		if (col == 0):
 			# r/m8, r8
 			int modrm = asm_x86_u8(d)
-			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP(), (modrm >> 3) & 7, 1)
+			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), 1)
 			asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), 1)
 			insn.mnemonic = mnemonic
 			insn.length = d.pos - start
@@ -533,15 +633,16 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		insn.length = d.pos - start
 		return insn.length
 
-	# push/pop r32 (0x50-0x5f)
+	# push/pop r32 (0x50-0x5f). In x64 these default to 64-bit operand size
+	# (no REX.W needed); REX.B extends the register to r8-r15.
 	if (op >= 0x50 & op <= 0x57):
 		insn.mnemonic = c"push"
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), op - 0x50, d.opsize)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0x50) | (asm_x86_rex_b(d) << 3), asm_x86_stack_opsize(d))
 		insn.length = d.pos - start
 		return insn.length
 	if (op >= 0x58 & op <= 0x5f):
 		insn.mnemonic = c"pop"
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), op - 0x58, d.opsize)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0x58) | (asm_x86_rex_b(d) << 3), asm_x86_stack_opsize(d))
 		insn.length = d.pos - start
 		return insn.length
 
@@ -605,7 +706,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		if (op == 0x84):
 			size = 1
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP(), (modrm >> 3) & 7, size)
+		asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), size)
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), size)
 		insn.length = d.pos - start
 		return insn.length
@@ -621,7 +722,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		asm_operand_clear(&reg)
 		asm_operand rm
 		asm_operand_clear(&rm)
-		asm_x86_set_reg(&reg, ASM_RCLASS_GP(), (modrm >> 3) & 7, size)
+		asm_x86_set_reg(&reg, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), size)
 		asm_x86_decode_rm(d, modrm, &rm, ASM_RCLASS_GP(), size)
 		if (op == 0x88 | op == 0x89):
 			insn.op1 = rm
@@ -646,21 +747,33 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 			insn.mnemonic = c"nop"
 		else:
 			insn.mnemonic = c"xchg"
-			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), op - 0x90, d.opsize)
+			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0x90) | (asm_x86_rex_b(d) << 3), d.opsize)
 			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP(), 0, d.opsize)
 		insn.length = d.pos - start
 		return insn.length
 
-	# cdq (0x99)
+	# cdq (0x99) / cqo (0x99 with REX.W)
 	if (op == 0x99):
-		insn.mnemonic = c"cdq"
+		if (asm_x86_rex_w(d)):
+			insn.mnemonic = c"cqo"
+		else:
+			insn.mnemonic = c"cdq"
+		insn.length = d.pos - start
+		return insn.length
+
+	# cwde (0x98) / cdqe (0x98 with REX.W)
+	if (op == 0x98):
+		if (asm_x86_rex_w(d)):
+			insn.mnemonic = c"cdqe"
+		else:
+			insn.mnemonic = c"cwde"
 		insn.length = d.pos - start
 		return insn.length
 
 	# mov r8, imm8 (0xb0-0xb7)
 	if (op >= 0xb0 & op <= 0xb7):
 		insn.mnemonic = c"mov"
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), op - 0xb0, 1)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0xb0) | (asm_x86_rex_b(d) << 3), 1)
 		asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
 		insn.length = d.pos - start
 		return insn.length
@@ -668,8 +781,12 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	# mov r32, imm32 (0xb8-0xbf)
 	if (op >= 0xb8 & op <= 0xbf):
 		insn.mnemonic = c"mov"
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), op - 0xb8, d.opsize)
-		if (d.opsize == 2):
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0xb8) | (asm_x86_rex_b(d) << 3), d.opsize)
+		if (d.opsize == 8):
+			# movabs r64, imm64: low then high 32-bit halves.
+			asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 8)
+			insn.op2.imm_hi = asm_x86_u32(d)
+		else if (d.opsize == 2):
 			asm_x86_set_imm(&insn.op2, asm_x86_u16(d), 2)
 		else:
 			asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
@@ -758,7 +875,20 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 			return asm_x86_unknown(insn, bytes)
 		insn.mnemonic = mnemonic
 		int size = d.opsize
+		# call/jmp/push through r/m default to 64-bit in x64; inc/dec honor
+		# REX.W via opsize.
+		if (ext >= 2):
+			size = asm_x86_stack_opsize(d)
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), size)
+		insn.length = d.pos - start
+		return insn.length
+
+	# movsxd r64, r/m32 (0x63, x64 only): sign-extend a 32-bit r/m to 64.
+	if (op == 0x63 & d.mode == 8):
+		insn.mnemonic = c"movsxd"
+		int modrm = asm_x86_u8(d)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), d.opsize)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP(), 4)
 		insn.length = d.pos - start
 		return insn.length
 
@@ -780,6 +910,19 @@ char* asm_x86_grp3_mnemonic(int ext):
 		return c"div"
 	if (ext == 7):
 		return c"idiv"
+	return 0
+
+
+# 0f ba /ext bit-test-with-imm8 group (bt/bts/btr/btc use ext 4/5/6/7).
+char* asm_x86_grp8_mnemonic(int ext):
+	if (ext == 4):
+		return c"bt"
+	if (ext == 5):
+		return c"bts"
+	if (ext == 6):
+		return c"btr"
+	if (ext == 7):
+		return c"btc"
 	return 0
 
 
