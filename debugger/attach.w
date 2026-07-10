@@ -11,8 +11,10 @@ the self-hosting model and needs none of that machinery.
 Two levels of capability:
 
   * Raw mode (always): registers, memory (x), stack (st), breakpoints,
-    single-step and continue, all in absolute target addresses. Needs no
-    source and works whenever ptrace attach succeeds.
+    single-step and continue, and disassembly (disas, by absolute
+    address or from the stopped ip; bytes read via PTRACE_PEEKDATA),
+    all in absolute target addresses. Needs no source and works
+    whenever ptrace attach succeeds.
 
   * Symbolized mode (when a source file is given and validates): function
     names, file:line and source listing for addresses inside the
@@ -37,6 +39,7 @@ import lib.line_edit
 import debugger.lines
 import debugger.symbols
 import debugger.breakpoints
+import debugger.disas
 
 
 # --- ptrace request numbers (classic ABI, identical on i386 and x86-64) ---
@@ -208,6 +211,21 @@ int at_bp_add(int addr):
 	save_int(cast(char*, attach_bp_armed + i * 4), 0)
 	at_bp_arm(i)
 	return i
+
+
+# Byte reader for the shared disassembly code (debugger/disas.w):
+# PTRACE_PEEKDATA through at_read_byte, with an armed attach-mode
+# breakpoint's remembered original byte substituted for its int3 patch.
+# Returns -1 when the address is unreadable.
+int at_disas_read(int addr):
+	int bp = at_bp_find(addr)
+	if (bp >= 0):
+		if (load_int(cast(char*, attach_bp_armed + bp * 4))):
+			return load_int(cast(char*, attach_bp_orig + bp * 4))
+	int v = at_read_byte(addr)
+	if (attach_read_ok == 0):
+		return -1
+	return v
 
 
 # --- address mapping and symbolization ---
@@ -416,6 +434,7 @@ void at_help():
 	println(c"  c/continue  si/step  detach  q/quit  kill")
 	println(c"  b/break <function | line | file:line | 0xADDR>   d/delete <n>")
 	println(c"  r/registers  x <0xADDR> [count]  st/stack  bt/backtrace")
+	println(c"  disas [addr | function] [count]   disas on|off (context at stops)")
 	println(c"  l/line (where)  i registers | breakpoints | functions")
 
 
@@ -523,6 +542,8 @@ void at_report_stop(int status):
 			free(d)
 			print(c" ")
 			at_print_location(ip - 1)
+			if (dbg_disas_auto):
+				dbg_disas_show_context(ip - 1)
 			return;
 		at_print_location(ip)
 		return;
@@ -572,6 +593,10 @@ void at_step():
 	if (bp >= 0):
 		at_bp_arm(bp)
 	at_report_stop(st)
+	# Single-stepping is instruction-level work: always show the
+	# surrounding instructions, like the in-process debugger's 'si'.
+	if (attach_alive):
+		dbg_disas_show_context(at_reg(at_off_ip()))
 
 
 void at_detach():
@@ -630,6 +655,9 @@ void at_command_loop():
 			at_delete_command(arg)
 		else if ((strcmp(command, c"bt") == 0) | (strcmp(command, c"backtrace") == 0)):
 			at_backtrace()
+		else if ((strcmp(command, c"disas") == 0) | (strcmp(command, c"disassemble") == 0)):
+			at_getregs()
+			dbg_disas_command(at_reg(at_off_ip()), arg)
 		else if ((strcmp(command, c"l") == 0) | (strcmp(command, c"line") == 0) | (strcmp(command, c"where") == 0)):
 			at_where()
 		else if ((strcmp(command, c"i") == 0) | (strcmp(command, c"info") == 0)):
@@ -690,6 +718,12 @@ int wdbg_attach_run(int pid, int have_symbols):
 
 	if (have_symbols):
 		at_calibrate()
+
+	# Disassembly reads the target through ptrace; symbol annotation is
+	# available exactly when the source validated against the process.
+	dbg_disas_read_fn = cast(int, at_disas_read)
+	dbg_disas_symbols = attach_symbolized
+	dbg_disas_delta = attach_delta
 
 	print(c"attached to pid ")
 	char* pd = itoa(pid)

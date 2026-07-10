@@ -52,6 +52,12 @@ Inspection:
 	r / registers     the trapped register file
 	l / line          current location (function, file:line)
 	list [line]       source listing around the stop
+	disas [t] [n]     disassemble n instructions at t (an address or a
+	                  function name; no target: the current function,
+	                  with => marking the stop). Every 'si' stop also
+	                  shows the surrounding instructions automatically;
+	                  'disas on' extends that to every stop, 'disas off'
+	                  turns it back off
 	i locals|args|breakpoints|registers|functions|files
 
 Stepping is driven by the x86 trap flag in the signal frame's eflags:
@@ -86,6 +92,7 @@ import debugger.locals
 import debugger.breakpoints
 import debugger.watchpoints
 import debugger.eval
+import debugger.disas
 import debugger.attach
 
 
@@ -667,6 +674,7 @@ void dbg_help():
 	println(c"  x <addr | name> [count]   bt/backtrace   st/stack")
 	println(c"  f/frame [n]   up   down   (select the frame p/set/x/info use)")
 	println(c"  r/registers   l/line   list [line]")
+	println(c"  disas [addr | function] [count]   disas on|off (context at stops)")
 	println(c"  i locals | args | breakpoints | registers | functions | files")
 	println(c"an empty line repeats the previous command")
 
@@ -751,6 +759,8 @@ void wdbg_command_loop(int context, int stop_addr):
 			dbg_announce_location(dbg_sel_pc(stop_addr))
 		else if (strcmp(command, c"list") == 0):
 			dbg_list_command(dbg_sel_pc(stop_addr), arg)
+		else if ((strcmp(command, c"disas") == 0) | (strcmp(command, c"disassemble") == 0)):
+			dbg_disas_command(dbg_sel_pc(stop_addr), arg)
 		else if ((strcmp(command, c"b") == 0) | (strcmp(command, c"break") == 0) | (strcmp(command, c"tb") == 0) | (strcmp(command, c"tbreak") == 0)):
 			int temp = 0
 			if ((command[0] == 't') & (command[1] == 'b')):
@@ -838,6 +848,8 @@ void wdbg_command_loop(int context, int stop_addr):
 								dbg_frames_compute(context, stop_addr)
 								dbg_announce_location(stop_addr)
 								dbg_print_source_at(stop_addr)
+								if (dbg_disas_auto):
+									dbg_disas_show_context(stop_addr)
 								continue
 			dbg_prepare_resume(context, stop_addr, resume_mode)
 			free(command)
@@ -983,6 +995,8 @@ void wdbg_trap(int sig, int context):
 			if (bp_is_temp(bp)):
 				bp_delete(bp)
 			dbg_print_source_at(addr)
+			if (dbg_disas_auto):
+				dbg_disas_show_context(addr)
 			wdbg_stop_loop(context, addr)
 			return;
 		# A compiled-in 'debugger' statement (or --break_start/--break_end)
@@ -992,6 +1006,8 @@ void wdbg_trap(int sig, int context):
 		free(h)
 		dbg_announce_location(addr)
 		dbg_print_source_at(addr)
+		if (dbg_disas_auto):
+			dbg_disas_show_context(addr)
 		wdbg_stop_loop(context, addr)
 		return;
 
@@ -1008,6 +1024,8 @@ void wdbg_trap(int sig, int context):
 						dbg_watch_report(w)
 						dbg_announce_location(eip)
 						dbg_print_source_at(eip)
+						if (dbg_disas_auto):
+							dbg_disas_show_context(eip)
 						wdbg_stop_loop(context, eip)
 						return;
 	if (dbg_step_mode == dbg_step_none()):
@@ -1052,6 +1070,11 @@ void wdbg_trap(int sig, int context):
 			return;
 		dbg_announce_location(eip)
 		dbg_print_source_at(eip)
+		# Instruction stepping means instruction-level display: 'si' stops
+		# always show the surrounding instructions; other stops only after
+		# 'disas on' (source-level stepping stays quiet by default).
+		if ((dbg_step_mode == dbg_step_insn()) | dbg_disas_auto):
+			dbg_disas_show_context(eip)
 		wdbg_stop_loop(context, eip)
 		return;
 	ctx_set_trap_flag(context)
@@ -1086,6 +1109,8 @@ void wdbg_fatal(int sig, int context):
 	put_char(10)
 	dbg_announce_location(ctx_eip(context))
 	dbg_print_source_at(ctx_eip(context))
+	if (dbg_disas_auto):
+		dbg_disas_show_context(ctx_eip(context))
 	wdbg_command_loop(context, ctx_eip(context))
 	println(c"cannot resume after a fatal signal: exiting")
 	exit(1)
@@ -1291,6 +1316,10 @@ int wdbg_main(int argc, int argv):
 	bp_init()
 	dbg_memory_init()
 	dbg_rearm_bp = -1
+	# Disassembly reads the debuggee's code directly; the compiler's own
+	# symbol table (still loaded from the in-process compile) symbolizes it.
+	dbg_disas_read_fn = cast(int, dbg_disas_read_local)
+	dbg_disas_symbols = 1
 
 	# SA_NODEFER (0x40000000) keeps SIGTRAP deliverable inside the
 	# handler, so 'debugger' statements reached through the print/eval
