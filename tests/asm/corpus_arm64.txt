@@ -168,7 +168,7 @@ e00300cb|neg x0,x0
 880f40f9|ldr x8,[x28,#24]
 800b40f9|ldr x0,[x28,#16]
 810740f9|ldr x1,[x28,#8]
-820340f9|ldr x2,[x28,#0]
+820340f9|ldr x2,[x28]
 010000d4|svc #0
 c0035fd6|ret
 #
@@ -180,7 +180,7 @@ c0035fd6|ret
 820f40f9|ldr x2,[x28,#24]
 830b40f9|ldr x3,[x28,#16]
 840740f9|ldr x4,[x28,#8]
-850340f9|ldr x5,[x28,#0]
+850340f9|ldr x5,[x28]
 010000d4|svc #0
 c0035fd6|ret
 #
@@ -197,7 +197,7 @@ c0035fd6|ret
 #
 # ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (syscall_pipe,
 # darwin only) ====
-890340f9|ldr x9,[x28,#0]
+890340f9|ldr x9,[x28]
 500580d2|movz x16,#42
 011000d4|svc #0x80
 63000054|b.cc .+12
@@ -227,7 +227,7 @@ c0035fd6|ret
 # ====
 890340f9|ldr x9,[x28]
 3e01c1da|pacia x30,x9
-3e0100f9|str x30,[x9,#0]
+3e0100f9|str x30,[x9]
 3c0500f9|str x28,[x9,#8]
 3d0900f9|str x29,[x9,#16]
 000080d2|movz x0,#0
@@ -235,9 +235,9 @@ c0035fd6|ret
 #
 # ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (repl_longjmp)
 # ====
-800340f9|ldr x0,[x28,#0]
+800340f9|ldr x0,[x28]
 890740f9|ldr x9,[x28,#8]
-3e0140f9|ldr x30,[x9,#0]
+3e0140f9|ldr x30,[x9]
 3e11c1da|autia x30,x9
 3c0540f9|ldr x28,[x9,#8]
 3d0940f9|ldr x29,[x9,#16]
@@ -246,7 +246,7 @@ c0035fd6|ret
 # ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (gen_switch)
 # ====
 890740f9|ldr x9,[x28,#8]
-8a0340f9|ldr x10,[x28,#0]
+8a0340f9|ldr x10,[x28]
 fe23c1da|paciza x30
 9e8f1ff8|str x30,[x28,#-8]!
 3c0100f9|str x28,[x9]

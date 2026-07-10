@@ -1,7 +1,8 @@
 # Assembler / Disassembler Libraries (x86, x64, arm64)
 
-Status: **x86 (32-bit) complete: foundations + disassembler + assembler**
-(issues #164, #165, #166). `libs/asm/` has the insn model, byte buffer,
+Status: **x86 (32-bit) + arm64 (A64) complete: foundations + disassembler
++ assembler** (issues #164, #165, #166, #168). `libs/asm/` has the insn
+model, byte buffer,
 labels/fixups, register tables, hex + corpus utilities, cross-arch ELF
 section reader (#164), the x86-32 decoder + Intel formatter (#165), and
 the encoder + text parser (#166). Coverage:
@@ -18,8 +19,42 @@ the encoder + text parser (#166). Coverage:
   (disp32 for small offsets) round-trip.
 
 `asm_seed_gate` keeps the whole library seed-compilable. Epic: #163;
-remaining phases (x64 #167, arm64 #168, wdbg #169, stubgen #170) tracked
-in its sub-issues.
+remaining phases (x64 #167, wdbg #169, stubgen #170) tracked in its
+sub-issues.
+
+**arm64 (A64) complete: decoder + formatter + encoder + text parser
+(issue #168).** `libs/asm/arm64_decode.w` decodes one little-endian 32-bit
+word (bitfield-driven, a separate decoder family from the x86 byte stream)
+into the arch-neutral `asm_insn`; `arm64_format.w` renders canonical A64
+text (`arm64_text.w` parses it back); `arm64_encode.w` emits the word.
+Coverage:
+
+- `asm_arm64_test` — the 151-entry `corpus_arm64.txt` round-trips
+  decode→format (all 151) and parse→encode (all 151 byte-exact), plus a
+  golden decode→encode identity over an arm64 self-host build
+  (`bin/wv2_arm64`, built host-side; no qemu since nothing executes):
+  1984 functions / 309077 instructions, **zero `.word` unknowns**, and
+  decode→encode reproduces every word. Inline string-literal and
+  literal-pool data is recognized via the compiler's branch-over-data idiom
+  (`bl`/`b` over padded bytes, `ldr [pc,#8]` + `b`) and skipped.
+- Of the 309077 instructions, 309037 are re-encoded *semantically* from
+  decoded operands; **40 are recognized-but-opaque** (16 `madd`/`msub` with
+  a live accumulator, 24 scalar-FP `fp` ops) — decoded to their real
+  mnemonic with the raw word stashed in `asm_insn.raw` and re-emitted
+  verbatim, so identity still holds byte-for-byte. These opaque forms format
+  as a bare mnemonic without operand detail; modeling their operands (and
+  the bitmask/bitfield-immediate, ccmp, csel-family forms the compiler does
+  not exercise in its own code) is a follow-up if a richer arm64 disassembly
+  view (wdbg #169) needs it.
+- The `binutils-aarch64-linux-gnu` recommendation was dropped from
+  `AGENTS.md`: this disassembler covers the compiler's arm64 output
+  host-side with zero unknown opcodes, no cross toolchain required.
+
+Corpus correction made while implementing #168: zero-offset loads/stores
+were harvested inconsistently (`ldr x2,[x28,#0]` vs `ldr x9,[x28]`), so a
+single word could not round-trip through one formatter. Canonicalized on
+the objdump-style `[Xn]` (omit `#0`), matching the entry-stub
+`ldr x13,[x12]`; the 7 `,#0]` entries were corrected.
 
 ## Why
 
@@ -232,10 +267,11 @@ Epic: **Asm: in-house assembler/disassembler libraries (x86, x64, arm64)**
    - [ ] REX, extended registers, RIP-relative, 64-bit operand sizes
    - [ ] mode-64 decode + encode, golden test on the x64 self-host build
    - [ ] differential vs `x64.w` emissions and `x64_asm.w` stubs
-5. **Asm: arm64 support** — depends on 1 only (parallel with 2-4).
-   - [ ] A64 word decode/encode for the `arm64.w`/`arm64_asm.w` subset
-   - [ ] golden test on the arm64 self-host build (host-side, no qemu)
-   - [ ] drop the `binutils-aarch64-linux-gnu` recommendation in AGENTS.md
+5. **Asm: arm64 support** — depends on 1 only (parallel with 2-4). **Done
+   (#168).**
+   - [x] A64 word decode/encode for the `arm64.w`/`arm64_asm.w` subset
+   - [x] golden test on the arm64 self-host build (host-side, no qemu)
+   - [x] drop the `binutils-aarch64-linux-gnu` recommendation in AGENTS.md
 6. **wdbg: disassembly view** — depends on 2 (x86) then 4/5 per arch.
    - [ ] `disas [addr|fn] [count]` command, in-process mode
    - [ ] instruction context at breakpoint/step stops
