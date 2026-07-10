@@ -1,3 +1,5 @@
+# expect_fail
+# expect_stderr: cannot initialize fixed-array field in constructor
 struct holder_with_array:
 	int[2] values
 

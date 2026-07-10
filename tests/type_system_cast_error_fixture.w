@@ -1,3 +1,5 @@
+# expect_fail
+# expect_stderr: cannot cast an address to a sub-word integer
 import lib.lib
 
 

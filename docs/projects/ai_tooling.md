@@ -67,6 +67,15 @@ The MVP described here has landed:
   Python and was ported to W once `lib/process.w` landed.)
 - README agent tooling guidance and regression targets (`check_json_test`,
   `wtest_map_test`, `mcp_test`) are wired into `./wbuild tests`.
+- `tools/wfixture.w` builds to `bin/wfixture` (2026-07): pure
+  compile-diagnostic fixture targets (`warning_test`,
+  `type_system_error_test`, `type_system_warning_test`,
+  `array_error_test`, `buffer_field_assign_test`) single-source their
+  frozen message text as `# expect_stderr:` / `# reject_stderr:` /
+  `# expect_fail` directives in the fixture headers, LLVM-lit style,
+  instead of `expect_stderr` fields on `build.json` steps; substring
+  semantics match wexec's exactly. Targets that also run the produced
+  binary keep their step-field expectations.
 - `lib/testing.w` test discovery is a compiler-synthesized static
   registry (`compiler/test_registry.w`, issue #147): `__w_test_main`
   calls each defined zero-argument `test_*` function in definition

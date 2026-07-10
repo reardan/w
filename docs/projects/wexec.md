@@ -57,6 +57,14 @@ sequentially within a target; the first failing target stops new
 launches, in-flight targets drain, and the run exits 1 (make without
 `-k`).
 
+For pure compile-diagnostic fixture targets (`warning_test`,
+`type_system_*_test`, `array_error_test`, `buffer_field_assign_test`)
+the `expect_stderr`/`reject_stderr`/`expect_fail` payloads moved out of
+the manifest into the fixtures themselves as `# expect_stderr:`-style
+header directives; the manifest step is a single `bin/wfixture`
+invocation (`tools/wfixture.w`, same substring semantics as the step
+fields it replaces).
+
 ## Caching
 
 A target that declares `"inputs"` (files, or directory prefixes ending

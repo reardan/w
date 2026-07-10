@@ -71,7 +71,15 @@ Other useful targets:
 
 There is no separate linter or formatter. "Lint" is the compiler's own
 warnings (type mismatches, spaces-instead-of-tabs, missing trailing newline),
-asserted by `./wbuild warning_test`.
+asserted by `./wbuild warning_test`. Compile-diagnostic fixtures carry
+their expected messages as `# expect_stderr:` / `# reject_stderr:` /
+`# expect_fail` directive lines in their own header comments;
+`bin/wfixture` (`tools/wfixture.w`) compiles each fixture and asserts
+the directives against the captured stderr and exit status, so the
+frozen message text lives next to the code that provokes it instead of
+in `build.json`. (A `<fixture>.w.expect` sidecar with the same
+directive lines is the fallback for a fixture whose exact bytes are the
+test; none needs it today.)
 
 `./wbuild` bootstraps `tools/wexec.w` (a manifest-driven executor written
 in W) and runs targets from `build.json` — `./wbuild --list` shows them

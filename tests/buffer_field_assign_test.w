@@ -1,3 +1,5 @@
+# expect_fail
+# expect_stderr: cannot assign to read-only buffer field
 import lib.lib
 
 

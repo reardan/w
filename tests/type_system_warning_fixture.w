@@ -1,3 +1,5 @@
+# expect_stderr: warning: initialization type mismatch: expected 'binary_op_warning*', got 'function'
+# expect_stderr: warning: assignment type mismatch: expected 'binary_op_warning*', got 'function'
 import lib.lib
 
 

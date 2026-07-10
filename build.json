@@ -261,76 +261,23 @@
 		},
 		{
 			"name": "buffer_field_assign_test",
-			"deps": ["wv2"],
+			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{
-					"cmd": ["bin/wv2", "tests/buffer_field_assign_test.w", "-o", "bin/buffer_field_assign_test"],
-					"expect_fail": true,
-					"expect_stderr": "cannot assign to read-only buffer field"
-				}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/buffer_field_assign_test.w"]}
 			]
 		},
 		{
 			"name": "array_error_test",
-			"deps": ["wv2"],
+			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{
-					"cmd": ["bin/wv2", "tests/array_param_error_fixture.w", "-o", "bin/array_param_error_fixture"],
-					"expect_fail": true,
-					"expect_stderr": "fixed array parameter is not implemented; use T[] instead"
-				},
-				{
-					"cmd": ["bin/wv2", "tests/array_union_error_fixture.w", "-o", "bin/array_union_error_fixture"],
-					"expect_fail": true,
-					"expect_stderr": "fixed array fields are not implemented in unions"
-				},
-				{
-					"cmd": ["bin/wv2", "tests/array_constructor_error_fixture.w", "-o", "bin/array_constructor_error_fixture"],
-					"expect_fail": true,
-					"expect_stderr": "cannot initialize fixed-array field in constructor"
-				}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/array_param_error_fixture.w", "tests/array_union_error_fixture.w", "tests/array_constructor_error_fixture.w"]}
 			]
 		},
 		{
 			"name": "warning_test",
-			"deps": ["wv2"],
+			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{
-					"cmd": ["bin/wv2", "tests/warning_fixture.w", "-o", "bin/warning_fixture"],
-					"expect_stderr": [
-						"warning: assignment type mismatch: expected 'char*', got 'int*'",
-						"warning: assignment type mismatch: expected 'char*', got 'char**'",
-						"warning: initialization type mismatch: expected 'int*', got 'char*'",
-						"warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'int*'",
-						"warning: return type mismatch: expected 'char*', got 'int*'",
-						"warning: assignment type mismatch: expected 'pair', got 'single'",
-						"warning: assignment type mismatch: expected 'char*', got 'int'",
-						"warning: assignment type mismatch: expected 'int', got 'char*'",
-						"warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'int'",
-						"warning: return type mismatch: expected 'char*', got 'int'",
-						"warning: initialization type mismatch: expected 'char*', got 'function'",
-						"warning: assignment type mismatch: expected 'int', got 'function'",
-						"warning: line indented with spaces instead of tabs",
-						"warning: file does not end with a newline"
-					]
-				},
-				{
-					"cmd": ["bin/wv2", "tests/warning_clean_fixture.w", "-o", "bin/warning_clean_fixture"],
-					"reject_stderr": "warning:"
-				},
-				{
-					"cmd": ["bin/wv2", "tests/import_alias_warning_fixture.w", "-o", "bin/import_alias_warning_fixture"],
-					"expect_stderr": "warning: unqualified use of 'subfolder_value' from module imported as 'sub'"
-				},
-				{
-					"cmd": ["bin/wv2", "tests/string_char_warning_fixture.w", "-o", "bin/string_char_warning_fixture"],
-					"expect_stderr": [
-						"warning: return type mismatch: expected 'char*', got 'string value'",
-						"warning: initialization type mismatch: expected 'char*', got 'string value'",
-						"warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'string value'",
-						"warning: assignment type mismatch: expected 'char*', got 'string value'"
-					]
-				}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w"]}
 			]
 		},
 		{
@@ -717,41 +664,16 @@
 		},
 		{
 			"name": "type_system_error_test",
-			"deps": ["wv2"],
+			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{
-					"cmd": ["bin/wv2", "tests/type_system_error_fixture.w", "-o", "bin/type_system_error_fixture"],
-					"expect_fail": true,
-					"expect_stderr": "assignment to const"
-				},
-				{
-					"cmd": ["bin/wv2", "tests/type_system_const_pointer_error_fixture.w", "-o", "bin/type_system_const_pointer_error_fixture"],
-					"expect_fail": true,
-					"expect_stderr": "assignment to const"
-				},
-				{
-					"cmd": ["bin/wv2", "tests/type_system_cast_error_fixture.w", "-o", "bin/type_system_cast_error_fixture"],
-					"expect_fail": true,
-					"expect_stderr": "cannot cast an address to a sub-word integer"
-				},
-				{
-					"cmd": ["bin/wv2", "tests/type_system_function_cast_error_fixture.w", "-o", "bin/type_system_function_cast_error_fixture"],
-					"expect_fail": true,
-					"expect_stderr": "cannot cast an address to a sub-word integer"
-				}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/type_system_error_fixture.w", "tests/type_system_const_pointer_error_fixture.w", "tests/type_system_cast_error_fixture.w", "tests/type_system_function_cast_error_fixture.w"]}
 			]
 		},
 		{
 			"name": "type_system_warning_test",
-			"deps": ["wv2"],
+			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{
-					"cmd": ["bin/wv2", "tests/type_system_warning_fixture.w", "-o", "bin/type_system_warning_fixture"],
-					"expect_stderr": [
-						"warning: initialization type mismatch: expected 'binary_op_warning*', got 'function'",
-						"warning: assignment type mismatch: expected 'binary_op_warning*', got 'function'"
-					]
-				}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/type_system_warning_fixture.w"]}
 			]
 		},
 		{
@@ -1527,6 +1449,15 @@
 			]
 		},
 		{
+			"name": "wfixture",
+			"deps": ["wv2"],
+			"inputs": ["tools/wfixture.w"],
+			"outputs": ["bin/wfixture"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/wfixture.w", "-o", "bin/wfixture"]}
+			]
+		},
+		{
 			"name": "wtest_map_test",
 			"deps": ["wtest"],
 			"steps": [
@@ -1548,6 +1479,8 @@
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "file_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tools/wexec.w", "tests/wexec/good.json"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec_test\n"},
+				{"cmd": ["bin/wtest", "changed", "tools/wfixture.w"], "stdout_file": "bin/wtest_map.out"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "buffer_field_assign_test\narray_error_test\nwarning_test\ntype_system_error_test\ntype_system_warning_test\n"},
 				{"cmd": ["bin/wtest", "changed", "build.json"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec_test\ntests\n"},
 				{"cmd": ["bin/wtest", "changed", "tests/import_alias_warning_fixture.w"], "stdout_file": "bin/wtest_map.out"},
