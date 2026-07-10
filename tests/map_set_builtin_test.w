@@ -473,3 +473,95 @@ void test_map_add_survives_growth():
 	assert_equal(10, m.length)
 	assert_equal(10, m[0])
 	assert_equal(10, m[9])
+
+
+void test_map_keys_insertion_order():
+	map[char*, int] m = new map[char*, int]
+	m[c"zebra"] = 1
+	m[c"apple"] = 2
+	m[c"mango"] = 3
+	list[char*] keys = m.keys()
+	assert_equal(3, keys.length)
+	assert_strings_equal(c"zebra", keys[0])
+	assert_strings_equal(c"apple", keys[1])
+	assert_strings_equal(c"mango", keys[2])
+
+
+void test_map_keys_sort_for_ranked_output():
+	map[char*, int] counts = new map[char*, int]
+	counts.add(c"pear", 3)
+	counts.add(c"apple", 2)
+	counts.add(c"apple")
+	list[char*] words = counts.keys()
+	words.sort()
+	assert_strings_equal(c"apple", words[0])
+	assert_strings_equal(c"pear", words[1])
+	int total = 0
+	for char* w in words:
+		total = total + counts[w]
+	assert_equal(6, total)
+
+
+void test_map_values_snapshot():
+	map[int, int] m = new map[int, int]
+	m[7] = 70
+	m[3] = 30
+	list[int] vals = m.values()
+	assert_equal(2, vals.length)
+	assert_equal(70, vals[0])
+	assert_equal(30, vals[1])
+	assert_equal(100, vals.sum())
+	# a later map write must not affect the snapshot
+	m[7] = 1
+	assert_equal(70, vals[0])
+
+
+void test_map_values_struct_elements():
+	map[int, kv_test_point] m = new map[int, kv_test_point]
+	kv_test_point p
+	p.x = 1
+	p.y = 2
+	m[5] = p
+	p.x = 3
+	p.y = 4
+	m[9] = p
+	list[kv_test_point] pts = m.values()
+	assert_equal(2, pts.length)
+	assert_equal(1, pts[0].x)
+	assert_equal(2, pts[0].y)
+	assert_equal(3, pts[1].x)
+	assert_equal(4, pts[1].y)
+
+
+void test_map_keys_string_contents():
+	map[string, int] m = new map[string, int]
+	string a = s"beta"
+	string b = s"alpha"
+	m[a] = 1
+	m[b] = 2
+	list[string] keys = m.keys()
+	assert_equal(2, keys.length)
+	assert_equal(1, m[keys[0]])
+	assert_equal(2, m[keys[1]])
+
+
+void test_set_keys_snapshot():
+	set[int] s = set[int]{9, 4, 7}
+	list[int] members = s.keys()
+	members.sort()
+	assert_equal(3, members.length)
+	assert_equal(4, members[0])
+	assert_equal(7, members[1])
+	assert_equal(9, members[2])
+
+
+void test_map_keys_empty_and_after_remove():
+	map[int, int] m = new map[int, int]
+	assert_equal(0, m.keys().length)
+	for int i in range(40):
+		m[i] = i
+	m.remove(0)
+	list[int] keys = m.keys()
+	assert_equal(39, keys.length)
+	assert_equal(1, keys[0])
+	assert_equal(39, keys[38])

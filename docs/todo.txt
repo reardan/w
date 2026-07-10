@@ -82,6 +82,7 @@ current state:
 			m.get(key) (traps like m[key]) and m.get(key, default) pseudo-methods
 			m.add(key) / m.add(key, delta) counter accumulation from zero (integer values)
 			m[k] op= v compound assignment (key evaluated once, missing key traps)
+			m.keys(), m.values() and s.keys() insertion-order list snapshots
 			string keys compare by contents
 			for-in iteration over map keys and set members
 			for k, v in map two-variable iteration
