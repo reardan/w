@@ -645,6 +645,15 @@ int main(int argc, int argv):
 		define_asm_functions_x64()
 	else:
 		define_asm_functions()
+	# The container runtime next, exactly like link_impl and wdbg_main:
+	# built-in list/map/set lower to __w_list_*/__w_hash_* helper calls,
+	# so the first 'new list[T]' at the prompt dies in sym_get_value
+	# (with a misleading message naming the lookahead token) unless the
+	# helpers are preloaded here too. This runs once at startup, before
+	# the entry loop's repl_setjmp checkpoint exists, so per-entry
+	# rollback in repl_compile_entry never touches it.
+	import_module(c"structures.hash_table")
+	import_module(c"structures.w_list")
 	import_module(c"lib.lib")
 	import_module(c"lib.assert")
 
@@ -693,9 +702,15 @@ int main(int argc, int argv):
 	repl_entry = string_new()
 	# Each entry gets its own staging file: generic definitions record
 	# (file, offset) spans that later entries re-parse on instantiation,
-	# so an entry's text must survive subsequent entries.
+	# so an entry's text must survive subsequent entries. The path is
+	# also pid-tagged so two REPL processes running concurrently (e.g.
+	# repl_test and repl_test_x64 under a parallel test runner) never
+	# clobber each other's staged sources.
 	int entry_file_counter = 0
 	char* entry_path = 0
+	char* entry_pid_digits = itoa(getpid())
+	char* entry_pid_prefix = strjoin(c"/tmp/w_repl_entry_", entry_pid_digits)
+	free(entry_pid_digits)
 	while (1):
 		if (repl_read_entry() == 0):
 			println(c"")
@@ -716,9 +731,11 @@ int main(int argc, int argv):
 		if (entry_path != 0):
 			free(entry_path)
 		char* entry_digits = itoa(entry_file_counter)
-		char* entry_prefix = strjoin(c"/tmp/w_repl_entry_", entry_digits)
-		entry_path = strjoin(entry_prefix, c".w")
+		char* entry_prefix = strjoin(entry_pid_prefix, c"_")
+		char* entry_prefix_n = strjoin(entry_prefix, entry_digits)
+		entry_path = strjoin(entry_prefix_n, c".w")
 		free(entry_prefix)
+		free(entry_prefix_n)
 		free(entry_digits)
 		entry_file_counter = entry_file_counter + 1
 		int out = create_file(entry_path, 511)
