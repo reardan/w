@@ -1,4 +1,4 @@
-# Plan: native HTTPS client stack (HTTP/1.1, SSE, TLS 1.3) in pure W
+# Plan: native HTTPS stack (HTTP/1.1, SSE, TLS 1.3 client + server) in pure W
 
 Tracking issue: reardan/w#155. Origin: w-private#16 (libcurl FFI proposal,
 closed in favor of an in-house stdlib implementation) and w-private#18 §1.
@@ -36,6 +36,13 @@ This explicitly overrides two earlier non-goals:
   "Add TLS via C library binding".
 
 The security trade-off is acknowledged in "Security posture" below.
+
+**Scope update (2026-07): both TLS roles.** The stack covers the server
+side as well — `tls_accept` terminating TLS 1.3 for W-native servers — so
+plan 08's `web/http_server.w` can serve `https://` without FFI, and so the
+test suite can interop-test our client against our own server with no
+external tooling. The HTTP server *framework* stays in plan 08; this plan
+owns the TLS server role plus a thin HTTPS server example.
 
 ## Target area
 
@@ -79,9 +86,20 @@ Suggested modules:
 
 ## Protocol and algorithm choices (keep the surface minimal)
 
-- **TLS 1.3 only** (RFC 8446), client only. No TLS 1.2, no renegotiation, no
-  compression, no session resumption/0-RTT in MVP. TLS 1.3's handshake is
-  substantially simpler and every relevant API endpoint supports it.
+- **TLS 1.3 only** (RFC 8446), client and server roles. No TLS 1.2, no
+  renegotiation, no compression, no session resumption/0-RTT in MVP. TLS
+  1.3's handshake is substantially simpler and every relevant API endpoint
+  supports it.
+- **Server credentials**: ECDSA P-256 certificate keys only in MVP, loaded
+  from PEM (PKCS#8 or SEC1). Server-side CertificateVerify signing uses
+  deterministic ECDSA (RFC 6979) so there is no nonce-generation footgun,
+  with constant-time scalar multiplication. No RSA server keys — signing
+  RSA safely (blinding, constant-time modexp with a private modulus) is a
+  much bigger surface than P-256, and we mint our own certs.
+- **No HelloRetryRequest in MVP**: the server requires an X25519
+  `key_share` in the initial ClientHello (every mainstream client sends
+  one) and answers a missing one with a `handshake_failure` alert. HRR is
+  a documented follow-up, not silently absent.
 - **Single mandatory cipher suite**: `TLS_CHACHA20_POLY1305_SHA256`.
   ChaCha20-Poly1305 is constant-time in pure software without lookup tables,
   unlike AES-GCM which needs table-based or carry-less-multiply
@@ -136,8 +154,16 @@ baseline. Tests must run on x86, x64, and arm64 targets.
 
 Homegrown TLS is a real risk and we accept it deliberately:
 
-- Client-only scope: we protect the confidentiality/integrity of outbound
-  API calls; we are not building a server exposed to hostile clients.
+- The client role protects the confidentiality/integrity of outbound API
+  calls. The server role **is** exposed to potentially hostile clients and
+  holds to a stricter bar: a hard cap on every peer-supplied length field,
+  strict bounded parsing (no allocation driven past those caps), checked-in
+  negative fixtures for malformed/truncated/oversized handshake messages,
+  and fail-closed alerts on any parse or MAC error.
+- The server private key is the one long-lived signing secret in the
+  stack: deterministic nonces (RFC 6979), constant-time scalar
+  multiplication, and the key never leaves its buffer (no logging, no
+  error-message echo).
 - Certificate validation is **on by default**: chain building to a system
   trust store (`/etc/ssl/certs/ca-certificates.crt` and common alternates),
   validity dates, hostname verification against SAN dNSName entries
@@ -185,9 +211,14 @@ Homegrown TLS is a real risk and we accept it deliberately:
 `net/tls.w`
 
 - `tls_conn* tls_connect(int sockfd, char* server_name, tls_config* cfg)`
+- `tls_conn* tls_accept(int sockfd, tls_server_config* cfg)` — server-side
+  handshake on an accepted TCP connection; same `tls_read`/`tls_write`/
+  `tls_close` surface afterwards.
 - `int tls_read(tls_conn* c, char* buf, int len)` / `tls_write(...)`
 - `void tls_close(tls_conn* c)` (sends close_notify, frees keys)
 - `tls_config`: trust store path override, insecure_skip_verify (tests only)
+- `tls_server_config`: certificate chain PEM path, ECDSA P-256 private key
+  PEM path (PKCS#8 or SEC1)
 
 `net/dns.w`
 
@@ -258,10 +289,13 @@ final API; TLS slots in underneath without changing callers.
 - `crypto/bignum.w`: modexp (Montgomery or simple square-and-multiply —
   public keys only), mod-inverse, comparison.
 - `crypto/rsa_verify.w`: PKCS#1 v1.5 with strict DigestInfo match, RSA-PSS.
-- `crypto/ecdsa_p256.w`: verification only (no signing, no secret handling).
+- `crypto/ecdsa_p256.w`: verification, plus deterministic signing
+  (RFC 6979) for the server role — signing handles the one long-lived
+  secret, so constant-time scalar multiplication is required there.
 - `net/x509.w`: DER parser (definite-length only), certificate fields
   (validity, subject/SAN, key usage, basic constraints), PEM decode, trust
-  store loader, chain building and signature verification, hostname match.
+  store loader, chain building and signature verification, hostname match;
+  private-key loading (PKCS#8/SEC1 EC keys) for the server role.
 - Tests: parse fixture chains checked into `tests/` (Let's Encrypt +
   DigiCert real chains, expired/self-signed/wrong-host negative fixtures),
   Wycheproof RSA/ECDSA verify subsets.
@@ -277,27 +311,47 @@ final API; TLS slots in underneath without changing callers.
   being present** (test-only harness dependency, not a runtime one);
   negative tests: bad Finished MAC, wrong cert host, tampered record.
 
-### Phase 8: integration + hardening
+### Phase 8: TLS 1.3 server role
+
+- `tls_accept` in `net/tls.w`: server handshake state machine reusing the
+  record layer, transcript hash, and key schedule from phase 7; ECDSA
+  CertificateVerify signing; certificate/key loading via `tls_server_config`.
+- Missing X25519 key_share → `handshake_failure` alert (no HRR in MVP).
+- Tests: RFC 8448 trace exercised from the server side; loopback
+  handshake of our client against our server (no external tools); interop
+  against `openssl s_client` gated on the tool being present; negative
+  tests (tampered Finished, oversized/truncated handshake messages, wrong
+  cipher suite offer).
+
+### Phase 9: integration + hardening
 
 - Wire `net/tls.w` under `web/http_client.w` for `https://` URLs.
-- End-to-end: streaming SSE over TLS against the local openssl-gated
-  fixture; timeout coverage (connect, TLS handshake, header, idle-stream);
-  memory ownership audit (every buffer freed on every error path).
-- A small `examples/web/https_get.w` demo replacing the curl usage pattern.
+- End-to-end: streaming SSE over TLS against the loopback W server and the
+  openssl-gated fixture; timeout coverage (connect, TLS handshake, header,
+  idle-stream); memory ownership audit (every buffer freed on every error
+  path).
+- A small `examples/web/https_get.w` demo replacing the curl usage
+  pattern, and an `examples/web/https_server.w` demo serving a request
+  over `tls_accept` (plan 08's `http_server` framework composes with this
+  later).
 - Downstream (w-private, tracked there): swap wharness's `wh_api_send` to
   the native client with SSE streaming and retry-after-aware backoff;
   retire the curl subprocess path once stable on both platforms.
 
 ## Deliberate non-goals (MVP)
 
-- No TLS 1.2, session resumption, 0-RTT, client certificates, or ALPN
-  (add ALPN only if HTTP/2 ever happens).
+- No TLS 1.2, session resumption, 0-RTT, client certificates (mTLS, either
+  role), or ALPN (add ALPN only if HTTP/2 ever happens).
 - No AES-GCM until a needed endpoint demands it.
+- No HelloRetryRequest: server requires an X25519 key_share in the first
+  ClientHello.
+- No RSA server keys — ECDSA P-256 only for our own certificates.
 - No CRL/OCSP revocation checking.
 - No proxy support (`CONNECT`) in the first pass; the API leaves room.
 - No gzip/deflate response decoding — send `Accept-Encoding: identity`
   until plan 07 lands inflate.
-- No HTTP server work (plan 08 keeps that).
+- No HTTP server framework work (plan 08 keeps that); this plan ships only
+  the TLS server role and a thin HTTPS example on raw sockets.
 
 ## Build/test wiring
 
@@ -320,5 +374,9 @@ final API; TLS slots in underneath without changing callers.
   off exponentially with jitter otherwise; `request-id` is readable from
   response headers.
 - All crypto primitives pass their published vectors in `./wbuild tests`.
-- Negative TLS tests (bad MAC, bad cert, bad host) fail closed.
+- A W server accepts a TLS 1.3 connection from our own client on loopback
+  (and from `openssl s_client` when the tool is present), serves a
+  request, and closes cleanly with close_notify.
+- Negative TLS tests (bad MAC, bad cert, bad host, malformed/oversized
+  handshake messages against the server) fail closed.
 - wharness can drop the `curl >= 8.3` subprocess transport entirely.

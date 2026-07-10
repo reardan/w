@@ -36,6 +36,6 @@ Linux-first syscalls, no package manager today, no closures, and tests driven by
 8. `08_networking_web.md` - URLs, HTTP clients/servers, TLS, email, IP helpers.
 9. `09_concurrency.md` - schedulers, queues, futures, threads/process workers.
 10. `10_cli_ui_devtools.md` - argparse, terminal UI, testing, debug/profile tools.
-11. `11_native_http_tls.md` - pure-W HTTPS client: HTTP/1.1, SSE, DNS, TLS 1.3,
-    X.509, and the crypto primitives (supersedes the FFI/TLS non-goals in
-    plans 07 and 08).
+11. `11_native_http_tls.md` - pure-W HTTPS stack: HTTP/1.1, SSE, DNS, TLS 1.3
+    client + server roles, X.509, and the crypto primitives (supersedes the
+    FFI/TLS non-goals in plans 07 and 08).
