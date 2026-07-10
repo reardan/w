@@ -4,7 +4,9 @@ Design and implementation plan for descriptive statistics in the W stdlib:
 batch functions over `list[float]`, a streaming accumulator, and order
 statistics (median/quantiles/mode), all portable to every target.
 
-Status: **planning** — no code yet. This doc is the design.
+Status: **implemented** (`lib/stats.w`, `stats_test`/`stats_64_test`).
+The Phase 0 spike results are recorded under Phasing; the float64 tier
+and the other Follow-ups remain open.
 
 Motivation: nothing statistics-adjacent exists in the tree. `lib/math.w` is
 integer-only (`min`/`max`/`abs`/`sign`/`gcd`/`pow`), the built-in list
@@ -187,18 +189,28 @@ provides `float_bits`/`float_from_bits`/`fis_nan`/`fabs`/`fsqrt` (plus
 `graphics/math.w` delegates to it. `lib/stats.w` imports `lib.fmath`
 instead of carrying private copies.
 
-**Phase 0 — throwaway spike, both targets.** Pin the four undocumented or
-untested behaviors the design leans on, before any real code:
+**Phase 0 — throwaway spike, both targets (done).** Pin the four
+undocumented or untested behaviors the design leans on, before any real
+code. Results, identical on x86 and x64:
 
-1. NaN ordering direction for `<`/`>` (float.md documents only `==`) —
-   load-bearing for min/max updates and heapsort's sift compares.
-2. `l[i] = f` float STORE round-trip — the repo only tests float list
-   reads (`tests/list_builtin_test.w:112-118`).
-3. `for float x in xs` binding (nice-to-have; indexed loops are the
-   fallback and the default).
-4. `int ddof = 0` default through a direct call and through method sugar.
+1. NaN ordering for `<`/`>`/`<=`/`>=` (float.md documents only `==`):
+   **all false in both directions** (IEEE-unordered), so a NaN never
+   replaces a running min/max and heapsort places it arbitrarily —
+   consistent with the GIGO policy.
+2. `l[i] = f` float STORE round-trips bit-exactly (the repo only tested
+   float list reads, `tests/list_builtin_test.w:112-118`).
+3. `for float x in xs` binds correctly (the module still uses indexed
+   loops for symmetry with the stores).
+4. `int ddof = 0` defaults work through a direct call AND through method
+   sugar (`a.variance()`).
 
-**Phase 1 — core module + wiring.** `stats_acc` and batch aggregates
+One non-spike gotcha found during implementation: `&` does not
+short-circuit, so a guarded index like
+`(child + 1 < n) & (xs[child] < xs[child + 1])` still evaluates the
+out-of-bounds load and trips the list bounds trap — the heapsort sift
+uses `&&`.
+
+**Phase 1 — core module + wiring (done).** `stats_acc` and batch aggregates
 (float utilities come from `lib.fmath`, Phase 0.5). Colocated `lib/stats_test.w` (the dominant convention —
 `lib/format_test.w`, `lib/time_test.w`, ...): `import lib.testing`,
 zero-arg `test_*` functions, no `main`, file-local `assert_near` (0.0001
@@ -216,16 +228,18 @@ exact cases. Wiring quartet in the same commit:
 Must-have tests: Neumaier vs naive sum on a cancellation series; the
 1e6-offset variance set (fails the naive formula, passes corrected
 two-pass); Welford vs batch variance agreement; merge-of-halves equals
-whole-stream accumulator; empty/one-element assert behavior.
+whole-stream accumulator; one-element edge cases. The fatal assert paths
+(empty mean, count <= ddof, q outside [0, 1]) exit(1) and so cannot run
+inside the test binary; they are exercised only by reading the guards.
 
-**Phase 2 — order statistics + 64-bit twin.** Heapsort, sorted/quantile/
+**Phase 2 — order statistics + 64-bit twin (done).** Heapsort, sorted/quantile/
 median/mode. Add `stats_64_test` (`bin/wv2 x64 lib/stats_test.w ...`) to
 `tests_x64`, the gate that bare float literals (float64 by default on
 x64) narrow correctly through the float32 API. Tests: sort on
 sorted/reverse/duplicate/single inputs; quantile endpoints q=0/0.5/1;
 even/odd median; mode tie-break.
 
-**Phase 3 — docs and bookkeeping.** Flip this doc's Status line, update
+**Phase 3 — docs and bookkeeping (done).** Flip this doc's Status line, update
 the `stats` line in `docs/todo.txt`, add the `docs/done.txt` entry, and
 note in `libs/standard/plans/03_numeric_data.md` that the statistics
 portion landed as `lib/stats.w` (its "lib/math.w only has min and max"

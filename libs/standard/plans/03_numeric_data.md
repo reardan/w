@@ -123,6 +123,13 @@ Consult these CPython sources first:
 
 ### Phase 5: statistics
 
+**Landed as `lib/stats.w`** (design: `docs/projects/stats.md`), which
+supersedes this phase: float32 over built-in `list[float]` rather than
+`float64*` + length, `stats_`-prefixed, with a Welford/Chan streaming
+accumulator, Neumaier sum, corrected two-pass variance, heapsort order
+statistics and type-7 quantiles. A `float64` tier remains a follow-up
+there.
+
 - Port algorithms from `statistics.py`, especially numerically stable variance.
 - For MVP, accept arrays and list values separately.
 - Tests: empty input errors, one-item variance, even/odd median, negative values.

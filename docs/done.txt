@@ -155,3 +155,8 @@ done:
 		typedef/struct/union/enum/prototype import...complete!
 		macro integer constants...complete!
 		broad libc/system-header tests on x86 and x64...complete!
+	float32 math helpers (lib/fmath.w)...complete!
+	statistics library (lib/stats.w)...complete!
+		Welford/Chan streaming accumulator...complete!
+		Neumaier sum and corrected two-pass variance...complete!
+		heapsort, type-7 quantiles, median, mode...complete!
