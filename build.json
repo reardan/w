@@ -1821,6 +1821,38 @@
 			]
 		},
 		{
+			"name": "sse_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/sse_test.w", "-o", "bin/sse_test"]},
+				{"cmd": ["bin/sse_test"]}
+			]
+		},
+		{
+			"name": "sse_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/sse_test.w", "-o", "bin/sse_64_test"]},
+				{"cmd": ["bin/sse_64_test"]}
+			]
+		},
+		{
+			"name": "retry_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/retry_test.w", "-o", "bin/retry_test"]},
+				{"cmd": ["bin/retry_test"]}
+			]
+		},
+		{
+			"name": "retry_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/retry_test.w", "-o", "bin/retry_64_test"]},
+				{"cmd": ["bin/retry_64_test"]}
+			]
+		},
+		{
 			"name": "net_darwin",
 			"deps": ["wv2"],
 			"steps": [
@@ -2602,6 +2634,8 @@
 				"urlparse_64_test",
 				"dns_64_test",
 				"http_client_64_test",
+				"sse_64_test",
+				"retry_64_test",
 				"framing_64_test",
 				"dynamic_test_x64",
 				"extern_alias_test_x64",
@@ -2900,6 +2934,8 @@
 				"urlparse_test",
 				"dns_test",
 				"http_client_test",
+				"sse_test",
+				"retry_test",
 				"framing_test",
 				"event_loop_test",
 				"task_test",
