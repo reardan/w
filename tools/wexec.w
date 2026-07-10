@@ -233,7 +233,39 @@ int wexec_load_uint16(char* p):
 # getdents layout: d_reclen is 2 bytes after ino and off (one word each),
 # the name follows it, and d_type sits in the record's last byte
 # (4 = directory, 8 = regular file).
+# On Windows, FindFirstFileA/FindNextFileA are used instead.
 void wexec_collect_dir(char* path, list[char*] files):
+	if (os_windows()):
+		# WIN32_FIND_DATAA: dwFileAttributes(4)+3×FILETIME(24)+4×DWORD(16)+
+		# cFileName[260]+cAlternateFileName[14] = 320 bytes.
+		# cFileName is at offset 44; FILE_ATTRIBUTE_DIRECTORY = 0x10 = 16.
+		char* find_data = malloc(320)
+		string_builder* pat = string_new()
+		string_append(pat, path)
+		string_append(pat, c"/*")
+		int handle = FindFirstFileA(pat.data, find_data)
+		string_free(pat)
+		if (handle != -1):
+			while (1):
+				char* name = find_data + 44
+				int attrs = load_int32(find_data)
+				if ((strcmp(name, c".") != 0) && (strcmp(name, c"..") != 0)):
+					string_builder* child = string_new()
+					string_append(child, path)
+					string_append_char(child, '/')
+					string_append(child, name)
+					if (attrs & 16):
+						wexec_collect_dir(child.data, files)
+						string_free(child)
+					else:
+						char* owned = child.data
+						free(child)
+						files.push(owned)
+				if (FindNextFileA(handle, find_data) == 0):
+					break
+			FindClose(handle)
+		free(find_data)
+		return
 	# 65536 = O_DIRECTORY
 	int fd = open(path, 65536, 0)
 	if (fd < 0):
@@ -377,23 +409,55 @@ void wexec_cache_store(char* name, char* key):
 	free(stamp_path)
 
 
+# Windows: manifest commands name Linux-style binaries ("bin/wv2");
+# resolve to the ".exe" sibling when the bare path does not exist.
+# CreateProcessA does not append ".exe" to path-containing names.
+char* wexec_resolve_exe_suffix(char* name):
+	int fd = open(name, 0, 0)
+	if (fd >= 0):
+		close(fd)
+		return name
+	string_builder* exe = string_new()
+	string_append(exe, name)
+	string_append(exe, c".exe")
+	fd = open(exe.data, 0, 0)
+	if (fd >= 0):
+		close(fd)
+		char* resolved = exe.data
+		free(exe)
+		return resolved
+	string_free(exe)
+	return name
+
+
 # execve does no PATH lookup, so commands like "cmp" or "grep" must be
-# resolved here. Anything with a slash is used as-is.
+# resolved here. Anything with a slash is used as-is (on Windows, after
+# the ".exe" fallback).
 char* wexec_resolve_program(char* name):
+	int win = os_windows()
 	int i = 0
 	while (name[i] != 0):
-		if (name[i] == '/'):
+		if ((name[i] == '/') || (win && (name[i] == 92))):
+			if (win):
+				return wexec_resolve_exe_suffix(name)
 			return name
 		i = i + 1
 	char* path = env_get(c"PATH")
+	# On Windows the PATH separator is ';' and executables need '.exe'
+	char path_sep = ':'
+	if (win):
+		path_sep = ';'
 	if (path == 0):
-		path = c"/usr/bin:/bin"
+		if (win):
+			path = c"C:/Windows/System32"
+		else:
+			path = c"/usr/bin:/bin"
 	string_builder* candidate = string_new()
 	int p = 0
 	int at_end = 0
 	while (at_end == 0):
 		string_clear(candidate)
-		while ((path[p] != ':') & (path[p] != 0)):
+		while ((path[p] != path_sep) & (path[p] != 0)):
 			string_append_char(candidate, path[p])
 			p = p + 1
 		if (path[p] == 0):
@@ -403,10 +467,21 @@ char* wexec_resolve_program(char* name):
 		if (candidate.length > 0):
 			string_append_char(candidate, '/')
 			string_append(candidate, name)
+			if (win):
+				# Try both with and without .exe suffix
+				string_append(candidate, c".exe")
 			int fd = open(candidate.data, 0, 0)
 			if (fd >= 0):
 				close(fd)
 				return candidate.data
+			if (win):
+				# Also try without .exe (script-style names)
+				candidate.data[candidate.length - 4] = 0
+				candidate.length = candidate.length - 4
+				fd = open(candidate.data, 0, 0)
+				if (fd >= 0):
+					close(fd)
+					return candidate.data
 	string_free(candidate)
 	return name
 
@@ -560,10 +635,21 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 		wexec_step_error(target_name, step_index, c"\"cmd\" is empty")
 		return 1
 
+	# The win64 self-host targets prefix their PE binaries with "wine" so
+	# the one manifest works on Linux; on Windows the binaries run
+	# natively, so a leading "wine" token is dropped.
+	int skip = 0
+	if (os_windows() && (count > 1)):
+		json_value* first = json_array_get(cmd, 0)
+		if (first.type == json_type_string()):
+			if (strcmp(first.string_value, c"wine") == 0):
+				skip = 1
+	count = count - skip
+
 	char** argv = strv_new(count)
 	int i = 0
 	while (i < count):
-		json_value* piece = json_array_get(cmd, i)
+		json_value* piece = json_array_get(cmd, i + skip)
 		if (piece.type != json_type_string()):
 			wexec_step_error(target_name, step_index, c"\"cmd\" entries must be strings")
 			free(cast(char*, argv))

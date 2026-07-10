@@ -175,5 +175,22 @@ not emitted on win64.
   (PE export table or a custom symbol section).
 - **Threads, sockets, process spawning** over WinAPI
   (`CreateThread`, Winsock, `CreateProcessA`).
-- **Self-hosting on Windows**: the compiler itself assumes Linux paths
-  and fds in places; compiling `w.w` as a win64 exe is untested.
+- **Self-hosting on Windows**: the compiler itself runs on Windows with
+  `w.exe win64 w.w -o wv2.exe`; the fixpoint is verified via
+  `./wbuild verify_win` (needs Wine on Linux) or `wbuild.cmd verify_win`
+  (natively on Windows once `w.exe` is seeded — wexec drops the
+  manifest's `wine` prefix when `os_windows()`). Path handling
+  (`GetCurrentDirectoryA` backslash normalization, Windows drive-letter
+  absolute paths, `NUL` device for check mode) is implemented in
+  `compiler/compiler.w`; the normalization is a no-op on Unix. Process
+  spawning for the build executor (`tools/wexec.w`) uses
+  `CreateProcessA` / `WaitForSingleObject` / `PeekNamedPipe` via the
+  `lib/process.w` Windows path, gated by `os_windows()` in
+  `lib/__arch__/win64/syscalls.w`; the non-win64 syscall modules carry
+  linkable stubs for that Win32 surface (the mirror image of the win64
+  module's Unix-primitive stubs), so Linux/darwin builds are unaffected.
+  Known limits: `process_run` on Windows writes stdin up front (a child
+  that fills its output pipes before reading a >4KB stdin can deadlock)
+  and `spawn_options.env` is ignored by `CreateProcessA` (child inherits
+  the parent environment).
+  Outstanding: `lib/testing.w` ELF introspection, sockets, signals.

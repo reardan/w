@@ -27,6 +27,17 @@ extern int RemoveDirectoryA(char* path)
 extern int GetCurrentDirectoryA(int size, char* buf)
 extern int SetCurrentDirectoryA(char* path)
 extern int GetCurrentProcessId()
+extern int CreateProcessA(char* app, char* cmdline, int proc_attr, int thread_attr, int inherit_handles, int flags, int env, char* dir, char* startup_info, char* proc_info)
+extern int WaitForSingleObject(int handle, int milliseconds)
+extern int GetExitCodeProcess(int handle, int* code)
+extern int CreatePipe(int* read_end, int* write_end, int security, int size)
+extern int TerminateProcess(int handle, int exit_code)
+extern int SetHandleInformation(int handle, int mask, int flags)
+extern int PeekNamedPipe(int handle, char* buf, int buf_size, int* bytes_read, int* bytes_avail, int* bytes_left)
+extern int GetCurrentProcess()
+extern int FindFirstFileA(char* pattern, char* find_data)
+extern int FindNextFileA(int handle, char* find_data)
+extern int FindClose(int handle)
 
 
 /* File IO: */
@@ -272,16 +283,31 @@ int wait4(int pid, int* status, int options, int rusage):
 	return -1
 
 
+# Create an anonymous pipe via CreatePipe. Returns 0 on success, -1 on failure.
+# The two int32 fd values are stored at fds[0] (read end) and fds[1] (write end),
+# matching the Linux pipe(2) layout that lib/process.w expects.
 int pipe(int* fds):
-	return -1
+	int read_end = 0
+	int write_end = 0
+	if (CreatePipe(&read_end, &write_end, 0, 0) == 0):
+		return -1
+	save_int32(cast(char*, fds), read_end)
+	save_int32(cast(char*, fds) + 4, write_end)
+	return 0
 
 
+# Windows has no dup2; this stub keeps code that merely mentions it linkable.
 int dup2(int oldfd, int newfd):
 	return -1
 
 
 int kill(int pid, int sig):
 	return -1
+
+
+# Returns 1 when running on Windows, 0 on all other platforms.
+int os_windows():
+	return 1
 
 
 # ptrace has no win64 equivalent; the stub keeps the debugger's attach
