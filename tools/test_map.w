@@ -68,6 +68,10 @@ void wtest_init_targets():
 	wtest_targets.push(c"parser_generator_c_test")
 	wtest_targets.push(c"net_test")
 	wtest_targets.push(c"poll_test")
+	wtest_targets.push(c"urlparse_test")
+	wtest_targets.push(c"urlparse_64_test")
+	wtest_targets.push(c"dns_test")
+	wtest_targets.push(c"dns_64_test")
 	wtest_targets.push(c"framing_test")
 	wtest_targets.push(c"json_rpc_test")
 	wtest_targets.push(c"json_rpc_64_test")
@@ -358,6 +362,12 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"asm_stubs_test")
 	else if (strcmp(path, c"tools/gen_stubs.w") == 0):
 		wtest_add(path, c"asm_stubs_test")
+	else if (starts_with(path, c"libs/standard/web/urlparse")):
+		wtest_add(path, c"urlparse_test")
+		wtest_add(path, c"urlparse_64_test")
+	else if (starts_with(path, c"libs/standard/net/dns")):
+		wtest_add(path, c"dns_test")
+		wtest_add(path, c"dns_64_test")
 	else if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):
