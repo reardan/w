@@ -853,6 +853,22 @@
 			]
 		},
 		{
+			"name": "fmath_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/fmath_test.w", "-o", "bin/fmath_test"]},
+				{"cmd": ["bin/fmath_test"]}
+			]
+		},
+		{
+			"name": "fmath_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/fmath_test.w", "-o", "bin/fmath_64_test"]},
+				{"cmd": ["bin/fmath_64_test"]}
+			]
+		},
+		{
 			"name": "sha256_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2319,6 +2335,7 @@
 				"task_io_64_test",
 				"format_64_test",
 				"args_64_test",
+				"fmath_64_test",
 				"repl_test_x64",
 				"debug_test_x64",
 				"graphics_math_64_test",
@@ -2494,6 +2511,7 @@
 				"list_methods_test",
 				"str_test",
 				"math_test",
+				"fmath_test",
 				"sha256_test",
 				"switch_test",
 				"for_container_test",
