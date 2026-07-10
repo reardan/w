@@ -77,7 +77,16 @@ int float32_bits_from_token():
 	if (binary_exponent > 127):
 		bits = 0x7f800000
 	else if (binary_exponent >= -126):
-		quotient = bignum_div_scaled_to_int(mantissa, denominator, 23 - binary_exponent, remainder)
+		# From 2^24 up the scale is negative and the division shifts its
+		# divisor left, so the remainder is relative to the shifted
+		# value; mirror the shift onto our denominator or the round-to-
+		# nearest comparison sees a divisor thousands of times too small
+		# and every inexact literal rounds up (issue #238).
+		int scale = 23 - binary_exponent
+		if (scale < 0):
+			bignum_shl_bits(denominator, 0 - scale)
+			scale = 0
+		quotient = bignum_div_scaled_to_int(mantissa, denominator, scale, remainder)
 		if (bignum_round_up(remainder, denominator, quotient)):
 			quotient = quotient + 1
 		if (quotient == 0x1000000):
@@ -144,7 +153,13 @@ void float64_bits_from_token():
 	if (binary_exponent > 1023):
 		float64_literal_hi = 0x7ff00000
 	else if (binary_exponent >= -1022):
-		bignum_div_scaled_to_bignum(mantissa, denominator, 52 - binary_exponent, remainder, quotient)
+		# Same divisor-shift mirroring as the float32 path (issue #238):
+		# from 2^53 up the remainder is relative to the shifted divisor.
+		int scale = 52 - binary_exponent
+		if (scale < 0):
+			bignum_shl_bits(denominator, 0 - scale)
+			scale = 0
+		bignum_div_scaled_to_bignum(mantissa, denominator, scale, remainder, quotient)
 		if (bignum_round_up_big(remainder, denominator, quotient)):
 			bignum_add_small(quotient, 1)
 		if (bignum_is_power_of_two(quotient, 53)):
