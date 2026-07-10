@@ -16,6 +16,18 @@ int int_literal():
 		mov_eax_int(n)
 		return 1
 
+	# Binary literal e.g. 0b1010, mirroring the hex path ('_' digit
+	# separators are a possible follow-up)
+	if ((token[0] == '0') & (token[1] == 'b')):
+		i = 2
+		while (token[i]):
+			n = (n << 1) + token[i] - '0'
+			i = i + 1
+		if (negative):
+			n = 0-n
+		mov_eax_int(n)
+		return 1
+
 	# Check for digits 0-9
 	if ((token[i]) < '0' | (token[i] > '9')):
 		return 0
