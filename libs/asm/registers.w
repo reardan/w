@@ -127,6 +127,27 @@ char* asm_reg_name_x64(int number):
 	return 0
 
 
+# Extended x64 registers r8..r15 at a sub-qword width: "r8d"/"r8w"/"r8b"
+# (dword/word/byte) built from the number plus a width suffix. Returns a
+# malloc'd name, or 0 when number is outside 8..15.
+char* asm_reg_name_x64_ext(int number, int suffix):
+	if (number < 8 | number > 15):
+		return 0
+	char* name = malloc(5)
+	name[0] = 'r'
+	int i = 1
+	if (number < 10):
+		name[i] = '0' + number
+		i = i + 1
+	else:
+		name[i] = '1'
+		name[i + 1] = '0' + (number - 10)
+		i = i + 2
+	name[i] = suffix
+	name[i + 1] = 0
+	return name
+
+
 # arm64: xN (8 bytes) / wN (4 bytes); 31 is sp (or zr by context).
 # Returns a malloc'd name for the numbered registers.
 char* asm_reg_name_arm64(int number, int size):
@@ -160,6 +181,13 @@ char* asm_reg_name(int arch, int number, int size):
 			return asm_reg_name_x86_16(number)
 		return asm_reg_name_x86_32(number)
 	if (arch == ASM_ARCH_X64()):
+		if (number >= 8 & size <= 4):
+			# r8..r15 in dword/word/byte width: r8d / r8w / r8b.
+			if (size == 1):
+				return asm_reg_name_x64_ext(number, 'b')
+			if (size == 2):
+				return asm_reg_name_x64_ext(number, 'w')
+			return asm_reg_name_x64_ext(number, 'd')
 		if (size == 1):
 			return asm_reg_name_x86_8(number)
 		if (size == 2):

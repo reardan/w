@@ -83,6 +83,24 @@ int asm_parse_number(char* s):
 	return sign * value
 
 
+# High 32 bits of a hex immediate token wider than 32 bits (for movabs
+# r64, imm64). asm_parse_number keeps the low 32 bits; this returns the
+# high word (0 for decimal, negative, or <= 32-bit values).
+int asm_parse_number_hi(char* s):
+	if (s[0] == '-'):
+		return 0
+	if (s[0] != '0' | s[1] != 'x'):
+		return 0
+	int i = 2
+	int hi = 0
+	int lo = 0
+	while (s[i] != 0):
+		hi = (hi << 4) | ((lo >> 28) & 15)
+		lo = (lo << 4) | asm_hex_digit(s[i])
+		i = i + 1
+	return hi
+
+
 int asm_parse_is_number_start(int c):
 	if (c >= '0' & c <= '9'):
 		return 1
@@ -174,6 +192,7 @@ void asm_parse_operand(asm_parse* p, asm_operand* op, int arch, int size_hint):
 		char* tok = asm_parse_token(p)
 		op.kind = ASM_OP_IMM()
 		op.imm = asm_parse_number(tok)
+		op.imm_hi = asm_parse_number_hi(tok)
 		op.size = size_hint
 		return
 	# identifier: size keyword + operand, register, or bare label

@@ -1,11 +1,12 @@
 # Assembler / Disassembler Libraries (x86, x64, arm64)
 
-Status: **x86 (32-bit) + arm64 (A64) complete: foundations + disassembler
-+ assembler** (issues #164, #165, #166, #168). `libs/asm/` has the insn
-model, byte buffer,
-labels/fixups, register tables, hex + corpus utilities, cross-arch ELF
-section reader (#164), the x86-32 decoder + Intel formatter (#165), and
-the encoder + text parser (#166). Coverage:
+Status: **x86 (32-bit) + x86-64 + arm64 (A64) complete: foundations +
+disassembler + assembler** (issues #164, #165, #166, #167, #168).
+`libs/asm/` has the insn model, byte buffer, labels/fixups, register
+tables, hex + corpus utilities, cross-arch ELF section reader (#164), the
+shared x86/x64 decoder + Intel formatter (#165/#167), the encoder + text
+parser (#166/#167), and a separate bitfield-driven arm64 decoder/encoder/
+formatter/parser (#168). Coverage:
 
 - `asm_x86_disasm_test` — 345-entry corpus decode round-trip + a
   zero-`.byte` sweep of every function in the self-hosted `bin/wv2`
@@ -17,9 +18,20 @@ the encoder + text parser (#166). Coverage:
   encoder reproduces the compiler's exact bytes, carrying the recorded
   displacement/operand widths so even the compiler's non-minimal forms
   (disp32 for small offsets) round-trip.
+- `asm_x64_test` — the same two properties in mode 8 (`tests/asm/
+  corpus_x64.txt`, 227 entries): REX prefixes, r8–r15, 64-bit operand
+  sizes, `movsxd`/`movabs`/`cqo`/`syscall`/`movq`, and RIP-relative
+  addressing (`[rip+disp32]`, encoded as `asm_operand.base ==
+  ASM_BASE_RIP()`). The golden test is a byte-exact decode→encode
+  identity over every function of an ELF64 self-host build (`bin/wv2_64`,
+  ~268k instructions, zero unknown / zero mismatch). The x64 decoder and
+  encoder reuse the x86 core through the `mode` / `insn.arch` parameter
+  and per-form REX helpers, mirroring how the x64 codegen reuses
+  `code_generator/x86.w`.
 
-`asm_seed_gate` keeps the whole library seed-compilable. Epic: #163;
-remaining phases (x64 #167, wdbg #169, stubgen #170) tracked in its
+`asm_seed_gate` keeps the whole library seed-compilable (it now exercises
+a mode-8 REX.W decode+encode and an arm64 word decode/encode too). Epic:
+#163; remaining phases (wdbg #169, stubgen #170) tracked in its
 sub-issues.
 
 **arm64 (A64) complete: decoder + formatter + encoder + text parser

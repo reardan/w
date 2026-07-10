@@ -24,6 +24,16 @@ int ASM_ARCH_ARM64():
 	return 2
 
 
+# Base-register sentinel for x64 RIP-relative memory ([rip+disp32]): a
+# ModRM mod=0 rm=5 form is PC-relative in 64-bit mode, not the absolute
+# [disp32] it is in 32-bit mode. Stored in asm_operand.base (which never
+# holds a real register number >= 16), so no extra field is needed; the
+# formatter prints it as "rip" and the encoder re-emits the rm=5 (no-SIB)
+# form instead of the SIB form a genuine absolute [disp32] uses on x64.
+int ASM_BASE_RIP():
+	return 16
+
+
 # Register classes (asm_operand.rclass for kind reg)
 int ASM_RCLASS_GP():
 	return 0
@@ -77,6 +87,8 @@ struct asm_operand:
 	              # 1 disp8, 4 disp32 (lets the encoder reproduce the exact
 	              # bytes a decoder saw, even non-minimal forms)
 	int imm
+	int imm_hi    # high 32 bits of a 64-bit immediate (movabs); W's int is
+	              # 32-bit, so an imm64 is carried as imm (low) + imm_hi (high)
 	int size      # operand size in bytes (1/2/4/8); 0 = arch default
 	char* label
 
@@ -91,6 +103,7 @@ void asm_operand_clear(asm_operand* op):
 	op.disp = 0
 	op.disp_size = 0
 	op.imm = 0
+	op.imm_hi = 0
 	op.size = 0
 	op.label = 0
 
@@ -151,6 +164,23 @@ char* asm_hex_min(int v):
 	out[2 + n] = 0
 	free(tmp)
 	return out
+
+
+# Minimal-width lowercase hex for a 64-bit value carried as (hi, lo). When
+# the high word is zero this is just asm_hex_min(lo); otherwise the low word
+# is zero-padded to a full 8 digits so no bits are lost
+# (0x12345678, 0x90123456 -> "0x1234567890123456").
+char* asm_hex_min64(int hi, int lo):
+	if (hi == 0):
+		return asm_hex_min(lo)
+	char* digits = c"0123456789abcdef"
+	char* lopart = malloc(9)
+	int i = 0
+	while (i < 8):
+		lopart[i] = digits[(lo >> ((7 - i) * 4)) & 15]
+		i = i + 1
+	lopart[8] = 0
+	return strjoin(asm_hex_min(hi), lopart)
 
 
 int asm_insn_operand_count(asm_insn* insn):

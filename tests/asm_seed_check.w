@@ -77,5 +77,23 @@ int main():
 	assert_equal(0x88, aenc.data[0] & 255)
 	assert_equal(0xf9, aenc.data[3] & 255)
 
+	# x64 (mode 8): decode a REX.W instruction and re-encode it, so the
+	# seed gate covers the new REX / 64-bit code paths too.
+	# 48 8b 44 24 10 = mov rax,[rsp+0x10]
+	char* code64 = malloc(5)
+	code64[0] = 0x48
+	code64[1] = 0x8b
+	code64[2] = 0x44
+	code64[3] = 0x24
+	code64[4] = 0x10
+	asm_insn insn64
+	assert_equal(5, asm_x86_decode(code64, 5, 0, 8, &insn64))
+	assert_strings_equal(c"mov rax,[rsp+0x10]", asm_format(&insn64))
+	asm_buffer* enc64 = asm_buffer_new()
+	assert_equal(5, asm_x86_encode(enc64, &insn64))
+	assert_equal(0x48, enc64.data[0] & 255)
+	assert_equal(0x8b, enc64.data[1] & 255)
+	assert_equal(0x10, enc64.data[4] & 255)
+
 	println(c"asm_seed_check passed")
 	return 0

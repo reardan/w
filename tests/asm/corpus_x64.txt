@@ -4,8 +4,9 @@
 #
 # Conventions:
 # - lowercase hex bytes, no spaces; Intel operand order; [reg+disp] memory form; 0x hex immediates.
-# - Relative branches/calls (jmp, je, jne, jns, jl, jle, call rel32) show the raw rel8/rel32
-#   displacement value from the encoding as the operand, not an absolute target.
+# - Relative branches/calls (jmp, je, jne, jns, jl, jle, call rel32) show the dot-relative
+#   target ".+N"/".-N" (N measured from the instruction's first byte), matching the formatter
+#   and the x86 corpus convention, not the raw rel field.
 # - Helpers in x86.w shared between the x86 and x64 targets are harvested in their x64 form:
 #   emit_x64_opcode() prepends the REX.W prefix 0x48 when word_size == 8, so source comments
 #   written with 32-bit register names (eax, esp, ...) correspond to 64-bit registers here.
@@ -18,7 +19,7 @@
 # ============================================================================
 50|push rax
 488b442410|mov rax,[rsp+0x10]
-48894808|mov [rax+0x8],rcx
+48894808|mov [rax+8],rcx
 59|pop rcx
 488908|mov [rax],rcx
 48895010|mov [rax+0x10],rdx
@@ -42,7 +43,7 @@ c3|ret
 # ============================================================================
 50|push rax
 488b442410|mov rax,[rsp+0x10]
-48894808|mov [rax+0x8],rcx
+48894808|mov [rax+8],rcx
 48895010|mov [rax+0x10],rdx
 48895818|mov [rax+0x18],rbx
 48896020|mov [rax+0x20],rsp
@@ -63,11 +64,11 @@ c3|ret
 # ============================================================================
 # code_generator/x64_asm.w : define_asm_functions_x64_portable() -> repl_setjmp
 # ============================================================================
-488b442408|mov rax,[rsp+0x8]
+488b442408|mov rax,[rsp+8]
 488b0c24|mov rcx,[rsp]
 488908|mov [rax],rcx
-488d4c2408|lea rcx,[rsp+0x8]
-48894808|mov [rax+0x8],rcx
+488d4c2408|lea rcx,[rsp+8]
+48894808|mov [rax+8],rcx
 48896810|mov [rax+0x10],rbp
 31c0|xor eax,eax
 c3|ret
@@ -75,9 +76,9 @@ c3|ret
 # ============================================================================
 # code_generator/x64_asm.w : define_asm_functions_x64_portable() -> repl_longjmp
 # ============================================================================
-488b442408|mov rax,[rsp+0x8]
+488b442408|mov rax,[rsp+8]
 488b4c2410|mov rcx,[rsp+0x10]
-488b6108|mov rsp,[rcx+0x8]
+488b6108|mov rsp,[rcx+8]
 488b6910|mov rbp,[rcx+0x10]
 ff21|jmp [rcx]
 
@@ -108,7 +109,7 @@ c3|ret
 488b442420|mov rax,[rsp+0x20]
 488b7c2418|mov rdi,[rsp+0x18]
 488b742410|mov rsi,[rsp+0x10]
-488b542408|mov rdx,[rsp+0x8]
+488b542408|mov rdx,[rsp+8]
 0f05|syscall
 c3|ret
 
@@ -121,7 +122,7 @@ c3|ret
 488b542420|mov rdx,[rsp+0x20]
 4c8b542418|mov r10,[rsp+0x18]
 4c8b442410|mov r8,[rsp+0x10]
-4c8b4c2408|mov r9,[rsp+0x8]
+4c8b4c2408|mov r9,[rsp+8]
 0f05|syscall
 c3|ret
 
@@ -129,9 +130,9 @@ c3|ret
 # code_generator/x86.w : stack pushes and loads (x64 forms)
 # ============================================================================
 # parameterized: push_int8(v), imm8 from source comment example 0x12
-6a12|push 0x12
+6a12|push byte 0x12
 # parameterized: push_int32(v), imm32 example op(0x12, 0x345678)
-6878563412|push 0x12345678
+6878563412|push dword 0x12345678
 # parameterized: push_eax_plus(v), disp32 example op(0x12, 0x345678)
 ffb078563412|push qword [rax+0x12345678]
 50|push rax
@@ -206,23 +207,23 @@ b878563412|mov eax,0x12345678
 # ============================================================================
 ffd0|call rax
 # parameterized: call_relative32(v), rel32 example op(0x12, 0x345678)
-e878563412|call 0x12345678
+e878563412|call .+0x1234567d
 # parameterized: jmp_int32(v), rel32 example op(0x12, 0x345678)
-e978563412|jmp 0x12345678
+e978563412|jmp .+0x1234567d
 # jmp_zero_int32(v): test rax,rax ; je rel32 (rel32 parameterized, example op(0x12, 0x345678))
 4885c0|test rax,rax
-0f8478563412|je 0x12345678
+0f8478563412|je .+0x1234567e
 # jmp_nonzero_int32(v): test rax,rax ; jne rel32 (rel32 parameterized)
-0f8578563412|jne 0x12345678
+0f8578563412|jne .+0x1234567e
 cc|int3
 90|nop
 c3|ret
 # bounds_check_eax_nonnegative: test rax,rax ; jns +1 ; int3
-7901|jns 0x1
+7901|jns .+3
 # bounds_check_ebx_less_eax / _less_equal_eax: cmp rbx,rax ; jl/jle +1 ; int3
 4839c3|cmp rbx,rax
-7c01|jl 0x1
-7e01|jle 0x1
+7c01|jl .+3
+7e01|jle .+3
 # parameterized: bounds_check_eax_less_equal_int32(limit), imm32 example op(0x12, 0x345678)
 483d78563412|cmp rax,0x12345678
 
@@ -323,7 +324,7 @@ f20f5ac0|cvtsd2ss xmm0,xmm0
 # code_generator/sse.w : float16 (F16C, VEX) and sign flips
 # ============================================================================
 c4e27913c0|vcvtph2ps xmm0,xmm0
-c4e3791dc004|vcvtps2ph xmm0,xmm0,0x4
+c4e3791dc004|vcvtps2ph xmm0,xmm0,4
 480fbaf83f|btc rax,0x3f
 
 # ============================================================================
@@ -352,13 +353,13 @@ f20f108d10000000|movsd xmm1,[rbp+0x10]
 55|push rbp
 4889e5|mov rbp,rsp
 4883e4f0|and rsp,-0x10
-4883ec08|sub rsp,0x8
+4883ec08|sub rsp,8
 # parameterized: push qword [rbp+disp32] for overflow args; example disp 0x10
 ffb510000000|push qword [rbp+0x10]
 # parameterized: mov eax,imm32 = number of xmm registers used (varargs contract); example 1
-b801000000|mov eax,0x1
+b801000000|mov eax,1
 # parameterized: call qword ptr [abs32] through the GOT slot; example got_vaddr 0x12345678
-ff142578563412|call qword [0x12345678]
+ff142578563412|call [0x12345678]
 660f7ec0|movd eax,xmm0
 66480f7ec0|movq rax,xmm0
 4889ec|mov rsp,rbp
@@ -383,13 +384,13 @@ ff142578563412|call qword [0x12345678]
 31c0|xor eax,eax
 50|push rax
 # parameterized: push imm32 = pe_empty_args_vaddr (argv = empty args block); example 0x12345678
-6878563412|push 0x12345678
+6878563412|push dword 0x12345678
 # parameterized: call rel32, displacement patched in pe_finish_64(); example 0x12345678
-e878563412|call 0x12345678
+e878563412|call .+0x1234567d
 89c1|mov ecx,eax
 4883ec28|sub rsp,0x28
 # parameterized: call qword ptr [abs32] = ExitProcess IAT slot; example 0x12345678
-ff142578563412|call qword [0x12345678]
+ff142578563412|call [0x12345678]
 cc|int3
 
 # ============================================================================

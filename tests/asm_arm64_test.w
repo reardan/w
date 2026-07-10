@@ -113,7 +113,7 @@ int word_is_unknown(char* text, int off, int address):
 
 
 void test_golden():
-	asm_binary* binary = asm_binary_open(c"bin/wv2_arm64")
+	asm_binary* binary = asm_binary_open(c"bin/asm_arm64_selfhost")
 	asserts(c"cannot open bin/wv2_arm64", cast(int, binary) != 0)
 	assert_equal(ASM_EM_AARCH64(), binary.machine)
 	char* text = asm_binary_text(binary)
