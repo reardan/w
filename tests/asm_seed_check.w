@@ -17,6 +17,8 @@ import libs.asm.registers
 import libs.asm.hexutil
 import libs.asm.binary_reader
 import libs.asm.x86_decode
+import libs.asm.x86_encode
+import libs.asm.text
 import libs.asm.format
 
 
@@ -45,6 +47,14 @@ int main():
 	asm_insn insn
 	assert_equal(4, asm_x86_decode(code, 4, 0, 4, &insn))
 	assert_strings_equal(c"mov eax,[esp+0x10]", asm_format(&insn))
+
+	# parse + encode round-trips back to the same bytes.
+	asm_insn parsed
+	asm_x86_parse(c"mov eax,[esp+0x10]", 4, &parsed)
+	asm_buffer* enc = asm_buffer_new()
+	assert_equal(4, asm_x86_encode(enc, &parsed))
+	assert_equal(0x8b, enc.data[0] & 255)
+	assert_equal(0x10, enc.data[3] & 255)
 
 	println(c"asm_seed_check passed")
 	return 0
