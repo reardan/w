@@ -301,8 +301,36 @@ void test_number_limit():
 	assert1(root != 0)
 	assert_json_int(root, 2147483647)
 	json_free(root)
-	assert_json_parse_fails(c"2147483648")
-	assert_json_parse_fails(c"9999999999")
+
+	# -2^31 is exact on every target (saturation on the 32-bit target,
+	# plain accumulation on x64 where int is wider)
+	root = json_parse(c"-2147483648")
+	assert1(root != 0)
+	assert_json_int(root, 0 - 2147483647 - 1)
+	json_free(root)
+
+
+void test_int_saturation():
+	# overflow saturates to the native int range instead of failing:
+	# int32 on the 32-bit target, int64 on x64
+	json_value* root = json_parse(c"99999999999999999999999999")
+	assert1(root != 0)
+	assert_json_int(root, json_int_max())
+	json_free(root)
+
+	root = json_parse(c"-99999999999999999999999999")
+	assert1(root != 0)
+	assert_json_int(root, json_int_min())
+	json_free(root)
+
+	# one past int32: saturated on the 32-bit target, exact on x64
+	root = json_parse(c"2147483648")
+	assert1(root != 0)
+	int want = 2147483647
+	if (json_int_max() > want):
+		want = want + 1
+	assert_json_int(root, want)
+	json_free(root)
 
 
 void test_invalid_inputs():

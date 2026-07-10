@@ -9,8 +9,9 @@ Supported JSON subset:
   including surrogate pairs; lone or malformed surrogate halves decode to
   U+FFFD per Unicode best practice)
 
-Numbers: a plain integer parses as a signed int, and values outside the
-32-bit signed range are rejected. A number with a fraction or exponent
+Numbers: a plain integer parses as a signed int and saturates to
+json_int_max()/json_int_min() on overflow — the native int range, so
+int32 on the 32-bit target and int64 on x64. A number with a fraction or exponent
 part parses as a float — float32 on every target, because float64 is
 x64-only — so floats carry about 7 significant digits; overflow
 saturates to the largest finite float32 and underflow flushes to zero.
@@ -237,6 +238,19 @@ int json_max_depth():
 	return 128
 
 
+# Native int limits, computed by shifting a 1 into the sign bit so the
+# same code is right on the 32-bit and 64-bit targets.
+int json_int_min():
+	int low = 1
+	while (low > 0):
+		low = low << 1
+	return low
+
+
+int json_int_max():
+	return 0 - (json_int_min() + 1)
+
+
 int json_hex_value(int c):
 	if ((c >= '0') & (c <= '9')):
 		return c - '0'
@@ -457,7 +471,8 @@ json_value* json_parse_number(json_parser* p):
 		json_fail(p)
 		return 0
 
-	int value = 0      # exact integer value while it fits int32
+	int int_max = json_int_max()
+	int value = 0      # exact integer value while it fits the int range
 	int overflow = 0
 	int mant = 0       # first 9 significant digits for the float path
 	int mant_exp = 0   # decimal exponent owed by dropped/fraction digits
@@ -471,7 +486,7 @@ json_value* json_parse_number(json_parser* p):
 	else:
 		while (json_is_digit(p.input[p.index])):
 			int digit = p.input[p.index] - '0'
-			if (overflow | (value > 214748364) | ((value == 214748364) & (digit > 7))):
+			if (overflow | (value > (int_max - digit) / 10)):
 				overflow = 1
 			else:
 				value = value * 10 + digit
@@ -523,8 +538,9 @@ json_value* json_parse_number(json_parser* p):
 		return json_float(m)
 
 	if (overflow):
-		json_fail(p)
-		return 0
+		if (negative):
+			return json_int(json_int_min())
+		return json_int(int_max)
 	if (negative):
 		value = 0 - value
 	return json_int(value)
