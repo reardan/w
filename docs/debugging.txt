@@ -183,5 +183,5 @@ Runtime stack traces (lib/stack_trace.w):
 	configurations collect zero frames and print nothing: the trap
 	paths stay safe everywhere.
 
-	./wbuild stack_trace_test (and stack_trace_test_x64) assert the
+	./wbuild stack_trace_test (and stack_trace_64_test) assert the
 	recovered chain against a known call layout.

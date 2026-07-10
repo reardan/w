@@ -1,3 +1,4 @@
+# wbuild: x64
 /*
 End-to-end test for lib/stack_trace.w: unwind our own call chain and
 check the symbolized frames against the known layout of this file.
@@ -44,10 +45,10 @@ int main(int argc, int argv):
 	assert_strings_equal(c"main", stack_trace_symbol(frame_at(3)))
 
 	# Every frame's pc maps back to the call statement in this file
-	assert_equal(19, stack_trace_line(frame_at(0)))
-	assert_equal(23, stack_trace_line(frame_at(1)))
-	assert_equal(27, stack_trace_line(frame_at(2)))
-	assert_equal(36, stack_trace_line(frame_at(3)))
+	assert_equal(20, stack_trace_line(frame_at(0)))
+	assert_equal(24, stack_trace_line(frame_at(1)))
+	assert_equal(28, stack_trace_line(frame_at(2)))
+	assert_equal(37, stack_trace_line(frame_at(3)))
 
 	# Lookups outside any function stay empty instead of trapping
 	asserts(c"no symbol for a null pc", stack_trace_symbol(0) == 0)
