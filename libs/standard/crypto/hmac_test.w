@@ -1,3 +1,4 @@
+# wbuild: x64
 /*
 HMAC-SHA-256 and HMAC-SHA-384 against the full RFC 4231 vector set
 (test cases 1-7: short/long keys, short/long data; case 5 is published

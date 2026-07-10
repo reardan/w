@@ -42,6 +42,18 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- Manifest generation for conventional test targets (2026-07-10):
+  `build.json` is now generated (still committed) by `tools/wbuildgen.w`
+  from the hand-maintained `build.base.json` plus every `*_test.w`
+  source under tests/, lib/, structures/, graphics/, libs/ and tools/
+  (a `# wbuild: x64` directive in the source adds the 64-bit twin), so
+  adding a plain test is creating one file and running
+  `./wbuild manifest` instead of hand-editing a 3000-line manifest.
+  `./wbuild manifest_check` (a `tests` member, following
+  `metadata_check`) fails on drift, and `bin/wtest` maps
+  `build.base.json`, `tools/wbuildgen.w` and every `*_test.w` change to
+  that gate. Design: the "Manifest generation" section of
+  `docs/projects/wexec.md`.
 - Array-to-pointer decay (2026-07-10): passing a fixed array or slice
   where a `T*` (or `void*`) parameter, assignment, initializer, return,
   container key/element, membership key, or switch case expects a pointer

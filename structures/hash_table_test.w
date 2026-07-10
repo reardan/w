@@ -1,3 +1,4 @@
+# wbuild: x64
 import lib.testing
 import structures.hash_table
 

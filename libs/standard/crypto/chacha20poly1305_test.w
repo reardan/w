@@ -1,3 +1,4 @@
+# wbuild: x64
 /*
 Tests for libs/standard/crypto/chacha20poly1305.w: RFC 8439 Poly1305 key
 generation (section 2.6.2, appendix A.4), the AEAD seal vector (section

@@ -1,3 +1,4 @@
+# wbuild: x64
 # Offline tests for libs/standard/web/urlparse.w (issue #198).
 import lib.testing
 import libs.standard.web.urlparse

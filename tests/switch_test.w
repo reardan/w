@@ -1,3 +1,4 @@
+# wbuild: x64
 # switch statement (grammar/switch_statement.w): the scrutinee is
 # evaluated exactly once, cases compare with == semantics in source
 # order, every case body has an implicit break (no fallthrough),

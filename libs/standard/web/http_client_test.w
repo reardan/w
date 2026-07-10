@@ -1,3 +1,4 @@
+# wbuild: x64
 # Offline tests for libs/standard/web/http_client.w (issue #200).
 # Every network test runs against a forked pure-W HTTP fixture server
 # on a loopback ephemeral port (the libs/standard/net/dns_test.w

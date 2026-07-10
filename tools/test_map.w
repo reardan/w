@@ -57,8 +57,12 @@ build. For a changed path P the emitted targets are the union of:
         not through recorded imports.
       - libs/standard/net/x509_fixtures/ -> net_x509_test and
         tests/metadata/ -> metadata_test: run-time fixture data.
-      - build.json / wbuild -> wexec_test + tests (the manifest drives
-        every target).
+      - build.json / wbuild / build.base.json -> wexec_test + tests (the
+        manifest drives every target); build.base.json additionally ->
+        manifest_check (it feeds bin/wbuildgen).
+      - *_test.w under a wbuildgen scan directory -> manifest_check:
+        conventional test sources are generator inputs, so adding or
+        deleting one must regenerate build.json.
       - docs/, *.md, *.txt, .cursor/ -> nothing.
       - anything still unmatched -> tests.
 
@@ -703,6 +707,25 @@ int wtest_compiler_tree(char* path):
 	return 0
 
 
+# The wbuildgen scan directories (docs/projects/wexec.md, "Manifest
+# generation"): a *_test.w source under any of these is a generator
+# input, so manifest_check gates its addition/removal.
+int wtest_scan_dir_path(char* path):
+	if (starts_with(path, c"tests/")):
+		return 1
+	if (starts_with(path, c"lib/")):
+		return 1
+	if (starts_with(path, c"structures/")):
+		return 1
+	if (starts_with(path, c"graphics/")):
+		return 1
+	if (starts_with(path, c"libs/")):
+		return 1
+	if (starts_with(path, c"tools/")):
+		return 1
+	return 0
+
+
 # Residue mappings (header comment, rule c). Returns 1 when any rule
 # matched, so the caller can skip the tests fallback.
 int wtest_map_residue(char* path, int is_w, int exists):
@@ -761,9 +784,18 @@ int wtest_map_residue(char* path, int is_w, int exists):
 	if (starts_with(path, c"tests/metadata/")):
 		wtest_add(path, c"metadata_test")
 		matched = 1
-	if ((strcmp(path, c"build.json") == 0) | (strcmp(path, c"wbuild") == 0)):
+	if ((strcmp(path, c"build.json") == 0) | (strcmp(path, c"wbuild") == 0) | (strcmp(path, c"build.base.json") == 0)):
 		wtest_add(path, c"wexec_test")
 		wtest_add(path, c"tests")
+		if (strcmp(path, c"build.base.json") == 0):
+			# The base manifest feeds bin/wbuildgen; regeneration drift is
+			# invisible to the import graph.
+			wtest_add(path, c"manifest_check")
+		matched = 1
+	if (is_w && ends_with(path, c"_test.w") && wtest_scan_dir_path(path)):
+		# Conventional test sources are wbuildgen inputs: adding, deleting
+		# or renaming one must regenerate build.json (manifest_check).
+		wtest_add(path, c"manifest_check")
 		matched = 1
 	return matched
 

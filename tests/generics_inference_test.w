@@ -1,3 +1,4 @@
+# wbuild: x64
 import lib.testing
 
 # Generic type-argument inference (docs/projects/generics.md): a call

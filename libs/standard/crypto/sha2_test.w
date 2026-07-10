@@ -1,3 +1,4 @@
+# wbuild: x64
 /*
 SHA-384/SHA-512 vectors from FIPS 180-4 / NIST CAVP (the classic empty,
 "abc", 448-bit, 896-bit and million-'a' messages), plus streaming,
