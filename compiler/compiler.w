@@ -18,6 +18,13 @@ void file_not_found_error():
 	print_error(c"'\x0a")
 
 
+# --quiet: suppress the non-diagnostic stderr chatter (the per-file
+# "compiling '...'" banner, the target-mode banner and the absolute-path
+# notice) so 'w check --json --quiet' emits pure NDJSON with an empty
+# stderr on warning-free files. Diagnostics are never suppressed.
+int quiet_mode
+
+
 # 'w deps' recording: while deps_mode is set, every file the compiler
 # successfully opens for compilation (the root, every import, and the
 # auto-imported runtime modules) is recorded here so deps_dump() can
@@ -179,8 +186,9 @@ int compile_file(char* filename):
 	# (Unix '/' prefix or Windows drive letter like 'C:')
 	path_normalize_sep(filename)
 	if (path_is_absolute(filename)):
-		print2(c"using filename as path directly: ")
-		println2(filename)
+		if (quiet_mode == 0):
+			print2(c"using filename as path directly: ")
+			println2(filename)
 		return compile_attempt(filename)
 
 	return compile_relative_path(filename)
@@ -257,7 +265,7 @@ void compile_save(char* fn):
 
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (argc <= start_index):
-		println2(c"usage: w [x64|arm64|arm64_darwin|win64] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w [x64|arm64|arm64_darwin|win64] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet]")
 		exit(1)
 	int i = start_index
 	word_size = 4
@@ -273,13 +281,15 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# when this compiler binary was itself compiled
 	char** first_arg = argv + i * __word_size__
 	if (strcmp(*first_arg, c"x64") == 0):
-		println2(c"Compiling in x64 mode")
+		if (quiet_mode == 0):
+			println2(c"Compiling in x64 mode")
 		word_size =  8
 		word_size_log2 = 3
 		diag_word_size = word_size
 		i = i + 1
 	else if (strcmp(*first_arg, c"arm64") == 0):
-		println2(c"Compiling in arm64 mode")
+		if (quiet_mode == 0):
+			println2(c"Compiling in arm64 mode")
 		# AArch64 is a 64-bit target, so it inherits the x64 type system
 		# (8-byte pointers, int64, float64); target_isa selects the A64
 		# instruction emitter and the Mach-O/ELF-arm64 container.
@@ -294,7 +304,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		data_split = 1
 		i = i + 1
 	else if (strcmp(*first_arg, c"win64") == 0):
-		println2(c"Compiling in win64 mode")
+		if (quiet_mode == 0):
+			println2(c"Compiling in win64 mode")
 		# Windows x64: the x86-64 instruction emitter (target_isa 0,
 		# word_size 8) with the PE32+ container and a kernel32-import
 		# runtime instead of Linux syscalls (docs/projects/windows.md).
@@ -304,7 +315,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		target_os = 2
 		i = i + 1
 	else if (strcmp(*first_arg, c"arm64_darwin") == 0):
-		println2(c"Compiling in arm64_darwin mode")
+		if (quiet_mode == 0):
+			println2(c"Compiling in arm64_darwin mode")
 		# Same A64 instruction emitter and 64-bit type system as the
 		# arm64 (Linux) target; target_os selects the Darwin syscall
 		# stubs and the Mach-O container writer (Stage 4).
@@ -367,10 +379,13 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			arm64_pac = pac_level
 		else if (strcmp(*arg, c"--strict") == 0):
 			strict_mode = 1
+		else if (strcmp(*arg, c"--quiet") == 0):
+			quiet_mode = 1
 		else:
-			print_error(c"compiling '")
-			print_error(*arg)
-			print_error(c"'\x0a")
+			if (quiet_mode == 0):
+				print_error(c"compiling '")
+				print_error(*arg)
+				print_error(c"'\x0a")
 			compile_input_file(*arg)
 		i = i + 1
 
@@ -440,13 +455,22 @@ int link(int argc, int argv):
 int check_main(int argc, int argv):
 	int i = 2
 	diag_json = 0
-	if (i < argc):
+	# Leading flags in any order; --quiet must be consumed before
+	# link_impl sees the argument list so the x64/arm64 mode banner and
+	# the per-file banner are suppressed from the start.
+	int scanning = 1
+	while (scanning & (i < argc)):
 		char** arg = argv + i * __word_size__
 		if (strcmp(*arg, c"--json") == 0):
 			diag_json = 1
 			i = i + 1
+		else if (strcmp(*arg, c"--quiet") == 0):
+			quiet_mode = 1
+			i = i + 1
+		else:
+			scanning = 0
 	if (argc <= i):
-		println2(c"usage: w check [--json] [x64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w check [--json] [--quiet] [x64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
 

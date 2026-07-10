@@ -42,6 +42,30 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- `--quiet` flag (2026-07-10): `w check --json --quiet file.w` (and any
+  other invocation carrying `--quiet`) suppresses the non-diagnostic
+  stderr chatter — the per-file `compiling '...'` banner, the
+  `Compiling in <target> mode` banner, and the
+  `using filename as path directly:` notice — so hook/LSP/MCP consumers
+  get pure NDJSON on stdout and an empty stderr on clean files.
+  Diagnostics are never suppressed. Covered by `check_json_test`.
+- Bit-31 literal warning (2026-07-10, #249 stage 5): a hex or binary
+  literal with bit 31 set warns
+  (`integer literal has bit 31 set and sign-extends to a negative int
+  on every target; use cast(int, ...) if the bit pattern is intended`)
+  at the literal, since it sign-extends into the word-sized `int` on
+  every target (`0xffffffff` is `-1` even on x64). `cast(T, ...)`
+  operands are exempt — `cast(int, 0xd503201f)` is the idiom for an
+  intentional 32-bit pattern (used by `libs/asm/arm64_*.w` and the
+  float-bits tests). Covered by `warning_test`
+  (`tests/bit31_literal_warning_fixture.w`).
+- Bool-bitwise condition hint (2026-07-10): `|`/`&` joining two
+  bool-typed lvalues inside an if/while condition warns
+  (`bitwise '|' on bool operands in a condition does not short-circuit;
+  did you mean '||'?`, same shape for `&`/`&&`). Comparison-result
+  operands stay exempt — see the scope note in
+  `ai_tooling_next_steps.md`. Covered by `warning_test`
+  (`tests/bool_bitwise_warning_fixture.w`).
 - Missing-file diagnostics (2026-07-10, #190): the compiler's
   file-not-found path no longer serializes a freed path buffer — the
   garbled `check --json` `file` field and the garbled

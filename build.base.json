@@ -290,7 +290,7 @@
 			"name": "warning_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w", "tests/limb_builtin_warning_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w", "tests/limb_builtin_warning_fixture.w", "tests/bool_bitwise_warning_fixture.w", "tests/bit31_literal_warning_fixture.w"]}
 			]
 		},
 		{
@@ -315,7 +315,11 @@
 				{"cmd": ["bin/wv2", "check", "--json", "tests/type_system_error_fixture.w"], "expect_fail": true, "expect_stdout": ["\"severity\": \"error\"", "\"message\": \"assignment to const\""]},
 				{"cmd": ["bin/wv2", "check", "--json", "tests/warning_clean_fixture.w"], "stdout_file": "bin/check_json_clean.ndjson"},
 				{"cmd": ["test", "!", "-s", "bin/check_json_clean.ndjson"]},
-				{"cmd": ["bin/wv2", "check", "--json", "x64", "tests/warning_fixture.w"], "expect_stdout": "\"arch\": \"x64\""}
+				{"cmd": ["bin/wv2", "check", "--json", "x64", "tests/warning_fixture.w"], "expect_stdout": "\"arch\": \"x64\"", "expect_stderr": ["compiling '", "Compiling in x64 mode"]},
+				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "tests/warning_fixture.w"], "expect_stdout": ["\"severity\": \"warning\"", "\"arch\": \"x86\""], "reject_stderr": ["compiling", "using filename as path directly"]},
+				{"cmd": ["bin/wv2", "check", "--quiet", "--json", "x64", "tests/warning_clean_fixture.w"], "stdout_file": "bin/check_json_quiet_clean.ndjson", "stderr_file": "bin/check_json_quiet_clean.stderr", "reject_stderr": ["compiling", "Compiling in x64 mode"]},
+				{"cmd": ["test", "!", "-s", "bin/check_json_quiet_clean.ndjson"]},
+				{"cmd": ["test", "!", "-s", "bin/check_json_quiet_clean.stderr"]}
 			]
 		},
 		{

@@ -1,3 +1,16 @@
+# True for a bool-typed lvalue operand — a declared bool variable, field
+# or parameter, still in address form (not the value a comparison or call
+# just produced). bitwise_and_expr/bitwise_or_expr warn when '&'/'|'
+# joins two of these inside an if/while condition: such guards read as
+# logical and do not short-circuit. Comparison results stay exempt —
+# '(a == b) | (c == d)' is long-established W style throughout this
+# repository and evaluating both sides of it is harmless.
+int operand_is_bool_lvalue(int type):
+	if (type_is_value(type)):
+		return 0
+	return type_unqualified(type) == bool_type
+
+
 int binary1(int type):
 	type = promote(type)
 	push_eax()

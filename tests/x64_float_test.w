@@ -27,7 +27,7 @@ void assert_float32_bits(int want, float32 got):
 
 
 int main(int argc, int argv):
-	assert_float64_bits(0x9999999a, 0x3fb99999, 0.1)
+	assert_float64_bits(cast(int, 0x9999999a), 0x3fb99999, 0.1)
 	assert_float64_bits(0x00000000, 0x400c0000, 1.5 + 2.0)
 	assert_float64_bits(0x00000000, 0x40100000, add_float64(1.5, 2.5))
 	assert_float64_bits(0x00000000, 0x40100000, add_int_float64(1.0, 3))
@@ -40,7 +40,7 @@ int main(int argc, int argv):
 	# the shortest round-trip spelling of DBL_MAX must not overflow;
 	# past the rounding boundary the round-up carries into the exponent
 	# and correctly becomes inf
-	assert_float64_bits(0xffffffff, 0x7fefffff, 1.7976931348623157e308)
+	assert_float64_bits(cast(int, 0xffffffff), 0x7fefffff, 1.7976931348623157e308)
 	assert_float64_bits(0x00000000, 0x7ff00000, 1.7976931348623159e308)
 
 	float32 narrowed = 1.25

@@ -9,6 +9,19 @@ char *last_identifier
 int last_call_return_type
 int last_call_end
 
+# Nonzero while the controlling expression of an if or while statement is
+# being parsed. bitwise_and_expr/bitwise_or_expr use it to warn when '&'
+# or '|' joins two bool operands in a condition, where the non-short-
+# circuiting evaluation is a recurring footgun. Declared here (before the
+# expression ladder) so both the setters and the readers see it.
+int condition_context
+
+# Nonzero while the operand of a cast(T, ...) is being parsed. cast() is
+# the documented escape hatch for conversions the checks would reject;
+# int_literal() extends that to the bit-31 literal warning, so
+# cast(int, 0xffffffff) spells "this bit pattern is intentional".
+int cast_context
+
 
 void var_coerce(int want, int got);
 

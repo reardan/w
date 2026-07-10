@@ -48,6 +48,27 @@ int array_decay_is_clean(int flag):
 			cast(int, null_arm) + data_word
 
 
+# The bit-31 literal warning stays quiet for cast() bit patterns, for
+# literals below bit 31 and for short binary literals; the bool-bitwise
+# condition hint stays quiet for comparison results, for mixed operands,
+# for bool arithmetic outside conditions and for the short-circuiting
+# spellings.
+int bit31_and_bool_bitwise_are_clean(int x):
+	int mask = cast(int, 0xffffffff)
+	int low = 0x7fffffff
+	int bits = 0b101
+	bool first = x == 1
+	bool second = x == 2
+	bool accumulated = first | second
+	if ((x == 1) | (x == 2)):
+		return mask & x
+	if (first | (x == 3)):
+		return low
+	if (first || second):
+		return bits
+	return cast(int, accumulated)
+
+
 int main():
 	int x = add(1, 2)
 	x = add(x, 4)
@@ -62,5 +83,7 @@ int main():
 	if (cast_escape_hatches() == 0):
 		x = 0
 	if (array_decay_is_clean(x) == 0):
+		x = 0
+	if (bit31_and_bool_bitwise_are_clean(x) == 0):
 		x = 0
 	return x

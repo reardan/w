@@ -197,7 +197,10 @@ void statement():
 	# if expression statement else statement (parentheses optional)
 	else if (accept(c"if")):
 		if_tab_level = tab_level
+		int outer_condition = condition_context
+		condition_context = 1
 		promote(expression())
+		condition_context = outer_condition
 		jmp_zero_int32(1337)
 		p1 = codepos
 		enclosing_tab_level = if_tab_level
