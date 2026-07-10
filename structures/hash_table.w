@@ -324,6 +324,16 @@ void __w_map_set_bytes(__w_hash_table* table, int key, char* value_src):
 	__w_hash_value_copy(__w_hash_value_addr(table, i), value_src, __w_hash_slot_size(table))
 
 
+# m.add(key, delta): insert-or-accumulate for integer-valued maps. Value
+# storage is zeroed on allocation, growth and removal, so a missing key
+# accumulates from zero. Returns the updated value.
+int __w_map_add(__w_hash_table* table, int key, int delta):
+	int i = __w_map_insert_slot(table, key)
+	int* slot = cast(int*, __w_hash_value_addr(table, i))
+	slot[0] = slot[0] + delta
+	return slot[0]
+
+
 int __w_map_contains(__w_hash_table* table, int key):
 	int i = __w_hash_table_slot(table, key)
 	return table.states[i] == 1

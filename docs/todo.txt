@@ -80,6 +80,8 @@ current state:
 			map and set .length pseudo-field
 			m.remove(key), s.remove(key) and s.add(key) pseudo-methods
 			m.get(key) (traps like m[key]) and m.get(key, default) pseudo-methods
+			m.add(key) / m.add(key, delta) counter accumulation from zero (integer values)
+			m[k] op= v compound assignment (key evaluated once, missing key traps)
 			string keys compare by contents
 			for-in iteration over map keys and set members
 			for k, v in map two-variable iteration

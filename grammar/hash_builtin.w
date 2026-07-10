@@ -3,6 +3,8 @@ int promote(int type);
 void coerce(int want, int got);
 int types_compatible_with_expression(int want, int got);
 void warn_type_mismatch(char* context, int want, int got);
+int compound_assign_apply(int op, int left_type, int right_type);
+int var_binary_operands(int left_type, int right_type);
 
 
 int hash_index_pending
@@ -121,6 +123,63 @@ int hash_finish_pending_assignment():
 	return type_value(value_type)
 
 
+# m[key] op= rhs: the map and key already sit in the pending stack slots,
+# so the read and the write reuse them and the key is evaluated exactly
+# once. The read traps on a missing key, same as m[key]. 'op' is the
+# marker compound_assign_op() returned; the op token is still pending.
+int hash_finish_pending_compound(int op):
+	int saved_base_stack = hash_index_base_stack
+	int saved_map_slot = hash_index_map_slot
+	int saved_key_slot = hash_index_key_slot
+	int value_type = type_map_value_type(hash_index_map_type)
+	hash_index_pending = 0
+	if (type_num_args(value_type) > 0):
+		error(c"compound assignment is not supported on struct values")
+	if (type_is_buffer(type_canonical(value_type))):
+		error(c"compound assignment is not supported on string, array or slice values")
+
+	# Load the current value; keep the parked slots for the store.
+	sym_get_value(c"__w_map_get")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(saved_map_slot)
+	hash_push_stack_slot(saved_key_slot)
+	hash_call_finish(s)
+
+	# Same shape the scalar path feeds compound_assign_apply: loaded left
+	# value on top of the stack, promoted right value in eax.
+	int left_type = type_value(value_type)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int right_type = promote(expression())
+	if (var_binary_operands(left_type, right_type)):
+		error(c"compound assignment does not support var operands")
+	int result_type = compound_assign_apply(op, left_type, right_type)
+	coerce(value_type, result_type)
+	if (types_compatible_with_expression(value_type, result_type) == 0):
+		warn_type_mismatch(c"map assignment", value_type, result_type)
+
+	# Store back through the same map/key slots.
+	push_eax()
+	stack_pos = stack_pos + 1
+	int value_slot = stack_pos
+	sym_get_value(c"__w_map_set")
+	s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(saved_map_slot)
+	hash_push_stack_slot(saved_key_slot)
+	hash_push_stack_slot(value_slot)
+	hash_call_finish(s)
+
+	# Like '=', the expression yields the stored value.
+	mov_eax_esp_plus((stack_pos - value_slot) << word_size_log2)
+	be_pop(stack_pos - saved_base_stack)
+	stack_pos = saved_base_stack
+	return type_value(value_type)
+
+
 int hash_finalize_pending_read_if_needed(int type):
 	if (hash_index_pending):
 		return hash_finish_pending_read()
@@ -176,6 +235,54 @@ int hash_remove_suffix(int type):
 int hash_set_add_suffix(int type):
 	hash_key_call_suffix(type, c"__w_set_add", c"set add key")
 	return type_value(type_lookup(c"void"))
+
+
+# m.add(key) / m.add(key, delta): 'add' has been consumed. Lowers to
+# __w_map_add(map, key, delta) with delta defaulting to 1; a missing key
+# accumulates from zero. Integer values only. Returns the updated value.
+int hash_map_add_suffix(int type):
+	int container_type = type_unqualified(type)
+	int value_type = type_map_value_type(container_type)
+	int key_type = type_map_key_type(container_type)
+	if ((type_num_args(value_type) > 0) | type_float_kind(type_value(value_type))):
+		error(c"map add requires an integer value type")
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int container_slot = stack_pos
+	expect(c"(")
+	int got_type = expression()
+	got_type = promote(got_type)
+	coerce(key_type, got_type)
+	if (types_compatible_with_expression(key_type, got_type) == 0):
+		warn_type_mismatch(c"map add key", key_type, got_type)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int key_slot = stack_pos
+	if (accept(c",")):
+		int delta_got = expression()
+		delta_got = promote(delta_got)
+		coerce(value_type, delta_got)
+		if (types_compatible_with_expression(value_type, delta_got) == 0):
+			warn_type_mismatch(c"map add delta", value_type, delta_got)
+	else:
+		mov_eax_int(1)
+	expect(c")")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int delta_slot = stack_pos
+	sym_get_value(c"__w_map_add")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(container_slot)
+	hash_push_stack_slot(key_slot)
+	hash_push_stack_slot(delta_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(value_type)
 
 
 # m.get(key) / m.get(key, default): 'get' has been consumed.

@@ -131,8 +131,11 @@ int expression():
 		if (accept(c"=")):
 			expression_is_assignment = 1
 			return hash_finish_pending_assignment()
-		if (compound_assign_op()):
-			error(c"compound assignment is not supported on map or set index targets")
+		int hash_op = compound_assign_op()
+		if (hash_op):
+			get_token()
+			expression_is_assignment = 1
+			return hash_finish_pending_compound(hash_op)
 		type = hash_finish_pending_read()
 	int op = compound_assign_op()
 	if (op):
