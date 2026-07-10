@@ -1533,7 +1533,7 @@
 				{"cmd": ["bin/wtest", "changed"], "stdin": "grammar/promote.w\n", "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "verify\nself_host_warning_test\n"},
 				{"cmd": ["bin/wtest", "changed", "structures/json.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "json_test\njson_64_test\njson_codec_test\njson_codec_64_test\njson_rpc_test\njson_rpc_64_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "json_test\njson_codec_test\njson_rpc_test\njson_64_test\njson_codec_64_test\njson_rpc_64_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tests/warning_fixture.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "warning_test\n"},
 				{"cmd": ["bin/wtest", "changed", "libs/extras/parser_generator/generator.w"], "stdout_file": "bin/wtest_map.out"},
@@ -1543,7 +1543,7 @@
 				{"cmd": ["bin/wtest", "changed", "unknown/new_file.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "tests\n"},
 				{"cmd": ["bin/wtest", "changed"], "stdin": "lib/stream.w\n", "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "stream_test\nstream_64_test\nfile_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "stream_test\nfile_test\nstream_64_test\n"},
 				{"cmd": ["bin/wtest", "changed", "lib/file.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "file_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tools/wexec.w", "tests/wexec/good.json"], "stdout_file": "bin/wtest_map.out"},
@@ -1555,7 +1555,10 @@
 				{"cmd": ["bin/wtest", "changed", "debugger/wdbg.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "debug_test\ndebug_test_x64\nattach_test\n"},
 				{"cmd": ["bin/wtest", "changed", ".cursor/rules/w-source.mdc", ".cursor/skills/w-check-diagnostics/SKILL.md"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["test", "!", "-s", "bin/wtest_map.out"]}
+				{"cmd": ["test", "!", "-s", "bin/wtest_map.out"]},
+				{"cmd": ["bin/wtest", "changed", "tests/sha256_test.w"], "stdout_file": "bin/wtest_map.out"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "sha256_test\n"},
+				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read manifest build.json"}
 			]
 		},
 		{
