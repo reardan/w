@@ -72,6 +72,15 @@ working in this repo.
   and a stale darwin seed breaks the Mac cold bootstrap (see #128/#129).
 - W source is whitespace-significant: **tabs** for indentation (spaces trigger a warning),
   no semicolons, `#` line comments, blocks open with `:`.
+- Expression gotchas: `|`/`&` are bitwise and do **not** short-circuit — a
+ guarded expression like `i < n & buf[i]` still evaluates `buf[i]`; use
+ `&&`/`||`. A hex literal with bit 31 set sign-extends into the word-sized
+ `int` on **every** target (`0xffffffff` is `-1` even on x64, so
+ `x & 0xffffffff` is a no-op, never a truncation; build 32-bit masks at
+ runtime — `lib/sha256.w`'s `sha256_mask32` pattern, header comment has the
+ full discipline). `byte` is a built-in 1-byte type, so an identifier named
+ `byte` breaks at statement position (`byte = 5` parses as a malformed
+ declaration) — don't use it as a variable/field name.
 - Built-in containers (`map[K, V]`, `set[K]`, `list[T]`) lower to runtime helpers in
  `structures/hash_table.w` and `structures/w_list.w`, which the compiler **auto-imports
  into every program** (`import_module` calls in `compiler/compiler.w`). Those runtime

@@ -131,8 +131,11 @@ stock x86-64 system.
 
 Implemented and covered by tests:
 
-- Types: `int`, `char`, explicit-width integers through `int32`/`uint32`,
-  x64-only `int64`/`uint64`, `bool`, pointers (`int*`, `char**`, ...),
+- Types: `int`, `char`, explicit-width integers through `int32`/`uint32`
+  (including the 1-byte built-in `byte` — a type name, so an identifier
+  called `byte` breaks at statement position, where `byte = 5` parses as
+  a malformed declaration), x64-only `int64`/`uint64`, `bool`, pointers
+  (`int*`, `char**`, ...),
   structs with mixed-width fields, by-value struct parameters and returns,
   `type` aliases, `const`, `enum`, `union`, typed function pointers
   (`fn(T, ...) -> U`), fixed local/global/struct arrays (`T[N]`), slices
@@ -164,8 +167,12 @@ Implemented and covered by tests:
   `l.push(v)`/`l.pop()` and container `.length`, explicit `cast(T, expr)`,
   postfix `?` error propagation on the generic `wresult[T]` result type
   (unwrap the payload, or return the error to the caller; see
-  `docs/error_results.txt`), hex literals, UTF-8 `"..."` literals with
-  `\u`/`\U` escapes, and explicit legacy C strings via `c"..."`.
+  `docs/error_results.txt`), hex literals (one with bit 31 set
+  sign-extends into the word-sized `int` on every target — `0xffffffff`
+  is `-1` even on x64, so `x & 0xffffffff` never truncates; build 32-bit
+  masks at runtime like `lib/sha256.w`'s `sha256_mask32`), UTF-8 `"..."`
+  literals with `\u`/`\U` escapes, and explicit legacy C strings via
+  `c"..."`.
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
   (1–3 args), `for x in <container>` over built-in lists/maps/sets and any
   struct-pointer type providing the four cursor functions

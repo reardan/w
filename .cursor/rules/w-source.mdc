@@ -8,6 +8,11 @@ alwaysApply: false
 
 - Indent with **tabs** (spaces are a compiler warning) and keep a trailing
   newline. Blocks open with `:`, no semicolons, `#` comments.
+- `|`/`&` are bitwise and never short-circuit; use `&&`/`||` for guards.
+  A hex literal with bit 31 set sign-extends into the word-sized `int` on
+  every target (`0xffffffff` is `-1` even on x64 — build 32-bit masks at
+  runtime, see `lib/sha256.w`). `byte` is a built-in 1-byte type name;
+  don't use it as an identifier (`byte = 5` parses as a declaration).
 - After editing, check the file without producing a binary:
   `./bin/wv2 check --json <file>` (add `x64` after `--json` for the 64-bit
   target). Exit 0 with empty stdout means clean. A `postToolUse` hook

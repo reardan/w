@@ -72,6 +72,20 @@ is a queue, not an archive.
   only be checked through a program that imports it (its `_test.w`).
   A `check` mode that stops after semantic analysis (no entry-point
   requirement) would let hooks check library modules directly.
+- **Bitwise `|`/`&` on `bool` operands deserves a "did you mean
+  `||`/`&&`?" warning.** Agents keep drafting `a | b` guards expecting
+  short-circuiting; it has bitten the conditional-breakpoint work
+  (`docs/projects/debugger_conditional_breakpoints.md`), the stats
+  library, and the plan-11 crypto wave (#193–#198, 2026-07). `bool` is a
+  distinct type, so `bool | bool` / `bool & bool` in a condition is
+  detectable; today it checks clean.
+- **Hex literals with bit 31 set silently sign-extend into word-sized
+  `int`.** `int mask = 0xffffffff` is `-1` on every target, so
+  `x & 0xffffffff` is a no-op on x64 instead of a truncation; the plan-11
+  crypto modules (2026-07) all work around it by building masks at
+  runtime (`lib/sha256.w`'s `sha256_mask32`). A warning when a hex
+  literal with bit 31 set (and no explicit-width type) binds to `int`
+  would catch this class at edit time.
 
 ## Test selection (`bin/wtest`)
 
