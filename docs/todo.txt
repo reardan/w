@@ -242,7 +242,12 @@ current state:
 			extern arrays of unknown length (sys_errlist)
 			more system-header torture fixtures as regressions are found
 		debugger:
-			asm/disasm helpers
+			wdbg disassembly view (disas command): the underlying
+				assembler/disassembler libraries (x86, x64, arm64;
+				docs/projects/assembler_disassembler.md, issues
+				#163-#168/#171) are done, including a randomized round-trip
+				fuzz harness; wiring `disas` into wdbg itself is the
+				epic's one remaining phase (issue #169)
 			wdbg --attach phases 2-6: target-access seam, symbol/line
 				recovery, execution control (breakpoints/stepping),
 				locals + hardware watchpoints, restricted expression eval

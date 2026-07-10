@@ -1,12 +1,13 @@
 # Assembler / Disassembler Libraries (x86, x64, arm64)
 
 Status: **x86 (32-bit) + x86-64 + arm64 (A64) complete: foundations +
-disassembler + assembler** (issues #164, #165, #166, #167, #168).
-`libs/asm/` has the insn model, byte buffer, labels/fixups, register
-tables, hex + corpus utilities, cross-arch ELF section reader (#164), the
-shared x86/x64 decoder + Intel formatter (#165/#167), the encoder + text
-parser (#166/#167), and a separate bitfield-driven arm64 decoder/encoder/
-formatter/parser (#168). Coverage:
+disassembler + assembler + property/fuzz harness** (issues #164, #165,
+#166, #167, #168, #171). `libs/asm/` has the insn model, byte buffer,
+labels/fixups, register tables, hex + corpus utilities, cross-arch ELF
+section reader (#164), the shared x86/x64 decoder + Intel formatter
+(#165/#167), the encoder + text parser (#166/#167), a separate
+bitfield-driven arm64 decoder/encoder/formatter/parser (#168), and
+randomized round-trip fuzzing over all three arches (#171). Coverage:
 
 - `asm_x86_disasm_test` — 345-entry corpus decode round-trip + a
   zero-`.byte` sweep of every function in the self-hosted `bin/wv2`
@@ -78,6 +79,41 @@ were harvested inconsistently (`ldr x2,[x28,#0]` vs `ldr x9,[x28]`), so a
 single word could not round-trip through one formatter. Canonicalized on
 the objdump-style `[Xn]` (omit `#0`), matching the entry-stub
 `ldr x13,[x12]`; the 7 `,#0]` entries were corrected.
+
+**Property/fuzz round-trip harness complete (issue #171).**
+`asm_fuzz_x86_test`, `asm_fuzz_x64_test` and `asm_fuzz_arm64_test`
+randomize concrete instructions beyond the fixed corpus: each iteration
+samples a random line from the arch's `tests/asm/corpus_*.txt` (the same
+enumeration machinery the corpus tests already use — see "Corpus-growth
+ergonomics" below), parses it into a structured `asm_insn`, and
+randomizes its register/immediate/displacement payload within its
+operand kind and encoded width, then asserts `decode(encode(insn)) ==
+insn` (byte-identity of encode→decode→encode) and `parse(format(insn))
+== insn` (text-identity of format→parse→format). A fixed xorshift32 seed
+(`tests/asm_fuzz_prng.w`) makes every run — and any failure — reproduce
+byte-for-byte; `W_ASM_FUZZ_ITERS` overrides the conventional targets'
+CI-budget default (3000/arch) for a manual deeper run (2,000,000
+iterations/arch adds ~15-25s and found nothing further). arm64's two
+recognized-but-opaque forms named in the issue (`madd`/`msub` with a live
+accumulator, scalar-FP `fp` ops) are exercised by a dedicated raw
+round-trip check instead of the corpus sampler — neither appears in
+`corpus_arm64.txt` (only the compiler's own self-host sweep produces
+them), and the text parser cannot reconstruct their un-modeled fields, so
+only `decode(encode(word)) == word` is asserted for them, matching the
+design's own description of those forms.
+
+The fuzzer found one real bug on its first run: `pushw`'s compact-imm8
+wire form (`0x66 0x6a <imm8>`) decoded with the immediate's *logical*
+width (2) instead of the *recorded wire-form* width (1, matching how
+plain `push` already distinguishes its two forms), so re-encoding a
+decoded `pushw` whose value happened to fit a signed byte silently
+widened it to the 4-byte `0x68` form. Fixed in `libs/asm/x86_decode.w`
+(one line); `corpus_x86.txt`'s existing `666a02|pushw 2` entry already
+covered the decode→format direction (format doesn't consult this field
+for `pushw`), which is why the corpus tests hadn't caught it. Corpus-
+growth ergonomics: adding a new instruction form to a `corpus_*.txt`
+fixture is automatically fuzzed the next run, with no separate form
+table to update — the fuzzer's generator *is* the corpus loader.
 
 ## Why
 
@@ -297,31 +333,32 @@ Epic: **Asm: in-house assembler/disassembler libraries (x86, x64, arm64)**
 — links this doc.
 
 1. **Asm: shared foundations (`libs/asm/` + Phase 0)** — no per-ISA
-   encode/decode logic yet.
-   - [ ] instruction inventory → per-ISA corpus fixtures (Phase 0.1)
-   - [ ] canonical text-syntax spec in this doc (Phase 0.2)
-   - [ ] cross-arch binary section reader (Phase 0.3)
-   - [ ] byte-diff test helpers + corpus loader (Phase 0.4)
-   - [ ] seed-compat build gate for `libs/asm` (Phase 0.5)
-   - [ ] instruction + operand structs, byte buffer, label/fixup patching
-   - [ ] register name tables (x86/x64/arm64); opcode-table
+   encode/decode logic yet. **Done (#164).**
+   - [x] instruction inventory → per-ISA corpus fixtures (Phase 0.1)
+   - [x] canonical text-syntax spec in this doc (Phase 0.2)
+   - [x] cross-arch binary section reader (Phase 0.3)
+   - [x] byte-diff test helpers + corpus loader (Phase 0.4)
+   - [x] seed-compat build gate for `libs/asm` (Phase 0.5)
+   - [x] instruction + operand structs, byte buffer, label/fixup patching
+   - [x] register name tables (x86/x64/arm64); opcode-table
          representation decided
-   - [ ] build targets + empty test skeletons; retire `tests/asm.w`
+   - [x] build targets + empty test skeletons; retire `tests/asm.w`
          prototype (fold anything useful in)
-2. **Asm: x86 (32-bit) disassembler** — depends on 1.
-   - [ ] prefix/opcode/ModRM/SIB/disp/imm decode for the compiler subset
-   - [ ] formatter (`format.w`) with canonical Intel output
-   - [ ] golden test: zero-unknown decode of `bin/wv2` `.text`
-   - [ ] instruction-length API (what wdbg's stepper needs)
+2. **Asm: x86 (32-bit) disassembler** — depends on 1. **Done (#165).**
+   - [x] prefix/opcode/ModRM/SIB/disp/imm decode for the compiler subset
+   - [x] formatter (`format.w`) with canonical Intel output
+   - [x] golden test: zero-unknown decode of `bin/wv2` `.text`
+   - [x] instruction-length API (what wdbg's stepper needs)
 3. **Asm: x86 assembler + text parser** — depends on 2 (shares tables).
-   - [ ] `x86_encode.w` from structured insns
-   - [ ] `text.w` parser
-   - [ ] round-trip tests; differential test vs `x86.w`/`x86_asm.w`
+   **Done (#166).**
+   - [x] `x86_encode.w` from structured insns
+   - [x] `text.w` parser
+   - [x] round-trip tests; differential test vs `x86.w`/`x86_asm.w`
          comment corpus
-4. **Asm: x64 support** — depends on 2/3.
-   - [ ] REX, extended registers, RIP-relative, 64-bit operand sizes
-   - [ ] mode-64 decode + encode, golden test on the x64 self-host build
-   - [ ] differential vs `x64.w` emissions and `x64_asm.w` stubs
+4. **Asm: x64 support** — depends on 2/3. **Done (#167).**
+   - [x] REX, extended registers, RIP-relative, 64-bit operand sizes
+   - [x] mode-64 decode + encode, golden test on the x64 self-host build
+   - [x] differential vs `x64.w` emissions and `x64_asm.w` stubs
 5. **Asm: arm64 support** — depends on 1 only (parallel with 2-4). **Done
    (#168).**
    - [x] A64 word decode/encode for the `arm64.w`/`arm64_asm.w` subset
@@ -338,10 +375,13 @@ Epic: **Asm: in-house assembler/disassembler libraries (x86, x64, arm64)**
    - [x] retire `debugger/convert.w`
    - [ ] (separate decision, not in this epic: direct import into
          `code_generator/`)
-8. **Asm: property/fuzz harness + docs** — ongoing once 3 lands.
-   - [ ] randomized round-trip within the supported subset
-   - [ ] `docs/todo.txt` inventory updates; README pointer
+8. **Asm: property/fuzz harness + docs** — ongoing once 3 lands. **Done
+   (#171).**
+   - [x] randomized round-trip within the supported subset
+   - [x] `docs/todo.txt` inventory updates; README pointer
 
 Suggested order: 1 → 2 → 3 → {4, 5 in parallel} → 6/7 as arches land;
-8 trails. Items 2 and 6 deliver the first user-visible value (wdbg
+8 trails. Items 1-5, 7 and 8 are done; item 6 (wdbg disassembly view) is
+the epic's one remaining phase, tracked in its own sub-issue (#169).
+Items 2 and 6 deliver the first user-visible value (wdbg
 disassembly); 7 removes the last binutils crutch.
