@@ -1463,6 +1463,72 @@ int x509_ecdsa_sig_to_raw(char* sig, int len, char* out_r, char* out_s):
 	return 1
 
 
+# DER INTEGER content for a big-endian value: strip leading zero bytes, then
+# prepend one 0x00 when the top bit of the first content byte is set (so the
+# INTEGER stays positive). Writes at most len+1 bytes to out; returns the
+# content length (>= 1). Used by x509_ecdsa_sig_raw_to_der.
+int x509_der_int_from_be(char* be, int len, char* out):
+	int start = 0
+	while (start < len - 1):
+		if ((be[start] & 255) != 0):
+			break
+		start = start + 1
+	int n = len - start
+	int pos = 0
+	if ((be[start] & 0x80) != 0):
+		out[0] = 0
+		pos = 1
+	int i = 0
+	while (i < n):
+		out[pos + i] = be[start + i]
+		i = i + 1
+	return pos + n
+
+
+# Encode a raw ECDSA signature (r and s each 32 big-endian bytes) as the DER
+# SEQUENCE { INTEGER r, INTEGER s } -- the inverse of x509_ecdsa_sig_to_raw.
+# out must have room for at least 72 bytes; *out_len receives the DER length.
+# Returns 1 (the two INTEGERs are each at most 33 bytes so the SEQUENCE body
+# is < 128 and every length field is a single byte).
+int x509_ecdsa_sig_raw_to_der(char* r32, char* s32, char* out, int* out_len):
+	if (r32 == 0):
+		return 0
+	if (s32 == 0):
+		return 0
+	char* rb = malloc(33)
+	int rl = x509_der_int_from_be(r32, 32, rb)
+	char* sb = malloc(33)
+	int sl = x509_der_int_from_be(s32, 32, sb)
+	int body_len = 2 + rl + 2 + sl
+	int pos = 0
+	out[pos] = 0x30
+	pos = pos + 1
+	out[pos] = body_len & 255
+	pos = pos + 1
+	out[pos] = 0x02
+	pos = pos + 1
+	out[pos] = rl & 255
+	pos = pos + 1
+	int i = 0
+	while (i < rl):
+		out[pos + i] = rb[i]
+		i = i + 1
+	pos = pos + rl
+	out[pos] = 0x02
+	pos = pos + 1
+	out[pos] = sl & 255
+	pos = pos + 1
+	i = 0
+	while (i < sl):
+		out[pos + i] = sb[i]
+		i = i + 1
+	pos = pos + sl
+	free(rb)
+	free(sb)
+	*out_len = pos
+	return 1
+
+
 # Verify that issuer's public key signed child's tbsCertificate. Returns 1/0.
 int x509_check_signature(x509_cert* child, x509_cert* issuer):
 	int alg = child.sig_alg
