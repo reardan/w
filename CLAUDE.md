@@ -106,6 +106,13 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
 
 - W source is **tab-indented** (spaces are a compiler warning), blocks open
   with `:`, no semicolons, `#` comments, trailing newline required.
+- Expression gotchas that repeatedly bite generated code: `|`/`&` are
+  bitwise and never short-circuit — use `&&`/`||` for guards; a hex
+  literal with bit 31 set sign-extends into the word-sized `int` on every
+  target (`0xffffffff` is `-1` even on x64, so `x & 0xffffffff` never
+  truncates — build 32-bit masks at runtime, see `lib/sha256.w`); `byte`
+  is a built-in 1-byte type name, so `byte = ...` at statement position
+  parses as a declaration — don't name identifiers `byte`.
 - New language syntax must also be added to the parser-generator grammar
   `tests/parser_generator/w.pg` — `parser_generator_w_test` parses every
   tracked `.w` file and fails on unknown syntax.

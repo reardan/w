@@ -3,6 +3,18 @@
 Tracking issue: reardan/w#155. Origin: w-private#16 (libcurl FFI proposal,
 closed in favor of an in-house stdlib implementation) and w-private#18 §1.
 
+## Status (2026-07, wave 1 merged)
+
+Landed: phase 1 (base64/hex + random, #193), phase 4 (ChaCha20/Poly1305/
+AEAD #194; SHA-384/512 + HMAC + HKDF #195), phase 5 (X25519, #196), the
+crypto half of phase 6 (bignum + RSA verify + ECDSA P-256, #197), and
+phase 2's urlparse + DNS (#198). The **exact landed signatures** live in
+each module's header comment (or `./bin/wv2 symbols --json <file>`) —
+when writing follow-on work packets, quote APIs from there, not from the
+sketch below, which is the pre-implementation shape and is not kept in
+sync. Remaining: http_client + darwin socket audit (phase 2), SSE/retry
+(phase 3), x509 (phase 6), TLS client/server (phases 7–9).
+
 ## Motivation
 
 wharness — the W-native coding agent (w-private) — calls the Anthropic
@@ -150,6 +162,23 @@ All crypto must be written with 32-bit-safe limb arithmetic:
 An x64-only fast path using `int64` is a later optimization, not the
 baseline. Tests must run on x86, x64, and arm64 targets.
 
+Wave-1 learnings that every subsequent packet must follow:
+
+- **No integer literal with bit 31 set, ever.** Such a literal
+  sign-extends into the word-sized `int` on every target — `0xffffffff`
+  is `-1` even on x64, so `x & 0xffffffff` is a no-op, not a truncation.
+  Build masks at runtime (`sha256_mask32()` in `lib/sha256.w`) and keep
+  big constant tables as byte/hex text parsed at first use (see
+  `crypto/sha2.w`'s K tables). `lib/sha256.w`'s header documents the full
+  discipline, including why arithmetic `>>` must be routed through a
+  masking helper (`sha256_shr`).
+- **`|` and `&` are bitwise and never short-circuit** — a guarded index
+  like `i < n & buf[i]` still evaluates `buf[i]`. Use `&&`/`||` in
+  control flow; keep `|`/`&` for actual bit math.
+- **`byte` is a built-in 1-byte type name.** An identifier named `byte`
+  breaks at statement position (`byte = 5` parses as a malformed
+  declaration); don't use it for variables, parameters, or fields.
+
 ## Security posture
 
 Homegrown TLS is a real risk and we accept it deliberately:
@@ -296,6 +325,10 @@ final API; TLS slots in underneath without changing callers.
   (validity, subject/SAN, key usage, basic constraints), PEM decode, trust
   store loader, chain building and signature verification, hostname match;
   private-key loading (PKCS#8/SEC1 EC keys) for the server role.
+  PEM decoding must strip the armor lines and **all** newlines/CR before
+  calling `base64_decode` — the landed decoder rejects whitespace by
+  design (strict canonical-encoding policy, see `crypto/base64.w`'s
+  header), so raw PEM body lines fed directly to it fail.
 - Tests: parse fixture chains checked into `tests/` (Let's Encrypt +
   DigiCert real chains, expired/self-signed/wrong-host negative fixtures),
   Wycheproof RSA/ECDSA verify subsets.
