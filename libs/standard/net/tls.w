@@ -64,6 +64,7 @@ CertificateVerify signing and drives the same record/transcript/schedule.
 import lib.memory
 import lib.time
 import lib.net
+import lib.file
 import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
 import libs.standard.crypto.hkdf
@@ -227,6 +228,15 @@ int TLS_MAX_PLAINTEXT():
 
 int TLS_MAX_CIPHERTEXT():
 	return 16640
+
+
+# Absolute cap on a single reassembled handshake message (#203 hardening).
+# TLS 1.3 permits up to 2^24-1, but our flights (ClientHello, ServerHello,
+# a small Certificate chain, CertificateVerify, Finished) are far smaller;
+# 64 KiB bounds hs_buf growth against a hostile peer without rejecting any
+# legitimate handshake. Enforced in the shared reassembler for both roles.
+int TLS_MAX_HANDSHAKE():
+	return 65536
 
 
 # AEAD parameters for ChaCha20-Poly1305.
@@ -433,6 +443,53 @@ char* tls_last_error(tls_config* c):
 	return c.last_error
 
 
+# ---- server configuration (#203) ----------------------------------------------
+
+# Credentials for the server role. The certificate chain is leaf-first PEM
+# (as served in the TLS Certificate message) and the private key is an ECDSA
+# P-256 key in PKCS#8 or SEC1 PEM (loaded via x509_load_ec_private_key).
+# ECDSA P-256 keys ONLY -- no RSA server keys. The test_* fields inject cert
+# and key bytes directly (mirroring the client's test_* knobs) so tests need
+# no filesystem; test_priv/test_random pin the server ephemeral X25519 key
+# and ServerHello random for deterministic traces.
+struct tls_server_config:
+	char* cert_chain_path       # leaf-first cert-chain PEM file, or 0
+	char* key_path              # ECDSA P-256 private-key PEM file, or 0
+	char* last_error            # static string, set on failure; never freed
+	char* test_cert_pem         # inject cert-chain PEM bytes instead of a file
+	int test_cert_pem_len
+	char* test_key_pem          # inject private-key PEM bytes instead of a file
+	int test_key_pem_len
+	char* test_priv             # 32-byte server X25519 private key, or 0
+	char* test_random           # 32-byte ServerHello random, or 0
+
+
+tls_server_config* tls_server_config_new():
+	tls_server_config* c = new tls_server_config()
+	c.cert_chain_path = 0
+	c.key_path = 0
+	c.last_error = 0
+	c.test_cert_pem = 0
+	c.test_cert_pem_len = 0
+	c.test_key_pem = 0
+	c.test_key_pem_len = 0
+	c.test_priv = 0
+	c.test_random = 0
+	return c
+
+
+void tls_server_config_free(tls_server_config* c):
+	if (c == 0):
+		return
+	free(cast(char*, c))
+
+
+char* tls_server_last_error(tls_server_config* c):
+	if (c == 0):
+		return 0
+	return c.last_error
+
+
 # ---- connection ---------------------------------------------------------------
 
 struct tls_conn:
@@ -471,6 +528,12 @@ struct tls_conn:
 	int at_eof            # received close_notify (clean EOF)
 	int broken            # torn down after a fatal error
 	tls_config* cfg
+	# Server role (#203): set by tls_accept. is_server flips key-schedule
+	# directions (our write=server secrets, our read=client secrets) in the
+	# shared post-handshake path; scfg carries the server credentials + error
+	# slot. Both stay 0 for a client connection, so the client path is inert.
+	int is_server
+	tls_server_config* scfg
 
 
 tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
@@ -516,6 +579,8 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	c.at_eof = 0
 	c.broken = 0
 	c.cfg = cfg
+	c.is_server = 0
+	c.scfg = 0
 	return c
 
 
@@ -557,6 +622,8 @@ void tls_fail(tls_conn* c, char* msg):
 	c.broken = 1
 	if (c.cfg != 0):
 		c.cfg.last_error = msg
+	if (c.scfg != 0):
+		c.scfg.last_error = msg
 
 
 # ---- raw I/O ------------------------------------------------------------------
@@ -821,6 +888,10 @@ int tls_next_hs_msg(tls_conn* c, int* out_type, char** out_msg, int* out_len):
 		int avail = c.hs_buf.len - c.hs_pos
 		if (avail >= 4):
 			int mlen = tls_rd_u24(c.hs_buf.data + c.hs_pos + 1)
+			if (mlen > TLS_MAX_HANDSHAKE()):
+				tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
+				tls_fail(c, c"tls: handshake message too long")
+				return 0
 			if (avail >= 4 + mlen):
 				*out_type = c.hs_buf.data[c.hs_pos] & 255
 				*out_msg = c.hs_buf.data + c.hs_pos
@@ -1557,7 +1628,11 @@ void tls_update_secret(int alg, char* secret, int ds):
 
 
 # Handle a post-handshake handshake message (NewSessionTicket ignored,
-# KeyUpdate re-keys the read side and answers when requested).
+# KeyUpdate re-keys the read side and answers when requested). Symmetric
+# across roles: the read side re-keys the PEER's application secret and, when
+# update_requested, our own write side re-keys OUR application secret. For a
+# client our write secret is c_ap and read is s_ap; for a server it is the
+# mirror image (is_server flips them).
 void tls_post_handshake(tls_conn* c, char* data, int dlen):
 	if (dlen < 4):
 		return
@@ -1566,8 +1641,13 @@ void tls_post_handshake(tls_conn* c, char* data, int dlen):
 		int req = 0
 		if (dlen >= 5):
 			req = data[4] & 255
-		tls_update_secret(c.hash_alg, c.s_ap_secret, c.digest_size)
-		tls_install_read_keys(c, c.s_ap_secret)
+		char* read_secret = c.s_ap_secret
+		char* write_secret = c.c_ap_secret
+		if (c.is_server != 0):
+			read_secret = c.c_ap_secret
+			write_secret = c.s_ap_secret
+		tls_update_secret(c.hash_alg, read_secret, c.digest_size)
+		tls_install_read_keys(c, read_secret)
 		if (req == 1):
 			char* ku = malloc(5)
 			ku[0] = TLS_HS_KEY_UPDATE()
@@ -1577,8 +1657,8 @@ void tls_post_handshake(tls_conn* c, char* data, int dlen):
 			ku[4] = 0
 			tls_send_record(c, TLS_CT_HANDSHAKE(), ku, 5, 1)
 			free(ku)
-			tls_update_secret(c.hash_alg, c.c_ap_secret, c.digest_size)
-			tls_install_write_keys(c, c.c_ap_secret)
+			tls_update_secret(c.hash_alg, write_secret, c.digest_size)
+			tls_install_write_keys(c, write_secret)
 
 
 # Read up to len application-data bytes. Returns the number read (>0), 0 at
@@ -1674,3 +1754,642 @@ void tls_close(tls_conn* c):
 	if (c.broken == 0):
 		tls_send_alert(c, TLS_ALERT_WARNING(), TLS_ALERT_CLOSE_NOTIFY())
 	tls_conn_free(c)
+
+
+# ==============================================================================
+# Server role (#203). tls_accept drives the mirror of the client handshake,
+# reusing this module's record layer, transcript, key schedule and Finished
+# machinery. The security bar is higher here (hostile clients): every
+# peer-supplied length is validated against the remaining buffer AND an
+# absolute cap before anything is consumed, and any parse/MAC failure tears
+# the connection down with a fatal alert. The server private key never appears
+# in a log line or error string.
+# ==============================================================================
+
+# ---- ClientHello parsing (bounded) --------------------------------------------
+
+# Parse a ClientHello body (msg points at the handshake header; body at msg+4,
+# len = 4 + body length). Strictly bounded: every embedded length is checked
+# against the message end before use. Copies the 32-byte client random into
+# out_random, the legacy_session_id (<= 32 bytes) into out_sid/*out_sid_len,
+# and, if present, the X25519 client key share into out_pub. Sets the have_*
+# flags for the ChaCha20 suite, an X25519 key_share, TLS 1.3 in
+# supported_versions, and ecdsa_secp256r1_sha256 in signature_algorithms.
+# Returns 1 for a structurally well-formed ClientHello (whatever it offered),
+# 0 for a malformed/truncated one (the caller answers decode_error). The
+# have_* flags let the caller pick handshake_failure vs protocol_version for a
+# well-formed-but-unacceptable hello.
+int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, int* out_sid_len, char* out_pub, int* have_chacha, int* have_x25519, int* have_tls13, int* have_ecdsa):
+	*have_chacha = 0
+	*have_x25519 = 0
+	*have_tls13 = 0
+	*have_ecdsa = 0
+	*out_sid_len = 0
+	int pos = 4
+	# legacy_version(2) + random(32) + session_id length(1)
+	if (pos + 2 + 32 + 1 > len):
+		return 0
+	pos = pos + 2
+	tls_copy(out_random, msg + pos, 32)
+	pos = pos + 32
+	int sid_len = msg[pos] & 255
+	pos = pos + 1
+	if (sid_len > 32):
+		return 0
+	if (pos + sid_len > len):
+		return 0
+	if (sid_len > 0):
+		tls_copy(out_sid, msg + pos, sid_len)
+	*out_sid_len = sid_len
+	pos = pos + sid_len
+	# cipher_suites
+	if (pos + 2 > len):
+		return 0
+	int cs_len = tls_rd_u16(msg + pos)
+	pos = pos + 2
+	if (pos + cs_len > len):
+		return 0
+	if ((cs_len & 1) != 0):
+		return 0
+	int cs_end = pos + cs_len
+	while (pos + 2 <= cs_end):
+		if (tls_rd_u16(msg + pos) == TLS_SUITE_CHACHA20_POLY1305_SHA256()):
+			*have_chacha = 1
+		pos = pos + 2
+	pos = cs_end
+	# legacy_compression_methods
+	if (pos + 1 > len):
+		return 0
+	int comp_len = msg[pos] & 255
+	pos = pos + 1
+	if (pos + comp_len > len):
+		return 0
+	pos = pos + comp_len
+	# extensions (a TLS 1.3 ClientHello always carries them, but tolerate none)
+	if (pos == len):
+		return 1
+	if (pos + 2 > len):
+		return 0
+	int ext_total = tls_rd_u16(msg + pos)
+	pos = pos + 2
+	int ext_end = pos + ext_total
+	if (ext_end > len):
+		return 0
+	while (pos + 4 <= ext_end):
+		int etype = tls_rd_u16(msg + pos)
+		int elen = tls_rd_u16(msg + pos + 2)
+		pos = pos + 4
+		if (pos + elen > ext_end):
+			return 0
+		if (etype == TLS_EXT_SUPPORTED_VERSIONS()):
+			if (elen >= 1):
+				int vl = msg[pos] & 255
+				if (1 + vl <= elen):
+					int vp = pos + 1
+					int ve = pos + 1 + vl
+					while (vp + 2 <= ve):
+						if (tls_rd_u16(msg + vp) == 0x0304):
+							*have_tls13 = 1
+						vp = vp + 2
+		else if (etype == TLS_EXT_KEY_SHARE()):
+			if (elen >= 2):
+				int ksl = tls_rd_u16(msg + pos)
+				if (2 + ksl <= elen):
+					int kp = pos + 2
+					int ke = pos + 2 + ksl
+					while (kp + 4 <= ke):
+						int grp = tls_rd_u16(msg + kp)
+						int kxl = tls_rd_u16(msg + kp + 2)
+						kp = kp + 4
+						if (kp + kxl > ke):
+							return 0
+						if (grp == TLS_GROUP_X25519()):
+							if (kxl == 32):
+								if (*have_x25519 == 0):
+									tls_copy(out_pub, msg + kp, 32)
+									*have_x25519 = 1
+						kp = kp + kxl
+		else if (etype == TLS_EXT_SIGNATURE_ALGORITHMS()):
+			if (elen >= 2):
+				int sl = tls_rd_u16(msg + pos)
+				if (2 + sl <= elen):
+					int sp = pos + 2
+					int se = pos + 2 + sl
+					while (sp + 2 <= se):
+						if (tls_rd_u16(msg + sp) == TLS_SIG_ECDSA_SECP256R1_SHA256()):
+							*have_ecdsa = 1
+						sp = sp + 2
+		pos = pos + elen
+	return 1
+
+
+# ---- server flight builders ---------------------------------------------------
+
+# Build a ServerHello (RFC 8446 4.1.3): our single cipher suite, the echoed
+# legacy_session_id, supported_versions=TLS 1.3, and an X25519 key_share
+# carrying server_pub. Returns a malloc'd handshake message; *out_len its len.
+char* tls_build_server_hello(char* random, char* sid, int sid_len, char* server_pub, int* out_len):
+	wbuf* b = wbuf_new(128)
+	wbuf_u8(b, TLS_HS_SERVER_HELLO())
+	int lenpos = b.len
+	wbuf_u24(b, 0)                        # body length placeholder
+	int body_start = b.len
+	wbuf_u16(b, 0x0303)                   # legacy_version
+	wbuf_bytes(b, random, 32)             # random
+	wbuf_u8(b, sid_len)                   # legacy_session_id_echo length
+	if (sid_len > 0):
+		wbuf_bytes(b, sid, sid_len)
+	wbuf_u16(b, TLS_SUITE_CHACHA20_POLY1305_SHA256())
+	wbuf_u8(b, 0)                         # legacy_compression_method = null
+	int extpos = b.len
+	wbuf_u16(b, 0)                        # extensions length placeholder
+	int ext_start = b.len
+	# supported_versions = TLS 1.3
+	wbuf_u16(b, TLS_EXT_SUPPORTED_VERSIONS())
+	wbuf_u16(b, 2)
+	wbuf_u16(b, 0x0304)
+	# key_share: one x25519 entry
+	wbuf_u16(b, TLS_EXT_KEY_SHARE())
+	wbuf_u16(b, 36)                       # ext_data length
+	wbuf_u16(b, TLS_GROUP_X25519())
+	wbuf_u16(b, 32)                       # key_exchange length
+	wbuf_bytes(b, server_pub, 32)
+	int ext_len = b.len - ext_start
+	wbuf_set_u16(b, extpos, ext_len)
+	int body_len = b.len - body_start
+	wbuf_set_u24(b, lenpos, body_len)
+	char* out = malloc(b.len)
+	tls_copy(out, b.data, b.len)
+	*out_len = b.len
+	wbuf_free(b)
+	return out
+
+
+# Build an empty EncryptedExtensions (no extensions negotiated: no ALPN, no
+# early data, no server_name ack). type(1)+len(3)+extensions_length(2)=0.
+char* tls_build_encrypted_extensions(int* out_len):
+	char* m = malloc(6)
+	m[0] = TLS_HS_ENCRYPTED_EXTENSIONS()
+	m[1] = 0
+	m[2] = 0
+	m[3] = 2
+	m[4] = 0
+	m[5] = 0
+	*out_len = 6
+	return m
+
+
+# Build a Certificate message (RFC 8446 4.4.2) from the raw DER blocks
+# (leaf-first): empty request context, then each cert as a 3-byte-length entry
+# with empty per-cert extensions. Returns a malloc'd message; *out_len its len.
+char* tls_build_certificate(list[pem_block*] certs, int* out_len):
+	wbuf* b = wbuf_new(512)
+	wbuf_u8(b, TLS_HS_CERTIFICATE())
+	int lenpos = b.len
+	wbuf_u24(b, 0)                        # body length placeholder
+	int body_start = b.len
+	wbuf_u8(b, 0)                         # certificate_request_context length = 0
+	int listpos = b.len
+	wbuf_u24(b, 0)                        # certificate_list length placeholder
+	int list_start = b.len
+	int i = 0
+	while (i < certs.length):
+		pem_block* blk = certs[i]
+		wbuf_u24(b, blk.len)              # cert_data length
+		wbuf_bytes(b, blk.data, blk.len)
+		wbuf_u16(b, 0)                    # per-certificate extensions length = 0
+		i = i + 1
+	wbuf_set_u24(b, listpos, b.len - list_start)
+	wbuf_set_u24(b, lenpos, b.len - body_start)
+	char* out = malloc(b.len)
+	tls_copy(out, b.data, b.len)
+	*out_len = b.len
+	wbuf_free(b)
+	return out
+
+
+# Build a CertificateVerify (RFC 8446 4.4.3): deterministic ECDSA (RFC 6979)
+# over SHA-256 of the server signed-content (64 spaces || context string ||
+# 0x00 || transcript hash at CH..Certificate), emitted as a DER signature with
+# scheme ecdsa_secp256r1_sha256. Returns a malloc'd handshake message and its
+# length, or 0 if signing failed (bad key). The private key stays in server_d.
+char* tls_build_certverify(char* server_d, char* th_cert, int th_len, int* out_len):
+	int clen = 0
+	char* content = tls_certverify_content(th_cert, th_len, &clen)
+	char* digest = malloc(32)
+	whash_oneshot(WHASH_SHA256(), content, clen, digest)
+	free(content)
+	char* r = malloc(32)
+	char* s = malloc(32)
+	int sok = ecdsa_p256_sign(server_d, digest, 32, r, s)
+	tls_wipe(digest, 32)
+	free(digest)
+	if (sok == 0):
+		free(r)
+		free(s)
+		return 0
+	char* der = malloc(80)
+	int der_len = 0
+	x509_ecdsa_sig_raw_to_der(r, s, der, &der_len)
+	free(r)
+	free(s)
+	wbuf* b = wbuf_new(96)
+	wbuf_u8(b, TLS_HS_CERTIFICATE_VERIFY())
+	int lenpos = b.len
+	wbuf_u24(b, 0)                        # body length placeholder
+	int body_start = b.len
+	wbuf_u16(b, TLS_SIG_ECDSA_SECP256R1_SHA256())
+	wbuf_u16(b, der_len)
+	wbuf_bytes(b, der, der_len)
+	free(der)
+	wbuf_set_u24(b, lenpos, b.len - body_start)
+	char* out = malloc(b.len)
+	tls_copy(out, b.data, b.len)
+	*out_len = b.len
+	wbuf_free(b)
+	return out
+
+
+# ---- credential loading -------------------------------------------------------
+
+# The server ephemeral X25519 private key: injected test key, else 32 fresh
+# random bytes. Returns 1 on success.
+int tls_server_gen_priv(tls_conn* c, char* priv):
+	if (c.scfg != 0):
+		if (c.scfg.test_priv != 0):
+			tls_copy(priv, c.scfg.test_priv, 32)
+			return 1
+	return random_bytes(priv, 32)
+
+
+# The ServerHello random: injected test value, else 32 fresh random bytes.
+int tls_server_gen_random(tls_conn* c, char* rnd):
+	if (c.scfg != 0):
+		if (c.scfg.test_random != 0):
+			tls_copy(rnd, c.scfg.test_random, 32)
+			return 1
+	return random_bytes(rnd, 32)
+
+
+# Decode the configured certificate chain into raw DER blocks (leaf-first).
+# Prefers injected PEM bytes; otherwise reads cert_chain_path. Returns the
+# blocks (possibly empty on failure); the caller frees with pem_blocks_free.
+list[pem_block*] tls_server_cert_blocks(tls_server_config* scfg):
+	char* pem = 0
+	int plen = 0
+	char* owned = 0
+	if (scfg.test_cert_pem != 0):
+		pem = scfg.test_cert_pem
+		plen = scfg.test_cert_pem_len
+	else if (scfg.cert_chain_path != 0):
+		owned = file_read_text(scfg.cert_chain_path)
+		if (owned != 0):
+			pem = owned
+			plen = strlen(owned)
+	if (pem == 0):
+		return new list[pem_block*]
+	list[pem_block*] blocks = pem_decode_blocks(pem, plen, c"CERTIFICATE")
+	if (owned != 0):
+		free(owned)
+	return blocks
+
+
+# Load the ECDSA P-256 private key into out_d32 (32-byte scalar). Prefers
+# injected PEM bytes; otherwise reads key_path. The PEM text (which holds the
+# private key) is wiped before free. Returns 1 on success.
+int tls_server_load_key(tls_server_config* scfg, char* out_d32):
+	char* pem = 0
+	int plen = 0
+	char* owned = 0
+	if (scfg.test_key_pem != 0):
+		pem = scfg.test_key_pem
+		plen = scfg.test_key_pem_len
+	else if (scfg.key_path != 0):
+		owned = file_read_text(scfg.key_path)
+		if (owned != 0):
+			pem = owned
+			plen = strlen(owned)
+	if (pem == 0):
+		return 0
+	int ok = x509_load_ec_private_key(pem, plen, out_d32)
+	if (owned != 0):
+		tls_wipe(owned, plen)
+		free(owned)
+	return ok
+
+
+# ---- server handshake state machine -------------------------------------------
+
+# Read and validate the ClientHello (bounded), folding it into the transcript.
+# On success returns 1 with the session_id echo (out_sid/*out_sid_len) and the
+# client X25519 share (out_pub, 32 bytes). On a malformed hello or one that
+# does not offer TLS 1.3 + ChaCha20 + X25519 + ecdsa_secp256r1_sha256 it sends
+# the appropriate fatal alert (protocol_version / handshake_failure /
+# decode_error -- never a HelloRetryRequest), marks the connection, returns 0.
+int tls_server_read_client_hello(tls_conn* c, char* out_sid, int* out_sid_len, char* out_pub):
+	int htype = 0
+	char* msg = 0
+	int mlen = 0
+	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0):
+		return 0
+	if (htype != TLS_HS_CLIENT_HELLO()):
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_UNEXPECTED_MESSAGE())
+		tls_fail(c, c"tls: expected ClientHello")
+		return 0
+	whash_update(c.transcript, msg, mlen)
+	char* crandom = malloc(32)
+	int have_chacha = 0
+	int have_x25519 = 0
+	int have_tls13 = 0
+	int have_ecdsa = 0
+	int pok = tls_parse_client_hello(msg, mlen, crandom, out_sid, out_sid_len, out_pub, &have_chacha, &have_x25519, &have_tls13, &have_ecdsa)
+	free(crandom)
+	if (pok == 0):
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
+		tls_fail(c, c"tls: malformed ClientHello")
+		return 0
+	if (have_tls13 == 0):
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_PROTOCOL_VERSION())
+		tls_fail(c, c"tls: client does not offer TLS 1.3")
+		return 0
+	if (have_chacha == 0):
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_HANDSHAKE_FAILURE())
+		tls_fail(c, c"tls: no supported cipher suite")
+		return 0
+	if (have_x25519 == 0):
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_HANDSHAKE_FAILURE())
+		tls_fail(c, c"tls: no X25519 key_share")
+		return 0
+	if (have_ecdsa == 0):
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_HANDSHAKE_FAILURE())
+		tls_fail(c, c"tls: client does not accept ecdsa_secp256r1_sha256")
+		return 0
+	return 1
+
+
+# Drive the full server handshake on connection c (c.scfg holds credentials).
+# Returns 1 on success (keys switched to application data), 0 on any failure
+# (connection marked broken, alert already sent, key material wiped).
+int tls_server_do_handshake(tls_conn* c):
+	tls_server_config* scfg = c.scfg
+	int ds = c.digest_size
+
+	# Load credentials up front: fail before engaging the client if we cannot
+	# serve. The private key lives in server_d until CertificateVerify.
+	list[pem_block*] certs = tls_server_cert_blocks(scfg)
+	if (certs.length == 0):
+		pem_blocks_free(certs)
+		tls_fail(c, c"tls: server certificate unavailable")
+		return 0
+	char* server_d = malloc(32)
+	tls_wipe(server_d, 32)
+	if (tls_server_load_key(scfg, server_d) == 0):
+		tls_wipe(server_d, 32)
+		free(server_d)
+		pem_blocks_free(certs)
+		tls_fail(c, c"tls: server private key unavailable")
+		return 0
+
+	# ClientHello.
+	char* csid = malloc(32)
+	int csid_len = 0
+	char* cpub = malloc(32)
+	if (tls_server_read_client_hello(c, csid, &csid_len, cpub) == 0):
+		free(csid)
+		free(cpub)
+		tls_wipe(server_d, 32)
+		free(server_d)
+		pem_blocks_free(certs)
+		return 0
+
+	# ServerHello with a fresh (or injected) ephemeral X25519 key and random.
+	char* spriv = malloc(32)
+	if (tls_server_gen_priv(c, spriv) == 0):
+		tls_wipe(spriv, 32)
+		free(spriv)
+		free(csid)
+		free(cpub)
+		tls_wipe(server_d, 32)
+		free(server_d)
+		pem_blocks_free(certs)
+		tls_fail(c, c"tls: RNG failure")
+		return 0
+	char* spub = malloc(32)
+	x25519_scalarmult_base(spub, spriv)
+	char* srandom = malloc(32)
+	if (tls_server_gen_random(c, srandom) == 0):
+		tls_wipe(spriv, 32)
+		free(spriv)
+		free(spub)
+		free(srandom)
+		free(csid)
+		free(cpub)
+		tls_wipe(server_d, 32)
+		free(server_d)
+		pem_blocks_free(certs)
+		tls_fail(c, c"tls: RNG failure")
+		return 0
+	int sh_len = 0
+	char* sh = tls_build_server_hello(srandom, csid, csid_len, spub, &sh_len)
+	free(srandom)
+	free(spub)
+	free(csid)
+	whash_update(c.transcript, sh, sh_len)
+	int shsent = tls_send_record(c, TLS_CT_HANDSHAKE(), sh, sh_len, 0)
+	free(sh)
+	if (shsent == 0):
+		tls_wipe(spriv, 32)
+		free(spriv)
+		free(cpub)
+		tls_wipe(server_d, 32)
+		free(server_d)
+		pem_blocks_free(certs)
+		tls_fail(c, c"tls: send ServerHello failed")
+		return 0
+
+	# ECDHE shared secret; reject a low-order (all-zero) result.
+	char* ecdhe = malloc(32)
+	int xr = x25519_scalarmult(ecdhe, spriv, cpub)
+	tls_wipe(spriv, 32)
+	free(spriv)
+	free(cpub)
+	if (xr != 0):
+		tls_wipe(ecdhe, 32)
+		free(ecdhe)
+		tls_wipe(server_d, 32)
+		free(server_d)
+		pem_blocks_free(certs)
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_HANDSHAKE_FAILURE())
+		tls_fail(c, c"tls: bad client key share")
+		return 0
+
+	# Handshake key schedule over CH..SH; install directional keys (we write
+	# with the server handshake secret and read with the client one).
+	char* th_ch_sh = malloc(ds)
+	whash_final(c.transcript, th_ch_sh)
+	char* hs_secret = malloc(ds)
+	tls_derive_handshake(c, ecdhe, th_ch_sh, hs_secret)
+	tls_wipe(ecdhe, 32)
+	free(ecdhe)
+	free(th_ch_sh)
+	tls_install_write_keys(c, c.s_hs_secret)
+	tls_install_read_keys(c, c.c_hs_secret)
+
+	# EncryptedExtensions (empty).
+	int ee_len = 0
+	char* ee = tls_build_encrypted_extensions(&ee_len)
+	whash_update(c.transcript, ee, ee_len)
+	int eesent = tls_send_record(c, TLS_CT_HANDSHAKE(), ee, ee_len, 1)
+	free(ee)
+	if (eesent == 0):
+		tls_wipe(hs_secret, ds)
+		free(hs_secret)
+		tls_wipe(server_d, 32)
+		free(server_d)
+		pem_blocks_free(certs)
+		tls_fail(c, c"tls: send EncryptedExtensions failed")
+		return 0
+
+	# Certificate (the configured chain, leaf-first). DER is copied into the
+	# message, so the blocks are released immediately after.
+	int cert_len = 0
+	char* certmsg = tls_build_certificate(certs, &cert_len)
+	pem_blocks_free(certs)
+	whash_update(c.transcript, certmsg, cert_len)
+	int csent = tls_send_record(c, TLS_CT_HANDSHAKE(), certmsg, cert_len, 1)
+	free(certmsg)
+	if (csent == 0):
+		tls_wipe(hs_secret, ds)
+		free(hs_secret)
+		tls_wipe(server_d, 32)
+		free(server_d)
+		tls_fail(c, c"tls: send Certificate failed")
+		return 0
+	char* th_cert = malloc(ds)
+	whash_final(c.transcript, th_cert)
+
+	# CertificateVerify (deterministic ECDSA over the CH..Certificate hash).
+	int cv_len = 0
+	char* cv = tls_build_certverify(server_d, th_cert, ds, &cv_len)
+	free(th_cert)
+	tls_wipe(server_d, 32)
+	free(server_d)
+	if (cv == 0):
+		tls_wipe(hs_secret, ds)
+		free(hs_secret)
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_INTERNAL_ERROR())
+		tls_fail(c, c"tls: CertificateVerify signing failed")
+		return 0
+	whash_update(c.transcript, cv, cv_len)
+	int cvsent = tls_send_record(c, TLS_CT_HANDSHAKE(), cv, cv_len, 1)
+	free(cv)
+	if (cvsent == 0):
+		tls_wipe(hs_secret, ds)
+		free(hs_secret)
+		tls_fail(c, c"tls: send CertificateVerify failed")
+		return 0
+	char* th_cv = malloc(ds)
+	whash_final(c.transcript, th_cv)
+
+	# server Finished over TH(CH..CertificateVerify).
+	char* sfkey = malloc(ds)
+	tls_finished_key(c.hash_alg, c.s_hs_secret, sfkey)
+	char* svd = malloc(ds)
+	hmac_compute(c.hash_alg, sfkey, ds, th_cv, ds, svd)
+	tls_wipe(sfkey, ds)
+	free(sfkey)
+	free(th_cv)
+	char* fin = malloc(4 + ds)
+	fin[0] = TLS_HS_FINISHED()
+	fin[1] = 0
+	fin[2] = 0
+	fin[3] = ds
+	tls_copy(fin + 4, svd, ds)
+	free(svd)
+	whash_update(c.transcript, fin, 4 + ds)
+	int fsent = tls_send_record(c, TLS_CT_HANDSHAKE(), fin, 4 + ds, 1)
+	free(fin)
+	if (fsent == 0):
+		tls_wipe(hs_secret, ds)
+		free(hs_secret)
+		tls_fail(c, c"tls: send Finished failed")
+		return 0
+
+	# Application secrets over CH..serverFinished; switch our WRITE to the
+	# server application keys. READ stays on the client handshake keys so we
+	# can read the client's Finished, then advances to the client app keys.
+	char* th_ch_sf = malloc(ds)
+	whash_final(c.transcript, th_ch_sf)
+	tls_derive_application(c, hs_secret, th_ch_sf)
+	tls_wipe(hs_secret, ds)
+	free(hs_secret)
+	tls_install_write_keys(c, c.s_ap_secret)
+
+	# client Finished = HMAC(client_finished_key, TH(CH..serverFinished)).
+	char* cfkey = malloc(ds)
+	tls_finished_key(c.hash_alg, c.c_hs_secret, cfkey)
+	char* expected = malloc(ds)
+	hmac_compute(c.hash_alg, cfkey, ds, th_ch_sf, ds, expected)
+	tls_wipe(cfkey, ds)
+	free(cfkey)
+	free(th_ch_sf)
+	int htype = 0
+	char* msg = 0
+	int mlen = 0
+	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0):
+		free(expected)
+		return 0
+	if (htype != TLS_HS_FINISHED()):
+		free(expected)
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_UNEXPECTED_MESSAGE())
+		tls_fail(c, c"tls: expected client Finished")
+		return 0
+	int vd_len = mlen - 4
+	if (vd_len != ds):
+		free(expected)
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
+		tls_fail(c, c"tls: bad client Finished length")
+		return 0
+	char* got = malloc(ds)
+	tls_copy(got, msg + 4, ds)
+	int finok = hmac_equal(expected, got, ds)
+	free(expected)
+	free(got)
+	if (finok == 0):
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECRYPT_ERROR())
+		tls_fail(c, c"tls: client Finished verify failed")
+		return 0
+	tls_install_read_keys(c, c.c_ap_secret)
+	return 1
+
+
+# ---- public server API --------------------------------------------------------
+
+# Server handshake over an already-accepted TCP socket. Returns an owned
+# tls_conn* on success (the same tls_read/tls_write/tls_close then apply), or 0
+# on failure with the reason in tls_server_last_error(cfg).
+tls_conn* tls_accept(int sockfd, tls_server_config* cfg):
+	if (cfg == 0):
+		return 0
+	tls_conn* c = tls_conn_new(sockfd, 0, 0)
+	c.is_server = 1
+	c.scfg = cfg
+	if (tls_server_do_handshake(c) == 0):
+		tls_conn_free(c)
+		return 0
+	return c
+
+
+# In-memory server handshake harness (tests): client bytes preloaded, server
+# output captured. Not part of the public API.
+tls_conn* tls_accept_mem(char* client_flight, int flen, tls_server_config* cfg):
+	if (cfg == 0):
+		return 0
+	tls_conn* c = tls_conn_new(0 - 1, 1, 0)
+	c.is_server = 1
+	c.scfg = cfg
+	wbuf_bytes(c.mem_in, client_flight, flen)
+	if (tls_server_do_handshake(c) == 0):
+		tls_conn_free(c)
+		return 0
+	return c

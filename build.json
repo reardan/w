@@ -1150,6 +1150,16 @@
 			]
 		},
 		{
+			"name": "net_tls_server_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_test"]},
+				{"cmd": ["bin/net_tls_server_test"]},
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_test_x64"]},
+				{"cmd": ["bin/net_tls_server_test_x64"]}
+			]
+		},
+		{
 			"name": "switch_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2931,6 +2941,7 @@
 				"net_asn1_test",
 				"net_x509_test",
 				"net_tls_test",
+				"net_tls_server_test",
 				"switch_test",
 				"for_container_test",
 				"default_args_test",
