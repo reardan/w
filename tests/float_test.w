@@ -49,7 +49,7 @@ void test_float32_coercions():
 	assert_equal(3, truncated)
 
 	float negative = -1.5
-	assert_float_bits(0xbfc00000, negative)
+	assert_float_bits(cast(int, 0xbfc00000), negative)
 
 
 void test_float32_params_and_returns():

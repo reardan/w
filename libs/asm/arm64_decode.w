@@ -404,7 +404,7 @@ void arm64_dec_branch_reg(asm_insn* insn, int w):
 
 # System (nop, hints, barriers): recognized-opaque except nop is exact.
 void arm64_dec_system(asm_insn* insn, int w):
-	if (w == 0xd503201f):
+	if (w == cast(int, 0xd503201f)):
 		insn.mnemonic = c"nop"
 		return
 	arm64_opaque(insn, c"hint", w)
@@ -412,24 +412,24 @@ void arm64_dec_system(asm_insn* insn, int w):
 
 # PAC data-processing (1 source): pacia/autia and *za variants.
 void arm64_dec_pac(asm_insn* insn, int w):
-	int fam = w & 0xfffff000
+	int fam = w & cast(int, 0xfffff000)
 	int rn = arm64_bits(w, 5, 5)
 	int rd = arm64_bits(w, 0, 5)
-	if (fam == 0xdac10000):
+	if (fam == cast(int, 0xdac10000)):
 		insn.mnemonic = c"pacia"
 		arm64_set_reg(&insn.op1, rd, 8)
 		arm64_set_reg(&insn.op2, rn, 8)
 		return
-	if (fam == 0xdac11000):
+	if (fam == cast(int, 0xdac11000)):
 		insn.mnemonic = c"autia"
 		arm64_set_reg(&insn.op1, rd, 8)
 		arm64_set_reg(&insn.op2, rn, 8)
 		return
-	if (fam == 0xdac12000):
+	if (fam == cast(int, 0xdac12000)):
 		insn.mnemonic = c"paciza"
 		arm64_set_reg(&insn.op1, rd, 8)
 		return
-	if (fam == 0xdac13000):
+	if (fam == cast(int, 0xdac13000)):
 		insn.mnemonic = c"autiza"
 		arm64_set_reg(&insn.op1, rd, 8)
 		return
@@ -830,17 +830,17 @@ int asm_arm64_decode(char* bytes, int length, int address, asm_insn* insn):
 	if ((w & 0x7e000000) == 0x36000000):
 		arm64_dec_test_branch(insn, w, address)
 		return 4
-	if ((w & 0xfe000000) == 0x54000000):
+	if ((w & cast(int, 0xfe000000)) == 0x54000000):
 		if ((w & 0x00000010) == 0):
 			arm64_dec_cond_branch(insn, w, address)
 			return 4
-	if ((w & 0xff000000) == 0xd4000000):
+	if ((w & cast(int, 0xff000000)) == cast(int, 0xd4000000)):
 		arm64_dec_exception(insn, w)
 		return 4
-	if ((w & 0xffc00000) == 0xd5000000):
+	if ((w & cast(int, 0xffc00000)) == cast(int, 0xd5000000)):
 		arm64_dec_system(insn, w)
 		return 4
-	if ((w & 0xfe000000) == 0xd6000000):
+	if ((w & cast(int, 0xfe000000)) == cast(int, 0xd6000000)):
 		arm64_dec_branch_reg(insn, w)
 		return 4
 
@@ -888,7 +888,7 @@ int asm_arm64_decode(char* bytes, int length, int address, asm_insn* insn):
 	# Data-processing (1 source, incl. PAC) has bit30 set (top byte 0xda) and
 	# must precede the 2-source / conditional dispatches below, whose masks
 	# ignore bit30 and so alias it.
-	if ((w & 0xff000000) == 0xda000000):
+	if ((w & cast(int, 0xff000000)) == cast(int, 0xda000000)):
 		arm64_dec_pac(insn, w)
 		return 4
 	if ((w & 0x1fe00000) == 0x1a400000):

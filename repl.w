@@ -506,6 +506,10 @@ int repl_compile_entry(char* path):
 		import_plain_count = saved_plain_count
 		current_function_symbol = saved_function_symbol
 		pointer_indirection = 0
+		# error() can jump out from inside a condition or cast() operand;
+		# clear the parse-context flags so later entries warn correctly
+		condition_context = 0
+		cast_context = 0
 		diag_clear()
 		# The failure may have happened inside an imported file
 		if (file != repl_entry_file):

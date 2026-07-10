@@ -23,7 +23,7 @@ void assert_float_bits(int want, float got):
 void test_float_bits():
 	assert_equal_hex(0x3f800000, float_bits(1.0))
 	assert_equal_hex(0x40000000, float_bits(2.0))
-	assert_equal_hex(0xbfc00000, float_bits(-1.5))
+	assert_equal_hex(cast(int, 0xbfc00000), float_bits(-1.5))
 	assert_equal_hex(0x00000000, float_bits(0.0))
 
 
@@ -31,16 +31,16 @@ void test_float_from_bits():
 	assert_near(3.1415927, float_from_bits(0x40490fdb))
 	assert_float_bits(0x3f800000, float_from_bits(0x3f800000))
 	# round trip through both directions
-	assert_float_bits(0xc2280000, float_from_bits(float_bits(-42.0)))
+	assert_float_bits(cast(int, 0xc2280000), float_from_bits(float_bits(-42.0)))
 	assert_near(0.5, float_from_bits(float_bits(0.5)))
 
 
 void test_fis_nan():
 	assert_equal(1, fis_nan(float_from_bits(0x7fc00000)))    # quiet NaN
 	assert_equal(1, fis_nan(float_from_bits(0x7f800001)))    # signaling NaN
-	assert_equal(1, fis_nan(float_from_bits(0xffc00000)))    # negative NaN
+	assert_equal(1, fis_nan(float_from_bits(cast(int, 0xffc00000))))    # negative NaN
 	assert_equal(0, fis_nan(float_from_bits(0x7f800000)))    # +inf
-	assert_equal(0, fis_nan(float_from_bits(0xff800000)))    # -inf
+	assert_equal(0, fis_nan(float_from_bits(cast(int, 0xff800000))))    # -inf
 	assert_equal(0, fis_nan(0.0))
 	assert_equal(0, fis_nan(1.5))
 	assert_equal(0, fis_nan(-1.5))
@@ -51,16 +51,16 @@ void test_fabs():
 	assert_float_bits(0x3fc00000, fabs(1.5))
 	assert_float_bits(0x00000000, fabs(0.0))
 	# negative zero: the sign bit clears
-	assert_float_bits(0x00000000, fabs(float_from_bits(0x80000000)))
+	assert_float_bits(0x00000000, fabs(float_from_bits(cast(int, 0x80000000))))
 	# NaN passes through with the sign bit cleared, no comparison involved
-	assert_float_bits(0x7fc00000, fabs(float_from_bits(0xffc00000)))
+	assert_float_bits(0x7fc00000, fabs(float_from_bits(cast(int, 0xffc00000))))
 
 
 void test_ffloor():
 	assert_float_bits(0x40000000, ffloor(2.75))      # 2.0
-	assert_float_bits(0xc0400000, ffloor(-2.25))     # floor(-2.25) = -3
+	assert_float_bits(cast(int, 0xc0400000), ffloor(-2.25))     # floor(-2.25) = -3
 	assert_float_bits(0x40a00000, ffloor(5.0))       # already whole
-	assert_float_bits(0xc0400000, ffloor(-3.0))
+	assert_float_bits(cast(int, 0xc0400000), ffloor(-3.0))
 	assert_float_bits(0x00000000, ffloor(0.5))
 
 

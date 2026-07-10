@@ -317,7 +317,9 @@ passes; it archives the old seed to `old/` first.
 - Use `./bin/wv2 check --json file.w` for compile-only diagnostics without
   writing an ELF. Add `x64` after `--json` for the 64-bit target. Output is
   newline-delimited JSON on stdout with `file`, `line`, `column`, `severity`,
-  `message`, `token`, and `arch`; stderr keeps the usual human progress text.
+  `message`, `token`, and `arch`; stderr keeps the usual human progress text
+  unless `--quiet` is given, which silences the non-diagnostic banners so a
+  clean file produces no output at all.
 - `w check` reports all warnings reached before the first error, then stops at
   that first error. Multi-error recovery remains out of scope for the
   single-pass compiler.

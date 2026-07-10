@@ -23,7 +23,7 @@ void test_map_char_ptr_float_set_get_roundtrip():
 	m[c"c"] = 0.0
 	m[c"d"] = 1073741824.0
 	assert_float_bits(0x3fc00000, m[c"a"])
-	assert_float_bits(0xc0100000, m[c"b"])
+	assert_float_bits(cast(int, 0xc0100000), m[c"b"])
 	assert_float_bits(0x0, m[c"c"])
 	assert_float_bits(0x4e800000, m[c"d"])
 	assert_equal(4, m.length)
@@ -36,7 +36,7 @@ void test_map_int_float_set_get_roundtrip():
 	m[3] = 0.0
 	m[4] = 1073741824.0
 	assert_float_bits(0x3fc00000, m[1])
-	assert_float_bits(0xc0100000, m[2])
+	assert_float_bits(cast(int, 0xc0100000), m[2])
 	assert_float_bits(0x0, m[3])
 	assert_float_bits(0x4e800000, m[4])
 	assert_equal(4, m.length)
@@ -45,7 +45,7 @@ void test_map_int_float_set_get_roundtrip():
 void test_map_float_literal():
 	map[char*, float] m = map[char*, float]{c"a": 1.5, c"b": -2.25}
 	assert_float_bits(0x3fc00000, m[c"a"])
-	assert_float_bits(0xc0100000, m[c"b"])
+	assert_float_bits(cast(int, 0xc0100000), m[c"b"])
 	assert_equal(2, m.length)
 
 
@@ -53,14 +53,14 @@ void test_map_float_overwrite():
 	map[char*, float] m = new map[char*, float]
 	m[c"k"] = 1.5
 	m[c"k"] = -2.25
-	assert_float_bits(0xc0100000, m[c"k"])
+	assert_float_bits(cast(int, 0xc0100000), m[c"k"])
 	assert_equal(1, m.length)
 
 
 void test_map_float_get():
 	map[char*, float] m = map[char*, float]{c"one": 1.5, c"two": -2.25}
 	assert_float_bits(0x3fc00000, m.get(c"one"))
-	assert_float_bits(0xc0100000, m.get(c"two"))
+	assert_float_bits(cast(int, 0xc0100000), m.get(c"two"))
 
 
 void test_map_float_get_with_default():
@@ -84,7 +84,7 @@ void test_map_float_remove():
 	assert_equal(2, m.length)
 	# A removed key can be inserted again
 	m[c"two"] = -100.25
-	assert_float_bits(0xc2c88000, m[c"two"])
+	assert_float_bits(cast(int, 0xc2c88000), m[c"two"])
 	assert_equal(3, m.length)
 
 

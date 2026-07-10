@@ -121,7 +121,10 @@ int unary_expression():
 		expect(c"(")
 		int want = type_name()
 		expect(c",")
+		int outer_cast = cast_context
+		cast_context = 1
 		type = expression()
+		cast_context = outer_cast
 		type = promote(type)
 		if (type_num_args(want) > 0):
 			error(c"cannot cast to a struct value")

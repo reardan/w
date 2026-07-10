@@ -55,7 +55,10 @@ int while_statement():
 
 	# if not expression: jmp after statement block
 	p1 = codepos
+	int outer_condition = condition_context
+	condition_context = 1
 	promote(expression())
+	condition_context = outer_condition
 	jmp_zero_int32(1337008)
 	p2 = codepos
 
