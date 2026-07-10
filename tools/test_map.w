@@ -113,6 +113,10 @@ void wtest_init_targets():
 	wtest_targets.push(c"pac_darwin")
 	wtest_targets.push(c"pac_full_test_arm64")
 	wtest_targets.push(c"pac_corrupt_test_arm64")
+	wtest_targets.push(c"crypto_base64_test")
+	wtest_targets.push(c"crypto_base64_64_test")
+	wtest_targets.push(c"crypto_random_test")
+	wtest_targets.push(c"crypto_random_64_test")
 	wtest_targets.push(c"tests")
 
 
@@ -340,6 +344,12 @@ void wtest_map_path(char* path):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):
 		wtest_add_parser_generator(path)
+	else if (starts_with(path, c"libs/standard/crypto/base64")):
+		wtest_add(path, c"crypto_base64_test")
+		wtest_add(path, c"crypto_base64_64_test")
+	else if (starts_with(path, c"libs/standard/crypto/random")):
+		wtest_add(path, c"crypto_random_test")
+		wtest_add(path, c"crypto_random_64_test")
 	else if ((strcmp(path, c"tests/warning_fixture.w") == 0) | (strcmp(path, c"tests/warning_clean_fixture.w") == 0) | (strcmp(path, c"tests/string_char_warning_fixture.w") == 0)):
 		wtest_add(path, c"warning_test")
 	else if (strcmp(path, c"tests/import_alias_warning_fixture.w") == 0):
