@@ -41,8 +41,15 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
 2. **Pick tests from the diff**, don't guess:
    `git diff --name-only HEAD | ./bin/wtest changed` prints the focused build
    targets (`./wbuild wtest` builds it; `./wbuild test_changed` runs them directly).
+   Selection is manifest-driven: wtest parses `build.json` and unions targets
+   whose steps name a changed path with targets whose compile roots
+   transitively import a changed `.w` file (`bin/wv2 deps` closures, cached
+   in `bin/.wtest_deps_cache` — first run after a build ~35s, then
+   sub-second), plus residue rules documented in `tools/test_map.w`.
    Compiler changes always get `verify` (+ `verify_x64` for codegen/word-size
-   work); docs map to nothing; unknown paths fall back to `tests`.
+   work); every existing `.w` change gets `parser_generator_w_test`; deleted
+   `.w` files and `lib/`/`structures/`/`libs/` paths get `metadata_check`;
+   docs map to nothing; paths nothing knows about fall back to `tests`.
 3. **Before declaring work done**, run the full suite: `./wbuild tests`.
 4. **Find declarations** with `./bin/wv2 symbols --json <file>` (functions,
    globals, types with file/line/column) instead of grepping, **answer

@@ -83,6 +83,26 @@ The MVP described here has landed:
   stripped binaries. It replaced the ELF section-header walk that
   aborted natively on arm64_darwin ("No symbol table addr") and the
   per-arch `lib/__arch__/*/elf_introspect.w` modules.
+- **`w deps [--json]`** (2026-07-10): prints a program's transitive
+  import closure — root, imports, auto-imported container runtime —
+  one repo-relative path per line (NDJSON `{"file": ...}` records with
+  `--json`), by running the `check` front-end and recording every file
+  the compiler opens. Asserted by `deps_test`. Default target only,
+  like `check`.
+- **`wtest changed` selection is manifest-driven** (2026-07-10):
+  building on the manifest-parsed registry above, the per-path mapping
+  rules themselves now come from `build.json`, which resolved three
+  more backlog entries.  *Unmapped paths*: any target whose steps name a
+  changed path (fixtures, scripts, data) or whose compile roots'
+  import closures (via `bin/wv2 deps`, content-hash-cached in
+  `bin/.wtest_deps_cache`) contain a changed `.w` file is selected, so
+  e.g. `tools/test_map.w` now maps to `wtest_map_test` instead of the
+  full suite. *`.w` diffs → `parser_generator_w_test`* (the PR #151
+  escape) and *deleted modules → `metadata_check`* (the #145 escape)
+  are blanket residue rules; the remaining residue rules (compiler
+  tree → `verify`, `lib/__arch__/`, `graphics/`, c_import machinery,
+  run-time fixture data) are documented at the top of
+  `tools/test_map.w`.
 
 The out-of-scope items at the end of this document remain deferred; the
 living backlog (deferred items plus friction found while dogfooding) is

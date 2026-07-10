@@ -59,7 +59,13 @@ Compile and run one program: `./bin/wv2 file.w -o out && ./out`
 
 **Run a single/focused test**: `git diff --name-only HEAD | ./bin/wtest changed`
 prints the exact build targets for your diff (build wtest with `./wbuild wtest`);
-`./wbuild test_changed` runs them. Don't guess targets.
+`./wbuild test_changed` runs them. Don't guess targets. Selection is
+manifest-driven: wtest parses `build.json` and combines literal step
+references with import closures from `bin/wv2 deps` (cached in
+`bin/.wtest_deps_cache`; the first run after a build takes ~35s, later
+runs are sub-second), plus documented residue rules in `tools/test_map.w`
+(compiler tree → `verify`, any `.w` → `parser_generator_w_test`,
+deleted `.w`/library trees → `metadata_check`).
 
 **Check without compiling to a binary**: `./bin/wv2 check --json file.w`
 (NDJSON diagnostics; empty stdout + exit 0 = clean). Fix warnings, not just
@@ -68,6 +74,11 @@ errors — self-host stages build with `--strict`, so any warning fails
 lint, asserted by `./wbuild warning_test`.
 
 **Find declarations**: `./bin/wv2 symbols --json file.w` instead of grepping.
+
+**List a program's imports**: `./bin/wv2 deps file.w` prints the transitive
+import closure (root, imports, auto-imported runtime), one repo-relative
+path per line; `--json` emits `{"file": "..."}` NDJSON. Default target
+only — like `check`, it does not compose with the arch selectors.
 
 Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
 (`./bin/wv2 ...`) need `mkdir -p bin` (or `./wbuild build`) first if you see
@@ -127,9 +138,11 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
   the produced binary keep `expect_stderr`/`expect_fail` fields on their
   `build.json` steps.
 - A new end-to-end test needs: `tests/foo_test.w` (use `lib/assert.w` /
-  `lib/testing.w`), a target in `build.json`, membership in the `tests`
-  umbrella target, and a `tools/test_map.w` entry if no directory rule
-  covers it.
+  `lib/testing.w`), a target in `build.json`, and membership in the `tests`
+  umbrella target. `bin/wtest` picks the target up automatically from the
+  manifest (literal step references + import closures); a `tools/test_map.w`
+  residue rule is only needed for coupling the import graph cannot see
+  (run-time data files, non-default-arch modules).
 - The agent tooling here is dogfooded: if you hit friction or bugs in
   `w check`, `wtest`, or the other agent-facing surfaces, add an entry to
   `docs/projects/ai_tooling_next_steps.md` in the same PR. (The LSP/MCP/
