@@ -104,6 +104,8 @@ void wtest_init_targets():
 	wtest_targets.push(c"math_test")
 	wtest_targets.push(c"fmath_test")
 	wtest_targets.push(c"fmath_64_test")
+	wtest_targets.push(c"stats_test")
+	wtest_targets.push(c"stats_64_test")
 	wtest_targets.push(c"extern_alias_test_x64")
 	wtest_targets.push(c"graphics_darwin")
 	wtest_targets.push(c"pac_flag_test")
@@ -236,6 +238,12 @@ void wtest_map_lib(char* path):
 	else if (strcmp(path, c"lib/fmath_test.w") == 0):
 		wtest_add(path, c"fmath_test")
 		wtest_add(path, c"fmath_64_test")
+	else if (strcmp(path, c"lib/stats.w") == 0):
+		wtest_add(path, c"stats_test")
+		wtest_add(path, c"stats_64_test")
+	else if (strcmp(path, c"lib/stats_test.w") == 0):
+		wtest_add(path, c"stats_test")
+		wtest_add(path, c"stats_64_test")
 	else if (strcmp(path, c"lib/sha256.w") == 0):
 		wtest_add(path, c"sha256_test")
 	else:

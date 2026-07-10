@@ -869,6 +869,22 @@
 			]
 		},
 		{
+			"name": "stats_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/stats_test.w", "-o", "bin/stats_test"]},
+				{"cmd": ["bin/stats_test"]}
+			]
+		},
+		{
+			"name": "stats_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/stats_test.w", "-o", "bin/stats_64_test"]},
+				{"cmd": ["bin/stats_64_test"]}
+			]
+		},
+		{
 			"name": "sha256_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2336,6 +2352,7 @@
 				"format_64_test",
 				"args_64_test",
 				"fmath_64_test",
+				"stats_64_test",
 				"repl_test_x64",
 				"debug_test_x64",
 				"graphics_math_64_test",
@@ -2512,6 +2529,7 @@
 				"str_test",
 				"math_test",
 				"fmath_test",
+				"stats_test",
 				"sha256_test",
 				"switch_test",
 				"for_container_test",

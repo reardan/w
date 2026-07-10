@@ -173,6 +173,9 @@ current state:
 			command-line argument parsing (lib/args.w)
 			buffered streams, line readers, Content-Length framing (lib/stream.w)
 			whole-file helpers (lib/file.w, design: docs/projects/streams.md)
+			float32 math helpers (lib/fmath.w: fsqrt, fabs, bit casts)
+			descriptive statistics (lib/stats.w: accumulator, variance,
+				quantiles; design: docs/projects/stats.md)
 		repl:
 			./bin/wv2 repl.w -o bin/repl && ./bin/repl builds and runs repl.w
 			./wbuild repl_test verifies REPL interaction and error recovery
@@ -264,7 +267,7 @@ current state:
 	future data structures:
 		dict (done: built-in map iterates in insertion order, issue #145)
 		matrix
-		statistics: lib/stats.w (design: docs/projects/stats.md)
+		statistics (done: lib/stats.w, design: docs/projects/stats.md)
 
 	future platforms:
 		windows
