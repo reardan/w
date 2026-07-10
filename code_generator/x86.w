@@ -617,6 +617,133 @@ void alu_add_carry():
 
 ####################### end of 32-bit limb intrinsics ######################
 
+######################## 32-bit bit-manipulation intrinsics ########################
+# Lowering for shr/rotl/rotr/popcount/clz/ctz (grammar/bit_builtin.w, #249).
+# All six read only the operands' low 32 bits, as unsigned, and produce
+# results whose low 32 bits are the meaningful pattern (zero-extended on
+# the 64-bit targets, like a `& mask32` result). Shift/rotate counts are
+# masked to 5 bits (count mod 32) — the hardware behavior of the 32-bit
+# x86 shifts and the A64 w-register LSRV/RORV. On x86/x64 every form is
+# emitted without a REX.W prefix on purpose: the 32-bit register writes
+# zero-extend on x64, so one byte sequence serves both word sizes.
+# BSR/BSF are baseline ISA; POPCNT/LZCNT/TZCNT are not, so popcount is
+# the classic SWAR reduction and the clz/ctz zero case (both defined to
+# return 32) is an explicit branch around the undefined-on-zero BSR/BSF.
+
+/* two-operand entry: mov %eax,%ecx ; mov %ebx,%eax puts the value (from
+   the popped left operand in ebx) into eax and the count into cl */
+void alu_bit_operands():
+	emit(2, c"\x89\xc1")
+	emit(2, c"\x89\xd8")
+
+
+/* value in ebx, count in eax: shr %cl,%eax (logical right shift) */
+void alu_shr32():
+	if (target_isa == 1):
+		a64(op(0x1a, 0xc02420))   # lsrv w0,w1,w0 (count mod 32, zero-extends)
+		return
+	alu_bit_operands()
+	emit(2, c"\xd3\xe8")
+
+
+/* value in ebx, count in eax: rol %cl,%eax */
+void alu_rotl32():
+	if (target_isa == 1):
+		# A64 has no rotate-left: rotl(a,n) == rotr(a, (-n) mod 32)
+		a64(op(0x4b, 0x0003e9))   # neg w9,w0
+		a64(op(0x1a, 0xc92c20))   # rorv w0,w1,w9
+		return
+	alu_bit_operands()
+	emit(2, c"\xd3\xc0")
+
+
+/* value in ebx, count in eax: ror %cl,%eax */
+void alu_rotr32():
+	if (target_isa == 1):
+		a64(op(0x1a, 0xc02c20))   # rorv w0,w1,w0
+		return
+	alu_bit_operands()
+	emit(2, c"\xd3\xc8")
+
+
+/* set-bit count of the low 32 bits of eax, via the SWAR reduction
+   v -= (v>>1) & 0x55555555
+   v = (v & 0x33333333) + ((v>>2) & 0x33333333)
+   v = (v + (v>>4)) & 0x0f0f0f0f
+   v = (v * 0x01010101) >> 24
+   (POPCNT is not baseline ISA; the masks have bit 31 clear, so they are
+   plain immediates) */
+void alu_popcount32():
+	if (target_isa == 1):
+		a64(op(0x53, 0x017c09))   # lsr w9,w0,#1
+		arm64_load_scratch(10, 0x55555555)
+		a64(op(0x0a, 0x0a0129))   # and w9,w9,w10
+		a64(op(0x4b, 0x090000))   # sub w0,w0,w9
+		arm64_load_scratch(10, 0x33333333)
+		a64(op(0x0a, 0x0a0009))   # and w9,w0,w10
+		a64(op(0x53, 0x027c00))   # lsr w0,w0,#2
+		a64(op(0x0a, 0x0a0000))   # and w0,w0,w10
+		a64(op(0x0b, 0x090000))   # add w0,w0,w9
+		a64(op(0x53, 0x047c09))   # lsr w9,w0,#4
+		a64(op(0x0b, 0x090000))   # add w0,w0,w9
+		arm64_load_scratch(10, 0x0f0f0f0f)
+		a64(op(0x0a, 0x0a0000))   # and w0,w0,w10
+		arm64_load_scratch(9, 0x01010101)
+		a64(op(0x1b, 0x097c00))   # mul w0,w0,w9
+		a64(op(0x53, 0x187c00))   # lsr w0,w0,#24 (zero-extends)
+		return
+	emit(2, c"\x89\xc2")          # mov %eax,%edx
+	emit(3, c"\xc1\xea\x01")      # shr $1,%edx
+	emit(2, c"\x81\xe2")          # and $0x55555555,%edx
+	emit_int32(0x55555555)
+	emit(2, c"\x29\xd0")          # sub %edx,%eax
+	emit(2, c"\x89\xc2")          # mov %eax,%edx
+	emit(3, c"\xc1\xea\x02")      # shr $2,%edx
+	emit(1, c"\x25")              # and $0x33333333,%eax
+	emit_int32(0x33333333)
+	emit(2, c"\x81\xe2")          # and $0x33333333,%edx
+	emit_int32(0x33333333)
+	emit(2, c"\x01\xd0")          # add %edx,%eax
+	emit(2, c"\x89\xc2")          # mov %eax,%edx
+	emit(3, c"\xc1\xea\x04")      # shr $4,%edx
+	emit(2, c"\x01\xd0")          # add %edx,%eax
+	emit(1, c"\x25")              # and $0x0f0f0f0f,%eax
+	emit_int32(0x0f0f0f0f)
+	emit(2, c"\x69\xc0")          # imul $0x01010101,%eax,%eax
+	emit_int32(0x01010101)
+	emit(3, c"\xc1\xe8\x18")      # shr $24,%eax
+
+
+/* leading-zero count of the low 32 bits of eax; clz(0) == 32.
+   BSR leaves ZF set (and the destination undefined) on zero input, so
+   the zero case branches over the 31-index conversion */
+void alu_clz32():
+	if (target_isa == 1):
+		a64(op(0x5a, 0xc01000))   # clz w0,w0 (clz(0) == 32 in hardware)
+		return
+	emit(3, c"\x0f\xbd\xd0")      # bsr %eax,%edx (ZF=1 when eax==0)
+	emit(1, c"\xb8")              # mov $32,%eax (flags preserved)
+	emit_int32(32)
+	emit(2, c"\x74\x05")          # jz +5 (zero input: keep the 32)
+	emit(3, c"\x83\xf2\x1f")      # xor $31,%edx (31 - highest set index)
+	emit(2, c"\x89\xd0")          # mov %edx,%eax
+
+
+/* trailing-zero count of the low 32 bits of eax; ctz(0) == 32.
+   BSF is undefined on zero input the same way BSR is */
+void alu_ctz32():
+	if (target_isa == 1):
+		a64(op(0x5a, 0xc00000))   # rbit w0,w0
+		a64(op(0x5a, 0xc01000))   # clz w0,w0
+		return
+	emit(3, c"\x0f\xbc\xd0")      # bsf %eax,%edx (ZF=1 when eax==0)
+	emit(1, c"\xb8")              # mov $32,%eax (flags preserved)
+	emit_int32(32)
+	emit(2, c"\x74\x02")          # jz +2 (zero input: keep the 32)
+	emit(2, c"\x89\xd0")          # mov %edx,%eax
+
+#################### end of 32-bit bit-manipulation intrinsics ####################
+
 
 void int3():
 	if (target_isa == 1):
