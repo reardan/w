@@ -24,6 +24,12 @@ import debugger.breakpoints
 int dbg_eval_counter
 int dbg_eval_ok /* set by dbg_eval_call: 0 = the expression failed to compile */
 
+# Per-process staging path for evaluated expressions, computed once on
+# first use. Pid-tagged so two wdbg processes running concurrently
+# (e.g. debug_test / debug_test_x64 under a parallel test runner) never
+# clobber each other's staged file.
+char* dbg_eval_path
+
 # Scratch copies of the bound locals (allocated once, low memory) and
 # the copy-back list: runtime address, scratch address, byte size.
 char* dbg_eval_scratch
@@ -106,10 +112,16 @@ void dbg_eval_writeback():
 # or 0 when the expression failed to compile.
 int dbg_eval_compile(char* expr, int stop_addr, int esp):
 	# Stage the line in a file: the tokenizer reads from an fd
-	char* path = c"/tmp/wdbg_eval.w"
+	if (dbg_eval_path == 0):
+		char* pid_digits = itoa(getpid())
+		char* pid_prefix = strjoin(c"/tmp/wdbg_eval_", pid_digits)
+		dbg_eval_path = strjoin(pid_prefix, c".w")
+		free(pid_prefix)
+		free(pid_digits)
+	char* path = dbg_eval_path
 	int out = create_file(path, 511)
 	if (out < 0):
-		println(c"could not create /tmp/wdbg_eval.w")
+		println(c"could not create wdbg eval staging file")
 		return 0
 	write_string(out, c"return ")
 	write_string(out, expr)
