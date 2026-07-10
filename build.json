@@ -376,6 +376,38 @@
 			]
 		},
 		{
+			"name": "deps_test",
+			"deps": ["wv2"],
+			"steps": [
+				{
+					"cmd": ["bin/wv2", "deps", "tests/deps_fixture.w"],
+					"stdout_file": "bin/deps_test.out"
+				},
+				{
+					"cmd": ["diff", "-u", "-", "bin/deps_test.out"],
+					"stdin": "structures/hash_table.w\nlib/memory.w\nlib/linux.w\ncode_generator/integer.w\nlib/__arch__/x86/syscalls.w\nstructures/w_list.w\ntests/deps_fixture.w\nlib/lib.w\nlib/__arch__/x86/context.w\nlib/assert.w\nstructures/prelude.w\n"
+				},
+				{
+					"cmd": ["bin/wv2", "deps", "--json", "tests/deps_fixture.w"],
+					"expect_stdout": [
+						"{\"file\": \"tests/deps_fixture.w\"}",
+						"{\"file\": \"lib/assert.w\"}",
+						"{\"file\": \"structures/hash_table.w\"}"
+					]
+				},
+				{
+					"cmd": ["bin/wv2", "deps", "tests/type_system_error_fixture.w"],
+					"expect_fail": true,
+					"expect_stderr": "assignment to const"
+				},
+				{
+					"cmd": ["bin/wv2", "deps"],
+					"expect_fail": true,
+					"expect_stderr": "usage: w deps"
+				}
+			]
+		},
+		{
 			"name": "self_host_warning_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1474,36 +1506,34 @@
 			"deps": ["wtest"],
 			"steps": [
 				{"cmd": ["bin/wtest", "changed"], "stdin": "grammar/promote.w\n", "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "verify\nself_host_warning_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "verify\nself_host_warning_test\nparser_generator_w_test\nwtest_map_test\n"},
 				{"cmd": ["bin/wtest", "changed", "structures/json.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "json_test\njson_codec_test\njson_rpc_test\njson_64_test\njson_codec_64_test\njson_rpc_64_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\njson_test\njson_codec_test\nparser_generator_w_test\nwtest\nwtest_map_test\nmetadata_check\nwexec_test\njson_rpc_test\njson_64_test\njson_codec_64_test\njson_rpc_64_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tests/warning_fixture.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "warning_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "warning_test\nstrict_mode_test\ncheck_json_test\nparser_generator_w_test\nwtest_map_test\n"},
 				{"cmd": ["bin/wtest", "changed", "libs/extras/parser_generator/generator.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "parser_generator_test\nparser_generator_w_test\nparser_generator_c_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "parser_generator_test\nparser_generator_w_test\nparser_generator_c_test\nwtest_map_test\nmetadata_check\n"},
 				{"cmd": ["bin/wtest", "changed", "docs/todo.txt"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["test", "!", "-s", "bin/wtest_map.out"]},
 				{"cmd": ["bin/wtest", "changed", "unknown/new_file.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "tests\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wtest_map_test\nmetadata_check\ntests\n"},
 				{"cmd": ["bin/wtest", "changed"], "stdin": "lib/stream.w\n", "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "stream_test\nfile_test\nstream_64_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nbuffer_field_assign_test\narray_error_test\nwarning_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nc_preprocessor_test\nparser_generator_test\nparser_generator_w_test\nparser_generator_c_test\nwtest\nwfixture\nwtest_map_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nstream_test\nfile_test\ndns_test\ndns_64_test\nhttp_client_test\nhttp_client_64_test\nsse_test\nsse_64_test\nretry_test\nretry_64_test\nnet_darwin\nwdbg\nwdbg_x64\ndebug_test\ndebug_test_x64\nattach_test\nrepl_test\nrepl_test_x64\nstream_64_test\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\ngrapheme_data\nrewrite_c_strings\n"},
 				{"cmd": ["bin/wtest", "changed", "lib/file.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "file_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nbuffer_field_assign_test\narray_error_test\nwarning_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nparser_generator_w_test\nwtest\nwfixture\nwtest_map_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nstream_test\nfile_test\ndns_test\ndns_64_test\nhttp_client_test\nhttp_client_64_test\nsse_test\nsse_64_test\nretry_test\nretry_64_test\nnet_darwin\nstream_64_test\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\nrewrite_c_strings\n"},
 				{"cmd": ["bin/wtest", "changed", "tools/wexec.w", "tests/wexec/good.json"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec_test\n"},
-				{"cmd": ["bin/wtest", "changed", "tools/wfixture.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "buffer_field_assign_test\narray_error_test\nwarning_test\ntype_system_error_test\ntype_system_warning_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nparser_generator_w_test\nwtest_map_test\nwexec_test\n"},
 				{"cmd": ["bin/wtest", "changed", "build.json"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec_test\ntests\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wtest_map_test\nwexec_test\ntests\n"},
 				{"cmd": ["bin/wtest", "changed", "tests/import_alias_warning_fixture.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "warning_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "warning_test\nparser_generator_w_test\nwtest_map_test\n"},
 				{"cmd": ["bin/wtest", "changed", "debugger/wdbg.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "debug_test\ndebug_test_x64\nattach_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "parser_generator_w_test\nwtest_map_test\nwdbg\nwdbg_x64\ndebug_test\ndebug_test_x64\nattach_test\n"},
 				{"cmd": ["bin/wtest", "changed", ".cursor/rules/w-source.mdc", ".cursor/skills/w-check-diagnostics/SKILL.md"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["test", "!", "-s", "bin/wtest_map.out"]},
 				{"cmd": ["bin/wtest", "changed", "tests/sha256_test.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "sha256_test\n"},
-				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read manifest build.json"}
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "sha256_test\nparser_generator_w_test\nwtest_map_test\n"},
+				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read build.json"}
 			]
 		},
 		{
@@ -2844,6 +2874,7 @@
 				"strict_mode_test",
 				"check_json_test",
 				"symbols_test",
+				"deps_test",
 				"self_host_warning_test",
 				"int64_x86_error_test",
 				"struct_test",

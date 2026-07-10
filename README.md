@@ -297,10 +297,27 @@ passes; it archives the old seed to `old/` first.
   and unions also carry a `fields` array of `{name, type, offset}`). Omit
   `--json` for a human-readable `file:line:column: kind name: type` listing.
   Compiler-internal declarations without a source location are skipped.
+- Use `./bin/wv2 deps file.w` to print the transitive import closure of a
+  program — the root file, every import, and the auto-imported container
+  runtime — one repo-relative path per line, deduplicated. `--json` emits
+  `{"file": "..."}` NDJSON records like `check --json`. Like `check`, it
+  runs the full front-end (compile errors keep their diagnostics and the
+  nonzero exit) and supports the default target only — the arch selectors
+  do not compose with it.
 - Use `./wbuild test_changed` to run focused tests for files changed from
   `HEAD`, or call `./bin/wtest changed file...` to list the selected build
-  targets without running them. Docs-only changes produce no targets; unknown
-  paths fall back to `tests`.
+  targets without running them. Selection is manifest-driven: `bin/wtest`
+  parses `build.json` at runtime and emits every target whose steps name a
+  changed path (fixtures, grammars, scripts) plus every target one of whose
+  compile roots transitively imports a changed `.w` file (closures come
+  from `bin/wv2 deps`, cached in `bin/.wtest_deps_cache`). A handful of
+  documented residue rules cover what the import graph cannot see —
+  compiler-tree paths map to `verify self_host_warning_test`, every
+  existing `.w` change adds `parser_generator_w_test`, deleted `.w` files
+  and library trees add `metadata_check` — and docs-only changes produce
+  no targets; paths nothing knows about still fall back to `tests`. The
+  first run after a build computes the closures (~35s); later runs
+  validate the cache by content hash and finish in well under a second.
 - Agent-facing guidance is committed alongside the code: `.cursor/skills/`
   holds step-by-step skills (`w-check-diagnostics`, `w-select-tests`,
   `w-debug-wdbg`, `w-repl-explore`) and `.cursor/rules/` holds path-scoped

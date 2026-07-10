@@ -24,6 +24,18 @@ is a queue, not an archive.
   file-not-found path serializes a corrupt/uninitialized filename buffer
   into the JSON record. Fix the buffer handling in the upward-search
   error path (`compiler/compiler.w` / `compiler/diagnostics.w`).
+- **Array-to-pointer decay is a warning but generates corrupting code.**
+  Found during the buffered-getchar work (issue #113, 2026-07-09):
+  passing a fixed array (`char[8192] buf`) where a `char*` parameter is
+  expected only warns (`argument 2 type mismatch: expected 'char*', got
+  'char[] value'`) but emits the array's *descriptor address* as the
+  pointer, so the callee (here `read(2)`) overwrites the descriptor's
+  {data-pointer, length} header with payload bytes — the data pointer
+  becomes file content and the next index through the array jumps to a
+  garbage address far from the corruption site. Cost hours to trace
+  back. Either implement real decay (pass the descriptor's data
+  pointer) or promote the warning to a hard error; a warning that
+  compiles to memory corruption is the worst of both.
 - **Multi-error reporting.** The compiler stops at the first error
   (single-pass, no recovery). Documented limitation; real fix is parser
   recovery, which stays a research project. Cheap partial win: after an
@@ -53,6 +65,11 @@ is a queue, not an archive.
   as a filename). Fix both: accept `wv2 <target> check` (or a
   `--arch=` flag), and infer the target from `__arch__` path segments
   and per-file markers so the hook picks the right one automatically.
+  The new `w deps` subcommand (2026-07-10) inherits the same
+  limitation: it resolves `__arch__` imports for the default target
+  only, which is why `bin/wtest`'s closure selection needs residue
+  rules for `lib/__arch__/` and `graphics/` — an arch-aware `deps`
+  would let those rules retire too.
 - **Library modules cannot be checked standalone.** `./bin/wv2 check
   --json libs/standard/crypto/sha2.w` (hit while adding the TLS crypto
   modules, #195, 2026-07-10) fails with `Failed to find a _main()
@@ -77,33 +94,9 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
-- **Unmapped paths fall back to the full suite.** `tools/test_map.w`
-  itself, `tools/wexec.w` test fixtures aside, `examples/`, and
-  `tools/unicode/` all map to `tests`. Audit with
-  `git ls-files | ./bin/wtest changed --verbose` and add rules where a
-  focused target exists (e.g. `tools/test_map.w` -> `wtest_map_test`).
 - **`wtest changed --run`.** Now that `lib/process.w` exists, `wtest`
   could execute the selected targets itself instead of relying on the
   `./wbuild test_changed` xargs pipeline.
-- **Deleting a module should map to `metadata_check`.** Every module
-  listed in `package.wmeta` is verified to resolve to a file, so a
-  deletion under a declared module tree can break it — but only
-  `package.wmeta`/`tools/wmeta.w` edits map to the metadata targets.
-  Retiring `structures/{hash_map,linked_list,list}.w` (#145) passed the
-  full focused gate list and then failed `metadata_check` in CI. Cheap
-  fix: map any deleted `.w` path (or any `structures/`/`lib/` path) to
-  `metadata_check` too.
-- **`.w` diffs should map to `parser_generator_w_test`.** That target
-  parses every tracked `.w` file, so ANY `.w` change can break it, but
-  `wtest changed` only emits it for `tests/parser_generator/` and
-  `libs/extras/parser_generator/` paths. A `grammar/for_statement.w`
-  refactor that introduced multi-line parameter lists (existing
-  compiler syntax, but unmodeled in `w.pg`) passed every target `wtest
-  changed` listed and then failed `parser_generator_w_test` in CI
-  (PR #151, 2026-07-09). Cheap fix: `wtest_map_path` adds
-  `parser_generator_w_test` for every `*.w` path — plus the matching
-  update to every `.w` fixture in `wtest_map_test` (about 15 of its
-  expected-output stdins), which is why it did not ride along in #151.
 
 ## Debugger surface (consumed by the external integration tools)
 

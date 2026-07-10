@@ -23,7 +23,10 @@ alwaysApply: false
   paths.
 - A new end-to-end test needs: the `tests/foo_test.w` program (use
   `lib/assert.w` / `lib/testing.w` helpers), a target in `build.json`,
-  membership in the `tests` umbrella target, and a mapping entry in
-  `tools/test_map.w` when a directory rule does not already cover it.
+  and membership in the `tests` umbrella target. `bin/wtest` picks the
+  target up from the manifest automatically (literal step references +
+  `bin/wv2 deps` import closures); a residue rule in `tools/test_map.w`
+  is only needed for coupling the import graph cannot see (run-time
+  data files, non-default-arch modules).
 - Test programs may use any syntax the current compiler supports (they
   are compiled with `bin/wv2`, not the seed).
