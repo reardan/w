@@ -70,6 +70,28 @@ void __w_list_index_trap(char* what, int index, int length):
 	exit(1)
 
 
+# Compiler-emitted bounds checks (issue #228): array/slice/string indexing
+# and slicing call this when a check fails (grammar/postfix_expr.w lowers
+# the failing branch to a call here), so the failure prints what trapped
+# instead of dying on a bare int3/brk #0. For a range check the reported
+# pair is the offending bound and the limit it violated (for start > end
+# that is the end bound, not the buffer length). Never returns.
+void __w_bounds_trap(int index, int length):
+	__w_list_index_trap(c"index out of range", index, length)
+
+
+# new type[count] with a negative or implausibly large element count
+# (grammar/unary_expression.w). Never returns.
+void __w_alloc_trap(int length, int limit):
+	__w_trap_cstr(c"array length out of range: length ")
+	__w_trap_int(length)
+	__w_trap_cstr(c", limit ")
+	__w_trap_int(limit)
+	__w_trap_cstr(c"\n")
+	print_stack_trace()
+	exit(1)
+
+
 __w_list* __w_list_new(int element_size):
 	if (element_size <= 0):
 		__w_trap(c"list element size must be positive")

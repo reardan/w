@@ -218,13 +218,17 @@ e978563412|jmp .+0x1234567d
 cc|int3
 90|nop
 c3|ret
-# bounds_check_eax_nonnegative: test rax,rax ; jns +1 ; int3
-7901|jns .+3
-# bounds_check_ebx_less_eax / _less_equal_eax: cmp rbx,rax ; jl/jle +1 ; int3
+# bounds_branch_eax_negative / bounds_branch_ebx_negative: test ; js rel32
+# (rel32 placeholder patched via be_branch_patch; example op(0x12, 0x345678))
+4885db|test rbx,rbx
+0f8878563412|js .+0x1234567e
+# bounds_branch_ebx_greater_eax / bounds_skip_ebx_less_eax /
+# bounds_skip_ebx_less_equal_eax: cmp rbx,rax ; jg/jl/jle rel32
 4839c3|cmp rbx,rax
-7c01|jl .+3
-7e01|jle .+3
-# parameterized: bounds_check_eax_less_equal_int32(limit), imm32 example op(0x12, 0x345678)
+0f8f78563412|jg .+0x1234567e
+0f8c78563412|jl .+0x1234567e
+0f8e78563412|jle .+0x1234567e
+# parameterized: bounds_skip_eax_less_equal_int32(limit), imm32 example op(0x12, 0x345678)
 483d78563412|cmp rax,0x12345678
 
 # ============================================================================

@@ -23,10 +23,31 @@ int buffer_result_type(int type):
 	return type_get_slice_value(buffer_element_type(type))
 
 
+# Emit the bounds-trap block: call helper_name(ebx, eax) — the offending
+# index in ebx, the length/limit it violated in eax (issue #228). Reached
+# only on the trap path, so register state and the machine stack are
+# disposable (the helper prints its one-line diagnostic and exits) and
+# stack_pos stays untouched. The helpers live in structures/w_list.w, which
+# every program auto-imports — but bounds-checked code can compile BEFORE
+# the runtime defines them (the auto-imported runtime itself and anything
+# it imports), so a missing symbol is declared as an undefined global here
+# and the later definition patches the reference chain, like any forward
+# reference.
+void bounds_trap_call(char* helper_name):
+	if (sym_lookup(helper_name) < 0):
+		sym_declare_global(helper_name, 4, 2)
+	push_ebx()
+	push_eax()
+	sym_get_value(helper_name)
+	call_eax()
+
+
 void buffer_bounds_check():
 	if (bounds_mode == 0):
 		return;
-	bounds_check_eax_nonnegative()
+	# eax = index, stack top = the buffer descriptor. Load the length
+	# first so the trap block can report both values; the descriptor is
+	# valid whatever the index is.
 	push_eax()
 	stack_pos = stack_pos + 1
 	mov_eax_esp_plus(word_size)
@@ -34,26 +55,38 @@ void buffer_bounds_check():
 	promote_eax()
 	pop_ebx()
 	stack_pos = stack_pos - 1
-	bounds_check_ebx_less_eax()
+	# ebx = index, eax = length: trap unless 0 <= index < length
+	int negative_site = bounds_branch_ebx_negative()
+	int in_bounds_site = bounds_skip_ebx_less_eax()
+	be_branch_patch(negative_site, codepos)
+	bounds_trap_call(c"__w_bounds_trap")
+	be_branch_patch(in_bounds_site, codepos)
 	mov_eax_ebx()
 
 
 void buffer_range_bounds_check():
 	if (bounds_mode == 0):
 		return;
-	# stack top before this helper: end, start, descriptor
-	mov_eax_esp_plus(word_size)
-	bounds_check_eax_nonnegative()
-	mov_eax_esp_plus(0)
-	bounds_check_eax_nonnegative()
-	mov_eax_esp_plus(0)
-	mov_ebx_esp_plus(word_size)
-	bounds_check_ebx_less_equal_eax()
+	# stack top before this helper: end, start, descriptor. Every failing
+	# branch lands on one shared trap block with ebx = the offending bound
+	# and eax = the limit it violated (the length, or the end bound for
+	# the start <= end check).
 	mov_eax_esp_plus(2 * word_size)
 	add_eax_int32(word_size)
 	promote_eax()
+	mov_ebx_esp_plus(word_size)
+	int start_negative_site = bounds_branch_ebx_negative()
 	mov_ebx_esp_plus(0)
-	bounds_check_ebx_less_equal_eax()
+	int end_negative_site = bounds_branch_ebx_negative()
+	int end_fits_site = bounds_branch_ebx_greater_eax()
+	mov_eax_esp_plus(0)
+	mov_ebx_esp_plus(word_size)
+	int ordered_site = bounds_skip_ebx_less_equal_eax()
+	be_branch_patch(start_negative_site, codepos)
+	be_branch_patch(end_negative_site, codepos)
+	be_branch_patch(end_fits_site, codepos)
+	bounds_trap_call(c"__w_bounds_trap")
+	be_branch_patch(ordered_site, codepos)
 
 
 void buffer_push_range_descriptor(int base_type, int start_was_omitted):

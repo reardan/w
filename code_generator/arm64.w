@@ -287,32 +287,47 @@ void arm64_alu_test_set(int setcc):
 
 
 ############################### bounds checks ###############################
-# Each trap is a compare, a conditional skip over the next instruction, and
-# brk #0 (SIGTRAP, like the x86 int3).
+# Each check is a compare plus a patchable b.cond (issue #228). The helpers
+# return the branch's patch site — the codepos right after the instruction,
+# the same protocol arm64_branch_patch already handles for the imm19 forms —
+# and the grammar layer points the failing branches at a trap block that
+# calls the runtime diagnostic helper (see grammar/postfix_expr.w).
 
-void arm64_bounds_check_eax_nonnegative():
+# b.cond with a zero displacement placeholder; returns the patch site.
+int arm64_bounds_branch(int cond):
+	a64(op(0x54, 0x000000) | cond)
+	return codepos
+
+
+int arm64_bounds_branch_eax_negative():
 	a64(op(0xf1, 0x00001f))   # cmp x0, #0
-	a64(op(0x54, 0x00004a))   # b.ge .+8
-	a64(op(0xd4, 0x200000))   # brk #0
+	return arm64_bounds_branch(11)   # b.lt
 
 
-void arm64_bounds_check_ebx_less_eax():
+int arm64_bounds_branch_ebx_negative():
+	a64(op(0xf1, 0x00003f))   # cmp x1, #0
+	return arm64_bounds_branch(11)   # b.lt
+
+
+int arm64_bounds_branch_ebx_greater_eax():
 	a64(op(0xeb, 0x00003f))   # cmp x1, x0
-	a64(op(0x54, 0x00004b))   # b.lt .+8
-	a64(op(0xd4, 0x200000))   # brk #0
+	return arm64_bounds_branch(12)   # b.gt
 
 
-void arm64_bounds_check_ebx_less_equal_eax():
+int arm64_bounds_skip_ebx_less_eax():
 	a64(op(0xeb, 0x00003f))   # cmp x1, x0
-	a64(op(0x54, 0x00004d))   # b.le .+8
-	a64(op(0xd4, 0x200000))   # brk #0
+	return arm64_bounds_branch(11)   # b.lt
 
 
-void arm64_bounds_check_eax_less_equal_int32(int limit):
+int arm64_bounds_skip_ebx_less_equal_eax():
+	a64(op(0xeb, 0x00003f))   # cmp x1, x0
+	return arm64_bounds_branch(13)   # b.le
+
+
+int arm64_bounds_skip_eax_less_equal_int32(int limit):
 	arm64_load_scratch(9, limit)
 	a64(op(0xeb, 0x09001f))   # cmp x0, x9
-	a64(op(0x54, 0x00004d))   # b.le .+8
-	a64(op(0xd4, 0x200000))   # brk #0
+	return arm64_bounds_branch(13)   # b.le
 
 
 ############################## abstractions #################################

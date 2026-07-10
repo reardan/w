@@ -238,7 +238,7 @@
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/bounds_trap_test.w", "-o", "bin/bounds_trap_test"]},
-				{"cmd": ["bin/bounds_trap_test"], "expect_fail": true},
+				{"cmd": ["bin/bounds_trap_test"], "expect_fail": true, "expect_stderr": ["index out of range: index 2, length 2", "stack trace (most recent call first):", "at main ("]},
 				{"cmd": ["bin/wv2", "--bounds=off", "tests/bounds_trap_test.w", "-o", "bin/bounds_trap_test_off"]}
 			]
 		},
@@ -247,7 +247,7 @@
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/range_bounds_trap_test.w", "-o", "bin/range_bounds_trap_test"]},
-				{"cmd": ["bin/range_bounds_trap_test"], "expect_fail": true},
+				{"cmd": ["bin/range_bounds_trap_test"], "expect_fail": true, "expect_stderr": ["index out of range: index 3, length 2", "stack trace (most recent call first):", "at main ("]},
 				{"cmd": ["bin/wv2", "--bounds=off", "tests/range_bounds_trap_test.w", "-o", "bin/range_bounds_trap_test_off"]}
 			]
 		},
