@@ -4,6 +4,8 @@
 # harness) over "W native TLS: RSA verify vector":
 #   - PKCS#1 v1.5 with SHA-256 and SHA-384
 #   - PSS with SHA-256 (MGF1-SHA256, salt length 32)
+#   - PSS with SHA-384 (MGF1-SHA384, salt length 48; a second OpenSSL-minted
+#     RSA-2048 key, added with the x509 packet, issue #199)
 # Plus negatives: bit-flipped signatures, a tampered digest, and a v1.5
 # signature checked against the wrong DigestInfo (SHA-384).
 import lib.testing
@@ -161,3 +163,45 @@ void test_pss_sha256_valid():
 	free(e)
 	free(sig)
 	free(dig)
+
+
+# A different RSA-2048 key used only for the PSS/SHA-384 vector.
+char* TR_N_384():
+	return c"b54d7b12ef124e34ba4221a987c56cf7cd0150878319a5722fca3cc071b3a46ebf57fc1431f3f9d49255af334504d8fe65c0fdafb0156af4994943bda82f617b31819e2b3f65c0cada6c1500750be90e4efac5cc286fa6c09360a32df020efdd899da3f9f8fa4404c389d7f363ac67668b29b0b32d8632d6ae1cb1b36149f3491871d2f45d1f3c693c8fbdd934ffcc81babac34099a7f22cc00e613765ba5d351b2338ce3d660656714a6d8ebb5013c5757a295051945ac596fe79255ea445f04a111d357e4d48587ca168abc84188815d77db36a456a5ac37a00452afe0e8ecfada412d81f4075e1ed403dab1e5942886575989be515e23a97218150649d303"
+
+
+char* TR_SIG_PSS_384():
+	return c"00cfa9ae12961bd072429ed0de7d180d65a857330a4590847d5aafe56e7c5b85f1fbf5fd1a0940a77bf11dc03236fd794704f455f8385ca15b15f72b3a1986b176e4a4bec96733dbdc6cf08cbf2a549d204e0af9f826551c380cfdb417630dbdea0cbee8727f389205b3cbfa3bcea2e317d6d774c4c64ef76c5d4a8c0b025fac316c6aff17e428e206c7cc362648a1a23e6ef4bb24492c1096f55b355bd452d2ef7b5331e512ac9a9433976b56565ac6261b56ee619e654709560cb94f68a8831866936555be31afe5fda4dbb0962302cd65f22bddc3044e0f0d898cb698f0a97a1f32e8ddfd8610f8371733023107a01267b1eff6700d0c790b9cf591d1a94f"
+
+
+void test_pss_sha384_valid():
+	char* n = malloc(300)
+	char* e = malloc(8)
+	char* sig = malloc(300)
+	char* dig = malloc(48)
+	int nlen = tr_hex(TR_N_384(), n)
+	int elen = tr_e(e)
+	int slen = tr_hex(TR_SIG_PSS_384(), sig)
+	tr_hex(TR_SHA384(), dig)
+	assert_equal(1, rsa_pss_verify_sha384(n, nlen, e, elen, sig, slen, dig))
+
+	# Negative: flip one signature bit.
+	sig[128] = sig[128] ^ 16
+	assert_equal(0, rsa_pss_verify_sha384(n, nlen, e, elen, sig, slen, dig))
+	sig[128] = sig[128] ^ 16
+	# Negative: tamper the message hash.
+	dig[47] = dig[47] ^ 1
+	assert_equal(0, rsa_pss_verify_sha384(n, nlen, e, elen, sig, slen, dig))
+	dig[47] = dig[47] ^ 1
+	# Negative: the SHA-384 PSS signature must not verify as SHA-256 PSS
+	# (hash and salt lengths differ).
+	char* dig256 = malloc(32)
+	tr_hex(TR_SHA256(), dig256)
+	assert_equal(0, rsa_pss_verify_sha256(n, nlen, e, elen, sig, slen, dig256))
+	# Sanity: still valid after undoing the tampering.
+	assert_equal(1, rsa_pss_verify_sha384(n, nlen, e, elen, sig, slen, dig))
+	free(n)
+	free(e)
+	free(sig)
+	free(dig)
+	free(dig256)

@@ -9,13 +9,14 @@
 # SCOPE: signatures arrive as raw EM bytes at this API (no ASN.1/X.509 parsing
 # here -- that is a separate issue). PKCS#1 v1.5 supports SHA-256 and SHA-384
 # DigestInfo (the digest is supplied by the caller; this module does not hash).
-# PSS is implemented for SHA-256 (MGF1-SHA256); SHA-384 PSS additionally needs a
-# SHA-384 core (crypto/sha2.w, another packet) to recompute H' and is left as a
-# one-function follow-up -- the internal helper is already hash-parameterized.
+# PSS is implemented for SHA-256 and SHA-384 (MGF1 with the same hash, salt
+# length equal to the hash length), recomputing H' through crypto/sha2.w's
+# whash interface.
 import lib.lib
 import lib.memory
 import lib.sha256
 import libs.standard.crypto.bignum
+import libs.standard.crypto.sha2
 
 
 int RSA_HASH_SHA256():
@@ -128,16 +129,18 @@ int rsa_pkcs1v15_verify_sha384(char* n, int nlen, char* e, int elen, char* sig, 
 	return rsa_pkcs1v15_verify(n, nlen, e, elen, sig, siglen, digest, RSA_HASH_SHA384())
 
 
-# ---- MGF1 (SHA-256) ---------------------------------------------------------
+# ---- MGF1 -------------------------------------------------------------------
 
-# out[0 .. mask_len) = MGF1(seed, mask_len) with SHA-256.
-void mgf1_sha256(char* seed, int seedlen, int mask_len, char* out):
+# out[0 .. mask_len) = MGF1(seed, mask_len) with the given whash algorithm
+# (WHASH_SHA256() or WHASH_SHA384()).
+void mgf1(int whash_alg, char* seed, int seedlen, int mask_len, char* out):
+	int hlen = whash_digest_size(whash_alg)
 	char* buf = malloc(seedlen + 4)
 	int i = 0
 	while (i < seedlen):
 		buf[i] = seed[i]
 		i = i + 1
-	char* dig = malloc(32)
+	char* dig = malloc(hlen)
 	int counter = 0
 	int outpos = 0
 	while (outpos < mask_len):
@@ -145,28 +148,33 @@ void mgf1_sha256(char* seed, int seedlen, int mask_len, char* out):
 		buf[seedlen + 1] = (counter >> 16) & 255
 		buf[seedlen + 2] = (counter >> 8) & 255
 		buf[seedlen + 3] = counter & 255
-		sha256(buf, seedlen + 4, dig)
-		int take = 32
-		if (mask_len - outpos < 32):
+		whash_oneshot(whash_alg, buf, seedlen + 4, dig)
+		int take = hlen
+		if (mask_len - outpos < hlen):
 			take = mask_len - outpos
 		int j = 0
 		while (j < take):
 			out[outpos + j] = dig[j]
 			j = j + 1
-		outpos = outpos + 32
+		outpos = outpos + hlen
 		counter = counter + 1
 	free(buf)
 	free(dig)
 
 
-# ---- PSS (SHA-256, sLen = hLen = 32) ----------------------------------------
+# out[0 .. mask_len) = MGF1(seed, mask_len) with SHA-256.
+void mgf1_sha256(char* seed, int seedlen, int mask_len, char* out):
+	mgf1(WHASH_SHA256(), seed, seedlen, mask_len, out)
 
-# Verify an RSASSA-PSS signature (EMSA-PSS-VERIFY, RFC 8017 9.1.2) with SHA-256,
-# MGF1-SHA256, and salt length equal to the hash length. mhash is the 32-byte
-# message digest. Returns 1 if valid, 0 otherwise.
-int rsa_pss_verify_sha256(char* n, int nlen, char* e, int elen, char* sig, int siglen, char* mhash):
-	int hlen = 32
-	int slen = 32
+
+# ---- PSS (sLen = hLen) --------------------------------------------------------
+
+# Verify an RSASSA-PSS signature (EMSA-PSS-VERIFY, RFC 8017 9.1.2) with the
+# given whash algorithm, MGF1 over the same hash, and salt length equal to the
+# hash length. mhash is the hlen-byte message digest. Returns 1 if valid.
+int rsa_pss_verify(char* n, int nlen, char* e, int elen, char* sig, int siglen, char* mhash, int whash_alg):
+	int hlen = whash_digest_size(whash_alg)
+	int slen = hlen
 	int k = nlen
 	bignum* nn = bignum_new()
 	bignum_from_bytes(nn, n, nlen)
@@ -206,7 +214,7 @@ int rsa_pss_verify_sha256(char* n, int nlen, char* e, int elen, char* sig, int s
 		while (i < hlen):
 			h[i] = emp[dblen + i]
 			i = i + 1
-		mgf1_sha256(h, hlen, dblen, dbmask)
+		mgf1(whash_alg, h, hlen, dblen, dbmask)
 		i = 0
 		while (i < dblen):
 			db[i] = (emp[i] & 255) ^ (dbmask[i] & 255)
@@ -237,7 +245,7 @@ int rsa_pss_verify_sha256(char* n, int nlen, char* e, int elen, char* sig, int s
 		while (i < slen):
 			mprime[8 + hlen + i] = db[saltpos + i]
 			i = i + 1
-		sha256(mprime, 8 + hlen + slen, hprime)
+		whash_oneshot(whash_alg, mprime, 8 + hlen + slen, hprime)
 		int eqv = 1
 		i = 0
 		while (i < hlen):
@@ -253,3 +261,13 @@ int rsa_pss_verify_sha256(char* n, int nlen, char* e, int elen, char* sig, int s
 	free(mprime)
 	free(hprime)
 	return result
+
+
+# PSS with SHA-256 and MGF1-SHA256, salt length 32.
+int rsa_pss_verify_sha256(char* n, int nlen, char* e, int elen, char* sig, int siglen, char* mhash):
+	return rsa_pss_verify(n, nlen, e, elen, sig, siglen, mhash, WHASH_SHA256())
+
+
+# PSS with SHA-384 and MGF1-SHA384, salt length 48.
+int rsa_pss_verify_sha384(char* n, int nlen, char* e, int elen, char* sig, int siglen, char* mhash):
+	return rsa_pss_verify(n, nlen, e, elen, sig, siglen, mhash, WHASH_SHA384())
