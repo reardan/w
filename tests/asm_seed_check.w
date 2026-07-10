@@ -20,6 +20,10 @@ import libs.asm.x86_decode
 import libs.asm.x86_encode
 import libs.asm.text
 import libs.asm.format
+import libs.asm.arm64_decode
+import libs.asm.arm64_format
+import libs.asm.arm64_encode
+import libs.asm.arm64_text
 
 
 int main():
@@ -55,6 +59,23 @@ int main():
 	assert_equal(4, asm_x86_encode(enc, &parsed))
 	assert_equal(0x8b, enc.data[0] & 255)
 	assert_equal(0x10, enc.data[3] & 255)
+
+	# arm64: decode + format one word (ldr x8,[x28,#24] = 880f40f9), then
+	# parse + encode it back to the same little-endian bytes.
+	char* a64 = malloc(4)
+	a64[0] = 0x88
+	a64[1] = 0x0f
+	a64[2] = 0x40
+	a64[3] = 0xf9
+	asm_insn ainsn
+	assert_equal(4, asm_arm64_decode(a64, 4, 0, &ainsn))
+	assert_strings_equal(c"ldr x8,[x28,#24]", asm_arm64_format(&ainsn))
+	asm_insn aparsed
+	asm_arm64_parse(c"ldr x8,[x28,#24]", &aparsed)
+	asm_buffer* aenc = asm_buffer_new()
+	assert_equal(4, asm_arm64_encode(aenc, &aparsed))
+	assert_equal(0x88, aenc.data[0] & 255)
+	assert_equal(0xf9, aenc.data[3] & 255)
 
 	println(c"asm_seed_check passed")
 	return 0

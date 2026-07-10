@@ -2524,6 +2524,16 @@
 			]
 		},
 		{
+			"name": "asm_arm64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/asm/", "tests/asm/", "tests/asm_arm64_test.w", "w.w"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "w.w", "-o", "bin/wv2_arm64"]},
+				{"cmd": ["bin/wv2", "tests/asm_arm64_test.w", "-o", "bin/asm_arm64_test"]},
+				{"cmd": ["bin/asm_arm64_test"]}
+			]
+		},
+		{
 			"name": "asm_seed_gate",
 			"inputs": ["libs/asm/", "tests/asm_seed_check.w", "w"],
 			"steps": [
@@ -2602,6 +2612,7 @@
 				"asm_foundations_test",
 				"asm_x86_disasm_test",
 				"asm_x86_asm_test",
+				"asm_arm64_test",
 				"asm_seed_gate",
 				"path_test",
 				"grammar_test",

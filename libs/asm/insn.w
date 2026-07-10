@@ -105,6 +105,10 @@ struct asm_insn:
 	int address
 	int length
 	int branch_target   # absolute target for rel branches; -1 otherwise
+	int raw             # raw 32-bit word for arm64 opaque-passthrough forms
+	                    # (recognized mnemonic but operands not modeled); 0
+	                    # for modeled/x86 instructions. Encoders that see a
+	                    # nonzero raw on an opaque insn re-emit it verbatim.
 	char* mnemonic
 	asm_operand op1
 	asm_operand op2
@@ -116,6 +120,7 @@ void asm_insn_clear(asm_insn* insn):
 	insn.address = 0
 	insn.length = 0
 	insn.branch_target = -1
+	insn.raw = 0
 	insn.mnemonic = 0
 	asm_operand_clear(&insn.op1)
 	asm_operand_clear(&insn.op2)
