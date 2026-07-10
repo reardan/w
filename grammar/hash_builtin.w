@@ -5,6 +5,7 @@ int types_compatible_with_expression(int want, int got);
 void warn_type_mismatch(char* context, int want, int got);
 int compound_assign_apply(int op, int left_type, int right_type);
 int var_binary_operands(int left_type, int right_type);
+int list_element_slot_size(int element_type);
 
 
 int hash_index_pending
@@ -283,6 +284,45 @@ int hash_map_add_suffix(int type):
 	be_pop(stack_pos - base_stack)
 	stack_pos = base_stack
 	return type_value(value_type)
+
+
+# Shared lowering for m.keys()/s.keys()/m.values(): parses '()', calls
+# fn_name(container, element_size) and returns list[element_type] with
+# the snapshot's address in eax.
+int hash_snapshot_list_suffix(int type, char* fn_name, int element_type):
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int container_slot = stack_pos
+	expect(c"(")
+	expect(c")")
+	sym_get_value(fn_name)
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(container_slot)
+	mov_eax_int(list_element_slot_size(type_canonical(element_type)))
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_get_list(type_canonical(element_type)))
+
+
+# m.keys() / s.keys(): 'keys' has been consumed. Snapshot of the keys
+# (set members) in insertion order as a built-in list[K].
+int hash_keys_suffix(int type):
+	int container_type = type_unqualified(type)
+	return hash_snapshot_list_suffix(type, c"__w_map_keys", hash_container_key_type(container_type))
+
+
+# m.values(): 'values' has been consumed. Snapshot of the values in
+# insertion order as a built-in list[V].
+int hash_values_suffix(int type):
+	int container_type = type_unqualified(type)
+	return hash_snapshot_list_suffix(type, c"__w_map_values", type_map_value_type(container_type))
 
 
 # m.get(key) / m.get(key, default): 'get' has been consumed.

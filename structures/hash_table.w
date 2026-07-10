@@ -13,6 +13,7 @@ re-inserting moves it to the end. Rehashing re-inserts in chain order, so
 growth preserves it.
 */
 import lib.memory
+import structures.w_list
 
 
 int __w_strlen(char* c):
@@ -370,6 +371,30 @@ char* __w_map_get_or_addr(__w_hash_table* table, int key, char* default_addr):
 	if (table.states[i] == 1):
 		return __w_hash_value_addr(table, i)
 	return default_addr
+
+
+# m.keys() / s.keys(): snapshot of the keys (set members) in insertion
+# order. element_size is the list's element width. Pointer keys
+# (char*/string) share the container's cloned storage, so entries stay
+# valid until that key is removed.
+__w_list* __w_map_keys(__w_hash_table* table, int element_size):
+	__w_list* result = __w_list_new(element_size)
+	int i = table.order_head
+	while (i >= 0):
+		__w_list_push(result, table.keys[i])
+		i = table.order_next[i]
+	return result
+
+
+# m.values(): snapshot of the values in insertion order. element_size is
+# the list's element width; struct values copy their stored bytes.
+__w_list* __w_map_values(__w_hash_table* table, int element_size):
+	__w_list* result = __w_list_new(element_size)
+	int i = table.order_head
+	while (i >= 0):
+		__w_list_push_bytes(result, __w_hash_value_addr(table, i))
+		i = table.order_next[i]
+	return result
 
 
 int __w_map_remove(__w_hash_table* table, int key):

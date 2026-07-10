@@ -613,6 +613,12 @@ int postfix_expr():
 				else if (peek(c"add") & type_is_map(type)):
 					get_token()
 					type = hash_map_add_suffix(type)
+				else if (peek(c"keys")):
+					get_token()
+					type = hash_keys_suffix(type)
+				else if (peek(c"values") & type_is_map(type)):
+					get_token()
+					type = hash_values_suffix(type)
 				else if (peek(c"get") & type_is_map(type)):
 					get_token()
 					type = hash_get_suffix(type)

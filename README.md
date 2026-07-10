@@ -158,7 +158,9 @@ Implemented and covered by tests:
   field access, method-call sugar (`p.move()` -> `point_move(&p, ...)`),
   map/set indexing and membership with `in`, counter-style
   `m.add(key)`/`m.add(key, delta)` accumulating integer map values from
-  zero for missing keys, `list[T]` indexing,
+  zero for missing keys, `m.keys()`/`m.values()`/`s.keys()`
+  insertion-order list snapshots (compose with `list` methods:
+  `m.keys().sort()`), `list[T]` indexing,
   `l.push(v)`/`l.pop()` and container `.length`, explicit `cast(T, expr)`,
   postfix `?` error propagation on the generic `wresult[T]` result type
   (unwrap the payload, or return the error to the caller; see
