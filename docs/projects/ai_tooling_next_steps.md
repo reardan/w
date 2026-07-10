@@ -80,6 +80,16 @@ is a queue, not an archive.
 - **`wtest changed --run`.** Now that `lib/process.w` exists, `wtest`
   could execute the selected targets itself instead of relying on the
   `./wbuild test_changed` xargs pipeline.
+- **`.txt` doc-only filter swallowed `tests/asm/` corpus fixtures — fixed
+  (issue #171).** `wtest_doc_only` in `tools/test_map.w` treated every
+  `*.txt` path as documentation (meant for `docs/todo.txt`), so
+  `tests/asm/corpus_{x86,x64,arm64}.txt` — runtime fixture data for the
+  whole asm test suite, not docs — never reached the `tests/asm/` residue
+  rule; `wtest changed` silently selected nothing for a corpus-only
+  change. Found while wiring the new `asm_fuzz_*` property/fuzz targets,
+  which read those same fixtures. Fixed by excluding `tests/asm/` from
+  the doc-only check before the extension test; pinned by a new
+  `wtest_map_test` case (`build.base.json`).
 
 ## Debugger surface (consumed by the external integration tools)
 

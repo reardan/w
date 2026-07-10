@@ -49,9 +49,11 @@ build. For a changed path P the emitted targets are the union of:
         darwin window backend (cocoa.w, window_cocoa.w) and the x64/
         darwin __arch__ modules are invisible to the default-target
         closure.
-      - tests/asm/ -> the asm suite: the .asm text sources are read at
-        run time, not imported. tools/gen_stubs.w -> asm_stubs_test
-        (the stub drift check compares its generated output).
+      - tests/asm/ -> the asm suite (including the asm_fuzz_* property/
+        fuzz targets, which sample the same tests/asm/corpus_*.txt
+        fixtures): the .txt/.asm text sources are read at run time, not
+        imported. tools/gen_stubs.w -> asm_stubs_test (the stub drift
+        check compares its generated output).
       - libs/extras/c_import/ and c_preprocessor/ -> the c_import
         suite: the C-import machinery is loaded by the compiler itself,
         not through recorded imports.
@@ -63,7 +65,9 @@ build. For a changed path P the emitted targets are the union of:
       - *_test.w under a wbuildgen scan directory -> manifest_check:
         conventional test sources are generator inputs, so adding or
         deleting one must regenerate build.json.
-      - docs/, *.md, *.txt, .cursor/ -> nothing.
+      - docs/, *.md, *.txt, .cursor/ -> nothing, except tests/asm/*.txt
+        (the corpus fixtures), which the tests/asm/ rule above still
+        covers despite the extension.
       - anything still unmatched -> tests.
 
 Safety: update / update_darwin (seed promotion) and the darwin-native
@@ -682,6 +686,11 @@ int wtest_closure_contains(char* blob, char* path):
 /* Residue rules and the selection driver. */
 
 int wtest_doc_only(char* path):
+	if (starts_with(path, c"tests/asm/")):
+		# The corpus_*.txt fixtures are runtime data for the asm suite
+		# (including asm_fuzz_*), not documentation, despite the extension;
+		# the tests/asm/ residue rule below must see them.
+		return 0
 	if (starts_with(path, c"docs/")):
 		return 1
 	if (ends_with(path, c".md")):
@@ -768,6 +777,9 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		wtest_add(path, c"asm_x64_test")
 		wtest_add(path, c"asm_seed_gate")
 		wtest_add(path, c"asm_stubs_test")
+		wtest_add(path, c"asm_fuzz_x86_test")
+		wtest_add(path, c"asm_fuzz_x64_test")
+		wtest_add(path, c"asm_fuzz_arm64_test")
 		matched = 1
 	if (strcmp(path, c"tools/gen_stubs.w") == 0):
 		wtest_add(path, c"asm_stubs_test")

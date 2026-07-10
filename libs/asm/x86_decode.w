@@ -662,7 +662,18 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	if (op == 0x6a):
 		if (d.opsize == 2):
 			insn.mnemonic = c"pushw"
-			asm_x86_set_imm(&insn.op1, asm_x86_s8(d), 2)
+			# size 1 (not the logical 2) records that this was the compact
+			# imm8 wire form, matching how plain "push" already distinguishes
+			# its two forms (1 vs 4) and what asm_x86_encode's pushw_imm8
+			# check reads back; recording the logical width here instead
+			# made decode(encode(x)) pick the wider 0x68 form on re-encode
+			# for any pushw value that happens to fit int8 (asm_fuzz_x86_test,
+			# issue #171 — corpus_x86.txt's "666a02|pushw 2" already covers
+			# this exact wire form as a golden decode round trip, but only
+			# asm_fuzz_x86_test's decode->encode identity property caught
+			# the re-encode mismatch, since the format-text comparison the
+			# corpus test does doesn't depend on this field).
+			asm_x86_set_imm(&insn.op1, asm_x86_s8(d), 1)
 		else:
 			insn.mnemonic = c"push"
 			asm_x86_set_imm(&insn.op1, asm_x86_s8(d), 1)
