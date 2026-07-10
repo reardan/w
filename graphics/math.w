@@ -1,10 +1,11 @@
 /*
 graphics.math: glm-inspired linear algebra for the graphics stack.
 
-Pure W, no shared-library dependency: transcendentals (sqrt, sin, cos,
-tan) are implemented here with bit tricks and minimax-style polynomials,
-so programs that only need the math stay statically linked and work on
-both the x86 and x64 targets.
+Pure W, no shared-library dependency: sqrt, abs, floor, mod and the
+float bit casts come from lib.fmath (thin gfx_ aliases below keep the
+local naming convention), and sin/cos/tan are implemented here with
+minimax-style polynomials, so programs that only need the math stay
+statically linked and work on both the x86 and x64 targets.
 
 Conventions follow glm and OpenGL:
 - float32 components
@@ -17,6 +18,7 @@ Conventions follow glm and OpenGL:
 Design notes and the 2D/UI + 3D roadmap: docs/projects/graphics.md
 */
 import lib.lib
+import lib.fmath
 
 
 struct vec2:
@@ -72,9 +74,7 @@ float32 degrees(float32 radians_value):
 
 
 float32 gfx_abs(float32 x):
-	if (x < 0.0):
-		return 0.0 - x
-	return x
+	return fabs(x)
 
 
 float32 gfx_min(float32 a, float32 b):
@@ -102,44 +102,25 @@ float32 gfx_lerp(float32 a, float32 b, float32 t):
 	return a + (b - a) * t
 
 
-# Largest whole value not above x. Float-to-int conversion truncates
-# toward zero, so negative non-integers need one step down.
 float32 gfx_floor(float32 x):
-	int truncated = x
-	float32 f = truncated
-	if (x < f):
-		return f - 1.0
-	return f
+	return ffloor(x)
 
 
 # glm mod(): x - floor(x / y) * y, result has the sign of y.
 float32 gfx_mod(float32 x, float32 y):
-	return x - gfx_floor(x / y) * y
+	return fmod2(x, y)
 
 
 int gfx_float_bits(float32 f):
-	int32* p = cast(int32*, &f)
-	return *p
+	return float_bits(f)
 
 
 float32 gfx_float_from_bits(int bits):
-	float32 f
-	int32* p = cast(int32*, &f)
-	*p = bits
-	return f
+	return float_from_bits(bits)
 
 
-# Newton-Raphson square root seeded by an exponent-halving bit trick;
-# three iterations reach full float32 precision.
 float32 gfx_sqrt(float32 x):
-	if (x <= 0.0):
-		return 0.0
-	int bits = gfx_float_bits(x) & 0x7fffffff
-	float32 guess = gfx_float_from_bits(0x1fbd1df5 + (bits >> 1))
-	guess = 0.5 * (guess + x / guess)
-	guess = 0.5 * (guess + x / guess)
-	guess = 0.5 * (guess + x / guess)
-	return guess
+	return fsqrt(x)
 
 
 float32 gfx_inverse_sqrt(float32 x):

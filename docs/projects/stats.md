@@ -9,8 +9,8 @@ Status: **planning** — no code yet. This doc is the design.
 Motivation: nothing statistics-adjacent exists in the tree. `lib/math.w` is
 integer-only (`min`/`max`/`abs`/`sign`/`gcd`/`pow`), the built-in list
 aggregations `l.sum()`/`l.min()`/`l.max()` and `l.sort()` reject float
-elements at compile time (`grammar/list_builtin.w`), and the only `sqrt`
-lives in `graphics/math.w` behind a `gfx_` prefix. Any program that wants a
+elements at compile time (`grammar/list_builtin.w`), and float math lives
+in `lib/fmath.w` (`fsqrt`, `fabs`, bit casts — Phase 0.5, issue #186). Any program that wants a
 mean or a standard deviation hand-rolls a loop, usually with the naive
 (catastrophically cancelling) variance formula. An earlier sketch exists at
 `libs/standard/plans/03_numeric_data.md` (Python-`statistics` port over
@@ -25,8 +25,8 @@ In for the MVP:
 - A streaming accumulator (`stats_acc`): add samples one at a time, merge
   two accumulators, query count/mean/min/max/variance/stddev at any point.
 - Order statistics: sort helpers plus median, quantile (type-7), mode.
-- Self-contained float utilities the above need: bit casts, `is_nan`,
-  `fabs`, `sqrt`.
+- Float utilities the above need — bit casts, `fis_nan`, `fabs`,
+  `fsqrt` — imported from `lib.fmath` (landed as Phase 0.5, issue #186).
 
 Out (deferred to Follow-ups): a `float64` tier, covariance/correlation/
 regression, histograms and frequency counters, NaN-skipping variants,
@@ -64,17 +64,17 @@ method sugar (`docs/projects/struct_methods.md`), so an accessor function
 named after a field would be unreachable as a method. Functions exist only
 for actions and derived quantities:
 
-**Float utilities** (self-contained; `lib/` must not import `graphics/`):
+**Float utilities** (`import lib.fmath` — extracted from
+`graphics/math.w` as Phase 0.5, issue #186; no private copies):
 
-- `int stats_float_bits(float f)` / `float stats_float_from_bits(int b)` —
-  reinterpret casts via pointer, as `graphics/math.w:120-129`.
-- `int stats_is_nan(float f)` — bit test (exponent all ones, mantissa
+- `int float_bits(float f)` / `float float_from_bits(int b)` —
+  reinterpret casts via pointer.
+- `int fis_nan(float f)` — bit test (exponent all ones, mantissa
   nonzero). Required because the compiler defines `nan == nan` as true
   (`docs/projects/float.md`), so `f != f` cannot detect NaN.
-- `float stats_fabs(float f)` — sign-bit clear.
-- `float stats_sqrt(float f)` — Newton-Raphson with the exponent-halving
-  seed, duplicated from `gfx_sqrt` (`graphics/math.w:134`) with an
-  attribution comment; 0.0 for `f <= 0.0`.
+- `float fabs(float f)` — sign-bit clear.
+- `float fsqrt(float f)` — Newton-Raphson with the exponent-halving
+  seed; 0.0 for `f <= 0.0`.
 
 **Accumulator** (Welford; O(1) memory, single pass):
 
@@ -181,6 +181,12 @@ word size), no generics in the public API (inference does not bind through
 
 ## Phasing
 
+**Phase 0.5 — shared float helpers (done, issue #186).** `lib/fmath.w`
+provides `float_bits`/`float_from_bits`/`fis_nan`/`fabs`/`fsqrt` (plus
+`ffloor`/`fmod2`), tested by `fmath_test`/`fmath_64_test`;
+`graphics/math.w` delegates to it. `lib/stats.w` imports `lib.fmath`
+instead of carrying private copies.
+
 **Phase 0 — throwaway spike, both targets.** Pin the four undocumented or
 untested behaviors the design leans on, before any real code:
 
@@ -192,8 +198,8 @@ untested behaviors the design leans on, before any real code:
    fallback and the default).
 4. `int ddof = 0` default through a direct call and through method sugar.
 
-**Phase 1 — core module + wiring.** Float utilities, `stats_acc`, batch
-aggregates. Colocated `lib/stats_test.w` (the dominant convention —
+**Phase 1 — core module + wiring.** `stats_acc` and batch aggregates
+(float utilities come from `lib.fmath`, Phase 0.5). Colocated `lib/stats_test.w` (the dominant convention —
 `lib/format_test.w`, `lib/time_test.w`, ...): `import lib.testing`,
 zero-arg `test_*` functions, no `main`, file-local `assert_near` (0.0001
 tolerance, per `graphics/math_test.w:8`) and `assert_float_bits` for
@@ -246,7 +252,6 @@ changes anywhere in the plan, so `./wbuild verify` is not implicated, but
 - `wresult[float]` checked variants for recoverable empty-input handling.
 - Quickselect for single-quantile queries without a full sort.
 - NaN-skipping variants (`stats_mean_finite`, ...).
-- Promote `stats_sqrt`/`stats_fabs` into a shared `lib/` float math
-  module once a second consumer appears (`gfx_sqrt` is the third copy
-  waiting to happen), and consider a shared `assert_near` in
-  `lib/assert.w` — file-local is the current precedent.
+- Consider a shared `assert_near` in `lib/assert.w` — file-local is the
+  current precedent (`graphics/math_test.w`, `lib/fmath_test.w`). The
+  shared float math module itself landed as `lib/fmath.w` (issue #186).
