@@ -2336,6 +2336,15 @@
 			]
 		},
 		{
+			"name": "asm_x86_disasm_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/asm/", "tests/asm/", "tests/asm_x86_disasm_test.w"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/asm_x86_disasm_test.w", "-o", "bin/asm_x86_disasm_test"]},
+				{"cmd": ["bin/asm_x86_disasm_test"]}
+			]
+		},
+		{
 			"name": "asm_seed_gate",
 			"inputs": ["libs/asm/", "tests/asm_seed_check.w", "w"],
 			"steps": [
@@ -2412,6 +2421,7 @@
 				"verify",
 				"lib_test",
 				"asm_foundations_test",
+				"asm_x86_disasm_test",
 				"asm_seed_gate",
 				"path_test",
 				"grammar_test",

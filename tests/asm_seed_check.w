@@ -16,6 +16,8 @@ import libs.asm.insn
 import libs.asm.registers
 import libs.asm.hexutil
 import libs.asm.binary_reader
+import libs.asm.x86_decode
+import libs.asm.format
 
 
 int main():
@@ -33,6 +35,16 @@ int main():
 	assert_equal(0xc3, bytes[0] & 255)
 
 	assert_equal(0, cast(int, asm_binary_open(c"tests/asm_seed_check.w")))
+
+	# decode + format round-trip one instruction (mov eax,[esp+16]).
+	char* code = malloc(4)
+	code[0] = 0x8b
+	code[1] = 0x44
+	code[2] = 0x24
+	code[3] = 0x10
+	asm_insn insn
+	assert_equal(4, asm_x86_decode(code, 4, 0, 4, &insn))
+	assert_strings_equal(c"mov eax,[esp+0x10]", asm_format(&insn))
 
 	println(c"asm_seed_check passed")
 	return 0
