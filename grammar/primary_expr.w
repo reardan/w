@@ -178,6 +178,11 @@ int primary_expr():
 	else if (limb_builtin_ready()):
 		type = limb_builtin_expr()
 
+	# shr/rotl/rotr/popcount/clz/ctz bit-manipulation intrinsics,
+	# shadowed the same way by user symbols (grammar/bit_builtin.w)
+	else if (bit_builtin_ready()):
+		type = bit_builtin_expr()
+
 	# Generic function instantiation: 'max[int](...)'
 	else if (generic_call_ready()):
 		type = generic_call_expr()

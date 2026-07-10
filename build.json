@@ -1455,6 +1455,9 @@
 				"array_decay_64_test",
 				"array_list_64_test",
 				"array_slice_string_64_test",
+				"binary_literal_64_test",
+				"bit_builtin_64_test",
+				"bitset_64_test",
 				"chacha20_64_test",
 				"chacha20poly1305_64_test",
 				"compound_assign_64_test",
@@ -1731,6 +1734,9 @@
 				"array_decay_test",
 				"array_list_test",
 				"array_slice_string_test",
+				"binary_literal_test",
+				"bit_builtin_test",
+				"bitset_test",
 				"bitwise_not_test",
 				"bitwise_xor_test",
 				"c_import_errno_test",
@@ -1859,6 +1865,54 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/array_slice_string_test.w", "-o", "bin/array_slice_string_test"]},
 				{"cmd": ["bin/array_slice_string_test"]}
+			]
+		},
+		{
+			"name": "binary_literal_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/binary_literal_test.w", "-o", "bin/binary_literal_64_test"]},
+				{"cmd": ["bin/binary_literal_64_test"]}
+			]
+		},
+		{
+			"name": "binary_literal_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/binary_literal_test.w", "-o", "bin/binary_literal_test"]},
+				{"cmd": ["bin/binary_literal_test"]}
+			]
+		},
+		{
+			"name": "bit_builtin_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/bit_builtin_test.w", "-o", "bin/bit_builtin_64_test"]},
+				{"cmd": ["bin/bit_builtin_64_test"]}
+			]
+		},
+		{
+			"name": "bit_builtin_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/bit_builtin_test.w", "-o", "bin/bit_builtin_test"]},
+				{"cmd": ["bin/bit_builtin_test"]}
+			]
+		},
+		{
+			"name": "bitset_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "structures/bitset_test.w", "-o", "bin/bitset_64_test"]},
+				{"cmd": ["bin/bitset_64_test"]}
+			]
+		},
+		{
+			"name": "bitset_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "structures/bitset_test.w", "-o", "bin/bitset_test"]},
+				{"cmd": ["bin/bitset_test"]}
 			]
 		},
 		{
