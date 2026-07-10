@@ -34,6 +34,20 @@ int cast_escape_hatches():
 	return fn_word + cast(int, words)
 
 
+# Array-to-pointer decay is warning-free in every direction of a
+# conditional, and cast(int, arr) decays like cast(char*, arr) (#229)
+int array_decay_is_clean(int flag):
+	char[8] cells
+	cells[0] = 'c'
+	char* p = cells
+	char* then_arm = flag ? cells : p
+	char* else_arm = flag ? p : cells
+	char* null_arm = flag ? cells : 0
+	int data_word = cast(int, cells)
+	return cast(int, then_arm) + cast(int, else_arm) +
+			cast(int, null_arm) + data_word
+
+
 int main():
 	int x = add(1, 2)
 	x = add(x, 4)
@@ -46,5 +60,7 @@ int main():
 	p.b = 2
 	x = x + pair_sum(p)
 	if (cast_escape_hatches() == 0):
+		x = 0
+	if (array_decay_is_clean(x) == 0):
 		x = 0
 	return x

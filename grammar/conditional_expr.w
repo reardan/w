@@ -11,6 +11,14 @@
  * The then arm decides the result type (an untyped constant arm defers
  * to the else arm); the else arm is coerced to it inside its own branch,
  * before the join point, so both paths deliver the same representation.
+ * One exception mirrors that coercion the other way: an array/slice
+ * value in the then arm decays to an else arm's pointer type (or, when
+ * the else arm is a bare constant, to its own element pointer) through
+ * a stub spliced in after the else arm, since the then arm's code is
+ * already emitted when the else arm's type becomes known. An array/
+ * slice value in the else arm likewise decays against a constant then
+ * arm, so the join never carries a slice-value type whose constant path
+ * would be read through by an outer decay load.
  *
  * This file is compiled by the committed seed: only seed-understood
  * syntax here.
@@ -52,13 +60,40 @@ int conditional_expr():
 	else_type = promote(else_type)
 	# An untyped constant then-arm takes the else arm's type ('c ? 1 : x')
 	int result = then_type
+	int then_is_slice_value = type_get_kind(type_unqualified(then_type)) == type_kind_slice_value()
+	int else_is_slice_value = type_get_kind(type_unqualified(else_type)) == type_kind_slice_value()
 	if (then_type == 3):
 		result = else_type
+		if (else_is_slice_value):
+			# 'c ? 0 : arr': the constant arm is already a bare word (a
+			# null pointer, usually), so decay the array/slice arm to its
+			# element pointer in-branch. A joined slice-value type would
+			# make an outer decay load read through the constant.
+			promote_eax()
+			result = type_get_next_pointer(type_unqualified(type_get_element_type(type_unqualified(else_type))))
+	else if (type_decays_to_pointer(else_type, then_type) | (then_is_slice_value & (else_type == 3))):
+		# 'c ? arr : ptr' joins at the else arm's pointer type,
+		# 'c ? arr : 0' at the element pointer. The then arm's code is
+		# already emitted, so reroute its jump through a stub that loads
+		# the descriptor's first word (the data pointer); the else path
+		# jumps over the stub to the join point.
+		result = else_type
+		if (else_type == 3):
+			result = type_get_next_pointer(type_unqualified(type_get_element_type(type_unqualified(then_type))))
+		jmp_int32(1337)
+		int p_join = codepos
+		be_branch_patch(p_end, codepos)
+		promote_eax()
+		p_end = p_join
 	else:
 		# Convert the else value to the then arm's representation while
 		# still on the else path, ahead of the join point
 		coerce(then_type, else_type)
-	if (types_compatible(type_real(result), type_real(else_type)) == 0):
+	int arms_compatible = types_compatible(type_real(result), type_real(else_type))
+	if (arms_compatible == 0):
+		# 'c ? ptr : arr': coerce just decayed the else arm in-branch
+		arms_compatible = type_decays_to_pointer(type_real(result), type_real(else_type))
+	if (arms_compatible == 0):
 		warn_type_mismatch(c"conditional arms", then_type, else_type)
 	be_branch_patch(p_end, codepos)
 	if (conditional_arm_is_value(result)):
