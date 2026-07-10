@@ -369,6 +369,14 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 		stack_pos = stack_pos + 1
 		return arg_class
 	# Variadic tail: C default argument promotions
+	if (type_get_kind(type_unqualified(arg_type)) == type_kind_slice_value()):
+		# Arrays and slices decay unconditionally in a C variadic tail,
+		# exactly like C: load the descriptor's first word so the callee
+		# receives the data pointer, not the descriptor's address.
+		promote_eax()
+		push_eax()
+		stack_pos = stack_pos + 1
+		return 0
 	int kind = type_float_kind(arg_type)
 	if (kind == 1):
 		# The promoted float64 spans two 32-bit stack words on x86
