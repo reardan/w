@@ -121,6 +121,11 @@ int dup2(int oldfd, int newfd):
 int kill(int pid, int sig):
 	return syscall(37, pid, sig, 0)
 
+
+# Returns 1 when running on Windows, 0 on all other platforms.
+int os_windows():
+	return 0
+
 # ptrace (26). request/pid/addr/data follow the classic ptrace(2) ABI.
 # For PTRACE_PEEK* the raw syscall (unlike the glibc wrapper) writes the
 # read word to *data and returns 0, so callers pass a word pointer as data

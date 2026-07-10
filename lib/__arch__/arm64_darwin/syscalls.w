@@ -213,6 +213,11 @@ int dup2(int oldfd, int newfd):
 int kill(int pid, int sig):
 	return syscall(37, pid, sig, 1)
 
+
+# Returns 1 when running on Windows, 0 on all other platforms.
+int os_windows():
+	return 0
+
 # ptrace is unsupported on Darwin here; the stub keeps the debugger's
 # attach module linkable (attach mode is Linux x86/x86-64 only).
 int sys_ptrace(int request, int pid, int addr, int data):

@@ -175,5 +175,14 @@ not emitted on win64.
   (PE export table or a custom symbol section).
 - **Threads, sockets, process spawning** over WinAPI
   (`CreateThread`, Winsock, `CreateProcessA`).
-- **Self-hosting on Windows**: the compiler itself assumes Linux paths
-  and fds in places; compiling `w.w` as a win64 exe is untested.
+- **Self-hosting on Windows**: the compiler itself runs on Windows with
+  `w.exe win64 w.w -o wv2.exe`; the fixpoint is verified via
+  `./wbuild verify_win` (needs Wine on Linux) or `wbuild.cmd verify_win`
+  (natively on Windows once `w.exe` is seeded). Path handling
+  (`GetCurrentDirectoryA` backslash normalization, Windows drive-letter
+  absolute paths, `NUL` device for check mode) is implemented in
+  `compiler/compiler.w`. Process spawning for the build executor
+  (`tools/wexec.w`) uses `CreateProcessA` / `WaitForSingleObject` /
+  `PeekNamedPipe` via the new `lib/process.w` Windows path, gated by
+  `os_windows()` in `lib/__arch__/win64/syscalls.w`.
+  Outstanding: `lib/testing.w` ELF introspection, sockets, signals.
