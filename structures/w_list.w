@@ -10,6 +10,7 @@ compiler loads and stores elements through __w_list_addr with the element
 type's own width, so language semantics match slices and arrays.
 */
 import lib.memory
+import lib.stack_trace
 
 
 struct __w_list:
@@ -54,6 +55,7 @@ void __w_trap_int(int value):
 void __w_trap(char* message):
 	__w_trap_cstr(message)
 	__w_trap_cstr(c"\n")
+	print_stack_trace()
 	exit(1)
 
 
@@ -64,6 +66,7 @@ void __w_list_index_trap(char* what, int index, int length):
 	__w_trap_cstr(c", length ")
 	__w_trap_int(length)
 	__w_trap_cstr(c"\n")
+	print_stack_trace()
 	exit(1)
 
 

@@ -1,7 +1,10 @@
+import lib.stack_trace
+
 
 void asserts(char* s, int condition):
 	if (condition == 0):
 		println2(s)
+		print_stack_trace()
 		exit(1)
 
 
@@ -10,6 +13,7 @@ void asserts(char* s, int condition):
 void assert1(int condition):
 	if (condition == 0):
 		println2(c"Assertion2 failed.")
+		print_stack_trace()
 		exit(1)
 
 
@@ -20,6 +24,7 @@ void assert_equal(int want, int got):
 		print2(c") got int(")
 		print2(itoa(got))
 		println2(c")")
+		print_stack_trace()
 		exit(1)
 
 
@@ -30,6 +35,7 @@ void assert_equal_hex(int want, int got):
 		print2(c" got ")
 		print2(hex(got))
 		println2(c"")
+		print_stack_trace()
 		exit(1)
 
 
@@ -40,4 +46,5 @@ void assert_strings_equal(char* want, char* got):
 		print2(c"' got '")
 		print2(got)
 		println2(c"'")
+		print_stack_trace()
 		exit(1)
