@@ -144,6 +144,7 @@ void wtest_init_targets():
 	wtest_targets.push(c"net_darwin")
 	wtest_targets.push(c"net_asn1_test")
 	wtest_targets.push(c"net_x509_test")
+	wtest_targets.push(c"net_tls_test")
 	wtest_targets.push(c"sse_test")
 	wtest_targets.push(c"sse_64_test")
 	wtest_targets.push(c"retry_test")
@@ -404,6 +405,8 @@ void wtest_map_path(char* path):
 	else if (starts_with(path, c"libs/standard/net/x509")):
 		# Also covers the checked-in fixtures under net/x509_fixtures/.
 		wtest_add(path, c"net_x509_test")
+	else if (starts_with(path, c"libs/standard/net/tls")):
+		wtest_add(path, c"net_tls_test")
 	else if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):
