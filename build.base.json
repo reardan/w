@@ -473,7 +473,7 @@
 			"name": "type_system_error_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/type_system_error_fixture.w", "tests/type_system_const_pointer_error_fixture.w", "tests/type_system_cast_error_fixture.w", "tests/type_system_function_cast_error_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/type_system_error_fixture.w", "tests/type_system_const_pointer_error_fixture.w", "tests/type_system_cast_error_fixture.w", "tests/type_system_function_cast_error_fixture.w", "tests/method_chain_error_fixture.w"]}
 			]
 		},
 		{
