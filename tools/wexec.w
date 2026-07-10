@@ -520,6 +520,37 @@ void wexec_emit_output(process_result* result):
 		write(2, result.stderr_text, result.stderr_length)
 
 
+# A step that declares its command must fail ("expect_fail", or a
+# nonzero "expect_status"). Such a command's failure output is fixture
+# material the manifest author planned for, not a diagnostic — re-emitting
+# it makes a green run look broken (wexec_test's intentional-failure
+# fixtures print "wexec: error: ..." into a passing suite log).
+int wexec_step_expects_failure(json_value* step):
+	if (wexec_get_flag(step, c"expect_fail")):
+		return 1
+	json_value* wanted = json_object_get(step, c"expect_status")
+	if (wanted != 0):
+		if (wanted.type == json_type_int()):
+			if (wanted.int_value != 0):
+				return 1
+	return 0
+
+
+# Printed in place of the captured streams when an expected failure
+# happened as declared, so the log states the failure was intentional.
+void wexec_note_expected_failure(process_result* result):
+	string_builder* line = string_new()
+	string_append(line, c"wexec: expected failure (exit status ")
+	string_append_int(line, result.status)
+	if ((result.stdout_length > 0) || (result.stderr_length > 0)):
+		string_append(line, c", output suppressed")
+	string_append(line, c")")
+	wstream* out = stdout_writer()
+	stream_write_line(out, line.data)
+	stream_flush(out)
+	string_free(line)
+
+
 int wexec_check_status(char* target_name, int step_index, json_value* step, process_result* result):
 	if (result.status < 0):
 		wexec_step_error(target_name, step_index, c"command timed out or could not be waited on")
@@ -667,7 +698,13 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 		wexec_step_error(target_name, step_index, c"failed to spawn command")
 		return 1
 
-	wexec_emit_output(result)
+	# An expected failure that passes every check hides its captured
+	# streams behind a one-line marker; everything else re-emits them
+	# up front as before (and an expected failure that misses a check
+	# re-emits them after the error, for debugging).
+	int expects_failure = wexec_step_expects_failure(step)
+	if (expects_failure == 0):
+		wexec_emit_output(result)
 	int failed = wexec_write_capture(target_name, step_index, step, c"stdout_file", result.stdout_text, result.stdout_length)
 	if (failed == 0):
 		failed = wexec_write_capture(target_name, step_index, step, c"stderr_file", result.stderr_text, result.stderr_length)
@@ -681,6 +718,11 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 		failed = wexec_check_expectation(target_name, step_index, step, c"reject_stdout", c"stdout", result.stdout_text, 1)
 	if (failed == 0):
 		failed = wexec_check_expectation(target_name, step_index, step, c"reject_stderr", c"stderr", result.stderr_text, 1)
+	if (expects_failure):
+		if (failed):
+			wexec_emit_output(result)
+		else:
+			wexec_note_expected_failure(result)
 	process_result_free(result)
 	return failed
 
