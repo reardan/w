@@ -1,8 +1,19 @@
-# Plaintext HTTP/1.1 client for the pure-W HTTPS stack (plan 11 phase
-# 2, issue #200, part of #155). Built on lib/stream.w buffered reads
-# over nonblocking sockets, libs/standard/web/urlparse.w, and
-# libs/standard/net/dns.w. TLS (#204) slots in underneath this API and
-# SSE (#202) consumes the streaming reader; neither changes callers.
+# HTTP/1.1 client (plaintext + TLS) for the pure-W HTTPS stack (plan 11
+# phases 2 + 9, issues #200 and #204, part of #155). Built on lib/stream.w
+# buffered reads, libs/standard/web/urlparse.w, and libs/standard/net/dns.w.
+# For https:// URLs the socket is wrapped with libs/standard/net/tls.w
+# (#204) underneath this same API and every request write / response read /
+# streaming byte goes through tls_read/tls_write; the plaintext path is
+# unchanged. SSE (#202) consumes the streaming reader; neither changes callers.
+#
+# Transport-mode note: the plaintext path uses a nonblocking socket with
+# poll() timeouts; net/tls.w does blocking socket_recv/socket_send. The
+# https:// path therefore switches the socket to blocking after connect and
+# arms SO_RCVTIMEO/SO_SNDTIMEO so the TLS handshake and every later
+# read/write stays bounded -- a stalled peer can never wedge a request. The
+# connect step keeps the nonblocking + poll timeout; the handshake uses
+# req.tls_handshake_timeout_ms (else req.timeout_ms); after the handshake
+# the socket is re-armed to req.timeout_ms for the header/body/idle reads.
 #
 # Public API:
 #   http_req* http_req_new(char* method, char* url)
@@ -53,6 +64,7 @@ import lib.container
 import structures.string
 import libs.standard.web.urlparse
 import libs.standard.net.dns
+import libs.standard.net.tls
 
 
 struct http_header:
@@ -71,6 +83,21 @@ struct http_req:
 	int body_len
 	int timeout_ms
 	int max_redirects
+	# TLS knobs (https:// only; ignored for http://). Borrowed like
+	# method/url. tls_trust_store_path overrides the system CA bundle
+	# (0 = default). tls_insecure_skip_verify (loud by name, tests only)
+	# skips chain + hostname checks but never the handshake signature or
+	# Finished MAC. tls_has_now_unix/tls_now_unix inject a fixed
+	# validation clock for deterministic certificate-validity tests.
+	# tls_handshake_timeout_ms bounds the TLS handshake separately from
+	# timeout_ms (0 = use timeout_ms): a handshake can legitimately need
+	# more inactivity headroom than a per-read wait -- notably against a
+	# pure-W loopback server whose ECDSA/X25519 take real CPU time.
+	char* tls_trust_store_path
+	int tls_insecure_skip_verify
+	int tls_has_now_unix
+	int tls_now_unix
+	int tls_handshake_timeout_ms
 
 
 # One response. headers maps lowercased header names to values
@@ -87,13 +114,20 @@ struct http_response:
 	char* error_message
 
 
-# Buffered reader over one nonblocking socket.
+# Buffered reader over one socket. For plaintext the socket is
+# nonblocking (poll timeouts); for https tls is non-null, the socket is
+# blocking with SO_RCVTIMEO/SO_SNDTIMEO, and all I/O routes through
+# tls_read/tls_write. tls_cfg owns the config the tls_conn borrows (freed
+# with it); tls_insecure records the verify posture for the idle cache key.
 struct http_conn:
 	int fd
 	wstream* reader
 	int timeout_ms
 	int error
 	int received_any
+	tls_conn* tls
+	tls_config* tls_cfg
+	int tls_insecure
 
 
 # Streaming response: status and headers are parsed eagerly by
@@ -210,6 +244,11 @@ int http_error_bad_header():
 	return 14
 
 
+# TLS handshake (or transport wrap) failed on an https:// request.
+int http_error_tls():
+	return 15
+
+
 # Static description of an http_error_* code. Never freed.
 char* http_error_string(int code):
 	if (code == http_error_none()):
@@ -242,6 +281,8 @@ char* http_error_string(int code):
 		return c"too many redirects"
 	if (code == http_error_bad_header()):
 		return c"invalid request header"
+	if (code == http_error_tls()):
+		return c"TLS handshake failed"
 	return c"unknown error"
 
 
@@ -385,6 +426,11 @@ http_req* http_req_new(char* method, char* url):
 	req.body_len = 0
 	req.timeout_ms = http_default_timeout_ms()
 	req.max_redirects = http_default_max_redirects()
+	req.tls_trust_store_path = 0
+	req.tls_insecure_skip_verify = 0
+	req.tls_has_now_unix = 0
+	req.tls_now_unix = 0
+	req.tls_handshake_timeout_ms = 0
 	return req
 
 
@@ -457,37 +503,78 @@ void http_response_free(http_response* resp):
 	free(resp)
 
 
-/* Idle connection cache: at most one keep-alive connection */
+/* Idle connection cache: at most one keep-alive connection. Keyed on
+   (transport, host, port): is_tls distinguishes an https connection from a
+   plaintext one so a TLS conn is never handed to a plaintext target or vice
+   versa, and for TLS the verify posture (insecure) must also match so an
+   insecure connection is never reused for a verifying request. A cached TLS
+   connection keeps its tls_conn (keys live) and owning tls_config. */
 
 char* http_idle_host
 int http_idle_port
 int http_idle_fd
+int http_idle_is_tls
+int http_idle_insecure
+tls_conn* http_idle_tls
+tls_config* http_idle_tls_cfg
+
+# Transient outputs of the most recent successful http_cache_take: the
+# cached TLS connection and its owning config (both 0 for a plaintext hit).
+tls_conn* http_cache_last_tls
+tls_config* http_cache_last_tls_cfg
 
 
-# Closes the cached idle keep-alive connection, if any.
+# Closes the cached idle keep-alive connection, if any. A TLS connection
+# gets a close_notify and its key material wiped, and its config is freed.
 void http_client_close_idle():
 	if (http_idle_host != 0):
+		if (http_idle_tls != 0):
+			tls_close(http_idle_tls)
+			http_idle_tls = 0
+		if (http_idle_tls_cfg != 0):
+			tls_config_free(http_idle_tls_cfg)
+			http_idle_tls_cfg = 0
 		close(http_idle_fd)
 		free(http_idle_host)
 		http_idle_host = 0
 
 
-int http_cache_take(char* host, int port):
+# Takes the cached connection when it targets the same transport + host:port
+# (and, for TLS, the same verify posture). Returns the fd (with any TLS state
+# in http_cache_last_tls / http_cache_last_tls_cfg) or -1.
+int http_cache_take(char* host, int port, int is_tls, int insecure):
+	http_cache_last_tls = 0
+	http_cache_last_tls_cfg = 0
 	if (http_idle_host == 0):
 		return (-1)
-	if ((strcmp(http_idle_host, host) == 0) & (http_idle_port == port)):
-		int fd = http_idle_fd
-		free(http_idle_host)
-		http_idle_host = 0
-		return fd
-	return (-1)
+	if (strcmp(http_idle_host, host) != 0):
+		return (-1)
+	if (http_idle_port != port):
+		return (-1)
+	if (http_idle_is_tls != is_tls):
+		return (-1)
+	if (is_tls != 0):
+		if (http_idle_insecure != insecure):
+			return (-1)
+	int fd = http_idle_fd
+	http_cache_last_tls = http_idle_tls
+	http_cache_last_tls_cfg = http_idle_tls_cfg
+	http_idle_tls = 0
+	http_idle_tls_cfg = 0
+	free(http_idle_host)
+	http_idle_host = 0
+	return fd
 
 
-void http_cache_put(char* host, int port, int fd):
+void http_cache_put(char* host, int port, int is_tls, int insecure, int fd, tls_conn* tls, tls_config* cfg):
 	http_client_close_idle()
 	http_idle_host = strclone(host)
 	http_idle_port = port
+	http_idle_is_tls = is_tls
+	http_idle_insecure = insecure
 	http_idle_fd = fd
+	http_idle_tls = tls
+	http_idle_tls_cfg = cfg
 
 
 /* Connection: nonblocking socket + buffered reader + poll timeouts */
@@ -499,13 +586,36 @@ http_conn* http_conn_new(int fd, int timeout_ms):
 	c.timeout_ms = timeout_ms
 	c.error = 0
 	c.received_any = 0
+	c.tls = 0
+	c.tls_cfg = 0
+	c.tls_insecure = 0
 	return c
 
 
 void http_conn_destroy(http_conn* c):
+	# tls_close sends close_notify over the fd and wipes/frees the keys,
+	# so it must run before the fd is closed. The owning config outlives
+	# the tls_conn (which only borrows it), so free it here too.
+	if (c.tls != 0):
+		tls_close(c.tls)
+	if (c.tls_cfg != 0):
+		tls_config_free(c.tls_cfg)
 	close(c.fd)
 	stream_free(c.reader)
 	free(c)
+
+
+# Builds a per-connection tls_config from a request's TLS knobs. The
+# trust-store path is borrowed from the request (never freed by the
+# config). The config must outlive the tls_conn that borrows it.
+tls_config* http_build_tls_config(http_req* req):
+	tls_config* cfg = tls_config_new()
+	cfg.trust_store_path = req.tls_trust_store_path
+	cfg.insecure_skip_verify = req.tls_insecure_skip_verify
+	if (req.tls_has_now_unix != 0):
+		cfg.has_now_unix = 1
+		cfg.now_unix = req.tls_now_unix
+	return cfg
 
 
 # Refills the reader buffer from the socket, waiting up to timeout_ms.
@@ -519,6 +629,25 @@ int http_conn_fill(http_conn* c):
 		return 0
 	r.position = 0
 	r.limit = 0
+	if (c.tls != 0):
+		# Blocking read bounded by SO_RCVTIMEO (armed at connect time).
+		# tls_read drains its own buffered plaintext first, so no read
+		# waits on a record that already arrived. 0 = clean close_notify
+		# EOF, <0 = error: a broken connection is a protocol failure,
+		# otherwise a timed-out (SO_RCVTIMEO) or reset read.
+		int tcount = tls_read(c.tls, r.buffer, r.capacity)
+		if (tcount > 0):
+			r.limit = tcount
+			c.received_any = 1
+			return 1
+		if (tcount == 0):
+			r.eof = 1
+			return 0
+		if (c.tls.broken != 0):
+			c.error = http_error_recv()
+		else:
+			c.error = http_error_timeout()
+		return (-1)
 	while (1):
 		int count = socket_recv(c.fd, r.buffer, r.capacity, 0)
 		if (count > 0):
@@ -601,6 +730,16 @@ int http_conn_read_line(http_conn* c, string_builder* line, int oversize_error):
 # Sends all n bytes, polling for writability as needed. Returns 1, or
 # 0 with c.error set.
 int http_conn_write_all(http_conn* c, char* data, int n):
+	if (c.tls != 0):
+		# tls_write sends every byte (fragmenting to the record cap) or
+		# returns -1. The send is bounded by SO_SNDTIMEO on the socket.
+		if (n <= 0):
+			return 1
+		int wrote = tls_write(c.tls, data, n)
+		if (wrote == n):
+			return 1
+		c.error = http_error_send()
+		return 0
 	int total = 0
 	while (total < n):
 		int count = socket_send(c.fd, data + total, n - total, msg_nosignal())
@@ -680,10 +819,22 @@ int http_validate_req(http_req* req):
 	return 0
 
 
-# Returns 0 or an http_error_* code. Only plaintext http is dialable
-# until net/tls.w lands (#204); https parses but is rejected here.
+# Whether a URL's transport is TLS (https). url_parse only yields http or
+# https, so this is the single scheme discriminator the client keys on.
+int http_url_is_tls(url* u):
+	return strcmp(u.scheme, c"https") == 0
+
+
+# Returns 0 or an http_error_* code. Both http:// (plaintext) and https://
+# (TLS, wired through net/tls.w) are dialable; any other scheme is
+# unsupported (url_parse already rejects non-http(s) schemes upstream).
 int http_validate_url(url* u):
-	if (strcmp(u.scheme, c"http") != 0):
+	int ok_scheme = 0
+	if (strcmp(u.scheme, c"http") == 0):
+		ok_scheme = 1
+	if (strcmp(u.scheme, c"https") == 0):
+		ok_scheme = 1
+	if (ok_scheme == 0):
 		return http_error_unsupported_scheme()
 	if (http_url_part_clean(u.host) == 0):
 		return http_error_bad_url()
@@ -976,8 +1127,18 @@ void http_stream_release_conn(http_stream* s):
 			wstream* r = c.reader
 			if ((r.position >= r.limit) & (r.eof == 0)):
 				can_cache = 1
+				# A TLS conn may still hold decrypted plaintext buffered
+				# inside tls_read; caching then would strand those bytes.
+				if (c.tls != 0):
+					if (c.tls.app_pos < c.tls.app_len):
+						can_cache = 0
 	if (can_cache != 0):
-		http_cache_put(s.cache_host, s.cache_port, c.fd)
+		int is_tls = 0
+		if (c.tls != 0):
+			is_tls = 1
+		# Ownership of the tls_conn + its config transfers to the cache,
+		# so do NOT tls_close / tls_config_free here (only free the wrapper).
+		http_cache_put(s.cache_host, s.cache_port, is_tls, c.tls_insecure, c.fd, c.tls, c.tls_cfg)
 		stream_free(c.reader)
 		free(c)
 	else:
@@ -1203,12 +1364,20 @@ int http_open_attempt(http_stream* s, http_req* req, url* u, char* method, int i
 	int timeout = req.timeout_ms
 	if (timeout <= 0):
 		timeout = http_default_timeout_ms()
+	int is_tls = http_url_is_tls(u)
+	int insecure = 0
+	if (is_tls != 0):
+		insecure = req.tls_insecure_skip_verify
 	int from_cache = 0
 	int fd = (-1)
+	tls_conn* tls = 0
+	tls_config* tls_cfg = 0
 	if (use_cache != 0):
-		fd = http_cache_take(u.host, u.port)
+		fd = http_cache_take(u.host, u.port, is_tls, insecure)
 		if (fd >= 0):
 			from_cache = 1
+			tls = http_cache_last_tls
+			tls_cfg = http_cache_last_tls_cfg
 	if (fd < 0):
 		int ip = 0
 		if (dns_resolve_ipv4(u.host, &ip) == 0):
@@ -1218,7 +1387,34 @@ int http_open_attempt(http_stream* s, http_req* req, url* u, char* method, int i
 		if (fd < 0):
 			http_stream_fail(s, 0 - fd)
 			return 0
+		if (is_tls != 0):
+			# net/tls.w uses blocking socket I/O: switch off O_NONBLOCK and
+			# arm SO_RCVTIMEO/SO_SNDTIMEO so the handshake and every later
+			# read/write is bounded. The handshake gets its own budget
+			# (tls_handshake_timeout_ms, else timeout_ms); the socket is then
+			# re-armed to timeout_ms for the header/body/idle reads.
+			if (socket_set_blocking(fd) < 0):
+				close(fd)
+				http_stream_fail(s, http_error_connect())
+				return 0
+			int hs_timeout = timeout
+			if (req.tls_handshake_timeout_ms > 0):
+				hs_timeout = req.tls_handshake_timeout_ms
+			socket_set_recv_timeout(fd, hs_timeout)
+			socket_set_send_timeout(fd, hs_timeout)
+			tls_cfg = http_build_tls_config(req)
+			tls = tls_connect(fd, u.host, tls_cfg)
+			if (tls == 0):
+				tls_config_free(tls_cfg)
+				close(fd)
+				http_stream_fail(s, http_error_tls())
+				return 0
+			socket_set_recv_timeout(fd, timeout)
+			socket_set_send_timeout(fd, timeout)
 	http_conn* c = http_conn_new(fd, timeout)
+	c.tls = tls
+	c.tls_cfg = tls_cfg
+	c.tls_insecure = insecure
 	if (http_send_request(c, req, u, method, include_body) == 0):
 		int send_error = c.error
 		int send_received = c.received_any

@@ -58,3 +58,14 @@ int socket_abi_eagain():
 
 int socket_abi_einprogress():
 	return 36
+
+
+# SO_RCVTIMEO (0x1006) / SO_SNDTIMEO (0x1005) for setsockopt: bound a
+# blocking recv/send with a struct timeval so a stalled peer cannot
+# wedge the caller (the TLS transport path in web/http_client.w).
+int socket_abi_so_rcvtimeo():
+	return 4102
+
+
+int socket_abi_so_sndtimeo():
+	return 4101

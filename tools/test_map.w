@@ -126,6 +126,7 @@ void wtest_map_lib(char* path):
 			wtest_add(path, c"net_test")
 			wtest_add(path, c"http_client_test")
 			wtest_add(path, c"http_client_64_test")
+			wtest_add(path, c"https_e2e_test")
 			wtest_add(path, c"net_darwin")
 	else if (strcmp(path, c"lib/path.w") == 0):
 		wtest_add(path, c"path_test")
@@ -138,6 +139,7 @@ void wtest_map_lib(char* path):
 		wtest_add(path, c"poll_test")
 		wtest_add(path, c"http_client_test")
 		wtest_add(path, c"http_client_64_test")
+		wtest_add(path, c"https_e2e_test")
 		wtest_add(path, c"net_darwin")
 	else if (strcmp(path, c"lib/poll.w") == 0):
 		wtest_add(path, c"poll_test")
@@ -294,15 +296,23 @@ void wtest_map_path(char* path):
 	else if (starts_with(path, c"libs/standard/net/dns")):
 		wtest_add(path, c"dns_test")
 		wtest_add(path, c"dns_64_test")
+	else if (starts_with(path, c"libs/standard/web/https_e2e")):
+		# The https:// end-to-end suite (client <-> loopback tls_accept).
+		wtest_add(path, c"https_e2e_test")
 	else if (starts_with(path, c"libs/standard/web/http_client")):
 		wtest_add(path, c"http_client_test")
 		wtest_add(path, c"http_client_64_test")
+		# http_client.w now wraps net/tls.w for https:// (#204).
+		wtest_add(path, c"https_e2e_test")
 	else if (starts_with(path, c"libs/standard/web/sse")):
 		wtest_add(path, c"sse_test")
 		wtest_add(path, c"sse_64_test")
 	else if (starts_with(path, c"libs/standard/web/retry")):
 		wtest_add(path, c"retry_test")
 		wtest_add(path, c"retry_64_test")
+	else if (starts_with(path, c"examples/web/https_get") | starts_with(path, c"examples/web/https_server")):
+		# The https demos are compile-checked by the https e2e target.
+		wtest_add(path, c"https_e2e_test")
 	else if (strcmp(path, c"tests/net_darwin_smoke_test.w") == 0):
 		wtest_add(path, c"net_darwin")
 	else if (starts_with(path, c"libs/standard/net/asn1")):
@@ -316,6 +326,8 @@ void wtest_map_path(char* path):
 		# Covers tls.w, tls_test.w, tls_server_test.w and net/tls_fixtures/.
 		wtest_add(path, c"net_tls_test")
 		wtest_add(path, c"net_tls_server_test")
+		# http_client.w composes tls.w for https:// (#204).
+		wtest_add(path, c"https_e2e_test")
 	else if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):
