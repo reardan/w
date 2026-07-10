@@ -54,6 +54,7 @@ import lib.env
 import lib.file
 import lib.process
 import lib.stream
+import lib.utf8
 import structures.string
 import structures.json
 
@@ -83,12 +84,13 @@ void wexec_error(char* message):
 	stream_flush(err)
 
 
+# Error messages are built with f-strings and handed to char* consumers
+# through cstr() (#146). The f-string result is caller-owned; on these
+# failure paths the process is about to exit nonzero, so letting exit
+# reclaim the bytes matches the ownership story in
+# docs/projects/template_strings.md.
 void wexec_error2(char* message, char* detail):
-	string_builder* s = string_new()
-	string_append(s, message)
-	string_append(s, detail)
-	wexec_error(s.data)
-	string_free(s)
+	wexec_error(cstr(f"{message}{detail}"))
 
 
 void wexec_usage():
@@ -501,15 +503,7 @@ void wexec_echo_command(char** argv, int count):
 
 
 void wexec_step_error(char* target_name, int step_index, char* message):
-	string_builder* s = string_new()
-	string_append(s, c"target '")
-	string_append(s, target_name)
-	string_append(s, c"' step ")
-	string_append_int(s, step_index + 1)
-	string_append(s, c": ")
-	string_append(s, message)
-	wexec_error(s.data)
-	string_free(s)
+	wexec_error(cstr(f"target '{target_name}' step {step_index + 1}: {message}"))
 
 
 # Re-emit the child's captured streams so build output stays visible.
@@ -561,13 +555,7 @@ int wexec_check_status(char* target_name, int step_index, json_value* step, proc
 			wexec_step_error(target_name, step_index, c"\"expect_status\" must be an integer")
 			return 1
 		if (result.status != wanted.int_value):
-			string_builder* s = string_new()
-			string_append(s, c"command exited ")
-			string_append_int(s, result.status)
-			string_append(s, c", expected status ")
-			string_append_int(s, wanted.int_value)
-			wexec_step_error(target_name, step_index, s.data)
-			string_free(s)
+			wexec_step_error(target_name, step_index, cstr(f"command exited {result.status}, expected status {wanted.int_value}"))
 			return 1
 		return 0
 	if (wexec_get_flag(step, c"expect_fail")):
@@ -576,11 +564,7 @@ int wexec_check_status(char* target_name, int step_index, json_value* step, proc
 			return 1
 		return 0
 	if (result.status != 0):
-		string_builder* s = string_new()
-		string_append(s, c"command failed with exit status ")
-		string_append_int(s, result.status)
-		wexec_step_error(target_name, step_index, s.data)
-		string_free(s)
+		wexec_step_error(target_name, step_index, cstr(f"command failed with exit status {result.status}"))
 		return 1
 	return 0
 

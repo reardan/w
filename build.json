@@ -1476,6 +1476,7 @@
 				"chacha20_64_test",
 				"chacha20poly1305_64_test",
 				"compound_assign_64_test",
+				"cstr_64_test",
 				"default_args_64_test",
 				"defer_64_test",
 				"dns_64_test",
@@ -1763,6 +1764,7 @@
 				"c_preprocessor_test",
 				"chacha20_test",
 				"chacha20poly1305_test",
+				"cstr_test",
 				"directory_test",
 				"dns_test",
 				"env_test",
@@ -2020,6 +2022,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/compound_assign_test.w", "-o", "bin/compound_assign_64_test"]},
 				{"cmd": ["bin/compound_assign_64_test"]}
+			]
+		},
+		{
+			"name": "cstr_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/cstr_test.w", "-o", "bin/cstr_64_test"]},
+				{"cmd": ["bin/cstr_64_test"]}
+			]
+		},
+		{
+			"name": "cstr_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/cstr_test.w", "-o", "bin/cstr_test"]},
+				{"cmd": ["bin/cstr_test"]}
 			]
 		},
 		{
