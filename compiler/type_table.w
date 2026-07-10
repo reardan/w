@@ -890,6 +890,40 @@ int types_compatible(int want, int got):
 	return type_canonical(want_base) == type_canonical(got_base)
 
 
+# Return 1 when 'got' is a slice VALUE (a promoted array or slice
+# expression: eax holds the {data, length} descriptor's address) that
+# decays to the pointer type 'want'. Decay targets are the element type's
+# own pointer (char[] -> char*, char*[] -> char**) and void*. coerce()
+# performs the decay by loading the descriptor's first word, turning the
+# descriptor address into the data pointer.
+int type_decays_to_pointer(int want, int got):
+	got = type_unqualified(got)
+	if (type_get_kind(got) != type_kind_slice_value()):
+		return 0
+	want = type_unqualified(want)
+	if (want < 0):
+		return 0
+	int want_level = type_get_pointer_level(want)
+	if (want_level < 1):
+		return 0
+	if (type_is_void_pointer(want)):
+		return 1
+	int element = type_unqualified(type_get_element_type(got))
+	if (element < 0):
+		return 0
+	if (want_level != type_get_pointer_level(element) + 1):
+		return 0
+	if (strcmp(type_get_name(want), type_get_name(element)) == 0):
+		return 1
+	# Pointer entries store the base type's name; decay through an alias
+	# of the element's base (e.g. FILE* from _IO_FILE[]) stays valid.
+	int want_base = type_lookup(type_get_name(want))
+	int element_base = type_lookup(type_get_name(element))
+	if ((want_base < 0) | (element_base < 0)):
+		return 0
+	return type_canonical(want_base) == type_canonical(element_base)
+
+
 # Float kind of an expression type, as a VALUE after promote(): 0 = not
 # float, 1 = float32 bits in eax, 2 = float64 bits in rax. float16 counts
 # as kind 1 because its load path widens to float32. Pointer types have

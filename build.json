@@ -186,6 +186,14 @@
 			]
 		},
 		{
+			"name": "array_decay_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/array_decay_test.w", "-o", "bin/array_decay_test"]},
+				{"cmd": ["bin/array_decay_test"]}
+			]
+		},
+		{
 			"name": "string_utf8_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2189,6 +2197,14 @@
 			]
 		},
 		{
+			"name": "array_decay_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/array_decay_test.w", "-o", "bin/array_decay_64_test"]},
+				{"cmd": ["bin/array_decay_64_test"]}
+			]
+		},
+		{
 			"name": "x64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2551,6 +2567,7 @@
 				"process_64_test",
 				"stream_64_test",
 				"array_slice_string_64_test",
+				"array_decay_64_test",
 				"x64_test",
 				"x64_float_test",
 				"x64_int64_test",
@@ -2754,6 +2771,7 @@
 				"float_test",
 				"float_reference_test",
 				"array_slice_string_test",
+				"array_decay_test",
 				"string_utf8_test",
 				"grapheme_test",
 				"bounds_trap_test",

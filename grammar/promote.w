@@ -57,6 +57,8 @@ int types_compatible_with_expression(int want, int got):
 		int signature_type = type_function_pointer_signature(want)
 		if (signature_type >= 0):
 			return function_signature_matches_symbol(signature_type, last_identifier)
+	if (type_decays_to_pointer(want, got)):
+		return 1
 	return types_compatible(want, got)
 
 
@@ -176,6 +178,11 @@ void coerce(int want, int got):
 	if (want == 4):
 		return;
 	if (got == 4):
+		return;
+	if (type_decays_to_pointer(want, got)):
+		# Array-to-pointer decay: eax holds the descriptor's address, and
+		# the descriptor's first word is the data pointer.
+		promote_eax()
 		return;
 	if (type_is_string(want)):
 		if (type_is_char_pointer(got)):

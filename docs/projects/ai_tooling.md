@@ -40,6 +40,18 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 ## Implementation status
 
+Shipped from the next-steps backlog:
+
+- Array-to-pointer decay (2026-07-10): passing a fixed array or slice
+  where a `T*` (or `void*`) parameter, assignment, initializer, return,
+  container key/element, membership key, or switch case expects a pointer
+  now passes the descriptor's data pointer, matching C decay semantics
+  (`type_decays_to_pointer` in `compiler/type_table.w`, decay emission in
+  `coerce()`), instead of warning and emitting the descriptor's own
+  address — which let callees overwrite the {data-pointer, length} header
+  (the #113 corruption). Covered by `array_decay_test` /
+  `array_decay_64_test`.
+
 The MVP described here has landed:
 
 - `w check [--json]` compiles to `/dev/null` and emits NDJSON diagnostics
