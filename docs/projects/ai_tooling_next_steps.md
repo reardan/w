@@ -17,18 +17,16 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
-- **Array-to-pointer decay is a warning but generates corrupting code.**
-  Found during the buffered-getchar work (issue #113, 2026-07-09):
-  passing a fixed array (`char[8192] buf`) where a `char*` parameter is
-  expected only warns (`argument 2 type mismatch: expected 'char*', got
-  'char[] value'`) but emits the array's *descriptor address* as the
-  pointer, so the callee (here `read(2)`) overwrites the descriptor's
-  {data-pointer, length} header with payload bytes — the data pointer
-  becomes file content and the next index through the array jumps to a
-  garbage address far from the corruption site. Cost hours to trace
-  back. Either implement real decay (pass the descriptor's data
-  pointer) or promote the warning to a hard error; a warning that
-  compiles to memory corruption is the worst of both.
+- **Array-to-pointer decay corruption is fixed.** Issue #220 (found
+  during the buffered-getchar work, #113, 2026-07-09) is closed: PR #225
+  implemented real decay (`coerce()` in `grammar/promote.w` loads the
+  descriptor's data pointer instead of passing the descriptor address)
+  across call arguments, initialization, assignment, return, container
+  literals/push/insert, membership keys and switch cases. Three narrower
+  edge cases were consciously left out of that fix — C-variadic tails,
+  `cast(int, arr)` vs `cast(char*, arr)`, and one arm of a conditional
+  expression — none of which corrupt memory (wrong-but-visible descriptor
+  address, or a lingering warning); they're tracked in issue #229.
 - **Multi-error reporting.** The compiler stops at the first error
   (single-pass, no recovery). Documented limitation; real fix is parser
   recovery, which stays a research project. Cheap partial win: after an
@@ -110,12 +108,12 @@ is a queue, not an archive.
   in libs/extras/parser_generator/diagnostics.w:24`. Add a debugger
   compile/run regression for imported functions containing bare `return`
   statements and fix the debugger's symbol-resolution path.
-- **Conditional breakpoints/hit counts/logpoints land soon** (design:
-  `docs/projects/debugger_conditional_breakpoints.md`). They add new
-  stable, grep-able output lines (`logpoint N hit H: expr = value`,
-  extended `info breakpoints` fields) to the same text protocol — worth
-  keying a future structured wrapper off, and worth a
-  `w-debug-wdbg` skill example once merged.
+- **Conditional breakpoints/hit counts/logpoints have landed** (design:
+  `docs/projects/debugger_conditional_breakpoints.md`, status:
+  implemented). They add new stable, grep-able output lines (`logpoint N
+  hit H: expr = value`, extended `info breakpoints` fields) to the same
+  text protocol — still worth keying a future structured wrapper off, and
+  still worth a `w-debug-wdbg` skill example.
 
 ## Cleanup observed while dogfooding
 

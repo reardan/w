@@ -23,5 +23,5 @@ DONE! malloc/free/realloc live in lib/memory.w as a swappable library module
 
 DONE! built-in debugger: ./wbuild wdbg, ./bin/wdbg file.w (w --debug integration later)
 
-no for loop list iteration (design brainstorm: docs/projects/iteration.md)
+DONE! for loop container iteration (docs/projects/iteration.md)
 DONE! generators + yield (docs/projects/iteration.md, stackful coroutines)
