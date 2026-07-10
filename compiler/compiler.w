@@ -80,20 +80,27 @@ int compile_attempt(char* fn):
 # Normalize path separators in-place: replace every '\' (92) with '/' (47).
 # Windows GetCurrentDirectoryA returns backslash-separated paths; the rest
 # of the path logic uses '/' uniformly so cross-platform paths just work.
+# Only active on Windows: on Unix a backslash is an ordinary filename
+# character and must be left alone.
 void path_normalize_sep(char* p):
+	if (os_windows() == 0):
+		return
 	while (p[0] != 0):
 		if (p[0] == 92):
 			p[0] = 47
 		p = p + 1
 
 
-# Return 1 if the path is absolute: starts with '/' (Unix) or has a
-# Windows drive letter followed by ':/' or ':' (e.g. 'C:\', 'C:/').
+# Return 1 if the path is absolute: starts with '/' (Unix) or with a
+# Windows drive letter and colon (e.g. 'C:\', 'C:/', 'c:').
 int path_is_absolute(char* p):
 	if (p[0] == 47):
 		return 1
-	# Windows drive letter: letter at [0], colon at [1]
-	if (p[1] == 58):
+	# Windows drive letter: an ASCII letter at [0], colon at [1]. The
+	# letter check keeps ':' in ordinary Unix filenames from matching
+	# (and never reads p[1] when the string is empty).
+	int first = p[0] | 32
+	if ((first >= 'a') && (first <= 'z') && (p[1] == 58)):
 		return 1
 	return 0
 
@@ -197,7 +204,6 @@ int compile_input_file(char* path):
 		int result = compile_joined(cwd, path)
 		free(cwd)
 		if (result):
-			return 1
 			return 1
 	missing_file_reset(path)
 	diag_part(c"no such file: '")

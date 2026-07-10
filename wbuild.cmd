@@ -8,10 +8,14 @@ REM through the manifest's cached wv2_win / wexec_win targets and runs
 REM the up-to-date executor. 'rmdir /s /q bin' resets everything.
 REM
 REM Usage: wbuild.cmd [target ...]
-REM   wbuild.cmd build        bootstrap: w.exe -> bin\wv2.exe -> wv3 -> wv4 -> wv5
-REM   wbuild.cmd verify_win   self-host fixpoint (wv3==wv4==wv5)
+REM   wbuild.cmd verify_win   self-host fixpoint (wv3_win==wv4_win==wv5_win)
 REM   wbuild.cmd --list       show every target in build.json
-REM   wbuild.cmd tests_win    full Windows test suite (needs Wine or native run)
+REM
+REM Only the win64 chain (wv2_win, wexec_win, build_win, verify_win,
+REM update_win) works here: wexec drops the manifest's "wine" prefix when
+REM running on Windows, and "bin/wv2" in manifest steps resolves to
+REM bin\wv2.exe. Targets that run ELF binaries (build, verify, tests, ...)
+REM are Linux-only.
 
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
@@ -36,8 +40,13 @@ if not exist bin\wexec.exe (
     )
 )
 
-REM Warm: let wexec rebuild its own toolchain dependencies when sources changed.
-bin\wexec.exe wv2_win wexec_win >nul 2>&1
+REM Warm: let wexec rebuild its own toolchain dependencies when sources
+REM changed (stdout suppressed like the Unix wrapper; errors stay visible).
+bin\wexec.exe wv2_win wexec_win >nul
+if errorlevel 1 (
+    echo Error: failed to refresh wv2_win / wexec_win
+    exit /b 1
+)
 
 REM Forward all arguments to the executor.
 bin\wexec.exe %*

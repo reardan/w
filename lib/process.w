@@ -141,34 +141,50 @@ void process_close_fd_if_open(int fd):
 		close(fd)
 
 
+# Append one argument, wrapped in double quotes when it contains
+# whitespace. Interior double quotes are not escaped (sufficient for
+# build-system use).
+void process_cmdline_append_arg(string_builder* s, char* arg):
+	int has_space = 0
+	int j = 0
+	while (arg[j] != 0):
+		if ((arg[j] == ' ') | (arg[j] == 9)):
+			has_space = 1
+		j = j + 1
+	if (has_space):
+		string_append_char(s, '"')
+	string_append(s, arg)
+	if (has_space):
+		string_append_char(s, '"')
+
+
 # Windows: build the flattened command-line string CreateProcessA expects.
-# Arguments containing spaces are wrapped in double quotes; interior
-# double quotes are not escaped (sufficient for build-system use).
+# The first token is path — the program the caller resolved — not argv[0],
+# because CreateProcessA locates the executable from the command line's
+# first token (lpApplicationName stays NULL to keep its .exe searching).
 char* process_build_cmdline(char* path, char** argv):
 	string_builder* s = string_new()
-	int i = 0
+	process_cmdline_append_arg(s, path)
+	int i = 1
+	if (strv_get(argv, 0) == 0):
+		i = 0
 	while (1):
-		char* arg = cast(char**, argv)[i]
+		char* arg = strv_get(argv, i)
 		if (arg == 0):
 			break
-		if (i > 0):
-			string_append_char(s, ' ')
-		int has_space = 0
-		int j = 0
-		while (arg[j] != 0):
-			if ((arg[j] == ' ') | (arg[j] == 9)):
-				has_space = 1
-			j = j + 1
-		if (has_space):
-			string_append_char(s, '"')
-		string_append(s, arg)
-		if (has_space):
-			string_append_char(s, '"')
+		string_append_char(s, ' ')
+		process_cmdline_append_arg(s, arg)
 		i = i + 1
 	# Detach the data buffer; free the builder struct but keep the string.
 	char* result = s.data
 	free(s)
 	return result
+
+
+# Windows counterpart of process_close_fd_if_open: -1 means "never opened".
+void process_win_close_if_open(int handle):
+	if (handle >= 0):
+		CloseHandle(handle)
 
 
 # Windows: create an anonymous pipe and mark the child-facing end inheritable.
@@ -216,12 +232,12 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 		err = process_win_pipe(&stderr_parent, &stderr_child, 0)
 
 	if (err != 0):
-		if (stdin_parent >= 0): CloseHandle(stdin_parent)
-		if (stdin_child >= 0): CloseHandle(stdin_child)
-		if (stdout_parent >= 0): CloseHandle(stdout_parent)
-		if (stdout_child >= 0): CloseHandle(stdout_child)
-		if (stderr_parent >= 0): CloseHandle(stderr_parent)
-		if (stderr_child >= 0): CloseHandle(stderr_child)
+		process_win_close_if_open(stdin_parent)
+		process_win_close_if_open(stdin_child)
+		process_win_close_if_open(stdout_parent)
+		process_win_close_if_open(stdout_child)
+		process_win_close_if_open(stderr_parent)
+		process_win_close_if_open(stderr_child)
 		return 0
 
 	# STARTUPINFOA layout on x64 (104 bytes, all zeros except what we set):
@@ -248,6 +264,11 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 	if (opts.stderr_mode == process_null()):
 		use_handles = 1
 
+	# NUL-device handles opened for process_null streams; the parent
+	# closes them once CreateProcessA has duplicated them into the child.
+	int null_stdin = -1
+	int null_stdout = -1
+	int null_stderr = -1
 	if (use_handles):
 		save_int32(si + 60, 256)  # dwFlags = STARTF_USESTDHANDLES (0x100)
 		# Determine handles for each stream
@@ -256,19 +277,22 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 		int h_stderr = GetStdHandle(-12)
 		if (opts.stdin_mode == process_pipe()):
 			h_stdin = stdin_child
-			SetHandleInformation(stdin_child, 1, 1)
 		if (opts.stdin_mode == process_null()):
-			h_stdin = CreateFileA(c"NUL", 2147483648, 3, 0, 3, 128, 0)
+			null_stdin = CreateFileA(c"NUL", 2147483648, 3, 0, 3, 128, 0)
+			SetHandleInformation(null_stdin, 1, 1)  # HANDLE_FLAG_INHERIT
+			h_stdin = null_stdin
 		if (opts.stdout_mode == process_pipe()):
 			h_stdout = stdout_child
-			SetHandleInformation(stdout_child, 1, 1)
 		if (opts.stdout_mode == process_null()):
-			h_stdout = CreateFileA(c"NUL", 1073741824, 3, 0, 3, 128, 0)
+			null_stdout = CreateFileA(c"NUL", 1073741824, 3, 0, 3, 128, 0)
+			SetHandleInformation(null_stdout, 1, 1)
+			h_stdout = null_stdout
 		if (opts.stderr_mode == process_pipe()):
 			h_stderr = stderr_child
-			SetHandleInformation(stderr_child, 1, 1)
 		if (opts.stderr_mode == process_null()):
-			h_stderr = CreateFileA(c"NUL", 1073741824, 3, 0, 3, 128, 0)
+			null_stderr = CreateFileA(c"NUL", 1073741824, 3, 0, 3, 128, 0)
+			SetHandleInformation(null_stderr, 1, 1)
+			h_stderr = null_stderr
 		save_word(si + 80, h_stdin)
 		save_word(si + 88, h_stdout)
 		save_word(si + 96, h_stderr)
@@ -288,15 +312,20 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 	int ok = CreateProcessA(0, cmdline, 0, 0, 1, 0, 0, opts.cwd, si, pi)
 	free(cmdline)
 	free(si)
+	# The child holds its own copies of the NUL handles now (or was never
+	# created); the parent's are no longer needed either way.
+	process_win_close_if_open(null_stdin)
+	process_win_close_if_open(null_stdout)
+	process_win_close_if_open(null_stderr)
 
 	if (ok == 0):
 		# CreateProcessA failed
-		if (stdin_parent >= 0): CloseHandle(stdin_parent)
-		if (stdin_child >= 0): CloseHandle(stdin_child)
-		if (stdout_parent >= 0): CloseHandle(stdout_parent)
-		if (stdout_child >= 0): CloseHandle(stdout_child)
-		if (stderr_parent >= 0): CloseHandle(stderr_parent)
-		if (stderr_child >= 0): CloseHandle(stderr_child)
+		process_win_close_if_open(stdin_parent)
+		process_win_close_if_open(stdin_child)
+		process_win_close_if_open(stdout_parent)
+		process_win_close_if_open(stdout_child)
+		process_win_close_if_open(stderr_parent)
+		process_win_close_if_open(stderr_child)
 		free(pi)
 		return 0
 
@@ -306,9 +335,9 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 	# Close thread handle immediately — we only need the process handle.
 	CloseHandle(thread_handle)
 	# Close the child-facing ends now that the child has them.
-	if (stdin_child >= 0): CloseHandle(stdin_child)
-	if (stdout_child >= 0): CloseHandle(stdout_child)
-	if (stderr_child >= 0): CloseHandle(stderr_child)
+	process_win_close_if_open(stdin_child)
+	process_win_close_if_open(stdout_child)
+	process_win_close_if_open(stderr_child)
 
 	process* p = new process()
 	p.pid = 0
@@ -620,6 +649,12 @@ void process_result_free(process_result* result):
 # the partial output is returned with status process_status_timeout()).
 # opts may be 0; only its env and cwd fields apply, the stdio modes are
 # forced to pipes. Returns 0 when the spawn itself failed.
+#
+# Windows variant: no poll for pipes here, so stdin is written up front
+# and stdout/stderr are drained with PeekNamedPipe. A child that fills
+# its output pipes before consuming a stdin_text larger than the pipe
+# buffer (4KB) can deadlock; build-system children read stdin first or
+# not at all, so this stays out of scope for now.
 process_result* process_run_windows(char* path, char** argv, spawn_options* opts, char* stdin_text, int timeout_ms):
 	spawn_options* run_opts = spawn_options_new()
 	if (opts != 0):
@@ -683,7 +718,7 @@ process_result* process_run_windows(char* path, char** argv, spawn_options* opts
 				if (process_capture_read(&err_buffer, p.stderr_fd) <= 0):
 					stderr_open = 0
 		if (stdout_open | stderr_open):
-			Sleep(1)
+			process_sleep_ms(1)
 
 	int decoded = 0
 	if (timed_out):

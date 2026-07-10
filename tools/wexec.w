@@ -409,17 +409,41 @@ void wexec_cache_store(char* name, char* key):
 	free(stamp_path)
 
 
+# Windows: manifest commands name Linux-style binaries ("bin/wv2");
+# resolve to the ".exe" sibling when the bare path does not exist.
+# CreateProcessA does not append ".exe" to path-containing names.
+char* wexec_resolve_exe_suffix(char* name):
+	int fd = open(name, 0, 0)
+	if (fd >= 0):
+		close(fd)
+		return name
+	string_builder* exe = string_new()
+	string_append(exe, name)
+	string_append(exe, c".exe")
+	fd = open(exe.data, 0, 0)
+	if (fd >= 0):
+		close(fd)
+		char* resolved = exe.data
+		free(exe)
+		return resolved
+	string_free(exe)
+	return name
+
+
 # execve does no PATH lookup, so commands like "cmp" or "grep" must be
-# resolved here. Anything with a slash is used as-is.
+# resolved here. Anything with a slash is used as-is (on Windows, after
+# the ".exe" fallback).
 char* wexec_resolve_program(char* name):
+	int win = os_windows()
 	int i = 0
 	while (name[i] != 0):
-		if ((name[i] == '/') | (name[i] == 92)):
+		if ((name[i] == '/') || (win && (name[i] == 92))):
+			if (win):
+				return wexec_resolve_exe_suffix(name)
 			return name
 		i = i + 1
 	char* path = env_get(c"PATH")
 	# On Windows the PATH separator is ';' and executables need '.exe'
-	int win = os_windows()
 	char path_sep = ':'
 	if (win):
 		path_sep = ';'
@@ -611,10 +635,21 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 		wexec_step_error(target_name, step_index, c"\"cmd\" is empty")
 		return 1
 
+	# The win64 self-host targets prefix their PE binaries with "wine" so
+	# the one manifest works on Linux; on Windows the binaries run
+	# natively, so a leading "wine" token is dropped.
+	int skip = 0
+	if (os_windows() && (count > 1)):
+		json_value* first = json_array_get(cmd, 0)
+		if (first.type == json_type_string()):
+			if (strcmp(first.string_value, c"wine") == 0):
+				skip = 1
+	count = count - skip
+
 	char** argv = strv_new(count)
 	int i = 0
 	while (i < count):
-		json_value* piece = json_array_get(cmd, i)
+		json_value* piece = json_array_get(cmd, i + skip)
 		if (piece.type != json_type_string()):
 			wexec_step_error(target_name, step_index, c"\"cmd\" entries must be strings")
 			free(cast(char*, argv))
