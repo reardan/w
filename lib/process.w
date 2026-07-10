@@ -23,6 +23,7 @@ rt_sigaction note in lib/__arch__/x64/syscalls.w).
 */
 import lib.lib
 import lib.env
+import structures.string
 
 
 /* stdio modes for spawn_options */
@@ -101,8 +102,9 @@ struct process:
 	int stdin_fd     # parent's write end, -1 when not piped
 	int stdout_fd    # parent's read end, -1 when not piped
 	int stderr_fd    # parent's read end, -1 when not piped
-	int status       # raw wait4 status, valid once reaped
+	int status       # raw wait4 status (Unix) or exit code (Windows), valid once reaped
 	int reaped
+	int win_handle   # Windows: HANDLE from CreateProcessA; 0 on Unix
 
 
 # The kernel writes two 32-bit fds regardless of architecture.
@@ -139,6 +141,186 @@ void process_close_fd_if_open(int fd):
 		close(fd)
 
 
+# Windows: build the flattened command-line string CreateProcessA expects.
+# Arguments containing spaces are wrapped in double quotes; interior
+# double quotes are not escaped (sufficient for build-system use).
+char* process_build_cmdline(char* path, char** argv):
+	string_builder* s = string_new()
+	int i = 0
+	while (1):
+		char* arg = cast(char**, argv)[i]
+		if (arg == 0):
+			break
+		if (i > 0):
+			string_append_char(s, ' ')
+		int has_space = 0
+		int j = 0
+		while (arg[j] != 0):
+			if ((arg[j] == ' ') | (arg[j] == 9)):
+				has_space = 1
+			j = j + 1
+		if (has_space):
+			string_append_char(s, '"')
+		string_append(s, arg)
+		if (has_space):
+			string_append_char(s, '"')
+		i = i + 1
+	# Detach the data buffer; free the builder struct but keep the string.
+	char* result = s.data
+	free(s)
+	return result
+
+
+# Windows: create an anonymous pipe and mark the child-facing end inheritable.
+# child_is_read_end selects which end the child will use (1 = read, 0 = write).
+# parent_end and child_end receive the two handle values.
+# Returns 0 on success, -1 on failure.
+int process_win_pipe(int* parent_end, int* child_end, int child_is_read_end):
+	int read_end = 0
+	int write_end = 0
+	if (CreatePipe(&read_end, &write_end, 0, 0) == 0):
+		return -1
+	# Make the child-facing handle inheritable; keep the parent-facing
+	# handle non-inheritable so it isn't passed to grandchildren.
+	int child_h = 0
+	int parent_h = 0
+	if (child_is_read_end):
+		child_h = read_end
+		parent_h = write_end
+	else:
+		child_h = write_end
+		parent_h = read_end
+	SetHandleInformation(child_h, 1, 1)   # HANDLE_FLAG_INHERIT = 1
+	*parent_end = parent_h
+	*child_end = child_h
+	return 0
+
+
+# Windows process spawn: build STARTUPINFOA + PROCESS_INFORMATION buffers,
+# call CreateProcessA, and return a process* with win_handle set.
+# STARTUPINFOA on x64 is 104 bytes; PROCESS_INFORMATION is 24 bytes.
+process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
+	int stdin_parent = -1    # write end kept by parent
+	int stdin_child = -1     # read end given to child
+	int stdout_parent = -1   # read end kept by parent
+	int stdout_child = -1    # write end given to child
+	int stderr_parent = -1
+	int stderr_child = -1
+	int err = 0
+
+	if (opts.stdin_mode == process_pipe()):
+		err = process_win_pipe(&stdin_parent, &stdin_child, 1)
+	if ((err == 0) & (opts.stdout_mode == process_pipe())):
+		err = process_win_pipe(&stdout_parent, &stdout_child, 0)
+	if ((err == 0) & (opts.stderr_mode == process_pipe())):
+		err = process_win_pipe(&stderr_parent, &stderr_child, 0)
+
+	if (err != 0):
+		if (stdin_parent >= 0): CloseHandle(stdin_parent)
+		if (stdin_child >= 0): CloseHandle(stdin_child)
+		if (stdout_parent >= 0): CloseHandle(stdout_parent)
+		if (stdout_child >= 0): CloseHandle(stdout_child)
+		if (stderr_parent >= 0): CloseHandle(stderr_parent)
+		if (stderr_child >= 0): CloseHandle(stderr_child)
+		return 0
+
+	# STARTUPINFOA layout on x64 (104 bytes, all zeros except what we set):
+	#   offset  0: cb (int32) = 104
+	#   offset 60: dwFlags (int32) = STARTF_USESTDHANDLES (0x100) when piping
+	#   offset 80: hStdInput  (int64 handle)
+	#   offset 88: hStdOutput (int64 handle)
+	#   offset 96: hStdError  (int64 handle)
+	int si_size = 104
+	char* si = malloc(si_size)
+	int k = 0
+	while (k < si_size):
+		si[k] = 0
+		k = k + 1
+	save_int32(si, si_size)   # cb
+
+	int use_handles = 0
+	if ((stdin_child >= 0) | (stdout_child >= 0) | (stderr_child >= 0)):
+		use_handles = 1
+	if (opts.stdin_mode == process_null()):
+		use_handles = 1
+	if (opts.stdout_mode == process_null()):
+		use_handles = 1
+	if (opts.stderr_mode == process_null()):
+		use_handles = 1
+
+	if (use_handles):
+		save_int32(si + 60, 256)  # dwFlags = STARTF_USESTDHANDLES (0x100)
+		# Determine handles for each stream
+		int h_stdin = GetStdHandle(-10)
+		int h_stdout = GetStdHandle(-11)
+		int h_stderr = GetStdHandle(-12)
+		if (opts.stdin_mode == process_pipe()):
+			h_stdin = stdin_child
+			SetHandleInformation(stdin_child, 1, 1)
+		if (opts.stdin_mode == process_null()):
+			h_stdin = CreateFileA(c"NUL", 2147483648, 3, 0, 3, 128, 0)
+		if (opts.stdout_mode == process_pipe()):
+			h_stdout = stdout_child
+			SetHandleInformation(stdout_child, 1, 1)
+		if (opts.stdout_mode == process_null()):
+			h_stdout = CreateFileA(c"NUL", 1073741824, 3, 0, 3, 128, 0)
+		if (opts.stderr_mode == process_pipe()):
+			h_stderr = stderr_child
+			SetHandleInformation(stderr_child, 1, 1)
+		if (opts.stderr_mode == process_null()):
+			h_stderr = CreateFileA(c"NUL", 1073741824, 3, 0, 3, 128, 0)
+		save_word(si + 80, h_stdin)
+		save_word(si + 88, h_stdout)
+		save_word(si + 96, h_stderr)
+
+	# PROCESS_INFORMATION layout on x64 (24 bytes):
+	#   offset 0: hProcess (int64)
+	#   offset 8: hThread  (int64)
+	#   offset 16: dwProcessId (int32)
+	#   offset 20: dwThreadId  (int32)
+	char* pi = malloc(24)
+	k = 0
+	while (k < 24):
+		pi[k] = 0
+		k = k + 1
+
+	char* cmdline = process_build_cmdline(path, argv)
+	int ok = CreateProcessA(0, cmdline, 0, 0, 1, 0, 0, opts.cwd, si, pi)
+	free(cmdline)
+	free(si)
+
+	if (ok == 0):
+		# CreateProcessA failed
+		if (stdin_parent >= 0): CloseHandle(stdin_parent)
+		if (stdin_child >= 0): CloseHandle(stdin_child)
+		if (stdout_parent >= 0): CloseHandle(stdout_parent)
+		if (stdout_child >= 0): CloseHandle(stdout_child)
+		if (stderr_parent >= 0): CloseHandle(stderr_parent)
+		if (stderr_child >= 0): CloseHandle(stderr_child)
+		free(pi)
+		return 0
+
+	int proc_handle = load_int64(pi)
+	int thread_handle = load_int64(pi + 8)
+	free(pi)
+	# Close thread handle immediately — we only need the process handle.
+	CloseHandle(thread_handle)
+	# Close the child-facing ends now that the child has them.
+	if (stdin_child >= 0): CloseHandle(stdin_child)
+	if (stdout_child >= 0): CloseHandle(stdout_child)
+	if (stderr_child >= 0): CloseHandle(stderr_child)
+
+	process* p = new process()
+	p.pid = 0
+	p.win_handle = proc_handle
+	p.stdin_fd = stdin_parent
+	p.stdout_fd = stdout_parent
+	p.stderr_fd = stderr_parent
+	p.status = 0
+	p.reaped = 0
+	return p
+
+
 # Fork and exec path with the given NULL-terminated argv. opts may be 0
 # for all defaults. Returns 0 when pipe or fork creation failed; exec or
 # chdir failure inside the child surfaces as exit status 127 (the shell
@@ -148,6 +330,13 @@ process* process_spawn(char* path, char** argv, spawn_options* opts):
 	if (opts == 0):
 		defaults = spawn_options_new()
 		opts = defaults
+
+	# Dispatch to the Windows path when running on Windows.
+	if (os_windows()):
+		process* wp = process_spawn_windows(path, argv, opts)
+		if (defaults != 0):
+			free(defaults)
+		return wp
 
 	int stdin_read = -1
 	int stdin_write = -1
@@ -217,6 +406,7 @@ process* process_spawn(char* path, char** argv, spawn_options* opts):
 
 	process* p = new process()
 	p.pid = pid
+	p.win_handle = 0
 	p.stdin_fd = stdin_write
 	p.stdout_fd = stdout_read
 	p.stderr_fd = stderr_read
@@ -245,6 +435,16 @@ void process_close_stdin(process* p):
 int process_wait(process* p):
 	if (p.reaped):
 		return process_decode_status(p.status)
+	if (p.win_handle != 0):
+		# Windows: INFINITE = 0xFFFFFFFF (unsigned); as a signed int it is -1.
+		WaitForSingleObject(p.win_handle, -1)
+		int code = 0
+		GetExitCodeProcess(p.win_handle, &code)
+		CloseHandle(p.win_handle)
+		p.win_handle = 0
+		p.status = code
+		p.reaped = 1
+		return code
 	# Pre-zero: the kernel writes a 32-bit status, W ints are word-sized.
 	int status = 0
 	int err = wait4(p.pid, &status, 0, 0)
@@ -260,6 +460,18 @@ int process_wait(process* p):
 int process_try_wait(process* p):
 	if (p.reaped):
 		return process_decode_status(p.status)
+	if (p.win_handle != 0):
+		# WaitForSingleObject with timeout 0: WAIT_TIMEOUT = 258
+		int r = WaitForSingleObject(p.win_handle, 0)
+		if (r == 258):
+			return process_status_running()
+		int code = 0
+		GetExitCodeProcess(p.win_handle, &code)
+		CloseHandle(p.win_handle)
+		p.win_handle = 0
+		p.status = code
+		p.reaped = 1
+		return code
 	int status = 0
 	int err = wait4(p.pid, &status, 1, 0)
 	if (err < 0):
@@ -273,6 +485,10 @@ int process_try_wait(process* p):
 
 int process_kill(process* p, int sig):
 	if (p.reaped):
+		return 0
+	if (p.win_handle != 0):
+		if (TerminateProcess(p.win_handle, 1) == 0):
+			return -1
 		return 0
 	return kill(p.pid, sig)
 
@@ -404,7 +620,97 @@ void process_result_free(process_result* result):
 # the partial output is returned with status process_status_timeout()).
 # opts may be 0; only its env and cwd fields apply, the stdio modes are
 # forced to pipes. Returns 0 when the spawn itself failed.
+process_result* process_run_windows(char* path, char** argv, spawn_options* opts, char* stdin_text, int timeout_ms):
+	spawn_options* run_opts = spawn_options_new()
+	if (opts != 0):
+		run_opts.env = opts.env
+		run_opts.cwd = opts.cwd
+	run_opts.stdin_mode = process_pipe()
+	run_opts.stdout_mode = process_pipe()
+	run_opts.stderr_mode = process_pipe()
+	process* p = process_spawn(path, argv, run_opts)
+	free(run_opts)
+	if (p == 0):
+		return 0
+
+	# Write stdin all at once and close it so the child can see EOF.
+	if (stdin_text != 0):
+		int stdin_length = strlen(stdin_text)
+		int stdin_offset = 0
+		while (stdin_offset < stdin_length):
+			int chunk = stdin_length - stdin_offset
+			if (chunk > 4096):
+				chunk = 4096
+			int written = write(p.stdin_fd, stdin_text + stdin_offset, chunk)
+			if (written <= 0):
+				break
+			stdin_offset = stdin_offset + written
+	process_close_stdin(p)
+
+	process_capture out_buffer
+	process_capture err_buffer
+	process_capture_init(&out_buffer)
+	process_capture_init(&err_buffer)
+
+	int deadline = 0
+	if (timeout_ms > 0):
+		deadline = process_monotonic_ms() + timeout_ms
+
+	int timed_out = 0
+	int stdout_open = 1
+	int stderr_open = 1
+	# Drain stdout and stderr using PeekNamedPipe to avoid blocking.
+	while (stdout_open | stderr_open):
+		if (timeout_ms > 0):
+			if ((deadline - process_monotonic_ms()) <= 0):
+				timed_out = 1
+				break
+		if (stdout_open):
+			int avail = 0
+			int peek_ok = PeekNamedPipe(p.stdout_fd, 0, 0, 0, &avail, 0)
+			if (peek_ok == 0):
+				# Broken pipe: child closed its end (EOF)
+				stdout_open = 0
+			else if (avail > 0):
+				if (process_capture_read(&out_buffer, p.stdout_fd) <= 0):
+					stdout_open = 0
+		if (stderr_open):
+			int avail = 0
+			int peek_ok = PeekNamedPipe(p.stderr_fd, 0, 0, 0, &avail, 0)
+			if (peek_ok == 0):
+				stderr_open = 0
+			else if (avail > 0):
+				if (process_capture_read(&err_buffer, p.stderr_fd) <= 0):
+					stderr_open = 0
+		if (stdout_open | stderr_open):
+			Sleep(1)
+
+	int decoded = 0
+	if (timed_out):
+		process_kill(p, sigkill())
+		process_wait(p)
+		decoded = process_status_timeout()
+	else:
+		int remaining_ms = 0
+		if (timeout_ms > 0):
+			remaining_ms = deadline - process_monotonic_ms()
+			if (remaining_ms <= 0):
+				remaining_ms = 1
+		decoded = process_wait_or_kill(p, remaining_ms)
+
+	process_result* result = new process_result()
+	result.status = decoded
+	result.stdout_length = out_buffer.length
+	result.stdout_text = process_capture_take(&out_buffer)
+	result.stderr_length = err_buffer.length
+	result.stderr_text = process_capture_take(&err_buffer)
+	process_free(p)
+	return result
+
+
 process_result* process_run(char* path, char** argv, spawn_options* opts, char* stdin_text, int timeout_ms):
+	if (os_windows()):
+		return process_run_windows(path, argv, opts, stdin_text, timeout_ms)
 	spawn_options* run_opts = spawn_options_new()
 	if (opts != 0):
 		run_opts.env = opts.env

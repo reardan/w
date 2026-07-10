@@ -50,6 +50,53 @@
 			]
 		},
 		{
+			"name": "wv2_win",
+			"inputs": ["w.w", "compiler/", "grammar/", "code_generator/", "lib/", "structures/", "libs/", "debugger/", "w.exe"],
+			"outputs": ["bin/wv2_win.exe"],
+			"steps": [
+				{"cmd": ["bin/wv2", "win64", "w.w", "-o", "bin/wv2_win.exe"]}
+			]
+		},
+		{
+			"name": "wexec_win",
+			"deps": ["wv2_win"],
+			"inputs": ["tools/wexec.w"],
+			"outputs": ["bin/wexec_win.exe"],
+			"steps": [
+				{"cmd": ["bin/wv2", "win64", "tools/wexec.w", "-o", "bin/wexec_win.exe"]}
+			]
+		},
+		{
+			"name": "build_win",
+			"deps": ["wv2_win"],
+			"inputs": [],
+			"outputs": ["bin/wv3_win.exe", "bin/wv4_win.exe", "bin/wv5_win.exe"],
+			"steps": [
+				{"cmd": ["wine", "bin/wv2_win.exe", "win64", "w.w", "-o", "bin/wv3_win.exe"]},
+				{"cmd": ["wine", "bin/wv3_win.exe", "win64", "w.w", "-o", "bin/wv4_win.exe"]},
+				{"cmd": ["wine", "bin/wv4_win.exe", "win64", "w.w", "-o", "bin/wv5_win.exe"]}
+			]
+		},
+		{
+			"name": "verify_win",
+			"deps": ["build_win"],
+			"inputs": [],
+			"steps": [
+				{"cmd": ["cmp", "bin/wv3_win.exe", "bin/wv4_win.exe"]},
+				{"cmd": ["cmp", "bin/wv4_win.exe", "bin/wv5_win.exe"]},
+				{"cmd": ["echo", "win64 self-host fixpoint OK: wv3_win == wv4_win == wv5_win"]}
+			]
+		},
+		{
+			"name": "update_win",
+			"deps": ["verify_win"],
+			"steps": [
+				{"cmd": ["./archive.sh", "w.exe"]},
+				{"cmd": ["cp", "bin/wv3_win.exe", "w.new.exe"]},
+				{"cmd": ["mv", "-f", "w.new.exe", "w.exe"]}
+			]
+		},
+		{
 			"name": "wexec_darwin",
 			"inputs": ["tools/wexec.w", "w_darwin"],
 			"outputs": ["bin/wexec_darwin"],

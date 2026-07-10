@@ -77,6 +77,27 @@ int compile_attempt(char* fn):
 	return 1
 
 
+# Normalize path separators in-place: replace every '\' (92) with '/' (47).
+# Windows GetCurrentDirectoryA returns backslash-separated paths; the rest
+# of the path logic uses '/' uniformly so cross-platform paths just work.
+void path_normalize_sep(char* p):
+	while (p[0] != 0):
+		if (p[0] == 92):
+			p[0] = 47
+		p = p + 1
+
+
+# Return 1 if the path is absolute: starts with '/' (Unix) or has a
+# Windows drive letter followed by ':/' or ':' (e.g. 'C:\', 'C:/').
+int path_is_absolute(char* p):
+	if (p[0] == 47):
+		return 1
+	# Windows drive letter: letter at [0], colon at [1]
+	if (p[1] == 58):
+		return 1
+	return 0
+
+
 int compile_joined(char* cwd, char* filename):
 
 	# Compute path based on current directory
@@ -108,6 +129,8 @@ int compile_relative_path(char* fn):
 	int max_path_size = 4096
 	char* cwd = malloc(max_path_size)
 	getcwd(cwd, max_path_size)
+	# Normalize backslashes from Windows GetCurrentDirectoryA to forward slashes
+	path_normalize_sep(cwd)
 
 	# While we still have path remaining:
 	while (cwd[0]):
@@ -123,7 +146,7 @@ int compile_relative_path(char* fn):
 		# Go back up one directory
 		int index = strlen(cwd) - 1
 		while (index >= 0):
-			if (cwd[index] == '/'):
+			if (cwd[index] == 47):
 				cwd[index] = 0
 				index = 0 /* hacky way to break from loop */
 			index = index - 1
@@ -145,8 +168,10 @@ int compile_relative_path(char* fn):
 
 
 int compile_file(char* filename):
-	# Handle absolute paths by using the filename directly on filesep start
-	if (filename[0] == 47):
+	# Handle absolute paths by using the filename directly
+	# (Unix '/' prefix or Windows drive letter like 'C:')
+	path_normalize_sep(filename)
+	if (path_is_absolute(filename)):
 		print2(c"using filename as path directly: ")
 		println2(filename)
 		return compile_attempt(filename)
@@ -160,16 +185,19 @@ int compile_file(char* filename):
 # noisy retry per parent directory ending in a garbled abandon message
 # (#190, docs/projects/ai_tooling_next_steps.md).
 int compile_input_file(char* path):
-	if (path[0] == 47):
+	path_normalize_sep(path)
+	if (path_is_absolute(path)):
 		if (compile_attempt(path)):
 			return 1
 	else:
 		int max_path_size = 4096
 		char* cwd = malloc(max_path_size)
 		getcwd(cwd, max_path_size)
+		path_normalize_sep(cwd)
 		int result = compile_joined(cwd, path)
 		free(cwd)
 		if (result):
+			return 1
 			return 1
 	missing_file_reset(path)
 	diag_part(c"no such file: '")
@@ -377,7 +405,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		asserts(c"could not open output file", output_fd >= 0)
 	if (check_mode):
 		output_fd = open(c"/dev/null", 577, 493)
-		asserts(c"could not open /dev/null", output_fd >= 0)
+		if (output_fd < 0):
+			# Windows: /dev/null does not exist; use the NUL device instead
+			output_fd = open(c"NUL", 577, 493)
+		asserts(c"could not open null device", output_fd >= 0)
 
 	# print_symbol_table(0)
 	# type_print_all()
