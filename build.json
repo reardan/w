@@ -1045,6 +1045,30 @@
 			]
 		},
 		{
+			"name": "x25519_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_test"]},
+				{"cmd": ["bin/x25519_test"]}
+			]
+		},
+		{
+			"name": "x25519_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_64_test"]},
+				{"cmd": ["bin/x25519_64_test"]}
+			]
+		},
+		{
+			"name": "x25519_iterated_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_iterated_test"]},
+				{"cmd": ["bin/x25519_iterated_test", "--iterated-1000"]}
+			]
+		},
+		{
 			"name": "switch_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2714,6 +2738,9 @@
 				"hmac_64_test",
 				"hkdf_test",
 				"hkdf_64_test",
+				"x25519_test",
+				"x25519_64_test",
+				"x25519_iterated_test",
 				"switch_test",
 				"for_container_test",
 				"default_args_test",

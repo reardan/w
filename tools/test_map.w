@@ -107,6 +107,9 @@ void wtest_init_targets():
 	wtest_targets.push(c"fmath_64_test")
 	wtest_targets.push(c"stats_test")
 	wtest_targets.push(c"stats_64_test")
+	wtest_targets.push(c"x25519_test")
+	wtest_targets.push(c"x25519_64_test")
+	wtest_targets.push(c"x25519_iterated_test")
 	wtest_targets.push(c"extern_alias_test_x64")
 	wtest_targets.push(c"graphics_darwin")
 	wtest_targets.push(c"pac_flag_test")
@@ -371,6 +374,10 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"poly1305_64_test")
 		wtest_add(path, c"chacha20poly1305_test")
 		wtest_add(path, c"chacha20poly1305_64_test")
+	else if (starts_with(path, c"libs/standard/crypto/x25519")):
+		wtest_add(path, c"x25519_test")
+		wtest_add(path, c"x25519_64_test")
+		wtest_add(path, c"x25519_iterated_test")
 	else if ((strcmp(path, c"tests/warning_fixture.w") == 0) | (strcmp(path, c"tests/warning_clean_fixture.w") == 0) | (strcmp(path, c"tests/string_char_warning_fixture.w") == 0)):
 		wtest_add(path, c"warning_test")
 	else if (strcmp(path, c"tests/import_alias_warning_fixture.w") == 0):
