@@ -2,6 +2,7 @@ import code_generator.code_emitter
 
 
 void sym_define_declare_global_function(char* name); /* defined in symbol_table */
+void sym_define_declare_global_function_arity(char* name, int num_args); /* defined in symbol_table */
 
 
 # The OS-independent x64 stubs: pure register/stack operations with no
@@ -65,12 +66,14 @@ void define_asm_functions_x64_portable():
 
 
 void define_asm_functions_x64():
-	sym_define_declare_global_function(c"syscall")
+	# syscall reads exactly nr + 3 fixed stack slots, so record its arity:
+	# a call with any other argument count would read garbage slots.
+	sym_define_declare_global_function_arity(c"syscall", 4)
 	/* mov rax,[rsp+32] ; mov rdi,[rsp+24] ; mov rsi,[rsp+16] ; mov rdx,[rsp+8] ; syscall ; ret */
 	emit(20, c"\x48\x8b\x44\x24\x20\x48\x8b\x7c\x24\x18\x48\x8b\x74\x24\x10\x48\x8b\x54\x24\x08")
 	emit(3, c"\x0f\x05\xc3")
 
-	sym_define_declare_global_function(c"syscall7")
+	sym_define_declare_global_function_arity(c"syscall7", 7)
 	/* mov rax,[rsp+56] ; mov rdi,[rsp+48] ; mov rsi,[rsp+40] ; mov rdx,[rsp+32] ; mov r10,[rsp+24] ; mov r8,[rsp+16] ; mov r9,[rsp+8] ; syscall ; ret */
 	emit(20, c"\x48\x8b\x44\x24\x38\x48\x8b\x7c\x24\x30\x48\x8b\x74\x24\x28\x48\x8b\x54\x24\x20")
 	emit(18, c"\x4c\x8b\x54\x24\x18\x4c\x8b\x44\x24\x10\x4c\x8b\x4c\x24\x08\x0f\x05\xc3")

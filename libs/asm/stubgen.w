@@ -247,15 +247,29 @@ int asm_stub_read_hex(char* line, int at):
 
 
 # Extract the per-function byte streams from a committed *_asm.w file.
+# Stubs whose calls are arity-checked by the compiler: the committed
+# files declare them with sym_define_declare_global_function_arity, and
+# gen_stubs prints that form back. Returns the argument count, or -1
+# for stubs declared without one.
+int asm_stub_known_arity(char* name):
+	if (strcmp(name, c"syscall") == 0):
+		return 4
+	if (strcmp(name, c"syscall7") == 0):
+		return 7
+	return -1
+
+
 # Functions are delimited by sym_define_declare_global_function(c"...")
-# calls and top-level `void f():` definitions; segments that emit no
-# bytes (wrapper functions) are dropped.
+# / sym_define_declare_global_function_arity(c"...", n) calls and
+# top-level `void f():` definitions; segments that emit no bytes
+# (wrapper functions) are dropped.
 list[asm_stub_func] asm_stub_extract_w(char* path):
 	list[asm_stub_func] funcs = new list[asm_stub_func]
 	list[char*] lines = file_read_lines(path)
 	if (cast(int, lines) == 0):
 		asm_stub_fail(path, 0, c"cannot read committed stub file", 0)
 	char* define_pat = c"sym_define_declare_global_function(c\x22"
+	char* define_arity_pat = c"sym_define_declare_global_function_arity(c\x22"
 	int have_func = 0
 	asm_stub_func current
 	current.name = 0
@@ -272,12 +286,16 @@ list[asm_stub_func] asm_stub_extract_w(char* path):
 			first = first + 1
 		if (line[first] == '#'):
 			continue
-		int at = asm_stub_find(line, define_pat)
+		int pat_len = strlen(define_arity_pat)
+		int at = asm_stub_find(line, define_arity_pat)
+		if (at < 0):
+			at = asm_stub_find(line, define_pat)
+			pat_len = strlen(define_pat)
 		if (at >= 0):
 			if (have_func):
 				if (current.bytes.length > 0):
 					funcs.push(current)
-			at = at + strlen(define_pat)
+			at = at + pat_len
 			int end = at
 			while (line[end] != 0 & line[end] != 34):
 				end = end + 1

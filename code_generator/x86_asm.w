@@ -2,13 +2,16 @@ import code_generator.code_emitter
 
 
 void sym_define_declare_global_function(char* name); /* defined in symbol_table */
+void sym_define_declare_global_function_arity(char* name, int num_args); /* defined in symbol_table */
 
 void define_asm_functions():
-	sym_define_declare_global_function(c"syscall")
+	# syscall reads exactly nr + 3 fixed stack slots, so record its arity:
+	# a call with any other argument count would read garbage slots.
+	sym_define_declare_global_function_arity(c"syscall", 4)
 	/* mov eax,[esp+16] ; mov ebx,[esp+12] ; mov ecx,[esp+8] ; mov edx,[esp+4] ; int 0x80 ; ret */
 	emit(19, c"\x8b\x44\x24\x10\x8b\x5c\x24\x0c\x8b\x4c\x24\x08\x8b\x54\x24\x04\xcd\x80\xc3")
 
-	sym_define_declare_global_function(c"syscall7")
+	sym_define_declare_global_function_arity(c"syscall7", 7)
 	/* mov eax,[esp+28] ; mov ebx,[esp+24] ; mov ecx,[esp+20] ; mov edx,[esp+16] ; mov esi,[esp+12] ; mov edi,[esp+8] ; mov ebp,[esp+4] ; int 0x80 ; ret */
 	emit(20, c"\x8b\x44\x24\x1c\x8b\x5c\x24\x18\x8b\x4c\x24\x14\x8b\x54\x24\x10\x8b\x74\x24\x0c")
 	emit(11, c"\x8b\x7c\x24\x08\x8b\x6c\x24\x04\xcd\x80\xc3")

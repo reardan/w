@@ -56,8 +56,10 @@ int mmap(int addr, int length, int prot, int flags):
 int munmap(int addr, int length):
 	return syscall(91, addr, length, 0)
 
+# clone: the trailing 0 pads to syscall's fixed nr + 3 slots (the third
+# kernel argument is unused here); without it the nr slot read garbage.
 int sys_clone(int flags, int child_stack):
-	return syscall(56, flags, child_stack)
+	return syscall(56, flags, child_stack, 0)
 
 # poll (168): fds points at an array of 8-byte pollfd records.
 # timeout_ms < 0 blocks forever; 0 returns immediately.

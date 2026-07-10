@@ -423,6 +423,33 @@ void sym_define_declare_global_function(char* name):
 	sym_define_global(sym_declare_global(name, 4, 2))
 
 
+# Asm runtime stubs have no parsed parameter list, so their calls are
+# normally unchecked (parameter count -1). A stub that loads a fixed
+# number of caller stack slots (syscall, syscall7) records that arity
+# here so a call with the wrong argument count is rejected at compile
+# time instead of silently reading garbage slots. Only the count is
+# known: the parameter type slots are cleared to -1 (unknown), so the
+# argument types stay unchecked.
+void sym_define_declare_global_function_arity(char* name, int num_args):
+	int t = sym_declare_global(name, 4, 2)
+	sym_define_global(t)
+	save_int(table + t + 22, num_args)
+	int slots = num_args
+	if (slots > sym_max_param_slots()):
+		slots = sym_max_param_slots()
+	int i = 0
+	while (i < slots):
+		save_int(table + t + 26 + (i << 2), -1)
+		i = i + 1
+
+
+# 1 when the symbol at table offset t is an asm runtime stub: stubs are
+# declared with the 'function' pseudo-type (4) as their value type, while
+# ordinary functions record their declared return type there.
+int sym_is_asm_stub(int t):
+	return load_int(table + t + 6) == 4
+
+
 void print_symbol_table(int t):
 	print_error(c"printing symbol table since ")
 	print_error(itoa(t))
