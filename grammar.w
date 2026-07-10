@@ -6,6 +6,7 @@ import grammar.type_name
 import grammar.list_builtin
 import grammar.json_builtin
 import grammar.print_builtin
+import grammar.limb_builtin
 import grammar.var_builtin
 import grammar.identifier
 import grammar.int_literal

@@ -553,6 +553,70 @@ void alu_test_set(int setcc_opcode):
 	emit(4, c"\xc0\x0f\xb6\xc0")
 
 
+########################## 32-bit limb intrinsics ##########################
+# Lowering for mul_hi/mul_wide/add_carry (grammar/limb_builtin.w, #213).
+# All three read only the operands' low 32 bits, as unsigned, and produce
+# results whose low 32 bits are the meaningful pattern (zero-extended on
+# the 64-bit targets, like a `& mask32` result). On x86/x64 the 32-bit
+# MUL/ADD forms are emitted without a REX.W prefix on purpose: they read
+# only the low halves and their 32-bit register writes zero-extend on
+# x64, so one byte sequence serves both word sizes. Only the operations
+# touching the result pointer are word-sized.
+
+/* mov ecx, eax at the full word width (a pointer operand) */
+void mov_ecx_eax():
+	if (target_isa == 1):
+		a64(op(0xaa, 0x0003e2))   # mov x2,x0
+		return
+	emit_x64_opcode()
+	emit(2, c"\x89\xc1")
+
+
+/* mul %ebx (edx:eax = eax*ebx, unsigned 32x32) ; mov %edx,%eax */
+void alu_mul_hi():
+	if (target_isa == 1):
+		a64(op(0x9b, 0xa07c20))   # umull x0,w1,w0
+		a64(op(0xd3, 0x60fc00))   # lsr x0,x0,#32
+		return
+	emit(2, c"\xf7\xe3")
+	emit(2, c"\x89\xd0")
+
+
+/* mul %ebx ; mov [ecx],edx: low product half stays in eax, the high half
+   is stored word-sized through the pointer in ecx */
+void alu_mul_wide():
+	if (target_isa == 1):
+		a64(op(0x9b, 0xa07c20))   # umull x0,w1,w0
+		a64(op(0xd3, 0x60fc09))   # lsr x9,x0,#32
+		a64(op(0xf9, 0x000049))   # str x9,[x2]
+		a64(op(0x2a, 0x0003e0))   # mov w0,w0 (zero-extend the low half)
+		return
+	emit(2, c"\xf7\xe3")
+	emit_x64_opcode()
+	emit(2, c"\x89\x11")
+
+
+/* add %ebx,%eax (32-bit: CF = carry out of bit 31) ; mov edx,0 (flags
+   preserved) ; adc edx,0 ; the carry is stored word-sized through the
+   pointer in ecx and the wrapped sum stays in eax */
+void alu_add_carry():
+	if (target_isa == 1):
+		a64(op(0x2a, 0x0003e0))   # mov w0,w0 (zero-extend the operands:
+		a64(op(0x2a, 0x0103e1))   # mov w1,w1  the sum then fits 33 bits)
+		a64(op(0x8b, 0x000020))   # add x0,x1,x0
+		a64(op(0xd3, 0x60fc09))   # lsr x9,x0,#32
+		a64(op(0xf9, 0x000049))   # str x9,[x2]
+		a64(op(0x2a, 0x0003e0))   # mov w0,w0 (keep the wrapped low half)
+		return
+	emit(2, c"\x01\xd8")
+	emit(1, c"\xba")
+	emit_int32(0)
+	emit(3, c"\x83\xd2\x00")
+	emit_x64_opcode()
+	emit(2, c"\x89\x11")
+
+####################### end of 32-bit limb intrinsics ######################
+
 
 void int3():
 	if (target_isa == 1):

@@ -209,7 +209,7 @@
 			"name": "warning_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w", "tests/limb_builtin_warning_fixture.w"]}
 			]
 		},
 		{
@@ -1146,6 +1146,8 @@
 				{"cmd": ["sh", "tools/run_arm64.sh", "bin/generator_arm64_test"]},
 				{"cmd": ["bin/wv2", "arm64", "tests/compound_assign_test.w", "-o", "bin/compound_assign_arm64_test"]},
 				{"cmd": ["sh", "tools/run_arm64.sh", "bin/compound_assign_arm64_test"]},
+				{"cmd": ["bin/wv2", "arm64", "tests/limb_builtin_test.w", "-o", "bin/limb_builtin_arm64_test"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/limb_builtin_arm64_test"]},
 				{"cmd": ["echo", "arm64 smoke test OK"]}
 			]
 		},
@@ -1421,6 +1423,8 @@
 				"json_64_test",
 				"json_codec_64_test",
 				"lib_64_test",
+				"limb_builtin_64_test",
+				"limb_builtin_shadow_64_test",
 				"list_builtin_64_test",
 				"map_set_builtin_64_test",
 				"net_64_test",
@@ -1699,6 +1703,8 @@
 				"json_codec_test",
 				"json_test",
 				"lib_test",
+				"limb_builtin_shadow_test",
+				"limb_builtin_test",
 				"list_methods_test",
 				"math_test",
 				"multilayer_test",
@@ -2224,6 +2230,38 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/lib_test.w", "-o", "bin/lib_test"]},
 				{"cmd": ["bin/lib_test"]}
+			]
+		},
+		{
+			"name": "limb_builtin_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/limb_builtin_test.w", "-o", "bin/limb_builtin_64_test"]},
+				{"cmd": ["bin/limb_builtin_64_test"]}
+			]
+		},
+		{
+			"name": "limb_builtin_shadow_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/limb_builtin_shadow_test.w", "-o", "bin/limb_builtin_shadow_64_test"]},
+				{"cmd": ["bin/limb_builtin_shadow_64_test"]}
+			]
+		},
+		{
+			"name": "limb_builtin_shadow_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/limb_builtin_shadow_test.w", "-o", "bin/limb_builtin_shadow_test"]},
+				{"cmd": ["bin/limb_builtin_shadow_test"]}
+			]
+		},
+		{
+			"name": "limb_builtin_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/limb_builtin_test.w", "-o", "bin/limb_builtin_test"]},
+				{"cmd": ["bin/limb_builtin_test"]}
 			]
 		},
 		{
