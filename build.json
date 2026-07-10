@@ -45,7 +45,8 @@
 			"deps": ["verify"],
 			"steps": [
 				{"cmd": ["./archive.sh"]},
-				{"cmd": ["mv", "-f", "bin/wv2", "w"]}
+				{"cmd": ["cp", "bin/wv3", "w.new"]},
+				{"cmd": ["mv", "-f", "w.new", "w"]}
 			]
 		},
 		{

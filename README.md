@@ -46,7 +46,7 @@ resets the world).
 ./wbuild verify   # self-host fixpoint: wv3 == wv4 == wv5 (key regression guard)
 ./wbuild tests    # full suite: verify, x64 fixpoint, lib/structure/grammar
                   # tests, warnings, REPL, debugger, dynamic linking, hello
-./wbuild update   # after verify: archive current seed, promote bin/wv2 to ./w
+./wbuild update   # after verify: archive current seed, promote the bin/wv3 fixpoint to ./w
 ```
 
 Compile and run an arbitrary program:

@@ -10,7 +10,7 @@ current state:
 				runs compiler, grammar, lib, pointer, struct, range,
 				data-structure, import, directory, threading, hello tests
 			./wbuild update:
-				archives the current seed and promotes bin/wv2 to ./w
+				archives the current seed and promotes the bin/wv3 fixpoint to ./w
 			compiler CLI:
 				-o output path
 				usage message instead of segfaulting when no input is passed
