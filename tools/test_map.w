@@ -144,6 +144,10 @@ void wtest_init_targets():
 	wtest_targets.push(c"net_darwin")
 	wtest_targets.push(c"net_asn1_test")
 	wtest_targets.push(c"net_x509_test")
+	wtest_targets.push(c"sse_test")
+	wtest_targets.push(c"sse_64_test")
+	wtest_targets.push(c"retry_test")
+	wtest_targets.push(c"retry_64_test")
 	wtest_targets.push(c"tests")
 
 
@@ -385,6 +389,12 @@ void wtest_map_path(char* path):
 	else if (starts_with(path, c"libs/standard/web/http_client")):
 		wtest_add(path, c"http_client_test")
 		wtest_add(path, c"http_client_64_test")
+	else if (starts_with(path, c"libs/standard/web/sse")):
+		wtest_add(path, c"sse_test")
+		wtest_add(path, c"sse_64_test")
+	else if (starts_with(path, c"libs/standard/web/retry")):
+		wtest_add(path, c"retry_test")
+		wtest_add(path, c"retry_64_test")
 	else if (strcmp(path, c"tests/net_darwin_smoke_test.w") == 0):
 		wtest_add(path, c"net_darwin")
 	else if (starts_with(path, c"libs/standard/net/asn1")):
