@@ -5,7 +5,9 @@ Supported JSON subset:
 - objects with string keys
 - arrays
 - string, integer, boolean, and null values
-- string escapes: \" \\ \/ \b \f \n \r \t and ASCII \uXXXX
+- string escapes: \" \\ \/ \b \f \n \r \t and \uXXXX (decoded to UTF-8,
+  including surrogate pairs; lone or malformed surrogate halves decode to
+  U+FFFD per Unicode best practice)
 
 Numbers are signed base-10 integers only: floating point, exponents, and
 values outside the 32-bit signed positive range are rejected. Parsed trees own
@@ -265,6 +267,62 @@ char* json_take_string_data(string_builder* s):
 	return data
 
 
+# The four hex digits of a \uXXXX escape starting at input[at], or -1 on
+# a bad digit. Reads sequentially, so it never looks past a terminator.
+int json_hex4(json_parser* p, int at):
+	int value = 0
+	int i = 0
+	while (i < 4):
+		int digit = json_hex_value(p.input[at + i])
+		if (digit < 0):
+			return -1
+		value = value * 16 + digit
+		i = i + 1
+	return value
+
+
+# Decode one \uXXXX escape with p.index at the 'u'. A high surrogate
+# grabs a directly following \uXXXX low surrogate to form a supplementary
+# code point; a lone or mispaired surrogate half yields U+FFFD. Leaves
+# p.index on the last consumed hex digit (the caller's loop advances past
+# it) and returns the code point, or -1 when the escape is malformed.
+int json_parse_u_escape(json_parser* p):
+	int unit = json_hex4(p, p.index + 1)
+	if (unit < 0):
+		return -1
+	p.index = p.index + 4
+	if ((unit < 0xd800) | (unit > 0xdfff)):
+		return unit
+	if (unit >= 0xdc00):
+		return 0xfffd
+	# Nested so a string ending right after the escape never reads past
+	# the NUL terminator.
+	if (p.input[p.index + 1] == '\\'):
+		if (p.input[p.index + 2] == 'u'):
+			int low = json_hex4(p, p.index + 3)
+			if ((low >= 0xdc00) & (low <= 0xdfff)):
+				p.index = p.index + 6
+				return 0x10000 + ((unit - 0xd800) << 10) + (low - 0xdc00)
+	return 0xfffd
+
+
+void json_append_utf8(string_builder* out, int cp):
+	if (cp < 0x80):
+		string_append_char(out, cp)
+	else if (cp < 0x800):
+		string_append_char(out, 0xc0 | (cp >> 6))
+		string_append_char(out, 0x80 | (cp & 63))
+	else if (cp < 0x10000):
+		string_append_char(out, 0xe0 | (cp >> 12))
+		string_append_char(out, 0x80 | ((cp >> 6) & 63))
+		string_append_char(out, 0x80 | (cp & 63))
+	else:
+		string_append_char(out, 0xf0 | (cp >> 18))
+		string_append_char(out, 0x80 | ((cp >> 12) & 63))
+		string_append_char(out, 0x80 | ((cp >> 6) & 63))
+		string_append_char(out, 0x80 | (cp & 63))
+
+
 char* json_parse_string_raw(json_parser* p):
 	json_skip_ws(p)
 	if (p.input[p.index] != '"'):
@@ -302,22 +360,12 @@ char* json_parse_string_raw(json_parser* p):
 			else if (c == 't'):
 				string_append_char(out, '\t')
 			else if (c == 'u'):
-				int value = 0
-				int i = 1
-				while (i <= 4):
-					int digit = json_hex_value(p.input[p.index + i])
-					if (digit < 0):
-						json_fail(p)
-						string_free(out)
-						return 0
-					value = value * 16 + digit
-					i = i + 1
-				if (value > 127):
+				int cp = json_parse_u_escape(p)
+				if (cp < 0):
 					json_fail(p)
 					string_free(out)
 					return 0
-				string_append_char(out, value)
-				p.index = p.index + 4
+				json_append_utf8(out, cp)
 			else:
 				json_fail(p)
 				string_free(out)

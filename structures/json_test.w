@@ -134,7 +134,46 @@ void test_unicode_ascii_escape():
 	assert1(root != 0)
 	assert_json_string(root, c"letter A")
 	json_free(root)
-	assert_json_parse_fails(c"\x22\x5cu0080\x22")
+
+
+void assert_json_parses_string(char* text, char* want):
+	json_value* root = json_parse(text)
+	assert1(root != 0)
+	assert_json_string(root, want)
+	json_free(root)
+
+
+void test_unicode_escape_utf8():
+	# 2-, 3-, and 4-byte UTF-8 sequences, upper- and lowercase hex
+	assert_json_parses_string(c"\x22\x5cu0080\x22", c"\xc2\x80")
+	assert_json_parses_string(c"\x22caf\x5cu00e9\x22", c"caf\xc3\xa9")
+	assert_json_parses_string(c"\x22caf\x5cu00E9\x22", c"caf\xc3\xa9")
+	assert_json_parses_string(c"\x22\x5cu20ac\x22", c"\xe2\x82\xac")
+	assert_json_parses_string(c"\x22\x5cud83d\x5cude00\x22", c"\xf0\x9f\x98\x80")
+	assert_json_parses_string(c"\x22\x5cuD834\x5cuDD1E\x22", c"\xf0\x9d\x84\x9e")
+
+
+void test_unicode_escape_lone_surrogates():
+	# Lone or mispaired surrogate halves decode to U+FFFD; a mispaired
+	# high surrogate does not consume the escape that follows it
+	assert_json_parses_string(c"\x22\x5cud800\x22", c"\xef\xbf\xbd")
+	assert_json_parses_string(c"\x22\x5cudc00\x22", c"\xef\xbf\xbd")
+	assert_json_parses_string(c"\x22\x5cud800\x5cu0041\x22", c"\xef\xbf\xbdA")
+	assert_json_parses_string(c"\x22\x5cud800\x5cud801\x22", c"\xef\xbf\xbd\xef\xbf\xbd")
+	assert_json_parses_string(c"\x22\x5cud83dx\x22", c"\xef\xbf\xbdx")
+
+
+void test_unicode_escape_round_trip():
+	# Raw UTF-8 bytes pass through parse and stringify untouched; \uXXXX
+	# escapes stringify as the decoded raw bytes
+	assert_json_round_trip(c"\x22caf\xc3\xa9\x22", c"\x22caf\xc3\xa9\x22")
+	assert_json_round_trip(c"\x22\x5cu20ac\x22", c"\x22\xe2\x82\xac\x22")
+
+
+void test_unicode_escape_invalid():
+	assert_json_parse_fails(c"\x22\x5cu12\x22")
+	assert_json_parse_fails(c"\x22\x5cuzzzz\x22")
+	assert_json_parse_fails(c"\x22\x5cu123")
 
 
 void test_duplicate_keys_last_wins():
