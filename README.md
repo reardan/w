@@ -185,6 +185,16 @@ Implemented and covered by tests:
   masks at runtime like `lib/sha256.w`'s `sha256_mask32`), UTF-8 `"..."`
   literals with `\u`/`\U` escapes, and explicit legacy C strings via
   `c"..."`.
+- 32-bit limb intrinsics for multi-precision arithmetic (#213):
+  `mul_hi(a, b)` (high 32 bits of the unsigned 32×32 product),
+  `mul_wide(a, b, &hi)` (low half returned, high half stored to `hi`) and
+  `add_carry(a, b, &carry)` ((a+b) mod 2^32, carry-out 0/1 stored to
+  `carry`). All three read only the operands' low 32 bits, as unsigned,
+  and results follow the masked-32-bit-word convention above
+  (zero-extended on the 64-bit targets). They parse as ordinary calls and
+  lower to 1–4 instructions per backend (x86/x64 `MUL`/`ADC`, arm64
+  `UMULL`); a user symbol with the same name that is defined before the
+  call site takes precedence.
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
   (1–3 args), `for x in <container>` over built-in lists/maps/sets and any
   struct-pointer type providing the four cursor functions

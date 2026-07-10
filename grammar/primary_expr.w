@@ -173,6 +173,11 @@ int primary_expr():
 	else if (prelude_input_ready()):
 		type = prelude_input_expr()
 
+	# mul_hi/mul_wide/add_carry 32-bit limb intrinsics, shadowed the same
+	# way by user symbols (grammar/limb_builtin.w)
+	else if (limb_builtin_ready()):
+		type = limb_builtin_expr()
+
 	# Generic function instantiation: 'max[int](...)'
 	else if (generic_call_ready()):
 		type = generic_call_expr()
