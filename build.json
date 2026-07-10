@@ -1483,6 +1483,7 @@
 				"limb_builtin_64_test",
 				"limb_builtin_shadow_64_test",
 				"list_builtin_64_test",
+				"map_float_64_test",
 				"map_set_builtin_64_test",
 				"md5_64_test",
 				"net_64_test",
@@ -1770,6 +1771,7 @@
 				"limb_builtin_shadow_test",
 				"limb_builtin_test",
 				"list_methods_test",
+				"map_float_test",
 				"math_test",
 				"md5_test",
 				"multilayer_test",
@@ -2393,6 +2395,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/list_methods_test.w", "-o", "bin/list_methods_test"]},
 				{"cmd": ["bin/list_methods_test"]}
+			]
+		},
+		{
+			"name": "map_float_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/map_float_test.w", "-o", "bin/map_float_64_test"]},
+				{"cmd": ["bin/map_float_64_test"]}
+			]
+		},
+		{
+			"name": "map_float_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/map_float_test.w", "-o", "bin/map_float_test"]},
+				{"cmd": ["bin/map_float_test"]}
 			]
 		},
 		{
