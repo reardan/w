@@ -58,6 +58,10 @@ The MVP described here has landed:
   in JSON mode while keeping default human diagnostics byte-compatible.
 - `tools/test_map.w` builds to `bin/wtest`; `wtest changed` and
   `./wbuild test_changed` map changed paths to focused build targets.
+- `bin/wtest`'s target registry is parsed from `build.json` at startup
+  (manifest order, catch-all `tests` forced last), replacing the
+  hand-maintained list in `wtest_init_targets()` that silently drifted
+  when a target was added only to the manifest (July 2026).
 - `tools/mcp/w_toolchain_mcp.w` builds to `bin/wmcp`, a W-native stdio MCP
   server registered by `.cursor/mcp.json`. (It began life as stdlib-only
   Python and was ported to W once `lib/process.w` landed.)

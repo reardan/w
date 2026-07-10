@@ -27,8 +27,10 @@ overrides the parallelism, `--no-cache` forces reruns).
   word-size behavior changed.
 - Docs (`docs/`, `*.md`, `*.txt`) map to nothing.
 - Unknown paths fall back to the full `tests` umbrella.
-- The mapping lives in `tools/test_map.w`; if you add a test target,
-  register it there too.
+- The path -> target mapping rules live in `tools/test_map.w`; the
+  target registry itself is parsed from `build.json` at startup, so a
+  new build target is known automatically — add a mapping rule only
+  when no directory rule already covers the new files.
 
 ## The full gate
 

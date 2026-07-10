@@ -1,159 +1,61 @@
 import lib.lib
+import lib.file
 import lib.stream
 import structures.string
+import structures.json
 
 
-# Ordered registry of build targets wtest knows how to emit. The order
-# here is the output order; the catch-all "tests" target stays last.
-# Adding a target is one push() here plus a mapping rule below.
+# Ordered registry of build targets wtest knows how to emit: every
+# "name" in build.json's "targets" array, in manifest order, with the
+# catch-all "tests" target forced last. The registry is parsed from the
+# manifest at startup, so adding a target to build.json is enough —
+# only the path -> target mapping rules below are maintained by hand.
 list[char*] wtest_targets
 map[char*, int] wtest_enabled
 int wtest_verbose
 
 
-void wtest_init_targets():
+void wtest_error(char* message, char* detail):
+	wstream* err = stderr_writer()
+	stream_write_cstr(err, c"wtest: error: ")
+	stream_write_cstr(err, message)
+	stream_write_line(err, detail)
+	stream_flush(err)
+
+
+# Load the target registry from the build manifest. Returns nonzero
+# (after one error line on stderr) when the manifest is missing or
+# malformed; wexec enforces the rest of the manifest's shape.
+int wtest_init_targets(char* manifest_path):
 	wtest_targets = new list[char*]
 	wtest_enabled = new map[char*, int]
-	wtest_targets.push(c"verify")
-	wtest_targets.push(c"lib_test")
-	wtest_targets.push(c"path_test")
-	wtest_targets.push(c"time_test")
-	wtest_targets.push(c"result_test")
-	wtest_targets.push(c"lib_64_test")
-	wtest_targets.push(c"warning_test")
-	wtest_targets.push(c"check_json_test")
-	wtest_targets.push(c"symbols_test")
-	wtest_targets.push(c"self_host_warning_test")
-	wtest_targets.push(c"asm_foundations_test")
-	wtest_targets.push(c"asm_x86_disasm_test")
-	wtest_targets.push(c"asm_x86_asm_test")
-	wtest_targets.push(c"asm_arm64_test")
-	wtest_targets.push(c"asm_x64_test")
-	wtest_targets.push(c"asm_seed_gate")
-	wtest_targets.push(c"asm_stubs_test")
-	wtest_targets.push(c"type_system_error_test")
-	wtest_targets.push(c"type_system_warning_test")
-	wtest_targets.push(c"hash_table_test")
-	wtest_targets.push(c"hash_table_64_test")
-	wtest_targets.push(c"container_trap_test")
-	wtest_targets.push(c"string_test")
-	wtest_targets.push(c"string_64_test")
-	wtest_targets.push(c"template_string_test")
-	wtest_targets.push(c"template_string_64_test")
-	wtest_targets.push(c"default_args_test")
-	wtest_targets.push(c"default_args_64_test")
-	wtest_targets.push(c"varargs_w_test")
-	wtest_targets.push(c"varargs_w_64_test")
-	wtest_targets.push(c"feature_interaction_test")
-	wtest_targets.push(c"feature_interaction_64_test")
-	wtest_targets.push(c"feature_combo_test")
-	wtest_targets.push(c"feature_combo_64_test")
-	wtest_targets.push(c"dynamic_var_test")
-	wtest_targets.push(c"dynamic_var_64_test")
-	wtest_targets.push(c"generics_test")
-	wtest_targets.push(c"generics_64_test")
-	wtest_targets.push(c"generics_inference_test")
-	wtest_targets.push(c"generics_inference_64_test")
-	wtest_targets.push(c"array_list_test")
-	wtest_targets.push(c"array_list_64_test")
-	wtest_targets.push(c"array_decay_test")
-	wtest_targets.push(c"array_decay_64_test")
-	wtest_targets.push(c"json_test")
-	wtest_targets.push(c"json_64_test")
-	wtest_targets.push(c"json_codec_test")
-	wtest_targets.push(c"json_codec_64_test")
-	wtest_targets.push(c"generator_test")
-	wtest_targets.push(c"generator_64_test")
-	wtest_targets.push(c"defer_test")
-	wtest_targets.push(c"defer_64_test")
-	wtest_targets.push(c"parser_generator_test")
-	wtest_targets.push(c"parser_generator_w_test")
-	wtest_targets.push(c"parser_generator_c_test")
-	wtest_targets.push(c"net_test")
-	wtest_targets.push(c"poll_test")
-	wtest_targets.push(c"urlparse_test")
-	wtest_targets.push(c"urlparse_64_test")
-	wtest_targets.push(c"dns_test")
-	wtest_targets.push(c"dns_64_test")
-	wtest_targets.push(c"framing_test")
-	wtest_targets.push(c"json_rpc_test")
-	wtest_targets.push(c"json_rpc_64_test")
-	wtest_targets.push(c"event_loop_test")
-	wtest_targets.push(c"event_loop_64_test")
-	wtest_targets.push(c"env_test")
-	wtest_targets.push(c"env_64_test")
-	wtest_targets.push(c"process_test")
-	wtest_targets.push(c"process_64_test")
-	wtest_targets.push(c"stream_test")
-	wtest_targets.push(c"stream_64_test")
-	wtest_targets.push(c"file_test")
-	wtest_targets.push(c"repl_test")
-	wtest_targets.push(c"repl_test_x64")
-	wtest_targets.push(c"debug_test")
-	wtest_targets.push(c"debug_test_x64")
-	wtest_targets.push(c"attach_test")
-	wtest_targets.push(c"c_import_test")
-	wtest_targets.push(c"c_preprocessor_test")
-	wtest_targets.push(c"c_import_errno_test")
-	wtest_targets.push(c"c_import_libc_test")
-	wtest_targets.push(c"wexec_test")
-	wtest_targets.push(c"metadata_check")
-	wtest_targets.push(c"metadata_test")
-	wtest_targets.push(c"graphics_math_test")
-	wtest_targets.push(c"graphics_math_64_test")
-	wtest_targets.push(c"graphics_gl_smoke_test")
-	wtest_targets.push(c"infer_test")
-	wtest_targets.push(c"ternary_test")
-	wtest_targets.push(c"print_builtin_test")
-	wtest_targets.push(c"script_mode_test")
-	wtest_targets.push(c"prelude_test")
-	wtest_targets.push(c"list_methods_test")
-	wtest_targets.push(c"str_test")
-	wtest_targets.push(c"math_test")
-	wtest_targets.push(c"crypto_bignum_test")
-	wtest_targets.push(c"crypto_rsa_verify_test")
-	wtest_targets.push(c"crypto_ecdsa_p256_test")
-	wtest_targets.push(c"fmath_test")
-	wtest_targets.push(c"fmath_64_test")
-	wtest_targets.push(c"stats_test")
-	wtest_targets.push(c"stats_64_test")
-	wtest_targets.push(c"x25519_test")
-	wtest_targets.push(c"x25519_64_test")
-	wtest_targets.push(c"x25519_iterated_test")
-	wtest_targets.push(c"extern_alias_test_x64")
-	wtest_targets.push(c"graphics_darwin")
-	wtest_targets.push(c"pac_flag_test")
-	wtest_targets.push(c"pac_darwin")
-	wtest_targets.push(c"pac_full_test_arm64")
-	wtest_targets.push(c"pac_corrupt_test_arm64")
-	wtest_targets.push(c"crypto_base64_test")
-	wtest_targets.push(c"crypto_base64_64_test")
-	wtest_targets.push(c"crypto_random_test")
-	wtest_targets.push(c"crypto_random_64_test")
-	wtest_targets.push(c"chacha20_test")
-	wtest_targets.push(c"chacha20_64_test")
-	wtest_targets.push(c"poly1305_test")
-	wtest_targets.push(c"poly1305_64_test")
-	wtest_targets.push(c"chacha20poly1305_test")
-	wtest_targets.push(c"chacha20poly1305_64_test")
-	wtest_targets.push(c"sha2_test")
-	wtest_targets.push(c"sha2_64_test")
-	wtest_targets.push(c"hmac_test")
-	wtest_targets.push(c"hmac_64_test")
-	wtest_targets.push(c"hkdf_test")
-	wtest_targets.push(c"hkdf_64_test")
-	wtest_targets.push(c"http_client_test")
-	wtest_targets.push(c"http_client_64_test")
-	wtest_targets.push(c"net_darwin")
-	wtest_targets.push(c"net_asn1_test")
-	wtest_targets.push(c"net_x509_test")
-	wtest_targets.push(c"net_tls_test")
-	wtest_targets.push(c"net_tls_server_test")
-	wtest_targets.push(c"sse_test")
-	wtest_targets.push(c"sse_64_test")
-	wtest_targets.push(c"retry_test")
-	wtest_targets.push(c"retry_64_test")
+	char* text = file_read_text(manifest_path)
+	if (text == 0):
+		wtest_error(c"cannot read manifest ", manifest_path)
+		return 1
+	json_value* manifest = json_parse(text)
+	free(text)
+	if (manifest == 0):
+		wtest_error(c"manifest is not valid JSON: ", manifest_path)
+		return 1
+	json_value* targets = 0
+	if (manifest.type == json_type_object()):
+		targets = json_object_get(manifest, c"targets")
+	if ((targets == 0) || (targets.type != json_type_array())):
+		wtest_error(c"manifest has no \"targets\" array: ", manifest_path)
+		return 1
+	int i = 0
+	while (i < json_array_length(targets)):
+		json_value* target = json_array_get(targets, i)
+		if (target.type == json_type_object()):
+			json_value* name = json_object_get(target, c"name")
+			if ((name != 0) && (name.type == json_type_string())):
+				if (strcmp(name.string_value, c"tests") != 0):
+					wtest_targets.push(name.string_value)
+		i = i + 1
+	# The catch-all stays last so focused targets always print first.
 	wtest_targets.push(c"tests")
+	return 0
 
 
 int wtest_target_known(char* target):
@@ -585,13 +487,14 @@ void wtest_emit_targets():
 
 
 int main(int argc, int argv):
-	wtest_init_targets()
 	if (argc < 2):
 		wtest_usage()
 		return 1
 	char** command = argv + __word_size__
 	if (strcmp(*command, c"changed") != 0):
 		wtest_usage()
+		return 1
+	if (wtest_init_targets(c"build.json")):
 		return 1
 	int saw_file = 0
 	int i = 2

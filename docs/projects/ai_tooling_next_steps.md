@@ -82,11 +82,6 @@ is a queue, not an archive.
   `tools/unicode/` all map to `tests`. Audit with
   `git ls-files | ./bin/wtest changed --verbose` and add rules where a
   focused target exists (e.g. `tools/test_map.w` -> `wtest_map_test`).
-- **Registry drift.** The target registry is hand-maintained in
-  `wtest_init_targets()`; a target added only to `build.json` silently
-  falls back to `tests`. Either parse the manifest at runtime (the
-  original design-doc idea) or add a test that diffs the registry
-  against `./wbuild --list`.
 - **`wtest changed --run`.** Now that `lib/process.w` exists, `wtest`
   could execute the selected targets itself instead of relying on the
   `./wbuild test_changed` xargs pipeline.
