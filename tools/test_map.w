@@ -142,6 +142,8 @@ void wtest_init_targets():
 	wtest_targets.push(c"http_client_test")
 	wtest_targets.push(c"http_client_64_test")
 	wtest_targets.push(c"net_darwin")
+	wtest_targets.push(c"net_asn1_test")
+	wtest_targets.push(c"net_x509_test")
 	wtest_targets.push(c"tests")
 
 
@@ -385,6 +387,13 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"http_client_64_test")
 	else if (strcmp(path, c"tests/net_darwin_smoke_test.w") == 0):
 		wtest_add(path, c"net_darwin")
+	else if (starts_with(path, c"libs/standard/net/asn1")):
+		# x509 is the DER reader's main consumer, so re-run it too.
+		wtest_add(path, c"net_asn1_test")
+		wtest_add(path, c"net_x509_test")
+	else if (starts_with(path, c"libs/standard/net/x509")):
+		# Also covers the checked-in fixtures under net/x509_fixtures/.
+		wtest_add(path, c"net_x509_test")
 	else if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):
@@ -525,9 +534,12 @@ void wtest_map_path(char* path):
 			wtest_add(path, c"crypto_rsa_verify_test")
 			wtest_add(path, c"crypto_ecdsa_p256_test")
 		else if (starts_with(path, c"libs/standard/crypto/rsa_verify")):
+			# net/x509.w verifies certificate signatures through this module.
 			wtest_add(path, c"crypto_rsa_verify_test")
+			wtest_add(path, c"net_x509_test")
 		else if (starts_with(path, c"libs/standard/crypto/ecdsa_p256")):
 			wtest_add(path, c"crypto_ecdsa_p256_test")
+			wtest_add(path, c"net_x509_test")
 		else:
 			wtest_add(path, c"tests")
 	else if ((strcmp(path, c"build.json") == 0) | (strcmp(path, c"wbuild") == 0)):

@@ -1097,6 +1097,26 @@
 			]
 		},
 		{
+			"name": "net_asn1_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_test"]},
+				{"cmd": ["bin/net_asn1_test"]},
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_test_x64"]},
+				{"cmd": ["bin/net_asn1_test_x64"]}
+			]
+		},
+		{
+			"name": "net_x509_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_test"]},
+				{"cmd": ["bin/net_x509_test"]},
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_test_x64"]},
+				{"cmd": ["bin/net_x509_test_x64"]}
+			]
+		},
+		{
 			"name": "switch_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2830,6 +2850,8 @@
 				"crypto_bignum_test",
 				"crypto_rsa_verify_test",
 				"crypto_ecdsa_p256_test",
+				"net_asn1_test",
+				"net_x509_test",
 				"switch_test",
 				"for_container_test",
 				"default_args_test",
