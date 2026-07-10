@@ -258,10 +258,15 @@ void test_malloc_survives_blocked_brk():
 	# and an unaligned MAP_FIXED would fail and leave brk growable)
 	free(malloc(16))
 	int break_now = brk(0)
-	int guard_at = (break_now + 4095) / 4096 * 4096
-	# PROT_NONE = 0, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED = 50
-	int guard = mmap(guard_at, 4096, 0, 50)
-	asserts(c"guard mmap failed", guard == guard_at)
+	# No break on this platform (Darwin's brk stub returns 0): the
+	# allocator already runs in permanent mmap mode - exactly the state
+	# the guard would force - so skip the wall and let the growth loop
+	# below assert the mmap fallback directly.
+	if (break_now != 0):
+		int guard_at = (break_now + 4095) / 4096 * 4096
+		# PROT_NONE = 0, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED = 50
+		int guard = mmap(guard_at, 4096, 0, 50)
+		asserts(c"guard mmap failed", guard == guard_at)
 	# Exhaust the current chunk and force several growth cycles
 	int i = 0
 	while (i < 64):
