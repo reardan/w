@@ -101,6 +101,7 @@ void asm_x86_decode_rm(asm_x86_dec* d, int modrm, asm_operand* rm, int rm_class,
 	rm.index = -1
 	rm.scale = 1
 	rm.disp = 0
+	rm.disp_size = 0
 	if (rm_field == 4):
 		# SIB byte
 		int sib = asm_x86_u8(d)
@@ -112,17 +113,21 @@ void asm_x86_decode_rm(asm_x86_dec* d, int modrm, asm_operand* rm, int rm_class,
 			rm.scale = scale
 		if (base == 5 & mod == 0):
 			rm.disp = asm_x86_u32(d)
+			rm.disp_size = 4
 		else:
 			rm.base = base
 	else if (rm_field == 5 & mod == 0):
 		# disp32 absolute (no base)
 		rm.disp = asm_x86_u32(d)
+		rm.disp_size = 4
 	else:
 		rm.base = rm_field
 	if (mod == 1):
 		rm.disp = asm_x86_s8(d)
+		rm.disp_size = 1
 	else if (mod == 2):
 		rm.disp = asm_x86_u32(d)
+		rm.disp_size = 4
 
 
 # Decode ModRM into reg (dest-style) and r/m operands, both GP of the

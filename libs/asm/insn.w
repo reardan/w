@@ -73,6 +73,9 @@ struct asm_operand:
 	int index
 	int scale
 	int disp
+	int disp_size # encoded displacement width for kind mem: 0 none/auto,
+	              # 1 disp8, 4 disp32 (lets the encoder reproduce the exact
+	              # bytes a decoder saw, even non-minimal forms)
 	int imm
 	int size      # operand size in bytes (1/2/4/8); 0 = arch default
 	char* label
@@ -86,6 +89,7 @@ void asm_operand_clear(asm_operand* op):
 	op.index = -1
 	op.scale = 1
 	op.disp = 0
+	op.disp_size = 0
 	op.imm = 0
 	op.size = 0
 	op.label = 0

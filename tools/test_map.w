@@ -26,6 +26,7 @@ void wtest_init_targets():
 	wtest_targets.push(c"self_host_warning_test")
 	wtest_targets.push(c"asm_foundations_test")
 	wtest_targets.push(c"asm_x86_disasm_test")
+	wtest_targets.push(c"asm_x86_asm_test")
 	wtest_targets.push(c"asm_seed_gate")
 	wtest_targets.push(c"type_system_error_test")
 	wtest_targets.push(c"type_system_warning_test")
@@ -312,6 +313,7 @@ void wtest_map_path(char* path):
 	else if (starts_with(path, c"libs/asm/") | starts_with(path, c"tests/asm")):
 		wtest_add(path, c"asm_foundations_test")
 		wtest_add(path, c"asm_x86_disasm_test")
+		wtest_add(path, c"asm_x86_asm_test")
 		wtest_add(path, c"asm_seed_gate")
 	else if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add_c_import(path)
