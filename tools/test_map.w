@@ -123,6 +123,12 @@ void wtest_init_targets():
 	wtest_targets.push(c"poly1305_64_test")
 	wtest_targets.push(c"chacha20poly1305_test")
 	wtest_targets.push(c"chacha20poly1305_64_test")
+	wtest_targets.push(c"sha2_test")
+	wtest_targets.push(c"sha2_64_test")
+	wtest_targets.push(c"hmac_test")
+	wtest_targets.push(c"hmac_64_test")
+	wtest_targets.push(c"hkdf_test")
+	wtest_targets.push(c"hkdf_64_test")
 	wtest_targets.push(c"tests")
 
 
@@ -449,6 +455,23 @@ void wtest_map_path(char* path):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):
 		wtest_add(path, c"wexec_test")
+	else if (starts_with(path, c"libs/standard/crypto/sha2")):
+		# hmac and hkdf build on sha2's whash interface, so a sha2 change
+		# re-runs all three suites (issue #195).
+		wtest_add(path, c"sha2_test")
+		wtest_add(path, c"sha2_64_test")
+		wtest_add(path, c"hmac_test")
+		wtest_add(path, c"hmac_64_test")
+		wtest_add(path, c"hkdf_test")
+		wtest_add(path, c"hkdf_64_test")
+	else if (starts_with(path, c"libs/standard/crypto/hmac")):
+		wtest_add(path, c"hmac_test")
+		wtest_add(path, c"hmac_64_test")
+		wtest_add(path, c"hkdf_test")
+		wtest_add(path, c"hkdf_64_test")
+	else if (starts_with(path, c"libs/standard/crypto/hkdf")):
+		wtest_add(path, c"hkdf_test")
+		wtest_add(path, c"hkdf_64_test")
 	else if (starts_with(path, c".cursor/")):
 		# Rules and skills are agent guidance, not code under test.
 		return

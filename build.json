@@ -997,6 +997,54 @@
 			]
 		},
 		{
+			"name": "sha2_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/sha2_test.w", "-o", "bin/sha2_test"]},
+				{"cmd": ["bin/sha2_test"]}
+			]
+		},
+		{
+			"name": "sha2_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/sha2_test.w", "-o", "bin/sha2_64_test"]},
+				{"cmd": ["bin/sha2_64_test"]}
+			]
+		},
+		{
+			"name": "hmac_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/hmac_test.w", "-o", "bin/hmac_test"]},
+				{"cmd": ["bin/hmac_test"]}
+			]
+		},
+		{
+			"name": "hmac_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/hmac_test.w", "-o", "bin/hmac_64_test"]},
+				{"cmd": ["bin/hmac_64_test"]}
+			]
+		},
+		{
+			"name": "hkdf_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/hkdf_test.w", "-o", "bin/hkdf_test"]},
+				{"cmd": ["bin/hkdf_test"]}
+			]
+		},
+		{
+			"name": "hkdf_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/hkdf_test.w", "-o", "bin/hkdf_64_test"]},
+				{"cmd": ["bin/hkdf_64_test"]}
+			]
+		},
+		{
 			"name": "switch_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2660,6 +2708,12 @@
 				"chacha20_test",
 				"poly1305_test",
 				"chacha20poly1305_test",
+				"sha2_test",
+				"sha2_64_test",
+				"hmac_test",
+				"hmac_64_test",
+				"hkdf_test",
+				"hkdf_64_test",
 				"switch_test",
 				"for_container_test",
 				"default_args_test",
