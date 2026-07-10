@@ -117,6 +117,12 @@ void wtest_init_targets():
 	wtest_targets.push(c"crypto_base64_64_test")
 	wtest_targets.push(c"crypto_random_test")
 	wtest_targets.push(c"crypto_random_64_test")
+	wtest_targets.push(c"chacha20_test")
+	wtest_targets.push(c"chacha20_64_test")
+	wtest_targets.push(c"poly1305_test")
+	wtest_targets.push(c"poly1305_64_test")
+	wtest_targets.push(c"chacha20poly1305_test")
+	wtest_targets.push(c"chacha20poly1305_64_test")
 	wtest_targets.push(c"tests")
 
 
@@ -350,6 +356,15 @@ void wtest_map_path(char* path):
 	else if (starts_with(path, c"libs/standard/crypto/random")):
 		wtest_add(path, c"crypto_random_test")
 		wtest_add(path, c"crypto_random_64_test")
+	else if (starts_with(path, c"libs/standard/crypto/chacha20") | starts_with(path, c"libs/standard/crypto/poly1305")):
+		# chacha20poly1305*.w shares the chacha20 prefix. The AEAD test
+		# composes both primitives, so any file here runs all six targets.
+		wtest_add(path, c"chacha20_test")
+		wtest_add(path, c"chacha20_64_test")
+		wtest_add(path, c"poly1305_test")
+		wtest_add(path, c"poly1305_64_test")
+		wtest_add(path, c"chacha20poly1305_test")
+		wtest_add(path, c"chacha20poly1305_64_test")
 	else if ((strcmp(path, c"tests/warning_fixture.w") == 0) | (strcmp(path, c"tests/warning_clean_fixture.w") == 0) | (strcmp(path, c"tests/string_char_warning_fixture.w") == 0)):
 		wtest_add(path, c"warning_test")
 	else if (strcmp(path, c"tests/import_alias_warning_fixture.w") == 0):

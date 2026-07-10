@@ -949,6 +949,54 @@
 			]
 		},
 		{
+			"name": "chacha20_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/chacha20_test.w", "-o", "bin/chacha20_test"]},
+				{"cmd": ["bin/chacha20_test"]}
+			]
+		},
+		{
+			"name": "chacha20_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/chacha20_test.w", "-o", "bin/chacha20_64_test"]},
+				{"cmd": ["bin/chacha20_64_test"]}
+			]
+		},
+		{
+			"name": "poly1305_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/poly1305_test.w", "-o", "bin/poly1305_test"]},
+				{"cmd": ["bin/poly1305_test"]}
+			]
+		},
+		{
+			"name": "poly1305_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/poly1305_test.w", "-o", "bin/poly1305_64_test"]},
+				{"cmd": ["bin/poly1305_64_test"]}
+			]
+		},
+		{
+			"name": "chacha20poly1305_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/chacha20poly1305_test.w", "-o", "bin/chacha20poly1305_test"]},
+				{"cmd": ["bin/chacha20poly1305_test"]}
+			]
+		},
+		{
+			"name": "chacha20poly1305_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/chacha20poly1305_test.w", "-o", "bin/chacha20poly1305_64_test"]},
+				{"cmd": ["bin/chacha20poly1305_64_test"]}
+			]
+		},
+		{
 			"name": "switch_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2387,6 +2435,9 @@
 				"varargs_w_64_test",
 				"array_list_64_test",
 				"hash_table_64_test",
+				"chacha20_64_test",
+				"poly1305_64_test",
+				"chacha20poly1305_64_test",
 				"string_64_test",
 				"map_set_builtin_64_test",
 				"list_builtin_64_test",
@@ -2606,6 +2657,9 @@
 				"sha256_test",
 				"crypto_base64_test",
 				"crypto_random_test",
+				"chacha20_test",
+				"poly1305_test",
+				"chacha20poly1305_test",
 				"switch_test",
 				"for_container_test",
 				"default_args_test",
