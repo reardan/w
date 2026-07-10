@@ -36,11 +36,33 @@ void deps_record(char* path):
 	deps_count = deps_count + 1
 
 
+# Repoint the diagnostic globals at the missing path before erroring
+# about it. The upward search frees every candidate path it tried, and
+# at cold start (the container-runtime auto-import, before any file has
+# opened) filename and token are still null — either way error()'s
+# human and JSON formatters must not read the stale pointers (#190).
+# Only called on paths that end in error(), which exits (or longjmps to
+# the REPL prompt, where token is already a live tokenizer buffer).
+void missing_file_reset(char* path):
+	filename = path
+	line_number = 0
+	diag_token_line = 0
+	diag_token_column = 0
+	if (token == 0):
+		token = path
+
+
 int compile_attempt(char* fn):
+	# The caller owns fn and frees it after a failed attempt, so a
+	# failure must not leave the global filename pointing at it: the
+	# search-exhausted diagnostic would print the freed bytes (#190)
+	char* old_filename = filename
 	filename = fn
 	file = open(filename, 0, 511)
 	if (file < 0):
-		file_not_found_error()
+		if (verbosity >= 1):
+			file_not_found_error()
+		filename = old_filename
 		return 0
 	if (deps_mode):
 		deps_record(filename)
@@ -70,13 +92,18 @@ int compile_joined(char* cwd, char* filename):
 		free(joined2)
 		joined2 = joined3
 
-	# Attempt to compile the path
+	# Attempt to compile the path. On success joined2 stays allocated:
+	# it is the global filename now, and diagnostics may still print it
+	# after this frame returns (#190). One path per compiled file leaks.
 	int result = compile_attempt(joined2)
-	free(joined2)
+	if (result == 0):
+		free(joined2)
 	return result
 
 
-int compile_relative_path(char* filename):
+# fn must not shadow the global filename: the search-exhausted branch
+# below reads and repoints the global.
+int compile_relative_path(char* fn):
 	# Get current directory
 	int max_path_size = 4096
 	char* cwd = malloc(max_path_size)
@@ -86,7 +113,7 @@ int compile_relative_path(char* filename):
 	while (cwd[0]):
 
 		# Attempt to compile with this path
-		int result = compile_joined(cwd, filename)
+		int result = compile_joined(cwd, fn)
 
 		# If successfull return
 		if (result == 1):
@@ -100,11 +127,20 @@ int compile_relative_path(char* filename):
 				cwd[index] = 0
 				index = 0 /* hacky way to break from loop */
 			index = index - 1
-		print_string(c"went up one directory: ", cwd)
+		if (verbosity >= 1):
+			print_string(c"went up one directory: ", cwd)
 
+	free(cwd)
+	# Point the diagnostic at the import statement when an importing
+	# file is current; at cold start (the auto-imported container
+	# runtime) fall back to the searched path itself.
+	if (filename == 0):
+		missing_file_reset(fn)
+	diag_part(c"cannot locate '")
+	diag_part(fn)
 	# error() instead of exit() so a REPL entry importing a missing
 	# module recovers to the prompt instead of killing the session
-	error(c"filesystem root reached, abandoning search")
+	error(c"' (searched the current directory and every parent)")
 	return 0
 
 
@@ -116,6 +152,30 @@ int compile_file(char* filename):
 		return compile_attempt(filename)
 
 	return compile_relative_path(filename)
+
+
+# Top-level inputs — command-line files and the REPL/wdbg targets — do
+# not get the upward directory search that imports do: a mistyped path
+# fails immediately with one "no such file" diagnostic instead of a
+# noisy retry per parent directory ending in a garbled abandon message
+# (#190, docs/projects/ai_tooling_next_steps.md).
+int compile_input_file(char* path):
+	if (path[0] == 47):
+		if (compile_attempt(path)):
+			return 1
+	else:
+		int max_path_size = 4096
+		char* cwd = malloc(max_path_size)
+		getcwd(cwd, max_path_size)
+		int result = compile_joined(cwd, path)
+		free(cwd)
+		if (result):
+			return 1
+	missing_file_reset(path)
+	diag_part(c"no such file: '")
+	diag_part(path)
+	error(c"'")
+	return 0
 
 
 void compile_save(char* fn):
@@ -277,7 +337,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			print_error(c"compiling '")
 			print_error(*arg)
 			print_error(c"'\x0a")
-			compile_file(*arg)
+			compile_input_file(*arg)
 		i = i + 1
 
 	# Queued generic instantiations compile at this top-level boundary,

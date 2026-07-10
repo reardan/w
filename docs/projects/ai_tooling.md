@@ -42,6 +42,15 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- Missing-file diagnostics (2026-07-10, #190): the compiler's
+  file-not-found path no longer serializes a freed path buffer — the
+  garbled `check --json` `file` field and the garbled
+  "abandoning search in" stderr are gone. Top-level inputs (command
+  line, REPL/wdbg targets) fail fast with `no such file: '<path>'`
+  and no upward directory walk; a failed import search reports one
+  `cannot locate '<module path>'` line pointing at the importing
+  file's import statement, with the per-directory retry spam moved
+  behind `verbosity >= 1`. Covered by `missing_file_test`.
 - Manifest generation for conventional test targets (2026-07-10):
   `build.json` is now generated (still committed) by `tools/wbuildgen.w`
   from the hand-maintained `build.base.json` plus every `*_test.w`
