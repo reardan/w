@@ -128,11 +128,6 @@ is a queue, not an archive.
   rewrites test sources en masse, grep the touched files for their own
   paths first; longer term, self-referential assertions should read a
   dedicated fixture instead of the test's own source.
-- **`repl.w` is not warning-free.** `./bin/wv2 repl.w -o /dev/null`
-  reports two type warnings at `repl.w:518` (`load_word` argument 1 and
-  `write` argument 2, both `char*` vs `int`). Fix them, then consider
-  extending the warning-free gate (`self_host_warning_test`) to
-  `repl.w`, `debugger/`, and the remaining `tools/`.
 - **One-off targets assuming `bin/` exists — resolved.** The
   Makefile-to-`wbuild` migration handles it uniformly: `wbuild` and the
   manifest's `dirs` create `bin/` for every target.

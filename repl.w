@@ -573,7 +573,7 @@ void repl_echo(int value, int type):
 	if (type <= 0): /* no result, or void */
 		return;
 	if (type_is_string(type)):
-		write(1, load_word(value), load_word(value + word_size))
+		write(1, cast(char*, load_word(cast(char*, value))), load_word(value + word_size))
 		put_char(10)
 		return;
 	int pointers = type_get_pointer_level(type)
