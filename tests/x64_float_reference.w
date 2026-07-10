@@ -32,6 +32,9 @@ int main(int argc, int argv):
 
 	print_line64(c"f64.literal.0.1", 0.1)
 	print_line64(c"f64.literal.min_subnormal", tiny)
+	print_line64(c"f64.literal.2_53_plus_1", 9007199254740993.0)
+	print_line64(c"f64.literal.2_53_plus_3", 9007199254740995.0)
+	print_line64(c"f64.literal.dbl_max_shortest", 1.7976931348623157e308)
 	print_line64(c"f64.add", one_half + two_quarter)
 	print_line64(c"f64.sub", 5.5 - two)
 	print_line64(c"f64.mul", one_half * two)

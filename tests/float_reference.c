@@ -38,6 +38,9 @@ static void f32_reference(void) {
 
 	line32("f32.literal.0.1", f32_bits(0.1f));
 	line32("f32.literal.min_subnormal", f32_bits(tiny));
+	line32("f32.literal.2_24_plus_1", f32_bits(16777217.0f));
+	line32("f32.literal.2_24_plus_3", f32_bits(16777219.0f));
+	line32("f32.literal.flt_max_shortest", f32_bits(3.4028235e38f));
 	line32("f32.add", f32_bits(one_half + two_quarter));
 	line32("f32.sub", f32_bits(5.5f - two));
 	line32("f32.mul", f32_bits(one_half * two));
@@ -60,6 +63,9 @@ static void f64_reference(void) {
 
 	line64("f64.literal.0.1", f64_bits(0.1));
 	line64("f64.literal.min_subnormal", f64_bits(tiny));
+	line64("f64.literal.2_53_plus_1", f64_bits(9007199254740993.0));
+	line64("f64.literal.2_53_plus_3", f64_bits(9007199254740995.0));
+	line64("f64.literal.dbl_max_shortest", f64_bits(1.7976931348623157e308));
 	line64("f64.add", f64_bits(one_half + two_quarter));
 	line64("f64.sub", f64_bits(5.5 - two));
 	line64("f64.mul", f64_bits(one_half * two));

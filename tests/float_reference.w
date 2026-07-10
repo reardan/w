@@ -27,6 +27,9 @@ int main(int argc, int argv):
 
 	print_line32(c"f32.literal.0.1", f32_bits(0.1))
 	print_line32(c"f32.literal.min_subnormal", f32_bits(tiny))
+	print_line32(c"f32.literal.2_24_plus_1", f32_bits(16777217.0))
+	print_line32(c"f32.literal.2_24_plus_3", f32_bits(16777219.0))
+	print_line32(c"f32.literal.flt_max_shortest", f32_bits(3.4028235e38))
 	print_line32(c"f32.add", f32_bits(one_half + two_quarter))
 	print_line32(c"f32.sub", f32_bits(5.5 - two))
 	print_line32(c"f32.mul", f32_bits(one_half * two))
