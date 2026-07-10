@@ -153,8 +153,21 @@ int unary_expression():
 			int len_type = expression()
 			promote(len_type)
 			if (bounds_mode != 0):
-				bounds_check_eax_nonnegative()
-				bounds_check_eax_less_equal_int32(1073741823 / element_size)
+				# eax = requested element count: trap through the
+				# runtime helper unless 0 <= count <= the per-type
+				# limit (issue #228). The trap block shuffles the
+				# count into ebx and the limit into eax, the
+				# bounds_trap_call convention; the in-bounds path
+				# leaves eax untouched.
+				int alloc_limit = 1073741823 / element_size
+				int negative_site = bounds_branch_eax_negative()
+				int in_bounds_site = bounds_skip_eax_less_equal_int32(alloc_limit)
+				be_branch_patch(negative_site, codepos)
+				push_eax()
+				mov_eax_int(alloc_limit)
+				pop_ebx()
+				bounds_trap_call(c"__w_alloc_trap")
+				be_branch_patch(in_bounds_site, codepos)
 			expect(c"]")
 			push_eax()
 			stack_pos = stack_pos + 1

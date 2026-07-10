@@ -752,49 +752,81 @@ void int3():
 	emit(1, c"\xcc") /* int3 */
 
 
-/* trap when eax is negative */
-void bounds_check_eax_nonnegative():
+/* Bounds checks (issue #228): each helper emits a compare plus a patchable
+   conditional branch and returns the branch's patch site (the codepos right
+   after the displacement, the protocol be_branch_patch expects). The grammar
+   layer (bounds_trap_call in grammar/postfix_expr.w) points the bounds_branch_*
+   sites at a trap block that calls the runtime diagnostic helper, and the
+   bounds_skip_* site past it, so a failed check reports the offending index
+   and length instead of dying on a bare int3/brk #0. The in-bounds
+   fall-through path clobbers only flags, like the old compare + skip + int3
+   form. */
+
+/* branch to the trap block when eax is negative: test eax,eax ; js rel32 */
+int bounds_branch_eax_negative():
 	if (target_isa == 1):
-		arm64_bounds_check_eax_nonnegative()
-		return
+		return arm64_bounds_branch_eax_negative()
 	emit_x64_opcode()
 	emit(2, c"\x85\xc0") /* test eax,eax */
-	emit(2, c"\x79\x01") /* jns +1 */
-	int3()
+	emit(2, c"\x0f\x88") /* js rel32 (placeholder) */
+	emit_int32(0)
+	return codepos
 
 
-/* trap unless ebx < eax (index in ebx, length in eax) */
-void bounds_check_ebx_less_eax():
+/* branch to the trap block when ebx is negative: test ebx,ebx ; js rel32 */
+int bounds_branch_ebx_negative():
 	if (target_isa == 1):
-		arm64_bounds_check_ebx_less_eax()
-		return
+		return arm64_bounds_branch_ebx_negative()
+	emit_x64_opcode()
+	emit(2, c"\x85\xdb") /* test ebx,ebx */
+	emit(2, c"\x0f\x88") /* js rel32 (placeholder) */
+	emit_int32(0)
+	return codepos
+
+
+/* branch to the trap block when ebx > eax (signed): cmp eax,ebx ; jg rel32 */
+int bounds_branch_ebx_greater_eax():
+	if (target_isa == 1):
+		return arm64_bounds_branch_ebx_greater_eax()
 	emit_x64_opcode()
 	emit(2, c"\x39\xc3") /* cmp eax,ebx */
-	emit(2, c"\x7c\x01") /* jl +1 */
-	int3()
+	emit(2, c"\x0f\x8f") /* jg rel32 (placeholder) */
+	emit_int32(0)
+	return codepos
 
 
-/* trap unless ebx <= eax */
-void bounds_check_ebx_less_equal_eax():
+/* skip the trap block when ebx < eax (index in ebx, length in eax) */
+int bounds_skip_ebx_less_eax():
 	if (target_isa == 1):
-		arm64_bounds_check_ebx_less_equal_eax()
-		return
+		return arm64_bounds_skip_ebx_less_eax()
 	emit_x64_opcode()
 	emit(2, c"\x39\xc3") /* cmp eax,ebx */
-	emit(2, c"\x7e\x01") /* jle +1 */
-	int3()
+	emit(2, c"\x0f\x8c") /* jl rel32 (placeholder) */
+	emit_int32(0)
+	return codepos
 
 
-/* trap unless eax <= limit */
-void bounds_check_eax_less_equal_int32(int limit):
+/* skip the trap block when ebx <= eax */
+int bounds_skip_ebx_less_equal_eax():
 	if (target_isa == 1):
-		arm64_bounds_check_eax_less_equal_int32(limit)
-		return
+		return arm64_bounds_skip_ebx_less_equal_eax()
+	emit_x64_opcode()
+	emit(2, c"\x39\xc3") /* cmp eax,ebx */
+	emit(2, c"\x0f\x8e") /* jle rel32 (placeholder) */
+	emit_int32(0)
+	return codepos
+
+
+/* skip the trap block when eax <= limit */
+int bounds_skip_eax_less_equal_int32(int limit):
+	if (target_isa == 1):
+		return arm64_bounds_skip_eax_less_equal_int32(limit)
 	emit_x64_opcode()
 	emit(1, c"\x3d") /* cmp imm32,eax */
 	emit_int32(limit)
-	emit(2, c"\x7e\x01") /* jle +1 */
-	int3()
+	emit(2, c"\x0f\x8e") /* jle rel32 (placeholder) */
+	emit_int32(0)
+	return codepos
 
 void nop():
 	if (target_isa == 1):

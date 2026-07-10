@@ -216,26 +216,36 @@ d3f8|sar eax,cl
 # --- int3 ---
 cc|int3
 
-# --- bounds_check_eax_nonnegative ---
+# --- bounds_branch_eax_negative ---
 85c0|test eax,eax
-7901|jns .+3
-cc|int3
+# parameterized: rel32 placeholder patched via be_branch_patch (example v=0x12)
+0f8812000000|js .+0x18
 
-# --- bounds_check_ebx_less_eax ---
+# --- bounds_branch_ebx_negative ---
+85db|test ebx,ebx
+# parameterized: rel32 placeholder patched via be_branch_patch (example v=0x12)
+0f8812000000|js .+0x18
+
+# --- bounds_branch_ebx_greater_eax ---
 39c3|cmp ebx,eax
-7c01|jl .+3
-cc|int3
+# parameterized: rel32 placeholder patched via be_branch_patch (example v=0x12)
+0f8f12000000|jg .+0x18
 
-# --- bounds_check_ebx_less_equal_eax ---
+# --- bounds_skip_ebx_less_eax ---
 39c3|cmp ebx,eax
-7e01|jle .+3
-cc|int3
+# parameterized: rel32 placeholder patched via be_branch_patch (example v=0x12)
+0f8c12000000|jl .+0x18
 
-# --- bounds_check_eax_less_equal_int32 ---
+# --- bounds_skip_ebx_less_equal_eax ---
+39c3|cmp ebx,eax
+# parameterized: rel32 placeholder patched via be_branch_patch (example v=0x12)
+0f8e12000000|jle .+0x18
+
+# --- bounds_skip_eax_less_equal_int32 ---
 # parameterized: imm32 limit (example limit=0x12)
 3d12000000|cmp eax,0x12
-7e01|jle .+3
-cc|int3
+# parameterized: rel32 placeholder patched via be_branch_patch (example v=0x12)
+0f8e12000000|jle .+0x18
 
 # --- nop ---
 90|nop

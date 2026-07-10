@@ -121,25 +121,39 @@ e0979f9a|cset x0,hi
 # ==== code_generator/arm64.w: arm64_alu_test_set ====
 1f0000f1|cmp x0,#0
 #
-# ==== code_generator/arm64.w: arm64_bounds_check_eax_nonnegative ====
-1f0000f1|cmp x0,#0
-4a000054|b.ge .+8
+# ==== code_generator/x86.w: int3 (arm64 form, the 'debugger' statement) ====
 000020d4|brk #0
 #
-# ==== code_generator/arm64.w: arm64_bounds_check_ebx_less_eax ====
+# ==== code_generator/arm64.w: arm64_bounds_branch_eax_negative ====
+# parameterized: b.cond imm19 placeholder patched via arm64_branch_patch;
+# instantiated with .+8
+1f0000f1|cmp x0,#0
+4b000054|b.lt .+8
+#
+# ==== code_generator/arm64.w: arm64_bounds_branch_ebx_negative ====
+# parameterized: b.cond imm19 placeholder patched; instantiated with .+8
+3f0000f1|cmp x1,#0
+4b000054|b.lt .+8
+#
+# ==== code_generator/arm64.w: arm64_bounds_branch_ebx_greater_eax ====
+# parameterized: b.cond imm19 placeholder patched; instantiated with .+8
+3f0000eb|cmp x1,x0
+4c000054|b.gt .+8
+#
+# ==== code_generator/arm64.w: arm64_bounds_skip_ebx_less_eax ====
+# parameterized: b.cond imm19 placeholder patched; instantiated with .+8
 3f0000eb|cmp x1,x0
 4b000054|b.lt .+8
-000020d4|brk #0
 #
-# ==== code_generator/arm64.w: arm64_bounds_check_ebx_less_equal_eax ====
+# ==== code_generator/arm64.w: arm64_bounds_skip_ebx_less_equal_eax ====
+# parameterized: b.cond imm19 placeholder patched; instantiated with .+8
 3f0000eb|cmp x1,x0
 4d000054|b.le .+8
-000020d4|brk #0
 #
-# ==== code_generator/arm64.w: arm64_bounds_check_eax_less_equal_int32 ====
+# ==== code_generator/arm64.w: arm64_bounds_skip_eax_less_equal_int32 ====
+# parameterized: b.cond imm19 placeholder patched; instantiated with .+8
 1f0009eb|cmp x0,x9
 4d000054|b.le .+8
-000020d4|brk #0
 #
 # ==== code_generator/arm64.w: be_addr_slot_emit ====
 # parameterized: adrp immhi:immlo (bits 5-23, 29-30) patched later by
