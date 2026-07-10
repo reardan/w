@@ -376,6 +376,10 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"type_system_error_test")
 	else if (starts_with(path, c"tests/type_system_warning")):
 		wtest_add(path, c"type_system_warning_test")
+	else if ((strcmp(path, c"tests/array_param_error_fixture.w") == 0) | (strcmp(path, c"tests/array_union_error_fixture.w") == 0) | (strcmp(path, c"tests/array_constructor_error_fixture.w") == 0)):
+		wtest_add(path, c"array_error_test")
+	else if (strcmp(path, c"tests/buffer_field_assign_test.w") == 0):
+		wtest_add(path, c"buffer_field_assign_test")
 	else if ((strcmp(path, c"tests/generator_test.w") == 0) | (strcmp(path, c"tests/yield_outside_generator_error_fixture.w") == 0) | (strcmp(path, c"tests/generator_return_value_error_fixture.w") == 0)):
 		wtest_add(path, c"generator_test")
 		wtest_add(path, c"generator_64_test")
@@ -428,6 +432,14 @@ void wtest_map_path(char* path):
 		wtest_add_parser_generator(path)
 	else if ((strcmp(path, c"tools/wexec.w") == 0) | starts_with(path, c"tests/wexec/")):
 		wtest_add(path, c"wexec_test")
+	else if (strcmp(path, c"tools/wfixture.w") == 0):
+		# wfixture runs every fixture-directive target (the fixtures'
+		# expected diagnostics live in their header comments).
+		wtest_add(path, c"warning_test")
+		wtest_add(path, c"type_system_error_test")
+		wtest_add(path, c"type_system_warning_test")
+		wtest_add(path, c"array_error_test")
+		wtest_add(path, c"buffer_field_assign_test")
 	else if (starts_with(path, c"libs/standard/crypto/sha2")):
 		# hmac and hkdf build on sha2's whash interface, so a sha2 change
 		# re-runs all three suites (issue #195).

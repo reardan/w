@@ -9,11 +9,18 @@ alwaysApply: false
 - Find the build target that owns a test file with
   `./bin/wtest changed <file>` and run exactly that target; fall back to
   `./wbuild tests` only when the mapping says so.
-- `*fixture*.w` files are compile-only inputs whose exact diagnostics are
-  asserted in `build.json` via `expect_stderr`/`reject_stderr` (`warning_test`,
-  `type_system_error_test`, `check_json_test`, ...). Editing one usually
-  requires updating the asserted message text or line numbers in the same
-  commit. The automatic edit-check hook deliberately skips fixture paths.
+- `*fixture*.w` files are compile-only inputs with asserted diagnostics.
+  For pure compile-diagnostic targets (`warning_test`,
+  `type_system_error_test`, `array_error_test`, ...) the expected
+  messages are `# expect_stderr:` / `# reject_stderr:` / `# expect_fail`
+  directive lines in the fixture's own header comment, run by
+  `bin/wfixture` (`tools/wfixture.w` documents the syntax and the
+  `<fixture>.w.expect` sidecar fallback). Targets that also run the
+  produced binary (trap tests, `check_json_test`, ...) still assert via
+  `expect_stderr`/`reject_stderr` step fields in `build.json`. Editing a
+  fixture usually requires updating the asserted message text in the
+  same commit. The automatic edit-check hook deliberately skips fixture
+  paths.
 - A new end-to-end test needs: the `tests/foo_test.w` program (use
   `lib/assert.w` / `lib/testing.w` helpers), a target in `build.json`,
   membership in the `tests` umbrella target, and a mapping entry in

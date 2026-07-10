@@ -1,3 +1,5 @@
+# expect_fail
+# expect_stderr: assignment to const
 import lib.lib
 
 

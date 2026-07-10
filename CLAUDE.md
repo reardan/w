@@ -116,11 +116,16 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
 - New language syntax must also be added to the parser-generator grammar
   `tests/parser_generator/w.pg` — `parser_generator_w_test` parses every
   tracked `.w` file and fails on unknown syntax.
-- Diagnostic message text is frozen by `warning_test` and the
-  `type_system_*_test` targets; rewording requires updating those fixtures
-  in the same commit. `tests/*fixture*.w` files are compile-only inputs
-  whose exact diagnostics are asserted (`expect_stderr`/`reject_stderr`)
-  in `build.json`.
+- Diagnostic message text is frozen by `warning_test`, the
+  `type_system_*_test` targets and the other fixture targets; rewording a
+  message requires updating the fixtures in the same commit. Compile-only
+  diagnostic fixtures carry their expected messages as
+  `# expect_stderr:` / `# reject_stderr:` / `# expect_fail` directive
+  lines in their own header comments, asserted by `bin/wfixture`
+  (`tools/wfixture.w`; a `<fixture>.w.expect` sidecar is the fallback
+  for a fixture whose exact bytes are the test). Targets that also run
+  the produced binary keep `expect_stderr`/`expect_fail` fields on their
+  `build.json` steps.
 - A new end-to-end test needs: `tests/foo_test.w` (use `lib/assert.w` /
   `lib/testing.w`), a target in `build.json`, membership in the `tests`
   umbrella target, and a `tools/test_map.w` entry if no directory rule

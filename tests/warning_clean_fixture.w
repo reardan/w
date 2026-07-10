@@ -1,5 +1,7 @@
-# Cleanly typed program: the warning_test build target asserts that
-# compiling this file produces no warnings on stderr.
+# Cleanly typed program: the warning_test build target (via
+# bin/wfixture) asserts that compiling this file produces no warnings
+# on stderr.
+# reject_stderr: warning:
 import lib.lib
 
 

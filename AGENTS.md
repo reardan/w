@@ -64,7 +64,10 @@ working in this repo.
   `bin/wv2: No such file or directory` from a hand-run compile, run
   `mkdir -p bin` (or `./wbuild build`) first.
 - There is **no separate linter**. "Lint" is the compiler's own type/style warnings,
-  asserted by the `warning_test` target.
+  asserted by the `warning_test` target. Compile-diagnostic fixtures carry their
+  expected messages as `# expect_stderr:`-style directive lines in their own header
+  comments, run by `bin/wfixture` (`tools/wfixture.w`); see the header of that tool
+  for the directive syntax.
 - The seed `./w` is a **32-bit x86** statically-linked ELF; it runs on this x86_64 host
   without extra libc because it's static. Do not delete/replace it except via `./wbuild update`.
   The macOS seed `./w_darwin` (arm64 Mach-O, promoted via `./wbuild update_darwin`) must be
