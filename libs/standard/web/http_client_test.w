@@ -10,6 +10,7 @@ import lib.net
 import lib.time
 import structures.string
 import libs.standard.web.http_client
+import libs.standard.web.urlparse
 
 
 void http_client_test_assert_ok(char* name, int result):
@@ -282,6 +283,7 @@ void test_http_error_strings():
 	assert_strings_equal(c"", http_error_string(http_error_none()))
 	assert_strings_equal(c"timed out", http_error_string(http_error_timeout()))
 	assert_strings_equal(c"too many redirects", http_error_string(http_error_too_many_redirects()))
+	assert_strings_equal(c"TLS handshake failed", http_error_string(http_error_tls()))
 	assert_strings_equal(c"unknown error", http_error_string(999))
 
 
@@ -332,8 +334,14 @@ void test_http_request_hardening():
 	http_test_expect_error(http_get(c"http://127.0.0.1:9/a\x0ab"), http_error_bad_url())
 	http_test_expect_error(http_get(c"http://127.0.0.1:9/a b"), http_error_bad_url())
 
-	# https parses but is not dialable until net/tls.w (#204).
-	http_test_expect_error(http_get(c"https://example.com/"), http_error_unsupported_scheme())
+	# https:// is now a supported transport (wired through net/tls.w, #204);
+	# it validates offline here (the loopback TLS handshake is exercised
+	# end to end in web/https_e2e_test.w). Assert the validation layer
+	# accepts it rather than reaching the network.
+	url* https_url = url_parse(c"https://example.com/")
+	asserts(c"https url parses", https_url != 0)
+	assert_equal(0, http_validate_url(https_url))
+	url_free(https_url)
 
 	# Not an absolute http URL at all.
 	http_test_expect_error(http_get(c"nope"), http_error_bad_url())

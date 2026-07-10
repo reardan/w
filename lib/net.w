@@ -190,3 +190,36 @@ int socket_set_nosigpipe(int sockfd):
 		return 0
 	int enabled = 1
 	return sys_setsockopt(sockfd, sol_socket(), socket_abi_so_nosigpipe(), &enabled, 4)
+
+
+# Clears O_NONBLOCK so read/recv/send block again. The TLS transport in
+# web/http_client.w pairs a blocking socket with SO_RCVTIMEO/SO_SNDTIMEO:
+# net/tls.w does blocking socket_recv/socket_send internally, and the
+# timeouts keep every handshake/read/write wait bounded.
+int socket_set_blocking(int sockfd):
+	int flags = sys_fcntl(sockfd, f_getfl(), 0)
+	if (flags < 0):
+		return flags
+	return sys_fcntl(sockfd, f_setfl(), flags & ~o_nonblock())
+
+
+# Sets a SO_RCVTIMEO/SO_SNDTIMEO option from a millisecond timeout. The
+# struct timeval is two word-sized fields, matching the native long-sized
+# timeval on every supported target (8 bytes on 32-bit, 16 on 64-bit).
+int socket_set_timeout_opt(int sockfd, int optname, int timeout_ms):
+	int* tv = malloc(__word_size__ * 2)
+	tv[0] = timeout_ms / 1000
+	tv[1] = (timeout_ms % 1000) * 1000
+	int rc = sys_setsockopt(sockfd, sol_socket(), optname, cast(int, tv), __word_size__ * 2)
+	free(tv)
+	return rc
+
+
+# Bounds a blocking recv on this socket to timeout_ms (0 disables it).
+int socket_set_recv_timeout(int sockfd, int timeout_ms):
+	return socket_set_timeout_opt(sockfd, socket_abi_so_rcvtimeo(), timeout_ms)
+
+
+# Bounds a blocking send on this socket to timeout_ms (0 disables it).
+int socket_set_send_timeout(int sockfd, int timeout_ms):
+	return socket_set_timeout_opt(sockfd, socket_abi_so_sndtimeo(), timeout_ms)

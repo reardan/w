@@ -1082,6 +1082,18 @@
 			]
 		},
 		{
+			"name": "https_e2e_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/https_e2e_test.w", "-o", "bin/https_e2e_test"]},
+				{"cmd": ["bin/https_e2e_test"]},
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/https_e2e_test.w", "-o", "bin/https_e2e_test_x64"]},
+				{"cmd": ["bin/https_e2e_test_x64"]},
+				{"cmd": ["bin/wv2", "examples/web/https_get.w", "-o", "bin/https_get_example"]},
+				{"cmd": ["bin/wv2", "examples/web/https_server.w", "-o", "bin/https_server_example"]}
+			]
+		},
+		{
 			"name": "switch_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2878,6 +2890,7 @@
 				"net_x509_test",
 				"net_tls_test",
 				"net_tls_server_test",
+				"https_e2e_test",
 				"switch_test",
 				"for_container_test",
 				"default_args_test",
