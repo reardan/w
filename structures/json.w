@@ -11,8 +11,8 @@ Supported JSON subset:
 
 Numbers: a plain integer parses as a signed int and saturates to
 json_int_max()/json_int_min() on overflow — the native int range, so
-int32 on the 32-bit target and int64 on x64. A number with a fraction or exponent
-part parses as a float — float32 on every target, because float64 is
+int32 on the 32-bit target and int64 on x64. A number with a fraction
+or exponent part parses as a float — float32 on every target, because float64 is
 x64-only — so floats carry about 7 significant digits; overflow
 saturates to the largest finite float32 and underflow flushes to zero.
 Floats serialize with up to 9 significant digits, whole values with a
@@ -437,15 +437,15 @@ float json_scale_pow10(float m, int t):
 		return 0.0
 	if (t > 60):
 		# the smallest mantissa (1) times 10^61 already overflows
-		return 3.4028235e38
+		return 3.40282346e38
 	if (t < -60):
 		# the largest mantissa (<1e9) times 10^-61 is below the
 		# smallest denormal
 		return 0.0
-	float limit = 3.4028235e38 / 10.0
+	float limit = 3.40282346e38 / 10.0
 	while (t > 0):
 		if (m > limit):
-			return 3.4028235e38
+			return 3.40282346e38
 		m = m * 10.0
 		t = t - 1
 	while (t < 0):

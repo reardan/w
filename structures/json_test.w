@@ -250,9 +250,9 @@ void test_parse_floats():
 
 
 void test_float_saturation():
-	assert_json_parses_float(c"1e50", 3.4028235e38)
-	assert_json_parses_float(c"-1e50", -3.4028235e38)
-	assert_json_parses_float(c"1e99999", 3.4028235e38)
+	assert_json_parses_float(c"1e50", 3.40282346e38)
+	assert_json_parses_float(c"-1e50", -3.40282346e38)
+	assert_json_parses_float(c"1e99999", 3.40282346e38)
 	json_value* tiny = json_parse(c"1e-50")
 	assert1(tiny != 0)
 	assert_equal(json_type_float(), tiny.type)
@@ -280,7 +280,7 @@ void test_float_stringify():
 
 
 void test_float_nonfinite_stringify():
-	float inf = 3.4028235e38 * 10.0
+	float inf = 3.40282346e38 * 10.0
 	json_value* value = json_float(inf)
 	char* text = json_stringify(value)
 	assert_strings_equal(c"null", text)
