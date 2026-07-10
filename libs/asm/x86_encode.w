@@ -445,7 +445,12 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 			return b.length - start
 	if (strcmp(m, c"pushw") == 0):
 		asm_buffer_byte(b, 0x66)
-		if (insn.op1.size == 1):
+		# explicit size 1 or parsed text (size 0) with a small value picks
+		# the imm8 form, like the ALU imm8/imm32 rule
+		int pushw_imm8 = insn.op1.size == 1
+		if (insn.op1.size == 0 & asm_enc_fits_int8(insn.op1.imm)):
+			pushw_imm8 = 1
+		if (pushw_imm8):
 			asm_buffer_byte(b, 0x6a)
 			asm_buffer_byte(b, insn.op1.imm & 255)
 		else:
@@ -719,7 +724,13 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 			return 1
 		asm_enc_opsize_prefix(b, size)
 		asm_enc_rex(b, is64, asm_enc_w(size), ext, &insn.op1)
-		if (insn.op2.size == 1):
+		# an explicit size 1 (decoded 0x83 form, or a `byte` keyword in
+		# text) forces imm8; parsed text leaves size 0, which picks the
+		# minimal form — mirroring the disp_size == 0 displacement rule
+		int imm8 = insn.op2.size == 1
+		if (insn.op2.size == 0 & asm_enc_fits_int8(insn.op2.imm)):
+			imm8 = 1
+		if (imm8):
 			asm_buffer_byte(b, 0x83)
 			asm_enc_modrm(b, ext, &insn.op1, is64)
 			asm_buffer_byte(b, insn.op2.imm & 255)

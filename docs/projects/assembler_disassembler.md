@@ -31,8 +31,19 @@ formatter/parser (#168). Coverage:
 
 `asm_seed_gate` keeps the whole library seed-compilable (it now exercises
 a mode-8 REX.W decode+encode and an arm64 word decode/encode too). Epic:
-#163; remaining phases (wdbg #169, stubgen #170) tracked in its
-sub-issues.
+#163; the remaining phase (wdbg #169) is tracked in its sub-issue.
+
+**Stub generation complete (issue #170).** The runtime stubs in
+`code_generator/{x86,x64,arm64}_asm.w` now have assembly-text sources
+(`tests/asm/stubs_{x86,x64,arm64}.asm`) assembled by `libs/asm/stubgen.w`;
+`tools/gen_stubs.w` prints the `emit(n, c"...")` / `a64(op(...))` lines
+and `asm_stubs_test` is the drift test — see "Maintaining the runtime
+stubs" below. `debugger/convert.w` (the objdump-parsing crutch this
+replaces) is retired. Bugs surfaced by making the stubs assemble:
+`swap_endian16` shifted ebx instead of eax (#175), `arm64_add_x9_imm`
+pre-set imm12 bit 0 so even immediates encoded `#(imm|1)` (#174), and
+`store_context`'s `emit(9, ...)` counted 9 bytes for an 8-byte string,
+emitting the terminating NUL as a stray trailing byte.
 
 **arm64 (A64) complete: decoder + formatter + encoder + text parser
 (issue #168).** `libs/asm/arm64_decode.w` decodes one little-endian 32-bit
@@ -165,6 +176,38 @@ Inline `asm` blocks in the language, and REPL/JIT uses, are explicitly
 **out of scope** for this epic — natural follow-ups once the encoder
 exists.
 
+## Maintaining the runtime stubs (issue #170)
+
+The committed `emit()`/`a64(op())` bytes in
+`code_generator/{x86,x64,arm64}_asm.w` stay the compiled artifact (the
+seed graph is untouched), but their source of truth is now the
+assembly-text files `tests/asm/stubs_{x86,x64,arm64}.asm`. To add or
+change a stub:
+
+1. Edit the `.asm` stub source: `func NAME` opens a stub, one
+   instruction per tab-indented line in the canonical syntax above; a
+   tab followed by `#` starts a trailing comment.
+2. `./wbuild gen_stubs && bin/gen_stubs tests/asm/stubs_<arch>.asm`
+   prints the `sym_define_declare_global_function()` + `emit(n,
+   c"\x...")` lines (or `a64(op(...))` words with their assembly
+   comments) to paste into the committed `*_asm.w` file.
+3. `./wbuild asm_stubs_test` (also part of `./wbuild tests`) re-runs the
+   drift check: it re-assembles the stub sources, re-extracts the
+   committed byte strings, and fails on any difference — including an
+   `emit(n, ...)` length that disagrees with its string's escape count
+   (that mismatch class emitted a stray NUL in store_context for years).
+4. `./wbuild verify` still gates the change like any other
+   `code_generator/` edit.
+
+The extractor understands the committed files' idioms, not general W:
+`sym_define_declare_global_function(c"...")` and top-level `void f():`
+lines delimit stubs, every `emit(n, c"\xNN...")` / `a64(op(0xAA,
+0xBBBBBB))` in source text order contributes bytes (so both branches of
+a `target_os`/`arm64_pac` conditional are listed in the stub source, and
+the get_context register loop appears as its i=0 base word), and `#`
+comment lines are inert. Keep new stub code within those shapes — or
+extend `libs/asm/stubgen.w` alongside it.
+
 ## Canonical text syntax (Phase 0.2)
 
 One grammar shared by the corpus fixtures, the formatter (#165) and the
@@ -290,8 +333,9 @@ Epic: **Asm: in-house assembler/disassembler libraries (x86, x64, arm64)**
    - [ ] attach mode (#123) parity
    - [ ] seed-graph constraint honored; `./wbuild verify` byte-identical
 7. **Codegen: stubs generated from assembly text** — depends on 3/4/5.
-   - [ ] `tools/gen_stubs.w` + drift test against committed `*_asm.w`
-   - [ ] retire `debugger/convert.w`
+   **Done (#170).**
+   - [x] `tools/gen_stubs.w` + drift test against committed `*_asm.w`
+   - [x] retire `debugger/convert.w`
    - [ ] (separate decision, not in this epic: direct import into
          `code_generator/`)
 8. **Asm: property/fuzz harness + docs** — ongoing once 3 lands.

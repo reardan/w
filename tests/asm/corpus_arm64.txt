@@ -28,15 +28,13 @@
 #
 # ==== code_generator/arm64.w: arm64_add_x9_imm ====
 # parameterized: imm12 (bits 10-21) varies; instantiated with imm=16
-# MISMATCH: source comment says "add x9,x9,#imm" but the base word 0x91000529
-# already has imm12 bit 0 set (0x529 instead of 0x129), so the word encodes
-# imm|1 -- with imm=16 the word encodes the text below
-29450091|add x9,x9,#17
+# (the MISMATCH recorded here -- base word 0x91000529 pre-setting imm12
+# bit 0, so even immediates encoded #(imm|1) -- was fixed in #174; the
+# base word is 0x91000129 now)
+29410091|add x9,x9,#16
 # parameterized: imm12 (bits 10-21) varies; instantiated with imm=-16
-# MISMATCH: source comment says "sub x9,x9,#(-imm)" but the base word
-# 0xd1000529 already has imm12 bit 0 set (0x529 instead of 0x129), so the word
-# encodes (-imm)|1 -- with imm=-16 the word encodes the text below
-294500d1|sub x9,x9,#17
+# (same #174 fix: base word 0xd1000529 -> 0xd1000129)
+294100d1|sub x9,x9,#16
 29010a8b|add x9,x9,x10
 #
 # ==== code_generator/arm64.w: arm64_mov_eax_int32 ====

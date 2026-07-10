@@ -24,6 +24,7 @@ import libs.asm.arm64_decode
 import libs.asm.arm64_format
 import libs.asm.arm64_encode
 import libs.asm.arm64_text
+import libs.asm.stubgen
 
 
 int main():
@@ -94,6 +95,15 @@ int main():
 	assert_equal(0x48, enc64.data[0] & 255)
 	assert_equal(0x8b, enc64.data[1] & 255)
 	assert_equal(0x10, enc64.data[4] & 255)
+
+	# stubgen: assemble one line per encoder family through the stub
+	# generator's entry point.
+	asm_buffer* sb = asm_buffer_new()
+	assert_equal(1, asm_stub_assemble_line(ASM_STUB_X86(), c"ret", sb))
+	assert_equal(0xc3, sb.data[0] & 255)
+	assert_equal(4, asm_stub_assemble_line(ASM_STUB_ARM64(), c"ret", sb))
+	assert_equal(5, sb.length)
+	assert_equal(0, asm_stub_find(c"a64(op(0xd6, 0x5f03c0))", c"op(0x") - 4)
 
 	println(c"asm_seed_check passed")
 	return 0

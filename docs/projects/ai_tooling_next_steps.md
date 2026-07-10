@@ -45,6 +45,15 @@ is a queue, not an archive.
   `using filename as path directly: ...` progress text to stderr. Stdout
   is clean, so parsers are unaffected, but a `--quiet` flag would make
   hook/LSP/MCP logs less noisy.
+- **Compiler-internal files cannot be checked standalone, and the error
+  points elsewhere.** `./bin/wv2 check --json code_generator/arm64.w`
+  (hit while fixing #174, 2026-07-10) fails with `Cannot find symbol:
+  'strlen'` reported *in code_generator/code_emitter.w* — the file only
+  compiles inside `w.w`'s import graph, but the diagnostic names neither
+  the checked file nor the real cause. Either make `check` on a
+  compiler/grammar/code_generator path check `w.w` instead (that is the
+  gate that matters), or emit a one-line "this file is not a standalone
+  compilation root" hint.
 - **Arch-aware checking.** The hook and skills default to the x86 check;
   `lib/__arch__/x64/` files (and x64-only constructs like `int64`)
   deserve an automatic `check --json x64` pass when touched. Got worse
