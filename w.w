@@ -17,6 +17,8 @@ int main(int argc, int argv):
 			return wdbg_main(argc, argv)
 		if (strcmp(*first_arg, c"check") == 0):
 			return check_main(argc, argv)
+		if (strcmp(*first_arg, c"deps") == 0):
+			return deps_main(argc, argv)
 		if (strcmp(*first_arg, c"symbols") == 0):
 			return symbols_main(argc, argv)
 	link(argc, argv)

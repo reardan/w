@@ -18,12 +18,32 @@ void file_not_found_error():
 	print_error(c"'\x0a")
 
 
+# 'w deps' recording: while deps_mode is set, every file the compiler
+# successfully opens for compilation (the root, every import, and the
+# auto-imported runtime modules) is recorded here so deps_dump() can
+# print the transitive import closure after the compile finishes.
+int deps_mode
+char* deps_paths
+int deps_count
+
+
+void deps_record(char* path):
+	int max_deps = 4000
+	if (deps_paths == 0):
+		deps_paths = malloc(max_deps * __word_size__)
+	assert1(deps_count < max_deps)
+	save_ptr(deps_paths + deps_count * __word_size__, cast(int, strclone(path)))
+	deps_count = deps_count + 1
+
+
 int compile_attempt(char* fn):
 	filename = fn
 	file = open(filename, 0, 511)
 	if (file < 0):
 		file_not_found_error()
 		return 0
+	if (deps_mode):
+		deps_record(filename)
 	getchar_reset(file)
 	line_number = 0
 	column_number = 0
@@ -332,6 +352,77 @@ int check_main(int argc, int argv):
 		println2(c"usage: w check [--json] [x64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
+
+
+/*
+w deps [--json] <file.w>...
+
+Compiles like 'w check' (output to /dev/null), then prints the path of
+every file in the program's transitive import closure — the root file,
+every import, and the auto-imported runtime modules — one per line,
+deduplicated, in the order the compiler first opened them. Paths under
+the invocation directory are printed relative to it (repo-relative when
+run from the repo root); anything else keeps its absolute path. --json
+emits one NDJSON record per file ({"file": "..."}), mirroring
+'w check --json'. Default target only: like 'check', the subcommand does
+not compose with the x64/arm64 arch selectors.
+*/
+
+
+void deps_emit(int json, char* path):
+	if (json):
+		diag_write_cstr(c"{")
+		diag_write_json_field(c"file", path)
+		diag_write_cstr(c"}\x0a")
+	else:
+		diag_write_cstr(path)
+		diag_write_cstr(c"\x0a")
+	diag_flush()
+
+
+void deps_dump(int json):
+	int max_path_size = 4096
+	char* cwd = malloc(max_path_size)
+	getcwd(cwd, max_path_size)
+	int cwd_len = strlen(cwd)
+	int i = 0
+	while (i < deps_count):
+		char* path = cast(char*, load_ptr(deps_paths + i * __word_size__))
+		# Deduplicate on the recorded (absolute) path
+		int duplicate = 0
+		int j = 0
+		while (j < i):
+			char* seen = cast(char*, load_ptr(deps_paths + j * __word_size__))
+			if (strcmp(seen, path) == 0):
+				duplicate = 1
+			j = j + 1
+		if (duplicate == 0):
+			char* shown = path
+			if (starts_with(path, cwd)):
+				if (path[cwd_len] == '/'):
+					shown = path + cwd_len + 1
+			deps_emit(json, shown)
+		i = i + 1
+	free(cwd)
+
+
+int deps_main(int argc, int argv):
+	int i = 2
+	int json = 0
+	diag_json = 0
+	if (i < argc):
+		char** arg = argv + i * __word_size__
+		if (strcmp(*arg, c"--json") == 0):
+			json = 1
+			diag_json = 1
+			i = i + 1
+	if (argc <= i):
+		println2(c"usage: w deps [--json] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		exit(1)
+	deps_mode = 1
+	link_impl(argc, argv, i, 1)
+	deps_dump(json)
+	return 0
 
 
 /*
