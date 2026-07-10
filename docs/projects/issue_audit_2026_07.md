@@ -31,9 +31,15 @@ Three headline findings:
 3. **The genuinely open work clusters well.** A small set of confirmed
    correctness bugs (#223, #228, #229, #189, plus doc-tracked wdbg/repl
    bugs), a mid-size tooling/ergonomics backlog
-   (`ai_tooling_next_steps.md`, #146, #169, #171, #209), and a long tail
+   (`ai_tooling_next_steps.md`, #146, #169, #171), and a long tail
    of epics that need design docs before any implementation (#231, #235,
    #114, #104, #103, backends).
+
+Post-snapshot update: #249 (bit manipulation), #251 (build-system
+directions), and #252 (VCS implementation waves) were filed after the
+audit snapshot. Together with #209 they form a **separate workstream
+running in parallel to this plan** — see §2's "Handled in a parallel
+workstream" subsection and the coordination rules in §3.
 
 ## 2. Prioritized list
 
@@ -69,13 +75,38 @@ Three headline findings:
 | # | Item | Source | Size |
 |---|------|--------|------|
 | 18 | #146 stage 1: `string` → `char*` seam (`cstr(s)` or equivalent) | issue, `template_strings.md` | M |
-| 19 | Diagnostics bundle: "did you mean `\|\|`/`&&`?" on bool `\|`/`&`; hex-literal bit-31 sign-extension warning; `--quiet` for `check --json` | `ai_tooling_next_steps.md` | M |
+| 19 | Diagnostics bundle: "did you mean `\|\|`/`&&`?" on bool `\|`/`&`; `--quiet` for `check --json` (the hex-literal bit-31 warning moved to #249 item 5 — parallel workstream) | `ai_tooling_next_steps.md` | M |
 | 20 | #169: wdbg `disas` command + instruction context at stops | issue, `assembler_disassembler.md` | M–L |
 | 21 | #171: asm property/fuzz round-trip harness + doc flip | issue | M |
-| 22 | #209: `libs/x/unsafe` legacy crypto (md5/sha1/rc4 with RFC vectors) | issue | M |
+| 22 | ~~#209 legacy crypto~~ — removed; in progress in the parallel workstream (see below) | — | — |
 | 23 | Struct method chaining (`p.child().move(1,2)`) | `struct_methods.md`, `grammar/postfix_expr.w` | S–M |
 | 24 | `wtest changed --run` | `ai_tooling_next_steps.md` | S |
 | 25 | #152: default dict — evaluate whether `.get(k, default)` + `.add` already cover it; else small design note first | issue | S |
+
+### Handled in a parallel workstream — excluded from this plan
+
+A separate conversation owns the crypto/bits → VCS/build-integration
+track. Its issues and files are **out of scope for every wave below**:
+
+- **#209** `libs/x/unsafe/` legacy crypto (md5/sha1/rc4) — implementation
+  in progress there.
+- **#249** binary data & bit manipulation (`0b` literals, logical
+  shift-right, `rotl`/`popcount`/`clz`/`ctz` intrinsics,
+  `structures/bitset.w`, plus the hex bit-31 diagnostic) — implementation
+  in progress there.
+- **#252** VCS: `libs/extras/vcs/` in four waves (CAS, diff, DAG,
+  snapshots, `wvc`, delta, merge, sync) + `libs/extras/compress/` — the
+  workstream's end goal, together with…
+- **#251** build system: deps-derived cache keys, `# wbuild:` directive
+  vocabulary, shared CAS build cache (converging on #252's `cas.w`), and
+  the grammar-integrated direction (`wv2 defhash`, definition-granular
+  invalidation).
+
+Files that workstream owns (this plan's subagents must not touch them):
+`libs/x/unsafe/`, `libs/extras/vcs/`, `libs/extras/compress/`,
+`structures/bitset.w`, `grammar/int_literal.w` / `grammar/shift_expr.w`
+and intrinsic lowering for #249, and `tools/wexec` cache-key internals
+for #251.
 
 ### P3 — investigations and environment-gated work
 
@@ -120,6 +151,13 @@ exists mainly to manage them.
   `structures/hash_table.w`, `w_list.w`, `lib/` files they import) — no
   post-seed syntax; every touching PR must pass `./wbuild verify`
   (and `verify_x64`/`verify_arm64` for codegen work).
+- **The parallel workstream (#209/#249/#251/#252)** merges PRs on its own
+  cadence, so `main` moves under this plan's waves. Its #249 work also
+  adds warning fixtures and regenerates `build.json`. Rules: rebase onto
+  fresh `main` immediately before each sequential merge (not once per
+  wave); resolve `build.json` by regeneration as above; if a wave PR and
+  a #249 PR both touch `warning_test` fixtures in the same window, let
+  the #249 PR land first and rebase — never race it.
 
 ## 4. Wave plan
 
@@ -174,15 +212,17 @@ W2a needs `verify`, `verify_x64`, `verify_arm64`. If `cstr` in W2c ends
 up needing new syntax, it also needs `tests/parser_generator/w.pg` and
 must stay out of seed-graph files until a future seed update.
 
-### Wave 3 — features and investigations (5 PRs in parallel)
+### Wave 3 — features and investigations (4 PRs in parallel)
 
 | PR | Item | Notes | Model |
 |----|------|-------|-------|
 | W3a | #169 wdbg `disas` | grows the seed graph with `libs/asm` decode; isolate so a verify regression is attributable | Fable 5 |
 | W3b | #171 asm fuzz harness | deterministic seed; flips `assembler_disassembler.md` to implemented-summary | Sonnet 5 |
-| W3c | #209 `libs/x/unsafe` md5/sha1/rc4 | RFC 1321/3174/6229 vectors; hard rule: nothing under `libs/standard/` imports it | Sonnet 5 |
-| W3d | Item 23 struct method chaining | `grammar/postfix_expr.w` — must land after W1d is merged | Fable 5 |
-| W3e | #236 x64 openssl-interop hang investigation | timebox; deliverable is a fix or a written diagnosis on the issue | Fable 5 |
+| W3c | Item 23 struct method chaining | `grammar/postfix_expr.w` — must land after W1d is merged | Fable 5 |
+| W3d | #236 x64 openssl-interop hang investigation | timebox; deliverable is a fix or a written diagnosis on the issue | Fable 5 |
+
+(#209 legacy crypto was originally slotted here; it moved to the
+parallel workstream, §2.)
 
 ### Wave 4 — stretch (sequential, one at a time)
 
@@ -196,15 +236,21 @@ must stay out of seed-graph files until a future seed update.
 ### Explicitly not in any wave
 
 Everything in P4 (needs design first), #134 (seed update requires the
-Mac + maintainer), and #146 stage 2 (mass f-string/defer migration —
+Mac + maintainer), #146 stage 2 (mass f-string/defer migration —
 conflict-maximizing by nature; run it opportunistically as single-file
-PRs during quiet periods, never inside a wave).
+PRs during quiet periods, never inside a wave), and the parallel
+workstream's issues — #209, #249, #251, #252 (§2), which cover the
+former VCS (`version_control.md`) and build-system
+(`build_system_next.md`) epics end to end.
 
 ## 5. Dependency graph (summary)
 
 - Wave 0 → everything (doc-file conflicts).
-- W1d (#229) → W3d (method chaining): same grammar file.
-- W1e and W2d: both edit warning fixtures — different waves by design.
+- W1d (#229) → W3c (method chaining): same grammar file.
+- W1e and W2d: both edit warning fixtures — different waves by design,
+  and both defer to any in-flight #249 fixture PR (§3).
+- Parallel workstream (#209/#249/#251/#252): no wave PR touches its
+  files (§2 list); rebase before every merge because it moves `main`.
 - W2a (#228) is independent of W1d but both add tests → `build.json`
   regen on rebase.
 - W3a (#169) depends only on already-merged asm work (#165/#167/#168).
