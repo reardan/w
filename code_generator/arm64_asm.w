@@ -15,6 +15,7 @@ import code_generator.code_emitter
 
 
 void sym_define_declare_global_function(char* name); /* defined in symbol_table */
+void sym_define_declare_global_function_arity(char* name, int num_args); /* defined in symbol_table */
 void a64(int w);                                     /* defined in arm64.w */
 
 
@@ -32,7 +33,9 @@ void define_asm_functions_arm64():
 	# and arguments in x0..x2; svc #0 traps. The result (or -errno) is in
 	# x0. Darwin (target_os == 1) wants the number in x16 and svc #0x80,
 	# and its carry-flag error convention is converted to -errno.
-	sym_define_declare_global_function(c"syscall")
+	# The stub reads exactly nr + 3 fixed stack slots, so record its arity:
+	# a call with any other argument count would read garbage slots.
+	sym_define_declare_global_function_arity(c"syscall", 4)
 	if (target_os == 1):
 		a64(op(0xf9, 0x400f90))   # ldr x16,[x28,#24] (nr)
 	else:
@@ -47,7 +50,7 @@ void define_asm_functions_arm64():
 	a64(op(0xd6, 0x5f03c0))   # ret
 
 	# syscall7(nr, a1..a6): arguments in x0..x5.
-	sym_define_declare_global_function(c"syscall7")
+	sym_define_declare_global_function_arity(c"syscall7", 7)
 	if (target_os == 1):
 		a64(op(0xf9, 0x401b90))   # ldr x16,[x28,#48] (nr)
 	else:

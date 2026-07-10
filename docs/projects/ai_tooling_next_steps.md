@@ -139,14 +139,6 @@ is a queue, not an archive.
   content-hash caching on macOS, add per-arch dirent accessors
   (`reclen`/`name`/`kind`) next to each `getdents` shim in
   `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
-- **`syscall()` accepts any arity but lowers exactly nr + 3 args, with
-  no diagnostic.** `syscall(172, 0x59616d61, -1)` compiles clean
-  (`w check` too) but leaves garbage in `eax`, so the kernel returns
-  ENOSYS at runtime. This silently broke `attach_target_fixture.w`'s
-  `PR_SET_PTRACER_ANY` prctl, which made `attach_test` fail on any
-  host with `ptrace_scope=1` (found 2026-07-09 on the `w` ssh box).
-  The builtin knows its own arity — a wrong-argument-count warning
-  (like ordinary functions get) would have caught this at edit time.
 - **wexec is fail-fast; one broken target silently cancels the rest of
   an umbrella run.** During the 2026-07-09 full-suite run, the
   `c_import_test` failure stopped scheduling with 58 of 116 `tests`

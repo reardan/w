@@ -308,12 +308,25 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 
 	if ((expected_args >= 0) & (w_variadic_fixed < 0)):
 		if (passed_args != expected_args):
-			diag_part(c"warning: function '")
+			# Asm runtime stubs that record an arity (syscall, syscall7)
+			# load their arguments from fixed stack slots, so a call with
+			# the wrong argument count silently reads garbage words: reject
+			# it outright instead of warning.
+			int callee_is_stub = 0
+			if (callee_sym >= 0):
+				callee_is_stub = sym_is_asm_stub(callee_sym)
+			if (callee_is_stub):
+				diag_part(c"function '")
+			else:
+				diag_part(c"warning: function '")
 			diag_part(callee_name)
 			diag_part(c"' expects ")
 			diag_part(itoa(expected_args))
 			diag_part(c" arguments, got ")
-			warning(itoa(passed_args))
+			if (callee_is_stub):
+				error(itoa(passed_args))
+			else:
+				warning(itoa(passed_args))
 	if (callee_name != 0):
 		free(callee_name)
 
