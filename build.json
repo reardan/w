@@ -327,6 +327,14 @@
 			]
 		},
 		{
+			"name": "repl_warning_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "repl.w", "-o", "bin/repl_warning_check"], "reject_stderr": "warning:"},
+				{"cmd": ["bin/wv2", "x64", "repl.w", "-o", "bin/repl_warning_check_64"], "reject_stderr": "warning:"}
+			]
+		},
+		{
 			"name": "float_abi_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -797,7 +805,7 @@
 				{"cmd": ["bin/wtest", "changed", "unknown/new_file.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wtest_map_test\nmetadata_check\ntests\n"},
 				{"cmd": ["bin/wtest", "changed"], "stdin": "lib/stream.w\n", "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nwexec_win\nbuffer_field_assign_test\narray_error_test\nwarning_test\nmissing_file_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nparser_generator_test\nparser_generator_w_test\nparser_generator_c_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwfixture\nwtest_map_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nnet_darwin\nwdbg\nwdbg_x64\ndebug_test\ndebug_test_x64\nattach_test\nrepl_test\nrepl_test_x64\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\ngrapheme_data\nrewrite_c_strings\nc_preprocessor_test\ndns_64_test\ndns_test\nfile_test\nhttp_client_64_test\nhttp_client_test\nretry_64_test\nretry_test\nsse_64_test\nsse_test\nstream_64_test\nstream_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nwexec_win\nbuffer_field_assign_test\narray_error_test\nwarning_test\nmissing_file_test\nrepl_warning_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nparser_generator_test\nparser_generator_w_test\nparser_generator_c_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwfixture\nwtest_map_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nnet_darwin\nwdbg\nwdbg_x64\ndebug_test\ndebug_test_x64\nattach_test\nrepl_test\nrepl_test_x64\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\ngrapheme_data\nrewrite_c_strings\nc_preprocessor_test\ndns_64_test\ndns_test\nfile_test\nhttp_client_64_test\nhttp_client_test\nretry_64_test\nretry_test\nsse_64_test\nsse_test\nstream_64_test\nstream_test\n"},
 				{"cmd": ["bin/wtest", "changed", "lib/file.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nwexec_win\nbuffer_field_assign_test\narray_error_test\nwarning_test\nmissing_file_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nparser_generator_w_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwfixture\nwtest_map_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nnet_darwin\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\nrewrite_c_strings\ndns_64_test\ndns_test\nfile_test\nhttp_client_64_test\nhttp_client_test\nretry_64_test\nretry_test\nsse_64_test\nsse_test\nstream_64_test\nstream_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tools/wexec.w", "tests/wexec/good.json"], "stdout_file": "bin/wtest_map.out"},
@@ -1667,6 +1675,7 @@
 				"symbols_test",
 				"deps_test",
 				"self_host_warning_test",
+				"repl_warning_test",
 				"int64_x86_error_test",
 				"type_system_error_test",
 				"type_system_warning_test",
