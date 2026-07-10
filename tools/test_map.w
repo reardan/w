@@ -103,6 +103,9 @@ void wtest_init_targets():
 	wtest_targets.push(c"list_methods_test")
 	wtest_targets.push(c"str_test")
 	wtest_targets.push(c"math_test")
+	wtest_targets.push(c"crypto_bignum_test")
+	wtest_targets.push(c"crypto_rsa_verify_test")
+	wtest_targets.push(c"crypto_ecdsa_p256_test")
 	wtest_targets.push(c"fmath_test")
 	wtest_targets.push(c"fmath_64_test")
 	wtest_targets.push(c"stats_test")
@@ -487,6 +490,19 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"metadata_test")
 	else if (starts_with(path, c"tests/metadata/")):
 		wtest_add(path, c"metadata_test")
+	else if (starts_with(path, c"libs/standard/crypto/")):
+		# bignum underlies rsa_verify and ecdsa_p256, so a bignum change runs
+		# all three crypto targets; the higher-level modules run only their own.
+		if (starts_with(path, c"libs/standard/crypto/bignum")):
+			wtest_add(path, c"crypto_bignum_test")
+			wtest_add(path, c"crypto_rsa_verify_test")
+			wtest_add(path, c"crypto_ecdsa_p256_test")
+		else if (starts_with(path, c"libs/standard/crypto/rsa_verify")):
+			wtest_add(path, c"crypto_rsa_verify_test")
+		else if (starts_with(path, c"libs/standard/crypto/ecdsa_p256")):
+			wtest_add(path, c"crypto_ecdsa_p256_test")
+		else:
+			wtest_add(path, c"tests")
 	else if ((strcmp(path, c"build.json") == 0) | (strcmp(path, c"wbuild") == 0)):
 		# The manifest and bootstrap script drive the whole W-native
 		# build, so changes there get the full suite too.

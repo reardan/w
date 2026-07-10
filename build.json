@@ -1069,6 +1069,34 @@
 			]
 		},
 		{
+			"name": "crypto_bignum_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/bignum_test.w", "-o", "bin/crypto_bignum_test"]},
+				{"cmd": ["bin/crypto_bignum_test"]},
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/bignum_test.w", "-o", "bin/crypto_bignum_test_x64"]},
+				{"cmd": ["bin/crypto_bignum_test_x64"]}
+			]
+		},
+		{
+			"name": "crypto_rsa_verify_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_test"]},
+				{"cmd": ["bin/crypto_rsa_verify_test"]},
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_test_x64"]},
+				{"cmd": ["bin/crypto_rsa_verify_test_x64"]}
+			]
+		},
+		{
+			"name": "crypto_ecdsa_p256_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/ecdsa_p256_test.w", "-o", "bin/crypto_ecdsa_p256_test"]},
+				{"cmd": ["bin/crypto_ecdsa_p256_test"]}
+			]
+		},
+		{
 			"name": "switch_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2741,6 +2769,9 @@
 				"x25519_test",
 				"x25519_64_test",
 				"x25519_iterated_test",
+				"crypto_bignum_test",
+				"crypto_rsa_verify_test",
+				"crypto_ecdsa_p256_test",
 				"switch_test",
 				"for_container_test",
 				"default_args_test",
