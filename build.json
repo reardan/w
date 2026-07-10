@@ -917,6 +917,38 @@
 			]
 		},
 		{
+			"name": "crypto_base64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_test"]},
+				{"cmd": ["bin/crypto_base64_test"]}
+			]
+		},
+		{
+			"name": "crypto_base64_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_64_test"]},
+				{"cmd": ["bin/crypto_base64_64_test"]}
+			]
+		},
+		{
+			"name": "crypto_random_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_test"]},
+				{"cmd": ["bin/crypto_random_test"]}
+			]
+		},
+		{
+			"name": "crypto_random_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_64_test"]},
+				{"cmd": ["bin/crypto_random_64_test"]}
+			]
+		},
+		{
 			"name": "switch_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2379,6 +2411,8 @@
 				"args_64_test",
 				"fmath_64_test",
 				"stats_64_test",
+				"crypto_base64_64_test",
+				"crypto_random_64_test",
 				"repl_test_x64",
 				"debug_test_x64",
 				"graphics_math_64_test",
@@ -2570,6 +2604,8 @@
 				"fmath_test",
 				"stats_test",
 				"sha256_test",
+				"crypto_base64_test",
+				"crypto_random_test",
 				"switch_test",
 				"for_container_test",
 				"default_args_test",

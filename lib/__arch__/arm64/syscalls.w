@@ -214,6 +214,11 @@ int sys_recvfrom(int sockfd, char* buf, int len, int flags, int addr, int addrle
 int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
 	return syscall7(208, sockfd, level, optname, optval, optlen, 0)
 
+# getrandom (278): fills buf with up to buflen bytes from the kernel
+# CSPRNG. flags 0 blocks until the entropy pool is initialized.
+int sys_getrandom(char* buf, int buflen, int flags):
+	return syscall(278, buf, buflen, flags)
+
 # exit_group: terminates every thread in the process, like libc exit().
 void exit(int error_code):
 	syscall(94, error_code, 0, 0)

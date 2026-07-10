@@ -325,6 +325,11 @@ int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
 	args.optlen = optlen
 	return syscall(102, 14, &args, 0)
 
+# getrandom (355): fills buf with up to buflen bytes from the kernel
+# CSPRNG. flags 0 blocks until the entropy pool is initialized.
+int sys_getrandom(char* buf, int buflen, int flags):
+	return syscall(355, buf, buflen, flags)
+
 # exit_group: terminates every thread in the process, like libc exit().
 void exit(int error_code):
 	syscall(252, error_code, 0, 0)
