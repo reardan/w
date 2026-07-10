@@ -1267,6 +1267,13 @@ int wdbg_main(int argc, int argv):
 		define_asm_functions_x64()
 	else:
 		define_asm_functions()
+	# The container runtime next, exactly like link_impl: built-in
+	# list/map/set lower to __w_list_*/__w_hash_* helper calls, so the
+	# first 'new list[T]' in the debuggee dies in sym_get_value (with a
+	# misleading message naming the lookahead token) unless the helpers
+	# are preloaded here too.
+	import_module(c"structures.hash_table")
+	import_module(c"structures.w_list")
 	compile_input_file(target)
 	# On-demand runtimes for to_json/from_json and f"..." template
 	# strings used by the debuggee, plus its queued generic
