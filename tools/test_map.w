@@ -139,6 +139,9 @@ void wtest_init_targets():
 	wtest_targets.push(c"hmac_64_test")
 	wtest_targets.push(c"hkdf_test")
 	wtest_targets.push(c"hkdf_64_test")
+	wtest_targets.push(c"http_client_test")
+	wtest_targets.push(c"http_client_64_test")
+	wtest_targets.push(c"net_darwin")
 	wtest_targets.push(c"tests")
 
 
@@ -205,6 +208,12 @@ void wtest_map_lib(char* path):
 	if (starts_with(path, c"lib/__arch__/")):
 		wtest_add(path, c"lib_test")
 		wtest_add(path, c"lib_64_test")
+		if (ends_with(path, c"/socket_abi.w")):
+			# Per-target socket ABI feeds lib/net.w and everything on it.
+			wtest_add(path, c"net_test")
+			wtest_add(path, c"http_client_test")
+			wtest_add(path, c"http_client_64_test")
+			wtest_add(path, c"net_darwin")
 	else if (strcmp(path, c"lib/path.w") == 0):
 		wtest_add(path, c"path_test")
 	else if (strcmp(path, c"lib/time.w") == 0):
@@ -214,6 +223,9 @@ void wtest_map_lib(char* path):
 	else if (strcmp(path, c"lib/net.w") == 0):
 		wtest_add(path, c"net_test")
 		wtest_add(path, c"poll_test")
+		wtest_add(path, c"http_client_test")
+		wtest_add(path, c"http_client_64_test")
+		wtest_add(path, c"net_darwin")
 	else if (strcmp(path, c"lib/poll.w") == 0):
 		wtest_add(path, c"poll_test")
 	else if (strcmp(path, c"lib/framing.w") == 0):
@@ -368,6 +380,11 @@ void wtest_map_path(char* path):
 	else if (starts_with(path, c"libs/standard/net/dns")):
 		wtest_add(path, c"dns_test")
 		wtest_add(path, c"dns_64_test")
+	else if (starts_with(path, c"libs/standard/web/http_client")):
+		wtest_add(path, c"http_client_test")
+		wtest_add(path, c"http_client_64_test")
+	else if (strcmp(path, c"tests/net_darwin_smoke_test.w") == 0):
+		wtest_add(path, c"net_darwin")
 	else if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add_c_import(path)
 	else if (starts_with(path, c"libs/extras/parser_generator/") | (strcmp(path, c"tools/parser_generator.w") == 0)):

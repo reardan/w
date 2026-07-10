@@ -1,7 +1,12 @@
 import lib.linux
 import lib.memory
+import lib.__arch__.socket_abi
 
 
+# 16 bytes on the wire. The leading 16-bit field is sin_family on
+# Linux and sin_len + sin_family bytes on Darwin; always write it with
+# socket_abi_family_word and read it with sockaddr_in_family so both
+# layouts work (issue #200 darwin socket audit).
 struct sockaddr_in:
 	int16 family
 	uint16 port
@@ -27,11 +32,27 @@ int sock_dgram():
 
 
 int sol_socket():
-	return 1
+	return socket_abi_sol_socket()
 
 
 int so_reuseaddr():
-	return 2
+	return socket_abi_so_reuseaddr()
+
+
+# send/sendto flag suppressing SIGPIPE on a closed peer; 0 on targets
+# without one (Darwin uses socket_set_nosigpipe instead).
+int msg_nosignal():
+	return socket_abi_msg_nosignal()
+
+
+# EAGAIN/EINPROGRESS as positive numbers for the current target
+# (Linux 11/115, Darwin 35/36); syscalls return them negated.
+int net_eagain():
+	return socket_abi_eagain()
+
+
+int net_einprogress():
+	return socket_abi_einprogress()
 
 
 int sockaddr_in_size():
@@ -51,11 +72,17 @@ int net_htonl(int value):
 
 
 void sockaddr_in_init(sockaddr_in* addr, int ip_address, int port):
-	addr.family = af_inet()
+	addr.family = socket_abi_family_word(af_inet())
 	addr.port = net_htons(port)
 	addr.ip_address = net_htonl(ip_address)
 	addr.zero1 = 0
 	addr.zero2 = 0
+
+
+# Address family of a sockaddr_in filled by the kernel or by
+# sockaddr_in_init, independent of the target's leading-field layout.
+int sockaddr_in_family(sockaddr_in* addr):
+	return socket_abi_family_from_word(addr.family & 65535)
 
 
 int socket_ipv4(int socket_type):
@@ -118,6 +145,11 @@ int socket_send_to_ipv4(int sockfd, char* buf, int len, int flags, int ip_addres
 	return sys_sendto(sockfd, buf, len, flags, &addr, sockaddr_in_size())
 
 
+# send(2) on a connected socket (sendto with no address).
+int socket_send(int sockfd, char* buf, int len, int flags):
+	return sys_sendto(sockfd, buf, len, flags, 0, 0)
+
+
 int socket_recv(int sockfd, char* buf, int len, int flags):
 	return sys_recv(sockfd, buf, len, flags)
 
@@ -138,13 +170,23 @@ int f_setfl():
 
 
 int o_nonblock():
-	return 2048
+	return socket_abi_o_nonblock()
 
 
-# After this, read/recv on an empty descriptor returns -EAGAIN (-11)
-# instead of blocking.
+# After this, read/recv on an empty descriptor returns -EAGAIN
+# (-net_eagain()) instead of blocking.
 int socket_set_nonblocking(int sockfd):
 	int flags = sys_fcntl(sockfd, f_getfl(), 0)
 	if (flags < 0):
 		return flags
 	return sys_fcntl(sockfd, f_setfl(), flags | o_nonblock())
+
+
+# Disables SIGPIPE for the whole socket on targets that support it
+# (Darwin SO_NOSIGPIPE). A no-op returning 0 on Linux, where callers
+# pass msg_nosignal() to socket_send instead.
+int socket_set_nosigpipe(int sockfd):
+	if (socket_abi_so_nosigpipe() == 0):
+		return 0
+	int enabled = 1
+	return sys_setsockopt(sockfd, sol_socket(), socket_abi_so_nosigpipe(), &enabled, 4)

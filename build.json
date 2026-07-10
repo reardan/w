@@ -1785,6 +1785,29 @@
 			]
 		},
 		{
+			"name": "http_client_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/http_client_test.w", "-o", "bin/http_client_test"]},
+				{"cmd": ["bin/http_client_test"]}
+			]
+		},
+		{
+			"name": "http_client_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/http_client_test.w", "-o", "bin/http_client_64_test"]},
+				{"cmd": ["bin/http_client_64_test"]}
+			]
+		},
+		{
+			"name": "net_darwin",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/net_darwin_smoke_test.w", "-o", "bin/net_darwin_smoke_test"]}
+			]
+		},
+		{
 			"name": "framing_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2558,6 +2581,7 @@
 				"poll_64_test",
 				"urlparse_64_test",
 				"dns_64_test",
+				"http_client_64_test",
 				"framing_64_test",
 				"dynamic_test_x64",
 				"extern_alias_test_x64",
@@ -2853,6 +2877,7 @@
 				"poll_test",
 				"urlparse_test",
 				"dns_test",
+				"http_client_test",
 				"framing_test",
 				"event_loop_test",
 				"task_test",
@@ -2868,6 +2893,7 @@
 				"extern_data_test",
 				"graphics_math_test",
 				"graphics_darwin",
+				"net_darwin",
 				"pac_flag_test",
 				"pac_darwin",
 				"test",

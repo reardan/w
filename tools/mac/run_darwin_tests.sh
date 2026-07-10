@@ -20,7 +20,11 @@ cd "$(dirname "$0")/../.."
 tests="$*"
 must_die=""
 if [ -z "$tests" ]; then
-	tests="bin/hello_darwin bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin bin/pac_full_darwin_test"
+	# bin/net_darwin_smoke_test comes from `./wbuild net_darwin` (issue
+	# #200): loopback socket + plaintext HTTP smoke for the Darwin
+	# sockaddr/socket-ABI fixes. Linux CI only cross-compiles it; this
+	# script is where it actually runs.
+	tests="bin/hello_darwin bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin bin/pac_full_darwin_test bin/net_darwin_smoke_test"
 	# arm64e corruption fixtures (./wbuild pac_darwin): pointer authentication
 	# is enforced natively, so these MUST die by signal before reaching
 	# their NOT REACHED print.

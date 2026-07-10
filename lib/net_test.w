@@ -18,11 +18,24 @@ void test_net_byte_order():
 void test_sockaddr_in_init():
 	sockaddr_in addr
 	sockaddr_in_init(&addr, ip4_from_string(c"127.0.0.1"), 7777)
+	# Raw Linux layout: the leading 16-bit field is sin_family itself.
 	assert_equal(af_inet(), addr.family)
+	# The layout-independent accessor agrees (issue #200 darwin audit).
+	assert_equal(af_inet(), sockaddr_in_family(&addr))
 	assert_equal_hex(24862, addr.port)
 	assert_equal_hex(16777343, addr.ip_address)
 	assert_equal(0, addr.zero1)
 	assert_equal(0, addr.zero2)
+
+
+void test_socket_abi_linux_values():
+	# Linux socket ABI values must be unchanged by the per-arch split.
+	assert_equal(1, sol_socket())
+	assert_equal(2, so_reuseaddr())
+	assert_equal(2048, o_nonblock())
+	assert_equal(16384, msg_nosignal())
+	assert_equal(11, net_eagain())
+	assert_equal(115, net_einprogress())
 
 
 void test_socketpair_round_trip():
@@ -123,6 +136,25 @@ void test_socket_recv_stream():
 	free(fds)
 
 
+void test_socket_send_stream():
+	int* fds = malloc(__word_size__ * 2)
+	assert_syscall_ok(c"socket_pair", socket_pair(fds))
+
+	char* want = c"ping"
+	assert_equal(strlen(want), socket_send(fds[0], want, strlen(want), msg_nosignal()))
+
+	char* got = malloc(16)
+	int received = socket_recv(fds[1], got, 16, 0)
+	assert_equal(strlen(want), received)
+	got[received] = 0
+	assert_strings_equal(want, got)
+
+	close(fds[0])
+	close(fds[1])
+	free(got)
+	free(fds)
+
+
 void test_udp_recvfrom_loopback():
 	int loopback = ip4_from_string(c"127.0.0.1")
 
@@ -147,6 +179,7 @@ void test_udp_recvfrom_loopback():
 	got[received] = 0
 	assert_strings_equal(message, got)
 	assert_equal(af_inet(), from_addr.family)
+	assert_equal(af_inet(), sockaddr_in_family(&from_addr))
 
 	close(sender)
 	close(receiver)
