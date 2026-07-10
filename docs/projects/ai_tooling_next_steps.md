@@ -17,13 +17,6 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
-- **Garbled `file` field on unresolvable paths.** Reproduce:
-  `./bin/wv2 check --json lib/does_not_exist_anywhere.w` emits
-  `{"file": "l\\\u0010\u0008\u0017", "line": 0, ...,
-  "message": "filesystem root reached, abandoning search"}` — the
-  file-not-found path serializes a corrupt/uninitialized filename buffer
-  into the JSON record. Fix the buffer handling in the upward-search
-  error path (`compiler/compiler.w` / `compiler/diagnostics.w`).
 - **Array-to-pointer decay is a warning but generates corrupting code.**
   Found during the buffered-getchar work (issue #113, 2026-07-09):
   passing a fixed array (`char[8192] buf`) where a `char*` parameter is
@@ -153,14 +146,6 @@ is a queue, not an archive.
   content-hash caching on macOS, add per-arch dirent accessors
   (`reclen`/`name`/`kind`) next to each `getdents` shim in
   `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
-- **Nonexistent input files produce a garbled directory-walk error.**
-  `wv2 <typo>.w` prints `file ... not found error '-2'`, walks up
-  directories, and at the filesystem root prints "abandoning search
-  in" followed by garbage bytes (observed on arm64_darwin while
-  bringing up the PAC tests, 2026-07-09; the misspelled path was
-  `tests/hash_table_test.w` for `structures/hash_table_test.w`). A
-  plain "no such file: <path>" before the import-search walk would
-  have saved the confusion.
 - **`syscall()` accepts any arity but lowers exactly nr + 3 args, with
   no diagnostic.** `syscall(172, 0x59616d61, -1)` compiles clean
   (`w check` too) but leaves garbage in `eax`, so the kernel returns

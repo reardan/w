@@ -1267,7 +1267,7 @@ int wdbg_main(int argc, int argv):
 		define_asm_functions_x64()
 	else:
 		define_asm_functions()
-	compile_file(target)
+	compile_input_file(target)
 	# On-demand runtimes for to_json/from_json and f"..." template
 	# strings used by the debuggee, plus its queued generic
 	# instantiations

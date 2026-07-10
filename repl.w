@@ -654,7 +654,7 @@ int main(int argc, int argv):
 				target = args_get(i)
 		i = i + 1
 	if (target != 0):
-		compile_file(target)
+		compile_input_file(target)
 		# Resolve the deferred runtimes the file may have used (print
 		# builtin, f-strings, json codec, var) before running its main:
 		# the call sites go through backpatch chains until the modules

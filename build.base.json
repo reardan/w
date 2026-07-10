@@ -264,6 +264,16 @@
 			]
 		},
 		{
+			"name": "missing_file_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/no_such_file_typo.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "no such file: 'tests/no_such_file_typo.w'", "reject_stderr": ["went up one directory", "not found error"]},
+				{"cmd": ["bin/wv2", "check", "--json", "tests/no_such_file_typo.w"], "expect_fail": true, "expect_stdout": ["\"file\": \"tests/no_such_file_typo.w\"", "\"severity\": \"error\"", "\"message\": \"no such file: 'tests/no_such_file_typo.w'\""]},
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/missing_import_fixture.w"]},
+				{"cmd": ["sh", "-c", "wv2=$(pwd)/bin/wv2; tmp=$(mktemp -d); printf 'int main():\\n\\treturn 0\\n' > \"$tmp/prog.w\"; cd \"$tmp\"; \"$wv2\" prog.w -o /dev/null; status=$?; cd /; rm -rf \"$tmp\"; exit $status"], "expect_fail": true, "expect_stderr": "cannot locate 'structures/hash_table.w' (searched the current directory and every parent)", "reject_stderr": ["went up one directory", "not found error"]}
+			]
+		},
+		{
 			"name": "symbols_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -765,9 +775,9 @@
 				{"cmd": ["bin/wtest", "changed", "unknown/new_file.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wtest_map_test\nmetadata_check\ntests\n"},
 				{"cmd": ["bin/wtest", "changed"], "stdin": "lib/stream.w\n", "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nbuffer_field_assign_test\narray_error_test\nwarning_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nparser_generator_test\nparser_generator_w_test\nparser_generator_c_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwfixture\nwtest_map_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nnet_darwin\nwdbg\nwdbg_x64\ndebug_test\ndebug_test_x64\nattach_test\nrepl_test\nrepl_test_x64\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\ngrapheme_data\nrewrite_c_strings\nc_preprocessor_test\ndns_64_test\ndns_test\nfile_test\nhttp_client_64_test\nhttp_client_test\nretry_64_test\nretry_test\nsse_64_test\nsse_test\nstream_64_test\nstream_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nbuffer_field_assign_test\narray_error_test\nwarning_test\nmissing_file_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nparser_generator_test\nparser_generator_w_test\nparser_generator_c_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwfixture\nwtest_map_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nnet_darwin\nwdbg\nwdbg_x64\ndebug_test\ndebug_test_x64\nattach_test\nrepl_test\nrepl_test_x64\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\ngrapheme_data\nrewrite_c_strings\nc_preprocessor_test\ndns_64_test\ndns_test\nfile_test\nhttp_client_64_test\nhttp_client_test\nretry_64_test\nretry_test\nsse_64_test\nsse_test\nstream_64_test\nstream_test\n"},
 				{"cmd": ["bin/wtest", "changed", "lib/file.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nbuffer_field_assign_test\narray_error_test\nwarning_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nparser_generator_w_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwfixture\nwtest_map_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nnet_darwin\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\nrewrite_c_strings\ndns_64_test\ndns_test\nfile_test\nhttp_client_64_test\nhttp_client_test\nretry_64_test\nretry_test\nsse_64_test\nsse_test\nstream_64_test\nstream_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nbuffer_field_assign_test\narray_error_test\nwarning_test\nmissing_file_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nparser_generator_w_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwfixture\nwtest_map_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nnet_darwin\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\nrewrite_c_strings\ndns_64_test\ndns_test\nfile_test\nhttp_client_64_test\nhttp_client_test\nretry_64_test\nretry_test\nsse_64_test\nsse_test\nstream_64_test\nstream_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tools/wexec.w", "tests/wexec/good.json"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nparser_generator_w_test\nwtest_map_test\nwexec_test\n"},
 				{"cmd": ["bin/wtest", "changed", "build.json"], "stdout_file": "bin/wtest_map.out"},
@@ -1567,6 +1577,7 @@
 				"warning_test",
 				"strict_mode_test",
 				"check_json_test",
+				"missing_file_test",
 				"symbols_test",
 				"deps_test",
 				"self_host_warning_test",
