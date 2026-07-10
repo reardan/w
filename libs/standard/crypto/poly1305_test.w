@@ -1,3 +1,4 @@
+# wbuild: x64
 /*
 RFC 8439 test vectors for libs/standard/crypto/poly1305.w: section 2.5.2
 and the appendix A.3 vectors, which deliberately exercise the reduction

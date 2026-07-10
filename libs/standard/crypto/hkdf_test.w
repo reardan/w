@@ -1,3 +1,4 @@
+# wbuild: x64
 /*
 HKDF against RFC 5869 test cases 1-3 (SHA-256: basic, maximal-length
 inputs, zero-length salt/info), an HKDF-SHA-384 cross-check (RFC 5869 has

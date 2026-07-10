@@ -1,3 +1,4 @@
+# wbuild: x64
 # Offline tests for libs/standard/web/retry.w (issue #202). Everything
 # here is pure computation - retryability, exponential backoff and its
 # cap, full-jitter bounds, Retry-After in both delta-seconds and

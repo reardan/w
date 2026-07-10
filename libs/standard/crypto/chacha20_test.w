@@ -1,3 +1,4 @@
+# wbuild: x64
 /*
 RFC 8439 test vectors for libs/standard/crypto/chacha20.w: the block
 function (section 2.3.2 and appendix A.1) and stream encryption (section

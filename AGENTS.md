@@ -19,7 +19,14 @@ Standard commands live in `build.json` (targets, not duplicated here):
 `docs/projects/wexec.md`): target list via `./wbuild --list`, independent
 targets run in parallel (`-j N` overrides the CPU-count default), toolchain
 targets are content-hash-cached (`--no-cache` forces reruns; stamps live in
-`bin/.wexec_cache/`, `rm -rf bin` resets everything). Interactive
+`bin/.wexec_cache/`, `rm -rf bin` resets everything). `build.json` is
+generated, not hand-edited: `./wbuild manifest` rebuilds it from the
+hand-maintained `build.base.json` plus every conventional `*_test.w`
+source (a `# wbuild: x64` directive in the source adds the 64-bit twin),
+and `./wbuild manifest_check` (in `tests`) fails on drift. To add a plain
+test: create the `_test.w` file and run `./wbuild manifest`; only tests
+with irregular steps or expectations get hand-written targets in
+`build.base.json`. Interactive
 conveniences (debuggers, `stap` traces, hand-testing servers) are manual
 one-liners, listed in README's "Build, verify, test" section — wexec
 captures step stdio, so it cannot host a live prompt or a

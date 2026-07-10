@@ -1,4 +1,5 @@
 import lib.testing
+# wbuild: x64
 
 /*
 Go-style 'defer' statements (docs/projects/defer.md): deferred simple

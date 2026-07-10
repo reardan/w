@@ -1,3 +1,4 @@
+# wbuild: x64
 # Offline tests for libs/standard/web/sse.w (issue #202). Every event
 # stream is served by a forked pure-W fixture server on a loopback
 # ephemeral port (the http_client_test.w pattern), and the parent drives

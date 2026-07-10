@@ -1,3 +1,4 @@
+# wbuild: x64
 # Tests for the cooperative task runtime (lib/task.w): scheduling,
 # suspension at arbitrary call depth, timers, fd wakeups, join,
 # cancellation-as-resume, timeouts and deadlock detection.

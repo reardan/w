@@ -1,3 +1,4 @@
+# wbuild: x64
 # Offline tests for libs/standard/net/dns.w (issue #198). Wire-format
 # coverage runs against hand-built byte fixtures; /etc/hosts and
 # resolv.conf parsing runs against fixture strings and files under

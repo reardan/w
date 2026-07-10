@@ -1,3 +1,4 @@
+# wbuild: x64
 import lib.testing
 import lib.net
 import lib.framing

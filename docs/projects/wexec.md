@@ -26,6 +26,10 @@ being compiled by the toolchain it is building.
   `wexec` targets (rebuilding either only when their input hashes
   changed) and then execs `bin/wexec "$@"`. Everything after that is
   manifest-driven. `rm -rf bin` resets the world.
+- `build.base.json` + `tools/wbuildgen.w` — the hand-maintained half of
+  the manifest and the generator that expands it into `build.json`
+  (which stays committed, so `wbuild`'s bootstrap needs no change).
+  See "Manifest generation" below.
 
 ## Manifest format
 
@@ -64,6 +68,61 @@ the manifest into the fixtures themselves as `# expect_stderr:`-style
 header directives; the manifest step is a single `bin/wfixture`
 invocation (`tools/wfixture.w`, same substring semantics as the step
 fields it replaces).
+
+## Manifest generation
+
+Most test targets are pure boilerplate — "compile `dir/X_test.w` to
+`bin/X_test` with `bin/wv2`, run it" — and hand-writing them (112 of
+the 248 targets at the time of the split) meant every new test touched
+a 3000-line JSON file. `tools/wbuildgen.w` generates them instead:
+
+- `build.base.json` (committed, hand-maintained) holds everything
+  irregular: the toolchain targets (`wv2`/`wexec`/`build`/`verify`/
+  `update` and the darwin triad), fixture targets, anything with
+  `expect_*`/`reject_*` fields, `stdin`, `timeout_ms`, extra steps, or
+  an unconventional name, plus the umbrella targets' irregular members.
+- `build.json` (still committed, still what `wbuild`/`wexec` read, so
+  the bootstrap script is untouched) is GENERATED: `./wbuild manifest`
+  runs `bin/wbuildgen`, which copies the base targets verbatim (order
+  and field order preserved), walks tests/, lib/, structures/,
+  graphics/, libs/ and tools/ with the same getdents walk wexec uses
+  for directory inputs, and appends one conventional compile+run
+  target per `*_test.w` source, sorted by name. A `# wbuild: x64`
+  directive line in a source also appends the `X_64_test` twin
+  compiling the same file with the `x64` argument.
+- Precedence: base wins by name (a hand-written `X_test` in base
+  suppresses generation for that name — how a test with extra fixture
+  steps keeps a hand-written 32-bit target while its x64 twin is
+  generated), and sources listed in base's `"generate": {"exclude":
+  [...]}` are skipped entirely (sources whose targets live in base
+  under unconventional names — `crypto_base64_test` for
+  `base64_test.w`, the pac/darwin compile-only fixtures, and the
+  parser-generator outputs, which are regenerated-and-diffed and so
+  cannot carry directives). The `"generate"` key is not copied into
+  `build.json`.
+- Umbrellas: generated 32-bit targets are appended (sorted) to
+  `tests`'s deps and generated twins to `tests_x64`'s, except names
+  already pinned by an explicit mention in a step-less base target's
+  deps — that is how `sha2_64_test`/`hmac_64_test`/`hkdf_64_test`/
+  `x25519_64_test` keep their historical membership in `tests`.
+- Determinism: the walk result is sorted, generated targets are
+  appended sorted, and the serializer is fixed-format, so the same
+  tree always produces byte-identical `build.json`.
+- `./wbuild manifest_check` (a member of `tests`, following
+  `metadata_check`'s precedent) regenerates to `bin/build.json.gen`,
+  byte-compares against the committed `build.json`, and fails with a
+  per-target drift summary — the CI gate that keeps the committed
+  manifest in sync. `tools/test_map.w` maps `build.base.json`,
+  `tools/wbuildgen.w`, and every `*_test.w` change to it.
+
+Adding a plain test is therefore: create the `_test.w` file (plus the
+`# wbuild: x64` line if it should run on x64 too), `./wbuild manifest`,
+commit both the source and the regenerated `build.json`. The migration
+that introduced the split was verified lossless: a JSON-normalizing
+comparison showed the regenerated manifest identical to the hand-written
+one, target for target (umbrella deps compared as sets), with the only
+deltas being the three new targets and `tests` gaining
+`manifest_check`.
 
 ## Caching
 

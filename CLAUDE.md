@@ -137,12 +137,20 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
   for a fixture whose exact bytes are the test). Targets that also run
   the produced binary keep `expect_stderr`/`expect_fail` fields on their
   `build.json` steps.
-- A new end-to-end test needs: `tests/foo_test.w` (use `lib/assert.w` /
-  `lib/testing.w`), a target in `build.json`, and membership in the `tests`
-  umbrella target. `bin/wtest` picks the target up automatically from the
-  manifest (literal step references + import closures); a `tools/test_map.w`
-  residue rule is only needed for coupling the import graph cannot see
-  (run-time data files, non-default-arch modules).
+- A new end-to-end test is just the source file: create `tests/foo_test.w`
+  (use `lib/assert.w` / `lib/testing.w`), add a `# wbuild: x64` directive
+  line if it should also run as a 64-bit `foo_64_test` twin, and run
+  `./wbuild manifest`. `build.json` is GENERATED (but committed):
+  `tools/wbuildgen.w` derives every conventional compile+run test target
+  from the tree and merges it with the hand-maintained `build.base.json`
+  (toolchain, fixture, and irregular targets), including `tests` /
+  `tests_x64` umbrella membership; `./wbuild manifest_check` (part of
+  `tests`) fails CI on drift, so never edit `build.json` by hand. A test
+  needing extra steps or `expect_*` assertions gets a hand-written target
+  in `build.base.json` instead. `bin/wtest` picks targets up automatically
+  from the manifest (literal step references + import closures); a
+  `tools/test_map.w` residue rule is only needed for coupling the import
+  graph cannot see (run-time data files, non-default-arch modules).
 - The agent tooling here is dogfooded: if you hit friction or bugs in
   `w check`, `wtest`, or the other agent-facing surfaces, add an entry to
   `docs/projects/ai_tooling_next_steps.md` in the same PR. (The LSP/MCP/

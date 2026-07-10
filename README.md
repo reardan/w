@@ -85,8 +85,12 @@ test; none needs it today.)
 in W) and runs targets from `build.json` — `./wbuild --list` shows them
 all. Targets run in parallel (`-j N` to override the CPU-count default)
 and toolchain targets are skipped via content-hash caching when their
-sources are unchanged (`--no-cache` forces reruns). Design notes in
-`docs/projects/wexec.md`.
+sources are unchanged (`--no-cache` forces reruns). `build.json` itself
+is generated (but committed): `./wbuild manifest` rebuilds it from the
+hand-maintained `build.base.json` plus every conventional `*_test.w`
+source in the tree, and `./wbuild manifest_check` (part of `tests`)
+fails when the committed file has drifted — never edit `build.json` by
+hand. Design notes in `docs/projects/wexec.md`.
 
 wexec captures each step's stdout/stderr to check expectations, so it
 cannot host a live prompt, a full-screen debugger, or a
@@ -132,7 +136,7 @@ stock x86-64 system.
 | `debugger/` | `wdbg`, an in-process SIGTRAP debugger driven by `debugger` statements |
 | `tests/` | End-to-end test programs and compile-only warning fixtures |
 | `docs/` | Design notes; `docs/projects/` holds larger design docs |
-| `wbuild`, `build.json`, `tools/wexec.w` | The build system: W-native manifest-driven executor |
+| `wbuild`, `build.json`, `build.base.json`, `tools/wexec.w`, `tools/wbuildgen.w` | The build system: W-native manifest-driven executor; `build.json` is generated from `build.base.json` + the tree by `./wbuild manifest` |
 | `archive.sh` | Backs up a seed before `./wbuild update` / `update_darwin` promotes a new one |
 
 ## Language snapshot
@@ -269,6 +273,14 @@ passes; it archives the old seed to `old/` first.
   self-hosting can pass individual tests while corrupting the bootstrap.
 - W source is tab-indented. Editing `.w` files with spaces introduces
   warnings that `warning_test` (and the clean-fixture check) will catch.
+- To add a plain end-to-end test, create `dir/foo_test.w` (under `tests/`,
+  `lib/`, `structures/`, `graphics/`, `libs/`, or `tools/`), optionally put
+  a `# wbuild: x64` directive line in it for a 64-bit `foo_64_test` twin,
+  and run `./wbuild manifest`: `tools/wbuildgen.w` regenerates `build.json`
+  with the conventional compile+run target and its `tests`/`tests_x64`
+  membership. Only tests needing extra steps, `expect_*` assertions,
+  stdin, or timeouts get a hand-written target in `build.base.json`.
+  `./wbuild manifest_check` gates a stale `build.json` in CI.
 - Because codegen is single-pass with no IR, grammar modules both parse and
   emit; changes to expression/statement handling usually live in
   `grammar/*.w`, while instruction encoding and ELF layout live in

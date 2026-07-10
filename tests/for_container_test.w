@@ -1,3 +1,4 @@
+# wbuild: x64
 # for x in <container> — cursor-protocol iteration over the standard
 # containers and a user-defined one (docs/projects/iteration.md, design 3).
 import lib.testing

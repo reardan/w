@@ -1,3 +1,4 @@
+# wbuild: x64
 # W-native variadic functions: "T... name" as the last parameter collects
 # the trailing arguments into a T[] slice built on the caller's stack.
 # Distinct from variadic C imports (tests/varargs_test.w), which go through

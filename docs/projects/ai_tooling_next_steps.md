@@ -126,6 +126,15 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
+- **Test sources can assert on their own raw bytes.** `defer_test.w`'s
+  `test_defer_closes_file_descriptor` asserts the first byte of
+  `tests/defer_test.w` is the `'i'` of `import`, so prepending the new
+  `# wbuild: x64` manifest directive as line 1 broke it at runtime while
+  every compile stayed clean (2026-07-10, manifest-generation
+  migration; the directive lives on line 2 there now). When a tool
+  rewrites test sources en masse, grep the touched files for their own
+  paths first; longer term, self-referential assertions should read a
+  dedicated fixture instead of the test's own source.
 - **`repl.w` is not warning-free.** `./bin/wv2 repl.w -o /dev/null`
   reports two type warnings at `repl.w:518` (`load_word` argument 1 and
   `write` argument 2, both `char*` vs `int`). Fix them, then consider
