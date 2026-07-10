@@ -245,6 +245,20 @@
 			]
 		},
 		{
+			"name": "container_trap_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/map_trap_fixture.w", "-o", "bin/map_trap_fixture"]},
+				{"cmd": ["bin/map_trap_fixture"], "expect_fail": true, "expect_stderr": "map key not found: banana"},
+				{"cmd": ["bin/wv2", "tests/map_trap_int_key_fixture.w", "-o", "bin/map_trap_int_key_fixture"]},
+				{"cmd": ["bin/map_trap_int_key_fixture"], "expect_fail": true, "expect_stderr": "map key not found: -42"},
+				{"cmd": ["bin/wv2", "tests/list_trap_fixture.w", "-o", "bin/list_trap_fixture"]},
+				{"cmd": ["bin/list_trap_fixture"], "expect_fail": true, "expect_stderr": "list index out of range: index 5, length 2"},
+				{"cmd": ["bin/wv2", "tests/list_pop_trap_fixture.w", "-o", "bin/list_pop_trap_fixture"]},
+				{"cmd": ["bin/list_pop_trap_fixture"], "expect_fail": true, "expect_stderr": "pop on empty list"}
+			]
+		},
+		{
 			"name": "buffer_field_assign_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2776,6 +2790,7 @@
 				"grapheme_test",
 				"bounds_trap_test",
 				"range_bounds_trap_test",
+				"container_trap_test",
 				"buffer_field_assign_test",
 				"array_error_test",
 				"warning_test",

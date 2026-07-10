@@ -82,7 +82,7 @@ current state:
 			m.remove(key), s.remove(key) and s.add(key) pseudo-methods
 			m.get(key) (traps like m[key]) and m.get(key, default) pseudo-methods
 			m.add(key) / m.add(key, delta) counter accumulation from zero (integer values)
-			m[k] op= v compound assignment (key evaluated once, missing key traps)
+			m[k] op= v compound assignment (key evaluated once, missing key traps; the trap names the key)
 			m.keys(), m.values() and s.keys() insertion-order list snapshots
 			string keys compare by contents
 			for-in iteration over map keys and set members
@@ -91,6 +91,7 @@ current state:
 			list[T] typed lists with literals, indexing, push/pop and .length
 			l.insert(i, v), l.remove(i) and l.clear() pseudo-methods
 			x in l membership (content compare for char* elements)
+			runtime traps say what trapped on stderr before exit(1) (index echoes index and length; pop/min/max on empty say so)
 		type <=> json:
 			to_json(struct) / from_json(T, value) compiler-generated codecs
 			descriptors from the type table, runtime in structures/json_codec.w
