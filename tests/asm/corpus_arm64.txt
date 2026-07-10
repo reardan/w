@@ -1,0 +1,284 @@
+# AArch64 (A64) instruction corpus harvested from code_generator/ a64()/op()
+# calls and their assembly comments. Format: hexbytes|assembly-text. Bytes are
+# little-endian as stored in memory (so word 0xf9400f88 is written 880f40f9).
+# One instruction (4 bytes) per line.
+#
+# ==== code_generator/arm64.w: arm64_load_scratch ====
+# parameterized: movz imm16 (bits 5-20) and Rd (bits 0-4) vary; instantiated
+# with reg=9, v=42
+490580d2|movz x9,#42
+# parameterized: Rt (bits 0-4) varies; instantiated with reg=9 (literal-pool
+# load, imm19=2 -> pc+8)
+49000058|ldr x9,[pc,#8]
+03000014|b .+12
+#
+# ==== code_generator/arm64.w: arm64_ldr_reg_wsp ====
+# parameterized: imm12 (bits 10-21, offset/8) and Rt (bits 0-4) vary;
+# instantiated with rt=8, k=24
+880f40f9|ldr x8,[x28,#24]
+# parameterized: Rt (bits 0-4) varies; instantiated with rt=8
+886b69f8|ldr x8,[x28,x9]
+#
+# ==== code_generator/arm64.w: arm64_str_reg_wsp ====
+# parameterized: imm12 (bits 10-21, offset/8) and Rt (bits 0-4) vary;
+# instantiated with rt=8, k=24
+880f00f9|str x8,[x28,#24]
+# parameterized: Rt (bits 0-4) varies; instantiated with rt=8
+886b29f8|str x8,[x28,x9]
+#
+# ==== code_generator/arm64.w: arm64_add_x9_imm ====
+# parameterized: imm12 (bits 10-21) varies; instantiated with imm=16
+# MISMATCH: source comment says "add x9,x9,#imm" but the base word 0x91000529
+# already has imm12 bit 0 set (0x529 instead of 0x129), so the word encodes
+# imm|1 -- with imm=16 the word encodes the text below
+29450091|add x9,x9,#17
+# parameterized: imm12 (bits 10-21) varies; instantiated with imm=-16
+# MISMATCH: source comment says "sub x9,x9,#(-imm)" but the base word
+# 0xd1000529 already has imm12 bit 0 set (0x529 instead of 0x129), so the word
+# encodes (-imm)|1 -- with imm=-16 the word encodes the text below
+294500d1|sub x9,x9,#17
+29010a8b|add x9,x9,x10
+#
+# ==== code_generator/arm64.w: arm64_mov_eax_int32 ====
+40000018|ldr w0,[pc,#8]
+02000014|b .+8
+#
+# ==== code_generator/arm64.w: arm64_mov_rax_int64_halves ====
+40000058|ldr x0,[pc,#8]
+03000014|b .+12
+#
+# ==== code_generator/arm64.w: arm64_push_imm ====
+898f1ff8|str x9,[x28,#-8]!
+#
+# ==== code_generator/arm64.w: arm64_add_eax_int32 ====
+# parameterized: imm12 (bits 10-21) varies; instantiated with v=8
+00200091|add x0,x0,#8
+# parameterized: imm12 (bits 10-21) varies; instantiated with v=-8
+002000d1|sub x0,x0,#8
+0000098b|add x0,x0,x9
+#
+# ==== code_generator/arm64.w: arm64_add_ebx_int32 ====
+# parameterized: imm12 (bits 10-21) varies; instantiated with v=8
+21200091|add x1,x1,#8
+# parameterized: imm12 (bits 10-21) varies; instantiated with v=-8
+212000d1|sub x1,x1,#8
+2100098b|add x1,x1,x9
+#
+# ==== code_generator/arm64.w: arm64_imul_eax_int32 ====
+007c099b|mul x0,x0,x9
+#
+# ==== code_generator/arm64.w: arm64_be_pop ====
+# parameterized: imm12 (bits 10-21, n*8 bytes) varies; instantiated with n=2
+# (b=16)
+9c430091|add x28,x28,#16
+9c03098b|add x28,x28,x9
+#
+# ==== code_generator/arm64.w: arm64_lea_eax_esp_plus ====
+# parameterized: imm12 (bits 10-21) varies; instantiated with k=8
+80230091|add x0,x28,#8
+8003098b|add x0,x28,x9
+#
+# ==== code_generator/arm64.w: arm64_push_eax_plus ====
+# parameterized: imm12 (bits 10-21, offset/8) varies; instantiated with v=16
+090840f9|ldr x9,[x0,#16]
+09686af8|ldr x9,[x0,x10]
+898f1ff8|str x9,[x28,#-8]!
+#
+# ==== code_generator/arm64.w: arm64_inc_dword_esp_plus ====
+29050091|add x9,x9,#1
+#
+# ==== code_generator/arm64.w: arm64_add_dword_esp_plus_eax ====
+2901008b|add x9,x9,x0
+#
+# ==== code_generator/arm64.w: arm64_emit_b ====
+# parameterized: imm26 (bits 0-25, offset/4, link/placeholder until patched)
+# varies; instantiated with v=8
+02000014|b .+8
+#
+# ==== code_generator/arm64.w: arm64_emit_cbz ====
+# parameterized: imm19 (bits 5-23, offset/4) varies; instantiated with v=8
+400000b4|cbz x0,.+8
+#
+# ==== code_generator/arm64.w: arm64_emit_cbnz ====
+# parameterized: imm19 (bits 5-23, offset/4) varies; instantiated with v=8
+400000b5|cbnz x0,.+8
+#
+# ==== code_generator/arm64.w: arm64_cset ====
+# parameterized: cond (bits 12-15, stores the INVERTED condition, csinc
+# form); instantiated for every condition arm64_setcc_cond can produce
+e0179f9a|cset x0,eq
+e0079f9a|cset x0,ne
+e0a79f9a|cset x0,lt
+e0b79f9a|cset x0,ge
+e0c79f9a|cset x0,le
+e0d79f9a|cset x0,gt
+e0279f9a|cset x0,lo
+e0379f9a|cset x0,hs
+e0879f9a|cset x0,ls
+e0979f9a|cset x0,hi
+#
+# ==== code_generator/arm64.w: arm64_alu_cmp_set ====
+3f0000eb|cmp x1,x0
+#
+# ==== code_generator/arm64.w: arm64_alu_test_set ====
+1f0000f1|cmp x0,#0
+#
+# ==== code_generator/arm64.w: arm64_bounds_check_eax_nonnegative ====
+1f0000f1|cmp x0,#0
+4a000054|b.ge .+8
+000020d4|brk #0
+#
+# ==== code_generator/arm64.w: arm64_bounds_check_ebx_less_eax ====
+3f0000eb|cmp x1,x0
+4b000054|b.lt .+8
+000020d4|brk #0
+#
+# ==== code_generator/arm64.w: arm64_bounds_check_ebx_less_equal_eax ====
+3f0000eb|cmp x1,x0
+4d000054|b.le .+8
+000020d4|brk #0
+#
+# ==== code_generator/arm64.w: arm64_bounds_check_eax_less_equal_int32 ====
+1f0009eb|cmp x0,x9
+4d000054|b.le .+8
+000020d4|brk #0
+#
+# ==== code_generator/arm64.w: be_addr_slot_emit ====
+# parameterized: adrp immhi:immlo (bits 5-23, 29-30) patched later by
+# arm64_addr_slot_write; emitted as page delta 0
+00000090|adrp x0,.
+# parameterized: add imm12 (bits 10-21) patched later by
+# arm64_addr_slot_write; emitted as 0
+00000091|add x0,x0,#0
+#
+# ==== code_generator/arm64.w: be_code_ptr_sign ====
+e023c1da|paciza x0
+#
+# ==== code_generator/arm64.w: be_function_prologue ====
+9e03c1da|pacia x30,x28
+9e8f1ff8|str x30,[x28,#-8]!
+#
+# ==== code_generator/arm64_asm.w: arm64_darwin_svc ====
+011000d4|svc #0x80
+43000054|b.cc .+8
+e00300cb|neg x0,x0
+#
+# ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (syscall) ====
+900f40f9|ldr x16,[x28,#24]
+880f40f9|ldr x8,[x28,#24]
+800b40f9|ldr x0,[x28,#16]
+810740f9|ldr x1,[x28,#8]
+820340f9|ldr x2,[x28,#0]
+010000d4|svc #0
+c0035fd6|ret
+#
+# ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (syscall7) ====
+901b40f9|ldr x16,[x28,#48]
+881b40f9|ldr x8,[x28,#48]
+801740f9|ldr x0,[x28,#40]
+811340f9|ldr x1,[x28,#32]
+820f40f9|ldr x2,[x28,#24]
+830b40f9|ldr x3,[x28,#16]
+840740f9|ldr x4,[x28,#8]
+850340f9|ldr x5,[x28,#0]
+010000d4|svc #0
+c0035fd6|ret
+#
+# ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (syscall_fork,
+# darwin only) ====
+500080d2|movz x16,#2
+011000d4|svc #0x80
+63000054|b.cc .+12
+e00300cb|neg x0,x0
+c0035fd6|ret
+410000b4|cbz x1,.+8
+000080d2|movz x0,#0
+c0035fd6|ret
+#
+# ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (syscall_pipe,
+# darwin only) ====
+890340f9|ldr x9,[x28,#0]
+500580d2|movz x16,#42
+011000d4|svc #0x80
+63000054|b.cc .+12
+e00300cb|neg x0,x0
+c0035fd6|ret
+20050029|stp w0,w1,[x9]
+000080d2|movz x0,#0
+c0035fd6|ret
+#
+# ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (get_context)
+# ====
+890340f9|ldr x9,[x28]
+# parameterized: loop emits str xi,[x9,#i*8] for i=0..30 -- Rt (bits 0-4)
+# and imm12 (bits 10-21) both carry i; instantiated with i=1
+210500f9|str x1,[x9,#8]
+c0035fd6|ret
+#
+# ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (store_context,
+# identical emission to get_context) ====
+890340f9|ldr x9,[x28]
+# parameterized: loop emits str xi,[x9,#i*8] for i=0..30; instantiated with
+# i=30
+3e7900f9|str x30,[x9,#240]
+c0035fd6|ret
+#
+# ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (repl_setjmp)
+# ====
+890340f9|ldr x9,[x28]
+3e01c1da|pacia x30,x9
+3e0100f9|str x30,[x9,#0]
+3c0500f9|str x28,[x9,#8]
+3d0900f9|str x29,[x9,#16]
+000080d2|movz x0,#0
+c0035fd6|ret
+#
+# ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (repl_longjmp)
+# ====
+800340f9|ldr x0,[x28,#0]
+890740f9|ldr x9,[x28,#8]
+3e0140f9|ldr x30,[x9,#0]
+3e11c1da|autia x30,x9
+3c0540f9|ldr x28,[x9,#8]
+3d0940f9|ldr x29,[x9,#16]
+c0035fd6|ret
+#
+# ==== code_generator/arm64_asm.w: define_asm_functions_arm64 (gen_switch)
+# ====
+890740f9|ldr x9,[x28,#8]
+8a0340f9|ldr x10,[x28,#0]
+fe23c1da|paciza x30
+9e8f1ff8|str x30,[x28,#-8]!
+3c0100f9|str x28,[x9]
+fc030aaa|mov x28,x10
+9e8740f8|ldr x30,[x28],#8
+fe33c1da|autiza x30
+c0035fd6|ret
+#
+# ==== code_generator/elf_arm64.w: arm64_entry_rebase_stub ====
+09000010|adr x9,.
+4a000058|ldr x10,[pc,#8]
+03000014|b .+12
+29010acb|sub x9,x9,x10
+4a000058|ldr x10,[pc,#8]
+03000014|b .+12
+4a01098b|add x10,x10,x9
+4b8540f8|ldr x11,[x10],#8
+0b0100b4|cbz x11,.+32
+4c8540f8|ldr x12,[x10],#8
+8c01098b|add x12,x12,x9
+8d0140f9|ldr x13,[x12]
+ad01098b|add x13,x13,x9
+8d0100f9|str x13,[x12]
+6b0500d1|sub x11,x11,#1
+f9ffff17|b .-28
+#
+# ==== code_generator/elf_arm64.w: elf_start_arm64 (entry stub) ====
+fc030091|mov x28,sp
+89230091|add x9,x28,#8
+898f1ff8|str x9,[x28,#-8]!
+# parameterized: bl imm26 (bits 0-25, offset/4) is patched to _main in
+# elf_finish_arm64; emitted as 0 (bl .)
+00000094|bl .
+c80b80d2|movz x8,#94
+010000d4|svc #0
