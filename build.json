@@ -774,6 +774,30 @@
 			]
 		},
 		{
+			"name": "char_literal_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/char_literal_test.w", "-o", "bin/char_literal_test"]},
+				{"cmd": ["bin/char_literal_test"]},
+				{"cmd": ["bin/wv2", "x64", "tests/char_literal_test.w", "-o", "bin/char_literal_test_64"]},
+				{"cmd": ["bin/char_literal_test_64"]},
+				{"cmd": ["bin/wv2", "tests/char_literal_unknown_escape_fixture.w", "-o", "bin/char_literal_unknown_escape_fixture"],
+				 "expect_fail": true, "expect_stderr": "unknown escape in char literal"},
+				{"cmd": ["bin/wv2", "tests/char_literal_multichar_fixture.w", "-o", "bin/char_literal_multichar_fixture"],
+				 "expect_fail": true, "expect_stderr": "multi-character char literal"},
+				{"cmd": ["bin/wv2", "tests/char_literal_empty_fixture.w", "-o", "bin/char_literal_empty_fixture"],
+				 "expect_fail": true, "expect_stderr": "empty char literal"},
+				{"cmd": ["cat"], "stdin": "int main():\n\tint a = 'x\n",
+				 "stdout_file": "bin/char_literal_unterminated_fixture.w"},
+				{"cmd": ["bin/wv2", "bin/char_literal_unterminated_fixture.w", "-o", "bin/char_literal_unterminated_fixture"],
+				 "expect_fail": true, "expect_stderr": "unterminated char literal", "timeout_ms": 20000},
+				{"cmd": ["cat"], "stdin": "int main():\n\tchar* s = \"x\n",
+				 "stdout_file": "bin/string_unterminated_fixture.w"},
+				{"cmd": ["bin/wv2", "bin/string_unterminated_fixture.w", "-o", "bin/string_unterminated_fixture"],
+				 "expect_fail": true, "expect_stderr": "unterminated string literal", "timeout_ms": 20000}
+			]
+		},
+		{
 			"name": "infer_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2517,6 +2541,7 @@
 				"compound_assign_test",
 				"bitwise_xor_test",
 				"bitwise_not_test",
+				"char_literal_test",
 				"infer_test",
 				"ternary_test",
 				"print_builtin_test",

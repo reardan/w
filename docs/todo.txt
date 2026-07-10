@@ -102,6 +102,8 @@ current state:
 			relational operators chain left-associatively
 			hex literals
 			string escape handling
+			char literals: simple escapes plus \xNN, \uNNNN, \UNNNNNNNN and
+			raw UTF-8 codepoints; unknown escapes are compile errors
 			pointer-aware [] and . code generation
 			explicit cast(type, expr) escape hatch for unsafe conversions
 		control flow:

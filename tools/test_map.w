@@ -379,6 +379,8 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"bitwise_xor_test")
 	else if (strcmp(path, c"tests/bitwise_not_test.w") == 0):
 		wtest_add(path, c"bitwise_not_test")
+	else if (starts_with(path, c"tests/char_literal")):
+		wtest_add(path, c"char_literal_test")
 	else if (strcmp(path, c"tests/infer_test.w") == 0):
 		wtest_add(path, c"infer_test")
 	else if (strcmp(path, c"tests/ternary_test.w") == 0):

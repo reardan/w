@@ -193,25 +193,10 @@ int primary_expr():
 		if (peek(c")") == 0):
 			error(c"No closing parenthesis")
 	}
-	# char literal e.g. 'c'
-	else if ((token[0] == 39) & (token[1] != 0) &
-					 (token[2] == 39) & (token[3] == 0)):
-		mov_eax_int(token[1])
-		type = 3 /* constant */
-
-	# escaped char literal e.g. '\n'
-	else if ((token[0] == 39) & (token[1] == 92) &
-					 (token[3] == 39) & (token[4] == 0)):
-		int c = token[2]
-		if (c == 'n'):
-			c = 10
-		else if (c == 't'):
-			c = 9
-		else if (c == 'r'):
-			c = 13
-		else if (c == '0'):
-			c = 0
-		mov_eax_int(c)
+	# char literal e.g. 'c', '\n', '\x41' or 'é' (value = Unicode codepoint);
+	# grammar/string_literal.w decodes and validates the token
+	else if (token[0] == 39):
+		mov_eax_int(char_literal_value())
 		type = 3 /* constant */
 
 	else if (char_pointer_literal()):

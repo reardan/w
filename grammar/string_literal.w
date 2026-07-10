@@ -44,6 +44,100 @@ int string_append_utf8(int out, int codepoint):
 	return out + 4
 
 
+# Map a simple backslash-escape character to its byte value: \n \t \r \0,
+# plus the identity escapes for backslash and both quotes. Returns -1 for
+# anything unrecognized; string literals keep the character literally
+# (documented leniency), char literals reject it.
+int escape_char_value(int c):
+	if (c == 'n'):
+		return 10
+	if (c == 't'):
+		return 9
+	if (c == 'r'):
+		return 13
+	if (c == '0'):
+		return 0
+	if (c == 92):
+		return 92
+	if (c == 39):
+		return 39
+	if (c == '"'):
+		return '"'
+	return -1
+
+
+# Decode the current token as a char literal and return its value: a plain
+# ASCII byte ('a'), a backslash escape ('\n', '\x41', '\u00e9',
+# '\U0001F600'), or a raw UTF-8 sequence ('é') whose value is the Unicode
+# codepoint. The caller has checked token[0] is a single quote. Unknown
+# escapes and multi-character literals are compile errors, unlike string
+# literals which keep unknown escapes literally.
+int char_literal_value():
+	if ((token[1] == 39) & (token[2] == 0)):
+		error(c"empty char literal")
+	int value
+	int end
+	if (token[1] == 92):
+		int e = token[2] & 255
+		if (e == 'x'):
+			value = string_hex_value(3, 2)
+			end = 5
+		else if (e == 'u'):
+			value = string_hex_value(3, 4)
+			end = 7
+		else if (e == 'U'):
+			value = string_hex_value(3, 8)
+			end = 11
+		else:
+			value = escape_char_value(e)
+			if (value < 0):
+				diag_part(c"unknown escape in char literal: ")
+				error(token)
+			end = 3
+	else:
+		int lead = token[1] & 255
+		if (lead < 128):
+			value = lead
+			end = 2
+		else:
+			int need = 0
+			if ((lead >= 194) & (lead <= 223)):
+				need = 1
+				value = lead & 31
+			else if ((lead >= 224) & (lead <= 239)):
+				need = 2
+				value = lead & 15
+			else if ((lead >= 240) & (lead <= 244)):
+				need = 3
+				value = lead & 7
+			else:
+				diag_part(c"invalid UTF-8 char literal: ")
+				error(token)
+			int i = 1
+			while (i <= need):
+				int d = token[1 + i] & 255
+				if ((d < 128) | (d > 191)):
+					diag_part(c"invalid UTF-8 char literal: ")
+					error(token)
+				value = (value << 6) | (d & 63)
+				i = i + 1
+			if ((need == 2) & (value < 2048)):
+				diag_part(c"invalid UTF-8 char literal: ")
+				error(token)
+			if ((need == 3) & (value < 65536)):
+				diag_part(c"invalid UTF-8 char literal: ")
+				error(token)
+			end = 2 + need
+	if ((value >= 55296) & (value <= 57343)):
+		error(c"invalid unicode surrogate")
+	if (value > 1114111):
+		error(c"unicode codepoint out of range")
+	if ((token[end] != 39) | (token[end + 1] != 0)):
+		diag_part(c"multi-character char literal: ")
+		error(token)
+	return value
+
+
 int process_string_literal_from(int j):
 	int i = 0
 	int k
@@ -66,15 +160,9 @@ int process_string_literal_from(int j):
 
 		# standard escapes: \n \t \r \0 (anything else is taken literally)
 		else if (token[j] == 92):
-			k = token[j + 1]
-			if (k == 'n'):
-				k = 10
-			else if (k == 't'):
-				k = 9
-			else if (k == 'r'):
-				k = 13
-			else if (k == '0'):
-				k = 0
+			k = escape_char_value(token[j + 1])
+			if (k < 0):
+				k = token[j + 1]
 			token[i] = k
 			j = j + 2
 

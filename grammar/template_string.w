@@ -124,15 +124,9 @@ int template_process_chunk(int j):
 
 		# standard escapes: \n \t \r \0 (anything else is taken literally)
 		else if (token[j] == 92):
-			k = token[j + 1]
-			if (k == 'n'):
-				k = 10
-			else if (k == 't'):
-				k = 9
-			else if (k == 'r'):
-				k = 13
-			else if (k == '0'):
-				k = 0
+			k = escape_char_value(token[j + 1])
+			if (k < 0):
+				k = token[j + 1]
 			token[i] = k
 			j = j + 2
 

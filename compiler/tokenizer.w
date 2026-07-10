@@ -281,18 +281,26 @@ void get_token():
 			if (nextc == 39):
 				takechar()
 				while (nextc != 39):
+					if (nextc == -1):
+						error(c"unterminated char literal")
 					# A backslash escapes the next character (e.g. '\'')
 					if (nextc == 92):
 						takechar()
+						if (nextc == -1):
+							error(c"unterminated char literal")
 					takechar()
 				takechar()
 
 			else if (nextc == '"'):
 				takechar()
 				while (nextc != '"'):
+					if (nextc == -1):
+						error(c"unterminated string literal")
 					# A backslash escapes the next character (e.g. \")
 					if (nextc == 92):
 						takechar()
+						if (nextc == -1):
+							error(c"unterminated string literal")
 					takechar()
 				takechar()
 
