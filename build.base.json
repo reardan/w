@@ -864,6 +864,12 @@
 			]
 		},
 		{
+			"name": "unsafe_import_test",
+			"steps": [
+				{"cmd": ["sh", "-c", "grep -rn --include='*.w' -E 'import[[:space:]]+libs\\.x\\.unsafe' lib libs/standard libs/asm libs/extras structures compiler grammar code_generator debugger tools examples graphics *.w; test $? -eq 1"]}
+			]
+		},
+		{
 			"name": "metadata_test",
 			"deps": ["wmeta"],
 			"steps": [
@@ -1674,6 +1680,7 @@
 				"wexec_test",
 				"metadata_check",
 				"metadata_test",
+				"unsafe_import_test",
 				"manifest_check",
 				"result_propagate_test",
 				"task_io_test",

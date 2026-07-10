@@ -23,12 +23,19 @@ target's arithmetic shift cannot smear sign bits, and no integer literal
 with bit 31 set appears in the source (the K and H0 tables are hex text
 parsed at first use). 64-bit additions split the low word into 16-bit
 halves so the carry out of the low 32 bits is computed without overflow.
+
+Out-of-tree hash modules (e.g. the quarantined legacy digests in
+libs/x/unsafe) plug additional algorithms into this dispatcher through
+whash_register, so HMAC/HKDF compose over them without this module — or
+anything else under libs/standard — importing their namespace.
 */
 import lib.memory
 import lib.sha256
 
 
-# Algorithm identifiers for the whash interface.
+# Algorithm identifiers for the whash interface. Ids below 100 are
+# reserved for the built-in SHA-2 family; algorithms plugged in through
+# whash_register use ids of 100 and up.
 int WHASH_SHA256():
 	return 1
 
@@ -41,8 +48,67 @@ int WHASH_SHA512():
 	return 3
 
 
+/* Extension registry: whash_register plugs an out-of-tree compression
+   function into the whash dispatcher at runtime. The registrant supplies
+   the algorithm geometry plus two callbacks; state is an int array of
+   state_words masked 32-bit words (the lib/sha256.w conventions), block
+   one input block of block_size bytes. Merkle–Damgård padding stays in
+   whash_final: little_endian selects the MD5-style trailer (64-bit bit
+   count little-endian, digest words emitted little-endian) over the
+   SHA-style big-endian one. */
+
+
+type whash_compress_fn = fn(int*, char*) -> void
+type whash_iv_fn = fn(int*) -> void
+
+
+struct whash_ext:
+	int alg
+	int digest_size
+	int block_size
+	int state_words
+	int little_endian
+	whash_compress_fn* compress
+	whash_iv_fn* load_iv
+	whash_ext* next
+
+
+whash_ext* whash_ext_registry
+
+
+# The registered extension for alg, or 0 for the built-in algorithms.
+whash_ext* whash_ext_find(int alg):
+	whash_ext* e = whash_ext_registry
+	while (e != 0):
+		if (e.alg == alg):
+			return e
+		e = e.next
+	return cast(whash_ext*, 0)
+
+
+# Register (or idempotently re-register) algorithm `alg`. Extension ids
+# must be 100 or higher; ids below 100 belong to the built-in SHA-2
+# family and are never looked up in the registry.
+void whash_register(int alg, int digest_size, int block_size, int state_words, int little_endian, whash_compress_fn* compress, whash_iv_fn* load_iv):
+	whash_ext* e = whash_ext_find(alg)
+	if (e == 0):
+		e = new whash_ext
+		e.next = whash_ext_registry
+		whash_ext_registry = e
+	e.alg = alg
+	e.digest_size = digest_size
+	e.block_size = block_size
+	e.state_words = state_words
+	e.little_endian = little_endian
+	e.compress = compress
+	e.load_iv = load_iv
+
+
 # Digest length in bytes.
 int whash_digest_size(int alg):
+	whash_ext* e = whash_ext_find(alg)
+	if (e != 0):
+		return e.digest_size
 	if (alg == WHASH_SHA256()):
 		return 32
 	if (alg == WHASH_SHA384()):
@@ -52,6 +118,9 @@ int whash_digest_size(int alg):
 
 # Input block length in bytes (HMAC pads keys to this size).
 int whash_block_size(int alg):
+	whash_ext* e = whash_ext_find(alg)
+	if (e != 0):
+		return e.block_size
 	if (alg == WHASH_SHA256()):
 		return 64
 	return 128
@@ -59,6 +128,9 @@ int whash_block_size(int alg):
 
 # Words of internal state: 8 ints for SHA-256, 8 hi/lo pairs for SHA-512.
 int whash_state_words(int alg):
+	whash_ext* e = whash_ext_find(alg)
+	if (e != 0):
+		return e.state_words
 	if (alg == WHASH_SHA256()):
 		return 8
 	return 16
@@ -159,6 +231,15 @@ int sha2_hex32(char* s):
 		v = (v << 4) | sha2_hex_nibble(s[i] & 255)
 		i = i + 1
 	return v & sha256_mask32()
+
+
+# Little-endian store of a masked 32-bit word (MD5-style trailers and
+# digests; the big-endian twin lives in lib/sha256.w).
+void sha2_put_le32(char* p, int v):
+	p[0] = v & 255
+	p[1] = (v >> 8) & 255
+	p[2] = (v >> 16) & 255
+	p[3] = (v >> 24) & 255
 
 
 # Parse `words` 32-bit words from hex text into a malloc'd int array.
@@ -344,6 +425,7 @@ struct whash:
 	int digest_size
 	int block_size
 	int state_words
+	whash_ext* ext   # registered extension entry, 0 for the built-ins
 	int* state       # 8 words (SHA-256) or 8 hi/lo pairs (SHA-384/512)
 	char* buffer     # up to block_size-1 pending input bytes
 	int buffered
@@ -354,6 +436,10 @@ struct whash:
 
 # Load the initial hash values for h.alg into h.state.
 void whash_load_iv(whash* h):
+	whash_ext* e = h.ext
+	if (e != 0):
+		e.load_iv(h.state)
+		return
 	if (h.alg == WHASH_SHA256()):
 		char* h0 = sha256_h0_table()
 		int i = 0
@@ -373,6 +459,7 @@ void whash_load_iv(whash* h):
 whash* whash_new(int alg):
 	whash* h = new whash
 	h.alg = alg
+	h.ext = whash_ext_find(alg)
 	h.digest_size = whash_digest_size(alg)
 	h.block_size = whash_block_size(alg)
 	h.state_words = whash_state_words(alg)
@@ -419,6 +506,10 @@ void whash_free(whash* h):
 
 
 void whash_compress(whash* h, char* block):
+	whash_ext* e = h.ext
+	if (e != 0):
+		e.compress(h.state, block)
+		return
 	if (h.alg == WHASH_SHA256()):
 		sha256_block(h.state, block)
 	else:
@@ -486,35 +577,54 @@ void whash_final(whash* h, char* out):
 	int blocks = 1
 	if (h.buffered >= bs - length_field):
 		blocks = 2
-	# Message length in bits, big-endian, in the trailing length field.
-	# bits = bytes * 8: a left shift by 3 across the hi/lo byte count.
+	# Message length in bits in the trailing length field: big-endian for
+	# the SHA family, little-endian (low word first) for MD5-style
+	# extensions. bits = bytes * 8: a left shift by 3 across the hi/lo
+	# byte count.
+	whash_ext* e = h.ext
+	int le = 0
+	if (e != 0):
+		le = e.little_endian
 	int mask = sha256_mask32()
 	int bits_mid = ((h.len_hi << 3) | sha256_shr(h.len_lo, 29)) & mask
 	int bits_lo = (h.len_lo << 3) & mask
 	int end = blocks * bs
-	if (bs == 128):
-		# 128-bit field; the byte count fits 64 bits, so the top word is
-		# the 3 bits shifted out of len_hi.
-		sha256_put_be32(tail + end - 12, sha256_shr(h.len_hi, 29))
-	sha256_put_be32(tail + end - 8, bits_mid)
-	sha256_put_be32(tail + end - 4, bits_lo)
-
-	if (h.alg == WHASH_SHA256()):
-		sha256_block(st, tail)
-		if (blocks == 2):
-			sha256_block(st, tail + bs)
+	if (le == 1):
+		sha2_put_le32(tail + end - 8, bits_lo)
+		sha2_put_le32(tail + end - 4, bits_mid)
 	else:
-		sha512_block(st, tail)
+		if (bs == 128):
+			# 128-bit field; the byte count fits 64 bits, so the top word
+			# is the 3 bits shifted out of len_hi.
+			sha256_put_be32(tail + end - 12, sha256_shr(h.len_hi, 29))
+		sha256_put_be32(tail + end - 8, bits_mid)
+		sha256_put_be32(tail + end - 4, bits_lo)
+
+	if (e != 0):
+		e.compress(st, tail)
 		if (blocks == 2):
-			sha512_block(st, tail + bs)
+			e.compress(st, tail + bs)
+	else:
+		if (h.alg == WHASH_SHA256()):
+			sha256_block(st, tail)
+			if (blocks == 2):
+				sha256_block(st, tail + bs)
+		else:
+			sha512_block(st, tail)
+			if (blocks == 2):
+				sha512_block(st, tail + bs)
 	free(tail)
 
-	# Big-endian output, truncated to digest_size (SHA-384 keeps the
-	# first 6 of the 8 state words).
+	# Digest output, truncated to digest_size (SHA-384 keeps the first 6
+	# of the 8 state words); word order follows the algorithm's
+	# endianness.
 	int words = h.digest_size / 4
 	i = 0
 	while (i < words):
-		sha256_put_be32(out + i * 4, st[i])
+		if (le == 1):
+			sha2_put_le32(out + i * 4, st[i])
+		else:
+			sha256_put_be32(out + i * 4, st[i])
 		i = i + 1
 	free(st)
 
