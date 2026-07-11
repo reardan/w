@@ -142,10 +142,11 @@ void function_definition(int current_symbol):
 		sym_set_w_variadic(current_symbol, -1)
 
 	if (accept(c";") == 0):
-		sym_define_global(current_symbol)
+		be_function_define(current_symbol, last_global_declaration)
 		# On arm64 sign and push the return address (x30) onto the W stack
 		# so the callee has the same [return-slot | args] layout the x86
-		# backend relies on; emits nothing on the x86 family.
+		# backend relies on; emits nothing on the x86 family. On wasm this
+		# opens the function's size-prefixed code-section unit.
 		be_function_prologue()
 		current_function_symbol = current_symbol
 		enclosing_tab_level = 0
@@ -160,6 +161,7 @@ void function_definition(int current_symbol):
 		statement()
 		defer_reset()
 		ret()
+		be_function_epilogue()
 		# Store length to symbol table:
 		save_int(table + current_symbol + 14, codepos - function_start)
 
@@ -343,7 +345,7 @@ void script_main():
 	int function_start = codepos
 	save_int(table + current_symbol + 22, 0) /* param_count */
 	sym_set_w_variadic(current_symbol, -1)
-	sym_define_global(current_symbol)
+	be_function_define(current_symbol, c"main")
 	be_function_prologue()
 	current_function_symbol = current_symbol
 	enclosing_tab_level = 0
@@ -362,6 +364,7 @@ void script_main():
 	stack_pos = 0
 	mov_eax_int(0)
 	ret()
+	be_function_epilogue()
 	save_int(table + current_symbol + 14, codepos - function_start)
 	table_pos = n
 
