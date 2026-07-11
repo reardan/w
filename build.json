@@ -1608,6 +1608,7 @@
 				"bitset_64_test",
 				"chacha20_64_test",
 				"chacha20poly1305_64_test",
+				"clock_64_test",
 				"compound_assign_64_test",
 				"cstr_64_test",
 				"default_args_64_test",
@@ -1637,16 +1638,19 @@
 				"map_set_builtin_64_test",
 				"md5_64_test",
 				"method_chaining_64_test",
+				"monotime_64_test",
 				"nested_ctor_64_test",
 				"net_64_test",
 				"path_64_test",
 				"poll_64_test",
 				"poly1305_64_test",
 				"process_64_test",
+				"quorum_64_test",
 				"rc4_64_test",
 				"result_64_test",
 				"result_propagate_64_test",
 				"retry_64_test",
+				"ring_64_test",
 				"sha1_64_test",
 				"sse_64_test",
 				"stack_trace_64_test",
@@ -1657,6 +1661,7 @@
 				"task_64_test",
 				"template_string_64_test",
 				"time_64_test",
+				"u64_64_test",
 				"urlparse_64_test",
 				"varargs_w_64_test",
 				"vcs_cas_64_test",
@@ -1909,6 +1914,7 @@
 				"c_preprocessor_test",
 				"chacha20_test",
 				"chacha20poly1305_test",
+				"clock_test",
 				"cstr_test",
 				"directory_test",
 				"dns_test",
@@ -1940,6 +1946,7 @@
 				"math_test",
 				"md5_test",
 				"method_chaining_test",
+				"monotime_test",
 				"multilayer_test",
 				"nested_ctor_test",
 				"net_test",
@@ -1948,10 +1955,12 @@
 				"poll_test",
 				"poly1305_test",
 				"process_test",
+				"quorum_test",
 				"range_test",
 				"rc4_test",
 				"result_test",
 				"retry_test",
+				"ring_test",
 				"sha1_test",
 				"sha256_test",
 				"sha2_test",
@@ -1968,6 +1977,7 @@
 				"threading_test",
 				"time_test",
 				"type_system_p0_test",
+				"u64_test",
 				"urlparse_test",
 				"vcs_cas_test",
 				"vcs_dag_test",
@@ -2201,6 +2211,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/chacha20poly1305_test.w", "-o", "bin/chacha20poly1305_test"]},
 				{"cmd": ["bin/chacha20poly1305_test"]}
+			]
+		},
+		{
+			"name": "clock_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/clock_test.w", "-o", "bin/clock_64_test"]},
+				{"cmd": ["bin/clock_64_test"]}
+			]
+		},
+		{
+			"name": "clock_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/clock_test.w", "-o", "bin/clock_test"]},
+				{"cmd": ["bin/clock_test"]}
 			]
 		},
 		{
@@ -2716,6 +2742,22 @@
 			]
 		},
 		{
+			"name": "monotime_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/monotime_test.w", "-o", "bin/monotime_64_test"]},
+				{"cmd": ["bin/monotime_64_test"]}
+			]
+		},
+		{
+			"name": "monotime_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/monotime_test.w", "-o", "bin/monotime_test"]},
+				{"cmd": ["bin/monotime_test"]}
+			]
+		},
+		{
 			"name": "multilayer_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2836,6 +2878,22 @@
 			]
 		},
 		{
+			"name": "quorum_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/quorum_test.w", "-o", "bin/quorum_64_test"]},
+				{"cmd": ["bin/quorum_64_test"]}
+			]
+		},
+		{
+			"name": "quorum_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/quorum_test.w", "-o", "bin/quorum_test"]},
+				{"cmd": ["bin/quorum_test"]}
+			]
+		},
+		{
 			"name": "range_bounds_trap_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2906,6 +2964,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/retry_test.w", "-o", "bin/retry_test"]},
 				{"cmd": ["bin/retry_test"]}
+			]
+		},
+		{
+			"name": "ring_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/ring_test.w", "-o", "bin/ring_64_test"]},
+				{"cmd": ["bin/ring_64_test"]}
+			]
+		},
+		{
+			"name": "ring_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/ring_test.w", "-o", "bin/ring_test"]},
+				{"cmd": ["bin/ring_test"]}
 			]
 		},
 		{
@@ -3122,6 +3196,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/type_system_p0_test.w", "-o", "bin/type_system_p0_test"]},
 				{"cmd": ["bin/type_system_p0_test"]}
+			]
+		},
+		{
+			"name": "u64_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/u64_test.w", "-o", "bin/u64_64_test"]},
+				{"cmd": ["bin/u64_64_test"]}
+			]
+		},
+		{
+			"name": "u64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/u64_test.w", "-o", "bin/u64_test"]},
+				{"cmd": ["bin/u64_test"]}
 			]
 		},
 		{
