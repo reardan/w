@@ -385,7 +385,7 @@ passes; it archives the old seed to `old/` first.
   (stepping, breakpoints, variable inspection, expression evaluation at a
   breakpoint and `w --debug` are done).
 - Import-scoped type metadata.
-- WebAssembly backend.
+- WebAssembly backend (planned: `docs/projects/wasm_backend.md`).
 
 See `docs/todo.txt` for the running working/missing inventory and
 `docs/done.txt` for history.
