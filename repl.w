@@ -21,6 +21,12 @@ Run a file first with "repl file.w [args...]": it is compiled into the
 same buffer, its main() runs (unless --no_main), and the prompt attaches
 with every function and global from the file still live.
 
+A 'debugger' statement in an entry (or in code an entry calls) traps
+into wdbg's command loop (debugger/wdbg.w): the debugger works on the
+same in-process buffer model the REPL runs on, so breakpoints, stepping
+and inspection all apply to code compiled at the prompt. 'c' resumes the
+entry and returns to the prompt.
+
 Commands: :quit exits, :help prints a summary.
 */
 import repl.core
@@ -31,6 +37,7 @@ import lib.args
 import lib.line_edit
 import lib.format
 import lib.__arch__.repl_echo_float64
+import debugger.wdbg
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +234,21 @@ void repl_print_help():
 int main(int argc, int argv):
 	args_init(argc, argv)
 	repl_init()
+
+	# 'debugger' statements trap into wdbg's command loop instead of
+	# dying on an unhandled SIGTRAP: the debugger state initializes here
+	# and the trap handler installs through the same shim machinery the
+	# fault handlers use. Faults keep the REPL's own recovery handlers
+	# (repl_init installed them above); only SIGTRAP routes to wdbg.
+	bp_init()
+	dbg_memory_init()
+	dbg_rearm_bp = -1
+	dbg_disas_read_fn = cast(int, dbg_disas_read_local)
+	dbg_disas_symbols = 1
+	int trap_handler = cast(int, wdbg_trap_entry)
+	if (__word_size__ == 8):
+		trap_handler = cast(int, wdbg_trap)
+	repl_fault_install(5, trap_handler, 1073741824) /* SIGTRAP, SA_NODEFER */
 
 	# Optional target file: compile it into the same buffer and run its
 	# main(), then attach the prompt with all of its symbols live.

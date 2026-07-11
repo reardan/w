@@ -1046,6 +1046,11 @@
 				{"cmd": ["bin/wdbg", "tests/debug_fixture4.w"], "stdin": "p total\nc\n", "expect_stdout": "total = 42"},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture4.w"], "stdin": "s\nl\nc\n", "expect_stdout": "debug_fixture4.w:21"},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture4.w"], "stdin": "c\n", "expect_stdout": ["containers ok", "debuggee main returned 43"]},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nc\np a = 100\nfin\nc\nc\nc\n", "expect_stdout": ["= 100", "value returned = 103"]},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "p 1 / 0\np x\nc\n", "expect_stdout": ["runtime fault: SIGFPE", "entry rolled back", "x = 3"]},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nc\nrepl\nint dbl(int q):\n\treturn q + q\n\n:end\np dbl(a)\nc\nc\nc\n", "expect_stdout": "= 6"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nc\nrepl\nint acc = 0\nwhile (acc < 5):\n\tacc = acc + 1\n\nacc + a\n:end\nc\nc\nc\n", "expect_stdout": "= 8"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "repl\nimport structures.string\nstring_builder* sb = string_from(c\"wdbg\")\nsb.length\n:end\nc\n", "expect_stdout": "= 4"},
 				{"cmd": ["bin/wv2", "--debug", "tests/debug_fixture.w"], "stdin": "c\n", "expect_stdout": "after breakpoint"}
 			]
 		},
@@ -1118,7 +1123,12 @@
 				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "l\nc\n", "expect_stdout": "debug_fixture4.w:20"},
 				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "p total\nc\n", "expect_stdout": "total = 42"},
 				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "s\nl\nc\n", "expect_stdout": "debug_fixture4.w:21"},
-				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "c\n", "expect_stdout": ["containers ok", "debuggee main returned 43"]}
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "c\n", "expect_stdout": ["containers ok", "debuggee main returned 43"]},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\np a = 100\nfin\nc\nc\nc\n", "expect_stdout": ["= 100", "value returned = 103"]},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "p 1 / 0\np x\nc\n", "expect_stdout": ["runtime fault: SIGFPE", "entry rolled back", "x = 3"]},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\nrepl\nint dbl(int q):\n\treturn q + q\n\n:end\np dbl(a)\nc\nc\nc\n", "expect_stdout": "= 6"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\nrepl\nint acc = 0\nwhile (acc < 5):\n\tacc = acc + 1\n\nacc + a\n:end\nc\nc\nc\n", "expect_stdout": "= 8"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "repl\nimport structures.string\nstring_builder* sb = string_from(c\"wdbg\")\nsb.length\n:end\nc\n", "expect_stdout": "= 4"}
 			]
 		},
 		{
@@ -1165,7 +1175,10 @@
 				{"cmd": ["bin/repl", "tests/repl_fixture.w"], "stdin": ":quit\n", "expect_stdout": "fixture main ran"},
 				{"cmd": ["bin/repl", "tests/repl_fixture.w"], "stdin": "fixture_helper(21)\nfixture_global\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl", "tests/repl_fixture.w"], "stdin": "fixture_global\n:quit\n", "expect_stdout": "11"},
-				{"cmd": ["bin/repl", "tests/repl_fixture.w", "--no_main"], "stdin": ":quit\n", "reject_stdout": "fixture main ran"}
+				{"cmd": ["bin/repl", "tests/repl_fixture.w", "--no_main"], "stdin": ":quit\n", "reject_stdout": "fixture main ran"},
+				{"cmd": ["bin/repl"], "stdin": "int v = 7\ndebugger\np v\nc\n:quit\n", "expect_stdout": ["breakpoint hit at eip=", "v = 7"]},
+				{"cmd": ["bin/repl"], "stdin": "int v = 7\ndebugger\np v + 35\nc\nv + 36\n:quit\n", "expect_stdout": ["= 42", "43"]},
+				{"cmd": ["bin/repl"], "stdin": "int f():\n\treturn 5\n\ndebugger\nb f\nc\nf()\nc\n:quit\n", "expect_stdout": ["hit breakpoint 1 at f", "5"]}
 			]
 		},
 		{
@@ -1194,7 +1207,10 @@
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w"], "stdin": "fixture_helper(21)\nfixture_global\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w", "--no_main"], "stdin": ":quit\n", "reject_stdout": "fixture main ran"},
 				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "int q = 134\nq + 1\n:quit\n", "expect_stdout": "5"},
-				{"cmd": ["sh", "-c", "COLUMNS=20 script -qc './bin/repl64' /dev/null"], "stdin": "int qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq = 42\nqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq + 1\n:quit\n", "expect_stdout": "43"}
+				{"cmd": ["sh", "-c", "COLUMNS=20 script -qc './bin/repl64' /dev/null"], "stdin": "int qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq = 42\nqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq + 1\n:quit\n", "expect_stdout": "43"},
+				{"cmd": ["bin/repl64"], "stdin": "int v = 7\ndebugger\np v\nc\n:quit\n", "expect_stdout": ["breakpoint hit at eip=", "v = 7"]},
+				{"cmd": ["bin/repl64"], "stdin": "int v = 7\ndebugger\np v + 35\nc\nv + 36\n:quit\n", "expect_stdout": ["= 42", "43"]},
+				{"cmd": ["bin/repl64"], "stdin": "int f():\n\treturn 5\n\ndebugger\nb f\nc\nf()\nc\n:quit\n", "expect_stdout": ["hit breakpoint 1 at f", "5"]}
 			]
 		},
 		{

@@ -65,6 +65,9 @@ int close(int file):
 int seek(int file, int offset, int reference):
 	return syscall(199, file, offset, reference)
 
+int unlink(char* path):
+	return syscall(10, path, 0, 0)
+
 # Directory syscalls:
 int mkdir(char* path, int mode):
 	return syscall(136, path, mode, 0)

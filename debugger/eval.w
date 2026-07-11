@@ -1,41 +1,58 @@
 /*
-Expression evaluation at a breakpoint (the repl model).
+Expression evaluation at a breakpoint, on the shared REPL engine
+(repl/core.w).
 
 The whole compiler is already in this process, and the debuggee's code
-buffer, symbol table and type table are all live. dbg_eval() stages
-"return <expr>" in /tmp, compiles it as the body of a fresh anonymous
-function appended to the code buffer, calls it and prints the result.
-Expressions can read and write the debuggee's globals and call its
-functions. A compile error rolls back cleanly via the repl_setjmp
-recovery hook instead of killing wdbg.
+buffer, symbol table and type table are all live -- the same in-process
+model the REPL runs on. dbg_eval() wraps the expression as the entry
+"return <expr>" and hands it to repl_eval(), which stages it in the
+session's staging directory, compiles it as a fresh anonymous function
+appended to the code buffer, calls it, and rolls it back cleanly (via
+the shared repl_setjmp recovery hook and checkpoint) when it fails to
+compile or faults at runtime, instead of killing wdbg. dbg_eval_entry()
+exposes the full engine to the 'repl' command in wdbg's loop: multi-line
+entries, persistent helper definitions and imports work at a stop, with
+the same declaration persistence as the REPL prompt.
 
 Locals and arguments visible at the stop are bound as temporary symbols
 so expressions like "x + y * 2" or "add(x, 1)" work on locals too. The
 generated code addresses symbols with 32-bit immediates, and on x64 the
 debuggee's stack sits above 4GB, so each local's value is copied into a
-low-memory scratch slot that the symbol points at; after the expression
-runs the slots are copied back, so assignments to locals stick. The
-bindings are declared after the checkpoint and dropped with the eval
-function's other symbols, so nothing leaks between evaluations.
+low-memory scratch slot that the symbol points at; after the entry runs
+the slots are copied back, so assignments to locals stick. The binding
+runs as the engine's pre-entry hook (repl_bind_hook), so the symbols
+exist while the entry compiles; afterwards they are retracted from
+lookup (dbg_eval_unbind) -- they cannot be truncated away, because a
+persistent definition made by the same entry lives above them in the
+table. The binding record is saved and restored around each eval, so a
+nested eval (a breakpoint hit inside code an eval is executing) keeps
+its own.
 */
 import debugger.breakpoints
+import repl.core
 
 
-int dbg_eval_counter
-int dbg_eval_ok /* set by dbg_eval_call: 0 = the expression failed to compile */
+int dbg_eval_ok /* set by dbg_eval_call: 0 = the expression failed to compile (or faulted) */
 
-# Per-process staging path for evaluated expressions, computed once on
-# first use. Pid-tagged so two wdbg processes running concurrently
-# (e.g. debug_test / debug_test_x64 under a parallel test runner) never
-# clobber each other's staged file.
-char* dbg_eval_path
+# Result of the last successful dbg_eval_entry: the value of the entry's
+# final bare expression (or the entry function's return value) and its
+# compile-time type for echoing, -1 when nothing should echo.
+int dbg_eval_value
+int dbg_eval_echo_type
 
-# Scratch copies of the bound locals (allocated once, low memory) and
-# the copy-back list: runtime address, scratch address, byte size.
+# Stop context for the pre-entry binding hook.
+int dbg_eval_stop_addr
+int dbg_eval_esp
+
+# Scratch copies of the bound locals (low memory) and the copy-back
+# list: runtime address, scratch address, byte size, plus each binding's
+# symbol-table name offset for dbg_eval_unbind. Allocated fresh per eval
+# (dbg_eval_entry) so nested evals keep their own record.
 char* dbg_eval_scratch
 char* dbg_eval_bound_from
 char* dbg_eval_bound_to
 char* dbg_eval_bound_size
+char* dbg_eval_bound_sym
 int dbg_eval_bound_count
 
 
@@ -59,7 +76,9 @@ void dbg_eval_copy(int from, int to, int n):
 # Bind every local and argument visible at the stop as a defined global
 # object pointing at a scratch copy of its value. Later declarations win
 # in sym_lookup, so inner shadowing declarations take precedence over
-# outer ones and over real globals, like in the source.
+# outer ones and over real globals, like in the source. Runs as the
+# engine's pre-entry hook inside repl_compile_entry, after the entry's
+# rollback checkpoint: a failed entry rolls the bindings back with it.
 void dbg_eval_bind_locals(int stop_addr, int esp):
 	dbg_eval_bound_count = 0
 	dbg_frame_compute(stop_addr)
@@ -70,6 +89,7 @@ void dbg_eval_bind_locals(int stop_addr, int esp):
 		dbg_eval_bound_from = malloc(dbg_eval_bound_max() * __word_size__)
 		dbg_eval_bound_to = malloc(dbg_eval_bound_max() * __word_size__)
 		dbg_eval_bound_size = malloc(dbg_eval_bound_max() * 4)
+		dbg_eval_bound_sym = malloc(dbg_eval_bound_max() * 4)
 	int rel = stop_addr - code_offset
 	int saved_indirection = pointer_indirection
 	int used = 0
@@ -90,12 +110,18 @@ void dbg_eval_bind_locals(int stop_addr, int esp):
 					save_word(dbg_eval_bound_from + b * __word_size__, addr)
 					save_word(dbg_eval_bound_to + b * __word_size__, slot)
 					save_int(dbg_eval_bound_size + b * 4, size)
+					save_int(dbg_eval_bound_sym + b * 4, table_pos)
 					dbg_eval_bound_count = b + 1
 					used = used + size
 					pointer_indirection = type_get_pointer_level(type)
 					sym_declare(dbg_local_name_at(i), type, 'D', slot, 1)
 		i = i + 1
 	pointer_indirection = saved_indirection
+
+
+# The engine's pre-entry hook: bind the locals of the recorded stop.
+void dbg_eval_bind_hook():
+	dbg_eval_bind_locals(dbg_eval_stop_addr, dbg_eval_esp)
 
 
 # Copy possibly-assigned scratch values back into the stack slots.
@@ -108,106 +134,69 @@ void dbg_eval_writeback():
 		b = b + 1
 
 
-# Compile `return <expr>` as an anonymous function; returns its address,
-# or 0 when the expression failed to compile.
-int dbg_eval_compile(char* expr, int stop_addr, int esp):
-	# Stage the line in a file: the tokenizer reads from an fd
-	if (dbg_eval_path == 0):
-		char* pid_digits = itoa(getpid())
-		char* pid_prefix = strjoin(c"/tmp/wdbg_eval_", pid_digits)
-		dbg_eval_path = strjoin(pid_prefix, c".w")
-		free(pid_prefix)
-		free(pid_digits)
-	char* path = dbg_eval_path
-	int out = create_file(path, 511)
-	if (out < 0):
-		println(c"could not create wdbg eval staging file")
-		return 0
-	write_string(out, c"return ")
-	write_string(out, expr)
-	write(out, c"\x0a", 1)
-	close(out)
+# Retract the scratch bindings from symbol lookup once the entry has run:
+# each binding's stored name gets a leading byte no identifier can start
+# with, so later lookups never match it, while the entry keeps its length
+# for the table walk. The bindings cannot be popped off the table --
+# persistent definitions the same entry made live above them.
+void dbg_eval_unbind():
+	int b = 0
+	while (b < dbg_eval_bound_count):
+		table[load_int(dbg_eval_bound_sym + b * 4)] = 1
+		b = b + 1
 
-	# Checkpoint everything a failed compile could leave half-updated
-	int saved_codepos = codepos
-	int saved_table_pos = table_pos
-	int saved_stack_pos = stack_pos
-	int saved_loop_depth = loop_depth
-	int saved_loop_break_chain = loop_break_chain
-	int saved_loop_continue_chain = loop_continue_chain
-	int saved_loop_stack_pos = loop_stack_pos
-	int saved_switch_depth = switch_depth
-	int saved_switch_break_chain = switch_break_chain
-	int saved_switch_stack_pos = switch_stack_pos
-	int saved_break_in_switch = break_in_switch
-	int saved_defer_count = defer_count()
-	int saved_for_cleanup_count = for_cleanup_count()
-	int saved_number_of_args = number_of_args
-	int saved_type_count = type_count()
-	int saved_function_symbol = current_function_symbol
 
-	repl_recovery = 1
-	if (repl_setjmp(repl_jump_buffer)):
-		# error() jumped back: roll back the failed expression
-		repl_recovery = 0
-		codepos = saved_codepos
-		table_pos = saved_table_pos
-		stack_pos = saved_stack_pos
-		loop_depth = saved_loop_depth
-		loop_break_chain = saved_loop_break_chain
-		loop_continue_chain = saved_loop_continue_chain
-		loop_stack_pos = saved_loop_stack_pos
-		switch_depth = saved_switch_depth
-		switch_break_chain = saved_switch_break_chain
-		switch_stack_pos = saved_switch_stack_pos
-		break_in_switch = saved_break_in_switch
-		defer_truncate(saved_defer_count)
-		for_cleanup_truncate(saved_for_cleanup_count)
-		number_of_args = saved_number_of_args
-		type_table_truncate(saved_type_count)
-		current_function_symbol = saved_function_symbol
-		pointer_indirection = 0
-		diag_clear()
-		close(file)
-		return 0
+# Evaluate one full REPL entry at the stop described by stop_addr/esp:
+# the locals bind around it, declarations persist for the rest of the
+# session, and assigned locals write back on success. Returns 1 when the
+# entry compiled and ran to completion (dbg_eval_value/dbg_eval_echo_type
+# then hold the result), 0 when it failed to compile or faulted (already
+# reported and rolled back by the engine, bindings included).
+int dbg_eval_entry(char* entry_text, int stop_addr, int esp):
+	# Give this eval its own binding record and stop context; a nested
+	# eval (a breakpoint hit inside code this entry executes) saves ours
+	# here on its own stack and restores it before we use them again.
+	char* outer_scratch = dbg_eval_scratch
+	char* outer_from = dbg_eval_bound_from
+	char* outer_to = dbg_eval_bound_to
+	char* outer_size = dbg_eval_bound_size
+	char* outer_sym = dbg_eval_bound_sym
+	int outer_count = dbg_eval_bound_count
+	int outer_stop = dbg_eval_stop_addr
+	int outer_esp = dbg_eval_esp
+	int outer_hook = repl_bind_hook
+	dbg_eval_scratch = 0
+	dbg_eval_bound_count = 0
+	dbg_eval_stop_addr = stop_addr
+	dbg_eval_esp = esp
+	repl_bind_hook = cast(int, dbg_eval_bind_hook)
 
-	filename = path
-	file = open(path, 0, 511)
-	asserts(c"could not reopen eval buffer", file >= 0)
-	getchar_reset(file)
-	line_number = 0
-	column_number = 0
-	tab_level = 0
-	byte_offset = 0
-	nextc = get_character()
-	get_token()
+	repl_result r = repl_eval(entry_text)
 
-	char* counter_digits = itoa(dbg_eval_counter)
-	char* name = strjoin(c"__wdbg_eval_", counter_digits)
-	free(counter_digits)
-	dbg_eval_counter = dbg_eval_counter + 1
+	int ok = 0
+	if (r.status == 1):
+		dbg_eval_writeback()
+		dbg_eval_unbind()
+		dbg_eval_value = r.value
+		dbg_eval_echo_type = r.echo_type
+		ok = 1
 
-	int current_symbol = sym_declare_global(name, 1, 2)
-	sym_define_global(current_symbol)
-	current_function_symbol = current_symbol
-	int n = table_pos
-	dbg_eval_bind_locals(stop_addr, esp)
-	number_of_args = 0
-	defer_reset()
-	stack_pos = 0
-	enclosing_tab_level = 0
-	while (token[0] != 0):
-		statement()
-	be_pop(stack_pos)
-	stack_pos = saved_stack_pos
-	ret()
-	table_pos = n
-	close(file)
-	repl_recovery = 0
-
-	int address = sym_address(name)
-	free(name)
-	return address
+	repl_bind_hook = outer_hook
+	if (dbg_eval_scratch != 0):
+		free(dbg_eval_scratch)
+		free(dbg_eval_bound_from)
+		free(dbg_eval_bound_to)
+		free(dbg_eval_bound_size)
+		free(dbg_eval_bound_sym)
+	dbg_eval_scratch = outer_scratch
+	dbg_eval_bound_from = outer_from
+	dbg_eval_bound_to = outer_to
+	dbg_eval_bound_size = outer_size
+	dbg_eval_bound_sym = outer_sym
+	dbg_eval_bound_count = outer_count
+	dbg_eval_stop_addr = outer_stop
+	dbg_eval_esp = outer_esp
+	return ok
 
 
 # Non-printing evaluation for conditions and logpoints. Sets dbg_eval_ok
@@ -217,13 +206,21 @@ int dbg_eval_compile(char* expr, int stop_addr, int esp):
 # "condition failed to compile".
 int dbg_eval_call(char* expr, int stop_addr, int esp):
 	dbg_eval_ok = 0
-	int f = dbg_eval_compile(expr, stop_addr, esp)
-	if (f == 0):
+	char* entry_text = strjoin(c"return ", expr)
+	int ok = dbg_eval_entry(entry_text, stop_addr, esp)
+	free(entry_text)
+	# A staged "return <expr>" entry cannot define a generic, so no later
+	# entry re-parses its file; remove it now instead of at repl_cleanup.
+	# Conditions and logpoints evaluate on every hit, and a long run would
+	# otherwise flood the staging directory with one file per hit. (The
+	# 'repl' command's entries go through dbg_eval_entry directly and
+	# keep their files, like entries at the REPL prompt.)
+	if (repl_staged_path != 0):
+		unlink(repl_staged_path)
+	if (ok == 0):
 		return 0
-	int v = f()
-	dbg_eval_writeback()
 	dbg_eval_ok = 1
-	return v
+	return dbg_eval_value
 
 
 # Evaluate the expression at the stop and print its value.
