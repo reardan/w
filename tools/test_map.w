@@ -79,6 +79,20 @@ Output: unique target names, one per line, in manifest order ('tests'
 is last in the manifest). --verbose prints 'path -> target' notes to
 stderr. Paths come from arguments or stdin (git diff --name-only HEAD |
 bin/wtest changed).
+
+--run additionally executes the selection itself, through the same
+executor './wbuild test_changed' pipes into via 'xargs -r ./wbuild'
+(which execs bin/wexec) -- but as a single direct child that inherits
+this process's stdio, so build output streams live exactly as it does
+through that pipeline. An empty selection is a no-op, matching
+'xargs -r's behavior on empty input: no child is spawned. wtest exits
+with the child's status (0 on success).
+
+-f overrides the manifest path (default build.json) for both selection
+and, under --run, execution. It exists mainly for isolated testing
+(tests/wtest/): pointing wtest at a throwaway manifest lets --run be
+exercised without ever selecting a real target that itself shells out to
+bin/wtest, which would recurse.
 */
 import lib.lib
 import lib.file
@@ -107,13 +121,15 @@ list[char*] wtest_closure_blobs
 map[char*, char*] wtest_file_hashes  # path -> content hash hex (memo)
 
 int wtest_verbose
+int wtest_run_flag
+char* wtest_manifest_path
 int wtest_closures_ready
 int wtest_mask32
 
 
 void wtest_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wtest changed [--verbose] [file...]")
+	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [-f manifest.json] [file...]")
 	stream_flush(err)
 
 
@@ -170,21 +186,21 @@ char* wtest_get_string(json_value* object, char* key):
 
 
 int wtest_load_manifest():
-	char* text = file_read_text(c"build.json")
+	char* text = file_read_text(wtest_manifest_path)
 	if (text == 0):
-		wtest_error(c"cannot read ", c"build.json")
+		wtest_error(c"cannot read ", wtest_manifest_path)
 		return 1
 	wtest_manifest = json_parse(text)
 	free(text)
 	if (wtest_manifest == 0):
-		wtest_error(c"manifest is not valid JSON: ", c"build.json")
+		wtest_error(c"manifest is not valid JSON: ", wtest_manifest_path)
 		return 1
 	json_value* targets = json_object_get(wtest_manifest, c"targets")
 	if (targets == 0):
-		wtest_error(c"manifest has no targets array: ", c"build.json")
+		wtest_error(c"manifest has no targets array: ", wtest_manifest_path)
 		return 1
 	if (targets.type != json_type_array()):
-		wtest_error(c"manifest targets is not an array: ", c"build.json")
+		wtest_error(c"manifest targets is not an array: ", wtest_manifest_path)
 		return 1
 	wtest_target_names = new list[char*]
 	wtest_target_defs = new map[char*, json_value*]
@@ -856,6 +872,46 @@ void wtest_emit_targets():
 	stream_flush(out)
 
 
+# --run: hand the selection to bin/wexec as a single direct child that
+# inherits our stdio, instead of relying on a caller to pipe our output
+# into 'xargs -r ./wbuild' (what './wbuild test_changed' does). An empty
+# selection is a no-op, matching xargs -r's behavior on empty input: no
+# child is spawned and 0 is returned. -f (see wtest_manifest_path) is
+# forwarded too, so an isolated caller (tests/wtest_run_test) can point
+# both selection and execution at a throwaway manifest. Returns the
+# child's exit status, to propagate as wtest's own.
+int wtest_run_selected():
+	list[char*] selected = new list[char*]
+	for char* name in wtest_target_names:
+		if (name in wtest_enabled):
+			selected.push(name)
+	if (selected.length == 0):
+		return 0
+	int custom_manifest = strcmp(wtest_manifest_path, c"build.json") != 0
+	int prefix = 1
+	if (custom_manifest):
+		prefix = 3
+	char** argv = strv_new(prefix + selected.length)
+	strv_set(argv, 0, c"bin/wexec")
+	if (custom_manifest):
+		strv_set(argv, 1, c"-f")
+		strv_set(argv, 2, wtest_manifest_path)
+	int i = 0
+	while (i < selected.length):
+		strv_set(argv, prefix + i, selected[i])
+		i = i + 1
+	process* p = process_spawn(c"bin/wexec", argv, 0)
+	free(cast(char*, argv))
+	if (p == 0):
+		wtest_error(c"cannot spawn ", c"bin/wexec")
+		return 1
+	int status = process_wait(p)
+	process_free(p)
+	if (status < 0):
+		return 1
+	return status
+
+
 int main(int argc, int argv):
 	wtest_mask32 = wtest_mask32_value()
 	if (argc < 2):
@@ -865,6 +921,22 @@ int main(int argc, int argv):
 	if (strcmp(*command, c"changed") != 0):
 		wtest_usage()
 		return 1
+	wtest_manifest_path = c"build.json"
+	# A first pass just for "-f manifest.json": the manifest must be
+	# loaded before selection starts below, but "-f" may appear anywhere
+	# after "changed" (mirroring bin/wexec's own flag), so it is found
+	# ahead of the argument loop that does the real work.
+	int pre = 2
+	while (pre < argc):
+		char** arg = argv + pre * __word_size__
+		if (strcmp(*arg, c"-f") == 0):
+			pre = pre + 1
+			if (pre >= argc):
+				wtest_usage()
+				return 1
+			char** value = argv + pre * __word_size__
+			wtest_manifest_path = *value
+		pre = pre + 1
 	if (wtest_load_manifest()):
 		return 1
 	int saw_file = 0
@@ -873,6 +945,10 @@ int main(int argc, int argv):
 		char** arg = argv + i * __word_size__
 		if (strcmp(*arg, c"--verbose") == 0):
 			wtest_verbose = 1
+		else if (strcmp(*arg, c"--run") == 0):
+			wtest_run_flag = 1
+		else if (strcmp(*arg, c"-f") == 0):
+			i = i + 1   # value already consumed by the pre-scan above
 		else:
 			wtest_map_path(*arg)
 			saw_file = 1
@@ -884,4 +960,6 @@ int main(int argc, int argv):
 			wtest_map_path(line.data)
 		string_free(line)
 	wtest_emit_targets()
+	if (wtest_run_flag):
+		return wtest_run_selected()
 	return 0

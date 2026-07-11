@@ -77,9 +77,19 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
-- **`wtest changed --run`.** Now that `lib/process.w` exists, `wtest`
-  could execute the selected targets itself instead of relying on the
-  `./wbuild test_changed` xargs pipeline.
+- **`wtest changed --run` — landed.** `wtest` now takes a `--run` flag:
+  after printing the selection (unchanged), it spawns `bin/wexec` itself
+  with that target list, inheriting stdio so build output streams live,
+  and exits with its status — instead of a caller piping `wtest`'s
+  output through `./wbuild test_changed`'s `xargs -r ./wbuild`. An empty
+  selection is a no-op, matching `xargs -r`'s behavior on empty input.
+  A companion `-f manifest.json` flag (mirroring `bin/wexec`'s own)
+  overrides the manifest for both selection and, under `--run`,
+  execution; it exists so `--run` can be tested in isolation
+  (`wtest_run_test` in `build.base.json`, fixture at
+  `tests/wtest/run_fixture.json`) without ever selecting a real target
+  whose own steps shell out to `bin/wtest`, which would recurse through
+  the live manifest.
 - **`.txt` doc-only filter swallowed `tests/asm/` corpus fixtures — fixed
   (issue #171).** `wtest_doc_only` in `tools/test_map.w` treated every
   `*.txt` path as documentation (meant for `docs/todo.txt`), so

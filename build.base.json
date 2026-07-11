@@ -843,7 +843,7 @@
 				{"cmd": ["bin/wtest", "changed"], "stdin": "grammar/promote.w\n", "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "verify\nself_host_warning_test\nparser_generator_w_test\nwtest_map_test\n"},
 				{"cmd": ["bin/wtest", "changed", "structures/json.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nwexec_win\nparser_generator_w_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwtest_map_test\nmetadata_check\nwexec_test\njson_rpc_test\njson_rpc_64_test\njson_64_test\njson_codec_64_test\njson_codec_test\njson_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nwexec_win\nparser_generator_w_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwtest_map_test\nwtest_run_test\nmetadata_check\nwexec_test\njson_rpc_test\njson_rpc_64_test\njson_64_test\njson_codec_64_test\njson_codec_test\njson_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tests/warning_fixture.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "warning_test\nstrict_mode_test\ncheck_json_test\nparser_generator_w_test\nwtest_map_test\n"},
 				{"cmd": ["bin/wtest", "changed", "libs/extras/parser_generator/generator.w"], "stdout_file": "bin/wtest_map.out"},
@@ -853,11 +853,11 @@
 				{"cmd": ["bin/wtest", "changed", "unknown/new_file.w"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wtest_map_test\nmetadata_check\ntests\n"},
 				{"cmd": ["bin/wtest", "changed"], "stdin": "lib/stream.w\n", "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nwexec_win\nbuffer_field_assign_test\narray_error_test\nsyscall_arity_test\nwarning_test\nmissing_file_test\nrepl_warning_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nopenssl_interop_test\nparser_generator_test\nparser_generator_w_test\nparser_generator_c_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwfixture\nwtest_map_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nnet_darwin\nwdbg\nwdbg_x64\ndebug_test\ndebug_test_x64\nattach_test\nrepl_test\nrepl_test_x64\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\ngrapheme_data\nrewrite_c_strings\nasm_fuzz_arm64_test\nasm_fuzz_x64_test\nasm_fuzz_x86_test\nc_preprocessor_test\ndns_64_test\ndns_test\nfile_test\nhttp_client_64_test\nhttp_client_test\nretry_64_test\nretry_test\nsse_64_test\nsse_test\nstream_64_test\nstream_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nwexec_win\nbuffer_field_assign_test\narray_error_test\nsyscall_arity_test\nwarning_test\nmissing_file_test\nrepl_warning_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nopenssl_interop_test\nparser_generator_test\nparser_generator_w_test\nparser_generator_c_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwfixture\nwtest_map_test\nwtest_run_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nnet_darwin\nwdbg\nwdbg_x64\ndebug_test\ndebug_test_x64\nattach_test\nrepl_test\nrepl_test_x64\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\ngrapheme_data\nrewrite_c_strings\nasm_fuzz_arm64_test\nasm_fuzz_x64_test\nasm_fuzz_x86_test\nc_preprocessor_test\ndns_64_test\ndns_test\nfile_test\nhttp_client_64_test\nhttp_client_test\nretry_64_test\nretry_test\nsse_64_test\nsse_test\nstream_64_test\nstream_test\n"},
 				{"cmd": ["bin/wtest", "changed", "lib/file.w"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nwexec_win\nbuffer_field_assign_test\narray_error_test\nsyscall_arity_test\nwarning_test\nmissing_file_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nopenssl_interop_test\nparser_generator_w_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwfixture\nwtest_map_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nnet_darwin\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\nrewrite_c_strings\nasm_fuzz_arm64_test\nasm_fuzz_x64_test\nasm_fuzz_x86_test\ndns_64_test\ndns_test\nfile_test\nhttp_client_64_test\nhttp_client_test\nretry_64_test\nretry_test\nsse_64_test\nsse_test\nstream_64_test\nstream_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nwexec_win\nbuffer_field_assign_test\narray_error_test\nsyscall_arity_test\nwarning_test\nmissing_file_test\ntype_system_error_test\ntype_system_warning_test\nnet_x509_test\nnet_tls_test\nnet_tls_server_test\nhttps_e2e_test\nopenssl_interop_test\nparser_generator_w_test\nwtest\nwbuildgen\nmanifest\nmanifest_check\nwfixture\nwtest_map_test\nwtest_run_test\nwmeta\nmetadata_check\nmetadata_test\nwexec_test\nnet_darwin\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\ngen_stubs\nrewrite_c_strings\nasm_fuzz_arm64_test\nasm_fuzz_x64_test\nasm_fuzz_x86_test\ndns_64_test\ndns_test\nfile_test\nhttp_client_64_test\nhttp_client_test\nretry_64_test\nretry_test\nsse_64_test\nsse_test\nstream_64_test\nstream_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tools/wexec.w", "tests/wexec/good.json"], "stdout_file": "bin/wtest_map.out"},
-				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nwexec_win\nparser_generator_w_test\nwtest_map_test\nwexec_test\n"},
+				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wexec\nwexec_win\nparser_generator_w_test\nwtest_map_test\nwtest_run_test\nwexec_test\n"},
 				{"cmd": ["bin/wtest", "changed", "build.json"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wtest_map_test\nwexec_test\ntests\n"},
 				{"cmd": ["bin/wtest", "changed", "tests/import_alias_warning_fixture.w"], "stdout_file": "bin/wtest_map.out"},
@@ -876,7 +876,19 @@
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "parser_generator_w_test\nwbuildgen\nmanifest\nmanifest_check\nwtest_map_test\n"},
 				{"cmd": ["bin/wtest", "changed", "tests/asm/corpus_x86.txt"], "stdout_file": "bin/wtest_map.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wtest_map.out"], "stdin": "wtest_map_test\nasm_foundations_test\nasm_x86_disasm_test\nasm_x86_asm_test\nasm_arm64_test\nasm_x64_test\nasm_seed_gate\nasm_stubs_test\nasm_fuzz_arm64_test\nasm_fuzz_x64_test\nasm_fuzz_x86_test\n"},
-				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read build.json"}
+				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read build.json"},
+				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [-f manifest.json] [file...]"}
+			]
+		},
+		{
+			"name": "wtest_run_test",
+			"deps": ["wtest", "wexec"],
+			"steps": [
+				{"cmd": ["bin/wtest", "changed", "docs/todo.txt", "--run"], "stdout_file": "bin/wtest_run_empty.out"},
+				{"cmd": ["test", "!", "-s", "bin/wtest_run_empty.out"]},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/run_fixture.json", "wtest_run_smoke_marker", "--run"], "expect_stdout": ["smoke", "wexec: OK (1 targets)"]},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/run_fixture.json", "wtest_run_boom_marker", "--run"], "expect_fail": true, "expect_stdout": "boom", "expect_stderr": "command failed with exit status"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/run_fixture.json", "wtest_run_smoke_marker"], "expect_stdout": "smoke", "reject_stdout": "wexec: OK"}
 			]
 		},
 		{
@@ -1741,6 +1753,7 @@
 				"parser_generator_w_test",
 				"parser_generator_c_test",
 				"wtest_map_test",
+				"wtest_run_test",
 				"wexec_test",
 				"metadata_check",
 				"metadata_test",
