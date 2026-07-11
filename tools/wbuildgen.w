@@ -17,8 +17,14 @@ Generation rules:
        "steps": [{"cmd": ["bin/wv2", "dir/X_test.w", "-o", "bin/X_test"]},
                  {"cmd": ["bin/X_test"]}]}
 
-- A `# wbuild: x64` directive line in the source also yields the
-  X_64_test twin, compiling the same file with the `x64` argument.
+- `# wbuild:` directive lines in the source refine the generated
+  targets: `x64` also yields the X_64_test twin (the same file compiled
+  with the `x64` argument), and the key=value vocabulary documented
+  above wbg_parse_directives (timeout=, stdin=, expect_stdout=,
+  expect_stderr=, expect_fail, deps=, extra_compile=, arch=) adds
+  run-step expectations, piped stdin, timeouts, declared run-time data
+  inputs and extra compile-only steps — the irregular shapes that used
+  to need hand-written base targets.
 - Base wins by name: when build.base.json already defines X_test (or
   X_64_test), that definition is kept and nothing is generated for the
   name. This is how a test with extra hand-written steps keeps its
@@ -186,49 +192,275 @@ char* wbg_concat(char* left, char* right):
 /* Directive parsing.
 
 A directive is a source line starting with "# wbuild:" followed by
-whitespace-separated tokens. The only token today is "x64" (also
-generate the X_64_test twin). Unknown tokens are an error so typos
-fail the manifest run instead of silently generating nothing. */
+whitespace-separated tokens; a source may carry several such lines.
+Bare tokens are flags; key=value tokens carry a value, either a bare
+word or a double-quoted string with \n, \t, \", \\ escapes. The
+vocabulary:
 
-# Returns 1 when the source declares x64, 0 when not, -1 on error.
+  x64                      also generate the X_64_test twin
+  arch=x64                 keyed spelling of the same flag ("x64" is
+                           the only accepted value today; arm64/darwin
+                           twins are the platform-axis work of #251)
+  expect_fail              the run step must exit nonzero
+  timeout=<ms>             "timeout_ms" on the run step
+  stdin="text"             text piped to the run step's stdin
+  expect_stdout="substr"   the run step's stdout must contain substr
+  expect_stderr="substr"   same for stderr; both are repeatable, and
+                           several values emit the array form
+  deps=<path>              declare a non-W run-time input (a data
+                           file, or a directory prefix ending in '/');
+                           emitted as the target-level "data" array,
+                           which bin/wtest matches changed paths
+                           against (tools/test_map.w, rule a)
+  extra_compile="args"     append one more 'bin/wv2 <args>' step
+                           (whitespace-split, no shell) after the run
+                           step, on the default-arch target only
+
+Run-step fields apply to every target generated from the source (the
+32-bit target and the x64 twin alike). Unknown tokens, malformed
+values, and directives that no generated target can honor are errors,
+so typos fail the manifest run instead of silently generating
+nothing. */
+
+
+int wbg_dir_x64
+int wbg_dir_expect_fail
+int wbg_dir_timeout_ms             # 0 = unset
+char* wbg_dir_stdin                # 0 = unset
+list[char*] wbg_dir_expect_stdout
+list[char*] wbg_dir_expect_stderr
+list[char*] wbg_dir_extra_compile
+list[char*] wbg_dir_data
+
+
+void wbg_reset_directives():
+	wbg_dir_x64 = 0
+	wbg_dir_expect_fail = 0
+	wbg_dir_timeout_ms = 0
+	wbg_dir_stdin = 0
+	wbg_dir_expect_stdout = new list[char*]
+	wbg_dir_expect_stderr = new list[char*]
+	wbg_dir_extra_compile = new list[char*]
+	wbg_dir_data = new list[char*]
+
+
+# Directives that decorate the generated run step (as opposed to the
+# x64 flag, which chooses what to generate).
+int wbg_dir_has_run_fields():
+	if (wbg_dir_expect_fail | (wbg_dir_timeout_ms > 0)):
+		return 1
+	if (wbg_dir_stdin != 0):
+		return 1
+	if ((wbg_dir_expect_stdout.length > 0) | (wbg_dir_expect_stderr.length > 0)):
+		return 1
+	return 0
+
+
+void wbg_token_error(char* path, char* message, char* token):
+	string_builder* s = string_new()
+	string_append(s, message)
+	string_append(s, c"'")
+	string_append(s, token)
+	string_append(s, c"' in ")
+	string_append(s, path)
+	wbg_error(s.data)
+	string_free(s)
+
+
+# Strictly-digits millisecond count; -1 on anything else.
+int wbg_parse_ms(char* text):
+	if (text[0] == 0):
+		return -1
+	int value = 0
+	int i = 0
+	while (text[i] != 0):
+		if ((text[i] < '0') | (text[i] > '9')):
+			return -1
+		value = value * 10 + (text[i] - '0')
+		i = i + 1
+	return value
+
+
+int wbg_need_value(char* path, char* key, int has_value):
+	if (has_value):
+		return 0
+	wbg_token_error(path, c"missing value for '# wbuild:' directive ", key)
+	return 1
+
+
+int wbg_no_value(char* path, char* key, int has_value):
+	if (has_value == 0):
+		return 0
+	wbg_token_error(path, c"'# wbuild:' flag takes no value: ", key)
+	return 1
+
+
+# Applies one parsed key[=value] token to the wbg_dir_* state.
+# Returns 0 on success, 1 after reporting an error.
+int wbg_apply_directive(char* path, char* key, int has_value, char* value):
+	if (strcmp(key, c"x64") == 0):
+		if (wbg_no_value(path, key, has_value)):
+			return 1
+		wbg_dir_x64 = 1
+		return 0
+	if (strcmp(key, c"expect_fail") == 0):
+		if (wbg_no_value(path, key, has_value)):
+			return 1
+		wbg_dir_expect_fail = 1
+		return 0
+	if (strcmp(key, c"arch") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (strcmp(value, c"x64") != 0):
+			wbg_token_error(path, c"unsupported '# wbuild:' arch (only x64 today) ", value)
+			return 1
+		wbg_dir_x64 = 1
+		return 0
+	if (strcmp(key, c"timeout") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (wbg_dir_timeout_ms != 0):
+			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
+			return 1
+		int ms = wbg_parse_ms(value)
+		if (ms <= 0):
+			wbg_token_error(path, c"'# wbuild:' timeout needs a positive millisecond count, got ", value)
+			return 1
+		wbg_dir_timeout_ms = ms
+		return 0
+	if (strcmp(key, c"stdin") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (wbg_dir_stdin != 0):
+			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
+			return 1
+		wbg_dir_stdin = strclone(value)
+		return 0
+	if ((strcmp(key, c"expect_stdout") == 0) | (strcmp(key, c"expect_stderr") == 0)):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (value[0] == 0):
+			wbg_token_error(path, c"empty '# wbuild:' expectation ", key)
+			return 1
+		if (strcmp(key, c"expect_stdout") == 0):
+			wbg_dir_expect_stdout.push(strclone(value))
+		else:
+			wbg_dir_expect_stderr.push(strclone(value))
+		return 0
+	if (strcmp(key, c"deps") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (ends_with(value, c".w")):
+			wbg_token_error(path, c"'deps=' is for non-W inputs, imports already track ", value)
+			return 1
+		# A missing path usually means a typo or a deleted data file;
+		# fail loudly, like generate.exclude staleness.
+		int fd = open(value, 0, 0)
+		if (fd < 0):
+			wbg_token_error(path, c"'# wbuild:' deps path does not exist: ", value)
+			return 1
+		close(fd)
+		wbg_dir_data.push(strclone(value))
+		return 0
+	if (strcmp(key, c"extra_compile") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (value[0] == 0):
+			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
+			return 1
+		wbg_dir_extra_compile.push(strclone(value))
+		return 0
+	wbg_token_error(path, c"unknown '# wbuild:' directive ", key)
+	return 1
+
+
+# Parses a directive value at text[j]: a bare word, or a double-quoted
+# string with \n \t \" \\ escapes. Appends the decoded value to out;
+# returns the index just past the value, or -1 on a malformed value.
+int wbg_parse_value(char* text, int j, string_builder* out):
+	if (text[j] != '"'):
+		while ((text[j] != 0) && (text[j] != '\n') && (text[j] != ' ') && (text[j] != '\t')):
+			string_append_char(out, text[j])
+			j = j + 1
+		return j
+	j = j + 1
+	while (text[j] != '"'):
+		if ((text[j] == 0) | (text[j] == '\n')):
+			return -1
+		if (text[j] == 92):
+			j = j + 1
+			if (text[j] == 'n'):
+				string_append_char(out, '\n')
+			else if (text[j] == 't'):
+				string_append_char(out, '\t')
+			else if (text[j] == '"'):
+				string_append_char(out, '"')
+			else if (text[j] == 92):
+				string_append_char(out, 92)
+			else:
+				return -1
+		else:
+			string_append_char(out, text[j])
+		j = j + 1
+	return j + 1
+
+
+# One whitespace-delimited key[=value] token starting at text[j].
+# Returns the index just past the token, or -1 after reporting an
+# error against path.
+int wbg_parse_directive_token(char* text, int j, char* path):
+	string_builder* key = string_new()
+	while ((text[j] != 0) && (text[j] != '\n') && (text[j] != ' ') && (text[j] != '\t') && (text[j] != '=')):
+		string_append_char(key, text[j])
+		j = j + 1
+	int has_value = text[j] == '='
+	string_builder* value = string_new()
+	if (has_value):
+		j = wbg_parse_value(text, j + 1, value)
+		if (j < 0):
+			wbg_token_error(path, c"malformed '# wbuild:' value for ", key.data)
+			string_free(key)
+			string_free(value)
+			return -1
+	int failed = wbg_apply_directive(path, key.data, has_value, value.data)
+	string_free(key)
+	string_free(value)
+	if (failed):
+		return -1
+	return j
+
+
+# Parses every "# wbuild:" line of the source into the wbg_dir_*
+# state. Returns 0 on success, -1 after reporting errors.
 int wbg_parse_directives(char* path):
+	wbg_reset_directives()
 	char* text = file_read_text(path)
 	if (text == 0):
 		wbg_error2(c"cannot read source ", path)
 		return -1
-	int x64 = 0
 	int failed = 0
 	int at_line_start = 1
 	int i = 0
 	while (text[i] != 0):
 		if (at_line_start && starts_with(text + i, c"# wbuild:")):
 			int j = i + 9
-			while ((text[j] != 0) && (text[j] != '\n')):
-				if ((text[j] == ' ') | (text[j] == '\t')):
+			int at_end = 0
+			while (at_end == 0):
+				while ((text[j] == ' ') | (text[j] == '\t')):
 					j = j + 1
+				if ((text[j] == 0) | (text[j] == '\n')):
+					at_end = 1
 				else:
-					string_builder* token = string_new()
-					while ((text[j] != 0) && (text[j] != '\n') && (text[j] != ' ') && (text[j] != '\t')):
-						string_append_char(token, text[j])
-						j = j + 1
-					if (strcmp(token.data, c"x64") == 0):
-						x64 = 1
-					else:
-						string_builder* s = string_new()
-						string_append(s, c"unknown '# wbuild:' directive '")
-						string_append(s, token.data)
-						string_append(s, c"' in ")
-						string_append(s, path)
-						wbg_error(s.data)
-						string_free(s)
+					j = wbg_parse_directive_token(text, j, path)
+					if (j < 0):
 						failed = 1
-					string_free(token)
+						at_end = 1
 		at_line_start = text[i] == '\n'
 		i = i + 1
 	free(text)
 	if (failed):
 		return -1
-	return x64
+	return 0
 
 
 int wbg_load_base(char* path):
@@ -314,6 +546,42 @@ int wbg_load_base(char* path):
 	return 0
 
 
+# The manifest form of repeated expect_* directives: a bare string
+# for one value, the array form for several (both accepted by wexec).
+json_value* wbg_expectation(list[char*] values):
+	if (values.length == 1):
+		return json_string(values[0])
+	json_value* out = json_array()
+	for char* value in values:
+		json_array_push(out, json_string(value))
+	return out
+
+
+# An "extra_compile=" step: 'bin/wv2' plus the directive's args,
+# whitespace-split (no shell).
+json_value* wbg_extra_compile_step(char* args):
+	json_value* cmd = json_array()
+	json_array_push(cmd, json_string(c"bin/wv2"))
+	string_builder* token = string_new()
+	int i = 0
+	int at_end = 0
+	while (at_end == 0):
+		int c = args[i]
+		if ((c == ' ') | (c == '\t') | (c == 0)):
+			if (token.length > 0):
+				json_array_push(cmd, json_string(token.data))
+				string_clear(token)
+			if (c == 0):
+				at_end = 1
+		else:
+			string_append_char(token, c)
+		i = i + 1
+	string_free(token)
+	json_value* step = json_object()
+	json_object_set(step, c"cmd", cmd)
+	return step
+
+
 json_value* wbg_make_target(char* name, char* src, int is64):
 	char* binary = wbg_concat(c"bin/", name)
 	json_value* target = json_object()
@@ -321,6 +589,11 @@ json_value* wbg_make_target(char* name, char* src, int is64):
 	json_value* deps = json_array()
 	json_array_push(deps, json_string(c"wv2"))
 	json_object_set(target, c"deps", deps)
+	if (wbg_dir_data.length > 0):
+		json_value* data = json_array()
+		for char* entry in wbg_dir_data:
+			json_array_push(data, json_string(entry))
+		json_object_set(target, c"data", data)
 	json_value* compile_cmd = json_array()
 	json_array_push(compile_cmd, json_string(c"bin/wv2"))
 	if (is64):
@@ -334,9 +607,22 @@ json_value* wbg_make_target(char* name, char* src, int is64):
 	json_array_push(run_cmd, json_string(binary))
 	json_value* run_step = json_object()
 	json_object_set(run_step, c"cmd", run_cmd)
+	if (wbg_dir_stdin != 0):
+		json_object_set(run_step, c"stdin", json_string(wbg_dir_stdin))
+	if (wbg_dir_expect_fail):
+		json_object_set(run_step, c"expect_fail", json_bool(1))
+	if (wbg_dir_expect_stdout.length > 0):
+		json_object_set(run_step, c"expect_stdout", wbg_expectation(wbg_dir_expect_stdout))
+	if (wbg_dir_expect_stderr.length > 0):
+		json_object_set(run_step, c"expect_stderr", wbg_expectation(wbg_dir_expect_stderr))
+	if (wbg_dir_timeout_ms > 0):
+		json_object_set(run_step, c"timeout_ms", json_int(wbg_dir_timeout_ms))
 	json_value* steps = json_array()
 	json_array_push(steps, compile_step)
 	json_array_push(steps, run_step)
+	if (is64 == 0):
+		for char* args in wbg_dir_extra_compile:
+			json_array_push(steps, wbg_extra_compile_step(args))
 	json_object_set(target, c"steps", steps)
 	free(binary)
 	return target
@@ -395,20 +681,33 @@ int wbg_scan():
 			continue
 		if (src in wbg_exclude):
 			continue
-		int x64 = wbg_parse_directives(src)
-		if (x64 < 0):
+		if (wbg_parse_directives(src)):
 			return 1
 		char* name32 = wbg_strip_suffix(wbg_basename(src), 2)
+		int gen32 = 0
+		int gen64 = 0
 		if ((name32 in wbg_base_targets) == 0):
 			if (wbg_add_generated(name32, strclone(src), 0)):
 				return 1
-		if (x64):
+			gen32 = 1
+		if (wbg_dir_x64):
 			char* stem = wbg_strip_suffix(name32, 5)
 			char* name64 = wbg_concat(stem, c"_64_test")
 			free(stem)
 			if ((name64 in wbg_base_targets) == 0):
 				if (wbg_add_generated(name64, strclone(src), 1)):
 					return 1
+				gen64 = 1
+		# Directives that nothing generated can honor are as fatal as
+		# typos: they mean the target moved to build.base.json without
+		# the source shedding its directive lines (or vice versa).
+		if ((gen32 == 0) && (wbg_dir_extra_compile.length > 0)):
+			wbg_error2(c"'extra_compile=' needs a generated default target, but build.base.json defines it: ", src)
+			return 1
+		if ((gen32 == 0) && (gen64 == 0)):
+			if (wbg_dir_has_run_fields() || (wbg_dir_data.length > 0)):
+				wbg_error2(c"'# wbuild:' directives have no generated target (build.base.json defines them all): ", src)
+				return 1
 	wbg_sort_generated()
 	wbg_sort_strings(wbg_gen32_names)
 	wbg_sort_strings(wbg_gen64_names)

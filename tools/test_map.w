@@ -8,7 +8,13 @@ build. For a changed path P the emitted targets are the union of:
   (a) literal references — every runnable target one of whose steps
       names P in its argv (exact element, or an element containing P
       when P has a '/') or mentions P in its piped stdin. This covers
-      fixtures, grammars, scripts and data files exactly.
+      fixtures, grammars, scripts and data files exactly. A target may
+      also declare non-W run-time inputs in a target-level "data"
+      array (generated from '# wbuild: deps=' directives, see
+      tools/wbuildgen.w): an entry ending in '/' matches as a
+      directory prefix, anything else as an exact path. Declared data
+      is checked before the doc-only filter below, so a data file with
+      a doc-like extension (.txt) still selects its targets.
 
   (b) import closures — every runnable target one of whose root
       sources' transitive import closure (computed by shelling out to
@@ -291,6 +297,42 @@ int wtest_target_mentions(char* name, char* path, int path_has_slash):
 			return 1
 		i = i + 1
 	return 0
+
+
+# Rule (a) for declared run-time data: the target-level "data" array
+# ('# wbuild: deps=' directives, tools/wbuildgen.w). An entry ending
+# in '/' is a directory prefix, anything else an exact path.
+int wtest_target_data_mentions(char* name, char* path):
+	json_value* target = wtest_target_defs.get(name, 0)
+	if (target == 0):
+		return 0
+	json_value* data = json_object_get(target, c"data")
+	if (data == 0):
+		return 0
+	if (data.type != json_type_array()):
+		return 0
+	int i = 0
+	while (i < json_array_length(data)):
+		json_value* entry = json_array_get(data, i)
+		if (entry.type == json_type_string()):
+			char* text = entry.string_value
+			if (strcmp(text, path) == 0):
+				return 1
+			int n = strlen(text)
+			if ((n > 0) && (text[n - 1] == '/') && starts_with(path, text)):
+				return 1
+		i = i + 1
+	return 0
+
+
+int wtest_map_data(char* path):
+	int matched = 0
+	for char* name in wtest_target_names:
+		if (wtest_selectable(name)):
+			if (wtest_target_data_mentions(name, path)):
+				wtest_add(path, name)
+				matched = 1
+	return matched
 
 
 /* Rule (b): compile roots and their import closures. */
@@ -831,6 +873,10 @@ int wtest_map_residue(char* path, int is_w, int exists):
 void wtest_map_path(char* path):
 	if (strlen(path) == 0):
 		return
+	# Declared run-time data comes before the doc-only filter: a data
+	# file may carry a doc-like extension (the tests/asm/*.txt lesson,
+	# #268), and its declaring targets must still be selected.
+	int matched = wtest_map_data(path)
 	if (wtest_doc_only(path)):
 		return
 	if (starts_with(path, c".cursor/")):
@@ -838,7 +884,8 @@ void wtest_map_path(char* path):
 		return
 	int is_w = ends_with(path, c".w")
 	int exists = wtest_file_exists(path)
-	int matched = wtest_map_residue(path, is_w, exists)
+	if (wtest_map_residue(path, is_w, exists)):
+		matched = 1
 
 	# (a) literal step references
 	int path_has_slash = wtest_str_contains(path, c"/")
