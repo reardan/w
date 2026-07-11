@@ -5,7 +5,8 @@
 This repo is a **self-hosting compiler + toolchain for the "W" language** (a heavily
 extended fork of the `cc500` C compiler). There are **no long-running services** and
 **no package manager** — everything is driven by `./wbuild` and bootstrapped from the
-committed 32-bit x86 ELF seed binary `./w`.
+pinned 32-bit x86 ELF seed binary `./w`, which `./wbuild` downloads from GitHub
+Releases per the sha256 pins in `SEEDS` when it is missing.
 
 ### Build / test / run
 Standard commands live in `build.json` (targets, not duplicated here):
@@ -83,10 +84,13 @@ working in this repo.
   comments, run by `bin/wfixture` (`tools/wfixture.w`); see the header of that tool
   for the directive syntax.
 - The seed `./w` is a **32-bit x86** statically-linked ELF; it runs on this x86_64 host
-  without extra libc because it's static. Do not delete/replace it except via `./wbuild update`.
-  The macOS seed `./w_darwin` (arm64 Mach-O, promoted via `./wbuild update_darwin`) must be
-  refreshed **in the same PR** as any `./w` refresh: the two seeds compile the same sources,
-  and a stale darwin seed breaks the Mac cold bootstrap (see #128/#129).
+  without extra libc because it's static. It is not committed: `./wbuild` downloads it
+  (sha256-verified) from the GitHub release pinned in `SEEDS`. Do not hand-edit it;
+  `./wbuild update` (and `update_darwin` for the macOS seed `./w_darwin`) promotes a
+  locally built fixpoint for local iteration only. Publishing a promotion = cut a release,
+  then bump **every** `SEEDS` line to that tag in one PR (`docs/release.md`) — the
+  single-tag pin is what keeps the seeds compiling the same sources (the old
+  "refresh both seeds in the same PR" rule, see #128/#129, is now enforced by the format).
 - W source is whitespace-significant: **tabs** for indentation (spaces trigger a warning),
   no semicolons, `#` line comments, blocks open with `:`.
 - Expression gotchas: `|`/`&` are bitwise and do **not** short-circuit — a
@@ -103,10 +107,12 @@ working in this repo.
  into every program** (`import_module` calls in `compiler/compiler.w`). Those runtime
  files — like everything under `compiler/`, `grammar/`, `code_generator/`, `debugger/`,
  and `libs/extras/{c_import,c_preprocessor,parser_generator}` (pulled in by the compiler's
- C-import feature), plus any `lib/` file those import — are compiled by the committed
- seed, so they must not use new language syntax until a seed update via `./wbuild update`
- (and `./wbuild update_darwin` for the Mac seed). New syntax is fine in `tests/` and other
- leaf consumers once `bin/wv2` is built. Design notes: `docs/projects/typed_containers.md`.
+ C-import feature), plus any `lib/` file those import — are compiled by the pinned
+ seed, so they must not use new language syntax until `SEEDS` is bumped to a release
+ whose binaries include that syntax (`docs/release.md`; a local `./wbuild update` does
+ not change what other checkouts or CI bootstrap from). New syntax is fine in `tests/`
+ and other leaf consumers once `bin/wv2` is built. Design notes:
+ `docs/projects/typed_containers.md`.
 - When adding language syntax, also extend the parser-generator grammar
  `tests/parser_generator/w.pg`: the `parser_generator_w_test` target parses **every
  tracked `.w` file** with a parser generated from that grammar and fails on syntax it

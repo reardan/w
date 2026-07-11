@@ -3,7 +3,8 @@
 W is a small, self-hosting compiled language that started as a fork of Edmund
 Grimley Evans' `cc500` C compiler and has since diverged into its own language.
 The compiler is written in W (`w.w` plus the modules it imports), compiles
-itself, and is bootstrapped from a committed binary seed. It targets 32-bit
+itself, and is bootstrapped from a pinned binary seed that `./wbuild`
+downloads from GitHub Releases on first build. It targets 32-bit
 x86 and 64-bit x86-64 Linux (plus arm64 Linux/macOS, win64 PE, and
 wasm32/WASI), emitting executables directly — there is no assembler,
 linker, libc, or other external toolchain dependency.
@@ -21,13 +22,16 @@ project quickly and make correct changes.
   (cc500 heritage). There is **no AST and no IR** — grammar rules in
   `grammar/*.w` emit machine-code bytes immediately through
   `code_generator/x86.w` (x64 reuses the same module via REX-prefix helpers).
-- **Bootstrap seed**: `./w` at the repo root is a committed, statically linked
-  **32-bit x86** ELF binary of the compiler. It runs on x86-64 Linux hosts
-  without a 32-bit libc because it is static. Never delete or hand-edit it;
-  it is only replaced via `./wbuild update`. `./w_darwin` is its Apple
-  Silicon sibling — an ad-hoc-signed **arm64 Mach-O** seed that bootstraps
-  the toolchain natively on macOS (`./wbuild build_darwin` /
-  `verify_darwin` / `update_darwin`).
+- **Bootstrap seed**: `./w` at the repo root is a statically linked
+  **32-bit x86** ELF binary of the compiler. It is not committed: `./wbuild`
+  downloads it from the GitHub release pinned in `SEEDS` (sha256-verified)
+  when it is missing. It runs on x86-64 Linux hosts without a 32-bit libc
+  because it is static. Never hand-edit it; it is only replaced via
+  `./wbuild update` locally, or by bumping `SEEDS` to a newer release
+  (`docs/release.md`). `./w_darwin` is its Apple Silicon sibling — an
+  ad-hoc-signed **arm64 Mach-O** seed that bootstraps the toolchain
+  natively on macOS (`./wbuild build_darwin` / `verify_darwin` /
+  `update_darwin`).
 - **Output**: static ELF executables by default (x86 via
   `code_generator/elf_32.w`, x86-64 via `elf_64.w`), with DWARF line-number
   info for gdb. Programs declaring `c_lib`/`extern` get PT_INTERP/PT_DYNAMIC
@@ -38,9 +42,9 @@ project quickly and make correct changes.
 
 ## Build, verify, test
 
-The `bin/` output directory is `.gitignore`d; `./wbuild` creates it and
-bootstraps everything else it needs from the committed seed (`rm -rf bin`
-resets the world).
+The `bin/` output directory is `.gitignore`d; `./wbuild` creates it,
+downloads the pinned seed if it is missing, and bootstraps everything else
+it needs from that seed (`rm -rf bin` resets the world).
 
 ```sh
 ./wbuild build    # bootstrap: ./w w.w -> bin/wv2 -> wv3 -> wv4 -> wv5
@@ -123,8 +127,9 @@ stock x86-64 system.
 
 | Path | Contents |
 |---|---|
-| `w` | Committed 32-bit static ELF seed binary of the compiler |
-| `w_darwin` | Committed arm64 Mach-O seed (ad-hoc signed) for native macOS bootstrap |
+| `SEEDS` | Pins {release tag, asset, sha256} for each bootstrap seed binary |
+| `w` | 32-bit static ELF seed binary (downloaded per `SEEDS`, gitignored) |
+| `w_darwin` | arm64 Mach-O seed (ad-hoc signed) for native macOS bootstrap (downloaded per `SEEDS`, gitignored) |
 | `w.w` | Compiler entry point (imports `compiler.compiler`, calls `link()`) |
 | `compiler/` | Driver, tokenizer, symbol table, type table |
 | `grammar/` | One module per grammar rule; parsing and code emission are fused |
@@ -271,6 +276,7 @@ Toolchain beyond the compiler:
 ## How the bootstrap works
 
 ```
+./wbuild ...                # downloads ./w per SEEDS if missing (sha256-verified)
 ./w w.w        > bin/wv2    # seed compiles current sources
 bin/wv2 w.w -o bin/wv3      # wv2 recompiles the sources
 bin/wv3 w.w -o bin/wv4
@@ -278,13 +284,28 @@ bin/wv4 w.w -o bin/wv5
 cmp wv3 wv4 && cmp wv4 wv5  # fixpoint: ./wbuild verify
 ```
 
+The seed binaries (`w`, `w_darwin`, and `w.exe` on Windows) are not
+committed; `SEEDS` pins a release tag and sha256 for each, and
+`./wbuild` / `wbuild.cmd` download a missing seed from that GitHub
+release before the cold bootstrap.
+
 `./wbuild verify` is the cheapest strong regression guard for compiler
 changes: if the compiler still compiles itself to a byte-identical fixpoint,
 most codegen regressions are ruled out. `./wbuild verify_x64` does the same
 for the 64-bit target, starting from the x86-hosted `wv2` (`bin/wv2 x64 w.w`),
 so its first comparison also proves output does not depend on the host word
-size. Only run `./wbuild update` (which replaces the seed) after `verify`
-passes; it archives the old seed to `old/` first.
+size. Only run `./wbuild update` (which replaces the local seed) after
+`verify` passes; it archives the old seed to `old/` first. Publishing a
+promoted seed is a release + `SEEDS` bump — see `docs/release.md`.
+
+## Releases
+
+Releases are SemVer tags (`vX.Y.Z`) published by
+`.github/workflows/release.yml` with verified compiler binaries for every
+target (x86/x86-64/arm64 Linux, arm64 macOS, win64, wasm32/WASI) plus a
+`SHA256SUMS` file. The same assets serve as the bootstrap seeds pinned by
+`SEEDS`. The runbook — cutting a release, bumping versions, promoting
+seeds — is `docs/release.md`.
 
 ## Guidance for agents making changes
 

@@ -1,0 +1,9 @@
+# Pinned bootstrap seeds. wbuild / wbuild.cmd download a missing seed
+# binary from https://github.com/reardan/w/releases/download/<tag>/<asset>
+# and verify its sha256 against the pin. All seeds must point at the same
+# tag so they compile the same sources. See docs/release.md.
+#
+# file      tag     asset                 sha256
+w           v0.1.0  w-x86-linux           TBD-fill-from-v0.1.0-SHA256SUMS
+w_darwin    v0.1.0  w-arm64-macos         TBD-fill-from-v0.1.0-SHA256SUMS
+w.exe       v0.1.0  w-x86_64-windows.exe  TBD-fill-from-v0.1.0-SHA256SUMS
