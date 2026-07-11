@@ -1650,6 +1650,7 @@
 				"prng_64_test",
 				"process_64_test",
 				"quorum_64_test",
+				"raft_64_test",
 				"rc4_64_test",
 				"result_64_test",
 				"result_propagate_64_test",
@@ -1967,6 +1968,7 @@
 				"prng_test",
 				"process_test",
 				"quorum_test",
+				"raft_test",
 				"range_test",
 				"rc4_test",
 				"result_test",
@@ -2969,6 +2971,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/quorum_test.w", "-o", "bin/quorum_test"]},
 				{"cmd": ["bin/quorum_test"]}
+			]
+		},
+		{
+			"name": "raft_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_test.w", "-o", "bin/raft_64_test"]},
+				{"cmd": ["bin/raft_64_test"]}
+			]
+		},
+		{
+			"name": "raft_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_test.w", "-o", "bin/raft_test"]},
+				{"cmd": ["bin/raft_test"]}
 			]
 		},
 		{
