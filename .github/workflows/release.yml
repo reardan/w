@@ -1,0 +1,113 @@
+name: Release
+
+# Build verified compiler binaries for every target and publish them as a
+# GitHub release when a v* tag is pushed. workflow_dispatch is a dry run:
+# the build jobs run, the publish job is skipped (it is gated on the tag).
+# Release flow and seed promotion are documented in docs/release.md.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux, Windows, and wasm binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install 32-bit runtime, qemu, and wine
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libc6:i386 qemu-user-static wine
+
+      - name: Allow debugger attach tests
+        run: sudo sysctl --write kernel.yama.ptrace_scope=0
+
+      - name: Build, test, and verify every self-host fixpoint
+        env:
+          WINEDEBUG: "-all"
+        run: ./wbuild tests verify_x64 verify_arm64 verify_win verify_wasm
+
+      - name: Check binary version matches tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: test "$(./bin/wv3 --version)" = "w ${GITHUB_REF_NAME#v}"
+
+      - name: Stage artifacts
+        run: |
+          mkdir dist
+          cp bin/wv3         dist/w-x86-linux
+          cp bin/wv3_64      dist/w-x86_64-linux
+          cp bin/wv3_arm64   dist/w-arm64-linux
+          cp bin/wv3_win.exe dist/w-x86_64-windows.exe
+          cp bin/wv3_wasm    dist/w-wasm32-wasi.wasm
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries
+          path: dist/
+
+  macos:
+    name: macOS binary
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Verify the darwin self-host fixpoint
+        run: ./wbuild verify_darwin
+
+      - name: Stage artifact
+        run: |
+          mkdir dist
+          cp bin/wv3_darwin dist/w-arm64-macos
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-binaries
+          path: dist/
+
+  publish:
+    name: Publish release
+    needs: [linux, macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Check tag matches package.wmeta
+        run: |
+          ver=$(awk '$1 == "version" { print $2 }' package.wmeta)
+          test "v$ver" = "$GITHUB_REF_NAME"
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: cd dist && sha256sum * > SHA256SUMS
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes

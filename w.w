@@ -39,6 +39,11 @@ int main(int argc, int argv):
 			return deps_main(argc, argv)
 		if (strcmp(*first_arg, c"symbols") == 0):
 			return symbols_main(argc, argv)
+		if (strcmp(*first_arg, c"--version") == 0):
+			# Keep in sync with package.wmeta; release.yml fails a tag
+			# that disagrees with either.
+			println(c"w 0.1.0")
+			return 0
 	link(argc, argv)
 	return 0
 
