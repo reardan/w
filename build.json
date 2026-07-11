@@ -1550,6 +1550,7 @@
 				"map_set_builtin_64_test",
 				"md5_64_test",
 				"method_chaining_64_test",
+				"nested_ctor_64_test",
 				"net_64_test",
 				"path_64_test",
 				"poll_64_test",
@@ -1846,6 +1847,7 @@
 				"md5_test",
 				"method_chaining_test",
 				"multilayer_test",
+				"nested_ctor_test",
 				"net_test",
 				"path_test",
 				"pointer_test",
@@ -2578,6 +2580,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/multilayer_test.w", "-o", "bin/multilayer_test"]},
 				{"cmd": ["bin/multilayer_test"]}
+			]
+		},
+		{
+			"name": "nested_ctor_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/nested_ctor_test.w", "-o", "bin/nested_ctor_64_test"]},
+				{"cmd": ["bin/nested_ctor_64_test"]}
+			]
+		},
+		{
+			"name": "nested_ctor_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/nested_ctor_test.w", "-o", "bin/nested_ctor_test"]},
+				{"cmd": ["bin/nested_ctor_test"]}
 			]
 		},
 		{
