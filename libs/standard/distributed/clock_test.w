@@ -376,3 +376,88 @@ void test_hlc_counter_overflow_bumps_physical():
 	u64_free(prev)
 	u64_free(out)
 	hlc_free(h)
+
+
+void test_vclock_wire_roundtrip():
+	vclock* v = vclock_new()
+	vclock_tick(v, 1)
+	vclock_tick(v, 1)
+	vclock_tick(v, 7)
+	vclock_tick(v, 300)
+	char* buf = malloc(vclock_wire_size(v))
+	vclock_save(v, buf)
+	vclock* w = vclock_load(buf)
+	assert_equal(0, vclock_compare(v, w))
+	assert_equal(2, vclock_get(w, 1))
+	assert_equal(1, vclock_get(w, 7))
+	assert_equal(1, vclock_get(w, 300))
+	assert_equal(0, vclock_get(w, 2))
+	free(buf)
+	vclock_free(v)
+	vclock_free(w)
+
+
+void test_vclock_wire_layout():
+	# {node 1: 2} -> count 1, node id 1, counter 2, all little-endian
+	vclock* v = vclock_new()
+	vclock_tick(v, 1)
+	vclock_tick(v, 1)
+	assert_equal(16, vclock_wire_size(v))
+	char* buf = malloc(16)
+	vclock_save(v, buf)
+	assert_equal(1, buf[0] & 255)
+	assert_equal(0, buf[1] & 255)
+	assert_equal(0, buf[2] & 255)
+	assert_equal(0, buf[3] & 255)
+	assert_equal(1, buf[4] & 255)
+	assert_equal(0, buf[5] & 255)
+	assert_equal(2, buf[8] & 255)
+	assert_equal(0, buf[9] & 255)
+	assert_equal(0, buf[15] & 255)
+	free(buf)
+	vclock_free(v)
+
+
+void test_vclock_wire_canonical():
+	# same logical clock built in two insertion orders -> identical bytes
+	vclock* a = vclock_new()
+	vclock_tick(a, 5)
+	vclock_tick(a, 2)
+	vclock_tick(a, 9)
+	vclock_tick(a, 2)
+	vclock* b = vclock_new()
+	vclock_tick(b, 9)
+	vclock_tick(b, 2)
+	vclock_tick(b, 2)
+	vclock_tick(b, 5)
+	int size = vclock_wire_size(a)
+	assert_equal(size, vclock_wire_size(b))
+	char* ba = malloc(size)
+	char* bb = malloc(size)
+	vclock_save(a, ba)
+	vclock_save(b, bb)
+	int i = 0
+	while (i < size):
+		assert_equal(ba[i] & 255, bb[i] & 255)
+		i = i + 1
+	# sorted entries: node 2 first, then 5, then 9
+	assert_equal(2, vclock_wire_read_u32(ba + 4))
+	assert_equal(5, vclock_wire_read_u32(ba + 16))
+	assert_equal(9, vclock_wire_read_u32(ba + 28))
+	free(ba)
+	free(bb)
+	vclock_free(a)
+	vclock_free(b)
+
+
+void test_vclock_wire_empty():
+	vclock* v = vclock_new()
+	assert_equal(4, vclock_wire_size(v))
+	char* buf = malloc(4)
+	vclock_save(v, buf)
+	assert_equal(0, vclock_wire_read_u32(buf))
+	vclock* w = vclock_load(buf)
+	assert_equal(0, vclock_compare(v, w))
+	free(buf)
+	vclock_free(v)
+	vclock_free(w)

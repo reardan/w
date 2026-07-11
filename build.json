@@ -1606,6 +1606,7 @@
 				"binary_literal_64_test",
 				"bit_builtin_64_test",
 				"bitset_64_test",
+				"bloom_64_test",
 				"chacha20_64_test",
 				"chacha20poly1305_64_test",
 				"clock_64_test",
@@ -1616,6 +1617,7 @@
 				"dns_64_test",
 				"env_64_test",
 				"event_loop_64_test",
+				"failure_detector_64_test",
 				"feature_combo_64_test",
 				"feature_interaction_64_test",
 				"fmath_64_test",
@@ -1630,6 +1632,7 @@
 				"http_client_64_test",
 				"json_64_test",
 				"json_codec_64_test",
+				"lease_64_test",
 				"lib_64_test",
 				"limb_builtin_64_test",
 				"limb_builtin_shadow_64_test",
@@ -1657,6 +1660,7 @@
 				"stats_64_test",
 				"stream_64_test",
 				"string_64_test",
+				"swim_64_test",
 				"switch_64_test",
 				"task_64_test",
 				"template_string_64_test",
@@ -1908,6 +1912,7 @@
 				"bitset_test",
 				"bitwise_not_test",
 				"bitwise_xor_test",
+				"bloom_test",
 				"c_import_errno_test",
 				"c_import_libc_test",
 				"c_import_test",
@@ -1920,6 +1925,7 @@
 				"dns_test",
 				"env_test",
 				"event_loop_test",
+				"failure_detector_test",
 				"feature_combo_test",
 				"feature_interaction_test",
 				"file_test",
@@ -1938,6 +1944,7 @@
 				"infer_test",
 				"json_codec_test",
 				"json_test",
+				"lease_test",
 				"lib_test",
 				"limb_builtin_shadow_test",
 				"limb_builtin_test",
@@ -1972,6 +1979,7 @@
 				"string_test",
 				"struct_method_test",
 				"struct_test",
+				"swim_test",
 				"task_test",
 				"ternary_test",
 				"threading_test",
@@ -2138,6 +2146,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/bitwise_xor_test.w", "-o", "bin/bitwise_xor_test"]},
 				{"cmd": ["bin/bitwise_xor_test"]}
+			]
+		},
+		{
+			"name": "bloom_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/bloom_test.w", "-o", "bin/bloom_64_test"]},
+				{"cmd": ["bin/bloom_64_test"]}
+			]
+		},
+		{
+			"name": "bloom_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/bloom_test.w", "-o", "bin/bloom_test"]},
+				{"cmd": ["bin/bloom_test"]}
 			]
 		},
 		{
@@ -2331,6 +2355,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/event_loop_test.w", "-o", "bin/event_loop_test"]},
 				{"cmd": ["bin/event_loop_test"]}
+			]
+		},
+		{
+			"name": "failure_detector_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/failure_detector_test.w", "-o", "bin/failure_detector_64_test"]},
+				{"cmd": ["bin/failure_detector_64_test"]}
+			]
+		},
+		{
+			"name": "failure_detector_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/failure_detector_test.w", "-o", "bin/failure_detector_test"]},
+				{"cmd": ["bin/failure_detector_test"]}
 			]
 		},
 		{
@@ -2611,6 +2651,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "structures/json_test.w", "-o", "bin/json_test"]},
 				{"cmd": ["bin/json_test"]}
+			]
+		},
+		{
+			"name": "lease_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/lease_test.w", "-o", "bin/lease_64_test"]},
+				{"cmd": ["bin/lease_64_test"]}
+			]
+		},
+		{
+			"name": "lease_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/lease_test.w", "-o", "bin/lease_test"]},
+				{"cmd": ["bin/lease_test"]}
 			]
 		},
 		{
@@ -3124,6 +3180,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/struct_test.w", "-o", "bin/struct_test"]},
 				{"cmd": ["bin/struct_test"]}
+			]
+		},
+		{
+			"name": "swim_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/swim_test.w", "-o", "bin/swim_64_test"]},
+				{"cmd": ["bin/swim_64_test"]}
+			]
+		},
+		{
+			"name": "swim_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/swim_test.w", "-o", "bin/swim_test"]},
+				{"cmd": ["bin/swim_test"]}
 			]
 		},
 		{

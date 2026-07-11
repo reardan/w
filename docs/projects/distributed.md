@@ -47,10 +47,15 @@ plumbing, `libs/standard/crypto/` hashing.
 
 ## Later phases
 
-- Phase 2: failure detector (heartbeat bookkeeping + phi-accrual),
-  SWIM-style membership, leases with fencing epochs (Chubby; Memcache
-  leases), Merkle trees for anti-entropy (on `lib/sha256.w`), bloom
-  filters (on `structures/bitset.w`).
+- Phase 2: failure detector (heartbeat bookkeeping + phi-accrual with
+  the exponential-CDF simplification, since lib/fmath.w has no
+  exp/log), SWIM-style membership as a pure state machine, leases with
+  fencing epochs (Chubby; Memcache leases), bloom filters (on
+  `structures/bitset.w`), and the canonical vclock wire format
+  (4-byte count + sorted node/counter entries, 8-byte u64 counters).
+  Merkle trees for anti-entropy are NOT here: a Merkle implementation
+  is landing with the VCS work (libs/extras/vcs); anti-entropy should
+  reuse or adapt that one rather than grow a twin.
 - Phase 3: Raft as a pure state machine over `u64` terms/indexes, with
   a deterministic simulation harness (`sim.w`: virtual clock, lossy
   reordering message queue, seeded PRNG).
