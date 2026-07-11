@@ -1239,24 +1239,6 @@
 			]
 		},
 		{
-			"name": "dynamic_test_arm64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "arm64", "tests/dynamic_test.w", "-o", "bin/dynamic_test_arm64"]},
-				{"cmd": ["sh", "tools/run_arm64.sh", "bin/dynamic_test_arm64"], "expect_stdout": "dynamic linking OK"},
-				{"cmd": ["echo", "dynamic test arm64 OK"]}
-			]
-		},
-		{
-			"name": "float_abi_test_arm64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "arm64", "tests/float_abi_test.w", "-o", "bin/float_abi_test_arm64"]},
-				{"cmd": ["sh", "tools/run_arm64.sh", "bin/float_abi_test_arm64"], "expect_stdout": "float abi OK"},
-				{"cmd": ["echo", "float abi test arm64 OK"]}
-			]
-		},
-		{
 			"name": "x64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1459,7 +1441,8 @@
 				"win64_header_test",
 				"win64_hello_test",
 				"win64_smoke_test",
-				"dynamic_test_win64"
+				"dynamic_test_win64",
+				"wbuild_platform_test_win64"
 			]
 		},
 		{
@@ -1851,7 +1834,9 @@
 				"type_system_p0_test",
 				"urlparse_test",
 				"wbuild_directive_test",
-				"x25519_test"
+				"wbuild_platform_test",
+				"x25519_test",
+				"wbuild_platform_test_darwin"
 			]
 		},
 		{
@@ -2144,6 +2129,14 @@
 			]
 		},
 		{
+			"name": "dynamic_test_arm64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "tests/dynamic_test.w", "-o", "bin/dynamic_test_arm64"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/dynamic_test_arm64"], "expect_stdout": "dynamic linking OK"}
+			]
+		},
+		{
 			"name": "env_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2213,6 +2206,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/file_test.w", "-o", "bin/file_test"]},
 				{"cmd": ["bin/file_test"]}
+			]
+		},
+		{
+			"name": "float_abi_test_arm64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "tests/float_abi_test.w", "-o", "bin/float_abi_test_arm64"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/float_abi_test_arm64"], "expect_stdout": "float abi OK"}
 			]
 		},
 		{
@@ -3024,6 +3025,37 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/wbuild_directive_test.w", "-o", "bin/wbuild_directive_test"]},
 				{"cmd": ["bin/wbuild_directive_test"], "stdin": "ping\n", "expect_stdout": "pong", "timeout_ms": 20000}
+			]
+		},
+		{
+			"name": "wbuild_platform_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wbuild_platform_test.w", "-o", "bin/wbuild_platform_test"]},
+				{"cmd": ["bin/wbuild_platform_test"], "expect_stdout": "platform axis OK"}
+			]
+		},
+		{
+			"name": "wbuild_platform_test_arm64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "tests/wbuild_platform_test.w", "-o", "bin/wbuild_platform_test_arm64"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/wbuild_platform_test_arm64"], "expect_stdout": "platform axis OK"}
+			]
+		},
+		{
+			"name": "wbuild_platform_test_darwin",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/wbuild_platform_test.w", "-o", "bin/wbuild_platform_test_darwin"]}
+			]
+		},
+		{
+			"name": "wbuild_platform_test_win64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "win64", "tests/wbuild_platform_test.w", "-o", "bin/wbuild_platform_test_win64.exe"]},
+				{"cmd": ["wine", "bin/wbuild_platform_test_win64.exe"], "expect_stdout": "platform axis OK"}
 			]
 		},
 		{

@@ -1265,24 +1265,6 @@
 			]
 		},
 		{
-			"name": "dynamic_test_arm64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "arm64", "tests/dynamic_test.w", "-o", "bin/dynamic_test_arm64"]},
-				{"cmd": ["sh", "tools/run_arm64.sh", "bin/dynamic_test_arm64"], "expect_stdout": "dynamic linking OK"},
-				{"cmd": ["echo", "dynamic test arm64 OK"]}
-			]
-		},
-		{
-			"name": "float_abi_test_arm64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "arm64", "tests/float_abi_test.w", "-o", "bin/float_abi_test_arm64"]},
-				{"cmd": ["sh", "tools/run_arm64.sh", "bin/float_abi_test_arm64"], "expect_stdout": "float abi OK"},
-				{"cmd": ["echo", "float abi test arm64 OK"]}
-			]
-		},
-		{
 			"name": "x64_test",
 			"deps": ["wv2"],
 			"steps": [

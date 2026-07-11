@@ -25,21 +25,39 @@ Generation rules:
   run-step expectations, piped stdin, timeouts, declared run-time data
   inputs and extra compile-only steps — the irregular shapes that used
   to need hand-written base targets.
+- The platform axis: `arch=arm64` and `arch=win64` yield run-capable
+  twins X_arm64 / X_win64 (repeatable — e.g. `x64 arch=arm64` yields
+  three targets from one source), mirroring the existing hand-written
+  arm64/win64 test idiom byte for byte: `bin/wv2 arm64|win64
+  dir/X_test.w -o bin/X_arm64|bin/X_win64.exe`, then `sh
+  tools/run_arm64.sh bin/X_arm64` or `wine bin/X_win64.exe`. `arch=
+  arm64_darwin` yields a compile-only twin X_darwin (Mach-O
+  cross-compiled on Linux, matching graphics_darwin/net_darwin/
+  pac_darwin — no run step; execution rides
+  tools/mac/run_darwin_tests.sh on a Mac). Run-step directives
+  (expect_stdout= and friends) decorate every run-capable twin
+  generated from the source and are rejected when the source only
+  generates compile-only (arm64_darwin) twins.
 - Base wins by name: when build.base.json already defines X_test (or
-  X_64_test), that definition is kept and nothing is generated for the
-  name. This is how a test with extra hand-written steps keeps its
-  32-bit target in base while still generating its conventional twin.
+  X_64_test, X_arm64, X_win64, X_darwin), that definition is kept and
+  nothing is generated for the name. This is how a test with extra
+  hand-written steps keeps its 32-bit target in base while still
+  generating its conventional twin.
 - Sources listed in build.base.json's "generate": {"exclude": [...]}
   are skipped entirely; that list holds sources whose targets live in
   base under unconventional names (crypto_base64_test for
   base64_test.w, the pac/darwin fixtures, the parser-generator outputs
   that cannot carry directives because they are regenerated and
   diffed). The "generate" key is not copied into build.json.
-- Umbrellas: generated 32-bit targets are appended to the "tests"
-  target's deps and generated x64 twins to "tests_x64", sorted by name,
-  except names already pinned by an explicit mention in a step-less
-  base target's deps (that is how sha2/hmac/hkdf/x25519's twins stay
-  members of "tests" instead).
+- Umbrellas: generated 32-bit and arm64_darwin (compile-only) targets
+  are appended to "tests", and generated x64 / win64 twins to
+  "tests_x64" / "tests_win64", each sorted by name, except names
+  already pinned by an explicit mention in a step-less base target's
+  deps (that is how sha2/hmac/hkdf/x25519's twins stay members of
+  "tests" instead). Generated arm64 twins join no umbrella: like the
+  hand-written arm64 run targets they mirror (build_arm64,
+  dynamic_test_arm64, ...), they need qemu and stay individually
+  invoked.
 - Output is deterministic: base targets keep their order and field
   order, generated targets are appended sorted by name, and the same
   tree always serializes to byte-identical build.json.
@@ -69,6 +87,31 @@ list[json_value*] wbg_generated          # generated targets, sorted by name
 map[char*, int] wbg_gen_seen             # generated names, for collisions
 list[char*] wbg_gen32_names
 list[char*] wbg_gen64_names
+list[char*] wbg_gen_arm64_names
+list[char*] wbg_gen_win64_names
+list[char*] wbg_gen_darwin_names
+
+
+# Arch codes for wbg_make_target/wbg_add_generated (functions, not
+# global variables, so they read as constants like json_type_*()).
+int wbg_arch_default():
+	return 0
+
+
+int wbg_arch_x64():
+	return 1
+
+
+int wbg_arch_arm64():
+	return 2
+
+
+int wbg_arch_win64():
+	return 3
+
+
+int wbg_arch_arm64_darwin():
+	return 4
 
 
 void wbg_error(char* message):
@@ -198,9 +241,22 @@ word or a double-quoted string with \n, \t, \", \\ escapes. The
 vocabulary:
 
   x64                      also generate the X_64_test twin
-  arch=x64                 keyed spelling of the same flag ("x64" is
-                           the only accepted value today; arm64/darwin
-                           twins are the platform-axis work of #251)
+  arch=x64                 keyed spelling of the same flag
+  arch=arm64               also generate the X_arm64 twin: compiled
+                           with `arm64`, run wrapped in `sh
+                           tools/run_arm64.sh` (qemu, or native on an
+                           arm64 Linux host — see tools/run_arm64.sh)
+  arch=win64               also generate the X_win64 twin: compiled
+                           with `win64` to bin/X_win64.exe, run wrapped
+                           in `wine` (present or not, the target's
+                           shape is identical; it just fails to spawn
+                           without wine, same as the hand-written win64
+                           targets)
+  arch=arm64_darwin        also generate the X_darwin twin: compiled
+                           with `arm64_darwin` (Mach-O, cross-compiled
+                           on Linux), compile-only — no run step, since
+                           running needs a Mac (tools/mac/
+                           run_darwin_tests.sh)
   expect_fail              the run step must exit nonzero
   timeout=<ms>             "timeout_ms" on the run step
   stdin="text"             text piped to the run step's stdin
@@ -216,14 +272,17 @@ vocabulary:
                            (whitespace-split, no shell) after the run
                            step, on the default-arch target only
 
-Run-step fields apply to every target generated from the source (the
-32-bit target and the x64 twin alike). Unknown tokens, malformed
-values, and directives that no generated target can honor are errors,
-so typos fail the manifest run instead of silently generating
-nothing. */
+Run-step fields apply to every run-capable target generated from the
+source (32-bit, x64, arm64, win64 twins alike — arm64_darwin has no run
+step to decorate). Unknown tokens, malformed values, and directives
+that no generated target can honor are errors, so typos fail the
+manifest run instead of silently generating nothing. */
 
 
 int wbg_dir_x64
+int wbg_dir_arm64
+int wbg_dir_win64
+int wbg_dir_arm64_darwin
 int wbg_dir_expect_fail
 int wbg_dir_timeout_ms             # 0 = unset
 char* wbg_dir_stdin                # 0 = unset
@@ -235,6 +294,9 @@ list[char*] wbg_dir_data
 
 void wbg_reset_directives():
 	wbg_dir_x64 = 0
+	wbg_dir_arm64 = 0
+	wbg_dir_win64 = 0
+	wbg_dir_arm64_darwin = 0
 	wbg_dir_expect_fail = 0
 	wbg_dir_timeout_ms = 0
 	wbg_dir_stdin = 0
@@ -311,11 +373,20 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 	if (strcmp(key, c"arch") == 0):
 		if (wbg_need_value(path, key, has_value)):
 			return 1
-		if (strcmp(value, c"x64") != 0):
-			wbg_token_error(path, c"unsupported '# wbuild:' arch (only x64 today) ", value)
-			return 1
-		wbg_dir_x64 = 1
-		return 0
+		if (strcmp(value, c"x64") == 0):
+			wbg_dir_x64 = 1
+			return 0
+		if (strcmp(value, c"arm64") == 0):
+			wbg_dir_arm64 = 1
+			return 0
+		if (strcmp(value, c"win64") == 0):
+			wbg_dir_win64 = 1
+			return 0
+		if (strcmp(value, c"arm64_darwin") == 0):
+			wbg_dir_arm64_darwin = 1
+			return 0
+		wbg_token_error(path, c"unsupported '# wbuild:' arch (x64, arm64, win64, arm64_darwin) ", value)
+		return 1
 	if (strcmp(key, c"timeout") == 0):
 		if (wbg_need_value(path, key, has_value)):
 			return 1
@@ -582,8 +653,27 @@ json_value* wbg_extra_compile_step(char* args):
 	return step
 
 
-json_value* wbg_make_target(char* name, char* src, int is64):
-	char* binary = wbg_concat(c"bin/", name)
+# The arch flag token passed to bin/wv2 for a non-default arch, or 0
+# for the default (32-bit x86) arch.
+char* wbg_arch_flag(int arch):
+	if (arch == wbg_arch_x64()):
+		return c"x64"
+	if (arch == wbg_arch_arm64()):
+		return c"arm64"
+	if (arch == wbg_arch_win64()):
+		return c"win64"
+	if (arch == wbg_arch_arm64_darwin()):
+		return c"arm64_darwin"
+	return 0
+
+
+json_value* wbg_make_target(char* name, char* src, int arch):
+	char* ext = c""
+	if (arch == wbg_arch_win64()):
+		ext = c".exe"
+	char* stem = wbg_concat(c"bin/", name)
+	char* binary = wbg_concat(stem, ext)
+	free(stem)
 	json_value* target = json_object()
 	json_object_set(target, c"name", json_string(name))
 	json_value* deps = json_array()
@@ -596,39 +686,48 @@ json_value* wbg_make_target(char* name, char* src, int is64):
 		json_object_set(target, c"data", data)
 	json_value* compile_cmd = json_array()
 	json_array_push(compile_cmd, json_string(c"bin/wv2"))
-	if (is64):
-		json_array_push(compile_cmd, json_string(c"x64"))
+	char* flag = wbg_arch_flag(arch)
+	if (flag != 0):
+		json_array_push(compile_cmd, json_string(flag))
 	json_array_push(compile_cmd, json_string(src))
 	json_array_push(compile_cmd, json_string(c"-o"))
 	json_array_push(compile_cmd, json_string(binary))
 	json_value* compile_step = json_object()
 	json_object_set(compile_step, c"cmd", compile_cmd)
-	json_value* run_cmd = json_array()
-	json_array_push(run_cmd, json_string(binary))
-	json_value* run_step = json_object()
-	json_object_set(run_step, c"cmd", run_cmd)
-	if (wbg_dir_stdin != 0):
-		json_object_set(run_step, c"stdin", json_string(wbg_dir_stdin))
-	if (wbg_dir_expect_fail):
-		json_object_set(run_step, c"expect_fail", json_bool(1))
-	if (wbg_dir_expect_stdout.length > 0):
-		json_object_set(run_step, c"expect_stdout", wbg_expectation(wbg_dir_expect_stdout))
-	if (wbg_dir_expect_stderr.length > 0):
-		json_object_set(run_step, c"expect_stderr", wbg_expectation(wbg_dir_expect_stderr))
-	if (wbg_dir_timeout_ms > 0):
-		json_object_set(run_step, c"timeout_ms", json_int(wbg_dir_timeout_ms))
 	json_value* steps = json_array()
 	json_array_push(steps, compile_step)
-	json_array_push(steps, run_step)
-	if (is64 == 0):
-		for char* args in wbg_dir_extra_compile:
-			json_array_push(steps, wbg_extra_compile_step(args))
+	# arm64_darwin is compile-only: no runner runs Mach-O on Linux, so
+	# there is no run step to decorate or append to.
+	if (arch != wbg_arch_arm64_darwin()):
+		json_value* run_cmd = json_array()
+		if (arch == wbg_arch_arm64()):
+			json_array_push(run_cmd, json_string(c"sh"))
+			json_array_push(run_cmd, json_string(c"tools/run_arm64.sh"))
+		else if (arch == wbg_arch_win64()):
+			json_array_push(run_cmd, json_string(c"wine"))
+		json_array_push(run_cmd, json_string(binary))
+		json_value* run_step = json_object()
+		json_object_set(run_step, c"cmd", run_cmd)
+		if (wbg_dir_stdin != 0):
+			json_object_set(run_step, c"stdin", json_string(wbg_dir_stdin))
+		if (wbg_dir_expect_fail):
+			json_object_set(run_step, c"expect_fail", json_bool(1))
+		if (wbg_dir_expect_stdout.length > 0):
+			json_object_set(run_step, c"expect_stdout", wbg_expectation(wbg_dir_expect_stdout))
+		if (wbg_dir_expect_stderr.length > 0):
+			json_object_set(run_step, c"expect_stderr", wbg_expectation(wbg_dir_expect_stderr))
+		if (wbg_dir_timeout_ms > 0):
+			json_object_set(run_step, c"timeout_ms", json_int(wbg_dir_timeout_ms))
+		json_array_push(steps, run_step)
+		if (arch == wbg_arch_default()):
+			for char* args in wbg_dir_extra_compile:
+				json_array_push(steps, wbg_extra_compile_step(args))
 	json_object_set(target, c"steps", steps)
 	free(binary)
 	return target
 
 
-int wbg_add_generated(char* name, char* src, int is64):
+int wbg_add_generated(char* name, char* src, int arch):
 	if (name in wbg_gen_seen):
 		string_builder* s = string_new()
 		string_append(s, c"generated target '")
@@ -640,9 +739,15 @@ int wbg_add_generated(char* name, char* src, int is64):
 		string_free(s)
 		return 1
 	wbg_gen_seen[name] = 1
-	wbg_generated.push(wbg_make_target(name, src, is64))
-	if (is64):
+	wbg_generated.push(wbg_make_target(name, src, arch))
+	if (arch == wbg_arch_x64()):
 		wbg_gen64_names.push(name)
+	else if (arch == wbg_arch_arm64()):
+		wbg_gen_arm64_names.push(name)
+	else if (arch == wbg_arch_win64()):
+		wbg_gen_win64_names.push(name)
+	else if (arch == wbg_arch_arm64_darwin()):
+		wbg_gen_darwin_names.push(name)
 	else:
 		wbg_gen32_names.push(name)
 	return 0
@@ -666,6 +771,9 @@ int wbg_scan():
 	wbg_gen_seen = new map[char*, int]
 	wbg_gen32_names = new list[char*]
 	wbg_gen64_names = new list[char*]
+	wbg_gen_arm64_names = new list[char*]
+	wbg_gen_win64_names = new list[char*]
+	wbg_gen_darwin_names = new list[char*]
 
 	list[char*] files = new list[char*]
 	wbg_collect_dir(c"tests", files)
@@ -686,8 +794,11 @@ int wbg_scan():
 		char* name32 = wbg_strip_suffix(wbg_basename(src), 2)
 		int gen32 = 0
 		int gen64 = 0
+		int gen_arm64 = 0
+		int gen_win64 = 0
+		int gen_darwin = 0
 		if ((name32 in wbg_base_targets) == 0):
-			if (wbg_add_generated(name32, strclone(src), 0)):
+			if (wbg_add_generated(name32, strclone(src), wbg_arch_default())):
 				return 1
 			gen32 = 1
 		if (wbg_dir_x64):
@@ -695,22 +806,46 @@ int wbg_scan():
 			char* name64 = wbg_concat(stem, c"_64_test")
 			free(stem)
 			if ((name64 in wbg_base_targets) == 0):
-				if (wbg_add_generated(name64, strclone(src), 1)):
+				if (wbg_add_generated(name64, strclone(src), wbg_arch_x64())):
 					return 1
 				gen64 = 1
+		if (wbg_dir_arm64):
+			char* name_arm64 = wbg_concat(name32, c"_arm64")
+			if ((name_arm64 in wbg_base_targets) == 0):
+				if (wbg_add_generated(name_arm64, strclone(src), wbg_arch_arm64())):
+					return 1
+				gen_arm64 = 1
+		if (wbg_dir_win64):
+			char* name_win64 = wbg_concat(name32, c"_win64")
+			if ((name_win64 in wbg_base_targets) == 0):
+				if (wbg_add_generated(name_win64, strclone(src), wbg_arch_win64())):
+					return 1
+				gen_win64 = 1
+		if (wbg_dir_arm64_darwin):
+			char* name_darwin = wbg_concat(name32, c"_darwin")
+			if ((name_darwin in wbg_base_targets) == 0):
+				if (wbg_add_generated(name_darwin, strclone(src), wbg_arch_arm64_darwin())):
+					return 1
+				gen_darwin = 1
 		# Directives that nothing generated can honor are as fatal as
 		# typos: they mean the target moved to build.base.json without
 		# the source shedding its directive lines (or vice versa).
+		int gen_run_capable = gen32 | gen64 | gen_arm64 | gen_win64
 		if ((gen32 == 0) && (wbg_dir_extra_compile.length > 0)):
 			wbg_error2(c"'extra_compile=' needs a generated default target, but build.base.json defines it: ", src)
 			return 1
-		if ((gen32 == 0) && (gen64 == 0)):
-			if (wbg_dir_has_run_fields() || (wbg_dir_data.length > 0)):
-				wbg_error2(c"'# wbuild:' directives have no generated target (build.base.json defines them all): ", src)
-				return 1
+		if ((gen_run_capable == 0) && wbg_dir_has_run_fields()):
+			wbg_error2(c"'# wbuild:' run-step directives have no generated run-capable target (only compile-only twins, or build.base.json defines them all): ", src)
+			return 1
+		if (((gen_run_capable | gen_darwin) == 0) && (wbg_dir_data.length > 0)):
+			wbg_error2(c"'# wbuild:' directives have no generated target (build.base.json defines them all): ", src)
+			return 1
 	wbg_sort_generated()
 	wbg_sort_strings(wbg_gen32_names)
 	wbg_sort_strings(wbg_gen64_names)
+	wbg_sort_strings(wbg_gen_arm64_names)
+	wbg_sort_strings(wbg_gen_win64_names)
+	wbg_sort_strings(wbg_gen_darwin_names)
 	return 0
 
 
@@ -934,7 +1069,16 @@ int main(int argc, int argv):
 		return 1
 	if (wbg_extend_umbrella(c"tests", wbg_gen32_names)):
 		return 1
+	# Compile-only darwin twins are cheap to verify on Linux (no qemu,
+	# no wine), so they join "tests" the way graphics_darwin/net_darwin/
+	# pac_darwin already do. Generated arm64 twins join no umbrella
+	# (see the module doc comment); win64 twins join "tests_win64" like
+	# their hand-written counterparts.
+	if (wbg_extend_umbrella(c"tests", wbg_gen_darwin_names)):
+		return 1
 	if (wbg_extend_umbrella(c"tests_x64", wbg_gen64_names)):
+		return 1
+	if (wbg_extend_umbrella(c"tests_win64", wbg_gen_win64_names)):
 		return 1
 
 	json_value* targets = json_object_get(wbg_base, c"targets")
