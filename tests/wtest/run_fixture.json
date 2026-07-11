@@ -1,0 +1,16 @@
+{
+	"targets": [
+		{
+			"name": "smoke",
+			"steps": [
+				{"cmd": ["echo", "wtest_run_smoke_marker"], "expect_stdout": "wtest_run_smoke_marker"}
+			]
+		},
+		{
+			"name": "boom",
+			"steps": [
+				{"cmd": ["false", "wtest_run_boom_marker"]}
+			]
+		}
+	]
+}
