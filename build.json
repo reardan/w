@@ -860,6 +860,25 @@
 			]
 		},
 		{
+			"name": "wvdiff",
+			"deps": ["wv2"],
+			"inputs": ["tools/wvdiff.w"],
+			"outputs": ["bin/wvdiff"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/wvdiff.w", "-o", "bin/wvdiff"]}
+			]
+		},
+		{
+			"name": "wvdiff_test",
+			"deps": ["wvdiff"],
+			"steps": [
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/wvdiff_old.txt"], "expect_status": 0},
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/wvdiff_new.txt"], "expect_status": 1, "expect_stdout": ["--- tests/vcs/wvdiff_old.txt", "+++ tests/vcs/wvdiff_new.txt", "@@ -1,4 +1,5 @@", "-beta", "+BETA", "+epsilon"]},
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/no_such_file.txt"], "expect_status": 2, "expect_stderr": "wvdiff: cannot read"},
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt"], "expect_status": 2, "expect_stderr": "usage: wvdiff <old> <new>"}
+			]
+		},
+		{
 			"name": "wexec_test",
 			"deps": ["wexec", "hello"],
 			"steps": [
@@ -1587,6 +1606,7 @@
 				"time_64_test",
 				"urlparse_64_test",
 				"varargs_w_64_test",
+				"vcs_diff_64_test",
 				"wbuild_directive_64_test"
 			]
 		},
@@ -1794,6 +1814,7 @@
 				"wexec_test",
 				"metadata_check",
 				"metadata_test",
+				"wvdiff_test",
 				"unsafe_import_test",
 				"manifest_check",
 				"result_propagate_test",
@@ -1893,6 +1914,7 @@
 				"time_test",
 				"type_system_p0_test",
 				"urlparse_test",
+				"vcs_diff_test",
 				"wbuild_directive_test",
 				"wbuild_platform_test",
 				"x25519_test",
@@ -3067,6 +3089,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/varargs_w_test.w", "-o", "bin/varargs_w_64_test"]},
 				{"cmd": ["bin/varargs_w_64_test"]}
+			]
+		},
+		{
+			"name": "vcs_diff_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/vcs_diff_test.w", "-o", "bin/vcs_diff_64_test"]},
+				{"cmd": ["bin/vcs_diff_64_test"]}
+			]
+		},
+		{
+			"name": "vcs_diff_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/vcs_diff_test.w", "-o", "bin/vcs_diff_test"]},
+				{"cmd": ["bin/vcs_diff_test"]}
 			]
 		},
 		{
