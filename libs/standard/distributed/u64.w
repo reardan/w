@@ -25,6 +25,7 @@ state, and on a 32-bit host a word with bit 31 set is stored negative.
 The wire format is 8 little-endian bytes — byte-compatible with
 save_int64 output on 64-bit hosts for values < 2^63.
 */
+import lib.lib
 import lib.memory
 import lib.assert
 
