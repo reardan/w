@@ -37,10 +37,20 @@ jobs:
           - target: verify_x64
             artifact_src: bin/wv3_64
             artifact: w-x86_64-linux
-          - target: verify_arm64
-            packages: qemu-user-static
-            artifact_src: bin/wv3_arm64
-            artifact: w-arm64-linux
+          # arm64-Linux is disabled for now: its stage-2 self-recompile
+          # runs under qemu-user emulation, which made it the slowest leg
+          # (330s vs 209s for the whole test suite), and the target has no
+          # consumers yet. It cannot move to the macOS runner (right CPU,
+          # wrong kernel — these are Linux ELFs). To re-enable cheaply,
+          # uncomment; to re-enable fast, split it across ubuntu-24.04 and
+          # ubuntu-24.04-arm runners (cross-compile bin/wv2_arm64 on x86,
+          # hand it over as an artifact, self-recompile + cmp natively —
+          # the x86 cross-compiler cannot run on the arm host, so it needs
+          # the two-job handoff).
+          # - target: verify_arm64
+          #   packages: qemu-user-static
+          #   artifact_src: bin/wv3_arm64
+          #   artifact: w-arm64-linux
           - target: verify_win
             packages: wine
             artifact_src: bin/wv3_win.exe
