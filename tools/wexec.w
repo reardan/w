@@ -40,10 +40,14 @@ Every target runs at most once per invocation. Targets that declare
 cached by content hash: when the hash of the target definition, its
 input files and its dependencies' keys matches the stamp left in
 bin/.wexec_cache/ — and every declared "outputs" file exists — the
-target is skipped. Targets without "inputs" behave like make-style
-FORCE targets: requesting them always runs them. A step's captured
-stdout/stderr is re-emitted after the step finishes, so output is
-visible but not interleaved live.
+target is skipped. For a cacheable target whose steps compile W roots,
+the roots' per-arch import closures ('bin/wv2 deps', cached in
+bin/.wexec_deps_cache) replace the .w files found under input directory
+prefixes, so a W edit invalidates exactly the targets whose closures
+contain it (see the deps-driven cache keys section below). Targets
+without "inputs" behave like make-style FORCE targets: requesting them
+always runs them. A step's captured stdout/stderr is re-emitted after
+the step finishes, so output is visible but not interleaved live.
 
 Usage: wexec [-f manifest.json] [--list] [--no-cache] [-j N] target...
 
@@ -325,6 +329,397 @@ char* wexec_stamp_path(char* name):
 	return path
 
 
+/* Deps-driven cache keys (issue #251 Direction 1).
+
+A target whose own steps compile W roots — 'bin/wv2 [selector] [flags]
+<root>.w ... -o out' commands, or seed './w' compiles — is keyed on the
+roots' transitive import closures, computed by shelling out to
+'bin/wv2 deps [selector] <root>', instead of on the .w files found under
+its declared "inputs" directory prefixes. Declared inputs still
+contribute every explicitly listed file (seeds, scripts, run-time .w
+fixtures) and every non-.w file found under directory prefixes (run-time
+data like tests/asm/), so only the W-source over-approximation is
+replaced by the exact per-root, per-arch closure. Targets without
+"inputs" stay FORCE targets exactly as before: closures never make a
+target cacheable that was not already opted in, because targets like
+parser_generator_w_test depend on out-of-graph state (every tracked .w)
+that no closure can see.
+
+Closures are cached in bin/.wexec_deps_cache — the bin/.wtest_deps_cache
+format with a leading target-selector column:
+
+  R <arch> <root>
+  H <combined content hash over the closure's (path, content) pairs>
+  F <closure file> (one line per file, in deps output order)
+
+An entry is reused while re-hashing every F file reproduces H. A root
+that fails to compile is cached as
+
+  X <arch> <root>
+  H <content hash of the root file itself>
+
+and retried once the root's own content changes; a target with a failed
+root keeps the pre-closure key (declared inputs, .w files included), so
+targets that compile intentionally-broken fixtures behave exactly as
+before. Entries are validated lazily, only for roots the requested
+targets actually compile; the cache file is rewritten after a run that
+recomputed anything, preserving untouched entries verbatim. When bin/wv2
+does not exist, closures are skipped entirely and every target keeps its
+pre-closure key. */
+
+struct wexec_deps_entry:
+	char* arch          # selector word; "x86" for the default target
+	char* root
+	int failed          # 'X' record: the root did not compile
+	int checked         # validated or recomputed during this run
+	char* digest        # the H line value
+	char* blob          # newline-guarded closure file list, 0 when failed
+
+
+list[wexec_deps_entry*] wexec_deps_entries
+map[char*, wexec_deps_entry*] wexec_deps_index   # "<arch> <root>" -> entry
+map[char*, char*] wexec_file_hashes              # path -> content hash memo
+int wexec_deps_loaded
+int wexec_deps_dirty
+int wexec_deps_probed
+int wexec_deps_wv2_ok
+
+
+# Content hash of one file, memoized. Missing files hash to a sentinel
+# that can never match a stored digest, so deletions invalidate entries.
+char* wexec_file_hash(char* path):
+	if (wexec_file_hashes == 0):
+		wexec_file_hashes = new map[char*, char*]
+	char* cached = wexec_file_hashes.get(path, 0)
+	if (cached != 0):
+		return cached
+	char* digest = c"<missing>"
+	int fd = open(path, 0, 0)
+	if (fd >= 0):
+		wexec_hash h
+		wexec_hash_init(&h)
+		int buffer_size = 65536
+		char* buffer = malloc(buffer_size)
+		int n = read(fd, buffer, buffer_size)
+		while (n > 0):
+			wexec_hash_bytes(&h, buffer, n)
+			n = read(fd, buffer, buffer_size)
+		free(buffer)
+		close(fd)
+		digest = wexec_hash_hex(&h)
+	wexec_file_hashes[path] = digest
+	return digest
+
+
+# Combined digest over (path, content hash) of every file in a closure
+# blob, in order.
+char* wexec_deps_digest(char* blob):
+	wexec_hash h
+	wexec_hash_init(&h)
+	string_builder* line = string_new()
+	int i = 0
+	while (blob[i] != 0):
+		if (blob[i] == 10):
+			if (line.length > 0):
+				wexec_hash_cstr(&h, line.data)
+				wexec_hash_cstr(&h, wexec_file_hash(line.data))
+				string_clear(line)
+		else:
+			string_append_char(line, blob[i])
+		i = i + 1
+	if (line.length > 0):
+		wexec_hash_cstr(&h, line.data)
+		wexec_hash_cstr(&h, wexec_file_hash(line.data))
+	string_free(line)
+	return wexec_hash_hex(&h)
+
+
+# Closures need bin/wv2; without it (a manifest run before any build)
+# every target keeps its pre-closure key.
+int wexec_deps_usable():
+	if (wexec_deps_probed == 0):
+		wexec_deps_probed = 1
+		int fd = open(c"bin/wv2", 0, 0)
+		if (fd >= 0):
+			close(fd)
+			wexec_deps_wv2_ok = 1
+	return wexec_deps_wv2_ok
+
+
+int wexec_selector_word(char* word):
+	if (strcmp(word, c"x64") == 0):
+		return 1
+	if (strcmp(word, c"arm64") == 0):
+		return 1
+	if (strcmp(word, c"arm64_darwin") == 0):
+		return 1
+	if (strcmp(word, c"win64") == 0):
+		return 1
+	return 0
+
+
+char* wexec_deps_entry_key(char* arch, char* root):
+	string_builder* s = string_new()
+	string_append(s, arch)
+	string_append_char(s, ' ')
+	string_append(s, root)
+	char* key = s.data
+	free(s)
+	return key
+
+
+void wexec_deps_store(char* arch, char* root, wexec_deps_entry* entry):
+	entry.arch = arch
+	entry.root = root
+	wexec_deps_entries.push(entry)
+	char* key = wexec_deps_entry_key(arch, root)
+	wexec_deps_index[key] = entry
+	free(key)
+
+
+# Finalize one parsed cache-file record. The record key is
+# "<arch> <root>"; a record without the arch column (or a duplicate) is
+# dropped, so caches written by older executors simply recompute.
+void wexec_deps_load_entry(int kind, char* record, char* digest, string_builder* blob):
+	if ((record == 0) | (digest == 0)):
+		return
+	int space = 0
+	int i = 0
+	while (record[i] != 0):
+		if ((record[i] == ' ') && (space == 0)):
+			space = i
+		i = i + 1
+	if (space == 0):
+		return
+	char* arch = strclone(record)
+	arch[space] = 0
+	char* root = strclone(record + space + 1)
+	char* key = wexec_deps_entry_key(arch, root)
+	wexec_deps_entry* existing = wexec_deps_index.get(key, 0)
+	free(key)
+	if (existing != 0):
+		return
+	wexec_deps_entry* entry = new wexec_deps_entry()
+	entry.failed = kind == 2
+	entry.checked = 0
+	entry.digest = digest
+	entry.blob = 0
+	if (kind == 1):
+		if (blob != 0):
+			entry.blob = blob.data
+	wexec_deps_store(arch, root, entry)
+
+
+void wexec_deps_load():
+	if (wexec_deps_loaded):
+		return
+	wexec_deps_loaded = 1
+	wexec_deps_entries = new list[wexec_deps_entry*]
+	wexec_deps_index = new map[char*, wexec_deps_entry*]
+	char* text = file_read_text(c"bin/.wexec_deps_cache")
+	if (text == 0):
+		return
+	int kind = 0
+	char* record = 0
+	char* digest = 0
+	string_builder* blob = 0
+	string_builder* line = string_new()
+	int i = 0
+	int at_end = 0
+	while (at_end == 0):
+		int c = text[i]
+		if (c == 0):
+			at_end = 1
+		if ((c == 10) | (c == 0)):
+			char* entry = line.data
+			if (starts_with(entry, c"R ") | starts_with(entry, c"X ")):
+				wexec_deps_load_entry(kind, record, digest, blob)
+				kind = 1
+				if (entry[0] == 'X'):
+					kind = 2
+				record = strclone(entry + 2)
+				digest = 0
+				blob = string_new()
+				string_append_char(blob, 10)
+			else if (starts_with(entry, c"H ")):
+				digest = strclone(entry + 2)
+			else if (starts_with(entry, c"F ")):
+				if (blob != 0):
+					string_append(blob, entry + 2)
+					string_append_char(blob, 10)
+			string_clear(line)
+		else:
+			string_append_char(line, c)
+		i = i + 1
+	wexec_deps_load_entry(kind, record, digest, blob)
+	string_free(line)
+	free(text)
+
+
+void wexec_deps_save():
+	if (wexec_deps_dirty == 0):
+		return
+	wexec_deps_dirty = 0
+	string_builder* out = string_new()
+	for wexec_deps_entry* entry in wexec_deps_entries:
+		if (entry.failed):
+			string_append(out, c"X ")
+		else:
+			string_append(out, c"R ")
+		string_append(out, entry.arch)
+		string_append_char(out, ' ')
+		string_append(out, entry.root)
+		string_append_char(out, 10)
+		string_append(out, c"H ")
+		string_append(out, entry.digest)
+		string_append_char(out, 10)
+		if (entry.blob != 0):
+			string_builder* line = string_new()
+			int j = 0
+			while (entry.blob[j] != 0):
+				if (entry.blob[j] == 10):
+					if (line.length > 0):
+						string_append(out, c"F ")
+						string_append(out, line.data)
+						string_append_char(out, 10)
+						string_clear(line)
+				else:
+					string_append_char(line, entry.blob[j])
+				j = j + 1
+			string_free(line)
+	mkdir(c"bin", 493)
+	file_write_text(c"bin/.wexec_deps_cache", out.data)
+	string_free(out)
+
+
+# Run 'bin/wv2 deps [selector] <root>'; returns a newline-guarded closure
+# blob, or 0 when the root does not compile for that target.
+char* wexec_deps_run(char* arch, char* root):
+	int is_default = strcmp(arch, c"x86") == 0
+	int count = 4
+	if (is_default):
+		count = 3
+	char** argv = strv_new(count)
+	strv_set(argv, 0, c"bin/wv2")
+	strv_set(argv, 1, c"deps")
+	if (is_default):
+		strv_set(argv, 2, root)
+	else:
+		strv_set(argv, 2, arch)
+		strv_set(argv, 3, root)
+	process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
+	free(cast(char*, argv))
+	if (result == 0):
+		return 0
+	if (result.status != 0):
+		process_result_free(result)
+		return 0
+	string_builder* blob = string_new()
+	string_append_char(blob, 10)
+	string_append(blob, result.stdout_text)
+	if (blob.data[blob.length - 1] != 10):
+		string_append_char(blob, 10)
+	process_result_free(result)
+	char* text = blob.data
+	free(blob)
+	return text
+
+
+# The closure entry for one (arch, root), validated against current file
+# contents or recomputed. entry.failed marks a root that did not compile.
+wexec_deps_entry* wexec_deps_lookup(char* arch, char* root):
+	wexec_deps_load()
+	char* key = wexec_deps_entry_key(arch, root)
+	wexec_deps_entry* entry = wexec_deps_index.get(key, 0)
+	free(key)
+	if (entry != 0):
+		if (entry.checked):
+			return entry
+		if (entry.failed):
+			if (strcmp(wexec_file_hash(root), entry.digest) == 0):
+				entry.checked = 1
+				return entry
+		else if (entry.blob != 0):
+			char* digest = wexec_deps_digest(entry.blob)
+			if (strcmp(digest, entry.digest) == 0):
+				entry.checked = 1
+				entry.digest = digest
+				return entry
+	char* blob = wexec_deps_run(arch, root)
+	if (entry == 0):
+		entry = new wexec_deps_entry()
+		wexec_deps_store(strclone(arch), strclone(root), entry)
+	entry.checked = 1
+	wexec_deps_dirty = 1
+	if (blob == 0):
+		entry.failed = 1
+		entry.blob = 0
+		entry.digest = wexec_file_hash(entry.root)
+	else:
+		entry.failed = 0
+		entry.blob = blob
+		entry.digest = wexec_deps_digest(blob)
+	return entry
+
+
+# W compile roots of the target's own steps: 'bin/wv2 [selector] [flags]
+# <root>.w ... -o out' (or seed './w' compiles), as parallel (arch, root)
+# lists. Dependency targets' roots are not collected — their closures are
+# already chained in through the dependency cache keys.
+void wexec_deps_collect_roots(json_value* target, list[char*] archs, list[char*] roots):
+	json_value* steps = json_object_get(target, c"steps")
+	if (steps == 0):
+		return
+	if (steps.type != json_type_array()):
+		return
+	int s = 0
+	while (s < json_array_length(steps)):
+		json_value* step = json_array_get(steps, s)
+		s = s + 1
+		if (step.type != json_type_object()):
+			continue
+		json_value* cmd = json_object_get(step, c"cmd")
+		if (cmd == 0):
+			continue
+		if (cmd.type != json_type_array()):
+			continue
+		int n = json_array_length(cmd)
+		if (n < 2):
+			continue
+		json_value* program = json_array_get(cmd, 0)
+		if (program.type != json_type_string()):
+			continue
+		if ((strcmp(program.string_value, c"bin/wv2") != 0) && (strcmp(program.string_value, c"./w") != 0)):
+			continue
+		int has_output = 0
+		int i = 1
+		while (i < n):
+			json_value* piece = json_array_get(cmd, i)
+			if (piece.type == json_type_string()):
+				if (strcmp(piece.string_value, c"-o") == 0):
+					has_output = 1
+			i = i + 1
+		if (has_output == 0):
+			continue
+		char* arch = c"x86"
+		json_value* first = json_array_get(cmd, 1)
+		if (first.type == json_type_string()):
+			if (wexec_selector_word(first.string_value)):
+				arch = first.string_value
+		i = 1
+		while (i < n):
+			json_value* piece = json_array_get(cmd, i)
+			if (piece.type == json_type_string()):
+				char* element = piece.string_value
+				if (strcmp(element, c"-o") == 0):
+					i = i + 2
+					continue
+				if (ends_with(element, c".w")):
+					archs.push(arch)
+					roots.push(element)
+			i = i + 1
+
+
 # Returns the target's cache key, or 0 when the target is not cacheable
 # (no "inputs" declared, or a dependency without a key of its own).
 # Dependencies must have finished before this is called.
@@ -354,6 +749,30 @@ char* wexec_cache_key(char* name, json_value* target):
 					wexec_hash_cstr(&h, dep_key)
 				i = i + 1
 
+	# Deps-driven keys: hash each compile root's import closure. A root
+	# that fails 'bin/wv2 deps' disables closure keying for the whole
+	# target (fixture targets compile intentionally-broken sources), and
+	# the declared inputs below then contribute their .w files as before.
+	list[char*] root_archs = new list[char*]
+	list[char*] root_paths = new list[char*]
+	if (wexec_deps_usable()):
+		wexec_deps_collect_roots(target, root_archs, root_paths)
+	int closures = root_paths.length > 0
+	int r = 0
+	while (r < root_paths.length):
+		wexec_deps_entry* closure_entry = wexec_deps_lookup(root_archs[r], root_paths[r])
+		if (closure_entry.failed):
+			closures = 0
+		r = r + 1
+	if (closures):
+		r = 0
+		while (r < root_paths.length):
+			wexec_deps_entry* keyed_entry = wexec_deps_lookup(root_archs[r], root_paths[r])
+			wexec_hash_cstr(&h, root_archs[r])
+			wexec_hash_cstr(&h, root_paths[r])
+			wexec_hash_cstr(&h, keyed_entry.digest)
+			r = r + 1
+
 	list[char*] files = new list[char*]
 	int i = 0
 	while (i < json_array_length(inputs)):
@@ -364,7 +783,17 @@ char* wexec_cache_key(char* name, json_value* target):
 			if ((n > 0) && (path[n - 1] == '/')):
 				char* dir = strclone(path)
 				dir[n - 1] = 0
-				wexec_collect_dir(dir, files)
+				if (closures):
+					# The closure hashes above cover the W sources
+					# exactly; a directory prefix now contributes only
+					# its non-.w files (run-time data, fixtures).
+					list[char*] walked = new list[char*]
+					wexec_collect_dir(dir, walked)
+					for char* found in walked:
+						if (ends_with(found, c".w") == 0):
+							files.push(found)
+				else:
+					wexec_collect_dir(dir, files)
 				free(dir)
 			else:
 				files.push(path)
@@ -1165,7 +1594,12 @@ int main(int argc, int argv):
 		wexec_usage()
 		wexec_list_targets()
 		return 1
-	if (wexec_execute(requested)):
+	int failed = wexec_execute(requested)
+	# Cache keys (and any recomputed import closures) are computed in
+	# the parent only, so the closure cache is saved here once, after
+	# the run — on failure too, so a red run still keeps its deps work.
+	wexec_deps_save()
+	if (failed):
 		return 1
 	wexec_report_ok()
 	return 0

@@ -175,14 +175,64 @@ expect asm_fuzz_x64_test
 expect asm_fuzz_arm64_test
 forbid tests
 
-# lib/__arch__/ residue: non-default-arch modules never appear in a
-# default-target closure, so the rule must select the lib and net
-# suites by hand.
+# lib/__arch__/ modules select through the per-arch closures of rule
+# (b) — the old blanket residue rule is retired. Each arch's module
+# selects only targets that compile for that arch: the x86 socket ABI
+# never selects an x64 twin or the darwin smoke target, and vice versa.
 case lib/__arch__/x86/socket_abi.w
-expect lib_test
-expect lib_64_test
 expect net_test
 expect http_client_test
+expect metadata_check
+expect parser_generator_w_test
+forbid http_client_64_test
+forbid net_darwin
+forbid tests
+
+case lib/__arch__/x64/socket_abi.w
+expect http_client_64_test
+expect net_64_test
+expect metadata_check
+forbid net_test
+forbid http_client_test
+forbid net_darwin
+forbid tests
+
+case lib/__arch__/arm64_darwin/socket_abi.w
 expect net_darwin
 expect metadata_check
+forbid net_test
+forbid http_client_64_test
+forbid tests
+
+# arm64 modules select the targets that really compile for arm64,
+# instead of the old x86/x64 lib-test proxies that never read them.
+case lib/__arch__/arm64/syscalls.w
+expect arm64_smoke_test
+expect dynamic_test_arm64
+expect metadata_check
+forbid lib_test
+forbid lib_64_test
+forbid tests
+
+# An arch module nothing compiles yet (no win64 target links lib/net.w)
+# keeps the always-on gates only; a future win64 net target's closure
+# will pick it up automatically.
+case lib/__arch__/win64/socket_abi.w
+expect metadata_check
+expect parser_generator_w_test
+forbid net_test
+forbid tests
+
+# graphics/ selects through arch closures too (the second retired
+# residue rule): the darwin window backend is visible only to
+# arm64_darwin roots, the X11/GL path only to the x64 smoke target.
+case graphics/cocoa.w
+expect graphics_darwin
+expect parser_generator_w_test
+forbid graphics_gl_smoke_test
+forbid tests
+
+case graphics/gl_linux.w
+expect graphics_gl_smoke_test
+forbid graphics_darwin
 forbid tests

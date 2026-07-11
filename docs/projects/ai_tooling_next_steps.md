@@ -41,22 +41,6 @@ is a queue, not an archive.
   compiler/grammar/code_generator path check `w.w` instead (that is the
   gate that matters), or emit a one-line "this file is not a standalone
   compilation root" hint.
-- **Arch-aware checking.** The hook and skills default to the x86 check;
-  `lib/__arch__/x64/` files (and x64-only constructs like `int64`)
-  deserve an automatic `check --json x64` pass when touched. Got worse
-  with the graphics macOS backend (2026-07-09): `graphics/cocoa.w`
-  declares `float64` extern parameters, so the default check reports
-  "float64 requires the x64 target" on a perfectly healthy file — and
-  there is no way to redirect it, because the target selector does not
-  compose with the command (`wv2 x64 check --json f.w` parses "check"
-  as a filename). Fix both: accept `wv2 <target> check` (or a
-  `--arch=` flag), and infer the target from `__arch__` path segments
-  and per-file markers so the hook picks the right one automatically.
-  The new `w deps` subcommand (2026-07-10) inherits the same
-  limitation: it resolves `__arch__` imports for the default target
-  only, which is why `bin/wtest`'s closure selection needs residue
-  rules for `lib/__arch__/` and `graphics/` — an arch-aware `deps`
-  would let those rules retire too.
 - **Library modules cannot be checked standalone.** `./bin/wv2 check
   --json libs/standard/crypto/sha2.w` (hit while adding the TLS crypto
   modules, #195, 2026-07-10) fails with `Failed to find a _main()
