@@ -66,6 +66,15 @@ struct repl_result:
 # repl_eval's returned value themselves.
 int repl_echo_hook
 
+# Optional pre-entry hook: when nonzero, called as hook() inside
+# repl_compile_entry after the entry's anonymous function symbol is
+# declared and before the entry's items compile. An embedder uses it to
+# declare extra symbols the entry should see -- wdbg (debugger/eval.w)
+# binds the stopped frame's locals and arguments here. Symbols the hook
+# declares sit below the entry's own declarations in the table, and like
+# them they roll back with the entry on a compile error or fault.
+int repl_bind_hook
+
 
 int repl_counter
 
@@ -558,10 +567,13 @@ int repl_compile_entry(char* path):
 
 	int entry_symbol = sym_declare_global(name, 1, 2)
 	sym_define_global(entry_symbol)
+	int entry_start = codepos
 	current_function_symbol = entry_symbol
 	number_of_args = 0
 	defer_reset()
 	repl_result_type = -1
+	if (repl_bind_hook != 0):
+		repl_bind_hook()
 
 	while (token[0] != 0):
 		repl_entry_item(entry_symbol)
@@ -573,6 +585,10 @@ int repl_compile_entry(char* path):
 	be_pop(stack_pos)
 	stack_pos = 0
 	ret()
+	# Record the entry function's code length (like function_definition
+	# does) so address-to-function queries (wdbg's dbg_function_at) can
+	# attribute a stop inside the entry to it
+	save_int(table + entry_symbol + 14, codepos - entry_start)
 	# On-demand runtimes for to_json/from_json and f"..." template
 	# strings: the modules' functions land after the entry's ret, so
 	# they are never in the execution path. Generic instantiations
@@ -805,6 +821,86 @@ void repl_fault_install_handlers():
 
 
 # ---------------------------------------------------------------------------
+# Nested evaluation. A 'debugger' statement inside an executing entry
+# traps into a command loop (wdbg's), and expressions evaluated there run
+# through repl_eval again while the outer repl_eval is still in flight.
+# Everything the outer call still needs after it resumes -- its rollback
+# checkpoint, its fault window (the jump buffer contents and the active
+# flag) and its pending echo type -- lives in globals a nested call would
+# clobber, so repl_eval saves them on entry and restores them on every
+# exit. The same applies to wdbg evaluating a breakpoint hit inside code
+# an earlier eval is already executing.
+
+int repl_nest_size():
+	return 27 * __word_size__
+
+
+char* repl_nest_save():
+	char* s = malloc(repl_nest_size())
+	save_word(s + 0 * __word_size__, repl_saved_codepos)
+	save_word(s + 1 * __word_size__, repl_saved_table_pos)
+	save_word(s + 2 * __word_size__, repl_saved_stack_pos)
+	save_word(s + 3 * __word_size__, repl_saved_loop_depth)
+	save_word(s + 4 * __word_size__, repl_saved_loop_break_chain)
+	save_word(s + 5 * __word_size__, repl_saved_loop_continue_chain)
+	save_word(s + 6 * __word_size__, repl_saved_loop_stack_pos)
+	save_word(s + 7 * __word_size__, repl_saved_switch_depth)
+	save_word(s + 8 * __word_size__, repl_saved_switch_break_chain)
+	save_word(s + 9 * __word_size__, repl_saved_switch_stack_pos)
+	save_word(s + 10 * __word_size__, repl_saved_break_in_switch)
+	save_word(s + 11 * __word_size__, repl_saved_defer_count)
+	save_word(s + 12 * __word_size__, repl_saved_for_cleanup_count)
+	save_word(s + 13 * __word_size__, repl_saved_number_of_args)
+	save_word(s + 14 * __word_size__, repl_saved_type_count)
+	save_word(s + 15 * __word_size__, repl_saved_imported_count)
+	save_word(s + 16 * __word_size__, repl_saved_alias_base)
+	save_word(s + 17 * __word_size__, repl_saved_alias_count)
+	save_word(s + 18 * __word_size__, repl_saved_plain_base)
+	save_word(s + 19 * __word_size__, repl_saved_plain_count)
+	save_word(s + 20 * __word_size__, repl_saved_function_symbol)
+	save_word(s + 21 * __word_size__, repl_fault_active)
+	save_word(s + 22 * __word_size__, repl_result_type)
+	save_word(s + 23 * __word_size__, repl_entry_file)
+	int i = 0
+	while (i < 3):
+		save_word(s + (24 + i) * __word_size__, load_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__))
+		i = i + 1
+	return s
+
+
+void repl_nest_restore(char* s):
+	repl_saved_codepos = load_word(s + 0 * __word_size__)
+	repl_saved_table_pos = load_word(s + 1 * __word_size__)
+	repl_saved_stack_pos = load_word(s + 2 * __word_size__)
+	repl_saved_loop_depth = load_word(s + 3 * __word_size__)
+	repl_saved_loop_break_chain = load_word(s + 4 * __word_size__)
+	repl_saved_loop_continue_chain = load_word(s + 5 * __word_size__)
+	repl_saved_loop_stack_pos = load_word(s + 6 * __word_size__)
+	repl_saved_switch_depth = load_word(s + 7 * __word_size__)
+	repl_saved_switch_break_chain = load_word(s + 8 * __word_size__)
+	repl_saved_switch_stack_pos = load_word(s + 9 * __word_size__)
+	repl_saved_break_in_switch = load_word(s + 10 * __word_size__)
+	repl_saved_defer_count = load_word(s + 11 * __word_size__)
+	repl_saved_for_cleanup_count = load_word(s + 12 * __word_size__)
+	repl_saved_number_of_args = load_word(s + 13 * __word_size__)
+	repl_saved_type_count = load_word(s + 14 * __word_size__)
+	repl_saved_imported_count = load_word(s + 15 * __word_size__)
+	repl_saved_alias_base = load_word(s + 16 * __word_size__)
+	repl_saved_alias_count = load_word(s + 17 * __word_size__)
+	repl_saved_plain_base = load_word(s + 18 * __word_size__)
+	repl_saved_plain_count = load_word(s + 19 * __word_size__)
+	repl_saved_function_symbol = load_word(s + 20 * __word_size__)
+	repl_fault_active = load_word(s + 21 * __word_size__)
+	repl_result_type = load_word(s + 22 * __word_size__)
+	repl_entry_file = load_word(s + 23 * __word_size__)
+	int i = 0
+	while (i < 3):
+		save_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__, load_word(s + (24 + i) * __word_size__))
+		i = i + 1
+	free(s)
+
+
+# ---------------------------------------------------------------------------
 # Rendering struct echoes.
 
 # Render a struct value as JSON for echoing (D3), reusing the compiler's
@@ -886,6 +982,34 @@ void repl_remove_staging(char* dir, int file_count):
 # ---------------------------------------------------------------------------
 # Session lifecycle.
 
+# The eval engine's own state: the recovery jump buffers error() and the
+# fault handlers long-jump through, and the per-session staging directory
+# entries compile from. repl_init() calls this as part of the full
+# session setup; an embedder that already owns its code buffer and signal
+# handlers (wdbg) calls just this before its first repl_eval().
+void repl_engine_init():
+	if (repl_jump_buffer == 0):
+		repl_jump_buffer = cast(int, malloc(3 * __word_size__))
+	repl_error_jump = cast(int, repl_longjmp)
+	if (repl_fault_jump_buffer == 0):
+		repl_fault_jump_buffer = cast(int, malloc(3 * __word_size__))
+
+
+# Create the session's staging directory on first use, so a session that
+# never evaluates anything (a wdbg run without a p/repl command, say)
+# leaves nothing in /tmp. Every entry gets its own staging file inside
+# the one per-session directory; it is pid-tagged so two REPL processes
+# running concurrently (e.g. repl_test and repl_test_x64 under a
+# parallel test runner) never collide.
+void repl_stage_init():
+	if (repl_staging_dir != 0):
+		return;
+	char* pid_digits = itoa(getpid())
+	repl_staging_dir = strjoin(c"/tmp/w_repl_", pid_digits)
+	free(pid_digits)
+	mkdir(repl_staging_dir, 511)
+
+
 # Initialize the session: the compiler configured for in-process
 # compilation, the executable buffer the compiled entries run from, the
 # recovery jump buffers and fault handlers, the runtime stubs and
@@ -918,15 +1042,11 @@ void repl_init():
 	codepos = 0
 	code_offset = buffer
 
-	# Recoverable compile errors: error() jumps back to the checkpoint in
-	# repl_compile_entry instead of exiting
-	repl_jump_buffer = cast(int, malloc(3 * __word_size__))
-	repl_error_jump = cast(int, repl_longjmp)
-
-	# Recoverable runtime faults: a fault inside an executing entry
+	# Recoverable compile errors and staging directory (repl_engine_init),
+	# plus recoverable runtime faults: a fault inside an executing entry
 	# long-jumps back into repl_eval. repl_fault_active gates the
 	# handlers, so faults anywhere else still kill the process as before.
-	repl_fault_jump_buffer = cast(int, malloc(3 * __word_size__))
+	repl_engine_init()
 	repl_fault_install_handlers()
 
 	# Runtime support: syscall stubs first, then the library itself.
@@ -947,15 +1067,6 @@ void repl_init():
 	import_module(c"structures.w_list")
 	import_module(c"lib.lib")
 	import_module(c"lib.assert")
-
-	# Every entry gets its own staging file inside one per-session
-	# directory. The directory is pid-tagged so two REPL processes
-	# running concurrently (e.g. repl_test and repl_test_x64 under a
-	# parallel test runner) never collide.
-	char* pid_digits = itoa(getpid())
-	repl_staging_dir = strjoin(c"/tmp/w_repl_", pid_digits)
-	free(pid_digits)
-	mkdir(repl_staging_dir, 511)
 
 
 # Compile a source file into the session buffer and resolve the deferred
@@ -1007,6 +1118,12 @@ repl_result repl_eval(char* entry_text):
 	r.value = 0
 	r.echo_type = -1
 
+	# Save the state an enclosing in-flight repl_eval still needs (see
+	# repl_nest_save): this call may be running from a 'debugger' stop's
+	# command loop in the middle of another entry's execution.
+	char* nest = repl_nest_save()
+
+	repl_stage_init()
 	if (repl_staged_path != 0):
 		free(repl_staged_path)
 	repl_staged_path = repl_entry_path(repl_staging_dir, repl_staged_count)
@@ -1019,12 +1136,14 @@ repl_result repl_eval(char* entry_text):
 
 	int address = repl_compile_entry(repl_staged_path)
 	if (address == 0):
+		repl_nest_restore(nest)
 		return r /* compile error: reported and rolled back already */
 
 	repl_fault_active = 1
 	if (repl_setjmp(repl_fault_jump_buffer)):
 		repl_rollback()
 		r.status = 2
+		repl_nest_restore(nest)
 		return r
 	r.value = address()
 	r.echo_type = repl_result_type
@@ -1037,11 +1156,15 @@ repl_result repl_eval(char* entry_text):
 	# skips this: repl_rollback discarded the queue with the definitions.
 	repl_apply_late_bind()
 	r.status = 1
+	repl_nest_restore(nest)
 	return r
 
 
 # End the session: remove the staged entry files and the staging
 # directory. Only safe once no more entries will compile -- generic
-# instantiation re-parses recorded spans from the staged files.
+# instantiation re-parses recorded spans from the staged files. A no-op
+# when nothing was ever staged (the directory is created lazily).
 void repl_cleanup():
+	if (repl_staging_dir == 0):
+		return;
 	repl_remove_staging(repl_staging_dir, repl_staged_count)

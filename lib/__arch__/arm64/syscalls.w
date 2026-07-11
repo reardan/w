@@ -41,6 +41,10 @@ int close(int file):
 int seek(int file, int offset, int reference):
 	return syscall(62, file, offset, reference)
 
+# unlinkat with no flags removes a file.
+int unlink(char* path):
+	return syscall(35, arm64_at_fdcwd(), path, 0)
+
 # Directory syscalls:
 int mkdir(char* path, int mode):
 	return syscall7(34, arm64_at_fdcwd(), path, mode, 0, 0, 0)
