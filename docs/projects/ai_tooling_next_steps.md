@@ -151,6 +151,17 @@ is a queue, not an archive.
   import closure gets compiled twice (2026-07-11). Agents naturally pass
   "the files I changed"; check should skip roots already reachable from
   earlier arguments (or check each argument as its own unit).
+- **`|`/`&` in condition position deserve a warning.** The bitwise
+  operators never short-circuit, and generated guard-heavy protocol
+  code (libs/standard/distributed) keeps almost tripping on
+  `if (p != 0 & p.field)`-style guards that read fine but evaluate
+  `p.field` unconditionally. A `w check` warning when `|`/`&` appear
+  directly in an `if`/`while` condition with comparison operands —
+  suggesting `||`/`&&` — would turn a latent crash into a compile-time
+  nudge. Semantics must not change (bitwise-in-guards is occasionally
+  intentional; masking tricks in bitset.w/sha256.w rely on plain `&`),
+  and the message text is new, so warning_test fixtures gain a case
+  rather than reword one (2026-07-11).
 
 ## Skills / rules upkeep
 
