@@ -102,6 +102,83 @@ int vclock_descends(vclock* a, vclock* b):
 	return 0
 
 
+# ---- vclock wire format -----------------------------------------------------
+
+# Canonical bytes: a 4-byte little-endian entry count, then one entry
+# per node sorted ascending by node id — 4-byte little-endian node id,
+# 8-byte little-endian u64 counter (u64_save_le). Sorting makes the
+# encoding canonical: equal vclocks serialize to identical bytes no
+# matter the insertion order, so encoded clocks can be compared or
+# hashed directly. Counters are 8 bytes on the wire even though the
+# in-memory type is a 31-bit-limited int, so the format will not change
+# when counters grow to u64. Wire v1 requires non-negative node ids
+# (asserted); zero counters are never stored by tick/merge and are
+# skipped defensively on save.
+
+int vclock_wire_size(vclock* v):
+	int n = 0
+	for int node, int c in v.counters:
+		if (c != 0):
+			n = n + 1
+	return 4 + 12 * n
+
+
+void vclock_wire_u32(char* p, int v):
+	p[0] = v
+	p[1] = v >> 8
+	p[2] = v >> 16
+	p[3] = v >> 24
+
+
+int vclock_wire_read_u32(char* p):
+	return (p[0] & 255) | ((p[1] & 255) << 8) | ((p[2] & 255) << 16) | ((p[3] & 255) << 24)
+
+
+# Serializes v into buf, which must hold vclock_wire_size(v) bytes.
+void vclock_save(vclock* v, char* buf):
+	list[int] nodes = new list[int]
+	for int node, int c in v.counters:
+		if (c != 0):
+			assert1(node >= 0)
+			# insertion sort ascending by node id
+			int pos = 0
+			while (pos < nodes.length && nodes[pos] < node):
+				pos = pos + 1
+			nodes.insert(pos, node)
+	vclock_wire_u32(buf, nodes.length)
+	u64* counter = u64_new()
+	int i = 0
+	while (i < nodes.length):
+		int off = 4 + 12 * i
+		vclock_wire_u32(buf + off, nodes[i])
+		u64_set_int(counter, vclock_get(v, nodes[i]))
+		u64_save_le(buf + off + 4, counter)
+		i = i + 1
+	u64_free(counter)
+
+
+# Rebuilds a vclock from vclock_save bytes. Asserts on counters that do
+# not fit the in-memory 31-bit int representation and on negative node
+# ids (corrupt or future-format input).
+vclock* vclock_load(char* buf):
+	vclock* v = vclock_new()
+	int n = vclock_wire_read_u32(buf)
+	assert1(n >= 0)
+	u64* counter = u64_new()
+	int i = 0
+	while (i < n):
+		int off = 4 + 12 * i
+		int node = vclock_wire_read_u32(buf + off)
+		assert1(node >= 0)
+		u64_load_le(counter, buf + off + 4)
+		int c = u64_to_int(counter)
+		if (c != 0):
+			v.counters[node] = c
+		i = i + 1
+	u64_free(counter)
+	return v
+
+
 # ---- lamport clocks ---------------------------------------------------------
 
 # Scalar logical clock (Lamport 1978): a single counter that every
