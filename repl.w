@@ -40,6 +40,10 @@ import lib.args
 import lib.line_edit
 import lib.stack_trace
 import debugger.sigcontext
+import lib.format
+import lib.__arch__.repl_echo_float64
+import structures.json
+import structures.json_codec
 
 
 int repl_counter
@@ -832,9 +836,47 @@ void repl_fault_install_handlers():
 # ---------------------------------------------------------------------------
 # Echoing expression results.
 
+# Render a struct value as JSON for echoing (D3), reusing the compiler's
+# to_json codec (grammar/json_builtin.w, structures/json_codec.w) instead
+# of re-deriving the supported-field-type rules here. json_codec_descriptor
+# can call error() for a field type the codec does not support (a float
+# field, say); that longjmps back to the checkpoint just below through the
+# same repl_setjmp hook repl_compile_entry uses, so a struct the codec
+# can't encode falls back to a plain address instead of corrupting
+# anything (the entry that produced the value already ran and persisted
+# by the time this is called). Returns a malloc'd string, or 0 when the
+# codec could not encode this type.
+char* repl_echo_json(int type, int value):
+	int saved_codepos = codepos
+	char* saved_filename = filename
+	int saved_line = line_number
+	filename = c"<repl echo>"
+	line_number = 0
+	repl_recovery = 1
+	if (repl_setjmp(repl_jump_buffer)):
+		repl_recovery = 0
+		codepos = saved_codepos
+		filename = saved_filename
+		line_number = saved_line
+		return 0
+	int desc = json_codec_descriptor(type)
+	json_value* encoded = __w_json_encode(desc, cast(char*, value))
+	repl_recovery = 0
+	filename = saved_filename
+	line_number = saved_line
+	return json_stringify(encoded)
+
+
 # Print an echoed expression value, formatted by its compile-time type.
 void repl_echo(int value, int type):
 	if (type <= 0): /* no result, or void */
+		return;
+	if (type == float32_value_type):
+		float* p = cast(float*, &value)
+		println(ftoa(*p))
+		return;
+	if ((word_size == 8) & (type == float64_value_type)):
+		println(repl_float64_to_string(value))
 		return;
 	if (type_is_string(type)):
 		write(1, cast(char*, load_word(cast(char*, value))), load_word(value + word_size))
@@ -847,6 +889,13 @@ void repl_echo(int value, int type):
 		else:
 			println(str_from_cstr(cast(char*, value)))
 		return;
+	if (type_num_args(type) > 0):
+		char* rendered = repl_echo_json(type, value)
+		if (rendered != 0):
+			println(rendered)
+		else:
+			println(hex(value))
+		return;
 	if ((pointers > 0) | (type == 4)):
 		println(hex(value))
 		return;
@@ -856,6 +905,7 @@ void repl_echo(int value, int type):
 void repl_print_help():
 	println(c"entries compile and run immediately; definitions persist:")
 	println(c"  int x = 5           a variable that later entries can use")
+	println(c"  x := 5              a variable with the type inferred from its value")
 	println(c"  int f(int a):       a function (finish the block, then a blank line)")
 	println(c"  struct p: / import  structs and modules work too")
 	println(c"a line ending in ':' opens a block and indents automatically;")
@@ -863,6 +913,40 @@ void repl_print_help():
 	println(c"and ends the entry at column 0")
 	println(c"a single bare expression echoes its value")
 	println(c"commands: :quit exits, :help shows this text")
+
+
+# ---------------------------------------------------------------------------
+# Staging directory (D6): one per session, so concurrent REPL processes
+# never collide and every staged entry file has a single well-known home.
+
+# Path for staged entry n inside the session's staging directory
+# ("<dir>/entry_<n>.w"). Shared by entry creation and session cleanup so
+# the naming rule lives in one place.
+char* repl_entry_path(char* dir, int n):
+	char* digits = itoa(n)
+	char* base = strjoin(c"entry_", digits)
+	char* base_w = strjoin(base, c".w")
+	char* with_slash = strjoin(dir, c"/")
+	char* path = strjoin(with_slash, base_w)
+	free(digits)
+	free(base)
+	free(base_w)
+	free(with_slash)
+	return path
+
+
+# Remove every staged entry file this session created, then the staging
+# directory itself. Only safe once the session is ending (:quit/EOF):
+# generic instantiation re-parses recorded (file, offset) spans from
+# these files, so they must survive until then.
+void repl_remove_staging(char* dir, int file_count):
+	int i = 0
+	while (i < file_count):
+		char* path = repl_entry_path(dir, i)
+		unlink(path)
+		free(path)
+		i = i + 1
+	rmdir(dir)
 
 
 int main(int argc, int argv):
@@ -966,22 +1050,26 @@ int main(int argc, int argv):
 		line_edit_history_load(c"~/.w_history")
 	repl_line = string_new()
 	repl_entry = string_new()
-	# Each entry gets its own staging file: generic definitions record
-	# (file, offset) spans that later entries re-parse on instantiation,
-	# so an entry's text must survive subsequent entries. The path is
-	# also pid-tagged so two REPL processes running concurrently (e.g.
-	# repl_test and repl_test_x64 under a parallel test runner) never
-	# clobber each other's staged sources.
+	# Every entry gets its own staging file inside one per-session
+	# directory: generic definitions record (file, offset) spans that
+	# later entries re-parse on instantiation, so an entry's text must
+	# survive subsequent entries -- files are only removed by
+	# repl_remove_staging(), on a clean exit. The directory is pid-tagged
+	# so two REPL processes running concurrently (e.g. repl_test and
+	# repl_test_x64 under a parallel test runner) never collide.
 	int entry_file_counter = 0
 	char* entry_path = 0
-	char* entry_pid_digits = itoa(getpid())
-	char* entry_pid_prefix = strjoin(c"/tmp/w_repl_entry_", entry_pid_digits)
-	free(entry_pid_digits)
+	char* pid_digits = itoa(getpid())
+	char* staging_dir = strjoin(c"/tmp/w_repl_", pid_digits)
+	free(pid_digits)
+	mkdir(staging_dir, 511)
 	while (1):
 		if (repl_read_entry() == 0):
 			println(c"")
+			repl_remove_staging(staging_dir, entry_file_counter)
 			exit(0)
 		if (string_equals(repl_entry, c":quit")):
+			repl_remove_staging(staging_dir, entry_file_counter)
 			exit(0)
 		if (string_equals(repl_entry, c":help")):
 			repl_print_help()
@@ -993,16 +1081,11 @@ int main(int argc, int argv):
 			println(c"unterminated string literal, entry discarded")
 			continue
 
-		# The tokenizer reads from a file, so stage the entry in /tmp
+		# The tokenizer reads from a file, so stage the entry in the
+		# session's staging directory
 		if (entry_path != 0):
 			free(entry_path)
-		char* entry_digits = itoa(entry_file_counter)
-		char* entry_prefix = strjoin(entry_pid_prefix, c"_")
-		char* entry_prefix_n = strjoin(entry_prefix, entry_digits)
-		entry_path = strjoin(entry_prefix_n, c".w")
-		free(entry_prefix)
-		free(entry_prefix_n)
-		free(entry_digits)
+		entry_path = repl_entry_path(staging_dir, entry_file_counter)
 		entry_file_counter = entry_file_counter + 1
 		int out = create_file(entry_path, 511)
 		asserts(c"could not create entry buffer", out >= 0)

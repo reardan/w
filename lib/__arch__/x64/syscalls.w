@@ -24,6 +24,9 @@ int close(int file):
 int seek(int file, int offset, int reference):
 	return syscall(8, file, offset, reference)
 
+int unlink(char* path):
+	return syscall(87, path, 0, 0)
+
 # Directory syscalls:
 int mkdir(char* path, int mode):
 	return syscall(83, path, mode, 0)
