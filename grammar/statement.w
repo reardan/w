@@ -114,11 +114,14 @@ int result_propagate_suffix(int type):
 	promote_eax() /* load r.ok: an int at field offset 0 */
 	jmp_nonzero_int32(1337022)
 	int p = codepos
-	# Error path: return the operand pointer, unwinding block locals and
-	# expression temporaries exactly like the 'return' statement does
-	# (stack_pos already counts the slot pushed above). Deferred
-	# statements run first, with the result pointer saved around them,
-	# because '?' is a function exit like any 'return'.
+	# Error path: '?' is a function exit like any 'return'. Enclosing
+	# for-in loops over generators free their suspended generator first
+	# (the operand pointer is reloaded from the stack afterwards), then
+	# the operand returns as the function's own result, unwinding block
+	# locals and expression temporaries exactly like the 'return'
+	# statement does (stack_pos already counts the slot pushed above).
+	# Deferred statements run with the result pointer saved around them.
+	for_cleanup_emit_all()
 	mov_eax_esp_plus(0)
 	defer_emit_returning()
 	be_pop(stack_pos)
@@ -266,12 +269,19 @@ void statement():
 					warn_type_mismatch(c"return", declared_type, return_type)
 		expect_or_newline(c";")
 		if (in_generator_body):
-			# Finish the generator: __w_gen_return switches back to the
-			# consumer permanently, so no ret / stack unwinding is needed
+			# Free the suspended generators of enclosing for-in loops
+			# (eax is dead: generators return bare), then finish:
+			# __w_gen_return switches back to the consumer permanently,
+			# so no ret / stack unwinding is needed
+			for_cleanup_emit_all()
 			emit_generator_finish_call()
 		else:
-			# Deferred statements run before the frame unwinds, with the
-			# already-evaluated return value saved around them
+			# Enclosing for-in loops over generators free their suspended
+			# generator first — 'return' bypasses the loop exit edges that
+			# normally do it — then deferred statements run before the
+			# frame unwinds, both with the already-evaluated return value
+			# saved around them
+			for_cleanup_emit_returning()
 			defer_emit_returning()
 			be_pop(stack_pos)
 			ret()
