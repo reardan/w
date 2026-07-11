@@ -1280,6 +1280,25 @@
 			]
 		},
 		{
+			"name": "wasm_extern_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "wasm", "tests/wasm_extern_test.w", "-o", "bin/wasm_extern_test"]},
+				{"cmd": ["sh", "tools/web/run_node.sh", "tools/web/run_env_test.mjs", "bin/wasm_extern_test"]},
+				{"cmd": ["bin/wv2", "wasm", "tests/wasm_extern_variadic_fixture.w", "-o", "bin/wasm_extern_variadic_fixture"], "expect_fail": true, "expect_stderr": "variadic extern functions are not supported on the wasm target"},
+				{"cmd": ["bin/wv2", "wasm", "tests/wasm_extern_data_fixture.w", "-o", "bin/wasm_extern_data_fixture"], "expect_fail": true, "expect_stderr": "extern data objects are not supported on the wasm target"},
+				{"cmd": ["bin/wv2", "wasm", "tests/wasm_c_import_fixture.w", "-o", "bin/wasm_c_import_fixture"], "expect_fail": true, "expect_stderr": "c_import is not supported on the wasm target"}
+			]
+		},
+		{
+			"name": "wasm_webgl_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "wasm", "graphics/demo_web.w", "-o", "bin/graphics_demo.wasm"]},
+				{"cmd": ["sh", "tools/web/run_node.sh", "tools/web/run_webgl_stub.mjs", "bin/graphics_demo.wasm", "--frames", "3"]}
+			]
+		},
+		{
 			"name": "wasm_smoke_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1295,6 +1314,12 @@
 				{"cmd": ["sh", "tools/run_wasm.sh", "bin/limb_builtin_wasm_test"]},
 				{"cmd": ["bin/wv2", "wasm", "tests/float_test.w", "-o", "bin/float_wasm_test"]},
 				{"cmd": ["sh", "tools/run_wasm.sh", "bin/float_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "tests/struct_test.w", "-o", "bin/struct_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/struct_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "tests/default_args_test.w", "-o", "bin/default_args_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/default_args_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "graphics/math_test.w", "-o", "bin/math_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/math_wasm_test"]},
 				{"cmd": ["echo", "wasm smoke test OK"]}
 			]
 		},

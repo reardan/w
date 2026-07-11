@@ -34,7 +34,9 @@ int parse_constant_default():
 		value = atoi(token)
 	else:
 		# A named enum constant: a defined global object of an enum type.
-		# Its value is the int32 the enum declaration emitted at its address.
+		# Its value is the int32 the enum declaration emitted at its address
+		# — in the code stream on the native targets, in the data segment
+		# on wasm (enum_declaration.w).
 		int t = sym_lookup(token)
 		int is_enum_constant = 0
 		if (t >= 0):
@@ -45,7 +47,10 @@ int parse_constant_default():
 			diag_part(c"default value for parameter must be a compile-time constant, got '")
 			diag_part(token)
 			error(c"'")
-		value = load_int32(code + load_int(table + t + 2) - code_offset)
+		if (target_isa == 2):
+			value = load_int32(data + (load_int(table + t + 2) - data_offset))
+		else:
+			value = load_int32(code + load_int(table + t + 2) - code_offset)
 	get_token()
 	if ((peek(c",") == 0) & (peek(c")") == 0)):
 		error(c"default value for parameter must be a single compile-time constant")

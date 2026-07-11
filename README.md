@@ -393,8 +393,11 @@ passes; it archives the old seed to `old/` first.
 - Import-scoped type metadata.
 - WebAssembly backend polish — the wasm32 + WASI backend self-hosts
   (`w wasm file.w`, `./wbuild verify_wasm` / `wasm_smoke_test`, run via
-  `tools/run_wasm.sh` under wasmtime or Node); remaining: json builtins,
-  generators, host-import FFI, a browser shim
+  `tools/run_wasm.sh` under wasmtime or Node), and `c_lib`/`extern` now
+  compile to typed host imports with a browser WebGL2 backend for
+  `graphics/` (`graphics/demo_web.w`, `tools/web/`,
+  `./wbuild wasm_extern_test` / `wasm_webgl_test` under Node;
+  `docs/projects/wasm_webgl.md`); remaining: json builtins, generators
   (`docs/projects/wasm_backend.md`).
 
 See `docs/todo.txt` for the running working/missing inventory and

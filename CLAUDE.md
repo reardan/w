@@ -11,7 +11,9 @@ linked **32-bit x86 Linux ELF** seed binary. It emits executables directly,
 with no assembler, linker, or libc dependency: x86/x86-64 Linux ELF
 (primary), plus arm64 Linux ELF, `arm64_darwin` Mach-O, win64 PE, and
 wasm32/WASI backends (`./wbuild verify_wasm` / `wasm_smoke_test` run the
-wasm gates via `tools/run_wasm.sh`, needing wasmtime or node). `README.md` is the detailed orientation doc and `AGENTS.md` the
+wasm gates via `tools/run_wasm.sh`, needing wasmtime or node;
+`wasm_extern_test` / `wasm_webgl_test` cover the host-import FFI and the
+WebGL graphics path via `tools/web/`, needing node). `README.md` is the detailed orientation doc and `AGENTS.md` the
 agent workflow doc; both are current and authoritative — this file is the
 summary.
 

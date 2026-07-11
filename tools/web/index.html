@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<!-- Browser host for W wasm graphics programs (docs/projects/wasm_webgl.md).
+
+     Serve the repository root and open this page with the module to run:
+
+       ./bin/wv2 wasm graphics/demo_web.w -o bin/graphics_demo.wasm
+       python3 -m http.server 8000
+       # -> http://localhost:8000/tools/web/?module=/bin/graphics_demo.wasm
+
+     The page instantiates the module with the WASI-lite shim (stdout to
+     the console and the log pane) and the WebGL2 env glue, runs _start
+     (setup), then drives the registered frame callback from
+     requestAnimationFrame until it returns 0 (read from the exported
+     $ax global). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>W wasm graphics host</title>
+<style>
+  body { margin: 0; background: #14161c; color: #d6d8de; font: 14px/1.4 monospace; }
+  #wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
+  canvas { background: #000; border: 1px solid #333; }
+  #log { width: 640px; max-height: 12em; overflow-y: auto; white-space: pre-wrap;
+         color: #9aa0ad; border-top: 1px solid #333; padding-top: 8px; }
+  #log .err { color: #e08080; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="canvas" width="640" height="480" tabindex="0"></canvas>
+  <div id="log"></div>
+</div>
+<script type="module">
+import { makeEnv } from './webgl_env.mjs';
+import { makeWasi } from './wasi_lite.mjs';
+
+const logPane = document.getElementById('log');
+const log = (text, cls) => {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = text;
+  logPane.appendChild(line);
+  logPane.scrollTop = logPane.scrollHeight;
+};
+
+const canvas = document.getElementById('canvas');
+const gl = canvas.getContext('webgl2');
+if (!gl) log('this browser has no WebGL2 context', 'err');
+
+// ------------------------------ canvas host ------------------------------
+const state = {
+  shouldClose: 0, mouseX: 0, mouseY: 0, mouseButtons: 0, lastKeycode: 0,
+};
+canvas.addEventListener('mousemove', (e) => { state.mouseX = e.offsetX; state.mouseY = e.offsetY; });
+canvas.addEventListener('mousedown', (e) => { state.mouseButtons |= 1 << e.button; });
+canvas.addEventListener('mouseup', (e) => { state.mouseButtons &= ~(1 << e.button); });
+canvas.addEventListener('keydown', (e) => { state.lastKeycode = e.keyCode; });
+
+let frameCallback = 0;
+const host = {
+  canvasInit: (title, width, height) => {
+    if (!gl) return 0;
+    document.title = title;
+    canvas.width = width;
+    canvas.height = height;
+    return 1;
+  },
+  pollState: () => ({
+    width: canvas.width, height: canvas.height,
+    shouldClose: state.shouldClose,
+    mouseX: state.mouseX, mouseY: state.mouseY,
+    mouseButtons: state.mouseButtons, lastKeycode: state.lastKeycode,
+  }),
+  setFrameCallback: (tableIndex) => { frameCallback = tableIndex; },
+};
+
+// --------------------------------- run -----------------------------------
+const moduleUrl = new URLSearchParams(location.search).get('module')
+  ?? '../../bin/graphics_demo.wasm';
+let instance = null;
+const wasi = makeWasi({
+  memory: () => instance.exports.memory,
+  onWrite: (fd, text) => {
+    (fd === 2 ? console.error : console.log)(text);
+    log(text.replace(/\n$/, ''), fd === 2 ? 'err' : '');
+  },
+});
+const env = makeEnv({ memory: () => instance.exports.memory, gl, host });
+
+try {
+  const wasm = await WebAssembly.compileStreaming(fetch(moduleUrl));
+  instance = await WebAssembly.instantiate(wasm, {
+    wasi_snapshot_preview1: wasi.imports,
+    env,
+  });
+  const code = wasi.runStart(instance);
+  log(`_start returned (exit ${code})`);
+  if (frameCallback !== 0) {
+    const table = instance.exports.table;
+    const tick = () => {
+      table.get(frameCallback)();
+      if (instance.exports.ax.value !== 0) requestAnimationFrame(tick);
+      else log('frame callback returned 0; stopped');
+    };
+    requestAnimationFrame(tick);
+  }
+} catch (e) {
+  log(String(e), 'err');
+  throw e;
+}
+</script>
+</body>
+</html>

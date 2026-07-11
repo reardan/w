@@ -24,6 +24,12 @@ so one C symbol can be declared once per call signature.
 extern without a parameter list imports a data object: the loader fills
 reserved space in the image via a COPY relocation and the symbol behaves
 like a normal W global.
+
+On the wasm target there are no shared libraries: c_lib names a wasm
+import module instead ("env" when absent) and each extern becomes a typed
+entry in the module's import section, bound by the embedding host at
+instantiation (docs/projects/wasm_webgl.md). Variadic and data imports
+have no wasm equivalent and are rejected.
 */
 import grammar.type_name
 import grammar.string_literal
@@ -67,6 +73,10 @@ int extern_statement():
 			# would fault. Needs a data-segment home before enabling.
 			if (target_isa == 1):
 				error(c"extern data objects are not supported on arm64 targets yet")
+			# wasm has no loader and no COPY relocations; imported globals
+			# exist but nothing in lib/ needs them.
+			if (target_isa == 2):
+				error(c"extern data objects are not supported on the wasm target")
 			save_int(table + sym + 10, 1)   /* symtype: object */
 			int size = type_get_size(ret_type)
 			if (size < 1):
@@ -133,23 +143,43 @@ int extern_statement():
 			import_name = strclone(token)
 			get_token()
 
-		# GOT slot the loader relocates (one-entry IAT on win64), emitted
-		# just before the shim so its vaddr is known now; execution enters
-		# at the shim, never the slot.
-		int got_vaddr = dyn_emit_import_slot()
-		dyn_add_import(import_name, got_vaddr)
+		# wasm: no GOT slot and no ABI shim — the import arrives through
+		# the module's import section with a real typed signature, wrapped
+		# by a W-callable stub (wasm_extern_stub). The enclosing c_lib
+		# string names the import module, "env" when none was declared;
+		# the host (tools/web/) supplies the functions at instantiation.
+		if (target_isa == 2):
+			if (is_variadic):
+				error(c"variadic extern functions are not supported on the wasm target")
+			int ret_kind = 1
+			if (ret_class == 1):
+				ret_kind = 2
+			if (type_get_pointer_level(ret_type) == 0):
+				if (strcmp(type_get_name(ret_type), c"void") == 0):
+					ret_kind = 0
+			char* module_name = c"env"
+			if (dyn_lib_count > 0):
+				module_name = dyn_lib_name(dyn_lib_count - 1)
+			int funcidx = wasm_extern_add(module_name, import_name, param_count, param_classes, ret_kind)
+			wasm_extern_stub(sym, name, funcidx, param_count, param_classes, ret_kind)
+		else:
+			# GOT slot the loader relocates (one-entry IAT on win64),
+			# emitted just before the shim so its vaddr is known now;
+			# execution enters at the shim, never the slot.
+			int got_vaddr = dyn_emit_import_slot()
+			dyn_add_import(import_name, got_vaddr)
 
-		# The symbol resolves to the shim entry point. For a variadic
-		# function the shim only covers calls that pass exactly the fixed
-		# parameters (e.g. through a function pointer); direct calls emit
-		# the C ABI conversion inline for the actual argument classes
-		# (see parse_variadic_call_suffix).
-		be_align_code()
-		sym_define_global(sym)
-		emit_ffi_shim(param_count, param_classes, ret_class, got_vaddr)
-		if (is_variadic):
-			sym_set_variadic(sym, param_count)
-			sym_set_got_vaddr(sym, got_vaddr)
+			# The symbol resolves to the shim entry point. For a variadic
+			# function the shim only covers calls that pass exactly the
+			# fixed parameters (e.g. through a function pointer); direct
+			# calls emit the C ABI conversion inline for the actual
+			# argument classes (see parse_variadic_call_suffix).
+			be_align_code()
+			sym_define_global(sym)
+			emit_ffi_shim(param_count, param_classes, ret_class, got_vaddr)
+			if (is_variadic):
+				sym_set_variadic(sym, param_count)
+				sym_set_got_vaddr(sym, got_vaddr)
 
 		free(param_classes)
 		if (import_name != name):
