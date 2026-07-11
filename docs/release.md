@@ -3,9 +3,10 @@
 W ships as GitHub releases: SemVer tags (`vX.Y.Z`) built and published by
 `.github/workflows/release.yml`. Every binary in a release comes from a
 verified self-host fixpoint — the workflow runs the full test suite plus
-`verify`, `verify_x64`, `verify_arm64`, `verify_win`, `verify_wasm` on a
-Linux runner and `verify_darwin` on an arm64 macOS runner, so a release
-cannot be cut from a compiler that does not reproduce itself.
+`verify`, `verify_x64`, `verify_win`, `verify_wasm` in a matrix of Linux
+runners (one leg per target, so wall time is the slowest verify, not the
+sum) and `verify_darwin` on an arm64 macOS runner, so a release cannot be
+cut from a compiler that does not reproduce itself.
 
 ## Assets
 
@@ -13,11 +14,17 @@ cannot be cut from a compiler that does not reproduce itself.
 |---|---|---|
 | `w-x86-linux` | 32-bit x86 Linux ELF, static | `bin/wv3` |
 | `w-x86_64-linux` | x86-64 Linux ELF | `bin/wv3_64` |
-| `w-arm64-linux` | arm64 Linux ELF | `bin/wv3_arm64` |
 | `w-x86_64-windows.exe` | win64 PE | `bin/wv3_win.exe` |
 | `w-wasm32-wasi.wasm` | wasm32/WASI module | `bin/wv3_wasm` |
 | `w-arm64-macos` | arm64 Mach-O, self-signed | `bin/wv3_darwin` |
 | `SHA256SUMS` | checksums of the above | publish job |
+
+arm64-Linux (`w-arm64-linux` from `bin/wv3_arm64`) is not currently
+published: its self-host verify needs qemu-user emulation, which made it
+the slowest release leg, and the target has no consumers yet. The matrix
+leg is commented out in `release.yml` with notes on the two re-enable
+paths (uncomment as-is, or split across an `ubuntu-24.04-arm` runner to
+verify natively). `./wbuild verify_arm64` still works locally.
 
 ## Cutting a release
 

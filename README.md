@@ -301,9 +301,9 @@ promoted seed is a release + `SEEDS` bump — see `docs/release.md`.
 ## Releases
 
 Releases are SemVer tags (`vX.Y.Z`) published by
-`.github/workflows/release.yml` with verified compiler binaries for every
-target (x86/x86-64/arm64 Linux, arm64 macOS, win64, wasm32/WASI) plus a
-`SHA256SUMS` file. The same assets serve as the bootstrap seeds pinned by
+`.github/workflows/release.yml` with verified compiler binaries for
+x86/x86-64 Linux, arm64 macOS, win64, and wasm32/WASI plus a `SHA256SUMS`
+file (arm64 Linux is currently not published — see `docs/release.md`). The same assets serve as the bootstrap seeds pinned by
 `SEEDS`. The runbook — cutting a release, bumping versions, promoting
 seeds — is `docs/release.md`.
 
