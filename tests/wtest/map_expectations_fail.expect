@@ -1,0 +1,8 @@
+# Negative fixture: wtest_map_test runs bin/wtest_map_check on this file
+# with expect_fail — it guards the checker itself. A checker that stopped
+# failing would silently pass every selection regression, so this pins
+# the failure path end-to-end: docs/todo.txt selects nothing, therefore
+# the expect below must produce a 'wtest_map_check: FAIL' and exit 1.
+# The real expectations live in tests/wtest/map_expectations.expect.
+case docs/todo.txt
+expect win64_hello_test

@@ -1,0 +1,188 @@
+# Selection expectations for bin/wtest, checked by bin/wtest_map_check
+# (tools/wtest_map_check.w). Run: ./wbuild wtest_map_test
+#
+# Each 'case' block runs 'bin/wtest changed <paths>' and asserts
+# PROPERTIES of the selection, never the exact set:
+#   case <path> [<path>...]   the changed paths for this case
+#   expect <target>           selection must include <target>
+#   forbid <target>           selection must not include <target>
+#   empty                     selection must be empty
+# Full-line '#' comments only. Two properties hold implicitly for every
+# case: each selected name must exist in build.json, and the selection
+# must be in manifest order with no duplicates (bin/wtest's documented
+# output-order contract).
+#
+# DESIGN RULE (#251 Direction 1): adding a conventional test target must
+# NEVER require editing this file. Only assert targets tied to the
+# selection mechanism under test — the residue rules in tools/test_map.w,
+# literal step references, closure representatives — and forbids that are
+# structurally invariant (the 'tests' fallback when a rule matched,
+# never-emitted seed targets, unrelated leaf tests). This file is NOT a
+# frozen copy of bin/wtest output; to inspect the actual selection for a
+# case while editing:
+#   ./wbuild wtest && bin/wtest changed <path...>
+# An expect/forbid naming a target missing from build.json fails loudly
+# ("unknown target"), so target renames surface here immediately.
+
+# Compiler tree -> the self-host gate (residue rule), never closure
+# selection (which would degenerate to the full suite), never the
+# 'tests' fallback. 'update' is on the never-emit list.
+case grammar/promote.w
+expect verify
+expect self_host_warning_test
+expect parser_generator_w_test
+forbid tests
+forbid update
+
+# Import-closure selection (rule b) through a library file, plus the
+# structures/ -> metadata_check residue.
+case structures/json.w
+expect json_test
+expect json_64_test
+expect json_codec_test
+expect wexec_test
+expect manifest_check
+expect metadata_check
+expect parser_generator_w_test
+forbid math_test
+forbid tests
+
+# Literal step references (rule a): fixture paths named in target argv
+# or piped stdin.
+case tests/warning_fixture.w
+expect warning_test
+expect strict_mode_test
+expect check_json_test
+expect parser_generator_w_test
+forbid tests
+
+case tests/import_alias_warning_fixture.w
+expect warning_test
+expect parser_generator_w_test
+forbid tests
+
+# Closure selection through an extras library, plus libs/ ->
+# metadata_check residue.
+case libs/extras/parser_generator/generator.w
+expect parser_generator_test
+expect parser_generator_c_test
+expect metadata_check
+forbid tests
+
+# Doc-only paths select nothing.
+case docs/todo.txt
+empty
+
+# Agent guidance is not code under test.
+case .cursor/rules/w-source.mdc .cursor/skills/w-check-diagnostics/SKILL.md
+empty
+
+# A deleted or unknown .w -> metadata_check + the full suite (closures
+# cannot be computed for importers of a missing module).
+case unknown/new_file.w
+expect metadata_check
+expect tests
+
+# The deep-closure case (the worst historical churn surface when it was
+# a frozen list): assert one representative per selection family — the
+# library's own tests, both word sizes, a distant closure consumer, the
+# toolchain, the lib/ residue — never the full set.
+case lib/stream.w
+expect stream_test
+expect stream_64_test
+expect dns_test
+expect repl_warning_test
+expect wexec
+expect wexec_test
+expect metadata_check
+forbid win64_hello_test
+forbid tests
+
+case lib/file.w
+expect file_test
+expect wtest
+expect wexec
+expect wexec_test
+expect metadata_check
+forbid win64_hello_test
+forbid tests
+
+# Multi-path invocation; wtest_run_test and wexec_test inherit
+# tools/wexec.w as a root from their 'wexec' dep target (rule b root
+# collection walks dependency targets).
+case tools/wexec.w tests/wexec/good.json
+expect wexec
+expect wexec_test
+expect wtest_run_test
+forbid tests
+
+# The manifests: wexec_test + the full suite. Only build.base.json (the
+# hand-maintained wbuildgen input) also gates manifest_check.
+case build.json
+expect wexec_test
+expect tests
+forbid manifest_check
+
+case build.base.json
+expect manifest_check
+expect wexec_test
+expect tests
+
+# debugger/ is NOT compiler tree (no verify); wdbg roots are inherited
+# by the debug/attach test targets.
+case debugger/wdbg.w
+expect wdbg
+expect debug_test
+expect attach_test
+expect parser_generator_w_test
+forbid verify
+forbid tests
+
+# A conventional test selects itself + manifest_check (test sources are
+# wbuildgen inputs) and never an unrelated sibling test.
+case tests/sha256_test.w
+expect sha256_test
+expect manifest_check
+expect parser_generator_w_test
+forbid math_test
+forbid tests
+
+case tests/math_test.w
+expect math_test
+expect manifest_check
+forbid sha256_test
+forbid tests
+
+# The manifest generator toolchain.
+case tools/wbuildgen.w
+expect wbuildgen
+expect manifest
+expect manifest_check
+forbid tests
+
+# tests/asm/*.txt are runtime fixtures, not docs (#268): the tests/asm/
+# residue rule must see them despite the .txt extension.
+case tests/asm/corpus_x86.txt
+expect asm_foundations_test
+expect asm_x86_disasm_test
+expect asm_x86_asm_test
+expect asm_arm64_test
+expect asm_x64_test
+expect asm_seed_gate
+expect asm_stubs_test
+expect asm_fuzz_x86_test
+expect asm_fuzz_x64_test
+expect asm_fuzz_arm64_test
+forbid tests
+
+# lib/__arch__/ residue: non-default-arch modules never appear in a
+# default-target closure, so the rule must select the lib and net
+# suites by hand.
+case lib/__arch__/x86/socket_abi.w
+expect lib_test
+expect lib_64_test
+expect net_test
+expect http_client_test
+expect net_darwin
+expect metadata_check
+forbid tests
