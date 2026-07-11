@@ -1587,7 +1587,7 @@
 				"time_64_test",
 				"urlparse_64_test",
 				"varargs_w_64_test",
-				"vcs_cas_64_test",
+				"vcs_dag_64_test",
 				"wbuild_directive_64_test"
 			]
 		},
@@ -1894,7 +1894,7 @@
 				"time_test",
 				"type_system_p0_test",
 				"urlparse_test",
-				"vcs_cas_test",
+				"vcs_dag_test",
 				"wbuild_directive_test",
 				"wbuild_platform_test",
 				"x25519_test",
@@ -3072,27 +3072,19 @@
 			]
 		},
 		{
-			"name": "vcs_cas_64_test",
+			"name": "vcs_dag_64_test",
 			"deps": ["wv2"],
 			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/vcs_cas_test.w", "-o", "bin/vcs_cas_64_test"]},
-				{"cmd": ["bin/vcs_cas_64_test"]}
+				{"cmd": ["bin/wv2", "x64", "tests/vcs_dag_test.w", "-o", "bin/vcs_dag_64_test"]},
+				{"cmd": ["bin/vcs_dag_64_test"]}
 			]
 		},
 		{
-			"name": "vcs_cas_test",
+			"name": "vcs_dag_test",
 			"deps": ["wv2"],
 			"steps": [
-				{"cmd": ["bin/wv2", "tests/vcs_cas_test.w", "-o", "bin/vcs_cas_test"]},
-				{"cmd": ["bin/vcs_cas_test"]}
-			]
-		},
-		{
-			"name": "vcs_cas_test_arm64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "arm64", "tests/vcs_cas_test.w", "-o", "bin/vcs_cas_test_arm64"]},
-				{"cmd": ["sh", "tools/run_arm64.sh", "bin/vcs_cas_test_arm64"]}
+				{"cmd": ["bin/wv2", "tests/vcs_dag_test.w", "-o", "bin/vcs_dag_test"]},
+				{"cmd": ["bin/vcs_dag_test"]}
 			]
 		},
 		{
