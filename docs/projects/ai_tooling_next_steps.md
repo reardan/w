@@ -84,6 +84,17 @@ is a queue, not an archive.
   which read those same fixtures. Fixed by excluding `tests/asm/` from
   the doc-only check before the extension test; pinned by a new
   `wtest_map_test` case (`build.base.json`).
+- **`./wbuild test_changed` is silently a no-op once the work is
+  committed.** The wbuild wrapper pipes `git diff --name-only HEAD`
+  into `wtest changed`, so after `git commit` (the natural state right
+  before pushing) it selects zero targets, prints nothing, and exits 0
+  — indistinguishable from "all selected tests passed" (2026-07-11,
+  found while validating the `https_e2e_test` flake fix; the real
+  selection needed `git diff --name-only origin/main...HEAD | bin/wtest
+  changed | xargs -r ./wbuild`). Either default the diff base to the
+  upstream/merge base when the working tree is clean, or print an
+  explicit `wtest: 0 targets selected (diff base HEAD)` line so an
+  empty selection can't pass for a green run.
 
 ## Debugger surface (consumed by the external integration tools)
 
