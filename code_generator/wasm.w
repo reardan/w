@@ -326,9 +326,13 @@ void wasm_mov_eax_esp_plus(int v):
 	wasm_load_op(0x28, 2, v)
 	wasm_set_ax()
 
-# $bx = $sp
+# $bx = [$sp] — the x86 helper is 'mov ebx,[esp]' (8b 1c 24), a LOAD of
+# the W stack top (always a pointer at its call sites), not the stack
+# pointer itself. The constructor/array-descriptor paths depend on the
+# load; a '$bx = $sp' reading corrupts the W stack.
 void wasm_mov_ebx_esp():
 	wasm_global_get(0)
+	wasm_load_op(0x28, 2, 0)
 	wasm_set_bx()
 
 # $bx = [$sp + v]

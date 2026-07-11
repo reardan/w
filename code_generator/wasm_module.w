@@ -29,6 +29,14 @@ W-callable [] -> [] stubs (wasm_define_asm_functions, the moral twin of
 x86_asm.w's int-0x80 stubs). lib/__arch__/wasm/syscalls.w rebuilds the
 Linux-shaped wrapper surface on top of them in plain W.
 
+User c_lib/extern declarations become host imports after the WASI set
+(function indices 10..), with real typed signatures (i32 words and
+pointers, f32 floats) and the same W-callable stub shape in front —
+the wasm analog of the native targets' GOT slot + ABI shim. The
+enclosing c_lib string names the import module ("env" when absent);
+the JS/browser side of the convention lives in tools/web/ (design:
+docs/projects/wasm_webgl.md).
+
 This file is compiled by the committed seed: seed-known syntax only.
 */
 
@@ -39,10 +47,64 @@ void sym_define_global_at(int current_symbol, int v);   /* symbol_table */
 int sym_address(char* name);                            /* symbol_table */
 void error(char *s);                                    /* tokenizer */
 
-# Fixed import function indices (module "wasi_snapshot_preview1").
-# Defined functions follow at index wasm_num_imports() + n.
+# Import function indices: the fixed wasi_snapshot_preview1 set occupies
+# 0..9, user extern imports follow at 10.., and defined functions start at
+# wasm_num_imports() + n. Both counts are final before be_finish: WASI is
+# fixed and externs only arrive from top-level declarations during the
+# parse, so every section assembled at finish sees the total.
+int wasm_extern_count
+
 int wasm_num_imports():
-	return 10
+	return 10 + wasm_extern_count
+
+######################### user extern import registry #########################
+
+# Registry of c_lib/extern imports on the wasm target, filled by
+# extern_statement while parsing and drained into the type and import
+# sections at finish — the wasm twin of code_generator/dynamic_registry.w.
+# Per entry: the import module (the enclosing c_lib string), the import
+# name (the symbol or its '= "..."' alias), the parameter count, the
+# parameter class array (ffi.w classes: 0 = i32 word/pointer, 1 = f32),
+# and the result kind (0 = none, 1 = i32, 2 = f32).
+
+int wasm_extern_max():
+	return 1024
+
+char* wasm_extern_modules
+char* wasm_extern_names
+char* wasm_extern_classes
+char* wasm_extern_nparams
+char* wasm_extern_rets
+
+void wasm_extern_init():
+	if (wasm_extern_modules == 0):
+		wasm_extern_modules = malloc(wasm_extern_max() * word_size)
+		wasm_extern_names = malloc(wasm_extern_max() * word_size)
+		wasm_extern_classes = malloc(wasm_extern_max() * word_size)
+		wasm_extern_nparams = malloc(wasm_extern_max() * 4)
+		wasm_extern_rets = malloc(wasm_extern_max() * 4)
+
+# Register one extern import and return its function index. Imports
+# precede defined functions in the wasm function index space, and W code
+# reaches defined functions only through the table (never by function
+# index), so the index is final the moment the extern is declared.
+int wasm_extern_add(char* module, char* name, int n_params, char* classes, int ret_kind):
+	wasm_extern_init()
+	if (wasm_extern_count >= wasm_extern_max()):
+		error(c"too many extern imports")
+	char* classes_copy = malloc(n_params + 1)
+	int i = 0
+	while (i < n_params):
+		classes_copy[i] = classes[i]
+		i = i + 1
+	save_i(wasm_extern_modules + wasm_extern_count * word_size, cast(int, strclone(module)), word_size)
+	save_i(wasm_extern_names + wasm_extern_count * word_size, cast(int, strclone(name)), word_size)
+	save_i(wasm_extern_classes + wasm_extern_count * word_size, cast(int, classes_copy), word_size)
+	save_i(wasm_extern_nparams + wasm_extern_count * 4, n_params, 4)
+	save_i(wasm_extern_rets + wasm_extern_count * 4, ret_kind, 4)
+	int funcidx = 10 + wasm_extern_count
+	wasm_extern_count = wasm_extern_count + 1
+	return funcidx
 
 # Buffer offset of the entry stub's callee address slot (patched in
 # wasm_finish once the entry symbol's table index is known).
@@ -83,6 +145,30 @@ void wasm_stub_simple(char* name, int n, int funcidx):
 		wasm_stub_arg(i, n)
 		i = i + 1
 	wasm_stub_call(funcidx)
+	wasm_stub_end()
+
+# W-callable stub for a user extern import (the wasm twin of ffi.w's
+# emit_ffi_shim): the symbol extern_statement declared resolves to this
+# stub's table index, so W calls it like any function. Same body shape as
+# the WASI wrappers above, plus the float32 reinterprets — W floats travel
+# as raw IEEE-754 bits in the integer pipeline, the import signature wants
+# real f32s. A void import leaves $ax alone, like a native shim leaves eax.
+void wasm_extern_stub(int sym, char* name, int funcidx, int n_params, char* classes, int ret_kind):
+	wasm_function_begin()
+	sym_define_global_at(sym, wasm_func_count)
+	wasm_func_name_note(wasm_func_count, name)
+	int i = 0
+	while (i < n_params):
+		wasm_stub_arg(i, n_params)
+		if (classes[i] == 1):
+			emit_int8(0xbe)   # f32.reinterpret_i32
+		i = i + 1
+	emit_int8(0x10)   # call the import
+	wasm_leb(funcidx)
+	if (ret_kind == 2):
+		emit_int8(0xbc)   # i32.reinterpret_f32
+	if (ret_kind):
+		wasm_set_ax()
 	wasm_stub_end()
 
 # The W-callable OS stubs. Emitted at be_start, before any user code, so
@@ -323,6 +409,7 @@ void wasm_start():
 	code_offset = 0
 	data_offset = 1052672   # 0x101000: 4k reserved + 1 MiB W stack
 	wasm_func_count = 0
+	wasm_extern_count = 0
 	wasm_emit_entry_stub()
 	wasm_define_asm_functions()
 
@@ -332,13 +419,41 @@ void wasm_sec_name(char* s):
 	wasm_leb(strlen(s))
 	emit(strlen(s), s)
 
-# One import entry: module "wasi_snapshot_preview1", the given name, kind
-# func, the given type index.
-void wasm_import_entry(char* name, int type_index):
-	wasm_sec_name(c"wasi_snapshot_preview1")
+# One function import entry: the given module and name, kind func, the
+# given type index.
+void wasm_import_entry_in(char* module, char* name, int type_index):
+	wasm_sec_name(module)
 	wasm_sec_name(name)
 	emit_int8(0)
 	wasm_leb(type_index)
+
+void wasm_import_entry(char* name, int type_index):
+	wasm_import_entry_in(c"wasi_snapshot_preview1", name, type_index)
+
+# The function type of user extern e: i32/f32 params from its class
+# array, then a void, i32 or f32 result. Extern e gets its own type entry
+# at index 9 + e (duplicates are valid; dedup is not worth the code).
+void wasm_extern_type_entry(int e):
+	emit_int8(0x60)
+	int n = load_i(wasm_extern_nparams + e * 4, 4)
+	char* classes = cast(char*, load_i(wasm_extern_classes + e * word_size, word_size))
+	wasm_leb(n)
+	int i = 0
+	while (i < n):
+		if (classes[i] == 1):
+			emit_int8(0x7d)
+		else:
+			emit_int8(0x7f)
+		i = i + 1
+	int ret_kind = load_i(wasm_extern_rets + e * 4, 4)
+	if (ret_kind == 0):
+		wasm_leb(0)
+	else:
+		wasm_leb(1)
+		if (ret_kind == 2):
+			emit_int8(0x7d)
+		else:
+			emit_int8(0x7f)
 
 # Begin section id with a padded size prefix; returns the size position.
 int wasm_section_begin(int id):
@@ -402,10 +517,11 @@ void wasm_finish():
 	emit(4, c"\x00asm")
 	emit_int32(1)   # version
 
-	# type section: 0 = the universal [] -> [] W type, then the import
-	# signatures (i64 positions as a bitmask over the parameter list)
+	# type section: 0 = the universal [] -> [] W type, the fixed import
+	# signatures (i64 positions as a bitmask over the parameter list),
+	# then one type per user extern import at 9 + e
 	int p = wasm_section_begin(1)
-	wasm_leb(9)
+	wasm_leb(9 + wasm_extern_count)
 	wasm_type_entry(0, 0, 0)                # 0: [] -> []
 	wasm_type_entry(1, 0, 0)                # 1: proc_exit
 	wasm_type_entry(4, 0, 1)                # 2: fd_write / fd_read
@@ -415,11 +531,16 @@ void wasm_finish():
 	wasm_type_entry(3, 0, 1)                # 6: path_unlink_file
 	wasm_type_entry(3, 2, 1)                # 7: clock_time_get (i64 at 1)
 	wasm_type_entry(4, 2, 1)                # 8: fd_seek (i64 at 1)
+	int e = 0
+	while (e < wasm_extern_count):
+		wasm_extern_type_entry(e)
+		e = e + 1
 	wasm_section_end(p)
 
-	# import section: the fixed WASI set, function indices 0..9
+	# import section: the fixed WASI set (function indices 0..9), then
+	# the user extern imports (10..) under their c_lib module names
 	p = wasm_section_begin(2)
-	wasm_leb(10)
+	wasm_leb(wasm_num_imports())
 	wasm_import_entry(c"proc_exit", 1)
 	wasm_import_entry(c"fd_write", 2)
 	wasm_import_entry(c"fd_read", 2)
@@ -430,6 +551,10 @@ void wasm_finish():
 	wasm_import_entry(c"path_unlink_file", 6)
 	wasm_import_entry(c"clock_time_get", 7)
 	wasm_import_entry(c"fd_seek", 8)
+	e = 0
+	while (e < wasm_extern_count):
+		wasm_import_entry_in(cast(char*, load_i(wasm_extern_modules + e * word_size, word_size)), cast(char*, load_i(wasm_extern_names + e * word_size, word_size)), 9 + e)
+		e = e + 1
 	wasm_section_end(p)
 
 	# function section: every defined function has type 0
@@ -470,15 +595,26 @@ void wasm_finish():
 	wasm_global_entry(0x7d, 0)
 	wasm_section_end(p)
 
-	# exports: memory + _start (the entry stub, first defined function)
+	# exports: memory, _start (the entry stub, first defined function),
+	# the funcref table, and $ax. A host that holds a W function pointer
+	# (a table index, e.g. the frame callback graphics/window_web.w hands
+	# to the browser glue) calls back through table.get(index)() — every
+	# W function has wasm type [] -> [], so the return value comes back in
+	# the exported $ax global, not as a wasm result.
 	p = wasm_section_begin(7)
-	wasm_leb(2)
+	wasm_leb(4)
 	wasm_sec_name(c"memory")
 	emit_int8(2)
 	wasm_leb(0)
 	wasm_sec_name(c"_start")
 	emit_int8(0)
 	wasm_leb(wasm_num_imports())
+	wasm_sec_name(c"table")
+	emit_int8(1)
+	wasm_leb(0)
+	wasm_sec_name(c"ax")
+	emit_int8(3)
+	wasm_leb(1)
 	wasm_section_end(p)
 
 	# element: table[1 + i] = defined function i (identity mapping)

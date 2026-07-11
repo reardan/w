@@ -25,8 +25,18 @@ int enum_declaration():
 				get_token()
 			int current_symbol = sym_declare_global(value_name, type_index, 1)
 			sym_set_decl_location(current_symbol, decl_file_index(), value_line, value_column)
-			sym_define_global(current_symbol)
-			emit_int32(value)
+			# The constant's int32 lives at the symbol's address
+			# (identifier.w loads it like a global). Inline in the code
+			# stream, except on wasm, where code is not addressable
+			# memory (and stray bytes between the size-prefixed function
+			# units would corrupt the code section): there it goes into
+			# the data segment.
+			if (target_isa == 2):
+				sym_define_global_at(current_symbol, data_offset + datapos)
+				emit_data_word(value)
+			else:
+				sym_define_global(current_symbol)
+				emit_int32(value)
 			value = value + 1
 			pointer_indirection = 0
 		return 1

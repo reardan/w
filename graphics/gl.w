@@ -1,14 +1,15 @@
 /*
 graphics.gl: OpenGL enums and shader helpers over the per-target GL
 binding (graphics/__arch__/<target>/gl_native.w — libGL.so.1 on the
-Linux targets, the OpenGL framework on arm64_darwin). Consumers import
-this module only; the platform split stays behind the __arch__ path.
+Linux targets, the OpenGL framework on arm64_darwin, WebGL2 host
+imports on wasm). Consumers import this module only; the platform
+split stays behind the __arch__ path.
 
 Shaders are plain GLSL source strings compiled at runtime with
 gl_create_program — no shader file loader yet, string shaders by design
 for now. Portable shader sources take their "#version" line from
 gfx_shader_header() (graphics.window): 130 on GLX contexts, 150 on the
-Mac's 3.2-core contexts.
+Mac's 3.2-core contexts, "300 es" on WebGL2.
 
 GL handles (GLuint) travel as word-sized W ints. GLint out-parameters
 are int32*.

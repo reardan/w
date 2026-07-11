@@ -438,6 +438,10 @@ at any stage.
 - Browser story scope: WASI-in-the-browser shims exist, but graphics/
   events would want a real host-import design (a `c_lib "env"`
   convention?) — out of scope here, worth a design note when attempted.
+  **Resolved**: docs/projects/wasm_webgl.md — `c_lib`/`extern` compile
+  to typed host imports, the funcref table and `$ax` are exported for
+  host→W callbacks, and `graphics/` renders through WebGL2 via
+  `tools/web/` (`wasm_extern_test` / `wasm_webgl_test` gates).
 
 ## Execution notes (Stages 0–4 landed, 2026-07-11)
 
