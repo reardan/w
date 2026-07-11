@@ -275,7 +275,11 @@
 				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "tests/warning_fixture.w"], "expect_stdout": ["\"severity\": \"warning\"", "\"arch\": \"x86\""], "reject_stderr": ["compiling", "using filename as path directly"]},
 				{"cmd": ["bin/wv2", "check", "--quiet", "--json", "x64", "tests/warning_clean_fixture.w"], "stdout_file": "bin/check_json_quiet_clean.ndjson", "stderr_file": "bin/check_json_quiet_clean.stderr", "reject_stderr": ["compiling", "Compiling in x64 mode"]},
 				{"cmd": ["test", "!", "-s", "bin/check_json_quiet_clean.ndjson"]},
-				{"cmd": ["test", "!", "-s", "bin/check_json_quiet_clean.stderr"]}
+				{"cmd": ["test", "!", "-s", "bin/check_json_quiet_clean.stderr"]},
+				{"cmd": ["bin/wv2", "x64", "check", "--json", "tests/warning_fixture.w"], "expect_stdout": "\"arch\": \"x64\"", "expect_stderr": "Compiling in x64 mode"},
+				{"cmd": ["bin/wv2", "arm64", "check", "--quiet", "--json", "tests/warning_clean_fixture.w"], "stdout_file": "bin/check_json_arm64_clean.ndjson", "stderr_file": "bin/check_json_arm64_clean.stderr"},
+				{"cmd": ["test", "!", "-s", "bin/check_json_arm64_clean.ndjson"]},
+				{"cmd": ["test", "!", "-s", "bin/check_json_arm64_clean.stderr"]}
 			]
 		},
 		{
@@ -297,7 +301,8 @@
 				{"cmd": ["grep", "-qE", "\"name\": \"sym_fixture_red\".*\"line\": 18, \"column\": 2", "bin/symbols_fixture.ndjson"]},
 				{"cmd": ["grep", "-qE", "\"name\": \"sym_fixture_green\".*\"line\": 19, \"column\": 2", "bin/symbols_fixture.ndjson"]},
 				{"cmd": ["bin/wv2", "symbols", "tests/symbols_fixture.w"], "expect_stdout": "tests/symbols_fixture.w:11:5: function sym_fixture_add: int"},
-				{"cmd": ["bin/wv2", "symbols", "--json", "x64", "tests/symbols_fixture.w"], "expect_stdout": ["\"arch\": \"x64\"", "\"name\": \"sym_fixture_add\", \"kind\": \"function\", \"type\": \"int\""]}
+				{"cmd": ["bin/wv2", "symbols", "--json", "x64", "tests/symbols_fixture.w"], "expect_stdout": ["\"arch\": \"x64\"", "\"name\": \"sym_fixture_add\", \"kind\": \"function\", \"type\": \"int\""]},
+				{"cmd": ["bin/wv2", "x64", "symbols", "--json", "tests/symbols_fixture.w"], "expect_stdout": ["\"arch\": \"x64\"", "\"name\": \"sym_fixture_add\", \"kind\": \"function\", \"type\": \"int\""]}
 			]
 		},
 		{
@@ -308,7 +313,12 @@
 				{"cmd": ["diff", "-u", "-", "bin/deps_test.out"], "stdin": "structures/hash_table.w\nlib/memory.w\nlib/linux.w\ncode_generator/integer.w\nlib/__arch__/x86/syscalls.w\nstructures/w_list.w\nlib/stack_trace.w\ntests/deps_fixture.w\nlib/lib.w\nlib/__arch__/x86/context.w\nlib/assert.w\nstructures/prelude.w\n"},
 				{"cmd": ["bin/wv2", "deps", "--json", "tests/deps_fixture.w"], "expect_stdout": ["{\"file\": \"tests/deps_fixture.w\"}", "{\"file\": \"lib/assert.w\"}", "{\"file\": \"structures/hash_table.w\"}"]},
 				{"cmd": ["bin/wv2", "deps", "tests/type_system_error_fixture.w"], "expect_fail": true, "expect_stderr": "assignment to const"},
-				{"cmd": ["bin/wv2", "deps"], "expect_fail": true, "expect_stderr": "usage: w deps"}
+				{"cmd": ["bin/wv2", "deps"], "expect_fail": true, "expect_stderr": "usage: w deps"},
+				{"cmd": ["bin/wv2", "deps", "x64", "tests/deps_fixture.w"], "expect_stdout": ["lib/__arch__/x64/syscalls.w", "lib/__arch__/x64/context.w"], "reject_stdout": "lib/__arch__/x86/"},
+				{"cmd": ["bin/wv2", "x64", "deps", "tests/deps_fixture.w"], "expect_stdout": "lib/__arch__/x64/syscalls.w", "expect_stderr": "Compiling in x64 mode"},
+				{"cmd": ["bin/wv2", "arm64", "deps", "--json", "tests/deps_fixture.w"], "expect_stdout": "{\"file\": \"lib/__arch__/arm64/syscalls.w\"}", "reject_stdout": "lib/__arch__/x86/"},
+				{"cmd": ["bin/wv2", "arm64_darwin", "deps", "tests/deps_fixture.w"], "expect_stdout": "lib/__arch__/arm64_darwin/syscalls.w"},
+				{"cmd": ["bin/wv2", "win64", "deps", "tests/deps_fixture.w"], "expect_stdout": "lib/__arch__/win64/syscalls.w"}
 			]
 		},
 		{
@@ -882,6 +892,19 @@
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "--no-cache", "cache_hit"], "reject_stdout": "(cached)"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "force"], "expect_stdout": "force ran"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/cache.json", "force"], "expect_stdout": "force ran"},
+				{"cmd": ["printf", "int wexec_deps_leaf_value():\n\treturn 7\n"], "stdout_file": "bin/wexec_deps_leaf.w"},
+				{"cmd": ["printf", "import bin.wexec_deps_leaf\n\nint main():\n\treturn wexec_deps_leaf_value() - 7\n"], "stdout_file": "bin/wexec_deps_root.w"},
+				{"cmd": ["printf", "this is not w\n"], "stdout_file": "bin/wexec_deps_broken.w"},
+				{"cmd": ["rm", "-f", "bin/.wexec_cache/deps_key", "bin/.wexec_cache/deps_key_legacy"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/deps_cache.json", "deps_key"], "reject_stdout": "(cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/deps_cache.json", "deps_key"], "expect_stdout": "deps_key (cached)"},
+				{"cmd": ["printf", "# leaf v2\nint wexec_deps_leaf_value():\n\treturn 7\n"], "stdout_file": "bin/wexec_deps_leaf.w"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/deps_cache.json", "deps_key"], "reject_stdout": "(cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/deps_cache.json", "deps_key"], "expect_stdout": "deps_key (cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/deps_cache.json", "deps_key_legacy"], "reject_stdout": "(cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/deps_cache.json", "deps_key_legacy"], "expect_stdout": "deps_key_legacy (cached)"},
+				{"cmd": ["printf", "# leaf v3\nint wexec_deps_leaf_value():\n\treturn 7\n"], "stdout_file": "bin/wexec_deps_leaf.w"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/deps_cache.json", "deps_key_legacy"], "reject_stdout": "(cached)"},
 				{"cmd": ["timeout", "1.4", "bin/wexec", "-f", "tests/wexec/parallel.json", "parallel_all"], "expect_stdout": "wexec: OK (5 targets)"},
 				{"cmd": ["bin/wexec", "-j", "1", "-f", "tests/wexec/parallel.json", "parallel_all"], "expect_stdout": "wexec: OK (5 targets)"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/parallel.json", "parallel_fails"], "expect_fail": true, "expect_stderr": "command failed with exit status"},

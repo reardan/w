@@ -18,16 +18,21 @@ build. For a changed path P the emitted targets are the union of:
 
   (b) import closures — every runnable target one of whose root
       sources' transitive import closure (computed by shelling out to
-      'bin/wv2 deps <root>') contains P. Root sources are the .w files
-      named in compile steps ('bin/wv2 [flags] <file>.w ... -o out',
-      including seed './w' compiles), taken from the target's own steps
-      and from the steps of its dependency targets — so wexec_test
-      inherits tools/wexec.w from its 'wexec' dep and debug_test
-      inherits debugger/debugger.w from 'wdbg'. Closures are computed
-      for the default (x86) target only; a root that fails to compile
-      falls back to literal matching only. Closures are cached in
-      bin/.wtest_deps_cache and re-used until the content hash of any
-      file in the cached closure changes.
+      'bin/wv2 deps [selector] <root>') contains P. Root sources are
+      the (arch, .w file) pairs named in compile steps
+      ('bin/wv2 [selector] [flags] <file>.w ... -o out', including
+      seed './w' compiles), taken from the target's own steps and from
+      the steps of its dependency targets — so wexec_test inherits
+      tools/wexec.w from its 'wexec' dep and debug_test inherits
+      debugger/debugger.w from 'wdbg'. Closures are per-arch: a root
+      compiled with a target selector (x64, arm64, arm64_darwin,
+      win64) resolves lib/__arch__/ and other per-target imports for
+      that target, so arch-only modules (lib/__arch__/x64/,
+      graphics/cocoa.w) select exactly the targets that compile them.
+      A root that fails to compile falls back to literal matching
+      only. Closures are cached in bin/.wtest_deps_cache and re-used
+      until the content hash of any file in the cached closure
+      changes.
 
   (c) RESIDUE RULES for coupling the import graph cannot see:
       - w.w / grammar.w / codegen.w and compiler/ grammar/
@@ -48,13 +53,13 @@ build. For a changed path P the emitted targets are the union of:
         A deleted .w additionally -> tests, because importers of a
         deleted module no longer compile, so their closures cannot be
         computed.
-      - lib/__arch__/ -> lib_test + lib_64_test (+ net targets for
-        socket_abi.w): non-default arch modules never appear in a
-        default-target closure.
-      - graphics/ -> graphics_gl_smoke_test + graphics_darwin: the
-        darwin window backend (cocoa.w, window_cocoa.w) and the x64/
-        darwin __arch__ modules are invisible to the default-target
-        closure.
+      - (the former lib/__arch__/ and graphics/ rules are retired: the
+        per-arch closures of rule (b) see those modules exactly where
+        a target compiles them. An arch module no target compiles at
+        all — e.g. lib/__arch__/win64/socket_abi.w while nothing links
+        net on win64 — selects only metadata_check and
+        parser_generator_w_test, which is also exactly its current
+        test coverage.)
       - tests/asm/ -> the asm suite (including the asm_fuzz_* property/
         fuzz targets, which sample the same tests/asm/corpus_*.txt
         fixtures): the .txt/.asm text sources are read at run time, not
@@ -114,12 +119,13 @@ map[char*, json_value*] wtest_target_defs
 map[char*, int] wtest_enabled
 map[char*, int] wtest_never_emit
 
-# (root, owning target) pairs; a root owned by several targets repeats.
+# (root id, owning target) pairs; a root owned by several targets
+# repeats. Root ids are "<arch> <root>" (wtest_root_id).
 list[char*] wtest_pair_roots
 list[char*] wtest_pair_targets
-list[char*] wtest_roots              # deduplicated roots
+list[char*] wtest_roots              # deduplicated root ids
 
-# root -> closure blob ("\n" + one path per line + trailing "\n");
+# root id -> closure blob ("\n" + one path per line + trailing "\n");
 # parallel lists. A root whose deps run failed stores 0.
 list[char*] wtest_closure_roots
 list[char*] wtest_closure_blobs
@@ -350,8 +356,46 @@ int wtest_excluded_root(char* path):
 	return 0
 
 
-# .w files named in this target's own compile steps
-# ('bin/wv2 [flags] file.w ... -o out', or seed './w' compiles).
+int wtest_selector(char* word):
+	if (strcmp(word, c"x64") == 0):
+		return 1
+	if (strcmp(word, c"arm64") == 0):
+		return 1
+	if (strcmp(word, c"arm64_darwin") == 0):
+		return 1
+	if (strcmp(word, c"win64") == 0):
+		return 1
+	return 0
+
+
+# Root ids are "<arch> <root>" pairs ("x64 lib/lib_test.w"); the arch
+# column is the compile step's target selector, "x86" for the default
+# target, so one source file compiled for several targets gets one
+# closure per target.
+char* wtest_root_id(char* arch, char* root):
+	string_builder* s = string_new()
+	string_append(s, arch)
+	string_append_char(s, ' ')
+	string_append(s, root)
+	char* id = s.data
+	free(s)
+	return id
+
+
+# The path column of a root id (after the arch word), or 0 when the id
+# has no arch column (a stale cache entry from an older wtest).
+char* wtest_root_id_path(char* id):
+	int i = 0
+	while (id[i] != 0):
+		if (id[i] == ' '):
+			return id + i + 1
+		i = i + 1
+	return 0
+
+
+# (arch, .w file) root ids named in this target's own compile steps
+# ('bin/wv2 [selector] [flags] file.w ... -o out', or seed './w'
+# compiles).
 void wtest_collect_own_roots(char* name, list[char*] out):
 	json_value* steps = wtest_target_steps(name)
 	if (steps == 0):
@@ -385,6 +429,11 @@ void wtest_collect_own_roots(char* name, list[char*] out):
 			i = i + 1
 		if (has_output == 0):
 			continue
+		char* arch = c"x86"
+		json_value* selector_piece = json_array_get(cmd, 1)
+		if (selector_piece.type == json_type_string()):
+			if (wtest_selector(selector_piece.string_value)):
+				arch = selector_piece.string_value
 		i = 1
 		while (i < n):
 			json_value* piece = json_array_get(cmd, i)
@@ -394,7 +443,7 @@ void wtest_collect_own_roots(char* name, list[char*] out):
 					i = i + 2
 					continue
 				if (ends_with(element, c".w") && (wtest_excluded_root(element) == 0)):
-					out.push(element)
+					out.push(wtest_root_id(arch, element))
 			i = i + 1
 
 
@@ -451,19 +500,22 @@ void wtest_ensure_roots():
 
 /* Closure computation, memoized per run and cached across runs.
 
-The cache file (bin/.wtest_deps_cache) stores one entry per root:
-  R <root>
+The cache file (bin/.wtest_deps_cache) stores one entry per root id
+("<arch> <root>", see wtest_root_id):
+  R <arch> <root>
   H <combined content hash of every file in the closure>
   F <closure file> (one line per file, in deps output order)
 An entry is valid when re-hashing every F file reproduces H; otherwise
-'bin/wv2 deps' is re-run. A root that failed to compile is cached as
-  X <root>
+'bin/wv2 deps [selector]' is re-run. A root that failed to compile for
+its target is cached as
+  X <arch> <root>
   H <content hash of the root file itself>
 and retried once the root's own content changes. (A root that fails
 because an *imported* file is broken keeps its stale failure entry
 until the root is touched — acceptable, because such roots are error
 fixtures or transient mid-edit states, and literal matching still
-covers them.) */
+covers them.) Entries without an arch column — caches written by older
+wtest builds — fail to parse and simply recompute. */
 
 int wtest_mask32_value():
 	if (__word_size__ == 8):
@@ -589,15 +641,36 @@ int wtest_closure_known(char* root):
 	return 0
 
 
-# Run 'bin/wv2 deps <root>'; returns a newline-guarded closure blob or
-# 0 when the root does not compile (literal matching still applies).
-char* wtest_run_deps(char* root):
-	char** argv = strv_new(3)
+# Run 'bin/wv2 deps [selector] <root>' for one root id; returns a
+# newline-guarded closure blob or 0 when the root does not compile for
+# its target (literal matching still applies).
+char* wtest_run_deps(char* id):
+	char* arch = strclone(id)
+	char* root = 0
+	int i = 0
+	while ((arch[i] != 0) && (root == 0)):
+		if (arch[i] == ' '):
+			arch[i] = 0
+			root = arch + i + 1
+		i = i + 1
+	if (root == 0):
+		free(arch)
+		return 0
+	int is_default = strcmp(arch, c"x86") == 0
+	int count = 4
+	if (is_default):
+		count = 3
+	char** argv = strv_new(count)
 	strv_set(argv, 0, c"bin/wv2")
 	strv_set(argv, 1, c"deps")
-	strv_set(argv, 2, root)
+	if (is_default):
+		strv_set(argv, 2, root)
+	else:
+		strv_set(argv, 2, arch)
+		strv_set(argv, 3, root)
 	process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
 	free(cast(char*, argv))
+	free(arch)
 	if (result == 0):
 		return 0
 	if (result.status != 0):
@@ -616,7 +689,9 @@ char* wtest_run_deps(char* root):
 
 
 # Finalize one parsed cache entry: keep it only when its content hash
-# still matches. kind 1 = success ('R'), kind 2 = failure ('X').
+# still matches (and, for 'X' entries, the id parses — pre-arch-column
+# caches are silently dropped). kind 1 = success ('R'), kind 2 =
+# failure ('X').
 void wtest_cache_entry(int kind, char* root, char* expected, string_builder* blob):
 	if ((root == 0) | (expected == 0)):
 		return
@@ -625,8 +700,10 @@ void wtest_cache_entry(int kind, char* root, char* expected, string_builder* blo
 			if (strcmp(wtest_closure_digest(blob.data), expected) == 0):
 				wtest_closure_store(root, blob.data)
 	if (kind == 2):
-		if (strcmp(wtest_file_hash(root), expected) == 0):
-			wtest_closure_store(root, 0)
+		char* path = wtest_root_id_path(root)
+		if (path != 0):
+			if (strcmp(wtest_file_hash(path), expected) == 0):
+				wtest_closure_store(root, 0)
 
 
 # Load cache entries whose content hashes still match; anything stale
@@ -684,7 +761,7 @@ void wtest_cache_save():
 			string_append(out, wtest_closure_roots[i])
 			string_append_char(out, 10)
 			string_append(out, c"H ")
-			string_append(out, wtest_file_hash(wtest_closure_roots[i]))
+			string_append(out, wtest_file_hash(wtest_root_id_path(wtest_closure_roots[i])))
 			string_append_char(out, 10)
 		else:
 			string_append(out, c"R ")
@@ -812,20 +889,6 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		matched = 1
 	if (starts_with(path, c"lib/") | starts_with(path, c"structures/") | starts_with(path, c"libs/")):
 		wtest_add(path, c"metadata_check")
-		matched = 1
-	if (starts_with(path, c"lib/__arch__/")):
-		wtest_add(path, c"lib_test")
-		wtest_add(path, c"lib_64_test")
-		if (ends_with(path, c"/socket_abi.w")):
-			# Per-target socket ABI feeds lib/net.w and everything on it.
-			wtest_add(path, c"net_test")
-			wtest_add(path, c"http_client_test")
-			wtest_add(path, c"http_client_64_test")
-			wtest_add(path, c"net_darwin")
-		matched = 1
-	if (starts_with(path, c"graphics/")):
-		wtest_add(path, c"graphics_gl_smoke_test")
-		wtest_add(path, c"graphics_darwin")
 		matched = 1
 	if (starts_with(path, c"tests/asm/")):
 		wtest_add(path, c"asm_foundations_test")

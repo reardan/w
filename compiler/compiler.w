@@ -263,31 +263,41 @@ void compile_save(char* fn):
 		print_string(c"back to ", filename)
 
 
-int link_impl(int argc, int argv, int start_index, int check_mode):
-	if (argc <= start_index):
-		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet]")
-		exit(1)
-	int i = start_index
-	word_size = 4
-	word_size_log2 = 2
-	diag_word_size = word_size
-	target_isa = 0
-	target_os = 0
-	arm64_pac = 1
-	bounds_mode = 1
-	strict_mode = 0
-	warning_count = 0
-	# argv strides by the HOST pointer size: __word_size__ was baked in
-	# when this compiler binary was itself compiled
-	char** first_arg = argv + i * __word_size__
-	if (strcmp(*first_arg, c"x64") == 0):
+# The recognized target-selector words, shared by link_impl's positional
+# parse and the selector-first subcommand spelling ('w x64 check f.w')
+# that main() forwards through target_pending.
+int target_is_selector(char* arg):
+	if (strcmp(arg, c"x64") == 0):
+		return 1
+	if (strcmp(arg, c"arm64") == 0):
+		return 1
+	if (strcmp(arg, c"arm64_darwin") == 0):
+		return 1
+	if (strcmp(arg, c"win64") == 0):
+		return 1
+	if (strcmp(arg, c"wasm") == 0):
+		return 1
+	return 0
+
+
+# A selector spelled before a subcommand word ('w x64 deps f.w') is
+# recorded here by main() and applied by link_impl right after its
+# target-state reset, so check/deps/symbols compose with the target
+# selector in either spelling.
+char* target_pending
+
+
+# Apply one selector word to the target-mode globals; returns 1 when the
+# word selected a target, 0 when it is not a selector.
+int target_selector_apply(char* arg):
+	if (strcmp(arg, c"x64") == 0):
 		if (quiet_mode == 0):
 			println2(c"Compiling in x64 mode")
 		word_size =  8
 		word_size_log2 = 3
 		diag_word_size = word_size
-		i = i + 1
-	else if (strcmp(*first_arg, c"arm64") == 0):
+		return 1
+	if (strcmp(arg, c"arm64") == 0):
 		if (quiet_mode == 0):
 			println2(c"Compiling in arm64 mode")
 		# AArch64 is a 64-bit target, so it inherits the x64 type system
@@ -302,8 +312,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		# single RWX image so their output stays byte-identical and the
 		# dynamic-linker GOT stays writable.
 		data_split = 1
-		i = i + 1
-	else if (strcmp(*first_arg, c"wasm") == 0):
+		return 1
+	if (strcmp(arg, c"wasm") == 0):
 		if (quiet_mode == 0):
 			println2(c"Compiling in wasm mode")
 		# wasm32 + WASI (docs/projects/wasm_backend.md): 32-bit words like
@@ -316,8 +326,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		target_isa = 2
 		target_os = 3
 		data_split = 1
-		i = i + 1
-	else if (strcmp(*first_arg, c"win64") == 0):
+		return 1
+	if (strcmp(arg, c"win64") == 0):
 		if (quiet_mode == 0):
 			println2(c"Compiling in win64 mode")
 		# Windows x64: the x86-64 instruction emitter (target_isa 0,
@@ -327,8 +337,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		word_size_log2 = 3
 		diag_word_size = word_size
 		target_os = 2
-		i = i + 1
-	else if (strcmp(*first_arg, c"arm64_darwin") == 0):
+		return 1
+	if (strcmp(arg, c"arm64_darwin") == 0):
 		if (quiet_mode == 0):
 			println2(c"Compiling in arm64_darwin mode")
 		# Same A64 instruction emitter and 64-bit type system as the
@@ -340,6 +350,34 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		target_isa = 1
 		target_os = 1
 		data_split = 1
+		return 1
+	return 0
+
+
+int link_impl(int argc, int argv, int start_index, int check_mode):
+	if (argc <= start_index):
+		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet]")
+		exit(1)
+	int i = start_index
+	word_size = 4
+	word_size_log2 = 2
+	diag_word_size = word_size
+	target_isa = 0
+	target_os = 0
+	arm64_pac = 1
+	bounds_mode = 1
+	strict_mode = 0
+	warning_count = 0
+	if (target_pending != 0):
+		# Selector spelled before the subcommand word, recorded by
+		# main(); a positional selector after the subcommand may still
+		# follow and wins.
+		target_selector_apply(target_pending)
+		target_pending = 0
+	# argv strides by the HOST pointer size: __word_size__ was baked in
+	# when this compiler binary was itself compiled
+	char** first_arg = argv + i * __word_size__
+	if (target_selector_apply(*first_arg)):
 		i = i + 1
 	# --pac is whole-program: signing at materialization and authenticating
 	# at the call site must agree across every compiled file (a mixed image
@@ -484,13 +522,13 @@ int check_main(int argc, int argv):
 		else:
 			scanning = 0
 	if (argc <= i):
-		println2(c"usage: w check [--json] [--quiet] [x64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w check [--json] [--quiet] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
 
 
 /*
-w deps [--json] <file.w>...
+w deps [--json] [x64|arm64|arm64_darwin|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then prints the path of
 every file in the program's transitive import closure — the root file,
@@ -499,8 +537,10 @@ deduplicated, in the order the compiler first opened them. Paths under
 the invocation directory are printed relative to it (repo-relative when
 run from the repo root); anything else keeps its absolute path. --json
 emits one NDJSON record per file ({"file": "..."}), mirroring
-'w check --json'. Default target only: like 'check', the subcommand does
-not compose with the x64/arm64 arch selectors.
+'w check --json'. Like 'check', the subcommand composes with the target
+selectors — before the file list, or before the subcommand word itself
+('w x64 deps f.w') — and resolves lib/__arch__/ imports for the selected
+target, so per-arch closures come out right.
 */
 
 
@@ -552,7 +592,7 @@ int deps_main(int argc, int argv):
 			diag_json = 1
 			i = i + 1
 	if (argc <= i):
-		println2(c"usage: w deps [--json] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w deps [--json] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	deps_mode = 1
 	link_impl(argc, argv, i, 1)
@@ -561,7 +601,7 @@ int deps_main(int argc, int argv):
 
 
 /*
-w symbols [--json] [x64] <file.w>...
+w symbols [--json] [x64|arm64|arm64_darwin|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then dumps the global symbol
 table and user-declared types with their declaration locations. --json emits
@@ -720,7 +760,7 @@ int symbols_main(int argc, int argv):
 			diag_json = 1
 			i = i + 1
 	if (argc <= i):
-		println2(c"usage: w symbols [--json] [x64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w symbols [--json] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	link_impl(argc, argv, i, 1)
 	symbols_dump(json)

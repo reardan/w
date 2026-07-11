@@ -78,8 +78,9 @@ lint, asserted by `./wbuild warning_test`.
 
 **List a program's imports**: `./bin/wv2 deps file.w` prints the transitive
 import closure (root, imports, auto-imported runtime), one repo-relative
-path per line; `--json` emits `{"file": "..."}` NDJSON. Default target
-only — like `check`, it does not compose with the arch selectors.
+path per line; `--json` emits `{"file": "..."}` NDJSON. Like `check`, it
+composes with the arch selectors (`./bin/wv2 x64 deps file.w` or
+`deps x64 file.w`) and resolves `lib/__arch__/` imports per target.
 
 Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
 (`./bin/wv2 ...`) need `mkdir -p bin` (or `./wbuild build`) first if you see
