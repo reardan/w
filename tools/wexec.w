@@ -57,6 +57,7 @@ import lib.lib
 import lib.env
 import lib.file
 import lib.process
+import lib.sha256
 import lib.stream
 import lib.utf8
 import structures.string
@@ -74,7 +75,6 @@ list[char*] wexec_closure    # requested targets + deps, dependency order
 int wexec_completed          # targets finished this invocation
 int wexec_no_cache           # --no-cache: never skip cached targets
 int wexec_jobs               # max targets in flight (-j), default nproc
-int wexec_mask32             # keeps the hash accumulators at 32 bits on x64
 
 
 int wexec_collect_closure(char* name);
@@ -149,43 +149,57 @@ int wexec_str_contains(char* haystack, char* needle):
 
 /* Content-hash caching.
 
-A target that declares "inputs" gets a cache key: a 64-bit FNV-style
-hash over its serialized definition, its dependencies' cache keys and
-the contents of every input file (directory entries ending in "/" are
-walked recursively). The key is stamped into bin/.wexec_cache/<name>
-after a successful run; a matching stamp plus existing "outputs" files
-lets the next invocation skip the target. A target whose dependency
-has no cache key (a FORCE-style target) is never cacheable, because a
-fresh dependency run may have changed what this target consumes. */
+A target that declares "inputs" gets a cache key: a SHA-256 hash (D3-1;
+lib.sha256, see docs/projects/wexec.md) over its serialized definition,
+its dependencies' cache keys and the contents of every input file
+(directory entries ending in "/" are walked recursively). The key is
+stamped into bin/.wexec_cache/<name> after a successful run; a matching
+stamp plus existing "outputs" files lets the next invocation skip the
+target. A target whose dependency has no cache key (a FORCE-style
+target) is never cacheable, because a fresh dependency run may have
+changed what this target consumes.
+
+The digest widened from a 32-hex-char pair of rolling hashes to a
+64-hex-char SHA-256 hex string, so a stamp file or bin/.wexec_deps_cache
+"H " line written by the old format never equality-matches a freshly
+computed key: it degrades to a plain cache miss (an ordinary rebuild),
+never an error. */
 
 struct wexec_hash:
-	int h1
-	int h2
+	int* state          # 8 running 32-bit words: SHA-256 h[0..7]
+	char* block          # 64-byte pending block, not yet compressed
+	int block_len        # bytes buffered in block, 0..63
+	int total_len        # total bytes hashed so far
 
 
-int wexec_mask32_value():
-	if (__word_size__ == 8):
-		int high = 1 << 16
-		return high * high - 1
-	return -1
-
-
+# Streams bytes through lib.sha256's block compressor (sha256_block) 64
+# bytes at a time, instead of buffering a target's whole definition plus
+# every input file before hashing once. lib/sha256.w is seed-compiled
+# and is not modified here — only its already-public building blocks
+# (sha256_h0_table/sha256_be32/sha256_put_be32/sha256_mask32/
+# sha256_block) are reused, mirroring what sha256()'s own tail handling
+# does, applied incrementally instead of over one flat buffer.
 void wexec_hash_init(wexec_hash* h):
-	# The FNV offset basis (2166136261 as a signed 32-bit value)
-	h.h1 = -2128831035 & wexec_mask32
-	h.h2 = 1000003
+	h.state = cast(int*, malloc(8 * __word_size__))
+	char* h0 = sha256_h0_table()
+	int i = 0
+	while (i < 8):
+		h.state[i] = sha256_be32(h0 + i * 4)
+		i = i + 1
+	h.block = malloc(64)
+	h.block_len = 0
+	h.total_len = 0
 
 
-# Two 32-bit multiplicative rolling hashes with independent multipliers
-# (the FNV prime and a prime from Python's tuple hash). W has no xor
-# operator, so this is polynomial accumulation rather than FNV proper;
-# 64 combined bits is plenty for build staleness detection.
 void wexec_hash_bytes(wexec_hash* h, char* data, int n):
+	h.total_len = h.total_len + n
 	int i = 0
 	while (i < n):
-		int byte = data[i] & 255
-		h.h1 = (h.h1 * 16777619 + byte) & wexec_mask32
-		h.h2 = (h.h2 * 1000003 + byte) & wexec_mask32
+		h.block[h.block_len] = data[i]
+		h.block_len = h.block_len + 1
+		if (h.block_len == 64):
+			sha256_block(h.state, h.block)
+			h.block_len = 0
 		i = i + 1
 
 
@@ -211,21 +225,59 @@ void wexec_hash_file(wexec_hash* h, char* path):
 	close(fd)
 
 
-void wexec_append_hex(string_builder* s, int value):
-	int shift = 28
-	while (shift >= 0):
-		int nibble = (value >> shift) & 15
-		if (nibble < 10):
-			string_append_char(s, '0' + nibble)
-		else:
-			string_append_char(s, 'a' + nibble - 10)
-		shift = shift - 4
+void wexec_append_hex_byte(string_builder* s, int value):
+	int hi = (value >> 4) & 15
+	int lo = value & 15
+	if (hi < 10):
+		string_append_char(s, '0' + hi)
+	else:
+		string_append_char(s, 'a' + hi - 10)
+	if (lo < 10):
+		string_append_char(s, '0' + lo)
+	else:
+		string_append_char(s, 'a' + lo - 10)
 
 
+# Finalize: pad the trailing partial block exactly as sha256()'s own tail
+# handling does (0x80 terminator, zero pad, 64-bit big-endian bit
+# length), compress it, then hex-encode all 32 digest bytes — 64 hex
+# characters, twice the old two-int rolling hash's 32.
 char* wexec_hash_hex(wexec_hash* h):
+	char* tail = malloc(128)
+	int j = 0
+	while (j < 128):
+		tail[j] = 0
+		j = j + 1
+	j = 0
+	while (j < h.block_len):
+		tail[j] = h.block[j]
+		j = j + 1
+	tail[h.block_len] = 128 /* 0x80 */
+	int blocks = 1
+	if (h.block_len >= 56):
+		blocks = 2
+	int bitlen_pos = blocks * 64 - 8
+	sha256_put_be32(tail + bitlen_pos, (h.total_len >> 29) & sha256_mask32())
+	sha256_put_be32(tail + bitlen_pos + 4, (h.total_len << 3) & sha256_mask32())
+	sha256_block(h.state, tail)
+	if (blocks == 2):
+		sha256_block(h.state, tail + 64)
+	free(tail)
+
+	char* digest = malloc(32)
+	int i = 0
+	while (i < 8):
+		sha256_put_be32(digest + i * 4, h.state[i])
+		i = i + 1
+
 	string_builder* s = string_new()
-	wexec_append_hex(s, h.h1)
-	wexec_append_hex(s, h.h2)
+	i = 0
+	while (i < 32):
+		wexec_append_hex_byte(s, digest[i] & 255)
+		i = i + 1
+	free(digest)
+	free(h.state)
+	free(h.block)
 	char* text = s.data
 	free(s)
 	return text
@@ -1550,7 +1602,6 @@ int wexec_default_jobs():
 
 
 int main(int argc, int argv):
-	wexec_mask32 = wexec_mask32_value()
 	wexec_jobs = 0
 	char* manifest_path = c"build.json"
 	list[char*] requested = new list[char*]
