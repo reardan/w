@@ -85,6 +85,27 @@ is a queue, not an archive.
   the doc-only check before the extension test; pinned by a new
   `wtest_map_test` case (`build.base.json`).
 
+- **Adding a single new `_test.w` always selects the full `tests`
+  umbrella, defeating "focused" selection.** Observed adding
+  `tests/vcs_commit_test.w` (issue #252 V2b, 2026-07-11): the required
+  workflow is create the test, run `./wbuild manifest` to regenerate
+  `build.json` (both are committed together, per the `build.json` is
+  GENERATED rule), then `git diff ... | bin/wtest changed`. But
+  `tools/test_map.w`'s documented residue rule --
+  `build.json / wbuild / build.base.json -> wexec_test + tests` ("the
+  manifest drives every target") -- fires on every such diff, since the
+  regenerated `build.json` is *always* part of it. The net effect: the
+  single most common "add one test" workflow always recommends running
+  the entire pre-merge suite (`tests`, which pulls in `verify` and
+  hundreds of unrelated targets) instead of the one or two new targets
+  that actually matter, even when nothing in the change touches the
+  build system itself. A worthwhile refinement: special-case a
+  `build.json` diff that is *exactly* the addition/removal of leaf test
+  target entries (the common `wbuildgen`-generated shape) to select just
+  those new/changed target names plus `manifest_check`, falling back to
+  the full `tests` residue only when the diff also touches hand-written
+  `build.base.json`-derived entries or existing target definitions.
+
 ## Debugger surface (consumed by the external integration tools)
 
 - **Conditional breakpoints/hit counts/logpoints have landed** (design:
