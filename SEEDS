@@ -4,6 +4,6 @@
 # tag so they compile the same sources. See docs/release.md.
 #
 # file      tag     asset                 sha256
-w           v0.1.0  w-x86-linux           TBD-fill-from-v0.1.0-SHA256SUMS
-w_darwin    v0.1.0  w-arm64-macos         TBD-fill-from-v0.1.0-SHA256SUMS
-w.exe       v0.1.0  w-x86_64-windows.exe  TBD-fill-from-v0.1.0-SHA256SUMS
+w           v0.1.0  w-x86-linux           a27106d5777c9f2579fdbb3af0cf1d0054e1adecc86cb930ac42566a413198a0
+w_darwin    v0.1.0  w-arm64-macos         42e0a90b5b6e5f8e389fc225c7c3817c3899d4490bd02031f444f088034aa07a
+w.exe       v0.1.0  w-x86_64-windows.exe  968196ed66f40715db0aefac4080bebd869c9ed838d5774203f5a2326251c5da
