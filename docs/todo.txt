@@ -222,8 +222,9 @@ current state:
 			threading is still x86-only
 			DWARF line info still declares address_size 4 (gdb only)
 		webassembly:
-			no backend implementation yet
-				(plan: docs/projects/wasm_backend.md)
+			json builtins, generators, c_import/extern FFI, REPL and wdbg
+				are not supported on the wasm target
+				(docs/projects/wasm_backend.md)
 
 	next priorities:
 		type system:
@@ -254,8 +255,9 @@ current state:
 				locals + hardware watchpoints, restricted expression eval
 				(docs/projects/debugger_attach.md, issue #123)
 		code generation:
-			webassembly hello world (docs/projects/wasm_backend.md stage 2)
-			webassembly self-compiling (stage 4 of the same plan)
+			webassembly stage 5 polish: json builtins on wasm, a browser
+				host shim, direct-call optimization
+				(stages 0-4 landed: docs/projects/wasm_backend.md)
 		directory and build cleanup:
 			settle import grammar vs grammar.* behavior
 			Makefile removed; ./wbuild + build.json is the single build entry

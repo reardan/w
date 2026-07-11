@@ -109,9 +109,6 @@ void for_iter_require_struct_pointer(int container_type):
 # "in range" have already been consumed. for_var anchors the loop
 # variable's stack slot.
 void for_range_loop(int for_var, int for_tab_level):
-	int p1
-	int p2
-
 	int has_parens = accept(c"(")
 	int num_range_args = 1
 	promote(expression())
@@ -139,14 +136,15 @@ void for_range_loop(int for_var, int for_tab_level):
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
 	int outer_in_switch = break_in_switch
-	loop_break_chain = 0
-	loop_continue_chain = 0
+	# Exit region: the failed condition and 'break' land after the loop.
+	# Loop region: the back edge re-tests the condition.
+	loop_break_chain = be_ctrl_block()
+	int h_top = be_ctrl_loop()
 	loop_stack_pos = stack_pos
 	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
 	# condition: loop var < end
-	p1 = codepos
 	mov_eax_esp_plus((stack_pos - for_var) << word_size_log2)
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -154,15 +152,17 @@ void for_range_loop(int for_var, int for_tab_level):
 	pop_ebx()
 	alu_cmp_set(0x9c) /* setl: loop var < end */
 	stack_pos = stack_pos - 1
-	jmp_zero_int32(1337010)
-	p2 = codepos
+	be_br_zero(loop_break_chain)
+
+	# Continue region: 'continue' in the body runs the increment first
+	loop_continue_chain = be_ctrl_block()
 
 	/* ':' scoping + child scope statements */
 	enclosing_tab_level = for_tab_level
 	statement()
 
 	/* increment: by 1, or by the step argument */
-	int increment_target = codepos
+	be_ctrl_end(loop_continue_chain)
 	if (num_range_args == 3):
 		mov_eax_esp_plus((stack_pos - (for_var + 3)) << word_size_log2)
 		add_dword_esp_plus_eax((stack_pos - for_var) << word_size_log2)
@@ -170,15 +170,11 @@ void for_range_loop(int for_var, int for_tab_level):
 		inc_dword_esp_plus((stack_pos - for_var) << word_size_log2)
 
 	/* jmp back to condition */
-	jmp_int32(1337011)
-	be_branch_patch(codepos, p1)
+	be_br(h_top)
+	be_ctrl_end(h_top)
 
-	/* save jmp to here if condition failed */
-	be_branch_patch(p2, codepos)
-
-	# break exits here; continue runs the increment first
-	patch_jump_chain(loop_break_chain, codepos)
-	patch_jump_chain(loop_continue_chain, increment_target)
+	# break exits here; continue ran the increment first
+	be_ctrl_end(loop_break_chain)
 
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue
@@ -305,18 +301,19 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
 	int outer_in_switch = break_in_switch
-	loop_break_chain = 0
-	loop_continue_chain = 0
+	# Exit region: the done-check and 'break' land after the loop (where
+	# free_fn releases the container). Loop region: the back edge re-tests.
+	loop_break_chain = be_ctrl_block()
+	int h_top = be_ctrl_loop()
 	loop_stack_pos = stack_pos
 	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
 	# condition: exit once done_fn(container, cursor) is true, or once
 	# the index cursor reaches the length word
-	int p1 = codepos
 	if (done_fn != 0):
 		for_iter_call(done_fn, container_slot, cursor_slot)
-		jmp_nonzero_int32(1337012)
+		be_br_nonzero(loop_break_chain)
 	else:
 		mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
 		push_eax()
@@ -327,8 +324,10 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		pop_ebx()
 		stack_pos = stack_pos - 1
 		alu_cmp_set(0x9c) /* setl: cursor < length */
-		jmp_zero_int32(1337012)
-	int p2 = codepos
+		be_br_zero(loop_break_chain)
+
+	# Continue region: 'continue' in the body advances the cursor first
+	loop_continue_chain = be_ctrl_block()
 
 	# loop var = value_fn(container, cursor), or the slice element at
 	# data + cursor * element_size
@@ -372,7 +371,7 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 
 	# step (continue lands here): cursor = next_fn(container, cursor),
 	# or an in-place index increment
-	int increment_target = codepos
+	be_ctrl_end(loop_continue_chain)
 	if (next_fn != 0):
 		for_iter_call(next_fn, container_slot, cursor_slot)
 		store_stack_var((stack_pos - cursor_slot) << word_size_log2)
@@ -380,19 +379,14 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		inc_dword_esp_plus((stack_pos - cursor_slot) << word_size_log2)
 
 	/* jmp back to condition */
-	jmp_int32(1337013)
-	be_branch_patch(codepos, p1)
+	be_br(h_top)
+	be_ctrl_end(h_top)
 
-	/* save jmp to here once the loop is done */
-	be_branch_patch(p2, codepos)
-
-	# break exits here; continue advances the cursor first
-	patch_jump_chain(loop_break_chain, codepos)
+	# Both exit edges (done and break) land here: release the container
+	# before falling through
+	be_ctrl_end(loop_break_chain)
 	if (free_fn != 0):
-		# Both exit edges (done and break) land here: release the
-		# container before falling through
 		for_iter_call(free_fn, container_slot, 0)
-	patch_jump_chain(loop_continue_chain, increment_target)
 
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue

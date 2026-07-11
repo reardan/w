@@ -1265,6 +1265,43 @@
 			]
 		},
 		{
+			"name": "build_wasm",
+			"deps": ["wv2"],
+			"inputs": [],
+			"steps": [
+				{"cmd": ["bin/wv2", "wasm", "w.w", "-o", "bin/wv2_wasm"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/wv2_wasm", "wasm", "w.w", "-o", "bin/wv3_wasm"]}
+			]
+		},
+		{
+			"name": "verify_wasm",
+			"deps": ["build_wasm"],
+			"inputs": [],
+			"steps": [
+				{"cmd": ["cmp", "bin/wv2_wasm", "bin/wv3_wasm"]},
+				{"cmd": ["echo", "wasm self-host fixpoint OK: wv2_wasm == wv3_wasm"]}
+			]
+		},
+		{
+			"name": "wasm_smoke_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "wasm", "lib/lib_test.w", "-o", "bin/lib_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/lib_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "structures/hash_table_test.w", "-o", "bin/hash_table_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/hash_table_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "tests/map_set_builtin_test.w", "-o", "bin/map_set_builtin_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/map_set_builtin_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "tests/compound_assign_test.w", "-o", "bin/compound_assign_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/compound_assign_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "tests/limb_builtin_test.w", "-o", "bin/limb_builtin_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/limb_builtin_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "tests/float_test.w", "-o", "bin/float_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/float_wasm_test"]},
+				{"cmd": ["echo", "wasm smoke test OK"]}
+			]
+		},
+		{
 			"name": "x64_test",
 			"deps": ["wv2"],
 			"steps": [

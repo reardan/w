@@ -12,7 +12,9 @@ import code_generator.macho_64
 
 
 void be_start(int word_size):
-	if (target_os == 2):
+	if (target_os == 3):
+		wasm_start()
+	else if (target_os == 2):
 		pe_start_64()
 	else if (target_isa == 1):
 		if (target_os == 1):
@@ -26,7 +28,9 @@ void be_start(int word_size):
 
 
 void be_finish(int word_size):
-	if (target_os == 2):
+	if (target_os == 3):
+		wasm_finish()
+	else if (target_os == 2):
 		pe_finish_64()
 	else if (target_isa == 1):
 		if (target_os == 1):

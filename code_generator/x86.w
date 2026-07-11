@@ -11,6 +11,9 @@ void emit_x64_opcode():
 
 /* push dword 0x12 */
 void push_int8(int v):
+	if (target_isa == 2):
+		wasm_push_const(v)
+		return
 	if (target_isa == 1):
 		arm64_push_imm(v)
 		return
@@ -20,6 +23,9 @@ void push_int8(int v):
 
 /* push dword op(0x12, 0x345678) */
 void push_int32(int v):
+	if (target_isa == 2):
+		wasm_push_const(v)
+		return
 	if (target_isa == 1):
 		arm64_push_imm(v)
 		return
@@ -28,11 +34,17 @@ void push_int32(int v):
 
 
 void push_int(int v):
+	if (target_isa == 2):
+		wasm_push_const(v)
+		return
 	push_int32(v)
 
 
 /* mov eax,[eax] */
 void promote_eax():
+	if (target_isa == 2):
+		wasm_promote_eax_op(0x28)
+		return
 	if (target_isa == 1):
 		a64(op(0xf9, 0x400000))   # ldr x0,[x0]
 		return
@@ -42,6 +54,9 @@ void promote_eax():
 
 /* mov ebx,[ebx] */
 void promote_ebx():
+	if (target_isa == 2):
+		wasm_promote_ebx()
+		return
 	if (target_isa == 1):
 		a64(op(0xf9, 0x400021))   # ldr x1,[x1]
 		return
@@ -51,6 +66,9 @@ void promote_ebx():
 
 /* movsx eax, byte [eax] */
 void promote_int8_eax():
+	if (target_isa == 2):
+		wasm_promote_eax_op(0x2c)
+		return
 	if (target_isa == 1):
 		a64(op(0x39, 0x800000))   # ldrsb x0,[x0]
 		return
@@ -60,6 +78,9 @@ void promote_int8_eax():
 
 /* movsx eax, word [eax] */
 void promote_int16_eax():
+	if (target_isa == 2):
+		wasm_promote_eax_op(0x2e)
+		return
 	if (target_isa == 1):
 		a64(op(0x79, 0x800000))   # ldrsh x0,[x0]
 		return
@@ -69,6 +90,9 @@ void promote_int16_eax():
 
 /* x86: mov eax,[eax] ; x64: movsxd rax, dword [rax] (4-byte int32 load) */
 void promote_int32_eax():
+	if (target_isa == 2):
+		wasm_promote_eax_op(0x28)
+		return
 	if (target_isa == 1):
 		a64(op(0xb9, 0x800000))   # ldrsw x0,[x0]
 		return
@@ -80,6 +104,9 @@ void promote_int32_eax():
 
 /* mov %eax,(%ebx) */
 void store_ebx_int32():
+	if (target_isa == 2):
+		wasm_store_ebx_op(0x36)
+		return
 	if (target_isa == 1):
 		a64(op(0xb9, 0x000020))   # str w0,[x1]
 		return
@@ -88,6 +115,9 @@ void store_ebx_int32():
 
 /* mov [ebx],eax at the full word width (4 bytes on x86, 8 on x64) */
 void store_ebx_word():
+	if (target_isa == 2):
+		wasm_store_ebx_op(0x36)
+		return
 	if (target_isa == 1):
 		a64(op(0xf9, 0x000020))   # str x0,[x1]
 		return
@@ -97,6 +127,9 @@ void store_ebx_word():
 
 /* mov %ax,(%ebx) */
 void store_ebx_int16():
+	if (target_isa == 2):
+		wasm_store_ebx_op(0x3b)
+		return
 	if (target_isa == 1):
 		a64(op(0x79, 0x000020))   # strh w0,[x1]
 		return
@@ -105,6 +138,9 @@ void store_ebx_int16():
 
 /* mov %al,(%ebx) */
 void store_ebx_int8():
+	if (target_isa == 2):
+		wasm_store_ebx_op(0x3a)
+		return
 	if (target_isa == 1):
 		a64(op(0x39, 0x000020))   # strb w0,[x1]
 		return
@@ -113,6 +149,9 @@ void store_ebx_int8():
 
 /* mov eax, op(0x12, 0x345678) */
 void mov_eax_int32(int v):
+	if (target_isa == 2):
+		wasm_mov_eax_int(v)
+		return
 	if (target_isa == 1):
 		arm64_mov_eax_int32(v)
 		return
@@ -144,6 +183,9 @@ void mov_rax_int64_halves(int lo, int hi):
 
 /* xor eax, imm32; on x64 this also zeroes the upper half of rax */
 void xor_eax_int32(int v):
+	if (target_isa == 2):
+		wasm_ax_op_const(0x73, v)
+		return
 	if (target_isa == 1):
 		# Only w9's low 32 bits reach the eor, but the scratch load spills
 		# v into an 8-byte literal, and a bit-31 value (the float sign
@@ -164,6 +206,9 @@ void xor_eax_int32(int v):
 /* movzx eax, word [eax]: a zero-extending 16-bit load. The promote_int16
    path sign-extends, which would corrupt float16 bit patterns. */
 void promote_uint16_eax():
+	if (target_isa == 2):
+		wasm_promote_eax_op(0x2f)
+		return
 	if (target_isa == 1):
 		a64(op(0x79, 0x400000))   # ldrh w0,[x0]
 		return
@@ -172,6 +217,9 @@ void promote_uint16_eax():
 
 /* mov eax, op(0x12, 0x345678) */
 void mov_eax_int(int v):
+	if (target_isa == 2):
+		wasm_mov_eax_int(v)
+		return
 	if (target_isa == 1):
 		arm64_mov_rax_int64(v)
 		return
@@ -182,6 +230,9 @@ void mov_eax_int(int v):
 
 
 void add_eax_int32(int v):
+	if (target_isa == 2):
+		wasm_ax_op_const(0x6a, v)
+		return
 	if (target_isa == 1):
 		arm64_add_eax_int32(v)
 		return
@@ -192,6 +243,9 @@ void add_eax_int32(int v):
 
 /* imul eax, eax, imm32 */
 void imul_eax_int32(int v):
+	if (target_isa == 2):
+		wasm_ax_op_const(0x6c, v)
+		return
 	if (target_isa == 1):
 		arm64_imul_eax_int32(v)
 		return
@@ -201,6 +255,9 @@ void imul_eax_int32(int v):
 
 
 void call_eax():
+	if (target_isa == 2):
+		wasm_call_eax()
+		return
 	if (target_isa == 1):
 		if (arm64_pac == 2):
 			# pac=full: every W code pointer was paciza-signed at
@@ -219,6 +276,9 @@ void call_relative32(int v):
 
 
 void not_eax():
+	if (target_isa == 2):
+		wasm_not_eax()
+		return
 	if (target_isa == 1):
 		a64(op(0xaa, 0x2003e0))   # mvn x0,x0
 		return
@@ -228,6 +288,9 @@ void not_eax():
 
 /* push eax */
 void push_eax():
+	if (target_isa == 2):
+		wasm_push_eax()
+		return
 	if (target_isa == 1):
 		a64(op(0xf8, 0x1f8f80))   # str x0,[x28,#-8]!
 		return
@@ -235,6 +298,9 @@ void push_eax():
 
 
 void push_ebx():
+	if (target_isa == 2):
+		wasm_push_ebx()
+		return
 	if (target_isa == 1):
 		a64(op(0xf8, 0x1f8f81))   # str x1,[x28,#-8]!
 		return
@@ -242,6 +308,9 @@ void push_ebx():
 
 
 void pop_ebx():
+	if (target_isa == 2):
+		wasm_pop_ebx()
+		return
 	if (target_isa == 1):
 		a64(op(0xf8, 0x408781))   # ldr x1,[x28],#8
 		return
@@ -249,6 +318,9 @@ void pop_ebx():
 
 
 void pop_eax():
+	if (target_isa == 2):
+		wasm_pop_eax()
+		return
 	if (target_isa == 1):
 		a64(op(0xf8, 0x408780))   # ldr x0,[x28],#8
 		return
@@ -257,6 +329,9 @@ void pop_eax():
 
 /* mov eax, ebx */
 void mov_eax_ebx():
+	if (target_isa == 2):
+		wasm_mov_eax_ebx()
+		return
 	if (target_isa == 1):
 		a64(op(0xaa, 0x0103e0))   # mov x0,x1
 		return
@@ -266,6 +341,9 @@ void mov_eax_ebx():
 
 /* lea eax,[esp+op(0x12, 0x345678)] */
 void lea_eax_esp_plus(int v):
+	if (target_isa == 2):
+		wasm_lea_eax_esp_plus(v)
+		return
 	if (target_isa == 1):
 		arm64_lea_eax_esp_plus(v)
 		return
@@ -276,6 +354,9 @@ void lea_eax_esp_plus(int v):
 
 /* mov eax,[esp+op(0x12, 0x345678)] */
 void mov_eax_esp_plus(int v):
+	if (target_isa == 2):
+		wasm_mov_eax_esp_plus(v)
+		return
 	if (target_isa == 1):
 		arm64_ldr_reg_wsp(0, v)
 		return
@@ -286,6 +367,9 @@ void mov_eax_esp_plus(int v):
 
 /* mov ebx,[esp] */
 void mov_ebx_esp():
+	if (target_isa == 2):
+		wasm_mov_ebx_esp()
+		return
 	if (target_isa == 1):
 		a64(op(0xf9, 0x400381))   # ldr x1,[x28]
 		return
@@ -295,6 +379,9 @@ void mov_ebx_esp():
 
 /* mov ebx,[esp+op(0x12, 0x345678)] */
 void mov_ebx_esp_plus(int v):
+	if (target_isa == 2):
+		wasm_mov_ebx_esp_plus(v)
+		return
 	if (target_isa == 1):
 		arm64_ldr_reg_wsp(1, v)
 		return
@@ -305,6 +392,9 @@ void mov_ebx_esp_plus(int v):
 
 /* add ebx, op(0x12, 0x345678) */
 void add_ebx_int32(int v):
+	if (target_isa == 2):
+		wasm_add_ebx_int(v)
+		return
 	if (target_isa == 1):
 		arm64_add_ebx_int32(v)
 		return
@@ -315,6 +405,9 @@ void add_ebx_int32(int v):
 
 /* push dword [eax+op(0x12, 0x345678)] */
 void push_eax_plus(int v):
+	if (target_isa == 2):
+		wasm_push_eax_plus(v)
+		return
 	if (target_isa == 1):
 		arm64_push_eax_plus(v)
 		return
@@ -324,6 +417,9 @@ void push_eax_plus(int v):
 
 /* mov [esp+op(0x12, 0x345678)], eax */
 void store_stack_var(int variable_offset):
+	if (target_isa == 2):
+		wasm_store_stack_var(variable_offset)
+		return
 	if (target_isa == 1):
 		arm64_str_reg_wsp(0, variable_offset)
 		return
@@ -334,6 +430,9 @@ void store_stack_var(int variable_offset):
 
 /* mov [esp+op(0x12, 0x345678)], ebx */
 void store_ebx_stack_var(int variable_offset):
+	if (target_isa == 2):
+		wasm_store_ebx_stack_var(variable_offset)
+		return
 	if (target_isa == 1):
 		arm64_str_reg_wsp(1, variable_offset)
 		return
@@ -344,6 +443,9 @@ void store_ebx_stack_var(int variable_offset):
 
 /* add esp, (n * word_size) */
 void be_pop(int n):
+	if (target_isa == 2):
+		wasm_be_pop(n)
+		return
 	if (target_isa == 1):
 		arm64_be_pop(n)
 		return
@@ -378,7 +480,111 @@ void jmp_int32(int v):
 	emit_int32(v)
 
 
+###################### structured control-flow regions ########################
+# The grammar's branch protocol (docs/projects/wasm_backend.md D3). Every
+# forward jump the grammar emits targets the end of an enclosing region
+# opened earlier, and every backward jump targets the start of an enclosing
+# region — W has no goto, so this covers all of them. Expressing that
+# structure explicitly is what lets a target without arbitrary branches
+# (WebAssembly's block/loop/br) lower control flow at all; on x86/x64/arm64
+# the helpers reproduce the original jump-and-patch bytes exactly, so those
+# targets are unaffected.
+#
+# Protocol: be_ctrl_block() opens a forward-merge region whose branches land
+# at its be_ctrl_end(); be_ctrl_loop() opens a backward region whose
+# branches land at its start. be_br* branch to an open region by handle.
+# Regions strictly nest: be_ctrl_end pops the most recently opened region
+# (LIFO), which is what lets a wasm backend compute label depths at branch
+# time. On x86/x64/arm64, block regions keep the classic patch chain
+# (each site's displacement field holds the previous site's codepos, 0 ends
+# the chain) resolved at be_ctrl_end; loop regions record their start and
+# patch each branch immediately.
+
+int[256] ctrl_kind_stack    # 0 = forward merge (block), 1 = backward (loop)
+int[256] ctrl_val_stack     # block: patch-chain head; loop: start codepos
+int ctrl_stack_pos
+
+int be_ctrl_block():
+	ctrl_kind_stack[ctrl_stack_pos] = 0
+	ctrl_val_stack[ctrl_stack_pos] = 0
+	ctrl_stack_pos = ctrl_stack_pos + 1
+	if (target_isa == 2):
+		wasm_ctrl_block()
+	return ctrl_stack_pos - 1
+
+int be_ctrl_loop():
+	ctrl_kind_stack[ctrl_stack_pos] = 1
+	ctrl_val_stack[ctrl_stack_pos] = codepos
+	ctrl_stack_pos = ctrl_stack_pos + 1
+	if (target_isa == 2):
+		wasm_ctrl_loop()
+	return ctrl_stack_pos - 1
+
+# A branch site just emitted with region h's chain head in its displacement
+# field becomes the new chain head (no-op for loop regions, which patch
+# immediately). The bounds-check helpers below use this to thread their
+# condition-coded branches through the same protocol.
+void be_ctrl_link(int h):
+	if (ctrl_kind_stack[h] == 0):
+		ctrl_val_stack[h] = codepos
+
+# Branch unconditionally to region h.
+void be_br(int h):
+	if (target_isa == 2):
+		wasm_br(ctrl_stack_pos - 1 - h)
+		return
+	if (ctrl_kind_stack[h]):
+		jmp_int32(0)
+		be_branch_patch(codepos, ctrl_val_stack[h])
+		return
+	jmp_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
+
+# Branch to region h when the accumulator is zero.
+void be_br_zero(int h):
+	if (target_isa == 2):
+		wasm_br_zero(ctrl_stack_pos - 1 - h)
+		return
+	if (ctrl_kind_stack[h]):
+		jmp_zero_int32(0)
+		be_branch_patch(codepos, ctrl_val_stack[h])
+		return
+	jmp_zero_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
+
+# Branch to region h when the accumulator is nonzero.
+void be_br_nonzero(int h):
+	if (target_isa == 2):
+		wasm_br_nonzero(ctrl_stack_pos - 1 - h)
+		return
+	if (ctrl_kind_stack[h]):
+		jmp_nonzero_int32(0)
+		be_branch_patch(codepos, ctrl_val_stack[h])
+		return
+	jmp_nonzero_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
+
+# Close the most recently opened region. Block regions resolve their patch
+# chain to the current position (their merge point); loop regions have
+# nothing to patch.
+void be_ctrl_end(int h):
+	ctrl_stack_pos = ctrl_stack_pos - 1
+	if (target_isa == 2):
+		wasm_ctrl_end()
+		return
+	if (ctrl_kind_stack[h]):
+		return
+	int chain = ctrl_val_stack[h]
+	while (chain):
+		int next_site = be_branch_link_get(chain)
+		be_branch_patch(chain, codepos)
+		chain = next_site
+
+
 void inc_dword_esp_plus(int v):
+	if (target_isa == 2):
+		wasm_inc_dword_esp_plus(v)
+		return
 	if (target_isa == 1):
 		arm64_inc_dword_esp_plus(v)
 		return
@@ -388,6 +594,9 @@ void inc_dword_esp_plus(int v):
 
 
 void neg_eax():
+	if (target_isa == 2):
+		wasm_neg_eax()
+		return
 	if (target_isa == 1):
 		a64(op(0xcb, 0x0003e0))   # neg x0,x0
 		return
@@ -396,6 +605,9 @@ void neg_eax():
 
 
 void add_dword_esp_plus_eax(int v):
+	if (target_isa == 2):
+		wasm_add_dword_esp_plus_eax(v)
+		return
 	if (target_isa == 1):
 		arm64_add_dword_esp_plus_eax(v)
 		return
@@ -406,6 +618,9 @@ void add_dword_esp_plus_eax(int v):
 
 /* add word-sized [esp+offset], imm32 */
 void add_stack_word_int32(int offset, int v):
+	if (target_isa == 2):
+		wasm_add_stack_word_int32(offset, v)
+		return
 	if (target_isa == 1):
 		arm64_add_stack_word_int32(offset, v)
 		return
@@ -421,6 +636,9 @@ void add_stack_word_int32(int offset, int v):
 
 /* add %ebx,%eax */
 void alu_add():
+	if (target_isa == 2):
+		wasm_ax_op_bx(0x6a)
+		return
 	if (target_isa == 1):
 		a64(op(0x8b, 0x010000))   # add x0,x0,x1
 		return
@@ -430,6 +648,9 @@ void alu_add():
 
 /* sub %eax,%ebx ; mov %ebx,%eax */
 void alu_sub():
+	if (target_isa == 2):
+		wasm_bx_op_ax(0x6b)
+		return
 	if (target_isa == 1):
 		a64(op(0xcb, 0x000020))   # sub x0,x1,x0
 		return
@@ -441,6 +662,9 @@ void alu_sub():
 
 /* imul %ebx,%eax */
 void alu_imul():
+	if (target_isa == 2):
+		wasm_ax_op_bx(0x6c)
+		return
 	if (target_isa == 1):
 		a64(op(0x9b, 0x017c00))   # mul x0,x0,x1
 		return
@@ -450,6 +674,9 @@ void alu_imul():
 
 /* mov %eax,%ebx ; pop %eax ; cdq/cqo ; idiv %ebx (quotient in eax) */
 void alu_idiv():
+	if (target_isa == 2):
+		wasm_pop_op_ax(0x6d)
+		return
 	if (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
 		a64(op(0x9a, 0xc00d20))   # sdiv x0,x9,x0
@@ -465,6 +692,9 @@ void alu_idiv():
 
 /* idiv, then mov %edx,%eax to keep the remainder */
 void alu_imod():
+	if (target_isa == 2):
+		wasm_pop_op_ax(0x6f)
+		return
 	if (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
 		a64(op(0x9a, 0xc00d2a))   # sdiv x10,x9,x0
@@ -477,6 +707,9 @@ void alu_imod():
 
 /* mov %eax,%ecx ; pop %eax ; shl %cl,%eax */
 void alu_shl():
+	if (target_isa == 2):
+		wasm_pop_op_ax(0x74)
+		return
 	if (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8
 		a64(op(0x9a, 0xc02120))   # lslv x0,x9,x0
@@ -489,6 +722,9 @@ void alu_shl():
 
 /* mov %eax,%ecx ; pop %eax ; sar %cl,%eax */
 void alu_sar():
+	if (target_isa == 2):
+		wasm_pop_op_ax(0x75)
+		return
 	if (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8
 		a64(op(0x9a, 0xc02920))   # asrv x0,x9,x0
@@ -501,6 +737,9 @@ void alu_sar():
 
 /* and %ebx,%eax */
 void alu_and():
+	if (target_isa == 2):
+		wasm_ax_op_bx(0x71)
+		return
 	if (target_isa == 1):
 		a64(op(0x8a, 0x010000))   # and x0,x0,x1
 		return
@@ -510,6 +749,9 @@ void alu_and():
 
 /* or %ebx,%eax */
 void alu_or():
+	if (target_isa == 2):
+		wasm_ax_op_bx(0x72)
+		return
 	if (target_isa == 1):
 		a64(op(0xaa, 0x010000))   # orr x0,x0,x1
 		return
@@ -519,6 +761,9 @@ void alu_or():
 
 /* xor %ebx,%eax */
 void alu_xor():
+	if (target_isa == 2):
+		wasm_ax_op_bx(0x73)
+		return
 	if (target_isa == 1):
 		a64(op(0xca, 0x010000))   # eor x0,x0,x1
 		return
@@ -530,6 +775,9 @@ void alu_xor():
    setcc_opcode is the second setCC byte: 0x9c setl, 0x9d setge, 0x9e setle,
    0x9f setg, 0x94 sete, 0x95 setne */
 void alu_cmp_set(int setcc_opcode):
+	if (target_isa == 2):
+		wasm_alu_cmp_set(setcc_opcode)
+		return
 	if (target_isa == 1):
 		arm64_alu_cmp_set(setcc_opcode)
 		return
@@ -543,6 +791,9 @@ void alu_cmp_set(int setcc_opcode):
 /* booleanize: test %eax,%eax ; setCC %al ; movzbl %al,%eax
    setcc_opcode: 0x94 sete (logical not), 0x95 setne (truth value) */
 void alu_test_set(int setcc_opcode):
+	if (target_isa == 2):
+		wasm_alu_test_set(setcc_opcode)
+		return
 	if (target_isa == 1):
 		arm64_alu_test_set(setcc_opcode)
 		return
@@ -565,6 +816,9 @@ void alu_test_set(int setcc_opcode):
 
 /* mov ecx, eax at the full word width (a pointer operand) */
 void mov_ecx_eax():
+	if (target_isa == 2):
+		wasm_mov_ecx_eax()
+		return
 	if (target_isa == 1):
 		a64(op(0xaa, 0x0003e2))   # mov x2,x0
 		return
@@ -574,6 +828,9 @@ void mov_ecx_eax():
 
 /* mul %ebx (edx:eax = eax*ebx, unsigned 32x32) ; mov %edx,%eax */
 void alu_mul_hi():
+	if (target_isa == 2):
+		wasm_alu_mul_hi()
+		return
 	if (target_isa == 1):
 		a64(op(0x9b, 0xa07c20))   # umull x0,w1,w0
 		a64(op(0xd3, 0x60fc00))   # lsr x0,x0,#32
@@ -585,6 +842,9 @@ void alu_mul_hi():
 /* mul %ebx ; mov [ecx],edx: low product half stays in eax, the high half
    is stored word-sized through the pointer in ecx */
 void alu_mul_wide():
+	if (target_isa == 2):
+		wasm_alu_mul_wide()
+		return
 	if (target_isa == 1):
 		a64(op(0x9b, 0xa07c20))   # umull x0,w1,w0
 		a64(op(0xd3, 0x60fc09))   # lsr x9,x0,#32
@@ -600,6 +860,9 @@ void alu_mul_wide():
    preserved) ; adc edx,0 ; the carry is stored word-sized through the
    pointer in ecx and the wrapped sum stays in eax */
 void alu_add_carry():
+	if (target_isa == 2):
+		wasm_alu_add_carry()
+		return
 	if (target_isa == 1):
 		a64(op(0x2a, 0x0003e0))   # mov w0,w0 (zero-extend the operands:
 		a64(op(0x2a, 0x0103e1))   # mov w1,w1  the sum then fits 33 bits)
@@ -639,6 +902,9 @@ void alu_bit_operands():
 
 /* value in ebx, count in eax: shr %cl,%eax (logical right shift) */
 void alu_shr32():
+	if (target_isa == 2):
+		wasm_alu_shr32()
+		return
 	if (target_isa == 1):
 		a64(op(0x1a, 0xc02420))   # lsrv w0,w1,w0 (count mod 32, zero-extends)
 		return
@@ -648,6 +914,9 @@ void alu_shr32():
 
 /* value in ebx, count in eax: rol %cl,%eax */
 void alu_rotl32():
+	if (target_isa == 2):
+		wasm_alu_rotl32()
+		return
 	if (target_isa == 1):
 		# A64 has no rotate-left: rotl(a,n) == rotr(a, (-n) mod 32)
 		a64(op(0x4b, 0x0003e9))   # neg w9,w0
@@ -659,6 +928,9 @@ void alu_rotl32():
 
 /* value in ebx, count in eax: ror %cl,%eax */
 void alu_rotr32():
+	if (target_isa == 2):
+		wasm_alu_rotr32()
+		return
 	if (target_isa == 1):
 		a64(op(0x1a, 0xc02c20))   # rorv w0,w1,w0
 		return
@@ -674,6 +946,9 @@ void alu_rotr32():
    (POPCNT is not baseline ISA; the masks have bit 31 clear, so they are
    plain immediates) */
 void alu_popcount32():
+	if (target_isa == 2):
+		wasm_alu_popcount32()
+		return
 	if (target_isa == 1):
 		a64(op(0x53, 0x017c09))   # lsr w9,w0,#1
 		arm64_load_scratch(10, 0x55555555)
@@ -718,6 +993,9 @@ void alu_popcount32():
    BSR leaves ZF set (and the destination undefined) on zero input, so
    the zero case branches over the 31-index conversion */
 void alu_clz32():
+	if (target_isa == 2):
+		wasm_alu_clz32()
+		return
 	if (target_isa == 1):
 		a64(op(0x5a, 0xc01000))   # clz w0,w0 (clz(0) == 32 in hardware)
 		return
@@ -732,6 +1010,9 @@ void alu_clz32():
 /* trailing-zero count of the low 32 bits of eax; ctz(0) == 32.
    BSF is undefined on zero input the same way BSR is */
 void alu_ctz32():
+	if (target_isa == 2):
+		wasm_alu_ctz32()
+		return
 	if (target_isa == 1):
 		a64(op(0x5a, 0xc00000))   # rbit w0,w0
 		a64(op(0x5a, 0xc01000))   # clz w0,w0
@@ -746,89 +1027,125 @@ void alu_ctz32():
 
 
 void int3():
+	if (target_isa == 2):
+		wasm_int3()
+		return
 	if (target_isa == 1):
 		a64(op(0xd4, 0x200000))   # brk #0
 		return
 	emit(1, c"\xcc") /* int3 */
 
 
-/* Bounds checks (issue #228): each helper emits a compare plus a patchable
-   conditional branch and returns the branch's patch site (the codepos right
-   after the displacement, the protocol be_branch_patch expects). The grammar
-   layer (bounds_trap_call in grammar/postfix_expr.w) points the bounds_branch_*
-   sites at a trap block that calls the runtime diagnostic helper, and the
-   bounds_skip_* site past it, so a failed check reports the offending index
-   and length instead of dying on a bare int3/brk #0. The in-bounds
-   fall-through path clobbers only flags, like the old compare + skip + int3
-   form. */
+/* Bounds checks (issue #228): each helper emits a compare plus a
+   conditional branch into control region h (a be_ctrl_block, threaded
+   through the same patch-chain protocol be_br uses). The grammar layer
+   (bounds_trap_call in grammar/postfix_expr.w) opens a region ending at a
+   trap block that calls the runtime diagnostic helper for the
+   bounds_branch_* sites, and a region past it for the bounds_skip_* sites,
+   so a failed check reports the offending index and length instead of dying
+   on a bare int3/brk #0. The in-bounds fall-through path clobbers only
+   flags, like the old compare + skip + int3 form. */
 
-/* branch to the trap block when eax is negative: test eax,eax ; js rel32 */
-int bounds_branch_eax_negative():
+/* branch to region h when eax is negative: test eax,eax ; js rel32 */
+void bounds_branch_eax_negative(int h):
+	if (target_isa == 2):
+		wasm_bounds_branch_eax_negative(ctrl_stack_pos - 1 - h)
+		return
 	if (target_isa == 1):
-		return arm64_bounds_branch_eax_negative()
+		arm64_bounds_branch_eax_negative(ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x85\xc0") /* test eax,eax */
-	emit(2, c"\x0f\x88") /* js rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x88") /* js rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 
-/* branch to the trap block when ebx is negative: test ebx,ebx ; js rel32 */
-int bounds_branch_ebx_negative():
+/* branch to region h when ebx is negative: test ebx,ebx ; js rel32 */
+void bounds_branch_ebx_negative(int h):
+	if (target_isa == 2):
+		wasm_bounds_branch_ebx_negative(ctrl_stack_pos - 1 - h)
+		return
 	if (target_isa == 1):
-		return arm64_bounds_branch_ebx_negative()
+		arm64_bounds_branch_ebx_negative(ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x85\xdb") /* test ebx,ebx */
-	emit(2, c"\x0f\x88") /* js rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x88") /* js rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 
-/* branch to the trap block when ebx > eax (signed): cmp eax,ebx ; jg rel32 */
-int bounds_branch_ebx_greater_eax():
+/* branch to region h when ebx > eax (signed): cmp eax,ebx ; jg rel32 */
+void bounds_branch_ebx_greater_eax(int h):
+	if (target_isa == 2):
+		wasm_bounds_branch_ebx_greater_eax(ctrl_stack_pos - 1 - h)
+		return
 	if (target_isa == 1):
-		return arm64_bounds_branch_ebx_greater_eax()
+		arm64_bounds_branch_ebx_greater_eax(ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x39\xc3") /* cmp eax,ebx */
-	emit(2, c"\x0f\x8f") /* jg rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x8f") /* jg rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 
-/* skip the trap block when ebx < eax (index in ebx, length in eax) */
-int bounds_skip_ebx_less_eax():
+/* branch to region h when ebx < eax (index in ebx, length in eax) */
+void bounds_skip_ebx_less_eax(int h):
+	if (target_isa == 2):
+		wasm_bounds_skip_ebx_less_eax(ctrl_stack_pos - 1 - h)
+		return
 	if (target_isa == 1):
-		return arm64_bounds_skip_ebx_less_eax()
+		arm64_bounds_skip_ebx_less_eax(ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x39\xc3") /* cmp eax,ebx */
-	emit(2, c"\x0f\x8c") /* jl rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x8c") /* jl rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 
-/* skip the trap block when ebx <= eax */
-int bounds_skip_ebx_less_equal_eax():
+/* branch to region h when ebx <= eax */
+void bounds_skip_ebx_less_equal_eax(int h):
+	if (target_isa == 2):
+		wasm_bounds_skip_ebx_less_equal_eax(ctrl_stack_pos - 1 - h)
+		return
 	if (target_isa == 1):
-		return arm64_bounds_skip_ebx_less_equal_eax()
+		arm64_bounds_skip_ebx_less_equal_eax(ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x39\xc3") /* cmp eax,ebx */
-	emit(2, c"\x0f\x8e") /* jle rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x8e") /* jle rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 
-/* skip the trap block when eax <= limit */
-int bounds_skip_eax_less_equal_int32(int limit):
+/* branch to region h when eax <= limit */
+void bounds_skip_eax_less_equal_int32(int limit, int h):
+	if (target_isa == 2):
+		wasm_bounds_skip_eax_less_equal_int32(limit, ctrl_stack_pos - 1 - h)
+		return
 	if (target_isa == 1):
-		return arm64_bounds_skip_eax_less_equal_int32(limit)
+		arm64_bounds_skip_eax_less_equal_int32(limit, ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(1, c"\x3d") /* cmp imm32,eax */
 	emit_int32(limit)
-	emit(2, c"\x0f\x8e") /* jle rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x8e") /* jle rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 void nop():
+	if (target_isa == 2):
+		wasm_nop()
+		return
 	if (target_isa == 1):
 		a64(op(0xd5, 0x03201f))   # nop
 		return
@@ -836,6 +1153,9 @@ void nop():
 
 
 void ret(): 
+	if (target_isa == 2):
+		wasm_ret()
+		return
 	if (target_isa == 1):
 		a64(op(0xf8, 0x40879e))   # ldr x30,[x28],#8  (pop the return-address slot)
 		if (arm64_pac):

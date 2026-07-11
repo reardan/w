@@ -1,5 +1,3 @@
-void patch_jump_chain(int chain, int target);
-
 /*
  * logical-and-expr:
  *         bitwise-or-expr
@@ -12,13 +10,11 @@ int logical_and_expr():
 
 	# Short-circuit: a zero operand jumps to the booleanize step with eax=0
 	promote(type)
-	int chain = 0
+	int h = be_ctrl_block()
 	while (accept(c"&&")):
-		jmp_zero_int32(chain)
-		chain = codepos
+		be_br_zero(h)
 		promote(bitwise_or_expr())
 
-	int booleanize_target = codepos
+	be_ctrl_end(h)
 	alu_test_set(0x95) /* setne */
-	patch_jump_chain(chain, booleanize_target)
 	return type_value(bool_type)

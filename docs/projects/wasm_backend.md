@@ -7,9 +7,22 @@ playbook (`docs/projects/arm64.md` is the template): same grammar, a
 per-target instruction module, a per-target container writer, an `__arch__`
 runtime split, and a CLI target flag. Closes the placeholder issue #30.
 
-**Status: planning.** Nothing is implemented; `docs/todo.txt` carries
-"webassembly hello world" and "webassembly self-compiling" as the two
-milestone entries, which map to Stages 2 and 4 below.
+**Status: Stages 0–4 implemented.** `w wasm file.w -o out.wasm` compiles
+to a wasm32 + WASI module that runs under wasmtime or Node's built-in
+WASI (`tools/run_wasm.sh` picks whichever is installed). The structured
+control-flow layer (D3) landed first as a byte-inert refactor across all
+native targets; the emitter (`code_generator/wasm.w`), module writer
+(`wasm_module.w`), WASI stub layer, and `lib/__arch__/wasm/` runtime are
+in place, including float32 and the limb/bit intrinsics. The full
+toolchain self-hosts: the x86 compiler cross-compiles `w.w` to wasm, and
+running that module under a WASI runtime recompiles `w.w`
+byte-for-byte — `./wbuild verify_wasm` asserts `wv2_wasm == wv3_wasm`,
+which (like `verify_x64`'s first cmp) also proves the output is
+host-independent. `./wbuild wasm_smoke_test` runs a six-test slice
+(lib_test, hash_table, map/set, compound assign, limb builtins, floats)
+under the runner. Modules carry a `name` custom section, so engine
+stack traces show W function names. See the execution notes at the end
+for what shifted in flight.
 
 ## Target definition: what "WebAssembly" implies
 
@@ -425,6 +438,57 @@ at any stage.
 - Browser story scope: WASI-in-the-browser shims exist, but graphics/
   events would want a real host-import design (a `c_lib "env"`
   convention?) — out of scope here, worth a design note when attempted.
+
+## Execution notes (Stages 0–4 landed, 2026-07-11)
+
+- **Stage 1 shipped exactly as planned** and was verified stronger than
+  promised: beyond the three fixpoints, a pristine-main compiler and the
+  refactored one emit byte-identical output for a test corpus (including
+  `w.w`) across all five native targets. The bounds-check emitters
+  changed protocol (they take a control-region handle and thread the
+  chain themselves) since their branches are condition-coded rather than
+  accumulator tests.
+- **The one W gotcha bit anyway**: the signed-LEB termination test used
+  `(v == -1) & (b & 0x40)` — a bitwise AND of `1 & 64` — which never
+  terminates for negative constants. CLAUDE.md warns about exactly this.
+- **Function definition hooks**: `be_function_define` (symbol value =
+  table index on wasm, code position elsewhere) and
+  `be_function_epilogue` (body-size patch + `end`) joined
+  `be_function_prologue` as the per-target function seams; the
+  synthesized `__w_test_main` uses `be_function_define_declare`.
+- **The import stubs are fatter than sketched**: `wasi_clock_time_get`
+  does the ns→{sec,nsec} division in the stub (where i64 arithmetic
+  exists — W has no int64 on 32-bit targets), and `path_open` takes one
+  32-bit rights word zero-extended into both u64 rights arguments.
+  Strict preview1 hosts (uvwasi/Node) reject rights masks broader than
+  the preopen's inheriting set, so `open()` requests exactly the
+  regular-file set (0x08E001FF), not all-ones.
+- **`getcwd()` reports "/"** on wasm: the compiler's upward import
+  search then does exactly one pass, and `open()` strips the leading
+  slash and resolves against the first preopen (fd 3). `brk()` returns
+  0 (the arm64_darwin convention), flipping malloc into mmap mode, and
+  `mmap` bump-allocates over `memory.grow`.
+- **Trap stubs**: the debugger/library trees reference the classic asm
+  stubs (`syscall`, `gen_switch`, `repl_longjmp`, sockets, threads...).
+  On wasm they are defined as `unreachable` bodies so the import graph
+  links and any actual call dies loudly. `repl_setjmp` fills a zero pc,
+  which keeps `lib/stack_trace.w` collection a silent no-op (the zero
+  probe fails `sys_mincore`, which returns -1 here).
+- **The name section landed in Stage 2**, not Stage 5 — engine-side
+  symbolized traces paid for themselves during bring-up within minutes.
+- **Float-to-int uses `i32.trunc_sat_f32_s`** (trap-free saturation)
+  rather than the trapping form; NaN converts to 0 where x86 gives
+  INT_MIN. Documented divergence.
+- **`i32.const` address slots** are 1 opcode + 5 padded bytes + 
+  `global.set $ax`; the slot cell convention (`codepos - 4`) is
+  preserved, with the immediate at `[pos-3, pos+2)`.
+- **json builtins are rejected** on wasm for now (their descriptor blobs
+  still live in the code stream); generators, threads, REPL, wdbg, and
+  `c_lib`/`extern`/`c_import` are absent or trap as planned (D7).
+- Runner: `tools/run_wasm.sh` (wasmtime, else `tools/run_wasm.mjs` on
+  Node ≥ 20). Targets: `build_wasm`, `verify_wasm`, `wasm_smoke_test`
+  in `build.base.json`, outside the default `tests` umbrella like the
+  qemu-bound arm64 targets.
 
 ## References
 

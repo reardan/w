@@ -44,7 +44,7 @@ void test_registry_emit_call(char* name):
 void test_registry_finish():
 	if (sym_lookup(c"__w_run_tests") < 0):
 		return;
-	sym_define_declare_global_function(c"__w_test_main")
+	be_function_define_declare(c"__w_test_main")
 	be_function_prologue()
 	int t = 0
 	while (t <= table_pos - 1):
@@ -55,3 +55,4 @@ void test_registry_finish():
 				test_registry_emit_call(name)
 		t = next_token(t)
 	ret()
+	be_function_epilogue()

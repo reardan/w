@@ -265,7 +265,7 @@ void compile_save(char* fn):
 
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (argc <= start_index):
-		println2(c"usage: w [x64|arm64|arm64_darwin|win64] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet]")
+		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet]")
 		exit(1)
 	int i = start_index
 	word_size = 4
@@ -301,6 +301,20 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		# separate read-write data segment (Stage 3). x86/x64 keep the
 		# single RWX image so their output stays byte-identical and the
 		# dynamic-linker GOT stays writable.
+		data_split = 1
+		i = i + 1
+	else if (strcmp(*first_arg, c"wasm") == 0):
+		if (quiet_mode == 0):
+			println2(c"Compiling in wasm mode")
+		# wasm32 + WASI (docs/projects/wasm_backend.md): 32-bit words like
+		# the default target; target_isa selects the wasm instruction
+		# emitter and target_os the module container writer. The text/data
+		# split is mandatory — wasm code is not addressable memory.
+		word_size = 4
+		word_size_log2 = 2
+		diag_word_size = word_size
+		target_isa = 2
+		target_os = 3
 		data_split = 1
 		i = i + 1
 	else if (strcmp(*first_arg, c"win64") == 0):

@@ -56,11 +56,13 @@ void buffer_bounds_check():
 	pop_ebx()
 	stack_pos = stack_pos - 1
 	# ebx = index, eax = length: trap unless 0 <= index < length
-	int negative_site = bounds_branch_ebx_negative()
-	int in_bounds_site = bounds_skip_ebx_less_eax()
-	be_branch_patch(negative_site, codepos)
+	int h_in_bounds = be_ctrl_block()
+	int h_trap = be_ctrl_block()
+	bounds_branch_ebx_negative(h_trap)
+	bounds_skip_ebx_less_eax(h_in_bounds)
+	be_ctrl_end(h_trap)
 	bounds_trap_call(c"__w_bounds_trap")
-	be_branch_patch(in_bounds_site, codepos)
+	be_ctrl_end(h_in_bounds)
 	mov_eax_ebx()
 
 
@@ -74,19 +76,19 @@ void buffer_range_bounds_check():
 	mov_eax_esp_plus(2 * word_size)
 	add_eax_int32(word_size)
 	promote_eax()
+	int h_ordered = be_ctrl_block()
+	int h_trap = be_ctrl_block()
 	mov_ebx_esp_plus(word_size)
-	int start_negative_site = bounds_branch_ebx_negative()
+	bounds_branch_ebx_negative(h_trap)
 	mov_ebx_esp_plus(0)
-	int end_negative_site = bounds_branch_ebx_negative()
-	int end_fits_site = bounds_branch_ebx_greater_eax()
+	bounds_branch_ebx_negative(h_trap)
+	bounds_branch_ebx_greater_eax(h_trap)
 	mov_eax_esp_plus(0)
 	mov_ebx_esp_plus(word_size)
-	int ordered_site = bounds_skip_ebx_less_equal_eax()
-	be_branch_patch(start_negative_site, codepos)
-	be_branch_patch(end_negative_site, codepos)
-	be_branch_patch(end_fits_site, codepos)
+	bounds_skip_ebx_less_equal_eax(h_ordered)
+	be_ctrl_end(h_trap)
 	bounds_trap_call(c"__w_bounds_trap")
-	be_branch_patch(ordered_site, codepos)
+	be_ctrl_end(h_ordered)
 
 
 void buffer_push_range_descriptor(int base_type, int start_was_omitted):

@@ -4,8 +4,9 @@ W is a small, self-hosting compiled language that started as a fork of Edmund
 Grimley Evans' `cc500` C compiler and has since diverged into its own language.
 The compiler is written in W (`w.w` plus the modules it imports), compiles
 itself, and is bootstrapped from a committed binary seed. It targets 32-bit
-x86 and 64-bit x86-64 Linux, emitting ELF executables directly — there is no
-assembler, linker, libc, or other external toolchain dependency.
+x86 and 64-bit x86-64 Linux (plus arm64 Linux/macOS, win64 PE, and
+wasm32/WASI), emitting executables directly — there is no assembler,
+linker, libc, or other external toolchain dependency.
 
 This README is the orientation document for the repository. It is written
 primarily for AI agents (and new contributors) who need to understand the
@@ -385,7 +386,11 @@ passes; it archives the old seed to `old/` first.
   (stepping, breakpoints, variable inspection, expression evaluation at a
   breakpoint and `w --debug` are done).
 - Import-scoped type metadata.
-- WebAssembly backend (planned: `docs/projects/wasm_backend.md`).
+- WebAssembly backend polish — the wasm32 + WASI backend self-hosts
+  (`w wasm file.w`, `./wbuild verify_wasm` / `wasm_smoke_test`, run via
+  `tools/run_wasm.sh` under wasmtime or Node); remaining: json builtins,
+  generators, host-import FFI, a browser shim
+  (`docs/projects/wasm_backend.md`).
 
 See `docs/todo.txt` for the running working/missing inventory and
 `docs/done.txt` for history.
