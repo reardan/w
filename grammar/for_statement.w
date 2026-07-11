@@ -191,6 +191,75 @@ void for_range_loop(int for_var, int for_tab_level):
 	stack_pos = stack_pos - num_range_args
 
 
+/*
+Exit-cleanup registry: one record per enclosing for-in loop whose
+iterable owns a resource every exit edge must release (today: loops
+over a generator call gen_free). break and continue stay inside the
+loop machinery, so the loop's own exit edges cover them, but 'return'
+(and '?' error propagation, grammar/statement.w) leave the function
+without passing those edges; statement.w walks this registry and emits
+each free call before unwinding the frame. for_cursor_loop pushes on
+body entry and pops on body exit, so the registry always holds exactly
+the loops enclosing the statement being parsed. The REPL and the
+debugger's evaluator roll a failed parse back with
+for_cleanup_truncate, like defer_spans (grammar/defer.w).
+*/
+struct for_cleanup_record:
+	char* free_fn      # runtime function: free_fn(container)
+	int container_slot # stack_pos anchor of the hidden container slot
+
+
+list[for_cleanup_record] for_cleanups
+
+
+int for_cleanup_count():
+	if (cast(int, for_cleanups) == 0):
+		return 0
+	return for_cleanups.length
+
+
+# Discards every record past the first n without touching the backing
+# capacity (the defer_truncate trick — list[T]'s '.length' is read-only
+# at the language level).
+void for_cleanup_truncate(int n):
+	if (cast(int, for_cleanups) == 0):
+		return;
+	__w_list* raw = cast(__w_list*, for_cleanups)
+	raw.length = n
+
+
+void for_cleanup_push(char* free_fn, int container_slot):
+	if (cast(int, for_cleanups) == 0):
+		for_cleanups = new list[for_cleanup_record]
+	for_cleanup_record rec
+	rec.free_fn = free_fn
+	rec.container_slot = container_slot
+	for_cleanups.push(rec)
+
+
+# Emit the free call of every registered cleanup, innermost loop first,
+# at the current code position. Clobbers eax (for_iter_call); exits
+# carrying a live return value go through for_cleanup_emit_returning.
+void for_cleanup_emit_all():
+	int i = for_cleanup_count()
+	while (i > 0):
+		i = i - 1
+		for_iter_call(for_cleanups[i].free_fn, for_cleanups[i].container_slot, 0)
+
+
+# Function-exit path with the pending return value in eax: save it
+# around the free calls so they cannot clobber it, mirroring
+# defer_emit_returning (grammar/defer.w).
+void for_cleanup_emit_returning():
+	if (for_cleanup_count() == 0):
+		return;
+	push_eax()
+	stack_pos = stack_pos + 1
+	for_cleanup_emit_all()
+	pop_eax()
+	stack_pos = stack_pos - 1
+
+
 # Emit the cursor-loop scaffold shared by every for-in container shape:
 # hidden container and cursor slots, break/continue context, done-check,
 # loop-variable extraction, body, advance, back-jump, chain patching.
@@ -288,9 +357,18 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		coerce(value_var_type, value2_coerce_type)
 		store_stack_var((stack_pos - value_var) << word_size_log2)
 
+	# While the body parses, 'return' (grammar/statement.w) must know
+	# about this loop's live resource so it can free it before leaving
+	# the function; the record is popped once the body is done
+	if (free_fn != 0):
+		for_cleanup_push(free_fn, container_slot)
+
 	/* ':' scoping + child scope statements */
 	enclosing_tab_level = for_tab_level
 	statement()
+
+	if (free_fn != 0):
+		for_cleanup_truncate(for_cleanup_count() - 1)
 
 	# step (continue lands here): cursor = next_fn(container, cursor),
 	# or an in-place index increment
@@ -433,7 +511,8 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	char* container_name = type_get_name(container_type)
 	# Generator iterables get gen_free on the loop's exit edges (normal
 	# exit and break) so a broken-out-of loop does not leak the
-	# suspended generator's stack. 'return' out of the body still leaks.
+	# suspended generator's stack. 'return' (and '?') bypass those edges;
+	# they free through the for_cleanup registry above instead.
 	char* free_name = 0
 	if (strcmp(container_name, c"generator") == 0):
 		free_name = c"gen_free"
