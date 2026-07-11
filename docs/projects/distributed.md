@@ -56,9 +56,13 @@ plumbing, `libs/standard/crypto/` hashing.
   Merkle trees for anti-entropy are NOT here: a Merkle implementation
   is landing with the VCS work (libs/extras/vcs); anti-entropy should
   reuse or adapt that one rather than grow a twin.
-- Phase 3: Raft as a pure state machine over `u64` terms/indexes, with
-  a deterministic simulation harness (`sim.w`: virtual clock, lossy
-  reordering message queue, seeded PRNG).
+- Phase 3 (landed): `prng.w` seeded xorshift32, `sim.w` deterministic
+  network harness (virtual clock, seeded delay/drop/reorder,
+  delivery-time partitions), `raft.w` — Raft as a pure state machine
+  over `u64` terms/indexes — and `raft_sim_test.w`, multi-node
+  clusters replayed deterministically through the simulator
+  (elections under loss, partition/heal convergence, minority
+  lockout, seeded replay equality).
 - Phase 4: checksummed write-ahead log, SSTable/memtable/compaction
   (Bigtable lineage), and a demo replicated KV store wiring raft +
   wal + rpc together over `lib/framing.w`.
