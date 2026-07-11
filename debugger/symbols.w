@@ -42,8 +42,13 @@ int dbg_sym_visibility(int name_offset):
 
 # Name offset of the defined function whose code contains the absolute
 # address, or -1. Asm runtime stubs record no length and are not found.
+# The smallest containing span wins: a REPL entry function's recorded
+# span also contains the (jumped-over) functions defined inside that
+# entry, and the address belongs to the innermost definition.
 int dbg_function_at(int addr):
 	int t = 0
+	int best = -1
+	int best_size = 0
 	while (t <= table_pos - 1):
 		int name_offset = t
 		while (table[t] != 0):
@@ -54,9 +59,11 @@ int dbg_function_at(int addr):
 				int size = load_int(table + t + 14)
 				if (size > 0):
 					if ((addr >= start) & (addr < start + size)):
-						return name_offset
+						if ((best < 0) | (size < best_size)):
+							best = name_offset
+							best_size = size
 		t = next_token(t)
-	return -1
+	return best
 
 
 # Name offset of the defined global (function or variable) called `name`,

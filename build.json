@@ -1065,6 +1065,11 @@
 				{"cmd": ["bin/wdbg", "tests/debug_fixture4.w"], "stdin": "p total\nc\n", "expect_stdout": "total = 42"},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture4.w"], "stdin": "s\nl\nc\n", "expect_stdout": "debug_fixture4.w:21"},
 				{"cmd": ["bin/wdbg", "tests/debug_fixture4.w"], "stdin": "c\n", "expect_stdout": ["containers ok", "debuggee main returned 43"]},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nc\np a = 100\nfin\nc\nc\nc\n", "expect_stdout": ["= 100", "value returned = 103"]},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "p 1 / 0\np x\nc\n", "expect_stdout": ["runtime fault: SIGFPE", "entry rolled back", "x = 3"]},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nc\nrepl\nint dbl(int q):\n\treturn q + q\n\n:end\np dbl(a)\nc\nc\nc\n", "expect_stdout": "= 6"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "b add\nc\nrepl\nint acc = 0\nwhile (acc < 5):\n\tacc = acc + 1\n\nacc + a\n:end\nc\nc\nc\n", "expect_stdout": "= 8"},
+				{"cmd": ["bin/wdbg", "tests/debug_fixture2.w"], "stdin": "repl\nimport structures.string\nstring_builder* sb = string_from(c\"wdbg\")\nsb.length\n:end\nc\n", "expect_stdout": "= 4"},
 				{"cmd": ["bin/wv2", "--debug", "tests/debug_fixture.w"], "stdin": "c\n", "expect_stdout": "after breakpoint"}
 			]
 		},
@@ -1137,7 +1142,12 @@
 				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "l\nc\n", "expect_stdout": "debug_fixture4.w:20"},
 				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "p total\nc\n", "expect_stdout": "total = 42"},
 				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "s\nl\nc\n", "expect_stdout": "debug_fixture4.w:21"},
-				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "c\n", "expect_stdout": ["containers ok", "debuggee main returned 43"]}
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture4.w"], "stdin": "c\n", "expect_stdout": ["containers ok", "debuggee main returned 43"]},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\np a = 100\nfin\nc\nc\nc\n", "expect_stdout": ["= 100", "value returned = 103"]},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "p 1 / 0\np x\nc\n", "expect_stdout": ["runtime fault: SIGFPE", "entry rolled back", "x = 3"]},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\nrepl\nint dbl(int q):\n\treturn q + q\n\n:end\np dbl(a)\nc\nc\nc\n", "expect_stdout": "= 6"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "b add\nc\nrepl\nint acc = 0\nwhile (acc < 5):\n\tacc = acc + 1\n\nacc + a\n:end\nc\nc\nc\n", "expect_stdout": "= 8"},
+				{"cmd": ["bin/wdbg64", "tests/debug_fixture2.w"], "stdin": "repl\nimport structures.string\nstring_builder* sb = string_from(c\"wdbg\")\nsb.length\n:end\nc\n", "expect_stdout": "= 4"}
 			]
 		},
 		{
@@ -1165,6 +1175,12 @@
 				{"cmd": ["bin/repl"], "stdin": "struct pt:\n\tint x\n\tint y\n\npt v\nv.x = 3\nv.y = 4\nv\n:quit\n", "expect_stdout": "{\"x\":3,\"y\":4}"},
 				{"cmd": ["bin/repl"], "stdin": "\"hello string\"\n:quit\n", "expect_stdout": "hello string"},
 				{"cmd": ["bin/repl"], "stdin": "int x = 5\nchar* x = c\"shadowed\"\nx\n:quit\n", "expect_stdout": "shadowed"},
+				{"cmd": ["bin/repl"], "stdin": "int f():\n\treturn 111\n\nint g():\n\treturn f()\n\nint f():\n\treturn 222\n\ng()\n:quit\n", "expect_stdout": "222", "reject_stdout": "111"},
+				{"cmd": ["bin/repl"], "stdin": "int f():\n\treturn 111\n\nint g():\n\treturn f()\n\nint f():\n\treturn 222\n\ng()\nint f():\n\treturn 333\n\ng()\n:quit\n", "expect_stdout": ["222", "333"], "reject_stdout": "111"},
+				{"cmd": ["bin/repl"], "stdin": "int f(int a);\nint g(int a):\n\treturn f(a) + 1\n\nint f(int a):\n\treturn a * 2\n\ng(20)\nint f(int a):\n\treturn a + 1\n\ng(20)\n:quit\n", "expect_stdout": ["41", "22"]},
+				{"cmd": ["bin/repl"], "stdin": "struct pt:\n\tint x\n\nint pt_val(pt* self):\n\treturn self.x\n\nint probe(pt* p):\n\treturn p.val()\n\nint pt_val(pt* self):\n\treturn self.x + 100\n\npt v\nv.x = 7\nprobe(&v)\n:quit\n", "expect_stdout": "107"},
+				{"cmd": ["bin/repl"], "stdin": "int f():\n\treturn 111\n\nint g():\n\treturn f()\n\nint f():\n\treturn 222\n\tqq_undefined\n\ng()\n:quit\n", "expect_stdout": "111", "reject_stdout": "222"},
+				{"cmd": ["bin/repl"], "stdin": "int f():\n\treturn 111\n\nint g():\n\treturn f()\n\nint f(): return 222; 1 / 0\ng()\n:quit\n", "expect_stdout": ["entry rolled back", "111"]},
 				{"cmd": ["bin/repl"], "stdin": "int y = 3\ny = 9\n:quit\n", "reject_stdout": "9"},
 				{"cmd": ["bin/repl"], "stdin": "struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n", "expect_stdout": "7"},
 				{"cmd": ["bin/repl"], "stdin": "struct pt:\n\tint x\n\tint y\n\nstruct pt:\n\tint x\n\tint y\n\tint z\n\npt* p = new pt(3, 4, 5)\np.z\n:quit\n", "expect_stdout": "5"},
@@ -1184,7 +1200,10 @@
 				{"cmd": ["bin/repl", "tests/repl_fixture.w"], "stdin": ":quit\n", "expect_stdout": "fixture main ran"},
 				{"cmd": ["bin/repl", "tests/repl_fixture.w"], "stdin": "fixture_helper(21)\nfixture_global\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl", "tests/repl_fixture.w"], "stdin": "fixture_global\n:quit\n", "expect_stdout": "11"},
-				{"cmd": ["bin/repl", "tests/repl_fixture.w", "--no_main"], "stdin": ":quit\n", "reject_stdout": "fixture main ran"}
+				{"cmd": ["bin/repl", "tests/repl_fixture.w", "--no_main"], "stdin": ":quit\n", "reject_stdout": "fixture main ran"},
+				{"cmd": ["bin/repl"], "stdin": "int v = 7\ndebugger\np v\nc\n:quit\n", "expect_stdout": ["breakpoint hit at eip=", "v = 7"]},
+				{"cmd": ["bin/repl"], "stdin": "int v = 7\ndebugger\np v + 35\nc\nv + 36\n:quit\n", "expect_stdout": ["= 42", "43"]},
+				{"cmd": ["bin/repl"], "stdin": "int f():\n\treturn 5\n\ndebugger\nb f\nc\nf()\nc\n:quit\n", "expect_stdout": ["hit breakpoint 1 at f", "5"]}
 			]
 		},
 		{
@@ -1205,6 +1224,12 @@
 				{"cmd": ["bin/repl64"], "stdin": "list[int] items = new list[int]\nitems.push(40)\nitems.push(2)\nitems[0] + items[1]\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl64"], "stdin": "import structures.w_list\nlist[int] l = list[int]{40, 2}\nl[0] + l[1]\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl64"], "stdin": "import structures.hash_table\nmap[char*, int] m = new map[char*, int]\nm[c\"a\"] = 41\nm[c\"a\"] + 1\n:quit\n", "expect_stdout": "42"},
+				{"cmd": ["bin/repl64"], "stdin": "int f():\n\treturn 111\n\nint g():\n\treturn f()\n\nint f():\n\treturn 222\n\ng()\n:quit\n", "expect_stdout": "222", "reject_stdout": "111"},
+				{"cmd": ["bin/repl64"], "stdin": "int f():\n\treturn 111\n\nint g():\n\treturn f()\n\nint f():\n\treturn 222\n\ng()\nint f():\n\treturn 333\n\ng()\n:quit\n", "expect_stdout": ["222", "333"], "reject_stdout": "111"},
+				{"cmd": ["bin/repl64"], "stdin": "int f(int a);\nint g(int a):\n\treturn f(a) + 1\n\nint f(int a):\n\treturn a * 2\n\ng(20)\nint f(int a):\n\treturn a + 1\n\ng(20)\n:quit\n", "expect_stdout": ["41", "22"]},
+				{"cmd": ["bin/repl64"], "stdin": "struct pt:\n\tint x\n\nint pt_val(pt* self):\n\treturn self.x\n\nint probe(pt* p):\n\treturn p.val()\n\nint pt_val(pt* self):\n\treturn self.x + 100\n\npt v\nv.x = 7\nprobe(&v)\n:quit\n", "expect_stdout": "107"},
+				{"cmd": ["bin/repl64"], "stdin": "int f():\n\treturn 111\n\nint g():\n\treturn f()\n\nint f():\n\treturn 222\n\tqq_undefined\n\ng()\n:quit\n", "expect_stdout": "111", "reject_stdout": "222"},
+				{"cmd": ["bin/repl64"], "stdin": "int f():\n\treturn 111\n\nint g():\n\treturn f()\n\nint f(): return 222; 1 / 0\ng()\n:quit\n", "expect_stdout": ["entry rolled back", "111"]},
 				{"cmd": ["bin/repl64"], "stdin": "int bad():\n\treturn qq\n\nprint(c\"recovered fn\\x0a\")\n:quit\n", "expect_stdout": "recovered fn"},
 				{"cmd": ["bin/repl64"], "stdin": "int keep = 41\nint* p = 0\np[0]\nkeep + 1\n:quit\n", "expect_stdout": ["SIGSEGV", "fault address=0x0000000000000000", "entry rolled back", "42"]},
 				{"cmd": ["bin/repl64"], "stdin": "1 / 0\nprint(c\"recovered after fpe\\x0a\")\n:quit\n", "expect_stdout": ["SIGFPE", "entry rolled back", "recovered after fpe"]},
@@ -1213,7 +1238,10 @@
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w"], "stdin": "fixture_helper(21)\nfixture_global\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w", "--no_main"], "stdin": ":quit\n", "reject_stdout": "fixture main ran"},
 				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "int q = 134\nq + 1\n:quit\n", "expect_stdout": "5"},
-				{"cmd": ["sh", "-c", "COLUMNS=20 script -qc './bin/repl64' /dev/null"], "stdin": "int qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq = 42\nqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq + 1\n:quit\n", "expect_stdout": "43"}
+				{"cmd": ["sh", "-c", "COLUMNS=20 script -qc './bin/repl64' /dev/null"], "stdin": "int qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq = 42\nqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq + 1\n:quit\n", "expect_stdout": "43"},
+				{"cmd": ["bin/repl64"], "stdin": "int v = 7\ndebugger\np v\nc\n:quit\n", "expect_stdout": ["breakpoint hit at eip=", "v = 7"]},
+				{"cmd": ["bin/repl64"], "stdin": "int v = 7\ndebugger\np v + 35\nc\nv + 36\n:quit\n", "expect_stdout": ["= 42", "43"]},
+				{"cmd": ["bin/repl64"], "stdin": "int f():\n\treturn 5\n\ndebugger\nb f\nc\nf()\nc\n:quit\n", "expect_stdout": ["hit breakpoint 1 at f", "5"]}
 			]
 		},
 		{
@@ -1631,6 +1659,8 @@
 				"time_64_test",
 				"urlparse_64_test",
 				"varargs_w_64_test",
+				"vcs_cas_64_test",
+				"vcs_dag_64_test",
 				"vcs_diff_64_test",
 				"wbuild_directive_64_test"
 			]
@@ -1939,6 +1969,8 @@
 				"time_test",
 				"type_system_p0_test",
 				"urlparse_test",
+				"vcs_cas_test",
+				"vcs_dag_test",
 				"vcs_diff_test",
 				"wbuild_directive_test",
 				"wbuild_platform_test",
@@ -3114,6 +3146,46 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/varargs_w_test.w", "-o", "bin/varargs_w_64_test"]},
 				{"cmd": ["bin/varargs_w_64_test"]}
+			]
+		},
+		{
+			"name": "vcs_cas_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/vcs_cas_test.w", "-o", "bin/vcs_cas_64_test"]},
+				{"cmd": ["bin/vcs_cas_64_test"]}
+			]
+		},
+		{
+			"name": "vcs_cas_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/vcs_cas_test.w", "-o", "bin/vcs_cas_test"]},
+				{"cmd": ["bin/vcs_cas_test"]}
+			]
+		},
+		{
+			"name": "vcs_cas_test_arm64",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "tests/vcs_cas_test.w", "-o", "bin/vcs_cas_test_arm64"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/vcs_cas_test_arm64"]}
+			]
+		},
+		{
+			"name": "vcs_dag_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/vcs_dag_test.w", "-o", "bin/vcs_dag_64_test"]},
+				{"cmd": ["bin/vcs_dag_64_test"]}
+			]
+		},
+		{
+			"name": "vcs_dag_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/vcs_dag_test.w", "-o", "bin/vcs_dag_test"]},
+				{"cmd": ["bin/vcs_dag_test"]}
 			]
 		},
 		{

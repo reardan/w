@@ -17,8 +17,10 @@ statements become the body of the entry function.
 Top-level variable declarations become globals with storage in the code
 buffer (jumped over by the entry function), so their values survive
 between entries. Redefining a name declares a fresh symbol that shadows
-the old one: code compiled earlier keeps its old binding, later entries
-see the new one.
+the old one: for variables, code compiled earlier keeps its old binding
+and later entries see the new one; for functions, the late-binding
+registry additionally repatches every already-compiled call site to the
+newest definition (issue #114 -- see the registry section below).
 
 When the entry is a single bare expression, its value and compile-time
 type come back in repl_eval's result for the front end to echo; the
@@ -64,6 +66,15 @@ struct repl_result:
 # repl_eval's returned value themselves.
 int repl_echo_hook
 
+# Optional pre-entry hook: when nonzero, called as hook() inside
+# repl_compile_entry after the entry's anonymous function symbol is
+# declared and before the entry's items compile. An embedder uses it to
+# declare extra symbols the entry should see -- wdbg (debugger/eval.w)
+# binds the stopped frame's locals and arguments here. Symbols the hook
+# declares sit below the entry's own declarations in the table, and like
+# them they roll back with the entry on a compile error or fault.
+int repl_bind_hook
+
 
 int repl_counter
 
@@ -91,11 +102,130 @@ void repl_skip_end(int pos):
 	save_int32(code + pos - 4, codepos - pos)
 
 
+# ---------------------------------------------------------------------------
+# Late binding for redefined functions (issue #114).
+#
+# Call sites bake their target's address at compile time: sym_get_value
+# materializes it as an immediate (the "mov eax, fn; call eax" pattern),
+# so redefining f at the prompt would leave every previously compiled
+# caller still calling the old f. While an entry (or a loaded file)
+# compiles, the compiler's repl_call_site_hook reports every function
+# address slot sym_get_value emits, and the registry below records them
+# by name. When a function definition at the prompt completes, every
+# recorded slot for that name is rewritten in place (be_addr_slot_write,
+# the same slot-patching the GOT mechanism for variadic C imports and the
+# 'U'-prototype backpatch chains use), so all callers -- however many
+# generations of redefinition back they were compiled -- call the latest
+# definition. Prototype ('U') sites are registered too: their slots hold
+# backpatch-chain links until the first definition resolves them, and no
+# patch can run before that, because patching is keyed to a definition of
+# that very name completing.
+#
+# The registry is one flat growable buffer of (name, slot) records,
+# checkpointed by count: rolling an entry back truncates it in lockstep
+# with codepos, so a failed entry's slots (offsets later code will reuse)
+# are never patched. Patches are queued per definition and applied only
+# after the whole entry has compiled AND executed: a definition followed
+# by a failing item in the same entry, or an entry that compiles but
+# faults at runtime, rolls back completely, and the old callers must
+# keep their old target in those cases. (The one visible consequence:
+# code executed by the very entry that redefines f still reaches the
+# previous f; from the next entry on, every caller sees the new one.)
+#
+# Ordinary compiles never set the hook: nothing is registered and the
+# emitted bytes are unchanged (the self-host verify fixpoints prove it).
+
+char* repl_sites /* (name, slot) records, 2 words each */
+int repl_sites_count
+int repl_sites_capacity
+
+char* repl_sites_pending /* (name, address) patches queued by this entry */
+int repl_sites_pending_count
+int repl_sites_pending_capacity
+
+
+# Hook target for the compiler's repl_call_site_hook: record one function
+# address slot the compiling entry just materialized. The name is cloned;
+# the caller may free or reuse its buffer.
+void repl_register_call_site(char* name, int slot):
+	if (repl_sites_count == repl_sites_capacity):
+		int cap = repl_sites_capacity * 2
+		if (cap == 0):
+			cap = 128
+			repl_sites = malloc(cap * 2 * __word_size__)
+		else:
+			repl_sites = realloc(repl_sites, repl_sites_capacity * 2 * __word_size__, cap * 2 * __word_size__)
+		repl_sites_capacity = cap
+	char* rec = repl_sites + repl_sites_count * 2 * __word_size__
+	save_word(rec, cast(int, strclone(name)))
+	save_word(rec + __word_size__, slot)
+	repl_sites_count = repl_sites_count + 1
+
+
+# Queue "rewrite every recorded site for name to address" until the entry
+# is known good. Called right after a function definition at the prompt
+# completes ('D' symbols only: an undefined prototype's address slot holds
+# its backpatch chain, not an entry point).
+void repl_queue_late_bind(char* name, int address):
+	if (repl_sites_pending_count == repl_sites_pending_capacity):
+		int cap = repl_sites_pending_capacity * 2
+		if (cap == 0):
+			cap = 8
+			repl_sites_pending = malloc(cap * 2 * __word_size__)
+		else:
+			repl_sites_pending = realloc(repl_sites_pending, repl_sites_pending_capacity * 2 * __word_size__, cap * 2 * __word_size__)
+		repl_sites_pending_capacity = cap
+	char* rec = repl_sites_pending + repl_sites_pending_count * 2 * __word_size__
+	save_word(rec, cast(int, strclone(name)))
+	save_word(rec + __word_size__, address)
+	repl_sites_pending_count = repl_sites_pending_count + 1
+
+
+# Apply the queued patches: every registered slot whose name matches is
+# rewritten to the queued definition's address. Queue order is definition
+# order, so with several redefinitions in one entry the last one wins.
+# Sites the same entry compiled against the new definition are in the
+# registry too; rewriting them stores the address they already hold.
+void repl_apply_late_bind():
+	int i = 0
+	while (i < repl_sites_pending_count):
+		char* rec = repl_sites_pending + i * 2 * __word_size__
+		char* name = cast(char*, load_word(rec))
+		int address = load_word(rec + __word_size__)
+		int k = 0
+		while (k < repl_sites_count):
+			char* site = repl_sites + k * 2 * __word_size__
+			if (strcmp(cast(char*, load_word(site)), name) == 0):
+				be_addr_slot_write(load_word(site + __word_size__), address)
+			k = k + 1
+		free(name)
+		i = i + 1
+	repl_sites_pending_count = 0
+
+
+# Rollback support: discard the queued patches of a failed entry, and
+# truncate the registry back to its checkpointed count.
+void repl_discard_late_bind():
+	int i = 0
+	while (i < repl_sites_pending_count):
+		free(cast(char*, load_word(repl_sites_pending + i * 2 * __word_size__)))
+		i = i + 1
+	repl_sites_pending_count = 0
+
+
+void repl_sites_truncate(int count):
+	while (repl_sites_count > count):
+		repl_sites_count = repl_sites_count - 1
+		free(cast(char*, load_word(repl_sites + repl_sites_count * 2 * __word_size__)))
+
+
 # Declare a global symbol for a REPL definition. An undefined symbol (a
 # prototype with pending call sites) is reused so its backpatch chain
 # resolves; a defined one gets a fresh entry that shadows it, because
-# sym_lookup keeps the LAST match. This is Python-style rebinding: code
-# compiled earlier keeps the old definition, later entries bind the new.
+# sym_lookup keeps the LAST match. This is Python-style rebinding: later
+# entries bind the new definition, and for functions the late-binding
+# registry repatches earlier-compiled call sites too (variables keep
+# their old storage binding in earlier code).
 int repl_declare_global(char* name, int type, int symtype):
 	int t = sym_lookup(name)
 	if (t >= 0):
@@ -235,6 +365,13 @@ void repl_entry_item(int entry_symbol):
 			int fskip = repl_skip_start()
 			function_definition(function_symbol)
 			repl_skip_end(fskip)
+			# Late binding (#114): once this entry compiles and runs to
+			# completion, rewrite every call site compiled against an
+			# older definition of this name to the address just defined.
+			# Only 'D' symbols: a bare prototype ("int f(int);") stays
+			# 'U' and its address slot holds the backpatch chain.
+			if (table[function_symbol + 1] == 'D'):
+				repl_queue_late_bind(decl_name, load_int(table + function_symbol + 2))
 			current_function_symbol = entry_symbol
 			number_of_args = 0
 			enclosing_tab_level = 0
@@ -326,6 +463,7 @@ int repl_saved_alias_count
 int repl_saved_plain_base
 int repl_saved_plain_count
 int repl_saved_function_symbol
+int repl_saved_sites_count
 
 
 void repl_checkpoint():
@@ -350,6 +488,7 @@ void repl_checkpoint():
 	repl_saved_plain_base = import_plain_base
 	repl_saved_plain_count = import_plain_count
 	repl_saved_function_symbol = current_function_symbol
+	repl_saved_sites_count = repl_sites_count
 
 
 void repl_rollback():
@@ -374,6 +513,11 @@ void repl_rollback():
 	import_plain_base = repl_saved_plain_base
 	import_plain_count = repl_saved_plain_count
 	current_function_symbol = repl_saved_function_symbol
+	# Late binding (#114): the failed entry's queued patches must never
+	# apply (its definitions just rolled back), and its registered call
+	# sites sit at code offsets later entries will reuse
+	repl_discard_late_bind()
+	repl_sites_truncate(repl_saved_sites_count)
 	pointer_indirection = 0
 	# error() can jump out from inside a condition or cast() operand;
 	# clear the parse-context flags so later entries warn correctly
@@ -389,9 +533,14 @@ int repl_compile_entry(char* path):
 	repl_checkpoint()
 
 	repl_recovery = 1
+	# Late binding (#114): register the function-address slots this entry
+	# emits, so a redefinition can repatch them later. Armed only while
+	# the engine compiles; the echo path's descriptor building stays out.
+	repl_call_site_hook = cast(int, repl_register_call_site)
 	if (repl_setjmp(repl_jump_buffer)):
 		# error() jumped back: roll back the failed entry and skip execution
 		repl_recovery = 0
+		repl_call_site_hook = 0
 		repl_rollback()
 		# The failure may have happened inside an imported file
 		if (file != repl_entry_file):
@@ -418,10 +567,13 @@ int repl_compile_entry(char* path):
 
 	int entry_symbol = sym_declare_global(name, 1, 2)
 	sym_define_global(entry_symbol)
+	int entry_start = codepos
 	current_function_symbol = entry_symbol
 	number_of_args = 0
 	defer_reset()
 	repl_result_type = -1
+	if (repl_bind_hook != 0):
+		repl_bind_hook()
 
 	while (token[0] != 0):
 		repl_entry_item(entry_symbol)
@@ -433,6 +585,10 @@ int repl_compile_entry(char* path):
 	be_pop(stack_pos)
 	stack_pos = 0
 	ret()
+	# Record the entry function's code length (like function_definition
+	# does) so address-to-function queries (wdbg's dbg_function_at) can
+	# attribute a stop inside the entry to it
+	save_int(table + entry_symbol + 14, codepos - entry_start)
 	# On-demand runtimes for to_json/from_json and f"..." template
 	# strings: the modules' functions land after the entry's ret, so
 	# they are never in the execution path. Generic instantiations
@@ -445,6 +601,7 @@ int repl_compile_entry(char* path):
 	generic_finish_instantiations()
 	close(file)
 	repl_recovery = 0
+	repl_call_site_hook = 0
 
 	int address = sym_address(name)
 	free(name)
@@ -664,6 +821,86 @@ void repl_fault_install_handlers():
 
 
 # ---------------------------------------------------------------------------
+# Nested evaluation. A 'debugger' statement inside an executing entry
+# traps into a command loop (wdbg's), and expressions evaluated there run
+# through repl_eval again while the outer repl_eval is still in flight.
+# Everything the outer call still needs after it resumes -- its rollback
+# checkpoint, its fault window (the jump buffer contents and the active
+# flag) and its pending echo type -- lives in globals a nested call would
+# clobber, so repl_eval saves them on entry and restores them on every
+# exit. The same applies to wdbg evaluating a breakpoint hit inside code
+# an earlier eval is already executing.
+
+int repl_nest_size():
+	return 27 * __word_size__
+
+
+char* repl_nest_save():
+	char* s = malloc(repl_nest_size())
+	save_word(s + 0 * __word_size__, repl_saved_codepos)
+	save_word(s + 1 * __word_size__, repl_saved_table_pos)
+	save_word(s + 2 * __word_size__, repl_saved_stack_pos)
+	save_word(s + 3 * __word_size__, repl_saved_loop_depth)
+	save_word(s + 4 * __word_size__, repl_saved_loop_break_chain)
+	save_word(s + 5 * __word_size__, repl_saved_loop_continue_chain)
+	save_word(s + 6 * __word_size__, repl_saved_loop_stack_pos)
+	save_word(s + 7 * __word_size__, repl_saved_switch_depth)
+	save_word(s + 8 * __word_size__, repl_saved_switch_break_chain)
+	save_word(s + 9 * __word_size__, repl_saved_switch_stack_pos)
+	save_word(s + 10 * __word_size__, repl_saved_break_in_switch)
+	save_word(s + 11 * __word_size__, repl_saved_defer_count)
+	save_word(s + 12 * __word_size__, repl_saved_for_cleanup_count)
+	save_word(s + 13 * __word_size__, repl_saved_number_of_args)
+	save_word(s + 14 * __word_size__, repl_saved_type_count)
+	save_word(s + 15 * __word_size__, repl_saved_imported_count)
+	save_word(s + 16 * __word_size__, repl_saved_alias_base)
+	save_word(s + 17 * __word_size__, repl_saved_alias_count)
+	save_word(s + 18 * __word_size__, repl_saved_plain_base)
+	save_word(s + 19 * __word_size__, repl_saved_plain_count)
+	save_word(s + 20 * __word_size__, repl_saved_function_symbol)
+	save_word(s + 21 * __word_size__, repl_fault_active)
+	save_word(s + 22 * __word_size__, repl_result_type)
+	save_word(s + 23 * __word_size__, repl_entry_file)
+	int i = 0
+	while (i < 3):
+		save_word(s + (24 + i) * __word_size__, load_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__))
+		i = i + 1
+	return s
+
+
+void repl_nest_restore(char* s):
+	repl_saved_codepos = load_word(s + 0 * __word_size__)
+	repl_saved_table_pos = load_word(s + 1 * __word_size__)
+	repl_saved_stack_pos = load_word(s + 2 * __word_size__)
+	repl_saved_loop_depth = load_word(s + 3 * __word_size__)
+	repl_saved_loop_break_chain = load_word(s + 4 * __word_size__)
+	repl_saved_loop_continue_chain = load_word(s + 5 * __word_size__)
+	repl_saved_loop_stack_pos = load_word(s + 6 * __word_size__)
+	repl_saved_switch_depth = load_word(s + 7 * __word_size__)
+	repl_saved_switch_break_chain = load_word(s + 8 * __word_size__)
+	repl_saved_switch_stack_pos = load_word(s + 9 * __word_size__)
+	repl_saved_break_in_switch = load_word(s + 10 * __word_size__)
+	repl_saved_defer_count = load_word(s + 11 * __word_size__)
+	repl_saved_for_cleanup_count = load_word(s + 12 * __word_size__)
+	repl_saved_number_of_args = load_word(s + 13 * __word_size__)
+	repl_saved_type_count = load_word(s + 14 * __word_size__)
+	repl_saved_imported_count = load_word(s + 15 * __word_size__)
+	repl_saved_alias_base = load_word(s + 16 * __word_size__)
+	repl_saved_alias_count = load_word(s + 17 * __word_size__)
+	repl_saved_plain_base = load_word(s + 18 * __word_size__)
+	repl_saved_plain_count = load_word(s + 19 * __word_size__)
+	repl_saved_function_symbol = load_word(s + 20 * __word_size__)
+	repl_fault_active = load_word(s + 21 * __word_size__)
+	repl_result_type = load_word(s + 22 * __word_size__)
+	repl_entry_file = load_word(s + 23 * __word_size__)
+	int i = 0
+	while (i < 3):
+		save_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__, load_word(s + (24 + i) * __word_size__))
+		i = i + 1
+	free(s)
+
+
+# ---------------------------------------------------------------------------
 # Rendering struct echoes.
 
 # Render a struct value as JSON for echoing (D3), reusing the compiler's
@@ -745,6 +982,34 @@ void repl_remove_staging(char* dir, int file_count):
 # ---------------------------------------------------------------------------
 # Session lifecycle.
 
+# The eval engine's own state: the recovery jump buffers error() and the
+# fault handlers long-jump through, and the per-session staging directory
+# entries compile from. repl_init() calls this as part of the full
+# session setup; an embedder that already owns its code buffer and signal
+# handlers (wdbg) calls just this before its first repl_eval().
+void repl_engine_init():
+	if (repl_jump_buffer == 0):
+		repl_jump_buffer = cast(int, malloc(3 * __word_size__))
+	repl_error_jump = cast(int, repl_longjmp)
+	if (repl_fault_jump_buffer == 0):
+		repl_fault_jump_buffer = cast(int, malloc(3 * __word_size__))
+
+
+# Create the session's staging directory on first use, so a session that
+# never evaluates anything (a wdbg run without a p/repl command, say)
+# leaves nothing in /tmp. Every entry gets its own staging file inside
+# the one per-session directory; it is pid-tagged so two REPL processes
+# running concurrently (e.g. repl_test and repl_test_x64 under a
+# parallel test runner) never collide.
+void repl_stage_init():
+	if (repl_staging_dir != 0):
+		return;
+	char* pid_digits = itoa(getpid())
+	repl_staging_dir = strjoin(c"/tmp/w_repl_", pid_digits)
+	free(pid_digits)
+	mkdir(repl_staging_dir, 511)
+
+
 # Initialize the session: the compiler configured for in-process
 # compilation, the executable buffer the compiled entries run from, the
 # recovery jump buffers and fault handlers, the runtime stubs and
@@ -777,15 +1042,11 @@ void repl_init():
 	codepos = 0
 	code_offset = buffer
 
-	# Recoverable compile errors: error() jumps back to the checkpoint in
-	# repl_compile_entry instead of exiting
-	repl_jump_buffer = cast(int, malloc(3 * __word_size__))
-	repl_error_jump = cast(int, repl_longjmp)
-
-	# Recoverable runtime faults: a fault inside an executing entry
+	# Recoverable compile errors and staging directory (repl_engine_init),
+	# plus recoverable runtime faults: a fault inside an executing entry
 	# long-jumps back into repl_eval. repl_fault_active gates the
 	# handlers, so faults anywhere else still kill the process as before.
-	repl_fault_jump_buffer = cast(int, malloc(3 * __word_size__))
+	repl_engine_init()
 	repl_fault_install_handlers()
 
 	# Runtime support: syscall stubs first, then the library itself.
@@ -807,15 +1068,6 @@ void repl_init():
 	import_module(c"lib.lib")
 	import_module(c"lib.assert")
 
-	# Every entry gets its own staging file inside one per-session
-	# directory. The directory is pid-tagged so two REPL processes
-	# running concurrently (e.g. repl_test and repl_test_x64 under a
-	# parallel test runner) never collide.
-	char* pid_digits = itoa(getpid())
-	repl_staging_dir = strjoin(c"/tmp/w_repl_", pid_digits)
-	free(pid_digits)
-	mkdir(repl_staging_dir, 511)
-
 
 # Compile a source file into the session buffer and resolve the deferred
 # runtimes it may have used (print builtin, f-strings, json codec, var):
@@ -826,6 +1078,12 @@ void repl_init():
 # entry point. Returns 1 when main ran, 0 otherwise. Afterwards every
 # function and global from the file is live for later entries.
 int repl_load_file(char* path, int run_main, int argc, int argv):
+	# Late binding (#114): register the file's call sites too, so
+	# redefining one of its functions at the prompt retargets the file's
+	# own callers (the python -i workflow). A compile error here exits
+	# the process (no entry checkpoint exists yet), so no rollback pairing
+	# is needed.
+	repl_call_site_hook = cast(int, repl_register_call_site)
 	compile_input_file(path)
 	generic_finish_instantiations()
 	json_codec_finish_import()
@@ -833,6 +1091,7 @@ int repl_load_file(char* path, int run_main, int argc, int argv):
 	prelude_finish_import()
 	var_finish_import()
 	generic_finish_instantiations()
+	repl_call_site_hook = 0
 	if (run_main == 0):
 		return 0
 	int main_symbol = sym_lookup(c"main")
@@ -859,6 +1118,12 @@ repl_result repl_eval(char* entry_text):
 	r.value = 0
 	r.echo_type = -1
 
+	# Save the state an enclosing in-flight repl_eval still needs (see
+	# repl_nest_save): this call may be running from a 'debugger' stop's
+	# command loop in the middle of another entry's execution.
+	char* nest = repl_nest_save()
+
+	repl_stage_init()
 	if (repl_staged_path != 0):
 		free(repl_staged_path)
 	repl_staged_path = repl_entry_path(repl_staging_dir, repl_staged_count)
@@ -871,24 +1136,35 @@ repl_result repl_eval(char* entry_text):
 
 	int address = repl_compile_entry(repl_staged_path)
 	if (address == 0):
+		repl_nest_restore(nest)
 		return r /* compile error: reported and rolled back already */
 
 	repl_fault_active = 1
 	if (repl_setjmp(repl_fault_jump_buffer)):
 		repl_rollback()
 		r.status = 2
+		repl_nest_restore(nest)
 		return r
 	r.value = address()
 	r.echo_type = repl_result_type
 	if (repl_echo_hook != 0):
 		repl_echo_hook(r.value, repl_result_type)
 	repl_fault_active = 0
+	# Late binding (#114): the entry compiled and ran to completion, so
+	# its function definitions are permanent -- rewrite every older call
+	# site of each (re)defined name to the new address. A fault above
+	# skips this: repl_rollback discarded the queue with the definitions.
+	repl_apply_late_bind()
 	r.status = 1
+	repl_nest_restore(nest)
 	return r
 
 
 # End the session: remove the staged entry files and the staging
 # directory. Only safe once no more entries will compile -- generic
-# instantiation re-parses recorded spans from the staged files.
+# instantiation re-parses recorded spans from the staged files. A no-op
+# when nothing was ever staged (the directory is created lazily).
 void repl_cleanup():
+	if (repl_staging_dir == 0):
+		return;
 	repl_remove_staging(repl_staging_dir, repl_staged_count)
