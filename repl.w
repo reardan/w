@@ -26,12 +26,20 @@ A compile error does not exit: repl_compile_entry checkpoints the
 compiler's globals and error() jumps back here (repl_setjmp/repl_longjmp),
 after which the checkpoint rolls back the failed entry's code and symbols.
 
+A runtime fault in an executing entry (SIGSEGV/SIGILL/SIGBUS/SIGFPE) does
+not exit either: signal handlers (the delivery shims replicated from
+debugger/wdbg.w) report the signal, print a stack trace, and long-jump
+back to the prompt; the same checkpoint then rolls the entry back exactly
+like a compile error.
+
 Commands: :quit exits, :help prints a summary.
 */
 import compiler.compiler
 import structures.string
 import lib.args
 import lib.line_edit
+import lib.stack_trace
+import debugger.sigcontext
 
 
 int repl_counter
@@ -456,63 +464,101 @@ void repl_entry_item(int entry_symbol):
 		repl_result_type = -1
 
 
+# ---------------------------------------------------------------------------
+# Entry rollback: a checkpoint of everything a failed entry could leave
+# half-updated, taken before each entry compiles. It is restored when
+# error() long-jumps out of a failing compile, and again when a runtime
+# fault long-jumps out of the entry's execution (repl_fault below), which
+# discards the faulted entry's definitions exactly like a compile error.
+
+int repl_saved_codepos
+int repl_saved_table_pos
+int repl_saved_stack_pos
+int repl_saved_loop_depth
+int repl_saved_loop_break_chain
+int repl_saved_loop_continue_chain
+int repl_saved_loop_stack_pos
+int repl_saved_switch_depth
+int repl_saved_switch_break_chain
+int repl_saved_switch_stack_pos
+int repl_saved_break_in_switch
+int repl_saved_defer_count
+int repl_saved_for_cleanup_count
+int repl_saved_number_of_args
+int repl_saved_type_count
+int repl_saved_imported_count
+int repl_saved_alias_base
+int repl_saved_alias_count
+int repl_saved_plain_base
+int repl_saved_plain_count
+int repl_saved_function_symbol
+
+
+void repl_checkpoint():
+	repl_saved_codepos = codepos
+	repl_saved_table_pos = table_pos
+	repl_saved_stack_pos = stack_pos
+	repl_saved_loop_depth = loop_depth
+	repl_saved_loop_break_chain = loop_break_chain
+	repl_saved_loop_continue_chain = loop_continue_chain
+	repl_saved_loop_stack_pos = loop_stack_pos
+	repl_saved_switch_depth = switch_depth
+	repl_saved_switch_break_chain = switch_break_chain
+	repl_saved_switch_stack_pos = switch_stack_pos
+	repl_saved_break_in_switch = break_in_switch
+	repl_saved_defer_count = defer_count()
+	repl_saved_for_cleanup_count = for_cleanup_count()
+	repl_saved_number_of_args = number_of_args
+	repl_saved_type_count = type_count()
+	repl_saved_imported_count = imported_count
+	repl_saved_alias_base = import_alias_base
+	repl_saved_alias_count = import_alias_count
+	repl_saved_plain_base = import_plain_base
+	repl_saved_plain_count = import_plain_count
+	repl_saved_function_symbol = current_function_symbol
+
+
+void repl_rollback():
+	codepos = repl_saved_codepos
+	table_pos = repl_saved_table_pos
+	stack_pos = repl_saved_stack_pos
+	loop_depth = repl_saved_loop_depth
+	loop_break_chain = repl_saved_loop_break_chain
+	loop_continue_chain = repl_saved_loop_continue_chain
+	loop_stack_pos = repl_saved_loop_stack_pos
+	switch_depth = repl_saved_switch_depth
+	switch_break_chain = repl_saved_switch_break_chain
+	switch_stack_pos = repl_saved_switch_stack_pos
+	break_in_switch = repl_saved_break_in_switch
+	defer_truncate(repl_saved_defer_count)
+	for_cleanup_truncate(repl_saved_for_cleanup_count)
+	number_of_args = repl_saved_number_of_args
+	type_table_truncate(repl_saved_type_count)
+	imported_count = repl_saved_imported_count
+	import_alias_base = repl_saved_alias_base
+	import_alias_count = repl_saved_alias_count
+	import_plain_base = repl_saved_plain_base
+	import_plain_count = repl_saved_plain_count
+	current_function_symbol = repl_saved_function_symbol
+	pointer_indirection = 0
+	# error() can jump out from inside a condition or cast() operand;
+	# clear the parse-context flags so later entries warn correctly
+	condition_context = 0
+	cast_context = 0
+	diag_clear()
+
+
 # Compile the staged entry file. Returns the address of the entry's
 # anonymous function, or 0 when the entry failed to compile.
 int repl_compile_entry(char* path):
 	# Checkpoint everything a failed compile could leave half-updated
-	int saved_codepos = codepos
-	int saved_table_pos = table_pos
-	int saved_stack_pos = stack_pos
-	int saved_loop_depth = loop_depth
-	int saved_loop_break_chain = loop_break_chain
-	int saved_loop_continue_chain = loop_continue_chain
-	int saved_loop_stack_pos = loop_stack_pos
-	int saved_switch_depth = switch_depth
-	int saved_switch_break_chain = switch_break_chain
-	int saved_switch_stack_pos = switch_stack_pos
-	int saved_break_in_switch = break_in_switch
-	int saved_defer_count = defer_count()
-	int saved_for_cleanup_count = for_cleanup_count()
-	int saved_number_of_args = number_of_args
-	int saved_type_count = type_count()
-	int saved_imported_count = imported_count
-	int saved_alias_base = import_alias_base
-	int saved_alias_count = import_alias_count
-	int saved_plain_base = import_plain_base
-	int saved_plain_count = import_plain_count
-	int saved_function_symbol = current_function_symbol
+	repl_checkpoint()
 
 	repl_recovery = 1
 	if (repl_setjmp(repl_jump_buffer)):
 		# error() jumped back: roll back the failed entry and skip execution
 		repl_recovery = 0
-		codepos = saved_codepos
-		table_pos = saved_table_pos
-		stack_pos = saved_stack_pos
-		loop_depth = saved_loop_depth
-		loop_break_chain = saved_loop_break_chain
-		loop_continue_chain = saved_loop_continue_chain
-		loop_stack_pos = saved_loop_stack_pos
-		switch_depth = saved_switch_depth
-		switch_break_chain = saved_switch_break_chain
-		switch_stack_pos = saved_switch_stack_pos
-		break_in_switch = saved_break_in_switch
-		defer_truncate(saved_defer_count)
-		for_cleanup_truncate(saved_for_cleanup_count)
-		number_of_args = saved_number_of_args
-		type_table_truncate(saved_type_count)
-		imported_count = saved_imported_count
-		import_alias_base = saved_alias_base
-		import_alias_count = saved_alias_count
-		import_plain_base = saved_plain_base
-		import_plain_count = saved_plain_count
-		current_function_symbol = saved_function_symbol
-		pointer_indirection = 0
-		# error() can jump out from inside a condition or cast() operand;
-		# clear the parse-context flags so later entries warn correctly
-		condition_context = 0
-		cast_context = 0
-		diag_clear()
+		repl_rollback()
 		# The failure may have happened inside an imported file
 		if (file != repl_entry_file):
 			close(file)
@@ -569,6 +615,218 @@ int repl_compile_entry(char* path):
 	int address = sym_address(name)
 	free(name)
 	return address
+
+
+# ---------------------------------------------------------------------------
+# Runtime fault recovery.
+#
+# A fault (SIGSEGV/SIGILL/SIGBUS/SIGFPE) inside an executing entry must
+# not kill the session. The signal delivery shims replicate
+# debugger/wdbg.w's (kept separate so wdbg stays untouched):
+#
+# i386: a non-SA_SIGINFO handler is called with the classic frame
+# [restorer][sig][sigcontext...] on the stack, so &sig + 4 is the
+# sigcontext, and the kernel's vdso trampoline performs sigreturn when
+# the handler returns. repl_fault_entry computes the context and
+# forwards to the two-argument handler.
+#
+# x86-64: the kernel always builds an rt frame and calls the handler
+# with sig in rdi and the ucontext pointer in rdx, and rt_sigaction
+# requires an SA_RESTORER trampoline. Neither matches a W function, so
+# tiny runtime thunks in an executable page convert the register
+# convention into a W stack call of repl_fault(sig, ucontext + 40) -
+# the sigcontext is the uc_mcontext field at offset 40 - and a shared
+# restorer performs rt_sigreturn.
+#
+# The handlers are installed once at startup but only recover while
+# repl_fault_active is set, i.e. during entry execution: the recovery
+# long-jumps back to the prompt loop without ever calling sigreturn, so
+# every handler is installed with SA_NODEFER (the kernel then never adds
+# the signal to the blocked mask, and the abandoned signal frame cannot
+# leave it blocked for a later faulting entry). A fault anywhere else
+# (entry compilation, the REPL's own code, a loaded file's main) restores
+# the signal's default disposition and returns, re-executing the faulting
+# instruction, so the process dies exactly as it did before the handlers
+# existed.
+
+# Nonzero only while a compiled entry is executing; the buffer holds the
+# prompt loop's repl_setjmp checkpoint the fault handler jumps to.
+int repl_fault_active
+int repl_fault_jump_buffer
+
+int repl_fault_thunk_page
+int repl_fault_thunk_pos
+int repl_fault_restorer
+
+# Scratch struct sigaction, preallocated so the fault handler itself
+# never calls malloc when restoring a default disposition.
+int* repl_fault_act
+
+
+void repl_fault_thunk_emit(int n, char* bytes):
+	char* p = cast(char*, repl_fault_thunk_page + repl_fault_thunk_pos)
+	int i = 0
+	while (i < n):
+		p[i] = bytes[i]
+		i = i + 1
+	repl_fault_thunk_pos = repl_fault_thunk_pos + n
+
+
+void repl_fault_thunk_init():
+	if (repl_fault_thunk_page != 0):
+		return;
+	repl_fault_thunk_page = mmap(0, 4096, 7, 34) /* RWX, PRIVATE|ANONYMOUS */
+	asserts(c"mmap of signal thunk page failed", (repl_fault_thunk_page > 0) | (repl_fault_thunk_page < -4095))
+	repl_fault_restorer = repl_fault_thunk_page
+	/* mov eax,15 ; syscall  (rt_sigreturn) */
+	repl_fault_thunk_emit(7, c"\xb8\x0f\x00\x00\x00\x0f\x05")
+
+
+# Emit an x64 thunk calling handler(sig, &uc_mcontext) with the W stack
+# convention (first argument at the highest address). The handler
+# address fits an imm32: the repl image loads in the low 2GB.
+int repl_fault_emit_handler_thunk(int handler):
+	int addr = repl_fault_thunk_page + repl_fault_thunk_pos
+	/* push rdi ; lea rax,[rdx+40] ; push rax ; mov eax,imm32 */
+	repl_fault_thunk_emit(7, c"\x57\x48\x8d\x42\x28\x50\xb8")
+	save_int32(cast(char*, repl_fault_thunk_page + repl_fault_thunk_pos), handler)
+	repl_fault_thunk_pos = repl_fault_thunk_pos + 4
+	/* call rax ; add rsp,16 ; ret  (returns into the restorer) */
+	repl_fault_thunk_emit(7, c"\xff\xd0\x48\x83\xc4\x10\xc3")
+	return addr
+
+
+# struct sigaction: on i386 {handler, flags, restorer, mask[2]} with
+# 4-byte fields, no SA_SIGINFO/SA_RESTORER (the vdso trampoline does
+# sigreturn); on x86-64 {handler, flags, restorer, mask} with 8-byte
+# fields, SA_SIGINFO (4) | SA_RESTORER (0x04000000) and the thunks.
+void repl_fault_install(int signum, int handler, int flags):
+	if (repl_fault_act == 0):
+		repl_fault_act = malloc(5 * __word_size__)
+	int* act = repl_fault_act
+	if (__word_size__ == 8):
+		repl_fault_thunk_init()
+		act[0] = repl_fault_emit_handler_thunk(handler)
+		act[1] = flags | 4 | 0x04000000
+		act[2] = repl_fault_restorer
+		act[3] = 0
+	else:
+		act[0] = handler
+		act[1] = flags
+		act[2] = 0
+		act[3] = 0
+		act[4] = 0
+	int err = rt_sigaction(signum, act, 0)
+	asserts(c"rt_sigaction failed", err == 0)
+
+
+# Restore a signal's default disposition. Returning from the handler
+# then re-executes the faulting instruction, which kills the process
+# with the same signal (and exit status) as an unhandled fault.
+void repl_fault_restore_default(int signum):
+	int* act = repl_fault_act
+	act[0] = 0 /* SIG_DFL */
+	act[1] = 0
+	act[2] = 0
+	act[3] = 0
+	act[4] = 0
+	rt_sigaction(signum, act, 0)
+
+
+# Symbolized stack trace of the fault, written to stderr. This mirrors
+# print_stack_trace (lib/stack_trace.w) but scans from the FAULT
+# context's stack pointer instead of the handler's own: everything
+# below the fault - the kernel's signal frame, the handler frames, and
+# the stale return addresses the entry's just-finished compile left
+# deeper in the stack - stays out of the trace. Frames inside the entry
+# buffer itself carry no image symbols and are skipped by the scanner;
+# calls the entry made into repl-image functions (and the prompt loop's
+# main) still symbolize. Silent no-op when the image has no symbols.
+void repl_fault_trace(int context):
+	if (st_state == 0):
+		st_init(cast(int, repl_fault_install))
+	char* pcs = malloc(64 * __word_size__)
+	int n = st_scan(ctx_esp(context), pcs, 64, 0)
+	if (n == 0):
+		free(pcs)
+		return;
+	st_write_cstr(c"stack trace (most recent call first):\n")
+	int k = 0
+	while (k < n):
+		int addr = load_word(pcs + k * __word_size__)
+		st_write_cstr(c"  at ")
+		int e = st_func_entry(addr)
+		if (e != 0):
+			st_write_cstr(cast(char*, st_entry_name(e)))
+		else:
+			st_write_hex(addr)
+		if (st_line_lookup(addr)):
+			st_write_cstr(c" (")
+			int fname = st_file_name(st_file_found)
+			if (fname != 0):
+				st_write_cstr(cast(char*, fname))
+				st_write_cstr(c":")
+			st_write_dec(st_line_found)
+			st_write_cstr(c")")
+		st_write_cstr(c"\n")
+		k = k + 1
+	free(pcs)
+
+
+# Fault handler: report the signal, print a stack trace, and long-jump
+# back to the prompt loop, which rolls the entry back like a compile
+# error. Clearing repl_fault_active first means a fault inside this
+# handler (or anywhere outside an entry) takes the die-as-before path.
+void repl_fault(int sig, int context):
+	if (repl_fault_active == 0):
+		repl_fault_restore_default(sig)
+		return;
+	repl_fault_active = 0
+	print(c"runtime fault: ")
+	if (sig == 11):
+		print(c"SIGSEGV")
+	else if (sig == 4):
+		print(c"SIGILL")
+	else if (sig == 7):
+		print(c"SIGBUS")
+	else if (sig == 8):
+		print(c"SIGFPE")
+	else:
+		print(c"signal ")
+		char* digits = itoa(sig)
+		print(digits)
+		free(digits)
+	print(c" at eip=")
+	char* h = hex_word(ctx_eip(context))
+	print(h)
+	free(h)
+	if (sig == 11):
+		print(c" fault address=")
+		char* fa = hex_word(ctx_reg(context, sigcontext_cr2()))
+		print(fa)
+		free(fa)
+	put_char(10)
+	repl_fault_trace(context)
+	println(c"entry rolled back")
+	repl_longjmp(repl_fault_jump_buffer, 1)
+
+
+void repl_fault_entry(int sig):
+	repl_fault(sig, &sig + 4)
+
+
+# Install the fault handlers once at startup. On x86 the kernel calls
+# the 1-argument entry wrapper; on x64 the thunks call the 2-argument
+# handler directly. SA_NODEFER (0x40000000) on every one: recovery
+# long-jumps out of the handler without sigreturn.
+void repl_fault_install_handlers():
+	int handler = cast(int, repl_fault_entry)
+	if (__word_size__ == 8):
+		handler = cast(int, repl_fault)
+	repl_fault_install(4, handler, 1073741824) /* SIGILL */
+	repl_fault_install(7, handler, 1073741824) /* SIGBUS */
+	repl_fault_install(8, handler, 1073741824) /* SIGFPE */
+	repl_fault_install(11, handler, 1073741824) /* SIGSEGV */
 
 
 # ---------------------------------------------------------------------------
@@ -639,6 +897,12 @@ int main(int argc, int argv):
 	# Recoverable compile errors: error() jumps here instead of exiting
 	repl_jump_buffer = cast(int, malloc(3 * __word_size__))
 	repl_error_jump = cast(int, repl_longjmp)
+
+	# Recoverable runtime faults: a fault inside an executing entry
+	# long-jumps back to the prompt loop. repl_fault_active gates the
+	# handlers, so faults anywhere else still kill the process as before.
+	repl_fault_jump_buffer = cast(int, malloc(3 * __word_size__))
+	repl_fault_install_handlers()
 
 	# Runtime support: syscall stubs first, then the library itself.
 	# import_module (not compile_save) registers the modules, so a loaded
@@ -748,7 +1012,17 @@ int main(int argc, int argv):
 
 		int address = repl_compile_entry(entry_path)
 		if (address):
-			int result = address()
-			repl_echo(result, repl_result_type)
+			# The fault window covers the entry's execution and the echo
+			# of its result (echoing can dereference a bad pointer too).
+			# On a fault the handler long-jumps back here and the entry
+			# rolls back exactly like a compile error; the staged file is
+			# already closed, so only the compiler state restores.
+			repl_fault_active = 1
+			if (repl_setjmp(repl_fault_jump_buffer)):
+				repl_rollback()
+			else:
+				int result = address()
+				repl_echo(result, repl_result_type)
+				repl_fault_active = 0
 
 	return 0
