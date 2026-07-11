@@ -41,3 +41,30 @@ cannot be cut from a compiler that does not reproduce itself.
 
 No local `gh` calls or local builds are involved; the release is created
 in CI with the workflow token.
+
+## Seed promotion
+
+The bootstrap seeds (`w`, `w_darwin`, and `w.exe` on Windows) are not
+committed. `SEEDS` at the repo root pins a release tag, asset name, and
+sha256 for each; `wbuild` / `wbuild.cmd` download a missing seed from that
+release and refuse to run it on a hash mismatch. To promote a new seed
+(required before seed-compiled sources may use new language syntax):
+
+1. Land the compiler-feature PR. It must build under the *current* pinned
+   seed — the release workflow bootstraps from that seed, which is the
+   same constraint `./wbuild update` has always had.
+2. Cut a release at that commit (previous section).
+3. In a follow-up PR, bump **every** `SEEDS` line to the new tag, copying
+   the sha256 values from the release's `SHA256SUMS`. Pinning all seeds
+   to a single tag keeps them compiling the same sources by construction
+   (this replaces the old "refresh `./w` and `./w_darwin` in the same PR"
+   rule, see #128/#129).
+4. Only after the `SEEDS` bump lands may seed-compiled sources use the
+   new syntax.
+
+`./wbuild update` / `update_darwin` / `update_win` still promote a locally
+built fixpoint onto the (untracked) seed files for local iteration, and
+`archive.sh` still backs the old one up to `old/`. After a local
+promotion — or in a stale checkout after a `SEEDS` bump — `wbuild` prints
+a one-line notice that the seed differs from its pin; `rm w` (or
+`w_darwin` / `w.exe`) re-downloads the pinned one.

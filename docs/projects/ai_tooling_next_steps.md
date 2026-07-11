@@ -144,6 +144,13 @@ is a queue, not an archive.
   plain imports re-export everything silently. A `w check` mode (or
   `windex` query) that flags symbols resolved from modules the file
   does not import directly would catch this class before CI does.
+- **`w check` on multiple root files reports bogus `symbol redefined`
+  errors.** `bin/wv2 check --json w.w compiler/compiler.w` fails with
+  `symbol redefined: 'file_not_found_error'` because check links all
+  arguments as one unit, so a root that is also inside another root's
+  import closure gets compiled twice (2026-07-11). Agents naturally pass
+  "the files I changed"; check should skip roots already reachable from
+  earlier arguments (or check each argument as its own unit).
 
 ## Skills / rules upkeep
 

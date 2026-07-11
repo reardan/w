@@ -11,6 +11,10 @@ current state:
 				data-structure, import, directory, threading, hello tests
 			./wbuild update:
 				archives the current seed and promotes the bin/wv3 fixpoint to ./w
+				(local only; publishing a seed = release tag + SEEDS bump, docs/release.md)
+			github releases:
+				tag-triggered workflow publishes verified binaries for every
+				target; bootstrap seeds download per the sha256 pins in ./SEEDS
 			compiler CLI:
 				-o output path
 				usage message instead of segfaulting when no input is passed

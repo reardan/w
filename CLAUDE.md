@@ -6,8 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 W is a small, self-hosting compiled language (C-like semantics, Python-like
 tab-indented syntax). The compiler is written in W (`w.w` + its imports),
-compiles itself, and is bootstrapped from `./w` — a committed, statically
-linked **32-bit x86 Linux ELF** seed binary. It emits executables directly,
+compiles itself, and is bootstrapped from `./w` — a statically linked
+**32-bit x86 Linux ELF** seed binary that `./wbuild` downloads from the
+GitHub release pinned in `SEEDS` (sha256-verified; the seeds are not
+committed). It emits executables directly,
 with no assembler, linker, or libc dependency: x86/x86-64 Linux ELF
 (primary), plus arm64 Linux ELF, `arm64_darwin` Mach-O, win64 PE, and
 wasm32/WASI backends (`./wbuild verify_wasm` / `wasm_smoke_test` run the
@@ -15,7 +17,7 @@ wasm gates via `tools/run_wasm.sh`, needing wasmtime or node). `README.md` is th
 agent workflow doc; both are current and authoritative — this file is the
 summary.
 
-**Platform**: `./w` is a Linux seed; `./w_darwin` is a committed arm64
+**Platform**: `./w` is a Linux seed; `./w_darwin` is a pinned arm64
 Mach-O seed that bootstraps natively on this Mac (`./wbuild build_darwin`,
 `verify_darwin`). On this macOS checkout, prefer in this order:
 1. **Locally on the Mac** for anything the native darwin toolchain covers
@@ -45,7 +47,7 @@ natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 ./wbuild verify_x64  # same for the 64-bit target; run for codegen/word-size work
 ./wbuild verify_arm64  # same for the ARM64 target
 ./wbuild tests       # full pre-merge suite
-./wbuild update      # ONLY after verify: archives seed, promotes the bin/wv3 fixpoint to ./w
+./wbuild update      # ONLY after verify: archives seed, promotes the bin/wv3 fixpoint to ./w (local only; publishing = release + SEEDS bump, docs/release.md)
 ./wbuild wdbg        # in-process debugger (bin/wdbg file.w)
 ./bin/wv2 repl.w -o bin/repl && ./bin/repl   # interactive REPL
 ```
@@ -99,19 +101,21 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
   equality of wv3/wv4/wv5 (`./wbuild verify`) is the cheapest strong regression
   guard. A change can pass unit tests while corrupting self-hosting.
 - **Seed constraint**: everything in `w.w`'s transitive import graph is
-  compiled by the committed seed: `w.w`, `grammar.w`, `codegen.w`,
+  compiled by the pinned seed: `w.w`, `grammar.w`, `codegen.w`,
   `compiler/`, `grammar/`, `code_generator/`, `debugger/`, the
   auto-imported container runtime (`structures/hash_table.w`,
   `structures/w_list.w`), `libs/extras/{c_import,c_preprocessor,parser_generator}`
   (pulled in by the compiler's C-import feature), and any `lib/` file those
   import. None of it may use language syntax newer than the seed until
-  `./wbuild update` promotes one. New syntax is fine in `tests/` and other
-  leaf consumers once `bin/wv2` exists.
-- **Two seeds, one refresh**: `./w` (Linux) and `./w_darwin` (Mach-O) must be
-  refreshed together — a PR that runs `./wbuild update` must also run
-  `./wbuild update_darwin` (on the Mac), or the darwin cold bootstrap breaks
-  the next time seed-compiled sources use post-seed syntax (this happened
-  with #128/#129).
+  `SEEDS` is bumped to a release containing it (`docs/release.md`; a local
+  `./wbuild update` doesn't change what other checkouts bootstrap from).
+  New syntax is fine in `tests/` and other leaf consumers once `bin/wv2`
+  exists.
+- **Seed promotion**: land the feature PR (builds under the old pinned
+  seed) → tag a release at that commit → follow-up PR bumps every `SEEDS`
+  line to that tag. The single-tag pin replaces the old "refresh `./w` and
+  `./w_darwin` in the same PR" rule (#128/#129) — all seeds stay
+  source-consistent by construction.
 - Built-in `map`/`set`/`list` lower to that runtime, which
   `compiler/compiler.w` auto-imports into every program.
 

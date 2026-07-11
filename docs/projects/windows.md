@@ -178,7 +178,8 @@ not emitted on win64.
 - **Self-hosting on Windows**: the compiler itself runs on Windows with
   `w.exe win64 w.w -o wv2.exe`; the fixpoint is verified via
   `./wbuild verify_win` (needs Wine on Linux) or `wbuild.cmd verify_win`
-  (natively on Windows once `w.exe` is seeded — wexec drops the
+  (natively on Windows — `wbuild.cmd` downloads the pinned `w.exe` seed
+  from GitHub Releases per `SEEDS` on cold start; wexec drops the
   manifest's `wine` prefix when `os_windows()`). Path handling
   (`GetCurrentDirectoryA` backslash normalization, Windows drive-letter
   absolute paths, `NUL` device for check mode) is implemented in

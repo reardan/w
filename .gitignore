@@ -6,5 +6,12 @@ test_output.txt
 bin/
 log/*.core
 
+# Seed binaries: downloaded from GitHub Releases per ./SEEDS, or locally
+# promoted by ./wbuild update / update_darwin / update_win.
+/w
+/w_darwin
+/w.exe
+*.download
+
 # Claude Code local state (session config, agent worktrees)
 .claude/

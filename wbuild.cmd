@@ -1,7 +1,9 @@
 @echo off
 REM Windows bootstrap for the W build system.
 REM
-REM Requires w.exe (the committed Windows seed) in the repository root.
+REM Requires w.exe (the pinned Windows seed) in the repository root; when
+REM missing it is downloaded from GitHub Releases per .\SEEDS and its
+REM sha256 is verified (curl.exe and PowerShell ship with Windows 10+).
 REM Cold start: w.exe compiles the compiler (bin\wv2.exe) then the build
 REM executor (bin\wexec.exe) from the manifest; a warm tree refreshes
 REM through the manifest's cached wv2_win / wexec_win targets and runs
@@ -21,6 +23,31 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 if not exist bin mkdir bin
+
+REM Download the pinned seed from GitHub Releases when it is missing.
+if not exist w.exe (
+    for /f "usebackq eol=# tokens=1-4" %%a in ("SEEDS") do (
+        if "%%a"=="w.exe" (
+            echo Downloading seed w.exe from release %%b...
+            curl.exe -fsSL -o w.exe.download "https://github.com/reardan/w/releases/download/%%b/%%c"
+            if errorlevel 1 (
+                echo Error: seed w.exe download failed
+                exit /b 1
+            )
+            for /f %%h in ('powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 'w.exe.download').Hash.ToLower()"') do set seedhash=%%h
+            if /i not "!seedhash!"=="%%d" (
+                del w.exe.download
+                echo Error: seed w.exe does not match the sha256 pinned in SEEDS
+                exit /b 1
+            )
+            move /y w.exe.download w.exe >nul
+        )
+    )
+    if not exist w.exe (
+        echo Error: seed w.exe missing and no SEEDS entry found
+        exit /b 1
+    )
+)
 
 REM Cold bootstrap: compile the compiler and executor from the Windows seed.
 if not exist bin\wexec.exe (

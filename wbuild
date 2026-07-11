@@ -1,7 +1,7 @@
 #!/bin/sh
 # Bootstrap the W-native build executor (tools/wexec.w) and forward to it.
 #
-# This is the only shell in the W-native build path: the committed seed ./w
+# This is the only shell in the W-native build path: the pinned seed ./w
 # compiles the compiler, the compiler compiles the executor, and everything
 # after that is described by build.json and run by bin/wexec.
 #
@@ -20,14 +20,54 @@
 set -e
 cd "$(dirname "$0")"
 mkdir -p bin
+# Bootstrap seeds are not committed; a missing seed binary is downloaded
+# from GitHub Releases per its pin in ./SEEDS and checked against the
+# pinned sha256. A seed that is present but differs from its pin (a local
+# './wbuild update' promotion, or a stale download after a SEEDS bump) is
+# used as-is, with a notice. See docs/release.md.
+seed_sha256() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | cut -d' ' -f1
+	else
+		shasum -a 256 "$1" | cut -d' ' -f1
+	fi
+}
+ensure_seed() {
+	seed="$1"
+	set -- $(awk -v f="$seed" '$1 == f { print $2, $3, $4 }' SEEDS)
+	if [ -z "$3" ]; then
+		echo "wbuild: no SEEDS entry for '$seed'" >&2
+		exit 1
+	fi
+	if [ ! -f "$seed" ]; then
+		echo "wbuild: downloading seed $seed from release $1" >&2
+		url="https://github.com/reardan/w/releases/download/$1/$2"
+		if command -v curl >/dev/null 2>&1; then
+			curl -fsSL -o "$seed.download" "$url"
+		else
+			wget -qO "$seed.download" "$url"
+		fi
+		if [ "$(seed_sha256 "$seed.download")" != "$3" ]; then
+			rm -f "$seed.download"
+			echo "wbuild: seed $seed does not match the sha256 pinned in SEEDS; refusing to run it" >&2
+			exit 1
+		fi
+		chmod +x "$seed.download"
+		# mv lands the seed on a fresh inode (macOS vnode signature cache).
+		mv -f "$seed.download" "$seed"
+	elif [ "$(seed_sha256 "$seed")" != "$3" ]; then
+		echo "wbuild: note: $seed differs from its SEEDS pin (local promotion or stale seed; rm $seed to re-download)" >&2
+	fi
+}
 # On macOS the Linux seed ./w cannot run; bootstrap a native Mach-O
-# executor from the committed arm64_darwin seed instead. The seed and
+# executor from the pinned arm64_darwin seed instead. The seed and
 # every stage self-sign via macho_sign.w; fresh inodes (cp + mv) avoid
 # the vnode signature-cache gotcha. A warm tree refreshes through the
 # manifest's cached 'wexec_darwin' target, then runs bin/wexec_darwin;
 # only the darwin targets work here — everything else in build.json
 # runs Linux binaries.
 if [ "$(uname -s)" = "Darwin" ]; then
+	ensure_seed w_darwin
 	if [ ! -x bin/wexec_darwin ]; then
 		./w_darwin arm64_darwin w.w -o bin/wv2_darwin_raw
 		cp bin/wv2_darwin_raw bin/wv2_darwin.new
@@ -39,6 +79,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
 	./bin/wexec_darwin wexec_darwin >/dev/null
 	exec ./bin/wexec_darwin "$@"
 fi
+ensure_seed w
 if [ ! -x bin/wexec ]; then
 	./w w.w -o bin/wv2
 	./bin/wv2 tools/wexec.w -o bin/wexec
