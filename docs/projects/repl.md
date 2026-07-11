@@ -295,11 +295,26 @@ stay byte-identical) and the full `./wbuild tests`.
   part of the editor's buffer, so editing a recalled line preserves
   them.
 
-Known limitations (documented in `docs/todo.txt`): calls compiled before
-a redefinition keep the old binding — fixing this needs a persistent
-call-site indirection table, tracked separately since it touches call
-codegen on every architecture rather than being a REPL-only change (see
-the follow-up issue filed alongside this fix). `struct`/`union`/`enum`
+Late binding (issue #114, since fixed): calls compiled before a
+redefinition originally kept the old binding, because call sites bake
+their target's address at compile time. The REPL now keeps a name-keyed
+registry of every function-address slot compiled while an entry (or a
+loaded file) compiles — `sym_get_value` reports each slot through the
+compiler's `repl_call_site_hook`, which only the REPL sets, so ordinary
+compiles are byte-identical — and when a function definition at the
+prompt completes and its entry runs without fault, every registered slot
+for that name is rewritten to the new address (`repl/core.w`'s
+late-binding section). Callers from any earlier generation therefore
+always call the latest definition, including struct-method call sites
+(which resolve through the same mangled `Type_method` symbols). Two
+residual differences from Python: code executed by the very entry that
+redefines `f` still reaches the previous `f` (patches apply only once
+the whole entry has compiled and run, so a failing or faulting entry can
+roll its redefinition back completely), and rebinding a function name to
+a plain variable leaves earlier callers on the old function rather than
+making them fail. Generic functions and the deferred-runtime backpatch
+chains (print/json/f-string/var) keep their own resolution mechanisms
+and are not re-bound on redefinition. `struct`/`union`/`enum`
 redefinition and the line editor's single-row-only redraw were both
 fixed in the same pass as this limitations note: a repeated
 struct/union/enum name now resets and reuses its existing type-table

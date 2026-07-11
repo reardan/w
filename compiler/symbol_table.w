@@ -347,6 +347,17 @@ int sym_param_type(int t, int i):
 	return load_int(table + t + 26 + (i << 2))
 
 
+# REPL late binding (issue #114): when nonzero, sym_get_value reports every
+# global function address it materializes -- hook(name, slot), slot being
+# the buffer offset of the address cell be_addr_slot_write patches. The REPL
+# points this at its call-site registry while an entry compiles, so
+# redefining a function at the prompt can rewrite every already-compiled
+# caller to the newest definition (repl/core.w). Zero for ordinary
+# compiles: nothing is recorded and the emitted bytes are unchanged (the
+# self-host verify fixpoints prove the flag-off path costs nothing).
+int repl_call_site_hook
+
+
 # Emits code leaving the symbol's ADDRESS in eax and returns its type index.
 # Functions are the exception: their address is their value, so they return
 # the "function" type (4), which promote() leaves untouched.
@@ -408,6 +419,12 @@ int sym_get_value(char *s):
 
 	if (symtype == 2):
 		if ((scope_type == 'D') | (scope_type == 'U')):
+			# REPL late binding: report the address cell just emitted
+			# (still at codepos-4: the D/U paths emit nothing after
+			# be_addr_slot_emit) so a later redefinition of this name
+			# can repatch it. No-op outside the REPL (hook is 0).
+			if (repl_call_site_hook != 0):
+				repl_call_site_hook(s, codepos - 4)
 			# pac=full: the address just materialized is now a value —
 			# sign it (paciza; call_eax authenticates with blraaz).
 			# Emitted here, after the 'U' backpatch-chain bookkeeping
