@@ -42,18 +42,18 @@ void new_store_field(int base_type, int field_index, int arg_type, int leaked_wo
 
 
 void zero_stack_count_bytes():
-	int loop_start = codepos
+	int h_done = be_ctrl_block()
+	int h_top = be_ctrl_loop()
 	mov_eax_esp_plus(word_size)
-	jmp_zero_int32(0)
-	int done_patch = codepos
+	be_br_zero(h_done)
 	mov_ebx_esp()
 	mov_eax_int(0)
 	store_ebx_int8()
 	add_stack_word_int32(0, 1)
 	add_stack_word_int32(word_size, -1)
-	jmp_int32(0)
-	be_branch_patch(codepos, loop_start)
-	be_branch_patch(done_patch, codepos)
+	be_br(h_top)
+	be_ctrl_end(h_top)
+	be_ctrl_end(h_done)
 
 
 # 'T(a, b)' where T names a struct or union type is a struct value
@@ -259,14 +259,16 @@ int unary_expression():
 				# bounds_trap_call convention; the in-bounds path
 				# leaves eax untouched.
 				int alloc_limit = 1073741823 / element_size
-				int negative_site = bounds_branch_eax_negative()
-				int in_bounds_site = bounds_skip_eax_less_equal_int32(alloc_limit)
-				be_branch_patch(negative_site, codepos)
+				int h_in_bounds = be_ctrl_block()
+				int h_trap = be_ctrl_block()
+				bounds_branch_eax_negative(h_trap)
+				bounds_skip_eax_less_equal_int32(alloc_limit, h_in_bounds)
+				be_ctrl_end(h_trap)
 				push_eax()
 				mov_eax_int(alloc_limit)
 				pop_ebx()
 				bounds_trap_call(c"__w_alloc_trap")
-				be_branch_patch(in_bounds_site, codepos)
+				be_ctrl_end(h_in_bounds)
 			expect(c"]")
 			push_eax()
 			stack_pos = stack_pos + 1

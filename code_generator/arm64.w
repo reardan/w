@@ -287,47 +287,48 @@ void arm64_alu_test_set(int setcc):
 
 
 ############################### bounds checks ###############################
-# Each check is a compare plus a patchable b.cond (issue #228). The helpers
-# return the branch's patch site — the codepos right after the instruction,
-# the same protocol arm64_branch_patch already handles for the imm19 forms —
-# and the grammar layer points the failing branches at a trap block that
-# calls the runtime diagnostic helper (see grammar/postfix_expr.w).
+# Each check is a compare plus a b.cond threaded into a control-region patch
+# chain (issue #228, docs/projects/wasm_backend.md D3): the caller passes the
+# region's current chain head, which is encoded into the imm19 field exactly
+# like the other chained branch forms, and records the new head (codepos)
+# with be_ctrl_link. The grammar layer ends the failing branches' region at
+# a trap block that calls the runtime diagnostic helper (see
+# grammar/postfix_expr.w).
 
-# b.cond with a zero displacement placeholder; returns the patch site.
-int arm64_bounds_branch(int cond):
-	a64(op(0x54, 0x000000) | cond)
-	return codepos
+# b.cond with the chain link in its displacement field.
+void arm64_bounds_branch(int cond, int link):
+	a64(op(0x54, 0x000000) | cond | (((link >> 2) & 0x7ffff) << 5))
 
 
-int arm64_bounds_branch_eax_negative():
+void arm64_bounds_branch_eax_negative(int link):
 	a64(op(0xf1, 0x00001f))   # cmp x0, #0
-	return arm64_bounds_branch(11)   # b.lt
+	arm64_bounds_branch(11, link)   # b.lt
 
 
-int arm64_bounds_branch_ebx_negative():
+void arm64_bounds_branch_ebx_negative(int link):
 	a64(op(0xf1, 0x00003f))   # cmp x1, #0
-	return arm64_bounds_branch(11)   # b.lt
+	arm64_bounds_branch(11, link)   # b.lt
 
 
-int arm64_bounds_branch_ebx_greater_eax():
+void arm64_bounds_branch_ebx_greater_eax(int link):
 	a64(op(0xeb, 0x00003f))   # cmp x1, x0
-	return arm64_bounds_branch(12)   # b.gt
+	arm64_bounds_branch(12, link)   # b.gt
 
 
-int arm64_bounds_skip_ebx_less_eax():
+void arm64_bounds_skip_ebx_less_eax(int link):
 	a64(op(0xeb, 0x00003f))   # cmp x1, x0
-	return arm64_bounds_branch(11)   # b.lt
+	arm64_bounds_branch(11, link)   # b.lt
 
 
-int arm64_bounds_skip_ebx_less_equal_eax():
+void arm64_bounds_skip_ebx_less_equal_eax(int link):
 	a64(op(0xeb, 0x00003f))   # cmp x1, x0
-	return arm64_bounds_branch(13)   # b.le
+	arm64_bounds_branch(13, link)   # b.le
 
 
-int arm64_bounds_skip_eax_less_equal_int32(int limit):
+void arm64_bounds_skip_eax_less_equal_int32(int limit, int link):
 	arm64_load_scratch(9, limit)
 	a64(op(0xeb, 0x09001f))   # cmp x0, x9
-	return arm64_bounds_branch(13)   # b.le
+	arm64_bounds_branch(13, link)   # b.le
 
 
 ############################## abstractions #################################

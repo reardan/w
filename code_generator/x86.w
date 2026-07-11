@@ -378,6 +378,91 @@ void jmp_int32(int v):
 	emit_int32(v)
 
 
+###################### structured control-flow regions ########################
+# The grammar's branch protocol (docs/projects/wasm_backend.md D3). Every
+# forward jump the grammar emits targets the end of an enclosing region
+# opened earlier, and every backward jump targets the start of an enclosing
+# region — W has no goto, so this covers all of them. Expressing that
+# structure explicitly is what lets a target without arbitrary branches
+# (WebAssembly's block/loop/br) lower control flow at all; on x86/x64/arm64
+# the helpers reproduce the original jump-and-patch bytes exactly, so those
+# targets are unaffected.
+#
+# Protocol: be_ctrl_block() opens a forward-merge region whose branches land
+# at its be_ctrl_end(); be_ctrl_loop() opens a backward region whose
+# branches land at its start. be_br* branch to an open region by handle.
+# Regions strictly nest: be_ctrl_end pops the most recently opened region
+# (LIFO), which is what lets a wasm backend compute label depths at branch
+# time. On x86/x64/arm64, block regions keep the classic patch chain
+# (each site's displacement field holds the previous site's codepos, 0 ends
+# the chain) resolved at be_ctrl_end; loop regions record their start and
+# patch each branch immediately.
+
+int[256] ctrl_kind_stack    # 0 = forward merge (block), 1 = backward (loop)
+int[256] ctrl_val_stack     # block: patch-chain head; loop: start codepos
+int ctrl_stack_pos
+
+int be_ctrl_block():
+	ctrl_kind_stack[ctrl_stack_pos] = 0
+	ctrl_val_stack[ctrl_stack_pos] = 0
+	ctrl_stack_pos = ctrl_stack_pos + 1
+	return ctrl_stack_pos - 1
+
+int be_ctrl_loop():
+	ctrl_kind_stack[ctrl_stack_pos] = 1
+	ctrl_val_stack[ctrl_stack_pos] = codepos
+	ctrl_stack_pos = ctrl_stack_pos + 1
+	return ctrl_stack_pos - 1
+
+# A branch site just emitted with region h's chain head in its displacement
+# field becomes the new chain head (no-op for loop regions, which patch
+# immediately). The bounds-check helpers below use this to thread their
+# condition-coded branches through the same protocol.
+void be_ctrl_link(int h):
+	if (ctrl_kind_stack[h] == 0):
+		ctrl_val_stack[h] = codepos
+
+# Branch unconditionally to region h.
+void be_br(int h):
+	if (ctrl_kind_stack[h]):
+		jmp_int32(0)
+		be_branch_patch(codepos, ctrl_val_stack[h])
+		return
+	jmp_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
+
+# Branch to region h when the accumulator is zero.
+void be_br_zero(int h):
+	if (ctrl_kind_stack[h]):
+		jmp_zero_int32(0)
+		be_branch_patch(codepos, ctrl_val_stack[h])
+		return
+	jmp_zero_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
+
+# Branch to region h when the accumulator is nonzero.
+void be_br_nonzero(int h):
+	if (ctrl_kind_stack[h]):
+		jmp_nonzero_int32(0)
+		be_branch_patch(codepos, ctrl_val_stack[h])
+		return
+	jmp_nonzero_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
+
+# Close the most recently opened region. Block regions resolve their patch
+# chain to the current position (their merge point); loop regions have
+# nothing to patch.
+void be_ctrl_end(int h):
+	ctrl_stack_pos = ctrl_stack_pos - 1
+	if (ctrl_kind_stack[h]):
+		return
+	int chain = ctrl_val_stack[h]
+	while (chain):
+		int next_site = be_branch_link_get(chain)
+		be_branch_patch(chain, codepos)
+		chain = next_site
+
+
 void inc_dword_esp_plus(int v):
 	if (target_isa == 1):
 		arm64_inc_dword_esp_plus(v)
@@ -752,81 +837,93 @@ void int3():
 	emit(1, c"\xcc") /* int3 */
 
 
-/* Bounds checks (issue #228): each helper emits a compare plus a patchable
-   conditional branch and returns the branch's patch site (the codepos right
-   after the displacement, the protocol be_branch_patch expects). The grammar
-   layer (bounds_trap_call in grammar/postfix_expr.w) points the bounds_branch_*
-   sites at a trap block that calls the runtime diagnostic helper, and the
-   bounds_skip_* site past it, so a failed check reports the offending index
-   and length instead of dying on a bare int3/brk #0. The in-bounds
-   fall-through path clobbers only flags, like the old compare + skip + int3
-   form. */
+/* Bounds checks (issue #228): each helper emits a compare plus a
+   conditional branch into control region h (a be_ctrl_block, threaded
+   through the same patch-chain protocol be_br uses). The grammar layer
+   (bounds_trap_call in grammar/postfix_expr.w) opens a region ending at a
+   trap block that calls the runtime diagnostic helper for the
+   bounds_branch_* sites, and a region past it for the bounds_skip_* sites,
+   so a failed check reports the offending index and length instead of dying
+   on a bare int3/brk #0. The in-bounds fall-through path clobbers only
+   flags, like the old compare + skip + int3 form. */
 
-/* branch to the trap block when eax is negative: test eax,eax ; js rel32 */
-int bounds_branch_eax_negative():
+/* branch to region h when eax is negative: test eax,eax ; js rel32 */
+void bounds_branch_eax_negative(int h):
 	if (target_isa == 1):
-		return arm64_bounds_branch_eax_negative()
+		arm64_bounds_branch_eax_negative(ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x85\xc0") /* test eax,eax */
-	emit(2, c"\x0f\x88") /* js rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x88") /* js rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 
-/* branch to the trap block when ebx is negative: test ebx,ebx ; js rel32 */
-int bounds_branch_ebx_negative():
+/* branch to region h when ebx is negative: test ebx,ebx ; js rel32 */
+void bounds_branch_ebx_negative(int h):
 	if (target_isa == 1):
-		return arm64_bounds_branch_ebx_negative()
+		arm64_bounds_branch_ebx_negative(ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x85\xdb") /* test ebx,ebx */
-	emit(2, c"\x0f\x88") /* js rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x88") /* js rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 
-/* branch to the trap block when ebx > eax (signed): cmp eax,ebx ; jg rel32 */
-int bounds_branch_ebx_greater_eax():
+/* branch to region h when ebx > eax (signed): cmp eax,ebx ; jg rel32 */
+void bounds_branch_ebx_greater_eax(int h):
 	if (target_isa == 1):
-		return arm64_bounds_branch_ebx_greater_eax()
+		arm64_bounds_branch_ebx_greater_eax(ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x39\xc3") /* cmp eax,ebx */
-	emit(2, c"\x0f\x8f") /* jg rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x8f") /* jg rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 
-/* skip the trap block when ebx < eax (index in ebx, length in eax) */
-int bounds_skip_ebx_less_eax():
+/* branch to region h when ebx < eax (index in ebx, length in eax) */
+void bounds_skip_ebx_less_eax(int h):
 	if (target_isa == 1):
-		return arm64_bounds_skip_ebx_less_eax()
+		arm64_bounds_skip_ebx_less_eax(ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x39\xc3") /* cmp eax,ebx */
-	emit(2, c"\x0f\x8c") /* jl rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x8c") /* jl rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 
-/* skip the trap block when ebx <= eax */
-int bounds_skip_ebx_less_equal_eax():
+/* branch to region h when ebx <= eax */
+void bounds_skip_ebx_less_equal_eax(int h):
 	if (target_isa == 1):
-		return arm64_bounds_skip_ebx_less_equal_eax()
+		arm64_bounds_skip_ebx_less_equal_eax(ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x39\xc3") /* cmp eax,ebx */
-	emit(2, c"\x0f\x8e") /* jle rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x8e") /* jle rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 
-/* skip the trap block when eax <= limit */
-int bounds_skip_eax_less_equal_int32(int limit):
+/* branch to region h when eax <= limit */
+void bounds_skip_eax_less_equal_int32(int limit, int h):
 	if (target_isa == 1):
-		return arm64_bounds_skip_eax_less_equal_int32(limit)
+		arm64_bounds_skip_eax_less_equal_int32(limit, ctrl_val_stack[h])
+		be_ctrl_link(h)
+		return
 	emit_x64_opcode()
 	emit(1, c"\x3d") /* cmp imm32,eax */
 	emit_int32(limit)
-	emit(2, c"\x0f\x8e") /* jle rel32 (placeholder) */
-	emit_int32(0)
-	return codepos
+	emit(2, c"\x0f\x8e") /* jle rel32 (chain link) */
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
 
 void nop():
 	if (target_isa == 1):

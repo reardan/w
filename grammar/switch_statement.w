@@ -46,17 +46,17 @@ int switch_statement():
 	if ((token_newline == 0) & (token[0] != 0)):
 		error(c"switch body must start on a new line")
 
-	# Enter a new break context: 'break' in a case body exits the switch
+	# Enter a new break context: 'break' in a case body exits the switch.
+	# One region serves both exits — each body's implicit break and every
+	# explicit 'break' branch to the switch end.
 	int outer_chain = switch_break_chain
 	int outer_stack = switch_stack_pos
 	int outer_in_switch = break_in_switch
-	switch_break_chain = 0
+	switch_break_chain = be_ctrl_block()
 	switch_stack_pos = stack_pos
 	break_in_switch = 1
 	switch_depth = switch_depth + 1
 
-	# Chain of jmp sites after each case body, patched to the switch end
-	int end_chain = 0
 	int seen_default = 0
 
 	while ((tab_level > switch_tab_level) & (token[0] != 0)):
@@ -64,11 +64,11 @@ int switch_statement():
 		if (seen_default):
 			error(c"'default' must be the last clause in a switch")
 
-		# Chain of jumps past this case while its values do not match
-		int next_case_chain = 0
+		# Region for jumps past this case while its values do not match
+		int h_next_case = be_ctrl_block()
 		if (accept(c"case")):
 			# Multi-value case: any matching value jumps to the body
-			int body_chain = 0
+			int h_body = be_ctrl_block()
 			int more = 1
 			while (more):
 				mov_eax_esp_plus((stack_pos - scrutinee_slot) << word_size_log2)
@@ -84,12 +84,10 @@ int switch_statement():
 				alu_cmp_set(0x94) /* sete: scrutinee == value */
 				more = accept(c",")
 				if (more):
-					jmp_nonzero_int32(body_chain)
-					body_chain = codepos
+					be_br_nonzero(h_body)
 				else:
-					jmp_zero_int32(next_case_chain)
-					next_case_chain = codepos
-			patch_jump_chain(body_chain, codepos)
+					be_br_zero(h_next_case)
+			be_ctrl_end(h_body)
 		else if (accept(c"default")):
 			seen_default = 1
 		else:
@@ -100,14 +98,12 @@ int switch_statement():
 		statement()
 
 		# Implicit break: leave the switch after the body (no fallthrough)
-		jmp_int32(end_chain)
-		end_chain = codepos
-		patch_jump_chain(next_case_chain, codepos)
+		be_br(switch_break_chain)
+		be_ctrl_end(h_next_case)
 
 	# No-match fallthrough, each body's exit jump, and 'break' all land
 	# here, before the scrutinee slot is discarded
-	patch_jump_chain(end_chain, codepos)
-	patch_jump_chain(switch_break_chain, codepos)
+	be_ctrl_end(switch_break_chain)
 
 	switch_break_chain = outer_chain
 	switch_stack_pos = outer_stack

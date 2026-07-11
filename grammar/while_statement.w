@@ -1,8 +1,9 @@
 void statement();
 
-# Innermost loop context for break/continue backpatching.
-# Each loop saves the outer values in locals and restores them, so nesting
-# works through recursion.
+# Innermost loop context for break/continue: control-region handles
+# (be_ctrl_block/be_ctrl_loop in code_generator/x86.w) that break and
+# continue branch to with be_br. Each loop saves the outer values in locals
+# and restores them, so nesting works through recursion.
 int loop_break_chain
 int loop_continue_chain
 int loop_stack_pos
@@ -24,21 +25,8 @@ int break_in_switch
 int enclosing_tab_level
 
 
-# Walk a chain of jmp sites (each site's displacement/immediate field holds
-# the previous site's codepos, 0 ends the chain) and point them all at
-# target. be_branch_link_get / be_branch_patch encapsulate the per-target
-# instruction layout (x86 rel32 vs A64 imm26/imm19).
-void patch_jump_chain(int chain, int target):
-	while (chain):
-		int next_site = be_branch_link_get(chain)
-		be_branch_patch(chain, target)
-		chain = next_site
-
-
 # while ( expression ) statement — parentheses are optional before ':'
 int while_statement():
-	int p1
-	int p2
 	if (accept(c"while") == 0):
 		return 0
 
@@ -47,34 +35,28 @@ int while_statement():
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
 	int outer_in_switch = break_in_switch
-	loop_break_chain = 0
-	loop_continue_chain = 0
+	# Exit region: the failed condition and 'break' land after the loop.
+	# Loop region: the back edge and 'continue' re-test the condition.
+	loop_break_chain = be_ctrl_block()
+	loop_continue_chain = be_ctrl_loop()
 	loop_stack_pos = stack_pos
 	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
-	# if not expression: jmp after statement block
-	p1 = codepos
+	# if not expression: leave the loop
 	int outer_condition = condition_context
 	condition_context = 1
 	promote(expression())
 	condition_context = outer_condition
-	jmp_zero_int32(1337008)
-	p2 = codepos
+	be_br_zero(loop_break_chain)
 
 	enclosing_tab_level = while_tab_level
 	statement()
 
 	# loop
-	jmp_int32(1337009)
-
-	# backtrace: save jmp out, loop jmp addresses
-	be_branch_patch(codepos, p1)
-	be_branch_patch(p2, codepos)
-
-	# break exits here; continue re-tests the condition
-	patch_jump_chain(loop_break_chain, codepos)
-	patch_jump_chain(loop_continue_chain, p1)
+	be_br(loop_continue_chain)
+	be_ctrl_end(loop_continue_chain)
+	be_ctrl_end(loop_break_chain)
 
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue

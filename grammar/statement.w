@@ -112,8 +112,8 @@ int result_propagate_suffix(int type):
 	push_eax()
 	stack_pos = stack_pos + 1
 	promote_eax() /* load r.ok: an int at field offset 0 */
-	jmp_nonzero_int32(1337022)
-	int p = codepos
+	int h_ok = be_ctrl_block()
+	be_br_nonzero(h_ok)
 	# Error path: '?' is a function exit like any 'return'. Enclosing
 	# for-in loops over generators free their suspended generator first
 	# (the operand pointer is reloaded from the stack afterwards), then
@@ -126,7 +126,7 @@ int result_propagate_suffix(int type):
 	defer_emit_returning()
 	be_pop(stack_pos)
 	ret()
-	be_branch_patch(p, codepos)
+	be_ctrl_end(h_ok)
 	# Ok path: eax = address of the payload field
 	pop_eax()
 	stack_pos = stack_pos - 1
@@ -202,22 +202,22 @@ void statement():
 		if_tab_level = tab_level
 		int outer_condition = condition_context
 		condition_context = 1
+		p1 = be_ctrl_block() /* ends after the whole if/else */
+		p2 = be_ctrl_block() /* ends at the else branch */
 		promote(expression())
 		condition_context = outer_condition
-		jmp_zero_int32(1337)
-		p1 = codepos
+		be_br_zero(p2)
 		enclosing_tab_level = if_tab_level
 		statement()
-		jmp_int32(1337007)
-		p2 = codepos
-		be_branch_patch(p1, codepos)
+		be_br(p1)
+		be_ctrl_end(p2)
 		# An 'else' only binds to an 'if' at the same indent level
 		if (peek(c"else")):
 			if (tab_level == if_tab_level):
 				get_token()
 				enclosing_tab_level = if_tab_level
 				statement()
-		be_branch_patch(p2, codepos)
+		be_ctrl_end(p1)
 
 	else if (while_statement()) {}
 	else if (for_statement()) {}
@@ -233,14 +233,12 @@ void statement():
 			# Unwind block locals pushed since the switch started
 			if (stack_pos > switch_stack_pos):
 				be_pop(stack_pos - switch_stack_pos)
-			jmp_int32(switch_break_chain)
-			switch_break_chain = codepos
+			be_br(switch_break_chain)
 		else:
 			# Unwind block locals pushed since the loop started
 			if (stack_pos > loop_stack_pos):
 				be_pop(stack_pos - loop_stack_pos)
-			jmp_int32(loop_break_chain)
-			loop_break_chain = codepos
+			be_br(loop_break_chain)
 
 	else if (accept(c"continue")):
 		expect_or_newline(c";")
@@ -248,8 +246,7 @@ void statement():
 			error(c"'continue' outside of a loop")
 		if (stack_pos > loop_stack_pos):
 			be_pop(stack_pos - loop_stack_pos)
-		jmp_int32(loop_continue_chain)
-		loop_continue_chain = codepos
+		be_br(loop_continue_chain)
 
 	else if (accept(c"return")):
 		# A newline (or end of file) after 'return' means no return value.
