@@ -767,7 +767,7 @@
 				{"cmd": ["git", "ls-files", "*.w"], "stdout_file": "bin/parser_generator_w_files.txt"},
 				{"cmd": ["bin/parser_generator", "tests/parser_generator/w.pg", "-o", "bin/generated_w_parser.w"]},
 				{"cmd": ["bin/wv2", "tests/parser_generator/generated_w_parser_test.w", "-o", "bin/parser_generator_w_test"]},
-				{"cmd": ["bin/parser_generator_w_test"]}
+				{"cmd": ["sh", "tools/parser_generator_w_batches.sh"]}
 			]
 		},
 		{
