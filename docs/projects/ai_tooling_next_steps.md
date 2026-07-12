@@ -194,6 +194,15 @@ is a queue, not an archive.
   intentional; masking tricks in bitset.w/sha256.w rely on plain `&`),
   and the message text is new, so warning_test fixtures gain a case
   rather than reword one (2026-07-11).
+- **`w check` on a single auto-imported runtime file also reports bogus
+  `symbol redefined` errors.** `bin/wv2 check --json lib/memory.w`
+  fails with `symbol redefined: 'malloc_free_list'` even on a clean
+  tree (2026-07-11): the root is compiled once as the root and again
+  when the auto-imported container runtime (`structures/hash_table.w`)
+  re-imports it. Same double-compile class as the multi-root bug above,
+  but it hits the natural "check the file I just edited" workflow for
+  every file in the runtime closure; the workaround is checking a small
+  consumer that imports the file instead.
 
 ## Skills / rules upkeep
 
