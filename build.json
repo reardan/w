@@ -1677,6 +1677,7 @@
 				"vcs_dag_64_test",
 				"vcs_diff_64_test",
 				"vcs_tree_64_test",
+				"wal_64_test",
 				"wbuild_directive_64_test"
 			]
 		},
@@ -2002,6 +2003,7 @@
 				"vcs_dag_test",
 				"vcs_diff_test",
 				"vcs_tree_test",
+				"wal_test",
 				"wbuild_directive_test",
 				"wbuild_platform_test",
 				"x25519_test",
@@ -3472,6 +3474,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_tree_test.w", "-o", "bin/vcs_tree_test"]},
 				{"cmd": ["bin/vcs_tree_test"]}
+			]
+		},
+		{
+			"name": "wal_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/wal_test.w", "-o", "bin/wal_64_test"]},
+				{"cmd": ["bin/wal_64_test"]}
+			]
+		},
+		{
+			"name": "wal_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/wal_test.w", "-o", "bin/wal_test"]},
+				{"cmd": ["bin/wal_test"]}
 			]
 		},
 		{
