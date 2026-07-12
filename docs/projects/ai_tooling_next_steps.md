@@ -128,15 +128,23 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
-- **`parser_generator_w_test` retained every parsed AST — fixed
-  (2026-07-12).** `test_parse_all_tracked_w_files` parsed all tracked
-  `.w` files in one process without freeing per-file ASTs, sources, or
-  diagnostics, so the 32-bit gate segfaulted (exit 139) once tracked
-  source crossed ~3.7MB — six new library files tipped it, and removing
-  ANY one of them "fixed" it, a misleading bisect signature worth
-  remembering. The fix frees per-file state in
-  `assert_w_parse_text`/`assert_w_parse_file`; memory is now bounded by
-  the largest single file, not the repo.
+- **`parser_generator_w_test` retained every parsed AST — fixed by
+  batching (2026-07-12).** `test_parse_all_tracked_w_files` parsed all
+  tracked `.w` files in one process, retaining every AST, so the
+  32-bit gate segfaulted (exit 139) once tracked source crossed
+  ~3.7MB — six new library files tipped it, and removing ANY one of
+  them "fixed" it, a misleading bisect signature worth remembering.
+  First attempt — freeing per-file ASTs/sources/diagnostics — was
+  correct but catastrophically slow: recursive frees through the
+  first-fit allocator turned the 2-minute gate into a 90-CPU-minute
+  crawl (CI's 30-minute budget times out), and fragmentation kept RSS
+  growing anyway. The landed fix is
+  `tools/parser_generator_w_batches.sh`: rerun the test binary once
+  per 150-file slice of the manifest, bounding memory at batch size
+  forever (~21s total). Residual: the allocator's quadratic
+  free/malloc behavior under millions of small blocks is real and
+  will bite the next long-lived process too — an arena or size-class
+  allocator is the durable fix.
 
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
