@@ -7,15 +7,21 @@ only; next links free blocks (0 ends the list).
 
 Free blocks are filed into size-class bins (an array of free-list heads)
 instead of one global list: bins 0..31 hold exact sizes 8..256 in 8-byte
-steps, bins 32..39 hold doubling ranges up to 64KB, and the last bin
-holds everything larger. malloc first-fits within the request's own bin
-(neighbours are the same size class, so the scan stays short and the
-exact-size bins never miss), then pops the head of the first non-empty
-higher bin (guaranteed to fit), splitting large blocks; only when every
-bin comes up empty does it grow the heap with brk. free() pushes blocks
-onto their size bin in O(1). A single first-fit list went quadratic
-under mixed-size churn: every large malloc rescanned all the small free
-blocks (tests/malloc_churn_test.w is the regression benchmark).
+steps, bins 32..39 hold doubling ranges above 256 up to 65536, and the
+last bin holds everything larger (see malloc_size_bin). malloc
+first-fits within the request's own bin (neighbours are the same size
+class, so the scan stays short and the exact-size bins never miss),
+then pops the head of the first non-empty higher bin (guaranteed to
+fit, since every block in a higher bin is at least as large as any in
+the request's own bin), splitting large blocks; only when every bin
+comes up empty does it grow the heap with brk. free() pushes blocks
+onto their size bin in O(1). Picking the numerically-closest non-empty
+bin trades strict recency (the old list always reused whatever was
+freed most recently) for a closer size fit across classes -- a smaller
+long-lived free block can now beat a larger block freed moments ago.
+A single first-fit list went quadratic under mixed-size churn: every
+large malloc rescanned all the small free blocks
+(tests/malloc_churn_test.w is the regression benchmark).
 
 The bin-head array itself is carved out of the bump region on first use,
 so the block layout is unchanged and the module needs no static
@@ -55,8 +61,8 @@ int malloc_bin_count():
 
 # Map a payload size (already rounded to a multiple of 8, >= 8) to its
 # bin. Bins 0..31 are exact: bin = size/8 - 1 for 8..256. Above that the
-# ranges double: bin 32 holds 264..512, bin 33 holds 520..1024, ... bin
-# 39 holds 32776..65536; bin 40 holds everything larger. A block in any
+# ranges double: bin 32 holds 257..512, bin 33 holds 513..1024, ... bin
+# 39 holds 32769..65536; bin 40 holds everything larger. A block in any
 # higher bin is therefore always large enough for a request binned lower.
 int malloc_size_bin(int size):
 	if (size <= 256):
@@ -122,11 +128,17 @@ int malloc_grow(int needed):
 
 
 # Carve the bin-head array out of the bump region the first time the
-# allocator runs (W has no static initializers).
+# allocator runs (W has no static initializers). malloc() always bumps
+# by a multiple of 8 so payloads stay 8-byte aligned relative to the
+# heap's (8-aligned) starting break; round this raw malloc_grow call
+# the same way, since malloc_bin_count() * __word_size__ is not itself
+# a multiple of 8 on 32-bit targets (41 * 4 = 164).
 void malloc_bins_init():
 	if (malloc_bins != 0):
 		return
-	int base = malloc_grow(malloc_bin_count() * __word_size__)
+	int bytes = malloc_bin_count() * __word_size__
+	bytes = ((bytes + 7) >> 3) << 3
+	int base = malloc_grow(bytes)
 	if (base == 0):
 		return
 	int i = 0
