@@ -128,6 +128,16 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
+- **`parser_generator_w_test` retained every parsed AST — fixed
+  (2026-07-12).** `test_parse_all_tracked_w_files` parsed all tracked
+  `.w` files in one process without freeing per-file ASTs, sources, or
+  diagnostics, so the 32-bit gate segfaulted (exit 139) once tracked
+  source crossed ~3.7MB — six new library files tipped it, and removing
+  ANY one of them "fixed" it, a misleading bisect signature worth
+  remembering. The fix frees per-file state in
+  `assert_w_parse_text`/`assert_w_parse_file`; memory is now bounded by
+  the largest single file, not the repo.
+
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new

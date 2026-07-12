@@ -37,12 +37,19 @@ void assert_w_parse_text(char* source, char* filename):
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	assert_equal(wlang_ast_program(), root.kind)
 	assert_w_lex_round_trip(source, filename)
+	# Free per-file state: test_parse_all_tracked_w_files parses every
+	# tracked .w file in one process, and retaining each file's AST
+	# exhausts the 32-bit address space as the repo grows (first hit at
+	# ~3.7MB of tracked source, segfaulting the whole gate).
+	pg_ast_free(root)
+	pg_diagnostics_free(diagnostics)
 
 
 void assert_w_parse_file(char* path):
 	char* source = pg_read_file_text(path)
 	assert1(source != 0)
 	assert_w_parse_text(source, path)
+	free(source)
 	parsed_manifest_count = parsed_manifest_count + 1
 
 

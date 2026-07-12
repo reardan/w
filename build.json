@@ -1632,6 +1632,7 @@
 				"http_client_64_test",
 				"json_64_test",
 				"json_codec_64_test",
+				"kv_cluster_64_test",
 				"kv_state_64_test",
 				"lease_64_test",
 				"lib_64_test",
@@ -1959,6 +1960,7 @@
 				"infer_test",
 				"json_codec_test",
 				"json_test",
+				"kv_cluster_test",
 				"kv_state_test",
 				"lease_test",
 				"lib_test",
@@ -2681,6 +2683,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "structures/json_test.w", "-o", "bin/json_test"]},
 				{"cmd": ["bin/json_test"]}
+			]
+		},
+		{
+			"name": "kv_cluster_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/kv_cluster_test.w", "-o", "bin/kv_cluster_64_test"]},
+				{"cmd": ["bin/kv_cluster_64_test"]}
+			]
+		},
+		{
+			"name": "kv_cluster_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/kv_cluster_test.w", "-o", "bin/kv_cluster_test"]},
+				{"cmd": ["bin/kv_cluster_test"]}
 			]
 		},
 		{
