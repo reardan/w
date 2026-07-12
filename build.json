@@ -1663,6 +1663,7 @@
 				"sha1_64_test",
 				"sim_64_test",
 				"sse_64_test",
+				"sstable_64_test",
 				"stack_trace_64_test",
 				"stats_64_test",
 				"stream_64_test",
@@ -1989,6 +1990,7 @@
 				"sha2_test",
 				"sim_test",
 				"sse_test",
+				"sstable_test",
 				"stack_trace_test",
 				"stats_test",
 				"str_test",
@@ -3224,6 +3226,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/sse_test.w", "-o", "bin/sse_test"]},
 				{"cmd": ["bin/sse_test"]}
+			]
+		},
+		{
+			"name": "sstable_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/sstable_test.w", "-o", "bin/sstable_64_test"]},
+				{"cmd": ["bin/sstable_64_test"]}
+			]
+		},
+		{
+			"name": "sstable_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/sstable_test.w", "-o", "bin/sstable_test"]},
+				{"cmd": ["bin/sstable_test"]}
 			]
 		},
 		{
