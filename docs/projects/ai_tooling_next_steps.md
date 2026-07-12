@@ -117,6 +117,29 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
+- **Hex/binary literals wider than 32 bits are silently corrupted.**
+  The tokenizer keeps only a rolling 32-bit window of a literal's
+  digits, so on the x64 target `0x7ff0000000000000` parses to `0` and
+  `0x000fffffffffffff` parses to `0xffffffffffffffff` — no warning,
+  no error (2026-07-12, found writing lib/fmath64.w; the compiler
+  always runs as a 32-bit process, docs/projects/float.md). This is
+  distinct from the documented bit-31 sign-extension gotcha and is a
+  straight bug for 64-bit-word targets: until the tokenizer carries
+  64-bit (or bignum) literal values, wide constants must be assembled
+  at runtime from sub-32-bit pieces (`(hi << 32) | lo`, the
+  sha256_mask32 pattern). At minimum the tokenizer should error on
+  overflow instead of wrapping; the fix sits in the seed closure, so
+  it lands as a normal compiler change plus verify.
+- **`lib.assert` does not compile standalone: it calls `println2`
+  without importing `lib.lib`.** Any module importing lib.assert but
+  not lib.lib fails `w check` with `Cannot find symbol: 'println2'`
+  and the importer has to add `import lib.lib` for lib.assert's sake
+  (2026-07-12, found writing lib/rand.w). lib.assert (or
+  lib.stack_trace) should import what it uses.
+- **Import lines reject trailing `#` comments.** `import lib.lib  # for
+  println2` is a parse error; the comment must move to its own line
+  (2026-07-12). Either the grammar should accept it or the diagnostic
+  should say the comment is the problem — the current error does not.
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new
