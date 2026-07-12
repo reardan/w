@@ -1640,6 +1640,7 @@
 				"map_float_64_test",
 				"map_set_builtin_64_test",
 				"md5_64_test",
+				"memtable_64_test",
 				"method_chaining_64_test",
 				"monotime_64_test",
 				"nested_ctor_64_test",
@@ -1961,6 +1962,7 @@
 				"map_float_test",
 				"math_test",
 				"md5_test",
+				"memtable_test",
 				"method_chaining_test",
 				"monotime_test",
 				"multilayer_test",
@@ -2797,6 +2799,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/x/unsafe/md5_test.w", "-o", "bin/md5_test"]},
 				{"cmd": ["bin/md5_test"]}
+			]
+		},
+		{
+			"name": "memtable_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/memtable_test.w", "-o", "bin/memtable_64_test"]},
+				{"cmd": ["bin/memtable_64_test"]}
+			]
+		},
+		{
+			"name": "memtable_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/memtable_test.w", "-o", "bin/memtable_test"]},
+				{"cmd": ["bin/memtable_test"]}
 			]
 		},
 		{
