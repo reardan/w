@@ -311,3 +311,216 @@ void test_send_before_peer_listens():
 
 	raft_tcp_free(a)
 	raft_tcp_free(b)
+
+
+void test_cap_bounds_dead_peer_buffer():
+	# Peer 2 is registered but never created, so every send only
+	# buffers and no byte ever reaches a socket: cap enforcement is
+	# exactly countable. Heartbeat-sized appends must never push the
+	# buffer past the cap, and the drop counter must match the
+	# arithmetic (fit frames kept, the rest dropped oldest-first).
+	int base = rt_port_base()
+	raft_tcp* a = raft_tcp_new(1, base + 14)
+	assert1(cast(int, a) != 0)
+	raft_tcp_add_peer(a, 2, base + 15)
+	raft_tcp_set_max_pending(a, 8192)
+
+	raft_msg* probe = rt_make_msg(raft_msg_append(), 1, 2, 1)
+	int fsize = raft_wire_size(probe) + 4
+	raft_msg_free(probe)
+	int fit = 8192 / fsize
+	assert1(fit > 0 && fit < 200)
+
+	int i = 0
+	while (i < 200):
+		raft_msg* m = rt_make_msg(raft_msg_append(), 1, 2, i + 1)
+		assert_equal(1, raft_tcp_send(a, m))
+		raft_msg_free(m)
+		asserts(c"pending never exceeds the cap", raft_tcp_pending_bytes(a, 2) <= 8192)
+		i = i + 1
+
+	assert_equal(fit * fsize, raft_tcp_pending_bytes(a, 2))
+	assert_equal(fit, raft_tcp_pending_frames(a, 2))
+	assert_equal(200 - fit, raft_tcp_dropped_frames(a))
+	raft_tcp_free(a)
+
+
+void test_cap_keeps_freshest_frames():
+	# Fill a dead peer's buffer far past the cap with distinguishable
+	# frames, then bring the peer up: exactly the newest `fit` frames
+	# must arrive, in order and intact. Nothing was ever written to a
+	# socket before B appeared, so every drop removed a whole frame
+	# and the stream cannot desync.
+	int base = rt_port_base()
+	raft_tcp* a = raft_tcp_new(1, base + 16)
+	assert1(cast(int, a) != 0)
+	raft_tcp_add_peer(a, 2, base + 17)
+	raft_tcp_set_max_pending(a, 4096)
+
+	raft_msg* probe = rt_make_msg(raft_msg_append_reply(), 1, 2, 3)
+	int fsize = raft_wire_size(probe) + 4
+	raft_msg_free(probe)
+	int fit = 4096 / fsize
+	int total = 200
+	assert1(fit > 0 && fit < total)
+
+	int i = 0
+	while (i < total):
+		raft_msg* m = rt_make_msg(raft_msg_append_reply(), 1, 2, 3)
+		m.success = 1
+		u64_set_int(m.match_index, i + 1)
+		assert_equal(1, raft_tcp_send(a, m))
+		raft_msg_free(m)
+		i = i + 1
+	assert_equal(total - fit, raft_tcp_dropped_frames(a))
+	assert_equal(fit, raft_tcp_pending_frames(a, 2))
+
+	raft_tcp* b = raft_tcp_new(2, base + 17)
+	assert1(cast(int, b) != 0)
+	rt_pump_until(a, b, 0, fit, 100000)
+	assert_equal(fit, raft_tcp_inbox_count(b))
+	assert_equal(0, raft_tcp_pending_bytes(a, 2))
+	assert_equal(0, raft_tcp_pending_frames(a, 2))
+	i = 0
+	while (i < fit):
+		raft_msg* got = raft_tcp_recv(b)
+		assert1(cast(int, got) != 0)
+		assert_equal(raft_msg_append_reply(), got.type)
+		assert_equal(1, got.from)
+		assert_equal(2, got.to)
+		assert_equal(3, raft_u64_as_int(got.term))
+		assert_equal(1, got.success)
+		assert_equal(total - fit + i + 1, raft_u64_as_int(got.match_index))
+		raft_msg_free(got)
+		i = i + 1
+	raft_tcp_free(a)
+	raft_tcp_free(b)
+
+
+void test_partial_head_accounting_with_slow_peer():
+	# The never-drop-a-partially-sent-head rule is hard to force
+	# deterministically on loopback: a mid-frame short write needs the
+	# kernel socket buffers to fill at a non-frame boundary, and the
+	# transport exposes no SO_SNDBUF knob to shrink them. So this test
+	# asserts the invariant structurally instead: B exists but never
+	# pumps during the exchange, A sends bursts and pumps, and after
+	# every pump the accounting must satisfy
+	#   pending_frames * fsize - pending_bytes == head_sent
+	# with 0 <= head_sent < fsize — i.e. the head frame is either
+	# fully intact in the buffer or split exactly at its already-sent
+	# prefix. If a partial head were ever dropped, either this
+	# equation breaks or the drained stream below decodes wrong.
+	int base = rt_port_base()
+	raft_tcp* a = raft_tcp_new(1, base + 18)
+	raft_tcp* b = raft_tcp_new(2, base + 19)
+	assert1(cast(int, a) != 0 && cast(int, b) != 0)
+	raft_tcp_add_peer(a, 2, base + 19)
+	raft_tcp_set_max_pending(a, 4096)
+
+	raft_msg* probe = rt_make_msg(raft_msg_append(), 1, 2, 1)
+	int fsize = raft_wire_size(probe) + 4
+	raft_msg_free(probe)
+	int fit = 4096 / fsize
+
+	# Phase 1: burst with no pump at all — nothing is flushed, so the
+	# cap engages exactly as in the dead-peer case and guarantees the
+	# drop path ran before the exchange starts.
+	int total = 3000
+	int sent = 0
+	while (sent < 150):
+		raft_msg* m = rt_make_msg(raft_msg_append(), 1, 2, sent + 1)
+		assert_equal(1, raft_tcp_send(a, m))
+		raft_msg_free(m)
+		sent = sent + 1
+	assert_equal(150 - fit, raft_tcp_dropped_frames(a))
+
+	# Phase 2: keep sending in bursts while only A pumps. B's kernel
+	# buffers slowly fill, so short writes (a partially-sent head) and
+	# cap drops around one can occur; the invariant is checked either
+	# way after every pump.
+	while (sent < total):
+		int burst = 0
+		while (burst < 5 && sent < total):
+			raft_msg* m2 = rt_make_msg(raft_msg_append(), 1, 2, sent + 1)
+			assert_equal(1, raft_tcp_send(a, m2))
+			raft_msg_free(m2)
+			sent = sent + 1
+			burst = burst + 1
+		raft_tcp_pump(a)
+		int pb = raft_tcp_pending_bytes(a, 2)
+		int pf = raft_tcp_pending_frames(a, 2)
+		asserts(c"pending bytes stay bounded by the cap", pb >= 0 && pb <= 4096)
+		int head_sent = pf * fsize - pb
+		asserts(c"head frame intact or split at its sent prefix", head_sent >= 0 && head_sent < fsize)
+		if (pf == 0):
+			assert_equal(0, pb)
+
+	# Drain: every surviving frame arrives intact and in order (terms
+	# strictly increasing up to the very last send), proving the byte
+	# stream never desynced.
+	int expect = total - raft_tcp_dropped_frames(a)
+	rt_pump_until(a, b, 0, expect, 200000)
+	assert_equal(expect, raft_tcp_inbox_count(b))
+	assert_equal(0, raft_tcp_pending_bytes(a, 2))
+	assert_equal(0, raft_tcp_pending_frames(a, 2))
+	int last = 0
+	int k = 0
+	while (k < expect):
+		raft_msg* got = raft_tcp_recv(b)
+		assert1(cast(int, got) != 0)
+		assert_equal(raft_msg_append(), got.type)
+		assert_equal(1, got.from)
+		assert_equal(2, got.to)
+		int term_v = raft_u64_as_int(got.term)
+		asserts(c"terms strictly increasing", term_v > last)
+		last = term_v
+		raft_msg_free(got)
+		k = k + 1
+	asserts(c"newest frame survived", last == total)
+	raft_tcp_free(a)
+	raft_tcp_free(b)
+
+
+void test_frame_over_cap_refused():
+	# A frame bigger than the cap (but under rt_max_frame()) is
+	# refused at send exactly like an oversize frame: return 0,
+	# nothing buffered, no drops charged, existing frames untouched.
+	int base = rt_port_base()
+	raft_tcp* a = raft_tcp_new(1, base + 14)
+	assert1(cast(int, a) != 0)
+	raft_tcp_add_peer(a, 2, base + 15)
+	raft_tcp_set_max_pending(a, 4096)
+
+	char* cmd = malloc(5001)
+	int i = 0
+	while (i < 5000):
+		cmd[i] = 120
+		i = i + 1
+	cmd[5000] = 0
+	raft_msg* big = rt_make_msg(raft_msg_append(), 1, 2, 2)
+	u64* et = u64_new_int(2)
+	big.entries.push(raft_entry_new(et, cmd))
+	u64_free(et)
+	assert1(raft_wire_size(big) + 4 > 4096)
+	assert1(raft_wire_size(big) <= rt_max_frame())
+
+	# Empty buffer: refused, nothing buffered.
+	assert_equal(0, raft_tcp_send(a, big))
+	assert_equal(0, raft_tcp_pending_bytes(a, 2))
+	assert_equal(0, raft_tcp_pending_frames(a, 2))
+	assert_equal(0, raft_tcp_dropped_frames(a))
+
+	# With a small frame queued: still refused, the queued frame and
+	# the drop counter are untouched.
+	raft_msg* small = rt_make_msg(raft_msg_append(), 1, 2, 1)
+	assert_equal(1, raft_tcp_send(a, small))
+	raft_msg_free(small)
+	int pending_before = raft_tcp_pending_bytes(a, 2)
+	assert_equal(0, raft_tcp_send(a, big))
+	assert_equal(pending_before, raft_tcp_pending_bytes(a, 2))
+	assert_equal(1, raft_tcp_pending_frames(a, 2))
+	assert_equal(0, raft_tcp_dropped_frames(a))
+
+	raft_msg_free(big)
+	free(cmd)
+	raft_tcp_free(a)
