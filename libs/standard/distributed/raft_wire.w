@@ -4,13 +4,17 @@ Wire format for raft messages (docs/projects/distributed.md, phase
 
 Layout, all little-endian, u64 fields via u64_save_le:
   common:        type u8, from u32, to u32, term u64
-  vote_req:      + last_log_index u64, last_log_term u64
-  vote_reply:    + granted u8
+  vote_req:      + last_log_index u64, last_log_term u64, prevote u8
+  vote_reply:    + granted u8, prevote u8
   append:        + prev_log_index u64, prev_log_term u64,
                    leader_commit u64, entry_count u32,
                    then per entry: term u64, cmd_len u32, cmd bytes
                    (no NUL on the wire)
   append_reply:  + success u8, match_index u64
+
+The prevote flag byte (raft.w's pre-vote rounds, §9.6) trails each
+vote layout so the earlier fields keep their offsets; it is 0 on every
+real vote message. Append layouts are untouched.
 
 raft_wire_decode allocates the returned raft_msg (free with
 raft_msg_free) and malloc'd NUL-terminated command copies for entries.
@@ -47,9 +51,9 @@ int raft_wire_read_u32(char* p):
 int raft_wire_size(raft_msg* m):
 	int n = 1 + 4 + 4 + 8
 	if (m.type == raft_msg_vote_req()):
-		return n + 8 + 8
+		return n + 8 + 8 + 1
 	if (m.type == raft_msg_vote_reply()):
-		return n + 1
+		return n + 1 + 1
 	if (m.type == raft_msg_append()):
 		n = n + 8 + 8 + 8 + 4
 		int i = 0
@@ -75,9 +79,11 @@ void raft_wire_encode(raft_msg* m, char* buf):
 	if (m.type == raft_msg_vote_req()):
 		u64_save_le(buf + off, m.last_log_index)
 		u64_save_le(buf + off + 8, m.last_log_term)
+		buf[off + 16] = m.prevote
 		return
 	if (m.type == raft_msg_vote_reply()):
 		buf[off] = m.vote_granted
+		buf[off + 1] = m.prevote
 		return
 	if (m.type == raft_msg_append()):
 		u64_save_le(buf + off, m.prev_log_index)
@@ -124,17 +130,19 @@ raft_msg* raft_wire_decode(char* buf, int len):
 	u64_free(term)
 	int off = 17
 	if (type == raft_msg_vote_req()):
-		if (len != off + 16):
+		if (len != off + 17):
 			raft_msg_free(m)
 			return 0
 		u64_load_le(m.last_log_index, buf + off)
 		u64_load_le(m.last_log_term, buf + off + 8)
+		m.prevote = buf[off + 16] & 255
 		return m
 	if (type == raft_msg_vote_reply()):
-		if (len != off + 1):
+		if (len != off + 2):
 			raft_msg_free(m)
 			return 0
 		m.vote_granted = buf[off] & 255
+		m.prevote = buf[off + 1] & 255
 		return m
 	if (type == raft_msg_append_reply()):
 		if (len != off + 9):

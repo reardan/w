@@ -606,3 +606,78 @@ void test_no_apply_regression():
 		assert_equal(3, applied[j])
 		j = j + 1
 	cluster_free(c)
+
+
+# ---- hardening: no-op on win + pre-vote together --------------------------------
+
+void test_hardened_noop_prevote_cluster():
+	# 3 nodes with BOTH opt-in hardening features on: elections go
+	# through pre-vote rounds, and every win plants a no-op entry
+	cluster* c = cluster_new(3, 12012, 0, 0, 0, 1200)
+	int i = 0
+	while (i < 3):
+		raft_set_noop_on_win(c.nodes[i], 1)
+		raft_set_prevote(c.nodes[i], 1)
+		i = i + 1
+	int steps = cluster_run_until_leader(c, 200)
+	assert1(steps >= 0)
+	int lid = cluster_leader(c)
+	# the win itself put the no-op in the leader's log
+	assert_equal(1, raft_log_length(c.nodes[lid - 1]))
+	cluster_propose(c, lid, c"x")
+	cluster_run_steps(c, 30)
+	i = 0
+	while (i < 3):
+		raft* r = c.nodes[i]
+		assert_equal(2, raft_log_length(r))
+		assert_equal(2, cl_commit_int(r))
+		raft_entry* head = raft_log_at(r, 1)
+		assert_strings_equal(c"", head.command)
+		raft_entry* second = raft_log_at(r, 2)
+		assert_strings_equal(c"x", second.command)
+		# the applier (raft_pop_apply via cl_collect_applies) drains
+		# both entries; the no-op surfaces as the empty command and is
+		# the consumer's to skip
+		list[char*] got = new list[char*]
+		cl_collect_applies(r, got)
+		assert_equal(2, got.length)
+		assert_strings_equal(c"", got[0])
+		assert_strings_equal(c"x", got[1])
+		i = i + 1
+	cluster_assert_logs_identical(c)
+	# depose the leader: the survivors pre-vote among themselves (their
+	# leader contact goes stale), elect, and the new term's no-op
+	# commits with no client proposal
+	cluster_partition_from_all(c, lid)
+	int k = 0
+	int new_lid = 0 - 1
+	while (k < 400 && new_lid < 0):
+		cluster_step(c)
+		int cand = cluster_leader(c)
+		if (cand != (0 - 1) && cand != lid):
+			new_lid = cand
+		k = k + 1
+	assert1(new_lid >= 1)
+	cluster_run_steps(c, 30)
+	assert_equal(3, raft_log_length(c.nodes[new_lid - 1]))
+	assert_equal(3, cl_commit_int(c.nodes[new_lid - 1]))
+	cluster_heal_all(c)
+	cluster_run_steps(c, 300)
+	cluster_assert_no_same_term_leaders(c)
+	cluster_assert_logs_identical(c)
+	i = 0
+	while (i < 3):
+		raft* r = c.nodes[i]
+		assert_equal(3, raft_log_length(r))
+		assert_equal(3, cl_commit_int(r))
+		# exactly two no-ops: one per election won
+		int noops = 0
+		int e = 1
+		while (e <= 3):
+			raft_entry* entry = raft_log_at(r, e)
+			if (strlen(entry.command) == 0):
+				noops = noops + 1
+			e = e + 1
+		assert_equal(2, noops)
+		i = i + 1
+	cluster_free(c)

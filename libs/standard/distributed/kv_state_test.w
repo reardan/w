@@ -353,3 +353,71 @@ void test_restart_recovery_idempotent():
 	lsm_close(store2)
 	free(rpath)
 	free(prefix)
+
+
+void test_restart_recovery_noop_closes_gap():
+	# the durability recipe again, but the recovered node opts into
+	# noop-on-win instead of proposing a "pin": the election's own no-op
+	# is the current-term entry that re-commits the recovered old-term
+	# prefix (§5.4.2 closure, no client proposal), kv_apply_pending
+	# re-applies the recovered commands, and the no-op drains unapplied
+	# (kv_apply_command rejects the empty command by design)
+	char* prefix = kvs_prefix(c"noopdur")
+	kvs_clean_store(prefix)
+	char* rpath = strjoin(prefix, c".rlog")
+	kvs_clean_file(rpath)
+	# first life: single-node leader, synced after every step
+	raft_wal* rw = raft_wal_open(rpath)
+	assert1(cast(int, rw) != 0)
+	lsm* store = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, store) != 0)
+	raft* r = kvs_leader(21)
+	assert_equal(1, raft_wal_sync(rw, r))   # STATE: term 1, vote 1
+	list[raft_msg*] out = new list[raft_msg*]
+	assert_equal(1, kv_propose_put(r, c"alpha", c"1", 300, out))
+	assert_equal(1, raft_wal_sync(rw, r))
+	assert_equal(1, kv_propose_put(r, c"beta", c"2", 310, out))
+	assert_equal(1, raft_wal_sync(rw, r))
+	assert_equal(1, kv_propose_delete(r, c"beta", 320, out))
+	assert_equal(1, raft_wal_sync(rw, r))
+	assert_equal(0, out.length)
+	assert_equal(3, kv_apply_pending(r, store))
+	kvs_expect(store, c"alpha", c"1")
+	kvs_expect_gone(store, c"beta")
+	assert_equal(1, lsm_flush(store))
+	# crash: close everything
+	raft_free(r)
+	raft_wal_close(rw)
+	lsm_close(store)
+	# second life: recover, then opt in BEFORE ticking to leader
+	raft_wal* rw2 = raft_wal_open(rpath)
+	assert1(cast(int, rw2) != 0)
+	assert_equal(3, raft_wal_shadow_log_length(rw2))
+	list[int] peers = new list[int]
+	raft* r2 = raft_wal_recover(rw2, 1, peers, 150, 300, 50, 22)
+	raft_set_noop_on_win(r2, 1)
+	assert_equal(3, raft_log_length(r2))
+	lsm* store2 = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, store2) != 0)
+	# commit recovered as zero: nothing pending yet
+	assert_equal(0, raft_pending_apply(r2))
+	raft_start(r2, 1000)
+	raft_tick(r2, 1300, out)
+	assert_equal(0, out.length)
+	assert_equal(raft_leader(), raft_state(r2))
+	# the win appended the term-2 no-op and, single-node, committed the
+	# whole log on the spot — the commit advanced over the recovered
+	# entries WITHOUT any c"pin" proposal
+	assert_equal(4, raft_log_length(r2))
+	assert_equal(3, kv_apply_pending(r2, store2))
+	assert_equal(0, raft_pending_apply(r2))
+	kvs_expect(store2, c"alpha", c"1")
+	kvs_expect_gone(store2, c"beta")
+	# the no-op persists as a zero-length APPEND record
+	assert_equal(2, raft_wal_sync(rw2, r2))   # STATE + APPEND(no-op)
+	assert_equal(0, raft_wal_pending(rw2, r2))
+	raft_free(r2)
+	raft_wal_close(rw2)
+	lsm_close(store2)
+	free(rpath)
+	free(prefix)

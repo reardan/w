@@ -701,3 +701,246 @@ void test_message_deep_copy_ownership():
 	assert_strings_equal(c"payload", still.command)
 	assert_equal(1, u64_to_int(still.term))
 	raft_free(n1)
+
+
+# ---- hardening: no-op on election win (§6.4) -----------------------------------
+
+void test_noop_single_node_win_commits():
+	list[int] peers = new list[int]
+	raft* r = raft_new(1, peers, 50, 100, 10, 42)
+	raft_set_noop_on_win(r, 1)
+	raft_start(r, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_tick(r, 100, out)
+	assert_equal(0, out.length)
+	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(1, raft_test_term_int(r))
+	# the win itself appended AND committed the term-1 no-op
+	assert_equal(1, raft_log_length(r))
+	assert_equal(1, raft_test_commit_int(r))
+	assert_equal(1, raft_pending_apply(r))
+	raft_entry* e = raft_pop_apply(r)
+	assert_strings_equal(c"", e.command)
+	assert_equal(1, u64_to_int(e.term))
+	assert_equal(0, raft_pending_apply(r))
+	raft_free(r)
+
+
+void test_noop_closes_old_term_commit_gap():
+	# the test_commit_rule_old_term_entries scenario with noop_on_win:
+	# the leader holds an uncommitted term-1 entry already replicated on
+	# a majority; the term-2 win no-op rides the initial appends and its
+	# ack commits BOTH entries with no client proposal at all
+	raft* n1 = raft_test_node(1, 2, 3, 5)
+	raft_set_noop_on_win(n1, 1)
+	raft_start(n1, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_msg* seed_a = raft_test_append(2, 1, 1, 0, 0, 0)
+	raft_test_add_entry(seed_a, 1, c"old")
+	raft_on_msg(n1, seed_a, 10, out)
+	raft_msg_free(seed_a)
+	raft_test_free_msgs(out)
+	assert_equal(1, raft_log_length(n1))
+	raft_tick(n1, 110, out)
+	raft_test_free_msgs(out)
+	raft_msg* vote = raft_test_vote_reply(2, 1, 2, 1)
+	raft_on_msg(n1, vote, 110, out)
+	raft_msg_free(vote)
+	assert_equal(raft_leader(), raft_state(n1))
+	assert_equal(2, raft_test_term_int(n1))
+	# the win appended the term-2 no-op at index 2...
+	assert_equal(2, raft_log_length(n1))
+	raft_entry* noop = raft_log_at(n1, 2)
+	assert_strings_equal(c"", noop.command)
+	assert_equal(2, u64_to_int(noop.term))
+	# ...and the initial appends CONTAIN it (prev = 1, one entry)
+	assert_equal(2, out.length)
+	raft_msg* ap2 = raft_test_find_to(out, 2)
+	assert_equal(raft_msg_append(), ap2.type)
+	assert_equal(1, u64_to_int(ap2.prev_log_index))
+	assert_equal(1, ap2.entries.length)
+	raft_entry* carried = ap2.entries[0]
+	assert_strings_equal(c"", carried.command)
+	assert_equal(2, u64_to_int(carried.term))
+	raft_msg* ap3 = raft_test_find_to(out, 3)
+	assert_equal(1, ap3.entries.length)
+	raft_test_free_msgs(out)
+	# nothing committed yet: the no-op only sits on the leader
+	assert_equal(0, raft_test_commit_int(n1))
+	# node 2 acks through index 2: the current-term no-op reaches a
+	# majority, closing the §5.4.2 gap for the term-1 entry beneath it
+	raft_msg* ack = raft_test_append_reply(2, 1, 2, 1, 2)
+	raft_on_msg(n1, ack, 120, out)
+	raft_msg_free(ack)
+	raft_test_free_msgs(out)
+	assert_equal(2, raft_test_commit_int(n1))
+	raft_entry* first = raft_pop_apply(n1)
+	assert_strings_equal(c"old", first.command)
+	raft_entry* second = raft_pop_apply(n1)
+	assert_strings_equal(c"", second.command)
+	assert_equal(0, raft_pending_apply(n1))
+	raft_free(n1)
+
+
+# ---- hardening: pre-vote (§9.6) --------------------------------------------------
+
+raft_msg* raft_test_prevote_req(int from, int to, int term, int last_index, int last_term):
+	raft_msg* m = raft_test_vote_req(from, to, term, last_index, last_term)
+	m.prevote = 1
+	return m
+
+
+raft_msg* raft_test_prevote_reply(int from, int to, int term, int granted):
+	raft_msg* m = raft_test_vote_reply(from, to, term, granted)
+	m.prevote = 1
+	return m
+
+
+void test_prevote_round_then_real_election():
+	raft* r = raft_test_node(1, 2, 3, 7)
+	raft_set_prevote(r, 1)
+	raft_start(r, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_tick(r, 100, out)
+	# a pre-vote round, not an election: term, vote and state untouched
+	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(0, raft_test_term_int(r))
+	assert_equal(0 - 1, raft_voted_for(r))
+	assert_equal(2, out.length)
+	raft_msg* v2 = raft_test_find_to(out, 2)
+	assert_equal(raft_msg_vote_req(), v2.type)
+	assert_equal(1, v2.prevote)
+	# the request carries the prospective term current + 1
+	assert_equal(1, u64_to_int(v2.term))
+	assert_equal(0, u64_to_int(v2.last_log_index))
+	assert_equal(0, u64_to_int(v2.last_log_term))
+	raft_msg* v3 = raft_test_find_to(out, 3)
+	assert_equal(1, v3.prevote)
+	raft_test_free_msgs(out)
+	# one granted pre-vote (self + 1 = majority of 3): the REAL election
+	# starts now — term bumps, self-vote, real (prevote == 0) vote_reqs
+	raft_msg* pv = raft_test_prevote_reply(2, 1, 1, 1)
+	raft_on_msg(r, pv, 105, out)
+	raft_msg_free(pv)
+	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(1, raft_test_term_int(r))
+	assert_equal(1, raft_voted_for(r))
+	assert_equal(2, out.length)
+	raft_msg* rv = raft_test_find_to(out, 2)
+	assert_equal(raft_msg_vote_req(), rv.type)
+	assert_equal(0, rv.prevote)
+	assert_equal(1, u64_to_int(rv.term))
+	raft_test_free_msgs(out)
+	# a late duplicate pre-vote reply for the finished round is ignored:
+	# no round is pending (prevotes_received was zeroed by the real
+	# election start) and its term no longer equals current_term + 1
+	raft_msg* stale = raft_test_prevote_reply(3, 1, 1, 1)
+	raft_on_msg(r, stale, 106, out)
+	raft_msg_free(stale)
+	assert_equal(0, out.length)
+	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(1, raft_test_term_int(r))
+	# the real election still completes normally
+	raft_msg* real = raft_test_vote_reply(2, 1, 1, 1)
+	raft_on_msg(r, real, 107, out)
+	raft_msg_free(real)
+	assert_equal(raft_leader(), raft_state(r))
+	raft_test_free_msgs(out)
+	raft_free(r)
+
+
+void test_prevote_leader_stickiness():
+	# both sides of the stickiness rule, driven by timestamps against
+	# election_timeout_min = 100 on the deterministic test node
+	raft* n1 = raft_test_node(1, 2, 3, 3)
+	raft_start(n1, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	# a valid term-1 append from leader 2 at t=100: leader contact
+	raft_msg* hb = raft_test_append(2, 1, 1, 0, 0, 0)
+	raft_on_msg(n1, hb, 100, out)
+	raft_msg_free(hb)
+	raft_test_free_msgs(out)
+	assert_equal(1, raft_test_term_int(n1))
+	# 50 ms after contact (inside the minimum timeout): DENIED
+	raft_msg* req = raft_test_prevote_req(3, 1, 2, 0, 0)
+	raft_on_msg(n1, req, 150, out)
+	raft_msg_free(req)
+	assert_equal(1, out.length)
+	raft_msg* reply = out[0]
+	assert_equal(raft_msg_vote_reply(), reply.type)
+	assert_equal(1, reply.prevote)
+	assert_equal(0, reply.vote_granted)
+	# the prospective term is echoed and did NOT bump the receiver
+	assert_equal(2, u64_to_int(reply.term))
+	assert_equal(1, raft_test_term_int(n1))
+	assert_equal(raft_follower(), raft_state(n1))
+	raft_test_free_msgs(out)
+	# 150 ms after contact (past the minimum timeout): GRANTED
+	raft_msg* later = raft_test_prevote_req(3, 1, 2, 0, 0)
+	raft_on_msg(n1, later, 250, out)
+	raft_msg_free(later)
+	reply = out[0]
+	assert_equal(1, reply.vote_granted)
+	assert_equal(1, reply.prevote)
+	# granting is stateless: no vote recorded, term still 1
+	assert_equal(0 - 1, raft_voted_for(n1))
+	assert_equal(1, raft_test_term_int(n1))
+	raft_test_free_msgs(out)
+	raft_free(n1)
+
+
+void test_prevote_grant_does_not_reset_timer():
+	# the receiver has never heard a leader ("never" counts as no recent
+	# contact), so the pre-vote is granted — but unlike a real vote grant
+	# (test_vote_grant_resets_deadline) the election deadline and
+	# voted_for are untouched
+	raft* n1 = raft_test_node(1, 2, 3, 4)
+	raft_start(n1, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_msg* req = raft_test_prevote_req(2, 1, 1, 0, 0)
+	raft_on_msg(n1, req, 90, out)
+	raft_msg_free(req)
+	raft_msg* reply = out[0]
+	assert_equal(1, reply.vote_granted)
+	assert_equal(1, reply.prevote)
+	assert_equal(0 - 1, raft_voted_for(n1))
+	assert_equal(0, raft_test_term_int(n1))
+	raft_test_free_msgs(out)
+	# the original deadline (100) still stands: the election fires there
+	raft_tick(n1, 100, out)
+	assert_equal(raft_candidate(), raft_state(n1))
+	assert_equal(1, raft_test_term_int(n1))
+	raft_test_free_msgs(out)
+	raft_free(n1)
+
+
+void test_prevote_rejoiner_cannot_disrupt():
+	# the §9.6 regression: a node rejoining from a partition with an
+	# inflated current term probes with a pre-vote at term + 1; the
+	# stable follower has fresh leader contact, denies — and, the whole
+	# point, is NOT stepped down by the huge prospective term, so the
+	# rejoiner never bumps anyone
+	raft* n1 = raft_test_node(1, 2, 3, 3)
+	raft_start(n1, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_msg* hb = raft_test_append(2, 1, 2, 0, 0, 0)
+	raft_on_msg(n1, hb, 100, out)
+	raft_msg_free(hb)
+	raft_test_free_msgs(out)
+	assert_equal(2, raft_test_term_int(n1))
+	# rejoiner 3 sits at inflated term 9 and probes at 10
+	raft_msg* probe = raft_test_prevote_req(3, 1, 10, 0, 0)
+	raft_on_msg(n1, probe, 120, out)
+	raft_msg_free(probe)
+	assert_equal(1, out.length)
+	raft_msg* reply = out[0]
+	assert_equal(1, reply.prevote)
+	assert_equal(0, reply.vote_granted)
+	assert_equal(10, u64_to_int(reply.term))
+	# no step-down happened: term 2, still following the real leader
+	assert_equal(2, raft_test_term_int(n1))
+	assert_equal(raft_follower(), raft_state(n1))
+	assert_equal(2, raft_leader_hint(n1))
+	assert_equal(0 - 1, raft_voted_for(n1))
+	raft_test_free_msgs(out)
+	raft_free(n1)

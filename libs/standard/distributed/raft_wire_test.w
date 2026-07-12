@@ -18,7 +18,7 @@ void test_vote_req_roundtrip():
 	raft_msg* m = raft_msg_new(raft_msg_vote_req(), 1, 2, term)
 	u64_set_int(m.last_log_index, 42)
 	u64_set_int(m.last_log_term, 6)
-	assert_equal(33, raft_wire_size(m))
+	assert_equal(34, raft_wire_size(m))
 	raft_msg* out = rw_roundtrip(m)
 	assert_equal(raft_msg_vote_req(), out.type)
 	assert_equal(1, out.from)
@@ -35,7 +35,7 @@ void test_vote_reply_roundtrip():
 	u64* term = u64_new_int(3)
 	raft_msg* m = raft_msg_new(raft_msg_vote_reply(), 5, 1, term)
 	m.vote_granted = 1
-	assert_equal(18, raft_wire_size(m))
+	assert_equal(19, raft_wire_size(m))
 	raft_msg* out = rw_roundtrip(m)
 	assert_equal(1, out.vote_granted)
 	assert_equal(5, out.from)
@@ -109,10 +109,60 @@ void test_layout_bytes():
 	assert_equal(1, buf[5] & 255)     # to = 1
 	assert_equal(1, buf[9] & 255)     # term = 1, low u64 byte
 	assert_equal(0, buf[16] & 255)    # term high byte
-	assert_equal(1, buf[17] & 255)    # granted
+	assert_equal(1, buf[17] & 255)    # granted (offset unchanged)
+	assert_equal(0, buf[18] & 255)    # prevote flag, clear by default
 	free(buf)
 	raft_msg_free(m)
 	u64_free(term)
+
+
+void test_prevote_flag_roundtrip():
+	# vote_req with the flag set: last byte of the 34-byte layout
+	u64* term = u64_new_int(9)
+	raft_msg* m = raft_msg_new(raft_msg_vote_req(), 1, 2, term)
+	m.prevote = 1
+	u64_set_int(m.last_log_index, 3)
+	u64_set_int(m.last_log_term, 2)
+	assert_equal(34, raft_wire_size(m))
+	char* buf = malloc(34)
+	raft_wire_encode(m, buf)
+	assert_equal(1, buf[33] & 255)
+	free(buf)
+	raft_msg* out = rw_roundtrip(m)
+	assert_equal(1, out.prevote)
+	assert_equal(3, raft_u64_as_int(out.last_log_index))
+	assert_equal(2, raft_u64_as_int(out.last_log_term))
+	raft_msg_free(out)
+	# and clear
+	m.prevote = 0
+	out = rw_roundtrip(m)
+	assert_equal(0, out.prevote)
+	raft_msg_free(m)
+	raft_msg_free(out)
+	u64_free(term)
+	# vote_reply set...
+	u64* t2 = u64_new_int(4)
+	raft_msg* rep = raft_msg_new(raft_msg_vote_reply(), 2, 1, t2)
+	rep.vote_granted = 1
+	rep.prevote = 1
+	assert_equal(19, raft_wire_size(rep))
+	char* rbuf = malloc(19)
+	raft_wire_encode(rep, rbuf)
+	assert_equal(1, rbuf[17] & 255)   # granted keeps its offset
+	assert_equal(1, rbuf[18] & 255)   # prevote trails it
+	free(rbuf)
+	raft_msg* rout = rw_roundtrip(rep)
+	assert_equal(1, rout.prevote)
+	assert_equal(1, rout.vote_granted)
+	raft_msg_free(rout)
+	# ...and clear
+	rep.prevote = 0
+	rout = rw_roundtrip(rep)
+	assert_equal(0, rout.prevote)
+	assert_equal(1, rout.vote_granted)
+	raft_msg_free(rep)
+	raft_msg_free(rout)
+	u64_free(t2)
 
 
 void test_decode_rejects_malformed():
