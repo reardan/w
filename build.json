@@ -1637,9 +1637,11 @@
 				"limb_builtin_64_test",
 				"limb_builtin_shadow_64_test",
 				"list_builtin_64_test",
+				"lsm_64_test",
 				"map_float_64_test",
 				"map_set_builtin_64_test",
 				"md5_64_test",
+				"memtable_64_test",
 				"method_chaining_64_test",
 				"monotime_64_test",
 				"nested_ctor_64_test",
@@ -1662,6 +1664,7 @@
 				"sha1_64_test",
 				"sim_64_test",
 				"sse_64_test",
+				"sstable_64_test",
 				"stack_trace_64_test",
 				"stats_64_test",
 				"stream_64_test",
@@ -1958,9 +1961,11 @@
 				"limb_builtin_shadow_test",
 				"limb_builtin_test",
 				"list_methods_test",
+				"lsm_test",
 				"map_float_test",
 				"math_test",
 				"md5_test",
+				"memtable_test",
 				"method_chaining_test",
 				"monotime_test",
 				"multilayer_test",
@@ -1987,6 +1992,7 @@
 				"sha2_test",
 				"sim_test",
 				"sse_test",
+				"sstable_test",
 				"stack_trace_test",
 				"stats_test",
 				"str_test",
@@ -2752,6 +2758,22 @@
 			]
 		},
 		{
+			"name": "lsm_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/lsm_test.w", "-o", "bin/lsm_64_test"]},
+				{"cmd": ["bin/lsm_64_test"]}
+			]
+		},
+		{
+			"name": "lsm_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/lsm_test.w", "-o", "bin/lsm_test"]},
+				{"cmd": ["bin/lsm_test"]}
+			]
+		},
+		{
 			"name": "map_float_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2797,6 +2819,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/x/unsafe/md5_test.w", "-o", "bin/md5_test"]},
 				{"cmd": ["bin/md5_test"]}
+			]
+		},
+		{
+			"name": "memtable_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/memtable_test.w", "-o", "bin/memtable_64_test"]},
+				{"cmd": ["bin/memtable_64_test"]}
+			]
+		},
+		{
+			"name": "memtable_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/memtable_test.w", "-o", "bin/memtable_test"]},
+				{"cmd": ["bin/memtable_test"]}
 			]
 		},
 		{
@@ -3206,6 +3244,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/sse_test.w", "-o", "bin/sse_test"]},
 				{"cmd": ["bin/sse_test"]}
+			]
+		},
+		{
+			"name": "sstable_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/sstable_test.w", "-o", "bin/sstable_64_test"]},
+				{"cmd": ["bin/sstable_64_test"]}
+			]
+		},
+		{
+			"name": "sstable_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/sstable_test.w", "-o", "bin/sstable_test"]},
+				{"cmd": ["bin/sstable_test"]}
 			]
 		},
 		{

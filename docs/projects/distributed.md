@@ -63,6 +63,19 @@ plumbing, `libs/standard/crypto/` hashing.
   clusters replayed deterministically through the simulator
   (elections under loss, partition/heal convergence, minority
   lockout, seeded replay equality).
-- Phase 4: checksummed write-ahead log, SSTable/memtable/compaction
-  (Bigtable lineage), and a demo replicated KV store wiring raft +
-  wal + rpc together over `lib/framing.w`.
+- Phase 4a (landed): `wal.w` checksummed append-only log with
+  torn-tail recovery, and `raft_wal.w` — shadow-diff persistence of
+  Raft's term/vote/log with crash/restart simulation tests (a
+  restarted voter cannot double-vote; a rebuilt follower converges).
+- Phase 4b (landed): the mini-LSM — `memtable.w` (sorted buffer,
+  tombstones, three-way get), `sstable.w` (WSST immutable tables with
+  embedded bloom filters), `lsm.w` (WAL-fronted writes, threshold
+  flush, newest-first reads, full compaction, MANIFEST recovery with
+  the dangling-last-entry torn-flush rule).
+- Phase 4c: the demo replicated KV store wiring raft + wal + lsm +
+  rpc together over `lib/framing.w` — the library's first
+  real-socket consumer.
+- Phase 5 candidates: raft no-op entry on election win (closes the
+  single-node restart re-commit gap), snapshots/InstallSnapshot,
+  pre-vote, a seed-sweep target running the sim scenarios across
+  hundreds of schedules.
