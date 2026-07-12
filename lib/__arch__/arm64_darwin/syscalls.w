@@ -131,6 +131,11 @@ int mmap(int addr, int length, int prot, int flags):
 int munmap(int addr, int length):
 	return syscall(73, addr, length, 0)
 
+# mprotect (74): changes page protection (PROT_NONE=0, READ=1, WRITE=2,
+# EXEC=4) on an existing mapping. addr and length must be page-aligned.
+int mprotect(int addr, int length, int prot):
+	return syscall(74, addr, length, prot)
+
 # No clone on Darwin (threads go through bsdthread_create, a later stage).
 int sys_clone(int flags, int child_stack):
 	return 0 - 38
