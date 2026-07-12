@@ -1651,7 +1651,9 @@
 				"process_64_test",
 				"quorum_64_test",
 				"raft_64_test",
+				"raft_restart_sim_64_test",
 				"raft_sim_64_test",
+				"raft_wal_64_test",
 				"rc4_64_test",
 				"result_64_test",
 				"result_propagate_64_test",
@@ -1971,8 +1973,10 @@
 				"prng_test",
 				"process_test",
 				"quorum_test",
+				"raft_restart_sim_test",
 				"raft_sim_test",
 				"raft_test",
+				"raft_wal_test",
 				"range_test",
 				"rc4_test",
 				"result_test",
@@ -2988,6 +2992,22 @@
 			]
 		},
 		{
+			"name": "raft_restart_sim_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_restart_sim_test.w", "-o", "bin/raft_restart_sim_64_test"]},
+				{"cmd": ["bin/raft_restart_sim_64_test"]}
+			]
+		},
+		{
+			"name": "raft_restart_sim_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_restart_sim_test.w", "-o", "bin/raft_restart_sim_test"]},
+				{"cmd": ["bin/raft_restart_sim_test"]}
+			]
+		},
+		{
 			"name": "raft_sim_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3009,6 +3029,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_test.w", "-o", "bin/raft_test"]},
 				{"cmd": ["bin/raft_test"]}
+			]
+		},
+		{
+			"name": "raft_wal_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_wal_test.w", "-o", "bin/raft_wal_64_test"]},
+				{"cmd": ["bin/raft_wal_64_test"]}
+			]
+		},
+		{
+			"name": "raft_wal_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_wal_test.w", "-o", "bin/raft_wal_test"]},
+				{"cmd": ["bin/raft_wal_test"]}
 			]
 		},
 		{
