@@ -222,6 +222,22 @@
 			]
 		},
 		{
+			"name": "memory_debug_fault_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/memory_debug_overflow_fixture.w", "-o", "bin/memory_debug_overflow_fixture"]},
+				{"cmd": ["bin/memory_debug_overflow_fixture"], "expect_fail": true},
+				{"cmd": ["bin/wv2", "tests/memory_debug_uaf_fixture.w", "-o", "bin/memory_debug_uaf_fixture"]},
+				{"cmd": ["bin/memory_debug_uaf_fixture"], "expect_fail": true},
+				{"cmd": ["bin/wv2", "tests/memory_debug_double_free_fixture.w", "-o", "bin/memory_debug_double_free_fixture"]},
+				{"cmd": ["bin/memory_debug_double_free_fixture"], "expect_fail": true, "expect_stderr": "memory_debug: double free() detected"},
+				{"cmd": ["bin/wv2", "tests/memory_debug_invalid_free_fixture.w", "-o", "bin/memory_debug_invalid_free_fixture"]},
+				{"cmd": ["bin/memory_debug_invalid_free_fixture"], "expect_fail": true, "expect_stderr": "memory_debug: free() called on a pointer the debug allocator never returned"},
+				{"cmd": ["bin/wv2", "tests/memory_debug_bad_oldlen_fixture.w", "-o", "bin/memory_debug_bad_oldlen_fixture"]},
+				{"cmd": ["bin/memory_debug_bad_oldlen_fixture"], "expect_fail": true, "expect_stderr": "memory_debug: realloc() oldlen does not match the tracked allocation size"}
+			]
+		},
+		{
 			"name": "buffer_field_assign_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -310,7 +326,7 @@
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "deps", "tests/deps_fixture.w"], "stdout_file": "bin/deps_test.out"},
-				{"cmd": ["diff", "-u", "-", "bin/deps_test.out"], "stdin": "structures/hash_table.w\nlib/memory.w\nlib/linux.w\ncode_generator/integer.w\nlib/__arch__/x86/syscalls.w\nstructures/w_list.w\nlib/stack_trace.w\ntests/deps_fixture.w\nlib/lib.w\nlib/__arch__/x86/context.w\nlib/assert.w\nstructures/prelude.w\n"},
+				{"cmd": ["diff", "-u", "-", "bin/deps_test.out"], "stdin": "structures/hash_table.w\nlib/memory.w\nlib/linux.w\ncode_generator/integer.w\nlib/__arch__/x86/syscalls.w\nlib/memory_freelist.w\nlib/memory_debug.w\nlib/stack_trace.w\nstructures/w_list.w\ntests/deps_fixture.w\nlib/lib.w\nlib/__arch__/x86/context.w\nlib/assert.w\nstructures/prelude.w\n"},
 				{"cmd": ["bin/wv2", "deps", "--json", "tests/deps_fixture.w"], "expect_stdout": ["{\"file\": \"tests/deps_fixture.w\"}", "{\"file\": \"lib/assert.w\"}", "{\"file\": \"structures/hash_table.w\"}"]},
 				{"cmd": ["bin/wv2", "deps", "tests/type_system_error_fixture.w"], "expect_fail": true, "expect_stderr": "assignment to const"},
 				{"cmd": ["bin/wv2", "deps"], "expect_fail": true, "expect_stderr": "usage: w deps"},
@@ -1671,6 +1687,7 @@
 				"map_float_64_test",
 				"map_set_builtin_64_test",
 				"md5_64_test",
+				"memory_debug_64_test",
 				"memtable_64_test",
 				"method_chaining_64_test",
 				"monotime_64_test",
@@ -1869,6 +1886,7 @@
 				"bounds_trap_test",
 				"range_bounds_trap_test",
 				"container_trap_test",
+				"memory_debug_fault_test",
 				"buffer_field_assign_test",
 				"array_error_test",
 				"syscall_arity_test",
@@ -2002,6 +2020,7 @@
 				"map_float_test",
 				"math_test",
 				"md5_test",
+				"memory_debug_test",
 				"memtable_test",
 				"method_chaining_test",
 				"monotime_test",
@@ -2892,6 +2911,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/x/unsafe/md5_test.w", "-o", "bin/md5_test"]},
 				{"cmd": ["bin/md5_test"]}
+			]
+		},
+		{
+			"name": "memory_debug_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/memory_debug_test.w", "-o", "bin/memory_debug_64_test"]},
+				{"cmd": ["bin/memory_debug_64_test"]}
+			]
+		},
+		{
+			"name": "memory_debug_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/memory_debug_test.w", "-o", "bin/memory_debug_test"]},
+				{"cmd": ["bin/memory_debug_test"]}
 			]
 		},
 		{

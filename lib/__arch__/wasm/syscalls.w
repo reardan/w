@@ -220,6 +220,13 @@ int munmap(int addr, int length):
 	return 0
 
 
+# WASI's linear memory has no per-page protection primitive, so guard
+# pages (lib/memory_debug.w) can't be enforced here; always report
+# failure so callers degrade to bookkeeping-only behavior.
+int mprotect(int addr, int length, int prot):
+	return -1
+
+
 int sys_mincore(int addr, int length, int vec):
 	return -1
 
