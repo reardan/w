@@ -24,10 +24,22 @@ Delivery semantics (the pre-listen-send contract): raft_tcp_send only
 appends the frame to the peer's outbound buffer; the buffer SURVIVES
 connection failures. While a peer has buffered bytes and no live
 socket, every raft_tcp_pump re-dials it, so a frame sent before the
-peer starts listening is still delivered once the peer appears. Bytes
-are dropped only when the receiver closes mid-frame or rejects a
-malformed frame; raft's own retransmission covers those cases, so the
-transport never guarantees more than best-effort per frame.
+peer starts listening is still delivered once the peer appears.
+
+Each peer's outbound buffer is BOUNDED: at most max_pending bytes
+(default 256 KiB, raft_tcp_set_max_pending) stay queued, so a dead
+peer no longer grows its buffer without limit under heartbeats. When
+a new frame would overflow the cap, the OLDEST whole buffered frames
+are dropped to make room — raft retransmits by design and the
+freshest frames matter most — and raft_tcp_dropped_frames counts
+them. A partially-written head frame is never dropped: its sent
+prefix is already on the wire, so dropping the rest would desync the
+framing. A single frame larger than the cap is refused at send
+(return 0), the same contract as an oversize frame. Bytes are
+otherwise dropped only when the receiver closes mid-frame or rejects
+a malformed frame; raft's own retransmission covers every dropped or
+lost frame, so the transport never guarantees more than best-effort
+per frame.
 
 Ownership: raft_tcp_send does NOT take ownership of the message (the
 caller still frees it — the frame is encoded immediately). Messages
@@ -46,6 +58,11 @@ import libs.standard.distributed.raft_wire
 # Largest accepted frame payload: 1 MiB.
 int rt_max_frame():
 	return 1 << 20
+
+
+# Default per-peer outbound buffer cap: 256 KiB.
+int rt_default_max_pending():
+	return 1 << 18
 
 
 int rt_scratch_size():
@@ -91,24 +108,35 @@ void rt_buf_append(rt_buf* b, char* src, int n):
 	b.len = b.len + n
 
 
-# Drops the first n bytes, sliding the rest to the front.
-void rt_buf_consume(rt_buf* b, int n):
-	int i = 0
-	while (n + i < b.len):
-		b.data[i] = b.data[n + i]
+# Drops n bytes starting at off, sliding the tail down over them.
+void rt_buf_remove(rt_buf* b, int off, int n):
+	int i = off
+	while (i + n < b.len):
+		b.data[i] = b.data[i + n]
 		i = i + 1
 	b.len = b.len - n
+
+
+# Drops the first n bytes, sliding the rest to the front.
+void rt_buf_consume(rt_buf* b, int n):
+	rt_buf_remove(b, 0, n)
 
 
 # ---- connection records --------------------------------------------------------
 
 # A registered peer and its (lazily dialed) outbound connection.
-# fd is -1 while disconnected; out holds encoded frames not yet written.
+# fd is -1 while disconnected; out holds encoded frames not yet
+# written. frame_lens tracks the on-wire length of every frame still
+# in out (oldest first) and head_sent how many bytes of the head
+# frame already reached the socket, so cap enforcement can drop whole
+# stale frames without ever splitting a partially-sent one.
 struct rt_peer:
 	int id
 	int port
 	int fd
 	rt_buf* out
+	list[int] frame_lens
+	int head_sent
 
 
 # One accepted inbound connection; acc accumulates bytes until whole
@@ -125,6 +153,8 @@ struct raft_tcp:
 	list[rt_conn*] conns
 	list[raft_msg*] inbox
 	char* scratch
+	int max_pending
+	int dropped
 
 
 # ---- lifecycle -----------------------------------------------------------------
@@ -154,6 +184,8 @@ raft_tcp* raft_tcp_new(int self_id, int port):
 	t.conns = new list[rt_conn*]
 	t.inbox = new list[raft_msg*]
 	t.scratch = malloc(rt_scratch_size())
+	t.max_pending = rt_default_max_pending()
+	t.dropped = 0
 	return t
 
 
@@ -166,6 +198,7 @@ void raft_tcp_free(raft_tcp* t):
 		if (p.fd >= 0):
 			close(p.fd)
 		rt_buf_free(p.out)
+		list_free[int](p.frame_lens)
 		free(p)
 		i = i + 1
 	i = 0
@@ -208,6 +241,8 @@ void raft_tcp_add_peer(raft_tcp* t, int peer_id, int port):
 	p.port = port
 	p.fd = 0 - 1
 	p.out = rt_buf_new()
+	p.frame_lens = new list[int]
+	p.head_sent = 0
 	t.peers.push(p)
 
 
@@ -238,6 +273,16 @@ void rt_peer_disconnect(rt_peer* p):
 	p.fd = 0 - 1
 
 
+# Advances the frame accounting after n buffered bytes were written
+# to the socket: fully-written frames leave frame_lens; a partial
+# write leaves the head frame's already-sent byte count in head_sent.
+void rt_peer_note_sent(rt_peer* p, int n):
+	p.head_sent = p.head_sent + n
+	while (p.frame_lens.length > 0 && p.head_sent >= p.frame_lens[0]):
+		p.head_sent = p.head_sent - p.frame_lens[0]
+		list_remove_at[int](p.frame_lens, 0)
+
+
 # Writes as much pending data as the socket accepts right now.
 void rt_peer_flush(rt_peer* p):
 	int r = poll_single(p.fd, poll_out(), 0)
@@ -251,6 +296,7 @@ void rt_peer_flush(rt_peer* p):
 	int n = socket_send(p.fd, p.out.data, p.out.len, msg_nosignal())
 	if (n > 0):
 		rt_buf_consume(p.out, n)
+		rt_peer_note_sent(p, n)
 		return
 	if (n == 0 - net_eagain() || n == 0 - 4):
 		return
@@ -258,8 +304,13 @@ void rt_peer_flush(rt_peer* p):
 
 
 # Frames and queues m for peer m.to, dialing lazily. Does NOT take
-# ownership of m. Returns 1 when queued, 0 for an unknown peer or an
-# oversize message.
+# ownership of m. Returns 1 when queued, 0 for an unknown peer, an
+# oversize message, or a frame that alone exceeds the max_pending
+# cap (nothing is buffered in any 0 case). When queueing the new
+# frame would push the peer's buffer over the cap, the oldest whole
+# buffered frames are dropped to make room (counted by
+# raft_tcp_dropped_frames); a partially-sent head frame is never
+# dropped — see the header.
 int raft_tcp_send(raft_tcp* t, raft_msg* m):
 	rt_peer* p = rt_find_peer(t, m.to)
 	if (cast(int, p) == 0):
@@ -267,10 +318,36 @@ int raft_tcp_send(raft_tcp* t, raft_msg* m):
 	int size = raft_wire_size(m)
 	if (size > rt_max_frame()):
 		return 0
-	char* tmp = malloc(size + 4)
+	int fsize = size + 4
+	if (fsize > t.max_pending):
+		# A frame that alone exceeds the cap can never be buffered:
+		# refuse it up front (same contract as oversize) without
+		# disturbing the frames already queued.
+		return 0
+	while (p.out.len + fsize > t.max_pending):
+		# Drop the oldest WHOLE frame. When the head frame is
+		# partially on the wire it must survive intact, so the oldest
+		# droppable frame is the one after it.
+		int idx = 0
+		if (p.head_sent > 0):
+			idx = 1
+		if (idx >= p.frame_lens.length):
+			break
+		int off = 0
+		if (idx == 1):
+			off = p.frame_lens[0] - p.head_sent
+		rt_buf_remove(p.out, off, p.frame_lens[idx])
+		list_remove_at[int](p.frame_lens, idx)
+		t.dropped = t.dropped + 1
+	if (p.out.len + fsize > t.max_pending):
+		# Only an undroppable partially-sent head remains and the new
+		# frame still does not fit.
+		return 0
+	char* tmp = malloc(fsize)
 	raft_wire_u32(tmp, size)
 	raft_wire_encode(m, tmp + 4)
-	rt_buf_append(p.out, tmp, size + 4)
+	rt_buf_append(p.out, tmp, fsize)
+	p.frame_lens.push(fsize)
 	free(tmp)
 	if (p.fd < 0):
 		rt_peer_dial(p)
@@ -376,3 +453,42 @@ raft_msg* raft_tcp_recv(raft_tcp* t):
 
 int raft_tcp_inbox_count(raft_tcp* t):
 	return t.inbox.length
+
+
+# ---- buffer bounds ---------------------------------------------------------------
+
+# Sets the outbound buffer cap, in bytes, applied to every peer of
+# this endpoint (one global knob; default rt_default_max_pending()).
+# A frame whose framed size (payload plus the 4-byte length header)
+# exceeds the cap can never be buffered: raft_tcp_send refuses it
+# with return 0, the same contract as a frame over rt_max_frame().
+# The 4096-byte floor keeps raft control traffic always bufferable;
+# note rt_max_frame() is 1 MiB, so a cap below a large append frame's
+# size refuses that frame at send.
+void raft_tcp_set_max_pending(raft_tcp* t, int bytes):
+	assert1(bytes >= 4096)
+	t.max_pending = bytes
+
+
+# Total frames dropped by cap enforcement since creation, all peers.
+int raft_tcp_dropped_frames(raft_tcp* t):
+	return t.dropped
+
+
+# Bytes buffered for peer_id and not yet written to its socket, or
+# -1 for an unknown peer.
+int raft_tcp_pending_bytes(raft_tcp* t, int peer_id):
+	rt_peer* p = rt_find_peer(t, peer_id)
+	if (cast(int, p) == 0):
+		return 0 - 1
+	return p.out.len
+
+
+# Frames still (wholly or partially) buffered for peer_id, or -1 for
+# an unknown peer. A partially-sent head frame counts until its last
+# byte is written.
+int raft_tcp_pending_frames(raft_tcp* t, int peer_id):
+	rt_peer* p = rt_find_peer(t, peer_id)
+	if (cast(int, p) == 0):
+		return 0 - 1
+	return p.frame_lens.length

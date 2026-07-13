@@ -303,3 +303,181 @@ void test_vote_none_roundtrip():
 	raft_free(r2)
 	raft_wal_close(rw2)
 	free(path)
+
+
+# ---- snapshot rewrite compacts the wal (§7) -----------------------------------------
+
+int rwal_snap_index_int(raft* r):
+	u64* v = u64_new()
+	raft_snapshot_index(r, v)
+	int n = u64_to_int(v)
+	u64_free(v)
+	return n
+
+
+int rwal_snap_term_int(raft* r):
+	u64* v = u64_new()
+	raft_snapshot_term(r, v)
+	int n = u64_to_int(v)
+	u64_free(v)
+	return n
+
+
+void test_snapshot_rewrite_compacts_wal():
+	char* path = rwal_path(c"snap.log")
+	create_file(path, 420)
+	raft_wal* rw = raft_wal_open(path)
+	assert1(cast(int, rw) != 0)
+	raft* r = rwal_single_node(42)
+	raft_start(r, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_tick(r, 100, out)
+	assert_equal(1, raft_wal_sync(rw, r))   # STATE
+	assert_equal(1, raft_propose(r, c"a", 100, out))
+	assert_equal(1, raft_propose(r, c"b", 101, out))
+	assert_equal(1, raft_propose(r, c"c", 102, out))
+	assert_equal(1, raft_propose(r, c"d", 103, out))
+	assert_equal(1, raft_propose(r, c"e", 104, out))
+	assert_equal(5, raft_wal_sync(rw, r))   # five APPENDs
+	assert_equal(6, wal_record_count(rw.wlog))
+	int before = wal_size(rw.wlog)
+	# apply three, snapshot at 3 with a binary blob (embedded zeros)
+	raft_entry* a1 = raft_pop_apply(r)
+	assert_strings_equal(c"a", a1.command)
+	raft_entry* a2 = raft_pop_apply(r)
+	assert_strings_equal(c"b", a2.command)
+	raft_entry* a3 = raft_pop_apply(r)
+	assert_strings_equal(c"c", a3.command)
+	char* blob = malloc(5)
+	blob[0] = 9
+	blob[1] = 0
+	blob[2] = 8
+	blob[3] = 0
+	blob[4] = 7
+	assert_equal(1, raft_take_snapshot(r, blob, 5))
+	assert_equal(1, raft_wal_pending(rw, r))
+	# the sync REWRITES the wal: SNAPSHOT + STATE + APPEND(d) + APPEND(e)
+	assert_equal(4, raft_wal_sync(rw, r))
+	assert_equal(4, wal_record_count(rw.wlog))
+	assert1(wal_size(rw.wlog) < before)
+	assert_equal(0, raft_wal_pending(rw, r))
+	assert_equal(0, raft_wal_sync(rw, r))
+	assert_equal(2, raft_wal_shadow_log_length(rw))
+	raft_free(r)
+	raft_wal_close(rw)
+	# crash + reopen: the snapshot survives into the recovered raft
+	raft_wal* rw2 = raft_wal_open(path)
+	assert1(cast(int, rw2) != 0)
+	assert_equal(4, wal_record_count(rw2.wlog))
+	assert_equal(2, raft_wal_shadow_log_length(rw2))
+	list[int] peers = new list[int]
+	raft* r2 = raft_wal_recover(rw2, 1, peers, 50, 100, 10, 44)
+	assert_equal(0, raft_wal_pending(rw2, r2))
+	assert_equal(0, raft_wal_sync(rw2, r2))
+	assert_equal(3, rwal_snap_index_int(r2))
+	assert_equal(1, rwal_snap_term_int(r2))
+	assert_equal(2, raft_log_length(r2))
+	assert_equal(5, raft_last_index(r2))
+	# the snapshot's state is committed and applied by definition
+	assert_equal(3, rwal_commit_int(r2))
+	assert_equal(0, raft_pending_apply(r2))
+	raft_entry* e4 = raft_log_at(r2, 4)
+	assert_equal(1, u64_to_int(e4.term))
+	assert_strings_equal(c"d", e4.command)
+	raft_entry* e5 = raft_log_at(r2, 5)
+	assert_strings_equal(c"e", e5.command)
+	# the blob comes back through the pending slot, content-equal
+	assert_equal(1, raft_has_pending_snapshot(r2))
+	int blen = 0
+	u64* bidx = u64_new()
+	char* got = raft_take_pending_snapshot(r2, &blen, bidx)
+	assert_equal(5, blen)
+	assert_equal(9, got[0] & 255)
+	assert_equal(0, got[1] & 255)
+	assert_equal(8, got[2] & 255)
+	assert_equal(0, got[3] & 255)
+	assert_equal(7, got[4] & 255)
+	assert_equal(3, u64_to_int(bidx))
+	free(got)
+	u64_free(bidx)
+	# a sync after recovery appends only genuine changes: a fresh
+	# election bumps the term, one STATE record follows
+	raft_start(r2, 200)
+	raft_tick(r2, 300, out)
+	assert_equal(raft_leader(), raft_state(r2))
+	assert_equal(2, rwal_term_int(r2))
+	assert_equal(1, raft_wal_sync(rw2, r2))
+	assert_equal(5, wal_record_count(rw2.wlog))
+	assert_equal(0, raft_wal_pending(rw2, r2))
+	free(blob)
+	raft_free(r2)
+	raft_wal_close(rw2)
+	free(path)
+
+
+# ---- torn tail after a snapshot record ------------------------------------------------
+
+void test_snapshot_torn_tail():
+	char* path = rwal_path(c"snaptorn.log")
+	create_file(path, 420)
+	raft_wal* rw = raft_wal_open(path)
+	assert1(cast(int, rw) != 0)
+	raft* r = rwal_single_node(42)
+	raft_start(r, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_tick(r, 100, out)
+	assert_equal(1, raft_propose(r, c"a", 100, out))
+	assert_equal(1, raft_propose(r, c"b", 101, out))
+	assert_equal(3, raft_wal_sync(rw, r))   # STATE + APPEND a + APPEND b
+	raft_entry* a1 = raft_pop_apply(r)
+	assert_strings_equal(c"a", a1.command)
+	raft_entry* a2 = raft_pop_apply(r)
+	assert_strings_equal(c"b", a2.command)
+	assert_equal(1, raft_take_snapshot(r, c"T2", 2))
+	assert_equal(2, raft_wal_sync(rw, r))   # rewrite: SNAPSHOT + STATE
+	assert_equal(1, raft_propose(r, c"c", 105, out))
+	assert_equal(1, raft_propose(r, c"dd", 106, out))
+	assert_equal(2, raft_wal_sync(rw, r))   # APPEND c + APPEND dd
+	assert_equal(4, wal_record_count(rw.wlog))
+	int full = wal_size(rw.wlog)
+	raft_free(r)
+	raft_wal_close(rw)
+	# tear the final record: rewrite the file cut 4 bytes short
+	int fd = open(path, 0, 0)
+	char* buf = malloc(full)
+	assert_equal(full, read_exact(fd, buf, full))
+	close(fd)
+	fd = create_file(path, 420)
+	assert_equal(full - 4, write_all(fd, buf, full - 4))
+	close(fd)
+	free(buf)
+	# reopen: SNAPSHOT + STATE + APPEND(c) survive, the torn APPEND(dd)
+	# is discarded
+	raft_wal* rw2 = raft_wal_open(path)
+	assert1(cast(int, rw2) != 0)
+	assert_equal(3, wal_record_count(rw2.wlog))
+	assert_equal(1, raft_wal_shadow_log_length(rw2))
+	list[int] peers = new list[int]
+	raft* r2 = raft_wal_recover(rw2, 1, peers, 50, 100, 10, 45)
+	assert_equal(2, rwal_snap_index_int(r2))
+	assert_equal(1, rwal_snap_term_int(r2))
+	assert_equal(1, raft_log_length(r2))
+	assert_equal(3, raft_last_index(r2))
+	assert_equal(2, rwal_commit_int(r2))
+	assert_equal(1, rwal_term_int(r2))
+	raft_entry* e3 = raft_log_at(r2, 3)
+	assert_strings_equal(c"c", e3.command)
+	# pending blob intact through the torn tail
+	assert_equal(1, raft_has_pending_snapshot(r2))
+	int blen = 0
+	u64* bidx = u64_new()
+	char* got = raft_take_pending_snapshot(r2, &blen, bidx)
+	assert_equal(2, blen)
+	assert_equal('T', got[0] & 255)
+	assert_equal('2', got[1] & 255)
+	assert_equal(2, u64_to_int(bidx))
+	free(got)
+	u64_free(bidx)
+	raft_free(r2)
+	raft_wal_close(rw2)
+	free(path)
