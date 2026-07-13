@@ -112,11 +112,22 @@ against old output).
   read-only after link time, so they're fine in a non-writable section)
   and `.data` (R+W, no execute: IAT slots, and any mutable globals via
   the already-`data_split`-aware `program.w` path).
-- Both sections keep `SectionAlignment == FileAlignment == 0x1000` so
-  the existing "RVA equals file offset" invariant holds *per section*
-  (each just starts its own page); `pe_finish_64()` writes them as two
-  page-aligned regions, mirroring `elf_finish_arm64()`'s two-`PT_LOAD`
-  write.
+- `data_offset` must be fixed **before** code size is known (global and
+  IAT-slot vaddrs are baked into emitted code as they appear), so
+  `.data` gets a fixed RVA the same way arm64 does it: `ImageBase +
+  16MB`. PE sections should be virtually adjacent, so `.text` declares
+  `VirtualSize` as the full span up to `.data`'s RVA while its
+  `SizeOfRawData` stays the actual code size — standard zero-fill
+  semantics, the same mechanism `.bss` uses. `SizeOfImage` grows to
+  cover `.data`'s end.
+- The "RVA equals file offset" invariant survives for `.text` (where
+  all the finish-time patching happens) but **not** for `.data`, whose
+  file offset is the page-aligned end of the code stream. That's fine:
+  nothing addresses the data section by file offset — the IAT
+  `FirstThunk` RVAs come from `dyn_import_got_vaddr(i) - code_offset`,
+  which is layout-independent. `pe_finish_64()` writes the two regions
+  back-to-back, mirroring `elf_finish_arm64()`'s two-`PT_LOAD` write
+  (`elf_arm64.w:188-208`).
 - `NumberOfSections` becomes 2; add the second `IMAGE_SECTION_HEADER`
   (characteristics `0xC0000040`: `INITIALIZED_DATA | READ | WRITE`, no
   `EXECUTE`).
@@ -148,17 +159,49 @@ Mirrors `elf_arm64.w` almost exactly, minus the rebase table:
   substance.
 - `compiler.w`'s `x64` branch of `target_selector_apply` gains
   `data_split = 1`.
+- **Extern data objects (COPY relocations) must move too.** This is the
+  part the arm64 recipe does NOT cover, because arm64 sidesteps it by
+  rejecting extern data outright — `grammar/extern_statement.w:71-75`
+  says exactly why: *"The copy space below is reserved in the code
+  stream, which W^X arm64 targets map read-execute — the loader's COPY
+  write would fault."* x86/x64 DO support extern data and it is
+  load-bearing: `extern void* stdout` (`extern_data_test`) and
+  `c_import`'s weak data imports (stdout/errno/optind,
+  `libs/extras/c_import/importer.w:1129`). ld.so's COPY-relocation
+  write is exactly the same class of load-time loader write as the
+  win64 IAT bind — with `data_split` on and the copy space still in the
+  code stream, every `c_import` test segfaults at load. Fix: both
+  emission sites (`extern_statement.w:84-89`, `importer.w:1129`) route
+  the copy space through `emit_data_zeros` + `sym_define_global_at`
+  when `data_split` is set, the same branch shape
+  `define_global_variable` already has. Once that lands, arm64's
+  "extern data not supported yet" error can be lifted as a free
+  follow-up — its blocker is this exact issue — but that's optional and
+  not part of this plan's gates.
 
 ### Stage C — x86 32-bit Linux (`code_generator/elf.w` / `elf_32.w`)
 
 Same shape as Stage B, adjusted for `Elf32_Phdr` (32-bit fields:
 `elf_program_header()` in `elf_32.w:36-44` takes `flags` as a plain arg
 already unlike the 64-bit header, so the R+W variant is a second call
-with `flags=6` instead of `7`). **Highest blast radius of the three**:
+with `flags=6` instead of `7`). Stage B's extern-data/COPY fix carries
+over automatically — it branches on `data_split`, not on a target. **Highest blast radius of the three**:
 x86 is the *default* target (no selector keyword — `link_impl`'s initial
 reset, `compiler.w:362-370`) and is the seed/bootstrap chain root
 (`./w w.w -> wv2 -> wv3 -> wv4 -> wv5`). Do this last, after A and B have
 proven the pattern out in review and in CI, and give it its own PR.
+
+### What deliberately does not change
+
+- **The REPL and wdbg are unaffected.** Both compile in-process into
+  their own RWX `mmap` buffer (`repl/core.w:1038`, `debugger/wdbg.w`'s
+  header comment) and never call `target_selector_apply` or the
+  container writers, so `data_split` stays 0 on their path and globals
+  stay inline in the executed buffer — exactly as
+  `code_emitter.w:10-15` documents. This is not a hope: the arm64
+  selector has set `data_split = 1` since Stage 3 without breaking
+  either tool, so the isolation is already proven, not newly relied on.
+- wasm: already mandatory-split (`compiler.w:328`), no change.
 
 ### Non-goals
 
