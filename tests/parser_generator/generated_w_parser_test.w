@@ -229,6 +229,12 @@ void test_parse_real_hello_fixture():
 
 
 void test_parse_all_tracked_w_files():
+	# The manifest is one BATCH of tracked files, not the whole repo:
+	# tools/parser_generator_w_batches.sh reruns this binary per slice,
+	# because retaining every file's AST in one 32-bit process hits the
+	# address-space ceiling once the repo's tracked source grows past a
+	# few MB (and freeing per file crawls the first-fit allocator).
+	# The count floor only guards against an empty/misread manifest.
 	parsed_manifest_count = 0
 	assert_w_parse_manifest(c"bin/parser_generator_w_files.txt")
-	assert1(parsed_manifest_count > 100)
+	assert1(parsed_manifest_count > 0)

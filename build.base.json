@@ -783,7 +783,7 @@
 				{"cmd": ["git", "ls-files", "*.w"], "stdout_file": "bin/parser_generator_w_files.txt"},
 				{"cmd": ["bin/parser_generator", "tests/parser_generator/w.pg", "-o", "bin/generated_w_parser.w"]},
 				{"cmd": ["bin/wv2", "tests/parser_generator/generated_w_parser_test.w", "-o", "bin/parser_generator_w_test"]},
-				{"cmd": ["bin/parser_generator_w_test"]}
+				{"cmd": ["sh", "tools/parser_generator_w_batches.sh"]}
 			]
 		},
 		{
@@ -919,6 +919,25 @@
 				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/wvdiff_new.txt"], "expect_status": 1, "expect_stdout": ["--- tests/vcs/wvdiff_old.txt", "+++ tests/vcs/wvdiff_new.txt", "@@ -1,4 +1,5 @@", "-beta", "+BETA", "+epsilon"]},
 				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/no_such_file.txt"], "expect_status": 2, "expect_stderr": "wvdiff: cannot read"},
 				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt"], "expect_status": 2, "expect_stderr": "usage: wvdiff <old> <new>"}
+			]
+		},
+		{
+			"name": "wvc",
+			"deps": ["wv2"],
+			"inputs": ["tools/wvc.w"],
+			"outputs": ["bin/wvc"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/wvc.w", "-o", "bin/wvc"]}
+			]
+		},
+		{
+			"name": "wvc_e2e_test",
+			"deps": ["wv2", "wvc"],
+			"inputs": ["tests/wvc_e2e_test.w"],
+			"outputs": ["bin/wvc_e2e_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wvc_e2e_test.w", "-o", "bin/wvc_e2e_test"]},
+				{"cmd": ["bin/wvc_e2e_test"]}
 			]
 		},
 		{
@@ -1430,6 +1449,14 @@
 			]
 		},
 		{
+			"name": "x64_fmath64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_fmath64_test.w", "-o", "bin/x64_fmath64_test"]},
+				{"cmd": ["bin/x64_fmath64_test"], "expect_stdout": "x64 fmath64 OK"}
+			]
+		},
+		{
 			"name": "x64_int64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1625,6 +1652,7 @@
 				"verify_x64",
 				"x64_test",
 				"x64_float_test",
+				"x64_fmath64_test",
 				"x64_int64_test",
 				"dynamic_test_x64",
 				"extern_alias_test_x64",
@@ -1849,6 +1877,7 @@
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",
+				"wvc_e2e_test",
 				"unsafe_import_test",
 				"manifest_check",
 				"result_propagate_test",
