@@ -493,6 +493,13 @@
 			]
 		},
 		{
+			"name": "operator_overload_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/operator_no_match_error_fixture.w", "tests/operator_token_error_fixture.w", "tests/operator_arity_error_fixture.w", "tests/operator_struct_param_error_fixture.w", "tests/operator_variadic_error_fixture.w"]}
+			]
+		},
+		{
 			"name": "compound_assign_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1835,6 +1842,7 @@
 				"int64_x86_error_test",
 				"type_system_error_test",
 				"type_system_warning_test",
+				"operator_overload_error_test",
 				"compound_assign_test",
 				"char_literal_test",
 				"print_builtin_test",

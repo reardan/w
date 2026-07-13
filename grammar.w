@@ -3,6 +3,7 @@ import grammar.promote
 import grammar.generic
 import grammar.defer
 import grammar.type_name
+import grammar.operator_overload
 import grammar.list_builtin
 import grammar.json_builtin
 import grammar.print_builtin

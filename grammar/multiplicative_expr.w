@@ -4,10 +4,16 @@ TODO: push/pop edx: is it necessary?
 
 # Shared lowering for * / %: the var and float layers want the left
 # operand popped into ebx, and so does imul; idiv/imod pop it off the
-# machine stack themselves. % is integer-only.
+# machine stack themselves. % is integer-only. A struct-value operand
+# dispatches to a user operator definition first
+# (grammar/operator_overload.w).
 int multiplicative_op(int type, int op):
 	int left_type = binary1(type)
+	int left_slot = stack_pos
 	int right_type = promote(unary_expression())
+	int overload_type = operator_overload_binary(left_type, right_type, op, left_slot)
+	if (overload_type):
+		return overload_type
 	if (var_binary_operands(left_type, right_type)):
 		if (op == '%'):
 			error(c"var operands do not support %")
