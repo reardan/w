@@ -1406,6 +1406,14 @@
 			]
 		},
 		{
+			"name": "x64_fmath64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_fmath64_test.w", "-o", "bin/x64_fmath64_test"]},
+				{"cmd": ["bin/x64_fmath64_test"], "expect_stdout": "x64 fmath64 OK"}
+			]
+		},
+		{
 			"name": "x64_int64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1602,6 +1610,7 @@
 				"verify_x64",
 				"x64_test",
 				"x64_float_test",
+				"x64_fmath64_test",
 				"x64_int64_test",
 				"dynamic_test_x64",
 				"extern_alias_test_x64",
@@ -1680,6 +1689,7 @@
 				"raft_tcp_64_test",
 				"raft_wal_64_test",
 				"raft_wire_64_test",
+				"rand_64_test",
 				"rc4_64_test",
 				"result_64_test",
 				"result_propagate_64_test",
@@ -2012,6 +2022,7 @@
 				"raft_test",
 				"raft_wal_test",
 				"raft_wire_test",
+				"rand_test",
 				"range_test",
 				"rc4_test",
 				"result_test",
@@ -3193,6 +3204,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_wire_test.w", "-o", "bin/raft_wire_test"]},
 				{"cmd": ["bin/raft_wire_test"]}
+			]
+		},
+		{
+			"name": "rand_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/rand_test.w", "-o", "bin/rand_64_test"]},
+				{"cmd": ["bin/rand_64_test"]}
+			]
+		},
+		{
+			"name": "rand_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/rand_test.w", "-o", "bin/rand_test"]},
+				{"cmd": ["bin/rand_test"]}
 			]
 		},
 		{
