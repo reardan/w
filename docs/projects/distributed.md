@@ -75,7 +75,16 @@ plumbing, `libs/standard/crypto/` hashing.
 - Phase 4c: the demo replicated KV store wiring raft + wal + lsm +
   rpc together over `lib/framing.w` — the library's first
   real-socket consumer.
-- Phase 5 candidates: raft no-op entry on election win (closes the
-  single-node restart re-commit gap), snapshots/InstallSnapshot,
-  pre-vote, a seed-sweep target running the sim scenarios across
-  hundreds of schedules.
+- Phase 5 (landed): raft hardening — opt-in no-op-on-win (closes the
+  §5.4.2 restart re-commit gap) and pre-vote with leader stickiness
+  (inflated-term rejoiners cannot disrupt a stable leader); snapshots
+  with InstallSnapshot (wire type 4) and pending-blob handoff to the
+  state machine, including wal-rewrite compaction in raft_wal;
+  bounded raft_tcp outbound buffers (drop-oldest, never a
+  partially-sent head); and raft_sweep_test — 100 seeds x 2 scenarios
+  of lossy elections and partition churn with per-seed safety
+  invariants, byte-deterministic across targets.
+- Next candidates: KV/lsm snapshot integration (serialize lsm state
+  into raft snapshots), binary-safe raft commands (length-carrying
+  entries), an arena/size-class allocator for long-lived processes
+  (see ai_tooling_next_steps.md), joint-consensus membership changes.

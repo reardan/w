@@ -1657,6 +1657,7 @@
 				"raft_64_test",
 				"raft_restart_sim_64_test",
 				"raft_sim_64_test",
+				"raft_sweep_64_test",
 				"raft_tcp_64_test",
 				"raft_wal_64_test",
 				"raft_wire_64_test",
@@ -1986,6 +1987,7 @@
 				"quorum_test",
 				"raft_restart_sim_test",
 				"raft_sim_test",
+				"raft_sweep_test",
 				"raft_tcp_test",
 				"raft_test",
 				"raft_wal_test",
@@ -3099,6 +3101,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_sim_test.w", "-o", "bin/raft_sim_test"]},
 				{"cmd": ["bin/raft_sim_test"]}
+			]
+		},
+		{
+			"name": "raft_sweep_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_sweep_test.w", "-o", "bin/raft_sweep_64_test"]},
+				{"cmd": ["bin/raft_sweep_64_test"]}
+			]
+		},
+		{
+			"name": "raft_sweep_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_sweep_test.w", "-o", "bin/raft_sweep_test"]},
+				{"cmd": ["bin/raft_sweep_test"]}
 			]
 		},
 		{
