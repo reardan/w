@@ -944,3 +944,383 @@ void test_prevote_rejoiner_cannot_disrupt():
 	assert_equal(0 - 1, raft_voted_for(n1))
 	raft_test_free_msgs(out)
 	raft_free(n1)
+
+
+# ---- log compaction / InstallSnapshot (§7) -----------------------------------------
+
+raft_msg* raft_test_install(int from, int to, int term, int snap_index, int snap_term, int commit):
+	u64* t = u64_new_int(term)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), from, to, t)
+	u64_free(t)
+	u64_set_int(m.prev_log_index, snap_index)
+	u64_set_int(m.prev_log_term, snap_term)
+	u64_set_int(m.leader_commit, commit)
+	return m
+
+
+# Attach an owned blob copy to an install message (the message frees it).
+void raft_test_set_blob(raft_msg* m, char* bytes, int len):
+	char* copy = malloc(len + 1)
+	int i = 0
+	while (i < len):
+		copy[i] = bytes[i]
+		i = i + 1
+	copy[len] = 0
+	m.snap_data = copy
+	m.snap_len = len
+
+
+int raft_test_snap_index_int(raft* r):
+	u64* v = u64_new()
+	raft_snapshot_index(r, v)
+	int n = u64_to_int(v)
+	u64_free(v)
+	return n
+
+
+int raft_test_snap_term_int(raft* r):
+	u64* v = u64_new()
+	raft_snapshot_term(r, v)
+	int n = u64_to_int(v)
+	u64_free(v)
+	return n
+
+
+# Bytewise blob comparison — snapshot blobs are binary, never strcmp'd.
+void raft_test_assert_blob(char* want, int want_len, char* got, int got_len):
+	assert_equal(want_len, got_len)
+	int i = 0
+	while (i < want_len):
+		assert_equal(want[i] & 255, got[i] & 255)
+		i = i + 1
+
+
+void test_take_snapshot_compacts():
+	# single-node leader: propose five, apply three, snapshot at 3
+	list[int] peers = new list[int]
+	raft* r = raft_new(1, peers, 50, 100, 10, 42)
+	raft_start(r, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_tick(r, 100, out)
+	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(1, raft_propose(r, c"a", 100, out))
+	assert_equal(1, raft_propose(r, c"b", 101, out))
+	assert_equal(1, raft_propose(r, c"c", 102, out))
+	assert_equal(1, raft_propose(r, c"d", 103, out))
+	assert_equal(1, raft_propose(r, c"e", 104, out))
+	assert_equal(5, raft_test_commit_int(r))
+	# nothing applied yet: take_snapshot refuses (last_applied == base)
+	assert_equal(0, raft_take_snapshot(r, c"early", 5))
+	raft_entry* a1 = raft_pop_apply(r)
+	assert_strings_equal(c"a", a1.command)
+	raft_entry* a2 = raft_pop_apply(r)
+	assert_strings_equal(c"b", a2.command)
+	raft_entry* a3 = raft_pop_apply(r)
+	assert_strings_equal(c"c", a3.command)
+	assert_equal(1, raft_take_snapshot(r, c"S@3", 3))
+	# compacted: base (3, term 1), two entries remain, indexes preserved
+	assert_equal(3, raft_test_snap_index_int(r))
+	assert_equal(1, raft_test_snap_term_int(r))
+	assert_equal(2, raft_log_length(r))
+	assert_equal(5, raft_last_index(r))
+	assert_equal(5, raft_test_commit_int(r))
+	# the boundary: base + 1 is the first reachable conceptual index
+	raft_entry* first = raft_log_at(r, 4)
+	assert_strings_equal(c"d", first.command)
+	raft_entry* last = raft_log_at(r, 5)
+	assert_strings_equal(c"e", last.command)
+	# a locally taken snapshot never sets the inbound pending slot
+	assert_equal(0, raft_has_pending_snapshot(r))
+	# applies continue seamlessly across the base
+	raft_entry* a4 = raft_pop_apply(r)
+	assert_strings_equal(c"d", a4.command)
+	# a second snapshot at the new last_applied stacks on the first
+	assert_equal(1, raft_take_snapshot(r, c"S@4", 3))
+	assert_equal(4, raft_test_snap_index_int(r))
+	assert_equal(1, raft_log_length(r))
+	assert_equal(5, raft_last_index(r))
+	# same last_applied again: refused no-op
+	assert_equal(0, raft_take_snapshot(r, c"S@4", 3))
+	# compact to a fully empty log: last index and term survive in the
+	# snapshot meta
+	raft_entry* a5 = raft_pop_apply(r)
+	assert_strings_equal(c"e", a5.command)
+	assert_equal(1, raft_take_snapshot(r, c"S@5", 3))
+	assert_equal(0, raft_log_length(r))
+	assert_equal(5, raft_last_index(r))
+	u64* lt = u64_new()
+	raft_last_term(r, lt)
+	assert_equal(1, u64_to_int(lt))
+	u64_free(lt)
+	# proposing after full compaction lands at base + 1
+	assert_equal(1, raft_propose(r, c"f", 105, out))
+	assert_equal(6, raft_last_index(r))
+	assert_equal(6, raft_test_commit_int(r))
+	raft_entry* f = raft_log_at(r, 6)
+	assert_strings_equal(c"f", f.command)
+	raft_test_free_msgs(out)
+	raft_free(r)
+
+
+void test_append_consistency_across_boundary():
+	# a fresh follower installs a snapshot at (index 3, term 2), then
+	# the boundary rules: prev == base checks the snapshot term; a
+	# wrong term at the base rejects; prev < base is the stale-append
+	# case answered success with match = commit
+	raft* n2 = raft_test_node(2, 1, 3, 6)
+	raft_start(n2, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_msg* inst = raft_test_install(1, 2, 2, 3, 2, 3)
+	raft_test_set_blob(inst, c"blob", 4)
+	raft_on_msg(n2, inst, 10, out)
+	raft_msg_free(inst)
+	raft_test_free_msgs(out)
+	assert_equal(3, raft_test_snap_index_int(n2))
+	assert_equal(2, raft_test_snap_term_int(n2))
+	# clear the pending blob; this test drives the log side only
+	int blen = 0
+	u64* bidx = u64_new()
+	char* blob = raft_take_pending_snapshot(n2, &blen, bidx)
+	free(blob)
+	u64_free(bidx)
+	# prev == base with the WRONG term: consistency check fails
+	raft_msg* bad = raft_test_append(1, 2, 2, 3, 1, 3)
+	raft_test_add_entry(bad, 2, c"x")
+	raft_on_msg(n2, bad, 20, out)
+	raft_msg_free(bad)
+	assert_equal(1, out.length)
+	raft_msg* reply = out[0]
+	assert_equal(0, reply.success)
+	assert_equal(0, raft_log_length(n2))
+	raft_test_free_msgs(out)
+	# prev == base with the snapshot's term: entries append past it
+	raft_msg* good = raft_test_append(1, 2, 2, 3, 2, 3)
+	raft_test_add_entry(good, 2, c"x")
+	raft_test_add_entry(good, 2, c"y")
+	raft_on_msg(n2, good, 30, out)
+	raft_msg_free(good)
+	reply = out[0]
+	assert_equal(1, reply.success)
+	assert_equal(5, u64_to_int(reply.match_index))
+	raft_test_free_msgs(out)
+	assert_equal(2, raft_log_length(n2))
+	assert_equal(5, raft_last_index(n2))
+	raft_entry* e4 = raft_log_at(n2, 4)
+	assert_strings_equal(c"x", e4.command)
+	raft_entry* e5 = raft_log_at(n2, 5)
+	assert_strings_equal(c"y", e5.command)
+	# prev < base: stale append — success with match = our commit (3),
+	# entries untouched
+	raft_msg* stale = raft_test_append(1, 2, 2, 1, 1, 3)
+	raft_test_add_entry(stale, 1, c"old")
+	raft_on_msg(n2, stale, 40, out)
+	raft_msg_free(stale)
+	reply = out[0]
+	assert_equal(1, reply.success)
+	assert_equal(3, u64_to_int(reply.match_index))
+	assert_equal(2, raft_log_length(n2))
+	raft_entry* still = raft_log_at(n2, 4)
+	assert_strings_equal(c"x", still.command)
+	raft_test_free_msgs(out)
+	raft_free(n2)
+
+
+void test_leader_install_snapshot_on_backoff():
+	# leader with four committed+applied entries snapshots at 4; a
+	# follower rejection then backs next_index onto the base and the
+	# retry MUST be an install_snapshot, not an append — and the
+	# heartbeat path must pick it too
+	raft* n1 = raft_test_make_leader()
+	list[raft_msg*] out = new list[raft_msg*]
+	assert_equal(1, raft_propose(n1, c"a", 110, out))
+	assert_equal(1, raft_propose(n1, c"b", 111, out))
+	assert_equal(1, raft_propose(n1, c"c", 112, out))
+	assert_equal(1, raft_propose(n1, c"d", 113, out))
+	raft_test_free_msgs(out)
+	# node 2 acks through 4: majority commit; node 3 acks through 3
+	raft_msg* ack2 = raft_test_append_reply(2, 1, 1, 1, 4)
+	raft_on_msg(n1, ack2, 120, out)
+	raft_msg_free(ack2)
+	raft_test_free_msgs(out)
+	assert_equal(4, raft_test_commit_int(n1))
+	raft_msg* ack3 = raft_test_append_reply(3, 1, 1, 1, 3)
+	raft_on_msg(n1, ack3, 121, out)
+	raft_msg_free(ack3)
+	raft_test_free_msgs(out)
+	# apply everything, then compact the whole log away
+	raft_entry* p1 = raft_pop_apply(n1)
+	assert_strings_equal(c"a", p1.command)
+	raft_entry* p2 = raft_pop_apply(n1)
+	assert_strings_equal(c"b", p2.command)
+	raft_entry* p3 = raft_pop_apply(n1)
+	assert_strings_equal(c"c", p3.command)
+	raft_entry* p4 = raft_pop_apply(n1)
+	assert_strings_equal(c"d", p4.command)
+	assert_equal(1, raft_take_snapshot(n1, c"SNAP@4", 6))
+	assert_equal(0, raft_log_length(n1))
+	assert_equal(4, raft_last_index(n1))
+	# node 3 (next_index 4) rejects: the backoff lands at 3 <= base 4,
+	# so the immediate retry is the snapshot
+	raft_msg* nack = raft_test_append_reply(3, 1, 1, 0, 0)
+	raft_on_msg(n1, nack, 130, out)
+	raft_msg_free(nack)
+	assert_equal(1, out.length)
+	raft_msg* probe = out[0]
+	assert_equal(raft_msg_install_snapshot(), probe.type)
+	assert_equal(3, probe.to)
+	assert_equal(4, u64_to_int(probe.prev_log_index))
+	assert_equal(1, u64_to_int(probe.prev_log_term))
+	assert_equal(4, u64_to_int(probe.leader_commit))
+	raft_test_assert_blob(c"SNAP@4", 6, probe.snap_data, probe.snap_len)
+	raft_test_free_msgs(out)
+	# the heartbeat path: append for the caught-up peer (prev at the
+	# base, term from the snapshot meta), install for the lagging one
+	raft_tick(n1, 200, out)
+	assert_equal(2, out.length)
+	raft_msg* h2 = raft_test_find_to(out, 2)
+	assert_equal(raft_msg_append(), h2.type)
+	assert_equal(4, u64_to_int(h2.prev_log_index))
+	assert_equal(1, u64_to_int(h2.prev_log_term))
+	assert_equal(0, h2.entries.length)
+	raft_msg* h3 = raft_test_find_to(out, 3)
+	assert_equal(raft_msg_install_snapshot(), h3.type)
+	raft_test_assert_blob(c"SNAP@4", 6, h3.snap_data, h3.snap_len)
+	raft_test_free_msgs(out)
+	# a successful install reply walks next_index past the base: the
+	# following heartbeat is a plain append from the boundary
+	raft_msg* iack = raft_test_append_reply(3, 1, 1, 1, 4)
+	raft_on_msg(n1, iack, 205, out)
+	raft_msg_free(iack)
+	raft_test_free_msgs(out)
+	raft_tick(n1, 230, out)
+	raft_msg* h3b = raft_test_find_to(out, 3)
+	assert_equal(raft_msg_append(), h3b.type)
+	assert_equal(4, u64_to_int(h3b.prev_log_index))
+	raft_test_free_msgs(out)
+	raft_free(n1)
+
+
+void test_install_snapshot_receiver_path():
+	# fresh follower gets type 4: snapshot meta adopted, log discarded,
+	# commit == snap index, pending blob gates the apply loop
+	raft* n2 = raft_test_node(2, 1, 3, 8)
+	raft_start(n2, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	# a short stale log first, so the whole-log discard is observable
+	raft_msg* seed_a = raft_test_append(1, 2, 1, 0, 0, 1)
+	raft_test_add_entry(seed_a, 1, c"junk")
+	raft_test_add_entry(seed_a, 1, c"junk2")
+	raft_on_msg(n2, seed_a, 10, out)
+	raft_msg_free(seed_a)
+	raft_test_free_msgs(out)
+	assert_equal(2, raft_log_length(n2))
+	assert_equal(1, raft_test_commit_int(n2))
+	# term-3 snapshot at (5, 2) with a binary blob (embedded zeros)
+	raft_msg* inst = raft_test_install(1, 2, 3, 5, 2, 5)
+	char* blob = malloc(5)
+	blob[0] = 1
+	blob[1] = 0
+	blob[2] = 0
+	blob[3] = 2
+	blob[4] = 3
+	inst.snap_data = blob
+	inst.snap_len = 5
+	raft_on_msg(n2, inst, 20, out)
+	assert_equal(1, out.length)
+	raft_msg* reply = out[0]
+	assert_equal(raft_msg_append_reply(), reply.type)
+	assert_equal(1, reply.success)
+	assert_equal(5, u64_to_int(reply.match_index))
+	assert_equal(3, u64_to_int(reply.term))
+	raft_test_free_msgs(out)
+	# installed: follower on term 3 behind leader 1, old log gone
+	assert_equal(raft_follower(), raft_state(n2))
+	assert_equal(3, raft_test_term_int(n2))
+	assert_equal(1, raft_leader_hint(n2))
+	assert_equal(0, raft_log_length(n2))
+	assert_equal(5, raft_last_index(n2))
+	assert_equal(5, raft_test_commit_int(n2))
+	assert_equal(5, raft_test_snap_index_int(n2))
+	assert_equal(2, raft_test_snap_term_int(n2))
+	# nothing to pop (commit == last_applied) but the blob is pending;
+	# taking it clears the gate
+	assert_equal(0, raft_pending_apply(n2))
+	assert_equal(1, raft_has_pending_snapshot(n2))
+	int blen = 0
+	u64* bidx = u64_new()
+	char* got = raft_take_pending_snapshot(n2, &blen, bidx)
+	raft_test_assert_blob(inst.snap_data, 5, got, blen)
+	assert_equal(5, u64_to_int(bidx))
+	free(got)
+	u64_free(bidx)
+	assert_equal(0, raft_has_pending_snapshot(n2))
+	raft_msg_free(inst)
+	# suffix entries append on the boundary and pop_apply works again
+	raft_msg* more = raft_test_append(1, 2, 3, 5, 2, 6)
+	raft_test_add_entry(more, 3, c"f")
+	raft_on_msg(n2, more, 30, out)
+	raft_msg_free(more)
+	raft_msg* r2 = out[0]
+	assert_equal(1, r2.success)
+	assert_equal(6, u64_to_int(r2.match_index))
+	raft_test_free_msgs(out)
+	assert_equal(6, raft_test_commit_int(n2))
+	assert_equal(1, raft_pending_apply(n2))
+	raft_entry* f = raft_pop_apply(n2)
+	assert_strings_equal(c"f", f.command)
+	assert_equal(0, raft_pending_apply(n2))
+	raft_free(n2)
+
+
+void test_install_snapshot_stale_ignored():
+	# receiver already committed past the snapshot index: success reply
+	# with match = own commit, and NO state change at all
+	raft* n2 = raft_test_node(2, 1, 3, 9)
+	raft_start(n2, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_msg* seed_a = raft_test_append(1, 2, 1, 0, 0, 3)
+	raft_test_add_entry(seed_a, 1, c"a")
+	raft_test_add_entry(seed_a, 1, c"b")
+	raft_test_add_entry(seed_a, 1, c"c")
+	raft_on_msg(n2, seed_a, 10, out)
+	raft_msg_free(seed_a)
+	raft_test_free_msgs(out)
+	assert_equal(3, raft_test_commit_int(n2))
+	raft_msg* inst = raft_test_install(1, 2, 1, 2, 1, 3)
+	raft_test_set_blob(inst, c"old", 3)
+	raft_on_msg(n2, inst, 20, out)
+	raft_msg_free(inst)
+	assert_equal(1, out.length)
+	raft_msg* reply = out[0]
+	assert_equal(raft_msg_append_reply(), reply.type)
+	assert_equal(1, reply.success)
+	assert_equal(3, u64_to_int(reply.match_index))
+	raft_test_free_msgs(out)
+	# untouched: no snapshot adopted, no pending blob, log intact
+	assert_equal(0, raft_test_snap_index_int(n2))
+	assert_equal(0, raft_has_pending_snapshot(n2))
+	assert_equal(3, raft_log_length(n2))
+	assert_equal(3, raft_test_commit_int(n2))
+	# a stale-TERM install is refused outright (success = 0), exactly
+	# like a stale append
+	raft* n3 = raft_test_node(3, 1, 2, 9)
+	raft_start(n3, 0)
+	raft_msg* bump = raft_test_append(1, 3, 2, 0, 0, 0)
+	raft_on_msg(n3, bump, 10, out)
+	raft_msg_free(bump)
+	raft_test_free_msgs(out)
+	assert_equal(2, raft_test_term_int(n3))
+	raft_msg* old_inst = raft_test_install(2, 3, 1, 9, 1, 9)
+	raft_test_set_blob(old_inst, c"x", 1)
+	raft_on_msg(n3, old_inst, 20, out)
+	raft_msg_free(old_inst)
+	assert_equal(1, out.length)
+	raft_msg* refuse = out[0]
+	assert_equal(raft_msg_append_reply(), refuse.type)
+	assert_equal(0, refuse.success)
+	assert_equal(2, u64_to_int(refuse.term))
+	assert_equal(0, raft_test_snap_index_int(n3))
+	assert_equal(0, raft_has_pending_snapshot(n3))
+	raft_test_free_msgs(out)
+	raft_free(n3)
+	raft_free(n2)

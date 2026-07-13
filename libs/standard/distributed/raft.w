@@ -17,9 +17,13 @@ A raft_msg owns all of its u64 fields and deep copies of its entries
 Command pointers are caller-owned and must outlive the raft.
 
 The log is stored in a 0-based list but is 1-indexed conceptually
-(Figure 2 numbering): conceptual index i lives at log[i - 1], index 0
-means "empty prefix" and never has an entry. raft_log_at takes the
-1-based index.
+(Figure 2 numbering): with no snapshot, conceptual index i lives at
+log[i - 1], index 0 means "empty prefix" and never has an entry.
+raft_log_at takes the 1-based index. Once a snapshot exists (below),
+a compacted prefix is gone and conceptual index i lives at
+log[i - snap_base - 1], where snap_base = snap_last_index (0 while no
+snapshot exists); raft_last_index is snap_base + log.length and an
+empty log's last term is snap_last_term.
 
 v1 choices, documented here because they shape the tests:
   - votes_received counts granted current-term vote replies without
@@ -54,6 +58,45 @@ per node via raft_set_noop_on_win / raft_set_prevote:
     pre-vote mutates nothing: no voted_for, no election-timer reset.
     Real (prevote == 0) messages keep the v1 semantics bit-for-bit,
     including step-down on a higher term.
+
+Log compaction / InstallSnapshot (§7):
+  - raft_take_snapshot(r, data, len): the state-machine owner declares
+    `data` to be its state at exactly last_applied. Raft stores an
+    owned copy of the blob (it never interprets it), records
+    (last_applied, term at last_applied) as the snapshot meta and
+    frees every log entry at or below last_applied. Requires
+    last_applied > snap_base, else a 0-returning no-op.
+  - a leader whose peer's next_index sits at or below snap_base sends
+    an install_snapshot message (type 4) instead of an append — on
+    both the heartbeat/tick path and the append_reply-failure backoff
+    path. The message REUSES prev_log_index/prev_log_term to carry
+    snap_last_index/snap_last_term (no new wire-visible u64 fields),
+    carries leader_commit as usual plus an owned copy of the blob,
+    and is answered with an ordinary append_reply.
+  - receiving a fresh install_snapshot follows the append term rules
+    (stale term refused with our term; a valid one proves the leader:
+    follow, reset the election timer, record leader contact). A
+    snapshot at or below our commit index is STALE: nothing changes
+    and the success reply carries match_index = our commit index so
+    the leader can advance next_index past the confusion. Otherwise
+    the snapshot installs: snap meta adopted, the ENTIRE log discarded
+    (the paper permits keeping a matching suffix; whole-log discard is
+    the documented simplification — the leader resends the suffix from
+    snap index + 1), commit_index = last_applied = snap index, and the
+    blob is stored both as our own latest snapshot and in the pending
+    slot for the application.
+  - pending-snapshot contract: the application's apply loop must check
+    raft_has_pending_snapshot FIRST each round and install the blob
+    (raft_take_pending_snapshot — ownership of the buffer transfers)
+    before applying later entries; raft_pop_apply asserts no snapshot
+    is pending, because entries after the snapshot index only make
+    sense on top of the snapshot's state.
+  - an incoming append whose prev_log_index lies BELOW snap_base is
+    the paper's stale-append case: everything at or below the base is
+    committed and applied here by construction, so the reply is
+    success with match_index = our commit index and the entries are
+    not examined. prev_log_index == snap_base matches the snapshot
+    boundary and is checked against snap_last_term.
 */
 import lib.lib
 import lib.memory
@@ -95,6 +138,10 @@ int raft_msg_append_reply():
 	return 3
 
 
+int raft_msg_install_snapshot():
+	return 4
+
+
 # ---- log entries -------------------------------------------------------------
 
 struct raft_entry:
@@ -117,24 +164,29 @@ void raft_entry_free(raft_entry* e):
 
 # ---- messages ----------------------------------------------------------------
 
-# One struct for all four message types, tagged by `type`. A message
-# owns every u64 field and deep copies of its entries; raft_msg_free
-# releases all of it. Fields not used by a type stay zero/empty.
+# One struct for all five message types, tagged by `type`. A message
+# owns every u64 field, deep copies of its entries and its snapshot
+# blob; raft_msg_free releases all of it. Fields not used by a type
+# stay zero/empty. install_snapshot REUSES prev_log_index /
+# prev_log_term for the snapshot's last included index and term, and
+# leader_commit as usual (see header).
 struct raft_msg:
-	int type              # raft_msg_vote_req/vote_reply/append/append_reply
+	int type              # raft_msg_vote_req/vote_reply/append/append_reply/install_snapshot
 	int from
 	int to
 	u64* term             # sender's term, always set
 	u64* last_log_index   # vote_req
 	u64* last_log_term    # vote_req
 	int vote_granted      # vote_reply
-	u64* prev_log_index   # append
-	u64* prev_log_term    # append
-	u64* leader_commit    # append
+	u64* prev_log_index   # append; install_snapshot: snapshot last index
+	u64* prev_log_term    # append; install_snapshot: snapshot last term
+	u64* leader_commit    # append/install_snapshot
 	list[raft_entry*] entries   # append; empty = heartbeat; deep copies
 	int success           # append_reply
 	u64* match_index      # append_reply
 	int prevote           # vote_req/vote_reply: pre-vote round flag
+	char* snap_data       # install_snapshot: blob bytes (owned; 0 = none)
+	int snap_len          # install_snapshot: blob length
 
 
 # Clones term; every other u64 field is allocated as zero so
@@ -155,11 +207,14 @@ raft_msg* raft_msg_new(int type, int from, int to, u64* term):
 	m.success = 0
 	m.match_index = u64_new()
 	m.prevote = 0
+	m.snap_data = 0
+	m.snap_len = 0
 	return m
 
 
-# Deep free: all u64 fields plus every owned entry. The entries list
-# storage itself is runtime-managed (matching swim_free in swim.w).
+# Deep free: all u64 fields, every owned entry and the snapshot blob.
+# The entries list storage itself is runtime-managed (matching
+# swim_free in swim.w).
 void raft_msg_free(raft_msg* m):
 	u64_free(m.term)
 	u64_free(m.last_log_index)
@@ -172,6 +227,8 @@ void raft_msg_free(raft_msg* m):
 		raft_entry_free(m.entries[i])
 		i = i + 1
 	u64_free(m.match_index)
+	if (m.snap_data != 0):
+		free(m.snap_data)
 	free(m)
 
 
@@ -207,6 +264,15 @@ struct raft:
 	int prevotes_received      # granted pre-votes in the pending round (self counts)
 	int last_leader_contact    # timestamp of the last valid current-term leader append
 	int has_leader_contact     # 0 until the first such append ("never heard")
+	# snapshot state (§7 log compaction; index 0/term 0 = no snapshot)
+	u64* snap_last_index       # last log index covered by the snapshot
+	u64* snap_last_term        # term of the entry at snap_last_index
+	char* snap_data            # latest snapshot blob (owned; 0 = none)
+	int snap_len
+	# inbound snapshot awaiting the state-machine owner (see header)
+	char* pending_snap_data    # owned; 0 = none pending
+	int pending_snap_len
+	u64* pending_snap_index    # last included index of the pending blob
 
 
 # ---- small helpers -------------------------------------------------------------
@@ -218,15 +284,35 @@ int raft_u64_as_int(u64* v):
 	return u64_to_int(v)
 
 
-# Last log index (1-based conceptual; 0 = empty log).
+# The snapshot base as a host int: the last conceptual index covered
+# by the compacted prefix (0 = no snapshot). Conceptual index i lives
+# at log[i - base - 1] for every i above the base.
+int raft_snap_base(raft* r):
+	return raft_u64_as_int(r.snap_last_index)
+
+
+# Malloc'd copy of len blob bytes (binary-safe; a trailing NUL is
+# added for convenience but is not part of the blob).
+char* raft_copy_blob(char* data, int len):
+	char* p = malloc(len + 1)
+	int i = 0
+	while (i < len):
+		p[i] = data[i]
+		i = i + 1
+	p[len] = 0
+	return p
+
+
+# Last log index (1-based conceptual; 0 = empty log and no snapshot).
 int raft_last_index(raft* r):
-	return r.log.length
+	return raft_snap_base(r) + r.log.length
 
 
-# Term of the last log entry into out; zero for an empty log.
+# Term of the last log entry into out; the snapshot's last term when
+# the log is empty (zero when there is no snapshot either).
 void raft_last_term(raft* r, u64* out):
 	if (r.log.length == 0):
-		u64_set_zero(out)
+		u64_copy(out, r.snap_last_term)
 		return
 	raft_entry* last = r.log[r.log.length - 1]
 	u64_copy(out, last.term)
@@ -295,6 +381,13 @@ raft* raft_new(int self_id, list[int] peers, int election_min_ms, int election_m
 	r.prevotes_received = 0
 	r.last_leader_contact = 0
 	r.has_leader_contact = 0
+	r.snap_last_index = u64_new()
+	r.snap_last_term = u64_new()
+	r.snap_data = 0
+	r.snap_len = 0
+	r.pending_snap_data = 0
+	r.pending_snap_len = 0
+	r.pending_snap_index = u64_new()
 	return r
 
 
@@ -314,6 +407,13 @@ void raft_free(raft* r):
 		u64_free(r.match_index[r.peers[i]])
 		i = i + 1
 	prng_free(r.rng)
+	u64_free(r.snap_last_index)
+	u64_free(r.snap_last_term)
+	if (r.snap_data != 0):
+		free(r.snap_data)
+	if (r.pending_snap_data != 0):
+		free(r.pending_snap_data)
+	u64_free(r.pending_snap_index)
 	free(r)
 
 
@@ -338,22 +438,53 @@ void raft_set_prevote(raft* r, int enabled):
 # AppendEntries to peer from its next_index: prev fields describe the
 # entry just before next_index, entries carries deep copies of
 # everything from next_index to the end of the log (empty = heartbeat).
+# next_index must sit above the snapshot base (raft_make_peer_msg
+# routes lower next_index values to InstallSnapshot); a prev exactly
+# at the base takes the snapshot's last term.
 raft_msg* raft_make_append(raft* r, int peer):
 	raft_msg* m = raft_msg_new(raft_msg_append(), r.self_id, peer, r.current_term)
+	int base = raft_snap_base(r)
 	int next_i = raft_u64_as_int(r.next_index[peer])
-	assert1(next_i >= 1 && next_i <= r.log.length + 1)
+	assert1(next_i >= base + 1 && next_i <= base + r.log.length + 1)
 	int prev_i = next_i - 1
 	u64_set_int(m.prev_log_index, prev_i)
-	if (prev_i > 0):
-		raft_entry* prev_e = r.log[prev_i - 1]
+	if (prev_i == base):
+		u64_copy(m.prev_log_term, r.snap_last_term)
+	if (prev_i > base):
+		raft_entry* prev_e = r.log[prev_i - base - 1]
 		u64_copy(m.prev_log_term, prev_e.term)
 	int k = next_i
-	while (k <= r.log.length):
-		raft_entry* e = r.log[k - 1]
+	while (k <= base + r.log.length):
+		raft_entry* e = r.log[k - base - 1]
 		m.entries.push(raft_entry_new(e.term, e.command))
 		k = k + 1
 	u64_copy(m.leader_commit, r.commit_index)
 	return m
+
+
+# InstallSnapshot to peer: prev_log_index/prev_log_term are REUSED to
+# carry the snapshot's last included index and term (header), the
+# blob rides as an owned deep copy and leader_commit as usual. The
+# reply is an ordinary append_reply.
+raft_msg* raft_make_install_snapshot(raft* r, int peer):
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), r.self_id, peer, r.current_term)
+	u64_copy(m.prev_log_index, r.snap_last_index)
+	u64_copy(m.prev_log_term, r.snap_last_term)
+	u64_copy(m.leader_commit, r.commit_index)
+	m.snap_data = raft_copy_blob(r.snap_data, r.snap_len)
+	m.snap_len = r.snap_len
+	return m
+
+
+# The append-or-snapshot decision for peer: a next_index at or below
+# the snapshot base points into the compacted prefix, which can no
+# longer be shipped entry by entry — ship the snapshot instead (§7).
+# Every leader send path (initial heartbeats, tick heartbeats, propose
+# fan-out, reply-failure backoff) routes through here.
+raft_msg* raft_make_peer_msg(raft* r, int peer):
+	if (raft_u64_as_int(r.next_index[peer]) <= raft_snap_base(r)):
+		return raft_make_install_snapshot(r, peer)
+	return raft_make_append(r, peer)
 
 
 # ---- commit rule (leader) --------------------------------------------------------
@@ -365,8 +496,11 @@ raft_msg* raft_make_append(raft* r, int peer):
 void raft_try_advance_commit(raft* r):
 	int best = 0
 	u64* n_val = u64_new()
+	int base = raft_snap_base(r)
 	int n = raft_u64_as_int(r.commit_index) + 1
-	while (n <= r.log.length):
+	if (n <= base):
+		n = base + 1   # everything at or below the base is committed
+	while (n <= base + r.log.length):
 		u64_set_int(n_val, n)
 		int count = 1
 		int i = 0
@@ -375,7 +509,7 @@ void raft_try_advance_commit(raft* r):
 				count = count + 1
 			i = i + 1
 		if (count >= raft_majority(r)):
-			raft_entry* e = r.log[n - 1]
+			raft_entry* e = r.log[n - base - 1]
 			if (u64_eq(e.term, r.current_term)):
 				best = n
 		n = n + 1
@@ -404,14 +538,14 @@ void raft_become_leader(raft* r, int now_ms, list[raft_msg*] out):
 	int i = 0
 	while (i < r.peers.length):
 		int p = r.peers[i]
-		u64_set_int(r.next_index[p], r.log.length + 1)
+		u64_set_int(r.next_index[p], raft_last_index(r) + 1)
 		u64_set_int(r.match_index[p], 0)
 		i = i + 1
 	if (r.noop_on_win == 1):
 		r.log.push(raft_entry_new(r.current_term, c""))
 	i = 0
 	while (i < r.peers.length):
-		out.push(raft_make_append(r, r.peers[i]))
+		out.push(raft_make_peer_msg(r, r.peers[i]))
 		i = i + 1
 	r.heartbeat_deadline = mono_deadline(now_ms, r.heartbeat_ms)
 	if (r.noop_on_win == 1):
@@ -477,7 +611,7 @@ void raft_tick(raft* r, int now_ms, list[raft_msg*] out):
 		if (mono_expired(now_ms, r.heartbeat_deadline)):
 			int i = 0
 			while (i < r.peers.length):
-				out.push(raft_make_append(r, r.peers[i]))
+				out.push(raft_make_peer_msg(r, r.peers[i]))
 				i = i + 1
 			r.heartbeat_deadline = mono_deadline(now_ms, r.heartbeat_ms)
 		return
@@ -621,12 +755,27 @@ void raft_handle_append(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	r.last_leader_contact = now_ms
 	r.has_leader_contact = 1
 	r.prevotes_received = 0
+	int base = raft_snap_base(r)
 	int prev_i = raft_u64_as_int(m.prev_log_index)
+	if (prev_i < base):
+		# stale append into our compacted prefix (§7): everything at or
+		# below the base is committed and applied here by construction,
+		# so answer success with match_index = our commit index — the
+		# leader then walks next_index forward past the confusion. The
+		# entries are not examined; nothing below the base can conflict.
+		reply.success = 1
+		u64_copy(reply.match_index, r.commit_index)
+		out.push(reply)
+		return
 	int ok = 0
 	if (prev_i == 0):
 		ok = 1
-	if (prev_i >= 1 && prev_i <= r.log.length):
-		raft_entry* prev_e = r.log[prev_i - 1]
+	if (prev_i == base && base > 0):
+		# the snapshot boundary: its term must match the snapshot's
+		if (u64_eq(m.prev_log_term, r.snap_last_term)):
+			ok = 1
+	if (prev_i > base && prev_i <= base + r.log.length):
+		raft_entry* prev_e = r.log[prev_i - base - 1]
 		if (u64_eq(prev_e.term, m.prev_log_term)):
 			ok = 1
 	if (ok == 0):
@@ -636,11 +785,11 @@ void raft_handle_append(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	while (k < m.entries.length):
 		raft_entry* incoming = m.entries[k]
 		int idx = prev_i + 1 + k
-		if (idx <= r.log.length):
-			raft_entry* mine = r.log[idx - 1]
+		if (idx <= base + r.log.length):
+			raft_entry* mine = r.log[idx - base - 1]
 			if (u64_eq(mine.term, incoming.term) == 0):
 				# conflict: truncate from idx, then take the new entry
-				while (r.log.length >= idx):
+				while (base + r.log.length >= idx):
 					raft_entry* removed = r.log.pop()
 					raft_entry_free(removed)
 				r.log.push(raft_entry_new(incoming.term, incoming.command))
@@ -664,7 +813,8 @@ void raft_handle_append(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 # AppendEntries reply (leader only, current term only). Success moves
 # the peer's next/match indexes forward and tries to advance the
 # commit; failure backs next_index up by one (floor 1) and immediately
-# retries from there.
+# retries from there — as an InstallSnapshot when the backoff lands at
+# or below the snapshot base (raft_make_peer_msg).
 void raft_handle_append_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	if (r.state != raft_leader()):
 		return
@@ -684,7 +834,63 @@ void raft_handle_append_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] 
 	if (v < 1):
 		v = 1
 	u64_set_int(backed, v)
-	out.push(raft_make_append(r, m.from))
+	out.push(raft_make_peer_msg(r, m.from))
+
+
+# InstallSnapshot (§7). Term rules mirror AppendEntries exactly: a
+# stale term is refused with our current term (a higher term already
+# stepped us down before dispatch); a valid message proves the
+# current-term leader — follow it, reset the election deadline and
+# record the leader contact. Replies are append_reply messages, so
+# the leader's existing reply path advances next/match.
+#
+# A snapshot whose last index is at or below our commit index is
+# STALE: everything it covers is already committed here, so nothing
+# changes and the success reply's match_index = our commit index lets
+# the leader advance next_index past the confusion. Otherwise the
+# snapshot installs: snap meta adopted, the ENTIRE log discarded
+# (documented simplification, header), commit_index and last_applied
+# jump to the snapshot index, and the blob is stored both as our own
+# latest snapshot (snap_data) and in the pending slot for the
+# state-machine owner (raft_take_pending_snapshot).
+void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
+	raft_msg* reply = raft_msg_new(raft_msg_append_reply(), r.self_id, m.from, r.current_term)
+	reply.success = 0
+	if (u64_cmp(m.term, r.current_term) < 0):
+		out.push(reply)
+		return
+	r.state = raft_follower()
+	r.leader_hint = m.from
+	raft_reset_election_deadline(r, now_ms)
+	r.last_leader_contact = now_ms
+	r.has_leader_contact = 1
+	r.prevotes_received = 0
+	if (u64_cmp(m.prev_log_index, r.commit_index) <= 0):
+		reply.success = 1
+		u64_copy(reply.match_index, r.commit_index)
+		out.push(reply)
+		return
+	u64_copy(r.snap_last_index, m.prev_log_index)
+	u64_copy(r.snap_last_term, m.prev_log_term)
+	int i = 0
+	while (i < r.log.length):
+		raft_entry_free(r.log[i])
+		i = i + 1
+	r.log.clear()
+	u64_copy(r.commit_index, m.prev_log_index)
+	u64_copy(r.last_applied, m.prev_log_index)
+	if (r.snap_data != 0):
+		free(r.snap_data)
+	r.snap_data = raft_copy_blob(m.snap_data, m.snap_len)
+	r.snap_len = m.snap_len
+	if (r.pending_snap_data != 0):
+		free(r.pending_snap_data)
+	r.pending_snap_data = raft_copy_blob(m.snap_data, m.snap_len)
+	r.pending_snap_len = m.snap_len
+	u64_copy(r.pending_snap_index, m.prev_log_index)
+	reply.success = 1
+	u64_copy(reply.match_index, m.prev_log_index)
+	out.push(reply)
 
 
 # Dispatch one inbound message. Does NOT free m; the caller keeps
@@ -714,6 +920,9 @@ void raft_on_msg(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	if (m.type == raft_msg_append_reply()):
 		raft_handle_append_reply(r, m, now_ms, out)
 		return
+	if (m.type == raft_msg_install_snapshot()):
+		raft_handle_install_snapshot(r, m, now_ms, out)
+		return
 
 
 # ---- client interface ---------------------------------------------------------
@@ -729,11 +938,76 @@ int raft_propose(raft* r, char* command, int now_ms, list[raft_msg*] out):
 	r.log.push(raft_entry_new(r.current_term, command))
 	int i = 0
 	while (i < r.peers.length):
-		out.push(raft_make_append(r, r.peers[i]))
+		out.push(raft_make_peer_msg(r, r.peers[i]))
 		i = i + 1
 	r.heartbeat_deadline = mono_deadline(now_ms, r.heartbeat_ms)
 	raft_try_advance_commit(r)
 	return 1
+
+
+# ---- log compaction (§7) --------------------------------------------------------
+
+# The state-machine owner declares `data` (len bytes, copied) to be
+# its state at exactly last_applied. Requires last_applied above the
+# current snapshot base — returns 0 as a no-op otherwise. On success:
+# the snapshot meta becomes (last_applied, term at last_applied), the
+# blob copy replaces any previous one, every log entry at or below
+# last_applied is freed (entry terms and structs; commands stay
+# caller-owned per the contract) and 1 is returned. Peers whose
+# next_index is at or below the new base are brought up by
+# InstallSnapshot from the usual send paths.
+int raft_take_snapshot(raft* r, char* data, int len):
+	int base = raft_snap_base(r)
+	int applied = raft_u64_as_int(r.last_applied)
+	if (applied <= base):
+		return 0
+	raft_entry* boundary = r.log[applied - base - 1]
+	u64_copy(r.snap_last_term, boundary.term)
+	u64_copy(r.snap_last_index, r.last_applied)
+	if (r.snap_data != 0):
+		free(r.snap_data)
+	r.snap_data = raft_copy_blob(data, len)
+	r.snap_len = len
+	int drop = applied - base
+	list[raft_entry*] kept = new list[raft_entry*]
+	int i = 0
+	while (i < r.log.length):
+		if (i < drop):
+			raft_entry_free(r.log[i])
+		else:
+			kept.push(r.log[i])
+		i = i + 1
+	r.log = kept
+	return 1
+
+
+# ---- pending inbound snapshot ------------------------------------------------------
+
+# 1 while a received (or wal-recovered) snapshot awaits installation
+# by the state-machine owner. The application's apply loop must check
+# this FIRST each round: raft_pop_apply asserts no snapshot is
+# pending, because entries after the snapshot index only make sense
+# on top of the snapshot's state.
+int raft_has_pending_snapshot(raft* r):
+	if (r.pending_snap_data != 0):
+		return 1
+	return 0
+
+
+# Hand the pending blob to the application: ownership of the returned
+# buffer transfers to the caller (free it when done), len_out[0] gets
+# its length and index_out the snapshot's last included index. The
+# pending slot is cleared; the raft keeps its own snap_data copy for
+# later InstallSnapshot sends. Asserts a snapshot is pending.
+char* raft_take_pending_snapshot(raft* r, int* len_out, u64* index_out):
+	assert1(r.pending_snap_data != 0)
+	char* data = r.pending_snap_data
+	len_out[0] = r.pending_snap_len
+	u64_copy(index_out, r.pending_snap_index)
+	r.pending_snap_data = 0
+	r.pending_snap_len = 0
+	u64_set_zero(r.pending_snap_index)
+	return data
 
 
 # ---- applying committed entries --------------------------------------------------
@@ -746,13 +1020,19 @@ int raft_pending_apply(raft* r):
 
 # Advance last_applied by one and return the entry at that index. The
 # pointer is borrowed — the log still owns the entry. Asserts something
-# is pending.
+# is pending — and that NO snapshot is pending: the application must
+# install a pending snapshot (raft_take_pending_snapshot) before
+# applying entries past it. Entries at or below the snapshot base are
+# gone and can never be popped; last_applied never sits below the
+# base, so the popped index is always in the retained suffix.
 raft_entry* raft_pop_apply(raft* r):
+	assert1(raft_has_pending_snapshot(r) == 0)
 	assert1(raft_pending_apply(r))
 	u64_inc(r.last_applied)
 	int idx = raft_u64_as_int(r.last_applied)
-	assert1(idx >= 1 && idx <= r.log.length)
-	return r.log[idx - 1]
+	int base = raft_snap_base(r)
+	assert1(idx > base && idx <= base + r.log.length)
+	return r.log[idx - base - 1]
 
 
 # ---- queries -----------------------------------------------------------------
@@ -769,6 +1049,8 @@ int raft_leader_hint(raft* r):
 	return r.leader_hint
 
 
+# Retained (post-snapshot-base) entry count, NOT the conceptual last
+# index — see raft_last_index for that.
 int raft_log_length(raft* r):
 	return r.log.length
 
@@ -777,11 +1059,24 @@ void raft_commit_index(raft* r, u64* out):
 	u64_copy(out, r.commit_index)
 
 
-# 1-based conceptual index; the returned pointer is borrowed.
+# 1-based conceptual index; the returned pointer is borrowed. Asserts
+# the index is above the snapshot base (compacted entries are gone)
+# and at most the last index.
 raft_entry* raft_log_at(raft* r, int i):
-	assert1(i >= 1 && i <= r.log.length)
-	return r.log[i - 1]
+	int base = raft_snap_base(r)
+	assert1(i > base && i <= base + r.log.length)
+	return r.log[i - base - 1]
 
 
 int raft_voted_for(raft* r):
 	return r.voted_for
+
+
+# The snapshot's last included index into out (zero = no snapshot).
+void raft_snapshot_index(raft* r, u64* out):
+	u64_copy(out, r.snap_last_index)
+
+
+# The snapshot's last included term into out (zero = no snapshot).
+void raft_snapshot_term(raft* r, u64* out):
+	u64_copy(out, r.snap_last_term)

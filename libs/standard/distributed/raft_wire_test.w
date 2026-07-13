@@ -196,3 +196,122 @@ void test_decode_rejects_malformed():
 	raft_msg_free(m)
 	u64_free(t)
 	u64_free(term)
+
+
+# ---- install_snapshot (type 4) ----------------------------------------------------
+
+# Bytewise blob comparison: snapshot blobs are binary (embedded zeros
+# legal), so strcmp-style helpers must never touch them.
+void rw_assert_blob(char* want, int want_len, char* got, int got_len):
+	assert_equal(want_len, got_len)
+	int i = 0
+	while (i < want_len):
+		assert_equal(want[i] & 255, got[i] & 255)
+		i = i + 1
+
+
+void test_install_snapshot_roundtrip():
+	u64* term = u64_new_int(6)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), 1, 3, term)
+	u64_set_int(m.prev_log_index, 10)
+	u64_set_int(m.prev_log_term, 5)
+	u64_set_int(m.leader_commit, 12)
+	# binary blob with embedded zeros and a high byte
+	char* blob = malloc(6)
+	blob[0] = 83
+	blob[1] = 0
+	blob[2] = 78
+	blob[3] = 0
+	blob[4] = 65
+	blob[5] = 255
+	m.snap_data = blob
+	m.snap_len = 6
+	assert_equal(17 + 28 + 6, raft_wire_size(m))
+	raft_msg* out = rw_roundtrip(m)
+	assert_equal(raft_msg_install_snapshot(), out.type)
+	assert_equal(1, out.from)
+	assert_equal(3, out.to)
+	assert_equal(6, raft_u64_as_int(out.term))
+	assert_equal(10, raft_u64_as_int(out.prev_log_index))
+	assert_equal(5, raft_u64_as_int(out.prev_log_term))
+	assert_equal(12, raft_u64_as_int(out.leader_commit))
+	rw_assert_blob(blob, 6, out.snap_data, out.snap_len)
+	raft_msg_free(m)
+	raft_msg_free(out)
+	u64_free(term)
+
+
+void test_install_snapshot_empty_blob():
+	u64* term = u64_new_int(2)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), 2, 1, term)
+	u64_set_int(m.prev_log_index, 4)
+	u64_set_int(m.prev_log_term, 1)
+	u64_set_int(m.leader_commit, 4)
+	assert_equal(17 + 28, raft_wire_size(m))
+	raft_msg* out = rw_roundtrip(m)
+	assert_equal(raft_msg_install_snapshot(), out.type)
+	assert_equal(4, raft_u64_as_int(out.prev_log_index))
+	assert_equal(1, raft_u64_as_int(out.prev_log_term))
+	assert_equal(0, out.snap_len)
+	raft_msg_free(m)
+	raft_msg_free(out)
+	u64_free(term)
+
+
+void test_install_snapshot_malformed():
+	u64* term = u64_new_int(3)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), 1, 2, term)
+	u64_set_int(m.prev_log_index, 9)
+	u64_set_int(m.prev_log_term, 2)
+	char* blob = malloc(4)
+	blob[0] = 1
+	blob[1] = 0
+	blob[2] = 2
+	blob[3] = 3
+	m.snap_data = blob
+	m.snap_len = 4
+	int size = raft_wire_size(m)
+	char* buf = malloc(size)
+	raft_wire_encode(m, buf)
+	# truncated blob: snap_len promises more bytes than the buffer has
+	assert_equal(0, cast(int, raft_wire_decode(buf, size - 1)))
+	# shorter than the fixed post-header fields
+	assert_equal(0, cast(int, raft_wire_decode(buf, 17 + 27)))
+	# trailing garbage byte
+	char* big = malloc(size + 1)
+	int i = 0
+	while (i < size):
+		big[i] = buf[i]
+		i = i + 1
+	big[size] = 7
+	assert_equal(0, cast(int, raft_wire_decode(big, size + 1)))
+	# huge snap_len overrunning the buffer
+	raft_wire_u32(buf + 17 + 24, 100000)
+	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
+	# negative snap_len
+	raft_wire_u32(buf + 17 + 24, 0 - 4)
+	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
+	free(big)
+	free(buf)
+	raft_msg_free(m)
+	u64_free(term)
+
+
+void test_type4_known_type5_rejected():
+	# the unknown-type guard moved: 4 (install_snapshot) is now a KNOWN
+	# type, 5 is the first unknown one
+	u64* term = u64_new_int(1)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), 1, 2, term)
+	int size = raft_wire_size(m)
+	char* buf = malloc(size)
+	raft_wire_encode(m, buf)
+	assert_equal(4, buf[0] & 255)
+	raft_msg* ok = raft_wire_decode(buf, size)
+	assert1(cast(int, ok) != 0)
+	assert_equal(raft_msg_install_snapshot(), ok.type)
+	raft_msg_free(ok)
+	buf[0] = 5
+	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
+	free(buf)
+	raft_msg_free(m)
+	u64_free(term)
