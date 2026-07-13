@@ -31,9 +31,10 @@ int operand_is_struct_value(int t):
 # parameter types and promoted use-site expression types must map to
 # the same string: constants read as 'int', every float32-kind type
 # (float, float32, float16 and their value forms) as 'float', float64
-# as 'float64', strings and vars by their base name, and everything
-# else as the type's name plus one '*' per pointer level
-# (generic_mangle_arg's scheme).
+# as 'float64', strings and vars by their base name, slice values by
+# their storage slice record ('int[]'), and everything else as the
+# type's name plus one '*' per pointer level (generic_mangle_arg's
+# scheme).
 char* operator_mangle_type_name(int t):
 	t = type_unqualified(t)
 	if (t == 3):
@@ -47,6 +48,11 @@ char* operator_mangle_type_name(int t):
 		return strclone(c"string")
 	if (type_is_var(t)):
 		return strclone(c"var")
+	# A slice value (the 'int[] value' record promote gives a use-site
+	# slice or array expression) mangles as its storage slice record,
+	# the spelling a declared 'int[]' parameter maps to.
+	if (type_get_kind(t) == type_kind_slice_value()):
+		t = type_get_slice(type_get_element_type(t))
 	char* name = strclone(type_get_name(t))
 	int stars = type_get_pointer_level(t)
 	while (stars > 0):
@@ -136,6 +142,12 @@ void operator_definition(int decl_type):
 	int param_count = 0
 	while ((peek(c")") == 0) & (token[0] != 0)):
 		int t = type_name()
+		# 'T... rest' (the w-variadic marker function_definition accepts
+		# after a parameter type) never fits an operator: use sites
+		# always pass exactly two operands. Reject it here, before the
+		# rewind hands the list to function_definition.
+		if (accept(c".")):
+			error(c"operator definitions do not support variadic parameters")
 		if (param_count == 0):
 			left_type = t
 		if (param_count == 1):
@@ -168,10 +180,13 @@ void operator_definition(int decl_type):
 # emission mirrors the struct-method branch in grammar/postfix_expr.w:
 # save the right word, park a return buffer for a struct-returning
 # operator, push the callee, the hidden return-buffer argument and
-# both operands, then run the shared call tail. The left word, the
-# right side's leaked temporaries and the return buffer stay counted
-# in stack_pos; the enclosing block's cleanup absorbs them, exactly
-# like struct-returning calls already leak.
+# both operands, then run the shared call tail and compact the stack.
+# A scalar result pops the operand saves and the right side's leaked
+# temporaries, so the expression is stack-neutral like every other
+# scalar expression; a struct result slides its return buffer down
+# over them, so the expression leaks exactly the buffer words --
+# identical to a plain struct-returning call, which every consumer
+# already handles.
 int operator_overload_binary(int left_type, int right_type, int op, int left_slot):
 	if ((operand_is_struct_value(left_type) == 0) & (operand_is_struct_value(right_type) == 0)):
 		return 0
@@ -198,15 +213,6 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 			name = left_folded
 		else:
 			free(left_folded)
-	if ((callee < 0) & (strcmp(left_name, c"float64") == 0) &
-			(strcmp(right_name, c"float64") == 0)):
-		char* both_folded = operator_build_name(op, c"float", c"float")
-		callee = sym_lookup(both_folded)
-		if (callee >= 0):
-			free(name)
-			name = both_folded
-		else:
-			free(both_folded)
 	if (callee < 0):
 		diag_part(c"no operator '")
 		char* spelling = malloc(2)
@@ -222,14 +228,15 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 	free(right_name)
 	int declared_return = load_int(table + callee + 6)
 	int has_return_buffer = 0
+	int buf_words = 0
 	if (declared_return >= 0):
 		if (type_num_args(declared_return) > 0):
-			int words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
+			buf_words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
 			int j = 0
-			while (j < words):
+			while (j < buf_words):
 				push_eax()
 				j = j + 1
-			stack_pos = stack_pos + words
+			stack_pos = stack_pos + buf_words
 			has_return_buffer = 1
 	# Save the right operand's word while materializing the callee
 	push_eax()
@@ -261,13 +268,32 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 	push_call_argument(right_type)
 	# The shared call tail frees name
 	int result = finish_call(4, s, sym_num_args(callee), callee, name, declared_return, 2, has_return_buffer, -1)
-	# Drop the right-operand save (be_pop preserves eax)
+	# Post-call compaction. Top to bottom the stack still holds the
+	# right-operand save, the return buffer (struct returns only), any
+	# temporaries the right side leaked and the left-operand save; base
+	# is stack_pos from before binary1 pushed the left word.
+	int base = left_slot - 1
+	if (has_return_buffer == 0):
+		# Scalar result: pop all of it in one go (be_pop preserves eax)
+		be_pop(stack_pos - base)
+		stack_pos = base
+		return result
+	# Struct result: drop the right-operand save, then slide the buffer
+	# down over the junk words below it -- highest word first, the
+	# overlap-safe order push_call_argument_compact uses
 	be_pop(1)
 	stack_pos = stack_pos - 1
-	if (has_return_buffer):
-		# finish_call's return-buffer lea ran before the save was
-		# dropped; redo it now that the buffer is back on top (the
-		# same deliberate pattern as the struct-method branch)
-		lea_eax_esp_plus(0)
-		result = type_value(declared_return)
+	int excess = stack_pos - buf_words - base
+	if (excess > 0):
+		int i = buf_words - 1
+		while (i >= 0):
+			mov_eax_esp_plus(i << word_size_log2)
+			store_stack_var((i + excess) << word_size_log2)
+			i = i - 1
+		be_pop(excess)
+		stack_pos = stack_pos - excess
+	# finish_call's return-buffer lea ran before the compaction; redo
+	# it now that the buffer sits at the top of the stack
+	lea_eax_esp_plus(0)
+	result = type_value(declared_return)
 	return result
