@@ -453,7 +453,7 @@
 			"name": "operator_overload_error_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/operator_no_match_error_fixture.w", "tests/operator_token_error_fixture.w", "tests/operator_arity_error_fixture.w", "tests/operator_struct_param_error_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/operator_no_match_error_fixture.w", "tests/operator_token_error_fixture.w", "tests/operator_arity_error_fixture.w", "tests/operator_struct_param_error_fixture.w", "tests/operator_variadic_error_fixture.w"]}
 			]
 		},
 		{
