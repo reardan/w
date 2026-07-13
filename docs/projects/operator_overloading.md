@@ -1,12 +1,12 @@
 # Operator Overloading
 
-Design doc for issue #104: letting user code define what the existing
-operators (`+`, `-`, `*`, `==`, prefix `-`, ...) mean for struct
-types, C++-style. Minting *new* operator spellings — the issue's
-other, more speculative half — is deliberately demoted to a future
-extension at the end of this doc: restricting overloads to the
-operator tokens the language already has eliminates the entire
-lexing problem and needs **no tokenizer changes at all**.
+Design doc for issue #104, deliberately minimal for v1: user code can
+define what the **binary arithmetic operators `+ - * / %`** mean for
+**struct values**, C++-style. Nothing else changes meaning —
+comparisons, prefix/postfix forms, other types and minted spellings
+are all staged behind this (see Staging and the extension section).
+Restricting to operator tokens the language already has means **no
+tokenizer changes at all**, and precedence comes free.
 
 Status: design only, nothing implemented.
 
@@ -21,47 +21,34 @@ struct vec3:
 vec3 operator+(vec3 a, vec3 b):
 	return vec3(a.x + b.x, a.y + b.y, a.z + b.z)
 
-vec3 operator-(vec3 a):              # arity 1 = prefix, like C++
-	return vec3(0.0 - a.x, 0.0 - a.y, 0.0 - a.z)
-
 float operator*(vec3 a, vec3 b):     # dot product
 	return a.x * b.x + a.y * b.y + a.z * b.z
 
 vec3 operator*(vec3 a, float s):     # scaling; same spelling, distinct
 	return vec3(a.x * s, a.y * s, a.z * s)   # operand types
 
-bool operator==(vec3 a, vec3 b):
-	return (a.x == b.x) && (a.y == b.y) && (a.z == b.z)
-
-vec3 n = -(a + b * 0.5)
-if (n == c):
-	...
+vec3 n = a + b * 0.5
 ```
 
-Definitions look exactly like functions with `operator` + an existing
-operator token in name position. Arity picks the fixity: 2 = binary,
-1 = prefix. A `postfix` marker is reserved for later (see below).
+Definitions look exactly like functions with `operator` + one of
+`+ - * / %` in name position, and take exactly two parameters.
 Forward declarations (`vec3 operator+(vec3 a, vec3 b);`) follow the
 normal prototype rules; single-pass compilation means
 define-or-declare before first use, like everything else in W.
 
-**Overloadable in v1**: binary `+ - * / %`, comparisons
-`== != < <= > >=`, prefix `-`. **Never overloadable**: `&& || !`
-(short-circuit control flow — same line `docs/projects/dynamic_var.md`
-draws), assignment `=`, `&`/`|`/`^`/shifts (no motivating consumer;
-easy to add later), `[]` (the container builtins own it), `in`, `?`.
-
 **Dispatch rule**: an overload is consulted only when at least one
-operand is a struct or union **value** (pointer level 0). Scalar
-arithmetic can never change meaning, and struct *pointers* keep
-pointer arithmetic and address comparison exactly as today
-(`vec3* p; p + 1` stays pointer math — C++ makes the same cut).
-Resolution is an exact match on (spelling, fixity, left type, right
-type); no conversions are tried. A struct-value operand with no
-matching overload becomes a compile error (see Diagnostics) — today
-it silently falls through to word-sized ALU code on the value's
-address, which is garbage in the same family as the method-chain
-silent-ignore that `docs/projects/struct_methods.md` fixed.
+operand is a struct **value** (pointer level 0). Scalar arithmetic
+can never change meaning, and struct *pointers* keep pointer
+arithmetic exactly as today (`vec3* p; p + 1` stays pointer math —
+C++ makes the same cut). Mixed operands like `vec3 * float` are in
+scope — scaling is half the point for the motivating vector case —
+and cost nothing: resolution is an exact match on
+(spelling, left type, right type), no conversions tried. A
+struct-value operand with no matching overload becomes a compile
+error (see Diagnostics) — today it silently falls through to
+word-sized ALU code on the value's address, which is garbage in the
+same family as the method-chain silent-ignore that
+`docs/projects/struct_methods.md` fixed.
 
 ## How it fits the compiler
 
@@ -72,8 +59,9 @@ by which point *both operand types are known*
 (e.g. `additive_op` in `grammar/additive_expr.w`: `binary1()` pushes
 the promoted left operand, the right side parses, then the var and
 float layers are tried before the integer ALU fallback). That makes
-overloading a new first layer in the existing lowering chain, not a
-parser change:
+overloading a new first layer in the existing lowering chain of just
+two grammar files (`additive_expr.w`, `multiplicative_expr.w`), not
+a parser change:
 
 ```
 user-overload layer → var layer → float layer → ALU fallback
@@ -82,9 +70,7 @@ user-overload layer → var layer → float layer → ALU fallback
 The layer is one lookup — gated on "either operand is a struct
 value", so ordinary code pays one type-table check — and, on a hit,
 emits a call instead of ALU ops. Precedence and associativity come
-free: existing spellings keep their ladder level. Prefix `-` hooks
-the same way in `unary_expression()` before the float/int negate
-lowering.
+free: existing spellings keep their ladder level.
 
 ### Lowering: operator use = function call
 
@@ -105,53 +91,38 @@ warnings and result chaining all work on every target for free.
 ### Declarations, mangling, the registry
 
 `program()` (`grammar/program.w`) parses the definition: after
-`type_name()`, a token spelled `operator` followed by an operator
-token enters the operator path; it synthesizes a mangled symbol and
-reuses `function_definition`. `operator` stays a contextual keyword —
-`int operator = 5` still declares a variable (today the word appears
-only in comments, so nothing in the tree re-lexes).
+`type_name()`, a token spelled `operator` followed by an arithmetic
+operator token enters the operator path; it synthesizes a mangled
+symbol and reuses `function_definition`. `operator` stays a
+contextual keyword — `int operator = 5` still declares a variable
+(today the word appears only in comments, so nothing in the tree
+re-lexes).
 
 Mangled names encode the operand types with `$`, the established
 internal-mangling character (`max$int` in generics):
-`op$+$vec3$vec3`, `op$*$vec3$float`, `op$-$vec3` (prefix). This is
-what allows several definitions of `operator*` to coexist — the
-"one definition per name" rule (`docs/projects/generics.md`) is
-preserved because the *names* differ. The registry is the symbol
-table itself: the lowering layer builds the mangled name from the
-spelling and the two unqualified operand type names and does a
-`sym_lookup`, exactly how method sugar resolves `Type_method`.
-Imports carry definitions across files as usual, and `w check`,
-`symbols`, `deps`, the REPL and wdbg inherit the feature because they
-share the grammar.
+`op$+$vec3$vec3`, `op$*$vec3$float`. This is what allows several
+definitions of `operator*` to coexist — the "one definition per
+name" rule (`docs/projects/generics.md`) is preserved because the
+*names* differ. The registry is the symbol table itself: the
+lowering layer builds the mangled name from the spelling and the two
+unqualified operand type names and does a `sym_lookup`, exactly how
+method sugar resolves `Type_method`. Imports carry definitions
+across files as usual, and `w check`, `symbols`, `deps`, the REPL
+and wdbg inherit the feature because they share the grammar.
 
 Operator functions must be ordinary functions: w-variadic, generator
 and generic definitions are rejected (`operator+[T]` composing with
 `docs/projects/generics.md` instantiation is future work; bind a
 concrete wrapper meanwhile).
 
-### Postfix
-
-With the token inventory fixed, the only sensible postfix spellings
-are `++`/`--`, which don't exist yet (#103 — `++` currently lexes as
-two `+` tokens). Postfix overloading is therefore **deferred until
-#103 lands**; the declaration grammar reserves a `postfix` marker
-(`vec3 operator++ postfix (vec3 a):`). Two rules recorded now so #103
-can respect them:
-
-- a spelling with any binary meaning cannot be postfix — after a left
-  operand, `a + - b` style forms are genuinely ambiguous and the
-  tokenizer tracks no whitespace adjacency to break ties;
-- beware token gluing: `!` merges into `!=` (`a!=b` is one token), so
-  postfix `!` is lexically off the table without whitespace rules.
-
 ## Diagnostics (new messages, frozen by fixtures)
 
 - `no operator '+' for operands 'vec3', 'int'` — struct-value operand
-  on an overloadable operator with no matching definition (replaces
+  on an arithmetic operator with no matching definition (replaces
   today's silent address arithmetic),
-- `operator '&&' cannot be overloaded`,
-- `operator definition takes 1 or 2 parameters`,
-- `postfix operators are not supported yet` (until #103),
+- `operator '==' cannot be overloaded` — any non-arithmetic token
+  after `operator` (comparisons, `&&`, `=`, `[]`, `++`, ...),
+- `operator definition takes 2 parameters`,
 - duplicate definitions fall out of the existing symbol-redefinition
   error via the mangled name.
 
@@ -168,30 +139,42 @@ No existing message text changes (`warning_test` and the
 - **`./wbuild verify`** plus `verify_x64` / `verify_arm64` — the
   lowering rides the call machinery on every target.
 - **`tests/parser_generator/w.pg`**: one `operator_def` rule
-  (`type_ref KW_OPERATOR operator_token params block`); list
-  `operator` in `name_token` like `case`/`default` so it stays usable
-  as an identifier.
+  (`type_ref KW_OPERATOR arith_op params block`); list `operator` in
+  `name_token` like `case`/`default` so it stays usable as an
+  identifier.
 - **Fixtures**: each diagnostic above gets a compile-only fixture
   with `# expect_stderr:` directives (`bin/wfixture`).
 - **Tests**: `tests/operator_overload_test.w` with a `# wbuild: x64`
-  twin — arithmetic/comparison/prefix on struct values, mixed
-  operand types (`vec3 * float`), struct-by-value returns chained
-  into further expressions, precedence against built-ins, pointer
-  arithmetic unchanged; then `./wbuild manifest` (never hand-edit
+  twin — all five operators on struct values, mixed operand types
+  (`vec3 * float`), struct-by-value returns chained into further
+  expressions, precedence against built-ins, pointer arithmetic
+  unchanged; then `./wbuild manifest` (never hand-edit
   `build.json`).
 
 ## Staging
 
-1. **Binary + prefix overloads for struct values** (everything
-   above). `graphics/` is the proving consumer: `operator+` etc. can
-   delegate to the existing `vec3_add` family, so the module migrates
-   without churn.
-2. **Postfix `++`/`--` overloads** once #103 adds the tokens.
-3. **Compound assignment** (`v += w` lowering to `v = v + w` through
-   the overload) — today compound assignment on struct values is an
+1. **v1 (this doc): binary `+ - * / %` on struct values.**
+   `graphics/` is the proving consumer: `operator+` etc. can delegate
+   to the existing `vec3_add` family, so the module migrates without
+   churn.
+2. **Prefix `-`** — mechanically trivial once the binary layer
+   exists (the same lookup in `unary_expression()` before the
+   float/int negate lowering; arity 1 distinguishes it), but kept
+   out of v1 to keep the first change one hook pattern.
+3. **Comparisons `== != < <= > >=`** — needs its own small decision
+   pass: whether `!=` auto-derives from `==` (lean no — zero magic)
+   and whether overloads must return `bool` (lean: warn).
+4. **Postfix `++`/`--`** — blocked on #103 (the tokens don't exist;
+   `++` lexes as two `+` today). Two rules recorded now: a spelling
+   with any binary meaning can never be postfix (after a left
+   operand the parse is ambiguous, and the tokenizer tracks no
+   whitespace adjacency to break ties), and token gluing bites
+   (`a!=b` lexes `!=` as one token, so postfix `!` is off the
+   table).
+5. **Compound assignment** (`v += w` as `v = v + w` through the
+   overload) — today compound assignment on struct values is an
    error, so this is purely additive.
-4. **Minting new spellings** — only on demonstrated demand; see
-   below.
+6. **Minting new spellings** — parked; see below.
 
 ## Future extension: new operator spellings
 
@@ -235,10 +218,6 @@ the most battle-tested code in `grammar/`.
 
 ## Open questions
 
-- Should `!=` auto-derive from `==` (and `>` from `<`) when only one
-  is defined? Lean no for v1 — explicit definitions, zero magic.
-- Should comparison overloads be required to return `bool`? Lean:
-  warn, don't error.
 - Whether `operator+` definitions should *also* be callable by their
   mangled name from user code. Lean no — internal names stay
   internal.
@@ -247,13 +226,13 @@ the most battle-tested code in `grammar/`.
 
 ## Related
 
-- #104 — the tracking issue (both halves).
-- #103 — `++`/`--` tokens; prerequisite for postfix overloads.
+- #104 — the tracking issue.
+- #103 — `++`/`--` tokens; prerequisite for the postfix stage.
 - #101/#102 — other missing built-in operators (`^`, `~`).
 - #27 — Matrix class; likely second consumer after `graphics/`.
 - `docs/projects/struct_methods.md` — the dispatch/lowering pattern
   this design parallels.
 - `docs/projects/graphics.md` — the motivating consumer
-  (`vec3_add(a, b)` today, `a + b` after stage 1).
+  (`vec3_add(a, b)` today, `a + b` after v1).
 - `docs/projects/generics.md` — `$`-mangling precedent and the
   instantiation machinery a generic-operator story would need.
