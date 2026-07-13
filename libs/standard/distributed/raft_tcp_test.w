@@ -4,8 +4,8 @@
 # loopback progress is deterministic, the iteration caps are just a
 # safety net).
 #
-# Ports: 41000 + __word_size__ * 100 + per-test offset, so the 32- and
-# 64-bit test binaries use disjoint ranges (41400 vs 41800) and can run
+# Ports: 21000 + __word_size__ * 100 + per-test offset, so the 32- and
+# 64-bit test binaries use disjoint ranges (21400 vs 21800) and can run
 # concurrently. Collisions with unrelated processes are theoretically
 # possible but the range is quiet.
 import lib.testing
@@ -13,7 +13,7 @@ import libs.standard.distributed.raft_tcp
 
 
 int rt_port_base():
-	return 41000 + __word_size__ * 100
+	return 21000 + __word_size__ * 100
 
 
 raft_msg* rt_make_msg(int type, int from, int to, int term_v):

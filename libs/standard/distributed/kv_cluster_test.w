@@ -38,10 +38,10 @@ on every pump, so a rebuilt node (raft_wal_recover + lsm_open on the
 same paths + raft_tcp_new on the SAME port) receives the backlog as
 soon as it listens again — no re-registration on the survivors.
 
-Ports: 41000 + __word_size__ * 100 + 20..31 (offsets 20-39 are
+Ports: 21000 + __word_size__ * 100 + 20..31 (offsets 20-39 are
 reserved for this test; raft_tcp_test owns 0-13), three consecutive
 ports per scenario, so the 32- and 64-bit binaries use disjoint ranges
-(41420.. vs 41820..) and can run concurrently.
+(21420.. vs 21820..) and can run concurrently.
 
 Files: per-target prefixes bin/kvc_t<word>_<test>_<node> for the lsm
 (.wal/.manifest/.sst*) plus <prefix>.rlog for the raft wal, truncated
@@ -53,7 +53,7 @@ at cluster setup so every run starts fresh.
 
 # This test's slice of the loopback port space (see header).
 int kvc_port_base():
-	return 41000 + __word_size__ * 100 + 20
+	return 21000 + __word_size__ * 100 + 20
 
 
 # Per-target per-node lsm prefix "bin/kvc_t<word>_<name>_<id>".
