@@ -740,7 +740,7 @@
 				{"cmd": ["git", "ls-files", "*.w"], "stdout_file": "bin/parser_generator_w_files.txt"},
 				{"cmd": ["bin/parser_generator", "tests/parser_generator/w.pg", "-o", "bin/generated_w_parser.w"]},
 				{"cmd": ["bin/wv2", "tests/parser_generator/generated_w_parser_test.w", "-o", "bin/parser_generator_w_test"]},
-				{"cmd": ["bin/parser_generator_w_test"]}
+				{"cmd": ["sh", "tools/parser_generator_w_batches.sh"]}
 			]
 		},
 		{
@@ -1641,14 +1641,18 @@
 				"http_client_64_test",
 				"json_64_test",
 				"json_codec_64_test",
+				"kv_cluster_64_test",
+				"kv_state_64_test",
 				"lease_64_test",
 				"lib_64_test",
 				"limb_builtin_64_test",
 				"limb_builtin_shadow_64_test",
 				"list_builtin_64_test",
+				"lsm_64_test",
 				"map_float_64_test",
 				"map_set_builtin_64_test",
 				"md5_64_test",
+				"memtable_64_test",
 				"method_chaining_64_test",
 				"monotime_64_test",
 				"nested_ctor_64_test",
@@ -1660,7 +1664,12 @@
 				"process_64_test",
 				"quorum_64_test",
 				"raft_64_test",
+				"raft_restart_sim_64_test",
 				"raft_sim_64_test",
+				"raft_sweep_64_test",
+				"raft_tcp_64_test",
+				"raft_wal_64_test",
+				"raft_wire_64_test",
 				"rand_64_test",
 				"rc4_64_test",
 				"result_64_test",
@@ -1670,6 +1679,7 @@
 				"sha1_64_test",
 				"sim_64_test",
 				"sse_64_test",
+				"sstable_64_test",
 				"stack_trace_64_test",
 				"stats_64_test",
 				"stream_64_test",
@@ -1686,6 +1696,8 @@
 				"vcs_commit_64_test",
 				"vcs_dag_64_test",
 				"vcs_diff_64_test",
+				"vcs_tree_64_test",
+				"wal_64_test",
 				"wbuild_directive_64_test"
 			]
 		},
@@ -1959,14 +1971,18 @@
 				"infer_test",
 				"json_codec_test",
 				"json_test",
+				"kv_cluster_test",
+				"kv_state_test",
 				"lease_test",
 				"lib_test",
 				"limb_builtin_shadow_test",
 				"limb_builtin_test",
 				"list_methods_test",
+				"lsm_test",
 				"map_float_test",
 				"math_test",
 				"md5_test",
+				"memtable_test",
 				"method_chaining_test",
 				"monotime_test",
 				"multilayer_test",
@@ -1979,8 +1995,13 @@
 				"prng_test",
 				"process_test",
 				"quorum_test",
+				"raft_restart_sim_test",
 				"raft_sim_test",
+				"raft_sweep_test",
+				"raft_tcp_test",
 				"raft_test",
+				"raft_wal_test",
+				"raft_wire_test",
 				"rand_test",
 				"range_test",
 				"rc4_test",
@@ -1992,6 +2013,7 @@
 				"sha2_test",
 				"sim_test",
 				"sse_test",
+				"sstable_test",
 				"stack_trace_test",
 				"stats_test",
 				"str_test",
@@ -2011,6 +2033,8 @@
 				"vcs_commit_test",
 				"vcs_dag_test",
 				"vcs_diff_test",
+				"vcs_tree_test",
+				"wal_test",
 				"wbuild_directive_test",
 				"wbuild_platform_test",
 				"x25519_test",
@@ -2675,6 +2699,38 @@
 			]
 		},
 		{
+			"name": "kv_cluster_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/kv_cluster_test.w", "-o", "bin/kv_cluster_64_test"]},
+				{"cmd": ["bin/kv_cluster_64_test"]}
+			]
+		},
+		{
+			"name": "kv_cluster_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/kv_cluster_test.w", "-o", "bin/kv_cluster_test"]},
+				{"cmd": ["bin/kv_cluster_test"]}
+			]
+		},
+		{
+			"name": "kv_state_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/kv_state_test.w", "-o", "bin/kv_state_64_test"]},
+				{"cmd": ["bin/kv_state_64_test"]}
+			]
+		},
+		{
+			"name": "kv_state_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/kv_state_test.w", "-o", "bin/kv_state_test"]},
+				{"cmd": ["bin/kv_state_test"]}
+			]
+		},
+		{
 			"name": "lease_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2755,6 +2811,22 @@
 			]
 		},
 		{
+			"name": "lsm_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/lsm_test.w", "-o", "bin/lsm_64_test"]},
+				{"cmd": ["bin/lsm_64_test"]}
+			]
+		},
+		{
+			"name": "lsm_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/lsm_test.w", "-o", "bin/lsm_test"]},
+				{"cmd": ["bin/lsm_test"]}
+			]
+		},
+		{
 			"name": "map_float_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2800,6 +2872,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/x/unsafe/md5_test.w", "-o", "bin/md5_test"]},
 				{"cmd": ["bin/md5_test"]}
+			]
+		},
+		{
+			"name": "memtable_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/memtable_test.w", "-o", "bin/memtable_64_test"]},
+				{"cmd": ["bin/memtable_64_test"]}
+			]
+		},
+		{
+			"name": "memtable_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/memtable_test.w", "-o", "bin/memtable_test"]},
+				{"cmd": ["bin/memtable_test"]}
 			]
 		},
 		{
@@ -2995,6 +3083,22 @@
 			]
 		},
 		{
+			"name": "raft_restart_sim_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_restart_sim_test.w", "-o", "bin/raft_restart_sim_64_test"]},
+				{"cmd": ["bin/raft_restart_sim_64_test"]}
+			]
+		},
+		{
+			"name": "raft_restart_sim_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_restart_sim_test.w", "-o", "bin/raft_restart_sim_test"]},
+				{"cmd": ["bin/raft_restart_sim_test"]}
+			]
+		},
+		{
 			"name": "raft_sim_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3011,11 +3115,75 @@
 			]
 		},
 		{
+			"name": "raft_sweep_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_sweep_test.w", "-o", "bin/raft_sweep_64_test"]},
+				{"cmd": ["bin/raft_sweep_64_test"]}
+			]
+		},
+		{
+			"name": "raft_sweep_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_sweep_test.w", "-o", "bin/raft_sweep_test"]},
+				{"cmd": ["bin/raft_sweep_test"]}
+			]
+		},
+		{
+			"name": "raft_tcp_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_tcp_test.w", "-o", "bin/raft_tcp_64_test"]},
+				{"cmd": ["bin/raft_tcp_64_test"]}
+			]
+		},
+		{
+			"name": "raft_tcp_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_tcp_test.w", "-o", "bin/raft_tcp_test"]},
+				{"cmd": ["bin/raft_tcp_test"]}
+			]
+		},
+		{
 			"name": "raft_test",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_test.w", "-o", "bin/raft_test"]},
 				{"cmd": ["bin/raft_test"]}
+			]
+		},
+		{
+			"name": "raft_wal_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_wal_test.w", "-o", "bin/raft_wal_64_test"]},
+				{"cmd": ["bin/raft_wal_64_test"]}
+			]
+		},
+		{
+			"name": "raft_wal_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_wal_test.w", "-o", "bin/raft_wal_test"]},
+				{"cmd": ["bin/raft_wal_test"]}
+			]
+		},
+		{
+			"name": "raft_wire_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_wire_test.w", "-o", "bin/raft_wire_64_test"]},
+				{"cmd": ["bin/raft_wire_64_test"]}
+			]
+		},
+		{
+			"name": "raft_wire_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_wire_test.w", "-o", "bin/raft_wire_test"]},
+				{"cmd": ["bin/raft_wire_test"]}
 			]
 		},
 		{
@@ -3193,6 +3361,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/sse_test.w", "-o", "bin/sse_test"]},
 				{"cmd": ["bin/sse_test"]}
+			]
+		},
+		{
+			"name": "sstable_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/sstable_test.w", "-o", "bin/sstable_64_test"]},
+				{"cmd": ["bin/sstable_64_test"]}
+			]
+		},
+		{
+			"name": "sstable_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/sstable_test.w", "-o", "bin/sstable_test"]},
+				{"cmd": ["bin/sstable_test"]}
 			]
 		},
 		{
@@ -3481,6 +3665,38 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_diff_test.w", "-o", "bin/vcs_diff_test"]},
 				{"cmd": ["bin/vcs_diff_test"]}
+			]
+		},
+		{
+			"name": "vcs_tree_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/vcs_tree_test.w", "-o", "bin/vcs_tree_64_test"]},
+				{"cmd": ["bin/vcs_tree_64_test"]}
+			]
+		},
+		{
+			"name": "vcs_tree_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/vcs_tree_test.w", "-o", "bin/vcs_tree_test"]},
+				{"cmd": ["bin/vcs_tree_test"]}
+			]
+		},
+		{
+			"name": "wal_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/wal_test.w", "-o", "bin/wal_64_test"]},
+				{"cmd": ["bin/wal_64_test"]}
+			]
+		},
+		{
+			"name": "wal_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/wal_test.w", "-o", "bin/wal_test"]},
+				{"cmd": ["bin/wal_test"]}
 			]
 		},
 		{

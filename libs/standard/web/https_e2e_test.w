@@ -13,8 +13,15 @@
 # checks are skipped, but the real X25519 + ChaCha20-Poly1305 handshake, the
 # server's ECDSA CertificateVerify signature, and the Finished MAC are all
 # still exercised. Every network wait on both sides is bounded (client:
-# req.timeout_ms via SO_RCVTIMEO; server: an explicit 5s recv/send timeout)
-# so a stalled peer can never wedge a test.
+# req.timeout_ms via SO_RCVTIMEO; server: an explicit 60s recv/send timeout)
+# so a stalled peer can never wedge a test. The bounds are wedge guards, not
+# pacing: each side's wait covers the OTHER side's pure-W handshake crypto
+# (X25519 + ECDSA sign/verify cost seconds of CPU per side here, and the
+# parallel test suite multiplies that wall time), so every bound is set far
+# above the worst legitimate slow path. A 5s server-side bound demonstrably
+# loses that race under suite load: the child aborts the handshake while the
+# client is still verifying CertificateVerify, and the client surfaces
+# http_error_tls.
 #
 # Coverage: a full GET (status + headers + body), SSE streamed over TLS,
 # keep-alive reuse of a cached TLS connection, an http->https cross-scheme
@@ -89,12 +96,17 @@ int hs_head_end(char* buf, int total):
 # Accept one TCP connection and complete the TLS server handshake with the
 # fixture credentials, bounding the child's own recv/send so a stalled
 # client cannot wedge it. Exits the child on any failure (distinct codes).
+# The bound must comfortably exceed the client's whole handshake budget:
+# while the child sits in this recv, the client is verifying the ECDSA
+# CertificateVerify and deriving keys (seconds of CPU, multiplied under
+# parallel suite load), so a tight bound converts "slow" into a handshake
+# abort (exit 22) and a client-side http_error_tls flake.
 tls_conn* hs_child_accept(int listener):
 	int conn = socket_accept_connection(listener)
 	if (conn < 0):
 		exit(21)
-	socket_set_recv_timeout(conn, 5000)
-	socket_set_send_timeout(conn, 5000)
+	socket_set_recv_timeout(conn, 60000)
+	socket_set_send_timeout(conn, 60000)
 	tls_server_config* scfg = tls_server_config_new()
 	scfg.cert_chain_path = hs_cert_path()
 	scfg.key_path = hs_key_path()
@@ -331,7 +343,7 @@ void test_https_cross_scheme_redirect():
 		int conn = socket_accept_connection(plain_listener)
 		if (conn < 0):
 			exit(1)
-		socket_set_recv_timeout(conn, 5000)
+		socket_set_recv_timeout(conn, 60000)
 		hs_child_read_request_raw(conn)
 		string_builder* redirect = string_new()
 		string_append(redirect, c"HTTP/1.1 302 Found\x0d\x0aLocation: https://127.0.0.1:")
@@ -394,7 +406,9 @@ void test_https_connect_timeout():
 	if (resp.error == http_error_connect()):
 		bounded_error = 1
 	asserts(c"connect fails bounded", bounded_error != 0)
-	asserts(c"connect timeout too long", elapsed < 5000)
+	# Upper bound: proves the 500ms cap fired rather than the 30s default
+	# (or a hang). Generous because a loaded machine deschedules us.
+	asserts(c"connect timeout too long", elapsed < 15000)
 	http_response_free(resp)
 	http_req_free(req)
 
@@ -411,7 +425,9 @@ void test_https_handshake_timeout():
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		socket_set_recv_timeout(conn, 8000)
+		# Wedge guard only: must outlast the client's pre-ClientHello key
+		# generation plus its 500ms wait, even under suite load.
+		socket_set_recv_timeout(conn, 60000)
 		# Read the ClientHello but never handshake; stall until the client
 		# gives up and closes.
 		hs_drain_raw(conn)
@@ -428,7 +444,10 @@ void test_https_handshake_timeout():
 	assert_equal(http_error_tls(), resp.error)
 	assert_equal(0, resp.status)
 	asserts(c"handshake timeout too early", elapsed >= 300)
-	asserts(c"handshake timeout too long", elapsed < 5000)
+	# Elapsed includes the client's own X25519 keygen CPU time, which a
+	# loaded machine stretches; only prove the 500ms cap fired rather
+	# than the 30s default (or a hang).
+	asserts(c"handshake timeout too long", elapsed < 15000)
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
@@ -453,7 +472,7 @@ void test_https_header_timeout():
 	char* target = hs_url(port, c"/slow")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
-	req.tls_handshake_timeout_ms = 20000
+	req.tls_handshake_timeout_ms = 60000
 	req.timeout_ms = 500
 	http_response* resp = http_request(req)
 	assert_equal(http_error_timeout(), resp.error)
@@ -485,7 +504,7 @@ void test_https_idle_stream_timeout():
 	char* target = hs_url(port, c"/drip")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
-	req.tls_handshake_timeout_ms = 20000
+	req.tls_handshake_timeout_ms = 60000
 	req.timeout_ms = 500
 	http_stream* st = http_open(req)
 	http_response* head = http_stream_headers(st)

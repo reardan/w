@@ -63,6 +63,28 @@ plumbing, `libs/standard/crypto/` hashing.
   clusters replayed deterministically through the simulator
   (elections under loss, partition/heal convergence, minority
   lockout, seeded replay equality).
-- Phase 4: checksummed write-ahead log, SSTable/memtable/compaction
-  (Bigtable lineage), and a demo replicated KV store wiring raft +
-  wal + rpc together over `lib/framing.w`.
+- Phase 4a (landed): `wal.w` checksummed append-only log with
+  torn-tail recovery, and `raft_wal.w` — shadow-diff persistence of
+  Raft's term/vote/log with crash/restart simulation tests (a
+  restarted voter cannot double-vote; a rebuilt follower converges).
+- Phase 4b (landed): the mini-LSM — `memtable.w` (sorted buffer,
+  tombstones, three-way get), `sstable.w` (WSST immutable tables with
+  embedded bloom filters), `lsm.w` (WAL-fronted writes, threshold
+  flush, newest-first reads, full compaction, MANIFEST recovery with
+  the dangling-last-entry torn-flush rule).
+- Phase 4c: the demo replicated KV store wiring raft + wal + lsm +
+  rpc together over `lib/framing.w` — the library's first
+  real-socket consumer.
+- Phase 5 (landed): raft hardening — opt-in no-op-on-win (closes the
+  §5.4.2 restart re-commit gap) and pre-vote with leader stickiness
+  (inflated-term rejoiners cannot disrupt a stable leader); snapshots
+  with InstallSnapshot (wire type 4) and pending-blob handoff to the
+  state machine, including wal-rewrite compaction in raft_wal;
+  bounded raft_tcp outbound buffers (drop-oldest, never a
+  partially-sent head); and raft_sweep_test — 100 seeds x 2 scenarios
+  of lossy elections and partition churn with per-seed safety
+  invariants, byte-deterministic across targets.
+- Next candidates: KV/lsm snapshot integration (serialize lsm state
+  into raft snapshots), binary-safe raft commands (length-carrying
+  entries), an arena/size-class allocator for long-lived processes
+  (see ai_tooling_next_steps.md), joint-consensus membership changes.

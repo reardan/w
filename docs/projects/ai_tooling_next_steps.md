@@ -84,6 +84,17 @@ is a queue, not an archive.
   which read those same fixtures. Fixed by excluding `tests/asm/` from
   the doc-only check before the extension test; pinned by a new
   `wtest_map_test` case (`build.base.json`).
+- **`./wbuild test_changed` is silently a no-op once the work is
+  committed.** The wbuild wrapper pipes `git diff --name-only HEAD`
+  into `wtest changed`, so after `git commit` (the natural state right
+  before pushing) it selects zero targets, prints nothing, and exits 0
+  — indistinguishable from "all selected tests passed" (2026-07-11,
+  found while validating the `https_e2e_test` flake fix; the real
+  selection needed `git diff --name-only origin/main...HEAD | bin/wtest
+  changed | xargs -r ./wbuild`). Either default the diff base to the
+  upstream/merge base when the working tree is clean, or print an
+  explicit `wtest: 0 targets selected (diff base HEAD)` line so an
+  empty selection can't pass for a green run.
 
 - **Adding a single new `_test.w` always selects the full `tests`
   umbrella, defeating "focused" selection.** Observed adding
@@ -148,6 +159,23 @@ is a queue, not an archive.
   println2` is a parse error; the comment must move to its own line
   (2026-07-12). Either the grammar should accept it or the diagnostic
   should say the comment is the problem — the current error does not.
+- **`parser_generator_w_test` retained every parsed AST — fixed by
+  batching (2026-07-12).** `test_parse_all_tracked_w_files` parsed all
+  tracked `.w` files in one process, retaining every AST, so the
+  32-bit gate segfaulted (exit 139) once tracked source crossed
+  ~3.7MB — six new library files tipped it, and removing ANY one of
+  them "fixed" it, a misleading bisect signature worth remembering.
+  First attempt — freeing per-file ASTs/sources/diagnostics — was
+  correct but catastrophically slow: recursive frees through the
+  first-fit allocator turned the 2-minute gate into a 90-CPU-minute
+  crawl (CI's 30-minute budget times out), and fragmentation kept RSS
+  growing anyway. The landed fix is
+  `tools/parser_generator_w_batches.sh`: rerun the test binary once
+  per 150-file slice of the manifest, bounding memory at batch size
+  forever (~21s total). Residual: the allocator's quadratic
+  free/malloc behavior under millions of small blocks is real and
+  will bite the next long-lived process too — an arena or size-class
+  allocator is the durable fix.
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new
