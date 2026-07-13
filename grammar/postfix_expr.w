@@ -251,6 +251,56 @@ void parse_variadic_element_argument(char* callee_name, int element_type, int ar
 	stack_pos = stack_pos + 1
 
 
+# Finish a call whose callee and arguments are already pushed: the arity
+# check, the call itself and the stack cleanup. Shared by
+# parse_call_suffix (arguments parsed from source) and the operator
+# overload lowering (arguments pushed by grammar/operator_overload.w,
+# which has no argument list to parse). passed_args is the final
+# argument count; frees callee_name.
+int finish_call(int callee_type, int s, int expected_args, int callee_sym, char* callee_name, int declared_return, int passed_args, int has_return_buffer, int w_variadic_fixed):
+	if ((expected_args >= 0) & (w_variadic_fixed < 0)):
+		if (passed_args != expected_args):
+			# Asm runtime stubs that record an arity (syscall, syscall7)
+			# load their arguments from fixed stack slots, so a call with
+			# the wrong argument count silently reads garbage words: reject
+			# it outright instead of warning.
+			int callee_is_stub = 0
+			if (callee_sym >= 0):
+				callee_is_stub = sym_is_asm_stub(callee_sym)
+			if (callee_is_stub):
+				diag_part(c"function '")
+			else:
+				diag_part(c"warning: function '")
+			diag_part(callee_name)
+			diag_part(c"' expects ")
+			diag_part(itoa(expected_args))
+			diag_part(c" arguments, got ")
+			if (callee_is_stub):
+				error(itoa(passed_args))
+			else:
+				warning(itoa(passed_args))
+	if (callee_name != 0):
+		free(callee_name)
+
+	mov_eax_esp_plus((stack_pos - s - 1) << word_size_log2)
+
+	# A function's address is its value; other callees hold a pointer
+	if (callee_type != 4):
+		promote(callee_type)
+	call_eax()
+	be_pop(stack_pos - s)
+	stack_pos = s
+	int type = 3  # call results are plain values
+	last_call_return_type = declared_return
+	last_call_end = codepos
+	if (has_return_buffer):
+		lea_eax_esp_plus(0)
+		type = type_value(declared_return)
+	else if (declared_return >= 0):
+		type = type_value(declared_return)
+	return type
+
+
 # Parse arguments for a call whose callee address has already been pushed.
 # passed_args lets callers account for hidden arguments, such as a method
 # receiver. callee_type is 4 for direct functions, and a pointer type for
@@ -341,47 +391,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 				push_call_argument(3)
 				passed_args = passed_args + 1
 
-	if ((expected_args >= 0) & (w_variadic_fixed < 0)):
-		if (passed_args != expected_args):
-			# Asm runtime stubs that record an arity (syscall, syscall7)
-			# load their arguments from fixed stack slots, so a call with
-			# the wrong argument count silently reads garbage words: reject
-			# it outright instead of warning.
-			int callee_is_stub = 0
-			if (callee_sym >= 0):
-				callee_is_stub = sym_is_asm_stub(callee_sym)
-			if (callee_is_stub):
-				diag_part(c"function '")
-			else:
-				diag_part(c"warning: function '")
-			diag_part(callee_name)
-			diag_part(c"' expects ")
-			diag_part(itoa(expected_args))
-			diag_part(c" arguments, got ")
-			if (callee_is_stub):
-				error(itoa(passed_args))
-			else:
-				warning(itoa(passed_args))
-	if (callee_name != 0):
-		free(callee_name)
-
-	mov_eax_esp_plus((stack_pos - s - 1) << word_size_log2)
-
-	# A function's address is its value; other callees hold a pointer
-	if (callee_type != 4):
-		promote(callee_type)
-	call_eax()
-	be_pop(stack_pos - s)
-	stack_pos = s
-	int type = 3  # call results are plain values
-	last_call_return_type = declared_return
-	last_call_end = codepos
-	if (has_return_buffer):
-		lea_eax_esp_plus(0)
-		type = type_value(declared_return)
-	else if (declared_return >= 0):
-		type = type_value(declared_return)
-	return type
+	return finish_call(callee_type, s, expected_args, callee_sym, callee_name, declared_return, passed_args, has_return_buffer, w_variadic_fixed)
 
 
 # One argument of a direct call to a variadic C import. Fixed arguments

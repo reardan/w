@@ -437,8 +437,18 @@ void program():
 		int decl_type = generic_scanned_type
 		if (decl_type < 0):
 			decl_type = type_name()
-		current_symbol = sym_declare_global(token, decl_type, 1)
-		get_token()
+		# 'operator' is a contextual keyword: followed by an operator
+		# token it defines an overload (grammar/operator_overload.w);
+		# otherwise it stays an ordinary declared name.
+		if (peek(c"operator")):
+			get_token()
+			if (operator_definition_starts_here()):
+				operator_definition(decl_type)
+				continue;
+			current_symbol = sym_declare_global(c"operator", decl_type, 1)
+		else:
+			current_symbol = sym_declare_global(token, decl_type, 1)
+			get_token()
 		if (accept(c";")):
 			define_global_variable(current_symbol, decl_type)
 
