@@ -195,7 +195,7 @@ float64 fexp2_scale64(float64 p, int n):
 	if (n < -1021):
 		if (n < -1076):
 			return 0.0
-		float64 tiny = float64_from_bits(0x1ff << 52)	# 2^-512
+		float64 tiny = float64_from_bits(0x1ff << 52)    # 2^-512
 		return float64_from_bits(float64_bits(p) + ((n + 512) << 52)) * tiny
 	return float64_from_bits(float64_bits(p) + (n << 52))
 
@@ -232,9 +232,9 @@ float64 fexp64(float64 x):
 		return float64_from_bits(0x7ff << 52)
 	if (x < -746.0):
 		return 0.0
-	float64 l2eh = 1.4426946640014648e+00	# log2(e) top 21 bits
-	float64 l2el = 3.7688749856360991e-07	# log2(e) - l2eh
-	float64 l2e = 1.4426950408889634e+00	# log2(e) rounded
+	float64 l2eh = 1.4426946640014648e+00    # log2(e) top 21 bits
+	float64 l2el = 3.7688749856360991e-07    # log2(e) - l2eh
+	float64 l2e = 1.4426950408889634e+00    # log2(e) rounded
 	float64 x1 = fsplit_hi64(x)
 	float64 pa = x1 * l2eh
 	float64 pb = (x - x1) * l2e + x1 * l2el
@@ -263,14 +263,14 @@ void flog2_pair64(float64 x, float64* hi_out, float64* lo_out):
 		e = -54
 	e = e + (bits >> 52) - 1023
 	float64 m = float64_from_bits((bits & ((1 << 52) - 1)) | (1023 << 52))
-	float64 sq2 = 1.4142135623730951e+00	# sqrt(2)
+	float64 sq2 = 1.4142135623730951e+00    # sqrt(2)
 	if (m >= sq2):
 		m = m * 0.5
 		e = e + 1
-	float64 u = m - 1.0	# exact (Sterbenz)
-	float64 vv = m + 1.0	# rounds; exact residual recovered below
+	float64 u = m - 1.0    # exact (Sterbenz)
+	float64 vv = m + 1.0    # rounds; exact residual recovered below
 	float64 th = fsplit_hi64(vv)
-	float64 tl = m - (th - 1.0)	# (m + 1) - th, exactly
+	float64 tl = m - (th - 1.0)    # (m + 1) - th, exactly
 	float64 s = u / vv
 	float64 sh = fsplit_hi64(s)
 	float64 sl = ((u - sh * th) - sh * tl) / vv
@@ -285,19 +285,19 @@ void flog2_pair64(float64 x, float64* hi_out, float64* lo_out):
 	float64 lc6 = 1.7559368158041094e-01
 	float64 lc7 = 1.7584625206026827e-01
 	float64 r = (s2 * s2) * (lc0 + s2 * (lc1 + s2 * (lc2 + s2 * (lc3 + s2 * (lc4 + s2 * (lc5 + s2 * (lc6 + s2 * lc7)))))))
-	r = r + sl * (sh + s)	# s^2 correction: s^2 ~ sh^2 + sl*(sh + s)
-	float64 s2h = sh * sh	# exact
+	r = r + sl * (sh + s)    # s^2 correction: s^2 ~ sh^2 + sl*(sh + s)
+	float64 s2h = sh * sh    # exact
 	float64 t_h = fsplit_hi64(3.0 + s2h + r)
 	float64 t_l = r - ((t_h - 3.0) - s2h)
-	float64 u2 = sh * t_h	# exact
+	float64 u2 = sh * t_h    # exact
 	float64 v2 = sl * t_h + t_l * s
 	# log2(m) = cp * s * (3 + s^2 + r), cp = 2/(3 ln 2)
 	float64 p_h = fsplit_hi64(u2 + v2)
 	float64 p_l = v2 - (p_h - u2)
-	float64 cph = 9.6179628372192383e-01	# 2/(3 ln 2) top 21 bits
-	float64 cpl = 4.1020405177678161e-07	# 2/(3 ln 2) - cph
-	float64 cp = 9.6179669392597555e-01	# 2/(3 ln 2) rounded
-	float64 z_h = cph * p_h	# exact
+	float64 cph = 9.6179628372192383e-01    # 2/(3 ln 2) top 21 bits
+	float64 cpl = 4.1020405177678161e-07    # 2/(3 ln 2) - cph
+	float64 cp = 9.6179669392597555e-01    # 2/(3 ln 2) rounded
+	float64 z_h = cph * p_h    # exact
 	float64 z_l = cpl * p_h + p_l * cp
 	float64 ef = e
 	float64 t1 = fsplit_hi64(ef + z_h + z_l)
@@ -348,9 +348,9 @@ float64 flog64(float64 x):
 	float64 t1 = 0.0
 	float64 t2 = 0.0
 	flog2_pair64(x, &t1, &t2)
-	float64 ln2h = 6.9314670562744141e-01	# ln(2) top 21 bits
-	float64 ln2l = 4.7493250390316726e-07	# ln(2) - ln2h
-	float64 ln2 = 6.9314718055994529e-01	# ln(2) rounded
+	float64 ln2h = 6.9314670562744141e-01    # ln(2) top 21 bits
+	float64 ln2l = 4.7493250390316726e-07    # ln(2) - ln2h
+	float64 ln2 = 6.9314718055994529e-01    # ln(2) rounded
 	return t1 * ln2h + (t2 * ln2 + t1 * ln2l)
 
 
@@ -364,9 +364,9 @@ float64 flog1064(float64 x):
 	float64 t1 = 0.0
 	float64 t2 = 0.0
 	flog2_pair64(x, &t1, &t2)
-	float64 lgh = 3.0102992057800293e-01	# log10(2) top 21 bits
-	float64 lgl = 7.5085978265526235e-08	# log10(2) - lgh
-	float64 lg = 3.0102999566398120e-01	# log10(2) rounded
+	float64 lgh = 3.0102992057800293e-01    # log10(2) top 21 bits
+	float64 lgl = 7.5085978265526235e-08    # log10(2) - lgh
+	float64 lg = 3.0102999566398120e-01    # log10(2) rounded
 	return t1 * lgh + (t2 * lg + t1 * lgl)
 
 
@@ -417,9 +417,9 @@ float64 fpow64(float64 x, float64 y):
 	# y integer parity: 0 = not an integer, 1 = odd, 2 = even
 	int yint = 0
 	float64 ay = fabs64(y)
-	float64 two53 = 9007199254740992.0	# 2^53
+	float64 two53 = 9007199254740992.0    # 2^53
 	if (ay >= two53):
-		yint = 2	# every float64 >= 2^53 in magnitude is an even integer
+		yint = 2    # every float64 >= 2^53 in magnitude is an even integer
 	else:
 		float64 fy = ffloor64(y)
 		if (fy == y):
@@ -528,11 +528,11 @@ float64 fcos_poly64(float64 r):
 # fixed values for |x| >= 2^52 instead (every float64 there is an
 # integer; no fractional phase survives to reduce).
 int ftrig_reduce64(float64 x, float64* r_out):
-	float64 invpio2 = 6.3661977236758138e-01	# 2/pi
-	float64 p1 = 1.5707960128784180e+00	# pi/2 top 22 bits
-	float64 p2 = 3.1391641641675960e-07	# next 22 bits
-	float64 p3 = 6.2233719696699885e-14	# next 22 bits
-	float64 p4 = 2.0222662487959506e-21	# remainder
+	float64 invpio2 = 6.3661977236758138e-01    # 2/pi
+	float64 p1 = 1.5707960128784180e+00    # pi/2 top 22 bits
+	float64 p2 = 3.1391641641675960e-07    # next 22 bits
+	float64 p3 = 6.2233719696699885e-14    # next 22 bits
+	float64 p4 = 2.0222662487959506e-21    # remainder
 	float64 fn = ffloor64(x * invpio2 + 0.5)
 	int n = fn
 	float64 r = (((x - fn * p1) - fn * p2) - fn * p3) - fn * p4
@@ -631,15 +631,15 @@ float64 fatan64(float64 x):
 		if (sgn):
 			return -pio2
 		return pio2
-	float64 t3p8 = 2.4142135623730949e+00	# tan(3pi/8)
-	float64 tp8 = 4.1421356237309503e-01	# tan(pi/8)
+	float64 t3p8 = 2.4142135623730949e+00    # tan(3pi/8)
+	float64 tp8 = 4.1421356237309503e-01    # tan(pi/8)
 	float64 base = 0.0
 	float64 w = ax
 	if (ax > t3p8):
 		base = pio2
 		w = -(1.0 / ax)
 	else if (ax > tp8):
-		base = 7.8539816339744828e-01	# pi/4
+		base = 7.8539816339744828e-01    # pi/4
 		w = (ax - 1.0) / (ax + 1.0)
 	float64 a0 = -3.3333333333333331e-01
 	float64 a1 = 1.9999999999999804e-01
@@ -693,9 +693,9 @@ float64 fatan264(float64 y, float64 x):
 		float64 base = pio2
 		if (x_inf):
 			if (xbits < 0):
-				base = 2.3561944901923448e+00	# 3pi/4
+				base = 2.3561944901923448e+00    # 3pi/4
 			else:
-				base = 7.8539816339744828e-01	# pi/4
+				base = 7.8539816339744828e-01    # pi/4
 		if (sy):
 			return -base
 		return base
@@ -720,7 +720,7 @@ float64 fatan264(float64 y, float64 x):
 	if (x > 0.0):
 		return fatan64(y / x)
 	float64 m = fatan64(fabs64(y / x))
-	float64 pi_lo = 1.2246467991473532e-16	# pi - pi_hi
+	float64 pi_lo = 1.2246467991473532e-16    # pi - pi_hi
 	float64 res = (pi - m) + pi_lo
 	if (sy):
 		return -res

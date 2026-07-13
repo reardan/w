@@ -141,7 +141,7 @@ float rand_gaussian(rand_state* r):
 	float u2 = rand_float(r)
 	float neg_two = -2.0
 	float radius = fsqrt(neg_two * flog(u1))
-	float two_pi = float_from_bits(0x40c90fdb)	# 2*pi
+	float two_pi = float_from_bits(0x40c90fdb)    # 2*pi
 	float theta = two_pi * u2
 	r.gaussian_cache = radius * fsin(theta)
 	r.gaussian_has_cache = 1

@@ -110,13 +110,13 @@ float fsplit_hi(float f):
 # degree-6 Chebyshev fit of (2^t - 1)/t (fit error ~2^-31 relative), so
 # fexp2_poly(0.0) is exactly 1.0. Shared kernel of fexp2/fexp/fpow.
 float fexp2_poly(float t):
-	float c0 = float_from_bits(0x3f317218)	# 6.9314718e-1
-	float c1 = float_from_bits(0x3e75fdf0)	# 2.4022651e-1
-	float c2 = float_from_bits(0x3d635847)	# 5.5504110e-2
-	float c3 = float_from_bits(0x3c1d950c)	# 9.6180551e-3
-	float c4 = float_from_bits(0x3aaec3ce)	# 1.3333501e-3
-	float c5 = float_from_bits(0x3922216f)	# 1.5461979e-4
-	float c6 = float_from_bits(0x378053a3)	# 1.5297735e-5
+	float c0 = float_from_bits(0x3f317218)    # 6.9314718e-1
+	float c1 = float_from_bits(0x3e75fdf0)    # 2.4022651e-1
+	float c2 = float_from_bits(0x3d635847)    # 5.5504110e-2
+	float c3 = float_from_bits(0x3c1d950c)    # 9.6180551e-3
+	float c4 = float_from_bits(0x3aaec3ce)    # 1.3333501e-3
+	float c5 = float_from_bits(0x3922216f)    # 1.5461979e-4
+	float c6 = float_from_bits(0x378053a3)    # 1.5297735e-5
 	float one = 1.0
 	return one + t * (c0 + t * (c1 + t * (c2 + t * (c3 + t * (c4 + t * (c5 + t * c6))))))
 
@@ -135,7 +135,7 @@ float fexp2_scale(float p, int n):
 	if (n < -125):
 		if (n < -151):
 			return 0.0
-		float tiny = float_from_bits(0x1f800000)	# 2^-64
+		float tiny = float_from_bits(0x1f800000)    # 2^-64
 		return float_from_bits(float_bits(p) + ((n + 64) << 23)) * tiny
 	return float_from_bits(float_bits(p) + (n << 23))
 
@@ -174,9 +174,9 @@ float fexp(float x):
 	float bottom = -105.0
 	if (x < bottom):
 		return 0.0
-	float l2eh = float_from_bits(0x3fb8a000)	# log2(e) top 12 bits
-	float l2el = float_from_bits(0x39a3b296)	# log2(e) - l2eh
-	float l2e = float_from_bits(0x3fb8aa3b)	# log2(e) rounded
+	float l2eh = float_from_bits(0x3fb8a000)    # log2(e) top 12 bits
+	float l2el = float_from_bits(0x39a3b296)    # log2(e) - l2eh
+	float l2e = float_from_bits(0x3fb8aa3b)    # log2(e) rounded
 	float x1 = fsplit_hi(x)
 	float pa = x1 * l2eh
 	float pb = (x - x1) * l2e + x1 * l2el
@@ -205,40 +205,40 @@ void flog2_pair(float x, float* hi_out, float* lo_out):
 		e = -25
 	e = e + (bits >> 23) - 127
 	float m = float_from_bits((bits & 0x007fffff) | 0x3f800000)
-	float sq2 = float_from_bits(0x3fb504f3)	# sqrt(2)
+	float sq2 = float_from_bits(0x3fb504f3)    # sqrt(2)
 	float half = 0.5
 	if (m >= sq2):
 		m = m * half
 		e = e + 1
 	float one = 1.0
-	float u = m - one	# exact (Sterbenz)
-	float vv = m + one	# rounds; exact residual recovered below
+	float u = m - one    # exact (Sterbenz)
+	float vv = m + one    # rounds; exact residual recovered below
 	float th = fsplit_hi(vv)
-	float tl = m - (th - one)	# (m + 1) - th, exactly
+	float tl = m - (th - one)    # (m + 1) - th, exactly
 	float s = u / vv
 	float sh = fsplit_hi(s)
 	float sl = ((u - sh * th) - sh * tl) / vv
 	# ln(m) = (2s/3)*(3 + s^2 + r), r = 3*sum(s^(2k)/(2k+1), k >= 2)
 	float s2 = s * s
-	float lc1 = float_from_bits(0x3f19999a)	# 3/5
-	float lc2 = float_from_bits(0x3edb6db7)	# 3/7
-	float lc3 = float_from_bits(0x3eaaaaab)	# 3/9
-	float lc4 = float_from_bits(0x3e8ba2e9)	# 3/11
+	float lc1 = float_from_bits(0x3f19999a)    # 3/5
+	float lc2 = float_from_bits(0x3edb6db7)    # 3/7
+	float lc3 = float_from_bits(0x3eaaaaab)    # 3/9
+	float lc4 = float_from_bits(0x3e8ba2e9)    # 3/11
 	float r = (s2 * s2) * (lc1 + s2 * (lc2 + s2 * (lc3 + s2 * lc4)))
-	r = r + sl * (sh + s)	# s^2 correction: s^2 ~ sh^2 + sl*(sh + s)
-	float s2h = sh * sh	# exact
+	r = r + sl * (sh + s)    # s^2 correction: s^2 ~ sh^2 + sl*(sh + s)
+	float s2h = sh * sh    # exact
 	float three = 3.0
 	float t_h = fsplit_hi(three + s2h + r)
 	float t_l = r - ((t_h - three) - s2h)
-	float u2 = sh * t_h	# exact
+	float u2 = sh * t_h    # exact
 	float v2 = sl * t_h + t_l * s
 	# log2(m) = cp * s * (3 + s^2 + r), cp = 2/(3 ln 2)
 	float p_h = fsplit_hi(u2 + v2)
 	float p_l = v2 - (p_h - u2)
-	float cph = float_from_bits(0x3f763000)	# 2/(3 ln 2) top 12 bits
-	float cpl = float_from_bits(0x3904ee1d)	# 2/(3 ln 2) - cph
-	float cp = float_from_bits(0x3f76384f)	# 2/(3 ln 2) rounded
-	float z_h = cph * p_h	# exact
+	float cph = float_from_bits(0x3f763000)    # 2/(3 ln 2) top 12 bits
+	float cpl = float_from_bits(0x3904ee1d)    # 2/(3 ln 2) - cph
+	float cp = float_from_bits(0x3f76384f)    # 2/(3 ln 2) rounded
+	float z_h = cph * p_h    # exact
 	float z_l = cpl * p_h + p_l * cp
 	float ef = e
 	float t1 = fsplit_hi(ef + z_h + z_l)
@@ -289,9 +289,9 @@ float flog(float x):
 	float t1 = 0.0
 	float t2 = 0.0
 	flog2_pair(x, &t1, &t2)
-	float ln2h = float_from_bits(0x3f317000)	# ln(2) top 12 bits
-	float ln2l = float_from_bits(0x3805fdf4)	# ln(2) - ln2h
-	float ln2 = float_from_bits(0x3f317218)	# ln(2) rounded
+	float ln2h = float_from_bits(0x3f317000)    # ln(2) top 12 bits
+	float ln2l = float_from_bits(0x3805fdf4)    # ln(2) - ln2h
+	float ln2 = float_from_bits(0x3f317218)    # ln(2) rounded
 	return t1 * ln2h + (t2 * ln2 + t1 * ln2l)
 
 
@@ -305,9 +305,9 @@ float flog10(float x):
 	float t1 = 0.0
 	float t2 = 0.0
 	flog2_pair(x, &t1, &t2)
-	float lgh = float_from_bits(0x3e9a2000)	# log10(2) top 12 bits
-	float lgl = float_from_bits(0x369a84fc)	# log10(2) - lgh
-	float lg = float_from_bits(0x3e9a209b)	# log10(2) rounded
+	float lgh = float_from_bits(0x3e9a2000)    # log10(2) top 12 bits
+	float lgl = float_from_bits(0x369a84fc)    # log10(2) - lgh
+	float lg = float_from_bits(0x3e9a209b)    # log10(2) rounded
 	return t1 * lgh + (t2 * lg + t1 * lgl)
 
 
@@ -356,9 +356,9 @@ float fpow(float x, float y):
 	# y integer parity: 0 = not an integer, 1 = odd, 2 = even
 	int yint = 0
 	float ay = fabs(y)
-	float two24 = float_from_bits(0x4b800000)	# 2^24
+	float two24 = float_from_bits(0x4b800000)    # 2^24
 	if (ay >= two24):
-		yint = 2	# every float >= 2^24 in magnitude is an even integer
+		yint = 2    # every float >= 2^24 in magnitude is an even integer
 	else:
 		float fy = ffloor(y)
 		if (fy == y):
@@ -430,10 +430,10 @@ float fpow(float x, float y):
 # sin(r) for r in [-pi/4 - eps, pi/4 + eps]: r + r^3 * S(r^2), S a
 # degree-3 Chebyshev fit (odd terms through r^9). Trig kernel, ~1 ulp.
 float fsin_poly(float r):
-	float s1 = float_from_bits(cast(int, 0xbe2aaaab))	# -1.6666667e-1
-	float s2 = float_from_bits(0x3c088887)	# 8.3333319e-3
-	float s3 = float_from_bits(cast(int, 0xb95009d0))	# -1.9840081e-4
-	float s4 = float_from_bits(0x3636ddc8)	# 2.7249207e-6
+	float s1 = float_from_bits(cast(int, 0xbe2aaaab))    # -1.6666667e-1
+	float s2 = float_from_bits(0x3c088887)    # 8.3333319e-3
+	float s3 = float_from_bits(cast(int, 0xb95009d0))    # -1.9840081e-4
+	float s4 = float_from_bits(0x3636ddc8)    # 2.7249207e-6
 	float u = r * r
 	return r + (u * r) * (s1 + u * (s2 + u * (s3 + u * s4)))
 
@@ -442,10 +442,10 @@ float fsin_poly(float r):
 # with the rounding residual of (1 - r^2/2) re-added so the leading
 # terms lose nothing (musl __cosdf's trick). ~1 ulp.
 float fcos_poly(float r):
-	float k1 = float_from_bits(0x3d2aaaab)	# 4.1666668e-2
-	float k2 = float_from_bits(cast(int, 0xbab60b60))	# -1.3888888e-3
-	float k3 = float_from_bits(0x37d00ae0)	# 2.4800596e-5
-	float k4 = float_from_bits(cast(int, 0xb4929154))	# -2.7300359e-7
+	float k1 = float_from_bits(0x3d2aaaab)    # 4.1666668e-2
+	float k2 = float_from_bits(cast(int, 0xbab60b60))    # -1.3888888e-3
+	float k3 = float_from_bits(0x37d00ae0)    # 2.4800596e-5
+	float k4 = float_from_bits(cast(int, 0xb4929154))    # -2.7300359e-7
 	float u = r * r
 	float half = 0.5
 	float hu = u * half
@@ -463,11 +463,11 @@ float fcos_poly(float r):
 # and results are meaningless (but finite). No Payne-Hanek here by
 # design - see docs/projects/engineering_math_baseline.md.
 int ftrig_reduce(float x, float* r_out):
-	float invpio2 = float_from_bits(0x3f22f983)	# 2/pi
-	float p1 = float_from_bits(0x3fc90000)	# pi/2 top 11 bits
-	float p2 = float_from_bits(0x39fda000)	# next 11 bits
-	float p3 = float_from_bits(0x33a22000)	# next 11 bits
-	float p4 = float_from_bits(0x2c34611a)	# remainder, 2.5633441e-12
+	float invpio2 = float_from_bits(0x3f22f983)    # 2/pi
+	float p1 = float_from_bits(0x3fc90000)    # pi/2 top 11 bits
+	float p2 = float_from_bits(0x39fda000)    # next 11 bits
+	float p3 = float_from_bits(0x33a22000)    # next 11 bits
+	float p4 = float_from_bits(0x2c34611a)    # remainder, 2.5633441e-12
 	float half = 0.5
 	float fn = ffloor(x * invpio2 + half)
 	int n = fn
@@ -558,8 +558,8 @@ float fatan(float x):
 		if (sgn):
 			return -pio2
 		return pio2
-	float t3p8 = float_from_bits(0x401a827a)	# tan(3pi/8)
-	float tp8 = float_from_bits(0x3ed413cd)	# tan(pi/8)
+	float t3p8 = float_from_bits(0x401a827a)    # tan(3pi/8)
+	float tp8 = float_from_bits(0x3ed413cd)    # tan(pi/8)
 	float one = 1.0
 	float base = 0.0
 	float w = ax
@@ -567,13 +567,13 @@ float fatan(float x):
 		base = pio2
 		w = -(one / ax)
 	else if (ax > tp8):
-		base = float_from_bits(0x3f490fdb)	# pi/4
+		base = float_from_bits(0x3f490fdb)    # pi/4
 		w = (ax - one) / (ax + one)
-	float a0 = float_from_bits(cast(int, 0xbeaaaaaa))	# -3.3333331e-1
-	float a1 = float_from_bits(0x3e4ccb98)	# 1.9999540e-1
-	float a2 = float_from_bits(cast(int, 0xbe120ffd))	# -1.4263912e-1
-	float a3 = float_from_bits(0x3ddc05a4)	# 1.0743263e-1
-	float a4 = float_from_bits(cast(int, 0xbd841a8e))	# -6.4503774e-2
+	float a0 = float_from_bits(cast(int, 0xbeaaaaaa))    # -3.3333331e-1
+	float a1 = float_from_bits(0x3e4ccb98)    # 1.9999540e-1
+	float a2 = float_from_bits(cast(int, 0xbe120ffd))    # -1.4263912e-1
+	float a3 = float_from_bits(0x3ddc05a4)    # 1.0743263e-1
+	float a4 = float_from_bits(cast(int, 0xbd841a8e))    # -6.4503774e-2
 	float z = w * w
 	float p = a0 + z * (a1 + z * (a2 + z * (a3 + z * a4)))
 	float res = base + (w + (z * w) * p)
@@ -612,9 +612,9 @@ float fatan2(float y, float x):
 		float base = pio2
 		if (x_inf):
 			if (xbits < 0):
-				base = float_from_bits(0x4016cbe4)	# 3pi/4
+				base = float_from_bits(0x4016cbe4)    # 3pi/4
 			else:
-				base = float_from_bits(0x3f490fdb)	# pi/4
+				base = float_from_bits(0x3f490fdb)    # pi/4
 		if (sy):
 			return -base
 		return base
@@ -639,7 +639,7 @@ float fatan2(float y, float x):
 	if (x > 0.0):
 		return fatan(y / x)
 	float m = fatan(fabs(y / x))
-	float pi_lo = float_from_bits(cast(int, 0xb3bbbd2e))	# pi - pi_hi
+	float pi_lo = float_from_bits(cast(int, 0xb3bbbd2e))    # pi - pi_hi
 	float res = (pi - m) + pi_lo
 	if (sy):
 		return -res
@@ -649,13 +649,13 @@ float fatan2(float y, float x):
 # (asin(x) - x) / (x * z) for z = x^2 in [0, 0.2501]: degree-6
 # Chebyshev fit, shared by fasin and facos (asin(x) = x + x*z*P(z)).
 float fasin_poly(float z):
-	float c0 = float_from_bits(0x3e2aaaab)	# 1.6666667e-1
-	float c1 = float_from_bits(0x3d99998f)	# 7.4999921e-2
-	float c2 = float_from_bits(0x3d36e07b)	# 4.4647675e-2
-	float c3 = float_from_bits(0x3cf7f686)	# 3.0268919e-2
-	float c4 = float_from_bits(0x3cc1718c)	# 2.3613714e-2
-	float c5 = float_from_bits(0x3c2d20fe)	# 1.0566948e-2
-	float c6 = float_from_bits(0x3cfdd538)	# 3.0985460e-2
+	float c0 = float_from_bits(0x3e2aaaab)    # 1.6666667e-1
+	float c1 = float_from_bits(0x3d99998f)    # 7.4999921e-2
+	float c2 = float_from_bits(0x3d36e07b)    # 4.4647675e-2
+	float c3 = float_from_bits(0x3cf7f686)    # 3.0268919e-2
+	float c4 = float_from_bits(0x3cc1718c)    # 2.3613714e-2
+	float c5 = float_from_bits(0x3c2d20fe)    # 1.0566948e-2
+	float c6 = float_from_bits(0x3cfdd538)    # 3.0985460e-2
 	return c0 + z * (c1 + z * (c2 + z * (c3 + z * (c4 + z * (c5 + z * c6)))))
 
 

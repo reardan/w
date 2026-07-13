@@ -136,6 +136,14 @@ is a queue, not an archive.
   and the importer has to add `import lib.lib` for lib.assert's sake
   (2026-07-12, found writing lib/rand.w). lib.assert (or
   lib.stack_trace) should import what it uses.
+- **Mid-line tabs: compiler accepts, w.pg rejects.** `w check` and
+  compilation are happy with a tab between code and a trailing comment
+  (`x = 1)\t# note`), but the parser-generator grammar only knows tabs
+  as indentation, so the divergence surfaces late, in
+  parser_generator_w_test, as `expected top_item, found \t` (2026-07-13,
+  364 occurrences written across the math-baseline files before the
+  gate caught it). Either w.pg should accept inline tabs or `w check`
+  should warn on them — one surface should own the rule.
 - **Import lines reject trailing `#` comments.** `import lib.lib  # for
   println2` is a parse error; the comment must move to its own line
   (2026-07-12). Either the grammar should accept it or the diagnostic
