@@ -1,6 +1,7 @@
 # wbuild: x64
 import lib.testing
 import lib.format
+import lib.generator
 
 /*
 Operator overloading v1 (docs/projects/operator_overloading.md, issue
@@ -12,6 +13,15 @@ uses, precedence against the built-in ladder, operator expressions in
 call-argument / return / condition position, forward declarations, and
 that struct POINTER operands keep today's raw byte-addressed pointer
 arithmetic instead of consulting overloads.
+
+The second half hardens the emission's stack discipline: operator uses
+in while conditions (millions of iterations without drift), on the
+short-circuit and ternary skip paths, as compound-assignment right
+sides and W-variadic call elements, scalar-left dispatch (float and
+int left operands), map / fixed-array / pointer element positions,
+defer bodies, generator yields, switch scrutinees, call results as
+left operands, method suffixes on operator results, and 'operator'
+staying an ordinary identifier outside definition position.
 */
 
 
@@ -283,3 +293,260 @@ void test_assign_operator_result():
 	assert_near(4.0, r.x)
 	assert_near(5.0, r.y)
 	assert_near(6.0, r.z)
+
+
+# Scalar-left dispatch: the same '*' spelling with the struct on the
+# RIGHT. On the x64 twin '0.5 * v' exercises the left-side
+# float64->float mangling fold (x64 float literals are float64).
+vec3 operator*(float s, vec3 a):
+	return vec3(s * a.x, s * a.y, s * a.z)
+
+
+vec3 operator*(int s, vec3 a):
+	return vec3(s * a.x, s * a.y, s * a.z)
+
+
+# Dot product with an int result, for element positions that want int
+# expressions (W-variadic arguments, switch scrutinees).
+int operator*(ivec2 a, ivec2 b):
+	return a.x * b.x + a.y * b.y
+
+
+int oo_total(int... xs):
+	int total = 0
+	for int x in xs:
+		total = total + x
+	return total
+
+
+vec3 oo_make_v():
+	return vec3(10.0, 20.0, 30.0)
+
+
+# Method-call sugar target: '(a + b).len2()' lowers to
+# vec3_len2(&buffer) (docs/projects/struct_methods.md).
+float vec3_len2(vec3* self):
+	return self.x * self.x + self.y * self.y + self.z * self.z
+
+
+int oo_defer_x
+
+
+# Deferred statements re-parse and re-emit at every exit
+# (tests/defer_test.w), so the operator use in the defer body runs
+# through the same lowering as straight-line code.
+void oo_defer_capture():
+	vec3 a = vec3(1.0, 2.0, 3.0)
+	vec3 b = vec3(4.0, 5.0, 6.0)
+	defer oo_defer_x = cast(int, (a + b).x)
+	oo_defer_x = 0
+
+
+# Generator whose yields run an operator use on dereferenced struct
+# POINTER parameters: (*pa) * (*pb) is the vec3 dot product.
+generator int oo_dots(vec3* pa, vec3* pb, int n):
+	int i = 0
+	while (i < n):
+		yield cast(int, (*pa) * (*pb))
+		i = i + 1
+
+
+# 'operator' is a keyword only in definition-name position: this
+# declares an ordinary global named operator.
+int operator
+
+
+void oo_set_operator_global():
+	operator = 41
+	operator = operator + 1
+
+
+# 3,000,000 iterations of a scalar-result operator use in a while
+# condition: any per-iteration stack drift from the operator's call
+# emission would blow the stack long before the counter reaches the
+# bound. dot(a, a) = 1.0, so the condition never flips on its own.
+void test_while_condition_scalar():
+	vec3 a = vec3(1.0, 0.0, 0.0)
+	int i = 0
+	while ((a * a) < 2.0):
+		i = i + 1
+		if (i >= 3000000):
+			break
+	assert_equal(3000000, i)
+	# Terminating twin: the loop must also EXIT through the operator
+	# condition at a known count. g grows by (1,0,0) per pass, so
+	# dot(g, g) walks 0, 1, 4, 9 and crosses 6.5 after 3 passes.
+	vec3 g = vec3(0.0, 0.0, 0.0)
+	vec3 step = vec3(1.0, 0.0, 0.0)
+	int n = 0
+	while ((g * g) < 6.5):
+		g = g + step
+		n = n + 1
+	assert_equal(3, n)
+
+
+# Struct-valued operator result consumed by a field read in the while
+# condition. b.x walks 0.5, 1.5, 2.5, 3.5, 4.5; (a + b).x crosses 5.0
+# after 4 passes.
+void test_while_condition_struct():
+	vec3 a = vec3(1.0, 0.0, 0.0)
+	vec3 b = vec3(0.5, 0.0, 0.0)
+	vec3 step = vec3(1.0, 0.0, 0.0)
+	int n = 0
+	while ((a + b).x < 5.0):
+		b = b + step
+		n = n + 1
+	assert_equal(4, n)
+
+
+# Short-circuit operands: the operator call on the right of '&&'/'||'
+# must not run when the left side decides, and the skipped emission
+# must not disturb neighboring locals (canaries surround the flags).
+void test_short_circuit():
+	vec3 a = vec3(1.0, 2.0, 3.0)
+	int canary_lo = 111
+	int flag = 0
+	int hit = 0
+	int canary_hi = 222
+	if (flag && ((a * a) > 1.0)):
+		hit = 1
+	assert_equal(0, hit)
+	assert_equal(111, canary_lo)
+	assert_equal(222, canary_hi)
+	int taken = 0
+	if (flag == 0 || ((a * a) > 100.0)):
+		taken = 1
+	assert_equal(1, taken)
+	assert_equal(111, canary_lo)
+	assert_equal(222, canary_hi)
+	# Evaluated twin: the right side does run when the left cannot
+	# decide. dot(a, a) = 14.
+	int both = 0
+	if (1 && ((a * a) > 10.0)):
+		both = 1
+	assert_equal(1, both)
+
+
+# Scalar-result operator uses inside ternary arms, both selected and
+# skipped. (Struct-valued ternary arms are a known operator-unrelated
+# gap; see docs/projects/operator_overloading.md.)
+void test_ternary_scalar():
+	vec3 a = vec3(1.0, 2.0, 3.0)
+	vec3 b = vec3(4.0, 5.0, 6.0)
+	int c = 0
+	float r = c ? (a * b) : 0.5
+	assert_near(0.5, r)
+	c = 1
+	r = c ? (a * b) : 0.5
+	assert_near(32.0, r)
+
+
+# Operator expression as a compound assignment's right side (the LHS
+# stays scalar; struct-LHS compound assignment is staged separately,
+# docs/projects/operator_overloading.md).
+void test_compound_assign_rhs():
+	vec3 a = vec3(1.0, 2.0, 3.0)
+	vec3 b = vec3(4.0, 5.0, 6.0)
+	float acc = 3.0
+	acc = acc + 0.0
+	acc += a * b
+	assert_near(35.0, acc)
+
+
+# Operator results as W-variadic call elements: the packing loop walks
+# the argument stack, so each element must be exactly one word.
+# dot(p, q) = 23, dot(p, p) = 13, plus 100 = 136.
+void test_variadic_element_args():
+	ivec2 p = ivec2(2, 3)
+	ivec2 q = ivec2(4, 5)
+	assert_equal(136, oo_total(p * q, p * p, 100))
+
+
+void test_scalar_left_dispatch():
+	vec3 v = vec3(2.0, 4.0, 6.0)
+	vec3 h = 0.5 * v
+	assert_near(1.0, h.x)
+	assert_near(2.0, h.y)
+	assert_near(3.0, h.z)
+	vec3 d = 2 * v
+	assert_near(4.0, d.x)
+	assert_near(8.0, d.y)
+	assert_near(12.0, d.z)
+
+
+# Operator operands and results flowing through container element and
+# pointer positions: map values, fixed-array elements, pointer stores
+# and dereferences.
+void test_container_positions():
+	vec3 a = vec3(1.0, 2.0, 3.0)
+	vec3 b = vec3(4.0, 5.0, 6.0)
+	map[int, vec3] m = new map[int, vec3]
+	m[1] = a
+	vec3 r = m[1] + b
+	assert_near(5.0, r.x)
+	assert_near(7.0, r.y)
+	assert_near(9.0, r.z)
+	m[2] = a + b
+	assert_near(5.0, m[2].x)
+	assert_near(9.0, m[2].z)
+	vec3[3] arr
+	arr[0] = a
+	vec3 e = arr[0] + b
+	assert_near(5.0, e.x)
+	assert_near(9.0, e.z)
+	arr[1] = a + b
+	assert_near(7.0, arr[1].y)
+	vec3 v = a
+	vec3* p = &v
+	*p = a + b
+	assert_near(5.0, v.x)
+	assert_near(9.0, v.z)
+	vec3 t = *p + a
+	assert_near(6.0, t.x)
+	assert_near(12.0, t.z)
+
+
+# Operator uses inside defer bodies, generator yields (struct pointer
+# parameters dereferenced into value operands) and switch scrutinees.
+void test_defer_generator_switch():
+	oo_defer_capture()
+	assert_equal(5, oo_defer_x)
+	vec3 u = vec3(1.0, 2.0, 3.0)
+	vec3 w = vec3(4.0, 5.0, 6.0)
+	int sum = 0
+	for int d in oo_dots(&u, &w, 3):
+		sum = sum + d
+	assert_equal(96, sum)
+	ivec2 p = ivec2(7, 9)
+	ivec2 q = ivec2(4, 5)
+	int label = 0
+	switch ((p % q).x):
+		case 3:
+			label = 30
+		default:
+			label = 99
+	assert_equal(30, label)
+
+
+# Call results feed operators as the LEFT operand, and operator
+# results take method-call suffixes like any struct-by-value result
+# (docs/projects/struct_methods.md). len2(5, 7, 9) = 155.
+void test_result_chaining_postfix():
+	vec3 a = vec3(1.0, 2.0, 3.0)
+	vec3 b = vec3(4.0, 5.0, 6.0)
+	vec3 r = oo_make_v() + a
+	assert_near(11.0, r.x)
+	assert_near(22.0, r.y)
+	assert_near(33.0, r.z)
+	assert_near(155.0, (a + b).len2())
+
+
+# The contextual keyword never reserves the name: the global declared
+# above and a local both named 'operator' stay ordinary identifiers in
+# assignment and arithmetic position.
+void test_operator_identifier():
+	oo_set_operator_global()
+	assert_equal(42, operator)
+	int operator = 7
+	assert_equal(21, operator * 3)
+	assert_equal(42, operator + 35)

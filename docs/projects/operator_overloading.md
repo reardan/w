@@ -8,7 +8,8 @@ are all staged behind this (see Staging and the extension section).
 Restricting to operator tokens the language already has means **no
 tokenizer changes at all**, and precedence comes free.
 
-Status: design only, nothing implemented.
+Status: implemented (PR pending), tracking issue #104. The Gates
+checklist below has been executed.
 
 ## Proposed surface
 
@@ -37,18 +38,29 @@ normal prototype rules; single-pass compilation means
 define-or-declare before first use, like everything else in W.
 
 **Dispatch rule**: an overload is consulted only when at least one
-operand is a struct **value** (pointer level 0). Scalar arithmetic
-can never change meaning, and struct *pointers* keep pointer
-arithmetic exactly as today (`vec3* p; p + 1` stays pointer math —
-C++ makes the same cut). Mixed operands like `vec3 * float` are in
-scope — scaling is half the point for the motivating vector case —
-and cost nothing: resolution is an exact match on
-(spelling, left type, right type), no conversions tried. A
-struct-value operand with no matching overload becomes a compile
-error (see Diagnostics) — today it silently falls through to
-word-sized ALU code on the value's address, which is garbage in the
-same family as the method-chain silent-ignore that
-`docs/projects/struct_methods.md` fixed.
+operand is a struct (and union) **value** (pointer level 0) — the
+gate is "the operand's type has fields", so union values are in
+scope too. Scalar arithmetic can never change meaning, and struct
+*pointers* keep pointer arithmetic exactly as today
+(`vec3* p; p + 1` stays pointer math — C++ makes the same cut).
+Mixed operands like `vec3 * float` are in scope — scaling is half
+the point for the motivating vector case — and cost nothing:
+resolution is an exact match on (spelling, left type, right type),
+no conversions tried. A struct-value operand with no matching
+overload becomes a compile error (see Diagnostics) — before v1 it
+silently fell through to word-sized ALU code on the value's address,
+which is garbage in the same family as the method-chain
+silent-ignore that `docs/projects/struct_methods.md` fixed.
+
+Two mangling details keep the exact-match rule portable. `float`,
+`float32` and `float16` parameters all mangle to `float`, so
+definitions differing only in those spellings collide via the
+ordinary symbol-redefinition error — intended, they are one overload.
+`float64` mangles apart; because x64 float literals are float64, a
+float64-mangled operand that misses on lookup retries as `float`, and
+the per-argument coercion narrows the value on the way into the call
+— so `v * 0.5` (and `0.5 * v`) resolve to the `float` definition on
+every target.
 
 ## How it fits the compiler
 
@@ -86,7 +98,11 @@ arguments *from source* (`arg, arg, ...)`) and an operator has none,
 so the "finish a call whose arguments are already pushed" tail gets
 extracted into a helper both paths share. Riding this machinery means
 struct-by-value arguments and returns (`vec3 + vec3 → vec3`), type
-warnings and result chaining all work on every target for free.
+warnings and result chaining all work on every target for free. The
+emitter compacts its temporaries: a scalar-returning operator use is
+stack-neutral, and a struct-returning one leaks exactly its return
+buffer — the same footprint as any struct-returning call — so
+operator uses are safe in loop conditions run millions of times.
 
 ### Declarations, mangling, the registry
 
@@ -94,9 +110,14 @@ warnings and result chaining all work on every target for free.
 `type_name()`, a token spelled `operator` followed by an arithmetic
 operator token enters the operator path; it synthesizes a mangled
 symbol and reuses `function_definition`. `operator` stays a
-contextual keyword — `int operator = 5` still declares a variable
-(today the word appears only in comments, so nothing in the tree
-re-lexes).
+contextual keyword — a global `int operator` or a local
+`int operator = 5` still declares a variable (today the word appears
+only in comments, so nothing in the tree re-lexes). One cosmetic
+edge, accepted for v1: `operator[]`, `operator++` and `operator(`
+die with generic parse errors (the declaration scan or the tokenizer
+claims them first — `++` lexes as two `+` tokens) rather than the
+friendlier cannot-be-overloaded message, which fires for spellings
+like `==` that lex as a single operator token.
 
 Mangled names encode the operand types with `$`, the established
 internal-mangling character (`max$int` in generics):
@@ -107,8 +128,12 @@ name" rule (`docs/projects/generics.md`) is preserved because the
 lowering layer builds the mangled name from the spelling and the two
 unqualified operand type names and does a `sym_lookup`, exactly how
 method sugar resolves `Type_method`. Imports carry definitions
-across files as usual, and `w check`, `symbols`, `deps`, the REPL
-and wdbg inherit the feature because they share the grammar.
+across files as usual, and `w check`, `symbols`, `deps` and wdbg
+inherit the feature because they share the grammar. The REPL
+inherits operator *uses* the same way — definitions reach it through
+imported files — but a definition typed at the prompt is not yet
+wired into the REPL's own declaration dispatcher (`repl/core.w`);
+follow-up work.
 
 Operator functions must be ordinary functions: w-variadic, generator
 and generic definitions are rejected (`operator+[T]` composing with
@@ -119,17 +144,21 @@ concrete wrapper meanwhile).
 
 - `no operator '+' for operands 'vec3', 'int'` — struct-value operand
   on an arithmetic operator with no matching definition (replaces
-  today's silent address arithmetic),
-- `operator '==' cannot be overloaded` — any non-arithmetic token
-  after `operator` (comparisons, `&&`, `=`, `[]`, `++`, ...),
+  the old silent address arithmetic),
+- `operator '==' cannot be overloaded` — a non-arithmetic spelling
+  after `operator` that still lexes as one operator token
+  (comparisons, `&&`, `<<=`, ...; see the contextual-keyword note for
+  `[]`/`++`/`(`),
 - `operator definition takes 2 parameters`,
+- `operator parameters require a struct type`,
+- `operator definitions do not support variadic parameters`,
 - duplicate definitions fall out of the existing symbol-redefinition
   error via the mangled name.
 
 No existing message text changes (`warning_test` and the
 `type_system_*` fixtures stay untouched).
 
-## Gates checklist
+## Gates checklist (all executed)
 
 - **Seed constraint**: the implementation (`grammar/`, the lowering
   layer, `program()`) is inside the seed's import graph, so it may
@@ -148,8 +177,29 @@ No existing message text changes (`warning_test` and the
   twin — all five operators on struct values, mixed operand types
   (`vec3 * float`), struct-by-value returns chained into further
   expressions, precedence against built-ins, pointer arithmetic
-  unchanged; then `./wbuild manifest` (never hand-edit
+  unchanged, plus stack-discipline hardening: while conditions over
+  millions of iterations, short-circuit and ternary skip paths,
+  compound-assignment right sides, W-variadic call elements,
+  scalar-left dispatch, container/pointer element positions,
+  defer/generator/switch interactions, and `operator` as an ordinary
+  identifier; then `./wbuild manifest` (never hand-edit
   `build.json`).
+
+## Known limitations (v1)
+
+- **Struct-valued ternary arms crash the compiler** — pre-existing
+  for *any* struct-returning expression in a ternary arm (a plain
+  struct-returning call reproduces it without operators), so it is
+  not operator-specific; worth its own issue. Scalar-returning
+  operator uses in ternary arms work.
+- **Unary `-v` on a struct value** still compiles to the old silent
+  address math — the unary layer has no overload gate yet. Closes
+  when prefix `-` lands (staging item 2).
+- **`f += v` (scalar LHS, struct-value RHS)** is still silent
+  garbage — compound assignment lowers outside the gated binary
+  layers. Closes with the compound-assignment stage (staging item
+  5). Operator expressions as the *right side* of a scalar compound
+  assignment (`acc += a * b`) work today.
 
 ## Staging
 
