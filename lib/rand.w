@@ -28,10 +28,13 @@ sequence is identical on every target regardless of host word size.
 */
 import lib.lib
 import lib.assert
+import lib.fmath
 
 
 struct rand_state:
 	int state   # masked 32-bit xorshift word, never zero
+	float gaussian_cache   # second Box-Muller value, valid iff gaussian_has_cache
+	int gaussian_has_cache   # 1 when gaussian_cache holds an unconsumed draw
 
 
 # 0xffffffff as this target represents a masked 32-bit word (identity
@@ -56,6 +59,8 @@ void rand_init(rand_state* r, int seed):
 	r.state = seed & rand_mask32()
 	if (r.state == 0):
 		r.state = 305419896   # 0x12345678
+	r.gaussian_cache = 0.0
+	r.gaussian_has_cache = 0
 
 
 # Next value: uniform over [0, 2^31), non-negative and identical on
@@ -97,3 +102,55 @@ int rand_below(rand_state* r, int n):
 float rand_float(rand_state* r):
 	int top24 = rand_next31(r) >> 7
 	return top24 * (1.0 / 16777216.0)
+
+
+# Standard normal (mean 0, variance 1) via Box-Muller, sine/cosine pair
+# form: two independent uniforms u1, u2 produce two independent gaussian
+# values, z0 = sqrt(-2 ln u1) * cos(2*pi*u2) and
+# z1 = sqrt(-2 ln u1) * sin(2*pi*u2). z1 is cached in r.gaussian_cache
+# (with r.gaussian_has_cache set) and handed back on the very next call
+# instead of being recomputed, so a run of calls consumes one
+# rand_next31 draw each on average - the textbook Box-Muller rate -
+# rather than two. rand_init clears the cache, so re-seeding (or
+# reusing a rand_state from scratch) always restarts at a fresh z0/z1
+# pair regardless of how many gaussians were drawn before.
+#
+# u1 is the flog() argument and must never be exactly 0 (flog(0) is
+# -inf): it is built the same way as rand_float's [0, 1) draw but with
+# 1 added before scaling - (top24 + 1) * 2^-24 - so it ranges over
+# (0, 1] instead of [0, 1). Every one of the 2^24 possible values of
+# top24 + 1 is an integer no larger than 2^24, and dividing such an
+# integer by 2^24 is exact in float32 (and in float64), so this
+# construction is exactly representable and bit-identical on every
+# target, like the rest of this module. u2 is an ordinary rand_float()
+# draw, scaled by 2*pi for the angle.
+#
+# Deterministic: a fixed seed produces the same z0/z1 stream, and the
+# same cache state after any given number of calls, on every target -
+# exactly like rand_next31/rand_float. Accuracy is inherited entirely
+# from lib/fmath's flog/fsqrt/fsin/fcos (each states its own measured
+# ulp bound in its header); rand_gaussian composes them but adds no
+# further error of its own.
+float rand_gaussian(rand_state* r):
+	if (r.gaussian_has_cache):
+		r.gaussian_has_cache = 0
+		return r.gaussian_cache
+	int top24 = rand_next31(r) >> 7
+	float scale = 1.0 / 16777216.0
+	float u1 = (top24 + 1) * scale
+	float u2 = rand_float(r)
+	float neg_two = -2.0
+	float radius = fsqrt(neg_two * flog(u1))
+	float two_pi = float_from_bits(0x40c90fdb)	# 2*pi
+	float theta = two_pi * u2
+	r.gaussian_cache = radius * fsin(theta)
+	r.gaussian_has_cache = 1
+	return radius * fcos(theta)
+
+
+# rand_gaussian(r) scaled and shifted to N(mean, stddev^2). Trivial
+# composition (no new float constants, no new determinism concerns):
+# provided for callers that want a non-standard normal distribution
+# without hand-writing the affine transform.
+float rand_gaussian_scaled(rand_state* r, float mean, float stddev):
+	return mean + stddev * rand_gaussian(r)
