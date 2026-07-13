@@ -879,6 +879,25 @@
 			]
 		},
 		{
+			"name": "wvc",
+			"deps": ["wv2"],
+			"inputs": ["tools/wvc.w"],
+			"outputs": ["bin/wvc"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/wvc.w", "-o", "bin/wvc"]}
+			]
+		},
+		{
+			"name": "wvc_e2e_test",
+			"deps": ["wv2", "wvc"],
+			"inputs": ["tests/wvc_e2e_test.w"],
+			"outputs": ["bin/wvc_e2e_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wvc_e2e_test.w", "-o", "bin/wvc_e2e_test"]},
+				{"cmd": ["bin/wvc_e2e_test"]}
+			]
+		},
+		{
 			"name": "wexec_test",
 			"deps": ["wexec", "hello"],
 			"steps": [
@@ -1896,6 +1915,7 @@
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",
+				"wvc_e2e_test",
 				"unsafe_import_test",
 				"manifest_check",
 				"result_propagate_test",
