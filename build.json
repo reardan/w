@@ -1691,6 +1691,7 @@
 				"limb_builtin_shadow_64_test",
 				"list_builtin_64_test",
 				"lsm_64_test",
+				"malloc_churn_64_test",
 				"map_float_64_test",
 				"map_set_builtin_64_test",
 				"md5_64_test",
@@ -2026,6 +2027,7 @@
 				"limb_builtin_test",
 				"list_methods_test",
 				"lsm_test",
+				"malloc_churn_test",
 				"map_float_test",
 				"math_test",
 				"md5_test",
@@ -2873,6 +2875,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/lsm_test.w", "-o", "bin/lsm_test"]},
 				{"cmd": ["bin/lsm_test"]}
+			]
+		},
+		{
+			"name": "malloc_churn_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/malloc_churn_test.w", "-o", "bin/malloc_churn_64_test"]},
+				{"cmd": ["bin/malloc_churn_64_test"]}
+			]
+		},
+		{
+			"name": "malloc_churn_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/malloc_churn_test.w", "-o", "bin/malloc_churn_test"]},
+				{"cmd": ["bin/malloc_churn_test"]}
 			]
 		},
 		{
