@@ -11,6 +11,13 @@ import lib.testing
 # set sign-extends into the word-sized int on a 64-bit host, and
 # load_int32 mirrors that sign-extension on read (see x64_float_test.w's
 # assert_float32_bits), while a bare load_i(p, 4) would not.
+#
+# `float` is float32 on every target; the 64-bit float type is the
+# separate float64, which the compiler rejects on 32-bit targets
+# ("float64 requires the x64 target"). This file therefore sticks to
+# float32-representable values so it can run on both arches;
+# map[K, float64] coverage lives in the x64-only
+# tests/x64_map_float64_test.w.
 void assert_float_bits(int want, float got):
 	char* p = &got
 	assert_equal_hex(want, load_int32(p))
@@ -93,6 +100,50 @@ void test_map_float_membership():
 	m[7] = 3.5
 	assert_equal(1, 7 in m)
 	assert_equal(0, 8 in m)
+
+
+void test_map_string_float_set_get():
+	map[string, float] m = new map[string, float]
+	string a = s"alpha"
+	m[a] = 0.5
+	m[s"beta"] = -2.25
+	assert_equal(2, m.length)
+	assert_equal(1, s"alpha" in m)
+	assert_equal(0, s"gamma" in m)
+	assert_float_bits(0x3f000000, m[s"alpha"])
+	assert_float_bits(cast(int, 0xc0100000), m[s"beta"])
+	assert_float_bits(0x3f000000, m.get(s"alpha"))
+	assert_float_bits(0x41100000, m.get(s"gamma", 9.0))
+
+
+void test_map_float_keys_snapshot():
+	map[char*, float] m = new map[char*, float]
+	m[c"zebra"] = 0.5
+	m[c"apple"] = -2.25
+	m[c"mango"] = 1.5
+	list[char*] keys = m.keys()
+	assert_equal(3, keys.length)
+	# keys() preserves insertion order and each key still indexes its value
+	assert_strings_equal(c"zebra", keys[0])
+	assert_strings_equal(c"apple", keys[1])
+	assert_strings_equal(c"mango", keys[2])
+	assert_float_bits(0x3f000000, m[keys[0]])
+	assert_float_bits(cast(int, 0xc0100000), m[keys[1]])
+	assert_float_bits(0x3fc00000, m[keys[2]])
+
+
+void test_map_float_values_snapshot():
+	map[int, float] m = new map[int, float]
+	m[7] = 0.5
+	m[3] = -2.25
+	list[float] vals = m.values()
+	assert_equal(2, vals.length)
+	assert_float_bits(0x3f000000, vals[0])
+	assert_float_bits(cast(int, 0xc0100000), vals[1])
+	# a later map write must not affect the snapshot
+	m[7] = 1.0
+	assert_float_bits(0x3f000000, vals[0])
+	assert_float_bits(0x3f800000, m[7])
 
 
 void test_map_float_for_single_var_iteration():
