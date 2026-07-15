@@ -16,6 +16,7 @@ extern int SetFilePointer(int handle, int distance, int* distance_high, int meth
 extern int DeleteFileA(char* path)
 extern int VirtualAlloc(int addr, int size, int alloc_type, int protect)
 extern int VirtualFree(int addr, int size, int free_type)
+extern int VirtualProtect(int addr, int size, int new_protect, int* old_protect)
 extern char* GetCommandLineA()
 extern int GetLastError()
 extern void Sleep(int milliseconds)
@@ -241,6 +242,22 @@ int mmap(int addr, int length, int prot, int flags):
 
 int munmap(int addr, int length):
 	if (VirtualFree(addr, 0, 32768) == 0): /* MEM_RELEASE frees the whole allocation */
+		return -1
+	return 0
+
+
+# prot 0 (PROT_NONE) maps to PAGE_NOACCESS, anything with execute to
+# PAGE_EXECUTE_READWRITE, otherwise PAGE_READWRITE (mirrors mmap above).
+# Returns -1 on failure like the Linux wrappers; the previous protection
+# (which every caller here ignores) goes to a throwaway out-param.
+int mprotect(int addr, int length, int prot):
+	int protect = 1 /* PAGE_NOACCESS */
+	if (prot != 0):
+		protect = 4 /* PAGE_READWRITE */
+		if (prot & 4):
+			protect = 64 /* PAGE_EXECUTE_READWRITE */
+	int old_protect = 0
+	if (VirtualProtect(addr, length, protect, &old_protect) == 0):
 		return -1
 	return 0
 

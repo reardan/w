@@ -85,6 +85,11 @@ int mmap(int addr, int length, int prot, int flags):
 int munmap(int addr, int length):
 	return syscall(215, addr, length, 0)
 
+# mprotect (226): changes page protection (PROT_NONE=0, READ=1, WRITE=2,
+# EXEC=4) on an existing mapping. addr and length must be page-aligned.
+int mprotect(int addr, int length, int prot):
+	return syscall(226, addr, length, prot)
+
 # clone: the trailing 0 pads to syscall's fixed nr + 3 slots (the third
 # kernel argument is unused here); without it the nr slot read garbage.
 int sys_clone(int flags, int child_stack):

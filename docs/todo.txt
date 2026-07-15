@@ -274,6 +274,11 @@ current state:
 			webassembly stage 5 polish: json builtins on wasm, a browser
 				host shim, direct-call optimization
 				(stages 0-4 landed: docs/projects/wasm_backend.md)
+			W^X text/data split for x86, x64 and win64 (arm64/arm64_darwin
+				already split; win64's single RWX section makes the IAT
+				unwritable under Windows Memory Integrity/HVCI, a real
+				crash on real hardware, not just hardening; design +
+				repro: docs/projects/wx_split.md)
 		directory and build cleanup:
 			settle import grammar vs grammar.* behavior
 			Makefile removed; ./wbuild + build.json is the single build entry
