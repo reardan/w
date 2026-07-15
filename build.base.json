@@ -310,6 +310,36 @@
 			]
 		},
 		{
+			"name": "check_roots_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "check", "--json", "w.w", "compiler/compiler.w"], "stdout_file": "bin/check_roots_multi.ndjson", "expect_stderr": ["compiling 'w.w'", "check: compiler/compiler.w is compiler-internal; checking w.w", "skipping 'w.w' (already compiled)"]},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_multi.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "--json", "lib/args.w", "lib/lib.w"], "stdout_file": "bin/check_roots_import_first.ndjson", "expect_stderr": "skipping 'lib/lib.w' (already compiled)"},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_import_first.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "--json", "lib/lib.w", "lib/args.w"], "stdout_file": "bin/check_roots_root_first.ndjson", "expect_stderr": ["compiling 'lib/lib.w'", "compiling 'lib/args.w'"]},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_root_first.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "lib/args.w", "lib/args.w"], "expect_stderr": "skipping 'lib/args.w' (already compiled)"},
+				{"cmd": ["bin/wv2", "check", "--json", "lib/args.w"], "stdout_file": "bin/check_roots_args.ndjson"},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_args.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "--json", "lib/sha256.w"], "stdout_file": "bin/check_roots_mainless.ndjson"},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_mainless.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "x64", "lib/sha256.w"]},
+				{"cmd": ["bin/wv2", "check", "arm64", "lib/sha256.w"]},
+				{"cmd": ["bin/wv2", "check", "arm64_darwin", "lib/sha256.w"]},
+				{"cmd": ["bin/wv2", "check", "win64", "lib/sha256.w"]},
+				{"cmd": ["bin/wv2", "check", "wasm", "lib/sha256.w"]},
+				{"cmd": ["bin/wv2", "lib/sha256.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "Failed to find a _main() function"},
+				{"cmd": ["bin/wv2", "check", "--json", "tests/check_library_error_fixture.w"], "expect_fail": true, "expect_stdout": ["\"severity\": \"error\"", "\"message\": \"Cannot find symbol: 'undefined_symbol_for_check_fixture'\""]},
+				{"cmd": ["bin/wv2", "check", "--json", "code_generator/arm64.w"], "stdout_file": "bin/check_roots_internal.ndjson", "expect_stderr": ["check: code_generator/arm64.w is compiler-internal; checking w.w", "compiling 'w.w'"]},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_internal.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "--json", "code_generator/arm64.w", "lib/math.w"], "expect_stderr": ["check: code_generator/arm64.w is compiler-internal; checking w.w", "compiling 'lib/math.w'"]},
+				{"cmd": ["bin/wv2", "check", "--quiet", "--json", "code_generator/arm64.w"], "stdout_file": "bin/check_roots_quiet.ndjson", "stderr_file": "bin/check_roots_quiet.stderr"},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_quiet.ndjson"]},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_quiet.stderr"]}
+			]
+		},
+		{
 			"name": "missing_file_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -1782,6 +1812,7 @@
 				"warning_test",
 				"strict_mode_test",
 				"check_json_test",
+				"check_roots_test",
 				"missing_file_test",
 				"symbols_test",
 				"deps_test",
