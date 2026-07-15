@@ -1,0 +1,30 @@
+{
+	"targets": [
+		{
+			"name": "boom",
+			"steps": [
+				{"cmd": ["false"]}
+			]
+		},
+		{
+			"name": "standalone",
+			"steps": [
+				{"cmd": ["echo", "standalone ran"]}
+			]
+		},
+		{
+			"name": "needs_boom",
+			"deps": ["boom"],
+			"steps": [
+				{"cmd": ["echo", "needs_boom ran"]}
+			]
+		},
+		{
+			"name": "needs_needs_boom",
+			"deps": ["needs_boom"],
+			"steps": [
+				{"cmd": ["echo", "needs_needs_boom ran"]}
+			]
+		}
+	]
+}

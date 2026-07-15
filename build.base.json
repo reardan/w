@@ -959,6 +959,16 @@
 			]
 		},
 		{
+			"name": "wexec_keep_going_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": "standalone ran", "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "reject_stdout": "needs_boom ran", "expect_stderr": "wexec: stopped early after failure: 2 of 4 targets not attempted", "reject_stderr": "keep-going"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "--keep-going", "standalone"], "expect_stdout": ["standalone ran", "wexec: OK (1 targets)"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "boom"], "expect_fail": true, "reject_stderr": "not attempted"}
+			]
+		},
+		{
 			"name": "result_propagate_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1829,6 +1839,7 @@
 				"wtest_map_test",
 				"wtest_run_test",
 				"wexec_test",
+				"wexec_keep_going_test",
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",
