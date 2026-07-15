@@ -29,6 +29,7 @@ int parse_constant_default():
 	if (token[0] == 39):
 		value = char_literal_value()
 	else if ((token[0] == '0') & (token[1] == 'x')):
+		int_literal_width_check()
 		value = from_hex(token + 2)
 	else if (('0' <= token[0]) & (token[0] <= '9')):
 		value = atoi(token)
