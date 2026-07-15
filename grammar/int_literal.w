@@ -13,6 +13,44 @@ void int_literal_bit31_check(int n):
 		warning(c"warning: integer literal has bit 31 set and sign-extends to a negative int on every target; use cast(int, ...) if the bit pattern is intended")
 
 
+# The literal accumulator is the compiler's own word-sized int, and the
+# 32-bit self-host bootstraps every target, so a hex or binary literal
+# keeps only the low 32 bits of its digits: before this check,
+# 0x7ff0000000000000 silently parsed to 0 on the x64 target. Reject any
+# literal whose significant digits cannot fit in 32 bits instead of
+# wrapping. Leading zeros carry no bits, so 0x00000000ffffffff stays
+# legal; digit counting mirrors the decoders exactly (from_hex skips
+# non-hex characters, the binary loop shifts for every character). Wide
+# constants must be assembled at runtime from 32-bit pieces (see
+# lib/sha256.w's runtime-built masks).
+void int_literal_width_check():
+	int digits = 0
+	int i = 2
+	if (token[1] == 'x'):
+		while (token[i]):
+			int ch = token[i]
+			int is_digit = 0
+			if (('0' <= ch) & (ch <= '9')):
+				is_digit = 1
+			if (('a' <= ch) & (ch <= 'f')):
+				is_digit = 1
+			if (('A' <= ch) & (ch <= 'F')):
+				is_digit = 1
+			if (is_digit):
+				if ((digits > 0) | (ch != '0')):
+					digits = digits + 1
+			i = i + 1
+		if (digits > 8):
+			error(c"integer literal has more than 32 significant bits; assemble wide constants at runtime from 32-bit pieces")
+	else:
+		while (token[i]):
+			if ((digits > 0) | (token[i] != '0')):
+				digits = digits + 1
+			i = i + 1
+		if (digits > 32):
+			error(c"integer literal has more than 32 significant bits; assemble wide constants at runtime from 32-bit pieces")
+
+
 # Attempt to decode an int literal
 int int_literal():
 	int negative = 0
@@ -25,6 +63,7 @@ int int_literal():
 
 	# Hex literal e.g. 0x1f or 0x1F
 	if ((token[0] == '0') & (token[1] == 'x')):
+		int_literal_width_check()
 		n = from_hex(token + 2)
 		int_literal_bit31_check(n)
 		if (negative):
@@ -35,6 +74,7 @@ int int_literal():
 	# Binary literal e.g. 0b1010, mirroring the hex path ('_' digit
 	# separators are a possible follow-up)
 	if ((token[0] == '0') & (token[1] == 'b')):
+		int_literal_width_check()
 		i = 2
 		while (token[i]):
 			n = (n << 1) + token[i] - '0'
