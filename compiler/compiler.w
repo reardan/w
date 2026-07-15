@@ -354,6 +354,25 @@ int target_selector_apply(char* arg):
 	return 0
 
 
+# Canonical import-registry form of a command-line root path: separators
+# normalized, a leading './' and the '.w' extension stripped — the same
+# shape import_module() registers for an import line ('import
+# compiler.compiler' registers "compiler/compiler"), so roots and imports
+# dedupe against each other no matter which direction they arrive in.
+# Returns a fresh allocation.
+char* root_canonical(char* path):
+	char* normalized = strclone(path)
+	path_normalize_sep(normalized)
+	char* trimmed = normalized
+	if (starts_with(trimmed, c"./")):
+		trimmed = trimmed + 2
+	char* canonical = strclone(trimmed)
+	free(normalized)
+	if (ends_with(canonical, c".w")):
+		canonical[strlen(canonical) - 2] = 0
+	return canonical
+
+
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (argc <= start_index):
 		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [--version]")
@@ -434,11 +453,27 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		else if (strcmp(*arg, c"--quiet") == 0):
 			quiet_mode = 1
 		else:
-			if (quiet_mode == 0):
-				print_error(c"compiling '")
-				print_error(*arg)
-				print_error(c"'\x0a")
-			compile_input_file(*arg)
+			char* input = *arg
+			# Roots dedupe against the import registry in both
+			# directions: a root already compiled — as an earlier
+			# argument, or inside an earlier root's import closure — is
+			# skipped instead of redefining every symbol, and a root
+			# compiled here is registered so a later import of it (or a
+			# duplicate argument) is skipped by import_module().
+			char* canonical = root_canonical(input)
+			if (import_lookup(canonical) >= 0):
+				if (quiet_mode == 0):
+					print_error(c"skipping '")
+					print_error(input)
+					print_error(c"' (already compiled)\x0a")
+				free(canonical)
+			else:
+				import_register(canonical)
+				if (quiet_mode == 0):
+					print_error(c"compiling '")
+					print_error(input)
+					print_error(c"'\x0a")
+				compile_input_file(input)
 		i = i + 1
 
 	# Queued generic instantiations compile at this top-level boundary,
