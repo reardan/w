@@ -837,6 +837,7 @@
 				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations.expect"], "expect_stdout": "wtest_map_check: OK"},
 				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations_fail.expect"], "expect_fail": true, "expect_stderr": "wtest_map_check: FAIL"},
 				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read build.json"},
+				{"cmd": ["bin/wtest", "changed", "docs/todo.txt"], "expect_stderr": "wtest: 0 targets selected"},
 				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [-f manifest.json] [file...]"}
 			]
 		},
@@ -844,7 +845,7 @@
 			"name": "wtest_run_test",
 			"deps": ["wtest", "wexec"],
 			"steps": [
-				{"cmd": ["bin/wtest", "changed", "docs/todo.txt", "--run"], "stdout_file": "bin/wtest_run_empty.out"},
+				{"cmd": ["bin/wtest", "changed", "docs/todo.txt", "--run"], "expect_stderr": "wtest: 0 targets selected", "stdout_file": "bin/wtest_run_empty.out"},
 				{"cmd": ["test", "!", "-s", "bin/wtest_run_empty.out"]},
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/run_fixture.json", "wtest_run_smoke_marker", "--run"], "expect_stdout": ["smoke", "wexec: OK (1 targets)"]},
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/run_fixture.json", "wtest_run_boom_marker", "--run"], "expect_fail": true, "expect_stdout": "boom", "expect_stderr": "command failed with exit status"},

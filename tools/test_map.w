@@ -89,7 +89,10 @@ targets (tests, tests_x64, tests_win64) are never selected by (a)/(b).
 Output: unique target names, one per line, in manifest order ('tests'
 is last in the manifest). --verbose prints 'path -> target' notes to
 stderr. Paths come from arguments or stdin (git diff --name-only HEAD |
-bin/wtest changed).
+bin/wtest changed). An empty selection prints 'wtest: 0 targets
+selected' to stderr — stdout stays clean (it is piped into 'xargs -r
+./wbuild'), but a caller looking at the terminal can tell "nothing to
+test" apart from a green run.
 
 --run additionally executes the selection itself, through the same
 executor './wbuild test_changed' pipes into via 'xargs -r ./wbuild'
@@ -976,10 +979,19 @@ void wtest_map_path(char* path):
 
 void wtest_emit_targets():
 	wstream* out = stdout_writer()
+	int count = 0
 	for char* name in wtest_target_names:
 		if (name in wtest_enabled):
 			stream_write_line(out, name)
+			count = count + 1
 	stream_flush(out)
+	if (count == 0):
+		# An empty selection must be visible: stdout is piped to xargs,
+		# so nothing there — but silence on stderr too made "selected
+		# nothing" indistinguishable from a green test_changed run.
+		wstream* err = stderr_writer()
+		stream_write_line(err, c"wtest: 0 targets selected")
+		stream_flush(err)
 
 
 # --run: hand the selection to bin/wexec as a single direct child that

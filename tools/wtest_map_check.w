@@ -14,14 +14,24 @@ asserts PROPERTIES of the selection:
   forbid <target>           the selection must not include <target>
   empty                     the selection must be empty
 
-plus two implicit properties, checked for every case:
+plus three implicit properties, checked for every case:
 
   - every selected name must be a target in build.json (bin/wtest can
-    never emit a stale or misspelled name), and
+    never emit a stale or misspelled name),
   - the selection must come out in manifest order with no duplicates —
     bin/wtest's output-order contract (wtest_emit_targets iterates the
     manifest), asserted here so it stays load-bearing, documented
-    behavior instead of an accident the old frozen lists encoded.
+    behavior instead of an accident the old frozen lists encoded, and
+  - an empty selection must announce itself with 'wtest: 0 targets
+    selected' on stderr (stdout stays clean for xargs), and a
+    non-empty one must not — so every 'empty' case also pins the
+    visibility of a zero-target run.
+
+Case words are handed to 'bin/wtest changed' verbatim, so a case may
+lead with '-f <manifest>' / '--base-manifest <manifest>' fixture flags
+before its changed paths (the build.json leaf-diff cases do); the
+implicit properties are still checked against the real build.json, so
+fixture manifests must reuse real target names in build.json order.
 
 Every expect/forbid name must itself exist in build.json, so a renamed
 or deleted target makes the expectations file fail loudly ("unknown
@@ -308,6 +318,21 @@ int check_selected_contains(list[char*] selected, char* name):
 	return 0
 
 
+int check_str_contains(char* haystack, char* needle):
+	int n = strlen(needle)
+	if (n == 0):
+		return 1
+	int i = 0
+	while (haystack[i] != 0):
+		int j = 0
+		while ((j < n) && (haystack[i + j] == needle[j])):
+			j = j + 1
+		if (j == n):
+			return 1
+		i = i + 1
+	return 0
+
+
 void check_run_case(check_case* c):
 	char** argv = strv_new(2 + c.paths.length)
 	strv_set(argv, 0, c"bin/wtest")
@@ -328,7 +353,19 @@ void check_run_case(check_case* c):
 		process_result_free(result)
 		return
 	list[char*] selected = check_split_lines(result.stdout_text)
+	char* errors = strclone(result.stderr_text)
 	process_result_free(result)
+
+	# Implicit property: an empty selection announces itself on stderr
+	# ('wtest: 0 targets selected', tools/test_map.w) and a non-empty
+	# one stays quiet, so a zero-target run is never invisible.
+	int announced = check_str_contains(errors, c"wtest: 0 targets selected")
+	free(errors)
+	if (selected.length == 0):
+		if (announced == 0):
+			check_case_fail(c, c"empty selection did not print 'wtest: 0 targets selected' on stderr", c"", selected)
+	else if (announced):
+		check_case_fail(c, c"non-empty selection printed 'wtest: 0 targets selected' on stderr", c"", selected)
 
 	# Implicit properties: known names only, manifest order, no dupes.
 	int previous = 0
