@@ -115,3 +115,30 @@ func syscall7
 	mov r9,[rsp+8]
 	syscall
 	ret
+
+# thread_create(func): clone with a fresh 4MB stack whose top slot holds
+# func, so the child's fall-through "ret" jumps straight into func.
+func thread_create
+	call .+0x24	# stack_create, emitted immediately after this stub
+	lea rcx,[rax+0x3ffff0]
+	mov rdx,[rsp+8]
+	mov [rcx],rdx
+	mov edi,-0x7ffe7100	# CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO
+	mov rsi,rcx
+	mov eax,0x38	# clone
+	syscall
+	ret
+
+# stack_create(): mmap(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
+func stack_create
+	xor edi,edi
+	mov esi,0x400000
+	mov edx,3
+	push 0x122
+	pop r10
+	push byte -1	# fd for MAP_ANONYMOUS
+	pop r8
+	xor r9,r9
+	mov eax,9	# mmap
+	syscall
+	ret
