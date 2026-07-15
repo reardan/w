@@ -268,10 +268,14 @@ void pe_finish_64():
 	if (t == 0):
 		t = sym_address(c"main")
 	if (t == 0):
-		error(c"Failed to find a _main() function. Did you import lib/testing?")
-	# rel32 = target - address of the instruction after the 5-byte call
-	t = t - code_offset - entry_call_disp_pos - 4
-	save_int32(code + entry_call_disp_pos, t)
+		# 'w check' on a main-less library module: not an error, and the
+		# entry call stays unpatched (the output is discarded)
+		if (entry_optional == 0):
+			error(c"Failed to find a _main() function. Did you import lib/testing?")
+	if (t != 0):
+		# rel32 = target - address of the instruction after the 5-byte call
+		t = t - code_offset - entry_call_disp_pos - 4
+		save_int32(code + entry_call_disp_pos, t)
 
 	# Pad the file to the alignment so SizeOfRawData is exact, then patch
 	# the size fields. RVA == file offset, so SizeOfImage is file size.

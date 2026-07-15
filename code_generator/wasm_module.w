@@ -507,8 +507,12 @@ void wasm_finish():
 	if (t == 0):
 		t = sym_address(c"main")
 	if (t == 0):
-		error(c"Failed to find a _main() function. Did you import lib/testing?")
-	wasm_addr_slot_write(wasm_entry_slot_pos, t)
+		# 'w check' on a main-less library module: not an error, and the
+		# entry slot stays unpatched (the output is discarded)
+		if (entry_optional == 0):
+			error(c"Failed to find a _main() function. Did you import lib/testing?")
+	if (t != 0):
+		wasm_addr_slot_write(wasm_entry_slot_pos, t)
 
 	int code_end = codepos
 

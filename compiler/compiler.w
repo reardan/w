@@ -387,6 +387,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	bounds_mode = 1
 	strict_mode = 0
 	warning_count = 0
+	# check/deps/symbols discard the output, so a library module without
+	# a _main is fine to analyze: the backend finishers skip the
+	# entry-call patch instead of erroring (code_generator/code_emitter.w)
+	entry_optional = check_mode
 	if (target_pending != 0):
 		# Selector spelled before the subcommand word, recorded by
 		# main(); a positional selector after the subcommand may still
