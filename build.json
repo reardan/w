@@ -243,6 +243,13 @@
 			]
 		},
 		{
+			"name": "int_literal_width_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/int_literal_width_error_fixture.w", "tests/int_literal_width_binary_error_fixture.w"]}
+			]
+		},
+		{
 			"name": "warning_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -1874,6 +1881,7 @@
 				"buffer_field_assign_test",
 				"array_error_test",
 				"syscall_arity_test",
+				"int_literal_width_test",
 				"warning_test",
 				"strict_mode_test",
 				"check_json_test",
