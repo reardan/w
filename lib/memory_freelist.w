@@ -6,9 +6,29 @@ This is the default production backend, dispatched to by lib/memory.w
 (see that file for the malloc/free/realloc entry points and how backends
 are selected). Every block has a two-word header: [size][next], 8 bytes
 on x86 and 16 on x64. size counts payload bytes only; next links free
-blocks (0 ends the list). freelist_malloc searches the free list first
-(first fit, splitting large blocks) and only grows the heap with brk
-when nothing fits. freelist_free() pushes blocks back onto the list.
+blocks (0 ends the list).
+
+Free blocks are filed into size-class bins (an array of free-list heads)
+instead of one global list: bins 0..31 hold exact sizes 8..256 in 8-byte
+steps, bins 32..39 hold doubling ranges above 256 up to 65536, and the
+last bin holds everything larger (see malloc_size_bin). freelist_malloc
+first-fits within the request's own bin (neighbours are the same size
+class, so the scan stays short and the exact-size bins never miss),
+then pops the head of the first non-empty higher bin (guaranteed to
+fit, since every block in a higher bin is at least as large as any in
+the request's own bin), splitting large blocks; only when every bin
+comes up empty does it grow the heap with brk. freelist_free() pushes
+blocks onto their size bin in O(1). Picking the numerically-closest
+non-empty bin trades strict recency (a single list always reused
+whatever was freed most recently) for a closer size fit across classes
+-- a smaller long-lived free block can now beat a larger block freed
+moments ago. A single first-fit list went quadratic under mixed-size
+churn: every large malloc rescanned all the small free blocks
+(tests/malloc_churn_test.w is the regression benchmark).
+
+The bin-head array itself is carved out of the bump region on first use,
+so the block layout is unchanged and the module needs no static
+initializers.
 
 The OS layer (brk and the other syscall wrappers) stays in lib/linux.w;
 only the allocation policy lives here, so swapping allocators means
@@ -18,10 +38,13 @@ guard-page debug backend) rather than editing this one.
 import lib.linux
 
 
-int malloc_free_list
+# bin-head array (malloc_bin_count() words); 0 until first use
+int malloc_bins
 int malloc_heap_ptr
 int malloc_heap_end
 int malloc_mmap_mode /* brk growth failed once: chunks come from mmap now */
+# free blocks examined by freelist_malloc; scan-cost proxy for tests
+int malloc_scan_steps
 
 
 # Header fields are target words so next holds a full pointer on x64;
@@ -36,39 +59,30 @@ void malloc_save_word(int p, int v):
 	w[0] = v
 
 
-void* freelist_malloc(int size):
-	if (size < 1):
-		size = 1
-	# Round up to 8 bytes so blocks stay aligned
-	size = ((size + 7) >> 3) << 3
+int malloc_bin_count():
+	return 41
 
-	int header = 2 * __word_size__
 
-	# First fit from the free list
-	int prev = 0
-	int block = malloc_free_list
-	while (block != 0):
-		int block_size = malloc_load_word(block)
-		if (block_size >= size):
-			int next = malloc_load_word(block + __word_size__)
-			# Split when the remainder can hold a header and a payload
-			if (block_size >= size + header + 8):
-				int rest = block + header + size
-				malloc_save_word(rest, block_size - size - header)
-				malloc_save_word(rest + __word_size__, next)
-				next = rest
-				malloc_save_word(block, size)
-			if (prev == 0):
-				malloc_free_list = next
-			else:
-				malloc_save_word(prev + __word_size__, next)
-			return block + header
-		prev = block
-		block = malloc_load_word(block + __word_size__)
+# Map a payload size (already rounded to a multiple of 8, >= 8) to its
+# bin. Bins 0..31 are exact: bin = size/8 - 1 for 8..256. Above that the
+# ranges double: bin 32 holds 257..512, bin 33 holds 513..1024, ... bin
+# 39 holds 32769..65536; bin 40 holds everything larger. A block in any
+# higher bin is therefore always large enough for a request binned lower.
+int malloc_size_bin(int size):
+	if (size <= 256):
+		return (size >> 3) - 1
+	int limit = 512
+	int b = 32
+	while ((size > limit) & (b < 40)):
+		limit = limit << 1
+		b = b + 1
+	return b
 
-	# Nothing fits: bump-allocate, growing the heap in 64KB chunks so most
-	# mallocs avoid the two brk syscalls the old allocator paid every time.
-	int needed = size + header
+
+# Bump-allocate `needed` raw bytes, growing the heap in 64KB chunks so
+# most calls avoid the two brk syscalls the old allocator paid every
+# time. Returns the block address, or 0 when the OS refuses more memory.
+int malloc_grow(int needed):
 	if (malloc_heap_ptr == 0):
 		malloc_heap_ptr = brk(0)
 		malloc_heap_end = malloc_heap_ptr
@@ -109,23 +123,118 @@ void* freelist_malloc(int size):
 				flags = flags + 64
 			int fresh = mmap(0, chunk, 3, flags)
 			if ((fresh < 0) & (fresh > -4096)):
-				return cast(void*, 0)
+				return 0
 			malloc_heap_ptr = fresh
 			malloc_heap_end = fresh + chunk
-
-	block = malloc_heap_ptr
+	int block = malloc_heap_ptr
 	malloc_heap_ptr = malloc_heap_ptr + needed
+	return block
+
+
+# Carve the bin-head array out of the bump region the first time the
+# allocator runs (W has no static initializers). freelist_malloc always
+# bumps by a multiple of 8 so payloads stay 8-byte aligned relative to
+# the heap's (8-aligned) starting break; round this raw malloc_grow call
+# the same way, since malloc_bin_count() * __word_size__ is not itself
+# a multiple of 8 on 32-bit targets (41 * 4 = 164).
+void malloc_bins_init():
+	if (malloc_bins != 0):
+		return
+	int bytes = malloc_bin_count() * __word_size__
+	bytes = ((bytes + 7) >> 3) << 3
+	int base = malloc_grow(bytes)
+	if (base == 0):
+		return
+	int i = 0
+	while (i < malloc_bin_count()):
+		malloc_save_word(base + i * __word_size__, 0)
+		i = i + 1
+	malloc_bins = base
+
+
+# File a free block of `size` payload bytes into its size bin.
+void malloc_bin_push(int block, int size):
 	malloc_save_word(block, size)
+	int head = malloc_bins + malloc_size_bin(size) * __word_size__
+	malloc_save_word(block + __word_size__, malloc_load_word(head))
+	malloc_save_word(head, block)
+
+
+void* freelist_malloc(int size):
+	if (size < 1):
+		size = 1
+	# Round up to 8 bytes so blocks stay aligned
+	size = ((size + 7) >> 3) << 3
+
+	int header = 2 * __word_size__
+
+	malloc_bins_init()
+	if (malloc_bins == 0):
+		return cast(void*, 0)
+
+	# First fit within the request's own bin. Exact bins always fit on
+	# the first block; a range bin can hold blocks slightly smaller than
+	# the request, so cap the misses at 16 — past that, take a
+	# guaranteed-fit block from a higher bin (or fresh memory) instead of
+	# rescanning the same too-small blocks, keeping malloc O(1). Skipped
+	# blocks stay filed for smaller requests.
+	int b = malloc_size_bin(size)
+	int head = malloc_bins + b * __word_size__
+	int block = 0
+	int prev = 0
+	int misses = 0
+	int cur = malloc_load_word(head)
+	while ((cur != 0) & (misses < 16)):
+		malloc_scan_steps = malloc_scan_steps + 1
+		if (malloc_load_word(cur) >= size):
+			int next = malloc_load_word(cur + __word_size__)
+			if (prev == 0):
+				malloc_save_word(head, next)
+			else:
+				malloc_save_word(prev + __word_size__, next)
+			block = cur
+			cur = 0
+		else:
+			misses = misses + 1
+			prev = cur
+			cur = malloc_load_word(cur + __word_size__)
+
+	# Any block in a higher bin fits by construction: pop the first one.
+	int k = b + 1
+	while ((block == 0) & (k < malloc_bin_count())):
+		head = malloc_bins + k * __word_size__
+		cur = malloc_load_word(head)
+		if (cur != 0):
+			malloc_scan_steps = malloc_scan_steps + 1
+			malloc_save_word(head, malloc_load_word(cur + __word_size__))
+			block = cur
+		k = k + 1
+
+	if (block == 0):
+		# Nothing to reuse: bump-allocate a fresh block.
+		block = malloc_grow(size + header)
+		if (block == 0):
+			return cast(void*, 0)
+		malloc_save_word(block, size)
+		return block + header
+
+	# Split when the remainder can hold a header and a payload; the
+	# remainder is filed back into its own bin.
+	int block_size = malloc_load_word(block)
+	if (block_size >= size + header + 8):
+		malloc_bin_push(block + header + size, block_size - size - header)
+		malloc_save_word(block, size)
 	return block + header
 
 
-# Push the block back onto the allocator's free list.
+# Push the block back onto its size bin.
 int freelist_free(void* mem_address):
 	if (mem_address == 0):
 		return 0
+	if (malloc_bins == 0):
+		return 0
 	int block = mem_address - 2 * __word_size__
-	malloc_save_word(block + __word_size__, malloc_free_list)
-	malloc_free_list = block
+	malloc_bin_push(block, malloc_load_word(block))
 	return 1
 
 
