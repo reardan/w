@@ -1898,6 +1898,7 @@
 				"asm_fuzz_arm64_test",
 				"asm_fuzz_x64_test",
 				"asm_fuzz_x86_test",
+				"assert_standalone_test",
 				"binary_literal_test",
 				"bit_builtin_test",
 				"bitset_test",
@@ -2064,6 +2065,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/asm_fuzz_x86_test.w", "-o", "bin/asm_fuzz_x86_test"]},
 				{"cmd": ["bin/asm_fuzz_x86_test"]}
+			]
+		},
+		{
+			"name": "assert_standalone_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/assert_standalone_test.w", "-o", "bin/assert_standalone_test"]},
+				{"cmd": ["bin/assert_standalone_test"]}
 			]
 		},
 		{
