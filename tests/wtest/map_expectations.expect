@@ -1,9 +1,11 @@
 # Selection expectations for bin/wtest, checked by bin/wtest_map_check
 # (tools/wtest_map_check.w). Run: ./wbuild wtest_map_test
 #
-# Each 'case' block runs 'bin/wtest changed <paths>' and asserts
+# Each 'case' block runs 'bin/wtest changed <words>' and asserts
 # PROPERTIES of the selection, never the exact set:
-#   case <path> [<path>...]   the changed paths for this case
+#   case <word> [<word>...]   the changed paths for this case; words
+#                             pass through verbatim, so a case may lead
+#                             with -f/--base-manifest fixture flags
 #   expect <target>           selection must include <target>
 #   forbid <target>           selection must not include <target>
 #   empty                     selection must be empty
@@ -119,7 +121,8 @@ expect wtest_run_test
 forbid tests
 
 # The manifests: wexec_test + the full suite. Only build.base.json (the
-# hand-maintained wbuildgen input) also gates manifest_check.
+# hand-maintained wbuildgen input) also gates manifest_check. Without a
+# --base-manifest baseline, build.json never gets the leaf special case.
 case build.json
 expect wexec_test
 expect tests
@@ -128,6 +131,61 @@ forbid manifest_check
 case build.base.json
 expect manifest_check
 expect wexec_test
+expect tests
+
+# The build.json leaf special case: case words pass through to
+# 'bin/wtest changed' verbatim, so -f/--base-manifest point both the
+# current and the baseline manifest at tests/wtest/ fixtures (real
+# target names in build.json order, as the implicit properties demand).
+# A diff that only ADDS one wbuildgen-shaped leaf target (plus its
+# 'tests' membership) selects that target + the manifest gates, never
+# the umbrella.
+case -f tests/wtest/manifest_leaf_add.json --base-manifest tests/wtest/manifest_leaf_base.json build.json
+expect manifest_check
+expect wexec_test
+expect math_test
+forbid tests
+forbid sha256_test
+
+# REMOVING the leaf keeps just the manifest gates: the removed target
+# no longer exists to run, and manifest_check covers the regeneration.
+case -f tests/wtest/manifest_leaf_base.json --base-manifest tests/wtest/manifest_leaf_add.json build.json
+expect manifest_check
+expect wexec_test
+forbid math_test
+forbid tests
+
+# A leaf REGENERATED IN PLACE (a '# wbuild:' directive edit — here a
+# timeout) selects itself plus the manifest gates.
+case -f tests/wtest/manifest_leaf_retime.json --base-manifest tests/wtest/manifest_leaf_add.json build.json
+expect manifest_check
+expect wexec_test
+expect math_test
+forbid tests
+
+# A byte-identical baseline (formatting-only manifest change) keeps
+# just the manifest gates; manifest_check is the formatting arbiter.
+case -f tests/wtest/manifest_leaf_add.json --base-manifest tests/wtest/manifest_leaf_add.json build.json
+expect manifest_check
+expect wexec_test
+forbid math_test
+forbid tests
+
+# Anything beyond leaf additions/removals — here a hand-written
+# target's steps changed — falls back to the full residue.
+case -f tests/wtest/manifest_leaf_add.json --base-manifest tests/wtest/manifest_nonleaf_base.json build.json
+expect wexec_test
+expect tests
+forbid manifest_check
+forbid math_test
+
+# A build.base.json change keeps the full residue even when the
+# build.json diff itself is leaf-only: hand-maintained manifest edits
+# are never scoped down.
+case -f tests/wtest/manifest_leaf_add.json --base-manifest tests/wtest/manifest_leaf_base.json build.json build.base.json
+expect manifest_check
+expect wexec_test
+expect math_test
 expect tests
 
 # debugger/ is NOT compiler tree (no verify); wdbg roots are inherited

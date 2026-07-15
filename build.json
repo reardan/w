@@ -806,12 +806,13 @@
 		{
 			"name": "wtest_map_test",
 			"deps": ["wtest", "wtest_map_check"],
+			"data": ["tests/wtest/"],
 			"steps": [
 				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations.expect"], "expect_stdout": "wtest_map_check: OK"},
 				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations_fail.expect"], "expect_fail": true, "expect_stderr": "wtest_map_check: FAIL"},
 				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read build.json"},
 				{"cmd": ["bin/wtest", "changed", "docs/todo.txt"], "expect_stderr": "wtest: 0 targets selected"},
-				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [-f manifest.json] [file...]"}
+				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [-f manifest.json] [--base-manifest base.json] [file...]"}
 			]
 		},
 		{

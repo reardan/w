@@ -72,7 +72,21 @@ build. For a changed path P the emitted targets are the union of:
         tests/metadata/ -> metadata_test: run-time fixture data.
       - build.json / wbuild / build.base.json -> wexec_test + tests (the
         manifest drives every target); build.base.json additionally ->
-        manifest_check (it feeds bin/wbuildgen).
+        manifest_check (it feeds bin/wbuildgen). Exception: when
+        --base-manifest supplies the committed baseline build.json and
+        the structural diff against it is EXACTLY additions, removals,
+        or in-place regenerations of wbuildgen-shaped leaf test targets
+        (plus the matching tests/tests_x64/tests_win64 membership
+        edits), a changed build.json selects just those targets +
+        manifest_check + wexec_test instead of the whole suite — the
+        "added one conventional test and reran ./wbuild manifest"
+        workflow. Anything else in the diff (a hand-written base
+        target, a toolchain step, the manifest's root members) falls
+        back to the full residue; so does a missing or unparseable
+        baseline. Under-selection is fenced twice: manifest_check is
+        always co-selected (a hand-edited build.json fails it), and a
+        build.base.json edit keeps the full residue through its own
+        changed path.
       - *_test.w under a wbuildgen scan directory -> manifest_check:
         conventional test sources are generator inputs, so adding or
         deleting one must regenerate build.json.
@@ -107,6 +121,12 @@ and, under --run, execution. It exists mainly for isolated testing
 (tests/wtest/): pointing wtest at a throwaway manifest lets --run be
 exercised without ever selecting a real target that itself shells out to
 bin/wtest, which would recurse.
+
+--base-manifest names the BASELINE build.json to structurally diff the
+current manifest against for the leaf-target special case above; with
+no baseline the build.json residue always selects the full suite.
+'./wbuild test_changed' extracts it with 'git show <base>:build.json';
+tests point it at fixture manifests, mirroring -f.
 */
 import lib.lib
 import lib.file
@@ -138,13 +158,15 @@ map[char*, char*] wtest_file_hashes  # path -> content hash hex (memo)
 int wtest_verbose
 int wtest_run_flag
 char* wtest_manifest_path
+char* wtest_base_manifest_path       # 0 = no --base-manifest given
+json_value* wtest_base_manifest      # parsed baseline, 0 until loaded
 int wtest_closures_ready
 int wtest_mask32
 
 
 void wtest_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [-f manifest.json] [file...]")
+	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [-f manifest.json] [--base-manifest base.json] [file...]")
 	stream_flush(err)
 
 
@@ -235,6 +257,23 @@ int wtest_load_manifest():
 				wtest_target_defs[name] = target
 				wtest_target_names.push(name)
 		i = i + 1
+	return 0
+
+
+# The committed baseline manifest (--base-manifest), consumed only by
+# the build.json leaf-diff special case (wtest_manifest_leaf_diff). A
+# baseline the caller named but cannot be read is a loud error, like
+# -f; structural oddities inside it just fall back to the full residue.
+int wtest_load_base_manifest():
+	char* text = file_read_text(wtest_base_manifest_path)
+	if (text == 0):
+		wtest_error(c"cannot read ", wtest_base_manifest_path)
+		return 1
+	wtest_base_manifest = json_parse(text)
+	free(text)
+	if (wtest_base_manifest == 0):
+		wtest_error(c"base manifest is not valid JSON: ", wtest_base_manifest_path)
+		return 1
 	return 0
 
 
@@ -873,6 +912,350 @@ int wtest_scan_dir_path(char* path):
 	return 0
 
 
+/* The build.json leaf-diff special case (--base-manifest).
+
+Adding one conventional test regenerates build.json, and the plain
+manifest residue rule then recommends the entire pre-merge suite for
+every "add one test" diff. When the caller supplies the committed
+baseline manifest, the structural diff is inspected instead: if it is
+exactly additions/removals/in-place regenerations of leaf test targets
+in the shape tools/wbuildgen.w generates (plus the matching umbrella
+membership edits), only those targets + manifest_check + wexec_test
+are selected. Every check errs toward returning 0, which keeps the
+full 'wexec_test + tests' residue — never under-select silently. */
+
+int wtest_json_equal(json_value* a, json_value* b):
+	char* left = json_stringify(a)
+	char* right = json_stringify(b)
+	int same = strcmp(left, right) == 0
+	free(left)
+	free(right)
+	return same
+
+
+# The umbrellas wbuildgen appends generated leaf targets to.
+int wtest_umbrella_name(char* name):
+	if (strcmp(name, c"tests") == 0):
+		return 1
+	if (strcmp(name, c"tests_x64") == 0):
+		return 1
+	if (strcmp(name, c"tests_win64") == 0):
+		return 1
+	return 0
+
+
+# The names wbg_make_target can produce: X_test, X_64_test (also
+# ..._test), and the X_test_{arm64,win64,darwin} platform twins.
+int wtest_leaf_name(char* name):
+	if (ends_with(name, c"_test")):
+		return 1
+	if (ends_with(name, c"_arm64")):
+		return 1
+	if (ends_with(name, c"_win64")):
+		return 1
+	if (ends_with(name, c"_darwin")):
+		return 1
+	return 0
+
+
+# A step may carry only "cmd" (compile / extra_compile steps) or "cmd"
+# plus the run-step decoration fields wbuildgen emits.
+int wtest_step_only_keys(json_value* step, int run_fields):
+	if (step.type != json_type_object()):
+		return 0
+	int ok = 1
+	for char* key, json_value* member in step.object_values:
+		if (strcmp(key, c"cmd") == 0):
+			continue
+		if (run_fields):
+			if (strcmp(key, c"stdin") == 0):
+				continue
+			if (strcmp(key, c"expect_fail") == 0):
+				continue
+			if (strcmp(key, c"expect_stdout") == 0):
+				continue
+			if (strcmp(key, c"expect_stderr") == 0):
+				continue
+			if (strcmp(key, c"timeout_ms") == 0):
+				continue
+		ok = 0
+	return ok
+
+
+# The step's cmd as a nonempty all-string array, or 0.
+json_value* wtest_step_cmd(json_value* step):
+	json_value* cmd = json_object_get(step, c"cmd")
+	if (cmd == 0):
+		return 0
+	if (cmd.type != json_type_array()):
+		return 0
+	int n = json_array_length(cmd)
+	if (n == 0):
+		return 0
+	int i = 0
+	while (i < n):
+		json_value* piece = json_array_get(cmd, i)
+		if (piece.type != json_type_string()):
+			return 0
+		i = i + 1
+	return cmd
+
+
+# {"cmd": ["bin/wv2", (selector)?, ..., "src.w", ..., "-o", "bin/X"]}
+# and nothing else.
+int wtest_leaf_compile_step(json_value* step):
+	if (wtest_step_only_keys(step, 0) == 0):
+		return 0
+	json_value* cmd = wtest_step_cmd(step)
+	if (cmd == 0):
+		return 0
+	json_value* program = json_array_get(cmd, 0)
+	if (strcmp(program.string_value, c"bin/wv2") != 0):
+		return 0
+	int has_output = 0
+	int has_source = 0
+	int i = 1
+	while (i < json_array_length(cmd)):
+		json_value* piece = json_array_get(cmd, i)
+		if (strcmp(piece.string_value, c"-o") == 0):
+			has_output = 1
+		if (ends_with(piece.string_value, c".w")):
+			has_source = 1
+		i = i + 1
+	return has_output && has_source
+
+
+# A run or extra_compile step: the compiled binary (or another bin/
+# tool for extra compiles), the arm64 qemu wrapper, or wine — plus at
+# most the decoration fields.
+int wtest_leaf_run_step(json_value* step):
+	if (wtest_step_only_keys(step, 1) == 0):
+		return 0
+	json_value* cmd = wtest_step_cmd(step)
+	if (cmd == 0):
+		return 0
+	json_value* program = json_array_get(cmd, 0)
+	if (starts_with(program.string_value, c"bin/")):
+		return 1
+	if (strcmp(program.string_value, c"wine") == 0):
+		return 1
+	if (strcmp(program.string_value, c"sh") == 0):
+		if (json_array_length(cmd) >= 2):
+			json_value* script = json_array_get(cmd, 1)
+			if (strcmp(script.string_value, c"tools/run_arm64.sh") == 0):
+				return 1
+	return 0
+
+
+# The conventional compile(+run) shape tools/wbuildgen.w generates for
+# a leaf test target (wbg_make_target): only the keys it emits, deps
+# exactly ["wv2"], a bin/wv2 compile step first, decorated run /
+# extra-compile steps after. A hand-written base target that happens
+# to match is indistinguishable, which is safe: editing one requires a
+# build.base.json change, and that path keeps the full residue.
+int wtest_leaf_target(json_value* target):
+	if (target == 0):
+		return 0
+	if (target.type != json_type_object()):
+		return 0
+	int keys_ok = 1
+	for char* key, json_value* member in target.object_values:
+		if ((strcmp(key, c"name") != 0) && (strcmp(key, c"deps") != 0) && (strcmp(key, c"data") != 0) && (strcmp(key, c"steps") != 0)):
+			keys_ok = 0
+	if (keys_ok == 0):
+		return 0
+	char* name = wtest_get_string(target, c"name")
+	if (name == 0):
+		return 0
+	if (wtest_leaf_name(name) == 0):
+		return 0
+	json_value* deps = json_object_get(target, c"deps")
+	if (deps == 0):
+		return 0
+	if (deps.type != json_type_array()):
+		return 0
+	if (json_array_length(deps) != 1):
+		return 0
+	json_value* dep = json_array_get(deps, 0)
+	if (dep.type != json_type_string()):
+		return 0
+	if (strcmp(dep.string_value, c"wv2") != 0):
+		return 0
+	json_value* data = json_object_get(target, c"data")
+	if (data != 0):
+		if (data.type != json_type_array()):
+			return 0
+		int d = 0
+		while (d < json_array_length(data)):
+			json_value* entry = json_array_get(data, d)
+			if (entry.type != json_type_string()):
+				return 0
+			d = d + 1
+	json_value* steps = json_object_get(target, c"steps")
+	if (steps == 0):
+		return 0
+	if (steps.type != json_type_array()):
+		return 0
+	if (json_array_length(steps) == 0):
+		return 0
+	if (wtest_leaf_compile_step(json_array_get(steps, 0)) == 0):
+		return 0
+	int i = 1
+	while (i < json_array_length(steps)):
+		if (wtest_leaf_run_step(json_array_get(steps, i)) == 0):
+			return 0
+		i = i + 1
+	return 1
+
+
+# The deps array as a name set, or 0 when it is not all strings.
+map[char*, int] wtest_dep_set(json_value* deps):
+	if (deps == 0):
+		return 0
+	if (deps.type != json_type_array()):
+		return 0
+	map[char*, int] out = new map[char*, int]
+	int i = 0
+	while (i < json_array_length(deps)):
+		json_value* dep = json_array_get(deps, i)
+		if (dep.type != json_type_string()):
+			return 0
+		out[dep.string_value] = 1
+		i = i + 1
+	return out
+
+
+# An umbrella may differ from its baseline only in deps, and only by
+# entries that are exactly this diff's added/removed leaf names.
+int wtest_umbrella_diff_ok(json_value* base_target, json_value* current_target, map[char*, int] added, map[char*, int] removed):
+	int base_count = 0
+	int members_ok = 1
+	for char* key, json_value* member in base_target.object_values:
+		if (strcmp(key, c"deps") != 0):
+			base_count = base_count + 1
+			json_value* other = json_object_get(current_target, key)
+			if (other == 0):
+				members_ok = 0
+			else if (wtest_json_equal(member, other) == 0):
+				members_ok = 0
+	int current_count = 0
+	for char* current_key, json_value* current_member in current_target.object_values:
+		if (strcmp(current_key, c"deps") != 0):
+			current_count = current_count + 1
+	if ((members_ok == 0) || (base_count != current_count)):
+		return 0
+	json_value* base_deps = json_object_get(base_target, c"deps")
+	json_value* current_deps = json_object_get(current_target, c"deps")
+	map[char*, int] base_set = wtest_dep_set(base_deps)
+	map[char*, int] current_set = wtest_dep_set(current_deps)
+	if ((base_set == 0) || (current_set == 0)):
+		return 0
+	int i = 0
+	while (i < json_array_length(current_deps)):
+		json_value* gained = json_array_get(current_deps, i)
+		if ((base_set.get(gained.string_value, 0) == 0) && (added.get(gained.string_value, 0) == 0)):
+			return 0
+		i = i + 1
+	i = 0
+	while (i < json_array_length(base_deps)):
+		json_value* lost = json_array_get(base_deps, i)
+		if ((current_set.get(lost.string_value, 0) == 0) && (removed.get(lost.string_value, 0) == 0)):
+			return 0
+		i = i + 1
+	return 1
+
+
+# Root members other than "targets" (the "dirs" list, any future
+# member) must be identical; otherwise the manifest change is more
+# than a target-list regeneration.
+int wtest_manifest_roots_match():
+	int base_count = 0
+	int members_ok = 1
+	for char* key, json_value* member in wtest_base_manifest.object_values:
+		if (strcmp(key, c"targets") != 0):
+			base_count = base_count + 1
+			json_value* other = json_object_get(wtest_manifest, key)
+			if (other == 0):
+				members_ok = 0
+			else if (wtest_json_equal(member, other) == 0):
+				members_ok = 0
+	int current_count = 0
+	for char* current_key, json_value* current_member in wtest_manifest.object_values:
+		if (strcmp(current_key, c"targets") != 0):
+			current_count = current_count + 1
+	if (base_count != current_count):
+		return 0
+	return members_ok
+
+
+# The special case itself: structurally diff the current manifest
+# against the --base-manifest baseline. Returns 1 after selecting the
+# added / regenerated leaf targets + manifest_check + wexec_test, or 0
+# (having selected nothing) when there is no baseline or anything in
+# the diff is not a pure leaf-target regeneration.
+int wtest_manifest_leaf_diff(char* path):
+	if (wtest_base_manifest == 0):
+		return 0
+	if (wtest_base_manifest.type != json_type_object()):
+		return 0
+	if (wtest_manifest_roots_match() == 0):
+		return 0
+	json_value* base_targets = json_object_get(wtest_base_manifest, c"targets")
+	if (base_targets == 0):
+		return 0
+	if (base_targets.type != json_type_array()):
+		return 0
+	list[char*] base_names = new list[char*]
+	map[char*, json_value*] base_defs = new map[char*, json_value*]
+	int i = 0
+	while (i < json_array_length(base_targets)):
+		json_value* target = json_array_get(base_targets, i)
+		if (target.type == json_type_object()):
+			char* name = wtest_get_string(target, c"name")
+			if (name != 0):
+				base_defs[name] = target
+				base_names.push(name)
+		i = i + 1
+	# The added and removed name sets come first: the umbrella check
+	# below needs them complete before membership edits can be judged.
+	map[char*, int] added = new map[char*, int]
+	map[char*, int] removed = new map[char*, int]
+	list[char*] touched = new list[char*]
+	for char* added_name in wtest_target_names:
+		if (base_defs.get(added_name, 0) == 0):
+			if (wtest_leaf_target(wtest_target_defs.get(added_name, 0)) == 0):
+				return 0
+			added[added_name] = 1
+			touched.push(added_name)
+	for char* removed_name in base_names:
+		if (wtest_target_defs.get(removed_name, 0) == 0):
+			if (wtest_leaf_target(base_defs.get(removed_name, 0)) == 0):
+				return 0
+			removed[removed_name] = 1
+	# In-place differences: an umbrella gaining/losing exactly the
+	# added/removed names, or a leaf regenerated in place (a
+	# '# wbuild:' directive edit) which then selects itself. A removed
+	# target is never selected — it no longer exists to run;
+	# manifest_check covers the regeneration.
+	for char* common_name in wtest_target_names:
+		json_value* base_def = base_defs.get(common_name, 0)
+		if (base_def != 0):
+			json_value* current_def = wtest_target_defs.get(common_name, 0)
+			if (wtest_json_equal(base_def, current_def) == 0):
+				if (wtest_umbrella_name(common_name)):
+					if (wtest_umbrella_diff_ok(base_def, current_def, added, removed) == 0):
+						return 0
+				else if (wtest_leaf_target(base_def) && wtest_leaf_target(current_def)):
+					touched.push(common_name)
+				else:
+					return 0
+	for char* selected in touched:
+		wtest_add(path, selected)
+	wtest_add(path, c"manifest_check")
+	wtest_add(path, c"wexec_test")
+	return 1
+
+
 # Residue mappings (header comment, rule c). Returns 1 when any rule
 # matched, so the caller can skip the tests fallback.
 int wtest_map_residue(char* path, int is_w, int exists):
@@ -920,7 +1303,16 @@ int wtest_map_residue(char* path, int is_w, int exists):
 	if (starts_with(path, c"tests/metadata/")):
 		wtest_add(path, c"metadata_test")
 		matched = 1
-	if ((strcmp(path, c"build.json") == 0) | (strcmp(path, c"wbuild") == 0) | (strcmp(path, c"build.base.json") == 0)):
+	if (strcmp(path, c"build.json") == 0):
+		# A regenerated manifest whose only structural change against
+		# the --base-manifest baseline is wbuildgen-shaped leaf targets
+		# selects just those (wtest_manifest_leaf_diff); anything else
+		# keeps the full residue: the manifest drives every target.
+		if (wtest_manifest_leaf_diff(path) == 0):
+			wtest_add(path, c"wexec_test")
+			wtest_add(path, c"tests")
+		matched = 1
+	if ((strcmp(path, c"wbuild") == 0) | (strcmp(path, c"build.base.json") == 0)):
 		wtest_add(path, c"wexec_test")
 		wtest_add(path, c"tests")
 		if (strcmp(path, c"build.base.json") == 0):
@@ -1044,10 +1436,11 @@ int main(int argc, int argv):
 		wtest_usage()
 		return 1
 	wtest_manifest_path = c"build.json"
-	# A first pass just for "-f manifest.json": the manifest must be
-	# loaded before selection starts below, but "-f" may appear anywhere
-	# after "changed" (mirroring bin/wexec's own flag), so it is found
-	# ahead of the argument loop that does the real work.
+	# A first pass just for the manifest flags: both manifests must be
+	# loaded before selection starts below, but "-f"/"--base-manifest"
+	# may appear anywhere after "changed" (mirroring bin/wexec's own
+	# flag), so they are found ahead of the argument loop that does the
+	# real work.
 	int pre = 2
 	while (pre < argc):
 		char** arg = argv + pre * __word_size__
@@ -1058,9 +1451,19 @@ int main(int argc, int argv):
 				return 1
 			char** value = argv + pre * __word_size__
 			wtest_manifest_path = *value
+		else if (strcmp(*arg, c"--base-manifest") == 0):
+			pre = pre + 1
+			if (pre >= argc):
+				wtest_usage()
+				return 1
+			char** base_value = argv + pre * __word_size__
+			wtest_base_manifest_path = *base_value
 		pre = pre + 1
 	if (wtest_load_manifest()):
 		return 1
+	if (wtest_base_manifest_path != 0):
+		if (wtest_load_base_manifest()):
+			return 1
 	int saw_file = 0
 	int i = 2
 	while (i < argc):
@@ -1070,6 +1473,8 @@ int main(int argc, int argv):
 		else if (strcmp(*arg, c"--run") == 0):
 			wtest_run_flag = 1
 		else if (strcmp(*arg, c"-f") == 0):
+			i = i + 1   # value already consumed by the pre-scan above
+		else if (strcmp(*arg, c"--base-manifest") == 0):
 			i = i + 1   # value already consumed by the pre-scan above
 		else:
 			wtest_map_path(*arg)

@@ -98,7 +98,14 @@ if [ "$1" = "test_changed" ]; then
 		base="$base_commit"
 		changed="$(git diff --name-only "$base" HEAD)"
 	fi
-	printf '%s\n' "$changed" | ./bin/wtest changed | xargs -r ./wbuild
+	# The baseline build.json lets bin/wtest scope a manifest diff that
+	# only adds/removes generated leaf test targets to those targets
+	# instead of the whole 'tests' umbrella (tools/test_map.w).
+	if git show "$base:build.json" >bin/.wtest_base_manifest.json 2>/dev/null; then
+		printf '%s\n' "$changed" | ./bin/wtest changed --base-manifest bin/.wtest_base_manifest.json | xargs -r ./wbuild
+	else
+		printf '%s\n' "$changed" | ./bin/wtest changed | xargs -r ./wbuild
+	fi
 	exit 0
 fi
 ./bin/wexec wv2 wexec >/dev/null
