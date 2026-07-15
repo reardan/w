@@ -1676,6 +1676,7 @@
 				"monotime_64_test",
 				"nested_ctor_64_test",
 				"net_64_test",
+				"parallel_for_64_test",
 				"path_64_test",
 				"poll_64_test",
 				"poly1305_64_test",
@@ -1707,6 +1708,7 @@
 				"switch_64_test",
 				"task_64_test",
 				"template_string_64_test",
+				"thread_64_test",
 				"time_64_test",
 				"u64_64_test",
 				"urlparse_64_test",
@@ -2008,6 +2010,7 @@
 				"multilayer_test",
 				"nested_ctor_test",
 				"net_test",
+				"parallel_for_test",
 				"path_test",
 				"pointer_test",
 				"poll_test",
@@ -2044,6 +2047,7 @@
 				"swim_test",
 				"task_test",
 				"ternary_test",
+				"thread_test",
 				"threading_test",
 				"time_test",
 				"type_system_p0_test",
@@ -2983,6 +2987,22 @@
 			]
 		},
 		{
+			"name": "parallel_for_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/parallel_for_test.w", "-o", "bin/parallel_for_64_test"]},
+				{"cmd": ["bin/parallel_for_64_test"]}
+			]
+		},
+		{
+			"name": "parallel_for_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/parallel_for_test.w", "-o", "bin/parallel_for_test"]},
+				{"cmd": ["bin/parallel_for_test"]}
+			]
+		},
+		{
 			"name": "path_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3541,6 +3561,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/ternary_test.w", "-o", "bin/ternary_test"]},
 				{"cmd": ["bin/ternary_test"]}
+			]
+		},
+		{
+			"name": "thread_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/thread_test.w", "-o", "bin/thread_64_test"]},
+				{"cmd": ["bin/thread_64_test"]}
+			]
+		},
+		{
+			"name": "thread_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/thread_test.w", "-o", "bin/thread_test"]},
+				{"cmd": ["bin/thread_test"]}
 			]
 		},
 		{
