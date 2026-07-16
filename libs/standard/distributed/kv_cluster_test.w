@@ -38,7 +38,7 @@ on every pump, so a rebuilt node (raft_wal_recover + lsm_open on the
 same paths + raft_tcp_new on the SAME port) receives the backlog as
 soon as it listens again — no re-registration on the survivors.
 
-Ports: 21000 + __word_size__ * 100 + 20..34 (offsets 20-39 are
+Ports: 21000 + __word_size__ * 100 + 20..40 (offsets 20-49 are
 reserved for this test; raft_tcp_test owns 0-13), three consecutive
 ports per scenario, so the 32- and 64-bit binaries use disjoint ranges
 (21420.. vs 21820..) and can run concurrently.
@@ -106,6 +106,15 @@ int kvc_commit_int(raft* r):
 	raft_commit_index(r, ci)
 	int v = raft_u64_as_int(ci)
 	u64_free(ci)
+	return v
+
+
+# The raft's snapshot base as a host int (0 = no snapshot yet).
+int kvc_snap_index_int(raft* r):
+	u64* si = u64_new()
+	raft_snapshot_index(r, si)
+	int v = raft_u64_as_int(si)
+	u64_free(si)
 	return v
 
 
@@ -776,4 +785,161 @@ void test_cluster_binary_value_roundtrip():
 			kvc_expect_bytes(nd.store, c"binkey", value, 5)
 		i = i + 1
 	free(value)
+	kvc_free(c)
+
+
+# ---- snapshot integration (issue #314) ----------------------------------------------
+
+
+# A follower crashes BEFORE any writes happen (so the leader's
+# next_index for it is frozen at 1 — raft only advances a peer's
+# next_index on a reply, and a dead peer never sends one), then the
+# leader commits and compacts a run of puts entirely while the
+# follower is down. kv_take_snapshot exports the lsm; raft_take_
+# snapshot hands the blob to raft and discards the covered log prefix.
+# More writes land only on the surviving majority, past the compacted
+# horizon. The rejoining node's frozen next_index (1) now sits at or
+# below the leader's snapshot base, so raft_make_peer_msg must route
+# it an InstallSnapshot (raft.w's §7 path) before the post-snapshot
+# suffix can replicate; kv_state.w's kv_apply_pending installs that
+# blob into the rejoiner's lsm (lsm_clear + lsm_import) the moment
+# raft hands it a pending snapshot. Covers a binary value (issue #315)
+# riding through the snapshot blob unchanged.
+void test_cluster_snapshot_laggard_catchup():
+	kvc* c = kvc_new(c"snap", 15, 600)
+	int rounds = kvc_run_until_leader(c, 500)
+	assert1(rounds >= 0)
+	int lid = kvc_leader(c)
+	kvc_node* ldr = c.nodes[lid - 1]
+	# crash a follower before it ever sees a single entry
+	int victim = 1
+	if (victim == lid):
+		victim = 2
+	kvc_crash(c, victim)
+	# shrink the leader's per-peer outbound cap to the smallest raft_tcp
+	# allows (4096 bytes, the floor raft_tcp_set_max_pending enforces):
+	# raft_tcp's bounded buffer drops the OLDEST whole frame once full
+	# (raft_tcp.w's header), so while the victim is unreachable every
+	# heartbeat/append attempt still gets built and queued -- with the
+	# default 256 KiB cap those STALE pre-compaction AppendEntries
+	# frames (built back when next_index still pointed below the
+	# not-yet-compacted log) would survive long enough to replay the
+	# whole history into the rejoining node once it reconnects, letting
+	# it "time travel" past the compaction without ever needing
+	# InstallSnapshot. With the floor cap, the settle rounds run after
+	# the post-snapshot puts below push enough fresh (already
+	# post-compaction) frames to evict every stale one before rebuild.
+	raft_tcp_set_max_pending(ldr.tcp, 4096)
+	kvc_put(c, lid, c"k1", c"v1")
+	kvc_put(c, lid, c"k2", c"v2")
+	char* binval = malloc(4)
+	binval[0] = 0
+	binval[1] = 'Z'
+	binval[2] = 255
+	binval[3] = 0
+	kvc_put_len(c, lid, c"bkey", binval, 4)
+	assert1(kvc_run_until_agree(c, c"k1", c"v1", 500) >= 0)
+	assert1(kvc_run_until_agree(c, c"k2", c"v2", 500) >= 0)
+	assert1(kvc_run_until_agree_bytes(c, c"bkey", binval, 4, 500) >= 0)
+	# the leader compacts its own log around the state already applied
+	assert_equal(3, kvc_commit_int(ldr.r))
+	int* blen = cast(int*, malloc(__word_size__))
+	char* blob = kv_take_snapshot(ldr.store, blen)
+	assert_equal(1, raft_take_snapshot(ldr.r, blob, blen[0]))
+	free(blob)
+	free(cast(char*, blen))
+	assert_equal(0, raft_log_length(ldr.r))
+	assert_equal(3, kvc_snap_index_int(ldr.r))
+	# more writes land only on the surviving majority, entirely past
+	# the snapshot the rejoining victim will need
+	kvc_put(c, lid, c"k3", c"v3")
+	kvc_delete(c, lid, c"k1")
+	assert1(kvc_run_until_agree(c, c"k3", c"v3", 500) >= 0)
+	assert1(kvc_run_until_agree(c, c"k1", 0, 500) >= 0)
+	# extra settle rounds: every one of these ticks/heartbeats builds a
+	# FRESH post-compaction frame for the still-unreachable victim,
+	# which raft_tcp's drop-oldest cap enforcement uses to evict
+	# whatever pre-compaction frames might still be queued (see the cap
+	# comment above) well before the victim ever reconnects
+	kvc_run_steps(c, 300)
+	# rejoin: catches up via InstallSnapshot plus the post-snapshot
+	# suffix (k3, and the k1 delete)
+	kvc_rebuild(c, victim, 1000 + victim)
+	assert1(kvc_run_until_agree(c, c"k3", c"v3", 500) >= 0)
+	assert1(kvc_run_until_agree(c, c"k1", 0, 500) >= 0)
+	assert1(kvc_run_until_agree_bytes(c, c"bkey", binval, 4, 500) >= 0)
+	assert1(kvc_run_until_agree(c, c"k2", c"v2", 500) >= 0)
+	# proof the laggard actually installed a snapshot rather than being
+	# fed the compacted entries individually: raft only ever sets a
+	# follower's own snapshot base from raft_handle_install_snapshot,
+	# never from ordinary AppendEntries, so a matching nonzero base
+	# here is conclusive
+	kvc_node* vic = c.nodes[victim - 1]
+	assert1(kvc_snap_index_int(ldr.r) > 0)
+	assert_equal(kvc_snap_index_int(ldr.r), kvc_snap_index_int(vic.r))
+	kvc_expect(vic.store, c"k2", c"v2")
+	kvc_expect_gone(vic.store, c"k1")
+	kvc_expect(vic.store, c"k3", c"v3")
+	kvc_expect_bytes(vic.store, c"bkey", binval, 4)
+	free(binval)
+	kvc_free(c)
+
+
+# A node that compacted its OWN log (raft_take_snapshot) then crashes
+# and rebuilds must replay a SNAPSHOT record from its own raft_wal
+# (raft_wal.w's wal-rewrite compaction), not an InstallSnapshot over
+# the wire — proving kv_apply_pending's pending-snapshot install
+# (lsm_clear + lsm_import) also covers the restart path, and that
+# reinstalling a node's own prior snapshot over its already-durable lsm
+# converges cleanly rather than corrupting it.
+void test_cluster_restart_from_compacted_wal():
+	kvc* c = kvc_new(c"snaprst", 18, 700)
+	int rounds = kvc_run_until_leader(c, 500)
+	assert1(rounds >= 0)
+	int lid = kvc_leader(c)
+	kvc_put(c, lid, c"a", c"1")
+	kvc_put(c, lid, c"b", c"2")
+	assert1(kvc_run_until_agree(c, c"a", c"1", 500) >= 0)
+	assert1(kvc_run_until_agree(c, c"b", c"2", 500) >= 0)
+	kvc_node* ldr = c.nodes[lid - 1]
+	int* blen = cast(int*, malloc(__word_size__))
+	char* blob = kv_take_snapshot(ldr.store, blen)
+	assert_equal(1, raft_take_snapshot(ldr.r, blob, blen[0]))
+	free(blob)
+	free(cast(char*, blen))
+	# a few rounds persist the compaction into the leader's OWN
+	# raft_wal: raft_wal_sync notices snap_last_index ahead of the
+	# shadow and rewrites the file (raft_wal.w's header)
+	kvc_run_steps(c, 3)
+	kvc_put(c, lid, c"c", c"3")
+	assert1(kvc_run_until_agree(c, c"c", c"3", 500) >= 0)
+	# crash and rebuild the leader itself: its own wal now replays a
+	# SNAPSHOT record, so the rebuilt raft carries a pending snapshot
+	kvc_crash(c, lid)
+	kvc_rebuild(c, lid, 2000 + lid)
+	kvc_node* rb = c.nodes[lid - 1]
+	# the lsm's own durability is independent of raft's snapshot
+	# bookkeeping: everything applied before the crash is still on disk
+	kvc_expect(rb.store, c"a", c"1")
+	kvc_expect(rb.store, c"b", c"2")
+	kvc_expect(rb.store, c"c", c"3")
+	assert_equal(1, raft_has_pending_snapshot(rb.r))
+	assert_equal(2, kvc_snap_index_int(rb.r))
+	# force actual rounds: a/b/c are already correct on rb's DURABLE lsm
+	# (independent of raft, as just shown), so kvc_run_until_agree below
+	# would short-circuit on its very first check without ever calling
+	# kvc_step -- which would never give kv_apply_pending a chance to
+	# drain the pending snapshot at all. Step explicitly first.
+	kvc_run_steps(c, 30)
+	assert_equal(0, raft_has_pending_snapshot(rb.r))
+	# the rebuilt node rejoins (as a follower — the surviving pair
+	# elected a successor while it was down) and every live node
+	# reconverges on the full a/b/c state, proving the pending-snapshot
+	# install did not corrupt the already-durable "c"
+	assert1(kvc_run_until_agree(c, c"a", c"1", 500) >= 0)
+	assert1(kvc_run_until_agree(c, c"b", c"2", 500) >= 0)
+	assert1(kvc_run_until_agree(c, c"c", c"3", 500) >= 0)
+	kvc_assert_kv(c, c"a", c"1")
+	kvc_assert_kv(c, c"b", c"2")
+	kvc_assert_kv(c, c"c", c"3")
 	kvc_free(c)

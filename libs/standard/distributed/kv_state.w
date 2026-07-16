@@ -39,12 +39,34 @@ encoded it.
 Idempotency: applying the same put or delete twice lands the lsm in
 the same state, so a recovering node may (and does) re-apply its
 whole committed prefix from zero.
+
+Snapshot integration (issue #314): kv_take_snapshot wraps lsm.w's
+full-scan lsm_export as the blob raft_take_snapshot compacts the log
+around; kv_install_snapshot is the receiver-side rebuild (lsm_import,
+which clears the store first) for a blob raft handed the state
+machine, whether over the wire (InstallSnapshot) or replayed from a
+node's own wal-rewritten snapshot record (raft_wal.w). kv_apply_pending
+is the single place both raft.w and raft_wal.w document as "the
+application's apply loop" (raft.w's header), so that is where the
+pending-snapshot check and install now live: every existing caller
+(raft never has a pending snapshot until raft_take_snapshot or an
+InstallSnapshot/wal-replay puts one there) is unaffected.
+
+Frame cap: an encoded InstallSnapshot must fit raft_tcp's 1 MiB
+rt_max_frame (raft_tcp.w) to ride that transport at all — kv_take_
+snapshot asserts the blob leaves room for the wire envelope
+(kv_snapshot_max_bytes) and fails loudly instead of producing a
+snapshot raft_tcp would silently refuse to send later. Splitting one
+logical snapshot across several InstallSnapshot frames (chunking) is
+the documented follow-up (docs/projects/distributed.md); not
+implemented here.
 */
 import lib.lib
 import lib.memory
 import lib.assert
 import libs.standard.distributed.raft
 import libs.standard.distributed.lsm
+import libs.standard.distributed.raft_tcp
 
 
 # ---- validity -----------------------------------------------------------------
@@ -201,10 +223,59 @@ int kv_apply_command(lsm* store, char* command, int command_len):
 	return ok
 
 
-# Drain every committed-but-unapplied raft entry into the store.
-# Returns the number actually applied; malformed entries are drained
-# but not counted, and draining continues past them.
+# ---- snapshotting (issue #314) ---------------------------------------------------
+
+# Largest snapshot blob kv_take_snapshot may hand to raft_take_snapshot
+# and still have it ride raft_tcp: the InstallSnapshot wire envelope
+# around the blob is type(1) + from(4) + to(4) + term(8) +
+# prev_log_index(8) + prev_log_term(8) + leader_commit(8) + snap_len(4)
+# = 45 bytes (raft_wire.w's raft_wire_size for raft_msg_install_
+# snapshot()), so the blob itself must leave that much headroom inside
+# rt_max_frame()'s 1 MiB cap. A bigger tree cannot snapshot until
+# chunked InstallSnapshot lands (documented follow-up, not this PR).
+int kv_snapshot_max_bytes():
+	return rt_max_frame() - 45
+
+
+# Malloc'd full-scan export of store (lsm_export) — the KV snapshot
+# blob for raft_take_snapshot to compact the log around. Asserts the
+# result fits raft_tcp's InstallSnapshot frame cap (kv_snapshot_max_
+# bytes) — fails loudly here rather than producing a blob raft_tcp
+# would silently refuse to send later.
+char* kv_take_snapshot(lsm* store, int* len_out):
+	char* blob = lsm_export(store, len_out)
+	asserts(c"kv_take_snapshot: snapshot blob exceeds raft_tcp's InstallSnapshot frame cap (rt_max_frame); chunked InstallSnapshot is the documented follow-up, not yet implemented", len_out[0] <= kv_snapshot_max_bytes())
+	return blob
+
+
+# Rebuild store from an installed snapshot blob (raft_take_pending_
+# snapshot's buffer, or one replayed from a node's own wal-rewritten
+# snapshot record): lsm_clear + lsm_import. Returns 1 on success, 0 on
+# a malformed blob (lsm_import's contract) — should never happen from
+# a well-behaved peer or a node's own wal, but the state machine never
+# trusts wire/wal bytes blindly.
+int kv_install_snapshot(lsm* store, char* blob, int len):
+	return lsm_import(store, blob, len)
+
+
+# Drain every committed-but-unapplied raft entry into the store. A
+# pending snapshot (InstallSnapshot landed over the wire, or one
+# replayed from this node's own wal-rewritten record — raft.w's and
+# raft_wal.w's headers) is installed FIRST via kv_install_snapshot:
+# raft_pop_apply asserts none is pending, since entries after the
+# snapshot index only make sense on top of its state. Returns the
+# number of ordinary entries actually applied; the snapshot install
+# itself is not counted, and a malformed entry is drained but not
+# counted either (see kv_apply_command).
 int kv_apply_pending(raft* r, lsm* store):
+	if (raft_has_pending_snapshot(r)):
+		int* blen = cast(int*, malloc(__word_size__))
+		u64* bidx = u64_new()
+		char* blob = raft_take_pending_snapshot(r, blen, bidx)
+		assert1(kv_install_snapshot(store, blob, blen[0]))
+		free(blob)
+		u64_free(bidx)
+		free(cast(char*, blen))
 	int applied = 0
 	while (raft_pending_apply(r)):
 		raft_entry* e = raft_pop_apply(r)
