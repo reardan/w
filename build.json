@@ -2100,6 +2100,7 @@
 				"memory_debug_test",
 				"memtable_test",
 				"method_chaining_test",
+				"midline_tab_test",
 				"monotime_test",
 				"multilayer_test",
 				"nested_ctor_test",
@@ -3079,6 +3080,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/method_chaining_test.w", "-o", "bin/method_chaining_test"]},
 				{"cmd": ["bin/method_chaining_test"]}
+			]
+		},
+		{
+			"name": "midline_tab_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/midline_tab_test.w", "-o", "bin/midline_tab_test"]},
+				{"cmd": ["bin/midline_tab_test"]}
 			]
 		},
 		{

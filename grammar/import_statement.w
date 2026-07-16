@@ -283,6 +283,26 @@ void import_validate_alias(char* alias):
 		error(c"'")
 
 
+# Truncates a trailing '#' comment (and the spaces/tabs before it) off an
+# import line. Import lines are read raw with read_until_end() because the
+# module path is not a normal token, so get_token()'s comment skipping
+# never sees them. Dotted module paths and aliases have no legal '#', so
+# everything from the first '#' on is commentary. Must run before
+# import_split_alias(), or a comment containing " as " would mis-split.
+void import_strip_comment(char* line):
+	int i = 0
+	while (line[i]):
+		if (line[i] == '#'):
+			while (i > 0):
+				int prev = line[i - 1]
+				if ((prev != ' ') & (prev != 9)):
+					break
+				i = i - 1
+			line[i] = 0
+		else:
+			i = i + 1
+
+
 # Splits an optional trailing " as <alias>" clause off an import line,
 # truncating the line at the clause. Returns the alias (fresh allocation)
 # or 0 when the line has none.
@@ -302,7 +322,9 @@ char* import_split_alias(char* line):
 int import_statement():
 	if(accept(c"import")):
 		# The rest of the line is the module path plus an optional alias
+		# and an optional trailing comment
 		read_until_end()
+		import_strip_comment(token)
 		char* alias = import_split_alias(token)
 
 		# Strip a trailing .* wildcard; the whole module is imported either way
