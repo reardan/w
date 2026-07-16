@@ -682,3 +682,191 @@ void test_stress_stride():
 	lt_verify_stress(l)
 	lsm_close(l)
 	free(prefix)
+
+
+# ---- export / import (full-scan snapshot surface, issue #314) ---------------
+
+void test_export_empty_lsm():
+	char* prefix = lt_prefix(c"expempty")
+	lt_clean(prefix)
+	lsm* l = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, l) != 0)
+	int* n = lt_len_out()
+	char* blob = lsm_export(l, n)
+	assert_equal(12, n[0])
+	assert_equal(76, blob[0] & 255)   # L
+	assert_equal(83, blob[1] & 255)   # S
+	assert_equal(77, blob[2] & 255)   # M
+	assert_equal(88, blob[3] & 255)   # X
+	assert_equal(1, wal_get_le32(blob + 4))
+	assert_equal(0, wal_get_le32(blob + 8))
+	# importing an empty blob into a tree with existing content wipes it
+	assert_equal(1, lsm_put(l, c"gone", c"soon", 4))
+	assert_equal(1, lsm_import(l, blob, n[0]))
+	lt_expect_gone(l, c"gone")
+	assert_equal(0, lsm_total_entries(l))
+	assert_equal(0, lsm_sstable_count(l))
+	free(blob)
+	free(cast(char*, n))
+	lsm_close(l)
+	free(prefix)
+
+
+void test_export_tombstone_excluded():
+	char* prefix = lt_prefix(c"exptomb")
+	lt_clean(prefix)
+	lsm* l = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, l) != 0)
+	assert_equal(1, lsm_put(l, c"keep", c"safe", 4))
+	assert_equal(1, lsm_put(l, c"doomed", c"soon", 4))
+	# flush so the tombstone must also shadow an on-disk record, not
+	# merely a memtable one
+	assert_equal(1, lsm_flush(l))
+	assert_equal(1, lsm_delete(l, c"doomed"))
+	int* n = lt_len_out()
+	char* blob = lsm_export(l, n)
+	assert_equal(1, wal_get_le32(blob + 8))   # exactly one surviving record
+	char* prefix2 = lt_prefix(c"exptomb2")
+	lt_clean(prefix2)
+	lsm* l2 = lsm_open(prefix2, 1 << 20)
+	assert1(cast(int, l2) != 0)
+	assert_equal(1, lsm_import(l2, blob, n[0]))
+	lt_expect(l2, c"keep", c"safe")
+	lt_expect_gone(l2, c"doomed")
+	assert_equal(1, lsm_total_entries(l2))
+	free(blob)
+	free(cast(char*, n))
+	lsm_close(l)
+	lsm_close(l2)
+	free(prefix2)
+	free(prefix)
+
+
+void test_export_memtable_shadows_sstable():
+	char* prefix = lt_prefix(c"expshadow")
+	lt_clean(prefix)
+	lsm* l = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, l) != 0)
+	assert_equal(1, lsm_put(l, c"a", c"old", 3))
+	assert_equal(1, lsm_put(l, c"b", c"keep-b", 6))
+	assert_equal(1, lsm_flush(l))
+	# a's newer value sits only in the memtable, above the flushed table
+	assert_equal(1, lsm_put(l, c"a", c"new", 3))
+	int* n = lt_len_out()
+	char* blob = lsm_export(l, n)
+	char* prefix2 = lt_prefix(c"expshadow2")
+	lt_clean(prefix2)
+	lsm* l2 = lsm_open(prefix2, 1 << 20)
+	assert1(cast(int, l2) != 0)
+	assert_equal(1, lsm_import(l2, blob, n[0]))
+	lt_expect(l2, c"a", c"new")
+	lt_expect(l2, c"b", c"keep-b")
+	assert_equal(2, lsm_total_entries(l2))
+	free(blob)
+	free(cast(char*, n))
+	lsm_close(l)
+	lsm_close(l2)
+	free(prefix2)
+	free(prefix)
+
+
+# Export a tree that has been through flush, an overwrite, a delete
+# and a binary-valued put, import the blob into an unrelated tree
+# (whose own prior content must be wiped, not merged), then verify
+# the destination matches value-for-value AND that re-exporting the
+# imported tree reproduces byte-identical output — the merge is a
+# deterministic sorted scan, so import really is the inverse of
+# export.
+void test_export_import_roundtrip():
+	char* prefix = lt_prefix(c"exportrt")
+	lt_clean(prefix)
+	lsm* l = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, l) != 0)
+	assert_equal(1, lsm_put(l, c"alpha", c"1", 1))
+	assert_equal(1, lsm_put(l, c"beta", c"2", 1))
+	assert_equal(1, lsm_flush(l))
+	assert_equal(1, lsm_put(l, c"beta", c"22", 2))
+	assert_equal(1, lsm_put(l, c"gamma", c"3", 1))
+	assert_equal(1, lsm_delete(l, c"alpha"))
+	char* binval = malloc(4)
+	binval[0] = 0
+	binval[1] = 255
+	binval[2] = 7
+	binval[3] = 0
+	assert_equal(1, lsm_put(l, c"bin", binval, 4))
+	int* n = lt_len_out()
+	char* exported = lsm_export(l, n)
+	int elen = n[0]
+	# a fresh, unrelated tree with existing content the import must wipe
+	char* prefix2 = lt_prefix(c"exportrt2")
+	lt_clean(prefix2)
+	lsm* l2 = lsm_open(prefix2, 1 << 20)
+	assert1(cast(int, l2) != 0)
+	assert_equal(1, lsm_put(l2, c"stale", c"gone-after-import", 18))
+	assert_equal(1, lsm_import(l2, exported, elen))
+	lt_expect_gone(l2, c"stale")
+	lt_expect_gone(l2, c"alpha")
+	lt_expect(l2, c"beta", c"22")
+	lt_expect(l2, c"gamma", c"3")
+	char* got = lsm_get(l2, c"bin", n)
+	assert1(cast(int, got) != 0)
+	assert_equal(4, n[0])
+	assert_equal(0, got[0] & 255)
+	assert_equal(255, got[1] & 255)
+	assert_equal(7, got[2] & 255)
+	assert_equal(0, got[3] & 255)
+	free(got)
+	assert_equal(3, lsm_total_entries(l2))
+	char* exported2 = lsm_export(l2, n)
+	assert_equal(elen, n[0])
+	int i = 0
+	while (i < elen):
+		assert_equal(exported[i] & 255, exported2[i] & 255)
+		i = i + 1
+	free(exported2)
+	free(exported)
+	free(cast(char*, n))
+	free(binval)
+	lsm_close(l)
+	lsm_close(l2)
+	free(prefix2)
+	free(prefix)
+
+
+# A malformed blob (too short, wrong magic, or a record count/length
+# that overruns the buffer) is rejected WITHOUT touching the tree —
+# lsm_import validates the whole buffer before ever calling lsm_clear,
+# so a bad inbound snapshot can never corrupt a good one.
+void test_import_rejects_malformed_blob():
+	char* prefix = lt_prefix(c"expmal")
+	lt_clean(prefix)
+	lsm* l = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, l) != 0)
+	assert_equal(1, lsm_put(l, c"safe", c"value", 5))
+	# too short to even carry the 12-byte header
+	assert_equal(0, lsm_import(l, c"xx", 2))
+	# right length, wrong magic
+	char* bad_magic = malloc(12)
+	bad_magic[0] = 88
+	bad_magic[1] = 88
+	bad_magic[2] = 88
+	bad_magic[3] = 88
+	wal_put_le32(bad_magic + 4, 1)
+	wal_put_le32(bad_magic + 8, 0)
+	assert_equal(0, lsm_import(l, bad_magic, 12))
+	free(bad_magic)
+	# right magic, a record count the buffer cannot possibly hold
+	char* bad_count = malloc(12)
+	bad_count[0] = 76
+	bad_count[1] = 83
+	bad_count[2] = 77
+	bad_count[3] = 88
+	wal_put_le32(bad_count + 4, 1)
+	wal_put_le32(bad_count + 8, 5)
+	assert_equal(0, lsm_import(l, bad_count, 12))
+	free(bad_count)
+	# none of the rejected imports touched the tree
+	lt_expect(l, c"safe", c"value")
+	assert_equal(1, lsm_total_entries(l))
+	lsm_close(l)
+	free(prefix)
