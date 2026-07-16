@@ -40,6 +40,7 @@ back exactly like a compile error.
 */
 import compiler.compiler
 import lib.stack_trace
+import lib.utf8
 import debugger.sigcontext
 import structures.json
 import structures.json_codec
@@ -560,9 +561,7 @@ int repl_compile_entry(char* path):
 	nextc = get_character()
 	get_token()
 
-	char* counter_digits = itoa(repl_counter)
-	char* name = strjoin(c"__repl_", counter_digits)
-	free(counter_digits)
+	char* name = cstr(f"__repl_{repl_counter}")
 	repl_counter = repl_counter + 1
 
 	int entry_symbol = sym_declare_global(name, 1, 2)
@@ -953,16 +952,7 @@ char* repl_staged_path
 # ("<dir>/entry_<n>.w"). Shared by entry creation and session cleanup so
 # the naming rule lives in one place.
 char* repl_entry_path(char* dir, int n):
-	char* digits = itoa(n)
-	char* base = strjoin(c"entry_", digits)
-	char* base_w = strjoin(base, c".w")
-	char* with_slash = strjoin(dir, c"/")
-	char* path = strjoin(with_slash, base_w)
-	free(digits)
-	free(base)
-	free(base_w)
-	free(with_slash)
-	return path
+	return cstr(f"{dir}/entry_{n}.w")
 
 
 # Remove every staged entry file this session created, then the staging
@@ -1004,9 +994,7 @@ void repl_engine_init():
 void repl_stage_init():
 	if (repl_staging_dir != 0):
 		return;
-	char* pid_digits = itoa(getpid())
-	repl_staging_dir = strjoin(c"/tmp/w_repl_", pid_digits)
-	free(pid_digits)
+	repl_staging_dir = cstr(f"/tmp/w_repl_{getpid()}")
 	mkdir(repl_staging_dir, 511)
 
 
