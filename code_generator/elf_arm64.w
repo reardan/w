@@ -206,7 +206,10 @@ void elf_finish_arm64():
 		# and data as two segments in one file.
 		while (codepos < data_file_off):
 			emit_int8(0)
-		write(output_fd, code, codepos)
-		write(output_fd, data, datapos)
+		if (write(output_fd, code, codepos) != codepos):
+			error(c"could not write output file")
+		if (write(output_fd, data, datapos) != datapos):
+			error(c"could not write output file")
 	else:
-		write(output_fd, code, codepos)
+		if (write(output_fd, code, codepos) != codepos):
+			error(c"could not write output file")
