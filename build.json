@@ -1745,6 +1745,7 @@
 				"failure_detector_64_test",
 				"feature_combo_64_test",
 				"feature_interaction_64_test",
+				"float16_64_test",
 				"fmath_64_test",
 				"for_container_64_test",
 				"format_64_test",
@@ -2088,6 +2089,7 @@
 				"feature_combo_test",
 				"feature_interaction_test",
 				"file_test",
+				"float16_test",
 				"float_literal_test",
 				"float_test",
 				"fmath_test",
@@ -2604,6 +2606,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/file_test.w", "-o", "bin/file_test"]},
 				{"cmd": ["bin/file_test"]}
+			]
+		},
+		{
+			"name": "float16_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/float16_test.w", "-o", "bin/float16_64_test"]},
+				{"cmd": ["bin/float16_64_test"]}
+			]
+		},
+		{
+			"name": "float16_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/float16_test.w", "-o", "bin/float16_test"]},
+				{"cmd": ["bin/float16_test"]}
 			]
 		},
 		{
