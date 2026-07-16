@@ -79,6 +79,18 @@ int malloc_size_bin(int size):
 	return b
 
 
+# Written directly with write(2), not lib.lib's print2/println2: this
+# file backs malloc() for every program (see lib/memory.w's header
+# comment on why it must not pull in lib.lib), including the minimal
+# fixtures that define their own _main to skip the standard runtime.
+void malloc_oom_notice():
+	char* msg = c"malloc: out of memory (heap growth failed)\x0a"
+	int n = 0
+	while (msg[n] != 0):
+		n = n + 1
+	write(2, msg, n)
+
+
 # Bump-allocate `needed` raw bytes, growing the heap in 64KB chunks so
 # most calls avoid the two brk syscalls the old allocator paid every
 # time. Returns the block address, or 0 when the OS refuses more memory.
@@ -123,6 +135,7 @@ int malloc_grow(int needed):
 				flags = flags + 64
 			int fresh = mmap(0, chunk, 3, flags)
 			if ((fresh < 0) & (fresh > -4096)):
+				malloc_oom_notice()
 				return 0
 			malloc_heap_ptr = fresh
 			malloc_heap_end = fresh + chunk
