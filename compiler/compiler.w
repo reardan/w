@@ -79,6 +79,18 @@ int compile_attempt(char* fn):
 	tab_level = 0
 	byte_offset = 0
 	nextc = get_character()
+	# Silently skip a single UTF-8 byte-order mark (EF BB BF) at the very
+	# start of the file -- some Windows editors emit one unprompted, and
+	# without this the BOM's first byte becomes a bogus token (#287).
+	# Matches Python 3 / Go / Rust. getc() keeps byte_offset exact while
+	# leaving the line/column counters untouched, so a BOM file reports
+	# the same diagnostic positions as its BOM-less twin. A file starting
+	# with a partial match (a stray EF not followed by BB BF) is not W
+	# source: it still fails on its first token, as before.
+	if (nextc == 239):
+		if (getc() == 187):
+			if (getc() == 191):
+				nextc = getc()
 	get_token()
 	program()
 	return 1

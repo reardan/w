@@ -372,6 +372,41 @@
 			]
 		},
 		{
+			"name": "ndjson_utf8_validator",
+			"deps": ["wv2"],
+			"inputs": ["tests/ndjson_utf8_validator.w"],
+			"outputs": ["bin/ndjson_utf8_validator"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ndjson_utf8_validator.w", "-o", "bin/ndjson_utf8_validator"]}
+			]
+		},
+		{
+			"name": "check_json_utf8_test",
+			"deps": ["wv2", "ndjson_utf8_validator"],
+			"steps": [
+				{"cmd": ["printf", "int main():\n\tstring s = \"bad \\377\\376 bytes\"\n\treturn 0\n"], "stdout_file": "bin/check_json_utf8_string.w"},
+				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "bin/check_json_utf8_string.w"], "stdout_file": "bin/check_json_utf8_string.ndjson", "expect_fail": true, "expect_stdout": ["\"message\": \"invalid UTF-8 string literal\"", "\\u00ff", "\\u00fe"]},
+				{"cmd": ["bin/ndjson_utf8_validator", "bin/check_json_utf8_string.ndjson"], "expect_stdout": "ndjson utf8 validator OK"},
+				{"cmd": ["printf", "int main():\n\tint caf\\303 = 5\n\treturn 0\n"], "stdout_file": "bin/check_json_utf8_ident.w"},
+				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "bin/check_json_utf8_ident.w"], "stdout_file": "bin/check_json_utf8_ident.ndjson", "expect_fail": true, "expect_stdout": "\\u00c3"},
+				{"cmd": ["bin/ndjson_utf8_validator", "bin/check_json_utf8_ident.ndjson"], "expect_stdout": "ndjson utf8 validator OK"},
+				{"cmd": ["printf", "int main():\n\tstring s = \"\\346\\227\\245\\346\\234\\254\\350\\252\\236\" x\n\treturn 0\n"], "stdout_file": "bin/check_json_utf8_column.w"},
+				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "bin/check_json_utf8_column.w"], "stdout_file": "bin/check_json_utf8_column.ndjson", "expect_fail": true, "expect_stdout": ["\"line\": 2, \"column\": 19", "\"message\": \"';' expected, found 'x'\""]},
+				{"cmd": ["bin/ndjson_utf8_validator", "bin/check_json_utf8_column.ndjson"], "expect_stdout": "ndjson utf8 validator OK"}
+			]
+		},
+		{
+			"name": "utf8_bom_test",
+			"deps": ["wv2", "ndjson_utf8_validator"],
+			"steps": [
+				{"cmd": ["printf", "\\357\\273\\277# leading UTF-8 BOM, then plain ASCII source\nint main():\n\tprintln(c\"bom ok\")\n\treturn 0\n"], "stdout_file": "bin/utf8_bom_fixture.w"},
+				{"cmd": ["bin/wv2", "bin/utf8_bom_fixture.w", "-o", "bin/utf8_bom_fixture"]},
+				{"cmd": ["bin/utf8_bom_fixture"], "expect_stdout": "bom ok"},
+				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "bin/utf8_bom_fixture.w"], "stdout_file": "bin/utf8_bom_check.ndjson"},
+				{"cmd": ["test", "!", "-s", "bin/utf8_bom_check.ndjson"]}
+			]
+		},
+		{
 			"name": "missing_file_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -1962,6 +1997,7 @@
 				"time_64_test",
 				"u64_64_test",
 				"urlparse_64_test",
+				"utf8_source_64_test",
 				"varargs_w_64_test",
 				"vcs_cas_64_test",
 				"vcs_commit_64_test",
@@ -2133,6 +2169,8 @@
 				"warning_test",
 				"strict_mode_test",
 				"check_json_test",
+				"check_json_utf8_test",
+				"utf8_bom_test",
 				"check_roots_test",
 				"check_imports_test",
 				"check_bool_ops_test",
@@ -2344,6 +2382,7 @@
 				"type_system_p0_test",
 				"u64_test",
 				"urlparse_test",
+				"utf8_source_test",
 				"vcs_cas_test",
 				"vcs_commit_test",
 				"vcs_dag_test",
@@ -4311,6 +4350,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/urlparse_test.w", "-o", "bin/urlparse_test"]},
 				{"cmd": ["bin/urlparse_test"]}
+			]
+		},
+		{
+			"name": "utf8_source_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/utf8_source_test.w", "-o", "bin/utf8_source_64_test"]},
+				{"cmd": ["bin/utf8_source_64_test"]}
+			]
+		},
+		{
+			"name": "utf8_source_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/utf8_source_test.w", "-o", "bin/utf8_source_test"]},
+				{"cmd": ["bin/utf8_source_test"]}
 			]
 		},
 		{

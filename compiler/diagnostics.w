@@ -93,6 +93,46 @@ void diag_write_cstr(char* s):
 		i = i + 1
 
 
+# Length (2-4, lead byte included) of the well-formed UTF-8 sequence
+# starting at s[i], or 0 when the bytes there are not well-formed UTF-8
+# (an invalid lead byte, a lone/missing continuation byte, an overlong
+# encoding, a surrogate, or a codepoint past U+10FFFF). Mirrors
+# lib/utf8.w's utf8_validate_bytes, reimplemented locally because this
+# module stays dependency-free. Truncation at the terminating NUL fails
+# the continuation-range check, so the scan never reads past it.
+int diag_utf8_sequence_length(char* s, int i):
+	int c = s[i] & 255
+	int need = 0
+	int codepoint = 0
+	if ((c >= 194) & (c <= 223)):
+		need = 1
+		codepoint = c & 31
+	else if ((c >= 224) & (c <= 239)):
+		need = 2
+		codepoint = c & 15
+	else if ((c >= 240) & (c <= 244)):
+		need = 3
+		codepoint = c & 7
+	else:
+		return 0
+	int j = 1
+	while (j <= need):
+		int d = s[i + j] & 255
+		if ((d < 128) | (d > 191)):
+			return 0
+		codepoint = (codepoint << 6) | (d & 63)
+		j = j + 1
+	if ((need == 2) & (codepoint < 2048)):
+		return 0
+	if ((need == 3) & (codepoint < 65536)):
+		return 0
+	if ((codepoint >= 55296) & (codepoint <= 57343)):
+		return 0
+	if (codepoint > 1114111):
+		return 0
+	return need + 1
+
+
 void diag_write_json_string(char* s):
 	diag_out_char('"')
 	int i = 0
@@ -112,6 +152,24 @@ void diag_write_json_string(char* s):
 			diag_write_cstr(c"\\u00")
 			diag_out_char(diag_hex_digit(ch >> 4))
 			diag_out_char(diag_hex_digit(ch & 15))
+		else if (ch >= 128):
+			# Bytes >= 128 pass through raw only as part of a
+			# well-formed UTF-8 sequence (JSON strings may contain raw
+			# UTF-8). Any other byte -- a stray byte reflected into a
+			# message or token from invalid source input -- is escaped
+			# as \u00XX (its byte value) so the emitted NDJSON is
+			# always valid UTF-8, and therefore valid JSON (#287).
+			int n = diag_utf8_sequence_length(s, i)
+			if (n == 0):
+				diag_write_cstr(c"\\u00")
+				diag_out_char(diag_hex_digit(ch >> 4))
+				diag_out_char(diag_hex_digit(ch & 15))
+			else:
+				while (n > 1):
+					diag_out_char(s[i] & 255)
+					i = i + 1
+					n = n - 1
+				diag_out_char(s[i] & 255)
 		else:
 			diag_out_char(ch)
 		i = i + 1

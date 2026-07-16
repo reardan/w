@@ -397,6 +397,11 @@ is complete and parseable, no closing bracket needed.
 ```
 
 - `line`, `column`: 1-based, from the current token's start position.
+  `column` counts codepoints, not bytes: a multi-byte UTF-8 character
+  earlier on the line advances it by one (#287 stage 1, 2026-07-16).
+  All-ASCII lines are unaffected. The tokenizer's `byte_offset` /
+  `token_start_offset` stay byte-exact (`grammar/generic.w` re-seeks by
+  them); human output has no column and is unchanged.
 - `severity`: `"warning"` or `"error"`, derived from which funnel fired.
   The literal `warning: ` prefix that call sites bake into their message
   strings is stripped in the funnel (one `strncmp`), so the field and the
@@ -423,11 +428,16 @@ New module `compiler/diagnostics.w`, imported at the top of
 - `void diag_part_type(int type_index)`: the existing
   `print_error_type()` logic from `grammar/promote.w` (type name plus
   pointer stars) rerouted through `diag_part`.
-- A local ~20-line JSON string escaper (`\"`, `\\`, control characters as
+- A local JSON string escaper (`\"`, `\\`, control characters as
   `\u00XX`). Deliberately **not** `structures/json.w`: that would pull
   hash_map and array_list into the compiler binary to escape one string,
   and the diagnostics module should stay dependency-free so `repl.w` and
-  `wdbg` inherit it trivially.
+  `wdbg` inherit it trivially. Since #287 stage 1 it also guarantees the
+  emitted NDJSON is always valid UTF-8 (and therefore valid JSON): bytes
+  >= 0x80 pass through raw only as part of a well-formed UTF-8 sequence;
+  any stray byte reflected into `message`/`token`/`file` from invalid
+  source input is escaped as `\u00XX` (its byte value). Guarded by the
+  `check_json_utf8_test` target via `tests/ndjson_utf8_validator.w`.
 
 `warning(s)` and `error(s)` keep their signatures and their human path
 untouched. In JSON mode they emit one record — message = accumulated
