@@ -26,9 +26,10 @@ snapshot exists); raft_last_index is snap_base + log.length and an
 empty log's last term is snap_last_term.
 
 v1 choices, documented here because they shape the tests:
-  - votes_received counts granted current-term vote replies without
-    deduplicating voters; the caller (test or simulation) must not
-    deliver the same reply twice in one election.
+  - votes_received counts granted current-term vote replies, one per
+    voter: granting peers are tracked in vote_granters (and pre-vote
+    granters in prevote_granters), reset wherever the counters reset,
+    so a duplicated reply never double-counts (issue #320).
   - raft_propose re-arms the heartbeat deadline, since the appends it
     emits already serve as heartbeats.
   - a failed AppendEntries consistency check still resets the election
@@ -258,10 +259,12 @@ struct raft:
 	int heartbeat_ms
 	prng* rng
 	int votes_received         # granted votes in the current election
+	set[int] vote_granters     # peers already counted in votes_received (#320)
 	# hardening (both opt-in; see header)
 	int noop_on_win            # 1: append an empty no-op command on winning
 	int prevote_enabled        # 1: poll a pre-vote round before real elections
 	int prevotes_received      # granted pre-votes in the pending round (self counts)
+	set[int] prevote_granters  # peers already counted in prevotes_received (#320)
 	int last_leader_contact    # timestamp of the last valid current-term leader append
 	int has_leader_contact     # 0 until the first such append ("never heard")
 	# snapshot state (§7 log compaction; index 0/term 0 = no snapshot)
@@ -328,6 +331,23 @@ void raft_reset_election_deadline(raft* r, int now_ms):
 	r.election_deadline = mono_deadline(now_ms, timeout)
 
 
+# Forget the recorded vote granters (issue #320 dedup); called wherever
+# votes_received resets. Reassigning only when non-empty keeps the
+# common already-empty case allocation-free; the replaced storage is
+# runtime-managed like every other container here.
+void raft_clear_vote_granters(raft* r):
+	if (r.vote_granters.length > 0):
+		r.vote_granters = new set[int]
+
+
+# Same for the pre-vote granters; called wherever prevotes_received
+# resets — including the hot path where every valid current-term leader
+# append cancels a pending pre-vote round.
+void raft_clear_prevote_granters(raft* r):
+	if (r.prevote_granters.length > 0):
+		r.prevote_granters = new set[int]
+
+
 # A term strictly greater than ours was observed: adopt it and fall
 # back to follower with no vote and no known leader. Does NOT touch the
 # election deadline (stale-message rule: only vote grants, valid
@@ -339,6 +359,8 @@ void raft_step_down(raft* r, u64* term):
 	r.leader_hint = 0 - 1
 	r.votes_received = 0
 	r.prevotes_received = 0
+	raft_clear_vote_granters(r)
+	raft_clear_prevote_granters(r)
 
 
 # ---- lifecycle -----------------------------------------------------------------
@@ -376,9 +398,11 @@ raft* raft_new(int self_id, list[int] peers, int election_min_ms, int election_m
 	r.heartbeat_ms = heartbeat_ms
 	r.rng = prng_new(seed)
 	r.votes_received = 0
+	r.vote_granters = new set[int]
 	r.noop_on_win = 0
 	r.prevote_enabled = 0
 	r.prevotes_received = 0
+	r.prevote_granters = new set[int]
 	r.last_leader_contact = 0
 	r.has_leader_contact = 0
 	r.snap_last_index = u64_new()
@@ -562,6 +586,8 @@ void raft_start_election(raft* r, int now_ms, list[raft_msg*] out):
 	r.leader_hint = 0 - 1
 	r.votes_received = 1
 	r.prevotes_received = 0
+	raft_clear_vote_granters(r)
+	raft_clear_prevote_granters(r)
 	raft_reset_election_deadline(r, now_ms)
 	u64* last_term = u64_new()
 	raft_last_term(r, last_term)
@@ -585,6 +611,7 @@ void raft_start_election(raft* r, int now_ms, list[raft_msg*] out):
 # its own majority and proceeds straight to the real election.
 void raft_start_prevote(raft* r, int now_ms, list[raft_msg*] out):
 	r.prevotes_received = 1
+	raft_clear_prevote_granters(r)
 	raft_reset_election_deadline(r, now_ms)
 	u64* prospective = u64_clone(r.current_term)
 	u64_inc(prospective)
@@ -702,7 +729,7 @@ void raft_handle_prevote_req(raft* r, raft_msg* m, int now_ms, list[raft_msg*] o
 # current_term + 1, this round's prospective term; the real election
 # bumps current_term, so the finished round's replies (now carrying
 # term == current_term) fail this check. Leaders never count pre-votes.
-# Like votes_received (header note), voters are not deduplicated.
+# Each granter counts once per round (prevote_granters, issue #320).
 void raft_handle_prevote_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	if (r.state == raft_leader()):
 		return
@@ -716,13 +743,17 @@ void raft_handle_prevote_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*]
 	u64_free(prospective)
 	if (round_match == 0):
 		return
+	if (m.from in r.prevote_granters):
+		return
+	r.prevote_granters.add(m.from)
 	r.prevotes_received = r.prevotes_received + 1
 	if (r.prevotes_received >= raft_majority(r)):
 		raft_start_election(r, now_ms, out)
 
 
 # RequestVote reply. Only a granted current-term reply while still a
-# candidate counts; reaching a majority wins the election.
+# candidate counts, and each voter counts once per election
+# (vote_granters, issue #320); reaching a majority wins the election.
 void raft_handle_vote_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	if (r.state != raft_candidate()):
 		return
@@ -730,6 +761,9 @@ void raft_handle_vote_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] ou
 		return
 	if (m.vote_granted == 0):
 		return
+	if (m.from in r.vote_granters):
+		return
+	r.vote_granters.add(m.from)
 	r.votes_received = r.votes_received + 1
 	if (r.votes_received >= raft_majority(r)):
 		raft_become_leader(r, now_ms, out)
@@ -755,6 +789,7 @@ void raft_handle_append(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	r.last_leader_contact = now_ms
 	r.has_leader_contact = 1
 	r.prevotes_received = 0
+	raft_clear_prevote_granters(r)
 	int base = raft_snap_base(r)
 	int prev_i = raft_u64_as_int(m.prev_log_index)
 	if (prev_i < base):
@@ -875,6 +910,7 @@ void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_ms
 	r.last_leader_contact = now_ms
 	r.has_leader_contact = 1
 	r.prevotes_received = 0
+	raft_clear_prevote_granters(r)
 	if (u64_cmp(m.prev_log_index, r.commit_index) <= 0):
 		reply.success = 1
 		u64_copy(reply.match_index, r.commit_index)
