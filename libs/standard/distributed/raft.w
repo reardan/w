@@ -811,10 +811,15 @@ void raft_handle_append(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 
 
 # AppendEntries reply (leader only, current term only). Success moves
-# the peer's next/match indexes forward and tries to advance the
-# commit; failure backs next_index up by one (floor 1) and immediately
-# retries from there — as an InstallSnapshot when the backoff lands at
-# or below the snapshot base (raft_make_peer_msg).
+# the peer's next/match indexes MONOTONICALLY forward (issue #320:
+# replies can be reordered, and a delayed staler success — a smaller
+# match_index — must not walk the peer's recorded progress backwards,
+# so both updates clamp with max; Figure 2's "update nextIndex and
+# matchIndex" means fresher acks only) and tries to advance the commit;
+# failure backs next_index up by one (floor 1; the only legitimate
+# next_index retreat) and immediately retries from there — as an
+# InstallSnapshot when the backoff lands at or below the snapshot base
+# (raft_make_peer_msg).
 void raft_handle_append_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	if (r.state != raft_leader()):
 		return
@@ -823,10 +828,15 @@ void raft_handle_append_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] 
 	if ((m.from in r.next_index) == 0):
 		return
 	if (m.success == 1):
+		u64* mi = r.match_index[m.from]
+		if (u64_cmp(m.match_index, mi) > 0):
+			u64_copy(mi, m.match_index)
 		u64* ni = r.next_index[m.from]
-		u64_copy(ni, m.match_index)
-		u64_inc(ni)
-		u64_copy(r.match_index[m.from], m.match_index)
+		u64* acked_next = u64_clone(m.match_index)
+		u64_inc(acked_next)
+		if (u64_cmp(acked_next, ni) > 0):
+			u64_copy(ni, acked_next)
+		u64_free(acked_next)
 		raft_try_advance_commit(r)
 		return
 	u64* backed = r.next_index[m.from]

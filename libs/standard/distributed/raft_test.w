@@ -634,6 +634,46 @@ void test_append_reply_ignored_when_not_leader():
 	raft_free(r)
 
 
+void test_stale_append_reply_does_not_regress_indexes():
+	# issue #320: replies can arrive reordered — once a fresher success
+	# reply advanced a peer's match/next indexes, a delayed staler
+	# success (smaller match_index) must leave them alone instead of
+	# walking the recorded progress backwards.
+	raft* r = raft_test_make_leader()
+	list[raft_msg*] out = new list[raft_msg*]
+	assert_equal(1, raft_propose(r, c"a", 130, out))
+	raft_test_free_msgs(out)
+	assert_equal(1, raft_propose(r, c"b", 131, out))
+	raft_test_free_msgs(out)
+	# the fresher ack lands first: peer 2 holds both entries, so its
+	# match/next move to 2/3 and the commit advances to 2
+	raft_msg* fresh = raft_test_append_reply(2, 1, 1, 1, 2)
+	raft_on_msg(r, fresh, 140, out)
+	raft_msg_free(fresh)
+	assert_equal(0, out.length)
+	assert_equal(2, raft_test_commit_int(r))
+	assert_equal(2, raft_u64_as_int(r.match_index[2]))
+	assert_equal(3, raft_u64_as_int(r.next_index[2]))
+	# the stale ack for just the first entry arrives afterwards: both
+	# indexes hold at 2/3 (max clamp) instead of regressing to 1/2
+	raft_msg* stale = raft_test_append_reply(2, 1, 1, 1, 1)
+	raft_on_msg(r, stale, 141, out)
+	raft_msg_free(stale)
+	assert_equal(0, out.length)
+	assert_equal(2, raft_u64_as_int(r.match_index[2]))
+	assert_equal(3, raft_u64_as_int(r.next_index[2]))
+	assert_equal(2, raft_test_commit_int(r))
+	# and the next heartbeat to peer 2 resumes at prev = 2 with nothing
+	# re-sent (the proposes re-armed the heartbeat deadline to 161)
+	raft_tick(r, 170, out)
+	raft_msg* hb = raft_test_find_to(out, 2)
+	assert_equal(raft_msg_append(), hb.type)
+	assert_equal(2, u64_to_int(hb.prev_log_index))
+	assert_equal(0, hb.entries.length)
+	raft_test_free_msgs(out)
+	raft_free(r)
+
+
 # ---- client interface -------------------------------------------------------------
 
 void test_propose_non_leader_rejected():
