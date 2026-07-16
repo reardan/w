@@ -17,8 +17,52 @@ char* lt_prefix(char* name):
 	return prefix
 
 
-# Truncate the prefix's wal and manifest so reruns start clean; any
-# stale .sst files become unreachable once the manifest is empty.
+# Full paths ("bin/<name>") of the directory entries under bin/ whose
+# name starts with "<basename>.sst", where basename is the prefix
+# without its "bin/" stem — the tree's on-disk table-file set.
+# getdents(2) record layout as in tools/wbuildgen.w and
+# libs/extras/vcs/tree.w: two word-sized ino/off fields, u16 d_reclen,
+# then the NUL-terminated name (this test only runs on the x86/x64
+# targets, whose legacy getdents share that layout). Malloc'd list of
+# malloc'd strings; caller frees both.
+list[char*] lt_sst_files(char* prefix):
+	assert1(starts_with(prefix, c"bin/"))
+	char* stem = strjoin(prefix + 4, c".sst")
+	list[char*] paths = new list[char*]
+	int fd = open(c"bin", 65536, 0)   # O_DIRECTORY
+	assert1(fd >= 0)
+	int buffer_size = 65536
+	char* buffer = malloc(buffer_size)
+	int n = getdents(fd, buffer, buffer_size)
+	while (n > 0):
+		int off = 0
+		while (off < n):
+			char* record = buffer + off
+			int reclen = (record[2 * __word_size__] & 255) | ((record[2 * __word_size__ + 1] & 255) << 8)
+			char* entry_name = record + 2 * __word_size__ + 2
+			if (starts_with(entry_name, stem)):
+				paths.push(strjoin(c"bin/", entry_name))
+			off = off + reclen
+		n = getdents(fd, buffer, buffer_size)
+	free(buffer)
+	close(fd)
+	free(stem)
+	return paths
+
+
+# How many "<prefix>.sst*" files exist on disk right now.
+int lt_sst_file_count(char* prefix):
+	list[char*] paths = lt_sst_files(prefix)
+	int count = paths.length
+	while (paths.length > 0):
+		char* path = paths.pop()
+		free(path)
+	return count
+
+
+# Truncate the prefix's wal and manifest and unlink the prefix's .sst
+# files so reruns start clean — the on-disk-file-set assertions below
+# need an exact, not merely unreachable, starting state.
 void lt_clean(char* prefix):
 	char* wpath = strjoin(prefix, c".wal")
 	char* mpath = strjoin(prefix, c".manifest")
@@ -28,6 +72,11 @@ void lt_clean(char* prefix):
 	close(fd)
 	free(mpath)
 	free(wpath)
+	list[char*] stale = lt_sst_files(prefix)
+	while (stale.length > 0):
+		char* victim = stale.pop()
+		unlink(victim)
+		free(victim)
 
 
 int* lt_len_out():
@@ -242,6 +291,8 @@ void test_recovery_after_compact():
 	assert_equal(1, lsm_compact(l))
 	assert_equal(1, lsm_sstable_count(l))
 	assert_equal(0, lsm_memtable_count(l))
+	# the superseded tables were reclaimed from disk too
+	assert_equal(1, lt_sst_file_count(prefix))
 	lsm_close(l)
 	l = lsm_open(prefix, 1 << 20)
 	assert1(cast(int, l) != 0)
@@ -307,6 +358,97 @@ void test_compaction_semantics():
 	free(prefix)
 
 
+void test_compaction_reclaims_superseded_tables():
+	char* prefix = lt_prefix(c"reclaim")
+	lt_clean(prefix)
+	lsm* l = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, l) != 0)
+	assert_equal(1, lsm_put(l, c"a", c"A1", 2))
+	assert_equal(1, lsm_flush(l))
+	assert_equal(1, lsm_put(l, c"b", c"B1", 2))
+	assert_equal(1, lsm_flush(l))
+	assert_equal(1, lsm_delete(l, c"a"))
+	assert_equal(1, lsm_flush(l))
+	# three tables (seq 1..3) exist on disk before the compaction
+	assert_equal(3, lsm_sstable_count(l))
+	assert_equal(3, lt_sst_file_count(prefix))
+	assert_equal(1, lsm_compact(l))
+	# EXACTLY the merged table (seq 4) remains on disk: the three
+	# superseded files were unlinked after the manifest rewrite
+	assert_equal(1, lt_sst_file_count(prefix))
+	char* merged_path = lsm_table_path(prefix, 4)
+	assert_strings_equal(merged_path, l.table_paths[0])
+	int fd = open(merged_path, 0, 0)
+	assert1(fd >= 0)
+	close(fd)
+	free(merged_path)
+	# the data survived the reclaim...
+	lt_expect_gone(l, c"a")
+	lt_expect(l, c"b", c"B1")
+	lsm_close(l)
+	# ...and a recovery of the reclaimed tree still reads clean
+	l = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, l) != 0)
+	assert_equal(1, lsm_sstable_count(l))
+	lt_expect_gone(l, c"a")
+	lt_expect(l, c"b", c"B1")
+	lsm_close(l)
+	free(prefix)
+
+
+void test_recovery_reclaims_dangling_table():
+	char* prefix = lt_prefix(c"recreclaim")
+	lt_clean(prefix)
+	lsm* l = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, l) != 0)
+	assert_equal(1, lsm_put(l, c"a", c"1", 1))
+	assert_equal(1, lsm_flush(l))
+	assert_equal(1, lsm_put(l, c"b", c"2", 1))
+	lsm_close(l)
+	# simulate a torn flush that got as far as a PARTIAL table write
+	# and the manifest entry: seq 2's file exists but holds garbage
+	char* dangling = lsm_table_path(prefix, 2)
+	int fd = create_file(dangling, 420)
+	assert1(fd >= 0)
+	assert_equal(12, write_all(fd, c"partial-junk", 12))
+	close(fd)
+	char* mpath = strjoin(prefix, c".manifest")
+	wal* mw = wal_open(mpath)
+	assert1(cast(int, mw) != 0)
+	char* rec = malloc(5)
+	rec[0] = 1
+	wal_put_le32(rec + 1, 2)
+	assert_equal(1, wal_append(mw, rec, 5))
+	free(rec)
+	wal_close(mw)
+	free(mpath)
+	assert_equal(2, lt_sst_file_count(prefix))
+	# recovery drops the dangling manifest entry AND unlinks its file
+	l = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, l) != 0)
+	assert_equal(1, lsm_sstable_count(l))
+	assert_equal(1, lt_sst_file_count(prefix))
+	fd = open(dangling, 0, 0)
+	assert1(fd < 0)
+	# the data is intact and the dangling seq stays consumed: the
+	# next flush writes seq 3, not a resurrected seq 2
+	lt_expect(l, c"a", c"1")
+	lt_expect(l, c"b", c"2")
+	assert_equal(1, lsm_put(l, c"c", c"3", 1))
+	assert_equal(1, lsm_flush(l))
+	assert_equal(2, lt_sst_file_count(prefix))
+	fd = open(dangling, 0, 0)
+	assert1(fd < 0)
+	char* third = lsm_table_path(prefix, 3)
+	fd = open(third, 0, 0)
+	assert1(fd >= 0)
+	close(fd)
+	free(third)
+	lsm_close(l)
+	free(dangling)
+	free(prefix)
+
+
 void test_torn_data_wal_tail():
 	char* prefix = lt_prefix(c"torn")
 	lt_clean(prefix)
@@ -364,11 +506,14 @@ void test_torn_flush_manifest_recovery():
 	free(rec)
 	wal_close(mw)
 	free(mpath)
-	# recovery drops the dangling LAST entry; data is intact
+	# recovery drops the dangling LAST entry; data is intact (the
+	# reclaim unlink of the never-written seq-2 file is a harmless
+	# no-op — only seq 1 exists on disk)
 	l = lsm_open(prefix, 1 << 20)
 	assert1(cast(int, l) != 0)
 	assert_equal(1, lsm_sstable_count(l))
 	assert_equal(1, lsm_memtable_count(l))
+	assert_equal(1, lt_sst_file_count(prefix))
 	lt_expect(l, c"a", c"1")
 	lt_expect(l, c"b", c"2")
 	# the dangling seq stays consumed: the next flush gets a fresh
@@ -376,6 +521,7 @@ void test_torn_flush_manifest_recovery():
 	assert_equal(1, lsm_put(l, c"c", c"3", 1))
 	assert_equal(1, lsm_flush(l))
 	assert_equal(2, lsm_sstable_count(l))
+	assert_equal(2, lt_sst_file_count(prefix))
 	lsm_close(l)
 	l = lsm_open(prefix, 1 << 20)
 	assert1(cast(int, l) != 0)
@@ -519,10 +665,12 @@ void test_stress_stride():
 	assert_equal(1, lsm_flush(l))
 	assert1(lsm_sstable_count(l) > 2)
 	lt_verify_stress(l)
-	# full compaction: one table holding exactly the 133 survivors
+	# full compaction: one table holding exactly the 133 survivors,
+	# and exactly one table file left on disk
 	assert_equal(1, lsm_compact(l))
 	assert_equal(1, lsm_sstable_count(l))
 	assert_equal(0, lsm_memtable_count(l))
+	assert_equal(1, lt_sst_file_count(prefix))
 	assert_equal(133, lsm_total_entries(l))
 	lt_verify_stress(l)
 	lsm_close(l)
