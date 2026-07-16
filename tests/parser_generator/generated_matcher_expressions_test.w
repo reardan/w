@@ -39,6 +39,38 @@ void test_matcher_expressions_lex_end_to_end():
 	assert_equal(1, found_comment)
 
 
+# Literal selection through the first-byte dispatch: trie fallback from
+# "<<=" to "<", literal-over-token priority on equal length ("zoo" beats
+# IDENT), longest token over shorter literal ("zoom" via ALT), and
+# declaration-order tie-breaks ("z", "ab") staying with the first token.
+void test_matcher_dispatch_literals():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	char* input = c"<<x zoo zoom <<= < z ab"
+	pg_token_stream* stream = matcher_expr_lex(input, c"literals.txt", diagnostics)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	assert_matcher_token(stream, 1, matcher_expr_token_LT(), c"<")
+	assert_matcher_token(stream, 2, matcher_expr_token_LT(), c"<")
+	assert_matcher_token(stream, 3, matcher_expr_token_IDENT(), c"x")
+	assert_matcher_token(stream, 4, matcher_expr_token_KW_ZOO(), c"zoo")
+	assert_matcher_token(stream, 5, matcher_expr_token_ALT(), c"zoom")
+	assert_matcher_token(stream, 6, matcher_expr_token_SHL_ASSIGN(), c"<<=")
+	assert_matcher_token(stream, 7, matcher_expr_token_LT(), c"<")
+	assert_matcher_token(stream, 8, matcher_expr_token_ALT(), c"z")
+	assert_matcher_token(stream, 9, matcher_expr_token_SHORT(), c"ab")
+	assert_equal(pg_token_eof_kind(), pg_token_stream_la(stream, 10).kind)
+
+
+# Bytes outside every matcher's first set (e.g. 0xff) must still lex as
+# hidden invalid tokens with a diagnostic, exactly like the linear sweep.
+void test_matcher_dispatch_invalid_byte():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_token_stream* stream = matcher_expr_lex(c"ab\xffab", c"invalid.txt", diagnostics)
+	assert_equal(1, pg_diagnostics_count(diagnostics))
+	assert_matcher_token(stream, 1, matcher_expr_token_SHORT(), c"ab")
+	assert_matcher_token(stream, 2, matcher_expr_token_SHORT(), c"ab")
+	assert_equal(pg_token_eof_kind(), pg_token_stream_la(stream, 3).kind)
+
+
 void test_matcher_expression_rejects_nullable_repetition():
 	char* grammar_text = c"parser bad\ntoken BAD = (\"x\"?)*\nstart root\nrule root = EOF\n"
 	pg_diagnostics* diagnostics = pg_diagnostics_new()

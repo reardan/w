@@ -122,6 +122,17 @@ token/skip/literal rules are attempted before the implicit inline-whitespace
 fallback, allowing a matcher such as `"\r"? "\n"` to consume CRLF as one
 token.
 
+Since 2026-07 (issue #329 milestone 1) the generated selection code is a
+first-byte dispatch instead of a linear try-every-matcher sweep: the lexer
+branches on the current byte (a log-depth comparison tree over first-byte
+ranges) and only runs the matchers that can start with that byte. Literals
+sharing a first byte compile to a nested comparison trie (`<`, `<<`, `<<=`),
+and identifier-shaped literals are matched by scanning the identifier once
+and probing a length-bucketed keyword chain. This is purely an
+implementation change inside the generated `_lex` function; the selection
+semantics above are preserved exactly (`generated_matcher_expressions_test`
+pins the edge cases).
+
 ## W grammar
 
 `tests/parser_generator/w.pg` is the first generated-parser grammar for W

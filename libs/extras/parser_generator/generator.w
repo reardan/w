@@ -2,7 +2,9 @@
 W source generator for the first ParserGenerator milestone.
 */
 import lib.lib
+import lib.container
 import libs.extras.parser_generator.grammar_model
+import libs.extras.parser_generator.lexer
 import libs.extras.parser_generator.source_writer
 
 
@@ -645,7 +647,574 @@ void pg_emit_lex_success(pg_source_writer* writer, pg_grammar* grammar, char* na
 	pg_source_dedent(writer)
 
 
+# --- dispatch-table lexer generation -------------------------------------
+#
+# The generated _lex function used to try every skip, token, and literal
+# matcher at every input position to implement longest-match. The emitters
+# below keep those matcher attempts byte-for-byte identical but wrap them
+# in a first-byte dispatch: each candidate only runs at positions whose
+# first byte it could possibly match. Literals sharing a first byte become
+# a nested comparison trie, and identifier-shaped literals (keywords) are
+# matched by scanning the identifier once and probing a length-bucketed
+# keyword chain. Selection semantics are unchanged: longest match wins,
+# declaration order breaks token/skip ties, and a literal displaces an
+# equal-length token or skip match.
+
+
+# One lexer candidate (a skip or token definition) in attempt order, with
+# the set of first bytes at which its matcher can return a positive length.
+struct pg_lexgen_matcher:
+	pg_token_def* token
+	int is_skip
+	char* first_bytes
+
+
+struct pg_lexgen_literal:
+	pg_literal_def* literal
+	int text_length
+	int first_byte
+	int keyword
+
+
+# An inclusive first-byte range whose bytes all share the same candidate
+# set. Ranges are what the generated dispatch tree branches on.
+struct pg_lexgen_span:
+	int lo
+	int hi
+
+
+void pg_lexgen_bytes_add(char* bytes, int lo, int hi):
+	int i = lo
+	while (i <= hi):
+		bytes[i] = 1
+		i = i + 1
+
+
+# First bytes at which a built-in pg_lexer_matcher_* helper can match.
+# These mirror the helpers in libs/extras/parser_generator/lexer.w; an
+# unknown helper never prunes, so dispatch stays a pure optimization.
+void pg_lexgen_builtin_first_bytes(char* bytes, char* matcher):
+	if ((strcmp(matcher, c"letters") == 0) | (strcmp(matcher, c"identifier") == 0)):
+		pg_lexgen_bytes_add(bytes, 'a', 'z')
+		pg_lexgen_bytes_add(bytes, 'A', 'Z')
+		pg_lexgen_bytes_add(bytes, '_', '_')
+	else if ((strcmp(matcher, c"digits") == 0) | (strcmp(matcher, c"number") == 0)):
+		pg_lexgen_bytes_add(bytes, '0', '9')
+	else if (strcmp(matcher, c"c_number") == 0):
+		pg_lexgen_bytes_add(bytes, '0', '9')
+		pg_lexgen_bytes_add(bytes, '.', '.')
+	else if (strcmp(matcher, c"newline") == 0):
+		pg_lexgen_bytes_add(bytes, 10, 10)
+	else if ((strcmp(matcher, c"tabs") == 0) | (strcmp(matcher, c"inline_tabs") == 0)):
+		pg_lexgen_bytes_add(bytes, 9, 9)
+	else if (strcmp(matcher, c"c_control") == 0):
+		pg_lexgen_bytes_add(bytes, 1, 8)
+		pg_lexgen_bytes_add(bytes, 11, 12)
+		pg_lexgen_bytes_add(bytes, 14, 31)
+	else if ((strcmp(matcher, c"line_comment") == 0) | (strcmp(matcher, c"c_preprocessor") == 0)):
+		pg_lexgen_bytes_add(bytes, '#', '#')
+	else if ((strcmp(matcher, c"block_comment") == 0) | (strcmp(matcher, c"c_line_comment") == 0)):
+		pg_lexgen_bytes_add(bytes, '/', '/')
+	else if (strcmp(matcher, c"sql_line_comment") == 0):
+		pg_lexgen_bytes_add(bytes, '-', '-')
+	else if (strcmp(matcher, c"c_string") == 0):
+		pg_lexgen_bytes_add(bytes, '"', '"')
+		pg_lexgen_bytes_add(bytes, 'u', 'u')
+		pg_lexgen_bytes_add(bytes, 'U', 'U')
+		pg_lexgen_bytes_add(bytes, 'L', 'L')
+	else if (strcmp(matcher, c"c_char_literal") == 0):
+		pg_lexgen_bytes_add(bytes, 39, 39)
+		pg_lexgen_bytes_add(bytes, 'u', 'u')
+		pg_lexgen_bytes_add(bytes, 'U', 'U')
+		pg_lexgen_bytes_add(bytes, 'L', 'L')
+	else if (strcmp(matcher, c"string") == 0):
+		pg_lexgen_bytes_add(bytes, '"', '"')
+		pg_lexgen_bytes_add(bytes, 's', 's')
+		pg_lexgen_bytes_add(bytes, 'c', 'c')
+		pg_lexgen_bytes_add(bytes, 'f', 'f')
+	else if ((strcmp(matcher, c"char_literal") == 0) | (strcmp(matcher, c"doubled_quote_string") == 0)):
+		pg_lexgen_bytes_add(bytes, 39, 39)
+	else if (strcmp(matcher, c"doubled_double_quote_string") == 0):
+		pg_lexgen_bytes_add(bytes, '"', '"')
+	else if (strcmp(matcher, c"operator") == 0):
+		pg_lexgen_bytes_add(bytes, '<', '<')
+		pg_lexgen_bytes_add(bytes, '=', '=')
+		pg_lexgen_bytes_add(bytes, '>', '>')
+		pg_lexgen_bytes_add(bytes, '|', '|')
+		pg_lexgen_bytes_add(bytes, '&', '&')
+		pg_lexgen_bytes_add(bytes, '!', '!')
+	else:
+		pg_lexgen_bytes_add(bytes, 1, 255)
+
+
+int pg_lexgen_path_contains(list[char*] path, char* name):
+	int i = 0
+	while (i < path.length):
+		if (strcmp(path[i], name) == 0):
+			return 1
+		i = i + 1
+	return 0
+
+
+# Collect the possible first bytes of a matcher expression into bytes and
+# return whether the expression can match empty. Mirrors the shape of
+# pg_reader_matcher_nullable; the reader has already rejected cyclic and
+# unknown references, so those paths conservatively stop pruning.
+int pg_lexgen_expr_first_bytes(pg_grammar* grammar, pg_match_expr* expression, char* bytes, list[char*] path):
+	if (expression.kind == pg_match_expr_string_kind()):
+		if (strlen(expression.text) == 0):
+			return 1
+		bytes[expression.text[0] & 255] = 1
+		return 0
+	if (expression.kind == pg_match_expr_charset_kind()):
+		int i = 1
+		while (i < 128):
+			if (expression.charset[i] != 0):
+				bytes[i] = 1
+			i = i + 1
+		return 0
+	if (expression.kind == pg_match_expr_reference_kind()):
+		if (pg_lexgen_path_contains(path, expression.text)):
+			pg_lexgen_bytes_add(bytes, 1, 255)
+			return 0
+		pg_token_def* token = pg_grammar_find_token(grammar, expression.text)
+		if (token != 0):
+			if (token.expression == 0):
+				pg_lexgen_builtin_first_bytes(bytes, token.matcher)
+				return 0
+			path.push(token.name)
+			int nullable = pg_lexgen_expr_first_bytes(grammar, token.expression, bytes, path)
+			path.pop()
+			return nullable
+		pg_fragment_def* fragment = pg_grammar_find_fragment(grammar, expression.text)
+		if (fragment == 0):
+			pg_lexgen_bytes_add(bytes, 1, 255)
+			return 0
+		path.push(fragment.name)
+		int nullable = pg_lexgen_expr_first_bytes(grammar, fragment.expression, bytes, path)
+		path.pop()
+		return nullable
+	if (expression.kind == pg_match_expr_sequence_kind()):
+		int i = 0
+		while (i < expression.children.length):
+			if (pg_lexgen_expr_first_bytes(grammar, expression.children[i], bytes, path) == 0):
+				return 0
+			i = i + 1
+		return 1
+	if (expression.kind == pg_match_expr_alternation_kind()):
+		int any_nullable = 0
+		int i = 0
+		while (i < expression.children.length):
+			any_nullable = any_nullable | pg_lexgen_expr_first_bytes(grammar, expression.children[i], bytes, path)
+			i = i + 1
+		return any_nullable
+	if ((expression.kind == pg_match_expr_optional_kind()) | (expression.kind == pg_match_expr_zero_or_more_kind())):
+		pg_lexgen_expr_first_bytes(grammar, expression.children[0], bytes, path)
+		return 1
+	return pg_lexgen_expr_first_bytes(grammar, expression.children[0], bytes, path)
+
+
+pg_lexgen_matcher* pg_lexgen_matcher_new(pg_grammar* grammar, pg_token_def* token, int is_skip):
+	pg_lexgen_matcher* candidate = new pg_lexgen_matcher()
+	candidate.token = token
+	candidate.is_skip = is_skip
+	char* bytes = malloc(256)
+	int i = 0
+	while (i < 256):
+		bytes[i] = 0
+		i = i + 1
+	if (token.expression != 0):
+		list[char*] path = new list[char*]
+		path.push(token.name)
+		pg_lexgen_expr_first_bytes(grammar, token.expression, bytes, path)
+		list_free[char*](path)
+	else:
+		pg_lexgen_builtin_first_bytes(bytes, token.matcher)
+	candidate.first_bytes = bytes
+	return candidate
+
+
+# Keyword bucketing is only sound when the built-in identifier matcher is
+# among the candidates: it guarantees best_length already covers the whole
+# identifier run when the keyword probes execute.
+int pg_lexgen_keyword_mode(pg_grammar* grammar):
+	int i = 0
+	while (i < grammar.tokens.length):
+		pg_token_def* token = grammar.tokens[i]
+		if (token.expression == 0):
+			if (strcmp(token.matcher, c"identifier") == 0):
+				return 1
+		i = i + 1
+	i = 0
+	while (i < grammar.skips.length):
+		pg_token_def* skip = grammar.skips[i]
+		if (skip.expression == 0):
+			if (strcmp(skip.matcher, c"identifier") == 0):
+				return 1
+		i = i + 1
+	return 0
+
+
+int pg_lexgen_literal_is_ident_shaped(char* text):
+	if (pg_lexer_is_ident_start(text[0] & 255) == 0):
+		return 0
+	int i = 1
+	while (text[i] != 0):
+		if (pg_lexer_is_ident_part(text[i] & 255) == 0):
+			return 0
+		i = i + 1
+	return 1
+
+
+void pg_lexgen_collect_literals(pg_grammar* grammar, list[pg_lexgen_literal*] literals, int keyword_mode):
+	int i = 0
+	while (i < grammar.literals.length):
+		pg_literal_def* literal = grammar.literals[i]
+		int text_length = strlen(literal.text)
+		if (text_length > 0):
+			# A duplicate text replaces the earlier declaration, matching
+			# the last-wins '>=' update order of the linear sweep.
+			int replaced = 0
+			int j = 0
+			while (j < literals.length):
+				pg_lexgen_literal* existing = literals[j]
+				if (strcmp(existing.literal.text, literal.text) == 0):
+					existing.literal = literal
+					replaced = 1
+				j = j + 1
+			if (replaced == 0):
+				pg_lexgen_literal* entry = new pg_lexgen_literal()
+				entry.literal = literal
+				entry.text_length = text_length
+				entry.first_byte = literal.text[0] & 255
+				entry.keyword = 0
+				if (keyword_mode):
+					entry.keyword = pg_lexgen_literal_is_ident_shaped(literal.text)
+				literals.push(entry)
+		i = i + 1
+
+
+int pg_lexgen_byte_has_candidates(list[pg_lexgen_matcher*] matchers, list[pg_lexgen_literal*] literals, int b):
+	int i = 0
+	while (i < matchers.length):
+		pg_lexgen_matcher* candidate = matchers[i]
+		if (candidate.first_bytes[b] != 0):
+			return 1
+		i = i + 1
+	i = 0
+	while (i < literals.length):
+		pg_lexgen_literal* entry = literals[i]
+		if (entry.first_byte == b):
+			return 1
+		i = i + 1
+	return 0
+
+
+int pg_lexgen_same_candidates(list[pg_lexgen_matcher*] matchers, list[pg_lexgen_literal*] literals, int a, int b):
+	int i = 0
+	while (i < matchers.length):
+		pg_lexgen_matcher* candidate = matchers[i]
+		if (candidate.first_bytes[a] != candidate.first_bytes[b]):
+			return 0
+		i = i + 1
+	# A literal belongs to exactly one first byte, so two bytes can only
+	# share a candidate set when neither has literals.
+	i = 0
+	while (i < literals.length):
+		pg_lexgen_literal* entry = literals[i]
+		if ((entry.first_byte == a) | (entry.first_byte == b)):
+			return 0
+		i = i + 1
+	return 1
+
+
+void pg_lexgen_collect_spans(list[pg_lexgen_matcher*] matchers, list[pg_lexgen_literal*] literals, list[pg_lexgen_span*] spans):
+	int b = 1
+	while (b < 256):
+		if (pg_lexgen_byte_has_candidates(matchers, literals, b)):
+			int merged = 0
+			if (spans.length > 0):
+				pg_lexgen_span* last = spans[spans.length - 1]
+				if (last.hi == b - 1):
+					if (pg_lexgen_same_candidates(matchers, literals, b - 1, b)):
+						last.hi = b
+						merged = 1
+			if (merged == 0):
+				pg_lexgen_span* span = new pg_lexgen_span()
+				span.lo = b
+				span.hi = b
+				spans.push(span)
+		b = b + 1
+
+
+# One skip/token matcher attempt: identical to the block the linear sweep
+# used to emit for every candidate at every position.
+void pg_emit_lexer_attempt(pg_source_writer* writer, pg_grammar* grammar, pg_token_def* token, int is_skip):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"length = ")
+	pg_emit_lexer_matcher_call(writer, grammar, token)
+	pg_emit_dynamic_line_end(writer)
+	pg_source_line(writer, c"if (length > best_length):")
+	pg_source_indent(writer)
+	pg_source_line(writer, c"best_length = length")
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"best_kind = ")
+	pg_emit_token_kind_call(writer, grammar, token.name)
+	pg_emit_dynamic_line_end(writer)
+	if (is_skip):
+		pg_source_line(writer, c"best_skip = 1")
+	else:
+		pg_source_line(writer, c"best_skip = 0")
+	pg_source_dedent(writer)
+
+
+# Nested comparison trie over literals sharing a first byte. depth bytes
+# are already known to match when a node is entered; a literal ending at
+# this depth records itself before longer literals get a chance to
+# overwrite it, which implements longest-match with prefix fallback.
+void pg_emit_lexer_literal_trie(pg_source_writer* writer, pg_grammar* grammar, list[pg_lexgen_literal*] group, int depth):
+	int i = 0
+	while (i < group.length):
+		pg_lexgen_literal* accept = group[i]
+		if (accept.text_length == depth):
+			pg_emit_dynamic_line_start(writer)
+			pg_source_append(writer, c"length = ")
+			pg_source_append_int(writer, depth)
+			pg_emit_dynamic_line_end(writer)
+			pg_emit_dynamic_line_start(writer)
+			pg_source_append(writer, c"literal_kind = ")
+			pg_emit_token_kind_call(writer, grammar, accept.literal.name)
+			pg_emit_dynamic_line_end(writer)
+		i = i + 1
+	int first_child = 1
+	i = 0
+	while (i < group.length):
+		pg_lexgen_literal* entry = group[i]
+		if (entry.text_length > depth):
+			int c = entry.literal.text[depth] & 255
+			int seen = 0
+			int j = 0
+			while (j < i):
+				pg_lexgen_literal* earlier = group[j]
+				if (earlier.text_length > depth):
+					if ((earlier.literal.text[depth] & 255) == c):
+						seen = 1
+				j = j + 1
+			if (seen == 0):
+				pg_emit_dynamic_line_start(writer)
+				if (first_child):
+					pg_source_append(writer, c"if (")
+				else:
+					pg_source_append(writer, c"else if (")
+				if (c < 128):
+					pg_source_append(writer, c"input[index + ")
+					pg_source_append_int(writer, depth)
+					pg_source_append(writer, c"] == ")
+					pg_source_append_int(writer, c)
+				else:
+					pg_source_append(writer, c"(input[index + ")
+					pg_source_append_int(writer, depth)
+					pg_source_append(writer, c"] & 255) == ")
+					pg_source_append_int(writer, c)
+				pg_source_append(writer, c"):")
+				pg_emit_dynamic_line_end(writer)
+				pg_source_indent(writer)
+				list[pg_lexgen_literal*] subgroup = new list[pg_lexgen_literal*]
+				int k = 0
+				while (k < group.length):
+					pg_lexgen_literal* member = group[k]
+					if (member.text_length > depth):
+						if ((member.literal.text[depth] & 255) == c):
+							subgroup.push(member)
+					k = k + 1
+				pg_emit_lexer_literal_trie(writer, grammar, subgroup, depth + 1)
+				list_free[pg_lexgen_literal*](subgroup)
+				pg_source_dedent(writer)
+				first_child = 0
+		i = i + 1
+
+
+void pg_emit_lexer_literal_group(pg_source_writer* writer, pg_grammar* grammar, list[pg_lexgen_literal*] group):
+	int has_root_accept = 0
+	int i = 0
+	while (i < group.length):
+		pg_lexgen_literal* entry = group[i]
+		if (entry.text_length == 1):
+			has_root_accept = 1
+		i = i + 1
+	if (has_root_accept == 0):
+		pg_source_line(writer, c"length = 0")
+	pg_emit_lexer_literal_trie(writer, grammar, group, 1)
+	pg_source_line(writer, c"if ((length > 0) & (length >= best_length)):")
+	pg_source_indent(writer)
+	pg_source_line(writer, c"best_length = length")
+	pg_source_line(writer, c"best_kind = literal_kind")
+	pg_source_line(writer, c"best_skip = 0")
+	pg_source_dedent(writer)
+
+
+# Identifier-shaped literals: scan the identifier once, then probe only
+# the keywords whose length equals the identifier run. A shorter keyword
+# prefix can never win here because the identifier candidate has already
+# pushed best_length to the full run length.
+void pg_emit_lexer_keyword_buckets(pg_source_writer* writer, pg_grammar* grammar, list[pg_lexgen_literal*] group, int have_ident_length):
+	if (have_ident_length == 0):
+		pg_source_line(writer, c"length = pg_lexer_matcher_identifier(input, index)")
+	int max_length = 0
+	int i = 0
+	while (i < group.length):
+		pg_lexgen_literal* entry = group[i]
+		if (entry.text_length > max_length):
+			max_length = entry.text_length
+		i = i + 1
+	int first_bucket = 1
+	int n = 1
+	while (n <= max_length):
+		int bucket_size = 0
+		i = 0
+		while (i < group.length):
+			pg_lexgen_literal* entry = group[i]
+			if (entry.text_length == n):
+				bucket_size = bucket_size + 1
+			i = i + 1
+		if (bucket_size > 0):
+			pg_emit_dynamic_line_start(writer)
+			if (first_bucket):
+				pg_source_append(writer, c"if (length == ")
+			else:
+				pg_source_append(writer, c"else if (length == ")
+			pg_source_append_int(writer, n)
+			pg_source_append(writer, c"):")
+			pg_emit_dynamic_line_end(writer)
+			pg_source_indent(writer)
+			int first_keyword = 1
+			i = 0
+			while (i < group.length):
+				pg_lexgen_literal* entry = group[i]
+				if (entry.text_length == n):
+					pg_emit_dynamic_line_start(writer)
+					if (first_keyword):
+						pg_source_append(writer, c"if (starts_with(input + index, ")
+					else:
+						pg_source_append(writer, c"else if (starts_with(input + index, ")
+					pg_emit_c_string_literal(writer, entry.literal.text)
+					pg_source_append(writer, c")):")
+					pg_emit_dynamic_line_end(writer)
+					pg_source_indent(writer)
+					pg_source_line(writer, c"if (length >= best_length):")
+					pg_source_indent(writer)
+					pg_source_line(writer, c"best_length = length")
+					pg_emit_dynamic_line_start(writer)
+					pg_source_append(writer, c"best_kind = ")
+					pg_emit_token_kind_call(writer, grammar, entry.literal.name)
+					pg_emit_dynamic_line_end(writer)
+					pg_source_line(writer, c"best_skip = 0")
+					pg_source_dedent(writer)
+					pg_source_dedent(writer)
+					first_keyword = 0
+				i = i + 1
+			pg_source_dedent(writer)
+			first_bucket = 0
+		n = n + 1
+
+
+void pg_emit_lexer_byte_body(pg_source_writer* writer, pg_grammar* grammar, list[pg_lexgen_matcher*] matchers, list[pg_lexgen_literal*] literals, int b):
+	int last_is_identifier = 0
+	int i = 0
+	while (i < matchers.length):
+		pg_lexgen_matcher* candidate = matchers[i]
+		if (candidate.first_bytes[b] != 0):
+			pg_emit_lexer_attempt(writer, grammar, candidate.token, candidate.is_skip)
+			last_is_identifier = 0
+			pg_token_def* token = candidate.token
+			if (token.expression == 0):
+				if (strcmp(token.matcher, c"identifier") == 0):
+					last_is_identifier = 1
+		i = i + 1
+	list[pg_lexgen_literal*] group = new list[pg_lexgen_literal*]
+	i = 0
+	while (i < literals.length):
+		pg_lexgen_literal* entry = literals[i]
+		if ((entry.first_byte == b) & (entry.keyword == 0)):
+			group.push(entry)
+		i = i + 1
+	if (group.length > 0):
+		pg_emit_lexer_literal_group(writer, grammar, group)
+		last_is_identifier = 0
+	list_free[pg_lexgen_literal*](group)
+	list[pg_lexgen_literal*] keywords = new list[pg_lexgen_literal*]
+	i = 0
+	while (i < literals.length):
+		pg_lexgen_literal* entry = literals[i]
+		if ((entry.first_byte == b) & (entry.keyword != 0)):
+			keywords.push(entry)
+		i = i + 1
+	if (keywords.length > 0):
+		pg_emit_lexer_keyword_buckets(writer, grammar, keywords, last_is_identifier)
+	list_free[pg_lexgen_literal*](keywords)
+
+
+# Binary dispatch over the first-byte ranges: log-depth comparisons on
+# first_byte select the single range whose candidate set can match here.
+# Bytes outside every range have no possible match and fall through with
+# best_length still 0, exactly like the linear sweep.
+void pg_emit_lexer_dispatch(pg_source_writer* writer, pg_grammar* grammar, list[pg_lexgen_matcher*] matchers, list[pg_lexgen_literal*] literals, list[pg_lexgen_span*] spans, int lo, int hi):
+	if (lo == hi):
+		pg_lexgen_span* span = spans[lo]
+		pg_emit_dynamic_line_start(writer)
+		if (span.lo == span.hi):
+			pg_source_append(writer, c"if (first_byte == ")
+			pg_source_append_int(writer, span.lo)
+			pg_source_append(writer, c"):")
+		else:
+			pg_source_append(writer, c"if ((first_byte >= ")
+			pg_source_append_int(writer, span.lo)
+			pg_source_append(writer, c") & (first_byte <= ")
+			pg_source_append_int(writer, span.hi)
+			pg_source_append(writer, c")):")
+		pg_emit_dynamic_line_end(writer)
+		pg_source_indent(writer)
+		pg_emit_lexer_byte_body(writer, grammar, matchers, literals, span.lo)
+		pg_source_dedent(writer)
+		return
+	int mid = (lo + hi + 1) / 2
+	pg_lexgen_span* pivot = spans[mid]
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"if (first_byte < ")
+	pg_source_append_int(writer, pivot.lo)
+	pg_source_append(writer, c"):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_emit_lexer_dispatch(writer, grammar, matchers, literals, spans, lo, mid - 1)
+	pg_source_dedent(writer)
+	pg_source_line(writer, c"else:")
+	pg_source_indent(writer)
+	pg_emit_lexer_dispatch(writer, grammar, matchers, literals, spans, mid, hi)
+	pg_source_dedent(writer)
+
+
 void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
+	list[pg_lexgen_matcher*] matchers = new list[pg_lexgen_matcher*]
+	int i = 0
+	while (i < grammar.skips.length):
+		matchers.push(pg_lexgen_matcher_new(grammar, grammar.skips[i], 1))
+		i = i + 1
+	i = 0
+	while (i < grammar.tokens.length):
+		matchers.push(pg_lexgen_matcher_new(grammar, grammar.tokens[i], 0))
+		i = i + 1
+	int keyword_mode = pg_lexgen_keyword_mode(grammar)
+	list[pg_lexgen_literal*] literals = new list[pg_lexgen_literal*]
+	pg_lexgen_collect_literals(grammar, literals, keyword_mode)
+	list[pg_lexgen_span*] spans = new list[pg_lexgen_span*]
+	pg_lexgen_collect_spans(matchers, literals, spans)
+	int has_trie_literals = 0
+	i = 0
+	while (i < literals.length):
+		pg_lexgen_literal* entry = literals[i]
+		if (entry.keyword == 0):
+			has_trie_literals = 1
+		i = i + 1
 	pg_emit_dynamic_line_start(writer)
 	pg_source_append(writer, c"pg_token_stream* ")
 	pg_source_append(writer, grammar.name)
@@ -665,65 +1234,30 @@ void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_line(writer, c"int best_kind = 0")
 	pg_source_line(writer, c"int best_length = 0")
 	pg_source_line(writer, c"int best_skip = 0")
-	int i = 0
-	while (i < grammar.skips.length):
-		pg_token_def* skip = grammar.skips[i]
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"length = ")
-		pg_emit_lexer_matcher_call(writer, grammar, skip)
-		pg_emit_dynamic_line_end(writer)
-		pg_source_line(writer, c"if (length > best_length):")
-		pg_source_indent(writer)
-		pg_source_line(writer, c"best_length = length")
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"best_kind = ")
-		pg_emit_token_kind_call(writer, grammar, skip.name)
-		pg_emit_dynamic_line_end(writer)
-		pg_source_line(writer, c"best_skip = 1")
-		pg_source_dedent(writer)
-		i = i + 1
+	if (has_trie_literals):
+		pg_source_line(writer, c"int literal_kind = 0")
+	if (spans.length > 0):
+		pg_source_line(writer, c"int first_byte = input[index] & 255")
+		pg_emit_lexer_dispatch(writer, grammar, matchers, literals, spans, 0, spans.length - 1)
 	i = 0
-	while (i < grammar.tokens.length):
-		pg_token_def* token = grammar.tokens[i]
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"length = ")
-		pg_emit_lexer_matcher_call(writer, grammar, token)
-		pg_emit_dynamic_line_end(writer)
-		pg_source_line(writer, c"if (length > best_length):")
-		pg_source_indent(writer)
-		pg_source_line(writer, c"best_length = length")
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"best_kind = ")
-		pg_emit_token_kind_call(writer, grammar, token.name)
-		pg_emit_dynamic_line_end(writer)
-		pg_source_line(writer, c"best_skip = 0")
-		pg_source_dedent(writer)
+	while (i < matchers.length):
+		pg_lexgen_matcher* candidate = matchers[i]
+		free(candidate.first_bytes)
+		free(candidate)
 		i = i + 1
+	list_free[pg_lexgen_matcher*](matchers)
 	i = 0
-	while (i < grammar.literals.length):
-		pg_literal_def* literal = grammar.literals[i]
-		pg_source_line(writer, c"length = 0")
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"if (starts_with(input + index, ")
-		pg_emit_c_string_literal(writer, literal.text)
-		pg_source_append(writer, c")):")
-		pg_emit_dynamic_line_end(writer)
-		pg_source_indent(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"length = ")
-		pg_source_append_int(writer, strlen(literal.text))
-		pg_emit_dynamic_line_end(writer)
-		pg_source_dedent(writer)
-		pg_source_line(writer, c"if ((length > 0) & (length >= best_length)):")
-		pg_source_indent(writer)
-		pg_source_line(writer, c"best_length = length")
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"best_kind = ")
-		pg_emit_token_kind_call(writer, grammar, literal.name)
-		pg_emit_dynamic_line_end(writer)
-		pg_source_line(writer, c"best_skip = 0")
-		pg_source_dedent(writer)
+	while (i < literals.length):
+		pg_lexgen_literal* entry = literals[i]
+		free(entry)
 		i = i + 1
+	list_free[pg_lexgen_literal*](literals)
+	i = 0
+	while (i < spans.length):
+		pg_lexgen_span* span = spans[i]
+		free(span)
+		i = i + 1
+	list_free[pg_lexgen_span*](spans)
 	pg_source_line(writer, c"if (best_length > 0):")
 	pg_source_indent(writer)
 	pg_source_line(writer, c"if (best_skip == 0):")
