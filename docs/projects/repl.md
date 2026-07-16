@@ -324,3 +324,20 @@ first definition, and `lib/line_edit.w`'s redraw now tracks how many
 terminal rows the buffer occupies (`le_prev_rows`, using
 `lib/termios.w`'s new `term_get_cols`) so a wrapped entry redraws
 correctly instead of leaving stale rows on screen.
+
+Status update (issue #276's P0 list, since landed): runtime-fault
+recovery (D1) — SIGSEGV/SIGILL/SIGBUS/SIGFPE handlers installed at
+startup (`repl_fault_install_handlers`, `repl/core.w`), mirroring
+`debugger/wdbg.w`'s i386/x86-64 `rt_sigaction` + restorer-thunk
+mechanism without touching the seed-closure debugger tree; a fault in an
+executing entry prints `runtime fault: <SIGNAL> at eip=...` (plus
+`fault address=...` for SIGSEGV), a stack trace, and `entry rolled back`,
+then long-jumps through the same `repl_setjmp`/`repl_longjmp` checkpoint
+compile errors use — definitions from every prior entry survive, only
+the faulting entry's own (possibly partial) declarations roll back.
+Covers both x86 (`repl_test`) and x64 (`repl_test_x64`). Echo fixes
+(D2/D3/D8) — floats print through the float formatters, struct values
+render as JSON via the compiler's `to_json` codec, and `:help` documents
+`x := expr`. Staging hygiene (D6) and the two stray compile warnings
+(D4) are also done (`repl_stage_init`'s pid-tagged directory,
+`repl_warning_test`). All are exercised by `repl_test`/`repl_test_x64`.
