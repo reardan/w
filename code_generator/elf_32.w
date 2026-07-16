@@ -124,6 +124,10 @@ void elf_finish_entry_patch():
 	if (t == 0):
 		t = sym_address(c"main")
 	if (t == 0):
+		# 'w check' on a main-less library module: not an error, and
+		# there is no entry call to patch (the output is discarded)
+		if (entry_optional):
+			return
 		error(c"Failed to find a _main() function. Did you import lib/testing?")
 	# rel32 = target - address of the instruction after the 5-byte call
 	t = t - code_offset - entry_call_disp_pos - 4

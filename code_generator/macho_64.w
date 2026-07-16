@@ -243,12 +243,16 @@ void macho_finish_arm64():
 	if (t == 0):
 		t = sym_address(c"main")
 	if (t == 0):
-		error(c"Failed to find a _main() function. Did you import lib/testing?")
+		# 'w check' on a main-less library module: not an error, and the
+		# entry bl stays unpatched (the output is discarded)
+		if (entry_optional == 0):
+			error(c"Failed to find a _main() function. Did you import lib/testing?")
 
-	# Patch the bl: imm26 = (target - bl_vaddr) / 4.
-	int bl_vaddr = code_offset + arm64_entry_bl_pos
-	int offset = t - bl_vaddr
-	save_int32(code + arm64_entry_bl_pos, op(0x94, 0x000000) | ((offset >> 2) & op(0x03, 0xffffff)))
+	if (t != 0):
+		# Patch the bl: imm26 = (target - bl_vaddr) / 4.
+		int bl_vaddr = code_offset + arm64_entry_bl_pos
+		int offset = t - bl_vaddr
+		save_int32(code + arm64_entry_bl_pos, op(0x94, 0x000000) | ((offset >> 2) & op(0x03, 0xffffff)))
 
 	# Pad the text to a page boundary; __DATA's file offset must be
 	# page-congruent with its vmaddr (both end up 16 KB-aligned).
