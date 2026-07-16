@@ -1333,7 +1333,17 @@
 				{"cmd": ["bin/repl"], "stdin": ":load /no/such/file_xyz.w\nprint(c\"still alive\\x0a\")\n:quit\n", "expect_stdout": ["no such file", "still alive"]},
 				{"cmd": ["bin/repl"], "stdin": "int q = 9\nq\n:reset\nq\n99 + 1\n:quit\n", "expect_stdout": ["9", "100"]},
 				{"cmd": ["bin/repl"], "stdin": "int save_marker = 555\nsave_marker\n:save bin/repl_save_test.w\n:quit\n", "expect_stdout": ["555", "saved 2 entries"]},
-				{"cmd": ["sh", "-c", "grep -q save_marker bin/repl_save_test.w"]}
+				{"cmd": ["sh", "-c", "grep -q save_marker bin/repl_save_test.w"]},
+				{"cmd": ["bin/repl"], "stdin": "!echo repl_bang_inherited_stdio\n:quit\n", "expect_stdout": "repl_bang_inherited_stdio"},
+				{"cmd": ["bin/repl"], "stdin": "!cd /tmp\n!pwd\n!export W_REPL_BANG_TEST=fortytwo\n!echo $W_REPL_BANG_TEST\n:quit\n", "expect_stdout": ["/tmp", "fortytwo"]},
+				{"cmd": ["bin/repl", "-e", "40 + 2"], "expect_stdout": "42"},
+				{"cmd": ["bin/repl", "-e", "int x = 5", "-e", "x + 37"], "expect_stdout": "42"},
+				{"cmd": ["bin/repl", "-e", "this is not valid w"], "expect_fail": true},
+				{"cmd": ["bin/repl", "--json", "-e", "40 + 2"], "expect_stdout": ["\"entry\":\"40 + 2\"", "\"echo\":\"42\"", "\"error\":null"]},
+				{"cmd": ["bin/repl", "--json", "-e", "print(c\"hi\")"], "expect_stdout": ["\"output\":\"hi\"", "\"echo\":null"]},
+				{"cmd": ["bin/repl", "--json", "-e", "this is not valid w"], "expect_fail": true, "expect_stdout": "\"error\":\"compile error\""},
+				{"cmd": ["bin/repl"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "},
+				{"cmd": ["bin/repl", "--quiet"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "}
 			]
 		},
 		{
@@ -1381,7 +1391,17 @@
 				{"cmd": ["bin/repl64"], "stdin": ":load /no/such/file_xyz.w\nprint(c\"still alive\\x0a\")\n:quit\n", "expect_stdout": ["no such file", "still alive"]},
 				{"cmd": ["bin/repl64"], "stdin": "int q = 9\nq\n:reset\nq\n99 + 1\n:quit\n", "expect_stdout": ["9", "100"]},
 				{"cmd": ["bin/repl64"], "stdin": "int save_marker = 555\nsave_marker\n:save bin/repl_save_test64.w\n:quit\n", "expect_stdout": ["555", "saved 2 entries"]},
-				{"cmd": ["sh", "-c", "grep -q save_marker bin/repl_save_test64.w"]}
+				{"cmd": ["sh", "-c", "grep -q save_marker bin/repl_save_test64.w"]},
+				{"cmd": ["bin/repl64"], "stdin": "!echo repl_bang_inherited_stdio\n:quit\n", "expect_stdout": "repl_bang_inherited_stdio"},
+				{"cmd": ["bin/repl64"], "stdin": "!cd /tmp\n!pwd\n!export W_REPL_BANG_TEST=fortytwo\n!echo $W_REPL_BANG_TEST\n:quit\n", "expect_stdout": ["/tmp", "fortytwo"]},
+				{"cmd": ["bin/repl64", "-e", "40 + 2"], "expect_stdout": "42"},
+				{"cmd": ["bin/repl64", "-e", "int x = 5", "-e", "x + 37"], "expect_stdout": "42"},
+				{"cmd": ["bin/repl64", "-e", "this is not valid w"], "expect_fail": true},
+				{"cmd": ["bin/repl64", "--json", "-e", "40 + 2"], "expect_stdout": ["\"entry\":\"40 + 2\"", "\"echo\":\"42\"", "\"error\":null"]},
+				{"cmd": ["bin/repl64", "--json", "-e", "print(c\"hi\")"], "expect_stdout": ["\"output\":\"hi\"", "\"echo\":null"]},
+				{"cmd": ["bin/repl64", "--json", "-e", "this is not valid w"], "expect_fail": true, "expect_stdout": "\"error\":\"compile error\""},
+				{"cmd": ["bin/repl64"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "},
+				{"cmd": ["bin/repl64", "--quiet"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "}
 			]
 		},
 		{

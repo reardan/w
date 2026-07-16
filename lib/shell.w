@@ -2,7 +2,7 @@
 Shell helpers: run commands and capture their output, on top of
 lib/process.w (spawn/pipe/wait) and lib/env.w (environment vector
 access). Useful standalone for scripts and agent tooling; the REPL's `!`
-escape (docs/projects/repl_improvements.md Q4/Q5) is a later consumer.
+escape (docs/projects/repl_improvements.md Q4/Q5) is a consumer.
 
 sh(cmd) runs cmd through /bin/sh -c with stdout and stderr captured
 separately; run_argv(argv) does the same without a shell, executing argv
@@ -11,6 +11,14 @@ resolvable path, exactly like lib/process.w's process_run). Both return a
 shell_result with the decoded exit status (lib/process.w's
 process_decode_status: 0..255 for a normal exit, 128 + signum for a
 signal death).
+
+sh_interactive(cmd) is the non-capturing counterpart: /bin/sh -c with
+stdin/stdout/stderr left inherited from this process (spawn_options_new's
+default), so a command's output goes straight to the terminal or
+whatever this process's own stdio is connected to instead of coming back
+as a buffer. The REPL's `!cmd` escape uses this so an interactive command
+(one that pages, prompts, or is just chatty) behaves like it would at a
+normal shell.
 
 Session state: cd() calls the real chdir() syscall, so it affects the
 whole process (there is no subshell). Environment writes are different:
@@ -102,6 +110,26 @@ shell_result* run_argv(list[char*] argv):
 	if (pr == 0):
 		return 0
 	return shell_result_from_process(pr)
+
+
+# Run cmd via /bin/sh -c with stdio inherited from this process (no
+# capture, no pipes): the child writes straight to whatever fd 0/1/2 this
+# process currently has. Returns the decoded exit status, or -1 when the
+# spawn itself failed.
+int sh_interactive(char* cmd):
+	char** argv = strv_new(3)
+	strv_set(argv, 0, c"/bin/sh")
+	strv_set(argv, 1, c"-c")
+	strv_set(argv, 2, cmd)
+	spawn_options* opts = shell_spawn_options()
+	process* p = process_spawn(c"/bin/sh", argv, opts)
+	free(opts)
+	free(cast(void*, argv))
+	if (p == 0):
+		return -1
+	int status = process_wait(p)
+	process_free(p)
+	return status
 
 
 # Change the process's working directory. Affects the whole process (no
