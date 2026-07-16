@@ -293,6 +293,13 @@
 			]
 		},
 		{
+			"name": "int_literal_overflow_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/int_literal_overflow_hex_fixture.w", "tests/int_literal_overflow_binary_fixture.w", "tests/int_literal_overflow_decimal_fixture.w"]}
+			]
+		},
+		{
 			"name": "strict_mode_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1883,6 +1890,7 @@
 				"array_error_test",
 				"syscall_arity_test",
 				"warning_test",
+				"int_literal_overflow_test",
 				"strict_mode_test",
 				"check_json_test",
 				"check_roots_test",
