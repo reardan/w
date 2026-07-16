@@ -1868,6 +1868,7 @@
 				"vcs_dag_64_test",
 				"vcs_delta_64_test",
 				"vcs_diff_64_test",
+				"vcs_index_64_test",
 				"vcs_tree_64_test",
 				"wal_64_test",
 				"wbuild_directive_64_test"
@@ -2233,6 +2234,7 @@
 				"vcs_dag_test",
 				"vcs_delta_test",
 				"vcs_diff_test",
+				"vcs_index_test",
 				"vcs_tree_test",
 				"wal_test",
 				"wbuild_directive_test",
@@ -4129,6 +4131,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_diff_test.w", "-o", "bin/vcs_diff_test"]},
 				{"cmd": ["bin/vcs_diff_test"]}
+			]
+		},
+		{
+			"name": "vcs_index_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/vcs_index_test.w", "-o", "bin/vcs_index_64_test"]},
+				{"cmd": ["bin/vcs_index_64_test"]}
+			]
+		},
+		{
+			"name": "vcs_index_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/vcs_index_test.w", "-o", "bin/vcs_index_test"]},
+				{"cmd": ["bin/vcs_index_test"]}
 			]
 		},
 		{
