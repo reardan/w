@@ -135,9 +135,11 @@ Shipped from the next-steps backlog:
   bool-typed lvalues inside an if/while condition warns
   (`bitwise '|' on bool operands in a condition does not short-circuit;
   did you mean '||'?`, same shape for `&`/`&&`). Comparison-result
-  operands stay exempt — see the scope note in
-  `ai_tooling_next_steps.md`. Covered by `warning_test`
-  (`tests/bool_bitwise_warning_fixture.w`).
+  operands stay exempt by default; the opt-in `w check --bool-ops`
+  (2026-07-16, migration stage 1) widens the hint to them — see the
+  scope note in `ai_tooling_next_steps.md`. Covered by `warning_test`
+  (`tests/bool_bitwise_warning_fixture.w`) and `check_bool_ops_test`
+  (`tests/bool_ops_warn_fixture.w`, `tests/bool_ops_clean_fixture.w`).
 - Missing-file diagnostics (2026-07-10, #190): the compiler's
   file-not-found path no longer serializes a freed path buffer — the
   garbled `check --json` `file` field and the garbled

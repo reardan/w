@@ -466,12 +466,20 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# them would wrongly scrutinize the closure's own internal transitive
 	# reliance (structures/hash_table.w and friends lean on each other's
 	# re-exports by design; that is compiler-internal plumbing, not a
-	# user file --imports is meant to audit). Suppress, then restore.
+	# user file --imports is meant to audit). --bool-ops stays quiet here
+	# too: the closure compiles into every program, so its own
+	# comparison-result '&'/'|' sites (lib/memory_freelist.w,
+	# lib/stack_trace.w, ...) would spam every opt-in check of an
+	# unrelated file — they are stage-2 sweep territory, not something a
+	# user run should report. Suppress, then restore.
 	int import_check_saved = check_imports_mode
+	int bool_ops_check_saved = check_bool_ops_mode
 	check_imports_mode = 0
+	check_bool_ops_mode = 0
 	import_module(c"structures.hash_table")
 	import_module(c"structures.w_list")
 	check_imports_mode = import_check_saved
+	check_bool_ops_mode = bool_ops_check_saved
 	# Everything registered so far (hash_table, w_list, and whatever they
 	# transitively import: lib/memory.w, lib/stack_trace.w, ...) is the
 	# auto-imported container-runtime closure that --imports treats like
@@ -544,12 +552,19 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 
 	# On-demand runtimes for the to_json/from_json builtins and f"..."
 	# template strings: imported after all user files so the modules'
-	# code lands at a top-level boundary
+	# code lands at a top-level boundary. Like the auto-import closure
+	# above, these are compiler-injected modules, so the opt-in
+	# --bool-ops hint stays quiet while they compile (their own '&'/'|'
+	# style is stage-2 sweep territory, and structures/prelude.w would
+	# otherwise warn on every opt-in check of any file).
+	int bool_ops_finish_saved = check_bool_ops_mode
+	check_bool_ops_mode = 0
 	json_codec_finish_import()
 	template_string_finish_import()
 	prelude_finish_import()
 	generic_finish_instantiations()
 	var_finish_import()
+	check_bool_ops_mode = bool_ops_finish_saved
 
 	# Synthesize __w_test_main for lib/testing.w consumers now that every
 	# test_* function is compiled (compiler/test_registry.w, issue #147)
@@ -603,6 +618,7 @@ int check_main(int argc, int argv):
 	int i = 2
 	diag_json = 0
 	check_imports_mode = 0
+	check_bool_ops_mode = 0
 	# Leading flags in any order; --quiet must be consumed before
 	# link_impl sees the argument list so the x64/arm64 mode banner and
 	# the per-file banner are suppressed from the start.
@@ -622,10 +638,17 @@ int check_main(int argc, int argv):
 			# import_warn_transitive). Off by default.
 			check_imports_mode = 1
 			i = i + 1
+		else if (strcmp(*arg, c"--bool-ops") == 0):
+			# Opt-in widened bool-bitwise hint: also warn when '&'/'|'
+			# joins comparison-result bool operands in an if/while
+			# condition (grammar/binary_op.w, operand_is_bool_condition).
+			# Off by default.
+			check_bool_ops_mode = 1
+			i = i + 1
 		else:
 			scanning = 0
 	if (argc <= i):
-		println2(c"usage: w check [--json] [--quiet] [--imports] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
 

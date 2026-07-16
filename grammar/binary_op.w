@@ -2,11 +2,37 @@
 # or parameter, still in address form (not the value a comparison or call
 # just produced). bitwise_and_expr/bitwise_or_expr warn when '&'/'|'
 # joins two of these inside an if/while condition: such guards read as
-# logical and do not short-circuit. Comparison results stay exempt —
-# '(a == b) | (c == d)' is long-established W style throughout this
-# repository and evaluating both sides of it is harmless.
+# logical and do not short-circuit. Comparison results stay exempt by
+# default — '(a == b) | (c == d)' is long-established W style throughout
+# this repository and evaluating both sides of it is harmless — but the
+# opt-in 'w check --bool-ops' widens the hint to them via
+# operand_is_bool_condition below (the bool-bitwise migration surface).
 int operand_is_bool_lvalue(int type):
 	if (type_is_value(type)):
+		return 0
+	return type_unqualified(type) == bool_type
+
+
+# --bool-ops (opt-in `w check --bool-ops`): widen the bool-bitwise
+# condition hint to comparison-result operands, so
+# '(a == b) | (c == d)' inside an if/while condition gets the same
+# "did you mean '||'?" hint as two bool lvalues. Off by default: that
+# spelling is long-established W style (hundreds of sites in the seed
+# import graph), so ordinary compiles and --strict self-host builds
+# must stay silent until the sweep lands (compiler/compiler.w parses
+# the flag, mirroring check_imports_mode).
+int check_bool_ops_mode
+
+
+# The condition hint's operand test: a bool lvalue always qualifies;
+# with --bool-ops a bool value — the result a comparison, '!', '&&',
+# '||' or 'in' just produced — qualifies too.
+int operand_is_bool_condition(int type):
+	if (operand_is_bool_lvalue(type)):
+		return 1
+	if (check_bool_ops_mode == 0):
+		return 0
+	if (type_is_value(type) == 0):
 		return 0
 	return type_unqualified(type) == bool_type
 
