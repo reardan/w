@@ -4,6 +4,7 @@ void coerce(int want, int got);
 int types_compatible_with_expression(int want, int got);
 void warn_type_mismatch(char* context, int want, int got);
 int compound_assign_apply(int op, int left_type, int right_type);
+int float_binary_arithmetic(int left_type, int right_type, int op);
 int var_binary_operands(int left_type, int right_type);
 int list_element_slot_size(int element_type);
 
@@ -238,15 +239,29 @@ int hash_set_add_suffix(int type):
 	return type_value(type_lookup(c"void"))
 
 
-# m.add(key) / m.add(key, delta): 'add' has been consumed. Lowers to
-# __w_map_add(map, key, delta) with delta defaulting to 1; a missing key
-# accumulates from zero. Integer values only. Returns the updated value.
+# m.add(key) / m.add(key, delta): 'add' has been consumed, delta defaults
+# to 1. Integer values lower to __w_map_add(map, key, delta): one probe,
+# and zeroed value slots make a missing key accumulate from zero. Float
+# values (float32 everywhere, float64 on x64 — issue #189) reuse the
+# float emitters instead of a runtime variant: load the current value
+# with __w_map_get_or(map, key, 0) — zero bits are 0.0, so missing keys
+# accumulate from zero the same way — add the delta exactly like the
+# m[key] += path and store back through __w_map_set. The parked map/key
+# slots feed both calls, so the key is evaluated once. Either way the
+# expression yields the updated value. float16 values stay rejected: the
+# slot word holds raw half bits the float emitters cannot add directly.
+# (A runtime float variant in structures/hash_table.w could not cover
+# float64, whose type is rejected on 32-bit targets, so the dispatch
+# lives here.)
 int hash_map_add_suffix(int type):
 	int container_type = type_unqualified(type)
 	int value_type = type_map_value_type(container_type)
 	int key_type = type_map_key_type(container_type)
-	if ((type_num_args(value_type) > 0) | type_float_kind(type_value(value_type))):
-		error(c"map add requires an integer value type")
+	if (type_num_args(value_type) > 0):
+		error(c"map add requires an integer or float value type")
+	if (type_canonical(value_type) == float16_type):
+		error(c"map add does not support float16 values")
+	int value_kind = type_float_kind(type_value(value_type))
 	promote(type)
 	int base_stack = stack_pos
 	push_eax()
@@ -269,18 +284,55 @@ int hash_map_add_suffix(int type):
 			warn_type_mismatch(c"map add delta", value_type, delta_got)
 	else:
 		mov_eax_int(1)
+		if (value_kind):
+			coerce(value_type, 3)
 	expect(c")")
 	push_eax()
 	stack_pos = stack_pos + 1
 	int delta_slot = stack_pos
-	sym_get_value(c"__w_map_add")
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(container_slot)
-	hash_push_stack_slot(key_slot)
-	hash_push_stack_slot(delta_slot)
-	hash_call_finish(s)
+	int s = 0
+	if (value_kind):
+		# current = __w_map_get_or(map, key, 0): 0.0 when key is missing
+		sym_get_value(c"__w_map_get_or")
+		s = stack_pos
+		push_eax()
+		stack_pos = stack_pos + 1
+		hash_push_stack_slot(container_slot)
+		hash_push_stack_slot(key_slot)
+		mov_eax_int(0)
+		push_eax()
+		stack_pos = stack_pos + 1
+		hash_call_finish(s)
+		# current + delta, same operand shape as compound_assign_apply:
+		# left (current) into ebx, right (delta) reloaded into eax
+		push_eax()
+		stack_pos = stack_pos + 1
+		mov_eax_esp_plus((stack_pos - delta_slot) << word_size_log2)
+		pop_ebx()
+		stack_pos = stack_pos - 1
+		float_binary_arithmetic(type_value(value_type), type_value(value_type), '+')
+		# store the sum back through the parked slots and yield it
+		push_eax()
+		stack_pos = stack_pos + 1
+		int sum_slot = stack_pos
+		sym_get_value(c"__w_map_set")
+		s = stack_pos
+		push_eax()
+		stack_pos = stack_pos + 1
+		hash_push_stack_slot(container_slot)
+		hash_push_stack_slot(key_slot)
+		hash_push_stack_slot(sum_slot)
+		hash_call_finish(s)
+		mov_eax_esp_plus((stack_pos - sum_slot) << word_size_log2)
+	else:
+		sym_get_value(c"__w_map_add")
+		s = stack_pos
+		push_eax()
+		stack_pos = stack_pos + 1
+		hash_push_stack_slot(container_slot)
+		hash_push_stack_slot(key_slot)
+		hash_push_stack_slot(delta_slot)
+		hash_call_finish(s)
 	be_pop(stack_pos - base_stack)
 	stack_pos = base_stack
 	return type_value(value_type)

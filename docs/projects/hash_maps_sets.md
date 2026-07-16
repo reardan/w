@@ -35,6 +35,10 @@ container pointer, not the entries.
   absent (issue #19).
 - `m.remove(k)` / `s.remove(k)` delete the entry, returning whether it was
   present; `s.add(k)` inserts a set member.
+- `m.add(k)` / `m.add(k, delta)` insert-or-accumulate for integer- and
+  float-valued maps (delta defaults to 1): a missing key accumulates
+  from zero instead of trapping, and the expression yields the updated
+  value. See "Accumulation (`m.add`)" below for the float decision.
 - `for K k in m` iterates map keys; values are read with `m[k]`.
 - `for K k, V v in m` iterates keys and values together, one probe per
   entry (see `tests/map_set_builtin_test.w`).
@@ -96,6 +100,41 @@ The compiler source must remain buildable by the committed seed compiler. New
 map/set syntax is allowed in tests and runtime consumers after `bin/wv2` is
 built, but not in `compiler/`, `grammar/`, or `code_generator/` sources before
 a seed update.
+
+## Accumulation (`m.add`)
+
+`m.add(key[, delta])` accumulates into the value slot without trapping on
+missing keys (issues #179/#189). Two lowerings, selected by the map's
+value type in `grammar/hash_builtin.w`:
+
+- **Integer values** call `__w_map_add(map, key, delta)`
+  (`structures/hash_table.w`): one probe; value slots are zeroed on
+  allocation, growth and removal, so a fresh key accumulates from zero.
+- **Float values** — `float` (float32) on every target, `float64` on
+  x64 (issue #189, decided 2026-07) — are lowered in the compiler
+  instead of a runtime variant: load the current value with
+  `__w_map_get_or(map, key, 0)` (zero bits are `0.0`, so missing keys
+  accumulate from zero the same way), add the delta with the same float
+  emitters `m[k] += v` uses, and store back through `__w_map_set`. The
+  map and key stack slots are shared by both calls, so the key is
+  evaluated exactly once. A runtime `__w_map_add_float` variant was
+  rejected because `structures/hash_table.w` also compiles for 32-bit
+  targets, where the `float64` type itself is a compile error — the
+  grammar is the one place that can dispatch on both widths.
+- Everything else is rejected at compile time: struct values with
+  `"map add requires an integer or float value type"`
+  (`tests/map_add_error_fixture.w`) and `float16` values with
+  `"map add does not support float16 values"`
+  (`tests/map_add_float16_error_fixture.w`) — float16 slots hold raw
+  half-precision bits that the float emitters cannot add directly, and
+  every float16 operation would round-trip through float32 anyway.
+
+The delta defaults to 1 (converted to `1.0` for float values); an
+integer delta on a float map converts like any other int-to-float
+coercion. Coverage: `tests/map_set_builtin_test.w` (integer),
+`tests/map_float_test.w` (float32, 32- and 64-bit twins) and
+`tests/x64_map_float64_test.w` (float64, bit-exact including a
+`1.5 + 0.1` full-precision check).
 
 ## Aggregate values
 

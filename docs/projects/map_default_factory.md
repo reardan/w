@@ -94,14 +94,18 @@ for you.
 
 ### How `m.add` lowers
 
-`hash_map_add_suffix()` (`grammar/hash_builtin.w:244-286`) rejects struct
-and float value types up front (`"map add requires an integer value
-type"`, pinned by `tests/map_add_error_fixture.w` /
-`build.base.json:809`) and otherwise lowers to `__w_map_add(map, key,
-delta)` (`structures/hash_table.w:342-346`), which does
+`hash_map_add_suffix()` (`grammar/hash_builtin.w`) rejects struct and
+float16 value types up front (`"map add requires an integer or float
+value type"` / `"map add does not support float16 values"`, pinned by
+`tests/map_add_error_fixture.w` / `tests/map_add_float16_error_fixture.w`
+in `build.base.json`). Integer values lower to `__w_map_add(map, key,
+delta)` (`structures/hash_table.w`), which does
 `slot[0] = slot[0] + delta` on the (zero-initialized-on-allocation)
 value slot after `__w_map_insert_slot` finds-or-inserts it — no trap,
-because it never reads through `__w_map_get`.
+because it never reads through `__w_map_get`. Float values (float32
+everywhere, float64 on x64; issue #189, decided 2026-07) lower in the
+grammar to `__w_map_get_or(map, key, 0)` + a float add + `__w_map_set`
+— see `docs/projects/hash_maps_sets.md`, "Accumulation (`m.add`)".
 
 ### How `m.get(k, default)` lowers
 
