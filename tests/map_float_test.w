@@ -173,11 +173,10 @@ void test_map_float_for_two_var_iteration_sums_values():
 	assert_float_bits(0x41f80000, sum)
 
 
-# m[k] op= v: the map/hash_builtin compound assignment path (issue #189
-# left the .add() decision for floats open, but += -= *= /= go through
-# the same compound_assign_apply as ordinary float variables and are not
-# part of that deferred decision) is exercised here since it is not
-# guarded against float values and works correctly.
+# m[k] op= v: the map/hash_builtin compound assignment path — += -= *=
+# /= go through the same compound_assign_apply as ordinary float
+# variables. The float m.add() path (further down) shares its float-add
+# emitters but starts missing keys at 0.0 instead of trapping.
 void test_map_float_compound_assignment_ops():
 	map[char*, float] m = new map[char*, float]
 	m[c"n"] = 8.0
@@ -206,3 +205,105 @@ void test_map_float_compound_assignment_rhs_reads_same_map():
 	m[2] = 4.0
 	m[1] += m[2]
 	assert_float_bits(0x41600000, m[1])
+
+
+# m.add(key[, delta]) on float value types (issue #189, the deferred
+# half): unlike m[k] += delta, a missing key does not trap — it
+# accumulates from 0.0, matching the integer counter semantics. All
+# values below are exact in float32 (0.25/0.5 steps), so the assertions
+# are bit-exact.
+void test_map_float_add_missing_key_starts_from_zero():
+	map[char*, float] m = new map[char*, float]
+	assert_float_bits(0x3fc00000, m.add(c"k", 1.5))
+	assert_equal(1, m.length)
+	assert_equal(1, c"k" in m)
+	assert_float_bits(0x3fc00000, m[c"k"])
+
+
+void test_map_float_add_accumulates():
+	map[char*, float] m = new map[char*, float]
+	m.add(c"k", 1.5)
+	m.add(c"k", 2.25)
+	assert_float_bits(0x40700000, m[c"k"])
+	m.add(c"k", -0.25)
+	assert_float_bits(0x40600000, m[c"k"])
+	assert_equal(1, m.length)
+
+
+void test_map_float_add_default_delta_is_one():
+	map[int, float] m = new map[int, float]
+	m.add(7)
+	m.add(7)
+	m[8] = 0.5
+	m.add(8)
+	assert_float_bits(0x40000000, m[7])
+	assert_float_bits(0x3fc00000, m[8])
+	assert_equal(2, m.length)
+
+
+void test_map_float_add_returns_updated_value():
+	map[int, float] m = new map[int, float]
+	float got = m.add(3, 0.5)
+	assert_float_bits(0x3f000000, got)
+	assert_float_bits(0x3f800000, m.add(3, 0.5))
+	assert_float_bits(0x40000000, m.add(3))
+
+
+void test_map_float_add_int_delta_converts():
+	map[char*, float] m = new map[char*, float]
+	m.add(c"k", 2)
+	assert_float_bits(0x40000000, m[c"k"])
+	m.add(c"k", -1)
+	assert_float_bits(0x3f800000, m[c"k"])
+
+
+void test_map_float_add_mixed_with_get_default():
+	map[char*, float] m = new map[char*, float]
+	assert_float_bits(0x0, m.get(c"k", 0.0))
+	m.add(c"k", 0.5)
+	assert_float_bits(0x3f000000, m.get(c"k", 9.0))
+	assert_float_bits(0x41100000, m.get(c"other", 9.0))
+	assert_equal(1, m.length)
+
+
+void test_map_float_add_seen_by_iteration_and_snapshots():
+	map[char*, float] m = new map[char*, float]
+	m[c"a"] = 1.0
+	m.add(c"b", 2.5)
+	m.add(c"a", 0.5)
+	# an accumulated existing key keeps its insertion-order position
+	list[char*] keys = m.keys()
+	assert_equal(2, keys.length)
+	assert_strings_equal(c"a", keys[0])
+	assert_strings_equal(c"b", keys[1])
+	list[float] vals = m.values()
+	assert_equal(2, vals.length)
+	assert_float_bits(0x3fc00000, vals[0])
+	assert_float_bits(0x40200000, vals[1])
+	float sum = 0.0
+	for char* k, float v in m:
+		sum = sum + v
+	assert_float_bits(0x40800000, sum)
+
+
+void test_map_float_add_after_remove_restarts_from_zero():
+	map[int, float] m = new map[int, float]
+	m.add(1, 4.5)
+	assert_equal(1, m.remove(1))
+	m.add(1, 0.25)
+	assert_float_bits(0x3e800000, m[1])
+	assert_equal(1, m.length)
+
+
+int map_float_add_key_probe(int* calls):
+	*calls = *calls + 1
+	return 41
+
+
+void test_map_float_add_key_evaluated_once():
+	map[int, float] m = new map[int, float]
+	int calls = 0
+	m.add(map_float_add_key_probe(&calls), 0.5)
+	m.add(map_float_add_key_probe(&calls), 0.5)
+	assert_equal(2, calls)
+	assert_float_bits(0x3f800000, m[41])
