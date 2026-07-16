@@ -6,10 +6,16 @@ the GPU work: the type names and kind helpers chosen here map 1:1 onto PTX
 `code_generator/ptx.w` (see `docs/projects/cuda.md`, Stage 2, and its open
 question "Float support: W's type table today is integer/pointer-centric").
 
-**Status: float32/float64 implemented and covered by `./wbuild tests`; float16
+**Status: float32/float64 implemented and covered by `./wbuild tests`, including
+TestFloat-derived edge-case conformance vectors (NaN propagation, signed
+zeros, subnormal arithmetic, infinities, rounding at precision boundaries,
+exact-comparison semantics, int<->float conversion edges) in
+`tests/float_conformance_test.w` (float32, x86 + x64) and
+`tests/x64_float64_conformance_test.w` (float64, x64-only); float16
 storage/conversion is also implemented (x86 family only: the default 32-bit
 target and x64) and covered by `tests/float16_test.w`. bfloat16 remains
-deferred.**
+deferred. See "Known MVP semantic differences" below for every divergence
+from strict IEEE-754 this conformance pass confirmed.**
 
 Implemented today:
 
@@ -47,7 +53,9 @@ Still deferred:
 
 The milestone sections below are the implementation history/design record. Treat
 the status bullets above and `float_test`, `float_reference_test`,
-`x64_float_test`, and `float16_test` as the current support contract.
+`x64_float_test`, `float16_test`, `float_conformance_test`
+(`float_conformance_64_test` on x64), and `x64_float64_conformance_test`
+as the current support contract.
 
 ## Scope
 
@@ -330,8 +338,22 @@ words on request:
 - `tests/x64_float_test.w`: float64 smoke test in the style of
   `tests/x64_test.w` (exit code / printed output), including exact float64
   literal bits (e.g. `0.1` → `0x3FB999999999999A` checked as two 32-bit
-  halves), since `lib.testing`'s ELF-symtab discovery hardcodes the 32-bit
-  base address and does not work on the x64 backend yet.
+  halves), since `lib.testing`'s ELF-symtab discovery hardcoded the 32-bit
+  base address and did not work on the x64 backend at the time this
+  milestone landed. **Stale as of the issue #17 conformance pass**:
+  `lib.testing` discovery was rewritten to be compiler-synthesized rather
+  than binary introspection (`compiler/test_registry.w`, issue #147,
+  landed alongside the wasm backend work) and now works identically on
+  x64 — `tests/float16_test.w`'s `# wbuild: x64` twin and
+  `tests/float_conformance_test.w` both use plain `lib.testing` on x64
+  today. The plain-`main()` + `expect_stdout` style is kept for
+  `x64_float_test.w`/`x64_fmath64_test.w`/`x64_map_float64_test.w` for
+  continuity with their existing hand-written `build.base.json` targets,
+  not because it is still required; float64-only new tests may use
+  either style (see `tests/x64_float64_conformance_test.w` for a
+  `lib.testing`-based example with a hand-written base target, since
+  float64 has no 32-bit twin to generate from a `# wbuild: x64`
+  directive).
 - build.json: `float_test`, `bignum_test`, `x64_float_test` targets, added to
   the `tests:` umbrella.
 
@@ -358,10 +380,83 @@ compute-in-float32 semantics match PTX's common `.f16` usage pattern.
 `bfloat16` will be added when that backend lands. Nothing GPU-specific is
 built in this pass.
 
-## Known MVP limitations (documented, not blocking)
+## Known MVP semantic differences (documented, not blocking)
 
-- NaN comparison semantics simplified (`nan == nan` is true); `-0.0` is
-  truthy in conditions.
+Verified empirically (issue #17 conformance expansion) against this
+compiler's SSE-based float32/float64 codegen (`code_generator/sse.w`) by
+the TestFloat-derived vector suites `tests/float_conformance_test.w`
+(float32, x86 + x64) and `tests/x64_float64_conformance_test.w`
+(float64, x64-only); see `docs/projects/float_testing.md` for the design
+rationale behind hand-picking vectors instead of vendoring TestFloat.
+
+- **NaN comparisons diverge from IEEE-754 in both directions.**
+  `ucomiss`/`ucomisd` report "unordered" with ZF=1, the same flag
+  combination as "equal", and the compiler's `==`/`!=` lowering only
+  checks ZF (not the parity flag hardware also sets to distinguish the
+  two cases). So `nan == nan` is true (IEEE: false) *and* `nan != nan`
+  is false (IEEE: true). `<`, `<=`, `>`, `>=` are unaffected, since IEEE
+  also defines those as false for unordered operands — which is what a
+  ZF/CF-only check happens to produce anyway. `-0.0` is truthy in
+  conditions, since truthiness tests the raw bit pattern (`test eax,
+  eax`) rather than comparing against `0.0`.
+- **Both-NaN arithmetic payload selection is not pinned.** When both
+  operands of `+ - * /` are NaN, which one's payload survives is
+  implementation-defined per the Intel SDM; this backend observably
+  keeps the left/dest operand's payload today (`code_generator/sse.w`
+  loads the left operand into `xmm0`, the instruction's implicit
+  destination), but that is not an IEEE guarantee across vendors, so
+  code should not depend on it (the conformance tests only assert
+  is-NaN for this case). Single-NaN-operand arithmetic (only one side
+  is NaN) always propagates that operand, quieted if signaling, with
+  its payload otherwise intact — that part IS hardware-guaranteed and
+  is asserted bit-exactly. The classic invalid operations (`0/0`,
+  `inf - inf`, `inf * 0`) always produce the fixed x86 "QNaN
+  floating-point indefinite" pattern (`0xffc00000` for float32,
+  `0xfff8000000000000` for float64), independent of vendor.
+- **Division by zero returns a signed infinity, never traps** (no
+  floating-point exceptions are implemented anywhere in this MVP):
+  `1.0 / 0.0` is `+inf`, `1.0 / -0.0` is `-inf`, matching IEEE-754's
+  default non-trapping behavior — but there is no way to opt into
+  trapping or to read sticky exception flags.
+- **Bare decimal float literals change width across targets, and that
+  width sticks unless something coerces it back down.** Per Milestone
+  4, an untyped literal like `1.0` is float64 on x64 but float32 on the
+  default target ("literal type follows the target, like C's
+  double-by-default"). `coerce()` narrows a float64 result back to a
+  variable's declared float32 width at assignment, declaration, return
+  and call-argument sites (Milestone 6) — but comparison operators are
+  not a coerce() site. So for a `float a`, an inline expression like
+  `(a + 1.0) == a` can evaluate *differently* on the default target
+  (the literal stays float32, no widening, ties-to-even rounds the sum
+  back to `a` at the 2^24 boundary, so this is true) than on x64 (the
+  literal is float64, `a` widens up to compare against the unrounded
+  float64 sum, so this is false) — for byte-identical source. This
+  matches what equivalent C code does under the usual arithmetic
+  conversions (`float` mixed with an untyped `1.0` double literal
+  promotes the comparison to `double`), so it is not unique to W, but
+  it is easy to trip over by assuming a `float`-typed variable pins
+  every expression it appears in to float32 on every target. Store
+  literal-derived intermediates into an explicitly `float32`-typed
+  variable first if cross-target-identical comparison semantics
+  matter — see `test_float32_rounding_at_precision_boundary` in
+  `tests/float_conformance_test.w` for a worked example and a longer
+  explanation in its header comment.
+- **The truncating int conversion has no software range check, and its
+  overflow sentinel overlaps a legitimate result.** `cvttss2si`/
+  `cvttsd2si` truncate toward zero; when the source magnitude (or a
+  NaN) doesn't fit the destination width, the hardware substitutes the
+  "integer indefinite" sentinel (`INT_MIN`'s bit pattern — all zero but
+  the sign bit) instead of trapping, and the compiler adds no
+  additional check. Because `INT_MIN` is itself a legitimate, exactly-
+  representable float value in range for the conversion (e.g. float32
+  `-2147483648.0` on the default 32-bit target, or float64
+  `-9223372036854775808.0` on x64), there is no way to tell an
+  overflowed conversion apart from a genuine boundary result by
+  inspecting the returned bits alone. The overflow threshold is also
+  target-word-size-dependent for float32: ~2^31 on the default 32-bit
+  target (4-byte `int`), ~2^63 on x64 (8-byte `int`, REX.W `cvttss2si`
+  -> `rax`) — the identical float32 source value can convert cleanly on
+  one target and overflow on the other.
 - Calls through untyped function pointers lose float return-type
   information (the result is treated as an int at coerce sites).
 - On x64, a literal stored into a `float32` goes decimal→float64→float32;
@@ -370,7 +465,32 @@ built in this pass.
 - `float*` and `float32*` are distinct pointer types, so mixing them warns.
 - `float16` requires an F16C-capable CPU (Ivy Bridge/Zen or newer, 2012+);
   there is no software fallback, and no runtime feature check is emitted.
+  (`vcvtph2ps`/`vcvtps2ph`, `code_generator/sse.w` — hardware
+  instructions, not a software conversion routine, so this is a hard
+  requirement, not just a performance note; see also the README.md
+  floating-point bullet.)
 - `float16` is a clean compile error on arm64 and wasm (no F16C-equivalent
   port yet); see the status bullets at the top of this document.
 - `bfloat16` deferred to the GPU backend; no hex-float syntax; no
   `.5`-style literals without a leading digit.
+
+## Not a compiler bug, but a related library gap found via this testing
+
+`itoa(int n)` (`lib/lib.w`) prints the wrong string for the minimum
+representable integer (`INT_MIN`, `0x80000000` on the default target,
+`0x8000000000000000` on x64): `itoa` negates via `n = 0 - n`, which
+overflows back to the same negative value for `INT_MIN` in two's
+complement, so the digit-extraction loop never runs and the output is
+just `"-"`. This surfaced while testing float→int conversion edges,
+since `cvttss2si`/`cvttsd2si` return exactly this bit pattern (the
+"integer indefinite" sentinel) on overflow — printing that result via
+`itoa` for a debug message reproduces the bug. It is a pre-existing,
+target-width-independent library bug unrelated to float codegen (the
+comparison-based logic in `lib/assert.w`'s `assert_equal` is unaffected
+since it compares with `!=`, not by printing); logged in
+`docs/projects/ai_tooling_next_steps.md` rather than fixed here, since
+fixing it is out of scope for this conformance-testing pass. The new
+conformance tests route around it by asserting bit patterns via
+`assert_equal_hex` (which uses `hex()`, unaffected) instead of
+`itoa()`-based assertions wherever an `INT_MIN`-shaped value is in
+play.

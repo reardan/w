@@ -219,6 +219,29 @@ is a queue, not an archive.
   content-hash caching on macOS, add per-arch dirent accessors
   (`reclen`/`name`/`kind`) next to each `getdents` shim in
   `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
+- **`itoa(INT_MIN)` prints `"-"` instead of the number — pre-existing
+  library bug, unrelated to float codegen.** Found 2026-07-16 while
+  testing float→int conversion edges for issue #17
+  (`tests/float_conformance_test.w`, `tests/x64_float64_conformance_test.w`):
+  `cvttss2si`/`cvttsd2si` substitute the "integer indefinite" sentinel
+  (`INT_MIN`'s bit pattern) on out-of-range float→int conversions (Intel
+  SDM behavior, no software range check — see `docs/projects/float.md`'s
+  "Known MVP semantic differences"), and printing that value via
+  `itoa()` for a debug message reproduces the bug: `itoa` (`lib/lib.w`)
+  negates via `n = 0 - n`, which overflows back to the same negative
+  value for `INT_MIN` in two's complement, so its digit-extraction loop
+  (`while (n > 0)`) never runs and the output is just `"-"` with no
+  digits — on both the 32-bit target (`-2147483648`) and x64
+  (`-9223372036854775808`). Comparison-based assertions (`assert_equal`'s
+  `!=` check, `assert_equal_hex`'s `hex()`-based formatting, which uses
+  bitwise shifts rather than negation) are unaffected; only code that
+  formats an `INT_MIN`-valued int via `itoa()` hits this — the new
+  conformance tests route around it by asserting bit patterns via
+  `assert_equal_hex` instead. Not fixed here (out of scope for a
+  float-conformance PR, and `lib/lib.w` is broadly imported); the fix is
+  a one-line special case (or restructure the loop to extract digits via
+  `-(n % 10)` without pre-negating `n`, matching `intstrlen`'s existing
+  correct handling of negative `n`).
 - **The compiler can exit 1 with no diagnostic at all — partially
   addressed.** The pre-refresh darwin seed compiling current `w.w`
   (post-#128 `libs/extras`) printed only the `compiling 'w.w'` banner
