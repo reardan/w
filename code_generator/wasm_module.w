@@ -689,9 +689,14 @@ void wasm_finish():
 		wasm_section_end(p)
 	int s3_end = codepos
 
-	write(output_fd, code + s1, s1_end - s1)
-	write(output_fd, code, code_end)
-	write(output_fd, code + s2, s2_end - s2)
+	if (write(output_fd, code + s1, s1_end - s1) != s1_end - s1):
+		error(c"could not write output file")
+	if (write(output_fd, code, code_end) != code_end):
+		error(c"could not write output file")
+	if (write(output_fd, code + s2, s2_end - s2) != s2_end - s2):
+		error(c"could not write output file")
 	if (datapos):
-		write(output_fd, data, datapos)
-	write(output_fd, code + s3, s3_end - s3)
+		if (write(output_fd, data, datapos) != datapos):
+			error(c"could not write output file")
+	if (write(output_fd, code + s3, s3_end - s3) != s3_end - s3):
+		error(c"could not write output file")

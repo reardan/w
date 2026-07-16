@@ -221,8 +221,16 @@ void get_token():
 			if (((token[0] == 's') | (token[0] == 'c')) & (nextc == '"')):
 				takechar()
 				while (nextc != '"'):
+					# EOF inside a prefixed literal used to spin the
+					# tokenizer forever (nextc pinned at -1 never
+					# matches '"'), consuming memory instead of
+					# reporting the truncation.
+					if (nextc == -1):
+						error(c"unterminated string literal")
 					if (nextc == 92):
 						takechar()
+						if (nextc == -1):
+							error(c"unterminated string literal")
 					takechar()
 				takechar()
 

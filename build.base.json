@@ -293,6 +293,13 @@
 			]
 		},
 		{
+			"name": "prefixed_string_literal_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/prefixed_string_unterminated_fixture.w"]}
+			]
+		},
+		{
 			"name": "warning_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -1899,6 +1906,7 @@
 				"array_error_test",
 				"syscall_arity_test",
 				"int_literal_width_test",
+				"prefixed_string_literal_test",
 				"warning_test",
 				"strict_mode_test",
 				"check_json_test",

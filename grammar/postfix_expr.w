@@ -689,8 +689,8 @@ int postfix_expr():
 					get_token()
 					type = hash_get_suffix(type)
 				else:
-					print2(c"hash container field '")
-					print2(token)
+					diag_part(c"hash container field '")
+					diag_part(token)
 					error(c"' not found")
 			else if (type_is_list(type)):
 				if (peek(c"length")):
@@ -765,8 +765,8 @@ int postfix_expr():
 					type = type_get_next_pointer(element_type)
 					expression_lhs_readonly = 1
 				else:
-					print2(c"buffer field '")
-					print2(token)
+					diag_part(c"buffer field '")
+					diag_part(token)
 					error(c"' not found")
 			else:
 				# A pending map read whose value is a struct must emit the
@@ -803,7 +803,8 @@ int postfix_expr():
 						# Use child type insted of struct type:
 						type = type_get_field_type(type, member_name)
 						if (type < 0):
-							print_int0(c"child field not found: '", type)
+							diag_part(c"child field not found: '")
+							diag_part(itoa(type))
 							error(c"")
 						if (verbosity >= 1):
 							print2(itoa(line_number))
@@ -821,12 +822,12 @@ int postfix_expr():
 						free(prefix)
 						int callee = sym_lookup(method_symbol)
 						if (callee < 0):
-							print_error(c"struct method '")
-							print_error(type_get_name(type))
-							print_error(c".")
-							print_error(member_name)
-							print_error(c"' not found; expected function '")
-							print_error(method_symbol)
+							diag_part(c"struct method '")
+							diag_part(type_get_name(type))
+							diag_part(c".")
+							diag_part(member_name)
+							diag_part(c"' not found; expected function '")
+							diag_part(method_symbol)
 							error(c"'")
 
 						int expected_args = sym_num_args(callee)
@@ -886,8 +887,8 @@ int postfix_expr():
 							type = type_value(declared_return)
 						free(method_symbol)
 					else:
-						print2(c"struct field '")
-						print2(member_name)
+						diag_part(c"struct field '")
+						diag_part(member_name)
 						error(c"' not found")
 					free(member_name)
 

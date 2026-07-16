@@ -241,8 +241,8 @@ int unary_expression():
 			return type_value(list_container_type)
 		int base = type_lookup(token)
 		if (base < 0):
-			print2(c"unknown type after new: '")
-			print2(token)
+			diag_part(c"unknown type after new: '")
+			diag_part(token)
 			error(c"'")
 		get_token()
 		if (accept(c"[")):
@@ -367,11 +367,11 @@ int unary_expression():
 					field_index = field_index + 1
 				expect(c")")
 				if (field_index != type_num_args(base)):
-					print_error(str_from_cstr(c"warning: new "))
-					print_error(str_from_cstr(type_get_name(base)))
-					print_error(str_from_cstr(c" expects "))
-					print_error(str_from_cstr(itoa(type_num_args(base))))
-					print_error(str_from_cstr(c" arguments, got "))
+					diag_part(c"warning: new ")
+					diag_part(type_get_name(base))
+					diag_part(c" expects ")
+					diag_part(itoa(type_num_args(base)))
+					diag_part(c" arguments, got ")
 					warning(itoa(field_index))
 				pop_eax()
 				stack_pos = stack_pos - 1
