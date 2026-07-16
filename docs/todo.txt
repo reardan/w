@@ -231,8 +231,12 @@ current state:
 			watchpoints are software (statement-granularity single-step
 				scan): large slowdown while any exist
 		x64:
-			threading is still x86-only
 			DWARF line info still declares address_size 4 (gdb only)
+		threading:
+			lib/thread.w (spawn/join/parallel_for) is Linux x86/x64 only;
+				arm64/darwin/win64/wasm, mutexes/atomics and thread
+				pools are staged in docs/projects/threads.md
+			worker stacks (4MB) and handles are not reclaimed on join
 		webassembly:
 			json builtins, generators, c_import/extern FFI, REPL and wdbg
 				are not supported on the wasm target
@@ -299,7 +303,7 @@ current state:
 
 	future data structures:
 		dict (done: built-in map iterates in insertion order, issue #145)
-		matrix
+		matrix / multi-dimensional arrays (design: docs/projects/ndarray.md)
 		statistics (done: lib/stats.w, design: docs/projects/stats.md)
 
 	future platforms:

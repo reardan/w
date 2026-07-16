@@ -49,19 +49,26 @@ int array_decay_is_clean(int flag):
 
 
 # The bit-31 literal warning stays quiet for cast() bit patterns, for
-# literals below bit 31 and for short binary literals; the bool-bitwise
-# condition hint stays quiet for comparison results, for mixed operands,
-# for bool arithmetic outside conditions and for the short-circuiting
-# spellings.
+# literals below bit 31 and for short binary literals; the 32-bit
+# literal width error (grammar/int_literal.w) stays quiet for leading
+# zeros — only significant digits count, so a 16-digit hex literal and
+# a 40-digit binary literal whose value fits in 32 bits still compile;
+# the bool-bitwise condition hint stays quiet for comparison results,
+# for mixed operands, for bool arithmetic outside conditions and for
+# the short-circuiting spellings.
 int bit31_and_bool_bitwise_are_clean(int x):
 	int mask = cast(int, 0xffffffff)
 	int low = 0x7fffffff
 	int bits = 0b101
+	int wide_zeros = cast(int, 0x00000000ffffffff)
+	int wide_bits = cast(int, 0b0000000011111111111111111111111111111111)
 	bool first = x == 1
 	bool second = x == 2
 	bool accumulated = first | second
 	if ((x == 1) | (x == 2)):
 		return mask & x
+	if (wide_zeros == wide_bits):
+		return low
 	if (first | (x == 3)):
 		return low
 	if (first || second):

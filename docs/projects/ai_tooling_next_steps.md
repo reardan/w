@@ -128,19 +128,22 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
-- **Hex/binary literals wider than 32 bits are silently corrupted.**
-  The tokenizer keeps only a rolling 32-bit window of a literal's
-  digits, so on the x64 target `0x7ff0000000000000` parses to `0` and
-  `0x000fffffffffffff` parses to `0xffffffffffffffff` — no warning,
-  no error (2026-07-12, found writing lib/fmath64.w; the compiler
-  always runs as a 32-bit process, docs/projects/float.md). This is
-  distinct from the documented bit-31 sign-extension gotcha and is a
-  straight bug for 64-bit-word targets: until the tokenizer carries
-  64-bit (or bignum) literal values, wide constants must be assembled
-  at runtime from sub-32-bit pieces (`(hi << 32) | lo`, the
-  sha256_mask32 pattern). At minimum the tokenizer should error on
-  overflow instead of wrapping; the fix sits in the seed closure, so
-  it lands as a normal compiler change plus verify.
+- **Hex/binary literals wider than 32 bits were silently corrupted —
+  resolved (2026-07-13).** The literal decoder kept only a rolling
+  32-bit window of a literal's digits, so on the x64 target
+  `0x7ff0000000000000` parsed to `0` and `0x000fffffffffffff` parsed
+  to `0xffffffffffffffff` — no warning, no error. Distinct from the
+  documented bit-31 sign-extension gotcha, and a straight bug for
+  64-bit-word targets: until the tokenizer carries 64-bit (or bignum)
+  literal values, wide constants must be assembled at runtime from
+  sub-32-bit pieces (see `lib/sha256.w`'s runtime-built masks).
+  Resolved by `int_literal_width_check()` (grammar/int_literal.w,
+  shared by the expression, enum-value and parameter-default decode
+  paths): any hex or binary literal with more than 32 significant bits
+  is now a compile error instead of wrapping. Leading zeros carry no
+  bits, so `0x00000000ffffffff` still compiles; the
+  `int_literal_width_test` fixtures freeze the error message and
+  `tests/warning_clean_fixture.w` pins the still-legal wide spellings.
 - **`lib.assert` does not compile standalone: it calls `println2`
   without importing `lib.lib`.** Any module importing lib.assert but
   not lib.lib fails `w check` with `Cannot find symbol: 'println2'`
@@ -242,6 +245,15 @@ is a queue, not an archive.
   intentional; masking tricks in bitset.w/sha256.w rely on plain `&`),
   and the message text is new, so warning_test fixtures gain a case
   rather than reword one (2026-07-11).
+- **`w check` on a single auto-imported runtime file also reports bogus
+  `symbol redefined` errors.** `bin/wv2 check --json lib/memory_freelist.w`
+  fails with `symbol redefined: 'malloc_bins'` even on a clean tree
+  (2026-07-11): the root is compiled once as the root and again when the
+  auto-imported container runtime (`structures/hash_table.w`) re-imports
+  it via `lib.memory` -> `lib.memory_freelist`. Same double-compile class
+  as the multi-root bug above, but it hits the natural "check the file I
+  just edited" workflow for every file in the runtime closure; the
+  workaround is checking a small consumer that imports the file instead.
 
 ## Skills / rules upkeep
 

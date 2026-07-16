@@ -78,4 +78,21 @@ void define_asm_functions_x64():
 	emit(20, c"\x48\x8b\x44\x24\x38\x48\x8b\x7c\x24\x30\x48\x8b\x74\x24\x28\x48\x8b\x54\x24\x20")
 	emit(18, c"\x4c\x8b\x54\x24\x18\x4c\x8b\x44\x24\x10\x4c\x8b\x4c\x24\x08\x0f\x05\xc3")
 
+	# thread_create(func): clone with a fresh 4MB stack whose top slot
+	# holds func, so the child's fall-through "ret" jumps straight into
+	# func (the x64 twin of the x86 stub; docs/projects/threads.md).
+	# The call +0x1f targets stack_create, emitted immediately after.
+	sym_define_declare_global_function(c"thread_create")
+	/* call stack_create ; lea rcx,[rax+0x3ffff0] ; mov rdx,[rsp+8] ; mov [rcx],rdx */
+	emit(20, c"\xe8\x1f\x00\x00\x00\x48\x8d\x88\xf0\xff\x3f\x00\x48\x8b\x54\x24\x08\x48\x89\x11")
+	/* mov edi,CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO ; mov rsi,rcx ; mov eax,56 ; syscall ; ret */
+	emit(16, c"\xbf\x00\x8f\x01\x80\x48\x89\xce\xb8\x38\x00\x00\x00\x0f\x05\xc3")
+
+	# stack_create(): mmap(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
+	sym_define_declare_global_function(c"stack_create")
+	/* xor edi,edi ; mov esi,0x400000 ; mov edx,3 ; push 0x122 ; pop r10 ; push byte -1 */
+	emit(20, c"\x31\xff\xbe\x00\x00\x40\x00\xba\x03\x00\x00\x00\x68\x22\x01\x00\x00\x41\x5a\x6a")
+	/* ... ; pop r8 ; xor r9,r9 ; mov eax,9 ; syscall ; ret */
+	emit(14, c"\xff\x41\x58\x4d\x31\xc9\xb8\x09\x00\x00\x00\x0f\x05\xc3")
+
 	define_asm_functions_x64_portable()

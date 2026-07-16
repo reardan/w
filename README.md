@@ -330,9 +330,10 @@ seeds — is `docs/release.md`.
   be absent: `gdb`/`ddd` (hand-debugging a built binary), `radare2` (`rasm2`
   encoding lookups), `systemtap` with sudo (syscall-trace one-liners), an
   NVIDIA GPU + driver
-  (`cuda_smoke`). `threading_test` covers the basic x86 thread path, but the
-  threading modules are still not production-grade and are not covered by the
-  x64 test gate.
+  (`cuda_smoke`). `threading_test` covers the raw x86 `thread_create`
+  builtin; `lib/thread.w` (spawn/join/`parallel_for`, Linux x86/x64,
+  docs/projects/threads.md) is covered on both targets by
+  `thread_test`/`parallel_for_test` and their `_64` twins.
 
 ## Tooling for agents
 

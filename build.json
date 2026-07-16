@@ -259,17 +259,17 @@
 			]
 		},
 		{
+			"name": "int_literal_width_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/int_literal_width_error_fixture.w", "tests/int_literal_width_binary_error_fixture.w", "tests/int_literal_width_decimal_error_fixture.w"]}
+			]
+		},
+		{
 			"name": "warning_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
 				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w", "tests/limb_builtin_warning_fixture.w", "tests/bool_bitwise_warning_fixture.w", "tests/bit31_literal_warning_fixture.w"]}
-			]
-		},
-		{
-			"name": "int_literal_overflow_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/int_literal_overflow_hex_fixture.w", "tests/int_literal_overflow_binary_fixture.w", "tests/int_literal_overflow_decimal_fixture.w"]}
 			]
 		},
 		{
@@ -1750,6 +1750,7 @@
 				"limb_builtin_shadow_64_test",
 				"list_builtin_64_test",
 				"lsm_64_test",
+				"malloc_churn_64_test",
 				"map_float_64_test",
 				"map_set_builtin_64_test",
 				"md5_64_test",
@@ -1760,6 +1761,7 @@
 				"nested_ctor_64_test",
 				"net_64_test",
 				"operator_overload_64_test",
+				"parallel_for_64_test",
 				"path_64_test",
 				"poll_64_test",
 				"poly1305_64_test",
@@ -1791,6 +1793,7 @@
 				"switch_64_test",
 				"task_64_test",
 				"template_string_64_test",
+				"thread_64_test",
 				"time_64_test",
 				"u64_64_test",
 				"urlparse_64_test",
@@ -1957,8 +1960,8 @@
 				"buffer_field_assign_test",
 				"array_error_test",
 				"syscall_arity_test",
+				"int_literal_width_test",
 				"warning_test",
-				"int_literal_overflow_test",
 				"strict_mode_test",
 				"check_json_test",
 				"check_roots_test",
@@ -2090,6 +2093,7 @@
 				"limb_builtin_test",
 				"list_methods_test",
 				"lsm_test",
+				"malloc_churn_test",
 				"map_float_test",
 				"math_test",
 				"md5_test",
@@ -2101,6 +2105,7 @@
 				"nested_ctor_test",
 				"net_test",
 				"operator_overload_test",
+				"parallel_for_test",
 				"path_test",
 				"pointer_test",
 				"poll_test",
@@ -2137,6 +2142,7 @@
 				"swim_test",
 				"task_test",
 				"ternary_test",
+				"thread_test",
 				"threading_test",
 				"time_test",
 				"type_system_p0_test",
@@ -2964,6 +2970,22 @@
 			]
 		},
 		{
+			"name": "malloc_churn_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/malloc_churn_test.w", "-o", "bin/malloc_churn_64_test"]},
+				{"cmd": ["bin/malloc_churn_64_test"]}
+			]
+		},
+		{
+			"name": "malloc_churn_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/malloc_churn_test.w", "-o", "bin/malloc_churn_test"]},
+				{"cmd": ["bin/malloc_churn_test"]}
+			]
+		},
+		{
 			"name": "map_float_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3129,6 +3151,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/operator_overload_test.w", "-o", "bin/operator_overload_test"]},
 				{"cmd": ["bin/operator_overload_test"]}
+			]
+		},
+		{
+			"name": "parallel_for_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/parallel_for_test.w", "-o", "bin/parallel_for_64_test"]},
+				{"cmd": ["bin/parallel_for_64_test"]}
+			]
+		},
+		{
+			"name": "parallel_for_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/parallel_for_test.w", "-o", "bin/parallel_for_test"]},
+				{"cmd": ["bin/parallel_for_test"]}
 			]
 		},
 		{
@@ -3690,6 +3728,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/ternary_test.w", "-o", "bin/ternary_test"]},
 				{"cmd": ["bin/ternary_test"]}
+			]
+		},
+		{
+			"name": "thread_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/thread_test.w", "-o", "bin/thread_64_test"]},
+				{"cmd": ["bin/thread_64_test"]}
+			]
+		},
+		{
+			"name": "thread_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/thread_test.w", "-o", "bin/thread_test"]},
+				{"cmd": ["bin/thread_test"]}
 			]
 		},
 		{
