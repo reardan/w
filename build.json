@@ -1023,6 +1023,15 @@
 			]
 		},
 		{
+			"name": "wexec_ordered_output_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["bin/wexec", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": "wexec: OK (2 targets)", "reject_stdout": "wexec: --- "},
+				{"cmd": ["bin/wexec", "--ordered-output", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": ["wexec: --- beta ---\nwexec: target beta\n$ sleep 0.1\n$ echo beta-line-1\nbeta-line-1\n$ echo beta-line-2\nbeta-line-2\nwexec: --- alpha ---\nwexec: target alpha\n$ echo alpha-line-1\nalpha-line-1\n$ sleep 0.6\n$ echo alpha-line-2\nalpha-line-2\n", "wexec: OK (2 targets)"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "--ordered-output", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": ["wexec: --- standalone ---\nwexec: target standalone\n$ echo standalone ran\nstandalone ran\n", "wexec: --- boom ---\nwexec: target boom\n$ false\n"], "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: error: target 'boom' step 1: command failed with exit status 1", "wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"}
+			]
+		},
+		{
 			"name": "result_propagate_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2014,6 +2023,7 @@
 				"wtest_run_test",
 				"wexec_test",
 				"wexec_keep_going_test",
+				"wexec_ordered_output_test",
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",

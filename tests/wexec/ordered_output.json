@@ -1,0 +1,20 @@
+{
+	"targets": [
+		{
+			"name": "alpha",
+			"steps": [
+				{"cmd": ["echo", "alpha-line-1"]},
+				{"cmd": ["sleep", "0.6"]},
+				{"cmd": ["echo", "alpha-line-2"]}
+			]
+		},
+		{
+			"name": "beta",
+			"steps": [
+				{"cmd": ["sleep", "0.1"]},
+				{"cmd": ["echo", "beta-line-1"]},
+				{"cmd": ["echo", "beta-line-2"]}
+			]
+		}
+	]
+}
