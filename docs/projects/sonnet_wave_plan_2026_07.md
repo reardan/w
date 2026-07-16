@@ -82,13 +82,21 @@ expansion (`tests/float_conformance_test.w`,
 rounding-boundary vectors — plus `docs/projects/float.md`'s "Known MVP
 semantic differences" section and F16C requirement writeup).
 
-**Wave 5 — in flight, not part of this sync**: #103 `++`/`--`
-implementation, #189 float-aware `m.add`, #287 UTF-8 stage 1, and this
-documentation sync itself. None of these had landed code in the tree at
-the time this section was written (verified: no `++`/`--` tokens in
-`grammar/`, no float variant of `__w_map_add`, no tokenizer UTF-8
-changes) — do not treat wave 5 as done from this doc alone; check the
-tree or the wave 5 PRs directly.
+**Wave 5 — complete** (merged after the 5d sync above was written): 5a
+#103 `++`/`--` statements (statement-position-only sugar over the
+compound-assign path, `grammar/increment.w`, w.pg additions,
+`increment_test`/`increment_error_test`; raw-byte pointer stepping
+pinned to match `+=`); 5b #189 float-valued `m.add` (float32
+everywhere, float64 on x64 — type-dispatched lowering in
+`grammar/hash_builtin.w` over `__w_map_get_or` + the float emitters +
+`__w_map_set`, no runtime growth; float16 rejected with a pinned
+message); 5c #287 UTF-8 stage 1 (JSON-escaper hardening in
+`compiler/diagnostics.w` — invalid bytes become `\u00XX`, output is
+always valid JSON; silent BOM strip in `compile_attempt`;
+codepoint-based `column_number` for the JSON path;
+`utf8_source_test`/`check_json_utf8_test`/`utf8_bom_test`); 5d this
+execution-status sync. Each seed-graph task merged sequentially under
+its own `./wbuild verify`/`verify_x64` + full-suite gate.
 
 ### Remaining queue
 
