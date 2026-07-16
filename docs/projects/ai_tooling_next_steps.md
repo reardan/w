@@ -42,6 +42,34 @@ is a queue, not an archive.
   `libs/extras/c_import/generated_c_parser.w`, so widening the scope
   needs a dedicated style-migration PR (a per-site short-circuit safety
   review plus a parser-generator emission change) first.
+- **`T* + int` is a raw, unscaled byte offset for every pointee width,
+  and nothing warns.** Found 2026-07-16 writing `libs/extras/compress/
+  inflate.w`'s dynamic-Huffman block decoder: `wh_build(c, dist_huff,
+  lengths + hlit, hdist)` (where `lengths` is `int*`) added `hlit`
+  *bytes* to the pointer, not `hlit` ints — landing 4 (or 8, on x64)
+  times too close to the start of the array on every word size, so the
+  distance-code Huffman table silently built from the wrong slice.
+  `./bin/wv2 check` reports nothing (it is well-typed: `int* + int ->
+  int*`); the bug only surfaced as a runtime
+  over-subscribed/incomplete-Huffman-table failure, and only for inputs
+  exercising that exact code path (fixed-Huffman and simple dynamic
+  blocks with `hlit`/small offsets near zero happened to still work).
+  `lib/sha256.w` and every other manual-pointer-arithmetic call site in
+  the tree already route around this by treating every pointer as
+  `char*` and multiplying the index by the element size by hand
+  (`p + i * 4`), which works but has no compiler backing — a typed
+  `int*`/struct-pointer `+` is silently just as wrong as a `char*` one
+  with a forgotten `* width`. `a[i]`/`&a[i]` *do* scale correctly (this
+  is what made the bug non-obvious: indexing and "pointer plus offset"
+  look interchangeable but are not). Suggested direction: a `w check`
+  warning on `<non-char-pointer> + <int-not-a-multiple-of-known-
+  stride>` is unrealizable statically in general, but at minimum
+  README.md/CLAUDE.md should document the rule explicitly (searched for
+  "pointer arithmetic" and "byte offset" — nothing exists today), and a
+  `ptr_add(p, n)`-style intrinsic that scales by `__word_size__`/
+  `sizeof` (or a real `&p[n]` desugar recommended in library code
+  instead of `p + n`) would remove the footgun entirely rather than
+  documenting around it.
 
 - **No warning when an import breaks a different compile target.**
   `tools/wexec.w` is compiled three ways (default `x86`, `win64`,
