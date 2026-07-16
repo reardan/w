@@ -704,6 +704,17 @@
 			]
 		},
 		{
+			"name": "compress_zlib_interop_test",
+			"deps": ["wv2"],
+			"inputs": ["tools/compress_zlib_interop_test.sh"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/compress_zlib_interop.w", "-o", "bin/compress_zlib_interop32"]},
+				{"cmd": ["bin/wv2", "x64", "tests/compress_zlib_interop.w", "-o", "bin/compress_zlib_interop64"]},
+				{"cmd": ["sh", "tools/compress_zlib_interop_test.sh", "32"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000},
+				{"cmd": ["sh", "tools/compress_zlib_interop_test.sh", "64"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000}
+			]
+		},
+		{
 			"name": "switch_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1778,6 +1789,13 @@
 				"chacha20poly1305_64_test",
 				"clock_64_test",
 				"compound_assign_64_test",
+				"compress_adler32_64_test",
+				"compress_corpus_64_test",
+				"compress_crc32_64_test",
+				"compress_deflate_64_test",
+				"compress_gzip_64_test",
+				"compress_inflate_64_test",
+				"compress_zlib_64_test",
 				"cstr_64_test",
 				"default_args_64_test",
 				"defer_64_test",
@@ -2130,6 +2148,13 @@
 				"chacha20_test",
 				"chacha20poly1305_test",
 				"clock_test",
+				"compress_adler32_test",
+				"compress_corpus_test",
+				"compress_crc32_test",
+				"compress_deflate_test",
+				"compress_gzip_test",
+				"compress_inflate_test",
+				"compress_zlib_test",
 				"cstr_test",
 				"directory_test",
 				"dns_test",
@@ -2514,6 +2539,118 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/compound_assign_test.w", "-o", "bin/compound_assign_64_test"]},
 				{"cmd": ["bin/compound_assign_64_test"]}
+			]
+		},
+		{
+			"name": "compress_adler32_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/compress_adler32_test.w", "-o", "bin/compress_adler32_64_test"]},
+				{"cmd": ["bin/compress_adler32_64_test"]}
+			]
+		},
+		{
+			"name": "compress_adler32_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/compress_adler32_test.w", "-o", "bin/compress_adler32_test"]},
+				{"cmd": ["bin/compress_adler32_test"]}
+			]
+		},
+		{
+			"name": "compress_corpus_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/compress_corpus_test.w", "-o", "bin/compress_corpus_64_test"]},
+				{"cmd": ["bin/compress_corpus_64_test"]}
+			]
+		},
+		{
+			"name": "compress_corpus_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/compress_corpus_test.w", "-o", "bin/compress_corpus_test"]},
+				{"cmd": ["bin/compress_corpus_test"]}
+			]
+		},
+		{
+			"name": "compress_crc32_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/compress_crc32_test.w", "-o", "bin/compress_crc32_64_test"]},
+				{"cmd": ["bin/compress_crc32_64_test"]}
+			]
+		},
+		{
+			"name": "compress_crc32_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/compress_crc32_test.w", "-o", "bin/compress_crc32_test"]},
+				{"cmd": ["bin/compress_crc32_test"]}
+			]
+		},
+		{
+			"name": "compress_deflate_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/compress_deflate_test.w", "-o", "bin/compress_deflate_64_test"]},
+				{"cmd": ["bin/compress_deflate_64_test"]}
+			]
+		},
+		{
+			"name": "compress_deflate_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/compress_deflate_test.w", "-o", "bin/compress_deflate_test"]},
+				{"cmd": ["bin/compress_deflate_test"]}
+			]
+		},
+		{
+			"name": "compress_gzip_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/compress_gzip_test.w", "-o", "bin/compress_gzip_64_test"]},
+				{"cmd": ["bin/compress_gzip_64_test"]}
+			]
+		},
+		{
+			"name": "compress_gzip_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/compress_gzip_test.w", "-o", "bin/compress_gzip_test"]},
+				{"cmd": ["bin/compress_gzip_test"]}
+			]
+		},
+		{
+			"name": "compress_inflate_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/compress_inflate_test.w", "-o", "bin/compress_inflate_64_test"]},
+				{"cmd": ["bin/compress_inflate_64_test"]}
+			]
+		},
+		{
+			"name": "compress_inflate_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/compress_inflate_test.w", "-o", "bin/compress_inflate_test"]},
+				{"cmd": ["bin/compress_inflate_test"]}
+			]
+		},
+		{
+			"name": "compress_zlib_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/compress_zlib_test.w", "-o", "bin/compress_zlib_64_test"]},
+				{"cmd": ["bin/compress_zlib_64_test"]}
+			]
+		},
+		{
+			"name": "compress_zlib_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/compress_zlib_test.w", "-o", "bin/compress_zlib_test"]},
+				{"cmd": ["bin/compress_zlib_test"]}
 			]
 		},
 		{
