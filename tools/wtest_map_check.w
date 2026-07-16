@@ -13,8 +13,12 @@ asserts PROPERTIES of the selection:
   expect <target>           the selection must include <target>
   forbid <target>           the selection must not include <target>
   empty                     the selection must be empty
+  noorder                   opt this case out of the two implicit
+                             properties below that are checked against
+                             the real build.json's target set/order
 
-plus three implicit properties, checked for every case:
+plus three implicit properties, checked for every case that does not
+say 'noorder':
 
   - every selected name must be a target in build.json (bin/wtest can
     never emit a stale or misspelled name),
@@ -25,17 +29,29 @@ plus three implicit properties, checked for every case:
   - an empty selection must announce itself with 'wtest: 0 targets
     selected' on stderr (stdout stays clean for xargs), and a
     non-empty one must not — so every 'empty' case also pins the
-    visibility of a zero-target run.
+    visibility of a zero-target run (checked even under 'noorder': it
+    does not depend on build.json's target set).
 
 Case words are handed to 'bin/wtest changed' verbatim, so a case may
 lead with '-f <manifest>' / '--base-manifest <manifest>' fixture flags
-before its changed paths (the build.json leaf-diff cases do); the
-implicit properties are still checked against the real build.json, so
-fixture manifests must reuse real target names in build.json order.
+before its changed paths (the build.json leaf-diff cases do). The first
+two implicit properties above are checked against the real build.json
+regardless of which manifest the case itself points bin/wtest at, so by
+default a '-f' fixture manifest must reuse real build.json target names
+in build.json's relative order to satisfy them. A case that instead
+wants self-descriptive fixture-only target names (not real build.json
+targets, or not in build.json's order) adds a 'noorder' line, which
+skips both checks — for the selection itself, and (in validation) for
+that case's own expect/forbid names, which would otherwise fail the
+same "unknown target" check. Existing cases that select real build.json
+targets keep asserting the order property; 'noorder' is only for cases
+whose selection is fixture-only names.
 
 Every expect/forbid name must itself exist in build.json, so a renamed
 or deleted target makes the expectations file fail loudly ("unknown
-target") instead of an assertion silently passing forever.
+target") instead of an assertion silently passing forever — except
+under 'noorder', where expect/forbid may name fixture-only targets that
+were never meant to exist in build.json.
 
 Design rule (issue #251 Direction 1 / consolidated plan §2 A1): adding a
 conventional test target must never require editing the expectations
@@ -63,6 +79,7 @@ struct check_case:
 	char* label          # paths joined with spaces, for messages
 	int line             # 'case' line number in the expectations file
 	int want_empty
+	int want_noorder     # skip the build.json known-name/order checks
 	list[char*] paths
 	list[char*] expects
 	list[char*] forbids
@@ -199,6 +216,7 @@ void check_parse_line(char* content, int line_number):
 		check_case* c = new check_case()
 		c.line = line_number
 		c.want_empty = 0
+		c.want_noorder = 0
 		c.paths = new list[char*]
 		c.expects = new list[char*]
 		c.forbids = new list[char*]
@@ -236,6 +254,12 @@ void check_parse_line(char* content, int line_number):
 			return
 		check_current.want_empty = 1
 		return
+	if (strcmp(head, c"noorder") == 0):
+		if (words.length != 1):
+			check_parse_error(line_number, c"'noorder' takes no arguments", c"")
+			return
+		check_current.want_noorder = 1
+		return
 	check_parse_error(line_number, c"unknown directive: ", head)
 
 
@@ -245,7 +269,9 @@ void check_known_target(int line, char* name):
 
 
 # A case must assert something; 'empty' is exclusive; every asserted
-# name must exist in the manifest so renames fail loudly.
+# name must exist in the manifest so renames fail loudly — unless the
+# case opted out with 'noorder' (header comment), whose whole point is
+# asserting fixture-only names build.json does not have.
 void check_validate():
 	if (check_cases.length == 0):
 		check_error(c"no cases in ", check_expectations_path)
@@ -255,10 +281,11 @@ void check_validate():
 				check_parse_error(c.line, c"'empty' cannot be combined with expect/forbid", c"")
 		else if ((c.expects.length == 0) && (c.forbids.length == 0)):
 			check_parse_error(c.line, c"case has no assertions", c"")
-		for char* name in c.expects:
-			check_known_target(c.line, name)
-		for char* forbidden in c.forbids:
-			check_known_target(c.line, forbidden)
+		if (c.want_noorder == 0):
+			for char* name in c.expects:
+				check_known_target(c.line, name)
+			for char* forbidden in c.forbids:
+				check_known_target(c.line, forbidden)
 
 
 int check_parse_expectations():
@@ -368,15 +395,18 @@ void check_run_case(check_case* c):
 		check_case_fail(c, c"non-empty selection printed 'wtest: 0 targets selected' on stderr", c"", selected)
 
 	# Implicit properties: known names only, manifest order, no dupes.
-	int previous = 0
-	for char* name in selected:
-		int index = check_target_index.get(name, 0)
-		if (index == 0):
-			check_case_fail(c, c"selected name is not a build.json target: ", name, selected)
-		else:
-			if (index <= previous):
-				check_case_fail(c, c"selection out of manifest order (or duplicate): ", name, selected)
-			previous = index
+	# Skipped under 'noorder' (header comment): a fixture-only selection
+	# has no relationship to build.json's target set or order to assert.
+	if (c.want_noorder == 0):
+		int previous = 0
+		for char* name in selected:
+			int index = check_target_index.get(name, 0)
+			if (index == 0):
+				check_case_fail(c, c"selected name is not a build.json target: ", name, selected)
+			else:
+				if (index <= previous):
+					check_case_fail(c, c"selection out of manifest order (or duplicate): ", name, selected)
+				previous = index
 
 	# Explicit assertions.
 	if (c.want_empty && (selected.length != 0)):
