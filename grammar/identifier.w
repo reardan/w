@@ -3,6 +3,7 @@
 int import_alias_lookup(char* name);
 int import_alias_member(int alias_index);
 void import_warn_unqualified(char* name);
+void import_warn_transitive(char* name);
 
 
 # Returns the identifier's type index, or -1 when the token is not an identifier.
@@ -17,6 +18,7 @@ int identifier():
 			if (alias_index >= 0):
 				return import_alias_member(alias_index)
 		import_warn_unqualified(token)
+		import_warn_transitive(token)
 		strcpy(last_identifier, token)
 		return sym_get_value(token)
 	return -1

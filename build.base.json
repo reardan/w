@@ -370,6 +370,18 @@
 			]
 		},
 		{
+			"name": "check_imports_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "check", "--quiet", "tests/transitive_import_warn_fixture.w"], "reject_stderr": "warning:"},
+				{"cmd": ["bin/wv2", "check", "--imports", "--quiet", "tests/transitive_import_warn_fixture.w"], "expect_stderr": ["warning: symbol 'transitive_leaf_value' resolves through a transitive import (defined in '", "/tests/transitive_import_leaf.w'); import it directly"]},
+				{"cmd": ["bin/wv2", "check", "--imports", "--quiet", "tests/transitive_import_clean_fixture.w"], "reject_stderr": "warning:"},
+				{"cmd": ["bin/wv2", "check", "--imports", "--json", "--quiet", "tests/transitive_import_warn_fixture.w"], "stdout_file": "bin/check_imports_warn.ndjson", "expect_stdout": ["\"severity\": \"warning\"", "\"message\": \"symbol 'transitive_leaf_value' resolves through a transitive import (defined in '", "/tests/transitive_import_leaf.w'); import it directly\""]},
+				{"cmd": ["bin/wv2", "check", "--imports", "--json", "--quiet", "tests/transitive_import_clean_fixture.w"], "stdout_file": "bin/check_imports_clean.ndjson"},
+				{"cmd": ["test", "!", "-s", "bin/check_imports_clean.ndjson"]}
+			]
+		},
+		{
 			"name": "missing_file_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -1912,6 +1924,7 @@
 				"strict_mode_test",
 				"check_json_test",
 				"check_roots_test",
+				"check_imports_test",
 				"missing_file_test",
 				"symbols_test",
 				"deps_test",

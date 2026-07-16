@@ -460,8 +460,23 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	last_identifier = malloc(8000)
 	last_global_declaration = malloc(8000)
 	be_start(word_size)
+	# --imports must never fire while the auto-imported closure itself is
+	# compiling: auto_import_closure_count (the exclusion list) is not
+	# populated until these two calls return, so a warning fired during
+	# them would wrongly scrutinize the closure's own internal transitive
+	# reliance (structures/hash_table.w and friends lean on each other's
+	# re-exports by design; that is compiler-internal plumbing, not a
+	# user file --imports is meant to audit). Suppress, then restore.
+	int import_check_saved = check_imports_mode
+	check_imports_mode = 0
 	import_module(c"structures.hash_table")
 	import_module(c"structures.w_list")
+	check_imports_mode = import_check_saved
+	# Everything registered so far (hash_table, w_list, and whatever they
+	# transitively import: lib/memory.w, lib/stack_trace.w, ...) is the
+	# auto-imported container-runtime closure that --imports treats like
+	# a direct import for every file (grammar/import_statement.w).
+	auto_import_closure_count = imported_count
 
 	output_fd = 1 /* default: write the ELF to stdout */
 	char* output_path = 0
@@ -587,6 +602,7 @@ int link(int argc, int argv):
 int check_main(int argc, int argv):
 	int i = 2
 	diag_json = 0
+	check_imports_mode = 0
 	# Leading flags in any order; --quiet must be consumed before
 	# link_impl sees the argument list so the x64/arm64 mode banner and
 	# the per-file banner are suppressed from the start.
@@ -599,10 +615,17 @@ int check_main(int argc, int argv):
 		else if (strcmp(*arg, c"--quiet") == 0):
 			quiet_mode = 1
 			i = i + 1
+		else if (strcmp(*arg, c"--imports") == 0):
+			# Opt-in transitive-import check: warn when an identifier
+			# resolves to a symbol defined in a module this file does not
+			# import directly (grammar/import_statement.w,
+			# import_warn_transitive). Off by default.
+			check_imports_mode = 1
+			i = i + 1
 		else:
 			scanning = 0
 	if (argc <= i):
-		println2(c"usage: w check [--json] [--quiet] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w check [--json] [--quiet] [--imports] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
 
