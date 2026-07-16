@@ -99,6 +99,20 @@ int getcwd(char* buf, int size):
 	close(fd)
 	return result
 
+# Darwin fsync (95) only pushes the data to the drive, which may hold
+# it in a volatile cache; durable-to-power-loss persistence needs
+# fcntl F_FULLFSYNC (51, xnu bsd/sys/fcntl.h) per Darwin's fsync(2).
+# Try the full flush first and fall back to plain fsync where the
+# filesystem rejects it (e.g. ENOTSUP on SMB/NFS mounts).
+int fsync(int file):
+	if (sys_fcntl(file, 51, 0) >= 0):
+		return 0
+	return syscall(95, file, 0, 0)
+
+# No fdatasync in the BSD table; fsync's guarantee is a superset.
+int fdatasync(int file):
+	return fsync(file)
+
 # No time(2): gettimeofday (116) with a null timezone; the third XNU
 # argument (mach_absolute_time out-pointer) is unused.
 int linux_time(int* out):

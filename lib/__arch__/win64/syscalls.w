@@ -14,6 +14,7 @@ extern int CreateFileA(char* path, int access, int share, int security, int crea
 extern int CloseHandle(int handle)
 extern int SetFilePointer(int handle, int distance, int* distance_high, int method)
 extern int DeleteFileA(char* path)
+extern int FlushFileBuffers(int handle)
 extern int VirtualAlloc(int addr, int size, int alloc_type, int protect)
 extern int VirtualFree(int addr, int size, int free_type)
 extern int VirtualProtect(int addr, int size, int new_protect, int* old_protect)
@@ -116,6 +117,20 @@ int unlink(char* path):
 	if (DeleteFileA(path) == 0):
 		return -1
 	return 0
+
+
+# FlushFileBuffers forces the file's buffered data to disk, the
+# kernel32 equivalent of fsync(2).
+int fsync(int file):
+	if (FlushFileBuffers(win_handle_for_fd(file)) == 0):
+		return -1
+	return 0
+
+
+# No separate data-only flush on kernel32; fsync's guarantee is a
+# superset.
+int fdatasync(int file):
+	return fsync(file)
 
 
 # Directory syscalls:

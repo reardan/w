@@ -6,8 +6,10 @@ in wal.w (docs/projects/distributed.md, phase 4).
 raft.w is a pure state machine and never calls out, so the adapter
 OBSERVES instead of hooking: after every raft_tick / raft_on_msg /
 raft_propose burst the caller invokes raft_wal_sync(rw, r), which
-diffs the raft's persistent trio against the adapter's shadow copy and
-appends one record per change. Crash recovery replays the records into
+diffs the raft's persistent trio against the adapter's shadow copy,
+appends one record per change, and wal_syncs (fsync) the log whenever
+it wrote — a returned sync is durable to stable storage, the property
+Raft's correctness argument assumes. Crash recovery replays the records into
 a fresh raft (raft_wal_recover); volatile state (commit_index,
 last_applied, role, timers) intentionally stays at its raft_new zero —
 it re-derives from the leader, which is correct per the paper.
@@ -338,11 +340,15 @@ int raft_wal_rewrite(raft_wal* rw, raft* r):
 # Diff the raft's persistent trio against the shadow and append a
 # record per change (STATE first, then TRUNCATE, then APPENDs — see
 # header). A snapshot ahead of the shadow's instead rewrites the wal
-# from scratch (raft_wal_rewrite). Updates the shadow to match and
-# returns the number of records written (0 = already clean).
+# from scratch (raft_wal_rewrite). Whenever records were written the
+# wal is fsynced before returning (wal_sync) — the durability point
+# raft correctness rests on. Updates the shadow to match and returns
+# the number of records written (0 = already clean).
 int raft_wal_sync(raft_wal* rw, raft* r):
 	if (u64_cmp(r.snap_last_index, rw.snap_index) > 0):
-		return raft_wal_rewrite(rw, r)
+		int rewrote = raft_wal_rewrite(rw, r)
+		assert1(wal_sync(rw.wlog) == 1)
+		return rewrote
 	# a shadow base AHEAD of the raft's would mean a second writer or
 	# a raft rebuilt from elsewhere; the adapter owns its wal
 	assert1(u64_eq(rw.snap_index, r.snap_last_index))
@@ -366,6 +372,8 @@ int raft_wal_sync(raft_wal* rw, raft* r):
 		raft_wal_put_append(rw, r, i)
 		wrote = wrote + 1
 		i = i + 1
+	if (wrote > 0):
+		assert1(wal_sync(rw.wlog) == 1)
 	return wrote
 
 
