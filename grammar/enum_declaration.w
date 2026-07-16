@@ -19,8 +19,10 @@ int enum_declaration():
 			get_token()
 			if (accept(c"=")):
 				if ((token[0] == '0') & (token[1] == 'x')):
+					int_literal_width_check(8)
 					value = from_hex(token + 2)
 				else:
+					int_literal_decimal_check()
 					value = atoi(token)
 				get_token()
 			int current_symbol = sym_declare_global(value_name, type_index, 1)

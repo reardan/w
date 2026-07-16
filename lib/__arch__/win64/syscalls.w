@@ -148,11 +148,15 @@ int getcwd(char* buf, int size):
 /* Time */
 
 # Seconds since the Unix epoch. FILETIME counts 100ns units since
-# 1601-01-01; the offset between the epochs is 11644473600 seconds.
+# 1601-01-01; the offset between the epochs is 11644473600 seconds
+# (134774 days). That value overflows the compiler's 32-bit literal
+# decode (grammar/int_literal.w rejects it), so it is computed at
+# runtime as days * seconds-per-day in the target's 64-bit registers —
+# the bare literal used to silently wrap to a wrong constant here.
 int linux_time(int* out):
 	int filetime = 0
 	GetSystemTimeAsFileTime(&filetime)
-	int seconds = filetime / 10000000 - 11644473600
+	int seconds = filetime / 10000000 - 134774 * 86400
 	if (out != 0):
 		*out = seconds
 	return seconds
