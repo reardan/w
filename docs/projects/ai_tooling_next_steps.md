@@ -17,16 +17,6 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
-- **Array-to-pointer decay corruption is fixed.** Issue #220 (found
-  during the buffered-getchar work, #113, 2026-07-09) is closed: PR #225
-  implemented real decay (`coerce()` in `grammar/promote.w` loads the
-  descriptor's data pointer instead of passing the descriptor address)
-  across call arguments, initialization, assignment, return, container
-  literals/push/insert, membership keys and switch cases. Three narrower
-  edge cases were consciously left out of that fix — C-variadic tails,
-  `cast(int, arr)` vs `cast(char*, arr)`, and one arm of a conditional
-  expression — none of which corrupt memory (wrong-but-visible descriptor
-  address, or a lingering warning); they're tracked in issue #229.
 - **Multi-error reporting.** The compiler stops at the first error
   (single-pass, no recovery). Documented limitation; real fix is parser
   recovery, which stays a research project. Cheap partial win: after an
@@ -104,19 +94,6 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
-- **`wtest changed --run` — landed.** `wtest` now takes a `--run` flag:
-  after printing the selection (unchanged), it spawns `bin/wexec` itself
-  with that target list, inheriting stdio so build output streams live,
-  and exits with its status — instead of a caller piping `wtest`'s
-  output through `./wbuild test_changed`'s `xargs -r ./wbuild`. An empty
-  selection is a no-op, matching `xargs -r`'s behavior on empty input.
-  A companion `-f manifest.json` flag (mirroring `bin/wexec`'s own)
-  overrides the manifest for both selection and, under `--run`,
-  execution; it exists so `--run` can be tested in isolation
-  (`wtest_run_test` in `build.base.json`, fixture at
-  `tests/wtest/run_fixture.json`) without ever selecting a real target
-  whose own steps shell out to `bin/wtest`, which would recurse through
-  the live manifest.
 - **First `wtest changed` after a build can take well over the
   documented ~35s.** Building `libs/extras/vcs/merge3.w` (issue #252
   wave 4), `git diff --name-only HEAD | ./bin/wtest changed` timed out
@@ -127,28 +104,6 @@ is a queue, not an archive.
   this was host-specific slowness) -- agents should budget several
   minutes (not the 2-minute tool default) for the FIRST post-build
   `wtest changed` invocation, same as any other cold-cache step.
-- **`.txt` doc-only filter swallowed `tests/asm/` corpus fixtures — fixed
-  (issue #171).** `wtest_doc_only` in `tools/test_map.w` treated every
-  `*.txt` path as documentation (meant for `docs/todo.txt`), so
-  `tests/asm/corpus_{x86,x64,arm64}.txt` — runtime fixture data for the
-  whole asm test suite, not docs — never reached the `tests/asm/` residue
-  rule; `wtest changed` silently selected nothing for a corpus-only
-  change. Found while wiring the new `asm_fuzz_*` property/fuzz targets,
-  which read those same fixtures. Fixed by excluding `tests/asm/` from
-  the doc-only check before the extension test; pinned by a new
-  `wtest_map_test` case (`build.base.json`).
-
-- **Direct-file UX landed (issue #323 stage 1).** `./wbuild [selector]
-  path/to/file.w` and `bin/wtest for path/... [--run]` now work without a
-  `build.json` entry: `wexec` resolves `[selector] <file>.w` to the
-  manifest target that already compiles it (running that target as-is),
-  or synthesizes a throwaway compile(+run, for `*_test.w`) target with
-  the same content-hash caching every other cacheable target gets;
-  `wtest` gained a `for` subcommand identical to `changed` except its
-  path list is required as positional args (no stdin fallback). See
-  `tools/wexec.w`'s "Direct-file UX" section and
-  `docs/projects/build_system_next.md`'s stage-1 inventory for the
-  full remaining-shell-scripts/hand-written-targets roadmap.
 - **A dependency without its own `"inputs"` silently disables caching
   for every target that depends on it — easy to trip over when
   synthesizing or fixturing targets.** `wexec_cache_key` requires every
@@ -177,59 +132,8 @@ is a queue, not an archive.
   manifest archaeology is needed (stage 2 of #323, or any future
   wbuildgen directive-vocabulary decision).
 
-## Debugger surface (consumed by the external integration tools)
-
-- **Conditional breakpoints/hit counts/logpoints have landed** (design:
-  `docs/projects/debugger_conditional_breakpoints.md`, status:
-  implemented). They add new stable, grep-able output lines (`logpoint N
-  hit H: expr = value`, extended `info breakpoints` fields) to the same
-  text protocol — still worth keying a future structured wrapper off, and
-  still worth a `w-debug-wdbg` skill example.
-
 ## Cleanup observed while dogfooding
 
-- **Hex/binary literals wider than 32 bits were silently corrupted —
-  resolved (2026-07-13).** The literal decoder kept only a rolling
-  32-bit window of a literal's digits, so on the x64 target
-  `0x7ff0000000000000` parsed to `0` and `0x000fffffffffffff` parsed
-  to `0xffffffffffffffff` — no warning, no error. Distinct from the
-  documented bit-31 sign-extension gotcha, and a straight bug for
-  64-bit-word targets: until the tokenizer carries 64-bit (or bignum)
-  literal values, wide constants must be assembled at runtime from
-  sub-32-bit pieces (see `lib/sha256.w`'s runtime-built masks).
-  Resolved by `int_literal_width_check()` (grammar/int_literal.w,
-  shared by the expression, enum-value and parameter-default decode
-  paths): any hex or binary literal with more than 32 significant bits
-  is now a compile error instead of wrapping. Leading zeros carry no
-  bits, so `0x00000000ffffffff` still compiles; the
-  `int_literal_width_test` fixtures freeze the error message and
-  `tests/warning_clean_fixture.w` pins the still-legal wide spellings.
-  Extended 2026-07-16: decimal literals get the same guard
-  (`int_literal_decimal_check()` — more than 10 significant digits, or
-  exactly 10 comparing above 4294967295, is the same compile error;
-  boundary spellings pinned by `tests/int_literal_bounds_test.w`), and
-  the sweep for newly-rejected literals caught a real casualty: the
-  win64 FILETIME epoch offset `11644473600` in
-  `lib/__arch__/win64/syscalls.w` had been silently wrapping — win64
-  `linux_time()` returned garbage — and is now computed at runtime.
-- **`parser_generator_w_test` retained every parsed AST — fixed by
-  batching (2026-07-12).** `test_parse_all_tracked_w_files` parsed all
-  tracked `.w` files in one process, retaining every AST, so the
-  32-bit gate segfaulted (exit 139) once tracked source crossed
-  ~3.7MB — six new library files tipped it, and removing ANY one of
-  them "fixed" it, a misleading bisect signature worth remembering.
-  First attempt — freeing per-file ASTs/sources/diagnostics — was
-  correct but catastrophically slow: recursive frees through the
-  first-fit allocator turned the 2-minute gate into a 90-CPU-minute
-  crawl (CI's 30-minute budget times out), and fragmentation kept RSS
-  growing anyway. The landed fix is
-  `tools/parser_generator_w_batches.sh`: rerun the test binary once
-  per 150-file slice of the manifest, bounding memory at batch size
-  forever (~21s total). The residual named here — the allocator's
-  quadratic free/malloc behavior under millions of small blocks — was
-  fixed by #322 (2026-07-16): `lib/memory_freelist.w` now uses 41
-  segregated size-class bins with O(1) free, so the batching is a
-  memory bound, no longer a speed workaround.
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new
@@ -239,9 +143,6 @@ is a queue, not an archive.
   rewrites test sources en masse, grep the touched files for their own
   paths first; longer term, self-referential assertions should read a
   dedicated fixture instead of the test's own source.
-- **One-off targets assuming `bin/` exists — resolved.** The
-  Makefile-to-`wbuild` migration handles it uniformly: `wbuild` and the
-  manifest's `dirs` create `bin/` for every target.
 - **No portable stat()/file-metadata wrapper exists anywhere in the
   tree.** Building `libs/extras/vcs/index.w` (issue #252 wave 3, the
   stat-cached dirstate) needed a file's (size, mtime); no

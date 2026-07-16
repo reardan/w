@@ -1,6 +1,10 @@
 # `libs/extras/compress`: CRC-32, DEFLATE, zlib, and gzip
 
-Status: design doc (2026-07-16), written to satisfy issue #252's own
+Status: stage 1 implemented (2026-07-16 — checksums, conformant
+inflater, zlib/gzip wrappers, stored-blocks deflate; see the test
+targets `compress_*_test`); stages 2b/3 (real DEFLATE compression)
+remain per §9. Originally written as the design doc to satisfy issue
+#252's own
 requirement before this package is picked up: "`libs/extras/compress/`
 — CRC32 + DEFLATE (inflate first): the largest single chunk (~1–2k
 lines), should get its own project doc when picked up." Companion to

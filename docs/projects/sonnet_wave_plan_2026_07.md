@@ -17,6 +17,143 @@ the seed import graph or `grammar/`/`code_generator/` and must merge
 **last and alone** in their wave with `./wbuild verify` (+`verify_x64`)
 green.
 
+## Execution status (2026-07-16/17)
+
+Waves 1–4 executed and merged onto this branch. Every task below was
+verified against the tree at merge time (files present, `build.json`
+targets wired, design docs written) before being logged here. Wave 5 is
+running in parallel with this sync and is **not** included as done —
+see the note at the end of this section.
+
+**Wave 1** (`docs/projects/*`, `lib/shell.w`, `repl.w`, 3 design docs):
+1a doc sync (backlog/plan docs refreshed to shipped state); 1b
+`lib/shell.w` (`sh`/`run`/`cd`/env helpers, `lib/shell_test.w` +
+`shell_test`/`shell_64_test` targets); 1c REPL colon-commands
+(`:symbols`/`:type`/`:time`/`:load`/`:reset`/`:save` in `repl.w`); 1d
+`docs/projects/increment_decrement.md` (#103 design doc); 1e
+`docs/projects/map_default_factory.md` (#327 design doc); 1f
+`docs/projects/utf8_source.md` (#287 audit + design doc).
+
+**Wave 2** (libraries + one seed-graph slot): 2a `libs/extras/vcs/index.w`
+dirstate wired into `tools/wvc.w`'s fast path; 2b `libs/extras/vcs/delta.w`
+binary deltas; 2c `docs/projects/compress.md` design doc; 2d HTTP server
+framework phases 1–2 (`libs/standard/web/connection.w` + `http_server.w`,
+`ConnectionContext`/base `ServerContext` accept loop); 2e `lib/ndarray.w` +
+`lib/ndarray64.w` v1 (dense row-major arrays, #27 substrate); 2f PG
+dispatch-table lexer, #329 milestone 1 (`libs/extras/parser_generator/`,
+seed-safe, merged alone with `verify` green).
+
+**Wave 3** (integration layers): 3a `libs/extras/compress/` stage 1
+(`crc32.w`/`adler32.w`/`inflate.w`/`deflate.w`/`gzip.w`/`zlib.w` — a fully
+conformant RFC 1951 inflater; DEFLATE encoder is fast-mode-only, matching
+the stage-1 scope in the 2c doc); 3b `libs/extras/vcs/merge3.w`
+three-way merge + `wvc merge` porcelain; 3c HTTP server phases 3–5
+(`RequestContext`, routing/handler registration, HTTPS via `tls_accept`,
+keep-alive; `examples/web/https_server.w` migrated onto the framework,
+`http_server_route_test.w` covers an SSE streaming example via
+`libs/standard/web/sse.w`); 3d REPL agent mode + `!` shell escape (`-e`,
+`--json` NDJSON, banner/prompts to stderr off-tty, `!cmd`/`!cd`/`!export`
+desugaring to `lib.shell`); 3e wexec remote build cache
+(`W_CACHE_URL`, read-through HTTP cache over `vcs/cas.w`, local-fallback
+on any transport failure); 3f PG LL(1) committed dispatch, #329
+milestone 2 (FIRST/FOLLOW analysis + left-factored switch dispatch in
+`libs/extras/parser_generator/`; measured `parser_generator_w_test`
+whole-repo sweep speedup 78s → 19s, ~4x, per
+`docs/projects/parser_generator.md`).
+
+**Wave 4** (bigger bets): 4a wbuild/wtest direct-file UX (#323 stage 1):
+`./wbuild path/to/file.w` and `bin/wtest for path/... [--run]` resolve
+through the manifest/deps machinery without a `build.json` entry
+(`tools/wexec.w`'s `wexec_resolve_direct_file`, `tools/test_map.w`'s
+`for` subcommand), plus a committed stage-1 inventory of every remaining
+shell script and hand-written target in `docs/projects/build_system_next.md`;
+4b bool-bitwise style migration stage 1 (generated parsers in
+`libs/extras/parser_generator/` now emit `&&`/`||` for every boolean
+join, removing ~140 sites in `generated_c_parser.w`; opt-in `w check
+--bool-ops` widens the hint to comparison-result operands; measured
+stage-2 worklist ~490 hand-written sites, breakdown in
+`ai_tooling_next_steps.md`); 4c `wvc` push/pull over HTTP (have/want
+negotiation for loose objects, `tools/wvc.w`'s `serve`/`pull`/`push`
+subcommands, built on the 2d/3c HTTP framework); 4d
+`docs/projects/wbuildd.md` design doc (#231: `wbuildd` persistent
+daemon + AST-options assessment, no code); 4e #17 float conformance
+expansion (`tests/float_conformance_test.w`,
+`tests/x64_float64_conformance_test.w` — TestFloat-derived NaN/subnormal/
+rounding-boundary vectors — plus `docs/projects/float.md`'s "Known MVP
+semantic differences" section and F16C requirement writeup).
+
+**Wave 5 — in flight, not part of this sync**: #103 `++`/`--`
+implementation, #189 float-aware `m.add`, #287 UTF-8 stage 1, and this
+documentation sync itself. None of these had landed code in the tree at
+the time this section was written (verified: no `++`/`--` tokens in
+`grammar/`, no float variant of `__w_map_add`, no tokenizer UTF-8
+changes) — do not treat wave 5 as done from this doc alone; check the
+tree or the wave 5 PRs directly.
+
+### Remaining queue
+
+- **PG streaming milestone 3** (#329): listener-callback streaming mode,
+  `mode streaming` directive, `w.pg` port with left-factoring.
+- **#327 implementation**: per the 1e design doc, pending a maintainer
+  surface pick (declaration-site factory vs. `m.setdefault(k)` vs.
+  compiler-lowered auto-vivification).
+- **Bool-bitwise stage 2**: the mechanical ~490-site sweep (breakdown by
+  file in `ai_tooling_next_steps.md`), reviewed in ~50-site chunks;
+  flipping the default comes after.
+- **defhash** (#251, build system Direction 4a): definition-level
+  content hashing (`wv2 defhash`), not yet started.
+- **#123 attach phases 2–6**: `debugger/` target-access seam, symbol
+  recovery, ptrace stepping — heaviest open project, recommend a
+  seam-only refactor PR before any ptrace semantics.
+- **`wvc` gzip/git-interop**: compress-based object packing once 3a's
+  DEFLATE encoder grows past fast-mode-only, and the git-interop gateway
+  compress.md flags as a non-goal "for now."
+- **REPL P4**: websocket server (blocked on the #231 decision made in
+  4d's doc), arm64/darwin REPL (Mac-gated).
+- Plus the standing deferred list in §7 below (unchanged by this
+  program): #210/darwin dir hashing, #28 CUDA, #110 Optimization, #98
+  web-UI debugger, #31 graphics next stages, #16 protobuf, #207 asm
+  into `code_generator/`, multi-error reporting.
+
+### Issue status after this program
+
+- **#252** (VCS): waves 1–4 shipped `cas.w`/`diff.w`/`dag.w`/`tree.w`/
+  `commit.w`/`index.w`/`delta.w`/`merge3.w` plus HTTP sync (have/want
+  push/pull) and `wvc` porcelain (`status`/`snapshot`/`merge`/`serve`/
+  `pull`/`push`). Remaining: compress-based object packing (blocked on
+  3a's DEFLATE encoder growing past fast-mode), git interop (explicitly
+  a non-goal "for now" per `docs/projects/version_control.md`).
+- **#235** (HTTP server framework): complete — phases 1–5 landed
+  (`ConnectionContext`/`ServerContext`/`RequestContext`, routing, HTTPS,
+  keep-alive) with `examples/web/https_server.w` migrated onto it and an
+  SSE streaming example.
+- **#329** (parser generator streaming): milestone 1 (dispatch-table
+  lexer) and milestone 2 (LL(1) committed dispatch, ~4x sweep speedup)
+  shipped; milestone 3 (streaming mode) queued, not started.
+- **#276** (REPL): P0–P3 complete, including agent mode (`-e`/`--json`/
+  `!` escape); P4 remaining (websocket server pending the #231 decision,
+  arm64/darwin REPL — Mac-gated).
+- **#251** (build system): Direction 1 (compiler as source of truth)
+  and D3-1 (SHA-256 cache keys) were complete pre-program; D3-2 (shared
+  HTTP build cache, wave 3e) is now complete, and direct-file UX (wave
+  4a) shipped on top of Direction 1. Remaining: Direction 2 (traced
+  dependencies), 4a defhash, 4c working-tree watcher (blocked on
+  defhash).
+- **#323** (build system de-churn): stage 1 (direct-file UX) plus the
+  committed migration inventory shipped (wave 4a). Remaining work is
+  staged in `docs/projects/build_system_next.md`.
+- **#17** (float): conformance vectors + docs shipped (wave 4e).
+  Remaining: `bfloat16`, explicitly deferred pending a GPU-backend
+  decision.
+- **#103**, **#287**, **#189**: design docs shipped in wave 1 (1d, 1f)
+  or scoped for wave 5 (#189); implementations are in flight in wave 5,
+  not yet in this tree.
+- **#327**, **#231**: design docs shipped (wave 1e, wave 4d); both await
+  a maintainer decision before implementation.
+- **#27** (ndarray): v1 substrate shipped (wave 2e) — `lib/ndarray.w`/
+  `lib/ndarray64.w`, stages 1–2 per `docs/projects/ndarray.md`. Grammar
+  sugar remains explicitly out of scope.
+
 ## 0. Verified already-landed (do NOT schedule; several docs still list these as open)
 
 - Consolidated plan Thread A: A1 (`wtest_map_check` + `noorder`), A2

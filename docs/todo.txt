@@ -202,6 +202,15 @@ current state:
 				sampling, bit-identical across targets)
 			descriptive statistics (lib/stats.w: accumulator, variance,
 				quantiles; design: docs/projects/stats.md)
+			dense multi-dimensional arrays (lib/ndarray.w/ndarray64.w v1:
+				ndf/ndi/ndf64, rank 1-4, matmul on 2-D; design/status:
+				docs/projects/ndarray.md, issue #27)
+			shell helpers (lib/shell.w: sh(cmd), run(argv), cd, env get/set
+				on top of lib/process.w/lib/env.w)
+			compression (libs/extras/compress/: CRC-32, Adler-32, a
+				conformant DEFLATE inflater (stored/fixed/dynamic Huffman),
+				gzip/zlib wrapping; encoder is fast-mode-only so far;
+				design: docs/projects/compress.md)
 		repl:
 			./bin/wv2 repl.w -o bin/repl && ./bin/repl builds and runs repl.w
 			./wbuild repl_test verifies REPL interaction and error recovery
@@ -224,6 +233,30 @@ current state:
 				lib/line_edit.w, history persisted to ~/.w_history)
 			x64 repl (./bin/wv2 x64 repl.w -o bin/repl64; ./wbuild repl_test_x64): word-size-aware
 				buffer (MAP_32BIT) and real x64 repl_setjmp/longjmp stubs
+			colon-commands: :symbols, :type expr, :time expr, :load file,
+				:reset, :save file (issue #276)
+			scripted/agent mode: -e "entry" one-shot, --json NDJSON per
+				entry, banner/prompts move to stderr off-tty (issue #276)
+			'!' shell escape: !cmd runs through lib/shell with inherited
+				stdio, !cd/!export intercepted (issue #276)
+
+	vcs (libs/extras/vcs/, tools/wvc.w; design: docs/projects/version_control.md, issue #252):
+		working:
+			content-addressed object store (cas.w), diff (diff.w), commit
+				DAG + merge-base (dag.w), working trees (tree.w),
+				commits (commit.w)
+			dirstate index with a (size, mtime) stat cache for O(changed)
+				status (index.w)
+			binary deltas: rolling-hash block table, copy/insert opcodes,
+				bounded-depth chains (delta.w)
+			three-way merge over diff.w hunks with conflict markers
+				(merge3.w)
+			wvc porcelain: status/snapshot/merge/serve/pull/push; push/pull
+				do have/want negotiation for loose objects over HTTP
+		remaining:
+			compress-based object packing (blocked on the DEFLATE encoder
+				growing past fast-mode-only)
+			git interop (non-goal for now; needs zlib + SHA-1 + pack format)
 
 	current limitations:
 		pointers and structs:
@@ -307,7 +340,9 @@ current state:
 
 	future data structures:
 		dict (done: built-in map iterates in insertion order, issue #145)
-		matrix / multi-dimensional arrays (design: docs/projects/ndarray.md)
+		matrix / multi-dimensional arrays (v1 done: lib/ndarray.w/
+			ndarray64.w library substrate, issue #27; grammar-level
+			indexing sugar still future work; design: docs/projects/ndarray.md)
 		statistics (done: lib/stats.w, design: docs/projects/stats.md)
 
 	future platforms:
@@ -323,8 +358,11 @@ current state:
 			Content-Length framing (lib/framing.w)
 			JSON-RPC 2.0 servers, blocking or event-loop driven (lib/json_rpc.w)
 			poll-based event loop with timers and cancellation (lib/event_loop.w)
+			http client (libs/standard/web/http_client.w)
+			http/https server framework (libs/standard/web/connection.w +
+				http_server.w: ServerContext accept loop, RequestContext/
+				routing, keep-alive, HTTPS via tls_accept; issue #235)
 		remaining:
-			http client
 			socketcall cleanup
 
 	web ui:
