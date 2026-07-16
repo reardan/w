@@ -126,24 +126,28 @@ is a queue, not an archive.
   miss. Add a `--keep-going` mode (run everything, summarize failures
   at the end) for test-suite runs, and print how many targets were
   skipped when stopping early.
-- **The compiler can exit 1 with no diagnostic at all.** The pre-refresh
-  darwin seed compiling current `w.w` (post-#128 `libs/extras`) printed
-  only the `compiling 'w.w'` banner and exited 1 — nothing on stdout or
-  stderr (2026-07-09; the same constructs in a small probe file produced
-  a proper `list field 'append' not found` error, so some deep error
-  path exits without a message). Audit compiler exit paths so every
-  failure prints at least a one-line diagnostic; a silent exit cost a
-  full bisect to find the offending construct.
-- **Transitive-import reliance is invisible until it breaks.** Three
-  times on 2026-07-09 alone, removing an import from one module broke a
-  *different* file that had silently resolved symbols through it:
-  `tools/lsp/w_lsp.w` used `hash_map` via `structures/json.w` (#145),
-  and `bignum_test`/`type_table_test`/`c_preprocessor_test` used
-  `error()`/`word_size` via `lib/testing.w`'s old compiler imports
-  (#147). The unqualified-alias warning covers aliased imports only;
-  plain imports re-export everything silently. A `w check` mode (or
-  `windex` query) that flags symbols resolved from modules the file
-  does not import directly would catch this class before CI does.
+- **The compiler can exit 1 with no diagnostic at all — partially
+  addressed.** The pre-refresh darwin seed compiling current `w.w`
+  (post-#128 `libs/extras`) printed only the `compiling 'w.w'` banner
+  and exited 1 — nothing on stdout or stderr (2026-07-09; the same
+  constructs in a small probe file produced a proper `list field
+  'append' not found` error, so some deep error path exits without a
+  message). Three concrete silent-exit gaps found while auditing this
+  are now fixed (2026-07-16): every backend finisher
+  (`elf_finish`/`elf_finish_64`/`elf_finish_arm64`/`pe_finish_64`/
+  `macho_finish_arm64`/`wasm_finish`) now checks its output-binary
+  `write()` and prints `could not write output file` instead of exiting
+  0 with a truncated image (ce18e1e); the tokenizer's `c"..."`/`s"..."`
+  prefixed-string scanner reports `unterminated string literal` at EOF
+  instead of spinning forever with no output (f7076b9, pinned by
+  `prefixed_string_literal_test`); and `lib/memory`'s allocator prints a
+  one-line notice before returning null on OOM instead of letting every
+  caller's assumed-infallible `malloc()` segfault with no diagnostic
+  (35ed0f5). What remains: the original 2026-07-09 darwin-seed report
+  itself hasn't been independently re-reproduced to confirm one of these
+  three covers it, and no one has yet done the full audit of the ~95
+  `error()` call sites (`ai_tooling.md`'s current-state notes) for other
+  silent-exit paths beyond these three.
 - **`w check` on multiple root files reports bogus `symbol redefined`
   errors.** `bin/wv2 check --json w.w compiler/compiler.w` fails with
   `symbol redefined: 'file_not_found_error'` because check links all

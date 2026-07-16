@@ -42,6 +42,47 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- **`wtest changed` cold-cache progress note** (2026-07-16): the first
+  `changed` invocation to touch an import closure after a build (or a
+  large merge) prints one `wtest: building import-closure cache (first
+  run after a build; this can take a minute)...` line to stderr before
+  the `bin/wv2 deps` shell-outs that can otherwise take minutes on a big
+  tree with nothing printed — previously indistinguishable from a hang.
+  A warm cache stays silent. `tools/test_map.w`.
+- **`./wbuild test_changed` flag forwarding + `wtest --available`**
+  (2026-07-16): flags after `test_changed` (e.g. `--keep-going`) now
+  reach the final `./wbuild` invocation instead of being swallowed by
+  the hard-coded `xargs -r ./wbuild` pipeline. `bin/wtest` also gained
+  an opt-in `--available` flag that drops selected targets whose runner
+  (`qemu-aarch64-static`, `wine`/`wine64`, a `tools/mac/` script) is not
+  present on the host, printing a `wtest: dropped N unavailable
+  target(s) (<reason>)` line per reason; `./wbuild test_changed` passes
+  `--available` by default, so a printed selection is runnable as-is.
+  `tools/test_map.w`, `wbuild`; pinned by `wtest_map_test` cases.
+- **`wtest_map_check` `noorder` opt-out** (2026-07-16): a `-f`
+  fixture-manifest case can add a `noorder` line to skip the checker's
+  implicit "selected names are real `build.json` targets, in
+  `build.json`'s relative order" properties, so a fixture-only case can
+  use self-descriptive target names instead of being forced to reuse
+  real ones. `tools/wtest_map_check.w`.
+- **`wexec --ordered-output`** (2026-07-16): under `-j` > 1, buffers
+  each target's whole captured stdout/stderr and prints it as one
+  atomic block headed by `wexec: --- <target> ---` in completion order,
+  instead of the default start-order live streaming that could
+  interleave a finished target's output next to an unrelated target's
+  failure and misattribute the failure during fixture debugging.
+  Default (streaming) output is unchanged; composes with
+  `--keep-going`. `tools/wexec.w`.
+- **`w check --imports`** (2026-07-16): opt-in warning for the
+  transitive-import-reliance failure class (#145, #147) — an
+  unqualified identifier that resolves to a global symbol whose
+  declaring module is neither the referencing file itself, one of its
+  direct imports, nor the auto-imported container-runtime closure now
+  warns `symbol 'X' resolves through a transitive import (defined in
+  '<module>'); import it directly`. Off by default, so plain
+  `check`/build output is unchanged. `compiler/compiler.w`,
+  `grammar/import_statement.w`, `compiler/symbol_table.w`; covered by
+  `check_imports_test`.
 - `--quiet` flag (2026-07-10): `w check --json --quiet file.w` (and any
   other invocation carrying `--quiet`) suppresses the non-diagnostic
   stderr chatter — the per-file `compiling '...'` banner, the
