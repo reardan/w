@@ -279,3 +279,134 @@ void test_wvc_status_on_missing_repo_fails():
 	assert_equal(1, r.status)
 	wvct_assert_contains(r.stderr_text, c"wvc: cannot open object store")
 	process_result_free(r)
+
+
+char* wvct_index_dir_cache
+char* wvct_index_dir():
+	if (wvct_index_dir_cache == 0):
+		string_builder* p = string_new()
+		string_append(p, c"bin/wvc_index_e2e_test_")
+		string_append_int(p, getpid())
+		wvct_index_dir_cache = p.data
+		free(p)
+	return wvct_index_dir_cache
+
+
+# Wave 3 (issue #252, libs/extras/vcs/index.w): proves the fast-path/
+# fallback wiring in tools/wvc.w end to end, not just the library in
+# isolation (vcs_index_test.w covers the library). `snapshot` refreshes
+# ".wvc/index"; `status` uses it when readable (touching exactly one
+# tracked file among several is reported as exactly that one change,
+# nothing else), and falls back to the pre-index-era slow path -- with
+# no crash and the same correct report -- when the index file is
+# deleted out from under it.
+void test_wvc_status_fast_path_and_index_fallback():
+	char* dir = wvct_index_dir()
+
+	list[char*] preclean = new list[char*]
+	preclean.push(c"/bin/rm")
+	preclean.push(c"-rf")
+	preclean.push(dir)
+	char** preclean_argv = wvct_argv(preclean)
+	process_result* pre = process_run(c"/bin/rm", preclean_argv, 0, 0, 10000)
+	if (pre != 0):
+		process_result_free(pre)
+	free(cast(void*, preclean_argv))
+
+	list[char*] init_args = new list[char*]
+	init_args.push(c"wvc")
+	init_args.push(c"init")
+	init_args.push(dir)
+	process_result* r_init = wvct_run(init_args, 0)
+	assert_equal(0, r_init.status)
+	process_result_free(r_init)
+
+	char* a_path = path_join(dir, c"a.txt")
+	char* b_path = path_join(dir, c"b.txt")
+	char* c_path = path_join(dir, c"c.txt")
+	assert_equal(1, file_write_text(a_path, c"alpha\n"))
+	assert_equal(1, file_write_text(b_path, c"beta\n"))
+	assert_equal(1, file_write_text(c_path, c"gamma\n"))
+
+	list[char*] snap_args = new list[char*]
+	snap_args.push(c"wvc")
+	snap_args.push(c"snapshot")
+	snap_args.push(dir)
+	snap_args.push(c"-m")
+	snap_args.push(c"first commit")
+	process_result* r_snap = wvct_run(snap_args, 0)
+	assert_equal(0, r_snap.status)
+	process_result_free(r_snap)
+
+	# snapshot refreshed (created) the dirstate.
+	char* index_path = path_join(dir, c".wvc/index")
+	assert_equal(1, path_exists(index_path))
+
+	# Touch exactly one of the three tracked files.
+	assert_equal(1, file_write_text(b_path, c"beta-changed\n"))
+
+	list[char*] status_args = new list[char*]
+	status_args.push(c"wvc")
+	status_args.push(c"status")
+	status_args.push(dir)
+	process_result* r_status = wvct_run(status_args, 0)
+	assert_equal(0, r_status.status)
+	wvct_assert_contains(r_status.stdout_text, c"M b.txt")
+	assert_equal(-1, wvct_index_of(r_status.stdout_text, c"a.txt"))
+	assert_equal(-1, wvct_index_of(r_status.stdout_text, c"c.txt"))
+	process_result_free(r_status)
+
+	# Re-running status with nothing further changed reports the exact
+	# same single change again -- status's own write-back of the
+	# refreshed index (it persists what it just computed) does not
+	# desync itself or spuriously flag anything else.
+	process_result* r_status2 = wvct_run(status_args, 0)
+	assert_equal(0, r_status2.status)
+	wvct_assert_contains(r_status2.stdout_text, c"M b.txt")
+	assert_equal(-1, wvct_index_of(r_status2.stdout_text, c"a.txt"))
+	assert_equal(-1, wvct_index_of(r_status2.stdout_text, c"c.txt"))
+	process_result_free(r_status2)
+
+	# Snapshotting now (committing b.txt's change) and checking status
+	# again DOES go clean -- confirms the fast path's refreshed tree id
+	# was correct all along, not just "some non-empty diff".
+	list[char*] snap2_args = new list[char*]
+	snap2_args.push(c"wvc")
+	snap2_args.push(c"snapshot")
+	snap2_args.push(dir)
+	snap2_args.push(c"-m")
+	snap2_args.push(c"second commit")
+	process_result* r_snap2 = wvct_run(snap2_args, 0)
+	assert_equal(0, r_snap2.status)
+	process_result_free(r_snap2)
+	process_result* r_status_clean = wvct_run(status_args, 0)
+	assert_equal(0, r_status_clean.status)
+	wvct_assert_contains(r_status_clean.stdout_text, c"nothing to snapshot, working tree clean")
+	process_result_free(r_status_clean)
+
+	# Delete the dirstate: status must still work, via the slow path.
+	assert_equal(0, unlink(index_path))
+	assert_equal(1, file_write_text(a_path, c"alpha-changed\n"))
+	process_result* r_status3 = wvct_run(status_args, 0)
+	assert_equal(0, r_status3.status)
+	wvct_assert_contains(r_status3.stdout_text, c"M a.txt")
+	process_result_free(r_status3)
+	# The slow path does not itself recreate the index (only `snapshot`
+	# does -- see wvc.w's header comment).
+	assert_equal(0, path_exists(index_path))
+
+	free(a_path)
+	free(b_path)
+	free(c_path)
+	free(index_path)
+
+	list[char*] postclean = new list[char*]
+	postclean.push(c"/bin/rm")
+	postclean.push(c"-rf")
+	postclean.push(dir)
+	char** postclean_argv = wvct_argv(postclean)
+	process_result* post = process_run(c"/bin/rm", postclean_argv, 0, 0, 10000)
+	assert1(post != 0)
+	assert_equal(0, post.status)
+	process_result_free(post)
+	free(cast(void*, postclean_argv))

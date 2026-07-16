@@ -1324,7 +1324,16 @@
 				{"cmd": ["bin/repl", "tests/repl_fixture.w", "--no_main"], "stdin": ":quit\n", "reject_stdout": "fixture main ran"},
 				{"cmd": ["bin/repl"], "stdin": "int v = 7\ndebugger\np v\nc\n:quit\n", "expect_stdout": ["breakpoint hit at eip=", "v = 7"]},
 				{"cmd": ["bin/repl"], "stdin": "int v = 7\ndebugger\np v + 35\nc\nv + 36\n:quit\n", "expect_stdout": ["= 42", "43"]},
-				{"cmd": ["bin/repl"], "stdin": "int f():\n\treturn 5\n\ndebugger\nb f\nc\nf()\nc\n:quit\n", "expect_stdout": ["hit breakpoint 1 at f", "5"]}
+				{"cmd": ["bin/repl"], "stdin": "int f():\n\treturn 5\n\ndebugger\nb f\nc\nf()\nc\n:quit\n", "expect_stdout": ["hit breakpoint 1 at f", "5"]},
+				{"cmd": ["bin/repl"], "stdin": "int repl_test_symbol_marker = 42\n:symbols\n:quit\n", "expect_stderr": "repl_test_symbol_marker"},
+				{"cmd": ["bin/repl"], "stdin": "int x = 5\n:type x + 1\n:type \"hi\"\n:quit\n", "expect_stdout": ["int", "string"]},
+				{"cmd": ["bin/repl"], "stdin": "int side_marker = 0\nvoid bump_marker():\n\tside_marker = side_marker + 1\n\n:type bump_marker()\nside_marker\n:quit\n", "expect_stdout": ["void", "0"]},
+				{"cmd": ["bin/repl"], "stdin": ":time 40 + 2\n:quit\n", "expect_stdout": ["42", "elapsed:", "ms"]},
+				{"cmd": ["bin/repl"], "stdin": ":load tests/repl_fixture.w\nfixture_helper(21)\nfixture_global\n:quit\n", "expect_stdout": ["fixture main ran", "42", "11"]},
+				{"cmd": ["bin/repl"], "stdin": ":load /no/such/file_xyz.w\nprint(c\"still alive\\x0a\")\n:quit\n", "expect_stdout": ["no such file", "still alive"]},
+				{"cmd": ["bin/repl"], "stdin": "int q = 9\nq\n:reset\nq\n99 + 1\n:quit\n", "expect_stdout": ["9", "100"]},
+				{"cmd": ["bin/repl"], "stdin": "int save_marker = 555\nsave_marker\n:save bin/repl_save_test.w\n:quit\n", "expect_stdout": ["555", "saved 2 entries"]},
+				{"cmd": ["sh", "-c", "grep -q save_marker bin/repl_save_test.w"]}
 			]
 		},
 		{
@@ -1363,7 +1372,16 @@
 				{"cmd": ["sh", "-c", "COLUMNS=20 script -qc './bin/repl64' /dev/null"], "stdin": "int qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq = 42\nqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq + 1\n:quit\n", "expect_stdout": "43"},
 				{"cmd": ["bin/repl64"], "stdin": "int v = 7\ndebugger\np v\nc\n:quit\n", "expect_stdout": ["breakpoint hit at eip=", "v = 7"]},
 				{"cmd": ["bin/repl64"], "stdin": "int v = 7\ndebugger\np v + 35\nc\nv + 36\n:quit\n", "expect_stdout": ["= 42", "43"]},
-				{"cmd": ["bin/repl64"], "stdin": "int f():\n\treturn 5\n\ndebugger\nb f\nc\nf()\nc\n:quit\n", "expect_stdout": ["hit breakpoint 1 at f", "5"]}
+				{"cmd": ["bin/repl64"], "stdin": "int f():\n\treturn 5\n\ndebugger\nb f\nc\nf()\nc\n:quit\n", "expect_stdout": ["hit breakpoint 1 at f", "5"]},
+				{"cmd": ["bin/repl64"], "stdin": "int repl_test_symbol_marker = 42\n:symbols\n:quit\n", "expect_stderr": "repl_test_symbol_marker"},
+				{"cmd": ["bin/repl64"], "stdin": "int x = 5\n:type x + 1\n:type \"hi\"\n:quit\n", "expect_stdout": ["int", "string"]},
+				{"cmd": ["bin/repl64"], "stdin": "int side_marker = 0\nvoid bump_marker():\n\tside_marker = side_marker + 1\n\n:type bump_marker()\nside_marker\n:quit\n", "expect_stdout": ["void", "0"]},
+				{"cmd": ["bin/repl64"], "stdin": ":time 40 + 2\n:quit\n", "expect_stdout": ["42", "elapsed:", "ms"]},
+				{"cmd": ["bin/repl64"], "stdin": ":load tests/repl_fixture.w\nfixture_helper(21)\nfixture_global\n:quit\n", "expect_stdout": ["fixture main ran", "42", "11"]},
+				{"cmd": ["bin/repl64"], "stdin": ":load /no/such/file_xyz.w\nprint(c\"still alive\\x0a\")\n:quit\n", "expect_stdout": ["no such file", "still alive"]},
+				{"cmd": ["bin/repl64"], "stdin": "int q = 9\nq\n:reset\nq\n99 + 1\n:quit\n", "expect_stdout": ["9", "100"]},
+				{"cmd": ["bin/repl64"], "stdin": "int save_marker = 555\nsave_marker\n:save bin/repl_save_test64.w\n:quit\n", "expect_stdout": ["555", "saved 2 entries"]},
+				{"cmd": ["sh", "-c", "grep -q save_marker bin/repl_save_test64.w"]}
 			]
 		},
 		{
@@ -1514,6 +1532,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/x64_fmath64_test.w", "-o", "bin/x64_fmath64_test"]},
 				{"cmd": ["bin/x64_fmath64_test"], "expect_stdout": "x64 fmath64 OK"}
+			]
+		},
+		{
+			"name": "x64_ndarray64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_ndarray64_test.w", "-o", "bin/x64_ndarray64_test"]},
+				{"cmd": ["bin/x64_ndarray64_test"], "expect_stdout": "x64 ndarray64 OK"}
 			]
 		},
 		{
@@ -1722,6 +1748,7 @@
 				"x64_test",
 				"x64_float_test",
 				"x64_fmath64_test",
+				"x64_ndarray64_test",
 				"x64_int64_test",
 				"x64_map_float64_test",
 				"dynamic_test_x64",
@@ -1771,6 +1798,7 @@
 				"generics_inference_64_test",
 				"hash_table_64_test",
 				"http_client_64_test",
+				"http_server_64_test",
 				"int_literal_bounds_64_test",
 				"json_64_test",
 				"json_codec_64_test",
@@ -1790,6 +1818,7 @@
 				"memtable_64_test",
 				"method_chaining_64_test",
 				"monotime_64_test",
+				"ndarray_64_test",
 				"nested_ctor_64_test",
 				"net_64_test",
 				"operator_overload_64_test",
@@ -1817,6 +1846,7 @@
 				"retry_64_test",
 				"ring_64_test",
 				"sha1_64_test",
+				"shell_64_test",
 				"sim_64_test",
 				"sse_64_test",
 				"sstable_64_test",
@@ -1836,7 +1866,9 @@
 				"vcs_cas_64_test",
 				"vcs_commit_64_test",
 				"vcs_dag_64_test",
+				"vcs_delta_64_test",
 				"vcs_diff_64_test",
+				"vcs_index_64_test",
 				"vcs_tree_64_test",
 				"wal_64_test",
 				"wbuild_directive_64_test"
@@ -2120,6 +2152,7 @@
 				"hkdf_test",
 				"hmac_test",
 				"http_client_test",
+				"http_server_test",
 				"infer_test",
 				"int_literal_bounds_test",
 				"json_codec_test",
@@ -2142,6 +2175,10 @@
 				"midline_tab_test",
 				"monotime_test",
 				"multilayer_test",
+				"ndarray_bounds_get_trap_test",
+				"ndarray_bounds_set_trap_test",
+				"ndarray_extent_trap_test",
+				"ndarray_test",
 				"nested_ctor_test",
 				"net_test",
 				"operator_overload_test",
@@ -2172,6 +2209,7 @@
 				"sha1_test",
 				"sha256_test",
 				"sha2_test",
+				"shell_test",
 				"sim_test",
 				"sse_test",
 				"sstable_test",
@@ -2194,7 +2232,9 @@
 				"vcs_cas_test",
 				"vcs_commit_test",
 				"vcs_dag_test",
+				"vcs_delta_test",
 				"vcs_diff_test",
+				"vcs_index_test",
 				"vcs_tree_test",
 				"wal_test",
 				"wbuild_directive_test",
@@ -2845,6 +2885,22 @@
 			]
 		},
 		{
+			"name": "http_server_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/http_server_test.w", "-o", "bin/http_server_64_test"]},
+				{"cmd": ["bin/http_server_64_test"]}
+			]
+		},
+		{
+			"name": "http_server_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/http_server_test.w", "-o", "bin/http_server_test"]},
+				{"cmd": ["bin/http_server_test"]}
+			]
+		},
+		{
 			"name": "infer_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3170,6 +3226,46 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/multilayer_test.w", "-o", "bin/multilayer_test"]},
 				{"cmd": ["bin/multilayer_test"]}
+			]
+		},
+		{
+			"name": "ndarray_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/ndarray_test.w", "-o", "bin/ndarray_64_test"]},
+				{"cmd": ["bin/ndarray_64_test"]}
+			]
+		},
+		{
+			"name": "ndarray_bounds_get_trap_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ndarray_bounds_get_trap_test.w", "-o", "bin/ndarray_bounds_get_trap_test"]},
+				{"cmd": ["bin/ndarray_bounds_get_trap_test"], "expect_fail": true, "expect_stderr": ["ndf_at2: index out of range", "stack trace (most recent call first):", "at main ("]}
+			]
+		},
+		{
+			"name": "ndarray_bounds_set_trap_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ndarray_bounds_set_trap_test.w", "-o", "bin/ndarray_bounds_set_trap_test"]},
+				{"cmd": ["bin/ndarray_bounds_set_trap_test"], "expect_fail": true, "expect_stderr": ["ndf_set2: index out of range", "stack trace (most recent call first):", "at main ("]}
+			]
+		},
+		{
+			"name": "ndarray_extent_trap_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ndarray_extent_trap_test.w", "-o", "bin/ndarray_extent_trap_test"]},
+				{"cmd": ["bin/ndarray_extent_trap_test"], "expect_fail": true, "expect_stderr": ["ndarray: extents must be positive", "stack trace (most recent call first):", "at main ("]}
+			]
+		},
+		{
+			"name": "ndarray_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/ndarray_test.w", "-o", "bin/ndarray_test"]},
+				{"cmd": ["bin/ndarray_test"]}
 			]
 		},
 		{
@@ -3654,6 +3750,22 @@
 			]
 		},
 		{
+			"name": "shell_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/shell_test.w", "-o", "bin/shell_64_test"]},
+				{"cmd": ["bin/shell_64_test"]}
+			]
+		},
+		{
+			"name": "shell_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/shell_test.w", "-o", "bin/shell_test"]},
+				{"cmd": ["bin/shell_test"]}
+			]
+		},
+		{
 			"name": "sim_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3990,6 +4102,22 @@
 			]
 		},
 		{
+			"name": "vcs_delta_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/vcs_delta_test.w", "-o", "bin/vcs_delta_64_test"]},
+				{"cmd": ["bin/vcs_delta_64_test"]}
+			]
+		},
+		{
+			"name": "vcs_delta_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/vcs_delta_test.w", "-o", "bin/vcs_delta_test"]},
+				{"cmd": ["bin/vcs_delta_test"]}
+			]
+		},
+		{
 			"name": "vcs_diff_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -4003,6 +4131,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_diff_test.w", "-o", "bin/vcs_diff_test"]},
 				{"cmd": ["bin/vcs_diff_test"]}
+			]
+		},
+		{
+			"name": "vcs_index_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/vcs_index_test.w", "-o", "bin/vcs_index_64_test"]},
+				{"cmd": ["bin/vcs_index_64_test"]}
+			]
+		},
+		{
+			"name": "vcs_index_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/vcs_index_test.w", "-o", "bin/vcs_index_test"]},
+				{"cmd": ["bin/vcs_index_test"]}
 			]
 		},
 		{

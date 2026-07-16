@@ -68,31 +68,6 @@ is a queue, not an archive.
   which read those same fixtures. Fixed by excluding `tests/asm/` from
   the doc-only check before the extension test; pinned by a new
   `wtest_map_test` case (`build.base.json`).
-- **`wtest changed`'s deps cache cold-starts slowly after large merges.**
-  Two agents hit first-run `bin/wv2 deps` closure rebuilds exceeding 2
-  minutes (docs advertise ~35s) right after a many-file merge landed
-  (2026-07-16). Not a correctness issue — later runs are sub-second —
-  but the first `wtest changed` after an integration can look hung;
-  consider a one-line progress note while the cache warms.
-- **`./wbuild test_changed` cannot pass `--keep-going` through.** The
-  wrapper hard-codes `xargs -r ./wbuild`, so a selection that hits one
-  environment-gap target (missing qemu) abandons the rest; the caller
-  has to replicate the pipeline by hand to add the flag (2026-07-16).
-  Teach the wrapper to forward flags after the subcommand to wexec.
-- **`wtest changed` selects targets the environment cannot run.**
-  Touching any `lib/__arch__/*/syscalls.w` (or other whole-closure
-  files) selects arm64/darwin/wine run-targets that need qemu, a Mac, or
-  wine; there is no "skip unavailable runtimes" story, so agents either
-  chase documented environment gaps or hand-prune the selection
-  (2026-07-16). A `--available` filter (probe for qemu/wine/Mac once,
-  drop targets whose runner is absent, print what was dropped) would
-  make selections runnable as printed.
-- **`wtest_map_check` fixture manifests are order-coupled to the real
-  build.json.** The checker's implicit manifest-order property forces
-  `-f` fixture manifests to reuse real target names in build.json
-  relative order — a hidden coupling when writing new cases, documented
-  in the checker header but still awkward (2026-07-16); a per-case
-  opt-out or fixture-aware ordering would help.
 
 ## Debugger surface (consumed by the external integration tools)
 
@@ -159,6 +134,24 @@ is a queue, not an archive.
 - **One-off targets assuming `bin/` exists — resolved.** The
   Makefile-to-`wbuild` migration handles it uniformly: `wbuild` and the
   manifest's `dirs` create `bin/` for every target.
+- **No portable stat()/file-metadata wrapper exists anywhere in the
+  tree.** Building `libs/extras/vcs/index.w` (issue #252 wave 3, the
+  stat-cached dirstate) needed a file's (size, mtime); no
+  `lib/__arch__/*/syscalls.w` wraps `stat`/`fstat`/`statx` -- every
+  prior caller that wanted a size used `lib.lib`'s `file_size()`
+  (seek-to-end, not a real stat) and no module reads mtime at all.
+  Landed a scoped fix rather than a general one:
+  `libs/extras/vcs/__arch__/{x86,x64}/fsops.w:vcs_statx` (Linux `statx`,
+  syscall numbers 383/i386 and 332/x86-64) -- `struct statx`'s layout is
+  identical on 32- and 64-bit Linux by design (verified against glibc's
+  `stat(2)` on the dev host), so only the syscall NUMBER is per-arch,
+  cheaper than hand-deriving the legacy 32-/64-bit `struct stat`
+  layouts. arm64/win64/wasm are unimplemented, matching tree.w's/
+  commit.w's own x86/x64-only directory-walk scope. A general
+  `lib/stat.w` (mtime/size/mode/is-dir for any caller, not just
+  libs/extras/vcs) is future work once a second consumer needs it
+  outside vcs/ -- tree.w's own header comment already flags the
+  executable bit as unlearned for the same underlying reason.
 - **wexec directory hashing is Linux-layout only.** Found while porting
   the darwin triad: `wexec_collect_dir` (tools/wexec.w) parses the Linux
   getdents record layout, so on macOS — where the `getdents` shim
@@ -169,41 +162,49 @@ is a queue, not an archive.
   content-hash caching on macOS, add per-arch dirent accessors
   (`reclen`/`name`/`kind`) next to each `getdents` shim in
   `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
-- **wexec's interleaved parallel output can misattribute step
-  failures.** Under `-j`, a passing step's stderr line rendered next to
-  a later step's assertion made a green fixture case read as a
-  cross-step failure while debugging expectations (2026-07-16). A
-  `--no-parallel`/ordered-log mode (buffer each step's output, print in
-  completion order) would make fixture debugging deterministic.
-- **The compiler can exit 1 with no diagnostic at all.** The pre-refresh
-  darwin seed compiling current `w.w` (post-#128 `libs/extras`) printed
-  only the `compiling 'w.w'` banner and exited 1 — nothing on stdout or
-  stderr (2026-07-09; the same constructs in a small probe file produced
-  a proper `list field 'append' not found` error, so some deep error
-  path exits without a message). Audit compiler exit paths so every
-  failure prints at least a one-line diagnostic; a silent exit cost a
-  full bisect to find the offending construct.
-- **Transitive-import reliance is invisible until it breaks.** Three
-  times on 2026-07-09 alone, removing an import from one module broke a
-  *different* file that had silently resolved symbols through it:
-  `tools/lsp/w_lsp.w` used `hash_map` via `structures/json.w` (#145),
-  and `bignum_test`/`type_table_test`/`c_preprocessor_test` used
-  `error()`/`word_size` via `lib/testing.w`'s old compiler imports
-  (#147). The unqualified-alias warning covers aliased imports only;
-  plain imports re-export everything silently. A `w check` mode (or
-  `windex` query) that flags symbols resolved from modules the file
-  does not import directly would catch this class before CI does.
-- **`|`/`&` in condition position deserve a warning.** The bitwise
-  operators never short-circuit, and generated guard-heavy protocol
-  code (libs/standard/distributed) keeps almost tripping on
-  `if (p != 0 & p.field)`-style guards that read fine but evaluate
-  `p.field` unconditionally. A `w check` warning when `|`/`&` appear
-  directly in an `if`/`while` condition with comparison operands —
-  suggesting `||`/`&&` — would turn a latent crash into a compile-time
-  nudge. Semantics must not change (bitwise-in-guards is occasionally
-  intentional; masking tricks in bitset.w/sha256.w rely on plain `&`),
-  and the message text is new, so warning_test fixtures gain a case
-  rather than reword one (2026-07-11).
+- **The compiler can exit 1 with no diagnostic at all — partially
+  addressed.** The pre-refresh darwin seed compiling current `w.w`
+  (post-#128 `libs/extras`) printed only the `compiling 'w.w'` banner
+  and exited 1 — nothing on stdout or stderr (2026-07-09; the same
+  constructs in a small probe file produced a proper `list field
+  'append' not found` error, so some deep error path exits without a
+  message). Three concrete silent-exit gaps found while auditing this
+  are now fixed (2026-07-16): every backend finisher
+  (`elf_finish`/`elf_finish_64`/`elf_finish_arm64`/`pe_finish_64`/
+  `macho_finish_arm64`/`wasm_finish`) now checks its output-binary
+  `write()` and prints `could not write output file` instead of exiting
+  0 with a truncated image (ce18e1e); the tokenizer's `c"..."`/`s"..."`
+  prefixed-string scanner reports `unterminated string literal` at EOF
+  instead of spinning forever with no output (f7076b9, pinned by
+  `prefixed_string_literal_test`); and `lib/memory`'s allocator prints a
+  one-line notice before returning null on OOM instead of letting every
+  caller's assumed-infallible `malloc()` segfault with no diagnostic
+  (35ed0f5). What remains: the original 2026-07-09 darwin-seed report
+  itself hasn't been independently re-reproduced to confirm one of these
+  three covers it, and no one has yet done the full audit of the ~95
+  `error()` call sites (`ai_tooling.md`'s current-state notes) for other
+  silent-exit paths beyond these three.
+
+## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
+
+- **A `:save`d session transcript is not always a valid standalone `.w`
+  file.** Found while adding `:save`/`:load`/`:type`/`:time`/`:reset`/
+  `:symbols` colon-commands (issue #276 P2, 2026-07-16). `int x = 5` is
+  valid at the REPL (`repl_entry_item` in `repl/core.w` special-cases a
+  top-level "name = expression" into a declaration plus an assignment
+  compiled into the entry function) but the same line rejected standalone
+  — `./bin/wv2 check --json` on a file containing a bare `int x = 5;` at
+  file scope fails with `Could not find a valid primary expression, token:
+  =`, because ordinary top-level globals may only be declared, not
+  initialized inline (initialization has to happen inside a function).
+  Since almost every REPL session declares variables this way, `:save`ing
+  a typical session and then `:load`ing it back (or compiling it with
+  `bin/wv2`) does not round-trip. Either teach top-level declarations to
+  accept `= expr` as sugar for "declare, then assign in an implicit init
+  function" (mirroring what the REPL already does), or document the
+  asymmetry in `:help`/the REPL skill so agents don't rely on `:save`
+  output being directly compilable.
+
 ## Skills / rules upkeep
 
 - Keep skill command examples in sync with CLI changes (they are

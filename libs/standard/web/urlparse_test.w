@@ -5,7 +5,7 @@ import libs.standard.web.urlparse
 
 
 void test_url_parse_basic():
-	url* u = url_parse(c"http://example.com")
+	URL* u = url_parse(c"http://example.com")
 	asserts(c"parse failed", u != 0)
 	assert_strings_equal(c"http", u.scheme)
 	assert_strings_equal(c"example.com", u.host)
@@ -16,7 +16,7 @@ void test_url_parse_basic():
 
 
 void test_url_parse_https_default_port():
-	url* u = url_parse(c"https://api.anthropic.com/v1/messages")
+	URL* u = url_parse(c"https://api.anthropic.com/v1/messages")
 	asserts(c"parse failed", u != 0)
 	assert_strings_equal(c"https", u.scheme)
 	assert_strings_equal(c"api.anthropic.com", u.host)
@@ -27,7 +27,7 @@ void test_url_parse_https_default_port():
 
 
 void test_url_parse_explicit_port():
-	url* u = url_parse(c"http://localhost:8080/index.html")
+	URL* u = url_parse(c"http://localhost:8080/index.html")
 	asserts(c"parse failed", u != 0)
 	assert_equal(8080, u.port)
 	assert_strings_equal(c"localhost", u.host)
@@ -42,7 +42,7 @@ void test_url_parse_explicit_port():
 
 
 void test_url_parse_query_and_fragment():
-	url* u = url_parse(c"http://example.com/search?q=hello&lang=en#results")
+	URL* u = url_parse(c"http://example.com/search?q=hello&lang=en#results")
 	asserts(c"parse failed", u != 0)
 	assert_strings_equal(c"/search", u.path)
 	assert_strings_equal(c"q=hello&lang=en", u.query)
@@ -71,7 +71,7 @@ void test_url_parse_query_and_fragment():
 
 
 void test_url_parse_case_normalization():
-	url* u = url_parse(c"HTTP://EXAMPLE.Com/CaseSensitivePath?Query=Kept")
+	URL* u = url_parse(c"HTTP://EXAMPLE.Com/CaseSensitivePath?Query=Kept")
 	asserts(c"parse failed", u != 0)
 	assert_strings_equal(c"http", u.scheme)
 	assert_strings_equal(c"example.com", u.host)
@@ -81,7 +81,7 @@ void test_url_parse_case_normalization():
 
 
 void test_url_parse_port_with_query():
-	url* u = url_parse(c"https://h.example:8443/a/b?x=1&y=2")
+	URL* u = url_parse(c"https://h.example:8443/a/b?x=1&y=2")
 	asserts(c"parse failed", u != 0)
 	assert_equal(8443, u.port)
 	assert_strings_equal(c"h.example", u.host)
@@ -120,7 +120,7 @@ void test_url_parse_rejects_bad_port():
 
 
 void test_url_unparse_round_trip():
-	url* u = url_parse(c"http://example.com/x?q=1")
+	URL* u = url_parse(c"http://example.com/x?q=1")
 	char* text = url_unparse(u)
 	assert_strings_equal(c"http://example.com/x?q=1", text)
 	free(text)
