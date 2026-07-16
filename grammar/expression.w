@@ -125,8 +125,26 @@ int compound_assign_apply(int op, int left_type, int right_type):
  *         conditional-expr op= expression
  */
 int expression():
+	int stmt_context = increment_statement_context
+	increment_statement_context = 0
 	expression_lhs_readonly = 0
 	int type = conditional_expr()
+	int inc_op = increment_op()
+	if (token_newline):
+		# A '++'/'--' on the NEXT line is that statement's own prefix
+		# operator, not a postfix of this expression — a newline ends
+		# the statement here exactly like it does for expect_or_newline.
+		inc_op = 0
+	if (inc_op):
+		# Postfix '++'/'--' bind only at true statement position (the
+		# flag set by statement()'s expression fallback); anywhere else
+		# the v1 statement-only rule makes them an error
+		# (grammar/increment.w, docs/projects/increment_decrement.md).
+		if (stmt_context == 0):
+			increment_expression_error()
+		get_token()
+		expression_is_assignment = 1
+		return increment_apply(inc_op, type)
 	if (hash_index_pending):
 		if (accept(c"=")):
 			expression_is_assignment = 1
