@@ -266,6 +266,13 @@
 			]
 		},
 		{
+			"name": "int_literal_overflow_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/int_literal_overflow_hex_fixture.w", "tests/int_literal_overflow_binary_fixture.w", "tests/int_literal_overflow_decimal_fixture.w"]}
+			]
+		},
+		{
 			"name": "strict_mode_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1732,6 +1739,7 @@
 				"generics_inference_64_test",
 				"hash_table_64_test",
 				"http_client_64_test",
+				"int_literal_bounds_64_test",
 				"json_64_test",
 				"json_codec_64_test",
 				"kv_cluster_64_test",
@@ -1950,6 +1958,7 @@
 				"array_error_test",
 				"syscall_arity_test",
 				"warning_test",
+				"int_literal_overflow_test",
 				"strict_mode_test",
 				"check_json_test",
 				"check_roots_test",
@@ -2070,6 +2079,7 @@
 				"hmac_test",
 				"http_client_test",
 				"infer_test",
+				"int_literal_bounds_test",
 				"json_codec_test",
 				"json_test",
 				"kv_cluster_test",
@@ -2775,6 +2785,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/infer_test.w", "-o", "bin/infer_test"]},
 				{"cmd": ["bin/infer_test"]}
+			]
+		},
+		{
+			"name": "int_literal_bounds_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/int_literal_bounds_test.w", "-o", "bin/int_literal_bounds_64_test"]},
+				{"cmd": ["bin/int_literal_bounds_64_test"]}
+			]
+		},
+		{
+			"name": "int_literal_bounds_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/int_literal_bounds_test.w", "-o", "bin/int_literal_bounds_test"]},
+				{"cmd": ["bin/int_literal_bounds_test"]}
 			]
 		},
 		{
