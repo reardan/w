@@ -1487,6 +1487,14 @@
 			]
 		},
 		{
+			"name": "x64_map_float64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_map_float64_test.w", "-o", "bin/x64_map_float64_test"]},
+				{"cmd": ["bin/x64_map_float64_test"]}
+			]
+		},
+		{
 			"name": "json_rpc_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1677,6 +1685,7 @@
 				"x64_float_test",
 				"x64_fmath64_test",
 				"x64_int64_test",
+				"x64_map_float64_test",
 				"dynamic_test_x64",
 				"extern_alias_test_x64",
 				"c_import_libc_test_x64",
@@ -2025,6 +2034,7 @@
 				"asm_fuzz_arm64_test",
 				"asm_fuzz_x64_test",
 				"asm_fuzz_x86_test",
+				"assert_standalone_test",
 				"binary_literal_test",
 				"bit_builtin_test",
 				"bitset_test",
@@ -2220,6 +2230,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/asm_fuzz_x86_test.w", "-o", "bin/asm_fuzz_x86_test"]},
 				{"cmd": ["bin/asm_fuzz_x86_test"]}
+			]
+		},
+		{
+			"name": "assert_standalone_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/assert_standalone_test.w", "-o", "bin/assert_standalone_test"]},
+				{"cmd": ["bin/assert_standalone_test"]}
 			]
 		},
 		{

@@ -1514,6 +1514,14 @@
 			]
 		},
 		{
+			"name": "x64_map_float64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_map_float64_test.w", "-o", "bin/x64_map_float64_test"]},
+				{"cmd": ["bin/x64_map_float64_test"]}
+			]
+		},
+		{
 			"name": "json_rpc_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1703,6 +1711,7 @@
 				"x64_float_test",
 				"x64_fmath64_test",
 				"x64_int64_test",
+				"x64_map_float64_test",
 				"dynamic_test_x64",
 				"extern_alias_test_x64",
 				"c_import_libc_test_x64",
