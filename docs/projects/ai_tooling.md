@@ -42,6 +42,38 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- `w check` usability triple (2026-07-16): command-line roots dedupe
+  against the import registry (multi-root `check w.w
+  compiler/compiler.w` and auto-imported-runtime roots like
+  `lib/stack_trace.w` no longer report bogus `symbol redefined`);
+  check mode drops the `_main` requirement on every backend, so
+  main-less library modules check standalone; compiler-internal roots
+  (compiler/, grammar/, code_generator/, debugger/) substitute `w.w`
+  with a `check: <file> is compiler-internal; checking w.w` stderr
+  note. Covered by `check_roots_test`.
+- `wexec --keep-going` + early-stop visibility (2026-07-16): failures
+  no longer silently cancel umbrella runs — independent subgraphs keep
+  running, dependents report as skipped with a summary, and default
+  fail-fast mode prints `wexec: stopped early after failure: N of M
+  targets not attempted`. Covered by `wexec_keep_going_test`.
+- `wtest` empty-selection visibility + focused leaf selection
+  (2026-07-16): empty selections print `wtest: 0 targets selected` on
+  stderr; `./wbuild test_changed` falls back to the origin/main
+  merge-base diff on a clean tree; a build.json diff that is exactly
+  wbuildgen-shaped leaf test-target additions/removals selects just
+  those targets + `manifest_check` + `wexec_test` (new
+  `--base-manifest` flag) instead of the whole `tests` umbrella.
+  Covered by `wtest_map_test`/`wtest_run_test`.
+- `lib.assert` standalone import fix (2026-07-16): lib/assert.w
+  imports lib.lib for the printers it calls; pinned by
+  `assert_standalone_test`.
+- Import lines accept trailing `#` comments; mid-line tabs are owned by
+  the w.pg surface via an opt-in `inline_tabs` skip token (2026-07-16):
+  pinned by `import_test`, `midline_tab_test`, and the PG parser tests.
+- Decimal literal overflow guard (2026-07-16): extends the hex/binary
+  32-bit width error to decimal literals; see the resolved entry in
+  the next-steps file for the win64 FILETIME casualty it caught.
+
 - `--quiet` flag (2026-07-10): `w check --json --quiet file.w` (and any
   other invocation carrying `--quiet`) suppresses the non-diagnostic
   stderr chatter — the per-file `compiling '...'` banner, the

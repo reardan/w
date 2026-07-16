@@ -32,22 +32,6 @@ is a queue, not an archive.
   recovery, which stays a research project. Cheap partial win: after an
   error in file A, agents re-check to find errors behind it — nothing to
   build, just keep the limitation documented in skills.
-- **Compiler-internal files cannot be checked standalone, and the error
-  points elsewhere.** `./bin/wv2 check --json code_generator/arm64.w`
-  (hit while fixing #174, 2026-07-10) fails with `Cannot find symbol:
-  'strlen'` reported *in code_generator/code_emitter.w* — the file only
-  compiles inside `w.w`'s import graph, but the diagnostic names neither
-  the checked file nor the real cause. Either make `check` on a
-  compiler/grammar/code_generator path check `w.w` instead (that is the
-  gate that matters), or emit a one-line "this file is not a standalone
-  compilation root" hint.
-- **Library modules cannot be checked standalone.** `./bin/wv2 check
-  --json libs/standard/crypto/sha2.w` (hit while adding the TLS crypto
-  modules, #195, 2026-07-10) fails with `Failed to find a _main()
-  function` — `check` fully compiles, so a main-less library file can
-  only be checked through a program that imports it (its `_test.w`).
-  A `check` mode that stops after semantic analysis (no entry-point
-  requirement) would let hooks check library modules directly.
 - **Bool-bitwise condition warning is lvalue-scoped for now.** The
   shipped "did you mean `||`/`&&`?" hint (2026-07-10) only fires when
   both `|`/`&` operands are bool-typed *lvalues* in an if/while
@@ -84,38 +68,31 @@ is a queue, not an archive.
   which read those same fixtures. Fixed by excluding `tests/asm/` from
   the doc-only check before the extension test; pinned by a new
   `wtest_map_test` case (`build.base.json`).
-- **`./wbuild test_changed` is silently a no-op once the work is
-  committed.** The wbuild wrapper pipes `git diff --name-only HEAD`
-  into `wtest changed`, so after `git commit` (the natural state right
-  before pushing) it selects zero targets, prints nothing, and exits 0
-  — indistinguishable from "all selected tests passed" (2026-07-11,
-  found while validating the `https_e2e_test` flake fix; the real
-  selection needed `git diff --name-only origin/main...HEAD | bin/wtest
-  changed | xargs -r ./wbuild`). Either default the diff base to the
-  upstream/merge base when the working tree is clean, or print an
-  explicit `wtest: 0 targets selected (diff base HEAD)` line so an
-  empty selection can't pass for a green run.
-
-- **Adding a single new `_test.w` always selects the full `tests`
-  umbrella, defeating "focused" selection.** Observed adding
-  `tests/vcs_commit_test.w` (issue #252 V2b, 2026-07-11): the required
-  workflow is create the test, run `./wbuild manifest` to regenerate
-  `build.json` (both are committed together, per the `build.json` is
-  GENERATED rule), then `git diff ... | bin/wtest changed`. But
-  `tools/test_map.w`'s documented residue rule --
-  `build.json / wbuild / build.base.json -> wexec_test + tests` ("the
-  manifest drives every target") -- fires on every such diff, since the
-  regenerated `build.json` is *always* part of it. The net effect: the
-  single most common "add one test" workflow always recommends running
-  the entire pre-merge suite (`tests`, which pulls in `verify` and
-  hundreds of unrelated targets) instead of the one or two new targets
-  that actually matter, even when nothing in the change touches the
-  build system itself. A worthwhile refinement: special-case a
-  `build.json` diff that is *exactly* the addition/removal of leaf test
-  target entries (the common `wbuildgen`-generated shape) to select just
-  those new/changed target names plus `manifest_check`, falling back to
-  the full `tests` residue only when the diff also touches hand-written
-  `build.base.json`-derived entries or existing target definitions.
+- **`wtest changed`'s deps cache cold-starts slowly after large merges.**
+  Two agents hit first-run `bin/wv2 deps` closure rebuilds exceeding 2
+  minutes (docs advertise ~35s) right after a many-file merge landed
+  (2026-07-16). Not a correctness issue — later runs are sub-second —
+  but the first `wtest changed` after an integration can look hung;
+  consider a one-line progress note while the cache warms.
+- **`./wbuild test_changed` cannot pass `--keep-going` through.** The
+  wrapper hard-codes `xargs -r ./wbuild`, so a selection that hits one
+  environment-gap target (missing qemu) abandons the rest; the caller
+  has to replicate the pipeline by hand to add the flag (2026-07-16).
+  Teach the wrapper to forward flags after the subcommand to wexec.
+- **`wtest changed` selects targets the environment cannot run.**
+  Touching any `lib/__arch__/*/syscalls.w` (or other whole-closure
+  files) selects arm64/darwin/wine run-targets that need qemu, a Mac, or
+  wine; there is no "skip unavailable runtimes" story, so agents either
+  chase documented environment gaps or hand-prune the selection
+  (2026-07-16). A `--available` filter (probe for qemu/wine/Mac once,
+  drop targets whose runner is absent, print what was dropped) would
+  make selections runnable as printed.
+- **`wtest_map_check` fixture manifests are order-coupled to the real
+  build.json.** The checker's implicit manifest-order property forces
+  `-f` fixture manifests to reuse real target names in build.json
+  relative order — a hidden coupling when writing new cases, documented
+  in the checker header but still awkward (2026-07-16); a per-case
+  opt-out or fixture-aware ordering would help.
 
 ## Debugger surface (consumed by the external integration tools)
 
@@ -144,24 +121,14 @@ is a queue, not an archive.
   bits, so `0x00000000ffffffff` still compiles; the
   `int_literal_width_test` fixtures freeze the error message and
   `tests/warning_clean_fixture.w` pins the still-legal wide spellings.
-- **`lib.assert` does not compile standalone: it calls `println2`
-  without importing `lib.lib`.** Any module importing lib.assert but
-  not lib.lib fails `w check` with `Cannot find symbol: 'println2'`
-  and the importer has to add `import lib.lib` for lib.assert's sake
-  (2026-07-12, found writing lib/rand.w). lib.assert (or
-  lib.stack_trace) should import what it uses.
-- **Mid-line tabs: compiler accepts, w.pg rejects.** `w check` and
-  compilation are happy with a tab between code and a trailing comment
-  (`x = 1)\t# note`), but the parser-generator grammar only knows tabs
-  as indentation, so the divergence surfaces late, in
-  parser_generator_w_test, as `expected top_item, found \t` (2026-07-13,
-  364 occurrences written across the math-baseline files before the
-  gate caught it). Either w.pg should accept inline tabs or `w check`
-  should warn on them — one surface should own the rule.
-- **Import lines reject trailing `#` comments.** `import lib.lib  # for
-  println2` is a parse error; the comment must move to its own line
-  (2026-07-12). Either the grammar should accept it or the diagnostic
-  should say the comment is the problem — the current error does not.
+  Extended 2026-07-16: decimal literals get the same guard
+  (`int_literal_decimal_check()` — more than 10 significant digits, or
+  exactly 10 comparing above 4294967295, is the same compile error;
+  boundary spellings pinned by `tests/int_literal_bounds_test.w`), and
+  the sweep for newly-rejected literals caught a real casualty: the
+  win64 FILETIME epoch offset `11644473600` in
+  `lib/__arch__/win64/syscalls.w` had been silently wrapping — win64
+  `linux_time()` returned garbage — and is now computed at runtime.
 - **`parser_generator_w_test` retained every parsed AST — fixed by
   batching (2026-07-12).** `test_parse_all_tracked_w_files` parsed all
   tracked `.w` files in one process, retaining every AST, so the
@@ -201,14 +168,12 @@ is a queue, not an archive.
   content-hash caching on macOS, add per-arch dirent accessors
   (`reclen`/`name`/`kind`) next to each `getdents` shim in
   `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
-- **wexec is fail-fast; one broken target silently cancels the rest of
-  an umbrella run.** During the 2026-07-09 full-suite run, the
-  `c_import_test` failure stopped scheduling with 58 of 116 `tests`
-  targets attempted, and the `attach_test` failure later cut another 10
-  — with no "N targets skipped" summary, so lost coverage is easy to
-  miss. Add a `--keep-going` mode (run everything, summarize failures
-  at the end) for test-suite runs, and print how many targets were
-  skipped when stopping early.
+- **wexec's interleaved parallel output can misattribute step
+  failures.** Under `-j`, a passing step's stderr line rendered next to
+  a later step's assertion made a green fixture case read as a
+  cross-step failure while debugging expectations (2026-07-16). A
+  `--no-parallel`/ordered-log mode (buffer each step's output, print in
+  completion order) would make fixture debugging deterministic.
 - **The compiler can exit 1 with no diagnostic at all.** The pre-refresh
   darwin seed compiling current `w.w` (post-#128 `libs/extras`) printed
   only the `compiling 'w.w'` banner and exited 1 — nothing on stdout or
@@ -227,13 +192,6 @@ is a queue, not an archive.
   plain imports re-export everything silently. A `w check` mode (or
   `windex` query) that flags symbols resolved from modules the file
   does not import directly would catch this class before CI does.
-- **`w check` on multiple root files reports bogus `symbol redefined`
-  errors.** `bin/wv2 check --json w.w compiler/compiler.w` fails with
-  `symbol redefined: 'file_not_found_error'` because check links all
-  arguments as one unit, so a root that is also inside another root's
-  import closure gets compiled twice (2026-07-11). Agents naturally pass
-  "the files I changed"; check should skip roots already reachable from
-  earlier arguments (or check each argument as its own unit).
 - **`|`/`&` in condition position deserve a warning.** The bitwise
   operators never short-circuit, and generated guard-heavy protocol
   code (libs/standard/distributed) keeps almost tripping on
@@ -245,16 +203,6 @@ is a queue, not an archive.
   intentional; masking tricks in bitset.w/sha256.w rely on plain `&`),
   and the message text is new, so warning_test fixtures gain a case
   rather than reword one (2026-07-11).
-- **`w check` on a single auto-imported runtime file also reports bogus
-  `symbol redefined` errors.** `bin/wv2 check --json lib/memory_freelist.w`
-  fails with `symbol redefined: 'malloc_bins'` even on a clean tree
-  (2026-07-11): the root is compiled once as the root and again when the
-  auto-imported container runtime (`structures/hash_table.w`) re-imports
-  it via `lib.memory` -> `lib.memory_freelist`. Same double-compile class
-  as the multi-root bug above, but it hits the natural "check the file I
-  just edited" workflow for every file in the runtime closure; the
-  workaround is checking a small consumer that imports the file instead.
-
 ## Skills / rules upkeep
 
 - Keep skill command examples in sync with CLI changes (they are
