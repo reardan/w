@@ -127,6 +127,15 @@ int sym_decl_column(int t):
 	return load_int(table + t + 74)
 
 
+# Raw scope-type byte: 'D' defined global, 'U' undefined global, 'A'
+# argument, 'L' local (see sym_get_value). import_warn_transitive
+# (grammar/import_statement.w, --imports) uses this to skip locals and
+# arguments -- their "declaration file" is not a module-provenance
+# question the transitive-import check cares about.
+int sym_decl_visibility(int t):
+	return table[t + 1]
+
+
 # Tracks the most recently *known-good* declaration location applied to
 # any symbol, whether from sym_declare_global's own bookkeeping or an
 # explicit sym_set_decl_location call right after it (e.g. enum values
