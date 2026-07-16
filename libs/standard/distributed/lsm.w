@@ -48,9 +48,10 @@ Recovery (lsm_open):
      between table write and data-wal reset (or a torn table write),
      so the entry is DROPPED — its data is still in the data wal. The
      manifest is immediately rewritten without the dangling entry so
-     a later flush cannot bury it in non-last position, and the
-     dangling seq still advances next_seq so its (possibly partially
-     written) file path is never reused.
+     a later flush cannot bury it in non-last position, the dangling
+     table file (if the crash left one) is unlinked once that rewrite
+     succeeded, and the dangling seq still advances next_seq so its
+     file path is never reused.
   2. replay the data wal into a fresh memtable (torn tails were
      already truncated by wal_open's checksummed scan).
   3. next_seq = max(every seq the manifest referenced) + 1; 1 for a
@@ -65,9 +66,9 @@ preserving the one-table-after-compact invariant. The manifest is
 wal_reset and rewritten with the single ADD-TABLE record; the crash
 window between that reset and the append is a documented v1 gap
 (lib has no atomic rename), acceptable for the simulation/test tiers
-this phase targets. Old table files stay on disk orphaned — lib has
-no unlink; a recovery never reads them because the manifest no
-longer references them.
+this phase targets. Only after the manifest rewrite has succeeded
+are the superseded table files unlinked — manifest first, so a crash
+between the two can only leak unreferenced files, never lose data.
 
 Single-writer assumption throughout: one lsm owns its prefix.
 */
@@ -218,7 +219,15 @@ lsm* lsm_open(char* prefix, int memtable_limit_bytes):
 			table_paths.push(tpath)
 		i = i + 1
 	# 3. dangling last entry dropped: rewrite the manifest without it
-	# so the next recovery never sees it in non-last position
+	# so the next recovery never sees it in non-last position, then
+	# reclaim the dangling table file itself. Manifest FIRST, unlink
+	# SECOND, same discipline as lsm_compact: a crash between the two
+	# at worst leaks one unreferenced file. (Here either order would
+	# be crash-safe — the dangling entry's data is by construction
+	# still in the data wal — but keeping the one ordering invariant
+	# everywhere is cheaper than reasoning per-site.) The unlink
+	# result is ignored: the crash may have happened before the table
+	# file ever existed, and a leaked orphan is harmless.
 	if (fail == 0 && dropped == 1):
 		if (wal_reset(mlog) == 0):
 			fail = 1
@@ -227,6 +236,10 @@ lsm* lsm_open(char* prefix, int memtable_limit_bytes):
 			if (lsm_manifest_append_table(mlog, seqs[i]) == 0):
 				fail = 1
 			i = i + 1
+		if (fail == 0):
+			char* dangling = lsm_table_path(own_prefix, seqs[seqs.length - 1])
+			unlink(dangling)
+			free(dangling)
 	# 4. next_seq: one past every seq ever referenced (the dangling
 	# one included, so its file path is never reused)
 	int next_seq = 1
@@ -436,8 +449,9 @@ char* lsm_get(lsm* l, char* key, int* len_out):
 
 # Full compaction: k-way merge of ALL tables (not the memtable —
 # lsm_flush first to include it) into one new table; ties go to the
-# newest table, tombstones are dropped entirely. See the header for
-# the manifest-rewrite crash window and the orphaned old files.
+# newest table, tombstones are dropped entirely. The superseded table
+# files are unlinked only AFTER the manifest rewrite succeeds (see
+# the ORDERING comment below and the header's crash-window notes).
 # Returns 1 (no-op when there are no tables), 0 on I/O failure.
 int lsm_compact(lsm* l):
 	int n = l.tables.length
@@ -496,23 +510,38 @@ int lsm_compact(lsm* l):
 		return 0
 	int seq = l.next_seq
 	l.next_seq = l.next_seq + 1
-	# swap in the merged table; the old files stay on disk orphaned
-	# (lib has no unlink) but the manifest no longer references them
+	# swap in the merged table, KEEPING the superseded paths: they may
+	# only be unlinked after the manifest rewrite below has succeeded
+	list[char*] old_paths = new list[char*]
 	i = 0
 	while (i < l.tables.length):
 		sstable* old = l.tables[i]
 		sstable_close(old)
-		free(l.table_paths[i])
+		old_paths.push(l.table_paths[i])
 		i = i + 1
 	l.tables = new list[sstable*]
 	l.table_paths = new list[char*]
 	l.tables.push(merged)
 	l.table_paths.push(path)
+	# ORDERING: manifest FIRST, unlink SECOND. Until the rewritten
+	# manifest references only the merged table, the old files are the
+	# durable copy of their data — unlinking them earlier would lose
+	# data if we crashed before the rewrite landed. This way a crash
+	# (or a failed rewrite, ok == 0 below) can at worst LEAK files the
+	# manifest no longer references, never lose data; failed unlinks
+	# are ignored for the same reason.
+	int ok = 1
 	if (wal_reset(l.manifest) == 0):
-		return 0
-	if (lsm_manifest_append_table(l.manifest, seq) == 0):
-		return 0
-	return 1
+		ok = 0
+	if (ok == 1 && lsm_manifest_append_table(l.manifest, seq) == 0):
+		ok = 0
+	i = 0
+	while (i < old_paths.length):
+		if (ok == 1):
+			unlink(old_paths[i])
+		free(old_paths[i])
+		i = i + 1
+	return ok
 
 
 # ---- stats ----------------------------------------------------------------------

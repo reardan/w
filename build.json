@@ -262,7 +262,7 @@
 			"name": "int_literal_width_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/int_literal_width_error_fixture.w", "tests/int_literal_width_binary_error_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/int_literal_width_error_fixture.w", "tests/int_literal_width_binary_error_fixture.w", "tests/int_literal_width_decimal_error_fixture.w"]}
 			]
 		},
 		{
@@ -303,6 +303,36 @@
 				{"cmd": ["bin/wv2", "arm64", "check", "--quiet", "--json", "tests/warning_clean_fixture.w"], "stdout_file": "bin/check_json_arm64_clean.ndjson", "stderr_file": "bin/check_json_arm64_clean.stderr"},
 				{"cmd": ["test", "!", "-s", "bin/check_json_arm64_clean.ndjson"]},
 				{"cmd": ["test", "!", "-s", "bin/check_json_arm64_clean.stderr"]}
+			]
+		},
+		{
+			"name": "check_roots_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "check", "--json", "w.w", "compiler/compiler.w"], "stdout_file": "bin/check_roots_multi.ndjson", "expect_stderr": ["compiling 'w.w'", "check: compiler/compiler.w is compiler-internal; checking w.w", "skipping 'w.w' (already compiled)"]},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_multi.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "--json", "lib/args.w", "lib/lib.w"], "stdout_file": "bin/check_roots_import_first.ndjson", "expect_stderr": "skipping 'lib/lib.w' (already compiled)"},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_import_first.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "--json", "lib/lib.w", "lib/args.w"], "stdout_file": "bin/check_roots_root_first.ndjson", "expect_stderr": ["compiling 'lib/lib.w'", "compiling 'lib/args.w'"]},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_root_first.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "lib/args.w", "lib/args.w"], "expect_stderr": "skipping 'lib/args.w' (already compiled)"},
+				{"cmd": ["bin/wv2", "check", "--json", "lib/args.w"], "stdout_file": "bin/check_roots_args.ndjson"},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_args.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "--json", "lib/sha256.w"], "stdout_file": "bin/check_roots_mainless.ndjson"},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_mainless.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "x64", "lib/sha256.w"]},
+				{"cmd": ["bin/wv2", "check", "arm64", "lib/sha256.w"]},
+				{"cmd": ["bin/wv2", "check", "arm64_darwin", "lib/sha256.w"]},
+				{"cmd": ["bin/wv2", "check", "win64", "lib/sha256.w"]},
+				{"cmd": ["bin/wv2", "check", "wasm", "lib/sha256.w"]},
+				{"cmd": ["bin/wv2", "lib/sha256.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "Failed to find a _main() function"},
+				{"cmd": ["bin/wv2", "check", "--json", "tests/check_library_error_fixture.w"], "expect_fail": true, "expect_stdout": ["\"severity\": \"error\"", "\"message\": \"Cannot find symbol: 'undefined_symbol_for_check_fixture'\""]},
+				{"cmd": ["bin/wv2", "check", "--json", "code_generator/arm64.w"], "stdout_file": "bin/check_roots_internal.ndjson", "expect_stderr": ["check: code_generator/arm64.w is compiler-internal; checking w.w", "compiling 'w.w'"]},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_internal.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "--json", "code_generator/arm64.w", "lib/math.w"], "expect_stderr": ["check: code_generator/arm64.w is compiler-internal; checking w.w", "compiling 'lib/math.w'"]},
+				{"cmd": ["bin/wv2", "check", "--quiet", "--json", "code_generator/arm64.w"], "stdout_file": "bin/check_roots_quiet.ndjson", "stderr_file": "bin/check_roots_quiet.stderr"},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_quiet.ndjson"]},
+				{"cmd": ["test", "!", "-s", "bin/check_roots_quiet.stderr"]}
 			]
 		},
 		{
@@ -836,18 +866,20 @@
 		{
 			"name": "wtest_map_test",
 			"deps": ["wtest", "wtest_map_check"],
+			"data": ["tests/wtest/"],
 			"steps": [
 				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations.expect"], "expect_stdout": "wtest_map_check: OK"},
 				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations_fail.expect"], "expect_fail": true, "expect_stderr": "wtest_map_check: FAIL"},
 				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read build.json"},
-				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [-f manifest.json] [file...]"}
+				{"cmd": ["bin/wtest", "changed", "docs/todo.txt"], "expect_stderr": "wtest: 0 targets selected"},
+				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [-f manifest.json] [--base-manifest base.json] [file...]"}
 			]
 		},
 		{
 			"name": "wtest_run_test",
 			"deps": ["wtest", "wexec"],
 			"steps": [
-				{"cmd": ["bin/wtest", "changed", "docs/todo.txt", "--run"], "stdout_file": "bin/wtest_run_empty.out"},
+				{"cmd": ["bin/wtest", "changed", "docs/todo.txt", "--run"], "expect_stderr": "wtest: 0 targets selected", "stdout_file": "bin/wtest_run_empty.out"},
 				{"cmd": ["test", "!", "-s", "bin/wtest_run_empty.out"]},
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/run_fixture.json", "wtest_run_smoke_marker", "--run"], "expect_stdout": ["smoke", "wexec: OK (1 targets)"]},
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/run_fixture.json", "wtest_run_boom_marker", "--run"], "expect_fail": true, "expect_stdout": "boom", "expect_stderr": "command failed with exit status"},
@@ -978,6 +1010,16 @@
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/parallel.json", "parallel_fails"], "expect_fail": true, "expect_stderr": "command failed with exit status"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/good.json"], "expect_fail": true, "expect_stderr": "usage: wexec", "expect_stdout": "main"},
 				{"cmd": ["bin/wexec", "hello"], "expect_stdout": "hello, world!"}
+			]
+		},
+		{
+			"name": "wexec_keep_going_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": "standalone ran", "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "reject_stdout": "needs_boom ran", "expect_stderr": "wexec: stopped early after failure: 2 of 4 targets not attempted", "reject_stderr": "keep-going"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "--keep-going", "standalone"], "expect_stdout": ["standalone ran", "wexec: OK (1 targets)"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "boom"], "expect_fail": true, "reject_stderr": "not attempted"}
 			]
 		},
 		{
@@ -1452,6 +1494,14 @@
 			]
 		},
 		{
+			"name": "x64_map_float64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_map_float64_test.w", "-o", "bin/x64_map_float64_test"]},
+				{"cmd": ["bin/x64_map_float64_test"]}
+			]
+		},
+		{
 			"name": "json_rpc_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1642,6 +1692,7 @@
 				"x64_float_test",
 				"x64_fmath64_test",
 				"x64_int64_test",
+				"x64_map_float64_test",
 				"dynamic_test_x64",
 				"extern_alias_test_x64",
 				"c_import_libc_test_x64",
@@ -1688,6 +1739,7 @@
 				"generics_inference_64_test",
 				"hash_table_64_test",
 				"http_client_64_test",
+				"int_literal_bounds_64_test",
 				"json_64_test",
 				"json_codec_64_test",
 				"kv_cluster_64_test",
@@ -1912,6 +1964,7 @@
 				"warning_test",
 				"strict_mode_test",
 				"check_json_test",
+				"check_roots_test",
 				"missing_file_test",
 				"symbols_test",
 				"deps_test",
@@ -1960,6 +2013,7 @@
 				"wtest_map_test",
 				"wtest_run_test",
 				"wexec_test",
+				"wexec_keep_going_test",
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",
@@ -1992,6 +2046,7 @@
 				"asm_fuzz_arm64_test",
 				"asm_fuzz_x64_test",
 				"asm_fuzz_x86_test",
+				"assert_standalone_test",
 				"binary_literal_test",
 				"bit_builtin_test",
 				"bitset_test",
@@ -2027,6 +2082,7 @@
 				"hmac_test",
 				"http_client_test",
 				"infer_test",
+				"int_literal_bounds_test",
 				"json_codec_test",
 				"json_test",
 				"kv_cluster_test",
@@ -2044,6 +2100,7 @@
 				"memory_debug_test",
 				"memtable_test",
 				"method_chaining_test",
+				"midline_tab_test",
 				"monotime_test",
 				"multilayer_test",
 				"nested_ctor_test",
@@ -2190,6 +2247,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/asm_fuzz_x86_test.w", "-o", "bin/asm_fuzz_x86_test"]},
 				{"cmd": ["bin/asm_fuzz_x86_test"]}
+			]
+		},
+		{
+			"name": "assert_standalone_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/assert_standalone_test.w", "-o", "bin/assert_standalone_test"]},
+				{"cmd": ["bin/assert_standalone_test"]}
 			]
 		},
 		{
@@ -2730,6 +2795,22 @@
 			]
 		},
 		{
+			"name": "int_literal_bounds_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/int_literal_bounds_test.w", "-o", "bin/int_literal_bounds_64_test"]},
+				{"cmd": ["bin/int_literal_bounds_64_test"]}
+			]
+		},
+		{
+			"name": "int_literal_bounds_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/int_literal_bounds_test.w", "-o", "bin/int_literal_bounds_test"]},
+				{"cmd": ["bin/int_literal_bounds_test"]}
+			]
+		},
+		{
 			"name": "json_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2999,6 +3080,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/method_chaining_test.w", "-o", "bin/method_chaining_test"]},
 				{"cmd": ["bin/method_chaining_test"]}
+			]
+		},
+		{
+			"name": "midline_tab_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/midline_tab_test.w", "-o", "bin/midline_tab_test"]},
+				{"cmd": ["bin/midline_tab_test"]}
 			]
 		},
 		{

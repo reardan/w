@@ -93,6 +93,9 @@ void test_election_state_record():
 	assert_equal(raft_leader(), raft_state(r))
 	assert_equal(1, raft_wal_pending(rw, r))
 	assert_equal(1, raft_wal_sync(rw, r))   # one STATE record covers both
+	# the sync fsynced internally (asserted in raft_wal_sync); the fd
+	# is still healthy for an explicit follow-up flush
+	assert_equal(1, wal_sync(rw.wlog))
 	assert_equal(0, raft_wal_pending(rw, r))
 	assert_equal(0, raft_wal_sync(rw, r))
 	assert_equal(1, rwal_shadow_term_int(rw))

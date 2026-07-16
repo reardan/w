@@ -124,6 +124,17 @@ int unlink(char* path):
 	return 0
 
 
+# WASI defines fd_sync/fd_datasync, but they are not in the compiler's
+# fixed import set (wasm_define_asm_functions); until they are wired
+# up these report failure honestly rather than claim durability.
+int fsync(int file):
+	return -1
+
+
+int fdatasync(int file):
+	return -1
+
+
 int mkdir(char* path, int mode):
 	return -1
 

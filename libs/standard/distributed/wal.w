@@ -18,11 +18,12 @@ prefix; appends then resume at that offset, overwriting torn bytes.
 (A 2^-32 accidental-checksum-match on garbage is accepted as
 negligible.)
 
-Durability boundary, v1: a successful wal_append has issued full
-write(2) calls; there is no fsync wrapper in lib yet, so crash
-durability is bounded by the kernel page cache. Good enough for the
-simulation and test tiers this phase targets; an fsync hook is the
-known follow-up when lib grows one.
+Durability boundary: a successful wal_append has issued full
+write(2) calls, so the record survives a process crash but sits in
+the kernel page cache until wal_sync (fsync(2); F_FULLFSYNC on
+Darwin) pushes it to stable storage. Callers with real durability
+needs (raft_wal_sync) call wal_sync once per record burst rather
+than per append.
 
 Record payloads are opaque bytes; wal_read_next returns malloc'd
 copies the caller frees.
@@ -221,6 +222,16 @@ int wal_append(wal* w, char* payload, int len):
 		return 0
 	w.append_off = w.append_off + 8 + len
 	w.record_count = w.record_count + 1
+	return 1
+
+
+# Flushes every appended record to stable storage (the header's
+# durability boundary): fsync(2), which the Darwin wrapper upgrades
+# to fcntl F_FULLFSYNC. Returns 1 on success, 0 when the kernel
+# reports the flush failed.
+int wal_sync(wal* w):
+	if (fsync(w.fd) < 0):
+		return 0
 	return 1
 
 

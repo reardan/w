@@ -597,6 +597,42 @@ void test_stale_vote_reply_ignored():
 	raft_free(n1)
 
 
+void test_duplicate_vote_reply_counts_once():
+	# issue #320: the same granted vote delivered twice in one election
+	# must count once — a candidate must not reach majority off a
+	# duplicated single voter. 5 nodes, so the majority is 3.
+	list[int] peers = list[int]{2, 3, 4, 5}
+	raft* r = raft_new(1, peers, 100, 100, 30, 7)
+	raft_start(r, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_tick(r, 100, out)
+	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(4, out.length)
+	raft_test_free_msgs(out)
+	# first granted vote from peer 2: self + one voter = 2 of 5
+	raft_msg* v2 = raft_test_vote_reply(2, 1, 1, 1)
+	raft_on_msg(r, v2, 105, out)
+	raft_msg_free(v2)
+	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(0, out.length)
+	# the same voter's granted reply again (duplicate delivery): still
+	# 2 votes, still a candidate
+	raft_msg* dup = raft_test_vote_reply(2, 1, 1, 1)
+	raft_on_msg(r, dup, 106, out)
+	raft_msg_free(dup)
+	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(0, out.length)
+	# a genuine second voter is the real majority: leader, and the
+	# initial heartbeats fan out to all four peers
+	raft_msg* v3 = raft_test_vote_reply(3, 1, 1, 1)
+	raft_on_msg(r, v3, 107, out)
+	raft_msg_free(v3)
+	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(4, out.length)
+	raft_test_free_msgs(out)
+	raft_free(r)
+
+
 void test_stale_vote_req_denied():
 	raft* n1 = raft_test_node(1, 2, 3, 4)
 	raft_start(n1, 0)
@@ -631,6 +667,46 @@ void test_append_reply_ignored_when_not_leader():
 	assert_equal(raft_follower(), raft_state(r))
 	assert_equal(0, raft_test_term_int(r))
 	assert_equal(0, raft_test_commit_int(r))
+	raft_free(r)
+
+
+void test_stale_append_reply_does_not_regress_indexes():
+	# issue #320: replies can arrive reordered — once a fresher success
+	# reply advanced a peer's match/next indexes, a delayed staler
+	# success (smaller match_index) must leave them alone instead of
+	# walking the recorded progress backwards.
+	raft* r = raft_test_make_leader()
+	list[raft_msg*] out = new list[raft_msg*]
+	assert_equal(1, raft_propose(r, c"a", 130, out))
+	raft_test_free_msgs(out)
+	assert_equal(1, raft_propose(r, c"b", 131, out))
+	raft_test_free_msgs(out)
+	# the fresher ack lands first: peer 2 holds both entries, so its
+	# match/next move to 2/3 and the commit advances to 2
+	raft_msg* fresh = raft_test_append_reply(2, 1, 1, 1, 2)
+	raft_on_msg(r, fresh, 140, out)
+	raft_msg_free(fresh)
+	assert_equal(0, out.length)
+	assert_equal(2, raft_test_commit_int(r))
+	assert_equal(2, raft_u64_as_int(r.match_index[2]))
+	assert_equal(3, raft_u64_as_int(r.next_index[2]))
+	# the stale ack for just the first entry arrives afterwards: both
+	# indexes hold at 2/3 (max clamp) instead of regressing to 1/2
+	raft_msg* stale = raft_test_append_reply(2, 1, 1, 1, 1)
+	raft_on_msg(r, stale, 141, out)
+	raft_msg_free(stale)
+	assert_equal(0, out.length)
+	assert_equal(2, raft_u64_as_int(r.match_index[2]))
+	assert_equal(3, raft_u64_as_int(r.next_index[2]))
+	assert_equal(2, raft_test_commit_int(r))
+	# and the next heartbeat to peer 2 resumes at prev = 2 with nothing
+	# re-sent (the proposes re-armed the heartbeat deadline to 161)
+	raft_tick(r, 170, out)
+	raft_msg* hb = raft_test_find_to(out, 2)
+	assert_equal(raft_msg_append(), hb.type)
+	assert_equal(2, u64_to_int(hb.prev_log_index))
+	assert_equal(0, hb.entries.length)
+	raft_test_free_msgs(out)
 	raft_free(r)
 
 
@@ -845,6 +921,50 @@ void test_prevote_round_then_real_election():
 	raft_on_msg(r, real, 107, out)
 	raft_msg_free(real)
 	assert_equal(raft_leader(), raft_state(r))
+	raft_test_free_msgs(out)
+	raft_free(r)
+
+
+void test_duplicate_prevote_reply_counts_once():
+	# issue #320, pre-vote flavor: one peer's granted pre-vote delivered
+	# twice must not carry the round — 5 nodes, majority 3, so only a
+	# genuine second granter starts the real election.
+	list[int] peers = list[int]{2, 3, 4, 5}
+	raft* r = raft_new(1, peers, 100, 100, 30, 7)
+	raft_set_prevote(r, 1)
+	raft_start(r, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_tick(r, 100, out)
+	# a pre-vote round: still a follower on term 0, four polls out
+	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(0, raft_test_term_int(r))
+	assert_equal(4, out.length)
+	raft_test_free_msgs(out)
+	# peer 2 grants at the prospective term 1: self + one granter = 2
+	raft_msg* pv = raft_test_prevote_reply(2, 1, 1, 1)
+	raft_on_msg(r, pv, 105, out)
+	raft_msg_free(pv)
+	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(0, raft_test_term_int(r))
+	assert_equal(0, out.length)
+	# the duplicate of the same grant changes nothing
+	raft_msg* dup = raft_test_prevote_reply(2, 1, 1, 1)
+	raft_on_msg(r, dup, 106, out)
+	raft_msg_free(dup)
+	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(0, raft_test_term_int(r))
+	assert_equal(0, out.length)
+	# a genuine second granter reaches the pre-vote majority: the real
+	# election starts — candidate, term 1, real (prevote == 0) vote_reqs
+	raft_msg* pv3 = raft_test_prevote_reply(3, 1, 1, 1)
+	raft_on_msg(r, pv3, 107, out)
+	raft_msg_free(pv3)
+	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(1, raft_test_term_int(r))
+	assert_equal(4, out.length)
+	raft_msg* rv = raft_test_find_to(out, 2)
+	assert_equal(raft_msg_vote_req(), rv.type)
+	assert_equal(0, rv.prevote)
 	raft_test_free_msgs(out)
 	raft_free(r)
 

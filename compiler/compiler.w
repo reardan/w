@@ -354,6 +354,58 @@ int target_selector_apply(char* arg):
 	return 0
 
 
+# Canonical import-registry form of a command-line root path: separators
+# normalized, a leading './' and the '.w' extension stripped — the same
+# shape import_module() registers for an import line ('import
+# compiler.compiler' registers "compiler/compiler"), so roots and imports
+# dedupe against each other no matter which direction they arrive in.
+# Returns a fresh allocation.
+char* root_canonical(char* path):
+	char* normalized = strclone(path)
+	path_normalize_sep(normalized)
+	char* trimmed = normalized
+	if (starts_with(trimmed, c"./")):
+		trimmed = trimmed + 2
+	char* canonical = strclone(trimmed)
+	free(normalized)
+	if (ends_with(canonical, c".w")):
+		canonical[strlen(canonical) - 2] = 0
+	return canonical
+
+
+# Compiler-internal modules only compile inside w.w's import graph;
+# checking one standalone dies with a misleading missing-symbol error in
+# whatever neighbor happens to be referenced first. So in check mode (and
+# the check-shaped deps/symbols subcommands) such a root is substituted
+# with w.w — the gate that actually matters for a compiler change — and a
+# one-line stderr note says so. The exact rule: a root is
+# compiler-internal when its canonical path (relative, as spelled from
+# the repo root, './' and '.w' stripped) starts with 'compiler/',
+# 'grammar/', 'code_generator/' or 'debugger/', or is exactly 'codegen'
+# or 'grammar' (the two top-level umbrella modules). Absolute or
+# differently-anchored spellings are not recognized and compile as
+# given. In a mixed argument list only the internal roots are
+# substituted; the root dedupe in link_impl collapses repeated w.w
+# substitutions into one compile.
+int root_is_compiler_internal(char* path):
+	char* canonical = root_canonical(path)
+	int internal = 0
+	if (starts_with(canonical, c"compiler/")):
+		internal = 1
+	if (starts_with(canonical, c"grammar/")):
+		internal = 1
+	if (starts_with(canonical, c"code_generator/")):
+		internal = 1
+	if (starts_with(canonical, c"debugger/")):
+		internal = 1
+	if (strcmp(canonical, c"codegen") == 0):
+		internal = 1
+	if (strcmp(canonical, c"grammar") == 0):
+		internal = 1
+	free(canonical)
+	return internal
+
+
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (argc <= start_index):
 		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [--version]")
@@ -368,6 +420,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	bounds_mode = 1
 	strict_mode = 0
 	warning_count = 0
+	# check/deps/symbols discard the output, so a library module without
+	# a _main is fine to analyze: the backend finishers skip the
+	# entry-call patch instead of erroring (code_generator/code_emitter.w)
+	entry_optional = check_mode
 	if (target_pending != 0):
 		# Selector spelled before the subcommand word, recorded by
 		# main(); a positional selector after the subcommand may still
@@ -434,11 +490,35 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		else if (strcmp(*arg, c"--quiet") == 0):
 			quiet_mode = 1
 		else:
-			if (quiet_mode == 0):
-				print_error(c"compiling '")
-				print_error(*arg)
-				print_error(c"'\x0a")
-			compile_input_file(*arg)
+			char* input = *arg
+			# A compiler-internal root cannot be checked standalone;
+			# check w.w in its place (rule: root_is_compiler_internal)
+			if (check_mode && root_is_compiler_internal(input)):
+				if (quiet_mode == 0):
+					print_error(c"check: ")
+					print_error(input)
+					print_error(c" is compiler-internal; checking w.w\x0a")
+				input = c"w.w"
+			# Roots dedupe against the import registry in both
+			# directions: a root already compiled — as an earlier
+			# argument, or inside an earlier root's import closure — is
+			# skipped instead of redefining every symbol, and a root
+			# compiled here is registered so a later import of it (or a
+			# duplicate argument) is skipped by import_module().
+			char* canonical = root_canonical(input)
+			if (import_lookup(canonical) >= 0):
+				if (quiet_mode == 0):
+					print_error(c"skipping '")
+					print_error(input)
+					print_error(c"' (already compiled)\x0a")
+				free(canonical)
+			else:
+				import_register(canonical)
+				if (quiet_mode == 0):
+					print_error(c"compiling '")
+					print_error(input)
+					print_error(c"'\x0a")
+				compile_input_file(input)
 		i = i + 1
 
 	# Queued generic instantiations compile at this top-level boundary,

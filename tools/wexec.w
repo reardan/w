@@ -49,7 +49,14 @@ without "inputs" behave like make-style FORCE targets: requesting them
 always runs them. A step's captured stdout/stderr is re-emitted after
 the step finishes, so output is visible but not interleaved live.
 
-Usage: wexec [-f manifest.json] [--list] [--no-cache] [-j N] target...
+Usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [-j N] target...
+
+A failed target normally stops all scheduling (fail-fast); the epilogue
+then reports how many targets were never attempted. With --keep-going a
+failure only poisons its dependents: independent subgraphs keep running,
+dependents of a failed target are skipped, and a summary on stderr names
+every failed and skipped target. Either way wexec exits nonzero when
+anything failed.
 
 Design notes: docs/projects/wexec.md
 */
@@ -74,7 +81,11 @@ list[char*] wexec_names      # manifest order, for --list
 list[char*] wexec_closure    # requested targets + deps, dependency order
 int wexec_completed          # targets finished this invocation
 int wexec_no_cache           # --no-cache: never skip cached targets
+int wexec_keep_going         # --keep-going: schedule past failed targets
 int wexec_jobs               # max targets in flight (-j), default nproc
+map[char*, int] wexec_broken    # name -> 1 once failed or skipped (--keep-going)
+list[char*] wexec_failed_list   # failed targets, in completion order
+list[char*] wexec_skipped_list  # targets skipped behind a failed dependency
 
 
 int wexec_collect_closure(char* name);
@@ -99,7 +110,7 @@ void wexec_error2(char* message, char* detail):
 
 void wexec_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] [--no-cache] [-j N] target...")
+	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [-j N] target...")
 	stream_flush(err)
 
 
@@ -1203,7 +1214,11 @@ in-flight worker streams live, later ones are held back until it
 finishes), so parallel logs never interleave. Cache keys are computed
 and stamps written by the parent only; a cache hit completes a target
 without forking. The first failure stops new launches, in-flight
-targets are drained, and the run exits 1 — make without -k. */
+targets are drained, the epilogue counts the targets never attempted,
+and the run exits 1 — make without -k. Under --keep-going (make -k)
+a failure only marks its dependents broken: they are skipped, every
+independent target still runs, and the epilogue names each failed and
+skipped target before the run exits 1. */
 
 # Depth-first closure collection: validates deps, diagnoses unknown
 # targets and cycles, and appends every reachable target in dependency
@@ -1251,6 +1266,23 @@ int wexec_deps_finished(char* name):
 			return 0
 		i = i + 1
 	return 1
+
+
+# --keep-going: a target whose dependency failed (or was itself skipped
+# behind a failure) can never build. Deps were validated as strings when
+# the closure was collected.
+int wexec_deps_broken(char* name):
+	json_value* target = wexec_targets.get(name, 0)
+	json_value* deps = json_object_get(target, c"deps")
+	if (deps == 0):
+		return 0
+	int i = 0
+	while (i < json_array_length(deps)):
+		json_value* dep = json_array_get(deps, i)
+		if (wexec_broken.get(dep.string_value, 0)):
+			return 1
+		i = i + 1
+	return 0
 
 
 void wexec_print_target_header(char* name, char* suffix):
@@ -1380,6 +1412,57 @@ int wexec_worker_drain(int fd, process_capture* buffer):
 	return process_capture_read(buffer, fd) <= 0
 
 
+# --keep-going epilogue: name every failed and skipped target, then the
+# counts, so lost coverage is visible at the bottom of a long run.
+void wexec_report_keep_going(int total):
+	wstream* err = stderr_writer()
+	for char* name in wexec_failed_list:
+		stream_write_cstr(err, c"wexec: failed: ")
+		stream_write_line(err, name)
+	for char* name in wexec_skipped_list:
+		stream_write_cstr(err, c"wexec: skipped: ")
+		stream_write_cstr(err, name)
+		stream_write_line(err, c" (dependency failed)")
+	string_builder* s = string_new()
+	string_append(s, c"wexec: keep-going: ")
+	string_append_int(s, wexec_failed_list.length)
+	string_append(s, c" failed, ")
+	string_append_int(s, wexec_skipped_list.length)
+	string_append(s, c" skipped, ")
+	string_append_int(s, wexec_completed)
+	string_append(s, c" succeeded (of ")
+	string_append_int(s, total)
+	string_append(s, c" targets)")
+	stream_write_line(err, s.data)
+	stream_flush(err)
+	string_free(s)
+
+
+# Fail-fast epilogue: say how much of the run was never attempted, so
+# one broken target cannot silently cancel the rest of an umbrella run.
+# Silent when the failure was the last target scheduled.
+void wexec_report_stopped_early(int total, int finished):
+	if (finished >= total):
+		return
+	string_builder* s = string_new()
+	string_append(s, c"wexec: stopped early after failure: ")
+	string_append_int(s, total - finished)
+	string_append(s, c" of ")
+	string_append_int(s, total)
+	string_append(s, c" targets not attempted")
+	wstream* err = stderr_writer()
+	stream_write_line(err, s.data)
+	stream_flush(err)
+	string_free(s)
+
+
+void wexec_report_failures(int total, int finished):
+	if (wexec_keep_going):
+		wexec_report_keep_going(total)
+	else:
+		wexec_report_stopped_early(total, finished)
+
+
 # Drive every requested target (and its dependency closure) to
 # completion with up to wexec_jobs targets in flight. Returns 0 when
 # everything succeeded.
@@ -1401,21 +1484,38 @@ int wexec_execute(list[char*] requested):
 		# completions (cache hits, aggregates) can ready more targets,
 		# so repeat until a full scan launches nothing.
 		int launched_any = 1
-		while ((failed == 0) && launched_any):
+		while (((failed == 0) || wexec_keep_going) && launched_any):
 			launched_any = 0
 			int t = 0
 			while ((t < total) && (running < wexec_jobs)):
 				char* name = wexec_closure[t]
-				if ((wexec_started.get(name, 0) == 0) && wexec_deps_finished(name)):
-					wexec_started[name] = 1
-					int outcome = wexec_launch(name, workers)
-					if (outcome < 0):
-						failed = 1
-					else if (outcome == 0):
+				if (wexec_started.get(name, 0) == 0):
+					if (wexec_keep_going && wexec_deps_broken(name)):
+						# A dependency failed: this target can never
+						# build. Record the skip and count it finished
+						# so independent subgraphs keep the run alive.
+						wexec_started[name] = 1
+						wexec_broken[name] = 1
+						wexec_skipped_list.push(name)
 						finished = finished + 1
 						launched_any = 1
-					else:
-						running = running + 1
+					else if (wexec_deps_finished(name)):
+						wexec_started[name] = 1
+						int outcome = wexec_launch(name, workers)
+						if (outcome < 0):
+							failed = 1
+							if (wexec_keep_going):
+								# A spawn failure counts as the target
+								# failing; dependents skip via broken.
+								wexec_broken[name] = 1
+								wexec_failed_list.push(name)
+								finished = finished + 1
+								launched_any = 1
+						else if (outcome == 0):
+							finished = finished + 1
+							launched_any = 1
+						else:
+							running = running + 1
 				t = t + 1
 
 		if (running == 0):
@@ -1428,6 +1528,7 @@ int wexec_execute(list[char*] requested):
 					wexec_worker_flush(workers[head])
 					head = head + 1
 				free(poll_fds)
+				wexec_report_failures(total, finished)
 				return 1
 			free(poll_fds)
 			return 0
@@ -1481,6 +1582,11 @@ int wexec_execute(list[char*] requested):
 						decoded = 1
 					if (decoded != 0):
 						failed = 1
+						if (wexec_keep_going):
+							# Poison dependents so they are skipped
+							# instead of waiting forever.
+							wexec_broken[w.name] = 1
+							wexec_failed_list.push(w.name)
 					else:
 						wexec_mark_finished(w.name, w.key)
 			i = i + 1
@@ -1495,6 +1601,7 @@ int wexec_execute(list[char*] requested):
 
 	free(poll_fds)
 	if (failed):
+		wexec_report_failures(total, finished)
 		return 1
 	return 0
 
@@ -1543,6 +1650,9 @@ int wexec_load_manifest(char* path):
 	wexec_finished = new map[char*, int]
 	wexec_names = new list[char*]
 	wexec_closure = new list[char*]
+	wexec_broken = new map[char*, int]
+	wexec_failed_list = new list[char*]
+	wexec_skipped_list = new list[char*]
 	int i = 0
 	while (i < json_array_length(targets)):
 		json_value* target = json_array_get(targets, i)
@@ -1620,6 +1730,8 @@ int main(int argc, int argv):
 			list_only = 1
 		else if (strcmp(*arg, c"--no-cache") == 0):
 			wexec_no_cache = 1
+		else if (strcmp(*arg, c"--keep-going") == 0):
+			wexec_keep_going = 1
 		else if (strcmp(*arg, c"-j") == 0):
 			i = i + 1
 			if (i >= argc):

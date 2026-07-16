@@ -14,6 +14,7 @@ extern int CreateFileA(char* path, int access, int share, int security, int crea
 extern int CloseHandle(int handle)
 extern int SetFilePointer(int handle, int distance, int* distance_high, int method)
 extern int DeleteFileA(char* path)
+extern int FlushFileBuffers(int handle)
 extern int VirtualAlloc(int addr, int size, int alloc_type, int protect)
 extern int VirtualFree(int addr, int size, int free_type)
 extern int VirtualProtect(int addr, int size, int new_protect, int* old_protect)
@@ -118,6 +119,20 @@ int unlink(char* path):
 	return 0
 
 
+# FlushFileBuffers forces the file's buffered data to disk, the
+# kernel32 equivalent of fsync(2).
+int fsync(int file):
+	if (FlushFileBuffers(win_handle_for_fd(file)) == 0):
+		return -1
+	return 0
+
+
+# No separate data-only flush on kernel32; fsync's guarantee is a
+# superset.
+int fdatasync(int file):
+	return fsync(file)
+
+
 # Directory syscalls:
 int mkdir(char* path, int mode):
 	if (CreateDirectoryA(path, 0) == 0):
@@ -148,11 +163,15 @@ int getcwd(char* buf, int size):
 /* Time */
 
 # Seconds since the Unix epoch. FILETIME counts 100ns units since
-# 1601-01-01; the offset between the epochs is 11644473600 seconds.
+# 1601-01-01; the offset between the epochs is 11644473600 seconds
+# (134774 days). That value overflows the compiler's 32-bit literal
+# decode (grammar/int_literal.w rejects it), so it is computed at
+# runtime as days * seconds-per-day in the target's 64-bit registers —
+# the bare literal used to silently wrap to a wrong constant here.
 int linux_time(int* out):
 	int filetime = 0
 	GetSystemTimeAsFileTime(&filetime)
-	int seconds = filetime / 10000000 - 11644473600
+	int seconds = filetime / 10000000 - 134774 * 86400
 	if (out != 0):
 		*out = seconds
 	return seconds

@@ -86,7 +86,26 @@ if [ ! -x bin/wexec ]; then
 fi
 if [ "$1" = "test_changed" ]; then
 	./bin/wexec wv2 wexec wtest >/dev/null
-	git diff --name-only HEAD | ./bin/wtest changed | xargs -r ./wbuild
+	# Selection baseline: the working tree's diff against HEAD. After a
+	# commit that diff is empty, which used to select nothing and exit 0
+	# silently; fall back to the branch's diff against its merge-base
+	# with origin/main (guarded: no origin/main, no fallback) so a
+	# just-committed change still selects its targets.
+	base=HEAD
+	changed="$(git diff --name-only HEAD)"
+	if [ -z "$changed" ] && base_commit="$(git merge-base origin/main HEAD 2>/dev/null)"; then
+		echo "wbuild: working tree matches HEAD; selecting from 'git diff $base_commit HEAD' (merge-base with origin/main)" >&2
+		base="$base_commit"
+		changed="$(git diff --name-only "$base" HEAD)"
+	fi
+	# The baseline build.json lets bin/wtest scope a manifest diff that
+	# only adds/removes generated leaf test targets to those targets
+	# instead of the whole 'tests' umbrella (tools/test_map.w).
+	if git show "$base:build.json" >bin/.wtest_base_manifest.json 2>/dev/null; then
+		printf '%s\n' "$changed" | ./bin/wtest changed --base-manifest bin/.wtest_base_manifest.json | xargs -r ./wbuild
+	else
+		printf '%s\n' "$changed" | ./bin/wtest changed | xargs -r ./wbuild
+	fi
 	exit 0
 fi
 ./bin/wexec wv2 wexec >/dev/null

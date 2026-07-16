@@ -22,6 +22,7 @@ int enum_declaration():
 					int_literal_width_check()
 					value = from_hex(token + 2)
 				else:
+					int_literal_decimal_check()
 					value = atoi(token)
 				get_token()
 			int current_symbol = sym_declare_global(value_name, type_index, 1)

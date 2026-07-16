@@ -51,6 +51,29 @@ void int_literal_width_check():
 			error(c"integer literal has more than 32 significant bits; assemble wide constants at runtime from 32-bit pieces")
 
 
+# The decimal decoder shares the same 32-bit ceiling: after skipping
+# leading zeros, more than 10 digits always overflows, and exactly 10
+# digits overflow when the digit string compares greater than
+# 4294967295, the largest 32-bit value. A negative literal is '-'
+# applied to a positive literal, so the positive-form bound is the one
+# that matters. No-op on a token that is not a decimal literal, so call
+# sites that fall back to atoi() can guard unconditionally.
+void int_literal_decimal_check():
+	if ((token[0] < '0') | (token[0] > '9')):
+		return
+	int i = 0
+	while (token[i] == '0'):
+		i = i + 1
+	int digits = 0
+	while (token[i + digits]):
+		digits = digits + 1
+	if (digits > 10):
+		error(c"integer literal has more than 32 significant bits; assemble wide constants at runtime from 32-bit pieces")
+	else if (digits == 10):
+		if (strcmp(token + i, c"4294967295") > 0):
+			error(c"integer literal has more than 32 significant bits; assemble wide constants at runtime from 32-bit pieces")
+
+
 # Attempt to decode an int literal
 int int_literal():
 	int negative = 0
@@ -88,6 +111,8 @@ int int_literal():
 	# Check for digits 0-9
 	if ((token[i]) < '0' | (token[i] > '9')):
 		return 0
+
+	int_literal_decimal_check()
 
 	# Decode remaining digits
 	while (token[i]):
