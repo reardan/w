@@ -133,6 +133,30 @@ implementation change inside the generated `_lex` function; the selection
 semantics above are preserved exactly (`generated_matcher_expressions_test`
 pins the edge cases).
 
+Since 2026-07 (issue #329 milestone 2) the generated rule bodies use LL(1)
+analysis (`libs/extras/parser_generator/analysis.w`: per-rule nullability,
+FIRST sets, and attempt purity, computed by fixpoint over the grammar)
+instead of blindly attempting every alternative in order. Alternatives and
+`?`/`*`/`+` terms are guarded by first-set membership tests on the current
+token's kind, so a non-matching alternative is skipped without allocating
+its `pg_ast_node` or entering its sub-parses; where alternatives' FIRST
+sets are disjoint this is committed dispatch. Consecutive alternatives
+sharing identical leading plain terms are left-factored mechanically: the
+shared prefix is parsed once and only the suffix choice dispatches (e.g.
+`extern_decl`'s two `KW_EXTERN type_ref IDENT` alternatives). A guard is
+only emitted where skipping is provably unobservable — the guarded
+sequence cannot match empty and a first-set miss fails without consuming
+tokens or recording diagnostics — so nullable alternatives, overlapping
+FIRST sets, and recover-marked repetitions keep the original ordered
+mark/rewind backtracking, and accept/reject behavior, AST shape, and
+furthest-token error positions are unchanged (verified by differential
+AST comparison of the whole tracked `.w` corpus plus truncation/mutation
+error-path fuzz against the previous generator). `tools/parser_generator.w
+--report` prints the rules kept on the backtracking path with their
+colliding FIRST tokens — the left-factoring worklist for milestone 3
+(w.pg: 109 of 118 rules committed; c.pg: 80 of 99). The
+`parser_generator_w_test` whole-repo sweep runs ~4x faster (78s to 19s).
+
 ## W grammar
 
 `tests/parser_generator/w.pg` is the first generated-parser grammar for W
