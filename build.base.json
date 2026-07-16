@@ -1018,6 +1018,16 @@
 			]
 		},
 		{
+			"name": "wvc_sync_e2e_test",
+			"deps": ["wv2", "wvc"],
+			"inputs": ["tests/wvc_sync_e2e_test.w"],
+			"outputs": ["bin/wvc_sync_e2e_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wvc_sync_e2e_test.w", "-o", "bin/wvc_sync_e2e_test"]},
+				{"cmd": ["bin/wvc_sync_e2e_test"]}
+			]
+		},
+		{
 			"name": "wexec_test",
 			"deps": ["wexec", "hello"],
 			"steps": [
@@ -2048,6 +2058,7 @@
 				"metadata_test",
 				"wvdiff_test",
 				"wvc_e2e_test",
+				"wvc_sync_e2e_test",
 				"unsafe_import_test",
 				"manifest_check",
 				"result_propagate_test",
