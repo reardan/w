@@ -17,19 +17,23 @@ it re-derives from the leader, which is correct per the paper.
 Record encoding, one record per wal payload (little-endian; u64 via
 u64_save_le/u64_load_le):
   tag 1 STATE:    1 tag byte + 8-byte term + 4-byte voted_for
-  tag 2 APPEND:   1 tag byte + 8-byte entry term + 4-byte command
-                  length + command bytes (one record per entry, in
-                  log order; command is opaque, embedded NULs legal —
-                  the length field, raft_entry.command_len, is
-                  authoritative, never strlen)
+  tag 2 APPEND:   1 tag byte + 1-byte entry kind (raft_entry_kind_
+                  normal/config, issue #319) + 8-byte entry term +
+                  4-byte command length + command bytes (one record
+                  per entry, in log order; command is opaque, embedded
+                  NULs legal — the length field, raft_entry.
+                  command_len, is authoritative, never strlen)
   tag 3 TRUNCATE: 1 tag byte + 4-byte keep_count (the log keeps the
                   first keep_count entries above the snapshot base —
                   with no snapshot that is conceptual entries
                   1..keep_count; later entries are discarded)
   tag 4 SNAPSHOT: 1 tag byte + 8-byte snap_last_index + 8-byte
-                  snap_last_term + 4-byte blob length + blob bytes
-                  (raft.w §7 log compaction; the blob is opaque
-                  binary, embedded NULs legal)
+                  snap_last_term + 4-byte config_count + 4-byte config
+                  ids (the FULL member set at the snapshot, self-
+                  inclusive — raft.w's §4.1 membership header, new
+                  since phase 6/issue #319) + 4-byte blob length +
+                  blob bytes (raft.w §7 log compaction; the blob is
+                  opaque binary, embedded NULs legal)
 
 voted_for encoding: raft's "none" sentinel is 0 - 1, which has no
 clean unsigned wire form, so the field is stored biased — none is
@@ -82,6 +86,16 @@ The shadow (term, vote, one u64 term per log entry) is rebuilt from
 the wal's valid record prefix at open time, so a sync issued right
 after recovery appends nothing. The adapter assumes it is the only
 writer of its wal file.
+
+Cluster membership replay (issue #319; raft.w's §4.1 membership
+header): raft_wal_replay_into's APPEND/TRUNCATE handling calls the
+SAME raft.w hooks (raft_note_entry_appended, raft_note_truncated_to)
+that live raft_propose_internal/raft_handle_append use, so replaying
+the persisted record sequence reconstructs byte-identical peer-set
+history to what was live before the crash — the peer set is never
+recomputed from scratch, only replayed. A SNAPSHOT record's config_
+count/ids (new field, this issue) are adopted via raft_adopt_
+snapshot_config exactly as a network InstallSnapshot would be.
 */
 import lib.lib
 import lib.memory
@@ -162,10 +176,10 @@ void raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 		rw.voted_for = raft_wal_decode_vote(wal_get_le32(p + 9))
 		return
 	if (tag == raft_wal_tag_append()):
-		assert1(len >= 13)
-		assert1(wal_get_le32(p + 9) == len - 13)
+		assert1(len >= 14)
+		assert1(wal_get_le32(p + 10) == len - 14)
 		u64* t = u64_new()
-		u64_load_le(t, p + 1)
+		u64_load_le(t, p + 2)
 		rw.entry_terms.push(t)
 		return
 	if (tag == raft_wal_tag_truncate()):
@@ -177,10 +191,14 @@ void raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 			u64_free(dropped)
 		return
 	if (tag == raft_wal_tag_snapshot()):
-		assert1(len >= 21)
-		assert1(wal_get_le32(p + 17) == len - 21)
+		assert1(len >= 25)
 		u64_load_le(rw.snap_index, p + 1)
 		u64_load_le(rw.snap_term, p + 9)
+		int ccount = wal_get_le32(p + 17)
+		assert1(ccount >= 0)
+		int coff = 21 + 4 * ccount
+		assert1(len >= coff + 4)
+		assert1(wal_get_le32(p + coff) == len - coff - 4)
 		# the snapshot covers (and a rewrite drops) every prior entry
 		while (rw.entry_terms.length > 0):
 			u64* gone = rw.entry_terms.pop()
@@ -290,41 +308,50 @@ void raft_wal_put_state(raft_wal* rw, raft* r):
 
 
 # One APPEND record for the log entry at storage index i; its term is
-# cloned onto the shadow.
+# cloned onto the shadow. Carries the entry's kind (raft_entry_kind_
+# normal/config, issue #319) so replay reconstructs it exactly.
 void raft_wal_put_append(raft_wal* rw, raft* r, int i):
 	raft_entry* e = r.log[i]
 	int cmd_len = e.command_len
-	char* arec = malloc(13 + cmd_len)
+	char* arec = malloc(14 + cmd_len)
 	arec[0] = raft_wal_tag_append()
-	u64_save_le(arec + 1, e.term)
-	wal_put_le32(arec + 9, cmd_len)
+	arec[1] = e.kind
+	u64_save_le(arec + 2, e.term)
+	wal_put_le32(arec + 10, cmd_len)
 	int k = 0
 	while (k < cmd_len):
-		arec[13 + k] = e.command[k]
+		arec[14 + k] = e.command[k]
 		k = k + 1
-	raft_wal_put_record(rw, arec, 13 + cmd_len)
+	raft_wal_put_record(rw, arec, 14 + cmd_len)
 	free(arec)
 	rw.entry_terms.push(u64_clone(e.term))
 
 
 # The raft's snapshot advanced past the shadow's: compact the wal
 # itself (header). wal_reset truncates the file, then the complete
-# compacted state is rewritten — one SNAPSHOT record (meta + blob),
-# one STATE record, one APPEND per retained entry — and the shadow is
-# rebuilt to match. Returns the number of records written.
+# compacted state is rewritten — one SNAPSHOT record (meta + config +
+# blob), one STATE record, one APPEND per retained entry — and the
+# shadow is rebuilt to match. Returns the number of records written.
 int raft_wal_rewrite(raft_wal* rw, raft* r):
 	assert1(wal_reset(rw.wlog) == 1)
 	int blob_len = r.snap_len
-	char* nrec = malloc(21 + blob_len)
+	int ccount = r.snap_config.length
+	int coff = 21 + 4 * ccount
+	char* nrec = malloc(coff + 4 + blob_len)
 	nrec[0] = raft_wal_tag_snapshot()
 	u64_save_le(nrec + 1, r.snap_last_index)
 	u64_save_le(nrec + 9, r.snap_last_term)
-	wal_put_le32(nrec + 17, blob_len)
+	wal_put_le32(nrec + 17, ccount)
+	int ci = 0
+	while (ci < ccount):
+		wal_put_le32(nrec + 21 + 4 * ci, r.snap_config[ci])
+		ci = ci + 1
+	wal_put_le32(nrec + coff, blob_len)
 	int b = 0
 	while (b < blob_len):
-		nrec[21 + b] = r.snap_data[b]
+		nrec[coff + 4 + b] = r.snap_data[b]
 		b = b + 1
-	raft_wal_put_record(rw, nrec, 21 + blob_len)
+	raft_wal_put_record(rw, nrec, coff + 4 + blob_len)
 	free(nrec)
 	u64_copy(rw.snap_index, r.snap_last_index)
 	u64_copy(rw.snap_term, r.snap_last_term)
@@ -396,18 +423,28 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		r.voted_for = raft_wal_decode_vote(wal_get_le32(p + 9))
 		return
 	if (tag == raft_wal_tag_append()):
-		assert1(len >= 13)
-		int cmd_len = wal_get_le32(p + 9)
-		assert1(cmd_len == len - 13)
+		assert1(len >= 14)
+		int kind = p[1] & 255
+		int cmd_len = wal_get_le32(p + 10)
+		assert1(cmd_len == len - 14)
 		u64* t = u64_new()
-		u64_load_le(t, p + 1)
-		r.log.push(raft_entry_new(t, p + 13, cmd_len))
+		u64_load_le(t, p + 2)
+		raft_entry* e = raft_entry_new_kind(t, p + 14, cmd_len, kind)
+		r.log.push(e)
+		# §4.1 membership header: replay reuses the SAME apply-on-append
+		# hook live operation uses, so a config entry's peer-set effect
+		# reconstructs exactly rather than being recomputed from scratch.
+		raft_note_entry_appended(r, raft_last_index(r), e)
 		u64_free(t)
 		return
 	if (tag == raft_wal_tag_truncate()):
 		assert1(len == 5)
 		int keep = wal_get_le32(p + 1)
 		assert1(keep >= 0 && keep <= r.log.length)
+		# §4.1 membership rollback (raft.w header): keep is a count above
+		# the snapshot base, so the conceptual index bound truncation
+		# survives up to is snap_base + keep.
+		raft_note_truncated_to(r, raft_snap_base(r) + keep)
 		while (r.log.length > keep):
 			raft_entry* removed = r.log.pop()
 			raft_entry_free(removed)
@@ -416,26 +453,39 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		# resets the replay state (header): the replayed prefix is
 		# covered by the snapshot (a rewrite starts the wal with this
 		# record, so the log is normally empty here), commit and
-		# last_applied jump to the snapshot index, and the blob lands
+		# last_applied jump to the snapshot index, the FULL config
+		# recorded at the snapshot is adopted (raft_adopt_snapshot_
+		# config, superseding rather than rolling back to any pending
+		# in-flight change — §4.1 membership header), and the blob lands
 		# in both the raft's own snapshot slot and the pending slot —
 		# the application re-installs it before applying anything.
-		assert1(len >= 21)
-		int blob_len = wal_get_le32(p + 17)
-		assert1(blob_len == len - 21)
+		assert1(len >= 25)
+		int ccount = wal_get_le32(p + 17)
+		assert1(ccount >= 0)
+		int coff = 21 + 4 * ccount
+		assert1(len >= coff + 4)
+		int blob_len = wal_get_le32(p + coff)
+		assert1(blob_len == len - coff - 4)
 		while (r.log.length > 0):
 			raft_entry* covered = r.log.pop()
 			raft_entry_free(covered)
 		u64_load_le(r.snap_last_index, p + 1)
 		u64_load_le(r.snap_last_term, p + 9)
+		list[int] cfg = new list[int]
+		int ci = 0
+		while (ci < ccount):
+			cfg.push(wal_get_le32(p + 21 + 4 * ci))
+			ci = ci + 1
+		raft_adopt_snapshot_config(r, cfg)
 		u64_copy(r.commit_index, r.snap_last_index)
 		u64_copy(r.last_applied, r.snap_last_index)
 		if (r.snap_data != 0):
 			free(r.snap_data)
-		r.snap_data = raft_copy_blob(p + 21, blob_len)
+		r.snap_data = raft_copy_blob(p + coff + 4, blob_len)
 		r.snap_len = blob_len
 		if (r.pending_snap_data != 0):
 			free(r.pending_snap_data)
-		r.pending_snap_data = raft_copy_blob(p + 21, blob_len)
+		r.pending_snap_data = raft_copy_blob(p + coff + 4, blob_len)
 		r.pending_snap_len = blob_len
 		u64_copy(r.pending_snap_index, r.snap_last_index)
 		return

@@ -8,26 +8,38 @@ Layout, all little-endian, u64 fields via u64_save_le:
   vote_reply:    + granted u8, prevote u8
   append:        + prev_log_index u64, prev_log_term u64,
                    leader_commit u64, entry_count u32,
-                   then per entry: term u64, cmd_len u32, cmd bytes
-                   (opaque bytes, embedded NUL legal; cmd_len is
-                   raft_entry.command_len, never strlen — no NUL on
-                   the wire either way)
+                   then per entry: kind u8, term u64, cmd_len u32,
+                   cmd bytes (opaque bytes, embedded NUL legal;
+                   cmd_len is raft_entry.command_len, never strlen —
+                   no NUL on the wire either way; kind is raft_entry.
+                   kind, raft_entry_kind_normal/config — issue #319)
   append_reply:  + success u8, match_index u64
   install_snapshot: + prev_log_index u64 (snapshot last index),
                    prev_log_term u64 (snapshot last term),
-                   leader_commit u64, snap_len u32, blob bytes
+                   leader_commit u64, config_count u32, config ids
+                   (u32 each — the FULL member set at the snapshot,
+                   self-inclusive; raft.w's §4.1 membership header),
+                   snap_len u32, blob bytes
 
 The prevote flag byte (raft.w's pre-vote rounds, §9.6) trails each
 vote layout so the earlier fields keep their offsets; it is 0 on every
-real vote message. Append layouts are untouched.
+real vote message. Append layouts are untouched except for the new
+per-entry kind byte (issue #319, cluster membership changes) —
+raft_wire_size/encode/decode's append-entries loop is the ONLY thing
+that moved; every other message type's layout is unchanged from
+phase 5b/6.
 
 install_snapshot (raft.w's §7 log compaction) reuses the append field
 names per raft.w's convention: prev_log_index/prev_log_term carry the
 snapshot's last included index and term. The blob is opaque binary
-(embedded NULs legal; snap_len is authoritative). An encoded
-install_snapshot must fit raft_tcp.w's 1 MiB frame cap (rt_max_frame)
-to ride that transport — nothing here enforces it; the transport
-refuses oversize frames at send.
+(embedded NULs legal; snap_len is authoritative). The config_count/
+config-ids section (issue #319) is new since phase 6: a snapshot may
+cover a compacted prefix a fresh node never saw as individual config
+entries, so its recorded config rides the InstallSnapshot envelope
+itself rather than relying on log replay. An encoded install_snapshot
+must fit raft_tcp.w's 1 MiB frame cap (rt_max_frame) to ride that
+transport — nothing here enforces it; the transport refuses oversize
+frames at send.
 
 raft_wire_decode allocates the returned raft_msg (free with
 raft_msg_free). Entry commands are opaque, length-carrying byte
@@ -73,13 +85,13 @@ int raft_wire_size(raft_msg* m):
 		int i = 0
 		while (i < m.entries.length):
 			raft_entry* e = m.entries[i]
-			n = n + 8 + 4 + e.command_len
+			n = n + 1 + 8 + 4 + e.command_len
 			i = i + 1
 		return n
 	if (m.type == raft_msg_append_reply()):
 		return n + 1 + 8
 	if (m.type == raft_msg_install_snapshot()):
-		return n + 8 + 8 + 8 + 4 + m.snap_len
+		return n + 8 + 8 + 8 + 4 + 4 * m.snap_config.length + 4 + m.snap_len
 	assert1(0)
 	return 0
 
@@ -111,13 +123,14 @@ void raft_wire_encode(raft_msg* m, char* buf):
 		while (i < m.entries.length):
 			raft_entry* e = m.entries[i]
 			int cmd_len = e.command_len
-			u64_save_le(buf + off, e.term)
-			raft_wire_u32(buf + off + 8, cmd_len)
+			buf[off] = e.kind
+			u64_save_le(buf + off + 1, e.term)
+			raft_wire_u32(buf + off + 9, cmd_len)
 			int j = 0
 			while (j < cmd_len):
-				buf[off + 12 + j] = e.command[j]
+				buf[off + 13 + j] = e.command[j]
 				j = j + 1
-			off = off + 12 + cmd_len
+			off = off + 13 + cmd_len
 			i = i + 1
 		return
 	if (m.type == raft_msg_append_reply()):
@@ -128,10 +141,17 @@ void raft_wire_encode(raft_msg* m, char* buf):
 		u64_save_le(buf + off, m.prev_log_index)
 		u64_save_le(buf + off + 8, m.prev_log_term)
 		u64_save_le(buf + off + 16, m.leader_commit)
-		raft_wire_u32(buf + off + 24, m.snap_len)
+		raft_wire_u32(buf + off + 24, m.snap_config.length)
+		int coff = off + 28
+		int ci = 0
+		while (ci < m.snap_config.length):
+			raft_wire_u32(buf + coff, m.snap_config[ci])
+			coff = coff + 4
+			ci = ci + 1
+		raft_wire_u32(buf + coff, m.snap_len)
 		int sb = 0
 		while (sb < m.snap_len):
-			buf[off + 28 + sb] = m.snap_data[sb]
+			buf[coff + 4 + sb] = m.snap_data[sb]
 			sb = sb + 1
 		return
 	assert1(0)
@@ -184,14 +204,27 @@ raft_msg* raft_wire_decode(char* buf, int len):
 		u64_load_le(m.prev_log_index, buf + off)
 		u64_load_le(m.prev_log_term, buf + off + 8)
 		u64_load_le(m.leader_commit, buf + off + 16)
-		int blen = raft_wire_read_u32(buf + off + 24)
-		if (blen < 0 || blen != len - off - 28):
+		int ccount = raft_wire_read_u32(buf + off + 24)
+		if (ccount < 0 || ccount > (len - off - 28) / 4):
+			raft_msg_free(m)
+			return 0
+		int coff = off + 28
+		int ci = 0
+		while (ci < ccount):
+			m.snap_config.push(raft_wire_read_u32(buf + coff))
+			coff = coff + 4
+			ci = ci + 1
+		if (len - coff < 4):
+			raft_msg_free(m)
+			return 0
+		int blen = raft_wire_read_u32(buf + coff)
+		if (blen < 0 || blen != len - coff - 4):
 			raft_msg_free(m)
 			return 0
 		char* blob = malloc(blen + 1)
 		int bi = 0
 		while (bi < blen):
-			blob[bi] = buf[off + 28 + bi]
+			blob[bi] = buf[coff + 4 + bi]
 			bi = bi + 1
 		blob[blen] = 0
 		m.snap_data = blob
@@ -212,18 +245,27 @@ raft_msg* raft_wire_decode(char* buf, int len):
 	u64* eterm = u64_new()
 	int i = 0
 	while (i < count):
-		if (len - off < 12):
+		if (len - off < 13):
 			u64_free(eterm)
 			raft_msg_free(m)
 			return 0
-		u64_load_le(eterm, buf + off)
-		int cmd_len = raft_wire_read_u32(buf + off + 8)
-		if (cmd_len < 0 || cmd_len > len - off - 12):
+		int kind = buf[off] & 255
+		if (kind != raft_entry_kind_normal() && kind != raft_entry_kind_config()):
 			u64_free(eterm)
 			raft_msg_free(m)
 			return 0
-		m.entries.push(raft_entry_new(eterm, buf + off + 12, cmd_len))
-		off = off + 12 + cmd_len
+		u64_load_le(eterm, buf + off + 1)
+		int cmd_len = raft_wire_read_u32(buf + off + 9)
+		if (cmd_len < 0 || cmd_len > len - off - 13):
+			u64_free(eterm)
+			raft_msg_free(m)
+			return 0
+		if (kind == raft_entry_kind_config() && cmd_len != 5):
+			u64_free(eterm)
+			raft_msg_free(m)
+			return 0
+		m.entries.push(raft_entry_new_kind(eterm, buf + off + 13, cmd_len, kind))
+		off = off + 13 + cmd_len
 		i = i + 1
 	u64_free(eterm)
 	if (off != len):
