@@ -70,6 +70,11 @@ build. For a changed path P the emitted targets are the union of:
         not through recorded imports.
       - libs/standard/net/x509_fixtures/ -> net_x509_test and
         tests/metadata/ -> metadata_test: run-time fixture data.
+      - tests/wexec/remote_cache.json -> wexec_remote_cache_test: the
+        target's own manifest steps only name the compiled test binary;
+        the fixture path itself is a literal inside the test's source,
+        passed to a bin/wexec subprocess as a "-f" argument at run
+        time, so neither rule (a) nor rule (b) can see the coupling.
       - build.json / wbuild / build.base.json -> wexec_test + tests (the
         manifest drives every target); build.base.json additionally ->
         manifest_check (it feeds bin/wbuildgen). Exception: when
@@ -1335,6 +1340,9 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		matched = 1
 	if (starts_with(path, c"libs/standard/net/x509_fixtures/")):
 		wtest_add(path, c"net_x509_test")
+		matched = 1
+	if (strcmp(path, c"tests/wexec/remote_cache.json") == 0):
+		wtest_add(path, c"wexec_remote_cache_test")
 		matched = 1
 	if (starts_with(path, c"tests/metadata/")):
 		wtest_add(path, c"metadata_test")
