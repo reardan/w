@@ -1632,6 +1632,14 @@
 			]
 		},
 		{
+			"name": "x64_float64_conformance_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_float64_conformance_test.w", "-o", "bin/x64_float64_conformance_test"]},
+				{"cmd": ["bin/x64_float64_conformance_test"]}
+			]
+		},
+		{
 			"name": "json_rpc_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1824,6 +1832,7 @@
 				"x64_ndarray64_test",
 				"x64_int64_test",
 				"x64_map_float64_test",
+				"x64_float64_conformance_test",
 				"dynamic_test_x64",
 				"extern_alias_test_x64",
 				"c_import_libc_test_x64",
@@ -1868,6 +1877,7 @@
 				"feature_combo_64_test",
 				"feature_interaction_64_test",
 				"float16_64_test",
+				"float_conformance_64_test",
 				"fmath_64_test",
 				"for_container_64_test",
 				"format_64_test",
@@ -2232,6 +2242,7 @@
 				"feature_interaction_test",
 				"file_test",
 				"float16_test",
+				"float_conformance_test",
 				"float_literal_test",
 				"float_test",
 				"fmath_test",
@@ -2896,6 +2907,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64", "tests/float_abi_test.w", "-o", "bin/float_abi_test_arm64"]},
 				{"cmd": ["sh", "tools/run_arm64.sh", "bin/float_abi_test_arm64"], "expect_stdout": "float abi OK"}
+			]
+		},
+		{
+			"name": "float_conformance_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/float_conformance_test.w", "-o", "bin/float_conformance_64_test"]},
+				{"cmd": ["bin/float_conformance_64_test"]}
+			]
+		},
+		{
+			"name": "float_conformance_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/float_conformance_test.w", "-o", "bin/float_conformance_test"]},
+				{"cmd": ["bin/float_conformance_test"]}
 			]
 		},
 		{

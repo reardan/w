@@ -78,7 +78,9 @@ current state:
 			float64 literals, arithmetic, formatting and returns work on x64
 			x64 tests also cover float32 narrowing from a float64 literal
 			float output is diff-tested against C reference output
-			float16/bfloat16 remain future work
+			float16 storage/conversion works on the x86 family (F16C
+				hardware instructions; design: docs/projects/float.md)
+			bfloat16 and float16 on arm64/wasm remain future work
 		built-in map/set:
 			map[K, V] and set[K] types
 			new map/set allocation, typed literals, indexing, assignment and in-membership
@@ -294,7 +296,7 @@ current state:
 	future language features:
 		generic inference for forward calls, struct constructors and container shapes (pair[T]*, list[T])
 		inline asm functions
-		float16 / bfloat16 (design: docs/projects/float.md)
+		bfloat16; float16 on arm64/wasm (design: docs/projects/float.md)
 		type <=> json: floats and map[string, V] fields (base feature works)
 		type <=> protobuf
 		global default values
