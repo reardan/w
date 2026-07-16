@@ -293,6 +293,22 @@ is a queue, not an archive.
   a one-line special case (or restructure the loop to extract digits via
   `-(n % 10)` without pre-negating `n`, matching `intstrlen`'s existing
   correct handling of negative `n`).
+- **`stream_peek_byte` sign-extends the byte 0xFF into the -1 EOF
+  sentinel — pre-existing library bug.** Found 2026-07-16 while building
+  `tests/ndjson_utf8_validator.w` for #287 stage 1: `lib/stream.w`'s
+  `stream_peek_byte` returns `s.buffer[s.position]` (a sign-extending
+  `char` load), so a raw 0xFF byte is indistinguishable from end of
+  input, and everything layered on it — `stream_read_byte`,
+  `stream_read_line`, `lib/file.w`'s `file_read_text`/`file_read_lines`
+  — silently truncates at the first 0xFF byte (observed: a 241-byte
+  NDJSON line captured from the pre-fix `check --json` came back as 213
+  bytes). Bytes 0x80–0xFE flow through as other negative values and
+  happen to survive the append path, so only 0xFF truncates. Likely fix
+  is one masking op (`& 255`) in `stream_peek_byte` plus an audit of
+  direct `s.buffer[...]` consumers in the same file; not fixed in the
+  #287 PR (seed-adjacent blast radius — `lib/stream.w` feeds wexec,
+  wmeta, and the web stack; deserves its own gated PR). The validator
+  routes around it by reading with `getchar()`, which masks correctly.
 - **The compiler can exit 1 with no diagnostic at all — partially
   addressed.** The pre-refresh darwin seed compiling current `w.w`
   (post-#128 `libs/extras`) printed only the `compiling 'w.w'` banner

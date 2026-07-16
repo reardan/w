@@ -88,7 +88,13 @@ int get_character():
 		line_number = line_number + 1
 		column_number = 0
 	else if ((nextc != 0) & (nextc != -1)):
-		column_number = column_number + 1
+		# Columns count codepoints, not bytes: a UTF-8 continuation
+		# byte (10xxxxxx) extends the previous character, so it does
+		# not advance the column. Identical to byte counting for
+		# all-ASCII lines; byte_offset stays byte-exact regardless
+		# (grammar/generic.w re-seeks by it). (#287)
+		if ((nextc & 192) != 128):
+			column_number = column_number + 1
 
 	# Handle Tab
 	if(nextc == 9):

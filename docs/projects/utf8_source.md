@@ -1,8 +1,47 @@
 # UTF-8 source support (issue #287)
 
-Status: audit + staged design proposal (2026-07-16). No compiler changes
-in this PR — this document reports empirical behavior of the current
-tokenizer/grammar/diagnostics stack and proposes how to close the gaps.
+Status: audit + staged design proposal (2026-07-16). **Stage 1
+implemented (2026-07-16)**; stage 2 (identifiers) remains
+decision-gated on §6 and is untouched. Stage 1 choices, as landed:
+
+- **JSON escaper** (§2.1 item 3): `diag_write_json_string`
+  (`compiler/diagnostics.w`) now passes bytes >= 0x80 through raw only
+  as part of a well-formed UTF-8 sequence (validated with the same
+  rules as `lib/utf8.w`'s `utf8_validate_bytes`, reimplemented locally
+  to keep the module dependency-free) and escapes any other byte as
+  `\u00XX` — its byte value, so the information is preserved while the
+  emitted NDJSON is always valid UTF-8/JSON. Valid-UTF-8 output is
+  byte-identical to before; human output is untouched.
+- **BOM** (§6 Q1): silent-strip, per this doc's recommendation. A
+  single leading `EF BB BF` is consumed in `compile_attempt`
+  (`compiler/compiler.w`) via `getc()`, before the first `get_token()`,
+  keeping `byte_offset` exact and the line/column counters untouched. A
+  partial match (stray `EF` not followed by `BB BF`) may consume up to
+  two extra bytes, which is unobservable: such a file fails on its
+  first token exactly as before. No new diagnostic message, so no
+  frozen-text fixtures changed.
+- **Columns** (§6 Q2): codepoint-based, in stage 1, per §3 — the
+  one-line `get_character` change (UTF-8 continuation bytes don't
+  advance `column_number`). JSON-only in effect: human output has no
+  column. `byte_offset`/`token_start_offset` stay byte-exact. The
+  additive byte+codepoint dual-field idea from §6 Q2 remains open.
+- **Tests** (§5 items 1-6): `tests/utf8_source_test.w` (+ generated x64
+  twin) covers raw UTF-8 in line/block comments, `"..."`/`s"..."`
+  literals, f-string chunks, and codepoint iteration.
+  `check_json_utf8_test` and `utf8_bom_test` (hand-written
+  `build.base.json` targets) generate their fixtures at test time with
+  `printf` into `bin/` — invalid-UTF-8 and BOM bytes are deliberately
+  not committed as tracked `.w` files, so `parser_generator_w_test`
+  (which parses every tracked `.w` file) and the metadata gates never
+  see them. `tests/ndjson_utf8_validator.w` asserts every captured
+  NDJSON line is valid UTF-8, parses as JSON (`structures/json.w`), and
+  carries the seven documented diagnostic fields. The column fixture
+  asserts `"column": 19` for the §3 probe (byte column would be 25).
+- `c"..."` stays raw/unvalidated (§6 Q3) — unchanged, as §4 requires.
+
+The audit below reports the pre-stage-1 behavior; rows fixed by stage 1
+are the BOM row, the invalid-UTF-8 `check --json` row, and the
+line/column row.
 
 Issue #287: "Support utf8 source files - e.g. utf8 identifiers, utf8 in
 comments + strings, etc. Can reference the process / problems / caveats
