@@ -9,7 +9,9 @@ Layout, all little-endian, u64 fields via u64_save_le:
   append:        + prev_log_index u64, prev_log_term u64,
                    leader_commit u64, entry_count u32,
                    then per entry: term u64, cmd_len u32, cmd bytes
-                   (no NUL on the wire)
+                   (opaque bytes, embedded NUL legal; cmd_len is
+                   raft_entry.command_len, never strlen — no NUL on
+                   the wire either way)
   append_reply:  + success u8, match_index u64
   install_snapshot: + prev_log_index u64 (snapshot last index),
                    prev_log_term u64 (snapshot last term),
@@ -28,15 +30,14 @@ to ride that transport — nothing here enforces it; the transport
 refuses oversize frames at send.
 
 raft_wire_decode allocates the returned raft_msg (free with
-raft_msg_free) and malloc'd NUL-terminated command copies for entries.
-Per raft.w's ownership contract, commands that raft appends into its
-log are shared pointers that must outlive the raft — so decoded
-command buffers are intentionally never freed once handed to
-raft_on_msg (the same documented leak-by-design as raft_wal.w's
-recovered commands; bounded by traffic volume, fine for the demo and
-test tiers this phase targets). Decoded snapshot blobs are different:
-the message OWNS its blob (raft_msg_free frees it) and receivers copy
-it on install, so no leak-by-design applies to them.
+raft_msg_free). Entry commands are opaque, length-carrying byte
+buffers (raft_entry.command_len is authoritative, never strlen) —
+raft_entry_new COPIES cmd_len bytes straight out of the decode buffer,
+so decode reads the wire buffer directly with no intermediate
+malloc'd copy and no leak: the entry's owned copy is freed like
+everything else by raft_msg_free / raft_entry_free. Decoded snapshot
+blobs work the same way they always did: the message OWNS its blob
+(raft_msg_free frees it) and receivers copy it on install.
 
 Node ids must be non-negative (asserted on encode); malformed input
 makes decode return 0, never crash: every length is bounds-checked
@@ -72,7 +73,7 @@ int raft_wire_size(raft_msg* m):
 		int i = 0
 		while (i < m.entries.length):
 			raft_entry* e = m.entries[i]
-			n = n + 8 + 4 + strlen(e.command)
+			n = n + 8 + 4 + e.command_len
 			i = i + 1
 		return n
 	if (m.type == raft_msg_append_reply()):
@@ -109,7 +110,7 @@ void raft_wire_encode(raft_msg* m, char* buf):
 		int i = 0
 		while (i < m.entries.length):
 			raft_entry* e = m.entries[i]
-			int cmd_len = strlen(e.command)
+			int cmd_len = e.command_len
 			u64_save_le(buf + off, e.term)
 			raft_wire_u32(buf + off + 8, cmd_len)
 			int j = 0
@@ -221,13 +222,7 @@ raft_msg* raft_wire_decode(char* buf, int len):
 			u64_free(eterm)
 			raft_msg_free(m)
 			return 0
-		char* cmd = malloc(cmd_len + 1)
-		int j = 0
-		while (j < cmd_len):
-			cmd[j] = buf[off + 12 + j]
-			j = j + 1
-		cmd[cmd_len] = 0
-		m.entries.push(raft_entry_new(eterm, cmd))
+		m.entries.push(raft_entry_new(eterm, buf + off + 12, cmd_len))
 		off = off + 12 + cmd_len
 		i = i + 1
 	u64_free(eterm)

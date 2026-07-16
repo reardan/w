@@ -19,7 +19,9 @@ u64_save_le/u64_load_le):
   tag 1 STATE:    1 tag byte + 8-byte term + 4-byte voted_for
   tag 2 APPEND:   1 tag byte + 8-byte entry term + 4-byte command
                   length + command bytes (one record per entry, in
-                  log order)
+                  log order; command is opaque, embedded NULs legal —
+                  the length field, raft_entry.command_len, is
+                  authoritative, never strlen)
   tag 3 TRUNCATE: 1 tag byte + 4-byte keep_count (the log keeps the
                   first keep_count entries above the snapshot base —
                   with no snapshot that is conceptual entries
@@ -67,12 +69,14 @@ raft_take_pending_snapshot (re-installing its state-machine state)
 BEFORE any raft_pop_apply, exactly mirroring the network install
 path. Entries recorded after the snapshot replay as before.
 
-Commands are raft.w client commands: NUL-terminated strings (their
-length on the wire is strlen). Recovery allocates fresh copies of the
-command bytes; those copies intentionally live as long as the raft
-itself (raft.w's contract: command pointers are caller-owned and must
-outlive the raft), except copies discarded by a TRUNCATE replay, which
-are freed on the spot because this module allocated them.
+Commands are raft.w client commands: opaque, length-carrying byte
+buffers (raft_entry.command_len is authoritative, never strlen — see
+raft.w). raft_entry_new COPIES cmd_len bytes straight out of the
+replayed wal record, so replay reads the record buffer directly with
+no intermediate malloc'd copy. Entries own their command bytes
+(raft_entry_free releases them), so a TRUNCATE or SNAPSHOT replay that
+pops entries needs nothing beyond raft_entry_free — no separate
+command free, and no leak-by-design.
 
 The shadow (term, vote, one u64 term per log entry) is rebuilt from
 the wal's valid record prefix at open time, so a sync issued right
@@ -289,7 +293,7 @@ void raft_wal_put_state(raft_wal* rw, raft* r):
 # cloned onto the shadow.
 void raft_wal_put_append(raft_wal* rw, raft* r, int i):
 	raft_entry* e = r.log[i]
-	int cmd_len = strlen(e.command)
+	int cmd_len = e.command_len
 	char* arec = malloc(13 + cmd_len)
 	arec[0] = raft_wal_tag_append()
 	u64_save_le(arec + 1, e.term)
@@ -379,9 +383,11 @@ int raft_wal_sync(raft_wal* rw, raft* r):
 
 # ---- recovery --------------------------------------------------------------------
 
-# Replay one persisted record into a recovering raft. APPEND allocates
-# a fresh command copy (header: it lives as long as the raft); a
-# TRUNCATE replay frees the copies it discards, since they are ours.
+# Replay one persisted record into a recovering raft. APPEND copies
+# the command bytes straight out of the wal record into a fresh
+# entry-owned buffer (raft_entry_new); a TRUNCATE replay frees the
+# whole entry (raft_entry_free, which now also frees its command
+# copy) for every entry it discards.
 void raft_wal_replay_into(raft* r, char* p, int len):
 	int tag = p[0] & 255
 	if (tag == raft_wal_tag_state()):
@@ -395,13 +401,7 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		assert1(cmd_len == len - 13)
 		u64* t = u64_new()
 		u64_load_le(t, p + 1)
-		char* cmd = malloc(cmd_len + 1)
-		int k = 0
-		while (k < cmd_len):
-			cmd[k] = p[13 + k]
-			k = k + 1
-		cmd[cmd_len] = 0
-		r.log.push(raft_entry_new(t, cmd))
+		r.log.push(raft_entry_new(t, p + 13, cmd_len))
 		u64_free(t)
 		return
 	if (tag == raft_wal_tag_truncate()):
@@ -410,7 +410,6 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		assert1(keep >= 0 && keep <= r.log.length)
 		while (r.log.length > keep):
 			raft_entry* removed = r.log.pop()
-			free(removed.command)
 			raft_entry_free(removed)
 		return
 	if (tag == raft_wal_tag_snapshot()):
@@ -425,7 +424,6 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		assert1(blob_len == len - 21)
 		while (r.log.length > 0):
 			raft_entry* covered = r.log.pop()
-			free(covered.command)
 			raft_entry_free(covered)
 		u64_load_le(r.snap_last_index, p + 1)
 		u64_load_le(r.snap_last_term, p + 9)

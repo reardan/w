@@ -142,13 +142,13 @@ void test_apply_put_overwrite_delete():
 	kvs_clean_store(prefix)
 	lsm* store = lsm_open(prefix, 1 << 20)
 	assert1(cast(int, store) != 0)
-	assert_equal(1, kv_apply_command(store, c"P\tname\tone"))
+	assert_equal(1, kv_apply_command(store, c"P\tname\tone", 10))
 	kvs_expect(store, c"name", c"one")
 	# second put overwrites
-	assert_equal(1, kv_apply_command(store, c"P\tname\ttwo"))
+	assert_equal(1, kv_apply_command(store, c"P\tname\ttwo", 10))
 	kvs_expect(store, c"name", c"two")
 	# delete removes
-	assert_equal(1, kv_apply_command(store, c"D\tname"))
+	assert_equal(1, kv_apply_command(store, c"D\tname", 6))
 	kvs_expect_gone(store, c"name")
 	lsm_close(store)
 	free(prefix)
@@ -161,7 +161,7 @@ void test_apply_empty_value_roundtrip():
 	assert1(cast(int, store) != 0)
 	char* cmd = kv_encode_put(c"blank", c"")
 	assert1(cast(int, cmd) != 0)
-	assert_equal(1, kv_apply_command(store, cmd))
+	assert_equal(1, kv_apply_command(store, cmd, strlen(cmd)))
 	free(cmd)
 	# present, with a zero-length value
 	kvs_expect(store, c"blank", c"")
@@ -174,20 +174,20 @@ void test_apply_rejects_malformed():
 	kvs_clean_store(prefix)
 	lsm* store = lsm_open(prefix, 1 << 20)
 	assert1(cast(int, store) != 0)
-	assert_equal(1, kv_apply_command(store, c"P\tkeep\tsafe"))
+	assert_equal(1, kv_apply_command(store, c"P\tkeep\tsafe", 11))
 	# unknown tag, missing tabs, empty command, bare tag
-	assert_equal(0, kv_apply_command(store, c"X\tk"))
-	assert_equal(0, kv_apply_command(store, c"P\tonly-key"))
-	assert_equal(0, kv_apply_command(store, c""))
-	assert_equal(0, kv_apply_command(store, c"P"))
+	assert_equal(0, kv_apply_command(store, c"X\tk", 3))
+	assert_equal(0, kv_apply_command(store, c"P\tonly-key", 10))
+	assert_equal(0, kv_apply_command(store, c"", 0))
+	assert_equal(0, kv_apply_command(store, c"P", 1))
 	# empty key, junk third field, delete with extra field / empty key
-	assert_equal(0, kv_apply_command(store, c"P\t\tv"))
-	assert_equal(0, kv_apply_command(store, c"P\tk\tv\tw"))
-	assert_equal(0, kv_apply_command(store, c"D\tk\tv"))
-	assert_equal(0, kv_apply_command(store, c"D\t"))
+	assert_equal(0, kv_apply_command(store, c"P\t\tv", 4))
+	assert_equal(0, kv_apply_command(store, c"P\tk\tv\tw", 7))
+	assert_equal(0, kv_apply_command(store, c"D\tk\tv", 5))
+	assert_equal(0, kv_apply_command(store, c"D\t", 2))
 	# embedded newline / CR
-	assert_equal(0, kv_apply_command(store, c"P\tk\tv1\nv2"))
-	assert_equal(0, kv_apply_command(store, c"D\tk\rk"))
+	assert_equal(0, kv_apply_command(store, c"P\tk\tv1\nv2", 9))
+	assert_equal(0, kv_apply_command(store, c"D\tk\rk", 5))
 	# the store is untouched: keep is intact, nothing else appeared
 	kvs_expect(store, c"keep", c"safe")
 	kvs_expect_gone(store, c"k")
@@ -218,6 +218,42 @@ void test_propose_apply_loop():
 	assert_equal(1, kv_apply_pending(r, store))
 	kvs_expect_gone(store, c"name")
 	assert_equal(0, kv_apply_pending(r, store))
+	raft_free(r)
+	lsm_close(store)
+	free(prefix)
+
+
+# A value with an embedded NUL must survive propose -> replicate ->
+# apply unchanged (issue #315): kv_propose_put_len carries an explicit
+# length end to end (raft_entry.command_len, never strlen), so the
+# byte at value[1] never truncates the command.
+void test_propose_apply_loop_binary_value():
+	char* prefix = kvs_prefix(c"binval")
+	kvs_clean_store(prefix)
+	lsm* store = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, store) != 0)
+	raft* r = kvs_leader(55)
+	list[raft_msg*] out = new list[raft_msg*]
+	char* value = malloc(5)
+	value[0] = 'a'
+	value[1] = 0
+	value[2] = 'b'
+	value[3] = 255
+	value[4] = 'c'
+	assert_equal(1, kv_propose_put_len(r, c"bin", value, 5, 300, out))
+	assert_equal(0, out.length)
+	assert_equal(1, kv_apply_pending(r, store))
+	int* n = kvs_len_out()
+	char* got = lsm_get(store, c"bin", n)
+	assert1(cast(int, got) != 0)
+	assert_equal(5, n[0])
+	int i = 0
+	while (i < 5):
+		assert_equal(value[i] & 255, got[i] & 255)
+		i = i + 1
+	free(got)
+	free(cast(char*, n))
+	free(value)
 	raft_free(r)
 	lsm_close(store)
 	free(prefix)
@@ -261,7 +297,7 @@ void test_apply_resilience_garbage_entry():
 	raft* r = kvs_leader(9)
 	list[raft_msg*] out = new list[raft_msg*]
 	# a raft-valid but KV-malformed command lands in the log directly
-	assert_equal(1, raft_propose(r, c"garbage-no-tabs", 300, out))
+	assert_equal(1, raft_propose(r, c"garbage-no-tabs", 15, 300, out))
 	assert_equal(1, kv_propose_put(r, c"real", c"value", 310, out))
 	assert_equal(0, out.length)
 	# both entries drain; only the valid one applies
