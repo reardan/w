@@ -70,9 +70,62 @@ Shipped from the next-steps backlog:
 - Import lines accept trailing `#` comments; mid-line tabs are owned by
   the w.pg surface via an opt-in `inline_tabs` skip token (2026-07-16):
   pinned by `import_test`, `midline_tab_test`, and the PG parser tests.
-- Decimal literal overflow guard (2026-07-16): extends the hex/binary
-  32-bit width error to decimal literals; see the resolved entry in
-  the next-steps file for the win64 FILETIME casualty it caught.
+- Literal width guards (2026-07-13, extended 2026-07-16): a hex or
+  binary literal with more than 32 significant bits (leading zeros
+  don't count) is a compile error instead of silently wrapping
+  (`int_literal_width_check()`, `grammar/int_literal.w`) — previously
+  the tokenizer kept only a rolling 32-bit window of a literal's
+  digits, so on x64 `0x7ff0000000000000` parsed to `0` and
+  `0x000fffffffffffff` parsed to `0xffffffffffffffff` with no
+  diagnostic. Decimal literals get the same guard
+  (`int_literal_decimal_check()`: more than 10 significant digits, or
+  exactly 10 comparing above 4294967295, is the same compile error).
+  The sweep for newly-rejected literals caught a real casualty: the
+  win64 FILETIME epoch offset `11644473600` in
+  `lib/__arch__/win64/syscalls.w` had been silently wrapping — win64
+  `linux_time()` returned garbage — and is now computed at runtime.
+  Covered by `int_literal_width_test`, `tests/int_literal_bounds_test.w`,
+  and `tests/warning_clean_fixture.w` (pins the still-legal wide
+  spellings).
+- `wtest changed --run` (2026-07-16): after printing the selection,
+  `wtest` can spawn `bin/wexec` itself with that target list
+  (inheriting stdio so build output streams live) and exit with its
+  status, instead of a caller piping through `./wbuild test_changed`'s
+  `xargs -r ./wbuild`. A companion `-f manifest.json` flag overrides
+  the manifest for both selection and, under `--run`, execution — used
+  to test `--run` in isolation (`wtest_run_test`,
+  `tests/wtest/run_fixture.json`) without recursing through the live
+  manifest. `tools/test_map.w`.
+- `.txt` doc-only filter no longer swallows runtime fixture data
+  (2026-07-16, issue #171): `wtest_doc_only` in `tools/test_map.w`
+  treated every `*.txt` path as documentation, so
+  `tests/asm/corpus_{x86,x64,arm64}.txt` never reached the `tests/asm/`
+  residue rule and `wtest changed` selected nothing for a corpus-only
+  change; fixed by excluding `tests/asm/` before the extension check,
+  pinned by a `wtest_map_test` case.
+- Direct-file UX (2026-07-16, issue #323 stage 1): `./wbuild [selector]
+  path/to/file.w` and `bin/wtest for path/... [--run]` now work without
+  a `build.json` entry — `wexec` resolves the file to the manifest
+  target that already compiles it, or synthesizes a throwaway
+  compile(+run, for `*_test.w`) target with the same content-hash
+  caching every other cacheable target gets; `wtest for` mirrors
+  `changed`'s selection with paths as required positional args instead
+  of an optional stdin list. See `tools/wexec.w`'s "Direct-file UX"
+  section and `docs/projects/build_system_next.md`'s stage-1 inventory
+  for the remaining shell-script/hand-written-target migration roadmap
+  (stage 2, not yet scheduled).
+- `parser_generator_w_test` batching (2026-07-12, extended 2026-07-16):
+  `test_parse_all_tracked_w_files` parsed every tracked `.w` file in
+  one process, retaining every AST, so the 32-bit gate segfaulted once
+  tracked source crossed ~3.7MB; `tools/parser_generator_w_batches.sh`
+  reruns the test binary once per 150-file slice of the manifest,
+  bounding memory at batch size (~21s total) rather than freeing
+  per-file (which was correct but turned the gate into a 90-CPU-minute
+  crawl under the first-fit allocator's quadratic free/malloc
+  behavior). That allocator residual is itself fixed by issue #322
+  (2026-07-16): `lib/memory_freelist.w` now uses 41 segregated
+  size-class bins with O(1) free, so the batching is a memory bound
+  only, no longer a speed workaround.
 - **`wtest changed` cold-cache progress note** (2026-07-16): the first
   `changed` invocation to touch an import closure after a build (or a
   large merge) prints one `wtest: building import-closure cache (first
@@ -169,7 +222,10 @@ Shipped from the next-steps backlog:
   `coerce()`), instead of warning and emitting the descriptor's own
   address — which let callees overwrite the {data-pointer, length} header
   (the #113 corruption). Covered by `array_decay_test` /
-  `array_decay_64_test`.
+  `array_decay_64_test`. Three narrower edge cases were consciously left
+  out (C-variadic tails, `cast(int, arr)` vs `cast(char*, arr)`, and one
+  arm of a conditional expression) — none corrupt memory, tracked in
+  issue #229.
 
 The MVP described here has landed:
 
