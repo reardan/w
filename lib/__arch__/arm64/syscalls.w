@@ -45,6 +45,15 @@ int seek(int file, int offset, int reference):
 int unlink(char* path):
 	return syscall(35, arm64_at_fdcwd(), path, 0)
 
+# fsync (82): flushes the file's data and metadata to stable storage.
+# Returns 0, or a negative errno (e.g. -9 EBADF on a closed fd).
+int fsync(int file):
+	return syscall(82, file, 0, 0)
+
+# fdatasync (83): like fsync, but may skip metadata-only updates.
+int fdatasync(int file):
+	return syscall(83, file, 0, 0)
+
 # Directory syscalls:
 int mkdir(char* path, int mode):
 	return syscall7(34, arm64_at_fdcwd(), path, mode, 0, 0, 0)

@@ -161,6 +161,30 @@ void test_empty_and_binary_payloads():
 	free(path)
 
 
+void test_sync_reaches_stable_storage():
+	char* path = wal_test_path(c"sync.log")
+	create_file(path, 420)
+	wal* w = wal_open(path)
+	assert1(cast(int, w) != 0)
+	assert_equal(1, wal_append(w, c"durable", 7))
+	assert_equal(1, wal_sync(w))
+	# syncing with nothing new appended is also fine
+	assert_equal(1, wal_sync(w))
+	wal_close(w)
+	# raw wrapper contract on a plain fd: fsync/fdatasync return 0
+	# after real writes, and a negative errno once the fd is closed
+	char* raw = wal_test_path(c"sync_raw.bin")
+	int fd = create_file(raw, 420)
+	assert1(fd >= 0)
+	assert_equal(5, write_all(fd, c"bytes", 5))
+	assert_equal(0, fsync(fd))
+	assert_equal(0, fdatasync(fd))
+	close(fd)
+	assert1(fsync(fd) < 0)
+	free(raw)
+	free(path)
+
+
 void test_reset_empties_log():
 	char* path = wal_test_path(c"reset.log")
 	create_file(path, 420)
