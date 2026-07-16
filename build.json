@@ -1052,6 +1052,14 @@
 			]
 		},
 		{
+			"name": "wexec_remote_cache_test",
+			"deps": ["wv2", "wexec"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wexec_remote_cache_test.w", "-o", "bin/wexec_remote_cache_test"]},
+				{"cmd": ["bin/wexec_remote_cache_test"]}
+			]
+		},
+		{
 			"name": "result_propagate_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2052,6 +2060,7 @@
 				"wexec_test",
 				"wexec_keep_going_test",
 				"wexec_ordered_output_test",
+				"wexec_remote_cache_test",
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",

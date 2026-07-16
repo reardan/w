@@ -43,6 +43,25 @@ is a queue, not an archive.
   needs a dedicated style-migration PR (a per-site short-circuit safety
   review plus a parser-generator emission change) first.
 
+- **No warning when an import breaks a different compile target.**
+  `tools/wexec.w` is compiled three ways (default `x86`, `win64`,
+  `arm64_darwin`); adding `import libs.standard.web.http_client` (for
+  the shared build-cache client, issue #251 D3-2) compiled clean under
+  the default `w check` but failed only `win64`'s build ("Cannot find
+  symbol: 'sys_socket'" — `lib.net` has no
+  `lib/__arch__/win64/syscalls.w` socket implementation) — caught only
+  by `wtest changed`'s import-closure selection flagging `wexec_win`
+  as impacted, then building it explicitly. `w check` has no
+  "check every arch this file's closures actually get compiled under"
+  mode, so an arch-incompatible import in a multi-target tool stays
+  invisible until that target's next full build. Worked around here
+  with a `tools/__arch__/<arch>/wexec_remote_http.w` shim (the same
+  pattern `libs/extras/vcs/__arch__/` already uses for its own
+  win64/wasm networking gap) isolating the actual HTTP calls behind
+  per-arch resolution, with a win64 stub that always reports a
+  transport failure so the feature degrades to "unavailable" instead
+  of "won't compile" (2026-07-16).
+
 ## Test selection (`bin/wtest`)
 
 - **`wtest changed --run` — landed.** `wtest` now takes a `--run` flag:
