@@ -28,13 +28,25 @@ Subcommands
 	wvc diff <rev-a> <rev-b>
 	wvc status <dir>
 	wvc merge <rev> [-m <message>] [-a <author>]
+	wvc serve --port N [--root dir]   default root: "."
+	wvc pull <url> [ref]              default ref: "main"
+	wvc push <url> [ref]              default ref: "main"
 
-`log`, `diff` and `merge` take no <dir>: unlike `init`/`snapshot`/
-`status`, which name the working directory explicitly, they operate on
-"<cwd>/.wvc" (and, for `merge`, cwd itself as the working tree it writes
-into) -- this wave does not implement git's walk-up repo discovery, so
-run them from the tracked directory. A rev is either a 64-hex commit id
-or a ref name (currently only "main" can exist).
+`log`, `diff`, `merge`, `pull` and `push` take no <dir>: unlike
+`init`/`snapshot`/`status`/`serve`, which name the working directory
+explicitly (`serve` via `--root`), they operate on "<cwd>/.wvc" (and,
+for `merge`, cwd itself as the working tree it writes into) -- this
+wave does not implement git's walk-up repo discovery, so run them from
+the tracked directory. A rev is either a 64-hex commit id or a ref name
+(currently only "main" can exist).
+
+`serve`/`pull`/`push` (VCS wave 4, issue #252 "sync") are thin CLI
+wiring over libs/extras/vcs/sync.w -- see that file's header comment
+for the wire protocol, the have/want negotiation algorithm, and the
+ancestry-cap/error-handling design decisions. `serve` runs the HTTP
+object server forever (until killed) and prints "Listening on
+<ip>:<port>" on its first stdout line once bound, so a test or script
+launching it with `--port 0` can read the kernel-assigned port back.
 
 Exit status: 0 success, 1 an operation failed (I/O or a malformed VCS
 object -- wvc_fail prints "<errno>: <ECODE>: <description>" via
@@ -143,6 +155,8 @@ import libs.extras.vcs.diff
 import libs.extras.vcs.index
 import libs.extras.vcs.dag
 import libs.extras.vcs.merge3
+import libs.extras.vcs.sync
+import libs.standard.web.http_server
 
 
 char* WVC_META_DIR_NAME():
@@ -185,6 +199,9 @@ void wvc_usage():
 	stream_write_line(err, c"       wvc diff <rev-a> <rev-b>")
 	stream_write_line(err, c"       wvc status <dir>")
 	stream_write_line(err, c"       wvc merge <rev> [-m <message>] [-a <author>]")
+	stream_write_line(err, c"       wvc serve --port N [--root dir]")
+	stream_write_line(err, c"       wvc pull <url> [ref]")
+	stream_write_line(err, c"       wvc push <url> [ref]")
 	stream_flush(err)
 
 
@@ -1130,6 +1147,139 @@ int wvc_cmd_merge(int argc, int argv):
 	return result
 
 
+/* wvc serve / pull / push (wave 4, issue #252 "sync" -- see the header
+   comment and libs/extras/vcs/sync.w's own header comment for the wire
+   protocol and algorithm). Thin wiring only: every real operation is
+   libs/extras/vcs/sync.w. */
+
+
+# The server_handler_fn ServerContext requires even though every request
+# here is dispatched through the RequestContext/routing path instead
+# (vcs_sync_register_routes always registers at least one route) -- see
+# http_server.w's own module doc: this is never actually called.
+ServerResponse* wvc_serve_unused_handler(ServerRequest* req, void* context):
+	return server_response_new(404)
+
+
+int wvc_cmd_serve(int argc, int argv):
+	int port = -1
+	char* root = c"."
+	int i = 2
+	while (i < argc):
+		char** arg = argv + i * __word_size__
+		char* a = *arg
+		if (strcmp(a, c"--port") == 0):
+			i = i + 1
+			if (i >= argc):
+				wvc_usage()
+				return 2
+			char** v = argv + i * __word_size__
+			port = atoi(*v)
+		else if (strcmp(a, c"--root") == 0):
+			i = i + 1
+			if (i >= argc):
+				wvc_usage()
+				return 2
+			char** v = argv + i * __word_size__
+			root = *v
+		else:
+			wvc_usage()
+			return 2
+		i = i + 1
+	if (port < 0):
+		wvc_usage()
+		return 2
+
+	char* meta = wvc_meta_dir(root)
+	wcas* store = wvc_open_store(meta)
+	wrefs* refs = wvc_open_refs(meta)
+	free(meta)
+
+	wvc_serve_ctx* ctx = new wvc_serve_ctx()
+	ctx.store = store
+	ctx.refs = refs
+
+	ServerContext* s = server_context_new(c"127.0.0.1", port, wvc_serve_unused_handler, 0)
+	vcs_sync_register_routes(s, ctx)
+	if (server_context_bind(s) == 0):
+		wstream* err = stderr_writer()
+		stream_write_line(err, c"wvc: cannot bind server")
+		stream_flush(err)
+		return 1
+	int bound_port = server_context_port(s)
+
+	wstream* out = stdout_writer()
+	stream_write_cstr(out, c"Listening on 127.0.0.1:")
+	char* port_text = itoa(bound_port)
+	stream_write_line(out, port_text)
+	free(port_text)
+	stream_flush(out)
+
+	# Serves forever (max_connections <= 0) -- a `wvc serve` process is
+	# killed by whatever launched it (a script, or this project's own
+	# tests/wvc_sync_e2e_test.w), never told to stop gracefully; see
+	# sync.w's header comment on the concurrency/robustness posture.
+	server_context_accept_loop(s, 0)
+
+	server_context_free(s)
+	cas_close(store)
+	refs_close(refs)
+	free(ctx)
+	return 0
+
+
+int wvc_cmd_pull(int argc, int argv):
+	char* url = 0
+	char* ref_name = WVC_DEFAULT_REF()
+	if (argc >= 3):
+		char** arg = argv + 2 * __word_size__
+		url = *arg
+	if (argc >= 4):
+		char** arg2 = argv + 3 * __word_size__
+		ref_name = *arg2
+	if (url == 0):
+		wvc_usage()
+		return 2
+
+	char* meta = wvc_meta_dir(c".")
+	wcas* store = wvc_open_store(meta)
+	wrefs* refs = wvc_open_refs(meta)
+	free(meta)
+
+	wstream* out = stdout_writer()
+	int result = vcs_sync_pull(store, refs, url, ref_name, out)
+
+	cas_close(store)
+	refs_close(refs)
+	return result
+
+
+int wvc_cmd_push(int argc, int argv):
+	char* url = 0
+	char* ref_name = WVC_DEFAULT_REF()
+	if (argc >= 3):
+		char** arg = argv + 2 * __word_size__
+		url = *arg
+	if (argc >= 4):
+		char** arg2 = argv + 3 * __word_size__
+		ref_name = *arg2
+	if (url == 0):
+		wvc_usage()
+		return 2
+
+	char* meta = wvc_meta_dir(c".")
+	wcas* store = wvc_open_store(meta)
+	wrefs* refs = wvc_open_refs(meta)
+	free(meta)
+
+	wstream* out = stdout_writer()
+	int result = vcs_sync_push(store, refs, url, ref_name, out)
+
+	cas_close(store)
+	refs_close(refs)
+	return result
+
+
 int main(int argc, int argv):
 	if (argc < 2):
 		wvc_usage()
@@ -1148,5 +1298,11 @@ int main(int argc, int argv):
 		return wvc_cmd_status(argc, argv)
 	if (strcmp(cmd, c"merge") == 0):
 		return wvc_cmd_merge(argc, argv)
+	if (strcmp(cmd, c"serve") == 0):
+		return wvc_cmd_serve(argc, argv)
+	if (strcmp(cmd, c"pull") == 0):
+		return wvc_cmd_pull(argc, argv)
+	if (strcmp(cmd, c"push") == 0):
+		return wvc_cmd_push(argc, argv)
 	wvc_usage()
 	return 2

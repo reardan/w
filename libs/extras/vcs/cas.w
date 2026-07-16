@@ -38,8 +38,15 @@ Two put surfaces:
 
 Reads (cas_get) validate the framing: the header must parse and the
 declared payload length must match the file size exactly, so truncated
-or garbage objects are reported as corrupt (CAS_ERR_CORRUPT). Full
-digest verification is the separate cas_verify(store, id): it cannot be
+or garbage objects are reported as corrupt (CAS_ERR_CORRUPT). The
+parsing itself lives in cas_parse_framed(bytes, length), factored out of
+cas_get so a caller with bytes that are not (yet, or ever) a file on
+disk -- notably libs/extras/vcs/sync.w's HTTP object-upload handler --
+can validate an untrusted buffer against the same grammar before ever
+writing it to the store: recompute cas_id_hex(type, payload, length)
+from the parsed result and compare against the claimed id, and only
+cas_put_raw it on a match. Full digest verification of an object already
+on disk is the separate cas_verify(store, id): it cannot be
 unconditional in cas_get because raw-put ids are names, not content
 hashes, and would always "fail". Callers that only ever use cas_put can
 treat cas_verify(id) == 1 as the fsck primitive.
@@ -380,23 +387,15 @@ string_builder* cas_read_file(char* path):
 	return contents
 
 
-# Loads an object. Errors: -22 for a malformed id, the open errno for a
-# missing object (-2, the cache-miss case a caller checks for), and
-# CAS_ERR_CORRUPT when the stored bytes do not frame as
-# "<type> <len>\0" + exactly <len> payload bytes (truncation, garbage,
-# or an interrupted foreign write -- impossible via this module's
-# rename protocol, but the store is just files on disk).
-wresult[wcas_object*]* cas_get(wcas* s, char* id):
-	if (cas_valid_id(id) == 0):
-		return result_new_error[wcas_object*](-22)
-	char* path = cas_object_path(s, id)
-	string_builder* contents = cas_read_file(path)
-	free(path)
-	if (contents == 0):
-		return result_new_error[wcas_object*](cas_read_errno)
-	char* bytes = contents.data
-	int total = contents.length
-
+# Parses the "<type> <len>\0" + payload framing (see the header comment)
+# out of an in-memory buffer -- the same grammar cas_get validates when
+# reading a stored object from disk, factored out so a caller whose
+# bytes are not (yet, or ever) a file on disk -- an HTTP POST body, for
+# libs/extras/vcs/sync.w's object-upload endpoint -- can run the exact
+# same validation. Returns CAS_ERR_CORRUPT for anything that does not
+# match the grammar exactly (truncation, garbage, a declared length that
+# does not match `total` bytes remaining).
+wresult[wcas_object*]* cas_parse_framed(char* bytes, int total):
 	# "<type> <len>\0": tag, single space, decimal length, NUL.
 	int i = 0
 	while ((i < total) && cas_valid_tag_char(bytes[i] & 255)):
@@ -411,7 +410,7 @@ wresult[wcas_object*]* cas_get(wcas* s, char* id):
 		int c = bytes[i] & 255
 		if ((c < '0') || (c > '9')):
 			break
-		# declared can never legitimately exceed the file size, so this
+		# declared can never legitimately exceed the buffer size, so this
 		# also guards the multiplication against overflow.
 		if (declared > total):
 			valid = 0
@@ -424,7 +423,6 @@ wresult[wcas_object*]* cas_get(wcas* s, char* id):
 	i = i + 1
 	valid = valid && (total - i == declared)
 	if (valid == 0):
-		string_free(contents)
 		return result_new_error[wcas_object*](CAS_ERR_CORRUPT())
 
 	wcas_object* o = new wcas_object
@@ -441,8 +439,26 @@ wresult[wcas_object*]* cas_get(wcas* s, char* id):
 		j = j + 1
 	o.data[declared] = 0
 	o.length = declared
-	string_free(contents)
 	return result_new_ok[wcas_object*](o)
+
+
+# Loads an object. Errors: -22 for a malformed id, the open errno for a
+# missing object (-2, the cache-miss case a caller checks for), and
+# CAS_ERR_CORRUPT when the stored bytes do not frame as
+# "<type> <len>\0" + exactly <len> payload bytes (truncation, garbage,
+# or an interrupted foreign write -- impossible via this module's
+# rename protocol, but the store is just files on disk).
+wresult[wcas_object*]* cas_get(wcas* s, char* id):
+	if (cas_valid_id(id) == 0):
+		return result_new_error[wcas_object*](-22)
+	char* path = cas_object_path(s, id)
+	string_builder* contents = cas_read_file(path)
+	free(path)
+	if (contents == 0):
+		return result_new_error[wcas_object*](cas_read_errno)
+	wresult[wcas_object*]* parsed = cas_parse_framed(contents.data, contents.length)
+	string_free(contents)
+	return parsed
 
 
 # Full integrity check for a content-addressed object: rehashes the
