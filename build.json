@@ -1801,6 +1801,8 @@
 				"process_64_test",
 				"quorum_64_test",
 				"raft_64_test",
+				"raft_membership_restart_64_test",
+				"raft_membership_sim_64_test",
 				"raft_ownership_64_test",
 				"raft_restart_sim_64_test",
 				"raft_sim_64_test",
@@ -2151,6 +2153,8 @@
 				"prng_test",
 				"process_test",
 				"quorum_test",
+				"raft_membership_restart_test",
+				"raft_membership_sim_test",
 				"raft_ownership_test",
 				"raft_restart_sim_test",
 				"raft_sim_test",
@@ -3350,6 +3354,38 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_test.w", "-o", "bin/raft_64_test"]},
 				{"cmd": ["bin/raft_64_test"]}
+			]
+		},
+		{
+			"name": "raft_membership_restart_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_membership_restart_test.w", "-o", "bin/raft_membership_restart_64_test"]},
+				{"cmd": ["bin/raft_membership_restart_64_test"]}
+			]
+		},
+		{
+			"name": "raft_membership_restart_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_membership_restart_test.w", "-o", "bin/raft_membership_restart_test"]},
+				{"cmd": ["bin/raft_membership_restart_test"]}
+			]
+		},
+		{
+			"name": "raft_membership_sim_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_membership_sim_test.w", "-o", "bin/raft_membership_sim_64_test"]},
+				{"cmd": ["bin/raft_membership_sim_64_test"]}
+			]
+		},
+		{
+			"name": "raft_membership_sim_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_membership_sim_test.w", "-o", "bin/raft_membership_sim_test"]},
+				{"cmd": ["bin/raft_membership_sim_test"]}
 			]
 		},
 		{
