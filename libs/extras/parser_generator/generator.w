@@ -92,6 +92,10 @@ void pg_emit_temp_name(pg_source_writer* writer, char* prefix, int index):
 	pg_source_append_int(writer, index)
 
 
+# Membership test of the current byte against a charset, as a
+# disjunction of byte ranges. Short-circuit spellings: the operands are
+# pure comparisons of the matcher_char_ local, so '||'/'&&' change only
+# how many comparisons run, never what matches.
 void pg_emit_matcher_charset_condition(pg_source_writer* writer, pg_match_expr* expression, int temp):
 	int first_condition = 1
 	int start = 1
@@ -103,7 +107,7 @@ void pg_emit_matcher_charset_condition(pg_source_writer* writer, pg_match_expr* 
 			while ((end + 1 < 128) & (expression.charset[end + 1] != 0)):
 				end = end + 1
 			if (first_condition == 0):
-				pg_source_append(writer, c" | ")
+				pg_source_append(writer, c" || ")
 			if (start == end):
 				pg_source_append_char(writer, '(')
 				pg_emit_temp_name(writer, c"matcher_char_", temp)
@@ -115,7 +119,7 @@ void pg_emit_matcher_charset_condition(pg_source_writer* writer, pg_match_expr* 
 				pg_emit_temp_name(writer, c"matcher_char_", temp)
 				pg_source_append(writer, c" >= ")
 				pg_source_append_int(writer, start)
-				pg_source_append(writer, c") & (")
+				pg_source_append(writer, c") && (")
 				pg_emit_temp_name(writer, c"matcher_char_", temp)
 				pg_source_append(writer, c" <= ")
 				pg_source_append_int(writer, end)
@@ -1047,7 +1051,7 @@ void pg_emit_lexer_literal_group(pg_source_writer* writer, pg_grammar* grammar, 
 	if (has_root_accept == 0):
 		pg_source_line(writer, c"length = 0")
 	pg_emit_lexer_literal_trie(writer, grammar, group, 1)
-	pg_source_line(writer, c"if ((length > 0) & (length >= best_length)):")
+	pg_source_line(writer, c"if ((length > 0) && (length >= best_length)):")
 	pg_source_indent(writer)
 	pg_source_line(writer, c"best_length = length")
 	pg_source_line(writer, c"best_kind = literal_kind")
@@ -1171,7 +1175,7 @@ void pg_emit_lexer_dispatch(pg_source_writer* writer, pg_grammar* grammar, list[
 		else:
 			pg_source_append(writer, c"if ((first_byte >= ")
 			pg_source_append_int(writer, span.lo)
-			pg_source_append(writer, c") & (first_byte <= ")
+			pg_source_append(writer, c") && (first_byte <= ")
 			pg_source_append_int(writer, span.hi)
 			pg_source_append(writer, c")):")
 		pg_emit_dynamic_line_end(writer)
@@ -1356,7 +1360,11 @@ char* pg_guard_var_name(char* name, int alt_index, int term_index):
 
 # Parenthesized membership test of var_name against a kind set, as a
 # disjunction of ranges over the dense kind numbering, e.g.
-# (k == g_token_IDENT()) | ((k >= g_token_KW_IF()) & (k <= g_token_KW_FOR()))
+# (k == g_token_IDENT()) || ((k >= g_token_KW_IF()) && (k <= g_token_KW_FOR()))
+# Emitted with the short-circuit spellings: every operand is a pure
+# comparison against a token-kind constant function, so skipping the
+# rest of the disjunction once a range matches changes nothing but the
+# number of comparisons executed.
 void pg_emit_kind_set_test(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, char* kinds, char* var_name):
 	int first_range = 1
 	int kind = 0
@@ -1368,7 +1376,7 @@ void pg_emit_kind_set_test(pg_source_writer* writer, pg_grammar* grammar, pg_ana
 			while ((end + 1 < analysis.kind_count) & (kinds[end + 1] != 0)):
 				end = end + 1
 			if (first_range == 0):
-				pg_source_append(writer, c" | ")
+				pg_source_append(writer, c" || ")
 			if (kind == end):
 				pg_source_append(writer, c"(")
 				pg_source_append(writer, var_name)
@@ -1380,7 +1388,7 @@ void pg_emit_kind_set_test(pg_source_writer* writer, pg_grammar* grammar, pg_ana
 				pg_source_append(writer, var_name)
 				pg_source_append(writer, c" >= ")
 				pg_emit_token_kind_call(writer, grammar, pg_report_kind_name(grammar, kind))
-				pg_source_append(writer, c") & (")
+				pg_source_append(writer, c") && (")
 				pg_source_append(writer, var_name)
 				pg_source_append(writer, c" <= ")
 				pg_emit_token_kind_call(writer, grammar, pg_report_kind_name(grammar, end))
@@ -1481,7 +1489,7 @@ void pg_emit_recovery(pg_source_writer* writer, pg_grammar* grammar, pg_recover_
 	int skip_index = 0
 	while (skip_index < recover.skip_tokens.length):
 		char* skip_name = recover.skip_tokens[skip_index]
-		pg_source_append(writer, c" & (")
+		pg_source_append(writer, c" && (")
 		pg_emit_var(writer, c"recover_next_", alt_index, term_index)
 		pg_source_append(writer, c" != ")
 		pg_emit_token_kind_call(writer, grammar, skip_name)

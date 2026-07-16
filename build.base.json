@@ -383,6 +383,16 @@
 			]
 		},
 		{
+			"name": "check_bool_ops_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "check", "--quiet", "tests/bool_ops_warn_fixture.w"], "reject_stderr": "warning:"},
+				{"cmd": ["bin/wv2", "check", "--bool-ops", "--quiet", "tests/bool_ops_warn_fixture.w"], "expect_stderr": ["warning: bitwise '|' on bool operands in a condition does not short-circuit; did you mean '||'?", "warning: bitwise '&' on bool operands in a condition does not short-circuit; did you mean '&&'?"]},
+				{"cmd": ["bin/wv2", "check", "--bool-ops", "--quiet", "tests/bool_ops_clean_fixture.w"], "reject_stderr": "warning:"},
+				{"cmd": ["bin/wv2", "check", "--bool-ops", "--json", "--quiet", "tests/bool_ops_warn_fixture.w"], "stdout_file": "bin/check_bool_ops_warn.ndjson", "expect_stdout": ["\"severity\": \"warning\"", "did you mean '||'?", "did you mean '&&'?"]}
+			]
+		},
+		{
 			"name": "missing_file_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -2018,6 +2028,7 @@
 				"check_json_test",
 				"check_roots_test",
 				"check_imports_test",
+				"check_bool_ops_test",
 				"missing_file_test",
 				"symbols_test",
 				"deps_test",

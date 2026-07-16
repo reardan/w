@@ -32,16 +32,28 @@ is a queue, not an archive.
   recovery, which stays a research project. Cheap partial win: after an
   error in file A, agents re-check to find errors behind it — nothing to
   build, just keep the limitation documented in skills.
-- **Bool-bitwise condition warning is lvalue-scoped for now.** The
-  shipped "did you mean `||`/`&&`?" hint (2026-07-10) only fires when
-  both `|`/`&` operands are bool-typed *lvalues* in an if/while
-  condition. Comparison-result operands — `(a == b) | (c == d)` — stay
-  exempt because that spelling is the established style of the
-  pre-`&&`/`||` compiler sources: enabling it fires 469 times in the
-  seed graph alone, 80 of them in the *generated*
-  `libs/extras/c_import/generated_c_parser.w`, so widening the scope
-  needs a dedicated style-migration PR (a per-site short-circuit safety
-  review plus a parser-generator emission change) first.
+- **Bool-bitwise condition warning: default still lvalue-scoped;
+  widened scope shipped opt-in (stage 1, 2026-07-16).** The shipped
+  "did you mean `||`/`&&`?" hint (2026-07-10) fires by default only
+  when both `|`/`&` operands are bool-typed *lvalues* in an if/while
+  condition. Stage 1 of the migration landed: (a) the parser generator
+  now emits `&&`/`||` for every boolean join in generated code (kind-set
+  guards, first-byte dispatch ranges, literal-trie accept tests, charset
+  conditions, recovery skip conjunctions — all pure-comparison operands;
+  `libs/extras/c_import/generated_c_parser.w` regenerated, removing all
+  of its ~140 sites), and (b) `w check --bool-ops` (opt-in, modeled on
+  `--imports`) widens the hint to comparison-result operands —
+  `(a == b) | (c == d)` — covered by `check_bool_ops_test`. The
+  compiler-injected modules (auto-import closure, prelude/json/
+  template/var runtimes) stay suppressed under the flag like `--imports`
+  does. Measured stage-2 worklist with the flag on: 471 fires across
+  `w check --bool-ops w.w` plus 19 in the suppressed compiler-injected
+  runtime (16 auto-import closure + 3 `structures/prelude.w`), ~490
+  hand-written sites total. Stage 2 is the mechanical per-site sweep
+  (reviewed in ~50-site chunks: top files `debugger/wdbg.w` 47,
+  `libs/asm/x86_decode.w` 36, `libs/extras/parser_generator/lexer.w` 27,
+  `grammar/string_literal.w` 27, `compiler/tokenizer.w` 24); flipping
+  the default comes after that.
 - **`T* + int` is a raw, unscaled byte offset for every pointee width,
   and nothing warns.** Found 2026-07-16 writing `libs/extras/compress/
   inflate.w`'s dynamic-Huffman block decoder: `wh_build(c, dist_huff,
