@@ -2,6 +2,11 @@ parser wlang
 
 skip LINE_COMMENT line_comment
 skip BLOCK_COMMENT block_comment
+# The compiler treats a tab anywhere as plain whitespace; only line-start
+# runs are indentation. Mirror that: a mid-line tab run is hidden
+# whitespace (inline_tabs matches only when not at line start, so the
+# TAB token below still owns line-start runs).
+skip INLINE_TAB inline_tabs
 
 token NEWLINE newline
 token TAB tabs

@@ -93,6 +93,23 @@ int pg_lexer_matcher_tabs(char* input, int index):
 	return index - start
 
 
+# A run of tabs that does not start a line: inline spacing between code
+# and, typically, a trailing comment. Indentation-significant grammars
+# whose TAB token uses the 'tabs' matcher declare this as a skip token
+# (tests/parser_generator/w.pg) to treat mid-line tabs as hidden
+# whitespace while line-start runs keep lexing as TAB: this matcher
+# returns 0 at line start, and mid-line it only ties 'tabs', which the
+# skip wins because skips are matched first and equal-length token
+# matches do not displace them. Grammars that do not declare the skip
+# are unaffected.
+int pg_lexer_matcher_inline_tabs(char* input, int index):
+	if (index == 0):
+		return 0
+	if (input[index - 1] == 10):
+		return 0
+	return pg_lexer_matcher_tabs(input, index)
+
+
 int pg_lexer_matcher_c_control(char* input, int index):
 	if ((input[index] <= 0) | (input[index] >= 32)):
 		return 0
