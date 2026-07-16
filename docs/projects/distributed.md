@@ -84,7 +84,26 @@ plumbing, `libs/standard/crypto/` hashing.
   partially-sent head); and raft_sweep_test — 100 seeds x 2 scenarios
   of lossy elections and partition churn with per-seed safety
   invariants, byte-deterministic across targets.
-- Next candidates: KV/lsm snapshot integration (serialize lsm state
-  into raft snapshots), binary-safe raft commands (length-carrying
-  entries), an arena/size-class allocator for long-lived processes
-  (see ai_tooling_next_steps.md), joint-consensus membership changes.
+- Phase 5b (landed): binary-safe raft commands — `raft_entry.command_len`
+  end to end (wire, wal, kv_state.w's `kv_apply_command`/
+  `kv_propose_put_len`), so a KV value may contain embedded NUL.
+- Phase 6 (landed, issue #314): KV/lsm snapshot integration.
+  `lsm.w` gained a full-scan export/import surface — `lsm_export`
+  merges the memtable and every sstable (newest wins, tombstones
+  dropped) into a length-prefixed "LSMX" blob; `lsm_import` validates
+  a whole blob before `lsm_clear`-ing the tree and replaying it
+  through `lsm_put`. `kv_state.w` wraps that as `kv_take_snapshot` /
+  `kv_install_snapshot` and wires the receiver side into
+  `kv_apply_pending`, which now installs any pending snapshot
+  (network InstallSnapshot or a wal-replayed one) before draining
+  ordinary entries. `kv_take_snapshot` asserts the blob leaves room
+  for the InstallSnapshot wire envelope inside raft_tcp's 1 MiB
+  `rt_max_frame` cap (`kv_snapshot_max_bytes`); chunked InstallSnapshot
+  across multiple frames remains a documented follow-up, not
+  implemented. `kv_cluster_test.w` covers a real-TCP laggard catching
+  up past a compacted horizon (including a binary value) and a node
+  restarting from its own wal-rewritten snapshot record.
+- Next candidates: an arena/size-class allocator for long-lived
+  processes (see ai_tooling_next_steps.md), joint-consensus membership
+  changes, chunked InstallSnapshot for snapshots too large for one
+  frame.
