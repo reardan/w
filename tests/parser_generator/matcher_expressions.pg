@@ -21,6 +21,14 @@ token NUMCONST = DECNUM | HEXNUM | CHAR
 token IDENT = [a-zA-Z_] [a-zA-Z0-9_-]*
 token NEWLINE_TOK = "\r"? "\n"
 
+# Dispatch-table lexer edge cases: literals sharing a first byte compile
+# to a comparison trie ("<" vs "<<=" checks prefix fallback), and an
+# identifier-shaped literal must still beat an equal-length token match
+# ("zoo" vs IDENT) while losing to a longer one ("zoom" via ALT).
+literal LT "<"
+literal SHL_ASSIGN "<<="
+literal KW_ZOO "zoo"
+
 start input
 
 rule input = EOF
