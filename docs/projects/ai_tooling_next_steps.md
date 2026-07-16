@@ -159,6 +159,24 @@ is a queue, not an archive.
 - **One-off targets assuming `bin/` exists — resolved.** The
   Makefile-to-`wbuild` migration handles it uniformly: `wbuild` and the
   manifest's `dirs` create `bin/` for every target.
+- **No portable stat()/file-metadata wrapper exists anywhere in the
+  tree.** Building `libs/extras/vcs/index.w` (issue #252 wave 3, the
+  stat-cached dirstate) needed a file's (size, mtime); no
+  `lib/__arch__/*/syscalls.w` wraps `stat`/`fstat`/`statx` -- every
+  prior caller that wanted a size used `lib.lib`'s `file_size()`
+  (seek-to-end, not a real stat) and no module reads mtime at all.
+  Landed a scoped fix rather than a general one:
+  `libs/extras/vcs/__arch__/{x86,x64}/fsops.w:vcs_statx` (Linux `statx`,
+  syscall numbers 383/i386 and 332/x86-64) -- `struct statx`'s layout is
+  identical on 32- and 64-bit Linux by design (verified against glibc's
+  `stat(2)` on the dev host), so only the syscall NUMBER is per-arch,
+  cheaper than hand-deriving the legacy 32-/64-bit `struct stat`
+  layouts. arm64/win64/wasm are unimplemented, matching tree.w's/
+  commit.w's own x86/x64-only directory-walk scope. A general
+  `lib/stat.w` (mtime/size/mode/is-dir for any caller, not just
+  libs/extras/vcs) is future work once a second consumer needs it
+  outside vcs/ -- tree.w's own header comment already flags the
+  executable bit as unlearned for the same underlying reason.
 - **wexec directory hashing is Linux-layout only.** Found while porting
   the darwin triad: `wexec_collect_dir` (tools/wexec.w) parses the Linux
   getdents record layout, so on macOS — where the `getdents` shim

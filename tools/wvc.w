@@ -59,14 +59,22 @@ Scope decisions for this wave
   dump did not seem worth it this wave). wvc_lookup_blob's failures are
   soft (the path-level line still prints; only the content hunk is
   skipped) so one bad lookup cannot blank out the rest of the report.
-- `status` is the slow path only, exactly as version_control.md's wave
-  plan calls for: it snapshots the working tree fresh every time and
-  full-tree-diffs it against the current commit. This also means it
-  writes fresh CAS objects as a side effect of hashing (tree_snapshot's
-  design, not a bug here) -- content addressing makes that cheap after
-  the first call (identical bytes dedup for free), but a status call is
-  O(tree), not O(changed). Wave 3's index.w (a stat-cached dirstate) is
-  the intended fix; this wave does not build one.
+- `status` and `snapshot` both go through libs/extras/vcs/index.w's
+  stat-cached dirstate now (wave 3, issue #252): a `.wvc/index` file
+  records, per tracked path, the (size, mtime) last observed and the
+  blob id that content hashed to, so a file whose stat is unchanged
+  (and not "racy" -- see index.w's header comment) is never re-read,
+  making both commands O(changed) rather than O(tree). `snapshot`
+  refreshes the index unconditionally (it always writes a fresh commit,
+  so it always has a fresh tree to cache); `status` uses the index when
+  `.wvc/index` reads back cleanly, and otherwise falls back to exactly
+  the wave-2 slow path -- a full tree_snapshot of the working tree,
+  full-tree-diffed against the current commit -- so a repo with no
+  index yet (or one whose index file is missing/corrupt) still works
+  unchanged. Both paths still write fresh CAS objects as a side effect
+  of hashing (tree_snapshot's/index_walk's design, not a bug here);
+  content addressing makes repeat writes cheap (identical bytes dedup
+  for free) regardless of which path ran.
 */
 import lib.lib
 import lib.path
@@ -78,6 +86,7 @@ import libs.extras.vcs.cas
 import libs.extras.vcs.tree
 import libs.extras.vcs.commit
 import libs.extras.vcs.diff
+import libs.extras.vcs.index
 
 
 char* WVC_META_DIR_NAME():
@@ -94,6 +103,12 @@ char* WVC_DEFAULT_AUTHOR():
 
 char* wvc_meta_dir(char* dir):
 	return path_join(dir, WVC_META_DIR_NAME())
+
+
+# "<meta>/index" -- libs/extras/vcs/index.w's persisted dirstate
+# (INDEX_FILE_NAME()).
+char* wvc_index_path(char* meta):
+	return path_join(meta, INDEX_FILE_NAME())
 
 
 # Exact-name-at-every-depth ignore list tree_snapshot expects: our own
@@ -361,9 +376,27 @@ int wvc_cmd_snapshot(int argc, int argv):
 	wcas* store = wvc_open_store(meta)
 	wrefs* refs = wvc_open_refs(meta)
 
+	# Refresh the dirstate: reuse the previous index's cached blob ids
+	# for anything whose stat still matches (index.w's racy-mtime guard
+	# governs "still matches"), full-rehash anything else -- including
+	# every file, the first time a repo has no index yet (prev = 0
+	# degrades index_refresh to tree_snapshot's own behavior exactly,
+	# see index.w's header comment).
+	char* index_path = wvc_index_path(meta)
+	wresult[windex*]* prev_index_r = index_read(index_path)
+	windex* prev_index = 0
+	if (result_is_ok[windex*](prev_index_r)):
+		prev_index = result_value[windex*](prev_index_r)
+	result_free[windex*](prev_index_r)
+
 	list[char*] ignore = wvc_ignore_list()
-	char* tree_id = wvc_unwrap[char*](tree_snapshot(store, dir, ignore), c"snapshot failed")
+	index_refresh_result* refreshed = wvc_unwrap[index_refresh_result*](index_refresh(store, dir, ignore, prev_index), c"snapshot failed")
 	list_free[char*](ignore)
+	if (prev_index != 0):
+		index_free(prev_index)
+	char* tree_id = refreshed.tree_id
+	windex* new_index = refreshed.index
+	free(refreshed)
 
 	list[char*] parent_ids = new list[char*]
 	int have_parent = ref_exists(refs, WVC_DEFAULT_REF())
@@ -380,6 +413,14 @@ int wvc_cmd_snapshot(int argc, int argv):
 	else:
 		wvc_unwrap[int](ref_create(refs, WVC_DEFAULT_REF(), commit_id, message), c"cannot create ref")
 
+	# Persist the refreshed dirstate. Best-effort: the commit above is
+	# already durable, so a write failure here (e.g. a full disk) must
+	# not turn a successful snapshot into a failing command -- it only
+	# costs the NEXT status/snapshot its fast path, and both already
+	# fall back cleanly to a missing/corrupt index.
+	wresult[int]* index_written = index_write(new_index, index_path)
+	result_free[int](index_written)
+
 	wstream* out = stdout_writer()
 	stream_write_line(out, commit_id)
 	stream_flush(out)
@@ -389,6 +430,8 @@ int wvc_cmd_snapshot(int argc, int argv):
 	if (have_parent):
 		free(parent_id)
 	free(tree_id)
+	index_free(new_index)
+	free(index_path)
 	free(commit_id)
 	free(meta)
 	cas_close(store)
@@ -538,7 +581,30 @@ int wvc_cmd_status(int argc, int argv):
 		free(head_id)
 
 	list[char*] ignore = wvc_ignore_list()
-	char* new_tree_id = wvc_unwrap[char*](tree_snapshot(store, dir, ignore), c"status snapshot failed")
+	char* index_path = wvc_index_path(meta)
+	wresult[windex*]* prev_index_r = index_read(index_path)
+	char* new_tree_id = 0
+	windex* fresh_index = 0
+	if (result_is_ok[windex*](prev_index_r)):
+		# Fast path: a readable dirstate exists, so index_refresh only
+		# re-hashes paths whose stat changed (or is racy) -- see
+		# index.w's header comment.
+		windex* prev_index = result_value[windex*](prev_index_r)
+		result_free[windex*](prev_index_r)
+		index_refresh_result* refreshed = wvc_unwrap[index_refresh_result*](index_refresh(store, dir, ignore, prev_index), c"status refresh failed")
+		index_free(prev_index)
+		new_tree_id = refreshed.tree_id
+		fresh_index = refreshed.index
+		free(refreshed)
+	else:
+		# Slow path: no usable index (absent, or unreadable/corrupt) --
+		# exactly wave 2's original behavior, a full tree_snapshot that
+		# rehashes every file. Nothing is written back here: an index
+		# only ever gets created by `snapshot` (see index.w's header
+		# comment on why status's own dirstate refresh below only fires
+		# once a dirstate already exists to refresh).
+		result_free[windex*](prev_index_r)
+		new_tree_id = wvc_unwrap[char*](tree_snapshot(store, dir, ignore), c"status snapshot failed")
 	list_free[char*](ignore)
 
 	list[tree_change*] changes = new list[tree_change*]
@@ -554,11 +620,22 @@ int wvc_cmd_status(int argc, int argv):
 			stream_write_line(out, c.path)
 	stream_flush(out)
 
+	# Keep the dirstate warm for the next status/snapshot call (git's own
+	# `status` similarly rewrites the index after refreshing it).
+	# Best-effort, same posture as snapshot's own index_write: a status
+	# report that already succeeded must not turn into a failing command
+	# over a stale-cache write.
+	if (fresh_index != 0):
+		wresult[int]* index_written = index_write(fresh_index, index_path)
+		result_free[int](index_written)
+		index_free(fresh_index)
+
 	tree_changes_free(changes)
 	list_free[tree_change*](changes)
 	if (old_tree_id != 0):
 		free(old_tree_id)
 	free(new_tree_id)
+	free(index_path)
 	free(meta)
 	cas_close(store)
 	refs_close(refs)
