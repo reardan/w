@@ -69,7 +69,7 @@ raft_msg* raft_test_append(int from, int to, int term, int prev_index, int prev_
 
 void raft_test_add_entry(raft_msg* m, int term, char* command):
 	u64* t = u64_new_int(term)
-	m.entries.push(raft_entry_new(t, command))
+	m.entries.push(raft_entry_new(t, command, strlen(command)))
 	u64_free(t)
 
 
@@ -138,10 +138,10 @@ void test_single_node_propose_commit_apply():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
 	assert_equal(raft_leader(), raft_state(r))
-	assert_equal(1, raft_propose(r, c"set x", 100, out))
+	assert_equal(1, raft_propose(r, c"set x", 5, 100, out))
 	assert_equal(0, out.length)
 	assert_equal(1, raft_test_commit_int(r))
-	assert_equal(1, raft_propose(r, c"set y", 101, out))
+	assert_equal(1, raft_propose(r, c"set y", 5, 101, out))
 	assert_equal(0, out.length)
 	assert_equal(2, raft_test_commit_int(r))
 	assert_equal(2, raft_log_length(r))
@@ -424,7 +424,7 @@ void test_commit_rule_old_term_entries():
 	raft_test_free_msgs(out)
 	assert_equal(0, raft_test_commit_int(n1))
 	# a term-2 entry reaching the same majority commits both
-	assert_equal(1, raft_propose(n1, c"new", 130, out))
+	assert_equal(1, raft_propose(n1, c"new", 3, 130, out))
 	raft_test_free_msgs(out)
 	raft_msg* ack2 = raft_test_append_reply(2, 1, 2, 1, 2)
 	raft_on_msg(n1, ack2, 140, out)
@@ -440,7 +440,7 @@ void test_commit_propagation_via_heartbeat():
 	raft_start(n2, 0)
 	list[raft_msg*] out = new list[raft_msg*]
 	list[raft_msg*] n2_out = new list[raft_msg*]
-	assert_equal(1, raft_propose(n1, c"a", 110, out))
+	assert_equal(1, raft_propose(n1, c"a", 1, 110, out))
 	raft_msg* ap = raft_test_find_to(out, 2)
 	assert_equal(1, ap.entries.length)
 	assert_equal(0, u64_to_int(ap.leader_commit))
@@ -677,9 +677,9 @@ void test_stale_append_reply_does_not_regress_indexes():
 	# walking the recorded progress backwards.
 	raft* r = raft_test_make_leader()
 	list[raft_msg*] out = new list[raft_msg*]
-	assert_equal(1, raft_propose(r, c"a", 130, out))
+	assert_equal(1, raft_propose(r, c"a", 1, 130, out))
 	raft_test_free_msgs(out)
-	assert_equal(1, raft_propose(r, c"b", 131, out))
+	assert_equal(1, raft_propose(r, c"b", 1, 131, out))
 	raft_test_free_msgs(out)
 	# the fresher ack lands first: peer 2 holds both entries, so its
 	# match/next move to 2/3 and the commit advances to 2
@@ -716,7 +716,7 @@ void test_propose_non_leader_rejected():
 	raft* r = raft_test_node(1, 2, 3, 3)
 	raft_start(r, 0)
 	list[raft_msg*] out = new list[raft_msg*]
-	assert_equal(0, raft_propose(r, c"nope", 10, out))
+	assert_equal(0, raft_propose(r, c"nope", 4, 10, out))
 	assert_equal(0, out.length)
 	assert_equal(0, raft_log_length(r))
 	raft_free(r)
@@ -759,19 +759,24 @@ void test_randomized_timeouts_differ():
 void test_message_deep_copy_ownership():
 	raft* n1 = raft_test_make_leader()
 	list[raft_msg*] out = new list[raft_msg*]
-	assert_equal(1, raft_propose(n1, c"payload", 110, out))
+	assert_equal(1, raft_propose(n1, c"payload", 7, 110, out))
 	assert_equal(2, out.length)
 	raft_msg* ap = raft_test_find_to(out, 2)
 	assert_equal(1, ap.entries.length)
 	raft_entry* copy = ap.entries[0]
 	assert_strings_equal(c"payload", copy.command)
 	raft_entry* original = raft_log_at(n1, 1)
-	# the message owns a distinct entry with its own term u64; only the
-	# command pointer is shared
+	# the message owns a fully distinct entry: its own term u64 AND its
+	# own copy of the command bytes (raft_entry_new copies command_len
+	# bytes on every construction, including this one built from an
+	# existing log entry inside raft_make_append)
 	assert1(cast(int, original) != cast(int, copy))
 	assert1(cast(int, original.term) != cast(int, copy.term))
-	assert1(cast(int, original.command) == cast(int, copy.command))
-	# freeing every message leaves the leader's log intact
+	assert1(cast(int, original.command) != cast(int, copy.command))
+	assert_equal(original.command_len, copy.command_len)
+	# freeing every message leaves the leader's log intact — the
+	# message's entry owned its own copy, so freeing it never touches
+	# the log's copy
 	raft_test_free_msgs(out)
 	raft_entry* still = raft_log_at(n1, 1)
 	assert_strings_equal(c"payload", still.command)
@@ -1123,11 +1128,11 @@ void test_take_snapshot_compacts():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
 	assert_equal(raft_leader(), raft_state(r))
-	assert_equal(1, raft_propose(r, c"a", 100, out))
-	assert_equal(1, raft_propose(r, c"b", 101, out))
-	assert_equal(1, raft_propose(r, c"c", 102, out))
-	assert_equal(1, raft_propose(r, c"d", 103, out))
-	assert_equal(1, raft_propose(r, c"e", 104, out))
+	assert_equal(1, raft_propose(r, c"a", 1, 100, out))
+	assert_equal(1, raft_propose(r, c"b", 1, 101, out))
+	assert_equal(1, raft_propose(r, c"c", 1, 102, out))
+	assert_equal(1, raft_propose(r, c"d", 1, 103, out))
+	assert_equal(1, raft_propose(r, c"e", 1, 104, out))
 	assert_equal(5, raft_test_commit_int(r))
 	# nothing applied yet: take_snapshot refuses (last_applied == base)
 	assert_equal(0, raft_take_snapshot(r, c"early", 5))
@@ -1173,7 +1178,7 @@ void test_take_snapshot_compacts():
 	assert_equal(1, u64_to_int(lt))
 	u64_free(lt)
 	# proposing after full compaction lands at base + 1
-	assert_equal(1, raft_propose(r, c"f", 105, out))
+	assert_equal(1, raft_propose(r, c"f", 1, 105, out))
 	assert_equal(6, raft_last_index(r))
 	assert_equal(6, raft_test_commit_int(r))
 	raft_entry* f = raft_log_at(r, 6)
@@ -1252,10 +1257,10 @@ void test_leader_install_snapshot_on_backoff():
 	# heartbeat path must pick it too
 	raft* n1 = raft_test_make_leader()
 	list[raft_msg*] out = new list[raft_msg*]
-	assert_equal(1, raft_propose(n1, c"a", 110, out))
-	assert_equal(1, raft_propose(n1, c"b", 111, out))
-	assert_equal(1, raft_propose(n1, c"c", 112, out))
-	assert_equal(1, raft_propose(n1, c"d", 113, out))
+	assert_equal(1, raft_propose(n1, c"a", 1, 110, out))
+	assert_equal(1, raft_propose(n1, c"b", 1, 111, out))
+	assert_equal(1, raft_propose(n1, c"c", 1, 112, out))
+	assert_equal(1, raft_propose(n1, c"d", 1, 113, out))
 	raft_test_free_msgs(out)
 	# node 2 acks through 4: majority commit; node 3 acks through 3
 	raft_msg* ack2 = raft_test_append_reply(2, 1, 1, 1, 4)

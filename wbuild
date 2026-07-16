@@ -17,6 +17,9 @@
 #   ./wbuild -f m.json name   use another manifest
 #   ./wbuild test_changed     build/run the targets touched by the
 #                             working tree's diff against HEAD
+#   ./wbuild test_changed --keep-going   same, forwarding extra flags
+#                             (bin/wexec's --keep-going, -j N, ...) to
+#                             the run
 set -e
 cd "$(dirname "$0")"
 mkdir -p bin
@@ -85,6 +88,15 @@ if [ ! -x bin/wexec ]; then
 	./bin/wv2 tools/wexec.w -o bin/wexec
 fi
 if [ "$1" = "test_changed" ]; then
+	shift
+	# Flags left over after 'test_changed' (e.g. --keep-going) are kept in
+	# "$@" and handed to the final './wbuild' invocation below as its
+	# leading arguments, ahead of the target names xargs appends from
+	# bin/wtest's selection; that call falls through to 'exec ./bin/wexec
+	# "$@"' at the bottom of this script, and bin/wexec parses its flags
+	# regardless of where they fall in argv, so they reach wexec either
+	# way. With no extra flags "$@" expands to nothing and this is exactly
+	# the previous pipeline.
 	./bin/wexec wv2 wexec wtest >/dev/null
 	# Selection baseline: the working tree's diff against HEAD. After a
 	# commit that diff is empty, which used to select nothing and exit 0
@@ -100,11 +112,13 @@ if [ "$1" = "test_changed" ]; then
 	fi
 	# The baseline build.json lets bin/wtest scope a manifest diff that
 	# only adds/removes generated leaf test targets to those targets
-	# instead of the whole 'tests' umbrella (tools/test_map.w).
+	# instead of the whole 'tests' umbrella (tools/test_map.w). --available
+	# drops targets this environment cannot run (missing qemu/wine/...) so
+	# 'test_changed's selection is always runnable as printed.
 	if git show "$base:build.json" >bin/.wtest_base_manifest.json 2>/dev/null; then
-		printf '%s\n' "$changed" | ./bin/wtest changed --base-manifest bin/.wtest_base_manifest.json | xargs -r ./wbuild
+		printf '%s\n' "$changed" | ./bin/wtest changed --available --base-manifest bin/.wtest_base_manifest.json | xargs -r ./wbuild "$@"
 	else
-		printf '%s\n' "$changed" | ./bin/wtest changed | xargs -r ./wbuild
+		printf '%s\n' "$changed" | ./bin/wtest changed --available | xargs -r ./wbuild "$@"
 	fi
 	exit 0
 fi

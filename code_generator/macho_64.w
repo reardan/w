@@ -338,6 +338,8 @@ void macho_finish_arm64():
 
 	macho_build_signature(img, code_limit, text_size, ident)
 
-	write(output_fd, img, code_limit)
-	write(output_fd, macho_sig_buf, macho_sig_size)
+	if (write(output_fd, img, code_limit) != code_limit):
+		error(c"could not write output file")
+	if (write(output_fd, macho_sig_buf, macho_sig_size) != macho_sig_size):
+		error(c"could not write output file")
 	free(img)

@@ -9,12 +9,19 @@
 #   expect <target>           selection must include <target>
 #   forbid <target>           selection must not include <target>
 #   empty                     selection must be empty
+#   noorder                   opt this case out of the build.json
+#                             known-name/order properties below, so a
+#                             -f fixture case can use self-descriptive
+#                             target names instead of reusing real
+#                             build.json ones (tools/wtest_map_check.w
+#                             header)
 # Full-line '#' comments only. Three properties hold implicitly for
-# every case: each selected name must exist in build.json, the selection
-# must be in manifest order with no duplicates (bin/wtest's documented
-# output-order contract), and an empty selection must print 'wtest: 0
-# targets selected' to stderr (a non-empty one must not) — so the
-# 'empty' cases below also pin the zero-target visibility line.
+# every case that does not say 'noorder': each selected name must exist
+# in build.json, the selection must be in manifest order with no
+# duplicates (bin/wtest's documented output-order contract), and an
+# empty selection must print 'wtest: 0 targets selected' to stderr (a
+# non-empty one must not, and this one still holds under 'noorder') —
+# so the 'empty' cases below also pin the zero-target visibility line.
 #
 # DESIGN RULE (#251 Direction 1): adding a conventional test target must
 # NEVER require editing this file. Only assert targets tied to the
@@ -26,7 +33,9 @@
 # case while editing:
 #   ./wbuild wtest && bin/wtest changed <path...>
 # An expect/forbid naming a target missing from build.json fails loudly
-# ("unknown target"), so target renames surface here immediately.
+# ("unknown target"), so target renames surface here immediately — unless
+# the case says 'noorder', in which case expect/forbid may name
+# fixture-only targets that were never meant to be in build.json.
 
 # Compiler tree -> the self-host gate (residue rule), never closure
 # selection (which would degenerate to the full suite), never the
@@ -296,3 +305,27 @@ case graphics/gl_linux.w
 expect graphics_gl_smoke_test
 forbid graphics_darwin
 forbid tests
+
+# 'noorder' lets a -f fixture case use self-descriptive target names
+# that are not real build.json targets, and not in build.json's
+# relative order, instead of being forced to reuse real ones just to
+# satisfy the implicit known-name/order properties. Both fixture names
+# below are fictional; without 'noorder' this case would fail on the
+# very first one ("not a build.json target"), order notwithstanding.
+case -f tests/wtest/manifest_custom_names.json custom/marker.dat
+noorder
+expect alpha_widget_check
+expect zeta_gadget_check
+
+# --available drops a target whose step names a runner not present on
+# this host and keeps a target with no special runner requirement.
+# tools/mac/does_not_exist.sh is a fictional path (never created) so the
+# drop is deterministic on every machine, unlike testing the real
+# qemu-aarch64-static/wine paths, whose availability legitimately varies
+# by host (docs/projects/ai_tooling_next_steps.md, 2026-07-16 entries).
+# The fixture's target names are not build.json targets, hence 'noorder'
+# (tools/wtest_map_check.w header).
+case -f tests/wtest/manifest_unavailable.json --available widget/marker.dat
+noorder
+expect custom_widget_ok
+forbid custom_widget_needs_mac

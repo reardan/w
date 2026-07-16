@@ -84,7 +84,67 @@ plumbing, `libs/standard/crypto/` hashing.
   partially-sent head); and raft_sweep_test — 100 seeds x 2 scenarios
   of lossy elections and partition churn with per-seed safety
   invariants, byte-deterministic across targets.
-- Next candidates: KV/lsm snapshot integration (serialize lsm state
-  into raft snapshots), binary-safe raft commands (length-carrying
-  entries), an arena/size-class allocator for long-lived processes
-  (see ai_tooling_next_steps.md), joint-consensus membership changes.
+- Phase 5b (landed): binary-safe raft commands — `raft_entry.command_len`
+  end to end (wire, wal, kv_state.w's `kv_apply_command`/
+  `kv_propose_put_len`), so a KV value may contain embedded NUL.
+- Phase 6 (landed, issue #314): KV/lsm snapshot integration.
+  `lsm.w` gained a full-scan export/import surface — `lsm_export`
+  merges the memtable and every sstable (newest wins, tombstones
+  dropped) into a length-prefixed "LSMX" blob; `lsm_import` validates
+  a whole blob before `lsm_clear`-ing the tree and replaying it
+  through `lsm_put`. `kv_state.w` wraps that as `kv_take_snapshot` /
+  `kv_install_snapshot` and wires the receiver side into
+  `kv_apply_pending`, which now installs any pending snapshot
+  (network InstallSnapshot or a wal-replayed one) before draining
+  ordinary entries. `kv_take_snapshot` asserts the blob leaves room
+  for the InstallSnapshot wire envelope inside raft_tcp's 1 MiB
+  `rt_max_frame` cap (`kv_snapshot_max_bytes`); chunked InstallSnapshot
+  across multiple frames remains a documented follow-up, not
+  implemented. `kv_cluster_test.w` covers a real-TCP laggard catching
+  up past a compacted horizon (including a binary value) and a node
+  restarting from its own wal-rewritten snapshot record.
+- Phase 7 (landed, issue #319): cluster membership changes (Ongaro
+  thesis §4.1, single-server changes only — no joint consensus, matching
+  how etcd ships this). A config change is an ordinary log entry
+  distinguished by a new `raft_entry.kind` field (`raft_entry_kind_
+  normal`/`_config`, not a command-byte sniff — see raft.w's "Cluster
+  membership changes" header for why a dedicated field is the
+  collision-proof choice) carrying a 5-byte op+id payload
+  (`raft_config_encode`/`_decode`). It takes effect on APPEND, not
+  commit (`raft_note_entry_appended`, run from every path that pushes a
+  log entry: `raft_propose_internal`, both of `raft_handle_append`'s
+  branches, and `raft_wal_replay_into`), with a single-change-in-flight
+  safety rule (`raft_propose_add_server`/`raft_propose_remove_server`
+  refuse a second proposal while `raft_config_pending`), rollback on
+  truncation (`raft_note_truncated_to`, restoring the pre-change config
+  saved by `raft_note_entry_appended`), and a leader that removes
+  itself stepping down once the removal commits
+  (`raft_note_commit_advanced`). Snapshots now record the FULL member
+  set at their index (`raft.snap_config`, `raft_full_config_at_
+  last_applied`) — a wire (`install_snapshot`) and wal (`SNAPSHOT`
+  record) layout change from phases 5/6, with the layout-pinning tests
+  in `raft_wire_test.w` updated accordingly. A newly added server gets
+  `next_index = 1` and reuses the existing §7 InstallSnapshot/log-
+  replay paths to catch up — no bespoke bootstrap RPC and no learner/
+  non-voting phase (left as documented follow-up, along with the
+  disruptive-removed-server hazard: mitigated by the existing opt-in
+  pre-vote + leader stickiness per thesis §4.2.1, but the fuller §4.2.3
+  leader-lease/check-quorum refinement is not implemented — this stack
+  has no per-follower recent-contact tracking on the leader side).
+  `raft_membership_sim_test.w` covers grow (3→4→5, with quorum
+  participation proven by then failing an original node), shrink
+  (5→4), removing the leader, the single-in-flight rejection, and the
+  uncommitted-config rollback on a leader change (partition, propose,
+  lose the race, heal, verify the config reverted — not just that the
+  log bytes converged); `raft_membership_restart_test.w` covers config
+  surviving a plain wal replay, a wal TRUNCATE-tag replay rollback, and
+  a snapshot+restart; `kv_cluster_test.w` covers a genuinely fresh node
+  joining a live 3-node cluster over real TCP past a compacted log,
+  catching up via InstallSnapshot and serving reads.
+- Next candidates: an arena/size-class allocator for long-lived
+  processes (see ai_tooling_next_steps.md), joint-consensus membership
+  changes, chunked InstallSnapshot for snapshots too large for one
+  frame, a learner/non-voting catch-up phase for newly added servers,
+  and thesis §4.2.3's leader-lease/check-quorum refinement to fully
+  close the disruptive-removed-server gap without relying on pre-vote
+  alone.

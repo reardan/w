@@ -71,6 +71,35 @@ are the superseded table files unlinked — manifest first, so a crash
 between the two can only leak unreferenced files, never lose data.
 
 Single-writer assumption throughout: one lsm owns its prefix.
+
+Full-scan export/import (issue #314, KV/LSM snapshot integration): a
+merged, newest-wins, tombstone-free scan across the memtable and every
+sstable — the source raft snapshots compact the log around. lsm_export
+runs the same oldest-to-newest k-way merge lsm_compact uses across the
+tables, with the memtable folded in as one extra, always-newest source
+(so it shadows every table, matching lsm_get's own read order), and
+serializes the survivors; tombstones are dropped entirely, same as a
+full compaction — an export is a point-in-time snapshot of live keys,
+not a change log. lsm_import validates a whole blob before touching
+l (a malformed inbound snapshot must not corrupt a good tree), then
+lsm_clears l and replays every record through lsm_put.
+
+Chosen over an iterator (the T_iter_begin/next/done cursor protocol
+containers use) because the only consumer is "hand raft_take_snapshot
+one buffer": every caller would just drain an iterator into a byte
+buffer anyway, so lsm_export does that once, inside the tree's own
+internals, instead of exposing live cursor state across two storage
+tiers (memtable + open sstable file descriptors) to every caller.
+
+Export blob format ("LSMX", little-endian; unrelated to the wal/
+manifest/sstable on-disk formats above — this one never touches disk
+itself, it is just the bytes handed to raft_take_snapshot):
+  offset 0: 4-byte magic "LSMX", 4-byte format version (1)
+  4-byte record count
+  then records, each: key_len u32, key bytes, value_len u32, value bytes
+Values are opaque and binary-safe (embedded NUL legal, issue #315);
+keys are the usual NUL-terminated TEXT every lsm/memtable/sstable key
+already is, length-prefixed here too rather than relying on strlen.
 */
 import lib.lib
 import lib.memory
@@ -542,6 +571,220 @@ int lsm_compact(lsm* l):
 		free(old_paths[i])
 		i = i + 1
 	return ok
+
+
+# ---- export / import (full-scan snapshot surface, issue #314) ---------------
+
+int lsm_export_version():
+	return 1
+
+
+# Merge-source count: every table plus the memtable, which is always
+# the LAST (newest) source — see the header's tie-break note.
+int lsm_export_sources(lsm* l):
+	return l.tables.length + 1
+
+
+int lsm_export_count_at(lsm* l, int src):
+	if (src < l.tables.length):
+		return sstable_count(l.tables[src])
+	return memtable_count(l.mem)
+
+
+char* lsm_export_key_at(lsm* l, int src, int i):
+	if (src < l.tables.length):
+		return sstable_key_at(l.tables[src], i)
+	return memtable_key_at(l.mem, i)
+
+
+int lsm_export_tombstone_at(lsm* l, int src, int i):
+	if (src < l.tables.length):
+		return sstable_is_tombstone_at(l.tables[src], i)
+	return memtable_is_tombstone_at(l.mem, i)
+
+
+# Malloc'd copy either way: sstable_value_at already reads a fresh
+# malloc'd copy from disk; memtable_value_at's pointer is borrowed, so
+# it is copied here too, letting the merge loop below free every
+# collected value uniformly.
+char* lsm_export_value_at(lsm* l, int src, int i, int* len_out):
+	if (src < l.tables.length):
+		return sstable_value_at(l.tables[src], i, len_out)
+	char* borrowed = memtable_value_at(l.mem, i, len_out)
+	return lsm_copy_bytes(borrowed, len_out[0])
+
+
+# Full-scan export: the same k-way merge lsm_compact runs across every
+# table, with the memtable folded in as the newest source, tombstones
+# DROPPED entirely (see the header). Returns a malloc'd "LSMX" blob
+# (len_out gets its length; byte format in the header) — an empty tree
+# exports a valid 12-byte header-only blob with a zero record count.
+char* lsm_export(lsm* l, int* len_out):
+	int n = lsm_export_sources(l)
+	list[int] cursors = new list[int]
+	int i = 0
+	while (i < n):
+		cursors.push(0)
+		i = i + 1
+	list[char*] keys = new list[char*]
+	list[char*] vals = new list[char*]
+	list[int] vlens = new list[int]
+	int* vl = cast(int*, malloc(__word_size__))
+	int merging = 1
+	while (merging):
+		# smallest key among the cursors; scanning oldest->newest with
+		# <= means an equal key from a newer source (a later index —
+		# the memtable, index n - 1, sorts last) displaces the older
+		int best = 0 - 1
+		char* best_key = 0
+		i = 0
+		while (i < n):
+			if (cursors[i] < lsm_export_count_at(l, i)):
+				char* k = lsm_export_key_at(l, i, cursors[i])
+				if (best < 0 || strcmp(k, best_key) <= 0):
+					best = i
+					best_key = k
+			i = i + 1
+		if (best < 0):
+			merging = 0
+		else:
+			if (lsm_export_tombstone_at(l, best, cursors[best]) == 0):
+				char* val = lsm_export_value_at(l, best, cursors[best], vl)
+				keys.push(lsm_copy_bytes(best_key, strlen(best_key)))
+				vals.push(val)
+				vlens.push(vl[0])
+			# advance every cursor sitting on this key: the winner and
+			# every older shadowed version of it
+			i = 0
+			while (i < n):
+				if (cursors[i] < lsm_export_count_at(l, i)):
+					if (strcmp(lsm_export_key_at(l, i, cursors[i]), best_key) == 0):
+						cursors[i] = cursors[i] + 1
+				i = i + 1
+	free(cast(char*, vl))
+	int total = 12
+	i = 0
+	while (i < keys.length):
+		total = total + 4 + strlen(keys[i]) + 4 + vlens[i]
+		i = i + 1
+	char* buf = malloc(total)
+	buf[0] = 76   # L
+	buf[1] = 83   # S
+	buf[2] = 77   # M
+	buf[3] = 88   # X
+	wal_put_le32(buf + 4, lsm_export_version())
+	wal_put_le32(buf + 8, keys.length)
+	int off = 12
+	i = 0
+	while (i < keys.length):
+		char* k = keys[i]
+		int klen = strlen(k)
+		wal_put_le32(buf + off, klen)
+		off = off + 4
+		int j = 0
+		while (j < klen):
+			buf[off + j] = k[j]
+			j = j + 1
+		off = off + klen
+		wal_put_le32(buf + off, vlens[i])
+		off = off + 4
+		char* v = vals[i]
+		j = 0
+		while (j < vlens[i]):
+			buf[off + j] = v[j]
+			j = j + 1
+		off = off + vlens[i]
+		free(k)
+		free(v)
+		i = i + 1
+	len_out[0] = total
+	return buf
+
+
+# Wipes l back to an empty tree: manifest reset FIRST (so the rewrite
+# is the durable truth before any table file disappears — the same
+# ordering discipline as lsm_compact/lsm_open), every table file
+# unlinked, the memtable cleared, and the data wal reset. next_seq is
+# left untouched so a table path is never reused (lsm_open's dangling-
+# entry rule). Returns 0 on any I/O failure; lsm_import only calls
+# this after fully validating the incoming blob, so a failure here is
+# a bare-disk problem, not a bad snapshot.
+int lsm_clear(lsm* l):
+	if (wal_reset(l.manifest) == 0):
+		return 0
+	int i = 0
+	while (i < l.tables.length):
+		sstable_close(l.tables[i])
+		i = i + 1
+	i = 0
+	while (i < l.table_paths.length):
+		unlink(l.table_paths[i])
+		free(l.table_paths[i])
+		i = i + 1
+	l.tables = new list[sstable*]
+	l.table_paths = new list[char*]
+	if (wal_reset(l.log) == 0):
+		return 0
+	memtable_clear(l.mem)
+	return 1
+
+
+# Rebuilds l from an lsm_export blob: validates the ENTIRE buffer
+# first (magic, version, every record's lengths in bounds) so a
+# malformed blob leaves l untouched, only then lsm_clear(l)s and
+# replays each record through lsm_put. Returns 0 on a malformed blob
+# (l untouched) or an lsm_clear/lsm_put I/O failure once the clear has
+# already started (l may then be partially imported — see lsm_clear's
+# header). This is the receiver-side half of the raft snapshot
+# handoff: kv_state.w's kv_install_snapshot calls this with the blob
+# raft_take_pending_snapshot hands the state machine.
+int lsm_import(lsm* l, char* blob, int len):
+	if (len < 12):
+		return 0
+	if ((blob[0] & 255) != 76 || (blob[1] & 255) != 83 || (blob[2] & 255) != 77 || (blob[3] & 255) != 88):
+		return 0
+	if (wal_get_le32(blob + 4) != lsm_export_version()):
+		return 0
+	int count = wal_get_le32(blob + 8)
+	if (count < 0):
+		return 0
+	list[int] key_off = new list[int]
+	list[int] key_len = new list[int]
+	list[int] val_off = new list[int]
+	list[int] val_len = new list[int]
+	int off = 12
+	int i = 0
+	while (i < count):
+		if (len - off < 4):
+			return 0
+		int klen = wal_get_le32(blob + off)
+		if (klen < 0 || klen > len - off - 4):
+			return 0
+		key_off.push(off + 4)
+		key_len.push(klen)
+		off = off + 4 + klen
+		if (len - off < 4):
+			return 0
+		int vlen = wal_get_le32(blob + off)
+		if (vlen < 0 || vlen > len - off - 4):
+			return 0
+		val_off.push(off + 4)
+		val_len.push(vlen)
+		off = off + 4 + vlen
+		i = i + 1
+	if (off != len):
+		return 0
+	if (lsm_clear(l) == 0):
+		return 0
+	i = 0
+	while (i < count):
+		char* key = lsm_copy_bytes(blob + key_off[i], key_len[i])
+		int ok = lsm_put(l, key, blob + val_off[i], val_len[i])
+		free(key)
+		if (ok == 0):
+			return 0
+		i = i + 1
+	return 1
 
 
 # ---- stats ----------------------------------------------------------------------

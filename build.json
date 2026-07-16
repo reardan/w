@@ -266,6 +266,13 @@
 			]
 		},
 		{
+			"name": "prefixed_string_literal_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/prefixed_string_unterminated_fixture.w"]}
+			]
+		},
+		{
 			"name": "warning_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -333,6 +340,18 @@
 				{"cmd": ["bin/wv2", "check", "--quiet", "--json", "code_generator/arm64.w"], "stdout_file": "bin/check_roots_quiet.ndjson", "stderr_file": "bin/check_roots_quiet.stderr"},
 				{"cmd": ["test", "!", "-s", "bin/check_roots_quiet.ndjson"]},
 				{"cmd": ["test", "!", "-s", "bin/check_roots_quiet.stderr"]}
+			]
+		},
+		{
+			"name": "check_imports_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "check", "--quiet", "tests/transitive_import_warn_fixture.w"], "reject_stderr": "warning:"},
+				{"cmd": ["bin/wv2", "check", "--imports", "--quiet", "tests/transitive_import_warn_fixture.w"], "expect_stderr": ["warning: symbol 'transitive_leaf_value' resolves through a transitive import (defined in '", "/tests/transitive_import_leaf.w'); import it directly"]},
+				{"cmd": ["bin/wv2", "check", "--imports", "--quiet", "tests/transitive_import_clean_fixture.w"], "reject_stderr": "warning:"},
+				{"cmd": ["bin/wv2", "check", "--imports", "--json", "--quiet", "tests/transitive_import_warn_fixture.w"], "stdout_file": "bin/check_imports_warn.ndjson", "expect_stdout": ["\"severity\": \"warning\"", "\"message\": \"symbol 'transitive_leaf_value' resolves through a transitive import (defined in '", "/tests/transitive_import_leaf.w'); import it directly\""]},
+				{"cmd": ["bin/wv2", "check", "--imports", "--json", "--quiet", "tests/transitive_import_clean_fixture.w"], "stdout_file": "bin/check_imports_clean.ndjson"},
+				{"cmd": ["test", "!", "-s", "bin/check_imports_clean.ndjson"]}
 			]
 		},
 		{
@@ -872,7 +891,8 @@
 				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations_fail.expect"], "expect_fail": true, "expect_stderr": "wtest_map_check: FAIL"},
 				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read build.json"},
 				{"cmd": ["bin/wtest", "changed", "docs/todo.txt"], "expect_stderr": "wtest: 0 targets selected"},
-				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [-f manifest.json] [--base-manifest base.json] [file...]"}
+				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_unavailable.json", "--available", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"}
 			]
 		},
 		{
@@ -1297,6 +1317,7 @@
 				{"cmd": ["bin/repl"], "stdin": "int keep = 41\nint* p = 0\np[0]\nkeep + 1\n:quit\n", "expect_stdout": ["SIGSEGV", "fault address=0x00000000", "entry rolled back", "42"]},
 				{"cmd": ["bin/repl"], "stdin": "1 / 0\nprint(c\"recovered after fpe\\x0a\")\n:quit\n", "expect_stdout": ["SIGFPE", "entry rolled back", "recovered after fpe"]},
 				{"cmd": ["bin/repl"], "stdin": "int* p = 0\np[0]\np[0]\n1 / 0\n40 + 2\n:quit\n", "expect_stdout": "42"},
+				{"cmd": ["bin/repl"], "stdin": "int f():\n\treturn 17\n\nint* p = 0\np[0]\nf()\nint g():\n\treturn 29\n\ng()\n:quit\n", "expect_stdout": ["SIGSEGV", "entry rolled back", "17", "29"]},
 				{"cmd": ["bin/repl", "tests/repl_fixture.w"], "stdin": ":quit\n", "expect_stdout": "fixture main ran"},
 				{"cmd": ["bin/repl", "tests/repl_fixture.w"], "stdin": "fixture_helper(21)\nfixture_global\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl", "tests/repl_fixture.w"], "stdin": "fixture_global\n:quit\n", "expect_stdout": "11"},
@@ -1334,6 +1355,7 @@
 				{"cmd": ["bin/repl64"], "stdin": "int keep = 41\nint* p = 0\np[0]\nkeep + 1\n:quit\n", "expect_stdout": ["SIGSEGV", "fault address=0x0000000000000000", "entry rolled back", "42"]},
 				{"cmd": ["bin/repl64"], "stdin": "1 / 0\nprint(c\"recovered after fpe\\x0a\")\n:quit\n", "expect_stdout": ["SIGFPE", "entry rolled back", "recovered after fpe"]},
 				{"cmd": ["bin/repl64"], "stdin": "int* p = 0\np[0]\np[0]\n1 / 0\n40 + 2\n:quit\n", "expect_stdout": "42"},
+				{"cmd": ["bin/repl64"], "stdin": "int f():\n\treturn 17\n\nint* p = 0\np[0]\nf()\nint g():\n\treturn 29\n\ng()\n:quit\n", "expect_stdout": ["SIGSEGV", "entry rolled back", "17", "29"]},
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w"], "stdin": ":quit\n", "expect_stdout": "fixture main ran"},
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w"], "stdin": "fixture_helper(21)\nfixture_global\n:quit\n", "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "tests/repl_fixture.w", "--no_main"], "stdin": ":quit\n", "reject_stdout": "fixture main ran"},
@@ -1738,6 +1760,7 @@
 				"failure_detector_64_test",
 				"feature_combo_64_test",
 				"feature_interaction_64_test",
+				"float16_64_test",
 				"fmath_64_test",
 				"for_container_64_test",
 				"format_64_test",
@@ -1778,6 +1801,9 @@
 				"process_64_test",
 				"quorum_64_test",
 				"raft_64_test",
+				"raft_membership_restart_64_test",
+				"raft_membership_sim_64_test",
+				"raft_ownership_64_test",
 				"raft_restart_sim_64_test",
 				"raft_sim_64_test",
 				"raft_sweep_64_test",
@@ -1970,10 +1996,12 @@
 				"array_error_test",
 				"syscall_arity_test",
 				"int_literal_width_test",
+				"prefixed_string_literal_test",
 				"warning_test",
 				"strict_mode_test",
 				"check_json_test",
 				"check_roots_test",
+				"check_imports_test",
 				"missing_file_test",
 				"symbols_test",
 				"deps_test",
@@ -2079,6 +2107,7 @@
 				"feature_combo_test",
 				"feature_interaction_test",
 				"file_test",
+				"float16_test",
 				"float_literal_test",
 				"float_test",
 				"fmath_test",
@@ -2124,6 +2153,9 @@
 				"prng_test",
 				"process_test",
 				"quorum_test",
+				"raft_membership_restart_test",
+				"raft_membership_sim_test",
+				"raft_ownership_test",
 				"raft_restart_sim_test",
 				"raft_sim_test",
 				"raft_sweep_test",
@@ -2594,6 +2626,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/file_test.w", "-o", "bin/file_test"]},
 				{"cmd": ["bin/file_test"]}
+			]
+		},
+		{
+			"name": "float16_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/float16_test.w", "-o", "bin/float16_64_test"]},
+				{"cmd": ["bin/float16_64_test"]}
+			]
+		},
+		{
+			"name": "float16_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/float16_test.w", "-o", "bin/float16_test"]},
+				{"cmd": ["bin/float16_test"]}
 			]
 		},
 		{
@@ -3306,6 +3354,54 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_test.w", "-o", "bin/raft_64_test"]},
 				{"cmd": ["bin/raft_64_test"]}
+			]
+		},
+		{
+			"name": "raft_membership_restart_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_membership_restart_test.w", "-o", "bin/raft_membership_restart_64_test"]},
+				{"cmd": ["bin/raft_membership_restart_64_test"]}
+			]
+		},
+		{
+			"name": "raft_membership_restart_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_membership_restart_test.w", "-o", "bin/raft_membership_restart_test"]},
+				{"cmd": ["bin/raft_membership_restart_test"]}
+			]
+		},
+		{
+			"name": "raft_membership_sim_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_membership_sim_test.w", "-o", "bin/raft_membership_sim_64_test"]},
+				{"cmd": ["bin/raft_membership_sim_64_test"]}
+			]
+		},
+		{
+			"name": "raft_membership_sim_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_membership_sim_test.w", "-o", "bin/raft_membership_sim_test"]},
+				{"cmd": ["bin/raft_membership_sim_test"]}
+			]
+		},
+		{
+			"name": "raft_ownership_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_ownership_test.w", "-o", "bin/raft_ownership_64_test"]},
+				{"cmd": ["bin/raft_ownership_64_test"]}
+			]
+		},
+		{
+			"name": "raft_ownership_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_ownership_test.w", "-o", "bin/raft_ownership_test"]},
+				{"cmd": ["bin/raft_ownership_test"]}
 			]
 		},
 		{

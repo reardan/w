@@ -13,6 +13,17 @@ raft_msg* rw_roundtrip(raft_msg* m):
 	return out
 
 
+# Bytewise blob/command comparison: values may be binary (embedded
+# zeros and other non-text bytes legal), so strcmp-style helpers must
+# never touch them.
+void rw_assert_blob(char* want, int want_len, char* got, int got_len):
+	assert_equal(want_len, got_len)
+	int i = 0
+	while (i < want_len):
+		assert_equal(want[i] & 255, got[i] & 255)
+		i = i + 1
+
+
 void test_vote_req_roundtrip():
 	u64* term = u64_new_int(7)
 	raft_msg* m = raft_msg_new(raft_msg_vote_req(), 1, 2, term)
@@ -52,8 +63,8 @@ void test_append_roundtrip_with_entries():
 	u64_set_int(m.leader_commit, 10)
 	u64* t1 = u64_new_int(8)
 	u64* t2 = u64_new_int(9)
-	m.entries.push(raft_entry_new(t1, c"P\tk1\tv1"))
-	m.entries.push(raft_entry_new(t2, c"D\tk2"))
+	m.entries.push(raft_entry_new(t1, c"P\tk1\tv1", 7))
+	m.entries.push(raft_entry_new(t2, c"D\tk2", 4))
 	raft_msg* out = rw_roundtrip(m)
 	assert_equal(2, out.entries.length)
 	raft_entry* e0 = out.entries[0]
@@ -68,6 +79,42 @@ void test_append_roundtrip_with_entries():
 	u64_free(t1)
 	u64_free(t2)
 	u64_free(term)
+
+
+# Binary-safe commands (issue #315): a command carrying an embedded
+# NUL, a tab (0x09) and a high byte (0xFF) must survive encode/decode
+# byte-exactly -- raft_entry.command_len (never strlen) is
+# authoritative on the wire, so none of those bytes can be mistaken
+# for a terminator or truncate the payload.
+void test_binary_command_roundtrip():
+	u64* term = u64_new_int(5)
+	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
+	u64_set_int(m.prev_log_index, 3)
+	u64_set_int(m.prev_log_term, 4)
+	u64_set_int(m.leader_commit, 3)
+	char* cmd = malloc(6)
+	cmd[0] = 'A'
+	cmd[1] = 0
+	cmd[2] = 9
+	cmd[3] = 255
+	cmd[4] = 'Z'
+	cmd[5] = 0
+	u64* t = u64_new_int(5)
+	m.entries.push(raft_entry_new(t, cmd, 6))
+	# issue #319: each entry gained a 1-byte kind field (raft_entry_kind_
+	# normal/config) ahead of its term, so the per-entry size is now
+	# 1 + 8 + 4 + command_len instead of 8 + 4 + command_len
+	assert_equal(17 + 28 + 1 + 8 + 4 + 6, raft_wire_size(m))
+	raft_msg* out = rw_roundtrip(m)
+	assert_equal(1, out.entries.length)
+	raft_entry* e = out.entries[0]
+	assert_equal(6, e.command_len)
+	rw_assert_blob(cmd, 6, e.command, e.command_len)
+	raft_msg_free(m)
+	raft_msg_free(out)
+	u64_free(t)
+	u64_free(term)
+	free(cmd)
 
 
 void test_append_heartbeat_empty_entries():
@@ -169,7 +216,7 @@ void test_decode_rejects_malformed():
 	u64* term = u64_new_int(5)
 	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
 	u64* t = u64_new_int(5)
-	m.entries.push(raft_entry_new(t, c"P\ta\tb"))
+	m.entries.push(raft_entry_new(t, c"P\ta\tb", 5))
 	int size = raft_wire_size(m)
 	char* buf = malloc(size)
 	raft_wire_encode(m, buf)
@@ -188,8 +235,9 @@ void test_decode_rejects_malformed():
 	buf[0] = 42
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	buf[0] = raft_msg_append()
-	# entry cmd_len overrunning the buffer
-	raft_wire_u32(buf + 17 + 28 + 8, 1000)
+	# entry cmd_len overrunning the buffer (offset +9: 1 kind byte + 8
+	# term bytes ahead of cmd_len — issue #319's per-entry kind field)
+	raft_wire_u32(buf + 17 + 28 + 9, 1000)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	free(big)
 	free(buf)
@@ -199,15 +247,6 @@ void test_decode_rejects_malformed():
 
 
 # ---- install_snapshot (type 4) ----------------------------------------------------
-
-# Bytewise blob comparison: snapshot blobs are binary (embedded zeros
-# legal), so strcmp-style helpers must never touch them.
-void rw_assert_blob(char* want, int want_len, char* got, int got_len):
-	assert_equal(want_len, got_len)
-	int i = 0
-	while (i < want_len):
-		assert_equal(want[i] & 255, got[i] & 255)
-		i = i + 1
 
 
 void test_install_snapshot_roundtrip():
@@ -226,7 +265,12 @@ void test_install_snapshot_roundtrip():
 	blob[5] = 255
 	m.snap_data = blob
 	m.snap_len = 6
-	assert_equal(17 + 28 + 6, raft_wire_size(m))
+	# issue #319: the FULL member set at the snapshot rides alongside
+	# the blob (config_count u32 + one u32 per id)
+	m.snap_config.push(1)
+	m.snap_config.push(3)
+	m.snap_config.push(7)
+	assert_equal(17 + 28 + 4 + 3 * 4 + 6, raft_wire_size(m))
 	raft_msg* out = rw_roundtrip(m)
 	assert_equal(raft_msg_install_snapshot(), out.type)
 	assert_equal(1, out.from)
@@ -236,6 +280,10 @@ void test_install_snapshot_roundtrip():
 	assert_equal(5, raft_u64_as_int(out.prev_log_term))
 	assert_equal(12, raft_u64_as_int(out.leader_commit))
 	rw_assert_blob(blob, 6, out.snap_data, out.snap_len)
+	assert_equal(3, out.snap_config.length)
+	assert_equal(1, out.snap_config[0])
+	assert_equal(3, out.snap_config[1])
+	assert_equal(7, out.snap_config[2])
 	raft_msg_free(m)
 	raft_msg_free(out)
 	u64_free(term)
@@ -247,12 +295,13 @@ void test_install_snapshot_empty_blob():
 	u64_set_int(m.prev_log_index, 4)
 	u64_set_int(m.prev_log_term, 1)
 	u64_set_int(m.leader_commit, 4)
-	assert_equal(17 + 28, raft_wire_size(m))
+	assert_equal(17 + 28 + 4, raft_wire_size(m))
 	raft_msg* out = rw_roundtrip(m)
 	assert_equal(raft_msg_install_snapshot(), out.type)
 	assert_equal(4, raft_u64_as_int(out.prev_log_index))
 	assert_equal(1, raft_u64_as_int(out.prev_log_term))
 	assert_equal(0, out.snap_len)
+	assert_equal(0, out.snap_config.length)
 	raft_msg_free(m)
 	raft_msg_free(out)
 	u64_free(term)
@@ -285,11 +334,12 @@ void test_install_snapshot_malformed():
 		i = i + 1
 	big[size] = 7
 	assert_equal(0, cast(int, raft_wire_decode(big, size + 1)))
-	# huge snap_len overrunning the buffer
-	raft_wire_u32(buf + 17 + 24, 100000)
+	# huge snap_len overrunning the buffer (offset +28: past config_count,
+	# which is 0/empty here — issue #319 moved snap_len past it)
+	raft_wire_u32(buf + 17 + 28, 100000)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	# negative snap_len
-	raft_wire_u32(buf + 17 + 24, 0 - 4)
+	raft_wire_u32(buf + 17 + 28, 0 - 4)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	free(big)
 	free(buf)
@@ -311,6 +361,106 @@ void test_type4_known_type5_rejected():
 	assert_equal(raft_msg_install_snapshot(), ok.type)
 	raft_msg_free(ok)
 	buf[0] = 5
+	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
+	free(buf)
+	raft_msg_free(m)
+	u64_free(term)
+
+
+# ---- cluster membership (issue #319): config entries and snapshot config ----------
+
+
+# A config-kind entry (raft_entry_kind_config) round-trips its op+id
+# command byte-exactly, alongside a normal-kind entry in the same
+# append — proving the new per-entry kind byte survives encode/decode
+# and does not disturb neighboring entries' offsets.
+void test_config_entry_roundtrip():
+	u64* term = u64_new_int(4)
+	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
+	u64_set_int(m.prev_log_index, 0)
+	u64_set_int(m.prev_log_term, 0)
+	u64_set_int(m.leader_commit, 0)
+	u64* t1 = u64_new_int(4)
+	char* cfg_cmd = raft_config_encode(raft_config_op_add(), 9)
+	m.entries.push(raft_entry_new_kind(t1, cfg_cmd, 5, raft_entry_kind_config()))
+	u64* t2 = u64_new_int(4)
+	m.entries.push(raft_entry_new(t2, c"P\tk\tv", 5))
+	raft_msg* out = rw_roundtrip(m)
+	assert_equal(2, out.entries.length)
+	raft_entry* e0 = out.entries[0]
+	assert_equal(raft_entry_kind_config(), e0.kind)
+	assert_equal(5, e0.command_len)
+	int op = 0
+	int id = 0
+	raft_config_decode(e0.command, e0.command_len, &op, &id)
+	assert_equal(raft_config_op_add(), op)
+	assert_equal(9, id)
+	raft_entry* e1 = out.entries[1]
+	assert_equal(raft_entry_kind_normal(), e1.kind)
+	assert_strings_equal(c"P\tk\tv", e1.command)
+	raft_msg_free(m)
+	raft_msg_free(out)
+	free(cfg_cmd)
+	u64_free(t1)
+	u64_free(t2)
+	u64_free(term)
+
+
+void test_decode_rejects_bad_entry_kind():
+	u64* term = u64_new_int(1)
+	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
+	u64* t = u64_new_int(1)
+	m.entries.push(raft_entry_new(t, c"x", 1))
+	int size = raft_wire_size(m)
+	char* buf = malloc(size)
+	raft_wire_encode(m, buf)
+	# the single entry's kind byte sits right after the fixed append
+	# header (17 + 28); stomp it with a value that is neither
+	# raft_entry_kind_normal (0) nor raft_entry_kind_config (1)
+	buf[17 + 28] = 9
+	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
+	free(buf)
+	raft_msg_free(m)
+	u64_free(t)
+	u64_free(term)
+
+
+# A config-kind entry's command_len must be exactly 5 (op + u32 id);
+# raft_wire_decode rejects any other length up front rather than
+# letting a malformed length reach raft_config_decode's assert deep
+# inside raft.w's membership bookkeeping. Built with a 4-byte command
+# that exactly fills its (dynamically sized) buffer, so bounds/
+# trailing-byte checks alone would accept it — only the dedicated
+# kind==config-implies-len==5 check can be what rejects this.
+void test_decode_rejects_bad_config_command_len():
+	u64* term = u64_new_int(1)
+	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
+	u64* t = u64_new_int(1)
+	m.entries.push(raft_entry_new_kind(t, c"abcd", 4, raft_entry_kind_config()))
+	int size = raft_wire_size(m)
+	char* buf = malloc(size)
+	raft_wire_encode(m, buf)
+	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
+	free(buf)
+	raft_msg_free(m)
+	u64_free(t)
+	u64_free(term)
+
+
+# config_count overrunning the buffer is rejected the same way an
+# oversize snap_len already was.
+void test_decode_rejects_bad_config_count():
+	u64* term = u64_new_int(1)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), 1, 2, term)
+	u64_set_int(m.prev_log_index, 1)
+	u64_set_int(m.prev_log_term, 1)
+	int size = raft_wire_size(m)
+	char* buf = malloc(size)
+	raft_wire_encode(m, buf)
+	# config_count sits at 17 + 24 (no config in this message)
+	raft_wire_u32(buf + 17 + 24, 100000)
+	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
+	raft_wire_u32(buf + 17 + 24, 0 - 1)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	free(buf)
 	raft_msg_free(m)

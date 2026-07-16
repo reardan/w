@@ -1,0 +1,16 @@
+{
+	"targets": [
+		{
+			"name": "alpha_widget_check",
+			"steps": [
+				{"cmd": ["true", "custom/marker.dat"]}
+			]
+		},
+		{
+			"name": "zeta_gadget_check",
+			"steps": [
+				{"cmd": ["true", "custom/marker.dat"]}
+			]
+		}
+	]
+}

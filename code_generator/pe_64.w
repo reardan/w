@@ -287,4 +287,5 @@ void pe_finish_64():
 	save_i(code + pe_section_header_pos + 8, text_virtual_size, 4) /* VirtualSize */
 	save_i(code + pe_section_header_pos + 16, text_raw_size, 4) /* SizeOfRawData */
 
-	write(output_fd, code, codepos)
+	if (write(output_fd, code, codepos) != codepos):
+		error(c"could not write output file")

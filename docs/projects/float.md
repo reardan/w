@@ -6,8 +6,10 @@ the GPU work: the type names and kind helpers chosen here map 1:1 onto PTX
 `code_generator/ptx.w` (see `docs/projects/cuda.md`, Stage 2, and its open
 question "Float support: W's type table today is integer/pointer-centric").
 
-**Status: float32/float64 implemented and covered by `./wbuild tests`; float16 and
-bfloat16 remain deferred.**
+**Status: float32/float64 implemented and covered by `./wbuild tests`; float16
+storage/conversion is also implemented (x86 family only: the default 32-bit
+target and x64) and covered by `tests/float16_test.w`. bfloat16 remains
+deferred.**
 
 Implemented today:
 
@@ -16,6 +18,19 @@ Implemented today:
 - `float64` literals, arithmetic, comparisons, conversions, params/returns and
   formatting on the x64 target.
 - x64 float32 narrowing from a float64 literal.
+- `float16` as a declarable, storage-only 2-byte type on the x86 family
+  (default 32-bit target and x64; gated on `target_isa == 0`): variable,
+  struct-field, and array storage; load widens to float32 (F16C
+  `vcvtph2ps`, zero-extended so bit patterns above 0x7FFF survive) and
+  store narrows from float32 (F16C `vcvtps2ph`, round-to-nearest-even);
+  all arithmetic/comparisons happen on the widened float32 value. Verified
+  by `tests/float16_test.w`: exact round-trips (including max normal
+  65504.0 and smallest normal 2^-14), round-to-nearest-even on
+  non-representable and exact-tie values, overflow to infinity, subnormals,
+  signed zero, +-inf, quiet-NaN bit preservation, struct fields, array
+  elements, int<->float16 conversion, and comparisons/unary minus. `float16`
+  raises a clean compile error ("`<target>`: float16 is not implemented") on
+  arm64 and wasm (`code_generator/sse.w`) — not yet ported to those targets.
 - Decimal literals with exponent forms and exact-bit regression tests.
 - Differential checks against a C reference program for float32 and float64.
 - `ftoa` and x64 `f64toa` formatting helpers.
@@ -26,21 +41,25 @@ Implemented today:
 
 Still deferred:
 
-- `float16` storage/conversion support and bfloat16.
+- `float16` on arm64 and wasm targets (compile error today).
+- `bfloat16` (likely tied to the GPU/PTX track).
 - x64 debugger float display, since `wdbg` is still x86-only.
 
 The milestone sections below are the implementation history/design record. Treat
-the status bullets above and `float_test`, `float_reference_test`, and
-`x64_float_test` as the current support contract.
+the status bullets above and `float_test`, `float_reference_test`,
+`x64_float_test`, and `float16_test` as the current support contract.
 
 ## Scope
 
-- **float32 and float64** as full arithmetic types; **float16 as a planned
-  storage-only type** (2-byte load/store, all math in float32). bfloat16 is
+- **float32 and float64** as full arithmetic types; **float16 as an
+  implemented storage-only type** (2-byte load/store, all math in float32)
+  on the x86 family — the default 32-bit target and x64. bfloat16 is
   deferred to the GPU/PTX backend.
 - **float64 is x64-only**: on the 32-bit target it is a clean compile error
   (one-word stack slots cannot hold 8 bytes). float32 works on both targets;
-  float16 is not implemented yet.
+  float16 also works on both (it needs no 8-byte slot) but is a clean
+  compile error on arm64 and wasm, where the F16C conversion opcodes have
+  no port yet.
 - **Exact literals**: decimal literals parse to full target precision with
   integer-only bignum arithmetic (no float detour, no double rounding on the
   32-bit target) and support exponent syntax (`1e5`, `1.5e-3`, `2E+10`).
@@ -264,7 +283,9 @@ the `pop_ebx` at each site. Call it from:
   already available via `sym_param_type` for the warning path).
 
 For implemented widths, this makes `float x = 3`, `int n = f`, and `x + 2` do
-the right thing; the analogous `float16 h = 1.5` path is still future work.
+the right thing; the analogous `float16 h = 1.5` path (narrowing at the
+`coerce()` call sites above via `vcvtps2ph`) is implemented too and covered
+by `tests/float16_test.w`, on the x86 family.
 
 ## Milestone 7 — Debugger float formatting + `ftoa`
 
@@ -295,8 +316,15 @@ words on request:
   forms (`1e5`, `1.5e-3`, `2E+10`), `+ - * /`, comparisons, unary minus,
   int↔float conversion, float params/returns (both directions through the
   call-site return-type propagation), float struct fields, `float*`
-  indexing, float16 store/load round-trips and precision truncation (e.g.
-  `1.0009765625` → nearest half).
+  indexing.
+- `tests/float16_test.w` (`# wbuild: x64` twin, `lib.testing` style, x86
+  family only): float16 store/load round-trips with golden bit patterns
+  (1.0, -2.5, 0.5, max normal 65504.0, smallest normal 2^-14),
+  round-to-nearest-even on non-representable and exact-tie values,
+  overflow to infinity, subnormals, signed zero, +-inf, quiet-NaN bit
+  preservation, struct fields, array elements, int<->float16 conversion,
+  and comparisons/unary minus. Landed as its own file rather than inside
+  `float_test.w` as originally sketched here.
 - Compile-only error fixture for "float64 requires the x64 target"
   (pattern: `warning_test` in `build.json`).
 - `tests/x64_float_test.w`: float64 smoke test in the style of
@@ -340,7 +368,9 @@ built in this pass.
   double rounding differs from direct decimal→float32 only in pathological
   halfway cases.
 - `float*` and `float32*` are distinct pointer types, so mixing them warns.
-- planned float16 support would require an F16C-capable CPU (2012+) unless a
-  software fallback is added.
+- `float16` requires an F16C-capable CPU (Ivy Bridge/Zen or newer, 2012+);
+  there is no software fallback, and no runtime feature check is emitted.
+- `float16` is a clean compile error on arm64 and wasm (no F16C-equivalent
+  port yet); see the status bullets at the top of this document.
 - `bfloat16` deferred to the GPU backend; no hex-float syntax; no
   `.5`-style literals without a leading digit.
