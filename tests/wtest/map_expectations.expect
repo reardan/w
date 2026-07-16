@@ -316,3 +316,16 @@ case -f tests/wtest/manifest_custom_names.json custom/marker.dat
 noorder
 expect alpha_widget_check
 expect zeta_gadget_check
+
+# --available drops a target whose step names a runner not present on
+# this host and keeps a target with no special runner requirement.
+# tools/mac/does_not_exist.sh is a fictional path (never created) so the
+# drop is deterministic on every machine, unlike testing the real
+# qemu-aarch64-static/wine paths, whose availability legitimately varies
+# by host (docs/projects/ai_tooling_next_steps.md, 2026-07-16 entries).
+# The fixture's target names are not build.json targets, hence 'noorder'
+# (tools/wtest_map_check.w header).
+case -f tests/wtest/manifest_unavailable.json --available widget/marker.dat
+noorder
+expect custom_widget_ok
+forbid custom_widget_needs_mac
