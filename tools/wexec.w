@@ -51,6 +51,20 @@ the step finishes, so output is visible but not interleaved live.
 
 Usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [--ordered-output] [-j N] target...
 
+Direct-file UX (issue #323 stage 1): in place of a target name, wexec
+also accepts a bare "<file>.w" or a "[selector] <file>.w" pair (e.g.
+"x64 path/to/file.w") naming a W source instead of a manifest target.
+When an existing target's own compile step already builds that file for
+that selector, wexec runs that target exactly as if it had been named
+directly. Otherwise wexec synthesizes a throwaway target: compile the
+file to bin/<stem> (bin/<stem>_<selector> for a non-default selector),
+then run the result when the file is a "*_test.w". The synthesized
+target declares "inputs": [<file>], so it gets the same content-hash
+(and, once bin/wv2 exists, deps-driven closure) caching as any other
+cacheable target above — a repeat invocation with nothing changed is a
+cache hit. See the "Direct-file UX" section further down for the
+implementation.
+
 A failed target normally stops all scheduling (fail-fast); the epilogue
 then reports how many targets were never attempted. With --keep-going a
 failure only poisons its dependents: independent subgraphs keep running,
@@ -132,6 +146,7 @@ void wexec_error2(char* message, char* detail):
 void wexec_usage():
 	wstream* err = stderr_writer()
 	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [--ordered-output] [-j N] target...")
+	stream_write_line(err, c"       wexec [-f manifest.json] ... [selector] <file>.w")
 	stream_flush(err)
 
 
@@ -404,10 +419,22 @@ void wexec_sort_strings(list[char*] files):
 		i = i + 1
 
 
+# Every real manifest target name is a bare identifier, so this is a
+# byte-identical no-op for them; it only starts mattering for the
+# direct-file UX's synthesized names (below), which embed a source path
+# and so may contain '/' -- escaped here rather than by nesting
+# directories under bin/.wexec_cache/, so the stamp stays a flat file.
 char* wexec_stamp_path(char* name):
 	string_builder* s = string_new()
 	string_append(s, c"bin/.wexec_cache/")
-	string_append(s, name)
+	int i = 0
+	while (name[i] != 0):
+		char c = name[i]
+		if ((c == '/') | (c == ':') | (c == 92)):
+			string_append_char(s, '_')
+		else:
+			string_append_char(s, c)
+		i = i + 1
 	char* path = s.data
 	free(s)
 	return path
@@ -802,6 +829,162 @@ void wexec_deps_collect_roots(json_value* target, list[char*] archs, list[char*]
 					archs.push(arch)
 					roots.push(element)
 			i = i + 1
+
+
+/* Direct-file UX (issue #323 stage 1).
+
+'wexec [selector] <file>.w' (in place of a target name list) runs the
+manifest target that already compiles <file>.w as its own root -- found
+by scanning every target's own compile roots exactly like
+wexec_deps_collect_roots does above, since "the target whose compile
+root is that file" is precisely the (arch, root) pairs that function
+extracts -- or, when no target compiles it, synthesizes a throwaway
+compile(+run, for a *_test.w file) target for it. The synthesized
+target declares "inputs": [<file>], so it goes through the exact same
+content-hash (and, once bin/wv2 exists, deps-driven closure) caching as
+any other declared-"inputs" target above: a repeat invocation with
+nothing changed is a cache hit. Nothing here touches the loaded
+manifest's own targets; the synthesized target is added to
+wexec_targets/wexec_names for this process only. */
+
+# The first manifest target (in manifest order) whose own compile steps
+# build 'path' for 'arch', or 0. "Own" mirrors wexec_deps_collect_roots:
+# a dependency's compile roots don't count, only the target's own.
+char* wexec_find_target_for_root(char* arch, char* path):
+	for char* name in wexec_names:
+		json_value* target = wexec_targets.get(name, 0)
+		if (target == 0):
+			continue
+		list[char*] archs = new list[char*]
+		list[char*] roots = new list[char*]
+		wexec_deps_collect_roots(target, archs, roots)
+		int i = 0
+		while (i < roots.length):
+			if ((strcmp(archs[i], arch) == 0) && (strcmp(roots[i], path) == 0)):
+				return name
+			i = i + 1
+	return 0
+
+
+char* wexec_adhoc_basename(char* path):
+	int i = 0
+	int last = 0
+	while (path[i] != 0):
+		if (path[i] == '/'):
+			last = i + 1
+		i = i + 1
+	return path + last
+
+
+# The first (length - n) characters of text, as a fresh string.
+char* wexec_adhoc_strip_suffix(char* text, int n):
+	int keep = strlen(text) - n
+	string_builder* s = string_new()
+	int i = 0
+	while (i < keep):
+		string_append_char(s, text[i])
+		i = i + 1
+	char* out = s.data
+	free(s)
+	return out
+
+
+# bin/<stem> for the default (x86) arch; a per-arch suffix otherwise, so
+# e.g. 'foo_test.w' and 'x64 foo_test.w' never clobber each other's
+# output (and so their cache entries stay independent). win64 keeps the
+# ".exe" extension the rest of the win64 tooling expects.
+char* wexec_adhoc_binary_path(char* arch, char* stem):
+	if (strcmp(arch, c"x86") == 0):
+		return cstr(f"bin/{stem}")
+	if (strcmp(arch, c"win64") == 0):
+		return cstr(f"bin/{stem}_win64.exe")
+	return cstr(f"bin/{stem}_{arch}")
+
+
+# The synthesized target's own "name": the bare path for the default
+# arch (so "wexec: target <path>" reads naturally), "<arch>:<path>"
+# otherwise. Never collides with a real manifest target name, which is
+# always a bare identifier with neither '/' nor ':'.
+char* wexec_adhoc_target_name(char* arch, char* path):
+	if (strcmp(arch, c"x86") == 0):
+		return path
+	return cstr(f"{arch}:{path}")
+
+
+json_value* wexec_make_adhoc_target(char* name, char* arch, char* path, char* binary):
+	json_value* target = json_object()
+	json_object_set(target, c"name", json_string(name))
+	json_value* deps = json_array()
+	json_array_push(deps, json_string(c"wv2"))
+	json_object_set(target, c"deps", deps)
+	json_value* inputs = json_array()
+	json_array_push(inputs, json_string(path))
+	json_object_set(target, c"inputs", inputs)
+	json_value* outputs = json_array()
+	json_array_push(outputs, json_string(binary))
+	json_object_set(target, c"outputs", outputs)
+
+	json_value* compile_cmd = json_array()
+	json_array_push(compile_cmd, json_string(c"bin/wv2"))
+	if (strcmp(arch, c"x86") != 0):
+		json_array_push(compile_cmd, json_string(arch))
+	json_array_push(compile_cmd, json_string(path))
+	json_array_push(compile_cmd, json_string(c"-o"))
+	json_array_push(compile_cmd, json_string(binary))
+	json_value* compile_step = json_object()
+	json_object_set(compile_step, c"cmd", compile_cmd)
+	json_value* steps = json_array()
+	json_array_push(steps, compile_step)
+
+	# arm64_darwin never gets a run step -- no runner executes Mach-O on
+	# Linux, mirroring wbuildgen's compile-only X_darwin twins; every
+	# other arch runs the binary straight or through the same wrapper
+	# tools/wbuildgen.w's wbg_make_target uses for its conventional
+	# twins.
+	if (ends_with(path, c"_test.w") && (strcmp(arch, c"arm64_darwin") != 0)):
+		json_value* run_cmd = json_array()
+		if (strcmp(arch, c"arm64") == 0):
+			json_array_push(run_cmd, json_string(c"sh"))
+			json_array_push(run_cmd, json_string(c"tools/run_arm64.sh"))
+		else if (strcmp(arch, c"win64") == 0):
+			json_array_push(run_cmd, json_string(c"wine"))
+		json_array_push(run_cmd, json_string(binary))
+		json_value* run_step = json_object()
+		json_object_set(run_step, c"cmd", run_cmd)
+		json_array_push(steps, run_step)
+
+	json_object_set(target, c"steps", steps)
+	return target
+
+
+# Resolves "[<arch>] <path>.w" to a target name registered in
+# wexec_targets -- an existing manifest target, or a freshly synthesized
+# one -- or returns 0 after reporting an error (a missing file, or an
+# absurd name collision). A leading "./" is tolerated, since shells and
+# tab completion often add one.
+char* wexec_resolve_direct_file(char* arch, char* path):
+	if (starts_with(path, c"./")):
+		path = path + 2
+	int fd = open(path, 0, 0)
+	if (fd < 0):
+		wexec_error2(c"no such file: ", path)
+		return 0
+	close(fd)
+
+	char* found = wexec_find_target_for_root(arch, path)
+	if (found != 0):
+		return found
+
+	char* stem = wexec_adhoc_strip_suffix(wexec_adhoc_basename(path), 2)
+	char* binary = wexec_adhoc_binary_path(arch, stem)
+	char* name = wexec_adhoc_target_name(arch, path)
+	if (name in wexec_targets):
+		wexec_error2(c"ad-hoc target collides with an existing manifest target: ", name)
+		return 0
+	json_value* target = wexec_make_adhoc_target(name, arch, path, binary)
+	wexec_targets[name] = target
+	wexec_names.push(name)
+	return name
 
 
 # Returns the target's cache key, or 0 when the target is not cacheable
@@ -2184,6 +2367,26 @@ int main(int argc, int argv):
 	if (list_only):
 		wexec_list_targets()
 		return 0
+
+	# Direct-file UX (issue #323 stage 1): "[selector] <file>.w" in place
+	# of a target name list. Recognized only in exactly these two shapes,
+	# so every other invocation (including a literal target that happens
+	# to be named like a selector) is untouched.
+	char* direct_arch = 0
+	char* direct_path = 0
+	if ((requested.length == 1) && ends_with(requested[0], c".w")):
+		direct_arch = c"x86"
+		direct_path = requested[0]
+	else if ((requested.length == 2) && wexec_selector_word(requested[0]) && ends_with(requested[1], c".w")):
+		direct_arch = requested[0]
+		direct_path = requested[1]
+	if (direct_path != 0):
+		char* resolved = wexec_resolve_direct_file(direct_arch, direct_path)
+		if (resolved == 0):
+			return 1
+		requested = new list[char*]
+		requested.push(resolved)
+
 	if (requested.length == 0):
 		wexec_usage()
 		wexec_list_targets()

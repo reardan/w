@@ -113,6 +113,15 @@ selected' to stderr — stdout stays clean (it is piped into 'xargs -r
 ./wbuild'), but a caller looking at the terminal can tell "nothing to
 test" apart from a green run.
 
+'wtest for <path>...' (issue #323 stage 1) is 'changed' with its path
+list required as positional args instead of optionally read from
+stdin: the same selection (rules a/b/c above, unchanged) for a caller
+that already knows which paths it cares about, without a
+'git diff --name-only HEAD |' pipe. Every flag 'changed' accepts,
+'for' accepts identically, --run included; unlike 'changed', 'for'
+with no path arguments is a usage error rather than an empty-stdin
+selection, since a bare 'wtest for' has no plausible caller.
+
 --run additionally executes the selection itself, through the same
 executor './wbuild test_changed' pipes into via 'xargs -r ./wbuild'
 (which execs bin/wexec) -- but as a single direct child that inherits
@@ -195,6 +204,7 @@ int wtest_mask32
 void wtest_usage():
 	wstream* err = stderr_writer()
 	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]")
+	stream_write_line(err, c"       wtest for <file>... [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json]")
 	stream_flush(err)
 
 
@@ -1637,7 +1647,8 @@ int main(int argc, int argv):
 		wtest_usage()
 		return 1
 	char** command = argv + __word_size__
-	if (strcmp(*command, c"changed") != 0):
+	int for_mode = strcmp(*command, c"for") == 0
+	if ((strcmp(*command, c"changed") != 0) && (for_mode == 0)):
 		wtest_usage()
 		return 1
 	wtest_manifest_path = c"build.json"
@@ -1687,7 +1698,13 @@ int main(int argc, int argv):
 			wtest_map_path(*arg)
 			saw_file = 1
 		i = i + 1
-	if (saw_file == 0):
+	if ((saw_file == 0) && for_mode):
+		# "for" names its paths as positional args by design (unlike
+		# "changed", which is commonly piped from 'git diff --name-only');
+		# no paths at all is a usage error, not an empty-stdin selection.
+		wtest_usage()
+		return 1
+	if ((saw_file == 0) && (for_mode == 0)):
 		wstream* in = stdin_reader()
 		string_builder* line = string_new()
 		while (stream_read_line(in, line)):
