@@ -166,6 +166,27 @@ is a queue, not an archive.
   three covers it, and no one has yet done the full audit of the ~95
   `error()` call sites (`ai_tooling.md`'s current-state notes) for other
   silent-exit paths beyond these three.
+
+## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
+
+- **A `:save`d session transcript is not always a valid standalone `.w`
+  file.** Found while adding `:save`/`:load`/`:type`/`:time`/`:reset`/
+  `:symbols` colon-commands (issue #276 P2, 2026-07-16). `int x = 5` is
+  valid at the REPL (`repl_entry_item` in `repl/core.w` special-cases a
+  top-level "name = expression" into a declaration plus an assignment
+  compiled into the entry function) but the same line rejected standalone
+  — `./bin/wv2 check --json` on a file containing a bare `int x = 5;` at
+  file scope fails with `Could not find a valid primary expression, token:
+  =`, because ordinary top-level globals may only be declared, not
+  initialized inline (initialization has to happen inside a function).
+  Since almost every REPL session declares variables this way, `:save`ing
+  a typical session and then `:load`ing it back (or compiling it with
+  `bin/wv2`) does not round-trip. Either teach top-level declarations to
+  accept `= expr` as sugar for "declare, then assign in an implicit init
+  function" (mirroring what the REPL already does), or document the
+  asymmetry in `:help`/the REPL skill so agents don't rely on `:save`
+  output being directly compilable.
+
 ## Skills / rules upkeep
 
 - Keep skill command examples in sync with CLI changes (they are
