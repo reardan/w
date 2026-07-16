@@ -11,7 +11,29 @@ downstream repo, file I/O, the threads/parallel_for work being built in
 parallel with this doc, and the SIMD/PTX work of docs/projects/cuda.md
 Stage 2.
 
-Status: design only, nothing implemented.
+Status: Stages 1-2 implemented (issue #27). `lib/ndarray.w` ships `ndf`
+(float32) and `ndi` (int), rank 1-4: the `ndf_newN`/`ndf_onesN`/
+`ndf_fullN`/`ndf_wrapN` constructor family, per-rank checked `atN`/`setN`,
+`fill`, `row`, `sub`, `is_contiguous`, and the shape/overflow asserts,
+mirrored for `ndi` (minus arithmetic -- see below). `lib/ndarray64.w`
+mirrors the `ndf` surface for `float64` as `ndf64`, x64-only, per the
+Element types section. Beyond the Stage 1 bullet list, `ndf`/`ndf64` also
+got explicit non-allocating elementwise ops (`add_into`, `mul_into`,
+`add_scalar_into`, `mul_scalar_into`, `map` with a `fn(T) -> T` pointer)
+and a naive `matmul2` for rank-2 arrays, matching the "explicit in-place
+forms" the Explicit non-goals section names (`ndf_add_into`) rather than
+operator sugar. `ndi` intentionally has no elementwise/matmul surface
+(index maps, not a math type). Tests: `lib/ndarray_test.w` (+ x64 twin),
+`tests/x64_ndarray64_test.w`, and three bounds/shape-assert fixtures
+(`tests/ndarray_{bounds_get,bounds_set,extent}_trap_test.w`).
+
+Deferred, unchanged from the staging plan below: `ndf_free`/`ndi_free`
+(waits on the slice-level `array_free` helper), Stage 3 parallel_for
+integration (`lib/thread.w` now has `parallel_for` landed, so this is
+unblocked as follow-up), Stage 4 aligned allocation, and Stage 5 grammar
+sugar. No reshape or transpose helper was added: the doc does not list
+one for Stage 1, and a transpose remains "an explicit copy" left to
+callers, as this section already says.
 
 ## Motivation and scope
 

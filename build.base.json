@@ -1544,6 +1544,14 @@
 			]
 		},
 		{
+			"name": "x64_ndarray64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_ndarray64_test.w", "-o", "bin/x64_ndarray64_test"]},
+				{"cmd": ["bin/x64_ndarray64_test"], "expect_stdout": "x64 ndarray64 OK"}
+			]
+		},
+		{
 			"name": "x64_int64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1748,6 +1756,7 @@
 				"x64_test",
 				"x64_float_test",
 				"x64_fmath64_test",
+				"x64_ndarray64_test",
 				"x64_int64_test",
 				"x64_map_float64_test",
 				"dynamic_test_x64",
