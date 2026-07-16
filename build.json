@@ -1648,6 +1648,7 @@
 				"result_propagate_64_test",
 				"retry_64_test",
 				"sha1_64_test",
+				"shell_64_test",
 				"sse_64_test",
 				"stack_trace_64_test",
 				"stats_64_test",
@@ -1955,6 +1956,7 @@
 				"sha1_test",
 				"sha256_test",
 				"sha2_test",
+				"shell_test",
 				"sse_test",
 				"stack_trace_test",
 				"stats_test",
@@ -2946,6 +2948,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/sha2_test.w", "-o", "bin/sha2_test"]},
 				{"cmd": ["bin/sha2_test"]}
+			]
+		},
+		{
+			"name": "shell_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/shell_test.w", "-o", "bin/shell_64_test"]},
+				{"cmd": ["bin/shell_64_test"]}
+			]
+		},
+		{
+			"name": "shell_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/shell_test.w", "-o", "bin/shell_test"]},
+				{"cmd": ["bin/shell_test"]}
 			]
 		},
 		{
