@@ -1535,6 +1535,14 @@
 			]
 		},
 		{
+			"name": "x64_ndarray64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_ndarray64_test.w", "-o", "bin/x64_ndarray64_test"]},
+				{"cmd": ["bin/x64_ndarray64_test"], "expect_stdout": "x64 ndarray64 OK"}
+			]
+		},
+		{
 			"name": "x64_int64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1740,6 +1748,7 @@
 				"x64_test",
 				"x64_float_test",
 				"x64_fmath64_test",
+				"x64_ndarray64_test",
 				"x64_int64_test",
 				"x64_map_float64_test",
 				"dynamic_test_x64",
@@ -1808,6 +1817,7 @@
 				"memtable_64_test",
 				"method_chaining_64_test",
 				"monotime_64_test",
+				"ndarray_64_test",
 				"nested_ctor_64_test",
 				"net_64_test",
 				"operator_overload_64_test",
@@ -2161,6 +2171,10 @@
 				"midline_tab_test",
 				"monotime_test",
 				"multilayer_test",
+				"ndarray_bounds_get_trap_test",
+				"ndarray_bounds_set_trap_test",
+				"ndarray_extent_trap_test",
+				"ndarray_test",
 				"nested_ctor_test",
 				"net_test",
 				"operator_overload_test",
@@ -3190,6 +3204,46 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/multilayer_test.w", "-o", "bin/multilayer_test"]},
 				{"cmd": ["bin/multilayer_test"]}
+			]
+		},
+		{
+			"name": "ndarray_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/ndarray_test.w", "-o", "bin/ndarray_64_test"]},
+				{"cmd": ["bin/ndarray_64_test"]}
+			]
+		},
+		{
+			"name": "ndarray_bounds_get_trap_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ndarray_bounds_get_trap_test.w", "-o", "bin/ndarray_bounds_get_trap_test"]},
+				{"cmd": ["bin/ndarray_bounds_get_trap_test"], "expect_fail": true, "expect_stderr": ["ndf_at2: index out of range", "stack trace (most recent call first):", "at main ("]}
+			]
+		},
+		{
+			"name": "ndarray_bounds_set_trap_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ndarray_bounds_set_trap_test.w", "-o", "bin/ndarray_bounds_set_trap_test"]},
+				{"cmd": ["bin/ndarray_bounds_set_trap_test"], "expect_fail": true, "expect_stderr": ["ndf_set2: index out of range", "stack trace (most recent call first):", "at main ("]}
+			]
+		},
+		{
+			"name": "ndarray_extent_trap_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ndarray_extent_trap_test.w", "-o", "bin/ndarray_extent_trap_test"]},
+				{"cmd": ["bin/ndarray_extent_trap_test"], "expect_fail": true, "expect_stderr": ["ndarray: extents must be positive", "stack trace (most recent call first):", "at main ("]}
+			]
+		},
+		{
+			"name": "ndarray_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/ndarray_test.w", "-o", "bin/ndarray_test"]},
+				{"cmd": ["bin/ndarray_test"]}
 			]
 		},
 		{
