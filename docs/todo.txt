@@ -106,6 +106,10 @@ current state:
 			&& and || short-circuit expressions
 			! unary operator
 			unary - and unary +
+			++x / x++ / --x / x-- increment/decrement statements (#103):
+				statement position only, sugar for += 1 / -= 1 (raw-byte
+				pointer stepping like +=); expression use is an error
+				(docs/projects/increment_decrement.md)
 			unary operators bind tighter than binary and can stack (!!x, -*p, *&x)
 			relational operators chain left-associatively
 			hex literals

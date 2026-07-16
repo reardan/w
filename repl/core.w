@@ -277,6 +277,11 @@ int repl_token_is_statement():
 		return 1
 	if (peek(c"defer")):
 		return 1
+	# prefix increment/decrement statement (grammar/increment.w)
+	if (peek(c"++")):
+		return 1
+	if (peek(c"--")):
+		return 1
 	return 0
 
 
@@ -433,6 +438,10 @@ void repl_entry_item(int entry_symbol):
 	expression_is_assignment = 0
 	last_call_return_type = -1
 	last_call_end = -1
+	# A REPL entry is statement position, so a trailing 'x++'/'x--'
+	# reads as the increment statement (grammar/increment.w), exactly
+	# like statement()'s expression fallback
+	increment_statement_context = 1
 	int result_type = expression()
 	promote(result_type)
 	expect_or_newline(c";")

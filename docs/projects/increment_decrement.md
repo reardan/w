@@ -9,8 +9,62 @@ matches under `grammar/`, and `tests/parser_generator/w.pg` has no
 as two adjacent unary operators (see "Tokenizer collision" below),
 not an error — an important compatibility constraint on any fix.
 
-Status: design only, nothing implemented by the change that adds this
-file.
+Status: **implemented** (v1, option (a) below) by the follow-up change
+that edits this line. What shipped, and the calls taken on the open
+questions:
+
+- Statement-position-only `x++`/`x--`/`++x`/`--x`, lowered through the
+  existing `compound_assign_apply` path with an immediate `1`
+  (`grammar/increment.w`; tokenizer merge in `compiler/tokenizer.w`;
+  statement dispatch + postfix flag in `grammar/statement.w` /
+  `grammar/expression.w`). No expression form, no pre/post value.
+- **Pointer stepping** (open question 1): consistent with `+=` — raw
+  bytes, no `sizeof(T)` scaling, pinned by
+  `test_increment_pointer_steps_raw_bytes` in `tests/increment_test.w`.
+- **Expression-position diagnostic** (open question 2): a dedicated
+  frozen message, `'++' is a statement and cannot be used inside an
+  expression` (`increment_expression_error`), raised both for postfix
+  after any expression (`y = x++`) and for prefix in operand position
+  (`y = ++x`, which also covers the old double-unary spelling — the
+  spaced `+ +x` / `- -x` forms still stack two unaries). Fixtures:
+  `tests/increment_expression_error_fixture.w`,
+  `tests/decrement_expression_error_fixture.w` (target
+  `increment_error_test`).
+- **Newline rule** (found during implementation): a `++`/`--` opening a
+  line is that statement's own prefix operator, never a postfix
+  continuation of the line above — `expression()` refuses the postfix
+  claim when `token_newline` is set, the same statement-ends-at-newline
+  contract `expect_or_newline` enforces. Without this, `int a = 5`
+  followed by `++a` mis-parsed.
+- **Map/set elements**: out of scope for v1 (`m[k]++` would need its
+  own pending-slot emission in `grammar/hash_builtin.w`); rejected with
+  the frozen message `'++' and '--' are not supported on map or set
+  elements` (fixture `tests/increment_map_element_error_fixture.w`).
+  All other compound-assign lvalue shapes (locals, globals, struct
+  fields, array/list elements, `*p`) work.
+- **Non-lvalue operands** reuse the compound-assignment checks and
+  messages verbatim (`assignment target is not assignable`, const,
+  struct-value, buffer-value, `var`).
+- **`defer x++` / `defer ++x`**: rejected — deferred statements
+  re-parse through bare `expression()` at function exits, which is
+  expression position. Known v1 limitation, documented in
+  `grammar/increment.w`.
+- **REPL**: an entry is statement position, so `x++`/`++x` work at the
+  prompt (`repl/core.w` sets the statement flag / routes prefix to
+  `statement()`).
+- **`w.pg`** (deviation from §3.3 below): `PLUS_PLUS`/`MINUS_MINUS`
+  went into `unary_op` and `postfix_tail` rather than a
+  statement-only rule, because `parser_generator_w_test` parses every
+  tracked file and the expression-position *rejection fixtures* must
+  still parse — the same syntax-only-and-permissive precedent as
+  `operator_token`'s `EQ_EQ`. The compiler, not PG, enforces the
+  statement-only rule.
+- **`*p++`** increments the pointee (`*p += 1`) — the prefix-unary
+  operand parse, not C's `*(p++)` — pinned with a comment in
+  `test_increment_pointer_deref`.
+
+The sections below are the original design pass, kept for the
+rationale and the (b)/(c) follow-up shapes.
 
 ## 1. Current state
 

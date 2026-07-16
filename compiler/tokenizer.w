@@ -268,12 +268,19 @@ void get_token():
 		# Compound assignment operators: '+' '-' '*' '%' '^' merge with a
 		# directly following '=' into one token ('+=', '-=', ...). '/=' is
 		# merged in the comment branch below; '&=', '|=', '<<=' and '>>='
-		# already merge in the loop above.
+		# already merge in the loop above. A directly following '+' after
+		# '+' (or '-' after '-') merges the same way into the '++'/'--'
+		# increment/decrement statement tokens (grammar/increment.w);
+		# spaced spellings ('+ +', '- -') keep lexing as two tokens.
 		if (token_i == 0):
 			if ((nextc == '+') | (nextc == '-') | (nextc == '*') |
 					(nextc == '%') | (nextc == '^')):
 				takechar()
 				if (nextc == '='):
+					takechar()
+				else if ((token[0] == '+') & (nextc == '+')):
+					takechar()
+				else if ((token[0] == '-') & (nextc == '-')):
 					takechar()
 
 		# ':=' inferred declaration: ':' merges with a directly following

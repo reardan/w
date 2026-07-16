@@ -273,6 +273,13 @@
 			]
 		},
 		{
+			"name": "increment_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/increment_expression_error_fixture.w", "tests/decrement_expression_error_fixture.w", "tests/increment_non_lvalue_error_fixture.w", "tests/increment_map_element_error_fixture.w"]}
+			]
+		},
+		{
 			"name": "warning_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -1890,6 +1897,7 @@
 				"http_client_64_test",
 				"http_server_64_test",
 				"http_server_route_64_test",
+				"increment_64_test",
 				"int_literal_bounds_64_test",
 				"json_64_test",
 				"json_codec_64_test",
@@ -2137,6 +2145,7 @@
 				"type_system_warning_test",
 				"operator_overload_error_test",
 				"compound_assign_test",
+				"increment_error_test",
 				"char_literal_test",
 				"print_builtin_test",
 				"script_mode_test",
@@ -2257,6 +2266,7 @@
 				"http_client_test",
 				"http_server_route_test",
 				"http_server_test",
+				"increment_test",
 				"infer_test",
 				"int_literal_bounds_test",
 				"json_codec_test",
@@ -3147,6 +3157,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/http_server_test.w", "-o", "bin/http_server_test"]},
 				{"cmd": ["bin/http_server_test"]}
+			]
+		},
+		{
+			"name": "increment_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/increment_test.w", "-o", "bin/increment_64_test"]},
+				{"cmd": ["bin/increment_64_test"]}
+			]
+		},
+		{
+			"name": "increment_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/increment_test.w", "-o", "bin/increment_test"]},
+				{"cmd": ["bin/increment_test"]}
 			]
 		},
 		{

@@ -301,6 +301,13 @@
 			]
 		},
 		{
+			"name": "increment_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/increment_expression_error_fixture.w", "tests/decrement_expression_error_fixture.w", "tests/increment_non_lvalue_error_fixture.w", "tests/increment_map_element_error_fixture.w"]}
+			]
+		},
+		{
 			"name": "warning_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -2048,6 +2055,7 @@
 				"type_system_warning_test",
 				"operator_overload_error_test",
 				"compound_assign_test",
+				"increment_error_test",
 				"char_literal_test",
 				"print_builtin_test",
 				"script_mode_test",
