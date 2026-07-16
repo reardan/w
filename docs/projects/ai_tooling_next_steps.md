@@ -58,6 +58,16 @@ is a queue, not an archive.
   `tests/wtest/run_fixture.json`) without ever selecting a real target
   whose own steps shell out to `bin/wtest`, which would recurse through
   the live manifest.
+- **First `wtest changed` after a build can take well over the
+  documented ~35s.** Building `libs/extras/vcs/merge3.w` (issue #252
+  wave 4), `git diff --name-only HEAD | ./bin/wtest changed` timed out
+  at the default 2-minute tool timeout on its first run (cold
+  `bin/.wtest_deps_cache`) against this tree's current size; a retry
+  with a longer timeout completed and printed the expected selection.
+  README/AGENTS.md's "~35s" figure is stale for a repo this size (or
+  this was host-specific slowness) -- agents should budget several
+  minutes (not the 2-minute tool default) for the FIRST post-build
+  `wtest changed` invocation, same as any other cold-cache step.
 - **`.txt` doc-only filter swallowed `tests/asm/` corpus fixtures — fixed
   (issue #171).** `wtest_doc_only` in `tools/test_map.w` treated every
   `*.txt` path as documentation (meant for `docs/todo.txt`), so
