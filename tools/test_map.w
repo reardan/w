@@ -127,6 +127,13 @@ current manifest against for the leaf-target special case above; with
 no baseline the build.json residue always selects the full suite.
 './wbuild test_changed' extracts it with 'git show <base>:build.json';
 tests point it at fixture manifests, mirroring -f.
+
+The first 'changed' invocation to touch an import closure (rule b) after
+a build, or after bin/.wtest_deps_cache is otherwise missing or fully
+stale, prints one 'wtest: building import-closure cache...' note to
+stderr before shelling out to 'bin/wv2 deps' for every root — that pass
+can take minutes on a big tree with nothing printed otherwise. A warm
+cache prints nothing extra.
 */
 import lib.lib
 import lib.file
@@ -839,6 +846,19 @@ void wtest_ensure_closures():
 	wtest_closure_roots = new list[char*]
 	wtest_closure_blobs = new list[char*]
 	wtest_cache_load()
+	# Cold/stale cache: every root not already satisfied by wtest_cache_load
+	# needs a 'bin/wv2 deps' shell-out below, which can take minutes right
+	# after a build or a large merge (docs/projects/ai_tooling_next_steps.md,
+	# 2026-07-16) with nothing printed otherwise. A warm cache (the common
+	# case) skips this entirely.
+	int cold = 0
+	for char* root in wtest_roots:
+		if (wtest_closure_known(root) == 0):
+			cold = 1
+	if (cold):
+		wstream* err = stderr_writer()
+		stream_write_line(err, c"wtest: building import-closure cache (first run after a build; this can take a minute)...")
+		stream_flush(err)
 	int recomputed = 0
 	for char* root in wtest_roots:
 		if (wtest_closure_known(root) == 0):
