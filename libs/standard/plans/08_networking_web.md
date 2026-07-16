@@ -1,5 +1,27 @@
 # Plan: networking, internet protocols, and web utilities
 
+## Status (2026-07)
+
+This plan's `web/http_server.w` phases (4-5 below) are superseded by
+issue #235's layered framework, built on plan 11's `ConnectionContext`/
+`tls_accept`: `libs/standard/web/connection.w` (`ConnectionContext`,
+plain socket or TLS) and `libs/standard/web/http_server.w`
+(`ServerContext` accept loop + request parsing, phases 1-2; `RequestContext`
+-- parsed request access, a buffered `set_status`/`set_header`/`write_body`
+writer, and an opt-in chunked-streaming mode -- plus `server_route`
+method/path dispatch with a 404 default, phases 3-4; `examples/web/https_server.w`
+migrated onto it and an SSE-over-streaming test, phase 5). The **exact
+landed signatures** live in `http_server.w`'s and `connection.w`'s header
+comments (or `./bin/wv2 symbols --json <file>`) -- quote APIs from there,
+not from the `web/http_server.w` sketch below, which predates the
+PascalCase `URL`/`ConnectionContext`/`ServerContext`/`RequestContext`
+convention (issue #235) and is not kept in sync. `web/urlparse.w`'s `URL`
+type (phase 3 below) is also landed, per plan 11 phase 2 (#198) and its
+#235 phase 1 rename. Remaining from this plan: the `net/socket.w`/
+`net/selectors.w` facades (phases 1-2, superseded in practice by direct
+`lib.net`/`lib.poll` usage throughout the web/net stack), IP/UUID/MIME
+helpers (phase 3), and email/SMTP (phase 7).
+
 ## Target area
 
 Base code directory: `libs/standard/net/`, `libs/standard/web/`, and

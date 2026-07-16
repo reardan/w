@@ -22,6 +22,7 @@
 #   char* url_unparse(URL* u)         malloc'd; omits default ports
 #   char* url_quote(char* text)       malloc'd; %XX-encodes reserved bytes
 #   char* url_unquote(char* text)     malloc'd; 0 on invalid escape
+#   char* url_query_param(char* query, char* name)  malloc'd value, or 0
 #   int url_default_port(char* scheme)  80/443, or 0 for unknown schemes
 import lib.lib
 import lib.str
@@ -287,3 +288,45 @@ char* url_unquote(char* text):
 	char* result = out.data
 	free(out)
 	return result
+
+
+# Looks up name in a "&"-separated, percent-encoded query string
+# ("a=1&b=2"); a pair with no '=' is treated as an empty value. Both
+# keys and values are percent-decoded via url_unquote before comparing
+# (so an encoded key like "a%20b" matches name "a b"). Returns a
+# malloc'd, percent-decoded value the caller frees, or 0 when name is
+# absent or every occurrence of it has an invalid percent-escape in its
+# key or value.
+char* url_query_param(char* query, char* name):
+	int i = 0
+	while (query[i] != 0):
+		int pair_start = i
+		int eq = 0 - 1
+		while ((query[i] != 0) && (query[i] != '&')):
+			if ((query[i] == '=') && (eq < 0)):
+				eq = i
+			i = i + 1
+		int pair_end = i
+		char* key_raw
+		char* value_raw
+		if (eq >= 0):
+			key_raw = substring(query, pair_start, eq)
+			value_raw = substring(query, eq + 1, pair_end)
+		else:
+			key_raw = substring(query, pair_start, pair_end)
+			value_raw = strclone(c"")
+		char* key = url_unquote(key_raw)
+		free(key_raw)
+		int matched = 0
+		if (key != 0):
+			if (strcmp(key, name) == 0):
+				matched = 1
+			free(key)
+		if (matched != 0):
+			char* value = url_unquote(value_raw)
+			free(value_raw)
+			return value
+		free(value_raw)
+		if (query[i] == '&'):
+			i = i + 1
+	return 0
