@@ -23,6 +23,7 @@
 			"tests/parser_generator/generated_sample_test.w",
 			"tests/parser_generator/generated_w_parser_test.w",
 			"tests/wasm_extern_test.w",
+			"tests/wexec/direct_file/sample_test.w",
 			"tests/x64_c_import_float_test.w",
 			"tests/x64_float_abi_test.w"
 		]
@@ -941,7 +942,12 @@
 				{"cmd": ["test", "!", "-s", "bin/wtest_run_empty.out"]},
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/run_fixture.json", "wtest_run_smoke_marker", "--run"], "expect_stdout": ["smoke", "wexec: OK (1 targets)"]},
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/run_fixture.json", "wtest_run_boom_marker", "--run"], "expect_fail": true, "expect_stdout": "boom", "expect_stderr": "command failed with exit status"},
-				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/run_fixture.json", "wtest_run_smoke_marker"], "expect_stdout": "smoke", "reject_stdout": "wexec: OK"}
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/run_fixture.json", "wtest_run_smoke_marker"], "expect_stdout": "smoke", "reject_stdout": "wexec: OK"},
+				{"cmd": ["bin/wtest", "for", "-f", "tests/wtest/run_fixture.json", "wtest_run_smoke_marker"], "expect_stdout": "smoke", "reject_stdout": "wexec: OK"},
+				{"cmd": ["bin/wtest", "for", "-f", "tests/wtest/run_fixture.json", "wtest_run_smoke_marker", "--run"], "expect_stdout": ["smoke", "wexec: OK (1 targets)"]},
+				{"cmd": ["bin/wtest", "for", "-f", "tests/wtest/run_fixture.json", "wtest_run_boom_marker", "--run"], "expect_fail": true, "expect_stdout": "boom", "expect_stderr": "command failed with exit status"},
+				{"cmd": ["bin/wtest", "for"], "expect_fail": true, "expect_stderr": "wtest for <file>..."},
+				{"cmd": ["bin/wtest", "for", "-f", "tests/wtest/manifest_unavailable.json", "--available", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"}
 			]
 		},
 		{
@@ -1077,7 +1083,16 @@
 				{"cmd": ["bin/wexec", "-j", "1", "-f", "tests/wexec/parallel.json", "parallel_all"], "expect_stdout": "wexec: OK (5 targets)"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/parallel.json", "parallel_fails"], "expect_fail": true, "expect_stderr": "command failed with exit status"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/good.json"], "expect_fail": true, "expect_stderr": "usage: wexec", "expect_stdout": "main"},
-				{"cmd": ["bin/wexec", "hello"], "expect_stdout": "hello, world!"}
+				{"cmd": ["bin/wexec", "hello"], "expect_stdout": "hello, world!"},
+				{"cmd": ["rm", "-f", "bin/.wexec_cache/tests_wexec_direct_file_plain.w", "bin/plain", "bin/direct_file_known_target", "bin/sample_test", "bin/sample_test_x64"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/plain.w"], "expect_stdout": "wexec: target tests/wexec/direct_file/plain.w", "reject_stdout": "(cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/plain.w"], "expect_stdout": "tests/wexec/direct_file/plain.w (cached)"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/known.w"], "expect_stdout": "wexec: target direct_file_known_target"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/sample_test.w"], "expect_stdout": "direct file adhoc test ran"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "x64", "tests/wexec/direct_file/sample_test.w"], "expect_stdout": ["wexec: target x64:tests/wexec/direct_file/sample_test.w", "direct file adhoc test ran"]},
+				{"cmd": ["test", "-x", "bin/sample_test"]},
+				{"cmd": ["test", "-x", "bin/sample_test_x64"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/does_not_exist.w"], "expect_fail": true, "expect_stderr": "no such file"}
 			]
 		},
 		{

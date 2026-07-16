@@ -1,0 +1,18 @@
+{
+	"targets": [
+		{
+			"name": "wv2",
+			"inputs": [],
+			"steps": [
+				{"cmd": ["true"]}
+			]
+		},
+		{
+			"name": "direct_file_known_target",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wexec/direct_file/known.w", "-o", "bin/direct_file_known_target"]}
+			]
+		}
+	]
+}
