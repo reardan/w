@@ -821,14 +821,14 @@ int http_validate_req(http_req* req):
 
 # Whether a URL's transport is TLS (https). url_parse only yields http or
 # https, so this is the single scheme discriminator the client keys on.
-int http_url_is_tls(url* u):
+int http_url_is_tls(URL* u):
 	return strcmp(u.scheme, c"https") == 0
 
 
 # Returns 0 or an http_error_* code. Both http:// (plaintext) and https://
 # (TLS, wired through net/tls.w) are dialable; any other scheme is
 # unsupported (url_parse already rejects non-http(s) schemes upstream).
-int http_validate_url(url* u):
+int http_validate_url(URL* u):
 	int ok_scheme = 0
 	if (strcmp(u.scheme, c"http") == 0):
 		ok_scheme = 1
@@ -856,7 +856,7 @@ int http_req_allows_reuse(http_req* req):
 
 
 # Writes the request head and body. Returns 1, or 0 with c.error set.
-int http_send_request(http_conn* c, http_req* req, url* u, char* method, int include_body):
+int http_send_request(http_conn* c, http_req* req, URL* u, char* method, int include_body):
 	string_builder* out = string_new()
 	string_append(out, method)
 	string_append_char(out, ' ')
@@ -943,10 +943,11 @@ char* http_trimmed_value(char* line, int start, int end):
 	return substring(line, start, end)
 
 
-# Parses "Name: value" into resp.headers (name lowercased, duplicates
-# joined with ", "). Returns 1, or 0 on a malformed line (obs-fold,
-# empty or non-token name).
-int http_store_header(http_response* resp, char* line, int length):
+# Parses "Name: value" into headers (name lowercased, duplicates joined
+# with ", "). Returns 1, or 0 on a malformed line (obs-fold, empty or
+# non-token name). Shared with libs/standard/web/http_server.w's request
+# header parsing (issue #235), which mirrors this response-side parser.
+int http_store_header_into(map[char*, char*] headers, char* line, int length):
 	int first = line[0] & 255
 	if ((first == ' ') | (first == 9)):
 		# Obsolete line folding: fail closed.
@@ -967,18 +968,22 @@ int http_store_header(http_response* resp, char* line, int length):
 		name[i] = http_lower_char(name[i] & 255)
 		i = i + 1
 	char* value = http_trimmed_value(line, colon + 1, length)
-	if (name in resp.headers):
-		char* old = resp.headers[name]
+	if (name in headers):
+		char* old = headers[name]
 		char* joined_head = strjoin(old, c", ")
 		char* joined = strjoin(joined_head, value)
 		free(joined_head)
 		free(old)
 		free(value)
-		resp.headers[name] = joined
+		headers[name] = joined
 	else:
-		resp.headers[name] = value
+		headers[name] = value
 	free(name)
 	return 1
+
+
+int http_store_header(http_response* resp, char* line, int length):
+	return http_store_header_into(resp.headers, line, length)
 
 
 # Reads the status line and header block into resp, skipping interim
@@ -1359,7 +1364,7 @@ void http_stream_close(http_stream* s):
 # One request/response exchange on one connection. Returns 1 on a
 # parsed head, 0 on failure; *out_stale reports a reused connection
 # that died before yielding any bytes (retryable).
-int http_open_attempt(http_stream* s, http_req* req, url* u, char* method, int include_body, int use_cache, int* out_stale):
+int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int include_body, int use_cache, int* out_stale):
 	*out_stale = 0
 	int timeout = req.timeout_ms
 	if (timeout <= 0):
@@ -1462,7 +1467,7 @@ int http_open_attempt(http_stream* s, http_req* req, url* u, char* method, int i
 
 # One exchange, retrying once on a fresh connection when a reused
 # keep-alive connection turns out to be dead.
-int http_open_single(http_stream* s, http_req* req, url* u, char* method, int include_body):
+int http_open_single(http_stream* s, http_req* req, URL* u, char* method, int include_body):
 	int stale = 0
 	if (http_open_attempt(s, req, u, method, include_body, 1, &stale) != 0):
 		return 1
@@ -1476,13 +1481,13 @@ int http_open_single(http_stream* s, http_req* req, url* u, char* method, int in
 
 # Resolves a Location header against the current URL: absolute URLs,
 # scheme-relative "//host/...", absolute paths "/...", and relative
-# paths. Returns a parsed url or 0.
-url* http_redirect_target(url* base, char* location):
+# paths. Returns a parsed URL or 0.
+URL* http_redirect_target(URL* base, char* location):
 	if (location == 0):
 		return 0
 	if (location[0] == 0):
 		return 0
-	url* direct = url_parse(location)
+	URL* direct = url_parse(location)
 	if (direct != 0):
 		return direct
 	string_builder* text = string_new()
@@ -1511,7 +1516,7 @@ url* http_redirect_target(url* base, char* location):
 				i = i + 1
 			string_append_bytes(text, base.path, last_slash + 1)
 			string_append(text, location)
-	url* u = url_parse(text.data)
+	URL* u = url_parse(text.data)
 	string_free(text)
 	return u
 
@@ -1569,7 +1574,7 @@ http_stream* http_open(http_req* req):
 	if (req_error != 0):
 		http_stream_fail(s, req_error)
 		return s
-	url* u = url_parse(req.url)
+	URL* u = url_parse(req.url)
 	if (u == 0):
 		http_stream_fail(s, http_error_bad_url())
 		return s
@@ -1599,7 +1604,7 @@ http_stream* http_open(http_req* req):
 					http_stream_fail(s, http_error_too_many_redirects())
 					done = 1
 				else:
-					url* next = http_redirect_target(u, location)
+					URL* next = http_redirect_target(u, location)
 					if (next == 0):
 						http_stream_fail(s, http_error_bad_url())
 						done = 1

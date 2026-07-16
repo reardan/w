@@ -1771,6 +1771,7 @@
 				"generics_inference_64_test",
 				"hash_table_64_test",
 				"http_client_64_test",
+				"http_server_64_test",
 				"int_literal_bounds_64_test",
 				"json_64_test",
 				"json_codec_64_test",
@@ -2120,6 +2121,7 @@
 				"hkdf_test",
 				"hmac_test",
 				"http_client_test",
+				"http_server_test",
 				"infer_test",
 				"int_literal_bounds_test",
 				"json_codec_test",
@@ -2842,6 +2844,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/http_client_test.w", "-o", "bin/http_client_test"]},
 				{"cmd": ["bin/http_client_test"]}
+			]
+		},
+		{
+			"name": "http_server_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/http_server_test.w", "-o", "bin/http_server_64_test"]},
+				{"cmd": ["bin/http_server_64_test"]}
+			]
+		},
+		{
+			"name": "http_server_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/http_server_test.w", "-o", "bin/http_server_test"]},
+				{"cmd": ["bin/http_server_test"]}
 			]
 		},
 		{

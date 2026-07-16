@@ -117,6 +117,17 @@ int socket_accept_connection(int sockfd):
 	return sys_accept(sockfd, 0, 0)
 
 
+# Same as socket_accept_connection but also fills addr with the peer's
+# address (network byte order, like a kernel-filled socket_getsockname_ipv4
+# result: un-net_htonl/net_htons it for a human/ip4_from_string-shaped
+# value). Used by the HTTP server framework (libs/standard/web/connection.w,
+# issue #235) to record ConnectionContext's peer address without a
+# separate getpeername(2) call.
+int socket_accept_connection_from(int sockfd, sockaddr_in* addr):
+	int addrlen = sockaddr_in_size()
+	return sys_accept(sockfd, cast(int, addr), &addrlen)
+
+
 int socket_getsockname_ipv4(int sockfd, sockaddr_in* addr):
 	int addrlen = sockaddr_in_size()
 	return sys_getsockname(sockfd, cast(int, addr), &addrlen)
