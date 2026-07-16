@@ -206,7 +206,9 @@ current state:
 				return/break/continue/pass dedent, a blank line dedents one
 				level and ends the entry at column 0
 			top-level declarations persist between entries (storage in the buffer)
-			redefinition shadows the old symbol (Python-style rebinding)
+			redefinition shadows the old symbol (Python-style rebinding) and
+				repatches already-compiled call sites to the new binding
+				(late binding, issue #114, repl_apply_late_bind in repl/core.w)
 			bare expressions echo their value by compile-time type
 			imports and extern/c_lib declarations work at the prompt
 			./bin/repl file.w [args...] runs a file, then attaches the prompt
@@ -218,10 +220,6 @@ current state:
 				buffer (MAP_32BIT) and real x64 repl_setjmp/longjmp stubs
 
 	current limitations:
-		repl:
-			calls compiled before a redefinition keep the old binding
-				(needs a call-site indirection table; tracked in a
-				follow-up issue, out of scope for a REPL-only fix)
 		pointers and structs:
 			new initializes fields from arguments but does not run user constructors
 			struct values with fixed-array fields are copied and returned by value
