@@ -49,7 +49,7 @@ without "inputs" behave like make-style FORCE targets: requesting them
 always runs them. A step's captured stdout/stderr is re-emitted after
 the step finishes, so output is visible but not interleaved live.
 
-Usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [-j N] target...
+Usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [--ordered-output] [-j N] target...
 
 A failed target normally stops all scheduling (fail-fast); the epilogue
 then reports how many targets were never attempted. With --keep-going a
@@ -57,6 +57,17 @@ failure only poisons its dependents: independent subgraphs keep running,
 dependents of a failed target are skipped, and a summary on stderr names
 every failed and skipped target. Either way wexec exits nonzero when
 anything failed.
+
+Under -j > 1 the default scheduler still streams only the oldest
+in-flight target live and holds later ones back until it is their turn,
+so a target that finishes early can end up flushed immediately after an
+unrelated target's failure with no separator between them — easy to
+misread as one target's output. --ordered-output buffers each target's
+whole step output (stdout and stderr, in step order) instead of
+streaming any of it, and prints it as a single block, headed by a
+"wexec: --- <target> ---" line, the moment that target finishes
+(completion order, not start order). Default (streaming) output is
+unaffected by the flag's existence.
 
 Design notes: docs/projects/wexec.md
 */
@@ -82,6 +93,7 @@ list[char*] wexec_closure    # requested targets + deps, dependency order
 int wexec_completed          # targets finished this invocation
 int wexec_no_cache           # --no-cache: never skip cached targets
 int wexec_keep_going         # --keep-going: schedule past failed targets
+int wexec_ordered_output     # --ordered-output: buffer each target's output, print atomically in completion order
 int wexec_jobs               # max targets in flight (-j), default nproc
 map[char*, int] wexec_broken    # name -> 1 once failed or skipped (--keep-going)
 list[char*] wexec_failed_list   # failed targets, in completion order
@@ -110,7 +122,7 @@ void wexec_error2(char* message, char* detail):
 
 void wexec_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [-j N] target...")
+	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [--ordered-output] [-j N] target...")
 	stream_flush(err)
 
 
@@ -1407,6 +1419,25 @@ void wexec_worker_flush(wexec_worker* w):
 		w.err_printed = w.err_buffer.length
 
 
+# --ordered-output: print a worker's whole captured stdout/stderr as one
+# block, headed by a grep-friendly marker line, instead of the
+# progressive start-order streaming wexec_worker_flush does. Called once
+# per worker, right after it is reaped, so blocks come out in completion
+# order and a target's own lines can never have another target's lines
+# spliced between them: nothing else runs between these writes, since
+# the scheduler is single-threaded.
+void wexec_worker_emit_block(wexec_worker* w):
+	wstream* out = stdout_writer()
+	stream_write_cstr(out, c"wexec: --- ")
+	stream_write_cstr(out, w.name)
+	stream_write_line(out, c" ---")
+	stream_flush(out)
+	if (w.out_buffer.length > 0):
+		write(1, w.out_buffer.data, w.out_buffer.length)
+	if (w.err_buffer.length > 0):
+		write(2, w.err_buffer.data, w.err_buffer.length)
+
+
 # One read per poll wakeup; returns 1 when the pipe reached EOF.
 int wexec_worker_drain(int fd, process_capture* buffer):
 	return process_capture_read(buffer, fd) <= 0
@@ -1524,9 +1555,12 @@ int wexec_execute(list[char*] requested):
 				failed = 1
 			if (failed):
 				# Print whatever buffered output is left, in order.
-				while (head < workers.length):
-					wexec_worker_flush(workers[head])
-					head = head + 1
+				# --ordered-output already emitted every reaped worker's
+				# block at reap time, so there is nothing left to flush.
+				if (wexec_ordered_output == 0):
+					while (head < workers.length):
+						wexec_worker_flush(workers[head])
+						head = head + 1
 				free(poll_fds)
 				wexec_report_failures(total, finished)
 				return 1
@@ -1589,15 +1623,24 @@ int wexec_execute(list[char*] requested):
 							wexec_failed_list.push(w.name)
 					else:
 						wexec_mark_finished(w.name, w.key)
+					if (wexec_ordered_output):
+						# Print this worker's whole block now, in
+						# completion order, instead of waiting for its
+						# turn in the start-order queue below.
+						wexec_worker_emit_block(w)
 			i = i + 1
 
 		# Print phase: stream the head worker live and retire every
 		# finished worker at the front of the start-order queue.
-		while ((head < workers.length) && workers[head].done):
-			wexec_worker_flush(workers[head])
-			head = head + 1
-		if (head < workers.length):
-			wexec_worker_flush(workers[head])
+		# --ordered-output already emitted every worker's block above,
+		# atomically, at the moment it finished, so this queue-ordered
+		# live-streaming path is skipped entirely under the flag.
+		if (wexec_ordered_output == 0):
+			while ((head < workers.length) && workers[head].done):
+				wexec_worker_flush(workers[head])
+				head = head + 1
+			if (head < workers.length):
+				wexec_worker_flush(workers[head])
 
 	free(poll_fds)
 	if (failed):
@@ -1732,6 +1775,8 @@ int main(int argc, int argv):
 			wexec_no_cache = 1
 		else if (strcmp(*arg, c"--keep-going") == 0):
 			wexec_keep_going = 1
+		else if (strcmp(*arg, c"--ordered-output") == 0):
+			wexec_ordered_output = 1
 		else if (strcmp(*arg, c"-j") == 0):
 			i = i + 1
 			if (i >= argc):
