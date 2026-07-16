@@ -27,29 +27,58 @@
 # parsed value (method, target, path, query, headers, a fully buffered
 # body) -- there is no streaming request body reader in this phase.
 #
-# Phase 3 seam (NOT built here -- see issue #235's remaining phases):
-# a RequestContext wrapping ServerRequest with set_status/set_header/
-# write_body/streaming methods, handler registration/routing, and
-# migrating examples/web/https_server.w onto this framework. The seam
-# this phase leaves is: ServerContext.handler is a plain
-# server_handler_fn* that takes a ServerRequest* and returns a
-# ServerResponse*; RequestContext can wrap that same pair (or replace
-# server_write_response with incremental ConnectionContext writes for
-# streaming) without changing ConnectionContext, the accept loop, or
-# request parsing.
+# Phase 3-5 (issue #235): RequestContext -- a higher-level handler seam
+# layered ON TOP of the phase 1-2 pieces above, not a replacement for
+# them. ServerContext.handler/server_handler_fn (a plain ServerRequest*
+# -> ServerResponse* function) is untouched and stays fully supported:
+# every phase 1-2 handler and test keeps working unmodified. A
+# ServerContext that registers at least one server_route(), though,
+# switches that context's dispatch to the RequestContext path for
+# every request: build one RequestContext per request (wrapping the
+# already-parsed ServerRequest, an accumulating ServerResponse, and the
+# ConnectionContext), find the first matching route (or fall back to a
+# 404), call its request_handler_fn, then flush the response. This
+# additive design -- opt in by calling server_route, otherwise byte-
+# identical old behavior -- means the routing/RequestContext layer never
+# has to reconcile with the existing server_handler_fn call sites in
+# this file's own tests.
 #
-# NAMING: ServerContext, ServerRequest, and ServerResponse are
-# PascalCase, matching ConnectionContext (libs/standard/web/connection.w)
+# RequestContext gives a handler: parsed-request access (method, path,
+# a real URL* target reconstructed from the Host header + origin-form
+# request-target via url_parse, headers, body), a buffered response
+# writer (set_status/set_header/write_body, sent as one Content-Length
+# response when the handler returns), and an opt-in streaming mode
+# (request_context_begin_stream sends the status line + headers
+# immediately -- Transfer-Encoding: chunked unless the handler already
+# set its own Content-Length -- and every later write_body call goes
+# straight to the connection as a chunk or raw bytes). request_query_param
+# looks up a percent-decoded key in the URL's query string;
+# request_context_text/request_context_json are one-call static-body
+# shortcuts. server_route(ctx, method_or_star, pattern, handler,
+# user_data) registers a route: method is an exact (case-sensitive)
+# match or "*" for any method; pattern is an exact match, or (with a
+# trailing '*') a prefix match with the '*' stripped. Routes are tried
+# in registration order; the first match wins; no match writes the
+# built-in 404 (request_context_text via server_default_not_found_handler).
+#
+# This stays a small base framework, not a web framework: no path
+# params, no middleware chain, no static-file layer -- see the issue's
+# higher-layer list for what's explicitly out of scope here.
+#
+# NAMING: ServerContext, ServerRequest, ServerResponse, and RequestContext
+# are PascalCase, matching ConnectionContext (libs/standard/web/connection.w)
 # and URL (libs/standard/web/urlparse.w) -- see connection.w's module
-# doc for the full rationale. server_handler_fn, like the codebase's
-# other function-pointer typedefs (lib/event_loop.w's event_fd_cb,
-# lib/json_rpc.w's jsonrpc_handler, lib/thread.w's thread_fn), stays
-# snake_case: the PascalCase convention marks struct *types* in this
-# framework's public surface, not callback aliases. All function names
-# stay snake_case throughout, as everywhere else in the codebase.
+# doc for the full rationale. server_handler_fn and request_handler_fn,
+# like the codebase's other function-pointer typedefs (lib/event_loop.w's
+# event_fd_cb, lib/json_rpc.w's jsonrpc_handler, lib/thread.w's
+# thread_fn), stay snake_case: the PascalCase convention marks struct
+# *types* in this framework's public surface, not callback aliases. All
+# function names stay snake_case throughout, as everywhere else in the
+# codebase.
 #
 # Public API:
 #   type server_handler_fn = fn(ServerRequest*, void*) -> ServerResponse*
+#   type request_handler_fn = fn(RequestContext*, void*) -> void
 #
 #   ServerContext* server_context_new(char* bind_ip, int port, server_handler_fn* handler, void* handler_context)
 #   void server_context_set_tls(ServerContext* s, char* cert_path, char* key_path)
@@ -58,6 +87,7 @@
 #   int server_context_accept_loop(ServerContext* s, int max_connections)  connections served
 #   void server_context_close(ServerContext* s)
 #   void server_context_free(ServerContext* s)
+#   void server_route(ServerContext* s, char* method, char* pattern, request_handler_fn* handler, void* user_data)
 #
 #   char* server_request_header(ServerRequest* req, char* name)
 #   int server_request_wants_keep_alive(ServerRequest* req)
@@ -65,8 +95,23 @@
 #   ServerResponse* server_response_new(int status)
 #   void server_response_add_header(ServerResponse* resp, char* name, char* value)
 #   void server_response_set_body(ServerResponse* resp, char* body, int body_len)
+#   void server_response_append_body(ServerResponse* resp, char* body, int body_len)
 #   void server_response_set_text(ServerResponse* resp, char* text)
 #   void server_response_free(ServerResponse* resp)
+#
+#   char* request_context_method(RequestContext* rc)
+#   char* request_context_path(RequestContext* rc)
+#   char* request_context_header(RequestContext* rc, char* name)
+#   char* request_context_body(RequestContext* rc)  /  int request_context_body_len(RequestContext* rc)
+#   URL* request_context_url(RequestContext* rc)      0 for a non-origin-form target
+#   char* request_query_param(RequestContext* rc, char* name)   malloc'd, or 0
+#   void request_context_set_status(RequestContext* rc, int status)
+#   void request_context_set_header(RequestContext* rc, char* name, char* value)
+#   void request_context_write_body(RequestContext* rc, char* data, int len)
+#   void request_context_begin_stream(RequestContext* rc)
+#   void request_context_end_stream(RequestContext* rc)
+#   void request_context_text(RequestContext* rc, int status, char* text)
+#   void request_context_json(RequestContext* rc, int status, char* json_text)
 #
 #   int server_error_*()  /  char* server_error_string(int code)  /  int server_error_to_status(int code)
 import lib.lib
@@ -76,6 +121,7 @@ import lib.container
 import structures.string
 import libs.standard.web.connection
 import libs.standard.web.http_client
+import libs.standard.web.urlparse
 import libs.standard.net.tls
 
 
@@ -117,12 +163,55 @@ struct ServerResponse:
 type server_handler_fn = fn(ServerRequest*, void*) -> ServerResponse*
 
 
+# One request/response cycle handed to a routed handler (phase 3-5): the
+# already-parsed request, an accumulating response, and a borrowed
+# ConnectionContext for streaming writes. url is the request-target
+# lazily parsed into a real URL* (cached; see request_context_url).
+# keep_alive starts as the connection's current verdict and can be
+# pulled to 0 by a handler-supplied "Connection: close" header (buffered
+# or streaming). stream_started/stream_chunked/responded track streaming
+# state -- see request_context_begin_stream/write_body/end_stream.
+struct RequestContext:
+	ServerRequest* request
+	ServerResponse* response
+	ConnectionContext* conn
+	URL* url
+	int keep_alive
+	int stream_started
+	int stream_chunked
+	int responded
+
+
+# request, user_data -> void: the handler writes its response through
+# rc (set_status/set_header/write_body, or the streaming methods)
+# instead of returning it. Registered per-route via server_route.
+type request_handler_fn = fn(RequestContext*, void*) -> void
+
+
+# One registered route (phase 4). method is an exact (case-sensitive)
+# match against the request method, or "*" for any method. pattern is
+# an exact match against the request path unless it ends with '*', in
+# which case is_prefix is set and prefix (pattern with the trailing '*'
+# stripped) is matched as a prefix -- see server_route_matches.
+struct ServerRoute:
+	char* method
+	char* pattern
+	int is_prefix
+	char* prefix
+	request_handler_fn* handler
+	void* user_data
+
+
 # Server-wide config and listener state. bind_ip/port/backlog/timeout_ms
 # and handler/handler_context are set by server_context_new; cert_path/
 # key_path (set via server_context_set_tls) switch server_context_bind
 # to also build a tls_server_config, and every accepted connection then
 # completes tls_accept before requests are parsed -- one accept loop,
 # one request-parsing/response-writing path serves both transports.
+# routes is empty until server_route is called; once non-empty, every
+# request on this context dispatches through the RequestContext/routing
+# path instead of calling handler/handler_context directly (see
+# server_serve_connection).
 struct ServerContext:
 	char* bind_ip
 	int port
@@ -133,6 +222,7 @@ struct ServerContext:
 	int is_tls
 	server_handler_fn* handler
 	void* handler_context
+	list[ServerRoute*] routes
 	int listener_fd
 	tls_server_config* tls_cfg
 	int error
@@ -389,6 +479,31 @@ void server_response_set_body(ServerResponse* resp, char* body, int body_len):
 
 void server_response_set_text(ServerResponse* resp, char* text):
 	server_response_set_body(resp, text, strlen(text))
+
+
+# Appends body_len bytes to the response body, growing it (the caller
+# keeps ownership of body and may free or reuse it immediately
+# afterwards) -- the accumulate-vs-overwrite counterpart of
+# server_response_set_body. Used by request_context_write_body's
+# buffered mode, where a handler may call write_body more than once.
+void server_response_append_body(ServerResponse* resp, char* body, int body_len):
+	if (body_len <= 0):
+		return
+	int old_len = resp.body_len
+	char* combined = malloc(old_len + body_len + 1)
+	int i = 0
+	while (i < old_len):
+		combined[i] = resp.body[i]
+		i = i + 1
+	int j = 0
+	while (j < body_len):
+		combined[old_len + j] = body[j]
+		j = j + 1
+	combined[old_len + body_len] = 0
+	if (resp.body != 0):
+		free(resp.body)
+	resp.body = combined
+	resp.body_len = old_len + body_len
 
 
 void server_response_free(ServerResponse* resp):
@@ -722,6 +837,323 @@ void server_write_error(ConnectionContext* c, int error_code):
 	server_response_free(resp)
 
 
+/* RequestContext (phase 3) */
+
+# Wraps an already-parsed request (server_read_request) and the
+# connection it arrived on. Takes ownership of req (released together
+# with the response by request_context_free); conn is borrowed.
+RequestContext* request_context_new(ServerRequest* req, ConnectionContext* conn):
+	RequestContext* rc = new RequestContext()
+	rc.request = req
+	rc.response = server_response_new(200)
+	rc.conn = conn
+	rc.url = 0
+	rc.keep_alive = conn.keep_alive
+	rc.stream_started = 0
+	rc.stream_chunked = 0
+	rc.responded = 0
+	return rc
+
+
+void request_context_free(RequestContext* rc):
+	if (rc == 0):
+		return
+	server_request_free(rc.request)
+	server_response_free(rc.response)
+	if (rc.url != 0):
+		url_free(rc.url)
+	free(rc)
+
+
+char* request_context_method(RequestContext* rc):
+	return rc.request.method
+
+
+# The request-target's path component (server_split_target already
+# split it off the raw target; see ServerRequest's doc comment for the
+# origin-form-only caveat). This is what server_route matches against.
+char* request_context_path(RequestContext* rc):
+	return rc.request.path
+
+
+char* request_context_header(RequestContext* rc, char* name):
+	return server_request_header(rc.request, name)
+
+
+char* request_context_body(RequestContext* rc):
+	return rc.request.body
+
+
+int request_context_body_len(RequestContext* rc):
+	return rc.request.body_len
+
+
+# The request-target parsed into a real URL, by combining this
+# connection's scheme (https when it completed a TLS handshake, http
+# otherwise) with the Host header and the raw request-target through
+# url_parse -- so a handler sees the same URL type http_client.w hands
+# back on the client side. Parsed once per request and cached. Returns
+# 0 for a target that is not origin-form (asterisk-form "*", or an
+# absolute-form proxy target -- see ServerRequest's doc comment; every
+# handler in this framework's own tests and examples uses origin-form)
+# or when the Host header is missing on an HTTP/1.0 request with no
+# usable authority.
+URL* request_context_url(RequestContext* rc):
+	if (rc.url != 0):
+		return rc.url
+	char* host = server_request_header(rc.request, c"host")
+	string_builder* text = string_new()
+	if (rc.conn.tls != 0):
+		string_append(text, c"https://")
+	else:
+		string_append(text, c"http://")
+	if (host != 0):
+		string_append(text, host)
+	else:
+		string_append(text, c"localhost")
+	string_append(text, rc.request.target)
+	rc.url = url_parse(text.data)
+	string_free(text)
+	return rc.url
+
+
+# Percent-decoded lookup of name in the request's query string, via
+# request_context_url. Returns a malloc'd value the caller frees, or 0
+# when the key is absent, the target didn't parse as a URL, or the
+# value contains an invalid percent-escape.
+char* request_query_param(RequestContext* rc, char* name):
+	URL* u = request_context_url(rc)
+	if (u == 0):
+		return 0
+	return url_query_param(u.query, name)
+
+
+# Sets the response status. A no-op once request_context_begin_stream
+# has already sent the status line (the wire bytes are already gone).
+void request_context_set_status(RequestContext* rc, int status):
+	if (rc.stream_started != 0):
+		return
+	rc.response.status = status
+
+
+# Appends a response header. A no-op once streaming has begun, for the
+# same reason as request_context_set_status.
+void request_context_set_header(RequestContext* rc, char* name, char* value):
+	if (rc.stream_started != 0):
+		return
+	server_response_add_header(rc.response, name, value)
+
+
+# Minimal-width hex digits (no "0x" prefix, no leading zeros) for a
+# chunk-size line -- http_max_chunk_size() bounds len well under 2^28,
+# so 8 digits is always enough.
+char* request_context_chunk_size_hex(int n):
+	char* s = malloc(9)
+	int i = 0
+	if (n == 0):
+		s[i] = '0'
+		i = i + 1
+	while (n > 0):
+		int d = n & 15
+		if (d < 10):
+			s[i] = d + '0'
+		else:
+			s[i] = d - 10 + 'a'
+		i = i + 1
+		n = n >> 4
+	s[i] = 0
+	reverse(s)
+	return s
+
+
+# Writes one chunk (RFC 9112 7.1: size-in-hex CRLF, data, CRLF). A
+# non-positive len is a no-op -- an empty chunk would be mistaken for
+# the terminal chunk that ends the body.
+void request_context_write_chunk(ConnectionContext* c, char* data, int len):
+	if (len <= 0):
+		return
+	string_builder* out = string_new()
+	char* size_hex = request_context_chunk_size_hex(len)
+	string_append(out, size_hex)
+	free(size_hex)
+	string_append(out, c"\x0d\x0a")
+	string_append_bytes(out, data, len)
+	string_append(out, c"\x0d\x0a")
+	connection_context_write_all(c, out.data, out.length)
+	string_free(out)
+
+
+# Switches this response to streaming mode: sends the status line and
+# headers set so far immediately (Transfer-Encoding: chunked, unless
+# the handler already set its own Content-Length header, in which case
+# the handler is responsible for writing exactly that many bytes) --
+# every later request_context_write_body call then goes straight to the
+# connection instead of buffering. Idempotent: a second call is a
+# no-op, so a handler that always begins a stream before writing
+# doesn't need to track whether it already did.
+void request_context_begin_stream(RequestContext* rc):
+	if (rc.stream_started != 0):
+		return
+	rc.stream_started = 1
+	char* user_connection = server_response_get_header(rc.response, c"connection")
+	if (user_connection != 0):
+		if (http_value_has_token(user_connection, c"close") != 0):
+			rc.keep_alive = 0
+	if (server_response_get_header(rc.response, c"content-length") == 0):
+		rc.stream_chunked = 1
+	string_builder* out = string_new()
+	string_append(out, c"HTTP/1.1 ")
+	char* status_text = itoa(rc.response.status)
+	string_append(out, status_text)
+	free(status_text)
+	string_append_char(out, ' ')
+	string_append(out, server_status_text(rc.response.status))
+	string_append(out, c"\x0d\x0a")
+	for http_header* h in rc.response.headers:
+		string_append(out, h.name)
+		string_append(out, c": ")
+		string_append(out, h.value)
+		string_append(out, c"\x0d\x0a")
+	if (rc.stream_chunked != 0):
+		string_append(out, c"Transfer-Encoding: chunked\x0d\x0a")
+	if (user_connection == 0):
+		if (rc.keep_alive != 0):
+			string_append(out, c"Connection: keep-alive\x0d\x0a")
+		else:
+			string_append(out, c"Connection: close\x0d\x0a")
+	string_append(out, c"\x0d\x0a")
+	connection_context_write_all(rc.conn, out.data, out.length)
+	string_free(out)
+
+
+# Buffered mode (the default): appends to the accumulated response
+# body, sent as one Content-Length-framed response when the handler
+# returns (server_response_append_body -- safe to call more than
+# once). Streaming mode (after request_context_begin_stream): writes
+# straight to the connection, as a chunk when no Content-Length was
+# set, or raw bytes when the handler supplied its own Content-Length
+# and is managing the byte count itself. A non-positive len is a no-op.
+void request_context_write_body(RequestContext* rc, char* data, int len):
+	if (len <= 0):
+		return
+	if (rc.stream_started != 0):
+		if (rc.stream_chunked != 0):
+			request_context_write_chunk(rc.conn, data, len)
+		else:
+			connection_context_write_all(rc.conn, data, len)
+		return
+	server_response_append_body(rc.response, data, len)
+
+
+# Finalizes a streaming response: sends the terminal 0-size chunk
+# (chunked mode only -- a Content-Length-framed stream has nothing left
+# to send). Begins the stream first if the handler never wrote
+# anything, so a handler that calls this without ever writing still
+# produces valid framing. Safe to call more than once.
+void request_context_end_stream(RequestContext* rc):
+	if (rc.stream_started == 0):
+		request_context_begin_stream(rc)
+	if (rc.responded != 0):
+		return
+	if (rc.stream_chunked != 0):
+		connection_context_write_all(rc.conn, c"0\x0d\x0a\x0d\x0a", 5)
+	rc.responded = 1
+
+
+# Called once per request after the handler returns: finalizes a
+# streaming response (a no-op if the handler already called
+# request_context_end_stream), or writes the whole buffered response
+# via server_write_response. Returns 1, or 0 when the connection write
+# failed (the caller should stop serving this connection).
+int request_context_flush(RequestContext* rc):
+	if (rc.stream_started != 0):
+		request_context_end_stream(rc)
+		return rc.conn.error == 0
+	char* user_connection = server_response_get_header(rc.response, c"connection")
+	if (user_connection != 0):
+		if (http_value_has_token(user_connection, c"close") != 0):
+			rc.keep_alive = 0
+	int ok = server_write_response(rc.conn, rc.response, rc.keep_alive)
+	rc.responded = 1
+	return ok
+
+
+# Convenience shortcut: sets status + Content-Type: text/plain and
+# writes the whole body in one call (buffered mode).
+void request_context_text(RequestContext* rc, int status, char* text):
+	request_context_set_status(rc, status)
+	request_context_set_header(rc, c"Content-Type", c"text/plain")
+	request_context_write_body(rc, text, strlen(text))
+
+
+# Convenience shortcut: sets status + Content-Type: application/json and
+# writes the whole body in one call (buffered mode). The caller is
+# responsible for producing valid JSON text (e.g. via lib.json).
+void request_context_json(RequestContext* rc, int status, char* json_text):
+	request_context_set_status(rc, status)
+	request_context_set_header(rc, c"Content-Type", c"application/json")
+	request_context_write_body(rc, json_text, strlen(json_text))
+
+
+/* Routing (phase 4) */
+
+# Registers a route on s. method is an exact (case-sensitive) match
+# against the request method (e.g. "GET"), or "*" for any method.
+# pattern ending with '*' makes it a prefix match against the request
+# path (the '*' stripped before comparing); otherwise it must match the
+# path exactly. Routes are tried in registration order and the first
+# match wins -- server_serve_connection falls back to
+# server_default_not_found_handler (404) when nothing matches.
+# handler/user_data are borrowed by the ServerContext. Registering a
+# route (even just once) switches this ServerContext's dispatch from
+# server_handler_fn to the RequestContext/routing path for every
+# request -- see this file's module doc.
+void server_route(ServerContext* s, char* method, char* pattern, request_handler_fn* handler, void* user_data):
+	ServerRoute* r = new ServerRoute()
+	r.method = strclone(method)
+	r.pattern = strclone(pattern)
+	int plen = strlen(pattern)
+	if ((plen > 0) && (pattern[plen - 1] == '*')):
+		r.is_prefix = 1
+		r.prefix = substring(pattern, 0, plen - 1)
+	else:
+		r.is_prefix = 0
+		r.prefix = 0
+	r.handler = handler
+	r.user_data = user_data
+	s.routes.push(r)
+
+
+int server_route_matches(ServerRoute* r, char* method, char* path):
+	if (strcmp(r.method, c"*") != 0):
+		if (strcmp(r.method, method) != 0):
+			return 0
+	if (r.is_prefix != 0):
+		return starts_with(path, r.prefix)
+	return strcmp(r.pattern, path) == 0
+
+
+# First registered route matching method+path, or 0.
+ServerRoute* server_route_find(ServerContext* s, char* method, char* path):
+	for ServerRoute* r in s.routes:
+		if (server_route_matches(r, method, path) != 0):
+			return r
+	return 0
+
+
+void server_route_free(ServerRoute* r):
+	free(r.method)
+	free(r.pattern)
+	if (r.prefix != 0):
+		free(r.prefix)
+	free(r)
+
+
+# The routing path's fallback when no registered route matches.
+void server_default_not_found_handler(RequestContext* rc, void* user_data):
+	request_context_text(rc, 404, c"Not Found")
+
+
 /* ServerContext */
 
 ServerContext* server_context_new(char* bind_ip, int port, server_handler_fn* handler, void* handler_context):
@@ -735,6 +1167,7 @@ ServerContext* server_context_new(char* bind_ip, int port, server_handler_fn* ha
 	s.is_tls = 0
 	s.handler = handler
 	s.handler_context = handler_context
+	s.routes = new list[ServerRoute*]
 	s.listener_fd = (-1)
 	s.tls_cfg = 0
 	s.error = 0
@@ -793,6 +1226,9 @@ void server_context_close(ServerContext* s):
 
 void server_context_free(ServerContext* s):
 	server_context_close(s)
+	for ServerRoute* r in s.routes:
+		server_route_free(r)
+	list_free[ServerRoute*](s.routes)
 	free(s)
 
 
@@ -810,6 +1246,23 @@ void server_serve_connection(ServerContext* s, ConnectionContext* c):
 			server_write_error(c, req.error)
 			server_request_free(req)
 			done = 1
+		else if (s.routes.length > 0):
+			# RequestContext/routing dispatch (phase 3-4): opted into by
+			# calling server_route at least once (see the module doc and
+			# ServerContext.routes' doc comment).
+			RequestContext* rc = request_context_new(req, c)
+			ServerRoute* route = server_route_find(s, req.method, req.path)
+			if (route != 0):
+				route.handler(rc, route.user_data)
+			else:
+				server_default_not_found_handler(rc, 0)
+			int ok = request_context_flush(rc)
+			int keep = rc.keep_alive
+			request_context_free(rc)
+			if (ok == 0):
+				done = 1
+			if (keep == 0):
+				done = 1
 		else:
 			ServerResponse* resp = s.handler(req, s.handler_context)
 			int keep = c.keep_alive
