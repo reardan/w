@@ -234,6 +234,38 @@ is a queue, not an archive.
   asymmetry in `:help`/the REPL skill so agents don't rely on `:save`
   output being directly compilable.
 
+- **`string_free(b)` immediately followed by `free(b)` on the same
+  `string_builder*` corrupted the heap, but only inside `repl.w`'s full
+  startup context.** Found while adding the `--json` NDJSON mode (issue
+  #276 P3, 2026-07-16): `repl_eval_json`'s helper built a `string_builder`,
+  read a captured-output file into it, then did the textbook-looking
+  `char* result = strclone(b.data); string_free(b); free(b); return
+  result;` — the very next `json_object()`/`json_object_set()` call in the
+  caller would then see a `json_value*` with a garbage `.type` field, or
+  segfault outright on a later `malloc`/`free`. Confirmed via bisection
+  across ~40 throwaway repro programs: (1) not reproducible standalone —
+  a tight loop of `string_new()` + `string_append` + `string_free` +
+  `free` in isolation (`structures.string` + `lib.lib` only) never
+  corrupts; (2) reproducible once the program links `repl.w`'s full import
+  set (`repl.core`, `debugger.wdbg`, `lib.shell`, etc.), calls
+  `repl_init()` + the wdbg trap-handler install, and runs at least one
+  `repl_eval()` before the `string_free`+`free` pair — the surrounding fd
+  save/restore dance (`dup2`) and echo-hook wiring were *not* required
+  once that much was present, so the trigger is somewhere in the
+  interaction between `repl_eval`'s in-process JIT machinery (or the
+  debugger/fault-handler setup) and the general-purpose allocator, not in
+  `string_free`/`repl.w`'s own logic. Workaround applied in `repl.w`
+  (`repl_format_echo`'s string-typed echo case and
+  `repl_json_read_capture`): skip `string_free` and just take `b.data`
+  directly before `free(b)` — the same ownership-transfer idiom
+  `string_builder_to_string`/`__w_template_finish` already use, which
+  sidesteps the bug entirely and needed no extra allocation. Every other
+  `string_free(x); free(y)` pair in the tree already frees two *different*
+  pointers (builder vs. some unrelated buffer); grepping confirms `repl.w`
+  was the only place calling `string_free(b); free(b)` on the same `b`.
+  Worth a proper root-cause pass on the allocator/JIT interaction — this
+  workaround just avoids the pattern, it doesn't explain it.
+
 ## Skills / rules upkeep
 
 - Keep skill command examples in sync with CLI changes (they are

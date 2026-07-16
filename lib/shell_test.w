@@ -77,6 +77,15 @@ void test_cd_changes_directory():
 	free(original)
 
 
+void test_sh_interactive_exit_status():
+	# No capture to assert against here (by design -- see the module
+	# comment); the REPL's !cmd repl_test cases cover that the child's
+	# output really does reach an inherited stdout. This just checks the
+	# decoded exit status, the same convention sh()/run_argv() use.
+	assert_equal(0, sh_interactive(c"exit 0"))
+	assert_equal(3, sh_interactive(c"exit 3"))
+
+
 void test_getenv_setenv_round_trip():
 	assert1(getenv(c"W_SHELL_TEST_VAR") == 0)
 
