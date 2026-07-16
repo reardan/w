@@ -75,6 +75,16 @@ int repl_echo_hook
 # them they roll back with the entry on a compile error or fault.
 int repl_bind_hook
 
+# When nonzero, repl_eval compiles the entry as usual (so its
+# declarations persist and repl_result_type reflects its final
+# expression) but does not call the compiled entry function: no
+# statement in it executes, so a call, an assignment or a print produces
+# no side effect. repl.w's :type command sets this to report an
+# expression's compile-time type without evaluating it. A skipped
+# entry's late-bind patches (#114) are discarded rather than applied,
+# matching "patches apply only after the entry compiles AND executes".
+int repl_no_run
+
 
 int repl_counter
 
@@ -524,6 +534,100 @@ void repl_rollback():
 	condition_context = 0
 	cast_context = 0
 	diag_clear()
+
+
+# ---------------------------------------------------------------------------
+# :reset support. repl.w calls repl_genesis_checkpoint() once, after
+# repl_init() and any startup file load finish and before the prompt loop
+# starts, snapshotting the same fields repl_checkpoint/repl_rollback track
+# per entry. repl_reset_to_genesis() (repl.w's :reset) then rolls the
+# whole session back to that snapshot the same way a failed entry rolls
+# back to its pre-entry one -- just spanning every entry (and any :load)
+# since startup instead of one.
+
+int repl_genesis_codepos
+int repl_genesis_table_pos
+int repl_genesis_stack_pos
+int repl_genesis_loop_depth
+int repl_genesis_loop_break_chain
+int repl_genesis_loop_continue_chain
+int repl_genesis_loop_stack_pos
+int repl_genesis_switch_depth
+int repl_genesis_switch_break_chain
+int repl_genesis_switch_stack_pos
+int repl_genesis_break_in_switch
+int repl_genesis_defer_count
+int repl_genesis_for_cleanup_count
+int repl_genesis_number_of_args
+int repl_genesis_type_count
+int repl_genesis_imported_count
+int repl_genesis_alias_base
+int repl_genesis_alias_count
+int repl_genesis_plain_base
+int repl_genesis_plain_count
+int repl_genesis_sites_count
+int repl_genesis_taken
+
+
+void repl_genesis_checkpoint():
+	repl_genesis_codepos = codepos
+	repl_genesis_table_pos = table_pos
+	repl_genesis_stack_pos = stack_pos
+	repl_genesis_loop_depth = loop_depth
+	repl_genesis_loop_break_chain = loop_break_chain
+	repl_genesis_loop_continue_chain = loop_continue_chain
+	repl_genesis_loop_stack_pos = loop_stack_pos
+	repl_genesis_switch_depth = switch_depth
+	repl_genesis_switch_break_chain = switch_break_chain
+	repl_genesis_switch_stack_pos = switch_stack_pos
+	repl_genesis_break_in_switch = break_in_switch
+	repl_genesis_defer_count = defer_count()
+	repl_genesis_for_cleanup_count = for_cleanup_count()
+	repl_genesis_number_of_args = number_of_args
+	repl_genesis_type_count = type_count()
+	repl_genesis_imported_count = imported_count
+	repl_genesis_alias_base = import_alias_base
+	repl_genesis_alias_count = import_alias_count
+	repl_genesis_plain_base = import_plain_base
+	repl_genesis_plain_count = import_plain_count
+	repl_genesis_sites_count = repl_sites_count
+	repl_genesis_taken = 1
+
+
+# Roll every declaration, import and late-bind site added since the
+# genesis checkpoint back out, exactly like repl_rollback does for a
+# single failed entry. Returns 0 when repl_genesis_checkpoint() was never
+# called (nothing to reset to). Only safe between entries: no entry may
+# be mid-compile or mid-execution.
+int repl_reset_to_genesis():
+	if (repl_genesis_taken == 0):
+		return 0
+	codepos = repl_genesis_codepos
+	table_pos = repl_genesis_table_pos
+	stack_pos = repl_genesis_stack_pos
+	loop_depth = repl_genesis_loop_depth
+	loop_break_chain = repl_genesis_loop_break_chain
+	loop_continue_chain = repl_genesis_loop_continue_chain
+	loop_stack_pos = repl_genesis_loop_stack_pos
+	switch_depth = repl_genesis_switch_depth
+	switch_break_chain = repl_genesis_switch_break_chain
+	switch_stack_pos = repl_genesis_switch_stack_pos
+	break_in_switch = repl_genesis_break_in_switch
+	defer_truncate(repl_genesis_defer_count)
+	for_cleanup_truncate(repl_genesis_for_cleanup_count)
+	number_of_args = repl_genesis_number_of_args
+	type_table_truncate(repl_genesis_type_count)
+	imported_count = repl_genesis_imported_count
+	import_alias_base = repl_genesis_alias_base
+	import_alias_count = repl_genesis_alias_count
+	import_plain_base = repl_genesis_plain_base
+	import_plain_count = repl_genesis_plain_count
+	repl_sites_truncate(repl_genesis_sites_count)
+	pointer_indirection = 0
+	condition_context = 0
+	cast_context = 0
+	diag_clear()
+	return 1
 
 
 # Compile the staged entry file. Returns the address of the entry's
@@ -1138,6 +1242,14 @@ repl_result repl_eval(char* entry_text):
 	if (address == 0):
 		repl_nest_restore(nest)
 		return r /* compile error: reported and rolled back already */
+
+	if (repl_no_run):
+		repl_discard_late_bind()
+		r.value = 0
+		r.echo_type = repl_result_type
+		r.status = 1
+		repl_nest_restore(nest)
+		return r
 
 	repl_fault_active = 1
 	if (repl_setjmp(repl_fault_jump_buffer)):

@@ -36,6 +36,8 @@ import structures.string
 import lib.args
 import lib.line_edit
 import lib.format
+import lib.path
+import lib.time
 import lib.__arch__.repl_echo_float64
 import debugger.wdbg
 
@@ -218,6 +220,152 @@ void repl_echo(int value, int type):
 	println(itoa(value))
 
 
+# ---------------------------------------------------------------------------
+# Colon commands beyond :quit/:help: :symbols, :type, :time, :load, :reset,
+# :save. Each is dispatched from a literal ":name" prefix in main()'s loop;
+# repl_command_arg trims the text after the command word.
+
+# 1 when entry's command word is exactly cmd (e.g. ":type"): cmd must be
+# followed by whitespace or the end of the string, so ":typewriter" does
+# not match ":type".
+int repl_command_is(char* entry, char* cmd):
+	if (starts_with(entry, cmd) == 0):
+		return 0
+	char c = entry[strlen(cmd)]
+	return (c == 0) | (c == ' ') | (c == 9)
+
+
+# The text after a ':command' word, leading whitespace trimmed (empty
+# when none was given). Only meaningful when repl_command_is(entry, cmd)
+# holds; the result points inside entry, so it is only valid until
+# repl_entry is next cleared.
+char* repl_command_arg(char* entry, char* cmd):
+	char* rest = entry + strlen(cmd)
+	while ((rest[0] == ' ') | (rest[0] == 9)):
+		rest = rest + 1
+	return rest
+
+
+# Trims trailing spaces/tabs from s in place.
+void repl_rtrim(char* s):
+	int n = strlen(s)
+	while ((n > 0) & ((s[n - 1] == ' ') | (s[n - 1] == 9))):
+		n = n - 1
+		s[n] = 0
+
+
+# A compile-time type as :type prints it: value pseudo-types (the echo
+# path's "eax already holds the value" convention) collapse to their
+# ordinary source name, and one '*' prints per pointer level.
+char* repl_type_name(int type):
+	if (type == -1):
+		return strclone(c"(no value)")
+	if (type == 0):
+		return strclone(c"void")
+	if (type == 3): /* "constant": an untyped literal/address/call result */
+		return strclone(c"int")
+	if (type == float32_value_type):
+		return strclone(c"float32")
+	if (type == float64_value_type):
+		return strclone(c"float64")
+	if (type == var_value_type):
+		return strclone(c"var")
+	if (type_is_string(type)):
+		return strclone(c"string")
+	char* base = strclone(type_get_name(type))
+	int pointers = type_get_pointer_level(type)
+	int i = 0
+	while (i < pointers):
+		char* starred = strjoin(base, c"*")
+		free(base)
+		base = starred
+		i = i + 1
+	return base
+
+
+# :type expr -- compiles expr like a normal entry (its declarations
+# persist) but does not run it, so a call or assignment in expr has no
+# side effect; only its compile-time type prints. Sets repl_no_run
+# (repl/core.w) around the eval rather than a second eval path.
+void repl_cmd_type(char* expr):
+	if (expr[0] == 0):
+		println(c"usage: :type <expression>")
+		return;
+	repl_no_run = 1
+	repl_result r = repl_eval(expr)
+	repl_no_run = 0
+	if (r.status == 1):
+		char* tn = repl_type_name(r.echo_type)
+		println(tn)
+		free(tn)
+
+
+# :time expr -- evaluates expr exactly like a normal entry (it echoes as
+# usual) and prints the wall-clock time it took.
+void repl_cmd_time(char* expr):
+	if (expr[0] == 0):
+		println(c"usage: :time <expression>")
+		return;
+	int started = time_monotonic_ms()
+	repl_eval(expr)
+	int elapsed = time_monotonic_ms() - started
+	printf1(c"elapsed: %dms\n", elapsed)
+
+
+# :load file -- compiles file into the session buffer and runs its
+# main() (unless it has none), exactly like starting "repl file.w" does:
+# every function and global it defines is then live for later entries. A
+# compile error in the file exits the REPL, matching that startup path --
+# there is no per-entry checkpoint around a file load to roll back to.
+void repl_cmd_load(char* path):
+	repl_rtrim(path)
+	if (path[0] == 0):
+		println(c"usage: :load <file>")
+		return;
+	if (path_exists(path) == 0):
+		printf1(c"no such file: %s\n", cast(int, path))
+		return;
+	char* argv_holder = malloc(__word_size__)
+	save_word(argv_holder, cast(int, path))
+	int ran = repl_load_file(path, 1, 1, cast(int, argv_holder))
+	free(argv_holder)
+	if (ran == 0):
+		println(c"(loaded file defines no main; its definitions are available)")
+
+
+# :save file -- concatenates every entry staged so far (repl/core.w keeps
+# one file per entry so generic instantiation can re-parse it later)
+# into file: a transcript of the session in typed order.
+void repl_cmd_save(char* path):
+	repl_rtrim(path)
+	if (path[0] == 0):
+		println(c"usage: :save <file>")
+		return;
+	if ((repl_staging_dir == 0) | (repl_staged_count == 0)):
+		println(c"no entries to save yet")
+		return;
+	int out = create_file(path, 511)
+	if (out < 0):
+		printf1(c"could not create file: %s\n", cast(int, path))
+		return;
+	char* buffer = malloc(65536)
+	int i = 0
+	while (i < repl_staged_count):
+		char* entry_path = repl_entry_path(repl_staging_dir, i)
+		int in_fd = open(entry_path, 0, 511)
+		if (in_fd >= 0):
+			int n = read(in_fd, buffer, 65536)
+			while (n > 0):
+				write(out, buffer, n)
+				n = read(in_fd, buffer, 65536)
+			close(in_fd)
+		free(entry_path)
+		i = i + 1
+	free(buffer)
+	close(out)
+	printf2(c"saved %d entries to %s\n", repl_staged_count, cast(int, path))
+
+
 void repl_print_help():
 	println(c"entries compile and run immediately; definitions persist:")
 	println(c"  int x = 5           a variable that later entries can use")
@@ -228,7 +376,15 @@ void repl_print_help():
 	println(c"return/break/continue/pass dedent; a blank line dedents one level")
 	println(c"and ends the entry at column 0")
 	println(c"a single bare expression echoes its value")
-	println(c"commands: :quit exits, :help shows this text")
+	println(c"commands:")
+	println(c"  :quit               exit the repl")
+	println(c"  :help               show this text")
+	println(c"  :symbols            dump the live symbol table (to stderr)")
+	println(c"  :type expr          print expr's compile-time type without running it")
+	println(c"  :time expr          run expr and print its wall-clock time")
+	println(c"  :load file          compile file and run its main(), like 'repl file.w'")
+	println(c"  :reset              undo every entry (and :load) since startup")
+	println(c"  :save file          save every entry typed so far to file")
 
 
 int main(int argc, int argv):
@@ -265,6 +421,11 @@ int main(int argc, int argv):
 			if (run_main):
 				println(c"(loaded file defines no main; its definitions are available)")
 
+	# :reset rolls back to this point: everything above (the preloaded
+	# stdlib and an optional startup file) stays; every entry typed at
+	# the prompt from here on is what :reset undoes.
+	repl_genesis_checkpoint()
+
 	println(c"w repl - :quit exits, :help for help")
 
 	repl_interactive = term_isatty(0)
@@ -286,6 +447,27 @@ int main(int argc, int argv):
 			exit(0)
 		if (string_equals(repl_entry, c":help")):
 			repl_print_help()
+			continue
+		if (string_equals(repl_entry, c":symbols")):
+			print_symbol_table(0)
+			continue
+		if (string_equals(repl_entry, c":reset")):
+			if (repl_reset_to_genesis()):
+				println(c"session reset to its startup state")
+			else:
+				println(c"nothing to reset (no startup checkpoint)")
+			continue
+		if (repl_command_is(repl_entry.data, c":type")):
+			repl_cmd_type(repl_command_arg(repl_entry.data, c":type"))
+			continue
+		if (repl_command_is(repl_entry.data, c":time")):
+			repl_cmd_time(repl_command_arg(repl_entry.data, c":time"))
+			continue
+		if (repl_command_is(repl_entry.data, c":load")):
+			repl_cmd_load(repl_command_arg(repl_entry.data, c":load"))
+			continue
+		if (repl_command_is(repl_entry.data, c":save")):
+			repl_cmd_save(repl_command_arg(repl_entry.data, c":save"))
 			continue
 		if (repl_entry.length == 0):
 			continue
