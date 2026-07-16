@@ -220,7 +220,7 @@ int primary_expr():
 		type = string_value_type
 
 	else:
-		print2(c"Could not find a valid primary expression, token: ")
+		diag_part(c"Could not find a valid primary expression, token: ")
 		error(token)
 
 	get_token()
