@@ -73,9 +73,8 @@ int repl_prompt_line(char* prompt, int indent):
 		for int t in range(indent):
 			initial[t] = 9
 		initial[indent] = 0
+	defer free(initial)
 	int n = line_edit_read(prompt, repl_read_buffer, 4096, initial)
-	if (initial != 0):
-		free(initial)
 	if (n < 0):
 		return n
 	string_append(repl_line, repl_read_buffer)
