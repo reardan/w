@@ -142,10 +142,11 @@ is a queue, not an archive.
   growing anyway. The landed fix is
   `tools/parser_generator_w_batches.sh`: rerun the test binary once
   per 150-file slice of the manifest, bounding memory at batch size
-  forever (~21s total). Residual: the allocator's quadratic
-  free/malloc behavior under millions of small blocks is real and
-  will bite the next long-lived process too — an arena or size-class
-  allocator is the durable fix.
+  forever (~21s total). The residual named here — the allocator's
+  quadratic free/malloc behavior under millions of small blocks — was
+  fixed by #322 (2026-07-16): `lib/memory_freelist.w` now uses 41
+  segregated size-class bins with O(1) free, so the batching is a
+  memory bound, no longer a speed workaround.
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new
