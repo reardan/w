@@ -252,7 +252,7 @@ void cluster_assert_logs_identical(cluster* c):
 # put the resulting appends on the wire.
 void cluster_propose(cluster* c, int id, char* command):
 	list[raft_msg*] out = new list[raft_msg*]
-	assert_equal(1, raft_propose(c.nodes[id - 1], command, sim_now(c.net), out))
+	assert_equal(1, raft_propose(c.nodes[id - 1], command, strlen(command), sim_now(c.net), out))
 	cluster_route_out(c, out)
 
 
@@ -842,9 +842,9 @@ void test_snapshot_restart_from_wal():
 	assert_equal(0, out.length)
 	assert_equal(raft_leader(), raft_state(r))
 	# the win no-op committed at index 1; three real commands follow
-	assert_equal(1, raft_propose(r, c"s1", 100, out))
-	assert_equal(1, raft_propose(r, c"s2", 101, out))
-	assert_equal(1, raft_propose(r, c"s3", 102, out))
+	assert_equal(1, raft_propose(r, c"s1", 2, 100, out))
+	assert_equal(1, raft_propose(r, c"s2", 2, 101, out))
+	assert_equal(1, raft_propose(r, c"s3", 2, 102, out))
 	assert_equal(4, cl_commit_int(r))
 	assert_equal(5, raft_wal_sync(rw, r))   # STATE + four APPENDs
 	# apply all four and snapshot: base 4, empty log
@@ -856,8 +856,8 @@ void test_snapshot_restart_from_wal():
 	assert_equal(2, raft_wal_sync(rw, r))
 	assert_equal(2, wal_record_count(rw.wlog))
 	# two post-snapshot commits land as ordinary APPENDs
-	assert_equal(1, raft_propose(r, c"s5", 103, out))
-	assert_equal(1, raft_propose(r, c"s6", 104, out))
+	assert_equal(1, raft_propose(r, c"s5", 2, 103, out))
+	assert_equal(1, raft_propose(r, c"s6", 2, 104, out))
 	assert_equal(6, cl_commit_int(r))
 	assert_equal(2, raft_wal_sync(rw, r))
 	assert_equal(4, wal_record_count(rw.wlog))

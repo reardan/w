@@ -251,7 +251,7 @@ int rc_run_until_leader(rcluster* c, int max_steps):
 void rc_propose(rcluster* c, int id, char* command):
 	assert_equal(1, c.alive[id - 1])
 	list[raft_msg*] out = new list[raft_msg*]
-	assert_equal(1, raft_propose(c.nodes[id - 1], command, sim_now(c.net), out))
+	assert_equal(1, raft_propose(c.nodes[id - 1], command, strlen(command), sim_now(c.net), out))
 	raft_wal_sync(c.wals[id - 1], c.nodes[id - 1])
 	rc_route_out(c, out)
 

@@ -38,7 +38,7 @@ on every pump, so a rebuilt node (raft_wal_recover + lsm_open on the
 same paths + raft_tcp_new on the SAME port) receives the backlog as
 soon as it listens again — no re-registration on the survivors.
 
-Ports: 21000 + __word_size__ * 100 + 20..31 (offsets 20-39 are
+Ports: 21000 + __word_size__ * 100 + 20..34 (offsets 20-39 are
 reserved for this test; raft_tcp_test owns 0-13), three consecutive
 ports per scenario, so the 32- and 64-bit binaries use disjoint ranges
 (21420.. vs 21820..) and can run concurrently.
@@ -351,6 +351,49 @@ int kvc_run_until_agree(kvc* c, char* key, char* want, int max_rounds):
 	return 0 - 1
 
 
+# Byte-length variant of kvc_agree (issue #315): compares want_len raw
+# bytes rather than strcmp, so a value with an embedded NUL never
+# reads as a short match. want == 0 still means "absent everywhere".
+int kvc_agree_bytes(kvc* c, char* key, char* want, int want_len):
+	int ok = 1
+	int i = 0
+	while (i < c.n):
+		kvc_node* nd = c.nodes[i]
+		if (nd.alive == 1):
+			int* n = cast(int*, malloc(__word_size__))
+			char* got = lsm_get(nd.store, key, n)
+			if (cast(int, want) == 0):
+				if (cast(int, got) != 0):
+					ok = 0
+			else:
+				if (cast(int, got) == 0 || n[0] != want_len):
+					ok = 0
+				else:
+					int k = 0
+					while (k < want_len):
+						if ((got[k] & 255) != (want[k] & 255)):
+							ok = 0
+						k = k + 1
+			if (cast(int, got) != 0):
+				free(got)
+			free(cast(char*, n))
+		i = i + 1
+	return ok
+
+
+# Byte-length variant of kvc_run_until_agree.
+int kvc_run_until_agree_bytes(kvc* c, char* key, char* want, int want_len, int max_rounds):
+	int rounds = 0
+	while (rounds < max_rounds):
+		if (kvc_agree_bytes(c, key, want, want_len)):
+			return rounds
+		kvc_step(c)
+		rounds = rounds + 1
+	if (kvc_agree_bytes(c, key, want, want_len)):
+		return rounds
+	return 0 - 1
+
+
 # ---- store assertions ----------------------------------------------------------------
 
 # Assert lsm_get(key) returns exactly want (text value).
@@ -360,6 +403,22 @@ void kvc_expect(lsm* store, char* key, char* want):
 	assert1(cast(int, got) != 0)
 	assert_equal(strlen(want), n[0])
 	assert_strings_equal(want, got)
+	free(got)
+	free(cast(char*, n))
+
+
+# Byte-length variant of kvc_expect (issue #315): compares want_len
+# raw bytes, so a value with an embedded NUL is checked in full rather
+# than truncated at the first zero.
+void kvc_expect_bytes(lsm* store, char* key, char* want, int want_len):
+	int* n = cast(int*, malloc(__word_size__))
+	char* got = lsm_get(store, key, n)
+	assert1(cast(int, got) != 0)
+	assert_equal(want_len, n[0])
+	int i = 0
+	while (i < want_len):
+		assert_equal(want[i] & 255, got[i] & 255)
+		i = i + 1
 	free(got)
 	free(cast(char*, n))
 
@@ -421,12 +480,26 @@ void kvc_assert_logs_identical(kvc* c):
 # ---- client operations ------------------------------------------------------------------
 
 # Put via node id (asserting it accepts, i.e. leads), persist, route.
-# The encoded command's ownership goes to the raft — never freed here.
+# kv_propose_put encodes, hands the command to raft_propose (which
+# copies it into the log entry) and frees its own encode buffer —
+# nothing to free here.
 void kvc_put(kvc* c, int id, char* key, char* value):
 	kvc_node* nd = c.nodes[id - 1]
 	assert_equal(1, nd.alive)
 	list[raft_msg*] out = new list[raft_msg*]
 	assert_equal(1, kv_propose_put(nd.r, key, value, c.vnow, out))
+	raft_wal_sync(nd.rw, nd.r)
+	kvc_route_out(nd, out)
+
+
+# Byte-length variant of kvc_put (issue #315): value_len is explicit,
+# so a value with an embedded NUL rides through kv_propose_put_len
+# unchanged instead of the NUL-terminated-text kv_propose_put.
+void kvc_put_len(kvc* c, int id, char* key, char* value, int value_len):
+	kvc_node* nd = c.nodes[id - 1]
+	assert_equal(1, nd.alive)
+	list[raft_msg*] out = new list[raft_msg*]
+	assert_equal(1, kv_propose_put_len(nd.r, key, value, value_len, c.vnow, out))
 	raft_wal_sync(nd.rw, nd.r)
 	kvc_route_out(nd, out)
 
@@ -674,4 +747,33 @@ void test_client_semantics_on_followers():
 	kvc_put(c, lid, c"k", c"v")
 	assert1(kvc_run_until_agree(c, c"k", c"v", 500) >= 0)
 	kvc_assert_kv(c, c"k", c"v")
+	kvc_free(c)
+
+
+# A kv value containing an embedded NUL byte must replicate unchanged
+# across all three real-socket nodes (issue #315): raft_entry.
+# command_len -- carried end to end through raft_propose, the wire and
+# the wal, never strlen -- is what makes this possible; kv_propose_put
+# and kv_apply_command thread it through kv_state.w's tab-separated
+# encoding too.
+void test_cluster_binary_value_roundtrip():
+	kvc* c = kvc_new(c"binval", 12, 500)
+	int rounds = kvc_run_until_leader(c, 500)
+	assert1(rounds >= 0)
+	int lid = kvc_leader(c)
+	char* value = malloc(5)
+	value[0] = 'x'
+	value[1] = 0
+	value[2] = 'y'
+	value[3] = 255
+	value[4] = 'z'
+	kvc_put_len(c, lid, c"binkey", value, 5)
+	assert1(kvc_run_until_agree_bytes(c, c"binkey", value, 5, 500) >= 0)
+	int i = 0
+	while (i < 3):
+		kvc_node* nd = c.nodes[i]
+		if (nd.alive == 1):
+			kvc_expect_bytes(nd.store, c"binkey", value, 5)
+		i = i + 1
+	free(value)
 	kvc_free(c)

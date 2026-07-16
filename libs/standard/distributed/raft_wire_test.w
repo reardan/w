@@ -13,6 +13,17 @@ raft_msg* rw_roundtrip(raft_msg* m):
 	return out
 
 
+# Bytewise blob/command comparison: values may be binary (embedded
+# zeros and other non-text bytes legal), so strcmp-style helpers must
+# never touch them.
+void rw_assert_blob(char* want, int want_len, char* got, int got_len):
+	assert_equal(want_len, got_len)
+	int i = 0
+	while (i < want_len):
+		assert_equal(want[i] & 255, got[i] & 255)
+		i = i + 1
+
+
 void test_vote_req_roundtrip():
 	u64* term = u64_new_int(7)
 	raft_msg* m = raft_msg_new(raft_msg_vote_req(), 1, 2, term)
@@ -52,8 +63,8 @@ void test_append_roundtrip_with_entries():
 	u64_set_int(m.leader_commit, 10)
 	u64* t1 = u64_new_int(8)
 	u64* t2 = u64_new_int(9)
-	m.entries.push(raft_entry_new(t1, c"P\tk1\tv1"))
-	m.entries.push(raft_entry_new(t2, c"D\tk2"))
+	m.entries.push(raft_entry_new(t1, c"P\tk1\tv1", 7))
+	m.entries.push(raft_entry_new(t2, c"D\tk2", 4))
 	raft_msg* out = rw_roundtrip(m)
 	assert_equal(2, out.entries.length)
 	raft_entry* e0 = out.entries[0]
@@ -68,6 +79,39 @@ void test_append_roundtrip_with_entries():
 	u64_free(t1)
 	u64_free(t2)
 	u64_free(term)
+
+
+# Binary-safe commands (issue #315): a command carrying an embedded
+# NUL, a tab (0x09) and a high byte (0xFF) must survive encode/decode
+# byte-exactly -- raft_entry.command_len (never strlen) is
+# authoritative on the wire, so none of those bytes can be mistaken
+# for a terminator or truncate the payload.
+void test_binary_command_roundtrip():
+	u64* term = u64_new_int(5)
+	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
+	u64_set_int(m.prev_log_index, 3)
+	u64_set_int(m.prev_log_term, 4)
+	u64_set_int(m.leader_commit, 3)
+	char* cmd = malloc(6)
+	cmd[0] = 'A'
+	cmd[1] = 0
+	cmd[2] = 9
+	cmd[3] = 255
+	cmd[4] = 'Z'
+	cmd[5] = 0
+	u64* t = u64_new_int(5)
+	m.entries.push(raft_entry_new(t, cmd, 6))
+	assert_equal(17 + 28 + 8 + 4 + 6, raft_wire_size(m))
+	raft_msg* out = rw_roundtrip(m)
+	assert_equal(1, out.entries.length)
+	raft_entry* e = out.entries[0]
+	assert_equal(6, e.command_len)
+	rw_assert_blob(cmd, 6, e.command, e.command_len)
+	raft_msg_free(m)
+	raft_msg_free(out)
+	u64_free(t)
+	u64_free(term)
+	free(cmd)
 
 
 void test_append_heartbeat_empty_entries():
@@ -169,7 +213,7 @@ void test_decode_rejects_malformed():
 	u64* term = u64_new_int(5)
 	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
 	u64* t = u64_new_int(5)
-	m.entries.push(raft_entry_new(t, c"P\ta\tb"))
+	m.entries.push(raft_entry_new(t, c"P\ta\tb", 5))
 	int size = raft_wire_size(m)
 	char* buf = malloc(size)
 	raft_wire_encode(m, buf)
@@ -199,15 +243,6 @@ void test_decode_rejects_malformed():
 
 
 # ---- install_snapshot (type 4) ----------------------------------------------------
-
-# Bytewise blob comparison: snapshot blobs are binary (embedded zeros
-# legal), so strcmp-style helpers must never touch them.
-void rw_assert_blob(char* want, int want_len, char* got, int got_len):
-	assert_equal(want_len, got_len)
-	int i = 0
-	while (i < want_len):
-		assert_equal(want[i] & 255, got[i] & 255)
-		i = i + 1
 
 
 void test_install_snapshot_roundtrip():

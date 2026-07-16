@@ -56,7 +56,7 @@ raft* rwal_single_node(int seed):
 # truncation scenario constructs divergent logs directly).
 void rwal_push_entry(raft* r, int term, char* command):
 	u64* t = u64_new_int(term)
-	r.log.push(raft_entry_new(t, command))
+	r.log.push(raft_entry_new(t, command, strlen(command)))
 	u64_free(t)
 
 
@@ -126,9 +126,9 @@ void test_propose_recover_commit():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
 	assert_equal(1, raft_wal_sync(rw, r))   # STATE for the election
-	assert_equal(1, raft_propose(r, c"a", 100, out))
-	assert_equal(1, raft_propose(r, c"b", 101, out))
-	assert_equal(1, raft_propose(r, c"c", 102, out))
+	assert_equal(1, raft_propose(r, c"a", 1, 100, out))
+	assert_equal(1, raft_propose(r, c"b", 1, 101, out))
+	assert_equal(1, raft_propose(r, c"c", 1, 102, out))
 	assert_equal(0, out.length)
 	assert_equal(3, rwal_commit_int(r))
 	assert_equal(3, raft_wal_sync(rw, r))   # three APPEND records
@@ -167,7 +167,7 @@ void test_propose_recover_commit():
 	raft_tick(r2, 300, out)
 	assert_equal(raft_leader(), raft_state(r2))
 	assert_equal(2, rwal_term_int(r2))
-	assert_equal(1, raft_propose(r2, c"pin", 300, out))
+	assert_equal(1, raft_propose(r2, c"pin", 3, 300, out))
 	assert_equal(0, out.length)
 	assert_equal(4, rwal_commit_int(r2))
 	raft_entry* a1 = raft_pop_apply(r2)
@@ -184,6 +184,56 @@ void test_propose_recover_commit():
 	assert_equal(0, raft_wal_pending(rw2, r2))
 	raft_free(r2)
 	raft_wal_close(rw2)
+	free(path)
+
+
+# ---- binary commands persist byte-exactly (issue #315) --------------------------
+
+void test_binary_command_persists():
+	# a command carrying an embedded NUL, a tab (0x09) and a high byte
+	# (0xFF) must survive append -> sync -> reopen/replay byte-exactly:
+	# raft_entry.command_len (never strlen) is authoritative in the
+	# APPEND record too.
+	char* path = rwal_path(c"binary.log")
+	create_file(path, 420)
+	raft_wal* rw = raft_wal_open(path)
+	assert1(cast(int, rw) != 0)
+	raft* r = rwal_single_node(42)
+	raft_start(r, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_tick(r, 100, out)
+	assert_equal(1, raft_wal_sync(rw, r))   # STATE: term 1, vote 1
+	char* cmd = malloc(6)
+	cmd[0] = 'A'
+	cmd[1] = 0
+	cmd[2] = 9
+	cmd[3] = 255
+	cmd[4] = 'Z'
+	cmd[5] = 0
+	assert_equal(1, raft_propose(r, cmd, 6, 100, out))
+	assert_equal(1, raft_wal_sync(rw, r))   # APPEND
+	raft_entry* e = raft_log_at(r, 1)
+	assert_equal(6, e.command_len)
+	raft_free(r)
+	raft_wal_close(rw)
+	# reopen and replay from disk: the bytes must come back unchanged,
+	# including the embedded NUL and 0xFF that a NUL-terminated or
+	# strlen-based path would have mishandled
+	raft_wal* rw2 = raft_wal_open(path)
+	assert1(cast(int, rw2) != 0)
+	assert_equal(1, raft_wal_shadow_log_length(rw2))
+	list[int] peers = new list[int]
+	raft* r2 = raft_wal_recover(rw2, 1, peers, 50, 100, 10, 43)
+	assert_equal(1, raft_log_length(r2))
+	raft_entry* recovered = raft_log_at(r2, 1)
+	assert_equal(6, recovered.command_len)
+	int i = 0
+	while (i < 6):
+		assert_equal(cmd[i] & 255, recovered.command[i] & 255)
+		i = i + 1
+	raft_free(r2)
+	raft_wal_close(rw2)
+	free(cmd)
 	free(path)
 
 
@@ -242,9 +292,9 @@ void test_torn_tail_prefix_state():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
 	assert_equal(1, raft_wal_sync(rw, r))   # STATE: term 1, vote 1
-	assert_equal(1, raft_propose(r, c"a", 100, out))
+	assert_equal(1, raft_propose(r, c"a", 1, 100, out))
 	assert_equal(1, raft_wal_sync(rw, r))   # APPEND a
-	assert_equal(1, raft_propose(r, c"bb", 101, out))
+	assert_equal(1, raft_propose(r, c"bb", 2, 101, out))
 	assert_equal(1, raft_wal_sync(rw, r))   # APPEND bb
 	int full = wal_size(rw.wlog)
 	raft_free(r)
@@ -336,11 +386,11 @@ void test_snapshot_rewrite_compacts_wal():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
 	assert_equal(1, raft_wal_sync(rw, r))   # STATE
-	assert_equal(1, raft_propose(r, c"a", 100, out))
-	assert_equal(1, raft_propose(r, c"b", 101, out))
-	assert_equal(1, raft_propose(r, c"c", 102, out))
-	assert_equal(1, raft_propose(r, c"d", 103, out))
-	assert_equal(1, raft_propose(r, c"e", 104, out))
+	assert_equal(1, raft_propose(r, c"a", 1, 100, out))
+	assert_equal(1, raft_propose(r, c"b", 1, 101, out))
+	assert_equal(1, raft_propose(r, c"c", 1, 102, out))
+	assert_equal(1, raft_propose(r, c"d", 1, 103, out))
+	assert_equal(1, raft_propose(r, c"e", 1, 104, out))
 	assert_equal(5, raft_wal_sync(rw, r))   # five APPENDs
 	assert_equal(6, wal_record_count(rw.wlog))
 	int before = wal_size(rw.wlog)
@@ -429,8 +479,8 @@ void test_snapshot_torn_tail():
 	raft_start(r, 0)
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
-	assert_equal(1, raft_propose(r, c"a", 100, out))
-	assert_equal(1, raft_propose(r, c"b", 101, out))
+	assert_equal(1, raft_propose(r, c"a", 1, 100, out))
+	assert_equal(1, raft_propose(r, c"b", 1, 101, out))
 	assert_equal(3, raft_wal_sync(rw, r))   # STATE + APPEND a + APPEND b
 	raft_entry* a1 = raft_pop_apply(r)
 	assert_strings_equal(c"a", a1.command)
@@ -438,8 +488,8 @@ void test_snapshot_torn_tail():
 	assert_strings_equal(c"b", a2.command)
 	assert_equal(1, raft_take_snapshot(r, c"T2", 2))
 	assert_equal(2, raft_wal_sync(rw, r))   # rewrite: SNAPSHOT + STATE
-	assert_equal(1, raft_propose(r, c"c", 105, out))
-	assert_equal(1, raft_propose(r, c"dd", 106, out))
+	assert_equal(1, raft_propose(r, c"c", 1, 105, out))
+	assert_equal(1, raft_propose(r, c"dd", 2, 106, out))
 	assert_equal(2, raft_wal_sync(rw, r))   # APPEND c + APPEND dd
 	assert_equal(4, wal_record_count(rw.wlog))
 	int full = wal_size(rw.wlog)

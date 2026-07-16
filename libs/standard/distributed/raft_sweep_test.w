@@ -201,8 +201,13 @@ void swc_check_round(sweep_cluster* c):
 			t.reset = 1
 		while (raft_pending_apply(r) == 1):
 			raft_entry* e = raft_pop_apply(r)
-			if (strlen(e.command) > 0):
-				t.applied.push(e.command)
+			if (e.command_len > 0):
+				# raft_pop_apply's pointer is borrowed from the log and can
+				# be freed later by truncation or snapshot compaction
+				# (raft_entry_free now frees its owned command copy too),
+				# so this driver keeps its OWN copy for the (d) check,
+				# which compares across the whole run.
+				t.applied.push(raft_copy_blob(e.command, e.command_len))
 		# (a) at most one leader per term, ever
 		if (raft_state(r) == raft_leader()):
 			int term = swc_term(c, r)
@@ -295,7 +300,7 @@ void swc_propose_retry(sweep_cluster* c, char* command, int max_rounds):
 	while (round < max_rounds):
 		int lid = swc_leader(c)
 		if (lid != (0 - 1)):
-			if (raft_propose(c.nodes[lid - 1], command, sim_now(c.net), c.out) == 1):
+			if (raft_propose(c.nodes[lid - 1], command, strlen(command), sim_now(c.net), c.out) == 1):
 				swc_route_out(c)
 				return
 		swc_step(c)
@@ -434,6 +439,8 @@ void swc_free(sweep_cluster* c):
 	while (i < c.n):
 		raft_free(c.nodes[i])
 		sweep_track* t = c.track[i]
+		while (t.applied.length > 0):
+			free(t.applied.pop())
 		list_free[char*](t.applied)
 		free(t)
 		i = i + 1

@@ -13,8 +13,19 @@ so runs replay exactly.
 Terms and log indexes are u64 (u64.w); every u64 op mutates its first
 argument, so values that cross an ownership boundary are cloned.
 A raft_msg owns all of its u64 fields and deep copies of its entries
-(cloned term, shared command pointer); raft_msg_free frees them all.
-Command pointers are caller-owned and must outlive the raft.
+(cloned term, owned copy of the command bytes); raft_msg_free frees
+them all.
+
+Commands are opaque, length-carrying byte buffers, not NUL-terminated
+strings: every raft_entry carries an explicit command_len, and no code
+here (or downstream, e.g. kv_state.w) may assume a command is free of
+embedded NUL or any other byte value. raft_entry_new COPIES command_len
+bytes out of the buffer it is given (plus a trailing convenience NUL
+that is not part of command_len) — entries own their command bytes.
+raft_entry_free releases that copy, so a caller's buffer (e.g. the one
+raft_propose is given) is never retained past the call: the caller
+keeps ownership of what it passed in and may mutate or free it the
+instant the call returns.
 
 The log is stored in a 0-based list but is 1-indexed conceptually
 (Figure 2 numbering): with no snapshot, conceptual index i lives at
@@ -145,21 +156,41 @@ int raft_msg_install_snapshot():
 
 # ---- log entries -------------------------------------------------------------
 
+# Malloc'd copy of len blob bytes (binary-safe; a trailing NUL is
+# added for convenience but is not part of the blob).
+char* raft_copy_blob(char* data, int len):
+	char* p = malloc(len + 1)
+	int i = 0
+	while (i < len):
+		p[i] = data[i]
+		i = i + 1
+	p[len] = 0
+	return p
+
+
 struct raft_entry:
-	u64* term      # entry owns this
-	char* command  # caller-owned; must outlive the raft
+	u64* term         # entry owns this
+	char* command     # entry-owned copy; opaque bytes, may contain NUL
+	int command_len   # authoritative length of command in bytes
 
 
-# Clones term; the command pointer is shared, not copied.
-raft_entry* raft_entry_new(u64* term, char* command):
+# Clones term and COPIES command_len bytes out of command into a fresh
+# entry-owned buffer (plus one trailing convenience NUL not counted in
+# command_len, matching raft_copy_blob's snapshot-blob convention) —
+# the caller's buffer is untouched and may be freed or reused the
+# instant this returns. command bytes are opaque: no NUL assumptions.
+raft_entry* raft_entry_new(u64* term, char* command, int command_len):
+	assert1(command_len >= 0)
 	raft_entry* e = new raft_entry()
 	e.term = u64_clone(term)
-	e.command = command
+	e.command = raft_copy_blob(command, command_len)
+	e.command_len = command_len
 	return e
 
 
 void raft_entry_free(raft_entry* e):
 	u64_free(e.term)
+	free(e.command)
 	free(e)
 
 
@@ -292,18 +323,6 @@ int raft_u64_as_int(u64* v):
 # at log[i - base - 1] for every i above the base.
 int raft_snap_base(raft* r):
 	return raft_u64_as_int(r.snap_last_index)
-
-
-# Malloc'd copy of len blob bytes (binary-safe; a trailing NUL is
-# added for convenience but is not part of the blob).
-char* raft_copy_blob(char* data, int len):
-	char* p = malloc(len + 1)
-	int i = 0
-	while (i < len):
-		p[i] = data[i]
-		i = i + 1
-	p[len] = 0
-	return p
 
 
 # Last log index (1-based conceptual; 0 = empty log and no snapshot).
@@ -480,7 +499,7 @@ raft_msg* raft_make_append(raft* r, int peer):
 	int k = next_i
 	while (k <= base + r.log.length):
 		raft_entry* e = r.log[k - base - 1]
-		m.entries.push(raft_entry_new(e.term, e.command))
+		m.entries.push(raft_entry_new(e.term, e.command, e.command_len))
 		k = k + 1
 	u64_copy(m.leader_commit, r.commit_index)
 	return m
@@ -566,7 +585,7 @@ void raft_become_leader(raft* r, int now_ms, list[raft_msg*] out):
 		u64_set_int(r.match_index[p], 0)
 		i = i + 1
 	if (r.noop_on_win == 1):
-		r.log.push(raft_entry_new(r.current_term, c""))
+		r.log.push(raft_entry_new(r.current_term, c"", 0))
 	i = 0
 	while (i < r.peers.length):
 		out.push(raft_make_peer_msg(r, r.peers[i]))
@@ -827,9 +846,9 @@ void raft_handle_append(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 				while (base + r.log.length >= idx):
 					raft_entry* removed = r.log.pop()
 					raft_entry_free(removed)
-				r.log.push(raft_entry_new(incoming.term, incoming.command))
+				r.log.push(raft_entry_new(incoming.term, incoming.command, incoming.command_len))
 		else:
-			r.log.push(raft_entry_new(incoming.term, incoming.command))
+			r.log.push(raft_entry_new(incoming.term, incoming.command, incoming.command_len))
 		k = k + 1
 	int match_i = prev_i + m.entries.length
 	reply.success = 1
@@ -977,11 +996,15 @@ void raft_on_msg(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 # AppendEntries out to every peer immediately (re-arming the heartbeat
 # timer, since these double as heartbeats) and try to advance the
 # commit — a single-node cluster commits right here. Returns 1 when
-# accepted, 0 on a non-leader.
-int raft_propose(raft* r, char* command, int now_ms, list[raft_msg*] out):
+# accepted, 0 on a non-leader. command_len bytes are COPIED into the
+# new log entry (raft_entry_new); the caller keeps ownership of
+# `command` and may free or reuse it as soon as this returns. command
+# is opaque — embedded NUL and any other byte value are legal, and
+# command_len (not strlen) is authoritative everywhere downstream.
+int raft_propose(raft* r, char* command, int command_len, int now_ms, list[raft_msg*] out):
 	if (r.state != raft_leader()):
 		return 0
-	r.log.push(raft_entry_new(r.current_term, command))
+	r.log.push(raft_entry_new(r.current_term, command, command_len))
 	int i = 0
 	while (i < r.peers.length):
 		out.push(raft_make_peer_msg(r, r.peers[i]))
@@ -998,10 +1021,10 @@ int raft_propose(raft* r, char* command, int now_ms, list[raft_msg*] out):
 # current snapshot base — returns 0 as a no-op otherwise. On success:
 # the snapshot meta becomes (last_applied, term at last_applied), the
 # blob copy replaces any previous one, every log entry at or below
-# last_applied is freed (entry terms and structs; commands stay
-# caller-owned per the contract) and 1 is returned. Peers whose
-# next_index is at or below the new base are brought up by
-# InstallSnapshot from the usual send paths.
+# last_applied is freed (raft_entry_free: term, owned command copy and
+# the struct) and 1 is returned. Peers whose next_index is at or below
+# the new base are brought up by InstallSnapshot from the usual send
+# paths.
 int raft_take_snapshot(raft* r, char* data, int len):
 	int base = raft_snap_base(r)
 	int applied = raft_u64_as_int(r.last_applied)
