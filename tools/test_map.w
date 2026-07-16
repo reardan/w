@@ -127,8 +127,30 @@ current manifest against for the leaf-target special case above; with
 no baseline the build.json residue always selects the full suite.
 './wbuild test_changed' extracts it with 'git show <base>:build.json';
 tests point it at fixture manifests, mirroring -f.
+
+--available drops, after normal selection, targets whose steps name a
+runner this host cannot execute — arm64 run targets (they shell through
+'sh tools/run_arm64.sh', which itself falls back to qemu-aarch64-static
+off an aarch64 host), win64 run targets ('wine'/'wine64'), or a
+tools/mac/ script — so the printed selection is runnable as-is instead
+of failing on a missing qemu/wine/Mac. Detection is mechanical and
+conservative: only a step whose argv[0] (or, for the arm64 wrapper,
+argv[1]) is one of those recognized shapes is checked for presence on
+PATH (or, for tools/mac/, as a file); anything else is left alone, so a
+target is only ever dropped on positive evidence. One 'wtest: dropped N
+unavailable target(s) (<reason>)' line per distinct reason is printed to
+stderr, plus a 'dropped N unavailable targets total' line when more than
+one reason fired. './wbuild test_changed' passes --available by default.
+
+The first 'changed' invocation to touch an import closure (rule b) after
+a build, or after bin/.wtest_deps_cache is otherwise missing or fully
+stale, prints one 'wtest: building import-closure cache...' note to
+stderr before shelling out to 'bin/wv2 deps' for every root — that pass
+can take minutes on a big tree with nothing printed otherwise. A warm
+cache prints nothing extra.
 */
 import lib.lib
+import lib.env
 import lib.file
 import lib.process
 import lib.stream
@@ -157,6 +179,7 @@ map[char*, char*] wtest_file_hashes  # path -> content hash hex (memo)
 
 int wtest_verbose
 int wtest_run_flag
+int wtest_available_flag
 char* wtest_manifest_path
 char* wtest_base_manifest_path       # 0 = no --base-manifest given
 json_value* wtest_base_manifest      # parsed baseline, 0 until loaded
@@ -166,7 +189,7 @@ int wtest_mask32
 
 void wtest_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [-f manifest.json] [--base-manifest base.json] [file...]")
+	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]")
 	stream_flush(err)
 
 
@@ -839,6 +862,19 @@ void wtest_ensure_closures():
 	wtest_closure_roots = new list[char*]
 	wtest_closure_blobs = new list[char*]
 	wtest_cache_load()
+	# Cold/stale cache: every root not already satisfied by wtest_cache_load
+	# needs a 'bin/wv2 deps' shell-out below, which can take minutes right
+	# after a build or a large merge (docs/projects/ai_tooling_next_steps.md,
+	# 2026-07-16) with nothing printed otherwise. A warm cache (the common
+	# case) skips this entirely.
+	int cold = 0
+	for char* root in wtest_roots:
+		if (wtest_closure_known(root) == 0):
+			cold = 1
+	if (cold):
+		wstream* err = stderr_writer()
+		stream_write_line(err, c"wtest: building import-closure cache (first run after a build; this can take a minute)...")
+		stream_flush(err)
 	int recomputed = 0
 	for char* root in wtest_roots:
 		if (wtest_closure_known(root) == 0):
@@ -1369,6 +1405,167 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"tests")
 
 
+/* --available: drop targets this host cannot run (header comment). */
+
+# Whether 'name' resolves to a readable file on some PATH entry (mirrors
+# tools/wexec.w's wexec_resolve_program lookup, minus the Windows/.exe
+# handling: the runners --available checks for are never Windows tools).
+int wtest_path_has(char* name):
+	char* path = env_get(c"PATH")
+	if (path == 0):
+		path = c"/usr/bin:/bin"
+	string_builder* candidate = string_new()
+	int p = 0
+	int at_end = 0
+	int found = 0
+	while ((at_end == 0) && (found == 0)):
+		string_clear(candidate)
+		while ((path[p] != ':') && (path[p] != 0)):
+			string_append_char(candidate, path[p])
+			p = p + 1
+		if (path[p] == 0):
+			at_end = 1
+		else:
+			p = p + 1
+		if (candidate.length > 0):
+			string_append_char(candidate, '/')
+			string_append(candidate, name)
+			if (wtest_file_exists(candidate.data)):
+				found = 1
+	string_free(candidate)
+	return found
+
+
+# tools/run_arm64.sh execs its argv natively on an aarch64 Linux host and
+# falls back to ${QEMU_ARM64:-qemu-aarch64-static -cpu max} everywhere
+# else; an explicit QEMU_ARM64 override is itself positive evidence the
+# caller has an emulator configured, so it counts as available without a
+# PATH lookup.
+int wtest_qemu_arm64_available():
+	if (env_get(c"QEMU_ARM64") != 0):
+		return 1
+	return wtest_path_has(c"qemu-aarch64-static")
+
+
+# The reason this step's runner is unavailable on this host, or 0 when it
+# is available, or when the step's program is not one of the recognized
+# runner shapes (wine/wine64, the arm64 qemu wrapper, a tools/mac/
+# script) — unrecognized programs are always left alone, per the
+# "positive evidence only" rule in the header comment.
+char* wtest_step_unavailable_reason(json_value* step):
+	if (step.type != json_type_object()):
+		return 0
+	json_value* cmd = json_object_get(step, c"cmd")
+	if (cmd == 0):
+		return 0
+	if (cmd.type != json_type_array()):
+		return 0
+	int n = json_array_length(cmd)
+	if (n == 0):
+		return 0
+	json_value* first = json_array_get(cmd, 0)
+	if (first.type != json_type_string()):
+		return 0
+	char* program = first.string_value
+	if (strcmp(program, c"wine") == 0):
+		if (wtest_path_has(c"wine") == 0):
+			return c"wine not found"
+		return 0
+	if (strcmp(program, c"wine64") == 0):
+		if (wtest_path_has(c"wine64") == 0):
+			return c"wine64 not found"
+		return 0
+	if (strcmp(program, c"qemu-aarch64-static") == 0):
+		if (wtest_qemu_arm64_available() == 0):
+			return c"qemu-aarch64-static not found"
+		return 0
+	if (strcmp(program, c"sh") == 0):
+		if (n >= 2):
+			json_value* second = json_array_get(cmd, 1)
+			if (second.type == json_type_string()):
+				if (strcmp(second.string_value, c"tools/run_arm64.sh") == 0):
+					if (wtest_qemu_arm64_available() == 0):
+						return c"qemu-aarch64-static not found"
+		return 0
+	if (starts_with(program, c"tools/mac/")):
+		if (wtest_file_exists(program) == 0):
+			string_builder* s = string_new()
+			string_append(s, program)
+			string_append(s, c" not found")
+			char* reason = s.data
+			free(s)
+			return reason
+		return 0
+	return 0
+
+
+char* wtest_target_unavailable_reason(char* name):
+	json_value* steps = wtest_target_steps(name)
+	if (steps == 0):
+		return 0
+	int i = 0
+	while (i < json_array_length(steps)):
+		char* reason = wtest_step_unavailable_reason(json_array_get(steps, i))
+		if (reason != 0):
+			return reason
+		i = i + 1
+	return 0
+
+
+# One 'wtest: dropped N unavailable target(s) (<reason>)' line per
+# distinct reason, plus a total line only when more than one reason
+# fired (with a single reason the per-reason line already is the total).
+void wtest_available_report(list[char*] reasons, list[int] counts, int total):
+	wstream* err = stderr_writer()
+	int i = 0
+	while (i < reasons.length):
+		string_builder* line = string_new()
+		string_append(line, c"wtest: dropped ")
+		string_append_int(line, counts[i])
+		string_append(line, c" unavailable target")
+		if (counts[i] != 1):
+			string_append_char(line, 's')
+		string_append(line, c" (")
+		string_append(line, reasons[i])
+		string_append_char(line, ')')
+		stream_write_line(err, line.data)
+		string_free(line)
+		i = i + 1
+	if (reasons.length > 1):
+		string_builder* total_line = string_new()
+		string_append(total_line, c"wtest: dropped ")
+		string_append_int(total_line, total)
+		string_append(total_line, c" unavailable targets total")
+		stream_write_line(err, total_line.data)
+		string_free(total_line)
+	stream_flush(err)
+
+
+void wtest_apply_available_filter():
+	list[char*] reasons = new list[char*]
+	list[int] counts = new list[int]
+	int total = 0
+	for char* name in wtest_target_names:
+		if (name in wtest_enabled):
+			char* reason = wtest_target_unavailable_reason(name)
+			if (reason != 0):
+				wtest_enabled.remove(name)
+				total = total + 1
+				int index = -1
+				int i = 0
+				while (i < reasons.length):
+					if (strcmp(reasons[i], reason) == 0):
+						index = i
+					i = i + 1
+				if (index == -1):
+					reasons.push(reason)
+					counts.push(1)
+				else:
+					counts[index] = counts[index] + 1
+	if (total > 0):
+		wtest_available_report(reasons, counts, total)
+
+
 void wtest_emit_targets():
 	wstream* out = stdout_writer()
 	int count = 0
@@ -1472,6 +1669,8 @@ int main(int argc, int argv):
 			wtest_verbose = 1
 		else if (strcmp(*arg, c"--run") == 0):
 			wtest_run_flag = 1
+		else if (strcmp(*arg, c"--available") == 0):
+			wtest_available_flag = 1
 		else if (strcmp(*arg, c"-f") == 0):
 			i = i + 1   # value already consumed by the pre-scan above
 		else if (strcmp(*arg, c"--base-manifest") == 0):
@@ -1486,6 +1685,8 @@ int main(int argc, int argv):
 		while (stream_read_line(in, line)):
 			wtest_map_path(line.data)
 		string_free(line)
+	if (wtest_available_flag):
+		wtest_apply_available_filter()
 	wtest_emit_targets()
 	if (wtest_run_flag):
 		return wtest_run_selected()

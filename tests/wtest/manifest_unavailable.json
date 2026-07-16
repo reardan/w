@@ -1,0 +1,16 @@
+{
+	"targets": [
+		{
+			"name": "custom_widget_needs_mac",
+			"steps": [
+				{"cmd": ["tools/mac/does_not_exist.sh", "widget/marker.dat"]}
+			]
+		},
+		{
+			"name": "custom_widget_ok",
+			"steps": [
+				{"cmd": ["true", "widget/marker.dat"]}
+			]
+		}
+	]
+}
