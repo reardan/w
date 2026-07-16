@@ -3,7 +3,9 @@ W source generator for the first ParserGenerator milestone.
 */
 import lib.lib
 import lib.container
+import structures.string
 import libs.extras.parser_generator.grammar_model
+import libs.extras.parser_generator.analysis
 import libs.extras.parser_generator.lexer
 import libs.extras.parser_generator.source_writer
 
@@ -1325,6 +1327,79 @@ void pg_emit_var(pg_source_writer* writer, char* name, int alt_index, int term_i
 	pg_source_append_int(writer, term_index)
 
 
+# --- LL(1) committed dispatch (issue #329 milestone 2) ---------------------
+#
+# Rule bodies used to attempt every alternative in order, allocating a
+# node per attempt and re-parsing shared prefixes. Using the analysis in
+# analysis.w, the emitters below (a) guard alternatives and ?/*/+ terms
+# with first-set membership tests that only skip attempts which would
+# fail without consuming input or recording diagnostics, and (b) parse a
+# left-factored shared plain-term prefix of consecutive alternatives
+# once, dispatching only the suffix choice. Ordered-choice (PEG)
+# semantics, accept/reject behavior, AST shape, and the furthest-token
+# error position are unchanged: where first sets overlap or a guard
+# would be unsound (nullable or impure attempts), today's mark/rewind
+# backtracking code shape is kept.
+
+
+# Caller-freed "name<alt>_<term>" string for hoisted guard variables.
+char* pg_guard_var_name(char* name, int alt_index, int term_index):
+	string_builder* out = string_new()
+	string_append(out, name)
+	string_append(out, itoa(alt_index))
+	string_append(out, c"_")
+	string_append(out, itoa(term_index))
+	char* text = out.data
+	free(out)
+	return text
+
+
+# Parenthesized membership test of var_name against a kind set, as a
+# disjunction of ranges over the dense kind numbering, e.g.
+# (k == g_token_IDENT()) | ((k >= g_token_KW_IF()) & (k <= g_token_KW_FOR()))
+void pg_emit_kind_set_test(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, char* kinds, char* var_name):
+	int first_range = 1
+	int kind = 0
+	while (kind < analysis.kind_count):
+		if (kinds[kind] == 0):
+			kind = kind + 1
+		else:
+			int end = kind
+			while ((end + 1 < analysis.kind_count) & (kinds[end + 1] != 0)):
+				end = end + 1
+			if (first_range == 0):
+				pg_source_append(writer, c" | ")
+			if (kind == end):
+				pg_source_append(writer, c"(")
+				pg_source_append(writer, var_name)
+				pg_source_append(writer, c" == ")
+				pg_emit_token_kind_call(writer, grammar, pg_report_kind_name(grammar, kind))
+				pg_source_append(writer, c")")
+			else:
+				pg_source_append(writer, c"((")
+				pg_source_append(writer, var_name)
+				pg_source_append(writer, c" >= ")
+				pg_emit_token_kind_call(writer, grammar, pg_report_kind_name(grammar, kind))
+				pg_source_append(writer, c") & (")
+				pg_source_append(writer, var_name)
+				pg_source_append(writer, c" <= ")
+				pg_emit_token_kind_call(writer, grammar, pg_report_kind_name(grammar, end))
+				pg_source_append(writer, c"))")
+			first_range = 0
+			kind = end + 1
+	if (first_range):
+		pg_source_append_char(writer, '0')
+
+
+# "int <var> = pg_token_stream_peek(stream).kind"
+void pg_emit_peek_kind_line(pg_source_writer* writer, char* var_name):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_source_append(writer, var_name)
+	pg_source_append(writer, c" = pg_token_stream_peek(stream).kind")
+	pg_emit_dynamic_line_end(writer)
+
+
 # Error recovery inside a repetition of a recover-marked rule. Emitted in the
 # child-failed branch, after the stream has been rewound to the iteration
 # mark. At EOF the repetition ends normally; otherwise one diagnostic is
@@ -1427,151 +1502,175 @@ void pg_emit_recovery(pg_source_writer* writer, pg_grammar* grammar, pg_recover_
 	pg_source_line(writer, c"continue")
 
 
-void pg_emit_term(pg_source_writer* writer, pg_grammar* grammar, pg_term* term, int alt_index, int term_index):
+# "pg_ast_node* child_<a>_<t> = <term call>"
+void pg_emit_child_assign(pg_source_writer* writer, pg_grammar* grammar, pg_term* term, int alt_index, int term_index):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"pg_ast_node* ")
+	pg_emit_var(writer, c"child_", alt_index, term_index)
+	pg_source_append(writer, c" = ")
+	pg_emit_term_call(writer, grammar, term)
+	pg_emit_dynamic_line_end(writer)
+
+
+# "pg_ast_add(node, child_<a>_<t>)"
+void pg_emit_child_add(pg_source_writer* writer, int alt_index, int term_index):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"pg_ast_add(node, ")
+	pg_emit_var(writer, c"child_", alt_index, term_index)
+	pg_source_append(writer, c")")
+	pg_emit_dynamic_line_end(writer)
+
+
+# "if (child_<a>_<t> == 0):"
+void pg_emit_child_failed_test(pg_source_writer* writer, int alt_index, int term_index):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"if (")
+	pg_emit_var(writer, c"child_", alt_index, term_index)
+	pg_source_append(writer, c" == 0):")
+	pg_emit_dynamic_line_end(writer)
+
+
+# Today's optional-term attempt: mark, trial parse, rewind or attach.
+void pg_emit_optional_attempt(pg_source_writer* writer, pg_grammar* grammar, pg_term* term, int alt_index, int term_index):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_emit_var(writer, c"optional_mark_", alt_index, term_index)
+	pg_source_append(writer, c" = pg_token_stream_mark(stream)")
+	pg_emit_dynamic_line_end(writer)
+	pg_emit_child_assign(writer, grammar, term, alt_index, term_index)
+	pg_emit_child_failed_test(writer, alt_index, term_index)
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"pg_token_stream_rewind(stream, ")
+	pg_emit_var(writer, c"optional_mark_", alt_index, term_index)
+	pg_source_append(writer, c")")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_dedent(writer)
+	pg_source_line(writer, c"else:")
+	pg_source_indent(writer)
+	pg_emit_child_add(writer, alt_index, term_index)
+	pg_source_dedent(writer)
+
+
+# The guard has already established the term matches here: attach the
+# child directly, with no mark/rewind and no failure branch. Only used
+# for token terms, whose match is decided entirely by the peeked kind.
+void pg_emit_committed_token(pg_source_writer* writer, pg_grammar* grammar, pg_term* term, int alt_index, int term_index):
+	pg_emit_child_assign(writer, grammar, term, alt_index, term_index)
+	pg_emit_child_add(writer, alt_index, term_index)
+
+
+# Today's repetition-iteration attempt: mark, trial parse, rewind plus
+# recovery-or-break on failure, attach and count on success.
+void pg_emit_repeat_attempt(pg_source_writer* writer, pg_grammar* grammar, pg_recover_def* recover, pg_term* term, int alt_index, int term_index):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_emit_var(writer, c"repeat_mark_", alt_index, term_index)
+	pg_source_append(writer, c" = pg_token_stream_mark(stream)")
+	pg_emit_dynamic_line_end(writer)
+	pg_emit_child_assign(writer, grammar, term, alt_index, term_index)
+	pg_emit_child_failed_test(writer, alt_index, term_index)
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"pg_token_stream_rewind(stream, ")
+	pg_emit_var(writer, c"repeat_mark_", alt_index, term_index)
+	pg_source_append(writer, c")")
+	pg_emit_dynamic_line_end(writer)
+	if (recover != 0):
+		pg_emit_recovery(writer, grammar, recover, term.name, alt_index, term_index)
+	else:
+		pg_source_line(writer, c"break")
+	pg_source_dedent(writer)
+	pg_emit_child_add(writer, alt_index, term_index)
+	pg_emit_dynamic_line_start(writer)
+	pg_emit_var(writer, c"repeat_count_", alt_index, term_index)
+	pg_source_append(writer, c" = ")
+	pg_emit_var(writer, c"repeat_count_", alt_index, term_index)
+	pg_source_append(writer, c" + 1")
+	pg_emit_dynamic_line_end(writer)
+
+
+void pg_emit_term(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_term* term, int alt_index, int term_index):
 	if (term.modifier == 0):
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"pg_ast_node* child_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c" = ")
-		pg_emit_term_call(writer, grammar, term)
-		pg_emit_dynamic_line_end(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"if (child_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c" == 0):")
-		pg_emit_dynamic_line_end(writer)
+		pg_emit_child_assign(writer, grammar, term, alt_index, term_index)
+		pg_emit_child_failed_test(writer, alt_index, term_index)
 		pg_source_indent(writer)
 		pg_source_line(writer, c"failed = 1")
 		pg_source_dedent(writer)
 		pg_source_line(writer, c"else:")
 		pg_source_indent(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"pg_ast_add(node, child_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c")")
-		pg_emit_dynamic_line_end(writer)
+		pg_emit_child_add(writer, alt_index, term_index)
 		pg_source_dedent(writer)
 	else if (term.modifier == '?'):
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"int optional_mark_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c" = pg_token_stream_mark(stream)")
-		pg_emit_dynamic_line_end(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"pg_ast_node* child_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c" = ")
-		pg_emit_term_call(writer, grammar, term)
-		pg_emit_dynamic_line_end(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"if (child_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c" == 0):")
-		pg_emit_dynamic_line_end(writer)
-		pg_source_indent(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"pg_token_stream_rewind(stream, optional_mark_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c")")
-		pg_emit_dynamic_line_end(writer)
-		pg_source_dedent(writer)
-		pg_source_line(writer, c"else:")
-		pg_source_indent(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"pg_ast_add(node, child_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c")")
-		pg_emit_dynamic_line_end(writer)
-		pg_source_dedent(writer)
+		if (pg_analysis_term_enter_guardable(analysis, term)):
+			# Enter the optional term only when the current token is in
+			# its first set; a miss is a provably silent failure, so the
+			# skip is exactly what today's failed attempt did.
+			char* kinds = pg_kind_set_new(analysis)
+			pg_analysis_term_first(analysis, term, kinds)
+			char* kind_name = pg_guard_var_name(c"optional_kind_", alt_index, term_index)
+			pg_emit_peek_kind_line(writer, kind_name)
+			pg_emit_dynamic_line_start(writer)
+			pg_source_append(writer, c"if (")
+			pg_emit_kind_set_test(writer, grammar, analysis, kinds, kind_name)
+			pg_source_append(writer, c"):")
+			pg_emit_dynamic_line_end(writer)
+			pg_source_indent(writer)
+			if (pg_grammar_is_token_term(grammar, term.name)):
+				pg_emit_committed_token(writer, grammar, term, alt_index, term_index)
+			else:
+				pg_emit_optional_attempt(writer, grammar, term, alt_index, term_index)
+			pg_source_dedent(writer)
+			free(kind_name)
+			free(kinds)
+		else:
+			pg_emit_optional_attempt(writer, grammar, term, alt_index, term_index)
 	else if ((term.modifier == '*') | (term.modifier == '+')):
 		pg_recover_def* recover = 0
 		if (pg_grammar_is_token_term(grammar, term.name) == 0):
 			recover = pg_grammar_find_recover(grammar, term.name)
+		int guardable = pg_analysis_term_enter_guardable(analysis, term)
 		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"int repeat_count_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
+		pg_source_append(writer, c"int ")
+		pg_emit_var(writer, c"repeat_count_", alt_index, term_index)
 		pg_source_append(writer, c" = 0")
 		pg_emit_dynamic_line_end(writer)
 		pg_source_line(writer, c"while (failed == 0):")
 		pg_source_indent(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"int repeat_mark_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c" = pg_token_stream_mark(stream)")
-		pg_emit_dynamic_line_end(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"pg_ast_node* child_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c" = ")
-		pg_emit_term_call(writer, grammar, term)
-		pg_emit_dynamic_line_end(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"if (child_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c" == 0):")
-		pg_emit_dynamic_line_end(writer)
-		pg_source_indent(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"pg_token_stream_rewind(stream, repeat_mark_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c")")
-		pg_emit_dynamic_line_end(writer)
-		if (recover != 0):
-			pg_emit_recovery(writer, grammar, recover, term.name, alt_index, term_index)
-		else:
+		if (guardable):
+			# Iterate while the current token is in the term's first
+			# set; the stop is exactly today's final failed attempt.
+			char* kinds = pg_kind_set_new(analysis)
+			pg_analysis_term_first(analysis, term, kinds)
+			char* kind_name = pg_guard_var_name(c"repeat_kind_", alt_index, term_index)
+			pg_emit_peek_kind_line(writer, kind_name)
+			pg_emit_dynamic_line_start(writer)
+			pg_source_append(writer, c"if ((")
+			pg_emit_kind_set_test(writer, grammar, analysis, kinds, kind_name)
+			pg_source_append(writer, c") == 0):")
+			pg_emit_dynamic_line_end(writer)
+			pg_source_indent(writer)
 			pg_source_line(writer, c"break")
-		pg_source_dedent(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"pg_ast_add(node, child_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c")")
-		pg_emit_dynamic_line_end(writer)
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"repeat_count_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c" = repeat_count_")
-		pg_source_append_int(writer, alt_index)
-		pg_source_append(writer, c"_")
-		pg_source_append_int(writer, term_index)
-		pg_source_append(writer, c" + 1")
-		pg_emit_dynamic_line_end(writer)
+			pg_source_dedent(writer)
+			if (pg_grammar_is_token_term(grammar, term.name)):
+				pg_emit_committed_token(writer, grammar, term, alt_index, term_index)
+				pg_emit_dynamic_line_start(writer)
+				pg_emit_var(writer, c"repeat_count_", alt_index, term_index)
+				pg_source_append(writer, c" = ")
+				pg_emit_var(writer, c"repeat_count_", alt_index, term_index)
+				pg_source_append(writer, c" + 1")
+				pg_emit_dynamic_line_end(writer)
+			else:
+				pg_emit_repeat_attempt(writer, grammar, recover, term, alt_index, term_index)
+			free(kind_name)
+			free(kinds)
+		else:
+			pg_emit_repeat_attempt(writer, grammar, recover, term, alt_index, term_index)
 		pg_source_dedent(writer)
 		if (term.modifier == '+'):
 			pg_emit_dynamic_line_start(writer)
-			pg_source_append(writer, c"if (repeat_count_")
-			pg_source_append_int(writer, alt_index)
-			pg_source_append(writer, c"_")
-			pg_source_append_int(writer, term_index)
+			pg_source_append(writer, c"if (")
+			pg_emit_var(writer, c"repeat_count_", alt_index, term_index)
 			pg_source_append(writer, c" == 0):")
 			pg_emit_dynamic_line_end(writer)
 			pg_source_indent(writer)
@@ -1579,7 +1678,155 @@ void pg_emit_term(pg_source_writer* writer, pg_grammar* grammar, pg_term* term, 
 			pg_source_dedent(writer)
 
 
-void pg_emit_rule(pg_source_writer* writer, pg_grammar* grammar, pg_rule* rule):
+# "node = pg_ast_new(<rule ast kind>, 0, "<rule>")" plus reattaching any
+# already-parsed left-factored prefix children in order.
+void pg_emit_node_alloc(pg_source_writer* writer, pg_grammar* grammar, pg_rule* rule, list[char*] prefix_children):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"node = pg_ast_new(")
+	pg_emit_ast_kind_call(writer, grammar, rule.name)
+	pg_source_append(writer, c", 0, ")
+	pg_emit_c_string_literal(writer, rule.name)
+	pg_source_append(writer, c")")
+	pg_emit_dynamic_line_end(writer)
+	int i = 0
+	while (i < prefix_children.length):
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, c"pg_ast_add(node, ")
+		pg_source_append(writer, prefix_children[i])
+		pg_source_append(writer, c")")
+		pg_emit_dynamic_line_end(writer)
+		i = i + 1
+
+
+# One alternative's terms from offset on: today's attempt body. With an
+# empty remainder (a fully factored alternative) the node is returned
+# outright — nothing is left to fail.
+void pg_emit_alternative_body(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule, int alt_index, int offset, list[char*] prefix_children, char* mark_name):
+	pg_alternative* alternative = rule.alternatives[alt_index]
+	pg_emit_node_alloc(writer, grammar, rule, prefix_children)
+	if (offset >= alternative.terms.length):
+		pg_source_line(writer, c"return node")
+		return
+	pg_source_line(writer, c"failed = 0")
+	int term_index = offset
+	while (term_index < alternative.terms.length):
+		pg_source_line(writer, c"if (failed == 0):")
+		pg_source_indent(writer)
+		pg_emit_term(writer, grammar, analysis, alternative.terms[term_index], alt_index, term_index)
+		pg_source_dedent(writer)
+		term_index = term_index + 1
+	pg_source_line(writer, c"if (failed == 0):")
+	pg_source_indent(writer)
+	pg_source_line(writer, c"return node")
+	pg_source_dedent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"pg_token_stream_rewind(stream, ")
+	pg_source_append(writer, mark_name)
+	pg_source_append(writer, c")")
+	pg_emit_dynamic_line_end(writer)
+
+
+void pg_emit_choice(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule, int alt_start, int alt_count, int offset, list[char*] prefix_children, char* mark_name, char* kind_name);
+
+
+# A left-factored run: parse the shared prefix once into locals, then
+# dispatch the suffix choice from a fresh mark. On any failure the
+# stream is restored to the enclosing mark, exactly like the separate
+# per-alternative attempts this replaces.
+void pg_emit_factored_unit(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule, pg_choice_unit* unit, int offset, list[char*] prefix_children, char* mark_name):
+	pg_alternative* head = rule.alternatives[unit.alt_start]
+	pg_source_line(writer, c"failed = 0")
+	list[char*] inner_children = new list[char*]
+	int i = 0
+	while (i < prefix_children.length):
+		inner_children.push(prefix_children[i])
+		i = i + 1
+	# The prefix children are declared at unit level so the suffix
+	# alternatives (nested blocks) can attach them to their nodes.
+	int term_index = offset
+	while (term_index < offset + unit.prefix_length):
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, c"pg_ast_node* ")
+		pg_emit_var(writer, c"child_", unit.alt_start, term_index)
+		pg_source_append(writer, c" = 0")
+		pg_emit_dynamic_line_end(writer)
+		term_index = term_index + 1
+	term_index = offset
+	while (term_index < offset + unit.prefix_length):
+		pg_source_line(writer, c"if (failed == 0):")
+		pg_source_indent(writer)
+		pg_emit_dynamic_line_start(writer)
+		pg_emit_var(writer, c"child_", unit.alt_start, term_index)
+		pg_source_append(writer, c" = ")
+		pg_emit_term_call(writer, grammar, head.terms[term_index])
+		pg_emit_dynamic_line_end(writer)
+		pg_emit_child_failed_test(writer, unit.alt_start, term_index)
+		pg_source_indent(writer)
+		pg_source_line(writer, c"failed = 1")
+		pg_source_dedent(writer)
+		pg_source_dedent(writer)
+		inner_children.push(pg_guard_var_name(c"child_", unit.alt_start, term_index))
+		term_index = term_index + 1
+	pg_source_line(writer, c"if (failed == 0):")
+	pg_source_indent(writer)
+	char* factored_mark = pg_guard_var_name(c"factored_mark_", unit.alt_start, offset)
+	char* factored_kind = pg_guard_var_name(c"factored_kind_", unit.alt_start, offset)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_source_append(writer, factored_mark)
+	pg_source_append(writer, c" = pg_token_stream_mark(stream)")
+	pg_emit_dynamic_line_end(writer)
+	pg_emit_choice(writer, grammar, analysis, rule, unit.alt_start, unit.member_count, offset + unit.prefix_length, inner_children, factored_mark, factored_kind)
+	pg_source_dedent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"pg_token_stream_rewind(stream, ")
+	pg_source_append(writer, mark_name)
+	pg_source_append(writer, c")")
+	pg_emit_dynamic_line_end(writer)
+	i = prefix_children.length
+	while (i < inner_children.length):
+		free(inner_children[i])
+		i = i + 1
+	list_free[char*](inner_children)
+	free(factored_mark)
+	free(factored_kind)
+
+
+# Ordered choice over alternatives alt_start..alt_start+alt_count-1 from
+# term offset on. Guarded units only run when the current token is in
+# their first set; overlapping or unguardable units keep today's ordered
+# attempt semantics simply by being tried in sequence.
+void pg_emit_choice(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule, int alt_start, int alt_count, int offset, list[char*] prefix_children, char* mark_name, char* kind_name):
+	list[pg_choice_unit*] units = pg_plan_choice(analysis, rule, alt_start, alt_count, offset)
+	int any_guarded = 0
+	int i = 0
+	while (i < units.length):
+		if (units[i].guarded):
+			any_guarded = 1
+		i = i + 1
+	if (any_guarded):
+		pg_emit_peek_kind_line(writer, kind_name)
+	i = 0
+	while (i < units.length):
+		pg_choice_unit* unit = units[i]
+		if (unit.guarded):
+			pg_emit_dynamic_line_start(writer)
+			pg_source_append(writer, c"if (")
+			pg_emit_kind_set_test(writer, grammar, analysis, unit.guard_set, kind_name)
+			pg_source_append(writer, c"):")
+			pg_emit_dynamic_line_end(writer)
+			pg_source_indent(writer)
+		if (unit.member_count == 1):
+			pg_emit_alternative_body(writer, grammar, analysis, rule, unit.alt_start, offset, prefix_children, mark_name)
+		else:
+			pg_emit_factored_unit(writer, grammar, analysis, rule, unit, offset, prefix_children, mark_name)
+		if (unit.guarded):
+			pg_source_dedent(writer)
+		i = i + 1
+	pg_choice_units_free(units)
+
+
+void pg_emit_rule(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule):
 	pg_emit_dynamic_line_start(writer)
 	pg_source_append(writer, c"pg_ast_node* ")
 	pg_source_append(writer, grammar.name)
@@ -1591,30 +1838,9 @@ void pg_emit_rule(pg_source_writer* writer, pg_grammar* grammar, pg_rule* rule):
 	pg_source_line(writer, c"int mark = pg_token_stream_mark(stream)")
 	pg_source_line(writer, c"pg_ast_node* node = 0")
 	pg_source_line(writer, c"int failed = 0")
-	int alt_index = 0
-	while (alt_index < rule.alternatives.length):
-		pg_alternative* alternative = rule.alternatives[alt_index]
-		pg_emit_dynamic_line_start(writer)
-		pg_source_append(writer, c"node = pg_ast_new(")
-		pg_emit_ast_kind_call(writer, grammar, rule.name)
-		pg_source_append(writer, c", 0, ")
-		pg_emit_c_string_literal(writer, rule.name)
-		pg_source_append(writer, c")")
-		pg_emit_dynamic_line_end(writer)
-		pg_source_line(writer, c"failed = 0")
-		int term_index = 0
-		while (term_index < alternative.terms.length):
-			pg_source_line(writer, c"if (failed == 0):")
-			pg_source_indent(writer)
-			pg_emit_term(writer, grammar, alternative.terms[term_index], alt_index, term_index)
-			pg_source_dedent(writer)
-			term_index = term_index + 1
-		pg_source_line(writer, c"if (failed == 0):")
-		pg_source_indent(writer)
-		pg_source_line(writer, c"return node")
-		pg_source_dedent(writer)
-		pg_source_line(writer, c"pg_token_stream_rewind(stream, mark)")
-		alt_index = alt_index + 1
+	list[char*] prefix_children = new list[char*]
+	pg_emit_choice(writer, grammar, analysis, rule, 0, rule.alternatives.length, 0, prefix_children, c"mark", c"first_kind")
+	list_free[char*](prefix_children)
 	pg_source_line(writer, c"return 0")
 	pg_source_dedent(writer)
 	pg_source_blank(writer)
@@ -1654,6 +1880,7 @@ void pg_emit_parse_entry(pg_source_writer* writer, pg_grammar* grammar):
 
 
 char* pg_generate_parser(pg_grammar* grammar):
+	pg_analysis* analysis = pg_analyze_grammar(grammar)
 	pg_source_writer* writer = pg_source_writer_new()
 	pg_source_line(writer, c"/* generated by ParserGenerator */")
 	pg_source_line(writer, c"import lib.lib")
@@ -1669,7 +1896,8 @@ char* pg_generate_parser(pg_grammar* grammar):
 	pg_emit_match_token(writer, grammar)
 	int i = 0
 	while (i < grammar.rules.length):
-		pg_emit_rule(writer, grammar, grammar.rules[i])
+		pg_emit_rule(writer, grammar, analysis, grammar.rules[i])
 		i = i + 1
 	pg_emit_parse_entry(writer, grammar)
+	pg_analysis_free(analysis)
 	return pg_source_take(writer)
