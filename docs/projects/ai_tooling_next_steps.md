@@ -171,29 +171,42 @@ is a queue, not an archive.
   content-hash caching on macOS, add per-arch dirent accessors
   (`reclen`/`name`/`kind`) next to each `getdents` shim in
   `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
-- **`itoa(INT_MIN)` prints `"-"` instead of the number — pre-existing
-  library bug, unrelated to float codegen.** Found 2026-07-16 while
-  testing float→int conversion edges for issue #17
-  (`tests/float_conformance_test.w`, `tests/x64_float64_conformance_test.w`):
-  `cvttss2si`/`cvttsd2si` substitute the "integer indefinite" sentinel
-  (`INT_MIN`'s bit pattern) on out-of-range float→int conversions (Intel
-  SDM behavior, no software range check — see `docs/projects/float.md`'s
-  "Known MVP semantic differences"), and printing that value via
-  `itoa()` for a debug message reproduces the bug: `itoa` (`lib/lib.w`)
-  negates via `n = 0 - n`, which overflows back to the same negative
-  value for `INT_MIN` in two's complement, so its digit-extraction loop
-  (`while (n > 0)`) never runs and the output is just `"-"` with no
+- **`itoa(INT_MIN)` printed `"-"` instead of the number — resolved
+  (2026-07-17).** Found 2026-07-16 while testing float→int conversion
+  edges for issue #17 (`tests/float_conformance_test.w`,
+  `tests/x64_float64_conformance_test.w`): `cvttss2si`/`cvttsd2si`
+  substitute the "integer indefinite" sentinel (`INT_MIN`'s bit pattern)
+  on out-of-range float→int conversions (Intel SDM behavior, no software
+  range check — see `docs/projects/float.md`'s "Known MVP semantic
+  differences"), and printing that value via `itoa()` for a debug
+  message reproduced the bug: `itoa` (`lib/lib.w`) negated via
+  `n = 0 - n`, which overflows back to the same negative value for
+  `INT_MIN` in two's complement, so its digit-extraction loop
+  (`while (n > 0)`) never ran and the output was just `"-"` with no
   digits — on both the 32-bit target (`-2147483648`) and x64
-  (`-9223372036854775808`). Comparison-based assertions (`assert_equal`'s
-  `!=` check, `assert_equal_hex`'s `hex()`-based formatting, which uses
-  bitwise shifts rather than negation) are unaffected; only code that
-  formats an `INT_MIN`-valued int via `itoa()` hits this — the new
-  conformance tests route around it by asserting bit patterns via
-  `assert_equal_hex` instead. Not fixed here (out of scope for a
-  float-conformance PR, and `lib/lib.w` is broadly imported); the fix is
-  a one-line special case (or restructure the loop to extract digits via
-  `-(n % 10)` without pre-negating `n`, matching `intstrlen`'s existing
-  correct handling of negative `n`).
+  (`-9223372036854775808`). Fixed by extracting digits directly from the
+  (possibly still negative) `n`: `n % 10` keeps `n`'s sign under
+  truncating division, so a negative digit's magnitude (at most 9) can
+  always be negated safely, unlike `n` itself. Same-file fallout found
+  while fixing this: `intstrlen` had the identical `0 - i` overflow for
+  `INT_MIN` (undercounting to length 1 instead of sign-plus-every-digit)
+  despite looking like the "already correct" reference implementation the
+  original fix sketch (above) pointed at — fixed the same way, dropping
+  the pre-negation; a negative dividend walks to 0 in exactly as many
+  steps as its positive counterpart, so the digit count is unaffected.
+  Also bumped `itoa`'s `malloc(16)` to `malloc(24)`: a 64-bit `INT_MIN`
+  string is 21 bytes with the NUL, and 16 bytes was already tight for
+  large 64-bit positive values before this fix even made `INT_MIN` the
+  longest case. Lesson for future "mirror the working sibling function"
+  fix sketches: verify the sibling against the actual overflow case
+  rather than trusting that it "already handles negatives correctly" —
+  both functions had the same bug, and only one was named as suspect.
+  Comparison-based assertions (`assert_equal`'s `!=` check,
+  `assert_equal_hex`'s `hex()`-based formatting, which uses bitwise
+  shifts rather than negation) were never affected. Covered by
+  `test_itoa_int_min` / `test_intstrlen_int_min` in `lib/lib_test.w`
+  (word-size-derived `INT_MIN`, run on both the 32-bit and x64 twins via
+  the file's `# wbuild: x64` directive).
 - **`stream_peek_byte` sign-extends the byte 0xFF into the -1 EOF
   sentinel — pre-existing library bug.** Found 2026-07-16 while building
   `tests/ndjson_utf8_validator.w` for #287 stage 1: `lib/stream.w`'s

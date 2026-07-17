@@ -149,19 +149,30 @@ void reverse(char *s):
 
 # Returns a malloc'd string the caller may free.
 char* itoa(int n):
-	char *s = malloc(16)
+	# 24 bytes covers the longest possible result on either word size: a
+	# 64-bit INT_MIN ("-9223372036854775808") is 20 characters plus the
+	# trailing NUL.
+	char *s = malloc(24)
 	int i = 0
-	int sign = n
+	int negative = 0
 	if(n < 0):
-		n = 0-n
+		negative = 1
 	if (n == 0):
 		s[i] = '0'
 		i = i + 1
-	while(n > 0):
-		s[i] = n % 10 + '0'
+	# Extract digits directly from n (which may still be negative)
+	# instead of pre-negating with "0 - n": negating INT_MIN overflows
+	# back to INT_MIN, which used to skip this loop entirely and print
+	# just "-". Truncating division keeps n % 10 in -9..9 with the sign
+	# of n, so a negative digit's magnitude fits in a single negation.
+	while(n != 0):
+		int digit = n % 10
+		if (digit < 0):
+			digit = 0 - digit
+		s[i] = digit + '0'
 		i = i + 1
 		n = n / 10
-	if(sign < 0):
+	if(negative):
 		s[i] = '-'
 		i = i + 1
 	s[i] = 0
@@ -188,9 +199,13 @@ int intstrlen(int i):
 	if (i == 0):
 		return 1
 	if (i < 0):
-		i = 0-i
 		len = len + 1  /* for '-' */
-	while (i > 0):
+	# Divide i directly (it may stay negative) instead of pre-negating
+	# with "0 - i": negating INT_MIN overflows back to INT_MIN, which
+	# used to skip this loop entirely. Truncating division walks a
+	# negative i down to 0 in exactly as many steps as its positive
+	# counterpart, so the digit count comes out the same either way.
+	while (i != 0):
 		i = i / 10
 		len = len + 1
 	return len
