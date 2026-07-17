@@ -303,7 +303,7 @@ int bignum_round_up(int rem, int den, int quotient):
 	bignum_free(twice)
 	if (cmp > 0):
 		return 1
-	if ((cmp == 0) & ((quotient & 1) == 1)):
+	if ((cmp == 0) && ((quotient & 1) == 1)):
 		return 1
 	return 0
 

@@ -129,7 +129,7 @@ int print_helper_for_type(int got):
 	if (t == type_unqualified(bool_type)):
 		return 0
 	int size = type_get_size(t)
-	if ((size == 1) | (size == 2) | (size == 4) | (size == 8)):
+	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
 		return 0
 	print_unsupported(got)
 	return 0

@@ -43,7 +43,7 @@ int extern_max_params():
 
 int extern_statement():
 	if (accept(c"c_lib")):
-		if ((token[0] != '"') & (((token[0] != 'c') | (token[1] != '"')))):
+		if ((token[0] != '"') && (((token[0] != 'c') || (token[1] != '"')))):
 			error(c"c_lib expects a \"soname\" string literal")
 		int len
 		if (token[0] == 'c'):
@@ -98,7 +98,7 @@ int extern_statement():
 		int is_variadic = 0
 		char* param_classes = malloc(extern_max_params())
 		int ret_class = ffi_type_class(ret_type)
-		if ((ret_class == 2) & (word_size != 8)):
+		if ((ret_class == 2) && (word_size != 8)):
 			error(c"float64 requires the x64 target")
 		while (accept(c")") == 0):
 			# A trailing '...' marks a variadic C function: calls may pass
@@ -114,7 +114,7 @@ int extern_statement():
 				error(c"too many extern parameters")
 			int ptype = type_name()
 			int ptype_class = ffi_type_class(ptype)
-			if ((ptype_class == 2) & (word_size != 8)):
+			if ((ptype_class == 2) && (word_size != 8)):
 				error(c"float64 requires the x64 target")
 			param_classes[param_count - 1] = ptype_class
 			if (param_count <= sym_max_param_slots()):
@@ -132,7 +132,7 @@ int extern_statement():
 		# declared once per call signature (e.g. objc_msgSend).
 		char* import_name = name
 		if (accept(c"=")):
-			if ((token[0] != '"') & (((token[0] != 'c') | (token[1] != '"')))):
+			if ((token[0] != '"') && (((token[0] != 'c') || (token[1] != '"')))):
 				error(c"extern alias expects a \"symbol\" string literal")
 			int alias_len
 			if (token[0] == 'c'):

@@ -104,13 +104,13 @@ int diag_utf8_sequence_length(char* s, int i):
 	int c = s[i] & 255
 	int need = 0
 	int codepoint = 0
-	if ((c >= 194) & (c <= 223)):
+	if ((c >= 194) && (c <= 223)):
 		need = 1
 		codepoint = c & 31
-	else if ((c >= 224) & (c <= 239)):
+	else if ((c >= 224) && (c <= 239)):
 		need = 2
 		codepoint = c & 15
-	else if ((c >= 240) & (c <= 244)):
+	else if ((c >= 240) && (c <= 244)):
 		need = 3
 		codepoint = c & 7
 	else:
@@ -118,15 +118,15 @@ int diag_utf8_sequence_length(char* s, int i):
 	int j = 1
 	while (j <= need):
 		int d = s[i + j] & 255
-		if ((d < 128) | (d > 191)):
+		if ((d < 128) || (d > 191)):
 			return 0
 		codepoint = (codepoint << 6) | (d & 63)
 		j = j + 1
-	if ((need == 2) & (codepoint < 2048)):
+	if ((need == 2) && (codepoint < 2048)):
 		return 0
-	if ((need == 3) & (codepoint < 65536)):
+	if ((need == 3) && (codepoint < 65536)):
 		return 0
-	if ((codepoint >= 55296) & (codepoint <= 57343)):
+	if ((codepoint >= 55296) && (codepoint <= 57343)):
 		return 0
 	if (codepoint > 1114111):
 		return 0

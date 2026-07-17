@@ -227,7 +227,7 @@ void statement():
 	# break_in_switch is set (grammar/while_statement.w), a loop otherwise
 	else if (accept(c"break")):
 		expect_or_newline(c";")
-		if ((loop_depth == 0) & (switch_depth == 0)):
+		if ((loop_depth == 0) && (switch_depth == 0)):
 			error(c"'break' outside of a loop or switch")
 		if (break_in_switch):
 			# Unwind block locals pushed since the switch started

@@ -31,11 +31,11 @@ int expression();
 # a representation of its own (floats, strings, vars, slices): those must
 # not be re-encoded with type_value().
 int conditional_arm_is_value(int t):
-	if ((t == 3) | (t == 4)):
+	if ((t == 3) || (t == 4)):
 		return 1
-	if ((t == float32_value_type) | (t == float64_value_type)):
+	if ((t == float32_value_type) || (t == float64_value_type)):
 		return 1
-	if ((t == string_value_type) | (t == var_value_type)):
+	if ((t == string_value_type) || (t == var_value_type)):
 		return 1
 	if (type_get_kind(t) == type_kind_slice_value()):
 		return 1

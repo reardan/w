@@ -99,6 +99,43 @@ is a queue, not an archive.
   per-arch resolution, with a win64 stub that always reports a
   transport failure so the feature degrades to "unavailable" instead
   of "won't compile" (2026-07-16).
+- **`w check --bool-ops` (and the underlying bool-bitwise condition
+  warning generally) misreports the site location for any warning
+  inside an *imported* file.** Found 2026-07-17 doing the bool-bitwise
+  stage-2 sweep (wave 2, chunk 2d: `grammar/`+`compiler/`+
+  `code_generator/`). Two independent bugs stack: (1) every reported
+  line number for a warning inside an imported (non-root) file is off
+  by exactly +1 — reproduced minimally with a two-file `import`
+  (`main.w` importing `sub.w`, the flagged `&` on `sub.w`'s line 2
+  reports as line 3); a single-file root program checked directly does
+  not show this, so it's specific to crossing an import boundary
+  (plausibly an extra line-count tick when the tokenizer switches
+  files). (2) independent of file identity, the reported line/column
+  for this warning is wherever the tokenizer's one-token lookahead
+  happens to be sitting when `warning()` fires (i.e. after the full
+  join has been parsed), not the location of the flagged operator
+  itself — for a chained condition (`A & B & C`, or nesting across a
+  line break) this can point at a wholly different token than the one
+  that needs editing. Reproduced with a 3-term chain (`(a==1) & (b==2)
+  & (c==3)`) in a root file (no import-boundary bug in play): only the
+  first `&` is actually flagged (both operands bool; the fold's result
+  promotes to a non-bool type so later folds in the same chain never
+  qualify), but the reported column lands on the *second* `&`, one
+  token further right than the real one. Combined, agents cannot trust
+  either the line or the column for this warning inside any imported,
+  multi-line, or chained site — the only reliable approach found was
+  computing `actual_line = reported_line - 1` for imported files, then
+  reading the surrounding source to identify which specific `&`/`|`
+  the message's operator symbol (`&` vs `|`) and site count actually
+  refer to. A `check --bool-ops --json` mode that reported the true
+  operator token's byte offset (as recorded by the parser at `accept()`
+  time, before any further lookahead) would remove this entirely.
+  Related, not a bug: converting a flagged join to `&&`/`||` changes
+  operator precedence grouping (`&&`/`||` bind looser than `&`/`|`), so
+  in a 3+-term chain each conversion can newly expose the *next* fold
+  as bool-vs-bool (their result type is no longer erased by `&`/`|`'s
+  int-promotion) — sweeping such a chain to a real fixpoint takes one
+  `check --bool-ops` re-run per remaining fold, not one.
 
 ## Test selection (`bin/wtest`)
 

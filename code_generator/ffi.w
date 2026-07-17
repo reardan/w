@@ -381,7 +381,7 @@ void emit_c_abi_call_arm64(int n, char* classes, int ret_class, int got_vaddr):
 	# Darwin packs on-stack arguments at natural size instead of 8-byte
 	# slots, which the three-class model cannot express; no binding we
 	# author needs overflow arguments, so reject rather than guess.
-	if ((target_os == 1) & (stack_count > 0)):
+	if ((target_os == 1) && (stack_count > 0)):
 		error(c"arm64_darwin extern calls support at most 8 integer and 8 float arguments")
 
 	a64(op(0x91, 0x0003e9))   # mov x9, sp        (the caller's sp)
