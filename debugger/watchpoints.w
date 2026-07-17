@@ -125,7 +125,7 @@ void dbg_watch_report(int i):
 
 
 void dbg_watch_delete(int i):
-	if ((i < 0) | (i >= dbg_watch_count)):
+	if ((i < 0) || (i >= dbg_watch_count)):
 		println(c"no such watchpoint")
 		return;
 	if (dbg_watch_addr_at(i) == 0):

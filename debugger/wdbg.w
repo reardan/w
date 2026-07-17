@@ -134,7 +134,7 @@ int wdbg_read_command(char* buf, int size):
 # Terminate the first word of s and return the rest (spaces skipped).
 char* dbg_split_word(char* s):
 	int i = 0
-	while ((s[i] != 0) & (s[i] != ' ')):
+	while ((s[i] != 0) && (s[i] != ' ')):
 		i = i + 1
 	if (s[i] == 0):
 		return s + i
@@ -159,13 +159,13 @@ int dbg_is_identifier(char* s):
 	while (s[i]):
 		int c = s[i]
 		int ok = 0
-		if (('a' <= c) & (c <= 'z')):
+		if (('a' <= c) && (c <= 'z')):
 			ok = 1
-		if (('A' <= c) & (c <= 'Z')):
+		if (('A' <= c) && (c <= 'Z')):
 			ok = 1
 		if (c == '_'):
 			ok = 1
-		if ((i > 0) & ('0' <= c) & (c <= '9')):
+		if ((i > 0) && ('0' <= c) && (c <= '9')):
 			ok = 1
 		if (ok == 0):
 			return 0
@@ -343,7 +343,7 @@ int dbg_fr_base_at(int n):
 # The selected frame's pc: the stop address for frame 0, the address
 # inside the calling statement for older frames.
 int dbg_sel_pc(int stop_addr):
-	if ((dbg_fr_sel <= 0) | (dbg_fr_sel >= dbg_fr_count)):
+	if ((dbg_fr_sel <= 0) || (dbg_fr_sel >= dbg_fr_count)):
 		return stop_addr
 	return dbg_fr_pc_at(dbg_fr_sel)
 
@@ -351,7 +351,7 @@ int dbg_sel_pc(int stop_addr):
 # esp at the selected frame's statement boundary, or 0 when the frame's
 # base or line info is unknown (locals cannot be addressed then).
 int dbg_sel_esp(int context):
-	if ((dbg_fr_sel <= 0) | (dbg_fr_sel >= dbg_fr_count)):
+	if ((dbg_fr_sel <= 0) || (dbg_fr_sel >= dbg_fr_count)):
 		return ctx_esp(context)
 	int base = dbg_fr_base_at(dbg_fr_sel)
 	if (base == 0):
@@ -391,7 +391,7 @@ void dbg_frame_command(int context, char* arg):
 	int n = dbg_fr_sel
 	if (arg[0] != 0):
 		n = atoi(arg)
-		if ((n < 0) | (n >= dbg_fr_count)):
+		if ((n < 0) || (n >= dbg_fr_count)):
 			print(c"no frame ")
 			println(arg)
 			return;
@@ -449,7 +449,7 @@ void dbg_print_command(int pc, int esp, char* arg):
 # set <name> <value>: writes a local, argument or global word.
 void dbg_set_command(int pc, int esp, char* arg):
 	char* value_text = dbg_split_word(arg)
-	if ((arg[0] == 0) | (value_text[0] == 0)):
+	if ((arg[0] == 0) || (value_text[0] == 0)):
 		println(c"usage: set <name> <value>")
 		return;
 	int v = dbg_number(value_text)
@@ -483,7 +483,7 @@ void dbg_watch_command(int pc, int esp, char* arg):
 		return;
 	int addr = 0
 	int note = -1
-	if (((arg[0] >= '0') & (arg[0] <= '9')) | (arg[0] == '-')):
+	if (((arg[0] >= '0') && (arg[0] <= '9')) || (arg[0] == '-')):
 		addr = dbg_number(arg)
 	else:
 		note = dbg_local_find(arg, pc)
@@ -527,7 +527,7 @@ void dbg_condition_command(char* arg):
 		println(c"usage: condition <n> [<expr>]")
 		return;
 	int n = atoi(arg) - 1
-	if ((n < 0) | (n >= bp_used)):
+	if ((n < 0) || (n >= bp_used)):
 		println(c"no such breakpoint")
 		return;
 	if (bp_addr(n) == 0):
@@ -548,11 +548,11 @@ void dbg_condition_command(char* arg):
 # hits of breakpoint n before it actually stops.
 void dbg_ignore_command(char* arg):
 	char* count_text = dbg_split_word(arg)
-	if ((arg[0] == 0) | (count_text[0] == 0)):
+	if ((arg[0] == 0) || (count_text[0] == 0)):
 		println(c"usage: ignore <n> <count>")
 		return;
 	int n = atoi(arg) - 1
-	if ((n < 0) | (n >= bp_used)):
+	if ((n < 0) || (n >= bp_used)):
 		println(c"no such breakpoint")
 		return;
 	if (bp_addr(n) == 0):
@@ -577,7 +577,7 @@ void dbg_ignore_command(char* arg):
 # slot is a logpoint - eligible hits print <expr> and auto-continue.
 void dbg_log_command(int current_file, char* arg):
 	char* expr = dbg_split_word(arg)
-	if ((arg[0] == 0) | (expr[0] == 0)):
+	if ((arg[0] == 0) || (expr[0] == 0)):
 		println(c"usage: log <function | line | file:line> <expr>")
 		return;
 	int addr = bp_resolve_target(arg, current_file)
@@ -598,7 +598,7 @@ void dbg_examine_command(int pc, int esp, char* arg):
 		println(c"usage: x <address | name> [count]")
 		return;
 	int addr = 0
-	if (((arg[0] >= '0') & (arg[0] <= '9')) | (arg[0] == '-')):
+	if (((arg[0] >= '0') && (arg[0] <= '9')) || (arg[0] == '-')):
 		addr = dbg_number(arg)
 	else:
 		int note = dbg_local_find(arg, pc)
@@ -854,7 +854,7 @@ void wdbg_command_loop(int context, int stop_addr):
 			dbg_disas_command(dbg_sel_pc(stop_addr), arg)
 		else if ((strcmp(command, c"b") == 0) | (strcmp(command, c"break") == 0) | (strcmp(command, c"tb") == 0) | (strcmp(command, c"tbreak") == 0)):
 			int temp = 0
-			if ((command[0] == 't') & (command[1] == 'b')):
+			if ((command[0] == 't') && (command[1] == 'b')):
 				temp = 1
 			if (strcmp(command, c"tbreak") == 0):
 				temp = 1
@@ -993,7 +993,7 @@ int dbg_step_should_stop(int context, int eip):
 			return 1 /* unknown starting frame: behave like step */
 		if (esp > frame_base):
 			return 1 /* returned past the starting frame */
-		if ((eip >= dbg_step_fstart) & (eip < dbg_step_fend)):
+		if ((eip >= dbg_step_fstart) && (eip < dbg_step_fend)):
 			if (esp == frame_base - dbg_line_stack(entry) * __word_size__):
 				return 1 /* a statement boundary of the starting frame */
 		return 0
