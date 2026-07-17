@@ -50,7 +50,7 @@ char* arm64_fmt_mem(asm_operand* op):
 # else (add/sub/movz) is decimal.
 char* arm64_fmt_imm(asm_insn* insn, asm_operand* op):
 	if (strcmp(insn.mnemonic, c"svc") == 0 | strcmp(insn.mnemonic, c"brk") == 0 | strcmp(insn.mnemonic, c"hlt") == 0):
-		if (op.imm >= 0 & op.imm < 10):
+		if (op.imm >= 0 && op.imm < 10):
 			return strjoin(c"#", itoa(op.imm))
 		if (op.imm < 0):
 			return strjoin(c"#-", asm_hex_min(0 - op.imm))

@@ -33,11 +33,11 @@ void arm64_parse_skip_spaces(arm64_parse* p):
 
 
 int arm64_ident_char(int c):
-	if (c >= 'a' & c <= 'z'):
+	if (c >= 'a' && c <= 'z'):
 		return 1
-	if (c >= 'A' & c <= 'Z'):
+	if (c >= 'A' && c <= 'Z'):
 		return 1
-	if (c >= '0' & c <= '9'):
+	if (c >= '0' && c <= '9'):
 		return 1
 	if (c == '_'):
 		return 1
@@ -69,13 +69,13 @@ int arm64_parse_number(arm64_parse* p):
 		sign = 0 - 1
 		p.pos = p.pos + 1
 	int value = 0
-	if (p.text[p.pos] == '0' & p.text[p.pos + 1] == 'x'):
+	if (p.text[p.pos] == '0' && p.text[p.pos + 1] == 'x'):
 		p.pos = p.pos + 2
 		while (asm_hex_digit(p.text[p.pos]) >= 0):
 			value = (value << 4) | asm_hex_digit(p.text[p.pos])
 			p.pos = p.pos + 1
 	else:
-		while (p.text[p.pos] >= '0' & p.text[p.pos] <= '9'):
+		while (p.text[p.pos] >= '0' && p.text[p.pos] <= '9'):
 			value = value * 10 + (p.text[p.pos] - '0')
 			p.pos = p.pos + 1
 	return sign * value
@@ -189,7 +189,7 @@ int asm_arm64_parse(char* line, asm_insn* insn):
 
 	# mnemonic: up to the first space
 	int start = p.pos
-	while (p.text[p.pos] != 0 & p.text[p.pos] != ' '):
+	while (p.text[p.pos] != 0 && p.text[p.pos] != ' '):
 		p.pos = p.pos + 1
 	int n = p.pos - start
 	char* mn = malloc(n + 1)

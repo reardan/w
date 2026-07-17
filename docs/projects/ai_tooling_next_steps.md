@@ -99,6 +99,38 @@ is a queue, not an archive.
   per-arch resolution, with a win64 stub that always reports a
   transport failure so the feature degrades to "unavailable" instead
   of "won't compile" (2026-07-16).
+- **`w check --bool-ops` reports diagnostics one line low.** Found
+  2026-07-17 sweeping `libs/asm/` (wave 2b): every fired site's `line`
+  is the line *after* the one actually containing the flagged `&`/`|`
+  (the `column` is correct for the true line; only `line` is off by
+  +1). Repro: `if (a == 1 & b == 2):` on line N reports `"line": N+1`.
+  Verified via `grep -n` cross-checks across 12 files / 136 sites in
+  `libs/asm/` — the +1 offset was uniform, never off by 0 or 2. Didn't
+  block this sweep once identified (every reported line was adjusted -1
+  before editing), but will bite anything that acts on the reported line
+  directly — auto-fix scripts, editor jump-to-diagnostic. Plain `w
+  check` (non-bool-ops) warnings weren't audited for the same offset;
+  worth isolating to the specific emission site and fixing before other
+  tooling builds on `--bool-ops` output.
+- **`w check --bool-ops` only flags the single operator whose two
+  immediate operands are syntactically bare comparisons/bool reads —
+  not chained or nested joins where one side is itself a compound
+  boolean expression.** Observed 2026-07-17 in `libs/asm/`: `a & b & c`
+  (left-assoc, three bare comparisons) fires exactly once, on the first
+  `&`, never the second; `(a | b) & c` fires only for the inner `|`,
+  never the outer `&` (its left operand is now a parenthesized
+  expression, not a bare comparison, even though post-conversion it's
+  fully bool-typed and side-effect-free). Confirmed with a standalone
+  repro (`if (a == 1 & b == 2 & c == 3):` emits exactly one warning).
+  Consequence for chunk agents: converting only the tool-flagged
+  operator in a multi-operator condition leaves a stylistically
+  inconsistent mix of `&`/`&&` (or `|`/`||`) in the same statement; the
+  side-effect-free rule has to be applied by hand to the sibling
+  operators the tool didn't flag to get a fully-converted statement.
+  Relevant to wave 2f (flipping the default): the widened hint will
+  need to walk the whole boolean-join tree rather than pattern-match
+  only directly-comparison operands, or it will keep under-firing on
+  chains and nested groups the same way.
 
 ## Test selection (`bin/wtest`)
 

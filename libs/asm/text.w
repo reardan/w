@@ -33,11 +33,11 @@ void asm_parse_skip_spaces(asm_parse* p):
 
 
 int asm_parse_is_ident(int c):
-	if (c >= 'a' & c <= 'z'):
+	if (c >= 'a' && c <= 'z'):
 		return 1
-	if (c >= 'A' & c <= 'Z'):
+	if (c >= 'A' && c <= 'Z'):
 		return 1
-	if (c >= '0' & c <= '9'):
+	if (c >= '0' && c <= '9'):
 		return 1
 	if (c == '_'):
 		return 1
@@ -71,7 +71,7 @@ int asm_parse_number(char* s):
 		sign = 0 - 1
 		i = 1
 	int value = 0
-	if (s[i] == '0' & s[i + 1] == 'x'):
+	if (s[i] == '0' && s[i + 1] == 'x'):
 		i = i + 2
 		while (s[i] != 0):
 			value = (value << 4) | asm_hex_digit(s[i])
@@ -89,7 +89,7 @@ int asm_parse_number(char* s):
 int asm_parse_number_hi(char* s):
 	if (s[0] == '-'):
 		return 0
-	if (s[0] != '0' | s[1] != 'x'):
+	if (s[0] != '0' || s[1] != 'x'):
 		return 0
 	int i = 2
 	int hi = 0
@@ -102,7 +102,7 @@ int asm_parse_number_hi(char* s):
 
 
 int asm_parse_is_number_start(int c):
-	if (c >= '0' & c <= '9'):
+	if (c >= '0' && c <= '9'):
 		return 1
 	if (c == '-'):
 		return 1
@@ -202,7 +202,7 @@ void asm_parse_operand(asm_parse* p, asm_operand* op, int arch, int size_hint):
 		asm_parse_operand(p, op, arch, kw)
 		return
 	int reg = asm_reg_lookup_x86(tok)
-	if (tok[0] == 'x' & tok[1] == 'm' & tok[2] == 'm'):
+	if (tok[0] == 'x' && tok[1] == 'm' && tok[2] == 'm'):
 		op.kind = ASM_OP_REG()
 		op.rclass = ASM_RCLASS_XMM()
 		op.reg = asm_parse_number(tok + 3)
