@@ -83,7 +83,7 @@ int pg_kind_set_empty(pg_analysis* analysis, char* kinds):
 int pg_kind_set_intersects(pg_analysis* analysis, char* a, char* b):
 	int i = 0
 	while (i < analysis.kind_count):
-		if ((a[i] != 0) & (b[i] != 0)):
+		if ((a[i] != 0) && (b[i] != 0)):
 			return 1
 		i = i + 1
 	return 0
@@ -93,14 +93,14 @@ int pg_kind_set_intersects(pg_analysis* analysis, char* a, char* b):
 # it consumes tokens and records a diagnostic. Mirrors the emitter's
 # recovery lookup (token terms never recover).
 int pg_analysis_term_recovers(pg_grammar* grammar, pg_term* term):
-	if ((term.modifier == '*') | (term.modifier == '+')):
+	if ((term.modifier == '*') || (term.modifier == '+')):
 		if (pg_grammar_is_token_term(grammar, term.name) == 0):
 			return pg_grammar_find_recover(grammar, term.name) != 0
 	return 0
 
 
 int pg_analysis_term_nullable(pg_analysis* analysis, pg_term* term):
-	if ((term.modifier == '?') | (term.modifier == '*')):
+	if ((term.modifier == '?') || (term.modifier == '*')):
 		return 1
 	if (pg_grammar_is_token_term(analysis.grammar, term.name)):
 		return 0
@@ -115,7 +115,7 @@ int pg_analysis_term_first(pg_analysis* analysis, pg_term* term, char* out):
 	int changed = 0
 	if (pg_grammar_is_token_term(analysis.grammar, term.name)):
 		int kind = pg_grammar_token_kind(analysis.grammar, term.name)
-		if ((kind >= 0) & (kind < analysis.kind_count)):
+		if ((kind >= 0) && (kind < analysis.kind_count)):
 			if (out[kind] == 0):
 				out[kind] = 1
 				changed = 1
@@ -125,7 +125,7 @@ int pg_analysis_term_first(pg_analysis* analysis, pg_term* term, char* out):
 		return 0
 	int i = 0
 	while (i < analysis.kind_count):
-		if ((facts.first[i] != 0) & (out[i] == 0)):
+		if ((facts.first[i] != 0) && (out[i] == 0)):
 			out[i] = 1
 			changed = 1
 		i = i + 1
@@ -472,7 +472,7 @@ void pg_report_overlap_kinds(pg_analysis* analysis, char* a, char* b):
 	int printed = 0
 	int kind = 0
 	while (kind < analysis.kind_count):
-		if ((a[kind] != 0) & (b[kind] != 0)):
+		if ((a[kind] != 0) && (b[kind] != 0)):
 			if (printed == 8):
 				print2(c" ...")
 				return

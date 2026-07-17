@@ -39,7 +39,7 @@ cpp_token* cpp_clone_range(cpp_token* start, cpp_token* end):
 	cpp_token head
 	head.next = 0
 	cpp_token* tail = &head
-	while ((start != 0) & (start != end)):
+	while ((start != 0) && (start != end)):
 		if (start.kind == cpp_token_eof()):
 			break
 		tail.next = cpp_token_clone_one(start)
@@ -100,7 +100,7 @@ char* cpp_angle_header(cpp_token* token, cpp_token* end):
 	string_builder* out = string_new()
 	if (cpp_token_is_punct(token, c"<")):
 		token = token.next
-	while ((token != 0) & (token != end)):
+	while ((token != 0) && (token != end)):
 		if (cpp_token_is_punct(token, c">")):
 			char* result = strclone(out.data)
 			string_free(out)
@@ -142,7 +142,7 @@ void cpp_cond_elif(cpp_preprocessor* pp, int value):
 	if (cond.saw_else):
 		pp.active = 0
 		return
-	if ((cond.parent_active != 0) & (cond.saw_true == 0) & (value != 0)):
+	if ((cond.parent_active != 0) && (cond.saw_true == 0) && (value != 0)):
 		cond.current_active = 1
 		cond.saw_true = 1
 	else:
@@ -170,10 +170,10 @@ void cpp_cond_pop(cpp_preprocessor* pp):
 int cpp_tokens_can_paste(cpp_token* left, cpp_token* right):
 	if (left == 0):
 		return 0
-	if (((left.kind == cpp_token_ident()) | (left.kind == cpp_token_number())) &
-			((right.kind == cpp_token_ident()) | (right.kind == cpp_token_number()))):
+	if (((left.kind == cpp_token_ident()) || (left.kind == cpp_token_number())) &&
+			((right.kind == cpp_token_ident()) || (right.kind == cpp_token_number()))):
 		return 1
-	if ((left.kind == cpp_token_punct()) & (right.kind == cpp_token_punct())):
+	if ((left.kind == cpp_token_punct()) && (right.kind == cpp_token_punct())):
 		string_builder* joined = string_new()
 		string_append(joined, left.text)
 		string_append(joined, right.text)
@@ -204,7 +204,7 @@ cpp_macro* cpp_parse_define_macro(cpp_token* name, cpp_token* end):
 	if (cpp_token_is_punct(name.next, c"(") & (name.next.has_space == 0)):
 		macro.is_function = 1
 		cpp_token* token = name.next.next
-		while ((token != 0) & (token != end)):
+		while ((token != 0) && (token != end)):
 			if (cpp_token_is_punct(token, c")")):
 				body = token.next
 				break

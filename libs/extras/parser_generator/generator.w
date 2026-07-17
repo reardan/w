@@ -104,7 +104,7 @@ void pg_emit_matcher_charset_condition(pg_source_writer* writer, pg_match_expr* 
 			start = start + 1
 		else:
 			int end = start
-			while ((end + 1 < 128) & (expression.charset[end + 1] != 0)):
+			while ((end + 1 < 128) && (expression.charset[end + 1] != 0)):
 				end = end + 1
 			if (first_condition == 0):
 				pg_source_append(writer, c" || ")
@@ -928,7 +928,7 @@ int pg_lexgen_same_candidates(list[pg_lexgen_matcher*] matchers, list[pg_lexgen_
 	i = 0
 	while (i < literals.length):
 		pg_lexgen_literal* entry = literals[i]
-		if ((entry.first_byte == a) | (entry.first_byte == b)):
+		if ((entry.first_byte == a) || (entry.first_byte == b)):
 			return 0
 		i = i + 1
 	return 1
@@ -1141,7 +1141,7 @@ void pg_emit_lexer_byte_body(pg_source_writer* writer, pg_grammar* grammar, list
 	i = 0
 	while (i < literals.length):
 		pg_lexgen_literal* entry = literals[i]
-		if ((entry.first_byte == b) & (entry.keyword == 0)):
+		if ((entry.first_byte == b) && (entry.keyword == 0)):
 			group.push(entry)
 		i = i + 1
 	if (group.length > 0):
@@ -1152,7 +1152,7 @@ void pg_emit_lexer_byte_body(pg_source_writer* writer, pg_grammar* grammar, list
 	i = 0
 	while (i < literals.length):
 		pg_lexgen_literal* entry = literals[i]
-		if ((entry.first_byte == b) & (entry.keyword != 0)):
+		if ((entry.first_byte == b) && (entry.keyword != 0)):
 			keywords.push(entry)
 		i = i + 1
 	if (keywords.length > 0):
@@ -1373,7 +1373,7 @@ void pg_emit_kind_set_test(pg_source_writer* writer, pg_grammar* grammar, pg_ana
 			kind = kind + 1
 		else:
 			int end = kind
-			while ((end + 1 < analysis.kind_count) & (kinds[end + 1] != 0)):
+			while ((end + 1 < analysis.kind_count) && (kinds[end + 1] != 0)):
 				end = end + 1
 			if (first_range == 0):
 				pg_source_append(writer, c" || ")
@@ -1633,7 +1633,7 @@ void pg_emit_term(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* an
 			free(kinds)
 		else:
 			pg_emit_optional_attempt(writer, grammar, term, alt_index, term_index)
-	else if ((term.modifier == '*') | (term.modifier == '+')):
+	else if ((term.modifier == '*') || (term.modifier == '+')):
 		pg_recover_def* recover = 0
 		if (pg_grammar_is_token_term(grammar, term.name) == 0):
 			recover = pg_grammar_find_recover(grammar, term.name)
