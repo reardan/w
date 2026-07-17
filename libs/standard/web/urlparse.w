@@ -6,23 +6,34 @@
 # encode/decode helpers. No userinfo, no IPv6 bracket literals, and
 # fragments are dropped (they are never sent to a server).
 #
+# NAMING: the URL type is PascalCase -- the codebase otherwise uses
+# lowercase_snake_case for everything, but the http_server.w /
+# connection.w server framework (issue #235) marks its public
+# high-level API types this way (ConnectionContext, ServerContext,
+# ServerRequest, ServerResponse, ...) to set them apart from the
+# lowercase_snake_case primitives they are built from. URL predates that
+# framework but was renamed (issue #235 phase 1) to join the same
+# convention, since it is equally part of the public web/ API surface.
+# Function names are unaffected and stay snake_case throughout.
+#
 # Public API:
-#   url* url_parse(char* text)        parsed url, or 0 on any error
-#   void url_free(url* u)
-#   char* url_unparse(url* u)         malloc'd; omits default ports
+#   URL* url_parse(char* text)        parsed URL, or 0 on any error
+#   void url_free(URL* u)
+#   char* url_unparse(URL* u)         malloc'd; omits default ports
 #   char* url_quote(char* text)       malloc'd; %XX-encodes reserved bytes
 #   char* url_unquote(char* text)     malloc'd; 0 on invalid escape
+#   char* url_query_param(char* query, char* name)  malloc'd value, or 0
 #   int url_default_port(char* scheme)  80/443, or 0 for unknown schemes
 import lib.lib
 import lib.str
 import structures.string
 
 
-# Parsed absolute URL. Every char* field is malloc'd, owned by the url,
+# Parsed absolute URL. Every char* field is malloc'd, owned by the URL,
 # and released by url_free. scheme and host are lowercased; path always
 # begins with '/' (an absent path becomes "/"); query never includes
 # the leading '?' and is "" when absent.
-struct url:
+struct URL:
 	char* scheme
 	char* host
 	int port
@@ -84,7 +95,7 @@ char* url_substring_lower(char* text, int start, int end):
 # is not a well-formed absolute URL of one of those schemes: missing
 # or unknown scheme, empty host, userinfo ('@'), IPv6 bracket literal,
 # or a port that is empty, non-numeric, or outside 1..65535.
-url* url_parse(char* text):
+URL* url_parse(char* text):
 	if (text == 0):
 		return 0
 
@@ -173,7 +184,7 @@ url* url_parse(char* text):
 	else:
 		query = strclone(c"")
 
-	url* u = new url()
+	URL* u = new URL()
 	u.scheme = scheme
 	u.host = url_substring_lower(text, host_start, host_end)
 	u.port = port
@@ -182,7 +193,7 @@ url* url_parse(char* text):
 	return u
 
 
-void url_free(url* u):
+void url_free(URL* u):
 	if (u == 0):
 		return;
 	free(u.scheme)
@@ -194,7 +205,7 @@ void url_free(url* u):
 
 # Rebuilds the URL text: scheme://host[:port]path[?query]. The port is
 # omitted when it equals the scheme default. Returns a malloc'd string.
-char* url_unparse(url* u):
+char* url_unparse(URL* u):
 	string_builder* out = string_new()
 	string_append(out, u.scheme)
 	string_append(out, c"://")
@@ -277,3 +288,45 @@ char* url_unquote(char* text):
 	char* result = out.data
 	free(out)
 	return result
+
+
+# Looks up name in a "&"-separated, percent-encoded query string
+# ("a=1&b=2"); a pair with no '=' is treated as an empty value. Both
+# keys and values are percent-decoded via url_unquote before comparing
+# (so an encoded key like "a%20b" matches name "a b"). Returns a
+# malloc'd, percent-decoded value the caller frees, or 0 when name is
+# absent or every occurrence of it has an invalid percent-escape in its
+# key or value.
+char* url_query_param(char* query, char* name):
+	int i = 0
+	while (query[i] != 0):
+		int pair_start = i
+		int eq = 0 - 1
+		while ((query[i] != 0) && (query[i] != '&')):
+			if ((query[i] == '=') && (eq < 0)):
+				eq = i
+			i = i + 1
+		int pair_end = i
+		char* key_raw
+		char* value_raw
+		if (eq >= 0):
+			key_raw = substring(query, pair_start, eq)
+			value_raw = substring(query, eq + 1, pair_end)
+		else:
+			key_raw = substring(query, pair_start, pair_end)
+			value_raw = strclone(c"")
+		char* key = url_unquote(key_raw)
+		free(key_raw)
+		int matched = 0
+		if (key != 0):
+			if (strcmp(key, name) == 0):
+				matched = 1
+			free(key)
+		if (matched != 0):
+			char* value = url_unquote(value_raw)
+			free(value_raw)
+			return value
+		free(value_raw)
+		if (query[i] == '&'):
+			i = i + 1
+	return 0

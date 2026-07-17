@@ -133,3 +133,44 @@ void test_map_float64_compound_assignment_ops():
 	m[c"n"] /= 2.0
 	assert_f64_bits(0x0, 0x40040000, m[c"n"])
 	assert_equal(1, m.length)
+
+
+# m.add(key[, delta]) on float64 values (issue #189): a missing key
+# accumulates from 0.0 instead of trapping, and the add runs at float64
+# width on the stored 64-bit payload.
+void test_map_float64_add_accumulates_from_zero():
+	map[char*, float64] m = new map[char*, float64]
+	assert_f64_bits(0x0, 0x3ff80000, m.add(c"k", 1.5))
+	m.add(c"k", 0.25)
+	assert_f64_bits(0x0, 0x3ffc0000, m[c"k"])
+	assert_equal(1, m.length)
+
+
+void test_map_float64_add_default_delta_and_return():
+	map[int, float64] m = new map[int, float64]
+	m.add(5)
+	assert_f64_bits(0x0, 0x3ff00000, m[5])
+	float64 got = m.add(5, 0.5)
+	assert_f64_bits(0x0, 0x3ff80000, got)
+	m.add(5, 2)
+	assert_f64_bits(0x0, 0x400c0000, m[5])
+
+
+void test_map_float64_add_keeps_full_precision():
+	# 1.5 + 0.1 = 0x3ff999999999999a: only right when the add ran at
+	# float64 width on all 64 stored value bits, not a float32 add on
+	# the low word
+	map[int, float64] m = new map[int, float64]
+	m.add(1, 1.5)
+	m.add(1, 0.1)
+	assert_f64_bits(cast(int, 0x9999999a), 0x3ff99999, m[1])
+
+
+void test_map_float64_add_mixed_with_get_default():
+	map[char*, float64] m = new map[char*, float64]
+	assert_f64_bits(0x0, 0x40220000, m.get(c"k", 9.0))
+	m.add(c"k", 0.5)
+	assert_f64_bits(0x0, 0x3fe00000, m.get(c"k", 9.0))
+	list[float64] vals = m.values()
+	assert_equal(1, vals.length)
+	assert_f64_bits(0x0, 0x3fe00000, vals[0])

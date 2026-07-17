@@ -1,5 +1,30 @@
 # Consolidated plan: manifest de-churn, REPL, and the VCS/build workstream
 
+## Status update (2026-07-16)
+
+This plan's three threads are merged:
+
+- **Thread A** (§2): A1 (`wtest_map_check` replacing the frozen `stdin`
+  lists, plus its `noorder` per-case opt-out), A2 (the extended
+  `# wbuild:` directive vocabulary — `timeout=`/`stdin=`/
+  `expect_stdout=`/`expect_stderr=`/`deps=`/`arch=`), A3 (deps-driven
+  `wexec` cache keys via `bin/wv2 deps`, widened to SHA-256 digests —
+  D3-1), and A4 (the platform axis in `tools/wbuildgen.w`) are all
+  merged.
+- **Thread B** (§3): R1 (runtime-fault recovery in `repl/core.w`), R2
+  (float/struct echo fixes), R3 (the `repl/core.w` + `repl/scan.w`
+  library split), R4 (#114 late binding — `repl_apply_late_bind`), and
+  R5 (`debugger/eval.w` re-based on `repl.core`) are all merged.
+- **Thread C** (§4): Wave V1 (`libs/extras/vcs/{cas,diff,dag}.w`) and
+  Wave V2 (`tree.w`, `commit.w`, `tools/wvc.w`) are merged, plus the
+  D3-1 build-side interleave (SHA-256 cache keys, shared with Thread A's
+  A3 above).
+
+The successor plan, covering the remaining open-issue work staged into
+waves of parallel Sonnet subagent tasks, is
+`docs/projects/sonnet_wave_plan_2026_07.md` — see its §0 for the full
+"already landed" inventory this status update summarizes.
+
 Status: plan (July 2026). Successor to
 `docs/projects/issue_audit_2026_07.md`, whose waves 0–4 are complete
 (18 PRs, #250–#274). Inputs: issues #251 (build system) and #252 (VCS),

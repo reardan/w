@@ -1,4 +1,9 @@
+struct point:
+	int x
+	int y
+
+
 int main():
-	map[int, float] m = new map[int, float]
-	m.add(1, 2)
+	map[int, point] m = new map[int, point]
+	m.add(1)
 	return 0

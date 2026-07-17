@@ -32,6 +32,7 @@ import grammar.bitwise_or_expr
 import grammar.logical_and_expr
 import grammar.logical_or_expr
 import grammar.conditional_expr
+import grammar.increment
 import grammar.expression
 import grammar.while_statement
 import grammar.typed_identifier

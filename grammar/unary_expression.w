@@ -2,6 +2,8 @@ int multiplicative_expr();
 void zero_runtime_object(int bytes);
 void init_array_field_descriptors(int type);
 void assign_store_struct(int type); /* defined in expression */
+int increment_op(); /* defined in increment */
+void increment_expression_error(); /* defined in increment */
 
 
 # Store the constructor argument in eax into field field_index of the
@@ -212,6 +214,13 @@ int unary_expression():
 			return float64_value_type
 		if (type_float_kind(type) == 1):
 			return float32_value_type
+		return 3
+	else if (increment_op()):
+		# '++x'/'--x' in expression position: '++'/'--' are statements
+		# with no value (grammar/increment.w). This also catches the
+		# pre-#103 double-unary reading of '++x', which lexes as one
+		# token now; spaced '+ +x' / '- -x' still stack as two unaries.
+		increment_expression_error()
 		return 3
 	else if (accept(c"cast")):
 		expect(c"(")

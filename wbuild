@@ -20,6 +20,12 @@
 #   ./wbuild test_changed --keep-going   same, forwarding extra flags
 #                             (bin/wexec's --keep-going, -j N, ...) to
 #                             the run
+#   ./wbuild path/to/file.w   compile (and, for a *_test.w file, run)
+#                             that file directly: the manifest target
+#                             that already compiles it if there is one,
+#                             otherwise a cached ad-hoc compile
+#                             (issue #323 stage 1; see tools/wexec.w)
+#   ./wbuild x64 path/to/file.w   same, with a target-selector prefix
 set -e
 cd "$(dirname "$0")"
 mkdir -p bin

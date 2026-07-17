@@ -35,15 +35,44 @@ Current local C-reference target:
 - `*.from_int`, `*.trunc`: int/float coercions.
 - `*.negzero`: unary sign-bit handling.
 
-Next TestFloat-based expansion:
+Edge-case conformance expansion (issue #17, landed):
 
-- Add generated case files for `f32_add`, `f32_sub`, `f32_mul`, `f32_div`,
+- `tests/float_conformance_test.w` (float32, x86 + x64 — a `# wbuild: x64`
+  twin, since float32 is available on both targets) and
+  `tests/x64_float64_conformance_test.w` (float64, x64-only) add
+  hand-picked deterministic vectors covering NaN propagation through
+  `+ - * /` (including the x86 QNaN "floating-point indefinite" pattern
+  for invalid operations), signed-zero arithmetic and division-by-zero
+  signed infinities, subnormal arithmetic (gradual underflow both into
+  and out of the normal range), rounding at the exact-integer precision
+  boundary (2^24 for float32, 2^53 for float64), exact-comparison
+  semantics (including the NaN divergence below), and int<->float
+  conversion edges around the truncating-conversion overflow threshold
+  (2^31/2^63 depending on target word size). These are boundary values
+  and simple bit patterns picked by hand, not vendored or randomly
+  generated TestFloat cases — see "Why Berkeley TestFloat" above for why
+  the upstream suite itself stays unvendored.
+- Every semantic divergence these vectors surfaced from strict IEEE-754
+  is written up in `docs/projects/float.md`'s "Known MVP semantic
+  differences" section: NaN comparisons diverge in *both* directions
+  (`==` true, `!=` false — the original "NaN comparison semantics are
+  currently simplified" note undersold it), both-NaN-operand payload
+  selection is unpinned (implementation-defined per the Intel SDM),
+  division by zero is a non-trapping signed infinity (confirmed, not
+  just "no exception flags"), the truncating int conversion has no
+  range check and its overflow sentinel is bit-identical to a
+  legitimate boundary result, and — the one genuinely surprising
+  finding — a bare decimal float literal changes width by target
+  (float64 on x64, float32 elsewhere) and an inline comparison
+  involving one is not coerced back down, so identical source can
+  compare differently across targets. Alternate rounding modes remain
+  unexposed, as originally noted.
+
+Still open for a future pass:
+
+- Generated case files for `f32_add`, `f32_sub`, `f32_mul`, `f32_div`,
   `f64_add`, `f64_sub`, `f64_mul`, `f64_div`, `i32_to_f32`, `i32_to_f64`,
-  `f32_to_i32`, and `f64_to_i32`.
-- Start with deterministic pattern cases and boundary values so they remain
-  reviewable in git.
-- Add a slower optional target for large generated/random TestFloat batches once
-  the compiler can consume compact case tables efficiently.
-- Track known MVP semantic differences explicitly: exception flags are not
-  implemented, NaN comparison semantics are currently simplified, and alternate
-  rounding modes are not exposed.
+  `f32_to_i32`, and `f64_to_i32` at TestFloat's scale (weighted-random
+  batches), rather than the hand-picked vectors above.
+- A slower optional target for large generated/random TestFloat batches
+  once the compiler can consume compact case tables efficiently.

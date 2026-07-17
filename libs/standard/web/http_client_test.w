@@ -339,7 +339,7 @@ void test_http_request_hardening():
 	# it validates offline here (the loopback TLS handshake is exercised
 	# end to end in web/https_e2e_test.w). Assert the validation layer
 	# accepts it rather than reaching the network.
-	url* https_url = url_parse(c"https://example.com/")
+	URL* https_url = url_parse(c"https://example.com/")
 	asserts(c"https url parses", https_url != 0)
 	assert_equal(0, http_validate_url(https_url))
 	url_free(https_url)

@@ -308,6 +308,11 @@ void statement():
 	else if (accept(c"pass")):
 		expect_or_newline(c";")
 
+	# '++x' / '--x' — prefix increment/decrement statement
+	# (grammar/increment.w, docs/projects/increment_decrement.md)
+	else if (increment_prefix_statement()):
+		expect_or_newline(c";")
+
 	# defer <simple-statement>: record the span; it re-parses and runs
 	# at every function exit, LIFO (grammar/defer.w)
 	else if (accept(c"defer")):
@@ -323,5 +328,9 @@ void statement():
 		expect_or_newline(c";")
 
 	else:
+		# Postfix 'x++'/'x--' are only recognized at true statement
+		# position: expression() consumes this flag on entry, so nested
+		# expression parses never see it (grammar/increment.w)
+		increment_statement_context = 1
 		expression()
 		expect_or_newline(c";")
