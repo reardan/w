@@ -143,6 +143,21 @@ is a queue, not an archive.
   queryable shape. Would pay for itself the next time this kind of
   manifest archaeology is needed (stage 2 of #323, or any future
   wbuildgen directive-vocabulary decision).
+- **Two `./wbuild`/`wexec` invocations racing in the same worktree
+  corrupt each other's build with no useful diagnostic.** Hit while
+  gating the `stream_peek_byte` fix (#331 follow-up): a backgrounded
+  `./wbuild test_changed` rerun (started to grep its output for
+  failures rather than re-scrolling a long transcript) was still
+  compiling when a foreground `./wbuild verify` started in the same
+  worktree; the seed-stage compile failed with a bare "could not open
+  output file" and a stack trace pointing at `compiler.w`'s `link`
+  (both processes were writing/executing the same `bin/wv2`). Not a
+  compiler or `wexec` bug -- `bin/` has no lock file, so nothing stops
+  two invocations from racing there. Agents should treat a worktree's
+  `bin/` as single-writer: never background a `./wbuild`/`wexec` call
+  and start another in the same worktree before confirming (via
+  `pgrep -f` scoped to the worktree's `bin/`, or just waiting for the
+  first command's own completion) that it has actually finished.
 
 ## Cleanup observed while dogfooding
 
