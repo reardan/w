@@ -49,7 +49,8 @@ without "inputs" behave like make-style FORCE targets: requesting them
 always runs them. A step's captured stdout/stderr is re-emitted after
 the step finishes, so output is visible but not interleaved live.
 
-Usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [--ordered-output] [-j N] target...
+Usage: wexec [-f manifest.json] [--list [--json]] [--explain-cache target]
+             [--no-cache] [--keep-going] [--ordered-output] [-j N] target...
 
 Direct-file UX (issue #323 stage 1): in place of a target name, wexec
 also accepts a bare "<file>.w" or a "[selector] <file>.w" pair (e.g.
@@ -90,6 +91,18 @@ its bundle back after a successful run. With neither variable set this
 is byte-for-byte the pre-existing behavior; see the "Shared remote
 build cache" comment just above wexec_launch for the protocol and
 bundle format.
+
+Two introspection flags, both read-only (no steps run): "--list --json"
+prints one NDJSON object per target — {"name", "step_count", "deps",
+"compile_roots", "shells_out", "generate_exclude"} — instead of the
+plain newline-separated names bare --list prints; bare --list is
+unchanged. "--explain-cache <target>" prints, in human-readable form,
+whether that target is cacheable and, when it isn't because some
+dependency never stores a cache key of its own (see the deps-driven
+cache keys section above and wexec_cache_key below — a dependency
+without "inputs" is a FORCE target and disables caching for every
+target downstream of it, silently, with no diagnostic), the specific
+dependency and chain that breaks it.
 
 Design notes: docs/projects/wexec.md
 */
@@ -145,7 +158,7 @@ void wexec_error2(char* message, char* detail):
 
 void wexec_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [--ordered-output] [-j N] target...")
+	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list [--json]] [--explain-cache target] [--no-cache] [--keep-going] [--ordered-output] [-j N] target...")
 	stream_write_line(err, c"       wexec [-f manifest.json] ... [selector] <file>.w")
 	stream_flush(err)
 
@@ -1105,6 +1118,136 @@ void wexec_cache_store(char* name, char* key):
 	char* stamp_path = wexec_stamp_path(name)
 	file_write_text(stamp_path, key)
 	free(stamp_path)
+
+
+/* --explain-cache <target> (docs/projects/ai_tooling_next_steps.md,
+"Test selection" bullet 2): a static, read-only explanation of whether a
+target can ever get a cache key, without running anything. It mirrors
+wexec_cache_key's own gates rather than calling it, because the real
+function needs its dependencies' wexec_keys entries already populated
+by a run in progress; --explain-cache instead walks the "deps" graph
+itself, treating a target as (recursively) cacheable exactly when it
+declares "inputs" and every dependency, transitively, does too — which
+is precisely the condition wexec_cache_key checks one dependency layer
+at a time via wexec_keys.get(dep, 0). The documented trap: a dependency
+with no "inputs" of its own is a FORCE target, never stores a key, and
+so silently disables caching for everything downstream of it, with no
+diagnostic at build time. */
+
+int wexec_target_declares_inputs(json_value* target):
+	json_value* inputs = json_object_get(target, c"inputs")
+	if (inputs == 0):
+		return 0
+	if (inputs.type != json_type_array()):
+		return 0
+	return 1
+
+
+int wexec_target_dep_count(json_value* target):
+	json_value* deps = json_object_get(target, c"deps")
+	if (deps == 0):
+		return 0
+	if (deps.type != json_type_array()):
+		return 0
+	return json_array_length(deps)
+
+
+void wexec_reverse_strings(list[char*] items):
+	int i = 0
+	int j = items.length - 1
+	while (i < j):
+		char* tmp = items[i]
+		items[i] = items[j]
+		items[j] = tmp
+		i = i + 1
+		j = j - 1
+
+
+# Shortest-path BFS over the "deps" graph reachable from 'start' (whose
+# own "inputs" gate the caller already checked). Returns 1 and fills
+# chain_out with [start, ..., broken] — the dependency path down to the
+# first target that does not declare "inputs" — when one is reachable;
+# returns 0, leaving chain_out empty, when every transitively reachable
+# dependency declares "inputs" of its own. An unknown dependency name
+# (a manifest bug reported elsewhere, at actual scheduling time) is
+# skipped rather than treated as broken.
+int wexec_explain_find_broken(char* start, list[char*] chain_out):
+	map[char*, char*] parent = new map[char*, char*]
+	map[char*, int] seen = new map[char*, int]
+	list[char*] queue = new list[char*]
+	seen[start] = 1
+	queue.push(start)
+	int qi = 0
+	while (qi < queue.length):
+		char* cur = queue[qi]
+		qi = qi + 1
+		json_value* cur_target = wexec_targets.get(cur, 0)
+		if (cur_target == 0):
+			continue
+		if (strcmp(cur, start) != 0):
+			if (wexec_target_declares_inputs(cur_target) == 0):
+				char* node = cur
+				while (node != 0):
+					chain_out.push(node)
+					node = parent.get(node, 0)
+				wexec_reverse_strings(chain_out)
+				return 1
+		json_value* deps = json_object_get(cur_target, c"deps")
+		if (deps != 0):
+			if (deps.type == json_type_array()):
+				int i = 0
+				while (i < json_array_length(deps)):
+					json_value* dep = json_array_get(deps, i)
+					if (dep.type == json_type_string()):
+						if (seen.get(dep.string_value, 0) == 0):
+							seen[dep.string_value] = 1
+							parent[dep.string_value] = cur
+							queue.push(dep.string_value)
+					i = i + 1
+	return 0
+
+
+int wexec_explain_cache(char* name):
+	json_value* target = wexec_targets.get(name, 0)
+	if (target == 0):
+		wexec_error2(c"unknown target ", name)
+		return 1
+	wstream* out = stdout_writer()
+	stream_write_cstr(out, c"wexec: explain-cache ")
+	stream_write_line(out, name)
+	if (wexec_target_declares_inputs(target) == 0):
+		stream_write_line(out, c"  declares \"inputs\": no")
+		stream_write_line(out, c"  not cacheable: FORCE-style target (no \"inputs\"); every request runs it")
+		stream_flush(out)
+		return 0
+	stream_write_line(out, c"  declares \"inputs\": yes")
+	if (wexec_target_dep_count(target) == 0):
+		stream_write_line(out, c"  no declared \"deps\": nothing else can block caching")
+		stream_write_line(out, c"  cacheable: yes (still needs a matching stamp and existing \"outputs\" files to actually skip a run)")
+		stream_flush(out)
+		return 0
+	list[char*] path = new list[char*]
+	if (wexec_explain_find_broken(name, path)):
+		string_builder* chain = string_new()
+		int i = 0
+		while (i < path.length):
+			if (i > 0):
+				string_append(chain, c" -> ")
+			string_append(chain, path[i])
+			i = i + 1
+		stream_write_cstr(out, c"  dependency chain: ")
+		stream_write_line(out, chain.data)
+		string_free(chain)
+		char* broken = path[path.length - 1]
+		stream_write_cstr(out, c"  not cacheable: dependency '")
+		stream_write_cstr(out, broken)
+		stream_write_line(out, c"' declares no \"inputs\" of its own (FORCE-style), so it never stores a cache key — every target downstream of it silently loses caching too, with no diagnostic at build time")
+		stream_flush(out)
+		return 0
+	stream_write_line(out, c"  every declared dependency (transitively) declares \"inputs\" and can store a cache key")
+	stream_write_line(out, c"  cacheable: yes (still needs a matching stamp and existing \"outputs\" files to actually skip a run)")
+	stream_flush(out)
+	return 0
 
 
 # Windows: manifest commands name Linux-style binaries ("bin/wv2");
@@ -2292,6 +2435,214 @@ void wexec_list_targets():
 	stream_flush(out)
 
 
+/* --list --json (docs/projects/ai_tooling_next_steps.md, "Test
+selection" bullet 3): one NDJSON object per target with structural
+facts, matching the {"field": value, ...}\n style compiler --json
+output already uses (compiler/diagnostics.w's diag_emit). Plain --list
+above is untouched; this is a separate code path selected by --json. */
+
+int wexec_json_hex_digit(int value):
+	if (value < 10):
+		return '0' + value
+	return 'a' + value - 10
+
+
+void wexec_json_append_string(string_builder* s, char* text):
+	string_append_char(s, '"')
+	int i = 0
+	while (text[i] != 0):
+		int ch = text[i] & 255
+		if (ch == '"'):
+			string_append(s, c"\\\"")
+		else if (ch == 92):
+			string_append(s, c"\\\\")
+		else if (ch == 10):
+			string_append(s, c"\\n")
+		else if (ch == 13):
+			string_append(s, c"\\r")
+		else if (ch == 9):
+			string_append(s, c"\\t")
+		else if (ch < 32):
+			string_append(s, c"\\u00")
+			string_append_char(s, wexec_json_hex_digit(ch >> 4))
+			string_append_char(s, wexec_json_hex_digit(ch & 15))
+		else:
+			string_append_char(s, ch)
+		i = i + 1
+	string_append_char(s, '"')
+
+
+void wexec_json_append_string_array(string_builder* s, list[char*] values):
+	string_append_char(s, '[')
+	int i = 0
+	while (i < values.length):
+		if (i > 0):
+			string_append(s, c", ")
+		wexec_json_append_string(s, values[i])
+		i = i + 1
+	string_append_char(s, ']')
+
+
+void wexec_json_field_string_array(string_builder* s, char* name, list[char*] values):
+	wexec_json_append_string(s, name)
+	string_append(s, c": ")
+	wexec_json_append_string_array(s, values)
+
+
+void wexec_json_field_int(string_builder* s, char* name, int value):
+	wexec_json_append_string(s, name)
+	string_append(s, c": ")
+	string_append_int(s, value)
+
+
+void wexec_json_field_bool(string_builder* s, char* name, int value):
+	wexec_json_append_string(s, name)
+	string_append(s, c": ")
+	if (value):
+		string_append(s, c"true")
+	else:
+		string_append(s, c"false")
+
+
+map[char*, int] wexec_generate_exclude_set
+int wexec_generate_exclude_loaded
+
+
+# "generate.exclude" (build.base.json) lists source paths wbuildgen
+# should not auto-generate a target for; it is stripped from the
+# generated build.json (tools/wbuildgen.w), so this is only ever
+# non-empty when the manifest handed to wexec still carries it (e.g.
+# -f build.base.json, or a fixture manifest built to exercise this).
+void wexec_load_generate_exclude():
+	if (wexec_generate_exclude_loaded):
+		return
+	wexec_generate_exclude_loaded = 1
+	wexec_generate_exclude_set = new map[char*, int]
+	json_value* generate = json_object_get(wexec_manifest, c"generate")
+	if (generate == 0):
+		return
+	if (generate.type != json_type_object()):
+		return
+	json_value* exclude = json_object_get(generate, c"exclude")
+	if (exclude == 0):
+		return
+	if (exclude.type != json_type_array()):
+		return
+	int i = 0
+	while (i < json_array_length(exclude)):
+		json_value* entry = json_array_get(exclude, i)
+		if (entry.type == json_type_string()):
+			wexec_generate_exclude_set[entry.string_value] = 1
+		i = i + 1
+
+
+int wexec_roots_in_generate_exclude(list[char*] roots):
+	wexec_load_generate_exclude()
+	for char* root in roots:
+		if (wexec_generate_exclude_set.get(root, 0)):
+			return 1
+	return 0
+
+
+int wexec_step_shells_out(json_value* step):
+	json_value* cmd = json_object_get(step, c"cmd")
+	if (cmd == 0):
+		return 0
+	if (cmd.type != json_type_array()):
+		return 0
+	if (json_array_length(cmd) < 1):
+		return 0
+	json_value* first = json_array_get(cmd, 0)
+	if (first.type != json_type_string()):
+		return 0
+	if (strcmp(first.string_value, c"sh") == 0):
+		return 1
+	if (strcmp(first.string_value, c"bash") == 0):
+		return 1
+	return 0
+
+
+# True when any step's argv[0] is a shell ("sh"/"bash") running an
+# inline "-c" script or a shell script file, rather than a direct
+# binary; those steps have no argv-visible relationship to the files
+# they actually touch, unlike a plain "bin/wv2 root.w -o out" step.
+int wexec_target_shells_out(json_value* target):
+	json_value* steps = json_object_get(target, c"steps")
+	if (steps == 0):
+		return 0
+	if (steps.type != json_type_array()):
+		return 0
+	int i = 0
+	while (i < json_array_length(steps)):
+		json_value* step = json_array_get(steps, i)
+		if (step.type == json_type_object()):
+			if (wexec_step_shells_out(step)):
+				return 1
+		i = i + 1
+	return 0
+
+
+void wexec_list_json_one(wstream* out, char* name):
+	json_value* target = wexec_targets.get(name, 0)
+
+	json_value* steps = json_object_get(target, c"steps")
+	int step_count = 0
+	if (steps != 0):
+		if (steps.type == json_type_array()):
+			step_count = json_array_length(steps)
+
+	list[char*] deps = new list[char*]
+	json_value* deps_value = json_object_get(target, c"deps")
+	if (deps_value != 0):
+		if (deps_value.type == json_type_array()):
+			int i = 0
+			while (i < json_array_length(deps_value)):
+				json_value* dep = json_array_get(deps_value, i)
+				if (dep.type == json_type_string()):
+					deps.push(dep.string_value)
+				i = i + 1
+
+	list[char*] archs = new list[char*]
+	list[char*] roots = new list[char*]
+	wexec_deps_collect_roots(target, archs, roots)
+	list[char*] compile_roots = new list[char*]
+	int r = 0
+	while (r < roots.length):
+		char* tagged = roots[r]
+		if (strcmp(archs[r], c"x86") != 0):
+			# Same "<arch> <root>" spelling wexec_deps_entry_key uses for
+			# bin/.wexec_deps_cache records, so a reader can cross-reference.
+			tagged = wexec_deps_entry_key(archs[r], roots[r])
+		compile_roots.push(tagged)
+		r = r + 1
+
+	string_builder* line = string_new()
+	string_append_char(line, '{')
+	wexec_json_append_string(line, c"name")
+	string_append(line, c": ")
+	wexec_json_append_string(line, name)
+	string_append(line, c", ")
+	wexec_json_field_int(line, c"step_count", step_count)
+	string_append(line, c", ")
+	wexec_json_field_string_array(line, c"deps", deps)
+	string_append(line, c", ")
+	wexec_json_field_string_array(line, c"compile_roots", compile_roots)
+	string_append(line, c", ")
+	wexec_json_field_bool(line, c"shells_out", wexec_target_shells_out(target))
+	string_append(line, c", ")
+	wexec_json_field_bool(line, c"generate_exclude", wexec_roots_in_generate_exclude(roots))
+	string_append_char(line, '}')
+	stream_write_line(out, line.data)
+	string_free(line)
+
+
+void wexec_list_targets_json():
+	wstream* out = stdout_writer()
+	for char* name in wexec_names:
+		wexec_list_json_one(out, name)
+	stream_flush(out)
+
+
 void wexec_report_ok():
 	string_builder* s = string_new()
 	string_append(s, c"wexec: OK (")
@@ -2328,6 +2679,8 @@ int main(int argc, int argv):
 	char* manifest_path = c"build.json"
 	list[char*] requested = new list[char*]
 	int list_only = 0
+	int list_json = 0
+	char* explain_cache_target = 0
 	int i = 1
 	while (i < argc):
 		char** arg = argv + i * __word_size__
@@ -2340,6 +2693,15 @@ int main(int argc, int argv):
 			manifest_path = *value
 		else if (strcmp(*arg, c"--list") == 0):
 			list_only = 1
+		else if (strcmp(*arg, c"--json") == 0):
+			list_json = 1
+		else if (strcmp(*arg, c"--explain-cache") == 0):
+			i = i + 1
+			if (i >= argc):
+				wexec_usage()
+				return 1
+			char** target_value = argv + i * __word_size__
+			explain_cache_target = *target_value
 		else if (strcmp(*arg, c"--no-cache") == 0):
 			wexec_no_cache = 1
 		else if (strcmp(*arg, c"--keep-going") == 0):
@@ -2364,8 +2726,13 @@ int main(int argc, int argv):
 
 	if (wexec_load_manifest(manifest_path)):
 		return 1
+	if (explain_cache_target != 0):
+		return wexec_explain_cache(explain_cache_target)
 	if (list_only):
-		wexec_list_targets()
+		if (list_json):
+			wexec_list_targets_json()
+		else:
+			wexec_list_targets()
 		return 0
 
 	# Direct-file UX (issue #323 stage 1): "[selector] <file>.w" in place
