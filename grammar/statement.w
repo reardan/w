@@ -31,6 +31,7 @@ int saw_debugger_statement
 int in_generator_body
 void emit_generator_yield_call(); /* defined in generator_decl */
 void emit_generator_finish_call(); /* defined in generator_decl */
+int launch_statement(); /* defined in kernel_decl */
 
 
 void copy_struct_return_value(int declared_type):
@@ -325,6 +326,10 @@ void statement():
 		defer_register()
 
 	else if (raw_asm_literal()):
+		expect_or_newline(c";")
+
+	# launch kernel[grid, block](args...) (grammar/kernel_decl.w)
+	else if (launch_statement()):
 		expect_or_newline(c";")
 
 	# name := expression (type-inferred local declaration)

@@ -167,3 +167,133 @@ void kernel_declaration():
 	get_token()
 	expect(c"(")
 	kernel_function_definition(current_symbol, kernel_name)
+
+
+/*
+launch add[blocks, threads](a, b, c, n)
+
+Host-side kernel launch (docs/projects/cuda.md M1). Every argument is
+evaluated, coerced to the kernel's declared parameter type, and pushed
+as one 8-byte cell; the runtime receives the cell block plus the grid
+and block dimensions and drives cuLaunchKernel
+(__w_gpu_launch_raw, lib/cuda.w). Launches are ASYNC: the statement
+enqueues and returns, and results are observable only after gpu_sync()
+(managed-memory buffers must not be touched by the host while a kernel
+that uses them is in flight).
+*/
+
+
+# Emit __w_gpu_launch_raw(name, grid, block, vals, count). On entry the
+# stack holds [grid, block, arg0..argN-1] pushed in that order (base is
+# the stack_pos before grid); vals is the address of the LAST argument
+# cell, so argument i lives at vals + (count-1-i)*8.
+void launch_emit_runtime_call(char* kernel_name, int base, int passed):
+	sym_get_value(c"__w_gpu_launch_raw")
+	push_eax()
+	stack_pos = stack_pos + 1
+	be_emit_inline_cstr(strlen(kernel_name), kernel_name)
+	push_eax() /* arg 1: name */
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus((stack_pos - (base + 1)) << word_size_log2)
+	push_eax() /* arg 2: grid */
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus((stack_pos - (base + 2)) << word_size_log2)
+	push_eax() /* arg 3: block */
+	stack_pos = stack_pos + 1
+	lea_eax_esp_plus((stack_pos - (base + 2 + passed)) << word_size_log2)
+	push_eax() /* arg 4: vals (the last argument cell) */
+	stack_pos = stack_pos + 1
+	mov_eax_int(passed)
+	push_eax() /* arg 5: count */
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(5 << word_size_log2)
+	call_eax()
+
+
+# 'launch <identifier>[' opens the statement; any other continuation is
+# an ordinary expression using a symbol named 'launch' (the statement
+# rewinds with the reparse save/seek/restore trick and reports 0).
+int launch_statement():
+	if (peek(c"launch") == 0):
+		return 0
+	char* save = generic_reparse_save()
+	get_token()
+	int c0 = token[0]
+	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	if (is_ident == 0):
+		getchar_seek(file, load_ptr(save + 7 * __word_size__))
+		generic_reparse_restore(save)
+		return 0
+	free(cast(char*, load_ptr(save + 11 * __word_size__)))
+	free(save)
+
+	if (target_isa == 3):
+		error(c"'launch' is not supported in gpu code")
+	gpu_target_check()
+	if (sym_lookup(c"__w_gpu_launch_raw") < 0):
+		error(c"gpu code requires 'import lib.cuda'")
+	int kernel_sym = sym_lookup(token)
+	int is_kernel = 0
+	if (kernel_sym >= 0):
+		is_kernel = sym_is_kernel(kernel_sym)
+	if (is_kernel == 0):
+		diag_part(c"'")
+		diag_part(token)
+		error(c"' is not a kernel")
+	char* kernel_name = strclone(token)
+	get_token()
+
+	int base = stack_pos
+	expect(c"[")
+	int int_type = type_lookup(c"int")
+	coerce(int_type, promote(expression()))
+	push_eax() /* grid */
+	stack_pos = stack_pos + 1
+	expect(c",")
+	coerce(int_type, promote(expression()))
+	push_eax() /* block */
+	stack_pos = stack_pos + 1
+	expect(c"]")
+
+	expect(c"(")
+	int passed = 0
+	if (accept(c")") == 0):
+		int arg_type = promote(expression())
+		if (type_num_args(type_real(arg_type)) > 0):
+			error(c"struct arguments are not supported in launch")
+		check_call_argument(kernel_sym, -1, kernel_name, passed, arg_type)
+		int param_type = sym_param_type(kernel_sym, passed)
+		if (param_type >= 0):
+			coerce_call_argument(param_type, arg_type)
+		push_eax()
+		stack_pos = stack_pos + 1
+		passed = passed + 1
+		while (accept(c",")):
+			arg_type = promote(expression())
+			if (type_num_args(type_real(arg_type)) > 0):
+				error(c"struct arguments are not supported in launch")
+			check_call_argument(kernel_sym, -1, kernel_name, passed, arg_type)
+			int loop_param_type = sym_param_type(kernel_sym, passed)
+			if (loop_param_type >= 0):
+				coerce_call_argument(loop_param_type, arg_type)
+			push_eax()
+			stack_pos = stack_pos + 1
+			passed = passed + 1
+		expect(c")")
+
+	# The launch path passes exactly one 8-byte cell per declared
+	# parameter: a count mismatch would feed the kernel garbage cells.
+	int expected_args = sym_num_args(kernel_sym)
+	if (passed != expected_args):
+		diag_part(c"kernel '")
+		diag_part(kernel_name)
+		diag_part(c"' expects ")
+		diag_part(itoa(expected_args))
+		diag_part(c" arguments, got ")
+		error(itoa(passed))
+
+	launch_emit_runtime_call(kernel_name, base, passed)
+	be_pop(stack_pos - base)
+	stack_pos = base
+	free(kernel_name)
+	return 1
