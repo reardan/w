@@ -226,6 +226,15 @@ void ptx_lea_ax_sp(int off):
 	ptx_line(c";")
 
 
+# Address of the capture slot at `off` bytes below %bp (the 'gpu for'
+# outlining layout: capture k lives at [%bp - (k+1)*8], a fixed offset
+# that stays valid however deep %sp has grown mid-body).
+void ptx_lea_ax_bp_minus(int off):
+	ptx_emit(c"sub.u64 %ax, %bp, ")
+	ptx_emit_int(off)
+	ptx_line(c";")
+
+
 # push dword [eax+off]
 void ptx_push_ax_plus(int off):
 	ptx_emit(c"ld.u64 %cx, [%ax+")

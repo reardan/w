@@ -78,10 +78,70 @@ void device_mode_exit():
 	device_symbol_base = device_saved_symbol_base
 
 
+/*
+'gpu for' capture table (docs/projects/cuda.md M2). An enclosing-scope
+variable referenced inside a 'gpu for' body becomes a kernel parameter:
+its host value is pushed at the launch site and the kernel prologue
+stores parameter k into the fixed slot [%bp - (k+1)*8]
+(ptx_kernel_end's reserve layout). Because the slots hang off %bp — the
+top of the device stack — a capture discovered mid-body never
+invalidates addresses already emitted, which is what makes single-pass
+outlining work. Slot 0 is always the range bound (recorded with symbol
+-1). Captured scalars are device-local copies: writes do not propagate
+back to the host variable.
+*/
+
+
+int gpu_capture_count
+char* gpu_capture_names    # per-slot host symbol name (owned strclone)
+char* gpu_capture_syms     # per-slot host symbol table offset (-1 = bound)
+
+
+int gpu_capture_limit():
+	return 32
+
+
+# Start a fresh capture set with slot 0 = the range bound.
+void gpu_capture_reset():
+	if (gpu_capture_names == 0):
+		gpu_capture_names = malloc(gpu_capture_limit() * __word_size__)
+		gpu_capture_syms = malloc(gpu_capture_limit() * 4)
+	int i = 0
+	while (i < gpu_capture_count):
+		char* name = cast(char*, load_ptr(gpu_capture_names + i * __word_size__))
+		if (name != 0):
+			free(name)
+		i = i + 1
+	save_ptr(gpu_capture_names, 0)
+	save_int(gpu_capture_syms, -1)
+	gpu_capture_count = 1
+
+
+char* gpu_capture_name(int slot):
+	return cast(char*, load_ptr(gpu_capture_names + slot * __word_size__))
+
+
+# Capture slot for the host symbol at table offset t (reusing an
+# existing slot on a repeated reference).
+int gpu_capture_slot(int t, char* name):
+	int i = 1
+	while (i < gpu_capture_count):
+		if (load_int(gpu_capture_syms + i * 4) == t):
+			return i
+		i = i + 1
+	if (gpu_capture_count >= gpu_capture_limit()):
+		error(c"too many variables captured in 'gpu for'")
+	save_ptr(gpu_capture_names + gpu_capture_count * __word_size__, cast(int, strclone(name)))
+	save_int(gpu_capture_syms + gpu_capture_count * 4, t)
+	gpu_capture_count = gpu_capture_count + 1
+	return gpu_capture_count - 1
+
+
 # Device-mode symbol reference: the target_isa == 3 arm of sym_get_value
 # (compiler/symbol_table.w). Locals declared inside the device body use
-# the normal W-stack addressing (against the device %sp); everything
-# host-only is rejected.
+# the normal W-stack addressing (against the device %sp); enclosing-
+# scope variables become captures inside 'gpu for'; everything host-only
+# is rejected.
 int gpu_sym_get_value(char* s):
 	int t
 	if ((t = sym_lookup(s)) < 0):
@@ -93,9 +153,21 @@ int gpu_sym_get_value(char* s):
 	char scope_type = table[t + 1]
 	if ((scope_type == 'D') | (scope_type == 'U')):
 		error(c"global variables are not accessible in gpu code")
-	if (t < device_symbol_base):
-		error(c"enclosing-scope variables are not accessible in gpu code")
 	int type = load_int(table + t + 6)
+	if (t < device_symbol_base):
+		if (in_gpu_for_body == 0):
+			error(c"enclosing-scope variables are not accessible in gpu code")
+		# Word-sized values only: each capture rides one 8-byte cell.
+		# Containers and strings are host-heap structures the device
+		# cannot follow, so they never capture.
+		if (type_stack_words(type) != 1):
+			error(c"'gpu for' captures must be word-sized")
+		int real_type = type_unqualified(type)
+		if (type_is_map(real_type) | type_is_set(real_type) | type_is_list(real_type) | type_is_string(real_type)):
+			error(c"containers and strings cannot be captured in 'gpu for'")
+		int slot = gpu_capture_slot(t, s)
+		ptx_lea_ax_bp_minus((slot + 1) << word_size_log2)
+		return type
 	int k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
 	# Aggregates occupy several stack words; point at the lowest address
 	# (last pushed word), like the host path in sym_get_value.

@@ -2098,7 +2098,9 @@
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/gpu_ptx_emit.w", "-o", "bin/gpu_ptx_emit"]},
-				{"cmd": ["bin/gpu_ptx_emit"], "expect_stdout": [".version 6.0", ".address_size 64", ".visible .entry add(.param .u64 p0, .param .u64 p1, .param .u64 p2, .param .u64 p3)", ".visible .entry scale(", ".visible .entry axpb64(", "ld.param.u64 %ax, [p0];", "cvta.local.u64 %sp, %sp;", "mov.u32 %w0, %tid.x;", "mov.u32 %w0, %ctaid.x;", "mov.u32 %w0, %nctaid.x;", "setp.lt.s64 %p, %bx, %ax;", "add.f32 %fa, %fa, %fb;", "st.u32 [%bx], %ax;", "mul.f64 %da, %da, %db;", "cvt.rn.f64.s64 %db, %ax;", "ret;"]}
+				{"cmd": ["bin/gpu_ptx_emit"], "expect_stdout": [".version 6.0", ".address_size 64", ".visible .entry add(.param .u64 p0, .param .u64 p1, .param .u64 p2, .param .u64 p3)", ".visible .entry scale(", ".visible .entry axpb64(", "ld.param.u64 %ax, [p0];", "cvta.local.u64 %sp, %sp;", "mov.u32 %w0, %tid.x;", "mov.u32 %w0, %ctaid.x;", "mov.u32 %w0, %nctaid.x;", "setp.lt.s64 %p, %bx, %ax;", "add.f32 %fa, %fa, %fb;", "st.u32 [%bx], %ax;", "mul.f64 %da, %da, %db;", "cvt.rn.f64.s64 %db, %ax;", "ret;"]},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/cuda_gpu.w", "-o", "bin/cuda_gpu_ptxcheck", "--ptx=bin/cuda_gpu.ptx"]},
+				{"cmd": ["sh", "-c", "grep -q '.visible .entry __w_gpu_kernel_0(.param .u64 p0, .param .u64 p1, .param .u64 p2, .param .u64 p3)' bin/cuda_gpu.ptx && grep -q 'st.u64 \\[%bp+-8\\], %cx;' bin/cuda_gpu.ptx && grep -q '.visible .entry saxpy(' bin/cuda_gpu.ptx"]}
 			]
 		},
 		{
@@ -2112,7 +2114,10 @@
 				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/kernel_call_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "kernels cannot be called; use 'launch'"},
 				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_non_kernel_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'helper' is not a kernel"},
 				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_no_runtime_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu code requires 'import lib.cuda'"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_arity_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "kernel 'add' expects 2 arguments, got 1"}
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_arity_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "kernel 'add' expects 2 arguments, got 1"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_return_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'return' is not supported in 'gpu for'"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_no_runtime_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu code requires 'import lib.cuda'"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_range_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'gpu for' supports only range(end)"}
 			]
 		},
 		{

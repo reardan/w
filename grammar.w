@@ -50,6 +50,7 @@ import grammar.c_import_statement
 import grammar.extern_statement
 import grammar.generator_decl
 import grammar.kernel_decl
+import grammar.gpu_for
 import grammar.program
 
 # no idea why this is necessary:
