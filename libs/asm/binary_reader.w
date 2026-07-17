@@ -135,7 +135,7 @@ asm_binary* asm_binary_open(char* path):
 	int shentsize = asm_read_u16(data, shentsize_at)
 	int shnum = asm_read_u16(data, shnum_at)
 	int shstrndx = asm_read_u16(data, shstrndx_at)
-	if (shoff == 0 | shnum == 0):
+	if (shoff == 0 || shnum == 0):
 		println2(c"asm_binary: no section headers")
 		exit(1)
 
@@ -216,7 +216,7 @@ int asm_binary_symbol_at(asm_binary* binary, int address):
 	int i = 0
 	while (i < binary.symbols.length):
 		asm_symbol sym = binary.symbols[i]
-		if (address >= sym.value & address < sym.value + sym.size):
+		if (address >= sym.value && address < sym.value + sym.size):
 			return i
 		i = i + 1
 	return -1

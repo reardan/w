@@ -67,7 +67,7 @@ char* asm_fmt_mem(int arch, asm_operand* op):
 		else:
 			inner = term
 			wrote = 1
-	if (op.disp != 0 | wrote == 0):
+	if (op.disp != 0 || wrote == 0):
 		if (wrote == 0):
 			inner = asm_fmt_num(op.disp)
 		else if (op.disp < 0):
