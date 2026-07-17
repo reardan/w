@@ -587,7 +587,20 @@ int postfix_expr():
 				type = element_type
 				expression_lhs_readonly = 0
 
-		else if (accept(c"(")):
+		else if (peek(c"(")):
+			# A '(' that opens a call tail on a DIFFERENT line than the
+			# expression it attaches to still gets absorbed as a call (this
+			# stays non-breaking; a same-line-only hard rule is a future
+			# decision, see docs/projects/ai_tooling_next_steps.md) — but a
+			# statement starting with '(' silently merging into the
+			# previous line's expression is exactly the trap that hides a
+			# real syntax mistake behind a confusing downstream error, so
+			# make the absorption visible. A multi-line ARGUMENT LIST is
+			# unaffected: the '(' itself is what is checked here, and it
+			# sits on the callee's own line in that case.
+			if (token_newline):
+				warning(c"warning: call arguments continue from the previous line")
+			get_token()
 			# Remember the callee's declared arity now; parsing the arguments
 			# below overwrites last_identifier.
 			int expected_args = -1

@@ -17,18 +17,14 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
-- **A statement starting with `(` is absorbed as a call of the
-  previous expression statement.** `postfix_expr`'s call tail
-  (`accept(c"(")`) does not consider `token_newline`, so `int b = 2`
-  followed by a line `(a + b)++` parses as the call `2(a + b)` and the
-  resulting diagnostic points at whatever follows the group — nothing
-  says a cross-line call happened (hit while shaping the #103 rejection
-  fixtures, 2026-07-16; cost a compiler-instrumentation round to see).
-  Same family as the newline rule `expression()` now applies to
-  postfix `++`/`--`. Suggested direction: either require the `(` call
-  tail to be same-line (token_newline == 0, a breaking change needing a
-  sweep), or emit a "call arguments continue from the previous line"
-  note when the call tail crosses a newline.
+- **Shipped (2026-07-17): cross-line call-tail absorption now warns.**
+  `postfix_expr`'s call tail warns `call arguments continue from the
+  previous line` when its `(` opens on a different line than the
+  expression it attaches to (`int b = 2` / `(a + b)++` no longer
+  silently merges into `2(a + b)` with no diagnostic; still
+  non-breaking — a same-line-only hard rule stays a future decision);
+  fixtures `tests/cross_line_call_warning_fixture.w` and
+  `tests/cross_line_call_increment_fixture.w`.
 - **Multi-error reporting.** The compiler stops at the first error
   (single-pass, no recovery). Documented limitation; real fix is parser
   recovery, which stays a research project. Cheap partial win: after an

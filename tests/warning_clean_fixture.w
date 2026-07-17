@@ -76,6 +76,17 @@ int bit31_and_bool_bitwise_are_clean(int x):
 	return cast(int, accumulated)
 
 
+# A call's own '(' opens on the callee's line here, so its argument
+# list is free to continue across following lines without tripping the
+# cross-line call-tail warning (grammar/postfix_expr.w only checks the
+# newline immediately before the '(' that opens the call, not anything
+# inside an already-open argument list).
+int multiline_call_args_are_clean(int x, int y):
+	int total = add(x,
+		y)
+	return total
+
+
 int main():
 	int x = add(1, 2)
 	x = add(x, 4)
@@ -92,5 +103,7 @@ int main():
 	if (array_decay_is_clean(x) == 0):
 		x = 0
 	if (bit31_and_bool_bitwise_are_clean(x) == 0):
+		x = 0
+	if (multiline_call_args_are_clean(x, 4) == 0):
 		x = 0
 	return x
