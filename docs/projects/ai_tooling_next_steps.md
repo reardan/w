@@ -116,33 +116,6 @@ is a queue, not an archive.
   this was host-specific slowness) -- agents should budget several
   minutes (not the 2-minute tool default) for the FIRST post-build
   `wtest changed` invocation, same as any other cold-cache step.
-- **A dependency without its own `"inputs"` silently disables caching
-  for every target that depends on it — easy to trip over when
-  synthesizing or fixturing targets.** `wexec_cache_key` requires every
-  entry in a target's `"deps"` to already have a stored cache key
-  (`wexec_keys`), which is only ever set for targets that themselves
-  declared `"inputs"`; a `deps: ["wv2"]` target whose `"wv2"` has no
-  `"inputs"` (a plain FORCE-style stand-in, e.g. in an isolated `-f`
-  test fixture) is *itself* never cacheable even though it declares its
-  own `"inputs"` — the whole point per the design comment ("a fresh
-  dependency run may have changed what this target consumes"), but the
-  failure mode is a silent, permanent cache miss with no diagnostic,
-  not an error. Hit while building `tests/wexec/direct_file.json` for
-  the direct-file UX's own cache-hit test (fixed by adding
-  `"inputs": []` to the fixture's stand-in `wv2` target). Worth a
-  `wexec --explain-cache <target>` (or similar) surface that states
-  *why* a target isn't cacheable, the same way `--verbose` already
-  explains `wtest`'s selection.
-- **No machine-readable manifest-structure dump.** Auditing
-  `build.base.json`'s 168 hand-written targets for the #323 stage-1
-  inventory (`docs/projects/build_system_next.md`) meant writing a
-  one-off Python script against the JSON rather than a repo tool — there
-  is no `wexec --list --json` (or `wbuildgen --describe`) that emits
-  per-target structural facts (step count, compile roots, `deps`,
-  whether a step shells out, `generate.exclude` membership) in one
-  queryable shape. Would pay for itself the next time this kind of
-  manifest archaeology is needed (stage 2 of #323, or any future
-  wbuildgen directive-vocabulary decision).
 
 ## Cleanup observed while dogfooding
 

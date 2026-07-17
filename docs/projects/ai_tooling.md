@@ -42,6 +42,21 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- **`wexec --explain-cache <target>`** and **`wexec --list --json`**
+  (2026-07-17): two read-only introspection surfaces on `tools/wexec.w`.
+  `--explain-cache` states, without running anything, whether a target
+  can ever get a cache key — does it declare `"inputs"`, and does every
+  dependency, transitively, also declare `"inputs"` (the same
+  `wexec_keys` gate `wexec_cache_key` checks one dependency layer at a
+  time)? — and names the specific dependency, and the chain down to it,
+  that breaks caching for everything downstream: the documented
+  silent-permanent-miss trap where a `deps: [...]` entry without its
+  own `"inputs"` disables caching with no diagnostic. `--list --json`
+  prints one NDJSON object per target — `name`, `step_count`, `deps`,
+  `compile_roots`, `shells_out`, `generate_exclude` — instead of bare
+  `--list`'s newline-separated names, which is unchanged. Covered by
+  new `wexec_test` cases (`tests/wexec/explain_cache.json`,
+  `tests/wexec/list_json.json`).
 - `w check` usability triple (2026-07-16): command-line roots dedupe
   against the import registry (multi-root `check w.w
   compiler/compiler.w` and auto-imported-runtime roots like

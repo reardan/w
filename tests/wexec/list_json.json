@@ -1,0 +1,35 @@
+{
+	"generate": {
+		"exclude": ["tests/wexec/list_json_fixture.w"]
+	},
+	"targets": [
+		{
+			"name": "plain",
+			"steps": [
+				{"cmd": ["echo", "hi"]}
+			]
+		},
+		{
+			"name": "shells",
+			"steps": [
+				{"cmd": ["sh", "-c", "echo hi"]}
+			]
+		},
+		{
+			"name": "compiles",
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wexec/list_json_fixture.w", "-o", "bin/wexec_list_json_fixture"]}
+			]
+		},
+		{
+			"name": "compiles_x64",
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/wexec/list_json_fixture.w", "-o", "bin/wexec_list_json_fixture_x64"]}
+			]
+		},
+		{
+			"name": "aggregate",
+			"deps": ["plain", "shells"]
+		}
+	]
+}
