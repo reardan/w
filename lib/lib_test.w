@@ -16,6 +16,23 @@ void test_itoa_0():
 	assert_equal(strcmp(c"0", itoa(0)), 0)
 
 
+# itoa(INT_MIN) used to print just "-": negating INT_MIN via "0 - n"
+# overflows back to INT_MIN, so the digit loop never ran. INT_MIN is
+# derived from __word_size__ so this covers both the 32-bit target
+# (-2147483648) and, via the x64 twin build, the 64-bit target
+# (-9223372036854775808).
+void test_itoa_int_min():
+	int min = 1 << (__word_size__ * 8 - 1)
+	if (__word_size__ == 8):
+		assert_strings_equal(c"-9223372036854775808", itoa(min))
+		assert_strings_equal(c"-9223372036854775807", itoa(min + 1))
+	else:
+		assert_strings_equal(c"-2147483648", itoa(min))
+		assert_strings_equal(c"-2147483647", itoa(min + 1))
+	assert_strings_equal(c"-1", itoa(0 - 1))
+	assert_strings_equal(c"0", itoa(0))
+
+
 void test_strcpy():
 	char* str = malloc(1000)
 	char* cur = str
@@ -189,6 +206,22 @@ void test_intstrlen():
 	assert_equal(3, intstrlen(100))
 	assert_equal(4, intstrlen(1000))
 	assert_equal(7, intstrlen(1000000))
+
+
+# intstrlen(INT_MIN) had the same "0 - i" overflow as itoa(INT_MIN):
+# undercounting to 1 instead of the sign plus every digit.
+void test_intstrlen_int_min():
+	int min = 1 << (__word_size__ * 8 - 1)
+	if (__word_size__ == 8):
+		# min and min + 1 have the same digit count (19); only the
+		# last digit differs (...808 vs ...807).
+		assert_equal(20, intstrlen(min))
+		assert_equal(20, intstrlen(min + 1))
+	else:
+		assert_equal(11, intstrlen(min))
+		assert_equal(11, intstrlen(min + 1))
+	assert_equal(2, intstrlen(0 - 1))
+	assert_equal(1, intstrlen(0))
 
 
 void test_ends_with():
