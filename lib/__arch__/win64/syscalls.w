@@ -14,6 +14,7 @@ extern int CreateFileA(char* path, int access, int share, int security, int crea
 extern int CloseHandle(int handle)
 extern int SetFilePointer(int handle, int distance, int* distance_high, int method)
 extern int DeleteFileA(char* path)
+extern int MoveFileA(char* oldpath, char* newpath)
 extern int VirtualAlloc(int addr, int size, int alloc_type, int protect)
 extern int VirtualFree(int addr, int size, int free_type)
 extern char* GetCommandLineA()
@@ -113,6 +114,12 @@ int seek(int file, int offset, int reference):
 
 int unlink(char* path):
 	if (DeleteFileA(path) == 0):
+		return -1
+	return 0
+
+
+int rename(char* oldpath, char* newpath):
+	if (MoveFileA(oldpath, newpath) == 0):
 		return -1
 	return 0
 
