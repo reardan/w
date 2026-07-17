@@ -90,6 +90,8 @@ int result_propagate_struct(int type):
 # instantiation and an error's payload is never read, so the
 # reinterpretation is layout-safe.
 int result_propagate_suffix(int type):
+	if (target_isa == 3):
+		error(c"'?' is not supported in gpu code")
 	if (in_generator_body):
 		error(c"'?' is not supported in generator bodies")
 	if (current_function_symbol < 0):
@@ -316,6 +318,8 @@ void statement():
 	# defer <simple-statement>: record the span; it re-parses and runs
 	# at every function exit, LIFO (grammar/defer.w)
 	else if (accept(c"defer")):
+		if (target_isa == 3):
+			error(c"'defer' is not supported in gpu code")
 		if (in_generator_body):
 			error(c"'defer' is not supported in generator bodies")
 		defer_register()

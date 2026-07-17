@@ -1,0 +1,169 @@
+/*
+Raw CUDA-style kernel declarations (docs/projects/cuda.md M1, Stage 2):
+
+	kernel add(float32* a, float32* b, float32* c, int n):
+		int i = block_idx() * block_dim() + thread_idx()
+		if i < n:
+			c[i] = a[i] + b[i]
+
+The 'kernel' marker is contextual, parsed in grammar/program.w before
+the usual "type-name identifier (" declaration (the 'generator'
+pattern; a user type or symbol named 'kernel' shadows the marker).
+Kernels return nothing — the return type is implicitly void — and their
+parameters must be word-sized scalars or pointers: the launch path
+passes every argument as an 8-byte cell (float32 rides as raw bits, the
+host convention).
+
+The body compiles in DEVICE MODE: target_isa flips to 3, so every emit
+helper the grammar calls routes to its ptx_* twin
+(code_generator/ptx.w), appending PTX text to the embedded module
+instead of machine bytes to the host image. Parameters are lowered as
+ordinary locals — the prologue loads each .param into the accumulator
+and pushes it, declaring the name at that stack slot — so the existing
+'L' addressing machinery works unchanged and &param stays legal.
+
+The kernel's symbol is defined at address 0 and flagged with
+sym_set_kernel: host code referencing the name gets "kernels cannot be
+called; use 'launch'" (compiler/symbol_table.w), and the launch
+statement checks the flag and the recorded arity/parameter types.
+
+This file is compiled by the committed seed: only seed-understood syntax.
+*/
+
+
+# Saved host compilation state across a device body. Device bodies get a
+# fresh evaluation stack and loop/switch context (break/continue must not
+# escape to host control-flow regions), and bounds checks are disabled:
+# the trap path calls host runtime diagnostics that do not exist on
+# device (documented in docs/projects/cuda.md). Kernels are top-level and
+# 'gpu for' cannot nest inside device code, so plain globals suffice.
+int device_saved_stack_pos
+int device_saved_loop_depth
+int device_saved_switch_depth
+int device_saved_break_in_switch
+int device_saved_bounds
+int device_saved_num_args
+int device_saved_function_symbol
+int device_saved_symbol_base
+
+
+void device_mode_enter():
+	device_saved_stack_pos = stack_pos
+	device_saved_loop_depth = loop_depth
+	device_saved_switch_depth = switch_depth
+	device_saved_break_in_switch = break_in_switch
+	device_saved_bounds = bounds_mode
+	device_saved_num_args = number_of_args
+	device_saved_function_symbol = current_function_symbol
+	device_saved_symbol_base = device_symbol_base
+	stack_pos = 0
+	loop_depth = 0
+	switch_depth = 0
+	break_in_switch = 0
+	bounds_mode = 0
+	number_of_args = 0
+	device_symbol_base = table_pos
+	target_isa = 3
+
+
+void device_mode_exit():
+	target_isa = 0
+	stack_pos = device_saved_stack_pos
+	loop_depth = device_saved_loop_depth
+	switch_depth = device_saved_switch_depth
+	break_in_switch = device_saved_break_in_switch
+	bounds_mode = device_saved_bounds
+	number_of_args = device_saved_num_args
+	current_function_symbol = device_saved_function_symbol
+	device_symbol_base = device_saved_symbol_base
+
+
+# Device-mode symbol reference: the target_isa == 3 arm of sym_get_value
+# (compiler/symbol_table.w). Locals declared inside the device body use
+# the normal W-stack addressing (against the device %sp); everything
+# host-only is rejected.
+int gpu_sym_get_value(char* s):
+	int t
+	if ((t = sym_lookup(s)) < 0):
+		diag_part(c"Cannot find symbol: '")
+		diag_part(token)
+		error(c"'")
+	if (load_int(table + t + 10) == 2):
+		error(c"gpu code cannot call functions")
+	char scope_type = table[t + 1]
+	if ((scope_type == 'D') | (scope_type == 'U')):
+		error(c"global variables are not accessible in gpu code")
+	if (t < device_symbol_base):
+		error(c"enclosing-scope variables are not accessible in gpu code")
+	int type = load_int(table + t + 6)
+	int k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
+	# Aggregates occupy several stack words; point at the lowest address
+	# (last pushed word), like the host path in sym_get_value.
+	int words = type_stack_words(type)
+	if (words > 1):
+		k = k - ((words - 1) << word_size_log2)
+	be_lea_acc_wstack(k)
+	return type
+
+
+# Parses "parameter-list ) body" for the kernel symbol at table offset
+# current_symbol; 'kernel', the name and the opening "(" have already
+# been consumed. Mirrors generator_function_definition, except the body
+# compiles in device mode and parameters become device locals.
+void kernel_function_definition(int current_symbol, char* kernel_name):
+	table[current_symbol + 10] = 2 /* store function type */
+	sym_set_kernel(current_symbol)
+	sym_define_global_at(current_symbol, 0)
+	int n = table_pos
+	device_mode_enter()
+	ptx_kernel_begin(kernel_name)
+	int param_count = 0
+	while (accept(c")") == 0):
+		param_count = param_count + 1
+		int type = type_name()
+		if (accept(c".")):
+			error(c"variadic kernel parameters are not supported")
+		if (type_stack_words(type) != 1):
+			error(c"kernel parameters must be word-sized")
+		if (type_num_args(type_real(type)) > 0):
+			error(c"kernel parameters must be word-sized")
+		if (param_count <= sym_max_param_slots()):
+			save_int(table + current_symbol + 22 + (param_count << 2), type)
+		# The parameter's value: ld.param into the accumulator, then an
+		# ordinary local declaration at the slot about to be pushed.
+		ptx_param_load(param_count - 1)
+		if (peek(c")") == 0):
+			sym_declare(token, type, 'L', stack_pos, 1)
+			pointer_indirection = 0
+			get_token()
+		if (accept(c"=")):
+			error(c"kernel parameters cannot have default values")
+		push_eax()
+		stack_pos = stack_pos + 1
+		accept(c",") /* ignore trailing comma */
+
+	save_int(table + current_symbol + 22, param_count)
+	sym_set_w_variadic(current_symbol, -1)
+
+	if (accept(c";")):
+		error(c"a kernel declaration requires a body")
+	current_function_symbol = current_symbol
+	enclosing_tab_level = 0
+	statement()
+	ret()
+	ptx_kernel_end(param_count, 0)
+	device_mode_exit()
+	table_pos = n
+
+
+# Parses a top-level kernel declaration; peek(c"kernel") has already
+# matched in program() and the 'kernel' keyword is the current token.
+void kernel_declaration():
+	gpu_target_check()
+	get_token() /* consume 'kernel' */
+	int void_type = type_lookup(c"void")
+	int current_symbol = sym_declare_global(token, void_type, 1)
+	char* kernel_name = strclone(token)
+	get_token()
+	expect(c"(")
+	kernel_function_definition(current_symbol, kernel_name)

@@ -524,6 +524,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			strict_mode = 1
 		else if (strcmp(*arg, c"--quiet") == 0):
 			quiet_mode = 1
+		else if (starts_with(*arg, c"--ptx=")):
+			# Debug dump of the embedded PTX module (kernels/'gpu for'),
+			# written by ptx_finish_module; ignored when no kernels exist.
+			ptx_dump_path = *arg + 6
 		else:
 			char* input = *arg
 			# A compiler-internal root cannot be checked standalone;
@@ -581,6 +585,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# Synthesize __w_test_main for lib/testing.w consumers now that every
 	# test_* function is compiled (compiler/test_registry.w, issue #147)
 	test_registry_finish()
+
+	# Embed the PTX module behind __w_ptx_module (and honor --ptx=<path>)
+	# for programs that declared gpu kernels (code_generator/ptx.w)
+	ptx_finish_module()
 
 	# --strict: fail before any output is written so no artifact is
 	# produced when warnings fired. Warnings were already printed with
