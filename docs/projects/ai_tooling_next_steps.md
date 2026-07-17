@@ -52,6 +52,26 @@ is a queue, not an archive.
   `libs/asm/x86_decode.w` 36, `libs/extras/parser_generator/lexer.w` 27,
   `grammar/string_literal.w` 27, `compiler/tokenizer.w` 24); flipping
   the default comes after that.
+- **`w check --bool-ops` misreports line numbers by +1 for every
+  imported (non-root) file.** Found 2026-07-17 during the Wave 2
+  `debugger/` chunk of the bool-bitwise sweep: `./bin/wv2 check
+  --bool-ops w.w` attributed a warning to `debugger/memory.w:52`, but
+  the actual `(c < 32) | (c > 126)` site is on line 51 (confirmed with
+  `grep -n`/`git show`, and by checking `memory.w` alone as the *compile
+  root*, which reports line 51 correctly). Reproduced from a scratch
+  copy of the tree and confirmed the same +1 shift on an unrelated file
+  outside `debugger/` — `lib/lib.w:65` reported vs. actual line 64 for
+  `(c >= 194) & (c <= 223)` — so the bug is generic to any file reached
+  via `import`, not specific to this directory or to import depth. Every
+  site converted in this PR was verified against the real file content
+  (`Read`/`grep -n`, never the reported number alone) before editing, so
+  nothing was mis-edited here, but a sweep chunk that fed the checker's
+  own line numbers straight into a scripted `sed -i "Ns/.../.../"` would
+  silently patch the line below the real site. Worth fixing the
+  line-tracking for imported files (looks like an off-by-one in the
+  per-file newline/line counter when a new file is pushed onto the
+  import stack) before wave 2f (flip the default) or any other tooling
+  treats `--bool-ops`'s reported line numbers as ground truth.
 - **`T* + int` is a raw, unscaled byte offset for every pointee width,
   and nothing warns — the rule is now documented, the warning/intrinsic
   is not.** Found 2026-07-16 writing `libs/extras/compress/

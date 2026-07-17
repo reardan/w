@@ -74,7 +74,7 @@ int dbg_local_visible(int i, int rel):
 	if (dbg_frame_ok == 0):
 		return 0
 	int decl = dbg_local_decl(i)
-	if ((decl < dbg_frame_start) | (decl >= dbg_frame_end)):
+	if ((decl < dbg_frame_start) || (decl >= dbg_frame_end)):
 		return 0
 	if (decl > rel):
 		return 0

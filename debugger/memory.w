@@ -48,7 +48,7 @@ void dbg_print_string_preview(int addr):
 		if (c == 0):
 			print(c"\x22")
 			return;
-		if ((c < 32) | (c > 126)):
+		if ((c < 32) || (c > 126)):
 			print(c"\x22...")
 			return;
 		put_char(c)

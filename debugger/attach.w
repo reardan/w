@@ -94,7 +94,7 @@ int attach_read_ok
 # scratch buffer rather than from the return value.
 int at_read_word(int addr):
 	int r = sys_ptrace(at_PEEKDATA(), attach_pid, addr, attach_wordbuf)
-	if ((r < 0) & (r >= -4095)):
+	if ((r < 0) && (r >= -4095)):
 		attach_read_ok = 0
 		return 0
 	attach_read_ok = 1
@@ -380,7 +380,7 @@ void at_backtrace():
 	int sp = at_reg(at_off_sp())
 	int shown = 1
 	int i = 0
-	while ((i < 4096) & (shown < 32)):
+	while ((i < 4096) && (shown < 32)):
 		int w = at_read_word(sp + i * __word_size__)
 		if (attach_read_ok == 0):
 			return;
@@ -441,7 +441,7 @@ void at_help():
 # --- argument helpers (local: attach.w cannot import wdbg.w) ---
 char* at_split_word(char* s):
 	int i = 0
-	while ((s[i] != 0) & (s[i] != ' ')):
+	while ((s[i] != 0) && (s[i] != ' ')):
 		i = i + 1
 	if (s[i] == 0):
 		return s + i
@@ -466,7 +466,7 @@ void at_break_command(char* arg):
 	int target = 0
 	if (arg[0] == '*'):
 		target = at_number(arg + 1)
-	else if (((arg[0] >= '0') & (arg[0] <= '9')) & (attach_symbolized == 0)):
+	else if (((arg[0] >= '0') && (arg[0] <= '9')) && (attach_symbolized == 0)):
 		target = at_number(arg)
 	else:
 		if (attach_symbolized == 0):
@@ -697,7 +697,7 @@ int wdbg_attach_run(int pid, int have_symbols):
 	attach_symbolized = 0
 
 	int r = sys_ptrace(at_ATTACH(), pid, 0, 0)
-	if ((r < 0) & (r >= -4095)):
+	if ((r < 0) && (r >= -4095)):
 		print2(c"wdbg: cannot attach to pid ")
 		char* d = itoa(pid)
 		print2(d)

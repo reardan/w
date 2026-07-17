@@ -58,8 +58,8 @@ int dbg_function_at(int addr):
 				int start = load_int(table + t + 2)
 				int size = load_int(table + t + 14)
 				if (size > 0):
-					if ((addr >= start) & (addr < start + size)):
-						if ((best < 0) | (size < best_size)):
+					if ((addr >= start) && (addr < start + size)):
+						if ((best < 0) || (size < best_size)):
 							best = name_offset
 							best_size = size
 		t = next_token(t)
@@ -75,10 +75,10 @@ int dbg_global_find(char* name):
 	while (t <= table_pos - 1):
 		int name_offset = t
 		int i = 0
-		while ((name[i] == table[t]) & (name[i] != 0)):
+		while ((name[i] == table[t]) && (name[i] != 0)):
 			i = i + 1
 			t = t + 1
-		if ((name[i] == 0) & (table[t] == 0)):
+		if ((name[i] == 0) && (table[t] == 0)):
 			if (table[t + 1] == 'D'):
 				found = name_offset
 		while (table[t] != 0):

@@ -174,7 +174,7 @@ int bp_add(int addr, int temp):
 
 
 void bp_delete(int i):
-	if ((i < 0) | (i >= bp_used)):
+	if ((i < 0) || (i >= bp_used)):
 		println(c"no such breakpoint")
 		return;
 	if (bp_addr(i) == 0):
@@ -283,7 +283,7 @@ int bp_resolve_target(char* arg, int current_file):
 
 	# Function name: no colon and not a number
 	if (colon < 0):
-		if ((arg[0] < '0') | (arg[0] > '9')):
+		if ((arg[0] < '0') || (arg[0] > '9')):
 			int f = dbg_global_find(arg)
 			if (f < 0):
 				print(c"unknown function: ")
