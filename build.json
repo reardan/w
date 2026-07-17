@@ -1988,6 +1988,7 @@
 				"stack_trace_64_test",
 				"stats_64_test",
 				"stream_64_test",
+				"stream_binary_64_test",
 				"string_64_test",
 				"swim_64_test",
 				"switch_64_test",
@@ -2369,6 +2370,7 @@
 				"stack_trace_test",
 				"stats_test",
 				"str_test",
+				"stream_binary_test",
 				"stream_test",
 				"string_test",
 				"struct_method_test",
@@ -4174,6 +4176,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/stream_test.w", "-o", "bin/stream_64_test"]},
 				{"cmd": ["bin/stream_64_test"]}
+			]
+		},
+		{
+			"name": "stream_binary_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/stream_binary_test.w", "-o", "bin/stream_binary_64_test"]},
+				{"cmd": ["bin/stream_binary_64_test"]}
+			]
+		},
+		{
+			"name": "stream_binary_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/stream_binary_test.w", "-o", "bin/stream_binary_test"]},
+				{"cmd": ["bin/stream_binary_test"]}
 			]
 		},
 		{
