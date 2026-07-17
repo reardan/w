@@ -333,6 +333,10 @@ seeds — is `docs/release.md`.
   emit; changes to expression/statement handling usually live in
   `grammar/*.w`, while instruction encoding and ELF layout live in
   `code_generator/*.w`.
+- Pointer arithmetic is a raw, unscaled byte offset for every pointee
+  type: `int* p; p + n` advances `p` by `n` *bytes*, not `n` ints. Only
+  indexing scales — use `&p[n]`, or multiply the offset by the element
+  width by hand, the way `lib/sha256.w`'s `p + i * 4` does.
 - Some conveniences need tools that are not required for build/test and may
   be absent: `gdb`/`ddd` (hand-debugging a built binary), `radare2` (`rasm2`
   encoding lookups), `systemtap` with sudo (syscall-trace one-liners), an
