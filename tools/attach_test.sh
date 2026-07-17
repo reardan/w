@@ -68,6 +68,21 @@ run_case "raw mode banner" "" 'detach\n' "raw mode: no symbols"
 # A backtrace in symbolized mode names the fixture's main frame.
 run_case "backtrace names main" "$FIXTURE_SRC" 'bt\ndetach\n' "main ("
 
+# Disassembly of a named function in symbolized mode shows its header.
+run_case "disassemble function" "$FIXTURE_SRC" 'disas slow_step\ndetach\n' "slow_step:"
+
+# No-argument disassembly marks the stopped instruction.
+run_case "disassembly marks ip" "$FIXTURE_SRC" 'disas\ndetach\n' "=> 0x"
+
+# Single-stepping shows the surrounding instructions automatically.
+run_case "step shows instructions" "$FIXTURE_SRC" 'si\ndetach\n' "=> 0x"
+
+# Raw mode still disassembles from the stopped ip (PTRACE_PEEKDATA reads).
+run_case "raw mode disassembly" "" 'disas\ndetach\n' "=> 0x"
+
+# Raw mode has no symbol table: function targets point at the address form.
+run_case "raw mode disas boundary" "" 'disas slow_step\ndetach\n' "no symbols: disassemble by address"
+
 if [ "$FAILED" -eq 0 ]; then
 	echo "attach test OK"
 else

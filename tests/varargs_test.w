@@ -46,6 +46,20 @@ int main(int argc, int argv):
 	float32 f = 7.5
 	check(c"7.5", snprintf(buf, 128, c"%.1f", f))
 
+	# A fixed array in the variadic tail decays to its data pointer
+	# unconditionally, like C (#229): %s must see the characters, not the
+	# {data, length} descriptor's address
+	char[8] arr
+	arr[0] = 'h'
+	arr[1] = 'i'
+	arr[2] = 0
+	check(c"hi!", snprintf(buf, 128, c"%s!", arr))
+	assert_equal(8, arr.length)
+
+	# A slice view decays the same way
+	char[] view = arr
+	check(c"<hi>", snprintf(buf, 128, c"<%s>", view))
+
 	# No variadic tail at all
 	check(c"plain", snprintf(buf, 128, c"plain"))
 

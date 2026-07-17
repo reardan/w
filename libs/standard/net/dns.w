@@ -540,7 +540,7 @@ int dns_tcp_recv_exact(int sock, char* buf, int want, int deadline_ms):
 		if (ready <= 0):
 			return 0
 		int count = socket_recv(sock, buf + got, want - got, 0)
-		if (count == 0 - 11):
+		if (count == 0 - net_eagain()):
 			# EAGAIN: spurious wakeup, poll again.
 			count = 0
 		else if (count <= 0):
@@ -575,7 +575,7 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 		return 0
 	int rc = socket_connect_ipv4(sock, server_ip, server_port)
 	if (rc < 0):
-		if (rc != (0 - 115)):
+		if (rc != (0 - net_einprogress())):
 			# Anything but EINPROGRESS is a hard connect failure.
 			close(sock)
 			free(query)

@@ -29,33 +29,45 @@ runner.run()
 
 calls the `run` field when the struct has one, not `runner_run`.
 
-## Deferred: typed chaining through method return values
+## Typed chaining through method return values
 
-Method chaining through a method return value is intentionally not supported by
-the initial implementation:
+Method chaining through a method return value works:
 
 ```
 p.child().move(1, 2)
 ```
 
-The blocker is not the method-call sugar itself. Normal call expressions still
-collapse most non-float return values to the generic constant type after codegen,
-so the following postfix `.` has no precise struct or pointer type to dispatch
-against. Fixing this should update call-result typing in `grammar/postfix_expr.w`
-so direct calls preserve the callee's declared return type when safe.
+This section originally deferred chaining because generic call parsing
+collapsed most non-float return values to the generic constant type.
+That is no longer true: `parse_call_suffix` in `grammar/postfix_expr.w`
+returns the callee's declared return type (as a value-marked type), so a
+following postfix suffix has a precise type to dispatch against.
 
-## GitHub issue draft
+What chains today, on all targets:
 
-Title: Preserve direct call return types so method chaining can work
+- methods returning `Struct*` feed further method calls, field reads and
+  field writes (`h.child().x = 42`);
+- methods returning `Struct` by value park the return buffer on the
+  stack and feed method receivers and field access the same way,
+  including structs whose size is not a whole number of words;
+- chains run to arbitrary depth (`p.set_x(1).set_y(2).sum()`) and work
+  in statement, call-argument, condition and return position;
+- free-function results chain the same way
+  (`make_holder().child().sum()`);
+- container-returning methods (e.g. `list[int]`) accept their built-in
+  suffixes (`[i]`, `.length`).
 
-Body:
+Covered end to end by `tests/method_chaining_test.w` (with an x64 twin).
 
-- Struct method calls currently work when the receiver expression already has a
-  precise struct or struct-pointer type, for example `p.move(1, 2)`.
-- Chaining through a method result, for example `p.child().move(1, 2)`, is still
-  blocked because generic call parsing returns type `3` for most non-float
-  calls.
-- Implement direct-call result typing in `grammar/postfix_expr.w` so the parser
-  returns the declared callee return type where available, then add tests for
-  `Struct*` and struct-field method chaining.
+Chaining onto a call result that is not a struct — for example a second
+`.sum()` on an int-returning method — is a compile error:
+
+```
+member 'sum' on non-struct type 'int'
+```
+
+The parser previously inherited cc500's silent-ignore for `.member` on
+non-struct expressions, which compiled such chains into a call through a
+garbage receiver that crashed at runtime. The message is asserted by
+`tests/method_chain_error_fixture.w` (part of `type_system_error_test`).
 

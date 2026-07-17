@@ -110,7 +110,8 @@ void elf_finish_64():
 	save_int64(code + phdr_table_pos + 32, codepos) /* FileSize */
 	save_int64(code + phdr_table_pos + 40, codepos) /* MemSize */
 
-	write(output_fd, code, codepos)
+	if (write(output_fd, code, codepos) != codepos):
+		error(c"could not write output file")
 
 
 void elf_save_section_info_64(int header_addr, int num_sections, int string_index):

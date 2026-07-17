@@ -88,7 +88,13 @@ int get_character():
 		line_number = line_number + 1
 		column_number = 0
 	else if ((nextc != 0) & (nextc != -1)):
-		column_number = column_number + 1
+		# Columns count codepoints, not bytes: a UTF-8 continuation
+		# byte (10xxxxxx) extends the previous character, so it does
+		# not advance the column. Identical to byte counting for
+		# all-ASCII lines; byte_offset stays byte-exact regardless
+		# (grammar/generic.w re-seeks by it). (#287)
+		if ((nextc & 192) != 128):
+			column_number = column_number + 1
 
 	# Handle Tab
 	if(nextc == 9):
@@ -221,8 +227,16 @@ void get_token():
 			if (((token[0] == 's') | (token[0] == 'c')) & (nextc == '"')):
 				takechar()
 				while (nextc != '"'):
+					# EOF inside a prefixed literal used to spin the
+					# tokenizer forever (nextc pinned at -1 never
+					# matches '"'), consuming memory instead of
+					# reporting the truncation.
+					if (nextc == -1):
+						error(c"unterminated string literal")
 					if (nextc == 92):
 						takechar()
+						if (nextc == -1):
+							error(c"unterminated string literal")
 					takechar()
 				takechar()
 
@@ -260,12 +274,19 @@ void get_token():
 		# Compound assignment operators: '+' '-' '*' '%' '^' merge with a
 		# directly following '=' into one token ('+=', '-=', ...). '/=' is
 		# merged in the comment branch below; '&=', '|=', '<<=' and '>>='
-		# already merge in the loop above.
+		# already merge in the loop above. A directly following '+' after
+		# '+' (or '-' after '-') merges the same way into the '++'/'--'
+		# increment/decrement statement tokens (grammar/increment.w);
+		# spaced spellings ('+ +', '- -') keep lexing as two tokens.
 		if (token_i == 0):
 			if ((nextc == '+') | (nextc == '-') | (nextc == '*') |
 					(nextc == '%') | (nextc == '^')):
 				takechar()
 				if (nextc == '='):
+					takechar()
+				else if ((token[0] == '+') & (nextc == '+')):
+					takechar()
+				else if ((token[0] == '-') & (nextc == '-')):
 					takechar()
 
 		# ':=' inferred declaration: ':' merges with a directly following

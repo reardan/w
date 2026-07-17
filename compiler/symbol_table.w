@@ -127,6 +127,15 @@ int sym_decl_column(int t):
 	return load_int(table + t + 74)
 
 
+# Raw scope-type byte: 'D' defined global, 'U' undefined global, 'A'
+# argument, 'L' local (see sym_get_value). import_warn_transitive
+# (grammar/import_statement.w, --imports) uses this to skip locals and
+# arguments -- their "declaration file" is not a module-provenance
+# question the transitive-import check cares about.
+int sym_decl_visibility(int t):
+	return table[t + 1]
+
+
 # Tracks the most recently *known-good* declaration location applied to
 # any symbol, whether from sym_declare_global's own bookkeeping or an
 # explicit sym_set_decl_location call right after it (e.g. enum values
@@ -347,6 +356,17 @@ int sym_param_type(int t, int i):
 	return load_int(table + t + 26 + (i << 2))
 
 
+# REPL late binding (issue #114): when nonzero, sym_get_value reports every
+# global function address it materializes -- hook(name, slot), slot being
+# the buffer offset of the address cell be_addr_slot_write patches. The REPL
+# points this at its call-site registry while an entry compiles, so
+# redefining a function at the prompt can rewrite every already-compiled
+# caller to the newest definition (repl/core.w). Zero for ordinary
+# compiles: nothing is recorded and the emitted bytes are unchanged (the
+# self-host verify fixpoints prove the flag-off path costs nothing).
+int repl_call_site_hook
+
+
 # Emits code leaving the symbol's ADDRESS in eax and returns its type index.
 # Functions are the exception: their address is their value, so they return
 # the "function" type (4), which promote() leaves untouched.
@@ -408,6 +428,12 @@ int sym_get_value(char *s):
 
 	if (symtype == 2):
 		if ((scope_type == 'D') | (scope_type == 'U')):
+			# REPL late binding: report the address cell just emitted
+			# (still at codepos-4: the D/U paths emit nothing after
+			# be_addr_slot_emit) so a later redefinition of this name
+			# can repatch it. No-op outside the REPL (hook is 0).
+			if (repl_call_site_hook != 0):
+				repl_call_site_hook(s, codepos - 4)
 			# pac=full: the address just materialized is now a value —
 			# sign it (paciza; call_eax authenticates with blraaz).
 			# Emitted here, after the 'U' backpatch-chain bookkeeping
@@ -421,6 +447,33 @@ int sym_get_value(char *s):
 
 void sym_define_declare_global_function(char* name):
 	sym_define_global(sym_declare_global(name, 4, 2))
+
+
+# Asm runtime stubs have no parsed parameter list, so their calls are
+# normally unchecked (parameter count -1). A stub that loads a fixed
+# number of caller stack slots (syscall, syscall7) records that arity
+# here so a call with the wrong argument count is rejected at compile
+# time instead of silently reading garbage slots. Only the count is
+# known: the parameter type slots are cleared to -1 (unknown), so the
+# argument types stay unchecked.
+void sym_define_declare_global_function_arity(char* name, int num_args):
+	int t = sym_declare_global(name, 4, 2)
+	sym_define_global(t)
+	save_int(table + t + 22, num_args)
+	int slots = num_args
+	if (slots > sym_max_param_slots()):
+		slots = sym_max_param_slots()
+	int i = 0
+	while (i < slots):
+		save_int(table + t + 26 + (i << 2), -1)
+		i = i + 1
+
+
+# 1 when the symbol at table offset t is an asm runtime stub: stubs are
+# declared with the 'function' pseudo-type (4) as their value type, while
+# ordinary functions record their declared return type there.
+int sym_is_asm_stub(int t):
+	return load_int(table + t + 6) == 4
 
 
 void print_symbol_table(int t):

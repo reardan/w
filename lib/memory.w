@@ -1,139 +1,122 @@
 /*
-Heap allocator: malloc, free and realloc.
+Heap allocator entry points: malloc, free and realloc.
 
-Free-list allocator. Every block has a two-word header: [size][next],
-8 bytes on x86 and 16 on x64. size counts payload bytes only; next links
-free blocks (0 ends the list). malloc searches the free list first
-(first fit, splitting large blocks) and only grows the heap with brk
-when nothing fits. free() pushes blocks back onto the list.
+This file is a thin dispatcher, not an allocator: it picks one of the
+backend modules below and forwards every call to it. The choice is made
+once, on the first allocation call, and cached for the rest of the
+process:
 
-The OS layer (brk and the other syscall wrappers) stays in lib/linux.w;
-only the allocation policy lives here, so swapping allocators means
-swapping this module.
+  - lib/memory_freelist.w -- the default, production free-list
+    allocator (fast, minimal memory overhead).
+  - lib/memory_debug.w -- a guard-page allocator that trades speed and
+    memory for catching heap bugs (overflow, use-after-free, double
+    free, and leaks) as close to the point of the bug as possible.
+
+Debug mode is opt-in: set W_DEBUG_ALLOC to any non-empty value before
+the program starts, or call malloc_force_debug_mode() before the first
+allocation of the process. Adding another backend later (say a
+bounds-checking allocator tuned for one arch) means adding another
+module and another branch below -- callers of malloc/free/realloc never
+need to change.
+
+This file is part of the container runtime (structures/hash_table.w,
+structures/w_list.w) that the compiler auto-imports into every program,
+so it must not pull in lib.lib: lib.lib defines _main, and a handful of
+minimal fixtures (e.g. tests/hello.w) define their own _main to bypass
+the standard runtime entirely, which would conflict. That's why the
+W_DEBUG_ALLOC check below reads /proc/self/environ directly through
+lib.linux's raw open/read/close instead of going through lib.env (which
+needs lib.lib's environ_ptr, set by lib.lib's own _main). /proc doesn't
+exist on win64/wasm/arm64_darwin, so auto-detection there is a no-op;
+malloc_force_debug_mode() still works everywhere.
 */
+# Forward declarations so cyclic imports (memory_debug.w pulls in
+# lib.stack_trace for its fatal-error path, which imports lib.memory
+# back here; the import registry dedupes the cycle, so without these
+# the detour would see calls to free()/realloc() before this file's own
+# definitions below are parsed) still resolve. Mirrors lib/lib.w's
+# forward declaration of malloc for the same reason.
+void* malloc(int size);
+int free(void* mem_address);
+char* realloc(void* old, int oldlen, int newlen);
+
 import lib.linux
+import lib.memory_freelist
+import lib.memory_debug
 
 
-int malloc_free_list
-int malloc_heap_ptr
-int malloc_heap_end
-int malloc_mmap_mode /* brk growth failed once: chunks come from mmap now */
+int malloc_mode_determined /* 0 until the first malloc/free/realloc call, or malloc_force_debug_mode() */
+int malloc_debug_mode      /* 0 = freelist backend, 1 = debug backend */
 
 
-# Header fields are target words so next holds a full pointer on x64;
-# load_int/save_int would truncate it to 4 bytes.
-int malloc_load_word(int p):
-	int* w = cast(int*, p)
-	return w[0]
+# Force debug-mode allocation regardless of W_DEBUG_ALLOC. Must be
+# called before the first malloc/free/realloc of the process -- the
+# backend choice is fixed on first use and never revisited.
+void malloc_force_debug_mode():
+	malloc_mode_determined = 1
+	malloc_debug_mode = 1
 
 
-void malloc_save_word(int p, int v):
-	int* w = cast(int*, p)
-	w[0] = v
+# Best-effort W_DEBUG_ALLOC check: true when some environment entry
+# starts with "W_DEBUG_ALLOC=". Reads /proc/self/environ directly (see
+# the file header for why) using the freelist backend's own allocator
+# for the scratch buffer, never the dispatcher, to keep this out of the
+# mode-selection path it is itself deciding.
+int malloc_debug_env_check():
+	int fd = open(c"/proc/self/environ", 0, 0)
+	if (fd < 0):
+		return 0
+	int cap = 65536
+	char* buf = freelist_malloc(cap)
+	int n = read(fd, buf, cap - 1)
+	close(fd)
+	if (n <= 0):
+		freelist_free(buf)
+		return 0
+	char* needle = c"W_DEBUG_ALLOC="
+	int needle_len = 14
+	int i = 0
+	int found = 0
+	while ((i < n) & (found == 0)):
+		if (i + needle_len <= n):
+			int matches = 1
+			int j = 0
+			while (j < needle_len):
+				if (buf[i + j] != needle[j]):
+					matches = 0
+				j = j + 1
+			if (matches):
+				found = 1
+		while ((i < n) & (buf[i] != 0)):
+			i = i + 1
+		i = i + 1
+	freelist_free(buf)
+	return found
+
+
+void malloc_init_mode():
+	if (malloc_mode_determined == 0):
+		malloc_mode_determined = 1
+		if (malloc_debug_env_check()):
+			malloc_debug_mode = 1
 
 
 void* malloc(int size):
-	if (size < 1):
-		size = 1
-	# Round up to 8 bytes so blocks stay aligned
-	size = ((size + 7) >> 3) << 3
-
-	int header = 2 * __word_size__
-
-	# First fit from the free list
-	int prev = 0
-	int block = malloc_free_list
-	while (block != 0):
-		int block_size = malloc_load_word(block)
-		if (block_size >= size):
-			int next = malloc_load_word(block + __word_size__)
-			# Split when the remainder can hold a header and a payload
-			if (block_size >= size + header + 8):
-				int rest = block + header + size
-				malloc_save_word(rest, block_size - size - header)
-				malloc_save_word(rest + __word_size__, next)
-				next = rest
-				malloc_save_word(block, size)
-			if (prev == 0):
-				malloc_free_list = next
-			else:
-				malloc_save_word(prev + __word_size__, next)
-			return block + header
-		prev = block
-		block = malloc_load_word(block + __word_size__)
-
-	# Nothing fits: bump-allocate, growing the heap in 64KB chunks so most
-	# mallocs avoid the two brk syscalls the old allocator paid every time.
-	int needed = size + header
-	if (malloc_heap_ptr == 0):
-		malloc_heap_ptr = brk(0)
-		malloc_heap_end = malloc_heap_ptr
-	if (malloc_heap_ptr + needed > malloc_heap_end):
-		int chunk = 65536
-		if (needed > chunk):
-			chunk = ((needed + 65535) >> 16) << 16
-		# brk reports failure by returning the old break, never a negative
-		# errno. Growth can fail when a mapping sits right above the heap
-		# (e.g. the repl/wdbg MAP_32BIT code buffer next to a
-		# low-randomized brk base), so compare the result with the request
-		# (equality: high mmap addresses look negative to signed ordering
-		# on x86); on failure switch to mmap chunks permanently (a later
-		# brk call could otherwise shrink the break below live blocks).
-		int grew = 0
-		if (malloc_mmap_mode == 0):
-			# The program break may be shared with another allocator:
-			# dynamically linked programs (c_lib) pull in glibc, whose
-			# malloc also grows the break. If it moved since our last
-			# growth, extending from the stale end would shrink the break
-			# and unmap the other allocator's live heap. Hand the break
-			# over and use mmap chunks from now on.
-			if (brk(0) != malloc_heap_end):
-				malloc_mmap_mode = 1
-			else:
-				int target = malloc_heap_end + chunk
-				if (brk(cast(char*, target)) == target):
-					grew = 1
-		if (grew):
-			malloc_heap_end = malloc_heap_end + chunk
-		else:
-			malloc_mmap_mode = 1
-			# MAP_32BIT on x64 keeps malloc'd memory addressable by
-			# 32-bit immediates, which the in-process repl/wdbg
-			# expression eval relies on
-			int flags = 34 /* PRIVATE|ANONYMOUS */
-			if (__word_size__ == 8):
-				flags = flags + 64
-			int fresh = mmap(0, chunk, 3, flags)
-			if ((fresh < 0) & (fresh > -4096)):
-				return cast(void*, 0)
-			malloc_heap_ptr = fresh
-			malloc_heap_end = fresh + chunk
-
-	block = malloc_heap_ptr
-	malloc_heap_ptr = malloc_heap_ptr + needed
-	malloc_save_word(block, size)
-	return block + header
+	malloc_init_mode()
+	if (malloc_debug_mode):
+		return debug_malloc(size)
+	return freelist_malloc(size)
 
 
-# Push the block back onto the allocator's free list.
 int free(void* mem_address):
-	if (mem_address == 0):
-		return 0
-	int block = mem_address - 2 * __word_size__
-	malloc_save_word(block + __word_size__, malloc_free_list)
-	malloc_free_list = block
-	return 1
+	malloc_init_mode()
+	if (malloc_debug_mode):
+		return debug_free(mem_address)
+	return freelist_free(mem_address)
 
 
-# void* accepts any single-level pointer implicitly; word-typed callers
-# cast. The copy loop indexes through char* because void has no size.
 char *realloc(void* old, int oldlen, int newlen):
-	char *grown = malloc(newlen)
-	char *src = old
-	int i = 0
-	while (i < oldlen):
-		grown[i] = src[i]
-		i = i + 1
-
-	free(old)
-	return grown
+	malloc_init_mode()
+	if (malloc_debug_mode):
+		return debug_realloc(old, oldlen, newlen)
+	return freelist_realloc(old, oldlen, newlen)

@@ -9,6 +9,19 @@ char *last_identifier
 int last_call_return_type
 int last_call_end
 
+# Nonzero while the controlling expression of an if or while statement is
+# being parsed. bitwise_and_expr/bitwise_or_expr use it to warn when '&'
+# or '|' joins two bool operands in a condition, where the non-short-
+# circuiting evaluation is a recurring footgun. Declared here (before the
+# expression ladder) so both the setters and the readers see it.
+int condition_context
+
+# Nonzero while the operand of a cast(T, ...) is being parsed. cast() is
+# the documented escape hatch for conversions the checks would reject;
+# int_literal() extends that to the bit-31 literal warning, so
+# cast(int, 0xffffffff) spells "this bit pattern is intentional".
+int cast_context
+
 
 void var_coerce(int want, int got);
 
@@ -232,16 +245,26 @@ void coerce(int want, int got):
 
 # Conversions requested with cast(T, x). Casts silence the compatibility
 # warnings but still reject conversions that cannot round-trip: address-sized
-# values (pointers and function addresses) only fit in word-sized integers.
+# values (pointers, function addresses and decayed array/slice values) only
+# fit in word-sized integers. cast(T, arr) decays like every other pointer
+# context: cast(int, arr) equals cast(int, arr.data), matching
+# cast(char*, arr) — the descriptor's own address has no cast() spelling.
 void coerce_explicit(int want, int got):
 	int want_real = type_unqualified(want)
 	int got_real = type_unqualified(got)
 	int got_address_sized = type_get_pointer_level(got_real) > 0
 	if (got_real == 4):
 		got_address_sized = 1
+	int got_decays = type_get_kind(got_real) == type_kind_slice_value()
+	if (got_decays):
+		got_address_sized = 1
 	if (got_address_sized & (type_get_pointer_level(want_real) == 0)):
 		if ((type_num_args(want_real) == 0) & (type_float_kind(want_real) == 0)):
 			int want_size = type_get_size(want_real)
 			if ((want_size > 0) & (want_size < word_size)):
 				error(c"cannot cast an address to a sub-word integer")
+			if (got_decays & (type_get_kind(want_real) == 0)):
+				# Word-sized integer target: decay to the data pointer,
+				# the same value coerce() produces for pointer targets
+				promote_eax()
 	coerce(want, got)

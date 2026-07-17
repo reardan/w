@@ -25,6 +25,24 @@ int import_plain_count
 int import_plain_base
 
 
+/*
+--imports (opt-in `w check --imports`): warn when an identifier resolves
+to a global symbol whose declaring module is neither this file, a direct
+import of this file (plain or aliased), nor the auto-imported
+container-runtime closure. Off by default -- ordinary compiles rely on
+transitive re-exports in 469+ places (see CLAUDE.md), so this must never
+run unless asked for. See import_warn_transitive below.
+*/
+int check_imports_mode
+
+# Snapshot of imported_count taken right after link_impl's cold-start
+# auto-imports (structures.hash_table, structures.w_list, and everything
+# those transitively pull in) finish, before any user file is compiled.
+# Every path in imported_paths[0 .. auto_import_closure_count) belongs to
+# that closure, which import_warn_transitive treats like a direct import.
+int auto_import_closure_count
+
+
 void compile_save(char* fn);
 
 
@@ -42,7 +60,9 @@ char* import_resolve_arch(char* path):
 			char after = path[i + 8]
 			if (at_boundary & ((after == '/') | (after == 0))):
 				char* arch = c"x86"
-				if (target_os == 2):
+				if (target_os == 3):
+					arch = c"wasm"
+				else if (target_os == 2):
 					arch = c"win64"
 				else if (target_isa == 1):
 					arch = c"arm64"
@@ -181,6 +201,114 @@ void import_warn_unqualified(char* name):
 		i = i + 1
 
 
+# Is the module holding this compiled file part of the auto-imported
+# container-runtime closure (structures.hash_table, structures.w_list,
+# and everything those transitively import)?
+int import_in_auto_closure(char* file_path):
+	int i = 0
+	while (i < auto_import_closure_count):
+		char* p = cast(char*, load_ptr(imported_paths + i * __word_size__))
+		if (import_path_matches_file(p, file_path)):
+			return 1
+		i = i + 1
+	return 0
+
+
+# Was the module holding this compiled file imported directly (plain or
+# aliased) in the current file's scope?
+int import_directly_imported(char* file_path):
+	if (import_plain_imported(file_path)):
+		return 1
+	int i = import_alias_base
+	while (i < import_alias_count):
+		if (import_path_matches_file(import_alias_path(i), file_path)):
+			return 1
+		i = i + 1
+	return 0
+
+
+# import_warn_transitive dedup: one warning per (importing file, symbol)
+# pair, not per use. Parallel arrays scanned like import_plain_paths
+# above; file indexes are plain ints (save_int/load_int, 4-byte stride,
+# same convention as debug_line_file_indexes), names are host pointers
+# (save_ptr/load_ptr, __word_size__ stride, same convention as
+# import_plain_paths).
+char* import_transitive_warned_files
+char* import_transitive_warned_names
+int import_transitive_warned_count
+
+
+int import_transitive_already_warned(int file_index, char* name):
+	int i = 0
+	while (i < import_transitive_warned_count):
+		int f = load_int(import_transitive_warned_files + i * 4)
+		char* n = cast(char*, load_ptr(import_transitive_warned_names + i * __word_size__))
+		if ((f == file_index) & (strcmp(n, name) == 0)):
+			return 1
+		i = i + 1
+	return 0
+
+
+void import_transitive_mark_warned(int file_index, char* name):
+	int max_warned = 4000
+	if (import_transitive_warned_files == 0):
+		import_transitive_warned_files = malloc(max_warned * 4)
+		import_transitive_warned_names = malloc(max_warned * __word_size__)
+	assert1(import_transitive_warned_count < max_warned)
+	save_int(import_transitive_warned_files + import_transitive_warned_count * 4, file_index)
+	save_ptr(import_transitive_warned_names + import_transitive_warned_count * __word_size__, cast(int, strclone(name)))
+	import_transitive_warned_count = import_transitive_warned_count + 1
+
+
+# --imports: an unqualified reference just resolved (in identifier()); if
+# it names a global symbol declared in a module this file does not import
+# directly -- and that module is not part of the auto-imported
+# container-runtime closure -- warn. This is the "transitive import
+# reliance" failure class (#145, #147): A uses C's symbols only because B
+# imports C, so removing B's import of C (or B entirely) silently breaks
+# A. Guarded by check_imports_mode so ordinary compiles never pay for it.
+#
+# The closure's own files are never the CURRENT file under this check:
+# structures/hash_table.w and friends lean on each other's transitive
+# re-exports internally (that is pre-existing, compiler-internal
+# plumbing, not something a --imports run against a user's file should
+# ever surface), so this returns immediately while parsing any file that
+# is itself part of the closure.
+void import_warn_transitive(char* name):
+	if (check_imports_mode == 0):
+		return
+	int cur_index = decl_file_index()
+	if (cur_index < 0):
+		return
+	char* cur_file = debug_file_name(cur_index)
+	if (import_in_auto_closure(cur_file)):
+		return
+	int t = sym_lookup(name)
+	if (t < 0):
+		return
+	int visibility = sym_decl_visibility(t)
+	if ((visibility != 'D') & (visibility != 'U')):
+		return
+	int file_index = sym_decl_file_index(t)
+	if (file_index < 0):
+		return
+	if (cur_index == file_index):
+		return
+	char* def_file = debug_file_name(file_index)
+	if (import_directly_imported(def_file)):
+		return
+	if (import_in_auto_closure(def_file)):
+		return
+	if (import_transitive_already_warned(cur_index, name)):
+		return
+	import_transitive_mark_warned(cur_index, name)
+	diag_part(c"warning: symbol '")
+	diag_part(name)
+	diag_part(c"' resolves through a transitive import (defined in '")
+	diag_part(def_file)
+	warning(c"'); import it directly")
+
+
 # Qualified access through an import alias. The caller has just seen the
 # alias identifier with '.' as the next character. Consumes ".member",
 # checks the member was declared in the aliased module's file, and then
@@ -281,6 +409,26 @@ void import_validate_alias(char* alias):
 		error(c"'")
 
 
+# Truncates a trailing '#' comment (and the spaces/tabs before it) off an
+# import line. Import lines are read raw with read_until_end() because the
+# module path is not a normal token, so get_token()'s comment skipping
+# never sees them. Dotted module paths and aliases have no legal '#', so
+# everything from the first '#' on is commentary. Must run before
+# import_split_alias(), or a comment containing " as " would mis-split.
+void import_strip_comment(char* line):
+	int i = 0
+	while (line[i]):
+		if (line[i] == '#'):
+			while (i > 0):
+				int prev = line[i - 1]
+				if ((prev != ' ') & (prev != 9)):
+					break
+				i = i - 1
+			line[i] = 0
+		else:
+			i = i + 1
+
+
 # Splits an optional trailing " as <alias>" clause off an import line,
 # truncating the line at the clause. Returns the alias (fresh allocation)
 # or 0 when the line has none.
@@ -300,7 +448,9 @@ char* import_split_alias(char* line):
 int import_statement():
 	if(accept(c"import")):
 		# The rest of the line is the module path plus an optional alias
+		# and an optional trailing comment
 		read_until_end()
+		import_strip_comment(token)
 		char* alias = import_split_alias(token)
 
 		# Strip a trailing .* wildcard; the whole module is imported either way

@@ -24,15 +24,24 @@ int close(int file):
 int seek(int file, int offset, int reference):
 	return syscall(19, file, offset, reference)
 
+int unlink(char* path):
+	return syscall(10, path, 0, 0)
+
+# fsync (118): flushes the file's data and metadata to stable storage.
+# Returns 0, or a negative errno (e.g. -9 EBADF on a closed fd).
+int fsync(int file):
+	return syscall(118, file, 0, 0)
+
+# fdatasync (148): like fsync, but may skip metadata-only updates.
+int fdatasync(int file):
+	return syscall(148, file, 0, 0)
+
 # Directory syscalls:
 int mkdir(char* path, int mode):
 	return syscall(39, path, mode, 0)
 
 int rmdir(char* path):
 	return syscall(40, path, 0, 0)
-
-int unlink(char* path):
-	return syscall(10, path, 0, 0)
 
 int rename(char* oldpath, char* newpath):
 	return syscall(38, oldpath, newpath, 0)
@@ -62,8 +71,24 @@ int mmap(int addr, int length, int prot, int flags):
 int munmap(int addr, int length):
 	return syscall(91, addr, length, 0)
 
+# mprotect (125): changes page protection (PROT_NONE=0, READ=1, WRITE=2,
+# EXEC=4) on an existing mapping. addr and length must be page-aligned.
+int mprotect(int addr, int length, int prot):
+	return syscall(125, addr, length, prot)
+
+# clone: the trailing 0 pads to syscall's fixed nr + 3 slots (the third
+# kernel argument is unused here); without it the nr slot read garbage.
 int sys_clone(int flags, int child_stack):
-	return syscall(56, flags, child_stack)
+	return syscall(56, flags, child_stack, 0)
+
+# futex (240): uaddr points at a 32-bit futex word. futex_op is
+# FUTEX_WAIT (0) / FUTEX_WAKE (1), usually with FUTEX_PRIVATE_FLAG (128)
+# for the CLONE_VM threads of lib/thread.w. For WAIT, val is the
+# expected word value and timeout may be 0 to block forever; for WAKE,
+# val is the number of waiters to wake. The unused uaddr2/val3 slots
+# pass 0 via syscall7.
+int sys_futex(int uaddr, int futex_op, int val, int timeout):
+	return syscall7(240, uaddr, futex_op, val, timeout, 0, 0)
 
 # poll (168): fds points at an array of 8-byte pollfd records.
 # timeout_ms < 0 blocks forever; 0 returns immediately.

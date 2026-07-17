@@ -41,6 +41,19 @@ int close(int file):
 int seek(int file, int offset, int reference):
 	return syscall(62, file, offset, reference)
 
+# unlinkat with no flags removes a file.
+int unlink(char* path):
+	return syscall(35, arm64_at_fdcwd(), path, 0)
+
+# fsync (82): flushes the file's data and metadata to stable storage.
+# Returns 0, or a negative errno (e.g. -9 EBADF on a closed fd).
+int fsync(int file):
+	return syscall(82, file, 0, 0)
+
+# fdatasync (83): like fsync, but may skip metadata-only updates.
+int fdatasync(int file):
+	return syscall(83, file, 0, 0)
+
 # Directory syscalls:
 int mkdir(char* path, int mode):
 	return syscall7(34, arm64_at_fdcwd(), path, mode, 0, 0, 0)
@@ -48,10 +61,6 @@ int mkdir(char* path, int mode):
 # unlinkat with AT_REMOVEDIR (0x200).
 int rmdir(char* path):
 	return syscall(35, arm64_at_fdcwd(), path, 512)
-
-# unlinkat with flags=0 (remove a non-directory).
-int unlink(char* path):
-	return syscall(35, arm64_at_fdcwd(), path, 0)
 
 # renameat(olddirfd, old, newdirfd, new) — both dirs AT_FDCWD.
 int rename(char* oldpath, char* newpath):
@@ -89,8 +98,15 @@ int mmap(int addr, int length, int prot, int flags):
 int munmap(int addr, int length):
 	return syscall(215, addr, length, 0)
 
+# mprotect (226): changes page protection (PROT_NONE=0, READ=1, WRITE=2,
+# EXEC=4) on an existing mapping. addr and length must be page-aligned.
+int mprotect(int addr, int length, int prot):
+	return syscall(226, addr, length, prot)
+
+# clone: the trailing 0 pads to syscall's fixed nr + 3 slots (the third
+# kernel argument is unused here); without it the nr slot read garbage.
 int sys_clone(int flags, int child_stack):
-	return syscall(220, flags, child_stack)
+	return syscall(220, flags, child_stack, 0)
 
 # ppoll (73): fds points at an array of 8-byte pollfd records. timeout_ms
 # < 0 blocks forever; otherwise it is converted to a timespec.

@@ -1,0 +1,20 @@
+# Package metadata for libs/extras/vcs (docs/projects/version_control.md,
+# issue #252 wave 1). A directory shared by three sibling PRs landing in
+# parallel -- cas.w (V1a), diff.w (V1b), dag.w (V1c) -- each of which adds
+# its own module entry here; a merge conflict against the sibling PRs'
+# additions to this same file is expected and should be resolved by
+# keeping all the module entries together.
+#
+# Not part of the seed's import closure (docs/projects/version_control.md's
+# design decisions) and not wired into any build.json step: there is no
+# existing convention in this repository for auto-validating a non-root
+# package.wmeta (libs/extras/c_import, c_preprocessor and parser_generator
+# do not carry one either), so this file documents the module for now and
+# is checked by hand with:
+#   bin/wmeta check libs/extras/vcs/package.wmeta
+package vcs
+version 0.1.0
+root .
+
+modules:
+	dag

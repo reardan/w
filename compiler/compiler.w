@@ -18,6 +18,13 @@ void file_not_found_error():
 	print_error(c"'\x0a")
 
 
+# --quiet: suppress the non-diagnostic stderr chatter (the per-file
+# "compiling '...'" banner, the target-mode banner and the absolute-path
+# notice) so 'w check --json --quiet' emits pure NDJSON with an empty
+# stderr on warning-free files. Diagnostics are never suppressed.
+int quiet_mode
+
+
 # 'w deps' recording: while deps_mode is set, every file the compiler
 # successfully opens for compilation (the root, every import, and the
 # auto-imported runtime modules) is recorded here so deps_dump() can
@@ -72,6 +79,18 @@ int compile_attempt(char* fn):
 	tab_level = 0
 	byte_offset = 0
 	nextc = get_character()
+	# Silently skip a single UTF-8 byte-order mark (EF BB BF) at the very
+	# start of the file -- some Windows editors emit one unprompted, and
+	# without this the BOM's first byte becomes a bogus token (#287).
+	# Matches Python 3 / Go / Rust. getc() keeps byte_offset exact while
+	# leaving the line/column counters untouched, so a BOM file reports
+	# the same diagnostic positions as its BOM-less twin. A file starting
+	# with a partial match (a stray EF not followed by BB BF) is not W
+	# source: it still fails on its first token, as before.
+	if (nextc == 239):
+		if (getc() == 187):
+			if (getc() == 191):
+				nextc = getc()
 	get_token()
 	program()
 	return 1
@@ -179,8 +198,9 @@ int compile_file(char* filename):
 	# (Unix '/' prefix or Windows drive letter like 'C:')
 	path_normalize_sep(filename)
 	if (path_is_absolute(filename)):
-		print2(c"using filename as path directly: ")
-		println2(filename)
+		if (quiet_mode == 0):
+			print2(c"using filename as path directly: ")
+			println2(filename)
 		return compile_attempt(filename)
 
 	return compile_relative_path(filename)
@@ -255,31 +275,43 @@ void compile_save(char* fn):
 		print_string(c"back to ", filename)
 
 
-int link_impl(int argc, int argv, int start_index, int check_mode):
-	if (argc <= start_index):
-		println2(c"usage: w [x64|arm64|arm64_darwin|win64] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
-		exit(1)
-	int i = start_index
-	word_size = 4
-	word_size_log2 = 2
-	diag_word_size = word_size
-	target_isa = 0
-	target_os = 0
-	arm64_pac = 1
-	bounds_mode = 1
-	strict_mode = 0
-	warning_count = 0
-	# argv strides by the HOST pointer size: __word_size__ was baked in
-	# when this compiler binary was itself compiled
-	char** first_arg = argv + i * __word_size__
-	if (strcmp(*first_arg, c"x64") == 0):
-		println2(c"Compiling in x64 mode")
+# The recognized target-selector words, shared by link_impl's positional
+# parse and the selector-first subcommand spelling ('w x64 check f.w')
+# that main() forwards through target_pending.
+int target_is_selector(char* arg):
+	if (strcmp(arg, c"x64") == 0):
+		return 1
+	if (strcmp(arg, c"arm64") == 0):
+		return 1
+	if (strcmp(arg, c"arm64_darwin") == 0):
+		return 1
+	if (strcmp(arg, c"win64") == 0):
+		return 1
+	if (strcmp(arg, c"wasm") == 0):
+		return 1
+	return 0
+
+
+# A selector spelled before a subcommand word ('w x64 deps f.w') is
+# recorded here by main() and applied by link_impl right after its
+# target-state reset, so check/deps/symbols compose with the target
+# selector in either spelling.
+char* target_pending
+
+
+# Apply one selector word to the target-mode globals; returns 1 when the
+# word selected a target, 0 when it is not a selector.
+int target_selector_apply(char* arg):
+	if (strcmp(arg, c"x64") == 0):
+		if (quiet_mode == 0):
+			println2(c"Compiling in x64 mode")
 		word_size =  8
 		word_size_log2 = 3
 		diag_word_size = word_size
-		i = i + 1
-	else if (strcmp(*first_arg, c"arm64") == 0):
-		println2(c"Compiling in arm64 mode")
+		return 1
+	if (strcmp(arg, c"arm64") == 0):
+		if (quiet_mode == 0):
+			println2(c"Compiling in arm64 mode")
 		# AArch64 is a 64-bit target, so it inherits the x64 type system
 		# (8-byte pointers, int64, float64); target_isa selects the A64
 		# instruction emitter and the Mach-O/ELF-arm64 container.
@@ -292,9 +324,24 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		# single RWX image so their output stays byte-identical and the
 		# dynamic-linker GOT stays writable.
 		data_split = 1
-		i = i + 1
-	else if (strcmp(*first_arg, c"win64") == 0):
-		println2(c"Compiling in win64 mode")
+		return 1
+	if (strcmp(arg, c"wasm") == 0):
+		if (quiet_mode == 0):
+			println2(c"Compiling in wasm mode")
+		# wasm32 + WASI (docs/projects/wasm_backend.md): 32-bit words like
+		# the default target; target_isa selects the wasm instruction
+		# emitter and target_os the module container writer. The text/data
+		# split is mandatory — wasm code is not addressable memory.
+		word_size = 4
+		word_size_log2 = 2
+		diag_word_size = word_size
+		target_isa = 2
+		target_os = 3
+		data_split = 1
+		return 1
+	if (strcmp(arg, c"win64") == 0):
+		if (quiet_mode == 0):
+			println2(c"Compiling in win64 mode")
 		# Windows x64: the x86-64 instruction emitter (target_isa 0,
 		# word_size 8) with the PE32+ container and a kernel32-import
 		# runtime instead of Linux syscalls (docs/projects/windows.md).
@@ -302,9 +349,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		word_size_log2 = 3
 		diag_word_size = word_size
 		target_os = 2
-		i = i + 1
-	else if (strcmp(*first_arg, c"arm64_darwin") == 0):
-		println2(c"Compiling in arm64_darwin mode")
+		return 1
+	if (strcmp(arg, c"arm64_darwin") == 0):
+		if (quiet_mode == 0):
+			println2(c"Compiling in arm64_darwin mode")
 		# Same A64 instruction emitter and 64-bit type system as the
 		# arm64 (Linux) target; target_os selects the Darwin syscall
 		# stubs and the Mach-O container writer (Stage 4).
@@ -314,6 +362,90 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		target_isa = 1
 		target_os = 1
 		data_split = 1
+		return 1
+	return 0
+
+
+# Canonical import-registry form of a command-line root path: separators
+# normalized, a leading './' and the '.w' extension stripped — the same
+# shape import_module() registers for an import line ('import
+# compiler.compiler' registers "compiler/compiler"), so roots and imports
+# dedupe against each other no matter which direction they arrive in.
+# Returns a fresh allocation.
+char* root_canonical(char* path):
+	char* normalized = strclone(path)
+	path_normalize_sep(normalized)
+	char* trimmed = normalized
+	if (starts_with(trimmed, c"./")):
+		trimmed = trimmed + 2
+	char* canonical = strclone(trimmed)
+	free(normalized)
+	if (ends_with(canonical, c".w")):
+		canonical[strlen(canonical) - 2] = 0
+	return canonical
+
+
+# Compiler-internal modules only compile inside w.w's import graph;
+# checking one standalone dies with a misleading missing-symbol error in
+# whatever neighbor happens to be referenced first. So in check mode (and
+# the check-shaped deps/symbols subcommands) such a root is substituted
+# with w.w — the gate that actually matters for a compiler change — and a
+# one-line stderr note says so. The exact rule: a root is
+# compiler-internal when its canonical path (relative, as spelled from
+# the repo root, './' and '.w' stripped) starts with 'compiler/',
+# 'grammar/', 'code_generator/' or 'debugger/', or is exactly 'codegen'
+# or 'grammar' (the two top-level umbrella modules). Absolute or
+# differently-anchored spellings are not recognized and compile as
+# given. In a mixed argument list only the internal roots are
+# substituted; the root dedupe in link_impl collapses repeated w.w
+# substitutions into one compile.
+int root_is_compiler_internal(char* path):
+	char* canonical = root_canonical(path)
+	int internal = 0
+	if (starts_with(canonical, c"compiler/")):
+		internal = 1
+	if (starts_with(canonical, c"grammar/")):
+		internal = 1
+	if (starts_with(canonical, c"code_generator/")):
+		internal = 1
+	if (starts_with(canonical, c"debugger/")):
+		internal = 1
+	if (strcmp(canonical, c"codegen") == 0):
+		internal = 1
+	if (strcmp(canonical, c"grammar") == 0):
+		internal = 1
+	free(canonical)
+	return internal
+
+
+int link_impl(int argc, int argv, int start_index, int check_mode):
+	if (argc <= start_index):
+		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [--version]")
+		exit(1)
+	int i = start_index
+	word_size = 4
+	word_size_log2 = 2
+	diag_word_size = word_size
+	target_isa = 0
+	target_os = 0
+	arm64_pac = 1
+	bounds_mode = 1
+	strict_mode = 0
+	warning_count = 0
+	# check/deps/symbols discard the output, so a library module without
+	# a _main is fine to analyze: the backend finishers skip the
+	# entry-call patch instead of erroring (code_generator/code_emitter.w)
+	entry_optional = check_mode
+	if (target_pending != 0):
+		# Selector spelled before the subcommand word, recorded by
+		# main(); a positional selector after the subcommand may still
+		# follow and wins.
+		target_selector_apply(target_pending)
+		target_pending = 0
+	# argv strides by the HOST pointer size: __word_size__ was baked in
+	# when this compiler binary was itself compiled
+	char** first_arg = argv + i * __word_size__
+	if (target_selector_apply(*first_arg)):
 		i = i + 1
 	# --pac is whole-program: signing at materialization and authenticating
 	# at the call site must agree across every compiled file (a mixed image
@@ -340,8 +472,31 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	last_identifier = malloc(8000)
 	last_global_declaration = malloc(8000)
 	be_start(word_size)
+	# --imports must never fire while the auto-imported closure itself is
+	# compiling: auto_import_closure_count (the exclusion list) is not
+	# populated until these two calls return, so a warning fired during
+	# them would wrongly scrutinize the closure's own internal transitive
+	# reliance (structures/hash_table.w and friends lean on each other's
+	# re-exports by design; that is compiler-internal plumbing, not a
+	# user file --imports is meant to audit). --bool-ops stays quiet here
+	# too: the closure compiles into every program, so its own
+	# comparison-result '&'/'|' sites (lib/memory_freelist.w,
+	# lib/stack_trace.w, ...) would spam every opt-in check of an
+	# unrelated file — they are stage-2 sweep territory, not something a
+	# user run should report. Suppress, then restore.
+	int import_check_saved = check_imports_mode
+	int bool_ops_check_saved = check_bool_ops_mode
+	check_imports_mode = 0
+	check_bool_ops_mode = 0
 	import_module(c"structures.hash_table")
 	import_module(c"structures.w_list")
+	check_imports_mode = import_check_saved
+	check_bool_ops_mode = bool_ops_check_saved
+	# Everything registered so far (hash_table, w_list, and whatever they
+	# transitively import: lib/memory.w, lib/stack_trace.w, ...) is the
+	# auto-imported container-runtime closure that --imports treats like
+	# a direct import for every file (grammar/import_statement.w).
+	auto_import_closure_count = imported_count
 
 	output_fd = 1 /* default: write the ELF to stdout */
 	char* output_path = 0
@@ -367,11 +522,38 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			arm64_pac = pac_level
 		else if (strcmp(*arg, c"--strict") == 0):
 			strict_mode = 1
+		else if (strcmp(*arg, c"--quiet") == 0):
+			quiet_mode = 1
 		else:
-			print_error(c"compiling '")
-			print_error(*arg)
-			print_error(c"'\x0a")
-			compile_input_file(*arg)
+			char* input = *arg
+			# A compiler-internal root cannot be checked standalone;
+			# check w.w in its place (rule: root_is_compiler_internal)
+			if (check_mode && root_is_compiler_internal(input)):
+				if (quiet_mode == 0):
+					print_error(c"check: ")
+					print_error(input)
+					print_error(c" is compiler-internal; checking w.w\x0a")
+				input = c"w.w"
+			# Roots dedupe against the import registry in both
+			# directions: a root already compiled — as an earlier
+			# argument, or inside an earlier root's import closure — is
+			# skipped instead of redefining every symbol, and a root
+			# compiled here is registered so a later import of it (or a
+			# duplicate argument) is skipped by import_module().
+			char* canonical = root_canonical(input)
+			if (import_lookup(canonical) >= 0):
+				if (quiet_mode == 0):
+					print_error(c"skipping '")
+					print_error(input)
+					print_error(c"' (already compiled)\x0a")
+				free(canonical)
+			else:
+				import_register(canonical)
+				if (quiet_mode == 0):
+					print_error(c"compiling '")
+					print_error(input)
+					print_error(c"'\x0a")
+				compile_input_file(input)
 		i = i + 1
 
 	# Queued generic instantiations compile at this top-level boundary,
@@ -382,12 +564,19 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 
 	# On-demand runtimes for the to_json/from_json builtins and f"..."
 	# template strings: imported after all user files so the modules'
-	# code lands at a top-level boundary
+	# code lands at a top-level boundary. Like the auto-import closure
+	# above, these are compiler-injected modules, so the opt-in
+	# --bool-ops hint stays quiet while they compile (their own '&'/'|'
+	# style is stage-2 sweep territory, and structures/prelude.w would
+	# otherwise warn on every opt-in check of any file).
+	int bool_ops_finish_saved = check_bool_ops_mode
+	check_bool_ops_mode = 0
 	json_codec_finish_import()
 	template_string_finish_import()
 	prelude_finish_import()
 	generic_finish_instantiations()
 	var_finish_import()
+	check_bool_ops_mode = bool_ops_finish_saved
 
 	# Synthesize __w_test_main for lib/testing.w consumers now that every
 	# test_* function is compiled (compiler/test_registry.w, issue #147)
@@ -440,19 +629,44 @@ int link(int argc, int argv):
 int check_main(int argc, int argv):
 	int i = 2
 	diag_json = 0
-	if (i < argc):
+	check_imports_mode = 0
+	check_bool_ops_mode = 0
+	# Leading flags in any order; --quiet must be consumed before
+	# link_impl sees the argument list so the x64/arm64 mode banner and
+	# the per-file banner are suppressed from the start.
+	int scanning = 1
+	while (scanning & (i < argc)):
 		char** arg = argv + i * __word_size__
 		if (strcmp(*arg, c"--json") == 0):
 			diag_json = 1
 			i = i + 1
+		else if (strcmp(*arg, c"--quiet") == 0):
+			quiet_mode = 1
+			i = i + 1
+		else if (strcmp(*arg, c"--imports") == 0):
+			# Opt-in transitive-import check: warn when an identifier
+			# resolves to a symbol defined in a module this file does not
+			# import directly (grammar/import_statement.w,
+			# import_warn_transitive). Off by default.
+			check_imports_mode = 1
+			i = i + 1
+		else if (strcmp(*arg, c"--bool-ops") == 0):
+			# Opt-in widened bool-bitwise hint: also warn when '&'/'|'
+			# joins comparison-result bool operands in an if/while
+			# condition (grammar/binary_op.w, operand_is_bool_condition).
+			# Off by default.
+			check_bool_ops_mode = 1
+			i = i + 1
+		else:
+			scanning = 0
 	if (argc <= i):
-		println2(c"usage: w check [--json] [x64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
 
 
 /*
-w deps [--json] <file.w>...
+w deps [--json] [x64|arm64|arm64_darwin|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then prints the path of
 every file in the program's transitive import closure — the root file,
@@ -461,8 +675,10 @@ deduplicated, in the order the compiler first opened them. Paths under
 the invocation directory are printed relative to it (repo-relative when
 run from the repo root); anything else keeps its absolute path. --json
 emits one NDJSON record per file ({"file": "..."}), mirroring
-'w check --json'. Default target only: like 'check', the subcommand does
-not compose with the x64/arm64 arch selectors.
+'w check --json'. Like 'check', the subcommand composes with the target
+selectors — before the file list, or before the subcommand word itself
+('w x64 deps f.w') — and resolves lib/__arch__/ imports for the selected
+target, so per-arch closures come out right.
 */
 
 
@@ -514,7 +730,7 @@ int deps_main(int argc, int argv):
 			diag_json = 1
 			i = i + 1
 	if (argc <= i):
-		println2(c"usage: w deps [--json] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w deps [--json] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	deps_mode = 1
 	link_impl(argc, argv, i, 1)
@@ -523,7 +739,7 @@ int deps_main(int argc, int argv):
 
 
 /*
-w symbols [--json] [x64] <file.w>...
+w symbols [--json] [x64|arm64|arm64_darwin|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then dumps the global symbol
 table and user-declared types with their declaration locations. --json emits
@@ -682,7 +898,7 @@ int symbols_main(int argc, int argv):
 			diag_json = 1
 			i = i + 1
 	if (argc <= i):
-		println2(c"usage: w symbols [--json] [x64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w symbols [--json] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	link_impl(argc, argv, i, 1)
 	symbols_dump(json)

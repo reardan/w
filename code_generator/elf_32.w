@@ -124,6 +124,10 @@ void elf_finish_entry_patch():
 	if (t == 0):
 		t = sym_address(c"main")
 	if (t == 0):
+		# 'w check' on a main-less library module: not an error, and
+		# there is no entry call to patch (the output is discarded)
+		if (entry_optional):
+			return
 		error(c"Failed to find a _main() function. Did you import lib/testing?")
 	# rel32 = target - address of the instruction after the 5-byte call
 	t = t - code_offset - entry_call_disp_pos - 4
@@ -138,7 +142,8 @@ void elf_finish():
 	save_int(code + phdr_table_pos + 16, codepos) /* FileSize */
 	save_int(code + phdr_table_pos + 20, codepos) /* MemSize */
 
-	write(output_fd, code, codepos)
+	if (write(output_fd, code, codepos) != codepos):
+		error(c"could not write output file")
 
 
 void elf_save_section_info_32(int header_addr, int num_sections, int string_index):

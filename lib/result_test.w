@@ -45,9 +45,9 @@ void test_result_from_syscall():
 	assert_equal(3, result_value[int](ok))
 	result_free[int](ok)
 
-	wresult[int]* high_address = result_new_from_syscall(0x80000000)
+	wresult[int]* high_address = result_new_from_syscall(cast(int, 0x80000000))
 	assert_equal(1, result_is_ok[int](high_address))
-	assert_equal(0x80000000, result_value[int](high_address))
+	assert_equal(cast(int, 0x80000000), result_value[int](high_address))
 	result_free[int](high_address)
 
 	wresult[int]* err = result_new_from_syscall(-9)

@@ -1,0 +1,331 @@
+# Selection expectations for bin/wtest, checked by bin/wtest_map_check
+# (tools/wtest_map_check.w). Run: ./wbuild wtest_map_test
+#
+# Each 'case' block runs 'bin/wtest changed <words>' and asserts
+# PROPERTIES of the selection, never the exact set:
+#   case <word> [<word>...]   the changed paths for this case; words
+#                             pass through verbatim, so a case may lead
+#                             with -f/--base-manifest fixture flags
+#   expect <target>           selection must include <target>
+#   forbid <target>           selection must not include <target>
+#   empty                     selection must be empty
+#   noorder                   opt this case out of the build.json
+#                             known-name/order properties below, so a
+#                             -f fixture case can use self-descriptive
+#                             target names instead of reusing real
+#                             build.json ones (tools/wtest_map_check.w
+#                             header)
+# Full-line '#' comments only. Three properties hold implicitly for
+# every case that does not say 'noorder': each selected name must exist
+# in build.json, the selection must be in manifest order with no
+# duplicates (bin/wtest's documented output-order contract), and an
+# empty selection must print 'wtest: 0 targets selected' to stderr (a
+# non-empty one must not, and this one still holds under 'noorder') —
+# so the 'empty' cases below also pin the zero-target visibility line.
+#
+# DESIGN RULE (#251 Direction 1): adding a conventional test target must
+# NEVER require editing this file. Only assert targets tied to the
+# selection mechanism under test — the residue rules in tools/test_map.w,
+# literal step references, closure representatives — and forbids that are
+# structurally invariant (the 'tests' fallback when a rule matched,
+# never-emitted seed targets, unrelated leaf tests). This file is NOT a
+# frozen copy of bin/wtest output; to inspect the actual selection for a
+# case while editing:
+#   ./wbuild wtest && bin/wtest changed <path...>
+# An expect/forbid naming a target missing from build.json fails loudly
+# ("unknown target"), so target renames surface here immediately — unless
+# the case says 'noorder', in which case expect/forbid may name
+# fixture-only targets that were never meant to be in build.json.
+
+# Compiler tree -> the self-host gate (residue rule), never closure
+# selection (which would degenerate to the full suite), never the
+# 'tests' fallback. 'update' is on the never-emit list.
+case grammar/promote.w
+expect verify
+expect self_host_warning_test
+expect parser_generator_w_test
+forbid tests
+forbid update
+
+# Import-closure selection (rule b) through a library file, plus the
+# structures/ -> metadata_check residue.
+case structures/json.w
+expect json_test
+expect json_64_test
+expect json_codec_test
+expect wexec_test
+expect manifest_check
+expect metadata_check
+expect parser_generator_w_test
+forbid math_test
+forbid tests
+
+# Literal step references (rule a): fixture paths named in target argv
+# or piped stdin.
+case tests/warning_fixture.w
+expect warning_test
+expect strict_mode_test
+expect check_json_test
+expect parser_generator_w_test
+forbid tests
+
+case tests/import_alias_warning_fixture.w
+expect warning_test
+expect parser_generator_w_test
+forbid tests
+
+# Closure selection through an extras library, plus libs/ ->
+# metadata_check residue.
+case libs/extras/parser_generator/generator.w
+expect parser_generator_test
+expect parser_generator_c_test
+expect metadata_check
+forbid tests
+
+# Doc-only paths select nothing.
+case docs/todo.txt
+empty
+
+# Agent guidance is not code under test.
+case .cursor/rules/w-source.mdc .cursor/skills/w-check-diagnostics/SKILL.md
+empty
+
+# A deleted or unknown .w -> metadata_check + the full suite (closures
+# cannot be computed for importers of a missing module).
+case unknown/new_file.w
+expect metadata_check
+expect tests
+
+# The deep-closure case (the worst historical churn surface when it was
+# a frozen list): assert one representative per selection family — the
+# library's own tests, both word sizes, a distant closure consumer, the
+# toolchain, the lib/ residue — never the full set.
+case lib/stream.w
+expect stream_test
+expect stream_64_test
+expect dns_test
+expect repl_warning_test
+expect wexec
+expect wexec_test
+expect metadata_check
+forbid win64_hello_test
+forbid tests
+
+case lib/file.w
+expect file_test
+expect wtest
+expect wexec
+expect wexec_test
+expect metadata_check
+forbid win64_hello_test
+forbid tests
+
+# Multi-path invocation; wtest_run_test and wexec_test inherit
+# tools/wexec.w as a root from their 'wexec' dep target (rule b root
+# collection walks dependency targets).
+case tools/wexec.w tests/wexec/good.json
+expect wexec
+expect wexec_test
+expect wtest_run_test
+forbid tests
+
+# The manifests: wexec_test + the full suite. Only build.base.json (the
+# hand-maintained wbuildgen input) also gates manifest_check. Without a
+# --base-manifest baseline, build.json never gets the leaf special case.
+case build.json
+expect wexec_test
+expect tests
+forbid manifest_check
+
+case build.base.json
+expect manifest_check
+expect wexec_test
+expect tests
+
+# The build.json leaf special case: case words pass through to
+# 'bin/wtest changed' verbatim, so -f/--base-manifest point both the
+# current and the baseline manifest at tests/wtest/ fixtures (real
+# target names in build.json order, as the implicit properties demand).
+# A diff that only ADDS one wbuildgen-shaped leaf target (plus its
+# 'tests' membership) selects that target + the manifest gates, never
+# the umbrella.
+case -f tests/wtest/manifest_leaf_add.json --base-manifest tests/wtest/manifest_leaf_base.json build.json
+expect manifest_check
+expect wexec_test
+expect math_test
+forbid tests
+forbid sha256_test
+
+# REMOVING the leaf keeps just the manifest gates: the removed target
+# no longer exists to run, and manifest_check covers the regeneration.
+case -f tests/wtest/manifest_leaf_base.json --base-manifest tests/wtest/manifest_leaf_add.json build.json
+expect manifest_check
+expect wexec_test
+forbid math_test
+forbid tests
+
+# A leaf REGENERATED IN PLACE (a '# wbuild:' directive edit — here a
+# timeout) selects itself plus the manifest gates.
+case -f tests/wtest/manifest_leaf_retime.json --base-manifest tests/wtest/manifest_leaf_add.json build.json
+expect manifest_check
+expect wexec_test
+expect math_test
+forbid tests
+
+# A byte-identical baseline (formatting-only manifest change) keeps
+# just the manifest gates; manifest_check is the formatting arbiter.
+case -f tests/wtest/manifest_leaf_add.json --base-manifest tests/wtest/manifest_leaf_add.json build.json
+expect manifest_check
+expect wexec_test
+forbid math_test
+forbid tests
+
+# Anything beyond leaf additions/removals — here a hand-written
+# target's steps changed — falls back to the full residue.
+case -f tests/wtest/manifest_leaf_add.json --base-manifest tests/wtest/manifest_nonleaf_base.json build.json
+expect wexec_test
+expect tests
+forbid manifest_check
+forbid math_test
+
+# A build.base.json change keeps the full residue even when the
+# build.json diff itself is leaf-only: hand-maintained manifest edits
+# are never scoped down.
+case -f tests/wtest/manifest_leaf_add.json --base-manifest tests/wtest/manifest_leaf_base.json build.json build.base.json
+expect manifest_check
+expect wexec_test
+expect math_test
+expect tests
+
+# debugger/ is NOT compiler tree (no verify); wdbg roots are inherited
+# by the debug/attach test targets.
+case debugger/wdbg.w
+expect wdbg
+expect debug_test
+expect attach_test
+expect parser_generator_w_test
+forbid verify
+forbid tests
+
+# A conventional test selects itself + manifest_check (test sources are
+# wbuildgen inputs) and never an unrelated sibling test.
+case tests/sha256_test.w
+expect sha256_test
+expect manifest_check
+expect parser_generator_w_test
+forbid math_test
+forbid tests
+
+case tests/math_test.w
+expect math_test
+expect manifest_check
+forbid sha256_test
+forbid tests
+
+# The manifest generator toolchain.
+case tools/wbuildgen.w
+expect wbuildgen
+expect manifest
+expect manifest_check
+forbid tests
+
+# tests/asm/*.txt are runtime fixtures, not docs (#268): the tests/asm/
+# residue rule must see them despite the .txt extension.
+case tests/asm/corpus_x86.txt
+expect asm_foundations_test
+expect asm_x86_disasm_test
+expect asm_x86_asm_test
+expect asm_arm64_test
+expect asm_x64_test
+expect asm_seed_gate
+expect asm_stubs_test
+expect asm_fuzz_x86_test
+expect asm_fuzz_x64_test
+expect asm_fuzz_arm64_test
+forbid tests
+
+# lib/__arch__/ modules select through the per-arch closures of rule
+# (b) — the old blanket residue rule is retired. Each arch's module
+# selects only targets that compile for that arch: the x86 socket ABI
+# never selects an x64 twin or the darwin smoke target, and vice versa.
+case lib/__arch__/x86/socket_abi.w
+expect net_test
+expect http_client_test
+expect metadata_check
+expect parser_generator_w_test
+forbid http_client_64_test
+forbid net_darwin
+forbid tests
+
+case lib/__arch__/x64/socket_abi.w
+expect http_client_64_test
+expect net_64_test
+expect metadata_check
+forbid net_test
+forbid http_client_test
+forbid net_darwin
+forbid tests
+
+case lib/__arch__/arm64_darwin/socket_abi.w
+expect net_darwin
+expect metadata_check
+forbid net_test
+forbid http_client_64_test
+forbid tests
+
+# arm64 modules select the targets that really compile for arm64,
+# instead of the old x86/x64 lib-test proxies that never read them.
+case lib/__arch__/arm64/syscalls.w
+expect arm64_smoke_test
+expect dynamic_test_arm64
+expect metadata_check
+forbid lib_test
+forbid lib_64_test
+forbid tests
+
+# An arch module nothing compiles yet (no win64 target links lib/net.w)
+# keeps the always-on gates only; a future win64 net target's closure
+# will pick it up automatically.
+case lib/__arch__/win64/socket_abi.w
+expect metadata_check
+expect parser_generator_w_test
+forbid net_test
+forbid tests
+
+# graphics/ selects through arch closures too (the second retired
+# residue rule): the darwin window backend is visible only to
+# arm64_darwin roots, the X11/GL path only to the x64 smoke target.
+case graphics/cocoa.w
+expect graphics_darwin
+expect parser_generator_w_test
+forbid graphics_gl_smoke_test
+forbid tests
+
+case graphics/gl_linux.w
+expect graphics_gl_smoke_test
+forbid graphics_darwin
+forbid tests
+
+# 'noorder' lets a -f fixture case use self-descriptive target names
+# that are not real build.json targets, and not in build.json's
+# relative order, instead of being forced to reuse real ones just to
+# satisfy the implicit known-name/order properties. Both fixture names
+# below are fictional; without 'noorder' this case would fail on the
+# very first one ("not a build.json target"), order notwithstanding.
+case -f tests/wtest/manifest_custom_names.json custom/marker.dat
+noorder
+expect alpha_widget_check
+expect zeta_gadget_check
+
+# --available drops a target whose step names a runner not present on
+# this host and keeps a target with no special runner requirement.
+# tools/mac/does_not_exist.sh is a fictional path (never created) so the
+# drop is deterministic on every machine, unlike testing the real
+# qemu-aarch64-static/wine paths, whose availability legitimately varies
+# by host (docs/projects/ai_tooling_next_steps.md, 2026-07-16 entries).
+# The fixture's target names are not build.json targets, hence 'noorder'
+# (tools/wtest_map_check.w header).
+case -f tests/wtest/manifest_unavailable.json --available widget/marker.dat
+noorder
+expect custom_widget_ok
+forbid custom_widget_needs_mac

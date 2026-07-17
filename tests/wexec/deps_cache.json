@@ -1,0 +1,19 @@
+{
+	"targets": [
+		{
+			"name": "deps_key",
+			"inputs": [],
+			"outputs": ["bin/wexec_deps_fixture"],
+			"steps": [
+				{"cmd": ["bin/wv2", "bin/wexec_deps_root.w", "-o", "bin/wexec_deps_fixture"]}
+			]
+		},
+		{
+			"name": "deps_key_legacy",
+			"inputs": ["bin/wexec_deps_leaf.w"],
+			"steps": [
+				{"cmd": ["bin/wv2", "bin/wexec_deps_broken.w", "-o", "bin/wexec_deps_broken_out"], "expect_fail": true}
+			]
+		}
+	]
+}

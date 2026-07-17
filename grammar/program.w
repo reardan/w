@@ -29,12 +29,16 @@ int parse_constant_default():
 	if (token[0] == 39):
 		value = char_literal_value()
 	else if ((token[0] == '0') & (token[1] == 'x')):
+		int_literal_width_check()
 		value = from_hex(token + 2)
 	else if (('0' <= token[0]) & (token[0] <= '9')):
+		int_literal_decimal_check()
 		value = atoi(token)
 	else:
 		# A named enum constant: a defined global object of an enum type.
-		# Its value is the int32 the enum declaration emitted at its address.
+		# Its value is the int32 the enum declaration emitted at its address
+		# — in the code stream on the native targets, in the data segment
+		# on wasm (enum_declaration.w).
 		int t = sym_lookup(token)
 		int is_enum_constant = 0
 		if (t >= 0):
@@ -45,7 +49,10 @@ int parse_constant_default():
 			diag_part(c"default value for parameter must be a compile-time constant, got '")
 			diag_part(token)
 			error(c"'")
-		value = load_int32(code + load_int(table + t + 2) - code_offset)
+		if (target_isa == 2):
+			value = load_int32(data + (load_int(table + t + 2) - data_offset))
+		else:
+			value = load_int32(code + load_int(table + t + 2) - code_offset)
 	get_token()
 	if ((peek(c",") == 0) & (peek(c")") == 0)):
 		error(c"default value for parameter must be a single compile-time constant")
@@ -142,10 +149,11 @@ void function_definition(int current_symbol):
 		sym_set_w_variadic(current_symbol, -1)
 
 	if (accept(c";") == 0):
-		sym_define_global(current_symbol)
+		be_function_define(current_symbol, last_global_declaration)
 		# On arm64 sign and push the return address (x30) onto the W stack
 		# so the callee has the same [return-slot | args] layout the x86
-		# backend relies on; emits nothing on the x86 family.
+		# backend relies on; emits nothing on the x86 family. On wasm this
+		# opens the function's size-prefixed code-section unit.
 		be_function_prologue()
 		current_function_symbol = current_symbol
 		enclosing_tab_level = 0
@@ -160,6 +168,7 @@ void function_definition(int current_symbol):
 		statement()
 		defer_reset()
 		ret()
+		be_function_epilogue()
 		# Store length to symbol table:
 		save_int(table + current_symbol + 14, codepos - function_start)
 
@@ -343,7 +352,7 @@ void script_main():
 	int function_start = codepos
 	save_int(table + current_symbol + 22, 0) /* param_count */
 	sym_set_w_variadic(current_symbol, -1)
-	sym_define_global(current_symbol)
+	be_function_define(current_symbol, c"main")
 	be_function_prologue()
 	current_function_symbol = current_symbol
 	enclosing_tab_level = 0
@@ -362,6 +371,7 @@ void script_main():
 	stack_pos = 0
 	mov_eax_int(0)
 	ret()
+	be_function_epilogue()
 	save_int(table + current_symbol + 14, codepos - function_start)
 	table_pos = n
 
@@ -429,8 +439,18 @@ void program():
 		int decl_type = generic_scanned_type
 		if (decl_type < 0):
 			decl_type = type_name()
-		current_symbol = sym_declare_global(token, decl_type, 1)
-		get_token()
+		# 'operator' is a contextual keyword: followed by an operator
+		# token it defines an overload (grammar/operator_overload.w);
+		# otherwise it stays an ordinary declared name.
+		if (peek(c"operator")):
+			get_token()
+			if (operator_definition_starts_here()):
+				operator_definition(decl_type)
+				continue;
+			current_symbol = sym_declare_global(c"operator", decl_type, 1)
+		else:
+			current_symbol = sym_declare_global(token, decl_type, 1)
+			get_token()
 		if (accept(c";")):
 			define_global_variable(current_symbol, decl_type)
 

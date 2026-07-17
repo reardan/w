@@ -3,9 +3,11 @@
 W is a small, self-hosting compiled language that started as a fork of Edmund
 Grimley Evans' `cc500` C compiler and has since diverged into its own language.
 The compiler is written in W (`w.w` plus the modules it imports), compiles
-itself, and is bootstrapped from a committed binary seed. It targets 32-bit
-x86 and 64-bit x86-64 Linux, emitting ELF executables directly — there is no
-assembler, linker, libc, or other external toolchain dependency.
+itself, and is bootstrapped from a pinned binary seed that `./wbuild`
+downloads from GitHub Releases on first build. It targets 32-bit
+x86 and 64-bit x86-64 Linux (plus arm64 Linux/macOS, win64 PE, and
+wasm32/WASI), emitting executables directly — there is no assembler,
+linker, libc, or other external toolchain dependency.
 
 This README is the orientation document for the repository. It is written
 primarily for AI agents (and new contributors) who need to understand the
@@ -20,13 +22,16 @@ project quickly and make correct changes.
   (cc500 heritage). There is **no AST and no IR** — grammar rules in
   `grammar/*.w` emit machine-code bytes immediately through
   `code_generator/x86.w` (x64 reuses the same module via REX-prefix helpers).
-- **Bootstrap seed**: `./w` at the repo root is a committed, statically linked
-  **32-bit x86** ELF binary of the compiler. It runs on x86-64 Linux hosts
-  without a 32-bit libc because it is static. Never delete or hand-edit it;
-  it is only replaced via `./wbuild update`. `./w_darwin` is its Apple
-  Silicon sibling — an ad-hoc-signed **arm64 Mach-O** seed that bootstraps
-  the toolchain natively on macOS (`./wbuild build_darwin` /
-  `verify_darwin` / `update_darwin`).
+- **Bootstrap seed**: `./w` at the repo root is a statically linked
+  **32-bit x86** ELF binary of the compiler. It is not committed: `./wbuild`
+  downloads it from the GitHub release pinned in `SEEDS` (sha256-verified)
+  when it is missing. It runs on x86-64 Linux hosts without a 32-bit libc
+  because it is static. Never hand-edit it; it is only replaced via
+  `./wbuild update` locally, or by bumping `SEEDS` to a newer release
+  (`docs/release.md`). `./w_darwin` is its Apple Silicon sibling — an
+  ad-hoc-signed **arm64 Mach-O** seed that bootstraps the toolchain
+  natively on macOS (`./wbuild build_darwin` / `verify_darwin` /
+  `update_darwin`).
 - **Output**: static ELF executables by default (x86 via
   `code_generator/elf_32.w`, x86-64 via `elf_64.w`), with DWARF line-number
   info for gdb. Programs declaring `c_lib`/`extern` get PT_INTERP/PT_DYNAMIC
@@ -37,9 +42,9 @@ project quickly and make correct changes.
 
 ## Build, verify, test
 
-The `bin/` output directory is `.gitignore`d; `./wbuild` creates it and
-bootstraps everything else it needs from the committed seed (`rm -rf bin`
-resets the world).
+The `bin/` output directory is `.gitignore`d; `./wbuild` creates it,
+downloads the pinned seed if it is missing, and bootstraps everything else
+it needs from that seed (`rm -rf bin` resets the world).
 
 ```sh
 ./wbuild build    # bootstrap: ./w w.w -> bin/wv2 -> wv3 -> wv4 -> wv5
@@ -122,8 +127,9 @@ stock x86-64 system.
 
 | Path | Contents |
 |---|---|
-| `w` | Committed 32-bit static ELF seed binary of the compiler |
-| `w_darwin` | Committed arm64 Mach-O seed (ad-hoc signed) for native macOS bootstrap |
+| `SEEDS` | Pins {release tag, asset, sha256} for each bootstrap seed binary |
+| `w` | 32-bit static ELF seed binary (downloaded per `SEEDS`, gitignored) |
+| `w_darwin` | arm64 Mach-O seed (ad-hoc signed) for native macOS bootstrap (downloaded per `SEEDS`, gitignored) |
 | `w.w` | Compiler entry point (imports `compiler.compiler`, calls `link()`) |
 | `compiler/` | Driver, tokenizer, symbol table, type table |
 | `grammar/` | One module per grammar rule; parsing and code emission are fused |
@@ -163,7 +169,14 @@ Implemented and covered by tests:
 - Floating point: `float`/`float32` on the default target, `float64` on x64
   (plus x64 float32 narrowing coverage), decimal literals with exponent forms,
   arithmetic/comparisons, int<->float coercions, function parameters/returns,
-  fields/pointers, `ftoa`, and x64 `f64toa`.
+  fields/pointers, `ftoa`, and x64 `f64toa`; `float16` as a 2-byte
+  storage/conversion type (load widens to float32, store narrows) on the
+  x86 family (default 32-bit target and x64) — requires an F16C-capable
+  CPU (Ivy Bridge/Zen or newer, 2012+; no software fallback) and is a
+  compile error on arm64/wasm. See `docs/projects/float.md`, including
+  its "Known MVP semantic differences" section (NaN comparisons, signed
+  zeros, int-conversion overflow, and a literal-width cross-target
+  gotcha).
 - Expressions: full C-style operator set — arithmetic, shifts, relational
   (with chaining), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
   address/deref, compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`,
@@ -270,6 +283,7 @@ Toolchain beyond the compiler:
 ## How the bootstrap works
 
 ```
+./wbuild ...                # downloads ./w per SEEDS if missing (sha256-verified)
 ./w w.w        > bin/wv2    # seed compiles current sources
 bin/wv2 w.w -o bin/wv3      # wv2 recompiles the sources
 bin/wv3 w.w -o bin/wv4
@@ -277,13 +291,28 @@ bin/wv4 w.w -o bin/wv5
 cmp wv3 wv4 && cmp wv4 wv5  # fixpoint: ./wbuild verify
 ```
 
+The seed binaries (`w`, `w_darwin`, and `w.exe` on Windows) are not
+committed; `SEEDS` pins a release tag and sha256 for each, and
+`./wbuild` / `wbuild.cmd` download a missing seed from that GitHub
+release before the cold bootstrap.
+
 `./wbuild verify` is the cheapest strong regression guard for compiler
 changes: if the compiler still compiles itself to a byte-identical fixpoint,
 most codegen regressions are ruled out. `./wbuild verify_x64` does the same
 for the 64-bit target, starting from the x86-hosted `wv2` (`bin/wv2 x64 w.w`),
 so its first comparison also proves output does not depend on the host word
-size. Only run `./wbuild update` (which replaces the seed) after `verify`
-passes; it archives the old seed to `old/` first.
+size. Only run `./wbuild update` (which replaces the local seed) after
+`verify` passes; it archives the old seed to `old/` first. Publishing a
+promoted seed is a release + `SEEDS` bump — see `docs/release.md`.
+
+## Releases
+
+Releases are SemVer tags (`vX.Y.Z`) published by
+`.github/workflows/release.yml` with verified compiler binaries for
+x86/x86-64 Linux, arm64 macOS, win64, and wasm32/WASI plus a `SHA256SUMS`
+file (arm64 Linux is currently not published — see `docs/release.md`). The same assets serve as the bootstrap seeds pinned by
+`SEEDS`. The runbook — cutting a release, bumping versions, promoting
+seeds — is `docs/release.md`.
 
 ## Guidance for agents making changes
 
@@ -308,16 +337,19 @@ passes; it archives the old seed to `old/` first.
   be absent: `gdb`/`ddd` (hand-debugging a built binary), `radare2` (`rasm2`
   encoding lookups), `systemtap` with sudo (syscall-trace one-liners), an
   NVIDIA GPU + driver
-  (`cuda_smoke`). `threading_test` covers the basic x86 thread path, but the
-  threading modules are still not production-grade and are not covered by the
-  x64 test gate.
+  (`cuda_smoke`). `threading_test` covers the raw x86 `thread_create`
+  builtin; `lib/thread.w` (spawn/join/`parallel_for`, Linux x86/x64,
+  docs/projects/threads.md) is covered on both targets by
+  `thread_test`/`parallel_for_test` and their `_64` twins.
 
 ## Tooling for agents
 
 - Use `./bin/wv2 check --json file.w` for compile-only diagnostics without
   writing an ELF. Add `x64` after `--json` for the 64-bit target. Output is
   newline-delimited JSON on stdout with `file`, `line`, `column`, `severity`,
-  `message`, `token`, and `arch`; stderr keeps the usual human progress text.
+  `message`, `token`, and `arch`; stderr keeps the usual human progress text
+  unless `--quiet` is given, which silences the non-diagnostic banners so a
+  clean file produces no output at all.
 - `w check` reports all warnings reached before the first error, then stops at
   that first error. Multi-error recovery remains out of scope for the
   single-pass compiler.
@@ -333,22 +365,27 @@ passes; it archives the old seed to `old/` first.
   runtime — one repo-relative path per line, deduplicated. `--json` emits
   `{"file": "..."}` NDJSON records like `check --json`. Like `check`, it
   runs the full front-end (compile errors keep their diagnostics and the
-  nonzero exit) and supports the default target only — the arch selectors
-  do not compose with it.
+  nonzero exit) and composes with the arch selectors — after the
+  subcommand (`deps x64 file.w`) or before it (`./bin/wv2 x64 deps
+  file.w`; `check` and `symbols` accept both spellings too) — resolving
+  `lib/__arch__/` imports for the selected target.
 - Use `./wbuild test_changed` to run focused tests for files changed from
   `HEAD`, or call `./bin/wtest changed file...` to list the selected build
   targets without running them. Selection is manifest-driven: `bin/wtest`
   parses `build.json` at runtime and emits every target whose steps name a
   changed path (fixtures, grammars, scripts) plus every target one of whose
-  compile roots transitively imports a changed `.w` file (closures come
-  from `bin/wv2 deps`, cached in `bin/.wtest_deps_cache`). A handful of
+  compile roots transitively imports a changed `.w` file (per-arch
+  closures come from `bin/wv2 deps [selector]`, cached in
+  `bin/.wtest_deps_cache`, so `lib/__arch__/` and platform-only modules
+  select exactly the targets that compile them). A handful of
   documented residue rules cover what the import graph cannot see —
   compiler-tree paths map to `verify self_host_warning_test`, every
   existing `.w` change adds `parser_generator_w_test`, deleted `.w` files
   and library trees add `metadata_check` — and docs-only changes produce
   no targets; paths nothing knows about still fall back to `tests`. The
-  first run after a build computes the closures (~35s); later runs
-  validate the cache by content hash and finish in well under a second.
+  first run after a build computes the closures (~90s with the per-arch
+  twins); later runs validate the cache by content hash and finish in
+  well under a second.
 - Agent-facing guidance is committed alongside the code: `.cursor/skills/`
   holds step-by-step skills (`w-check-diagnostics`, `w-select-tests`,
   `w-debug-wdbg`, `w-repl-explore`) and `.cursor/rules/` holds path-scoped
@@ -383,7 +420,14 @@ passes; it archives the old seed to `old/` first.
   (stepping, breakpoints, variable inspection, expression evaluation at a
   breakpoint and `w --debug` are done).
 - Import-scoped type metadata.
-- WebAssembly backend.
+- WebAssembly backend polish — the wasm32 + WASI backend self-hosts
+  (`w wasm file.w`, `./wbuild verify_wasm` / `wasm_smoke_test`, run via
+  `tools/run_wasm.sh` under wasmtime or Node), and `c_lib`/`extern` now
+  compile to typed host imports with a browser WebGL2 backend for
+  `graphics/` (`graphics/demo_web.w`, `tools/web/`,
+  `./wbuild wasm_extern_test` / `wasm_webgl_test` under Node;
+  `docs/projects/wasm_webgl.md`); remaining: json builtins, generators
+  (`docs/projects/wasm_backend.md`).
 
 See `docs/todo.txt` for the running working/missing inventory and
 `docs/done.txt` for history.

@@ -22,7 +22,7 @@ int arm64_encode_reconstructed
 
 int arm64_enc_sf(int size):
 	if (size == 8):
-		return 0x80000000
+		return cast(int, 0x80000000)
 	return 0
 
 
@@ -260,12 +260,12 @@ int arm64_enc_cset(asm_insn* insn):
 int arm64_enc_pac(asm_insn* insn):
 	char* m = insn.mnemonic
 	if (strcmp(m, c"pacia") == 0):
-		return 0xdac10000 | (insn.op2.reg << 5) | insn.op1.reg
+		return cast(int, 0xdac10000) | (insn.op2.reg << 5) | insn.op1.reg
 	if (strcmp(m, c"autia") == 0):
-		return 0xdac11000 | (insn.op2.reg << 5) | insn.op1.reg
+		return cast(int, 0xdac11000) | (insn.op2.reg << 5) | insn.op1.reg
 	if (strcmp(m, c"paciza") == 0):
-		return 0xdac123e0 | insn.op1.reg
-	return 0xdac133e0 | insn.op1.reg
+		return cast(int, 0xdac123e0) | insn.op1.reg
+	return cast(int, 0xdac133e0) | insn.op1.reg
 
 
 int arm64_enc_adr(asm_insn* insn):
@@ -274,14 +274,14 @@ int arm64_enc_adr(asm_insn* insn):
 	int immhi = (imm >> 2) & 0x7ffff
 	int base = 0x10000000
 	if (strcmp(insn.mnemonic, c"adrp") == 0):
-		base = 0x90000000
+		base = cast(int, 0x90000000)
 	return base | (immlo << 29) | (immhi << 5) | insn.op1.reg
 
 
 int arm64_enc_branch_imm(asm_insn* insn):
 	int base = 0x14000000
 	if (strcmp(insn.mnemonic, c"bl") == 0):
-		base = 0x94000000
+		base = cast(int, 0x94000000)
 	return base | ((insn.op1.imm >> 2) & 0x3ffffff)
 
 
@@ -317,19 +317,19 @@ int arm64_enc_branch_reg(asm_insn* insn):
 	if (insn.op1.kind == ASM_OP_REG()):
 		rn = insn.op1.reg
 	if (strcmp(m, c"br") == 0):
-		return 0xd61f0000 | (rn << 5)
+		return cast(int, 0xd61f0000) | (rn << 5)
 	if (strcmp(m, c"blr") == 0):
-		return 0xd63f0000 | (rn << 5)
-	return 0xd65f0000 | (rn << 5)
+		return cast(int, 0xd63f0000) | (rn << 5)
+	return cast(int, 0xd65f0000) | (rn << 5)
 
 
 int arm64_enc_exception(asm_insn* insn):
 	int imm16 = insn.op1.imm & 0xffff
 	if (strcmp(insn.mnemonic, c"brk") == 0):
-		return 0xd4200000 | (imm16 << 5)
+		return cast(int, 0xd4200000) | (imm16 << 5)
 	if (strcmp(insn.mnemonic, c"hlt") == 0):
-		return 0xd4400000 | (imm16 << 5)
-	return 0xd4000001 | (imm16 << 5)
+		return cast(int, 0xd4400000) | (imm16 << 5)
+	return cast(int, 0xd4000001) | (imm16 << 5)
 
 
 int arm64_enc_pair(asm_insn* insn):
@@ -407,7 +407,7 @@ int asm_arm64_encode(asm_buffer* b, asm_insn* insn):
 		else:
 			done = 0
 	else if (strcmp(m, c"nop") == 0):
-		w = 0xd503201f
+		w = cast(int, 0xd503201f)
 	else:
 		done = 0
 	if (done == 0):

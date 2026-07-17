@@ -266,8 +266,27 @@ void arm64_emit_utf8_string_descriptor(int i):
 	be_addr_slot_write(codepos - 4, desc_vaddr)
 
 
+# wasm: code is not addressable memory, so both the string bytes and the
+# {data_ptr, len} descriptor live in the data segment; the descriptor's
+# address is materialized through an ordinary address slot.
+void wasm_emit_utf8_string_descriptor(int i):
+	int data_address = emit_data_zeros(i + 1)
+	int j = 0
+	while (j <= i):
+		data[(data_address - data_offset) + j] = token[j]
+		j = j + 1
+	int desc_vaddr = emit_data_zeros(2 * word_size)
+	save_i(data + (desc_vaddr - data_offset), data_address, word_size)
+	save_i(data + (desc_vaddr - data_offset + word_size), i, word_size)
+	be_addr_slot_emit()
+	be_addr_slot_write(codepos - 4, desc_vaddr)
+
+
 void emit_utf8_string_descriptor(int i):
 	token[i] = 0
+	if (target_isa == 2):
+		wasm_emit_utf8_string_descriptor(i)
+		return
 	if (target_isa == 1):
 		arm64_emit_utf8_string_descriptor(i)
 		return
@@ -311,6 +330,16 @@ void arm64_emit_cstr(int i, char* s):
 # registry. x86 jumps over the bytes with a call and pops the pushed
 # return address; arm64 uses arm64_emit_cstr.
 void be_emit_inline_cstr(int len, char* s):
+	if (target_isa == 2):
+		# data segment + plain constant address (no chain: the address is
+		# already final)
+		int addr = emit_data_zeros(len + 1)
+		int j = 0
+		while (j <= len):
+			data[(addr - data_offset) + j] = s[j]
+			j = j + 1
+		wasm_mov_eax_int(addr)
+		return
 	if (target_isa == 1):
 		arm64_emit_cstr(len, s)
 		return

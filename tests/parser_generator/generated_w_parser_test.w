@@ -87,6 +87,41 @@ void test_w_lexer_keywords_identifiers_comments_and_tabs():
 	assert_equal(wlang_token_EOF(), pg_token_stream_la(stream, 11).kind)
 
 
+# Mid-line tabs are hidden whitespace (skip INLINE_TAB in w.pg): the
+# parser-facing stream sees no TAB between code and a trailing comment,
+# while line-start tab runs still lex as TAB indentation.
+void test_w_lexer_midline_tabs_are_hidden():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_token_stream* stream = wlang_lex(c"int x = 1\x09\x09# note\x0a\x09return x\x0a", c"midtab.w", diagnostics)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	assert_equal(wlang_token_KW_INT(), pg_token_stream_la(stream, 1).kind)
+	assert_equal(wlang_token_IDENT(), pg_token_stream_la(stream, 2).kind)
+	assert_equal(wlang_token_ASSIGN(), pg_token_stream_la(stream, 3).kind)
+	assert_equal(wlang_token_NUMBER(), pg_token_stream_la(stream, 4).kind)
+	# The mid-line tab run and the comment are hidden: the next visible
+	# token is the NEWLINE, and the line-start tab after it is still TAB
+	assert_equal(wlang_token_NEWLINE(), pg_token_stream_la(stream, 5).kind)
+	assert_equal(wlang_token_TAB(), pg_token_stream_la(stream, 6).kind)
+	assert_equal(wlang_token_KW_RETURN(), pg_token_stream_la(stream, 7).kind)
+	# The hidden run is one INLINE_TAB token kept for losslessness
+	int i = 0
+	int inline_tab_runs = 0
+	while (i < pg_token_stream_all_count(stream)):
+		pg_token* token = pg_token_stream_all_get(stream, i)
+		if (token.kind == wlang_token_INLINE_TAB()):
+			inline_tab_runs = inline_tab_runs + 1
+			assert_equal(pg_token_hidden_channel(), token.channel)
+			assert_equal(2, token.length)
+		i = i + 1
+	assert_equal(1, inline_tab_runs)
+
+
+# A function body with a mid-line tab before a trailing comment parses
+# cleanly and round-trips losslessly.
+void test_parse_w_midline_tab_before_comment():
+	assert_w_parse_text(c"int f():\x0a\x09int x = 1\x09# tab before comment\x0a\x09return x\x0a", c"midtab_parse.w")
+
+
 void test_w_lexer_literals_and_multi_char_operators():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_token_stream* stream = wlang_lex(c"s\x22hi\\x0a\x22 c\x22bytes\x22 '\x5cn' 0x1f 3.25 <= >= == != << >> -> && ||", c"lexer.w", diagnostics)
@@ -229,6 +264,12 @@ void test_parse_real_hello_fixture():
 
 
 void test_parse_all_tracked_w_files():
+	# The manifest is one BATCH of tracked files, not the whole repo:
+	# tools/parser_generator_w_batches.sh reruns this binary per slice,
+	# because retaining every file's AST in one 32-bit process hits the
+	# address-space ceiling once the repo's tracked source grows past a
+	# few MB (and freeing per file crawls the first-fit allocator).
+	# The count floor only guards against an empty/misread manifest.
 	parsed_manifest_count = 0
 	assert_w_parse_manifest(c"bin/parser_generator_w_files.txt")
-	assert1(parsed_manifest_count > 100)
+	assert1(parsed_manifest_count > 0)

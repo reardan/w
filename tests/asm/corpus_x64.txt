@@ -127,6 +127,38 @@ c3|ret
 c3|ret
 
 # ============================================================================
+# code_generator/x64_asm.w : define_asm_functions_x64() -> thread_create
+# ============================================================================
+# call targets stack_create (rel32 = +0x1f, emitted immediately after this stub)
+e81f000000|call .+0x24
+488d88f0ff3f00|lea rcx,[rax+0x3ffff0]
+488b542408|mov rdx,[rsp+8]
+488911|mov [rcx],rdx
+# 0x80018f00 = CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO (flag
+# constant; the formatter renders imm32 as a signed value, so it reads
+# as -0x7ffe7100)
+bf008f0180|mov edi,-0x7ffe7100
+4889ce|mov rsi,rcx
+b838000000|mov eax,0x38
+0f05|syscall
+c3|ret
+
+# ============================================================================
+# code_generator/x64_asm.w : define_asm_functions_x64() -> stack_create
+# ============================================================================
+31ff|xor edi,edi
+be00004000|mov esi,0x400000
+ba03000000|mov edx,3
+6822010000|push dword 0x122
+415a|pop r10
+6aff|push byte -1
+4158|pop r8
+4d31c9|xor r9,r9
+b809000000|mov eax,9
+0f05|syscall
+c3|ret
+
+# ============================================================================
 # code_generator/x86.w : stack pushes and loads (x64 forms)
 # ============================================================================
 # parameterized: push_int8(v), imm8 from source comment example 0x12
@@ -218,13 +250,17 @@ e978563412|jmp .+0x1234567d
 cc|int3
 90|nop
 c3|ret
-# bounds_check_eax_nonnegative: test rax,rax ; jns +1 ; int3
-7901|jns .+3
-# bounds_check_ebx_less_eax / _less_equal_eax: cmp rbx,rax ; jl/jle +1 ; int3
+# bounds_branch_eax_negative / bounds_branch_ebx_negative: test ; js rel32
+# (rel32 placeholder patched via be_branch_patch; example op(0x12, 0x345678))
+4885db|test rbx,rbx
+0f8878563412|js .+0x1234567e
+# bounds_branch_ebx_greater_eax / bounds_skip_ebx_less_eax /
+# bounds_skip_ebx_less_equal_eax: cmp rbx,rax ; jg/jl/jle rel32
 4839c3|cmp rbx,rax
-7c01|jl .+3
-7e01|jle .+3
-# parameterized: bounds_check_eax_less_equal_int32(limit), imm32 example op(0x12, 0x345678)
+0f8f78563412|jg .+0x1234567e
+0f8c78563412|jl .+0x1234567e
+0f8e78563412|jle .+0x1234567e
+# parameterized: bounds_skip_eax_less_equal_int32(limit), imm32 example op(0x12, 0x345678)
 483d78563412|cmp rax,0x12345678
 
 # ============================================================================

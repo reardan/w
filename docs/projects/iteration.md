@@ -22,12 +22,22 @@ calling a generator (compile error otherwise — no auto-import);
 `return` finishes the generator; the exhausted body's stack is
 munmap'd automatically by `gen_next`, `gen_free` releases an abandoned
 generator; break-cleanup option (b) shipped — `for` over a generator
-emits `gen_free` on the normal-exit and break edges (`return` out of
-the loop body still leaks the suspended stack). Parameters and yield
-values must be word-sized. Tests: `tests/generator_test.w`
-(`./wbuild generator_test`, `./wbuild generator_64_test`). The generators half
-is kept here because the two features share their consumption syntax,
-their cleanup problems, and one loop lowering.
+emits `gen_free` on the normal-exit and break edges, and `return`
+(plus `?` error propagation) out of the loop body frees every
+enclosing generator loop's suspended generator too, via the
+`for_cleanup` registry in `grammar/for_statement.w`: each generator
+loop registers its hidden container slot while its body parses, and
+the function-exit paths in `grammar/statement.w` walk the registry
+(innermost loop first, before deferred statements, with the pending
+return value saved around the calls) before unwinding — including
+`return` inside a generator body that is itself iterating another
+generator. Hand-driven `while gen_next(g)` consumption still requires
+an explicit `gen_free`. Parameters and yield values must be
+word-sized. Tests: `tests/generator_test.w` (`./wbuild generator_test`,
+`./wbuild generator_64_test`) and `tests/generator_return_free_test.w`
+(early-exit cleanup, leak-asserted against `/proc/self/statm`). The
+generators half is kept here because the two features share their
+consumption syntax, their cleanup problems, and one loop lowering.
 
 Supersedes the iteration notes at the bottom of `docs/for_notes.txt`
 (manual range struct, "generator functions", "store generator stack in
@@ -348,8 +358,11 @@ here "opaque" means "ignored, the continuation lives in `resume_esp`".)
   patches a jump chain per loop (`loop_break_chain`); (c) shrink the
   cost instead: allocate small generator stacks (64KB) so leaks are
   cheap. Leaning: (b) for `for` loops, (a) for hand-driven `while`
-  consumption. Note (b) protects `break` but not `return` out of the
-  loop body.
+  consumption. Landed as (b) plus a registry for the exits the loop's
+  own edges cannot see: `return` and `?` walk the enclosing generator
+  loops' hidden container slots (`for_cleanup` in
+  `grammar/for_statement.w`) and free each one before the frame
+  unwinds; (a) remains the rule for `while gen_next(g)` consumers.
 - **Stack size.** `stack_create` maps 4MB like threads. Generators
   yielding scalars need far less; a size parameter (or a second
   `stack_create_sized` stub) keeps hundreds of live generators viable.

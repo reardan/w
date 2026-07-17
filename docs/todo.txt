@@ -11,6 +11,10 @@ current state:
 				data-structure, import, directory, threading, hello tests
 			./wbuild update:
 				archives the current seed and promotes the bin/wv3 fixpoint to ./w
+				(local only; publishing a seed = release tag + SEEDS bump, docs/release.md)
+			github releases:
+				tag-triggered workflow publishes verified binaries for every
+				target; bootstrap seeds download per the sha256 pins in ./SEEDS
 			compiler CLI:
 				-o output path
 				usage message instead of segfaulting when no input is passed
@@ -74,14 +78,16 @@ current state:
 			float64 literals, arithmetic, formatting and returns work on x64
 			x64 tests also cover float32 narrowing from a float64 literal
 			float output is diff-tested against C reference output
-			float16/bfloat16 remain future work
+			float16 storage/conversion works on the x86 family (F16C
+				hardware instructions; design: docs/projects/float.md)
+			bfloat16 and float16 on arm64/wasm remain future work
 		built-in map/set:
 			map[K, V] and set[K] types
 			new map/set allocation, typed literals, indexing, assignment and in-membership
 			map and set .length pseudo-field
 			m.remove(key), s.remove(key) and s.add(key) pseudo-methods
 			m.get(key) (traps like m[key]) and m.get(key, default) pseudo-methods
-			m.add(key) / m.add(key, delta) counter accumulation from zero (integer values)
+			m.add(key) / m.add(key, delta) accumulation from zero (integer and float values; float64 on x64)
 			m[k] op= v compound assignment (key evaluated once, missing key traps; the trap names the key)
 			m.keys(), m.values() and s.keys() insertion-order list snapshots
 			string keys compare by contents
@@ -100,6 +106,10 @@ current state:
 			&& and || short-circuit expressions
 			! unary operator
 			unary - and unary +
+			++x / x++ / --x / x-- increment/decrement statements (#103):
+				statement position only, sugar for += 1 / -= 1 (raw-byte
+				pointer stepping like +=); expression use is an error
+				(docs/projects/increment_decrement.md)
 			unary operators bind tighter than binary and can stack (!!x, -*p, *&x)
 			relational operators chain left-associatively
 			hex literals
@@ -182,8 +192,25 @@ current state:
 			buffered streams, line readers, Content-Length framing (lib/stream.w)
 			whole-file helpers (lib/file.w, design: docs/projects/streams.md)
 			float32 math helpers (lib/fmath.w: fsqrt, fabs, bit casts)
+			float32 transcendentals (lib/fmath.w: exp/log/pow/trig family,
+				measured ulp bounds, tested against glibc goldens on both targets)
+			float64 math helpers (lib/fmath64.w: fmath surface ported to float64
+				for 64-bit-word targets; transcendentals in progress,
+				docs/projects/engineering_math_baseline.md)
+			seeded deterministic PRNG (lib/rand.w: xorshift32, uniform
+				(rand_below, rand_float) and gaussian (rand_gaussian, Box-Muller)
+				sampling, bit-identical across targets)
 			descriptive statistics (lib/stats.w: accumulator, variance,
 				quantiles; design: docs/projects/stats.md)
+			dense multi-dimensional arrays (lib/ndarray.w/ndarray64.w v1:
+				ndf/ndi/ndf64, rank 1-4, matmul on 2-D; design/status:
+				docs/projects/ndarray.md, issue #27)
+			shell helpers (lib/shell.w: sh(cmd), run(argv), cd, env get/set
+				on top of lib/process.w/lib/env.w)
+			compression (libs/extras/compress/: CRC-32, Adler-32, a
+				conformant DEFLATE inflater (stored/fixed/dynamic Huffman),
+				gzip/zlib wrapping; encoder is fast-mode-only so far;
+				design: docs/projects/compress.md)
 		repl:
 			./bin/wv2 repl.w -o bin/repl && ./bin/repl builds and runs repl.w
 			./wbuild repl_test verifies REPL interaction and error recovery
@@ -194,7 +221,9 @@ current state:
 				return/break/continue/pass dedent, a blank line dedents one
 				level and ends the entry at column 0
 			top-level declarations persist between entries (storage in the buffer)
-			redefinition shadows the old symbol (Python-style rebinding)
+			redefinition shadows the old symbol (Python-style rebinding) and
+				repatches already-compiled call sites to the new binding
+				(late binding, issue #114, repl_apply_late_bind in repl/core.w)
 			bare expressions echo their value by compile-time type
 			imports and extern/c_lib declarations work at the prompt
 			./bin/repl file.w [args...] runs a file, then attaches the prompt
@@ -204,12 +233,32 @@ current state:
 				lib/line_edit.w, history persisted to ~/.w_history)
 			x64 repl (./bin/wv2 x64 repl.w -o bin/repl64; ./wbuild repl_test_x64): word-size-aware
 				buffer (MAP_32BIT) and real x64 repl_setjmp/longjmp stubs
+			colon-commands: :symbols, :type expr, :time expr, :load file,
+				:reset, :save file (issue #276)
+			scripted/agent mode: -e "entry" one-shot, --json NDJSON per
+				entry, banner/prompts move to stderr off-tty (issue #276)
+			'!' shell escape: !cmd runs through lib/shell with inherited
+				stdio, !cd/!export intercepted (issue #276)
+
+	vcs (libs/extras/vcs/, tools/wvc.w; design: docs/projects/version_control.md, issue #252):
+		working:
+			content-addressed object store (cas.w), diff (diff.w), commit
+				DAG + merge-base (dag.w), working trees (tree.w),
+				commits (commit.w)
+			dirstate index with a (size, mtime) stat cache for O(changed)
+				status (index.w)
+			binary deltas: rolling-hash block table, copy/insert opcodes,
+				bounded-depth chains (delta.w)
+			three-way merge over diff.w hunks with conflict markers
+				(merge3.w)
+			wvc porcelain: status/snapshot/merge/serve/pull/push; push/pull
+				do have/want negotiation for loose objects over HTTP
+		remaining:
+			compress-based object packing (blocked on the DEFLATE encoder
+				growing past fast-mode-only)
+			git interop (non-goal for now; needs zlib + SHA-1 + pack format)
 
 	current limitations:
-		repl:
-			calls compiled before a redefinition keep the old binding
-				(needs a call-site indirection table; tracked in a
-				follow-up issue, out of scope for a REPL-only fix)
 		pointers and structs:
 			new initializes fields from arguments but does not run user constructors
 			struct values with fixed-array fields are copied and returned by value
@@ -219,10 +268,16 @@ current state:
 			watchpoints are software (statement-granularity single-step
 				scan): large slowdown while any exist
 		x64:
-			threading is still x86-only
 			DWARF line info still declares address_size 4 (gdb only)
+		threading:
+			lib/thread.w (spawn/join/parallel_for) is Linux x86/x64 only;
+				arm64/darwin/win64/wasm, mutexes/atomics and thread
+				pools are staged in docs/projects/threads.md
+			worker stacks (4MB) and handles are not reclaimed on join
 		webassembly:
-			no backend implementation yet
+			json builtins, generators, c_import/extern FFI, REPL and wdbg
+				are not supported on the wasm target
+				(docs/projects/wasm_backend.md)
 
 	next priorities:
 		type system:
@@ -242,14 +297,25 @@ current state:
 			extern arrays of unknown length (sys_errlist)
 			more system-header torture fixtures as regressions are found
 		debugger:
-			asm/disasm helpers
+			wdbg disassembly view (disas command): the underlying
+				assembler/disassembler libraries (x86, x64, arm64;
+				docs/projects/assembler_disassembler.md, issues
+				#163-#168/#171) are done, including a randomized round-trip
+				fuzz harness; wiring `disas` into wdbg itself is the
+				epic's one remaining phase (issue #169)
 			wdbg --attach phases 2-6: target-access seam, symbol/line
 				recovery, execution control (breakpoints/stepping),
 				locals + hardware watchpoints, restricted expression eval
 				(docs/projects/debugger_attach.md, issue #123)
 		code generation:
-			webassembly hello world
-			webassembly self-compiling
+			webassembly stage 5 polish: json builtins on wasm, a browser
+				host shim, direct-call optimization
+				(stages 0-4 landed: docs/projects/wasm_backend.md)
+			W^X text/data split for x86, x64 and win64 (arm64/arm64_darwin
+				already split; win64's single RWX section makes the IAT
+				unwritable under Windows Memory Integrity/HVCI, a real
+				crash on real hardware, not just hardening; design +
+				repro: docs/projects/wx_split.md)
 		directory and build cleanup:
 			settle import grammar vs grammar.* behavior
 			Makefile removed; ./wbuild + build.json is the single build entry
@@ -267,14 +333,16 @@ current state:
 	future language features:
 		generic inference for forward calls, struct constructors and container shapes (pair[T]*, list[T])
 		inline asm functions
-		float16 / bfloat16 (design: docs/projects/float.md)
+		bfloat16; float16 on arm64/wasm (design: docs/projects/float.md)
 		type <=> json: floats and map[string, V] fields (base feature works)
 		type <=> protobuf
 		global default values
 
 	future data structures:
 		dict (done: built-in map iterates in insertion order, issue #145)
-		matrix
+		matrix / multi-dimensional arrays (v1 done: lib/ndarray.w/
+			ndarray64.w library substrate, issue #27; grammar-level
+			indexing sugar still future work; design: docs/projects/ndarray.md)
 		statistics (done: lib/stats.w, design: docs/projects/stats.md)
 
 	future platforms:
@@ -290,8 +358,11 @@ current state:
 			Content-Length framing (lib/framing.w)
 			JSON-RPC 2.0 servers, blocking or event-loop driven (lib/json_rpc.w)
 			poll-based event loop with timers and cancellation (lib/event_loop.w)
+			http client (libs/standard/web/http_client.w)
+			http/https server framework (libs/standard/web/connection.w +
+				http_server.w: ServerContext accept loop, RequestContext/
+				routing, keep-alive, HTTPS via tls_accept; issue #235)
 		remaining:
-			http client
 			socketcall cleanup
 
 	web ui:

@@ -23,10 +23,31 @@ int buffer_result_type(int type):
 	return type_get_slice_value(buffer_element_type(type))
 
 
+# Emit the bounds-trap block: call helper_name(ebx, eax) — the offending
+# index in ebx, the length/limit it violated in eax (issue #228). Reached
+# only on the trap path, so register state and the machine stack are
+# disposable (the helper prints its one-line diagnostic and exits) and
+# stack_pos stays untouched. The helpers live in structures/w_list.w, which
+# every program auto-imports — but bounds-checked code can compile BEFORE
+# the runtime defines them (the auto-imported runtime itself and anything
+# it imports), so a missing symbol is declared as an undefined global here
+# and the later definition patches the reference chain, like any forward
+# reference.
+void bounds_trap_call(char* helper_name):
+	if (sym_lookup(helper_name) < 0):
+		sym_declare_global(helper_name, 4, 2)
+	push_ebx()
+	push_eax()
+	sym_get_value(helper_name)
+	call_eax()
+
+
 void buffer_bounds_check():
 	if (bounds_mode == 0):
 		return;
-	bounds_check_eax_nonnegative()
+	# eax = index, stack top = the buffer descriptor. Load the length
+	# first so the trap block can report both values; the descriptor is
+	# valid whatever the index is.
 	push_eax()
 	stack_pos = stack_pos + 1
 	mov_eax_esp_plus(word_size)
@@ -34,26 +55,40 @@ void buffer_bounds_check():
 	promote_eax()
 	pop_ebx()
 	stack_pos = stack_pos - 1
-	bounds_check_ebx_less_eax()
+	# ebx = index, eax = length: trap unless 0 <= index < length
+	int h_in_bounds = be_ctrl_block()
+	int h_trap = be_ctrl_block()
+	bounds_branch_ebx_negative(h_trap)
+	bounds_skip_ebx_less_eax(h_in_bounds)
+	be_ctrl_end(h_trap)
+	bounds_trap_call(c"__w_bounds_trap")
+	be_ctrl_end(h_in_bounds)
 	mov_eax_ebx()
 
 
 void buffer_range_bounds_check():
 	if (bounds_mode == 0):
 		return;
-	# stack top before this helper: end, start, descriptor
-	mov_eax_esp_plus(word_size)
-	bounds_check_eax_nonnegative()
-	mov_eax_esp_plus(0)
-	bounds_check_eax_nonnegative()
-	mov_eax_esp_plus(0)
-	mov_ebx_esp_plus(word_size)
-	bounds_check_ebx_less_equal_eax()
+	# stack top before this helper: end, start, descriptor. Every failing
+	# branch lands on one shared trap block with ebx = the offending bound
+	# and eax = the limit it violated (the length, or the end bound for
+	# the start <= end check).
 	mov_eax_esp_plus(2 * word_size)
 	add_eax_int32(word_size)
 	promote_eax()
+	int h_ordered = be_ctrl_block()
+	int h_trap = be_ctrl_block()
+	mov_ebx_esp_plus(word_size)
+	bounds_branch_ebx_negative(h_trap)
 	mov_ebx_esp_plus(0)
-	bounds_check_ebx_less_equal_eax()
+	bounds_branch_ebx_negative(h_trap)
+	bounds_branch_ebx_greater_eax(h_trap)
+	mov_eax_esp_plus(0)
+	mov_ebx_esp_plus(word_size)
+	bounds_skip_ebx_less_equal_eax(h_ordered)
+	be_ctrl_end(h_trap)
+	bounds_trap_call(c"__w_bounds_trap")
+	be_ctrl_end(h_ordered)
 
 
 void buffer_push_range_descriptor(int base_type, int start_was_omitted):
@@ -216,6 +251,56 @@ void parse_variadic_element_argument(char* callee_name, int element_type, int ar
 	stack_pos = stack_pos + 1
 
 
+# Finish a call whose callee and arguments are already pushed: the arity
+# check, the call itself and the stack cleanup. Shared by
+# parse_call_suffix (arguments parsed from source) and the operator
+# overload lowering (arguments pushed by grammar/operator_overload.w,
+# which has no argument list to parse). passed_args is the final
+# argument count; frees callee_name.
+int finish_call(int callee_type, int s, int expected_args, int callee_sym, char* callee_name, int declared_return, int passed_args, int has_return_buffer, int w_variadic_fixed):
+	if ((expected_args >= 0) & (w_variadic_fixed < 0)):
+		if (passed_args != expected_args):
+			# Asm runtime stubs that record an arity (syscall, syscall7)
+			# load their arguments from fixed stack slots, so a call with
+			# the wrong argument count silently reads garbage words: reject
+			# it outright instead of warning.
+			int callee_is_stub = 0
+			if (callee_sym >= 0):
+				callee_is_stub = sym_is_asm_stub(callee_sym)
+			if (callee_is_stub):
+				diag_part(c"function '")
+			else:
+				diag_part(c"warning: function '")
+			diag_part(callee_name)
+			diag_part(c"' expects ")
+			diag_part(itoa(expected_args))
+			diag_part(c" arguments, got ")
+			if (callee_is_stub):
+				error(itoa(passed_args))
+			else:
+				warning(itoa(passed_args))
+	if (callee_name != 0):
+		free(callee_name)
+
+	mov_eax_esp_plus((stack_pos - s - 1) << word_size_log2)
+
+	# A function's address is its value; other callees hold a pointer
+	if (callee_type != 4):
+		promote(callee_type)
+	call_eax()
+	be_pop(stack_pos - s)
+	stack_pos = s
+	int type = 3  # call results are plain values
+	last_call_return_type = declared_return
+	last_call_end = codepos
+	if (has_return_buffer):
+		lea_eax_esp_plus(0)
+		type = type_value(declared_return)
+	else if (declared_return >= 0):
+		type = type_value(declared_return)
+	return type
+
+
 # Parse arguments for a call whose callee address has already been pushed.
 # passed_args lets callers account for hidden arguments, such as a method
 # receiver. callee_type is 4 for direct functions, and a pointer type for
@@ -306,34 +391,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 				push_call_argument(3)
 				passed_args = passed_args + 1
 
-	if ((expected_args >= 0) & (w_variadic_fixed < 0)):
-		if (passed_args != expected_args):
-			diag_part(c"warning: function '")
-			diag_part(callee_name)
-			diag_part(c"' expects ")
-			diag_part(itoa(expected_args))
-			diag_part(c" arguments, got ")
-			warning(itoa(passed_args))
-	if (callee_name != 0):
-		free(callee_name)
-
-	mov_eax_esp_plus((stack_pos - s - 1) << word_size_log2)
-
-	# A function's address is its value; other callees hold a pointer
-	if (callee_type != 4):
-		promote(callee_type)
-	call_eax()
-	be_pop(stack_pos - s)
-	stack_pos = s
-	int type = 3  # call results are plain values
-	last_call_return_type = declared_return
-	last_call_end = codepos
-	if (has_return_buffer):
-		lea_eax_esp_plus(0)
-		type = type_value(declared_return)
-	else if (declared_return >= 0):
-		type = type_value(declared_return)
-	return type
+	return finish_call(callee_type, s, expected_args, callee_sym, callee_name, declared_return, passed_args, has_return_buffer, w_variadic_fixed)
 
 
 # One argument of a direct call to a variadic C import. Fixed arguments
@@ -356,6 +414,14 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 		stack_pos = stack_pos + 1
 		return arg_class
 	# Variadic tail: C default argument promotions
+	if (type_get_kind(type_unqualified(arg_type)) == type_kind_slice_value()):
+		# Arrays and slices decay unconditionally in a C variadic tail,
+		# exactly like C: load the descriptor's first word so the callee
+		# receives the data pointer, not the descriptor's address.
+		promote_eax()
+		push_eax()
+		stack_pos = stack_pos + 1
+		return 0
 	int kind = type_float_kind(arg_type)
 	if (kind == 1):
 		# The promoted float64 spans two 32-bit stack words on x86
@@ -623,8 +689,8 @@ int postfix_expr():
 					get_token()
 					type = hash_get_suffix(type)
 				else:
-					print2(c"hash container field '")
-					print2(token)
+					diag_part(c"hash container field '")
+					diag_part(token)
 					error(c"' not found")
 			else if (type_is_list(type)):
 				if (peek(c"length")):
@@ -699,8 +765,8 @@ int postfix_expr():
 					type = type_get_next_pointer(element_type)
 					expression_lhs_readonly = 1
 				else:
-					print2(c"buffer field '")
-					print2(token)
+					diag_part(c"buffer field '")
+					diag_part(token)
 					error(c"' not found")
 			else:
 				# A pending map read whose value is a struct must emit the
@@ -737,7 +803,8 @@ int postfix_expr():
 						# Use child type insted of struct type:
 						type = type_get_field_type(type, member_name)
 						if (type < 0):
-							print_int0(c"child field not found: '", type)
+							diag_part(c"child field not found: '")
+							diag_part(itoa(type))
 							error(c"")
 						if (verbosity >= 1):
 							print2(itoa(line_number))
@@ -755,12 +822,12 @@ int postfix_expr():
 						free(prefix)
 						int callee = sym_lookup(method_symbol)
 						if (callee < 0):
-							print_error(c"struct method '")
-							print_error(type_get_name(type))
-							print_error(c".")
-							print_error(member_name)
-							print_error(c"' not found; expected function '")
-							print_error(method_symbol)
+							diag_part(c"struct method '")
+							diag_part(type_get_name(type))
+							diag_part(c".")
+							diag_part(member_name)
+							diag_part(c"' not found; expected function '")
+							diag_part(method_symbol)
 							error(c"'")
 
 						int expected_args = sym_num_args(callee)
@@ -820,13 +887,22 @@ int postfix_expr():
 							type = type_value(declared_return)
 						free(method_symbol)
 					else:
-						print2(c"struct field '")
-						print2(member_name)
+						diag_part(c"struct field '")
+						diag_part(member_name)
 						error(c"' not found")
 					free(member_name)
 
 				else:
-					get_token()
+					# cc500 heritage: '.member' on a non-struct expression
+					# used to be silently ignored, so a typo'd field or a
+					# method chained onto a non-struct result (for example
+					# an int- or void-returning call) compiled into a call
+					# through a garbage receiver and crashed at runtime.
+					diag_part(c"member '")
+					diag_part(token)
+					diag_part(c"' on non-struct type '")
+					print_error_type(type)
+					error(c"'")
 
 		# expr? : unwrap a wresult[T]* or propagate the error to the
 		# caller (see result_propagate_suffix in grammar/statement.w).

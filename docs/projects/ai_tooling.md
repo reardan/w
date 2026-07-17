@@ -42,6 +42,157 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- `w check` usability triple (2026-07-16): command-line roots dedupe
+  against the import registry (multi-root `check w.w
+  compiler/compiler.w` and auto-imported-runtime roots like
+  `lib/stack_trace.w` no longer report bogus `symbol redefined`);
+  check mode drops the `_main` requirement on every backend, so
+  main-less library modules check standalone; compiler-internal roots
+  (compiler/, grammar/, code_generator/, debugger/) substitute `w.w`
+  with a `check: <file> is compiler-internal; checking w.w` stderr
+  note. Covered by `check_roots_test`.
+- `wexec --keep-going` + early-stop visibility (2026-07-16): failures
+  no longer silently cancel umbrella runs — independent subgraphs keep
+  running, dependents report as skipped with a summary, and default
+  fail-fast mode prints `wexec: stopped early after failure: N of M
+  targets not attempted`. Covered by `wexec_keep_going_test`.
+- `wtest` empty-selection visibility + focused leaf selection
+  (2026-07-16): empty selections print `wtest: 0 targets selected` on
+  stderr; `./wbuild test_changed` falls back to the origin/main
+  merge-base diff on a clean tree; a build.json diff that is exactly
+  wbuildgen-shaped leaf test-target additions/removals selects just
+  those targets + `manifest_check` + `wexec_test` (new
+  `--base-manifest` flag) instead of the whole `tests` umbrella.
+  Covered by `wtest_map_test`/`wtest_run_test`.
+- `lib.assert` standalone import fix (2026-07-16): lib/assert.w
+  imports lib.lib for the printers it calls; pinned by
+  `assert_standalone_test`.
+- Import lines accept trailing `#` comments; mid-line tabs are owned by
+  the w.pg surface via an opt-in `inline_tabs` skip token (2026-07-16):
+  pinned by `import_test`, `midline_tab_test`, and the PG parser tests.
+- Literal width guards (2026-07-13, extended 2026-07-16): a hex or
+  binary literal with more than 32 significant bits (leading zeros
+  don't count) is a compile error instead of silently wrapping
+  (`int_literal_width_check()`, `grammar/int_literal.w`) — previously
+  the tokenizer kept only a rolling 32-bit window of a literal's
+  digits, so on x64 `0x7ff0000000000000` parsed to `0` and
+  `0x000fffffffffffff` parsed to `0xffffffffffffffff` with no
+  diagnostic. Decimal literals get the same guard
+  (`int_literal_decimal_check()`: more than 10 significant digits, or
+  exactly 10 comparing above 4294967295, is the same compile error).
+  The sweep for newly-rejected literals caught a real casualty: the
+  win64 FILETIME epoch offset `11644473600` in
+  `lib/__arch__/win64/syscalls.w` had been silently wrapping — win64
+  `linux_time()` returned garbage — and is now computed at runtime.
+  Covered by `int_literal_width_test`, `tests/int_literal_bounds_test.w`,
+  and `tests/warning_clean_fixture.w` (pins the still-legal wide
+  spellings).
+- `wtest changed --run` (2026-07-16): after printing the selection,
+  `wtest` can spawn `bin/wexec` itself with that target list
+  (inheriting stdio so build output streams live) and exit with its
+  status, instead of a caller piping through `./wbuild test_changed`'s
+  `xargs -r ./wbuild`. A companion `-f manifest.json` flag overrides
+  the manifest for both selection and, under `--run`, execution — used
+  to test `--run` in isolation (`wtest_run_test`,
+  `tests/wtest/run_fixture.json`) without recursing through the live
+  manifest. `tools/test_map.w`.
+- `.txt` doc-only filter no longer swallows runtime fixture data
+  (2026-07-16, issue #171): `wtest_doc_only` in `tools/test_map.w`
+  treated every `*.txt` path as documentation, so
+  `tests/asm/corpus_{x86,x64,arm64}.txt` never reached the `tests/asm/`
+  residue rule and `wtest changed` selected nothing for a corpus-only
+  change; fixed by excluding `tests/asm/` before the extension check,
+  pinned by a `wtest_map_test` case.
+- Direct-file UX (2026-07-16, issue #323 stage 1): `./wbuild [selector]
+  path/to/file.w` and `bin/wtest for path/... [--run]` now work without
+  a `build.json` entry — `wexec` resolves the file to the manifest
+  target that already compiles it, or synthesizes a throwaway
+  compile(+run, for `*_test.w`) target with the same content-hash
+  caching every other cacheable target gets; `wtest for` mirrors
+  `changed`'s selection with paths as required positional args instead
+  of an optional stdin list. See `tools/wexec.w`'s "Direct-file UX"
+  section and `docs/projects/build_system_next.md`'s stage-1 inventory
+  for the remaining shell-script/hand-written-target migration roadmap
+  (stage 2, not yet scheduled).
+- `parser_generator_w_test` batching (2026-07-12, extended 2026-07-16):
+  `test_parse_all_tracked_w_files` parsed every tracked `.w` file in
+  one process, retaining every AST, so the 32-bit gate segfaulted once
+  tracked source crossed ~3.7MB; `tools/parser_generator_w_batches.sh`
+  reruns the test binary once per 150-file slice of the manifest,
+  bounding memory at batch size (~21s total) rather than freeing
+  per-file (which was correct but turned the gate into a 90-CPU-minute
+  crawl under the first-fit allocator's quadratic free/malloc
+  behavior). That allocator residual is itself fixed by issue #322
+  (2026-07-16): `lib/memory_freelist.w` now uses 41 segregated
+  size-class bins with O(1) free, so the batching is a memory bound
+  only, no longer a speed workaround.
+- **`wtest changed` cold-cache progress note** (2026-07-16): the first
+  `changed` invocation to touch an import closure after a build (or a
+  large merge) prints one `wtest: building import-closure cache (first
+  run after a build; this can take a minute)...` line to stderr before
+  the `bin/wv2 deps` shell-outs that can otherwise take minutes on a big
+  tree with nothing printed — previously indistinguishable from a hang.
+  A warm cache stays silent. `tools/test_map.w`.
+- **`./wbuild test_changed` flag forwarding + `wtest --available`**
+  (2026-07-16): flags after `test_changed` (e.g. `--keep-going`) now
+  reach the final `./wbuild` invocation instead of being swallowed by
+  the hard-coded `xargs -r ./wbuild` pipeline. `bin/wtest` also gained
+  an opt-in `--available` flag that drops selected targets whose runner
+  (`qemu-aarch64-static`, `wine`/`wine64`, a `tools/mac/` script) is not
+  present on the host, printing a `wtest: dropped N unavailable
+  target(s) (<reason>)` line per reason; `./wbuild test_changed` passes
+  `--available` by default, so a printed selection is runnable as-is.
+  `tools/test_map.w`, `wbuild`; pinned by `wtest_map_test` cases.
+- **`wtest_map_check` `noorder` opt-out** (2026-07-16): a `-f`
+  fixture-manifest case can add a `noorder` line to skip the checker's
+  implicit "selected names are real `build.json` targets, in
+  `build.json`'s relative order" properties, so a fixture-only case can
+  use self-descriptive target names instead of being forced to reuse
+  real ones. `tools/wtest_map_check.w`.
+- **`wexec --ordered-output`** (2026-07-16): under `-j` > 1, buffers
+  each target's whole captured stdout/stderr and prints it as one
+  atomic block headed by `wexec: --- <target> ---` in completion order,
+  instead of the default start-order live streaming that could
+  interleave a finished target's output next to an unrelated target's
+  failure and misattribute the failure during fixture debugging.
+  Default (streaming) output is unchanged; composes with
+  `--keep-going`. `tools/wexec.w`.
+- **`w check --imports`** (2026-07-16): opt-in warning for the
+  transitive-import-reliance failure class (#145, #147) — an
+  unqualified identifier that resolves to a global symbol whose
+  declaring module is neither the referencing file itself, one of its
+  direct imports, nor the auto-imported container-runtime closure now
+  warns `symbol 'X' resolves through a transitive import (defined in
+  '<module>'); import it directly`. Off by default, so plain
+  `check`/build output is unchanged. `compiler/compiler.w`,
+  `grammar/import_statement.w`, `compiler/symbol_table.w`; covered by
+  `check_imports_test`.
+- `--quiet` flag (2026-07-10): `w check --json --quiet file.w` (and any
+  other invocation carrying `--quiet`) suppresses the non-diagnostic
+  stderr chatter — the per-file `compiling '...'` banner, the
+  `Compiling in <target> mode` banner, and the
+  `using filename as path directly:` notice — so hook/LSP/MCP consumers
+  get pure NDJSON on stdout and an empty stderr on clean files.
+  Diagnostics are never suppressed. Covered by `check_json_test`.
+- Bit-31 literal warning (2026-07-10, #249 stage 5): a hex or binary
+  literal with bit 31 set warns
+  (`integer literal has bit 31 set and sign-extends to a negative int
+  on every target; use cast(int, ...) if the bit pattern is intended`)
+  at the literal, since it sign-extends into the word-sized `int` on
+  every target (`0xffffffff` is `-1` even on x64). `cast(T, ...)`
+  operands are exempt — `cast(int, 0xd503201f)` is the idiom for an
+  intentional 32-bit pattern (used by `libs/asm/arm64_*.w` and the
+  float-bits tests). Covered by `warning_test`
+  (`tests/bit31_literal_warning_fixture.w`).
+- Bool-bitwise condition hint (2026-07-10): `|`/`&` joining two
+  bool-typed lvalues inside an if/while condition warns
+  (`bitwise '|' on bool operands in a condition does not short-circuit;
+  did you mean '||'?`, same shape for `&`/`&&`). Comparison-result
+  operands stay exempt by default; the opt-in `w check --bool-ops`
+  (2026-07-16, migration stage 1) widens the hint to them — see the
+  scope note in `ai_tooling_next_steps.md`. Covered by `warning_test`
+  (`tests/bool_bitwise_warning_fixture.w`) and `check_bool_ops_test`
+  (`tests/bool_ops_warn_fixture.w`, `tests/bool_ops_clean_fixture.w`).
 - Missing-file diagnostics (2026-07-10, #190): the compiler's
   file-not-found path no longer serializes a freed path buffer — the
   garbled `check --json` `file` field and the garbled
@@ -71,7 +222,10 @@ Shipped from the next-steps backlog:
   `coerce()`), instead of warning and emitting the descriptor's own
   address — which let callees overwrite the {data-pointer, length} header
   (the #113 corruption). Covered by `array_decay_test` /
-  `array_decay_64_test`.
+  `array_decay_64_test`. Three narrower edge cases were consciously left
+  out (C-variadic tails, `cast(int, arr)` vs `cast(char*, arr)`, and one
+  arm of a conditional expression) — none corrupt memory, tracked in
+  issue #229.
 
 The MVP described here has landed:
 
@@ -243,6 +397,11 @@ is complete and parseable, no closing bracket needed.
 ```
 
 - `line`, `column`: 1-based, from the current token's start position.
+  `column` counts codepoints, not bytes: a multi-byte UTF-8 character
+  earlier on the line advances it by one (#287 stage 1, 2026-07-16).
+  All-ASCII lines are unaffected. The tokenizer's `byte_offset` /
+  `token_start_offset` stay byte-exact (`grammar/generic.w` re-seeks by
+  them); human output has no column and is unchanged.
 - `severity`: `"warning"` or `"error"`, derived from which funnel fired.
   The literal `warning: ` prefix that call sites bake into their message
   strings is stripped in the funnel (one `strncmp`), so the field and the
@@ -269,11 +428,16 @@ New module `compiler/diagnostics.w`, imported at the top of
 - `void diag_part_type(int type_index)`: the existing
   `print_error_type()` logic from `grammar/promote.w` (type name plus
   pointer stars) rerouted through `diag_part`.
-- A local ~20-line JSON string escaper (`\"`, `\\`, control characters as
+- A local JSON string escaper (`\"`, `\\`, control characters as
   `\u00XX`). Deliberately **not** `structures/json.w`: that would pull
   hash_map and array_list into the compiler binary to escape one string,
   and the diagnostics module should stay dependency-free so `repl.w` and
-  `wdbg` inherit it trivially.
+  `wdbg` inherit it trivially. Since #287 stage 1 it also guarantees the
+  emitted NDJSON is always valid UTF-8 (and therefore valid JSON): bytes
+  >= 0x80 pass through raw only as part of a well-formed UTF-8 sequence;
+  any stray byte reflected into `message`/`token`/`file` from invalid
+  source input is escaped as `\u00XX` (its byte value). Guarded by the
+  `check_json_utf8_test` target via `tests/ndjson_utf8_validator.w`.
 
 `warning(s)` and `error(s)` keep their signatures and their human path
 untouched. In JSON mode they emit one record — message = accumulated

@@ -431,7 +431,8 @@ there is no foreign ABI to be compatible with until the libSystem stage.
   with movz/movk addressing); `wdbg` on arm64 (breakpoints are `brk #0`,
   but there is no x86-style trap flag — stepping needs breakpoint-hopping or
   out-of-process ptrace, and Darwin signal contexts differ; substantial);
-  threading (`thread_create` is x86-only even on x64 today).
+  threading (`thread_create` and `lib/thread.w` are Linux x86/x64 only;
+  an arm64 stub is staged in docs/projects/threads.md).
 
 ## Testing / CI strategy
 

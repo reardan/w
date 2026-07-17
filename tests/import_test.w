@@ -12,8 +12,8 @@ Long Term how to do these tests:
 
 */
 import lib.testing
-import tests.subfolder
-import tests.subfolder as sub
+import tests.subfolder  # a trailing comment on a plain import must not join the path
+import tests.subfolder as sub  # nor on an alias import (even one saying x as y)
 import tests.level1.level2.level3.level_file as deep
 import tests.import_alias_helper
 

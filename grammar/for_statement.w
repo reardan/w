@@ -56,10 +56,10 @@ void for_iter_call(char* fn_name, int container_slot, int cursor_slot):
 
 
 void for_iter_error_prefix(char* container_name, char* fn_name):
-	print_error(str_from_cstr(c"type '"))
-	print_error(str_from_cstr(container_name))
-	print_error(str_from_cstr(c"' is not iterable: "))
-	print_error(str_from_cstr(fn_name))
+	diag_part(c"type '")
+	diag_part(container_name)
+	diag_part(c"' is not iterable: ")
+	diag_part(fn_name)
 
 
 void for_iter_require(char* container_name, char* fn_name, int expected_args, int container_type):
@@ -93,15 +93,15 @@ void for_iter_require(char* container_name, char* fn_name, int expected_args, in
 
 void for_iter_require_struct_pointer(int container_type):
 	if (type_get_pointer_level(container_type) != 1):
-		print_error(str_from_cstr(c"type '"))
+		diag_part(c"type '")
 		print_error_type(container_type)
-		print_error(str_from_cstr(c"' is not iterable: "))
+		diag_part(c"' is not iterable: ")
 		error(c"expected a pointer to a container struct")
 	int base_type = type_lookup_previous_pointer(container_type)
 	if ((base_type < 0) | (type_num_args(base_type) == 0)):
-		print_error(str_from_cstr(c"type '"))
+		diag_part(c"type '")
 		print_error_type(container_type)
-		print_error(str_from_cstr(c"' is not iterable: "))
+		diag_part(c"' is not iterable: ")
 		error(c"expected a pointer to a container struct")
 
 
@@ -109,9 +109,6 @@ void for_iter_require_struct_pointer(int container_type):
 # "in range" have already been consumed. for_var anchors the loop
 # variable's stack slot.
 void for_range_loop(int for_var, int for_tab_level):
-	int p1
-	int p2
-
 	int has_parens = accept(c"(")
 	int num_range_args = 1
 	promote(expression())
@@ -139,14 +136,15 @@ void for_range_loop(int for_var, int for_tab_level):
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
 	int outer_in_switch = break_in_switch
-	loop_break_chain = 0
-	loop_continue_chain = 0
+	# Exit region: the failed condition and 'break' land after the loop.
+	# Loop region: the back edge re-tests the condition.
+	loop_break_chain = be_ctrl_block()
+	int h_top = be_ctrl_loop()
 	loop_stack_pos = stack_pos
 	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
 	# condition: loop var < end
-	p1 = codepos
 	mov_eax_esp_plus((stack_pos - for_var) << word_size_log2)
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -154,15 +152,17 @@ void for_range_loop(int for_var, int for_tab_level):
 	pop_ebx()
 	alu_cmp_set(0x9c) /* setl: loop var < end */
 	stack_pos = stack_pos - 1
-	jmp_zero_int32(1337010)
-	p2 = codepos
+	be_br_zero(loop_break_chain)
+
+	# Continue region: 'continue' in the body runs the increment first
+	loop_continue_chain = be_ctrl_block()
 
 	/* ':' scoping + child scope statements */
 	enclosing_tab_level = for_tab_level
 	statement()
 
 	/* increment: by 1, or by the step argument */
-	int increment_target = codepos
+	be_ctrl_end(loop_continue_chain)
 	if (num_range_args == 3):
 		mov_eax_esp_plus((stack_pos - (for_var + 3)) << word_size_log2)
 		add_dword_esp_plus_eax((stack_pos - for_var) << word_size_log2)
@@ -170,15 +170,11 @@ void for_range_loop(int for_var, int for_tab_level):
 		inc_dword_esp_plus((stack_pos - for_var) << word_size_log2)
 
 	/* jmp back to condition */
-	jmp_int32(1337011)
-	be_branch_patch(codepos, p1)
+	be_br(h_top)
+	be_ctrl_end(h_top)
 
-	/* save jmp to here if condition failed */
-	be_branch_patch(p2, codepos)
-
-	# break exits here; continue runs the increment first
-	patch_jump_chain(loop_break_chain, codepos)
-	patch_jump_chain(loop_continue_chain, increment_target)
+	# break exits here; continue ran the increment first
+	be_ctrl_end(loop_break_chain)
 
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue
@@ -189,6 +185,75 @@ void for_range_loop(int for_var, int for_tab_level):
 	# Discard the hidden range slots (the loop variable itself stays)
 	be_pop(num_range_args)
 	stack_pos = stack_pos - num_range_args
+
+
+/*
+Exit-cleanup registry: one record per enclosing for-in loop whose
+iterable owns a resource every exit edge must release (today: loops
+over a generator call gen_free). break and continue stay inside the
+loop machinery, so the loop's own exit edges cover them, but 'return'
+(and '?' error propagation, grammar/statement.w) leave the function
+without passing those edges; statement.w walks this registry and emits
+each free call before unwinding the frame. for_cursor_loop pushes on
+body entry and pops on body exit, so the registry always holds exactly
+the loops enclosing the statement being parsed. The REPL and the
+debugger's evaluator roll a failed parse back with
+for_cleanup_truncate, like defer_spans (grammar/defer.w).
+*/
+struct for_cleanup_record:
+	char* free_fn      # runtime function: free_fn(container)
+	int container_slot # stack_pos anchor of the hidden container slot
+
+
+list[for_cleanup_record] for_cleanups
+
+
+int for_cleanup_count():
+	if (cast(int, for_cleanups) == 0):
+		return 0
+	return for_cleanups.length
+
+
+# Discards every record past the first n without touching the backing
+# capacity (the defer_truncate trick — list[T]'s '.length' is read-only
+# at the language level).
+void for_cleanup_truncate(int n):
+	if (cast(int, for_cleanups) == 0):
+		return;
+	__w_list* raw = cast(__w_list*, for_cleanups)
+	raw.length = n
+
+
+void for_cleanup_push(char* free_fn, int container_slot):
+	if (cast(int, for_cleanups) == 0):
+		for_cleanups = new list[for_cleanup_record]
+	for_cleanup_record rec
+	rec.free_fn = free_fn
+	rec.container_slot = container_slot
+	for_cleanups.push(rec)
+
+
+# Emit the free call of every registered cleanup, innermost loop first,
+# at the current code position. Clobbers eax (for_iter_call); exits
+# carrying a live return value go through for_cleanup_emit_returning.
+void for_cleanup_emit_all():
+	int i = for_cleanup_count()
+	while (i > 0):
+		i = i - 1
+		for_iter_call(for_cleanups[i].free_fn, for_cleanups[i].container_slot, 0)
+
+
+# Function-exit path with the pending return value in eax: save it
+# around the free calls so they cannot clobber it, mirroring
+# defer_emit_returning (grammar/defer.w).
+void for_cleanup_emit_returning():
+	if (for_cleanup_count() == 0):
+		return;
+	push_eax()
+	stack_pos = stack_pos + 1
+	for_cleanup_emit_all()
+	pop_eax()
+	stack_pos = stack_pos - 1
 
 
 # Emit the cursor-loop scaffold shared by every for-in container shape:
@@ -236,18 +301,19 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	int outer_continue = loop_continue_chain
 	int outer_stack = loop_stack_pos
 	int outer_in_switch = break_in_switch
-	loop_break_chain = 0
-	loop_continue_chain = 0
+	# Exit region: the done-check and 'break' land after the loop (where
+	# free_fn releases the container). Loop region: the back edge re-tests.
+	loop_break_chain = be_ctrl_block()
+	int h_top = be_ctrl_loop()
 	loop_stack_pos = stack_pos
 	break_in_switch = 0
 	loop_depth = loop_depth + 1
 
 	# condition: exit once done_fn(container, cursor) is true, or once
 	# the index cursor reaches the length word
-	int p1 = codepos
 	if (done_fn != 0):
 		for_iter_call(done_fn, container_slot, cursor_slot)
-		jmp_nonzero_int32(1337012)
+		be_br_nonzero(loop_break_chain)
 	else:
 		mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
 		push_eax()
@@ -258,8 +324,10 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		pop_ebx()
 		stack_pos = stack_pos - 1
 		alu_cmp_set(0x9c) /* setl: cursor < length */
-		jmp_zero_int32(1337012)
-	int p2 = codepos
+		be_br_zero(loop_break_chain)
+
+	# Continue region: 'continue' in the body advances the cursor first
+	loop_continue_chain = be_ctrl_block()
 
 	# loop var = value_fn(container, cursor), or the slice element at
 	# data + cursor * element_size
@@ -288,13 +356,22 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		coerce(value_var_type, value2_coerce_type)
 		store_stack_var((stack_pos - value_var) << word_size_log2)
 
+	# While the body parses, 'return' (grammar/statement.w) must know
+	# about this loop's live resource so it can free it before leaving
+	# the function; the record is popped once the body is done
+	if (free_fn != 0):
+		for_cleanup_push(free_fn, container_slot)
+
 	/* ':' scoping + child scope statements */
 	enclosing_tab_level = for_tab_level
 	statement()
 
+	if (free_fn != 0):
+		for_cleanup_truncate(for_cleanup_count() - 1)
+
 	# step (continue lands here): cursor = next_fn(container, cursor),
 	# or an in-place index increment
-	int increment_target = codepos
+	be_ctrl_end(loop_continue_chain)
 	if (next_fn != 0):
 		for_iter_call(next_fn, container_slot, cursor_slot)
 		store_stack_var((stack_pos - cursor_slot) << word_size_log2)
@@ -302,19 +379,14 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		inc_dword_esp_plus((stack_pos - cursor_slot) << word_size_log2)
 
 	/* jmp back to condition */
-	jmp_int32(1337013)
-	be_branch_patch(codepos, p1)
+	be_br(h_top)
+	be_ctrl_end(h_top)
 
-	/* save jmp to here once the loop is done */
-	be_branch_patch(p2, codepos)
-
-	# break exits here; continue advances the cursor first
-	patch_jump_chain(loop_break_chain, codepos)
+	# Both exit edges (done and break) land here: release the container
+	# before falling through
+	be_ctrl_end(loop_break_chain)
 	if (free_fn != 0):
-		# Both exit edges (done and break) land here: release the
-		# container before falling through
 		for_iter_call(free_fn, container_slot, 0)
-	patch_jump_chain(loop_continue_chain, increment_target)
 
 	loop_break_chain = outer_break
 	loop_continue_chain = outer_continue
@@ -433,7 +505,8 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	char* container_name = type_get_name(container_type)
 	# Generator iterables get gen_free on the loop's exit edges (normal
 	# exit and break) so a broken-out-of loop does not leak the
-	# suspended generator's stack. 'return' out of the body still leaks.
+	# suspended generator's stack. 'return' (and '?') bypass those edges;
+	# they free through the for_cleanup registry above instead.
 	char* free_name = 0
 	if (strcmp(container_name, c"generator") == 0):
 		free_name = c"gen_free"

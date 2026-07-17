@@ -34,6 +34,9 @@ import code_generator.code_emitter
 
 void error(char *s);       /* from diagnostics.w */
 void emit_x64_opcode();    /* from x86.w (used on the x86 path of be_lea) */
+void sym_define_global(int current_symbol);          /* symbol_table.w */
+void sym_define_global_at(int current_symbol, int v);
+int sym_declare_global(char *s, int type, int symtype);
 
 
 void a64(int w):
@@ -287,32 +290,48 @@ void arm64_alu_test_set(int setcc):
 
 
 ############################### bounds checks ###############################
-# Each trap is a compare, a conditional skip over the next instruction, and
-# brk #0 (SIGTRAP, like the x86 int3).
+# Each check is a compare plus a b.cond threaded into a control-region patch
+# chain (issue #228, docs/projects/wasm_backend.md D3): the caller passes the
+# region's current chain head, which is encoded into the imm19 field exactly
+# like the other chained branch forms, and records the new head (codepos)
+# with be_ctrl_link. The grammar layer ends the failing branches' region at
+# a trap block that calls the runtime diagnostic helper (see
+# grammar/postfix_expr.w).
 
-void arm64_bounds_check_eax_nonnegative():
+# b.cond with the chain link in its displacement field.
+void arm64_bounds_branch(int cond, int link):
+	a64(op(0x54, 0x000000) | cond | (((link >> 2) & 0x7ffff) << 5))
+
+
+void arm64_bounds_branch_eax_negative(int link):
 	a64(op(0xf1, 0x00001f))   # cmp x0, #0
-	a64(op(0x54, 0x00004a))   # b.ge .+8
-	a64(op(0xd4, 0x200000))   # brk #0
+	arm64_bounds_branch(11, link)   # b.lt
 
 
-void arm64_bounds_check_ebx_less_eax():
+void arm64_bounds_branch_ebx_negative(int link):
+	a64(op(0xf1, 0x00003f))   # cmp x1, #0
+	arm64_bounds_branch(11, link)   # b.lt
+
+
+void arm64_bounds_branch_ebx_greater_eax(int link):
 	a64(op(0xeb, 0x00003f))   # cmp x1, x0
-	a64(op(0x54, 0x00004b))   # b.lt .+8
-	a64(op(0xd4, 0x200000))   # brk #0
+	arm64_bounds_branch(12, link)   # b.gt
 
 
-void arm64_bounds_check_ebx_less_equal_eax():
+void arm64_bounds_skip_ebx_less_eax(int link):
 	a64(op(0xeb, 0x00003f))   # cmp x1, x0
-	a64(op(0x54, 0x00004d))   # b.le .+8
-	a64(op(0xd4, 0x200000))   # brk #0
+	arm64_bounds_branch(11, link)   # b.lt
 
 
-void arm64_bounds_check_eax_less_equal_int32(int limit):
+void arm64_bounds_skip_ebx_less_equal_eax(int link):
+	a64(op(0xeb, 0x00003f))   # cmp x1, x0
+	arm64_bounds_branch(13, link)   # b.le
+
+
+void arm64_bounds_skip_eax_less_equal_int32(int limit, int link):
 	arm64_load_scratch(9, limit)
 	a64(op(0xeb, 0x09001f))   # cmp x0, x9
-	a64(op(0x54, 0x00004d))   # b.le .+8
-	a64(op(0xd4, 0x200000))   # brk #0
+	arm64_bounds_branch(13, link)   # b.le
 
 
 ############################## abstractions #################################
@@ -338,6 +357,9 @@ int arm64_pac
 # convention the old contiguous 4-byte cell used (the "cell" is now the
 # add instruction, with the adrp one word before it).
 void be_addr_slot_emit():
+	if (target_isa == 2):
+		wasm_addr_slot_emit()
+		return
 	if (target_isa == 1):
 		a64(op(0x90, 0x000000))   # adrp x0, . (page immediate patched)
 		a64(op(0x91, 0x000000))   # add x0, x0, #0 (pageoff patched)
@@ -380,6 +402,9 @@ int arm64_addr_slot_read(int pos):
 # original save_int/load_int accesses; on arm64 the value is
 # reassembled from the adrp+add immediates.
 void be_addr_slot_write(int pos, int v):
+	if (target_isa == 2):
+		wasm_addr_slot_write(pos, v)
+		return
 	if (target_isa == 1):
 		arm64_addr_slot_write(pos, v)
 		return
@@ -387,6 +412,8 @@ void be_addr_slot_write(int pos, int v):
 
 
 int be_addr_slot_read(int pos):
+	if (target_isa == 2):
+		return wasm_addr_slot_read(pos)
 	if (target_isa == 1):
 		return arm64_addr_slot_read(pos)
 	return load_int(code + pos)
@@ -396,6 +423,9 @@ int be_addr_slot_read(int pos):
 # On x86 this reproduces lea_eax_esp_plus(0) followed by patching the disp32
 # to k (byte-identical to the original sym_get_value sequence).
 void be_lea_acc_wstack(int k):
+	if (target_isa == 2):
+		wasm_lea_eax_esp_plus(k)
+		return
 	if (target_isa == 1):
 		arm64_lea_eax_esp_plus(k)
 		return
@@ -442,7 +472,40 @@ void be_code_ptr_sign():
 # Function prologue: sign the return address and push it onto the W stack so
 # the callee has the same [return-slot | args...] layout the x86 backend
 # relies on. Emitted right after the function's symbol address is fixed.
+# Define a function symbol at the position be_function_prologue is about
+# to open. On the native targets a function's address is its code
+# position; on wasm it is its table index (the prologue's
+# wasm_function_begin assigns the next one). Nothing may emit between
+# this call and the prologue.
+void be_function_define(int current_symbol, char* name):
+	if (target_isa == 2):
+		sym_define_global_at(current_symbol, wasm_func_count + 1)
+		wasm_func_name_note(wasm_func_count + 1, name)
+		return
+	sym_define_global(current_symbol)
+
+
+# declare + define in one step (runtime-synthesized functions like
+# __w_test_main; the sym_define_declare_global_function twin that is
+# function-table aware).
+int be_function_define_declare(char* name):
+	int t = sym_declare_global(name, 4, 2)
+	be_function_define(t, name)
+	return t
+
+
+# Close a function body: on wasm the unit's `end` opcode plus the body
+# size patch; nothing on the native targets. Called right after the
+# body's final ret().
+void be_function_epilogue():
+	if (target_isa == 2):
+		wasm_function_end()
+
+
 void be_function_prologue():
+	if (target_isa == 2):
+		wasm_function_begin()
+		return
 	if (target_isa == 1):
 		if (arm64_pac):
 			a64(op(0xda, 0xc1039e))   # pacia x30, x28

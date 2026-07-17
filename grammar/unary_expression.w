@@ -1,12 +1,21 @@
 int multiplicative_expr();
 void zero_runtime_object(int bytes);
 void init_array_field_descriptors(int type);
+void assign_store_struct(int type); /* defined in expression */
+int increment_op(); /* defined in increment */
+void increment_expression_error(); /* defined in increment */
 
 
 # Store the constructor argument in eax into field field_index of the
-# allocation whose address sits on top of the stack. Out-of-range
-# indexes emit nothing; the caller warns about the argument count.
-void new_store_field(int base_type, int field_index, int arg_type):
+# object whose address is saved on the stack. leaked_words counts stack
+# words the argument's own expression left parked above that saved
+# address (a struct-value argument parks its temp buffer there, issue
+# #270), so the address is read esp-relative past the leak; the caller
+# pops the leak afterwards. A struct-typed argument leaves the value's
+# address in eax and is copied into the field like struct assignment;
+# scalars store by the field's width. Out-of-range indexes emit
+# nothing; the caller warns about the argument count.
+void new_store_field(int base_type, int field_index, int arg_type, int leaked_words):
 	if (field_index >= type_num_args(base_type)):
 		return;
 	int field_type = type_get_field_type_at(base_type, field_index)
@@ -15,8 +24,14 @@ void new_store_field(int base_type, int field_index, int arg_type):
 	if (types_compatible_with_expression(field_type, arg_type) == 0):
 		warn_type_mismatch(c"constructor argument", field_type, arg_type)
 	coerce(field_type, arg_type)
-	mov_ebx_esp()
+	if (leaked_words > 0):
+		mov_ebx_esp_plus(leaked_words << word_size_log2)
+	else:
+		mov_ebx_esp()
 	add_ebx_int32(type_get_field_offset_at(base_type, field_index))
+	if ((type_num_args(field_type) > 0) & (type_num_args(arg_type) > 0)):
+		assign_store_struct(field_type)
+		return;
 	int field_size = type_get_size(field_type)
 	if (field_size == 1):
 		store_ebx_int8()
@@ -29,18 +44,101 @@ void new_store_field(int base_type, int field_index, int arg_type):
 
 
 void zero_stack_count_bytes():
-	int loop_start = codepos
+	int h_done = be_ctrl_block()
+	int h_top = be_ctrl_loop()
 	mov_eax_esp_plus(word_size)
-	jmp_zero_int32(0)
-	int done_patch = codepos
+	be_br_zero(h_done)
 	mov_ebx_esp()
 	mov_eax_int(0)
 	store_ebx_int8()
 	add_stack_word_int32(0, 1)
 	add_stack_word_int32(word_size, -1)
-	jmp_int32(0)
-	be_branch_patch(codepos, loop_start)
-	be_branch_patch(done_patch, codepos)
+	be_br(h_top)
+	be_ctrl_end(h_top)
+	be_ctrl_end(h_done)
+
+
+# 'T(a, b)' where T names a struct or union type is a struct value
+# constructor (issue #270): it builds the value in a stack temp and
+# yields the temp's address, typed as a T value. Recognized by
+# primary_expr before plain identifiers; the current token is the type
+# name and nextc its '('. Type names shadow symbols here, matching the
+# declaration grammar, and function-signature types are excluded so an
+# alias like 'type cb = fn(int) -> int' never claims a call.
+int struct_value_ctor_ready():
+	if (nextc != '('):
+		return 0
+	int c = token[0]
+	if (((('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) | (c == '_')) == 0):
+		return 0
+	int base = type_lookup(token)
+	if (base < 0):
+		return 0
+	if (type_get_pointer_level(base) > 0):
+		return 0
+	if (type_is_function_signature(base)):
+		return 0
+	if (type_num_args(base) <= 0):
+		return 0
+	return 1
+
+
+# Emit a struct value constructor expression. The temp stays parked on
+# the stack (counted in stack_pos) exactly like a struct-returning
+# call's return buffer, so every consumer that already handles by-value
+# returns — argument sliding, assignment, declaration initializers, the
+# 'new' constructor path — handles this the same way. Leaves the
+# closing ')' as the current token for primary_expr's trailing
+# get_token().
+int struct_value_ctor_expr():
+	int base = type_lookup(token)
+	get_token()
+	expect(c"(")
+	int size = type_get_size(base)
+	int words = (size + word_size - 1) >> word_size_log2
+	int j = 0
+	while (j < words):
+		push_eax()
+		j = j + 1
+	stack_pos = stack_pos + words
+	lea_eax_esp_plus(0)
+	if (type_has_array_field(base)):
+		zero_runtime_object(size)
+		init_array_field_descriptors(base)
+	# Park the temp's address below the buffer while the field
+	# initializers run, mirroring the 'new' constructor path.
+	push_eax()
+	stack_pos = stack_pos + 1
+	int field_index = 0
+	if (peek(c")") == 0):
+		int arg_entry = stack_pos
+		int arg_type = expression()
+		arg_type = promote(arg_type)
+		new_store_field(base, 0, arg_type, stack_pos - arg_entry)
+		if (stack_pos > arg_entry):
+			be_pop(stack_pos - arg_entry)
+			stack_pos = arg_entry
+		field_index = 1
+		while (accept(c",")):
+			arg_type = expression()
+			arg_type = promote(arg_type)
+			new_store_field(base, field_index, arg_type, stack_pos - arg_entry)
+			if (stack_pos > arg_entry):
+				be_pop(stack_pos - arg_entry)
+				stack_pos = arg_entry
+			field_index = field_index + 1
+		if (peek(c")") == 0):
+			error(c"')' expected in constructor")
+		if (field_index != type_num_args(base)):
+			diag_part(c"warning: ")
+			diag_part(type_get_name(base))
+			diag_part(c" constructor expects ")
+			diag_part(itoa(type_num_args(base)))
+			diag_part(c" arguments, got ")
+			warning(itoa(field_index))
+	pop_eax()
+	stack_pos = stack_pos - 1
+	return type_value(base)
 
 
 /*
@@ -117,11 +215,21 @@ int unary_expression():
 		if (type_float_kind(type) == 1):
 			return float32_value_type
 		return 3
+	else if (increment_op()):
+		# '++x'/'--x' in expression position: '++'/'--' are statements
+		# with no value (grammar/increment.w). This also catches the
+		# pre-#103 double-unary reading of '++x', which lexes as one
+		# token now; spaced '+ +x' / '- -x' still stack as two unaries.
+		increment_expression_error()
+		return 3
 	else if (accept(c"cast")):
 		expect(c"(")
 		int want = type_name()
 		expect(c",")
+		int outer_cast = cast_context
+		cast_context = 1
 		type = expression()
+		cast_context = outer_cast
 		type = promote(type)
 		if (type_num_args(want) > 0):
 			error(c"cannot cast to a struct value")
@@ -142,8 +250,8 @@ int unary_expression():
 			return type_value(list_container_type)
 		int base = type_lookup(token)
 		if (base < 0):
-			print2(c"unknown type after new: '")
-			print2(token)
+			diag_part(c"unknown type after new: '")
+			diag_part(token)
 			error(c"'")
 		get_token()
 		if (accept(c"[")):
@@ -153,8 +261,23 @@ int unary_expression():
 			int len_type = expression()
 			promote(len_type)
 			if (bounds_mode != 0):
-				bounds_check_eax_nonnegative()
-				bounds_check_eax_less_equal_int32(1073741823 / element_size)
+				# eax = requested element count: trap through the
+				# runtime helper unless 0 <= count <= the per-type
+				# limit (issue #228). The trap block shuffles the
+				# count into ebx and the limit into eax, the
+				# bounds_trap_call convention; the in-bounds path
+				# leaves eax untouched.
+				int alloc_limit = 1073741823 / element_size
+				int h_in_bounds = be_ctrl_block()
+				int h_trap = be_ctrl_block()
+				bounds_branch_eax_negative(h_trap)
+				bounds_skip_eax_less_equal_int32(alloc_limit, h_in_bounds)
+				be_ctrl_end(h_trap)
+				push_eax()
+				mov_eax_int(alloc_limit)
+				pop_ebx()
+				bounds_trap_call(c"__w_alloc_trap")
+				be_ctrl_end(h_in_bounds)
 			expect(c"]")
 			push_eax()
 			stack_pos = stack_pos + 1
@@ -228,25 +351,36 @@ int unary_expression():
 			if (accept(c")") == 0):
 				# Constructor arguments: keep the allocation address on the
 				# stack while each argument expression runs, storing every
-				# result into its field.
+				# result into its field. An argument that parks a temp on
+				# the stack (a struct-value constructor or a
+				# struct-returning call) buries the saved address; the
+				# store reads it esp-relative and the leak is popped so
+				# the next argument sees the address on top again.
 				push_eax()
 				stack_pos = stack_pos + 1
+				int arg_entry = stack_pos
 				int arg_type = expression()
 				arg_type = promote(arg_type)
-				new_store_field(base, 0, arg_type)
+				new_store_field(base, 0, arg_type, stack_pos - arg_entry)
+				if (stack_pos > arg_entry):
+					be_pop(stack_pos - arg_entry)
+					stack_pos = arg_entry
 				int field_index = 1
 				while (accept(c",")):
 					arg_type = expression()
 					arg_type = promote(arg_type)
-					new_store_field(base, field_index, arg_type)
+					new_store_field(base, field_index, arg_type, stack_pos - arg_entry)
+					if (stack_pos > arg_entry):
+						be_pop(stack_pos - arg_entry)
+						stack_pos = arg_entry
 					field_index = field_index + 1
 				expect(c")")
 				if (field_index != type_num_args(base)):
-					print_error(str_from_cstr(c"warning: new "))
-					print_error(str_from_cstr(type_get_name(base)))
-					print_error(str_from_cstr(c" expects "))
-					print_error(str_from_cstr(itoa(type_num_args(base))))
-					print_error(str_from_cstr(c" arguments, got "))
+					diag_part(c"warning: new ")
+					diag_part(type_get_name(base))
+					diag_part(c" expects ")
+					diag_part(itoa(type_num_args(base)))
+					diag_part(c" arguments, got ")
 					warning(itoa(field_index))
 				pop_eax()
 				stack_pos = stack_pos - 1

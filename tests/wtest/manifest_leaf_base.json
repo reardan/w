@@ -1,0 +1,31 @@
+{
+	"dirs": ["bin"],
+	"targets": [
+		{
+			"name": "manifest_check",
+			"steps": [
+				{"cmd": ["true"]}
+			]
+		},
+		{
+			"name": "wexec_test",
+			"steps": [
+				{"cmd": ["true"]}
+			]
+		},
+		{
+			"name": "tests",
+			"deps": [
+				"sha256_test"
+			]
+		},
+		{
+			"name": "sha256_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/sha256_test.w", "-o", "bin/sha256_test"]},
+				{"cmd": ["bin/sha256_test"]}
+			]
+		}
+	]
+}

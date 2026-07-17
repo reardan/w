@@ -8,20 +8,31 @@ build. For a changed path P the emitted targets are the union of:
   (a) literal references — every runnable target one of whose steps
       names P in its argv (exact element, or an element containing P
       when P has a '/') or mentions P in its piped stdin. This covers
-      fixtures, grammars, scripts and data files exactly.
+      fixtures, grammars, scripts and data files exactly. A target may
+      also declare non-W run-time inputs in a target-level "data"
+      array (generated from '# wbuild: deps=' directives, see
+      tools/wbuildgen.w): an entry ending in '/' matches as a
+      directory prefix, anything else as an exact path. Declared data
+      is checked before the doc-only filter below, so a data file with
+      a doc-like extension (.txt) still selects its targets.
 
   (b) import closures — every runnable target one of whose root
       sources' transitive import closure (computed by shelling out to
-      'bin/wv2 deps <root>') contains P. Root sources are the .w files
-      named in compile steps ('bin/wv2 [flags] <file>.w ... -o out',
-      including seed './w' compiles), taken from the target's own steps
-      and from the steps of its dependency targets — so wexec_test
-      inherits tools/wexec.w from its 'wexec' dep and debug_test
-      inherits debugger/debugger.w from 'wdbg'. Closures are computed
-      for the default (x86) target only; a root that fails to compile
-      falls back to literal matching only. Closures are cached in
-      bin/.wtest_deps_cache and re-used until the content hash of any
-      file in the cached closure changes.
+      'bin/wv2 deps [selector] <root>') contains P. Root sources are
+      the (arch, .w file) pairs named in compile steps
+      ('bin/wv2 [selector] [flags] <file>.w ... -o out', including
+      seed './w' compiles), taken from the target's own steps and from
+      the steps of its dependency targets — so wexec_test inherits
+      tools/wexec.w from its 'wexec' dep and debug_test inherits
+      debugger/debugger.w from 'wdbg'. Closures are per-arch: a root
+      compiled with a target selector (x64, arm64, arm64_darwin,
+      win64) resolves lib/__arch__/ and other per-target imports for
+      that target, so arch-only modules (lib/__arch__/x64/,
+      graphics/cocoa.w) select exactly the targets that compile them.
+      A root that fails to compile falls back to literal matching
+      only. Closures are cached in bin/.wtest_deps_cache and re-used
+      until the content hash of any file in the cached closure
+      changes.
 
   (c) RESIDUE RULES for coupling the import graph cannot see:
       - w.w / grammar.w / codegen.w and compiler/ grammar/
@@ -42,28 +53,51 @@ build. For a changed path P the emitted targets are the union of:
         A deleted .w additionally -> tests, because importers of a
         deleted module no longer compile, so their closures cannot be
         computed.
-      - lib/__arch__/ -> lib_test + lib_64_test (+ net targets for
-        socket_abi.w): non-default arch modules never appear in a
-        default-target closure.
-      - graphics/ -> graphics_gl_smoke_test + graphics_darwin: the
-        darwin window backend (cocoa.w, window_cocoa.w) and the x64/
-        darwin __arch__ modules are invisible to the default-target
-        closure.
-      - tests/asm/ -> the asm suite: the .asm text sources are read at
-        run time, not imported. tools/gen_stubs.w -> asm_stubs_test
-        (the stub drift check compares its generated output).
+      - (the former lib/__arch__/ and graphics/ rules are retired: the
+        per-arch closures of rule (b) see those modules exactly where
+        a target compiles them. An arch module no target compiles at
+        all — e.g. lib/__arch__/win64/socket_abi.w while nothing links
+        net on win64 — selects only metadata_check and
+        parser_generator_w_test, which is also exactly its current
+        test coverage.)
+      - tests/asm/ -> the asm suite (including the asm_fuzz_* property/
+        fuzz targets, which sample the same tests/asm/corpus_*.txt
+        fixtures): the .txt/.asm text sources are read at run time, not
+        imported. tools/gen_stubs.w -> asm_stubs_test (the stub drift
+        check compares its generated output).
       - libs/extras/c_import/ and c_preprocessor/ -> the c_import
         suite: the C-import machinery is loaded by the compiler itself,
         not through recorded imports.
       - libs/standard/net/x509_fixtures/ -> net_x509_test and
         tests/metadata/ -> metadata_test: run-time fixture data.
+      - tests/wexec/remote_cache.json -> wexec_remote_cache_test: the
+        target's own manifest steps only name the compiled test binary;
+        the fixture path itself is a literal inside the test's source,
+        passed to a bin/wexec subprocess as a "-f" argument at run
+        time, so neither rule (a) nor rule (b) can see the coupling.
       - build.json / wbuild / build.base.json -> wexec_test + tests (the
         manifest drives every target); build.base.json additionally ->
-        manifest_check (it feeds bin/wbuildgen).
+        manifest_check (it feeds bin/wbuildgen). Exception: when
+        --base-manifest supplies the committed baseline build.json and
+        the structural diff against it is EXACTLY additions, removals,
+        or in-place regenerations of wbuildgen-shaped leaf test targets
+        (plus the matching tests/tests_x64/tests_win64 membership
+        edits), a changed build.json selects just those targets +
+        manifest_check + wexec_test instead of the whole suite — the
+        "added one conventional test and reran ./wbuild manifest"
+        workflow. Anything else in the diff (a hand-written base
+        target, a toolchain step, the manifest's root members) falls
+        back to the full residue; so does a missing or unparseable
+        baseline. Under-selection is fenced twice: manifest_check is
+        always co-selected (a hand-edited build.json fails it), and a
+        build.base.json edit keeps the full residue through its own
+        changed path.
       - *_test.w under a wbuildgen scan directory -> manifest_check:
         conventional test sources are generator inputs, so adding or
         deleting one must regenerate build.json.
-      - docs/, *.md, *.txt, .cursor/ -> nothing.
+      - docs/, *.md, *.txt, .cursor/ -> nothing, except tests/asm/*.txt
+        (the corpus fixtures), which the tests/asm/ rule above still
+        covers despite the extension.
       - anything still unmatched -> tests.
 
 Safety: update / update_darwin (seed promotion) and the darwin-native
@@ -74,9 +108,63 @@ targets (tests, tests_x64, tests_win64) are never selected by (a)/(b).
 Output: unique target names, one per line, in manifest order ('tests'
 is last in the manifest). --verbose prints 'path -> target' notes to
 stderr. Paths come from arguments or stdin (git diff --name-only HEAD |
-bin/wtest changed).
+bin/wtest changed). An empty selection prints 'wtest: 0 targets
+selected' to stderr — stdout stays clean (it is piped into 'xargs -r
+./wbuild'), but a caller looking at the terminal can tell "nothing to
+test" apart from a green run.
+
+'wtest for <path>...' (issue #323 stage 1) is 'changed' with its path
+list required as positional args instead of optionally read from
+stdin: the same selection (rules a/b/c above, unchanged) for a caller
+that already knows which paths it cares about, without a
+'git diff --name-only HEAD |' pipe. Every flag 'changed' accepts,
+'for' accepts identically, --run included; unlike 'changed', 'for'
+with no path arguments is a usage error rather than an empty-stdin
+selection, since a bare 'wtest for' has no plausible caller.
+
+--run additionally executes the selection itself, through the same
+executor './wbuild test_changed' pipes into via 'xargs -r ./wbuild'
+(which execs bin/wexec) -- but as a single direct child that inherits
+this process's stdio, so build output streams live exactly as it does
+through that pipeline. An empty selection is a no-op, matching
+'xargs -r's behavior on empty input: no child is spawned. wtest exits
+with the child's status (0 on success).
+
+-f overrides the manifest path (default build.json) for both selection
+and, under --run, execution. It exists mainly for isolated testing
+(tests/wtest/): pointing wtest at a throwaway manifest lets --run be
+exercised without ever selecting a real target that itself shells out to
+bin/wtest, which would recurse.
+
+--base-manifest names the BASELINE build.json to structurally diff the
+current manifest against for the leaf-target special case above; with
+no baseline the build.json residue always selects the full suite.
+'./wbuild test_changed' extracts it with 'git show <base>:build.json';
+tests point it at fixture manifests, mirroring -f.
+
+--available drops, after normal selection, targets whose steps name a
+runner this host cannot execute — arm64 run targets (they shell through
+'sh tools/run_arm64.sh', which itself falls back to qemu-aarch64-static
+off an aarch64 host), win64 run targets ('wine'/'wine64'), or a
+tools/mac/ script — so the printed selection is runnable as-is instead
+of failing on a missing qemu/wine/Mac. Detection is mechanical and
+conservative: only a step whose argv[0] (or, for the arm64 wrapper,
+argv[1]) is one of those recognized shapes is checked for presence on
+PATH (or, for tools/mac/, as a file); anything else is left alone, so a
+target is only ever dropped on positive evidence. One 'wtest: dropped N
+unavailable target(s) (<reason>)' line per distinct reason is printed to
+stderr, plus a 'dropped N unavailable targets total' line when more than
+one reason fired. './wbuild test_changed' passes --available by default.
+
+The first 'changed' invocation to touch an import closure (rule b) after
+a build, or after bin/.wtest_deps_cache is otherwise missing or fully
+stale, prints one 'wtest: building import-closure cache...' note to
+stderr before shelling out to 'bin/wv2 deps' for every root — that pass
+can take minutes on a big tree with nothing printed otherwise. A warm
+cache prints nothing extra.
 */
 import lib.lib
+import lib.env
 import lib.file
 import lib.process
 import lib.stream
@@ -90,12 +178,13 @@ map[char*, json_value*] wtest_target_defs
 map[char*, int] wtest_enabled
 map[char*, int] wtest_never_emit
 
-# (root, owning target) pairs; a root owned by several targets repeats.
+# (root id, owning target) pairs; a root owned by several targets
+# repeats. Root ids are "<arch> <root>" (wtest_root_id).
 list[char*] wtest_pair_roots
 list[char*] wtest_pair_targets
-list[char*] wtest_roots              # deduplicated roots
+list[char*] wtest_roots              # deduplicated root ids
 
-# root -> closure blob ("\n" + one path per line + trailing "\n");
+# root id -> closure blob ("\n" + one path per line + trailing "\n");
 # parallel lists. A root whose deps run failed stores 0.
 list[char*] wtest_closure_roots
 list[char*] wtest_closure_blobs
@@ -103,13 +192,19 @@ list[char*] wtest_closure_blobs
 map[char*, char*] wtest_file_hashes  # path -> content hash hex (memo)
 
 int wtest_verbose
+int wtest_run_flag
+int wtest_available_flag
+char* wtest_manifest_path
+char* wtest_base_manifest_path       # 0 = no --base-manifest given
+json_value* wtest_base_manifest      # parsed baseline, 0 until loaded
 int wtest_closures_ready
 int wtest_mask32
 
 
 void wtest_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wtest changed [--verbose] [file...]")
+	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]")
+	stream_write_line(err, c"       wtest for <file>... [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json]")
 	stream_flush(err)
 
 
@@ -166,21 +261,21 @@ char* wtest_get_string(json_value* object, char* key):
 
 
 int wtest_load_manifest():
-	char* text = file_read_text(c"build.json")
+	char* text = file_read_text(wtest_manifest_path)
 	if (text == 0):
-		wtest_error(c"cannot read ", c"build.json")
+		wtest_error(c"cannot read ", wtest_manifest_path)
 		return 1
 	wtest_manifest = json_parse(text)
 	free(text)
 	if (wtest_manifest == 0):
-		wtest_error(c"manifest is not valid JSON: ", c"build.json")
+		wtest_error(c"manifest is not valid JSON: ", wtest_manifest_path)
 		return 1
 	json_value* targets = json_object_get(wtest_manifest, c"targets")
 	if (targets == 0):
-		wtest_error(c"manifest has no targets array: ", c"build.json")
+		wtest_error(c"manifest has no targets array: ", wtest_manifest_path)
 		return 1
 	if (targets.type != json_type_array()):
-		wtest_error(c"manifest targets is not an array: ", c"build.json")
+		wtest_error(c"manifest targets is not an array: ", wtest_manifest_path)
 		return 1
 	wtest_target_names = new list[char*]
 	wtest_target_defs = new map[char*, json_value*]
@@ -200,6 +295,23 @@ int wtest_load_manifest():
 				wtest_target_defs[name] = target
 				wtest_target_names.push(name)
 		i = i + 1
+	return 0
+
+
+# The committed baseline manifest (--base-manifest), consumed only by
+# the build.json leaf-diff special case (wtest_manifest_leaf_diff). A
+# baseline the caller named but cannot be read is a loud error, like
+# -f; structural oddities inside it just fall back to the full residue.
+int wtest_load_base_manifest():
+	char* text = file_read_text(wtest_base_manifest_path)
+	if (text == 0):
+		wtest_error(c"cannot read ", wtest_base_manifest_path)
+		return 1
+	wtest_base_manifest = json_parse(text)
+	free(text)
+	if (wtest_base_manifest == 0):
+		wtest_error(c"base manifest is not valid JSON: ", wtest_base_manifest_path)
+		return 1
 	return 0
 
 
@@ -273,6 +385,42 @@ int wtest_target_mentions(char* name, char* path, int path_has_slash):
 	return 0
 
 
+# Rule (a) for declared run-time data: the target-level "data" array
+# ('# wbuild: deps=' directives, tools/wbuildgen.w). An entry ending
+# in '/' is a directory prefix, anything else an exact path.
+int wtest_target_data_mentions(char* name, char* path):
+	json_value* target = wtest_target_defs.get(name, 0)
+	if (target == 0):
+		return 0
+	json_value* data = json_object_get(target, c"data")
+	if (data == 0):
+		return 0
+	if (data.type != json_type_array()):
+		return 0
+	int i = 0
+	while (i < json_array_length(data)):
+		json_value* entry = json_array_get(data, i)
+		if (entry.type == json_type_string()):
+			char* text = entry.string_value
+			if (strcmp(text, path) == 0):
+				return 1
+			int n = strlen(text)
+			if ((n > 0) && (text[n - 1] == '/') && starts_with(path, text)):
+				return 1
+		i = i + 1
+	return 0
+
+
+int wtest_map_data(char* path):
+	int matched = 0
+	for char* name in wtest_target_names:
+		if (wtest_selectable(name)):
+			if (wtest_target_data_mentions(name, path)):
+				wtest_add(path, name)
+				matched = 1
+	return matched
+
+
 /* Rule (b): compile roots and their import closures. */
 
 # w.w is never a closure root: every target depends on the compiler, so
@@ -288,8 +436,46 @@ int wtest_excluded_root(char* path):
 	return 0
 
 
-# .w files named in this target's own compile steps
-# ('bin/wv2 [flags] file.w ... -o out', or seed './w' compiles).
+int wtest_selector(char* word):
+	if (strcmp(word, c"x64") == 0):
+		return 1
+	if (strcmp(word, c"arm64") == 0):
+		return 1
+	if (strcmp(word, c"arm64_darwin") == 0):
+		return 1
+	if (strcmp(word, c"win64") == 0):
+		return 1
+	return 0
+
+
+# Root ids are "<arch> <root>" pairs ("x64 lib/lib_test.w"); the arch
+# column is the compile step's target selector, "x86" for the default
+# target, so one source file compiled for several targets gets one
+# closure per target.
+char* wtest_root_id(char* arch, char* root):
+	string_builder* s = string_new()
+	string_append(s, arch)
+	string_append_char(s, ' ')
+	string_append(s, root)
+	char* id = s.data
+	free(s)
+	return id
+
+
+# The path column of a root id (after the arch word), or 0 when the id
+# has no arch column (a stale cache entry from an older wtest).
+char* wtest_root_id_path(char* id):
+	int i = 0
+	while (id[i] != 0):
+		if (id[i] == ' '):
+			return id + i + 1
+		i = i + 1
+	return 0
+
+
+# (arch, .w file) root ids named in this target's own compile steps
+# ('bin/wv2 [selector] [flags] file.w ... -o out', or seed './w'
+# compiles).
 void wtest_collect_own_roots(char* name, list[char*] out):
 	json_value* steps = wtest_target_steps(name)
 	if (steps == 0):
@@ -323,6 +509,11 @@ void wtest_collect_own_roots(char* name, list[char*] out):
 			i = i + 1
 		if (has_output == 0):
 			continue
+		char* arch = c"x86"
+		json_value* selector_piece = json_array_get(cmd, 1)
+		if (selector_piece.type == json_type_string()):
+			if (wtest_selector(selector_piece.string_value)):
+				arch = selector_piece.string_value
 		i = 1
 		while (i < n):
 			json_value* piece = json_array_get(cmd, i)
@@ -332,7 +523,7 @@ void wtest_collect_own_roots(char* name, list[char*] out):
 					i = i + 2
 					continue
 				if (ends_with(element, c".w") && (wtest_excluded_root(element) == 0)):
-					out.push(element)
+					out.push(wtest_root_id(arch, element))
 			i = i + 1
 
 
@@ -389,19 +580,22 @@ void wtest_ensure_roots():
 
 /* Closure computation, memoized per run and cached across runs.
 
-The cache file (bin/.wtest_deps_cache) stores one entry per root:
-  R <root>
+The cache file (bin/.wtest_deps_cache) stores one entry per root id
+("<arch> <root>", see wtest_root_id):
+  R <arch> <root>
   H <combined content hash of every file in the closure>
   F <closure file> (one line per file, in deps output order)
 An entry is valid when re-hashing every F file reproduces H; otherwise
-'bin/wv2 deps' is re-run. A root that failed to compile is cached as
-  X <root>
+'bin/wv2 deps [selector]' is re-run. A root that failed to compile for
+its target is cached as
+  X <arch> <root>
   H <content hash of the root file itself>
 and retried once the root's own content changes. (A root that fails
 because an *imported* file is broken keeps its stale failure entry
 until the root is touched — acceptable, because such roots are error
 fixtures or transient mid-edit states, and literal matching still
-covers them.) */
+covers them.) Entries without an arch column — caches written by older
+wtest builds — fail to parse and simply recompute. */
 
 int wtest_mask32_value():
 	if (__word_size__ == 8):
@@ -527,15 +721,36 @@ int wtest_closure_known(char* root):
 	return 0
 
 
-# Run 'bin/wv2 deps <root>'; returns a newline-guarded closure blob or
-# 0 when the root does not compile (literal matching still applies).
-char* wtest_run_deps(char* root):
-	char** argv = strv_new(3)
+# Run 'bin/wv2 deps [selector] <root>' for one root id; returns a
+# newline-guarded closure blob or 0 when the root does not compile for
+# its target (literal matching still applies).
+char* wtest_run_deps(char* id):
+	char* arch = strclone(id)
+	char* root = 0
+	int i = 0
+	while ((arch[i] != 0) && (root == 0)):
+		if (arch[i] == ' '):
+			arch[i] = 0
+			root = arch + i + 1
+		i = i + 1
+	if (root == 0):
+		free(arch)
+		return 0
+	int is_default = strcmp(arch, c"x86") == 0
+	int count = 4
+	if (is_default):
+		count = 3
+	char** argv = strv_new(count)
 	strv_set(argv, 0, c"bin/wv2")
 	strv_set(argv, 1, c"deps")
-	strv_set(argv, 2, root)
+	if (is_default):
+		strv_set(argv, 2, root)
+	else:
+		strv_set(argv, 2, arch)
+		strv_set(argv, 3, root)
 	process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
 	free(cast(char*, argv))
+	free(arch)
 	if (result == 0):
 		return 0
 	if (result.status != 0):
@@ -554,7 +769,9 @@ char* wtest_run_deps(char* root):
 
 
 # Finalize one parsed cache entry: keep it only when its content hash
-# still matches. kind 1 = success ('R'), kind 2 = failure ('X').
+# still matches (and, for 'X' entries, the id parses — pre-arch-column
+# caches are silently dropped). kind 1 = success ('R'), kind 2 =
+# failure ('X').
 void wtest_cache_entry(int kind, char* root, char* expected, string_builder* blob):
 	if ((root == 0) | (expected == 0)):
 		return
@@ -563,8 +780,10 @@ void wtest_cache_entry(int kind, char* root, char* expected, string_builder* blo
 			if (strcmp(wtest_closure_digest(blob.data), expected) == 0):
 				wtest_closure_store(root, blob.data)
 	if (kind == 2):
-		if (strcmp(wtest_file_hash(root), expected) == 0):
-			wtest_closure_store(root, 0)
+		char* path = wtest_root_id_path(root)
+		if (path != 0):
+			if (strcmp(wtest_file_hash(path), expected) == 0):
+				wtest_closure_store(root, 0)
 
 
 # Load cache entries whose content hashes still match; anything stale
@@ -622,7 +841,7 @@ void wtest_cache_save():
 			string_append(out, wtest_closure_roots[i])
 			string_append_char(out, 10)
 			string_append(out, c"H ")
-			string_append(out, wtest_file_hash(wtest_closure_roots[i]))
+			string_append(out, wtest_file_hash(wtest_root_id_path(wtest_closure_roots[i])))
 			string_append_char(out, 10)
 		else:
 			string_append(out, c"R ")
@@ -658,6 +877,19 @@ void wtest_ensure_closures():
 	wtest_closure_roots = new list[char*]
 	wtest_closure_blobs = new list[char*]
 	wtest_cache_load()
+	# Cold/stale cache: every root not already satisfied by wtest_cache_load
+	# needs a 'bin/wv2 deps' shell-out below, which can take minutes right
+	# after a build or a large merge (docs/projects/ai_tooling_next_steps.md,
+	# 2026-07-16) with nothing printed otherwise. A warm cache (the common
+	# case) skips this entirely.
+	int cold = 0
+	for char* root in wtest_roots:
+		if (wtest_closure_known(root) == 0):
+			cold = 1
+	if (cold):
+		wstream* err = stderr_writer()
+		stream_write_line(err, c"wtest: building import-closure cache (first run after a build; this can take a minute)...")
+		stream_flush(err)
 	int recomputed = 0
 	for char* root in wtest_roots:
 		if (wtest_closure_known(root) == 0):
@@ -682,6 +914,11 @@ int wtest_closure_contains(char* blob, char* path):
 /* Residue rules and the selection driver. */
 
 int wtest_doc_only(char* path):
+	if (starts_with(path, c"tests/asm/")):
+		# The corpus_*.txt fixtures are runtime data for the asm suite
+		# (including asm_fuzz_*), not documentation, despite the extension;
+		# the tests/asm/ residue rule below must see them.
+		return 0
 	if (starts_with(path, c"docs/")):
 		return 1
 	if (ends_with(path, c".md")):
@@ -726,6 +963,350 @@ int wtest_scan_dir_path(char* path):
 	return 0
 
 
+/* The build.json leaf-diff special case (--base-manifest).
+
+Adding one conventional test regenerates build.json, and the plain
+manifest residue rule then recommends the entire pre-merge suite for
+every "add one test" diff. When the caller supplies the committed
+baseline manifest, the structural diff is inspected instead: if it is
+exactly additions/removals/in-place regenerations of leaf test targets
+in the shape tools/wbuildgen.w generates (plus the matching umbrella
+membership edits), only those targets + manifest_check + wexec_test
+are selected. Every check errs toward returning 0, which keeps the
+full 'wexec_test + tests' residue — never under-select silently. */
+
+int wtest_json_equal(json_value* a, json_value* b):
+	char* left = json_stringify(a)
+	char* right = json_stringify(b)
+	int same = strcmp(left, right) == 0
+	free(left)
+	free(right)
+	return same
+
+
+# The umbrellas wbuildgen appends generated leaf targets to.
+int wtest_umbrella_name(char* name):
+	if (strcmp(name, c"tests") == 0):
+		return 1
+	if (strcmp(name, c"tests_x64") == 0):
+		return 1
+	if (strcmp(name, c"tests_win64") == 0):
+		return 1
+	return 0
+
+
+# The names wbg_make_target can produce: X_test, X_64_test (also
+# ..._test), and the X_test_{arm64,win64,darwin} platform twins.
+int wtest_leaf_name(char* name):
+	if (ends_with(name, c"_test")):
+		return 1
+	if (ends_with(name, c"_arm64")):
+		return 1
+	if (ends_with(name, c"_win64")):
+		return 1
+	if (ends_with(name, c"_darwin")):
+		return 1
+	return 0
+
+
+# A step may carry only "cmd" (compile / extra_compile steps) or "cmd"
+# plus the run-step decoration fields wbuildgen emits.
+int wtest_step_only_keys(json_value* step, int run_fields):
+	if (step.type != json_type_object()):
+		return 0
+	int ok = 1
+	for char* key, json_value* member in step.object_values:
+		if (strcmp(key, c"cmd") == 0):
+			continue
+		if (run_fields):
+			if (strcmp(key, c"stdin") == 0):
+				continue
+			if (strcmp(key, c"expect_fail") == 0):
+				continue
+			if (strcmp(key, c"expect_stdout") == 0):
+				continue
+			if (strcmp(key, c"expect_stderr") == 0):
+				continue
+			if (strcmp(key, c"timeout_ms") == 0):
+				continue
+		ok = 0
+	return ok
+
+
+# The step's cmd as a nonempty all-string array, or 0.
+json_value* wtest_step_cmd(json_value* step):
+	json_value* cmd = json_object_get(step, c"cmd")
+	if (cmd == 0):
+		return 0
+	if (cmd.type != json_type_array()):
+		return 0
+	int n = json_array_length(cmd)
+	if (n == 0):
+		return 0
+	int i = 0
+	while (i < n):
+		json_value* piece = json_array_get(cmd, i)
+		if (piece.type != json_type_string()):
+			return 0
+		i = i + 1
+	return cmd
+
+
+# {"cmd": ["bin/wv2", (selector)?, ..., "src.w", ..., "-o", "bin/X"]}
+# and nothing else.
+int wtest_leaf_compile_step(json_value* step):
+	if (wtest_step_only_keys(step, 0) == 0):
+		return 0
+	json_value* cmd = wtest_step_cmd(step)
+	if (cmd == 0):
+		return 0
+	json_value* program = json_array_get(cmd, 0)
+	if (strcmp(program.string_value, c"bin/wv2") != 0):
+		return 0
+	int has_output = 0
+	int has_source = 0
+	int i = 1
+	while (i < json_array_length(cmd)):
+		json_value* piece = json_array_get(cmd, i)
+		if (strcmp(piece.string_value, c"-o") == 0):
+			has_output = 1
+		if (ends_with(piece.string_value, c".w")):
+			has_source = 1
+		i = i + 1
+	return has_output && has_source
+
+
+# A run or extra_compile step: the compiled binary (or another bin/
+# tool for extra compiles), the arm64 qemu wrapper, or wine — plus at
+# most the decoration fields.
+int wtest_leaf_run_step(json_value* step):
+	if (wtest_step_only_keys(step, 1) == 0):
+		return 0
+	json_value* cmd = wtest_step_cmd(step)
+	if (cmd == 0):
+		return 0
+	json_value* program = json_array_get(cmd, 0)
+	if (starts_with(program.string_value, c"bin/")):
+		return 1
+	if (strcmp(program.string_value, c"wine") == 0):
+		return 1
+	if (strcmp(program.string_value, c"sh") == 0):
+		if (json_array_length(cmd) >= 2):
+			json_value* script = json_array_get(cmd, 1)
+			if (strcmp(script.string_value, c"tools/run_arm64.sh") == 0):
+				return 1
+	return 0
+
+
+# The conventional compile(+run) shape tools/wbuildgen.w generates for
+# a leaf test target (wbg_make_target): only the keys it emits, deps
+# exactly ["wv2"], a bin/wv2 compile step first, decorated run /
+# extra-compile steps after. A hand-written base target that happens
+# to match is indistinguishable, which is safe: editing one requires a
+# build.base.json change, and that path keeps the full residue.
+int wtest_leaf_target(json_value* target):
+	if (target == 0):
+		return 0
+	if (target.type != json_type_object()):
+		return 0
+	int keys_ok = 1
+	for char* key, json_value* member in target.object_values:
+		if ((strcmp(key, c"name") != 0) && (strcmp(key, c"deps") != 0) && (strcmp(key, c"data") != 0) && (strcmp(key, c"steps") != 0)):
+			keys_ok = 0
+	if (keys_ok == 0):
+		return 0
+	char* name = wtest_get_string(target, c"name")
+	if (name == 0):
+		return 0
+	if (wtest_leaf_name(name) == 0):
+		return 0
+	json_value* deps = json_object_get(target, c"deps")
+	if (deps == 0):
+		return 0
+	if (deps.type != json_type_array()):
+		return 0
+	if (json_array_length(deps) != 1):
+		return 0
+	json_value* dep = json_array_get(deps, 0)
+	if (dep.type != json_type_string()):
+		return 0
+	if (strcmp(dep.string_value, c"wv2") != 0):
+		return 0
+	json_value* data = json_object_get(target, c"data")
+	if (data != 0):
+		if (data.type != json_type_array()):
+			return 0
+		int d = 0
+		while (d < json_array_length(data)):
+			json_value* entry = json_array_get(data, d)
+			if (entry.type != json_type_string()):
+				return 0
+			d = d + 1
+	json_value* steps = json_object_get(target, c"steps")
+	if (steps == 0):
+		return 0
+	if (steps.type != json_type_array()):
+		return 0
+	if (json_array_length(steps) == 0):
+		return 0
+	if (wtest_leaf_compile_step(json_array_get(steps, 0)) == 0):
+		return 0
+	int i = 1
+	while (i < json_array_length(steps)):
+		if (wtest_leaf_run_step(json_array_get(steps, i)) == 0):
+			return 0
+		i = i + 1
+	return 1
+
+
+# The deps array as a name set, or 0 when it is not all strings.
+map[char*, int] wtest_dep_set(json_value* deps):
+	if (deps == 0):
+		return 0
+	if (deps.type != json_type_array()):
+		return 0
+	map[char*, int] out = new map[char*, int]
+	int i = 0
+	while (i < json_array_length(deps)):
+		json_value* dep = json_array_get(deps, i)
+		if (dep.type != json_type_string()):
+			return 0
+		out[dep.string_value] = 1
+		i = i + 1
+	return out
+
+
+# An umbrella may differ from its baseline only in deps, and only by
+# entries that are exactly this diff's added/removed leaf names.
+int wtest_umbrella_diff_ok(json_value* base_target, json_value* current_target, map[char*, int] added, map[char*, int] removed):
+	int base_count = 0
+	int members_ok = 1
+	for char* key, json_value* member in base_target.object_values:
+		if (strcmp(key, c"deps") != 0):
+			base_count = base_count + 1
+			json_value* other = json_object_get(current_target, key)
+			if (other == 0):
+				members_ok = 0
+			else if (wtest_json_equal(member, other) == 0):
+				members_ok = 0
+	int current_count = 0
+	for char* current_key, json_value* current_member in current_target.object_values:
+		if (strcmp(current_key, c"deps") != 0):
+			current_count = current_count + 1
+	if ((members_ok == 0) || (base_count != current_count)):
+		return 0
+	json_value* base_deps = json_object_get(base_target, c"deps")
+	json_value* current_deps = json_object_get(current_target, c"deps")
+	map[char*, int] base_set = wtest_dep_set(base_deps)
+	map[char*, int] current_set = wtest_dep_set(current_deps)
+	if ((base_set == 0) || (current_set == 0)):
+		return 0
+	int i = 0
+	while (i < json_array_length(current_deps)):
+		json_value* gained = json_array_get(current_deps, i)
+		if ((base_set.get(gained.string_value, 0) == 0) && (added.get(gained.string_value, 0) == 0)):
+			return 0
+		i = i + 1
+	i = 0
+	while (i < json_array_length(base_deps)):
+		json_value* lost = json_array_get(base_deps, i)
+		if ((current_set.get(lost.string_value, 0) == 0) && (removed.get(lost.string_value, 0) == 0)):
+			return 0
+		i = i + 1
+	return 1
+
+
+# Root members other than "targets" (the "dirs" list, any future
+# member) must be identical; otherwise the manifest change is more
+# than a target-list regeneration.
+int wtest_manifest_roots_match():
+	int base_count = 0
+	int members_ok = 1
+	for char* key, json_value* member in wtest_base_manifest.object_values:
+		if (strcmp(key, c"targets") != 0):
+			base_count = base_count + 1
+			json_value* other = json_object_get(wtest_manifest, key)
+			if (other == 0):
+				members_ok = 0
+			else if (wtest_json_equal(member, other) == 0):
+				members_ok = 0
+	int current_count = 0
+	for char* current_key, json_value* current_member in wtest_manifest.object_values:
+		if (strcmp(current_key, c"targets") != 0):
+			current_count = current_count + 1
+	if (base_count != current_count):
+		return 0
+	return members_ok
+
+
+# The special case itself: structurally diff the current manifest
+# against the --base-manifest baseline. Returns 1 after selecting the
+# added / regenerated leaf targets + manifest_check + wexec_test, or 0
+# (having selected nothing) when there is no baseline or anything in
+# the diff is not a pure leaf-target regeneration.
+int wtest_manifest_leaf_diff(char* path):
+	if (wtest_base_manifest == 0):
+		return 0
+	if (wtest_base_manifest.type != json_type_object()):
+		return 0
+	if (wtest_manifest_roots_match() == 0):
+		return 0
+	json_value* base_targets = json_object_get(wtest_base_manifest, c"targets")
+	if (base_targets == 0):
+		return 0
+	if (base_targets.type != json_type_array()):
+		return 0
+	list[char*] base_names = new list[char*]
+	map[char*, json_value*] base_defs = new map[char*, json_value*]
+	int i = 0
+	while (i < json_array_length(base_targets)):
+		json_value* target = json_array_get(base_targets, i)
+		if (target.type == json_type_object()):
+			char* name = wtest_get_string(target, c"name")
+			if (name != 0):
+				base_defs[name] = target
+				base_names.push(name)
+		i = i + 1
+	# The added and removed name sets come first: the umbrella check
+	# below needs them complete before membership edits can be judged.
+	map[char*, int] added = new map[char*, int]
+	map[char*, int] removed = new map[char*, int]
+	list[char*] touched = new list[char*]
+	for char* added_name in wtest_target_names:
+		if (base_defs.get(added_name, 0) == 0):
+			if (wtest_leaf_target(wtest_target_defs.get(added_name, 0)) == 0):
+				return 0
+			added[added_name] = 1
+			touched.push(added_name)
+	for char* removed_name in base_names:
+		if (wtest_target_defs.get(removed_name, 0) == 0):
+			if (wtest_leaf_target(base_defs.get(removed_name, 0)) == 0):
+				return 0
+			removed[removed_name] = 1
+	# In-place differences: an umbrella gaining/losing exactly the
+	# added/removed names, or a leaf regenerated in place (a
+	# '# wbuild:' directive edit) which then selects itself. A removed
+	# target is never selected — it no longer exists to run;
+	# manifest_check covers the regeneration.
+	for char* common_name in wtest_target_names:
+		json_value* base_def = base_defs.get(common_name, 0)
+		if (base_def != 0):
+			json_value* current_def = wtest_target_defs.get(common_name, 0)
+			if (wtest_json_equal(base_def, current_def) == 0):
+				if (wtest_umbrella_name(common_name)):
+					if (wtest_umbrella_diff_ok(base_def, current_def, added, removed) == 0):
+						return 0
+				else if (wtest_leaf_target(base_def) && wtest_leaf_target(current_def)):
+					touched.push(common_name)
+				else:
+					return 0
+	for char* selected in touched:
+		wtest_add(path, selected)
+	wtest_add(path, c"manifest_check")
+	wtest_add(path, c"wexec_test")
+	return 1
+
+
 # Residue mappings (header comment, rule c). Returns 1 when any rule
 # matched, so the caller can skip the tests fallback.
 int wtest_map_residue(char* path, int is_w, int exists):
@@ -746,20 +1327,6 @@ int wtest_map_residue(char* path, int is_w, int exists):
 	if (starts_with(path, c"lib/") | starts_with(path, c"structures/") | starts_with(path, c"libs/")):
 		wtest_add(path, c"metadata_check")
 		matched = 1
-	if (starts_with(path, c"lib/__arch__/")):
-		wtest_add(path, c"lib_test")
-		wtest_add(path, c"lib_64_test")
-		if (ends_with(path, c"/socket_abi.w")):
-			# Per-target socket ABI feeds lib/net.w and everything on it.
-			wtest_add(path, c"net_test")
-			wtest_add(path, c"http_client_test")
-			wtest_add(path, c"http_client_64_test")
-			wtest_add(path, c"net_darwin")
-		matched = 1
-	if (starts_with(path, c"graphics/")):
-		wtest_add(path, c"graphics_gl_smoke_test")
-		wtest_add(path, c"graphics_darwin")
-		matched = 1
 	if (starts_with(path, c"tests/asm/")):
 		wtest_add(path, c"asm_foundations_test")
 		wtest_add(path, c"asm_x86_disasm_test")
@@ -768,6 +1335,9 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		wtest_add(path, c"asm_x64_test")
 		wtest_add(path, c"asm_seed_gate")
 		wtest_add(path, c"asm_stubs_test")
+		wtest_add(path, c"asm_fuzz_x86_test")
+		wtest_add(path, c"asm_fuzz_x64_test")
+		wtest_add(path, c"asm_fuzz_arm64_test")
 		matched = 1
 	if (strcmp(path, c"tools/gen_stubs.w") == 0):
 		wtest_add(path, c"asm_stubs_test")
@@ -781,10 +1351,22 @@ int wtest_map_residue(char* path, int is_w, int exists):
 	if (starts_with(path, c"libs/standard/net/x509_fixtures/")):
 		wtest_add(path, c"net_x509_test")
 		matched = 1
+	if (strcmp(path, c"tests/wexec/remote_cache.json") == 0):
+		wtest_add(path, c"wexec_remote_cache_test")
+		matched = 1
 	if (starts_with(path, c"tests/metadata/")):
 		wtest_add(path, c"metadata_test")
 		matched = 1
-	if ((strcmp(path, c"build.json") == 0) | (strcmp(path, c"wbuild") == 0) | (strcmp(path, c"build.base.json") == 0)):
+	if (strcmp(path, c"build.json") == 0):
+		# A regenerated manifest whose only structural change against
+		# the --base-manifest baseline is wbuildgen-shaped leaf targets
+		# selects just those (wtest_manifest_leaf_diff); anything else
+		# keeps the full residue: the manifest drives every target.
+		if (wtest_manifest_leaf_diff(path) == 0):
+			wtest_add(path, c"wexec_test")
+			wtest_add(path, c"tests")
+		matched = 1
+	if ((strcmp(path, c"wbuild") == 0) | (strcmp(path, c"build.base.json") == 0)):
 		wtest_add(path, c"wexec_test")
 		wtest_add(path, c"tests")
 		if (strcmp(path, c"build.base.json") == 0):
@@ -803,6 +1385,10 @@ int wtest_map_residue(char* path, int is_w, int exists):
 void wtest_map_path(char* path):
 	if (strlen(path) == 0):
 		return
+	# Declared run-time data comes before the doc-only filter: a data
+	# file may carry a doc-like extension (the tests/asm/*.txt lesson,
+	# #268), and its declaring targets must still be selected.
+	int matched = wtest_map_data(path)
 	if (wtest_doc_only(path)):
 		return
 	if (starts_with(path, c".cursor/")):
@@ -810,7 +1396,8 @@ void wtest_map_path(char* path):
 		return
 	int is_w = ends_with(path, c".w")
 	int exists = wtest_file_exists(path)
-	int matched = wtest_map_residue(path, is_w, exists)
+	if (wtest_map_residue(path, is_w, exists)):
+		matched = 1
 
 	# (a) literal step references
 	int path_has_slash = wtest_str_contains(path, c"/")
@@ -836,12 +1423,222 @@ void wtest_map_path(char* path):
 		wtest_add(path, c"tests")
 
 
+/* --available: drop targets this host cannot run (header comment). */
+
+# Whether 'name' resolves to a readable file on some PATH entry (mirrors
+# tools/wexec.w's wexec_resolve_program lookup, minus the Windows/.exe
+# handling: the runners --available checks for are never Windows tools).
+int wtest_path_has(char* name):
+	char* path = env_get(c"PATH")
+	if (path == 0):
+		path = c"/usr/bin:/bin"
+	string_builder* candidate = string_new()
+	int p = 0
+	int at_end = 0
+	int found = 0
+	while ((at_end == 0) && (found == 0)):
+		string_clear(candidate)
+		while ((path[p] != ':') && (path[p] != 0)):
+			string_append_char(candidate, path[p])
+			p = p + 1
+		if (path[p] == 0):
+			at_end = 1
+		else:
+			p = p + 1
+		if (candidate.length > 0):
+			string_append_char(candidate, '/')
+			string_append(candidate, name)
+			if (wtest_file_exists(candidate.data)):
+				found = 1
+	string_free(candidate)
+	return found
+
+
+# tools/run_arm64.sh execs its argv natively on an aarch64 Linux host and
+# falls back to ${QEMU_ARM64:-qemu-aarch64-static -cpu max} everywhere
+# else; an explicit QEMU_ARM64 override is itself positive evidence the
+# caller has an emulator configured, so it counts as available without a
+# PATH lookup.
+int wtest_qemu_arm64_available():
+	if (env_get(c"QEMU_ARM64") != 0):
+		return 1
+	return wtest_path_has(c"qemu-aarch64-static")
+
+
+# The reason this step's runner is unavailable on this host, or 0 when it
+# is available, or when the step's program is not one of the recognized
+# runner shapes (wine/wine64, the arm64 qemu wrapper, a tools/mac/
+# script) — unrecognized programs are always left alone, per the
+# "positive evidence only" rule in the header comment.
+char* wtest_step_unavailable_reason(json_value* step):
+	if (step.type != json_type_object()):
+		return 0
+	json_value* cmd = json_object_get(step, c"cmd")
+	if (cmd == 0):
+		return 0
+	if (cmd.type != json_type_array()):
+		return 0
+	int n = json_array_length(cmd)
+	if (n == 0):
+		return 0
+	json_value* first = json_array_get(cmd, 0)
+	if (first.type != json_type_string()):
+		return 0
+	char* program = first.string_value
+	if (strcmp(program, c"wine") == 0):
+		if (wtest_path_has(c"wine") == 0):
+			return c"wine not found"
+		return 0
+	if (strcmp(program, c"wine64") == 0):
+		if (wtest_path_has(c"wine64") == 0):
+			return c"wine64 not found"
+		return 0
+	if (strcmp(program, c"qemu-aarch64-static") == 0):
+		if (wtest_qemu_arm64_available() == 0):
+			return c"qemu-aarch64-static not found"
+		return 0
+	if (strcmp(program, c"sh") == 0):
+		if (n >= 2):
+			json_value* second = json_array_get(cmd, 1)
+			if (second.type == json_type_string()):
+				if (strcmp(second.string_value, c"tools/run_arm64.sh") == 0):
+					if (wtest_qemu_arm64_available() == 0):
+						return c"qemu-aarch64-static not found"
+		return 0
+	if (starts_with(program, c"tools/mac/")):
+		if (wtest_file_exists(program) == 0):
+			string_builder* s = string_new()
+			string_append(s, program)
+			string_append(s, c" not found")
+			char* reason = s.data
+			free(s)
+			return reason
+		return 0
+	return 0
+
+
+char* wtest_target_unavailable_reason(char* name):
+	json_value* steps = wtest_target_steps(name)
+	if (steps == 0):
+		return 0
+	int i = 0
+	while (i < json_array_length(steps)):
+		char* reason = wtest_step_unavailable_reason(json_array_get(steps, i))
+		if (reason != 0):
+			return reason
+		i = i + 1
+	return 0
+
+
+# One 'wtest: dropped N unavailable target(s) (<reason>)' line per
+# distinct reason, plus a total line only when more than one reason
+# fired (with a single reason the per-reason line already is the total).
+void wtest_available_report(list[char*] reasons, list[int] counts, int total):
+	wstream* err = stderr_writer()
+	int i = 0
+	while (i < reasons.length):
+		string_builder* line = string_new()
+		string_append(line, c"wtest: dropped ")
+		string_append_int(line, counts[i])
+		string_append(line, c" unavailable target")
+		if (counts[i] != 1):
+			string_append_char(line, 's')
+		string_append(line, c" (")
+		string_append(line, reasons[i])
+		string_append_char(line, ')')
+		stream_write_line(err, line.data)
+		string_free(line)
+		i = i + 1
+	if (reasons.length > 1):
+		string_builder* total_line = string_new()
+		string_append(total_line, c"wtest: dropped ")
+		string_append_int(total_line, total)
+		string_append(total_line, c" unavailable targets total")
+		stream_write_line(err, total_line.data)
+		string_free(total_line)
+	stream_flush(err)
+
+
+void wtest_apply_available_filter():
+	list[char*] reasons = new list[char*]
+	list[int] counts = new list[int]
+	int total = 0
+	for char* name in wtest_target_names:
+		if (name in wtest_enabled):
+			char* reason = wtest_target_unavailable_reason(name)
+			if (reason != 0):
+				wtest_enabled.remove(name)
+				total = total + 1
+				int index = -1
+				int i = 0
+				while (i < reasons.length):
+					if (strcmp(reasons[i], reason) == 0):
+						index = i
+					i = i + 1
+				if (index == -1):
+					reasons.push(reason)
+					counts.push(1)
+				else:
+					counts[index] = counts[index] + 1
+	if (total > 0):
+		wtest_available_report(reasons, counts, total)
+
+
 void wtest_emit_targets():
 	wstream* out = stdout_writer()
+	int count = 0
 	for char* name in wtest_target_names:
 		if (name in wtest_enabled):
 			stream_write_line(out, name)
+			count = count + 1
 	stream_flush(out)
+	if (count == 0):
+		# An empty selection must be visible: stdout is piped to xargs,
+		# so nothing there — but silence on stderr too made "selected
+		# nothing" indistinguishable from a green test_changed run.
+		wstream* err = stderr_writer()
+		stream_write_line(err, c"wtest: 0 targets selected")
+		stream_flush(err)
+
+
+# --run: hand the selection to bin/wexec as a single direct child that
+# inherits our stdio, instead of relying on a caller to pipe our output
+# into 'xargs -r ./wbuild' (what './wbuild test_changed' does). An empty
+# selection is a no-op, matching xargs -r's behavior on empty input: no
+# child is spawned and 0 is returned. -f (see wtest_manifest_path) is
+# forwarded too, so an isolated caller (tests/wtest_run_test) can point
+# both selection and execution at a throwaway manifest. Returns the
+# child's exit status, to propagate as wtest's own.
+int wtest_run_selected():
+	list[char*] selected = new list[char*]
+	for char* name in wtest_target_names:
+		if (name in wtest_enabled):
+			selected.push(name)
+	if (selected.length == 0):
+		return 0
+	int custom_manifest = strcmp(wtest_manifest_path, c"build.json") != 0
+	int prefix = 1
+	if (custom_manifest):
+		prefix = 3
+	char** argv = strv_new(prefix + selected.length)
+	strv_set(argv, 0, c"bin/wexec")
+	if (custom_manifest):
+		strv_set(argv, 1, c"-f")
+		strv_set(argv, 2, wtest_manifest_path)
+	int i = 0
+	while (i < selected.length):
+		strv_set(argv, prefix + i, selected[i])
+		i = i + 1
+	process* p = process_spawn(c"bin/wexec", argv, 0)
+	free(cast(char*, argv))
+	if (p == 0):
+		wtest_error(c"cannot spawn ", c"bin/wexec")
+		return 1
+	int status = process_wait(p)
+	process_free(p)
+	if (status < 0):
+		return 1
+	return status
 
 
 int main(int argc, int argv):
@@ -850,26 +1647,72 @@ int main(int argc, int argv):
 		wtest_usage()
 		return 1
 	char** command = argv + __word_size__
-	if (strcmp(*command, c"changed") != 0):
+	int for_mode = strcmp(*command, c"for") == 0
+	if ((strcmp(*command, c"changed") != 0) && (for_mode == 0)):
 		wtest_usage()
 		return 1
+	wtest_manifest_path = c"build.json"
+	# A first pass just for the manifest flags: both manifests must be
+	# loaded before selection starts below, but "-f"/"--base-manifest"
+	# may appear anywhere after "changed" (mirroring bin/wexec's own
+	# flag), so they are found ahead of the argument loop that does the
+	# real work.
+	int pre = 2
+	while (pre < argc):
+		char** arg = argv + pre * __word_size__
+		if (strcmp(*arg, c"-f") == 0):
+			pre = pre + 1
+			if (pre >= argc):
+				wtest_usage()
+				return 1
+			char** value = argv + pre * __word_size__
+			wtest_manifest_path = *value
+		else if (strcmp(*arg, c"--base-manifest") == 0):
+			pre = pre + 1
+			if (pre >= argc):
+				wtest_usage()
+				return 1
+			char** base_value = argv + pre * __word_size__
+			wtest_base_manifest_path = *base_value
+		pre = pre + 1
 	if (wtest_load_manifest()):
 		return 1
+	if (wtest_base_manifest_path != 0):
+		if (wtest_load_base_manifest()):
+			return 1
 	int saw_file = 0
 	int i = 2
 	while (i < argc):
 		char** arg = argv + i * __word_size__
 		if (strcmp(*arg, c"--verbose") == 0):
 			wtest_verbose = 1
+		else if (strcmp(*arg, c"--run") == 0):
+			wtest_run_flag = 1
+		else if (strcmp(*arg, c"--available") == 0):
+			wtest_available_flag = 1
+		else if (strcmp(*arg, c"-f") == 0):
+			i = i + 1   # value already consumed by the pre-scan above
+		else if (strcmp(*arg, c"--base-manifest") == 0):
+			i = i + 1   # value already consumed by the pre-scan above
 		else:
 			wtest_map_path(*arg)
 			saw_file = 1
 		i = i + 1
-	if (saw_file == 0):
+	if ((saw_file == 0) && for_mode):
+		# "for" names its paths as positional args by design (unlike
+		# "changed", which is commonly piped from 'git diff --name-only');
+		# no paths at all is a usage error, not an empty-stdin selection.
+		wtest_usage()
+		return 1
+	if ((saw_file == 0) && (for_mode == 0)):
 		wstream* in = stdin_reader()
 		string_builder* line = string_new()
 		while (stream_read_line(in, line)):
 			wtest_map_path(line.data)
 		string_free(line)
+	if (wtest_available_flag):
+		wtest_apply_available_filter()
 	wtest_emit_targets()
+	if (wtest_run_flag):
+		return wtest_run_selected()
 	return 0

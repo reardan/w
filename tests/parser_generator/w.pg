@@ -2,6 +2,11 @@ parser wlang
 
 skip LINE_COMMENT line_comment
 skip BLOCK_COMMENT block_comment
+# The compiler treats a tab anywhere as plain whitespace; only line-start
+# runs are indentation. Mirror that: a mid-line tab run is hidden
+# whitespace (inline_tabs matches only when not at line start, so the
+# TAB token below still owns line-start runs).
+skip INLINE_TAB inline_tabs
 
 token NEWLINE newline
 token TAB tabs
@@ -61,6 +66,10 @@ literal KW_SWITCH "switch"
 literal KW_CASE "case"
 literal KW_DEFAULT "default"
 literal KW_DEFER "defer"
+# 'operator' is contextual in the compiler (a keyword only in
+# definition-name position), so it is also listed in name_token below,
+# like 'case'/'default'.
+literal KW_OPERATOR "operator"
 
 literal ELLIPSIS "..."
 literal SHL_ASSIGN "<<="
@@ -73,6 +82,14 @@ literal PERCENT_ASSIGN "%="
 literal AMP_ASSIGN "&="
 literal PIPE_ASSIGN "|="
 literal CARET_ASSIGN "^="
+# '++'/'--' (issue #103) are statement-only in the compiler: pure
+# sugar for '+= 1'/'-= 1' with no expression value. PG stays
+# syntax-only and permissive, like operator_token's EQ_EQ: the prefix/
+# postfix forms parse as ordinary unary/postfix operators below so the
+# expression-position rejection fixtures (tests/increment_*_fixture.w,
+# tests/decrement_*_fixture.w) still parse under the repo-wide sweep.
+literal PLUS_PLUS "++"
+literal MINUS_MINUS "--"
 literal AND_AND "&&"
 literal OR_OR "||"
 literal EQ_EQ "=="
@@ -118,12 +135,12 @@ rule program = separator* top_item* EOF
 rule separator = NEWLINE
 rule top_item = declaration separator* | statement separator*
 
-rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | function_decl | global_decl
+rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | operator_def | function_decl | global_decl
 rule import_decl = KW_IMPORT dotted_name import_alias_opt
 rule import_alias_opt = KW_AS name_token |
 rule dotted_name = name_token dotted_tail*
 rule dotted_tail = DOT name_token
-rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER
+rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER | KW_OPERATOR
 rule c_lib_decl = KW_C_LIB STRING
 rule extern_decl = KW_EXTERN type_ref IDENT LPAREN extern_param_list RPAREN extern_alias | KW_EXTERN type_ref IDENT
 rule extern_alias = ASSIGN STRING |
@@ -144,6 +161,14 @@ rule enum_decl = KW_ENUM IDENT block
 rule type_alias_decl = KW_TYPE IDENT ASSIGN type_ref
 rule generator_decl = KW_GENERATOR type_ref name_token LPAREN param_list RPAREN function_body
 rule function_decl = type_ref name_token generic_opt LPAREN param_list RPAREN function_body
+# Operator overloading v1 (docs/projects/operator_overloading.md): the
+# compiler only accepts the arith_op spellings; EQ_EQ is parse-only so
+# the rejected-spelling fixture (tests/operator_token_error_fixture.w)
+# still parses under the repo-wide sweep (PG is syntax-only and
+# permissive, like case_stmt).
+rule operator_def = type_ref KW_OPERATOR operator_token LPAREN param_list RPAREN function_body
+rule operator_token = arith_op | EQ_EQ
+rule arith_op = PLUS | MINUS | STAR | SLASH | PERCENT
 rule global_decl = type_ref name_token decl_suffix global_suffix
 rule global_suffix = ASSIGN expression | SEMI | 
 rule function_body = SEMI | block
@@ -215,12 +240,15 @@ rule binary_op = OR_OR | AND_AND | EQ_EQ | BANG_EQ | LT_EQ | GT_EQ | LT | GT | K
 rule gap_many = gap_item gap_many |
 rule gap_item = NEWLINE tab_prefix | NEWLINE
 rule unary_expr = unary_op unary_expr | postfix_expr
-rule unary_op = BANG | MINUS | PLUS | AMP | STAR | TILDE
+# PLUS_PLUS/MINUS_MINUS here and in postfix_tail are wider than the
+# compiler (statement position only) so the rejection fixtures parse;
+# see the literal declarations above.
+rule unary_op = BANG | MINUS | PLUS | AMP | STAR | TILDE | PLUS_PLUS | MINUS_MINUS
 rule postfix_expr = primary_expr postfix_tail*
 # QUESTION expression COLON expression covers the C-style ternary
 # (syntax-only: the compiler gives it real precedence); a bare QUESTION
 # is the wresult '?' unwrap/propagate suffix.
-rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK | QUESTION gap_many expression COLON expression | QUESTION
+rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK | QUESTION gap_many expression COLON expression | QUESTION | PLUS_PLUS | MINUS_MINUS
 rule slice_tail = COLON expression_opt |
 rule arg_list = expression arg_tail* |
 rule arg_tail = COMMA gap_many expression

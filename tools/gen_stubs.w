@@ -64,9 +64,17 @@ void gen_stubs_print_x86(asm_stub_source* src):
 	int i = 0
 	while (i < src.funcs.length):
 		asm_stub_func func = src.funcs[i]
-		print(c"\tsym_define_declare_global_function(c\x22")
-		print(func.name)
-		println(c"\x22)")
+		int arity = asm_stub_known_arity(func.name)
+		if (arity >= 0):
+			print(c"\tsym_define_declare_global_function_arity(c\x22")
+			print(func.name)
+			print(c"\x22, ")
+			print(itoa(arity))
+			println(c")")
+		else:
+			print(c"\tsym_define_declare_global_function(c\x22")
+			print(func.name)
+			println(c"\x22)")
 		# the assembly as one /* ... */ comment line, ' ; '-joined
 		print(c"\t/* ")
 		int line = 0

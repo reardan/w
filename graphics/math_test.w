@@ -31,7 +31,7 @@ void test_scalar_helpers():
 	assert_float_bits(0x3f000000, gfx_clamp(0.5, 0.0, 2.0))
 	assert_float_bits(0x40400000, gfx_lerp(2.0, 4.0, 0.5))
 	assert_float_bits(0x40000000, gfx_floor(2.75))
-	assert_float_bits(0xc0400000, gfx_floor(-2.25))    # floor(-2.25) = -3
+	assert_float_bits(cast(int, 0xc0400000), gfx_floor(-2.25))    # floor(-2.25) = -3
 	assert_near(1.0, gfx_mod(7.0, 3.0))
 	assert_near(2.0, gfx_mod(-7.0, 3.0))               # glm mod keeps the divisor's sign
 

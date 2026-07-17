@@ -40,6 +40,13 @@ int target_os
 # with the -o flag.
 int output_fd
 
+# 'w check' on a library module: a missing _main/main entry point is not
+# an error — the backend finishers skip the entry-call patch instead of
+# dying, since no runnable artifact is produced anyway. Set by link_impl
+# (compiler/compiler.w) in check mode only; defaults to 0 so every
+# executable-producing path still requires an entry point.
+int entry_optional
+
 # File offset of the program header table and of the rel32 displacement in
 # the entry stub's "call _main". Both shift when the header layout changes
 # (e.g. reserving extra program headers for dynamic linking), so the finish

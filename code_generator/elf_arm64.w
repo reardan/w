@@ -174,12 +174,16 @@ void elf_finish_arm64():
 	if (t == 0):
 		t = sym_address(c"main")
 	if (t == 0):
-		error(c"Failed to find a _main() function. Did you import lib/testing?")
+		# 'w check' on a main-less library module: not an error, and the
+		# entry bl stays unpatched (the output is discarded)
+		if (entry_optional == 0):
+			error(c"Failed to find a _main() function. Did you import lib/testing?")
 
-	# Patch the bl: imm26 = (target - bl_vaddr) / 4.
-	int bl_vaddr = code_offset + arm64_entry_bl_pos
-	int offset = t - bl_vaddr
-	save_int32(code + arm64_entry_bl_pos, op(0x94, 0x000000) | ((offset >> 2) & op(0x03, 0xffffff)))
+	if (t != 0):
+		# Patch the bl: imm26 = (target - bl_vaddr) / 4.
+		int bl_vaddr = code_offset + arm64_entry_bl_pos
+		int offset = t - bl_vaddr
+		save_int32(code + arm64_entry_bl_pos, op(0x94, 0x000000) | ((offset >> 2) & op(0x03, 0xffffff)))
 
 	# Text segment (phdr[0], R+X): offset 0, vaddr base, size = codepos.
 	save_int64(code + phdr_table_pos + 32, codepos)   /* p_filesz */
@@ -202,7 +206,10 @@ void elf_finish_arm64():
 		# and data as two segments in one file.
 		while (codepos < data_file_off):
 			emit_int8(0)
-		write(output_fd, code, codepos)
-		write(output_fd, data, datapos)
+		if (write(output_fd, code, codepos) != codepos):
+			error(c"could not write output file")
+		if (write(output_fd, data, datapos) != datapos):
+			error(c"could not write output file")
 	else:
-		write(output_fd, code, codepos)
+		if (write(output_fd, code, codepos) != codepos):
+			error(c"could not write output file")

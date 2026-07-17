@@ -1,0 +1,153 @@
+name: Release
+
+# Build verified compiler binaries for every target and publish them as a
+# GitHub release when a v* tag is pushed. workflow_dispatch is a dry run:
+# the build jobs run, the publish job is skipped (it is gated on the tag).
+# Release flow and seed promotion are documented in docs/release.md.
+#
+# The Linux-hosted targets build as a 5-way matrix so the release is as
+# fast as its slowest verify instead of the sum of all of them; each leg
+# bootstraps from the pinned seed (~1 min) and installs only its own
+# packages. fail-fast is off so a dry run surfaces every broken leg.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: tests
+            packages: libc6:i386
+            i386: true
+            ptrace: true
+            artifact_src: bin/wv3
+            artifact: w-x86-linux
+          - target: verify_x64
+            artifact_src: bin/wv3_64
+            artifact: w-x86_64-linux
+          # arm64-Linux is disabled for now: its stage-2 self-recompile
+          # runs under qemu-user emulation, which made it the slowest leg
+          # (330s vs 209s for the whole test suite), and the target has no
+          # consumers yet. It cannot move to the macOS runner (right CPU,
+          # wrong kernel — these are Linux ELFs). To re-enable cheaply,
+          # uncomment; to re-enable fast, split it across ubuntu-24.04 and
+          # ubuntu-24.04-arm runners (cross-compile bin/wv2_arm64 on x86,
+          # hand it over as an artifact, self-recompile + cmp natively —
+          # the x86 cross-compiler cannot run on the arm host, so it needs
+          # the two-job handoff).
+          # - target: verify_arm64
+          #   packages: qemu-user-static
+          #   artifact_src: bin/wv3_arm64
+          #   artifact: w-arm64-linux
+          - target: verify_win
+            packages: wine
+            artifact_src: bin/wv3_win.exe
+            artifact: w-x86_64-windows.exe
+          - target: verify_wasm
+            artifact_src: bin/wv3_wasm
+            artifact: w-wasm32-wasi.wasm
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Enable i386 packages
+        if: matrix.i386
+        run: sudo dpkg --add-architecture i386
+
+      - name: Install packages
+        if: matrix.packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ${{ matrix.packages }}
+
+      - name: Allow debugger attach tests
+        if: matrix.ptrace
+        run: sudo sysctl --write kernel.yama.ptrace_scope=0
+
+      - name: Build and verify
+        env:
+          WINEDEBUG: "-all"
+        run: ./wbuild ${{ matrix.target }}
+
+      - name: Check binary version matches tag
+        if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'tests'
+        run: test "$(./bin/wv3 --version)" = "w ${GITHUB_REF_NAME#v}"
+
+      - name: Stage artifact
+        run: |
+          mkdir dist
+          cp ${{ matrix.artifact_src }} dist/${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
+
+  macos:
+    name: macOS binary
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Verify the darwin self-host fixpoint
+        run: ./wbuild verify_darwin
+
+      - name: Stage artifact
+        run: |
+          mkdir dist
+          cp bin/wv3_darwin dist/w-arm64-macos
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: w-arm64-macos
+          path: dist/
+
+  publish:
+    name: Publish release
+    needs: [linux, macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Check tag matches package.wmeta
+        run: |
+          ver=$(awk '$1 == "version" { print $2 }' package.wmeta)
+          test "v$ver" = "$GITHUB_REF_NAME"
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: cd dist && sha256sum * > SHA256SUMS
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes

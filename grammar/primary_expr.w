@@ -1,4 +1,6 @@
 int expression();
+int struct_value_ctor_ready(); /* defined in unary_expression */
+int struct_value_ctor_expr(); /* defined in unary_expression */
 int hash_literal_type
 
 
@@ -193,6 +195,11 @@ int primary_expr():
 	else if (generic_forward_call_ready()):
 		type = generic_forward_call_expr()
 
+	# Struct value constructor: 'T(a, b)' where T names a struct type
+	# builds the value in a stack temp (grammar/unary_expression.w)
+	else if (struct_value_ctor_ready()):
+		type = struct_value_ctor_expr()
+
 	# Identifier
 	else if ((new_type = identifier()) >= 0) {
 		type = new_type
@@ -213,7 +220,7 @@ int primary_expr():
 		type = string_value_type
 
 	else:
-		print2(c"Could not find a valid primary expression, token: ")
+		diag_part(c"Could not find a valid primary expression, token: ")
 		error(token)
 
 	get_token()

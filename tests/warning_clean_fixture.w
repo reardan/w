@@ -34,6 +34,48 @@ int cast_escape_hatches():
 	return fn_word + cast(int, words)
 
 
+# Array-to-pointer decay is warning-free in every direction of a
+# conditional, and cast(int, arr) decays like cast(char*, arr) (#229)
+int array_decay_is_clean(int flag):
+	char[8] cells
+	cells[0] = 'c'
+	char* p = cells
+	char* then_arm = flag ? cells : p
+	char* else_arm = flag ? p : cells
+	char* null_arm = flag ? cells : 0
+	int data_word = cast(int, cells)
+	return cast(int, then_arm) + cast(int, else_arm) +
+			cast(int, null_arm) + data_word
+
+
+# The bit-31 literal warning stays quiet for cast() bit patterns, for
+# literals below bit 31 and for short binary literals; the 32-bit
+# literal width error (grammar/int_literal.w) stays quiet for leading
+# zeros — only significant digits count, so a 16-digit hex literal and
+# a 40-digit binary literal whose value fits in 32 bits still compile;
+# the bool-bitwise condition hint stays quiet for comparison results,
+# for mixed operands, for bool arithmetic outside conditions and for
+# the short-circuiting spellings.
+int bit31_and_bool_bitwise_are_clean(int x):
+	int mask = cast(int, 0xffffffff)
+	int low = 0x7fffffff
+	int bits = 0b101
+	int wide_zeros = cast(int, 0x00000000ffffffff)
+	int wide_bits = cast(int, 0b0000000011111111111111111111111111111111)
+	bool first = x == 1
+	bool second = x == 2
+	bool accumulated = first | second
+	if ((x == 1) | (x == 2)):
+		return mask & x
+	if (wide_zeros == wide_bits):
+		return low
+	if (first | (x == 3)):
+		return low
+	if (first || second):
+		return bits
+	return cast(int, accumulated)
+
+
 int main():
 	int x = add(1, 2)
 	x = add(x, 4)
@@ -46,5 +88,9 @@ int main():
 	p.b = 2
 	x = x + pair_sum(p)
 	if (cast_escape_hatches() == 0):
+		x = 0
+	if (array_decay_is_clean(x) == 0):
+		x = 0
+	if (bit31_and_bool_bitwise_are_clean(x) == 0):
 		x = 0
 	return x

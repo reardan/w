@@ -156,6 +156,8 @@ int json_codec_descriptor(int struct_type):
 		json_codec_ensure_nested(type_get_field_type_at(struct_type, i))
 		i = i + 1
 
+	if (target_isa == 2):
+		error(c"to_json/from_json is not supported on the wasm target yet")
 	jmp_int32(1337030)
 	int p = codepos
 

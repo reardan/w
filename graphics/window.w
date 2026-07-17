@@ -4,6 +4,7 @@ target's native backend through the __arch__ import path:
 
 	x64 / arm64     -> graphics.window_x11   (X11/GLX)
 	arm64_darwin    -> graphics.window_cocoa (AppKit/NSOpenGL, M5)
+	wasm            -> graphics.window_web   (browser canvas + WebGL2)
 	x86 / win64     -> graphics.window_stub  (open reports and fails)
 
 The happy path is four calls, identical on every backend:

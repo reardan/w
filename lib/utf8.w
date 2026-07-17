@@ -175,6 +175,12 @@ string string_from_bytes(char* data, int length):
 	return cast(string, cast(int, descriptor))
 
 
+# Borrowing string -> char* seam: returns s.data directly after asserting
+# the bytes are NUL-terminated with no interior NULs (true for string
+# literals and f-string/builder results, not for arbitrary slices). The
+# pointer lives exactly as long as s's buffer and must not be freed
+# independently. For an owned copy — or for any string this would reject —
+# use cstr_clone.
 char* cstr(string s):
 	int i = 0
 	while (i < s.length):
@@ -182,6 +188,24 @@ char* cstr(string s):
 		i = i + 1
 	assert1(s.data[s.length] == 0)
 	return s.data
+
+
+# Copying string -> char* seam: allocate s.length + 1 bytes, copy the
+# UTF-8 bytes verbatim and append a NUL. Unlike cstr this accepts any
+# string — slices and other views included — because it never reads past
+# s.length. The result is malloc'd and owned by the caller (free() it
+# when done, like strclone). Interior NUL bytes are copied through, not
+# rejected: the buffer always holds all s.length bytes plus the
+# terminator, but a char* consumer will see the content truncated at the
+# first interior NUL.
+char* cstr_clone(string s):
+	char* out = malloc(s.length + 1)
+	int i = 0
+	while (i < s.length):
+		out[i] = s.data[i]
+		i = i + 1
+	out[s.length] = 0
+	return out
 
 
 void utf8_write(int file, string s):

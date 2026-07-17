@@ -52,6 +52,12 @@ Inspection:
 	r / registers     the trapped register file
 	l / line          current location (function, file:line)
 	list [line]       source listing around the stop
+	disas [t] [n]     disassemble n instructions at t (an address or a
+	                  function name; no target: the current function,
+	                  with => marking the stop). Every 'si' stop also
+	                  shows the surrounding instructions automatically;
+	                  'disas on' extends that to every stop, 'disas off'
+	                  turns it back off
 	i locals|args|breakpoints|registers|functions|files
 
 Stepping is driven by the x86 trap flag in the signal frame's eflags:
@@ -78,6 +84,9 @@ dispatches to it for --debug.
 import compiler.compiler
 import lib.args
 import lib.line_edit
+import structures.string
+import repl.core
+import repl.scan
 import debugger.sigcontext
 import debugger.memory
 import debugger.lines
@@ -86,6 +95,7 @@ import debugger.locals
 import debugger.breakpoints
 import debugger.watchpoints
 import debugger.eval
+import debugger.disas
 import debugger.attach
 
 
@@ -653,6 +663,92 @@ void dbg_info_command(int context, int pc, int esp, char* arg):
 		println(c"info topics: breakpoints watchpoints registers locals args functions files")
 
 
+# ---------------------------------------------------------------------------
+# 'repl' command: full REPL entries at the stop, on the shared engine
+# (repl/core.w via debugger/eval.w). Everything the REPL prompt accepts
+# works here -- multi-line blocks, persistent helper definitions,
+# imports -- with the stopped frame's locals and arguments bound around
+# every entry, exactly like 'p'. Definitions persist for the rest of the
+# wdbg session. ':end' (or end of input) returns to the wdbg prompt.
+
+char* dbg_repl_line
+
+
+# Read one line into dbg_repl_line; returns its length or -1 on EOF/^C.
+int dbg_repl_read_line(char* prompt):
+	if (dbg_repl_line == 0):
+		dbg_repl_line = malloc(4096)
+	return line_edit_read(prompt, dbg_repl_line, 4096, 0)
+
+
+int dbg_repl_line_blank():
+	int i = 0
+	while (dbg_repl_line[i] == 9):
+		i = i + 1
+	return dbg_repl_line[i] == 0
+
+
+# Read one entry (possibly several lines) into entry; returns 0 when the
+# mode should end (end of input). Continuation rules follow the REPL's
+# reader (repl.w): a line whose last significant character is ':' opens a
+# block that ends at the next blank line, and unbalanced brackets, an
+# open block comment or an open string literal keep the entry going
+# regardless of blank lines. No auto-indent: wdbg scripts (and hands at
+# its prompt) type their own tabs.
+int dbg_repl_read_entry(string_builder* entry):
+	string_clear(entry)
+	repl_scan_reset()
+	int r = dbg_repl_read_line(c"w> ")
+	if (r == -1):
+		return 0
+	if (r == -2):
+		return 1 /* Ctrl-C discards: the empty entry is a no-op */
+	string_append(entry, dbg_repl_line)
+	repl_scan_line(dbg_repl_line)
+	int block_mode = (repl_scan_last_char == ':')
+	int open_state = repl_scan_open()
+	while (block_mode | open_state):
+		r = dbg_repl_read_line(c".. ")
+		if (r == -1):
+			return 1 /* end of input finishes the entry */
+		if (r == -2):
+			string_clear(entry)
+			return 1
+		if (block_mode & (open_state == 0) & dbg_repl_line_blank()):
+			return 1 /* a blank line ends the block entry */
+		string_append_char(entry, 10)
+		string_append(entry, dbg_repl_line)
+		repl_scan_line(dbg_repl_line)
+		if (repl_scan_last_char == ':'):
+			block_mode = 1
+		open_state = repl_scan_open()
+	return 1
+
+
+# The repl sub-prompt: evaluate entries at the selected frame until :end
+# or end of input. A bare expression echoes "= value" like 'p'.
+void dbg_repl_mode(int pc, int esp):
+	println(c"repl mode: entries run at this stop and definitions persist; :end returns to wdbg")
+	string_builder* entry = string_new()
+	while (1):
+		if (dbg_repl_read_entry(entry) == 0):
+			break
+		if (string_equals(entry, c":end")):
+			break
+		if (entry.length == 0):
+			continue
+		if (repl_scan_string):
+			# The tokenizer cannot recover from an unterminated string
+			println(c"unterminated string literal, entry discarded")
+			continue
+		if (dbg_eval_entry(entry.data, pc, esp)):
+			if (dbg_eval_echo_type >= 0):
+				print(c"= ")
+				dbg_print_int_value(dbg_eval_value)
+				put_char(10)
+	string_free(entry)
+
+
 void dbg_help():
 	println(c"execution:")
 	println(c"  c/continue  s/step  n/next  si/stepi  fin/finish  q/quit")
@@ -664,9 +760,11 @@ void dbg_help():
 	println(c"  d/delete [n]   d w [n]   i b / i w (list)")
 	println(c"inspection:")
 	println(c"  p/print <name | expression>   set <name> <value>")
+	println(c"  repl (full REPL entries at the stop: definitions persist, :end returns)")
 	println(c"  x <addr | name> [count]   bt/backtrace   st/stack")
 	println(c"  f/frame [n]   up   down   (select the frame p/set/x/info use)")
 	println(c"  r/registers   l/line   list [line]")
+	println(c"  disas [addr | function] [count]   disas on|off (context at stops)")
 	println(c"  i locals | args | breakpoints | registers | functions | files")
 	println(c"an empty line repeats the previous command")
 
@@ -742,6 +840,7 @@ void wdbg_command_loop(int context, int stop_addr):
 		else if ((strcmp(command, c"fin") == 0) | (strcmp(command, c"finish") == 0)):
 			resume_mode = dbg_step_finish()
 		else if ((strcmp(command, c"q") == 0) | (strcmp(command, c"quit") == 0)):
+			repl_cleanup()
 			exit(0)
 		else if ((strcmp(command, c"r") == 0) | (strcmp(command, c"registers") == 0)):
 			wdbg_print_registers(context)
@@ -751,6 +850,8 @@ void wdbg_command_loop(int context, int stop_addr):
 			dbg_announce_location(dbg_sel_pc(stop_addr))
 		else if (strcmp(command, c"list") == 0):
 			dbg_list_command(dbg_sel_pc(stop_addr), arg)
+		else if ((strcmp(command, c"disas") == 0) | (strcmp(command, c"disassemble") == 0)):
+			dbg_disas_command(dbg_sel_pc(stop_addr), arg)
 		else if ((strcmp(command, c"b") == 0) | (strcmp(command, c"break") == 0) | (strcmp(command, c"tb") == 0) | (strcmp(command, c"tbreak") == 0)):
 			int temp = 0
 			if ((command[0] == 't') & (command[1] == 'b')):
@@ -802,6 +903,8 @@ void wdbg_command_loop(int context, int stop_addr):
 				dbg_frame_select(context, dbg_fr_sel - 1)
 		else if ((strcmp(command, c"p") == 0) | (strcmp(command, c"print") == 0)):
 			dbg_print_command(dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
+		else if (strcmp(command, c"repl") == 0):
+			dbg_repl_mode(dbg_sel_pc(stop_addr), dbg_sel_esp(context))
 		else if (strcmp(command, c"set") == 0):
 			dbg_set_command(dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
 		else if (strcmp(command, c"x") == 0):
@@ -838,6 +941,8 @@ void wdbg_command_loop(int context, int stop_addr):
 								dbg_frames_compute(context, stop_addr)
 								dbg_announce_location(stop_addr)
 								dbg_print_source_at(stop_addr)
+								if (dbg_disas_auto):
+									dbg_disas_show_context(stop_addr)
 								continue
 			dbg_prepare_resume(context, stop_addr, resume_mode)
 			free(command)
@@ -983,6 +1088,8 @@ void wdbg_trap(int sig, int context):
 			if (bp_is_temp(bp)):
 				bp_delete(bp)
 			dbg_print_source_at(addr)
+			if (dbg_disas_auto):
+				dbg_disas_show_context(addr)
 			wdbg_stop_loop(context, addr)
 			return;
 		# A compiled-in 'debugger' statement (or --break_start/--break_end)
@@ -992,6 +1099,8 @@ void wdbg_trap(int sig, int context):
 		free(h)
 		dbg_announce_location(addr)
 		dbg_print_source_at(addr)
+		if (dbg_disas_auto):
+			dbg_disas_show_context(addr)
 		wdbg_stop_loop(context, addr)
 		return;
 
@@ -1008,6 +1117,8 @@ void wdbg_trap(int sig, int context):
 						dbg_watch_report(w)
 						dbg_announce_location(eip)
 						dbg_print_source_at(eip)
+						if (dbg_disas_auto):
+							dbg_disas_show_context(eip)
 						wdbg_stop_loop(context, eip)
 						return;
 	if (dbg_step_mode == dbg_step_none()):
@@ -1052,13 +1163,25 @@ void wdbg_trap(int sig, int context):
 			return;
 		dbg_announce_location(eip)
 		dbg_print_source_at(eip)
+		# Instruction stepping means instruction-level display: 'si' stops
+		# always show the surrounding instructions; other stops only after
+		# 'disas on' (source-level stepping stays quiet by default).
+		if ((dbg_step_mode == dbg_step_insn()) | dbg_disas_auto):
+			dbg_disas_show_context(eip)
 		wdbg_stop_loop(context, eip)
 		return;
 	ctx_set_trap_flag(context)
 
 
-# Fatal signal handler: announce, inspect, never resume.
+# Fatal signal handler: announce, inspect, never resume. The exception
+# is a fault inside an expression or entry the command loop is
+# evaluating: the shared engine's fault window is active then, and
+# repl_fault reports the signal and long-jumps back into repl_eval,
+# which rolls the failed entry back and returns to the wdbg prompt
+# instead of wedging the session in a post-mortem stop.
 void wdbg_fatal(int sig, int context):
+	if (repl_fault_active):
+		repl_fault(sig, context)
 	dbg_fatal_stop = 1
 	print(c"fatal signal: ")
 	if (sig == 11):
@@ -1086,6 +1209,8 @@ void wdbg_fatal(int sig, int context):
 	put_char(10)
 	dbg_announce_location(ctx_eip(context))
 	dbg_print_source_at(ctx_eip(context))
+	if (dbg_disas_auto):
+		dbg_disas_show_context(ctx_eip(context))
 	wdbg_command_loop(context, ctx_eip(context))
 	println(c"cannot resume after a fatal signal: exiting")
 	exit(1)
@@ -1257,16 +1382,26 @@ int wdbg_main(int argc, int argv):
 	codepos = 0
 	code_offset = buffer
 
-	# Recoverable compile errors for the print/eval command: error()
-	# jumps back to the checkpoint instead of exiting
-	repl_jump_buffer = cast(int, malloc(3 * __word_size__))
-	repl_error_jump = cast(int, repl_longjmp)
+	# The shared eval engine (repl/core.w) behind the print/eval and repl
+	# commands: recovery jump buffers (error() jumps back to the
+	# checkpoint instead of exiting) and the per-session staging
+	# directory entries compile from. wdbg keeps its own signal handlers;
+	# wdbg_fatal forwards to repl_fault while an eval's fault window is
+	# active.
+	repl_engine_init()
 
 	# Runtime stubs first, then the target and everything it imports
 	if (word_size == 8):
 		define_asm_functions_x64()
 	else:
 		define_asm_functions()
+	# The container runtime next, exactly like link_impl: built-in
+	# list/map/set lower to __w_list_*/__w_hash_* helper calls, so the
+	# first 'new list[T]' in the debuggee dies in sym_get_value (with a
+	# misleading message naming the lookahead token) unless the helpers
+	# are preloaded here too.
+	import_module(c"structures.hash_table")
+	import_module(c"structures.w_list")
 	compile_input_file(target)
 	# On-demand runtimes for to_json/from_json and f"..." template
 	# strings used by the debuggee, plus its queued generic
@@ -1284,22 +1419,29 @@ int wdbg_main(int argc, int argv):
 	bp_init()
 	dbg_memory_init()
 	dbg_rearm_bp = -1
+	# Disassembly reads the debuggee's code directly; the compiler's own
+	# symbol table (still loaded from the in-process compile) symbolizes it.
+	dbg_disas_read_fn = cast(int, dbg_disas_read_local)
+	dbg_disas_symbols = 1
 
 	# SA_NODEFER (0x40000000) keeps SIGTRAP deliverable inside the
 	# handler, so 'debugger' statements reached through the print/eval
 	# command nest instead of killing the process. On x86 the kernel
 	# calls the 1-argument entry wrappers; on x64 the thunks call the
-	# 2-argument handlers directly.
+	# 2-argument handlers directly. The fatal handlers take SA_NODEFER
+	# too: a fault in an evaluated entry long-jumps out of wdbg_fatal
+	# (via repl_fault) without sigreturn, and the signal must not stay
+	# blocked for the next fault.
 	int trap_handler = cast(int, wdbg_trap_entry)
 	int fatal_handler = cast(int, wdbg_fatal_entry)
 	if (__word_size__ == 8):
 		trap_handler = cast(int, wdbg_trap)
 		fatal_handler = cast(int, wdbg_fatal)
 	wdbg_install_handler(5, trap_handler, 1073741824) /* SIGTRAP */
-	wdbg_install_handler(4, fatal_handler, 0) /* SIGILL */
-	wdbg_install_handler(7, fatal_handler, 0) /* SIGBUS */
-	wdbg_install_handler(8, fatal_handler, 0) /* SIGFPE */
-	wdbg_install_handler(11, fatal_handler, 0) /* SIGSEGV */
+	wdbg_install_handler(4, fatal_handler, 1073741824) /* SIGILL */
+	wdbg_install_handler(7, fatal_handler, 1073741824) /* SIGBUS */
+	wdbg_install_handler(8, fatal_handler, 1073741824) /* SIGFPE */
+	wdbg_install_handler(11, fatal_handler, 1073741824) /* SIGSEGV */
 
 	if (term_isatty(0)):
 		line_edit_history_load(c"~/.wdbg_history")
@@ -1326,4 +1468,5 @@ int wdbg_main(int argc, int argv):
 	char* digits = itoa(result)
 	println(digits)
 	free(digits)
+	repl_cleanup()
 	return 0

@@ -2,7 +2,9 @@
 # float32 entry points through extern declarations. On x86 the arguments
 # pass on the stack and the result comes back in st(0); on x64 they use
 # xmm registers. float64 externs are x64-only and live in
-# x64_float_abi_test.w.
+# x64_float_abi_test.w. Also builds and runs on arm64
+# (float_abi_test_arm64, under qemu via tools/run_arm64.sh).
+# wbuild: arch=arm64 expect_stdout="float abi OK"
 import lib.lib
 import lib.assert
 

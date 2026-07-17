@@ -40,12 +40,56 @@ Every target runs at most once per invocation. Targets that declare
 cached by content hash: when the hash of the target definition, its
 input files and its dependencies' keys matches the stamp left in
 bin/.wexec_cache/ — and every declared "outputs" file exists — the
-target is skipped. Targets without "inputs" behave like make-style
-FORCE targets: requesting them always runs them. A step's captured
-stdout/stderr is re-emitted after the step finishes, so output is
-visible but not interleaved live.
+target is skipped. For a cacheable target whose steps compile W roots,
+the roots' per-arch import closures ('bin/wv2 deps', cached in
+bin/.wexec_deps_cache) replace the .w files found under input directory
+prefixes, so a W edit invalidates exactly the targets whose closures
+contain it (see the deps-driven cache keys section below). Targets
+without "inputs" behave like make-style FORCE targets: requesting them
+always runs them. A step's captured stdout/stderr is re-emitted after
+the step finishes, so output is visible but not interleaved live.
 
-Usage: wexec [-f manifest.json] [--list] [--no-cache] [-j N] target...
+Usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [--ordered-output] [-j N] target...
+
+Direct-file UX (issue #323 stage 1): in place of a target name, wexec
+also accepts a bare "<file>.w" or a "[selector] <file>.w" pair (e.g.
+"x64 path/to/file.w") naming a W source instead of a manifest target.
+When an existing target's own compile step already builds that file for
+that selector, wexec runs that target exactly as if it had been named
+directly. Otherwise wexec synthesizes a throwaway target: compile the
+file to bin/<stem> (bin/<stem>_<selector> for a non-default selector),
+then run the result when the file is a "*_test.w". The synthesized
+target declares "inputs": [<file>], so it gets the same content-hash
+(and, once bin/wv2 exists, deps-driven closure) caching as any other
+cacheable target above — a repeat invocation with nothing changed is a
+cache hit. See the "Direct-file UX" section further down for the
+implementation.
+
+A failed target normally stops all scheduling (fail-fast); the epilogue
+then reports how many targets were never attempted. With --keep-going a
+failure only poisons its dependents: independent subgraphs keep running,
+dependents of a failed target are skipped, and a summary on stderr names
+every failed and skipped target. Either way wexec exits nonzero when
+anything failed.
+
+Under -j > 1 the default scheduler still streams only the oldest
+in-flight target live and holds later ones back until it is their turn,
+so a target that finishes early can end up flushed immediately after an
+unrelated target's failure with no separator between them — easy to
+misread as one target's output. --ordered-output buffers each target's
+whole step output (stdout and stderr, in step order) instead of
+streaming any of it, and prints it as a single block, headed by a
+"wexec: --- <target> ---" line, the moment that target finishes
+(completion order, not start order). Default (streaming) output is
+unaffected by the flag's existence.
+
+Shared remote cache: when the environment variable W_CACHE_URL is set,
+a target whose local cache misses tries a GET against that URL before
+running its steps, and (only with W_CACHE_PUSH=1, what CI sets) PUTs
+its bundle back after a successful run. With neither variable set this
+is byte-for-byte the pre-existing behavior; see the "Shared remote
+build cache" comment just above wexec_launch for the protocol and
+bundle format.
 
 Design notes: docs/projects/wexec.md
 */
@@ -53,9 +97,12 @@ import lib.lib
 import lib.env
 import lib.file
 import lib.process
+import lib.sha256
 import lib.stream
+import lib.utf8
 import structures.string
 import structures.json
+import tools.__arch__.wexec_remote_http
 
 
 json_value* wexec_manifest
@@ -68,8 +115,12 @@ list[char*] wexec_names      # manifest order, for --list
 list[char*] wexec_closure    # requested targets + deps, dependency order
 int wexec_completed          # targets finished this invocation
 int wexec_no_cache           # --no-cache: never skip cached targets
+int wexec_keep_going         # --keep-going: schedule past failed targets
+int wexec_ordered_output     # --ordered-output: buffer each target's output, print atomically in completion order
 int wexec_jobs               # max targets in flight (-j), default nproc
-int wexec_mask32             # keeps the hash accumulators at 32 bits on x64
+map[char*, int] wexec_broken    # name -> 1 once failed or skipped (--keep-going)
+list[char*] wexec_failed_list   # failed targets, in completion order
+list[char*] wexec_skipped_list  # targets skipped behind a failed dependency
 
 
 int wexec_collect_closure(char* name);
@@ -83,17 +134,19 @@ void wexec_error(char* message):
 	stream_flush(err)
 
 
+# Error messages are built with f-strings and handed to char* consumers
+# through cstr() (#146). The f-string result is caller-owned; on these
+# failure paths the process is about to exit nonzero, so letting exit
+# reclaim the bytes matches the ownership story in
+# docs/projects/template_strings.md.
 void wexec_error2(char* message, char* detail):
-	string_builder* s = string_new()
-	string_append(s, message)
-	string_append(s, detail)
-	wexec_error(s.data)
-	string_free(s)
+	wexec_error(cstr(f"{message}{detail}"))
 
 
 void wexec_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] [--no-cache] [-j N] target...")
+	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list] [--no-cache] [--keep-going] [--ordered-output] [-j N] target...")
+	stream_write_line(err, c"       wexec [-f manifest.json] ... [selector] <file>.w")
 	stream_flush(err)
 
 
@@ -143,43 +196,57 @@ int wexec_str_contains(char* haystack, char* needle):
 
 /* Content-hash caching.
 
-A target that declares "inputs" gets a cache key: a 64-bit FNV-style
-hash over its serialized definition, its dependencies' cache keys and
-the contents of every input file (directory entries ending in "/" are
-walked recursively). The key is stamped into bin/.wexec_cache/<name>
-after a successful run; a matching stamp plus existing "outputs" files
-lets the next invocation skip the target. A target whose dependency
-has no cache key (a FORCE-style target) is never cacheable, because a
-fresh dependency run may have changed what this target consumes. */
+A target that declares "inputs" gets a cache key: a SHA-256 hash (D3-1;
+lib.sha256, see docs/projects/wexec.md) over its serialized definition,
+its dependencies' cache keys and the contents of every input file
+(directory entries ending in "/" are walked recursively). The key is
+stamped into bin/.wexec_cache/<name> after a successful run; a matching
+stamp plus existing "outputs" files lets the next invocation skip the
+target. A target whose dependency has no cache key (a FORCE-style
+target) is never cacheable, because a fresh dependency run may have
+changed what this target consumes.
+
+The digest widened from a 32-hex-char pair of rolling hashes to a
+64-hex-char SHA-256 hex string, so a stamp file or bin/.wexec_deps_cache
+"H " line written by the old format never equality-matches a freshly
+computed key: it degrades to a plain cache miss (an ordinary rebuild),
+never an error. */
 
 struct wexec_hash:
-	int h1
-	int h2
+	int* state          # 8 running 32-bit words: SHA-256 h[0..7]
+	char* block          # 64-byte pending block, not yet compressed
+	int block_len        # bytes buffered in block, 0..63
+	int total_len        # total bytes hashed so far
 
 
-int wexec_mask32_value():
-	if (__word_size__ == 8):
-		int high = 1 << 16
-		return high * high - 1
-	return -1
-
-
+# Streams bytes through lib.sha256's block compressor (sha256_block) 64
+# bytes at a time, instead of buffering a target's whole definition plus
+# every input file before hashing once. lib/sha256.w is seed-compiled
+# and is not modified here — only its already-public building blocks
+# (sha256_h0_table/sha256_be32/sha256_put_be32/sha256_mask32/
+# sha256_block) are reused, mirroring what sha256()'s own tail handling
+# does, applied incrementally instead of over one flat buffer.
 void wexec_hash_init(wexec_hash* h):
-	# The FNV offset basis (2166136261 as a signed 32-bit value)
-	h.h1 = -2128831035 & wexec_mask32
-	h.h2 = 1000003
+	h.state = cast(int*, malloc(8 * __word_size__))
+	char* h0 = sha256_h0_table()
+	int i = 0
+	while (i < 8):
+		h.state[i] = sha256_be32(h0 + i * 4)
+		i = i + 1
+	h.block = malloc(64)
+	h.block_len = 0
+	h.total_len = 0
 
 
-# Two 32-bit multiplicative rolling hashes with independent multipliers
-# (the FNV prime and a prime from Python's tuple hash). W has no xor
-# operator, so this is polynomial accumulation rather than FNV proper;
-# 64 combined bits is plenty for build staleness detection.
 void wexec_hash_bytes(wexec_hash* h, char* data, int n):
+	h.total_len = h.total_len + n
 	int i = 0
 	while (i < n):
-		int byte = data[i] & 255
-		h.h1 = (h.h1 * 16777619 + byte) & wexec_mask32
-		h.h2 = (h.h2 * 1000003 + byte) & wexec_mask32
+		h.block[h.block_len] = data[i]
+		h.block_len = h.block_len + 1
+		if (h.block_len == 64):
+			sha256_block(h.state, h.block)
+			h.block_len = 0
 		i = i + 1
 
 
@@ -205,21 +272,59 @@ void wexec_hash_file(wexec_hash* h, char* path):
 	close(fd)
 
 
-void wexec_append_hex(string_builder* s, int value):
-	int shift = 28
-	while (shift >= 0):
-		int nibble = (value >> shift) & 15
-		if (nibble < 10):
-			string_append_char(s, '0' + nibble)
-		else:
-			string_append_char(s, 'a' + nibble - 10)
-		shift = shift - 4
+void wexec_append_hex_byte(string_builder* s, int value):
+	int hi = (value >> 4) & 15
+	int lo = value & 15
+	if (hi < 10):
+		string_append_char(s, '0' + hi)
+	else:
+		string_append_char(s, 'a' + hi - 10)
+	if (lo < 10):
+		string_append_char(s, '0' + lo)
+	else:
+		string_append_char(s, 'a' + lo - 10)
 
 
+# Finalize: pad the trailing partial block exactly as sha256()'s own tail
+# handling does (0x80 terminator, zero pad, 64-bit big-endian bit
+# length), compress it, then hex-encode all 32 digest bytes — 64 hex
+# characters, twice the old two-int rolling hash's 32.
 char* wexec_hash_hex(wexec_hash* h):
+	char* tail = malloc(128)
+	int j = 0
+	while (j < 128):
+		tail[j] = 0
+		j = j + 1
+	j = 0
+	while (j < h.block_len):
+		tail[j] = h.block[j]
+		j = j + 1
+	tail[h.block_len] = 128 /* 0x80 */
+	int blocks = 1
+	if (h.block_len >= 56):
+		blocks = 2
+	int bitlen_pos = blocks * 64 - 8
+	sha256_put_be32(tail + bitlen_pos, (h.total_len >> 29) & sha256_mask32())
+	sha256_put_be32(tail + bitlen_pos + 4, (h.total_len << 3) & sha256_mask32())
+	sha256_block(h.state, tail)
+	if (blocks == 2):
+		sha256_block(h.state, tail + 64)
+	free(tail)
+
+	char* digest = malloc(32)
+	int i = 0
+	while (i < 8):
+		sha256_put_be32(digest + i * 4, h.state[i])
+		i = i + 1
+
 	string_builder* s = string_new()
-	wexec_append_hex(s, h.h1)
-	wexec_append_hex(s, h.h2)
+	i = 0
+	while (i < 32):
+		wexec_append_hex_byte(s, digest[i] & 255)
+		i = i + 1
+	free(digest)
+	free(h.state)
+	free(h.block)
 	char* text = s.data
 	free(s)
 	return text
@@ -314,13 +419,572 @@ void wexec_sort_strings(list[char*] files):
 		i = i + 1
 
 
+# Every real manifest target name is a bare identifier, so this is a
+# byte-identical no-op for them; it only starts mattering for the
+# direct-file UX's synthesized names (below), which embed a source path
+# and so may contain '/' -- escaped here rather than by nesting
+# directories under bin/.wexec_cache/, so the stamp stays a flat file.
 char* wexec_stamp_path(char* name):
 	string_builder* s = string_new()
 	string_append(s, c"bin/.wexec_cache/")
-	string_append(s, name)
+	int i = 0
+	while (name[i] != 0):
+		char c = name[i]
+		if ((c == '/') | (c == ':') | (c == 92)):
+			string_append_char(s, '_')
+		else:
+			string_append_char(s, c)
+		i = i + 1
 	char* path = s.data
 	free(s)
 	return path
+
+
+/* Deps-driven cache keys (issue #251 Direction 1).
+
+A target whose own steps compile W roots — 'bin/wv2 [selector] [flags]
+<root>.w ... -o out' commands, or seed './w' compiles — is keyed on the
+roots' transitive import closures, computed by shelling out to
+'bin/wv2 deps [selector] <root>', instead of on the .w files found under
+its declared "inputs" directory prefixes. Declared inputs still
+contribute every explicitly listed file (seeds, scripts, run-time .w
+fixtures) and every non-.w file found under directory prefixes (run-time
+data like tests/asm/), so only the W-source over-approximation is
+replaced by the exact per-root, per-arch closure. Targets without
+"inputs" stay FORCE targets exactly as before: closures never make a
+target cacheable that was not already opted in, because targets like
+parser_generator_w_test depend on out-of-graph state (every tracked .w)
+that no closure can see.
+
+Closures are cached in bin/.wexec_deps_cache — the bin/.wtest_deps_cache
+format with a leading target-selector column:
+
+  R <arch> <root>
+  H <combined content hash over the closure's (path, content) pairs>
+  F <closure file> (one line per file, in deps output order)
+
+An entry is reused while re-hashing every F file reproduces H. A root
+that fails to compile is cached as
+
+  X <arch> <root>
+  H <content hash of the root file itself>
+
+and retried once the root's own content changes; a target with a failed
+root keeps the pre-closure key (declared inputs, .w files included), so
+targets that compile intentionally-broken fixtures behave exactly as
+before. Entries are validated lazily, only for roots the requested
+targets actually compile; the cache file is rewritten after a run that
+recomputed anything, preserving untouched entries verbatim. When bin/wv2
+does not exist, closures are skipped entirely and every target keeps its
+pre-closure key. */
+
+struct wexec_deps_entry:
+	char* arch          # selector word; "x86" for the default target
+	char* root
+	int failed          # 'X' record: the root did not compile
+	int checked         # validated or recomputed during this run
+	char* digest        # the H line value
+	char* blob          # newline-guarded closure file list, 0 when failed
+
+
+list[wexec_deps_entry*] wexec_deps_entries
+map[char*, wexec_deps_entry*] wexec_deps_index   # "<arch> <root>" -> entry
+map[char*, char*] wexec_file_hashes              # path -> content hash memo
+int wexec_deps_loaded
+int wexec_deps_dirty
+int wexec_deps_probed
+int wexec_deps_wv2_ok
+
+
+# Content hash of one file, memoized. Missing files hash to a sentinel
+# that can never match a stored digest, so deletions invalidate entries.
+char* wexec_file_hash(char* path):
+	if (wexec_file_hashes == 0):
+		wexec_file_hashes = new map[char*, char*]
+	char* cached = wexec_file_hashes.get(path, 0)
+	if (cached != 0):
+		return cached
+	char* digest = c"<missing>"
+	int fd = open(path, 0, 0)
+	if (fd >= 0):
+		wexec_hash h
+		wexec_hash_init(&h)
+		int buffer_size = 65536
+		char* buffer = malloc(buffer_size)
+		int n = read(fd, buffer, buffer_size)
+		while (n > 0):
+			wexec_hash_bytes(&h, buffer, n)
+			n = read(fd, buffer, buffer_size)
+		free(buffer)
+		close(fd)
+		digest = wexec_hash_hex(&h)
+	wexec_file_hashes[path] = digest
+	return digest
+
+
+# Combined digest over (path, content hash) of every file in a closure
+# blob, in order.
+char* wexec_deps_digest(char* blob):
+	wexec_hash h
+	wexec_hash_init(&h)
+	string_builder* line = string_new()
+	int i = 0
+	while (blob[i] != 0):
+		if (blob[i] == 10):
+			if (line.length > 0):
+				wexec_hash_cstr(&h, line.data)
+				wexec_hash_cstr(&h, wexec_file_hash(line.data))
+				string_clear(line)
+		else:
+			string_append_char(line, blob[i])
+		i = i + 1
+	if (line.length > 0):
+		wexec_hash_cstr(&h, line.data)
+		wexec_hash_cstr(&h, wexec_file_hash(line.data))
+	string_free(line)
+	return wexec_hash_hex(&h)
+
+
+# Closures need bin/wv2; without it (a manifest run before any build)
+# every target keeps its pre-closure key.
+int wexec_deps_usable():
+	if (wexec_deps_probed == 0):
+		wexec_deps_probed = 1
+		int fd = open(c"bin/wv2", 0, 0)
+		if (fd >= 0):
+			close(fd)
+			wexec_deps_wv2_ok = 1
+	return wexec_deps_wv2_ok
+
+
+int wexec_selector_word(char* word):
+	if (strcmp(word, c"x64") == 0):
+		return 1
+	if (strcmp(word, c"arm64") == 0):
+		return 1
+	if (strcmp(word, c"arm64_darwin") == 0):
+		return 1
+	if (strcmp(word, c"win64") == 0):
+		return 1
+	return 0
+
+
+char* wexec_deps_entry_key(char* arch, char* root):
+	string_builder* s = string_new()
+	string_append(s, arch)
+	string_append_char(s, ' ')
+	string_append(s, root)
+	char* key = s.data
+	free(s)
+	return key
+
+
+void wexec_deps_store(char* arch, char* root, wexec_deps_entry* entry):
+	entry.arch = arch
+	entry.root = root
+	wexec_deps_entries.push(entry)
+	char* key = wexec_deps_entry_key(arch, root)
+	wexec_deps_index[key] = entry
+	free(key)
+
+
+# Finalize one parsed cache-file record. The record key is
+# "<arch> <root>"; a record without the arch column (or a duplicate) is
+# dropped, so caches written by older executors simply recompute.
+void wexec_deps_load_entry(int kind, char* record, char* digest, string_builder* blob):
+	if ((record == 0) | (digest == 0)):
+		return
+	int space = 0
+	int i = 0
+	while (record[i] != 0):
+		if ((record[i] == ' ') && (space == 0)):
+			space = i
+		i = i + 1
+	if (space == 0):
+		return
+	char* arch = strclone(record)
+	arch[space] = 0
+	char* root = strclone(record + space + 1)
+	char* key = wexec_deps_entry_key(arch, root)
+	wexec_deps_entry* existing = wexec_deps_index.get(key, 0)
+	free(key)
+	if (existing != 0):
+		return
+	wexec_deps_entry* entry = new wexec_deps_entry()
+	entry.failed = kind == 2
+	entry.checked = 0
+	entry.digest = digest
+	entry.blob = 0
+	if (kind == 1):
+		if (blob != 0):
+			entry.blob = blob.data
+	wexec_deps_store(arch, root, entry)
+
+
+void wexec_deps_load():
+	if (wexec_deps_loaded):
+		return
+	wexec_deps_loaded = 1
+	wexec_deps_entries = new list[wexec_deps_entry*]
+	wexec_deps_index = new map[char*, wexec_deps_entry*]
+	char* text = file_read_text(c"bin/.wexec_deps_cache")
+	if (text == 0):
+		return
+	int kind = 0
+	char* record = 0
+	char* digest = 0
+	string_builder* blob = 0
+	string_builder* line = string_new()
+	int i = 0
+	int at_end = 0
+	while (at_end == 0):
+		int c = text[i]
+		if (c == 0):
+			at_end = 1
+		if ((c == 10) | (c == 0)):
+			char* entry = line.data
+			if (starts_with(entry, c"R ") | starts_with(entry, c"X ")):
+				wexec_deps_load_entry(kind, record, digest, blob)
+				kind = 1
+				if (entry[0] == 'X'):
+					kind = 2
+				record = strclone(entry + 2)
+				digest = 0
+				blob = string_new()
+				string_append_char(blob, 10)
+			else if (starts_with(entry, c"H ")):
+				digest = strclone(entry + 2)
+			else if (starts_with(entry, c"F ")):
+				if (blob != 0):
+					string_append(blob, entry + 2)
+					string_append_char(blob, 10)
+			string_clear(line)
+		else:
+			string_append_char(line, c)
+		i = i + 1
+	wexec_deps_load_entry(kind, record, digest, blob)
+	string_free(line)
+	free(text)
+
+
+void wexec_deps_save():
+	if (wexec_deps_dirty == 0):
+		return
+	wexec_deps_dirty = 0
+	string_builder* out = string_new()
+	for wexec_deps_entry* entry in wexec_deps_entries:
+		if (entry.failed):
+			string_append(out, c"X ")
+		else:
+			string_append(out, c"R ")
+		string_append(out, entry.arch)
+		string_append_char(out, ' ')
+		string_append(out, entry.root)
+		string_append_char(out, 10)
+		string_append(out, c"H ")
+		string_append(out, entry.digest)
+		string_append_char(out, 10)
+		if (entry.blob != 0):
+			string_builder* line = string_new()
+			int j = 0
+			while (entry.blob[j] != 0):
+				if (entry.blob[j] == 10):
+					if (line.length > 0):
+						string_append(out, c"F ")
+						string_append(out, line.data)
+						string_append_char(out, 10)
+						string_clear(line)
+				else:
+					string_append_char(line, entry.blob[j])
+				j = j + 1
+			string_free(line)
+	mkdir(c"bin", 493)
+	file_write_text(c"bin/.wexec_deps_cache", out.data)
+	string_free(out)
+
+
+# Run 'bin/wv2 deps [selector] <root>'; returns a newline-guarded closure
+# blob, or 0 when the root does not compile for that target.
+char* wexec_deps_run(char* arch, char* root):
+	int is_default = strcmp(arch, c"x86") == 0
+	int count = 4
+	if (is_default):
+		count = 3
+	char** argv = strv_new(count)
+	strv_set(argv, 0, c"bin/wv2")
+	strv_set(argv, 1, c"deps")
+	if (is_default):
+		strv_set(argv, 2, root)
+	else:
+		strv_set(argv, 2, arch)
+		strv_set(argv, 3, root)
+	process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
+	free(cast(char*, argv))
+	if (result == 0):
+		return 0
+	if (result.status != 0):
+		process_result_free(result)
+		return 0
+	string_builder* blob = string_new()
+	string_append_char(blob, 10)
+	string_append(blob, result.stdout_text)
+	if (blob.data[blob.length - 1] != 10):
+		string_append_char(blob, 10)
+	process_result_free(result)
+	char* text = blob.data
+	free(blob)
+	return text
+
+
+# The closure entry for one (arch, root), validated against current file
+# contents or recomputed. entry.failed marks a root that did not compile.
+wexec_deps_entry* wexec_deps_lookup(char* arch, char* root):
+	wexec_deps_load()
+	char* key = wexec_deps_entry_key(arch, root)
+	wexec_deps_entry* entry = wexec_deps_index.get(key, 0)
+	free(key)
+	if (entry != 0):
+		if (entry.checked):
+			return entry
+		if (entry.failed):
+			if (strcmp(wexec_file_hash(root), entry.digest) == 0):
+				entry.checked = 1
+				return entry
+		else if (entry.blob != 0):
+			char* digest = wexec_deps_digest(entry.blob)
+			if (strcmp(digest, entry.digest) == 0):
+				entry.checked = 1
+				entry.digest = digest
+				return entry
+	char* blob = wexec_deps_run(arch, root)
+	if (entry == 0):
+		entry = new wexec_deps_entry()
+		wexec_deps_store(strclone(arch), strclone(root), entry)
+	entry.checked = 1
+	wexec_deps_dirty = 1
+	if (blob == 0):
+		entry.failed = 1
+		entry.blob = 0
+		entry.digest = wexec_file_hash(entry.root)
+	else:
+		entry.failed = 0
+		entry.blob = blob
+		entry.digest = wexec_deps_digest(blob)
+	return entry
+
+
+# W compile roots of the target's own steps: 'bin/wv2 [selector] [flags]
+# <root>.w ... -o out' (or seed './w' compiles), as parallel (arch, root)
+# lists. Dependency targets' roots are not collected — their closures are
+# already chained in through the dependency cache keys.
+void wexec_deps_collect_roots(json_value* target, list[char*] archs, list[char*] roots):
+	json_value* steps = json_object_get(target, c"steps")
+	if (steps == 0):
+		return
+	if (steps.type != json_type_array()):
+		return
+	int s = 0
+	while (s < json_array_length(steps)):
+		json_value* step = json_array_get(steps, s)
+		s = s + 1
+		if (step.type != json_type_object()):
+			continue
+		json_value* cmd = json_object_get(step, c"cmd")
+		if (cmd == 0):
+			continue
+		if (cmd.type != json_type_array()):
+			continue
+		int n = json_array_length(cmd)
+		if (n < 2):
+			continue
+		json_value* program = json_array_get(cmd, 0)
+		if (program.type != json_type_string()):
+			continue
+		if ((strcmp(program.string_value, c"bin/wv2") != 0) && (strcmp(program.string_value, c"./w") != 0)):
+			continue
+		int has_output = 0
+		int i = 1
+		while (i < n):
+			json_value* piece = json_array_get(cmd, i)
+			if (piece.type == json_type_string()):
+				if (strcmp(piece.string_value, c"-o") == 0):
+					has_output = 1
+			i = i + 1
+		if (has_output == 0):
+			continue
+		char* arch = c"x86"
+		json_value* first = json_array_get(cmd, 1)
+		if (first.type == json_type_string()):
+			if (wexec_selector_word(first.string_value)):
+				arch = first.string_value
+		i = 1
+		while (i < n):
+			json_value* piece = json_array_get(cmd, i)
+			if (piece.type == json_type_string()):
+				char* element = piece.string_value
+				if (strcmp(element, c"-o") == 0):
+					i = i + 2
+					continue
+				if (ends_with(element, c".w")):
+					archs.push(arch)
+					roots.push(element)
+			i = i + 1
+
+
+/* Direct-file UX (issue #323 stage 1).
+
+'wexec [selector] <file>.w' (in place of a target name list) runs the
+manifest target that already compiles <file>.w as its own root -- found
+by scanning every target's own compile roots exactly like
+wexec_deps_collect_roots does above, since "the target whose compile
+root is that file" is precisely the (arch, root) pairs that function
+extracts -- or, when no target compiles it, synthesizes a throwaway
+compile(+run, for a *_test.w file) target for it. The synthesized
+target declares "inputs": [<file>], so it goes through the exact same
+content-hash (and, once bin/wv2 exists, deps-driven closure) caching as
+any other declared-"inputs" target above: a repeat invocation with
+nothing changed is a cache hit. Nothing here touches the loaded
+manifest's own targets; the synthesized target is added to
+wexec_targets/wexec_names for this process only. */
+
+# The first manifest target (in manifest order) whose own compile steps
+# build 'path' for 'arch', or 0. "Own" mirrors wexec_deps_collect_roots:
+# a dependency's compile roots don't count, only the target's own.
+char* wexec_find_target_for_root(char* arch, char* path):
+	for char* name in wexec_names:
+		json_value* target = wexec_targets.get(name, 0)
+		if (target == 0):
+			continue
+		list[char*] archs = new list[char*]
+		list[char*] roots = new list[char*]
+		wexec_deps_collect_roots(target, archs, roots)
+		int i = 0
+		while (i < roots.length):
+			if ((strcmp(archs[i], arch) == 0) && (strcmp(roots[i], path) == 0)):
+				return name
+			i = i + 1
+	return 0
+
+
+char* wexec_adhoc_basename(char* path):
+	int i = 0
+	int last = 0
+	while (path[i] != 0):
+		if (path[i] == '/'):
+			last = i + 1
+		i = i + 1
+	return path + last
+
+
+# The first (length - n) characters of text, as a fresh string.
+char* wexec_adhoc_strip_suffix(char* text, int n):
+	int keep = strlen(text) - n
+	string_builder* s = string_new()
+	int i = 0
+	while (i < keep):
+		string_append_char(s, text[i])
+		i = i + 1
+	char* out = s.data
+	free(s)
+	return out
+
+
+# bin/<stem> for the default (x86) arch; a per-arch suffix otherwise, so
+# e.g. 'foo_test.w' and 'x64 foo_test.w' never clobber each other's
+# output (and so their cache entries stay independent). win64 keeps the
+# ".exe" extension the rest of the win64 tooling expects.
+char* wexec_adhoc_binary_path(char* arch, char* stem):
+	if (strcmp(arch, c"x86") == 0):
+		return cstr(f"bin/{stem}")
+	if (strcmp(arch, c"win64") == 0):
+		return cstr(f"bin/{stem}_win64.exe")
+	return cstr(f"bin/{stem}_{arch}")
+
+
+# The synthesized target's own "name": the bare path for the default
+# arch (so "wexec: target <path>" reads naturally), "<arch>:<path>"
+# otherwise. Never collides with a real manifest target name, which is
+# always a bare identifier with neither '/' nor ':'.
+char* wexec_adhoc_target_name(char* arch, char* path):
+	if (strcmp(arch, c"x86") == 0):
+		return path
+	return cstr(f"{arch}:{path}")
+
+
+json_value* wexec_make_adhoc_target(char* name, char* arch, char* path, char* binary):
+	json_value* target = json_object()
+	json_object_set(target, c"name", json_string(name))
+	json_value* deps = json_array()
+	json_array_push(deps, json_string(c"wv2"))
+	json_object_set(target, c"deps", deps)
+	json_value* inputs = json_array()
+	json_array_push(inputs, json_string(path))
+	json_object_set(target, c"inputs", inputs)
+	json_value* outputs = json_array()
+	json_array_push(outputs, json_string(binary))
+	json_object_set(target, c"outputs", outputs)
+
+	json_value* compile_cmd = json_array()
+	json_array_push(compile_cmd, json_string(c"bin/wv2"))
+	if (strcmp(arch, c"x86") != 0):
+		json_array_push(compile_cmd, json_string(arch))
+	json_array_push(compile_cmd, json_string(path))
+	json_array_push(compile_cmd, json_string(c"-o"))
+	json_array_push(compile_cmd, json_string(binary))
+	json_value* compile_step = json_object()
+	json_object_set(compile_step, c"cmd", compile_cmd)
+	json_value* steps = json_array()
+	json_array_push(steps, compile_step)
+
+	# arm64_darwin never gets a run step -- no runner executes Mach-O on
+	# Linux, mirroring wbuildgen's compile-only X_darwin twins; every
+	# other arch runs the binary straight or through the same wrapper
+	# tools/wbuildgen.w's wbg_make_target uses for its conventional
+	# twins.
+	if (ends_with(path, c"_test.w") && (strcmp(arch, c"arm64_darwin") != 0)):
+		json_value* run_cmd = json_array()
+		if (strcmp(arch, c"arm64") == 0):
+			json_array_push(run_cmd, json_string(c"sh"))
+			json_array_push(run_cmd, json_string(c"tools/run_arm64.sh"))
+		else if (strcmp(arch, c"win64") == 0):
+			json_array_push(run_cmd, json_string(c"wine"))
+		json_array_push(run_cmd, json_string(binary))
+		json_value* run_step = json_object()
+		json_object_set(run_step, c"cmd", run_cmd)
+		json_array_push(steps, run_step)
+
+	json_object_set(target, c"steps", steps)
+	return target
+
+
+# Resolves "[<arch>] <path>.w" to a target name registered in
+# wexec_targets -- an existing manifest target, or a freshly synthesized
+# one -- or returns 0 after reporting an error (a missing file, or an
+# absurd name collision). A leading "./" is tolerated, since shells and
+# tab completion often add one.
+char* wexec_resolve_direct_file(char* arch, char* path):
+	if (starts_with(path, c"./")):
+		path = path + 2
+	int fd = open(path, 0, 0)
+	if (fd < 0):
+		wexec_error2(c"no such file: ", path)
+		return 0
+	close(fd)
+
+	char* found = wexec_find_target_for_root(arch, path)
+	if (found != 0):
+		return found
+
+	char* stem = wexec_adhoc_strip_suffix(wexec_adhoc_basename(path), 2)
+	char* binary = wexec_adhoc_binary_path(arch, stem)
+	char* name = wexec_adhoc_target_name(arch, path)
+	if (name in wexec_targets):
+		wexec_error2(c"ad-hoc target collides with an existing manifest target: ", name)
+		return 0
+	json_value* target = wexec_make_adhoc_target(name, arch, path, binary)
+	wexec_targets[name] = target
+	wexec_names.push(name)
+	return name
 
 
 # Returns the target's cache key, or 0 when the target is not cacheable
@@ -352,6 +1016,30 @@ char* wexec_cache_key(char* name, json_value* target):
 					wexec_hash_cstr(&h, dep_key)
 				i = i + 1
 
+	# Deps-driven keys: hash each compile root's import closure. A root
+	# that fails 'bin/wv2 deps' disables closure keying for the whole
+	# target (fixture targets compile intentionally-broken sources), and
+	# the declared inputs below then contribute their .w files as before.
+	list[char*] root_archs = new list[char*]
+	list[char*] root_paths = new list[char*]
+	if (wexec_deps_usable()):
+		wexec_deps_collect_roots(target, root_archs, root_paths)
+	int closures = root_paths.length > 0
+	int r = 0
+	while (r < root_paths.length):
+		wexec_deps_entry* closure_entry = wexec_deps_lookup(root_archs[r], root_paths[r])
+		if (closure_entry.failed):
+			closures = 0
+		r = r + 1
+	if (closures):
+		r = 0
+		while (r < root_paths.length):
+			wexec_deps_entry* keyed_entry = wexec_deps_lookup(root_archs[r], root_paths[r])
+			wexec_hash_cstr(&h, root_archs[r])
+			wexec_hash_cstr(&h, root_paths[r])
+			wexec_hash_cstr(&h, keyed_entry.digest)
+			r = r + 1
+
 	list[char*] files = new list[char*]
 	int i = 0
 	while (i < json_array_length(inputs)):
@@ -362,7 +1050,17 @@ char* wexec_cache_key(char* name, json_value* target):
 			if ((n > 0) && (path[n - 1] == '/')):
 				char* dir = strclone(path)
 				dir[n - 1] = 0
-				wexec_collect_dir(dir, files)
+				if (closures):
+					# The closure hashes above cover the W sources
+					# exactly; a directory prefix now contributes only
+					# its non-.w files (run-time data, fixtures).
+					list[char*] walked = new list[char*]
+					wexec_collect_dir(dir, walked)
+					for char* found in walked:
+						if (ends_with(found, c".w") == 0):
+							files.push(found)
+				else:
+					wexec_collect_dir(dir, files)
 				free(dir)
 			else:
 				files.push(path)
@@ -501,15 +1199,7 @@ void wexec_echo_command(char** argv, int count):
 
 
 void wexec_step_error(char* target_name, int step_index, char* message):
-	string_builder* s = string_new()
-	string_append(s, c"target '")
-	string_append(s, target_name)
-	string_append(s, c"' step ")
-	string_append_int(s, step_index + 1)
-	string_append(s, c": ")
-	string_append(s, message)
-	wexec_error(s.data)
-	string_free(s)
+	wexec_error(cstr(f"target '{target_name}' step {step_index + 1}: {message}"))
 
 
 # Re-emit the child's captured streams so build output stays visible.
@@ -561,13 +1251,7 @@ int wexec_check_status(char* target_name, int step_index, json_value* step, proc
 			wexec_step_error(target_name, step_index, c"\"expect_status\" must be an integer")
 			return 1
 		if (result.status != wanted.int_value):
-			string_builder* s = string_new()
-			string_append(s, c"command exited ")
-			string_append_int(s, result.status)
-			string_append(s, c", expected status ")
-			string_append_int(s, wanted.int_value)
-			wexec_step_error(target_name, step_index, s.data)
-			string_free(s)
+			wexec_step_error(target_name, step_index, cstr(f"command exited {result.status}, expected status {wanted.int_value}"))
 			return 1
 		return 0
 	if (wexec_get_flag(step, c"expect_fail")):
@@ -576,11 +1260,7 @@ int wexec_check_status(char* target_name, int step_index, json_value* step, proc
 			return 1
 		return 0
 	if (result.status != 0):
-		string_builder* s = string_new()
-		string_append(s, c"command failed with exit status ")
-		string_append_int(s, result.status)
-		wexec_step_error(target_name, step_index, s.data)
-		string_free(s)
+		wexec_step_error(target_name, step_index, cstr(f"command failed with exit status {result.status}"))
 		return 1
 	return 0
 
@@ -738,7 +1418,11 @@ in-flight worker streams live, later ones are held back until it
 finishes), so parallel logs never interleave. Cache keys are computed
 and stamps written by the parent only; a cache hit completes a target
 without forking. The first failure stops new launches, in-flight
-targets are drained, and the run exits 1 — make without -k. */
+targets are drained, the epilogue counts the targets never attempted,
+and the run exits 1 — make without -k. Under --keep-going (make -k)
+a failure only marks its dependents broken: they are skipped, every
+independent target still runs, and the epilogue names each failed and
+skipped target before the run exits 1. */
 
 # Depth-first closure collection: validates deps, diagnoses unknown
 # targets and cycles, and appends every reachable target in dependency
@@ -788,6 +1472,23 @@ int wexec_deps_finished(char* name):
 	return 1
 
 
+# --keep-going: a target whose dependency failed (or was itself skipped
+# behind a failure) can never build. Deps were validated as strings when
+# the closure was collected.
+int wexec_deps_broken(char* name):
+	json_value* target = wexec_targets.get(name, 0)
+	json_value* deps = json_object_get(target, c"deps")
+	if (deps == 0):
+		return 0
+	int i = 0
+	while (i < json_array_length(deps)):
+		json_value* dep = json_array_get(deps, i)
+		if (wexec_broken.get(dep.string_value, 0)):
+			return 1
+		i = i + 1
+	return 0
+
+
 void wexec_print_target_header(char* name, char* suffix):
 	wstream* out = stdout_writer()
 	stream_write_cstr(out, c"wexec: target ")
@@ -831,6 +1532,379 @@ void wexec_mark_finished(char* name, char* key):
 	wexec_completed = wexec_completed + 1
 
 
+/* Shared remote build cache (issue #251 Direction 3, D3-2): a dumb
+content-addressed HTTP read-through cache layered on top of the local
+bin/.wexec_cache stamp above. Every code path below is gated on
+wexec_cache_url() (the W_CACHE_URL env var) being set, and the push
+half additionally on W_CACHE_PUSH=1 (what CI sets; a plain developer
+checkout only ever reads) -- with neither set, wexec_cache_url() is a
+single cheap env_get() and nothing else here ever runs, so the
+env-unset path is byte-for-byte the pre-existing local-cache-only
+behavior. That invariant is the whole point: a cache outage, a wrong
+URL, or the feature being off entirely must never be able to break a
+build, only slow it back down to "as if this feature didn't exist".
+
+Protocol: GET/PUT <W_CACHE_URL>/objects/<first 2 hex>/<remaining 62
+hex>, keyed on the same SHA-256 hex wexec_cache_key already computes
+for the target's local stamp -- the loose-object path layout
+libs/extras/vcs/cas.w's on-disk store uses (cas_object_path), so a
+server backed by that module (see tests/wexec_remote_cache_test.w's
+fixture server) can serve GET/PUT with no translation between the wire
+path and its own store layout. A GET miss is any non-200 response
+(canonically 404); any transport-level failure (DNS, connect, timeout,
+TLS, ...) is also just a miss, but the first one per process
+additionally prints one "remote cache unreachable" warning to stderr
+-- worth knowing about once, not worth a line per target. PUT
+failures warn the same way and are otherwise ignored: a push is
+best-effort, and the target already succeeded locally either way.
+
+Only targets that declare a non-empty "outputs" array participate
+(wexec_target_has_outputs): a run-only target (a test whose value is
+the run itself, not a file) has nothing to serialize into a bundle or
+restore a skip against, so it is never looked up or pushed.
+
+Bundle format (the GET response / PUT request body): a small
+length-prefixed archive of the target's declared "outputs" files,
+binary safe throughout (paths and file bytes are copied by explicit
+length, never NUL/strlen-scanned) --
+
+  "WBUN1\n"              magic + format version
+  "<count>\n"            decimal file count
+  per file, in "outputs" order:
+    "<path length>\n"
+    <path length> bytes  the output path exactly as declared in the
+                         manifest (e.g. "bin/wv2")
+    "<content length>\n"
+    <content length> bytes   the file's exact contents
+
+Timeouts are short (wexec_cache_timeout_ms(), a few seconds): a
+misconfigured or dead cache must fail fast, not stall the build. */
+
+char* wexec_cache_url_value
+int wexec_cache_url_loaded
+int wexec_remote_warned
+
+
+# Memoized W_CACHE_URL (0 when unset or empty -- the "cache disabled"
+# state every caller in this section checks first).
+char* wexec_cache_url():
+	if (wexec_cache_url_loaded == 0):
+		wexec_cache_url_loaded = 1
+		char* raw = env_get(c"W_CACHE_URL")
+		if (raw != 0):
+			if (raw[0] != 0):
+				wexec_cache_url_value = raw
+	return wexec_cache_url_value
+
+
+int wexec_cache_push_enabled():
+	char* raw = env_get(c"W_CACHE_PUSH")
+	if (raw == 0):
+		return 0
+	return strcmp(raw, c"1") == 0
+
+
+int wexec_cache_timeout_ms():
+	return 3000
+
+
+# One warning line per process, the first time the remote cache proves
+# unreachable (a transport failure or a corrupt bundle -- not a plain
+# 404 miss); silent after that.
+void wexec_remote_warn(char* detail):
+	if (wexec_remote_warned):
+		return
+	wexec_remote_warned = 1
+	wstream* err = stderr_writer()
+	stream_write_cstr(err, c"wexec: warning: remote cache unreachable (")
+	stream_write_cstr(err, detail)
+	stream_write_line(err, c"); building locally")
+	stream_flush(err)
+
+
+int wexec_target_has_outputs(json_value* target):
+	json_value* outputs = json_object_get(target, c"outputs")
+	if (outputs == 0):
+		return 0
+	if (outputs.type != json_type_array()):
+		return 0
+	return json_array_length(outputs) > 0
+
+
+# "<base>/objects/<first 2 hex>/<remaining 62 hex>" -- cas.w's loose
+# object path, built against a caller-supplied base URL (one trailing
+# slash tolerated).
+char* wexec_cache_object_url(char* base, char* key):
+	string_builder* s = string_new()
+	string_append(s, base)
+	if (s.length > 0):
+		if (s.data[s.length - 1] == '/'):
+			s.length = s.length - 1
+			s.data[s.length] = 0
+	string_append(s, c"/objects/")
+	string_append_char(s, key[0])
+	string_append_char(s, key[1])
+	string_append_char(s, '/')
+	string_append(s, key + 2)
+	char* url = s.data
+	free(s)
+	return url
+
+
+# Exact-byte copy: length bytes at data+pos, NUL-terminated for
+# convenience only. Never strlen/substring-based -- bundle payloads are
+# arbitrary binary and may contain embedded NUL bytes.
+char* wexec_bundle_slice(char* data, int pos, int length):
+	char* out = malloc(length + 1)
+	int i = 0
+	while (i < length):
+		out[i] = data[pos + i]
+		i = i + 1
+	out[length] = 0
+	return out
+
+
+int wexec_bundle_check_magic(char* data, int length, int* pos):
+	char* magic = c"WBUN1\n"
+	int n = strlen(magic)
+	if ((length - *pos) < n):
+		return 0
+	int i = 0
+	while (i < n):
+		if (data[*pos + i] != magic[i]):
+			return 0
+		i = i + 1
+	*pos = *pos + n
+	return 1
+
+
+# A decimal integer line ("<digits>\n"); advances *pos past the
+# newline. Returns -1 on any framing error (no digits, no terminator,
+# run off the end) instead of trusting a malformed/truncated bundle.
+int wexec_bundle_read_uint(char* data, int length, int* pos):
+	int p = *pos
+	int value = 0
+	int digits = 0
+	while ((p < length) && (data[p] >= '0') && (data[p] <= '9')):
+		value = value * 10 + (data[p] - '0')
+		digits = digits + 1
+		p = p + 1
+	if ((digits == 0) || (p >= length) || (data[p] != 10)):
+		return -1
+	*pos = p + 1
+	return value
+
+
+int wexec_bundle_write_file(char* path, char* data, int length):
+	# 577 = O_WRONLY | O_CREAT | O_TRUNC, 420 = rw-r--r--
+	int fd = open(path, 577, 420)
+	if (fd < 0):
+		return 0
+	int written = 0
+	if (length > 0):
+		written = write(fd, data, length)
+	close(fd)
+	return written >= length
+
+
+# Unpacks a bundle onto disk, writing each entry straight to its
+# declared output path. Returns 1 on a fully valid, fully written
+# bundle; any framing error or write failure aborts and returns 0 --
+# the caller treats that exactly like a cache miss and falls back to
+# building the target locally (partial writes from an aborted unpack
+# are harmless: the target's normal steps will overwrite them).
+int wexec_bundle_unpack(char* data, int length):
+	int pos = 0
+	if (wexec_bundle_check_magic(data, length, &pos) == 0):
+		return 0
+	int count = wexec_bundle_read_uint(data, length, &pos)
+	if (count < 0):
+		return 0
+	int i = 0
+	while (i < count):
+		int path_len = wexec_bundle_read_uint(data, length, &pos)
+		if (path_len <= 0):
+			return 0
+		if ((pos + path_len) > length):
+			return 0
+		char* path = wexec_bundle_slice(data, pos, path_len)
+		pos = pos + path_len
+		int content_len = wexec_bundle_read_uint(data, length, &pos)
+		if (content_len < 0):
+			free(path)
+			return 0
+		if ((pos + content_len) > length):
+			free(path)
+			return 0
+		int wrote_ok = wexec_bundle_write_file(path, data + pos, content_len)
+		free(path)
+		if (wrote_ok == 0):
+			return 0
+		pos = pos + content_len
+		i = i + 1
+	return 1
+
+
+# Whole-file read that tracks the exact byte length (unlike
+# lib.file's file_read_text, whose caller only gets a NUL-terminated
+# char* -- an output file's bytes may contain embedded NULs).
+char* wexec_read_file_bytes(char* path, int* out_len):
+	wstream* in = stream_open_read(path)
+	if (in == 0):
+		return 0
+	string_builder* contents = string_new()
+	stream_read_all(in, contents)
+	stream_close(in)
+	*out_len = contents.length
+	char* data = contents.data
+	free(contents)
+	return data
+
+
+# Serializes a target's declared "outputs" into a bundle (see the
+# format above). Returns 0 (nothing to push) when "outputs" is
+# missing/empty or any listed file cannot be read -- a target that
+# just ran should always have its outputs present, but a push is
+# best-effort and never worth failing the build over.
+char* wexec_bundle_build(json_value* target, int* out_len):
+	json_value* outputs = json_object_get(target, c"outputs")
+	if (outputs == 0):
+		return 0
+	if (outputs.type != json_type_array()):
+		return 0
+	int n = json_array_length(outputs)
+	if (n == 0):
+		return 0
+	list[char*] paths = new list[char*]
+	list[char*] blobs = new list[char*]
+	list[int] sizes = new list[int]
+	int i = 0
+	int ok = 1
+	while ((i < n) && ok):
+		json_value* entry = json_array_get(outputs, i)
+		if (entry.type != json_type_string()):
+			ok = 0
+		else:
+			int flen = 0
+			char* data = wexec_read_file_bytes(entry.string_value, &flen)
+			if (data == 0):
+				ok = 0
+			else:
+				paths.push(entry.string_value)
+				blobs.push(data)
+				sizes.push(flen)
+		i = i + 1
+	if (ok == 0):
+		for char* blob in blobs:
+			free(blob)
+		return 0
+	string_builder* s = string_new()
+	string_append(s, c"WBUN1\n")
+	string_append_int(s, paths.length)
+	string_append_char(s, 10)
+	i = 0
+	while (i < paths.length):
+		char* path = paths[i]
+		string_append_int(s, strlen(path))
+		string_append_char(s, 10)
+		string_append(s, path)
+		string_append_int(s, sizes[i])
+		string_append_char(s, 10)
+		string_append_bytes(s, blobs[i], sizes[i])
+		free(blobs[i])
+		i = i + 1
+	*out_len = s.length
+	char* text = s.data
+	free(s)
+	return text
+
+
+# GET <url>/objects/<key>; on a 200 with a bundle that unpacks cleanly,
+# the target's outputs now exist on disk exactly as if it had just
+# run. Returns 1 on a restored hit, 0 for a miss (404, any other
+# status, a transport failure, or a corrupt bundle) -- the caller
+# always falls back to a normal local build on 0. The actual HTTP call
+# is tools/__arch__/<arch>/wexec_remote_http.w's wexec_remote_http_get
+# (see that file for why this indirection exists -- win64 support).
+int wexec_cache_remote_fetch(char* url, char* key):
+	char* full = wexec_cache_object_url(url, key)
+	int status = 0
+	char* body = 0
+	int body_len = 0
+	char* error = 0
+	int ok = 0
+	if (wexec_remote_http_get(full, wexec_cache_timeout_ms(), &status, &body, &body_len, &error)):
+		if (status == 200):
+			ok = wexec_bundle_unpack(body, body_len)
+			if (ok == 0):
+				wexec_remote_warn(c"corrupt bundle")
+		if (body != 0):
+			free(body)
+	else:
+		wexec_remote_warn(error)
+	free(full)
+	return ok
+
+
+# PUT <url>/objects/<key> with the target's bundle. Best-effort: any
+# failure (nothing to read, transport, non-2xx) only warns (once) and
+# never affects the target's already-successful local result. The
+# actual HTTP call is wexec_remote_http_put (see wexec_cache_remote_fetch).
+void wexec_cache_remote_push(char* url, char* key, json_value* target):
+	int length = 0
+	char* bundle = wexec_bundle_build(target, &length)
+	if (bundle == 0):
+		return
+	char* full = wexec_cache_object_url(url, key)
+	char* error = 0
+	if (wexec_remote_http_put(full, bundle, length, wexec_cache_timeout_ms(), &error) == 0):
+		wexec_remote_warn(error)
+	free(full)
+	free(bundle)
+
+
+# Attempted from wexec_launch right after a local cache miss: eligible
+# (W_CACHE_URL set, target declares "outputs") and a successful GET
+# completes the target exactly like a local cache hit, just under a
+# different log suffix. Returns 1 when the target was completed this
+# way (the caller returns immediately, same as a local hit); 0 means
+# proceed to the normal fork-and-run path.
+int wexec_cache_remote_try(char* name, char* key, json_value* target):
+	char* url = wexec_cache_url()
+	if (url == 0):
+		return 0
+	if (wexec_target_has_outputs(target) == 0):
+		return 0
+	if (wexec_cache_remote_fetch(url, key) == 0):
+		return 0
+	wexec_print_target_header(name, c" (remote cache)")
+	wexec_cache_store(name, key)
+	wexec_finished[name] = 1
+	wexec_completed = wexec_completed + 1
+	return 1
+
+
+# Called after a worker target finishes successfully: pushes the
+# target's bundle when W_CACHE_PUSH=1 (what CI sets). A no-op whenever
+# push is off, the target isn't cacheable, or it declares no outputs --
+# the common developer-checkout case, so this is a single flag check
+# in the fast path.
+void wexec_cache_remote_push_if_enabled(char* name, char* key):
+	if (key == 0):
+		return
+	if (wexec_cache_push_enabled() == 0):
+		return
+	char* url = wexec_cache_url()
+	if (url == 0):
+		return
+	json_value* target = wexec_targets.get(name, 0)
+	if (target == 0):
+		return
+	if (wexec_target_has_outputs(target) == 0):
+		return
+	wexec_cache_remote_push(url, key, target)
+
+
 # Launch one target. Returns 0 when the target completed inline (cache
 # hit or no steps), 1 when a worker was forked, -1 on spawn failure.
 int wexec_launch(char* name, list[wexec_worker*] workers):
@@ -838,11 +1912,14 @@ int wexec_launch(char* name, list[wexec_worker*] workers):
 	char* key = wexec_cache_key(name, target)
 	if (key != 0):
 		wexec_keys[name] = key
-		if ((wexec_no_cache == 0) && wexec_cache_fresh(name, key, target)):
-			wexec_print_target_header(name, c" (cached)")
-			wexec_finished[name] = 1
-			wexec_completed = wexec_completed + 1
-			return 0
+		if (wexec_no_cache == 0):
+			if (wexec_cache_fresh(name, key, target)):
+				wexec_print_target_header(name, c" (cached)")
+				wexec_finished[name] = 1
+				wexec_completed = wexec_completed + 1
+				return 0
+			if (wexec_cache_remote_try(name, key, target)):
+				return 0
 	json_value* steps = json_object_get(target, c"steps")
 	if (steps == 0):
 		# Aggregate target: nothing to fork.
@@ -910,9 +1987,79 @@ void wexec_worker_flush(wexec_worker* w):
 		w.err_printed = w.err_buffer.length
 
 
+# --ordered-output: print a worker's whole captured stdout/stderr as one
+# block, headed by a grep-friendly marker line, instead of the
+# progressive start-order streaming wexec_worker_flush does. Called once
+# per worker, right after it is reaped, so blocks come out in completion
+# order and a target's own lines can never have another target's lines
+# spliced between them: nothing else runs between these writes, since
+# the scheduler is single-threaded.
+void wexec_worker_emit_block(wexec_worker* w):
+	wstream* out = stdout_writer()
+	stream_write_cstr(out, c"wexec: --- ")
+	stream_write_cstr(out, w.name)
+	stream_write_line(out, c" ---")
+	stream_flush(out)
+	if (w.out_buffer.length > 0):
+		write(1, w.out_buffer.data, w.out_buffer.length)
+	if (w.err_buffer.length > 0):
+		write(2, w.err_buffer.data, w.err_buffer.length)
+
+
 # One read per poll wakeup; returns 1 when the pipe reached EOF.
 int wexec_worker_drain(int fd, process_capture* buffer):
 	return process_capture_read(buffer, fd) <= 0
+
+
+# --keep-going epilogue: name every failed and skipped target, then the
+# counts, so lost coverage is visible at the bottom of a long run.
+void wexec_report_keep_going(int total):
+	wstream* err = stderr_writer()
+	for char* name in wexec_failed_list:
+		stream_write_cstr(err, c"wexec: failed: ")
+		stream_write_line(err, name)
+	for char* name in wexec_skipped_list:
+		stream_write_cstr(err, c"wexec: skipped: ")
+		stream_write_cstr(err, name)
+		stream_write_line(err, c" (dependency failed)")
+	string_builder* s = string_new()
+	string_append(s, c"wexec: keep-going: ")
+	string_append_int(s, wexec_failed_list.length)
+	string_append(s, c" failed, ")
+	string_append_int(s, wexec_skipped_list.length)
+	string_append(s, c" skipped, ")
+	string_append_int(s, wexec_completed)
+	string_append(s, c" succeeded (of ")
+	string_append_int(s, total)
+	string_append(s, c" targets)")
+	stream_write_line(err, s.data)
+	stream_flush(err)
+	string_free(s)
+
+
+# Fail-fast epilogue: say how much of the run was never attempted, so
+# one broken target cannot silently cancel the rest of an umbrella run.
+# Silent when the failure was the last target scheduled.
+void wexec_report_stopped_early(int total, int finished):
+	if (finished >= total):
+		return
+	string_builder* s = string_new()
+	string_append(s, c"wexec: stopped early after failure: ")
+	string_append_int(s, total - finished)
+	string_append(s, c" of ")
+	string_append_int(s, total)
+	string_append(s, c" targets not attempted")
+	wstream* err = stderr_writer()
+	stream_write_line(err, s.data)
+	stream_flush(err)
+	string_free(s)
+
+
+void wexec_report_failures(int total, int finished):
+	if (wexec_keep_going):
+		wexec_report_keep_going(total)
+	else:
+		wexec_report_stopped_early(total, finished)
 
 
 # Drive every requested target (and its dependency closure) to
@@ -936,21 +2083,38 @@ int wexec_execute(list[char*] requested):
 		# completions (cache hits, aggregates) can ready more targets,
 		# so repeat until a full scan launches nothing.
 		int launched_any = 1
-		while ((failed == 0) && launched_any):
+		while (((failed == 0) || wexec_keep_going) && launched_any):
 			launched_any = 0
 			int t = 0
 			while ((t < total) && (running < wexec_jobs)):
 				char* name = wexec_closure[t]
-				if ((wexec_started.get(name, 0) == 0) && wexec_deps_finished(name)):
-					wexec_started[name] = 1
-					int outcome = wexec_launch(name, workers)
-					if (outcome < 0):
-						failed = 1
-					else if (outcome == 0):
+				if (wexec_started.get(name, 0) == 0):
+					if (wexec_keep_going && wexec_deps_broken(name)):
+						# A dependency failed: this target can never
+						# build. Record the skip and count it finished
+						# so independent subgraphs keep the run alive.
+						wexec_started[name] = 1
+						wexec_broken[name] = 1
+						wexec_skipped_list.push(name)
 						finished = finished + 1
 						launched_any = 1
-					else:
-						running = running + 1
+					else if (wexec_deps_finished(name)):
+						wexec_started[name] = 1
+						int outcome = wexec_launch(name, workers)
+						if (outcome < 0):
+							failed = 1
+							if (wexec_keep_going):
+								# A spawn failure counts as the target
+								# failing; dependents skip via broken.
+								wexec_broken[name] = 1
+								wexec_failed_list.push(name)
+								finished = finished + 1
+								launched_any = 1
+						else if (outcome == 0):
+							finished = finished + 1
+							launched_any = 1
+						else:
+							running = running + 1
 				t = t + 1
 
 		if (running == 0):
@@ -959,10 +2123,14 @@ int wexec_execute(list[char*] requested):
 				failed = 1
 			if (failed):
 				# Print whatever buffered output is left, in order.
-				while (head < workers.length):
-					wexec_worker_flush(workers[head])
-					head = head + 1
+				# --ordered-output already emitted every reaped worker's
+				# block at reap time, so there is nothing left to flush.
+				if (wexec_ordered_output == 0):
+					while (head < workers.length):
+						wexec_worker_flush(workers[head])
+						head = head + 1
 				free(poll_fds)
+				wexec_report_failures(total, finished)
 				return 1
 			free(poll_fds)
 			return 0
@@ -1016,20 +2184,36 @@ int wexec_execute(list[char*] requested):
 						decoded = 1
 					if (decoded != 0):
 						failed = 1
+						if (wexec_keep_going):
+							# Poison dependents so they are skipped
+							# instead of waiting forever.
+							wexec_broken[w.name] = 1
+							wexec_failed_list.push(w.name)
 					else:
 						wexec_mark_finished(w.name, w.key)
+						wexec_cache_remote_push_if_enabled(w.name, w.key)
+					if (wexec_ordered_output):
+						# Print this worker's whole block now, in
+						# completion order, instead of waiting for its
+						# turn in the start-order queue below.
+						wexec_worker_emit_block(w)
 			i = i + 1
 
 		# Print phase: stream the head worker live and retire every
 		# finished worker at the front of the start-order queue.
-		while ((head < workers.length) && workers[head].done):
-			wexec_worker_flush(workers[head])
-			head = head + 1
-		if (head < workers.length):
-			wexec_worker_flush(workers[head])
+		# --ordered-output already emitted every worker's block above,
+		# atomically, at the moment it finished, so this queue-ordered
+		# live-streaming path is skipped entirely under the flag.
+		if (wexec_ordered_output == 0):
+			while ((head < workers.length) && workers[head].done):
+				wexec_worker_flush(workers[head])
+				head = head + 1
+			if (head < workers.length):
+				wexec_worker_flush(workers[head])
 
 	free(poll_fds)
 	if (failed):
+		wexec_report_failures(total, finished)
 		return 1
 	return 0
 
@@ -1078,6 +2262,9 @@ int wexec_load_manifest(char* path):
 	wexec_finished = new map[char*, int]
 	wexec_names = new list[char*]
 	wexec_closure = new list[char*]
+	wexec_broken = new map[char*, int]
+	wexec_failed_list = new list[char*]
+	wexec_skipped_list = new list[char*]
 	int i = 0
 	while (i < json_array_length(targets)):
 		json_value* target = json_array_get(targets, i)
@@ -1137,7 +2324,6 @@ int wexec_default_jobs():
 
 
 int main(int argc, int argv):
-	wexec_mask32 = wexec_mask32_value()
 	wexec_jobs = 0
 	char* manifest_path = c"build.json"
 	list[char*] requested = new list[char*]
@@ -1156,6 +2342,10 @@ int main(int argc, int argv):
 			list_only = 1
 		else if (strcmp(*arg, c"--no-cache") == 0):
 			wexec_no_cache = 1
+		else if (strcmp(*arg, c"--keep-going") == 0):
+			wexec_keep_going = 1
+		else if (strcmp(*arg, c"--ordered-output") == 0):
+			wexec_ordered_output = 1
 		else if (strcmp(*arg, c"-j") == 0):
 			i = i + 1
 			if (i >= argc):
@@ -1177,11 +2367,36 @@ int main(int argc, int argv):
 	if (list_only):
 		wexec_list_targets()
 		return 0
+
+	# Direct-file UX (issue #323 stage 1): "[selector] <file>.w" in place
+	# of a target name list. Recognized only in exactly these two shapes,
+	# so every other invocation (including a literal target that happens
+	# to be named like a selector) is untouched.
+	char* direct_arch = 0
+	char* direct_path = 0
+	if ((requested.length == 1) && ends_with(requested[0], c".w")):
+		direct_arch = c"x86"
+		direct_path = requested[0]
+	else if ((requested.length == 2) && wexec_selector_word(requested[0]) && ends_with(requested[1], c".w")):
+		direct_arch = requested[0]
+		direct_path = requested[1]
+	if (direct_path != 0):
+		char* resolved = wexec_resolve_direct_file(direct_arch, direct_path)
+		if (resolved == 0):
+			return 1
+		requested = new list[char*]
+		requested.push(resolved)
+
 	if (requested.length == 0):
 		wexec_usage()
 		wexec_list_targets()
 		return 1
-	if (wexec_execute(requested)):
+	int failed = wexec_execute(requested)
+	# Cache keys (and any recomputed import closures) are computed in
+	# the parent only, so the closure cache is saved here once, after
+	# the run — on failure too, so a red run still keeps its deps work.
+	wexec_deps_save()
+	if (failed):
 		return 1
 	wexec_report_ok()
 	return 0

@@ -1,0 +1,13 @@
+{
+	"targets": [
+		{
+			"name": "remote_target",
+			"inputs": ["bin/wexec_remote_cache_input.txt"],
+			"outputs": ["bin/wexec_remote_cache_out.txt"],
+			"steps": [
+				{"cmd": ["cp", "bin/wexec_remote_cache_input.txt", "bin/wexec_remote_cache_marker.txt"]},
+				{"cmd": ["cp", "bin/wexec_remote_cache_input.txt", "bin/wexec_remote_cache_out.txt"]}
+			]
+		}
+	]
+}

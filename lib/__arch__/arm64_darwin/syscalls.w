@@ -65,15 +65,15 @@ int close(int file):
 int seek(int file, int offset, int reference):
 	return syscall(199, file, offset, reference)
 
+int unlink(char* path):
+	return syscall(10, path, 0, 0)
+
 # Directory syscalls:
 int mkdir(char* path, int mode):
 	return syscall(136, path, mode, 0)
 
 int rmdir(char* path):
 	return syscall(137, path, 0, 0)
-
-int unlink(char* path):
-	return syscall(10, path, 0, 0)
 
 int rename(char* oldpath, char* newpath):
 	return syscall(128, oldpath, newpath, 0)
@@ -101,6 +101,20 @@ int getcwd(char* buf, int size):
 	int result = sys_fcntl(fd, 50, cast(int, buf))
 	close(fd)
 	return result
+
+# Darwin fsync (95) only pushes the data to the drive, which may hold
+# it in a volatile cache; durable-to-power-loss persistence needs
+# fcntl F_FULLFSYNC (51, xnu bsd/sys/fcntl.h) per Darwin's fsync(2).
+# Try the full flush first and fall back to plain fsync where the
+# filesystem rejects it (e.g. ENOTSUP on SMB/NFS mounts).
+int fsync(int file):
+	if (sys_fcntl(file, 51, 0) >= 0):
+		return 0
+	return syscall(95, file, 0, 0)
+
+# No fdatasync in the BSD table; fsync's guarantee is a superset.
+int fdatasync(int file):
+	return fsync(file)
 
 # No time(2): gettimeofday (116) with a null timezone; the third XNU
 # argument (mach_absolute_time out-pointer) is unused.
@@ -133,6 +147,11 @@ int mmap(int addr, int length, int prot, int flags):
 # munmap (73): releases a mapping created by mmap. addr must be page-aligned.
 int munmap(int addr, int length):
 	return syscall(73, addr, length, 0)
+
+# mprotect (74): changes page protection (PROT_NONE=0, READ=1, WRITE=2,
+# EXEC=4) on an existing mapping. addr and length must be page-aligned.
+int mprotect(int addr, int length, int prot):
+	return syscall(74, addr, length, prot)
 
 # No clone on Darwin (threads go through bsdthread_create, a later stage).
 int sys_clone(int flags, int child_stack):

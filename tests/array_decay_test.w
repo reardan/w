@@ -163,3 +163,100 @@ void test_switch_case_decay():
 		default:
 			matched = 2
 	assert_equal(1, matched)
+
+
+void test_cast_int_decay():
+	# cast(int, arr) decays to the data pointer, agreeing with
+	# cast(char*, arr) and arr.data (#229); the descriptor's own address
+	# is no longer reachable through cast()
+	char[8] buf
+	buf[0] = 'x'
+	assert_equal(cast(int, buf.data), cast(int, buf))
+	assert_equal(cast(int, cast(char*, buf)), cast(int, buf))
+	int[4] words
+	words[0] = 1
+	int[] view = words
+	assert_equal(cast(int, words.data), cast(int, words))
+	assert_equal(cast(int, view.data), cast(int, view))
+
+
+# The conditional-arm helpers take the selector as a parameter so both
+# paths of each ternary really execute (#229: the then arm decays
+# through a stub after the else arm; the else arm decays via coerce).
+# The array lives at module scope so returning the chosen pointer is
+# sound on either path.
+char[8] cond_cells
+
+
+char* pick_then_array(int flag, char* p):
+	return flag ? cond_cells : p
+
+
+char* pick_else_array(int flag, char* p):
+	return flag ? p : cond_cells
+
+
+char* pick_array_or_null(int flag):
+	# A bare constant arm joins at the element pointer: the array arm
+	# decays, the constant passes through (this used to leave a
+	# slice-value result whose outer decay load dereferenced the 0)
+	return flag ? cond_cells : 0
+
+
+char* pick_null_or_array(int flag):
+	return flag ? 0 : cond_cells
+
+
+void test_conditional_then_arm_decay():
+	cond_cells[0] = 'a'
+	char[4] other
+	other[0] = 'o'
+	char* p = other
+	char* r = pick_then_array(1, p)
+	assert_equal(cast(int, cond_cells.data), cast(int, r))
+	assert_equal('a', r[0])
+	r = pick_then_array(0, p)
+	assert_equal(cast(int, p), cast(int, r))
+	assert_equal('o', r[0])
+
+
+void test_conditional_else_arm_decay():
+	cond_cells[0] = 'b'
+	char[4] other
+	other[0] = 'o'
+	char* p = other
+	char* r = pick_else_array(0, p)
+	assert_equal(cast(int, cond_cells.data), cast(int, r))
+	assert_equal('b', r[0])
+	r = pick_else_array(1, p)
+	assert_equal(cast(int, p), cast(int, r))
+	assert_equal('o', r[0])
+
+
+void test_conditional_constant_arm_decay():
+	cond_cells[0] = 'n'
+	char* r = pick_array_or_null(1)
+	assert_equal(cast(int, cond_cells.data), cast(int, r))
+	assert_equal('n', r[0])
+	assert_equal(0, cast(int, pick_array_or_null(0)))
+	r = pick_null_or_array(0)
+	assert_equal(cast(int, cond_cells.data), cast(int, r))
+	assert_equal('n', r[0])
+	assert_equal(0, cast(int, pick_null_or_array(1)))
+
+
+void test_conditional_slice_arms_keep_descriptor():
+	# Two array/slice arms still join as a slice value with a live
+	# length, on both paths
+	char[8] a
+	a[0] = 'x'
+	char[4] b
+	b[0] = 'y'
+	int flag = 1
+	char[] chosen = flag ? a : b
+	assert_equal(8, chosen.length)
+	assert_equal('x', chosen[0])
+	flag = 0
+	char[] other = flag ? a : b
+	assert_equal(4, other.length)
+	assert_equal('y', other[0])

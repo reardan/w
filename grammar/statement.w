@@ -112,18 +112,21 @@ int result_propagate_suffix(int type):
 	push_eax()
 	stack_pos = stack_pos + 1
 	promote_eax() /* load r.ok: an int at field offset 0 */
-	jmp_nonzero_int32(1337022)
-	int p = codepos
-	# Error path: return the operand pointer, unwinding block locals and
-	# expression temporaries exactly like the 'return' statement does
-	# (stack_pos already counts the slot pushed above). Deferred
-	# statements run first, with the result pointer saved around them,
-	# because '?' is a function exit like any 'return'.
+	int h_ok = be_ctrl_block()
+	be_br_nonzero(h_ok)
+	# Error path: '?' is a function exit like any 'return'. Enclosing
+	# for-in loops over generators free their suspended generator first
+	# (the operand pointer is reloaded from the stack afterwards), then
+	# the operand returns as the function's own result, unwinding block
+	# locals and expression temporaries exactly like the 'return'
+	# statement does (stack_pos already counts the slot pushed above).
+	# Deferred statements run with the result pointer saved around them.
+	for_cleanup_emit_all()
 	mov_eax_esp_plus(0)
 	defer_emit_returning()
 	be_pop(stack_pos)
 	ret()
-	be_branch_patch(p, codepos)
+	be_ctrl_end(h_ok)
 	# Ok path: eax = address of the payload field
 	pop_eax()
 	stack_pos = stack_pos - 1
@@ -197,21 +200,24 @@ void statement():
 	# if expression statement else statement (parentheses optional)
 	else if (accept(c"if")):
 		if_tab_level = tab_level
+		int outer_condition = condition_context
+		condition_context = 1
+		p1 = be_ctrl_block() /* ends after the whole if/else */
+		p2 = be_ctrl_block() /* ends at the else branch */
 		promote(expression())
-		jmp_zero_int32(1337)
-		p1 = codepos
+		condition_context = outer_condition
+		be_br_zero(p2)
 		enclosing_tab_level = if_tab_level
 		statement()
-		jmp_int32(1337007)
-		p2 = codepos
-		be_branch_patch(p1, codepos)
+		be_br(p1)
+		be_ctrl_end(p2)
 		# An 'else' only binds to an 'if' at the same indent level
 		if (peek(c"else")):
 			if (tab_level == if_tab_level):
 				get_token()
 				enclosing_tab_level = if_tab_level
 				statement()
-		be_branch_patch(p2, codepos)
+		be_ctrl_end(p1)
 
 	else if (while_statement()) {}
 	else if (for_statement()) {}
@@ -227,14 +233,12 @@ void statement():
 			# Unwind block locals pushed since the switch started
 			if (stack_pos > switch_stack_pos):
 				be_pop(stack_pos - switch_stack_pos)
-			jmp_int32(switch_break_chain)
-			switch_break_chain = codepos
+			be_br(switch_break_chain)
 		else:
 			# Unwind block locals pushed since the loop started
 			if (stack_pos > loop_stack_pos):
 				be_pop(stack_pos - loop_stack_pos)
-			jmp_int32(loop_break_chain)
-			loop_break_chain = codepos
+			be_br(loop_break_chain)
 
 	else if (accept(c"continue")):
 		expect_or_newline(c";")
@@ -242,8 +246,7 @@ void statement():
 			error(c"'continue' outside of a loop")
 		if (stack_pos > loop_stack_pos):
 			be_pop(stack_pos - loop_stack_pos)
-		jmp_int32(loop_continue_chain)
-		loop_continue_chain = codepos
+		be_br(loop_continue_chain)
 
 	else if (accept(c"return")):
 		# A newline (or end of file) after 'return' means no return value.
@@ -263,12 +266,19 @@ void statement():
 					warn_type_mismatch(c"return", declared_type, return_type)
 		expect_or_newline(c";")
 		if (in_generator_body):
-			# Finish the generator: __w_gen_return switches back to the
-			# consumer permanently, so no ret / stack unwinding is needed
+			# Free the suspended generators of enclosing for-in loops
+			# (eax is dead: generators return bare), then finish:
+			# __w_gen_return switches back to the consumer permanently,
+			# so no ret / stack unwinding is needed
+			for_cleanup_emit_all()
 			emit_generator_finish_call()
 		else:
-			# Deferred statements run before the frame unwinds, with the
-			# already-evaluated return value saved around them
+			# Enclosing for-in loops over generators free their suspended
+			# generator first — 'return' bypasses the loop exit edges that
+			# normally do it — then deferred statements run before the
+			# frame unwinds, both with the already-evaluated return value
+			# saved around them
+			for_cleanup_emit_returning()
 			defer_emit_returning()
 			be_pop(stack_pos)
 			ret()
@@ -298,6 +308,11 @@ void statement():
 	else if (accept(c"pass")):
 		expect_or_newline(c";")
 
+	# '++x' / '--x' — prefix increment/decrement statement
+	# (grammar/increment.w, docs/projects/increment_decrement.md)
+	else if (increment_prefix_statement()):
+		expect_or_newline(c";")
+
 	# defer <simple-statement>: record the span; it re-parses and runs
 	# at every function exit, LIFO (grammar/defer.w)
 	else if (accept(c"defer")):
@@ -313,5 +328,9 @@ void statement():
 		expect_or_newline(c";")
 
 	else:
+		# Postfix 'x++'/'x--' are only recognized at true statement
+		# position: expression() consumes this flag on entry, so nested
+		# expression parses never see it (grammar/increment.w)
+		increment_statement_context = 1
 		expression()
 		expect_or_newline(c";")
