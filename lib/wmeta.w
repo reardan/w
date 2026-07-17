@@ -54,12 +54,12 @@ struct wmeta_check:
 
 # Trim leading and trailing whitespace in place; returns the trimmed start.
 char* wmeta_trim(char* s):
-	while ((s[0] == ' ') | (s[0] == 9) | (s[0] == 13)):
+	while ((s[0] == ' ') || (s[0] == 9) || (s[0] == 13)):
 		s = s + 1
 	int n = strlen(s)
 	while (n > 0):
 		char last = s[n - 1]
-		if ((last == ' ') | (last == 9) | (last == 13)):
+		if ((last == ' ') || (last == 9) || (last == 13)):
 			s[n - 1] = 0
 			n = n - 1
 		else:
@@ -71,12 +71,12 @@ list[char*] wmeta_split_words(char* line):
 	list[char*] words = new list[char*]
 	int i = 0
 	while (line[i] != 0):
-		while ((line[i] == ' ') | (line[i] == 9)):
+		while ((line[i] == ' ') || (line[i] == 9)):
 			i = i + 1
 		if (line[i] == 0):
 			break
 		int start = i
-		while ((line[i] != 0) & (line[i] != ' ') & (line[i] != 9)):
+		while ((line[i] != 0) && (line[i] != ' ') && (line[i] != 9)):
 			i = i + 1
 		int n = i - start
 		char* word = malloc(n + 1)
@@ -124,13 +124,13 @@ int wmeta_valid_dotted_name(char* s):
 	while (s[i] != 0):
 		char ch = s[i]
 		if (segment_start):
-			if ((('a' <= ch) & (ch <= 'z')) | (ch == '_')):
+			if ((('a' <= ch) && (ch <= 'z')) || (ch == '_')):
 				segment_start = 0
 			else:
 				return 0
 		else if (ch == '.'):
 			segment_start = 1
-		else if ((('a' <= ch) & (ch <= 'z')) | (('0' <= ch) & (ch <= '9')) | (ch == '_')):
+		else if ((('a' <= ch) && (ch <= 'z')) || (('0' <= ch) && (ch <= '9')) || (ch == '_')):
 			pass
 		else:
 			return 0
@@ -144,10 +144,10 @@ int wmeta_valid_dotted_name(char* s):
 # wmeta_scan_pos. Returns -1 when s[i] is not a digit.
 int wmeta_scan_pos
 int wmeta_scan_number(char* s, int i):
-	if ((s[i] < '0') | (s[i] > '9')):
+	if ((s[i] < '0') || (s[i] > '9')):
 		return -1
 	int value = 0
-	while (('0' <= s[i]) & (s[i] <= '9')):
+	while (('0' <= s[i]) && (s[i] <= '9')):
 		value = value * 10 + (s[i] - '0')
 		i = i + 1
 	wmeta_scan_pos = i
@@ -186,7 +186,7 @@ wmeta_constraint* wmeta_parse_constraint(char* s):
 	if (s[0] == '='):
 		kind = '='
 		rest = s + 1
-	else if ((s[0] == '>') & (s[1] == '=')):
+	else if ((s[0] == '>') && (s[1] == '=')):
 		kind = '>'
 		rest = s + 2
 	else if (s[0] == '^'):
@@ -240,7 +240,7 @@ int wmeta_arch_segment(char* path):
 		if (starts_with(path + i, c"__arch__")):
 			int at_boundary = (i == 0) | (path[i - 1] == '/')
 			char after = path[i + 8]
-			if (at_boundary & ((after == '/') | (after == 0))):
+			if (at_boundary & ((after == '/') || (after == 0))):
 				return i
 		i = i + 1
 	return -1
@@ -334,7 +334,7 @@ wmeta_package* wmeta_parse(wmeta_check* check, char* meta_path):
 	for char* raw in lines:
 		int indented = (raw[0] == 9) | (raw[0] == ' ')
 		char* line = wmeta_trim(raw)
-		if ((line[0] == 0) | (line[0] == '#')):
+		if ((line[0] == 0) || (line[0] == '#')):
 			pass
 		else if (indented == 0):
 			section = 0

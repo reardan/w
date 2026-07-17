@@ -41,7 +41,7 @@ void vfprintf(int fd, char* fmt, int* args, int num_args):
 	int i = 0
 	int used = 0
 	while (fmt[i] != 0):
-		if ((fmt[i] == '%') & (fmt[i + 1] != 0)):
+		if ((fmt[i] == '%') && (fmt[i + 1] != 0)):
 			int verb = fmt[i + 1]
 			i = i + 2
 			if (verb == '%'):

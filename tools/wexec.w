@@ -199,7 +199,7 @@ int wexec_str_contains(char* haystack, char* needle):
 	int i = 0
 	while (haystack[i] != 0):
 		int j = 0
-		while ((j < n) & (haystack[i + j] == needle[j])):
+		while ((j < n) && (haystack[i + j] == needle[j])):
 			j = j + 1
 		if (j == n):
 			return 1
@@ -443,7 +443,7 @@ char* wexec_stamp_path(char* name):
 	int i = 0
 	while (name[i] != 0):
 		char c = name[i]
-		if ((c == '/') | (c == ':') | (c == 92)):
+		if ((c == '/') || (c == ':') || (c == 92)):
 			string_append_char(s, '_')
 		else:
 			string_append_char(s, c)
@@ -605,7 +605,7 @@ void wexec_deps_store(char* arch, char* root, wexec_deps_entry* entry):
 # "<arch> <root>"; a record without the arch column (or a duplicate) is
 # dropped, so caches written by older executors simply recompute.
 void wexec_deps_load_entry(int kind, char* record, char* digest, string_builder* blob):
-	if ((record == 0) | (digest == 0)):
+	if ((record == 0) || (digest == 0)):
 		return
 	int space = 0
 	int i = 0
@@ -654,7 +654,7 @@ void wexec_deps_load():
 		int c = text[i]
 		if (c == 0):
 			at_end = 1
-		if ((c == 10) | (c == 0)):
+		if ((c == 10) || (c == 0)):
 			char* entry = line.data
 			if (starts_with(entry, c"R ") | starts_with(entry, c"X ")):
 				wexec_deps_load_entry(kind, record, digest, blob)
@@ -1298,7 +1298,7 @@ char* wexec_resolve_program(char* name):
 	int at_end = 0
 	while (at_end == 0):
 		string_clear(candidate)
-		while ((path[p] != path_sep) & (path[p] != 0)):
+		while ((path[p] != path_sep) && (path[p] != 0)):
 			string_append_char(candidate, path[p])
 			p = p + 1
 		if (path[p] == 0):

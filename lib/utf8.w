@@ -10,13 +10,13 @@ int utf8_validate_bytes(char* data, int length):
 		int codepoint = 0
 		if (c < 128):
 			i = i + 1
-		else if ((c >= 194) & (c <= 223)):
+		else if ((c >= 194) && (c <= 223)):
 			need = 1
 			codepoint = c & 31
-		else if ((c >= 224) & (c <= 239)):
+		else if ((c >= 224) && (c <= 239)):
 			need = 2
 			codepoint = c & 15
-		else if ((c >= 240) & (c <= 244)):
+		else if ((c >= 240) && (c <= 244)):
 			need = 3
 			codepoint = c & 7
 		else:
@@ -27,17 +27,17 @@ int utf8_validate_bytes(char* data, int length):
 			int j = 1
 			while (j <= need):
 				int d = data[i + j] & 255
-				if ((d < 128) | (d > 191)):
+				if ((d < 128) || (d > 191)):
 					return 0
 				codepoint = (codepoint << 6) | (d & 63)
 				j = j + 1
-			if ((need == 1) & (codepoint < 128)):
+			if ((need == 1) && (codepoint < 128)):
 				return 0
-			if ((need == 2) & (codepoint < 2048)):
+			if ((need == 2) && (codepoint < 2048)):
 				return 0
-			if ((need == 3) & (codepoint < 65536)):
+			if ((need == 3) && (codepoint < 65536)):
 				return 0
-			if ((codepoint >= 55296) & (codepoint <= 57343)):
+			if ((codepoint >= 55296) && (codepoint <= 57343)):
 				return 0
 			if (codepoint > 1114111):
 				return 0
@@ -110,9 +110,9 @@ int utf8_encode(char* out, int codepoint):
 
 
 int utf8_is_boundary(string s, int byte_index):
-	if ((byte_index < 0) | (byte_index > s.length)):
+	if ((byte_index < 0) || (byte_index > s.length)):
 		return 0
-	if ((byte_index == 0) | (byte_index == s.length)):
+	if ((byte_index == 0) || (byte_index == s.length)):
 		return 1
 	int c = s.data[byte_index] & 255
 	return (c < 128) | (c > 191)

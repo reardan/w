@@ -70,7 +70,7 @@ void bignum_set_zero(bignum* a):
 
 # Drop leading zero limbs so n is the true significant-limb count.
 void bignum_normalize(bignum* a):
-	while ((a.n > 0) & (a.limbs[a.n - 1] == 0)):
+	while ((a.n > 0) && (a.limbs[a.n - 1] == 0)):
 		a.n = a.n - 1
 
 
@@ -134,9 +134,9 @@ void bignum_cselect(int bit, bignum* dst, bignum* src):
 int bignum_cmp(bignum* a, bignum* b):
 	int na = a.n
 	int nb = b.n
-	while ((na > 0) & (a.limbs[na - 1] == 0)):
+	while ((na > 0) && (a.limbs[na - 1] == 0)):
 		na = na - 1
-	while ((nb > 0) & (b.limbs[nb - 1] == 0)):
+	while ((nb > 0) && (b.limbs[nb - 1] == 0)):
 		nb = nb - 1
 	if (na != nb):
 		if (na < nb):
@@ -156,7 +156,7 @@ int bignum_cmp(bignum* a, bignum* b):
 
 int bignum_bit_length(bignum* a):
 	int i = a.n - 1
-	while ((i >= 0) & (a.limbs[i] == 0)):
+	while ((i >= 0) && (a.limbs[i] == 0)):
 		i = i - 1
 	if (i < 0):
 		return 0
@@ -258,7 +258,7 @@ void bignum_sub_small(bignum* a, int v):
 	int base = 1 << 15
 	int borrow = v
 	int i = 0
-	while ((borrow != 0) & (i < a.n)):
+	while ((borrow != 0) && (i < a.n)):
 		int d = a.limbs[i] - (borrow & BIGNUM_LIMB_MASK())
 		borrow = borrow >> 15
 		if (d < 0):

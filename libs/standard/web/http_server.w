@@ -525,16 +525,16 @@ void server_response_free(ServerResponse* resp):
 # part (RFC 9112 3). Fills req.method/target/http_minor. Returns 1/0.
 int server_parse_request_line(char* line, ServerRequest* req):
 	int i = 0
-	while ((line[i] != 0) & (line[i] != ' ')):
+	while ((line[i] != 0) && (line[i] != ' ')):
 		i = i + 1
-	if ((line[i] != ' ') | (i == 0)):
+	if ((line[i] != ' ') || (i == 0)):
 		return 0
 	char* method = substring(line, 0, i)
 	int target_start = i + 1
 	i = target_start
-	while ((line[i] != 0) & (line[i] != ' ')):
+	while ((line[i] != 0) && (line[i] != ' ')):
 		i = i + 1
-	if ((line[i] != ' ') | (i == target_start)):
+	if ((line[i] != ' ') || (i == target_start)):
 		free(method)
 		return 0
 	char* target = substring(line, target_start, i)
@@ -573,7 +573,7 @@ void server_split_target(ServerRequest* req):
 		req.query = strclone(c"")
 		return
 	int i = 0
-	while ((target[i] != 0) & (target[i] != '?')):
+	while ((target[i] != 0) && (target[i] != '?')):
 		i = i + 1
 	req.path = substring(target, 0, i)
 	if (target[i] == '?'):
@@ -742,7 +742,7 @@ ServerRequest* server_read_request(ConnectionContext* c):
 			return req
 	char* te = server_request_header(req, c"transfer-encoding")
 	char* cl = server_request_header(req, c"content-length")
-	if ((te != 0) & (cl != 0)):
+	if ((te != 0) && (cl != 0)):
 		# Ambiguous framing (RFC 9112 6.3 request smuggling hardening):
 		# fail closed rather than guess which header the peer meant.
 		req.error = server_error_bad_request()
@@ -1289,7 +1289,7 @@ void server_serve_connection(ServerContext* s, ConnectionContext* c):
 # connections accepted.
 int server_context_accept_loop(ServerContext* s, int max_connections):
 	int served = 0
-	while ((max_connections <= 0) | (served < max_connections)):
+	while ((max_connections <= 0) || (served < max_connections)):
 		sockaddr_in peer
 		int conn = socket_accept_connection_from(s.listener_fd, &peer)
 		if (conn < 0):

@@ -78,8 +78,8 @@ void sse_child_read_request(int conn):
 			total = total + got
 			int i = 0
 			while (i + 3 < total):
-				if ((buf[i] == 13) & (buf[i + 1] == 10)):
-					if ((buf[i + 2] == 13) & (buf[i + 3] == 10)):
+				if ((buf[i] == 13) && (buf[i + 1] == 10)):
+					if ((buf[i + 2] == 13) && (buf[i + 3] == 10)):
 						done = 1
 						i = total
 					else:
