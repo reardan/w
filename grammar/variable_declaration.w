@@ -30,7 +30,7 @@ int inferred_declaration():
 	if (is_ident == 0):
 		return 0
 	# ':=' can only follow directly (nextc is its ':') or after blanks
-	if ((nextc != ':') & (nextc != ' ') & (nextc != 9)):
+	if ((nextc != ':') && (nextc != ' ') && (nextc != 9)):
 		return 0
 	char* name = strclone(token)
 	char* save = generic_reparse_save()

@@ -97,9 +97,9 @@ int type_name():
 			diag_part(token)
 			error(c"'")
 		int checked_type = type_unqualified(type)
-		if ((checked_type == float64_type) & (word_size != 8)):
+		if ((checked_type == float64_type) && (word_size != 8)):
 			error(c"float64 requires the x64 target")
-		if (((checked_type == int64_type) | (checked_type == uint64_type)) & (word_size != 8)):
+		if (((checked_type == int64_type) || (checked_type == uint64_type)) && (word_size != 8)):
 			error(c"int64 requires the x64 target")
 
 		get_token()

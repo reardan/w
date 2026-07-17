@@ -219,7 +219,7 @@ void parse_fixed_call_argument(int callee_sym, int signature_type, char* callee_
 	int arg_type = expression()
 	arg_type = promote(arg_type)
 	check_call_argument(callee_sym, signature_type, callee_name, arg_index, arg_type)
-	if ((callee_sym >= 0) | (signature_type >= 0)):
+	if ((callee_sym >= 0) || (signature_type >= 0)):
 		int param_type = -1
 		if (callee_sym >= 0):
 			param_type = sym_param_type(callee_sym, arg_index)
@@ -258,7 +258,7 @@ void parse_variadic_element_argument(char* callee_name, int element_type, int ar
 # which has no argument list to parse). passed_args is the final
 # argument count; frees callee_name.
 int finish_call(int callee_type, int s, int expected_args, int callee_sym, char* callee_name, int declared_return, int passed_args, int has_return_buffer, int w_variadic_fixed):
-	if ((expected_args >= 0) & (w_variadic_fixed < 0)):
+	if ((expected_args >= 0) && (w_variadic_fixed < 0)):
 		if (passed_args != expected_args):
 			# Asm runtime stubs that record an arity (syscall, syscall7)
 			# load their arguments from fixed stack slots, so a call with
@@ -316,7 +316,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 	if (accept(c")") == 0):
 		int more_args = 1
 		while (more_args):
-			if ((w_variadic_fixed >= 0) & (passed_args >= w_variadic_fixed)):
+			if ((w_variadic_fixed >= 0) && (passed_args >= w_variadic_fixed)):
 				if (variadic_values == 0):
 					fixed_words_end = stack_pos
 				parse_variadic_element_argument(callee_name, variadic_element_type, passed_args)
@@ -375,7 +375,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 	# Missing trailing arguments whose parameters all carry defaults are
 	# filled in with the recorded constants (direct calls only: indirect
 	# calls have no symbol to read the defaults from).
-	if ((w_variadic_fixed < 0) & (callee_sym >= 0) & (expected_args > passed_args)):
+	if ((w_variadic_fixed < 0) && (callee_sym >= 0) && (expected_args > passed_args)):
 		int missing_all_defaulted = 1
 		int check_index = passed_args
 		while (check_index < expected_args):

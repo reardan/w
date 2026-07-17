@@ -1,11 +1,11 @@
 int token_is_float_literal():
-	if ((token[0] < '0') | (token[0] > '9')):
+	if ((token[0] < '0') || (token[0] > '9')):
 		return 0
-	if ((token[0] == '0') & (token[1] == 'x')):
+	if ((token[0] == '0') && (token[1] == 'x')):
 		return 0
 	int i = 0
 	while (token[i]):
-		if ((token[i] == '.') | (token[i] == 'e') | (token[i] == 'E')):
+		if ((token[i] == '.') || (token[i] == 'e') || (token[i] == 'E')):
 			return 1
 		i = i + 1
 	return 0
@@ -23,9 +23,9 @@ int parse_exponent_part(int i):
 	else if (token[i] == '-'):
 		sign = -1
 		i = i + 1
-	if ((token[i] < '0') | (token[i] > '9')):
+	if ((token[i] < '0') || (token[i] > '9')):
 		error(c"invalid float exponent")
-	while ((token[i] >= '0') & (token[i] <= '9')):
+	while ((token[i] >= '0') && (token[i] <= '9')):
 		exponent = exponent * 10 + token[i] - '0'
 		i = i + 1
 	if (token[i] != 0):
@@ -43,7 +43,7 @@ int float32_bits_from_token():
 	int saw_dot = 0
 	int exponent = 0
 	while (token[i]):
-		if ((token[i] >= '0') & (token[i] <= '9')):
+		if ((token[i] >= '0') && (token[i] <= '9')):
 			bignum_mul_small(mantissa, 10)
 			bignum_add_small(mantissa, token[i] - '0')
 			if (saw_dot):
@@ -52,7 +52,7 @@ int float32_bits_from_token():
 			if (saw_dot):
 				error(c"invalid float literal")
 			saw_dot = 1
-		else if ((token[i] == 'e') | (token[i] == 'E')):
+		else if ((token[i] == 'e') || (token[i] == 'E')):
 			exponent = parse_exponent_part(i + 1)
 			i = strlen(token) - 1
 		else:
@@ -118,7 +118,7 @@ void float64_bits_from_token():
 	int saw_dot = 0
 	int exponent = 0
 	while (token[i]):
-		if ((token[i] >= '0') & (token[i] <= '9')):
+		if ((token[i] >= '0') && (token[i] <= '9')):
 			bignum_mul_small(mantissa, 10)
 			bignum_add_small(mantissa, token[i] - '0')
 			if (saw_dot):
@@ -127,7 +127,7 @@ void float64_bits_from_token():
 			if (saw_dot):
 				error(c"invalid float literal")
 			saw_dot = 1
-		else if ((token[i] == 'e') | (token[i] == 'E')):
+		else if ((token[i] == 'e') || (token[i] == 'E')):
 			exponent = parse_exponent_part(i + 1)
 			i = strlen(token) - 1
 		else:

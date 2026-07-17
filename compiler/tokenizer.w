@@ -87,7 +87,7 @@ int get_character():
 		tab_level = 0
 		line_number = line_number + 1
 		column_number = 0
-	else if ((nextc != 0) & (nextc != -1)):
+	else if ((nextc != 0) && (nextc != -1)):
 		# Columns count codepoints, not bytes: a UTF-8 continuation
 		# byte (10xxxxxx) extends the previous character, so it does
 		# not advance the column. Identical to byte counting for
@@ -104,7 +104,7 @@ int get_character():
 	# and can end an indented block with a confusing parse error, so flag it.
 	# nextc is the final character of the file when getc() first reports EOF.
 	if (c == -1):
-		if ((nextc != 10) & (nextc != -1) & (nextc != 0)):
+		if ((nextc != 10) && (nextc != -1) && (nextc != 0)):
 			diag_token_line = line_number + 1
 			diag_token_column = column_number + 1
 			warning(c"warning: file does not end with a newline")
@@ -127,7 +127,7 @@ void takechar():
 # (but NOT the newline itself) 
 # Also append a 0 so the string is zero terminated
 void read_until_end():
-	while (nextc != 10 & nextc != 0):
+	while (nextc != 10 && nextc != 0):
 		takechar()
 	
 	token[token_i] = 0
@@ -197,7 +197,7 @@ void get_token():
 	int prev_whitespace
 	while (w):
 		w = 0
-		while ((nextc == ' ') | (nextc == 9) | (nextc == 10)):
+		while ((nextc == ' ') || (nextc == 9) || (nextc == 10)):
 			prev_whitespace = nextc
 			if(nextc == 10):
 				token_newline = 1
@@ -205,7 +205,7 @@ void get_token():
 			nextc = get_character()
 
 			# Space indentation is invisible to tab_level-based scoping
-			if ((prev_whitespace == 10) & (nextc == ' ')):
+			if ((prev_whitespace == 10) && (nextc == ' ')):
 				if (spaces_warned_line != line_number):
 					spaces_warned_line = line_number
 					diag_token_line = line_number + 1
@@ -216,15 +216,15 @@ void get_token():
 		diag_token_line = line_number + 1
 		diag_token_column = column_number + 1
 		token_start_offset = byte_offset - 1
-		while ((('a' <= nextc) & (nextc <= 'z')) |
-					 (('A' <= nextc) & (nextc <= 'Z')) |
-					 (('0' <= nextc) & (nextc <= '9')) | (nextc == '_')):
+		while ((('a' <= nextc) && (nextc <= 'z')) ||
+					 (('A' <= nextc) && (nextc <= 'Z')) ||
+					 (('0' <= nextc) && (nextc <= '9')) || (nextc == '_')):
 			takechar()
 
 		# Prefixed string literals: s"..." is a UTF-8 string descriptor,
 		# c"..." is the legacy char* literal spelling.
 		if (token_i == 1):
-			if (((token[0] == 's') | (token[0] == 'c')) & (nextc == '"')):
+			if (((token[0] == 's') || (token[0] == 'c')) && (nextc == '"')):
 				takechar()
 				while (nextc != '"'):
 					# EOF inside a prefixed literal used to spin the
@@ -242,7 +242,7 @@ void get_token():
 
 			# f"..." template string: the token carries the opening chunk,
 			# up to the first embedded '{' expression or the closing quote.
-			else if ((token[0] == 'f') & (nextc == '"')):
+			else if ((token[0] == 'f') && (nextc == '"')):
 				takechar()
 				take_template_chunk()
 
@@ -250,25 +250,25 @@ void get_token():
 		# and a signed exponent ('1.5e-3', '2E+10') into one token.
 		# Identifiers cannot start with a digit, so nothing else is affected.
 		if (token_i > 0):
-			if (('0' <= token[0]) & (token[0] <= '9')):
+			if (('0' <= token[0]) && (token[0] <= '9')):
 				if (nextc == '.'):
 					takechar()
-					while ((('a' <= nextc) & (nextc <= 'z')) |
-								 (('A' <= nextc) & (nextc <= 'Z')) |
-								 (('0' <= nextc) & (nextc <= '9')) | (nextc == '_')):
+					while ((('a' <= nextc) && (nextc <= 'z')) ||
+								 (('A' <= nextc) && (nextc <= 'Z')) ||
+								 (('0' <= nextc) && (nextc <= '9')) || (nextc == '_')):
 						takechar()
 				# '0x1e - 2' must stay a hex literal minus 2, so hex tokens
 				# never absorb an exponent sign
-				if ((token[1] != 'x') &
-						((token[token_i - 1] == 'e') | (token[token_i - 1] == 'E'))):
-					if ((nextc == '+') | (nextc == '-')):
+				if ((token[1] != 'x') &&
+						((token[token_i - 1] == 'e') || (token[token_i - 1] == 'E'))):
+					if ((nextc == '+') || (nextc == '-')):
 						takechar()
-						while (('0' <= nextc) & (nextc <= '9')):
+						while (('0' <= nextc) && (nextc <= '9')):
 							takechar()
 
 		if (token_i == 0):
-			while ((nextc == '<') | (nextc == '=') | (nextc == '>') |
-						 (nextc == '|') | (nextc == '&') | (nextc == '!')):
+			while ((nextc == '<') || (nextc == '=') || (nextc == '>') ||
+						 (nextc == '|') || (nextc == '&') || (nextc == '!')):
 				takechar()
 
 		# Compound assignment operators: '+' '-' '*' '%' '^' merge with a
@@ -279,14 +279,14 @@ void get_token():
 		# increment/decrement statement tokens (grammar/increment.w);
 		# spaced spellings ('+ +', '- -') keep lexing as two tokens.
 		if (token_i == 0):
-			if ((nextc == '+') | (nextc == '-') | (nextc == '*') |
-					(nextc == '%') | (nextc == '^')):
+			if ((nextc == '+') || (nextc == '-') || (nextc == '*') ||
+					(nextc == '%') || (nextc == '^')):
 				takechar()
 				if (nextc == '='):
 					takechar()
-				else if ((token[0] == '+') & (nextc == '+')):
+				else if ((token[0] == '+') && (nextc == '+')):
 					takechar()
-				else if ((token[0] == '-') & (nextc == '-')):
+				else if ((token[0] == '-') && (nextc == '-')):
 					takechar()
 
 		# ':=' inferred declaration: ':' merges with a directly following
@@ -330,8 +330,8 @@ void get_token():
 				takechar()
 				if (nextc == '*'):
 					nextc = get_character()
-					while ((nextc != '/') & (nextc != -1)):
-						while ((nextc != '*') & (nextc != -1)):
+					while ((nextc != '/') && (nextc != -1)):
+						while ((nextc != '*') && (nextc != -1)):
 							nextc = get_character()
 						nextc = get_character()
 
@@ -346,7 +346,7 @@ void get_token():
 			else if (nextc == '#'):
 				takechar()
 				nextc = get_character()
-				while((nextc != 10) & (nextc != -1)):
+				while((nextc != 10) && (nextc != -1)):
 					nextc = get_character()
 
 				# nextc = get_character()
@@ -361,7 +361,7 @@ void get_token():
 
 int peek(char *s):
 	int i = 0
-	while ((s[i] == token[i]) & (s[i] != 0)):
+	while ((s[i] == token[i]) && (s[i] != 0)):
 		i = i + 1
 
 	return s[i] == token[i]

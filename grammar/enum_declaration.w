@@ -18,7 +18,7 @@ int enum_declaration():
 			int value_column = diag_token_column
 			get_token()
 			if (accept(c"=")):
-				if ((token[0] == '0') & (token[1] == 'x')):
+				if ((token[0] == '0') && (token[1] == 'x')):
 					int_literal_width_check()
 					value = from_hex(token + 2)
 				else:

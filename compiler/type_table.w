@@ -885,7 +885,7 @@ int types_compatible(int want, int got):
 	# (e.g. FILE* vs _IO_FILE*) must stay interchangeable.
 	int want_base = type_lookup(type_get_name(want))
 	int got_base = type_lookup(type_get_name(got))
-	if ((want_base < 0) | (got_base < 0)):
+	if ((want_base < 0) || (got_base < 0)):
 		return 0
 	return type_canonical(want_base) == type_canonical(got_base)
 
@@ -919,7 +919,7 @@ int type_decays_to_pointer(int want, int got):
 	# of the element's base (e.g. FILE* from _IO_FILE[]) stays valid.
 	int want_base = type_lookup(type_get_name(want))
 	int element_base = type_lookup(type_get_name(element))
-	if ((want_base < 0) | (element_base < 0)):
+	if ((want_base < 0) || (element_base < 0)):
 		return 0
 	return type_canonical(want_base) == type_canonical(element_base)
 
@@ -930,10 +930,10 @@ int type_decays_to_pointer(int want, int got):
 # their own indices, so float* correctly reads as kind 0.
 int type_float_kind(int t):
 	t = type_canonical(t)
-	if ((t == float32_type) | (t == float_type) |
-			(t == float16_type) | (t == float32_value_type)):
+	if ((t == float32_type) || (t == float_type) ||
+			(t == float16_type) || (t == float32_value_type)):
 		return 1
-	if ((t == float64_type) | (t == float64_value_type)):
+	if ((t == float64_type) || (t == float64_value_type)):
 		return 2
 	return 0
 

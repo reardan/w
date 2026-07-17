@@ -268,7 +268,7 @@ int list_callback_return_type(int got):
 		int callee = sym_lookup(last_identifier)
 		if (callee >= 0):
 			int declared = load_int(table + callee + 6)
-			if ((declared >= 0) & (declared != 4)):
+			if ((declared >= 0) && (declared != 4)):
 				return type_unqualified(declared)
 		return type_lookup(c"int")
 	int sig = type_function_pointer_signature(type_real(got))

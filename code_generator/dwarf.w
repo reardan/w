@@ -36,7 +36,7 @@ void debug_files_ensure():
 
 
 char* debug_file_name(int index):
-	if ((index < 0) | (index >= debug_file_count)):
+	if ((index < 0) || (index >= debug_file_count)):
 		return c""
 	return cast(char*, load_ptr(debug_files + index * __word_size__))
 
@@ -86,7 +86,7 @@ void debug_line_note(int stmt_stack_pos):
 		int prev_line = load_int(debug_line_lines + prev * 4)
 		int prev_file = load_int(debug_line_file_indexes + prev * 4)
 		# Same source position again: nothing new to record
-		if ((prev_line == line) & (prev_file == file_index)):
+		if ((prev_line == line) && (prev_file == file_index)):
 			return;
 		# Same address: the earlier statement produced no code, replace it
 		if (load_int(debug_line_addresses + prev * 4) == codepos):
@@ -197,10 +197,10 @@ void emit_sleb(int v):
 	while (1):
 		int b = v & 127
 		v = v >> 7
-		if ((v == 0) & ((b & 64) == 0)):
+		if ((v == 0) && ((b & 64) == 0)):
 			emit_int8(b)
 			return;
-		if ((v == -1) & ((b & 64) != 0)):
+		if ((v == -1) && ((b & 64) != 0)):
 			emit_int8(b)
 			return;
 		emit_int8(b | 128)

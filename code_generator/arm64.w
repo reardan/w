@@ -59,7 +59,7 @@ int op(int msb, int low):
 # PC-relative literal (ldr; b over the 8-byte word) so negative values and
 # the full 32-bit range are handled uniformly.
 void arm64_load_scratch(int reg, int v):
-	if ((v >= 0) & (v <= 65535)):
+	if ((v >= 0) && (v <= 65535)):
 		a64(op(0xd2, 0x800000) | (v << 5) | reg)   # movz Xreg, #v
 		return
 	a64(op(0x58, 0x000040) | reg)   # ldr Xreg, [pc, #8]
@@ -72,7 +72,7 @@ void arm64_load_scratch(int reg, int v):
 # materialized register offset.
 void arm64_ldr_reg_wsp(int rt, int k):
 	int widx = k >> 3
-	if ((k >= 0) & ((k & 7) == 0) & (widx <= 4095)):
+	if ((k >= 0) && ((k & 7) == 0) && (widx <= 4095)):
 		a64(op(0xf9, 0x400380) | (widx << 10) | rt)   # ldr Xrt,[x28,#k]
 		return
 	arm64_load_scratch(9, k)
@@ -81,7 +81,7 @@ void arm64_ldr_reg_wsp(int rt, int k):
 
 void arm64_str_reg_wsp(int rt, int k):
 	int widx = k >> 3
-	if ((k >= 0) & ((k & 7) == 0) & (widx <= 4095)):
+	if ((k >= 0) && ((k & 7) == 0) && (widx <= 4095)):
 		a64(op(0xf9, 0x000380) | (widx << 10) | rt)   # str Xrt,[x28,#k]
 		return
 	arm64_load_scratch(9, k)
@@ -93,10 +93,10 @@ void arm64_str_reg_wsp(int rt, int k):
 # bit 0 (0x529, copied from the +1 increment), so every even immediate
 # OR'd in below encoded #(imm|1).
 void arm64_add_x9_imm(int imm):
-	if ((imm >= 0) & (imm <= 4095)):
+	if ((imm >= 0) && (imm <= 4095)):
 		a64(op(0x91, 0x000129) | (imm << 10))   # add x9,x9,#imm
 		return
-	if ((imm < 0) & (0 - imm <= 4095)):
+	if ((imm < 0) && (0 - imm <= 4095)):
 		a64(op(0xd1, 0x000129) | ((0 - imm) << 10))   # sub x9,x9,#(-imm)
 		return
 	arm64_load_scratch(10, imm)
@@ -128,10 +128,10 @@ void arm64_push_imm(int v):
 
 
 void arm64_add_eax_int32(int v):
-	if ((v >= 0) & (v <= 4095)):
+	if ((v >= 0) && (v <= 4095)):
 		a64(op(0x91, 0x000000) | (v << 10))   # add x0,x0,#v
 		return
-	if ((v < 0) & (0 - v <= 4095)):
+	if ((v < 0) && (0 - v <= 4095)):
 		a64(op(0xd1, 0x000000) | ((0 - v) << 10))   # sub x0,x0,#(-v)
 		return
 	arm64_load_scratch(9, v)
@@ -139,10 +139,10 @@ void arm64_add_eax_int32(int v):
 
 
 void arm64_add_ebx_int32(int v):
-	if ((v >= 0) & (v <= 4095)):
+	if ((v >= 0) && (v <= 4095)):
 		a64(op(0x91, 0x000021) | (v << 10))   # add x1,x1,#v
 		return
-	if ((v < 0) & (0 - v <= 4095)):
+	if ((v < 0) && (0 - v <= 4095)):
 		a64(op(0xd1, 0x000021) | ((0 - v) << 10))   # sub x1,x1,#(-v)
 		return
 	arm64_load_scratch(9, v)
@@ -158,7 +158,7 @@ void arm64_imul_eax_int32(int v):
 
 void arm64_be_pop(int n):
 	int b = n << 3
-	if ((b >= 0) & (b <= 4095)):
+	if ((b >= 0) && (b <= 4095)):
 		a64(op(0x91, 0x00039c) | (b << 10))   # add x28,x28,#b
 		return
 	arm64_load_scratch(9, b)
@@ -166,7 +166,7 @@ void arm64_be_pop(int n):
 
 
 void arm64_lea_eax_esp_plus(int k):
-	if ((k >= 0) & (k <= 4095)):
+	if ((k >= 0) && (k <= 4095)):
 		a64(op(0x91, 0x000380) | (k << 10))   # add x0,x28,#k
 		return
 	arm64_load_scratch(9, k)
@@ -175,7 +175,7 @@ void arm64_lea_eax_esp_plus(int k):
 
 void arm64_push_eax_plus(int v):
 	int widx = v >> 3
-	if ((v >= 0) & ((v & 7) == 0) & (widx <= 4095)):
+	if ((v >= 0) && ((v & 7) == 0) && (widx <= 4095)):
 		a64(op(0xf9, 0x400009) | (widx << 10))   # ldr x9,[x0,#v]
 	else:
 		arm64_load_scratch(10, v)
