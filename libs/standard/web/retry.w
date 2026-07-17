@@ -47,7 +47,7 @@ struct retry_policy:
 int retry_retryable_default(int status):
 	if (status == 429):
 		return 1
-	if ((status >= 500) & (status <= 599)):
+	if ((status >= 500) && (status <= 599)):
 		return 1
 	return 0
 
@@ -128,28 +128,28 @@ int retry_full_jitter(int computed):
 /* Retry-After parsing */
 
 int retry_is_digit(int c):
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return 1
 	return 0
 
 
 int retry_is_alpha(int c):
-	if ((c >= 'a') & (c <= 'z')):
+	if ((c >= 'a') && (c <= 'z')):
 		return 1
-	if ((c >= 'A') & (c <= 'Z')):
+	if ((c >= 'A') && (c <= 'Z')):
 		return 1
 	return 0
 
 
 int retry_lower(int c):
-	if ((c >= 'A') & (c <= 'Z')):
+	if ((c >= 'A') && (c <= 'Z')):
 		return c + 32
 	return c
 
 
 void retry_skip_ws(char* s, int* pos):
 	int p = *pos
-	while ((s[p] == ' ') | (s[p] == 9)):
+	while ((s[p] == ' ') || (s[p] == 9)):
 		p = p + 1
 	*pos = p
 
@@ -177,29 +177,29 @@ int retry_month_index(char* s, int at):
 	int a = retry_lower(s[at] & 255)
 	int b = retry_lower(s[at + 1] & 255)
 	int c = retry_lower(s[at + 2] & 255)
-	if ((a == 'j') & (b == 'a') & (c == 'n')):
+	if ((a == 'j') && (b == 'a') && (c == 'n')):
 		return 1
-	if ((a == 'f') & (b == 'e') & (c == 'b')):
+	if ((a == 'f') && (b == 'e') && (c == 'b')):
 		return 2
-	if ((a == 'm') & (b == 'a') & (c == 'r')):
+	if ((a == 'm') && (b == 'a') && (c == 'r')):
 		return 3
-	if ((a == 'a') & (b == 'p') & (c == 'r')):
+	if ((a == 'a') && (b == 'p') && (c == 'r')):
 		return 4
-	if ((a == 'm') & (b == 'a') & (c == 'y')):
+	if ((a == 'm') && (b == 'a') && (c == 'y')):
 		return 5
-	if ((a == 'j') & (b == 'u') & (c == 'n')):
+	if ((a == 'j') && (b == 'u') && (c == 'n')):
 		return 6
-	if ((a == 'j') & (b == 'u') & (c == 'l')):
+	if ((a == 'j') && (b == 'u') && (c == 'l')):
 		return 7
-	if ((a == 'a') & (b == 'u') & (c == 'g')):
+	if ((a == 'a') && (b == 'u') && (c == 'g')):
 		return 8
-	if ((a == 's') & (b == 'e') & (c == 'p')):
+	if ((a == 's') && (b == 'e') && (c == 'p')):
 		return 9
-	if ((a == 'o') & (b == 'c') & (c == 't')):
+	if ((a == 'o') && (b == 'c') && (c == 't')):
 		return 10
-	if ((a == 'n') & (b == 'o') & (c == 'v')):
+	if ((a == 'n') && (b == 'o') && (c == 'v')):
 		return 11
-	if ((a == 'd') & (b == 'e') & (c == 'c')):
+	if ((a == 'd') && (b == 'e') && (c == 'c')):
 		return 12
 	return (-1)
 
@@ -264,16 +264,16 @@ int retry_days_from_civil(int y, int m, int d):
 # Assembles validated fields into Unix seconds, or -1 when out of range
 # or before the epoch.
 int retry_fields_to_unix(int year, int month, int day, int hh, int mm, int ss):
-	if ((month < 1) | (month > 12)):
+	if ((month < 1) || (month > 12)):
 		return (-1)
-	if ((day < 1) | (day > 31)):
+	if ((day < 1) || (day > 31)):
 		return (-1)
-	if ((hh < 0) | (hh > 23)):
+	if ((hh < 0) || (hh > 23)):
 		return (-1)
-	if ((mm < 0) | (mm > 59)):
+	if ((mm < 0) || (mm > 59)):
 		return (-1)
 	# Allow a leap second (60) but fold it back to 59.
-	if ((ss < 0) | (ss > 60)):
+	if ((ss < 0) || (ss > 60)):
 		return (-1)
 	if (ss == 60):
 		ss = 59
@@ -324,13 +324,13 @@ int retry_http_date_to_unix(char* text):
 		# IMF-fixdate or RFC 850: day sep month sep year time.
 		if (retry_read_uint(text, &pos, &day) == 0):
 			return (-1)
-		if ((text[pos] != '-') & (text[pos] != ' ')):
+		if ((text[pos] != '-') && (text[pos] != ' ')):
 			return (-1)
 		pos = pos + 1
 		month = retry_read_month(text, &pos)
 		if (month < 0):
 			return (-1)
-		if ((text[pos] != '-') & (text[pos] != ' ')):
+		if ((text[pos] != '-') && (text[pos] != ' ')):
 			return (-1)
 		pos = pos + 1
 		int ny = retry_read_uint(text, &pos, &year)
@@ -365,7 +365,7 @@ int retry_after_seconds(char* value, int now):
 	int all_digits = 0
 	if (p > start):
 		int q = p
-		while ((value[q] == ' ') | (value[q] == 9)):
+		while ((value[q] == ' ') || (value[q] == 9)):
 			q = q + 1
 		if (value[q] == 0):
 			all_digits = 1

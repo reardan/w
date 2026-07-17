@@ -115,7 +115,7 @@ void test_zero_unknown_wv2():
 			# whose target stays inside this function is that idiom, not a
 			# real call — skip the data bytes between the call and its
 			# target so the sweep resumes at real code.
-			if (strcmp(insn.mnemonic, c"call") == 0 & insn.branch_target > sym.value + pos + n & insn.branch_target <= sym.value + sym.size):
+			if (strcmp(insn.mnemonic, c"call") == 0 & insn.branch_target > sym.value + pos + n && insn.branch_target <= sym.value + sym.size):
 				count = count + 1
 				pos = insn.branch_target - sym.value
 				continue

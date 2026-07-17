@@ -52,6 +52,40 @@ is a queue, not an archive.
   `libs/asm/x86_decode.w` 36, `libs/extras/parser_generator/lexer.w` 27,
   `grammar/string_literal.w` 27, `compiler/tokenizer.w` 24); flipping
   the default comes after that.
+- **`w check --bool-ops` JSON site locations don't point at the
+  operator, and chained joins under-report — both bit the wave-2
+  stage-2 chunk sweep (2026-07-17).** (1) The reported `line`/`column`
+  for a bool-bitwise warning is the position of the *next* token after
+  the whole `if`/`while` condition finishes parsing (typically the
+  first token of the block body, i.e. usually condition-line-plus-one),
+  not the position of the `&`/`|` itself — the warning fires from
+  `grammar/bitwise_and_expr.w`/`bitwise_or_expr.w` after the right
+  operand's `equality_expr()`/`bitwise_and_expr()` call already
+  returned, using whatever token the tokenizer has advanced to by
+  then. Matching a `--json` site back to source therefore needs a
+  backward (and sometimes forward) scan for the actual condition, not
+  a direct line lookup. (2) For a same-operator chain of 3+ terms
+  (`A & B & C`), only the *first* pairing (`A & B`) can ever warn:
+  `binary2_finish_pop`/`binary2_finish` (`grammar/binary_op.w`) return
+  the fixed placeholder type `3` regardless of the actual operand
+  types, and `3` satisfies neither `operand_is_bool_lvalue` nor the
+  `--bool-ops` value check, so every subsequent iteration in the same
+  `while (accept(...))` loop sees a non-bool left operand and never
+  warns again — even when every remaining term is a plain comparison.
+  One useful side effect this exposed: converting an inner `&`/`|` to
+  `&&`/`||` can *unlock* an outer bitwise join that previously looked
+  non-bool (logical `&&`/`||` do return a real bool-valued result, so
+  `(A && B) | C` becomes a genuine warn/convert candidate once the
+  inner pair is fixed) — a mechanical sweep needs at least one
+  re-enumeration pass after edits to catch these, not just a single
+  before/after diff. Together these meant per-file site counts from
+  `--bool-ops` undercounted the true mechanical worklist by chain
+  members; a source-level scan (matching each `if`/`while` condition's
+  paren-balanced operand pairs) found ~20% more genuine sites than the
+  compiler's own warning count in the affected files. Worth fixing
+  before 2f flips the default: emit the warning at the operator's own
+  position, and don't let the chain's running type erase bool-ness so
+  every qualifying pair in a chain gets its own diagnostic.
 - **`T* + int` is a raw, unscaled byte offset for every pointee width,
   and nothing warns — the rule is now documented, the warning/intrinsic
   is not.** Found 2026-07-16 writing `libs/extras/compress/

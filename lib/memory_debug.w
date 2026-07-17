@@ -136,7 +136,7 @@ void* debug_malloc(int size):
 	int region_size = (payload_pages + 1) * page
 	int flags = 34 /* MAP_PRIVATE|MAP_ANONYMOUS */
 	int region = mmap(0, region_size, 3, flags)
-	if ((region < 0) & (region > -4096)):
+	if ((region < 0) && (region > -4096)):
 		st_write_cstr(c"memory_debug: out of memory (mmap failed)\x0a")
 		return cast(void*, 0)
 	int guard_addr = region + payload_pages * page

@@ -100,7 +100,7 @@ int repl_read_plain(char* prompt, char* buf, int size):
 	int c = getchar(0)
 	if (c == -1):
 		return -1
-	while ((c != 10) & (c != -1)):
+	while ((c != 10) && (c != -1)):
 		if (len < size - 1):
 			buf[len] = c
 			len = len + 1
@@ -150,7 +150,7 @@ int repl_count_leading_tabs(char* s):
 # 1 when the line's first token is exactly word (after leading whitespace).
 int repl_first_token_is(char* s, char* word):
 	int i = 0
-	while ((s[i] == 9) | (s[i] == ' ')):
+	while ((s[i] == 9) || (s[i] == ' ')):
 		i = i + 1
 	int j = 0
 	while (word[j]):
@@ -158,8 +158,8 @@ int repl_first_token_is(char* s, char* word):
 			return 0
 		j = j + 1
 	char c = s[i + j]
-	if ((('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) |
-			(('0' <= c) & (c <= '9')) | (c == '_')):
+	if ((('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) ||
+			(('0' <= c) && (c <= '9')) || (c == '_')):
 		return 0
 	return 1
 
@@ -255,7 +255,7 @@ void repl_echo(int value, int type):
 		float* p = cast(float*, &value)
 		println(ftoa(*p))
 		return;
-	if ((word_size == 8) & (type == float64_value_type)):
+	if ((word_size == 8) && (type == float64_value_type)):
 		println(repl_float64_to_string(value))
 		return;
 	if (type_is_string(type)):
@@ -276,7 +276,7 @@ void repl_echo(int value, int type):
 		else:
 			println(hex(value))
 		return;
-	if ((pointers > 0) | (type == 4)):
+	if ((pointers > 0) || (type == 4)):
 		println(hex(value))
 		return;
 	println(itoa(value))
@@ -303,7 +303,7 @@ int repl_command_is(char* entry, char* cmd):
 # repl_entry is next cleared.
 char* repl_command_arg(char* entry, char* cmd):
 	char* rest = entry + strlen(cmd)
-	while ((rest[0] == ' ') | (rest[0] == 9)):
+	while ((rest[0] == ' ') || (rest[0] == 9)):
 		rest = rest + 1
 	return rest
 
@@ -311,7 +311,7 @@ char* repl_command_arg(char* entry, char* cmd):
 # Trims trailing spaces/tabs from s in place.
 void repl_rtrim(char* s):
 	int n = strlen(s)
-	while ((n > 0) & ((s[n - 1] == ' ') | (s[n - 1] == 9))):
+	while ((n > 0) && ((s[n - 1] == ' ') || (s[n - 1] == 9))):
 		n = n - 1
 		s[n] = 0
 
@@ -403,7 +403,7 @@ void repl_cmd_save(char* path):
 	if (path[0] == 0):
 		println(c"usage: :save <file>")
 		return;
-	if ((repl_staging_dir == 0) | (repl_staged_count == 0)):
+	if ((repl_staging_dir == 0) || (repl_staged_count == 0)):
 		println(c"no entries to save yet")
 		return;
 	int out = create_file(path, 511)
@@ -442,7 +442,7 @@ void repl_handle_export(char* arg):
 		println(c"usage: !export NAME=VALUE")
 		return;
 	int i = 0
-	while ((arg[i] != 0) & (arg[i] != '=')):
+	while ((arg[i] != 0) && (arg[i] != '=')):
 		i = i + 1
 	if (arg[i] != '='):
 		println(c"usage: !export NAME=VALUE")
@@ -509,7 +509,7 @@ char* repl_format_echo(int value, int type):
 	if (type == float32_value_type):
 		float* p = cast(float*, &value)
 		return ftoa(*p)
-	if ((word_size == 8) & (type == float64_value_type)):
+	if ((word_size == 8) && (type == float64_value_type)):
 		return repl_float64_to_string(value)
 	if (type_is_string(type)):
 		string_builder* b = string_new()
@@ -532,7 +532,7 @@ char* repl_format_echo(int value, int type):
 		if (rendered != 0):
 			return rendered
 		return hex(value)
-	if ((pointers > 0) | (type == 4)):
+	if ((pointers > 0) || (type == 4)):
 		return hex(value)
 	return itoa(value)
 
@@ -647,7 +647,7 @@ list[char*] repl_collect_e_entries():
 	while (i < args_count()):
 		char* body = args_flag_body(args_get(i))
 		if (body != 0):
-			if ((body[0] == 'e') & ((body[1] == 0) | (body[1] == '='))):
+			if ((body[0] == 'e') && ((body[1] == 0) || (body[1] == '='))):
 				char* value = 0
 				if (body[1] == '='):
 					value = body + 2

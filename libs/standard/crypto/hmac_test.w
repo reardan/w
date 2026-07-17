@@ -24,7 +24,7 @@ char* hmact_hex(char* mac, int len):
 
 
 int hmact_nibble(int c):
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return c - '0'
 	return c - 'a' + 10
 

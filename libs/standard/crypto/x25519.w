@@ -306,7 +306,7 @@ void x25519_fe_invert(int* out, int* z):
 	int i = 253
 	while (i >= 0):
 		x25519_fe_sq(c, c)
-		if ((i != 2) & (i != 4)):
+		if ((i != 2) && (i != 4)):
 			x25519_fe_mul(c, c, z)
 		i = i - 1
 	x25519_fe_copy(out, c)

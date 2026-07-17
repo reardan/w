@@ -85,7 +85,7 @@ void asm_fuzz_arm64_mutate_operand(asm_operand* op):
 				op.index = fuzz_range(31)
 			return
 		int width = op.size
-		if (width != 4 & width != 8):
+		if (width != 4 && width != 8):
 			width = 8
 		op.disp = fuzz_range(32) * width
 
@@ -138,7 +138,7 @@ void test_arm64_fuzz_corpus():
 		asm_arm64_decode(b1.data, b1.length, 0, &insn2)
 		asm_buffer* b2 = asm_buffer_new()
 		asm_arm64_encode(b2, &insn2)
-		if (b1.length != 4 | b2.length != 4 | asm_fuzz_bytes4_equal(b1.data, b2.data) == 0):
+		if (b1.length != 4 || b2.length != 4 | asm_fuzz_bytes4_equal(b1.data, b2.data) == 0):
 			print2(c"asm fuzz mismatch (arm64) seed=")
 			print2(itoa(seed))
 			print2(c" iter=")
@@ -226,7 +226,7 @@ void test_arm64_opaque_raw_roundtrip():
 		int which = fuzz_range(3)
 		int w = 0
 		char* want_mnemonic = c"fp"
-		if (which == 0 | which == 1):
+		if (which == 0 || which == 1):
 			int sf = fuzz_range(2)
 			int rm = fuzz_range(32)
 			int ra = fuzz_range(31)   # 0..30: never 31, which would decode as mul.

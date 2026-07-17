@@ -94,7 +94,7 @@ int task_connect_ipv4(int fd, int ip_address, int port):
 	# getsockopt(SO_ERROR): 0 or -EISCONN on success, the failure
 	# errno otherwise.
 	err = socket_connect_ipv4(fd, ip_address, port)
-	if ((err == 0) | (err == -106)): /* EISCONN */
+	if ((err == 0) || (err == -106)): /* EISCONN */
 		return 0
 	return err
 

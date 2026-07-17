@@ -73,7 +73,7 @@ int malloc_size_bin(int size):
 		return (size >> 3) - 1
 	int limit = 512
 	int b = 32
-	while ((size > limit) & (b < 40)):
+	while ((size > limit) && (b < 40)):
 		limit = limit << 1
 		b = b + 1
 	return b
@@ -134,7 +134,7 @@ int malloc_grow(int needed):
 			if (__word_size__ == 8):
 				flags = flags + 64
 			int fresh = mmap(0, chunk, 3, flags)
-			if ((fresh < 0) & (fresh > -4096)):
+			if ((fresh < 0) && (fresh > -4096)):
 				malloc_oom_notice()
 				return 0
 			malloc_heap_ptr = fresh
@@ -197,7 +197,7 @@ void* freelist_malloc(int size):
 	int prev = 0
 	int misses = 0
 	int cur = malloc_load_word(head)
-	while ((cur != 0) & (misses < 16)):
+	while ((cur != 0) && (misses < 16)):
 		malloc_scan_steps = malloc_scan_steps + 1
 		if (malloc_load_word(cur) >= size):
 			int next = malloc_load_word(cur + __word_size__)

@@ -71,7 +71,7 @@ import tests.asm_fuzz_prng
 int asm_fuzz_has_sequence(char* text):
 	int i = 0
 	while (text[i] != 0):
-		if (text[i] == ' ' & text[i + 1] == ';' & text[i + 2] == ' '):
+		if (text[i] == ' ' && text[i + 1] == ';' && text[i + 2] == ' '):
 			return 1
 		i = i + 1
 	return 1 == 2

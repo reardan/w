@@ -207,7 +207,7 @@ int sse_range_all_digits(char* base, int start, int end):
 	int i = start
 	while (i < end):
 		int c = base[i] & 255
-		if ((c < '0') | (c > '9')):
+		if ((c < '0') || (c > '9')):
 			return 0
 		i = i + 1
 	return 1
@@ -261,7 +261,7 @@ void sse_process_field(sse_reader* r):
 		return
 	int colon = 0
 	int found = 0
-	while ((colon < len) & (found == 0)):
+	while ((colon < len) && (found == 0)):
 		if ((line[colon] & 255) == ':'):
 			found = 1
 		else:
@@ -330,7 +330,7 @@ int sse_refill(sse_reader* r):
 			# short.
 			r.buf_pos = 0
 			r.buf_len = 0
-			while ((r.buf_len < 3) & (r.eof == 0) & (r.error == 0)):
+			while ((r.buf_len < 3) && (r.eof == 0) && (r.error == 0)):
 				int got = http_stream_read(r.stream, r.buf + r.buf_len, r.buf_cap - r.buf_len)
 				if (got > 0):
 					r.buf_len = r.buf_len + got
