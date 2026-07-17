@@ -21,6 +21,14 @@ it merges **last and alone** with `./wbuild verify` (+ `verify_x64`)
 green. Investigation tasks are timeboxed with a written diagnosis as the
 acceptable fallback deliverable.
 
+## Execution status (2026-07-17)
+
+Wave 1 (7 tasks, 1a–1g) is **in flight**: parallel Sonnet 5 subagents,
+each in its own isolated worktree, are running now. None have merged
+yet, so §2's table is still the plan, not a record — this section
+fills in per task as each one lands, following the predecessor plan's
+"Execution status" convention.
+
 ## 0. Do NOT schedule (verified landed or already commented)
 
 Everything in the previous plan's waves 1–5 (see its "Execution status"

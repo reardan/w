@@ -131,7 +131,11 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
   target (`0xffffffff` is `-1` even on x64, so `x & 0xffffffff` never
   truncates — build 32-bit masks at runtime, see `lib/sha256.w`); `byte`
   is a built-in 1-byte type name, so `byte = ...` at statement position
-  parses as a declaration — don't name identifiers `byte`.
+  parses as a declaration — don't name identifiers `byte`; `T* + int` is
+  a raw, unscaled byte offset for every pointee width (`int* p; p + n`
+  advances `n` bytes, not `n` ints) — only indexing scales, so use
+  `&p[n]` or multiply by the element width by hand, as `lib/sha256.w`'s
+  `p + i * 4` does.
 - New language syntax must also be added to the parser-generator grammar
   `tests/parser_generator/w.pg` — `parser_generator_w_test` parses every
   tracked `.w` file and fails on unknown syntax.
