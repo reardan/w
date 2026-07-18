@@ -319,24 +319,54 @@ int at_current_file(int target):
 # The source was recompiled through the same ELF backend that built the
 # on-disk binary (wdbg_attach_compile), so code_offset is the load base
 # (0x08048000) and the symbol/line tables already hold absolute target
-# addresses: the mapping delta is zero. Confirm by comparing the first
-# bytes of the compiled image (ELF header + entry stubs) against the running
-# process; a mismatch means a stale source or a differently built binary, so
-# symbols stay off and attach runs in raw mode.
+# addresses: the mapping delta is zero. Confirm by reading /proc/<pid>/exe
+# and comparing it byte-for-byte against the freshly compiled image
+# (code[0..codepos), the exact bytes elf_32.w/elf_64.w write(output_fd, ...)
+# would put on disk): W's static ET_EXEC ELFs load at a fixed address with
+# no ASLR and a single PT_LOAD segment mapping file offset 0 to code_offset,
+# so file byte i is process byte code_offset+i, and the self-host fixpoint
+# means a matching source recompiles to identical bytes. A mismatch (stale
+# source, a different compiler, or /proc/<pid>/exe being unreadable) means
+# the tables cannot be trusted, so symbols stay off and attach runs in raw
+# mode rather than risk printing wrong names.
+int at_read_exe_image(int pid, char* buf, int n):
+	char* pid_str = itoa(pid)
+	char* p1 = strjoin(c"/proc/", pid_str)
+	char* path = strjoin(p1, c"/exe")
+	free(pid_str)
+	free(p1)
+	int f = open(path, 0, 0)
+	free(path)
+	if (f < 0):
+		return 0
+	int got = 0
+	while (got < n):
+		int r = read(f, buf + got, n - got)
+		if (r <= 0):
+			close(f)
+			return 0
+		got = got + r
+	close(f)
+	return 1
+
+
 void at_calibrate():
 	if (word_size != 4):
 		return; /* symbolization is x86 (32-bit ELF) only for now */
 	attach_delta = 0
-	char* cp = code
+	char* buf = malloc(codepos)
+	if (at_read_exe_image(attach_pid, buf, codepos) == 0):
+		println2(c"wdbg: cannot read /proc/<pid>/exe to validate the recompile; symbol names are disabled (raw addresses only)")
+		free(buf)
+		return;
 	int i = 0
-	while (i < 32):
-		int tb = at_read_byte(code_offset + i)
-		if (attach_read_ok == 0):
-			return;
-		if (tb != (cp[i] & 255)):
+	while (i < codepos):
+		if ((buf[i] & 255) != (code[i] & 255)):
 			println2(c"wdbg: the running binary does not match this source; symbol names are disabled (raw addresses only)")
+			free(buf)
 			return;
 		i = i + 1
+	free(buf)
 	attach_symbolized = 1
 
 
@@ -456,6 +486,14 @@ void at_info(char* arg):
 			dbg_print_functions()
 		else:
 			println(c"no source: function list unavailable")
+	else if (strcmp(arg, c"files") == 0):
+		if (attach_symbolized):
+			int i = 0
+			while (i < debug_file_count):
+				println(dbg_file_name(i))
+				i = i + 1
+		else:
+			println(c"no source: file list unavailable")
 	else if ((strcmp(arg, c"r") == 0) | (strcmp(arg, c"registers") == 0)):
 		at_print_registers()
 	else if ((strcmp(arg, c"b") == 0) | (strcmp(arg, c"breakpoints") == 0)):
@@ -474,7 +512,7 @@ void at_info(char* arg):
 		if (shown == 0):
 			println(c"no breakpoints set")
 	else:
-		println(c"info topics: registers breakpoints functions")
+		println(c"info topics: registers breakpoints functions files")
 
 
 void at_help():
@@ -483,7 +521,7 @@ void at_help():
 	println(c"  b/break <function | line | file:line | 0xADDR>   d/delete <n>")
 	println(c"  r/registers  x <0xADDR> [count]  st/stack  bt/backtrace")
 	println(c"  disas [addr | function] [count]   disas on|off (context at stops)")
-	println(c"  l/line (where)  i registers | breakpoints | functions")
+	println(c"  l/line (where)  list [line]  i registers | breakpoints | functions | files")
 
 
 # --- argument helpers (local: attach.w cannot import wdbg.w) ---
@@ -504,6 +542,30 @@ int at_number(char* s):
 	if (starts_with(s, c"0x")):
 		return from_hex(s)
 	return atoi(s)
+
+
+# Multi-line source listing centered on the stopped ip (or an explicit line
+# number), like wdbg.w's in-process 'list'. Only meaningful once symbolized:
+# a mismatched recompile's tables cannot be trusted for anything beyond raw
+# addresses, so this stays off in raw mode like 'i functions' above.
+void at_list_command(char* arg):
+	if (attach_symbolized == 0):
+		println(c"no source: listing unavailable")
+		return;
+	at_getregs()
+	int target = at_reg(at_off_ip())
+	if (at_in_code(target) == 0):
+		println(c"no line info (address is outside the debuggee)")
+		return;
+	int entry = dbg_find_line(at_to_v(target) - code_offset)
+	if (entry < 0):
+		println(c"no line info recorded")
+		return;
+	int current = dbg_line_line(entry)
+	int center = current
+	if (arg[0] != 0):
+		center = at_number(arg)
+	dbg_print_source_range(dbg_file_name(dbg_line_file(entry)), center - 5, center + 5, current)
 
 
 # --- breakpoint / delete commands ---
@@ -708,6 +770,8 @@ void at_command_loop():
 			dbg_disas_command(at_reg(at_off_ip()), arg)
 		else if ((strcmp(command, c"l") == 0) | (strcmp(command, c"line") == 0) | (strcmp(command, c"where") == 0)):
 			at_where()
+		else if (strcmp(command, c"list") == 0):
+			at_list_command(arg)
 		else if ((strcmp(command, c"i") == 0) | (strcmp(command, c"info") == 0)):
 			at_info(arg)
 		else if (strcmp(command, c"detach") == 0):
