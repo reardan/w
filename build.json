@@ -1444,6 +1444,16 @@
 				{"cmd": ["sh", "-c", "grep -q save_marker bin/repl_save_test.w"]},
 				{"cmd": ["bin/repl"], "stdin": "!echo repl_bang_inherited_stdio\n:quit\n", "expect_stdout": "repl_bang_inherited_stdio"},
 				{"cmd": ["bin/repl"], "stdin": "!cd /tmp\n!pwd\n!export W_REPL_BANG_TEST=fortytwo\n!echo $W_REPL_BANG_TEST\n:quit\n", "expect_stdout": ["/tmp", "fortytwo"]},
+				{"cmd": ["bin/repl"], "stdin": ":sh\n:sh\n:quit\n", "expect_stderr": "sh> "},
+				{"cmd": ["bin/repl"], "stdin": ":sh\ncd /tmp\npwd\n:sh\n:quit\n", "expect_stdout": "/tmp"},
+				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_lsdir && mkdir -p /tmp/w_repl_shell_lsdir && touch /tmp/w_repl_shell_lsdir/alpha.txt /tmp/w_repl_shell_lsdir/beta.txt /tmp/w_repl_shell_lsdir/.hidden\n:sh\nls /tmp/w_repl_shell_lsdir\n:sh\n:quit\n", "expect_stdout": ["alpha.txt", "beta.txt"], "reject_stdout": ".hidden"},
+				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_lsdir2 && mkdir -p /tmp/w_repl_shell_lsdir2 && touch /tmp/w_repl_shell_lsdir2/alpha.txt /tmp/w_repl_shell_lsdir2/.hidden\n:sh\nls -a /tmp/w_repl_shell_lsdir2\n:sh\n:quit\n", "expect_stdout": [".hidden", "alpha.txt"]},
+				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_lsdir3 && mkdir -p /tmp/w_repl_shell_lsdir3 && touch /tmp/w_repl_shell_lsdir3/alpha.txt\n:sh\nls -l /tmp/w_repl_shell_lsdir3\n:sh\n:quit\n", "expect_stdout": "alpha.txt"},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'shell cat fixture content\\n' > /tmp/w_repl_shell_catfile.txt\n:sh\ncat /tmp/w_repl_shell_catfile.txt\n:sh\n:quit\n", "expect_stdout": "shell cat fixture content"},
+				{"cmd": ["bin/repl"], "stdin": ":sh\ncat /no/such/file_xyz_shell_test\n:sh\n:quit\n", "expect_stderr": "No such file or directory", "reject_stdout": "No such file or directory"},
+				{"cmd": ["bin/repl"], "stdin": ":sh\necho shell_mode_native_fallback_marker\n:sh\n:quit\n", "expect_stdout": "shell_mode_native_fallback_marker"},
+				{"cmd": ["bin/repl"], "stdin": ":sh\ncd /tmp\n!40 + 2\npwd\n:sh\n:quit\n", "expect_stdout": ["42", "/tmp"]},
+				{"cmd": ["bin/repl"], "stdin": ":sh\ncd /tmp\npwd\nexport W_REPL_SH_TEST=fortytwo\necho $W_REPL_SH_TEST\n:sh\n:quit\n", "expect_stdout": ["/tmp", "fortytwo"]},
 				{"cmd": ["bin/repl", "-e", "40 + 2"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl", "-e", "int x = 5", "-e", "x + 37"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl", "-e", "this is not valid w"], "expect_fail": true},
@@ -1502,6 +1512,16 @@
 				{"cmd": ["sh", "-c", "grep -q save_marker bin/repl_save_test64.w"]},
 				{"cmd": ["bin/repl64"], "stdin": "!echo repl_bang_inherited_stdio\n:quit\n", "expect_stdout": "repl_bang_inherited_stdio"},
 				{"cmd": ["bin/repl64"], "stdin": "!cd /tmp\n!pwd\n!export W_REPL_BANG_TEST=fortytwo\n!echo $W_REPL_BANG_TEST\n:quit\n", "expect_stdout": ["/tmp", "fortytwo"]},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\n:sh\n:quit\n", "expect_stderr": "sh> "},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\ncd /tmp\npwd\n:sh\n:quit\n", "expect_stdout": "/tmp"},
+				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_lsdir64 && mkdir -p /tmp/w_repl_shell_lsdir64 && touch /tmp/w_repl_shell_lsdir64/alpha.txt /tmp/w_repl_shell_lsdir64/beta.txt /tmp/w_repl_shell_lsdir64/.hidden\n:sh\nls /tmp/w_repl_shell_lsdir64\n:sh\n:quit\n", "expect_stdout": ["alpha.txt", "beta.txt"], "reject_stdout": ".hidden"},
+				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_lsdir264 && mkdir -p /tmp/w_repl_shell_lsdir264 && touch /tmp/w_repl_shell_lsdir264/alpha.txt /tmp/w_repl_shell_lsdir264/.hidden\n:sh\nls -a /tmp/w_repl_shell_lsdir264\n:sh\n:quit\n", "expect_stdout": [".hidden", "alpha.txt"]},
+				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_lsdir364 && mkdir -p /tmp/w_repl_shell_lsdir364 && touch /tmp/w_repl_shell_lsdir364/alpha.txt\n:sh\nls -l /tmp/w_repl_shell_lsdir364\n:sh\n:quit\n", "expect_stdout": "alpha.txt"},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'shell cat fixture content\\n' > /tmp/w_repl_shell_catfile64.txt\n:sh\ncat /tmp/w_repl_shell_catfile64.txt\n:sh\n:quit\n", "expect_stdout": "shell cat fixture content"},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\ncat /no/such/file_xyz_shell_test64\n:sh\n:quit\n", "expect_stderr": "No such file or directory", "reject_stdout": "No such file or directory"},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\necho shell_mode_native_fallback_marker\n:sh\n:quit\n", "expect_stdout": "shell_mode_native_fallback_marker"},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\ncd /tmp\n!40 + 2\npwd\n:sh\n:quit\n", "expect_stdout": ["42", "/tmp"]},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\ncd /tmp\npwd\nexport W_REPL_SH_TEST=fortytwo\necho $W_REPL_SH_TEST\n:sh\n:quit\n", "expect_stdout": ["/tmp", "fortytwo"]},
 				{"cmd": ["bin/repl64", "-e", "40 + 2"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "-e", "int x = 5", "-e", "x + 37"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "-e", "this is not valid w"], "expect_fail": true},
@@ -1994,6 +2014,7 @@
 				"ring_64_test",
 				"sha1_64_test",
 				"shell_64_test",
+				"shell_commands_64_test",
 				"sim_64_test",
 				"sse_64_test",
 				"sstable_64_test",
@@ -2375,6 +2396,7 @@
 				"sha1_test",
 				"sha256_test",
 				"sha2_test",
+				"shell_commands_test",
 				"shell_test",
 				"sim_test",
 				"sse_test",
@@ -4084,6 +4106,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/shell_test.w", "-o", "bin/shell_64_test"]},
 				{"cmd": ["bin/shell_64_test"]}
+			]
+		},
+		{
+			"name": "shell_commands_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/shell_commands_test.w", "-o", "bin/shell_commands_64_test"]},
+				{"cmd": ["bin/shell_commands_64_test"]}
+			]
+		},
+		{
+			"name": "shell_commands_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/shell_commands_test.w", "-o", "bin/shell_commands_test"]},
+				{"cmd": ["bin/shell_commands_test"]}
 			]
 		},
 		{
