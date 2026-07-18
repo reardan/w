@@ -25,6 +25,8 @@ int main(int argc, int argv):
 				shifted = 1
 			if (strcmp(*subcommand_arg, c"symbols") == 0):
 				shifted = 1
+			if (strcmp(*subcommand_arg, c"defhash") == 0):
+				shifted = 1
 			if (shifted):
 				target_pending = *selector_arg
 				argv = argv + __word_size__
@@ -39,6 +41,8 @@ int main(int argc, int argv):
 			return deps_main(argc, argv)
 		if (strcmp(*first_arg, c"symbols") == 0):
 			return symbols_main(argc, argv)
+		if (strcmp(*first_arg, c"defhash") == 0):
+			return defhash_main(argc, argv)
 		if (strcmp(*first_arg, c"--version") == 0):
 			# Keep in sync with package.wmeta; release.yml fails a tag
 			# that disagrees with either.

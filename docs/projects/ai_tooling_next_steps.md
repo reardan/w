@@ -140,6 +140,57 @@ is a queue, not an archive.
   `pgrep -f` scoped to the worktree's `bin/`, or just waiting for the
   first command's own completion) that it has actually finished.
 
+## Definition hashing (`w defhash`)
+
+- **Shipped (2026-07-18, issue #251 D4a): `wv2 defhash [--closure]
+  <file.w>...`** emits one NDJSON record per top-level definition
+  (function, global, struct/union/enum, type alias) declared directly in
+  the root file(s) -- `{"file", "name", "kind", "hash", "refs"}` -- with
+  `hash` a sha256 over the definition's own token stream (whitespace and
+  comments excluded, so reformatting/comment edits leave it unchanged)
+  and `refs` the other recorded definitions' names it references.
+  `--closure` widens scope to the whole compiled program (matching
+  `deps`'s closure). `bin/wtest`'s `changed`/`for` selection does **not**
+  consume this yet -- it still selects on file-level import closures, so
+  a comment-only edit to a `lib/` file still selects every importing
+  target, not just the file's own residue rules (`metadata_check`, etc).
+  Wiring an opt-in `--defhash` refinement into `tools/test_map.w`'s rule
+  (b) (see its header comment) is the natural next step: for a changed
+  `.w` file, shell out to `bin/wv2 defhash` on both `git show HEAD:<path>`
+  and the worktree copy, and skip adding import-closure targets when
+  every recorded name's hash (and the name set itself) is unchanged.
+  Left undone here deliberately (partial-preferred: a solid, tested mode
+  beats a rushed, under-tested change to shared test-selection
+  infrastructure) -- `tests/wtest/map_expectations.expect` and
+  `wtest_map_test`/`wtest_run_test` (`build.base.json`) are the patterns
+  to follow, including the `-f <manifest.json>` synthetic-manifest
+  trick and the `cd bin && ./wtest ...` trick for exercising behavior
+  outside a git repo; a self-contained `git init`-in-a-scratch-dir `sh
+  -c` step is the cleanest way to test the HEAD-vs-worktree comparison
+  without touching this repo's own history.
+- `--closure`'s ref resolution is a linear scan over every recorded
+  definition per identifier token (`defhash_is_known_definition`,
+  `compiler/compiler.w`) -- fine at file scope or even this repo's full
+  `lib.lib` closure (~360 definitions, well under a second), but would
+  need a hash-table lookup if `--closure` is ever run over something an
+  order of magnitude bigger (e.g. wired into `wexec` cache keys per
+  D4a's stretch goal).
+- `refs` is a token-text match against the recorded definition-name set,
+  not real scope resolution: a struct/union field name or enum constant
+  that happens to share text with another top-level definition reads as
+  a false-positive reference, and a local/parameter shadowing another
+  definition's name is not special-cased either. Documented in
+  `defhash_main`'s doc comment in `compiler/compiler.w`; tightening this
+  would need real per-reference scope tracking, which is a much bigger
+  change than D4a's scope.
+- Generic struct/function definitions and `operator` overloads are
+  invisible to `defhash` on purpose: the scan-ahead/re-parse machinery
+  those go through (`grammar/generic.w`, `grammar/operator_overload.w`)
+  never reaches `defhash_note`'s call sites. Extending coverage to them
+  would mean threading defhash bookkeeping through that machinery too --
+  left as a follow-up since ordinary functions/globals/aggregates are
+  the common case.
+
 ## Cleanup observed while dogfooding
 
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s

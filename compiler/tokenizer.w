@@ -27,6 +27,26 @@ int token_start_offset
 int strict_mode
 int warning_count
 
+# 'w defhash' recording: while defhash_mode is set, the grammar rules that
+# recognize a top-level definition (struct/union/enum/type-alias in their
+# own grammar/*.w files, function/global in grammar/program.w) call
+# defhash_note() (compiler/compiler.w) with the definition's name, kind
+# and byte span; defhash_note itself checks this flag and is a no-op
+# when it is unset, so those call sites are unconditional. Declared here,
+# next to strict_mode/warning_count, only because this is where that
+# kind of whole-compile mode flag already lives -- everything else
+# defhash-specific (defhash_note, the recorded-definition arrays,
+# defhash_dump) lives in compiler/compiler.w next to the analogous
+# deps_mode machinery.
+int defhash_mode
+
+# Re-tokenizing an already-compiled byte span (defhash_span_hash in
+# compiler/compiler.w) replays bytes the real compile already lexed
+# without error, so any lexer warning it would fire (e.g. the
+# space-indentation hint) was already reported once. defhash_rehash_mode
+# tells warning() below to stay silent while the replay is in progress.
+int defhash_rehash_mode
+
 # file reading
 int file
 char* filename
@@ -37,6 +57,8 @@ int token_i
 
 
 void warning(char *s):
+	if (defhash_rehash_mode):
+		return
 	warning_count = warning_count + 1
 	if (diag_json):
 		diag_append(s)
