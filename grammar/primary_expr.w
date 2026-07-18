@@ -185,6 +185,11 @@ int primary_expr():
 	else if (bit_builtin_ready()):
 		type = bit_builtin_expr()
 
+	# thread_idx/block_idx/block_dim/grid_dim, device (PTX) bodies only,
+	# shadowed the same way by user symbols (grammar/gpu_builtin.w)
+	else if (gpu_builtin_ready()):
+		type = gpu_builtin_expr()
+
 	# Generic function instantiation: 'max[int](...)'
 	else if (generic_call_ready()):
 		type = generic_call_expr()

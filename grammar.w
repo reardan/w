@@ -9,6 +9,7 @@ import grammar.json_builtin
 import grammar.print_builtin
 import grammar.limb_builtin
 import grammar.bit_builtin
+import grammar.gpu_builtin
 import grammar.var_builtin
 import grammar.identifier
 import grammar.int_literal
@@ -48,6 +49,8 @@ import grammar.import_statement
 import grammar.c_import_statement
 import grammar.extern_statement
 import grammar.generator_decl
+import grammar.kernel_decl
+import grammar.gpu_for
 import grammar.program
 
 # no idea why this is necessary:

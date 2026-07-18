@@ -229,6 +229,8 @@ void validate_utf8_literal(int n):
 int raw_asm_literal():
 	if (accept(c"raw_asm") == 0):
 		return 0
+	if (target_isa == 3):
+		error(c"raw_asm is not supported in gpu code")
 	expect(c"(")
 	if ((token[0] != '"') & (((token[0] != 'c') | (token[1] != '"')))):
 		error(c"double quote expected inside raw_asm( ... ) literal")
@@ -284,6 +286,9 @@ void wasm_emit_utf8_string_descriptor(int i):
 
 void emit_utf8_string_descriptor(int i):
 	token[i] = 0
+	if (target_isa == 3):
+		error(c"strings are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		wasm_emit_utf8_string_descriptor(i)
 		return
@@ -330,6 +335,9 @@ void arm64_emit_cstr(int i, char* s):
 # registry. x86 jumps over the bytes with a call and pops the pushed
 # return address; arm64 uses arm64_emit_cstr.
 void be_emit_inline_cstr(int len, char* s):
+	if (target_isa == 3):
+		error(c"strings are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		# data segment + plain constant address (no chain: the address is
 		# already final)

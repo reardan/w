@@ -423,6 +423,9 @@ int be_addr_slot_read(int pos):
 # On x86 this reproduces lea_eax_esp_plus(0) followed by patching the disp32
 # to k (byte-identical to the original sym_get_value sequence).
 void be_lea_acc_wstack(int k):
+	if (target_isa == 3):
+		ptx_lea_ax_sp(k)
+		return
 	if (target_isa == 2):
 		wasm_lea_eax_esp_plus(k)
 		return

@@ -306,6 +306,12 @@ int script_declaration_keyword():
 		return 1
 	if (peek(c"generator") & (nextc != '*')):
 		return 1
+	# 'kernel name(...)' is a declaration unless a user type or symbol
+	# named 'kernel' shadows the marker (e.g. 'kernel = 5' assigning to
+	# a global of that name stays a statement).
+	if (peek(c"kernel")):
+		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
+			return 1
 	return 0
 
 
@@ -424,6 +430,14 @@ void program():
 		if (peek(c"generator")):
 			if (nextc != '*'):
 				generator_declaration()
+				continue;
+
+		# kernel declarations: "kernel identifier (" (implicit void
+		# return). A user type or symbol named 'kernel' shadows the
+		# marker, like the limb-intrinsic shadowing rule.
+		if (peek(c"kernel")):
+			if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
+				kernel_declaration()
 				continue;
 
 		# Generic function definitions ('T max[T](T a, T b):'): the scan

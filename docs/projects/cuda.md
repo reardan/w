@@ -5,12 +5,18 @@ work: every viable path below assumes a 64-bit host process, because `libcuda.so
 and the CUDA driver API are 64-bit only. Finishing x64 self-hosting (see
 `docs/mvp.txt`) is effectively Stage 0 of this project.
 
-**Status: Stages 0 and 1 are done.** The host side went straight to H1 (real
+**Status: Stages 0–3 are done.** The host side went straight to H1 (real
 dynamic linking, both x86 and x64): `c_lib "libcuda.so.1"` + `extern`
 declarations link the driver API directly (`grammar/extern_statement.w`,
 `code_generator/elf_dynamic.w`, `code_generator/ffi.w`), and `./wbuild cuda_smoke`
 runs a hand-written PTX vector add on a real GPU (`tests/cuda_smoke.w`). The
-H3 sidecar was skipped. Next up is Stage 2, the PTX emitter.
+H3 sidecar was skipped. Stage 2 shipped as option A1 (`code_generator/ptx.w`:
+`kernel` declarations, the thread-index intrinsics, `launch`) and Stage 3 as
+M2 (`gpu for` outlining with capture-as-parameters), both on the M1+M2
+surface with the `lib/cuda.w` runtime (managed memory, async launches,
+`gpu_sync()`). See "Execution notes (Stages 2–3)" below for the model as
+built. Remaining: Stage 4 quality (A2 virtual registers, explicit memory
+API, `gpu float*` types) and the "someday" list.
 
 ## Context: what W is today
 
@@ -286,15 +292,17 @@ performance-oriented API.
   `cuModuleLoadData` and launched with `cuLaunchKernel` through `c_lib` /
   `extern`. Acceptance met: `./wbuild cuda_smoke` runs vector add on a real GPU
   (RTX 4080).
-- **Stage 2 — PTX emitter**: `code_generator/ptx.w` with A1 stack-machine
-  emission for straight-line W functions (int/float arithmetic, pointers,
-  if/while). Kernel PTX is stored in `.rodata` of the host ELF and passed to
-  `cuModuleLoadData` at runtime. Validate by diffing behavior against an
-  NVRTC-compiled CUDA C version of the same kernel (Option B as oracle).
-- **Stage 3 — `gpu for` (M2)**: outlining pass, parameter capture, guard
-  insertion, launch-config heuristic, managed-memory allocation. Acceptance:
-  `./wbuild cuda_test` — vector add, saxpy, reduction (atomics), all verified
-  against CPU results.
+- **Stage 2 — PTX emitter** (done): `code_generator/ptx.w` with A1
+  stack-machine emission for kernel bodies (int/pointer/float32/float64
+  arithmetic, if/while/switch, nested for-range). Kernel PTX is embedded in
+  the host image behind a synthesized `char* __w_ptx_module()` and passed to
+  `cuModuleLoadData` at runtime; `--ptx=<path>` dumps it for inspection and
+  the GPU-less `gpu_ptx_emit_test` asserts on the text.
+- **Stage 3 — `gpu for` (M2)** (done): outlining pass (`grammar/gpu_for.w`),
+  parameter capture, guard insertion, launch-config heuristic (256-thread
+  blocks) and managed-memory allocation (`gpu_alloc`). Acceptance:
+  `./wbuild cuda_test` — `gpu for` vector add + `kernel`/`launch` saxpy,
+  verified against CPU results (reduction/atomics moved to Stage 4).
 - **Stage 4 — quality**: A2 virtual-register emission, explicit memory API,
   `gpu float*` types, error handling for `CUresult` codes, multi-GPU device
   selection.
@@ -302,6 +310,52 @@ performance-oriented API.
   `c_import` (host-callable GEMM without writing kernels), SASS study
   (`cuobjdump -sass` on our PTX; CuAssembler experiments), fatbin embedding of
   pre-JIT'd cubins alongside PTX.
+
+## Execution notes (Stages 2–3, as built)
+
+- **Mixed-mode emission.** There is no `cuda` CLI target: a program is host
+  x64 code with device bodies. `kernel` bodies and `gpu for` bodies compile
+  with `target_isa == 3`, routing every emit helper in
+  `code_generator/x86.w`/`sse.w` to a `ptx_*` twin in `code_generator/ptx.w`
+  that appends PTX **text** to a module buffer instead of bytes to `code`.
+  Host and device instruction streams never interleave, so the single-pass
+  model needs no backpatching across the boundary.
+- **A1 register model.** `%ax/%bx/%cx` (.b64) mirror eax/ebx/scratch,
+  `%fa/%fb`/`%da/%db` mirror xmm0/xmm1 at each float width, `%w0` stages
+  32-bit transfers, `%p` holds compare results. The W evaluation stack is a
+  4 KB `.local` array converted once with `cvta.local.u64`, so `%sp`/`%bp`
+  hold generic addresses and every load/store — stack, parameter or user
+  pointer — is a plain generic `ld`/`st` (`&local` keeps working; no
+  `cvta.to.global` needed). W `int` is `.s64`, pointers `.u64`, and the
+  module header is `.version 6.0 / .target sm_52 / .address_size 64`.
+- **Parameters as locals.** Every kernel parameter is `.param .u64 p0..pN`
+  (one 8-byte cell each; float32 rides as raw bits, the host convention).
+  The prologue `ld.param`s each into the accumulator and pushes it,
+  declaring the name as an ordinary `'L'` local, so the existing addressing
+  machinery is unchanged.
+- **`gpu for` capture layout.** Captures live at fixed offsets below `%bp`
+  (capture k at `[%bp - (k+1)*8]`, slot 0 = the range bound, 32 slots
+  reserved), so a capture discovered mid-body never invalidates addresses
+  already emitted — that is what makes single-pass outlining work. Captured
+  scalars are device-local copies: writes do not propagate back (a Stage 4
+  diagnostic candidate). Pointers must be device-accessible (`gpu_alloc`).
+- **Async launches.** `launch` and `gpu for` enqueue and return;
+  `gpu_sync()` (cuCtxSynchronize) is the synchronization point. The host
+  must not touch managed buffers while a kernel using them is in flight.
+  This is deliberate: W has no async constructs yet, and the explicit sync
+  point should later align with the `thread`/`lock` design
+  (`docs/parallel.txt`).
+- **Device subset.** No function calls, globals, strings, `new`/containers,
+  limb/bit intrinsics, `raw_asm`, `defer`, `?`, `yield`, or `return` inside
+  `gpu for` (bare `return` is fine in `kernel` bodies). Bounds checks are
+  silently off in device code (the trap path calls host runtime helpers);
+  float compares are ordered (NaN → false), the wasm divergence model.
+  Diagnostics are frozen by `cuda_diagnostics_test`.
+- **Testing without a GPU.** `gpu_ptx_emit_test` (in the default umbrella)
+  prints/greps the embedded module; `cuda_test` (opt-in, like `cuda_smoke`)
+  runs vector add + saxpy on real hardware. The host launch plumbing
+  (module text, kernel name, grid/block, kernelParams layout) was verified
+  GPU-less against a logging stub libcuda during development.
 
 ## Open questions
 
