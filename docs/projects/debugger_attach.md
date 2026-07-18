@@ -30,10 +30,16 @@ byte-identical). What works today:
   through the same ELF backend that built the on-disk binary
   (`wdbg_attach_compile` → `link_impl`), so `code_offset` is the load base
   and the symbol/line tables hold the target's real addresses — no delta.
-  Calibration compares the compiled image's first bytes against the running
-  process and falls back to raw mode on any mismatch. Enables `l`, `bt`,
-  `list`-free source lines, `i functions`, and symbol/`file:line` break
-  targets.
+  Calibration (`at_calibrate`) reads `/proc/<pid>/exe` and compares it
+  byte-for-byte against the recompiled image (`code[0..codepos)`, the exact
+  bytes the ELF backend would write to disk); any short read, open failure,
+  or byte mismatch prints a clear diagnostic and falls back to raw mode
+  instead of trusting stale tables. Enables `l`/`where`, `list` (a
+  multi-line source window around the stopped line or an explicit line
+  number), `bt` (a heuristic stack walk that names every frame it can
+  resolve, not just the current ip), `i functions`/`i files`, and
+  symbol/`file:line` break targets — all gated off in raw mode the same way
+  `i functions` already was.
 - **Breakpoints and stepping.** `b <function | file:line | 0xADDR>`, `d`,
   `c`, `si` via `PTRACE_POKEDATA` int3 patching and a `wait4` stop loop with
   the disarm / single-step / re-arm dance; `detach` restores original bytes.
@@ -141,19 +147,24 @@ The compiler tables (symbol table, `debug_line_*` arrays including
 `.debug_line`/`.debug_info` go into the ELF, and locals addressing and
 unwinding need `stack_pos`, which deliberately stays in memory.
 
-Plan: **recompile the same source inside wdbg** to regenerate the
-tables, without executing the result.
+Plan (**implemented**): **recompile the same source inside wdbg** to
+regenerate the tables, without executing the result.
 
     wdbg --attach <pid> file.w
 
 - `./wbuild verify`'s byte-equality fixpoint is what makes this
   trustworthy: the same compiler over the same source produces identical
   code, so table addresses match the running text exactly.
-- Validate rather than hope: compare the recompiled code bytes against
-  the target's text (read via ptrace, or against `/proc/<pid>/exe`) and
-  refuse source-level commands on mismatch — stale source or a different
+- Validate rather than hope: `at_calibrate` reads `/proc/<pid>/exe` and
+  compares it byte-for-byte against the recompiled code buffer, then
+  refuses source-level commands on mismatch — stale source or a different
   compiler version must degrade to raw-address mode (registers, memory,
-  raw stack still work), not silently lie.
+  raw stack still work), not silently lie. (An earlier version of this
+  check only compared the first 32 bytes — the shared runtime entry stub,
+  identical across nearly every W binary — which never actually caught a
+  source mismatch; comparing the full image against `/proc/<pid>/exe`
+  fixed that, and `tools/attach_test.sh`'s "mismatched source" cases guard
+  against the regression.)
 - `--attach <pid>` without a source file is legal and gives raw-address
   mode only.
 
@@ -233,9 +244,12 @@ and must not use syntax newer than the seed.
 - Fixture: a small W program that increments a global in a loop, so the
   test can attach, read the global twice, and assert it advanced —
   proving both attach and memory reads without timing races.
-- Mismatch path: attach with deliberately edited source and assert the
-  degradation-to-raw-mode diagnostic (frozen text — add to
-  `warning_test`-style fixtures if worded as a diagnostic).
+- Mismatch path (**done**): `tools/attach_test.sh`'s "mismatched source"
+  cases attach with a different, unrelated source file (`tests/debug_fixture.w`
+  against the running `attach_target` fixture) and assert both the
+  degradation diagnostic and the raw-mode fallback banner — the shell
+  harness's `grep -qF` is the freeze on that text, same convention as the
+  rest of the suite.
 - Linux-only (ssh host `w` from the Mac checkout); `ptrace` under
   containers may need `CAP_SYS_PTRACE` / `ptrace_scope` — the test
   should spawn the debuggee as a child of the test process so
