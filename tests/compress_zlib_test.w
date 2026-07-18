@@ -29,6 +29,49 @@ void test_zlib_roundtrip():
 	zlib_result_free(c)
 
 
+# Same round trip, but through the real LZ77 + Huffman encoder (deflate.w
+# stage 2) rather than stage 2a's stored blocks -- the wrapper layer
+# shouldn't care which deflate() level produced the payload, but this
+# pins that FAST/BEST actually flow through zlib_compress/zlib_decompress
+# correctly, including the Adler-32 trailer over a longer, repetitive
+# payload (a plain literal string is too short to exercise LZ77 matches).
+void test_zlib_roundtrip_fast_and_best():
+	int n = 4096
+	char* src = malloc(n)
+	int i = 0
+	while (i < n):
+		src[i] = 'a' + (i % 7)
+		i = i + 1
+	zlib_result* fast = zlib_compress(src, n, DEFLATE_LEVEL_FAST())
+	wresult[zlib_result*]* fr = zlib_decompress(fast.data, fast.length, 0)
+	assert1(result_is_ok[zlib_result*](fr))
+	zlib_result* fout = result_value[zlib_result*](fr)
+	result_free[zlib_result*](fr)
+	assert_equal(n, fout.length)
+	assert1(fast.length < n)
+	int j = 0
+	while (j < n):
+		assert_equal(src[j] & 255, fout.data[j] & 255)
+		j = j + 1
+	zlib_result_free(fout)
+	zlib_result_free(fast)
+
+	zlib_result* best = zlib_compress(src, n, DEFLATE_LEVEL_BEST())
+	wresult[zlib_result*]* br = zlib_decompress(best.data, best.length, 0)
+	assert1(result_is_ok[zlib_result*](br))
+	zlib_result* bout = result_value[zlib_result*](br)
+	result_free[zlib_result*](br)
+	assert_equal(n, bout.length)
+	assert1(best.length < n)
+	j = 0
+	while (j < n):
+		assert_equal(src[j] & 255, bout.data[j] & 255)
+		j = j + 1
+	zlib_result_free(bout)
+	zlib_result_free(best)
+	free(src)
+
+
 void test_zlib_header_is_mod_31():
 	char* src = c"anything"
 	zlib_result* c = zlib_compress(src, strlen(src), DEFLATE_LEVEL_STORED())
