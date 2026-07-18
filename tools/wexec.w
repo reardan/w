@@ -104,6 +104,16 @@ without "inputs" is a FORCE target and disables caching for every
 target downstream of it, silently, with no diagnostic), the specific
 dependency and chain that breaks it.
 
+A third, Linux-only introspection mode, "--trace <target> [--hermetic]"
+(issue #251 Direction 2), runs the target's own steps under ptrace and
+reports every file they successfully opened for reading against the
+target's declared input set (the same "inputs" plus deps-driven
+compile-root closures --explain-cache and the cache key above already
+treat as this target's inputs) -- an audit surface that runs no build
+step differently and changes nothing about a plain `wexec <target>`.
+See tools/wexec_trace.w for the ptrace mechanism and its documented
+noise filter.
+
 Design notes: docs/projects/wexec.md
 */
 import lib.lib
@@ -116,6 +126,7 @@ import lib.utf8
 import structures.string
 import structures.json
 import tools.__arch__.wexec_remote_http
+import tools.wexec_trace
 
 
 json_value* wexec_manifest
@@ -160,6 +171,7 @@ void wexec_usage():
 	wstream* err = stderr_writer()
 	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list [--json]] [--explain-cache target] [--no-cache] [--keep-going] [--ordered-output] [-j N] target...")
 	stream_write_line(err, c"       wexec [-f manifest.json] ... [selector] <file>.w")
+	stream_write_line(err, c"       wexec [-f manifest.json] --trace target [--hermetic]")
 	stream_flush(err)
 
 
@@ -2674,6 +2686,84 @@ int wexec_default_jobs():
 	return count
 
 
+/* --trace <target> (issue #251 Direction 2, tools/wexec_trace.w): builds
+the "declared" input set a traced target's reads are checked against,
+mirroring exactly what wexec_cache_key already treats as this target's
+cache-relevant inputs -- explicit "inputs" (files, and every file under
+a directory prefix) plus, when bin/wv2 exists, the deps-driven
+compile-root closures wexec_deps_collect_roots/wexec_deps_lookup compute
+for caching. Dependency targets' own inputs are not folded in (a
+dependency's cache key is opaque here just as it is in wexec_cache_key);
+only this target's own declared inputs and its own steps' compile
+roots count. */
+
+# Splits a deps-closure blob (wexec_deps_run's newline-guarded format,
+# also walked by wexec_deps_save) into individual file paths, adding
+# each to `set`. Cloned since the blob's own storage is reused/rewritten
+# elsewhere (bin/.wexec_deps_cache saves), unlike the "inputs" strings
+# below, which point straight into the parsed manifest and outlive this
+# call already.
+void wexec_trace_add_blob_lines(map[char*, int] dest, char* blob):
+	if (blob == 0):
+		return
+	string_builder* line = string_new()
+	int j = 0
+	while (blob[j] != 0):
+		if (blob[j] == 10):
+			if (line.length > 0):
+				dest[strclone(line.data)] = 1
+			string_clear(line)
+		else:
+			string_append_char(line, blob[j])
+		j = j + 1
+	string_free(line)
+
+
+map[char*, int] wexec_trace_collect_declared(json_value* target):
+	map[char*, int] declared = new map[char*, int]
+	json_value* inputs = json_object_get(target, c"inputs")
+	if (inputs != 0):
+		if (inputs.type == json_type_array()):
+			int i = 0
+			while (i < json_array_length(inputs)):
+				json_value* entry = json_array_get(inputs, i)
+				if (entry.type == json_type_string()):
+					char* path = entry.string_value
+					int n = strlen(path)
+					if ((n > 0) && (path[n - 1] == '/')):
+						char* dir = strclone(path)
+						dir[n - 1] = 0
+						list[char*] walked = new list[char*]
+						wexec_collect_dir(dir, walked)
+						for char* found in walked:
+							declared[found] = 1
+						free(dir)
+					else:
+						declared[path] = 1
+				i = i + 1
+	if (wexec_deps_usable()):
+		list[char*] archs = new list[char*]
+		list[char*] roots = new list[char*]
+		wexec_deps_collect_roots(target, archs, roots)
+		int r = 0
+		while (r < roots.length):
+			declared[roots[r]] = 1
+			wexec_deps_entry* entry = wexec_deps_lookup(archs[r], roots[r])
+			if ((entry.failed == 0) && (entry.blob != 0)):
+				wexec_trace_add_blob_lines(declared, entry.blob)
+			r = r + 1
+	return declared
+
+
+int wexec_trace_cmd(char* name, int hermetic):
+	json_value* target = wexec_targets.get(name, 0)
+	if (target == 0):
+		wexec_error2(c"unknown target ", name)
+		return 1
+	map[char*, int] declared = wexec_trace_collect_declared(target)
+	return wexec_trace_run(name, target, declared, hermetic)
+
+
 int main(int argc, int argv):
 	wexec_jobs = 0
 	char* manifest_path = c"build.json"
@@ -2681,6 +2771,8 @@ int main(int argc, int argv):
 	int list_only = 0
 	int list_json = 0
 	char* explain_cache_target = 0
+	char* trace_target = 0
+	int hermetic = 0
 	int i = 1
 	while (i < argc):
 		char** arg = argv + i * __word_size__
@@ -2702,6 +2794,15 @@ int main(int argc, int argv):
 				return 1
 			char** target_value = argv + i * __word_size__
 			explain_cache_target = *target_value
+		else if (strcmp(*arg, c"--trace") == 0):
+			i = i + 1
+			if (i >= argc):
+				wexec_usage()
+				return 1
+			char** trace_value = argv + i * __word_size__
+			trace_target = *trace_value
+		else if (strcmp(*arg, c"--hermetic") == 0):
+			hermetic = 1
 		else if (strcmp(*arg, c"--no-cache") == 0):
 			wexec_no_cache = 1
 		else if (strcmp(*arg, c"--keep-going") == 0):
@@ -2728,6 +2829,8 @@ int main(int argc, int argv):
 		return 1
 	if (explain_cache_target != 0):
 		return wexec_explain_cache(explain_cache_target)
+	if (trace_target != 0):
+		return wexec_trace_cmd(trace_target, hermetic)
 	if (list_only):
 		if (list_json):
 			wexec_list_targets_json()

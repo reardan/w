@@ -1169,6 +1169,16 @@
 			]
 		},
 		{
+			"name": "wexec_trace_test",
+			"deps": ["wv2", "wexec"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wexec/trace_fixture.w", "-o", "bin/wexec_trace_fixture"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/trace.json", "--trace", "trace_target"], "expect_stdout": ["wexec: trace trace_target", "{\"file\": \"tests/wexec/trace_declared.txt\", \"declared\": true}", "{\"file\": \"tests/wexec/trace_undeclared.txt\", \"declared\": false}", "wexec: trace summary: 2 read, 1 undeclared"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/trace.json", "--trace", "trace_target", "--hermetic"], "expect_fail": true, "expect_stdout": "wexec: trace summary: 2 read, 1 undeclared"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/trace.json", "--trace", "no_such_target"], "expect_fail": true, "expect_stderr": "unknown target"}
+			]
+		},
+		{
 			"name": "result_propagate_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2270,6 +2280,7 @@
 				"wexec_keep_going_test",
 				"wexec_ordered_output_test",
 				"wexec_remote_cache_test",
+				"wexec_trace_test",
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",
