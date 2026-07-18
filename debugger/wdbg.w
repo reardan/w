@@ -224,7 +224,7 @@ void wdbg_print_stack(int context):
 		free(ha)
 		print(c": ")
 		if (dbg_mem_readable(slot, __word_size__)):
-			char* hv = hex_word(load_word(cast(char*, slot)))
+			char* hv = hex_word(dbg_mem_read_word(slot))
 			println(hv)
 			free(hv)
 		else:
@@ -315,7 +315,7 @@ void dbg_frames_compute(int context, int stop_addr):
 		int slot = esp + i * __word_size__
 		if (dbg_mem_readable(slot, __word_size__) == 0):
 			return;
-		int v = load_word(cast(char*, slot))
+		int v = dbg_mem_read_word(slot)
 		if (outermost):
 			# Only the entry function's own base is missing: its return
 			# address is the first plausible wdbg call site on the stack
@@ -415,7 +415,7 @@ void dbg_examine(int addr, int count):
 		free(ha)
 		print(c": ")
 		if (dbg_mem_readable(slot, __word_size__)):
-			char* hv = hex_word(load_word(cast(char*, slot)))
+			char* hv = hex_word(dbg_mem_read_word(slot))
 			println(hv)
 			free(hv)
 		else:
@@ -459,13 +459,13 @@ void dbg_set_command(int pc, int esp, char* arg):
 		if (dbg_mem_readable(addr, __word_size__) == 0):
 			println(c"variable is not addressable here")
 			return;
-		save_word(cast(char*, addr), v)
+		dbg_mem_write_word(addr, v)
 		dbg_print_local(note, esp)
 		return;
 	int g = dbg_global_find(arg)
 	if (g >= 0):
 		if (dbg_sym_symtype(g) != 2):
-			save_word(cast(char*, dbg_sym_address(g)), v)
+			dbg_mem_write_word(dbg_sym_address(g), v)
 			print(arg)
 			print(c" = ")
 			dbg_print_typed_value(dbg_sym_address(g), dbg_sym_type(g))
@@ -603,7 +603,7 @@ void dbg_examine_command(int pc, int esp, char* arg):
 	else:
 		int note = dbg_local_find(arg, pc)
 		if (note >= 0):
-			addr = load_word(cast(char*, dbg_local_runtime_addr(note, esp)))
+			addr = dbg_mem_read_word(dbg_local_runtime_addr(note, esp))
 		else:
 			int g = dbg_global_find(arg)
 			if (g < 0):
@@ -613,7 +613,7 @@ void dbg_examine_command(int pc, int esp, char* arg):
 			if (dbg_sym_symtype(g) == 2):
 				addr = dbg_sym_address(g)
 			else:
-				addr = load_word(cast(char*, dbg_sym_address(g)))
+				addr = dbg_mem_read_word(dbg_sym_address(g))
 	int count = 8
 	if (count_text[0] != 0):
 		count = dbg_number(count_text)

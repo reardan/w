@@ -70,7 +70,7 @@ int dbg_watch_add(char* text, int addr):
 	char* copy = malloc(strlen(text) + 1)
 	strcpy(copy, text)
 	save_word(dbg_watch_addrs + i * __word_size__, addr)
-	save_word(dbg_watch_olds + i * __word_size__, load_word(cast(char*, addr)))
+	save_word(dbg_watch_olds + i * __word_size__, dbg_mem_read_word(addr))
 	save_word(dbg_watch_texts + i * __word_size__, cast(int, copy))
 	dbg_watch_count = i + 1
 	return i
@@ -100,7 +100,7 @@ int dbg_watch_check():
 		int addr = dbg_watch_addr_at(i)
 		if (addr != 0):
 			if (dbg_mem_readable(addr, __word_size__)):
-				if (load_word(cast(char*, addr)) != dbg_watch_old_at(i)):
+				if (dbg_mem_read_word(addr) != dbg_watch_old_at(i)):
 					return i
 		i = i + 1
 	return -1
@@ -109,7 +109,7 @@ int dbg_watch_check():
 # Announce a hit as old -> new and remember the new value, so continuing
 # only stops on the next change.
 void dbg_watch_report(int i):
-	int now = load_word(cast(char*, dbg_watch_addr_at(i)))
+	int now = dbg_mem_read_word(dbg_watch_addr_at(i))
 	print(c"watchpoint ")
 	char* digits = itoa(i + 1)
 	print(digits)

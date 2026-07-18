@@ -162,11 +162,11 @@ void dbg_print_typed_value(int addr, int type):
 			if (width > __word_size__):
 				width = __word_size__
 			int offset = type_get_field_offset_at(type, i)
-			dbg_print_int_value(load_i(addr + offset, width))
+			dbg_print_int_value(dbg_mem_read(addr + offset, width))
 			i = i + 1
 		print(c"}")
 		return;
-	int v = load_word(cast(char*, addr))
+	int v = dbg_mem_read_word(addr)
 	dbg_print_int_value(v)
 	if (dbg_type_is_string(type)):
 		dbg_print_string_preview(v)
