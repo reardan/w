@@ -21,13 +21,60 @@ it merges **last and alone** with `./wbuild verify` (+ `verify_x64`)
 green. Investigation tasks are timeboxed with a written diagnosis as the
 acceptable fallback deliverable.
 
-## Execution status (2026-07-17)
+## Execution status (2026-07-18): all four waves complete
 
-Wave 1 (7 tasks, 1a–1g) is **in flight**: parallel Sonnet 5 subagents,
-each in its own isolated worktree, are running now. None have merged
-yet, so §2's table is still the plan, not a record — this section
-fills in per task as each one lands, following the predecessor plan's
-"Execution status" convention.
+All 25 tasks executed by parallel Sonnet 5 subagents in isolated
+worktrees and merged sequentially (HIGH-care tasks last and alone,
+`verify` + `verify_x64` at every seed-touching merge, full suite at
+every wave close). Per-task outcomes:
+
+**Wave 1** (all merged): 1a doc sync + pointer-arithmetic rule in
+README/CLAUDE.md; 1b `itoa`/`intstrlen` INT_MIN fixes + edge tests;
+1c `stream_peek_byte` 0xFF masking + binary round-trip tests; 1d
+`wexec --explain-cache` + `--list --json`; 1e `protobuf.md`; 1f
+`repl_shell_mode.md`; 1g cross-line call-tail warning
+(`grammar/postfix_expr.w`, fixture-pinned, zero tree occurrences).
+
+**Wave 2** (all merged): the stage-2 sweep converted **800 sites**
+(2a debugger 37, 2b libs/asm 97, 2c libs/extras 93, 2d compiler tree
+164, 2e remainder 409) with ~165 call-guard skips logged per chunk;
+2f then flipped the hint **on by default scoped to call-free joins**
+(`--bool-ops` = call-containing superset), fixed the operator-position
+and chain-under-flagging checker bugs (fixture-pinned), and
+consolidated the friction entries. The +1-line-for-imported-files bug
+is root-caused (`compile_save` saves `line_number + 1`) and left as a
+tracked follow-up — its fix moves every imported-file diagnostic.
+
+**Wave 3** (all merged): 3a real DEFLATE (lazy-matching LZ77 +
+dynamic Huffman; matches zlib-9's ratio on source input); 3b REPL
+`:sh` shell mode MVP (#335 stage 1: pwd/ls/cat, translator module,
+native fallback); 3c attach phase-2 memory seam (#123, registers
+deferred, documented); 3d silent-exit audit (312 `error()` sites
+verified, memory_debug mmap gap fixed, appendix table committed);
+3e allocator-corruption root cause (`string_free` + `free` is a plain
+double free; `repl_allocator_interaction.md`); 3f PG streaming mode
+(#329 M3: `mode streaming`, listener callbacks, committed-grammar
+gate, `generated_c_parser.w` byte-unchanged).
+
+**Wave 4** (all merged): 4a zlib-compressed CAS loose objects
+(dual-format reads, `'x'`-tag reservation makes the sniff airtight,
+~3.3x on a real snapshot, sync.w decoupled from on-disk encoding);
+4b attach calibration fixed to full `/proc/<pid>/exe` comparison +
+`list`/`i files` (attach_test 12 → 18 cases); 4c `wexec --trace`
+ptrace input audit (#251 D2, syscall-restart desync handled, x86
+tracer scope documented); 4d `ui_framework.md` (#334); 4e
+`compilation_model.md` (#338/#337 + #332/#333 scoping notes); 4f
+`wv2 defhash` (#251 D4a: NDJSON per-definition token-stream sha256 +
+refs; generics/operator defs and the `wtest --defhash` consumer are
+documented follow-ups).
+
+Process notes for the next program: subagents repeatedly stalled by
+backgrounding their own long test runs — resume-with-directive
+recovered every one, and "a partial delivery passing gates beats a
+complete one unfinished" broke the worst loops; the shared session
+scratchpad needs task-ID-prefixed filenames (one benign same-name
+collision was investigated as a suspected injection); merged-worktree
+cleanup matters for the fixed disk allowance.
 
 ## 0. Do NOT schedule (verified landed or already commented)
 
