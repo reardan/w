@@ -567,6 +567,20 @@ void ptx_special_reg(int kind):
 	ptx_line(c"cvt.u64.u32 %ax, %w0;")
 
 
+# gpu_atomic_add(float32* p, float32 v): target address in %bx, addend
+# in %fa. The reduction form (red, no fetched result) through the
+# generic-address path, like every other memory access here.
+void ptx_red_add_f32():
+	ptx_line(c"red.add.f32 [%bx], %fa;")
+
+
+# gpu_atomic_add_int(int* p, int v): addend in %ax. Addition is
+# bit-identical for signed and unsigned, and red.add only takes .u64 at
+# this width.
+void ptx_red_add_s64():
+	ptx_line(c"red.add.u64 [%bx], %ax;")
+
+
 ########################### kernel/module assembly ###########################
 
 # ld.param.u64 %ax, [p<i>]: a kernel parameter, about to be pushed as an

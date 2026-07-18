@@ -15,8 +15,15 @@ H3 sidecar was skipped. Stage 2 shipped as option A1 (`code_generator/ptx.w`:
 M2 (`gpu for` outlining with capture-as-parameters), both on the M1+M2
 surface with the `lib/cuda.w` runtime (managed memory, async launches,
 `gpu_sync()`). See "Execution notes (Stages 2–3)" below for the model as
-built. Remaining: Stage 4 quality (A2 virtual registers, explicit memory
-API, `gpu float*` types) and the "someday" list.
+built. docs/projects/torch.md builds on this: its Stage 1 added the
+`gpu_atomic_add`/`gpu_atomic_add_int` reduction intrinsics (PTX
+`red.add` via `ptx_red_add_*`) and a non-fatal `gpu_available()`
+driver+device probe to `lib/cuda.w`, and its Stages 2-3 the
+`lib/tensor.w` managed-memory tensor type with CPU fallbacks.
+Remaining here: Stage 4 quality (A2 virtual registers, shared memory,
+explicit memory API, `gpu float*` types, lazy binding so a missing
+libcuda.so.1 degrades instead of failing at load) and the "someday"
+list.
 
 ## Context: what W is today
 

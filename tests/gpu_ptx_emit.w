@@ -35,6 +35,15 @@ kernel axpb64(float64* y, float64 aa, float64 b, int n):
 		y[i] = aa * y[i] + b + i
 
 
+# Atomic reductions (docs/projects/torch.md Stage 1): every thread
+# red.add's into single accumulator cells.
+kernel accumulate(float32* facc, int* iacc, float32* v, int n):
+	int i = block_idx() * block_dim() + thread_idx()
+	if i < n:
+		gpu_atomic_add(facc, v[i])
+		gpu_atomic_add_int(iacc, 1)
+
+
 int main(int argc, int argv):
 	print(__w_ptx_module())
 	return 0

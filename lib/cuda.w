@@ -15,7 +15,7 @@ Call gpu_sync() before the host reads or writes any buffer an
 in-flight kernel touches; gpu_alloc'd managed memory must not be
 accessed concurrently from both sides.
 
-User API: gpu_alloc(bytes), gpu_free(p), gpu_sync().
+User API: gpu_alloc(bytes), gpu_free(p), gpu_sync(), gpu_available().
 
 Driver errors print the CUresult code and exit(1) — GPU state after an
 error is not recoverable at this layer. The _v2 symbol names are the
@@ -133,6 +133,27 @@ void __w_gpu_launch(char* name, int n, char* vals, int count):
 	int block = 256
 	int grid = (n + block - 1) / block
 	__w_gpu_launch_raw(name, grid, block, vals, count)
+
+
+# Cached driver+device probe: 0 unknown, 1 usable, 2 unusable. Unlike
+# the launch path this does not exit on failure — it is the branch
+# point for CPU fallbacks (docs/projects/torch.md Stage 1). cuInit
+# alone is not enough: it succeeds with zero devices (e.g. under
+# CUDA_VISIBLE_DEVICES=""), so device 0 is probed too. Note the limit:
+# a program importing this module still needs libcuda.so.1 present at
+# load time (eager dynamic linking), so this covers "driver present,
+# no usable GPU", not a missing driver.
+int __w_gpu_avail_state
+
+int gpu_available():
+	if (__w_gpu_avail_state == 0):
+		__w_gpu_avail_state = 2
+		if (cuInit(0) == 0):
+			char* dev = __w_gpu_cell()
+			if (cuDeviceGet(dev, 0) == 0):
+				__w_gpu_avail_state = 1
+			free(dev)
+	return __w_gpu_avail_state == 1
 
 
 # Managed allocation: one pointer valid on host and device
