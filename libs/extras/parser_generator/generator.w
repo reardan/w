@@ -568,7 +568,9 @@ void pg_emit_token_name(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_blank(writer)
 
 
-void pg_emit_forward_declarations(pg_source_writer* writer, pg_grammar* grammar):
+# Matcher-function forward declarations: shared by AST and streaming
+# generation, since both emit the same expression-matcher-backed lexer.
+void pg_emit_matcher_forward_declarations(pg_source_writer* writer, pg_grammar* grammar):
 	int i = 0
 	while (i < grammar.tokens.length):
 		pg_token_def* token = grammar.tokens[i]
@@ -599,7 +601,10 @@ void pg_emit_forward_declarations(pg_source_writer* writer, pg_grammar* grammar)
 		pg_emit_dynamic_line_end(writer)
 		i = i + 1
 	pg_source_blank(writer)
-	i = 0
+
+
+void pg_emit_rule_forward_declarations(pg_source_writer* writer, pg_grammar* grammar):
+	int i = 0
 	while (i < grammar.rules.length):
 		pg_rule* rule = grammar.rules[i]
 		pg_emit_dynamic_line_start(writer)
@@ -611,6 +616,11 @@ void pg_emit_forward_declarations(pg_source_writer* writer, pg_grammar* grammar)
 		pg_emit_dynamic_line_end(writer)
 		i = i + 1
 	pg_source_blank(writer)
+
+
+void pg_emit_forward_declarations(pg_source_writer* writer, pg_grammar* grammar):
+	pg_emit_matcher_forward_declarations(writer, grammar)
+	pg_emit_rule_forward_declarations(writer, grammar)
 
 
 void pg_emit_advance_position(pg_source_writer* writer, pg_grammar* grammar):
@@ -1887,7 +1897,438 @@ void pg_emit_parse_entry(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_blank(writer)
 
 
-char* pg_generate_parser(pg_grammar* grammar):
+# --- streaming mode (issue #329 milestone 3) --------------------------
+#
+# `pg_streaming_check` (analysis.w) has already proven, before any of
+# this runs, that every choice in the grammar is committed dispatch and
+# no ?/*/+ term names a rule (pg_generate_streaming_parser below refuses
+# to emit anything otherwise). That lets rule bodies commit to an
+# alternative with a single first-set test and then run its terms in a
+# straight line: no mark, no rewind, anywhere. A mandatory term that
+# fails is a hard syntax error -- once the guard chose this alternative
+# there was never a sibling to fall back to -- so failure is a direct
+# "record diagnostic, return 0" instead of AST mode's rewind-and-try-next.
+#
+# Callback surface: a generated <parser>_listener carries one context
+# pointer plus, per rule, an on_enter_<rule>/on_exit_<rule> pair (fired
+# with the token stream, so a listener can peek the token that triggered
+# it) and one shared on_token, fired for every consumed token regardless
+# of which rule consumed it. Any field left 0 is simply skipped. on_enter
+# fires before the rule's alternative is even chosen; on_exit fires only
+# once every term of the chosen alternative has matched, so a rule that
+# enters but never exits is exactly the rule that failed.
+
+
+void pg_emit_streaming_types(pg_source_writer* writer, pg_grammar* grammar):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"type ")
+	pg_source_append(writer, grammar.name)
+	pg_source_append(writer, c"_listener_fn = fn(pg_token_stream*, void*) -> void")
+	pg_emit_dynamic_line_end(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"type ")
+	pg_source_append(writer, grammar.name)
+	pg_source_append(writer, c"_token_fn = fn(pg_token*, void*) -> void")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_blank(writer)
+
+
+void pg_emit_streaming_listener_name(pg_source_writer* writer, pg_grammar* grammar):
+	pg_source_append(writer, grammar.name)
+	pg_source_append(writer, c"_listener")
+
+
+void pg_emit_streaming_listener_struct(pg_source_writer* writer, pg_grammar* grammar):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"struct ")
+	pg_emit_streaming_listener_name(writer, grammar)
+	pg_source_append(writer, c":")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_source_line(writer, c"void* context")
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, grammar.name)
+	pg_source_append(writer, c"_token_fn* on_token")
+	pg_emit_dynamic_line_end(writer)
+	int i = 0
+	while (i < grammar.rules.length):
+		pg_rule* rule = grammar.rules[i]
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, grammar.name)
+		pg_source_append(writer, c"_listener_fn* on_enter_")
+		pg_source_append(writer, rule.name)
+		pg_emit_dynamic_line_end(writer)
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, grammar.name)
+		pg_source_append(writer, c"_listener_fn* on_exit_")
+		pg_source_append(writer, rule.name)
+		pg_emit_dynamic_line_end(writer)
+		i = i + 1
+	pg_source_dedent(writer)
+	pg_source_blank(writer)
+
+
+void pg_emit_streaming_listener_new(pg_source_writer* writer, pg_grammar* grammar):
+	pg_emit_dynamic_line_start(writer)
+	pg_emit_streaming_listener_name(writer, grammar)
+	pg_source_append(writer, c"* ")
+	pg_source_append(writer, grammar.name)
+	pg_source_append(writer, c"_listener_new():")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_emit_streaming_listener_name(writer, grammar)
+	pg_source_append(writer, c"* listener = new ")
+	pg_emit_streaming_listener_name(writer, grammar)
+	pg_source_append(writer, c"()")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_line(writer, c"listener.context = 0")
+	pg_source_line(writer, c"listener.on_token = 0")
+	int i = 0
+	while (i < grammar.rules.length):
+		pg_rule* rule = grammar.rules[i]
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, c"listener.on_enter_")
+		pg_source_append(writer, rule.name)
+		pg_source_append(writer, c" = 0")
+		pg_emit_dynamic_line_end(writer)
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, c"listener.on_exit_")
+		pg_source_append(writer, rule.name)
+		pg_source_append(writer, c" = 0")
+		pg_emit_dynamic_line_end(writer)
+		i = i + 1
+	pg_source_line(writer, c"return listener")
+	pg_source_dedent(writer)
+	pg_source_blank(writer)
+
+
+void pg_emit_streaming_rule_forward_declarations(pg_source_writer* writer, pg_grammar* grammar):
+	int i = 0
+	while (i < grammar.rules.length):
+		pg_rule* rule = grammar.rules[i]
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, c"int ")
+		pg_source_append(writer, grammar.name)
+		pg_source_append(writer, c"_parse_")
+		pg_source_append(writer, rule.name)
+		pg_source_append(writer, c"(pg_token_stream* stream, pg_diagnostics* diagnostics, ")
+		pg_emit_streaming_listener_name(writer, grammar)
+		pg_source_append(writer, c"* listener);")
+		pg_emit_dynamic_line_end(writer)
+		i = i + 1
+	pg_source_blank(writer)
+
+
+# int <name>_match_token(stream, kind, listener): peeks, and on a kind
+# match consumes and fires on_token. Mirrors pg_emit_match_token's
+# AST-mode shape but returns a plain success flag instead of building a
+# pg_ast_node -- every term emitter below (mandatory, optional, repeat)
+# is built on this one primitive.
+void pg_emit_streaming_match_token(pg_source_writer* writer, pg_grammar* grammar):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_source_append(writer, grammar.name)
+	pg_source_append(writer, c"_match_token(pg_token_stream* stream, int kind, ")
+	pg_emit_streaming_listener_name(writer, grammar)
+	pg_source_append(writer, c"* listener):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_source_line(writer, c"pg_token* token = pg_token_stream_peek(stream)")
+	pg_source_line(writer, c"if (token.kind == kind):")
+	pg_source_indent(writer)
+	pg_source_line(writer, c"pg_token_stream_consume(stream)")
+	pg_source_line(writer, c"if (listener.on_token != 0):")
+	pg_source_indent(writer)
+	pg_source_line(writer, c"listener.on_token(token, listener.context)")
+	pg_source_dedent(writer)
+	pg_source_line(writer, c"return 1")
+	pg_source_dedent(writer)
+	pg_source_line(writer, c"return 0")
+	pg_source_dedent(writer)
+	pg_source_blank(writer)
+
+
+# "pg_token* <var> = pg_token_stream_peek(stream); pg_diagnostics_add(...); return 0"
+# -- the hard-failure path every streaming term emitter below shares.
+void pg_emit_streaming_syntax_error(pg_source_writer* writer, char* var_name, char* expected):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"pg_token* ")
+	pg_source_append(writer, var_name)
+	pg_source_append(writer, c" = pg_token_stream_peek(stream)")
+	pg_emit_dynamic_line_end(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"pg_diagnostics_add(diagnostics, ")
+	pg_source_append(writer, var_name)
+	pg_source_append(writer, c".filename, ")
+	pg_source_append(writer, var_name)
+	pg_source_append(writer, c".line, ")
+	pg_source_append(writer, var_name)
+	pg_source_append(writer, c".column, c\"syntax error\", ")
+	pg_emit_c_string_literal(writer, expected)
+	pg_source_append(writer, c", ")
+	pg_source_append(writer, var_name)
+	pg_source_append(writer, c".text)")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_line(writer, c"return 0")
+
+
+# A single term within a chosen alternative. Streaming eligibility
+# (pg_streaming_check) has already ruled out ?/*/+ over a rule reference,
+# so the modifier cases below only ever guard a token/literal -- always
+# safe to test with zero lookahead cost via <name>_match_token.
+void pg_emit_streaming_term(pg_source_writer* writer, pg_grammar* grammar, pg_term* term, int alt_index, int term_index):
+	if (term.modifier == 0):
+		if (pg_grammar_is_token_term(grammar, term.name)):
+			pg_emit_dynamic_line_start(writer)
+			pg_source_append(writer, c"if (")
+			pg_source_append(writer, grammar.name)
+			pg_source_append(writer, c"_match_token(stream, ")
+			pg_emit_token_kind_call(writer, grammar, term.name)
+			pg_source_append(writer, c", listener) == 0):")
+			pg_emit_dynamic_line_end(writer)
+			pg_source_indent(writer)
+			char* var_name = pg_guard_var_name(c"stream_err_", alt_index, term_index)
+			pg_emit_streaming_syntax_error(writer, var_name, term.name)
+			free(var_name)
+			pg_source_dedent(writer)
+		else:
+			pg_emit_dynamic_line_start(writer)
+			pg_source_append(writer, c"if (")
+			pg_source_append(writer, grammar.name)
+			pg_source_append(writer, c"_parse_")
+			pg_source_append(writer, term.name)
+			pg_source_append(writer, c"(stream, diagnostics, listener) == 0):")
+			pg_emit_dynamic_line_end(writer)
+			pg_source_indent(writer)
+			pg_source_line(writer, c"return 0")
+			pg_source_dedent(writer)
+	else if (term.modifier == '?'):
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, grammar.name)
+		pg_source_append(writer, c"_match_token(stream, ")
+		pg_emit_token_kind_call(writer, grammar, term.name)
+		pg_source_append(writer, c", listener)")
+		pg_emit_dynamic_line_end(writer)
+	else:
+		# '*' or '+'
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, c"int ")
+		pg_emit_var(writer, c"repeat_count_", alt_index, term_index)
+		pg_source_append(writer, c" = 0")
+		pg_emit_dynamic_line_end(writer)
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, c"while (")
+		pg_source_append(writer, grammar.name)
+		pg_source_append(writer, c"_match_token(stream, ")
+		pg_emit_token_kind_call(writer, grammar, term.name)
+		pg_source_append(writer, c", listener)):")
+		pg_emit_dynamic_line_end(writer)
+		pg_source_indent(writer)
+		pg_emit_dynamic_line_start(writer)
+		pg_emit_var(writer, c"repeat_count_", alt_index, term_index)
+		pg_source_append(writer, c" = ")
+		pg_emit_var(writer, c"repeat_count_", alt_index, term_index)
+		pg_source_append(writer, c" + 1")
+		pg_emit_dynamic_line_end(writer)
+		pg_source_dedent(writer)
+		if (term.modifier == '+'):
+			pg_emit_dynamic_line_start(writer)
+			pg_source_append(writer, c"if (")
+			pg_emit_var(writer, c"repeat_count_", alt_index, term_index)
+			pg_source_append(writer, c" == 0):")
+			pg_emit_dynamic_line_end(writer)
+			pg_source_indent(writer)
+			char* var_name = pg_guard_var_name(c"stream_err_", alt_index, term_index)
+			pg_emit_streaming_syntax_error(writer, var_name, term.name)
+			free(var_name)
+			pg_source_dedent(writer)
+
+
+void pg_emit_streaming_alternative_body(pg_source_writer* writer, pg_grammar* grammar, pg_rule* rule, int alt_index, int offset):
+	pg_alternative* alternative = rule.alternatives[alt_index]
+	if (offset >= alternative.terms.length):
+		# The empty/epsilon alternative (e.g. a trailing unguarded
+		# fallback unit, see pg_emit_streaming_choice): nothing to match,
+		# so make the no-op explicit instead of emitting an empty block.
+		pg_source_line(writer, c"pass")
+		return
+	int term_index = offset
+	while (term_index < alternative.terms.length):
+		pg_emit_streaming_term(writer, grammar, alternative.terms[term_index], alt_index, term_index)
+		term_index = term_index + 1
+
+
+void pg_emit_streaming_choice(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule, int alt_start, int alt_count, int offset, char* kind_name);
+
+
+# A left-factored run, streaming mode: parse the shared prefix once (each
+# term mandatory-style, per pg_emit_streaming_term) then recurse into the
+# suffix choice -- no mark, nothing to rewind to on failure since a
+# prefix-term failure is already a hard error by the time control would
+# reach here.
+void pg_emit_streaming_factored_unit(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule, pg_choice_unit* unit, int offset):
+	pg_alternative* head = rule.alternatives[unit.alt_start]
+	int term_index = offset
+	while (term_index < offset + unit.prefix_length):
+		pg_emit_streaming_term(writer, grammar, head.terms[term_index], unit.alt_start, term_index)
+		term_index = term_index + 1
+	char* inner_kind = pg_guard_var_name(c"factored_kind_", unit.alt_start, offset)
+	pg_emit_streaming_choice(writer, grammar, analysis, rule, unit.alt_start, unit.member_count, offset + unit.prefix_length, inner_kind)
+	free(inner_kind)
+
+
+# Ordered choice, streaming mode. pg_streaming_check has already proven
+# every unit here is guarded except possibly the last, which may be an
+# unguarded nullable "epsilon" fallback (mirrors pg_report_choice's
+# empty-suffix exemption in analysis.w). Guarded units become an
+# if/else-if chain on the current token kind; the final branch is either
+# that fallback's (empty) body or, when every unit was guarded, a syntax
+# error -- there is no other outcome left once none of the guards match.
+void pg_emit_streaming_choice(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule, int alt_start, int alt_count, int offset, char* kind_name):
+	list[pg_choice_unit*] units = pg_plan_choice(analysis, rule, alt_start, alt_count, offset)
+	if (units.length == 1):
+		pg_choice_unit* unit = units[0]
+		if (unit.member_count == 1):
+			pg_emit_streaming_alternative_body(writer, grammar, rule, unit.alt_start, offset)
+		else:
+			pg_emit_streaming_factored_unit(writer, grammar, analysis, rule, unit, offset)
+		pg_choice_units_free(units)
+		return
+	pg_emit_peek_kind_line(writer, kind_name)
+	int has_fallback = units[units.length - 1].guarded == 0
+	int i = 0
+	while (i < units.length):
+		pg_choice_unit* unit = units[i]
+		int is_fallback = has_fallback && (i == units.length - 1)
+		if (is_fallback == 0):
+			pg_emit_dynamic_line_start(writer)
+			if (i == 0):
+				pg_source_append(writer, c"if (")
+			else:
+				pg_source_append(writer, c"else if (")
+			pg_emit_kind_set_test(writer, grammar, analysis, unit.guard_set, kind_name)
+			pg_source_append(writer, c"):")
+			pg_emit_dynamic_line_end(writer)
+		else:
+			pg_source_line(writer, c"else:")
+		pg_source_indent(writer)
+		if (unit.member_count == 1):
+			pg_emit_streaming_alternative_body(writer, grammar, rule, unit.alt_start, offset)
+		else:
+			pg_emit_streaming_factored_unit(writer, grammar, analysis, rule, unit, offset)
+		pg_source_dedent(writer)
+		i = i + 1
+	if (has_fallback == 0):
+		pg_source_line(writer, c"else:")
+		pg_source_indent(writer)
+		char* var_name = pg_guard_var_name(c"stream_err_", alt_start, offset)
+		pg_emit_streaming_syntax_error(writer, var_name, rule.name)
+		free(var_name)
+		pg_source_dedent(writer)
+	pg_choice_units_free(units)
+
+
+void pg_emit_streaming_rule(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_source_append(writer, grammar.name)
+	pg_source_append(writer, c"_parse_")
+	pg_source_append(writer, rule.name)
+	pg_source_append(writer, c"(pg_token_stream* stream, pg_diagnostics* diagnostics, ")
+	pg_emit_streaming_listener_name(writer, grammar)
+	pg_source_append(writer, c"* listener):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"if (listener.on_enter_")
+	pg_source_append(writer, rule.name)
+	pg_source_append(writer, c" != 0):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"listener.on_enter_")
+	pg_source_append(writer, rule.name)
+	pg_source_append(writer, c"(stream, listener.context)")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_dedent(writer)
+	pg_emit_streaming_choice(writer, grammar, analysis, rule, 0, rule.alternatives.length, 0, c"first_kind")
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"if (listener.on_exit_")
+	pg_source_append(writer, rule.name)
+	pg_source_append(writer, c" != 0):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"listener.on_exit_")
+	pg_source_append(writer, rule.name)
+	pg_source_append(writer, c"(stream, listener.context)")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_dedent(writer)
+	pg_source_line(writer, c"return 1")
+	pg_source_dedent(writer)
+	pg_source_blank(writer)
+
+
+# The grammar's start rule is expected to end with an EOF term (the
+# convention AST mode's sample grammars already use), so there is
+# nothing extra to check here: whatever the start rule returns is the
+# answer.
+void pg_emit_streaming_parse_entry(pg_source_writer* writer, pg_grammar* grammar):
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"int ")
+	pg_source_append(writer, grammar.name)
+	pg_source_append(writer, c"_parse_streaming(char* input, char* filename, pg_diagnostics* diagnostics, ")
+	pg_emit_streaming_listener_name(writer, grammar)
+	pg_source_append(writer, c"* listener):")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_indent(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"pg_token_stream* stream = ")
+	pg_source_append(writer, grammar.name)
+	pg_source_append(writer, c"_lex(input, filename, diagnostics)")
+	pg_emit_dynamic_line_end(writer)
+	pg_emit_dynamic_line_start(writer)
+	pg_source_append(writer, c"return ")
+	pg_source_append(writer, grammar.name)
+	pg_source_append(writer, c"_parse_")
+	pg_source_append(writer, grammar.start_rule)
+	pg_source_append(writer, c"(stream, diagnostics, listener)")
+	pg_emit_dynamic_line_end(writer)
+	pg_source_dedent(writer)
+	pg_source_blank(writer)
+
+
+char* pg_generate_streaming_parser(pg_grammar* grammar):
+	if (pg_streaming_check(grammar) > 0):
+		return 0
+	pg_analysis* analysis = pg_analyze_grammar(grammar)
+	pg_source_writer* writer = pg_source_writer_new()
+	pg_source_line(writer, c"/* generated by ParserGenerator (streaming mode) */")
+	pg_source_line(writer, c"import lib.lib")
+	pg_source_line(writer, c"import libs.extras.parser_generator.runtime")
+	pg_source_blank(writer)
+	pg_emit_token_constants(writer, grammar)
+	pg_emit_token_name(writer, grammar)
+	pg_emit_streaming_types(writer, grammar)
+	pg_emit_streaming_listener_struct(writer, grammar)
+	pg_emit_streaming_listener_new(writer, grammar)
+	pg_emit_matcher_forward_declarations(writer, grammar)
+	pg_emit_streaming_rule_forward_declarations(writer, grammar)
+	pg_emit_expression_matchers(writer, grammar)
+	pg_emit_advance_position(writer, grammar)
+	pg_emit_lexer(writer, grammar)
+	pg_emit_streaming_match_token(writer, grammar)
+	int i = 0
+	while (i < grammar.rules.length):
+		pg_emit_streaming_rule(writer, grammar, analysis, grammar.rules[i])
+		i = i + 1
+	pg_emit_streaming_parse_entry(writer, grammar)
+	pg_analysis_free(analysis)
+	return pg_source_take(writer)
+
+
+char* pg_generate_ast_parser(pg_grammar* grammar):
 	pg_analysis* analysis = pg_analyze_grammar(grammar)
 	pg_source_writer* writer = pg_source_writer_new()
 	pg_source_line(writer, c"/* generated by ParserGenerator */")
@@ -1909,3 +2350,9 @@ char* pg_generate_parser(pg_grammar* grammar):
 	pg_emit_parse_entry(writer, grammar)
 	pg_analysis_free(analysis)
 	return pg_source_take(writer)
+
+
+char* pg_generate_parser(pg_grammar* grammar):
+	if (grammar.mode == pg_grammar_mode_streaming()):
+		return pg_generate_streaming_parser(grammar)
+	return pg_generate_ast_parser(grammar)

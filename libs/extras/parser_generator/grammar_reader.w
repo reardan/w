@@ -163,6 +163,8 @@ int pg_reader_is_top_level(pg_grammar_reader* reader):
 		return 0
 	if (strcmp(reader.token, c"parser") == 0):
 		return 1
+	if (strcmp(reader.token, c"mode") == 0):
+		return 1
 	if (strcmp(reader.token, c"token") == 0):
 		return 1
 	if (strcmp(reader.token, c"skip") == 0):
@@ -545,7 +547,21 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 		return 0
 	pg_grammar* grammar = pg_grammar_new(parser_name)
 	while (reader.token_kind != pg_reader_token_eof()):
-		if (pg_reader_is_name(reader, c"token")):
+		if (pg_reader_is_name(reader, c"mode")):
+			pg_reader_next(reader)
+			char* name = pg_reader_take_name(reader)
+			if (name == 0):
+				return 0
+			if (strcmp(name, c"streaming") == 0):
+				grammar.mode = pg_grammar_mode_streaming()
+			else if (strcmp(name, c"ast") == 0):
+				grammar.mode = pg_grammar_mode_ast()
+			else:
+				pg_reader_error(reader, c"unknown parser mode", c"streaming or ast")
+				free(name)
+				return 0
+			free(name)
+		else if (pg_reader_is_name(reader, c"token")):
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
 			if (name == 0):
@@ -628,7 +644,7 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 				pg_recover_add_skip(recover, reader.token)
 				pg_reader_next(reader)
 		else:
-			pg_reader_error(reader, c"unknown grammar directive", c"token, skip, fragment, literal, start or rule")
+			pg_reader_error(reader, c"unknown grammar directive", c"mode, token, skip, fragment, literal, start or rule")
 			return 0
 	if (grammar.rules.length == 0):
 		pg_reader_error(reader, c"grammar has no rules", c"rule")

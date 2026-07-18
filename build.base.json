@@ -21,6 +21,7 @@
 			"tests/parser_generator/generated_c_parser_test.w",
 			"tests/parser_generator/generated_matcher_expressions_test.w",
 			"tests/parser_generator/generated_sample_test.w",
+			"tests/parser_generator/generated_streaming_test.w",
 			"tests/parser_generator/generated_w_parser_test.w",
 			"tests/wasm_extern_test.w",
 			"tests/wexec/direct_file/sample_test.w",
@@ -924,6 +925,15 @@
 				{"cmd": ["cmp", "bin/generated_c_parser.w", "libs/extras/c_import/generated_c_parser.w"]},
 				{"cmd": ["bin/wv2", "tests/parser_generator/generated_c_parser_test.w", "-o", "bin/parser_generator_c_test"]},
 				{"cmd": ["bin/parser_generator_c_test"]}
+			]
+		},
+		{
+			"name": "parser_generator_streaming_test",
+			"deps": ["parser_generator_test"],
+			"steps": [
+				{"cmd": ["bin/parser_generator", "tests/parser_generator/streaming_sample.pg", "-o", "bin/generated_streaming_parser.w"]},
+				{"cmd": ["bin/wv2", "tests/parser_generator/generated_streaming_test.w", "-o", "bin/parser_generator_streaming_test"]},
+				{"cmd": ["bin/parser_generator_streaming_test"]}
 			]
 		},
 		{
@@ -2141,6 +2151,7 @@
 				"parser_generator_test",
 				"parser_generator_w_test",
 				"parser_generator_c_test",
+				"parser_generator_streaming_test",
 				"wtest_map_test",
 				"wtest_run_test",
 				"wexec_test",
