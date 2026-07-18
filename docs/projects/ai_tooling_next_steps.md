@@ -30,82 +30,41 @@ is a queue, not an archive.
   recovery, which stays a research project. Cheap partial win: after an
   error in file A, agents re-check to find errors behind it — nothing to
   build, just keep the limitation documented in skills.
-- **Bool-bitwise condition warning: default still lvalue-scoped;
-  widened scope shipped opt-in (stage 1, 2026-07-16).** The shipped
-  "did you mean `||`/`&&`?" hint (2026-07-10) fires by default only
-  when both `|`/`&` operands are bool-typed *lvalues* in an if/while
-  condition. Stage 1 of the migration landed: (a) the parser generator
-  now emits `&&`/`||` for every boolean join in generated code (kind-set
-  guards, first-byte dispatch ranges, literal-trie accept tests, charset
-  conditions, recovery skip conjunctions — all pure-comparison operands;
-  `libs/extras/c_import/generated_c_parser.w` regenerated, removing all
-  of its ~140 sites), and (b) `w check --bool-ops` (opt-in, modeled on
-  `--imports`) widens the hint to comparison-result operands —
-  `(a == b) | (c == d)` — covered by `check_bool_ops_test`. The
-  compiler-injected modules (auto-import closure, prelude/json/
-  template/var runtimes) stay suppressed under the flag like `--imports`
-  does. Measured stage-2 worklist with the flag on: 471 fires across
-  `w check --bool-ops w.w` plus 19 in the suppressed compiler-injected
-  runtime (16 auto-import closure + 3 `structures/prelude.w`), ~490
-  hand-written sites total. Stage 2 is the mechanical per-site sweep
-  (reviewed in ~50-site chunks: top files `debugger/wdbg.w` 47,
-  `libs/asm/x86_decode.w` 36, `libs/extras/parser_generator/lexer.w` 27,
-  `grammar/string_literal.w` 27, `compiler/tokenizer.w` 24); flipping
-  the default comes after that.
-- **`w check --bool-ops` misreports line numbers by +1 for every
-  imported (non-root) file.** Found 2026-07-17 during the Wave 2
-  `debugger/` chunk of the bool-bitwise sweep: `./bin/wv2 check
-  --bool-ops w.w` attributed a warning to `debugger/memory.w:52`, but
-  the actual `(c < 32) | (c > 126)` site is on line 51 (confirmed with
-  `grep -n`/`git show`, and by checking `memory.w` alone as the *compile
-  root*, which reports line 51 correctly). Reproduced from a scratch
-  copy of the tree and confirmed the same +1 shift on an unrelated file
-  outside `debugger/` — `lib/lib.w:65` reported vs. actual line 64 for
-  `(c >= 194) & (c <= 223)` — so the bug is generic to any file reached
-  via `import`, not specific to this directory or to import depth. Every
-  site converted in this PR was verified against the real file content
-  (`Read`/`grep -n`, never the reported number alone) before editing, so
-  nothing was mis-edited here, but a sweep chunk that fed the checker's
-  own line numbers straight into a scripted `sed -i "Ns/.../.../"` would
-  silently patch the line below the real site. Worth fixing the
-  line-tracking for imported files (looks like an off-by-one in the
-  per-file newline/line counter when a new file is pushed onto the
-  import stack) before wave 2f (flip the default) or any other tooling
-  treats `--bool-ops`'s reported line numbers as ground truth.
-- **`w check --bool-ops` JSON site locations don't point at the
-  operator, and chained joins under-report — both bit the wave-2
-  stage-2 chunk sweep (2026-07-17).** (1) The reported `line`/`column`
-  for a bool-bitwise warning is the position of the *next* token after
-  the whole `if`/`while` condition finishes parsing (typically the
-  first token of the block body, i.e. usually condition-line-plus-one),
-  not the position of the `&`/`|` itself — the warning fires from
-  `grammar/bitwise_and_expr.w`/`bitwise_or_expr.w` after the right
-  operand's `equality_expr()`/`bitwise_and_expr()` call already
-  returned, using whatever token the tokenizer has advanced to by
-  then. Matching a `--json` site back to source therefore needs a
-  backward (and sometimes forward) scan for the actual condition, not
-  a direct line lookup. (2) For a same-operator chain of 3+ terms
-  (`A & B & C`), only the *first* pairing (`A & B`) can ever warn:
-  `binary2_finish_pop`/`binary2_finish` (`grammar/binary_op.w`) return
-  the fixed placeholder type `3` regardless of the actual operand
-  types, and `3` satisfies neither `operand_is_bool_lvalue` nor the
-  `--bool-ops` value check, so every subsequent iteration in the same
-  `while (accept(...))` loop sees a non-bool left operand and never
-  warns again — even when every remaining term is a plain comparison.
-  One useful side effect this exposed: converting an inner `&`/`|` to
-  `&&`/`||` can *unlock* an outer bitwise join that previously looked
-  non-bool (logical `&&`/`||` do return a real bool-valued result, so
-  `(A && B) | C` becomes a genuine warn/convert candidate once the
-  inner pair is fixed) — a mechanical sweep needs at least one
-  re-enumeration pass after edits to catch these, not just a single
-  before/after diff. Together these meant per-file site counts from
-  `--bool-ops` undercounted the true mechanical worklist by chain
-  members; a source-level scan (matching each `if`/`while` condition's
-  paren-balanced operand pairs) found ~20% more genuine sites than the
-  compiler's own warning count in the affected files. Worth fixing
-  before 2f flips the default: emit the warning at the operator's own
-  position, and don't let the chain's running type erase bool-ness so
-  every qualifying pair in a chain gets its own diagnostic.
+- **Shipped (2026-07-17, wave 2f): the bool-bitwise condition hint is
+  now on by default for every call-free join.** See `ai_tooling.md`'s
+  status section for the shipped description; `--bool-ops` survives as
+  the narrower "also report call-containing joins" superset (it used to
+  gate the comparison-result widening itself, before the wave-2
+  mechanical sweep converted every side-effect-free site tree-wide).
+- **`w check --bool-ops`'s position/chain bugs — two fixed, one
+  deferred (2026-07-17, wave 2f).** Consolidates four overlapping
+  reports from wave-2 sweep chunks 2a/2b/2d/2e, all downstream of the
+  same three bugs: (1) a warning inside an *imported* (non-root) file
+  reports its line number +1 high (`debugger/memory.w:52` vs. actual
+  line 51) — root cause found (`compiler/compiler.w`'s `compile_save`
+  saves `line_number + 1` instead of `line_number` before compiling the
+  import, then restores the inflated value) but **left open**: the fix
+  touches every diagnostic's line number for every imported file, not
+  just this hint, so it belongs in its own gated PR, not this one. (2)
+  the reported line/column was wherever the tokenizer's one-token
+  lookahead sat once the *whole* condition finished parsing, not the
+  `&`/`|` itself — **fixed**: `grammar/binary_op.w`'s
+  `warn_bool_bitwise_at` snapshots `line_number`/`diag_token_line`/
+  `diag_token_column`/`token` when `accept()`'s peek recognizes the
+  operator, before consuming it moves the lookahead, and restores them
+  around the `warning()` call. (3) a same-precedence chain of 3+ terms
+  only ever flagged the first pairing, because
+  `binary2_finish_pop`/`binary2_finish` return the untyped placeholder
+  type `3`, erasing the fold's bool-ness before the next pairing's check
+  ran — **fixed**: `bitwise_and_expr`/`bitwise_or_expr` now track
+  `chain_is_bool`/`chain_is_pure` alongside the running fold instead of
+  re-deriving them from the (erased) type, so every qualifying pairing
+  gets its own diagnostic (`tests/bool_bitwise_chain_fixture.w` pins two
+  distinct positions for a 3-term chain). The precedence-grouping
+  observation from the original reports still holds — converting a
+  join can newly expose the next fold in a chain as bool-vs-bool — but
+  no longer needs a re-enumeration pass to catch: the default hint now
+  walks the whole chain in one `check` pass.
 - **`T* + int` is a raw, unscaled byte offset for every pointee width,
   and nothing warns — the rule is now documented, the warning/intrinsic
   is not.** Found 2026-07-16 writing `libs/extras/compress/
@@ -153,76 +112,6 @@ is a queue, not an archive.
   per-arch resolution, with a win64 stub that always reports a
   transport failure so the feature degrades to "unavailable" instead
   of "won't compile" (2026-07-16).
-- **`w check --bool-ops` reports diagnostics one line low.** Found
-  2026-07-17 sweeping `libs/asm/` (wave 2b): every fired site's `line`
-  is the line *after* the one actually containing the flagged `&`/`|`
-  (the `column` is correct for the true line; only `line` is off by
-  +1). Repro: `if (a == 1 & b == 2):` on line N reports `"line": N+1`.
-  Verified via `grep -n` cross-checks across 12 files / 136 sites in
-  `libs/asm/` — the +1 offset was uniform, never off by 0 or 2. Didn't
-  block this sweep once identified (every reported line was adjusted -1
-  before editing), but will bite anything that acts on the reported line
-  directly — auto-fix scripts, editor jump-to-diagnostic. Plain `w
-  check` (non-bool-ops) warnings weren't audited for the same offset;
-  worth isolating to the specific emission site and fixing before other
-  tooling builds on `--bool-ops` output.
-- **`w check --bool-ops` only flags the single operator whose two
-  immediate operands are syntactically bare comparisons/bool reads —
-  not chained or nested joins where one side is itself a compound
-  boolean expression.** Observed 2026-07-17 in `libs/asm/`: `a & b & c`
-  (left-assoc, three bare comparisons) fires exactly once, on the first
-  `&`, never the second; `(a | b) & c` fires only for the inner `|`,
-  never the outer `&` (its left operand is now a parenthesized
-  expression, not a bare comparison, even though post-conversion it's
-  fully bool-typed and side-effect-free). Confirmed with a standalone
-  repro (`if (a == 1 & b == 2 & c == 3):` emits exactly one warning).
-  Consequence for chunk agents: converting only the tool-flagged
-  operator in a multi-operator condition leaves a stylistically
-  inconsistent mix of `&`/`&&` (or `|`/`||`) in the same statement; the
-  side-effect-free rule has to be applied by hand to the sibling
-  operators the tool didn't flag to get a fully-converted statement.
-  Relevant to wave 2f (flipping the default): the widened hint will
-  need to walk the whole boolean-join tree rather than pattern-match
-  only directly-comparison operands, or it will keep under-firing on
-  chains and nested groups the same way.
-- **`w check --bool-ops` (and the underlying bool-bitwise condition
-  warning generally) misreports the site location for any warning
-  inside an *imported* file.** Found 2026-07-17 doing the bool-bitwise
-  stage-2 sweep (wave 2, chunk 2d: `grammar/`+`compiler/`+
-  `code_generator/`). Two independent bugs stack: (1) every reported
-  line number for a warning inside an imported (non-root) file is off
-  by exactly +1 — reproduced minimally with a two-file `import`
-  (`main.w` importing `sub.w`, the flagged `&` on `sub.w`'s line 2
-  reports as line 3); a single-file root program checked directly does
-  not show this, so it's specific to crossing an import boundary
-  (plausibly an extra line-count tick when the tokenizer switches
-  files). (2) independent of file identity, the reported line/column
-  for this warning is wherever the tokenizer's one-token lookahead
-  happens to be sitting when `warning()` fires (i.e. after the full
-  join has been parsed), not the location of the flagged operator
-  itself — for a chained condition (`A & B & C`, or nesting across a
-  line break) this can point at a wholly different token than the one
-  that needs editing. Reproduced with a 3-term chain (`(a==1) & (b==2)
-  & (c==3)`) in a root file (no import-boundary bug in play): only the
-  first `&` is actually flagged (both operands bool; the fold's result
-  promotes to a non-bool type so later folds in the same chain never
-  qualify), but the reported column lands on the *second* `&`, one
-  token further right than the real one. Combined, agents cannot trust
-  either the line or the column for this warning inside any imported,
-  multi-line, or chained site — the only reliable approach found was
-  computing `actual_line = reported_line - 1` for imported files, then
-  reading the surrounding source to identify which specific `&`/`|`
-  the message's operator symbol (`&` vs `|`) and site count actually
-  refer to. A `check --bool-ops --json` mode that reported the true
-  operator token's byte offset (as recorded by the parser at `accept()`
-  time, before any further lookahead) would remove this entirely.
-  Related, not a bug: converting a flagged join to `&&`/`||` changes
-  operator precedence grouping (`&&`/`||` bind looser than `&`/`|`), so
-  in a 3+-term chain each conversion can newly expose the *next* fold
-  as bool-vs-bool (their result type is no longer erased by `&`/`|`'s
-  int-promotion) — sweeping such a chain to a real fixpoint takes one
-  `check --bool-ops` re-run per remaining fold, not one.
-
 ## Test selection (`bin/wtest`)
 
 - **First `wtest changed` after a build can take well over the

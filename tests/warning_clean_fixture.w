@@ -53,9 +53,13 @@ int array_decay_is_clean(int flag):
 # literal width error (grammar/int_literal.w) stays quiet for leading
 # zeros — only significant digits count, so a 16-digit hex literal and
 # a 40-digit binary literal whose value fits in 32 bits still compile;
-# the bool-bitwise condition hint stays quiet for comparison results,
-# for mixed operands, for bool arithmetic outside conditions and for
-# the short-circuiting spellings.
+# the bool-bitwise condition hint stays quiet for bool arithmetic
+# outside conditions (call-free or not) and for the short-circuiting
+# spellings — the default hint now fires for any call-free bool/
+# comparison join inside a condition (see
+# tests/bool_bitwise_warning_fixture.w for the positive cases and
+# tests/bool_ops_warn_fixture.w for the call-containing joins that stay
+# silent without --bool-ops).
 int bit31_and_bool_bitwise_are_clean(int x):
 	int mask = cast(int, 0xffffffff)
 	int low = 0x7fffffff
@@ -64,12 +68,14 @@ int bit31_and_bool_bitwise_are_clean(int x):
 	int wide_bits = cast(int, 0b0000000011111111111111111111111111111111)
 	bool first = x == 1
 	bool second = x == 2
+	# Outside a condition: accumulating comparison/bool results with '|'
+	# is not a guard and stays silent regardless of call-freedom
 	bool accumulated = first | second
-	if ((x == 1) | (x == 2)):
+	if ((x == 1) || (x == 2)):
 		return mask & x
 	if (wide_zeros == wide_bits):
 		return low
-	if (first | (x == 3)):
+	if (first || (x == 3)):
 		return low
 	if (first || second):
 		return bits

@@ -33,8 +33,8 @@ char* web_file_request_path(char* request):
 
 	char* path = request + 4
 	int i = 0
-	while ((path[i] != 0) & (path[i] != ' ')):
-		if ((path[i] == '?') | (path[i] == '#')):
+	while ((path[i] != 0) && (path[i] != ' ')):
+		if ((path[i] == '?') || (path[i] == '#')):
 			path[i] = 0
 			return path
 		i = i + 1
@@ -47,7 +47,7 @@ int web_file_path_is_safe(char* path):
 		return 0
 	int i = 0
 	while (path[i] != 0):
-		if ((path[i] == '.') & (path[i + 1] == '.')):
+		if ((path[i] == '.') && (path[i + 1] == '.')):
 			return 0
 		i = i + 1
 	return 1

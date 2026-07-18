@@ -94,7 +94,7 @@ int main(int argc, int argv):
 		sleep_ms(16)
 
 		frame = frame + 1
-		if ((max_frames > 0) & (frame >= max_frames)):
+		if ((max_frames > 0) && (frame >= max_frames)):
 			break
 
 	gfx_window_destroy(win)

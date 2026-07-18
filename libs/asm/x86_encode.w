@@ -490,7 +490,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 
 	# grp5 memory (call/jmp/push/inc/dec through r/m)
 	int g5 = asm_enc_grp5_ext(m)
-	if (g5 >= 0 & count == 1 & insn.op1.kind == ASM_OP_MEM()):
+	if (((g5 >= 0) && (count == 1)) & insn.op1.kind == ASM_OP_MEM()):
 		int w5 = 0
 		if ((g5 == 0 || g5 == 1) && insn.op1.size == 8):
 			w5 = 1
@@ -623,7 +623,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 
 	# btc/bt/bts/btr r/m, imm8 (0f ba /ext ib)
 	int g8 = asm_enc_grp8_ext(m)
-	if (g8 >= 0 & count == 2 & insn.op2.kind == ASM_OP_IMM()):
+	if (((g8 >= 0) && (count == 2)) & insn.op2.kind == ASM_OP_IMM()):
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), g8, &insn.op1)
 		asm_buffer_byte(b, 0x0f)
 		asm_buffer_byte(b, 0xba)

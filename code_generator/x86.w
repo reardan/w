@@ -254,7 +254,22 @@ void imul_eax_int32(int v):
 	emit_int32(v)
 
 
+# Bumped once per machine call instruction actually emitted: by this
+# function (every ordinary/indirect W call, and every builtin container
+# op routed through grammar/hash_builtin.w's hash_call_finish, operator
+# overload dispatch, generator resumption, or a 'new' allocation's
+# implicit malloc — they all funnel through call_eax) and by
+# code_generator/ffi.w's emit_ffi_call_inline (the one FFI call path
+# that bypasses call_eax, used for variadic C imports). Declared here,
+# ahead of grammar in the import order, so grammar/binary_op.w's
+# operand_is_pure can read it: it snapshots this counter around an
+# operand's parse to tell the '&'/'|' bool-bitwise condition hint
+# whether the operand executed any call at all.
+int emitted_call_count
+
+
 void call_eax():
+	emitted_call_count = emitted_call_count + 1
 	if (target_isa == 2):
 		wasm_call_eax()
 		return
