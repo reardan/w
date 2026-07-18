@@ -1,4 +1,5 @@
 import code_generator.code_emitter
+import code_generator.ptx
 import code_generator.wasm
 import code_generator.arm64
 import code_generator.x86

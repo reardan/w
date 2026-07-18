@@ -31,6 +31,8 @@ int saw_debugger_statement
 int in_generator_body
 void emit_generator_yield_call(); /* defined in generator_decl */
 void emit_generator_finish_call(); /* defined in generator_decl */
+int launch_statement(); /* defined in kernel_decl */
+int gpu_for_statement(); /* defined in gpu_for */
 
 
 void copy_struct_return_value(int declared_type):
@@ -90,6 +92,8 @@ int result_propagate_struct(int type):
 # instantiation and an error's payload is never read, so the
 # reinterpretation is layout-safe.
 int result_propagate_suffix(int type):
+	if (target_isa == 3):
+		error(c"'?' is not supported in gpu code")
 	if (in_generator_body):
 		error(c"'?' is not supported in generator bodies")
 	if (current_function_symbol < 0):
@@ -220,6 +224,7 @@ void statement():
 		be_ctrl_end(p1)
 
 	else if (while_statement()) {}
+	else if (gpu_for_statement()) {}
 	else if (for_statement()) {}
 	else if (switch_statement()) {}
 
@@ -249,6 +254,10 @@ void statement():
 		be_br(loop_continue_chain)
 
 	else if (accept(c"return")):
+		# Each 'gpu for' iteration is one GPU thread: there is no host
+		# frame to return from inside the outlined body.
+		if (in_gpu_for_body):
+			error(c"'return' is not supported in 'gpu for'")
 		# A newline (or end of file) after 'return' means no return value.
 		if ((peek(c";") == 0) & (token_newline == 0) & (token[0] != 0)):
 			if (in_generator_body):
@@ -316,11 +325,17 @@ void statement():
 	# defer <simple-statement>: record the span; it re-parses and runs
 	# at every function exit, LIFO (grammar/defer.w)
 	else if (accept(c"defer")):
+		if (target_isa == 3):
+			error(c"'defer' is not supported in gpu code")
 		if (in_generator_body):
 			error(c"'defer' is not supported in generator bodies")
 		defer_register()
 
 	else if (raw_asm_literal()):
+		expect_or_newline(c";")
+
+	# launch kernel[grid, block](args...) (grammar/kernel_decl.w)
+	else if (launch_statement()):
 		expect_or_newline(c";")
 
 	# name := expression (type-inferred local declaration)

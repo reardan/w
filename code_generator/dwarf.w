@@ -68,6 +68,10 @@ int debug_line_file_index():
 # passed in by the caller because this file is compiled before the symbol
 # table module and cannot reference its globals directly.
 void debug_line_note(int stmt_stack_pos):
+	# Device (PTX) bodies do not advance codepos, so address-keyed line
+	# records would pile up at the same host position: skip them.
+	if (target_isa == 3):
+		return;
 	debug_files_ensure()
 	if (debug_line_addresses == 0):
 		debug_line_capacity = 65536
@@ -123,6 +127,10 @@ int debug_local_capacity
 
 
 void debug_local_note(char* name, int slot, int kind, int type):
+	# Device (PTX) locals live on the GPU-side stack; the wdbg runtime
+	# records are host-only.
+	if (target_isa == 3):
+		return;
 	if (debug_local_capacity == 0):
 		debug_local_capacity = 4096
 		debug_local_names = malloc(debug_local_capacity * __word_size__)

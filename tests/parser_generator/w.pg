@@ -70,6 +70,12 @@ literal KW_DEFER "defer"
 # definition-name position), so it is also listed in name_token below,
 # like 'case'/'default'.
 literal KW_OPERATOR "operator"
+# 'kernel', 'launch' and 'gpu' are contextual gpu keywords in the
+# compiler (grammar/kernel_decl.w, grammar/gpu_for.w) and are shadowed
+# by user symbols, so they are also listed in name_token below.
+literal KW_KERNEL "kernel"
+literal KW_LAUNCH "launch"
+literal KW_GPU "gpu"
 
 literal ELLIPSIS "..."
 literal SHL_ASSIGN "<<="
@@ -135,12 +141,12 @@ rule program = separator* top_item* EOF
 rule separator = NEWLINE
 rule top_item = declaration separator* | statement separator*
 
-rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | operator_def | function_decl | global_decl
+rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | kernel_decl | operator_def | function_decl | global_decl
 rule import_decl = KW_IMPORT dotted_name import_alias_opt
 rule import_alias_opt = KW_AS name_token |
 rule dotted_name = name_token dotted_tail*
 rule dotted_tail = DOT name_token
-rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER | KW_OPERATOR
+rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER | KW_OPERATOR | KW_KERNEL | KW_LAUNCH | KW_GPU
 rule c_lib_decl = KW_C_LIB STRING
 rule extern_decl = KW_EXTERN type_ref IDENT LPAREN extern_param_list RPAREN extern_alias | KW_EXTERN type_ref IDENT
 rule extern_alias = ASSIGN STRING |
@@ -160,6 +166,8 @@ rule union_decl = KW_UNION IDENT block
 rule enum_decl = KW_ENUM IDENT block
 rule type_alias_decl = KW_TYPE IDENT ASSIGN type_ref
 rule generator_decl = KW_GENERATOR type_ref name_token LPAREN param_list RPAREN function_body
+# gpu kernels: implicit void return (grammar/kernel_decl.w)
+rule kernel_decl = KW_KERNEL name_token LPAREN param_list RPAREN function_body
 rule function_decl = type_ref name_token generic_opt LPAREN param_list RPAREN function_body
 # Operator overloading v1 (docs/projects/operator_overloading.md): the
 # compiler only accepts the arith_op spellings; EQ_EQ is parse-only so
@@ -206,7 +214,7 @@ rule expression_opt = expression |
 
 rule statement = base_statement statement_suffix
 rule statement_suffix = SEMI |
-rule base_statement = if_stmt | else_stmt | while_stmt | switch_stmt | case_stmt | for_stmt | return_stmt | yield_stmt | defer_stmt | break_stmt | continue_stmt | pass_stmt | debugger_stmt | local_decl | infer_decl | expression_stmt | block
+rule base_statement = if_stmt | else_stmt | while_stmt | switch_stmt | case_stmt | gpu_for_stmt | for_stmt | launch_stmt | return_stmt | yield_stmt | defer_stmt | break_stmt | continue_stmt | pass_stmt | debugger_stmt | local_decl | infer_decl | expression_stmt | block
 rule if_stmt = KW_IF paren_expression_opt block
 rule switch_stmt = KW_SWITCH paren_expression_opt block
 rule case_stmt = KW_CASE expression case_value_tail* block | KW_DEFAULT block
@@ -214,6 +222,10 @@ rule case_value_tail = COMMA expression
 rule else_stmt = KW_ELSE if_stmt | KW_ELSE block
 rule while_stmt = KW_WHILE paren_expression_opt block
 rule for_stmt = KW_FOR for_binding for_binding_tail KW_IN expression block
+# gpu-parallel range loop and the kernel launch statement
+# (docs/projects/cuda.md M2/M1)
+rule gpu_for_stmt = KW_GPU for_stmt
+rule launch_stmt = KW_LAUNCH name_token LBRACK expression COMMA expression RBRACK LPAREN arg_list RPAREN
 rule for_binding = type_ref IDENT | IDENT
 rule for_binding_tail = COMMA for_binding | 
 rule return_stmt = KW_RETURN expression_opt

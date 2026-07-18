@@ -31,6 +31,9 @@ void error(char *s);
 
 /* movd xmm<xmm>, eax/ebx */
 void movd_xmm(int xmm, int reg):
+	if (target_isa == 3):
+		ptx_movd_xmm(xmm, reg)
+		return
 	if (target_isa == 2):
 		wasm_movd_xmm(xmm, reg)
 		return
@@ -48,6 +51,9 @@ void movd_xmm0_eax():
 
 /* movd eax, xmm0 */
 void movd_eax_xmm0():
+	if (target_isa == 3):
+		ptx_movd_ax_f0()
+		return
 	if (target_isa == 2):
 		wasm_movd_eax_xmm0()
 		return
@@ -59,6 +65,9 @@ void movd_eax_xmm0():
 
 /* movq xmm<xmm>, rax/rbx (x64 only) */
 void movq_xmm(int xmm, int reg):
+	if (target_isa == 3):
+		ptx_movq_xmm(xmm, reg)
+		return
 	if (target_isa == 2):
 		error(c"float64 requires the x64 target")
 		return
@@ -76,6 +85,9 @@ void movq_xmm0_rax():
 
 /* movq rax, xmm0 (x64 only) */
 void movq_rax_xmm0():
+	if (target_isa == 3):
+		ptx_movq_ax_d0()
+		return
 	if (target_isa == 2):
 		error(c"float64 requires the x64 target")
 		return
@@ -89,6 +101,9 @@ void movq_rax_xmm0():
 
 /* addss xmm0, xmm1 */
 void addss():
+	if (target_isa == 3):
+		ptx_line(c"add.f32 %fa, %fa, %fb;")
+		return
 	if (target_isa == 2):
 		wasm_f32_arith(0x92)
 		return
@@ -100,6 +115,9 @@ void addss():
 
 /* subss xmm0, xmm1 */
 void subss():
+	if (target_isa == 3):
+		ptx_line(c"sub.f32 %fa, %fa, %fb;")
+		return
 	if (target_isa == 2):
 		wasm_f32_arith(0x93)
 		return
@@ -111,6 +129,9 @@ void subss():
 
 /* mulss xmm0, xmm1 */
 void mulss():
+	if (target_isa == 3):
+		ptx_line(c"mul.f32 %fa, %fa, %fb;")
+		return
 	if (target_isa == 2):
 		wasm_f32_arith(0x94)
 		return
@@ -122,6 +143,9 @@ void mulss():
 
 /* divss xmm0, xmm1 */
 void divss():
+	if (target_isa == 3):
+		ptx_line(c"div.rn.f32 %fa, %fa, %fb;")
+		return
 	if (target_isa == 2):
 		wasm_f32_arith(0x95)
 		return
@@ -135,6 +159,9 @@ void divss():
 
 /* addsd xmm0, xmm1 */
 void addsd():
+	if (target_isa == 3):
+		ptx_line(c"add.f64 %da, %da, %db;")
+		return
 	if (target_isa == 2):
 		error(c"float64 requires the x64 target")
 		return
@@ -146,6 +173,9 @@ void addsd():
 
 /* subsd xmm0, xmm1 */
 void subsd():
+	if (target_isa == 3):
+		ptx_line(c"sub.f64 %da, %da, %db;")
+		return
 	if (target_isa == 2):
 		error(c"float64 requires the x64 target")
 		return
@@ -157,6 +187,9 @@ void subsd():
 
 /* mulsd xmm0, xmm1 */
 void mulsd():
+	if (target_isa == 3):
+		ptx_line(c"mul.f64 %da, %da, %db;")
+		return
 	if (target_isa == 2):
 		error(c"float64 requires the x64 target")
 		return
@@ -168,6 +201,9 @@ void mulsd():
 
 /* divsd xmm0, xmm1 */
 void divsd():
+	if (target_isa == 3):
+		ptx_line(c"div.rn.f64 %da, %da, %db;")
+		return
 	if (target_isa == 2):
 		error(c"float64 requires the x64 target")
 		return
@@ -181,6 +217,10 @@ void divsd():
 
 /* ucomiss xmm0, xmm1: sets ZF/CF like an unsigned integer compare */
 void ucomiss():
+	if (target_isa == 3):
+		# Record the width; the following setcc emits the setp
+		ptx_fcmp_pending(1)
+		return
 	if (target_isa == 2):
 		return
 		return
@@ -192,6 +232,9 @@ void ucomiss():
 
 /* ucomisd xmm0, xmm1 */
 void ucomisd():
+	if (target_isa == 3):
+		ptx_fcmp_pending(2)
+		return
 	if (target_isa == 2):
 		error(c"float64 requires the x64 target")
 		return
@@ -207,6 +250,9 @@ void ucomisd():
    just a cset; the unsigned condition codes map to ordered float results
    for non-NaN operands. */
 void setcc_movzx_eax(int setcc_opcode):
+	if (target_isa == 3):
+		ptx_setcc_fcmp(setcc_opcode)
+		return
 	if (target_isa == 2):
 		wasm_setcc_f32(setcc_opcode)
 		return
@@ -227,6 +273,9 @@ void setcc_movzx_eax(int setcc_opcode):
 
 /* cvtsi2ss xmm<xmm>, eax/ebx (rax/rbx on x64) */
 void cvtsi2ss_xmm(int xmm, int reg):
+	if (target_isa == 3):
+		ptx_cvtsi2ss(xmm, reg)
+		return
 	if (target_isa == 2):
 		wasm_cvtsi2ss(xmm, reg)
 		return
@@ -246,6 +295,9 @@ void cvtsi2ss_xmm0_eax():
 
 /* cvtsi2sd xmm<xmm>, rax/rbx (x64 only) */
 void cvtsi2sd_xmm(int xmm, int reg):
+	if (target_isa == 3):
+		ptx_cvtsi2sd(xmm, reg)
+		return
 	if (target_isa == 2):
 		error(c"float64 requires the x64 target")
 		return
@@ -263,6 +315,9 @@ void cvtsi2sd_xmm0_rax():
 
 /* cvttss2si eax/rax, xmm0 (truncating float32 -> int) */
 void cvttss2si_eax_xmm0():
+	if (target_isa == 3):
+		ptx_cvttss2si()
+		return
 	if (target_isa == 2):
 		wasm_cvttss2si()
 		return
@@ -276,6 +331,9 @@ void cvttss2si_eax_xmm0():
 
 /* cvttsd2si rax, xmm0 (truncating float64 -> int, x64 only) */
 void cvttsd2si_rax_xmm0():
+	if (target_isa == 3):
+		ptx_cvttsd2si()
+		return
 	if (target_isa == 2):
 		error(c"float64 requires the x64 target")
 		return
@@ -287,6 +345,9 @@ void cvttsd2si_rax_xmm0():
 
 /* cvtss2sd xmm<xmm>, xmm<xmm> (widen in place) */
 void cvtss2sd_xmm(int xmm):
+	if (target_isa == 3):
+		ptx_cvtss2sd(xmm)
+		return
 	if (target_isa == 2):
 		error(c"float64 requires the x64 target")
 		return
@@ -304,6 +365,9 @@ void cvtss2sd_xmm0():
 
 /* cvtsd2ss xmm0, xmm0 */
 void cvtsd2ss_xmm0():
+	if (target_isa == 3):
+		ptx_cvtsd2ss()
+		return
 	if (target_isa == 2):
 		error(c"float64 requires the x64 target")
 		return
@@ -317,6 +381,9 @@ void cvtsd2ss_xmm0():
 
 /* vcvtph2ps xmm0, xmm0: widen the half in the low 16 bits to float32 */
 void vcvtph2ps_xmm0():
+	if (target_isa == 3):
+		error(c"gpu: float16 is not implemented")
+		return
 	if (target_isa == 2):
 		error(c"wasm: float16 is not implemented")
 		return
@@ -328,6 +395,9 @@ void vcvtph2ps_xmm0():
 
 /* vcvtps2ph xmm0, xmm0, 4: narrow float32 to half, round-to-nearest-even */
 void vcvtps2ph_xmm0():
+	if (target_isa == 3):
+		error(c"gpu: float16 is not implemented")
+		return
 	if (target_isa == 2):
 		error(c"wasm: float16 is not implemented")
 		return
@@ -341,6 +411,9 @@ void vcvtps2ph_xmm0():
 
 /* btc rax, 63: flip the float64 sign bit (x64 only) */
 void btc_rax_63():
+	if (target_isa == 3):
+		ptx_btc_63()
+		return
 	if (target_isa == 1):
 		a64(op(0xd2, 0x410000))   # eor x0, x0, #0x8000000000000000
 		return

@@ -20,6 +20,7 @@ int: 86: default-value bitmask: bit i set when parameter i has a default
 int: 90: default parameter values (up to 10 slots of 4 bytes each)
 int: 130: W variadic function: number of fixed parameters, -1 when not variadic
 int: 134: 1 for generator functions (declared with the 'generator' marker)
+int: 138: 1 for gpu kernels (declared with the 'kernel' marker)
 */
 char *table
 int table_size
@@ -28,7 +29,7 @@ int stack_pos
 
 
 int symbol_data_size():
-	return 138
+	return 142
 
 
 int next_token(int t):
@@ -197,6 +198,7 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 86, 0)  /* no parameter defaults */
 	save_int(table + t + 130, -1) /* not a W variadic function */
 	save_int(table + t + 134, 0)  /* not a generator */
+	save_int(table + t + 138, 0)  /* not a gpu kernel */
 	# Declaration location: token position of the name being declared
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
@@ -315,6 +317,17 @@ void sym_set_generator(int t):
 	save_int(table + t + 134, 1)
 
 
+# 1 when the symbol at table offset t is a gpu kernel (grammar/kernel_decl.w):
+# its body is PTX in the embedded module, its symbol value is 0 (never a
+# host code address), and it can only be invoked through 'launch'.
+int sym_is_kernel(int t):
+	return load_int(table + t + 138)
+
+
+void sym_set_kernel(int t):
+	save_int(table + t + 138, 1)
+
+
 # Parameter type slots per symbol; arguments past the limit are unchecked.
 int sym_max_param_slots():
 	return 10
@@ -367,15 +380,28 @@ int sym_param_type(int t, int i):
 int repl_call_site_hook
 
 
+# Device-mode symbol reference (grammar/kernel_decl.w): compiled after
+# this file, reached through the forward-reference chain.
+int gpu_sym_get_value(char* s);
+
+
 # Emits code leaving the symbol's ADDRESS in eax and returns its type index.
 # Functions are the exception: their address is their value, so they return
 # the "function" type (4), which promote() leaves untouched.
 int sym_get_value(char *s):
 	int t
+	# Device (PTX) bodies resolve symbols against the GPU-side stack and
+	# reject everything host-only (globals, function calls).
+	if (target_isa == 3):
+		return gpu_sym_get_value(s)
 	if ((t = sym_lookup(s)) < 0):
 		diag_part(c"Cannot find symbol: '")
 		diag_part(token)
 		error(c"'")
+	# A kernel's body lives in the PTX module, not at a host address:
+	# referencing its name as a value can only be a miscall.
+	if (sym_is_kernel(t)):
+		error(c"kernels cannot be called; use 'launch'")
 	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 	be_addr_slot_write(codepos - 4, load_int(table + t + 2))
 

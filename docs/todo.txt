@@ -161,6 +161,21 @@ current state:
 			./wbuild dynamic_test / dynamic_test_x64 call libc on both targets
 			./wbuild float_abi_test / varargs_test / extern_data_test cover the ABI
 			./wbuild cuda_smoke runs a PTX vector add through libcuda (x64)
+		gpu (design: docs/projects/cuda.md; x64 Linux only):
+			PTX emitter (code_generator/ptx.w): kernel bodies compile to
+				PTX text embedded in the executable (__w_ptx_module,
+				--ptx=<path> dump), no toolkit needed — the driver JIT
+				compiles at cuModuleLoadData time
+			'kernel name(params):' declarations with thread_idx/block_idx/
+				block_dim/grid_dim intrinsics and int/pointer/float32/float64
+				arithmetic, if/while/switch control flow
+			'launch k[grid, block](args)' and 'gpu for i in range(n)'
+				(body outlined into a kernel, enclosing variables captured
+				as parameters); both async — gpu_sync() is the sync point
+			lib/cuda.w runtime: managed memory (gpu_alloc/gpu_free),
+				lazy driver init, kernel-handle cache
+			./wbuild gpu_ptx_emit_test / cuda_diagnostics_test run GPU-less;
+				./wbuild cuda_test runs vector add + saxpy on a real GPU
 		c_import:
 			preprocesses C headers with macro expansion, conditionals and include resolution
 			importer builds typedefs, structs/unions, enum values, macro integer constants and function prototypes (fixed-arity and variadic)
@@ -356,7 +371,9 @@ current state:
 	future platforms:
 		windows
 		arm
-		gpu
+		gpu (kernels/'gpu for' work — see the gpu inventory above;
+			remaining: A2 virtual-register emission, explicit memory API,
+			shared memory/atomics, multi-GPU)
 
 	net:
 		working:

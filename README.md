@@ -71,7 +71,8 @@ Other useful targets:
 ./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
                      # the first cmp also proves output is host-word-size independent
 ./wbuild warning_test  # asserts the compiler's type/style warnings ("the linter")
-./wbuild cuda_smoke  # GPU-only: PTX vector add through libcuda (not part of 'tests')
+./wbuild cuda_smoke  # GPU-only: hand-written PTX vector add through libcuda (not part of 'tests')
+./wbuild cuda_test   # GPU-only: W kernels + 'gpu for' end to end (not part of 'tests')
 ```
 
 There is no separate linter or formatter. "Lint" is the compiler's own
@@ -341,7 +342,7 @@ seeds — is `docs/release.md`.
   be absent: `gdb`/`ddd` (hand-debugging a built binary), `radare2` (`rasm2`
   encoding lookups), `systemtap` with sudo (syscall-trace one-liners), an
   NVIDIA GPU + driver
-  (`cuda_smoke`). `threading_test` covers the raw x86 `thread_create`
+  (`cuda_smoke`, `cuda_test`). `threading_test` covers the raw x86 `thread_create`
   builtin; `lib/thread.w` (spawn/join/`parallel_for`, Linux x86/x64,
   docs/projects/threads.md) is covered on both targets by
   `thread_test`/`parallel_for_test` and their `_64` twins.
@@ -418,8 +419,11 @@ seeds — is `docs/release.md`.
   and generic struct constructors, binding through container/struct
   shapes (`pair[T]*`, `list[T]`), and struct-by-value returns on
   inferred calls.
-- CUDA backend Stage 2, the PTX emitter — Stages 0–1 (x64 self-hosting and
-  dynamic linking to libcuda) are done; see `docs/projects/cuda.md`.
+- CUDA backend Stage 4 (quality) — Stages 0–3 are done: the PTX emitter
+  (`code_generator/ptx.w`), `kernel` declarations, `launch` and `gpu for`
+  outlining, with the `lib/cuda.w` runtime (managed memory, async launches,
+  `gpu_sync()`). Remaining: A2 virtual-register emission, explicit memory
+  API, atomics/shared memory; see `docs/projects/cuda.md`.
 - Debugger: locals inside evaluated expressions, watchpoints, a web UI
   (stepping, breakpoints, variable inspection, expression evaluation at a
   breakpoint and `w --debug` are done).

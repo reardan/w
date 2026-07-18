@@ -11,6 +11,9 @@ void emit_x64_opcode():
 
 /* push dword 0x12 */
 void push_int8(int v):
+	if (target_isa == 3):
+		ptx_push_const(v)
+		return
 	if (target_isa == 2):
 		wasm_push_const(v)
 		return
@@ -23,6 +26,9 @@ void push_int8(int v):
 
 /* push dword op(0x12, 0x345678) */
 void push_int32(int v):
+	if (target_isa == 3):
+		ptx_push_const(v)
+		return
 	if (target_isa == 2):
 		wasm_push_const(v)
 		return
@@ -42,6 +48,9 @@ void push_int(int v):
 
 /* mov eax,[eax] */
 void promote_eax():
+	if (target_isa == 3):
+		ptx_ld_ax(c".u64")
+		return
 	if (target_isa == 2):
 		wasm_promote_eax_op(0x28)
 		return
@@ -54,6 +63,9 @@ void promote_eax():
 
 /* mov ebx,[ebx] */
 void promote_ebx():
+	if (target_isa == 3):
+		ptx_promote_bx()
+		return
 	if (target_isa == 2):
 		wasm_promote_ebx()
 		return
@@ -66,6 +78,9 @@ void promote_ebx():
 
 /* movsx eax, byte [eax] */
 void promote_int8_eax():
+	if (target_isa == 3):
+		ptx_ld_ax(c".s8")
+		return
 	if (target_isa == 2):
 		wasm_promote_eax_op(0x2c)
 		return
@@ -78,6 +93,9 @@ void promote_int8_eax():
 
 /* movsx eax, word [eax] */
 void promote_int16_eax():
+	if (target_isa == 3):
+		ptx_ld_ax(c".s16")
+		return
 	if (target_isa == 2):
 		wasm_promote_eax_op(0x2e)
 		return
@@ -90,6 +108,9 @@ void promote_int16_eax():
 
 /* x86: mov eax,[eax] ; x64: movsxd rax, dword [rax] (4-byte int32 load) */
 void promote_int32_eax():
+	if (target_isa == 3):
+		ptx_ld_ax(c".s32")
+		return
 	if (target_isa == 2):
 		wasm_promote_eax_op(0x28)
 		return
@@ -104,6 +125,9 @@ void promote_int32_eax():
 
 /* mov %eax,(%ebx) */
 void store_ebx_int32():
+	if (target_isa == 3):
+		ptx_st_bx(c".u32")
+		return
 	if (target_isa == 2):
 		wasm_store_ebx_op(0x36)
 		return
@@ -115,6 +139,9 @@ void store_ebx_int32():
 
 /* mov [ebx],eax at the full word width (4 bytes on x86, 8 on x64) */
 void store_ebx_word():
+	if (target_isa == 3):
+		ptx_st_bx(c".u64")
+		return
 	if (target_isa == 2):
 		wasm_store_ebx_op(0x36)
 		return
@@ -127,6 +154,9 @@ void store_ebx_word():
 
 /* mov %ax,(%ebx) */
 void store_ebx_int16():
+	if (target_isa == 3):
+		ptx_st_bx(c".u16")
+		return
 	if (target_isa == 2):
 		wasm_store_ebx_op(0x3b)
 		return
@@ -138,6 +168,9 @@ void store_ebx_int16():
 
 /* mov %al,(%ebx) */
 void store_ebx_int8():
+	if (target_isa == 3):
+		ptx_st_bx(c".u8")
+		return
 	if (target_isa == 2):
 		wasm_store_ebx_op(0x3a)
 		return
@@ -149,6 +182,9 @@ void store_ebx_int8():
 
 /* mov eax, op(0x12, 0x345678) */
 void mov_eax_int32(int v):
+	if (target_isa == 3):
+		ptx_mov_ax_int(v)
+		return
 	if (target_isa == 2):
 		wasm_mov_eax_int(v)
 		return
@@ -161,6 +197,9 @@ void mov_eax_int32(int v):
 
 /* mov rax, 0x1234567890123456 */
 void mov_rax_int64(int v):
+	if (target_isa == 3):
+		ptx_mov_ax_int(v)
+		return
 	if (target_isa == 1):
 		arm64_mov_rax_int64(v)
 		return
@@ -173,6 +212,9 @@ void mov_rax_int64(int v):
    compiler itself may run as a 32-bit process, where a single int cannot
    carry a full 64-bit pattern (e.g. float64 literal bits). */
 void mov_rax_int64_halves(int lo, int hi):
+	if (target_isa == 3):
+		ptx_mov_ax_int64_halves(lo, hi)
+		return
 	if (target_isa == 1):
 		arm64_mov_rax_int64_halves(lo, hi)
 		return
@@ -183,6 +225,9 @@ void mov_rax_int64_halves(int lo, int hi):
 
 /* xor eax, imm32; on x64 this also zeroes the upper half of rax */
 void xor_eax_int32(int v):
+	if (target_isa == 3):
+		ptx_xor_ax_int32(v)
+		return
 	if (target_isa == 2):
 		wasm_ax_op_const(0x73, v)
 		return
@@ -206,6 +251,9 @@ void xor_eax_int32(int v):
 /* movzx eax, word [eax]: a zero-extending 16-bit load. The promote_int16
    path sign-extends, which would corrupt float16 bit patterns. */
 void promote_uint16_eax():
+	if (target_isa == 3):
+		ptx_ld_ax(c".u16")
+		return
 	if (target_isa == 2):
 		wasm_promote_eax_op(0x2f)
 		return
@@ -230,6 +278,9 @@ void mov_eax_int(int v):
 
 
 void add_eax_int32(int v):
+	if (target_isa == 3):
+		ptx_add_ax_int(v)
+		return
 	if (target_isa == 2):
 		wasm_ax_op_const(0x6a, v)
 		return
@@ -243,6 +294,9 @@ void add_eax_int32(int v):
 
 /* imul eax, eax, imm32 */
 void imul_eax_int32(int v):
+	if (target_isa == 3):
+		ptx_mul_ax_int(v)
+		return
 	if (target_isa == 2):
 		wasm_ax_op_const(0x6c, v)
 		return
@@ -269,6 +323,9 @@ int emitted_call_count
 
 
 void call_eax():
+	if (target_isa == 3):
+		error(c"gpu code cannot call functions")
+		return
 	emitted_call_count = emitted_call_count + 1
 	if (target_isa == 2):
 		wasm_call_eax()
@@ -291,6 +348,9 @@ void call_relative32(int v):
 
 
 void not_eax():
+	if (target_isa == 3):
+		ptx_not_ax()
+		return
 	if (target_isa == 2):
 		wasm_not_eax()
 		return
@@ -303,6 +363,9 @@ void not_eax():
 
 /* push eax */
 void push_eax():
+	if (target_isa == 3):
+		ptx_push_ax()
+		return
 	if (target_isa == 2):
 		wasm_push_eax()
 		return
@@ -313,6 +376,9 @@ void push_eax():
 
 
 void push_ebx():
+	if (target_isa == 3):
+		ptx_push_bx()
+		return
 	if (target_isa == 2):
 		wasm_push_ebx()
 		return
@@ -323,6 +389,9 @@ void push_ebx():
 
 
 void pop_ebx():
+	if (target_isa == 3):
+		ptx_pop_bx()
+		return
 	if (target_isa == 2):
 		wasm_pop_ebx()
 		return
@@ -333,6 +402,9 @@ void pop_ebx():
 
 
 void pop_eax():
+	if (target_isa == 3):
+		ptx_pop_ax()
+		return
 	if (target_isa == 2):
 		wasm_pop_eax()
 		return
@@ -344,6 +416,9 @@ void pop_eax():
 
 /* mov eax, ebx */
 void mov_eax_ebx():
+	if (target_isa == 3):
+		ptx_mov_ax_bx()
+		return
 	if (target_isa == 2):
 		wasm_mov_eax_ebx()
 		return
@@ -356,6 +431,9 @@ void mov_eax_ebx():
 
 /* lea eax,[esp+op(0x12, 0x345678)] */
 void lea_eax_esp_plus(int v):
+	if (target_isa == 3):
+		ptx_lea_ax_sp(v)
+		return
 	if (target_isa == 2):
 		wasm_lea_eax_esp_plus(v)
 		return
@@ -369,6 +447,9 @@ void lea_eax_esp_plus(int v):
 
 /* mov eax,[esp+op(0x12, 0x345678)] */
 void mov_eax_esp_plus(int v):
+	if (target_isa == 3):
+		ptx_ld_ax_sp(v)
+		return
 	if (target_isa == 2):
 		wasm_mov_eax_esp_plus(v)
 		return
@@ -382,6 +463,9 @@ void mov_eax_esp_plus(int v):
 
 /* mov ebx,[esp] */
 void mov_ebx_esp():
+	if (target_isa == 3):
+		ptx_ld_bx_sp(0)
+		return
 	if (target_isa == 2):
 		wasm_mov_ebx_esp()
 		return
@@ -394,6 +478,9 @@ void mov_ebx_esp():
 
 /* mov ebx,[esp+op(0x12, 0x345678)] */
 void mov_ebx_esp_plus(int v):
+	if (target_isa == 3):
+		ptx_ld_bx_sp(v)
+		return
 	if (target_isa == 2):
 		wasm_mov_ebx_esp_plus(v)
 		return
@@ -407,6 +494,9 @@ void mov_ebx_esp_plus(int v):
 
 /* add ebx, op(0x12, 0x345678) */
 void add_ebx_int32(int v):
+	if (target_isa == 3):
+		ptx_add_bx_int(v)
+		return
 	if (target_isa == 2):
 		wasm_add_ebx_int(v)
 		return
@@ -420,6 +510,9 @@ void add_ebx_int32(int v):
 
 /* push dword [eax+op(0x12, 0x345678)] */
 void push_eax_plus(int v):
+	if (target_isa == 3):
+		ptx_push_ax_plus(v)
+		return
 	if (target_isa == 2):
 		wasm_push_eax_plus(v)
 		return
@@ -432,6 +525,9 @@ void push_eax_plus(int v):
 
 /* mov [esp+op(0x12, 0x345678)], eax */
 void store_stack_var(int variable_offset):
+	if (target_isa == 3):
+		ptx_st_sp_ax(variable_offset)
+		return
 	if (target_isa == 2):
 		wasm_store_stack_var(variable_offset)
 		return
@@ -445,6 +541,9 @@ void store_stack_var(int variable_offset):
 
 /* mov [esp+op(0x12, 0x345678)], ebx */
 void store_ebx_stack_var(int variable_offset):
+	if (target_isa == 3):
+		ptx_st_sp_bx(variable_offset)
+		return
 	if (target_isa == 2):
 		wasm_store_ebx_stack_var(variable_offset)
 		return
@@ -458,6 +557,9 @@ void store_ebx_stack_var(int variable_offset):
 
 /* add esp, (n * word_size) */
 void be_pop(int n):
+	if (target_isa == 3):
+		ptx_be_pop(n)
+		return
 	if (target_isa == 2):
 		wasm_be_pop(n)
 		return
@@ -523,6 +625,10 @@ int be_ctrl_block():
 	ctrl_kind_stack[ctrl_stack_pos] = 0
 	ctrl_val_stack[ctrl_stack_pos] = 0
 	ctrl_stack_pos = ctrl_stack_pos + 1
+	if (target_isa == 3):
+		# The region's value is a PTX label id; its "Ln:" line lands at
+		# the merge point in be_ctrl_end.
+		ctrl_val_stack[ctrl_stack_pos - 1] = ptx_new_label()
 	if (target_isa == 2):
 		wasm_ctrl_block()
 	return ctrl_stack_pos - 1
@@ -531,6 +637,11 @@ int be_ctrl_loop():
 	ctrl_kind_stack[ctrl_stack_pos] = 1
 	ctrl_val_stack[ctrl_stack_pos] = codepos
 	ctrl_stack_pos = ctrl_stack_pos + 1
+	if (target_isa == 3):
+		# Backward region: the label is placed at the loop start, here.
+		int ptx_loop_label = ptx_new_label()
+		ctrl_val_stack[ctrl_stack_pos - 1] = ptx_loop_label
+		ptx_place_label(ptx_loop_label)
 	if (target_isa == 2):
 		wasm_ctrl_loop()
 	return ctrl_stack_pos - 1
@@ -545,6 +656,9 @@ void be_ctrl_link(int h):
 
 # Branch unconditionally to region h.
 void be_br(int h):
+	if (target_isa == 3):
+		ptx_bra(ctrl_val_stack[h])
+		return
 	if (target_isa == 2):
 		wasm_br(ctrl_stack_pos - 1 - h)
 		return
@@ -557,6 +671,9 @@ void be_br(int h):
 
 # Branch to region h when the accumulator is zero.
 void be_br_zero(int h):
+	if (target_isa == 3):
+		ptx_bra_zero(ctrl_val_stack[h])
+		return
 	if (target_isa == 2):
 		wasm_br_zero(ctrl_stack_pos - 1 - h)
 		return
@@ -569,6 +686,9 @@ void be_br_zero(int h):
 
 # Branch to region h when the accumulator is nonzero.
 void be_br_nonzero(int h):
+	if (target_isa == 3):
+		ptx_bra_nonzero(ctrl_val_stack[h])
+		return
 	if (target_isa == 2):
 		wasm_br_nonzero(ctrl_stack_pos - 1 - h)
 		return
@@ -584,6 +704,12 @@ void be_br_nonzero(int h):
 # nothing to patch.
 void be_ctrl_end(int h):
 	ctrl_stack_pos = ctrl_stack_pos - 1
+	if (target_isa == 3):
+		# Forward regions place their merge label here; backward regions
+		# placed theirs at the loop start.
+		if (ctrl_kind_stack[h] == 0):
+			ptx_place_label(ctrl_val_stack[h])
+		return
 	if (target_isa == 2):
 		wasm_ctrl_end()
 		return
@@ -597,6 +723,9 @@ void be_ctrl_end(int h):
 
 
 void inc_dword_esp_plus(int v):
+	if (target_isa == 3):
+		ptx_inc_sp_slot(v)
+		return
 	if (target_isa == 2):
 		wasm_inc_dword_esp_plus(v)
 		return
@@ -609,6 +738,9 @@ void inc_dword_esp_plus(int v):
 
 
 void neg_eax():
+	if (target_isa == 3):
+		ptx_neg_ax()
+		return
 	if (target_isa == 2):
 		wasm_neg_eax()
 		return
@@ -620,6 +752,9 @@ void neg_eax():
 
 
 void add_dword_esp_plus_eax(int v):
+	if (target_isa == 3):
+		ptx_add_sp_slot_ax(v)
+		return
 	if (target_isa == 2):
 		wasm_add_dword_esp_plus_eax(v)
 		return
@@ -633,6 +768,9 @@ void add_dword_esp_plus_eax(int v):
 
 /* add word-sized [esp+offset], imm32 */
 void add_stack_word_int32(int offset, int v):
+	if (target_isa == 3):
+		ptx_add_sp_slot_int(offset, v)
+		return
 	if (target_isa == 2):
 		wasm_add_stack_word_int32(offset, v)
 		return
@@ -651,6 +789,9 @@ void add_stack_word_int32(int offset, int v):
 
 /* add %ebx,%eax */
 void alu_add():
+	if (target_isa == 3):
+		ptx_alu_ax_bx(c"add.s64")
+		return
 	if (target_isa == 2):
 		wasm_ax_op_bx(0x6a)
 		return
@@ -663,6 +804,9 @@ void alu_add():
 
 /* sub %eax,%ebx ; mov %ebx,%eax */
 void alu_sub():
+	if (target_isa == 3):
+		ptx_alu_sub()
+		return
 	if (target_isa == 2):
 		wasm_bx_op_ax(0x6b)
 		return
@@ -677,6 +821,9 @@ void alu_sub():
 
 /* imul %ebx,%eax */
 void alu_imul():
+	if (target_isa == 3):
+		ptx_alu_ax_bx(c"mul.lo.s64")
+		return
 	if (target_isa == 2):
 		wasm_ax_op_bx(0x6c)
 		return
@@ -689,6 +836,9 @@ void alu_imul():
 
 /* mov %eax,%ebx ; pop %eax ; cdq/cqo ; idiv %ebx (quotient in eax) */
 void alu_idiv():
+	if (target_isa == 3):
+		ptx_alu_pop(c"div.s64")
+		return
 	if (target_isa == 2):
 		wasm_pop_op_ax(0x6d)
 		return
@@ -707,6 +857,9 @@ void alu_idiv():
 
 /* idiv, then mov %edx,%eax to keep the remainder */
 void alu_imod():
+	if (target_isa == 3):
+		ptx_alu_pop(c"rem.s64")
+		return
 	if (target_isa == 2):
 		wasm_pop_op_ax(0x6f)
 		return
@@ -722,6 +875,9 @@ void alu_imod():
 
 /* mov %eax,%ecx ; pop %eax ; shl %cl,%eax */
 void alu_shl():
+	if (target_isa == 3):
+		ptx_alu_shift(c"shl.b64")
+		return
 	if (target_isa == 2):
 		wasm_pop_op_ax(0x74)
 		return
@@ -737,6 +893,9 @@ void alu_shl():
 
 /* mov %eax,%ecx ; pop %eax ; sar %cl,%eax */
 void alu_sar():
+	if (target_isa == 3):
+		ptx_alu_shift(c"shr.s64")
+		return
 	if (target_isa == 2):
 		wasm_pop_op_ax(0x75)
 		return
@@ -752,6 +911,9 @@ void alu_sar():
 
 /* and %ebx,%eax */
 void alu_and():
+	if (target_isa == 3):
+		ptx_alu_ax_bx(c"and.b64")
+		return
 	if (target_isa == 2):
 		wasm_ax_op_bx(0x71)
 		return
@@ -764,6 +926,9 @@ void alu_and():
 
 /* or %ebx,%eax */
 void alu_or():
+	if (target_isa == 3):
+		ptx_alu_ax_bx(c"or.b64")
+		return
 	if (target_isa == 2):
 		wasm_ax_op_bx(0x72)
 		return
@@ -776,6 +941,9 @@ void alu_or():
 
 /* xor %ebx,%eax */
 void alu_xor():
+	if (target_isa == 3):
+		ptx_alu_ax_bx(c"xor.b64")
+		return
 	if (target_isa == 2):
 		wasm_ax_op_bx(0x73)
 		return
@@ -790,6 +958,9 @@ void alu_xor():
    setcc_opcode is the second setCC byte: 0x9c setl, 0x9d setge, 0x9e setle,
    0x9f setg, 0x94 sete, 0x95 setne */
 void alu_cmp_set(int setcc_opcode):
+	if (target_isa == 3):
+		ptx_alu_cmp_set(setcc_opcode)
+		return
 	if (target_isa == 2):
 		wasm_alu_cmp_set(setcc_opcode)
 		return
@@ -806,6 +977,9 @@ void alu_cmp_set(int setcc_opcode):
 /* booleanize: test %eax,%eax ; setCC %al ; movzbl %al,%eax
    setcc_opcode: 0x94 sete (logical not), 0x95 setne (truth value) */
 void alu_test_set(int setcc_opcode):
+	if (target_isa == 3):
+		ptx_alu_test_set(setcc_opcode)
+		return
 	if (target_isa == 2):
 		wasm_alu_test_set(setcc_opcode)
 		return
@@ -831,6 +1005,9 @@ void alu_test_set(int setcc_opcode):
 
 /* mov ecx, eax at the full word width (a pointer operand) */
 void mov_ecx_eax():
+	if (target_isa == 3):
+		error(c"mul_hi/mul_wide/add_carry are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		wasm_mov_ecx_eax()
 		return
@@ -843,6 +1020,9 @@ void mov_ecx_eax():
 
 /* mul %ebx (edx:eax = eax*ebx, unsigned 32x32) ; mov %edx,%eax */
 void alu_mul_hi():
+	if (target_isa == 3):
+		error(c"mul_hi/mul_wide/add_carry are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		wasm_alu_mul_hi()
 		return
@@ -857,6 +1037,9 @@ void alu_mul_hi():
 /* mul %ebx ; mov [ecx],edx: low product half stays in eax, the high half
    is stored word-sized through the pointer in ecx */
 void alu_mul_wide():
+	if (target_isa == 3):
+		error(c"mul_hi/mul_wide/add_carry are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		wasm_alu_mul_wide()
 		return
@@ -875,6 +1058,9 @@ void alu_mul_wide():
    preserved) ; adc edx,0 ; the carry is stored word-sized through the
    pointer in ecx and the wrapped sum stays in eax */
 void alu_add_carry():
+	if (target_isa == 3):
+		error(c"mul_hi/mul_wide/add_carry are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		wasm_alu_add_carry()
 		return
@@ -917,6 +1103,9 @@ void alu_bit_operands():
 
 /* value in ebx, count in eax: shr %cl,%eax (logical right shift) */
 void alu_shr32():
+	if (target_isa == 3):
+		error(c"bit intrinsics are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		wasm_alu_shr32()
 		return
@@ -929,6 +1118,9 @@ void alu_shr32():
 
 /* value in ebx, count in eax: rol %cl,%eax */
 void alu_rotl32():
+	if (target_isa == 3):
+		error(c"bit intrinsics are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		wasm_alu_rotl32()
 		return
@@ -943,6 +1135,9 @@ void alu_rotl32():
 
 /* value in ebx, count in eax: ror %cl,%eax */
 void alu_rotr32():
+	if (target_isa == 3):
+		error(c"bit intrinsics are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		wasm_alu_rotr32()
 		return
@@ -961,6 +1156,9 @@ void alu_rotr32():
    (POPCNT is not baseline ISA; the masks have bit 31 clear, so they are
    plain immediates) */
 void alu_popcount32():
+	if (target_isa == 3):
+		error(c"bit intrinsics are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		wasm_alu_popcount32()
 		return
@@ -1008,6 +1206,9 @@ void alu_popcount32():
    BSR leaves ZF set (and the destination undefined) on zero input, so
    the zero case branches over the 31-index conversion */
 void alu_clz32():
+	if (target_isa == 3):
+		error(c"bit intrinsics are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		wasm_alu_clz32()
 		return
@@ -1025,6 +1226,9 @@ void alu_clz32():
 /* trailing-zero count of the low 32 bits of eax; ctz(0) == 32.
    BSF is undefined on zero input the same way BSR is */
 void alu_ctz32():
+	if (target_isa == 3):
+		error(c"bit intrinsics are not supported in gpu code")
+		return
 	if (target_isa == 2):
 		wasm_alu_ctz32()
 		return
@@ -1042,6 +1246,9 @@ void alu_ctz32():
 
 
 void int3():
+	if (target_isa == 3):
+		ptx_trap()
+		return
 	if (target_isa == 2):
 		wasm_int3()
 		return
@@ -1158,6 +1365,8 @@ void bounds_skip_eax_less_equal_int32(int limit, int h):
 	be_ctrl_link(h)
 
 void nop():
+	if (target_isa == 3):
+		return
 	if (target_isa == 2):
 		wasm_nop()
 		return
@@ -1167,7 +1376,10 @@ void nop():
 	emit(1, c"\x90") /* nop */
 
 
-void ret(): 
+void ret():
+	if (target_isa == 3):
+		ptx_ret()
+		return
 	if (target_isa == 2):
 		wasm_ret()
 		return
