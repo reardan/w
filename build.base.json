@@ -311,7 +311,7 @@
 			"name": "warning_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w", "tests/limb_builtin_warning_fixture.w", "tests/bool_bitwise_warning_fixture.w", "tests/bit31_literal_warning_fixture.w", "tests/cross_line_call_warning_fixture.w", "tests/cross_line_call_increment_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w", "tests/limb_builtin_warning_fixture.w", "tests/bool_bitwise_warning_fixture.w", "tests/bool_bitwise_chain_fixture.w", "tests/bit31_literal_warning_fixture.w", "tests/cross_line_call_warning_fixture.w", "tests/cross_line_call_increment_fixture.w"]}
 			]
 		},
 		{
@@ -395,8 +395,10 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "check", "--quiet", "tests/bool_ops_warn_fixture.w"], "reject_stderr": "warning:"},
 				{"cmd": ["bin/wv2", "check", "--bool-ops", "--quiet", "tests/bool_ops_warn_fixture.w"], "expect_stderr": ["warning: bitwise '|' on bool operands in a condition does not short-circuit; did you mean '||'?", "warning: bitwise '&' on bool operands in a condition does not short-circuit; did you mean '&&'?"]},
+				{"cmd": ["bin/wv2", "check", "--quiet", "tests/bool_ops_clean_fixture.w"], "reject_stderr": "warning:"},
 				{"cmd": ["bin/wv2", "check", "--bool-ops", "--quiet", "tests/bool_ops_clean_fixture.w"], "reject_stderr": "warning:"},
-				{"cmd": ["bin/wv2", "check", "--bool-ops", "--json", "--quiet", "tests/bool_ops_warn_fixture.w"], "stdout_file": "bin/check_bool_ops_warn.ndjson", "expect_stdout": ["\"severity\": \"warning\"", "did you mean '||'?", "did you mean '&&'?"]}
+				{"cmd": ["bin/wv2", "check", "--bool-ops", "--json", "--quiet", "tests/bool_ops_warn_fixture.w"], "stdout_file": "bin/check_bool_ops_warn.ndjson", "expect_stdout": ["\"severity\": \"warning\"", "did you mean '||'?", "did you mean '&&'?"]},
+				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "tests/bool_bitwise_chain_fixture.w"], "stdout_file": "bin/check_bool_ops_chain.ndjson", "expect_stdout": ["\"column\": 15", "\"column\": 26", "\"token\": \"&\"", "did you mean '&&'?"]}
 			]
 		},
 		{

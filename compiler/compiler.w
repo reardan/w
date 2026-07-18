@@ -479,11 +479,15 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# reliance (structures/hash_table.w and friends lean on each other's
 	# re-exports by design; that is compiler-internal plumbing, not a
 	# user file --imports is meant to audit). --bool-ops stays quiet here
-	# too: the closure compiles into every program, so its own
-	# comparison-result '&'/'|' sites (lib/memory_freelist.w,
-	# lib/stack_trace.w, ...) would spam every opt-in check of an
-	# unrelated file — they are stage-2 sweep territory, not something a
-	# user run should report. Suppress, then restore.
+	# too: the closure compiles into every program, and its remaining
+	# '&'/'|' sites (lib/memory_freelist.w, lib/stack_trace.w, ...) are
+	# deliberate call-containing joins the wave-2 sweep left in place —
+	# reporting them would spam every --bool-ops check of an unrelated
+	# file with sites that file's author cannot fix. The unconditional
+	# default hint (operand_is_bool_condition/operand_is_pure) needs no
+	# such guard: every call-free site in the closure was already
+	# converted, so it has nothing left to warn about here. Suppress
+	# --bool-ops's extra reporting, then restore.
 	int import_check_saved = check_imports_mode
 	int bool_ops_check_saved = check_bool_ops_mode
 	check_imports_mode = 0
@@ -565,10 +569,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# On-demand runtimes for the to_json/from_json builtins and f"..."
 	# template strings: imported after all user files so the modules'
 	# code lands at a top-level boundary. Like the auto-import closure
-	# above, these are compiler-injected modules, so the opt-in
-	# --bool-ops hint stays quiet while they compile (their own '&'/'|'
-	# style is stage-2 sweep territory, and structures/prelude.w would
-	# otherwise warn on every opt-in check of any file).
+	# above, these are compiler-injected modules, so --bool-ops's extra
+	# call-containing reporting stays quiet while they compile — their
+	# remaining '&'/'|' sites are deliberate (structures/prelude.w and
+	# friends), and would otherwise warn on every --bool-ops check of any
+	# file regardless of what that file itself contains.
 	int bool_ops_finish_saved = check_bool_ops_mode
 	check_bool_ops_mode = 0
 	json_codec_finish_import()
@@ -651,10 +656,12 @@ int check_main(int argc, int argv):
 			check_imports_mode = 1
 			i = i + 1
 		else if (strcmp(*arg, c"--bool-ops") == 0):
-			# Opt-in widened bool-bitwise hint: also warn when '&'/'|'
-			# joins comparison-result bool operands in an if/while
-			# condition (grammar/binary_op.w, operand_is_bool_condition).
-			# Off by default.
+			# Opt-in superset of the bool-bitwise condition hint: also
+			# warn when an operand contains a function call, where
+			# '&&'/'||' short-circuiting could skip a call the current
+			# '&'/'|' code always executes (grammar/binary_op.w,
+			# operand_is_pure). The default hint already fires for
+			# call-free bool/comparison operands. Off by default.
 			check_bool_ops_mode = 1
 			i = i + 1
 		else:

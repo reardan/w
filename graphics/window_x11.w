@@ -117,11 +117,11 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 		win.mouse_y = event.input.y
 	else if (event_type == ButtonPress):
 		int button = event.input.detail
-		if ((button >= 1) & (button <= 3)):
+		if ((button >= 1) && (button <= 3)):
 			win.mouse_buttons = win.mouse_buttons | (1 << (button - 1))
 	else if (event_type == ButtonRelease):
 		int released = event.input.detail
-		if ((released >= 1) & (released <= 3)):
+		if ((released >= 1) && (released <= 3)):
 			# no bitwise-not operator: -1 - mask == ~mask
 			win.mouse_buttons = win.mouse_buttons & (0 - 1 - (1 << (released - 1)))
 

@@ -49,7 +49,7 @@ int wasi_cstr_len(char* s):
 # 0x400 is O_APPEND. Paths resolve against the preopened directory;
 # a leading "/" or "./" is stripped.
 int open(char *filename, int mode, int permissions):
-	while ((filename[0] == '.') & (filename[1] == '/')):
+	while ((filename[0] == '.') && (filename[1] == '/')):
 		filename = filename + 2
 	while (filename[0] == '/'):
 		filename = filename + 1
@@ -114,7 +114,7 @@ int seek(int file, int offset, int reference):
 
 
 int unlink(char* path):
-	while ((path[0] == '.') & (path[1] == '/')):
+	while ((path[0] == '.') && (path[1] == '/')):
 		path = path + 2
 	while (path[0] == '/'):
 		path = path + 1

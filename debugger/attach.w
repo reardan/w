@@ -498,7 +498,7 @@ void at_delete_command(char* arg):
 		println(c"all breakpoints deleted")
 		return;
 	int n = atoi(arg) - 1
-	if ((n < 0) | (n >= attach_bp_count) | (at_bp_addr(n) == 0)):
+	if (((n < 0) || (n >= attach_bp_count)) | (at_bp_addr(n) == 0)):
 		println(c"no such breakpoint")
 		return;
 	at_bp_disarm(n)

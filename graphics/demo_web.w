@@ -52,7 +52,7 @@ int demo_frame():
 	gfx_window_swap(demo_win)
 
 	demo_frame_count = demo_frame_count + 1
-	if ((demo_max_frames > 0) & (demo_frame_count >= demo_max_frames)):
+	if ((demo_max_frames > 0) && (demo_frame_count >= demo_max_frames)):
 		return 0
 	return 1
 

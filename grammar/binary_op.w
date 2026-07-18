@@ -2,39 +2,83 @@
 # or parameter, still in address form (not the value a comparison or call
 # just produced). bitwise_and_expr/bitwise_or_expr warn when '&'/'|'
 # joins two of these inside an if/while condition: such guards read as
-# logical and do not short-circuit. Comparison results stay exempt by
-# default — '(a == b) | (c == d)' is long-established W style throughout
-# this repository and evaluating both sides of it is harmless — but the
-# opt-in 'w check --bool-ops' widens the hint to them via
-# operand_is_bool_condition below (the bool-bitwise migration surface).
+# logical and do not short-circuit.
 int operand_is_bool_lvalue(int type):
 	if (type_is_value(type)):
 		return 0
 	return type_unqualified(type) == bool_type
 
 
-# --bool-ops (opt-in `w check --bool-ops`): widen the bool-bitwise
-# condition hint to comparison-result operands, so
-# '(a == b) | (c == d)' inside an if/while condition gets the same
-# "did you mean '||'?" hint as two bool lvalues. Off by default: that
-# spelling is long-established W style (hundreds of sites in the seed
-# import graph), so ordinary compiles and --strict self-host builds
-# must stay silent until the sweep lands (compiler/compiler.w parses
-# the flag, mirroring check_imports_mode).
+# --bool-ops (opt-in `w check --bool-ops`): report the bool-bitwise
+# condition hint even when one or both operands contain a function call.
+# The DEFAULT hint (see operand_is_pure below) only fires when both
+# operands are call-free, because that is the subset where '&&'/'||'
+# conversion is semantics-preserving — short-circuiting a call-containing
+# operand would skip a call the current '&'/'|' code always executes.
+# Off by default: ordinary compiles and --strict self-host builds must
+# stay silent on the ~165 call-containing joins deliberately still
+# spelled '&'/'|' tree-wide (compiler/compiler.w parses the flag,
+# mirroring check_imports_mode).
 int check_bool_ops_mode
 
 
-# The condition hint's operand test: a bool lvalue always qualifies;
-# with --bool-ops a bool value — the result a comparison, '!', '&&',
-# '||' or 'in' just produced — qualifies too.
+# The condition hint's operand type test: a bool lvalue always
+# qualifies; a bool VALUE — the result a comparison, '!', '&&', '||' or
+# 'in' just produced — qualifies too. Comparison results were opt-in
+# behind --bool-ops through the 2026-07 migration; the wave-2 mechanical
+# sweep converted every side-effect-free site tree-wide (see
+# docs/projects/ai_tooling_next_steps.md), so the widened test is
+# unconditional now. Purity (operand_is_pure below), not this function,
+# is what gates the DEFAULT warning down to the semantics-preserving
+# subset.
 int operand_is_bool_condition(int type):
 	if (operand_is_bool_lvalue(type)):
 		return 1
-	if (check_bool_ops_mode == 0):
-		return 0
 	if (type_is_value(type) == 0):
 		return 0
 	return type_unqualified(type) == bool_type
+
+
+# True when nothing the just-parsed operand emitted a call: call_count_
+# before is emitted_call_count (code_generator/x86.w) sampled right
+# before the operand's own parse started. A call anywhere in the operand
+# — an explicit call, a builtin container op, an operator-overload
+# dispatch, a 'new' allocation's implicit malloc, ... — bumps
+# emitted_call_count at least once, so the counts differ.
+int operand_is_pure(int call_count_before):
+	return emitted_call_count == call_count_before
+
+
+# Emit a bool-bitwise condition warning at the '&'/'|' operator's own
+# source position, not wherever the tokenizer's one-token lookahead has
+# moved to by the time the right operand finishes parsing (which, after
+# a multi-term chain or a multi-line condition, can be a wholly
+# different line/column, and — for `--json`'s "token" field — a wholly
+# different token's text — found sweeping wave 2's stage-2 chunks,
+# logged in ai_tooling_next_steps.md). Callers snapshot line_number/
+# diag_token_line/diag_token_column right when accept()'s peek
+# recognizes the operator, before consuming it advances the lookahead,
+# and pass op_token_text as the operator's own literal spelling ("&" or
+# "|" — always a compile-time constant at the call site, so no snapshot
+# of the mutable token buffer is needed). This restores those saved
+# coordinates around the warning() call and puts the current ones back
+# immediately after, mirroring compile_save's own save/restore of
+# line_number/diag_token_line/diag_token_column around a nested file
+# compile.
+void warn_bool_bitwise_at(char* message, int op_line_number, int op_diag_token_line, int op_diag_token_column, char* op_token_text):
+	int cur_line_number = line_number
+	int cur_diag_token_line = diag_token_line
+	int cur_diag_token_column = diag_token_column
+	char* cur_token = token
+	line_number = op_line_number
+	diag_token_line = op_diag_token_line
+	diag_token_column = op_diag_token_column
+	token = op_token_text
+	warning(message)
+	line_number = cur_line_number
+	diag_token_line = cur_diag_token_line
+	diag_token_column = cur_diag_token_column
+	token = cur_token
 
 
 int binary1(int type):
