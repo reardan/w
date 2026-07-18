@@ -461,6 +461,28 @@
 			]
 		},
 		{
+			"name": "defhash_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "defhash", "tests/defhash_fixture.w"], "stdout_file": "bin/defhash_fixture.ndjson", "expect_stdout": ["\"name\": \"defhash_fixture_size\", \"kind\": \"alias\"", "\"name\": \"defhash_fixture_point\", \"kind\": \"struct\"", "\"name\": \"defhash_fixture_counter\", \"kind\": \"global\"", "\"name\": \"defhash_fixture_add\", \"kind\": \"function\"", "\"name\": \"defhash_fixture_helper\", \"kind\": \"function\"", "\"name\": \"defhash_fixture_color\", \"kind\": \"enum\"", "\"name\": \"main\", \"kind\": \"function\""]},
+				{"cmd": ["sh", "-c", "test $(wc -l < bin/defhash_fixture.ndjson) -eq 7"]},
+				{"cmd": ["grep", "-qF", "\"name\": \"defhash_fixture_helper\", \"kind\": \"function\", \"hash\": \"", "bin/defhash_fixture.ndjson"]},
+				{"cmd": ["sh", "-c", "grep '\"name\": \"defhash_fixture_helper\"' bin/defhash_fixture.ndjson | grep -qF '\"refs\": [\"defhash_fixture_add\", \"defhash_fixture_counter\"]'"]},
+				{"cmd": ["sh", "-c", "grep '\"name\": \"main\"' bin/defhash_fixture.ndjson | grep -qF '\"refs\": [\"defhash_fixture_helper\"]'"]},
+				{"cmd": ["sh", "-c", "grep '\"name\": \"defhash_fixture_add\"' bin/defhash_fixture.ndjson | grep -qF '\"refs\": []'"]},
+				{"cmd": ["bin/wv2", "defhash", "tests/defhash_fixture_reformatted.w"], "stdout_file": "bin/defhash_fixture_reformatted.ndjson"},
+				{"cmd": ["bin/wv2", "defhash", "tests/defhash_fixture_edited.w"], "stdout_file": "bin/defhash_fixture_edited.ndjson"},
+				{"cmd": ["sh", "-c", "sed -E 's/\"file\": \"[^\"]*\"/\"file\": \"F\"/' bin/defhash_fixture.ndjson > bin/defhash_fixture.norm; sed -E 's/\"file\": \"[^\"]*\"/\"file\": \"F\"/' bin/defhash_fixture_reformatted.ndjson > bin/defhash_fixture_reformatted.norm; diff -u bin/defhash_fixture.norm bin/defhash_fixture_reformatted.norm"]},
+				{"cmd": ["sh", "-c", "a=$(grep '\"name\": \"defhash_fixture_add\"' bin/defhash_fixture.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); e=$(grep '\"name\": \"defhash_fixture_add\"' bin/defhash_fixture_edited.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); test -n \"$a\"; test \"$a\" != \"$e\""]},
+				{"cmd": ["sh", "-c", "for n in defhash_fixture_size defhash_fixture_point defhash_fixture_counter defhash_fixture_helper defhash_fixture_color main; do a=$(grep \"\\\"name\\\": \\\"$n\\\"\" bin/defhash_fixture.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); e=$(grep \"\\\"name\\\": \\\"$n\\\"\" bin/defhash_fixture_edited.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); test -n \"$a\"; test \"$a\" = \"$e\"; done"]},
+				{"cmd": ["bin/wv2", "defhash", "--closure", "tests/defhash_fixture.w"], "stdout_file": "bin/defhash_fixture_closure.ndjson"},
+				{"cmd": ["sh", "-c", "test $(wc -l < bin/defhash_fixture_closure.ndjson) -gt 7"]},
+				{"cmd": ["grep", "-qF", "\"name\": \"defhash_fixture_helper\"", "bin/defhash_fixture_closure.ndjson"]},
+				{"cmd": ["bin/wv2", "defhash"], "expect_fail": true, "expect_stderr": "usage: w defhash"},
+				{"cmd": ["bin/wv2", "defhash", "tests/type_system_error_fixture.w"], "expect_fail": true, "expect_stderr": "assignment to const"}
+			]
+		},
+		{
 			"name": "deps_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2128,6 +2150,7 @@
 				"missing_file_test",
 				"symbols_test",
 				"deps_test",
+				"defhash_test",
 				"self_host_warning_test",
 				"repl_warning_test",
 				"int64_x86_error_test",

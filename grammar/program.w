@@ -15,6 +15,11 @@
  * parameter-declaration:
  *     type-name identifier-opt
  */
+# Forward declaration: defhash_note is defined in compiler/compiler.w,
+# which compiles after grammar/.
+void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
+
+
 # Parse the compile-time constant after '=' in a parameter declaration:
 # an integer literal (decimal or hex, optionally negated), a char literal,
 # or a named enum constant (whose int32 value was already emitted into the
@@ -426,6 +431,15 @@ void program():
 				generator_declaration()
 				continue;
 
+		# Captured here, before the generic scan-ahead, so it is the true
+		# start of the declaration in both of generic_declaration_scan's
+		# outcomes: a real generic (which 'continue's below, never
+		# reaching defhash_note) or a plain declaration whose return type
+		# it already scanned into generic_scanned_type (in which case
+		# token itself has moved on to the declared name, so capturing
+		# this any later would miss the return-type tokens).
+		int defhash_start = token_start_offset
+
 		# Generic function definitions ('T max[T](T a, T b):'): the scan
 		# looks ahead past the return type for 'name[', capturing and
 		# skipping the definition when it matches. When it does not, the
@@ -439,6 +453,13 @@ void program():
 		int decl_type = generic_scanned_type
 		if (decl_type < 0):
 			decl_type = type_name()
+		# defhash (docs/projects/build_system_next.md 4a): name/line/column
+		# of the plain declaration below, left null for the 'operator'
+		# overload branch (excluded on purpose -- every operator overload
+		# would otherwise share the same recorded name, "operator").
+		char* defhash_name = 0
+		int defhash_line = 0
+		int defhash_column = 0
 		# 'operator' is a contextual keyword: followed by an operator
 		# token it defines an overload (grammar/operator_overload.w);
 		# otherwise it stays an ordinary declared name.
@@ -449,14 +470,23 @@ void program():
 				continue;
 			current_symbol = sym_declare_global(c"operator", decl_type, 1)
 		else:
+			defhash_name = strclone(token)
+			defhash_line = diag_token_line
+			defhash_column = diag_token_column
 			current_symbol = sym_declare_global(token, decl_type, 1)
 			get_token()
 		if (accept(c";")):
 			define_global_variable(current_symbol, decl_type)
+			if (defhash_name != 0):
+				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 		else if (accept(c"(")):
 			function_definition(current_symbol)
+			if (defhash_name != 0):
+				defhash_note(defhash_name, c"function", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 		else:
 			/*error(8)*/
 			define_global_variable(current_symbol, decl_type)
+			if (defhash_name != 0):
+				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
