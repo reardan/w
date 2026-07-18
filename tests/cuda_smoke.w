@@ -14,7 +14,6 @@ import code_generator.integer
 c_lib "libcuda.so.1"
 c_lib "libc.so.6"
 
-extern char* malloc(int size)
 extern int puts(char* s)
 extern int printf(char* fmt, int a, int b)
 extern int fflush(int stream)
