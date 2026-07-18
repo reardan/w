@@ -231,28 +231,102 @@ is a queue, not an archive.
   #287 PR (seed-adjacent blast radius — `lib/stream.w` feeds wexec,
   wmeta, and the web stack; deserves its own gated PR). The validator
   routes around it by reading with `getchar()`, which masks correctly.
-- **The compiler can exit 1 with no diagnostic at all — partially
-  addressed.** The pre-refresh darwin seed compiling current `w.w`
+- **The compiler can exit 1 with no diagnostic at all — full audit done
+  (2026-07-18), one more gap fixed, one documented.** Three concrete
+  silent-exit gaps were fixed 2026-07-16 (backend finisher `write()`
+  checks, ce18e1e; tokenizer prefixed-string EOF, f7076b9; allocator OOM
+  notice, 35ed0f5 — see the appendix below for status). This pass swept
+  every `error(...)` call site in `grammar/`, `compiler/`,
+  `code_generator/`, `w.w` (312 sites, not the ~95 `ai_tooling.md` had
+  estimated — that number was stale), every direct `exit()`/`asserts()`
+  call bypassing `error()`, and the driver-path syscalls (`open()`/
+  `read()`/`write()`/`getcwd()`/`mmap()` in the compile/link/deps/symbols
+  paths, `grammar/generic.w` and `grammar/defer.w`'s re-parse file opens,
+  and the `libs/extras/{c_import,c_preprocessor,parser_generator}` seed
+  graph). Full table in the appendix below. Net new finding: a genuine
+  silent-crash gap in `lib/memory_debug.w`'s bookkeeping-table growth
+  (5 unchecked `mmap()` calls) — **fixed this pass**, no fixture (same
+  as 35ed0f5, forcing a real mmap failure needs a memory-exhausted
+  environment, not a portable fixture). One further gap is documented,
+  not fixed: `lib/lib.w`'s `getchar()` treats a genuine `read()` error
+  the same as EOF, so a rare mid-file I/O failure looks like a silent,
+  possibly-successful truncation rather than a diagnostic (see
+  appendix). The original 2026-07-09 darwin-seed report itself still
+  cannot be independently reproduced — see "Bounded repro attempt"
+  below — but the audit found no comparable *still-open* silent-exit
+  path in the seed graph on Linux, and every `error()` call site is
+  safe by construction (see appendix "Method").
+
+  **Bounded repro attempt (Linux-side, 2026-07-18).** The report was:
+  an old ("pre-refresh") darwin seed compiling current `w.w`
   (post-#128 `libs/extras`) printed only the `compiling 'w.w'` banner
-  and exited 1 — nothing on stdout or stderr (2026-07-09; the same
-  constructs in a small probe file produced a proper `list field
-  'append' not found` error, so some deep error path exits without a
-  message). Three concrete silent-exit gaps found while auditing this
-  are now fixed (2026-07-16): every backend finisher
-  (`elf_finish`/`elf_finish_64`/`elf_finish_arm64`/`pe_finish_64`/
-  `macho_finish_arm64`/`wasm_finish`) now checks its output-binary
-  `write()` and prints `could not write output file` instead of exiting
-  0 with a truncated image (ce18e1e); the tokenizer's `c"..."`/`s"..."`
-  prefixed-string scanner reports `unterminated string literal` at EOF
-  instead of spinning forever with no output (f7076b9, pinned by
-  `prefixed_string_literal_test`); and `lib/memory`'s allocator prints a
-  one-line notice before returning null on OOM instead of letting every
-  caller's assumed-infallible `malloc()` segfault with no diagnostic
-  (35ed0f5). What remains: the original 2026-07-09 darwin-seed report
-  itself hasn't been independently re-reproduced to confirm one of these
-  three covers it, and no one has yet done the full audit of the ~95
-  `error()` call sites (`ai_tooling.md`'s current-state notes) for other
-  silent-exit paths beyond these three.
+  and exited 1 — nothing on stdout or stderr — while the same
+  constructs in a small probe file produced a proper error under a
+  matched seed. The most likely explanation is the seed-generation
+  skew the single-tag-pin policy (`CLAUDE.md` "Seed promotion",
+  #128/#129) was written to eliminate: at the time, `./w` (Linux) and
+  `./w_darwin` had each been refreshed independently, so it was
+  possible for `./w_darwin` to be a generation *behind* `./w` — built
+  from a `w.w`/grammar snapshot that predates some syntax the
+  now-current `w.w` (or its `libs/extras` closure) uses, with the
+  failure surfacing inside whatever internal function choked on the
+  unrecognized construct rather than through the normal `error()` path
+  (which the stale binary's own copy of `compiler/tokenizer.w` may not
+  have reached, or may have reached with different, since-fixed
+  plumbing). This could not be literally reproduced here: (1) only one
+  seed generation/tag exists (`SEEDS` pins `v0.1.0` for all three
+  platforms; no earlier tag was ever cut, so there is no "stale"
+  generation left to install and test against — the single-tag policy
+  landed before a second generation could exist), and (2) the specific
+  historical `w_darwin` binary that exhibited the bug was never
+  committed (seeds are downloaded, sha256-verified, gitignored) and is
+  an arm64 Mach-O besides, so it could not run here even if archived.
+  As a bounded substitute, the current pinned Linux seed was run
+  directly against current `w.w` (`./w w.w -o /tmp/.../probe`,
+  bypassing `wbuild`'s cached multi-stage): it compiled cleanly, exit
+  0, banner printed, no incident — confirming that a *matched*
+  single-tag-pin seed does not reproduce the failure shape, consistent
+  with the skew theory. Fully confirming the original report would
+  require a Mac with the specific stale `w_darwin` from 2026-07-09 (or
+  before), which no longer exists in any accessible form — **Mac-only,
+  and irreproducible even there** without that exact archived binary.
+
+  **Appendix: silent-exit-1 audit table (2026-07-18)**
+
+  Method: `error(char* s)` (`compiler/tokenizer.w`) is the sole sink
+  every diagnostic funnels through — in `--json` mode it appends to the
+  diagnostic buffer and emits one NDJSON record to stdout; otherwise it
+  calls `warning(s)`, which prints `<message> in <filename>:<line+1>` to
+  stderr — and only then exits 1 (or long-jumps to the REPL prompt under
+  `repl_recovery`). Because every one of the 312 call sites necessarily
+  routes through this one function, auditing them reduces to: (a)
+  confirm `error()`/`warning()` themselves always emit (read, not
+  changed), and (b) grep every call site for a non-empty message
+  literal or a preceding `diag_part(...)`/`print_error(...)` fragment
+  builder. A small script did (b) across all 312 sites; zero were
+  `error(c"")` with no builder in the preceding lines. The rest of the
+  table covers direct `exit()`/`asserts()` calls that bypass `error()`
+  entirely, and driver-path syscalls that could fail before any
+  diagnostic machinery runs.
+
+  | Path | Verdict | Action |
+  |------|---------|--------|
+  | All 312 `error(...)` call sites: `grammar/*.w` (49 files, e.g. `generic.w` 27, `string_literal.w` 22, `for_statement.w` 18), `compiler/{bignum,compiler,symbol_table,tokenizer}.w`, `code_generator/{arm64,dynamic_registry,elf_32,elf_64,elf_arm64,elf_dynamic,ffi,macho_64,macho_dynamic,pe_64,sse,wasm_module}.w` | SAFE | None — `error()` is the sole choke point (see Method); verified programmatically, no fixes needed |
+  | `compiler/tokenizer.w`'s `error()`/`warning()` themselves | SAFE | None — still call `warning()`/`diag_emit()` before every `exit(1)`/longjmp |
+  | `compiler/compiler.w:424,600,671,741,909` direct `exit(1)` (usage banners for `link`/`check`/`deps`/`symbols`, `--strict` warning-count summary) | SAFE | None — each preceded by `println2(...)`/`print_error(...)` |
+  | `lib/assert.w`'s `asserts`/`assert1`/`assert_equal*` (backs `compiler.w`'s output-fd/`-o`-argument checks, `debugger/attach.w`'s `rt_sigaction` check, etc.) | SAFE | None — always prints + a stack trace before `exit(1)` |
+  | `code_generator/{elf_32,elf_64,elf_arm64,macho_64,pe_64,wasm_module}.w` backend-finisher `write()` checks | SAFE (fixed 2026-07-16, ce18e1e) | None — confirmed all 6 finishers still checked |
+  | `compiler/tokenizer.w` prefixed-string (`c"..."`/`s"..."`) EOF scan | SAFE (fixed 2026-07-16, f7076b9, `prefixed_string_literal_test`) | None — confirmed |
+  | `lib/memory_freelist.w`'s `malloc_grow`/OOM notice; `lib/memory_debug.w`'s `debug_malloc`'s own region `mmap()` OOM check | SAFE (fixed 2026-07-16, 35ed0f5) | None — confirmed both call sites still checked |
+  | `lib/memory_debug.w`'s `debug_tbl_ensure_capacity()`: 5 bookkeeping-table `mmap()` calls | **GAP** — unchecked; a failed `mmap()` returns a small negative int used as a pointer with no validation, corrupting the debug allocator's own tracking table and segfaulting on first use with no diagnostic. Only reachable with the opt-in debug allocator (`W_DEBUG_MALLOC` env var or `malloc_force_debug_mode()`), not the default freelist backend | **Fixed this pass**: added `debug_tbl_mmap_failed()`, checked across all 5 results before use; prints `memory_debug: out of memory (bookkeeping table mmap failed)` and exits 1. No fixture — forcing a real `mmap()` failure needs a memory-exhausted environment, same as the untested 35ed0f5 precedent |
+  | `lib/lib.w`'s `getchar()`/`getchar_unbuffered()`: a genuine `read()` error (negative, non-EOF — e.g. `EIO`, an interrupted read with no retry, reading a special file) is treated identically to EOF | **GAP found, not fixed** — a mid-file read failure silently looks like end-of-input; the tokenizer then either reports a parse error at the truncation point (misleading, but not literally silent) or, worse, the truncated bytes happen to parse as a valid shorter program and the compiler exits 0 with silently-wrong output. Fixing needs a distinct "read error" sentinel plumbed through `get_character()`/`compile_attempt()`/etc., a wider change than this pass's budget, and read() failing on an already-`open()`ed regular local file essentially never happens in practice | Documented only |
+  | `libs/extras/c_import/importer.w` (2 sites), `libs/extras/c_preprocessor/{pp_directives,pp_macro}.w` (4 sites): `error(c"")` preceded by raw `print_error(...)` fragments instead of `diag_part(...)` | SAFE but inconsistent — the message does reach stderr (print_error always writes fd 2), but in `--json` mode the human-readable text still lands on raw stderr while `error(c"")` emits an *empty* NDJSON record on stdout, breaking the JSON contract. Pre-existing, already documented in `ai_tooling.md`'s "Composed messages" note (these libs predate the `diag_part` migration) | Not fixed — separate, larger "migrate c_import/pp to diag_part" task, not a silent-exit bug (message is never actually silent, just off-channel in `--json` mode) |
+  | `libs/extras/parser_generator/*.w` | SAFE | None — no direct `exit`/`error` calls; parse failures are recorded into `pg_diagnostics` and returned to the caller (`c_import_header`), which always fatals via a non-empty `error()` either way |
+  | Driver-path syscalls: `compiler/compiler.w`'s `compile_attempt`/`compile_relative_path`/`compile_joined` (source `open()` + upward directory search), `link_impl`'s output-path and `/dev/null`/`NUL` `open()`s, `grammar/generic.w:generic_reparse_start`, `grammar/defer.w:defer_reparse_start` (both re-open a recorded file to re-parse a generic instantiation/deferred statement) | SAFE | None — every `open()` result is checked, via `error()` (diag_part-built message) or `asserts()` |
+  | Unrecognized CLI flags (e.g. `--bounds=xyz`) | Not silent, but confusing — falls through `link_impl`'s flag loop and is treated as an input filename, then fails the ordinary "no such file: '--bounds=xyz'" `error()` path | UX nit, not fixed (out of scope for this pass) |
+  | `lib/generator.w`'s `__w_gen_create`: unchecked `mmap()` for a `generator` function's 64KB coroutine stack | Same failure shape as the memory_debug gap above, but this is stdlib runtime linked into *user* programs that declare `generator` functions, not the compiler's own process — outside this task's named scope (`compiler/`, `grammar/`, `code_generator/`, `w.w`) | Logged, not fixed |
+  | Stack overflow from unbounded recursive-descent parsing (deeply nested expressions, generic instantiations) | A related but distinct failure class — a raw `SIGSEGV` is signal-terminated (not a clean `exit(1)`), so it doesn't match this audit's exact "exit 1, no message" shape, but is the same *outcome* (process dies, nothing printed). No recursion-depth guard exists anywhere in the parser | Out of scope for this pass; logged as a known, unaddressed gap |
+  | Original 2026-07-09 darwin-seed report | Not independently reproduced | See "Bounded repro attempt" above |
 
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 
