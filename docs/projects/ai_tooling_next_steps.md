@@ -303,8 +303,17 @@ is a queue, not an archive.
   `string_free(x); free(y)` pair in the tree already frees two *different*
   pointers (builder vs. some unrelated buffer); grepping confirms `repl.w`
   was the only place calling `string_free(b); free(b)` on the same `b`.
-  Worth a proper root-cause pass on the allocator/JIT interaction — this
-  workaround just avoids the pattern, it doesn't explain it.
+  Root-caused 2026-07-18 (`docs/projects/repl_allocator_interaction.md`):
+  no REPL/JIT dependency at all — `string_free(b)` already frees `b`
+  itself, so the pair is a plain double free, and `lib/memory_freelist.w`
+  has no double-free detection, so the second `free()` corrupts that size
+  class's free list into a permanent self-loop that aliases every later
+  allocation of a matching size onto the same address (reproduced
+  standalone with raw `malloc`/`free`, no `repl.w` imports). The doc
+  covers why the earlier bisection looked REPL-specific, rules out the
+  signal-handler and checkpoint/rollback hypotheses with citations, and
+  recommends `W_DEBUG_ALLOC=1` for catching this class of bug in the
+  future rather than hardening the production allocator under a timebox.
 
 ## Skills / rules upkeep
 
