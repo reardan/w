@@ -151,7 +151,7 @@ int gpu_sym_get_value(char* s):
 	if (load_int(table + t + 10) == 2):
 		error(c"gpu code cannot call functions")
 	char scope_type = table[t + 1]
-	if ((scope_type == 'D') | (scope_type == 'U')):
+	if ((scope_type == 'D') || (scope_type == 'U')):
 		error(c"global variables are not accessible in gpu code")
 	int type = load_int(table + t + 6)
 	if (t < device_symbol_base):
