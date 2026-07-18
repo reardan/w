@@ -2,9 +2,11 @@
 
 Status: **partially implemented** — read-only inspection and execution
 control landed (`debugger/attach.w`, `wdbg --attach <pid> [file.w]`, tests
-in `tools/attach_test.sh` / the `attach_test` build target). Locals/args
-inspection, expression evaluation and hardware watchpoints in attach mode
-are not yet wired; see "Implemented" and "Remaining" below.
+in `tools/attach_test.sh` / the `attach_test` build target), and phase 2's
+memory-access seam has landed (`debugger/memory.w`; see "Implemented"
+below) with the register seam still deferred. Locals/args inspection,
+expression evaluation and hardware watchpoints in attach mode are not yet
+wired; see "Implemented" and "Remaining" below.
 
 Tracks [reardan/w#123](https://github.com/reardan/w/issues/123). This is
 the "out-of-process ptrace mode" design doc that
@@ -36,11 +38,41 @@ byte-identical). What works today:
   `c`, `si` via `PTRACE_POKEDATA` int3 patching and a `wait4` stop loop with
   the disarm / single-step / re-arm dance; `detach` restores original bytes.
 
-Design choice: rather than thread a shared in-process/ptrace "seam" through
-the seed-compiled memory and register modules (original phase 2), attach
-mode is a parallel implementation. That keeps the invasive, self-host-risky
-refactor out of the core while delivering the same capability; the seam can
-still be pursued later if locals/eval reuse justifies it.
+Design history: phase 1 initially shipped attach mode as a parallel
+implementation rather than threading a shared in-process/ptrace seam
+through the seed-compiled memory and register modules, to keep the
+invasive, self-host-risky refactor out of the core while delivering the
+same capability. Phase 2 has since built that seam for the memory half:
+
+- **Memory-access seam** (`debugger/memory.w`). `dbg_mem_readable`,
+  `dbg_mem_read`/`dbg_mem_read_word` and `dbg_mem_write_word` dispatch
+  through a registered reader/writer/prober triple — the same
+  function-pointer convention `debugger/disas.w`'s `dbg_disas_read_fn`
+  already used for instruction bytes. `dbg_memory_init()` installs the
+  in-process (direct load/store, mincore-probed) triple by default, so
+  every existing in-process caller (`debugger/wdbg.w`, `locals.w`,
+  `watchpoints.w`) is byte-identical in behavior with no seam awareness
+  needed. `debugger/attach.w` installs its own ptrace-backed triple
+  (`at_mem_readable`/`at_mem_read`, thin wrappers around the existing
+  `PTRACE_PEEKDATA`-based `at_read_word` — no new ptrace semantics) and
+  routes `at_examine` (the `x`/`st` commands) through the shared entry
+  points instead of calling `at_read_word` directly, so `attach_test.sh`'s
+  "examine memory" case exercises the ptrace side of the same seam the
+  in-process debugger uses. Breakpoint byte-patching
+  (`debugger/breakpoints.w`) and eval's in-process locals-binding copy
+  (`debugger/eval.w`'s `dbg_eval_copy`) are deliberately untouched: they
+  are execution-control (phase 4) and eval (phase 6) concerns, not memory
+  inspection.
+- **Register seam: still deferred.** `debugger/sigcontext.w`'s `ctx_*`
+  accessors take an explicit sigcontext pointer threaded through
+  `debugger/wdbg.w`'s call chain, while attach mode reads an implicit
+  global `user_regs_struct` (`attach_regs`, a different byte layout: e.g.
+  `sigcontext_eax()` vs. `at_off_ip()`/the offsets in
+  `at_print_registers`). Unifying the two needs either a global
+  "current register buffer" convention in the in-process path or an
+  explicit buffer parameter threaded through attach mode, both wider
+  refactors than the memory seam; left for a follow-up once locals/eval
+  reuse (phases 5-6) makes the register side worth it.
 
 ## Remaining
 
@@ -88,8 +120,8 @@ below is mostly about giving each one a seam.
 
 | Layer | Today | Attach needs |
 | --- | --- | --- |
-| memory (`debugger/memory.w`) | direct loads/stores; bad pointers probed via `/dev/null` writes | `PTRACE_PEEKDATA` / `PTRACE_POKEDATA` (peek's errno ambiguity replaces the probe trick) |
-| registers (`debugger/sigcontext.w`) | offsets into the kernel signal frame | `PTRACE_GETREGS` / `PTRACE_SETREGS` into a `user_regs_struct` buffer |
+| memory (`debugger/memory.w`) | **done (phase 2):** `dbg_mem_readable`/`dbg_mem_read`/`dbg_mem_write_word` dispatch through a registered triple, mincore-probed direct loads/stores by default | attach installs a `PTRACE_PEEKDATA`-backed triple (peek's errno ambiguity replaces the probe trick); wired for `at_examine`, not yet for `set`/watch in attach mode (no locals there yet) |
+| registers (`debugger/sigcontext.w`) | offsets into the kernel signal frame, threaded via an explicit context parameter | **not yet seamed** (phase 2 remaining): `PTRACE_GETREGS` / `PTRACE_SETREGS` into a `user_regs_struct` buffer, already used standalone by `debugger/attach.w`'s own `at_reg`/`at_getregs` but not unified with `ctx_*` |
 | execution control | return-from-handler with TF set; re-armed int3 bytes | `PTRACE_CONT` / `PTRACE_SINGLESTEP` + a `wait4` stop loop |
 | symbols/lines/stack slots (`debugger/symbols.w`, `debugger/lines.w`) | live compiler tables from the just-finished in-process compile; `debug_line_stack_pos` is **never emitted into the ELF** (`code_generator/dwarf.w`) | regenerate the same tables by recompiling the same source (see below) |
 | eval (`debugger/eval.w`) | compiles an expression and runs it in-process against debuggee globals | reads via ptrace; in-target calls are out of scope initially |
@@ -154,11 +186,23 @@ and must not use syntax newer than the seed.
    `PTRACE_GETREGS`, peek-based memory reads; wire `--attach <pid>` into
    `wdbg_main` argument parsing. Deliverable: attach to a spinning
    process, `r`, `x`, `st`, `detach` — raw addresses only.
-2. **Target-access seam.** Introduce read/write-word and register
-   accessor dispatch (in-process direct vs. ptrace) and route
-   `debugger/memory.w` users and the sigcontext accessors through it.
-   No behavior change for the in-process path; `verify` byte-identity
-   plus the existing `debug_test`/`debug_test_x64` targets are the gate.
+2. **Target-access seam — memory done, registers remaining.** Read/write
+   dispatch (in-process direct vs. ptrace) now routes every debuggee
+   memory access in `debugger/memory.w`, `wdbg.w`, `locals.w` and
+   `watchpoints.w` through `dbg_mem_readable`/`dbg_mem_read`/
+   `dbg_mem_write_word`, with `debugger/attach.w` installing its
+   `PTRACE_PEEKDATA`-backed triple and routing `at_examine` through it.
+   No behavior change for the in-process path (`./wbuild verify` and
+   `verify_x64` stay green; `debug_test`/`debug_test_x64`/`wdbg`/
+   `repl_test`(`_x64`) and `attach_test` all pass unchanged). The
+   register half — dispatching `debugger/sigcontext.w`'s `ctx_*`
+   accessors the same way — is still open: it needs either the
+   in-process path to adopt a global "current register buffer"
+   (today it threads an explicit sigcontext pointer through every call
+   in `wdbg.w`) or attach mode to adopt an explicit buffer parameter
+   (today it reads the implicit global `attach_regs`), and the two
+   models use different byte layouts (sigcontext vs. `user_regs_struct`)
+   for the same logical registers. Left for a follow-up.
 3. **Symbol/line recovery.** The recompile-and-validate scheme above.
    Deliverable: `bt`, `l`, `list`, `i functions|files` against a live
    process.

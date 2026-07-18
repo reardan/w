@@ -4,9 +4,17 @@ Attach to a running process (wdbg --attach <pid> [file.w]).
 Unlike the rest of wdbg, which runs the debuggee inside its own address
 space and drives it from signal handlers, attach mode controls a separate,
 already-running process through ptrace(2). It is a self-contained command
-loop: the in-process execution path (wdbg.w's signal handlers, the shared
-memory/register accessors) is never entered, so attaching cannot perturb
-the self-hosting model and needs none of that machinery.
+loop: wdbg.w's signal handlers and execution-control state are never
+entered, so attaching cannot perturb the self-hosting model and needs
+none of that machinery. Memory inspection is the one place attach mode
+plugs into shared code: debugger/memory.w's target-access seam (#123
+phase 2) dispatches dbg_mem_readable/dbg_mem_read through a registered
+reader, and this file installs at_mem_readable/at_mem_read -- thin
+wrappers around the existing PTRACE_PEEKDATA read below -- as that
+reader (wdbg_attach_run), so at_examine (x/st) goes through the same
+entry points the in-process debugger uses. Registers stay a separate,
+attach-local model (user_regs_struct via PTRACE_GETREGS, not the
+in-process sigcontext accessors); unifying those is future work.
 
 Two levels of capability:
 
@@ -40,6 +48,7 @@ import debugger.lines
 import debugger.symbols
 import debugger.breakpoints
 import debugger.disas
+import debugger.memory
 
 
 # --- ptrace request numbers (classic ABI, identical on i386 and x86-64) ---
@@ -107,6 +116,42 @@ int at_read_byte(int addr):
 
 int at_write_word(int addr, int value):
 	return sys_ptrace(at_POKEDATA(), attach_pid, addr, value)
+
+
+# --- target-access seam (#123 phase 2, docs/projects/debugger_attach.md) ---
+# Installed as debugger/memory.w's dbg_mem_readable_fn/dbg_mem_read_fn by
+# wdbg_attach_run, so the shared inspection entry points (dbg_mem_readable,
+# dbg_mem_read, dbg_mem_read_word) work against an attached target exactly
+# like they work in-process: at_examine (the x/st commands) goes through
+# them below instead of calling at_read_word directly. No new ptrace
+# semantics -- both adapters are read-only wrappers around the existing
+# at_read_word peek.
+
+# n is at most __word_size__ for every caller today (a single peek covers
+# it); the loop is a safety net for a hypothetically larger range.
+int at_mem_readable(int addr, int n):
+	if (n <= __word_size__):
+		at_read_word(addr)
+		return attach_read_ok
+	int end = addr + n
+	int a = addr
+	while (a < end):
+		at_read_word(a)
+		if (attach_read_ok == 0):
+			return 0
+		a = a + __word_size__
+	return 1
+
+
+# PTRACE_PEEKDATA reads at any byte address on x86/x86-64 Linux (no
+# alignment requirement), so the word at addr already holds the requested
+# narrower value in its low bytes -- just mask.
+int at_mem_read(int addr, int width):
+	int v = at_read_word(addr)
+	dbg_mem_read_ok = attach_read_ok
+	if (width >= __word_size__):
+		return v
+	return v & ((1 << (width * 8)) - 1)
 
 
 # --- registers ---
@@ -339,6 +384,9 @@ void at_print_registers():
 
 
 # Dump n words at a target address; stops early on an unreadable page.
+# Reads through the target-access seam (dbg_mem_readable/dbg_mem_read_word,
+# installed to at_mem_readable/at_mem_read below), so this is the same
+# call sequence the in-process debugger uses for 'x'/'st'.
 void at_examine(int addr, int count):
 	int i = 0
 	while (i < count):
@@ -347,10 +395,10 @@ void at_examine(int addr, int count):
 		print(ha)
 		free(ha)
 		print(c": ")
-		int v = at_read_word(slot)
-		if (attach_read_ok == 0):
+		if (dbg_mem_readable(slot, __word_size__) == 0):
 			println(c"<unreadable>")
 			return;
+		int v = dbg_mem_read_word(slot)
 		char* hv = hex_word(v)
 		print(hv)
 		free(hv)
@@ -695,6 +743,12 @@ int wdbg_attach_run(int pid, int have_symbols):
 	attach_bp_count = 0
 	attach_pending_sig = 0
 	attach_symbolized = 0
+
+	# Install this module's ptrace reads as the target-access seam's
+	# backend (debugger/memory.w), so at_examine and any future attach-mode
+	# consumer of the shared dbg_mem_* entry points read through ptrace.
+	dbg_mem_readable_fn = cast(int, at_mem_readable)
+	dbg_mem_read_fn = cast(int, at_mem_read)
 
 	int r = sys_ptrace(at_ATTACH(), pid, 0, 0)
 	if ((r < 0) && (r >= -4095)):
