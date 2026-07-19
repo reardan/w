@@ -449,6 +449,15 @@
 			]
 		},
 		{
+			"name": "unrecognized_option_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "--bounds=xyz"], "expect_fail": true, "expect_stderr": "unrecognized option: '--bounds=xyz'", "reject_stderr": "no such file"},
+				{"cmd": ["bin/wv2", "check", "--bogus", "tests/simple.w"], "expect_fail": true, "expect_stderr": "unrecognized option: '--bogus'", "reject_stderr": "no such file"},
+				{"cmd": ["bin/wv2", "--bounds=off", "tests/simple.w", "-o", "/dev/null"]}
+			]
+		},
+		{
 			"name": "symbols_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2244,6 +2253,7 @@
 				"check_imports_test",
 				"check_bool_ops_test",
 				"missing_file_test",
+				"unrecognized_option_test",
 				"symbols_test",
 				"deps_test",
 				"defhash_test",

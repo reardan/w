@@ -549,6 +549,19 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# Debug dump of the embedded PTX module (kernels/'gpu for'),
 			# written by ptx_finish_module; ignored when no kernels exist.
 			ptx_dump_path = *arg + 6
+		else if (starts_with(*arg, c"-")):
+			# Every recognized flag was matched above; a dash-prefixed
+			# argument that reaches here is a typo or an unsupported
+			# option ('--bounds=xyz', '--nope'), not an input file — a
+			# file named '-x' is vanishingly rare in this codebase, and
+			# treating it as a root instead produced a misleading "no
+			# such file: '--bounds=xyz'" (the fallthrough below tried to
+			# open it). Fail fast with the option text instead of
+			# silently compiling it as a root.
+			print_error(c"unrecognized option: '")
+			print_error(*arg)
+			print_error(c"'\x0a")
+			exit(1)
 		else:
 			char* input = *arg
 			# A compiler-internal root cannot be checked standalone;
