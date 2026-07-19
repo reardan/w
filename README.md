@@ -394,6 +394,21 @@ seeds — is `docs/release.md`.
   first run after a build computes the closures (~90s with the per-arch
   twins); later runs validate the cache by content hash and finish in
   well under a second.
+- `./bin/wtest changed <rev-range>` selects targets for the files changed
+  **between two commits** instead of a path list (issue #251 direction
+  4b): a single argument containing `..` is a git revision range instead
+  of a changed-file path (no tracked path in this repo ever contains
+  `..`, so the two never collide) — `A..B`, `A...B` (three-dot, diffed
+  against the real `git merge-base A B`), or an open `A..` for "`A`
+  versus the worktree". A bare single revision with no dots is not
+  auto-detected (indistinguishable from a path), so `A..` is the
+  spelling for that case. The changed-path list comes from
+  `git diff --no-renames --name-only`, so a rename shows up as an
+  ordinary delete-then-add pair rather than hiding the old path. Compose
+  with `--defhash` to compare `git show A:<path>` against `git show
+  B:<path>` (or the worktree, for an open range) instead of HEAD versus
+  the worktree. Without a range argument, `changed` behaves exactly as
+  above; `wtest for` never looks for one.
 - A file compiled under more than one arch (`tools/wexec.w`: default
   `x86`, `win64`, `arm64_darwin`) can compile clean under the default
   `w check` yet fail only one of its other targets — e.g. an import with

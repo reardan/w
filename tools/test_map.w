@@ -178,6 +178,63 @@ ai_tooling_next_steps.md's defhash section) all fall back to the
 ordinary closure scan for that path instead. The risk scan is text, not
 a parse, so it may over-fire (safe: just less selective) but must never
 under-fire. Selection without --defhash is unchanged byte-for-byte.
+('HEAD' above generalizes to the commit-ranged left endpoint below when
+a range is active; see wtest_range_left / wtest_range_right and
+wtest_defhash_unchanged's left_rev/right_is_worktree.)
+
+Commit-ranged selection (issue #251 direction 4b; 'changed' only, not
+'for'): a single positional argument containing '..' is a git revision
+range instead of a changed-file path — no tracked path in this tree
+ever contains '..', so the two are unambiguous, and only the first such
+argument is honored. Accepted spellings mirror 'git diff
+--name-only's own argument: 'A..B' and 'A...B' (three-dot: wtest
+resolves the actual 'git merge-base A B' itself as the comparison's
+left endpoint, so the per-file --defhash comparison below diffs the
+same pair 'git diff A...B' itself would), and an open right side
+('A..') meaning "A versus the worktree". A bare single revision with no
+dots at all ('A') is deliberately NOT auto-detected — indistinguishable
+from an ordinary changed-file argument — so 'A..' is the documented
+spelling for "one revision versus the worktree" instead. Getting that
+open-range case to actually reach the worktree takes care wtest does
+itself rather than delegating to git's own range parsing: a dotted
+rangespec's omitted side defaults to HEAD (a specific commit), never
+the working tree — 'git diff --name-only A..' silently answers "what
+changed between A and HEAD", dropping any uncommitted edit entirely, a
+materially different (and wrong) answer here. wtest_range_setup instead
+splits the spec itself and resolves each side up front (wtest_range_left
+always a real commit-ish, wtest_range_right either a resolved commit or
+0 meaning "the worktree"); wtest_range_expand then runs 'git diff
+--no-renames --name-only <left> <right>' as two separate arguments when
+both are commits (documented git-equivalent of '<left>..<right>'), or
+just 'git diff --no-renames --name-only <left>' — a bare single
+argument, which does reach the worktree+index — when the right side is
+open. Renames are disabled (--no-renames) so a rename surfaces as the
+ordinary old-path-deleted + new-path-added pair, which residue rule
+(c)'s existing deleted-file handling already covers, rather than git's
+default rename-following silently hiding the old path. Every path
+returned goes through the ordinary wtest_map_path, generalized in
+exactly two places: the "does this .w file still exist" check that rule
+(c) uses to choose the deleted-file residue instead of a closure scan is
+evaluated against the range's right-hand endpoint (a real commit for a
+closed 'A..B'/'A...B' range, the live worktree for an open one) instead
+of unconditionally the live worktree, and --defhash's own comparison
+generalizes from HEAD-vs-worktree to left-vs-right content ('git show
+<left>:<path>' vs 'git show <right>:<path>', or the worktree file when
+the right side is open) — see wtest_range_setup, wtest_range_exists,
+wtest_defhash_unchanged. Rule (b)'s closure computation itself is NOT
+range-aware: it always reflects the CURRENT worktree's import graph via
+the same bin/.wtest_deps_cache every other invocation uses —
+recomputing historical closures per commit is the deferred "persistent
+semantic index over history" work (docs/projects/build_system_next.md
+direction 4b); reusing the live graph is exact for the common case
+(import structure rarely changes across a range) and can only ever
+over-select, never under-select. An invalid revision on either side is
+a hard error (wtest exits 1 before any selection is printed) rather
+than a silent fallback, unlike --defhash's per-file fail-open: a bad
+range means the whole invocation is meaningless, not just one file's
+precision. Without a range argument, 'changed' (and 'for', which never
+looks for one)
+behave byte-for-byte as before.
 
 The first 'changed' invocation to touch an import closure (rule b) after
 a build, or after bin/.wtest_deps_cache is otherwise missing or fully
@@ -224,10 +281,23 @@ json_value* wtest_base_manifest      # parsed baseline, 0 until loaded
 int wtest_closures_ready
 int wtest_mask32
 
+# Commit-ranged selection (header comment, "Commit-ranged selection"):
+# wtest_range_active is 0 until a range argument is recognized and
+# resolved; wtest_range_spec is the raw argument as given (error
+# messages only). wtest_range_left is always a resolved commit-ish
+# (the range's left endpoint, or the resolved merge-base for a
+# three-dot range) once active. wtest_range_right is the resolved
+# right-hand commit-ish, or 0 meaning "the live worktree" (an open
+# range, e.g. 'A..').
+int wtest_range_active
+char* wtest_range_spec
+char* wtest_range_left
+char* wtest_range_right
+
 
 void wtest_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...] [--defhash]")
+	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...] [--defhash] [A..B | A...B | A..]")
 	stream_write_line(err, c"       wtest for <file>... [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [--defhash]")
 	stream_write_line(err, c"       wtest archs <file>... [--check] [-f manifest.json]")
 	stream_flush(err)
@@ -999,14 +1069,17 @@ char* wtest_resolve_program(char* name):
 	return result
 
 
-# 'git show HEAD:<path>' -- the committed version of a changed path, with
-# no working-tree edits applied. Returns 0 (fail open, header comment) on
-# any spawn failure or nonzero exit: a path new to HEAD (added, not yet
-# committed), a git error, or no repository at all.
-char* wtest_git_show_head(char* path):
+# 'git show <rev>:<path>' -- <path> as recorded at <rev>, with no
+# working-tree edits applied. Returns 0 (fail open, header comment) on
+# any spawn failure or nonzero exit: a path new to <rev> (e.g. added but
+# not yet committed, when <rev> is "HEAD"), a git error, no repository
+# at all, or <path> simply not existing at <rev> (deleted or not yet
+# added there).
+char* wtest_git_show(char* rev, char* path):
 	char* git = wtest_resolve_program(c"git")
 	string_builder* spec = string_new()
-	string_append(spec, c"HEAD:")
+	string_append(spec, rev)
+	string_append(spec, c":")
 	string_append(spec, path)
 	char** argv = strv_new(3)
 	strv_set(argv, 0, git)
@@ -1023,6 +1096,175 @@ char* wtest_git_show_head(char* path):
 	char* text = strclone(result.stdout_text)
 	process_result_free(result)
 	return text
+
+
+# 'git show HEAD:<path>' -- kept as a thin wrapper: this is still the
+# default-mode comparison (no commit-ranged argument given).
+char* wtest_git_show_head(char* path):
+	return wtest_git_show(c"HEAD", path)
+
+
+# 'git cat-file -e <rev>:<path>' -- whether <path> exists in the tree
+# recorded at <rev> (exit 0), used by wtest_range_exists to decide
+# deleted-vs-present at the range's right-hand endpoint instead of
+# always checking the live filesystem (header comment, "Commit-ranged
+# selection"). Fails closed to "does not exist" on any spawn failure or
+# nonzero exit, same as wtest_git_show's fail-open callers treat a 0
+# return -- either way the caller ends up at the conservative
+# deleted-file residue rule instead of a bogus closure scan.
+int wtest_git_exists_at(char* rev, char* path):
+	char* git = wtest_resolve_program(c"git")
+	string_builder* spec = string_new()
+	string_append(spec, rev)
+	string_append(spec, c":")
+	string_append(spec, path)
+	char** argv = strv_new(4)
+	strv_set(argv, 0, git)
+	strv_set(argv, 1, c"cat-file")
+	strv_set(argv, 2, c"-e")
+	strv_set(argv, 3, spec.data)
+	process_result* result = process_run(git, argv, 0, 0, 30000)
+	free(cast(char*, argv))
+	string_free(spec)
+	if (result == 0):
+		return 0
+	int ok = result.status == 0
+	process_result_free(result)
+	return ok
+
+
+# 'git rev-parse --verify <rev>^{commit}' -- whether <rev> resolves to a
+# real commit. Used to validate both endpoints of a range up front, so a
+# typo'd revision is a clean "wtest: error: ..." exit 1 instead of every
+# per-file git-show call silently failing open one at a time.
+int wtest_git_rev_valid(char* rev):
+	char* git = wtest_resolve_program(c"git")
+	string_builder* spec = string_new()
+	string_append(spec, rev)
+	string_append(spec, c"^{commit}")
+	char** argv = strv_new(4)
+	strv_set(argv, 0, git)
+	strv_set(argv, 1, c"rev-parse")
+	strv_set(argv, 2, c"--verify")
+	strv_set(argv, 3, spec.data)
+	process_result* result = process_run(git, argv, 0, 0, 30000)
+	free(cast(char*, argv))
+	string_free(spec)
+	if (result == 0):
+		return 0
+	int ok = result.status == 0
+	process_result_free(result)
+	return ok
+
+
+# 'git merge-base <a> <b>', trailing newline trimmed -- the correct left
+# endpoint for a three-dot 'A...B' range's own per-file content
+# comparisons (git diff A...B itself diffs merge-base(A,B) against B, so
+# using bare 'A' as the left side of a --defhash comparison would
+# compare the wrong pair of file versions). Returns 0 on any spawn
+# failure, nonzero exit (e.g. unrelated histories), or empty output.
+char* wtest_git_merge_base(char* a, char* b):
+	char* git = wtest_resolve_program(c"git")
+	char** argv = strv_new(4)
+	strv_set(argv, 0, git)
+	strv_set(argv, 1, c"merge-base")
+	strv_set(argv, 2, a)
+	strv_set(argv, 3, b)
+	process_result* result = process_run(git, argv, 0, 0, 30000)
+	free(cast(char*, argv))
+	if (result == 0):
+		return 0
+	if (result.status != 0):
+		process_result_free(result)
+		return 0
+	char* text = strclone(result.stdout_text)
+	process_result_free(result)
+	int n = strlen(text)
+	if ((n > 0) && (text[n - 1] == 10)):
+		text[n - 1] = 0
+	if (strlen(text) == 0):
+		free(text)
+		return 0
+	return text
+
+
+# Index of the first '.' of the '..'/'...' run in a range spec the
+# caller has already proved (via wtest_str_contains) contains "..".
+# Never returns -1 in practice for such a caller, but the sentinel is
+# kept for safety.
+int wtest_range_dot_index(char* spec):
+	int i = 0
+	while (spec[i] != 0):
+		if ((spec[i] == '.') && (spec[i + 1] == '.')):
+			return i
+		i = i + 1
+	return -1
+
+
+# Splits a rev-range spec ('A..B', 'A...B', 'A..', '..B') around its
+# '..'/'...' run and resolves both endpoints (header comment,
+# "Commit-ranged selection"): sets wtest_range_left/right/active/spec on
+# success. wtest_range_right stays 0 (worktree) for an open right side.
+# An omitted left side defaults to HEAD (gitrevisions(7)'s own
+# convention for a range with one side blank). Returns 1 and prints a
+# "wtest: error: ..." line (no selection is attempted) when either side
+# fails to resolve as a real commit, a three-dot range has no
+# right-hand side, or the two sides share no merge base.
+int wtest_range_setup(char* spec):
+	int idx = wtest_range_dot_index(spec)
+	if (idx < 0):
+		wtest_error(c"not a revision range: ", spec)
+		return 1
+	int three_dot = spec[idx + 2] == '.'
+	int dots = 2
+	if (three_dot):
+		dots = 3
+	string_builder* left_b = string_new()
+	int i = 0
+	while (i < idx):
+		string_append_char(left_b, spec[i])
+		i = i + 1
+	char* left = strclone(left_b.data)
+	string_free(left_b)
+	if (strlen(left) == 0):
+		left = c"HEAD"
+	char* right_raw = spec + idx + dots
+	char* right = 0
+	if (strlen(right_raw) > 0):
+		right = strclone(right_raw)
+	if (wtest_git_rev_valid(left) == 0):
+		wtest_error(c"invalid revision in range: ", left)
+		return 1
+	if ((right != 0) && (wtest_git_rev_valid(right) == 0)):
+		wtest_error(c"invalid revision in range: ", right)
+		return 1
+	if (three_dot):
+		if (right == 0):
+			wtest_error(c"three-dot range needs a right-hand revision: ", spec)
+			return 1
+		char* base = wtest_git_merge_base(left, right)
+		if (base == 0):
+			wtest_error(c"no merge base for range: ", spec)
+			return 1
+		wtest_range_left = base
+	else:
+		wtest_range_left = left
+	wtest_range_right = right
+	wtest_range_spec = spec
+	wtest_range_active = 1
+	return 0
+
+
+# Range-aware existence check used in place of a bare wtest_file_exists
+# for the "does this .w path still exist" gate (header comment,
+# "Commit-ranged selection"): the live worktree in default mode or an
+# open range, the range's resolved right-hand commit for a closed one.
+int wtest_range_exists(char* path):
+	if (wtest_range_active == 0):
+		return wtest_file_exists(path)
+	if (wtest_range_right == 0):
+		return wtest_file_exists(path)
+	return wtest_git_exists_at(wtest_range_right, path)
 
 
 int wtest_defhash_ident_char(int c):
@@ -1215,53 +1457,78 @@ map[char*, char*] wtest_defhash_collect(char* file_path):
 
 # The --defhash decision for one changed .w path: 1 when it is safe to
 # skip this path's rule-(b) closure additions (its recorded definitions
-# are provably unchanged and it carries none of the defhash-invisible
-# shapes wtest_defhash_risky_text watches for), 0 otherwise -- fail open
-# in every other case, per the header comment. wtest_note calls make the
-# decision visible under --verbose without adding new output surface.
+# are provably unchanged between the comparison's two sides, and it
+# carries none of the defhash-invisible shapes wtest_defhash_risky_text
+# watches for), 0 otherwise -- fail open in every other case, per the
+# header comment. Outside a commit range the two sides are HEAD (left)
+# and the worktree (right), exactly as before wtest_range_* existed;
+# inside one they are the range's resolved left/right endpoints (header
+# comment, "Commit-ranged selection") -- rev-vs-rev content instead of
+# HEAD-vs-worktree. wtest_note calls make the decision visible under
+# --verbose without adding new output surface.
 int wtest_defhash_unchanged(char* path):
-	char* worktree_text = file_read_text(path)
-	if (worktree_text == 0):
+	int right_is_worktree = (wtest_range_active == 0) || (wtest_range_right == 0)
+	char* right_text = 0
+	if (right_is_worktree):
+		right_text = file_read_text(path)
+	else:
+		right_text = wtest_git_show(wtest_range_right, path)
+	if (right_text == 0):
+		wtest_note(path, c"defhash: fallback (no right-hand version, or git error)")
 		return 0
-	if (wtest_defhash_risky_text(worktree_text)):
-		free(worktree_text)
+	if (wtest_defhash_risky_text(right_text)):
+		free(right_text)
 		wtest_note(path, c"defhash: fallback (operator/generic-shaped text)")
 		return 0
-	char* head_text = wtest_git_show_head(path)
-	if (head_text == 0):
-		free(worktree_text)
-		wtest_note(path, c"defhash: fallback (no HEAD version, or git error)")
+	char* left_rev = c"HEAD"
+	if (wtest_range_active):
+		left_rev = wtest_range_left
+	char* left_text = wtest_git_show(left_rev, path)
+	if (left_text == 0):
+		free(right_text)
+		wtest_note(path, c"defhash: fallback (no left-hand version, or git error)")
 		return 0
-	if (wtest_defhash_risky_text(head_text)):
-		free(worktree_text)
-		free(head_text)
+	if (wtest_defhash_risky_text(left_text)):
+		free(right_text)
+		free(left_text)
 		wtest_note(path, c"defhash: fallback (operator/generic-shaped text)")
 		return 0
-	free(worktree_text)
 	mkdir(c"bin", 493)
-	char* head_tmp = c"bin/.wtest_defhash_head.w"
-	file_write_text(head_tmp, head_text)
-	free(head_text)
-	map[char*, char*] head_defs = wtest_defhash_collect(head_tmp)
-	if (head_defs == 0):
-		wtest_note(path, c"defhash: fallback (defhash error on HEAD version)")
+	char* left_tmp = c"bin/.wtest_defhash_left.w"
+	file_write_text(left_tmp, left_text)
+	free(left_text)
+	map[char*, char*] left_defs = wtest_defhash_collect(left_tmp)
+	if (left_defs == 0):
+		free(right_text)
+		wtest_note(path, c"defhash: fallback (defhash error on left-hand version)")
 		return 0
-	map[char*, char*] worktree_defs = wtest_defhash_collect(path)
-	if (worktree_defs == 0):
-		wtest_note(path, c"defhash: fallback (defhash error on worktree version)")
+	map[char*, char*] right_defs = 0
+	if (right_is_worktree):
+		# Fast path, and today's exact behavior outside a range: the
+		# worktree copy is already at 'path' on disk, so defhash it
+		# directly instead of staging a second temp file.
+		free(right_text)
+		right_defs = wtest_defhash_collect(path)
+	else:
+		char* right_tmp = c"bin/.wtest_defhash_right.w"
+		file_write_text(right_tmp, right_text)
+		free(right_text)
+		right_defs = wtest_defhash_collect(right_tmp)
+	if (right_defs == 0):
+		wtest_note(path, c"defhash: fallback (defhash error on right-hand version)")
 		return 0
-	list[char*] head_keys = head_defs.keys()
-	list[char*] worktree_keys = worktree_defs.keys()
-	if (head_keys.length != worktree_keys.length):
+	list[char*] left_keys = left_defs.keys()
+	list[char*] right_keys = right_defs.keys()
+	if (left_keys.length != right_keys.length):
 		wtest_note(path, c"defhash: fallback (definition set changed)")
 		return 0
-	for char* name in head_keys:
-		char* worktree_hash = worktree_defs.get(name, 0)
-		if (worktree_hash == 0):
+	for char* name in left_keys:
+		char* right_hash = right_defs.get(name, 0)
+		if (right_hash == 0):
 			wtest_note(path, c"defhash: fallback (definition set changed)")
 			return 0
-		char* head_hash = head_defs.get(name, 0)
-		if (strcmp(worktree_hash, head_hash) != 0):
+		char* left_hash = left_defs.get(name, 0)
+		if (strcmp(right_hash, left_hash) != 0):
 			wtest_note(path, c"defhash: fallback (definition hash changed)")
 			return 0
 	wtest_note(path, c"defhash: skip (definitions unchanged)")
@@ -1752,7 +2019,11 @@ void wtest_map_path(char* path):
 		# Rules and skills are agent guidance, not code under test.
 		return
 	int is_w = ends_with(path, c".w")
-	int exists = wtest_file_exists(path)
+	# wtest_range_exists checks the live worktree in default mode or an
+	# open range, and the range's resolved right-hand commit for a
+	# closed one (header comment, "Commit-ranged selection") -- outside
+	# a range it is exactly wtest_file_exists, unchanged.
+	int exists = wtest_range_exists(path)
 	if (wtest_map_residue(path, is_w, exists)):
 		matched = 1
 
@@ -1785,6 +2056,75 @@ void wtest_map_path(char* path):
 
 	if (matched == 0):
 		wtest_add(path, c"tests")
+
+
+# 'git diff --no-renames --name-only <left> [<right>]' -- the
+# changed-path list for a commit range, fed through the ordinary
+# wtest_map_path exactly like stdin/positional paths are (header
+# comment, "Commit-ranged selection"). Built from wtest_range_setup's
+# own RESOLVED endpoints, not the raw spec string: 'git diff <A> <B>'
+# is equivalent to 'git diff A..B' for two real commits (git's own
+# documented equivalence), and a bare single argument diffs against the
+# worktree+index -- which is what actually gives an open range ('A..')
+# its "versus the worktree" meaning. Passing the literal spec text
+# through instead (e.g. 'git diff --name-only A..') would NOT reach the
+# worktree: git resolves a range's omitted side to HEAD, a specific
+# commit, never the working tree, so this two-argument form is required
+# for the open case to mean what task 4b (and this file's header
+# comment) documents. --no-renames so a rename surfaces as an
+# old-path-deleted + new-path-added pair instead of git's default of
+# showing only the new name, which would hide the deletion from rule
+# (c) entirely. Returns 1 (after an error message) on a spawn failure or
+# nonzero exit; wtest_range_setup's own validation should make that
+# unreachable for an already-validated range, short of a deeper git
+# problem.
+int wtest_range_expand(char* spec):
+	if (wtest_range_setup(spec)):
+		return 1
+	char* git = wtest_resolve_program(c"git")
+	char** argv = 0
+	if (wtest_range_right == 0):
+		argv = strv_new(5)
+		strv_set(argv, 0, git)
+		strv_set(argv, 1, c"diff")
+		strv_set(argv, 2, c"--no-renames")
+		strv_set(argv, 3, c"--name-only")
+		strv_set(argv, 4, wtest_range_left)
+	else:
+		argv = strv_new(6)
+		strv_set(argv, 0, git)
+		strv_set(argv, 1, c"diff")
+		strv_set(argv, 2, c"--no-renames")
+		strv_set(argv, 3, c"--name-only")
+		strv_set(argv, 4, wtest_range_left)
+		strv_set(argv, 5, wtest_range_right)
+	process_result* result = process_run(git, argv, 0, 0, 30000)
+	free(cast(char*, argv))
+	if (result == 0):
+		wtest_error(c"could not run git diff for range: ", spec)
+		return 1
+	if (result.status != 0):
+		process_result_free(result)
+		wtest_error(c"git diff failed for range: ", spec)
+		return 1
+	string_builder* line = string_new()
+	char* text = result.stdout_text
+	int j = 0
+	int at_end = 0
+	while (at_end == 0):
+		int c = text[j]
+		if (c == 0):
+			at_end = 1
+		if ((c == 10) || (c == 0)):
+			if (line.length > 0):
+				wtest_map_path(line.data)
+			string_clear(line)
+		else:
+			string_append_char(line, c)
+		j = j + 1
+	string_free(line)
+	process_result_free(result)
+	return 0
 
 
 /* --available: drop targets this host cannot run (header comment). */
@@ -2303,24 +2643,32 @@ int main(int argc, int argv):
 	# loaded before selection starts below, but "-f"/"--base-manifest"
 	# may appear anywhere after "changed" (mirroring bin/wexec's own
 	# flag), so they are found ahead of the argument loop that does the
-	# real work.
+	# real work. The same pass spots a commit-ranged argument (header
+	# comment, "Commit-ranged selection") -- 'changed' only, the first
+	# non-flag argument containing ".." -- so its index is known before
+	# the real loop below reaches it; no repo path ever contains "..",
+	# so this can never misfire against an ordinary changed-file path.
 	int pre = 2
+	int range_index = 0
 	while (pre < argc):
 		char** arg = argv + pre * __word_size__
-		if (strcmp(*arg, c"-f") == 0):
+		char* argval = *arg
+		if (strcmp(argval, c"-f") == 0):
 			pre = pre + 1
 			if (pre >= argc):
 				wtest_usage()
 				return 1
 			char** value = argv + pre * __word_size__
 			wtest_manifest_path = *value
-		else if (strcmp(*arg, c"--base-manifest") == 0):
+		else if (strcmp(argval, c"--base-manifest") == 0):
 			pre = pre + 1
 			if (pre >= argc):
 				wtest_usage()
 				return 1
 			char** base_value = argv + pre * __word_size__
 			wtest_base_manifest_path = *base_value
+		else if ((for_mode == 0) && (range_index == 0) && (argval[0] != '-') && wtest_str_contains(argval, c"..")):
+			range_index = pre
 		pre = pre + 1
 	if (wtest_load_manifest()):
 		return 1
@@ -2343,6 +2691,10 @@ int main(int argc, int argv):
 			i = i + 1   # value already consumed by the pre-scan above
 		else if (strcmp(*arg, c"--base-manifest") == 0):
 			i = i + 1   # value already consumed by the pre-scan above
+		else if (i == range_index):
+			if (wtest_range_expand(*arg)):
+				return 1
+			saw_file = 1
 		else:
 			wtest_map_path(*arg)
 			saw_file = 1
