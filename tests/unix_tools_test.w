@@ -153,6 +153,43 @@ void test_stat_nofollow_symlink():
 	unlink(target)
 
 
+void test_stat_nofollow_flag_after_path():
+	char* target = utt_join(c"link_target2.txt")
+	char* linkpath = utt_join(c"the_link2")
+	assert_equal(1, file_write_text(target, c"payload"))
+	unlink(linkpath)
+	assert_equal(0, file_symlink(c"link_target2.txt", linkpath))
+	list[char*] args = new list[char*]
+	args.push(c"stat")
+	args.push(linkpath)
+	args.push(c"-f")
+	process_result* r = utt_run(c"stat", args)
+	assert_equal(0, r.status)
+	assert_equal(1, utt_contains(r.stdout_text, c"Type: symbolic link"))
+	process_result_free(r)
+	unlink(linkpath)
+	unlink(target)
+
+
+void test_stat_multiple_paths_with_leading_flag():
+	char* a = utt_join(c"multi_a.txt")
+	char* b = utt_join(c"multi_b.txt")
+	assert_equal(1, file_write_text(a, c"aaa"))
+	assert_equal(1, file_write_text(b, c"bb"))
+	list[char*] args = new list[char*]
+	args.push(c"stat")
+	args.push(c"-f")
+	args.push(a)
+	args.push(b)
+	process_result* r = utt_run(c"stat", args)
+	assert_equal(0, r.status)
+	assert_equal(1, utt_contains(r.stdout_text, c"Size: 3"))
+	assert_equal(1, utt_contains(r.stdout_text, c"Size: 2"))
+	process_result_free(r)
+	unlink(a)
+	unlink(b)
+
+
 void test_readlink_prints_target():
 	char* target = utt_join(c"rl_target.txt")
 	char* linkpath = utt_join(c"rl_link")
@@ -165,6 +202,25 @@ void test_readlink_prints_target():
 	process_result* r = utt_run(c"readlink", args)
 	assert_equal(0, r.status)
 	assert_equal(1, utt_contains(r.stdout_text, c"rl_target.txt"))
+	process_result_free(r)
+	unlink(linkpath)
+	unlink(target)
+
+
+void test_readlink_no_newline_flag_after_path():
+	char* target = utt_join(c"rl_target2.txt")
+	char* linkpath = utt_join(c"rl_link2")
+	assert_equal(1, file_write_text(target, c"x"))
+	unlink(linkpath)
+	assert_equal(0, file_symlink(c"rl_target2.txt", linkpath))
+	list[char*] args = new list[char*]
+	args.push(c"readlink")
+	args.push(linkpath)
+	args.push(c"-n")
+	process_result* r = utt_run(c"readlink", args)
+	assert_equal(0, r.status)
+	assert_equal(1, utt_contains(r.stdout_text, c"rl_target2.txt"))
+	assert_equal(strlen(c"rl_target2.txt"), strlen(r.stdout_text))
 	process_result_free(r)
 	unlink(linkpath)
 	unlink(target)
