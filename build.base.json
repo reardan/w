@@ -2229,6 +2229,23 @@
 			]
 		},
 		{
+			"name": "torch_infer_compile_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/torch_infer_gpu.w", "-o", "bin/torch_infer_gpu_compile"]}
+			]
+		},
+		{
+			"name": "torch_infer_gpu_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["sh", "tools/fetch_mnist.sh"]},
+				{"cmd": ["bin/wv2", "x64", "tests/torch_infer_gpu.w", "-o", "bin/torch_infer_gpu"]},
+				{"cmd": ["bin/torch_infer_gpu"], "expect_stdout": ["torch infer: gpu path", "torch infer OK"]},
+				{"cmd": ["sh", "-c", "CUDA_VISIBLE_DEVICES= bin/torch_infer_gpu"], "expect_stdout": ["torch infer: cpu fallback", "torch infer OK"]}
+			]
+		},
+		{
 			"name": "elf",
 			"deps": ["wv2"],
 			"steps": [
@@ -2352,6 +2369,7 @@
 				"autograd_compile_test",
 				"nn_compile_test",
 				"mnist_train_compile_test",
+				"torch_infer_compile_test",
 				"defer_test",
 				"dynamic_var_test",
 				"generics_test",
