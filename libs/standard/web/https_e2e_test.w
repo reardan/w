@@ -388,12 +388,17 @@ void test_https_cross_scheme_redirect():
 	asserts(c"tls target child clean", status_b == 0)
 
 
-# The connect step is bounded: a black-hole address (RFC 5737 TEST-NET-1,
-# which never answers) makes connect fail within the timeout rather than
-# hang -- a timeout when the SYN is silently dropped, or a connect error
-# when the route is unreachable. Either way it returns fast.
+# The connect step is bounded: bind an ephemeral loopback port, close the
+# listener so nothing accepts, then connect to it. That yields
+# ECONNREFUSED (http_error_connect) immediately on loopback -- no
+# external/TEST-NET address, which some environments proxy or otherwise
+# mishandle into a TLS error instead of a connect failure.
 void test_https_connect_timeout():
-	http_req* req = http_req_new(c"GET", c"https://192.0.2.1:443/x")
+	int port = 0
+	int listener = hs_listen(&port)
+	close(listener)
+	char* target = hs_url(port, c"/x")
+	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
 	req.timeout_ms = 500
 	int started = time_monotonic_ms()
@@ -406,11 +411,12 @@ void test_https_connect_timeout():
 	if (resp.error == http_error_connect()):
 		bounded_error = 1
 	asserts(c"connect fails bounded", bounded_error != 0)
-	# Upper bound: proves the 500ms cap fired rather than the 30s default
-	# (or a hang). Generous because a loaded machine deschedules us.
+	# Upper bound: proves we did not hang on the 30s default. Generous
+	# because a loaded machine deschedules us.
 	asserts(c"connect timeout too long", elapsed < 15000)
 	http_response_free(resp)
 	http_req_free(req)
+	free(target)
 
 
 # The TLS handshake times out when the server accepts the TCP connection but
