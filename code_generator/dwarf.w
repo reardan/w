@@ -139,10 +139,17 @@ void debug_local_note(char* name, int slot, int kind, int type):
 		debug_local_types = malloc(debug_local_capacity * 4)
 		debug_local_addresses = malloc(debug_local_capacity * 4)
 	if (debug_local_count >= debug_local_capacity):
+		# names holds pointers (word-sized entries); the other four are
+		# 4-byte ints. Growing names with the int-array sizes made the
+		# new x64 buffer half the needed length, so save_ptr below wrote
+		# past the block once the compiler had >4096 locals to record —
+		# an ASLR-sensitive heap corruption (build_x64 segfaults).
 		int old = debug_local_capacity * 4
+		int old_names = debug_local_capacity * __word_size__
 		debug_local_capacity = debug_local_capacity * 2
 		int x = debug_local_capacity * 4
-		debug_local_names = realloc(debug_local_names, old, x)
+		int x_names = debug_local_capacity * __word_size__
+		debug_local_names = realloc(debug_local_names, old_names, x_names)
 		debug_local_slots = realloc(debug_local_slots, old, x)
 		debug_local_kinds = realloc(debug_local_kinds, old, x)
 		debug_local_types = realloc(debug_local_types, old, x)
