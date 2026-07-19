@@ -74,6 +74,42 @@ int getdents(int file, char* buf, int count):
 int getcwd(char* buf, int size):
 	return syscall(17, buf, size, 0)
 
+# File metadata / mode / links (see lib/stat.w for the portable parsers).
+# AArch64 uses the *at forms exclusively.
+
+int at_fdcwd():
+	return arm64_at_fdcwd()
+
+
+int at_symlink_nofollow():
+	return 256
+
+
+# statx (291).
+int statx(char* path, int flags, int mask, char* buf):
+	return syscall7(291, at_fdcwd(), path, flags, mask, buf, 0)
+
+
+# fchmodat (53) with flags = 0.
+int chmod(char* path, int mode):
+	return syscall7(53, at_fdcwd(), path, mode, 0, 0, 0)
+
+
+# utimensat (88): times == 0 means "now" for both timestamps.
+int utimensat(char* path, int times, int flags):
+	return syscall7(88, at_fdcwd(), path, times, flags, 0, 0)
+
+
+# readlinkat (78): returns byte count written (not NUL-terminated), or -errno.
+int readlink(char* path, char* buf, int size):
+	return syscall7(78, at_fdcwd(), path, buf, size, 0, 0)
+
+
+# symlinkat (36).
+int symlink(char* target, char* linkpath):
+	return syscall(36, target, at_fdcwd(), linkpath)
+
+
 # No time(2) on AArch64: read CLOCK_REALTIME and return the seconds field.
 int linux_time(int* out):
 	arm64_timespec ts

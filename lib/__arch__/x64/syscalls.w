@@ -52,6 +52,41 @@ int getdents(int file, char* buf, int count):
 int getcwd(char* buf, int size):
 	return syscall(79, buf, size, 0)
 
+# File metadata / mode / links (see lib/stat.w for the portable parsers).
+
+int at_fdcwd():
+	return 0 - 100
+
+
+int at_symlink_nofollow():
+	return 256
+
+
+# statx (332): see the x86 twin; only the syscall number differs.
+int statx(char* path, int flags, int mask, char* buf):
+	return syscall7(332, at_fdcwd(), path, flags, mask, buf, 0)
+
+
+# chmod (90).
+int chmod(char* path, int mode):
+	return syscall(90, path, mode, 0)
+
+
+# utimensat (280): times == 0 means "now" for both timestamps.
+int utimensat(char* path, int times, int flags):
+	return syscall7(280, at_fdcwd(), path, times, flags, 0, 0)
+
+
+# readlink (89): returns byte count written (not NUL-terminated), or -errno.
+int readlink(char* path, char* buf, int size):
+	return syscall(89, path, buf, size)
+
+
+# symlink (88).
+int symlink(char* target, char* linkpath):
+	return syscall(88, target, linkpath, 0)
+
+
 int linux_time(int* out):
 	return syscall(201, out, 0, 0)
 

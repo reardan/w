@@ -52,6 +52,46 @@ int getdents(int file, char* buf, int count):
 int getcwd(char* buf, int size):
 	return syscall(183, buf, size, 0)
 
+# File metadata / mode / links (see lib/stat.w for the portable parsers).
+
+# AT_FDCWD for *at syscalls that take a dirfd.
+int at_fdcwd():
+	return 0 - 100
+
+
+# AT_SYMLINK_NOFOLLOW for lstat-style lookups.
+int at_symlink_nofollow():
+	return 256
+
+
+# statx (383): fills a 256-byte struct statx (uapi/linux/stat.h). dirfd
+# is AT_FDCWD; `flags` is 0 to follow symlinks or AT_SYMLINK_NOFOLLOW to
+# not; `mask` is usually STATX_BASIC_STATS (2047). Returns 0 or -errno.
+int statx(char* path, int flags, int mask, char* buf):
+	return syscall7(383, at_fdcwd(), path, flags, mask, buf, 0)
+
+
+# chmod (15): set permission bits on `path`.
+int chmod(char* path, int mode):
+	return syscall(15, path, mode, 0)
+
+
+# utimensat (320): set atime/mtime. times == 0 means "now" for both.
+int utimensat(char* path, int times, int flags):
+	return syscall7(320, at_fdcwd(), path, times, flags, 0, 0)
+
+
+# readlink (85): copy the symlink target into buf (not NUL-terminated).
+# Returns the byte count written, or a negative errno.
+int readlink(char* path, char* buf, int size):
+	return syscall(85, path, buf, size)
+
+
+# symlink (83): create linkpath pointing at target.
+int symlink(char* target, char* linkpath):
+	return syscall(83, target, linkpath, 0)
+
+
 # i386 time(2) returns a 32-bit time_t and overflows after 2038-01-19
 # 03:14:07 UTC. Use clock_gettime64 (403) here in the future.
 int linux_time(int* out):
