@@ -104,3 +104,33 @@ void test_file_lstat_and_readlink():
 	free(buf)
 	unlink(linkpath)
 	unlink(target)
+
+
+void test_file_utimens_sets_explicit_times():
+	char* path = st_join(c"utimens.txt")
+	st_write(path, c"stamp")
+	# A stable whole-second pair well after the epoch.
+	assert_equal(0, file_utimens(path, 1000000000, 1000000001, 0))
+	file_stat st
+	assert_equal(0, file_stat_path(path, &st))
+	assert_equal(1000000000, st.atime)
+	assert_equal(1000000001, st.mtime)
+	unlink(path)
+
+
+void test_file_chown_to_self():
+	char* path = st_join(c"chown_me.txt")
+	st_write(path, c"owner")
+	file_stat before
+	assert_equal(0, file_stat_path(path, &before))
+	assert_equal(getuid(), before.uid)
+	assert_equal(getgid(), before.gid)
+	# No privilege needed to re-apply the current owner/group.
+	assert_equal(0, file_chown(path, getuid(), getgid()))
+	# -1 leaves the matching id unchanged.
+	assert_equal(0, file_chown(path, 0 - 1, getgid()))
+	file_stat after
+	assert_equal(0, file_stat_path(path, &after))
+	assert_equal(before.uid, after.uid)
+	assert_equal(before.gid, after.gid)
+	unlink(path)

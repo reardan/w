@@ -95,9 +95,31 @@ int chmod(char* path, int mode):
 	return syscall7(53, at_fdcwd(), path, mode, 0, 0, 0)
 
 
-# utimensat (88): times == 0 means "now" for both timestamps.
+# utimensat (88): times == 0 means "now" for both timestamps; otherwise
+# times points at two word-sized timespecs {atime, mtime}.
 int utimensat(char* path, int times, int flags):
 	return syscall7(88, at_fdcwd(), path, times, flags, 0, 0)
+
+
+# fchownat (54): uid/gid of -1 leave that id unchanged.
+int fchownat(char* path, int uid, int gid, int flags):
+	return syscall7(54, at_fdcwd(), path, uid, gid, flags, 0)
+
+
+int chown(char* path, int uid, int gid):
+	return fchownat(path, uid, gid, 0)
+
+
+int lchown(char* path, int uid, int gid):
+	return fchownat(path, uid, gid, at_symlink_nofollow())
+
+
+int getuid():
+	return syscall(174, 0, 0, 0)
+
+
+int getgid():
+	return syscall(176, 0, 0, 0)
 
 
 # readlinkat (78): returns byte count written (not NUL-terminated), or -errno.

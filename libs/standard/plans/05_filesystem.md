@@ -105,15 +105,19 @@ Consult these CPython sources first:
 ### Phase 1: syscall and stat foundation
 
 - **Landed in `lib/` (not under `libs/standard/fs/` yet):** Linux
-  `statx` / `chmod` / `utimensat` / `readlink` / `symlink` wrappers in
-  `lib/__arch__/{x86,x64,arm64}/syscalls.w`, portable parser and helpers
-  in `lib/stat.w` (`file_stat_path`, `file_lstat_path`, predicates,
-  `file_chmod` / `file_touch` / `file_readlink`). Covered by
-  `tests/stat_test.w` and dogfooded by `tools/{stat,chmod,touch,readlink}.w`.
-  Remaining for this phase when `libs.standard.fs.stat` is introduced:
-  re-export or thin-wrap `lib/stat.w`, plus `fstat` on an open fd if
-  callers need it. `getdents` / `unlink` / `rmdir` / `rename` already
-  exist on the arch syscall modules.
+  `statx` / `chmod` / `utimensat` / `fchownat` / `readlink` / `symlink`
+  wrappers in `lib/__arch__/{x86,x64,arm64}/syscalls.w`, portable parser
+  and helpers in `lib/stat.w` (`file_stat_path` / `file_lstat_path`,
+  predicates, `file_chmod` / `file_touch` / `file_utimens` /
+  `file_chown` / `file_lchown` / `file_readlink`). Owner/group names
+  without NSS live in `lib/passwd.w` (parses `/etc/passwd` +
+  `/etc/group`). Covered by `tests/stat_test.w` / `lib/passwd_test.w`
+  and dogfooded by `tools/{stat,chmod,touch,readlink}.w`. Design:
+  `docs/projects/unix_primitives.md`. Remaining for this phase when
+  `libs.standard.fs.stat` is introduced: re-export or thin-wrap
+  `lib/stat.w`, plus `fstat` on an open fd if callers need it.
+  `getdents` / `unlink` / `rmdir` / `rename` already exist on the arch
+  syscall modules.
 
 ### Phase 2: path normalization
 

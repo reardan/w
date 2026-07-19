@@ -11,6 +11,7 @@ bare -flag as that flag's value, which would swallow the first path.
 */
 import lib.lib
 import lib.stat
+import lib.passwd
 import lib.stream
 
 
@@ -72,8 +73,20 @@ int stat_print_one(char* path, int nofollow):
 	stat_print_octal(out, file_mode_perm(&st))
 	stream_write_cstr(out, c"\tUid: ")
 	stream_write_cstr(out, itoa(st.uid))
+	char* user = passwd_uid_name(st.uid)
+	if (user != 0):
+		stream_write_cstr(out, c" (")
+		stream_write_cstr(out, user)
+		stream_write_cstr(out, c")")
+		free(user)
 	stream_write_cstr(out, c"\tGid: ")
 	stream_write_cstr(out, itoa(st.gid))
+	char* group = passwd_gid_name(st.gid)
+	if (group != 0):
+		stream_write_cstr(out, c" (")
+		stream_write_cstr(out, group)
+		stream_write_cstr(out, c")")
+		free(group)
 	stream_write_line(out, c"")
 	stream_write_cstr(out, c"Access: ")
 	stream_write_cstr(out, itoa(st.atime))

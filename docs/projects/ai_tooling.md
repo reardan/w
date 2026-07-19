@@ -49,6 +49,11 @@ Shipped from the next-steps backlog:
   `libs/extras/vcs/index.w` now uses `file_stat_path` instead of the
   VCS-scoped `vcs_statx`. Dogfooded by `tools/{stat,chmod,touch,readlink}.w`
   and `stat_test` / `unix_tools_test`. Darwin/win64/wasm stubs return -1.
+- Unix metadata/process primitives for wunix (2026-07-19): explicit
+  `file_utimens`, `file_chown`/`file_lchown` (`fchownat`),
+  `lib/passwd.w` (`/etc/passwd`+`/etc/group`, no NSS), and
+  `process_wait_any` for `xargs -P`-style pools. Design:
+  `docs/projects/unix_primitives.md`.
 - **`wexec --explain-cache <target>`** and **`wexec --list --json`**
   (2026-07-17): two read-only introspection surfaces on `tools/wexec.w`.
   `--explain-cache` states, without running anything, whether a target
