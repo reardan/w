@@ -335,7 +335,7 @@ the manifest rather than guessed. Counts below are exact for the tree at
 this commit; rerun the classification (structural, not prose) before
 trusting it against a later tree.
 
-### Shell scripts (11: 10 `tools/*.sh` + `archive.sh`)
+### Shell scripts (10: 9 `tools/*.sh` + `archive.sh`)
 
 `tools/compress_zlib_interop_test.sh` (below) shipped as task 2e: ported
 to a self-contained `tests/compress_zlib_interop.w` that spawns `python3`
@@ -347,12 +347,28 @@ compiled binaries directly and moved from bucket E to bucket L below (the
 manifest-expressiveness blocker was always "multi-step pipeline", not
 "needs a shell" — only the `sh` wrapper made it look like bucket E).
 
+`tools/openssl_interop_test.sh` shipped as task 4e (wave plan C wave 4,
+2026-07-19): the shell wrapper only did three things beyond what
+`tests/openssl_tls_interop.w` (issue #236) already did in W — check
+`which openssl`, generate a throwaway ECDSA P-256 cert via `openssl req`,
+and run the harness binary under `timeout(1)` — so all three folded
+straight into the harness itself: `osl_find_on_path` (mirroring task 2e's
+`czi_find_on_path`) resolves `openssl` and prints the same "...OK
+(skipped: ...)" success when it's missing, `osl_generate_cert` spawns
+`openssl req -x509 -newkey ec ...` via a direct argv vector into a
+pid-scoped scratch dir (no shell, no string interpolation of the scratch
+path), and the per-socket/per-wait timeouts already inside
+`osl_client_direction`/`osl_server_direction` (the #236 hang fix) remain
+the bound in place of the external `timeout(1)`. `openssl_interop_test`'s
+`build.base.json` entry now runs the two compiled binaries directly and
+moved from bucket E to bucket L below, same reasoning as
+`compress_zlib_interop_test`.
+
 | Script | Invoked by (`build.base.json`) | #323 blocker |
 |---|---|---|
 | `tools/run_arm64.sh` | `build_arm64`, `arm64_smoke_test`, `pac_full_test_arm64`, `pac_corrupt_test_arm64`, plus every generated `arch=arm64` twin | qemu-user-static / native-exec wrapper — a cross-arch execution shim is likely permanent (Bazel/Buck2 keep an equivalent runner); revisit only if `lib.process` grows emulator-aware exec. |
 | `tools/run_wasm.sh` | `build_wasm`, `wasm_smoke_test`, plus every wasm run step | Wraps `wasmtime`/`node`; same "permanent execution shim" reasoning as `run_arm64.sh`. Also blocks bucket G below (wbuildgen's `arch=` vocabulary has no `wasm` value yet). |
 | `tools/web/run_node.sh` | `wasm_extern_test`, `wasm_webgl_test` | Wraps `node` to run `tools/web/*.mjs` harnesses; the harnesses themselves are non-W, so this sits outside the ".w sources" model regardless of the shell wrapper. |
-| `tools/openssl_interop_test.sh` | `openssl_interop_test` | Shells out to the system `openssl` CLI for a TLS/crypto interop round-trip. Needs a W-side subprocess-diff harness (spawn `openssl` via `lib.process`, compare) before the script can retire — real porting work, not a directive gap. |
 | `tools/attach_test.sh` | `attach_test` | ptrace-based debugger-attach test. Needs porting onto the in-repo ptrace machinery (`debugger/`) as a W test harness — natural to revisit alongside #123's attach phases. |
 | `tools/parser_generator_w_batches.sh` | `parser_generator_w_test` | Batches/diffs parser-generator output across the tracked `.w` corpus. Needs porting to a W batch-diff tool, or folding into `tools/parser_generator.w` itself. |
 | `tools/merge_manifest.sh` | *(not referenced — opt-in git merge driver, see its own header)* | Exists specifically to resolve `build.json` merge conflicts by regeneration; irrelevant once `build.json` is retired. Until then it's outside the wexec-driven graph entirely (local git config, not a manifest step). |
@@ -457,8 +473,7 @@ optimistic for 7 of the 21; see below.**
     directive can add an arbitrary compiler flag to a generated compile
     step.
 
-**E. Shell-wrapped, bespoke logic — 14.** `missing_file_test`,
-`openssl_interop_test`,
+**E. Shell-wrapped, bespoke logic — 13.** `missing_file_test`,
 `parser_generator_w_test`, `wtest_map_test`, `unsafe_import_test`,
 `debug_test`, `debug_test_x64`, `attach_test`, `repl_test`,
 `repl_test_x64`, `wasm_extern_test`, `wasm_webgl_test`, `pac_flag_test`,
@@ -625,7 +640,7 @@ itself is unaffected by design — `wbg_find_target_by_source` resolves
 (none of them are `*_test.w`-shaped, so wbuildgen's scan never reaches
 them either way).
 
-**L. Multi-step pipelines — 43.** `float_reference_test`,
+**L. Multi-step pipelines — 44.** `float_reference_test`,
 `string_utf8_test`, `container_trap_test`, `memory_debug_fault_test`,
 `strict_mode_test`, `check_json_test`, `check_roots_test`,
 `check_imports_test`, `symbols_test`, `deps_test`,
@@ -642,7 +657,9 @@ them either way).
 `compress_zlib_interop_test` (ported off its shell wrapper by task 2e:
 two compile steps + two run steps with `expect_stdout`, no shell
 involved any more — same shape as `switch_test`'s "several `.w` fixtures
-compiled and run in sequence"). Blocker: each
+compiled and run in sequence"), `openssl_interop_test` (ported off its
+shell wrapper by task 4e, same shape: two compile steps + two run steps
+with `expect_stdout`). Blocker: each
 chains more than a single compile+run — a second reference binary
 (`float_reference_test`'s `cc`-compiled C oracle), several independent
 diagnostic invocations with separate `expect_*` assertions
@@ -658,9 +675,9 @@ before they can generate — the highest-effort bucket to close after E.
 Buckets D (21, zero blocker — pure migration) and the arm64/wasm slice of
 A/E (already using the shared runner scripts) are free wins independent
 of any new tooling. Buckets C and K are two faces of the same "deps by
-path, not by name" gap and are worth solving together. Bucket E (14) and
+path, not by name" gap and are worth solving together. Bucket E (13) and
 the Mac-only rows of the shell-script table are the genuinely hard
 remainder — real logic with no W-side equivalent yet, not a manifest
-expressiveness gap. Bucket L (43) is the single biggest lever: a
+expressiveness gap. Bucket L (44) is the single biggest lever: a
 multi-step/multi-run directive vocabulary would clear roughly a quarter
 of all hand-written targets in one design.

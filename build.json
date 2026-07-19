@@ -587,12 +587,11 @@
 		{
 			"name": "openssl_interop_test",
 			"deps": ["wv2"],
-			"inputs": ["tools/openssl_interop_test.sh"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/openssl_tls_interop.w", "-o", "bin/openssl_tls_interop32"]},
 				{"cmd": ["bin/wv2", "x64", "tests/openssl_tls_interop.w", "-o", "bin/openssl_tls_interop64"]},
-				{"cmd": ["sh", "tools/openssl_interop_test.sh", "32"], "expect_stdout": "openssl interop OK", "timeout_ms": 120000},
-				{"cmd": ["sh", "tools/openssl_interop_test.sh", "64"], "expect_stdout": "openssl interop OK", "timeout_ms": 120000}
+				{"cmd": ["bin/openssl_tls_interop32"], "expect_stdout": "openssl interop OK", "timeout_ms": 120000},
+				{"cmd": ["bin/openssl_tls_interop64"], "expect_stdout": "openssl interop OK", "timeout_ms": 120000}
 			]
 		},
 		{
