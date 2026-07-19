@@ -586,13 +586,6 @@
 			]
 		},
 		{
-			"name": "int64_x86_error_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/x64_int64_test.w", "-o", "bin/int64_x86_error_test"], "expect_fail": true, "expect_stderr": "int64 requires the x64 target"}
-			]
-		},
-		{
 			"name": "type_system_error_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -3412,6 +3405,13 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/infer_test.w", "-o", "bin/infer_test"]},
 				{"cmd": ["bin/infer_test"]}
+			]
+		},
+		{
+			"name": "int64_x86_error_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/int64_x86_error_test.w", "-o", "bin/int64_x86_error_test"], "expect_fail": true, "expect_stderr": "int64 requires the x64 target"}
 			]
 		},
 		{

@@ -25,6 +25,13 @@ Generation rules:
   run-step expectations, piped stdin, timeouts, declared run-time data
   inputs and extra compile-only steps — the irregular shapes that used
   to need hand-written base targets.
+- `compile_fail` marks a source whose *compile step itself* must fail
+  (int64_x86_error_test's class): no run step is generated at all —
+  there is no binary to run — and `expect_stdout=`/`expect_stderr=`/
+  `timeout=`/`stdin=` decorate the compile step in its place instead of
+  a run step. Design note below the directive vocabulary explains why
+  this reuses wbuildgen's own directive machinery instead of routing
+  through `bin/wfixture`.
 - The platform axis: `arch=arm64` and `arch=win64` yield run-capable
   twins X_arm64 / X_win64 (repeatable — e.g. `x64 arch=arm64` yields
   three targets from one source), mirroring the existing hand-written
@@ -271,12 +278,55 @@ vocabulary:
   extra_compile="args"     append one more 'bin/wv2 <args>' step
                            (whitespace-split, no shell) after the run
                            step, on the default-arch target only
+  compile_fail             the *compile* step itself must exit nonzero;
+                           no run step is generated (there is no binary
+                           to run) for any twin the source requests.
+                           expect_stdout=/expect_stderr=/timeout=/
+                           stdin= decorate the compile step instead of
+                           a run step when this flag is set.
 
 Run-step fields apply to every run-capable target generated from the
 source (32-bit, x64, arm64, win64 twins alike — arm64_darwin has no run
-step to decorate). Unknown tokens, malformed values, and directives
-that no generated target can honor are errors, so typos fail the
-manifest run instead of silently generating nothing. */
+step to decorate) — unless `compile_fail` is set, in which case they
+decorate the compile step of every twin instead (including arm64_darwin,
+whose only step already is the compile step). Unknown tokens, malformed
+values, and directives that no generated target can honor are errors, so
+typos fail the manifest run instead of silently generating nothing.
+
+Design note (bucket I, docs/projects/build_system_next.md): before this,
+no directive could express "this source must fail to compile" — only
+run steps could be decorated with expect_fail/expect_stderr, so
+int64_x86_error_test (which asserts the *compile* itself fails with
+"int64 requires the x64 target") stayed hand-written in
+build.base.json. Two ways to close that gap were considered:
+
+  (a) teach wbuildgen the `compile_fail` flag above, redirecting the
+      existing expect_fail/expect_stdout/expect_stderr/timeout=/stdin=
+      machinery from the run step to the compile step and skipping run
+      step generation entirely.
+  (b) give the source wfixture-style header directives (the
+      `# expect_stderr:`/`# expect_fail` convention `bin/wfixture`
+      already implements, `# wfixture: <selector>` for the arch case
+      since wave 1d) and have wbuildgen emit a target whose one step
+      invokes `bin/wfixture bin/wv2 <src>` instead of `bin/wv2 <src>
+      -o <out>` directly.
+
+(a) won: it reuses machinery wbuildgen and wexec already have working
+end to end (expect_fail/expect_stderr are already generic per-step
+wexec fields, not run-step-specific — see tools/wexec.w's
+wexec_run_step) behind one new bare flag, so the change is additive and
+localized to wbg_make_target/wbg_scan. (b) would stand up a second,
+structurally different generation path — a wfixture-invoking step shape
+needing its own name/collision/umbrella handling alongside the existing
+one, plus either duplicating wfixture's header-comment parser inside
+wbuildgen or leaving directive validation to wfixture at build time
+instead of at manifest time (typos would fail a test run instead of
+`./wbuild manifest`). (a) also generalizes to arch twins for free —
+`compile_fail` combined with `arch=x64`/`arm64`/`win64`/`arm64_darwin`
+falls out of the same wbg_make_target code path that bucket I's single
+default-arch case exercises — where (b) would need to teach wfixture's
+single-selector-per-fixture convention an analogous per-arch-twin story
+from scratch. */
 
 
 int wbg_dir_x64
@@ -284,6 +334,7 @@ int wbg_dir_arm64
 int wbg_dir_win64
 int wbg_dir_arm64_darwin
 int wbg_dir_expect_fail
+int wbg_dir_compile_fail           # "compile_fail": the compile step, not the run step, must fail
 int wbg_dir_timeout_ms             # 0 = unset
 char* wbg_dir_stdin                # 0 = unset
 list[char*] wbg_dir_expect_stdout
@@ -298,6 +349,7 @@ void wbg_reset_directives():
 	wbg_dir_win64 = 0
 	wbg_dir_arm64_darwin = 0
 	wbg_dir_expect_fail = 0
+	wbg_dir_compile_fail = 0
 	wbg_dir_timeout_ms = 0
 	wbg_dir_stdin = 0
 	wbg_dir_expect_stdout = new list[char*]
@@ -369,6 +421,11 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 		if (wbg_no_value(path, key, has_value)):
 			return 1
 		wbg_dir_expect_fail = 1
+		return 0
+	if (strcmp(key, c"compile_fail") == 0):
+		if (wbg_no_value(path, key, has_value)):
+			return 1
+		wbg_dir_compile_fail = 1
 		return 0
 	if (strcmp(key, c"arch") == 0):
 		if (wbg_need_value(path, key, has_value)):
@@ -694,11 +751,26 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 	json_array_push(compile_cmd, json_string(binary))
 	json_value* compile_step = json_object()
 	json_object_set(compile_step, c"cmd", compile_cmd)
+	# compile_fail: the compile itself is the assertion, so it is the
+	# compile step (not a run step, which would need a binary that a
+	# failed compile never produces) that gets decorated, and no run
+	# step (or extra_compile step, which only ever follows a run step)
+	# is generated at all.
+	if (wbg_dir_compile_fail):
+		json_object_set(compile_step, c"expect_fail", json_bool(1))
+		if (wbg_dir_stdin != 0):
+			json_object_set(compile_step, c"stdin", json_string(wbg_dir_stdin))
+		if (wbg_dir_expect_stdout.length > 0):
+			json_object_set(compile_step, c"expect_stdout", wbg_expectation(wbg_dir_expect_stdout))
+		if (wbg_dir_expect_stderr.length > 0):
+			json_object_set(compile_step, c"expect_stderr", wbg_expectation(wbg_dir_expect_stderr))
+		if (wbg_dir_timeout_ms > 0):
+			json_object_set(compile_step, c"timeout_ms", json_int(wbg_dir_timeout_ms))
 	json_value* steps = json_array()
 	json_array_push(steps, compile_step)
 	# arm64_darwin is compile-only: no runner runs Mach-O on Linux, so
 	# there is no run step to decorate or append to.
-	if (arch != wbg_arch_arm64_darwin()):
+	if ((arch != wbg_arch_arm64_darwin()) && (wbg_dir_compile_fail == 0)):
 		json_value* run_cmd = json_array()
 		if (arch == wbg_arch_arm64()):
 			json_array_push(run_cmd, json_string(c"sh"))
@@ -831,13 +903,24 @@ int wbg_scan():
 		# typos: they mean the target moved to build.base.json without
 		# the source shedding its directive lines (or vice versa).
 		int gen_run_capable = gen32 | gen64 | gen_arm64 | gen_win64
+		int gen_any = gen_run_capable | gen_darwin
 		if ((gen32 == 0) && (wbg_dir_extra_compile.length > 0)):
 			wbg_error2(c"'extra_compile=' needs a generated default target, but build.base.json defines it: ", src)
 			return 1
-		if ((gen_run_capable == 0) && wbg_dir_has_run_fields()):
+		if (wbg_dir_compile_fail && (wbg_dir_extra_compile.length > 0)):
+			wbg_error2(c"'compile_fail' cannot combine with 'extra_compile=' (a failed compile has no successful step to extend): ", src)
+			return 1
+		if (wbg_dir_compile_fail):
+			# compile_fail's fields decorate the compile step of every
+			# twin the source requests, arm64_darwin included, so any
+			# generated twin at all satisfies it.
+			if (gen_any == 0):
+				wbg_error2(c"'# wbuild:' directives have no generated target (build.base.json defines them all): ", src)
+				return 1
+		else if ((gen_run_capable == 0) && wbg_dir_has_run_fields()):
 			wbg_error2(c"'# wbuild:' run-step directives have no generated run-capable target (only compile-only twins, or build.base.json defines them all): ", src)
 			return 1
-		if (((gen_run_capable | gen_darwin) == 0) && (wbg_dir_data.length > 0)):
+		if ((gen_any == 0) && (wbg_dir_data.length > 0)):
 			wbg_error2(c"'# wbuild:' directives have no generated target (build.base.json defines them all): ", src)
 			return 1
 	wbg_sort_generated()
