@@ -245,14 +245,39 @@ Build on the tokenizer + `symbols` machinery. Then:
   untouched.
 
 ### 4b. The VCS half: a persistent semantic index over git history
-### (deferred — blocked on W versioning support)
+### (MVP shipped 2026-07-19, wave plan C task 4b; the full index stays
+### deferred — blocked on W versioning support)
 
-Everything in this stage assumes stable identity across versions of the
-tree — commit-ranged queries, result reuse across history, definitions
-tracked through renames. W's versioning story is metadata-only today
-(no lock files, no cross-version resolution), so this stage should not
-start until that lands; 4a and 4c below are deliberately shaped so they
-don't wait for it. Recorded here as the eventual destination:
+**Shipped: `wtest changed A..B` as a direct git-plumbing query.**
+`tools/test_map.w`'s `changed` subcommand now accepts a single
+positional argument containing `..` as a git revision range instead of
+a changed-file path (`A..B`, `A...B` — resolving the real `git
+merge-base A B` as its comparison base — or an open `A..` for "`A`
+versus the worktree"; a bare dot-less revision is not auto-detected,
+since it would be indistinguishable from an ordinary path). The
+changed-path list comes straight from `git diff --no-renames
+--name-only` against wtest's own resolved endpoints (not the raw range
+text — see `wtest_range_expand`'s header comment for why that
+distinction matters for the open-range case); `--defhash` (4a)
+generalizes from HEAD-vs-worktree to comparing `git show A:<path>`
+against `git show B:<path>`. This is deliberately the shallow
+"useful subset" of the idea below, not the real thing: rule (b)'s
+import-closure computation stays keyed to the CURRENT worktree via the
+same `bin/.wtest_deps_cache` every invocation uses — there is no
+historical closure computation, no cross-version definition identity,
+and no cached per-commit results. It reuses 4a's existing `defhash`
+machinery and 2g's staging pattern outright rather than building any
+new index, which is exactly why it could ship now instead of waiting
+on the versioning work below.
+
+Everything past that shallow subset assumes stable identity across
+versions of the tree — commit-ranged queries with actual definition-
+level precision, result reuse across history, definitions tracked
+through renames. W's versioning story is metadata-only today (no lock
+files, no cross-version resolution), so this deeper stage should not
+start until that lands; 4a and 4c are deliberately shaped so they don't
+wait for it, and neither did the MVP above. Recorded here as the
+eventual destination:
 
 Maintain an index (a `bin/.windex`-style cache, derived and
 regenerable) mapping definition-hash → {defining file/commit, direct
@@ -260,7 +285,11 @@ references, cached target/test results}. Because keys are content
 hashes, the index is naturally append-only and shared-cache-friendly
 (merges with Direction 3's store). What falls out:
 
-- `wtest changed A..B` over commit ranges, exact at definition level.
+- `wtest changed A..B` over commit ranges, exact at definition level —
+  the shipped MVP above is file-level (its own closure computation
+  isn't range-aware at all); this would make it precise down to which
+  *definitions* actually changed, the same way 4a's `--defhash` does
+  for a single file today.
 - Semantic history queries for free: "which definitions changed between
   v1 and v2", semantic blame ("when did this function's *behavior*
   last change, ignoring moves/renames/reformatting"), rename detection

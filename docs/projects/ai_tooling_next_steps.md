@@ -170,6 +170,46 @@ is a queue, not an archive.
   this was host-specific slowness) -- agents should budget several
   minutes (not the 2-minute tool default) for the FIRST post-build
   `wtest changed` invocation, same as any other cold-cache step.
+- **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
+  commit-ranged selection MVP** (issue #251 direction 4b). `changed`
+  (not `for`) now treats a single positional argument containing `..`
+  as a git revision range instead of a changed-file path -- no tracked
+  path in this tree ever contains `..`, so the two never collide, and
+  only the first such argument is honored. `A..B` and `A...B` (three-dot:
+  wtest resolves the real `git merge-base A B` itself as the comparison
+  base, `wtest_range_setup`) work as expected; an open `A..` means "`A`
+  versus the worktree" -- getting that to actually reach the worktree
+  needed care, since git itself resolves a range's omitted side to HEAD
+  (a commit), never the working tree, so `wtest_range_expand` builds its
+  own `git diff --no-renames --name-only <left> [<right>]` invocation
+  from wtest's *resolved* endpoints (a bare single argument when the
+  right side is open) rather than passing the ambiguous dotted text
+  straight through. `--no-renames` so a rename surfaces as an ordinary
+  old-path-deleted + new-path-added pair (residue rule (c) already
+  covers it) instead of git's default of showing only the new name. Two
+  existing pieces generalize rather than duplicate: `--defhash` (task
+  2g) now compares `git show <left>:<path>` against `git show
+  <right>:<path>` (or the worktree) instead of always HEAD-vs-worktree,
+  and the "does this .w file still exist" check rule (c) uses for the
+  deleted-file residue is evaluated against the range's right-hand
+  endpoint instead of unconditionally the live filesystem. An invalid
+  revision on either side is a hard error (exit 1, no selection printed)
+  rather than a silent fallback -- unlike `--defhash`'s own per-file
+  fail-open, a bad range makes the whole invocation meaningless, not
+  just one file's precision. **Deliberately not attempted**: rule (b)'s
+  import-closure computation stays keyed to the CURRENT worktree via the
+  same `bin/.wtest_deps_cache` every invocation already uses --
+  recomputing historical closures per commit, and true definition-level
+  (not file-level) precision across a range, is the deferred "persistent
+  semantic index over history" work (`docs/projects/
+  build_system_next.md` direction 4b's now-updated wording); this MVP
+  only reuses the live import graph, which is exact for the common case
+  and can only ever over-select. Tested by
+  `tools/wtest_range_scratch_test.sh` (`wtest_range_test`,
+  `build.base.json`) -- a throwaway `git init` repo making a
+  comment-only commit, a real edit, and a file deletion, asserting
+  two-dot/three-dot/open-range selection with and without `--defhash`
+  for each, plus the no-range-argument path stays byte-identical.
 ## Build manifest (`tools/wbuildgen.w`)
 
 Friction found migrating bucket D of `build_system_next.md`'s hand-written

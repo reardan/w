@@ -870,6 +870,13 @@
 			]
 		},
 		{
+			"name": "wtest_range_test",
+			"deps": ["wtest"],
+			"steps": [
+				{"cmd": ["sh", "tools/wtest_range_scratch_test.sh"], "expect_stdout": "wtest_range_scratch_test: OK"}
+			]
+		},
+		{
 			"name": "wtest_archs_test",
 			"deps": ["wtest", "wv2"],
 			"data": ["tests/wtest/archs_fixture/", "tests/wtest/manifest_archs.json"],
@@ -2087,6 +2094,7 @@
 				"wtest_map_test",
 				"wtest_run_test",
 				"wtest_defhash_test",
+				"wtest_range_test",
 				"wtest_archs_test",
 				"wexec_test",
 				"wexec_keep_going_test",
