@@ -144,6 +144,7 @@ void debug_local_note(char* name, int slot, int kind, int type):
 		# new x64 buffer half the needed length, so save_ptr below wrote
 		# past the block once the compiler had >4096 locals to record —
 		# an ASLR-sensitive heap corruption (build_x64 segfaults).
+		# W_DEBUG_ALLOC reports the oldlen mismatch directly.
 		int old = debug_local_capacity * 4
 		int old_names = debug_local_capacity * __word_size__
 		debug_local_capacity = debug_local_capacity * 2

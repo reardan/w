@@ -64,7 +64,9 @@ void wasm_func_name_note(int table_index, char* name):
 			new_cap = 256
 		if (new_cap <= table_index):
 			new_cap = table_index + 256
-		wasm_func_names = cast(char**, realloc(cast(char*, wasm_func_names), wasm_func_names_cap * 4, new_cap * 4))
+		# Host pointer array: element width is __word_size__, not 4
+		# (x64 host compiling wasm used to pass the wrong oldlen).
+		wasm_func_names = cast(char**, realloc(cast(char*, wasm_func_names), wasm_func_names_cap * __word_size__, new_cap * __word_size__))
 		wasm_func_names_cap = new_cap
 	char* copy = malloc(strlen(name) + 1)
 	strcpy(copy, name)
