@@ -69,6 +69,51 @@ first; the shared backlog file (`ai_tooling_next_steps.md`) conflicted
 on nearly every merge (1a's rewrite vs. per-task edits) — resolved by
 union, entries marked shipped.
 
+**Wave 2 complete (2026-07-19): all 8 tasks merged.** Full suite at
+wave close: 430/438 — only the 7 environmental dynamic-linker failures
+plus the dependent umbrella skip. Between the waves, one CI-only
+failure was found and fixed by the orchestrator: `wexec_pid_alive`
+treated `kill(1,0)`'s `-EPERM` (unprivileged CI runner probing pid 1)
+as "dead"; only `-ESRCH` means the holder is gone. Per-task:
+
+- **2a** bucket D: 11/21 migrated (incl. the 4 `X_test_x64`→`X_64_test`
+  renames); the other 10 documented as real blockers, 6 of which 2b's
+  `name=` now unlocks as follow-up.
+- **2b** `name=`/`argv=` directives; 14 targets generated, five legacy
+  bundled 32+64 targets split into standard twins; the
+  x64-only-source gap (no way to suppress the default-arch twin) is
+  the documented remainder.
+- **2c** `compile_fail` directive (reuses wexec's generic per-step
+  expect fields); `int64_x86_error_test` generated from its own source.
+- **2d** `tool=` path-resolved target deps + `fixture_group=` sidecar
+  files (`<fixture>.w.wbuild` — inline directives would shift fixtures'
+  self-referenced line numbers); 11 bucket-K targets migrated including
+  `warning_test`/`type_system_*`; combined manifest: 479 targets, 325
+  generated (was 284 at wave start).
+- **2e** zlib interop shell script ported to W (`lib.process`-spawned
+  python3, binary-safe via files, skip semantics preserved); script
+  deleted. Friction logged: `process_run` stdin is strlen-based.
+- **2f** `pac_flag_check.sh` ported to W (discovery: the script never
+  parsed ELF — byte-pattern greps + one fixed-offset read; the W tool
+  mirrors that scope with per-assertion messages); script deleted.
+- **2g** opt-in `wtest --defhash`: comment-only edits skip
+  import-closure selection; fail-open everywhere; default selection
+  proven byte-identical; scratch-git-repo test target.
+- **2h** recursion-depth guard: `(`-grouping (limit 1000) +
+  `statement()` (limit 200 — boxed empirically between lib.w's real
+  132-branch else-if chain and the pre-existing `ctrl_stack[256]`
+  bound, which is now documented); REPL-longjmp-safe via
+  reset-at-entry; 4 fixtures; 100k-deep parens now error cleanly.
+
+Process notes: six of eight agents stalled waiting on their own
+backgrounded test runs (the plan-B failure mode at larger scale —
+~20 load average from 8 concurrent suites); explicit
+resume-with-foreground-commands recovered every one, and wave-3
+prompts must forbid self-backgrounding outright. Transient
+`http_server_*` failures under load re-run green individually.
+`wtest_map_test` showed baseline-reproducible flakiness in one
+worktree (not on the program branch) — unexplained, logged.
+
 ## 0. In-flight work — keep clear
 
 **Update (2026-07-19): PR #344 has merged.** CUDA stage 4 (atomics,
