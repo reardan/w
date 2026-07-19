@@ -1,3 +1,4 @@
+# wbuild: x64 expect_stdout="extern data OK"
 # Imported data objects on both targets: extern without a parameter list
 # reserves space that the dynamic loader fills through a COPY relocation.
 # Statically initialized libc data (stdout, stderr, optind) proves the

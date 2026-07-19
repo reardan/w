@@ -393,26 +393,61 @@ dependents (`manifest` → `wbuildgen`, `metadata_check` → `wmeta`,
 path-based way to depend on "compile this file first" (bucket K below is
 the same gap from the dependent's side).
 
-**D. Already directive-expressible, simply unmigrated — 21.** No #323
-blocker at all — these could move to generated targets today via
-`./wbuild manifest` plus source-level `# wbuild:` directives, purely
-migration debt:
-  - Plain compile+run, source already ends in `_test.w` under a scanned
-    tree, target name already matches `wbuildgen`'s convention (14):
-    `float_abi_test`, `varargs_test`, `extern_data_test`,
-    `print_builtin_test`, `dynamic_test`, `x64_test`, `x64_float_test`,
-    `x64_fmath64_test`, `x64_ndarray64_test`, `x64_int64_test`,
-    `x64_map_float64_test`, `asm_x86_disasm_test`, `asm_x86_asm_test`,
-    `asm_stubs_test`.
-  - Shell-wrapped but already exactly the `arch=arm64`/`arch=wasm` shape
-    `wbuildgen` generates automatically (3): `arm64_smoke_test`,
-    `wasm_smoke_test`, `pac_full_test_arm64`.
-  - x64 twins under the legacy `X_test_x64` name instead of the
-    platform-axis's `X_64_test` convention (4): `dynamic_test_x64`,
-    `c_import_libc_test_x64`, `varargs_test_x64`, `extern_data_test_x64`
-    — migratable by adding `# wbuild: x64` to the 32-bit source and
-    accepting the target's rename to `..._64_test` (downstream
-    references to the old name are the only real cost).
+**D. Already directive-expressible, simply unmigrated — 21 originally;
+11 migrated in wave 2 task 2a (2026-07-19), 10 remain and were
+reclassified — the inventory's "no blocker at all" framing was
+optimistic for 7 of the 21; see below.**
+
+  Migrated (now generated, hand-written entries deleted from
+  `build.base.json`): the 5 plain compile+run targets whose source
+  already used the default arch — `float_abi_test`, `varargs_test`,
+  `extern_data_test`, `print_builtin_test`, `dynamic_test` — plus the
+  two asm targets whose only unconventional field was a directory-level
+  `inputs` declaration, migrated via `deps=` — `asm_x86_disasm_test`,
+  `asm_x86_asm_test` (note: `deps=` only feeds `bin/wtest`'s "data"
+  selection field, not `wexec`'s "inputs" cache-key field, which
+  generated targets cannot declare at all — these two lose wexec's
+  content-hash caching and become FORCE targets like the ~430 other
+  generated targets that already have no "inputs"; a real but minor
+  loss, not a test-behavior change). The 4 legacy `X_test_x64` targets
+  all migrated and renamed to the `X_64_test` convention: `dynamic_test_x64`
+  → `dynamic_64_test`, `c_import_libc_test_x64` → `c_import_libc_64_test`,
+  `varargs_test_x64` → `varargs_64_test`, `extern_data_test_x64` →
+  `extern_data_64_test` (downstream references to the old names updated
+  in the same commit: `docs/todo.txt`, this file).
+
+  Deferred, reclassified with their real blocker (the "21, no blocker"
+  framing did not hold under wbuildgen's actual generation rules):
+  - `x64_test`, `x64_float_test`, `x64_fmath64_test`,
+    `x64_ndarray64_test`, `x64_int64_test`, `x64_map_float64_test` (6):
+    each source's basename already equals the desired *x64-only* target
+    name, but `wbuildgen` unconditionally also generates a default
+    32-bit twin under that same basename-derived name (there is no way
+    to suppress or redirect it), and several of these sources use
+    `float64` (rejected by the compiler on 32-bit words) — so deleting
+    the hand-written entry would silently generate a broken/incorrect
+    32-bit target reusing the name, not a clean migration. This is
+    really bucket G's "name doesn't match convention" blocker wearing an
+    arch disguise: needs a `name=`-style override (or an "arch-only, no
+    default twin" directive) before it can move.
+  - `asm_stubs_test` (1): its declared `inputs` include three
+    `code_generator/{x86,x64,arm64}_asm.w` files consumed as runtime
+    *text data* (via `asm_stub_check`), not compiled — but `wbuildgen`'s
+    `deps=` directive flatly rejects any value ending in `.w`
+    ("imports already track" it, which is false here). No directive
+    can express this target's actual input set today.
+  - `arm64_smoke_test`, `wasm_smoke_test` (2): genuine aggregate
+    umbrellas — 6 and 9 programs respectively, each compiled, run, and
+    followed by a shared `echo "... OK"` epilogue step — not the single
+    `(source, arch)` shape `wbuildgen` ever generates. `wasm_smoke_test`
+    is additionally blocked at the arch level: `wbuildgen` has zero
+    `wasm` awareness (`arch=` only accepts `x64`/`arm64`/`win64`/
+    `arm64_darwin`), matching the `run_wasm.sh` row above.
+  - `pac_full_test_arm64` (1): needs `--pac=full` injected into the
+    arm64 compile command and carries the same `echo "... OK"` epilogue
+    convention as its sibling `pac_corrupt_test_arm64` (bucket E) — no
+    directive can add an arbitrary compiler flag to a generated compile
+    step.
 
 **E. Shell-wrapped, bespoke logic — 15.** `missing_file_test`,
 `openssl_interop_test`, `compress_zlib_interop_test`,
