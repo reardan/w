@@ -48,14 +48,24 @@ Backward rules, all expressible with the existing tensor_* op surface
   sum:        dA += broadcast(dOut's single scalar)     (tensor_add_scalar_into)
   matmul:     dA += dOut @ B^T  (tensor_matmul2_nt(dOut, B))
               dB += A^T @ dOut  (tensor_matmul2_tn(A, dOut))
+  add_row:    dA += dOut                                (pass-through)
+              dR += column-sum(dOut)                    (tensor_col_sum_into,
+                                                          via a scratch temp)
+  softmax_ce: dLogits[i,j] += dLoss * (P[i,j] - (j==label_i ? 1 : 0)) / batch
+              (fused softmax+mean-cross-entropy; forward caches the
+              per-row probabilities P in a tape-owned scratch tensor saved
+              on the node -- see ag_op_softmax_ce below)
 Every rule above is complete; there are no stubbed arms in this version
-(the ops they need -- tensor_relu_grad_into, tensor_matmul2_nt/_tn -- landed
-in the same base as this file, torch.md Workstream A).
+(the ops they need -- tensor_relu_grad_into, tensor_matmul2_nt/_tn,
+tensor_add_row_into, tensor_col_sum_into -- landed in the same base as
+this file, torch.md Workstream A).
 */
 import lib.lib
 import lib.assert
 import lib.tensor
 import lib.container
+import lib.ndarray
+import lib.fmath
 
 
 ##### op ids #####
@@ -93,6 +103,14 @@ int ag_op_matmul():
 	return 7
 
 
+int ag_op_add_row():
+	return 8
+
+
+int ag_op_softmax_ce():
+	return 9
+
+
 ##### tape #####
 
 
@@ -100,8 +118,12 @@ struct ag_node:
 	int op
 	tensor* out    # this node's output value
 	tensor* a      # first input (or the sole input for unary ops); 0 for leaf
-	tensor* b      # second input (add/mul/matmul); 0 when the op has none
+	tensor* b      # second input (add/mul/matmul/add_row); 0 when the op has none
 	float scalar   # saved scalar for add_scalar/mul_scalar; unused otherwise
+	tensor* saved  # extra forward-cached tensor (currently: ag_op_softmax_ce's
+	               # per-row probabilities); tape-owned like `out`; 0 when unused
+	ndi* labels    # integer labels for ag_op_softmax_ce; caller-owned, the
+	               # tape never frees it; 0 when unused
 
 
 struct ag_tape:
@@ -198,14 +220,24 @@ void ag_free_boxed(tensor* v):
 	free(cast(char*, v))
 
 
-void ag_record(ag_tape* t, int op, tensor* out, tensor* a, tensor* b, float scalar):
+# Like ag_record, plus the two extra fields ag_op_softmax_ce needs (the
+# cached probability tensor and the caller-owned label array). Kept as a
+# separate entry point rather than widening every existing ag_record call
+# site's argument list.
+void ag_record_saved(ag_tape* t, int op, tensor* out, tensor* a, tensor* b, float scalar, tensor* saved, ndi* labels):
 	ag_node n
 	n.op = op
 	n.out = out
 	n.a = a
 	n.b = b
 	n.scalar = scalar
+	n.saved = saved
+	n.labels = labels
 	t.nodes.push(n)
+
+
+void ag_record(ag_tape* t, int op, tensor* out, tensor* a, tensor* b, float scalar):
+	ag_record_saved(t, op, out, a, b, scalar, cast(tensor*, 0), cast(ndi*, 0))
 
 
 ##### leaves and gradients #####
@@ -305,6 +337,76 @@ tensor* ag_matmul(ag_tape* t, tensor* a, tensor* b):
 	return out
 
 
+# Bias add: rank-2 a (m, n) + rank-1 r (n), broadcast across every row
+# (torch's Linear bias). Forward is a single tensor_add_row_into call;
+# the interesting part is the backward shape mismatch between dA (rank 2,
+# same shape as a) and dR (rank 1, same shape as r).
+tensor* ag_add_row(ag_tape* t, tensor* a, tensor* r):
+	asserts(c"ag_add_row: a must be rank 2", a.rank == 2)
+	asserts(c"ag_add_row: r must be rank 1", r.rank == 1)
+	tensor* out = ag_box_like(a)
+	t.owned.push(out)
+	tensor_add_row_into(out, a, r)
+	ag_record(t, ag_op_add_row(), out, a, r, 0.0)
+	return out
+
+
+# Fused row-wise softmax + mean cross-entropy over a rank-2 logits
+# (batch, classes) and integer labels (0..classes-1). Returns a rank-1,
+# size-1 tensor carrying the mean loss, exactly like ag_sum, so it stays
+# on the tape and chains straight into ag_backward.
+#
+# Deliberately HOST-computed (both forward and backward loop over the raw
+# .data buffers, not a 'gpu for'): managed memory is host-accessible and
+# every tensor op syncs before returning, so this is valid on both the
+# GPU and CPU-fallback paths. gpu_exp/gpu_log are NOT used here -- they
+# are device-only intrinsics, only legal inside a 'gpu for' body
+# (grammar/gpu_math_builtin.w), so this op uses lib.fmath's ordinary
+# host fexp/flog instead. A device-side fused kernel is future work, not
+# this v1.
+tensor* ag_softmax_ce(ag_tape* t, tensor* logits, ndi* labels):
+	asserts(c"ag_softmax_ce: logits must be rank 2", logits.rank == 2)
+	asserts(c"ag_softmax_ce: labels must be rank 1", labels.rank == 1)
+	asserts(c"ag_softmax_ce: batch size mismatch", labels.n0 == logits.n0)
+	int batch = logits.n0
+	int classes = logits.n1
+	tensor* probs = ag_box_like(logits)
+	t.owned.push(probs)
+	float* plog = logits.data
+	float* pp = probs.data
+	float total = 0.0
+	int i = 0
+	while (i < batch):
+		# numerically-stable softmax: subtract the row max before exp
+		float m = plog[i * classes]
+		int j = 1
+		while (j < classes):
+			float v = plog[i * classes + j]
+			if (v > m):
+				m = v
+			j = j + 1
+		float rowsum = 0.0
+		j = 0
+		while (j < classes):
+			float e = fexp(plog[i * classes + j] - m)
+			pp[i * classes + j] = e
+			rowsum = rowsum + e
+			j = j + 1
+		j = 0
+		while (j < classes):
+			pp[i * classes + j] = pp[i * classes + j] / rowsum
+			j = j + 1
+		int lbl = labels.data[i]
+		total = total - flog(pp[i * classes + lbl])
+		i = i + 1
+	float mean_loss = total / cast(float, batch)
+	tensor* out = ag_box_shape(1, 1, 1, 1, 1)
+	t.owned.push(out)
+	tensor_fill(out, mean_loss)
+	ag_record_saved(t, ag_op_softmax_ce(), out, logits, cast(tensor*, 0), 0.0, probs, labels)
+	return out
+
+
 ##### backward #####
 
 
@@ -366,6 +468,40 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		tensor_matmul2_tn(tmpB, nd.a, dout)
 		tensor_add_into(db7, db7, tmpB)
 		ag_free_boxed(tmpB)
+		return
+	if (nd.op == ag_op_add_row()):
+		tensor* da8 = ag_grad(t, nd.a)
+		tensor* dr8 = ag_grad(t, nd.b)
+		tensor_add_into(da8, da8, dout)
+		# dR (n) += column-sum of dOut (m, n), via a scratch shaped like r
+		tensor* tmpR = ag_box_like(nd.b)
+		tensor_col_sum_into(tmpR, dout)
+		tensor_add_into(dr8, dr8, tmpR)
+		ag_free_boxed(tmpR)
+		return
+	if (nd.op == ag_op_softmax_ce()):
+		# dLogits[i,j] += dLoss * (P[i,j] - (j==label_i ? 1 : 0)) / batch,
+		# a host loop straight over the cached probabilities (nd.saved)
+		# and the caller-owned labels (nd.labels) -- see ag_softmax_ce's
+		# header comment on why this is host- rather than device-computed.
+		tensor* dlogits = ag_grad(t, nd.a)
+		int batch2 = nd.a.n0
+		int classes2 = nd.a.n1
+		float dloss = dout.data[0]
+		float invbatch = 1.0 / cast(float, batch2)
+		float* pg = dlogits.data
+		float* pp2 = nd.saved.data
+		int i2 = 0
+		while (i2 < batch2):
+			int lbl2 = nd.labels.data[i2]
+			int j2 = 0
+			while (j2 < classes2):
+				float ind = 0.0
+				if (j2 == lbl2):
+					ind = 1.0
+				pg[i2 * classes2 + j2] = pg[i2 * classes2 + j2] + dloss * (pp2[i2 * classes2 + j2] - ind) * invbatch
+				j2 = j2 + 1
+			i2 = i2 + 1
 		return
 	asserts(c"ag_backward: unknown op", 0)
 

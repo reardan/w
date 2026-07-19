@@ -1,11 +1,11 @@
 # lib.autograd end-to-end test (docs/projects/torch.md, Stage 5): every
 # fully-implemented backward rule (add, mul, add_scalar, mul_scalar, relu,
-# sum, matmul) is cross-checked against a central-difference numeric
-# gradient computed by an independent reference evaluator -- plain host
-# loops over each tensor's own .data buffer, sharing no code with
-# lib/autograd.w or lib/tensor.w's op implementations -- plus a
-# gradient-accumulation case (a leaf consumed by two different ops) and a
-# chain test (sum(mul(add(a,b),c))-shaped).
+# sum, matmul, add_row, softmax_ce) is cross-checked against a
+# central-difference numeric gradient computed by an independent
+# reference evaluator -- plain host loops over each tensor's own .data
+# buffer, sharing no code with lib/autograd.w or lib/tensor.w's op
+# implementations -- plus a gradient-accumulation case (a leaf consumed
+# by two different ops) and a chain test (sum(mul(add(a,b),c))-shaped).
 #
 # Mirrors tests/tensor_gpu.w: the autograd_gpu_test target is opt-in
 # (running needs libcuda at load time, like every lib.tensor consumer);
@@ -14,6 +14,8 @@
 # are hand-declared in build.base.json (no *_test.w autotwin).
 import lib.lib
 import lib.autograd
+import lib.ndarray
+import lib.fmath
 
 
 # |a - b| <= eps, without pulling in fmath.
@@ -394,6 +396,145 @@ int check_matmul():
 	return ok
 
 
+##### add_row: sum(mul(add_row(a, r), w)) #####
+
+
+float ref_add_row(tensor* a, tensor* r, tensor* w, int m, int n):
+	float total = 0.0
+	int i = 0
+	while (i < m):
+		int j = 0
+		while (j < n):
+			total = total + (a.data[i * n + j] + r.data[j]) * w.data[i * n + j]
+			j = j + 1
+		i = i + 1
+	return total
+
+
+int check_add_row():
+	int m = 4
+	int n = 5
+	tensor a = tensor_new2(m, n)
+	tensor r = tensor_new1(n)
+	tensor w = tensor_new2(m, n)
+	int i = 0
+	while (i < m * n):
+		a.data[i] = cast(float, i % 7 - 3) * 0.4
+		w.data[i] = cast(float, i % 5 + 1) * 0.2
+		i = i + 1
+	i = 0
+	while (i < n):
+		r.data[i] = cast(float, i - 2) * 0.3
+		i = i + 1
+
+	ag_tape* t = ag_tape_new()
+	tensor* la = ag_leaf(t, &a)
+	tensor* lr = ag_leaf(t, &r)
+	tensor* lw = ag_leaf(t, &w)
+	tensor* s = ag_add_row(t, la, lr)
+	tensor* mres = ag_mul(t, s, lw)
+	ag_sum(t, mres)
+	ag_backward(t)
+	tensor* ga = ag_grad(t, la)
+	tensor* gr = ag_grad(t, lr)
+
+	float h = 0.01
+	int ok = 1
+	i = 0
+	while (i < m * n):
+		float orig = a.data[i]
+		a.data[i] = orig + h
+		float fp = ref_add_row(&a, &r, &w, m, n)
+		a.data[i] = orig - h
+		float fm = ref_add_row(&a, &r, &w, m, n)
+		a.data[i] = orig
+		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0):
+			ok = 0
+		i = i + 1
+	i = 0
+	while (i < n):
+		float orig2 = r.data[i]
+		r.data[i] = orig2 + h
+		float fp2 = ref_add_row(&a, &r, &w, m, n)
+		r.data[i] = orig2 - h
+		float fm2 = ref_add_row(&a, &r, &w, m, n)
+		r.data[i] = orig2
+		if (feq(central_diff(fp2, fm2, h), gr.data[i], 0.05) == 0):
+			ok = 0
+		i = i + 1
+
+	ag_tape_free(t)
+	tensor_free(&a)
+	tensor_free(&r)
+	tensor_free(&w)
+	return ok
+
+
+##### softmax_ce: fused row-wise softmax + mean cross-entropy #####
+
+
+float ref_softmax_ce(tensor* logits, ndi* labels, int batch, int classes):
+	float total = 0.0
+	int i = 0
+	while (i < batch):
+		float m = logits.data[i * classes]
+		int j = 1
+		while (j < classes):
+			float v = logits.data[i * classes + j]
+			if (v > m):
+				m = v
+			j = j + 1
+		float rowsum = 0.0
+		j = 0
+		while (j < classes):
+			rowsum = rowsum + fexp(logits.data[i * classes + j] - m)
+			j = j + 1
+		int lbl = labels.data[i]
+		float p_lbl = fexp(logits.data[i * classes + lbl] - m) / rowsum
+		total = total - flog(p_lbl)
+		i = i + 1
+	return total / cast(float, batch)
+
+
+int check_softmax_ce():
+	int batch = 5
+	int classes = 3
+	tensor logits = tensor_new2(batch, classes)
+	ndi labels = ndi_new1(batch)
+	int i = 0
+	while (i < batch * classes):
+		logits.data[i] = cast(float, (i * 7) % 11 - 5) * 0.3
+		i = i + 1
+	i = 0
+	while (i < batch):
+		labels.data[i] = i % classes
+		i = i + 1
+
+	ag_tape* t = ag_tape_new()
+	tensor* llog = ag_leaf(t, &logits)
+	ag_softmax_ce(t, llog, &labels)
+	ag_backward(t)
+	tensor* glog = ag_grad(t, llog)
+
+	float h = 0.01
+	int ok = 1
+	i = 0
+	while (i < batch * classes):
+		float orig = logits.data[i]
+		logits.data[i] = orig + h
+		float fp = ref_softmax_ce(&logits, &labels, batch, classes)
+		logits.data[i] = orig - h
+		float fm = ref_softmax_ce(&logits, &labels, batch, classes)
+		logits.data[i] = orig
+		if (feq(central_diff(fp, fm, h), glog.data[i], 0.05) == 0):
+			ok = 0
+		i = i + 1
+
+	ag_tape_free(t)
+	tensor_free(&logits)
+	return ok
+
+
 ##### accumulation: a leaf x feeding two different ops into a shared sum #####
 # loss = sum(mul_scalar(x, 2) + relu(x)); dL/dx_i = 2 + (1 if x_i > 0 else 0).
 # The x used by mul_scalar and the x used by relu are the SAME tensor*, so
@@ -475,6 +616,12 @@ int main(int argc, int argv):
 		return 1
 	if (check_matmul() == 0):
 		println(c"autograd gpu: FAILED (matmul)")
+		return 1
+	if (check_add_row() == 0):
+		println(c"autograd gpu: FAILED (add_row)")
+		return 1
+	if (check_softmax_ce() == 0):
+		println(c"autograd gpu: FAILED (softmax_ce)")
 		return 1
 	if (check_accum() == 0):
 		println(c"autograd gpu: FAILED (accum)")
