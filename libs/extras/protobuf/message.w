@@ -441,7 +441,14 @@ int pb_decode_scalar_field(int kind, char* data, int length, char* out_addr, int
 			return PB_ERR_TRUNCATED()
 		if (n == 0):
 			return PB_ERR_BAD_VARINT()
+		# Write the element's full 4-byte width like the other 4-byte
+		# kinds: repeated decode stages elements in a reused stack slot,
+		# so a byte-0-only write would copy the slot's stale bytes 1-3
+		# into the list element.
 		out_addr[0] = v & 1
+		out_addr[1] = 0
+		out_addr[2] = 0
+		out_addr[3] = 0
 		consumed_out[0] = n
 		return 0
 	if (kind == PB_KIND_FIXED32()):

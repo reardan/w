@@ -32,8 +32,8 @@ T* ptr_add[T](T* p, int n):
 
 
 # Signed distance from `a` to `b`, in ELEMENTS of T (not bytes) -- the
-# inverse of ptr_add: ptr_add(a, ptr_diff(a, b)) == b for pointers into
-# the same array. Byte distance is computed with an explicit cast to
+# inverse of ptr_add: ptr_add(a, ptr_diff(b, a)) == b for pointers into
+# the same array (first argument is the destination, second the base). Byte distance is computed with an explicit cast to
 # char* (whose indexing stride is 1) and then divided by T's stride,
 # recovered the same way __word_size__ recovers int's stride: by
 # comparing where index 1 lands.

@@ -1309,11 +1309,28 @@ map[char*, char*] wtest_defhash_collect(char* file_path):
 					failed = 1
 				else:
 					char* name = wtest_get_string(rec, c"name")
+					char* kind = wtest_get_string(rec, c"kind")
 					char* hash = wtest_get_string(rec, c"hash")
-					if ((name == 0) || (hash == 0)):
+					if ((name == 0) || (kind == 0) || (hash == 0)):
 						failed = 1
 					else:
-						out[name] = strclone(hash)
+						# Key by kind+name: W permits e.g. a struct
+						# and a function with the same name, and a
+						# name-only key would let the later record
+						# mask a real edit to the earlier one. A
+						# duplicate kind+name key means this map
+						# cannot represent the file faithfully --
+						# fail open rather than compare it.
+						string_builder* keyb = string_new()
+						string_append(keyb, kind)
+						string_append(keyb, c":")
+						string_append(keyb, name)
+						char* key = strclone(keyb.data)
+						string_free(keyb)
+						if (key in out):
+							failed = 1
+						else:
+							out[key] = strclone(hash)
 			string_clear(line)
 		else:
 			string_append_char(line, c)
@@ -1322,6 +1339,33 @@ map[char*, char*] wtest_defhash_collect(char* file_path):
 	process_result_free(result)
 	if (failed):
 		return 0
+	return out
+
+
+# Concatenated column-0 'import' lines of a source text, in order.
+# Imports belong to no definition span, so identical per-definition
+# hashes cannot prove an import-only edit away: swapping or adding an
+# import redirects which module supplies a called symbol and changes
+# every importer's binary while every defhash record stays identical.
+char* wtest_import_signature(char* text):
+	string_builder* sig = string_new()
+	int i = 0
+	int bol = 1
+	while (text[i] != 0):
+		int c = text[i]
+		if (bol && (starts_with(&text[i], c"import ") || starts_with(&text[i], c"import\t"))):
+			while ((text[i] != 10) && (text[i] != 0)):
+				string_append_char(sig, text[i])
+				i = i + 1
+			string_append_char(sig, 10)
+			bol = 1
+			if (text[i] != 0):
+				i = i + 1
+		else:
+			bol = (c == 10)
+			i = i + 1
+	char* out = strclone(sig.data)
+	string_free(sig)
 	return out
 
 
@@ -1356,6 +1400,19 @@ int wtest_defhash_unchanged(char* path):
 	if (left_text == 0):
 		free(right_text)
 		wtest_note(path, c"defhash: fallback (no left-hand version, or git error)")
+		return 0
+	# Import-only edits are invisible to the per-definition hashes (see
+	# wtest_import_signature) -- compare the import lines textually
+	# before trusting the hash comparison at all.
+	char* left_imports = wtest_import_signature(left_text)
+	char* right_imports = wtest_import_signature(right_text)
+	int imports_differ = strcmp(left_imports, right_imports) != 0
+	free(left_imports)
+	free(right_imports)
+	if (imports_differ):
+		free(left_text)
+		free(right_text)
+		wtest_note(path, c"defhash: fallback (import lines changed)")
 		return 0
 	mkdir(c"bin", 493)
 	char* left_tmp = c"bin/.wtest_defhash_left.w"

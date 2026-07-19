@@ -160,6 +160,18 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
+- **(2026-07-19 review) `--defhash` outside a range always compares HEAD
+  vs worktree**, even when the piped path list came from a ranged diff
+  (`git diff --name-only main..HEAD | wtest changed --defhash` after
+  committing marks everything unchanged and skips closure selection).
+  The ranged form `wtest changed main..HEAD --defhash` is correct; the
+  footgun combination is accepted silently — consider detecting a
+  committed-clean worktree and warning.
+- **(2026-07-19 review) Only the first `..` argument is a range**; a
+  second range argument is silently treated as a changed-file path,
+  matches nothing, and falls to the `tests`-umbrella catch-all
+  (over-selection, but silent). Should be an argument error.
+
 - **First `wtest changed` after a build can take well over the
   documented ~35s.** Building `libs/extras/vcs/merge3.w` (issue #252
   wave 4), `git diff --name-only HEAD | ./bin/wtest changed` timed out
@@ -340,6 +352,14 @@ exist yet:
 
 ## Build manifest (`wbuildgen`)
 
+- **(2026-07-19 review) A `*_fixture.w` carrying non-`fixture_group`
+  directives with no `fixture_group=` is silently skipped** (fixtures
+  are not tests, so `is_test == 0` bails before the unhonored-directive
+  errors); a `# wbuild: x64` line on such a fixture does nothing with no
+  diagnostic. Same class: when a `.w.wbuild` sidecar exists, inline
+  `# wbuild:` lines in the source are silently ignored (documented
+  "never both", but both present should be an error).
+
 - **Shipped (2026-07-19, wave plan C task 2d): path-based target deps.**
   `# wbuild: tool=<path>` resolves a tool's own `.w` source (e.g.
   "tools/wvc.w") to the name of the existing `build.base.json` target
@@ -381,6 +401,52 @@ exist yet:
   left open per the task's "enumerate, don't migrate" scope.
 
 ## Cleanup observed while dogfooding
+
+- **(2026-07-19 review) arm64 self-host stage 2 regressed with the wave
+  C merge**: `bin/wv2_arm64` (under qemu) compiling `w.w` ends with
+  `Failed to find a _main() function` at EOF although `main` is defined
+  — `sym_address("main")` returns 0 at runtime inside the
+  arm64-executing compiler. Pre-merge main (717fa05) passes; the merge
+  touched no `code_generator/` file, so this is a latent arm64 codegen
+  defect triggered by new source patterns — the third sighting of the
+  context-dependent codegen bug family (with wave 4a's and 4f's x64
+  sightings). Small programs compile fine under `bin/wv2_arm64`; only
+  w.w-scale input trips it. Not CI-gated (the release workflow's arm64
+  leg is disabled for speed). File-level bisection findings recorded
+  below when available.
+- **(2026-07-19 review) protobuf stage 1 hardening backlog**: duplicate
+  STRING/BYTES/MESSAGE occurrences of the same field leak the first
+  allocation and diverge from proto3's merge-submessages rule
+  (last-one-wins is only spec-correct for scalars/strings); decode-error
+  paths leak allocations already stored into `out`;
+  `pb_decode_message_field` recurses with no depth limit (attacker input
+  nesting one length-delimited field per 2 bytes can overflow the
+  stack); varint classifies a buffer ending at exactly 10 continuation
+  bytes as TRUNCATED though it is already provably malformed, and
+  `pb_skip_or_error` maps every skip failure to TRUNCATED (unknown-field
+  11-byte varints misreport as truncation).
+- **(2026-07-19 review) attach-mode polish**: a non-SIGTRAP signal stop
+  during the step-over-breakpoint single step (in both `at_continue` and
+  `at_finish`) is silently discarded instead of stored in
+  `attach_pending_sig`; the step bail-out messages say "continuing" but
+  return to the prompt with the tracee stopped; `frame x` (non-numeric)
+  silently selects frame 0; `tools/attach_test.sh`'s "frame selection:
+  caller arg" case cannot detect a regression (both frames' `n` holds
+  the same value) and run_case has no timeout (a re-arm regression hangs
+  CI rather than failing).
+- **(2026-07-19 review) driver arg-loop notes**: unrecognized-option
+  detection is positional (flags after the roots are reported only after
+  the roots fully compile) and the new branch prints raw stderr with no
+  NDJSON record in `--json` mode; `ci_skip_extern_function` now routes
+  through `warning()`, so any future verbosity flag plus `--strict`
+  would turn every skipped extern into a build failure (latent — no CLI
+  path sets verbosity today).
+- **(2026-07-19 review) recursion-guard coverage**: the expression guard
+  triggers only on `(`-grouping re-entry; other deep shapes (60k nested
+  calls, index/ternary/unary chains) still exhaust the real stack with
+  no diagnostic. The tokenizer.w block comment overstates coverage.
+  `lib/shell_commands.w`'s `wc` derives counts from `strlen`, so a file
+  containing NUL truncates its counts.
 
 - **Suspected x64 codegen/register-allocation bug: a local variable read
   both inside and after a conditional block can come back corrupted when
@@ -633,6 +699,16 @@ exist yet:
 
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
+- **(2026-07-19 review) A trailing action-only alternative is spuriously
+  rejected as an overlap** (`rule value = NUMBER | { emit_eps() }` errors
+  while the semantically identical bare trailing empty alternative is
+  accepted): `pg_report_unit_is_empty_suffix` counts raw `terms.length`,
+  predating transparent action terms. Safe direction (over-rejection),
+  but blocks the natural emit-default pattern.
+- **(2026-07-19 review) `$1` immediately followed by an identifier
+  character** pastes into `action_arg_X_0.textx` (broken member access in
+  the generated file) instead of being diagnosed at generation time.
+
 - **A pre-existing (milestone 2/3, not milestone-4-specific) crash in the
   streaming-mode emitter**: a rule with two alternatives sharing a
   factorable leading term, where the *longer* alternative's suffix (after
@@ -666,6 +742,27 @@ exist yet:
   right rather than silently falling through to codegen.
 
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
+
+- **(2026-07-19 review) Paste/line-editor gaps found reviewing wave C's
+  bracketed-paste + Ctrl-R work** (none block the piped/agent path):
+  `le_paste_match_end` drops up to 5 already-consumed bytes on a partial
+  ESC-sequence mismatch, corrupting pasted content containing ESC;
+  pasted CRLF endings inject a spurious blank line per line ('\r' ends
+  the line, the '\n' left pending becomes an empty accept); every pasted
+  line is pushed into history (paste floods history) and multi-line
+  paste renders only bare newlines; an arrow key during Ctrl-R cancels
+  on ESC then inserts the residual "[A" as literal text (only the last
+  byte is pushed back); starting a search while the edited line wraps
+  leaves stale wrapped rows (`le_render_search` never climbs
+  `le_prev_rows`); completion candidates silently truncate at 64 and
+  the common prefix of a truncated set can over-insert;
+  `le_paste_consume`'s auto-indent-seed drop compares only lengths, so
+  typed text of the same length as the seed is silently discarded on
+  paste.
+- **(2026-07-19 review) shell-mode translator divergences**: `echo`
+  honors `-n` at any argv position (real echo: leading only);
+  `head`/`tail` accept `-n=5`/`--lines=5` forms native tools reject;
+  `mkdir`/`rm` translators leak a `list[char*]` per call.
 
 - **A `:save`d session transcript is not always a valid standalone `.w`
   file.** Found while adding `:save`/`:load`/`:type`/`:time`/`:reset`/

@@ -627,6 +627,10 @@ void le_search_begin(char* buf):
 		le_search_query = malloc(256)
 	le_search_qlen = 0
 	le_search_query[0] = 0
+	# The edit buffer is not NUL-terminated mid-edit; terminate before
+	# cloning (same as le_browse_prev's stash) or the clone captures
+	# heap garbage past the typed text.
+	buf[le_len] = 0
 	le_search_pre_buf = strclone(buf)
 	le_search_active = 1
 	le_search_match = le_history_count
