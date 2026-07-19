@@ -187,7 +187,7 @@ int event_loop_next_timer_delay(event_loop* loop):
 			int delay = timer.fire_at_ms - now
 			if (delay < 0):
 				delay = 0
-			if ((found == 0) | (delay < best)):
+			if ((found == 0) || (delay < best)):
 				best = delay
 			found = 1
 		i = i + 1
@@ -272,7 +272,7 @@ int event_loop_run_once(event_loop* loop, int max_wait_ms):
 int event_loop_run(event_loop* loop):
 	loop.running = 1
 	while (loop.running):
-		if ((event_loop_active_count[event_watch*](loop, loop.watches) == 0) & (event_loop_active_count[event_timer*](loop, loop.timers) == 0)):
+		if ((event_loop_active_count[event_watch*](loop, loop.watches) == 0) && (event_loop_active_count[event_timer*](loop, loop.timers) == 0)):
 			loop.running = 0
 			return 0
 		int result = event_loop_run_once(loop, -1)

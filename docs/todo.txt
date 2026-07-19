@@ -57,6 +57,11 @@ current state:
 		whitespace hygiene:
 			warning when a line is indented with spaces instead of tabs
 			warning when a file does not end with a newline
+		UTF-8 source stage 1 (issue #287, docs/projects/utf8_source.md):
+			a leading BOM is silently stripped
+			check --json escapes invalid byte sequences so diagnostics
+				stay valid UTF-8/JSON; columns count codepoints, not bytes
+			UTF-8 identifiers (stage 2) remain a policy decision, not scheduled
 		imports and packages:
 			import a.b as f binds a file-scoped alias; f.name access is
 				checked against the module's declarations (import_test)
@@ -78,6 +83,9 @@ current state:
 			float64 literals, arithmetic, formatting and returns work on x64
 			x64 tests also cover float32 narrowing from a float64 literal
 			float output is diff-tested against C reference output
+			TestFloat-derived conformance vectors cover float32 (both
+				targets) and float64 (x64) rounding/edge cases (issue #17,
+				docs/projects/float_testing.md)
 			float16 storage/conversion works on the x86 family (F16C
 				hardware instructions; design: docs/projects/float.md)
 			bfloat16 and float16 on arm64/wasm remain future work

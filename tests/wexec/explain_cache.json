@@ -1,0 +1,41 @@
+{
+	"targets": [
+		{
+			"name": "leaf_no_inputs",
+			"steps": [
+				{"cmd": ["echo", "leaf_no_inputs ran"]}
+			]
+		},
+		{
+			"name": "leaf_cacheable",
+			"inputs": ["tests/wexec/explain_cache.json"],
+			"steps": [
+				{"cmd": ["echo", "leaf_cacheable ran"]}
+			]
+		},
+		{
+			"name": "mid_ok",
+			"inputs": [],
+			"deps": ["leaf_cacheable"],
+			"steps": [
+				{"cmd": ["echo", "mid_ok ran"]}
+			]
+		},
+		{
+			"name": "mid_broken",
+			"inputs": [],
+			"deps": ["leaf_no_inputs"],
+			"steps": [
+				{"cmd": ["echo", "mid_broken ran"]}
+			]
+		},
+		{
+			"name": "top_broken",
+			"inputs": [],
+			"deps": ["mid_broken"],
+			"steps": [
+				{"cmd": ["echo", "top_broken ran"]}
+			]
+		}
+	]
+}

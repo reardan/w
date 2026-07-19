@@ -43,7 +43,7 @@ int switch_statement():
 	int scrutinee_slot = stack_pos
 
 	expect(c":")
-	if ((token_newline == 0) & (token[0] != 0)):
+	if ((token_newline == 0) && (token[0] != 0)):
 		error(c"switch body must start on a new line")
 
 	# Enter a new break context: 'break' in a case body exits the switch.
@@ -59,7 +59,7 @@ int switch_statement():
 
 	int seen_default = 0
 
-	while ((tab_level > switch_tab_level) & (token[0] != 0)):
+	while ((tab_level > switch_tab_level) && (token[0] != 0)):
 		int label_tab_level = tab_level
 		if (seen_default):
 			error(c"'default' must be the last clause in a switch")

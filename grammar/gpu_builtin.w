@@ -32,7 +32,7 @@ int in_gpu_for_body
 # The gpu features imply the x64 Linux host target: libcuda.so is 64-bit
 # only, and the host side leans on the ELF dynamic-linking path.
 void gpu_target_check():
-	if ((word_size != 8) | (target_isa != 0) | (target_os != 0)):
+	if ((word_size != 8) || (target_isa != 0) || (target_os != 0)):
 		error(c"gpu kernels require the x64 target")
 
 

@@ -85,7 +85,7 @@ statement. Control flow, declarations and blocks are rejected here,
 with the first token of the deferred statement current.
 */
 void defer_check_form():
-	if ((token_newline != 0) | (token[0] == 0)):
+	if ((token_newline != 0) || (token[0] == 0)):
 		error(c"a statement must follow 'defer' on the same line")
 	if (peek(c"return")):
 		error(c"'return' is not allowed in a deferred statement")
@@ -115,7 +115,7 @@ void defer_register():
 	rec.line = diag_token_line - 1
 	rec.column = diag_token_column - 1
 	defer_spans.push(rec)
-	while ((token_newline == 0) & (token[0] != 0)):
+	while ((token_newline == 0) && (token[0] != 0)):
 		get_token()
 
 

@@ -71,7 +71,7 @@ void asm_enc_rex(asm_buffer* b, int is64, int w, int reg_field, asm_operand* rm)
 		else:
 			if (rm.index >= 8):
 				rex = rex | 2
-			if (rm.base >= 8 & rm.base <= 15):
+			if (rm.base >= 8 && rm.base <= 15):
 				rex = rex | 1
 	if (rex != 0):
 		asm_buffer_byte(b, 0x40 | rex)
@@ -96,11 +96,11 @@ void asm_enc_rex_reg(asm_buffer* b, int is64, int w, int reg):
 # with no displacement still needs a disp8 (mod!=0), and an absolute
 # [disp] (no base/index) is always disp32.
 int asm_enc_disp_size(asm_operand* mem):
-	if (mem.disp_size == 1 | mem.disp_size == 4):
+	if (mem.disp_size == 1 || mem.disp_size == 4):
 		return mem.disp_size
 	if (mem.base < 0):
 		return 4
-	if (mem.disp == 0 & (mem.base & 7) != 5):
+	if (mem.disp == 0 && (mem.base & 7) != 5):
 		return 0
 	if (asm_enc_fits_int8(mem.disp)):
 		return 1
@@ -490,9 +490,9 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 
 	# grp5 memory (call/jmp/push/inc/dec through r/m)
 	int g5 = asm_enc_grp5_ext(m)
-	if (g5 >= 0 & count == 1 & insn.op1.kind == ASM_OP_MEM()):
+	if (((g5 >= 0) && (count == 1)) & insn.op1.kind == ASM_OP_MEM()):
 		int w5 = 0
-		if ((g5 == 0 | g5 == 1) & insn.op1.size == 8):
+		if ((g5 == 0 || g5 == 1) && insn.op1.size == 8):
 			w5 = 1
 		asm_enc_rex(b, is64, w5, g5, &insn.op1)
 		asm_buffer_byte(b, 0xff)
@@ -521,7 +521,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 			return b.length - start
 
 	# setcc r/m8
-	if (m[0] == 's' & m[1] == 'e' & m[2] == 't'):
+	if (m[0] == 's' && m[1] == 'e' && m[2] == 't'):
 		int cc = asm_enc_cc(m + 3)
 		if (cc >= 0):
 			asm_enc_rex(b, is64, 0, 0, &insn.op1)
@@ -574,7 +574,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 
 	# grp3 (not/neg/mul/imul/div/idiv r/m)  — single r/m operand form
 	int g3 = asm_enc_grp3_ext(m)
-	if (g3 >= 0 & count == 1):
+	if (g3 >= 0 && count == 1):
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), g3, &insn.op1)
 		asm_buffer_byte(b, 0xf7)
 		asm_enc_modrm(b, g3, &insn.op1, is64)
@@ -623,7 +623,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 
 	# btc/bt/bts/btr r/m, imm8 (0f ba /ext ib)
 	int g8 = asm_enc_grp8_ext(m)
-	if (g8 >= 0 & count == 2 & insn.op2.kind == ASM_OP_IMM()):
+	if (((g8 >= 0) && (count == 2)) & insn.op2.kind == ASM_OP_IMM()):
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), g8, &insn.op1)
 		asm_buffer_byte(b, 0x0f)
 		asm_buffer_byte(b, 0xba)
@@ -865,7 +865,7 @@ int asm_enc_dot_target(char* label):
 		sign = 0 - 1
 	i = i + 1
 	int value = 0
-	if (label[i] == '0' & label[i + 1] == 'x'):
+	if (label[i] == '0' && label[i + 1] == 'x'):
 		i = i + 2
 		while (label[i] != 0):
 			value = (value << 4) | asm_hex_digit(label[i])

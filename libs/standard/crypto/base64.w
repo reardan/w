@@ -68,11 +68,11 @@ char* base64_encode(char* data, int len):
 # The 0..63 value of one base64 alphabet character, or -1 for anything
 # else (including '=' — the decoder handles padding by position).
 int base64_decode_char(int ch):
-	if ((ch >= 'A') & (ch <= 'Z')):
+	if ((ch >= 'A') && (ch <= 'Z')):
 		return ch - 'A'
-	if ((ch >= 'a') & (ch <= 'z')):
+	if ((ch >= 'a') && (ch <= 'z')):
 		return ch - 'a' + 26
-	if ((ch >= '0') & (ch <= '9')):
+	if ((ch >= '0') && (ch <= '9')):
 		return ch - '0' + 52
 	if (ch == '+'):
 		return 62
@@ -105,7 +105,7 @@ char* base64_decode(char* text, int len, int* out_len):
 	int o = 0
 	while (i < len):
 		int chars = 4
-		if ((i + 4 == len) & (pad > 0)):
+		if ((i + 4 == len) && (pad > 0)):
 			chars = 4 - pad
 		int v = 0
 		int j = 0
@@ -165,11 +165,11 @@ char* hex_encode(char* data, int len):
 
 # The 0..15 value of one hex digit (either case), or -1.
 int hex_decode_char(int ch):
-	if ((ch >= '0') & (ch <= '9')):
+	if ((ch >= '0') && (ch <= '9')):
 		return ch - '0'
-	if ((ch >= 'a') & (ch <= 'f')):
+	if ((ch >= 'a') && (ch <= 'f')):
 		return ch - 'a' + 10
-	if ((ch >= 'A') & (ch <= 'F')):
+	if ((ch >= 'A') && (ch <= 'F')):
 		return ch - 'A' + 10
 	return -1
 
@@ -188,7 +188,7 @@ char* hex_decode(char* text, int len, int* out_len):
 	while (i < len):
 		int hi = hex_decode_char(text[i] & 255)
 		int lo = hex_decode_char(text[i + 1] & 255)
-		if ((hi < 0) | (lo < 0)):
+		if ((hi < 0) || (lo < 0)):
 			free(out)
 			return 0
 		out[i / 2] = (hi << 4) | lo

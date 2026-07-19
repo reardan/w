@@ -75,6 +75,55 @@ char* vcst_put(wcas* s, char* object_type, char* data, int length):
 	return id
 
 
+# "<root>/objects/<2 hex>/<62 hex>" for `id` -- built independently of
+# cas_object_path (the same layout formula, spelled out by hand) so the
+# corruption/format fixtures below don't lean on the function under
+# test to find their own target file.
+string_builder* vcst_object_file_path(char* id):
+	string_builder* p = string_new()
+	string_append(p, vcst_root())
+	string_append(p, c"/objects/")
+	string_append_char(p, id[0])
+	string_append_char(p, id[1])
+	string_append_char(p, '/')
+	string_append(p, id + 2)
+	return p
+
+
+# Writes `data` (length bytes, under `object_type`) directly to disk in
+# the LEGACY (pre-compression) "<type> <len>\0" + payload encoding,
+# bypassing cas_put/cas_put_raw entirely -- both of those always write
+# the current zlib-compressed encoding now (cas.w's "On-disk encoding"),
+# so a fixture that needs a genuinely old-format object on disk (the
+# migration story: existing stores keep reading) has to construct one
+# by hand, mkdir'ing the fanout directory the same way
+# cas_store_bytes does. Returns the malloc'd id -- cas_id_hex over the
+# same object_type/data/length, since on-disk encoding never changes an
+# object's id.
+char* vcst_write_legacy(wcas* s, char* object_type, char* data, int length):
+	char* id = cas_id_hex(object_type, data, length)
+	assert1(id != 0)
+	string_builder* dir = string_new()
+	string_append(dir, vcst_root())
+	string_append(dir, c"/objects/")
+	string_append_char(dir, id[0])
+	string_append_char(dir, id[1])
+	mkdir(dir.data, 493)
+	string_free(dir)
+	string_builder* p = vcst_object_file_path(id)
+	wstream* out = stream_open_write(p.data)
+	assert1(cast(int, out) != 0)
+	stream_write_cstr(out, object_type)
+	stream_write_byte(out, ' ')
+	stream_write_int(out, length)
+	stream_write_byte(out, 0)
+	stream_write(out, data, length)
+	stream_close(out)
+	string_free(p)
+	vcst_track(id)
+	return id
+
+
 # Lowercase hex of a whash digest (for deriving wexec-style cache keys).
 char* vcst_hex(char* digest, int len):
 	char* hex_digits = c"0123456789abcdef"
@@ -346,18 +395,21 @@ void test_cas_build_cache_client():
 void test_cas_corrupt_detection():
 	wcas* s = vcst_open()
 
-	# Digest mismatch: flip one stored payload byte in place. The
-	# framing stays valid (cas_get still succeeds) but cas_verify
-	# reports the corruption.
-	char* id = vcst_put(s, c"blob", c"soon to be corrupted", 20)
+	# Digest mismatch: flip one stored payload byte in a LEGACY
+	# (pre-compression) on-disk object. cas_put/cas_put_raw always write
+	# the current zlib-compressed encoding now (cas.w's "On-disk
+	# encoding"), so this sub-test builds its own legacy-format bytes by
+	# hand (vcst_write_legacy) rather than through cas_put -- flipping
+	# the last byte of a compressed stream corrupts the zlib framing
+	# itself (it lands inside the Adler-32 trailer), not a "payload byte
+	# with the header still intact" the way it does for the pre-
+	# compression format this pins. The (legacy) framing stays valid
+	# (cas_get still succeeds) but cas_verify reports the corruption --
+	# proving the transparent-read path detects corruption exactly like
+	# the current write path does.
+	char* id = vcst_write_legacy(s, c"blob", c"soon to be corrupted", 20)
 	assert_equal(1, cas_verify(s, id))
-	string_builder* p = string_new()
-	string_append(p, vcst_root())
-	string_append(p, c"/objects/")
-	string_append_char(p, id[0])
-	string_append_char(p, id[1])
-	string_append_char(p, '/')
-	string_append(p, id + 2)
+	string_builder* p = vcst_object_file_path(id)
 	int fd = open(p.data, 1, 0)
 	assert1(fd >= 0)
 	seek(fd, 0 - 1, 2)          # last payload byte
@@ -373,13 +425,7 @@ void test_cas_corrupt_detection():
 	# Truncation: the declared length no longer matches the payload, so
 	# cas_get reports CAS_ERR_CORRUPT.
 	char* short_id = vcst_put(s, c"blob", c"about to be truncated", 21)
-	string_builder* p2 = string_new()
-	string_append(p2, vcst_root())
-	string_append(p2, c"/objects/")
-	string_append_char(p2, short_id[0])
-	string_append_char(p2, short_id[1])
-	string_append_char(p2, '/')
-	string_append(p2, short_id + 2)
+	string_builder* p2 = vcst_object_file_path(short_id)
 	wstream* out = stream_open_write(p2.data)
 	assert1(cast(int, out) != 0)
 	stream_write(out, c"blob 21", 7)
@@ -395,13 +441,7 @@ void test_cas_corrupt_detection():
 
 	# Garbage framing: a file with no "<type> <len>\0" header at all.
 	char* junk_id = vcst_put(s, c"blob", c"placeholder", 11)
-	string_builder* p3 = string_new()
-	string_append(p3, vcst_root())
-	string_append(p3, c"/objects/")
-	string_append_char(p3, junk_id[0])
-	string_append_char(p3, junk_id[1])
-	string_append_char(p3, '/')
-	string_append(p3, junk_id + 2)
+	string_builder* p3 = vcst_object_file_path(junk_id)
 	wstream* junk = stream_open_write(p3.data)
 	assert1(cast(int, junk) != 0)
 	stream_write(junk, c"no header here", 14)
@@ -415,6 +455,183 @@ void test_cas_corrupt_detection():
 	string_free(p)
 	string_free(p2)
 	string_free(p3)
+	cas_close(s)
+
+
+# Truncating a CURRENT-encoding (zlib-compressed) object also reports
+# CAS_ERR_CORRUPT -- the compressed-format twin of the legacy
+# truncation case above: a cut-short zlib stream fails to decode, so
+# cas_get never even reaches cas_parse_framed.
+void test_cas_compressed_truncation_detection():
+	wcas* s = vcst_open()
+	int n = 2048
+	char* payload = malloc(n)
+	int i = 0
+	while (i < n):
+		payload[i] = 'A' + (i % 4)
+		i = i + 1
+	char* id = vcst_put(s, c"blob", payload, n)
+	free(payload)
+
+	string_builder* p = vcst_object_file_path(id)
+	string_builder* raw = cas_read_file(p.data)
+	assert1(raw != 0)
+	int half = raw.length / 2
+	assert1(half > 0)
+	wstream* out = stream_open_write(p.data)
+	assert1(cast(int, out) != 0)
+	stream_write(out, raw.data, half)
+	stream_close(out)
+	string_free(raw)
+
+	wresult[wcas_object*]* trunc = cas_get(s, id)
+	assert1(result_is_error[wcas_object*](trunc))
+	assert_equal(CAS_ERR_CORRUPT(), result_code[wcas_object*](trunc))
+	result_free[wcas_object*](trunc)
+	assert_equal(0, cas_verify(s, id))
+
+	string_free(p)
+	free(id)
+	cas_close(s)
+
+
+# Pins that cas_put's default on-disk encoding really is zlib-
+# compressed (not just "cas_get still returns the right bytes", which
+# would also pass if compression were silently a no-op): the on-disk
+# file starts with CAS_ZLIB_MAGIC0()'s two fixed bytes, and a
+# repetitive payload comes out smaller than its logical length --
+# proof of real DEFLATE output, not a stored/passthrough block wearing
+# a zlib wrapper.
+void test_cas_write_new_is_compressed_on_disk():
+	wcas* s = vcst_open()
+	int n = 2048
+	char* payload = malloc(n)
+	int i = 0
+	while (i < n):
+		# A distinct pattern from test_cas_compressed_truncation_detection's
+		# (lowercase, different period): all tests in this file share one
+		# store (vcst_root is memoized), so identical content here would
+		# hash to that other test's id and dedup-skip the write, leaving
+		# this test looking at that test's already-truncated file.
+		payload[i] = 'a' + (i % 3)
+		i = i + 1
+	char* id = vcst_put(s, c"blob", payload, n)
+
+	string_builder* p = vcst_object_file_path(id)
+	string_builder* raw = cas_read_file(p.data)
+	assert1(raw != 0)
+	assert1(raw.length >= 2)
+	assert_equal('x', raw.data[0] & 255)
+	assert_equal(1, raw.data[1] & 255)
+	asserts(c"compressed on-disk bytes are smaller than the logical payload", raw.length < n)
+	string_free(raw)
+	string_free(p)
+
+	wresult[wcas_object*]* got = cas_get(s, id)
+	assert1(result_is_ok[wcas_object*](got))
+	wcas_object* o = result_value[wcas_object*](got)
+	result_free[wcas_object*](got)
+	assert_equal(n, o.length)
+	i = 0
+	while (i < n):
+		assert_equal(payload[i] & 255, o.data[i] & 255)
+		i = i + 1
+	cas_object_free(o)
+	assert_equal(1, cas_verify(s, id))
+
+	free(id)
+	free(payload)
+	cas_close(s)
+
+
+# The migration story, exercised directly: a store built entirely by
+# hand in the legacy (pre-compression) encoding -- as if it were a
+# checkout from before this change -- reads back correctly through
+# cas_has/cas_get/cas_verify with no rewrite step. "write-old-read-new."
+void test_cas_legacy_store_transparent_read():
+	wcas* s = vcst_open()
+	char* payload = c"an object written directly in the legacy on-disk encoding"
+	int length = strlen(payload)
+	char* id = vcst_write_legacy(s, c"blob", payload, length)
+
+	assert_equal(1, cas_has(s, id))
+	wresult[wcas_object*]* got = cas_get(s, id)
+	assert1(result_is_ok[wcas_object*](got))
+	wcas_object* o = result_value[wcas_object*](got)
+	result_free[wcas_object*](got)
+	assert_strings_equal(c"blob", o.object_type)
+	assert_equal(length, o.length)
+	assert_strings_equal(payload, o.data)
+	cas_object_free(o)
+	assert_equal(1, cas_verify(s, id))
+
+	free(id)
+	cas_close(s)
+
+
+# One store, two on-disk encodings side by side: an object cas_put
+# wrote (current, zlib-compressed) and one written directly in the
+# legacy encoding both read back correctly through the same cas_get/
+# cas_verify calls -- the transparent-read requirement is per-object,
+# not a whole-store migration switch.
+void test_cas_mixed_format_store():
+	wcas* s = vcst_open()
+	char* new_payload = c"written through cas_put, current encoding"
+	char* new_id = vcst_put(s, c"blob", new_payload, strlen(new_payload))
+	char* old_payload = c"written by hand, legacy encoding"
+	char* old_id = vcst_write_legacy(s, c"blob", old_payload, strlen(old_payload))
+	assert1(strcmp(new_id, old_id) != 0)
+
+	assert_equal(1, cas_has(s, new_id))
+	assert_equal(1, cas_has(s, old_id))
+
+	wresult[wcas_object*]* got_new = cas_get(s, new_id)
+	assert1(result_is_ok[wcas_object*](got_new))
+	wcas_object* new_obj = result_value[wcas_object*](got_new)
+	result_free[wcas_object*](got_new)
+	assert_strings_equal(new_payload, new_obj.data)
+	cas_object_free(new_obj)
+
+	wresult[wcas_object*]* got_old = cas_get(s, old_id)
+	assert1(result_is_ok[wcas_object*](got_old))
+	wcas_object* old_obj = result_value[wcas_object*](got_old)
+	result_free[wcas_object*](got_old)
+	assert_strings_equal(old_payload, old_obj.data)
+	cas_object_free(old_obj)
+
+	assert_equal(1, cas_verify(s, new_id))
+	assert_equal(1, cas_verify(s, old_id))
+
+	free(new_id)
+	free(old_id)
+	cas_close(s)
+
+
+# 'x' is reserved (CAS_ZLIB_MAGIC0's comment): it is the fixed first
+# byte of this module's zlib-compressed on-disk encoding, so no legal
+# type tag may start with it -- otherwise a legacy-format object of
+# that type would be indistinguishable on disk from a zlib stream. Only
+# the FIRST character is restricted.
+void test_cas_tag_reserved_zlib_prefix():
+	assert_equal(0, cas_valid_tag(c"x"))
+	assert_equal(0, cas_valid_tag(c"xyz"))
+	assert_equal(0, cas_valid_tag(c"x-anything"))
+	assert_equal(1, cas_valid_tag(c"extra"))
+	assert_equal(1, cas_valid_tag(c"box"))
+	assert_equal(1, cas_valid_tag(c"axe"))
+
+	assert_equal(0, cast(int, cas_id_hex(c"xyz", c"x", 1)))
+
+	wcas* s = vcst_open()
+	wresult[char*]* bad = cas_put(s, c"xyz", c"x", 1)
+	assert1(result_is_error[char*](bad))
+	assert_equal(-22, result_code[char*](bad))
+	result_free[char*](bad)
+
+	wresult[char*]* bad_raw = cas_put_raw(s, VCST_HELLO_ID(), c"xyz", c"x", 1)
+	assert1(result_is_error[char*](bad_raw))
+	assert_equal(-22, result_code[char*](bad_raw))
+	result_free[char*](bad_raw)
 	cas_close(s)
 
 

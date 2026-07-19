@@ -41,7 +41,7 @@ int dbg_line_stack(int i):
 
 
 char* dbg_file_name(int file_index):
-	if ((file_index < 0) | (file_index >= debug_file_count)):
+	if ((file_index < 0) || (file_index >= debug_file_count)):
 		return c"?"
 	return cast(char*, load_ptr(debug_files + file_index * __word_size__))
 
@@ -49,7 +49,7 @@ char* dbg_file_name(int file_index):
 # 1 when the absolute address lies inside the debuggee's code buffer.
 int dbg_in_debuggee(int addr):
 	int rel = addr - code_offset
-	if ((rel < 0) | (rel >= codepos)):
+	if ((rel < 0) || (rel >= codepos)):
 		return 0
 	return 1
 
@@ -160,7 +160,7 @@ int dbg_entry_for_line(int file_index, int line):
 		if (load_int(debug_line_file_indexes + i * 4) == file_index):
 			int l = load_int(debug_line_lines + i * 4)
 			if (l >= line):
-				if ((best < 0) | (l < best_line)):
+				if ((best < 0) || (l < best_line)):
 					best = i
 					best_line = l
 		i = i + 1
@@ -197,7 +197,7 @@ void dbg_print_source_range(char* path, int first, int last, int current):
 		first = 1
 	int line = 1
 	int c = getchar(f)
-	while ((c != -1) & (line <= last)):
+	while ((c != -1) && (line <= last)):
 		if (line >= first):
 			if (line == current):
 				print(c"-> ")
@@ -207,7 +207,7 @@ void dbg_print_source_range(char* path, int first, int last, int current):
 			print(digits)
 			free(digits)
 			print(c"\x09")
-		while ((c != 10) & (c != -1)):
+		while ((c != 10) && (c != -1)):
 			if (line >= first):
 				put_char(c)
 			c = getchar(f)

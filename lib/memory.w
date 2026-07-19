@@ -77,7 +77,7 @@ int malloc_debug_env_check():
 	int needle_len = 14
 	int i = 0
 	int found = 0
-	while ((i < n) & (found == 0)):
+	while ((i < n) && (found == 0)):
 		if (i + needle_len <= n):
 			int matches = 1
 			int j = 0
@@ -87,7 +87,7 @@ int malloc_debug_env_check():
 				j = j + 1
 			if (matches):
 				found = 1
-		while ((i < n) & (buf[i] != 0)):
+		while ((i < n) && (buf[i] != 0)):
 			i = i + 1
 		i = i + 1
 	freelist_free(buf)

@@ -257,7 +257,7 @@ int __w_list_contains_cstr(__w_list* list, int value):
 	while (i < list.length):
 		char* element = cast(char*, __w_list_load_word(list.items + i * list.element_size, list.element_size))
 		int j = 0
-		while ((element[j] != 0) & (element[j] == wanted[j])):
+		while ((element[j] != 0) && (element[j] == wanted[j])):
 			j = j + 1
 		if (element[j] == wanted[j]):
 			return 1
@@ -300,7 +300,7 @@ int __w_list_compare_values(int a, int b, int kind):
 		char* sa = cast(char*, a)
 		char* sb = cast(char*, b)
 		int j = 0
-		while ((sa[j] != 0) & (sa[j] == sb[j])):
+		while ((sa[j] != 0) && (sa[j] == sb[j])):
 			j = j + 1
 		return sa[j] - sb[j]
 	if (a < b):

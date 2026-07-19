@@ -252,11 +252,11 @@ int json_int_max():
 
 
 int json_hex_value(int c):
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return c - '0'
-	if ((c >= 'a') & (c <= 'f')):
+	if ((c >= 'a') && (c <= 'f')):
 		return c - 'a' + 10
-	if ((c >= 'A') & (c <= 'F')):
+	if ((c >= 'A') && (c <= 'F')):
 		return c - 'A' + 10
 	return -1
 
@@ -325,7 +325,7 @@ int json_parse_u_escape(json_parser* p):
 	if (unit < 0):
 		return -1
 	p.index = p.index + 4
-	if ((unit < 0xd800) | (unit > 0xdfff)):
+	if ((unit < 0xd800) || (unit > 0xdfff)):
 		return unit
 	if (unit >= 0xdc00):
 		return 0xfffd
@@ -334,7 +334,7 @@ int json_parse_u_escape(json_parser* p):
 	if (p.input[p.index + 1] == '\\'):
 		if (p.input[p.index + 2] == 'u'):
 			int low = json_hex4(p, p.index + 3)
-			if ((low >= 0xdc00) & (low <= 0xdfff)):
+			if ((low >= 0xdc00) && (low <= 0xdfff)):
 				p.index = p.index + 6
 				return 0x10000 + ((unit - 0xd800) << 10) + (low - 0xdc00)
 	return 0xfffd
@@ -508,7 +508,7 @@ json_value* json_parse_number(json_parser* p):
 				mant_exp = mant_exp - 1
 			p.index = p.index + 1
 
-	if ((p.input[p.index] == 'e') | (p.input[p.index] == 'E')):
+	if ((p.input[p.index] == 'e') || (p.input[p.index] == 'E')):
 		is_float = 1
 		p.index = p.index + 1
 		int exp_negative = 0
@@ -681,7 +681,7 @@ void json_append_escaped_string(string_builder* out, char* text):
 		else if (c == '\t'):
 			string_append_char(out, '\\')
 			string_append_char(out, 't')
-		else if ((c > 0) & (c < 32)):
+		else if ((c > 0) && (c < 32)):
 			string_append_char(out, '\\')
 			string_append_char(out, 'u')
 			string_append_char(out, '0')
@@ -733,10 +733,10 @@ void json_append_float(string_builder* out, float f):
 		i = i - 1
 	digits[9] = 0
 	int n = 9
-	while ((n > 1) & (digits[n - 1] == '0')):
+	while ((n > 1) && (digits[n - 1] == '0')):
 		n = n - 1
 
-	if ((e < -4) | (e > 14)):
+	if ((e < -4) || (e > 14)):
 		# scientific: d.ddde±x (no fraction part for a single digit —
 		# JSON requires at least one digit after a '.')
 		string_append_char(out, digits[0])

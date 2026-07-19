@@ -147,7 +147,7 @@ int var_box_helper_for_type(int got):
 	if (type_is_array(t) | type_is_slice(t)):
 		return -1
 	int size = type_get_size(t)
-	if ((size == 1) | (size == 2) | (size == 4) | (size == 8)):
+	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
 		return 0
 	return -1
 
@@ -158,7 +158,7 @@ int var_box_helper_for_type(int got):
 void var_coerce(int want, int got):
 	if (type_is_var(want) & type_is_var(got)):
 		return; /* pointer copy: aliasing */
-	if ((want == 3) | (want == 4)):
+	if ((want == 3) || (want == 4)):
 		return;
 	if (type_is_var(want)):
 		int helper = var_box_helper_for_type(got)

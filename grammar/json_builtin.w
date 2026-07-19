@@ -94,7 +94,7 @@ int json_codec_kind(int t):
 	if (t == type_unqualified(bool_type)):
 		return 2
 	int size = type_get_size(t)
-	if ((size == 1) | (size == 2) | (size == 4) | (size == 8)):
+	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
 		return 1
 	json_codec_unsupported(t)
 	return 0
@@ -106,7 +106,7 @@ int json_codec_size(int t, int kind):
 	t = type_unqualified(t)
 	if (kind == 6):
 		return list_element_slot_size(type_list_element_type(t))
-	if ((kind == 3) | (kind == 4)):
+	if ((kind == 3) || (kind == 4)):
 		return word_size
 	return type_get_size(t)
 

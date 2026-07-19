@@ -77,7 +77,7 @@ void pg_reader_skip_ws(pg_grammar_reader* reader):
 			pg_reader_step(reader)
 			running = 1
 		if (reader.input[reader.index] == '#'):
-			while ((reader.input[reader.index] != 0) & (reader.input[reader.index] != 10)):
+			while ((reader.input[reader.index] != 0) && (reader.input[reader.index] != 10)):
 				pg_reader_step(reader)
 			running = 1
 
@@ -89,7 +89,7 @@ void pg_reader_error(pg_grammar_reader* reader, char* message, char* expected):
 char* pg_reader_string_token(pg_grammar_reader* reader):
 	string_builder* out = string_new()
 	pg_reader_step(reader)
-	while ((reader.input[reader.index] != 0) & (reader.input[reader.index] != '"')):
+	while ((reader.input[reader.index] != 0) && (reader.input[reader.index] != '"')):
 		int c = reader.input[reader.index]
 		if (c == 92):
 			pg_reader_step(reader)
@@ -112,11 +112,11 @@ char* pg_reader_string_token(pg_grammar_reader* reader):
 char* pg_reader_charset_token(pg_grammar_reader* reader):
 	int start = reader.index
 	pg_reader_step(reader)
-	while ((reader.input[reader.index] != 0) & (reader.input[reader.index] != 10)):
+	while ((reader.input[reader.index] != 0) && (reader.input[reader.index] != 10)):
 		int c = reader.input[reader.index]
 		pg_reader_step(reader)
 		if (c == 92):
-			if ((reader.input[reader.index] != 0) & (reader.input[reader.index] != 10)):
+			if ((reader.input[reader.index] != 0) && (reader.input[reader.index] != 10)):
 				pg_reader_step(reader)
 		else if (c == ']'):
 			break
@@ -162,6 +162,8 @@ int pg_reader_is_top_level(pg_grammar_reader* reader):
 	if (reader.token_kind != pg_reader_token_name()):
 		return 0
 	if (strcmp(reader.token, c"parser") == 0):
+		return 1
+	if (strcmp(reader.token, c"mode") == 0):
 		return 1
 	if (strcmp(reader.token, c"token") == 0):
 		return 1
@@ -257,7 +259,7 @@ int pg_reader_charset_char(pg_grammar_reader* reader, char* text, int* indexp, i
 			c = 13
 		else if (c == 't'):
 			c = 9
-	if ((c <= 0) | (c >= 128)):
+	if ((c <= 0) || (c >= 128)):
 		pg_reader_error(reader, c"matcher expressions are ASCII only", c"ASCII byte")
 		return -1
 	indexp[0] = index
@@ -284,7 +286,7 @@ pg_match_expr* pg_reader_parse_matcher_primary(pg_grammar_reader* reader, int li
 	if (reader.token_kind == pg_reader_token_charset()):
 		char* text = reader.token
 		int length = strlen(text)
-		if ((length < 2) | (text[length - 1] != ']')):
+		if ((length < 2) || (text[length - 1] != ']')):
 			pg_reader_error(reader, c"unterminated character class", c"]")
 			return 0
 		char* charset = malloc(128)
@@ -294,7 +296,7 @@ pg_match_expr* pg_reader_parse_matcher_primary(pg_grammar_reader* reader, int li
 			i = i + 1
 		int index = 1
 		int negate = 0
-		if ((index < length - 1) & (text[index] == '^')):
+		if ((index < length - 1) && (text[index] == '^')):
 			negate = 1
 			index = index + 1
 		while (index < length - 1):
@@ -302,7 +304,7 @@ pg_match_expr* pg_reader_parse_matcher_primary(pg_grammar_reader* reader, int li
 			if (first < 0):
 				free(charset)
 				return 0
-			if ((index < length - 2) & (text[index] == '-')):
+			if ((index < length - 2) && (text[index] == '-')):
 				index = index + 1
 				int last = pg_reader_charset_char(reader, text, &index, length - 1)
 				if (last < first):
@@ -545,7 +547,21 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 		return 0
 	pg_grammar* grammar = pg_grammar_new(parser_name)
 	while (reader.token_kind != pg_reader_token_eof()):
-		if (pg_reader_is_name(reader, c"token")):
+		if (pg_reader_is_name(reader, c"mode")):
+			pg_reader_next(reader)
+			char* name = pg_reader_take_name(reader)
+			if (name == 0):
+				return 0
+			if (strcmp(name, c"streaming") == 0):
+				grammar.mode = pg_grammar_mode_streaming()
+			else if (strcmp(name, c"ast") == 0):
+				grammar.mode = pg_grammar_mode_ast()
+			else:
+				pg_reader_error(reader, c"unknown parser mode", c"streaming or ast")
+				free(name)
+				return 0
+			free(name)
+		else if (pg_reader_is_name(reader, c"token")):
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
 			if (name == 0):
@@ -597,7 +613,7 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
 			char* text = pg_reader_take_string(reader)
-			if ((name == 0) | (text == 0)):
+			if ((name == 0) || (text == 0)):
 				return 0
 			pg_grammar_add_literal(grammar, name, text)
 		else if (pg_reader_is_name(reader, c"start")):
@@ -621,14 +637,14 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
 			char* sync = pg_reader_take_name(reader)
-			if ((name == 0) | (sync == 0)):
+			if ((name == 0) || (sync == 0)):
 				return 0
 			pg_recover_def* recover = pg_grammar_add_recover(grammar, name, sync)
 			while ((reader.token_kind == pg_reader_token_name()) & (pg_reader_is_top_level(reader) == 0)):
 				pg_recover_add_skip(recover, reader.token)
 				pg_reader_next(reader)
 		else:
-			pg_reader_error(reader, c"unknown grammar directive", c"token, skip, fragment, literal, start or rule")
+			pg_reader_error(reader, c"unknown grammar directive", c"mode, token, skip, fragment, literal, start or rule")
 			return 0
 	if (grammar.rules.length == 0):
 		pg_reader_error(reader, c"grammar has no rules", c"rule")

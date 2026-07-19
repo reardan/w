@@ -15,11 +15,11 @@ import lib.file
 
 
 int asm_hex_digit(int c):
-	if (c >= '0' & c <= '9'):
+	if (c >= '0' && c <= '9'):
 		return c - '0'
-	if (c >= 'a' & c <= 'f'):
+	if (c >= 'a' && c <= 'f'):
 		return c - 'a' + 10
-	if (c >= 'A' & c <= 'F'):
+	if (c >= 'A' && c <= 'F'):
 		return c - 'A' + 10
 	return -1
 
@@ -63,7 +63,7 @@ void asm_assert_bytes_equal(char* context, char* want, int want_length, char* go
 	int equal = want_length == got_length
 	int diff = -1
 	int i = 0
-	while (i < want_length & i < got_length):
+	while (i < want_length && i < got_length):
 		if ((want[i] & 255) != (got[i] & 255)):
 			if (diff < 0):
 				diff = i
@@ -114,7 +114,7 @@ list[asm_corpus_entry] asm_corpus_load(char* path):
 		if (line[0] == '#'):
 			continue
 		int bar = 0
-		while (line[bar] != 0 & line[bar] != '|'):
+		while (line[bar] != 0 && line[bar] != '|'):
 			bar = bar + 1
 		int ok = 1
 		if (line[bar] != '|'):

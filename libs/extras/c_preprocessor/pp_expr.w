@@ -82,11 +82,11 @@ cpp_token* cpp_expr_identifiers_to_zero(cpp_token* token):
 
 
 int cpp_expr_hex_value(int c):
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return c - '0'
-	if ((c >= 'a') & (c <= 'f')):
+	if ((c >= 'a') && (c <= 'f')):
 		return c - 'a' + 10
-	if ((c >= 'A') & (c <= 'F')):
+	if ((c >= 'A') && (c <= 'F')):
 		return c - 'A' + 10
 	return -1
 
@@ -95,7 +95,7 @@ int cpp_expr_parse_number(char* text):
 	int base = 10
 	int i = 0
 	if (text[0] == '0'):
-		if ((text[1] == 'x') | (text[1] == 'X')):
+		if ((text[1] == 'x') || (text[1] == 'X')):
 			base = 16
 			i = 2
 		else:
@@ -106,9 +106,9 @@ int cpp_expr_parse_number(char* text):
 		int digit = -1
 		if (base == 16):
 			digit = cpp_expr_hex_value(text[i])
-		else if ((text[i] >= '0') & (text[i] <= '9')):
+		else if ((text[i] >= '0') && (text[i] <= '9')):
 			digit = text[i] - '0'
-		if ((digit < 0) | (digit >= base)):
+		if ((digit < 0) || (digit >= base)):
 			return value
 		value = value * base + digit
 		i = i + 1

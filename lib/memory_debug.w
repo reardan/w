@@ -48,6 +48,14 @@ int debug_tbl_capacity
 int debug_guard_warned     # already printed the "guard pages unsupported" notice
 
 
+# mmap reports failure as a small negative (errno-shaped) value, the same
+# convention debug_malloc already checks a few lines above -- never a null
+# pointer, so an unchecked result silently becomes a bogus "valid" pointer
+# that segfaults on first use with no diagnostic at all.
+int debug_tbl_mmap_failed(int addr):
+	return (addr < 0) && (addr > -4096)
+
+
 void debug_tbl_ensure_capacity():
 	if (debug_tbl_count < debug_tbl_capacity):
 		return
@@ -56,11 +64,19 @@ void debug_tbl_ensure_capacity():
 		new_capacity = debug_tbl_capacity * 2
 	int bytes = new_capacity * __word_size__
 	int flags = 34 /* MAP_PRIVATE|MAP_ANONYMOUS */
-	int* new_ptr = cast(int*, mmap(0, bytes, 3, flags))
-	int* new_region = cast(int*, mmap(0, bytes, 3, flags))
-	int* new_region_size = cast(int*, mmap(0, bytes, 3, flags))
-	int* new_size = cast(int*, mmap(0, bytes, 3, flags))
-	int* new_freed = cast(int*, mmap(0, bytes, 3, flags))
+	int r_ptr = mmap(0, bytes, 3, flags)
+	int r_region = mmap(0, bytes, 3, flags)
+	int r_region_size = mmap(0, bytes, 3, flags)
+	int r_size = mmap(0, bytes, 3, flags)
+	int r_freed = mmap(0, bytes, 3, flags)
+	if (debug_tbl_mmap_failed(r_ptr) | debug_tbl_mmap_failed(r_region) | debug_tbl_mmap_failed(r_region_size) | debug_tbl_mmap_failed(r_size) | debug_tbl_mmap_failed(r_freed)):
+		st_write_cstr(c"memory_debug: out of memory (bookkeeping table mmap failed)\x0a")
+		exit(1)
+	int* new_ptr = cast(int*, r_ptr)
+	int* new_region = cast(int*, r_region)
+	int* new_region_size = cast(int*, r_region_size)
+	int* new_size = cast(int*, r_size)
+	int* new_freed = cast(int*, r_freed)
 	int i = 0
 	while (i < debug_tbl_count):
 		new_ptr[i] = debug_tbl_ptr[i]
@@ -136,7 +152,7 @@ void* debug_malloc(int size):
 	int region_size = (payload_pages + 1) * page
 	int flags = 34 /* MAP_PRIVATE|MAP_ANONYMOUS */
 	int region = mmap(0, region_size, 3, flags)
-	if ((region < 0) & (region > -4096)):
+	if ((region < 0) && (region > -4096)):
 		st_write_cstr(c"memory_debug: out of memory (mmap failed)\x0a")
 		return cast(void*, 0)
 	int guard_addr = region + payload_pages * page

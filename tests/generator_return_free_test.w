@@ -42,7 +42,7 @@ int return_through_inner_while(int n):
 	for int x in counter(n):
 		int i = 0
 		while (i < 10):
-			if ((x == 1) & (i == 3)):
+			if ((x == 1) && (i == 3)):
 				return x * 10 + i
 			i = i + 1
 	return 0 - 1
@@ -140,7 +140,7 @@ int vsz_pages():
 	asserts(c"/proc/self/statm is readable", cast(int, text) != 0)
 	int pages = 0
 	int i = 0
-	while ((text[i] >= '0') & (text[i] <= '9')):
+	while ((text[i] >= '0') && (text[i] <= '9')):
 		pages = pages * 10 + (text[i] - '0')
 		i = i + 1
 	free(text)

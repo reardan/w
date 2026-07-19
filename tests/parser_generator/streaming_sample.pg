@@ -1,0 +1,22 @@
+parser streaming_sample
+mode streaming
+
+skip WS = [ \t\r\n]+
+
+token IDENT letters
+token NUMBER digits
+literal EQUALS "="
+literal SEMI ";"
+literal MINUS "-"
+literal LBRACE "{"
+literal RBRACE "}"
+
+start document
+
+rule value = MINUS* NUMBER | IDENT
+rule numbers = NUMBER+
+rule block = LBRACE numbers RBRACE
+rule assignment = IDENT EQUALS value SEMI
+rule statement = assignment | block
+rule statement_list = statement statement_list |
+rule document = statement_list EOF

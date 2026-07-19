@@ -416,7 +416,7 @@ int _win_start(int stub_argc, int stub_argv):
 	int i = 0
 	int b = 0
 	while (cmd[i] != 0):
-		while ((cmd[i] == ' ') | (cmd[i] == 9)):
+		while ((cmd[i] == ' ') || (cmd[i] == 9)):
 			i = i + 1
 		if (cmd[i] == 0):
 			break
@@ -427,7 +427,7 @@ int _win_start(int stub_argc, int stub_argv):
 			if (cmd[i] == 34): /* double quote toggles word grouping */
 				quoted = 1 - quoted
 				i = i + 1
-			else if ((quoted == 0) & ((cmd[i] == ' ') | (cmd[i] == 9))):
+			else if ((quoted == 0) && ((cmd[i] == ' ') || (cmd[i] == 9))):
 				break
 			else:
 				buf[b] = cmd[i]

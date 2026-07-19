@@ -1465,7 +1465,7 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 		char* sid = malloc(32)
 		int rok = random_bytes(rnd, 32)
 		int sok = random_bytes(sid, 32)
-		if ((rok == 0) | (sok == 0)):
+		if ((rok == 0) || (sok == 0)):
 			free(rnd)
 			free(sid)
 			tls_wipe(priv, 32)

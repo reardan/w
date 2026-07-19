@@ -69,7 +69,7 @@ int struct_value_ctor_ready():
 	if (nextc != '('):
 		return 0
 	int c = token[0]
-	if (((('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) | (c == '_')) == 0):
+	if (((('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || (c == '_')) == 0):
 		return 0
 	int base = type_lookup(token)
 	if (base < 0):

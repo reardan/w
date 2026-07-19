@@ -33,7 +33,7 @@ import libs.asm.format
 int asm_text_has_sequence(char* text):
 	int i = 0
 	while (text[i] != 0):
-		if (text[i] == ' ' & text[i + 1] == ';' & text[i + 2] == ' '):
+		if (text[i] == ' ' && text[i + 1] == ';' && text[i + 2] == ' '):
 			return 1
 		i = i + 1
 	return 1 == 2
@@ -140,7 +140,7 @@ void test_wv2_64_encode_identity():
 			char* here = text + func_off + pos
 			asm_insn insn
 			int n = asm_x86_decode(here, sym.size - pos, sym.value + pos, 8, &insn)
-			if (strcmp(insn.mnemonic, c"call") == 0 & insn.branch_target > sym.value + pos + n & insn.branch_target <= sym.value + sym.size):
+			if (strcmp(insn.mnemonic, c"call") == 0 & insn.branch_target > sym.value + pos + n && insn.branch_target <= sym.value + sym.size):
 				# re-encode the call itself, then skip the inline data.
 				asm_buffer* eb = asm_buffer_new()
 				asm_x86_encode(eb, &insn)

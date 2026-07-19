@@ -60,9 +60,9 @@ int pg_lexer_matcher_number(char* input, int index):
 		index = index + 1
 		while (pg_lexer_is_alnum(input[index])):
 			index = index + 1
-	if ((input[index] == 'e') | (input[index] == 'E')):
+	if ((input[index] == 'e') || (input[index] == 'E')):
 		index = index + 1
-		if ((input[index] == '+') | (input[index] == '-')):
+		if ((input[index] == '+') || (input[index] == '-')):
 			index = index + 1
 		while (pg_lexer_is_digit(input[index])):
 			index = index + 1
@@ -111,9 +111,9 @@ int pg_lexer_matcher_inline_tabs(char* input, int index):
 
 
 int pg_lexer_matcher_c_control(char* input, int index):
-	if ((input[index] <= 0) | (input[index] >= 32)):
+	if ((input[index] <= 0) || (input[index] >= 32)):
 		return 0
-	if ((input[index] == 9) | (input[index] == 10) | (input[index] == 13)):
+	if ((input[index] == 9) || (input[index] == 10) || (input[index] == 13)):
 		return 0
 	return 1
 
@@ -122,18 +122,18 @@ int pg_lexer_matcher_line_comment(char* input, int index):
 	if (input[index] != '#'):
 		return 0
 	int start = index
-	while ((input[index] != 0) & (input[index] != 10)):
+	while ((input[index] != 0) && (input[index] != 10)):
 		index = index + 1
 	return index - start
 
 
 int pg_lexer_matcher_block_comment(char* input, int index):
-	if ((input[index] != '/') | (input[index + 1] != '*')):
+	if ((input[index] != '/') || (input[index + 1] != '*')):
 		return 0
 	int start = index
 	index = index + 2
 	while (input[index] != 0):
-		if ((input[index] == '*') & (input[index + 1] == '/')):
+		if ((input[index] == '*') && (input[index + 1] == '/')):
 			index = index + 2
 			return index - start
 		index = index + 1
@@ -141,19 +141,19 @@ int pg_lexer_matcher_block_comment(char* input, int index):
 
 
 int pg_lexer_matcher_c_line_comment(char* input, int index):
-	if ((input[index] != '/') | (input[index + 1] != '/')):
+	if ((input[index] != '/') || (input[index + 1] != '/')):
 		return 0
 	int start = index
-	while ((input[index] != 0) & (input[index] != 10)):
+	while ((input[index] != 0) && (input[index] != 10)):
 		index = index + 1
 	return index - start
 
 
 int pg_lexer_matcher_sql_line_comment(char* input, int index):
-	if ((input[index] != '-') | (input[index + 1] != '-')):
+	if ((input[index] != '-') || (input[index + 1] != '-')):
 		return 0
 	int start = index
-	while ((input[index] != 0) & (input[index] != 10)):
+	while ((input[index] != 0) && (input[index] != 10)):
 		index = index + 1
 	return index - start
 
@@ -165,7 +165,7 @@ int pg_lexer_matcher_c_preprocessor(char* input, int index):
 	while (input[index] != 0):
 		if (input[index] == 10):
 			return index - start
-		if ((input[index] == 92) & (input[index + 1] == 10)):
+		if ((input[index] == 92) && (input[index + 1] == 10)):
 			index = index + 2
 		else:
 			index = index + 1
@@ -173,9 +173,9 @@ int pg_lexer_matcher_c_preprocessor(char* input, int index):
 
 
 int pg_lexer_c_string_prefix(char* input, int index):
-	if ((input[index] == 'u') & (input[index + 1] == '8') & (input[index + 2] == '"')):
+	if ((input[index] == 'u') && (input[index + 1] == '8') && (input[index + 2] == '"')):
 		return 2
-	if (((input[index] == 'u') | (input[index] == 'U') | (input[index] == 'L')) & (input[index + 1] == '"')):
+	if (((input[index] == 'u') || (input[index] == 'U') || (input[index] == 'L')) && (input[index + 1] == '"')):
 		return 1
 	if (input[index] == '"'):
 		return 0
@@ -188,7 +188,7 @@ int pg_lexer_matcher_c_string(char* input, int index):
 		return 0
 	int start = index
 	index = index + prefix + 1
-	while ((input[index] != 0) & (input[index] != '"') & (input[index] != 10)):
+	while ((input[index] != 0) && (input[index] != '"') && (input[index] != 10)):
 		if (input[index] == 92):
 			index = index + 1
 			if (input[index] == 0):
@@ -200,7 +200,7 @@ int pg_lexer_matcher_c_string(char* input, int index):
 
 
 int pg_lexer_c_char_prefix(char* input, int index):
-	if (((input[index] == 'u') | (input[index] == 'U') | (input[index] == 'L')) & (input[index + 1] == 39)):
+	if (((input[index] == 'u') || (input[index] == 'U') || (input[index] == 'L')) && (input[index + 1] == 39)):
 		return 1
 	if (input[index] == 39):
 		return 0
@@ -213,7 +213,7 @@ int pg_lexer_matcher_c_char_literal(char* input, int index):
 		return 0
 	int start = index
 	index = index + prefix + 1
-	while ((input[index] != 0) & (input[index] != 39) & (input[index] != 10)):
+	while ((input[index] != 0) && (input[index] != 39) && (input[index] != 10)):
 		if (input[index] == 92):
 			index = index + 1
 			if (input[index] == 0):
@@ -233,8 +233,8 @@ int pg_lexer_matcher_c_number(char* input, int index):
 		index = index + 1
 	while (pg_lexer_is_alnum(input[index]) | (input[index] == '.')):
 		index = index + 1
-	if ((input[index] == '+') | (input[index] == '-')):
-		if ((input[index - 1] == 'e') | (input[index - 1] == 'E') | (input[index - 1] == 'p') | (input[index - 1] == 'P')):
+	if ((input[index] == '+') || (input[index] == '-')):
+		if ((input[index - 1] == 'e') || (input[index - 1] == 'E') || (input[index - 1] == 'p') || (input[index - 1] == 'P')):
 			index = index + 1
 			while (pg_lexer_is_alnum(input[index]) | (input[index] == '.')):
 				index = index + 1
@@ -246,7 +246,7 @@ int pg_lexer_matcher_c_number(char* input, int index):
 # right after the closing delimiter (or the end of input).
 int pg_lexer_skip_quoted(char* input, int index, int delimiter):
 	index = index + 1
-	while ((input[index] != 0) & (input[index] != delimiter)):
+	while ((input[index] != 0) && (input[index] != delimiter)):
 		if (input[index] == 92):
 			index = index + 1
 			if (input[index] == 0):
@@ -310,15 +310,15 @@ int pg_lexer_match_template_string(char* input, int index):
 
 int pg_lexer_matcher_string(char* input, int index):
 	int prefix = 0
-	if (((input[index] == 's') | (input[index] == 'c')) & (input[index + 1] == '"')):
+	if (((input[index] == 's') || (input[index] == 'c')) && (input[index + 1] == '"')):
 		prefix = 1
-	else if ((input[index] == 'f') & (input[index + 1] == '"')):
+	else if ((input[index] == 'f') && (input[index + 1] == '"')):
 		return pg_lexer_match_template_string(input, index)
 	else if (input[index] != '"'):
 		return 0
 	int start = index
 	index = index + prefix + 1
-	while ((input[index] != 0) & (input[index] != '"')):
+	while ((input[index] != 0) && (input[index] != '"')):
 		if (input[index] == 92):
 			index = index + 1
 			if (input[index] == 0):
@@ -334,7 +334,7 @@ int pg_lexer_matcher_char_literal(char* input, int index):
 		return 0
 	int start = index
 	index = index + 1
-	while ((input[index] != 0) & (input[index] != 39)):
+	while ((input[index] != 0) && (input[index] != 39)):
 		if (input[index] == 92):
 			index = index + 1
 			if (input[index] == 0):
@@ -372,10 +372,10 @@ int pg_lexer_matcher_doubled_double_quote_string(char* input, int index):
 
 int pg_lexer_matcher_operator(char* input, int index):
 	int c = input[index]
-	if ((c == '<') | (c == '=') | (c == '>') | (c == '|') | (c == '&') | (c == '!')):
+	if ((c == '<') || (c == '=') || (c == '>') || (c == '|') || (c == '&') || (c == '!')):
 		int start = index
-		while ((input[index] == '<') | (input[index] == '=') | (input[index] == '>') |
-				(input[index] == '|') | (input[index] == '&') | (input[index] == '!')):
+		while ((input[index] == '<') || (input[index] == '=') || (input[index] == '>') ||
+				(input[index] == '|') || (input[index] == '&') || (input[index] == '!')):
 			index = index + 1
 		return index - start
 	return 0

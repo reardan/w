@@ -111,7 +111,7 @@ int operator_definition_starts_here():
 			(c0 == '&') | (c0 == '|') | (c0 == '^') | (c0 == '~') | (c0 == '=')
 	if (is_op == 0):
 		return 0
-	if ((c0 == '=') & (token[1] == 0)):
+	if ((c0 == '=') && (token[1] == 0)):
 		return 0
 	return 1
 

@@ -89,14 +89,14 @@ int frame_reader_fill(frame_reader* r):
 int frame_find_header_end(frame_reader* r):
 	int i = r.offset
 	while (i + 3 < r.length):
-		if ((r.buffer[i] == 13) & (r.buffer[i + 1] == 10) & (r.buffer[i + 2] == 13) & (r.buffer[i + 3] == 10)):
+		if ((r.buffer[i] == 13) && (r.buffer[i + 1] == 10) && (r.buffer[i + 2] == 13) && (r.buffer[i + 3] == 10)):
 			return i + 4
 		i = i + 1
 	return 0 - 1
 
 
 int frame_char_lower(int c):
-	if ((c >= 'A') & (c <= 'Z')):
+	if ((c >= 'A') && (c <= 'Z')):
 		return c + 32
 	return c
 
@@ -122,11 +122,11 @@ int frame_parse_content_length(frame_reader* r, int header_end):
 	while (i < header_end):
 		int after_name = frame_match_header_name(r, i, header_end, c"content-length:")
 		if (after_name >= 0):
-			while ((after_name < header_end) & (r.buffer[after_name] == ' ')):
+			while ((after_name < header_end) && (r.buffer[after_name] == ' ')):
 				after_name = after_name + 1
 			int value = 0
 			int digits = 0
-			while ((after_name < header_end) & (r.buffer[after_name] >= '0') & (r.buffer[after_name] <= '9')):
+			while ((after_name < header_end) && (r.buffer[after_name] >= '0') && (r.buffer[after_name] <= '9')):
 				value = value * 10 + r.buffer[after_name] - '0'
 				digits = digits + 1
 				after_name = after_name + 1

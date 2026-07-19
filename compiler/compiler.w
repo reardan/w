@@ -6,6 +6,7 @@ import compiler.type_table
 import compiler.symbol_table
 import grammar
 import compiler.test_registry
+import lib.sha256
 
 
 void file_not_found_error():
@@ -32,6 +33,14 @@ int quiet_mode
 int deps_mode
 char* deps_paths
 int deps_count
+
+# 'w defhash' scoping flags, declared here (rather than down with the
+# rest of the defhash machinery, next to deps_dump/deps_main below) so
+# compile_save can reference defhash_depth -- compile_save is defined
+# well before that point in this file. See the big defhash doc comment
+# by defhash_main for what these mean.
+int defhash_closure_mode
+int defhash_depth
 
 
 void deps_record(char* path):
@@ -255,8 +264,16 @@ void compile_save(char* fn):
 	if (verbosity >= 0):
 		print_string(c"compiling ", fn)
 
+	# defhash's root-vs-import scoping (defhash_note, above) reads this:
+	# 0 while the tokens just parsed belong directly to a command-line
+	# root argument, >0 while inside an import's own nested compile.
+	# Bracketing compile_file() here covers every import, direct or
+	# transitive (including the auto-imported container-runtime closure,
+	# which reaches this same path through import_module).
+	defhash_depth = defhash_depth + 1
 	compile_file(fn)
 	close(file)
+	defhash_depth = defhash_depth - 1
 
 	filename = old_filename
 	file = old_file
@@ -479,11 +496,15 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# reliance (structures/hash_table.w and friends lean on each other's
 	# re-exports by design; that is compiler-internal plumbing, not a
 	# user file --imports is meant to audit). --bool-ops stays quiet here
-	# too: the closure compiles into every program, so its own
-	# comparison-result '&'/'|' sites (lib/memory_freelist.w,
-	# lib/stack_trace.w, ...) would spam every opt-in check of an
-	# unrelated file — they are stage-2 sweep territory, not something a
-	# user run should report. Suppress, then restore.
+	# too: the closure compiles into every program, and its remaining
+	# '&'/'|' sites (lib/memory_freelist.w, lib/stack_trace.w, ...) are
+	# deliberate call-containing joins the wave-2 sweep left in place —
+	# reporting them would spam every --bool-ops check of an unrelated
+	# file with sites that file's author cannot fix. The unconditional
+	# default hint (operand_is_bool_condition/operand_is_pure) needs no
+	# such guard: every call-free site in the closure was already
+	# converted, so it has nothing left to warn about here. Suppress
+	# --bool-ops's extra reporting, then restore.
 	int import_check_saved = check_imports_mode
 	int bool_ops_check_saved = check_bool_ops_mode
 	check_imports_mode = 0
@@ -569,10 +590,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# On-demand runtimes for the to_json/from_json builtins and f"..."
 	# template strings: imported after all user files so the modules'
 	# code lands at a top-level boundary. Like the auto-import closure
-	# above, these are compiler-injected modules, so the opt-in
-	# --bool-ops hint stays quiet while they compile (their own '&'/'|'
-	# style is stage-2 sweep territory, and structures/prelude.w would
-	# otherwise warn on every opt-in check of any file).
+	# above, these are compiler-injected modules, so --bool-ops's extra
+	# call-containing reporting stays quiet while they compile — their
+	# remaining '&'/'|' sites are deliberate (structures/prelude.w and
+	# friends), and would otherwise warn on every --bool-ops check of any
+	# file regardless of what that file itself contains.
 	int bool_ops_finish_saved = check_bool_ops_mode
 	check_bool_ops_mode = 0
 	json_codec_finish_import()
@@ -659,10 +681,12 @@ int check_main(int argc, int argv):
 			check_imports_mode = 1
 			i = i + 1
 		else if (strcmp(*arg, c"--bool-ops") == 0):
-			# Opt-in widened bool-bitwise hint: also warn when '&'/'|'
-			# joins comparison-result bool operands in an if/while
-			# condition (grammar/binary_op.w, operand_is_bool_condition).
-			# Off by default.
+			# Opt-in superset of the bool-bitwise condition hint: also
+			# warn when an operand contains a function call, where
+			# '&&'/'||' short-circuiting could skip a call the current
+			# '&'/'|' code always executes (grammar/binary_op.w,
+			# operand_is_pure). The default hint already fires for
+			# call-free bool/comparison operands. Off by default.
 			check_bool_ops_mode = 1
 			i = i + 1
 		else:
@@ -743,6 +767,349 @@ int deps_main(int argc, int argv):
 	deps_mode = 1
 	link_impl(argc, argv, i, 1)
 	deps_dump(json)
+	return 0
+
+
+/*
+w defhash [--closure] [x64|arm64|arm64_darwin|win64] <file.w>...
+
+Compiles like 'w check' (output to /dev/null), then prints one NDJSON
+record per top-level definition (function, global variable, struct,
+union, enum, type alias) declared directly in the root file(s) named on
+the command line: {"file", "name", "kind", "hash", "refs"}. "hash" is a
+sha256 over the definition's own token stream -- kind+text pairs,
+whitespace and comments excluded -- so a reformatting or comment-only
+edit leaves it unchanged while any real content edit changes it. "refs"
+lists the OTHER recorded definitions' names that appear as an identifier
+token inside the definition's span (deduplicated, sorted), the
+approximation of "symbols this definition depends on" described in
+docs/projects/build_system_next.md's 4a.
+
+Scope: by default only definitions declared directly in the command-line
+root file(s) are recorded -- not their imports, and not the
+auto-imported container-runtime closure every program pulls in. --closure
+widens that to every definition in the whole compiled program, matching
+'deps' full transitive-closure scope. Root-vs-import scoping is tracked
+by defhash_depth (see compile_save below) rather than by comparing
+paths: 0 while the tokens just parsed belong directly to a root
+argument, >0 while inside an import's own nested compile.
+
+Exclusions (documented, not bugs): generic struct/function definitions
+and 'operator' overload definitions are never recorded -- the scan-ahead
+and re-parse machinery those go through (grammar/generic.w,
+grammar/operator_overload.w) never reaches defhash_note's call sites, so
+their bodies are invisible to defhash today. A struct/union field name or
+enum constant that happens to share text with another top-level
+definition's name is indistinguishable, in this token-stream scan, from a
+real reference to it, and so can appear as a false-positive ref; the
+scan also does not special-case shadowing (a parameter or local that
+reuses another definition's name reads as a reference to it). "Source
+order" is the order definitions were recorded in, which is exactly
+file-order for the default (single root, no --closure) case; --closure
+interleaves recording across files in compile-visitation order rather
+than a stable (file, offset) sort.
+*/
+
+
+# defhash_closure_mode/defhash_depth are declared near deps_mode above,
+# where compile_save can see them; everything else defhash-specific
+# follows here.
+char* defhash_names
+char* defhash_kinds
+char* defhash_file_indexes
+char* defhash_lines
+char* defhash_columns
+char* defhash_starts
+char* defhash_ends
+int defhash_count
+
+
+# Called by the grammar's top-level declaration recognizers (struct,
+# union, enum and type-alias declarations in their own grammar/*.w
+# files; the plain function/global branch in grammar/program.w) once a
+# definition's full span is known. A no-op whenever defhash_mode is off,
+# so this is safe to call unconditionally -- and every one of those call
+# sites does, since 'kind' is only known at the very end of a successful
+# parse anyway.
+void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset):
+	if (defhash_mode == 0):
+		return
+	if ((defhash_closure_mode == 0) && (defhash_depth != 0)):
+		return
+	int max_defs = 8000
+	if (defhash_names == 0):
+		defhash_names = malloc(max_defs * __word_size__)
+		defhash_kinds = malloc(max_defs * __word_size__)
+		defhash_file_indexes = malloc(max_defs * __word_size__)
+		defhash_lines = malloc(max_defs * __word_size__)
+		defhash_columns = malloc(max_defs * __word_size__)
+		defhash_starts = malloc(max_defs * __word_size__)
+		defhash_ends = malloc(max_defs * __word_size__)
+	assert1(defhash_count < max_defs)
+	save_ptr(defhash_names + defhash_count * __word_size__, cast(int, name))
+	save_ptr(defhash_kinds + defhash_count * __word_size__, cast(int, kind))
+	save_ptr(defhash_file_indexes + defhash_count * __word_size__, file_index)
+	save_ptr(defhash_lines + defhash_count * __word_size__, line)
+	save_ptr(defhash_columns + defhash_count * __word_size__, column)
+	save_ptr(defhash_starts + defhash_count * __word_size__, start_offset)
+	save_ptr(defhash_ends + defhash_count * __word_size__, end_offset)
+	defhash_count = defhash_count + 1
+
+
+# Classification tag for one token's text, used only to keep the hashed
+# byte stream unambiguous (defhash_process_span appends "<kind><len>:
+# <text>" per token) -- not a full lexical classification. Keywords and
+# identifiers deliberately share 'i': the token TEXT already
+# distinguishes 'if' from a variable named 'if_ready', and nothing
+# downstream needs the finer distinction.
+char* defhash_token_kind(char* tok):
+	int c0 = tok[0] & 255
+	if (c0 == 0):
+		return c"e"
+	if (('0' <= c0) && (c0 <= '9')):
+		return c"n"
+	if (c0 == '"'):
+		return c"s"
+	if (c0 == 39):
+		return c"h"
+	if (((c0 == 's') || (c0 == 'c') || (c0 == 'f')) && (tok[1] == '"')):
+		return c"s"
+	if ((('a' <= c0) && (c0 <= 'z')) || (('A' <= c0) && (c0 <= 'Z')) || (c0 == '_')):
+		return c"i"
+	return c"o"
+
+
+# Dynamic byte buffer accumulating one span's length-prefixed token
+# stream before it is fed to sha256() in one shot.
+char* defhash_buf
+int defhash_buf_size
+int defhash_buf_pos
+
+
+void defhash_buf_reset():
+	defhash_buf_pos = 0
+
+
+void defhash_buf_ensure(int n):
+	if (defhash_buf_size == 0):
+		defhash_buf_size = 256
+		defhash_buf = malloc(defhash_buf_size)
+	while (defhash_buf_size <= defhash_buf_pos + n):
+		int old_size = defhash_buf_size
+		defhash_buf_size = defhash_buf_size << 1
+		defhash_buf = realloc(defhash_buf, old_size, defhash_buf_size)
+
+
+void defhash_buf_append_n(char* s, int len):
+	defhash_buf_ensure(len)
+	int i = 0
+	while (i < len):
+		defhash_buf[defhash_buf_pos] = s[i]
+		defhash_buf_pos = defhash_buf_pos + 1
+		i = i + 1
+
+
+void defhash_buf_append(char* s):
+	defhash_buf_append_n(s, strlen(s))
+
+
+# refs accumulator for the definition currently being processed: borrowed
+# pointers are never stored here (defhash_refs_add clones), so the
+# buffer is reused across definitions by just resetting the count.
+char* defhash_refs_buf
+int defhash_refs_cap
+int defhash_refs_count
+
+
+void defhash_refs_reset():
+	if (defhash_refs_buf == 0):
+		defhash_refs_cap = 512
+		defhash_refs_buf = malloc(defhash_refs_cap * __word_size__)
+	defhash_refs_count = 0
+
+
+int defhash_refs_contains(char* name):
+	int i = 0
+	while (i < defhash_refs_count):
+		if (strcmp(cast(char*, load_ptr(defhash_refs_buf + i * __word_size__)), name) == 0):
+			return 1
+		i = i + 1
+	return 0
+
+
+void defhash_refs_add(char* name):
+	if (defhash_refs_contains(name)):
+		return
+	assert1(defhash_refs_count < defhash_refs_cap)
+	save_ptr(defhash_refs_buf + defhash_refs_count * __word_size__, cast(int, strclone(name)))
+	defhash_refs_count = defhash_refs_count + 1
+
+
+# Insertion sort: refs lists are short (a handful of names), so this
+# stays cheap and needs no dependency on a generic sort helper.
+void defhash_refs_sort():
+	int i = 1
+	while (i < defhash_refs_count):
+		char* key = cast(char*, load_ptr(defhash_refs_buf + i * __word_size__))
+		int j = i - 1
+		# '&&' is load-bearing here, not just style: with '&' (no
+		# short-circuit) the strcmp side would still evaluate at j == -1,
+		# reading one slot before defhash_refs_buf.
+		while ((j >= 0) && (strcmp(cast(char*, load_ptr(defhash_refs_buf + j * __word_size__)), key) > 0)):
+			save_ptr(defhash_refs_buf + (j + 1) * __word_size__, load_ptr(defhash_refs_buf + j * __word_size__))
+			j = j - 1
+		save_ptr(defhash_refs_buf + (j + 1) * __word_size__, cast(int, key))
+		i = i + 1
+
+
+# 1 when 'name' matches some OTHER recorded definition's name (a linear
+# scan over defhash_count; defhash runs are small enough -- a single
+# file by default, the whole program only under --closure -- that this
+# stays well under the cost of the tokenizing it runs alongside).
+int defhash_is_known_definition(char* name):
+	int i = 0
+	while (i < defhash_count):
+		if (strcmp(cast(char*, load_ptr(defhash_names + i * __word_size__)), name) == 0):
+			return 1
+		i = i + 1
+	return 0
+
+
+# Re-tokenize definition `idx`'s recorded [start, end) byte span, on a
+# freshly opened fd seeked to its start offset (mirrors
+# grammar/generic.w's generic_reparse_start, minus the outer-state
+# save/restore: defhash_dump runs after link_impl has fully finished, so
+# nothing downstream reads tokenizer globals again). Leaves
+# defhash_buf/defhash_refs_buf holding the span's hashable byte stream
+# and reference list.
+void defhash_process_span(int idx):
+	int file_index = load_ptr(defhash_file_indexes + idx * __word_size__)
+	char* path = debug_file_name(file_index)
+	int start_offset = load_ptr(defhash_starts + idx * __word_size__)
+	int end_offset = load_ptr(defhash_ends + idx * __word_size__)
+	char* self_name = cast(char*, load_ptr(defhash_names + idx * __word_size__))
+
+	defhash_buf_reset()
+	defhash_refs_reset()
+
+	int f = open(path, 0, 511)
+	if (f < 0):
+		print_error(c"defhash: cannot reopen '")
+		print_error(path)
+		print_error(c"' to hash a definition\x0a")
+		exit(1)
+	getchar_reset(f)
+	getchar_seek(f, start_offset)
+	file = f
+	filename = path
+	byte_offset = start_offset
+	line_number = 0
+	column_number = 0
+	tab_level = 0
+	token_newline = 0
+	nextc = 0
+	nextc = get_character()
+	defhash_rehash_mode = 1
+	get_token()
+	int prev_was_dot = 0
+	while ((token[0] != 0) && (token_start_offset < end_offset)):
+		char* kind = defhash_token_kind(token)
+		defhash_buf_append(kind)
+		char* len_digits = itoa(strlen(token))
+		defhash_buf_append(len_digits)
+		free(len_digits)
+		defhash_buf_append(c":")
+		defhash_buf_append(token)
+		if ((strcmp(kind, c"i") == 0) && (prev_was_dot == 0) && (strcmp(token, self_name) != 0)):
+			if (defhash_is_known_definition(token)):
+				defhash_refs_add(token)
+		prev_was_dot = strcmp(token, c".") == 0
+		get_token()
+	defhash_rehash_mode = 0
+	close(f)
+	defhash_refs_sort()
+
+
+char* defhash_hex_digits(char* digest):
+	char* hex = malloc(65)
+	int i = 0
+	while (i < 32):
+		hex[i * 2] = diag_hex_digit((digest[i] >> 4) & 15)
+		hex[i * 2 + 1] = diag_hex_digit(digest[i] & 15)
+		i = i + 1
+	hex[64] = 0
+	return hex
+
+
+void defhash_emit(int idx, char* cwd, int cwd_len):
+	char* name = cast(char*, load_ptr(defhash_names + idx * __word_size__))
+	char* kind = cast(char*, load_ptr(defhash_kinds + idx * __word_size__))
+	int file_index = load_ptr(defhash_file_indexes + idx * __word_size__)
+	char* path = debug_file_name(file_index)
+	char* shown = path
+	if (starts_with(path, cwd)):
+		if (path[cwd_len] == '/'):
+			shown = path + cwd_len + 1
+
+	defhash_process_span(idx)
+	char* digest = malloc(32)
+	sha256(defhash_buf, defhash_buf_pos, digest)
+	char* hex = defhash_hex_digits(digest)
+	free(digest)
+
+	diag_write_cstr(c"{")
+	diag_write_json_field(c"file", shown)
+	diag_write_cstr(c", ")
+	diag_write_json_field(c"name", name)
+	diag_write_cstr(c", ")
+	diag_write_json_field(c"kind", kind)
+	diag_write_cstr(c", ")
+	diag_write_json_field(c"hash", hex)
+	diag_write_cstr(c", ")
+	diag_write_json_string(c"refs")
+	diag_write_cstr(c": [")
+	int j = 0
+	while (j < defhash_refs_count):
+		if (j > 0):
+			diag_write_cstr(c", ")
+		diag_write_json_string(cast(char*, load_ptr(defhash_refs_buf + j * __word_size__)))
+		j = j + 1
+	diag_write_cstr(c"]}\x0a")
+	diag_flush()
+	free(hex)
+
+
+void defhash_dump():
+	int max_path_size = 4096
+	char* cwd = malloc(max_path_size)
+	getcwd(cwd, max_path_size)
+	int cwd_len = strlen(cwd)
+	int i = 0
+	while (i < defhash_count):
+		defhash_emit(i, cwd, cwd_len)
+		i = i + 1
+	free(cwd)
+
+
+int defhash_main(int argc, int argv):
+	int i = 2
+	defhash_closure_mode = 0
+	diag_json = 0
+	int scanning = 1
+	while (scanning & (i < argc)):
+		char** arg = argv + i * __word_size__
+		if (strcmp(*arg, c"--closure") == 0):
+			defhash_closure_mode = 1
+			i = i + 1
+		else:
+			scanning = 0
+	if (argc <= i):
+		println2(c"usage: w defhash [--closure] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		exit(1)
+	defhash_mode = 1
+	defhash_depth = 0
+	link_impl(argc, argv, i, 1)
+	defhash_dump()
 	return 0
 
 

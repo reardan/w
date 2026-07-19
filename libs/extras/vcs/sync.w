@@ -20,19 +20,26 @@ libs/standard/web/http_server.w's ServerContext + routing:
       body, not 404 (an empty repo is a valid state to sync against).
 
   GET  /objects/<2-hex>/<62-hex>
-      The exact bytes cas.w has stored under that id -- the raw
-      "<type> <len>\0" + payload framing, unchanged (see cas.w's header
-      comment on cas_parse_framed). 404 when absent, 400 for a
-      malformed path.
+      The object's LOGICAL bytes -- "<type> <len>\0" + payload (see
+      cas.w's header comment on cas_parse_framed) -- reconstructed via
+      cas_get + cas_object_bytes, deliberately NOT the raw on-disk
+      bytes cas_object_path names: cas.w's loose objects are now
+      zlib-compressed on disk (its "On-disk encoding" section), and
+      this wire format predates that and stays the uncompressed
+      logical form on purpose, so a client speaking this protocol never
+      has to know or care which encoding either side's store uses.
+      404 when absent, 400 for a malformed path.
 
   POST /objects/<2-hex>/<62-hex>
-      Upload: the request body must be that SAME raw framing. The
+      Upload: the request body must be that SAME logical framing (never
+      compressed, regardless of how the server ends up storing it). The
       server parses it (cas_parse_framed) and recomputes
       cas_id_hex(type, payload, length) -- if that does not match the
       id in the URL, the upload is rejected (400) and NOTHING is
       written; a client cannot poison the store by POSTing bytes under
       an id they don't actually hash to. On a match the object is
-      stored via cas_put_raw (200).
+      stored via cas_put_raw (200), which re-encodes it on disk exactly
+      like any other write (cas.w's cas_store_bytes).
 
   GET  /ancestry/<64-hex commit id>
       Line-oriented list of that commit's own id followed by every
@@ -317,17 +324,29 @@ void vcs_sync_serve_objects_get(RequestContext* rc, void* user_data):
 	if (id == 0):
 		request_context_text(rc, 400, c"bad object path")
 		return
-	char* object_path = cas_object_path(ctx.store, id)
-	string_builder* raw = cas_read_file(object_path)
-	free(object_path)
+	# cas_get, not a raw cas_object_path/cas_read_file, so the wire body
+	# is always the logical framing regardless of the store's on-disk
+	# encoding (see this file's header comment and cas.w's "On-disk
+	# encoding" section) -- a client must never see zlib-compressed
+	# bytes it never asked to decode.
+	wresult[wcas_object*]* got = cas_get(ctx.store, id)
 	free(id)
-	if (raw == 0):
-		request_context_text(rc, 404, c"Not Found")
+	if (result_is_error[wcas_object*](got)):
+		int code = result_code[wcas_object*](got)
+		result_free[wcas_object*](got)
+		if (code == -2):
+			request_context_text(rc, 404, c"Not Found")
+		else:
+			request_context_text(rc, 500, c"cannot read object")
 		return
+	wcas_object* obj = result_value[wcas_object*](got)
+	result_free[wcas_object*](got)
+	string_builder* wire = cas_object_bytes(obj.object_type, obj.data, obj.length)
+	cas_object_free(obj)
 	request_context_set_status(rc, 200)
 	request_context_set_header(rc, c"Content-Type", c"application/octet-stream")
-	request_context_write_body(rc, raw.data, raw.length)
-	string_free(raw)
+	request_context_write_body(rc, wire.data, wire.length)
+	string_free(wire)
 
 
 void vcs_sync_serve_objects_post(RequestContext* rc, void* user_data):
@@ -907,14 +926,17 @@ int vcs_sync_pull(wcas* store, wrefs* refs, char* url, char* ref_name, wstream* 
 
 # The push counterpart of vcs_sync_fetch_object_closure: probes whether
 # `id` already exists on the remote (GET; per-object probing, fine for
-# v1 -- see the header comment) and, if not, uploads the exact locally
-# stored bytes and recurses into its children the same way the fetch
-# side does (tree -> child ids; commit -> tree id only, since the
-# caller already enumerates every ancestor commit via vcs_sync_ancestry
-# before calling this). Stops descending as soon as an object is
-# confirmed present remotely: a push only ever completes after
-# uploading an object's whole transitive closure, so once something is
-# there, everything underneath it is guaranteed to be there too.
+# v1 -- see the header comment) and, if not, uploads the object's
+# logical bytes (cas_get + cas_object_bytes -- NOT a raw
+# cas_object_path/cas_read_file, which would leak whatever on-disk
+# encoding this local store happens to use; see this file's header
+# comment) and recurses into its children the same way the fetch side
+# does (tree -> child ids; commit -> tree id only, since the caller
+# already enumerates every ancestor commit via vcs_sync_ancestry before
+# calling this). Stops descending as soon as an object is confirmed
+# present remotely: a push only ever completes after uploading an
+# object's whole transitive closure, so once something is there,
+# everything underneath it is guaranteed to be there too.
 int vcs_sync_push_object_closure(wcas* store, char* url, char* id, wstream* out):
 	char* obj_url = vcs_sync_object_url(url, id)
 	http_response* probe = vcs_sync_get(obj_url, out)
@@ -927,39 +949,32 @@ int vcs_sync_push_object_closure(wcas* store, char* url, char* id, wstream* out)
 		free(obj_url)
 		return 0
 
-	char* object_path = cas_object_path(store, id)
-	string_builder* raw = cas_read_file(object_path)
-	free(object_path)
-	if (raw == 0):
+	wresult[wcas_object*]* got = cas_get(store, id)
+	if (result_is_error[wcas_object*](got)):
+		result_free[wcas_object*](got)
 		free(obj_url)
 		stream_write_cstr(out, c"wvc: local object missing while pushing: ")
 		stream_write_line(out, id)
 		stream_flush(out)
 		return 1
+	wcas_object* obj = result_value[wcas_object*](got)
+	result_free[wcas_object*](got)
+	string_builder* wire = cas_object_bytes(obj.object_type, obj.data, obj.length)
 
-	http_response* put_resp = vcs_sync_post(obj_url, raw.data, raw.length, out)
+	http_response* put_resp = vcs_sync_post(obj_url, wire.data, wire.length, out)
 	free(obj_url)
+	string_free(wire)
 	if (put_resp == 0):
-		string_free(raw)
+		cas_object_free(obj)
 		return 1
 	if (put_resp.status != 200):
 		stream_write_cstr(out, c"wvc: remote rejected object ")
 		stream_write_line(out, id)
 		stream_flush(out)
 		http_response_free(put_resp)
-		string_free(raw)
+		cas_object_free(obj)
 		return 1
 	http_response_free(put_resp)
-
-	wresult[wcas_object*]* parsed_r = cas_parse_framed(raw.data, raw.length)
-	string_free(raw)
-	if (result_is_error[wcas_object*](parsed_r)):
-		# Locally stored objects always parse (cas_put wrote the framing
-		# itself); nothing more to walk if this ever somehow didn't.
-		result_free[wcas_object*](parsed_r)
-		return 0
-	wcas_object* obj = result_value[wcas_object*](parsed_r)
-	result_free[wcas_object*](parsed_r)
 
 	int err = 0
 	if (strcmp(obj.object_type, c"tree") == 0):

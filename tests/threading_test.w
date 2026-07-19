@@ -14,6 +14,6 @@ void test_thread_create():
 	asserts(c"thread_create failed", tid > 0)
 	# CLONE_VM shares memory, so spin until the child writes the flag.
 	int spins = 0
-	while ((flag == 0) & (spins < 100000000)):
+	while ((flag == 0) && (spins < 100000000)):
 		spins = spins + 1
 	assert_equal(1337, flag)

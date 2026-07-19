@@ -40,9 +40,19 @@ on stdout instead of the plain echo.
 the compiler: "!cmd args" runs cmd through lib/shell.w with this
 process's own stdio (see repl_handle_bang); "!cd" and "!export NAME=VAL"
 are intercepted builtins that change this process's own cwd/environment.
+
+":sh" toggles shell mode (issue #335, docs/projects/repl_shell_mode.md):
+the prompt changes, and a bare line is parsed as a shell command instead
+of W -- translated to a native lib/shell_commands.w call when
+repl/shell_translate.w's recognition test passes, else farmed out to
+lib/shell.w's sh_interactive exactly like "!cmd" is in W mode. "!" still
+works in shell mode, but with its meaning flipped: it runs exactly one
+line as W, then returns to shell-mode dispatch. "cd"/"export" are
+intercepted the same way "!cd"/"!export" already are.
 */
 import repl.core
 import repl.scan
+import repl.shell_translate
 import compiler.compiler
 import structures.string
 import structures.json
@@ -85,6 +95,17 @@ int repl_json_mode
 char* repl_json_echo_captured
 
 
+# 1 when ":sh" has toggled shell mode on: the prompt changes ("sh> "),
+# and a bare line (not starting with '!') is parsed as a shell command
+# instead of W (issue #335, docs/projects/repl_shell_mode.md Sec 4).
+int repl_shell_mode
+
+# 1 once "import lib.shell_commands as shell_commands" has been
+# eval'd into the live session, so a later ":sh" toggle does not
+# re-import. Cleared by ":reset", which rolls the import back too.
+int repl_shell_commands_imported
+
+
 # Plain, unbuffered-prompt line read used in scripted/agent mode
 # (repl_interactive == 0) instead of the raw-mode line editor: mirrors
 # lib/line_edit.w's le_read_plain exactly, except the prompt goes to
@@ -100,7 +121,7 @@ int repl_read_plain(char* prompt, char* buf, int size):
 	int c = getchar(0)
 	if (c == -1):
 		return -1
-	while ((c != 10) & (c != -1)):
+	while ((c != 10) && (c != -1)):
 		if (len < size - 1):
 			buf[len] = c
 			len = len + 1
@@ -150,7 +171,7 @@ int repl_count_leading_tabs(char* s):
 # 1 when the line's first token is exactly word (after leading whitespace).
 int repl_first_token_is(char* s, char* word):
 	int i = 0
-	while ((s[i] == 9) | (s[i] == ' ')):
+	while ((s[i] == 9) || (s[i] == ' ')):
 		i = i + 1
 	int j = 0
 	while (word[j]):
@@ -158,8 +179,8 @@ int repl_first_token_is(char* s, char* word):
 			return 0
 		j = j + 1
 	char c = s[i + j]
-	if ((('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) |
-			(('0' <= c) & (c <= '9')) | (c == '_')):
+	if ((('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) ||
+			(('0' <= c) && (c <= '9')) || (c == '_')):
 		return 0
 	return 1
 
@@ -200,15 +221,28 @@ int repl_read_entry():
 	string_clear(repl_entry)
 	repl_scan_reset()
 	repl_auto_indent = 0
-	int r = repl_prompt_line(c"w> ", 0)
+	char* prompt = c"w> "
+	if (repl_shell_mode):
+		prompt = c"sh> "
+	int r = repl_prompt_line(prompt, 0)
 	if (r == -1):
 		return 0
 	if (r == -2):
 		return 1 /* discarded: the empty entry is a no-op */
 	if (repl_line.data[0] == '!'):
-		# '!' shell escape (repl_handle_bang): always a single line, taken
-		# verbatim, so shell syntax (unbalanced quotes, parens in a command
-		# line) never confuses the W-syntax continuation scanner below.
+		# '!' escape: always a single line, taken verbatim, so shell syntax
+		# (unbalanced quotes, parens in a command line) never confuses the
+		# W-syntax continuation scanner below. In W mode this is
+		# repl_handle_bang's shell escape; in shell mode main()'s dispatch
+		# flips its meaning to "run this one line as W instead" (Sec 4) --
+		# either way it is exactly one line, never scanned.
+		string_append(repl_entry, repl_line.data)
+		return 1
+	if (repl_shell_mode):
+		# Shell mode never spans multiple lines in v1 (design doc Sec 4):
+		# shell syntax must never reach the W bracket/string/comment
+		# continuation scanner below, for the same reason the '!' escape's
+		# line is taken verbatim above.
 		string_append(repl_entry, repl_line.data)
 		return 1
 	string_append(repl_entry, repl_line.data)
@@ -255,7 +289,7 @@ void repl_echo(int value, int type):
 		float* p = cast(float*, &value)
 		println(ftoa(*p))
 		return;
-	if ((word_size == 8) & (type == float64_value_type)):
+	if ((word_size == 8) && (type == float64_value_type)):
 		println(repl_float64_to_string(value))
 		return;
 	if (type_is_string(type)):
@@ -276,7 +310,7 @@ void repl_echo(int value, int type):
 		else:
 			println(hex(value))
 		return;
-	if ((pointers > 0) | (type == 4)):
+	if ((pointers > 0) || (type == 4)):
 		println(hex(value))
 		return;
 	println(itoa(value))
@@ -303,7 +337,7 @@ int repl_command_is(char* entry, char* cmd):
 # repl_entry is next cleared.
 char* repl_command_arg(char* entry, char* cmd):
 	char* rest = entry + strlen(cmd)
-	while ((rest[0] == ' ') | (rest[0] == 9)):
+	while ((rest[0] == ' ') || (rest[0] == 9)):
 		rest = rest + 1
 	return rest
 
@@ -311,7 +345,7 @@ char* repl_command_arg(char* entry, char* cmd):
 # Trims trailing spaces/tabs from s in place.
 void repl_rtrim(char* s):
 	int n = strlen(s)
-	while ((n > 0) & ((s[n - 1] == ' ') | (s[n - 1] == 9))):
+	while ((n > 0) && ((s[n - 1] == ' ') || (s[n - 1] == 9))):
 		n = n - 1
 		s[n] = 0
 
@@ -403,7 +437,7 @@ void repl_cmd_save(char* path):
 	if (path[0] == 0):
 		println(c"usage: :save <file>")
 		return;
-	if ((repl_staging_dir == 0) | (repl_staged_count == 0)):
+	if ((repl_staging_dir == 0) || (repl_staged_count == 0)):
 		println(c"no entries to save yet")
 		return;
 	int out = create_file(path, 511)
@@ -442,7 +476,7 @@ void repl_handle_export(char* arg):
 		println(c"usage: !export NAME=VALUE")
 		return;
 	int i = 0
-	while ((arg[i] != 0) & (arg[i] != '=')):
+	while ((arg[i] != 0) && (arg[i] != '=')):
 		i = i + 1
 	if (arg[i] != '='):
 		println(c"usage: !export NAME=VALUE")
@@ -455,6 +489,23 @@ void repl_handle_export(char* arg):
 	name[i] = 0
 	setenv(name, arg + i + 1)
 	free(name)
+
+
+# "cd DIR" (arg is the text after the "cd" word, not yet trimmed): chdir
+# to DIR, or to $HOME when arg is empty, exactly like a real shell's
+# builtin cd. Shared by "!cd" (repl_handle_bang) and shell mode's own
+# bare "cd" line (repl_dispatch_shell_line) -- both must change this
+# process itself, so neither can go through sh_interactive's child.
+void repl_do_cd(char* arg):
+	char* path = arg
+	repl_rtrim(path)
+	if (path[0] == 0):
+		path = getenv(c"HOME")
+		if (path == 0):
+			println(c"cd: HOME not set")
+			return;
+	if (cd(path) != 0):
+		printf1(c"cd: %s: no such file or directory\n", cast(int, path))
 
 
 # rest is the text after the leading '!', not yet trimmed. A bare '!'
@@ -473,20 +524,32 @@ void repl_handle_bang(char* rest):
 	if (cmd[0] == 0):
 		return;
 	if (repl_command_is(cmd, c"cd")):
-		char* path = repl_command_arg(cmd, c"cd")
-		repl_rtrim(path)
-		if (path[0] == 0):
-			path = getenv(c"HOME")
-			if (path == 0):
-				println(c"cd: HOME not set")
-				return;
-		if (cd(path) != 0):
-			printf1(c"cd: %s: no such file or directory\n", cast(int, path))
+		repl_do_cd(repl_command_arg(cmd, c"cd"))
 		return;
 	if (repl_command_is(cmd, c"export")):
 		repl_handle_export(repl_command_arg(cmd, c"export"))
 		return;
 	sh_interactive(cmd)
+
+
+# ---------------------------------------------------------------------------
+# ":sh" (issue #335, docs/projects/repl_shell_mode.md Sec 4): toggles
+# shell mode and, on first entry in a session, synthesizes-and-evals the
+# session import that makes lib/shell_commands.w's bare names (ls, cat,
+# pwd, ...) resolve for repl/shell_translate.w's generated calls -- the
+# same mechanism ":load" already uses to run a file's declarations into
+# the live session. The actual line-by-line dispatch once shell mode is
+# on is repl_dispatch_shell_line, defined below after repl_eval_json.
+
+void repl_cmd_sh():
+	repl_shell_mode = repl_shell_mode == 0
+	if (repl_shell_mode):
+		if (repl_shell_commands_imported == 0):
+			repl_eval(c"import lib.shell_commands as shell_commands")
+			repl_shell_commands_imported = 1
+		println(c"shell mode on (:sh to leave, ! runs one line of W)")
+	else:
+		println(c"shell mode off")
 
 
 # ---------------------------------------------------------------------------
@@ -509,7 +572,7 @@ char* repl_format_echo(int value, int type):
 	if (type == float32_value_type):
 		float* p = cast(float*, &value)
 		return ftoa(*p)
-	if ((word_size == 8) & (type == float64_value_type)):
+	if ((word_size == 8) && (type == float64_value_type)):
 		return repl_float64_to_string(value)
 	if (type_is_string(type)):
 		string_builder* b = string_new()
@@ -532,7 +595,7 @@ char* repl_format_echo(int value, int type):
 		if (rendered != 0):
 			return rendered
 		return hex(value)
-	if ((pointers > 0) | (type == 4)):
+	if ((pointers > 0) || (type == 4)):
 		return hex(value)
 	return itoa(value)
 
@@ -636,6 +699,35 @@ int repl_eval_json(char* entry_text):
 	return r.status == 1
 
 
+# ---------------------------------------------------------------------------
+# Shell mode dispatch (":sh", issue #335, docs/projects/repl_shell_mode.md
+# Sec 4/7). Dispatch one shell-mode line (never starting with '!' -- main()
+# has already peeled that case off and run it as W instead): "cd"/"export"
+# are intercepted exactly like the '!' escape does; else a native
+# lib/shell_commands.w call when repl/shell_translate.w's recognition test
+# passes; else the whole line, verbatim, to sh_interactive -- the same
+# "farm out to native" fallback the '!' escape already uses. Defined after
+# repl_eval_json, which it calls under --json.
+void repl_dispatch_shell_line(char* line):
+	if (line[0] == 0):
+		return;
+	if (repl_command_is(line, c"cd")):
+		repl_do_cd(repl_command_arg(line, c"cd"))
+		return;
+	if (repl_command_is(line, c"export")):
+		repl_handle_export(repl_command_arg(line, c"export"))
+		return;
+	char* translated = shell_translate_line(line)
+	if (translated != 0):
+		if (repl_json_mode):
+			repl_eval_json(translated)
+		else:
+			repl_eval(translated)
+		free(translated)
+		return;
+	sh_interactive(line)
+
+
 # Every "-e"/"--e" occurrence's value, in argv order (repl_run_e_mode
 # evaluates each in turn). "-e=text" and "-e text" (the following token,
 # unless it is itself a flag) both work, matching lib/args.w's usual flag
@@ -647,7 +739,7 @@ list[char*] repl_collect_e_entries():
 	while (i < args_count()):
 		char* body = args_flag_body(args_get(i))
 		if (body != 0):
-			if ((body[0] == 'e') & ((body[1] == 0) | (body[1] == '='))):
+			if ((body[0] == 'e') && ((body[1] == 0) || (body[1] == '='))):
 				char* value = 0
 				if (body[1] == '='):
 					value = body + 2
@@ -707,6 +799,7 @@ void repl_print_help():
 	println(c"  :load file          compile file and run its main(), like 'repl file.w'")
 	println(c"  :reset              undo every entry (and :load) since startup")
 	println(c"  :save file          save every entry typed so far to file")
+	println(c"  :sh                 toggle shell mode: bare lines parse as shell commands")
 	println(c"  !cmd                run cmd through the shell, stdio inherited")
 	println(c"  !cd dir             change the repl's own working directory")
 	println(c"  !export NAME=VALUE  set an env var for later ! / sh() calls")
@@ -812,9 +905,22 @@ int main(int argc, int argv):
 			continue
 		if (string_equals(repl_entry, c":reset")):
 			if (repl_reset_to_genesis()):
+				# The synthesized shell_commands import (if any) is one of
+				# the entries rolled back, so its "already imported" flag
+				# must roll back too (Sec 4); if the session is still in
+				# shell mode, re-import right away so shell mode keeps
+				# working instead of silently breaking until the next
+				# ":sh" toggle.
+				repl_shell_commands_imported = 0
+				if (repl_shell_mode):
+					repl_eval(c"import lib.shell_commands as shell_commands")
+					repl_shell_commands_imported = 1
 				println(c"session reset to its startup state")
 			else:
 				println(c"nothing to reset (no startup checkpoint)")
+			continue
+		if (string_equals(repl_entry, c":sh")):
+			repl_cmd_sh()
 			continue
 		if (repl_command_is(repl_entry.data, c":type")):
 			repl_cmd_type(repl_command_arg(repl_entry.data, c":type"))
@@ -831,7 +937,22 @@ int main(int argc, int argv):
 		if (repl_entry.length == 0):
 			continue
 		if (repl_entry.data[0] == '!'):
-			repl_handle_bang(repl_entry.data + 1)
+			# '!' always means "the other grammar, for exactly one line"
+			# (design doc Sec 4): in W mode it escapes to a shell command
+			# (repl_handle_bang); in shell mode it escapes back to W,
+			# compiled/run/echoed exactly like an ordinary W-mode entry,
+			# after which the loop returns to shell-mode dispatch below.
+			if (repl_shell_mode):
+				char* w_entry = repl_entry.data + 1
+				if (repl_json_mode):
+					repl_eval_json(w_entry)
+				else:
+					repl_eval(w_entry)
+			else:
+				repl_handle_bang(repl_entry.data + 1)
+			continue
+		if (repl_shell_mode):
+			repl_dispatch_shell_line(repl_entry.data)
 			continue
 		if (repl_scan_string):
 			# The tokenizer cannot recover from an unterminated string

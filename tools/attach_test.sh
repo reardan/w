@@ -15,23 +15,35 @@ set -e
 WDBG=bin/wdbg
 FIXTURE_BIN=bin/attach_target
 FIXTURE_SRC=tests/attach_target_fixture.w
+# Any other compilable source proves the calibration mismatch path: it
+# builds cleanly but is not the program actually running.
+WRONG_SRC=tests/debug_fixture.w
 FAILED=0
 
-# run_case <description> <wdbg-args-after-pid> <stdin> <expected-substring>
+# run_case <description> <wdbg-args-after-pid> <stdin> <expected-substring> [want_stderr]
 # Launches a fresh fixture, attaches, and checks the output contains the
-# expected substring. The fixture is always killed afterwards.
+# expected substring. The fixture is always killed afterwards. wdbg's
+# stderr is normally discarded (it only ever carries the "compiling '...'"
+# progress banner here, which no case asserts on); pass any non-empty
+# want_stderr to merge it in for cases that assert on a println2
+# diagnostic (attach.w's fatal/mismatch messages).
 run_case() {
 	desc="$1"
 	extra="$2"
 	commands="$3"
 	expect="$4"
+	want_stderr="$5"
 
 	"$FIXTURE_BIN" &
 	pid=$!
 	# Let the fixture reach its spin loop before attaching.
 	sleep 0.4
 
-	out=$(printf '%b' "$commands" | "$WDBG" --attach "$pid" $extra 2>/dev/null || true)
+	if [ -n "$want_stderr" ]; then
+		out=$(printf '%b' "$commands" | "$WDBG" --attach "$pid" $extra 2>&1 || true)
+	else
+		out=$(printf '%b' "$commands" | "$WDBG" --attach "$pid" $extra 2>/dev/null || true)
+	fi
 	kill -9 "$pid" 2>/dev/null || true
 	wait "$pid" 2>/dev/null || true
 
@@ -67,6 +79,29 @@ run_case "raw mode banner" "" 'detach\n' "raw mode: no symbols"
 
 # A backtrace in symbolized mode names the fixture's main frame.
 run_case "backtrace names main" "$FIXTURE_SRC" 'bt\ndetach\n' "main ("
+
+# A backtrace taken while stopped inside a callee names both frames: the
+# callee at #0 and its caller (main) further up the stack, proving the
+# heuristic frame walk -- not just the current-ip line -- resolves symbols.
+run_case "backtrace names fixture functions" "$FIXTURE_SRC" 'b slow_step\nc\nbt\nkill\n' "main ("
+
+# 'list' shows a multi-line source window (not just the single current
+# line 'l' prints), centered on wherever the process is stopped -- always
+# somewhere in main's loop body, so this line is always in range.
+run_case "list shows source" "$FIXTURE_SRC" 'list\ndetach\n' "attach_counter = slow_step"
+
+# 'i functions' lists the debuggee's defined functions by name.
+run_case "i functions lists symbols" "$FIXTURE_SRC" 'i functions\ndetach\n' "slow_step"
+
+# 'i files' lists the debuggee's known source files.
+run_case "i files lists source file" "$FIXTURE_SRC" 'i files\ndetach\n' "attach_target_fixture.w"
+
+# Attaching with a source file that does not match the running binary
+# (tests/debug_fixture.w, a different program) must be caught by the
+# recompile-vs-/proc/<pid>/exe comparison, not silently trusted: a clear
+# diagnostic and a fall back to raw mode, never wrong symbol names.
+run_case "mismatched source: clean diagnostic" "$WRONG_SRC" 'detach\n' "does not match this source" 1
+run_case "mismatched source: raw fallback" "$WRONG_SRC" 'detach\n' "raw mode: no symbols"
 
 # Disassembly of a named function in symbolized mode shows its header.
 run_case "disassemble function" "$FIXTURE_SRC" 'disas slow_step\ndetach\n' "slow_step:"

@@ -148,7 +148,7 @@ void process_cmdline_append_arg(string_builder* s, char* arg):
 	int has_space = 0
 	int j = 0
 	while (arg[j] != 0):
-		if ((arg[j] == ' ') | (arg[j] == 9)):
+		if ((arg[j] == ' ') || (arg[j] == 9)):
 			has_space = 1
 		j = j + 1
 	if (has_space):
@@ -255,7 +255,7 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 	save_int32(si, si_size)   # cb
 
 	int use_handles = 0
-	if ((stdin_child >= 0) | (stdout_child >= 0) | (stderr_child >= 0)):
+	if ((stdin_child >= 0) || (stdout_child >= 0) || (stderr_child >= 0)):
 		use_handles = 1
 	if (opts.stdin_mode == process_null()):
 		use_handles = 1
@@ -823,7 +823,7 @@ process_result* process_run(char* path, char** argv, spawn_options* opts, char* 
 					int written = write(p.stdin_fd, stdin_text + stdin_offset, chunk)
 					if (written > 0):
 						stdin_offset = stdin_offset + written
-					if ((written < 0) | (stdin_offset >= stdin_length)):
+					if ((written < 0) || (stdin_offset >= stdin_length)):
 						process_close_stdin(p)
 			if (stdout_slot >= 0):
 				if (process_pollfd_revents(fds, stdout_slot) != 0):

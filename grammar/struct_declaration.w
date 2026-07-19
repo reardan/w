@@ -5,15 +5,24 @@ struct_declaration identifier :
 	...
 
 */
+# Forward declaration: defhash_note is defined in compiler/compiler.w,
+# which compiles after grammar/.
+void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
+
+
 int struct_declaration():
 	int current_symbol
 	int num_fields = 0
 	int type_index = 0
+	int defhash_start = token_start_offset
 	# parent_expression()
 	if (accept(c"struct")):
 		int start_tab_level = tab_level
 		# 'struct name[T, ...]:' declares a generic struct: record the
-		# span and skip it; instantiations re-parse it (grammar/generic.w)
+		# span and skip it; instantiations re-parse it (grammar/generic.w).
+		# Left out of defhash on purpose (docs/projects/build_system_next.md
+		# 4a): the span defhash_note would need is the unexpanded generic
+		# body, which this branch never reaches per-instantiation.
 		if (nextc == '['):
 			generic_register_struct()
 			return 1
@@ -22,6 +31,9 @@ int struct_declaration():
 			print_string(c"struct accepted name: ", token)
 			println2(c"")
 
+		char* defhash_name = strclone(token)
+		int defhash_line = diag_token_line
+		int defhash_column = diag_token_column
 		# emit struct type with token name; size starts at 0 and grows per
 		# field. A repeated name (REPL redefinition) reuses and resets the
 		# existing record in place instead of pushing an unreachable
@@ -57,6 +69,7 @@ int struct_declaration():
 			num_fields = num_fields + 1
 			pointer_indirection = 0
 
+		defhash_note(defhash_name, c"struct", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 		return 1
 
 	return 0

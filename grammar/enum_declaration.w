@@ -1,6 +1,15 @@
+# Forward declaration: defhash_note is defined in compiler/compiler.w,
+# which compiles after grammar/.
+void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
+
+
 int enum_declaration():
+	int defhash_start = token_start_offset
 	if (accept(c"enum")):
 		int start_tab_level = tab_level
+		char* defhash_name = strclone(token)
+		int defhash_line = diag_token_line
+		int defhash_column = diag_token_column
 		int type_index = type_lookup(token)
 		if (type_index < 0):
 			type_index = type_push_size(strclone(token), 4)
@@ -18,7 +27,7 @@ int enum_declaration():
 			int value_column = diag_token_column
 			get_token()
 			if (accept(c"=")):
-				if ((token[0] == '0') & (token[1] == 'x')):
+				if ((token[0] == '0') && (token[1] == 'x')):
 					int_literal_width_check()
 					value = from_hex(token + 2)
 				else:
@@ -41,5 +50,6 @@ int enum_declaration():
 				emit_int32(value)
 			value = value + 1
 			pointer_indirection = 0
+		defhash_note(defhash_name, c"enum", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 		return 1
 	return 0
