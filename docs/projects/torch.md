@@ -26,9 +26,47 @@ the Stage 6 F32 read/write at the `ndf` level; and device-only
 `lib/nn.w` (linear layer, fused `ag_softmax_ce`, SGD) and the
 end-to-end training test (`tests/nn_train_gpu.w`: synthetic 4-class
 8-D clusters, MLP 8→32→4, asserts loss < 0.2 and accuracy > 0.95 on
-both the GPU and CPU-fallback paths) also landed in #347. Remaining
-for Stage 5: a real-MNIST-data training run via `lib/mnist.w`;
-Stage 4 (perf/async) is still a sketch.
+both the GPU and CPU-fallback paths) also landed in #347.
+
+**Stage 5 and 6 acceptance met, Stage 4 implemented** (July 2026
+follow-up):
+
+- *Stage 5 acceptance*: `tests/mnist_train_gpu.w` trains 784→64→10 on
+  10000 real MNIST images (`tools/fetch_mnist.sh` pulls the IDX files
+  into `bin/mnist/`) and reaches 0.9069 accuracy on the full held-out
+  t10k set — identical on the GPU and CPU-fallback paths (all three
+  matmul paths accumulate k-ascending, so the whole training run is
+  bit-reproducible across paths). Opt-in `mnist_train_gpu_test`; GPU
+  run ~3.4s, CPU ~35s.
+- *Stage 6 acceptance*: `tests/torch_infer_gpu.w` +
+  `tools/train_mnist_torch.py`. A real PyTorch-trained MLP is checked
+  in as `tests/data/mnist_mlp.safetensors` (125KB) in torch's NATIVE
+  state_dict layout — the W side does the `(out,in)`→`(in,out)`
+  transpose — with the oracle embedded (8 probe images, torch's
+  logits, torch's accuracy). W's inference matches torch's logits to
+  4e-6 and its t10k accuracy exactly (0.9470). Opt-in
+  `torch_infer_gpu_test`; CI needs no Python.
+- *Stage 4 shared memory*: `gpu_shared_f32(N)` / `gpu_barrier()`
+  device builtins (`grammar/gpu_shared_builtin.w`, the atomic-builtin
+  pattern; `.shared` + `cvta.shared` + `bar.sync` in
+  `code_generator/ptx.w`). `tensor_sum` is now a block-tree reduction
+  (one atomic per 256-element block): 4.6x faster (6.0ms → 1.3ms per
+  4M-element sum on an RTX 4080). All three matmuls are 16x16
+  shared-memory tiled kernels.
+- *Stage 4 async*: per-op `gpu_sync()` is gone — ops enqueue on the
+  default stream; the sync points are `tensor_sum` / `tensor_to_ndf` /
+  `tensor_free` / `tensor_randn`, autograd's host-side rules, one
+  drain at `ag_backward`'s exit, and the public `tensor_sync()` for
+  direct `.data` access. MNIST training dropped 4.48s → 3.35s (-25%).
+- **Perf finding (the next unlock)**: the tiled matmuls are currently
+  perf-NEUTRAL (59ms naive vs 60ms tiled at 1024³, parity at 4096³
+  too). A1 stack-machine codegen makes every kernel
+  instruction-bound — ~37 GFLOP/s flat across sizes, ~1000x below the
+  hardware, because each W operation moves through the `.local`
+  evaluation stack. Tiling's memory-hierarchy win is invisible until
+  **A2 virtual-register emission** (cuda.md Stage 4) lands; A2 is now
+  the highest-value perf item in this project, ahead of any further
+  kernel work.
 
 ## Where this builds from
 
@@ -128,37 +166,47 @@ Deliberately not here:
   "driver-only at runtime" line the whole backend holds. If it lands,
   it lands opt-in, clearly fenced, and primarily as a *test oracle*.
 
-## Stage 4 — sketch: performance + async (next)
+## Stage 4 — performance + async (implemented; A2 is the remainder)
 
-- Shared memory (`.shared` declarations + `bar.sync`) in the PTX
-  emitter; then a tiled matmul and a block-level `tensor_sum` (one
-  `red` per block instead of per element).
-- Remove per-op `gpu_sync()`: ops enqueue on the single stream,
-  `tensor_to_ndf`/`tensor_sum`/accessor reads become the sync points —
-  torch's actual execution model.
-- A2 virtual-register PTX emission (cuda.md Stage 4) once op kernels
-  are hot enough for the driver JIT's cleanup of the A1 stack traffic
-  to matter.
+- ~~Shared memory (`.shared` declarations + `bar.sync`) in the PTX
+  emitter; then a tiled matmul and a block-level `tensor_sum`~~ —
+  done: `gpu_shared_f32`/`gpu_barrier` builtins, tiled kernels for
+  all three matmul variants, block-tree `tensor_sum` (4.6x). The
+  barrier is kernel-body-only in practice: under `gpu for`'s implicit
+  bounds guard it would be divergent.
+- ~~Remove per-op `gpu_sync()`~~ — done: ops enqueue; host boundaries
+  sync (see the status section above for the exact sync-point list).
+- A2 virtual-register PTX emission (cuda.md Stage 4): **now the
+  critical path.** Kernels are instruction-bound at ~37 GFLOP/s from
+  A1 `.local` stack traffic, which flattens every memory-hierarchy
+  optimization; the tiled matmuls only start paying once values live
+  in registers. (A middle step worth evaluating: a peephole pass over
+  the emitted body that rewrites matched push/pop pairs with no
+  intervening label/branch into moves through fresh virtual
+  registers.)
 - float16/bf16 storage (`.f16` loads widening to f32 math — W already
   has storage-only float16 on the host).
 
-## Stage 5 — sketch: autograd + layers
+## Stage 5 — autograd + layers (implemented, acceptance met)
 
 Tape-based reverse mode as a pure library (`lib/autograd.w`): each op
 records (op-id, input tensors, saved scalars) on a tape; `backward()`
 walks it in reverse dispatching to backward kernels (all expressible
 with the Stage 1-3 surface: elementwise chains, matmul with swapped
 operands, atomic-add scatter for broadcast grads). Then `lib/nn.w`:
-linear, relu, softmax-cross-entropy, SGD — and an MNIST-scale training
-loop as the acceptance test. No compiler work expected in this stage.
+linear, relu, softmax-cross-entropy, SGD. No compiler work was needed.
+Acceptance: the real-MNIST training run (`tests/mnist_train_gpu.w`,
+status section above).
 
-## Stage 6 — sketch: torch weight interop
+## Stage 6 — torch weight interop (implemented, acceptance met)
 
-Read/write the **safetensors** format (a JSON header + contiguous
-little-endian tensor data — well within `lib/json` + file I/O):
-`tensor_load_safetensors` mapping f32 tensors into `tensor`s, so W can
-run inference with real PyTorch-trained weights. ONNX graph execution
-is explicitly out of scope until the op surface is much wider.
+Read/write the **safetensors** format (`lib/safetensors.w`: a JSON
+header + contiguous little-endian F32 tensor data at the `ndf` level).
+Acceptance: `tests/torch_infer_gpu.w` runs inference with real
+PyTorch-trained weights from a checked-in fixture in torch's native
+state_dict layout, matching torch's logits and accuracy (status
+section above). ONNX graph execution is explicitly out of scope until
+the op surface is much wider.
 
 ## Open questions
 

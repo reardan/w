@@ -1959,7 +1959,7 @@
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/gpu_ptx_emit.w", "-o", "bin/gpu_ptx_emit"]},
-				{"cmd": ["bin/gpu_ptx_emit"], "expect_stdout": [".version 6.0", ".address_size 64", ".visible .entry add(.param .u64 p0, .param .u64 p1, .param .u64 p2, .param .u64 p3)", ".visible .entry scale(", ".visible .entry axpb64(", ".visible .entry bits(", "ld.param.u64 %ax, [p0];", "cvta.local.u64 %sp, %sp;", ".reg .b32 %w0, %w1;", "mov.u32 %w0, %tid.x;", "mov.u32 %w0, %ctaid.x;", "mov.u32 %w0, %nctaid.x;", "setp.lt.s64 %p, %bx, %ax;", "add.f32 %fa, %fa, %fb;", "st.u32 [%bx], %ax;", "mul.f64 %da, %da, %db;", "cvt.rn.f64.s64 %db, %ax;", "shr.u64 %ax, %ax, 32;", "st.u64 [%cx], %bx;", "shf.l.wrap.b32 %w0, %w0, %w0, %w1;", "shf.r.wrap.b32 %w0, %w0, %w0, %w1;", "popc.b32 %w0, %w0;", "clz.b32 %w0, %w0;", "brev.b32 %w0, %w0;", ".visible .entry accum(", "atom.add.u64 %ax, [%bx], %ax;", "atom.min.s64 %ax, [%bx], %ax;", "atom.max.s64 %ax, [%bx], %ax;", "atom.add.f32 %fa, [%bx], %fa;", ".visible .entry transcendental(", "mov.f32 %fb, 0f3FB8AA3B;", "ex2.approx.f32 %fa, %fa;", "lg2.approx.f32 %fa, %fa;", "mov.f32 %fb, 0f3F317218;", "ret;"]},
+				{"cmd": ["bin/gpu_ptx_emit"], "expect_stdout": [".version 6.0", ".address_size 64", ".visible .entry add(.param .u64 p0, .param .u64 p1, .param .u64 p2, .param .u64 p3)", ".visible .entry scale(", ".visible .entry axpb64(", ".visible .entry bits(", "ld.param.u64 %ax, [p0];", "cvta.local.u64 %sp, %sp;", ".reg .b32 %w0, %w1;", "mov.u32 %w0, %tid.x;", "mov.u32 %w0, %ctaid.x;", "mov.u32 %w0, %nctaid.x;", "setp.lt.s64 %p, %bx, %ax;", "add.f32 %fa, %fa, %fb;", "st.u32 [%bx], %ax;", "mul.f64 %da, %da, %db;", "cvt.rn.f64.s64 %db, %ax;", "shr.u64 %ax, %ax, 32;", "st.u64 [%cx], %bx;", "shf.l.wrap.b32 %w0, %w0, %w0, %w1;", "shf.r.wrap.b32 %w0, %w0, %w0, %w1;", "popc.b32 %w0, %w0;", "clz.b32 %w0, %w0;", "brev.b32 %w0, %w0;", ".visible .entry accum(", "atom.add.u64 %ax, [%bx], %ax;", "atom.min.s64 %ax, [%bx], %ax;", "atom.max.s64 %ax, [%bx], %ax;", "atom.add.f32 %fa, [%bx], %fa;", ".visible .entry transcendental(", "mov.f32 %fb, 0f3FB8AA3B;", "ex2.approx.f32 %fa, %fa;", "lg2.approx.f32 %fa, %fa;", "mov.f32 %fb, 0f3F317218;", ".visible .entry stage(", ".shared .align 4 .b8 __w_shared0[1024];", "cvta.shared.u64 %ax, %ax;", "bar.sync 0;", "ret;"]},
 				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/cuda_gpu.w", "-o", "bin/cuda_gpu_ptxcheck", "--ptx=bin/cuda_gpu.ptx"]},
 				{"cmd": ["sh", "-c", "grep -q '.visible .entry __w_gpu_kernel_0(.param .u64 p0, .param .u64 p1, .param .u64 p2, .param .u64 p3)' bin/cuda_gpu.ptx && grep -q 'st.u64 \\[%bp+-8\\], %cx;' bin/cuda_gpu.ptx && grep -q '.visible .entry saxpy(' bin/cuda_gpu.ptx && grep -q '.visible .entry __w_gpu_kernel_3(.param .u64 p0, .param .u64 p1, .param .u64 p2)' bin/cuda_gpu.ptx"]}
 			]
@@ -1968,7 +1968,7 @@
 			"name": "cuda_diagnostics_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w", "tests/gpu_call_error_fixture.w", "tests/gpu_global_error_fixture.w", "tests/gpu_string_error_fixture.w", "tests/kernel_call_error_fixture.w", "tests/launch_non_kernel_error_fixture.w", "tests/launch_no_runtime_error_fixture.w", "tests/launch_arity_error_fixture.w", "tests/gpu_for_return_error_fixture.w", "tests/gpu_for_no_runtime_error_fixture.w", "tests/gpu_for_range_error_fixture.w", "tests/atomic_host_error_fixture.w", "tests/atomic_operand_error_fixture.w", "tests/atomic_minmax_float_error_fixture.w", "tests/gpu_math_host_error_fixture.w", "tests/gpu_capture_write_error_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w", "tests/gpu_call_error_fixture.w", "tests/gpu_global_error_fixture.w", "tests/gpu_string_error_fixture.w", "tests/kernel_call_error_fixture.w", "tests/launch_non_kernel_error_fixture.w", "tests/launch_no_runtime_error_fixture.w", "tests/launch_arity_error_fixture.w", "tests/gpu_for_return_error_fixture.w", "tests/gpu_for_no_runtime_error_fixture.w", "tests/gpu_for_range_error_fixture.w", "tests/atomic_host_error_fixture.w", "tests/atomic_operand_error_fixture.w", "tests/atomic_minmax_float_error_fixture.w", "tests/gpu_math_host_error_fixture.w", "tests/gpu_shared_host_error_fixture.w", "tests/gpu_capture_write_error_fixture.w"]}
 			]
 		},
 		{
@@ -2025,6 +2025,40 @@
 				{"cmd": ["bin/wv2", "x64", "tests/nn_train_gpu.w", "-o", "bin/nn_train_gpu"]},
 				{"cmd": ["bin/nn_train_gpu"], "expect_stdout": ["nn: gpu path", "nn train OK"]},
 				{"cmd": ["sh", "-c", "CUDA_VISIBLE_DEVICES= bin/nn_train_gpu"], "expect_stdout": ["nn: cpu fallback", "nn train OK"]}
+			]
+		},
+		{
+			"name": "mnist_train_compile_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/mnist_train_gpu.w", "-o", "bin/mnist_train_gpu_compile"]}
+			]
+		},
+		{
+			"name": "mnist_train_gpu_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["sh", "tools/fetch_mnist.sh"]},
+				{"cmd": ["bin/wv2", "x64", "tests/mnist_train_gpu.w", "-o", "bin/mnist_train_gpu"]},
+				{"cmd": ["bin/mnist_train_gpu"], "expect_stdout": ["mnist: gpu path", "mnist train OK"]},
+				{"cmd": ["sh", "-c", "CUDA_VISIBLE_DEVICES= bin/mnist_train_gpu"], "expect_stdout": ["mnist: cpu fallback", "mnist train OK"]}
+			]
+		},
+		{
+			"name": "torch_infer_compile_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/torch_infer_gpu.w", "-o", "bin/torch_infer_gpu_compile"]}
+			]
+		},
+		{
+			"name": "torch_infer_gpu_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["sh", "tools/fetch_mnist.sh"]},
+				{"cmd": ["bin/wv2", "x64", "tests/torch_infer_gpu.w", "-o", "bin/torch_infer_gpu"]},
+				{"cmd": ["bin/torch_infer_gpu"], "expect_stdout": ["torch infer: gpu path", "torch infer OK"]},
+				{"cmd": ["sh", "-c", "CUDA_VISIBLE_DEVICES= bin/torch_infer_gpu"], "expect_stdout": ["torch infer: cpu fallback", "torch infer OK"]}
 			]
 		},
 		{
@@ -2152,6 +2186,8 @@
 				"tensor_compile_test",
 				"autograd_compile_test",
 				"nn_compile_test",
+				"mnist_train_compile_test",
+				"torch_infer_compile_test",
 				"defer_test",
 				"dynamic_var_test",
 				"generics_test",

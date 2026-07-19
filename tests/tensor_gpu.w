@@ -44,6 +44,7 @@ int check_elementwise():
 
 	# add / mul / scalar ops vs the ndf CPU reference
 	tensor_add_into(&r, &a, &b)
+	tensor_sync()
 	i = 0
 	while (i < 1000):
 		if (feq(r.data[i], ha.data[i] + hb.data[i], 0.0001) == 0):
@@ -51,6 +52,7 @@ int check_elementwise():
 		i = i + 1
 
 	tensor_mul_into(&r, &a, &b)
+	tensor_sync()
 	i = 0
 	while (i < 1000):
 		if (feq(r.data[i], ha.data[i] * hb.data[i], 0.01) == 0):
@@ -59,6 +61,7 @@ int check_elementwise():
 
 	tensor_mul_scalar_into(&r, &a, 3.0)
 	tensor_add_scalar_into(&r, &r, 7.0)
+	tensor_sync()
 	i = 0
 	while (i < 1000):
 		if (feq(r.data[i], ha.data[i] * 3.0 + 7.0, 0.01) == 0):
@@ -67,6 +70,7 @@ int check_elementwise():
 
 	# relu: negatives clamp to zero, positives pass through
 	tensor_relu_into(&r, &a)
+	tensor_sync()
 	i = 0
 	while (i < 1000):
 		float want = ha.data[i]
@@ -129,6 +133,7 @@ int check_matmul():
 	tensor b = tensor_from_ndf(&hb)
 	tensor r = tensor_new2(m, n)
 	tensor_matmul2(&r, &a, &b)
+	tensor_sync()
 
 	i = 0
 	while (i < m * n):
@@ -156,6 +161,7 @@ int check_sub_axpy():
 	tensor r = tensor_new1(n)
 
 	tensor_sub_into(&r, &a, &b)
+	tensor_sync()
 	i = 0
 	while (i < n):
 		if (feq(r.data[i], ha.data[i] - hb.data[i], 0.0001) == 0):
@@ -166,6 +172,7 @@ int check_sub_axpy():
 	tensor y = tensor_from_ndf(&ha)
 	float s = 2.5
 	tensor_axpy_into(&y, s, &b)
+	tensor_sync()
 	i = 0
 	while (i < n):
 		if (feq(y.data[i], ha.data[i] + s * hb.data[i], 0.001) == 0):
@@ -193,6 +200,7 @@ int check_relu_grad():
 	tensor dout = tensor_from_ndf(&hd)
 	tensor r = tensor_new1(n)
 	tensor_relu_grad_into(&r, &a, &dout)
+	tensor_sync()
 
 	i = 0
 	while (i < n):
@@ -227,6 +235,7 @@ int check_add_row():
 	tensor r = tensor_from_ndf(&hr)
 	tensor out = tensor_new2(m, n)
 	tensor_add_row_into(&out, &a, &r)
+	tensor_sync()
 
 	i = 0
 	while (i < m):
@@ -260,6 +269,7 @@ int check_row_col_reductions():
 	tensor_row_sum_into(&rsum, &a)
 	tensor_col_sum_into(&csum, &a)
 	tensor_row_max_into(&rmax, &a)
+	tensor_sync()
 
 	i = 0
 	while (i < m):
@@ -296,6 +306,86 @@ int check_row_col_reductions():
 	return 1
 
 
+# Multi-tile shapes for the Stage 4 tiled GPU kernels: 37x50 @ 50x29
+# spans several 16x16 output tiles in both grid dimensions AND several
+# k-steps (50 > 3*16), with ragged edges everywhere, so the tile loop,
+# the bx/by block decomposition and the zero-padded edge loads are all
+# exercised -- check_matmul's 13x7 @ 7x11 fits in a single partial
+# tile. Same exact-in-f32 small-integer values, all three variants
+# cross-checked against the CPU fallback run on the same tensors'
+# host-visible buffers via ndf.
+int check_matmul_multitile():
+	int m = 37
+	int kd = 50
+	int n = 29
+	ndf ha = ndf_new2(m, kd)
+	ndf hat = ndf_new2(kd, m)
+	ndf hb = ndf_new2(kd, n)
+	ndf hbt = ndf_new2(n, kd)
+	int i = 0
+	while (i < m * kd):
+		ha.data[i] = cast(float, i % 9 - 4)
+		i = i + 1
+	i = 0
+	while (i < kd * n):
+		hb.data[i] = cast(float, i % 7 - 3)
+		i = i + 1
+	# hat = haT, hbt = hbT, so the tn/nt variants must reproduce the
+	# same product.
+	i = 0
+	while (i < m):
+		int j = 0
+		while (j < kd):
+			ndf_set2(&hat, j, i, ndf_at2(&ha, i, j))
+			j = j + 1
+		i = i + 1
+	i = 0
+	while (i < kd):
+		int j2 = 0
+		while (j2 < n):
+			ndf_set2(&hbt, j2, i, ndf_at2(&hb, i, j2))
+			j2 = j2 + 1
+		i = i + 1
+	ndf want = ndf_new2(m, n)
+	ndf_matmul2(&want, &ha, &hb)
+
+	tensor a = tensor_from_ndf(&ha)
+	tensor at = tensor_from_ndf(&hat)
+	tensor b = tensor_from_ndf(&hb)
+	tensor bt = tensor_from_ndf(&hbt)
+	tensor r = tensor_new2(m, n)
+
+	int ok = 1
+	tensor_matmul2(&r, &a, &b)
+	tensor_sync()
+	i = 0
+	while (i < m * n):
+		if (feq(r.data[i], want.data[i], 0.001) == 0):
+			ok = 0
+		i = i + 1
+	tensor_matmul2_tn(&r, &at, &b)
+	tensor_sync()
+	i = 0
+	while (i < m * n):
+		if (feq(r.data[i], want.data[i], 0.001) == 0):
+			ok = 0
+		i = i + 1
+	tensor_matmul2_nt(&r, &a, &bt)
+	tensor_sync()
+	i = 0
+	while (i < m * n):
+		if (feq(r.data[i], want.data[i], 0.001) == 0):
+			ok = 0
+		i = i + 1
+
+	tensor_free(&a)
+	tensor_free(&at)
+	tensor_free(&b)
+	tensor_free(&bt)
+	tensor_free(&r)
+	return ok
+
+
 int check_matmul_variants():
 	# tn: a is (k, m), b is (k, n), out is (m, n) = aT @ b
 	int k = 6
@@ -316,6 +406,7 @@ int check_matmul_variants():
 	tensor b = tensor_from_ndf(&hb)
 	tensor r = tensor_new2(m, n)
 	tensor_matmul2_tn(&r, &a, &b)
+	tensor_sync()
 
 	int row = 0
 	while (row < m):
@@ -351,6 +442,7 @@ int check_matmul_variants():
 	tensor d = tensor_from_ndf(&hd)
 	tensor r2 = tensor_new2(m, n)
 	tensor_matmul2_nt(&r2, &c, &d)
+	tensor_sync()
 
 	row = 0
 	while (row < m):
@@ -472,6 +564,9 @@ int main(int argc, int argv):
 		return 1
 	if (check_matmul_variants() == 0):
 		println(c"tensor gpu: FAILED (matmul_tn/nt)")
+		return 1
+	if (check_matmul_multitile() == 0):
+		println(c"tensor gpu: FAILED (multi-tile matmul)")
 		return 1
 	if (check_randn() == 0):
 		println(c"tensor gpu: FAILED (randn)")

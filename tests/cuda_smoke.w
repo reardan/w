@@ -15,7 +15,7 @@ c_lib "libcuda.so.1"
 c_lib "libc.so.6"
 
 extern int puts(char* s)
-extern int printf(char* fmt, int a, int b)
+extern int printf(char* fmt, int a, char* b)
 extern int fflush(int stream)
 
 extern int cuInit(int flags)
@@ -95,10 +95,10 @@ int _main():
 	char* pn = cell()
 	save_i(pn, n, 4)
 	char* params = malloc(8 * 4)
-	save_i(params + 0, d_a, 8)
-	save_i(params + 8, d_b, 8)
-	save_i(params + 16, d_c, 8)
-	save_i(params + 24, pn, 8)
+	save_i(params + 0, cast(int, d_a), 8)
+	save_i(params + 8, cast(int, d_b), 8)
+	save_i(params + 16, cast(int, d_c), 8)
+	save_i(params + 24, cast(int, pn), 8)
 
 	int threads = 256
 	int blocks = (n + threads - 1) / threads
