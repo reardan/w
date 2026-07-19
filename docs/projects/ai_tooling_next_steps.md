@@ -234,44 +234,69 @@ exist yet:
   ...) still apply, so a comment/formatting-only edit just stops
   recommending every importer. Fails open in every other case (a path
   new to HEAD, a git/defhash error, a real definition change) — see
-  `wtest_defhash_unchanged`. The documented generic/operator blind spot
-  (below) is handled by a dedicated pre-check, `wtest_defhash_risky_text`:
-  a whole-word scan for `operator` plus a scan for an identifier
-  immediately followed by a bracket whose comma-separated contents are
-  all-uppercase-led names (this codebase's own type-parameter convention,
-  `T` / `K, V` — every real type name here is lowercase snake_case, so it
-  never matches an ordinary container instantiation or array index); a
-  hit on either version of the file falls back to the ordinary scan for
-  that path instead of risking a false "unchanged". It is a textual
-  stand-in, not a parse, so it may over-fire (safe) but must never
-  under-fire; task 4f's defhash coverage extension would let this drop
-  entirely. Selection without `--defhash` is unchanged byte-for-byte
-  (checked directly: the original `tools/test_map.w` and the new one
-  produce identical `wtest changed` output on the same inputs when the
-  flag is not passed). Tested by `tools/wtest_defhash_scratch_test.sh`
-  (`wtest_defhash_test`, `build.base.json`) — a throwaway `git init` repo
-  (symlinking in
+  `wtest_defhash_unchanged`. At ship time the documented generic/operator
+  blind spot (below) was handled by a dedicated textual pre-check,
+  `wtest_defhash_risky_text`; task 4f (next bullet) closed the coverage
+  gap directly and retired that pre-check. Selection without `--defhash`
+  is unchanged byte-for-byte (checked directly: the original
+  `tools/test_map.w` and the new one produce identical `wtest changed`
+  output on the same inputs when the flag is not passed). Tested by
+  `tools/wtest_defhash_scratch_test.sh` (`wtest_defhash_test`,
+  `build.base.json`) — a throwaway `git init` repo (symlinking in
   `bin/wv2`/`bin/wtest` and the `lib`/`structures`/`code_generator` trees
-  every compile needs) exercising real HEAD-vs-worktree comparisons: a
-  comment-only edit is skipped, a real edit and a generic-shaped file are
-  not. Not extended: `tests/wtest/map_expectations.expect`'s cases run
-  against this repo's own ambient git state, which is not deterministic
-  for a feature whose answer depends on HEAD-vs-worktree diffs, so it
-  stays scratch-repo-only rather than risking a flaky case there.
-- `--closure`'s ref resolution is a linear scan over every recorded
-  definition per identifier token (`defhash_is_known_definition`,
-  `compiler/compiler.w`) -- fine at file scope or even this repo's full
-  `lib.lib` closure (~360 definitions, well under a second), but would
-  need a hash-table lookup if `--closure` is ever run over something an
-  order of magnitude bigger (e.g. wired into `wexec` cache keys per
-  D4a's stretch goal).
-- Generic struct/function definitions and `operator` overloads are
-  invisible to `defhash` on purpose: the scan-ahead/re-parse machinery
-  those go through (`grammar/generic.w`, `grammar/operator_overload.w`)
-  never reaches `defhash_note`'s call sites. Extending coverage to them
-  would mean threading defhash bookkeeping through that machinery too --
-  left as a follow-up since ordinary functions/globals/aggregates are
-  the common case.
+  every compile needs) exercising real HEAD-vs-worktree comparisons.
+- **Shipped (2026-07-19, wave plan C task 4f): generic/operator defhash
+  coverage + `--closure` map lookup.** `grammar/generic.w`'s three
+  registration points (`generic_register_struct`,
+  `generic_declaration_scan`, `generic_declaration_scan_generic_return`)
+  now call `defhash_note` over the exact `[offset, end)` span already
+  recorded there for instantiation re-parsing, so a generic definition's
+  own token stream is hashed like any other: `name` is the base
+  identifier with no `[T]` (stable across instantiation-only changes
+  elsewhere, since the definition itself is what's hashed), `kind` is
+  `generic_function`/`generic_struct` (distinct from plain
+  `function`/`struct` so a same-named definition in the sibling
+  namespace, or a same-named non-generic one, is still distinguishable).
+  `grammar/operator_overload.w`'s `operator_definition` — compiled
+  immediately, not deferred like a generic, so there is no separate
+  registry span to reuse — instead returns a freshly built synthetic name
+  (`operator_defhash_name`: `"operator<spelling>(<left>, <right>)"`, e.g.
+  `"operator+(vec3, vec3)"`, built from the same operand-type spellings
+  the real mangled symbol name uses) for `grammar/program.w`'s operator
+  branch to pass to `defhash_note` alongside the ordinary declaration
+  span; `kind` is `operator`. `bin/wtest`'s `wtest_defhash_risky_text`
+  textual stand-in (2g, above) is retired now that the gap it covered for
+  is closed — `wtest_defhash_unchanged` no longer runs it, and
+  `wtest_defhash_test` gained comment-only-edit/real-edit/rename cases
+  per kind (`tests/defhash_generic_fixture*.w`) proving both the SKIP and
+  the FALLBACK paths still fire correctly; `wtest_defhash_scratch_test.sh`
+  gained a matching real-git-history case proving a file with both a
+  generic and an operator overload now SKIPs on a comment-only edit
+  (previously always fell back). `--closure`'s `defhash_is_known_definition`
+  (`compiler/compiler.w`) also moved off its linear scan over every
+  recorded definition (fine at this repo's own scale -- a single file by
+  default, ~360 definitions for the whole `lib.lib` closure under
+  `--closure` -- but not O(1) for a program an order of magnitude
+  bigger) to a `map[char*, int]` existence index populated by
+  `defhash_note` --
+  the same string-set idiom `libs/extras/c_import/importer.w`'s
+  `ci_imported_functions` already uses (both compile under the pinned
+  seed), so this introduces no new pattern. One real bug found along the
+  way, NOT fully root-caused: `return name in defhash_name_index` written
+  as a direct return-expression reproducibly segfaults `bin/wv2_64`
+  during `verify_x64`'s w.w self-host, even though
+  `defhash_is_known_definition` is never actually called in that build
+  (`defhash_mode` is off) — apparently a latent x64 codegen defect in
+  `in` as a direct return-expression that a minimal standalone repro of
+  the same shape does NOT reproduce, so it seems to depend on
+  `compiler.w`'s larger/denser surrounding context (register pressure,
+  code-size-dependent branch encoding, or similar). Splitting it into
+  `int found = name in defhash_name_index; return found` sidesteps it
+  entirely (shipped that way) and `verify`/`verify_x64` are green either
+  way, but the codegen defect itself remains open for whoever next hits
+  it — a `code_generator/`-focused HIGH-care task should scope a proper
+  repro (this file's `defhash_is_known_definition` plus its immediate
+  neighbors is the only known trigger so far).
 
 ## Build manifest (`wbuildgen`)
 

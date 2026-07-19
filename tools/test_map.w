@@ -166,18 +166,23 @@ identical, that path's import-closure additions are skipped for this
 run — rule (a) literal matches and the rule (c) residue mappings still
 apply, so a comment/formatting-only edit stops recommending every
 importer without under-selecting the fixed rules. It fails OPEN: a path
-new to HEAD, a git or 'bin/wv2 defhash' error, an actual
-addition/removal/hash change in the recorded definitions, or a file
-whose text trips wtest_defhash_risky_text (the literal word 'operator',
-or an identifier immediately followed by a bracket whose
-comma-separated contents are all-uppercase-led names — this codebase's
-own type-parameter convention, 'T' / 'K, V' — a cheap textual stand-in
-for "this file may define an operator overload or explicit-generics
-function/struct invisible to defhash", docs/projects/
-ai_tooling_next_steps.md's defhash section) all fall back to the
-ordinary closure scan for that path instead. The risk scan is text, not
-a parse, so it may over-fire (safe: just less selective) but must never
-under-fire. Selection without --defhash is unchanged byte-for-byte.
+new to HEAD, a git or 'bin/wv2 defhash' error, or an actual
+addition/removal/hash change in the recorded definitions all fall back
+to the ordinary closure scan for that path instead. Selection without
+--defhash is unchanged byte-for-byte.
+
+Generic and operator-overload definitions are covered by 'bin/wv2
+defhash' itself now (wave plan C task 4f: grammar/generic.w,
+grammar/operator_overload.w both call defhash_note), so the name-set
+and per-name hash comparison above already catches a real edit to one --
+no separate textual pre-check is needed. Earlier (task 2g) this function
+also ran a textual 'risky-shaped content' scan (the literal word
+'operator', or an identifier directly followed by a bracket of
+uppercase-led names) that forced a fallback on ANY file merely
+containing those shapes, comment-only edits included, as a stand-in for
+the coverage gap; it has been removed now that the gap is closed
+(git history has it, tools/test_map.w, if a similar stand-in is ever
+needed for some future defhash blind spot).
 
 The first 'changed' invocation to touch an import closure (rule b) after
 a build, or after bin/.wtest_deps_cache is otherwise missing or fully
@@ -1025,141 +1030,6 @@ char* wtest_git_show_head(char* path):
 	return text
 
 
-int wtest_defhash_ident_char(int c):
-	if ((c >= 'a') && (c <= 'z')):
-		return 1
-	if ((c >= 'A') && (c <= 'Z')):
-		return 1
-	if ((c >= '0') && (c <= '9')):
-		return 1
-	if (c == '_'):
-		return 1
-	return 0
-
-
-# Whole-word occurrence of 'word' in 'text' (bounded by non-identifier
-# characters or the string's edges) -- a plain substring search would also
-# match identifiers that merely CONTAIN the word (e.g. 'operator_name'),
-# which is not the signal we want.
-int wtest_defhash_word_present(char* text, char* word):
-	int wlen = strlen(word)
-	int i = 0
-	while (text[i] != 0):
-		int j = 0
-		while ((j < wlen) && (text[i + j] == word[j])):
-			j = j + 1
-		if (j == wlen):
-			int before_ok = 1
-			if (i > 0):
-				before_ok = wtest_defhash_ident_char(text[i - 1] & 255) == 0
-			int after_ok = wtest_defhash_ident_char(text[i + wlen] & 255) == 0
-			if (before_ok && after_ok):
-				return 1
-		i = i + 1
-	return 0
-
-
-# Does 'item' (optionally with one leading space, the '[K, V]' spacing
-# convention) look like a type-parameter name -- non-empty, first
-# character an uppercase ASCII letter, the rest identifier characters?
-# Every real type name in this codebase is lowercase snake_case (struct/
-# union/enum/alias names throughout lib/, structures/, compiler/, ...),
-# so this never matches an ordinary built-in-container instantiation
-# ('map[char*, int]', 'list[T_lowercase_alias]') or an array/list index
-# ('a[i]', 'argv[0]') -- only the documented type-parameter convention
-# used by explicit generics ('T', 'K', 'V', docs/projects/generics.md).
-int wtest_defhash_item_ok(char* item):
-	if (item[0] == ' '):
-		item = item + 1
-	int len = strlen(item)
-	if (len == 0):
-		return 0
-	int c0 = item[0] & 255
-	if ((c0 < 'A') || (c0 > 'Z')):
-		return 0
-	int i = 1
-	while (i < len):
-		if (wtest_defhash_ident_char(item[i] & 255) == 0):
-			return 0
-		i = i + 1
-	return 1
-
-
-# 'content' is the text strictly between one '[' and its matching ']'
-# (the caller has already excluded any nested bracket): true when every
-# comma-separated piece looks like a type-parameter name per
-# wtest_defhash_item_ok, e.g. "T" or "K, V".
-int wtest_defhash_bracket_all_type_params(char* content):
-	string_builder* item = string_new()
-	int i = 0
-	int ok = 1
-	while (content[i] != 0):
-		if (content[i] == ','):
-			if (wtest_defhash_item_ok(item.data) == 0):
-				ok = 0
-			string_clear(item)
-		else:
-			string_append_char(item, content[i])
-		i = i + 1
-	if (wtest_defhash_item_ok(item.data) == 0):
-		ok = 0
-	string_free(item)
-	return ok
-
-
-# Cheap textual scan for the explicit-generics bracket syntax
-# (docs/projects/generics.md: 'T max[T](T a, T b):', 'struct pair[T]:',
-# 'K pick_first[K, V](...)') -- an identifier immediately followed by '['
-# whose (unnested) bracket content is entirely type-parameter-shaped
-# pieces. Not a parse: nested brackets inside the pair bail out of that
-# one occurrence (treated as "not a match" for it, not an error), and nothing
-# distinguishes a real definition from an explicit instantiation
-# ('max[int](...)') that merely happens to spell its type argument with an
-# initial capital -- both are treated as risky alike, which only ever
-# causes an unnecessary (safe) fallback, never a missed one.
-int wtest_defhash_has_generic_brackets(char* text):
-	int i = 0
-	while (text[i] != 0):
-		if ((text[i] == '[') && (i > 0) && wtest_defhash_ident_char(text[i - 1] & 255)):
-			string_builder* content = string_new()
-			int j = i + 1
-			int stop = 0
-			int closed = 0
-			int nested = 0
-			while ((stop == 0) && (text[j] != 0)):
-				if (text[j] == ']'):
-					closed = 1
-					stop = 1
-				else if (text[j] == '['):
-					nested = 1
-					stop = 1
-				else:
-					string_append_char(content, text[j])
-					j = j + 1
-			if (closed && (nested == 0)):
-				if (wtest_defhash_bracket_all_type_params(content.data)):
-					string_free(content)
-					return 1
-			string_free(content)
-		i = i + 1
-	return 0
-
-
-# 1 when 'text' might contain an operator-overload or explicit-generics
-# definition -- both invisible to 'bin/wv2 defhash' by design
-# (compiler/compiler.w's defhash_main doc comment), so a real edit to one
-# could otherwise look like "no change" to the plain name/hash comparison
-# below. A cheap textual stand-in for a real check (header comment): may
-# over-fire (a comment merely mentioning "operator", an instantiation
-# whose type argument starts uppercase) but must never under-fire.
-int wtest_defhash_risky_text(char* text):
-	if (wtest_defhash_word_present(text, c"operator")):
-		return 1
-	if (wtest_defhash_has_generic_brackets(text)):
-		return 1
-	return 0
-
-
 # Runs 'bin/wv2 defhash <file_path>' and collects its NDJSON into a
 # name -> hash map (default, root-only scope -- exactly the definitions
 # declared directly in this file, matching what we are comparing). Returns
@@ -1215,29 +1085,17 @@ map[char*, char*] wtest_defhash_collect(char* file_path):
 
 # The --defhash decision for one changed .w path: 1 when it is safe to
 # skip this path's rule-(b) closure additions (its recorded definitions
-# are provably unchanged and it carries none of the defhash-invisible
-# shapes wtest_defhash_risky_text watches for), 0 otherwise -- fail open
-# in every other case, per the header comment. wtest_note calls make the
-# decision visible under --verbose without adding new output surface.
+# are provably unchanged), 0 otherwise -- fail open in every other case,
+# per the header comment. Generic and operator-overload definitions are
+# recorded by 'bin/wv2 defhash' itself now (wave plan C task 4f), so no
+# separate textual pre-check is needed here any more (task 2g's
+# wtest_defhash_risky_text, removed). wtest_note calls make the decision
+# visible under --verbose without adding new output surface.
 int wtest_defhash_unchanged(char* path):
-	char* worktree_text = file_read_text(path)
-	if (worktree_text == 0):
-		return 0
-	if (wtest_defhash_risky_text(worktree_text)):
-		free(worktree_text)
-		wtest_note(path, c"defhash: fallback (operator/generic-shaped text)")
-		return 0
 	char* head_text = wtest_git_show_head(path)
 	if (head_text == 0):
-		free(worktree_text)
 		wtest_note(path, c"defhash: fallback (no HEAD version, or git error)")
 		return 0
-	if (wtest_defhash_risky_text(head_text)):
-		free(worktree_text)
-		free(head_text)
-		wtest_note(path, c"defhash: fallback (operator/generic-shaped text)")
-		return 0
-	free(worktree_text)
 	mkdir(c"bin", 493)
 	char* head_tmp = c"bin/.wtest_defhash_head.w"
 	file_write_text(head_tmp, head_text)
