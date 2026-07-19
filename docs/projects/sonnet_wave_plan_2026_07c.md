@@ -114,6 +114,43 @@ prompts must forbid self-backgrounding outright. Transient
 `wtest_map_test` showed baseline-reproducible flakiness in one
 worktree (not on the program branch) — unexplained, logged.
 
+**Wave 3 complete (2026-07-19): all 6 tasks merged, zero stalls**
+(prompts forbade self-backgrounding — the fix worked). Full suite at
+wave close: 433/441, only the environmental failures. Per-task:
+
+- **3a** REPL bracketed paste (ESC[2004 mode, atomic paste consumption,
+  auto-indent/blank-line suspension), tab completion (lib-agnostic
+  `le_complete_hook` fed by the live symbol table), Ctrl-R incremental
+  reverse search. Ctrl-R is untestable under `script -qc` (canonical-
+  mode race drops the byte pre-raw-mode — diagnosed, documented, PTY
+  transcript + pure-logic unit test instead).
+- **3b** shell mode stage 2: echo/head/tail/wc/mkdir_p/rm/cp/mv native
+  (`mkdir` name collides with the syscall wrapper — renamed; `mv` is
+  atomic `rename(2)`); valued-flag translator machinery (`-n N`);
+  pipes explicitly deferred per the design doc's own bar.
+- **3c** #123: register seam (sigcontext vs ptrace behind the memory
+  seam's dispatch idiom), locals/args/frames + `set` in attach mode
+  (reusing locals.w unmodified), x86-64 attach symbolization
+  (`bin/wdbg64`); attach_test grew 32-bit + x64 sections; real ptrace
+  verification (no YAMA in this container).
+- **3d** the 6 c_import/preprocessor `error(c"")` sites migrated to
+  `diag_part` — `--json` NDJSON records now carry full messages (was
+  empty), stderr byte-identical, proven by old-vs-new compiler diff
+  over crafted repros; 2 unreachable-site residues documented.
+- **3e** `bin/wtest archs <file> [--check]`: enumerates every
+  (arch, root) whose closure contains the file (incl. wexec_darwin via
+  a wv2_darwin-aware root scan) and per-arch `check` — the win64
+  sys_socket class of break is now visible pre-build; synthetic
+  arch-broken fixture proves the FAIL path.
+- **3f** PG milestone 4 (closes #329's list): `{ code }` actions +
+  `&{ expr }` predicates (streaming-mode only; AST mode rejects),
+  action-safety via milestone 3's whole-grammar committed-dispatch
+  guarantee, `$n`/`text(n)` bindings with their own validator, grammar
+  `import` directive, emit-as-you-parse demo grammar + 10 tests;
+  `generated_c_parser.w` byte-identical. Bonus find: a pre-existing
+  streaming-codegen segfault (factorable prefix + nullable suffix),
+  reproduced independently and documented.
+
 ## 0. In-flight work — keep clear
 
 **Update (2026-07-19): PR #344 has merged.** CUDA stage 4 (atomics,
