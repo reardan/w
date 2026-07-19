@@ -144,6 +144,31 @@ Shipped from the next-steps backlog:
   eliminate — but confirming it needs the specific stale, unarchived
   `w_darwin` seed from that date, which no longer exists in any
   accessible form.
+- **c_import/preprocessor `diag_part` migration (2026-07-19, wave plan
+  C task 3d)**, closing the gap the audit above tracked. All 6 sites
+  that composed a diagnostic from raw `print_error(...)` fragments
+  before calling `error(c"")`/`error(c"'")` — `libs/extras/c_import/
+  importer.w`'s `ci_lookup_type` (unsupported C type) and
+  `ci_skip_extern_function` (skipped-extern warning), and
+  `libs/extras/c_preprocessor/{pp_directives,pp_macro}.w`'s
+  include-not-found, `#error`, could-not-read, and invalid-token-paste
+  errors — bypassed the JSON funnel: `print_error` always writes
+  straight to stderr, so `--json` mode's NDJSON `message` field only
+  ever got the final fragment passed to `error()`/`warning()` (verified
+  against the pre-migration binary: `""` for three sites, `"'"` for
+  `ci_lookup_type`) while the human-readable text landed on stderr
+  as before. Migrated every fragment to `diag_part(...)`, which routes
+  through the same accumulator `warning()`/`error()` already flush; a
+  differential run of the pre- and post-migration compiler over
+  crafted repro headers confirms human-mode stderr is byte-identical
+  and the JSON `message` now carries the full composed text. Two
+  residues logged in `ai_tooling_next_steps.md` rather than fixed here:
+  `ci_skip_extern_function`'s warning is gated on `verbosity >= 1`,
+  which nothing in the compiler/REPL/`wdbg` ever raises above the `-1`
+  every entry point sets it to (dead code pending a `-v` flag), and
+  `cpp_preprocess_file_into`'s could-not-read path is a TOCTOU window
+  between an existence check and the real read that this sandbox
+  cannot trigger deterministically (root bypasses permission bits).
 - **`itoa(INT_MIN)`/`intstrlen(INT_MIN)` fixes (2026-07-17).** Both
   pre-negated their input before extracting digits, which overflows
   back to the same negative value for `INT_MIN` in two's complement, so

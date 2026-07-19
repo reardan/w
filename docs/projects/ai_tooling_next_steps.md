@@ -139,6 +139,26 @@ is a queue, not an archive.
   per-arch resolution, with a win64 stub that always reports a
   transport failure so the feature degrades to "unavailable" instead
   of "won't compile" (2026-07-16). (scheduled: wave plan C task 3e)
+- **Two residues from the wave-3d c_import/preprocessor `diag_part`
+  migration (2026-07-19; shipped summary in `ai_tooling.md`'s status
+  section).** (1) `ci_skip_extern_function`'s (`libs/extras/c_import/
+  importer.w`) `if (verbosity >= 1)` guard is dead code — nothing in
+  the compiler, REPL, or `wdbg` ever raises `verbosity` above the `-1`
+  every entry point sets it to, so this warning path is unreachable
+  through any current CLI surface; a `-v`/`--verbose` flag would be
+  needed to exercise it (and to make the warning visible to users at
+  all — right now it can never fire). (2) `cpp_preprocess_file_into`'s
+  (`libs/extras/c_preprocessor/pp_directives.w`) "could not read" error
+  only fires when `cpp_find_include`'s existence check (`path_exists`,
+  its own `open()`+`close()`) succeeds but the subsequent real `open()`
+  in `pg_read_file_text` fails — a TOCTOU window with no reliable way
+  to hit deterministically (root bypasses permission bits in this
+  sandbox, and the two `open()` calls are microseconds apart with no
+  yield point between them); the migration there was verified by
+  inspection/mechanical parallel with the other 5 sites, not a runtime
+  repro. Also noted in passing, unrelated to the migration and left
+  as-is: the `#error` diagnostic never echoes the directive's own
+  message text, only `c preprocessor: #error in <file>`.
 ## Test selection (`bin/wtest`)
 
 - **First `wtest changed` after a build can take well over the

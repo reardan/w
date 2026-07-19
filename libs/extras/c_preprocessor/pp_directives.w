@@ -279,8 +279,8 @@ void cpp_process_include(cpp_preprocessor* pp, cpp_token* directive, cpp_token* 
 	int found_index = -1
 	char* path = cpp_find_include(pp, name, quoted, include_next, &found_index)
 	if (path == 0):
-		print_error(c"c preprocessor: include not found: ")
-		print_error(name)
+		diag_part(c"c preprocessor: include not found: ")
+		diag_part(name)
 		error(c"")
 	cpp_preprocess_file_into(pp, path, found_index)
 
@@ -331,8 +331,8 @@ void cpp_process_directive(cpp_preprocessor* pp, cpp_token* hash, cpp_token* end
 	else if (cpp_token_is_ident(directive, c"pragma")):
 		cpp_process_pragma(pp, directive)
 	else if (cpp_token_is_ident(directive, c"error")):
-		print_error(c"c preprocessor: #error in ")
-		print_error(pp.current_file)
+		diag_part(c"c preprocessor: #error in ")
+		diag_part(pp.current_file)
 		error(c"")
 
 
@@ -357,8 +357,8 @@ void cpp_preprocess_file_into(cpp_preprocessor* pp, char* path, int include_inde
 		return
 	char* source = pg_read_file_text(path)
 	if (source == 0):
-		print_error(c"c preprocessor: could not read ")
-		print_error(path)
+		diag_part(c"c preprocessor: could not read ")
+		diag_part(path)
 		error(c"")
 	char* old_file = pp.current_file
 	int old_index = pp.current_include_index
