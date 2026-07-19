@@ -66,8 +66,9 @@ is a queue, not an archive.
   no longer needs a re-enumeration pass to catch: the default hint now
   walks the whole chain in one `check` pass.
 - **`T* + int` is a raw, unscaled byte offset for every pointee width,
-  and nothing warns — the rule is now documented, the warning/intrinsic
-  is not.** Found 2026-07-16 writing `libs/extras/compress/
+  and nothing warns — the rule is now documented, and the ergonomic
+  intrinsic half has shipped; the warning half has not.** Found
+  2026-07-16 writing `libs/extras/compress/
   inflate.w`'s dynamic-Huffman block decoder: `wh_build(c, dist_huff,
   lengths + hlit, hdist)` (where `lengths` is `int*`) added `hlit`
   *bytes* to the pointer, not `hlit` ints — landing 4 (or 8, on x64)
@@ -87,12 +88,21 @@ is a queue, not an archive.
   is what made the bug non-obvious: indexing and "pointer plus offset"
   look interchangeable but are not). README.md/CLAUDE.md now document
   the rule explicitly (2026-07-17), citing `lib/sha256.w`'s `p + i * 4`
-  idiom above. Still open: a `w check` warning on
+  idiom above. **Shipped (2026-07-19):** `lib/ptr.w`'s
+  `ptr_add[T](p, n)` — a generic function, `return &p[n]`, so it
+  inherits the compiler's already-correct indexing scale for any `T`
+  with no `sizeof`/`__word_size__` bookkeeping needed in the caller —
+  plus `ptr_diff[T]`, covered by `tests/ptr_add_test.w`
+  (int/char/struct pointees, negative offsets, an explicit assertion
+  that `ptr_add` and raw `p + n` disagree). The exemplar `inflate.w`
+  bug site and two similar `char*` call sites in
+  `libs/extras/compress/{inflate,deflate}.w` now use `&p[n]` directly.
+  Still open: `./bin/wv2 check` still reports nothing on the raw `T* +
+  int` form itself — a `w check` warning on
   `<non-char-pointer> + <int-not-a-multiple-of-known-stride>` is
-  unrealizable statically in general, but a `ptr_add(p, n)`-style
-  intrinsic that scales by `__word_size__`/`sizeof` (or a real `&p[n]`
-  desugar recommended in library code instead of `p + n`) would remove
-  the footgun entirely rather than documenting around it.
+  unrealizable statically in general, and nothing stops new code from
+  writing `p + n` instead of reaching for `ptr_add`/`&p[n]`. The footgun
+  is now avoidable, not eliminated.
 
 - **No warning when an import breaks a different compile target.**
   `tools/wexec.w` is compiled three ways (default `x86`, `win64`,
