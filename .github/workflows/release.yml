@@ -97,8 +97,38 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/
 
+  # The pinned w_darwin seed can segfault compiling today's sources on
+  # macos-15 (observed on the v0.2.0 tag: SIGSEGV mid-compile of w.w),
+  # while the Linux seed still cross-compiles the same sources to a
+  # runnable arm64 Mach-O. Cross-compile the bootstrap here and hand it
+  # to the macOS job so verify_darwin does not depend on the previous
+  # darwin seed being able to compile the current tree.
+  darwin_bootstrap:
+    name: darwin bootstrap (cross)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Build the Linux-hosted compiler
+        run: ./wbuild wv2
+
+      - name: Cross-compile an arm64_darwin bootstrap
+        run: |
+          mkdir dist
+          ./bin/wv2 arm64_darwin w.w -o dist/wv2_darwin_bootstrap
+
+      - name: Upload bootstrap
+        uses: actions/upload-artifact@v7
+        with:
+          name: wv2_darwin_bootstrap
+          path: dist/wv2_darwin_bootstrap
+
   macos:
     name: macOS binary
+    needs: [darwin_bootstrap]
     runs-on: macos-15
     timeout-minutes: 20
 
@@ -106,19 +136,34 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Download Linux-cross-compiled darwin bootstrap
+        uses: actions/download-artifact@v8
+        with:
+          name: wv2_darwin_bootstrap
+          path: dist
+
+      - name: Install bootstrap as w_darwin
+        run: |
+          # Fresh inode (cp + mv) so macOS's vnode signature cache does
+          # not see a stale codesign. wbuild's ensure_seed will notice
+          # the hash differs from SEEDS and use this file as-is.
+          cp dist/wv2_darwin_bootstrap w_darwin.new
+          mv -f w_darwin.new w_darwin
+          chmod +x w_darwin
+
       - name: Verify the darwin self-host fixpoint
         run: ./wbuild verify_darwin
 
       - name: Stage artifact
         run: |
-          mkdir dist
-          cp bin/wv3_darwin dist/w-arm64-macos
+          mkdir release_dist
+          cp bin/wv3_darwin release_dist/w-arm64-macos
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: w-arm64-macos
-          path: dist/
+          path: release_dist/
 
   publish:
     name: Publish release

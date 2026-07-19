@@ -8,6 +8,15 @@ runners (one leg per target, so wall time is the slowest verify, not the
 sum) and `verify_darwin` on an arm64 macOS runner, so a release cannot be
 cut from a compiler that does not reproduce itself.
 
+The macOS leg does not cold-bootstrap from the pinned `w_darwin` seed:
+a Linux job cross-compiles `arm64_darwin w.w` and hands that Mach-O to
+the macOS runner as `w_darwin` before `./wbuild verify_darwin`. That
+avoids depending on the previous darwin seed being able to compile the
+current tree (the v0.1.0 `w_darwin` segfaulted mid-compile on macos-15
+when cutting v0.2.0, while the Linux seed still cross-compiled the same
+sources cleanly). The published `w-arm64-macos` asset is still the
+native self-host fixpoint (`bin/wv3_darwin`).
+
 ## Assets
 
 | Asset | Target | Built from |
