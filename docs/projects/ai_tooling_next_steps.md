@@ -121,24 +121,6 @@ is a queue, not an archive.
   writing `p + n` instead of reaching for `ptr_add`/`&p[n]`. The footgun
   is now avoidable, not eliminated.
 
-- **No warning when an import breaks a different compile target.**
-  `tools/wexec.w` is compiled three ways (default `x86`, `win64`,
-  `arm64_darwin`); adding `import libs.standard.web.http_client` (for
-  the shared build-cache client, issue #251 D3-2) compiled clean under
-  the default `w check` but failed only `win64`'s build ("Cannot find
-  symbol: 'sys_socket'" — `lib.net` has no
-  `lib/__arch__/win64/syscalls.w` socket implementation) — caught only
-  by `wtest changed`'s import-closure selection flagging `wexec_win`
-  as impacted, then building it explicitly. `w check` has no
-  "check every arch this file's closures actually get compiled under"
-  mode, so an arch-incompatible import in a multi-target tool stays
-  invisible until that target's next full build. Worked around here
-  with a `tools/__arch__/<arch>/wexec_remote_http.w` shim (the same
-  pattern `libs/extras/vcs/__arch__/` already uses for its own
-  win64/wasm networking gap) isolating the actual HTTP calls behind
-  per-arch resolution, with a win64 stub that always reports a
-  transport failure so the feature degrades to "unavailable" instead
-  of "won't compile" (2026-07-16). (scheduled: wave plan C task 3e)
 - **Two residues from the wave-3d c_import/preprocessor `diag_part`
   migration (2026-07-19; shipped summary in `ai_tooling.md`'s status
   section).** (1) `ci_skip_extern_function`'s (`libs/extras/c_import/
@@ -159,6 +141,7 @@ is a queue, not an archive.
   repro. Also noted in passing, unrelated to the migration and left
   as-is: the `#error` diagnostic never echoes the directive's own
   message text, only `c preprocessor: #error in <file>`.
+
 ## Test selection (`bin/wtest`)
 
 - **First `wtest changed` after a build can take well over the

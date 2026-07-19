@@ -449,6 +449,30 @@ The MVP described here has landed:
   tree → `verify`, `lib/__arch__/`, `graphics/`, c_import machinery,
   run-time fixture data) are documented at the top of
   `tools/test_map.w`.
+- **`wtest archs <file>... [--check]`** (2026-07-19, wave plan C task
+  3e): closes the "import breaks a different compile target" gap —
+  `tools/wexec.w` is compiled three ways (default `x86`, `win64`,
+  `arm64_darwin`), and an import that resolves for one arch's `lib/
+  __arch__/` tree but not another's (e.g. a `lib.net` call with no
+  `lib/__arch__/win64/syscalls.w` counterpart, "Cannot find symbol:
+  'sys_socket'") used to compile clean under a plain `w check` and only
+  fail at that target's next full build. `wtest archs` enumerates every
+  distinct `(arch, root)` pair whose manifest-recorded compile root is
+  the file itself or whose `bin/wv2 deps`-computed closure (shared
+  cache, `bin/.wtest_deps_cache`) contains it, one line per pair with
+  the owning target(s) for context; `--check` additionally runs
+  `bin/wv2 [arch] check <root>` per distinct pair (root-deduped, not
+  per target) and reports pass/fail, so the break is visible pre-build.
+  Root discovery does not filter `wtest_never_emit` targets the way
+  `changed`/`for` selection does (that filter is about which targets
+  this host can *run*, not which archs exist) and recognizes
+  `bin/wv2_darwin` as a compiler program alongside `bin/wv2`/`./w`, so
+  `wexec_darwin`'s `arm64_darwin` root — otherwise invisible, since it
+  is the only target that compiles a non-`w.w` root with that selector
+  through a program other than plain `bin/wv2` — is included.
+  `tools/test_map.w`; `wtest_archs_test` (synthetic manifest + a tiny
+  `__arch__`-dispatched fixture with no `win64` implementation,
+  modeling the incident above at unit-test scale).
 
 The out-of-scope items at the end of this document remain deferred; the
 living backlog (deferred items plus friction found while dogfooding) is
