@@ -1277,6 +1277,29 @@
 			]
 		},
 		{
+			"name": "wexec_lock_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["rm", "-f", "bin/.wexec_lock"]},
+				{"cmd": ["sh", "-c", "printf 1 > bin/.wexec_lock"]},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; exec bin/wexec -f tests/wexec/lock_scratch.json noop"], "expect_fail": true, "expect_stderr": "wexec: another build is running in this directory (pid 1); remove bin/.wexec_lock if stale"},
+				{"cmd": ["test", "-f", "bin/.wexec_lock"]},
+				{"cmd": ["rm", "-f", "bin/.wexec_lock"]},
+
+				{"cmd": ["sh", "-c", "( true & echo -n $! > bin/.wexec_lock; wait )"]},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; exec bin/wexec -f tests/wexec/lock_scratch.json noop"], "expect_stdout": ["lock scratch target ran", "wexec: OK (1 targets)"]},
+				{"cmd": ["sh", "-c", "test ! -f bin/.wexec_lock"]},
+
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; exec bin/wexec -f tests/wexec/lock_scratch.json noop"], "expect_stdout": "wexec: OK (1 targets)"},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; exec bin/wexec -f tests/wexec/lock_scratch.json noop"], "expect_stdout": "wexec: OK (1 targets)"},
+
+				{"cmd": ["sh", "-c", "printf 1 > bin/.wexec_lock"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/lock_scratch.json", "noop"], "expect_stdout": "wexec: OK (1 targets)"},
+				{"cmd": ["sh", "-c", "test -f bin/.wexec_lock"]},
+				{"cmd": ["rm", "-f", "bin/.wexec_lock"]}
+			]
+		},
+		{
 			"name": "result_propagate_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2300,6 +2323,7 @@
 				"wexec_ordered_output_test",
 				"wexec_remote_cache_test",
 				"wexec_trace_test",
+				"wexec_lock_test",
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",
