@@ -1084,6 +1084,682 @@ void ptx_peephole():
 	free(pr_j)
 
 
+#################### local promotion (cuda.md A2, step 2) ####################
+# Second post-pass, run over the raw body BEFORE ptx_peephole: every
+# stack slot — a declared local, a kernel-parameter spill, or a
+# 'gpu for' capture cell — whose every appearance is a recognized load
+# or store becomes a virtual register %l<N>, deleting its .local
+# traffic entirely. The pass understands three access shapes:
+#
+#   lea+deref    add.u64 %ax, %sp, K  (or sub.u64 %ax, %bp, K)
+#                ld.SFX %ax, [%ax];
+#   carrier      the assignment shape: the lea'd address is pushed,
+#                the RHS evaluates, then pop %bx / st.SFX [%bx], %ax
+#   direct       ld.u64 %Rx, [%sp+K]; / st.u64 [%sp+K], %Rx;
+#
+# The register mirrors what a load of the slot would return: stores
+# re-widen the stored bits with the slot's observed load suffix
+# (shl + shr.s64 for signed widths, shr.u64 for unsigned, a plain mov
+# at word width), so sub-word truncate-then-widen semantics survive
+# promotion bit for bit. A slot with mismatched load suffixes, or a
+# store narrower than its loads, simply stays in memory.
+#
+# Any stack address that escapes these shapes (&local fed to an
+# intrinsic, an aggregate base offset later, an unrecognized [%sp+K]
+# form) abandons the pass for the whole kernel — once an address is
+# loose, no slot's deadness can be trusted. The untransformed body is
+# always correct.
+#
+# Deleting a promoted slot's push moves %sp for its whole live range,
+# so [%sp+K] references to OLDER slots inside that range shrink by 8
+# and the scope pop that discarded the slot shrinks by 8 — the same
+# offset model as ptx_peephole, over a longer span. Registers live
+# across basic blocks (unlike step 1's pairs): the register write sits
+# exactly where the memory write did, so every path reaching a load
+# saw the same stores memory would have seen.
+
+# %l registers allocated by the most recent ptx_promote (0 = bailed or
+# nothing promotable); ptx_kernel_end reads it for the .reg declaration.
+int ptx_prom_lregs
+
+# Promoted 'gpu for' captures: per capture slot k the %l id (or -1) and
+# the load suffix, consumed by ptx_kernel_end's prologue to seed the
+# register from the parameter value. Null when no captures promoted.
+int* ptx_prom_capreg
+int* ptx_prom_capsfx
+int ptx_prom_ncap
+
+# Suffix codes: 1 .u64, 2 .s32, 3 .s16, 4 .u16, 5 .s8, 6 .u32, 7 .u8.
+int ptx_prom_width(int sfxc):
+	if (sfxc == 1):
+		return 8
+	if ((sfxc == 2) || (sfxc == 6)):
+		return 4
+	if ((sfxc == 3) || (sfxc == 4)):
+		return 2
+	return 1
+
+
+# "ld.SFX %ax, [%ax];" -> suffix code, else 0.
+int ptx_prom_load_sfx(char* b, int s, int e):
+	if (ptx_peep_starts(b, s, e, c"ld.u64 %ax, [%ax];")):
+		return 1
+	if (ptx_peep_starts(b, s, e, c"ld.s32 %ax, [%ax];")):
+		return 2
+	if (ptx_peep_starts(b, s, e, c"ld.s16 %ax, [%ax];")):
+		return 3
+	if (ptx_peep_starts(b, s, e, c"ld.u16 %ax, [%ax];")):
+		return 4
+	if (ptx_peep_starts(b, s, e, c"ld.s8 %ax, [%ax];")):
+		return 5
+	if (ptx_peep_starts(b, s, e, c"ld.u32 %ax, [%ax];")):
+		return 6
+	if (ptx_peep_starts(b, s, e, c"ld.u8 %ax, [%ax];")):
+		return 7
+	return 0
+
+
+# "st.SFX [%bx], %ax;" -> suffix code, else 0.
+int ptx_prom_store_sfx(char* b, int s, int e):
+	if (ptx_peep_starts(b, s, e, c"st.u64 [%bx], %ax;")):
+		return 1
+	if (ptx_peep_starts(b, s, e, c"st.u32 [%bx], %ax;")):
+		return 6
+	if (ptx_peep_starts(b, s, e, c"st.u16 [%bx], %ax;")):
+		return 4
+	if (ptx_peep_starts(b, s, e, c"st.u8 [%bx], %ax;")):
+		return 7
+	return 0
+
+
+# Does the [s, e) line contain the pattern anywhere?
+int ptx_prom_has(char* b, int s, int e, char* pat):
+	int i = s
+	while (i < e):
+		if (ptx_peep_starts(b, i, e, pat)):
+			return 1
+		i = i + 1
+	return 0
+
+
+# Emit (into the rebuild buffer) the store of %<src>x into %l<lr> for a
+# slot whose loads use suffix lsfx: re-widen the stored bits exactly as
+# a store-then-reload through memory would.
+int ptx_prom_widen(char* out, int outp, int lr, int src, int lsfx):
+	if ((lsfx == 0) || (lsfx == 1)):
+		outp = ptx_peep_put(out, outp, c"mov.u64 %l")
+		outp = ptx_peep_put(out, outp, itoa(lr))
+		outp = ptx_peep_put(out, outp, c", %")
+		out[outp] = src
+		outp = outp + 1
+		outp = ptx_peep_put(out, outp, c"x;")
+		out[outp] = 10
+		return outp + 1
+	int amt = 32
+	if ((lsfx == 3) || (lsfx == 4)):
+		amt = 48
+	else if ((lsfx == 5) || (lsfx == 7)):
+		amt = 56
+	outp = ptx_peep_put(out, outp, c"shl.b64 %l")
+	outp = ptx_peep_put(out, outp, itoa(lr))
+	outp = ptx_peep_put(out, outp, c", %")
+	out[outp] = src
+	outp = outp + 1
+	outp = ptx_peep_put(out, outp, c"x, ")
+	outp = ptx_peep_put(out, outp, itoa(amt))
+	outp = ptx_peep_put(out, outp, c";")
+	out[outp] = 10
+	outp = outp + 1
+	if ((lsfx == 2) || (lsfx == 3) || (lsfx == 5)):
+		outp = ptx_peep_put(out, outp, c"shr.s64 %l")
+	else:
+		outp = ptx_peep_put(out, outp, c"shr.u64 %l")
+	outp = ptx_peep_put(out, outp, itoa(lr))
+	outp = ptx_peep_put(out, outp, c", %l")
+	outp = ptx_peep_put(out, outp, itoa(lr))
+	outp = ptx_peep_put(out, outp, c", ")
+	outp = ptx_peep_put(out, outp, itoa(amt))
+	outp = ptx_peep_put(out, outp, c";")
+	out[outp] = 10
+	return outp + 1
+
+
+# The prologue twin of ptx_prom_widen: seed a promoted capture's
+# register from %cx (which holds the just-loaded parameter value).
+void ptx_prom_cap_init(int lr, int lsfx):
+	if ((lsfx == 0) || (lsfx == 1)):
+		ptx_emit(c"mov.u64 %l")
+		ptx_emit_int(lr)
+		ptx_line(c", %cx;")
+		return;
+	int amt = 32
+	if ((lsfx == 3) || (lsfx == 4)):
+		amt = 48
+	else if ((lsfx == 5) || (lsfx == 7)):
+		amt = 56
+	ptx_emit(c"shl.b64 %l")
+	ptx_emit_int(lr)
+	ptx_emit(c", %cx, ")
+	ptx_emit_int(amt)
+	ptx_line(c";")
+	if ((lsfx == 2) || (lsfx == 3) || (lsfx == 5)):
+		ptx_emit(c"shr.s64 %l")
+	else:
+		ptx_emit(c"shr.u64 %l")
+	ptx_emit_int(lr)
+	ptx_emit(c", %l")
+	ptx_emit_int(lr)
+	ptx_emit(c", ")
+	ptx_emit_int(amt)
+	ptx_line(c";")
+
+
+# Rewrites ptx_body_buf in place (via a fresh buffer). See the section
+# comment above for the model.
+void ptx_promote():
+	ptx_prom_lregs = 0
+	ptx_prom_ncap = 0
+	char* b = ptx_body_buf
+	int n = ptx_body_pos
+	if (n == 0):
+		return
+
+	# Count lines, record each line's start offset.
+	int lines = 0
+	int i = 0
+	while (i < n):
+		if (b[i] == 10):
+			lines = lines + 1
+		i = i + 1
+	if (lines == 0):
+		return
+	int* ls = cast(int*, malloc(lines * __word_size__))
+	int L = 0
+	int start = 0
+	i = 0
+	while (i < n):
+		if (b[i] == 10):
+			ls[L] = start
+			L = L + 1
+			start = i + 1
+		i = i + 1
+
+	# Classify. Kinds: 0 other, 1 push-sub, 2 push-st, 3 pop/peek-ld,
+	# 4 sp-add (N in val), 6 lea %ax,%sp,K, 7 label, 8 branch,
+	# 9 lea %ax,%bp,-K, 10 deref load, 11 store via %bx,
+	# 50/51/52 direct [%sp+K] unknown/load/store.
+	int* kind = cast(int*, malloc(lines * __word_size__))
+	int* val = cast(int*, malloc(lines * __word_size__))
+	int* lreg2 = cast(int*, malloc(lines * __word_size__))  # reg char per line
+	int* lsfx2 = cast(int*, malloc(lines * __word_size__))  # suffix per line
+	int* sloti = cast(int*, malloc(lines * __word_size__))
+	int* shift = cast(int*, malloc(lines * __word_size__))
+	int* dec = cast(int*, malloc(lines * __word_size__))
+	int* act = cast(int*, malloc(lines * __word_size__))    # 1 del, 2 load-mov, 3 store-widen
+	int* tgt = cast(int*, malloc(lines * __word_size__))
+	int s = 0
+	int e = 0
+	L = 0
+	while (L < lines):
+		s = ls[L]
+		e = n - 1
+		if (L + 1 < lines):
+			e = ls[L + 1] - 1
+		kind[L] = 0
+		val[L] = 0
+		lreg2[L] = 0
+		lsfx2[L] = 0
+		sloti[L] = 0
+		shift[L] = 0
+		dec[L] = 0
+		act[L] = 0
+		tgt[L] = 0 - 1
+		if (ptx_peep_starts(b, s, e, c"sub.u64 %sp, %sp, 8;")):
+			kind[L] = 1
+		else if (ptx_peep_starts(b, s, e, c"st.u64 [%sp], %")):
+			kind[L] = 2
+			lreg2[L] = b[s + 15]
+		else if (ptx_peep_starts(b, s, e, c"ld.u64 %") && ptx_peep_starts(b, s + 9, e, c"x, [%sp];")):
+			kind[L] = 3
+			lreg2[L] = b[s + 8]
+		else if (ptx_peep_starts(b, s, e, c"ld.u64 %") && ptx_peep_starts(b, s + 9, e, c"x, [%sp+")):
+			kind[L] = 51
+			lreg2[L] = b[s + 8]
+			val[L] = ptx_peep_num(b, s + 17)
+		else if (ptx_peep_starts(b, s, e, c"st.u64 [%sp+")):
+			kind[L] = 52
+			val[L] = ptx_peep_num(b, s + 12)
+			i = s + 12
+			while ((b[i] >= '0') && (b[i] <= '9')):
+				i = i + 1
+			lreg2[L] = b[i + 4]
+		else if (ptx_peep_starts(b, s, e, c"add.u64 %sp, %sp, ")):
+			kind[L] = 4
+			val[L] = ptx_peep_num(b, s + 18)
+		else if (ptx_peep_starts(b, s, e, c"add.u64 %ax, %sp, ")):
+			kind[L] = 6
+			val[L] = ptx_peep_num(b, s + 18)
+		else if (ptx_peep_starts(b, s, e, c"sub.u64 %ax, %bp, ")):
+			kind[L] = 9
+			val[L] = ptx_peep_num(b, s + 18)
+		else if (ptx_peep_starts(b, s, e, c"bra ") || ptx_peep_starts(b, s, e, c"@%p bra ")):
+			kind[L] = 8
+		else if ((e > s) && (b[e - 1] == ':')):
+			kind[L] = 7
+		else:
+			i = ptx_prom_load_sfx(b, s, e)
+			if (i):
+				kind[L] = 10
+				lsfx2[L] = i
+			else:
+				i = ptx_prom_store_sfx(b, s, e)
+				if (i):
+					kind[L] = 11
+					lsfx2[L] = i
+				else if (ptx_peep_find_spref(b, s, e) >= 0):
+					kind[L] = 50
+					val[L] = ptx_peep_num(b, ptx_peep_find_spref(b, s, e) + 5)
+		L = L + 1
+
+	# Slot instances: created by pushes and (lazily) by capture leas.
+	int cap_max = 520
+	int imax = lines + cap_max + 1
+	int* cap2inst = cast(int*, malloc(cap_max * __word_size__))
+	i = 0
+	while (i < cap_max):
+		cap2inst[i] = 0 - 1
+		i = i + 1
+	int* ipush = cast(int*, malloc(imax * __word_size__))
+	int* ikill = cast(int*, malloc(imax * __word_size__))
+	int* islot = cast(int*, malloc(imax * __word_size__))
+	int* iprom = cast(int*, malloc(imax * __word_size__))
+	int* ilsfx = cast(int*, malloc(imax * __word_size__))   # load suffix seen
+	int* isw = cast(int*, malloc(imax * __word_size__))     # narrowest store width
+	int* ivpop = cast(int*, malloc(imax * __word_size__))   # closed by a value pop
+	int* icap = cast(int*, malloc(imax * __word_size__))    # capture slot or -1
+	int* ctgt = cast(int*, malloc(imax * __word_size__))    # carrier: target inst
+	int* clea = cast(int*, malloc(imax * __word_size__))    # carrier: lea line
+	int* cpop = cast(int*, malloc(imax * __word_size__))    # carrier: pop line
+	int* ilreg = cast(int*, malloc(imax * __word_size__))
+	i = 0
+	while (i < imax):
+		ipush[i] = 0 - 1
+		ikill[i] = 0 - 1
+		islot[i] = 0
+		iprom[i] = 1
+		ilsfx[i] = 0
+		isw[i] = 8
+		ivpop[i] = 0
+		icap[i] = 0 - 1
+		ctgt[i] = 0 - 1
+		clea[i] = 0 - 1
+		cpop[i] = 0 - 1
+		ilreg[i] = 0 - 1
+		i = i + 1
+	int ninst = 0
+	int ncap = 0
+	int* stk = cast(int*, malloc(lines * __word_size__))
+	int depth = 0
+	int ok = 1
+
+	# Scan: simulate depth, resolve every reference to its slot
+	# instance, record the access or bail.
+	int t = 0
+	int w = 0
+	L = 0
+	while ((L < lines) && ok):
+		int k = kind[L]
+		if ((k == 6) || (k == 9)):
+			t = 0 - 1
+			if (k == 6):
+				sloti[L] = depth - val[L] / 8 - 1
+				if ((sloti[L] >= 0) && (sloti[L] < depth)):
+					t = stk[sloti[L]]
+				else:
+					ok = 0
+			else:
+				i = val[L] / 8 - 1
+				if ((i < 0) || (i >= cap_max)):
+					ok = 0
+				else:
+					t = cap2inst[i]
+					if (t < 0):
+						t = ninst
+						ninst = ninst + 1
+						icap[t] = i
+						cap2inst[i] = t
+						if (i + 1 > ncap):
+							ncap = i + 1
+			if (ok && (t >= 0) && (ctgt[t] >= 0)):
+				# a reference to a held address-carrier word
+				ok = 0
+			if (ok):
+				if ((L + 1 < lines) && (kind[L + 1] == 10)):
+					# lea+deref load
+					if (ilsfx[t] == 0):
+						ilsfx[t] = lsfx2[L + 1]
+					else if (ilsfx[t] != lsfx2[L + 1]):
+						iprom[t] = 0
+					act[L] = 1
+					tgt[L] = t
+					act[L + 1] = 2
+					tgt[L + 1] = t
+					lreg2[L + 1] = 'a'
+					L = L + 2
+				else if ((L + 2 < lines) && (kind[L + 1] == 1) && (kind[L + 2] == 2) && (lreg2[L + 2] == 'a')):
+					# the address rides the stack to an assignment
+					w = ninst
+					ninst = ninst + 1
+					ctgt[w] = t
+					clea[w] = L
+					ipush[w] = L + 1
+					islot[w] = depth
+					stk[depth] = w
+					depth = depth + 1
+					L = L + 3
+				else:
+					# the address escapes: no slot is provably dead
+					ok = 0
+		else if (k == 1):
+			if ((L + 1 < lines) && (kind[L + 1] == 2)):
+				w = ninst
+				ninst = ninst + 1
+				ipush[w] = L
+				islot[w] = depth
+				stk[depth] = w
+				depth = depth + 1
+				act[L] = 1
+				tgt[L] = w
+				act[L + 1] = 3
+				tgt[L + 1] = w
+				L = L + 2
+			else:
+				ok = 0
+		else if (k == 2):
+			# a store to [%sp] with no preceding push: unexpected
+			ok = 0
+		else if (k == 3):
+			if ((L + 1 < lines) && (kind[L + 1] == 4) && (val[L + 1] == 8)):
+				# a value pop
+				if (depth == 0):
+					ok = 0
+				else:
+					depth = depth - 1
+					w = stk[depth]
+					if (ctgt[w] >= 0):
+						t = ctgt[w]
+						if ((lreg2[L] == 'b') && (L + 2 < lines) && (kind[L + 2] == 11)):
+							if (icap[t] >= 0):
+								# a captured pointer reassigned
+								iprom[t] = 0
+							i = ptx_prom_width(lsfx2[L + 2])
+							if (i < isw[t]):
+								isw[t] = i
+							act[clea[w]] = 1
+							tgt[clea[w]] = t
+							act[ipush[w]] = 1
+							tgt[ipush[w]] = t
+							act[ipush[w] + 1] = 1
+							tgt[ipush[w] + 1] = t
+							act[L] = 1
+							tgt[L] = t
+							act[L + 1] = 1
+							tgt[L + 1] = t
+							act[L + 2] = 3
+							tgt[L + 2] = t
+							lreg2[L + 2] = 'a'
+							cpop[w] = L
+							L = L + 3
+						else:
+							# the held address is consumed some other way
+							ok = 0
+					else:
+						ivpop[w] = 1
+						L = L + 2
+			else:
+				# bare peek of the top word
+				if (depth == 0):
+					ok = 0
+				else:
+					t = stk[depth - 1]
+					if (ctgt[t] >= 0):
+						ok = 0
+					else:
+						if (ilsfx[t] == 0):
+							ilsfx[t] = 1
+						else if (ilsfx[t] != 1):
+							iprom[t] = 0
+						act[L] = 2
+						tgt[L] = t
+						L = L + 1
+		else if (k == 4):
+			w = val[L] / 8
+			if (w > depth):
+				ok = 0
+			else:
+				i = 0
+				while (i < w):
+					depth = depth - 1
+					ikill[stk[depth]] = L
+					if (ctgt[stk[depth]] >= 0):
+						ok = 0
+					i = i + 1
+				L = L + 1
+		else if ((k == 50) || (k == 51) || (k == 52)):
+			sloti[L] = depth - val[L] / 8 - 1
+			t = 0 - 1
+			if ((sloti[L] >= 0) && (sloti[L] < depth)):
+				t = stk[sloti[L]]
+			if (t < 0):
+				ok = 0
+			else if (ctgt[t] >= 0):
+				ok = 0
+			else if (k == 51):
+				if (ilsfx[t] == 0):
+					ilsfx[t] = 1
+				else if (ilsfx[t] != 1):
+					iprom[t] = 0
+				act[L] = 2
+				tgt[L] = t
+				L = L + 1
+			else if (k == 52):
+				act[L] = 3
+				tgt[L] = t
+				L = L + 1
+			else:
+				iprom[t] = 0
+				L = L + 1
+		else if ((k == 7) || (k == 8)):
+			L = L + 1
+		else:
+			if (k == 0):
+				s = ls[L]
+				e = n - 1
+				if (L + 1 < lines):
+					e = ls[L + 1] - 1
+				if (ptx_prom_has(b, s, e, c"%sp") || ptx_prom_has(b, s, e, c"%bp")):
+					# an unrecognized line touching the stack registers
+					ok = 0
+			L = L + 1
+	if (ok):
+		# an address carrier still open at the end of the body
+		i = 0
+		while (i < depth):
+			if (ctgt[stk[i]] >= 0):
+				ok = 0
+			i = i + 1
+
+	# Decide the promoted set and allocate %l registers.
+	int nl = 0
+	if (ok):
+		i = 0
+		while (i < ninst):
+			t = iprom[i]
+			if (ctgt[i] >= 0):
+				t = 0
+			if (ivpop[i]):
+				t = 0
+			if ((ilsfx[i] != 0) && (ptx_prom_width(ilsfx[i]) > isw[i])):
+				t = 0
+			iprom[i] = t
+			if (t):
+				ilreg[i] = nl
+				nl = nl + 1
+			i = i + 1
+
+	if (ok && (nl > 0)):
+		# Promoted captures: hand the prologue their register + suffix.
+		if (ncap > 0):
+			ptx_prom_ncap = ncap
+			ptx_prom_capreg = cast(int*, malloc(ncap * __word_size__))
+			ptx_prom_capsfx = cast(int*, malloc(ncap * __word_size__))
+			i = 0
+			while (i < ncap):
+				ptx_prom_capreg[i] = 0 - 1
+				ptx_prom_capsfx[i] = 0
+				i = i + 1
+			i = 0
+			while (i < ninst):
+				if ((icap[i] >= 0) && iprom[i]):
+					ptx_prom_capreg[icap[i]] = ilreg[i]
+					ptx_prom_capsfx[icap[i]] = ilsfx[i]
+				i = i + 1
+
+		# Offset rewrites: each deleted stack word moves %sp over its
+		# live range, so [%sp+K] references to older slots shrink by 8
+		# and the scope pop that covered the word shrinks by 8.
+		int rk = 0
+		i = 0
+		while (i < ninst):
+			if (iprom[i] && (icap[i] < 0)):
+				t = ipush[i] + 2
+				w = lines
+				if (ikill[i] >= 0):
+					w = ikill[i]
+					dec[w] = dec[w] + 8
+				while (t < w):
+					rk = kind[t]
+					if ((rk == 6) || (rk == 50) || (rk == 51) || (rk == 52)):
+						if (sloti[t] < islot[i]):
+							shift[t] = shift[t] + 8
+					t = t + 1
+			i = i + 1
+		i = 0
+		while (i < ninst):
+			if ((ctgt[i] >= 0) && (cpop[i] >= 0) && iprom[ctgt[i]]):
+				t = ipush[i] + 2
+				while (t < cpop[i]):
+					rk = kind[t]
+					if ((rk == 6) || (rk == 50) || (rk == 51) || (rk == 52)):
+						if (sloti[t] < islot[i]):
+							shift[t] = shift[t] + 8
+					t = t + 1
+			i = i + 1
+
+		# Rebuild the body into a fresh scratch buffer. 3x covers the
+		# worst case (every line a sub-word store rewritten to the
+		# two-line shl/shr widen); every other rewrite shrinks.
+		int cap2 = n * 3 + 256
+		char* out = malloc(cap2)
+		int outp = 0
+		int ap = 0
+		L = 0
+		while (L < lines):
+			s = ls[L]
+			e = n - 1
+			if (L + 1 < lines):
+				e = ls[L + 1] - 1
+			ap = 0
+			if ((act[L] > 0) && (tgt[L] >= 0)):
+				if (iprom[tgt[L]]):
+					ap = act[L]
+			if (ap == 1):
+				L = L + 1
+			else if (ap == 2):
+				outp = ptx_peep_put(out, outp, c"mov.u64 %")
+				out[outp] = lreg2[L]
+				outp = outp + 1
+				outp = ptx_peep_put(out, outp, c"x, %l")
+				outp = ptx_peep_put(out, outp, itoa(ilreg[tgt[L]]))
+				out[outp] = ';'
+				out[outp + 1] = 10
+				outp = outp + 2
+				L = L + 1
+			else if (ap == 3):
+				outp = ptx_prom_widen(out, outp, ilreg[tgt[L]], lreg2[L], ilsfx[tgt[L]])
+				L = L + 1
+			else if ((kind[L] == 4) && (dec[L] > 0)):
+				outp = ptx_peep_put(out, outp, c"add.u64 %sp, %sp, ")
+				outp = ptx_peep_put(out, outp, itoa(val[L] - dec[L]))
+				out[outp] = ';'
+				out[outp + 1] = 10
+				outp = outp + 2
+				L = L + 1
+			else if ((kind[L] == 6) && (shift[L] > 0)):
+				outp = ptx_peep_put(out, outp, c"add.u64 %ax, %sp, ")
+				outp = ptx_peep_put(out, outp, itoa(val[L] - shift[L]))
+				out[outp] = ';'
+				out[outp + 1] = 10
+				outp = outp + 2
+				L = L + 1
+			else if (((kind[L] == 50) || (kind[L] == 51) || (kind[L] == 52)) && (shift[L] > 0)):
+				i = ptx_peep_find_spref(b, s, e)
+				t = s
+				while (t < i + 5):
+					out[outp] = b[t]
+					outp = outp + 1
+					t = t + 1
+				outp = ptx_peep_put(out, outp, itoa(val[L] - shift[L]))
+				while ((b[t] >= '0') && (b[t] <= '9')):
+					t = t + 1
+				while (t < e):
+					out[outp] = b[t]
+					outp = outp + 1
+					t = t + 1
+				out[outp] = 10
+				outp = outp + 1
+				L = L + 1
+			else:
+				t = s
+				while (t < e):
+					out[outp] = b[t]
+					outp = outp + 1
+					t = t + 1
+				out[outp] = 10
+				outp = outp + 1
+				L = L + 1
+		free(ptx_body_buf)
+		ptx_body_buf = out
+		ptx_body_size = cap2
+		ptx_body_pos = outp
+		ptx_prom_lregs = nl
+
+	free(ls)
+	free(kind)
+	free(val)
+	free(lreg2)
+	free(lsfx2)
+	free(sloti)
+	free(shift)
+	free(dec)
+	free(act)
+	free(tgt)
+	free(cap2inst)
+	free(ipush)
+	free(ikill)
+	free(islot)
+	free(iprom)
+	free(ilsfx)
+	free(isw)
+	free(ivpop)
+	free(icap)
+	free(ctgt)
+	free(clea)
+	free(cpop)
+	free(ilreg)
+	free(stk)
+
+
 # Open a kernel: the module header is written once, body scratch resets.
 # name is an owned copy; ptx_kernel_end frees it.
 void ptx_kernel_begin(char* name):
@@ -1106,6 +1782,7 @@ void ptx_kernel_begin(char* name):
 # stores every parameter into its slot (the 'gpu for' outlining layout:
 # capture k lives at [%bp - (k+1)*8], a fixed offset discovered mid-body).
 void ptx_kernel_end(int nparams, int reserve_bytes):
+	ptx_promote()
 	ptx_peephole()
 	ptx_emit_to_module = 1
 	ptx_emit(c".visible .entry ")
@@ -1131,6 +1808,11 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 		ptx_emit(c".reg .b64 %v<")
 		ptx_emit_int(ptx_peep_vregs)
 		ptx_line(c">;")
+	if (ptx_prom_lregs > 0):
+		# Registers ptx_promote substituted for whole stack slots.
+		ptx_emit(c".reg .b64 %l<")
+		ptx_emit_int(ptx_prom_lregs)
+		ptx_line(c">;")
 	ptx_line(c".local .align 8 .b8 __wstack[4096];")
 	ptx_line(c"mov.u64 %sp, __wstack;")
 	ptx_line(c"cvta.local.u64 %sp, %sp;")
@@ -1141,6 +1823,7 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 		ptx_emit_int(reserve_bytes)
 		ptx_line(c";")
 		# Captured values: parameter k -> its fixed slot below %bp
+		# (and, when promoted, its %l register)
 		int k = 0
 		while (k < nparams):
 			ptx_emit(c"ld.param.u64 %cx, [p")
@@ -1149,6 +1832,9 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 			ptx_emit(c"st.u64 [%bp+-")
 			ptx_emit_int((k + 1) << 3)
 			ptx_line(c"], %cx;")
+			if ((ptx_prom_capreg != 0) && (k < ptx_prom_ncap)):
+				if (ptx_prom_capreg[k] >= 0):
+					ptx_prom_cap_init(ptx_prom_capreg[k], ptx_prom_capsfx[k])
 			k = k + 1
 	# The body (already emitted to scratch while parsing)
 	i = 0
@@ -1161,6 +1847,12 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 	free(ptx_kernel_name)
 	ptx_kernel_name = 0
 	ptx_body_pos = 0
+	if (ptx_prom_capreg != 0):
+		free(ptx_prom_capreg)
+		free(ptx_prom_capsfx)
+		ptx_prom_capreg = 0
+		ptx_prom_capsfx = 0
+	ptx_prom_ncap = 0
 
 
 # Called once per batch compilation, after every user file has compiled
