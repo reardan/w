@@ -671,6 +671,15 @@ int repl_compile_entry(char* path):
 	column_number = 0
 	tab_level = 0
 	byte_offset = 0
+	# A failed entry's error() longjmps straight back to the setjmp above,
+	# unwinding past every pending expr_nesting_depth/stmt_nesting_depth
+	# decrement in grammar/primary_expr.w and grammar/statement.w -- reset
+	# both here, at the start of every entry (the one after a failure and
+	# every ordinary one alike), so a nesting-guard trip (or any other
+	# error) inside one entry can never leave the next entry starting
+	# already "nested".
+	expr_nesting_depth = 0
+	stmt_nesting_depth = 0
 	nextc = get_character()
 	get_token()
 
