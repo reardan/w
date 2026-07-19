@@ -665,7 +665,7 @@ void process_capture_init(process_capture* buffer):
 int process_capture_read(process_capture* buffer, int fd):
 	if ((buffer.length + 4096) > buffer.capacity):
 		int new_capacity = buffer.capacity * 2
-		buffer.data = realloc(buffer.data, buffer.length, new_capacity)
+		buffer.data = realloc(buffer.data, buffer.capacity, new_capacity)
 		buffer.capacity = new_capacity
 	int count = read(fd, buffer.data + buffer.length, 4096)
 	if (count > 0):
@@ -676,7 +676,8 @@ int process_capture_read(process_capture* buffer, int fd):
 # NUL-terminate and hand the accumulated bytes to the caller.
 char* process_capture_take(process_capture* buffer):
 	if ((buffer.length + 1) > buffer.capacity):
-		buffer.data = realloc(buffer.data, buffer.length, buffer.length + 1)
+		buffer.data = realloc(buffer.data, buffer.capacity, buffer.length + 1)
+		buffer.capacity = buffer.length + 1
 	buffer.data[buffer.length] = 0
 	return buffer.data
 

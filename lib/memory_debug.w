@@ -5,24 +5,37 @@ debug_realloc.
 Selected instead of the free-list backend (lib/memory_freelist.w) when
 lib/memory.w's dispatcher is in debug mode. Every allocation gets its
 own private mmap region sized in whole pages, with the payload
-right-aligned against the end of the last resident page and an
-unmapped/PROT_NONE guard page immediately after it: writing even one
-byte past the requested size lands on the guard page and faults
-immediately, instead of silently corrupting the free-list allocator's
-next block header. free() never reuses or unmaps a block's pages -- it
-mprotects the whole region PROT_NONE instead, so a use-after-free access
-also faults immediately rather than reading or corrupting memory some
-other allocation has since reused.
+right-aligned against the end of the last resident page and the page
+immediately after unmapped: writing even one byte past the requested
+size lands in the hole and faults immediately, instead of silently
+corrupting the free-list allocator's next block header.
 
-This is deliberately wasteful (one page minimum per allocation, and
-freed pages are never reclaimed) and only catches overflow past the end
-of a block, not underflow before its start -- it is a debugging aid for
-one process run, not a general-purpose allocator.
+The trailing guard is created with munmap (not mprotect PROT_NONE) so
+each live block is a single VMA. mprotect-splitting the mapping into a
+RW payload + PROT_NONE guard doubled the VMA count and made modest
+programs hit Linux's default vm.max_map_count (65530) -- wexec under
+W_DEBUG_ALLOC OOMed before finishing `hello`. Raise max_map_count for
+very allocation-heavy debug runs; the single-VMA layout plus the
+quarantine below is what keeps ordinary tool use workable.
+
+free() first mprotects the payload PROT_NONE so a recent use-after-free
+still faults, then parks the block in a byte-budgeted quarantine. When
+quarantined bytes exceed the budget (or a fresh mmap fails), the oldest
+quarantined regions are munmap'd so long-running alloc/free churn does
+not exhaust address space. Double-free and invalid-free checks keep
+working after reclaim because the bookkeeping table entry stays; UAF on
+a reclaimed block still usually SIGSEGVs on the hole, but can miss if
+the address is remapped for a later allocation.
+
+This is deliberately wasteful while a block is quarantined (one page
+minimum per allocation) and only catches overflow past the end of a
+block, not underflow before its start -- it is a debugging aid for one
+process run, not a general-purpose allocator.
 
 The bookkeeping table (one entry per live-or-freed block: pointer,
 region, size) is what free()/realloc() need to find a block's region,
 since there is nowhere to put a header next to a payload that sits
-flush against its guard page. As a side effect the same table is what
+flush against its guard hole. As a side effect the same table is what
 makes leak reporting possible: debug_alloc_report_leaks() walks it at
 any point and reports every block never freed. The table manages its
 own backing storage directly via mmap rather than through malloc/free,
@@ -36,16 +49,28 @@ int debug_page_size():
 	return 4096
 
 
+# Freed-but-still-mapped quarantine budget. ~32 MiB keeps recent UAFs
+# faulting on PROT_NONE while bounding VMA growth under alloc/free
+# churn. Linux defaults vm.max_map_count to 65530; each live block is
+# one VMA with the munmap-guard layout.
+int debug_quarantine_budget():
+	return 32 * 1024 * 1024
+
+
 # --- bookkeeping table, backed directly by mmap (never malloc/free) --
 
 int* debug_tbl_ptr         # payload pointer, per entry
-int* debug_tbl_region      # mmap'd region base, per entry
-int* debug_tbl_region_size # mmap'd region length in bytes, per entry
+int* debug_tbl_region      # mmap'd payload base, per entry
+int* debug_tbl_region_size # mapped payload length in bytes (no guard), per entry
 int* debug_tbl_size        # requested payload size, per entry
-int* debug_tbl_freed       # 0 live, 1 freed, per entry
+# 0 = live, 1 = freed and still mapped (quarantined PROT_NONE),
+# 2 = freed and munmap'd (reclaimed from quarantine)
+int* debug_tbl_freed
 int debug_tbl_count
 int debug_tbl_capacity
-int debug_guard_warned     # already printed the "guard pages unsupported" notice
+int debug_guard_warned     # already printed the guard-failure notice
+int debug_quarantine_bytes # sum of region sizes with freed == 1
+int debug_quarantine_cursor # next index to consider for reclaim
 
 
 # mmap reports failure as a small negative (errno-shaped) value, the same
@@ -110,13 +135,38 @@ void debug_tbl_append(int ptr, int region, int region_size, int size):
 	debug_tbl_count = debug_tbl_count + 1
 
 
+# Newest-first: after quarantine reclaim munmaps a region, mmap may
+# hand the same payload address to a later malloc. A oldest-first scan
+# would hit the reclaimed entry and mis-report the new block's free()
+# as a double free (and debug_fatal's own scratch malloc/free then
+# recurses). Prefer the most recent entry for that pointer.
 int debug_tbl_find(int ptr):
-	int i = 0
-	while (i < debug_tbl_count):
+	int i = debug_tbl_count - 1
+	while (i >= 0):
 		if (debug_tbl_ptr[i] == ptr):
 			return i
-		i = i + 1
+		i = i - 1
 	return -1
+
+
+# Munmap the oldest quarantined regions until quarantined bytes are at
+# or under `budget`, or the table is exhausted. budget 0 drains all.
+void debug_quarantine_reclaim_to(int budget):
+	while ((debug_quarantine_bytes > budget) && (debug_quarantine_cursor < debug_tbl_count)):
+		int i = debug_quarantine_cursor
+		debug_quarantine_cursor = i + 1
+		if (debug_tbl_freed[i] == 1):
+			munmap(debug_tbl_region[i], debug_tbl_region_size[i])
+			debug_quarantine_bytes = debug_quarantine_bytes - debug_tbl_region_size[i]
+			debug_tbl_freed[i] = 2
+			# Drop the payload address so a recycled mmap cannot alias
+			# this slot; double-free of a truly dangling pointer then
+			# reports "never returned" once the address is reused.
+			debug_tbl_ptr[i] = 0
+
+
+void debug_quarantine_reclaim_if_needed():
+	debug_quarantine_reclaim_to(debug_quarantine_budget())
 
 
 # Uses lib.stack_trace's own write helpers (st_write_*), not lib.lib's
@@ -149,26 +199,35 @@ void* debug_malloc(int size):
 		size = 1
 	int page = debug_page_size()
 	int payload_pages = debug_pages_for(size)
-	int region_size = (payload_pages + 1) * page
+	int payload_size = payload_pages * page
+	int region_size = payload_size + page
 	int flags = 34 /* MAP_PRIVATE|MAP_ANONYMOUS */
 	int region = mmap(0, region_size, 3, flags)
-	if ((region < 0) && (region > -4096)):
-		st_write_cstr(c"memory_debug: out of memory (mmap failed)\x0a")
-		return cast(void*, 0)
-	int guard_addr = region + payload_pages * page
-	if (mprotect(guard_addr, page, 0) != 0):
+	if (debug_tbl_mmap_failed(region)):
+		# Free quarantined VMAs and retry once -- the common failure
+		# under W_DEBUG_ALLOC on long-running tools.
+		debug_quarantine_reclaim_to(0)
+		region = mmap(0, region_size, 3, flags)
+		if (debug_tbl_mmap_failed(region)):
+			st_write_cstr(c"memory_debug: out of memory (mmap failed)\x0a")
+			return cast(void*, 0)
+	int guard_addr = region + payload_size
+	# Unmap the guard page so overflow faults on a hole. Prefer munmap
+	# over mprotect(PROT_NONE): mprotect splits one mapping into two
+	# VMAs and burns max_map_count twice as fast.
+	if (munmap(guard_addr, page) != 0):
 		if (debug_guard_warned == 0):
 			debug_guard_warned = 1
-			st_write_cstr(c"memory_debug: guard pages are not supported on this target -- overflow and use-after-free will not be caught, only leak tracking remains active\x0a")
+			st_write_cstr(c"memory_debug: munmap guard page failed; overflow may not fault\x0a")
 	int ptr = guard_addr - size
-	debug_tbl_append(ptr, region, region_size, size)
+	debug_tbl_append(ptr, region, payload_size, size)
 	return cast(void*, ptr)
 
 
-# Push the whole region (payload pages and guard page alike) to
-# PROT_NONE and mark it freed, but never munmap or reuse it: any future
-# touch, or a second free(), is a bug and should fault or be caught
-# rather than silently succeed against memory something else now owns.
+# Quarantine: PROT_NONE the payload so a near-term UAF faults, keep the
+# table entry for double-free detection, and reclaim oldest quarantined
+# regions when over budget so the process does not wedge on VMA/address
+# space exhaustion.
 int debug_free(void* mem_address):
 	if (mem_address == 0):
 		return 0
@@ -180,6 +239,8 @@ int debug_free(void* mem_address):
 		debug_fatal(c"double free() detected", ptr)
 	mprotect(debug_tbl_region[idx], debug_tbl_region_size[idx], 0)
 	debug_tbl_freed[idx] = 1
+	debug_quarantine_bytes = debug_quarantine_bytes + debug_tbl_region_size[idx]
+	debug_quarantine_reclaim_if_needed()
 	return 1
 
 

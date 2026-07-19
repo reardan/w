@@ -99,7 +99,7 @@ void rt_buf_append(rt_buf* b, char* src, int n):
 		int newcap = b.cap
 		while (b.len + n > newcap):
 			newcap = newcap * 2
-		b.data = realloc(b.data, b.len, newcap)
+		b.data = realloc(b.data, b.cap, newcap)
 		b.cap = newcap
 	int i = 0
 	while (i < n):

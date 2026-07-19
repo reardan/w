@@ -37,7 +37,9 @@ void array_list_ensure(array_list* list, int extra):
 		int new_capacity = list.capacity * 2
 		if (new_capacity < needed):
 			new_capacity = needed
-		list.items = cast(int*, realloc(list.items, list.length * __word_size__, new_capacity * __word_size__))
+		# oldlen is the allocation size (capacity words), not length —
+		# see structures/string.w string_reserve.
+		list.items = cast(int*, realloc(list.items, list.capacity * __word_size__, new_capacity * __word_size__))
 		list.capacity = new_capacity
 
 

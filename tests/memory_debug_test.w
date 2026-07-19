@@ -9,6 +9,7 @@
 import lib.lib
 import lib.assert
 import lib.memory
+import structures.string
 
 
 int main():
@@ -43,7 +44,28 @@ int main():
 	big[9999] = 1
 	free(big)
 
+	# Grow a barely-used string_builder in one jump past its capacity.
+	# realloc oldlen must be capacity (not length+1); under the debug
+	# allocator a mismatch is fatal.
+	string_builder* sb = string_new_sized(16)
+	asserts(c"fresh builder empty", sb.length == 0)
+	string_reserve(sb, 100)
+	asserts(c"reserve grew capacity", sb.capacity >= 101)
+	string_append(sb, c"ok")
+	asserts(c"append after large reserve", string_equals(sb, c"ok"))
+	string_free(sb)
+
 	asserts(c"no leaks yet", debug_alloc_report_leaks() == 0)
+
+	# Alloc/free churn past the quarantine budget must not wedge: older
+	# freed regions are munmap'd so VMA/address space stays bounded.
+	i = 0
+	while (i < 20000):
+		char* p = malloc(16)
+		p[0] = 1
+		free(p)
+		i = i + 1
+	asserts(c"churn left no leaks", debug_alloc_report_leaks() == 0)
 
 	malloc(37)
 	malloc(5)

@@ -220,7 +220,7 @@ void asm_buffer_reserve(asm_buffer* b, int extra):
 	int capacity = b.capacity
 	while (b.length + extra > capacity):
 		capacity = capacity * 2
-	b.data = realloc(b.data, b.length, capacity)
+	b.data = realloc(b.data, b.capacity, capacity)
 	b.capacity = capacity
 
 

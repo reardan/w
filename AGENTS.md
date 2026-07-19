@@ -97,6 +97,15 @@ working in this repo.
   If you see a redirection/`chmod` failure like
   `bin/wv2: No such file or directory` from a hand-run compile, run
   `mkdir -p bin` (or `./wbuild build`) first.
+- Heap debugging: `W_DEBUG_ALLOC=1` selects the guard-page allocator in
+  `lib/memory_debug.w` (overflow/UAF fault on the guard hole, double-free /
+  bad-realloc diagnostics, `debug_alloc_report_leaks()`). It is much slower
+  than the freelist backend (one `mmap` per allocation). For allocation-heavy
+  processes, also raise the VMA cap or UAF/overflow guards stop installing:
+  `sudo sysctl -w vm.max_map_count=1048576` (default is 65530). Prefer running
+  the program under test with the env var rather than a full-suite sweep of
+  every `*_test` binary — large tests under debug alloc can peg the CPU for
+  minutes.
 - There is **no separate linter**. "Lint" is the compiler's own type/style warnings,
   asserted by the `warning_test` target. Compile-diagnostic fixtures carry their
   expected messages as `# expect_stderr:`-style directive lines in their own header

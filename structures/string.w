@@ -37,7 +37,11 @@ void string_reserve(string_builder* s, int extra):
 		int new_capacity = s.capacity * 2
 		if (new_capacity < needed):
 			new_capacity = needed
-		s.data = realloc(s.data, s.length + 1, new_capacity)
+		# oldlen must be the allocation size (capacity), not the used
+		# length: freelist_realloc only copies oldlen bytes so a short
+		# oldlen "works" by accident, but the debug allocator checks
+		# oldlen against the tracked malloc size and rejects a mismatch.
+		s.data = realloc(s.data, s.capacity, new_capacity)
 		s.capacity = new_capacity
 
 

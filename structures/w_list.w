@@ -110,7 +110,9 @@ void __w_list_ensure(__w_list* list, int extra):
 		int new_capacity = list.capacity * 2
 		if (new_capacity < needed):
 			new_capacity = needed
-		list.items = realloc(list.items, list.length * list.element_size, new_capacity * list.element_size)
+		# oldlen is the allocation size (capacity * element_size), not
+		# the populated prefix — see structures/string.w string_reserve.
+		list.items = realloc(list.items, list.capacity * list.element_size, new_capacity * list.element_size)
 		list.capacity = new_capacity
 
 

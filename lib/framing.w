@@ -76,7 +76,7 @@ int frame_reader_fill(frame_reader* r):
 		r.offset = 0
 	if (r.length == r.capacity):
 		int new_capacity = r.capacity * 2
-		r.buffer = realloc(r.buffer, r.length, new_capacity)
+		r.buffer = realloc(r.buffer, r.capacity, new_capacity)
 		r.capacity = new_capacity
 	int count = read(r.fd, r.buffer + r.length, r.capacity - r.length)
 	if (count > 0):
