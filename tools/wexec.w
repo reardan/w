@@ -2841,11 +2841,17 @@ void wexec_lock_mark_children():
 
 
 # 1 when a process with this pid currently exists (see the block comment
-# above for why kill(pid, 0) instead of /proc).
+# above for why kill(pid, 0) instead of /proc). kill returns -EPERM (-1)
+# for a process that exists but this user may not signal (e.g. pid 1
+# probed from an unprivileged CI runner) -- existence is all the
+# null-signal probe asks, so only ESRCH means the holder is gone.
 int wexec_pid_alive(int pid):
 	if (pid <= 0):
 		return 0
-	return kill(pid, 0) >= 0
+	int r = kill(pid, 0)
+	if (r >= 0):
+		return 1
+	return r == -1
 
 
 int wexec_lock_read_pid(char* path):

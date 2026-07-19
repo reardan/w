@@ -168,9 +168,11 @@ invocations racing in the same worktree"). `main` now takes an advisory
 lock, `bin/.wexec_lock`, before running any requested target's steps:
 `O_CREAT|O_EXCL` so at most one caller ever creates it, the winner's pid
 written inside; a loser reads that pid back, and if `kill(pid, 0)` says
-it is dead (SIGKILL, crash, or a direct `exit()` bypassing `defer` — see
-`docs/projects/defer.md`'s "Possible future work") reclaims the stale
-lock and retries once, otherwise prints `wexec: another build is running
+it is dead — `-ESRCH` only; `-EPERM` counts as alive, since an
+unprivileged probe of another user's live process (CI runners probing
+pid 1) must not read as stale — (SIGKILL, crash, or a direct `exit()`
+bypassing `defer` — see `docs/projects/defer.md`'s "Possible future
+work") reclaims the stale lock and retries once, otherwise prints `wexec: another build is running
 in this directory (pid N); remove bin/.wexec_lock if stale` and exits 1.
 The lock is scoped per `bin/` directory (relative to cwd, like
 `bin/.wexec_cache/`), not global.
