@@ -458,14 +458,17 @@ generated run step never takes CLI arguments for the binary itself (only
 `stdin=`/`expect_*=`); needs an `argv=` directive, or support for more
 than one run step per generated target.
 
-**I. Compile-error fixture (the compile step itself must fail) — 1.**
-`int64_x86_error_test` (`expect_fail`/`expect_stderr` on the *compile*
-step, not a run step). Blocker: `wbuildgen`'s directive-decorated run
-step only ever decorates the compiled binary's run, never the compile
-step itself — no directive today can express "this source must fail to
-compile". Needs a new directive class, most naturally mirroring
-`wfixture`'s existing `# expect_stderr:`/`# expect_fail` fixture-header
-convention.
+**I. Compile-error fixture (the compile step itself must fail) — 1
+(RESOLVED, wave 2c).** `int64_x86_error_test` (`expect_fail`/
+`expect_stderr` on the *compile* step, not a run step). Was blocked on
+`wbuildgen`'s directive-decorated run step only ever decorating the
+compiled binary's run, never the compile step itself. Fixed with a new
+`compile_fail` directive (`tools/wbuildgen.w`): the source declares
+`# wbuild: compile_fail` plus `# wbuild: expect_stderr="..."`, and
+wbuildgen decorates the compile step itself with `expect_fail`/
+`expect_stderr` and skips run-step generation entirely.
+`int64_x86_error_test` now generates from `tests/int64_x86_error_test.w`
+instead of living hand-written in `build.base.json`.
 
 **J. Outside `wbuildgen`'s scanned trees, or source doesn't end in
 `_test.w` — 16.** `hello`, `test`, `grammar_test`, `type_table_test`,
