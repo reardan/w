@@ -626,46 +626,6 @@
 			]
 		},
 		{
-			"name": "crypto_base64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_test"]},
-				{"cmd": ["bin/crypto_base64_test"]}
-			]
-		},
-		{
-			"name": "crypto_base64_64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_64_test"]},
-				{"cmd": ["bin/crypto_base64_64_test"]}
-			]
-		},
-		{
-			"name": "crypto_random_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_test"]},
-				{"cmd": ["bin/crypto_random_test"]}
-			]
-		},
-		{
-			"name": "crypto_random_64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_64_test"]},
-				{"cmd": ["bin/crypto_random_64_test"]}
-			]
-		},
-		{
-			"name": "x25519_iterated_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_iterated_test"]},
-				{"cmd": ["bin/x25519_iterated_test", "--iterated-1000"]}
-			]
-		},
-		{
 			"name": "crypto_bignum_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -673,64 +633,6 @@
 				{"cmd": ["bin/crypto_bignum_test"]},
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/bignum_test.w", "-o", "bin/crypto_bignum_test_x64"]},
 				{"cmd": ["bin/crypto_bignum_test_x64"]}
-			]
-		},
-		{
-			"name": "crypto_rsa_verify_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_test"]},
-				{"cmd": ["bin/crypto_rsa_verify_test"]},
-				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_test_x64"]},
-				{"cmd": ["bin/crypto_rsa_verify_test_x64"]}
-			]
-		},
-		{
-			"name": "crypto_ecdsa_p256_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/crypto/ecdsa_p256_test.w", "-o", "bin/crypto_ecdsa_p256_test"]},
-				{"cmd": ["bin/crypto_ecdsa_p256_test"]}
-			]
-		},
-		{
-			"name": "net_asn1_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_test"]},
-				{"cmd": ["bin/net_asn1_test"]},
-				{"cmd": ["bin/wv2", "x64", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_test_x64"]},
-				{"cmd": ["bin/net_asn1_test_x64"]}
-			]
-		},
-		{
-			"name": "net_x509_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_test"]},
-				{"cmd": ["bin/net_x509_test"]},
-				{"cmd": ["bin/wv2", "x64", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_test_x64"]},
-				{"cmd": ["bin/net_x509_test_x64"]}
-			]
-		},
-		{
-			"name": "net_tls_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_test"]},
-				{"cmd": ["bin/net_tls_test"]},
-				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_test_x64"]},
-				{"cmd": ["bin/net_tls_test_x64"]}
-			]
-		},
-		{
-			"name": "net_tls_server_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_test"]},
-				{"cmd": ["bin/net_tls_server_test"]},
-				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_test_x64"]},
-				{"cmd": ["bin/net_tls_server_test_x64"]}
 			]
 		},
 		{
@@ -1826,22 +1728,6 @@
 			]
 		},
 		{
-			"name": "graphics_math_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "graphics/math_test.w", "-o", "bin/graphics_math_test"]},
-				{"cmd": ["bin/graphics_math_test"]}
-			]
-		},
-		{
-			"name": "graphics_math_64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "graphics/math_test.w", "-o", "bin/graphics_math_64_test"]},
-				{"cmd": ["bin/graphics_math_64_test"]}
-			]
-		},
-		{
 			"name": "graphics_gl_smoke_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2007,6 +1893,7 @@
 				"compress_gzip_64_test",
 				"compress_inflate_64_test",
 				"compress_zlib_64_test",
+				"crypto_rsa_verify_64_test",
 				"cstr_64_test",
 				"default_args_64_test",
 				"defer_64_test",
@@ -2053,6 +1940,10 @@
 				"ndarray_64_test",
 				"nested_ctor_64_test",
 				"net_64_test",
+				"net_asn1_64_test",
+				"net_tls_64_test",
+				"net_tls_server_64_test",
+				"net_x509_64_test",
 				"operator_overload_64_test",
 				"parallel_for_64_test",
 				"passwd_64_test",
@@ -2933,6 +2824,62 @@
 			]
 		},
 		{
+			"name": "crypto_base64_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_64_test"]},
+				{"cmd": ["bin/crypto_base64_64_test"]}
+			]
+		},
+		{
+			"name": "crypto_base64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_test"]},
+				{"cmd": ["bin/crypto_base64_test"]}
+			]
+		},
+		{
+			"name": "crypto_ecdsa_p256_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/ecdsa_p256_test.w", "-o", "bin/crypto_ecdsa_p256_test"]},
+				{"cmd": ["bin/crypto_ecdsa_p256_test"]}
+			]
+		},
+		{
+			"name": "crypto_random_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_64_test"]},
+				{"cmd": ["bin/crypto_random_64_test"]}
+			]
+		},
+		{
+			"name": "crypto_random_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_test"]},
+				{"cmd": ["bin/crypto_random_test"]}
+			]
+		},
+		{
+			"name": "crypto_rsa_verify_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_64_test"]},
+				{"cmd": ["bin/crypto_rsa_verify_64_test"]}
+			]
+		},
+		{
+			"name": "crypto_rsa_verify_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_test"]},
+				{"cmd": ["bin/crypto_rsa_verify_test"]}
+			]
+		},
+		{
 			"name": "cstr_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3290,6 +3237,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/grapheme_test.w", "-o", "bin/grapheme_test"]},
 				{"cmd": ["bin/grapheme_test"]}
+			]
+		},
+		{
+			"name": "graphics_math_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/math_test.w", "-o", "bin/graphics_math_64_test"]},
+				{"cmd": ["bin/graphics_math_64_test"]}
+			]
+		},
+		{
+			"name": "graphics_math_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "graphics/math_test.w", "-o", "bin/graphics_math_test"]},
+				{"cmd": ["bin/graphics_math_test"]}
 			]
 		},
 		{
@@ -3797,11 +3760,75 @@
 			]
 		},
 		{
+			"name": "net_asn1_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_64_test"]},
+				{"cmd": ["bin/net_asn1_64_test"]}
+			]
+		},
+		{
+			"name": "net_asn1_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_test"]},
+				{"cmd": ["bin/net_asn1_test"]}
+			]
+		},
+		{
 			"name": "net_test",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/net_test.w", "-o", "bin/net_test"]},
 				{"cmd": ["bin/net_test"]}
+			]
+		},
+		{
+			"name": "net_tls_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_64_test"]},
+				{"cmd": ["bin/net_tls_64_test"]}
+			]
+		},
+		{
+			"name": "net_tls_server_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_64_test"]},
+				{"cmd": ["bin/net_tls_server_64_test"]}
+			]
+		},
+		{
+			"name": "net_tls_server_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_test"]},
+				{"cmd": ["bin/net_tls_server_test"]}
+			]
+		},
+		{
+			"name": "net_tls_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_test"]},
+				{"cmd": ["bin/net_tls_test"]}
+			]
+		},
+		{
+			"name": "net_x509_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_64_test"]},
+				{"cmd": ["bin/net_x509_64_test"]}
+			]
+		},
+		{
+			"name": "net_x509_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_test"]},
+				{"cmd": ["bin/net_x509_test"]}
 			]
 		},
 		{
@@ -4876,6 +4903,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_64_test"]},
 				{"cmd": ["bin/x25519_64_test"]}
+			]
+		},
+		{
+			"name": "x25519_iterated_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_iterated_test"]},
+				{"cmd": ["bin/x25519_iterated_test", "--iterated-1000"]}
 			]
 		},
 		{
