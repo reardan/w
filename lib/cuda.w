@@ -15,7 +15,21 @@ Call gpu_sync() before the host reads or writes any buffer an
 in-flight kernel touches; gpu_alloc'd managed memory must not be
 accessed concurrently from both sides.
 
-User API: gpu_alloc(bytes), gpu_free(p), gpu_sync().
+Alongside the managed path there is an explicit one (Stage 4):
+gpu_device_alloc(bytes) returns device-only memory (cuMemAlloc — no
+page migration, the performance-oriented path; the pointer is only
+meaningful inside kernels) and gpu_memcpy_to/gpu_memcpy_from move
+bytes across. The copies use the non-async cuMemcpy forms on the
+default stream: they start after every previously enqueued launch
+finishes and block the host until done, so a gpu_memcpy_from after a
+launch implicitly waits for it — no gpu_sync() needed on the explicit
+path. Atomics and kernel stores must only target device-accessible
+memory (gpu_alloc/gpu_device_alloc), never host malloc or stack
+addresses.
+
+User API: gpu_alloc(bytes), gpu_device_alloc(bytes), gpu_free(p),
+gpu_memcpy_to(dst_dev, src_host, bytes),
+gpu_memcpy_from(dst_host, src_dev, bytes), gpu_sync().
 
 Driver errors print the CUresult code and exit(1) — GPU state after an
 error is not recoverable at this layer. The _v2 symbol names are the
@@ -33,6 +47,9 @@ extern int cuCtxCreate_v2(char* pctx, int flags, int dev)
 extern int cuModuleLoadData(char* module, char* image)
 extern int cuModuleGetFunction(char* func, int module, char* name)
 extern int cuMemAllocManaged(char* dptr, int bytesize, int flags)
+extern int cuMemAlloc_v2(char* dptr, int bytesize)
+extern int cuMemcpyHtoD_v2(int dst, char* src, int bytesize)
+extern int cuMemcpyDtoH_v2(char* dst, int src, int bytesize)
 extern int cuMemFree_v2(int dptr)
 extern int cuLaunchKernel(int f, int gx, int gy, int gz, int bx, int by, int bz, int shared, int stream, char* params, int extra)
 extern int cuCtxSynchronize()
@@ -71,6 +88,8 @@ char* __w_gpu_cell():
 
 
 # One-time driver init + context + JIT-load of the embedded module.
+# A program with no kernels (explicit-memory use only) has an empty
+# module: skip the load — nothing could be launched anyway.
 void __w_gpu_init():
 	if (__w_gpu_inited):
 		return;
@@ -79,12 +98,14 @@ void __w_gpu_init():
 	__w_gpu_check(cuDeviceGet(dev, 0), c"cuDeviceGet")
 	char* ctx = __w_gpu_cell()
 	__w_gpu_check(cuCtxCreate_v2(ctx, 0, load_i(dev, 8)), c"cuCtxCreate")
-	char* module = __w_gpu_cell()
-	__w_gpu_check(cuModuleLoadData(module, __w_ptx_module()), c"cuModuleLoadData")
-	__w_gpu_module = load_i(module, 8)
+	char* module_text = __w_ptx_module()
+	if (module_text[0] != 0):
+		char* module = __w_gpu_cell()
+		__w_gpu_check(cuModuleLoadData(module, module_text), c"cuModuleLoadData")
+		__w_gpu_module = load_i(module, 8)
+		free(module)
 	free(dev)
 	free(ctx)
-	free(module)
 	__w_gpu_inited = 1
 
 
@@ -144,6 +165,29 @@ char* gpu_alloc(int bytes):
 	int p = load_i(cell, 8)
 	free(cell)
 	return cast(char*, p)
+
+
+# Device-only allocation (no page migration): the returned pointer is
+# only dereferenceable inside kernels; move data with gpu_memcpy_to/
+# gpu_memcpy_from. Freed with the same gpu_free.
+char* gpu_device_alloc(int bytes):
+	__w_gpu_init()
+	char* cell = __w_gpu_cell()
+	__w_gpu_check(cuMemAlloc_v2(cell, bytes), c"cuMemAlloc")
+	int p = load_i(cell, 8)
+	free(cell)
+	return cast(char*, p)
+
+
+# Host -> device copy. Blocks the host; ordered after prior launches.
+void gpu_memcpy_to(char* dst_dev, char* src_host, int bytes):
+	__w_gpu_check(cuMemcpyHtoD_v2(cast(int, dst_dev), src_host, bytes), c"cuMemcpyHtoD")
+
+
+# Device -> host copy. Blocks the host; ordered after prior launches,
+# so a copy-back after a launch implicitly waits for the kernel.
+void gpu_memcpy_from(char* dst_host, char* src_dev, int bytes):
+	__w_gpu_check(cuMemcpyDtoH_v2(dst_host, cast(int, src_dev), bytes), c"cuMemcpyDtoH")
 
 
 void gpu_free(char* p):

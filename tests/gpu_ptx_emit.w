@@ -35,6 +35,33 @@ kernel axpb64(float64* y, float64 aa, float64 b, int n):
 		y[i] = aa * y[i] + b + i
 
 
+# All nine 32-bit limb/bit intrinsics on device (same masked-unsigned
+# contract as the host lowering; cuda_test cross-checks the results
+# against the host's own intrinsics).
+kernel bits(int* v, int n):
+	int i = block_idx() * block_dim() + thread_idx()
+	if i < n:
+		int x = v[i]
+		int hi = 0
+		int carry = 0
+		int acc = mul_hi(x, 0x10001)
+		acc = acc + mul_wide(x, 3, &hi) + hi
+		acc = acc + add_carry(x, x, &carry) + carry
+		acc = acc + shr(x, 3) + rotl(x, 5) + rotr(x, 7)
+		acc = acc + popcount(x) + clz(x) + ctz(x)
+		v[i] = acc
+
+
+# Atomics: the int add/min/max forms and the float32 add form.
+kernel accum(int* s, int* mn, int* mx, float32* f, int n):
+	int i = block_idx() * block_dim() + thread_idx()
+	if i < n:
+		atomic_add(s, i)
+		atomic_min(mn, i)
+		atomic_max(mx, i)
+		atomic_add(f, 1.5)
+
+
 int main(int argc, int argv):
 	print(__w_ptx_module())
 	return 0

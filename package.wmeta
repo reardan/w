@@ -33,12 +33,15 @@ modules:
 	lib.math
 	lib.memory
 	lib.net
+	lib.passwd
 	lib.path
 	lib.poll
 	lib.process
 	lib.result
 	lib.sha256
+	lib.stat
 	lib.stream
+	lib.str
 	lib.testing
 	lib.time
 	lib.utf8

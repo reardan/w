@@ -29,6 +29,7 @@ This file is compiled by the committed seed: only seed-understood syntax.
 */
 
 void error(char *s);                    /* compiler/tokenizer.w */
+int sym_lookup(char *s);                /* compiler/symbol_table.w */
 int be_function_define_declare(char* name);   /* code_generator/arm64.w */
 void be_function_prologue();
 void be_function_epilogue();
@@ -325,6 +326,93 @@ void ptx_neg_ax():
 	ptx_line(c"neg.s64 %ax, %ax;")
 
 
+####################### limb/bit intrinsics (device) #########################
+# Device twins of the 32-bit limb/bit lowering in x86.w. Same contract:
+# operands' LOW 32 BITS AS UNSIGNED, results zero-extended, shift/rotate
+# counts mod 32. Most ops mask into 64-bit arithmetic; popcount/clz/ctz
+# use the native PTX b32 forms and the rotates use the sm_32+ funnel
+# shifts (shf.*.wrap masks the count itself). PTX CLAMPS oversized
+# shift counts instead of masking them, so the explicit 'and ..., 31'
+# below is load-bearing.
+
+# mov ecx, eax (the result-pointer operand of mul_wide/add_carry)
+void ptx_mov_cx_ax():
+	ptx_line(c"mov.b64 %cx, %ax;")
+
+
+# mul %ebx unsigned 32x32; high half -> accumulator
+void ptx_alu_mul_hi():
+	ptx_line(c"and.b64 %ax, %ax, 0xffffffff;")
+	ptx_line(c"and.b64 %bx, %bx, 0xffffffff;")
+	ptx_line(c"mul.lo.s64 %ax, %bx, %ax;")
+	ptx_line(c"shr.u64 %ax, %ax, 32;")
+
+
+# low product half -> accumulator, high half stored word-sized via %cx
+void ptx_alu_mul_wide():
+	ptx_line(c"and.b64 %ax, %ax, 0xffffffff;")
+	ptx_line(c"and.b64 %bx, %bx, 0xffffffff;")
+	ptx_line(c"mul.lo.s64 %ax, %bx, %ax;")
+	ptx_line(c"shr.u64 %bx, %ax, 32;")
+	ptx_line(c"st.u64 [%cx], %bx;")
+	ptx_line(c"and.b64 %ax, %ax, 0xffffffff;")
+
+
+# wrapped 32-bit sum -> accumulator, carry (0/1) stored via %cx
+void ptx_alu_add_carry():
+	ptx_line(c"and.b64 %ax, %ax, 0xffffffff;")
+	ptx_line(c"and.b64 %bx, %bx, 0xffffffff;")
+	ptx_line(c"add.s64 %ax, %ax, %bx;")
+	ptx_line(c"shr.u64 %bx, %ax, 32;")
+	ptx_line(c"st.u64 [%cx], %bx;")
+	ptx_line(c"and.b64 %ax, %ax, 0xffffffff;")
+
+
+# value in %bx, count in %ax: 32-bit logical right shift
+void ptx_alu_shr32():
+	ptx_line(c"and.b64 %cx, %bx, 0xffffffff;")
+	ptx_line(c"and.b64 %ax, %ax, 31;")
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"shr.u64 %ax, %cx, %w0;")
+
+
+# value in %bx, count in %ax: rotate via the funnel shift with both
+# sources the same register (shf.l.wrap: (x << c) | (x >> (32-c)))
+void ptx_alu_rotl32():
+	ptx_line(c"cvt.u32.u64 %w0, %bx;")
+	ptx_line(c"cvt.u32.u64 %w1, %ax;")
+	ptx_line(c"shf.l.wrap.b32 %w0, %w0, %w0, %w1;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
+void ptx_alu_rotr32():
+	ptx_line(c"cvt.u32.u64 %w0, %bx;")
+	ptx_line(c"cvt.u32.u64 %w1, %ax;")
+	ptx_line(c"shf.r.wrap.b32 %w0, %w0, %w0, %w1;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
+void ptx_alu_popcount32():
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"popc.b32 %w0, %w0;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
+# clz.b32 returns 32 on zero input, matching the W contract
+void ptx_alu_clz32():
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"clz.b32 %w0, %w0;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
+# ctz(x) == clz(brev(x)); brev(0) == 0 -> 32, matching the W contract
+void ptx_alu_ctz32():
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"brev.b32 %w0, %w0;")
+	ptx_line(c"clz.b32 %w0, %w0;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
 ############################### integer ALU ##################################
 
 # Two-operand forms with the left operand in %bx (alu_add/sub/imul and
@@ -551,6 +639,35 @@ void ptx_btc_63():
 	ptx_line(c"xor.b64 %ax, %ax, 0x8000000000000000;")
 
 
+################################# atomics ####################################
+# atomic_add/atomic_min/atomic_max (grammar/atomic_builtin.w): pointer in
+# %bx, value in %ax, the OLD value comes back in the accumulator. The
+# space-less atom form uses generic addressing, matching the all-generic
+# model — the pointer must reference device-accessible global memory
+# (gpu_alloc/gpu_device_alloc), never a .local stack slot.
+
+# kind: 1 add, 2 min, 3 max. atom.add has no .s64 form; two's-complement
+# addition makes .u64 exact. min/max are signed, matching W int.
+void ptx_atomic_int(int kind):
+	if (kind == 1):
+		ptx_line(c"atom.add.u64 %ax, [%bx], %ax;")
+	else if (kind == 2):
+		ptx_line(c"atom.min.s64 %ax, [%bx], %ax;")
+	else:
+		ptx_line(c"atom.max.s64 %ax, [%bx], %ax;")
+
+
+# float32 add (atom.add.f32, sm_20+; float64 atomics need sm_60 and are
+# rejected at parse time). Value bits ride the low 32 of %ax, the host
+# convention.
+void ptx_atomic_add_f32():
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"mov.b32 %fa, %w0;")
+	ptx_line(c"atom.add.f32 %fa, [%bx], %fa;")
+	ptx_line(c"mov.b32 %w0, %fa;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
 ############################ special registers ###############################
 
 # thread_idx()/block_idx()/block_dim()/grid_dim() (x dimension), widened
@@ -613,7 +730,7 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 	ptx_line(c")")
 	ptx_line(c"{")
 	ptx_line(c".reg .b64 %ax, %bx, %cx, %sp, %bp;")
-	ptx_line(c".reg .b32 %w0;")
+	ptx_line(c".reg .b32 %w0, %w1;")
 	ptx_line(c".reg .f32 %fa, %fb;")
 	ptx_line(c".reg .f64 %da, %db;")
 	ptx_line(c".reg .pred %p;")
@@ -655,6 +772,16 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 # text, and honor --ptx=<path>. No-op for programs without kernels.
 void ptx_finish_module():
 	if (ptx_used == 0):
+		# No kernels — but a program that imported lib.cuda (its
+		# prototype declares __w_ptx_module) may still use the memory
+		# API. Define the accessor returning an empty module so the
+		# symbol resolves; __w_gpu_init skips the module load for it.
+		if (sym_lookup(c"__w_ptx_module") >= 0):
+			be_function_define_declare(c"__w_ptx_module")
+			be_function_prologue()
+			be_emit_inline_cstr(0, c"")
+			ret()
+			be_function_epilogue()
 		return;
 	ptx_emit_to_module = 1
 	ptx_emit_char(0)

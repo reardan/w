@@ -335,6 +335,26 @@ int utimensat(char* path, int times, int flags):
 	return -1
 
 
+int fchownat(char* path, int uid, int gid, int flags):
+	return -1
+
+
+int chown(char* path, int uid, int gid):
+	return -1
+
+
+int lchown(char* path, int uid, int gid):
+	return -1
+
+
+int getuid():
+	return -1
+
+
+int getgid():
+	return -1
+
+
 int readlink(char* path, char* buf, int size):
 	return -1
 
