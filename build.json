@@ -2083,6 +2083,7 @@
 				"poly1305_64_test",
 				"prng_64_test",
 				"process_64_test",
+				"ptr_add_64_test",
 				"quorum_64_test",
 				"raft_64_test",
 				"raft_membership_restart_64_test",
@@ -2511,6 +2512,7 @@
 				"poly1305_test",
 				"prng_test",
 				"process_test",
+				"ptr_add_test",
 				"quorum_test",
 				"raft_membership_restart_test",
 				"raft_membership_sim_test",
@@ -3929,6 +3931,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/process_test.w", "-o", "bin/process_test"]},
 				{"cmd": ["bin/process_test"]}
+			]
+		},
+		{
+			"name": "ptr_add_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/ptr_add_test.w", "-o", "bin/ptr_add_64_test"]},
+				{"cmd": ["bin/ptr_add_64_test"]}
+			]
+		},
+		{
+			"name": "ptr_add_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ptr_add_test.w", "-o", "bin/ptr_add_test"]},
+				{"cmd": ["bin/ptr_add_test"]}
 			]
 		},
 		{

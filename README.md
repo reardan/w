@@ -337,7 +337,10 @@ seeds — is `docs/release.md`.
 - Pointer arithmetic is a raw, unscaled byte offset for every pointee
   type: `int* p; p + n` advances `p` by `n` *bytes*, not `n` ints. Only
   indexing scales — use `&p[n]`, or multiply the offset by the element
-  width by hand, the way `lib/sha256.w`'s `p + i * 4` does.
+  width by hand, the way `lib/sha256.w`'s `p + i * 4` does. `&p[n]` is
+  the recommended form in new code; `lib/ptr.w`'s `ptr_add(p, n)` (`&p[n]`
+  under the hood, for any `T`) reads better at a call site where writing
+  `&p[n]` inline would be awkward.
 - Some conveniences need tools that are not required for build/test and may
   be absent: `gdb`/`ddd` (hand-debugging a built binary), `radare2` (`rasm2`
   encoding lookups), `systemtap` with sudo (syscall-trace one-liners), an
