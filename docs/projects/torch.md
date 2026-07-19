@@ -7,8 +7,7 @@ models. "Torch-compatible" here means the *capability* stack (tensor ->
 ops -> autograd -> layers -> weight interop), not API emulation — W is
 not growing a Python binding.
 
-**Status: Stages 1-3 implemented** (this PR): `gpu_atomic_add` /
-`gpu_atomic_add_int` device intrinsics (the first reduction primitive),
+**Status: Stages 1-3 implemented** (this PR): the
 `gpu_available()` runtime probe, and `lib/tensor.w` — a GPU tensor type
 on CUDA managed memory with elementwise ops, ReLU, an atomic-reduction
 `tensor_sum`, and a one-thread-per-output-element `tensor_matmul2`,
@@ -34,17 +33,15 @@ sketches.
 Reductions (sum, mean, losses, norms, softmax denominators) were
 inexpressible: `gpu for` captures are device-local copies, so
 accumulating through a captured scalar is silently lost, and there was
-no atomic. Two additions:
+no atomic. Two pieces:
 
-- **`gpu_atomic_add(float32* p, float32 v)`** and
-  **`gpu_atomic_add_int(int* p, int v)`** — device-only intrinsics in
-  the `gpu_builtin.w` pattern (contextual, shadowable by user symbols,
-  parse as ordinary calls so the parser-generator grammar is
-  untouched). They emit PTX `red.add.f32` / `red.add.u64` through the
-  generic-address path, matching the emitter's "every pointer is a
-  generic address" model; `red` (fire-and-forget) rather than `atom`
-  because W's reduction pattern never needs the fetched old value.
-  Frozen in `gpu_ptx_emit_test`.
+- **`atomic_add(int*/float32* p, v)`** (plus `atomic_min`/`atomic_max`
+  on `int*`) — landed separately via cuda.md's Stage 4 slice
+  (`grammar/atomic_builtin.w`): device-only intrinsics, contextual and
+  shadowable, parsing as ordinary calls so the parser-generator grammar
+  is untouched. They emit PTX `atom.*` through the generic-address
+  path and return the pre-update value (which a pure reduction simply
+  discards). Frozen in `gpu_ptx_emit_test`.
 - **`gpu_available()`** in `lib/cuda.w` — a cached `cuInit` probe that
   reports whether a usable driver+device exists *without* the
   exit-on-error behavior of the launch path. This is the branch point
@@ -56,8 +53,8 @@ no atomic. Two additions:
 
 Not done here (Stage 4 quality items that unblock *faster* reductions,
 not *correct* ones): shared-memory block reduction (`.shared` emission),
-warp shuffles, `atom` with a result. A per-element global `red` is
-hardware-accelerated on sm_70+ and is fine at v1 scale.
+warp shuffles, non-fetching `red.*` forms. A per-element global atomic
+is hardware-accelerated on sm_70+ and is fine at v1 scale.
 
 ## Stage 2 — GPU tensor type (implemented)
 

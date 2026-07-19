@@ -313,7 +313,7 @@ int wbg_dir_has_run_fields():
 		return 1
 	if (wbg_dir_stdin != 0):
 		return 1
-	if ((wbg_dir_expect_stdout.length > 0) | (wbg_dir_expect_stderr.length > 0)):
+	if ((wbg_dir_expect_stdout.length > 0) || (wbg_dir_expect_stderr.length > 0)):
 		return 1
 	return 0
 
@@ -336,7 +336,7 @@ int wbg_parse_ms(char* text):
 	int value = 0
 	int i = 0
 	while (text[i] != 0):
-		if ((text[i] < '0') | (text[i] > '9')):
+		if ((text[i] < '0') || (text[i] > '9')):
 			return -1
 		value = value * 10 + (text[i] - '0')
 		i = i + 1
@@ -456,7 +456,7 @@ int wbg_parse_value(char* text, int j, string_builder* out):
 		return j
 	j = j + 1
 	while (text[j] != '"'):
-		if ((text[j] == 0) | (text[j] == '\n')):
+		if ((text[j] == 0) || (text[j] == '\n')):
 			return -1
 		if (text[j] == 92):
 			j = j + 1
@@ -517,9 +517,9 @@ int wbg_parse_directives(char* path):
 			int j = i + 9
 			int at_end = 0
 			while (at_end == 0):
-				while ((text[j] == ' ') | (text[j] == '\t')):
+				while ((text[j] == ' ') || (text[j] == '\t')):
 					j = j + 1
-				if ((text[j] == 0) | (text[j] == '\n')):
+				if ((text[j] == 0) || (text[j] == '\n')):
 					at_end = 1
 				else:
 					j = wbg_parse_directive_token(text, j, path)
@@ -638,7 +638,7 @@ json_value* wbg_extra_compile_step(char* args):
 	int at_end = 0
 	while (at_end == 0):
 		int c = args[i]
-		if ((c == ' ') | (c == '\t') | (c == 0)):
+		if ((c == ' ') || (c == '\t') || (c == 0)):
 			if (token.length > 0):
 				json_array_push(cmd, json_string(token.data))
 				string_clear(token)

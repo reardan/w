@@ -9,7 +9,7 @@ void import_warn_transitive(char* name);
 # Returns the identifier's type index, or -1 when the token is not an identifier.
 int identifier():
 	int c = token[0]
-	if ((('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) | (c == '_')):
+	if ((('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || (c == '_')):
 		# Qualified access through an import alias: alias.member. The dot
 		# must follow immediately, and the alias shadows any symbol with
 		# the same name in this position.

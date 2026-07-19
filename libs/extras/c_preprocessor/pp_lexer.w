@@ -32,13 +32,13 @@ int cpp_is_inline_space(int c):
 
 
 int cpp_is_punct_char(int c):
-	if ((c == '[') | (c == ']') | (c == '(') | (c == ')') | (c == '{') | (c == '}')):
+	if ((c == '[') || (c == ']') || (c == '(') || (c == ')') || (c == '{') || (c == '}')):
 		return 1
-	if ((c == '.') | (c == '-') | (c == '+') | (c == '&') | (c == '*') | (c == '~')):
+	if ((c == '.') || (c == '-') || (c == '+') || (c == '&') || (c == '*') || (c == '~')):
 		return 1
-	if ((c == '!') | (c == '/') | (c == '%') | (c == '<') | (c == '>') | (c == '^')):
+	if ((c == '!') || (c == '/') || (c == '%') || (c == '<') || (c == '>') || (c == '^')):
 		return 1
-	if ((c == '|') | (c == '?') | (c == ':') | (c == ';') | (c == '=') | (c == ',')):
+	if ((c == '|') || (c == '?') || (c == ':') || (c == ';') || (c == '=') || (c == ',')):
 		return 1
 	if (c == '#'):
 		return 1
@@ -107,9 +107,9 @@ int cpp_punct_length(char* input, int index):
 
 
 int cpp_string_prefix_length(char* input, int index):
-	if ((input[index] == 'u') & (input[index + 1] == '8') & (input[index + 2] == '"')):
+	if ((input[index] == 'u') && (input[index + 1] == '8') && (input[index + 2] == '"')):
 		return 2
-	if (((input[index] == 'u') | (input[index] == 'U') | (input[index] == 'L')) & (input[index + 1] == '"')):
+	if (((input[index] == 'u') || (input[index] == 'U') || (input[index] == 'L')) && (input[index + 1] == '"')):
 		return 1
 	if (input[index] == '"'):
 		return 0
@@ -117,7 +117,7 @@ int cpp_string_prefix_length(char* input, int index):
 
 
 int cpp_char_prefix_length(char* input, int index):
-	if (((input[index] == 'u') | (input[index] == 'U') | (input[index] == 'L')) & (input[index + 1] == 39)):
+	if (((input[index] == 'u') || (input[index] == 'U') || (input[index] == 'L')) && (input[index + 1] == 39)):
 		return 1
 	if (input[index] == 39):
 		return 0
@@ -127,7 +127,7 @@ int cpp_char_prefix_length(char* input, int index):
 int cpp_quoted_length(char* input, int index, int quote):
 	int start = index
 	index = index + 1
-	while ((input[index] != 0) & (input[index] != quote) & (input[index] != 10)):
+	while ((input[index] != 0) && (input[index] != quote) && (input[index] != 10)):
 		if (input[index] == 92):
 			index = index + 1
 			if (input[index] == 0):
@@ -147,9 +147,9 @@ int cpp_number_length(char* input, int index):
 	while (1):
 		if (cpp_is_ident_part(input[index]) | (input[index] == '.')):
 			index = index + 1
-		else if (((input[index] == '+') | (input[index] == '-')) &
-				((input[index - 1] == 'e') | (input[index - 1] == 'E') |
-					(input[index - 1] == 'p') | (input[index - 1] == 'P'))):
+		else if (((input[index] == '+') || (input[index] == '-')) &&
+				((input[index - 1] == 'e') || (input[index - 1] == 'E') ||
+					(input[index - 1] == 'p') || (input[index - 1] == 'P'))):
 			index = index + 1
 		else:
 			return index - start
@@ -188,19 +188,19 @@ cpp_token* cpp_tokenize_text(char* input, char* filename):
 			has_space = 0
 			at_bol = 1
 			index = index + 1
-		else if ((input[index] == 92) & (input[index + 1] == 10)):
+		else if ((input[index] == 92) && (input[index + 1] == 10)):
 			line = line + 1
 			index = index + 2
-		else if ((input[index] == '/') & (input[index + 1] == '/')):
+		else if ((input[index] == '/') && (input[index + 1] == '/')):
 			has_space = 1
 			index = index + 2
-			while ((input[index] != 0) & (input[index] != 10)):
+			while ((input[index] != 0) && (input[index] != 10)):
 				index = index + 1
-		else if ((input[index] == '/') & (input[index + 1] == '*')):
+		else if ((input[index] == '/') && (input[index + 1] == '*')):
 			has_space = 1
 			index = index + 2
 			while (input[index] != 0):
-				if ((input[index] == '*') & (input[index + 1] == '/')):
+				if ((input[index] == '*') && (input[index + 1] == '/')):
 					index = index + 2
 					break
 				if (input[index] == 10):

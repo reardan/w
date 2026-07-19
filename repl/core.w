@@ -295,7 +295,7 @@ int repl_infer_declaration():
 	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
 	if (is_ident == 0):
 		return 0
-	if ((nextc != ':') & (nextc != ' ') & (nextc != 9)):
+	if ((nextc != ':') && (nextc != ' ') && (nextc != 9)):
 		return 0
 	char* name = strclone(token)
 	char* save = generic_reparse_save()
@@ -448,7 +448,7 @@ void repl_entry_item(int entry_symbol):
 	repl_result_type = type_real(result_type)
 	# When the expression ends in a call, the callee's declared return
 	# type drives the echo: void stays silent, char* prints as a string
-	if ((result_type == 3) & (last_call_end == codepos)):
+	if ((result_type == 3) && (last_call_end == codepos)):
 		if (last_call_return_type >= 0):
 			repl_result_type = last_call_return_type
 	if (expression_is_assignment):

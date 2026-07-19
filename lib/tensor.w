@@ -273,10 +273,10 @@ void tensor_relu_into(tensor* out, tensor* a):
 			j = j + 1
 
 
-##### reduction (torch.md Stage 1: gpu_atomic_add) #####
+##### reduction (torch.md Stage 1: atomic_add) #####
 
 
-# Sum of every element. GPU path: one red.add.f32 per element into a
+# Sum of every element. GPU path: one atom.add.f32 per element into a
 # managed accumulator cell — correct at any size; block-level staging
 # is Stage 4. The result depends on addition order on both paths, so
 # callers compare with a tolerance, as with any float reduction.
@@ -289,7 +289,7 @@ float tensor_sum(tensor* t):
 		float32* acc = cast(float32*, gpu_alloc(4))
 		acc[0] = 0.0
 		gpu for int i in range(n):
-			gpu_atomic_add(acc, p[i])
+			atomic_add(acc, p[i])
 		gpu_sync()
 		float s = acc[0]
 		gpu_free(cast(char*, acc))

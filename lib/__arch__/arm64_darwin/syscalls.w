@@ -75,6 +75,59 @@ int mkdir(char* path, int mode):
 int rmdir(char* path):
 	return syscall(137, path, 0, 0)
 
+int rename(char* oldpath, char* newpath):
+	return syscall(128, oldpath, newpath, 0)
+
+# Portable metadata wrappers are Linux-first (lib/stat.w). Darwin stubs
+# keep the symbols linkable; real getattrlist/stat paths are future work.
+int at_fdcwd():
+	return 0 - 100
+
+
+int at_symlink_nofollow():
+	return 256
+
+
+int statx(char* path, int flags, int mask, char* buf):
+	return -1
+
+
+int chmod(char* path, int mode):
+	return -1
+
+
+int utimensat(char* path, int times, int flags):
+	return -1
+
+
+int fchownat(char* path, int uid, int gid, int flags):
+	return -1
+
+
+int chown(char* path, int uid, int gid):
+	return -1
+
+
+int lchown(char* path, int uid, int gid):
+	return -1
+
+
+int getuid():
+	return -1
+
+
+int getgid():
+	return -1
+
+
+int readlink(char* path, char* buf, int size):
+	return -1
+
+
+int symlink(char* target, char* linkpath):
+	return -1
+
+
 # getdirentries64 (344): reads from the fd's offset like the Linux
 # getdents flavors; the extra off_t* out-parameter receives the new
 # position. NOTE: the Darwin record layout differs from both Linux

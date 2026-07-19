@@ -28,9 +28,9 @@ char* dns_test_bytes(char* hex_text, int* out_len):
 	while (hex_text[i] != 0):
 		int c = hex_text[i] & 255
 		int digit = 0 - 1
-		if ((c >= '0') & (c <= '9')):
+		if ((c >= '0') && (c <= '9')):
 			digit = c - '0'
-		if ((c >= 'a') & (c <= 'f')):
+		if ((c >= 'a') && (c <= 'f')):
 			digit = c - 'a' + 10
 		if (digit >= 0):
 			if (have_high == 0):
@@ -515,7 +515,7 @@ void test_dns_query_server_mock_tcp_fallback():
 		if (dns_test_read_exact(conn, prefix, 2) == 0):
 			exit(1)
 		int query_len = ((prefix[0] & 255) << 8) | (prefix[1] & 255)
-		if ((query_len < 12) | (query_len > 512 - 16)):
+		if ((query_len < 12) || (query_len > 512 - 16)):
 			exit(1)
 		if (dns_test_read_exact(conn, buf, query_len) == 0):
 			exit(1)

@@ -4,9 +4,17 @@ Attach to a running process (wdbg --attach <pid> [file.w]).
 Unlike the rest of wdbg, which runs the debuggee inside its own address
 space and drives it from signal handlers, attach mode controls a separate,
 already-running process through ptrace(2). It is a self-contained command
-loop: the in-process execution path (wdbg.w's signal handlers, the shared
-memory/register accessors) is never entered, so attaching cannot perturb
-the self-hosting model and needs none of that machinery.
+loop: wdbg.w's signal handlers and execution-control state are never
+entered, so attaching cannot perturb the self-hosting model and needs
+none of that machinery. Memory inspection is the one place attach mode
+plugs into shared code: debugger/memory.w's target-access seam (#123
+phase 2) dispatches dbg_mem_readable/dbg_mem_read through a registered
+reader, and this file installs at_mem_readable/at_mem_read -- thin
+wrappers around the existing PTRACE_PEEKDATA read below -- as that
+reader (wdbg_attach_run), so at_examine (x/st) goes through the same
+entry points the in-process debugger uses. Registers stay a separate,
+attach-local model (user_regs_struct via PTRACE_GETREGS, not the
+in-process sigcontext accessors); unifying those is future work.
 
 Two levels of capability:
 
@@ -40,6 +48,7 @@ import debugger.lines
 import debugger.symbols
 import debugger.breakpoints
 import debugger.disas
+import debugger.memory
 
 
 # --- ptrace request numbers (classic ABI, identical on i386 and x86-64) ---
@@ -94,7 +103,7 @@ int attach_read_ok
 # scratch buffer rather than from the return value.
 int at_read_word(int addr):
 	int r = sys_ptrace(at_PEEKDATA(), attach_pid, addr, attach_wordbuf)
-	if ((r < 0) & (r >= -4095)):
+	if ((r < 0) && (r >= -4095)):
 		attach_read_ok = 0
 		return 0
 	attach_read_ok = 1
@@ -107,6 +116,42 @@ int at_read_byte(int addr):
 
 int at_write_word(int addr, int value):
 	return sys_ptrace(at_POKEDATA(), attach_pid, addr, value)
+
+
+# --- target-access seam (#123 phase 2, docs/projects/debugger_attach.md) ---
+# Installed as debugger/memory.w's dbg_mem_readable_fn/dbg_mem_read_fn by
+# wdbg_attach_run, so the shared inspection entry points (dbg_mem_readable,
+# dbg_mem_read, dbg_mem_read_word) work against an attached target exactly
+# like they work in-process: at_examine (the x/st commands) goes through
+# them below instead of calling at_read_word directly. No new ptrace
+# semantics -- both adapters are read-only wrappers around the existing
+# at_read_word peek.
+
+# n is at most __word_size__ for every caller today (a single peek covers
+# it); the loop is a safety net for a hypothetically larger range.
+int at_mem_readable(int addr, int n):
+	if (n <= __word_size__):
+		at_read_word(addr)
+		return attach_read_ok
+	int end = addr + n
+	int a = addr
+	while (a < end):
+		at_read_word(a)
+		if (attach_read_ok == 0):
+			return 0
+		a = a + __word_size__
+	return 1
+
+
+# PTRACE_PEEKDATA reads at any byte address on x86/x86-64 Linux (no
+# alignment requirement), so the word at addr already holds the requested
+# narrower value in its low bytes -- just mask.
+int at_mem_read(int addr, int width):
+	int v = at_read_word(addr)
+	dbg_mem_read_ok = attach_read_ok
+	if (width >= __word_size__):
+		return v
+	return v & ((1 << (width * 8)) - 1)
 
 
 # --- registers ---
@@ -274,24 +319,54 @@ int at_current_file(int target):
 # The source was recompiled through the same ELF backend that built the
 # on-disk binary (wdbg_attach_compile), so code_offset is the load base
 # (0x08048000) and the symbol/line tables already hold absolute target
-# addresses: the mapping delta is zero. Confirm by comparing the first
-# bytes of the compiled image (ELF header + entry stubs) against the running
-# process; a mismatch means a stale source or a differently built binary, so
-# symbols stay off and attach runs in raw mode.
+# addresses: the mapping delta is zero. Confirm by reading /proc/<pid>/exe
+# and comparing it byte-for-byte against the freshly compiled image
+# (code[0..codepos), the exact bytes elf_32.w/elf_64.w write(output_fd, ...)
+# would put on disk): W's static ET_EXEC ELFs load at a fixed address with
+# no ASLR and a single PT_LOAD segment mapping file offset 0 to code_offset,
+# so file byte i is process byte code_offset+i, and the self-host fixpoint
+# means a matching source recompiles to identical bytes. A mismatch (stale
+# source, a different compiler, or /proc/<pid>/exe being unreadable) means
+# the tables cannot be trusted, so symbols stay off and attach runs in raw
+# mode rather than risk printing wrong names.
+int at_read_exe_image(int pid, char* buf, int n):
+	char* pid_str = itoa(pid)
+	char* p1 = strjoin(c"/proc/", pid_str)
+	char* path = strjoin(p1, c"/exe")
+	free(pid_str)
+	free(p1)
+	int f = open(path, 0, 0)
+	free(path)
+	if (f < 0):
+		return 0
+	int got = 0
+	while (got < n):
+		int r = read(f, buf + got, n - got)
+		if (r <= 0):
+			close(f)
+			return 0
+		got = got + r
+	close(f)
+	return 1
+
+
 void at_calibrate():
 	if (word_size != 4):
 		return; /* symbolization is x86 (32-bit ELF) only for now */
 	attach_delta = 0
-	char* cp = code
+	char* buf = malloc(codepos)
+	if (at_read_exe_image(attach_pid, buf, codepos) == 0):
+		println2(c"wdbg: cannot read /proc/<pid>/exe to validate the recompile; symbol names are disabled (raw addresses only)")
+		free(buf)
+		return;
 	int i = 0
-	while (i < 32):
-		int tb = at_read_byte(code_offset + i)
-		if (attach_read_ok == 0):
-			return;
-		if (tb != (cp[i] & 255)):
+	while (i < codepos):
+		if ((buf[i] & 255) != (code[i] & 255)):
 			println2(c"wdbg: the running binary does not match this source; symbol names are disabled (raw addresses only)")
+			free(buf)
 			return;
 		i = i + 1
+	free(buf)
 	attach_symbolized = 1
 
 
@@ -339,6 +414,9 @@ void at_print_registers():
 
 
 # Dump n words at a target address; stops early on an unreadable page.
+# Reads through the target-access seam (dbg_mem_readable/dbg_mem_read_word,
+# installed to at_mem_readable/at_mem_read below), so this is the same
+# call sequence the in-process debugger uses for 'x'/'st'.
 void at_examine(int addr, int count):
 	int i = 0
 	while (i < count):
@@ -347,10 +425,10 @@ void at_examine(int addr, int count):
 		print(ha)
 		free(ha)
 		print(c": ")
-		int v = at_read_word(slot)
-		if (attach_read_ok == 0):
+		if (dbg_mem_readable(slot, __word_size__) == 0):
 			println(c"<unreadable>")
 			return;
+		int v = dbg_mem_read_word(slot)
 		char* hv = hex_word(v)
 		print(hv)
 		free(hv)
@@ -380,7 +458,7 @@ void at_backtrace():
 	int sp = at_reg(at_off_sp())
 	int shown = 1
 	int i = 0
-	while ((i < 4096) & (shown < 32)):
+	while ((i < 4096) && (shown < 32)):
 		int w = at_read_word(sp + i * __word_size__)
 		if (attach_read_ok == 0):
 			return;
@@ -408,6 +486,14 @@ void at_info(char* arg):
 			dbg_print_functions()
 		else:
 			println(c"no source: function list unavailable")
+	else if (strcmp(arg, c"files") == 0):
+		if (attach_symbolized):
+			int i = 0
+			while (i < debug_file_count):
+				println(dbg_file_name(i))
+				i = i + 1
+		else:
+			println(c"no source: file list unavailable")
 	else if ((strcmp(arg, c"r") == 0) | (strcmp(arg, c"registers") == 0)):
 		at_print_registers()
 	else if ((strcmp(arg, c"b") == 0) | (strcmp(arg, c"breakpoints") == 0)):
@@ -426,7 +512,7 @@ void at_info(char* arg):
 		if (shown == 0):
 			println(c"no breakpoints set")
 	else:
-		println(c"info topics: registers breakpoints functions")
+		println(c"info topics: registers breakpoints functions files")
 
 
 void at_help():
@@ -435,13 +521,13 @@ void at_help():
 	println(c"  b/break <function | line | file:line | 0xADDR>   d/delete <n>")
 	println(c"  r/registers  x <0xADDR> [count]  st/stack  bt/backtrace")
 	println(c"  disas [addr | function] [count]   disas on|off (context at stops)")
-	println(c"  l/line (where)  i registers | breakpoints | functions")
+	println(c"  l/line (where)  list [line]  i registers | breakpoints | functions | files")
 
 
 # --- argument helpers (local: attach.w cannot import wdbg.w) ---
 char* at_split_word(char* s):
 	int i = 0
-	while ((s[i] != 0) & (s[i] != ' ')):
+	while ((s[i] != 0) && (s[i] != ' ')):
 		i = i + 1
 	if (s[i] == 0):
 		return s + i
@@ -458,6 +544,30 @@ int at_number(char* s):
 	return atoi(s)
 
 
+# Multi-line source listing centered on the stopped ip (or an explicit line
+# number), like wdbg.w's in-process 'list'. Only meaningful once symbolized:
+# a mismatched recompile's tables cannot be trusted for anything beyond raw
+# addresses, so this stays off in raw mode like 'i functions' above.
+void at_list_command(char* arg):
+	if (attach_symbolized == 0):
+		println(c"no source: listing unavailable")
+		return;
+	at_getregs()
+	int target = at_reg(at_off_ip())
+	if (at_in_code(target) == 0):
+		println(c"no line info (address is outside the debuggee)")
+		return;
+	int entry = dbg_find_line(at_to_v(target) - code_offset)
+	if (entry < 0):
+		println(c"no line info recorded")
+		return;
+	int current = dbg_line_line(entry)
+	int center = current
+	if (arg[0] != 0):
+		center = at_number(arg)
+	dbg_print_source_range(dbg_file_name(dbg_line_file(entry)), center - 5, center + 5, current)
+
+
 # --- breakpoint / delete commands ---
 void at_break_command(char* arg):
 	if (arg[0] == 0):
@@ -466,7 +576,7 @@ void at_break_command(char* arg):
 	int target = 0
 	if (arg[0] == '*'):
 		target = at_number(arg + 1)
-	else if (((arg[0] >= '0') & (arg[0] <= '9')) & (attach_symbolized == 0)):
+	else if (((arg[0] >= '0') && (arg[0] <= '9')) && (attach_symbolized == 0)):
 		target = at_number(arg)
 	else:
 		if (attach_symbolized == 0):
@@ -498,7 +608,7 @@ void at_delete_command(char* arg):
 		println(c"all breakpoints deleted")
 		return;
 	int n = atoi(arg) - 1
-	if ((n < 0) | (n >= attach_bp_count) | (at_bp_addr(n) == 0)):
+	if (((n < 0) || (n >= attach_bp_count)) | (at_bp_addr(n) == 0)):
 		println(c"no such breakpoint")
 		return;
 	at_bp_disarm(n)
@@ -660,6 +770,8 @@ void at_command_loop():
 			dbg_disas_command(at_reg(at_off_ip()), arg)
 		else if ((strcmp(command, c"l") == 0) | (strcmp(command, c"line") == 0) | (strcmp(command, c"where") == 0)):
 			at_where()
+		else if (strcmp(command, c"list") == 0):
+			at_list_command(arg)
 		else if ((strcmp(command, c"i") == 0) | (strcmp(command, c"info") == 0)):
 			at_info(arg)
 		else if (strcmp(command, c"detach") == 0):
@@ -696,8 +808,14 @@ int wdbg_attach_run(int pid, int have_symbols):
 	attach_pending_sig = 0
 	attach_symbolized = 0
 
+	# Install this module's ptrace reads as the target-access seam's
+	# backend (debugger/memory.w), so at_examine and any future attach-mode
+	# consumer of the shared dbg_mem_* entry points read through ptrace.
+	dbg_mem_readable_fn = cast(int, at_mem_readable)
+	dbg_mem_read_fn = cast(int, at_mem_read)
+
 	int r = sys_ptrace(at_ATTACH(), pid, 0, 0)
-	if ((r < 0) & (r >= -4095)):
+	if ((r < 0) && (r >= -4095)):
 		print2(c"wdbg: cannot attach to pid ")
 		char* d = itoa(pid)
 		print2(d)

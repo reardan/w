@@ -51,11 +51,11 @@ int gen_class_for_category(char* category):
 
 
 int gen_hex_digit(int c):
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return c - '0'
-	if ((c >= 'a') & (c <= 'f')):
+	if ((c >= 'a') && (c <= 'f')):
 		return c - 'a' + 10
-	if ((c >= 'A') & (c <= 'F')):
+	if ((c >= 'A') && (c <= 'F')):
 		return c - 'A' + 10
 	return -1
 
@@ -94,7 +94,7 @@ char* gen_load_classes(char* path):
 		# Field 2: the general category.
 		j = j + 1
 		int category_start = j
-		while ((text[j] != ';') & (text[j] != 0)):
+		while ((text[j] != ';') && (text[j] != 0)):
 			j = j + 1
 		text[j] = 0
 		char* category = text + category_start

@@ -15,15 +15,18 @@ H3 sidecar was skipped. Stage 2 shipped as option A1 (`code_generator/ptx.w`:
 M2 (`gpu for` outlining with capture-as-parameters), both on the M1+M2
 surface with the `lib/cuda.w` runtime (managed memory, async launches,
 `gpu_sync()`). See "Execution notes (Stages 2–3)" below for the model as
-built. docs/projects/torch.md builds on this: its Stage 1 added the
-`gpu_atomic_add`/`gpu_atomic_add_int` reduction intrinsics (PTX
-`red.add` via `ptx_red_add_*`) and a non-fatal `gpu_available()`
-driver+device probe to `lib/cuda.w`, and its Stages 2-3 the
-`lib/tensor.w` managed-memory tensor type with CPU fallbacks.
-Remaining here: Stage 4 quality (A2 virtual registers, shared memory,
-explicit memory API, `gpu float*` types, lazy binding so a missing
-libcuda.so.1 degrades instead of failing at load) and the "someday"
-list.
+built. A first Stage 4 slice shipped too: gpu atomics
+(`atomic_add`/`atomic_min`/`atomic_max`, with an atomic-reduction
+`cuda_test` case), the explicit memory API (`gpu_device_alloc` +
+`gpu_memcpy_to`/`gpu_memcpy_from`), the nine 32-bit limb/bit intrinsics on
+device, `gpu for ... in range(start, end)`, and a const-based diagnostic
+for writes to captured scalars. docs/projects/torch.md builds on this:
+its Stage 1 added a non-fatal `gpu_available()` driver+device probe to
+`lib/cuda.w`, and its Stages 2-3 the `lib/tensor.w` managed-memory
+tensor type with CPU fallbacks (reductions ride the Stage 4
+`atomic_add`). Remaining Stage 4 material: A2 virtual registers,
+`gpu float*` types, recoverable CUresult error handling, multi-GPU
+selection, shared memory — and the "someday" list.
 
 ## Context: what W is today
 
@@ -363,6 +366,40 @@ performance-oriented API.
   runs vector add + saxpy on real hardware. The host launch plumbing
   (module text, kernel name, grid/block, kernelParams layout) was verified
   GPU-less against a logging stub libcuda during development.
+
+## Execution notes (Stage 4 slice, as built)
+
+- **Atomics** (`grammar/atomic_builtin.w`): device-only, generic-address
+  `atom` ops — `atom.add.u64`/`atom.min.s64`/`atom.max.s64` on `int*`,
+  `atom.add.f32` on `float32*` (float64 atomics need sm_60; min/max are
+  int-only at sm_52). Each returns the pre-update value. The target must be
+  a pointer-TYPED expression (W's `&` and pointer arithmetic yield untyped
+  constants) referencing device-accessible memory — generic `atom` on a
+  `.local` stack slot is undefined.
+- **Device limb/bit intrinsics**: mul_hi/mul_wide/add_carry and
+  shr/rotl/rotr/popcount/clz/ctz keep the host contract (low 32 bits
+  unsigned, zero-extended results, counts mod 32) via 64-bit masked
+  arithmetic plus native `popc`/`clz`/`brev` and the sm_32+ `shf.*.wrap`
+  funnel-shift rotates; the register model gained `%w1` for those.
+  `cuda_test` cross-checks device results against the same intrinsics run
+  natively on the host.
+- **`range(start, end)`**: capture slot 0 = start, slot 1 = end (parse
+  order; the one-arg form keeps slot 0 = end and stays byte-identical), the
+  device prologue adds start to the thread index, and the host passes
+  `end - start` to the unchanged `__w_gpu_launch`. Step arguments still
+  error.
+- **Capture-write diagnostic**: scalar captures come back const-qualified,
+  so the existing "assignment to const" enforcement rejects writes to the
+  device-local copy. Pointer captures stay writable-through (and
+  reassignable — a documented caveat: const-wrapping a pointer record would
+  break element-type lookup); bool/var are exempt (their coerce paths
+  re-promote const records). `type_float_kind` now strips qualifiers so
+  const float reads keep the float pipeline.
+- **Explicit memory**: `gpu_device_alloc` + `gpu_memcpy_to`/`gpu_memcpy_from`
+  use the blocking default-stream cuMemcpy forms, which order after prior
+  launches — a copy-back implicitly waits for the kernel, so the explicit
+  path needs no `gpu_sync()`. A program with no kernels (memory API only)
+  gets an empty embedded module and the runtime skips `cuModuleLoadData`.
 
 ## Open questions
 

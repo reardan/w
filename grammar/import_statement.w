@@ -58,7 +58,7 @@ char* import_resolve_arch(char* path):
 			# contain the sentinel
 			int at_boundary = (i == 0) | (path[i - 1] == '/')
 			char after = path[i + 8]
-			if (at_boundary & ((after == '/') | (after == 0))):
+			if (at_boundary & ((after == '/') || (after == 0))):
 				char* arch = c"x86"
 				if (target_os == 3):
 					arch = c"wasm"
@@ -287,7 +287,7 @@ void import_warn_transitive(char* name):
 	if (t < 0):
 		return
 	int visibility = sym_decl_visibility(t)
-	if ((visibility != 'D') & (visibility != 'U')):
+	if ((visibility != 'D') && (visibility != 'U')):
 		return
 	int file_index = sym_decl_file_index(t)
 	if (file_index < 0):
@@ -421,7 +421,7 @@ void import_strip_comment(char* line):
 		if (line[i] == '#'):
 			while (i > 0):
 				int prev = line[i - 1]
-				if ((prev != ' ') & (prev != 9)):
+				if ((prev != ' ') && (prev != 9)):
 					break
 				i = i - 1
 			line[i] = 0

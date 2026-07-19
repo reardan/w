@@ -2,8 +2,15 @@
 
 Status: stage 1 implemented (2026-07-16 — checksums, conformant
 inflater, zlib/gzip wrappers, stored-blocks deflate; see the test
-targets `compress_*_test`); stages 2b/3 (real DEFLATE compression)
-remain per §9. Originally written as the design doc to satisfy issue
+targets `compress_*_test`). Stage 2 (2026-07-18 — LZ77 hash-chain
+matcher with lazy matching, fixed-Huffman `DEFLATE_LEVEL_FAST`,
+dynamic-Huffman + block-splitting `DEFLATE_LEVEL_BEST`) is implemented
+in `libs/extras/compress/deflate.w`, folding §3's originally-separate
+stage 2b (fixed Huffman + LZ77) and stage 3 (lazy matching + dynamic
+Huffman) into one PR rather than staging lazy matching behind dynamic
+Huffman as §3/§9 originally sketched; the optional zlib-interop
+cross-validation target from §8 remains unimplemented. Originally
+written as the design doc to satisfy issue
 #252's own
 requirement before this package is picked up: "`libs/extras/compress/`
 — CRC32 + DEFLATE (inflate first): the largest single chunk (~1–2k

@@ -29,7 +29,7 @@ int index_of(char* s, char* needle):
 	int i = 0
 	while (s[i] != 0):
 		int j = 0
-		while ((needle[j] != 0) & (s[i + j] == needle[j])):
+		while ((needle[j] != 0) && (s[i + j] == needle[j])):
 			j = j + 1
 		if (needle[j] == 0):
 			return i
@@ -47,7 +47,7 @@ list[char*] split(char* s, char delimiter):
 	int start = 0
 	int i = 0
 	while (1):
-		if ((s[i] == delimiter) | (s[i] == 0)):
+		if ((s[i] == delimiter) || (s[i] == 0)):
 			pieces.push(substring(s, start, i))
 			start = i + 1
 		if (s[i] == 0):
@@ -68,7 +68,7 @@ char* replace(char* s, char* needle, char* replacement):
 	int i = 0
 	while (s[i] != 0):
 		int j = 0
-		while ((needle[j] != 0) & (s[i + j] == needle[j])):
+		while ((needle[j] != 0) && (s[i + j] == needle[j])):
 			j = j + 1
 		if (needle[j] == 0):
 			matches = matches + 1
@@ -80,7 +80,7 @@ char* replace(char* s, char* needle, char* replacement):
 	i = 0
 	while (s[i] != 0):
 		int k = 0
-		while ((needle[k] != 0) & (s[i + k] == needle[k])):
+		while ((needle[k] != 0) && (s[i + k] == needle[k])):
 			k = k + 1
 		if (needle[k] == 0):
 			int r = 0

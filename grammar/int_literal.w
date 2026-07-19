@@ -30,21 +30,21 @@ void int_literal_width_check():
 		while (token[i]):
 			int ch = token[i]
 			int is_digit = 0
-			if (('0' <= ch) & (ch <= '9')):
+			if (('0' <= ch) && (ch <= '9')):
 				is_digit = 1
-			if (('a' <= ch) & (ch <= 'f')):
+			if (('a' <= ch) && (ch <= 'f')):
 				is_digit = 1
-			if (('A' <= ch) & (ch <= 'F')):
+			if (('A' <= ch) && (ch <= 'F')):
 				is_digit = 1
 			if (is_digit):
-				if ((digits > 0) | (ch != '0')):
+				if ((digits > 0) || (ch != '0')):
 					digits = digits + 1
 			i = i + 1
 		if (digits > 8):
 			error(c"integer literal has more than 32 significant bits; assemble wide constants at runtime from 32-bit pieces")
 	else:
 		while (token[i]):
-			if ((digits > 0) | (token[i] != '0')):
+			if ((digits > 0) || (token[i] != '0')):
 				digits = digits + 1
 			i = i + 1
 		if (digits > 32):
@@ -59,7 +59,7 @@ void int_literal_width_check():
 # that matters. No-op on a token that is not a decimal literal, so call
 # sites that fall back to atoi() can guard unconditionally.
 void int_literal_decimal_check():
-	if ((token[0] < '0') | (token[0] > '9')):
+	if ((token[0] < '0') || (token[0] > '9')):
 		return
 	int i = 0
 	while (token[i] == '0'):
@@ -85,7 +85,7 @@ int int_literal():
 		negative = 1
 
 	# Hex literal e.g. 0x1f or 0x1F
-	if ((token[0] == '0') & (token[1] == 'x')):
+	if ((token[0] == '0') && (token[1] == 'x')):
 		int_literal_width_check()
 		n = from_hex(token + 2)
 		int_literal_bit31_check(n)
@@ -96,7 +96,7 @@ int int_literal():
 
 	# Binary literal e.g. 0b1010, mirroring the hex path ('_' digit
 	# separators are a possible follow-up)
-	if ((token[0] == '0') & (token[1] == 'b')):
+	if ((token[0] == '0') && (token[1] == 'b')):
 		int_literal_width_check()
 		i = 2
 		while (token[i]):
@@ -109,7 +109,7 @@ int int_literal():
 		return 1
 
 	# Check for digits 0-9
-	if ((token[i]) < '0' | (token[i] > '9')):
+	if ((token[i]) < '0' || (token[i] > '9')):
 		return 0
 
 	int_literal_decimal_check()

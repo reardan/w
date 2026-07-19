@@ -14,6 +14,7 @@ extern int CreateFileA(char* path, int access, int share, int security, int crea
 extern int CloseHandle(int handle)
 extern int SetFilePointer(int handle, int distance, int* distance_high, int method)
 extern int DeleteFileA(char* path)
+extern int MoveFileA(char* oldpath, char* newpath)
 extern int FlushFileBuffers(int handle)
 extern int VirtualAlloc(int addr, int size, int alloc_type, int protect)
 extern int VirtualFree(int addr, int size, int free_type)
@@ -115,6 +116,12 @@ int seek(int file, int offset, int reference):
 
 int unlink(char* path):
 	if (DeleteFileA(path) == 0):
+		return -1
+	return 0
+
+
+int rename(char* oldpath, char* newpath):
+	if (MoveFileA(oldpath, newpath) == 0):
 		return -1
 	return 0
 
@@ -307,6 +314,55 @@ int getdents(int file, char* buf, int count):
 	return -1
 
 
+# Portable metadata wrappers are Linux-first (lib/stat.w).
+int at_fdcwd():
+	return 0 - 100
+
+
+int at_symlink_nofollow():
+	return 256
+
+
+int statx(char* path, int flags, int mask, char* buf):
+	return -1
+
+
+int chmod(char* path, int mode):
+	return -1
+
+
+int utimensat(char* path, int times, int flags):
+	return -1
+
+
+int fchownat(char* path, int uid, int gid, int flags):
+	return -1
+
+
+int chown(char* path, int uid, int gid):
+	return -1
+
+
+int lchown(char* path, int uid, int gid):
+	return -1
+
+
+int getuid():
+	return -1
+
+
+int getgid():
+	return -1
+
+
+int readlink(char* path, char* buf, int size):
+	return -1
+
+
+int symlink(char* target, char* linkpath):
+	return -1
+
+
 int fork():
 	return -1
 
@@ -409,7 +465,7 @@ int _win_start(int stub_argc, int stub_argv):
 	int i = 0
 	int b = 0
 	while (cmd[i] != 0):
-		while ((cmd[i] == ' ') | (cmd[i] == 9)):
+		while ((cmd[i] == ' ') || (cmd[i] == 9)):
 			i = i + 1
 		if (cmd[i] == 0):
 			break
@@ -420,7 +476,7 @@ int _win_start(int stub_argc, int stub_argv):
 			if (cmd[i] == 34): /* double quote toggles word grouping */
 				quoted = 1 - quoted
 				i = i + 1
-			else if ((quoted == 0) & ((cmd[i] == ' ') | (cmd[i] == 9))):
+			else if ((quoted == 0) && ((cmd[i] == ' ') || (cmd[i] == 9))):
 				break
 			else:
 				buf[b] = cmd[i]

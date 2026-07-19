@@ -608,3 +608,237 @@ void test_wvc_sync_corrupt_upload_rejected():
 	free(obj_url)
 	wst_serve_stop(server)
 	wst_rm_rf(a)
+
+
+/* ---- test 4: sync over a mixed-format store (issue #252 "compressed
+   objects" migration story -- an existing store's objects keep reading
+   with no rewrite step, and that has to hold across the network too:
+   the GET/POST wire protocol is defined over LOGICAL object bytes
+   (sync.w's header comment), independent of whichever on-disk encoding
+   either side's cas.w store happens to use for a given object) ---- */
+
+char* wst_dir_mix_a_cache
+char* wst_dir_mix_a():
+	if (wst_dir_mix_a_cache == 0):
+		string_builder* p = string_new()
+		string_append(p, c"bin/wvc_sync_mix_a_")
+		string_append_int(p, getpid())
+		wst_dir_mix_a_cache = p.data
+		free(p)
+	return wst_dir_mix_a_cache
+
+
+char* wst_dir_mix_b_cache
+char* wst_dir_mix_b():
+	if (wst_dir_mix_b_cache == 0):
+		string_builder* p = string_new()
+		string_append(p, c"bin/wvc_sync_mix_b_")
+		string_append_int(p, getpid())
+		wst_dir_mix_b_cache = p.data
+		free(p)
+	return wst_dir_mix_b_cache
+
+
+# "<repo_root>/.wvc/objects/<2 hex>/<62 hex>" -- tools/wvc.w's own cas
+# store root is "<repo_root>/.wvc" (see its header comment).
+string_builder* wst_object_file_path(char* repo_root, char* id):
+	string_builder* p = string_new()
+	string_append(p, repo_root)
+	string_append(p, c"/.wvc/objects/")
+	string_append_char(p, id[0])
+	string_append_char(p, id[1])
+	string_append_char(p, '/')
+	string_append(p, id + 2)
+	return p
+
+
+# Rewrites the already-stored object `id` in `repo_root`'s store from
+# whichever on-disk encoding cas_put/cas_put_raw just used into the
+# LEGACY "<type> <len>\0" + payload encoding, in place: same id, same
+# logical content, different bytes on disk -- exactly the shape an
+# existing (pre-compression) store's objects have. Used to build a
+# store that genuinely mixes both encodings without needing a second,
+# separately-constructed store (vcs_cas_test.w's vcst_write_legacy
+# does the equivalent for a store this module opens directly instead of
+# through the `wvc` CLI).
+void wst_rewrite_as_legacy(char* repo_root, char* id, char* object_type, char* data, int length):
+	string_builder* p = wst_object_file_path(repo_root, id)
+	wstream* out = stream_open_write(p.data)
+	assert1(cast(int, out) != 0)
+	stream_write_cstr(out, object_type)
+	stream_write_byte(out, ' ')
+	stream_write_int(out, length)
+	stream_write_byte(out, 0)
+	stream_write(out, data, length)
+	stream_close(out)
+	string_free(p)
+
+
+void test_wvc_sync_mixed_format_store():
+	char* a = wst_dir_mix_a()
+	char* b = wst_dir_mix_b()
+	wst_rm_rf(a)
+	wst_rm_rf(b)
+
+	list[char*] init_a = new list[char*]
+	init_a.push(c"wvc")
+	init_a.push(c"init")
+	init_a.push(a)
+	process_result* r_init_a = wst_run(init_a, 0)
+	assert_equal(0, r_init_a.status)
+	process_result_free(r_init_a)
+
+	char* content_a = c"tracked before the rewrite -- this blob becomes a legacy-format object on disk\n"
+	int content_a_len = strlen(content_a)
+	char* a1 = path_join(a, c"legacy.txt")
+	assert_equal(1, file_write_text(a1, content_a))
+	list[char*] snap_a = new list[char*]
+	snap_a.push(c"wvc")
+	snap_a.push(c"snapshot")
+	snap_a.push(a)
+	snap_a.push(c"-m")
+	snap_a.push(c"legacy blob")
+	process_result* r_snap_a = wst_run(snap_a, 0)
+	assert_equal(0, r_snap_a.status)
+	char* commit_a = wst_trim(r_snap_a.stdout_text)
+	assert1(cas_valid_id(commit_a))
+	process_result_free(r_snap_a)
+
+	# The snapshot just wrote legacy.txt's blob (like the tree and
+	# commit objects) in the current zlib-compressed encoding; rewrite
+	# ONLY the blob in place as a legacy-format object. The tree that
+	# references it by id is none the wiser (on-disk encoding never
+	# changes an object's id), so A's own store still reads and
+	# verifies everything correctly right after the rewrite.
+	char* blob_id = cas_id_hex(c"blob", content_a, content_a_len)
+	assert1(blob_id != 0)
+	wst_rewrite_as_legacy(a, blob_id, c"blob", content_a, content_a_len)
+
+	char* meta_a = path_join(a, c".wvc")
+	wresult[wcas*]* store_a_r = cas_open(meta_a)
+	assert1(result_is_ok[wcas*](store_a_r))
+	wcas* store_a = result_value[wcas*](store_a_r)
+	result_free[wcas*](store_a_r)
+	assert_equal(1, cas_verify(store_a, blob_id))
+	wresult[wcas_object*]* local_check_r = cas_get(store_a, blob_id)
+	assert1(result_is_ok[wcas_object*](local_check_r))
+	wcas_object* local_check = result_value[wcas_object*](local_check_r)
+	result_free[wcas_object*](local_check_r)
+	assert_strings_equal(content_a, local_check.data)
+	cas_object_free(local_check)
+	cas_close(store_a)
+
+	# Pull B from A: the server (vcs_sync_serve_objects_get) has to
+	# read that legacy-format blob and still hand the client the
+	# correct logical bytes over the wire.
+	int port = wst_base_port() + 3
+	process* server = wst_serve_start(a, port)
+	asserts(c"server accepting connections", wst_wait_for_port(port, 50, 100) != 0)
+	char* url = wst_url(port)
+
+	list[char*] init_b = new list[char*]
+	init_b.push(c"wvc")
+	init_b.push(c"init")
+	init_b.push(b)
+	process_result* r_init_b = wst_run(init_b, 0)
+	assert_equal(0, r_init_b.status)
+	process_result_free(r_init_b)
+
+	list[char*] pull_args = new list[char*]
+	pull_args.push(c"wvc")
+	pull_args.push(c"pull")
+	pull_args.push(url)
+	process_result* r_pull = wst_run(pull_args, b)
+	assert_equal(0, r_pull.status)
+	wst_assert_contains(r_pull.stdout_text, commit_a)
+	process_result_free(r_pull)
+
+	# B stored the fetched blob via cas_put_raw, which always writes
+	# the CURRENT (zlib-compressed) encoding -- so the same logical
+	# object now exists on both sides under two different on-disk
+	# encodings, and both read back identically.
+	char* meta_b = path_join(b, c".wvc")
+	wresult[wcas*]* store_b_r = cas_open(meta_b)
+	assert1(result_is_ok[wcas*](store_b_r))
+	wcas* store_b = result_value[wcas*](store_b_r)
+	result_free[wcas*](store_b_r)
+	assert_equal(1, cas_verify(store_b, blob_id))
+	wresult[wcas_object*]* fetched_r = cas_get(store_b, blob_id)
+	assert1(result_is_ok[wcas_object*](fetched_r))
+	wcas_object* fetched = result_value[wcas_object*](fetched_r)
+	result_free[wcas_object*](fetched_r)
+	assert_strings_equal(content_a, fetched.data)
+	cas_object_free(fetched)
+
+	string_builder* b_obj_path = wst_object_file_path(b, blob_id)
+	string_builder* b_obj_raw = cas_read_file(b_obj_path.data)
+	assert1(b_obj_raw != 0)
+	assert1(b_obj_raw.length >= 2)
+	assert_equal('x', b_obj_raw.data[0] & 255)
+	string_free(b_obj_raw)
+	string_free(b_obj_path)
+
+	# Now push a NEW commit from B back to A, after rewriting B's own
+	# new blob as a legacy-format object too -- the push direction
+	# (vcs_sync_push_object_closure) has to read a legacy-format LOCAL
+	# object and still upload the correct logical bytes.
+	char* content_b = c"tracked on b, then rewritten as a legacy-format object before pushing\n"
+	int content_b_len = strlen(content_b)
+	char* b2 = path_join(b, c"legacy_from_b.txt")
+	assert_equal(1, file_write_text(b2, content_b))
+	list[char*] snap_b = new list[char*]
+	snap_b.push(c"wvc")
+	snap_b.push(c"snapshot")
+	snap_b.push(b)
+	snap_b.push(c"-m")
+	snap_b.push(c"legacy blob from b")
+	process_result* r_snap_b = wst_run(snap_b, 0)
+	assert_equal(0, r_snap_b.status)
+	char* commit_b = wst_trim(r_snap_b.stdout_text)
+	assert1(cas_valid_id(commit_b))
+	process_result_free(r_snap_b)
+
+	char* blob_id_b = cas_id_hex(c"blob", content_b, content_b_len)
+	assert1(blob_id_b != 0)
+	wst_rewrite_as_legacy(b, blob_id_b, c"blob", content_b, content_b_len)
+	assert_equal(1, cas_verify(store_b, blob_id_b))
+	cas_close(store_b)
+
+	list[char*] push_args = new list[char*]
+	push_args.push(c"wvc")
+	push_args.push(c"push")
+	push_args.push(url)
+	process_result* r_push = wst_run(push_args, b)
+	assert_equal(0, r_push.status)
+	wst_assert_contains(r_push.stdout_text, commit_b)
+	process_result_free(r_push)
+
+	wst_serve_stop(server)
+
+	# A's store, off the network entirely now, has the pushed blob --
+	# uploaded from B's legacy-format on-disk bytes, stored via
+	# cas_put_raw in A's current encoding.
+	wresult[wcas*]* store_a2_r = cas_open(meta_a)
+	assert1(result_is_ok[wcas*](store_a2_r))
+	wcas* store_a2 = result_value[wcas*](store_a2_r)
+	result_free[wcas*](store_a2_r)
+	assert_equal(1, cas_verify(store_a2, blob_id_b))
+	wresult[wcas_object*]* pushed_r = cas_get(store_a2, blob_id_b)
+	assert1(result_is_ok[wcas_object*](pushed_r))
+	wcas_object* pushed = result_value[wcas_object*](pushed_r)
+	result_free[wcas_object*](pushed_r)
+	assert_strings_equal(content_b, pushed.data)
+	cas_object_free(pushed)
+	cas_close(store_a2)
+
+	free(blob_id)
+	free(blob_id_b)
+	free(url)
+	free(commit_a)
+	free(commit_b)
+	free(a1)
+	free(b2)
+	free(meta_a)
+	free(meta_b)
+	wst_rm_rf(a)
+	wst_rm_rf(b)

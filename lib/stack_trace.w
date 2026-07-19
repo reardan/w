@@ -213,9 +213,9 @@ void st_init(int pc):
 		shstrndx = st_int16(base + 62)
 	if (shoff <= 0):
 		return;
-	if ((shnum < 2) | (shnum > 100)):
+	if ((shnum < 2) || (shnum > 100)):
 		return;
-	if ((shentsize < 40) | (shentsize > 128)):
+	if ((shentsize < 40) || (shentsize > 128)):
 		return;
 	if (shstrndx >= shnum):
 		return;
@@ -301,7 +301,7 @@ int st_entry_name(int e):
 # 1 when the bytes before the return address v decode as one of the
 # compiler's call forms; mirrors dbg_looks_like_return (wdbg.w).
 int st_call_site(int v):
-	if ((st_machine == 3) | (st_machine == 62)):
+	if ((st_machine == 3) || (st_machine == 62)):
 		if (v - 5 < st_base):
 			return 0
 		if ((st_byte(v - 2) == 255) & (st_byte(v - 1) == 208)):
@@ -405,7 +405,7 @@ int st_line_lookup(int pc):
 	if (st_dline_lo == 0):
 		return 0
 	int unit_length = st_int32(st_dline_lo)
-	if ((unit_length < 16) | (unit_length + 4 > st_dline_size)):
+	if ((unit_length < 16) || (unit_length + 4 > st_dline_size)):
 		return 0
 	if (st_int16(st_dline_lo + 4) != 2):
 		return 0

@@ -132,7 +132,7 @@ void wasm_i32_const(int v):
 	while (1):
 		int b = v & 0x7f
 		v = v >> 7   # arithmetic shift: sign propagates
-		if (((v == 0) & ((b & 0x40) == 0)) | ((v == -1) & ((b & 0x40) == 0x40))):
+		if (((v == 0) && ((b & 0x40) == 0)) || ((v == -1) && ((b & 0x40) == 0x40))):
 			emit_int8(b)
 			return
 		emit_int8(b | 0x80)
@@ -291,7 +291,7 @@ void wasm_promote_eax_op(int load_opcode):
 	int align = 2
 	if (load_opcode != 0x28):
 		align = 0
-		if ((load_opcode == 0x2e) | (load_opcode == 0x2f)):
+		if ((load_opcode == 0x2e) || (load_opcode == 0x2f)):
 			align = 1
 	wasm_load_op(load_opcode, align, 0)
 	wasm_set_ax()

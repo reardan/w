@@ -42,6 +42,11 @@ int main(int argc, int argv):
 	if (args_has_flag(c"report")):
 		pg_report_dispatch(grammar)
 	char* source = pg_generate_parser(grammar)
+	if (source == 0):
+		print2(c"parser_generator: ")
+		print2(input_path)
+		println2(c": generation failed (see diagnostics above)")
+		return 1
 	if (pg_write_file_text(output_path, source) == 0):
 		print2(c"parser_generator: could not write ")
 		println2(output_path)

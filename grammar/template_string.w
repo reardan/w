@@ -107,17 +107,17 @@ int template_process_chunk(int j):
 			token[i] = '}'
 			j = j + 2
 
-		else if ((token[j] == 92) & (token[j + 1] == 'x')):
+		else if ((token[j] == 92) && (token[j + 1] == 'x')):
 			k = string_hex_value(j + 2, 2)
 			token[i] = k
 			j = j + 4
 
-		else if ((token[j] == 92) & (token[j + 1] == 'u')):
+		else if ((token[j] == 92) && (token[j + 1] == 'u')):
 			k = string_hex_value(j + 2, 4)
 			i = string_append_utf8(i, k) - 1
 			j = j + 6
 
-		else if ((token[j] == 92) & (token[j + 1] == 'U')):
+		else if ((token[j] == 92) && (token[j + 1] == 'U')):
 			k = string_hex_value(j + 2, 8)
 			i = string_append_utf8(i, k) - 1
 			j = j + 10
@@ -179,7 +179,7 @@ int template_helper_for_type(int got):
 	if (t == type_unqualified(bool_type)):
 		return 3
 	int size = type_get_size(t)
-	if ((size == 1) | (size == 2) | (size == 4) | (size == 8)):
+	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
 		return 3
 	template_unsupported(got)
 	return 0
@@ -238,7 +238,7 @@ void template_emit_value_append(int got, int builder_slot):
 # the final chunk as the current token for primary_expr's trailing
 # get_token().
 int template_string_literal():
-	if ((token[0] != 'f') | (token[1] != '"')):
+	if ((token[0] != 'f') || (token[1] != '"')):
 		return 0
 	template_string_needed = 1
 	int base_stack = stack_pos

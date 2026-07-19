@@ -57,6 +57,11 @@ current state:
 		whitespace hygiene:
 			warning when a line is indented with spaces instead of tabs
 			warning when a file does not end with a newline
+		UTF-8 source stage 1 (issue #287, docs/projects/utf8_source.md):
+			a leading BOM is silently stripped
+			check --json escapes invalid byte sequences so diagnostics
+				stay valid UTF-8/JSON; columns count codepoints, not bytes
+			UTF-8 identifiers (stage 2) remain a policy decision, not scheduled
 		imports and packages:
 			import a.b as f binds a file-scoped alias; f.name access is
 				checked against the module's declarations (import_test)
@@ -78,6 +83,9 @@ current state:
 			float64 literals, arithmetic, formatting and returns work on x64
 			x64 tests also cover float32 narrowing from a float64 literal
 			float output is diff-tested against C reference output
+			TestFloat-derived conformance vectors cover float32 (both
+				targets) and float64 (x64) rounding/edge cases (issue #17,
+				docs/projects/float_testing.md)
 			float16 storage/conversion works on the x86 family (F16C
 				hardware instructions; design: docs/projects/float.md)
 			bfloat16 and float16 on arm64/wasm remain future work
@@ -161,14 +169,20 @@ current state:
 			'kernel name(params):' declarations with thread_idx/block_idx/
 				block_dim/grid_dim intrinsics and int/pointer/float32/float64
 				arithmetic, if/while/switch control flow
-			'launch k[grid, block](args)' and 'gpu for i in range(n)'
-				(body outlined into a kernel, enclosing variables captured
-				as parameters); both async — gpu_sync() is the sync point
+			'launch k[grid, block](args)' and 'gpu for i in range(n)' /
+				range(start, end) (body outlined into a kernel, enclosing
+				variables captured as parameters; scalar captures are
+				read-only device copies); both async — gpu_sync() is the
+				sync point
+			atomic_add/atomic_min/atomic_max device intrinsics (int*;
+				atomic_add also float32*), returning the pre-update value
+			the nine 32-bit limb/bit intrinsics work on device with the
+				host contract (cuda_test cross-checks against the host)
 			lib/cuda.w runtime: managed memory (gpu_alloc/gpu_free),
-				lazy driver init, kernel-handle cache, gpu_available()
-				driver+device probe (non-fatal, the CPU-fallback branch point)
-			gpu_atomic_add/gpu_atomic_add_int device intrinsics (PTX
-				red.add) — the reduction primitive (docs/projects/torch.md)
+				explicit memory (gpu_device_alloc + gpu_memcpy_to/from,
+				blocking copies ordered after launches), lazy driver
+				init, kernel-handle cache, gpu_available() driver+device
+				probe (non-fatal, the CPU-fallback branch point)
 			lib/tensor.w (docs/projects/torch.md stages 2-3): GPU tensor on
 				managed memory, elementwise ops/relu/atomic sum/naive
 				matmul2, ndf round-trip copies, CPU fallback per op
@@ -371,9 +385,9 @@ current state:
 	future platforms:
 		windows
 		arm
-		gpu (kernels/'gpu for' work — see the gpu inventory above;
-			remaining: A2 virtual-register emission, explicit memory API,
-			shared memory/atomics, multi-GPU)
+		gpu (kernels/'gpu for'/atomics/explicit memory work — see the
+			gpu inventory above; remaining: A2 virtual-register emission,
+			shared memory, recoverable CUresult errors, multi-GPU)
 
 	net:
 		working:

@@ -308,10 +308,25 @@ void imul_eax_int32(int v):
 	emit_int32(v)
 
 
+# Bumped once per machine call instruction actually emitted: by this
+# function (every ordinary/indirect W call, and every builtin container
+# op routed through grammar/hash_builtin.w's hash_call_finish, operator
+# overload dispatch, generator resumption, or a 'new' allocation's
+# implicit malloc — they all funnel through call_eax) and by
+# code_generator/ffi.w's emit_ffi_call_inline (the one FFI call path
+# that bypasses call_eax, used for variadic C imports). Declared here,
+# ahead of grammar in the import order, so grammar/binary_op.w's
+# operand_is_pure can read it: it snapshots this counter around an
+# operand's parse to tell the '&'/'|' bool-bitwise condition hint
+# whether the operand executed any call at all.
+int emitted_call_count
+
+
 void call_eax():
 	if (target_isa == 3):
 		error(c"gpu code cannot call functions")
 		return
+	emitted_call_count = emitted_call_count + 1
 	if (target_isa == 2):
 		wasm_call_eax()
 		return
@@ -986,12 +1001,14 @@ void alu_test_set(int setcc_opcode):
 # MUL/ADD forms are emitted without a REX.W prefix on purpose: they read
 # only the low halves and their 32-bit register writes zero-extend on
 # x64, so one byte sequence serves both word sizes. Only the operations
-# touching the result pointer are word-sized.
+# touching the result pointer are word-sized. The device (PTX) twins in
+# code_generator/ptx.w keep the same contract via 64-bit masked
+# arithmetic.
 
 /* mov ecx, eax at the full word width (a pointer operand) */
 void mov_ecx_eax():
 	if (target_isa == 3):
-		error(c"mul_hi/mul_wide/add_carry are not supported in gpu code")
+		ptx_mov_cx_ax()
 		return
 	if (target_isa == 2):
 		wasm_mov_ecx_eax()
@@ -1006,7 +1023,7 @@ void mov_ecx_eax():
 /* mul %ebx (edx:eax = eax*ebx, unsigned 32x32) ; mov %edx,%eax */
 void alu_mul_hi():
 	if (target_isa == 3):
-		error(c"mul_hi/mul_wide/add_carry are not supported in gpu code")
+		ptx_alu_mul_hi()
 		return
 	if (target_isa == 2):
 		wasm_alu_mul_hi()
@@ -1023,7 +1040,7 @@ void alu_mul_hi():
    is stored word-sized through the pointer in ecx */
 void alu_mul_wide():
 	if (target_isa == 3):
-		error(c"mul_hi/mul_wide/add_carry are not supported in gpu code")
+		ptx_alu_mul_wide()
 		return
 	if (target_isa == 2):
 		wasm_alu_mul_wide()
@@ -1044,7 +1061,7 @@ void alu_mul_wide():
    pointer in ecx and the wrapped sum stays in eax */
 void alu_add_carry():
 	if (target_isa == 3):
-		error(c"mul_hi/mul_wide/add_carry are not supported in gpu code")
+		ptx_alu_add_carry()
 		return
 	if (target_isa == 2):
 		wasm_alu_add_carry()
@@ -1078,6 +1095,8 @@ void alu_add_carry():
 # BSR/BSF are baseline ISA; POPCNT/LZCNT/TZCNT are not, so popcount is
 # the classic SWAR reduction and the clz/ctz zero case (both defined to
 # return 32) is an explicit branch around the undefined-on-zero BSR/BSF.
+# The device (PTX) twins in code_generator/ptx.w use the native
+# popc/clz/brev/shf forms.
 
 /* two-operand entry: mov %eax,%ecx ; mov %ebx,%eax puts the value (from
    the popped left operand in ebx) into eax and the count into cl */
@@ -1089,7 +1108,7 @@ void alu_bit_operands():
 /* value in ebx, count in eax: shr %cl,%eax (logical right shift) */
 void alu_shr32():
 	if (target_isa == 3):
-		error(c"bit intrinsics are not supported in gpu code")
+		ptx_alu_shr32()
 		return
 	if (target_isa == 2):
 		wasm_alu_shr32()
@@ -1104,7 +1123,7 @@ void alu_shr32():
 /* value in ebx, count in eax: rol %cl,%eax */
 void alu_rotl32():
 	if (target_isa == 3):
-		error(c"bit intrinsics are not supported in gpu code")
+		ptx_alu_rotl32()
 		return
 	if (target_isa == 2):
 		wasm_alu_rotl32()
@@ -1121,7 +1140,7 @@ void alu_rotl32():
 /* value in ebx, count in eax: ror %cl,%eax */
 void alu_rotr32():
 	if (target_isa == 3):
-		error(c"bit intrinsics are not supported in gpu code")
+		ptx_alu_rotr32()
 		return
 	if (target_isa == 2):
 		wasm_alu_rotr32()
@@ -1142,7 +1161,7 @@ void alu_rotr32():
    plain immediates) */
 void alu_popcount32():
 	if (target_isa == 3):
-		error(c"bit intrinsics are not supported in gpu code")
+		ptx_alu_popcount32()
 		return
 	if (target_isa == 2):
 		wasm_alu_popcount32()
@@ -1192,7 +1211,7 @@ void alu_popcount32():
    the zero case branches over the 31-index conversion */
 void alu_clz32():
 	if (target_isa == 3):
-		error(c"bit intrinsics are not supported in gpu code")
+		ptx_alu_clz32()
 		return
 	if (target_isa == 2):
 		wasm_alu_clz32()
@@ -1212,7 +1231,7 @@ void alu_clz32():
    BSF is undefined on zero input the same way BSR is */
 void alu_ctz32():
 	if (target_isa == 3):
-		error(c"bit intrinsics are not supported in gpu code")
+		ptx_alu_ctz32()
 		return
 	if (target_isa == 2):
 		wasm_alu_ctz32()

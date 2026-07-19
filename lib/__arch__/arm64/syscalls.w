@@ -62,6 +62,10 @@ int mkdir(char* path, int mode):
 int rmdir(char* path):
 	return syscall(35, arm64_at_fdcwd(), path, 512)
 
+# renameat(olddirfd, old, newdirfd, new) — both dirs AT_FDCWD.
+int rename(char* oldpath, char* newpath):
+	return syscall7(38, arm64_at_fdcwd(), oldpath, arm64_at_fdcwd(), newpath, 0, 0)
+
 # getdents64: note its record layout differs from the legacy getdents
 # (d_type sits right after d_reclen rather than at the record's end).
 int getdents(int file, char* buf, int count):
@@ -69,6 +73,64 @@ int getdents(int file, char* buf, int count):
 
 int getcwd(char* buf, int size):
 	return syscall(17, buf, size, 0)
+
+# File metadata / mode / links (see lib/stat.w for the portable parsers).
+# AArch64 uses the *at forms exclusively.
+
+int at_fdcwd():
+	return arm64_at_fdcwd()
+
+
+int at_symlink_nofollow():
+	return 256
+
+
+# statx (291).
+int statx(char* path, int flags, int mask, char* buf):
+	return syscall7(291, at_fdcwd(), path, flags, mask, buf, 0)
+
+
+# fchmodat (53) with flags = 0.
+int chmod(char* path, int mode):
+	return syscall7(53, at_fdcwd(), path, mode, 0, 0, 0)
+
+
+# utimensat (88): times == 0 means "now" for both timestamps; otherwise
+# times points at two word-sized timespecs {atime, mtime}.
+int utimensat(char* path, int times, int flags):
+	return syscall7(88, at_fdcwd(), path, times, flags, 0, 0)
+
+
+# fchownat (54): uid/gid of -1 leave that id unchanged.
+int fchownat(char* path, int uid, int gid, int flags):
+	return syscall7(54, at_fdcwd(), path, uid, gid, flags, 0)
+
+
+int chown(char* path, int uid, int gid):
+	return fchownat(path, uid, gid, 0)
+
+
+int lchown(char* path, int uid, int gid):
+	return fchownat(path, uid, gid, at_symlink_nofollow())
+
+
+int getuid():
+	return syscall(174, 0, 0, 0)
+
+
+int getgid():
+	return syscall(176, 0, 0, 0)
+
+
+# readlinkat (78): returns byte count written (not NUL-terminated), or -errno.
+int readlink(char* path, char* buf, int size):
+	return syscall7(78, at_fdcwd(), path, buf, size, 0, 0)
+
+
+# symlinkat (36).
+int symlink(char* target, char* linkpath):
+	return syscall(36, target, at_fdcwd(), linkpath)
+
 
 # No time(2) on AArch64: read CLOCK_REALTIME and return the seconds field.
 int linux_time(int* out):

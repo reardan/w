@@ -83,7 +83,7 @@ int pg_kind_set_empty(pg_analysis* analysis, char* kinds):
 int pg_kind_set_intersects(pg_analysis* analysis, char* a, char* b):
 	int i = 0
 	while (i < analysis.kind_count):
-		if ((a[i] != 0) & (b[i] != 0)):
+		if ((a[i] != 0) && (b[i] != 0)):
 			return 1
 		i = i + 1
 	return 0
@@ -93,14 +93,14 @@ int pg_kind_set_intersects(pg_analysis* analysis, char* a, char* b):
 # it consumes tokens and records a diagnostic. Mirrors the emitter's
 # recovery lookup (token terms never recover).
 int pg_analysis_term_recovers(pg_grammar* grammar, pg_term* term):
-	if ((term.modifier == '*') | (term.modifier == '+')):
+	if ((term.modifier == '*') || (term.modifier == '+')):
 		if (pg_grammar_is_token_term(grammar, term.name) == 0):
 			return pg_grammar_find_recover(grammar, term.name) != 0
 	return 0
 
 
 int pg_analysis_term_nullable(pg_analysis* analysis, pg_term* term):
-	if ((term.modifier == '?') | (term.modifier == '*')):
+	if ((term.modifier == '?') || (term.modifier == '*')):
 		return 1
 	if (pg_grammar_is_token_term(analysis.grammar, term.name)):
 		return 0
@@ -115,7 +115,7 @@ int pg_analysis_term_first(pg_analysis* analysis, pg_term* term, char* out):
 	int changed = 0
 	if (pg_grammar_is_token_term(analysis.grammar, term.name)):
 		int kind = pg_grammar_token_kind(analysis.grammar, term.name)
-		if ((kind >= 0) & (kind < analysis.kind_count)):
+		if ((kind >= 0) && (kind < analysis.kind_count)):
 			if (out[kind] == 0):
 				out[kind] = 1
 				changed = 1
@@ -125,7 +125,7 @@ int pg_analysis_term_first(pg_analysis* analysis, pg_term* term, char* out):
 		return 0
 	int i = 0
 	while (i < analysis.kind_count):
-		if ((facts.first[i] != 0) & (out[i] == 0)):
+		if ((facts.first[i] != 0) && (out[i] == 0)):
 			out[i] = 1
 			changed = 1
 		i = i + 1
@@ -472,7 +472,7 @@ void pg_report_overlap_kinds(pg_analysis* analysis, char* a, char* b):
 	int printed = 0
 	int kind = 0
 	while (kind < analysis.kind_count):
-		if ((a[kind] != 0) & (b[kind] != 0)):
+		if ((a[kind] != 0) && (b[kind] != 0)):
 			if (printed == 8):
 				print2(c" ...")
 				return
@@ -583,3 +583,74 @@ void pg_report_dispatch(pg_grammar* grammar):
 	print2(c" left-factored groups")
 	println2(c"")
 	pg_analysis_free(analysis)
+
+
+# --- streaming-mode eligibility (issue #329 milestone 3) -------------------
+#
+# `mode streaming` never marks or rewinds the token stream, so it is only
+# legal where this analysis proves every decision commits:
+#
+#  1. Every rule's choice (recursively through left-factored suffixes) has
+#     no overlapping units. This is exactly what --report's conflict
+#     listing already checks, so it is reused here verbatim: a streaming
+#     grammar and --report name the same left-factoring worklist.
+#  2. No ?/*/+ term names a rule. A token/literal repeat is committed by
+#     construction (its first set is one kind); a rule-referenced repeat
+#     or optional is not, even when analysis.w says its *entry* is
+#     guardable — a FIRST-set match only proves the decision to enter is
+#     right, not that the callee rule goes on to succeed, so today's
+#     generator still wraps it in a trial mark/rewind attempt
+#     (pg_emit_optional_attempt / pg_emit_repeat_attempt in generator.w).
+#     Streaming mode has nothing to rewind to, so these are rejected
+#     rather than silently miscompiled.
+#
+# A grammar that declares any `recover` directive is rejected outright:
+# recovery is fundamentally about resynchronizing after a failed attempt,
+# the same bounded-backtracking shape excluded above (and, since recover
+# only ever applies to a repeated rule reference, condition 2 would flag
+# it anyway — this just gives a clearer, earlier message).
+#
+# Returns the number of violations printed; 0 means the grammar may
+# generate in streaming mode.
+
+
+int pg_streaming_term_violations(pg_grammar* grammar, pg_rule* rule):
+	int violations = 0
+	int a = 0
+	while (a < rule.alternatives.length):
+		pg_alternative* alternative = rule.alternatives[a]
+		int t = 0
+		while (t < alternative.terms.length):
+			pg_term* term = alternative.terms[t]
+			if (term.modifier != 0):
+				if (pg_grammar_is_token_term(grammar, term.name) == 0):
+					print2(c"parser_generator: rule ")
+					print2(rule.name)
+					print2(c": streaming mode requires '")
+					print2(term.name)
+					print2(c"' to be a token or literal to carry ?/*/+ (a rule reference needs a trial parse today)")
+					println2(c"")
+					violations = violations + 1
+			t = t + 1
+		a = a + 1
+	return violations
+
+
+int pg_streaming_check(pg_grammar* grammar):
+	int violations = 0
+	if (grammar.recovers.length > 0):
+		print2(c"parser_generator: ")
+		print2(grammar.name)
+		println2(c": streaming mode does not support recover directives (error recovery needs backtracking)")
+		violations = violations + grammar.recovers.length
+	pg_analysis* analysis = pg_analyze_grammar(grammar)
+	int r = 0
+	while (r < grammar.rules.length):
+		pg_rule* rule = grammar.rules[r]
+		list[pg_choice_unit*] units = pg_plan_choice(analysis, rule, 0, rule.alternatives.length, 0)
+		violations = violations + pg_report_choice(analysis, rule, units, 0)
+		pg_choice_units_free(units)
+		violations = violations + pg_streaming_term_violations(grammar, rule)
+		r = r + 1
+	pg_analysis_free(analysis)
+	return violations

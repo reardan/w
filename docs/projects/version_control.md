@@ -195,10 +195,14 @@ before the next begins. Modules are ordered so the build-system work
   `cas_has(id)`. Git-style `"<type> <len>\0"` header hashed with the
   payload via `whash` SHA-256; loose-object layout
   `objects/<2-hex>/<62-hex>` with write-to-temp + rename for atomicity
-  (dedup is free: existing id ⇒ skip write). **Uncompressed
-  initially** — compression is an encoding slot to fill later, not a
-  semantic requirement. This module *is* direction 3's build cache
-  store; `wcache.w` and `wvc` become two clients of one library.
+  (dedup is free: existing id ⇒ skip write). **Uncompressed initially,
+  zlib-compressed as of wave 4** (issue #252 "compressed objects",
+  `docs/projects/compress.md` stage 2): new writes are zlib-deflated,
+  git's own on-disk convention; reads transparently accept both
+  encodings, so a store from before wave 4 keeps working with no
+  rewrite step — see cas.w's own "On-disk encoding" header section for
+  the sniff and why it's airtight. This module *is* direction 3's build
+  cache store; `wcache.w` and `wvc` become two clients of one library.
 - **`libs/extras/vcs/diff.w`** — Myers line diff producing a hunk
   list, plus a unified-format renderer. Immediate dogfood: a `wdiff`
   build target, and eventually richer `lib/testing.w` failure output.

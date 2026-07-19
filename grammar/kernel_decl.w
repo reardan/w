@@ -117,6 +117,15 @@ void gpu_capture_reset():
 	gpu_capture_count = 1
 
 
+# Reserve one extra leading capture slot with no backing symbol: the
+# 'gpu for' range START when the two-argument form is used (slot 0 =
+# start, slot 1 = end; the one-argument form keeps slot 0 = end).
+void gpu_capture_reserve():
+	save_ptr(gpu_capture_names + gpu_capture_count * __word_size__, 0)
+	save_int(gpu_capture_syms + gpu_capture_count * 4, -1)
+	gpu_capture_count = gpu_capture_count + 1
+
+
 char* gpu_capture_name(int slot):
 	return cast(char*, load_ptr(gpu_capture_names + slot * __word_size__))
 
@@ -151,7 +160,7 @@ int gpu_sym_get_value(char* s):
 	if (load_int(table + t + 10) == 2):
 		error(c"gpu code cannot call functions")
 	char scope_type = table[t + 1]
-	if ((scope_type == 'D') | (scope_type == 'U')):
+	if ((scope_type == 'D') || (scope_type == 'U')):
 		error(c"global variables are not accessible in gpu code")
 	int type = load_int(table + t + 6)
 	if (t < device_symbol_base):
@@ -167,6 +176,20 @@ int gpu_sym_get_value(char* s):
 			error(c"containers and strings cannot be captured in 'gpu for'")
 		int slot = gpu_capture_slot(t, s)
 		ptx_lea_ax_bp_minus((slot + 1) << word_size_log2)
+		# Captured scalars are device-local copies: a write inside the
+		# body would silently vanish on the host side, so they come
+		# back const-qualified and the existing assignment-to-const
+		# enforcement rejects the write. Pointers are exempt (writes
+		# THROUGH a captured pointer are the point, and const-wrapping
+		# a pointer record breaks element-type lookup); bool and var
+		# are exempt (their coerce paths re-promote const records).
+		int unqual = type_unqualified(type)
+		if ((type_get_pointer_level(unqual) == 0) && (unqual != bool_type) && (type_is_var(unqual) == 0)):
+			if (type_is_const(type) == 0):
+				int const_type = type_lookup_const(unqual)
+				if (const_type < 0):
+					const_type = type_push_const(unqual)
+				type = const_type
 		return type
 	int k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
 	# Aggregates occupy several stack words; point at the lowest address

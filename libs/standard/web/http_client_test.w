@@ -50,7 +50,7 @@ int http_test_contains(char* hay, char* needle):
 	int i = 0
 	while (hay[i] != 0):
 		int j = 0
-		while ((needle[j] != 0) & (hay[i + j] == needle[j])):
+		while ((needle[j] != 0) && (hay[i + j] == needle[j])):
 			j = j + 1
 		if (needle[j] == 0):
 			return 1
@@ -77,7 +77,7 @@ void http_test_request_free(http_test_request* q):
 int http_test_find_head_end(char* buf, int total):
 	int i = 0
 	while (i + 3 < total):
-		if ((buf[i] == 13) & (buf[i + 1] == 10) & (buf[i + 2] == 13) & (buf[i + 3] == 10)):
+		if ((buf[i] == 13) && (buf[i + 1] == 10) && (buf[i + 2] == 13) && (buf[i + 3] == 10)):
 			return i + 4
 		i = i + 1
 	return (-1)
@@ -103,7 +103,7 @@ int http_test_content_length(char* head):
 			while (head[k] == ' '):
 				k = k + 1
 			return atoi(head + k)
-		while ((head[i] != 0) & (head[i] != 10)):
+		while ((head[i] != 0) && (head[i] != 10)):
 			i = i + 1
 		if (head[i] == 10):
 			i = i + 1
@@ -130,13 +130,13 @@ int http_test_read_request(int conn, http_test_request* q):
 	buf[total] = 0
 
 	int sp1 = 0
-	while ((buf[sp1] != ' ') & (buf[sp1] != 13) & (buf[sp1] != 0)):
+	while ((buf[sp1] != ' ') && (buf[sp1] != 13) && (buf[sp1] != 0)):
 		sp1 = sp1 + 1
 	if (buf[sp1] != ' '):
 		free(buf)
 		return 0
 	int sp2 = sp1 + 1
-	while ((buf[sp2] != ' ') & (buf[sp2] != 13) & (buf[sp2] != 0)):
+	while ((buf[sp2] != ' ') && (buf[sp2] != 13) && (buf[sp2] != 0)):
 		sp2 = sp2 + 1
 	if (buf[sp2] != ' '):
 		free(buf)
@@ -146,7 +146,7 @@ int http_test_read_request(int conn, http_test_request* q):
 	q.path = substring(buf, sp1 + 1, sp2)
 
 	int content_length = http_test_content_length(q.head)
-	if ((content_length < 0) | (content_length > cap)):
+	if ((content_length < 0) || (content_length > cap)):
 		free(q.head)
 		free(q.method)
 		free(q.path)

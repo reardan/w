@@ -218,7 +218,7 @@ int sha2_ssig1_lo(int hi, int lo):
 
 
 int sha2_hex_nibble(int c):
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return c - '0'
 	return c - 'a' + 10
 
@@ -530,7 +530,7 @@ void whash_update(whash* h, char* data, int len):
 	int pos = 0
 	# Top up a partial buffer first.
 	if (h.buffered > 0):
-		while ((h.buffered < bs) & (pos < len)):
+		while ((h.buffered < bs) && (pos < len)):
 			h.buffer[h.buffered] = data[pos]
 			h.buffered = h.buffered + 1
 			pos = pos + 1

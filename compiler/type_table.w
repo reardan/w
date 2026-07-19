@@ -445,6 +445,21 @@ int type_push_const(int target):
 	return new_type_index
 
 
+# Existing const wrapper over `target`, or -1 when none was pushed yet.
+# The gpu capture path (grammar/kernel_decl.w) memoizes its const wrap
+# through this instead of pushing a fresh record per reference.
+int type_lookup_const(int target):
+	int real_target = type_canonical(target)
+	int i = 0
+	while (i < type_records.length):
+		int t = type_records[i]
+		if (load_ptr(t + 205 * __word_size__) == type_kind_const):
+			if (load_ptr(t + 204 * __word_size__) == real_target):
+				return i
+		i = i + 1
+	return -1
+
+
 int type_get_kind(int type_index):
 	type_index = type_canonical(type_index)
 	if (type_index < 0):
@@ -885,7 +900,7 @@ int types_compatible(int want, int got):
 	# (e.g. FILE* vs _IO_FILE*) must stay interchangeable.
 	int want_base = type_lookup(type_get_name(want))
 	int got_base = type_lookup(type_get_name(got))
-	if ((want_base < 0) | (got_base < 0)):
+	if ((want_base < 0) || (got_base < 0)):
 		return 0
 	return type_canonical(want_base) == type_canonical(got_base)
 
@@ -919,7 +934,7 @@ int type_decays_to_pointer(int want, int got):
 	# of the element's base (e.g. FILE* from _IO_FILE[]) stays valid.
 	int want_base = type_lookup(type_get_name(want))
 	int element_base = type_lookup(type_get_name(element))
-	if ((want_base < 0) | (element_base < 0)):
+	if ((want_base < 0) || (element_base < 0)):
 		return 0
 	return type_canonical(want_base) == type_canonical(element_base)
 
@@ -929,11 +944,14 @@ int type_decays_to_pointer(int want, int got):
 # as kind 1 because its load path widens to float32. Pointer types have
 # their own indices, so float* correctly reads as kind 0.
 int type_float_kind(int t):
-	t = type_canonical(t)
-	if ((t == float32_type) | (t == float_type) |
-			(t == float16_type) | (t == float32_value_type)):
+	# Unqualified, not just canonical: a const-wrapped float (e.g. a
+	# 'gpu for' scalar capture) must still read as a float so promote()
+	# routes its loads through the float pipeline.
+	t = type_unqualified(t)
+	if ((t == float32_type) || (t == float_type) ||
+			(t == float16_type) || (t == float32_value_type)):
 		return 1
-	if ((t == float64_type) | (t == float64_value_type)):
+	if ((t == float64_type) || (t == float64_value_type)):
 		return 2
 	return 0
 

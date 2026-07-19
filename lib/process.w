@@ -148,7 +148,7 @@ void process_cmdline_append_arg(string_builder* s, char* arg):
 	int has_space = 0
 	int j = 0
 	while (arg[j] != 0):
-		if ((arg[j] == ' ') | (arg[j] == 9)):
+		if ((arg[j] == ' ') || (arg[j] == 9)):
 			has_space = 1
 		j = j + 1
 	if (has_space):
@@ -255,7 +255,7 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 	save_int32(si, si_size)   # cb
 
 	int use_handles = 0
-	if ((stdin_child >= 0) | (stdout_child >= 0) | (stderr_child >= 0)):
+	if ((stdin_child >= 0) || (stdout_child >= 0) || (stderr_child >= 0)):
 		use_handles = 1
 	if (opts.stdin_mode == process_null()):
 		use_handles = 1
@@ -546,6 +546,59 @@ void process_sleep_ms(int ms):
 	free(ts)
 
 
+# Reap whichever of the listed unreaped children exits first. Returns
+# the index into `kids` (>= 0). When hang is 0 and none have exited,
+# returns process_status_running(). Wait failures return a negative
+# errno; an empty list returns -EINVAL (-22). Already-reaped entries are
+# skipped. Decoded status lives on kids[i]. See
+# docs/projects/unix_primitives.md.
+int process_wait_any(list[process*] kids, int hang):
+	if ((kids == 0) || (kids.length == 0)):
+		return 0 - 22
+	int i = 0
+	while (i < kids.length):
+		process* p = kids[i]
+		if ((p != 0) && (p.reaped == 0)):
+			int decoded = process_try_wait(p)
+			if (decoded != process_status_running()):
+				# Exit/signal statuses are >= 0; wait errno is negative.
+				if (decoded < 0):
+					return decoded
+				return i
+		i = i + 1
+	if (hang == 0):
+		return process_status_running()
+	# Blocking: wait for any child, then match against the list.
+	# Windows has no wait4(-1); keep polling try_wait with a short sleep.
+	if (os_windows()):
+		while (1):
+			i = 0
+			while (i < kids.length):
+				process* p = kids[i]
+				if ((p != 0) && (p.reaped == 0)):
+					int decoded = process_try_wait(p)
+					if (decoded != process_status_running()):
+						if (decoded < 0):
+							return decoded
+						return i
+				i = i + 1
+			process_sleep_ms(2)
+	while (1):
+		int status = 0
+		int pid = wait4(0 - 1, &status, 0, 0)
+		if (pid < 0):
+			return pid
+		i = 0
+		while (i < kids.length):
+			process* p = kids[i]
+			if ((p != 0) && (p.reaped == 0) && (p.pid == pid)):
+				p.status = status
+				p.reaped = 1
+				return i
+			i = i + 1
+		# Reaped a child that is not in the list; keep waiting.
+
+
 # Wait up to timeout_ms. On expiry returns process_status_timeout() and
 # leaves the child running so the caller decides between process_kill and
 # more waiting. timeout_ms <= 0 degrades to a blocking process_wait.
@@ -823,7 +876,7 @@ process_result* process_run(char* path, char** argv, spawn_options* opts, char* 
 					int written = write(p.stdin_fd, stdin_text + stdin_offset, chunk)
 					if (written > 0):
 						stdin_offset = stdin_offset + written
-					if ((written < 0) | (stdin_offset >= stdin_length)):
+					if ((written < 0) || (stdin_offset >= stdin_length)):
 						process_close_stdin(p)
 			if (stdout_slot >= 0):
 				if (process_pollfd_revents(fds, stdout_slot) != 0):

@@ -334,6 +334,10 @@ seeds — is `docs/release.md`.
   emit; changes to expression/statement handling usually live in
   `grammar/*.w`, while instruction encoding and ELF layout live in
   `code_generator/*.w`.
+- Pointer arithmetic is a raw, unscaled byte offset for every pointee
+  type: `int* p; p + n` advances `p` by `n` *bytes*, not `n` ints. Only
+  indexing scales — use `&p[n]`, or multiply the offset by the element
+  width by hand, the way `lib/sha256.w`'s `p + i * 4` does.
 - Some conveniences need tools that are not required for build/test and may
   be absent: `gdb`/`ddd` (hand-debugging a built binary), `radare2` (`rasm2`
   encoding lookups), `systemtap` with sudo (syscall-trace one-liners), an
@@ -415,15 +419,17 @@ seeds — is `docs/release.md`.
   and generic struct constructors, binding through container/struct
   shapes (`pair[T]*`, `list[T]`), and struct-by-value returns on
   inferred calls.
-- CUDA backend Stage 4 (quality) — Stages 0–3 are done: the PTX emitter
-  (`code_generator/ptx.w`), `kernel` declarations, `launch` and `gpu for`
-  outlining, with the `lib/cuda.w` runtime (managed memory, async launches,
-  `gpu_sync()`, `gpu_available()`). `gpu_atomic_add`/`gpu_atomic_add_int`
-  (PTX `red.add`) and `lib/tensor.w` (GPU tensor: elementwise ops, atomic
-  sum, naive matmul, CPU fallbacks) landed via `docs/projects/torch.md`
-  Stages 1–3. Remaining: A2 virtual-register emission, explicit memory
-  API, shared memory; see `docs/projects/cuda.md` and torch.md Stages 4–6
-  (async ops, tiled matmul, autograd/layers, safetensors interop).
+- CUDA backend Stage 4 (quality) — Stages 0–3 plus a first Stage 4 slice
+  are done: the PTX emitter (`code_generator/ptx.w`), `kernel`
+  declarations, `launch` and `gpu for` outlining (`range(start, end)`
+  included), gpu atomics, the device limb/bit intrinsics, and the
+  `lib/cuda.w` runtime (managed + explicit memory, async launches,
+  `gpu_sync()`, `gpu_available()`). `lib/tensor.w` (GPU tensor:
+  elementwise ops, atomic sum, naive matmul, CPU fallbacks) landed via
+  `docs/projects/torch.md` Stages 1–3. Remaining: A2 virtual-register
+  emission, shared memory, recoverable CUresult errors, multi-GPU; see
+  `docs/projects/cuda.md` and torch.md Stages 4–6 (async ops, tiled
+  matmul, autograd/layers, safetensors interop).
 - Debugger: locals inside evaluated expressions, watchpoints, a web UI
   (stepping, breakpoints, variable inspection, expression evaluation at a
   breakpoint and `w --debug` are done).

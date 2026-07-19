@@ -85,7 +85,7 @@ int asm_stub_find(char* line, char* pat):
 	int i = 0
 	while (i + m <= n):
 		int j = 0
-		while (j < m & line[i + j] == pat[j]):
+		while (j < m && line[i + j] == pat[j]):
 			j = j + 1
 		if (j == m):
 			return i
@@ -153,9 +153,9 @@ asm_stub_source* asm_stub_source_load(char* path):
 				asm_stub_fail(path, index, c"instruction before any 'func'", line)
 			int start = 1
 			int end = start
-			while (line[end] != 0 & line[end] != '\t'):
+			while (line[end] != 0 && line[end] != '\t'):
 				end = end + 1
-			while (end > start & line[end - 1] == ' '):
+			while (end > start && line[end - 1] == ' '):
 				end = end - 1
 			char* text = asm_stub_slice(line, start, end)
 			int n = asm_stub_assemble_line(src.arch, text, current.bytes)
@@ -199,7 +199,7 @@ asm_stub_source* asm_stub_source_load(char* path):
 # literals have no hex escapes.)
 int asm_stub_read_emit(char* line, int at, asm_buffer* b):
 	int i = at
-	while (line[i] != 0 & line[i] != ','):
+	while (line[i] != 0 && line[i] != ','):
 		i = i + 1
 	if (line[i] != ','):
 		return -1
@@ -208,7 +208,7 @@ int asm_stub_read_emit(char* line, int at, asm_buffer* b):
 		return -1
 	i = i + quote_at + 2
 	int count = 0
-	while (line[i] != 0 & line[i] != 34):
+	while (line[i] != 0 && line[i] != 34):
 		if (line[i] != 92):
 			return -1
 		if (line[i + 1] != 'x'):
@@ -231,7 +231,7 @@ int asm_stub_read_emit(char* line, int at, asm_buffer* b):
 # right after "emit(").
 int asm_stub_read_emit_length(char* line, int at):
 	int n = 0
-	while (line[at] >= '0' & line[at] <= '9'):
+	while (line[at] >= '0' && line[at] <= '9'):
 		n = n * 10 + (line[at] - '0')
 		at = at + 1
 	return n
@@ -282,7 +282,7 @@ list[asm_stub_func] asm_stub_extract_w(char* path):
 		index = index + 1
 		# skip '#' comment lines so prose mentioning emit()/op() is inert
 		int first = 0
-		while (line[first] == '\t' | line[first] == ' '):
+		while (line[first] == '\t' || line[first] == ' '):
 			first = first + 1
 		if (line[first] == '#'):
 			continue
@@ -297,7 +297,7 @@ list[asm_stub_func] asm_stub_extract_w(char* path):
 					funcs.push(current)
 			at = at + pat_len
 			int end = at
-			while (line[end] != 0 & line[end] != 34):
+			while (line[end] != 0 && line[end] != 34):
 				end = end + 1
 			current.name = asm_stub_slice(line, at, end)
 			current.line_start = -1
@@ -314,7 +314,7 @@ list[asm_stub_func] asm_stub_extract_w(char* path):
 						funcs.push(current)
 				int name_at = asm_stub_find(line, c" ") + 1
 				int name_end = name_at
-				while (line[name_end] != 0 & line[name_end] != '('):
+				while (line[name_end] != 0 && line[name_end] != '('):
 					name_end = name_end + 1
 				current.name = asm_stub_slice(line, name_at, name_end)
 				current.line_start = -1

@@ -233,7 +233,7 @@ int wtest_str_contains(char* haystack, char* needle):
 	int i = 0
 	while (haystack[i] != 0):
 		int j = 0
-		while ((j < n) & (haystack[i + j] == needle[j])):
+		while ((j < n) && (haystack[i + j] == needle[j])):
 			j = j + 1
 		if (j == n):
 			return 1
@@ -773,7 +773,7 @@ char* wtest_run_deps(char* id):
 # caches are silently dropped). kind 1 = success ('R'), kind 2 =
 # failure ('X').
 void wtest_cache_entry(int kind, char* root, char* expected, string_builder* blob):
-	if ((root == 0) | (expected == 0)):
+	if ((root == 0) || (expected == 0)):
 		return
 	if (kind == 1):
 		if (blob != 0):
@@ -803,7 +803,7 @@ void wtest_cache_load():
 		int c = text[i]
 		if (c == 0):
 			at_end = 1
-		if ((c == 10) | (c == 0)):
+		if ((c == 10) || (c == 0)):
 			char* entry = line.data
 			if (starts_with(entry, c"R ") | starts_with(entry, c"X ")):
 				wtest_cache_entry(kind, root, expected, blob)

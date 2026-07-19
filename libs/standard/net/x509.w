@@ -262,7 +262,7 @@ int x509_days_in_month(int y, int m):
 		if (y % 400 == 0):
 			leap = 1
 		return 28 + leap
-	if ((m == 4) | (m == 6) | (m == 9) | (m == 11)):
+	if ((m == 4) || (m == 6) || (m == 9) || (m == 11)):
 		return 30
 	return 31
 
@@ -276,9 +276,9 @@ void x509_unix_to_day_sec(int unix_time, int* out_day, int* out_sec):
 int x509_two_digits(char* data, int start):
 	int a = data[start] & 255
 	int b = data[start + 1] & 255
-	if ((a < '0') | (a > '9')):
+	if ((a < '0') || (a > '9')):
 		return -1
-	if ((b < '0') | (b > '9')):
+	if ((b < '0') || (b > '9')):
 		return -1
 	return (a - '0') * 10 + (b - '0')
 
@@ -304,7 +304,7 @@ int x509_parse_time(char* data, int start, int len, int tag, int* out_day, int* 
 			return 0
 		int hi = x509_two_digits(data, p)
 		int lo = x509_two_digits(data, p + 2)
-		if ((hi < 0) | (lo < 0)):
+		if ((hi < 0) || (lo < 0)):
 			return 0
 		year = hi * 100 + lo
 		p = p + 4
@@ -317,17 +317,17 @@ int x509_parse_time(char* data, int start, int len, int tag, int* out_day, int* 
 	int hour = x509_two_digits(data, p + 4)
 	int minute = x509_two_digits(data, p + 6)
 	int second = x509_two_digits(data, p + 8)
-	if ((month < 1) | (month > 12)):
+	if ((month < 1) || (month > 12)):
 		return 0
 	if (day < 1):
 		return 0
 	if (day > x509_days_in_month(year, month)):
 		return 0
-	if ((hour < 0) | (hour > 23)):
+	if ((hour < 0) || (hour > 23)):
 		return 0
-	if ((minute < 0) | (minute > 59)):
+	if ((minute < 0) || (minute > 59)):
 		return 0
-	if ((second < 0) | (second > 59)):
+	if ((second < 0) || (second > 59)):
 		return 0
 	*out_day = x509_days_from_civil(year, month, day)
 	*out_sec = hour * 3600 + minute * 60 + second
@@ -608,7 +608,7 @@ int x509_parse_spki(asn1* r, x509_cert* c):
 			return 0
 		# Modulus between 512 and 4096 bits (bignum headroom is 8400 bits
 		# for products), exponent at most 64 bits.
-		if ((nl < 64) | (nl > 512)):
+		if ((nl < 64) || (nl > 512)):
 			return 0
 		if (el > 8):
 			return 0
@@ -740,7 +740,7 @@ int x509_valid_dns_name_bytes(char* data, int start, int len):
 	int i = 0
 	while (i < len):
 		int ch = data[start + i] & 255
-		if ((ch < 33) | (ch > 126)):
+		if ((ch < 33) || (ch > 126)):
 			return 0
 		i = i + 1
 	return 1
@@ -894,7 +894,7 @@ int x509_parse_into(x509_cert* c):
 			return 0
 		if (asn1_done(&v) == 0):
 			return 0
-		if ((vers < 0) | (vers > 2)):
+		if ((vers < 0) || (vers > 2)):
 			return 0
 		c.version = vers + 1
 
@@ -904,7 +904,7 @@ int x509_parse_into(x509_cert* c):
 	int snl = 0
 	if (asn1_read_integer(&tbs, &sns, &snl) == 0):
 		return 0
-	if ((snl < 1) | (snl > 21)):
+	if ((snl < 1) || (snl > 21)):
 		return 0
 	c.serial_start = sns
 	c.serial_len = snl
@@ -1092,7 +1092,7 @@ int pem_line_is(char* text, int start, int line_end, char* marker):
 	int e = line_end
 	while (e > start):
 		int ch = text[e - 1] & 255
-		if ((ch == 13) | (ch == 32) | (ch == 9)):
+		if ((ch == 13) || (ch == 32) || (ch == 9)):
 			e = e - 1
 		else:
 			break
@@ -1155,7 +1155,7 @@ list[pem_block*] pem_decode_blocks(char* text, int len, char* label):
 				int i = pos
 				while (i < line_end):
 					int ch = text[i] & 255
-					if ((ch == 13) | (ch == 32) | (ch == 9)):
+					if ((ch == 13) || (ch == 32) || (ch == 9)):
 						i = i + 1
 						continue
 					int ok = 0
@@ -1289,7 +1289,7 @@ x509_trust_store* x509_load_trust_store(char* override_path):
 # ---- hostname matching (RFC 6125) ---------------------------------------------------
 
 int x509_lower_char(int c):
-	if ((c >= 'A') & (c <= 'Z')):
+	if ((c >= 'A') && (c <= 'Z')):
 		return c + 32
 	return c
 
@@ -1325,7 +1325,7 @@ int x509_hostname_matches_pattern(char* pattern, char* hostname):
 	if (hlen > 0):
 		if ((hostname[hlen - 1] & 255) == '.'):
 			hlen = hlen - 1
-	if ((plen == 0) | (hlen == 0)):
+	if ((plen == 0) || (hlen == 0)):
 		return 0
 	# The hostname itself may not contain wildcards.
 	int i = 0
@@ -1338,7 +1338,7 @@ int x509_hostname_matches_pattern(char* pattern, char* hostname):
 	i = 0
 	while (i < hlen):
 		int ch = hostname[i] & 255
-		if ((ch >= '0') & (ch <= '9')):
+		if ((ch >= '0') && (ch <= '9')):
 			i = i + 1
 			continue
 		if (ch == '.'):
@@ -1445,7 +1445,7 @@ int x509_ecdsa_sig_to_raw(char* sig, int len, char* out_r, char* out_s):
 		return 0
 	if (asn1_done(&nums) == 0):
 		return 0
-	if ((rl > 32) | (sl > 32)):
+	if ((rl > 32) || (sl > 32)):
 		return 0
 	int i = 0
 	while (i < 32):

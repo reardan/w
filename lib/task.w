@@ -242,7 +242,7 @@ int task_run(task_scheduler* s):
 			return 0
 		int watches = event_loop_active_count[event_watch*](s.loop, s.loop.watches)
 		int timers = event_loop_active_count[event_timer*](s.loop, s.loop.timers)
-		if ((watches == 0) & (timers == 0)):
+		if ((watches == 0) && (timers == 0)):
 			return task_err_deadlock()
 		int fired = event_loop_run_once(s.loop, -1)
 		if (fired < 0):

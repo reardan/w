@@ -157,6 +157,72 @@ colliding FIRST tokens — the left-factoring worklist for milestone 3
 (w.pg: 109 of 118 rules committed; c.pg: 80 of 99). The
 `parser_generator_w_test` whole-repo sweep runs ~4x faster (78s to 19s).
 
+Since 2026-07 (issue #329 milestone 3) an optional `mode streaming`
+directive after the `parser` line switches a grammar's generated output
+from the AST-building parser above to a **streaming, listener-callback**
+parser: no `pg_ast_node` tree, no `pg_token_stream_mark`/`rewind`
+anywhere, ever. This is legal only where milestone 2's analysis proves
+the *entire* grammar is committed dispatch, which is a stronger
+requirement than `--report`'s per-rule "committed" count: streaming mode
+also refuses a grammar containing any `?`/`*`/`+` term over a *rule*
+reference (only a token/literal repeat is committed by construction —
+its first set is one kind — a rule-referenced repeat still wraps a trial
+mark/rewind attempt today even when its entry is FIRST-set guarded,
+because a FIRST-set match proves the decision to enter is right, not
+that the callee rule goes on to succeed) and any grammar declaring a
+`recover` directive (resynchronization is itself bounded backtracking).
+`pg_streaming_check` (`libs/extras/parser_generator/analysis.w`) runs
+both checks before generation and, on any violation, prints the same
+rule/alternatives/colliding-tokens diagnostic `--report` prints (for the
+choice-conflict case) or a one-line "requires token or literal" message
+naming the offending rule reference (for the repeated-rule-reference
+case); `pg_generate_parser` returns 0 instead of emitting an unsound
+parser, and `tools/parser_generator.w` reports "generation failed" and
+exits 1. There is no bounded-buffering fallback: a backtracking region is
+rejected outright, not silently narrowed.
+
+Where a grammar clears both checks, every rule commits to an alternative
+with a single first-set test (an `if`/`else if` chain, reusing the same
+choice-unit planning and left-factoring as AST mode) and then runs that
+alternative's terms in a straight line — no rewind exists to reach for,
+since once a guard chose an alternative there was never a sibling to
+fall back to. A mandatory term that still fails despite the guard (a
+genuine syntax error, not an ambiguity) is therefore a direct "record a
+diagnostic, return failure" up through the call chain, rather than AST
+mode's rewind-and-try-the-next-alternative. The callback surface is a
+generated `<parser>_listener` struct: one `void* context` field, one
+shared `on_token` fired for every consumed token (any rule), and an
+`on_enter_<rule>`/`on_exit_<rule>` pair per rule, fired with the token
+stream so a listener can inspect the triggering token. Any field left
+unset (`<parser>_listener_new()` zeroes them all) is simply skipped —
+`on_enter_<rule>` fires before that rule's alternative is even chosen, so
+a rule that enters but never exits is exactly the rule that failed. The
+entry point is `<parser>_parse_streaming(input, filename, diagnostics,
+listener)`, returning a plain success flag; as with the AST entry point,
+the grammar's start rule is expected to end with an `EOF` term.
+`tests/parser_generator/streaming_sample.pg` /
+`generated_streaming_test.w` are a small worked example (assignments,
+a brace-delimited block of one-or-more numbers, a two-alternative value
+rule, and right-recursive statement lists) exercising enter/exit/token
+callbacks over real input, a genuine syntax-error path, and the
+rule-referenced-repeat rejection.
+
+Actions and predicates (`{ code }` / `&{ expr }`, milestone 4) are not
+implemented; the intentional over-acceptance `w.pg` uses for
+context-sensitive parses (`top_item`'s declaration-vs-statement re-parse,
+`name_token`'s deliberately broad keyword set, `type_ref`-prefixed
+declaration dispatch, and the "does this alternative's leading token
+also start a nested primary expression" family in
+`paren_expression_opt`/`range_expr`/`postfix_tail`) is exactly the set of
+rules `--report` still lists as backtracking after milestone 2, and
+milestone 3's stricter streaming check rejects a grammar containing
+them for the same reason today's generator still needs a trial parse
+there: resolving each one requires either unbounded lookahead or a
+semantic predicate against symbol-table state the grammar alone doesn't
+have, which is milestone 4's job. `w.pg` therefore stays in the default
+AST mode; streaming mode is proven so far only on the small grammar
+above.
+
 ## W grammar
 
 `tests/parser_generator/w.pg` is the first generated-parser grammar for W

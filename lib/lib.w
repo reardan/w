@@ -61,13 +61,13 @@ int cstr_utf8_length_or_die(char* s):
 		int codepoint = 0
 		if (c < 128):
 			i = i + 1
-		else if ((c >= 194) & (c <= 223)):
+		else if ((c >= 194) && (c <= 223)):
 			need = 1
 			codepoint = c & 31
-		else if ((c >= 224) & (c <= 239)):
+		else if ((c >= 224) && (c <= 239)):
 			need = 2
 			codepoint = c & 15
-		else if ((c >= 240) & (c <= 244)):
+		else if ((c >= 240) && (c <= 244)):
 			need = 3
 			codepoint = c & 7
 		else:
@@ -76,17 +76,17 @@ int cstr_utf8_length_or_die(char* s):
 			int j = 1
 			while (j <= need):
 				int d = s[i + j] & 255
-				if ((d == 0) | (d < 128) | (d > 191)):
+				if ((d == 0) || (d < 128) || (d > 191)):
 					cstr_invalid_utf8()
 				codepoint = (codepoint << 6) | (d & 63)
 				j = j + 1
-			if ((need == 1) & (codepoint < 128)):
+			if ((need == 1) && (codepoint < 128)):
 				cstr_invalid_utf8()
-			if ((need == 2) & (codepoint < 2048)):
+			if ((need == 2) && (codepoint < 2048)):
 				cstr_invalid_utf8()
-			if ((need == 3) & (codepoint < 65536)):
+			if ((need == 3) && (codepoint < 65536)):
 				cstr_invalid_utf8()
-			if ((codepoint >= 55296) & (codepoint <= 57343)):
+			if ((codepoint >= 55296) && (codepoint <= 57343)):
 				cstr_invalid_utf8()
 			if (codepoint > 1114111):
 				cstr_invalid_utf8()
@@ -96,7 +96,7 @@ int cstr_utf8_length_or_die(char* s):
 
 void strncpy(char* dst, char* src, int n):
 	int i = 0
-	while ((i < n) & (src[i] != 0)):
+	while ((i < n) && (src[i] != 0)):
 		dst[i] = src[i]
 		i = i + 1
 
@@ -149,19 +149,30 @@ void reverse(char *s):
 
 # Returns a malloc'd string the caller may free.
 char* itoa(int n):
-	char *s = malloc(16)
+	# 24 bytes covers the longest possible result on either word size: a
+	# 64-bit INT_MIN ("-9223372036854775808") is 20 characters plus the
+	# trailing NUL.
+	char *s = malloc(24)
 	int i = 0
-	int sign = n
+	int negative = 0
 	if(n < 0):
-		n = 0-n
+		negative = 1
 	if (n == 0):
 		s[i] = '0'
 		i = i + 1
-	while(n > 0):
-		s[i] = n % 10 + '0'
+	# Extract digits directly from n (which may still be negative)
+	# instead of pre-negating with "0 - n": negating INT_MIN overflows
+	# back to INT_MIN, which used to skip this loop entirely and print
+	# just "-". Truncating division keeps n % 10 in -9..9 with the sign
+	# of n, so a negative digit's magnitude fits in a single negation.
+	while(n != 0):
+		int digit = n % 10
+		if (digit < 0):
+			digit = 0 - digit
+		s[i] = digit + '0'
 		i = i + 1
 		n = n / 10
-	if(sign < 0):
+	if(negative):
 		s[i] = '-'
 		i = i + 1
 	s[i] = 0
@@ -175,7 +186,7 @@ int atoi(char* s):
 	if (s[0] == '-'):
 		s = s + 1
 		negative = 1
-	while (s[0] >= '0' & s[0] <= '9'):
+	while (s[0] >= '0' && s[0] <= '9'):
 		result = result * 10 + s[0] - '0'
 		s = s + 1
 	if (negative == 1):
@@ -188,9 +199,13 @@ int intstrlen(int i):
 	if (i == 0):
 		return 1
 	if (i < 0):
-		i = 0-i
 		len = len + 1  /* for '-' */
-	while (i > 0):
+	# Divide i directly (it may stay negative) instead of pre-negating
+	# with "0 - i": negating INT_MIN overflows back to INT_MIN, which
+	# used to skip this loop entirely. Truncating division walks a
+	# negative i down to 0 in exactly as many steps as its positive
+	# counterpart, so the digit count comes out the same either way.
+	while (i != 0):
 		i = i / 10
 		len = len + 1
 	return len
@@ -244,12 +259,12 @@ int from_hex(char* s):
 	
 	int i = 0
 	int ch = s[i]
-	while ((ch != 0) & (i < 18)):
-		if (ch >= '0' & ch <= '9'):
+	while ((ch != 0) && (i < 18)):
+		if (ch >= '0' && ch <= '9'):
 			result = (result << 4) + ch - '0'
-		else if(ch >= 'a' & ch <= 'f'):
+		else if(ch >= 'a' && ch <= 'f'):
 			result = (result << 4) + ch - 'a' + 10
-		else if(ch >= 'A' & ch <= 'F'):
+		else if(ch >= 'A' && ch <= 'F'):
 			result = (result << 4) + ch - 'A' + 10
 		i = i + 1
 		ch = s[i]
@@ -294,7 +309,7 @@ int ends_with(char *str, char* suffix):
 		cur_suffix = cur_suffix + 1
 
 	# Reverse backwards through both strings
-	while (cur_str >= str & cur_suffix >= suffix):
+	while (cur_str >= str && cur_suffix >= suffix):
 		if (cur_str[0] != cur_suffix[0]):
 			return 0
 		cur_str = cur_str - 1
@@ -409,7 +424,7 @@ void getchar_seek(int file, int offset):
 		seek(file, offset, 0)
 		return;
 	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
-	if ((offset >= window_start) & (offset <= getchar_kernel_pos[file])):
+	if ((offset >= window_start) && (offset <= getchar_kernel_pos[file])):
 		getchar_pos[file] = offset - window_start
 		return;
 	seek(file, offset, 0)

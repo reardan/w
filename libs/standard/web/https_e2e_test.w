@@ -85,7 +85,7 @@ char* hs_http_url(int port, char* path):
 int hs_head_end(char* buf, int total):
 	int i = 0
 	while (i + 3 < total):
-		if ((buf[i] == 13) & (buf[i + 1] == 10) & (buf[i + 2] == 13) & (buf[i + 3] == 10)):
+		if ((buf[i] == 13) && (buf[i + 1] == 10) && (buf[i + 2] == 13) && (buf[i + 3] == 10)):
 			return i + 4
 		i = i + 1
 	return (-1)

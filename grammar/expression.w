@@ -78,7 +78,7 @@ int compound_assign_op():
 # as the corresponding binary operator, leaves the result in eax and
 # returns its expression type; the stack drops by one word.
 int compound_assign_apply(int op, int left_type, int right_type):
-	if ((op == '/') | (op == '%') | (op == 'l') | (op == 'r')):
+	if ((op == '/') || (op == '%') || (op == 'l') || (op == 'r')):
 		if (binary_float_kind(left_type, right_type)):
 			if (op == '/'):
 				pop_ebx()
@@ -97,7 +97,7 @@ int compound_assign_apply(int op, int left_type, int right_type):
 		return 3
 	pop_ebx()
 	stack_pos = stack_pos - 1
-	if ((op == '+') | (op == '-') | (op == '*')):
+	if ((op == '+') || (op == '-') || (op == '*')):
 		int result_type = float_binary_arithmetic(left_type, right_type, op)
 		if (result_type):
 			return result_type

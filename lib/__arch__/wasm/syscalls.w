@@ -49,7 +49,7 @@ int wasi_cstr_len(char* s):
 # 0x400 is O_APPEND. Paths resolve against the preopened directory;
 # a leading "/" or "./" is stripped.
 int open(char *filename, int mode, int permissions):
-	while ((filename[0] == '.') & (filename[1] == '/')):
+	while ((filename[0] == '.') && (filename[1] == '/')):
 		filename = filename + 2
 	while (filename[0] == '/'):
 		filename = filename + 1
@@ -114,7 +114,7 @@ int seek(int file, int offset, int reference):
 
 
 int unlink(char* path):
-	while ((path[0] == '.') & (path[1] == '/')):
+	while ((path[0] == '.') && (path[1] == '/')):
 		path = path + 2
 	while (path[0] == '/'):
 		path = path + 1
@@ -160,6 +160,55 @@ int getcwd(char* buf, int size):
 
 
 int getdents(int file, char* buf, int count):
+	return -1
+
+
+# Portable metadata wrappers are Linux-first (lib/stat.w).
+int at_fdcwd():
+	return 0 - 100
+
+
+int at_symlink_nofollow():
+	return 256
+
+
+int statx(char* path, int flags, int mask, char* buf):
+	return -1
+
+
+int chmod(char* path, int mode):
+	return -1
+
+
+int utimensat(char* path, int times, int flags):
+	return -1
+
+
+int fchownat(char* path, int uid, int gid, int flags):
+	return -1
+
+
+int chown(char* path, int uid, int gid):
+	return -1
+
+
+int lchown(char* path, int uid, int gid):
+	return -1
+
+
+int getuid():
+	return -1
+
+
+int getgid():
+	return -1
+
+
+int readlink(char* path, char* buf, int size):
+	return -1
+
+
+int symlink(char* target, char* linkpath):
 	return -1
 
 

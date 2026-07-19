@@ -53,7 +53,7 @@ x509_cert* xt_load_cert(char* name):
 	int skipped = 0
 	list[x509_cert*] certs = pem_decode_certs(text, strlen(text), &skipped)
 	free(text)
-	if ((certs.length != 1) | (skipped != 0)):
+	if ((certs.length != 1) || (skipped != 0)):
 		print_string(c"fixture did not parse: ", name)
 		exit(1)
 	x509_cert* c = certs[0]

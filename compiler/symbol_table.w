@@ -68,7 +68,7 @@ int sym_lookup(char *s):
 	int current_symbol = -1
 	while (t <= table_pos - 1):
 		int i = 0
-		while ((s[i] == table[t]) & (s[i] != 0)):
+		while ((s[i] == table[t]) && (s[i] != 0)):
 			i = i + 1
 			t = t + 1
 
@@ -207,7 +207,7 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 
 	# Record where locals and arguments live so the in-process debugger
 	# (wdbg) can inspect them by name at runtime
-	if ((visibility == 'L') | (visibility == 'A')):
+	if ((visibility == 'L') || (visibility == 'A')):
 		debug_local_note(s, value, visibility, type)
 
 
@@ -443,7 +443,7 @@ int sym_get_value(char *s):
 		free(visibility)
 		error(c"'")
 
-	if ((scope_type == 'L') | (scope_type == 'A')):
+	if ((scope_type == 'L') || (scope_type == 'A')):
 		# Aggregates occupy several stack words; point at the lowest address
 		# (last pushed word) so positive offsets stay inside the object.
 		int words = type_stack_words(type)
@@ -453,7 +453,7 @@ int sym_get_value(char *s):
 		be_lea_acc_wstack(k)
 
 	if (symtype == 2):
-		if ((scope_type == 'D') | (scope_type == 'U')):
+		if ((scope_type == 'D') || (scope_type == 'U')):
 			# REPL late binding: report the address cell just emitted
 			# (still at codepos-4: the D/U paths emit nothing after
 			# be_addr_slot_emit) so a later redefinition of this name

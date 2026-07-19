@@ -81,7 +81,7 @@ char* web_read_all(int file, int capacity):
 int web_header_end(char* text):
 	int i = 0
 	while (text[i] != 0):
-		if ((text[i] == 13) & (text[i + 1] == 10) & (text[i + 2] == 13) & (text[i + 3] == 10)):
+		if ((text[i] == 13) && (text[i + 1] == 10) && (text[i + 2] == 13) && (text[i + 3] == 10)):
 			return i + 4
 		i = i + 1
 	return -1
