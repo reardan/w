@@ -151,6 +151,74 @@ wave close: 433/441, only the environmental failures. Per-task:
   streaming-codegen segfault (factorable prefix + nullable suffix),
   reproduced independently and documented.
 
+**Wave 4 complete (2026-07-19): all 6 tasks merged — PROGRAM COMPLETE,
+24/24 tasks across four waves.** Final full suite: 437/445, only the
+7 environmental `libc6:i386` failures + the dependent umbrella skip.
+Manifest grew 430 → 445 targets over the program (284 → 328 generated).
+Per-task:
+
+- **4a** attach execution control: breakpoints/continue/si/detach were
+  found already in-tree, so the real remainder shipped — `s`/`n`
+  (statement-boundary stepping with frame-base arithmetic mirroring the
+  in-process debugger), `fin` (temp breakpoint at the return address,
+  reports the returned value), and a terminating-fixture test proving
+  detach truly restores patched bytes (the old tests killed the target
+  and could never catch a missed restore).
+- **4b** `wtest changed A..B`: two-dot/three-dot (real merge-base) and
+  open `A..` ranges; `--defhash` generalized to left-vs-right content;
+  deletions via `--no-renames` through the existing residue rules; the
+  git "dotted range's omitted side is HEAD, never the worktree" pitfall
+  handled and documented.
+- **4c** `docs/projects/optimization.md` (#110 assessment): headline
+  measurement — a universally dead `mov` precedes 99.6% of `bin/wv2`'s
+  28k stack-relative `lea` sites, 8.3% of the binary's bytes, fixable
+  with a one-line conditional in `sym_get_value`'s emission; plus
+  boolean-materialization and push/pop-shuttle inventories, timing
+  evidence that I/O-bound work is codegen-insensitive, and the honest
+  framing that v2 (AST passes) inherits #231/#337's undecided options.
+- **4d** protobuf stage 1 (`libs/extras/protobuf/`): varint/zigzag/tag/
+  skip codec + descriptor-driven message encode/decode, 13 field kinds,
+  packed/unpacked repeated, nested messages; golden vectors include
+  Google's own canonical encoding-guide examples; the 10-byte negative
+  varint on the 32-bit target solved with an explicit (lo, hi) pair
+  over `shr`'s logical-shift guarantee. Stages 2–3 (codegen, language
+  integration) remain gated on the maintainer's read of `protobuf.md`.
+- **4e** openssl interop shell script folded into the W harness (cert
+  generation via argv-vector `openssl req`, skip semantics preserved,
+  per-assertion messages); real TLS round-trips ran on both word sizes
+  repeatedly with no reproduction of the historical x64 hang; script
+  deleted (shell inventory 12 → 10 over the program).
+- **4f** defhash completeness: generic definitions (span-hash at the
+  three registration points, base-name + `generic_function`/
+  `generic_struct` kinds), operator overloads (synthetic
+  `operator+(vec3, vec3)` names), `--closure` ref resolution via a map
+  index, and 2g's textual risky-content fallback removed now that
+  coverage is real (comment-only edits to generic/operator files now
+  skip selection, proven by tests).
+
+**Flag for the maintainer — suspected x64 codegen bug, two independent
+sightings in one wave:** 4a hit a crash from a "local cached before and
+after a conditional" shape in `debugger/attach.w` (worked around by
+re-calling the accessor), and 4f hit a miscompile from a direct
+`return <name> in <map>` return-expression in `compiler/compiler.w`
+(worked around by materializing into a local first). Both are
+context-dependent — minimal standalone repros do NOT trigger either —
+both are documented with repro conditions in
+`ai_tooling_next_steps.md`, and both workarounds are in-tree with
+`verify`/`verify_x64` green. A dedicated `code_generator/`-focused
+investigation is the natural next HIGH-care task for a future program.
+
+Program totals: 24 tasks, 24 merged (several with deliberately
+documented partial scope); 4 shell scripts retired; the manifest's
+hand-written target count shrank by ~40 while total targets grew
+430 → 445; every wave closed with the full suite green modulo the
+same 7 environmental failures; CI on the program PR stayed green after
+the one orchestrator-fixed EPERM issue. Process: the worktree-base
+mismatch and the self-backgrounding stall (6 of 8 agents in wave 2)
+were both fixed by prompt hardening — wave 3 and 4 ran with zero
+stalls; `ai_tooling_next_steps.md` conflicted on most merges and was
+resolved by union throughout.
+
 ## 0. In-flight work — keep clear
 
 **Update (2026-07-19): PR #344 has merged.** CUDA stage 4 (atomics,
