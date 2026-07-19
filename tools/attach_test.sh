@@ -136,6 +136,69 @@ run_case "raw mode disassembly" "" 'disas\ndetach\n' "=> 0x"
 # Raw mode has no symbol table: function targets point at the address form.
 run_case "raw mode disas boundary" "" 'disas slow_step\ndetach\n' "no symbols: disassemble by address"
 
+# --- execution control: s/n/fin (#123 phase 4 remainder) ---
+# 'n' (next) steps over a call: from slow_step's call-site line, one 'next'
+# runs bump to completion and stops at slow_step's own following statement,
+# never reporting a stop inside bump itself.
+run_case "next steps over a call" "$FIXTURE_SRC" 'b slow_step\nc\nn\nkill\n' "return step"
+
+# 's' (step) steps into a call: from the same call-site line, one 'step'
+# lands on bump's first statement instead.
+run_case "step steps into a call" "$FIXTURE_SRC" 'b slow_step\nc\ns\nkill\n' "bump ("
+
+# A second 'next' from inside bump (after stepping in) advances by source
+# line within the same frame, same as wdbg.w's in-process 'n'.
+run_case "next advances within a frame" "$FIXTURE_SRC" 'b bump\nc\nn\nkill\n' "return inc"
+
+# 'fin' runs to the caller's return site and reports the returned value
+# (bump's argument n plus one).
+run_case "finish reports the returned value" "$FIXTURE_SRC" 'b bump\nc\nfin\nkill\n' "value returned = "
+
+# After 'fin' reports the value it glides to the next statement boundary in
+# the caller (slow_step's own 'return step'), matching wdbg.w's in-process
+# 'fin' rather than stopping mid-statement at the bare return address.
+run_case "finish lands on the caller's next statement" "$FIXTURE_SRC" 'b bump\nc\nfin\nkill\n' "return step"
+
+# --- detach truly restores patched bytes (#123 phase 4) ---
+# Every other case above kills the fixture with -9 after detaching, which
+# never proves the patched int3 byte was put back: a leftover 0xcc would
+# only show up if the process kept running past it. This drives a fixture
+# that terminates on its own (attach_finite_fixture.w) through a real
+# detach and waits for its natural exit instead of killing it, so a
+# regression that skips the byte restore surfaces as a crash or a wrong
+# exit code here instead of silently passing. Both the final printed line
+# and the real process exit code (via $? after 'wait', appended as the
+# subshell's own exit) are asserted from one run of the fixture.
+FINITE_BIN=bin/attach_finite_target
+FINITE_SRC=tests/attach_finite_fixture.w
+
+# Runs entirely inside one subshell so the fixture's stdout (its final
+# println) and its real exit code (via 'wait' immediately after) are both
+# captured from the same process, in the same command substitution.
+out=$(
+	"$FINITE_BIN" &
+	pid=$!
+	sleep 0.4
+	printf 'b bump\nc\ndetach\n' | "$WDBG" --attach "$pid" "$FINITE_SRC" >/dev/null 2>/dev/null
+	code=0
+	wait "$pid" || code=$?
+	echo "exit_code=$code"
+)
+if printf '%s' "$out" | grep -qF "attach_finite_done"; then
+	echo "ok: detach lets the target print its final output"
+else
+	echo "FAIL: detach lets the target print its final output"
+	echo "  actual output:"
+	printf '%s\n' "$out" | sed 's/^/    /'
+	FAILED=1
+fi
+if printf '%s' "$out" | grep -qF "exit_code=42"; then
+	echo "ok: detach lets the target exit naturally (code 42)"
+else
+	echo "FAIL: detach lets the target exit naturally: $out"
+	FAILED=1
+fi
+
 # --- x86-64 attach: symbolization, registers, locals/frames (#123 phase 3) ---
 # Same fixture, compiled and attached as a 64-bit target: bin/wdbg64 (built
 # with 'bin/wv2 x64 debugger/debugger.w') recompiles the source with the
@@ -177,6 +240,40 @@ run_case_64 "x64: breakpoint hit names function" "$FIXTURE_SRC" 'b bump\nc\nkill
 run_case_64 "x64: args through the seam" "$FIXTURE_SRC" 'b bump\nc\ni a\nkill\n' "n = "
 run_case_64 "x64: frame selection reaches caller" "$FIXTURE_SRC" 'b bump\nc\nup\np n\nkill\n' "n = "
 run_case_64 "x64: backtrace names main" "$FIXTURE_SRC" 'b bump\nc\nbt\nkill\n' "main ("
+
+# x64: execution control twins (#123 phase 4 remainder).
+run_case_64 "x64: next steps over a call" "$FIXTURE_SRC" 'b slow_step\nc\nn\nkill\n' "return step"
+run_case_64 "x64: step steps into a call" "$FIXTURE_SRC" 'b slow_step\nc\ns\nkill\n' "bump ("
+run_case_64 "x64: finish reports the returned value" "$FIXTURE_SRC" 'b bump\nc\nfin\nkill\n' "value returned = "
+
+# x64: detach truly restores patched bytes, same shape as the 32-bit case
+# above (one subshell capturing both the fixture's stdout and its real
+# exit code after 'wait').
+FINITE_BIN64=bin/attach_finite_target64
+
+out=$(
+	"$FINITE_BIN64" &
+	pid=$!
+	sleep 0.4
+	printf 'b bump\nc\ndetach\n' | "$WDBG64" --attach "$pid" "$FINITE_SRC" >/dev/null 2>/dev/null
+	code=0
+	wait "$pid" || code=$?
+	echo "exit_code=$code"
+)
+if printf '%s' "$out" | grep -qF "attach_finite_done"; then
+	echo "ok: x64: detach lets the target print its final output"
+else
+	echo "FAIL: x64: detach lets the target print its final output"
+	echo "  actual output:"
+	printf '%s\n' "$out" | sed 's/^/    /'
+	FAILED=1
+fi
+if printf '%s' "$out" | grep -qF "exit_code=42"; then
+	echo "ok: x64: detach lets the target exit naturally (code 42)"
+else
+	echo "FAIL: x64: detach lets the target exit naturally: $out"
+	FAILED=1
+fi
 
 if [ "$FAILED" -eq 0 ]; then
 	echo "attach test OK"

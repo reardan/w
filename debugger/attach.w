@@ -718,7 +718,7 @@ void at_info(char* arg):
 
 void at_help():
 	println(c"attach-mode commands:")
-	println(c"  c/continue  si/step  detach  q/quit  kill")
+	println(c"  c/continue  s/step  n/next  si/stepi  fin/finish  detach  q/quit  kill")
 	println(c"  b/break <function | line | file:line | 0xADDR>   d/delete <n>")
 	println(c"  r/registers  x <0xADDR> [count]  st/stack  bt/backtrace")
 	println(c"  f/frame [n]  up  down  (select a backtrace frame)")
@@ -981,6 +981,239 @@ void at_step():
 		dbg_disas_show_context(dbg_reg_pc())
 
 
+# --- source-line stepping (#123 phase 4 remainder: s/n, run to a statement
+# boundary rather than one instruction like si) ---
+# Mirrors debugger/wdbg.w's dbg_step_should_stop/dbg_prepare_resume, adapted
+# from "single-step via the trap flag, resume, let the signal handler
+# re-check" to attach mode's own driving loop: PTRACE_SINGLESTEP + wait4,
+# checked here after every instruction instead of on every re-entry to
+# wdbg_trap. Same stop condition, same frame-base arithmetic (esp compared
+# against the starting statement's frame_base = esp-at-start + its recorded
+# stack depth), so recursion and step-out-of-frame behave identically to
+# the in-process debugger; only the driving mechanism differs.
+int AT_STEP_LINE():
+	return 1
+int AT_STEP_OVER():
+	return 2
+
+int attach_step_line   /* source line at the step's start */
+int attach_step_file   /* source file index at the step's start */
+int attach_step_stack  /* compile-time stack words at the start statement */
+int attach_step_esp    /* esp at the step's start (frame depth) */
+int attach_step_fstart /* enclosing function range at the step's start */
+int attach_step_fend
+
+
+void at_step_prepare():
+	attach_step_esp = dbg_reg_sp()
+	attach_step_line = -1
+	attach_step_file = -1
+	attach_step_stack = -1
+	attach_step_fstart = 0
+	attach_step_fend = 0
+	if (at_in_code(dbg_reg_pc())):
+		int entry = dbg_find_line(at_to_v(dbg_reg_pc()) - code_offset)
+		if (entry >= 0):
+			attach_step_line = dbg_line_line(entry)
+			attach_step_file = dbg_line_file(entry)
+			attach_step_stack = dbg_line_stack(entry)
+		int f = dbg_function_at(at_to_v(dbg_reg_pc()))
+		if (f >= 0):
+			attach_step_fstart = dbg_sym_address(f)
+			attach_step_fend = attach_step_fstart + dbg_sym_size(f)
+
+
+int at_step_should_stop(int mode, int ip):
+	if (at_in_code(ip) == 0):
+		return 0
+	int entry = dbg_find_line(at_to_v(ip) - code_offset)
+	if (entry < 0):
+		return 0
+	int esp = dbg_reg_sp()
+	int frame_base = attach_step_esp
+	if (attach_step_stack >= 0):
+		frame_base = attach_step_esp + attach_step_stack * __word_size__
+	# step/next only stop at exact statement starts (local addressing is
+	# only accurate there); a jump target or a call's continuation is
+	# always one.
+	if (ip != code_offset + dbg_line_addr(entry)):
+		return 0
+	if ((dbg_line_line(entry) == attach_step_line) && (dbg_line_file(entry) == attach_step_file)):
+		return 0
+	if (mode == AT_STEP_OVER()):
+		if (attach_step_fstart == 0):
+			return 1 /* unknown starting frame: behave like step */
+		if (esp > frame_base):
+			return 1 /* returned past the starting frame */
+		if ((ip >= attach_step_fstart) && (ip < attach_step_fend)):
+			if (esp == frame_base - dbg_line_stack(entry) * __word_size__):
+				return 1 /* a statement boundary of the starting frame */
+		return 0
+	return 1
+
+
+# Drive PTRACE_SINGLESTEP/wait4 until the next statement boundary at the
+# same-or-shallower frame (mode == AT_STEP_OVER()) or any boundary at all
+# (mode == AT_STEP_LINE()). A breakpoint's int3 landing mid-step (armed
+# inside the stepped range, e.g. 'next' stepping over a call that hits one)
+# stops early and reports it like a normal continue, rather than silently
+# stepping through it.
+void at_step_line_mode(int mode):
+	if (attach_alive == 0):
+		println(c"process is not running")
+		return;
+	if (attach_symbolized == 0):
+		println(c"no source: step unavailable (use si)")
+		return;
+	at_step_prepare()
+	int count = 0
+	while (1):
+		int bp = at_bp_find(dbg_reg_pc())
+		if (bp >= 0):
+			at_bp_disarm(bp)
+		at_resume(at_SINGLESTEP())
+		int st = at_wait()
+		if ((at_status_exited(st) == 0) && (at_status_signalled(st) == 0)):
+			if (bp >= 0):
+				at_bp_arm(bp)
+		if (at_status_exited(st) | at_status_signalled(st)):
+			at_report_stop(st)
+			return;
+		int sig = at_status_stopsig(st)
+		if (sig != 5):
+			at_report_stop(st)
+			return;
+		at_getregs()
+		int ip = at_reg(at_off_ip())
+		int hitbp = at_bp_find(ip - 1)
+		if (hitbp >= 0):
+			at_set_ip(ip - 1)
+			if (attach_symbolized):
+				at_frames_compute(ip - 1)
+			print(c"hit breakpoint ")
+			char* d = itoa(hitbp + 1)
+			print(d)
+			free(d)
+			print(c" ")
+			at_print_location(ip - 1)
+			if (dbg_disas_auto):
+				dbg_disas_show_context(ip - 1)
+			return;
+		count = count + 1
+		if (count > 500000):
+			println(c"step: no source boundary found: continuing")
+			return;
+		if (at_in_code(ip) == 0):
+			if (dbg_reg_sp() > attach_step_esp):
+				println(c"(step left the debuggee: continuing)")
+				return;
+			continue
+		if (at_step_should_stop(mode, ip)):
+			if (attach_symbolized):
+				at_frames_compute(ip)
+			at_print_location(ip)
+			if (dbg_disas_auto):
+				dbg_disas_show_context(ip)
+			return;
+
+
+# The current word_size-correct return-value register (eax/rax), read from
+# the register buffer at_getregs() already refreshed this stop.
+int at_reg_ret():
+	if (__word_size__ == 8):
+		return at_reg(80)
+	return at_reg(24)
+
+
+# fin/finish: run to the return address of the CURRENT (innermost) frame --
+# not the selected one, matching wdbg.w's in-process 'fin' -- via a
+# temporary breakpoint at that address (#123 phase 4's suggested approach),
+# falling back to reusing an already-set user breakpoint at the same
+# address instead of duplicating it. Recursion is handled by checking sp
+# against the sp recorded when 'fin' started: a hit at the same address
+# from a still-deeper (recursive) call is silently resumed rather than
+# reported as the finish.
+void at_finish():
+	if (attach_alive == 0):
+		println(c"process is not running")
+		return;
+	if (attach_symbolized == 0):
+		println(c"no source: finish unavailable")
+		return;
+	if (attach_fr_count < 2):
+		println(c"no caller frame")
+		return;
+	int target = at_fr_pc_at(1) + 1
+	int start_esp = dbg_reg_sp()
+	int temp_slot = -1
+	if (at_bp_find(target) < 0):
+		temp_slot = at_bp_add(target)
+		if (temp_slot < 0):
+			return;
+	while (1):
+		int bp = at_bp_find(dbg_reg_pc())
+		if (bp >= 0):
+			at_bp_disarm(bp)
+			at_resume(at_SINGLESTEP())
+			int st1 = at_wait()
+			if ((at_status_exited(st1) == 0) && (at_status_signalled(st1) == 0)):
+				at_bp_arm(bp)
+			if (at_status_exited(st1) | at_status_signalled(st1)):
+				at_report_stop(st1)
+				return;
+		at_resume(at_CONT())
+		int st = at_wait()
+		if (at_status_exited(st) | at_status_signalled(st)):
+			at_report_stop(st)
+			return;
+		if (at_status_stopsig(st) != 5):
+			if (temp_slot >= 0):
+				at_bp_disarm(temp_slot)
+				save_word(cast(char*, attach_bp_addrs + temp_slot * __word_size__), 0)
+			at_report_stop(st)
+			return;
+		at_getregs()
+		int ip = at_reg(at_off_ip())
+		int hitbp = at_bp_find(ip - 1)
+		if (hitbp < 0):
+			if (temp_slot >= 0):
+				at_bp_disarm(temp_slot)
+				save_word(cast(char*, attach_bp_addrs + temp_slot * __word_size__), 0)
+			at_report_stop(st)
+			return;
+		if (at_bp_addr(hitbp) == target):
+			at_set_ip(ip - 1)
+			if (dbg_reg_sp() > start_esp):
+				if (temp_slot >= 0):
+					at_bp_disarm(temp_slot)
+					save_word(cast(char*, attach_bp_addrs + temp_slot * __word_size__), 0)
+				print(c"value returned = ")
+				dbg_print_int_value(at_reg_ret())
+				put_char(10)
+				# Returning from the call lands mid-statement (the caller
+				# may still store the result, clean up args, etc); glide
+				# forward to the next real statement boundary like
+				# wdbg.w's in-process 'fin' does, rather than reporting a
+				# stop where local addressing may not be accurate yet.
+				at_step_line_mode(AT_STEP_LINE())
+				return;
+			# A recursive call returned to the same call site but has not
+			# yet unwound past the frame 'fin' started in: keep going.
+		else:
+			at_set_ip(ip - 1)
+			if (temp_slot >= 0):
+				at_bp_disarm(temp_slot)
+				save_word(cast(char*, attach_bp_addrs + temp_slot * __word_size__), 0)
+			at_frames_compute(ip - 1)
+			print(c"hit breakpoint ")
+			char* d = itoa(hitbp + 1)
+			print(d)
+			free(d)
+			print(c" ")
+			at_print_location(ip - 1)
+			return;
+
+
 void at_detach():
 	if (attach_alive == 0):
 		return;
@@ -1011,8 +1244,14 @@ void at_command_loop():
 		char* arg = at_split_word(command)
 		if ((strcmp(command, c"c") == 0) | (strcmp(command, c"continue") == 0)):
 			at_continue()
-		else if ((strcmp(command, c"si") == 0) | (strcmp(command, c"step") == 0) | (strcmp(command, c"stepi") == 0)):
+		else if ((strcmp(command, c"si") == 0) | (strcmp(command, c"stepi") == 0)):
 			at_step()
+		else if ((strcmp(command, c"s") == 0) | (strcmp(command, c"step") == 0)):
+			at_step_line_mode(AT_STEP_LINE())
+		else if ((strcmp(command, c"n") == 0) | (strcmp(command, c"next") == 0)):
+			at_step_line_mode(AT_STEP_OVER())
+		else if ((strcmp(command, c"fin") == 0) | (strcmp(command, c"finish") == 0)):
+			at_finish()
 		else if ((strcmp(command, c"r") == 0) | (strcmp(command, c"registers") == 0)):
 			at_print_registers()
 		else if ((strcmp(command, c"st") == 0) | (strcmp(command, c"stack") == 0)):

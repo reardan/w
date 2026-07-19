@@ -215,9 +215,13 @@ current state:
 					symbolization (recompiles the target for whichever word size
 					the running debugger binary itself is, calibrates against
 					/proc/<pid>/exe) enabling list/where/bt/i functions/i files,
-					breakpoints and stepping (b/d/c/si), frame selection
-					(f/up/down) and locals/args/set by name (i locals/i args/p/set)
-					through the same seams; design: docs/projects/debugger_attach.md
+					breakpoints and execution control (b/d/c/s/n/si/fin) --
+					s/n drive PTRACE_SINGLESTEP to the next statement boundary
+					the same way wdbg.w's in-process stepping does, fin runs to
+					the caller's return via a temporary breakpoint from the
+					frame walk -- frame selection (f/up/down) and locals/args/
+					set by name (i locals/i args/p/set) through the same seams;
+					design: docs/projects/debugger_attach.md
 		library and data structures:
 			malloc/free/realloc as a library module (lib/memory.w)
 			list
