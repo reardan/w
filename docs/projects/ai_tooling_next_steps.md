@@ -388,6 +388,19 @@ exist yet:
   treating it as an input filename; pinned by
   `unrecognized_option_test` (which also guards that `--bounds=off`
   still parses as a flag).
+- **`lib/process.w`'s `process_run`/`process_run_windows` take `stdin_text`
+  as a `char*` and compute its length with `strlen`, so a subprocess
+  input containing an embedded `0x00` byte silently truncates at that
+  byte instead of being written in full — stdout/stderr capture is fine
+  (`process_capture_read` tracks byte counts, not a C string), only the
+  *write* side has this gap. Not hit by wave plan C task 2e's zlib/gzip
+  interop port (`tests/compress_zlib_interop.w`): that harness passes
+  binary compressed bytes through scratch files instead of subprocess
+  stdin/argv specifically to sidestep this (and to avoid interpolating
+  bytes into a spawned script's source text at all). Worth fixing before
+  any future harness needs to *pipe* binary data into a child process
+  (a length-taking `process_run_bytes(path, argv, opts, char* stdin,
+  int stdin_length, timeout_ms)` twin, or an overload, would cover it).
 
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 
