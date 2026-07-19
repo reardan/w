@@ -317,6 +317,58 @@ exist yet:
 
 ## Cleanup observed while dogfooding
 
+- **Suspected x64 codegen/register-allocation bug: a local variable read
+  both inside and after a conditional block can come back corrupted when
+  the *compiler itself* is executing as an x86-64 process** (found wave
+  4a, #123 phase 4, adding `debugger/attach.w`'s `at_step_prepare`). Not a
+  "wrong value at runtime" symptom — it corrupted the compiler's own
+  `lib/memory_freelist.w` heap while `bin/wv2_64`/`bin/wv3_64` (an
+  x64-*executing* `wv2`/`wv3`, built via `bin/wv2 x64 w.w -o ...`) was
+  itself compiling `w.w`, crashing with SIGSEGV inside `malloc_load_word`/
+  `freelist_malloc` partway through `debugger/attach.w` — i.e. `./wbuild
+  verify_x64`'s `build_x64` step, not `verify_x64`'s cmp step, so it can
+  look like a self-hosting fixpoint break when it's really a crash before
+  any fixpoint comparison runs. Reproduced deterministically (~15 tries,
+  0 misses) by bisecting `at_step_prepare`'s body down to:
+  ```
+  int pcv = <anything — a call, a seam-indirected call, or a bare
+             arithmetic expression all reproduce it identically>
+  if (<any condition>):
+      int entry = 0        # body need not reference pcv at all
+      <use entry>
+  <global> = pcv            # pcv read again after the if
+  ```
+  compiled by any x64-executing `wv2`/`wv3` (both a "clean" one built
+  before this change and one built after reproduce it — this isn't a
+  self-hosting-quine artifact, any x64 compiler run against a source tree
+  containing the pattern crashes). Confirmed NOT a mere "total code size"
+  effect: padding the same file with 300-430 unrelated no-op functions
+  (in `debugger/attach.w` directly, and in an isolated ~15-line repro
+  file) never reproduces it, but the pattern reproduces it every time
+  inside `debugger/attach.w`'s existing context. The isolated repro file
+  alone (no padding, same shape) does *not* crash either — something about
+  `debugger/attach.w`'s surrounding declarations/imports is necessary,
+  which a short investigation could not narrow further (candidates:
+  register-allocator state carried across statements/functions within one
+  compilation unit, or a fixed-size table indexed by a count that this
+  file's total local/global/statement count happens to cross only under
+  x64's wider `int`). **Workaround applied in this PR** (`debugger/attach.w`'s
+  `at_step_prepare`): don't cache a value used both inside and after a
+  conditional in a local — call the accessor fresh at each use site
+  instead (`at_in_code(dbg_reg_pc())` / `at_to_v(dbg_reg_pc())` twice,
+  rather than `int pcv = dbg_reg_pc()` once). Note `debugger/attach.w`'s
+  existing `at_frames_compute` has a superficially similar shape (`int esp
+  = dbg_reg_sp()` read before an `if` and again after, in a `while` loop)
+  and does *not* trigger it, so the exact trigger conditions are narrower
+  than "any local live across a conditional" — a real, dedicated
+  bisection with a debug build of the compiler (not black-box source
+  bisection) is needed before attempting a fix. This is a
+  `code_generator/`/register-allocator concern, **HIGH** care, and should
+  land as its own gated PR (`./wbuild verify_x64` both before and after)
+  rather than folded into feature work — anyone hitting an inexplicable
+  `verify_x64` SIGSEGV during the `build_x64` compile step itself (not
+  the `cmp` step) should suspect this class of bug first.
+
 - **`wbuildgen` can't express "this source's default-arch target is
   x64-only, don't also generate an unwanted 32-bit twin"** (wave 2b,
   bucket G migration). `wbg_scan`'s default-arch generation is
