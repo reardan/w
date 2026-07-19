@@ -153,18 +153,41 @@ is a queue, not an archive.
   `wtest changed` invocation, same as any other cold-cache step.
 ## Definition hashing (`w defhash`)
 
-- **`wtest --defhash` consumer**: wire an opt-in `--defhash` refinement
-  into `tools/test_map.w`'s rule (b) (see its header comment) — for a
-  changed `.w` file, shell out to `bin/wv2 defhash` on both
-  `git show HEAD:<path>` and the worktree copy, and skip adding
-  import-closure targets when every recorded name's hash (and the name
-  set itself) is unchanged. Patterns to follow:
-  `tests/wtest/map_expectations.expect`, `wtest_map_test`/`wtest_run_test`
-  (`build.base.json`), the `-f <manifest.json>` synthetic-manifest trick,
-  the `cd bin && ./wtest ...` trick for exercising behavior outside a git
-  repo, and a self-contained `git init`-in-a-scratch-dir `sh -c` step for
-  the HEAD-vs-worktree comparison. Opt-in flag; default selection stays
-  byte-identical. (scheduled: wave plan C task 2g)
+- **Shipped (2026-07-19, wave plan C task 2g): `wtest --defhash` opt-in
+  refinement.** `tools/test_map.w`'s rule (b) now accepts `--defhash`
+  (`changed` and `for` both take it): per changed `.w` path it shells out
+  to `bin/wv2 defhash` on the worktree copy and on `git show
+  HEAD:<path>` (staged to `bin/.wtest_defhash_head.w`), and skips that
+  path's import-closure additions when the recorded definition name set
+  and every name's hash come back identical — rule (a) literals and the
+  rule (c) residue mappings (`parser_generator_w_test`, `metadata_check`,
+  ...) still apply, so a comment/formatting-only edit just stops
+  recommending every importer. Fails open in every other case (a path
+  new to HEAD, a git/defhash error, a real definition change) — see
+  `wtest_defhash_unchanged`. The documented generic/operator blind spot
+  (below) is handled by a dedicated pre-check, `wtest_defhash_risky_text`:
+  a whole-word scan for `operator` plus a scan for an identifier
+  immediately followed by a bracket whose comma-separated contents are
+  all-uppercase-led names (this codebase's own type-parameter convention,
+  `T` / `K, V` — every real type name here is lowercase snake_case, so it
+  never matches an ordinary container instantiation or array index); a
+  hit on either version of the file falls back to the ordinary scan for
+  that path instead of risking a false "unchanged". It is a textual
+  stand-in, not a parse, so it may over-fire (safe) but must never
+  under-fire; task 4f's defhash coverage extension would let this drop
+  entirely. Selection without `--defhash` is unchanged byte-for-byte
+  (checked directly: the original `tools/test_map.w` and the new one
+  produce identical `wtest changed` output on the same inputs when the
+  flag is not passed). Tested by `tools/wtest_defhash_scratch_test.sh`
+  (`wtest_defhash_test`, `build.base.json`) — a throwaway `git init` repo
+  (symlinking in
+  `bin/wv2`/`bin/wtest` and the `lib`/`structures`/`code_generator` trees
+  every compile needs) exercising real HEAD-vs-worktree comparisons: a
+  comment-only edit is skipped, a real edit and a generic-shaped file are
+  not. Not extended: `tests/wtest/map_expectations.expect`'s cases run
+  against this repo's own ambient git state, which is not deterministic
+  for a feature whose answer depends on HEAD-vs-worktree diffs, so it
+  stays scratch-repo-only rather than risking a flaky case there.
 - `--closure`'s ref resolution is a linear scan over every recorded
   definition per identifier token (`defhash_is_known_definition`,
   `compiler/compiler.w`) -- fine at file scope or even this repo's full
