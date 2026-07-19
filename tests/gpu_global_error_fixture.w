@@ -1,6 +1,8 @@
 # Device (PTX) bodies cannot reach host globals: the module's data
-# segment lives in host memory, not on the GPU. Compiled with the x64
-# selector by the cuda_diagnostics_test target.
+# segment lives in host memory, not on the GPU.
+# wfixture: x64
+# expect_fail
+# expect_stderr: global variables are not accessible in gpu code
 int counter
 
 kernel bad(int* v, int n):

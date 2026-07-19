@@ -1,6 +1,8 @@
 # 'launch' emits calls into the lib.cuda host runtime; without the
 # import there is nothing to call (the lib.generator precedent).
-# Compiled with the x64 selector by the cuda_diagnostics_test target.
+# wfixture: x64
+# expect_fail
+# expect_stderr: gpu code requires 'import lib.cuda'
 kernel add(int* v, int n):
 	int i = thread_idx()
 	if i < n:
