@@ -248,6 +248,36 @@ void xor_eax_int32(int v):
 	emit_int32(v)
 
 
+/* movzx eax, byte [eax]: a zero-extending 8-bit load, for uint8 */
+void promote_uint8_eax():
+	if (target_isa == 3):
+		ptx_ld_ax(c".u8")
+		return
+	if (target_isa == 2):
+		wasm_promote_eax_op(0x2d)
+		return
+	if (target_isa == 1):
+		a64(op(0x39, 0x400000))   # ldrb w0,[x0]
+		return
+	emit(3, c"\x0f\xb6\x00")
+
+
+/* Zero-extending 32-bit load, for uint32: a plain 32-bit mov already
+   zero-extends into rax on x64 (and is the full word on x86), where the
+   promote_int32 path's movsxd would sign-extend a high-bit value. */
+void promote_uint32_eax():
+	if (target_isa == 3):
+		ptx_ld_ax(c".u32")
+		return
+	if (target_isa == 2):
+		wasm_promote_eax_op(0x28)
+		return
+	if (target_isa == 1):
+		a64(op(0xb9, 0x400000))   # ldr w0,[x0]
+		return
+	emit(2, c"\x8b\x00")
+
+
 /* movzx eax, word [eax]: a zero-extending 16-bit load. The promote_int16
    path sign-extends, which would corrupt float16 bit patterns. */
 void promote_uint16_eax():

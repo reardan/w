@@ -153,7 +153,7 @@ int __w_hash_key_equal(int kind, int left, int right):
 int __w_hash_clone_string(int key):
 	int length = load_ptr(key + __word_size__)
 	char* clone = malloc(2 * __word_size__ + length + 1)
-	int data = clone + 2 * __word_size__
+	int data = cast(int, clone) + 2 * __word_size__
 	save_ptr(clone, data)
 	save_ptr(clone + __word_size__, length)
 	int source = load_ptr(cast(char*, key))

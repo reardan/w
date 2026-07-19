@@ -246,7 +246,7 @@ int freelist_free(void* mem_address):
 		return 0
 	if (malloc_bins == 0):
 		return 0
-	int block = mem_address - 2 * __word_size__
+	int block = cast(int, mem_address) - 2 * __word_size__
 	malloc_bin_push(block, malloc_load_word(block))
 	return 1
 
