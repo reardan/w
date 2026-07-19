@@ -58,15 +58,23 @@ follow-up):
   `tensor_free` / `tensor_randn`, autograd's host-side rules, one
   drain at `ag_backward`'s exit, and the public `tensor_sync()` for
   direct `.data` access. MNIST training dropped 4.48s → 3.35s (-25%).
-- **Perf finding (the next unlock)**: the tiled matmuls are currently
-  perf-NEUTRAL (59ms naive vs 60ms tiled at 1024³, parity at 4096³
-  too). A1 stack-machine codegen makes every kernel
-  instruction-bound — ~37 GFLOP/s flat across sizes, ~1000x below the
-  hardware, because each W operation moves through the `.local`
-  evaluation stack. Tiling's memory-hierarchy win is invisible until
-  **A2 virtual-register emission** (cuda.md Stage 4) lands; A2 is now
-  the highest-value perf item in this project, ahead of any further
-  kernel work.
+- **A2 step 1 landed — the push/pop peephole** (`ptx_peephole` in
+  `code_generator/ptx.w`): a post-pass over each finished kernel body
+  converts every push/pop pair whose span stays inside one basic block
+  into moves through depth-indexed virtual registers (`%v<N>`),
+  deleting the pair's four `.local` stack instructions and rewriting
+  the `[%sp+K]` slot references whose distance to `%sp` changes (only
+  references to slots older than the eliminated word shift by 8).
+  Anything unrecognized bails to the untransformed body. Measured on
+  the RTX 4080: kernels went from ~37 to ~230–270 GFLOP/s (~6–7x) —
+  naive 1024³ matmul 59ms → 8.0ms — and the tiled matmul now beats
+  naive at 4096³ (615ms vs 705ms) where L2 stops covering, exactly the
+  memory-hierarchy win that was invisible pre-peephole (at 1024³
+  everything L2-caches and naive still edges tiled). Remaining gap to
+  hardware (~100x): declared locals still live in `[%sp+K]` `.local`
+  slots accessed through generic addresses — **A2 step 2 is promoting
+  never-address-taken slots to registers**, after which full A2
+  (grammar rules returning register names) may not even be needed.
 
 ## Where this builds from
 
@@ -176,14 +184,11 @@ Deliberately not here:
   bounds guard it would be divergent.
 - ~~Remove per-op `gpu_sync()`~~ — done: ops enqueue; host boundaries
   sync (see the status section above for the exact sync-point list).
-- A2 virtual-register PTX emission (cuda.md Stage 4): **now the
-  critical path.** Kernels are instruction-bound at ~37 GFLOP/s from
-  A1 `.local` stack traffic, which flattens every memory-hierarchy
-  optimization; the tiled matmuls only start paying once values live
-  in registers. (A middle step worth evaluating: a peephole pass over
-  the emitted body that rewrites matched push/pop pairs with no
-  intervening label/branch into moves through fresh virtual
-  registers.)
+- A2 virtual-register PTX emission (cuda.md Stage 4): **step 1
+  landed** — the push/pop peephole (~6–7x, see the status section
+  above). Step 2 is register promotion of never-address-taken
+  `[%sp+K]` locals; the full grammar-contract A2 stays speculative
+  until step 2's numbers say whether it is still needed.
 - float16/bf16 storage (`.f16` loads widening to f32 math — W already
   has storage-only float16 on the host).
 
