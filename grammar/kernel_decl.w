@@ -117,6 +117,15 @@ void gpu_capture_reset():
 	gpu_capture_count = 1
 
 
+# Reserve one extra leading capture slot with no backing symbol: the
+# 'gpu for' range START when the two-argument form is used (slot 0 =
+# start, slot 1 = end; the one-argument form keeps slot 0 = end).
+void gpu_capture_reserve():
+	save_ptr(gpu_capture_names + gpu_capture_count * __word_size__, 0)
+	save_int(gpu_capture_syms + gpu_capture_count * 4, -1)
+	gpu_capture_count = gpu_capture_count + 1
+
+
 char* gpu_capture_name(int slot):
 	return cast(char*, load_ptr(gpu_capture_names + slot * __word_size__))
 

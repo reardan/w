@@ -122,6 +122,33 @@ int device_bits_check(int n):
 	return ok
 
 
+# range(start, end): threads cover [100, n); cells below 100 must stay
+# untouched.
+int range_offset_check(int n):
+	int* c = cast(int*, gpu_alloc(n * 8))
+	int i = 0
+	while (i < n):
+		c[i] = 0 - 1
+		i = i + 1
+
+	gpu for int j in range(100, n):
+		c[j] = 2 * j
+	gpu_sync()
+
+	int ok = 1
+	i = 0
+	while (i < 100):
+		if (c[i] != 0 - 1):
+			ok = 0
+		i = i + 1
+	while (i < n):
+		if (c[i] != 2 * i):
+			ok = 0
+		i = i + 1
+	gpu_free(cast(char*, c))
+	return ok
+
+
 int saxpy_launch(int n):
 	float32* x = cast(float32*, gpu_alloc(n * 4))
 	float32* y = cast(float32*, gpu_alloc(n * 4))
@@ -157,6 +184,9 @@ int main(int argc, int argv):
 		return 1
 	if (device_bits_check(64) == 0):
 		println(c"cuda gpu: FAILED (device intrinsics disagree with host)")
+		return 1
+	if (range_offset_check(400) == 0):
+		println(c"cuda gpu: FAILED (range(start, end) wrong results)")
 		return 1
 	if (saxpy_launch(1024) == 0):
 		println(c"cuda gpu: FAILED (saxpy wrong results)")

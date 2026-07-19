@@ -43,17 +43,29 @@ char* gpu_for_kernel_name():
 
 
 # Emit __w_gpu_launch(name, n, vals, count). On entry the stack holds
-# [bound, capture1..captureK-1] starting at base+1; vals is the address
-# of the LAST capture cell, so slot k lives at vals + (count-1-k)*8.
-void gpu_for_emit_runtime_call(char* kernel_name, int base, int count):
+# the capture cells starting at base+1 in slot order — [end, captures..]
+# for range(end), [start, end, captures..] for range(start, end) — and
+# vals is the address of the LAST capture cell, so slot k lives at
+# vals + (count-1-k)*8. n is the iteration count: the end slot alone,
+# or end - start in the two-argument form.
+void gpu_for_emit_runtime_call(char* kernel_name, int base, int count, int has_start):
 	sym_get_value(c"__w_gpu_launch")
 	push_eax()
 	stack_pos = stack_pos + 1
 	be_emit_inline_cstr(strlen(kernel_name), kernel_name)
 	push_eax() /* arg 1: name */
 	stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - (base + 1)) << word_size_log2)
-	push_eax() /* arg 2: n (the bound, capture slot 0) */
+	if (has_start):
+		mov_eax_esp_plus((stack_pos - (base + 2)) << word_size_log2) /* end */
+		push_eax()
+		stack_pos = stack_pos + 1
+		mov_eax_esp_plus((stack_pos - (base + 1)) << word_size_log2) /* start */
+		pop_ebx()
+		stack_pos = stack_pos - 1
+		alu_sub() /* end - start */
+	else:
+		mov_eax_esp_plus((stack_pos - (base + 1)) << word_size_log2) /* end */
+	push_eax() /* arg 2: n */
 	stack_pos = stack_pos + 1
 	lea_eax_esp_plus((stack_pos - (base + count)) << word_size_log2)
 	push_eax() /* arg 3: vals (the last capture cell) */
@@ -100,17 +112,26 @@ int gpu_for_statement():
 	if (accept(c"range") == 0):
 		error(c"'gpu for' supports only range iteration")
 
-	# The bound, evaluated in host mode: both the launch's grid input
-	# and capture slot 0 (the device-side guard reloads it from there).
+	# The range operands, evaluated in host mode into hidden slots that
+	# double as the leading capture cells: range(end) pushes just the
+	# bound (capture slot 0); range(start, end) pushes start then end
+	# (slots 0 and 1, parse order). The device guard reloads the bound
+	# from its slot; a step argument is not supported.
 	int base = stack_pos
 	int has_parens = accept(c"(")
+	int has_start = 0
 	coerce(int_type, promote(expression()))
-	if (accept(c",")):
-		error(c"'gpu for' supports only range(end)")
-	if (has_parens):
-		expect(c")")
 	push_eax()
 	stack_pos = stack_pos + 1
+	if (accept(c",")):
+		has_start = 1
+		coerce(int_type, promote(expression()))
+		if (accept(c",")):
+			error(c"'gpu for' supports only range(end) and range(start, end)")
+		push_eax()
+		stack_pos = stack_pos + 1
+	if (has_parens):
+		expect(c")")
 
 	# Device side: outline the body into a fresh kernel
 	int n = table_pos
@@ -118,10 +139,12 @@ int gpu_for_statement():
 	char* launch_name = strclone(kernel_name)
 	device_mode_enter()
 	gpu_capture_reset()
+	if (has_start):
+		gpu_capture_reserve() /* slot 0 = start, slot 1 = end */
 	in_gpu_for_body = 1
 	ptx_kernel_begin(kernel_name)
 
-	# i = block_idx() * block_dim() + thread_idx()
+	# i = block_idx() * block_dim() + thread_idx() [+ start]
 	ptx_special_reg(2)
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -135,6 +158,14 @@ int gpu_for_statement():
 	pop_ebx()
 	stack_pos = stack_pos - 1
 	alu_add()
+	if (has_start):
+		push_eax()
+		stack_pos = stack_pos + 1
+		ptx_lea_ax_bp_minus(1 << word_size_log2) /* capture slot 0: start */
+		promote_eax()
+		pop_ebx()
+		stack_pos = stack_pos - 1
+		alu_add()
 	sym_declare(var_name, int_type, 'L', stack_pos, 1)
 	pointer_indirection = 0
 	push_eax()
@@ -146,7 +177,7 @@ int gpu_for_statement():
 	mov_eax_esp_plus(0) /* i */
 	push_eax()
 	stack_pos = stack_pos + 1
-	ptx_lea_ax_bp_minus(1 << word_size_log2) /* capture slot 0: the bound */
+	ptx_lea_ax_bp_minus((1 + has_start) << word_size_log2) /* the bound */
 	promote_eax()
 	pop_ebx()
 	stack_pos = stack_pos - 1
@@ -164,14 +195,14 @@ int gpu_for_statement():
 	table_pos = n
 
 	# Host side: push the remaining captures' current values (slot
-	# order; the bound already sits at base+1), then launch.
-	int k = 1
+	# order; the range operands already sit at base+1..), then launch.
+	int k = 1 + has_start
 	while (k < gpu_capture_count):
 		promote(sym_get_value(gpu_capture_name(k)))
 		push_eax()
 		stack_pos = stack_pos + 1
 		k = k + 1
-	gpu_for_emit_runtime_call(launch_name, base, gpu_capture_count)
+	gpu_for_emit_runtime_call(launch_name, base, gpu_capture_count, has_start)
 	be_pop(stack_pos - base)
 	stack_pos = base
 	free(launch_name)
