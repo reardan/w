@@ -22,6 +22,24 @@ so call sites emit a mov-imm backpatch chain (the json_codec pattern)
 and the bodies are compiled at a top-level boundary by
 generic_finish_instantiations(), after all user files.
 
+defhash coverage (wave plan C task 4f, compiler/compiler.w's defhash_main
+doc comment): the three registration points below
+(generic_register_struct, generic_declaration_scan,
+generic_declaration_scan_generic_return) each call defhash_note() with
+the SAME [offset, end) span already recorded here for re-parsing, so 'w
+defhash' hashes exactly the tokens an instantiation would re-parse -- an
+instantiation-only change elsewhere never touches this span, and a
+reformat/comment-only edit to the definition itself leaves the hash
+unchanged, same as any other kind. The recorded 'name' is the BASE
+identifier with no '[T]' (a generic's name, like any definition's, does
+not change when the compiler emits a differently-mangled instantiation);
+'kind' is 'generic_function'/'generic_struct' rather than plain
+'function'/'struct' so a defhash consumer can tell a generic definition
+apart from a same-named non-generic one in the sibling namespace (the
+struct/function namespaces are separate, so a name collision across them
+is otherwise unremarkable) and let the wtest_defhash_risky_text textual
+fallback in tools/test_map.w be retired now that this has landed.
+
 This file is compiled by the committed seed: only seed-understood
 syntax here.
 */
@@ -36,6 +54,9 @@ int expression();
 void push_call_argument(int arg_type);
 void coerce_call_argument(int param_type, int arg_type);
 void check_call_argument(int callee, int signature_type, char* callee_name, int arg_index, int arg_type);
+# Forward declaration: defhash_note is defined in compiler/compiler.w,
+# which compiles after grammar/.
+void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
 
 
 # Definition registry: one record per generic definition. For functions
@@ -462,6 +483,10 @@ void generic_register_struct():
 	# skip the field lines; they are re-parsed per instantiation
 	while ((tab_level > 0) && (token[0] != 0)):
 		get_token()
+	# defhash coverage (wave plan C task 4f): hash exactly the span just
+	# registered above, so a reformat/comment-only edit leaves the hash
+	# unchanged and a real field-list edit changes it.
+	defhash_note(name, c"generic_struct", decl_file_index(), line + 1, column + 1, offset, token_start_offset)
 
 
 # Instantiate a generic struct: re-parse its field list with the type
@@ -570,6 +595,9 @@ int generic_declaration_scan_generic_return():
 		free(cast(char*, load_ptr(save + 11 * __word_size__)))
 		free(save)
 		generic_skip_definition()
+		# defhash coverage (wave plan C task 4f): same span the definition
+		# registry just recorded (first_offset..the skip's end).
+		defhash_note(fname, c"generic_function", decl_file_index(), first_line, first_column, first_offset, token_start_offset)
 		return 1
 	# Not a definition (e.g. 'wresult[int]* f(...)'): rewind, so the
 	# normal type_name() path parses the generic struct return type.
@@ -614,6 +642,9 @@ int generic_declaration_scan():
 		generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
 		free(first)
 		generic_skip_definition()
+		# defhash coverage (wave plan C task 4f): same span the definition
+		# registry just recorded (first_offset..the skip's end).
+		defhash_note(fname, c"generic_function", decl_file_index(), first_line, first_column, first_offset, token_start_offset)
 		return 1
 
 	# Not generic: rebuild the type from the scanned parts, mirroring

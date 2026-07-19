@@ -157,6 +157,37 @@ parallel logs never interleave. Cache keys are computed and stamps
 written only by the parent; cache hits and step-less aggregate targets
 complete inline without forking.
 
+## Locking
+
+Two overlapping invocations against the same `bin/` (a backgrounded
+`./wbuild test_changed` still compiling while a foreground `./wbuild
+verify` starts in the same worktree) used to both write/execute the same
+`bin/wv2`, and the loser died with a bare "could not open output file"
+(`docs/projects/ai_tooling_next_steps.md`, "Two ./wbuild/wexec
+invocations racing in the same worktree"). `main` now takes an advisory
+lock, `bin/.wexec_lock`, before running any requested target's steps:
+`O_CREAT|O_EXCL` so at most one caller ever creates it, the winner's pid
+written inside; a loser reads that pid back, and if `kill(pid, 0)` says
+it is dead — `-ESRCH` only; `-EPERM` counts as alive, since an
+unprivileged probe of another user's live process (CI runners probing
+pid 1) must not read as stale — (SIGKILL, crash, or a direct `exit()`
+bypassing `defer` — see `docs/projects/defer.md`'s "Possible future
+work") reclaims the stale lock and retries once, otherwise prints `wexec: another build is running
+in this directory (pid N); remove bin/.wexec_lock if stale` and exits 1.
+The lock is scoped per `bin/` directory (relative to cwd, like
+`bin/.wexec_cache/`), not global.
+
+wexec's own test harness (`wexec_test` and friends) runs `bin/wexec -f
+tests/wexec/*.json ...` as a *step* of an outer, already-locked wexec —
+not a race, since the outer process is blocked in `wait4()` on that
+child the whole time. The outer process marks `WEXEC_LOCK_HELD=1` in the
+environment the moment it acquires the lock (swapped into `environ_ptr`,
+inherited through every `execve` its descendants make, transitively,
+even through intermediate non-wexec programs like `bin/wtest`'s own
+`--run`); a nested wexec sees the marker and skips locking entirely,
+trusting the ancestor. See the block comment above `wexec_lock_file` in
+`tools/wexec.w` for the full design.
+
 ## Lessons already encoded
 
 - A target that rebuilds a running executable (the `wexec` target

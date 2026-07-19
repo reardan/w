@@ -1,3 +1,4 @@
+# wbuild: x64 expect_stdout="varargs OK"
 # Variadic C imports on both targets: extern declarations with a trailing
 # '...' accept any number of extra arguments. Fixed arguments follow the
 # declared types; the variadic tail gets the C default argument

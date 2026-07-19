@@ -245,14 +245,39 @@ Build on the tokenizer + `symbols` machinery. Then:
   untouched.
 
 ### 4b. The VCS half: a persistent semantic index over git history
-### (deferred — blocked on W versioning support)
+### (MVP shipped 2026-07-19, wave plan C task 4b; the full index stays
+### deferred — blocked on W versioning support)
 
-Everything in this stage assumes stable identity across versions of the
-tree — commit-ranged queries, result reuse across history, definitions
-tracked through renames. W's versioning story is metadata-only today
-(no lock files, no cross-version resolution), so this stage should not
-start until that lands; 4a and 4c below are deliberately shaped so they
-don't wait for it. Recorded here as the eventual destination:
+**Shipped: `wtest changed A..B` as a direct git-plumbing query.**
+`tools/test_map.w`'s `changed` subcommand now accepts a single
+positional argument containing `..` as a git revision range instead of
+a changed-file path (`A..B`, `A...B` — resolving the real `git
+merge-base A B` as its comparison base — or an open `A..` for "`A`
+versus the worktree"; a bare dot-less revision is not auto-detected,
+since it would be indistinguishable from an ordinary path). The
+changed-path list comes straight from `git diff --no-renames
+--name-only` against wtest's own resolved endpoints (not the raw range
+text — see `wtest_range_expand`'s header comment for why that
+distinction matters for the open-range case); `--defhash` (4a)
+generalizes from HEAD-vs-worktree to comparing `git show A:<path>`
+against `git show B:<path>`. This is deliberately the shallow
+"useful subset" of the idea below, not the real thing: rule (b)'s
+import-closure computation stays keyed to the CURRENT worktree via the
+same `bin/.wtest_deps_cache` every invocation uses — there is no
+historical closure computation, no cross-version definition identity,
+and no cached per-commit results. It reuses 4a's existing `defhash`
+machinery and 2g's staging pattern outright rather than building any
+new index, which is exactly why it could ship now instead of waiting
+on the versioning work below.
+
+Everything past that shallow subset assumes stable identity across
+versions of the tree — commit-ranged queries with actual definition-
+level precision, result reuse across history, definitions tracked
+through renames. W's versioning story is metadata-only today (no lock
+files, no cross-version resolution), so this deeper stage should not
+start until that lands; 4a and 4c are deliberately shaped so they don't
+wait for it, and neither did the MVP above. Recorded here as the
+eventual destination:
 
 Maintain an index (a `bin/.windex`-style cache, derived and
 regenerable) mapping definition-hash → {defining file/commit, direct
@@ -260,7 +285,11 @@ references, cached target/test results}. Because keys are content
 hashes, the index is naturally append-only and shared-cache-friendly
 (merges with Direction 3's store). What falls out:
 
-- `wtest changed A..B` over commit ranges, exact at definition level.
+- `wtest changed A..B` over commit ranges, exact at definition level —
+  the shipped MVP above is file-level (its own closure computation
+  isn't range-aware at all); this would make it precise down to which
+  *definitions* actually changed, the same way 4a's `--defhash` does
+  for a single file today.
 - Semantic history queries for free: "which definitions changed between
   v1 and v2", semantic blame ("when did this function's *behavior*
   last change, ignoring moves/renames/reformatting"), rename detection
@@ -335,17 +364,41 @@ the manifest rather than guessed. Counts below are exact for the tree at
 this commit; rerun the classification (structural, not prose) before
 trusting it against a later tree.
 
-### Shell scripts (12: 11 `tools/*.sh` + `archive.sh`)
+### Shell scripts (10: 9 `tools/*.sh` + `archive.sh`)
+
+`tools/compress_zlib_interop_test.sh` (below) shipped as task 2e: ported
+to a self-contained `tests/compress_zlib_interop.w` that spawns `python3`
+itself via `lib.process` (no `sh` wrapper, no `/bin/sh` string
+interpolation — the python3 side is a fixed argv-driven script, directory
+and payload passed as files/argv, not interpolated into source text);
+`compress_zlib_interop_test`'s `build.base.json` entry now runs the two
+compiled binaries directly and moved from bucket E to bucket L below (the
+manifest-expressiveness blocker was always "multi-step pipeline", not
+"needs a shell" — only the `sh` wrapper made it look like bucket E).
+
+`tools/openssl_interop_test.sh` shipped as task 4e (wave plan C wave 4,
+2026-07-19): the shell wrapper only did three things beyond what
+`tests/openssl_tls_interop.w` (issue #236) already did in W — check
+`which openssl`, generate a throwaway ECDSA P-256 cert via `openssl req`,
+and run the harness binary under `timeout(1)` — so all three folded
+straight into the harness itself: `osl_find_on_path` (mirroring task 2e's
+`czi_find_on_path`) resolves `openssl` and prints the same "...OK
+(skipped: ...)" success when it's missing, `osl_generate_cert` spawns
+`openssl req -x509 -newkey ec ...` via a direct argv vector into a
+pid-scoped scratch dir (no shell, no string interpolation of the scratch
+path), and the per-socket/per-wait timeouts already inside
+`osl_client_direction`/`osl_server_direction` (the #236 hang fix) remain
+the bound in place of the external `timeout(1)`. `openssl_interop_test`'s
+`build.base.json` entry now runs the two compiled binaries directly and
+moved from bucket E to bucket L below, same reasoning as
+`compress_zlib_interop_test`.
 
 | Script | Invoked by (`build.base.json`) | #323 blocker |
 |---|---|---|
 | `tools/run_arm64.sh` | `build_arm64`, `arm64_smoke_test`, `pac_full_test_arm64`, `pac_corrupt_test_arm64`, plus every generated `arch=arm64` twin | qemu-user-static / native-exec wrapper — a cross-arch execution shim is likely permanent (Bazel/Buck2 keep an equivalent runner); revisit only if `lib.process` grows emulator-aware exec. |
 | `tools/run_wasm.sh` | `build_wasm`, `wasm_smoke_test`, plus every wasm run step | Wraps `wasmtime`/`node`; same "permanent execution shim" reasoning as `run_arm64.sh`. Also blocks bucket G below (wbuildgen's `arch=` vocabulary has no `wasm` value yet). |
 | `tools/web/run_node.sh` | `wasm_extern_test`, `wasm_webgl_test` | Wraps `node` to run `tools/web/*.mjs` harnesses; the harnesses themselves are non-W, so this sits outside the ".w sources" model regardless of the shell wrapper. |
-| `tools/openssl_interop_test.sh` | `openssl_interop_test` | Shells out to the system `openssl` CLI for a TLS/crypto interop round-trip. Needs a W-side subprocess-diff harness (spawn `openssl` via `lib.process`, compare) before the script can retire — real porting work, not a directive gap. |
-| `tools/compress_zlib_interop_test.sh` | `compress_zlib_interop_test` | Same shape as `openssl_interop_test.sh`, against the system `zlib`/`gzip`. Same blocker. |
 | `tools/attach_test.sh` | `attach_test` | ptrace-based debugger-attach test. Needs porting onto the in-repo ptrace machinery (`debugger/`) as a W test harness — natural to revisit alongside #123's attach phases. |
-| `tools/pac_flag_check.sh` | `pac_flag_test` | Inspects `bin/wv2`'s own ELF/PAC flags from outside the compiler. Needs an ELF-flag-reading W tool (the compiler only *writes* ELF today). |
 | `tools/parser_generator_w_batches.sh` | `parser_generator_w_test` | Batches/diffs parser-generator output across the tracked `.w` corpus. Needs porting to a W batch-diff tool, or folding into `tools/parser_generator.w` itself. |
 | `tools/merge_manifest.sh` | *(not referenced — opt-in git merge driver, see its own header)* | Exists specifically to resolve `build.json` merge conflicts by regeneration; irrelevant once `build.json` is retired. Until then it's outside the wexec-driven graph entirely (local git config, not a manifest step). |
 | `tools/mac/run_darwin_tests.sh` | *(not referenced — invoked by hand per `AGENTS.md`/`CLAUDE.md`)* | Developer-invoked native Mach-O test runner; Mac-only, never a manifest target. Out of scope for #323's manifest-capture model. |
@@ -393,29 +446,63 @@ dependents (`manifest` → `wbuildgen`, `metadata_check` → `wmeta`,
 path-based way to depend on "compile this file first" (bucket K below is
 the same gap from the dependent's side).
 
-**D. Already directive-expressible, simply unmigrated — 21.** No #323
-blocker at all — these could move to generated targets today via
-`./wbuild manifest` plus source-level `# wbuild:` directives, purely
-migration debt:
-  - Plain compile+run, source already ends in `_test.w` under a scanned
-    tree, target name already matches `wbuildgen`'s convention (14):
-    `float_abi_test`, `varargs_test`, `extern_data_test`,
-    `print_builtin_test`, `dynamic_test`, `x64_test`, `x64_float_test`,
-    `x64_fmath64_test`, `x64_ndarray64_test`, `x64_int64_test`,
-    `x64_map_float64_test`, `asm_x86_disasm_test`, `asm_x86_asm_test`,
-    `asm_stubs_test`.
-  - Shell-wrapped but already exactly the `arch=arm64`/`arch=wasm` shape
-    `wbuildgen` generates automatically (3): `arm64_smoke_test`,
-    `wasm_smoke_test`, `pac_full_test_arm64`.
-  - x64 twins under the legacy `X_test_x64` name instead of the
-    platform-axis's `X_64_test` convention (4): `dynamic_test_x64`,
-    `c_import_libc_test_x64`, `varargs_test_x64`, `extern_data_test_x64`
-    — migratable by adding `# wbuild: x64` to the 32-bit source and
-    accepting the target's rename to `..._64_test` (downstream
-    references to the old name are the only real cost).
+**D. Already directive-expressible, simply unmigrated — 21 originally;
+11 migrated in wave 2 task 2a (2026-07-19), 10 remain and were
+reclassified — the inventory's "no blocker at all" framing was
+optimistic for 7 of the 21; see below.**
 
-**E. Shell-wrapped, bespoke logic — 15.** `missing_file_test`,
-`openssl_interop_test`, `compress_zlib_interop_test`,
+  Migrated (now generated, hand-written entries deleted from
+  `build.base.json`): the 5 plain compile+run targets whose source
+  already used the default arch — `float_abi_test`, `varargs_test`,
+  `extern_data_test`, `print_builtin_test`, `dynamic_test` — plus the
+  two asm targets whose only unconventional field was a directory-level
+  `inputs` declaration, migrated via `deps=` — `asm_x86_disasm_test`,
+  `asm_x86_asm_test` (note: `deps=` only feeds `bin/wtest`'s "data"
+  selection field, not `wexec`'s "inputs" cache-key field, which
+  generated targets cannot declare at all — these two lose wexec's
+  content-hash caching and become FORCE targets like the ~430 other
+  generated targets that already have no "inputs"; a real but minor
+  loss, not a test-behavior change). The 4 legacy `X_test_x64` targets
+  all migrated and renamed to the `X_64_test` convention: `dynamic_test_x64`
+  → `dynamic_64_test`, `c_import_libc_test_x64` → `c_import_libc_64_test`,
+  `varargs_test_x64` → `varargs_64_test`, `extern_data_test_x64` →
+  `extern_data_64_test` (downstream references to the old names updated
+  in the same commit: `docs/todo.txt`, this file).
+
+  Deferred, reclassified with their real blocker (the "21, no blocker"
+  framing did not hold under wbuildgen's actual generation rules):
+  - `x64_test`, `x64_float_test`, `x64_fmath64_test`,
+    `x64_ndarray64_test`, `x64_int64_test`, `x64_map_float64_test` (6):
+    each source's basename already equals the desired *x64-only* target
+    name, but `wbuildgen` unconditionally also generates a default
+    32-bit twin under that same basename-derived name (there is no way
+    to suppress or redirect it), and several of these sources use
+    `float64` (rejected by the compiler on 32-bit words) — so deleting
+    the hand-written entry would silently generate a broken/incorrect
+    32-bit target reusing the name, not a clean migration. This is
+    really bucket G's "name doesn't match convention" blocker wearing an
+    arch disguise: needs a `name=`-style override (or an "arch-only, no
+    default twin" directive) before it can move.
+  - `asm_stubs_test` (1): its declared `inputs` include three
+    `code_generator/{x86,x64,arm64}_asm.w` files consumed as runtime
+    *text data* (via `asm_stub_check`), not compiled — but `wbuildgen`'s
+    `deps=` directive flatly rejects any value ending in `.w`
+    ("imports already track" it, which is false here). No directive
+    can express this target's actual input set today.
+  - `arm64_smoke_test`, `wasm_smoke_test` (2): genuine aggregate
+    umbrellas — 6 and 9 programs respectively, each compiled, run, and
+    followed by a shared `echo "... OK"` epilogue step — not the single
+    `(source, arch)` shape `wbuildgen` ever generates. `wasm_smoke_test`
+    is additionally blocked at the arch level: `wbuildgen` has zero
+    `wasm` awareness (`arch=` only accepts `x64`/`arm64`/`win64`/
+    `arm64_darwin`), matching the `run_wasm.sh` row above.
+  - `pac_full_test_arm64` (1): needs `--pac=full` injected into the
+    arm64 compile command and carries the same `echo "... OK"` epilogue
+    convention as its sibling `pac_corrupt_test_arm64` (bucket E) — no
+    directive can add an arbitrary compiler flag to a generated compile
+    step.
+
+**E. Shell-wrapped, bespoke logic — 13.** `missing_file_test`,
 `parser_generator_w_test`, `wtest_map_test`, `unsafe_import_test`,
 `debug_test`, `debug_test_x64`, `attach_test`, `repl_test`,
 `repl_test_x64`, `wasm_extern_test`, `wasm_webgl_test`, `pac_flag_test`,
@@ -450,6 +537,45 @@ whose basename doesn't match the desired target name (e.g.
 Needs a `name=` override directive in `wbuildgen` before these can
 generate.
 
+**Update (2026-07-19, wave 2b):** `wbuildgen` grew `# wbuild: name=<target>`
+(overrides the basename-derived name — and the base every arch twin's
+suffix rule derives from — for the whole source); 13 of the 18 migrated:
+`crypto_base64_test`/`crypto_base64_64_test`, `crypto_random_test`/
+`crypto_random_64_test`, `crypto_ecdsa_p256_test`, `graphics_math_test`/
+`graphics_math_64_test` (plain `name=` [+ `x64`], unchanged shape), and
+`crypto_rsa_verify_test`, `net_asn1_test`, `net_x509_test`,
+`net_tls_test`, `net_tls_server_test` (these five bundled *both*
+bitnesses' compile+run into one hand-written target under the legacy
+`..._test_x64` binary-name style, not a separate target — `name=` + `x64`
+now generates them as the two separate targets the rest of this bucket
+already used, e.g. `net_asn1_test` + a new `net_asn1_64_test`,
+joining `tests_x64` the same way `crypto_base64_64_test` already did;
+verified byte-for-byte on the plain ones and behaviorally on the split
+ones). Left hand-written, with reasons: **`graphics_gl_smoke_test`**,
+**`extern_alias_test_x64`**, **`float_abi_test_x64`** — all three are
+x64-*only* targets (no 32-bit variant is wanted, and for
+`extern_alias_test_x64`/`float_abi_test_x64` no 32-bit variant has ever
+existed or been vetted), but `wbuildgen`'s default-arch generation is
+unconditional — it always emits a target under the (possibly
+`name=`-overridden) basename at the default 32-bit arch unless
+`build.base.json` already claims that exact name, with no directive to
+say "this source is x64-only, skip the 32-bit default" (confirmed by
+compiling `tests/x64_test.w` — one of bucket D's *own* x64-only-by-
+convention targets — at the default arch: it compiles clean but the
+binary exits 1 with no output, i.e. a real, silent behavior change, not
+just redundant coverage). `float_abi_test_x64` additionally bundles
+*three* unrelated source files
+(`tests/float_abi_test.w`/`tests/x64_float_abi_test.w`/
+`tests/x64_c_import_float_test.w`) into one target — bucket L's
+multi-source-per-target gap, not bucket G's. **`net_darwin`**,
+**`graphics_darwin`**, **`pac_darwin`** stay hand-written per the wave
+plan's own hedge: `graphics_darwin`/`pac_darwin` each bundle 2-3 unrelated
+source files into one target (same bucket L gap), and `net_darwin`,
+though single-source, would collide with the same unconditional-default
+problem above (`name=` would still generate an unwanted 32-bit
+`tests/net_darwin_smoke_test.w` compile under the override name). Logged
+as friction in `docs/projects/ai_tooling_next_steps.md`.
+
 **H. Argv variant of an already-generated target — 1.**
 `x25519_iterated_test` compiles the same source as the *also-generated*
 `x25519_test` (`libs/standard/crypto/x25519_test.w`), just invoking the
@@ -458,14 +584,27 @@ generated run step never takes CLI arguments for the binary itself (only
 `stdin=`/`expect_*=`); needs an `argv=` directive, or support for more
 than one run step per generated target.
 
-**I. Compile-error fixture (the compile step itself must fail) — 1.**
-`int64_x86_error_test` (`expect_fail`/`expect_stderr` on the *compile*
-step, not a run step). Blocker: `wbuildgen`'s directive-decorated run
-step only ever decorates the compiled binary's run, never the compile
-step itself — no directive today can express "this source must fail to
-compile". Needs a new directive class, most naturally mirroring
-`wfixture`'s existing `# expect_stderr:`/`# expect_fail` fixture-header
-convention.
+**Update (2026-07-19, wave 2b):** migrated. `wbuildgen` grew
+`# wbuild: argv=<args>`: alone, it appends CLI arguments to every
+run-capable twin's run step; paired with an equal, nonzero count of
+`name=` directives, each pair instead defines one more default-arch-only
+target from the same source (leaving that source's other generated
+targets untouched) — `x25519_test.w` carries `# wbuild: name=
+x25519_iterated_test argv=--iterated-1000` alongside its existing
+`# wbuild: x64`, generating a byte-identical `x25519_iterated_test`
+target next to the plain `x25519_test`/`x25519_64_test`.
+
+**I. Compile-error fixture (the compile step itself must fail) — 1
+(RESOLVED, wave 2c).** `int64_x86_error_test` (`expect_fail`/
+`expect_stderr` on the *compile* step, not a run step). Was blocked on
+`wbuildgen`'s directive-decorated run step only ever decorating the
+compiled binary's run, never the compile step itself. Fixed with a new
+`compile_fail` directive (`tools/wbuildgen.w`): the source declares
+`# wbuild: compile_fail` plus `# wbuild: expect_stderr="..."`, and
+wbuildgen decorates the compile step itself with `expect_fail`/
+`expect_stderr` and skips run-step generation entirely.
+`int64_x86_error_test` now generates from `tests/int64_x86_error_test.w`
+instead of living hand-written in `build.base.json`.
 
 **J. Outside `wbuildgen`'s scanned trees, or source doesn't end in
 `_test.w` — 16.** `hello`, `test`, `grammar_test`, `type_table_test`,
@@ -502,7 +641,35 @@ the same "path-based deps" gap bucket C flagged from the tool-binary
 side — solving it there (letting a target depend on a *file* instead of
 a *name*) would likely retire this bucket too.
 
-**L. Multi-step pipelines — 42.** `float_reference_test`,
+**Update (2026-07-19, wave plan C task 2d):** the path-based gap is
+closed for the shape that already had a single-source compile-and-run
+target — `# wbuild: tool=<path>` (resolved via a new
+`wbg_find_target_by_source` scan over `build.base.json`, not a
+hardcoded name table) and `# wbuild: fixture_group=<name>` (groups
+several `tests/*_fixture.w` files into one generated `bin/wfixture`
+invocation) together migrated 11 of this bucket's 18:
+`buffer_field_assign_test`, `array_error_test`, `syscall_arity_test`,
+`int_literal_width_test`, `prefixed_string_literal_test`,
+`warning_test`, `type_system_error_test`, `type_system_warning_test`,
+`operator_overload_error_test` (via `fixture_group=`) and
+`wvc_e2e_test`, `wexec_remote_cache_test` (via a bare `tool=` — these
+two turned out to already be conventional `_test.w` compile+run
+targets with no shape gap at all beyond the missing "deps" entry).
+Still hand-written, and *not* closed by this mechanism: `manifest`,
+`manifest_check`, `metadata_check`, `wvdiff_test`,
+`wexec_keep_going_test`, `wexec_ordered_output_test` compile nothing of
+their own (they invoke a tool binary directly against fixture
+data/manifests, so there is no `*_test.w` source for a directive to
+live on — closing these needs a distinct "the whole target is one tool
+invocation, no compile step" generation mode, an open design question,
+not a directive gap); `asm_seed_gate`'s raw-seed mismatch is unrelated
+to tool dependencies and needs its own compiler-selector fix. Bucket C
+itself is unaffected by design — `wbg_find_target_by_source` resolves
+*against* those 11 hand-written tool targets, it does not generate them
+(none of them are `*_test.w`-shaped, so wbuildgen's scan never reaches
+them either way).
+
+**L. Multi-step pipelines — 44.** `float_reference_test`,
 `string_utf8_test`, `container_trap_test`, `memory_debug_fault_test`,
 `strict_mode_test`, `check_json_test`, `check_roots_test`,
 `check_imports_test`, `symbols_test`, `deps_test`,
@@ -515,7 +682,13 @@ a *name*) would likely retire this bucket too.
 `map_set_builtin_test`, `list_builtin_test`, `wtest_run_test`,
 `metadata_test`, `wexec_test`, `result_propagate_test`, `task_io_test`,
 `json_rpc_test`, `json_rpc_64_test`, `task_io_64_test`,
-`asm_foundations_test`, `asm_arm64_test`, `asm_x64_test`. Blocker: each
+`asm_foundations_test`, `asm_arm64_test`, `asm_x64_test`,
+`compress_zlib_interop_test` (ported off its shell wrapper by task 2e:
+two compile steps + two run steps with `expect_stdout`, no shell
+involved any more — same shape as `switch_test`'s "several `.w` fixtures
+compiled and run in sequence"), `openssl_interop_test` (ported off its
+shell wrapper by task 4e, same shape: two compile steps + two run steps
+with `expect_stdout`). Blocker: each
 chains more than a single compile+run — a second reference binary
 (`float_reference_test`'s `cc`-compiled C oracle), several independent
 diagnostic invocations with separate `expect_*` assertions
@@ -531,9 +704,9 @@ before they can generate — the highest-effort bucket to close after E.
 Buckets D (21, zero blocker — pure migration) and the arm64/wasm slice of
 A/E (already using the shared runner scripts) are free wins independent
 of any new tooling. Buckets C and K are two faces of the same "deps by
-path, not by name" gap and are worth solving together. Bucket E (15) and
+path, not by name" gap and are worth solving together. Bucket E (13) and
 the Mac-only rows of the shell-script table are the genuinely hard
 remainder — real logic with no W-side equivalent yet, not a manifest
-expressiveness gap. Bucket L (42) is the single biggest lever: a
+expressiveness gap. Bucket L (44) is the single biggest lever: a
 multi-step/multi-run directive vocabulary would clear roughly a quarter
 of all hand-written targets in one design.

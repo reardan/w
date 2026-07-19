@@ -42,6 +42,57 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- **`bin/wfixture` arch-selector directive** (2026-07-19): a
+  `# wfixture: <selector>` header line (e.g. `# wfixture: x64`) inserts
+  `<selector>` into the compiler argv between the compiler path and the
+  fixture path, so a fixture that only reproduces under a non-default
+  target (`bin/wv2 x64 ...`) can single-source its expectations again
+  instead of falling back to a hand-written `expect_fail`/`expect_stderr`
+  `build.base.json` step. Does not itself count toward a fixture's
+  required directive count — an expect_stderr/reject_stderr/expect_fail
+  is still needed to assert anything. Payoff: `cuda_diagnostics_test`'s
+  13 hand-written x64-gated gpu/atomics/launch diagnostic steps all
+  migrated into their fixtures' own headers (`tests/gpu_call_error_fixture.w`
+  and 12 siblings), leaving one `bin/wfixture` invocation over 15
+  fixtures; `tests/gpu_x64_required_fixture.w` (no selector — it asserts
+  the *default* 32-bit target's gate error) and the migrated fixtures
+  together exercise both directions of the mechanism.
+  `tools/wfixture.w`.
+- **`wexec` single-writer lock on its managed `bin/` directory**
+  (2026-07-19, wave 1f): fixes "Two `./wbuild`/`wexec` invocations
+  racing in the same worktree corrupt each other's build with no useful
+  diagnostic" (a backgrounded `./wbuild test_changed` still compiling
+  when a foreground `./wbuild verify` starts in the same worktree used
+  to die with a bare "could not open output file" — both processes
+  writing/executing the same `bin/wv2`). `main()` now takes an advisory
+  lock (`bin/.wexec_lock`, `O_CREAT|O_EXCL`, own pid written inside)
+  before running any requested target's steps; a losing invocation reads
+  the pid back, and if `kill(pid, 0)` says it's dead (crash, SIGKILL, or
+  a direct `exit()` that bypassed `defer`) reclaims the stale lock and
+  retries once, otherwise prints `wexec: another build is running in
+  this directory (pid N); remove bin/.wexec_lock if stale` and exits 1.
+  Scoped per `bin/` directory (relative to cwd), not global. wexec's own
+  test harness (`wexec_test` and friends) runs nested `bin/wexec`
+  invocations against that same `bin/` as steps of an outer,
+  already-locked wexec; the outer process marks `WEXEC_LOCK_HELD=1` in
+  the environment on acquire (inherited through `execve`, transitively,
+  even through intermediate programs like `bin/wtest`'s own `--run`), so
+  a nested wexec sees the marker and skips locking, trusting the
+  ancestor. `--list`/`--explain-cache`/`--trace` return before the lock
+  is ever taken (out of scope: no steps run, or, for `--trace`, a
+  separate manual audit path). Covered by `wexec_lock_test`
+  (`build.base.json`; `tests/wexec/lock_scratch.json`), which plants a
+  manually-created live/stale pid lock file to stand in for a real
+  second concurrent process rather than racing a real backgrounded
+  build (which would be flaky to assert against), and runs its nested
+  `bin/wexec` invocations through `sh -c "unset WEXEC_LOCK_HELD; exec
+  bin/wexec ..."` (not `env -u`, which resolves to a stray non-executable
+  `~/.local/bin/env` ahead of the real one on this sandbox's `PATH` — see
+  the next-steps backlog's `wexec_resolve_program` entry) so they
+  exercise a fresh, non-reentrant acquire instead of inheriting the
+  outer test-runner's own lock marker. Design: `docs/projects/wexec.md`'s
+  "Locking" section; block comment above `wexec_lock_file` in
+  `tools/wexec.w`.
 - Portable `lib/stat.w` + Linux `statx`/`chmod`/`utimensat`/`readlink`/
   `symlink` wrappers in `lib/__arch__/{x86,x64,arm64}/syscalls.w`
   (2026-07-19): `file_stat_path` / `file_lstat_path`, mode predicates,
@@ -54,6 +105,87 @@ Shipped from the next-steps backlog:
   `lib/passwd.w` (`/etc/passwd`+`/etc/group`, no NSS), and
   `process_wait_any` for `xargs -P`-style pools. Design:
   `docs/projects/unix_primitives.md`.
+- **`wv2 defhash [--closure] <file.w>...`** (2026-07-18, issue #251
+  D4a): emits one NDJSON record per top-level definition (function,
+  global, struct/union/enum, type alias, generic function, generic
+  struct, operator overload) declared directly in the root file(s) —
+  `{"file", "name", "kind", "hash", "refs"}` — with `hash` a sha256 over
+  the definition's own token stream (whitespace/comments excluded, so
+  reformatting leaves it unchanged) and `refs` the other recorded
+  definitions it references; `--closure` widens scope to the whole
+  compiled program (matching `deps`'s closure). Generic and operator
+  coverage shipped 2026-07-19 (wave plan C task 4f) — see the
+  "Definition hashing" section below for the full writeup, including the
+  `--closure` name lookup's map-based rewrite and the coverage-completion
+  cleanup in `bin/wtest`'s `--defhash` consumer. Known limitations:
+  `refs` is a token-text match against the definition-name set, not real
+  scope resolution (a field/enum-constant name collision or a shadowing
+  local reads as a false positive — documented in `defhash_main`'s doc
+  comment, accepted as out of D4a's scope); an operator overload's
+  synthetic name is never itself a `refs` target (operators are invoked
+  through their token, `a + b`, not by name). See `ai_tooling_next_steps.md`
+  for the remaining open items.
+- **Compiler-wide silent-exit-1 audit (2026-07-18).** Every
+  `error(...)` call site funnels through `warning()`/`error()` in
+  `compiler/tokenizer.w`, which always prints before exiting; a
+  systematic review confirmed all 312 sites (not the ~95 this doc's
+  "Current state" section originally estimated) are safe by
+  construction, along with every direct `exit()`/`asserts()` call and
+  driver-path syscall (`open`/`read`/`write`/`getcwd`/`mmap`) in the
+  compile/link/deps/symbols paths. One new gap found and fixed:
+  `lib/memory_debug.w`'s `debug_tbl_ensure_capacity()` had 5 unchecked
+  bookkeeping-table `mmap()` calls (opt-in debug allocator only), now
+  guarded by `debug_tbl_mmap_failed()` with a clear message before
+  `exit(1)`. Remaining residue (`getchar()`'s read-error/EOF
+  conflation, `lib/generator.w`'s unchecked coroutine-stack `mmap()`,
+  unbounded parser recursion, an unrecognized-CLI-flag UX nit, and the
+  c_import/preprocessor `diag_part` migration gap) is tracked in
+  `ai_tooling_next_steps.md`/the active wave plan. The original
+  2026-07-09 darwin-seed silent-exit report itself remains
+  unreproduced — most likely explained by the seed-generation skew the
+  single-tag `SEEDS` pin (`CLAUDE.md` "Seed promotion") was written to
+  eliminate — but confirming it needs the specific stale, unarchived
+  `w_darwin` seed from that date, which no longer exists in any
+  accessible form.
+- **c_import/preprocessor `diag_part` migration (2026-07-19, wave plan
+  C task 3d)**, closing the gap the audit above tracked. All 6 sites
+  that composed a diagnostic from raw `print_error(...)` fragments
+  before calling `error(c"")`/`error(c"'")` — `libs/extras/c_import/
+  importer.w`'s `ci_lookup_type` (unsupported C type) and
+  `ci_skip_extern_function` (skipped-extern warning), and
+  `libs/extras/c_preprocessor/{pp_directives,pp_macro}.w`'s
+  include-not-found, `#error`, could-not-read, and invalid-token-paste
+  errors — bypassed the JSON funnel: `print_error` always writes
+  straight to stderr, so `--json` mode's NDJSON `message` field only
+  ever got the final fragment passed to `error()`/`warning()` (verified
+  against the pre-migration binary: `""` for three sites, `"'"` for
+  `ci_lookup_type`) while the human-readable text landed on stderr
+  as before. Migrated every fragment to `diag_part(...)`, which routes
+  through the same accumulator `warning()`/`error()` already flush; a
+  differential run of the pre- and post-migration compiler over
+  crafted repro headers confirms human-mode stderr is byte-identical
+  and the JSON `message` now carries the full composed text. Two
+  residues logged in `ai_tooling_next_steps.md` rather than fixed here:
+  `ci_skip_extern_function`'s warning is gated on `verbosity >= 1`,
+  which nothing in the compiler/REPL/`wdbg` ever raises above the `-1`
+  every entry point sets it to (dead code pending a `-v` flag), and
+  `cpp_preprocess_file_into`'s could-not-read path is a TOCTOU window
+  between an existence check and the real read that this sandbox
+  cannot trigger deterministically (root bypasses permission bits).
+- **`itoa(INT_MIN)`/`intstrlen(INT_MIN)` fixes (2026-07-17).** Both
+  pre-negated their input before extracting digits, which overflows
+  back to the same negative value for `INT_MIN` in two's complement, so
+  the digit loop never ran; fixed by extracting digits from the
+  (possibly negative) value directly. `itoa`'s buffer also grew from 16
+  to 24 bytes (a 64-bit `INT_MIN` string is 21 bytes with the NUL).
+  Covered by `test_itoa_int_min`/`test_intstrlen_int_min` in
+  `lib/lib_test.w` (both word sizes via the file's `# wbuild: x64`
+  twin).
+- **`stream_peek_byte` 0xFF masking (2026-07-17).** `lib/stream.w`'s
+  `stream_peek_byte` sign-extended raw bytes, so 0xFF collided with the
+  `-1` EOF sentinel and truncated `stream_read_byte`/`stream_read_line`/
+  `file_read_text`/`file_read_lines` at the first 0xFF byte; fixed by
+  masking (`& 255`). Covered by `stream_binary_test`.
 - **`wexec --explain-cache <target>`** and **`wexec --list --json`**
   (2026-07-17): two read-only introspection surfaces on `tools/wexec.w`.
   `--explain-cache` states, without running anything, whether a target
@@ -320,6 +452,30 @@ The MVP described here has landed:
   tree → `verify`, `lib/__arch__/`, `graphics/`, c_import machinery,
   run-time fixture data) are documented at the top of
   `tools/test_map.w`.
+- **`wtest archs <file>... [--check]`** (2026-07-19, wave plan C task
+  3e): closes the "import breaks a different compile target" gap —
+  `tools/wexec.w` is compiled three ways (default `x86`, `win64`,
+  `arm64_darwin`), and an import that resolves for one arch's `lib/
+  __arch__/` tree but not another's (e.g. a `lib.net` call with no
+  `lib/__arch__/win64/syscalls.w` counterpart, "Cannot find symbol:
+  'sys_socket'") used to compile clean under a plain `w check` and only
+  fail at that target's next full build. `wtest archs` enumerates every
+  distinct `(arch, root)` pair whose manifest-recorded compile root is
+  the file itself or whose `bin/wv2 deps`-computed closure (shared
+  cache, `bin/.wtest_deps_cache`) contains it, one line per pair with
+  the owning target(s) for context; `--check` additionally runs
+  `bin/wv2 [arch] check <root>` per distinct pair (root-deduped, not
+  per target) and reports pass/fail, so the break is visible pre-build.
+  Root discovery does not filter `wtest_never_emit` targets the way
+  `changed`/`for` selection does (that filter is about which targets
+  this host can *run*, not which archs exist) and recognizes
+  `bin/wv2_darwin` as a compiler program alongside `bin/wv2`/`./w`, so
+  `wexec_darwin`'s `arm64_darwin` root — otherwise invisible, since it
+  is the only target that compiles a non-`w.w` root with that selector
+  through a program other than plain `bin/wv2` — is included.
+  `tools/test_map.w`; `wtest_archs_test` (synthetic manifest + a tiny
+  `__arch__`-dispatched fixture with no `win64` implementation,
+  modeling the incident above at unit-test scale).
 
 The out-of-scope items at the end of this document remain deferred; the
 living backlog (deferred items plus friction found while dogfooding) is

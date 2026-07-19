@@ -44,12 +44,21 @@ struct pg_analysis:
 # single alternative (member_count 1, prefix_length 0) or a left-factored
 # run of consecutive alternatives sharing prefix_length identical leading
 # terms. guard_set is a kind_count-byte membership set when guarded.
+#
+# predicate_code (issue #329 milestone 4) marks a unit whose single
+# alternative leads with a semantic predicate (&{ expr }): its dispatch is
+# gated by that expression instead of a first-set test, so it is always a
+# singleton (member_count 1, prefix_length 0, guarded 0) built directly by
+# pg_plan_choice rather than through pg_plan_unit_guard. predicate_code is
+# a borrowed pointer into the owning pg_term.code -- pg_choice_units_free
+# does not free it.
 struct pg_choice_unit:
 	int alt_start
 	int member_count
 	int prefix_length
 	int guarded
 	char* guard_set
+	char* predicate_code
 
 
 pg_rule_facts* pg_analysis_find(pg_analysis* analysis, char* name):
@@ -100,6 +109,11 @@ int pg_analysis_term_recovers(pg_grammar* grammar, pg_term* term):
 
 
 int pg_analysis_term_nullable(pg_analysis* analysis, pg_term* term):
+	# Actions and predicates (issue #329 milestone 4) consume no tokens and
+	# have no effect on whether the surrounding sequence can match empty --
+	# they are transparent to every sweep below, exactly like an epsilon.
+	if (term.kind != pg_term_kind_normal()):
+		return 1
 	if ((term.modifier == '?') || (term.modifier == '*')):
 		return 1
 	if (pg_grammar_is_token_term(analysis.grammar, term.name)):
@@ -113,6 +127,8 @@ int pg_analysis_term_nullable(pg_analysis* analysis, pg_term* term):
 # Union the term's first set into out. Returns 1 if out gained a kind.
 int pg_analysis_term_first(pg_analysis* analysis, pg_term* term, char* out):
 	int changed = 0
+	if (term.kind != pg_term_kind_normal()):
+		return 0
 	if (pg_grammar_is_token_term(analysis.grammar, term.name)):
 		int kind = pg_grammar_token_kind(analysis.grammar, term.name)
 		if ((kind >= 0) && (kind < analysis.kind_count)):
@@ -192,6 +208,12 @@ int pg_analysis_prefix_pure(pg_analysis* analysis, pg_alternative* alternative, 
 	int i = offset
 	while (i < alternative.terms.length):
 		pg_term* term = alternative.terms[i]
+		if (term.kind != pg_term_kind_normal()):
+			# Transparent: an action/predicate never fails and never
+			# consumes, so a miss further down the sequence still runs
+			# past it exactly as if it were not there.
+			i = i + 1
+			continue
 		if (pg_analysis_term_recovers(analysis.grammar, term)):
 			return 0
 		if (pg_grammar_is_token_term(analysis.grammar, term.name) == 0):
@@ -234,6 +256,9 @@ int pg_analysis_recovery_free_sweep(pg_analysis* analysis):
 				int i = 0
 				while (i < alternative.terms.length):
 					pg_term* term = alternative.terms[i]
+					if (term.kind != pg_term_kind_normal()):
+						i = i + 1
+						continue
 					if (pg_analysis_term_recovers(analysis.grammar, term)):
 						facts.recovery_free = 0
 						changed = 1
@@ -336,6 +361,12 @@ int pg_analysis_term_enter_guardable(pg_analysis* analysis, pg_term* term):
 
 
 int pg_plan_term_factorable(pg_analysis* analysis, pg_term* term):
+	# Actions/predicates never factor: keeping them singleton (and, for
+	# predicates, at their alternative's true offset 0) is what makes the
+	# $n/text(n) binding surface and the predicate-guarded dispatch below
+	# sound without a separate cross-alternative variable-naming scheme.
+	if (term.kind != pg_term_kind_normal()):
+		return 0
 	if (term.modifier != 0):
 		return 0
 	if (pg_grammar_is_token_term(analysis.grammar, term.name)):
@@ -384,6 +415,7 @@ pg_choice_unit* pg_choice_unit_new(int alt_start, int member_count, int prefix_l
 	unit.prefix_length = prefix_length
 	unit.guarded = 0
 	unit.guard_set = 0
+	unit.predicate_code = 0
 	return unit
 
 
@@ -410,25 +442,37 @@ list[pg_choice_unit*] pg_plan_choice(pg_analysis* analysis, pg_rule* rule, int a
 	int a = alt_start
 	while (a < alt_start + alt_count):
 		pg_alternative* head = rule.alternatives[a]
-		int run = 1
-		if (offset < head.terms.length):
-			if (pg_plan_term_factorable(analysis, head.terms[offset])):
-				while (a + run < alt_start + alt_count):
-					pg_alternative* next = rule.alternatives[a + run]
-					if (offset >= next.terms.length):
-						break
-					if (pg_plan_terms_equal(head.terms[offset], next.terms[offset]) == 0):
-						break
-					run = run + 1
-		int prefix_length = 0
-		if (run > 1):
-			prefix_length = pg_plan_prefix_length(analysis, rule, a, run, offset)
-		if (prefix_length == 0):
-			run = 1
-		pg_choice_unit* unit = pg_choice_unit_new(a, run, prefix_length)
-		pg_plan_unit_guard(analysis, rule, unit, offset)
-		units.push(unit)
-		a = a + run
+		# A predicate at this offset (only ever possible at the true head
+		# of an alternative -- the grammar reader rejects one anywhere
+		# else) always stands alone: pg_plan_term_factorable already
+		# refuses to factor it, so it can never be part of a run>1 group.
+		# Its guard is the predicate expression itself, tried in
+		# declaration order among its siblings -- see pg_emit_streaming_choice.
+		if ((offset < head.terms.length) && (head.terms[offset].kind == pg_term_kind_predicate())):
+			pg_choice_unit* punit = pg_choice_unit_new(a, 1, 0)
+			punit.predicate_code = head.terms[offset].code
+			units.push(punit)
+			a = a + 1
+		else:
+			int run = 1
+			if (offset < head.terms.length):
+				if (pg_plan_term_factorable(analysis, head.terms[offset])):
+					while (a + run < alt_start + alt_count):
+						pg_alternative* next = rule.alternatives[a + run]
+						if (offset >= next.terms.length):
+							break
+						if (pg_plan_terms_equal(head.terms[offset], next.terms[offset]) == 0):
+							break
+						run = run + 1
+			int prefix_length = 0
+			if (run > 1):
+				prefix_length = pg_plan_prefix_length(analysis, rule, a, run, offset)
+			if (prefix_length == 0):
+				run = 1
+			pg_choice_unit* unit = pg_choice_unit_new(a, run, prefix_length)
+			pg_plan_unit_guard(analysis, rule, unit, offset)
+			units.push(unit)
+			a = a + run
 	return units
 
 
@@ -517,28 +561,36 @@ int pg_report_choice(pg_analysis* analysis, pg_rule* rule, list[pg_choice_unit*]
 	int i = 0
 	while (i < units.length):
 		pg_choice_unit* left = units[i]
-		char* left_set = pg_report_unit_set(analysis, left)
-		int j = i + 1
-		while (j < units.length):
-			pg_choice_unit* right = units[j]
-			if (pg_report_unit_is_empty_suffix(rule, right, offset) == 0):
-				char* right_set = pg_report_unit_set(analysis, right)
-				if (pg_kind_set_intersects(analysis, left_set, right_set)):
-					conflicts = conflicts + 1
-					print2(c"parser_generator: rule ")
-					print2(rule.name)
-					print2(c": alternatives ")
-					pg_report_unit_span(left)
-					print2(c" and ")
-					pg_report_unit_span(right)
-					print2(c" overlap on")
-					pg_report_overlap_kinds(analysis, left_set, right_set)
-					println2(c"")
-				if (right.guarded == 0):
-					free(right_set)
-			j = j + 1
-		if (left.guarded == 0):
-			free(left_set)
+		# A predicate-headed unit (issue #329 milestone 4) is exempt from
+		# the first-set overlap check in both directions: its dispatch is
+		# resolved by the predicate expression, tried in declaration
+		# order, not by first-set disjointness, so it never collides with
+		# a sibling here regardless of what tokens it could start with.
+		# (The predicate's own correctness is a documented author
+		# contract, not something this analysis proves.)
+		if (left.predicate_code == 0):
+			char* left_set = pg_report_unit_set(analysis, left)
+			int j = i + 1
+			while (j < units.length):
+				pg_choice_unit* right = units[j]
+				if ((right.predicate_code == 0) && (pg_report_unit_is_empty_suffix(rule, right, offset) == 0)):
+					char* right_set = pg_report_unit_set(analysis, right)
+					if (pg_kind_set_intersects(analysis, left_set, right_set)):
+						conflicts = conflicts + 1
+						print2(c"parser_generator: rule ")
+						print2(rule.name)
+						print2(c": alternatives ")
+						pg_report_unit_span(left)
+						print2(c" and ")
+						pg_report_unit_span(right)
+						print2(c" overlap on")
+						pg_report_overlap_kinds(analysis, left_set, right_set)
+						println2(c"")
+					if (right.guarded == 0):
+						free(right_set)
+				j = j + 1
+			if (left.guarded == 0):
+				free(left_set)
 		i = i + 1
 	# Recurse into factored suffix choices.
 	i = 0
@@ -653,4 +705,72 @@ int pg_streaming_check(pg_grammar* grammar):
 		violations = violations + pg_streaming_term_violations(grammar, rule)
 		r = r + 1
 	pg_analysis_free(analysis)
+	return violations
+
+
+# --- action/predicate safety (issue #329 milestone 4) ----------------------
+#
+# Actions ({ code }) and predicates (&{ expr }) need "exactly once, at
+# commit time" to be true. That guarantee is not a new analysis: it is
+# exactly what pg_streaming_check above already requires of the WHOLE
+# grammar before it will generate a streaming-mode parser at all -- a
+# grammar that passes pg_streaming_check has no mark/rewind anywhere in
+# its generated code (see generator.w's pg_emit_streaming_* family), so
+# there is no backtracking region left for an action to be unsound inside,
+# and the predicate-exemption in pg_report_choice above only ever replaces
+# one deterministic guard (a first-set test) with another (a boolean
+# expression evaluated at the same zero-lookahead point) -- it does not
+# reopen any of it. So for a streaming-mode grammar this check is a no-op
+# by construction: pg_streaming_check's own conflict/violation messages
+# already name every rule that would make an action unsound, since those
+# are precisely the rules this generator refuses to emit regardless of
+# whether they contain an action.
+#
+# The one case pg_streaming_check never sees is AST mode, where there is
+# no commit point for an action to run at (every rule still marks and
+# rewinds). This check exists to give that case its own clear,
+# generation-time, rule-named diagnostic instead of a confusing failure
+# somewhere downstream.
+
+
+int pg_rule_has_actions_or_predicates(pg_rule* rule):
+	int a = 0
+	while (a < rule.alternatives.length):
+		pg_alternative* alternative = rule.alternatives[a]
+		int t = 0
+		while (t < alternative.terms.length):
+			if (alternative.terms[t].kind != pg_term_kind_normal()):
+				return 1
+			t = t + 1
+		a = a + 1
+	return 0
+
+
+int pg_grammar_has_actions_or_predicates(pg_grammar* grammar):
+	int r = 0
+	while (r < grammar.rules.length):
+		if (pg_rule_has_actions_or_predicates(grammar.rules[r])):
+			return 1
+		r = r + 1
+	return 0
+
+
+# Returns the number of violations printed; 0 means any actions/predicates
+# present are safe to generate (or there are none at all, the case for
+# every grammar written before milestone 4).
+int pg_action_safety_check(pg_grammar* grammar):
+	if (pg_grammar_has_actions_or_predicates(grammar) == 0):
+		return 0
+	if (grammar.mode == pg_grammar_mode_streaming()):
+		return 0
+	int violations = 0
+	int r = 0
+	while (r < grammar.rules.length):
+		pg_rule* rule = grammar.rules[r]
+		if (pg_rule_has_actions_or_predicates(rule)):
+			print2(c"parser_generator: rule ")
+			print2(rule.name)
+			println2(c": actions ({ code }) and predicates (&{ expr }) require 'mode streaming' -- AST mode has no commit point to run them at exactly once")
+			violations = violations + 1
+		r = r + 1
 	return violations

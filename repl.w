@@ -49,6 +49,15 @@ lib/shell.w's sh_interactive exactly like "!cmd" is in W mode. "!" still
 works in shell mode, but with its meaning flipped: it runs exactly one
 line as W, then returns to shell-mode dispatch. "cd"/"export" are
 intercepted the same way "!cd"/"!export" already are.
+
+Interactive editing (issue #276 P2, lib/line_edit.w): Tab completes the
+identifier before the cursor from the live symbol table
+(repl_complete_names, wired to line_edit.w's le_complete_hook below);
+Ctrl-R is an incremental reverse history search; a terminal-driven
+bracketed paste is inserted atomically -- repl_prompt_line and
+repl_read_entry check line_edit_in_paste() to suspend auto-indent seeding
+and the blank-line-ends-the-entry rule for as long as a paste is still
+open, so pasted blank lines and indentation survive intact.
 */
 import repl.core
 import repl.scan
@@ -147,6 +156,12 @@ int repl_prompt_line(char* prompt, int indent):
 			return n
 		string_append(repl_line, repl_read_buffer)
 		return n
+	# A bracketed paste begun on an earlier physical line of this same
+	# entry is still open (line_edit_read has not seen its end marker
+	# yet): the pasted text supplies its own indentation, so seeding an
+	# auto-indent prefix on top of it would double it up (issue #276 P2).
+	if (line_edit_in_paste()):
+		indent = 0
 	char* initial = 0
 	if (indent > 0):
 		initial = malloc(indent + 1)
@@ -262,7 +277,12 @@ int repl_read_entry():
 		if (r == -2):
 			string_clear(repl_entry)
 			return 1 /* Ctrl-C discards the entry */
-		if (block_mode & repl_line_only_tabs() & (open_state == 0)):
+		# A blank (or tabs-only) line inside a still-open bracketed paste
+		# is pasted content, not the user asking to dedent or end the
+		# entry -- suspend this rule for as long as the paste is open
+		# (issue #276 P2), and simply fall through to appending the line
+		# like any other.
+		if ((line_edit_in_paste() == 0) & (block_mode & repl_line_only_tabs() & (open_state == 0))):
 			int tabs = repl_count_leading_tabs(repl_line.data)
 			if (tabs == 0):
 				return 1 /* a blank line at column 0 ends the entry */
@@ -803,6 +823,9 @@ void repl_print_help():
 	println(c"  !cmd                run cmd through the shell, stdio inherited")
 	println(c"  !cd dir             change the repl's own working directory")
 	println(c"  !export NAME=VALUE  set an env var for later ! / sh() calls")
+	println(c"editing: Tab completes an identifier from the symbol table;")
+	println(c"Ctrl-R is an incremental reverse history search; a terminal's")
+	println(c"bracketed paste is inserted as one atomic block")
 	println(c"flags: -e entry evaluates one entry and exits (repeatable);")
 	println(c"--json emits one JSON object per entry on stdout instead of the")
 	println(c"plain echo; --quiet routes the banner and prompts to stderr like")
@@ -867,6 +890,13 @@ int main(int argc, int argv):
 	repl_echo_hook = cast(int, repl_echo)
 	if (repl_json_mode):
 		repl_echo_hook = cast(int, repl_json_echo_hook)
+
+	# Tab completion (issue #276 P2): lib/line_edit.w calls this hook with
+	# the identifier prefix before the cursor; repl_complete_names walks
+	# the live compiler symbol table for matches. Harmless to set even in
+	# non-interactive/--json modes, since line_edit_read (and therefore
+	# the hook) is never reached there.
+	le_complete_hook = cast(int, repl_complete_names)
 
 	# -e "entry" (repeatable): run the given entries in order and exit,
 	# no prompt loop. Collected after the target file and genesis

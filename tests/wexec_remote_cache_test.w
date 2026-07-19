@@ -1,3 +1,4 @@
+# wbuild: tool=tools/wexec.w
 # End-to-end test for wexec's shared remote build cache (issue #251
 # Direction 3, D3-2; tools/wexec.w's "Shared remote build cache"
 # section, just above wexec_launch). Spins up an in-repo HTTP object

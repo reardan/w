@@ -1,6 +1,8 @@
 # 'launch' only accepts kernel symbols: an ordinary function's body is
-# host code with a host calling convention. Compiled with the x64
-# selector by the cuda_diagnostics_test target.
+# host code with a host calling convention.
+# wfixture: x64
+# expect_fail
+# expect_stderr: 'helper' is not a kernel
 import lib.cuda
 
 int helper(int x):

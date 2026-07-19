@@ -1,8 +1,9 @@
 /*
 tools/wvc.w: end-to-end porcelain test (issue #252 V2c, extended for
-wave 4's `merge`). Hand-written (build.base.json, not wbuildgen's
-convention) because it needs "wvc" itself built first and spawns it as a
-real subprocess against a real temp directory, rather than just linking
+wave 4's `merge`). Generated (wbuildgen's convention), via the
+'# wbuild: tool=tools/wvc.w' directive below, which adds "wvc" itself
+(built first) to this target's "deps" -- this test spawns it as a real
+subprocess against a real temp directory, rather than just linking
 against a library and running in-process like the
 vcs_{cas,tree,commit,dag,diff,merge3}_test.w unit tests.
 
@@ -29,6 +30,7 @@ the shared base rather than the branch `wvc snapshot` already advanced
 "main" past -- never registered under any ref, since `merge <rev>`
 accepts a bare 64-hex commit id.
 */
+# wbuild: tool=tools/wvc.w
 import lib.testing
 import lib.process
 import lib.path

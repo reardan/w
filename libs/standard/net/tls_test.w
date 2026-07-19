@@ -1,3 +1,4 @@
+# wbuild: name=net_tls_test x64
 /*
 Tests for the TLS 1.3 client (libs/standard/net/tls.w), issue #201.
 

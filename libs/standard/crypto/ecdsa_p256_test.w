@@ -1,3 +1,4 @@
+# wbuild: name=crypto_ecdsa_p256_test
 # Tests for libs/standard/crypto/ecdsa_p256.w.
 #
 # Vectors:

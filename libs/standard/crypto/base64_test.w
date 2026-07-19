@@ -1,3 +1,4 @@
+# wbuild: name=crypto_base64_test x64
 import lib.testing
 import libs.standard.crypto.base64
 

@@ -1,4 +1,5 @@
 # wbuild: x64
+# wbuild: name=x25519_iterated_test argv=--iterated-1000
 /*
 X25519 tests: RFC 7748 section 5.2 vectors (both), the section 5.2
 iterated test (1 iteration always; the 1,000-iteration variant only when

@@ -1,3 +1,4 @@
+# wbuild: name=crypto_rsa_verify_test x64
 # Tests for libs/standard/crypto/rsa_verify.w.
 #
 # Vectors are an RSA-2048 key with OpenSSL-produced signatures (via the genvec
