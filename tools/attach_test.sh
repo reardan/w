@@ -71,6 +71,24 @@ run_case "registers" "$FIXTURE_SRC" 'r\ndetach\n' "eip: 0x"
 # disarm/step-over/re-arm dance lets it hit again on the next iteration.
 run_case "breakpoint hit twice" "$FIXTURE_SRC" 'b slow_step\nc\nc\nkill\n' "hit breakpoint 1"
 
+# Locals/frames through the seam (#123 phase 5): 'bump' is called from
+# 'slow_step', which is called from 'main', so a breakpoint in bump gives a
+# real two-level call stack to inspect.
+
+# Argument inspection at the innermost frame (frame 0): visible immediately
+# at function entry, unlike a not-yet-executed local.
+run_case "args at breakpoint" "$FIXTURE_SRC" 'b bump\nc\ni a\nkill\n' "n = "
+
+# print <name> resolves the same argument by name.
+run_case "print arg at breakpoint" "$FIXTURE_SRC" 'b bump\nc\np n\nkill\n' "n = "
+
+# Frame selection ('up') addresses the caller's (slow_step's) own argument,
+# not bump's -- proves the frame list's base tracking, not just frame 0.
+run_case "frame selection: caller arg" "$FIXTURE_SRC" 'b bump\nc\nup\np n\nkill\n' "n = "
+
+# 'bt' after 'up' shows the caller was selected without losing the list.
+run_case "up then backtrace still names both frames" "$FIXTURE_SRC" 'b bump\nc\nup\nbt\nkill\n' "main ("
+
 # Memory examine reads the target's ELF magic at the fixed load base.
 run_case "examine memory" "$FIXTURE_SRC" 'x 0x8048000 1\ndetach\n' "0x464c457f"
 
@@ -117,6 +135,48 @@ run_case "raw mode disassembly" "" 'disas\ndetach\n' "=> 0x"
 
 # Raw mode has no symbol table: function targets point at the address form.
 run_case "raw mode disas boundary" "" 'disas slow_step\ndetach\n' "no symbols: disassemble by address"
+
+# --- x86-64 attach: symbolization, registers, locals/frames (#123 phase 3) ---
+# Same fixture, compiled and attached as a 64-bit target: bin/wdbg64 (built
+# with 'bin/wv2 x64 debugger/debugger.w') recompiles the source with the
+# x64 selector too (debugger/wdbg.w's wdbg_attach_compile), so calibration
+# validates against a 64-bit /proc/<pid>/exe instead of falling back to raw
+# mode the way a 32-bit recompile always did against a 64-bit process.
+WDBG64=bin/wdbg64
+FIXTURE_BIN64=bin/attach_target64
+
+run_case_64() {
+	desc="$1"
+	extra="$2"
+	commands="$3"
+	expect="$4"
+
+	"$FIXTURE_BIN64" &
+	pid=$!
+	sleep 0.4
+
+	out=$(printf '%b' "$commands" | "$WDBG64" --attach "$pid" $extra 2>/dev/null || true)
+	kill -9 "$pid" 2>/dev/null || true
+	wait "$pid" 2>/dev/null || true
+
+	if printf '%s' "$out" | grep -qF "$expect"; then
+		echo "ok: $desc"
+	else
+		echo "FAIL: $desc"
+		echo "  expected substring: $expect"
+		echo "  actual output:"
+		printf '%s\n' "$out" | sed 's/^/    /'
+		FAILED=1
+	fi
+}
+
+run_case_64 "x64: symbolized location" "$FIXTURE_SRC" 'l\ndetach\n' "attach_target_fixture.w:"
+run_case_64 "x64: symbols loaded banner" "$FIXTURE_SRC" 'detach\n' "symbols loaded"
+run_case_64 "x64: registers dump uses 64-bit names" "$FIXTURE_SRC" 'r\ndetach\n' "rip: 0x"
+run_case_64 "x64: breakpoint hit names function" "$FIXTURE_SRC" 'b bump\nc\nkill\n' "hit breakpoint 1"
+run_case_64 "x64: args through the seam" "$FIXTURE_SRC" 'b bump\nc\ni a\nkill\n' "n = "
+run_case_64 "x64: frame selection reaches caller" "$FIXTURE_SRC" 'b bump\nc\nup\np n\nkill\n' "n = "
+run_case_64 "x64: backtrace names main" "$FIXTURE_SRC" 'b bump\nc\nbt\nkill\n' "main ("
 
 if [ "$FAILED" -eq 0 ]; then
 	echo "attach test OK"

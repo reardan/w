@@ -2,11 +2,12 @@
 
 Status: **partially implemented** — read-only inspection and execution
 control landed (`debugger/attach.w`, `wdbg --attach <pid> [file.w]`, tests
-in `tools/attach_test.sh` / the `attach_test` build target), and phase 2's
-memory-access seam has landed (`debugger/memory.w`; see "Implemented"
-below) with the register seam still deferred. Locals/args inspection,
-expression evaluation and hardware watchpoints in attach mode are not yet
-wired; see "Implemented" and "Remaining" below.
+in `tools/attach_test.sh` / the `attach_test` build target). Phase 2's
+target-access seam is now complete for both memory (`debugger/memory.w`)
+and registers (`debugger/registers.w`); phase 5's locals/args/frame
+selection and phase 3's x86-64 symbolization have landed on top of it (see
+"Implemented" below). Expression evaluation and hardware watchpoints in
+attach mode are not yet wired; see "Remaining" below.
 
 Tracks [reardan/w#123](https://github.com/reardan/w/issues/123). This is
 the "out-of-process ptrace mode" design doc that
@@ -26,20 +27,28 @@ byte-identical). What works today:
   continue; `kill` terminates it. EPERM/ESRCH are reported clearly.
 - **Registers, memory, stack.** `r`, `x <addr> [count]`, `st` via
   `PTRACE_GETREGS` and `PTRACE_PEEKDATA`.
-- **Symbolization** (`file.w` given, x86 32-bit). The source is recompiled
-  through the same ELF backend that built the on-disk binary
+- **Symbolization** (`file.w` given, x86 and x86-64). The source is
+  recompiled through the same ELF backend that built the on-disk binary
   (`wdbg_attach_compile` → `link_impl`), so `code_offset` is the load base
   and the symbol/line tables hold the target's real addresses — no delta.
-  Calibration (`at_calibrate`) reads `/proc/<pid>/exe` and compares it
-  byte-for-byte against the recompiled image (`code[0..codepos)`, the exact
-  bytes the ELF backend would write to disk); any short read, open failure,
-  or byte mismatch prints a clear diagnostic and falls back to raw mode
-  instead of trusting stale tables. Enables `l`/`where`, `list` (a
+  `wdbg_attach_compile` recompiles for whichever word size the running
+  debugger binary itself was built for (passing the `"x64"` target
+  selector when `__word_size__ == 8`, exactly like the in-process path's
+  `word_size = __word_size__`), so `bin/wdbg64` symbolizes 64-bit attach
+  targets and `bin/wdbg` symbolizes 32-bit ones — there is no cross-size
+  attach. Calibration (`at_calibrate`) reads `/proc/<pid>/exe` and compares
+  it byte-for-byte against the recompiled image (`code[0..codepos)`, the
+  exact bytes the ELF backend would write to disk); any short read, open
+  failure, or byte mismatch prints a clear diagnostic and falls back to raw
+  mode instead of trusting stale tables. Enables `l`/`where`, `list` (a
   multi-line source window around the stopped line or an explicit line
-  number), `bt` (a heuristic stack walk that names every frame it can
-  resolve, not just the current ip), `i functions`/`i files`, and
-  symbol/`file:line` break targets — all gated off in raw mode the same way
-  `i functions` already was.
+  number), `bt` (a frame list built from the call-site-decode heuristic,
+  not just the current ip), `f`/`frame [n]`/`up`/`down` (frame selection),
+  `i functions`/`i files`/`i locals`/`i args`, `p`/`print <name>` and
+  `set <name> <value>` (locals, args or globals by name — attach mode has
+  no general expression compiler yet), and symbol/`file:line` break
+  targets — all gated off in raw mode the same way `i functions` already
+  was.
 - **Breakpoints and stepping.** `b <function | file:line | 0xADDR>`, `d`,
   `c`, `si` via `PTRACE_POKEDATA` int3 patching and a `wait4` stop loop with
   the disarm / single-step / re-arm dance; `detach` restores original bytes.
@@ -48,7 +57,7 @@ Design history: phase 1 initially shipped attach mode as a parallel
 implementation rather than threading a shared in-process/ptrace seam
 through the seed-compiled memory and register modules, to keep the
 invasive, self-host-risky refactor out of the core while delivering the
-same capability. Phase 2 has since built that seam for the memory half:
+same capability. Phase 2 has since built that seam for both halves:
 
 - **Memory-access seam** (`debugger/memory.w`). `dbg_mem_readable`,
   `dbg_mem_read`/`dbg_mem_read_word` and `dbg_mem_write_word` dispatch
@@ -59,38 +68,62 @@ same capability. Phase 2 has since built that seam for the memory half:
   every existing in-process caller (`debugger/wdbg.w`, `locals.w`,
   `watchpoints.w`) is byte-identical in behavior with no seam awareness
   needed. `debugger/attach.w` installs its own ptrace-backed triple
-  (`at_mem_readable`/`at_mem_read`, thin wrappers around the existing
-  `PTRACE_PEEKDATA`-based `at_read_word` — no new ptrace semantics) and
-  routes `at_examine` (the `x`/`st` commands) through the shared entry
-  points instead of calling `at_read_word` directly, so `attach_test.sh`'s
-  "examine memory" case exercises the ptrace side of the same seam the
+  (`at_mem_readable`/`at_mem_read`/`at_mem_write`, thin wrappers around the
+  existing `PTRACE_PEEKDATA`/`PTRACE_POKEDATA`-based `at_read_word`/
+  `at_write_word` — no new ptrace semantics) and routes `at_examine` (the
+  `x`/`st` commands) and `at_set_command` (`set`) through the shared entry
+  points instead of calling `at_read_word`/`at_write_word` directly, so
+  `attach_test.sh`'s cases exercise the ptrace side of the same seam the
   in-process debugger uses. Breakpoint byte-patching
   (`debugger/breakpoints.w`) and eval's in-process locals-binding copy
   (`debugger/eval.w`'s `dbg_eval_copy`) are deliberately untouched: they
   are execution-control (phase 4) and eval (phase 6) concerns, not memory
   inspection.
-- **Register seam: still deferred.** `debugger/sigcontext.w`'s `ctx_*`
-  accessors take an explicit sigcontext pointer threaded through
-  `debugger/wdbg.w`'s call chain, while attach mode reads an implicit
-  global `user_regs_struct` (`attach_regs`, a different byte layout: e.g.
-  `sigcontext_eax()` vs. `at_off_ip()`/the offsets in
-  `at_print_registers`). Unifying the two needs either a global
-  "current register buffer" convention in the in-process path or an
-  explicit buffer parameter threaded through attach mode, both wider
-  refactors than the memory seam; left for a follow-up once locals/eval
-  reuse (phases 5-6) makes the register side worth it.
+- **Register seam** (`debugger/registers.w`). `dbg_reg_pc`/`dbg_reg_sp`
+  dispatch through a registered pair of zero-argument readers, the same
+  convention as the memory seam. The in-process backend reads
+  `dbg_reg_context`, a plain global that `debugger/wdbg.w`'s `wdbg_trap`/
+  `wdbg_fatal` set to the trapped sigcontext pointer once per stop (mirrors
+  — does not replace — the explicit `context` parameter those functions
+  already thread through the rest of their own call chain, so every
+  existing in-process call site is unchanged and `debug_test`/
+  `debug_test_x64` stay green with no behavior difference). `attach.w`
+  installs its own pair (`dbg_reg_pc_attach`/`dbg_reg_sp_attach`, thin
+  wrappers around the existing `PTRACE_GETREGS`-based `at_getregs`/
+  `at_reg` — again no new ptrace semantics) and routes frame walking,
+  breakpoint/continue/step's "current pc" lookups and `disas`/`list`/`l`
+  through the shared entry points instead of calling `at_getregs`/`at_reg`
+  directly.
+- **Frame walking and locals through the seam** (phase 5,
+  `debugger/attach.w`). `at_frames_compute` rebuilds attach mode's own
+  frame list (pc + frame base per entry, mirroring `debugger/wdbg.w`'s
+  in-process `dbg_fr_*` shape) on top of the two seams: the register seam
+  for the trapped sp, the memory seam to walk the stack, and a small
+  call-site-decode heuristic (`at_looks_like_return`, reading through
+  `debugger/disas.w`'s byte-reader seam via the new `dbg_disas_read_byte`
+  wrapper) to recognize return addresses — the same shape wdbg.w's
+  in-process `dbg_looks_like_return` uses, minus the one in-process-only
+  special case (main's caller there points into wdbg's own image, a
+  different process's address space with no attach-mode equivalent; in
+  attach mode main is called from the debuggee's own entry stub, so the
+  walk just stops once it reaches main). `debugger/locals.w`'s stack-slot
+  arithmetic (`dbg_frame_compute`, `dbg_local_runtime_addr`,
+  `dbg_print_frame_vars`, …) needed no changes at all: it already takes a
+  plain pc/esp pair and reads through `dbg_mem_*`, so supplying those two
+  values for attach mode's selected frame (`at_sel_pc`/`at_sel_esp`) was
+  enough to light up `i locals`/`i args`/`p`/`set`/`f`/`up`/`down`
+  unmodified. wdbg.w's own in-process frame walker is untouched (zero
+  behavior-change risk); the two implementations share the *seam idiom*,
+  not one literal module, which is why `debugger/locals.w` needed no
+  attach-awareness to begin with.
 
 ## Remaining
 
-- **Locals / args / `set` / frames** in attach mode (original phase 5's
-  variable side). The recompile already yields the `stack_pos` tables, so
-  this is reading stack slots through ptrace and reusing `debugger/locals.w`
-  arithmetic — the main open work item.
-- **Expression evaluation** (`p <expr>`): reads through ptrace; in-target
-  calls stay out of scope.
+- **Expression evaluation** (`p <expr>` beyond a name lookup): reads
+  through ptrace; in-target calls stay out of scope.
 - **Hardware watchpoints** via `PTRACE_POKEUSER` on DR0–DR7.
-- **x86-64 and dynamic/PIE symbolization**: today symbolization is x86
-  (32-bit ELF) only; raw mode works regardless of word size.
+- **Dynamic/PIE symbolization**: out of scope (see "Scope" below); raw
+  mode works regardless.
 
 ## Motivation
 
@@ -126,11 +159,12 @@ below is mostly about giving each one a seam.
 
 | Layer | Today | Attach needs |
 | --- | --- | --- |
-| memory (`debugger/memory.w`) | **done (phase 2):** `dbg_mem_readable`/`dbg_mem_read`/`dbg_mem_write_word` dispatch through a registered triple, mincore-probed direct loads/stores by default | attach installs a `PTRACE_PEEKDATA`-backed triple (peek's errno ambiguity replaces the probe trick); wired for `at_examine`, not yet for `set`/watch in attach mode (no locals there yet) |
-| registers (`debugger/sigcontext.w`) | offsets into the kernel signal frame, threaded via an explicit context parameter | **not yet seamed** (phase 2 remaining): `PTRACE_GETREGS` / `PTRACE_SETREGS` into a `user_regs_struct` buffer, already used standalone by `debugger/attach.w`'s own `at_reg`/`at_getregs` but not unified with `ctx_*` |
-| execution control | return-from-handler with TF set; re-armed int3 bytes | `PTRACE_CONT` / `PTRACE_SINGLESTEP` + a `wait4` stop loop |
-| symbols/lines/stack slots (`debugger/symbols.w`, `debugger/lines.w`) | live compiler tables from the just-finished in-process compile; `debug_line_stack_pos` is **never emitted into the ELF** (`code_generator/dwarf.w`) | regenerate the same tables by recompiling the same source (see below) |
-| eval (`debugger/eval.w`) | compiles an expression and runs it in-process against debuggee globals | reads via ptrace; in-target calls are out of scope initially |
+| memory (`debugger/memory.w`) | **done (phase 2):** `dbg_mem_readable`/`dbg_mem_read`/`dbg_mem_write_word` dispatch through a registered triple, mincore-probed direct loads/stores by default | **done:** attach installs a `PTRACE_PEEKDATA`/`POKEDATA`-backed triple (peek's errno ambiguity replaces the probe trick); wired for `at_examine` and `set` alike |
+| registers (`debugger/registers.w`, `debugger/sigcontext.w`) | **done (phase 2):** `dbg_reg_pc`/`dbg_reg_sp` dispatch through a registered pair, backed in-process by `dbg_reg_context` (mirrors the explicit sigcontext parameter `wdbg.w` already threads) | **done:** attach installs a `PTRACE_GETREGS`-backed pair (`at_getregs`/`at_reg`, already used standalone by raw-mode commands, now also the seam's backend) |
+| execution control | return-from-handler with TF set; re-armed int3 bytes | `PTRACE_CONT` / `PTRACE_SINGLESTEP` + a `wait4` stop loop — **done** (phase 1/4, `debugger/attach.w`'s `at_continue`/`at_step`) |
+| symbols/lines/stack slots (`debugger/symbols.w`, `debugger/lines.w`) | live compiler tables from the just-finished in-process compile; `debug_line_stack_pos` is **never emitted into the ELF** (`code_generator/dwarf.w`) | **done:** regenerated by recompiling the same source, now word-size-matched (phase 3) |
+| frames/locals (`debugger/locals.w`) | `dbg_frame_compute`/`dbg_local_runtime_addr`/`dbg_print_frame_vars` take a plain pc/esp pair, needing no seam awareness of their own | **done (phase 5):** attach's `at_frames_compute`/`at_sel_pc`/`at_sel_esp` supply that pair from the register + memory seams for any selected frame |
+| eval (`debugger/eval.w`) | compiles an expression and runs it in-process against debuggee globals | name lookups only (`p`/`set`) are wired through the seams; general expression evaluation is still out of scope (phase 6) |
 
 One thing does **not** need work: address translation. wdbg already
 works in debuggee-relative addresses (`rel = absolute - code_offset`)
@@ -197,42 +231,48 @@ and must not use syntax newer than the seed.
    `PTRACE_GETREGS`, peek-based memory reads; wire `--attach <pid>` into
    `wdbg_main` argument parsing. Deliverable: attach to a spinning
    process, `r`, `x`, `st`, `detach` — raw addresses only.
-2. **Target-access seam — memory done, registers remaining.** Read/write
-   dispatch (in-process direct vs. ptrace) now routes every debuggee
-   memory access in `debugger/memory.w`, `wdbg.w`, `locals.w` and
-   `watchpoints.w` through `dbg_mem_readable`/`dbg_mem_read`/
-   `dbg_mem_write_word`, with `debugger/attach.w` installing its
-   `PTRACE_PEEKDATA`-backed triple and routing `at_examine` through it.
-   No behavior change for the in-process path (`./wbuild verify` and
-   `verify_x64` stay green; `debug_test`/`debug_test_x64`/`wdbg`/
-   `repl_test`(`_x64`) and `attach_test` all pass unchanged). The
-   register half — dispatching `debugger/sigcontext.w`'s `ctx_*`
-   accessors the same way — is still open: it needs either the
-   in-process path to adopt a global "current register buffer"
-   (today it threads an explicit sigcontext pointer through every call
-   in `wdbg.w`) or attach mode to adopt an explicit buffer parameter
-   (today it reads the implicit global `attach_regs`), and the two
-   models use different byte layouts (sigcontext vs. `user_regs_struct`)
-   for the same logical registers. Left for a follow-up.
-3. **Symbol/line recovery.** The recompile-and-validate scheme above.
-   Deliverable: `bt`, `l`, `list`, `i functions|files` against a live
-   process.
-4. **Execution control.** Breakpoints as `PTRACE_POKETEXT` int3 patches
-   (same original-byte bookkeeping as `debugger/breakpoints.w`); the
-   stop loop becomes `wait4`-driven with `PTRACE_CONT`/`SINGLESTEP`
-   instead of return-from-handler; `c/s/n/si/fin` and conditional
-   breakpoints/logpoints work unchanged above the seam. `q`/`detach`
-   restores every patched byte before `PTRACE_DETACH`.
-5. **Locals, frames, hardware watchpoints.** `i locals|args`, `p`,
-   `set`, frame selection through the seam (stack_pos tables exist after
-   phase 3). Hardware watchpoints via `PTRACE_POKEUSER` on DR0-DR7 (4
-   max; fall back to the software scan beyond that) — closes the
-   split-off item from `debugger_conditional_breakpoints.md`.
-6. **Eval, restricted.** `p <expr>` where evaluation only needs reads:
-   compile in wdbg as today, but variable/global loads go through the
-   seam. Expressions that would *call* into the target are rejected
-   with a clear diagnostic; gdb-style inferior calls are a separate
-   future project.
+2. **Target-access seam — done (memory and registers).** Read/write
+   dispatch (in-process direct vs. ptrace) routes every debuggee memory
+   access in `debugger/memory.w`, `wdbg.w`, `locals.w` and `watchpoints.w`
+   through `dbg_mem_readable`/`dbg_mem_read`/`dbg_mem_write_word`, with
+   `debugger/attach.w` installing its `PTRACE_PEEKDATA`/`POKEDATA`-backed
+   triple and routing `at_examine`/`set` through it. The register half
+   (`debugger/registers.w`) dispatches `dbg_reg_pc`/`dbg_reg_sp` the same
+   way: in-process reads a `dbg_reg_context` global that `wdbg.w`'s
+   `wdbg_trap`/`wdbg_fatal` set once per stop (additively — the explicit
+   `context` parameter those functions already thread through the rest of
+   their call chain is unchanged), while attach installs a
+   `PTRACE_GETREGS`-backed pair. No behavior change for the in-process path
+   (`./wbuild verify` and `verify_x64` stay green; `debug_test`/
+   `debug_test_x64`/`wdbg`/`repl_test`(`_x64`) and `attach_test` all pass
+   unchanged).
+3. **Symbol/line recovery — done, both word sizes.** The recompile-and-
+   validate scheme above, extended so `wdbg_attach_compile` passes the
+   `"x64"` target selector when the running debugger binary is 64-bit
+   (`__word_size__ == 8`) — attach symbolization no longer silently
+   compiles a 32-bit table set for a 64-bit target and failing calibration
+   by byte-mismatch. Deliverable: `bt`, `l`, `list`, `i functions|files`
+   against a live process, for both `bin/wdbg` and `bin/wdbg64`.
+4. **Execution control — done.** Breakpoints as `PTRACE_POKETEXT` int3
+   patches (same original-byte bookkeeping as `debugger/breakpoints.w`);
+   the stop loop is `wait4`-driven with `PTRACE_CONT`/`SINGLESTEP` instead
+   of return-from-handler; `c/si` work above the seam (conditional
+   breakpoints/logpoints are an in-process-only feature, not yet ported to
+   attach mode). `q`/`detach` restores every patched byte before
+   `PTRACE_DETACH`.
+5. **Locals, frames — done; hardware watchpoints remaining.** `i
+   locals|args`, `p`, `set` and frame selection (`f`/`up`/`down`) go
+   through the register + memory seams (`debugger/attach.w`'s
+   `at_frames_compute`/`at_sel_pc`/`at_sel_esp`), reusing
+   `debugger/locals.w`'s stack-slot arithmetic unmodified. Hardware
+   watchpoints via `PTRACE_POKEUSER` on DR0-DR7 (4 max; fall back to the
+   software scan beyond that) are still open — closes the split-off item
+   from `debugger_conditional_breakpoints.md` once landed.
+6. **Eval, restricted.** `p <expr>`/`set <expr>` currently resolve a
+   local/arg/global by name only (`debugger/attach.w`'s `at_print_command`/
+   `at_set_command`); a general expression compiler where variable/global
+   loads go through the seam, with in-target calls rejected, is still
+   open. gdb-style inferior calls are a separate future project.
 
 ## Testing
 
@@ -244,6 +284,16 @@ and must not use syntax newer than the seed.
 - Fixture: a small W program that increments a global in a loop, so the
   test can attach, read the global twice, and assert it advanced —
   proving both attach and memory reads without timing races.
+  `tests/attach_target_fixture.w`'s loop body is a two-level call
+  (`slow_step` calling `bump`, each with its own argument and local), so
+  the same fixture also exercises frame selection and locals/args through
+  the seam (**done**): breaking in `bump` and running `i a`/`p n`/`up`/
+  `p n` again proves both frame 0's and the caller's argument resolve
+  correctly, not just the innermost one.
+- x86-64 attach (**done**): the same cases run again against `bin/wdbg64`
+  attached to a 64-bit-compiled copy of the fixture
+  (`bin/attach_target64`), so symbolization, register dumps and
+  locals/frames are all verified for both word sizes, not just x86.
 - Mismatch path (**done**): `tools/attach_test.sh`'s "mismatched source"
   cases attach with a different, unrelated source file (`tests/debug_fixture.w`
   against the running `attach_target` fixture) and assert both the
