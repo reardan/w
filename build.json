@@ -2077,26 +2077,7 @@
 			"name": "cuda_diagnostics_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-<<<<<<< HEAD
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w", "tests/gpu_call_error_fixture.w", "tests/gpu_global_error_fixture.w", "tests/gpu_string_error_fixture.w", "tests/kernel_call_error_fixture.w", "tests/launch_non_kernel_error_fixture.w", "tests/launch_no_runtime_error_fixture.w", "tests/launch_arity_error_fixture.w", "tests/gpu_for_return_error_fixture.w", "tests/gpu_for_no_runtime_error_fixture.w", "tests/gpu_for_range_error_fixture.w", "tests/atomic_host_error_fixture.w", "tests/atomic_operand_error_fixture.w", "tests/atomic_minmax_float_error_fixture.w", "tests/gpu_capture_write_error_fixture.w"]}
-=======
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w"]},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_call_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu code cannot call functions"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_global_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "global variables are not accessible in gpu code"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_string_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "strings are not supported in gpu code"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/kernel_call_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "kernels cannot be called; use 'launch'"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_non_kernel_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'helper' is not a kernel"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_no_runtime_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu code requires 'import lib.cuda'"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_arity_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "kernel 'add' expects 2 arguments, got 1"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_return_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'return' is not supported in 'gpu for'"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_no_runtime_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu code requires 'import lib.cuda'"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_range_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'gpu for' supports only range(end) and range(start, end)"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_host_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "atomic_add/atomic_min/atomic_max are only available in gpu code"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_operand_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu atomics require an int* or float32* first argument"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_minmax_float_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "atomic_min/atomic_max require an int* first argument"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_math_host_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu_exp/gpu_log are only available in gpu code"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_capture_write_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "assignment to const"}
->>>>>>> origin/main
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w", "tests/gpu_call_error_fixture.w", "tests/gpu_global_error_fixture.w", "tests/gpu_string_error_fixture.w", "tests/kernel_call_error_fixture.w", "tests/launch_non_kernel_error_fixture.w", "tests/launch_no_runtime_error_fixture.w", "tests/launch_arity_error_fixture.w", "tests/gpu_for_return_error_fixture.w", "tests/gpu_for_no_runtime_error_fixture.w", "tests/gpu_for_range_error_fixture.w", "tests/atomic_host_error_fixture.w", "tests/atomic_operand_error_fixture.w", "tests/atomic_minmax_float_error_fixture.w", "tests/gpu_math_host_error_fixture.w", "tests/gpu_capture_write_error_fixture.w"]}
 			]
 		},
 		{
