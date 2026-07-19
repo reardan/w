@@ -1,0 +1,29 @@
+{
+	"targets": [
+		{
+			"name": "archs_fixture_default",
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wtest/archs_fixture/consumer.w", "-o", "bin/archs_fixture_default"]}
+			]
+		},
+		{
+			"name": "archs_fixture_default_run",
+			"deps": ["archs_fixture_default"],
+			"steps": [
+				{"cmd": ["bin/archs_fixture_default"], "expect_stdout": "archs_fixture: ok"}
+			]
+		},
+		{
+			"name": "archs_fixture_win64",
+			"steps": [
+				{"cmd": ["bin/wv2", "win64", "tests/wtest/archs_fixture/consumer.w", "-o", "bin/archs_fixture_win64.exe"]}
+			]
+		},
+		{
+			"name": "archs_fixture_darwin",
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/wtest/archs_fixture/consumer.w", "-o", "bin/archs_fixture_darwin"]}
+			]
+		}
+	]
+}

@@ -165,6 +165,8 @@ int pg_reader_is_top_level(pg_grammar_reader* reader):
 		return 1
 	if (strcmp(reader.token, c"mode") == 0):
 		return 1
+	if (strcmp(reader.token, c"import") == 0):
+		return 1
 	if (strcmp(reader.token, c"token") == 0):
 		return 1
 	if (strcmp(reader.token, c"skip") == 0):
@@ -213,6 +215,89 @@ char* pg_reader_take_string(pg_grammar_reader* reader):
 		return 0
 	char* text = strclone(reader.token)
 	pg_reader_next(reader)
+	return text
+
+
+# "a.b.c" for the "import <dotted.path>" directive (issue #329 milestone 4).
+char* pg_reader_take_dotted_name(pg_grammar_reader* reader):
+	string_builder* out = string_new()
+	char* first = pg_reader_take_name(reader)
+	if (first == 0):
+		free(out.data)
+		free(out)
+		return 0
+	string_append(out, first)
+	free(first)
+	while ((reader.token_kind == pg_reader_token_symbol()) && (strcmp(reader.token, c".") == 0)):
+		pg_reader_next(reader)
+		char* part = pg_reader_take_name(reader)
+		if (part == 0):
+			free(out.data)
+			free(out)
+			return 0
+		string_append_char(out, '.')
+		string_append(out, part)
+		free(part)
+	char* text = out.data
+	free(out)
+	return text
+
+
+char* pg_trim(char* text):
+	int start = 0
+	while (pg_lexer_is_space(text[start])):
+		start = start + 1
+	int end = strlen(text)
+	while ((end > start) && pg_lexer_is_space(text[end - 1])):
+		end = end - 1
+	return pg_substr(text, start, end - start)
+
+
+# Raw byte-level scan of an action ({ code }) or predicate (&{ expr }) block.
+# Called right after the opening '{' has been consumed as a token (so
+# reader.index already sits on the first byte inside the braces); this
+# bypasses the grammar tokenizer entirely so the verbatim W code inside is
+# preserved exactly, including punctuation the grammar's own tokenizer
+# would otherwise choke on. Braces are counted so a nested block (an
+# action calling something with a "{...}" argument, however unlikely)
+# doesn't end the scan early, and '"'/'\'' delimited literals are skipped
+# whole so a brace or backslash inside a string/char literal in the action
+# code can't desync the count. Returns 0 (after recording a diagnostic) on
+# an unterminated block.
+char* pg_reader_read_brace_block(pg_grammar_reader* reader):
+	int start = reader.index
+	int depth = 1
+	while (reader.input[reader.index] != 0):
+		int c = reader.input[reader.index]
+		if ((c == '"') || (c == 39)):
+			int quote = c
+			pg_reader_step(reader)
+			while ((reader.input[reader.index] != 0) && (reader.input[reader.index] != quote)):
+				if (reader.input[reader.index] == 92):
+					pg_reader_step(reader)
+					if (reader.input[reader.index] != 0):
+						pg_reader_step(reader)
+				else:
+					pg_reader_step(reader)
+			if (reader.input[reader.index] == quote):
+				pg_reader_step(reader)
+		else if (c == '{'):
+			depth = depth + 1
+			pg_reader_step(reader)
+		else if (c == '}'):
+			depth = depth - 1
+			if (depth == 0):
+				break
+			pg_reader_step(reader)
+		else:
+			pg_reader_step(reader)
+	if (reader.input[reader.index] != '}'):
+		pg_reader_error(reader, c"unterminated action block", c"}")
+		return 0
+	char* raw = pg_substr(reader.input, start, reader.index - start)
+	pg_reader_step(reader)
+	char* text = pg_trim(raw)
+	free(raw)
 	return text
 
 
@@ -514,6 +599,21 @@ int pg_reader_validate_matchers(pg_grammar_reader* reader, pg_grammar* grammar):
 	return 1
 
 
+int pg_reader_is_symbol(pg_grammar_reader* reader, char* symbol):
+	if (reader.token_kind != pg_reader_token_symbol()):
+		return 0
+	return strcmp(reader.token, symbol) == 0
+
+
+int pg_text_contains_newline(char* text):
+	int i = 0
+	while (text[i] != 0):
+		if (text[i] == 10):
+			return 1
+		i = i + 1
+	return 0
+
+
 void pg_reader_parse_rule_body(pg_grammar_reader* reader, pg_rule* rule):
 	pg_alternative* alternative = pg_alternative_new()
 	while (reader.token_kind != pg_reader_token_eof()):
@@ -522,6 +622,34 @@ void pg_reader_parse_rule_body(pg_grammar_reader* reader, pg_rule* rule):
 		if (pg_reader_accept_symbol(reader, c"|")):
 			pg_rule_add_alternative(rule, alternative)
 			alternative = pg_alternative_new()
+		else if (pg_reader_is_symbol(reader, c"{")):
+			# reader.index already sits on the first byte after '{' --
+			# read_brace_block scans raw bytes, so do NOT tokenize past
+			# it with pg_reader_next() first (issue #329 milestone 4).
+			char* code = pg_reader_read_brace_block(reader)
+			if (code == 0):
+				return
+			pg_alternative_add_term(alternative, pg_term_new_action(code))
+			free(code)
+			pg_reader_next(reader)
+		else if (pg_reader_is_symbol(reader, c"&")):
+			if (alternative.terms.length != 0):
+				pg_reader_error(reader, c"semantic predicate must be the first term of an alternative", c"&{ expr } at the start of the alternative")
+				return
+			pg_reader_next(reader)
+			if (pg_reader_is_symbol(reader, c"{") == 0):
+				pg_reader_error(reader, c"grammar parse error", c"&{ expr }")
+				return
+			char* code = pg_reader_read_brace_block(reader)
+			if (code == 0):
+				return
+			if (pg_text_contains_newline(code)):
+				pg_reader_error(reader, c"semantic predicate must be a single line", c"&{ expr } without a newline")
+				free(code)
+				return
+			pg_alternative_add_term(alternative, pg_term_new_predicate(code))
+			free(code)
+			pg_reader_next(reader)
 		else:
 			char* name = pg_reader_take_name(reader)
 			if (name == 0):
@@ -561,6 +689,13 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 				free(name)
 				return 0
 			free(name)
+		else if (pg_reader_is_name(reader, c"import")):
+			pg_reader_next(reader)
+			char* path = pg_reader_take_dotted_name(reader)
+			if (path == 0):
+				return 0
+			pg_grammar_add_import(grammar, path)
+			free(path)
 		else if (pg_reader_is_name(reader, c"token")):
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)

@@ -363,7 +363,7 @@ there is no foreign ABI to be compatible with until the libSystem stage.
   *exporting* W code pointers is not. Default stays `ret`, so nothing
   regresses; revisit if a real consumer needs C callbacks under full.
 - Tests: `pac_flag_test` (byte-pattern artifact assertions — x86 hosts have
-  no aarch64 objdump — via `tools/pac_flag_check.sh`, in the default
+  no aarch64 objdump — via `tools/pac_flag_check.w`, in the default
   `tests`), `pac_full_test_arm64` + `pac_corrupt_test_arm64` (qemu, out of
   the `tests` umbrella like `arm64_smoke_test`), `pac_darwin` (compile-only arm64e
   guard) + must-die handling in `tools/mac/run_darwin_tests.sh`.

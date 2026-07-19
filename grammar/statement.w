@@ -145,6 +145,39 @@ void statement():
 	int p2
 	int if_tab_level
 
+	# Recursion-depth guard (compiler/tokenizer.w): every nested block body
+	# ('{...}', a tab-scoped ':' block, or an if/while/for/switch body)
+	# recurses back through this same function, so wrapping its one entry
+	# and (at the bottom) its one fall-through exit is the single choke
+	# point that catches every deeply nested statement before the real
+	# call stack overflows -- no per-caller instrumentation needed.
+	#
+	# The limit is far below expr_nesting_depth's, and boxed in on both
+	# sides by code_generator/x86.w's separate, pre-existing fixed-size
+	# int[256] ctrl_kind_stack/ctrl_val_stack (every open if/while/for/
+	# switch region holds one of its slots until closed): an 'else if'
+	# dispatch chain -- lib/lib.w's errno-to-string table is the deepest
+	# in-tree case, 132 branches, each recursing statement() through the
+	# 'else' arm exactly like true block nesting does -- needs the limit
+	# above 132 to keep compiling, but that same chain shape exhausts the
+	# 256-slot array at 256 branches (measured exactly: 255 compiles, 256
+	# hits the array's own bounds-trap instead of this diagnostic). 200
+	# clears the real chain with margin and still leaves 56 branches of
+	# headroom before that pre-existing array limit. It stays far short
+	# of the real call-stack limit either way (measured empirically at
+	# 40000-60000 nested parens; statement()'s bigger frame lowers its
+	# own native ceiling, but nowhere near 200). It does not, and
+	# structurally cannot, preempt the array for a *true* nested if/
+	# while/for/switch body specifically (2-3 slots consumed per level
+	# instead of an else-chain's 1, so those shapes hit the array's bound
+	# at 129 / 86 respectively -- below 200): that narrower pre-existing
+	# gap already produces a bounds-trap diagnostic (not a silent crash)
+	# and is logged separately in docs/projects/ai_tooling_next_steps.md
+	# as a follow-up (the real fix is making the array dynamic).
+	stmt_nesting_depth = stmt_nesting_depth + 1
+	if (stmt_nesting_depth > 200):
+		error(c"statement nesting too deep")
+
 	# DWARF line info: the code emitted next belongs to this source line
 	debug_line_note(stack_pos)
 
@@ -349,3 +382,8 @@ void statement():
 		increment_statement_context = 1
 		expression()
 		expect_or_newline(c";")
+
+	# Matches the increment at the top: every path through the if/else-if
+	# chain above falls through to here (none of them return early), so
+	# this single decrement is reached on every normal exit.
+	stmt_nesting_depth = stmt_nesting_depth - 1

@@ -6,10 +6,12 @@ Usage: stat [-f|--nofollow] <path>...
 Default follows symlinks (stat(2)). -f / --nofollow uses lstat(2).
 Prints a short human-readable block per path. Exit 1 if any path fails.
 
-Boolean flags are parsed by hand: lib/args.w treats the token after a
-bare -flag as that flag's value, which would swallow the first path.
+-f/--nofollow are declared boolean flags (lib/args.w's args_has_bool_flag)
+so a bare -f directly before a path doesn't swallow it as the flag's
+value.
 */
 import lib.lib
+import lib.args
 import lib.stat
 import lib.passwd
 import lib.stream
@@ -101,37 +103,41 @@ int stat_print_one(char* path, int nofollow):
 	return 0
 
 
+# 1 when body is one of stat's own recognized flag names.
+int stat_flag_recognized(char* body):
+	if (args_name_matches(body, c"h")):
+		return 1
+	if (args_name_matches(body, c"help")):
+		return 1
+	if (args_name_matches(body, c"f")):
+		return 1
+	if (args_name_matches(body, c"nofollow")):
+		return 1
+	return 0
+
+
 int main(int argc, int argv):
-	int nofollow = 0
-	int path_count = 0
-	char** paths = cast(char**, malloc(argc * __word_size__))
+	args_init(argc, argv)
+	if (args_has_flag(c"h") || args_has_flag(c"help")):
+		stat_usage()
+		return 0
+	int nofollow = args_has_bool_flag(c"f") || args_has_bool_flag(c"nofollow")
 	int i = 1
-	while (i < argc):
-		char** slot = argv + i * __word_size__
-		char* arg = *slot
-		if ((strcmp(arg, c"-h") == 0) | (strcmp(arg, c"--help") == 0)):
-			stat_usage()
-			free(cast(void*, paths))
-			return 0
-		if ((strcmp(arg, c"-f") == 0) | (strcmp(arg, c"--nofollow") == 0)):
-			nofollow = 1
-		else if (arg[0] == '-'):
-			stat_usage()
-			free(cast(void*, paths))
-			return 1
-		else:
-			save_word(cast(char*, paths) + path_count * __word_size__, cast(int, arg))
-			path_count = path_count + 1
+	while (i < args_count()):
+		char* body = args_flag_body(args_get(i))
+		if (body != 0):
+			if (stat_flag_recognized(body) == 0):
+				stat_usage()
+				return 1
 		i = i + 1
+	int path_count = args_positional_count()
 	if (path_count < 1):
 		stat_usage()
-		free(cast(void*, paths))
 		return 1
 	int failed = 0
 	i = 0
 	while (i < path_count):
-		char* path = cast(char*, load_word(cast(char*, paths) + i * __word_size__))
+		char* path = args_positional(i)
 		failed = failed | stat_print_one(path, nofollow)
 		i = i + 1
-	free(cast(void*, paths))
 	return failed

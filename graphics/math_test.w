@@ -1,3 +1,4 @@
+# wbuild: name=graphics_math_test x64
 import lib.testing
 import lib.format
 import graphics.math

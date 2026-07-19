@@ -114,6 +114,19 @@ step differently and changes nothing about a plain `wexec <target>`.
 See tools/wexec_trace.w for the ptrace mechanism and its documented
 noise filter.
 
+Before running any requested target's steps through the ordinary
+scheduler (wexec_execute), wexec takes an advisory single-writer lock on
+its managed bin/ directory (bin/.wexec_lock, O_CREAT|O_EXCL, stale-pid
+reclaim) so a second overlapping invocation in the same worktree fails
+fast with a clear message instead of both processes writing/executing
+the same bin/wv2. See the block comment above wexec_lock_file (just
+before main) for the full design, including why wexec's own nested
+test-harness invocations are exempt. "--list", "--explain-cache" and
+"--trace" return before that point and never take the lock: the first
+two run no steps at all, and --trace's own ptrace-wrapped step runner
+(tools/wexec_trace.w) is a deliberately out-of-scope manual audit path,
+not part of the ordinary build/test flow this lock protects.
+
 Design notes: docs/projects/wexec.md
 */
 import lib.lib
@@ -145,6 +158,7 @@ int wexec_jobs               # max targets in flight (-j), default nproc
 map[char*, int] wexec_broken    # name -> 1 once failed or skipped (--keep-going)
 list[char*] wexec_failed_list   # failed targets, in completion order
 list[char*] wexec_skipped_list  # targets skipped behind a failed dependency
+int wexec_lock_held             # 1 once *this* process created (and must remove) bin/.wexec_lock
 
 
 int wexec_collect_closure(char* name);
@@ -2764,6 +2778,152 @@ int wexec_trace_cmd(char* name, int hermetic):
 	return wexec_trace_run(name, target, declared, hermetic)
 
 
+/* Advisory single-writer lock on the managed bin/ directory
+(docs/projects/ai_tooling_next_steps.md, "Two ./wbuild/wexec invocations
+racing in the same worktree" bullet): a foregrounded './wbuild verify'
+and a still-running backgrounded './wbuild test_changed' in the same
+worktree both write/execute the same bin/wv2, and the loser's compile
+just dies with a bare "could not open output file". main() now takes
+this lock right before it runs any target's steps (wexec_execute,
+below), so a second overlapping invocation fails fast with a clear
+message instead of silently corrupting the first one's output.
+
+Scope is per managed bin/ directory, not global: the lock file lives at
+"bin/.wexec_lock", relative to the current working directory -- the same
+convention "bin/.wexec_cache/" and "bin/.wexec_deps_cache" already use.
+Two unrelated worktrees never collide because each has its own, entirely
+separate "bin/".
+
+Reentrancy: wexec's own test targets (wexec_test and friends,
+build.base.json) run "bin/wexec -f tests/wexec/*.json <target>" as a
+*step* of an outer wexec invocation that already holds this very lock,
+against the exact same bin/ -- not a race, since the outer process is
+blocked in wait4() on this child for the whole step. wexec_lock_acquire
+marks WEXEC_LOCK_HELD=1 in the environment the moment it succeeds
+(env_copy_with, swapped into environ_ptr so every subprocess this run
+spawns inherits it through execve -- including transitively, through
+intermediate non-wexec programs like bin/wtest's own "--run" shelling
+out to bin/wexec again); a nested wexec sees the marker
+(wexec_lock_is_reentrant) and skips locking entirely, trusting the
+already-serialized ancestor. The mutation happens once, in the parent,
+before wexec_execute forks any worker (wexec_launch) -- workers inherit
+the updated environ_ptr for free via fork()'s copy-on-write memory, no
+extra threading needed.
+
+Mechanism: O_CREAT|O_EXCL (193 = O_WRONLY|O_CREAT|O_EXCL, the same
+combination libs/extras/vcs/cas.w's cas_store_bytes uses) so at most one
+caller ever wins the create; the winner writes its own pid, decimal, no
+trailing newline. A loser reads the pid back and checks it is still
+alive via kill(pid, 0) -- POSIX's null-signal existence probe, sent to no
+one, just an ESRCH/exists check. This is more portable across the arches
+wexec.w targets than parsing /proc: arm64_darwin has no procfs at all,
+so a /proc/<pid> check would read every live macOS lock as stale. If the
+recorded pid is dead, the lock is stale -- left behind by a SIGKILLed
+holder (no unwind, no release) or by any of the many direct exit() calls
+reachable from this process's own dependency graph (defer does not run
+on exit()/panic paths yet, see docs/projects/defer.md's "Possible future
+work" -- an in-region exit() leaves the same shape of stale lock a
+SIGKILL would, and self-heals the same way) -- so it is reclaimed and the
+create retried once. Release is a plain 'defer' registered right after a
+successful acquire in main(), so it fires on every return path taken
+after that point (grammar/defer.w, docs/projects/defer.md). */
+
+char* wexec_lock_file():
+	return c"bin/.wexec_lock"
+
+
+int wexec_lock_is_reentrant():
+	return env_get(c"WEXEC_LOCK_HELD") != 0
+
+
+void wexec_lock_mark_children():
+	environ_ptr = cast(int, env_copy_with(env_current(), c"WEXEC_LOCK_HELD", c"1"))
+
+
+# 1 when a process with this pid currently exists (see the block comment
+# above for why kill(pid, 0) instead of /proc). kill returns -EPERM (-1)
+# for a process that exists but this user may not signal (e.g. pid 1
+# probed from an unprivileged CI runner) -- existence is all the
+# null-signal probe asks, so only ESRCH means the holder is gone.
+int wexec_pid_alive(int pid):
+	if (pid <= 0):
+		return 0
+	int r = kill(pid, 0)
+	if (r >= 0):
+		return 1
+	return r == -1
+
+
+int wexec_lock_read_pid(char* path):
+	char* text = file_read_text(path)
+	if (text == 0):
+		return 0
+	int pid = atoi(text)
+	free(text)
+	return pid
+
+
+# At most one caller ever sees fd >= 0 here for a given path: O_EXCL
+# fails every later attempt while the file exists.
+int wexec_lock_try_create(char* path):
+	# 193 = O_WRONLY | O_CREAT | O_EXCL, 420 = rw-r--r--
+	int fd = open(path, 193, 420)
+	if (fd < 0):
+		return 0
+	char* pid_text = itoa(getpid())
+	write(fd, pid_text, strlen(pid_text))
+	free(pid_text)
+	close(fd)
+	return 1
+
+
+void wexec_lock_conflict(char* path, int pid):
+	wstream* err = stderr_writer()
+	stream_write_line(err, cstr(f"wexec: another build is running in this directory (pid {pid}); remove {path} if stale"))
+	stream_flush(err)
+
+
+# Acquires the per-bin-directory build lock, or reports why it could not
+# and returns 0 (the caller exits nonzero without ever having created the
+# lock file). A nested wexec invocation spawned by a step of an outer,
+# already-locked wexec (see the block comment above) always returns 1
+# without touching the lock file at all.
+int wexec_lock_acquire():
+	if (wexec_lock_is_reentrant()):
+		return 1
+	char* path = wexec_lock_file()
+	if (wexec_lock_try_create(path)):
+		wexec_lock_held = 1
+		wexec_lock_mark_children()
+		return 1
+	int pid = wexec_lock_read_pid(path)
+	if (wexec_pid_alive(pid)):
+		wexec_lock_conflict(path, pid)
+		return 0
+	# Stale: a dead pid (SIGKILL, crash, or an exit() bypassing defer --
+	# see the block comment above) means nobody is coming back to release
+	# this lock. Reclaim it and retry exactly once; a genuine winner of
+	# that retry race reports its own, unrelated failure below.
+	unlink(path)
+	if (wexec_lock_try_create(path)):
+		wexec_lock_held = 1
+		wexec_lock_mark_children()
+		return 1
+	wexec_error2(c"cannot acquire build lock: ", path)
+	return 0
+
+
+# Registered via 'defer' immediately after a successful wexec_lock_acquire
+# in main(), so it runs on every return path taken after that point. A
+# no-op when this process never actually created the lock (a reentrant
+# nested run, or main() returning before the lock was ever attempted).
+void wexec_lock_release():
+	if (wexec_lock_held == 0):
+		return
+	wexec_lock_held = 0
+	unlink(wexec_lock_file())
+
+
 int main(int argc, int argv):
 	wexec_jobs = 0
 	char* manifest_path = c"build.json"
@@ -2861,6 +3021,16 @@ int main(int argc, int argv):
 		wexec_usage()
 		wexec_list_targets()
 		return 1
+
+	# From here on we actually run target steps that can write into bin/
+	# (compiles, links, caches) -- take the single-writer lock on this
+	# invocation's managed bin/ directory first. See the block comment
+	# above wexec_lock_file for the full design (per-bin-dir scope,
+	# reentrant skip for wexec's own nested test-harness invocations).
+	if (wexec_lock_acquire() == 0):
+		return 1
+	defer wexec_lock_release()
+
 	int failed = wexec_execute(requested)
 	# Cache keys (and any recomputed import closures) are computed in
 	# the parent only, so the closure cache is saved here once, after

@@ -1,3 +1,4 @@
+# wbuild: name=net_tls_server_test x64
 /*
 Tests for the TLS 1.3 server role (tls_accept, libs/standard/net/tls.w),
 issue #203, part of #155.

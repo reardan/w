@@ -1,3 +1,9 @@
+# wbuild: expect_stdout="greeting str via f"
+# wbuild: expect_stdout="1.250000"
+# wbuild: expect_stdout="[5, -1, 12]"
+# wbuild: expect_stdout="[one, two]"
+# wbuild: expect_stdout="[]"
+# wbuild: expect_stdout="big"
 # Exercises the polymorphic print/println builtin: the target compares
 # this program's stdout against the expected lines.
 import lib.lib

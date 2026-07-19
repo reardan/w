@@ -1,3 +1,4 @@
+# wbuild: deps=tests/asm/
 /*
 x86 (32-bit) disassembler tests (issue #165):
 

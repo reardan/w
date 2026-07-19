@@ -266,8 +266,13 @@ before the next begins. Modules are ordered so the build-system work
   Merkle descent as file diff — the "tree diffs maintained across
   versions" half of the original idea, built from the same primitives.
 - **`dag.w`'s merge-base gives `wtest changed A..B`** exact,
-  commit-ranged semantics once commits exist (build direction 4b,
-  currently deferred on exactly this).
+  definition-level, commit-ranged semantics once commits exist (build
+  direction 4b's full index, still deferred on exactly this). A
+  shallower, file-level `wtest changed A..B` already shipped
+  (2026-07-19, wave plan C task 4b) by shelling out to the system
+  `git` directly — merge-base included — instead of waiting on `dag.w`;
+  it stays exact only down to *which files* changed, not which
+  definitions, until this deeper index exists.
 - **`index.w` is the realtime half**: the same stat-cache trick that
   makes `wvc status` O(changed) makes the save-time definition index
   (build direction 4c) cheap to keep warm.

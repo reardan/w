@@ -3,7 +3,7 @@
 # targets (32-bit links the i386 libc, 64-bit the x86-64 libc). Also
 # builds and runs on arm64 (dynamic_test_arm64, under qemu via
 # tools/run_arm64.sh).
-# wbuild: arch=arm64 expect_stdout="dynamic linking OK"
+# wbuild: x64 arch=arm64 expect_stdout="dynamic linking OK"
 
 c_lib "libc.so.6"
 

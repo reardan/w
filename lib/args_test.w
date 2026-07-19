@@ -75,3 +75,81 @@ void test_args_flag_value_not_positional():
 	assert_strings_equal(c"out.bin", args_value(c"o"))
 	assert_equal(1, args_positional_count())
 	assert_strings_equal(c"input.w", args_positional(0))
+
+
+# A bare boolean flag before a positional would otherwise swallow it as
+# the flag's "value" (the lib/args.w header's documented pitfall).
+void test_args_bool_flag_before_positional():
+	char** argv = cast(char**, malloc(3 * __word_size__))
+	argv[0] = c"prog"
+	argv[1] = c"-f"
+	argv[2] = c"path"
+	args_init(3, cast(int, argv))
+	assert_equal(1, args_has_bool_flag(c"f"))
+	assert_equal(1, args_positional_count())
+	assert_strings_equal(c"path", args_positional(0))
+
+
+void test_args_bool_flag_after_positional():
+	char** argv = cast(char**, malloc(3 * __word_size__))
+	argv[0] = c"prog"
+	argv[1] = c"path"
+	argv[2] = c"-f"
+	args_init(3, cast(int, argv))
+	assert_equal(1, args_has_bool_flag(c"f"))
+	assert_equal(1, args_positional_count())
+	assert_strings_equal(c"path", args_positional(0))
+
+
+void test_args_bool_flag_absent():
+	char** argv = cast(char**, malloc(2 * __word_size__))
+	argv[0] = c"prog"
+	argv[1] = c"path"
+	args_init(2, cast(int, argv))
+	assert_equal(0, args_has_bool_flag(c"f"))
+	assert_equal(1, args_positional_count())
+	assert_strings_equal(c"path", args_positional(0))
+
+
+# A declared boolean flag alongside a valued flag: only the boolean one's
+# following token stays unconsumed.
+void test_args_bool_flag_combined_with_valued_flag():
+	char** argv = cast(char**, malloc(5 * __word_size__))
+	argv[0] = c"prog"
+	argv[1] = c"-f"
+	argv[2] = c"-o"
+	argv[3] = c"out.bin"
+	argv[4] = c"path"
+	args_init(5, cast(int, argv))
+	assert_equal(1, args_has_bool_flag(c"f"))
+	assert_strings_equal(c"out.bin", args_value(c"o"))
+	assert_equal(1, args_positional_count())
+	assert_strings_equal(c"path", args_positional(0))
+
+
+# Either alias of a two-spelling boolean flag (-f / --nofollow, as used by
+# tools/stat.w) must be declared for both to stay non-consuming.
+void test_args_bool_flag_two_aliases():
+	char** argv = cast(char**, malloc(3 * __word_size__))
+	argv[0] = c"prog"
+	argv[1] = c"--nofollow"
+	argv[2] = c"path"
+	args_init(3, cast(int, argv))
+	args_declare_bool(c"f")
+	args_declare_bool(c"nofollow")
+	assert_equal(0, args_has_flag(c"f"))
+	assert_equal(1, args_has_flag(c"nofollow"))
+	assert_equal(1, args_positional_count())
+	assert_strings_equal(c"path", args_positional(0))
+
+
+# A declared boolean flag's bare form never yields a value, even though
+# the next token is not itself a flag.
+void test_args_bool_flag_value_is_null():
+	char** argv = cast(char**, malloc(3 * __word_size__))
+	argv[0] = c"prog"
+	argv[1] = c"-f"
+	argv[2] = c"path"
+	args_init(3, cast(int, argv))
+	args_declare_bool(c"f")
+	assert_equal(0, cast(int, args_value(c"f")))

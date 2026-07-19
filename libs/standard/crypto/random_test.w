@@ -1,3 +1,4 @@
+# wbuild: name=crypto_random_test x64
 import lib.testing
 import libs.standard.crypto.random
 

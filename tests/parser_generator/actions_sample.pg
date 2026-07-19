@@ -1,0 +1,21 @@
+parser actions_sample
+mode streaming
+import tests.parser_generator.actions_support
+
+skip WS = [ \t\r\n]+
+
+token NUMBER digits
+token IDENT letters
+literal PLUS "+"
+literal MINUS "-"
+literal SEMI ";"
+
+start program
+
+rule number = NUMBER { actions_emit_push(text(1)) }
+rule sum_tail = PLUS number { actions_emit_op(c"ADD") } sum_tail | MINUS number { actions_emit_op(c"SUB") } sum_tail |
+rule sum = number sum_tail
+rule primary = &{ actions_prefer_call() } IDENT { actions_emit_call(text(2)) } | IDENT { actions_emit_push_name(text(1)) }
+rule statement = sum SEMI | primary SEMI
+rule statement_list = statement statement_list |
+rule program = statement_list EOF

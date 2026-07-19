@@ -87,6 +87,30 @@ int compile_attempt(char* fn):
 	column_number = 0
 	tab_level = 0
 	byte_offset = 0
+	# Every file (root or import) starts parsing at nesting depth 0: an
+	# import statement only ever appears at a file's own top level, never
+	# inside a deeply nested expression or block, so these are already 0
+	# by the time an import reaches here in practice -- reset explicitly
+	# anyway so a compile that somehow starts already-nested (a future
+	# caller, or a REPL path that reuses compile_attempt) can never carry
+	# a stale count into a file that has not parsed anything yet.
+	expr_nesting_depth = 0
+	stmt_nesting_depth = 0
+	# A nested compile_attempt (an import, via compile_save below) starts
+	# while the importer's own nextc still holds its own mid-token
+	# lookahead -- for an import statement specifically, the newline that
+	# ends the 'import ...' line, not yet consumed (grammar/import_statement.w's
+	# read_until_end() stops right before it). Left alone, the very first
+	# get_character() call below (the priming read for this brand-new
+	# file) would see that stale lookahead, misread it as "this file's own
+	# previous character was a newline", and spuriously bump line_number
+	# from 0 to 1 before a single byte of the new file has been read --
+	# every diagnostic in the imported file then reports one line high.
+	# Resetting nextc to 0 first reproduces the same "no previous
+	# character" state every file sees at the true start of compilation
+	# (nextc's own zero-initialized default), so the priming read is
+	# unaffected by whatever the caller was in the middle of.
+	nextc = 0
 	nextc = get_character()
 	# Silently skip a single UTF-8 byte-order mark (EF BB BF) at the very
 	# start of the file -- some Windows editors emit one unprompted, and
@@ -244,12 +268,23 @@ int compile_input_file(char* path):
 void compile_save(char* fn):
 	char* old_filename = filename
 	int old_file = file
-	int old_line_number = line_number + 1
+	int old_line_number = line_number
 	int old_column_number = column_number
 	int old_diag_token_line = diag_token_line
 	int old_diag_token_column = diag_token_column
 	int old_tab_level = tab_level
 	int old_byte_offset = byte_offset
+	# Saved (and restored below) so the importer's own pending lookahead
+	# survives the nested compile: import_statement() left nextc holding
+	# the not-yet-consumed newline at the end of the 'import ...' line
+	# (read_until_end() stops right before it), and the caller's own
+	# 'nextc = get_character()' right after this call relies on seeing
+	# that same newline to correctly advance line_number past it. Without
+	# this, nextc comes back holding whatever the imported file's own
+	# tokenizing left it as (its own EOF-ish sentinel), that follow-up
+	# read silently fails to notice a newline was crossed, and every
+	# diagnostic for the rest of the importing file reports one line low.
+	int old_nextc = nextc
 
 	# Import aliases and plain-import records are file-scoped: hide the
 	# importer's entries while the imported file compiles, then drop the
@@ -283,6 +318,7 @@ void compile_save(char* fn):
 	diag_token_column = old_diag_token_column
 	tab_level = old_tab_level
 	byte_offset = old_byte_offset
+	nextc = old_nextc
 	import_alias_base = old_alias_base
 	import_alias_count = old_alias_count
 	import_plain_base = old_plain_base
@@ -549,6 +585,19 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# Debug dump of the embedded PTX module (kernels/'gpu for'),
 			# written by ptx_finish_module; ignored when no kernels exist.
 			ptx_dump_path = *arg + 6
+		else if (starts_with(*arg, c"-")):
+			# Every recognized flag was matched above; a dash-prefixed
+			# argument that reaches here is a typo or an unsupported
+			# option ('--bounds=xyz', '--nope'), not an input file — a
+			# file named '-x' is vanishingly rare in this codebase, and
+			# treating it as a root instead produced a misleading "no
+			# such file: '--bounds=xyz'" (the fallthrough below tried to
+			# open it). Fail fast with the option text instead of
+			# silently compiling it as a root.
+			print_error(c"unrecognized option: '")
+			print_error(*arg)
+			print_error(c"'\x0a")
+			exit(1)
 		else:
 			char* input = *arg
 			# A compiler-internal root cannot be checked standalone;
@@ -775,14 +824,15 @@ w defhash [--closure] [x64|arm64|arm64_darwin|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then prints one NDJSON
 record per top-level definition (function, global variable, struct,
-union, enum, type alias) declared directly in the root file(s) named on
-the command line: {"file", "name", "kind", "hash", "refs"}. "hash" is a
-sha256 over the definition's own token stream -- kind+text pairs,
-whitespace and comments excluded -- so a reformatting or comment-only
-edit leaves it unchanged while any real content edit changes it. "refs"
-lists the OTHER recorded definitions' names that appear as an identifier
-token inside the definition's span (deduplicated, sorted), the
-approximation of "symbols this definition depends on" described in
+union, enum, type alias, generic function, generic struct, operator
+overload) declared directly in the root file(s) named on the command
+line: {"file", "name", "kind", "hash", "refs"}. "hash" is a sha256 over
+the definition's own token stream -- kind+text pairs, whitespace and
+comments excluded -- so a reformatting or comment-only edit leaves it
+unchanged while any real content edit changes it. "refs" lists the OTHER
+recorded definitions' names that appear as an identifier token inside
+the definition's span (deduplicated, sorted), the approximation of
+"symbols this definition depends on" described in
 docs/projects/build_system_next.md's 4a.
 
 Scope: by default only definitions declared directly in the command-line
@@ -794,20 +844,44 @@ by defhash_depth (see compile_save below) rather than by comparing
 paths: 0 while the tokens just parsed belong directly to a root
 argument, >0 while inside an import's own nested compile.
 
-Exclusions (documented, not bugs): generic struct/function definitions
-and 'operator' overload definitions are never recorded -- the scan-ahead
-and re-parse machinery those go through (grammar/generic.w,
-grammar/operator_overload.w) never reaches defhash_note's call sites, so
-their bodies are invisible to defhash today. A struct/union field name or
-enum constant that happens to share text with another top-level
-definition's name is indistinguishable, in this token-stream scan, from a
-real reference to it, and so can appear as a false-positive ref; the
-scan also does not special-case shadowing (a parameter or local that
-reuses another definition's name reads as a reference to it). "Source
-order" is the order definitions were recorded in, which is exactly
-file-order for the default (single root, no --closure) case; --closure
-interleaves recording across files in compile-visitation order rather
-than a stable (file, offset) sort.
+Generic struct/function definitions (wave plan C task 4f): the
+scan-ahead/re-parse machinery (grammar/generic.w) that captures a
+generic definition's span for later instantiation now also calls
+defhash_note over that exact span, so a generic's own definition is
+hashed like any other -- an instantiation elsewhere is not itself a
+definition and never touches the hash. "name" is the BASE identifier
+with no '[T]' (e.g. "max", not "max[T]"), since the definition itself
+does not change across instantiations; "kind" is "generic_function" or
+"generic_struct" rather than plain "function"/"struct" so a consumer can
+tell the two apart (the function/struct namespaces are separate, so a
+plain and a generic definition could otherwise share a name and kind).
+
+'operator' overload definitions (wave plan C task 4f): unlike generics,
+an overload (grammar/operator_overload.w) is compiled immediately, not
+deferred -- there is no separate registry span to reuse, so
+operator_definition() instead builds a synthetic "name" once the operand
+types are known and defhash_note is called with the ordinary
+declaration span (grammar/program.w). Every overload of one operator
+SPELLING declares the same real symbol ("operator") before mangling, so
+the recorded "name" cannot be that shared string: it is
+"operator<spelling>(<left>, <right>)" (e.g. "operator+(vec3, vec3)"),
+built from the same operand-type spellings the real mangled symbol name
+uses, which keeps it unique within a file for the same reason the
+mangled name is. "kind" is "operator". An operator is invoked through
+its token (`a + b`), never by referring to this synthetic name, so no
+other definition's "refs" list can ever name an operator overload --
+not a bug, just a consequence of operators having no callable-by-name
+call sites for the token-text ref scan to match.
+
+A struct/union field name or enum constant that happens to share text
+with another top-level definition's name is indistinguishable, in this
+token-stream scan, from a real reference to it, and so can appear as a
+false-positive ref; the scan also does not special-case shadowing (a
+parameter or local that reuses another definition's name reads as a
+reference to it). "Source order" is the order definitions were recorded
+in, which is exactly file-order for the default (single root, no
+--closure) case; --closure interleaves recording across files in
+compile-visitation order rather than a stable (file, offset) sort.
 */
 
 
@@ -822,6 +896,16 @@ char* defhash_columns
 char* defhash_starts
 char* defhash_ends
 int defhash_count
+
+# Name -> 1 existence index mirroring defhash_names, consulted by
+# defhash_is_known_definition (below) instead of a linear scan over
+# defhash_count. Built-in map[char*, int] is fine here: it is what
+# libs/extras/c_import/importer.w's own name-existence checks
+# (ci_imported_functions) already use, and that file compiles under the
+# same pinned seed as this one (CLAUDE.md's seed-graph list) -- so this
+# introduces no new pattern, just applies the codebase's existing
+# string-set idiom at compiler-internal scope instead of a leaf library's.
+map[char*, int] defhash_name_index
 
 
 # Called by the grammar's top-level declaration recognizers (struct,
@@ -854,6 +938,9 @@ void defhash_note(char* name, char* kind, int file_index, int line, int column, 
 	save_ptr(defhash_starts + defhash_count * __word_size__, start_offset)
 	save_ptr(defhash_ends + defhash_count * __word_size__, end_offset)
 	defhash_count = defhash_count + 1
+	if (defhash_name_index == 0):
+		defhash_name_index = new map[char*, int]
+	defhash_name_index[name] = 1
 
 
 # Classification tag for one token's text, used only to keep the hashed
@@ -962,17 +1049,31 @@ void defhash_refs_sort():
 		i = i + 1
 
 
-# 1 when 'name' matches some OTHER recorded definition's name (a linear
-# scan over defhash_count; defhash runs are small enough -- a single
-# file by default, the whole program only under --closure -- that this
-# stays well under the cost of the tokenizing it runs alongside).
+# 1 when 'name' matches some OTHER recorded definition's name: a
+# defhash_name_index lookup (wave plan C task 4f) instead of a linear
+# scan over defhash_count. The linear scan stayed well under the cost of
+# the tokenizing it runs alongside for this repo's own runs (a single
+# file by default, ~360 definitions for the whole lib.lib closure under
+# --closure), but a map lookup is O(1) regardless of scale, which matters
+# once --closure runs over a program an order of magnitude bigger.
+#
+# 'int found = ...; return found' rather than 'return name in
+# defhash_name_index' directly is NOT just style: the direct form
+# reproducibly segfaults bin/wv2_64 while self-hosting w.w for x64
+# (verify_x64) even though defhash_is_known_definition is never actually
+# CALLED during an ordinary (non-defhash) compile -- a minimal standalone
+# repro of the same shape (global map, 'if not-yet-created: return 0' /
+# 'return name in map') did NOT reproduce it, so this looks like a latent
+# x64 codegen bug in 'in' as a direct return-expression that only
+# surfaces in this file's larger/denser context (register pressure,
+# code-size-dependent branch encoding, or similar), not a defect in map
+# semantics themselves. Logged in ai_tooling_next_steps.md for follow-up;
+# splitting the expression across two statements sidesteps it entirely.
 int defhash_is_known_definition(char* name):
-	int i = 0
-	while (i < defhash_count):
-		if (strcmp(cast(char*, load_ptr(defhash_names + i * __word_size__)), name) == 0):
-			return 1
-		i = i + 1
-	return 0
+	if (defhash_name_index == 0):
+		return 0
+	int found = name in defhash_name_index
+	return found
 
 
 # Re-tokenize definition `idx`'s recorded [start, end) byte span, on a

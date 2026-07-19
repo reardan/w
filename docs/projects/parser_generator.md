@@ -78,7 +78,9 @@ generated matcher loops from stalling.
 
 Rule terms are token names, literal names, rule names, or `EOF`. A term may end
 with `?`, `*`, or `+`. Alternatives are separated by `|`. Parenthesized groups
-and semantic actions are intentionally left for a later milestone.
+are intentionally left for a later milestone; `{ code }` action terms and a
+`&{ expr }` predicate leading an alternative are supported in `mode
+streaming` grammars only (issue #329 milestone 4 — see below).
 
 ## Lossless token stream
 
@@ -207,21 +209,85 @@ rule, and right-recursive statement lists) exercising enter/exit/token
 callbacks over real input, a genuine syntax-error path, and the
 rule-referenced-repeat rejection.
 
-Actions and predicates (`{ code }` / `&{ expr }`, milestone 4) are not
-implemented; the intentional over-acceptance `w.pg` uses for
-context-sensitive parses (`top_item`'s declaration-vs-statement re-parse,
-`name_token`'s deliberately broad keyword set, `type_ref`-prefixed
-declaration dispatch, and the "does this alternative's leading token
-also start a nested primary expression" family in
+Since 2026-07 (issue #329 milestone 4, the last of the streaming-mode
+milestones) a rule alternative may contain `{ code }` action terms and
+lead with a `&{ expr }` semantic predicate. Both are **streaming-mode
+only**: AST mode has no commit point to run an action at exactly once
+(every rule there still marks and rewinds), so a grammar carrying either
+in AST mode is rejected at generation time, by rule name, before the AST
+emitter ever runs (`pg_action_safety_check` in `analysis.w`).
+
+- **`{ code }` action terms** are verbatim W source, copied into the
+  generated rule function at exactly that position in the alternative and
+  executed once the alternative is committed to. An action may hold
+  several statements, one per (trimmed) source line, but each line must be
+  a single flat top-level statement — an action body cannot itself open a
+  nested indented block (`if`/`while`/etc.); split control flow like that
+  into a plain function and call it from the action instead. Because
+  streaming mode already requires the *entire* grammar to be committed
+  dispatch (no `pg_token_stream_mark`/`rewind` anywhere in the generated
+  file), an action term is safe by construction the moment its grammar
+  passes `pg_streaming_check` — there is no backtracking region left
+  anywhere for it to run inside of more than once.
+- **`&{ expr }` semantic predicates** may appear only as the first term of
+  an alternative. Where two or more alternatives share an overlapping
+  first set, a predicate-headed one is tried in declaration order among
+  them — `if (<expr1>): ... else if (<expr2>): ... else if
+  (<first-set test>): ...` — gated purely by the predicate's boolean
+  value, not combined with a first-set test, so a predicate can resolve
+  exactly the kind of context-sensitive ambiguity the hand-written
+  compiler resolves with its own symbol-table-aware gates (e.g.
+  `variable_declaration()`'s `type_lookup(token) >= 0`). The predicate
+  expression must be side-effect-free and a single line; this is a
+  documented author contract, not something the generator enforces or
+  proves. `analysis.w`'s conflict detector (`pg_report_choice`, also used
+  by `--report` and `pg_streaming_check`) exempts a predicate-headed
+  alternative from the first-set overlap check in both directions — its
+  dispatch is resolved by the predicate, not by first-set disjointness —
+  but two *unpredicated* overlapping alternatives are still flagged
+  exactly as before milestone 4.
+- **`$n` / `text(n)` bindings**: inside an action, `$n` or `text(n)` is the
+  text of term *n* (1-based, counting every term in the same alternative,
+  action/predicate terms included) — deliberately narrow for v1: `n` must
+  name an *earlier*, plain (no `?`/`*`/`+`) token or literal term in the
+  same alternative; referencing a rule term, a repeated/optional term, a
+  later term, or an out-of-range index is a generation-time error naming
+  the rule (`pg_validate_action_bindings` in `generator.w`). A binding
+  reference is also rejected outright when its own alternative shares a
+  leading term with a sibling (i.e. could ever be left-factored with it):
+  a left-factored shared prefix is parsed once under the factored unit's
+  representative alternative, and extending the binding surface to name
+  the right captured variable across that renaming is left for a later
+  milestone — rewrite the rule to avoid the shared prefix if this fires.
+- **Host-provided functions**: an action or predicate calling a function
+  that isn't in scope needs the generated file to import whatever module
+  defines it. A grammar's own top-level `import <dotted.path>` directive
+  (e.g. `import tests.parser_generator.actions_support`) adds exactly that
+  line to the generated output, alongside the standard runtime import; a
+  grammar that declares no `import` directive (every grammar before
+  milestone 4) is generated byte-for-byte as before.
+- **Demonstration**: `tests/parser_generator/actions_sample.pg` /
+  `generated_actions_test.w` is a small "emit-as-you-parse" example: a
+  left-to-right sum/difference chain whose actions call
+  `tests/parser_generator/actions_support.w` to record stack-machine
+  instructions (`PUSH n`, `ADD`, `SUB`, ...) as each term commits — the
+  instruction list *is* the parse's output, with no AST and no buffering
+  — plus a predicate (`&{ actions_prefer_call() }`) choosing between two
+  alternatives that share the same `IDENT` first token, the same
+  ambiguity shape `w.pg` still needs milestone 4 for.
+
+`w.pg` itself is unchanged and stays in the default AST mode: the
+intentional over-acceptance it uses for context-sensitive parses
+(`top_item`'s declaration-vs-statement re-parse, `name_token`'s
+deliberately broad keyword set, `type_ref`-prefixed declaration dispatch,
+and the "does this alternative's leading token also start a nested
+primary expression" family in
 `paren_expression_opt`/`range_expr`/`postfix_tail`) is exactly the set of
-rules `--report` still lists as backtracking after milestone 2, and
-milestone 3's stricter streaming check rejects a grammar containing
-them for the same reason today's generator still needs a trial parse
-there: resolving each one requires either unbounded lookahead or a
-semantic predicate against symbol-table state the grammar alone doesn't
-have, which is milestone 4's job. `w.pg` therefore stays in the default
-AST mode; streaming mode is proven so far only on the small grammar
-above.
+rules `--report` still lists as backtracking after milestone 2 — porting
+it to streaming mode with predicates is future work, not part of this
+milestone (see `docs/projects/ai_tooling_next_steps.md` for the
+known-unsound-shape caveat discovered while building the demonstration
+grammar above).
 
 ## W grammar
 

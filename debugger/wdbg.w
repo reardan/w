@@ -88,6 +88,7 @@ import structures.string
 import repl.core
 import repl.scan
 import debugger.sigcontext
+import debugger.registers
 import debugger.memory
 import debugger.lines
 import debugger.symbols
@@ -1030,6 +1031,11 @@ void dbg_log_report(int bp, int addr, int esp):
 # through the kernel's sigreturn path. context points at the sigcontext;
 # the arch-specific entry shims below compute it.
 void wdbg_trap(int sig, int context):
+	# Mirrors the trapped sigcontext into the register seam's in-process
+	# read path (debugger/registers.w), so any seam consumer sees the same
+	# registers this handler is about to work with. Purely additive: every
+	# call below still threads 'context' explicitly, unchanged.
+	dbg_reg_context = context
 	int eip = ctx_eip(context)
 
 	# One instruction has executed since a breakpoint was resumed: put its
@@ -1180,6 +1186,7 @@ void wdbg_trap(int sig, int context):
 # which rolls the failed entry back and returns to the wdbg prompt
 # instead of wedging the session in a post-mortem stop.
 void wdbg_fatal(int sig, int context):
+	dbg_reg_context = context
 	if (repl_fault_active):
 		repl_fault(sig, context)
 	dbg_fatal_stop = 1
@@ -1307,13 +1314,34 @@ void wdbg_install_handler(int signum, int handler, int flags):
 # (link_impl with the ELF backend). code_offset is then the load base and the
 # tables hold the target's real addresses, so attach needs no remapping. The
 # ELF image goes to /dev/null; only the in-memory tables are kept.
+#
+# link_impl always resets word_size to 4 (32-bit) unless its first argument
+# is a target selector word ("x64", ...), so this must pass one explicitly
+# when the target is 64-bit -- otherwise every attach recompile (even under
+# bin/wdbg64) would build 32-bit tables and byte-mismatch against a 64-bit
+# /proc/<pid>/exe at calibration, permanently falling back to raw mode. The
+# word size to compile for is the running debugger binary's own
+# (__word_size__): exactly like the in-process path (which sets
+# word_size = __word_size__ a few lines down in wdbg_main), attach mode
+# symbolizes 64-bit targets by running as bin/wdbg64, not by asking bin/wdbg
+# to cross-symbolize a 64-bit process.
 void wdbg_attach_compile(char* target):
-	int argv = cast(int, malloc(4 * __word_size__))
-	save_word(cast(char*, argv + 0 * __word_size__), cast(int, c"wdbg"))
-	save_word(cast(char*, argv + 1 * __word_size__), cast(int, target))
-	save_word(cast(char*, argv + 2 * __word_size__), cast(int, c"-o"))
-	save_word(cast(char*, argv + 3 * __word_size__), cast(int, c"/dev/null"))
-	link_impl(4, argv, 1, 0)
+	int n = 4
+	if (__word_size__ == 8):
+		n = 5
+	int argv = cast(int, malloc(n * __word_size__))
+	int idx = 0
+	save_word(cast(char*, argv + idx * __word_size__), cast(int, c"wdbg"))
+	idx = idx + 1
+	if (__word_size__ == 8):
+		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"x64"))
+		idx = idx + 1
+	save_word(cast(char*, argv + idx * __word_size__), cast(int, target))
+	idx = idx + 1
+	save_word(cast(char*, argv + idx * __word_size__), cast(int, c"-o"))
+	idx = idx + 1
+	save_word(cast(char*, argv + idx * __word_size__), cast(int, c"/dev/null"))
+	link_impl(n, argv, 1, 0)
 
 
 int wdbg_main(int argc, int argv):
@@ -1418,6 +1446,7 @@ int wdbg_main(int argc, int argv):
 
 	bp_init()
 	dbg_memory_init()
+	dbg_registers_init()
 	dbg_rearm_bp = -1
 	# Disassembly reads the debuggee's code directly; the compiler's own
 	# symbol table (still loaded from the in-process compile) symbolizes it.

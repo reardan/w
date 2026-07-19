@@ -1,6 +1,8 @@
 # String literals embed host-image blobs, which device (PTX) code
-# cannot address. Compiled with the x64 selector by the
-# cuda_diagnostics_test target.
+# cannot address.
+# wfixture: x64
+# expect_fail
+# expect_stderr: strings are not supported in gpu code
 kernel bad(int* v, int n):
 	char* s = c"nope"
 	v[0] = 0

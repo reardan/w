@@ -90,7 +90,7 @@ void deflate_emit_stored_block(string_builder* out, char* data, int offset, int 
 	int nlen = (len ^ 65535) & 65535
 	string_append_char(out, nlen & 255)
 	string_append_char(out, shr(nlen, 8) & 255)
-	string_append_bytes(out, data + offset, len)
+	string_append_bytes(out, &data[offset], len)
 
 
 /* ---- LZ77: hash-chain match finder with lazy matching ---- */

@@ -469,7 +469,7 @@ void inf_stored_block(winflate_ctx* c):
 	if ((c.max_output > 0) && (c.out.length + len > c.max_output)):
 		c.status = INFLATE_ERR_TOO_LARGE()
 		return
-	string_append_bytes(c.out, c.in_data + c.byte_pos, len)
+	string_append_bytes(c.out, &c.in_data[c.byte_pos], len)
 	c.byte_pos = c.byte_pos + len
 
 
@@ -612,10 +612,13 @@ void inf_dynamic_block(winflate_ctx* c):
 	int dist_ok = 0
 	if (litlen_ok != 0):
 		# Pointer arithmetic on a typed pointer is a raw byte offset in
-		# this language (matches lib/sha256.w's own char*-plus-manual-
-		# stride convention) -- `lengths + hlit` would land `hlit` BYTES
-		# past `lengths`, not `hlit` ints past it. Scale explicitly.
-		dist_ok = wh_build(c, dist_huff, lengths + hlit * __word_size__, hdist)
+		# this language -- plain `lengths + hlit` would land `hlit` BYTES
+		# past `lengths`, not `hlit` ints past it (this is exactly the
+		# bug that used to live here, see
+		# docs/projects/ai_tooling_next_steps.md). `&lengths[hlit]`
+		# indexes instead of adding, so it scales by int's width
+		# automatically -- no manual `* __word_size__`.
+		dist_ok = wh_build(c, dist_huff, &lengths[hlit], hdist)
 	free(lengths)
 	if ((litlen_ok != 0) && (dist_ok != 0)):
 		inf_huffman_block(c, litlen_huff, dist_huff)
