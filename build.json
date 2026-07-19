@@ -989,6 +989,15 @@
 			]
 		},
 		{
+			"name": "pac_flag_check",
+			"deps": ["wv2"],
+			"inputs": ["tools/pac_flag_check.w"],
+			"outputs": ["bin/pac_flag_check"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/pac_flag_check.w", "-o", "bin/pac_flag_check"]}
+			]
+		},
+		{
 			"name": "wtest_map_test",
 			"deps": ["wtest", "wtest_map_check"],
 			"data": ["tests/wtest/"],
@@ -1884,9 +1893,14 @@
 		},
 		{
 			"name": "pac_flag_test",
-			"deps": ["wv2"],
+			"deps": ["wv2", "pac_flag_check"],
 			"steps": [
-				{"cmd": ["sh", "tools/pac_flag_check.sh", "bin/wv2"], "expect_stdout": "pac flag test OK"}
+				{"cmd": ["bin/wv2", "arm64", "tests/pac_full_test.w", "-o", "bin/pac_flag_ret"]},
+				{"cmd": ["bin/wv2", "arm64", "--pac=off", "tests/pac_full_test.w", "-o", "bin/pac_flag_off"]},
+				{"cmd": ["bin/wv2", "arm64", "--pac=full", "tests/pac_full_test.w", "-o", "bin/pac_flag_full"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "--pac=full", "tests/pac_full_test.w", "-o", "bin/pac_flag_arm64e"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/pac_full_test.w", "-o", "bin/pac_flag_darwin"]},
+				{"cmd": ["bin/pac_flag_check", "bin/pac_flag_ret", "bin/pac_flag_off", "bin/pac_flag_full", "bin/pac_flag_arm64e", "bin/pac_flag_darwin"], "expect_stdout": "pac flag test OK"}
 			]
 		},
 		{
