@@ -314,6 +314,35 @@ int getdents(int file, char* buf, int count):
 	return -1
 
 
+# Portable metadata wrappers are Linux-first (lib/stat.w).
+int at_fdcwd():
+	return 0 - 100
+
+
+int at_symlink_nofollow():
+	return 256
+
+
+int statx(char* path, int flags, int mask, char* buf):
+	return -1
+
+
+int chmod(char* path, int mode):
+	return -1
+
+
+int utimensat(char* path, int times, int flags):
+	return -1
+
+
+int readlink(char* path, char* buf, int size):
+	return -1
+
+
+int symlink(char* target, char* linkpath):
+	return -1
+
+
 int fork():
 	return -1
 

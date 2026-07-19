@@ -278,29 +278,23 @@ natively or fell back to the real binary via `sh_interactive` (§7).
 | `head`/`tail` | `file_read_lines` sliced to first/last N | full for typical files | loads the whole file first; a streaming version is a later optimization |
 | `wc` | `file_read_text`/`file_read_lines` | full | trivial counting |
 
-**The stat gap, twice over.** `docs/projects/ai_tooling_next_steps.md`
-records: "No portable stat()/file-metadata wrapper exists anywhere in
-the tree... A general `lib/stat.w` (mtime/size/mode/is-dir for any
-caller, not just `libs/extras/vcs`) is future work once a second
-consumer needs it outside vcs/." `docs/projects/streams.md`'s own
-follow-ups list "`stat`/`unlink`/`rename` wrappers" too. The only
-stat today is `libs/extras/vcs/__arch__/{x86,x64}/fsops.w`'s
-`vcs_statx` (Linux `statx`, x86/x64 only), scoped for `index.w`'s
-mtime cache. `ls -l` is exactly the "second consumer" that backlog
-entry anticipated — recommend promoting a general, arch-keyed
-`lib/stat.w` (size/mtime/mode/is-dir) when `-l` is actually picked
-up, rather than reaching sideways into `libs/extras/vcs`'s
-Linux-only helper from `lib/`. Until then, `ls -l` simply fails the
-recognition test (§5.2 rule 3, unknown flag) and falls back to the
-real `ls`. The same gap is why `mv` above recommends `cp`+`rm` rather
-than a real rename: the only rename wrapper (`vcs_rename`) lives
-under the same `libs/extras/vcs/__arch__` scoping, for the same
-reason.
+**File metadata for `ls -l`.** `lib/stat.w` now provides portable
+`file_stat_path` / `file_lstat_path` (Linux `statx` under the hood;
+Darwin/win64/wasm still stub `-1`), and `libs/extras/vcs/index.w`
+uses it instead of the old VCS-scoped `vcs_statx`. `ls -l` can read
+size/mtime/mode/is-dir from that API when it is picked up.
+`docs/projects/streams.md`'s follow-ups still mention richer path
+helpers beyond the metadata foundation. Until `-l` is implemented,
+`ls -l` simply fails the recognition test (§5.2 rule 3, unknown flag)
+and falls back to the
+real `ls`. `mv` above still recommends `cp`+`rm` rather than a real
+rename when a portable `rename` is not the path of least resistance —
+`lib/__arch__` now wraps `rename` on Linux, but shell mode has not
+been wired to it yet.
 
-Both gaps are **not** REPL-platform limitations: `repl.w` itself only
-wires x86/x64 today (`repl_improvements.md` §1), so a stat/rename
-promotion scoped to x86/x64 loses nothing shell mode would otherwise
-have.
+Neither limitation is a REPL-platform gap: `repl.w` itself only wires
+x86/x64 today (`repl_improvements.md` §1), so an x86/x64-first
+shell `ls -l` / `mv` loses nothing shell mode would otherwise have.
 
 ### 6.3 Deferred: grep, find, sed
 

@@ -42,6 +42,13 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- Portable `lib/stat.w` + Linux `statx`/`chmod`/`utimensat`/`readlink`/
+  `symlink` wrappers in `lib/__arch__/{x86,x64,arm64}/syscalls.w`
+  (2026-07-19): `file_stat_path` / `file_lstat_path`, mode predicates,
+  and thin `file_chmod` / `file_touch` / `file_readlink` helpers.
+  `libs/extras/vcs/index.w` now uses `file_stat_path` instead of the
+  VCS-scoped `vcs_statx`. Dogfooded by `tools/{stat,chmod,touch,readlink}.w`
+  and `stat_test` / `unix_tools_test`. Darwin/win64/wasm stubs return -1.
 - **`wexec --explain-cache <target>`** and **`wexec --list --json`**
   (2026-07-17): two read-only introspection surfaces on `tools/wexec.w`.
   `--explain-cache` states, without running anything, whether a target

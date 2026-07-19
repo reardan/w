@@ -104,10 +104,16 @@ Consult these CPython sources first:
 
 ### Phase 1: syscall and stat foundation
 
-- Add portable x86/x64 wrappers for `stat`, `fstat`, `getdents`, `unlink`,
-  `rmdir`, `rename`, and optionally `readlink`.
-- Add tests using temporary directories.
-- Ensure 32-bit struct layouts are correct with explicit load/store helpers.
+- **Landed in `lib/` (not under `libs/standard/fs/` yet):** Linux
+  `statx` / `chmod` / `utimensat` / `readlink` / `symlink` wrappers in
+  `lib/__arch__/{x86,x64,arm64}/syscalls.w`, portable parser and helpers
+  in `lib/stat.w` (`file_stat_path`, `file_lstat_path`, predicates,
+  `file_chmod` / `file_touch` / `file_readlink`). Covered by
+  `tests/stat_test.w` and dogfooded by `tools/{stat,chmod,touch,readlink}.w`.
+  Remaining for this phase when `libs.standard.fs.stat` is introduced:
+  re-export or thin-wrap `lib/stat.w`, plus `fstat` on an open fd if
+  callers need it. `getdents` / `unlink` / `rmdir` / `rename` already
+  exist on the arch syscall modules.
 
 ### Phase 2: path normalization
 

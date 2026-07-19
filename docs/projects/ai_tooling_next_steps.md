@@ -214,24 +214,13 @@ is a queue, not an archive.
   rewrites test sources en masse, grep the touched files for their own
   paths first; longer term, self-referential assertions should read a
   dedicated fixture instead of the test's own source.
-- **No portable stat()/file-metadata wrapper exists anywhere in the
-  tree.** Building `libs/extras/vcs/index.w` (issue #252 wave 3, the
-  stat-cached dirstate) needed a file's (size, mtime); no
-  `lib/__arch__/*/syscalls.w` wraps `stat`/`fstat`/`statx` -- every
-  prior caller that wanted a size used `lib.lib`'s `file_size()`
-  (seek-to-end, not a real stat) and no module reads mtime at all.
-  Landed a scoped fix rather than a general one:
-  `libs/extras/vcs/__arch__/{x86,x64}/fsops.w:vcs_statx` (Linux `statx`,
-  syscall numbers 383/i386 and 332/x86-64) -- `struct statx`'s layout is
-  identical on 32- and 64-bit Linux by design (verified against glibc's
-  `stat(2)` on the dev host), so only the syscall NUMBER is per-arch,
-  cheaper than hand-deriving the legacy 32-/64-bit `struct stat`
-  layouts. arm64/win64/wasm are unimplemented, matching tree.w's/
-  commit.w's own x86/x64-only directory-walk scope. A general
-  `lib/stat.w` (mtime/size/mode/is-dir for any caller, not just
-  libs/extras/vcs) is future work once a second consumer needs it
-  outside vcs/ -- tree.w's own header comment already flags the
-  executable bit as unlearned for the same underlying reason.
+- **`lib/args.w` boolean flags swallow the next positional.** A bare
+  `-f` / `--nofollow` before a path is treated as a valued flag, so
+  `stat -f path` never sees `path` as positional (documented in
+  `lib/args.w`'s header). `tools/{stat,readlink}.w` work around this
+  with a hand-rolled argv walk; a real fix is either a
+  `args_has_bool_flag` that does not consume the next token, or a
+  convention/API for declaring boolean flag names up front.
 - **wexec directory hashing is Linux-layout only.** Found while porting
   the darwin triad: `wexec_collect_dir` (tools/wexec.w) parses the Linux
   getdents record layout, so on macOS — where the `getdents` shim

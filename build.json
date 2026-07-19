@@ -1063,6 +1063,52 @@
 			]
 		},
 		{
+			"name": "stat",
+			"deps": ["wv2"],
+			"inputs": ["tools/stat.w", "lib/stat.w"],
+			"outputs": ["bin/stat"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/stat.w", "-o", "bin/stat"]}
+			]
+		},
+		{
+			"name": "chmod",
+			"deps": ["wv2"],
+			"inputs": ["tools/chmod.w", "lib/stat.w"],
+			"outputs": ["bin/chmod"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/chmod.w", "-o", "bin/chmod"]}
+			]
+		},
+		{
+			"name": "touch",
+			"deps": ["wv2"],
+			"inputs": ["tools/touch.w", "lib/stat.w"],
+			"outputs": ["bin/touch"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/touch.w", "-o", "bin/touch"]}
+			]
+		},
+		{
+			"name": "readlink",
+			"deps": ["wv2"],
+			"inputs": ["tools/readlink.w", "lib/stat.w"],
+			"outputs": ["bin/readlink"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/readlink.w", "-o", "bin/readlink"]}
+			]
+		},
+		{
+			"name": "unix_tools_test",
+			"deps": ["wv2", "stat", "chmod", "touch", "readlink"],
+			"inputs": ["tests/unix_tools_test.w"],
+			"outputs": ["bin/unix_tools_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/unix_tools_test.w", "-o", "bin/unix_tools_test"]},
+				{"cmd": ["bin/unix_tools_test"]}
+			]
+		},
+		{
 			"name": "wvc",
 			"deps": ["wv2"],
 			"inputs": ["tools/wvc.w"],
@@ -2060,6 +2106,7 @@
 				"sse_64_test",
 				"sstable_64_test",
 				"stack_trace_64_test",
+				"stat_64_test",
 				"stats_64_test",
 				"stream_64_test",
 				"stream_binary_64_test",
@@ -2344,6 +2391,7 @@
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",
+				"unix_tools_test",
 				"wvc_e2e_test",
 				"wvc_sync_e2e_test",
 				"unsafe_import_test",
@@ -2483,6 +2531,7 @@
 				"sse_test",
 				"sstable_test",
 				"stack_trace_test",
+				"stat_test",
 				"stats_test",
 				"str_test",
 				"stream_binary_test",
@@ -4275,6 +4324,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/stack_trace_test.w", "-o", "bin/stack_trace_test"]},
 				{"cmd": ["bin/stack_trace_test"]}
+			]
+		},
+		{
+			"name": "stat_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/stat_test.w", "-o", "bin/stat_64_test"]},
+				{"cmd": ["bin/stat_64_test"]}
+			]
+		},
+		{
+			"name": "stat_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/stat_test.w", "-o", "bin/stat_test"]},
+				{"cmd": ["bin/stat_test"]}
 			]
 		},
 		{

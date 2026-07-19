@@ -60,15 +60,12 @@ comparing like with like.
 
 Stat wrapper
 ------------
-struct statx (Linux uapi/linux/stat.h) is read through a thin per-arch
-raw-syscall wrapper (libs/extras/vcs/__arch__/{x86,x64}/fsops.w:
-vcs_statx) -- only the syscall NUMBER differs between 32- and 64-bit
-Linux; the 256-byte struct's field layout is identical on both, verified
-against glibc's stat(2) on an x86-64 dev host, so index_stat's parsing is
-written once here. arm64/win64/wasm are unsupported, the same scope
-tree.w's own directory walker (getdents-based, x86/x64 tested only) and
-commit.w's ref_list settle for -- this module's test only builds x86 and
-x64 twins.
+index_stat delegates to lib/stat.w's file_stat_path (Linux statx under
+the hood). Size and mtime are the only fields the cache needs; the
+general parser lives in lib/stat.w so other callers share one path.
+arm64/win64/wasm remain unsupported for the directory walk itself, the
+same scope tree.w and commit.w settle for -- this module's test only
+builds x86 and x64 twins.
 
 Index file format
 ------------------
@@ -113,6 +110,7 @@ import lib.path
 import lib.result
 import lib.time
 import lib.container
+import lib.stat
 import structures.string
 import libs.extras.vcs.cas
 import libs.extras.vcs.tree
@@ -197,35 +195,14 @@ int index_valid_path(char* path):
 /* Stat */
 
 
-int INDEX_STATX_BUF_SIZE():
-	return 256
-
-
-# Byte offsets into struct statx (Linux uapi/linux/stat.h) this module
-# reads: stx_size (8 bytes) and stx_mtime.tv_sec (the first 8 bytes of
-# the stx_mtime statx_timestamp). See the header comment and
-# fsops.w:vcs_statx for how this was verified.
-int INDEX_STATX_SIZE_OFFSET():
-	return 40
-
-
-int INDEX_STATX_MTIME_OFFSET():
-	return 112
-
-
-# Fills *size_out / *mtime_out for `path` via statx. load_word reads
-# __word_size__ bytes from the little-endian 8-byte field at each
-# offset: the full 64-bit value on x64, or just its low 32 bits on x86
-# (correct for any file under 4 GiB / any mtime before 2106 -- the same
-# class of accepted limit lib/time.w's time_now() documents for i386).
-# Returns 0 on success or a negative errno (e.g. -2 ENOENT).
+# Fills *size_out / *mtime_out for `path` via lib/stat.w. Returns 0 on
+# success or a negative errno (e.g. -2 ENOENT).
 int index_stat(char* path, int* size_out, int* mtime_out):
-	char* buf = malloc(INDEX_STATX_BUF_SIZE())
-	int err = vcs_statx(path, buf)
+	file_stat st
+	int err = file_stat_path(path, &st)
 	if (err == 0):
-		size_out[0] = load_word(buf + INDEX_STATX_SIZE_OFFSET())
-		mtime_out[0] = load_word(buf + INDEX_STATX_MTIME_OFFSET())
-	free(buf)
+		size_out[0] = st.size
+		mtime_out[0] = st.mtime
 	return err
 
 
