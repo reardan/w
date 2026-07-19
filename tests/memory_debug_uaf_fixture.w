@@ -1,6 +1,6 @@
 # Runtime fixture: touching memory after free() must fault (SIGSEGV) in
-# debug mode, since free() protects the whole region PROT_NONE rather
-# than returning it for reuse.
+# debug mode, since free() mprotects the payload PROT_NONE (quarantine)
+# rather than returning it for reuse.
 import lib.memory
 
 

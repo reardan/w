@@ -57,6 +57,16 @@ int main():
 
 	asserts(c"no leaks yet", debug_alloc_report_leaks() == 0)
 
+	# Alloc/free churn past the quarantine budget must not wedge: older
+	# freed regions are munmap'd so VMA/address space stays bounded.
+	i = 0
+	while (i < 20000):
+		char* p = malloc(16)
+		p[0] = 1
+		free(p)
+		i = i + 1
+	asserts(c"churn left no leaks", debug_alloc_report_leaks() == 0)
+
 	malloc(37)
 	malloc(5)
 	asserts(c"two deliberate leaks reported", debug_alloc_report_leaks() == 2)

@@ -11,6 +11,8 @@ process:
   - lib/memory_debug.w -- a guard-page allocator that trades speed and
     memory for catching heap bugs (overflow, use-after-free, double
     free, and leaks) as close to the point of the bug as possible.
+    Freed blocks stay PROT_NONE in a bounded quarantine, then munmap,
+    so long-running tools under W_DEBUG_ALLOC do not OOM.
 
 Debug mode is opt-in: set W_DEBUG_ALLOC to any non-empty value before
 the program starts, or call malloc_force_debug_mode() before the first
