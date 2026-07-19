@@ -335,7 +335,17 @@ the manifest rather than guessed. Counts below are exact for the tree at
 this commit; rerun the classification (structural, not prose) before
 trusting it against a later tree.
 
-### Shell scripts (12: 11 `tools/*.sh` + `archive.sh`)
+### Shell scripts (11: 10 `tools/*.sh` + `archive.sh`)
+
+`tools/compress_zlib_interop_test.sh` (below) shipped as task 2e: ported
+to a self-contained `tests/compress_zlib_interop.w` that spawns `python3`
+itself via `lib.process` (no `sh` wrapper, no `/bin/sh` string
+interpolation — the python3 side is a fixed argv-driven script, directory
+and payload passed as files/argv, not interpolated into source text);
+`compress_zlib_interop_test`'s `build.base.json` entry now runs the two
+compiled binaries directly and moved from bucket E to bucket L below (the
+manifest-expressiveness blocker was always "multi-step pipeline", not
+"needs a shell" — only the `sh` wrapper made it look like bucket E).
 
 | Script | Invoked by (`build.base.json`) | #323 blocker |
 |---|---|---|
@@ -343,7 +353,6 @@ trusting it against a later tree.
 | `tools/run_wasm.sh` | `build_wasm`, `wasm_smoke_test`, plus every wasm run step | Wraps `wasmtime`/`node`; same "permanent execution shim" reasoning as `run_arm64.sh`. Also blocks bucket G below (wbuildgen's `arch=` vocabulary has no `wasm` value yet). |
 | `tools/web/run_node.sh` | `wasm_extern_test`, `wasm_webgl_test` | Wraps `node` to run `tools/web/*.mjs` harnesses; the harnesses themselves are non-W, so this sits outside the ".w sources" model regardless of the shell wrapper. |
 | `tools/openssl_interop_test.sh` | `openssl_interop_test` | Shells out to the system `openssl` CLI for a TLS/crypto interop round-trip. Needs a W-side subprocess-diff harness (spawn `openssl` via `lib.process`, compare) before the script can retire — real porting work, not a directive gap. |
-| `tools/compress_zlib_interop_test.sh` | `compress_zlib_interop_test` | Same shape as `openssl_interop_test.sh`, against the system `zlib`/`gzip`. Same blocker. |
 | `tools/attach_test.sh` | `attach_test` | ptrace-based debugger-attach test. Needs porting onto the in-repo ptrace machinery (`debugger/`) as a W test harness — natural to revisit alongside #123's attach phases. |
 | `tools/pac_flag_check.sh` | `pac_flag_test` | Inspects `bin/wv2`'s own ELF/PAC flags from outside the compiler. Needs an ELF-flag-reading W tool (the compiler only *writes* ELF today). |
 | `tools/parser_generator_w_batches.sh` | `parser_generator_w_test` | Batches/diffs parser-generator output across the tracked `.w` corpus. Needs porting to a W batch-diff tool, or folding into `tools/parser_generator.w` itself. |
@@ -414,8 +423,8 @@ migration debt:
     accepting the target's rename to `..._64_test` (downstream
     references to the old name are the only real cost).
 
-**E. Shell-wrapped, bespoke logic — 15.** `missing_file_test`,
-`openssl_interop_test`, `compress_zlib_interop_test`,
+**E. Shell-wrapped, bespoke logic — 14.** `missing_file_test`,
+`openssl_interop_test`,
 `parser_generator_w_test`, `wtest_map_test`, `unsafe_import_test`,
 `debug_test`, `debug_test_x64`, `attach_test`, `repl_test`,
 `repl_test_x64`, `wasm_extern_test`, `wasm_webgl_test`, `pac_flag_test`,
@@ -502,7 +511,7 @@ the same "path-based deps" gap bucket C flagged from the tool-binary
 side — solving it there (letting a target depend on a *file* instead of
 a *name*) would likely retire this bucket too.
 
-**L. Multi-step pipelines — 42.** `float_reference_test`,
+**L. Multi-step pipelines — 43.** `float_reference_test`,
 `string_utf8_test`, `container_trap_test`, `memory_debug_fault_test`,
 `strict_mode_test`, `check_json_test`, `check_roots_test`,
 `check_imports_test`, `symbols_test`, `deps_test`,
@@ -515,7 +524,11 @@ a *name*) would likely retire this bucket too.
 `map_set_builtin_test`, `list_builtin_test`, `wtest_run_test`,
 `metadata_test`, `wexec_test`, `result_propagate_test`, `task_io_test`,
 `json_rpc_test`, `json_rpc_64_test`, `task_io_64_test`,
-`asm_foundations_test`, `asm_arm64_test`, `asm_x64_test`. Blocker: each
+`asm_foundations_test`, `asm_arm64_test`, `asm_x64_test`,
+`compress_zlib_interop_test` (ported off its shell wrapper by task 2e:
+two compile steps + two run steps with `expect_stdout`, no shell
+involved any more — same shape as `switch_test`'s "several `.w` fixtures
+compiled and run in sequence"). Blocker: each
 chains more than a single compile+run — a second reference binary
 (`float_reference_test`'s `cc`-compiled C oracle), several independent
 diagnostic invocations with separate `expect_*` assertions
@@ -531,9 +544,9 @@ before they can generate — the highest-effort bucket to close after E.
 Buckets D (21, zero blocker — pure migration) and the arm64/wasm slice of
 A/E (already using the shared runner scripts) are free wins independent
 of any new tooling. Buckets C and K are two faces of the same "deps by
-path, not by name" gap and are worth solving together. Bucket E (15) and
+path, not by name" gap and are worth solving together. Bucket E (14) and
 the Mac-only rows of the shell-script table are the genuinely hard
 remainder — real logic with no W-side equivalent yet, not a manifest
-expressiveness gap. Bucket L (42) is the single biggest lever: a
+expressiveness gap. Bucket L (43) is the single biggest lever: a
 multi-step/multi-run directive vocabulary would clear roughly a quarter
 of all hand-written targets in one design.

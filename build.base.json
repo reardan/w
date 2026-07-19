@@ -821,12 +821,11 @@
 		{
 			"name": "compress_zlib_interop_test",
 			"deps": ["wv2"],
-			"inputs": ["tools/compress_zlib_interop_test.sh"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/compress_zlib_interop.w", "-o", "bin/compress_zlib_interop32"]},
 				{"cmd": ["bin/wv2", "x64", "tests/compress_zlib_interop.w", "-o", "bin/compress_zlib_interop64"]},
-				{"cmd": ["sh", "tools/compress_zlib_interop_test.sh", "32"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000},
-				{"cmd": ["sh", "tools/compress_zlib_interop_test.sh", "64"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000}
+				{"cmd": ["bin/compress_zlib_interop32"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000},
+				{"cmd": ["bin/compress_zlib_interop64"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000}
 			]
 		},
 		{
