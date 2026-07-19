@@ -283,7 +283,7 @@
 			"name": "warning_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w", "tests/limb_builtin_warning_fixture.w", "tests/bool_bitwise_warning_fixture.w", "tests/bool_bitwise_chain_fixture.w", "tests/bit31_literal_warning_fixture.w", "tests/cross_line_call_warning_fixture.w", "tests/cross_line_call_increment_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w", "tests/limb_builtin_warning_fixture.w", "tests/bool_bitwise_warning_fixture.w", "tests/bool_bitwise_chain_fixture.w", "tests/bit31_literal_warning_fixture.w", "tests/cross_line_call_warning_fixture.w", "tests/cross_line_call_increment_fixture.w", "tests/imported_diagnostic_line_fixture.w"]}
 			]
 		},
 		{

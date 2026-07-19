@@ -36,17 +36,34 @@ is a queue, not an archive.
   the narrower "also report call-containing joins" superset (it used to
   gate the comparison-result widening itself, before the wave-2
   mechanical sweep converted every side-effect-free site tree-wide).
-- **`w check --bool-ops`'s position/chain bugs — two fixed, one
-  deferred (2026-07-17, wave 2f).** Consolidates four overlapping
-  reports from wave-2 sweep chunks 2a/2b/2d/2e, all downstream of the
-  same three bugs: (1) a warning inside an *imported* (non-root) file
-  reports its line number +1 high (`debugger/memory.w:52` vs. actual
-  line 51) — root cause found (`compiler/compiler.w`'s `compile_save`
-  saves `line_number + 1` instead of `line_number` before compiling the
-  import, then restores the inflated value) but **left open**: the fix
-  touches every diagnostic's line number for every imported file, not
-  just this hint, so it belongs in its own gated PR, not this one. (2)
-  the reported line/column was wherever the tokenizer's one-token
+- **`w check --bool-ops`'s position/chain bugs — all three fixed**
+  (2026-07-17, wave 2f; (1) fixed 2026-07-19, wave 1b). Consolidates
+  four overlapping reports from wave-2 sweep chunks 2a/2b/2d/2e, all
+  downstream of the same three bugs: (1) a warning inside an *imported*
+  (non-root) file reported its line number +1 high (`debugger/
+  memory.w:52` vs. actual line 51) — **fixed**: `compiler/compiler.w`'s
+  `compile_save` saved `line_number + 1` instead of `line_number` before
+  compiling the import and restored the inflated value on return, but
+  that was only half of it — a paired defect meant the naive "just drop
+  the `+ 1`" fix undercounted instead: `compile_attempt`'s priming
+  `nextc = get_character()` call for the *new* file read the importer's
+  still-pending lookahead (the unconsumed newline at the end of the
+  `import ...` line) and spuriously bumped the freshly-reset
+  `line_number` from 0 to 1 before the imported file's first byte was
+  even read, while `compile_save` never saved/restored `nextc` itself,
+  so the importer's own resumption silently lost the newline crossing
+  it needed on the way back out. Fixed by resetting `nextc = 0` right
+  before `compile_attempt`'s priming read (mirroring the existing
+  `grammar/generic.w:generic_reparse_start` idiom for re-parsing a
+  generic definition) and saving/restoring `nextc` in `compile_save`
+  alongside `line_number` (now saved verbatim, no `+ 1`). Every
+  diagnostic in every imported file across a full `check --bool-ops` of
+  `w.w` shifted by exactly one line (135/135 sites, spot-checked against
+  real source); regression pinned by `tests/imported_diagnostic_line_
+  fixture.w` + `tests/imported_diagnostic_line_leaf.w` (`warning_test`),
+  asserting both the imported file's own line and the importing file's
+  post-import line stay exact. (2) the reported line/column was wherever
+  the tokenizer's one-token
   lookahead sat once the *whole* condition finished parsing, not the
   `&`/`|` itself — **fixed**: `grammar/binary_op.w`'s
   `warn_bool_bitwise_at` snapshots `line_number`/`diag_token_line`/

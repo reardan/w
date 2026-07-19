@@ -87,6 +87,21 @@ int compile_attempt(char* fn):
 	column_number = 0
 	tab_level = 0
 	byte_offset = 0
+	# A nested compile_attempt (an import, via compile_save below) starts
+	# while the importer's own nextc still holds its own mid-token
+	# lookahead -- for an import statement specifically, the newline that
+	# ends the 'import ...' line, not yet consumed (grammar/import_statement.w's
+	# read_until_end() stops right before it). Left alone, the very first
+	# get_character() call below (the priming read for this brand-new
+	# file) would see that stale lookahead, misread it as "this file's own
+	# previous character was a newline", and spuriously bump line_number
+	# from 0 to 1 before a single byte of the new file has been read --
+	# every diagnostic in the imported file then reports one line high.
+	# Resetting nextc to 0 first reproduces the same "no previous
+	# character" state every file sees at the true start of compilation
+	# (nextc's own zero-initialized default), so the priming read is
+	# unaffected by whatever the caller was in the middle of.
+	nextc = 0
 	nextc = get_character()
 	# Silently skip a single UTF-8 byte-order mark (EF BB BF) at the very
 	# start of the file -- some Windows editors emit one unprompted, and
@@ -244,12 +259,23 @@ int compile_input_file(char* path):
 void compile_save(char* fn):
 	char* old_filename = filename
 	int old_file = file
-	int old_line_number = line_number + 1
+	int old_line_number = line_number
 	int old_column_number = column_number
 	int old_diag_token_line = diag_token_line
 	int old_diag_token_column = diag_token_column
 	int old_tab_level = tab_level
 	int old_byte_offset = byte_offset
+	# Saved (and restored below) so the importer's own pending lookahead
+	# survives the nested compile: import_statement() left nextc holding
+	# the not-yet-consumed newline at the end of the 'import ...' line
+	# (read_until_end() stops right before it), and the caller's own
+	# 'nextc = get_character()' right after this call relies on seeing
+	# that same newline to correctly advance line_number past it. Without
+	# this, nextc comes back holding whatever the imported file's own
+	# tokenizing left it as (its own EOF-ish sentinel), that follow-up
+	# read silently fails to notice a newline was crossed, and every
+	# diagnostic for the rest of the importing file reports one line low.
+	int old_nextc = nextc
 
 	# Import aliases and plain-import records are file-scoped: hide the
 	# importer's entries while the imported file compiles, then drop the
@@ -283,6 +309,7 @@ void compile_save(char* fn):
 	diag_token_column = old_diag_token_column
 	tab_level = old_tab_level
 	byte_offset = old_byte_offset
+	nextc = old_nextc
 	import_alias_base = old_alias_base
 	import_alias_count = old_alias_count
 	import_plain_base = old_plain_base
