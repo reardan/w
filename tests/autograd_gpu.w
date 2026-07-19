@@ -1,6 +1,7 @@
 # lib.autograd end-to-end test (docs/projects/torch.md, Stage 5): every
 # fully-implemented backward rule (add, mul, add_scalar, mul_scalar, relu,
-# sum, matmul, add_row, softmax_ce) is cross-checked against a
+# sum, matmul, add_row, softmax_ce, and the transformer set: matmul_nt,
+# layernorm, softmax_causal, embedding) is cross-checked against a
 # central-difference numeric gradient computed by an independent
 # reference evaluator -- plain host loops over each tensor's own .data
 # buffer, sharing no code with lib/autograd.w or lib/tensor.w's op
@@ -594,6 +595,321 @@ int check_accum():
 	return ok
 
 
+##### matmul_nt: sum(mul(a @ b^T, w)) #####
+
+
+float ref_matmul_nt(tensor* a, tensor* b, tensor* w, int m, int k, int n):
+	float total = 0.0
+	int i = 0
+	while (i < m):
+		int j = 0
+		while (j < n):
+			float acc = 0.0
+			int l = 0
+			while (l < k):
+				acc = acc + a.data[i * k + l] * b.data[j * k + l]
+				l = l + 1
+			total = total + acc * w.data[i * n + j]
+			j = j + 1
+		i = i + 1
+	return total
+
+
+int check_matmul_nt():
+	int m = 3
+	int k = 4
+	int n = 2
+	tensor a = tensor_new2(m, k)
+	tensor b = tensor_new2(n, k)
+	tensor w = tensor_new2(m, n)
+	int i = 0
+	while (i < m * k):
+		a.data[i] = cast(float, i % 5 - 2) * 0.5
+		i = i + 1
+	i = 0
+	while (i < n * k):
+		b.data[i] = cast(float, i % 3 - 1) * 0.6
+		i = i + 1
+	i = 0
+	while (i < m * n):
+		w.data[i] = cast(float, i + 1) * 0.25
+		i = i + 1
+
+	ag_tape* t = ag_tape_new()
+	tensor* la = ag_leaf(t, &a)
+	tensor* lb = ag_leaf(t, &b)
+	tensor* lw = ag_leaf(t, &w)
+	tensor* mm = ag_matmul_nt(t, la, lb)
+	tensor* mul = ag_mul(t, mm, lw)
+	ag_sum(t, mul)
+	ag_backward(t)
+	tensor* ga = ag_grad(t, la)
+	tensor* gb = ag_grad(t, lb)
+
+	float h = 0.01
+	int ok = 1
+	i = 0
+	while (i < m * k):
+		float orig = a.data[i]
+		a.data[i] = orig + h
+		float fp = ref_matmul_nt(&a, &b, &w, m, k, n)
+		a.data[i] = orig - h
+		float fm = ref_matmul_nt(&a, &b, &w, m, k, n)
+		a.data[i] = orig
+		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0):
+			ok = 0
+		i = i + 1
+	i = 0
+	while (i < n * k):
+		float orig = b.data[i]
+		b.data[i] = orig + h
+		float fp = ref_matmul_nt(&a, &b, &w, m, k, n)
+		b.data[i] = orig - h
+		float fm = ref_matmul_nt(&a, &b, &w, m, k, n)
+		b.data[i] = orig
+		if (feq(central_diff(fp, fm, h), gb.data[i], 0.05) == 0):
+			ok = 0
+		i = i + 1
+
+	ag_tape_free(t)
+	tensor_free(&a)
+	tensor_free(&b)
+	tensor_free(&w)
+	return ok
+
+
+##### layernorm: sum(mul(layernorm(x, gamma, beta), w)) #####
+
+
+float ref_layernorm(tensor* x, tensor* gamma, tensor* beta, tensor* w, int m, int n):
+	float total = 0.0
+	float fn = cast(float, n)
+	int i = 0
+	while (i < m):
+		float mean = 0.0
+		int j = 0
+		while (j < n):
+			mean = mean + x.data[i * n + j]
+			j = j + 1
+		mean = mean / fn
+		float vsum = 0.0
+		j = 0
+		while (j < n):
+			float d = x.data[i * n + j] - mean
+			vsum = vsum + d * d
+			j = j + 1
+		float rstd = 1.0 / fsqrt(vsum / fn + 0.00001)
+		j = 0
+		while (j < n):
+			float ln = gamma.data[j] * ((x.data[i * n + j] - mean) * rstd) + beta.data[j]
+			total = total + ln * w.data[i * n + j]
+			j = j + 1
+		i = i + 1
+	return total
+
+
+int check_layernorm():
+	int m = 3
+	int n = 5
+	tensor x = tensor_new2(m, n)
+	tensor gamma = tensor_new1(n)
+	tensor beta = tensor_new1(n)
+	tensor w = tensor_new2(m, n)
+	int i = 0
+	while (i < m * n):
+		x.data[i] = cast(float, i % 7 - 3) * 0.4
+		w.data[i] = cast(float, i % 4 + 1) * 0.3
+		i = i + 1
+	i = 0
+	while (i < n):
+		gamma.data[i] = 1.0 + cast(float, i) * 0.1
+		beta.data[i] = cast(float, i % 3 - 1) * 0.2
+		i = i + 1
+
+	ag_tape* t = ag_tape_new()
+	tensor* lx = ag_leaf(t, &x)
+	tensor* lg = ag_leaf(t, &gamma)
+	tensor* lb = ag_leaf(t, &beta)
+	tensor* lw = ag_leaf(t, &w)
+	tensor* ln = ag_layernorm(t, lx, lg, lb)
+	tensor* mul = ag_mul(t, ln, lw)
+	ag_sum(t, mul)
+	ag_backward(t)
+	tensor* gx = ag_grad(t, lx)
+	tensor* gg = ag_grad(t, lg)
+	tensor* gb2 = ag_grad(t, lb)
+
+	float h = 0.01
+	int ok = 1
+	i = 0
+	while (i < m * n):
+		float orig = x.data[i]
+		x.data[i] = orig + h
+		float fp = ref_layernorm(&x, &gamma, &beta, &w, m, n)
+		x.data[i] = orig - h
+		float fm = ref_layernorm(&x, &gamma, &beta, &w, m, n)
+		x.data[i] = orig
+		if (feq(central_diff(fp, fm, h), gx.data[i], 0.05) == 0):
+			ok = 0
+		i = i + 1
+	i = 0
+	while (i < n):
+		float orig = gamma.data[i]
+		gamma.data[i] = orig + h
+		float fp = ref_layernorm(&x, &gamma, &beta, &w, m, n)
+		gamma.data[i] = orig - h
+		float fm = ref_layernorm(&x, &gamma, &beta, &w, m, n)
+		gamma.data[i] = orig
+		if (feq(central_diff(fp, fm, h), gg.data[i], 0.05) == 0):
+			ok = 0
+		float orig2 = beta.data[i]
+		beta.data[i] = orig2 + h
+		float fp2 = ref_layernorm(&x, &gamma, &beta, &w, m, n)
+		beta.data[i] = orig2 - h
+		float fm2 = ref_layernorm(&x, &gamma, &beta, &w, m, n)
+		beta.data[i] = orig2
+		if (feq(central_diff(fp2, fm2, h), gb2.data[i], 0.05) == 0):
+			ok = 0
+		i = i + 1
+
+	ag_tape_free(t)
+	tensor_free(&x)
+	tensor_free(&gamma)
+	tensor_free(&beta)
+	tensor_free(&w)
+	return ok
+
+
+##### softmax_causal: sum(mul(softmax_causal(s), w)) #####
+
+
+float ref_softmax_causal(tensor* s, tensor* w, int n):
+	float total = 0.0
+	int i = 0
+	while (i < n):
+		float m = s.data[i * n]
+		int j = 1
+		while (j <= i):
+			if (s.data[i * n + j] > m):
+				m = s.data[i * n + j]
+			j = j + 1
+		float rowsum = 0.0
+		j = 0
+		while (j <= i):
+			rowsum = rowsum + fexp(s.data[i * n + j] - m)
+			j = j + 1
+		j = 0
+		while (j <= i):
+			total = total + (fexp(s.data[i * n + j] - m) / rowsum) * w.data[i * n + j]
+			j = j + 1
+		i = i + 1
+	return total
+
+
+int check_softmax_causal():
+	int n = 4
+	tensor s = tensor_new2(n, n)
+	tensor w = tensor_new2(n, n)
+	int i = 0
+	while (i < n * n):
+		s.data[i] = cast(float, i % 5 - 2) * 0.7
+		w.data[i] = cast(float, i % 3 + 1) * 0.4
+		i = i + 1
+
+	ag_tape* t = ag_tape_new()
+	tensor* ls = ag_leaf(t, &s)
+	tensor* lw = ag_leaf(t, &w)
+	tensor* p = ag_softmax_causal(t, ls)
+	tensor* mul = ag_mul(t, p, lw)
+	ag_sum(t, mul)
+	ag_backward(t)
+	tensor* gs = ag_grad(t, ls)
+
+	float h = 0.01
+	int ok = 1
+	i = 0
+	while (i < n * n):
+		float orig = s.data[i]
+		s.data[i] = orig + h
+		float fp = ref_softmax_causal(&s, &w, n)
+		s.data[i] = orig - h
+		float fm = ref_softmax_causal(&s, &w, n)
+		s.data[i] = orig
+		if (feq(central_diff(fp, fm, h), gs.data[i], 0.05) == 0):
+			ok = 0
+		i = i + 1
+
+	ag_tape_free(t)
+	tensor_free(&s)
+	tensor_free(&w)
+	return ok
+
+
+##### embedding: sum(mul(embedding(table, ids), w)), with a repeated id #####
+
+
+float ref_embedding(tensor* table, ndi* ids, tensor* w, int n, int dim):
+	float total = 0.0
+	int i = 0
+	while (i < n):
+		int j = 0
+		while (j < dim):
+			total = total + table.data[ids.data[i] * dim + j] * w.data[i * dim + j]
+			j = j + 1
+		i = i + 1
+	return total
+
+
+int check_embedding():
+	int vocab = 5
+	int dim = 3
+	int n = 4
+	tensor table = tensor_new2(vocab, dim)
+	tensor w = tensor_new2(n, dim)
+	ndi ids = ndi_new1(n)
+	# id 3 repeats: its gradient row must accumulate both contributions
+	ids.data[0] = 3
+	ids.data[1] = 1
+	ids.data[2] = 3
+	ids.data[3] = 0
+	int i = 0
+	while (i < vocab * dim):
+		table.data[i] = cast(float, i % 6 - 2) * 0.3
+		i = i + 1
+	i = 0
+	while (i < n * dim):
+		w.data[i] = cast(float, i + 1) * 0.2
+		i = i + 1
+
+	ag_tape* t = ag_tape_new()
+	tensor* lt = ag_leaf(t, &table)
+	tensor* lw = ag_leaf(t, &w)
+	tensor* e = ag_embedding(t, lt, &ids)
+	tensor* mul = ag_mul(t, e, lw)
+	ag_sum(t, mul)
+	ag_backward(t)
+	tensor* gt = ag_grad(t, lt)
+
+	float h = 0.01
+	int ok = 1
+	i = 0
+	while (i < vocab * dim):
+		float orig = table.data[i]
+		table.data[i] = orig + h
+		float fp = ref_embedding(&table, &ids, &w, n, dim)
+		table.data[i] = orig - h
+		float fm = ref_embedding(&table, &ids, &w, n, dim)
+		table.data[i] = orig
+		if (feq(central_diff(fp, fm, h), gt.data[i], 0.05) == 0):
+			ok = 0
+		i = i + 1
+
+	ag_tape_free(t)
+	tensor_free(&table)
+	tensor_free(&w)
+	return ok
+
+
 int main(int argc, int argv):
 	if (gpu_available()):
 		println(c"autograd: gpu path")
@@ -625,6 +941,18 @@ int main(int argc, int argv):
 		return 1
 	if (check_accum() == 0):
 		println(c"autograd gpu: FAILED (accum)")
+		return 1
+	if (check_matmul_nt() == 0):
+		println(c"autograd gpu: FAILED (matmul_nt)")
+		return 1
+	if (check_layernorm() == 0):
+		println(c"autograd gpu: FAILED (layernorm)")
+		return 1
+	if (check_softmax_causal() == 0):
+		println(c"autograd gpu: FAILED (softmax_causal)")
+		return 1
+	if (check_embedding() == 0):
+		println(c"autograd gpu: FAILED (embedding)")
 		return 1
 	println(c"autograd OK")
 	return 0

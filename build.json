@@ -2169,6 +2169,23 @@
 			]
 		},
 		{
+			"name": "gpt_train_gpu_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["sh", "tools/fetch_shakespeare.sh"]},
+				{"cmd": ["bin/wv2", "x64", "tests/gpt_train_gpu.w", "-o", "bin/gpt_train_gpu"]},
+				{"cmd": ["bin/gpt_train_gpu"], "expect_stdout": ["gpt: gpu path", "gpt train OK"]},
+				{"cmd": ["sh", "-c", "CUDA_VISIBLE_DEVICES= bin/gpt_train_gpu"], "expect_stdout": ["gpt: cpu fallback", "gpt train OK"]}
+			]
+		},
+		{
+			"name": "gpt_train_compile_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/gpt_train_gpu.w", "-o", "bin/gpt_train_compile"]}
+			]
+		},
+		{
 			"name": "torch_infer_compile_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2312,6 +2329,7 @@
 				"autograd_compile_test",
 				"nn_compile_test",
 				"mnist_train_compile_test",
+				"gpt_train_compile_test",
 				"torch_infer_compile_test",
 				"defer_test",
 				"dynamic_var_test",

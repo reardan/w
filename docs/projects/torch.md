@@ -230,6 +230,49 @@ state_dict layout, matching torch's logits and accuracy (status
 section above). ONNX graph execution is explicitly out of scope until
 the op surface is much wider.
 
+## Micro-GPT — transformer training capstone (implemented)
+
+`tests/gpt_train_gpu.w`: a 2-layer, 4-head, 64-dim decoder-only
+transformer (token + learned positional embeddings, pre-LN causal
+attention, relu MLP, linear head; ~112K params) trains char-level
+next-token prediction on tiny-shakespeare
+(`tools/fetch_shakespeare.sh` → `bin/shakespeare.txt`, the nanoGPT
+dataset) with AdamW. Loss falls 4.17 (= ln 65, the uniform-head
+sanity floor asserted at step 1) to ~2.39 in 500 steps — through the
+~2.45 bigram entropy — in ~17s on the RTX 4080 SUPER, then
+greedy-samples 150 chars of word-shaped output. Deterministic: fixed
+seeds + k-ascending matmuls make the run bit-reproducible, and the
+CPU-fallback path (20 steps, same binary) matches the GPU step-1 loss
+exactly. Opt-in `gpt_train_gpu_test` + default-umbrella
+`gpt_train_compile_test`.
+
+What it took (and all it took):
+
+- Four autograd ops in `lib/autograd.w`, finite-difference-tested in
+  `tests/autograd_gpu.w` like the rest: `ag_embedding` (row gather,
+  scatter-add backward; ids ride the node's labels field),
+  `ag_layernorm` (a two-input `ag_layernorm_core` for gamma·xhat
+  composed with the existing `ag_add_row` for beta; backward
+  recomputes row stats), `ag_softmax_causal` (mask + row softmax
+  fused, masked entries exactly 0, backward off the node's own
+  output), and `ag_matmul_nt` (q @ k^T without materializing the
+  transpose; backward via the existing plain/_tn kernels).
+- `nn_adamw` state + `nn_adamw_step` in `lib/nn.w` (bias-corrected,
+  decoupled weight decay; host loop, the ag_softmax_ce precedent).
+- Composition patterns, no compiler work: per-head weight tensors
+  (concat-free multi-head — per-head output projections summed),
+  positional embeddings as an `ag_embedding` gather of wpe (so
+  shorter sampling contexts reuse the training path), matmuls on the
+  GPU tensor kernels, elementwise glue host-side over managed memory.
+
+Known limits, deliberately kept: batch=1 per step (grad accumulation
+across multiple backwards on one tape would double-count earlier
+windows — a per-window tape or persistent grad buffers is the fix if
+bigger batches are ever needed); host-side LN/softmax sync per call,
+so the step is launch/host-bound (~30ms) rather than kernel-bound —
+device-side fused kernels are the next lever if this becomes a
+training platform rather than a capability proof.
+
 ## Open questions
 
 - Should `tensor` unify with `ndf` once pointer-to-slice construction
