@@ -52,6 +52,16 @@ kernel bits(int* v, int n):
 		v[i] = acc
 
 
+# Atomics: the int add/min/max forms and the float32 add form.
+kernel accum(int* s, int* mn, int* mx, float32* f, int n):
+	int i = block_idx() * block_dim() + thread_idx()
+	if i < n:
+		atomic_add(s, i)
+		atomic_min(mn, i)
+		atomic_max(mx, i)
+		atomic_add(f, 1.5)
+
+
 int main(int argc, int argv):
 	print(__w_ptx_module())
 	return 0

@@ -638,6 +638,35 @@ void ptx_btc_63():
 	ptx_line(c"xor.b64 %ax, %ax, 0x8000000000000000;")
 
 
+################################# atomics ####################################
+# atomic_add/atomic_min/atomic_max (grammar/atomic_builtin.w): pointer in
+# %bx, value in %ax, the OLD value comes back in the accumulator. The
+# space-less atom form uses generic addressing, matching the all-generic
+# model — the pointer must reference device-accessible global memory
+# (gpu_alloc/gpu_device_alloc), never a .local stack slot.
+
+# kind: 1 add, 2 min, 3 max. atom.add has no .s64 form; two's-complement
+# addition makes .u64 exact. min/max are signed, matching W int.
+void ptx_atomic_int(int kind):
+	if (kind == 1):
+		ptx_line(c"atom.add.u64 %ax, [%bx], %ax;")
+	else if (kind == 2):
+		ptx_line(c"atom.min.s64 %ax, [%bx], %ax;")
+	else:
+		ptx_line(c"atom.max.s64 %ax, [%bx], %ax;")
+
+
+# float32 add (atom.add.f32, sm_20+; float64 atomics need sm_60 and are
+# rejected at parse time). Value bits ride the low 32 of %ax, the host
+# convention.
+void ptx_atomic_add_f32():
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"mov.b32 %fa, %w0;")
+	ptx_line(c"atom.add.f32 %fa, [%bx], %fa;")
+	ptx_line(c"mov.b32 %w0, %fa;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
 ############################ special registers ###############################
 
 # thread_idx()/block_idx()/block_dim()/grid_dim() (x dimension), widened
