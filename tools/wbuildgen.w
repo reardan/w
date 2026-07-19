@@ -21,10 +21,11 @@ Generation rules:
   targets: `x64` also yields the X_64_test twin (the same file compiled
   with the `x64` argument), and the key=value vocabulary documented
   above wbg_parse_directives (timeout=, stdin=, expect_stdout=,
-  expect_stderr=, expect_fail, deps=, extra_compile=, arch=) adds
-  run-step expectations, piped stdin, timeouts, declared run-time data
-  inputs and extra compile-only steps — the irregular shapes that used
-  to need hand-written base targets.
+  expect_stderr=, expect_fail, deps=, extra_compile=, arch=, name=,
+  argv=) adds run-step expectations, piped stdin, timeouts, declared
+  run-time data inputs, extra compile-only steps, a target-name
+  override and extra run-time arguments — the irregular shapes that
+  used to need hand-written base targets.
 - The platform axis: `arch=arm64` and `arch=win64` yield run-capable
   twins X_arm64 / X_win64 (repeatable — e.g. `x64 arch=arm64` yields
   three targets from one source), mirroring the existing hand-written
@@ -43,6 +44,23 @@ Generation rules:
   nothing is generated for the name. This is how a test with extra
   hand-written steps keeps its 32-bit target in base while still
   generating its conventional twin.
+- `# wbuild: name=<target>` overrides the basename-derived name for
+  every twin from that source: the x64/arm64/win64/darwin suffix rules
+  above apply to the override instead of to the literal basename
+  (`name=crypto_base64_test` on `base64_test.w` plus `x64` yields
+  `crypto_base64_test` and `crypto_base64_64_test`, not
+  `base64_test`/`base64_64_test`). `# wbuild: argv=<args>` used alone
+  appends `<args>` (whitespace-split, quoted values escaped like
+  `extra_compile=`) to every run-capable twin's run step. `name=` and
+  `argv=` used *together*, an equal number of times, instead define
+  that many extra default-arch-only targets from the same source —
+  each pair is one more generated target (name=<n>'s value, run with
+  that argv=<a>'s value) alongside whatever the source's other
+  directives already generate, e.g. `# wbuild: name=x25519_iterated_test
+  argv=--iterated-1000` on `x25519_test.w` (which also has its own
+  plain `x25519_test` target) yields a second binary from the same
+  source differing only in its run arguments. See wbg_apply_directive's
+  comment for the exact pairing rule.
 - Sources listed in build.base.json's "generate": {"exclude": [...]}
   are skipped entirely; that list holds sources whose targets live in
   base under unconventional names (crypto_base64_test for
@@ -271,6 +289,26 @@ vocabulary:
   extra_compile="args"     append one more 'bin/wv2 <args>' step
                            (whitespace-split, no shell) after the run
                            step, on the default-arch target only
+  name=<target>            override the basename-derived name for this
+                           source and every twin generated from it (the
+                           x64/arm64/win64/darwin suffix rules apply to
+                           the override, not the literal basename) —
+                           used alone, exactly once
+  argv="args"              used alone: append <args> (whitespace-split,
+                           same quoting as extra_compile=) to every
+                           run-capable twin's run step. Used together
+                           with name= (repeatable, in equal counts):
+                           each name=/argv= pair instead defines one
+                           more default-arch-only target compiled from
+                           the same source, run with that pair's argv,
+                           alongside (not instead of) whatever the
+                           source's other directives already generate —
+                           this is how a second binary differing only
+                           in run arguments is expressed (e.g.
+                           `# wbuild: name=x25519_iterated_test
+                           argv=--iterated-1000` next to x25519_test.w's
+                           own plain target). An unequal, nonzero count
+                           of name= and argv= directives is an error.
 
 Run-step fields apply to every run-capable target generated from the
 source (32-bit, x64, arm64, win64 twins alike — arm64_darwin has no run
@@ -290,6 +328,9 @@ list[char*] wbg_dir_expect_stdout
 list[char*] wbg_dir_expect_stderr
 list[char*] wbg_dir_extra_compile
 list[char*] wbg_dir_data
+list[char*] wbg_dir_names          # raw name= values, encounter order
+list[char*] wbg_dir_argvs          # raw argv= values, encounter order
+int wbg_dir_argv_decorates_primary # 1 when argv= applies with no name=
 
 
 void wbg_reset_directives():
@@ -304,6 +345,9 @@ void wbg_reset_directives():
 	wbg_dir_expect_stderr = new list[char*]
 	wbg_dir_extra_compile = new list[char*]
 	wbg_dir_data = new list[char*]
+	wbg_dir_names = new list[char*]
+	wbg_dir_argvs = new list[char*]
+	wbg_dir_argv_decorates_primary = 0
 
 
 # Directives that decorate the generated run step (as opposed to the
@@ -314,6 +358,8 @@ int wbg_dir_has_run_fields():
 	if (wbg_dir_stdin != 0):
 		return 1
 	if ((wbg_dir_expect_stdout.length > 0) || (wbg_dir_expect_stderr.length > 0)):
+		return 1
+	if (wbg_dir_argv_decorates_primary):
 		return 1
 	return 0
 
@@ -440,6 +486,20 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 			return 1
 		wbg_dir_extra_compile.push(strclone(value))
+		return 0
+	if ((strcmp(key, c"name") == 0) | (strcmp(key, c"argv") == 0)):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (value[0] == 0):
+			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
+			return 1
+		# Repeatable; the pairing rule (name= alone, argv= alone, or an
+		# equal, nonzero count of both as variants) is resolved once the
+		# whole source has been parsed — see wbg_scan.
+		if (strcmp(key, c"name") == 0):
+			wbg_dir_names.push(strclone(value))
+		else:
+			wbg_dir_argvs.push(strclone(value))
 		return 0
 	wbg_token_error(path, c"unknown '# wbuild:' directive ", key)
 	return 1
@@ -628,11 +688,9 @@ json_value* wbg_expectation(list[char*] values):
 	return out
 
 
-# An "extra_compile=" step: 'bin/wv2' plus the directive's args,
-# whitespace-split (no shell).
-json_value* wbg_extra_compile_step(char* args):
-	json_value* cmd = json_array()
-	json_array_push(cmd, json_string(c"bin/wv2"))
+# Appends args, whitespace-split (no shell), as string elements of cmd
+# — shared by "extra_compile=" and the argv= decoration/variant paths.
+void wbg_push_split_args(json_value* cmd, char* args):
 	string_builder* token = string_new()
 	int i = 0
 	int at_end = 0
@@ -648,6 +706,14 @@ json_value* wbg_extra_compile_step(char* args):
 			string_append_char(token, c)
 		i = i + 1
 	string_free(token)
+
+
+# An "extra_compile=" step: 'bin/wv2' plus the directive's args,
+# whitespace-split (no shell).
+json_value* wbg_extra_compile_step(char* args):
+	json_value* cmd = json_array()
+	json_array_push(cmd, json_string(c"bin/wv2"))
+	wbg_push_split_args(cmd, args)
 	json_value* step = json_object()
 	json_object_set(step, c"cmd", cmd)
 	return step
@@ -706,6 +772,9 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 		else if (arch == wbg_arch_win64()):
 			json_array_push(run_cmd, json_string(c"wine"))
 		json_array_push(run_cmd, json_string(binary))
+		if (wbg_dir_argv_decorates_primary):
+			for char* value in wbg_dir_argvs:
+				wbg_push_split_args(run_cmd, value)
 		json_value* run_step = json_object()
 		json_object_set(run_step, c"cmd", run_cmd)
 		if (wbg_dir_stdin != 0):
@@ -753,6 +822,62 @@ int wbg_add_generated(char* name, char* src, int arch):
 	return 0
 
 
+# A name=/argv= variant target (see the module doc comment): the same
+# source recompiled at the default arch only under a different name,
+# whose run step passes argv (whitespace-split) to the binary. No other
+# run-step decoration (expect_*, stdin, timeout, data) composes with a
+# variant — it exists purely to express "one more binary from this
+# source, differing only in its run arguments".
+json_value* wbg_make_variant_target(char* name, char* src, char* argv):
+	char* binary = wbg_concat(c"bin/", name)
+	json_value* target = json_object()
+	json_object_set(target, c"name", json_string(name))
+	json_value* deps = json_array()
+	json_array_push(deps, json_string(c"wv2"))
+	json_object_set(target, c"deps", deps)
+	json_value* compile_cmd = json_array()
+	json_array_push(compile_cmd, json_string(c"bin/wv2"))
+	json_array_push(compile_cmd, json_string(src))
+	json_array_push(compile_cmd, json_string(c"-o"))
+	json_array_push(compile_cmd, json_string(binary))
+	json_value* compile_step = json_object()
+	json_object_set(compile_step, c"cmd", compile_cmd)
+	json_value* run_cmd = json_array()
+	json_array_push(run_cmd, json_string(binary))
+	wbg_push_split_args(run_cmd, argv)
+	json_value* run_step = json_object()
+	json_object_set(run_step, c"cmd", run_cmd)
+	json_value* steps = json_array()
+	json_array_push(steps, compile_step)
+	json_array_push(steps, run_step)
+	json_object_set(target, c"steps", steps)
+	free(binary)
+	return target
+
+
+# Like wbg_add_generated, but for a name=/argv= variant: base still wins
+# by name (silently skipped, not an error — same rule as every other
+# generated name), and a variant joins wbg_gen32_names since it is a
+# plain default-arch run-capable target for umbrella purposes.
+int wbg_add_variant(char* name, char* src, char* argv):
+	if (name in wbg_base_targets):
+		return 0
+	if (name in wbg_gen_seen):
+		string_builder* s = string_new()
+		string_append(s, c"generated target '")
+		string_append(s, name)
+		string_append(s, c"' collides (from ")
+		string_append(s, src)
+		string_append(s, c")")
+		wbg_error(s.data)
+		string_free(s)
+		return 1
+	wbg_gen_seen[name] = 1
+	wbg_generated.push(wbg_make_variant_target(name, src, argv))
+	wbg_gen32_names.push(name)
+	return 0
+
+
 void wbg_sort_generated():
 	int i = 1
 	while (i < wbg_generated.length):
@@ -791,7 +916,31 @@ int wbg_scan():
 			continue
 		if (wbg_parse_directives(src)):
 			return 1
+		# name=/argv= resolution (bucket G basename overrides + bucket H
+		# argv variants — see the module doc comment and
+		# wbg_apply_directive's comment for the pairing rule):
+		#   name= alone (exactly one)      overrides name32 below
+		#   argv= alone (one or more)      decorates every twin's run step
+		#   name=/argv=, equal counts > 0  each pair is an extra variant
+		#                                  target, generated further down;
+		#                                  name32 is left untouched
+		#   anything else nonzero          a directive error
+		int n_names = wbg_dir_names.length
+		int n_argv = wbg_dir_argvs.length
+		char* name_override = 0
+		if ((n_names == 1) && (n_argv == 0)):
+			name_override = wbg_dir_names[0]
+		else if ((n_names == 0) && (n_argv > 0)):
+			wbg_dir_argv_decorates_primary = 1
+		else if ((n_names > 0) && (n_argv > 0) && (n_names != n_argv)):
+			wbg_token_error(src, c"'name=' and 'argv=' directive counts must match to pair as variants (or use exactly one 'name=' alone to rename, or 'argv=' alone to decorate): ", src)
+			return 1
+		else if ((n_names > 1) && (n_argv == 0)):
+			wbg_token_error(src, c"multiple 'name=' directives need an equal number of paired 'argv=' directives (variants), or exactly one 'name=' alone (rename): ", src)
+			return 1
 		char* name32 = wbg_strip_suffix(wbg_basename(src), 2)
+		if (name_override != 0):
+			name32 = name_override
 		int gen32 = 0
 		int gen64 = 0
 		int gen_arm64 = 0
@@ -827,6 +976,12 @@ int wbg_scan():
 				if (wbg_add_generated(name_darwin, strclone(src), wbg_arch_arm64_darwin())):
 					return 1
 				gen_darwin = 1
+		if ((n_names > 0) && (n_argv > 0) && (n_names == n_argv)):
+			int vi = 0
+			while (vi < n_names):
+				if (wbg_add_variant(wbg_dir_names[vi], strclone(src), wbg_dir_argvs[vi])):
+					return 1
+				vi = vi + 1
 		# Directives that nothing generated can honor are as fatal as
 		# typos: they mean the target moved to build.base.json without
 		# the source shedding its directive lines (or vice versa).

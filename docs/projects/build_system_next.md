@@ -450,6 +450,45 @@ whose basename doesn't match the desired target name (e.g.
 Needs a `name=` override directive in `wbuildgen` before these can
 generate.
 
+**Update (2026-07-19, wave 2b):** `wbuildgen` grew `# wbuild: name=<target>`
+(overrides the basename-derived name — and the base every arch twin's
+suffix rule derives from — for the whole source); 13 of the 18 migrated:
+`crypto_base64_test`/`crypto_base64_64_test`, `crypto_random_test`/
+`crypto_random_64_test`, `crypto_ecdsa_p256_test`, `graphics_math_test`/
+`graphics_math_64_test` (plain `name=` [+ `x64`], unchanged shape), and
+`crypto_rsa_verify_test`, `net_asn1_test`, `net_x509_test`,
+`net_tls_test`, `net_tls_server_test` (these five bundled *both*
+bitnesses' compile+run into one hand-written target under the legacy
+`..._test_x64` binary-name style, not a separate target — `name=` + `x64`
+now generates them as the two separate targets the rest of this bucket
+already used, e.g. `net_asn1_test` + a new `net_asn1_64_test`,
+joining `tests_x64` the same way `crypto_base64_64_test` already did;
+verified byte-for-byte on the plain ones and behaviorally on the split
+ones). Left hand-written, with reasons: **`graphics_gl_smoke_test`**,
+**`extern_alias_test_x64`**, **`float_abi_test_x64`** — all three are
+x64-*only* targets (no 32-bit variant is wanted, and for
+`extern_alias_test_x64`/`float_abi_test_x64` no 32-bit variant has ever
+existed or been vetted), but `wbuildgen`'s default-arch generation is
+unconditional — it always emits a target under the (possibly
+`name=`-overridden) basename at the default 32-bit arch unless
+`build.base.json` already claims that exact name, with no directive to
+say "this source is x64-only, skip the 32-bit default" (confirmed by
+compiling `tests/x64_test.w` — one of bucket D's *own* x64-only-by-
+convention targets — at the default arch: it compiles clean but the
+binary exits 1 with no output, i.e. a real, silent behavior change, not
+just redundant coverage). `float_abi_test_x64` additionally bundles
+*three* unrelated source files
+(`tests/float_abi_test.w`/`tests/x64_float_abi_test.w`/
+`tests/x64_c_import_float_test.w`) into one target — bucket L's
+multi-source-per-target gap, not bucket G's. **`net_darwin`**,
+**`graphics_darwin`**, **`pac_darwin`** stay hand-written per the wave
+plan's own hedge: `graphics_darwin`/`pac_darwin` each bundle 2-3 unrelated
+source files into one target (same bucket L gap), and `net_darwin`,
+though single-source, would collide with the same unconditional-default
+problem above (`name=` would still generate an unwanted 32-bit
+`tests/net_darwin_smoke_test.w` compile under the override name). Logged
+as friction in `docs/projects/ai_tooling_next_steps.md`.
+
 **H. Argv variant of an already-generated target — 1.**
 `x25519_iterated_test` compiles the same source as the *also-generated*
 `x25519_test` (`libs/standard/crypto/x25519_test.w`), just invoking the
@@ -457,6 +496,16 @@ binary with an extra `--iterated-1000` argument. Blocker: `wbuildgen`'s
 generated run step never takes CLI arguments for the binary itself (only
 `stdin=`/`expect_*=`); needs an `argv=` directive, or support for more
 than one run step per generated target.
+
+**Update (2026-07-19, wave 2b):** migrated. `wbuildgen` grew
+`# wbuild: argv=<args>`: alone, it appends CLI arguments to every
+run-capable twin's run step; paired with an equal, nonzero count of
+`name=` directives, each pair instead defines one more default-arch-only
+target from the same source (leaving that source's other generated
+targets untouched) — `x25519_test.w` carries `# wbuild: name=
+x25519_iterated_test argv=--iterated-1000` alongside its existing
+`# wbuild: x64`, generating a byte-identical `x25519_iterated_test`
+target next to the plain `x25519_test`/`x25519_64_test`.
 
 **I. Compile-error fixture (the compile step itself must fail) — 1.**
 `int64_x86_error_test` (`expect_fail`/`expect_stderr` on the *compile*

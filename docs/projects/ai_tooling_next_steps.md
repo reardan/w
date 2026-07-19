@@ -182,6 +182,24 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
+- **`wbuildgen` can't express "this source's default-arch target is
+  x64-only, don't also generate an unwanted 32-bit twin"** (wave 2b,
+  bucket G migration). `wbg_scan`'s default-arch generation is
+  unconditional: it always emits a target under the source's
+  (`name=`-overridden or not) basename at the 32-bit default arch unless
+  `build.base.json` already claims that exact name — there is no
+  directive to opt a source *out* of the 32-bit default while still
+  generating an x64 twin under the plain (non-`_64_test`-suffixed) name.
+  Confirmed as a real behavior gap, not just redundant coverage: compiling
+  `tests/x64_test.w` (bucket D, hand-written today as x64-only under its
+  own basename) at the default arch builds clean but the binary silently
+  exits 1 with no output. Blocks migrating `graphics_gl_smoke_test`,
+  `extern_alias_test_x64`, `float_abi_test_x64` (bucket G) and bucket D's
+  whole `x64_test`/`x64_float_test`/... family the same way — left
+  hand-written, see `build_system_next.md`'s bucket G update. Fix would be
+  a directive like `arch_only=x64` (or reusing `arch=x64` to mean "this
+  IS the default" when no other arch is requested) that suppresses the
+  unconditional 32-bit generation for that source.
 - **`wexec_resolve_program` (tools/wexec.w) resolves a bare command name
   to the first *readable* file on `PATH`, not the first *executable*
   one — a manifest step naming `"env"` failed with a bare "command
