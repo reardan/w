@@ -588,6 +588,34 @@ the same "path-based deps" gap bucket C flagged from the tool-binary
 side — solving it there (letting a target depend on a *file* instead of
 a *name*) would likely retire this bucket too.
 
+**Update (2026-07-19, wave plan C task 2d):** the path-based gap is
+closed for the shape that already had a single-source compile-and-run
+target — `# wbuild: tool=<path>` (resolved via a new
+`wbg_find_target_by_source` scan over `build.base.json`, not a
+hardcoded name table) and `# wbuild: fixture_group=<name>` (groups
+several `tests/*_fixture.w` files into one generated `bin/wfixture`
+invocation) together migrated 11 of this bucket's 18:
+`buffer_field_assign_test`, `array_error_test`, `syscall_arity_test`,
+`int_literal_width_test`, `prefixed_string_literal_test`,
+`warning_test`, `type_system_error_test`, `type_system_warning_test`,
+`operator_overload_error_test` (via `fixture_group=`) and
+`wvc_e2e_test`, `wexec_remote_cache_test` (via a bare `tool=` — these
+two turned out to already be conventional `_test.w` compile+run
+targets with no shape gap at all beyond the missing "deps" entry).
+Still hand-written, and *not* closed by this mechanism: `manifest`,
+`manifest_check`, `metadata_check`, `wvdiff_test`,
+`wexec_keep_going_test`, `wexec_ordered_output_test` compile nothing of
+their own (they invoke a tool binary directly against fixture
+data/manifests, so there is no `*_test.w` source for a directive to
+live on — closing these needs a distinct "the whole target is one tool
+invocation, no compile step" generation mode, an open design question,
+not a directive gap); `asm_seed_gate`'s raw-seed mismatch is unrelated
+to tool dependencies and needs its own compiler-selector fix. Bucket C
+itself is unaffected by design — `wbg_find_target_by_source` resolves
+*against* those 11 hand-written tool targets, it does not generate them
+(none of them are `*_test.w`-shaped, so wbuildgen's scan never reaches
+them either way).
+
 **L. Multi-step pipelines — 42.** `float_reference_test`,
 `string_utf8_test`, `container_trap_test`, `memory_debug_fault_test`,
 `strict_mode_test`, `check_json_test`, `check_roots_test`,

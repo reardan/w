@@ -259,52 +259,10 @@
 			]
 		},
 		{
-			"name": "buffer_field_assign_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/buffer_field_assign_test.w"]}
-			]
-		},
-		{
-			"name": "array_error_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/array_param_error_fixture.w", "tests/array_union_error_fixture.w", "tests/array_constructor_error_fixture.w"]}
-			]
-		},
-		{
-			"name": "syscall_arity_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/syscall_arity_error_fixture.w", "tests/syscall7_arity_error_fixture.w"]}
-			]
-		},
-		{
-			"name": "int_literal_width_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/int_literal_width_error_fixture.w", "tests/int_literal_width_binary_error_fixture.w", "tests/int_literal_width_decimal_error_fixture.w"]}
-			]
-		},
-		{
-			"name": "prefixed_string_literal_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/prefixed_string_unterminated_fixture.w"]}
-			]
-		},
-		{
 			"name": "increment_error_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
 				{"cmd": ["bin/wfixture", "bin/wv2", "tests/increment_expression_error_fixture.w", "tests/decrement_expression_error_fixture.w", "tests/increment_non_lvalue_error_fixture.w", "tests/increment_map_element_error_fixture.w"]}
-			]
-		},
-		{
-			"name": "warning_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w", "tests/limb_builtin_warning_fixture.w", "tests/bool_bitwise_warning_fixture.w", "tests/bool_bitwise_chain_fixture.w", "tests/bit31_literal_warning_fixture.w", "tests/cross_line_call_warning_fixture.w", "tests/cross_line_call_increment_fixture.w", "tests/imported_diagnostic_line_fixture.w"]}
 			]
 		},
 		{
@@ -580,27 +538,6 @@
 				{"cmd": ["bin/wv2", "tests/generics_infer_conflict_error_fixture.w", "-o", "bin/generics_infer_conflict_error_fixture"], "expect_fail": true, "expect_stderr": "conflicting types inferred for type parameter 'T': 'int' vs 'char*'"},
 				{"cmd": ["bin/wv2", "tests/generics_infer_struct_shape_error_fixture.w", "-o", "bin/generics_infer_struct_shape_error_fixture"], "expect_fail": true, "expect_stderr": "generic function 'sum_first': cannot infer type argument 'T'"},
 				{"cmd": ["bin/wv2", "tests/generics_infer_forward_error_fixture.w", "-o", "bin/generics_infer_forward_error_fixture"], "expect_fail": true, "expect_stderr": "Cannot find symbol: 'later_pick'"}
-			]
-		},
-		{
-			"name": "type_system_error_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/type_system_error_fixture.w", "tests/type_system_const_pointer_error_fixture.w", "tests/type_system_cast_error_fixture.w", "tests/type_system_function_cast_error_fixture.w", "tests/method_chain_error_fixture.w"]}
-			]
-		},
-		{
-			"name": "type_system_warning_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/type_system_warning_fixture.w"]}
-			]
-		},
-		{
-			"name": "operator_overload_error_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/operator_no_match_error_fixture.w", "tests/operator_token_error_fixture.w", "tests/operator_arity_error_fixture.w", "tests/operator_struct_param_error_fixture.w", "tests/operator_variadic_error_fixture.w"]}
 			]
 		},
 		{
@@ -1027,16 +964,6 @@
 			]
 		},
 		{
-			"name": "wvc_e2e_test",
-			"deps": ["wv2", "wvc"],
-			"inputs": ["tests/wvc_e2e_test.w"],
-			"outputs": ["bin/wvc_e2e_test"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/wvc_e2e_test.w", "-o", "bin/wvc_e2e_test"]},
-				{"cmd": ["bin/wvc_e2e_test"]}
-			]
-		},
-		{
 			"name": "wvc_sync_e2e_test",
 			"deps": ["wv2", "wvc"],
 			"inputs": ["tests/wvc_sync_e2e_test.w"],
@@ -1135,14 +1062,6 @@
 				{"cmd": ["bin/wexec", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": "wexec: OK (2 targets)", "reject_stdout": "wexec: --- "},
 				{"cmd": ["bin/wexec", "--ordered-output", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": ["wexec: --- beta ---\nwexec: target beta\n$ sleep 0.1\n$ echo beta-line-1\nbeta-line-1\n$ echo beta-line-2\nbeta-line-2\nwexec: --- alpha ---\nwexec: target alpha\n$ echo alpha-line-1\nalpha-line-1\n$ sleep 0.6\n$ echo alpha-line-2\nalpha-line-2\n", "wexec: OK (2 targets)"]},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "--ordered-output", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": ["wexec: --- standalone ---\nwexec: target standalone\n$ echo standalone ran\nstandalone ran\n", "wexec: --- boom ---\nwexec: target boom\n$ false\n"], "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: error: target 'boom' step 1: command failed with exit status 1", "wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"}
-			]
-		},
-		{
-			"name": "wexec_remote_cache_test",
-			"deps": ["wv2", "wexec"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/wexec_remote_cache_test.w", "-o", "bin/wexec_remote_cache_test"]},
-				{"cmd": ["bin/wexec_remote_cache_test"]}
 			]
 		},
 		{

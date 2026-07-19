@@ -87,6 +87,65 @@ Generation rules:
   order, generated targets are appended sorted by name, and the same
   tree always serializes to byte-identical build.json.
 
+Path-based target dependencies (2026-07, wave 2d — the bucket C/K gap
+in docs/projects/build_system_next.md): before this, a generated
+target's "deps" was always exactly ["wv2"] — a test whose compiled
+binary shells out to another tool binary at runtime (wvc_e2e_test ->
+bin/wvc, wexec_remote_cache_test -> bin/wexec) had no way to add that
+tool to "deps" except by moving the whole target into build.base.json
+by hand, and a family of wfixture-driven "run a list of *_fixture.w
+files through wfixture" targets (warning_test, type_system_error_test,
+...) had no single-source shape to hang a directive on at all. Two
+additive mechanisms close both gaps without touching the existing
+per-source generation rules above:
+
+- `# wbuild: tool=<path>` (repeatable) on an ordinary generated
+  `*_test.w` source resolves <path> — a tool's own .w source, e.g.
+  "tools/wvc.w" — to the name of the *existing* build.base.json target
+  that compiles it (wbg_find_target_by_source scans base targets for
+  the "bin/wv2 [arch] <path> -o <binary>" shape every bucket-C tool
+  target already has: single step, first arg "bin/wv2", <path>
+  present verbatim), and appends that resolved name to the generated
+  target's "deps" alongside "wv2". The tool target itself stays
+  hand-written in build.base.json (it is not `*_test.w`-shaped, so
+  wbuildgen's scan never touches it) — only the *dependent* stops
+  needing a hand-written entry.
+- Fixture-group targets, layered on the same resolver: a file (usually
+  `tests/*_fixture.w`, but any scanned source works) carrying
+  `# wbuild: fixture_group=<name>` is not compiled-and-run itself — it
+  is one member of a single wfixture invocation named <name>, gathered
+  from every file sharing that group name (alphabetical path order,
+  since the scan already walks the tree in sorted order) into
+
+      {"name": <name>, "deps": ["wv2", <wfixture's resolved name>],
+       "steps": [{"cmd": [<wfixture's resolved binary>, "bin/wv2",
+                  <member>, <member>, ...]}]}
+
+  — exactly the shape every hand-written wfixture-driven bucket-K
+  target already has. `wfixture`'s own target name and output binary
+  path are looked up via the same wbg_find_target_by_source resolver
+  the `tool=` directive uses (currently always "wfixture" /
+  "bin/wfixture", but derived rather than hardcoded, so a rename keeps
+  working). A fixture-group member cannot also carry a run/arch/tool/
+  deps directive — it has no compile-and-run shape of its own, only a
+  place in its group's wfixture invocation. Order note: a hand-written
+  target's fixture list was sometimes in an intentional (non-
+  alphabetical) order; the generated list is always alphabetical by
+  path. This is a behavior-preserving reordering — each fixture's
+  pass/fail is independent and wfixture's own exit status is an
+  aggregate over all of them, so no target's assertions depend on
+  invocation order (verified by diffing old vs. new build.json for
+  every migrated target when this landed).
+
+`fixture_group=` almost always needs the sidecar form
+(`<fixture>.w.wbuild`, see wbg_parse_directives) rather than an inline
+header line: a compile-diagnostic fixture's own `# expect_stderr:`
+routinely embeds this file's exact line numbers (e.g. "got 3 bits at
+<file>.w:10"), so inserting a header line shifts every line reference
+below it and breaks the fixture it decorates — caught by actually
+running the migrated fixture targets, not by inspection, which is why
+every fixture-group member in this migration uses the sidecar.
+
 Usage: wbuildgen [--check] [--base build.base.json] [--out build.json]
 
 --check regenerates to bin/build.json.gen, byte-compares it with the
@@ -322,6 +381,21 @@ vocabulary:
                            expect_stdout=/expect_stderr=/timeout=/
                            stdin= decorate the compile step instead of
                            a run step when this flag is set.
+  tool=<path>              resolve <path> (another tool's own .w
+                           source, e.g. "tools/wvc.w") to the name of
+                           the build.base.json target that compiles
+                           it, and append that name to the generated
+                           target's "deps" alongside "wv2" (repeatable;
+                           see wbg_find_target_by_source below).
+                           Applies to every twin the source generates,
+                           run-capable or not — a build-order
+                           dependency, not a run-step decoration.
+
+A separate, fixture-group-only directive is documented above
+wbg_dir_fixture_group below: `# wbuild: fixture_group=<name>` does not
+belong to a generated *_test.w run target at all, so it is parsed by
+the same wbg_parse_directives/wbg_apply_directive machinery but handled
+by its own code path in wbg_scan rather than by wbg_make_target.
 
 Run-step fields apply to every run-capable target generated from the
 source (32-bit, x64, arm64, win64 twins alike — arm64_darwin has no run
@@ -382,6 +456,12 @@ list[char*] wbg_dir_data
 list[char*] wbg_dir_names          # raw name= values, encounter order
 list[char*] wbg_dir_argvs          # raw argv= values, encounter order
 int wbg_dir_argv_decorates_primary # 1 when argv= applies with no name=
+list[char*] wbg_dir_tool           # resolved target names from 'tool=' directives
+
+# '# wbuild: fixture_group=<name>' (fixture files only — see wbg_scan's
+# fixture-group pass): the file is not compiled/run itself, it is one
+# member of the single wfixture invocation named <name>. 0 = unset.
+char* wbg_dir_fixture_group
 
 
 void wbg_reset_directives():
@@ -400,6 +480,8 @@ void wbg_reset_directives():
 	wbg_dir_names = new list[char*]
 	wbg_dir_argvs = new list[char*]
 	wbg_dir_argv_decorates_primary = 0
+	wbg_dir_tool = new list[char*]
+	wbg_dir_fixture_group = 0
 
 
 # Directives that decorate the generated run step (as opposed to the
@@ -453,6 +535,77 @@ int wbg_no_value(char* path, char* key, int has_value):
 		return 0
 	wbg_token_error(path, c"'# wbuild:' flag takes no value: ", key)
 	return 1
+
+
+/* Path-based tool-dependency resolution (wave 2d).
+
+wbg_find_target_by_source is the one mechanism both new directives
+build on: given a tool's own .w source path, find the existing
+build.base.json target that compiles it, so a generated target's
+"deps" (or a fixture-group target's "deps" and step "cmd") can
+reference that target by its *resolved* name/binary instead of the
+generator hardcoding it. */
+
+# The output path a base target's first compile step produces: the
+# argument immediately following "-o" in that step's "cmd" array.
+# Returns 0 if the shape doesn't match (defensive — every bucket-C
+# tool target and every generated _test.w target has this shape).
+char* wbg_target_binary_path(json_value* target):
+	json_value* steps = json_object_get(target, c"steps")
+	if ((steps == 0) || (steps.type != json_type_array()) || (json_array_length(steps) == 0)):
+		return 0
+	json_value* first = json_array_get(steps, 0)
+	json_value* cmd = json_object_get(first, c"cmd")
+	if ((cmd == 0) || (cmd.type != json_type_array())):
+		return 0
+	int i = 0
+	while (i < json_array_length(cmd)):
+		json_value* element = json_array_get(cmd, i)
+		if ((element.type == json_type_string()) && (strcmp(element.string_value, c"-o") == 0) && (i + 1 < json_array_length(cmd))):
+			json_value* out = json_array_get(cmd, i + 1)
+			if (out.type == json_type_string()):
+				return out.string_value
+		i = i + 1
+	return 0
+
+
+# Finds the build.base.json target whose first step compiles src_path
+# directly: "bin/wv2 [arch] <src_path> -o <binary>" — the shape every
+# bucket-C tool target (wfixture, wvc, wexec, ...) already has by hand.
+# Returns the target's json_value, or 0 if no base target matches.
+json_value* wbg_find_target_by_source(char* src_path):
+	for char* name in wbg_base_names:
+		json_value* target = wbg_base_targets[name]
+		json_value* steps = json_object_get(target, c"steps")
+		if ((steps == 0) || (steps.type != json_type_array()) || (json_array_length(steps) == 0)):
+			continue
+		json_value* first = json_array_get(steps, 0)
+		json_value* cmd = json_object_get(first, c"cmd")
+		if ((cmd == 0) || (cmd.type != json_type_array()) || (json_array_length(cmd) < 1)):
+			continue
+		json_value* head = json_array_get(cmd, 0)
+		if ((head.type != json_type_string()) || (strcmp(head.string_value, c"bin/wv2") != 0)):
+			continue
+		int i = 1
+		int matched = 0
+		while ((i < json_array_length(cmd)) && (matched == 0)):
+			json_value* element = json_array_get(cmd, i)
+			if ((element.type == json_type_string()) && (strcmp(element.string_value, src_path) == 0)):
+				matched = 1
+			i = i + 1
+		if (matched):
+			return target
+	return 0
+
+
+# The target name for a 'tool=' (or fixture-group) path: wraps
+# wbg_find_target_by_source, returning just the resolved name. Returns
+# 0 if no base target compiles src_path.
+char* wbg_resolve_tool_name(char* src_path):
+	json_value* target = wbg_find_target_by_source(src_path)
+	if (target == 0):
+		return 0
+	return wbg_get_string(target, c"name")
 
 
 # Applies one parsed key[=value] token to the wbg_dir_* state.
@@ -558,6 +711,35 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 		else:
 			wbg_dir_argvs.push(strclone(value))
 		return 0
+	if (strcmp(key, c"tool") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (ends_with(value, c".w") == 0):
+			wbg_token_error(path, c"'tool=' expects a tool's '.w' source path, got ", value)
+			return 1
+		# A missing path usually means a typo; fail loudly, like deps=.
+		int fd = open(value, 0, 0)
+		if (fd < 0):
+			wbg_token_error(path, c"'# wbuild:' tool path does not exist: ", value)
+			return 1
+		close(fd)
+		char* tool_name = wbg_resolve_tool_name(value)
+		if (tool_name == 0):
+			wbg_token_error(path, c"'tool=' path has no matching build.base.json compile target (want 'bin/wv2 <path> -o bin/<name>'): ", value)
+			return 1
+		wbg_dir_tool.push(strclone(tool_name))
+		return 0
+	if (strcmp(key, c"fixture_group") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (wbg_dir_fixture_group != 0):
+			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
+			return 1
+		if (value[0] == 0):
+			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
+			return 1
+		wbg_dir_fixture_group = strclone(value)
+		return 0
 	wbg_token_error(path, c"unknown '# wbuild:' directive ", key)
 	return 1
 
@@ -620,9 +802,25 @@ int wbg_parse_directive_token(char* text, int j, char* path):
 
 # Parses every "# wbuild:" line of the source into the wbg_dir_*
 # state. Returns 0 on success, -1 after reporting errors.
+#
+# Sidecar fallback (mirrors wfixture's own "<fixture>.expect" fallback,
+# tools/wfixture.w): a source whose byte content cannot safely carry an
+# extra header line -- a compile-diagnostic fixture whose own
+# expect_stderr text embeds this file's exact line numbers, so any
+# inserted line would shift every reference below it, or a fixture that
+# deliberately ends without a trailing newline -- may put its
+# '# wbuild:' directive lines in a "<path>.wbuild" file next to it
+# instead. When the sidecar exists it is read instead of the source
+# (never both), so the source's own bytes stay untouched.
 int wbg_parse_directives(char* path):
 	wbg_reset_directives()
-	char* text = file_read_text(path)
+	string_builder* sidecar_path = string_new()
+	string_append(sidecar_path, path)
+	string_append(sidecar_path, c".wbuild")
+	char* text = file_read_text(sidecar_path.data)
+	string_free(sidecar_path)
+	if (text == 0):
+		text = file_read_text(path)
 	if (text == 0):
 		wbg_error2(c"cannot read source ", path)
 		return -1
@@ -801,6 +999,8 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 	json_object_set(target, c"name", json_string(name))
 	json_value* deps = json_array()
 	json_array_push(deps, json_string(c"wv2"))
+	for char* tool_name in wbg_dir_tool:
+		json_array_push(deps, json_string(tool_name))
 	json_object_set(target, c"deps", deps)
 	if (wbg_dir_data.length > 0):
 		json_value* data = json_array()
@@ -963,6 +1163,51 @@ void wbg_sort_generated():
 		i = i + 1
 
 
+# The single wfixture invocation for one fixture-group: the shape
+# every hand-written wfixture-driven bucket-K target (warning_test and
+# friends) already has by hand —
+#   {"name": name, "deps": ["wv2", wfixture_name],
+#    "steps": [{"cmd": [wfixture_bin, "bin/wv2", <member>, ...]}]}
+# wfixture_name/wfixture_bin come from wbg_find_target_by_source
+# resolving "tools/wfixture.w", not a hardcoded "wfixture" — see
+# wbg_scan's fixture-group pass.
+json_value* wbg_make_fixture_group_target(char* name, list[char*] members, char* wfixture_name, char* wfixture_bin):
+	json_value* target = json_object()
+	json_object_set(target, c"name", json_string(name))
+	json_value* deps = json_array()
+	json_array_push(deps, json_string(c"wv2"))
+	json_array_push(deps, json_string(wfixture_name))
+	json_object_set(target, c"deps", deps)
+	json_value* cmd = json_array()
+	json_array_push(cmd, json_string(wfixture_bin))
+	json_array_push(cmd, json_string(c"bin/wv2"))
+	for char* member in members:
+		json_array_push(cmd, json_string(member))
+	json_value* step = json_object()
+	json_object_set(step, c"cmd", cmd)
+	json_value* steps = json_array()
+	json_array_push(steps, step)
+	json_object_set(target, c"steps", steps)
+	return target
+
+
+int wbg_add_fixture_group_target(char* name, list[char*] members, char* wfixture_name, char* wfixture_bin):
+	if (name in wbg_base_targets):
+		wbg_error2(c"'fixture_group=' target is still hand-written in build.base.json (migration incomplete): ", name)
+		return 1
+	if (name in wbg_gen_seen):
+		string_builder* s = string_new()
+		string_append(s, c"generated target '")
+		string_append(s, name)
+		string_append(s, c"' collides (fixture group)")
+		wbg_error(s.data)
+		string_free(s)
+		return 1
+	wbg_gen_seen[name] = 1
+	wbg_generated.push(wbg_make_fixture_group_target(name, members, wfixture_name, wfixture_bin))
+	return 0
+
+
 int wbg_scan():
 	wbg_generated = new list[json_value*]
 	wbg_gen_seen = new map[char*, int]
@@ -981,13 +1226,40 @@ int wbg_scan():
 	wbg_collect_dir(c"tools", files)
 	wbg_sort_strings(files)
 
+	# Fixture-group accumulation (wave 2d): members are collected here,
+	# in the same alphabetical path order 'files' already has, and
+	# turned into one generated target per group name after the main
+	# loop (see below wbg_sort_generated()).
+	map[char*, list[char*]] fixture_groups = new map[char*, list[char*]]
+	list[char*] fixture_group_names = new list[char*]
+
 	for char* src in files:
-		if (ends_with(src, c"_test.w") == 0):
+		int is_test = ends_with(src, c"_test.w")
+		int is_fixture = ends_with(src, c"_fixture.w")
+		if ((is_test == 0) && (is_fixture == 0)):
 			continue
 		if (src in wbg_exclude):
 			continue
 		if (wbg_parse_directives(src)):
 			return 1
+		if (wbg_dir_fixture_group != 0):
+			# A fixture-group member has no compile-and-run shape of its
+			# own — it is one line in its group's single wfixture
+			# invocation — so run/arch/tool/deps/name/argv directives
+			# (which all decorate or extend a generated compile+run
+			# target) do not apply here; catch a copy-paste mistake
+			# instead of silently ignoring it.
+			int forbidden = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_has_run_fields() | (wbg_dir_extra_compile.length > 0) | (wbg_dir_tool.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0)
+			if (forbidden):
+				wbg_error2(c"'fixture_group=' cannot combine with run/arch/tool/deps directives: ", src)
+				return 1
+			if ((wbg_dir_fixture_group in fixture_groups) == 0):
+				fixture_groups[wbg_dir_fixture_group] = new list[char*]
+				fixture_group_names.push(wbg_dir_fixture_group)
+			fixture_groups[wbg_dir_fixture_group].push(strclone(src))
+			continue
+		if (is_test == 0):
+			continue
 		# name=/argv= resolution (bucket G basename overrides + bucket H
 		# argv variants — see the module doc comment and
 		# wbg_apply_directive's comment for the pairing rule):
@@ -1078,6 +1350,28 @@ int wbg_scan():
 		if ((gen_any == 0) && (wbg_dir_data.length > 0)):
 			wbg_error2(c"'# wbuild:' directives have no generated target (build.base.json defines them all): ", src)
 			return 1
+		if ((gen_any == 0) && (wbg_dir_tool.length > 0)):
+			wbg_error2(c"'tool=' directive has no generated target (build.base.json defines them all): ", src)
+			return 1
+
+	# One wfixture invocation per fixture-group name, resolved via the
+	# same wbg_find_target_by_source path-based lookup 'tool=' uses —
+	# see the module doc comment's "Path-based target dependencies"
+	# section.
+	if (fixture_group_names.length > 0):
+		json_value* wfixture_target = wbg_find_target_by_source(c"tools/wfixture.w")
+		if (wfixture_target == 0):
+			wbg_error(c"'fixture_group=' targets need a build.base.json target compiling tools/wfixture.w")
+			return 1
+		char* wfixture_name = wbg_get_string(wfixture_target, c"name")
+		char* wfixture_bin = wbg_target_binary_path(wfixture_target)
+		if (wfixture_bin == 0):
+			wbg_error2(c"cannot determine wfixture's output binary from target ", wfixture_name)
+			return 1
+		for char* group_name in fixture_group_names:
+			if (wbg_add_fixture_group_target(group_name, fixture_groups[group_name], wfixture_name, wfixture_bin)):
+				return 1
+
 	wbg_sort_generated()
 	wbg_sort_strings(wbg_gen32_names)
 	wbg_sort_strings(wbg_gen64_names)
