@@ -1656,8 +1656,10 @@ void ptx_promote():
 					t = t + 1
 			i = i + 1
 
-		# Rebuild the body into a fresh scratch buffer.
-		int cap2 = n * 2 + 256
+		# Rebuild the body into a fresh scratch buffer. 3x covers the
+		# worst case (every line a sub-word store rewritten to the
+		# two-line shl/shr widen); every other rewrite shrinks.
+		int cap2 = n * 3 + 256
 		char* out = malloc(cap2)
 		int outp = 0
 		int ap = 0
