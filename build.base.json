@@ -1680,6 +1680,14 @@
 			]
 		},
 		{
+			"name": "x64_protobuf_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_protobuf_test.w", "-o", "bin/x64_protobuf_test"]},
+				{"cmd": ["bin/x64_protobuf_test"], "expect_stdout": "x64 protobuf wide-kind tests OK"}
+			]
+		},
+		{
 			"name": "x64_map_float64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1843,6 +1851,7 @@
 				"x64_fmath64_test",
 				"x64_ndarray64_test",
 				"x64_int64_test",
+				"x64_protobuf_test",
 				"x64_map_float64_test",
 				"x64_float64_conformance_test",
 				"dynamic_64_test",

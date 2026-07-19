@@ -372,6 +372,33 @@ exist yet:
   `args_has_bool_flag` that does not consume the next token, or a
   convention/API for declaring boolean flag names up front. (scheduled:
   wave plan C task 1e)
+- **A fixed-size array (`T[N]`) struct field is not flat inline
+  storage — it carries a hidden runtime header before its data.**
+  Found writing `libs/extras/protobuf/`'s generic, descriptor-driven
+  encode/decode (wave plan C task 4d), which reads/writes struct fields
+  generically via `addr + offset` byte arithmetic (the same style
+  `structures/json_codec.w` already uses). A `char[8]` field tried as
+  cheap `int64`-free storage for a "raw 8 bytes" test case: indexed
+  access (`s.field[i]`) reads back correctly, but `cast(char*, &s)`
+  at that field's offset shows 8 bytes of header (what looks like a
+  capacity/pointer word followed by a length word equal to `N`) *before*
+  the real element bytes, which start `2 * __word_size__` bytes later
+  than the field's own offset. Root cause: `type_push_array()`
+  (`compiler/type_table.w:233-245`) sets the array type's `type_get_size`
+  to `(2 * word_size) + (length * element_size)`, not just
+  `length * element_size` — confirmed by reading the function, not
+  inferred. Any hand-rolled, reflection-style codec that computes a
+  field's byte range via `type_get_size`/offset arithmetic (rather than
+  going through the compiler's own array-aware codegen) will silently
+  read/write the header instead of the data for a `T[N]` field. Worked
+  around in `tests/protobuf_test.w` by using plain scalar fields (two
+  adjacent `int32`s) instead of a `char[N]` field wherever the test
+  needed raw-byte-range access; not otherwise a live bug since ordinary
+  `s.field[i]` indexing is unaffected. Worth either documenting this
+  layout explicitly next to `type_push_array`/`type_get_size`, or adding
+  a `type_array_element_offset()`-style accessor for code that needs the
+  data start, so the next generic-codec author doesn't have to
+  rediscover it by binary-searching struct bytes.
 - **wexec directory hashing is Linux-layout only.** Found while porting
   the darwin triad: `wexec_collect_dir` (tools/wexec.w) parses the Linux
   getdents record layout, so on macOS — where the `getdents` shim
