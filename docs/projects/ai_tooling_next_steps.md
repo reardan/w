@@ -135,23 +135,6 @@ is a queue, not an archive.
   this was host-specific slowness) -- agents should budget several
   minutes (not the 2-minute tool default) for the FIRST post-build
   `wtest changed` invocation, same as any other cold-cache step.
-- **Two `./wbuild`/`wexec` invocations racing in the same worktree
-  corrupt each other's build with no useful diagnostic.** Hit while
-  gating the `stream_peek_byte` fix (#331 follow-up): a backgrounded
-  `./wbuild test_changed` rerun (started to grep its output for
-  failures rather than re-scrolling a long transcript) was still
-  compiling when a foreground `./wbuild verify` started in the same
-  worktree; the seed-stage compile failed with a bare "could not open
-  output file" and a stack trace pointing at `compiler.w`'s `link`
-  (both processes were writing/executing the same `bin/wv2`). Not a
-  compiler or `wexec` bug -- `bin/` has no lock file, so nothing stops
-  two invocations from racing there. Agents should treat a worktree's
-  `bin/` as single-writer: never background a `./wbuild`/`wexec` call
-  and start another in the same worktree before confirming (via
-  `pgrep -f` scoped to the worktree's `bin/`, or just waiting for the
-  first command's own completion) that it has actually finished.
-  (scheduled: wave plan C task 1f)
-
 ## Definition hashing (`w defhash`)
 
 - **`wtest --defhash` consumer**: wire an opt-in `--defhash` refinement
@@ -183,6 +166,26 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
+- **`wexec_resolve_program` (tools/wexec.w) resolves a bare command name
+  to the first *readable* file on `PATH`, not the first *executable*
+  one — a manifest step naming `"env"` failed with a bare "command
+  failed with exit status 127" while writing wave 1f's `wexec_lock_test`
+  (2026-07-19), even though `/usr/bin/env` was on `PATH`: this sandbox
+  also has a non-executable `~/.local/bin/env` (a `pyvenv`-style config
+  file, `-rw-r--r--`) earlier in `PATH`, and `wexec_resolve_program`'s
+  loop treats `open(candidate, O_RDONLY, 0) >= 0` as "found" without
+  ever checking the executable bit, so it silently resolves to that file
+  and `execve()` on it fails — with no diagnostic pointing at *why*
+  (exit 127 alone looks identical to "not found anywhere"). Worked
+  around in that test by using `sh -c "unset VAR; exec cmd..."` instead
+  of `env -u VAR cmd`. Not fixed here (out of scope for wave 1f, and
+  every other `PATH`-resolved command name already used across
+  `build.base.json` — `diff`, `cmp`, `grep`, `timeout`, `wine`, ... —
+  happens not to collide with a same-named non-executable file on any
+  tested host, so this is latent rather than currently breaking a real
+  target). Real fix: check the executable bit (or `access(path, X_OK)`)
+  in the `PATH` search loop, and ideally have the exit-127 path name the
+  resolved-but-unusable candidate instead of just "exit status 127".
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new

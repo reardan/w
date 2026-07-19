@@ -58,6 +58,41 @@ Shipped from the next-steps backlog:
   the *default* 32-bit target's gate error) and the migrated fixtures
   together exercise both directions of the mechanism.
   `tools/wfixture.w`.
+- **`wexec` single-writer lock on its managed `bin/` directory**
+  (2026-07-19, wave 1f): fixes "Two `./wbuild`/`wexec` invocations
+  racing in the same worktree corrupt each other's build with no useful
+  diagnostic" (a backgrounded `./wbuild test_changed` still compiling
+  when a foreground `./wbuild verify` starts in the same worktree used
+  to die with a bare "could not open output file" — both processes
+  writing/executing the same `bin/wv2`). `main()` now takes an advisory
+  lock (`bin/.wexec_lock`, `O_CREAT|O_EXCL`, own pid written inside)
+  before running any requested target's steps; a losing invocation reads
+  the pid back, and if `kill(pid, 0)` says it's dead (crash, SIGKILL, or
+  a direct `exit()` that bypassed `defer`) reclaims the stale lock and
+  retries once, otherwise prints `wexec: another build is running in
+  this directory (pid N); remove bin/.wexec_lock if stale` and exits 1.
+  Scoped per `bin/` directory (relative to cwd), not global. wexec's own
+  test harness (`wexec_test` and friends) runs nested `bin/wexec`
+  invocations against that same `bin/` as steps of an outer,
+  already-locked wexec; the outer process marks `WEXEC_LOCK_HELD=1` in
+  the environment on acquire (inherited through `execve`, transitively,
+  even through intermediate programs like `bin/wtest`'s own `--run`), so
+  a nested wexec sees the marker and skips locking, trusting the
+  ancestor. `--list`/`--explain-cache`/`--trace` return before the lock
+  is ever taken (out of scope: no steps run, or, for `--trace`, a
+  separate manual audit path). Covered by `wexec_lock_test`
+  (`build.base.json`; `tests/wexec/lock_scratch.json`), which plants a
+  manually-created live/stale pid lock file to stand in for a real
+  second concurrent process rather than racing a real backgrounded
+  build (which would be flaky to assert against), and runs its nested
+  `bin/wexec` invocations through `sh -c "unset WEXEC_LOCK_HELD; exec
+  bin/wexec ..."` (not `env -u`, which resolves to a stray non-executable
+  `~/.local/bin/env` ahead of the real one on this sandbox's `PATH` — see
+  the next-steps backlog's `wexec_resolve_program` entry) so they
+  exercise a fresh, non-reentrant acquire instead of inheriting the
+  outer test-runner's own lock marker. Design: `docs/projects/wexec.md`'s
+  "Locking" section; block comment above `wexec_lock_file` in
+  `tools/wexec.w`.
 - Portable `lib/stat.w` + Linux `statx`/`chmod`/`utimensat`/`readlink`/
   `symlink` wrappers in `lib/__arch__/{x86,x64,arm64}/syscalls.w`
   (2026-07-19): `file_stat_path` / `file_lstat_path`, mode predicates,
