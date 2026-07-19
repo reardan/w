@@ -1,3 +1,4 @@
+# wbuild: x64
 import lib.testing
 
 # Broad system headers imported together: overlapping typedefs, structs and

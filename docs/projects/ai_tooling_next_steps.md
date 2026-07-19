@@ -151,6 +151,57 @@ is a queue, not an archive.
   this was host-specific slowness) -- agents should budget several
   minutes (not the 2-minute tool default) for the FIRST post-build
   `wtest changed` invocation, same as any other cold-cache step.
+## Build manifest (`tools/wbuildgen.w`)
+
+Friction found migrating bucket D of `build_system_next.md`'s hand-written
+`build.base.json` inventory (wave plan C task 2a) — 11 of 21 targets
+migrated cleanly, 10 turned out to need directive vocabulary that doesn't
+exist yet:
+
+- **No way to say "this basename is arch-only"**: a source like
+  `tests/x64_test.w` whose desired target name already equals its
+  basename-derived name (`x64_test`) but which must compile with the
+  `x64` selector (some use `float64`, rejected on 32-bit words) can't
+  migrate — `wbg_scan` unconditionally also generates a *default* 32-bit
+  twin under that same name (no directive suppresses or redirects it),
+  and `generate.exclude` skips the whole file, twins included, so it
+  can't be combined with a directive either. Blocks `x64_test`,
+  `x64_float_test`, `x64_fmath64_test`, `x64_ndarray64_test`,
+  `x64_int64_test`, `x64_map_float64_test`. Needs a `name=` override (or
+  an explicit "no default twin" flag) — natural to fold into task 2b's
+  `name=` directive work.
+- **`deps=` rejects any `.w`-suffixed value even when the file is
+  consumed as runtime text, not imported.** `asm_stubs_test.w` reads
+  `code_generator/{x86,x64,arm64}_asm.w` as data via
+  `asm_stub_check(path, path)`, not `import` — but `wbg_apply_directive`
+  hard-rejects any `deps=` value ending in `.w` on the assumption
+  "imports already track it". No directive can express this target's
+  real input set today; it stays hand-written.
+- **`deps=`'s "data" field is wtest-selection-only, not a cache-key
+  field** — easy to miss. Hand-written targets get real caching via a
+  separate `"inputs"` array (`tools/wexec.w`'s `wexec_cache_key`); the
+  generated-target path (`wbg_make_target`) never emits `"inputs"` at
+  all, `deps=` only populates `"data"` (consumed solely by
+  `tools/test_map.w`'s rule (a) for `wtest changed` selection). Migrating
+  a hand-written target that declared `"inputs"` for caching (e.g.
+  `asm_x86_disasm_test`/`asm_x86_asm_test`, which read `tests/asm/` at
+  runtime) silently turns it into a FORCE target (always reruns) with no
+  diagnostic — matches the existing behavior of ~430 other generated
+  targets that also lack `"inputs"`, so it's a minor loss, but worth a
+  generated-target `"inputs"`-equivalent (or at least a note in
+  `--explain-cache`) if build-time caching for generated targets is ever
+  wanted.
+- **No directive for a multi-program aggregate target, extra compiler
+  flags on a generated compile step, or a `wasm` arch value.** Blocks
+  `arm64_smoke_test`/`wasm_smoke_test` (each is 5-9 programs compiled,
+  run, and summarized by one shared `echo "... OK"` epilogue — not the
+  single `(source, arch)` shape `wbg_make_target` ever produces) and
+  `pac_full_test_arm64` (needs `--pac=full` injected into the arm64
+  compile command, which no directive can add). `wasm_smoke_test` is
+  additionally blocked because `wbg_apply_directive`'s `arch=` only
+  recognizes `x64`/`arm64`/`win64`/`arm64_darwin` — no `wasm` value
+  exists at all.
+
 ## Definition hashing (`w defhash`)
 
 - **`wtest --defhash` consumer**: wire an opt-in `--defhash` refinement

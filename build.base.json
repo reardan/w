@@ -525,30 +525,6 @@
 			]
 		},
 		{
-			"name": "float_abi_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/float_abi_test.w", "-o", "bin/float_abi_test"]},
-				{"cmd": ["bin/float_abi_test"], "expect_stdout": "float abi OK"}
-			]
-		},
-		{
-			"name": "varargs_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/varargs_test.w", "-o", "bin/varargs_test"]},
-				{"cmd": ["bin/varargs_test"], "expect_stdout": "varargs OK"}
-			]
-		},
-		{
-			"name": "extern_data_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/extern_data_test.w", "-o", "bin/extern_data_test"]},
-				{"cmd": ["bin/extern_data_test"], "expect_stdout": "extern data OK"}
-			]
-		},
-		{
 			"name": "default_args_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -668,14 +644,6 @@
 				{"cmd": ["bin/wv2", "bin/char_literal_unterminated_fixture.w", "-o", "bin/char_literal_unterminated_fixture"], "expect_fail": true, "expect_stderr": "unterminated char literal", "timeout_ms": 20000},
 				{"cmd": ["cat"], "stdin": "int main():\n\tchar* s = \"x\n", "stdout_file": "bin/string_unterminated_fixture.w"},
 				{"cmd": ["bin/wv2", "bin/string_unterminated_fixture.w", "-o", "bin/string_unterminated_fixture"], "expect_fail": true, "expect_stderr": "unterminated string literal", "timeout_ms": 20000}
-			]
-		},
-		{
-			"name": "print_builtin_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/print_builtin_test.w", "-o", "bin/print_builtin_test"]},
-				{"cmd": ["bin/print_builtin_test"], "expect_stdout": ["greeting str via f", "1.250000", "[5, -1, 12]", "[one, two]", "[]", "big"]}
 			]
 		},
 		{
@@ -1691,14 +1659,6 @@
 			]
 		},
 		{
-			"name": "dynamic_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/dynamic_test.w", "-o", "bin/dynamic_test"]},
-				{"cmd": ["bin/dynamic_test"], "expect_stdout": "dynamic linking OK"}
-			]
-		},
-		{
 			"name": "build_x64",
 			"deps": ["wv2"],
 			"steps": [
@@ -1966,27 +1926,11 @@
 			]
 		},
 		{
-			"name": "dynamic_test_x64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/dynamic_test.w", "-o", "bin/dynamic_test_x64"]},
-				{"cmd": ["bin/dynamic_test_x64"], "expect_stdout": "dynamic linking OK"}
-			]
-		},
-		{
 			"name": "extern_alias_test_x64",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/extern_alias_test.w", "-o", "bin/extern_alias_test_x64"]},
 				{"cmd": ["bin/extern_alias_test_x64"], "expect_stdout": "extern alias OK"}
-			]
-		},
-		{
-			"name": "c_import_libc_test_x64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/c_import_libc_test.w", "-o", "bin/c_import_libc_test_x64"]},
-				{"cmd": ["bin/c_import_libc_test_x64"]}
 			]
 		},
 		{
@@ -1999,22 +1943,6 @@
 				{"cmd": ["bin/x64_float_abi_test"], "expect_stdout": "x64 float abi OK"},
 				{"cmd": ["bin/wv2", "x64", "tests/x64_c_import_float_test.w", "-o", "bin/x64_c_import_float_test"]},
 				{"cmd": ["bin/x64_c_import_float_test"], "expect_stdout": "x64 c_import float OK"}
-			]
-		},
-		{
-			"name": "varargs_test_x64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/varargs_test.w", "-o", "bin/varargs_test_x64"]},
-				{"cmd": ["bin/varargs_test_x64"], "expect_stdout": "varargs OK"}
-			]
-		},
-		{
-			"name": "extern_data_test_x64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/extern_data_test.w", "-o", "bin/extern_data_test_x64"]},
-				{"cmd": ["bin/extern_data_test_x64"], "expect_stdout": "extern data OK"}
 			]
 		},
 		{
@@ -2070,12 +1998,12 @@
 				"x64_int64_test",
 				"x64_map_float64_test",
 				"x64_float64_conformance_test",
-				"dynamic_test_x64",
+				"dynamic_64_test",
 				"extern_alias_test_x64",
-				"c_import_libc_test_x64",
+				"c_import_libc_64_test",
 				"float_abi_test_x64",
-				"varargs_test_x64",
-				"extern_data_test_x64",
+				"varargs_64_test",
+				"extern_data_64_test",
 				"dynamic_var_64_test",
 				"json_rpc_64_test",
 				"task_io_64_test",
@@ -2095,24 +2023,6 @@
 				{"cmd": ["bin/wv2", "x64", "tests/hello.w", "-o", "bin/asm_elf64_fixture"]},
 				{"cmd": ["bin/wv2", "tests/asm_foundations_test.w", "-o", "bin/asm_foundations_test"]},
 				{"cmd": ["bin/asm_foundations_test"]}
-			]
-		},
-		{
-			"name": "asm_x86_disasm_test",
-			"deps": ["wv2"],
-			"inputs": ["libs/asm/", "tests/asm/", "tests/asm_x86_disasm_test.w"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/asm_x86_disasm_test.w", "-o", "bin/asm_x86_disasm_test"]},
-				{"cmd": ["bin/asm_x86_disasm_test"]}
-			]
-		},
-		{
-			"name": "asm_x86_asm_test",
-			"deps": ["wv2"],
-			"inputs": ["libs/asm/", "tests/asm/", "tests/asm_x86_asm_test.w"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/asm_x86_asm_test.w", "-o", "bin/asm_x86_asm_test"]},
-				{"cmd": ["bin/asm_x86_asm_test"]}
 			]
 		},
 		{
