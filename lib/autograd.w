@@ -55,6 +55,12 @@ Backward rules, all expressible with the existing tensor_* op surface
               (fused softmax+mean-cross-entropy; forward caches the
               per-row probabilities P in a tape-owned scratch tensor saved
               on the node -- see ag_op_softmax_ce below)
+  embedding:  d_table[ids[i], :] += dOut[i, :]              (host scatter-add)
+  layernorm:  the standard LN chain rule (dgamma from dOut*xhat, dx
+              through the mean/var terms), row stats recomputed from x
+  softmax_causal: dS = P * (dP - rowdot(P, dP)), lower triangle only
+  matmul_nt:  dA += dOut @ B          (tensor_matmul2)
+              dB += dOut^T @ A        (tensor_matmul2_tn)
 Every rule above is complete; there are no stubbed arms in this version
 (the ops they need -- tensor_relu_grad_into, tensor_matmul2_nt/_tn,
 tensor_add_row_into, tensor_col_sum_into -- landed in the same base as
@@ -109,6 +115,22 @@ int ag_op_add_row():
 
 int ag_op_softmax_ce():
 	return 9
+
+
+int ag_op_embedding():
+	return 10
+
+
+int ag_op_layernorm():
+	return 11
+
+
+int ag_op_softmax_causal():
+	return 12
+
+
+int ag_op_matmul_nt():
+	return 13
 
 
 ##### tape #####
@@ -417,6 +439,147 @@ tensor* ag_softmax_ce(ag_tape* t, tensor* logits, ndi* labels):
 	return out
 
 
+# Row gather out[i, :] = table[ids[i], :] over a rank-2 (vocab, dim)
+# table and rank-1 integer ids -- the token-embedding lookup. Host-
+# computed like ag_softmax_ce (managed memory is host-readable, so this
+# is valid on both the GPU and CPU-fallback paths); backward is the
+# matching host scatter-add into the table's gradient. ids is
+# caller-owned and must outlive the tape (it rides the node's labels
+# field, the softmax_ce convention).
+tensor* ag_embedding(ag_tape* t, tensor* table, ndi* ids):
+	asserts(c"ag_embedding: table must be rank 2", table.rank == 2)
+	asserts(c"ag_embedding: ids must be rank 1", ids.rank == 1)
+	int n = ids.n0
+	int dim = table.n1
+	tensor* out = ag_box_shape(2, n, dim, 1, 1)
+	t.owned.push(out)
+	# Host gather below reads the table, which enqueued device ops may
+	# still be writing -- drain first.
+	tensor_sync()
+	float* ptab = table.data
+	float* pout = out.data
+	int i = 0
+	while (i < n):
+		int row = ids.data[i]
+		asserts(c"ag_embedding: id out of range", (row >= 0) && (row < table.n0))
+		int j = 0
+		while (j < dim):
+			pout[i * dim + j] = ptab[row * dim + j]
+			j = j + 1
+		i = i + 1
+	ag_record_saved(t, ag_op_embedding(), out, table, cast(tensor*, 0), 0.0, cast(tensor*, 0), ids)
+	return out
+
+
+# Row-wise layer normalization scaled by gamma: out[i, j] = gamma[j] *
+# (x[i, j] - mean_i) / sqrt(var_i + 1e-5) over rank-2 x and rank-1
+# gamma. This is the norm WITHOUT the shift -- it fits the two-input
+# node record; the public ag_layernorm below adds beta with the
+# existing ag_add_row node. Host-computed (the softmax_ce rationale);
+# backward recomputes the row statistics from x instead of caching
+# them -- both sides are host loops over the same buffer either way.
+tensor* ag_layernorm_core(ag_tape* t, tensor* x, tensor* gamma):
+	asserts(c"ag_layernorm: x must be rank 2", x.rank == 2)
+	asserts(c"ag_layernorm: gamma must be rank 1", gamma.rank == 1)
+	asserts(c"ag_layernorm: gamma size mismatch", gamma.n0 == x.n1)
+	int rows = x.n0
+	int cols = x.n1
+	tensor* out = ag_box_like(x)
+	t.owned.push(out)
+	tensor_sync()
+	float* px = x.data
+	float* pg = gamma.data
+	float* pout2 = out.data
+	float fcols = cast(float, cols)
+	int i = 0
+	while (i < rows):
+		float mean = 0.0
+		int j = 0
+		while (j < cols):
+			mean = mean + px[i * cols + j]
+			j = j + 1
+		mean = mean / fcols
+		float vsum = 0.0
+		j = 0
+		while (j < cols):
+			float d = px[i * cols + j] - mean
+			vsum = vsum + d * d
+			j = j + 1
+		float rstd = 1.0 / fsqrt(vsum / fcols + 0.00001)
+		j = 0
+		while (j < cols):
+			pout2[i * cols + j] = pg[j] * ((px[i * cols + j] - mean) * rstd)
+			j = j + 1
+		i = i + 1
+	ag_record(t, ag_op_layernorm(), out, x, gamma, 0.0)
+	return out
+
+
+# The full affine layer norm: ag_layernorm_core followed by the beta
+# shift as an ordinary ag_add_row node.
+tensor* ag_layernorm(ag_tape* t, tensor* x, tensor* gamma, tensor* beta):
+	return ag_add_row(t, ag_layernorm_core(t, x, gamma), beta)
+
+
+# Row-wise softmax over the LOWER-TRIANGLE of a rank-2 square scores
+# matrix: out[i, j] = exp(s[i, j]) / sum_{k<=i} exp(s[i, k]) for
+# j <= i, and exactly 0.0 for j > i -- the causal-attention mask and
+# normalization fused into one op (masked positions never enter the
+# max/sum, the -inf shortcut without infinities). Host-computed (the
+# softmax_ce rationale). Backward reads the probabilities straight
+# from the node's own output, so nothing extra is saved.
+tensor* ag_softmax_causal(ag_tape* t, tensor* s):
+	asserts(c"ag_softmax_causal: scores must be rank 2", s.rank == 2)
+	asserts(c"ag_softmax_causal: scores must be square", s.n0 == s.n1)
+	int n = s.n0
+	tensor* out = ag_box_like(s)
+	t.owned.push(out)
+	tensor_sync()
+	float* ps = s.data
+	float* pout3 = out.data
+	int i = 0
+	while (i < n):
+		float m = ps[i * n]
+		int j = 1
+		while (j <= i):
+			float v = ps[i * n + j]
+			if (v > m):
+				m = v
+			j = j + 1
+		float rowsum = 0.0
+		j = 0
+		while (j <= i):
+			float e = fexp(ps[i * n + j] - m)
+			pout3[i * n + j] = e
+			rowsum = rowsum + e
+			j = j + 1
+		j = 0
+		while (j <= i):
+			pout3[i * n + j] = pout3[i * n + j] / rowsum
+			j = j + 1
+		j = i + 1
+		while (j < n):
+			pout3[i * n + j] = 0.0
+			j = j + 1
+		i = i + 1
+	ag_record(t, ag_op_softmax_causal(), out, s, cast(tensor*, 0), 0.0)
+	return out
+
+
+# out (m, n) = a (m, k) @ b (n, k)^T without materializing the
+# transpose (tensor_matmul2_nt) -- attention's q @ k^T shape. Backward:
+# dA += dOut @ B (plain matmul), dB += dOut^T @ A (matmul2_tn).
+tensor* ag_matmul_nt(ag_tape* t, tensor* a, tensor* b):
+	asserts(c"ag_matmul_nt: a must be rank 2", a.rank == 2)
+	asserts(c"ag_matmul_nt: b must be rank 2", b.rank == 2)
+	asserts(c"ag_matmul_nt: inner dim mismatch", a.n1 == b.n1)
+	tensor* out = ag_box_shape(2, a.n0, b.n0, 1, 1)
+	t.owned.push(out)
+	tensor_matmul2_nt(out, a, b)
+	ag_record(t, ag_op_matmul_nt(), out, a, b, 0.0)
+	return out
+
+
 ##### backward #####
 
 
@@ -518,6 +681,113 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 				pg[i2 * classes2 + j2] = pg[i2 * classes2 + j2] + dloss * (pp2[i2 * classes2 + j2] - ind) * invbatch
 				j2 = j2 + 1
 			i2 = i2 + 1
+		return
+	if (nd.op == ag_op_embedding()):
+		# d_table[ids[i], :] += dOut[i, :] -- the host scatter-add
+		# mirror of the forward gather.
+		tensor* dtab = ag_grad(t, nd.a)
+		int dim3 = nd.a.n1
+		int n3 = nd.labels.n0
+		tensor_sync()
+		float* pdt = dtab.data
+		float* pdo = dout.data
+		int i3 = 0
+		while (i3 < n3):
+			int row3 = nd.labels.data[i3]
+			int j3 = 0
+			while (j3 < dim3):
+				pdt[row3 * dim3 + j3] = pdt[row3 * dim3 + j3] + pdo[i3 * dim3 + j3]
+				j3 = j3 + 1
+			i3 = i3 + 1
+		return
+	if (nd.op == ag_op_layernorm()):
+		# out = gamma * xhat with xhat = (x - mean) * rstd. Recompute
+		# the row statistics from x (forward saved nothing):
+		#   dgamma[j] += sum_i dOut[i,j] * xhat[i,j]
+		#   dx[i,j]   += rstd * (dxh[j] - mean(dxh) - xhat[j] * mean(dxh*xhat))
+		# with dxh[j] = dOut[i,j] * gamma[j], means over the row.
+		tensor* dx9 = ag_grad(t, nd.a)
+		tensor* dg9 = ag_grad(t, nd.b)
+		int rows9 = nd.a.n0
+		int cols9 = nd.a.n1
+		tensor_sync()
+		float* px9 = nd.a.data
+		float* pg9 = nd.b.data
+		float* pdx9 = dx9.data
+		float* pdg9 = dg9.data
+		float* pdo9 = dout.data
+		float fcols9 = cast(float, cols9)
+		int i9 = 0
+		while (i9 < rows9):
+			float mean9 = 0.0
+			int j9 = 0
+			while (j9 < cols9):
+				mean9 = mean9 + px9[i9 * cols9 + j9]
+				j9 = j9 + 1
+			mean9 = mean9 / fcols9
+			float var9 = 0.0
+			j9 = 0
+			while (j9 < cols9):
+				float d9 = px9[i9 * cols9 + j9] - mean9
+				var9 = var9 + d9 * d9
+				j9 = j9 + 1
+			float rstd9 = 1.0 / fsqrt(var9 / fcols9 + 0.00001)
+			float s1 = 0.0
+			float s2 = 0.0
+			j9 = 0
+			while (j9 < cols9):
+				float xh = (px9[i9 * cols9 + j9] - mean9) * rstd9
+				float dxh = pdo9[i9 * cols9 + j9] * pg9[j9]
+				pdg9[j9] = pdg9[j9] + pdo9[i9 * cols9 + j9] * xh
+				s1 = s1 + dxh
+				s2 = s2 + dxh * xh
+				j9 = j9 + 1
+			s1 = s1 / fcols9
+			s2 = s2 / fcols9
+			j9 = 0
+			while (j9 < cols9):
+				float xh2 = (px9[i9 * cols9 + j9] - mean9) * rstd9
+				float dxh2 = pdo9[i9 * cols9 + j9] * pg9[j9]
+				pdx9[i9 * cols9 + j9] = pdx9[i9 * cols9 + j9] + rstd9 * (dxh2 - s1 - xh2 * s2)
+				j9 = j9 + 1
+			i9 = i9 + 1
+		return
+	if (nd.op == ag_op_softmax_causal()):
+		# dS[i,j] += P[i,j] * (dP[i,j] - sum_{k<=i} P[i,k] dP[i,k]),
+		# rows independent; masked columns stay untouched (P is 0
+		# there, so their true gradient is 0).
+		tensor* ds10 = ag_grad(t, nd.a)
+		int n10 = nd.a.n0
+		tensor_sync()
+		float* pp10 = nd.out.data
+		float* pdo10 = dout.data
+		float* pds10 = ds10.data
+		int i10 = 0
+		while (i10 < n10):
+			float dot = 0.0
+			int j10 = 0
+			while (j10 <= i10):
+				dot = dot + pp10[i10 * n10 + j10] * pdo10[i10 * n10 + j10]
+				j10 = j10 + 1
+			j10 = 0
+			while (j10 <= i10):
+				pds10[i10 * n10 + j10] = pds10[i10 * n10 + j10] + pp10[i10 * n10 + j10] * (pdo10[i10 * n10 + j10] - dot)
+				j10 = j10 + 1
+			i10 = i10 + 1
+		return
+	if (nd.op == ag_op_matmul_nt()):
+		# out = A @ B^T: dA (m,k) += dOut (m,n) @ B (n,k);
+		# dB (n,k) += dOut^T (n,m) @ A (m,k), via matmul2_tn.
+		tensor* da11 = ag_grad(t, nd.a)
+		tensor* db11 = ag_grad(t, nd.b)
+		tensor* tmpA11 = ag_box_like(nd.a)
+		tensor_matmul2(tmpA11, dout, nd.b)
+		tensor_add_into(da11, da11, tmpA11)
+		t.owned.push(tmpA11)
+		tensor* tmpB11 = ag_box_like(nd.b)
+		tensor_matmul2_tn(tmpB11, dout, nd.a)
+		tensor_add_into(db11, db11, tmpB11)
+		t.owned.push(tmpB11)
 		return
 	asserts(c"ag_backward: unknown op", 0)
 

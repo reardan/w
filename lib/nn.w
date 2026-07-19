@@ -2,9 +2,10 @@
 lib.nn: a minimal neural-net layer + optimizer surface on top of
 lib/autograd.w's tape (docs/projects/torch.md, Stage 5).
 
-v1 scope is deliberately tiny -- exactly what an MLP classifier needs and
-nothing else: a linear (fully-connected) layer, plain SGD, and reuse of
-ag_relu/ag_softmax_ce for the nonlinearity and loss. No conv, no Adam, no
+Scope is deliberately tiny -- what an MLP classifier and a micro
+transformer need and nothing else: a linear (fully-connected) layer,
+plain SGD, AdamW (the transformer-training default), and reuse of
+ag_relu/ag_softmax_ce for the nonlinearity and loss. No conv, no
 dropout; those are future work, not this stage.
 
 nn_linear stores its weight/bias as plain (non-pointer) tensor fields,
@@ -86,3 +87,55 @@ void nn_sgd_step(ag_tape* t, tensor* param, float lr):
 void nn_linear_sgd_step(ag_tape* t, nn_linear* l, float lr):
 	nn_sgd_step(t, &l.weight, lr)
 	nn_sgd_step(t, &l.bias, lr)
+
+
+##### AdamW #####
+
+
+# Per-parameter AdamW state: the first/second-moment running averages,
+# flat buffers matching the parameter's element count (the update is
+# elementwise, so shape is irrelevant). Zero-initialized, torch-style.
+struct nn_adamw:
+	tensor m
+	tensor v
+
+
+nn_adamw nn_adamw_new(tensor* param):
+	nn_adamw s
+	s.m = tensor_new1(param.len)
+	s.v = tensor_new1(param.len)
+	return s
+
+
+void nn_adamw_free(nn_adamw* s):
+	tensor_free(&s.m)
+	tensor_free(&s.v)
+
+
+# One decoupled-weight-decay Adam update (AdamW, the torch defaults'
+# shape) for `param` from the tape's accumulated gradient:
+#   m = b1*m + (1-b1)*g          v = b2*v + (1-b2)*g^2
+#   mhat = m / (1 - b1^step)     vhat = v / (1 - b2^step)   (step from 1)
+#   param -= lr * (mhat / (sqrt(vhat) + eps) + wd * param)
+# Host loop over the managed buffers, the ag_softmax_ce precedent: the
+# gradient was accumulated by enqueued device ops, so drain first. Call
+# before ag_tape_reset (which frees the gradient buffer).
+void nn_adamw_step(ag_tape* t, tensor* param, nn_adamw* s, int step, float lr, float beta1, float beta2, float eps, float wd):
+	tensor* g = ag_grad(t, param)
+	tensor_sync()
+	float bc1 = 1.0 - fexp(cast(float, step) * flog(beta1))
+	float bc2 = 1.0 - fexp(cast(float, step) * flog(beta2))
+	float* pp = param.data
+	float* pg = g.data
+	float* pm = s.m.data
+	float* pv = s.v.data
+	int n = param.len
+	int i = 0
+	while (i < n):
+		float gi = pg[i]
+		pm[i] = beta1 * pm[i] + (1.0 - beta1) * gi
+		pv[i] = beta2 * pv[i] + (1.0 - beta2) * gi * gi
+		float mhat = pm[i] / bc1
+		float vhat = pv[i] / bc2
+		pp[i] = pp[i] - lr * (mhat / (fsqrt(vhat) + eps) + wd * pp[i])
+		i = i + 1
