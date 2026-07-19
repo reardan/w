@@ -75,7 +75,7 @@ int time_days_in_month(int year, int month):
 		if (time_is_leap_year(year)):
 			return 29
 		return 28
-	if ((month == 4) | (month == 6) | (month == 9) | (month == 11)):
+	if ((month == 4) || (month == 6) || (month == 9) || (month == 11)):
 		return 30
 	return 31
 

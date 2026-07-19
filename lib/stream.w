@@ -109,13 +109,16 @@ void stream_fill(wstream* s):
 	s.limit = count
 
 
-# Returns the next byte without consuming it, or -1 at end of input.
+# Returns the next byte (0..255) without consuming it, or -1 at end of
+# input. s.buffer is char*, a sign-extending load, so the raw value must
+# be masked: otherwise bytes 0x80-0xFF come back as negative ints, and
+# 0xFF in particular collides with the -1 EOF sentinel.
 int stream_peek_byte(wstream* s):
 	if (s.position >= s.limit):
 		stream_fill(s)
 	if (s.position >= s.limit):
 		return (-1)
-	return s.buffer[s.position]
+	return s.buffer[s.position] & 255
 
 
 # Returns the next byte, or -1 at end of input.

@@ -236,7 +236,7 @@ cpp_token* cpp_builtin_expand(cpp_macro* macro, cpp_token* origin):
 void cpp_stringize_append_escaped(string_builder* out, char* text):
 	int i = 0
 	while (text[i] != 0):
-		if ((text[i] == '"') | (text[i] == 92)):
+		if ((text[i] == '"') || (text[i] == 92)):
 			string_append_char(out, 92)
 		string_append_char(out, text[i])
 		i = i + 1

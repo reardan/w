@@ -307,14 +307,14 @@ int http_body_close():
 /* Small text helpers */
 
 int http_lower_char(int c):
-	if ((c >= 'A') & (c <= 'Z')):
+	if ((c >= 'A') && (c <= 'Z')):
 		return c + 32
 	return c
 
 
 int http_str_ieq(char* a, char* b):
 	int i = 0
-	while ((a[i] != 0) & (b[i] != 0)):
+	while ((a[i] != 0) && (b[i] != 0)):
 		if (http_lower_char(a[i] & 255) != http_lower_char(b[i] & 255)):
 			return 0
 		i = i + 1
@@ -323,17 +323,17 @@ int http_str_ieq(char* a, char* b):
 
 # RFC 9110 token characters, legal in methods and header names.
 int http_is_token_char(int c):
-	if ((c >= 'a') & (c <= 'z')):
+	if ((c >= 'a') && (c <= 'z')):
 		return 1
-	if ((c >= 'A') & (c <= 'Z')):
+	if ((c >= 'A') && (c <= 'Z')):
 		return 1
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return 1
-	if ((c == '!') | (c == '#') | (c == '$') | (c == '%') | (c == '&')):
+	if ((c == '!') || (c == '#') || (c == '$') || (c == '%') || (c == '&')):
 		return 1
-	if ((c == 39) | (c == '*') | (c == '+') | (c == '-') | (c == '.')):
+	if ((c == 39) || (c == '*') || (c == '+') || (c == '-') || (c == '.')):
 		return 1
-	if ((c == '^') | (c == '_') | (c == 96) | (c == '|') | (c == '~')):
+	if ((c == '^') || (c == '_') || (c == 96) || (c == '|') || (c == '~')):
 		return 1
 	return 0
 
@@ -359,7 +359,7 @@ int http_valid_header_value(char* value):
 	int i = 0
 	while (value[i] != 0):
 		int c = value[i] & 255
-		if ((c < 32) & (c != 9)):
+		if ((c < 32) && (c != 9)):
 			return 0
 		if (c == 127):
 			return 0
@@ -388,14 +388,14 @@ int http_value_has_token(char* value, char* token):
 	int i = 0
 	while (value[i] != 0):
 		int c = value[i] & 255
-		if ((c == ',') | (c == ' ') | (c == 9) | (c == ';')):
+		if ((c == ',') || (c == ' ') || (c == 9) || (c == ';')):
 			i = i + 1
 		else:
 			int start = i
 			int elem_done = 0
-			while ((value[i] != 0) & (elem_done == 0)):
+			while ((value[i] != 0) && (elem_done == 0)):
 				c = value[i] & 255
-				if ((c == ',') | (c == ' ') | (c == 9) | (c == ';')):
+				if ((c == ',') || (c == ' ') || (c == 9) || (c == ';')):
 					elem_done = 1
 				else:
 					i = i + 1
@@ -801,7 +801,7 @@ int http_connect_fd(int ip, int port, int timeout_ms):
 int http_validate_req(http_req* req):
 	if (http_is_token(req.method) == 0):
 		return http_error_bad_header()
-	if ((req.body != 0) & (req.body_len < 0)):
+	if ((req.body != 0) && (req.body_len < 0)):
 		return http_error_bad_header()
 	for http_header* h in req.headers:
 		if (http_is_token(h.name) == 0):
@@ -885,7 +885,7 @@ int http_send_request(http_conn* c, http_req* req, URL* u, char* method, int inc
 		if (http_str_ieq(h.name, c"connection") != 0):
 			user_connection = 1
 	int with_body = 0
-	if ((include_body != 0) & (req.body != 0)):
+	if ((include_body != 0) && (req.body != 0)):
 		with_body = 1
 		string_append(out, c"Content-Length: ")
 		char* length_text = itoa(req.body_len)
@@ -911,20 +911,20 @@ int http_parse_status_line(char* line, int* out_status, int* out_minor):
 	if (starts_with(line, c"HTTP/1.") == 0):
 		return 0
 	int d = line[7] & 255
-	if ((d < '0') | (d > '9')):
+	if ((d < '0') || (d > '9')):
 		return 0
 	if (line[8] != ' '):
 		return 0
 	int status = 0
 	int digits = 0
 	int i = 9
-	while ((line[i] >= '0') & (line[i] <= '9')):
+	while ((line[i] >= '0') && (line[i] <= '9')):
 		status = status * 10 + (line[i] - '0')
 		digits = digits + 1
 		i = i + 1
 	if (digits != 3):
 		return 0
-	if ((line[i] != 0) & (line[i] != ' ')):
+	if ((line[i] != 0) && (line[i] != ' ')):
 		return 0
 	if (status < 100):
 		return 0
@@ -936,9 +936,9 @@ int http_parse_status_line(char* line, int* out_status, int* out_minor):
 # Value bytes of a header line with surrounding spaces/tabs trimmed,
 # as a fresh allocation.
 char* http_trimmed_value(char* line, int start, int end):
-	while ((start < end) & ((line[start] == ' ') | (line[start] == 9))):
+	while ((start < end) && ((line[start] == ' ') || (line[start] == 9))):
 		start = start + 1
-	while ((end > start) & ((line[end - 1] == ' ') | (line[end - 1] == 9))):
+	while ((end > start) && ((line[end - 1] == ' ') || (line[end - 1] == 9))):
 		end = end - 1
 	return substring(line, start, end)
 
@@ -949,13 +949,13 @@ char* http_trimmed_value(char* line, int start, int end):
 # header parsing (issue #235), which mirrors this response-side parser.
 int http_store_header_into(map[char*, char*] headers, char* line, int length):
 	int first = line[0] & 255
-	if ((first == ' ') | (first == 9)):
+	if ((first == ' ') || (first == 9)):
 		# Obsolete line folding: fail closed.
 		return 0
 	int colon = 0
-	while ((line[colon] != 0) & (line[colon] != ':')):
+	while ((line[colon] != 0) && (line[colon] != ':')):
 		colon = colon + 1
-	if ((line[colon] != ':') | (colon == 0)):
+	if ((line[colon] != ':') || (colon == 0)):
 		return 0
 	int i = 0
 	while (i < colon):
@@ -1017,7 +1017,7 @@ int http_read_head(http_conn* c, http_response* resp, int* out_minor):
 			http_response_set_error(resp, http_error_bad_response())
 			return 0
 		int interim = 0
-		if ((status >= 100) & (status <= 199)):
+		if ((status >= 100) && (status <= 199)):
 			interim = 1
 		int total = 0
 		int in_block = 1
@@ -1064,7 +1064,7 @@ int http_parse_content_length(char* value):
 	int i = 0
 	while (value[i] != 0):
 		int d = value[i] & 255
-		if ((d < '0') | (d > '9')):
+		if ((d < '0') || (d > '9')):
 			return (-1)
 		if (result > 107374182):
 			return (-1)
@@ -1127,10 +1127,10 @@ void http_stream_release_conn(http_stream* s):
 		return
 	s.conn = 0
 	int can_cache = 0
-	if ((s.reuse_ok != 0) & (s.body_complete != 0)):
-		if ((s.error == 0) & (c.error == 0) & (s.cache_host != 0)):
+	if ((s.reuse_ok != 0) && (s.body_complete != 0)):
+		if ((s.error == 0) && (c.error == 0) && (s.cache_host != 0)):
 			wstream* r = c.reader
-			if ((r.position >= r.limit) & (r.eof == 0)):
+			if ((r.position >= r.limit) && (r.eof == 0)):
 				can_cache = 1
 				# A TLS conn may still hold decrypted plaintext buffered
 				# inside tls_read; caching then would strand those bytes.
@@ -1158,7 +1158,7 @@ int http_stream_set_framing(http_stream* s, char* method):
 	int no_body = 0
 	if (strcmp(method, c"HEAD") == 0):
 		no_body = 1
-	if ((status == 204) | (status == 304)):
+	if ((status == 204) || (status == 304)):
 		no_body = 1
 	if (no_body != 0):
 		s.body_mode = http_body_none()
@@ -1246,9 +1246,9 @@ int http_parse_chunk_size(char* line):
 		i = i + 1
 	if (digits == 0):
 		return (-1)
-	while ((line[i] == ' ') | (line[i] == 9)):
+	while ((line[i] == ' ') || (line[i] == 9)):
 		i = i + 1
-	if ((line[i] != 0) & (line[i] != ';')):
+	if ((line[i] != 0) && (line[i] != ';')):
 		return (-1)
 	return value
 
@@ -1424,7 +1424,7 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 		int send_error = c.error
 		int send_received = c.received_any
 		http_conn_destroy(c)
-		if ((from_cache != 0) & (send_received == 0) & (send_error == http_error_send())):
+		if ((from_cache != 0) && (send_received == 0) & (send_error == http_error_send())):
 			*out_stale = 1
 			return 0
 		http_stream_fail(s, send_error)
@@ -1491,7 +1491,7 @@ URL* http_redirect_target(URL* base, char* location):
 	if (direct != 0):
 		return direct
 	string_builder* text = string_new()
-	if ((location[0] == '/') & (location[1] == '/')):
+	if ((location[0] == '/') && (location[1] == '/')):
 		string_append(text, base.scheme)
 		string_append_char(text, ':')
 		string_append(text, location)
@@ -1525,7 +1525,7 @@ URL* http_redirect_target(URL* base, char* location):
 # current body so the connection can be reused, releases it, and
 # resets the parse state.
 void http_stream_redirect_reset(http_stream* s):
-	if ((s.conn != 0) & (s.body_complete == 0) & (s.error == 0)):
+	if ((s.conn != 0) && (s.body_complete == 0) && (s.error == 0)):
 		char* scratch = malloc(4096)
 		int drained = 0
 		int more = 1
@@ -1554,9 +1554,9 @@ void http_stream_redirect_reset(http_stream* s):
 
 
 int http_status_is_redirect(int status):
-	if ((status == 301) | (status == 302) | (status == 303)):
+	if ((status == 301) || (status == 302) || (status == 303)):
 		return 1
-	if ((status == 307) | (status == 308)):
+	if ((status == 307) || (status == 308)):
 		return 1
 	return 0
 

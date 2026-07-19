@@ -762,6 +762,71 @@ void test_delta_corrupted_chain_clean_errors():
 	cas_close(s)
 
 
+# "<root>/objects/<2 hex>/<62 hex>" for `id" -- the same layout formula
+# tests/vcs_cas_test.w's own helper uses, kept local since these are
+# separate compiled test binaries.
+string_builder* vcdt_object_file_path(char* id):
+	string_builder* p = string_new()
+	string_append(p, vcdt_root())
+	string_append(p, c"/objects/")
+	string_append_char(p, id[0])
+	string_append_char(p, id[1])
+	string_append_char(p, '/')
+	string_append(p, id + 2)
+	return p
+
+
+# Delta chains resolve correctly over a base stored in the CURRENT
+# (zlib-compressed) on-disk encoding. cas_put_delta/cas_get_resolved
+# are pure clients of cas_get/cas_put/cas_put_raw (this file's header
+# comment), so issue #252's compressed-loose-object change never had to
+# touch delta.w at all -- but this pins that the base object really IS
+# compressed on disk (not just "the reconstructed bytes still come back
+# right", which would also pass if compression were silently a no-op)
+# and that cas_get_resolved reconstructs the exact target through it.
+void test_delta_base_is_compressed_on_disk():
+	wcas* s = vcdt_open()
+	char* base_content = vcdt_repeat('B', 512)
+	wresult[char*]* bp = cas_put(s, c"blob", base_content, 512)
+	assert1(result_is_ok[char*](bp))
+	char* base_id = result_value[char*](bp)
+	result_free[char*](bp)
+	vcdt_track(base_id)
+
+	string_builder* p = vcdt_object_file_path(base_id)
+	string_builder* raw = cas_read_file(p.data)
+	assert1(raw != 0)
+	assert1(raw.length >= 2)
+	assert_equal('x', raw.data[0] & 255)
+	string_free(raw)
+	string_free(p)
+
+	string_builder* sb = string_new()
+	string_append(sb, base_content)
+	string_append(sb, c"-delta-tail-over-a-compressed-base")
+	char* target = sb.data
+	int target_len = sb.length
+	free(sb)
+
+	wresult[char*]* dp = cas_put_delta(s, base_id, c"blob", target, target_len)
+	assert1(result_is_ok[char*](dp))
+	char* delta_id = result_value[char*](dp)
+	result_free[char*](dp)
+	vcdt_track(delta_id)
+
+	wresult[wcas_object*]* resolved = cas_get_resolved(s, delta_id)
+	assert1(result_is_ok[wcas_object*](resolved))
+	wcas_object* robj = result_value[wcas_object*](resolved)
+	result_free[wcas_object*](resolved)
+	assert_strings_equal(c"blob", robj.object_type)
+	vcdt_assert_bytes_equal(target, target_len, robj.data, robj.length)
+	cas_object_free(robj)
+
+	free(base_content)
+	free(target)
+	cas_close(s)
+
+
 # Runs last (tests execute in definition order): removes exactly the
 # objects the run created, then asserts the store directories rmdir
 # cleanly -- which also proves no temp files leaked from the put paths.

@@ -104,7 +104,8 @@ non-seekable inputs like `/proc` files.
 - Move `repl_read_line` (`repl.w`) and the tokenizer's `getc` onto
   `stream_read_byte`/`stream_read_line` — behavior-preserving but
   touches REPL/debugger stdin handling, so it should ride separately.
-- `stat`/`unlink`/`rename` wrappers and richer `lib/path.w` helpers.
+- Richer `lib/path.w` helpers (portable `stat`/`unlink`/`rename` now
+  live in `lib/stat.w` and `lib/__arch__/*/syscalls.w`).
 - A W-native MCP server on `frame_read`/`frame_write` + `lib/process.w`
   (since landed as `tools/mcp/w_toolchain_mcp.w`).
 

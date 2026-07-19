@@ -103,12 +103,29 @@ struct pg_recover_def:
 	list[char*] skip_tokens
 
 
+# Generation mode selected by the grammar's optional "mode" directive
+# (issue #329 milestone 3). AST mode (the default) builds a pg_ast_node
+# tree via ordered-choice backtracking, unchanged from before this
+# milestone. Streaming mode never marks/rewinds the token stream: it is
+# only legal when analysis.w's pg_streaming_check proves the whole
+# grammar is committed dispatch, and it emits listener callbacks
+# (enter/exit rule, token events) instead of AST nodes. See
+# docs/projects/parser_generator.md.
+int pg_grammar_mode_ast():
+	return 0
+
+
+int pg_grammar_mode_streaming():
+	return 1
+
+
 # tokens/skips are separate lists sharing the same element type: tokens
 # produce default-channel tokens, skips hidden-channel ones (see
 # pg_grammar_add_skip's negative kind numbering).
 struct pg_grammar:
 	char* name
 	char* start_rule
+	int mode
 	list[pg_token_def*] tokens
 	list[pg_token_def*] skips
 	list[pg_fragment_def*] fragments
@@ -121,6 +138,7 @@ pg_grammar* pg_grammar_new(char* name):
 	pg_grammar* grammar = new pg_grammar()
 	grammar.name = strclone(name)
 	grammar.start_rule = 0
+	grammar.mode = pg_grammar_mode_ast()
 	grammar.tokens = new list[pg_token_def*]
 	grammar.skips = new list[pg_token_def*]
 	grammar.fragments = new list[pg_fragment_def*]

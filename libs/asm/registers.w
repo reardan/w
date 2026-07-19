@@ -131,7 +131,7 @@ char* asm_reg_name_x64(int number):
 # (dword/word/byte) built from the number plus a width suffix. Returns a
 # malloc'd name, or 0 when number is outside 8..15.
 char* asm_reg_name_x64_ext(int number, int suffix):
-	if (number < 8 | number > 15):
+	if (number < 8 || number > 15):
 		return 0
 	char* name = malloc(5)
 	name[0] = 'r'
@@ -181,7 +181,7 @@ char* asm_reg_name(int arch, int number, int size):
 			return asm_reg_name_x86_16(number)
 		return asm_reg_name_x86_32(number)
 	if (arch == ASM_ARCH_X64()):
-		if (number >= 8 & size <= 4):
+		if (number >= 8 && size <= 4):
 			# r8..r15 in dword/word/byte width: r8d / r8w / r8b.
 			if (size == 1):
 				return asm_reg_name_x64_ext(number, 'b')
@@ -257,11 +257,11 @@ int asm_reg_lookup_arm64(char* name):
 		size = 4
 	else:
 		return -1
-	if (name[1] < '0' | name[1] > '9'):
+	if (name[1] < '0' || name[1] > '9'):
 		return -1
 	int number = name[1] - '0'
 	if (name[2] != 0):
-		if (name[2] < '0' | name[2] > '9'):
+		if (name[2] < '0' || name[2] > '9'):
 			return -1
 		if (name[3] != 0):
 			return -1

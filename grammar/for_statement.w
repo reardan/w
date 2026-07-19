@@ -466,7 +466,7 @@ void for_slice_loop(int for_var, int for_tab_level, int loop_var_type, int conta
 void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 	int decode_symbol = sym_lookup(c"utf8_decode")
 	int next_symbol = sym_lookup(c"utf8_next")
-	if ((decode_symbol < 0) | (next_symbol < 0)):
+	if ((decode_symbol < 0) || (next_symbol < 0)):
 		error(c"string iteration requires import lib.utf8")
 	if (types_compatible_with_expression(loop_var_type, type_lookup(c"int")) == 0):
 		warn_type_mismatch(c"for loop variable", loop_var_type, type_lookup(c"int"))

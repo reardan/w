@@ -93,7 +93,7 @@ char* input():
 	if (c < 0):
 		free(buffer)
 		return cast(char*, 0)
-	while ((c >= 0) & (c != 10)):
+	while ((c >= 0) && (c != 10)):
 		if (length + 2 > capacity):
 			int doubled = capacity << 1
 			buffer = realloc(buffer, capacity, doubled)
@@ -133,13 +133,13 @@ list[int] ints():
 		int is_digit = (text[i] >= '0') & (text[i] <= '9')
 		int is_negative = 0
 		if (text[i] == '-'):
-			if ((text[i + 1] >= '0') & (text[i + 1] <= '9')):
+			if ((text[i + 1] >= '0') && (text[i + 1] <= '9')):
 				is_negative = 1
 				i = i + 1
 				is_digit = 1
 		if (is_digit):
 			int value = 0
-			while ((text[i] >= '0') & (text[i] <= '9')):
+			while ((text[i] >= '0') && (text[i] <= '9')):
 				value = value * 10 + (text[i] - '0')
 				i = i + 1
 			if (is_negative):

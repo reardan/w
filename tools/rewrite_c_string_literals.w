@@ -13,11 +13,11 @@ import structures.string
 
 
 int rw_is_ident_char(int c):
-	if ((c >= 'a') & (c <= 'z')):
+	if ((c >= 'a') && (c <= 'z')):
 		return 1
-	if ((c >= 'A') & (c <= 'Z')):
+	if ((c >= 'A') && (c <= 'Z')):
 		return 1
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return 1
 	return c == '_'
 
@@ -51,7 +51,7 @@ int rw_keep_bare(char* text, int i):
 	int prev = 0
 	if (i > 0):
 		prev = text[i - 1]
-	if ((prev == 'c') | (prev == 's')):
+	if ((prev == 'c') || (prev == 's')):
 		return 1
 	char* keyword = rw_previous_identifier(text, i)
 	int keep = (strcmp(keyword, c"c_lib") == 0) | (strcmp(keyword, c"c_import") == 0)
@@ -90,7 +90,7 @@ string_builder* rw_rewrite(char* text):
 			i = i + 1
 		else if (state == rw_state_block_comment()):
 			string_append_char(out, c)
-			if ((c == '*') & (n == '/')):
+			if ((c == '*') && (n == '/')):
 				string_append_char(out, n)
 				i = i + 2
 				state = rw_state_code()
@@ -98,7 +98,7 @@ string_builder* rw_rewrite(char* text):
 				i = i + 1
 		else if (state == rw_state_char()):
 			string_append_char(out, c)
-			if ((c == '\\') & (n != 0)):
+			if ((c == '\\') && (n != 0)):
 				string_append_char(out, n)
 				i = i + 2
 			else:
@@ -109,7 +109,7 @@ string_builder* rw_rewrite(char* text):
 			string_append_char(out, c)
 			state = rw_state_line_comment()
 			i = i + 1
-		else if ((c == '/') & (n == '*')):
+		else if ((c == '/') && (n == '*')):
 			string_append_char(out, c)
 			string_append_char(out, n)
 			state = rw_state_block_comment()
@@ -125,7 +125,7 @@ string_builder* rw_rewrite(char* text):
 			i = i + 1
 			while (text[i]):
 				string_append_char(out, text[i])
-				if ((text[i] == '\\') & (text[i + 1] != 0)):
+				if ((text[i] == '\\') && (text[i + 1] != 0)):
 					i = i + 1
 					string_append_char(out, text[i])
 					i = i + 1
@@ -160,7 +160,7 @@ list[char*] rw_tracked_w_files():
 	int i = 0
 	while (1):
 		int c = text[i]
-		if ((c == '\n') | (c == 0)):
+		if ((c == '\n') || (c == 0)):
 			if (line.length > 0):
 				paths.push(strclone(line.data))
 			string_clear(line)

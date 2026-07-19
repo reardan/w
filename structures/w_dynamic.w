@@ -204,9 +204,9 @@ __w_var_box* __w_var_div(__w_var_box* a, __w_var_box* b):
 int __w_var_eq(__w_var_box* a, __w_var_box* b):
 	int a_tag = __w_var_tag_of(a)
 	int b_tag = __w_var_tag_of(b)
-	if ((a_tag == 0) & (b_tag == 0)):
+	if ((a_tag == 0) && (b_tag == 0)):
 		return 1
-	if ((a_tag == 1) & (b_tag == 1)):
+	if ((a_tag == 1) && (b_tag == 1)):
 		return a.payload == b.payload
 	if (__w_var_is_text(a) & __w_var_is_text(b)):
 		int a_length = __w_var_text_length(a)

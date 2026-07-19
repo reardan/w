@@ -204,7 +204,7 @@ void jsonrpc_handle_body(jsonrpc_server* s, char* body, int out_fd):
 	if (method != 0):
 		if (method.type == json_type_string()):
 			method_ok = 1
-	if ((version_ok == 0) | (method_ok == 0)):
+	if ((version_ok == 0) || (method_ok == 0)):
 		jsonrpc_respond_error(out_fd, id, jsonrpc_error_invalid_request(), c"invalid request")
 		json_free(message)
 		return

@@ -12,7 +12,7 @@ import libs.standard.crypto.x25519
 
 
 int x25519_test_nibble(int ch):
-	if ((ch >= '0') & (ch <= '9')):
+	if ((ch >= '0') && (ch <= '9')):
 		return ch - '0'
 	return ch - 'a' + 10
 

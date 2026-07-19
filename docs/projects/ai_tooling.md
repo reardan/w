@@ -49,6 +49,21 @@ Shipped from the next-steps backlog:
   `libs/extras/vcs/index.w` now uses `file_stat_path` instead of the
   VCS-scoped `vcs_statx`. Dogfooded by `tools/{stat,chmod,touch,readlink}.w`
   and `stat_test` / `unix_tools_test`. Darwin/win64/wasm stubs return -1.
+- **`wexec --explain-cache <target>`** and **`wexec --list --json`**
+  (2026-07-17): two read-only introspection surfaces on `tools/wexec.w`.
+  `--explain-cache` states, without running anything, whether a target
+  can ever get a cache key — does it declare `"inputs"`, and does every
+  dependency, transitively, also declare `"inputs"` (the same
+  `wexec_keys` gate `wexec_cache_key` checks one dependency layer at a
+  time)? — and names the specific dependency, and the chain down to it,
+  that breaks caching for everything downstream: the documented
+  silent-permanent-miss trap where a `deps: [...]` entry without its
+  own `"inputs"` disables caching with no diagnostic. `--list --json`
+  prints one NDJSON object per target — `name`, `step_count`, `deps`,
+  `compile_roots`, `shells_out`, `generate_exclude` — instead of bare
+  `--list`'s newline-separated names, which is unchanged. Covered by
+  new `wexec_test` cases (`tests/wexec/explain_cache.json`,
+  `tests/wexec/list_json.json`).
 - `w check` usability triple (2026-07-16): command-line roots dedupe
   against the import registry (multi-root `check w.w
   compiler/compiler.w` and auto-imported-runtime roots like
@@ -191,14 +206,29 @@ Shipped from the next-steps backlog:
   intentional 32-bit pattern (used by `libs/asm/arm64_*.w` and the
   float-bits tests). Covered by `warning_test`
   (`tests/bit31_literal_warning_fixture.w`).
-- Bool-bitwise condition hint (2026-07-10): `|`/`&` joining two
-  bool-typed lvalues inside an if/while condition warns
+- Bool-bitwise condition hint (2026-07-10, widened default 2026-07-17):
+  `|`/`&` joining two bool-typed or comparison-result operands inside an
+  if/while condition warns by default
   (`bitwise '|' on bool operands in a condition does not short-circuit;
-  did you mean '||'?`, same shape for `&`/`&&`). Comparison-result
-  operands stay exempt by default; the opt-in `w check --bool-ops`
-  (2026-07-16, migration stage 1) widens the hint to them — see the
-  scope note in `ai_tooling_next_steps.md`. Covered by `warning_test`
-  (`tests/bool_bitwise_warning_fixture.w`) and `check_bool_ops_test`
+  did you mean '||'?`, same shape for `&`/`&&`) whenever both operands
+  are call-free — that is exactly the subset where converting to
+  `&&`/`||` is semantics-preserving, since short-circuiting a
+  call-containing operand could skip a call the current `&`/`|` code
+  always executes. Call purity is tracked with a global call counter
+  (`emitted_call_count`, bumped by `code_generator/x86.w`'s `call_eax`
+  and `code_generator/ffi.w`'s `emit_ffi_call_inline`) snapshotted
+  around each operand's parse (`grammar/binary_op.w`'s
+  `operand_is_pure`). `w check --bool-ops` is now the narrower
+  "also report call-containing joins" superset (2026-07-10 through
+  2026-07-17 it gated the comparison-result widening itself; the
+  wave-2 mechanical sweep converted every side-effect-free site
+  tree-wide, so that gate became the unconditional default). A
+  same-precedence chain of 3+ terms now gets a diagnostic per
+  qualifying pairing, and every diagnostic's line/column point at the
+  `&`/`|` operator itself rather than wherever the tokenizer's
+  lookahead lands once the whole condition finishes parsing. Covered by
+  `warning_test` (`tests/bool_bitwise_warning_fixture.w`,
+  `tests/bool_bitwise_chain_fixture.w`) and `check_bool_ops_test`
   (`tests/bool_ops_warn_fixture.w`, `tests/bool_ops_clean_fixture.w`).
 - Missing-file diagnostics (2026-07-10, #190): the compiler's
   file-not-found path no longer serializes a freed path buffer — the

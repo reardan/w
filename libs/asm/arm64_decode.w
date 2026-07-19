@@ -190,13 +190,13 @@ void arm64_dec_addsub_imm(asm_insn* insn, int w):
 	int imm = imm12
 	if (sh):
 		imm = imm12 << 12
-	if (s == 0 & op == 0 & imm == 0 & rn == 31):
+	if (s == 0 && op == 0 && imm == 0 && rn == 31):
 		# add Xd,sp,#0  ->  mov Xd,sp
 		insn.mnemonic = c"mov"
 		arm64_set_reg(&insn.op1, rd, size)
 		arm64_set_reg(&insn.op2, 31, size)
 		return
-	if (s == 1 & rd == 31):
+	if (s == 1 && rd == 31):
 		insn.mnemonic = c"cmp"
 		if (op == 0):
 			insn.mnemonic = c"cmn"
@@ -350,15 +350,15 @@ void arm64_dec_exception(asm_insn* insn, int w):
 	int opc = arm64_bits(w, 21, 3)
 	int ll = arm64_bits(w, 0, 2)
 	int imm16 = arm64_bits(w, 5, 16)
-	if (opc == 0 & ll == 1):
+	if (opc == 0 && ll == 1):
 		insn.mnemonic = c"svc"
 		arm64_set_imm(&insn.op1, imm16)
 		return
-	if (opc == 1 & ll == 0):
+	if (opc == 1 && ll == 0):
 		insn.mnemonic = c"brk"
 		arm64_set_imm(&insn.op1, imm16)
 		return
-	if (opc == 2 & ll == 0):
+	if (opc == 2 && ll == 0):
 		insn.mnemonic = c"hlt"
 		arm64_set_imm(&insn.op1, imm16)
 		return
@@ -373,7 +373,7 @@ void arm64_dec_branch_reg(asm_insn* insn, int w):
 	int rn = arm64_bits(w, 5, 5)
 	int op4 = arm64_bits(w, 0, 5)
 	# Plain forms: op2=11111, op3=000000, op4=00000.
-	if (op2 == 31 & op3 == 0 & op4 == 0):
+	if (op2 == 31 && op3 == 0 && op4 == 0):
 		if (opc == 0):
 			insn.mnemonic = c"br"
 			arm64_set_reg(&insn.op1, rn, 8)
@@ -389,7 +389,7 @@ void arm64_dec_branch_reg(asm_insn* insn, int w):
 				arm64_set_reg(&insn.op1, rn, 8)
 			return
 	# PAC variants with zero modifier (op3=000010, op4=11111): *aaz / *abz.
-	if (op3 == 2 & op4 == 31):
+	if (op3 == 2 && op4 == 31):
 		if (opc == 0):
 			arm64_opaque(insn, c"braaz", w)
 			return
@@ -450,7 +450,7 @@ void arm64_dec_logical_reg(asm_insn* insn, int w):
 	if (sf):
 		size = 8
 	# mov Xd,Xm = orr Xd,xzr,Xm (shift 0, imm6 0, N 0); mvn = orn.
-	if (opc == 1 & shift == 0 & imm6 == 0 & rn == 31):
+	if (opc == 1 && shift == 0 && imm6 == 0 && rn == 31):
 		if (n == 0):
 			insn.mnemonic = c"mov"
 			arm64_set_reg(&insn.op1, rd, size)
@@ -461,7 +461,7 @@ void arm64_dec_logical_reg(asm_insn* insn, int w):
 		arm64_set_reg(&insn.op2, rm, size)
 		return
 	# Shifted or extended forms with a nonzero shift are opaque.
-	if (imm6 != 0 | shift != 0):
+	if (imm6 != 0 || shift != 0):
 		arm64_opaque(insn, c"and", w)
 		return
 	if (opc == 0):
@@ -499,11 +499,11 @@ void arm64_dec_addsub_reg(asm_insn* insn, int w):
 	int size = 4
 	if (sf):
 		size = 8
-	if (imm6 != 0 | shift != 0):
+	if (imm6 != 0 || shift != 0):
 		arm64_opaque(insn, c"add", w)
 		return
 	# subs Xzr,Xn,Xm = cmp; adds Xzr = cmn.
-	if (s == 1 & rd == 31):
+	if (s == 1 && rd == 31):
 		insn.mnemonic = c"cmp"
 		if (op == 0):
 			insn.mnemonic = c"cmn"
@@ -511,7 +511,7 @@ void arm64_dec_addsub_reg(asm_insn* insn, int w):
 		arm64_set_reg(&insn.op2, rm, size)
 		return
 	# sub Xd,Xzr,Xm = neg; subs = negs.
-	if (op == 1 & rn == 31):
+	if (op == 1 && rn == 31):
 		insn.mnemonic = c"neg"
 		if (s):
 			insn.mnemonic = c"negs"
@@ -544,7 +544,7 @@ void arm64_dec_dp3(asm_insn* insn, int w):
 	if (sf):
 		size = 8
 	if (op31 == 0):
-		if (o0 == 0 & ra == 31):
+		if (o0 == 0 && ra == 31):
 			insn.mnemonic = c"mul"
 			arm64_set_reg(&insn.op1, rd, size)
 			arm64_set_reg(&insn.op2, rn, size)
@@ -608,7 +608,7 @@ void arm64_dec_cond_select(asm_insn* insn, int w):
 	if (sf):
 		size = 8
 	# cset Xd,cc = csinc Xd,xzr,xzr,invert(cc): op=0,op2=1,Rm=Rn=31.
-	if (op == 0 & op2 == 1 & rm == 31 & rn == 31):
+	if (op == 0 && op2 == 1 && rm == 31 && rn == 31):
 		insn.mnemonic = c"cset"
 		arm64_set_reg(&insn.op1, rd, size)
 		# cset displays the inverse condition; flip the low bit without the
@@ -617,11 +617,11 @@ void arm64_dec_cond_select(asm_insn* insn, int w):
 		arm64_set_cond(&insn.op2, arm64_cond_name_cset(disp), disp)
 		return
 	# Otherwise model as csel-family, raw-preserved (cond/Rm/Rn kept via raw).
-	if (op == 0 & op2 == 0):
+	if (op == 0 && op2 == 0):
 		arm64_opaque(insn, c"csel", w)
-	else if (op == 0 & op2 == 1):
+	else if (op == 0 && op2 == 1):
 		arm64_opaque(insn, c"csinc", w)
-	else if (op == 1 & op2 == 0):
+	else if (op == 1 && op2 == 0):
 		arm64_opaque(insn, c"csinv", w)
 	else:
 		arm64_opaque(insn, c"csneg", w)
@@ -719,7 +719,7 @@ void arm64_dec_ldst_reg(asm_insn* insn, int w):
 	insn.op2.size = access
 	int bit21 = arm64_bits(w, 21, 1)
 	int op1110 = arm64_bits(w, 10, 2)
-	if (bit21 == 1 & op1110 == 2):
+	if (bit21 == 1 && op1110 == 2):
 		# register offset [Xn,Xm]
 		insn.op2.index = arm64_bits(w, 16, 5)
 		insn.op2.disp = 0

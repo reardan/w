@@ -204,7 +204,7 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 
 	# Missing trailing arguments whose parameters all carry defaults are
 	# filled in with the recorded constants, like parse_call_suffix
-	if ((callee_sym >= 0) & (expected_args > passed_args)):
+	if ((callee_sym >= 0) && (expected_args > passed_args)):
 		int missing_all_defaulted = 1
 		int check_index = passed_args
 		while (check_index < expected_args):

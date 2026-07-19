@@ -439,9 +439,9 @@ int generic_parse_type_args(int args_out, int def):
 # comments are already opaque to get_token(), so skipping token by
 # token is safe.
 void generic_skip_definition():
-	while ((token_newline == 0) & (token[0] != 0)):
+	while ((token_newline == 0) && (token[0] != 0)):
 		get_token()
-	while ((tab_level > 0) & (token[0] != 0)):
+	while ((tab_level > 0) && (token[0] != 0)):
 		get_token()
 
 
@@ -460,7 +460,7 @@ void generic_register_struct():
 	expect(c":")
 	generic_def_add(name, 1, strclone(filename), offset, line, column, n, params)
 	# skip the field lines; they are re-parsed per instantiation
-	while ((tab_level > 0) & (token[0] != 0)):
+	while ((tab_level > 0) && (token[0] != 0)):
 		get_token()
 
 
@@ -483,7 +483,7 @@ int generic_instantiate_struct(int def, int args, int arg_count, char* mangled):
 		get_token()
 	expect(c"]")
 	expect(c":")
-	while ((tab_level > 0) & (token[0] != 0)):
+	while ((tab_level > 0) && (token[0] != 0)):
 		int field_type = type_name()
 		type_add_arg(type_index, strclone(token), field_type)
 		get_token()
@@ -547,7 +547,7 @@ int generic_declaration_scan_generic_return():
 	if (peek(c"[")):
 		int depth = 1
 		get_token()
-		while ((depth > 0) & (token[0] != 0)):
+		while ((depth > 0) && (token[0] != 0)):
 			if (peek(c"[")):
 				depth = depth + 1
 			if (peek(c"]")):
@@ -626,9 +626,9 @@ int generic_declaration_scan():
 		diag_part(first)
 		error(c"'")
 	int checked_type = type_unqualified(type)
-	if ((checked_type == float64_type) & (word_size != 8)):
+	if ((checked_type == float64_type) && (word_size != 8)):
 		error(c"float64 requires the x64 target")
-	if (((checked_type == int64_type) | (checked_type == uint64_type)) & (word_size != 8)):
+	if (((checked_type == int64_type) || (checked_type == uint64_type)) && (word_size != 8)):
 		error(c"int64 requires the x64 target")
 	char* base_name = type_get_name(type)
 	while (pointer_indirection < stars):
@@ -892,7 +892,7 @@ void generic_infer_pointer_error(int def, int param, int arg_type, int arg_index
 # 'arg_type' against a 'T'-with-pointer-depth shape.
 void generic_infer_bind(int def, char* bound, int param, int depth, int arg_type, int arg_index):
 	int existing = load_ptr(bound + param * __word_size__)
-	if ((arg_type == 3) & (depth == 0)):
+	if ((arg_type == 3) && (depth == 0)):
 		# untyped constant: bind 'int' when unbound, else coerce the
 		# value in eax to the existing binding (e.g. int -> float)
 		if (existing < 0):

@@ -76,7 +76,7 @@ void le_history_add(char* line):
 
 # "~/name" -> "$HOME/name" (malloc'd); everything else is cloned.
 char* le_resolve_path(char* path):
-	if ((path[0] == '~') & (path[1] == '/')):
+	if ((path[0] == '~') && (path[1] == '/')):
 		char* home = env_get(c"HOME")
 		if (home != 0):
 			return strjoin(home, path + 1)
@@ -216,7 +216,7 @@ void le_render(char* prompt, char* buf):
 # Replace the buffer contents with text; cursor moves to the end.
 void le_set_line(char* buf, int size, char* text):
 	le_len = 0
-	while ((text[le_len] != 0) & (le_len < size - 1)):
+	while ((text[le_len] != 0) && (le_len < size - 1)):
 		buf[le_len] = text[le_len]
 		le_len = le_len + 1
 	buf[le_len] = 0
@@ -225,7 +225,7 @@ void le_set_line(char* buf, int size, char* text):
 
 # Remove the character at index (a no-op past the end).
 void le_delete_at(char* buf, int index):
-	if ((index < 0) | (index >= le_len)):
+	if ((index < 0) || (index >= le_len)):
 		return;
 	int i = index
 	while (i < le_len - 1):
@@ -273,7 +273,7 @@ int le_read_plain(char* prompt, char* buf, int size):
 	int c = getchar(0)
 	if (c == -1):
 		return -1
-	while ((c != 10) & (c != -1)):
+	while ((c != 10) && (c != -1)):
 		if (len < size - 1):
 			buf[len] = c
 			len = len + 1
@@ -299,7 +299,7 @@ void le_escape_bracket(char* buf, int size):
 		le_pos = 0
 	else if (c2 == 'F'):
 		le_pos = le_len
-	else if ((c2 >= '0') & (c2 <= '9')):
+	else if ((c2 >= '0') && (c2 <= '9')):
 		int c3 = getchar(0)
 		if (c3 == '~'):
 			if (c2 == '1'): /* home */
@@ -340,7 +340,7 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 			term_restore()
 			put_char(10)
 			return -1
-		if ((c == 13) | (c == 10)):
+		if ((c == 13) || (c == 10)):
 			buf[le_len] = 0
 			term_restore()
 			put_char(10)
@@ -358,7 +358,7 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 				put_char(10)
 				return -1
 			le_delete_at(buf, le_pos)
-		else if ((c == 8) | (c == 127)): /* backspace */
+		else if ((c == 8) || (c == 127)): /* backspace */
 			if (le_pos > 0):
 				le_delete_at(buf, le_pos - 1)
 				le_pos = le_pos - 1
@@ -407,7 +407,7 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 			le_browse_next(buf, size)
 		else if (c == 27):
 			le_escape(buf, size)
-		else if (((c >= 32) & (c < 127)) | (c == 9)): /* insert */
+		else if (((c >= 32) && (c < 127)) || (c == 9)): /* insert */
 			if (le_len < size - 1):
 				int k = le_len
 				while (k > le_pos):

@@ -1,10 +1,12 @@
-# Negative cases for the widened bool-bitwise condition hint: even with
-# `w check --bool-ops` (grammar/binary_op.w operand_is_bool_condition)
-# these stay silent — short-circuit spellings, bool arithmetic outside
-# an if/while condition, and integer bitwise operands are all fine. The
-# check_bool_ops_test target asserts this file produces no warnings
-# with the flag on. No imports: an imported library's own (stage-2)
-# sites would fire here and break the silence assertion.
+# Negative cases for the bool-bitwise condition hint: even with
+# `w check --bool-ops` (grammar/binary_op.w operand_is_bool_condition /
+# operand_is_pure) these stay silent — short-circuit spellings, bool
+# arithmetic outside an if/while condition, and integer bitwise
+# operands are all fine, call-free or not. The check_bool_ops_test
+# target asserts this file produces no warnings with the flag on (and,
+# since these are all genuinely non-qualifying joins rather than
+# call-containing ones, without it either). No imports: an imported
+# library's own sites would fire here and break the silence assertion.
 
 
 int main():

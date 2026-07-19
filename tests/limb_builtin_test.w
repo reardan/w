@@ -129,7 +129,7 @@ void mul_limbs_3x3(int* a, int* b, int* out):
 			int c = 0
 			out[i + j] = add_carry(out[i + j], lo, &c)
 			int k = i + j + 1
-			while ((c != 0) | (hi != 0)):
+			while ((c != 0) || (hi != 0)):
 				int add = hi
 				hi = 0
 				int c1 = 0

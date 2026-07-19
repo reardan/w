@@ -1,9 +1,9 @@
 int string_hex_digit(int c):
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return c - '0'
-	if ((c >= 'a') & (c <= 'f')):
+	if ((c >= 'a') && (c <= 'f')):
 		return c - 'a' + 10
-	if ((c >= 'A') & (c <= 'F')):
+	if ((c >= 'A') && (c <= 'F')):
 		return c - 'A' + 10
 	error(c"invalid hex digit in string literal")
 	return 0
@@ -21,7 +21,7 @@ int string_hex_value(int start, int count):
 int string_append_utf8(int out, int codepoint):
 	if (codepoint < 0):
 		error(c"invalid unicode codepoint")
-	if ((codepoint >= 55296) & (codepoint <= 57343)):
+	if ((codepoint >= 55296) && (codepoint <= 57343)):
 		error(c"invalid unicode surrogate")
 	if (codepoint > 1114111):
 		error(c"unicode codepoint out of range")
@@ -73,7 +73,7 @@ int escape_char_value(int c):
 # escapes and multi-character literals are compile errors, unlike string
 # literals which keep unknown escapes literally.
 int char_literal_value():
-	if ((token[1] == 39) & (token[2] == 0)):
+	if ((token[1] == 39) && (token[2] == 0)):
 		error(c"empty char literal")
 	int value
 	int end
@@ -101,13 +101,13 @@ int char_literal_value():
 			end = 2
 		else:
 			int need = 0
-			if ((lead >= 194) & (lead <= 223)):
+			if ((lead >= 194) && (lead <= 223)):
 				need = 1
 				value = lead & 31
-			else if ((lead >= 224) & (lead <= 239)):
+			else if ((lead >= 224) && (lead <= 239)):
 				need = 2
 				value = lead & 15
-			else if ((lead >= 240) & (lead <= 244)):
+			else if ((lead >= 240) && (lead <= 244)):
 				need = 3
 				value = lead & 7
 			else:
@@ -116,23 +116,23 @@ int char_literal_value():
 			int i = 1
 			while (i <= need):
 				int d = token[1 + i] & 255
-				if ((d < 128) | (d > 191)):
+				if ((d < 128) || (d > 191)):
 					diag_part(c"invalid UTF-8 char literal: ")
 					error(token)
 				value = (value << 6) | (d & 63)
 				i = i + 1
-			if ((need == 2) & (value < 2048)):
+			if ((need == 2) && (value < 2048)):
 				diag_part(c"invalid UTF-8 char literal: ")
 				error(token)
-			if ((need == 3) & (value < 65536)):
+			if ((need == 3) && (value < 65536)):
 				diag_part(c"invalid UTF-8 char literal: ")
 				error(token)
 			end = 2 + need
-	if ((value >= 55296) & (value <= 57343)):
+	if ((value >= 55296) && (value <= 57343)):
 		error(c"invalid unicode surrogate")
 	if (value > 1114111):
 		error(c"unicode codepoint out of range")
-	if ((token[end] != 39) | (token[end + 1] != 0)):
+	if ((token[end] != 39) || (token[end + 1] != 0)):
 		diag_part(c"multi-character char literal: ")
 		error(token)
 	return value
@@ -143,17 +143,17 @@ int process_string_literal_from(int j):
 	int k
 	while (token[j] != '"'):
 		# \x0a formatting
-		if ((token[j] == 92) & (token[j + 1] == 'x')):
+		if ((token[j] == 92) && (token[j + 1] == 'x')):
 			k = string_hex_value(j + 2, 2)
 			token[i] = k
 			j = j + 4
 
-		else if ((token[j] == 92) & (token[j + 1] == 'u')):
+		else if ((token[j] == 92) && (token[j + 1] == 'u')):
 			k = string_hex_value(j + 2, 4)
 			i = string_append_utf8(i, k) - 1
 			j = j + 6
 
-		else if ((token[j] == 92) & (token[j + 1] == 'U')):
+		else if ((token[j] == 92) && (token[j + 1] == 'U')):
 			k = string_hex_value(j + 2, 8)
 			i = string_append_utf8(i, k) - 1
 			j = j + 10
@@ -190,13 +190,13 @@ void validate_utf8_literal(int n):
 		int codepoint = 0
 		if (c < 128):
 			i = i + 1
-		else if ((c >= 194) & (c <= 223)):
+		else if ((c >= 194) && (c <= 223)):
 			need = 1
 			codepoint = c & 31
-		else if ((c >= 224) & (c <= 239)):
+		else if ((c >= 224) && (c <= 239)):
 			need = 2
 			codepoint = c & 15
-		else if ((c >= 240) & (c <= 244)):
+		else if ((c >= 240) && (c <= 244)):
 			need = 3
 			codepoint = c & 7
 		else:
@@ -207,17 +207,17 @@ void validate_utf8_literal(int n):
 			int j = 1
 			while (j <= need):
 				int d = token[i + j] & 255
-				if ((d < 128) | (d > 191)):
+				if ((d < 128) || (d > 191)):
 					error(c"invalid UTF-8 continuation byte")
 				codepoint = (codepoint << 6) | (d & 63)
 				j = j + 1
-			if ((need == 1) & (codepoint < 128)):
+			if ((need == 1) && (codepoint < 128)):
 				error(c"overlong UTF-8 string literal")
-			if ((need == 2) & (codepoint < 2048)):
+			if ((need == 2) && (codepoint < 2048)):
 				error(c"overlong UTF-8 string literal")
-			if ((need == 3) & (codepoint < 65536)):
+			if ((need == 3) && (codepoint < 65536)):
 				error(c"overlong UTF-8 string literal")
-			if ((codepoint >= 55296) & (codepoint <= 57343)):
+			if ((codepoint >= 55296) && (codepoint <= 57343)):
 				error(c"invalid UTF-8 surrogate")
 			if (codepoint > 1114111):
 				error(c"UTF-8 codepoint out of range")
@@ -232,7 +232,7 @@ int raw_asm_literal():
 	if (target_isa == 3):
 		error(c"raw_asm is not supported in gpu code")
 	expect(c"(")
-	if ((token[0] != '"') & (((token[0] != 'c') | (token[1] != '"')))):
+	if ((token[0] != '"') && (((token[0] != 'c') || (token[1] != '"')))):
 		error(c"double quote expected inside raw_asm( ... ) literal")
 
 	int i
@@ -357,7 +357,7 @@ void be_emit_inline_cstr(int len, char* s):
 
 
 int c_char_pointer_literal():
-	if ((token[0] != 'c') | (token[1] != '"')):
+	if ((token[0] != 'c') || (token[1] != '"')):
 		return 0
 	int i = process_prefixed_string_literal()
 	token[i] = 0
@@ -366,7 +366,7 @@ int c_char_pointer_literal():
 
 
 int utf8_string_literal():
-	if ((token[0] != 's') | (token[1] != '"')):
+	if ((token[0] != 's') || (token[1] != '"')):
 		return 0
 	int i = process_prefixed_string_literal()
 	validate_utf8_literal(i)

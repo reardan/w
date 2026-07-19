@@ -64,9 +64,9 @@ int grapheme_next(string s, int byte_index):
 
 
 int grapheme_is_boundary(string s, int byte_index):
-	if ((byte_index < 0) | (byte_index > s.length)):
+	if ((byte_index < 0) || (byte_index > s.length)):
 		return 0
-	if ((byte_index == 0) | (byte_index == s.length)):
+	if ((byte_index == 0) || (byte_index == s.length)):
 		return 1
 	int i = 0
 	while (i < s.length):

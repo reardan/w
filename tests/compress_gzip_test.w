@@ -30,6 +30,48 @@ void test_gzip_roundtrip():
 	gzip_result_free(c)
 
 
+# Same round trip through the real LZ77 + Huffman encoder (deflate.w
+# stage 2) rather than stage 2a's stored blocks -- pins that FAST/BEST
+# flow through gzip_compress/gzip_decompress correctly, including the
+# CRC-32/ISIZE trailer over a longer, repetitive payload (a plain
+# literal string is too short to exercise LZ77 matches).
+void test_gzip_roundtrip_fast_and_best():
+	int n = 4096
+	char* src = malloc(n)
+	int i = 0
+	while (i < n):
+		src[i] = 'a' + (i % 7)
+		i = i + 1
+	gzip_result* fast = gzip_compress(src, n, DEFLATE_LEVEL_FAST())
+	wresult[gzip_result*]* fr = gzip_decompress(fast.data, fast.length, 0)
+	assert1(result_is_ok[gzip_result*](fr))
+	gzip_result* fout = result_value[gzip_result*](fr)
+	result_free[gzip_result*](fr)
+	assert_equal(n, fout.length)
+	assert1(fast.length < n)
+	int j = 0
+	while (j < n):
+		assert_equal(src[j] & 255, fout.data[j] & 255)
+		j = j + 1
+	gzip_result_free(fout)
+	gzip_result_free(fast)
+
+	gzip_result* best = gzip_compress(src, n, DEFLATE_LEVEL_BEST())
+	wresult[gzip_result*]* br = gzip_decompress(best.data, best.length, 0)
+	assert1(result_is_ok[gzip_result*](br))
+	gzip_result* bout = result_value[gzip_result*](br)
+	result_free[gzip_result*](br)
+	assert_equal(n, bout.length)
+	assert1(best.length < n)
+	j = 0
+	while (j < n):
+		assert_equal(src[j] & 255, bout.data[j] & 255)
+		j = j + 1
+	gzip_result_free(bout)
+	gzip_result_free(best)
+	free(src)
+
+
 void test_gzip_compress_is_deterministic():
 	# Reproducible-build property the design doc calls out explicitly
 	# (§5.4): same input + level -> byte-identical output every time

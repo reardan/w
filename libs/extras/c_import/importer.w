@@ -149,9 +149,9 @@ int ci_count_token(pg_ast_node* node, int kind):
 
 
 int ci_is_header_control(int c):
-	if ((c <= 0) | (c >= 32)):
+	if ((c <= 0) || (c >= 32)):
 		return 0
-	if ((c == 9) | (c == 10) | (c == 13)):
+	if ((c == 9) || (c == 10) || (c == 13)):
 		return 0
 	return 1
 
@@ -208,7 +208,7 @@ void ci_append_header_space_span(string_builder* out, char* source, int start, i
 int ci_skip_quoted_header_text(char* source, int index):
 	int quote = source[index]
 	index = index + 1
-	while ((source[index] != 0) & (source[index] != quote)):
+	while ((source[index] != 0) && (source[index] != quote)):
 		if (source[index] == 92):
 			index = index + 1
 			if (source[index] == 0):
@@ -224,7 +224,7 @@ int ci_skip_balanced_header_parens(char* source, int index):
 		return index
 	int depth = 0
 	while (source[index] != 0):
-		if ((source[index] == '"') | (source[index] == 39)):
+		if ((source[index] == '"') || (source[index] == 39)):
 			index = ci_skip_quoted_header_text(source, index)
 		else:
 			if (source[index] == '('):
@@ -238,7 +238,7 @@ int ci_skip_balanced_header_parens(char* source, int index):
 
 
 int ci_skip_inline_header_space(char* source, int index):
-	while ((source[index] == ' ') | (source[index] == 9) | (source[index] == 13)):
+	while ((source[index] == ' ') || (source[index] == 9) || (source[index] == 13)):
 		index = index + 1
 	return index
 
@@ -311,7 +311,7 @@ void ci_set_type_alignment(int type_index, int alignment):
 
 int ci_pow2_alignment(int size):
 	int a = 1
-	while (((a + a) <= size) & ((a + a) <= word_size)):
+	while (((a + a) <= size) && ((a + a) <= word_size)):
 		a = a + a
 	return a
 
@@ -390,11 +390,11 @@ pg_ast_node* ci_qualifier_specs(pg_ast_node* node):
 
 
 int ci_hex_digit(int c):
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return c - '0'
-	if ((c >= 'a') & (c <= 'f')):
+	if ((c >= 'a') && (c <= 'f')):
 		return c - 'a' + 10
-	if ((c >= 'A') & (c <= 'F')):
+	if ((c >= 'A') && (c <= 'F')):
 		return c - 'A' + 10
 	return -1
 
@@ -404,7 +404,7 @@ int ci_parse_number_text(char* text):
 	int base = 10
 	int i = 0
 	if (text[0] == '0'):
-		if ((text[1] == 'x') | (text[1] == 'X')):
+		if ((text[1] == 'x') || (text[1] == 'X')):
 			base = 16
 			i = 2
 		else if (text[1] != 0):
@@ -415,9 +415,9 @@ int ci_parse_number_text(char* text):
 		int digit = -1
 		if (base == 16):
 			digit = ci_hex_digit(text[i])
-		else if ((text[i] >= '0') & (text[i] <= '9')):
+		else if ((text[i] >= '0') && (text[i] <= '9')):
 			digit = text[i] - '0'
-		if ((digit < 0) | (digit >= base)):
+		if ((digit < 0) || (digit >= base)):
 			return value
 		value = value * base + digit
 		i = i + 1
@@ -438,7 +438,7 @@ int ci_char_escape_value(int c):
 
 int ci_parse_char_text(char* text):
 	int i = 0
-	while ((text[i] != 0) & (text[i] != 39)):
+	while ((text[i] != 0) && (text[i] != 39)):
 		i = i + 1
 	if (text[i] == 0):
 		return 0
@@ -650,7 +650,7 @@ int ci_eval_postfix(pg_ast_node* node):
 		pg_ast_node* tail = pg_ast_child(node, 1)
 		pg_ast_node* expr = ci_child_ast(primary, clang_ast_expression())
 		pg_ast_node* args = ci_child_ast(tail, clang_ast_argument_expression_list())
-		if ((expr != 0) & (args != 0)):
+		if ((expr != 0) && (args != 0)):
 			char* name = ci_expr_single_ident(expr)
 			if (name != 0):
 				if (ci_try_type_from_name(name) >= 0):
@@ -810,7 +810,7 @@ int ci_import_struct(pg_ast_node* specifier):
 		is_named = 0
 	int existing = type_lookup(name)
 	pg_ast_node* body = ci_child_ast(specifier, clang_ast_struct_body())
-	if ((existing >= 0) & (body == 0)):
+	if ((existing >= 0) && (body == 0)):
 		return existing
 	if (existing >= 0):
 		if (type_num_args(existing) > 0):
@@ -1299,7 +1299,7 @@ void ci_import_translation_unit(pg_ast_node* root):
 
 
 int ci_macro_public_constant_name(char* name):
-	if ((name[0] < 'A') | (name[0] > 'Z')):
+	if ((name[0] < 'A') || (name[0] > 'Z')):
 		return 0
 	if (sym_lookup(name) >= 0):
 		return 0

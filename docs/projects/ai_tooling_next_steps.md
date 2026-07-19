@@ -17,47 +17,57 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
-- **A statement starting with `(` is absorbed as a call of the
-  previous expression statement.** `postfix_expr`'s call tail
-  (`accept(c"(")`) does not consider `token_newline`, so `int b = 2`
-  followed by a line `(a + b)++` parses as the call `2(a + b)` and the
-  resulting diagnostic points at whatever follows the group — nothing
-  says a cross-line call happened (hit while shaping the #103 rejection
-  fixtures, 2026-07-16; cost a compiler-instrumentation round to see).
-  Same family as the newline rule `expression()` now applies to
-  postfix `++`/`--`. Suggested direction: either require the `(` call
-  tail to be same-line (token_newline == 0, a breaking change needing a
-  sweep), or emit a "call arguments continue from the previous line"
-  note when the call tail crosses a newline.
+- **Shipped (2026-07-17): cross-line call-tail absorption now warns.**
+  `postfix_expr`'s call tail warns `call arguments continue from the
+  previous line` when its `(` opens on a different line than the
+  expression it attaches to (`int b = 2` / `(a + b)++` no longer
+  silently merges into `2(a + b)` with no diagnostic; still
+  non-breaking — a same-line-only hard rule stays a future decision);
+  fixtures `tests/cross_line_call_warning_fixture.w` and
+  `tests/cross_line_call_increment_fixture.w`.
 - **Multi-error reporting.** The compiler stops at the first error
   (single-pass, no recovery). Documented limitation; real fix is parser
   recovery, which stays a research project. Cheap partial win: after an
   error in file A, agents re-check to find errors behind it — nothing to
   build, just keep the limitation documented in skills.
-- **Bool-bitwise condition warning: default still lvalue-scoped;
-  widened scope shipped opt-in (stage 1, 2026-07-16).** The shipped
-  "did you mean `||`/`&&`?" hint (2026-07-10) fires by default only
-  when both `|`/`&` operands are bool-typed *lvalues* in an if/while
-  condition. Stage 1 of the migration landed: (a) the parser generator
-  now emits `&&`/`||` for every boolean join in generated code (kind-set
-  guards, first-byte dispatch ranges, literal-trie accept tests, charset
-  conditions, recovery skip conjunctions — all pure-comparison operands;
-  `libs/extras/c_import/generated_c_parser.w` regenerated, removing all
-  of its ~140 sites), and (b) `w check --bool-ops` (opt-in, modeled on
-  `--imports`) widens the hint to comparison-result operands —
-  `(a == b) | (c == d)` — covered by `check_bool_ops_test`. The
-  compiler-injected modules (auto-import closure, prelude/json/
-  template/var runtimes) stay suppressed under the flag like `--imports`
-  does. Measured stage-2 worklist with the flag on: 471 fires across
-  `w check --bool-ops w.w` plus 19 in the suppressed compiler-injected
-  runtime (16 auto-import closure + 3 `structures/prelude.w`), ~490
-  hand-written sites total. Stage 2 is the mechanical per-site sweep
-  (reviewed in ~50-site chunks: top files `debugger/wdbg.w` 47,
-  `libs/asm/x86_decode.w` 36, `libs/extras/parser_generator/lexer.w` 27,
-  `grammar/string_literal.w` 27, `compiler/tokenizer.w` 24); flipping
-  the default comes after that.
+- **Shipped (2026-07-17, wave 2f): the bool-bitwise condition hint is
+  now on by default for every call-free join.** See `ai_tooling.md`'s
+  status section for the shipped description; `--bool-ops` survives as
+  the narrower "also report call-containing joins" superset (it used to
+  gate the comparison-result widening itself, before the wave-2
+  mechanical sweep converted every side-effect-free site tree-wide).
+- **`w check --bool-ops`'s position/chain bugs — two fixed, one
+  deferred (2026-07-17, wave 2f).** Consolidates four overlapping
+  reports from wave-2 sweep chunks 2a/2b/2d/2e, all downstream of the
+  same three bugs: (1) a warning inside an *imported* (non-root) file
+  reports its line number +1 high (`debugger/memory.w:52` vs. actual
+  line 51) — root cause found (`compiler/compiler.w`'s `compile_save`
+  saves `line_number + 1` instead of `line_number` before compiling the
+  import, then restores the inflated value) but **left open**: the fix
+  touches every diagnostic's line number for every imported file, not
+  just this hint, so it belongs in its own gated PR, not this one. (2)
+  the reported line/column was wherever the tokenizer's one-token
+  lookahead sat once the *whole* condition finished parsing, not the
+  `&`/`|` itself — **fixed**: `grammar/binary_op.w`'s
+  `warn_bool_bitwise_at` snapshots `line_number`/`diag_token_line`/
+  `diag_token_column`/`token` when `accept()`'s peek recognizes the
+  operator, before consuming it moves the lookahead, and restores them
+  around the `warning()` call. (3) a same-precedence chain of 3+ terms
+  only ever flagged the first pairing, because
+  `binary2_finish_pop`/`binary2_finish` return the untyped placeholder
+  type `3`, erasing the fold's bool-ness before the next pairing's check
+  ran — **fixed**: `bitwise_and_expr`/`bitwise_or_expr` now track
+  `chain_is_bool`/`chain_is_pure` alongside the running fold instead of
+  re-deriving them from the (erased) type, so every qualifying pairing
+  gets its own diagnostic (`tests/bool_bitwise_chain_fixture.w` pins two
+  distinct positions for a 3-term chain). The precedence-grouping
+  observation from the original reports still holds — converting a
+  join can newly expose the next fold in a chain as bool-vs-bool — but
+  no longer needs a re-enumeration pass to catch: the default hint now
+  walks the whole chain in one `check` pass.
 - **`T* + int` is a raw, unscaled byte offset for every pointee width,
-  and nothing warns.** Found 2026-07-16 writing `libs/extras/compress/
+  and nothing warns — the rule is now documented, the warning/intrinsic
+  is not.** Found 2026-07-16 writing `libs/extras/compress/
   inflate.w`'s dynamic-Huffman block decoder: `wh_build(c, dist_huff,
   lengths + hlit, hdist)` (where `lengths` is `int*`) added `hlit`
   *bytes* to the pointer, not `hlit` ints — landing 4 (or 8, on x64)
@@ -75,15 +85,14 @@ is a queue, not an archive.
   `int*`/struct-pointer `+` is silently just as wrong as a `char*` one
   with a forgotten `* width`. `a[i]`/`&a[i]` *do* scale correctly (this
   is what made the bug non-obvious: indexing and "pointer plus offset"
-  look interchangeable but are not). Suggested direction: a `w check`
-  warning on `<non-char-pointer> + <int-not-a-multiple-of-known-
-  stride>` is unrealizable statically in general, but at minimum
-  README.md/CLAUDE.md should document the rule explicitly (searched for
-  "pointer arithmetic" and "byte offset" — nothing exists today), and a
-  `ptr_add(p, n)`-style intrinsic that scales by `__word_size__`/
-  `sizeof` (or a real `&p[n]` desugar recommended in library code
-  instead of `p + n`) would remove the footgun entirely rather than
-  documenting around it.
+  look interchangeable but are not). README.md/CLAUDE.md now document
+  the rule explicitly (2026-07-17), citing `lib/sha256.w`'s `p + i * 4`
+  idiom above. Still open: a `w check` warning on
+  `<non-char-pointer> + <int-not-a-multiple-of-known-stride>` is
+  unrealizable statically in general, but a `ptr_add(p, n)`-style
+  intrinsic that scales by `__word_size__`/`sizeof` (or a real `&p[n]`
+  desugar recommended in library code instead of `p + n`) would remove
+  the footgun entirely rather than documenting around it.
 
 - **No warning when an import breaks a different compile target.**
   `tools/wexec.w` is compiled three ways (default `x86`, `win64`,
@@ -103,7 +112,6 @@ is a queue, not an archive.
   per-arch resolution, with a win64 stub that always reports a
   transport failure so the feature degrades to "unavailable" instead
   of "won't compile" (2026-07-16).
-
 ## Test selection (`bin/wtest`)
 
 - **First `wtest changed` after a build can take well over the
@@ -116,33 +124,72 @@ is a queue, not an archive.
   this was host-specific slowness) -- agents should budget several
   minutes (not the 2-minute tool default) for the FIRST post-build
   `wtest changed` invocation, same as any other cold-cache step.
-- **A dependency without its own `"inputs"` silently disables caching
-  for every target that depends on it — easy to trip over when
-  synthesizing or fixturing targets.** `wexec_cache_key` requires every
-  entry in a target's `"deps"` to already have a stored cache key
-  (`wexec_keys`), which is only ever set for targets that themselves
-  declared `"inputs"`; a `deps: ["wv2"]` target whose `"wv2"` has no
-  `"inputs"` (a plain FORCE-style stand-in, e.g. in an isolated `-f`
-  test fixture) is *itself* never cacheable even though it declares its
-  own `"inputs"` — the whole point per the design comment ("a fresh
-  dependency run may have changed what this target consumes"), but the
-  failure mode is a silent, permanent cache miss with no diagnostic,
-  not an error. Hit while building `tests/wexec/direct_file.json` for
-  the direct-file UX's own cache-hit test (fixed by adding
-  `"inputs": []` to the fixture's stand-in `wv2` target). Worth a
-  `wexec --explain-cache <target>` (or similar) surface that states
-  *why* a target isn't cacheable, the same way `--verbose` already
-  explains `wtest`'s selection.
-- **No machine-readable manifest-structure dump.** Auditing
-  `build.base.json`'s 168 hand-written targets for the #323 stage-1
-  inventory (`docs/projects/build_system_next.md`) meant writing a
-  one-off Python script against the JSON rather than a repo tool — there
-  is no `wexec --list --json` (or `wbuildgen --describe`) that emits
-  per-target structural facts (step count, compile roots, `deps`,
-  whether a step shells out, `generate.exclude` membership) in one
-  queryable shape. Would pay for itself the next time this kind of
-  manifest archaeology is needed (stage 2 of #323, or any future
-  wbuildgen directive-vocabulary decision).
+- **Two `./wbuild`/`wexec` invocations racing in the same worktree
+  corrupt each other's build with no useful diagnostic.** Hit while
+  gating the `stream_peek_byte` fix (#331 follow-up): a backgrounded
+  `./wbuild test_changed` rerun (started to grep its output for
+  failures rather than re-scrolling a long transcript) was still
+  compiling when a foreground `./wbuild verify` started in the same
+  worktree; the seed-stage compile failed with a bare "could not open
+  output file" and a stack trace pointing at `compiler.w`'s `link`
+  (both processes were writing/executing the same `bin/wv2`). Not a
+  compiler or `wexec` bug -- `bin/` has no lock file, so nothing stops
+  two invocations from racing there. Agents should treat a worktree's
+  `bin/` as single-writer: never background a `./wbuild`/`wexec` call
+  and start another in the same worktree before confirming (via
+  `pgrep -f` scoped to the worktree's `bin/`, or just waiting for the
+  first command's own completion) that it has actually finished.
+
+## Definition hashing (`w defhash`)
+
+- **Shipped (2026-07-18, issue #251 D4a): `wv2 defhash [--closure]
+  <file.w>...`** emits one NDJSON record per top-level definition
+  (function, global, struct/union/enum, type alias) declared directly in
+  the root file(s) -- `{"file", "name", "kind", "hash", "refs"}` -- with
+  `hash` a sha256 over the definition's own token stream (whitespace and
+  comments excluded, so reformatting/comment edits leave it unchanged)
+  and `refs` the other recorded definitions' names it references.
+  `--closure` widens scope to the whole compiled program (matching
+  `deps`'s closure). `bin/wtest`'s `changed`/`for` selection does **not**
+  consume this yet -- it still selects on file-level import closures, so
+  a comment-only edit to a `lib/` file still selects every importing
+  target, not just the file's own residue rules (`metadata_check`, etc).
+  Wiring an opt-in `--defhash` refinement into `tools/test_map.w`'s rule
+  (b) (see its header comment) is the natural next step: for a changed
+  `.w` file, shell out to `bin/wv2 defhash` on both `git show HEAD:<path>`
+  and the worktree copy, and skip adding import-closure targets when
+  every recorded name's hash (and the name set itself) is unchanged.
+  Left undone here deliberately (partial-preferred: a solid, tested mode
+  beats a rushed, under-tested change to shared test-selection
+  infrastructure) -- `tests/wtest/map_expectations.expect` and
+  `wtest_map_test`/`wtest_run_test` (`build.base.json`) are the patterns
+  to follow, including the `-f <manifest.json>` synthetic-manifest
+  trick and the `cd bin && ./wtest ...` trick for exercising behavior
+  outside a git repo; a self-contained `git init`-in-a-scratch-dir `sh
+  -c` step is the cleanest way to test the HEAD-vs-worktree comparison
+  without touching this repo's own history.
+- `--closure`'s ref resolution is a linear scan over every recorded
+  definition per identifier token (`defhash_is_known_definition`,
+  `compiler/compiler.w`) -- fine at file scope or even this repo's full
+  `lib.lib` closure (~360 definitions, well under a second), but would
+  need a hash-table lookup if `--closure` is ever run over something an
+  order of magnitude bigger (e.g. wired into `wexec` cache keys per
+  D4a's stretch goal).
+- `refs` is a token-text match against the recorded definition-name set,
+  not real scope resolution: a struct/union field name or enum constant
+  that happens to share text with another top-level definition reads as
+  a false-positive reference, and a local/parameter shadowing another
+  definition's name is not special-cased either. Documented in
+  `defhash_main`'s doc comment in `compiler/compiler.w`; tightening this
+  would need real per-reference scope tracking, which is a much bigger
+  change than D4a's scope.
+- Generic struct/function definitions and `operator` overloads are
+  invisible to `defhash` on purpose: the scan-ahead/re-parse machinery
+  those go through (`grammar/generic.w`, `grammar/operator_overload.w`)
+  never reaches `defhash_note`'s call sites. Extending coverage to them
+  would mean threading defhash bookkeeping through that machinery too --
+  left as a follow-up since ordinary functions/globals/aggregates are
+  the common case.
 
 ## Cleanup observed while dogfooding
 
@@ -184,29 +231,42 @@ is a queue, not an archive.
   content-hash caching on macOS, add per-arch dirent accessors
   (`reclen`/`name`/`kind`) next to each `getdents` shim in
   `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
-- **`itoa(INT_MIN)` prints `"-"` instead of the number — pre-existing
-  library bug, unrelated to float codegen.** Found 2026-07-16 while
-  testing float→int conversion edges for issue #17
-  (`tests/float_conformance_test.w`, `tests/x64_float64_conformance_test.w`):
-  `cvttss2si`/`cvttsd2si` substitute the "integer indefinite" sentinel
-  (`INT_MIN`'s bit pattern) on out-of-range float→int conversions (Intel
-  SDM behavior, no software range check — see `docs/projects/float.md`'s
-  "Known MVP semantic differences"), and printing that value via
-  `itoa()` for a debug message reproduces the bug: `itoa` (`lib/lib.w`)
-  negates via `n = 0 - n`, which overflows back to the same negative
-  value for `INT_MIN` in two's complement, so its digit-extraction loop
-  (`while (n > 0)`) never runs and the output is just `"-"` with no
+- **`itoa(INT_MIN)` printed `"-"` instead of the number — resolved
+  (2026-07-17).** Found 2026-07-16 while testing float→int conversion
+  edges for issue #17 (`tests/float_conformance_test.w`,
+  `tests/x64_float64_conformance_test.w`): `cvttss2si`/`cvttsd2si`
+  substitute the "integer indefinite" sentinel (`INT_MIN`'s bit pattern)
+  on out-of-range float→int conversions (Intel SDM behavior, no software
+  range check — see `docs/projects/float.md`'s "Known MVP semantic
+  differences"), and printing that value via `itoa()` for a debug
+  message reproduced the bug: `itoa` (`lib/lib.w`) negated via
+  `n = 0 - n`, which overflows back to the same negative value for
+  `INT_MIN` in two's complement, so its digit-extraction loop
+  (`while (n > 0)`) never ran and the output was just `"-"` with no
   digits — on both the 32-bit target (`-2147483648`) and x64
-  (`-9223372036854775808`). Comparison-based assertions (`assert_equal`'s
-  `!=` check, `assert_equal_hex`'s `hex()`-based formatting, which uses
-  bitwise shifts rather than negation) are unaffected; only code that
-  formats an `INT_MIN`-valued int via `itoa()` hits this — the new
-  conformance tests route around it by asserting bit patterns via
-  `assert_equal_hex` instead. Not fixed here (out of scope for a
-  float-conformance PR, and `lib/lib.w` is broadly imported); the fix is
-  a one-line special case (or restructure the loop to extract digits via
-  `-(n % 10)` without pre-negating `n`, matching `intstrlen`'s existing
-  correct handling of negative `n`).
+  (`-9223372036854775808`). Fixed by extracting digits directly from the
+  (possibly still negative) `n`: `n % 10` keeps `n`'s sign under
+  truncating division, so a negative digit's magnitude (at most 9) can
+  always be negated safely, unlike `n` itself. Same-file fallout found
+  while fixing this: `intstrlen` had the identical `0 - i` overflow for
+  `INT_MIN` (undercounting to length 1 instead of sign-plus-every-digit)
+  despite looking like the "already correct" reference implementation the
+  original fix sketch (above) pointed at — fixed the same way, dropping
+  the pre-negation; a negative dividend walks to 0 in exactly as many
+  steps as its positive counterpart, so the digit count is unaffected.
+  Also bumped `itoa`'s `malloc(16)` to `malloc(24)`: a 64-bit `INT_MIN`
+  string is 21 bytes with the NUL, and 16 bytes was already tight for
+  large 64-bit positive values before this fix even made `INT_MIN` the
+  longest case. Lesson for future "mirror the working sibling function"
+  fix sketches: verify the sibling against the actual overflow case
+  rather than trusting that it "already handles negatives correctly" —
+  both functions had the same bug, and only one was named as suspect.
+  Comparison-based assertions (`assert_equal`'s `!=` check,
+  `assert_equal_hex`'s `hex()`-based formatting, which uses bitwise
+  shifts rather than negation) were never affected. Covered by
+  `test_itoa_int_min` / `test_intstrlen_int_min` in `lib/lib_test.w`
+  (word-size-derived `INT_MIN`, run on both the 32-bit and x64 twins via
+  the file's `# wbuild: x64` directive).
 - **`stream_peek_byte` sign-extends the byte 0xFF into the -1 EOF
   sentinel — pre-existing library bug.** Found 2026-07-16 while building
   `tests/ndjson_utf8_validator.w` for #287 stage 1: `lib/stream.w`'s
@@ -223,28 +283,102 @@ is a queue, not an archive.
   #287 PR (seed-adjacent blast radius — `lib/stream.w` feeds wexec,
   wmeta, and the web stack; deserves its own gated PR). The validator
   routes around it by reading with `getchar()`, which masks correctly.
-- **The compiler can exit 1 with no diagnostic at all — partially
-  addressed.** The pre-refresh darwin seed compiling current `w.w`
+- **The compiler can exit 1 with no diagnostic at all — full audit done
+  (2026-07-18), one more gap fixed, one documented.** Three concrete
+  silent-exit gaps were fixed 2026-07-16 (backend finisher `write()`
+  checks, ce18e1e; tokenizer prefixed-string EOF, f7076b9; allocator OOM
+  notice, 35ed0f5 — see the appendix below for status). This pass swept
+  every `error(...)` call site in `grammar/`, `compiler/`,
+  `code_generator/`, `w.w` (312 sites, not the ~95 `ai_tooling.md` had
+  estimated — that number was stale), every direct `exit()`/`asserts()`
+  call bypassing `error()`, and the driver-path syscalls (`open()`/
+  `read()`/`write()`/`getcwd()`/`mmap()` in the compile/link/deps/symbols
+  paths, `grammar/generic.w` and `grammar/defer.w`'s re-parse file opens,
+  and the `libs/extras/{c_import,c_preprocessor,parser_generator}` seed
+  graph). Full table in the appendix below. Net new finding: a genuine
+  silent-crash gap in `lib/memory_debug.w`'s bookkeeping-table growth
+  (5 unchecked `mmap()` calls) — **fixed this pass**, no fixture (same
+  as 35ed0f5, forcing a real mmap failure needs a memory-exhausted
+  environment, not a portable fixture). One further gap is documented,
+  not fixed: `lib/lib.w`'s `getchar()` treats a genuine `read()` error
+  the same as EOF, so a rare mid-file I/O failure looks like a silent,
+  possibly-successful truncation rather than a diagnostic (see
+  appendix). The original 2026-07-09 darwin-seed report itself still
+  cannot be independently reproduced — see "Bounded repro attempt"
+  below — but the audit found no comparable *still-open* silent-exit
+  path in the seed graph on Linux, and every `error()` call site is
+  safe by construction (see appendix "Method").
+
+  **Bounded repro attempt (Linux-side, 2026-07-18).** The report was:
+  an old ("pre-refresh") darwin seed compiling current `w.w`
   (post-#128 `libs/extras`) printed only the `compiling 'w.w'` banner
-  and exited 1 — nothing on stdout or stderr (2026-07-09; the same
-  constructs in a small probe file produced a proper `list field
-  'append' not found` error, so some deep error path exits without a
-  message). Three concrete silent-exit gaps found while auditing this
-  are now fixed (2026-07-16): every backend finisher
-  (`elf_finish`/`elf_finish_64`/`elf_finish_arm64`/`pe_finish_64`/
-  `macho_finish_arm64`/`wasm_finish`) now checks its output-binary
-  `write()` and prints `could not write output file` instead of exiting
-  0 with a truncated image (ce18e1e); the tokenizer's `c"..."`/`s"..."`
-  prefixed-string scanner reports `unterminated string literal` at EOF
-  instead of spinning forever with no output (f7076b9, pinned by
-  `prefixed_string_literal_test`); and `lib/memory`'s allocator prints a
-  one-line notice before returning null on OOM instead of letting every
-  caller's assumed-infallible `malloc()` segfault with no diagnostic
-  (35ed0f5). What remains: the original 2026-07-09 darwin-seed report
-  itself hasn't been independently re-reproduced to confirm one of these
-  three covers it, and no one has yet done the full audit of the ~95
-  `error()` call sites (`ai_tooling.md`'s current-state notes) for other
-  silent-exit paths beyond these three.
+  and exited 1 — nothing on stdout or stderr — while the same
+  constructs in a small probe file produced a proper error under a
+  matched seed. The most likely explanation is the seed-generation
+  skew the single-tag-pin policy (`CLAUDE.md` "Seed promotion",
+  #128/#129) was written to eliminate: at the time, `./w` (Linux) and
+  `./w_darwin` had each been refreshed independently, so it was
+  possible for `./w_darwin` to be a generation *behind* `./w` — built
+  from a `w.w`/grammar snapshot that predates some syntax the
+  now-current `w.w` (or its `libs/extras` closure) uses, with the
+  failure surfacing inside whatever internal function choked on the
+  unrecognized construct rather than through the normal `error()` path
+  (which the stale binary's own copy of `compiler/tokenizer.w` may not
+  have reached, or may have reached with different, since-fixed
+  plumbing). This could not be literally reproduced here: (1) only one
+  seed generation/tag exists (`SEEDS` pins `v0.1.0` for all three
+  platforms; no earlier tag was ever cut, so there is no "stale"
+  generation left to install and test against — the single-tag policy
+  landed before a second generation could exist), and (2) the specific
+  historical `w_darwin` binary that exhibited the bug was never
+  committed (seeds are downloaded, sha256-verified, gitignored) and is
+  an arm64 Mach-O besides, so it could not run here even if archived.
+  As a bounded substitute, the current pinned Linux seed was run
+  directly against current `w.w` (`./w w.w -o /tmp/.../probe`,
+  bypassing `wbuild`'s cached multi-stage): it compiled cleanly, exit
+  0, banner printed, no incident — confirming that a *matched*
+  single-tag-pin seed does not reproduce the failure shape, consistent
+  with the skew theory. Fully confirming the original report would
+  require a Mac with the specific stale `w_darwin` from 2026-07-09 (or
+  before), which no longer exists in any accessible form — **Mac-only,
+  and irreproducible even there** without that exact archived binary.
+
+  **Appendix: silent-exit-1 audit table (2026-07-18)**
+
+  Method: `error(char* s)` (`compiler/tokenizer.w`) is the sole sink
+  every diagnostic funnels through — in `--json` mode it appends to the
+  diagnostic buffer and emits one NDJSON record to stdout; otherwise it
+  calls `warning(s)`, which prints `<message> in <filename>:<line+1>` to
+  stderr — and only then exits 1 (or long-jumps to the REPL prompt under
+  `repl_recovery`). Because every one of the 312 call sites necessarily
+  routes through this one function, auditing them reduces to: (a)
+  confirm `error()`/`warning()` themselves always emit (read, not
+  changed), and (b) grep every call site for a non-empty message
+  literal or a preceding `diag_part(...)`/`print_error(...)` fragment
+  builder. A small script did (b) across all 312 sites; zero were
+  `error(c"")` with no builder in the preceding lines. The rest of the
+  table covers direct `exit()`/`asserts()` calls that bypass `error()`
+  entirely, and driver-path syscalls that could fail before any
+  diagnostic machinery runs.
+
+  | Path | Verdict | Action |
+  |------|---------|--------|
+  | All 312 `error(...)` call sites: `grammar/*.w` (49 files, e.g. `generic.w` 27, `string_literal.w` 22, `for_statement.w` 18), `compiler/{bignum,compiler,symbol_table,tokenizer}.w`, `code_generator/{arm64,dynamic_registry,elf_32,elf_64,elf_arm64,elf_dynamic,ffi,macho_64,macho_dynamic,pe_64,sse,wasm_module}.w` | SAFE | None — `error()` is the sole choke point (see Method); verified programmatically, no fixes needed |
+  | `compiler/tokenizer.w`'s `error()`/`warning()` themselves | SAFE | None — still call `warning()`/`diag_emit()` before every `exit(1)`/longjmp |
+  | `compiler/compiler.w:424,600,671,741,909` direct `exit(1)` (usage banners for `link`/`check`/`deps`/`symbols`, `--strict` warning-count summary) | SAFE | None — each preceded by `println2(...)`/`print_error(...)` |
+  | `lib/assert.w`'s `asserts`/`assert1`/`assert_equal*` (backs `compiler.w`'s output-fd/`-o`-argument checks, `debugger/attach.w`'s `rt_sigaction` check, etc.) | SAFE | None — always prints + a stack trace before `exit(1)` |
+  | `code_generator/{elf_32,elf_64,elf_arm64,macho_64,pe_64,wasm_module}.w` backend-finisher `write()` checks | SAFE (fixed 2026-07-16, ce18e1e) | None — confirmed all 6 finishers still checked |
+  | `compiler/tokenizer.w` prefixed-string (`c"..."`/`s"..."`) EOF scan | SAFE (fixed 2026-07-16, f7076b9, `prefixed_string_literal_test`) | None — confirmed |
+  | `lib/memory_freelist.w`'s `malloc_grow`/OOM notice; `lib/memory_debug.w`'s `debug_malloc`'s own region `mmap()` OOM check | SAFE (fixed 2026-07-16, 35ed0f5) | None — confirmed both call sites still checked |
+  | `lib/memory_debug.w`'s `debug_tbl_ensure_capacity()`: 5 bookkeeping-table `mmap()` calls | **GAP** — unchecked; a failed `mmap()` returns a small negative int used as a pointer with no validation, corrupting the debug allocator's own tracking table and segfaulting on first use with no diagnostic. Only reachable with the opt-in debug allocator (`W_DEBUG_MALLOC` env var or `malloc_force_debug_mode()`), not the default freelist backend | **Fixed this pass**: added `debug_tbl_mmap_failed()`, checked across all 5 results before use; prints `memory_debug: out of memory (bookkeeping table mmap failed)` and exits 1. No fixture — forcing a real `mmap()` failure needs a memory-exhausted environment, same as the untested 35ed0f5 precedent |
+  | `lib/lib.w`'s `getchar()`/`getchar_unbuffered()`: a genuine `read()` error (negative, non-EOF — e.g. `EIO`, an interrupted read with no retry, reading a special file) is treated identically to EOF | **GAP found, not fixed** — a mid-file read failure silently looks like end-of-input; the tokenizer then either reports a parse error at the truncation point (misleading, but not literally silent) or, worse, the truncated bytes happen to parse as a valid shorter program and the compiler exits 0 with silently-wrong output. Fixing needs a distinct "read error" sentinel plumbed through `get_character()`/`compile_attempt()`/etc., a wider change than this pass's budget, and read() failing on an already-`open()`ed regular local file essentially never happens in practice | Documented only |
+  | `libs/extras/c_import/importer.w` (2 sites), `libs/extras/c_preprocessor/{pp_directives,pp_macro}.w` (4 sites): `error(c"")` preceded by raw `print_error(...)` fragments instead of `diag_part(...)` | SAFE but inconsistent — the message does reach stderr (print_error always writes fd 2), but in `--json` mode the human-readable text still lands on raw stderr while `error(c"")` emits an *empty* NDJSON record on stdout, breaking the JSON contract. Pre-existing, already documented in `ai_tooling.md`'s "Composed messages" note (these libs predate the `diag_part` migration) | Not fixed — separate, larger "migrate c_import/pp to diag_part" task, not a silent-exit bug (message is never actually silent, just off-channel in `--json` mode) |
+  | `libs/extras/parser_generator/*.w` | SAFE | None — no direct `exit`/`error` calls; parse failures are recorded into `pg_diagnostics` and returned to the caller (`c_import_header`), which always fatals via a non-empty `error()` either way |
+  | Driver-path syscalls: `compiler/compiler.w`'s `compile_attempt`/`compile_relative_path`/`compile_joined` (source `open()` + upward directory search), `link_impl`'s output-path and `/dev/null`/`NUL` `open()`s, `grammar/generic.w:generic_reparse_start`, `grammar/defer.w:defer_reparse_start` (both re-open a recorded file to re-parse a generic instantiation/deferred statement) | SAFE | None — every `open()` result is checked, via `error()` (diag_part-built message) or `asserts()` |
+  | Unrecognized CLI flags (e.g. `--bounds=xyz`) | Not silent, but confusing — falls through `link_impl`'s flag loop and is treated as an input filename, then fails the ordinary "no such file: '--bounds=xyz'" `error()` path | UX nit, not fixed (out of scope for this pass) |
+  | `lib/generator.w`'s `__w_gen_create`: unchecked `mmap()` for a `generator` function's 64KB coroutine stack | Same failure shape as the memory_debug gap above, but this is stdlib runtime linked into *user* programs that declare `generator` functions, not the compiler's own process — outside this task's named scope (`compiler/`, `grammar/`, `code_generator/`, `w.w`) | Logged, not fixed |
+  | Stack overflow from unbounded recursive-descent parsing (deeply nested expressions, generic instantiations) | A related but distinct failure class — a raw `SIGSEGV` is signal-terminated (not a clean `exit(1)`), so it doesn't match this audit's exact "exit 1, no message" shape, but is the same *outcome* (process dies, nothing printed). No recursion-depth guard exists anywhere in the parser | Out of scope for this pass; logged as a known, unaddressed gap |
+  | Original 2026-07-09 darwin-seed report | Not independently reproduced | See "Bounded repro attempt" above |
 
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 
@@ -295,8 +429,17 @@ is a queue, not an archive.
   `string_free(x); free(y)` pair in the tree already frees two *different*
   pointers (builder vs. some unrelated buffer); grepping confirms `repl.w`
   was the only place calling `string_free(b); free(b)` on the same `b`.
-  Worth a proper root-cause pass on the allocator/JIT interaction — this
-  workaround just avoids the pattern, it doesn't explain it.
+  Root-caused 2026-07-18 (`docs/projects/repl_allocator_interaction.md`):
+  no REPL/JIT dependency at all — `string_free(b)` already frees `b`
+  itself, so the pair is a plain double free, and `lib/memory_freelist.w`
+  has no double-free detection, so the second `free()` corrupts that size
+  class's free list into a permanent self-loop that aliases every later
+  allocation of a matching size onto the same address (reproduced
+  standalone with raw `malloc`/`free`, no `repl.w` imports). The doc
+  covers why the earlier bisection looked REPL-specific, rules out the
+  signal-handler and checkpoint/rollback hypotheses with citations, and
+  recommends `W_DEBUG_ALLOC=1` for catching this class of bug in the
+  future rather than hardening the production allocator under a timebox.
 
 ## Skills / rules upkeep
 

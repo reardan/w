@@ -36,7 +36,7 @@ void repl_scan_line(char* s):
 	while (s[i]):
 		char c = s[i]
 		if (repl_scan_comment):
-			if ((c == '*') & (s[i + 1] == '/')):
+			if ((c == '*') && (s[i + 1] == '/')):
 				repl_scan_comment = 0
 				i = i + 1
 		else if (repl_scan_string):
@@ -49,18 +49,18 @@ void repl_scan_line(char* s):
 			repl_scan_last_char = c
 		else if (c == '#'):
 			return;
-		else if ((c == '/') & (s[i + 1] == '*')):
+		else if ((c == '/') && (s[i + 1] == '*')):
 			repl_scan_comment = 1
 			i = i + 1
-		else if ((c == '"') | (c == 39)):
+		else if ((c == '"') || (c == 39)):
 			repl_scan_string = c
 			repl_scan_last_char = c
 		else:
-			if ((c == '(') | (c == '[') | (c == '{')):
+			if ((c == '(') || (c == '[') || (c == '{')):
 				repl_scan_depth = repl_scan_depth + 1
-			if ((c == ')') | (c == ']') | (c == '}')):
+			if ((c == ')') || (c == ']') || (c == '}')):
 				repl_scan_depth = repl_scan_depth - 1
-			if ((c != ' ') & (c != 9)):
+			if ((c != ' ') && (c != 9)):
 				repl_scan_last_char = c
 		i = i + 1
 

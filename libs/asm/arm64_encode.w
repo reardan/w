@@ -391,7 +391,7 @@ int asm_arm64_encode(asm_buffer* b, asm_insn* insn):
 		w = arm64_enc_adr(insn)
 	else if (strcmp(m, c"b") == 0 | strcmp(m, c"bl") == 0):
 		w = arm64_enc_branch_imm(insn)
-	else if (m[0] == 'b' & m[1] == '.'):
+	else if (m[0] == 'b' && m[1] == '.'):
 		w = arm64_enc_cond_branch(insn)
 	else if (strcmp(m, c"cbz") == 0 | strcmp(m, c"cbnz") == 0):
 		w = arm64_enc_cmp_branch(insn)

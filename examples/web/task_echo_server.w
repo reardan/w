@@ -37,7 +37,7 @@ char* task_frame_read_message(frame_reader* r, int* length_out):
 			if (r.offset < r.length):
 				r.error = 1
 			return 0
-		if ((count < 0) & (count != -11)): /* EAGAIN just polls again */
+		if ((count < 0) && (count != -11)): /* EAGAIN just polls again */
 			r.error = 1
 			return 0
 		body = frame_take_buffered_message(r, length_out)
@@ -66,7 +66,7 @@ void uppercase_ascii(char* text, int length):
 	int i = 0
 	while (i < length):
 		int b = text[i] & 255
-		if ((b >= 'a') & (b <= 'z')):
+		if ((b >= 'a') && (b <= 'z')):
 			text[i] = b - 32
 		i = i + 1
 
@@ -97,7 +97,7 @@ generator int echo_connection(int fd):
 # Accepts up to connection_count connections (forever when < 0).
 generator int echo_acceptor(int listen_fd, int connection_count):
 	int accepted = 0
-	while ((connection_count < 0) | (accepted < connection_count)):
+	while ((connection_count < 0) || (accepted < connection_count)):
 		int fd = task_accept(listen_fd)
 		if (fd < 0):
 			break
@@ -173,7 +173,7 @@ int run_demo():
 	int failures = task_result(c1) + task_result(c2)
 	task_scheduler_free(s)
 	close(listen_fd)
-	if ((err < 0) | (failures > 0)):
+	if ((err < 0) || (failures > 0)):
 		print(c"demo: FAILED\n")
 		return 1
 	print(c"demo: OK\n")

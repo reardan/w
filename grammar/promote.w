@@ -178,7 +178,7 @@ void coerce(int want, int got):
 	if (type_is_var(type_unqualified(want)) | type_is_var(type_unqualified(got))):
 		var_coerce(type_unqualified(want), type_unqualified(got))
 		return;
-	if ((want == bool_type) & (got != bool_type)):
+	if ((want == bool_type) && (got != bool_type)):
 		promote(got)
 		alu_test_set(0x95) /* setne */
 		return;
@@ -202,7 +202,7 @@ void coerce(int want, int got):
 			coerce_cstr_to_string()
 		return;
 	if (want_kind == got_kind):
-		if ((want == float16_type) & (got != float16_type)):
+		if ((want == float16_type) && (got != float16_type)):
 			movd_xmm0_eax()
 			vcvtps2ph_xmm0()
 			movd_eax_xmm0()
@@ -261,7 +261,7 @@ void coerce_explicit(int want, int got):
 	if (got_address_sized & (type_get_pointer_level(want_real) == 0)):
 		if ((type_num_args(want_real) == 0) & (type_float_kind(want_real) == 0)):
 			int want_size = type_get_size(want_real)
-			if ((want_size > 0) & (want_size < word_size)):
+			if ((want_size > 0) && (want_size < word_size)):
 				error(c"cannot cast an address to a sub-word integer")
 			if (got_decays & (type_get_kind(want_real) == 0)):
 				# Word-sized integer target: decay to the data pointer,

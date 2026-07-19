@@ -52,25 +52,25 @@ int url_default_port(char* scheme):
 
 
 int url_lower_char(int c):
-	if ((c >= 'A') & (c <= 'Z')):
+	if ((c >= 'A') && (c <= 'Z')):
 		return c + 32
 	return c
 
 
 int url_is_hex_digit(int c):
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return 1
-	if ((c >= 'a') & (c <= 'f')):
+	if ((c >= 'a') && (c <= 'f')):
 		return 1
-	if ((c >= 'A') & (c <= 'F')):
+	if ((c >= 'A') && (c <= 'F')):
 		return 1
 	return 0
 
 
 int url_hex_digit_value(int c):
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return c - '0'
-	if ((c >= 'a') & (c <= 'f')):
+	if ((c >= 'a') && (c <= 'f')):
 		return c - 'a' + 10
 	return c - 'A' + 10
 
@@ -101,9 +101,9 @@ URL* url_parse(char* text):
 
 	# Scheme runs up to the first ':' and must be followed by "//".
 	int scheme_end = 0
-	while ((text[scheme_end] != 0) & (text[scheme_end] != ':') & (text[scheme_end] != '/') & (text[scheme_end] != '?') & (text[scheme_end] != '#')):
+	while ((text[scheme_end] != 0) && (text[scheme_end] != ':') && (text[scheme_end] != '/') && (text[scheme_end] != '?') && (text[scheme_end] != '#')):
 		scheme_end = scheme_end + 1
-	if ((text[scheme_end] != ':') | (scheme_end == 0)):
+	if ((text[scheme_end] != ':') || (scheme_end == 0)):
 		return 0
 	if (text[scheme_end + 1] != '/'):
 		return 0
@@ -117,7 +117,7 @@ URL* url_parse(char* text):
 	# Authority runs up to the first '/', '?', or '#'.
 	int host_start = scheme_end + 3
 	int authority_end = host_start
-	while ((text[authority_end] != 0) & (text[authority_end] != '/') & (text[authority_end] != '?') & (text[authority_end] != '#')):
+	while ((text[authority_end] != 0) && (text[authority_end] != '/') && (text[authority_end] != '?') && (text[authority_end] != '#')):
 		authority_end = authority_end + 1
 
 	# Reject userinfo and IPv6 literals; find the single port colon.
@@ -125,7 +125,7 @@ URL* url_parse(char* text):
 	int i = host_start
 	while (i < authority_end):
 		int c = text[i] & 255
-		if ((c == '@') | (c == '[') | (c == ']')):
+		if ((c == '@') || (c == '[') || (c == ']')):
 			free(scheme)
 			return 0
 		if (c == ':'):
@@ -150,7 +150,7 @@ URL* url_parse(char* text):
 		int p = digit_start
 		while (p < authority_end):
 			int d = text[p] & 255
-			if ((d < '0') | (d > '9')):
+			if ((d < '0') || (d > '9')):
 				free(scheme)
 				return 0
 			port = port * 10 + (d - '0')
@@ -165,7 +165,7 @@ URL* url_parse(char* text):
 	# Path runs from the authority to '?', '#', or the end.
 	int path_start = authority_end
 	int path_end = path_start
-	while ((text[path_end] != 0) & (text[path_end] != '?') & (text[path_end] != '#')):
+	while ((text[path_end] != 0) && (text[path_end] != '?') && (text[path_end] != '#')):
 		path_end = path_end + 1
 	char* path
 	if (path_end == path_start):
@@ -178,7 +178,7 @@ URL* url_parse(char* text):
 	if (text[path_end] == '?'):
 		int query_start = path_end + 1
 		int query_end = query_start
-		while ((text[query_end] != 0) & (text[query_end] != '#')):
+		while ((text[query_end] != 0) && (text[query_end] != '#')):
 			query_end = query_end + 1
 		query = substring(text, query_start, query_end)
 	else:
@@ -227,13 +227,13 @@ char* url_unparse(URL* u):
 # Bytes that url_quote passes through unescaped: RFC 3986 unreserved
 # characters plus '/', matching Python's urllib.parse.quote default.
 int url_quote_is_safe(int c):
-	if ((c >= 'a') & (c <= 'z')):
+	if ((c >= 'a') && (c <= 'z')):
 		return 1
-	if ((c >= 'A') & (c <= 'Z')):
+	if ((c >= 'A') && (c <= 'Z')):
 		return 1
-	if ((c >= '0') & (c <= '9')):
+	if ((c >= '0') && (c <= '9')):
 		return 1
-	if ((c == '-') | (c == '.') | (c == '_') | (c == '~') | (c == '/')):
+	if ((c == '-') || (c == '.') || (c == '_') || (c == '~') || (c == '/')):
 		return 1
 	return 0
 

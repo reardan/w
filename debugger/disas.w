@@ -188,7 +188,7 @@ void dbg_disas_show_context(int pc):
 # keep their own splitter for the same layering reason.
 char* dbg_disas_split(char* s):
 	int i = 0
-	while ((s[i] != 0) & (s[i] != ' ')):
+	while ((s[i] != 0) && (s[i] != ' ')):
 		i = i + 1
 	if (s[i] == 0):
 		return s + i
@@ -242,7 +242,7 @@ void dbg_disas_command(int pc, char* arg):
 					end = start + dbg_sym_size(f)
 				print(dbg_sym_name(f))
 				println(c":")
-	else if (((arg[0] >= '0') & (arg[0] <= '9')) | (arg[0] == '-')):
+	else if (((arg[0] >= '0') && (arg[0] <= '9')) || (arg[0] == '-')):
 		start = dbg_disas_number(arg)
 	else:
 		if (dbg_disas_symbols == 0):

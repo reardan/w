@@ -45,7 +45,7 @@ int hst_contains(char* hay, char* needle):
 	int i = 0
 	while (hay[i] != 0):
 		int j = 0
-		while ((needle[j] != 0) & (hay[i + j] == needle[j])):
+		while ((needle[j] != 0) && (hay[i + j] == needle[j])):
 			j = j + 1
 		if (needle[j] == 0):
 			return 1

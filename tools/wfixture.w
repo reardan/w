@@ -97,7 +97,7 @@ int wfixture_str_contains(char* haystack, char* needle):
 	int i = 0
 	while (haystack[i] != 0):
 		int j = 0
-		while ((j < n) & (haystack[i + j] == needle[j])):
+		while ((j < n) && (haystack[i + j] == needle[j])):
 			j = j + 1
 		if (j == n):
 			return 1
@@ -226,7 +226,7 @@ char* wfixture_resolve_program(char* name):
 	int at_end = 0
 	while (at_end == 0):
 		string_clear(candidate)
-		while ((path[p] != ':') & (path[p] != 0)):
+		while ((path[p] != ':') && (path[p] != 0)):
 			string_append_char(candidate, path[p])
 			p = p + 1
 		if (path[p] == 0):

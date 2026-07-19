@@ -1,0 +1,11 @@
+{
+	"targets": [
+		{
+			"name": "trace_target",
+			"inputs": ["tests/wexec/trace_declared.txt"],
+			"steps": [
+				{"cmd": ["bin/wexec_trace_fixture"], "expect_stdout": "trace fixture ran"}
+			]
+		}
+	]
+}

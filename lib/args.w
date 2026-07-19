@@ -36,7 +36,7 @@ int args_count():
 
 
 char* args_get(int i):
-	if ((i < 0) | (i >= args_argc)):
+	if ((i < 0) || (i >= args_argc)):
 		return 0
 	char** argv = cast(char**, args_argv)
 	return argv[i]
@@ -113,7 +113,7 @@ char* args_value(char* name):
 
 
 int args_is_positional(int i):
-	if ((i < 1) | (i >= args_argc)):
+	if ((i < 1) || (i >= args_argc)):
 		return 0
 	if (args_flag_body(args_get(i)) != 0):
 		return 0
