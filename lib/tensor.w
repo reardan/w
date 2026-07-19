@@ -30,6 +30,7 @@ import lib.lib
 import lib.assert
 import lib.cuda
 import lib.ndarray
+import lib.rand
 
 
 struct tensor:
@@ -104,6 +105,23 @@ tensor tensor_full2(int n0, int n1, float v):
 	tensor t = tensor_new2(n0, n1)
 	tensor_fill(&t, v)
 	return t
+
+
+# Fill t with N(mean, stddev^2) draws from a fresh rand_state seeded
+# with `seed` (lib/rand.w: xorshift32 + Box-Muller, deterministic and
+# identical on every target for a fixed seed). Host-side only, unlike
+# every other op in this file -- t.data is host-writable whether it is
+# gpu_alloc'd managed memory or a plain malloc (nothing is in flight
+# right after allocation), so there is no device path to branch to.
+void tensor_randn(tensor* t, int seed, float mean, float stddev):
+	rand_state r
+	rand_init(&r, seed)
+	float* p = t.data
+	int n = t.len
+	int i = 0
+	while (i < n):
+		p[i] = rand_gaussian_scaled(&r, mean, stddev)
+		i = i + 1
 
 
 void tensor_free(tensor* t):
@@ -199,6 +217,24 @@ void tensor_add_into(tensor* out, tensor* a, tensor* b):
 			j = j + 1
 
 
+void tensor_sub_into(tensor* out, tensor* a, tensor* b):
+	tensor_assert_same_shape(a, b, c"tensor_sub_into: shape mismatch")
+	tensor_assert_same_shape(a, out, c"tensor_sub_into: output shape mismatch")
+	float* po = out.data
+	float* pa = a.data
+	float* pb = b.data
+	int n = a.len
+	if (tensor_gpu3(out, a, b)):
+		gpu for int i in range(n):
+			po[i] = pa[i] - pb[i]
+		gpu_sync()
+	else:
+		int j = 0
+		while (j < n):
+			po[j] = pa[j] - pb[j]
+			j = j + 1
+
+
 void tensor_mul_into(tensor* out, tensor* a, tensor* b):
 	tensor_assert_same_shape(a, b, c"tensor_mul_into: shape mismatch")
 	tensor_assert_same_shape(a, out, c"tensor_mul_into: output shape mismatch")
@@ -249,6 +285,25 @@ void tensor_mul_scalar_into(tensor* out, tensor* a, float s):
 			j = j + 1
 
 
+# y += s*x, in place -- the SGD update primitive (torch's axpy_/add_).
+# y doubles as both an input and the output, so the shape check is
+# against x directly rather than a separate out.
+void tensor_axpy_into(tensor* y, float s, tensor* x):
+	tensor_assert_same_shape(y, x, c"tensor_axpy_into: shape mismatch")
+	float* py = y.data
+	float* px = x.data
+	int n = y.len
+	if (tensor_gpu2(y, x)):
+		gpu for int i in range(n):
+			py[i] = py[i] + s * px[i]
+		gpu_sync()
+	else:
+		int j = 0
+		while (j < n):
+			py[j] = py[j] + s * px[j]
+			j = j + 1
+
+
 void tensor_relu_into(tensor* out, tensor* a):
 	tensor_assert_same_shape(a, out, c"tensor_relu_into: output shape mismatch")
 	float* po = out.data
@@ -270,6 +325,68 @@ void tensor_relu_into(tensor* out, tensor* a):
 				po[j] = y
 			else:
 				po[j] = 0.0
+			j = j + 1
+
+
+# ReLU backward: out = dout where the *forward* input a was positive,
+# else 0 (the ReLU derivative is 0/1, so this just gates dout through
+# that mask). a is the saved forward input, not the forward output --
+# same convention as ndf's would-be relu_grad, and what a tape-based
+# autograd node replays on the way back.
+void tensor_relu_grad_into(tensor* out, tensor* a, tensor* dout):
+	tensor_assert_same_shape(a, dout, c"tensor_relu_grad_into: shape mismatch")
+	tensor_assert_same_shape(a, out, c"tensor_relu_grad_into: output shape mismatch")
+	float* po = out.data
+	float* pa = a.data
+	float* pd = dout.data
+	int n = a.len
+	if (tensor_gpu3(out, a, dout)):
+		gpu for int i in range(n):
+			float x = pa[i]
+			float g = 0.0
+			if (x > 0.0):
+				g = pd[i]
+			po[i] = g
+		gpu_sync()
+	else:
+		int j = 0
+		while (j < n):
+			float x2 = pa[j]
+			if (x2 > 0.0):
+				po[j] = pd[j]
+			else:
+				po[j] = 0.0
+			j = j + 1
+
+
+##### broadcast ops (bias add) #####
+
+
+# out[i,j] = a[i,j] + r[j]: bias add for a rank-2 (m, n) activation and
+# a rank-1 (n) bias row, broadcast across every row. Elementwise over
+# the flat (m*n) buffer like the ops above -- the broadcast is just
+# "index the bias by the flat index modulo the row width" -- so this
+# needs no per-row thread mapping (contrast the row/column reductions
+# below, which do).
+void tensor_add_row_into(tensor* out, tensor* a, tensor* r):
+	asserts(c"tensor_add_row_into: a must be rank 2", a.rank == 2)
+	asserts(c"tensor_add_row_into: r must be rank 1", r.rank == 1)
+	asserts(c"tensor_add_row_into: row width mismatch", a.n1 == r.n0)
+	tensor_assert_same_shape(a, out, c"tensor_add_row_into: output shape mismatch")
+	int width = a.n1
+	float* po = out.data
+	float* pa = a.data
+	float* pr = r.data
+	int total = a.len
+	if (tensor_gpu3(out, a, r)):
+		gpu for int idx in range(total):
+			int col = idx % width
+			po[idx] = pa[idx] + pr[col]
+		gpu_sync()
+	else:
+		int j = 0
+		while (j < total):
+			po[j] = pa[j] + pr[j % width]
 			j = j + 1
 
 
@@ -300,6 +417,112 @@ float tensor_sum(tensor* t):
 		total = total + p[j]
 		j = j + 1
 	return total
+
+
+##### row/column reductions (softmax stability, bias gradients) #####
+#
+# One device thread per row/column, an ordinary inner loop over the
+# other axis -- unlike tensor_sum there is no cross-thread write, so no
+# atomic is needed (each thread owns a disjoint output slot).
+
+
+# out[j] = sum_i a[i,j] for rank-2 a (m, n): the bias gradient. One
+# thread per column, looping down the rows.
+void tensor_col_sum_into(tensor* out, tensor* a):
+	asserts(c"tensor_col_sum_into: a must be rank 2", a.rank == 2)
+	asserts(c"tensor_col_sum_into: out must be rank 1", out.rank == 1)
+	asserts(c"tensor_col_sum_into: output width mismatch", out.n0 == a.n1)
+	int m = a.n0
+	int n = a.n1
+	float* po = out.data
+	float* pa = a.data
+	if (tensor_gpu2(out, a)):
+		gpu for int j in range(n):
+			float acc = 0.0
+			int i = 0
+			while (i < m):
+				acc = acc + pa[i * n + j]
+				i = i + 1
+			po[j] = acc
+		gpu_sync()
+	else:
+		int j2 = 0
+		while (j2 < n):
+			float acc2 = 0.0
+			int i2 = 0
+			while (i2 < m):
+				acc2 = acc2 + pa[i2 * n + j2]
+				i2 = i2 + 1
+			po[j2] = acc2
+			j2 = j2 + 1
+
+
+# out[i] = sum_j a[i,j] for rank-2 a (m, n). One thread per row, looping
+# across the columns.
+void tensor_row_sum_into(tensor* out, tensor* a):
+	asserts(c"tensor_row_sum_into: a must be rank 2", a.rank == 2)
+	asserts(c"tensor_row_sum_into: out must be rank 1", out.rank == 1)
+	asserts(c"tensor_row_sum_into: output height mismatch", out.n0 == a.n0)
+	int m = a.n0
+	int n = a.n1
+	float* po = out.data
+	float* pa = a.data
+	if (tensor_gpu2(out, a)):
+		gpu for int i in range(m):
+			float acc = 0.0
+			int j = 0
+			while (j < n):
+				acc = acc + pa[i * n + j]
+				j = j + 1
+			po[i] = acc
+		gpu_sync()
+	else:
+		int i2 = 0
+		while (i2 < m):
+			float acc2 = 0.0
+			int j2 = 0
+			while (j2 < n):
+				acc2 = acc2 + pa[i2 * n + j2]
+				j2 = j2 + 1
+			po[i2] = acc2
+			i2 = i2 + 1
+
+
+# out[i] = max_j a[i,j] for rank-2 a (m, n) -- softmax numerical
+# stability (subtract the row max before exponentiating). One thread
+# per row; the running max seeds from column 0 (n > 0 is guaranteed by
+# tensor_init_shape's positive-extent assert), then scans columns 1..n-1.
+void tensor_row_max_into(tensor* out, tensor* a):
+	asserts(c"tensor_row_max_into: a must be rank 2", a.rank == 2)
+	asserts(c"tensor_row_max_into: out must be rank 1", out.rank == 1)
+	asserts(c"tensor_row_max_into: output height mismatch", out.n0 == a.n0)
+	int m = a.n0
+	int n = a.n1
+	float* po = out.data
+	float* pa = a.data
+	if (tensor_gpu2(out, a)):
+		gpu for int i in range(m):
+			float best = pa[i * n]
+			int j = 1
+			while (j < n):
+				float v = pa[i * n + j]
+				if (v > best):
+					best = v
+				j = j + 1
+			po[i] = best
+		gpu_sync()
+	else:
+		int i2 = 0
+		while (i2 < m):
+			float best2 = pa[i2 * n]
+			int j2 = 1
+			while (j2 < n):
+				float v2 = pa[i2 * n + j2]
+				if (v2 > best2):
+					best2 = v2
+				j2 = j2 + 1
+			po[i2] = best2
+			i2 = i2 + 1
 
 
 ##### matmul (torch.md Stage 3: naive, one thread per output) #####
@@ -342,6 +565,94 @@ void tensor_matmul2(tensor* out, tensor* a, tensor* b):
 				while (k2 < kd):
 					sum = sum + pa[i * kd + k2] * pb[k2 * n + j]
 					k2 = k2 + 1
+				po[i * n + j] = sum
+				j = j + 1
+			i = i + 1
+
+
+# out = aT @ b for a (k, m), b (k, n), out (m, n) -- i.e. out[i,j] =
+# sum_p a[p,i]*b[p,j]. The backward pass of tensor_matmul2 needs exactly
+# this shape (dW = xT @ dout for a linear layer), and forming an actual
+# transpose would cost an extra full copy, so this walks a's columns
+# directly instead. Same one-thread-per-output-element mapping as
+# tensor_matmul2, just with the a index transposed in the k-loop.
+void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
+	asserts(c"tensor_matmul2_tn: rank must be 2", a.rank == 2 && b.rank == 2 && out.rank == 2)
+	asserts(c"tensor_matmul2_tn: shared dimension must match", a.n0 == b.n0)
+	asserts(c"tensor_matmul2_tn: output shape mismatch", out.n0 == a.n1 && out.n1 == b.n1)
+	asserts(c"tensor_matmul2_tn: output must not alias an input", out != a && out != b)
+	int kd = a.n0
+	int m = a.n1
+	int n = b.n1
+	float* po = out.data
+	float* pa = a.data
+	float* pb = b.data
+	int total = m * n
+	if (tensor_gpu3(out, a, b)):
+		gpu for int idx in range(total):
+			int row = idx / n
+			int col = idx % n
+			float acc = 0.0
+			int p = 0
+			while (p < kd):
+				acc = acc + pa[p * m + row] * pb[p * n + col]
+				p = p + 1
+			po[idx] = acc
+		gpu_sync()
+	else:
+		int i = 0
+		while (i < m):
+			int j = 0
+			while (j < n):
+				float sum = 0.0
+				int p2 = 0
+				while (p2 < kd):
+					sum = sum + pa[p2 * m + i] * pb[p2 * n + j]
+					p2 = p2 + 1
+				po[i * n + j] = sum
+				j = j + 1
+			i = i + 1
+
+
+# out = a @ bT for a (m, k), b (n, k), out (m, n) -- i.e. out[i,j] =
+# sum_p a[i,p]*b[j,p]. The forward pass of a linear layer wants this
+# shape directly (y = x @ WT with W stored (out_features, in_features),
+# torch's convention), and the backward pass needs it again for
+# dx = dout @ W. Same one-thread-per-output-element mapping as
+# tensor_matmul2, with b's index transposed in the k-loop.
+void tensor_matmul2_nt(tensor* out, tensor* a, tensor* b):
+	asserts(c"tensor_matmul2_nt: rank must be 2", a.rank == 2 && b.rank == 2 && out.rank == 2)
+	asserts(c"tensor_matmul2_nt: shared dimension must match", a.n1 == b.n1)
+	asserts(c"tensor_matmul2_nt: output shape mismatch", out.n0 == a.n0 && out.n1 == b.n0)
+	asserts(c"tensor_matmul2_nt: output must not alias an input", out != a && out != b)
+	int m = a.n0
+	int kd = a.n1
+	int n = b.n0
+	float* po = out.data
+	float* pa = a.data
+	float* pb = b.data
+	int total = m * n
+	if (tensor_gpu3(out, a, b)):
+		gpu for int idx in range(total):
+			int row = idx / n
+			int col = idx % n
+			float acc = 0.0
+			int p = 0
+			while (p < kd):
+				acc = acc + pa[row * kd + p] * pb[col * kd + p]
+				p = p + 1
+			po[idx] = acc
+		gpu_sync()
+	else:
+		int i = 0
+		while (i < m):
+			int j = 0
+			while (j < n):
+				float sum = 0.0
+				int p2 = 0
+				while (p2 < kd):
+					sum = sum + pa[i * kd + p2] * pb[j * kd + p2]
+					p2 = p2 + 1
 				po[i * n + j] = sum
 				j = j + 1
 			i = i + 1
