@@ -169,11 +169,19 @@ current state:
 			'kernel name(params):' declarations with thread_idx/block_idx/
 				block_dim/grid_dim intrinsics and int/pointer/float32/float64
 				arithmetic, if/while/switch control flow
-			'launch k[grid, block](args)' and 'gpu for i in range(n)'
-				(body outlined into a kernel, enclosing variables captured
-				as parameters); both async — gpu_sync() is the sync point
+			'launch k[grid, block](args)' and 'gpu for i in range(n)' /
+				range(start, end) (body outlined into a kernel, enclosing
+				variables captured as parameters; scalar captures are
+				read-only device copies); both async — gpu_sync() is the
+				sync point
+			atomic_add/atomic_min/atomic_max device intrinsics (int*;
+				atomic_add also float32*), returning the pre-update value
+			the nine 32-bit limb/bit intrinsics work on device with the
+				host contract (cuda_test cross-checks against the host)
 			lib/cuda.w runtime: managed memory (gpu_alloc/gpu_free),
-				lazy driver init, kernel-handle cache
+				explicit memory (gpu_device_alloc + gpu_memcpy_to/from,
+				blocking copies ordered after launches), lazy driver
+				init, kernel-handle cache
 			./wbuild gpu_ptx_emit_test / cuda_diagnostics_test run GPU-less;
 				./wbuild cuda_test runs vector add + saxpy on a real GPU
 		c_import:
@@ -371,9 +379,9 @@ current state:
 	future platforms:
 		windows
 		arm
-		gpu (kernels/'gpu for' work — see the gpu inventory above;
-			remaining: A2 virtual-register emission, explicit memory API,
-			shared memory/atomics, multi-GPU)
+		gpu (kernels/'gpu for'/atomics/explicit memory work — see the
+			gpu inventory above; remaining: A2 virtual-register emission,
+			shared memory, recoverable CUresult errors, multi-GPU)
 
 	net:
 		working:

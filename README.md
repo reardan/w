@@ -419,11 +419,13 @@ seeds — is `docs/release.md`.
   and generic struct constructors, binding through container/struct
   shapes (`pair[T]*`, `list[T]`), and struct-by-value returns on
   inferred calls.
-- CUDA backend Stage 4 (quality) — Stages 0–3 are done: the PTX emitter
-  (`code_generator/ptx.w`), `kernel` declarations, `launch` and `gpu for`
-  outlining, with the `lib/cuda.w` runtime (managed memory, async launches,
-  `gpu_sync()`). Remaining: A2 virtual-register emission, explicit memory
-  API, atomics/shared memory; see `docs/projects/cuda.md`.
+- CUDA backend Stage 4 (quality) — Stages 0–3 plus a first Stage 4 slice
+  are done: the PTX emitter (`code_generator/ptx.w`), `kernel`
+  declarations, `launch` and `gpu for` outlining (`range(start, end)`
+  included), gpu atomics, the device limb/bit intrinsics, and the
+  `lib/cuda.w` runtime (managed + explicit memory, async launches,
+  `gpu_sync()`). Remaining: A2 virtual-register emission, shared memory,
+  recoverable CUresult errors, multi-GPU; see `docs/projects/cuda.md`.
 - Debugger: locals inside evaluated expressions, watchpoints, a web UI
   (stepping, breakpoints, variable inspection, expression evaluation at a
   breakpoint and `w --debug` are done).

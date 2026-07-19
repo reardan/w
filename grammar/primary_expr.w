@@ -190,6 +190,11 @@ int primary_expr():
 	else if (gpu_builtin_ready()):
 		type = gpu_builtin_expr()
 
+	# atomic_add/atomic_min/atomic_max gpu atomics, shadowed the same
+	# way by user symbols (grammar/atomic_builtin.w)
+	else if (atomic_builtin_ready()):
+		type = atomic_builtin_expr()
+
 	# Generic function instantiation: 'max[int](...)'
 	else if (generic_call_ready()):
 		type = generic_call_expr()
