@@ -3,7 +3,7 @@
 # read this file, and import resolution is unchanged.
 
 package w
-version 0.1.0
+version 0.2.0
 w_language >=0.1.0
 root .
 
