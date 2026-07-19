@@ -676,9 +676,9 @@ mechanism needed):
   instant ... any improvement should target [build/verify time], not
   leaf compile speed" — the same logic applies to leaf *test* time).
 - **Cross-validation without a build-time system-zlib dependency.** The
-  precedent is `tools/openssl_interop_test.sh` +
-  `build.base.json`'s `openssl_interop_test` target
-  (`build.base.json:723`): gate on `command -v <tool>`, print a "...OK
+  precedent is `tests/openssl_tls_interop.w` +
+  `build.base.json`'s `openssl_interop_test` target: gate on
+  `command -v <tool>`, print a "...OK
   (skipped: no <tool> on PATH)" success (not a failure) when absent, so
   the manifest entry is always safe on a minimal machine, and every
   subprocess runs under a timeout. For compress, recommend gating on

@@ -25,7 +25,8 @@ the real system tool via lib.process):
 Gated on python3 being on PATH: without it, prints the same "zlib
 interop OK (skipped: ...)" message the shell runner used to, and exits 0,
 so the manifest entry stays safe on minimal machines (precedent:
-tools/openssl_interop_test.sh / tests/openssl_tls_interop.w).
+tests/openssl_tls_interop.w, which folded its own former shell wrapper,
+tools/openssl_interop_test.sh, into the harness the same way in task 4e).
 */
 import lib.lib
 import lib.env
