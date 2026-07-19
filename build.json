@@ -2100,6 +2100,7 @@
 				"result_propagate_64_test",
 				"retry_64_test",
 				"ring_64_test",
+				"safetensors_64_test",
 				"sha1_64_test",
 				"shell_64_test",
 				"shell_commands_64_test",
@@ -2545,6 +2546,7 @@
 				"result_test",
 				"retry_test",
 				"ring_test",
+				"safetensors_test",
 				"sha1_test",
 				"sha256_test",
 				"sha2_test",
@@ -4227,6 +4229,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/ring_test.w", "-o", "bin/ring_test"]},
 				{"cmd": ["bin/ring_test"]}
+			]
+		},
+		{
+			"name": "safetensors_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/safetensors_test.w", "-o", "bin/safetensors_64_test"]},
+				{"cmd": ["bin/safetensors_64_test"]}
+			]
+		},
+		{
+			"name": "safetensors_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/safetensors_test.w", "-o", "bin/safetensors_test"]},
+				{"cmd": ["bin/safetensors_test"]}
 			]
 		},
 		{
