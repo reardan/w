@@ -213,8 +213,9 @@ char* wtr_read_cstring(int pid, int addr):
 			while ((k < __word_size__) && (done == 0)):
 				char b = wb[k]
 				if ((len + 1) >= cap):
+					int old_cap = cap
 					cap = cap * 2
-					buf = realloc(buf, len, cap)
+					buf = realloc(buf, old_cap, cap)
 				buf[len] = b
 				len = len + 1
 				if (b == 0):
@@ -223,8 +224,9 @@ char* wtr_read_cstring(int pid, int addr):
 			offset = offset + __word_size__
 	if ((len == 0) || (buf[len - 1] != 0)):
 		if ((len + 1) >= cap):
+			int old_cap = cap
 			cap = cap + 1
-			buf = realloc(buf, len, cap)
+			buf = realloc(buf, old_cap, cap)
 		buf[len] = 0
 	return buf
 
