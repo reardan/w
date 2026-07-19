@@ -35,6 +35,14 @@ int __w_gen_stack_size():
 	return 65536
 
 
+# mmap reports failure as a small negative (errno-shaped) value, the same
+# convention lib/memory_debug.w's debug_tbl_mmap_failed checks -- never a
+# null pointer, so an unchecked result silently becomes a bogus "valid"
+# stack pointer that segfaults on first use with no diagnostic at all.
+int __w_gen_mmap_failed(int addr):
+	return (addr < 0) && (addr > -4096)
+
+
 # Words gen_switch pushes before saving the stack pointer: 4 callee-saved
 # registers on x86 (ebx, esi, edi, ebp), 6 on x64 (rbx, rbp, r12-r15), and
 # 0 on arm64 — the A64 gen_switch (code_generator/arm64_asm.w) only saves
@@ -62,6 +70,9 @@ generator* __w_gen_create(int fn, int* argv, int argc):
 	int size = __w_gen_stack_size()
 	# mmap(addr=0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS)
 	int base = mmap(0, size, 3, 34)
+	if (__w_gen_mmap_failed(base)):
+		st_write_cstr(c"generator: out of memory (coroutine stack mmap failed)\x0a")
+		exit(1)
 	g.stack_base = base
 	int* top = cast(int*, base + size)
 
