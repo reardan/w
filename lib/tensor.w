@@ -17,11 +17,19 @@ pointers when no usable GPU exists — so programs run unchanged on
 GPU-less machines, provided libcuda.so.1 itself is present to satisfy
 the eager dynamic linker (see gpu_available's caveat in lib/cuda.w).
 
-V1 ops are SYNCHRONOUS: each GPU path ends with gpu_sync(), trading
-launch overlap for a simple aliasing story (removing the per-op sync is
-torch.md Stage 4). Raw pointers are hoisted into locals before every
-'gpu for' — a captured struct pointer would dereference host heap on
-device — and device bodies stay inside the documented device subset.
+Ops are ASYNC (torch.md Stage 4, torch's actual execution model): each
+GPU op enqueues on the single default stream and returns. Op-to-op
+chains need no syncs — same-stream ordering serializes them — and the
+sync points are exactly the host boundaries: tensor_sum (returns a
+host value), tensor_to_ndf (host copy), tensor_free (the buffer may
+still be in flight), tensor_randn (host writes into an existing
+buffer), and lib/autograd.w's host-side softmax/backward reads. Host
+code that touches .data directly after enqueuing GPU ops must call
+tensor_sync() first — ag_backward ends with one, so reading gradients
+or updated params after a backward pass is safe without it. Raw
+pointers are hoisted into locals before every 'gpu for' — a captured
+struct pointer would dereference host heap on device — and device
+bodies stay inside the documented device subset.
 
 x64 Linux only, like lib/ndarray64.w: gpu constructs require the x64
 target (libcuda is 64-bit only).
@@ -60,6 +68,17 @@ int tensor_init_shape(tensor* t, int rank, int n0, int n1, int n2, int n3):
 
 
 void tensor_fill(tensor* t, float v);
+
+
+# Waits for every enqueued GPU op (cuCtxSynchronize; no-op GPU-less and
+# cheap when the stream is already drained). The Stage 4 async model's
+# explicit sync point: call before reading or writing a tensor's .data
+# directly from host code with GPU ops in flight. The ops with host
+# semantics (tensor_sum, tensor_to_ndf, tensor_free, tensor_randn) sync
+# internally, as does ag_backward's exit.
+void tensor_sync():
+	if (gpu_available()):
+		gpu_sync()
 
 
 ##### construction #####
@@ -111,9 +130,10 @@ tensor tensor_full2(int n0, int n1, float v):
 # with `seed` (lib/rand.w: xorshift32 + Box-Muller, deterministic and
 # identical on every target for a fixed seed). Host-side only, unlike
 # every other op in this file -- t.data is host-writable whether it is
-# gpu_alloc'd managed memory or a plain malloc (nothing is in flight
-# right after allocation), so there is no device path to branch to.
+# gpu_alloc'd managed memory or a plain malloc -- but t may be an
+# existing tensor with enqueued ops still reading it, so sync first.
 void tensor_randn(tensor* t, int seed, float mean, float stddev):
+	tensor_sync()
 	rand_state r
 	rand_init(&r, seed)
 	float* p = t.data
@@ -126,6 +146,9 @@ void tensor_randn(tensor* t, int seed, float mean, float stddev):
 
 void tensor_free(tensor* t):
 	if (t.on_gpu):
+		# An enqueued op may still be using the buffer; cuMemFree of
+		# managed memory in use by a kernel is undefined.
+		tensor_sync()
 		gpu_free(cast(char*, t.data))
 	else:
 		free(cast(char*, t.data))
@@ -147,6 +170,7 @@ tensor tensor_from_ndf(ndf* a):
 
 
 ndf tensor_to_ndf(tensor* t):
+	tensor_sync()
 	ndf a
 	if (t.rank == 1):
 		a = ndf_new1(t.n0)
@@ -191,7 +215,6 @@ void tensor_fill(tensor* t, float v):
 	if (t.on_gpu):
 		gpu for int i in range(n):
 			p[i] = v
-		gpu_sync()
 	else:
 		int j = 0
 		while (j < n):
@@ -209,7 +232,6 @@ void tensor_add_into(tensor* out, tensor* a, tensor* b):
 	if (tensor_gpu3(out, a, b)):
 		gpu for int i in range(n):
 			po[i] = pa[i] + pb[i]
-		gpu_sync()
 	else:
 		int j = 0
 		while (j < n):
@@ -227,7 +249,6 @@ void tensor_sub_into(tensor* out, tensor* a, tensor* b):
 	if (tensor_gpu3(out, a, b)):
 		gpu for int i in range(n):
 			po[i] = pa[i] - pb[i]
-		gpu_sync()
 	else:
 		int j = 0
 		while (j < n):
@@ -245,7 +266,6 @@ void tensor_mul_into(tensor* out, tensor* a, tensor* b):
 	if (tensor_gpu3(out, a, b)):
 		gpu for int i in range(n):
 			po[i] = pa[i] * pb[i]
-		gpu_sync()
 	else:
 		int j = 0
 		while (j < n):
@@ -261,7 +281,6 @@ void tensor_add_scalar_into(tensor* out, tensor* a, float s):
 	if (tensor_gpu2(out, a)):
 		gpu for int i in range(n):
 			po[i] = pa[i] + s
-		gpu_sync()
 	else:
 		int j = 0
 		while (j < n):
@@ -277,7 +296,6 @@ void tensor_mul_scalar_into(tensor* out, tensor* a, float s):
 	if (tensor_gpu2(out, a)):
 		gpu for int i in range(n):
 			po[i] = pa[i] * s
-		gpu_sync()
 	else:
 		int j = 0
 		while (j < n):
@@ -296,7 +314,6 @@ void tensor_axpy_into(tensor* y, float s, tensor* x):
 	if (tensor_gpu2(y, x)):
 		gpu for int i in range(n):
 			py[i] = py[i] + s * px[i]
-		gpu_sync()
 	else:
 		int j = 0
 		while (j < n):
@@ -316,7 +333,6 @@ void tensor_relu_into(tensor* out, tensor* a):
 			if (x > 0.0):
 				r = x
 			po[i] = r
-		gpu_sync()
 	else:
 		int j = 0
 		while (j < n):
@@ -347,7 +363,6 @@ void tensor_relu_grad_into(tensor* out, tensor* a, tensor* dout):
 			if (x > 0.0):
 				g = pd[i]
 			po[i] = g
-		gpu_sync()
 	else:
 		int j = 0
 		while (j < n):
@@ -382,7 +397,6 @@ void tensor_add_row_into(tensor* out, tensor* a, tensor* r):
 		gpu for int idx in range(total):
 			int col = idx % width
 			po[idx] = pa[idx] + pr[col]
-		gpu_sync()
 	else:
 		int j = 0
 		while (j < total):
@@ -467,7 +481,6 @@ void tensor_col_sum_into(tensor* out, tensor* a):
 				acc = acc + pa[i * n + j]
 				i = i + 1
 			po[j] = acc
-		gpu_sync()
 	else:
 		int j2 = 0
 		while (j2 < n):
@@ -498,7 +511,6 @@ void tensor_row_sum_into(tensor* out, tensor* a):
 				acc = acc + pa[i * n + j]
 				j = j + 1
 			po[i] = acc
-		gpu_sync()
 	else:
 		int i2 = 0
 		while (i2 < m):
@@ -533,7 +545,6 @@ void tensor_row_max_into(tensor* out, tensor* a):
 					best = v
 				j = j + 1
 			po[i] = best
-		gpu_sync()
 	else:
 		int i2 = 0
 		while (i2 < m):
@@ -710,7 +721,6 @@ void tensor_matmul2(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
-		gpu_sync()
 	else:
 		int i = 0
 		while (i < m):
@@ -744,7 +754,6 @@ void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		launch tensor_matmul_tn_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
-		gpu_sync()
 	else:
 		int i = 0
 		while (i < m):
@@ -778,7 +787,6 @@ void tensor_matmul2_nt(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		launch tensor_matmul_nt_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
-		gpu_sync()
 	else:
 		int i = 0
 		while (i < m):

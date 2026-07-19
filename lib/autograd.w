@@ -323,7 +323,10 @@ tensor* ag_sum(ag_tape* t, tensor* a):
 	tensor* out = ag_box_shape(1, 1, 1, 1, 1)
 	t.owned.push(out)
 	float s = tensor_sum(a)
-	tensor_fill(out, s)
+	# Host-side write on the fresh buffer (not tensor_fill): keeps the
+	# caller's loss.data[0] read sync-free under the async model, same
+	# as ag_softmax_ce's scalar.
+	out.data[0] = s
 	ag_record(t, ag_op_sum(), out, a, cast(tensor*, 0), 0.0)
 	return out
 
@@ -372,6 +375,9 @@ tensor* ag_softmax_ce(ag_tape* t, tensor* logits, ndi* labels):
 	int classes = logits.n1
 	tensor* probs = ag_box_like(logits)
 	t.owned.push(probs)
+	# The softmax/CE math runs host-side over the managed logits buffer,
+	# which the enqueued forward ops are still writing -- drain first.
+	tensor_sync()
 	float* plog = logits.data
 	float* pp = probs.data
 	float total = 0.0
@@ -402,7 +408,11 @@ tensor* ag_softmax_ce(ag_tape* t, tensor* logits, ndi* labels):
 	float mean_loss = total / cast(float, batch)
 	tensor* out = ag_box_shape(1, 1, 1, 1, 1)
 	t.owned.push(out)
-	tensor_fill(out, mean_loss)
+	# Host-side write, not tensor_fill: out is a fresh buffer with
+	# nothing in flight, and writing it directly keeps the ubiquitous
+	# loss.data[0] read on the caller's next line safe with no sync
+	# under the Stage 4 async model.
+	out.data[0] = mean_loss
 	ag_record_saved(t, ag_op_softmax_ce(), out, logits, cast(tensor*, 0), 0.0, probs, labels)
 	return out
 
@@ -432,24 +442,27 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		tensor_add_into(da3, da3, tmp)
 		tensor_mul_into(tmp, dout, nd.a)
 		tensor_add_into(db3, db3, tmp)
-		ag_free_boxed(tmp)
+		t.owned.push(tmp)
 		return
 	if (nd.op == ag_op_mul_scalar()):
 		tensor* da4 = ag_grad(t, nd.a)
 		tensor* tmp2 = ag_box_like(nd.a)
 		tensor_mul_scalar_into(tmp2, dout, nd.scalar)
 		tensor_add_into(da4, da4, tmp2)
-		ag_free_boxed(tmp2)
+		t.owned.push(tmp2)
 		return
 	if (nd.op == ag_op_relu()):
 		tensor* da5 = ag_grad(t, nd.a)
 		tensor* tmp3 = ag_box_like(nd.a)
 		tensor_relu_grad_into(tmp3, nd.a, dout)
 		tensor_add_into(da5, da5, tmp3)
-		ag_free_boxed(tmp3)
+		t.owned.push(tmp3)
 		return
 	if (nd.op == ag_op_sum()):
 		tensor* da6 = ag_grad(t, nd.a)
+		# dout was accumulated by enqueued device ops -- drain before
+		# the host read.
+		tensor_sync()
 		float g = dout.data[0]
 		tensor_add_scalar_into(da6, da6, g)
 		return
@@ -461,13 +474,13 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		tensor* tmpA = ag_box_like(nd.a)
 		tensor_matmul2_nt(tmpA, dout, nd.b)
 		tensor_add_into(da7, da7, tmpA)
-		ag_free_boxed(tmpA)
+		t.owned.push(tmpA)
 		# dB (k,n) += A^T (k,m) @ dOut (m,n), via tensor_matmul2_tn(x, y) =
 		# x^T @ y (x's rows are the contraction dim, same shape as A).
 		tensor* tmpB = ag_box_like(nd.b)
 		tensor_matmul2_tn(tmpB, nd.a, dout)
 		tensor_add_into(db7, db7, tmpB)
-		ag_free_boxed(tmpB)
+		t.owned.push(tmpB)
 		return
 	if (nd.op == ag_op_add_row()):
 		tensor* da8 = ag_grad(t, nd.a)
@@ -477,7 +490,7 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		tensor* tmpR = ag_box_like(nd.b)
 		tensor_col_sum_into(tmpR, dout)
 		tensor_add_into(dr8, dr8, tmpR)
-		ag_free_boxed(tmpR)
+		t.owned.push(tmpR)
 		return
 	if (nd.op == ag_op_softmax_ce()):
 		# dLogits[i,j] += dLoss * (P[i,j] - (j==label_i ? 1 : 0)) / batch,
@@ -487,6 +500,9 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		tensor* dlogits = ag_grad(t, nd.a)
 		int batch2 = nd.a.n0
 		int classes2 = nd.a.n1
+		# Host loop reads dout and writes dlogits, both possibly touched
+		# by enqueued device ops -- drain first.
+		tensor_sync()
 		float dloss = dout.data[0]
 		float invbatch = 1.0 / cast(float, batch2)
 		float* pg = dlogits.data
@@ -522,3 +538,8 @@ void ag_backward(ag_tape* t):
 		ag_node nd = t.nodes[i]
 		ag_backward_node(t, &nd)
 		i = i - 1
+	# Drain the stream on exit so callers can read gradients (ag_grad +
+	# .data) and host-inspect updated values without their own
+	# tensor_sync() -- the one hard sync per training step the async
+	# model keeps.
+	tensor_sync()

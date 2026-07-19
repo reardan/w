@@ -44,6 +44,7 @@ int check_elementwise():
 
 	# add / mul / scalar ops vs the ndf CPU reference
 	tensor_add_into(&r, &a, &b)
+	tensor_sync()
 	i = 0
 	while (i < 1000):
 		if (feq(r.data[i], ha.data[i] + hb.data[i], 0.0001) == 0):
@@ -51,6 +52,7 @@ int check_elementwise():
 		i = i + 1
 
 	tensor_mul_into(&r, &a, &b)
+	tensor_sync()
 	i = 0
 	while (i < 1000):
 		if (feq(r.data[i], ha.data[i] * hb.data[i], 0.01) == 0):
@@ -59,6 +61,7 @@ int check_elementwise():
 
 	tensor_mul_scalar_into(&r, &a, 3.0)
 	tensor_add_scalar_into(&r, &r, 7.0)
+	tensor_sync()
 	i = 0
 	while (i < 1000):
 		if (feq(r.data[i], ha.data[i] * 3.0 + 7.0, 0.01) == 0):
@@ -67,6 +70,7 @@ int check_elementwise():
 
 	# relu: negatives clamp to zero, positives pass through
 	tensor_relu_into(&r, &a)
+	tensor_sync()
 	i = 0
 	while (i < 1000):
 		float want = ha.data[i]
@@ -129,6 +133,7 @@ int check_matmul():
 	tensor b = tensor_from_ndf(&hb)
 	tensor r = tensor_new2(m, n)
 	tensor_matmul2(&r, &a, &b)
+	tensor_sync()
 
 	i = 0
 	while (i < m * n):
@@ -156,6 +161,7 @@ int check_sub_axpy():
 	tensor r = tensor_new1(n)
 
 	tensor_sub_into(&r, &a, &b)
+	tensor_sync()
 	i = 0
 	while (i < n):
 		if (feq(r.data[i], ha.data[i] - hb.data[i], 0.0001) == 0):
@@ -166,6 +172,7 @@ int check_sub_axpy():
 	tensor y = tensor_from_ndf(&ha)
 	float s = 2.5
 	tensor_axpy_into(&y, s, &b)
+	tensor_sync()
 	i = 0
 	while (i < n):
 		if (feq(y.data[i], ha.data[i] + s * hb.data[i], 0.001) == 0):
@@ -193,6 +200,7 @@ int check_relu_grad():
 	tensor dout = tensor_from_ndf(&hd)
 	tensor r = tensor_new1(n)
 	tensor_relu_grad_into(&r, &a, &dout)
+	tensor_sync()
 
 	i = 0
 	while (i < n):
@@ -227,6 +235,7 @@ int check_add_row():
 	tensor r = tensor_from_ndf(&hr)
 	tensor out = tensor_new2(m, n)
 	tensor_add_row_into(&out, &a, &r)
+	tensor_sync()
 
 	i = 0
 	while (i < m):
@@ -260,6 +269,7 @@ int check_row_col_reductions():
 	tensor_row_sum_into(&rsum, &a)
 	tensor_col_sum_into(&csum, &a)
 	tensor_row_max_into(&rmax, &a)
+	tensor_sync()
 
 	i = 0
 	while (i < m):
@@ -347,18 +357,21 @@ int check_matmul_multitile():
 
 	int ok = 1
 	tensor_matmul2(&r, &a, &b)
+	tensor_sync()
 	i = 0
 	while (i < m * n):
 		if (feq(r.data[i], want.data[i], 0.001) == 0):
 			ok = 0
 		i = i + 1
 	tensor_matmul2_tn(&r, &at, &b)
+	tensor_sync()
 	i = 0
 	while (i < m * n):
 		if (feq(r.data[i], want.data[i], 0.001) == 0):
 			ok = 0
 		i = i + 1
 	tensor_matmul2_nt(&r, &a, &bt)
+	tensor_sync()
 	i = 0
 	while (i < m * n):
 		if (feq(r.data[i], want.data[i], 0.001) == 0):
@@ -393,6 +406,7 @@ int check_matmul_variants():
 	tensor b = tensor_from_ndf(&hb)
 	tensor r = tensor_new2(m, n)
 	tensor_matmul2_tn(&r, &a, &b)
+	tensor_sync()
 
 	int row = 0
 	while (row < m):
@@ -428,6 +442,7 @@ int check_matmul_variants():
 	tensor d = tensor_from_ndf(&hd)
 	tensor r2 = tensor_new2(m, n)
 	tensor_matmul2_nt(&r2, &c, &d)
+	tensor_sync()
 
 	row = 0
 	while (row < m):

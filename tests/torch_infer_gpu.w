@@ -54,6 +54,9 @@ void mlp_infer(tensor* out, tensor* h, tensor* x, tensor* w1, tensor* b1, tensor
 	tensor_relu_into(h, h)
 	tensor_matmul2(out, h, w2)
 	tensor_add_row_into(out, out, b2)
+	# Callers read the logits host-side right after (Stage 4 async
+	# model: ops enqueue; the read boundary syncs).
+	tensor_sync()
 
 
 ndf* need(st_file* f, char* name):

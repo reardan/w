@@ -48,8 +48,11 @@ tensor* mlp_forward(ag_tape* t, nn_linear* l1, nn_linear* l2, tensor* x):
 	return nn_linear_forward(t, l2, h1r)
 
 
-# Argmax accuracy of logits (n, classes) against labels (n).
+# Argmax accuracy of logits (n, classes) against labels (n). Reads the
+# logits host-side, so drain any enqueued forward ops first (Stage 4
+# async model).
 float accuracy(tensor* logits, ndi* labels, int n, int classes):
+	tensor_sync()
 	int correct = 0
 	int i = 0
 	while (i < n):
