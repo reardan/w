@@ -180,6 +180,48 @@ is a queue, not an archive.
   left as a follow-up since ordinary functions/globals/aggregates are
   the common case.
 
+## Build manifest (`wbuildgen`)
+
+- **Shipped (2026-07-19, wave plan C task 2d): path-based target deps.**
+  `# wbuild: tool=<path>` resolves a tool's own `.w` source (e.g.
+  "tools/wvc.w") to the name of the existing `build.base.json` target
+  that compiles it and adds it to a generated target's "deps" alongside
+  "wv2" (`wbg_find_target_by_source`/`wbg_resolve_tool_name`,
+  `tools/wbuildgen.w`); `# wbuild: fixture_group=<name>` groups several
+  `tests/*_fixture.w` files sharing a group name into one generated
+  `bin/wfixture` invocation. Migrated 11 of `build_system_next.md`'s
+  bucket K (18): the 9 wfixture-driven targets (`buffer_field_assign_test`,
+  `array_error_test`, `syscall_arity_test`, `int_literal_width_test`,
+  `prefixed_string_literal_test`, `warning_test`, `type_system_error_test`,
+  `type_system_warning_test`, `operator_overload_error_test`) via
+  `fixture_group=`, plus `wvc_e2e_test`/`wexec_remote_cache_test` via a
+  bare `tool=` directive on their existing conventional `_test.w`
+  sources (these two needed no new generation mode at all — they were
+  already single-source compile+run shaped; the missing "deps" entry
+  was the *only* blocker, which is exactly bucket K's own framing of
+  the gap). Fixture-group member order is alphabetical by path, not the
+  hand-picked order some base targets had; verified behavior-preserving
+  (each fixture's pass/fail is independent, wfixture's exit status is
+  an aggregate) by diffing generated vs. committed JSON before merging.
+- **Open: the rest of bucket C/K has no compile-and-run shape at all.**
+  `manifest`/`manifest_check` (invoke `bin/wbuildgen` directly),
+  `metadata_check` (`bin/wmeta check package.wmeta`), `wvdiff_test`
+  (`bin/wvdiff` over fixture text files), `wexec_keep_going_test`/
+  `wexec_ordered_output_test` (`bin/wexec` over fixture JSON manifests)
+  compile nothing themselves — there is no `*_test.w` source for a
+  directive to live on, so `tool=`/`fixture_group=` can't reach them.
+  Bucket C itself (the 11 tool binaries: `wtest`, `wbuildgen`,
+  `wfixture`, `wtest_map_check`, `wmeta`, `wvdiff`, `wvc`, `wdbg`,
+  `wdbg_x64`, `gen_stubs`, `rewrite_c_strings`) stays hand-written by
+  design — `wbg_find_target_by_source` resolves *against* these, it
+  doesn't generate them (they aren't `*_test.w`-shaped). `asm_seed_gate`
+  is a distinct mismatch (`deps: []`, compiles via the raw seed `./w`,
+  never `bin/wv2`) that a compiler-selector directive would fix, not a
+  tool-dependency one. Closing these would need a new "invoke a tool
+  as the whole target, no compile step" generation mode — a real design
+  decision (what source/marker would such a target even scan for?),
+  left open per the task's "enumerate, don't migrate" scope.
+
 ## Cleanup observed while dogfooding
 
 - **`wexec_resolve_program` (tools/wexec.w) resolves a bare command name
