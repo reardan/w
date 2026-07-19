@@ -29,6 +29,7 @@ This file is compiled by the committed seed: only seed-understood syntax.
 */
 
 void error(char *s);                    /* compiler/tokenizer.w */
+int sym_lookup(char *s);                /* compiler/symbol_table.w */
 int be_function_define_declare(char* name);   /* code_generator/arm64.w */
 void be_function_prologue();
 void be_function_epilogue();
@@ -771,6 +772,16 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 # text, and honor --ptx=<path>. No-op for programs without kernels.
 void ptx_finish_module():
 	if (ptx_used == 0):
+		# No kernels — but a program that imported lib.cuda (its
+		# prototype declares __w_ptx_module) may still use the memory
+		# API. Define the accessor returning an empty module so the
+		# symbol resolves; __w_gpu_init skips the module load for it.
+		if (sym_lookup(c"__w_ptx_module") >= 0):
+			be_function_define_declare(c"__w_ptx_module")
+			be_function_prologue()
+			be_emit_inline_cstr(0, c"")
+			ret()
+			be_function_epilogue()
 		return;
 	ptx_emit_to_module = 1
 	ptx_emit_char(0)

@@ -149,6 +149,37 @@ int range_offset_check(int n):
 	return ok
 
 
+# Explicit memory path: host buffers, gpu_device_alloc +
+# gpu_memcpy_to/from around a doubling kernel. No gpu_sync: the
+# non-async copy-back is ordered after the launch on the default
+# stream and blocks until the kernel finishes.
+int explicit_memory_check(int n):
+	int bytes = n * 8
+	int* host_in = cast(int*, malloc(bytes))
+	int* host_out = cast(int*, malloc(bytes))
+	int i = 0
+	while (i < n):
+		host_in[i] = 7 * i + 3
+		i = i + 1
+
+	int* dev = cast(int*, gpu_device_alloc(bytes))
+	gpu_memcpy_to(cast(char*, dev), cast(char*, host_in), bytes)
+	gpu for int j in range(n):
+		dev[j] = dev[j] * 2
+	gpu_memcpy_from(cast(char*, host_out), cast(char*, dev), bytes)
+
+	int ok = 1
+	i = 0
+	while (i < n):
+		if (host_out[i] != (7 * i + 3) * 2):
+			ok = 0
+		i = i + 1
+	gpu_free(cast(char*, dev))
+	free(cast(char*, host_in))
+	free(cast(char*, host_out))
+	return ok
+
+
 int saxpy_launch(int n):
 	float32* x = cast(float32*, gpu_alloc(n * 4))
 	float32* y = cast(float32*, gpu_alloc(n * 4))
@@ -187,6 +218,9 @@ int main(int argc, int argv):
 		return 1
 	if (range_offset_check(400) == 0):
 		println(c"cuda gpu: FAILED (range(start, end) wrong results)")
+		return 1
+	if (explicit_memory_check(256) == 0):
+		println(c"cuda gpu: FAILED (explicit memory wrong results)")
 		return 1
 	if (saxpy_launch(1024) == 0):
 		println(c"cuda gpu: FAILED (saxpy wrong results)")
