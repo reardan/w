@@ -135,10 +135,13 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
   a raw, unscaled byte offset for every pointee width (`int* p; p + n`
   advances `n` bytes, not `n` ints) — only indexing scales, so use
   `&p[n]` or multiply by the element width by hand, as `lib/sha256.w`'s
-  `p + i * 4` does. Prefer `&p[n]` (or `lib/ptr.w`'s `ptr_add(p, n)` at
-  call sites where inlining `&p[n]` is awkward) over hand-scaled
-  arithmetic in new code — both scale by `T`'s width automatically, so
-  neither can repeat the `inflate.w` Huffman-table bug.
+  `p + i * 4` does; the result of `T* + int` keeps the pointer's type,
+  so `*(p + n)` / `(p + n)[i]` read at the element's width, and `int x =
+  p + n` needs a `cast(int, ...)`. Prefer `&p[n]` (or `lib/ptr.w`'s
+  `ptr_add(p, n)` at call sites where inlining `&p[n]` is awkward) over
+  hand-scaled arithmetic in new code — both scale by `T`'s width
+  automatically, so neither can repeat the `inflate.w` Huffman-table
+  bug.
 - New language syntax must also be added to the parser-generator grammar
   `tests/parser_generator/w.pg` — `parser_generator_w_test` parses every
   tracked `.w` file and fails on unknown syntax.

@@ -195,6 +195,11 @@ int primary_expr():
 	else if (atomic_builtin_ready()):
 		type = atomic_builtin_expr()
 
+	# gpu_exp/gpu_log device transcendentals, shadowed the same way by
+	# user symbols (grammar/gpu_math_builtin.w)
+	else if (gpu_math_builtin_ready()):
+		type = gpu_math_builtin_expr()
+
 	# Generic function instantiation: 'max[int](...)'
 	else if (generic_call_ready()):
 		type = generic_call_expr()

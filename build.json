@@ -1926,6 +1926,7 @@
 				"memory_debug_64_test",
 				"memtable_64_test",
 				"method_chaining_64_test",
+				"mnist_64_test",
 				"monotime_64_test",
 				"ndarray_64_test",
 				"nested_ctor_64_test",
@@ -1938,6 +1939,7 @@
 				"parallel_for_64_test",
 				"passwd_64_test",
 				"path_64_test",
+				"pointer_arith_type_64_test",
 				"poll_64_test",
 				"poly1305_64_test",
 				"prng_64_test",
@@ -1961,6 +1963,7 @@
 				"result_propagate_64_test",
 				"retry_64_test",
 				"ring_64_test",
+				"safetensors_64_test",
 				"sha1_64_test",
 				"shell_64_test",
 				"shell_commands_64_test",
@@ -1980,6 +1983,7 @@
 				"thread_64_test",
 				"time_64_test",
 				"u64_64_test",
+				"unsigned_load_64_test",
 				"urlparse_64_test",
 				"utf8_source_64_test",
 				"varargs_w_64_test",
@@ -2064,7 +2068,7 @@
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/gpu_ptx_emit.w", "-o", "bin/gpu_ptx_emit"]},
-				{"cmd": ["bin/gpu_ptx_emit"], "expect_stdout": [".version 6.0", ".address_size 64", ".visible .entry add(.param .u64 p0, .param .u64 p1, .param .u64 p2, .param .u64 p3)", ".visible .entry scale(", ".visible .entry axpb64(", ".visible .entry bits(", "ld.param.u64 %ax, [p0];", "cvta.local.u64 %sp, %sp;", ".reg .b32 %w0, %w1;", "mov.u32 %w0, %tid.x;", "mov.u32 %w0, %ctaid.x;", "mov.u32 %w0, %nctaid.x;", "setp.lt.s64 %p, %bx, %ax;", "add.f32 %fa, %fa, %fb;", "st.u32 [%bx], %ax;", "mul.f64 %da, %da, %db;", "cvt.rn.f64.s64 %db, %ax;", "shr.u64 %ax, %ax, 32;", "st.u64 [%cx], %bx;", "shf.l.wrap.b32 %w0, %w0, %w0, %w1;", "shf.r.wrap.b32 %w0, %w0, %w0, %w1;", "popc.b32 %w0, %w0;", "clz.b32 %w0, %w0;", "brev.b32 %w0, %w0;", ".visible .entry accum(", "atom.add.u64 %ax, [%bx], %ax;", "atom.min.s64 %ax, [%bx], %ax;", "atom.max.s64 %ax, [%bx], %ax;", "atom.add.f32 %fa, [%bx], %fa;", "ret;"]},
+				{"cmd": ["bin/gpu_ptx_emit"], "expect_stdout": [".version 6.0", ".address_size 64", ".visible .entry add(.param .u64 p0, .param .u64 p1, .param .u64 p2, .param .u64 p3)", ".visible .entry scale(", ".visible .entry axpb64(", ".visible .entry bits(", "ld.param.u64 %ax, [p0];", "cvta.local.u64 %sp, %sp;", ".reg .b32 %w0, %w1;", "mov.u32 %w0, %tid.x;", "mov.u32 %w0, %ctaid.x;", "mov.u32 %w0, %nctaid.x;", "setp.lt.s64 %p, %bx, %ax;", "add.f32 %fa, %fa, %fb;", "st.u32 [%bx], %ax;", "mul.f64 %da, %da, %db;", "cvt.rn.f64.s64 %db, %ax;", "shr.u64 %ax, %ax, 32;", "st.u64 [%cx], %bx;", "shf.l.wrap.b32 %w0, %w0, %w0, %w1;", "shf.r.wrap.b32 %w0, %w0, %w0, %w1;", "popc.b32 %w0, %w0;", "clz.b32 %w0, %w0;", "brev.b32 %w0, %w0;", ".visible .entry accum(", "atom.add.u64 %ax, [%bx], %ax;", "atom.min.s64 %ax, [%bx], %ax;", "atom.max.s64 %ax, [%bx], %ax;", "atom.add.f32 %fa, [%bx], %fa;", ".visible .entry transcendental(", "mov.f32 %fb, 0f3FB8AA3B;", "ex2.approx.f32 %fa, %fa;", "lg2.approx.f32 %fa, %fa;", "mov.f32 %fb, 0f3F317218;", "ret;"]},
 				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/cuda_gpu.w", "-o", "bin/cuda_gpu_ptxcheck", "--ptx=bin/cuda_gpu.ptx"]},
 				{"cmd": ["sh", "-c", "grep -q '.visible .entry __w_gpu_kernel_0(.param .u64 p0, .param .u64 p1, .param .u64 p2, .param .u64 p3)' bin/cuda_gpu.ptx && grep -q 'st.u64 \\[%bp+-8\\], %cx;' bin/cuda_gpu.ptx && grep -q '.visible .entry saxpy(' bin/cuda_gpu.ptx && grep -q '.visible .entry __w_gpu_kernel_3(.param .u64 p0, .param .u64 p1, .param .u64 p2)' bin/cuda_gpu.ptx"]}
 			]
@@ -2073,7 +2077,26 @@
 			"name": "cuda_diagnostics_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
+<<<<<<< HEAD
 				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w", "tests/gpu_call_error_fixture.w", "tests/gpu_global_error_fixture.w", "tests/gpu_string_error_fixture.w", "tests/kernel_call_error_fixture.w", "tests/launch_non_kernel_error_fixture.w", "tests/launch_no_runtime_error_fixture.w", "tests/launch_arity_error_fixture.w", "tests/gpu_for_return_error_fixture.w", "tests/gpu_for_no_runtime_error_fixture.w", "tests/gpu_for_range_error_fixture.w", "tests/atomic_host_error_fixture.w", "tests/atomic_operand_error_fixture.w", "tests/atomic_minmax_float_error_fixture.w", "tests/gpu_capture_write_error_fixture.w"]}
+=======
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w"]},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_call_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu code cannot call functions"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_global_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "global variables are not accessible in gpu code"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_string_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "strings are not supported in gpu code"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/kernel_call_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "kernels cannot be called; use 'launch'"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_non_kernel_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'helper' is not a kernel"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_no_runtime_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu code requires 'import lib.cuda'"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_arity_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "kernel 'add' expects 2 arguments, got 1"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_return_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'return' is not supported in 'gpu for'"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_no_runtime_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu code requires 'import lib.cuda'"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_range_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'gpu for' supports only range(end) and range(start, end)"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_host_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "atomic_add/atomic_min/atomic_max are only available in gpu code"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_operand_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu atomics require an int* or float32* first argument"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_minmax_float_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "atomic_min/atomic_max require an int* first argument"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_math_host_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu_exp/gpu_log are only available in gpu code"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_capture_write_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "assignment to const"}
+>>>>>>> origin/main
 			]
 		},
 		{
@@ -2082,6 +2105,54 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/cuda_gpu.w", "-o", "bin/cuda_gpu"]},
 				{"cmd": ["bin/cuda_gpu"], "expect_stdout": "cuda gpu OK"}
+			]
+		},
+		{
+			"name": "tensor_compile_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/tensor_gpu.w", "-o", "bin/tensor_gpu_compile"]}
+			]
+		},
+		{
+			"name": "tensor_gpu_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/tensor_gpu.w", "-o", "bin/tensor_gpu"]},
+				{"cmd": ["bin/tensor_gpu"], "expect_stdout": ["tensor: gpu path", "tensor gpu OK"]},
+				{"cmd": ["sh", "-c", "CUDA_VISIBLE_DEVICES= bin/tensor_gpu"], "expect_stdout": ["tensor: cpu fallback", "tensor gpu OK"]}
+			]
+		},
+		{
+			"name": "autograd_compile_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/autograd_gpu.w", "-o", "bin/autograd_gpu_compile"]}
+			]
+		},
+		{
+			"name": "autograd_gpu_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/autograd_gpu.w", "-o", "bin/autograd_gpu"]},
+				{"cmd": ["bin/autograd_gpu"], "expect_stdout": ["autograd: gpu path", "autograd OK"]},
+				{"cmd": ["sh", "-c", "CUDA_VISIBLE_DEVICES= bin/autograd_gpu"], "expect_stdout": ["autograd: cpu fallback", "autograd OK"]}
+			]
+		},
+		{
+			"name": "nn_compile_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/nn_train_gpu.w", "-o", "bin/nn_train_gpu_compile"]}
+			]
+		},
+		{
+			"name": "nn_train_gpu_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/nn_train_gpu.w", "-o", "bin/nn_train_gpu"]},
+				{"cmd": ["bin/nn_train_gpu"], "expect_stdout": ["nn: gpu path", "nn train OK"]},
+				{"cmd": ["sh", "-c", "CUDA_VISIBLE_DEVICES= bin/nn_train_gpu"], "expect_stdout": ["nn: cpu fallback", "nn train OK"]}
 			]
 		},
 		{
@@ -2206,6 +2277,9 @@
 				"generator_test",
 				"gpu_ptx_emit_test",
 				"cuda_diagnostics_test",
+				"tensor_compile_test",
+				"autograd_compile_test",
+				"nn_compile_test",
 				"defer_test",
 				"dynamic_var_test",
 				"generics_test",
@@ -2331,6 +2405,7 @@
 				"memtable_test",
 				"method_chaining_test",
 				"midline_tab_test",
+				"mnist_test",
 				"monotime_test",
 				"multilayer_test",
 				"ndarray_bounds_get_trap_test",
@@ -2343,6 +2418,7 @@
 				"parallel_for_test",
 				"passwd_test",
 				"path_test",
+				"pointer_arith_type_test",
 				"pointer_test",
 				"poll_test",
 				"poly1305_test",
@@ -2367,6 +2443,7 @@
 				"result_test",
 				"retry_test",
 				"ring_test",
+				"safetensors_test",
 				"sha1_test",
 				"sha256_test",
 				"sha2_test",
@@ -2392,6 +2469,7 @@
 				"time_test",
 				"type_system_p0_test",
 				"u64_test",
+				"unsigned_load_test",
 				"urlparse_test",
 				"utf8_source_test",
 				"vcs_cas_test",
@@ -3705,6 +3783,22 @@
 			]
 		},
 		{
+			"name": "mnist_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/mnist_test.w", "-o", "bin/mnist_64_test"]},
+				{"cmd": ["bin/mnist_64_test"]}
+			]
+		},
+		{
+			"name": "mnist_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/mnist_test.w", "-o", "bin/mnist_test"]},
+				{"cmd": ["bin/mnist_test"]}
+			]
+		},
+		{
 			"name": "monotime_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3933,6 +4027,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/path_test.w", "-o", "bin/path_test"]},
 				{"cmd": ["bin/path_test"]}
+			]
+		},
+		{
+			"name": "pointer_arith_type_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/pointer_arith_type_test.w", "-o", "bin/pointer_arith_type_64_test"]},
+				{"cmd": ["bin/pointer_arith_type_64_test"]}
+			]
+		},
+		{
+			"name": "pointer_arith_type_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/pointer_arith_type_test.w", "-o", "bin/pointer_arith_type_test"]},
+				{"cmd": ["bin/pointer_arith_type_test"]}
 			]
 		},
 		{
@@ -4344,6 +4454,22 @@
 			]
 		},
 		{
+			"name": "safetensors_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/safetensors_test.w", "-o", "bin/safetensors_64_test"]},
+				{"cmd": ["bin/safetensors_64_test"]}
+			]
+		},
+		{
+			"name": "safetensors_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/safetensors_test.w", "-o", "bin/safetensors_test"]},
+				{"cmd": ["bin/safetensors_test"]}
+			]
+		},
+		{
 			"name": "sha1_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -4722,6 +4848,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/u64_test.w", "-o", "bin/u64_test"]},
 				{"cmd": ["bin/u64_test"]}
+			]
+		},
+		{
+			"name": "unsigned_load_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/unsigned_load_test.w", "-o", "bin/unsigned_load_64_test"]},
+				{"cmd": ["bin/unsigned_load_64_test"]}
+			]
+		},
+		{
+			"name": "unsigned_load_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/unsigned_load_test.w", "-o", "bin/unsigned_load_test"]},
+				{"cmd": ["bin/unsigned_load_test"]}
 			]
 		},
 		{

@@ -29,6 +29,9 @@ int float64_value_type
 int bool_type
 int int64_type
 int uint64_type
+int uint8_type
+int uint16_type
+int uint32_type
 int type_kind_alias
 int type_kind_function
 int type_kind_union
@@ -835,6 +838,23 @@ int type_var_unboxable(int t):
 	return type_var_boxable(t)
 
 
+# 1 for the fixed-width unsigned integer types narrower than a 64-bit
+# word (uint8/uint16/uint32). Their loads must zero-extend into the
+# word-sized register (promote(), grammar/promote.w): the sign-extending
+# subword loads the signed types use would hand every later compare,
+# divide, modulo, shift and widening a negative word for a stored
+# high-bit value. uint64 and word-sized uint load at full width already.
+int type_is_unsigned_fixed(int type_index):
+	type_index = type_unqualified(type_index)
+	if (type_index == uint8_type):
+		return 1
+	if (type_index == uint16_type):
+		return 1
+	if (type_index == uint32_type):
+		return 1
+	return 0
+
+
 # Return 1 when a value of type 'got' can be stored where 'want' is expected.
 # "constant" (3) results (integer/char/string literals, addresses from '&',
 # untyped call results) carry no type information yet, so they remain
@@ -1198,9 +1218,9 @@ void push_basic_types():
 	type_push_size(c"int8", 1)
 
 	type_push_size(c"uint", word_size)
-	type_push_size(c"uint32", 4)
-	type_push_size(c"uint16", 2)
-	type_push_size(c"uint8", 1)
+	uint32_type = type_push_size(c"uint32", 4)
+	uint16_type = type_push_size(c"uint16", 2)
+	uint8_type = type_push_size(c"uint8", 1)
 	uint64_type = type_push_size(c"uint64", 8)
 
 	# IEEE-754 floating point. 'float' is an alias of float32 by kind (see

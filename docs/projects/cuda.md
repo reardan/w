@@ -20,9 +20,13 @@ built. A first Stage 4 slice shipped too: gpu atomics
 `cuda_test` case), the explicit memory API (`gpu_device_alloc` +
 `gpu_memcpy_to`/`gpu_memcpy_from`), the nine 32-bit limb/bit intrinsics on
 device, `gpu for ... in range(start, end)`, and a const-based diagnostic
-for writes to captured scalars. Remaining Stage 4 material: A2 virtual
-registers, `gpu float*` types, recoverable CUresult error handling,
-multi-GPU selection, shared memory — and the "someday" list.
+for writes to captured scalars. docs/projects/torch.md builds on this:
+its Stage 1 added a non-fatal `gpu_available()` driver+device probe to
+`lib/cuda.w`, and its Stages 2-3 the `lib/tensor.w` managed-memory
+tensor type with CPU fallbacks (reductions ride the Stage 4
+`atomic_add`). Remaining Stage 4 material: A2 virtual registers,
+`gpu float*` types, recoverable CUresult error handling, multi-GPU
+selection, shared memory — and the "someday" list.
 
 ## Context: what W is today
 

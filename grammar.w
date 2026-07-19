@@ -11,6 +11,7 @@ import grammar.limb_builtin
 import grammar.bit_builtin
 import grammar.gpu_builtin
 import grammar.atomic_builtin
+import grammar.gpu_math_builtin
 import grammar.var_builtin
 import grammar.identifier
 import grammar.int_literal

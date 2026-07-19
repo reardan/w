@@ -46,7 +46,7 @@ void sym_table_info():
 
 void sym_info(int symbol):
 	print_error(c"sym_info(")
-	int t = table + symbol
+	int t = cast(int, table) + symbol
 	print_hex0(c"address: ", load_int(t + 2))
 	print_error(c", visibility: ")
 	put_error(load_i(t + 1 ,1))

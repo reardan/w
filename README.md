@@ -337,15 +337,25 @@ seeds — is `docs/release.md`.
 - Pointer arithmetic is a raw, unscaled byte offset for every pointee
   type: `int* p; p + n` advances `p` by `n` *bytes*, not `n` ints. Only
   indexing scales — use `&p[n]`, or multiply the offset by the element
-  width by hand, the way `lib/sha256.w`'s `p + i * 4` does. `&p[n]` is
+  width by hand, the way `lib/sha256.w`'s `p + i * 4` does. The result
+  keeps the pointer's type, so `*(p + n)` and `(p + n)[i]` read and
+  write at the element's width (and indexing the result scales by it);
+  pointer minus pointer is a plain integer byte distance. `&p[n]` is
   the recommended form in new code; `lib/ptr.w`'s `ptr_add(p, n)` (`&p[n]`
   under the hood, for any `T`) reads better at a call site where writing
   `&p[n]` inline would be awkward.
+- Loads of the fixed-width unsigned types (`uint8`/`uint16`/`uint32`)
+  zero-extend into the word-sized register, so high-bit values compare,
+  divide, shift and widen as unsigned; store-side arithmetic truncates
+  to the declared width as before. `uint32` is word-sized on 32-bit
+  targets, where — like word-sized `uint` — high-bit values still
+  compare signed (`tests/unsigned_load_test.w` gates those assertions
+  on `__word_size__`).
 - Some conveniences need tools that are not required for build/test and may
   be absent: `gdb`/`ddd` (hand-debugging a built binary), `radare2` (`rasm2`
   encoding lookups), `systemtap` with sudo (syscall-trace one-liners), an
   NVIDIA GPU + driver
-  (`cuda_smoke`, `cuda_test`). `threading_test` covers the raw x86 `thread_create`
+  (`cuda_smoke`, `cuda_test`, `tensor_gpu_test`). `threading_test` covers the raw x86 `thread_create`
   builtin; `lib/thread.w` (spawn/join/`parallel_for`, Linux x86/x64,
   docs/projects/threads.md) is covered on both targets by
   `thread_test`/`parallel_for_test` and their `_64` twins.
@@ -453,8 +463,12 @@ seeds — is `docs/release.md`.
   declarations, `launch` and `gpu for` outlining (`range(start, end)`
   included), gpu atomics, the device limb/bit intrinsics, and the
   `lib/cuda.w` runtime (managed + explicit memory, async launches,
-  `gpu_sync()`). Remaining: A2 virtual-register emission, shared memory,
-  recoverable CUresult errors, multi-GPU; see `docs/projects/cuda.md`.
+  `gpu_sync()`, `gpu_available()`). `lib/tensor.w` (GPU tensor:
+  elementwise ops, atomic sum, naive matmul, CPU fallbacks) landed via
+  `docs/projects/torch.md` Stages 1–3. Remaining: A2 virtual-register
+  emission, shared memory, recoverable CUresult errors, multi-GPU; see
+  `docs/projects/cuda.md` and torch.md Stages 4–6 (async ops, tiled
+  matmul, autograd/layers, safetensors interop).
 - Debugger: locals inside evaluated expressions, watchpoints, a web UI
   (stepping, breakpoints, variable inspection, expression evaluation at a
   breakpoint and `w --debug` are done).

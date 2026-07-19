@@ -668,6 +668,36 @@ void ptx_atomic_add_f32():
 	ptx_line(c"cvt.u64.u32 %ax, %w0;")
 
 
+############################ transcendentals ##################################
+# gpu_exp/gpu_log (grammar/gpu_math_builtin.w): value bits ride the low
+# 32 of %ax on entry and exit, the same host-bits convention as
+# ptx_atomic_add_f32. Both use the hardware .approx forms (ML-precision,
+# not IEEE-correct — the same tradeoff CUDA's fast-math makes) plus a
+# base-change multiply; %fb is scratch for the constant, matching the
+# xmm1-as-right-operand convention the rest of the float ops use.
+
+# e^x = 2^(x * log2(e)); ex2.approx.f32 computes the base-2 power.
+void ptx_gpu_exp():
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"mov.b32 %fa, %w0;")
+	ptx_line(c"mov.f32 %fb, 0f3FB8AA3B;")
+	ptx_line(c"mul.f32 %fa, %fa, %fb;")
+	ptx_line(c"ex2.approx.f32 %fa, %fa;")
+	ptx_line(c"mov.b32 %w0, %fa;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
+# ln(x) = log2(x) * ln(2); lg2.approx.f32 computes the base-2 logarithm.
+void ptx_gpu_log():
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"mov.b32 %fa, %w0;")
+	ptx_line(c"lg2.approx.f32 %fa, %fa;")
+	ptx_line(c"mov.f32 %fb, 0f3F317218;")
+	ptx_line(c"mul.f32 %fa, %fa, %fb;")
+	ptx_line(c"mov.b32 %w0, %fa;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
 ############################ special registers ###############################
 
 # thread_idx()/block_idx()/block_dim()/grid_dim() (x dimension), widened
