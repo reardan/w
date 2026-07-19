@@ -756,6 +756,334 @@ void ptx_param_load(int i):
 	ptx_line(c"];")
 
 
+####################### peephole (cuda.md A2, step 1) ########################
+# Post-pass over a finished kernel body: every push/pop pair whose whole
+# span sits inside one basic block becomes a pair of register moves
+# through a virtual register, deleting the pair's four .local
+# stack-traffic instructions. This recovers most of what the A1
+# stack-machine model loses on expression temporaries — the driver JIT
+# cannot do it itself because the eval stack is accessed through
+# generic addresses it must assume alias user pointers — while leaving
+# the grammar's accumulator contract untouched (full A2 would change
+# every promote()/push_eax() call site).
+#
+# The subtlety is that deleting a pushed word moves %sp for every line
+# between the push and the pop, so [%sp+K] slot references in the span
+# must be rewritten — but only those reaching slots OLDER than the
+# eliminated word (K decreases by 8); references to slots pushed after
+# it keep their distance to %sp. Slot identity is resolved by
+# simulating the stack depth line by line: a reference at depth d with
+# offset K targets the slot pushed d - K/8 - 1 pushes above the body's
+# base.
+#
+# Virtual registers are reused by nesting depth (%v<depth-at-push>), so
+# the declaration count stays small. Anything the scanner does not
+# recognize as well-formed (a pop with no open push, a scope pop wider
+# than the tracked stack) abandons the pass for that kernel — the
+# untransformed body is always correct.
+
+# Vreg count used by the most recent ptx_peephole run (0 = none/bailed);
+# ptx_kernel_end reads it to emit the .reg %v declaration.
+int ptx_peep_vregs
+
+
+int ptx_peep_starts(char* b, int pos, int end, char* pat):
+	int i = 0
+	while (pat[i]):
+		if (pos + i >= end):
+			return 0
+		if (b[pos + i] != pat[i]):
+			return 0
+		i = i + 1
+	return 1
+
+
+int ptx_peep_num(char* b, int pos):
+	int n = 0
+	while ((b[pos] >= '0') && (b[pos] <= '9')):
+		n = (n << 3) + (n << 1) + b[pos] - '0'
+		pos = pos + 1
+	return n
+
+
+# Append the C string s to out at outp; returns the new position.
+int ptx_peep_put(char* out, int outp, char* s):
+	int i = 0
+	while (s[i]):
+		out[outp] = s[i]
+		outp = outp + 1
+		i = i + 1
+	return outp
+
+
+# Index of "[%sp+" within the line, or -1.
+int ptx_peep_find_spref(char* b, int ls, int le):
+	int i = ls
+	while (i + 5 <= le):
+		if (ptx_peep_starts(b, i, le, c"[%sp+")):
+			return i
+		i = i + 1
+	return 0 - 1
+
+
+# Rewrites ptx_body_buf in place (via a fresh buffer). See the header
+# comment above for the model.
+void ptx_peephole():
+	ptx_peep_vregs = 0
+	char* b = ptx_body_buf
+	int n = ptx_body_pos
+	if (n == 0):
+		return
+
+	# Count lines, then record each line's start offset.
+	int lines = 0
+	int i = 0
+	while (i < n):
+		if (b[i] == 10):
+			lines = lines + 1
+		i = i + 1
+	if (lines == 0):
+		return
+	int* ls = cast(int*, malloc(lines * __word_size__))
+	int* kind = cast(int*, malloc(lines * __word_size__))
+	int* val = cast(int*, malloc(lines * __word_size__))    # K, N, or reg char
+	int* sloti = cast(int*, malloc(lines * __word_size__))  # kinds 5/6: slot index
+	int* shift = cast(int*, malloc(lines * __word_size__))
+	int* action = cast(int*, malloc(lines * __word_size__)) # 0 copy, 1 del, 2 mov-to-v, 3 mov-from-v
+	int* vreg = cast(int*, malloc(lines * __word_size__))
+	int L = 0
+	int start = 0
+	i = 0
+	while (i < n):
+		if (b[i] == 10):
+			ls[L] = start
+			L = L + 1
+			start = i + 1
+		i = i + 1
+
+	# Classify. Kinds: 0 other, 1 push-sub, 2 push-st, 3 pop-ld,
+	# 4 sp-add (N in val), 5 [%sp+K] reference, 6 lea %ax,%sp,K,
+	# 7 label, 8 branch.
+	L = 0
+	while (L < lines):
+		int s = ls[L]
+		int e = n - 1
+		if (L + 1 < lines):
+			e = ls[L + 1] - 1
+		kind[L] = 0
+		val[L] = 0
+		sloti[L] = 0
+		shift[L] = 0
+		action[L] = 0
+		vreg[L] = 0
+		if (ptx_peep_starts(b, s, e, c"sub.u64 %sp, %sp, 8;")):
+			kind[L] = 1
+		else if (ptx_peep_starts(b, s, e, c"st.u64 [%sp], %")):
+			kind[L] = 2
+			val[L] = b[s + 15]
+		else if (ptx_peep_starts(b, s, e, c"ld.u64 %") && ptx_peep_starts(b, s + 9, e, c"x, [%sp];")):
+			kind[L] = 3
+			val[L] = b[s + 8]
+		else if (ptx_peep_starts(b, s, e, c"add.u64 %sp, %sp, ")):
+			kind[L] = 4
+			val[L] = ptx_peep_num(b, s + 18)
+		else if (ptx_peep_starts(b, s, e, c"add.u64 %ax, %sp, ")):
+			kind[L] = 6
+			val[L] = ptx_peep_num(b, s + 18)
+		else if (ptx_peep_starts(b, s, e, c"bra ") || ptx_peep_starts(b, s, e, c"@%p bra ")):
+			kind[L] = 8
+		else if ((e > s) && (b[e - 1] == ':')):
+			kind[L] = 7
+		else:
+			int at = ptx_peep_find_spref(b, s, e)
+			if (at >= 0):
+				kind[L] = 5
+				val[L] = ptx_peep_num(b, at + 5)
+		L = L + 1
+
+	# Scan: simulate depth, track open pushes, match pairs.
+	int* op_st = cast(int*, malloc(lines * __word_size__))   # push-st line
+	int* op_slot = cast(int*, malloc(lines * __word_size__))
+	int* op_conv = cast(int*, malloc(lines * __word_size__))
+	int top = 0
+	int depth = 0
+	int pr_count = 0
+	int* pr_st = cast(int*, malloc(lines * __word_size__))
+	int* pr_ld = cast(int*, malloc(lines * __word_size__))
+	int* pr_j = cast(int*, malloc(lines * __word_size__))
+	int ok = 1
+	int maxv = 0
+	L = 0
+	while ((L < lines) && ok):
+		int k = kind[L]
+		if (k == 1):
+			# A push is sub immediately followed by st; anything else
+			# is unexpected.
+			if ((L + 1 < lines) && (kind[L + 1] == 2)):
+				op_st[top] = L + 1
+				op_slot[top] = depth
+				op_conv[top] = 1
+				top = top + 1
+				depth = depth + 1
+				L = L + 2
+			else:
+				ok = 0
+		else if (k == 3):
+			if ((L + 1 < lines) && (kind[L + 1] == 4) && (val[L + 1] == 8)):
+				# A pop: match the newest open push.
+				if (top == 0):
+					ok = 0
+				else:
+					top = top - 1
+					depth = depth - 1
+					if (op_conv[top]):
+						pr_st[pr_count] = op_st[top]
+						pr_ld[pr_count] = L
+						pr_j[pr_count] = op_slot[top]
+						if (op_slot[top] + 1 > maxv):
+							maxv = op_slot[top] + 1
+						pr_count = pr_count + 1
+					L = L + 2
+			else:
+				# Bare peek of the top word: an ordinary reference to
+				# slot depth-1.
+				kind[L] = 5
+				val[L] = 0
+				sloti[L] = depth - 1
+				L = L + 1
+		else if (k == 4):
+			# Scope pop: discards the top N/8 words without reading.
+			int words = val[L] / 8
+			if (words > top):
+				ok = 0
+			else:
+				int w = 0
+				while (w < words):
+					top = top - 1
+					op_conv[top] = 0
+					w = w + 1
+				depth = depth - words
+				L = L + 1
+		else if ((k == 7) || (k == 8)):
+			# Basic-block boundary: no open push may convert across it.
+			int q = 0
+			while (q < top):
+				op_conv[q] = 0
+				q = q + 1
+			L = L + 1
+		else:
+			if ((k == 5) || (k == 6)):
+				sloti[L] = depth - val[L] / 8 - 1
+			L = L + 1
+
+	if (ok && (pr_count > 0)):
+		# Offset rewrites: a reference inside a pair's span reaching a
+		# slot older than the eliminated word sits 8 bytes closer to
+		# %sp once that word is gone.
+		int p = 0
+		while (p < pr_count):
+			int q2 = pr_st[p] + 1
+			while (q2 < pr_ld[p]):
+				if ((kind[q2] == 5) || (kind[q2] == 6)):
+					if (sloti[q2] < pr_j[p]):
+						shift[q2] = shift[q2] + 8
+				q2 = q2 + 1
+			# Mark the pair's four lines: delete sub/add, replace st/ld
+			# with moves through the pair's depth-indexed vreg.
+			action[pr_st[p] - 1] = 1
+			action[pr_st[p]] = 2
+			vreg[pr_st[p]] = pr_j[p]
+			action[pr_ld[p]] = 3
+			vreg[pr_ld[p]] = pr_j[p]
+			action[pr_ld[p] + 1] = 1
+			p = p + 1
+
+		# Rebuild the body into a fresh scratch buffer.
+		int cap = n * 2 + 128
+		char* out = malloc(cap)
+		int outp = 0
+		L = 0
+		while (L < lines):
+			int s2 = ls[L]
+			int e2 = n - 1
+			if (L + 1 < lines):
+				e2 = ls[L + 1] - 1
+			if (action[L] == 1):
+				L = L + 1
+			else if (action[L] == 2):
+				outp = ptx_peep_put(out, outp, c"mov.u64 %v")
+				outp = ptx_peep_put(out, outp, itoa(vreg[L]))
+				outp = ptx_peep_put(out, outp, c", %")
+				out[outp] = val[L]
+				outp = outp + 1
+				outp = ptx_peep_put(out, outp, c"x;")
+				out[outp] = 10
+				outp = outp + 1
+				L = L + 1
+			else if (action[L] == 3):
+				outp = ptx_peep_put(out, outp, c"mov.u64 %")
+				out[outp] = val[L]
+				outp = outp + 1
+				outp = ptx_peep_put(out, outp, c"x, %v")
+				outp = ptx_peep_put(out, outp, itoa(vreg[L]))
+				out[outp] = ';'
+				out[outp + 1] = 10
+				outp = outp + 2
+				L = L + 1
+			else if ((kind[L] == 6) && (shift[L] > 0)):
+				outp = ptx_peep_put(out, outp, c"add.u64 %ax, %sp, ")
+				outp = ptx_peep_put(out, outp, itoa(val[L] - shift[L]))
+				out[outp] = ';'
+				out[outp + 1] = 10
+				outp = outp + 2
+				L = L + 1
+			else if ((kind[L] == 5) && (shift[L] > 0)):
+				int at2 = ptx_peep_find_spref(b, s2, e2)
+				int cp = s2
+				while (cp < at2 + 5):
+					out[outp] = b[cp]
+					outp = outp + 1
+					cp = cp + 1
+				outp = ptx_peep_put(out, outp, itoa(val[L] - shift[L]))
+				while ((b[cp] >= '0') && (b[cp] <= '9')):
+					cp = cp + 1
+				while (cp < e2):
+					out[outp] = b[cp]
+					outp = outp + 1
+					cp = cp + 1
+				out[outp] = 10
+				outp = outp + 1
+				L = L + 1
+			else:
+				int cp2 = s2
+				while (cp2 < e2):
+					out[outp] = b[cp2]
+					outp = outp + 1
+					cp2 = cp2 + 1
+				out[outp] = 10
+				outp = outp + 1
+				L = L + 1
+		free(ptx_body_buf)
+		ptx_body_buf = out
+		ptx_body_size = cap
+		ptx_body_pos = outp
+		ptx_peep_vregs = maxv
+
+	free(ls)
+	free(kind)
+	free(val)
+	free(sloti)
+	free(shift)
+	free(action)
+	free(vreg)
+	free(op_st)
+	free(op_slot)
+	free(op_conv)
+	free(pr_st)
+	free(pr_ld)
+	free(pr_j)
+
+
 # Open a kernel: the module header is written once, body scratch resets.
 # name is an owned copy; ptx_kernel_end frees it.
 void ptx_kernel_begin(char* name):
@@ -778,6 +1106,7 @@ void ptx_kernel_begin(char* name):
 # stores every parameter into its slot (the 'gpu for' outlining layout:
 # capture k lives at [%bp - (k+1)*8], a fixed offset discovered mid-body).
 void ptx_kernel_end(int nparams, int reserve_bytes):
+	ptx_peephole()
 	ptx_emit_to_module = 1
 	ptx_emit(c".visible .entry ")
 	ptx_emit(ptx_kernel_name)
@@ -796,6 +1125,12 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 	ptx_line(c".reg .f32 %fa, %fb;")
 	ptx_line(c".reg .f64 %da, %db;")
 	ptx_line(c".reg .pred %p;")
+	if (ptx_peep_vregs > 0):
+		# Virtual registers the peephole substituted for push/pop pairs
+		# (one per nesting depth, reused across pairs).
+		ptx_emit(c".reg .b64 %v<")
+		ptx_emit_int(ptx_peep_vregs)
+		ptx_line(c">;")
 	ptx_line(c".local .align 8 .b8 __wstack[4096];")
 	ptx_line(c"mov.u64 %sp, __wstack;")
 	ptx_line(c"cvta.local.u64 %sp, %sp;")
