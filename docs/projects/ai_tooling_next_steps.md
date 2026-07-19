@@ -468,6 +468,40 @@ exist yet:
   (a length-taking `process_run_bytes(path, argv, opts, char* stdin,
   int stdin_length, timeout_ms)` twin, or an overload, would cover it).
 
+## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
+
+- **A pre-existing (milestone 2/3, not milestone-4-specific) crash in the
+  streaming-mode emitter**: a rule with two alternatives sharing a
+  factorable leading term, where the *longer* alternative's suffix (after
+  the shared prefix) is nullable but non-empty and the *shorter*
+  alternative's suffix is the true empty/epsilon case, segfaults
+  `pg_generate_parser` instead of either generating correctly or being
+  rejected by `pg_streaming_check`. Root cause: `analysis.w`'s
+  `pg_report_choice` exempts a unit from the pairwise overlap check when
+  it is the *empty*-suffix unit (`pg_report_unit_is_empty_suffix`) — sound
+  on its own — but the *other* (nullable, non-empty) unit in the pair
+  never gets its own guard (`pg_plan_unit_guard` bails on any nullable
+  suffix, per `pg_analysis_terms_guardable`), so `pg_streaming_check`
+  reports 0 conflicts for the rule (the empty-suffix exemption hides the
+  only pairing that would have flagged it) while `pg_emit_streaming_choice`
+  still needs *some* guard condition for that now-"committed" nullable
+  unit and finds `guard_set == 0`, indexing through it in
+  `pg_emit_kind_set_test`. Minimal repro (no actions/predicates involved
+  at all — confirmed independent of this milestone's changes):
+  `parser edge_probe\nmode streaming\ntoken IDENT letters\ntoken WS
+  spaces\nstart value\nrule value = IDENT WS? | IDENT\n` segfaults
+  `pg_generate_parser`. Not hit by any grammar in the tree today (`w.pg`
+  stays AST mode; `streaming_sample.pg` and this milestone's
+  `actions_sample.pg` were deliberately checked against this shape and
+  avoid it), so it did not block milestone 4, but any future streaming
+  grammar with a shared prefix followed by a nullable (not flatly empty)
+  continuation on one side will hit it. Fix likely belongs in
+  `pg_plan_unit_guard`/`pg_report_choice`: either also require the
+  *nullable* side of such a pairing to be the trailing/last unit before
+  granting the empty-suffix exemption, or treat "nullable, non-empty,
+  unguardable" units as a `pg_streaming_check` violation in their own
+  right rather than silently falling through to codegen.
+
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 
 - **A `:save`d session transcript is not always a valid standalone `.w`

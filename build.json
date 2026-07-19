@@ -745,6 +745,15 @@
 			]
 		},
 		{
+			"name": "parser_generator_actions_test",
+			"deps": ["parser_generator_test"],
+			"steps": [
+				{"cmd": ["bin/parser_generator", "tests/parser_generator/actions_sample.pg", "-o", "bin/generated_actions_parser.w"]},
+				{"cmd": ["bin/wv2", "tests/parser_generator/generated_actions_test.w", "-o", "bin/parser_generator_actions_test"]},
+				{"cmd": ["bin/parser_generator_actions_test"]}
+			]
+		},
+		{
 			"name": "wtest",
 			"deps": ["wv2"],
 			"inputs": ["tools/test_map.w"],
@@ -2144,6 +2153,7 @@
 				"parser_generator_w_test",
 				"parser_generator_c_test",
 				"parser_generator_streaming_test",
+				"parser_generator_actions_test",
 				"wtest_map_test",
 				"wtest_run_test",
 				"wtest_defhash_test",

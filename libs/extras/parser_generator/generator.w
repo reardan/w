@@ -4,6 +4,7 @@ W source generator for the first ParserGenerator milestone.
 import lib.lib
 import lib.container
 import structures.string
+import libs.extras.parser_generator.token
 import libs.extras.parser_generator.grammar_model
 import libs.extras.parser_generator.analysis
 import libs.extras.parser_generator.lexer
@@ -54,6 +55,23 @@ void pg_emit_dynamic_line_start(pg_source_writer* writer):
 
 void pg_emit_dynamic_line_end(pg_source_writer* writer):
 	pg_source_append_char(writer, 10)
+
+
+# Extra "import <dotted.path>" lines from the grammar's own "import"
+# directives (issue #329 milestone 4). Actions/predicates that call
+# host-provided functions declare the module providing them this way; a
+# grammar that declares none (every grammar before milestone 4) emits
+# nothing extra here, so its generated output is unaffected.
+void pg_emit_grammar_imports(pg_source_writer* writer, pg_grammar* grammar):
+	int i = 0
+	while (i < grammar.imports.length):
+		pg_emit_dynamic_line_start(writer)
+		pg_source_append(writer, c"import ")
+		pg_source_append(writer, grammar.imports[i])
+		pg_emit_dynamic_line_end(writer)
+		i = i + 1
+	if (grammar.imports.length > 0):
+		pg_source_blank(writer)
 
 
 void pg_emit_matcher_name(pg_source_writer* writer, pg_grammar* grammar, char* name):
@@ -2073,13 +2091,243 @@ void pg_emit_streaming_syntax_error(pg_source_writer* writer, char* var_name, ch
 	pg_source_line(writer, c"return 0")
 
 
+# --- actions and predicates (issue #329 milestone 4) -----------------------
+#
+# `{ code }` action terms are verbatim W statements, one per (trimmed,
+# non-empty) source line, spliced into the generated rule function at
+# exactly that position -- streaming mode only, so "spliced at that
+# position" already means "on the committed, straight-line path" (see
+# pg_action_safety_check in analysis.w). `&{ expr }` predicate terms are a
+# single boolean expression spliced as-is into an if/else-if branch
+# condition by pg_emit_streaming_choice; they are handled entirely there
+# and never reach pg_emit_streaming_term.
+#
+# Binding surface: inside an action, `$n` or `text(n)` is replaced with the
+# text of term n (1-based, over the *enclosing alternative's own* term
+# list, action/predicate terms included in the count) -- pg_validate_action_bindings
+# below requires n to name an earlier, plain (no ?/*/+) token or literal
+# term in the same alternative, so by the time pg_action_substitute runs
+# every reference it sees is already known-valid.
+
+
+int pg_action_matches_text_call(char* code, int i, int length):
+	if (i > 0):
+		if (pg_lexer_is_ident_part(code[i - 1] & 255)):
+			return 0
+	return starts_with(code + i, c"text(")
+
+
+# Every $n/text(n) reference in an action's code, as the 1-based n values
+# referenced (duplicates allowed; order not significant to callers).
+list[int] pg_action_scan_refs(char* code):
+	list[int] refs = new list[int]
+	int length = strlen(code)
+	int i = 0
+	while (i < length):
+		int c = code[i] & 255
+		if ((c == '"') || (c == 39)):
+			int quote = c
+			i = i + 1
+			while ((i < length) && (code[i] != quote)):
+				if (code[i] == 92):
+					i = i + 1
+					if (i < length):
+						i = i + 1
+				else:
+					i = i + 1
+			if ((i < length) && (code[i] == quote)):
+				i = i + 1
+		else if (c == '$'):
+			int j = i + 1
+			int n = 0
+			int has_digit = 0
+			while ((j < length) && (code[j] >= '0') && (code[j] <= '9')):
+				n = n * 10 + (code[j] - '0')
+				has_digit = 1
+				j = j + 1
+			if (has_digit):
+				refs.push(n)
+				i = j
+			else:
+				i = i + 1
+		else if ((c == 't') && pg_action_matches_text_call(code, i, length)):
+			int j = i + 5
+			int n = 0
+			int has_digit = 0
+			while ((j < length) && (code[j] >= '0') && (code[j] <= '9')):
+				n = n * 10 + (code[j] - '0')
+				has_digit = 1
+				j = j + 1
+			if (has_digit && (j < length) && (code[j] == ')')):
+				refs.push(n)
+				i = j + 1
+			else:
+				i = i + 1
+		else:
+			i = i + 1
+	return refs
+
+
+# code with every $n/text(n) replaced by "action_arg_<alt_index>_<n-1>.text"
+# -- the same "action_arg_" + alt + "_" + term naming pg_emit_streaming_term
+# uses below when it captures a referenced token. Caller frees the result.
+char* pg_action_substitute(char* code, int alt_index):
+	string_builder* out = string_new()
+	int length = strlen(code)
+	int i = 0
+	while (i < length):
+		int c = code[i] & 255
+		if ((c == '"') || (c == 39)):
+			int quote = c
+			string_append_char(out, c)
+			i = i + 1
+			while ((i < length) && (code[i] != quote)):
+				if (code[i] == 92):
+					string_append_char(out, code[i])
+					i = i + 1
+					if (i < length):
+						string_append_char(out, code[i])
+						i = i + 1
+				else:
+					string_append_char(out, code[i])
+					i = i + 1
+			if ((i < length) && (code[i] == quote)):
+				string_append_char(out, code[i])
+				i = i + 1
+		else if (c == '$'):
+			int j = i + 1
+			int n = 0
+			int has_digit = 0
+			while ((j < length) && (code[j] >= '0') && (code[j] <= '9')):
+				n = n * 10 + (code[j] - '0')
+				has_digit = 1
+				j = j + 1
+			if (has_digit):
+				string_append(out, c"action_arg_")
+				string_append_int(out, alt_index)
+				string_append(out, c"_")
+				string_append_int(out, n - 1)
+				string_append(out, c".text")
+				i = j
+			else:
+				string_append_char(out, '$')
+				i = i + 1
+		else if ((c == 't') && pg_action_matches_text_call(code, i, length)):
+			int j = i + 5
+			int n = 0
+			int has_digit = 0
+			while ((j < length) && (code[j] >= '0') && (code[j] <= '9')):
+				n = n * 10 + (code[j] - '0')
+				has_digit = 1
+				j = j + 1
+			if (has_digit && (j < length) && (code[j] == ')')):
+				string_append(out, c"action_arg_")
+				string_append_int(out, alt_index)
+				string_append(out, c"_")
+				string_append_int(out, n - 1)
+				string_append(out, c".text")
+				i = j + 1
+			else:
+				string_append_char(out, code[i])
+				i = i + 1
+		else:
+			string_append_char(out, c)
+			i = i + 1
+	char* text = out.data
+	free(out)
+	return text
+
+
+char* pg_action_trim(char* text):
+	int start = 0
+	while (pg_lexer_is_space(text[start])):
+		start = start + 1
+	int end = strlen(text)
+	while ((end > start) && pg_lexer_is_space(text[end - 1])):
+		end = end - 1
+	return pg_substr(text, start, end - start)
+
+
+# Split trimmed code into non-empty, individually trimmed lines -- the
+# "flat statements only" contract documented in parser_generator.md: each
+# line becomes one pg_source_line at the writer's current indent, so an
+# action body may not itself open a nested indented block (if/while/etc).
+list[char*] pg_action_split_lines(char* code):
+	list[char*] lines = new list[char*]
+	int length = strlen(code)
+	int start = 0
+	int i = 0
+	while (i <= length):
+		if ((i == length) || (code[i] == 10)):
+			char* raw = pg_substr(code, start, i - start)
+			char* trimmed = pg_action_trim(raw)
+			free(raw)
+			if (strlen(trimmed) > 0):
+				lines.push(trimmed)
+			else:
+				free(trimmed)
+			start = i + 1
+		i = i + 1
+	return lines
+
+
+void pg_emit_streaming_action(pg_source_writer* writer, pg_term* term, int alt_index, int term_index):
+	char* substituted = pg_action_substitute(term.code, alt_index)
+	list[char*] lines = pg_action_split_lines(substituted)
+	int i = 0
+	while (i < lines.length):
+		pg_source_line(writer, lines[i])
+		free(lines[i])
+		i = i + 1
+	list_free[char*](lines)
+	free(substituted)
+
+
+# 1-indexed (size terms.length + 1, index 0 unused) membership set of term
+# positions that some action in this alternative captures via $n/text(n).
+# Only ever called once pg_validate_action_bindings has passed, so every
+# referenced n is already known to be in range and to name a plain token
+# term earlier in the same alternative.
+char* pg_alt_capture_set(pg_alternative* alternative):
+	char* captures = malloc(alternative.terms.length + 1)
+	int i = 0
+	while (i <= alternative.terms.length):
+		captures[i] = 0
+		i = i + 1
+	i = 0
+	while (i < alternative.terms.length):
+		pg_term* term = alternative.terms[i]
+		if (term.kind == pg_term_kind_action()):
+			list[int] refs = pg_action_scan_refs(term.code)
+			int r = 0
+			while (r < refs.length):
+				int n = refs[r]
+				if ((n >= 1) && (n <= alternative.terms.length)):
+					captures[n] = 1
+				r = r + 1
+			list_free[int](refs)
+		i = i + 1
+	return captures
+
+
 # A single term within a chosen alternative. Streaming eligibility
 # (pg_streaming_check) has already ruled out ?/*/+ over a rule reference,
 # so the modifier cases below only ever guard a token/literal -- always
-# safe to test with zero lookahead cost via <name>_match_token.
-void pg_emit_streaming_term(pg_source_writer* writer, pg_grammar* grammar, pg_term* term, int alt_index, int term_index):
+# safe to test with zero lookahead cost via <name>_match_token. captures
+# may be 0 (never capture -- used for a left-factored shared prefix, which
+# pg_validate_action_bindings guarantees carries no $n/text(n) references).
+void pg_emit_streaming_term(pg_source_writer* writer, pg_grammar* grammar, char* captures, pg_term* term, int alt_index, int term_index):
+	if (term.kind == pg_term_kind_action()):
+		pg_emit_streaming_action(writer, term, alt_index, term_index)
+		return
 	if (term.modifier == 0):
 		if (pg_grammar_is_token_term(grammar, term.name)):
+			if ((captures != 0) && (captures[term_index + 1] != 0)):
+				pg_emit_dynamic_line_start(writer)
+				pg_source_append(writer, c"pg_token* ")
+				pg_emit_var(writer, c"action_arg_", alt_index, term_index)
+				pg_source_append(writer, c" = pg_token_stream_peek(stream)")
+				pg_emit_dynamic_line_end(writer)
 			pg_emit_dynamic_line_start(writer)
 			pg_source_append(writer, c"if (")
 			pg_source_append(writer, grammar.name)
@@ -2153,10 +2401,12 @@ void pg_emit_streaming_alternative_body(pg_source_writer* writer, pg_grammar* gr
 		# so make the no-op explicit instead of emitting an empty block.
 		pg_source_line(writer, c"pass")
 		return
+	char* captures = pg_alt_capture_set(alternative)
 	int term_index = offset
 	while (term_index < alternative.terms.length):
-		pg_emit_streaming_term(writer, grammar, alternative.terms[term_index], alt_index, term_index)
+		pg_emit_streaming_term(writer, grammar, captures, alternative.terms[term_index], alt_index, term_index)
 		term_index = term_index + 1
+	free(captures)
 
 
 void pg_emit_streaming_choice(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule, int alt_start, int alt_count, int offset, char* kind_name);
@@ -2171,7 +2421,11 @@ void pg_emit_streaming_factored_unit(pg_source_writer* writer, pg_grammar* gramm
 	pg_alternative* head = rule.alternatives[unit.alt_start]
 	int term_index = offset
 	while (term_index < offset + unit.prefix_length):
-		pg_emit_streaming_term(writer, grammar, head.terms[term_index], unit.alt_start, term_index)
+		# 0 (no captures): pg_validate_action_bindings rejects any
+		# $n/text(n) reference inside an alternative that shares a
+		# leading term with a sibling, so a shared prefix never needs to
+		# capture a token for a later action to bind.
+		pg_emit_streaming_term(writer, grammar, 0, head.terms[term_index], unit.alt_start, term_index)
 		term_index = term_index + 1
 	char* inner_kind = pg_guard_var_name(c"factored_kind_", unit.alt_start, offset)
 	pg_emit_streaming_choice(writer, grammar, analysis, rule, unit.alt_start, unit.member_count, offset + unit.prefix_length, inner_kind)
@@ -2179,15 +2433,19 @@ void pg_emit_streaming_factored_unit(pg_source_writer* writer, pg_grammar* gramm
 
 
 # Ordered choice, streaming mode. pg_streaming_check has already proven
-# every unit here is guarded except possibly the last, which may be an
-# unguarded nullable "epsilon" fallback (mirrors pg_report_choice's
-# empty-suffix exemption in analysis.w). Guarded units become an
-# if/else-if chain on the current token kind; the final branch is either
-# that fallback's (empty) body or, when every unit was guarded, a syntax
-# error -- there is no other outcome left once none of the guards match.
+# every unit here is guarded, predicate-headed, or (possibly, only last)
+# an unguarded nullable "epsilon" fallback (mirrors pg_report_choice's
+# empty-suffix and predicate exemptions in analysis.w). Guarded and
+# predicate-headed units become an if/else-if chain, in declaration order,
+# on the current token kind or the predicate expression respectively; the
+# final branch is either that fallback's (empty) body or, when every unit
+# was guarded/predicated, a syntax error -- there is no other outcome left
+# once none of the branches match. A predicate-headed unit's body starts
+# one term past the predicate itself, since the predicate was already
+# consumed as this branch's condition rather than as a matched term.
 void pg_emit_streaming_choice(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule, int alt_start, int alt_count, int offset, char* kind_name):
 	list[pg_choice_unit*] units = pg_plan_choice(analysis, rule, alt_start, alt_count, offset)
-	if (units.length == 1):
+	if ((units.length == 1) && (units[0].predicate_code == 0)):
 		pg_choice_unit* unit = units[0]
 		if (unit.member_count == 1):
 			pg_emit_streaming_alternative_body(writer, grammar, rule, unit.alt_start, offset)
@@ -2195,9 +2453,17 @@ void pg_emit_streaming_choice(pg_source_writer* writer, pg_grammar* grammar, pg_
 			pg_emit_streaming_factored_unit(writer, grammar, analysis, rule, unit, offset)
 		pg_choice_units_free(units)
 		return
-	pg_emit_peek_kind_line(writer, kind_name)
-	int has_fallback = units[units.length - 1].guarded == 0
+	int has_fallback = (units[units.length - 1].guarded == 0) && (units[units.length - 1].predicate_code == 0)
+	int needs_kind = 0
 	int i = 0
+	while (i < units.length):
+		int is_fallback = has_fallback && (i == units.length - 1)
+		if ((is_fallback == 0) && (units[i].predicate_code == 0)):
+			needs_kind = 1
+		i = i + 1
+	if (needs_kind):
+		pg_emit_peek_kind_line(writer, kind_name)
+	i = 0
 	while (i < units.length):
 		pg_choice_unit* unit = units[i]
 		int is_fallback = has_fallback && (i == units.length - 1)
@@ -2207,14 +2473,20 @@ void pg_emit_streaming_choice(pg_source_writer* writer, pg_grammar* grammar, pg_
 				pg_source_append(writer, c"if (")
 			else:
 				pg_source_append(writer, c"else if (")
-			pg_emit_kind_set_test(writer, grammar, analysis, unit.guard_set, kind_name)
+			if (unit.predicate_code != 0):
+				pg_source_append(writer, unit.predicate_code)
+			else:
+				pg_emit_kind_set_test(writer, grammar, analysis, unit.guard_set, kind_name)
 			pg_source_append(writer, c"):")
 			pg_emit_dynamic_line_end(writer)
 		else:
 			pg_source_line(writer, c"else:")
 		pg_source_indent(writer)
+		int body_offset = offset
+		if (unit.predicate_code != 0):
+			body_offset = offset + 1
 		if (unit.member_count == 1):
-			pg_emit_streaming_alternative_body(writer, grammar, rule, unit.alt_start, offset)
+			pg_emit_streaming_alternative_body(writer, grammar, rule, unit.alt_start, body_offset)
 		else:
 			pg_emit_streaming_factored_unit(writer, grammar, analysis, rule, unit, offset)
 		pg_source_dedent(writer)
@@ -2299,7 +2571,105 @@ void pg_emit_streaming_parse_entry(pg_source_writer* writer, pg_grammar* grammar
 	pg_source_blank(writer)
 
 
+# --- action/predicate binding validation (issue #329 milestone 4) ---------
+#
+# $n/text(n) is deliberately narrow (per docs/projects/parser_generator.md):
+# it names the text of an earlier, plain (no ?/*/+) token or literal term
+# in the *same* alternative. This also sidesteps a real complication: an
+# alternative that shares a leading term with a sibling gets left-factored
+# (analysis.w's pg_plan_choice), so its shared-prefix terms are parsed
+# once under the factored unit's representative alt_start, not the
+# member's own true alternative index -- pg_action_substitute has no way
+# to know that renaming without duplicating pg_plan_choice's own factoring
+# decision. Rather than do that, an action with any binding is rejected
+# outright when its alternative could ever be factored with a sibling;
+# rewrite the rule to avoid the shared leading term if this fires.
+
+
+int pg_alt_shares_leading_term(pg_rule* rule, int alt_index):
+	pg_alternative* alternative = rule.alternatives[alt_index]
+	if (alternative.terms.length == 0):
+		return 0
+	pg_term* first = alternative.terms[0]
+	if (first.kind != pg_term_kind_normal()):
+		return 0
+	int i = 0
+	while (i < rule.alternatives.length):
+		if (i != alt_index):
+			pg_alternative* other = rule.alternatives[i]
+			if (other.terms.length > 0):
+				pg_term* other_first = other.terms[0]
+				if (other_first.kind == pg_term_kind_normal()):
+					if ((other_first.modifier == first.modifier) && (strcmp(other_first.name, first.name) == 0)):
+						return 1
+		i = i + 1
+	return 0
+
+
+# Validates every $n/text(n) reference in one action term; returns the
+# number of violations printed (0 == every reference in this action is
+# sound). alt_index is the action's enclosing alternative's own index in
+# rule.alternatives (needed only for the shared-leading-term check).
+int pg_validate_action_term_bindings(pg_grammar* grammar, pg_rule* rule, pg_alternative* alternative, int alt_index, int action_index):
+	pg_term* action = alternative.terms[action_index]
+	list[int] refs = pg_action_scan_refs(action.code)
+	int violations = 0
+	if ((refs.length > 0) && pg_alt_shares_leading_term(rule, alt_index)):
+		print2(c"parser_generator: rule ")
+		print2(rule.name)
+		println2(c": an action's $n/text(n) binding is not supported in an alternative that shares a leading term with a sibling (left-factoring) -- rewrite the rule to avoid the shared prefix")
+		violations = violations + 1
+	int i = 0
+	while (i < refs.length):
+		int n = refs[i]
+		int ok = 1
+		if ((n < 1) || (n > alternative.terms.length)):
+			ok = 0
+		else:
+			pg_term* ref_term = alternative.terms[n - 1]
+			if (ref_term.kind != pg_term_kind_normal()):
+				ok = 0
+			else if (ref_term.modifier != 0):
+				ok = 0
+			else if (pg_grammar_is_token_term(grammar, ref_term.name) == 0):
+				ok = 0
+			else if ((n - 1) >= action_index):
+				ok = 0
+		if (ok == 0):
+			print2(c"parser_generator: rule ")
+			print2(rule.name)
+			print2(c": action references invalid binding $")
+			print2(itoa(n))
+			println2(c" (must name an earlier plain token or literal term in the same alternative)")
+			violations = violations + 1
+		i = i + 1
+	list_free[int](refs)
+	return violations
+
+
+int pg_validate_action_bindings(pg_grammar* grammar):
+	int violations = 0
+	int r = 0
+	while (r < grammar.rules.length):
+		pg_rule* rule = grammar.rules[r]
+		int a = 0
+		while (a < rule.alternatives.length):
+			pg_alternative* alternative = rule.alternatives[a]
+			int t = 0
+			while (t < alternative.terms.length):
+				if (alternative.terms[t].kind == pg_term_kind_action()):
+					violations = violations + pg_validate_action_term_bindings(grammar, rule, alternative, a, t)
+				t = t + 1
+			a = a + 1
+		r = r + 1
+	return violations
+
+
 char* pg_generate_streaming_parser(pg_grammar* grammar):
+	if (pg_action_safety_check(grammar) > 0):
+		return 0
+	if (pg_validate_action_bindings(grammar) > 0):
+		return 0
 	if (pg_streaming_check(grammar) > 0):
 		return 0
 	pg_analysis* analysis = pg_analyze_grammar(grammar)
@@ -2308,6 +2678,7 @@ char* pg_generate_streaming_parser(pg_grammar* grammar):
 	pg_source_line(writer, c"import lib.lib")
 	pg_source_line(writer, c"import libs.extras.parser_generator.runtime")
 	pg_source_blank(writer)
+	pg_emit_grammar_imports(writer, grammar)
 	pg_emit_token_constants(writer, grammar)
 	pg_emit_token_name(writer, grammar)
 	pg_emit_streaming_types(writer, grammar)
@@ -2329,12 +2700,15 @@ char* pg_generate_streaming_parser(pg_grammar* grammar):
 
 
 char* pg_generate_ast_parser(pg_grammar* grammar):
+	if (pg_action_safety_check(grammar) > 0):
+		return 0
 	pg_analysis* analysis = pg_analyze_grammar(grammar)
 	pg_source_writer* writer = pg_source_writer_new()
 	pg_source_line(writer, c"/* generated by ParserGenerator */")
 	pg_source_line(writer, c"import lib.lib")
 	pg_source_line(writer, c"import libs.extras.parser_generator.runtime")
 	pg_source_blank(writer)
+	pg_emit_grammar_imports(writer, grammar)
 	pg_emit_token_constants(writer, grammar)
 	pg_emit_ast_constants(writer, grammar)
 	pg_emit_token_name(writer, grammar)

@@ -77,9 +77,30 @@ struct pg_literal_def:
 	int kind
 
 
+# Term kinds (issue #329 milestone 4). A normal term is today's rule/token/
+# literal/EOF reference. Action ({ code }) and predicate (&{ expr }) terms
+# instead carry verbatim W source text in .code, with .name/.modifier
+# unused (name is ""). Every analysis/generation pass that walks
+# alternative.terms generically must treat a non-normal term as zero-width
+# and side-effect-transparent unless it specifically means to handle
+# actions or predicates -- see analysis.w and generator.w.
+int pg_term_kind_normal():
+	return 0
+
+
+int pg_term_kind_action():
+	return 1
+
+
+int pg_term_kind_predicate():
+	return 2
+
+
 struct pg_term:
 	char* name
 	int modifier
+	int kind
+	char* code
 
 
 struct pg_alternative:
@@ -132,6 +153,7 @@ struct pg_grammar:
 	list[pg_literal_def*] literals
 	list[pg_rule*] rules
 	list[pg_recover_def*] recovers
+	list[char*] imports
 
 
 pg_grammar* pg_grammar_new(char* name):
@@ -145,6 +167,7 @@ pg_grammar* pg_grammar_new(char* name):
 	grammar.literals = new list[pg_literal_def*]
 	grammar.rules = new list[pg_rule*]
 	grammar.recovers = new list[pg_recover_def*]
+	grammar.imports = new list[char*]
 	return grammar
 
 
@@ -229,6 +252,26 @@ pg_term* pg_term_new(char* name, int modifier):
 	pg_term* term = new pg_term()
 	term.name = strclone(name)
 	term.modifier = modifier
+	term.kind = pg_term_kind_normal()
+	term.code = 0
+	return term
+
+
+pg_term* pg_term_new_action(char* code):
+	pg_term* term = new pg_term()
+	term.name = strclone(c"")
+	term.modifier = 0
+	term.kind = pg_term_kind_action()
+	term.code = strclone(code)
+	return term
+
+
+pg_term* pg_term_new_predicate(char* code):
+	pg_term* term = new pg_term()
+	term.name = strclone(c"")
+	term.modifier = 0
+	term.kind = pg_term_kind_predicate()
+	term.code = strclone(code)
 	return term
 
 
@@ -285,6 +328,14 @@ pg_recover_def* pg_grammar_add_recover(pg_grammar* grammar, char* rule_name, cha
 	pg_recover_def* recover = pg_recover_def_new(rule_name, sync_token)
 	grammar.recovers.push(recover)
 	return recover
+
+
+# Registers an extra "import <dotted.path>" line the generator adds to the
+# generated file (issue #329 milestone 4: actions/predicates that call
+# host-provided functions need a way to reach them -- see
+# docs/projects/parser_generator.md).
+void pg_grammar_add_import(pg_grammar* grammar, char* path):
+	grammar.imports.push(strclone(path))
 
 
 void pg_recover_add_skip(pg_recover_def* recover, char* token_name):
@@ -381,6 +432,8 @@ int pg_grammar_token_kind(pg_grammar* grammar, char* name):
 
 void pg_term_free(pg_term* term):
 	free(term.name)
+	if (term.code != 0):
+		free(term.code)
 	free(term)
 
 
@@ -477,6 +530,10 @@ void pg_grammar_free(pg_grammar* grammar):
 	while (i < grammar.recovers.length):
 		pg_recover_def_free(grammar.recovers[i])
 		i = i + 1
+	i = 0
+	while (i < grammar.imports.length):
+		free(grammar.imports[i])
+		i = i + 1
 	free(grammar.name)
 	if (grammar.start_rule != 0):
 		free(grammar.start_rule)
@@ -486,4 +543,5 @@ void pg_grammar_free(pg_grammar* grammar):
 	list_free[pg_literal_def*](grammar.literals)
 	list_free[pg_rule*](grammar.rules)
 	list_free[pg_recover_def*](grammar.recovers)
+	list_free[char*](grammar.imports)
 	free(grammar)
