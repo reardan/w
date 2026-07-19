@@ -2212,6 +2212,23 @@
 			]
 		},
 		{
+			"name": "mnist_train_compile_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/mnist_train_gpu.w", "-o", "bin/mnist_train_gpu_compile"]}
+			]
+		},
+		{
+			"name": "mnist_train_gpu_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["sh", "tools/fetch_mnist.sh"]},
+				{"cmd": ["bin/wv2", "x64", "tests/mnist_train_gpu.w", "-o", "bin/mnist_train_gpu"]},
+				{"cmd": ["bin/mnist_train_gpu"], "expect_stdout": ["mnist: gpu path", "mnist train OK"]},
+				{"cmd": ["sh", "-c", "CUDA_VISIBLE_DEVICES= bin/mnist_train_gpu"], "expect_stdout": ["mnist: cpu fallback", "mnist train OK"]}
+			]
+		},
+		{
 			"name": "elf",
 			"deps": ["wv2"],
 			"steps": [
@@ -2334,6 +2351,7 @@
 				"tensor_compile_test",
 				"autograd_compile_test",
 				"nn_compile_test",
+				"mnist_train_compile_test",
 				"defer_test",
 				"dynamic_var_test",
 				"generics_test",
