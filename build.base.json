@@ -317,6 +317,13 @@
 			]
 		},
 		{
+			"name": "recursion_depth_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/expression_nesting_error_fixture.w", "tests/expression_nesting_clean_fixture.w", "tests/statement_nesting_error_fixture.w", "tests/statement_nesting_clean_fixture.w"]}
+			]
+		},
+		{
 			"name": "strict_mode_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2254,6 +2261,7 @@
 				"int_literal_width_test",
 				"prefixed_string_literal_test",
 				"warning_test",
+				"recursion_depth_test",
 				"strict_mode_test",
 				"check_json_test",
 				"check_json_utf8_test",

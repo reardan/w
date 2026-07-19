@@ -87,6 +87,15 @@ int compile_attempt(char* fn):
 	column_number = 0
 	tab_level = 0
 	byte_offset = 0
+	# Every file (root or import) starts parsing at nesting depth 0: an
+	# import statement only ever appears at a file's own top level, never
+	# inside a deeply nested expression or block, so these are already 0
+	# by the time an import reaches here in practice -- reset explicitly
+	# anyway so a compile that somehow starts already-nested (a future
+	# caller, or a REPL path that reuses compile_attempt) can never carry
+	# a stale count into a file that has not parsed anything yet.
+	expr_nesting_depth = 0
+	stmt_nesting_depth = 0
 	# A nested compile_attempt (an import, via compile_save below) starts
 	# while the importer's own nextc still holds its own mid-token
 	# lookahead -- for an import statement specifically, the newline that

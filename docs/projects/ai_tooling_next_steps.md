@@ -242,11 +242,77 @@ is a queue, not an archive.
   on failure prints `generator: out of memory (coroutine stack mmap
   failed)` and exits 1. No fixture (needs real memory exhaustion, same
   precedent as 35ed0f5).
-- **No recursion-depth guard in the recursive-descent parser.** Deeply
-  nested expressions/generic instantiations overflow the stack and die as
-  a raw `SIGSEGV` with nothing printed — the same outcome as a silent
-  exit-1 (process dies, no message), just signal-terminated rather than a
-  clean `exit(1)`. (scheduled: wave plan C task 2h)
+- **Shipped (2026-07-19, wave plan C task 2h): recursion-depth guards
+  close the last silent-`SIGSEGV` gap.** Two independent counters
+  (`compiler/tokenizer.w`) catch runaway recursive-descent nesting before
+  the parser's own call stack overflows: `expr_nesting_depth`, checked in
+  `grammar/primary_expr.w`'s `'('` branch (the only place paren-grouping
+  re-enters `expression()`, the top of the expression grammar), errors
+  `expression nesting too deep` past 1000 levels; `stmt_nesting_depth`,
+  wrapping the whole body of `grammar/statement.w`'s `statement()` (the
+  single function every nested `{...}`/`:`-block/if/while/for/switch body
+  recurses back through, so one guard there covers every statement-level
+  recursion path), errors `statement nesting too deep` past 200. Both
+  route through the normal `error()` path (works under `--json`, and
+  unwinds a REPL recovery longjmp correctly) and reset to 0 at the start
+  of every compile (`compiler/compiler.w`'s `compile_attempt`) and every
+  REPL entry (`repl/core.w`'s `repl_compile_entry`), so a longjmp — which
+  skips every pending decrement — can never poison the next compile/entry
+  with a stale count. Manually confirmed: a 100000-deep nested-paren file
+  that previously `SIGSEGV`'d now exits 1 with the diagnostic, both in
+  plain and `--json` mode; a native paren-chain crash was measured
+  between 40000 and 60000 levels deep before this change, so 1000 leaves
+  large headroom. Fixtures: `tests/expression_nesting_{error,clean}_
+  fixture.w` (1500 vs. 900 nested parens) and `tests/statement_nesting_
+  {error,clean}_fixture.w` (220 vs. 150 branches of an `if`/`else if`
+  chain — see the next entry for why the exact numbers matter), wired
+  into the new `recursion_depth_test` target via `bin/wfixture`.
+  `parser_generator_w_test` was checked against both new fixtures
+  (`tests/parser_generator/w.pg` untouched — no new syntax) and stayed
+  green with no depth-related PG issues found.
+- **Found while shipping the above: `code_generator/x86.w`'s
+  `ctrl_kind_stack`/`ctrl_val_stack` are fixed `int[256]` arrays, and
+  nested control-flow statements can already exhaust them well short of
+  any real call-stack limit.** Every open `if`/`while`/`for`/`switch`
+  region holds one array slot (two, for an `if`, until its `else` arm
+  starts) until it closes, so *true* nested bodies (an `if` whose body is
+  another `if`, etc.) hit the array's bound at 129 nested `if`s (2 slots
+  each) or 86 nested `for`s (3 slots each); an `if`/`else if` dispatch
+  chain — which recurses `grammar/statement.w`'s `statement()` through
+  the `else` arm exactly like true nesting, but only holds ~1 slot per
+  branch since each branch's own second slot frees before the next
+  `else` is parsed — survives to 255 branches, failing at 256 (all
+  measured exactly). This is *why* task 2h's `stmt_nesting_depth` limit
+  is 200 rather than a rounder, larger number: it has to clear the tree's
+  longest legitimate chain (`lib/lib.w`'s errno-to-string dispatch, 132
+  branches) while staying under 256, so it cannot also preempt the
+  narrower 129/86 bounds for genuinely nested (non-chain) control flow —
+  those two shapes still hit the pre-existing array bound first, which
+  prints a real (if compiler-internal-looking) diagnostic via
+  `__w_bounds_trap`/`__w_list_index_trap` — `index out of range: index
+  256, length 256` plus a stack trace — rather than segfaulting silently,
+  so it is not the same class of bug 2h closes, just a related, narrower
+  gap. Real fix: make `ctrl_kind_stack`/`ctrl_val_stack` grow dynamically
+  (or move them off a fixed-size array entirely) instead of picking a
+  bigger constant.
+- **Found while shipping 2h: piping a very long single line (10000+
+  characters) containing deeply nested parens into the interactive REPL
+  (`bin/repl < file`, no PTY) does not reliably reach the second REPL
+  entry.** A 5000-deep nested-paren one-liner followed by further entries
+  on their own lines: the nesting-too-deep diagnostic printed correctly,
+  but the entries after it were never evaluated and the process exited
+  0 instead of running them. Narrowed to the combination of extreme line
+  length and deep nesting specifically — a plain long line (3000 `+`-
+  joined terms, no nesting) recovers and evaluates the next entry
+  normally, and a shorter deep-paren line (1100 levels, ~2200 characters,
+  still past the 1000-level guard) also recovers correctly. Likely the
+  REPL's own interactive line reader (distinct from the compiler's
+  grammar-level recursion `compiler/tokenizer.w`'s counters guard)
+  buffers or re-scans raw input in a way that behaves differently at
+  that combined size; not investigated further since it falls outside a
+  piped, non-PTY invocation `repl_test`'s `script -qc` fixtures don't
+  exercise this exact shape either. Worth a closer look before relying on
+  giant single-line REPL input in agent tooling.
 - **Shipped (2026-07-19, wave plan C task 1g): unrecognized CLI flags
   now get a real diagnostic.** `link_impl`'s flag loop (the common tail
   for link/check/deps/symbols/defhash) errors `unrecognized option:
