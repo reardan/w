@@ -1286,3 +1286,41 @@ void repl_cleanup():
 	if (repl_staging_dir == 0):
 		return;
 	repl_remove_staging(repl_staging_dir, repl_staged_count)
+
+
+# ---------------------------------------------------------------------------
+# Tab completion (issue #276 P2): candidates for the identifier "prefix",
+# sourced from the live compiler symbol table -- the same structure
+# print_symbol_table (compiler/symbol_table.w) walks, and the same one
+# ":symbols" dumps at the prompt. repl.w wires this exact signature to
+# lib/line_edit.w's le_complete_hook, so the library stays free of any
+# REPL/compiler knowledge (it just calls hook(prefix, out, capacity)).
+#
+# Writes up to `capacity` matching names, each strclone'd (the caller --
+# line_edit.w -- takes ownership and frees them), into the word-sized
+# slots of `out`. Returns how many were written; 0 is a normal "nothing
+# matches" result. Between entries the table only ever holds 'D'/'U'
+# globals (an entry's own transient locals are truncated again as soon as
+# the statement that declared them finishes, see repl_entry_item), so no
+# visibility filtering is needed here.
+int repl_complete_names(char* prefix, char* out, int capacity):
+	int count = 0
+	int t = 0
+	while ((t <= table_pos - 1) && (count < capacity)):
+		char* name = table + t
+		int end = t + strlen(name)
+		if (starts_with(name, prefix)):
+			# Shadowed redefinitions (Python-style rebinding, see
+			# repl_declare_global) can leave the same name more than once
+			# in the table; only offer it once.
+			int dup = 0
+			int k = 0
+			while (k < count):
+				if (strcmp(cast(char*, load_word(out + k * __word_size__)), name) == 0):
+					dup = 1
+				k = k + 1
+			if (dup == 0):
+				save_word(out + count * __word_size__, cast(int, strclone(name)))
+				count = count + 1
+		t = next_token(end)
+	return count

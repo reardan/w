@@ -548,6 +548,39 @@ exist yet:
   recommends `W_DEBUG_ALLOC=1` for catching this class of bug in the
   future rather than hardening the production allocator under a timebox.
 
+- **`script -qc bin/repl /dev/null` cannot script a keystroke bound to a
+  canonical-mode special character (Ctrl-R, and by the same reasoning
+  Ctrl-C/Ctrl-U/Ctrl-W/Ctrl-D/Ctrl-Q/Ctrl-S/Ctrl-\\) fed through a plain
+  pipe.** Found while adding Ctrl-R incremental history search
+  (`lib/line_edit.w`, issue #276 P2, wave 3a). `printf '...\x12...' |
+  script -qc ./bin/repl /dev/null` silently drops the `\x12` (Ctrl-R)
+  byte — confirmed with a temporary `getchar()`-return debug print that
+  the process never observes the value 18 at all, even as the very first
+  byte of stdin, with or without a prior successful entry ahead of it.
+  Root cause: `script` delivers a piped, non-interactive stdin to the pty
+  in one burst, and that burst lands in the kernel's tty input queue
+  while the pty is still in its *default* (canonical, `ICANON` on) mode —
+  `repl_init()` self-hosts a chunk of the stdlib into memory before the
+  first `term_raw_mode()` call, which is enough wall-clock time for the
+  whole burst to already be queued and processed under canonical rules.
+  Canonical mode treats `Ctrl-R` as `VREPRINT`, a line-editing command
+  the driver consumes on the spot (a no-op on an empty line) rather than
+  queuing as data — once the byte is gone, no later `ioctl(TCSETS)` call
+  un-consumes it. Plain characters, Enter and ESC-prefixed sequences
+  (bracketed paste's `\x1b[200~`/`\x1b[201~`, arrow keys) are unaffected
+  (no canonical-mode binding), which is why the paste and Tab-completion
+  `script -qc` cases added alongside this one work reliably. Worked
+  around by verifying Ctrl-R with a small ad hoc Python `pty` harness
+  that waits for the "w> " prompt to actually appear on the master side
+  (proof `term_raw_mode()` has already run) before writing the next
+  keystroke, and by unit-testing the pure search-state transitions
+  (`le_search_begin`/`le_search_refine`/`le_search_older`/
+  `le_search_backspace` in `tests/line_edit_completion_test.w`) directly,
+  bypassing `getchar()` entirely. A reusable `tools/pty_test.py` (or a W
+  equivalent using a real `pty`/`fork` pair with an explicit "wait for
+  marker text" step) would let future agents script this class of
+  keystroke instead of falling back to manual verification each time.
+
 ## Skills / rules upkeep
 
 - Keep skill command examples in sync with CLI changes (they are

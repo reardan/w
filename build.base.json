@@ -1428,7 +1428,9 @@
 				{"cmd": ["bin/repl", "--json", "-e", "print(c\"hi\")"], "expect_stdout": ["\"output\":\"hi\"", "\"echo\":null"]},
 				{"cmd": ["bin/repl", "--json", "-e", "this is not valid w"], "expect_fail": true, "expect_stdout": "\"error\":\"compile error\""},
 				{"cmd": ["bin/repl"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "},
-				{"cmd": ["bin/repl", "--quiet"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "}
+				{"cmd": ["bin/repl", "--quiet"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "},
+				{"cmd": ["script", "-qc", "./bin/repl", "/dev/null"], "stdin": "int myvar_completion_probe = 42\nmyvar_completion_p\t + 1\n:quit\n", "expect_stdout": "43"},
+				{"cmd": ["script", "-qc", "./bin/repl", "/dev/null"], "stdin": "\u001b[200~int addp(int a, int b):\n\tint total = a + b\n\n\treturn total\n\u001b[201~\naddp(2, 3)\n:quit\n", "expect_stdout": "5"}
 			]
 		},
 		{
@@ -1504,7 +1506,9 @@
 				{"cmd": ["bin/repl64", "--json", "-e", "print(c\"hi\")"], "expect_stdout": ["\"output\":\"hi\"", "\"echo\":null"]},
 				{"cmd": ["bin/repl64", "--json", "-e", "this is not valid w"], "expect_fail": true, "expect_stdout": "\"error\":\"compile error\""},
 				{"cmd": ["bin/repl64"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "},
-				{"cmd": ["bin/repl64", "--quiet"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "}
+				{"cmd": ["bin/repl64", "--quiet"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "},
+				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "int myvar_completion_probe64 = 42\nmyvar_completion_p\t + 1\n:quit\n", "expect_stdout": "43"},
+				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "\u001b[200~int addp64(int a, int b):\n\tint total = a + b\n\n\treturn total\n\u001b[201~\naddp64(2, 3)\n:quit\n", "expect_stdout": "5"}
 			]
 		},
 		{
