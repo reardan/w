@@ -27,24 +27,33 @@ acceptable fallback deliverable.
 
 ## 0. In-flight work — keep clear
 
-Two PRs are open on the CUDA/GPU surface: **#344** (CUDA stage 4:
-atomics, explicit memory API, device intrinsics, `range(start, end)`)
-and **#342** (torch stages 1–3: `lib/tensor.w`, `gpu_atomic_add`,
-`gpu_available`). No task below may touch `lib/cuda.w`, `lib/tensor.w`,
-`grammar/gpu_builtin.w`, `grammar/atomic_builtin.w`,
-`code_generator/ptx.w`, `docs/projects/cuda.md`/`torch.md`, or the
-cuda/gpu/tensor test targets. Tasks that brush against them (1d's
-`cuda_diagnostics_test` migration, 2h's grammar-wide change) carry
-explicit defer/rebase notes. #17's bfloat16 half and #28's remaining
-scope ride those PRs' track, not this plan.
+**Update (2026-07-19): PR #344 has merged.** CUDA stage 4 (atomics,
+explicit memory API, device intrinsics, `range(start, end)`, the
+const-based capture-write diagnostic) is now in-tree (merge commit
+`108db42`). Task 1d's `cuda_diagnostics_test` migration is therefore
+**unblocked** — its fixture payoff no longer needs the "only if #344
+has merged by execution time" hedge from its task row below.
+
+One PR remains open on the CUDA/GPU surface: **#342** (torch stages
+1–3: `lib/tensor.w`, `gpu_atomic_add`, `gpu_available` — branch
+`claude/torch-stage123-tensor-gpu`, not yet merged). Its surface
+(`lib/cuda.w`, `lib/tensor.w`, `grammar/gpu_builtin.w`,
+`grammar/atomic_builtin.w`, `code_generator/ptx.w`,
+`docs/projects/cuda.md`/`torch.md`, and the cuda/gpu/tensor test
+targets) stays off-limits — no task below may touch it. Tasks that
+brush against the grammar (2h's grammar-wide change) carry explicit
+defer/rebase notes. #17's bfloat16 half and #28's remaining scope ride
+#342's track, not this plan.
 
 Also verified landed (do NOT schedule): everything in plan B's four
 waves (see its Execution status section and PR #339's issue comments) —
 shell mode MVP, defhash, `--trace`, real DEFLATE + compressed objects,
 silent-exit audit, allocator root cause, PG streaming mode, attach
 calibration/list, the compilation-model/ui-framework/protobuf/
-repl-shell design docs — plus #340 (unlink/rename syscalls) and #343
-(`lib/stat.w`, stat/readlink/basename-style tools).
+repl-shell design docs — plus #340 (unlink/rename syscalls), #343
+(`lib/stat.w`, stat/readlink/basename-style tools), #344 (CUDA stage 4,
+per the update above), and #345 (Unix metadata primitives: utimens,
+chown, passwd, wait_any).
 
 ## 1. Prioritization rationale
 

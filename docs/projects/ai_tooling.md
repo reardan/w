@@ -54,6 +54,59 @@ Shipped from the next-steps backlog:
   `lib/passwd.w` (`/etc/passwd`+`/etc/group`, no NSS), and
   `process_wait_any` for `xargs -P`-style pools. Design:
   `docs/projects/unix_primitives.md`.
+- **`wv2 defhash [--closure] <file.w>...`** (2026-07-18, issue #251
+  D4a): emits one NDJSON record per top-level definition (function,
+  global, struct/union/enum, type alias) declared directly in the root
+  file(s) — `{"file", "name", "kind", "hash", "refs"}` — with `hash` a
+  sha256 over the definition's own token stream (whitespace/comments
+  excluded, so reformatting leaves it unchanged) and `refs` the other
+  recorded definitions it references; `--closure` widens scope to the
+  whole compiled program (matching `deps`'s closure). Known limitations:
+  `refs` is a token-text match against the definition-name set, not real
+  scope resolution (a field/enum-constant name collision or a shadowing
+  local reads as a false positive — documented in `defhash_main`'s doc
+  comment, accepted as out of D4a's scope); generic/operator-overload
+  definitions are invisible to it (the scan-ahead/re-parse machinery
+  never reaches `defhash_note`'s call sites); and `bin/wtest`'s
+  `changed`/`for` selection does not consume it yet, so a comment-only
+  edit to a `lib/` file still selects every importing target. See
+  `ai_tooling_next_steps.md` for the open wiring/coverage follow-ups.
+- **Compiler-wide silent-exit-1 audit (2026-07-18).** Every
+  `error(...)` call site funnels through `warning()`/`error()` in
+  `compiler/tokenizer.w`, which always prints before exiting; a
+  systematic review confirmed all 312 sites (not the ~95 this doc's
+  "Current state" section originally estimated) are safe by
+  construction, along with every direct `exit()`/`asserts()` call and
+  driver-path syscall (`open`/`read`/`write`/`getcwd`/`mmap`) in the
+  compile/link/deps/symbols paths. One new gap found and fixed:
+  `lib/memory_debug.w`'s `debug_tbl_ensure_capacity()` had 5 unchecked
+  bookkeeping-table `mmap()` calls (opt-in debug allocator only), now
+  guarded by `debug_tbl_mmap_failed()` with a clear message before
+  `exit(1)`. Remaining residue (`getchar()`'s read-error/EOF
+  conflation, `lib/generator.w`'s unchecked coroutine-stack `mmap()`,
+  unbounded parser recursion, an unrecognized-CLI-flag UX nit, and the
+  c_import/preprocessor `diag_part` migration gap) is tracked in
+  `ai_tooling_next_steps.md`/the active wave plan. The original
+  2026-07-09 darwin-seed silent-exit report itself remains
+  unreproduced — most likely explained by the seed-generation skew the
+  single-tag `SEEDS` pin (`CLAUDE.md` "Seed promotion") was written to
+  eliminate — but confirming it needs the specific stale, unarchived
+  `w_darwin` seed from that date, which no longer exists in any
+  accessible form.
+- **`itoa(INT_MIN)`/`intstrlen(INT_MIN)` fixes (2026-07-17).** Both
+  pre-negated their input before extracting digits, which overflows
+  back to the same negative value for `INT_MIN` in two's complement, so
+  the digit loop never ran; fixed by extracting digits from the
+  (possibly negative) value directly. `itoa`'s buffer also grew from 16
+  to 24 bytes (a 64-bit `INT_MIN` string is 21 bytes with the NUL).
+  Covered by `test_itoa_int_min`/`test_intstrlen_int_min` in
+  `lib/lib_test.w` (both word sizes via the file's `# wbuild: x64`
+  twin).
+- **`stream_peek_byte` 0xFF masking (2026-07-17).** `lib/stream.w`'s
+  `stream_peek_byte` sign-extended raw bytes, so 0xFF collided with the
+  `-1` EOF sentinel and truncated `stream_read_byte`/`stream_read_line`/
+  `file_read_text`/`file_read_lines` at the first 0xFF byte; fixed by
+  masking (`& 255`). Covered by `stream_binary_test`.
 - **`wexec --explain-cache <target>`** and **`wexec --list --json`**
   (2026-07-17): two read-only introspection surfaces on `tools/wexec.w`.
   `--explain-cache` states, without running anything, whether a target
