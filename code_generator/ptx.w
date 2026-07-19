@@ -325,6 +325,93 @@ void ptx_neg_ax():
 	ptx_line(c"neg.s64 %ax, %ax;")
 
 
+####################### limb/bit intrinsics (device) #########################
+# Device twins of the 32-bit limb/bit lowering in x86.w. Same contract:
+# operands' LOW 32 BITS AS UNSIGNED, results zero-extended, shift/rotate
+# counts mod 32. Most ops mask into 64-bit arithmetic; popcount/clz/ctz
+# use the native PTX b32 forms and the rotates use the sm_32+ funnel
+# shifts (shf.*.wrap masks the count itself). PTX CLAMPS oversized
+# shift counts instead of masking them, so the explicit 'and ..., 31'
+# below is load-bearing.
+
+# mov ecx, eax (the result-pointer operand of mul_wide/add_carry)
+void ptx_mov_cx_ax():
+	ptx_line(c"mov.b64 %cx, %ax;")
+
+
+# mul %ebx unsigned 32x32; high half -> accumulator
+void ptx_alu_mul_hi():
+	ptx_line(c"and.b64 %ax, %ax, 0xffffffff;")
+	ptx_line(c"and.b64 %bx, %bx, 0xffffffff;")
+	ptx_line(c"mul.lo.s64 %ax, %bx, %ax;")
+	ptx_line(c"shr.u64 %ax, %ax, 32;")
+
+
+# low product half -> accumulator, high half stored word-sized via %cx
+void ptx_alu_mul_wide():
+	ptx_line(c"and.b64 %ax, %ax, 0xffffffff;")
+	ptx_line(c"and.b64 %bx, %bx, 0xffffffff;")
+	ptx_line(c"mul.lo.s64 %ax, %bx, %ax;")
+	ptx_line(c"shr.u64 %bx, %ax, 32;")
+	ptx_line(c"st.u64 [%cx], %bx;")
+	ptx_line(c"and.b64 %ax, %ax, 0xffffffff;")
+
+
+# wrapped 32-bit sum -> accumulator, carry (0/1) stored via %cx
+void ptx_alu_add_carry():
+	ptx_line(c"and.b64 %ax, %ax, 0xffffffff;")
+	ptx_line(c"and.b64 %bx, %bx, 0xffffffff;")
+	ptx_line(c"add.s64 %ax, %ax, %bx;")
+	ptx_line(c"shr.u64 %bx, %ax, 32;")
+	ptx_line(c"st.u64 [%cx], %bx;")
+	ptx_line(c"and.b64 %ax, %ax, 0xffffffff;")
+
+
+# value in %bx, count in %ax: 32-bit logical right shift
+void ptx_alu_shr32():
+	ptx_line(c"and.b64 %cx, %bx, 0xffffffff;")
+	ptx_line(c"and.b64 %ax, %ax, 31;")
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"shr.u64 %ax, %cx, %w0;")
+
+
+# value in %bx, count in %ax: rotate via the funnel shift with both
+# sources the same register (shf.l.wrap: (x << c) | (x >> (32-c)))
+void ptx_alu_rotl32():
+	ptx_line(c"cvt.u32.u64 %w0, %bx;")
+	ptx_line(c"cvt.u32.u64 %w1, %ax;")
+	ptx_line(c"shf.l.wrap.b32 %w0, %w0, %w0, %w1;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
+void ptx_alu_rotr32():
+	ptx_line(c"cvt.u32.u64 %w0, %bx;")
+	ptx_line(c"cvt.u32.u64 %w1, %ax;")
+	ptx_line(c"shf.r.wrap.b32 %w0, %w0, %w0, %w1;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
+void ptx_alu_popcount32():
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"popc.b32 %w0, %w0;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
+# clz.b32 returns 32 on zero input, matching the W contract
+void ptx_alu_clz32():
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"clz.b32 %w0, %w0;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
+# ctz(x) == clz(brev(x)); brev(0) == 0 -> 32, matching the W contract
+void ptx_alu_ctz32():
+	ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	ptx_line(c"brev.b32 %w0, %w0;")
+	ptx_line(c"clz.b32 %w0, %w0;")
+	ptx_line(c"cvt.u64.u32 %ax, %w0;")
+
+
 ############################### integer ALU ##################################
 
 # Two-operand forms with the left operand in %bx (alu_add/sub/imul and
@@ -613,7 +700,7 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 	ptx_line(c")")
 	ptx_line(c"{")
 	ptx_line(c".reg .b64 %ax, %bx, %cx, %sp, %bp;")
-	ptx_line(c".reg .b32 %w0;")
+	ptx_line(c".reg .b32 %w0, %w1;")
 	ptx_line(c".reg .f32 %fa, %fb;")
 	ptx_line(c".reg .f64 %da, %db;")
 	ptx_line(c".reg .pred %p;")
