@@ -1,6 +1,8 @@
 # A kernel's body lives in the PTX module, not at a host code address:
-# calling it like a function can only be a miscall. Compiled with the
-# x64 selector by the cuda_diagnostics_test target.
+# calling it like a function can only be a miscall.
+# wfixture: x64
+# expect_fail
+# expect_stderr: kernels cannot be called; use 'launch'
 kernel add(int* v, int n):
 	int i = thread_idx()
 	if i < n:

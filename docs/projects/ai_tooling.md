@@ -42,6 +42,22 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- **`bin/wfixture` arch-selector directive** (2026-07-19): a
+  `# wfixture: <selector>` header line (e.g. `# wfixture: x64`) inserts
+  `<selector>` into the compiler argv between the compiler path and the
+  fixture path, so a fixture that only reproduces under a non-default
+  target (`bin/wv2 x64 ...`) can single-source its expectations again
+  instead of falling back to a hand-written `expect_fail`/`expect_stderr`
+  `build.base.json` step. Does not itself count toward a fixture's
+  required directive count — an expect_stderr/reject_stderr/expect_fail
+  is still needed to assert anything. Payoff: `cuda_diagnostics_test`'s
+  13 hand-written x64-gated gpu/atomics/launch diagnostic steps all
+  migrated into their fixtures' own headers (`tests/gpu_call_error_fixture.w`
+  and 12 siblings), leaving one `bin/wfixture` invocation over 15
+  fixtures; `tests/gpu_x64_required_fixture.w` (no selector — it asserts
+  the *default* 32-bit target's gate error) and the migrated fixtures
+  together exercise both directions of the mechanism.
+  `tools/wfixture.w`.
 - Portable `lib/stat.w` + Linux `statx`/`chmod`/`utimensat`/`readlink`/
   `symlink` wrappers in `lib/__arch__/{x86,x64,arm64}/syscalls.w`
   (2026-07-19): `file_stat_path` / `file_lstat_path`, mode predicates,

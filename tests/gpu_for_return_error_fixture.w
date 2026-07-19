@@ -1,6 +1,8 @@
 # Each 'gpu for' iteration is one GPU thread: there is no host frame
-# to return from inside the outlined body. Compiled with the x64
-# selector by the cuda_diagnostics_test target.
+# to return from inside the outlined body.
+# wfixture: x64
+# expect_fail
+# expect_stderr: 'return' is not supported in 'gpu for'
 import lib.lib
 import lib.cuda
 

@@ -1,8 +1,10 @@
 # Captured scalars are device-local copies: a write inside a 'gpu for'
 # body would silently vanish on the host side, so scalar captures are
 # const-qualified and the write is rejected by the existing
-# assignment-to-const enforcement. Compiled with the x64 selector by
-# the cuda_diagnostics_test target.
+# assignment-to-const enforcement.
+# wfixture: x64
+# expect_fail
+# expect_stderr: assignment to const
 import lib.lib
 import lib.cuda
 

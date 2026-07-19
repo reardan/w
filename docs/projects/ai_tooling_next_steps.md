@@ -193,18 +193,6 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
-- **`bin/wfixture` cannot pass a target selector to the compiler.** The
-  CUDA work (2026-07-17) added compile-diagnostic fixtures that only
-  reproduce under `bin/wv2 x64 ...` (gpu constructs are x64-gated, so
-  the default-target compile stops at the gate error before reaching
-  the interesting diagnostic). wfixture's in-file directive model is
-  exactly right for these, but it always invokes the compiler bare, so
-  every x64-only fixture had to fall back to hand-written
-  `expect_fail`/`expect_stderr` steps in `build.base.json`
-  (`cuda_diagnostics_test`) — the pre-wfixture layout the directives
-  were meant to replace. A `# wfixture: x64` directive (or forwarding
-  extra argv between the compiler path and the first fixture) would let
-  those fixtures single-source their expectations again.
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new
