@@ -7,12 +7,24 @@ models. "Torch-compatible" here means the *capability* stack (tensor ->
 ops -> autograd -> layers -> weight interop), not API emulation — W is
 not growing a Python binding.
 
-**Status: Stages 1-3 implemented** (this PR): the
+**Status: Stages 1-3 implemented** (#342): the
 `gpu_available()` runtime probe, and `lib/tensor.w` — a GPU tensor type
 on CUDA managed memory with elementwise ops, ReLU, an atomic-reduction
 `tensor_sum`, and a one-thread-per-output-element `tensor_matmul2`,
-every op with a CPU fallback path when no GPU is usable. Stages 4-6 are
-sketches.
+every op with a CPU fallback path when no GPU is usable.
+
+**Stage 5/6 groundwork landed** (#347, five parallel workstreams): the
+op surface a training loop needs (sub, axpy, `tensor_matmul2_tn`/`_nt`
+transposed matmuls, row-broadcast bias add, row/col reductions,
+`tensor_relu_grad_into`, host-side `tensor_randn`); `lib/autograd.w` —
+the Stage 5 tape with all backward rules implemented (matmul via the
+transposed variants, relu via the grad mask), finite-difference-tested;
+`lib/mnist.w` — IDX loading into `ndf`/`ndi`; `lib/safetensors.w` —
+the Stage 6 F32 read/write at the `ndf` level; and device-only
+`gpu_exp`/`gpu_log` builtins (`ex2.approx.f32`/`lg2.approx.f32`,
+`grammar/gpu_math_builtin.w`) so softmax can later move on-device.
+Remaining for Stage 5: `lib/nn.w` (linear, softmax-cross-entropy, SGD)
+and the MNIST training loop; Stage 4 (perf/async) is still a sketch.
 
 ## Where this builds from
 
