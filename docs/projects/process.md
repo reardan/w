@@ -129,6 +129,16 @@ control, exec failure 127, timeout kill timing, `wait_timeout` leaving
 the child running, signal decode `128 + signum`, cached reaps, manual
 pipe spawns, and env vector add/replace/prefix-match semantics.
 
+## Multi-child wait
+
+`process_wait_any(list[process*] kids, int hang)` reaps whichever of
+the listed unreaped children exits first and returns its index. The
+non-blocking form (`hang == 0`) returns `process_status_running()` when
+none have exited; the blocking form uses `wait4(-1, …)` then matches
+the pid (Windows polls `process_try_wait`). Already-reaped entries are
+skipped. Designed for `xargs -P`-style worker pools; see
+`docs/projects/unix_primitives.md`.
+
 ## Future work
 
 - CLOEXEC error pipe to distinguish exec failure from a real 127 exit.

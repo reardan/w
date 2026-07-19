@@ -1,6 +1,7 @@
 /*
 Portable file-metadata helpers on top of Linux statx(2) and the sibling
-chmod / utimensat / readlink / symlink wrappers in lib/__arch__/syscalls.w.
+chmod / utimensat / fchownat / readlink / symlink wrappers in
+lib/__arch__/syscalls.w.
 
 struct statx (uapi/linux/stat.h) is 256 bytes with an identical field
 layout on every Linux ABI the compiler targets; only the syscall NUMBER
@@ -12,7 +13,8 @@ for time_now() and that libs/extras/vcs/index.w used for size/mtime.
 Darwin / win64 / wasm stubs return -1 from the arch wrappers; callers
 see a negative errno-style failure.
 
-Design notes: libs/standard/plans/05_filesystem.md (Phase 1 foundation).
+Design notes: libs/standard/plans/05_filesystem.md (Phase 1 foundation),
+docs/projects/unix_primitives.md (explicit utimens / chown).
 */
 import lib.lib
 
@@ -174,7 +176,7 @@ int file_touch(char* path, int create_if_missing):
 	int err = utimensat(path, 0, 0)
 	if (err == 0):
 		return 0
-	if ((create_if_missing == 0) | (err != (0 - 2))):
+	if ((create_if_missing == 0) || (err != (0 - 2))):
 		return err
 	# ENOENT: create then stamp.
 	int fd = create_file(path, 420)
@@ -182,6 +184,31 @@ int file_touch(char* path, int create_if_missing):
 		return fd
 	close(fd)
 	return utimensat(path, 0, 0)
+
+
+# Set atime/mtime to the given whole-second stamps (nanoseconds = 0).
+# `flags` is 0 to follow symlinks or at_symlink_nofollow() to not.
+# Built as two word-sized timespecs so the layout matches every Linux
+# ABI the compiler targets (see lib/time.w's timespec).
+int file_utimens(char* path, int atime_sec, int mtime_sec, int flags):
+	char* times = malloc(4 * __word_size__)
+	save_word(times, atime_sec)
+	save_word(times + __word_size__, 0)
+	save_word(times + 2 * __word_size__, mtime_sec)
+	save_word(times + 3 * __word_size__, 0)
+	int err = utimensat(path, cast(int, times), flags)
+	free(times)
+	return err
+
+
+# Follow symlinks. uid/gid of -1 leave that id unchanged (fchownat(2)).
+int file_chown(char* path, int uid, int gid):
+	return chown(path, uid, gid)
+
+
+# Do not follow symlinks.
+int file_lchown(char* path, int uid, int gid):
+	return lchown(path, uid, gid)
 
 
 # Copy the symlink target into buf (NUL-terminated when there is room).

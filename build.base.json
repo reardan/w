@@ -1095,7 +1095,7 @@
 		{
 			"name": "stat",
 			"deps": ["wv2"],
-			"inputs": ["tools/stat.w", "lib/stat.w"],
+			"inputs": ["tools/stat.w", "lib/stat.w", "lib/passwd.w"],
 			"outputs": ["bin/stat"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/stat.w", "-o", "bin/stat"]}

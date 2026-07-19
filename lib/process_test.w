@@ -170,3 +170,41 @@ void test_spawn_with_piped_streams_and_manual_wait():
 
 void test_getpid_wrapper():
 	assert1(getpid() > 1)
+
+
+void test_wait_any_reaps_first_finished_child():
+	char** slow_argv = strv_new(2)
+	strv_set(slow_argv, 0, c"/bin/sleep")
+	strv_set(slow_argv, 1, c"5")
+	process* slow = process_spawn(c"/bin/sleep", slow_argv, 0)
+	assert1(slow != 0)
+	process* fast = process_spawn(c"/bin/true", argv_1(c"/bin/true"), 0)
+	assert1(fast != 0)
+	list[process*] kids = new list[process*]
+	kids.push(slow)
+	kids.push(fast)
+	int idx = process_wait_any(kids, 1)
+	assert_equal(1, idx)
+	assert_equal(1, fast.reaped)
+	assert_equal(0, process_wait(fast))
+	assert_equal(0, process_kill(slow, sigkill()))
+	assert_equal(128 + sigkill(), process_wait(slow))
+	process_free(slow)
+	process_free(fast)
+	free(cast(void*, kids))
+
+
+void test_wait_any_nonblocking_while_running():
+	char** argv = strv_new(2)
+	strv_set(argv, 0, c"/bin/sleep")
+	strv_set(argv, 1, c"5")
+	process* p = process_spawn(c"/bin/sleep", argv, 0)
+	assert1(p != 0)
+	list[process*] kids = new list[process*]
+	kids.push(p)
+	assert_equal(process_status_running(), process_wait_any(kids, 0))
+	assert_equal(0, process_kill(p, sigkill()))
+	assert_equal(0, process_wait_any(kids, 1))
+	assert_equal(128 + sigkill(), process_wait(p))
+	process_free(p)
+	free(cast(void*, kids))
