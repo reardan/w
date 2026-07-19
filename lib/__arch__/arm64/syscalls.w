@@ -62,6 +62,10 @@ int mkdir(char* path, int mode):
 int rmdir(char* path):
 	return syscall(35, arm64_at_fdcwd(), path, 512)
 
+# renameat(olddirfd, old, newdirfd, new) — both dirs AT_FDCWD.
+int rename(char* oldpath, char* newpath):
+	return syscall7(38, arm64_at_fdcwd(), oldpath, arm64_at_fdcwd(), newpath, 0, 0)
+
 # getdents64: note its record layout differs from the legacy getdents
 # (d_type sits right after d_reclen rather than at the record's end).
 int getdents(int file, char* buf, int count):

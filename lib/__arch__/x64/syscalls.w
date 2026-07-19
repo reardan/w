@@ -43,6 +43,9 @@ int mkdir(char* path, int mode):
 int rmdir(char* path):
 	return syscall(84, path, 0, 0)
 
+int rename(char* oldpath, char* newpath):
+	return syscall(82, oldpath, newpath, 0)
+
 int getdents(int file, char* buf, int count):
 	return syscall(78, file, buf, count)
 

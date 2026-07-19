@@ -75,6 +75,9 @@ int mkdir(char* path, int mode):
 int rmdir(char* path):
 	return syscall(137, path, 0, 0)
 
+int rename(char* oldpath, char* newpath):
+	return syscall(128, oldpath, newpath, 0)
+
 # getdirentries64 (344): reads from the fd's offset like the Linux
 # getdents flavors; the extra off_t* out-parameter receives the new
 # position. NOTE: the Darwin record layout differs from both Linux
