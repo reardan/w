@@ -176,6 +176,20 @@ int gpu_sym_get_value(char* s):
 			error(c"containers and strings cannot be captured in 'gpu for'")
 		int slot = gpu_capture_slot(t, s)
 		ptx_lea_ax_bp_minus((slot + 1) << word_size_log2)
+		# Captured scalars are device-local copies: a write inside the
+		# body would silently vanish on the host side, so they come
+		# back const-qualified and the existing assignment-to-const
+		# enforcement rejects the write. Pointers are exempt (writes
+		# THROUGH a captured pointer are the point, and const-wrapping
+		# a pointer record breaks element-type lookup); bool and var
+		# are exempt (their coerce paths re-promote const records).
+		int unqual = type_unqualified(type)
+		if ((type_get_pointer_level(unqual) == 0) & (unqual != bool_type) & (type_is_var(unqual) == 0)):
+			if (type_is_const(type) == 0):
+				int const_type = type_lookup_const(unqual)
+				if (const_type < 0):
+					const_type = type_push_const(unqual)
+				type = const_type
 		return type
 	int k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
 	# Aggregates occupy several stack words; point at the lowest address

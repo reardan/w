@@ -2242,7 +2242,8 @@
 				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_range_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'gpu for' supports only range(end) and range(start, end)"},
 				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_host_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "atomic_add/atomic_min/atomic_max are only available in gpu code"},
 				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_operand_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu atomics require an int* or float32* first argument"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_minmax_float_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "atomic_min/atomic_max require an int* first argument"}
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_minmax_float_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "atomic_min/atomic_max require an int* first argument"},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_capture_write_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "assignment to const"}
 			]
 		},
 		{
