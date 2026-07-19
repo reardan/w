@@ -184,7 +184,7 @@ int gpu_sym_get_value(char* s):
 		# a pointer record breaks element-type lookup); bool and var
 		# are exempt (their coerce paths re-promote const records).
 		int unqual = type_unqualified(type)
-		if ((type_get_pointer_level(unqual) == 0) & (unqual != bool_type) & (type_is_var(unqual) == 0)):
+		if ((type_get_pointer_level(unqual) == 0) && (unqual != bool_type) && (type_is_var(unqual) == 0)):
 			if (type_is_const(type) == 0):
 				int const_type = type_lookup_const(unqual)
 				if (const_type < 0):

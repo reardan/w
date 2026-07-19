@@ -81,7 +81,7 @@ int atomic_builtin_expr():
 				flavor = 2
 	if (flavor == 0):
 		error(c"gpu atomics require an int* or float32* first argument")
-	if ((flavor == 2) & (kind != 1)):
+	if ((flavor == 2) && (kind != 1)):
 		error(c"atomic_min/atomic_max require an int* first argument")
 	push_eax()
 	stack_pos = stack_pos + 1
