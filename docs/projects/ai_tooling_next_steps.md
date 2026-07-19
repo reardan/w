@@ -228,11 +228,13 @@ is a queue, not an archive.
   a raw `SIGSEGV` with nothing printed — the same outcome as a silent
   exit-1 (process dies, no message), just signal-terminated rather than a
   clean `exit(1)`. (scheduled: wave plan C task 2h)
-- **Unrecognized CLI flags aren't detected as such.** `bin/wv2
-  --bounds=xyz` falls through `link_impl`'s flag loop and is treated as
-  an input filename, failing with the ordinary (and confusing)
-  `no such file: '--bounds=xyz'` instead of an "unrecognized option"
-  diagnostic. (scheduled: wave plan C task 1g)
+- **Shipped (2026-07-19, wave plan C task 1g): unrecognized CLI flags
+  now get a real diagnostic.** `link_impl`'s flag loop (the common tail
+  for link/check/deps/symbols/defhash) errors `unrecognized option:
+  '<arg>'` and exits 1 for any unknown `-`-prefixed argument instead of
+  treating it as an input filename; pinned by
+  `unrecognized_option_test` (which also guards that `--bounds=off`
+  still parses as a flag).
 
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 
