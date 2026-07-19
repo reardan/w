@@ -30,6 +30,22 @@ is a queue, not an archive.
   recovery, which stays a research project. Cheap partial win: after an
   error in file A, agents re-check to find errors behind it — nothing to
   build, just keep the limitation documented in skills.
+- **"Cannot find symbol" for a same-file forward call gives no hint that
+  a C-style prototype (`type name(params);`) would fix it.** Found while
+  reorganizing `debugger/attach.w` (wave plan C task 3c): moving a helper
+  function earlier in the file than a callee it needs (no pre-pass
+  registers signatures ahead of bodies; a name must already be in the
+  symbol table, `compiler/symbol_table.w`'s `sym_get_value`) errors with
+  a bare `Cannot find symbol: 'callee'` — indistinguishable from a typo
+  or a genuinely missing import. `grammar/program.w:183-185` shows the
+  existing fix-up (a semicolon-terminated prototype creates an `'U'`
+  undefined-global symbol that later resolution backpatches,
+  `sym_declare_global`/`sym_define_global`), but nothing in the
+  diagnostic suggests it. A `w check` improvement: when the unresolved
+  name is defined later in the same file (or its close-by-name
+  suggestion search already scans forward), append "declared later in
+  this file — forward-reference it with a prototype (`type
+  callee(...);`) before this point" to the existing message.
 - **Shipped (2026-07-17, wave 2f): the bool-bitwise condition hint is
   now on by default for every call-free join.** See `ai_tooling.md`'s
   status section for the shipped description; `--bool-ops` survives as

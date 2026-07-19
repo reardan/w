@@ -6,15 +6,16 @@ space and drives it from signal handlers, attach mode controls a separate,
 already-running process through ptrace(2). It is a self-contained command
 loop: wdbg.w's signal handlers and execution-control state are never
 entered, so attaching cannot perturb the self-hosting model and needs
-none of that machinery. Memory inspection is the one place attach mode
-plugs into shared code: debugger/memory.w's target-access seam (#123
-phase 2) dispatches dbg_mem_readable/dbg_mem_read through a registered
-reader, and this file installs at_mem_readable/at_mem_read -- thin
-wrappers around the existing PTRACE_PEEKDATA read below -- as that
-reader (wdbg_attach_run), so at_examine (x/st) goes through the same
-entry points the in-process debugger uses. Registers stay a separate,
-attach-local model (user_regs_struct via PTRACE_GETREGS, not the
-in-process sigcontext accessors); unifying those is future work.
+none of that machinery. Memory and register inspection are where attach
+mode plugs into shared code: debugger/memory.w's target-access seam (#123
+phase 2) dispatches dbg_mem_readable/dbg_mem_read/dbg_mem_write_word
+through a registered reader/writer, and debugger/registers.w's
+dbg_reg_pc/dbg_reg_sp dispatch the same way for the trapped pc/sp. This
+file installs at_mem_readable/at_mem_read/at_mem_write (thin wrappers
+around the existing PTRACE_PEEKDATA/POKEDATA calls below) and
+dbg_reg_pc_attach/dbg_reg_sp_attach (PTRACE_GETREGS) as those seams'
+backends (wdbg_attach_run), so at_examine (x/st), frame walking and locals
+all go through the same entry points the in-process debugger uses.
 
 Two levels of capability:
 
@@ -26,21 +27,34 @@ Two levels of capability:
 
   * Symbolized mode (when a source file is given and validates): function
     names, file:line and source listing for addresses inside the
-    debuggee's code. wdbg recompiles the source in-process to regenerate
+    debuggee's code, plus locals/args inspection and frame selection
+    (#123 phase 5). wdbg recompiles the source in-process to regenerate
     the symbol and line tables (which are never emitted into the ELF), then
     maps target addresses to those tables through a constant delta.
 
     The delta is derived from the target's ELF entry point and the compiler's
     fixed header/entry-stub prologue, then VALIDATED by comparing the first
     bytes of the runtime-stub region in the process against the freshly
-    compiled bytes. A mismatch (stale source, different compiler, a PIE or
-    non-x86 binary) disables symbols and falls back to raw mode rather than
-    printing wrong names. Symbolization is currently x86 (32-bit) only; on
-    other word sizes attach mode stays in raw mode.
+    compiled bytes. A mismatch (stale source, different compiler, or a PIE
+    binary) disables symbols and falls back to raw mode rather than printing
+    wrong names. Symbolization works for both x86 and x86-64 targets:
+    wdbg_attach_compile (debugger/wdbg.w) recompiles for whichever word size
+    the running debugger binary itself was built for, so bin/wdbg64
+    symbolizes 64-bit attach targets and bin/wdbg symbolizes 32-bit ones.
+
+Registers: attach mode's own model (user_regs_struct via PTRACE_GETREGS)
+is installed as debugger/registers.w's dbg_reg_pc/dbg_reg_sp seam backend
+(dbg_reg_pc_attach/dbg_reg_sp_attach below), the same seam the in-process
+debugger's sigcontext reads are installed behind (#123 phase 2 remainder).
+Frame walking (at_frames_compute) and locals/args (reusing
+debugger/locals.w directly) are built on that register seam plus the
+memory seam above, so they work the same way against a ptrace-attached
+process that debugger/wdbg.w's equivalents do in-process.
 
 Scope: Linux, statically linked non-PIE x86/x86-64 ELF debuggees, attached
-locally. Expression evaluation and locals inspection are not yet wired into
-attach mode; see docs/projects/debugger_attach.md.
+locally. Expression evaluation (print/set are name lookups only, not a
+general evaluator) is not yet wired into attach mode; see
+docs/projects/debugger_attach.md.
 */
 import lib.lib
 import lib.line_edit
@@ -49,6 +63,8 @@ import debugger.symbols
 import debugger.breakpoints
 import debugger.disas
 import debugger.memory
+import debugger.registers
+import debugger.locals
 
 
 # --- ptrace request numbers (classic ABI, identical on i386 and x86-64) ---
@@ -154,6 +170,18 @@ int at_mem_read(int addr, int width):
 	return v & ((1 << (width * 8)) - 1)
 
 
+# Word-sized write through the seam (debugger/memory.w's dbg_mem_write_fn),
+# a thin wrapper around the existing PTRACE_POKEDATA write below -- no new
+# ptrace semantics, mirroring at_mem_read/at_mem_readable above. Installed
+# so 'set' can write a local, argument or global in attach mode the same
+# way dbg_set_command does in-process.
+int at_mem_write(int addr, int value):
+	int r = at_write_word(addr, value)
+	if ((r < 0) && (r >= -4095)):
+		return 0
+	return 1
+
+
 # --- registers ---
 void at_getregs():
 	sys_ptrace(at_GETREGS(), attach_pid, 0, attach_regs)
@@ -168,6 +196,25 @@ int at_reg(int offset):
 void at_set_ip(int value):
 	save_word(cast(char*, attach_regs + at_off_ip()), value)
 	sys_ptrace(at_SETREGS(), attach_pid, 0, attach_regs)
+
+
+# --- register seam (#123 phase 2 remainder, docs/projects/debugger_attach.md) ---
+# Installed as debugger/registers.w's dbg_reg_pc_fn/dbg_reg_sp_fn by
+# wdbg_attach_run, mirroring the memory seam install just above: frame
+# walking (at_frames_compute below) and anything else that only needs "the
+# current pc" / "the current sp" goes through dbg_reg_pc()/dbg_reg_sp()
+# instead of calling at_getregs()+at_reg() directly, so the same call sites
+# work whether the register file came from a sigcontext (in-process) or a
+# ptrace user_regs_struct (here). Nothing about the byte layout (attach_regs
+# vs. a sigcontext buffer) crosses the seam -- only the two logical values.
+int dbg_reg_pc_attach():
+	at_getregs()
+	return at_reg(at_off_ip())
+
+
+int dbg_reg_sp_attach():
+	at_getregs()
+	return at_reg(at_off_sp())
 
 
 # --- wait status ---
@@ -315,6 +362,162 @@ int at_current_file(int target):
 	return dbg_line_file(entry)
 
 
+# --- frame list, selection and locals (#123 phase 5: docs/projects/debugger_attach.md) ---
+# A frame list of (pc, base) pairs, walked from the current stop through
+# the target's stack -- the same shape debugger/wdbg.w keeps in-process
+# (dbg_fr_pc/dbg_fr_base there), rebuilt here on top of the two seams: the
+# memory seam above (dbg_mem_readable/dbg_mem_read_word, already shared
+# with the in-process debugger) and the register seam
+# (dbg_reg_pc/dbg_reg_sp, debugger/registers.w) for the trapped pc/sp this
+# task adds. debugger/locals.w's stack-slot arithmetic
+# (dbg_frame_compute/dbg_local_runtime_addr) needs nothing else: it already
+# takes a plain pc/esp pair and reads through dbg_mem_*, so it works
+# unmodified once attach mode can supply those two values for any selected
+# frame, not just frame 0.
+#
+# wdbg.w's in-process frame walker also recognizes one case that has no
+# attach-mode equivalent: main()'s own return address there points outside
+# the debuggee entirely, into wdbg's own directly-addressable image (wdbg
+# calls the debuggee's main() itself). In attach mode main is called by the
+# debuggee's own entry stub, which is part of the same recompiled code
+# range, so the walk below just stops once it reaches main -- there is no
+# separate process boundary to cross.
+int at_fr_max():
+	return 16
+
+int attach_fr_pc   /* absolute pc per frame (word slots) */
+int attach_fr_base /* frame base per frame, 0 = unknown (word slots) */
+int attach_fr_count
+int attach_fr_sel
+
+
+void at_fr_store(int pc, int base):
+	if (attach_fr_count >= at_fr_max()):
+		return;
+	save_word(cast(char*, attach_fr_pc + attach_fr_count * __word_size__), pc)
+	save_word(cast(char*, attach_fr_base + attach_fr_count * __word_size__), base)
+	attach_fr_count = attach_fr_count + 1
+
+
+int at_fr_pc_at(int n):
+	return load_word(cast(char*, attach_fr_pc + n * __word_size__))
+
+
+int at_fr_base_at(int n):
+	return load_word(cast(char*, attach_fr_base + n * __word_size__))
+
+
+# 1 when the bytes just before a target address decode as one of the
+# compiler's call forms (call *eax/*rax, or call rel32 in asm stubs) --
+# mirrors wdbg.w's dbg_looks_like_return, reading through the disassembly
+# byte-seam (debugger/disas.w's dbg_disas_read_byte) instead of a direct
+# pointer deref, so it works against ptrace-attached memory.
+int at_looks_like_return(int v):
+	if (at_in_code(v - 2)):
+		if ((dbg_disas_read_byte(v - 2) == 255) && (dbg_disas_read_byte(v - 1) == 208)):
+			return 1
+	if (at_in_code(v - 5)):
+		if (dbg_disas_read_byte(v - 5) == 232):
+			return 1
+	return 0
+
+
+# Recompute the frame list for a stop at (target) stop_addr, using the
+# register seam for the current sp and the memory seam to walk the stack.
+# Only meaningful once symbolized -- raw mode has no line/stack_pos tables
+# to interpret stack words with.
+void at_frames_compute(int stop_addr):
+	if (attach_fr_pc == 0):
+		attach_fr_pc = cast(int, malloc(at_fr_max() * __word_size__))
+		attach_fr_base = cast(int, malloc(at_fr_max() * __word_size__))
+	attach_fr_count = 0
+	attach_fr_sel = 0
+	int esp = dbg_reg_sp()
+	int base0 = 0
+	if (at_in_code(stop_addr)):
+		int entry = dbg_find_line(at_to_v(stop_addr) - code_offset)
+		if (entry >= 0):
+			if (dbg_line_stack(entry) >= 0):
+				base0 = esp + dbg_line_stack(entry) * __word_size__
+	at_fr_store(stop_addr, base0)
+	int main_at = dbg_function_at(sym_address(c"main"))
+	int done = (dbg_function_at(at_to_v(stop_addr)) == main_at)
+	int i = 0
+	while ((i < 2048) && (attach_fr_count < at_fr_max()) && (done == 0)):
+		int slot = esp + i * __word_size__
+		if (dbg_mem_readable(slot, __word_size__) == 0):
+			return;
+		int v = dbg_mem_read_word(slot)
+		if (at_in_code(v)):
+			if (at_looks_like_return(v)):
+				save_word(cast(char*, attach_fr_base + (attach_fr_count - 1) * __word_size__), slot)
+				if (dbg_function_at(at_to_v(v) - 1) == main_at):
+					done = 1
+				else:
+					at_fr_store(v - 1, 0)
+		i = i + 1
+
+
+# The selected frame's pc: the current stop for frame 0 (via the register
+# seam), the return-site address for an older frame.
+int at_sel_pc():
+	if ((attach_fr_sel <= 0) || (attach_fr_sel >= attach_fr_count)):
+		return dbg_reg_pc()
+	return at_fr_pc_at(attach_fr_sel)
+
+
+# sp at the selected frame's statement boundary, or 0 when the frame's base
+# or line info is unknown (locals cannot be addressed then).
+int at_sel_esp():
+	if ((attach_fr_sel <= 0) || (attach_fr_sel >= attach_fr_count)):
+		return dbg_reg_sp()
+	int base = at_fr_base_at(attach_fr_sel)
+	if (base == 0):
+		return 0
+	int pc = at_fr_pc_at(attach_fr_sel)
+	if (at_in_code(pc) == 0):
+		return 0
+	int entry = dbg_find_line(at_to_v(pc) - code_offset)
+	if (entry < 0):
+		return 0
+	int depth = dbg_line_stack(entry)
+	if (depth < 0):
+		return 0
+	return base - depth * __word_size__
+
+
+void at_frame_announce(int n):
+	print(c"#")
+	char* digits = itoa(n)
+	print(digits)
+	free(digits)
+	print(c"  ")
+	at_print_location(at_fr_pc_at(n))
+
+
+void at_frame_select(int n):
+	attach_fr_sel = n
+	at_frame_announce(n)
+	if (n > 0):
+		if (at_sel_esp() == 0):
+			println(c"(frame base unknown: locals are not addressable here)")
+
+
+# frame [n]: select a frame (no argument: show the selected frame).
+void at_frame_command(char* arg):
+	if (attach_symbolized == 0):
+		println(c"no source: frame selection unavailable")
+		return;
+	int n = attach_fr_sel
+	if (arg[0] != 0):
+		n = atoi(arg)
+		if ((n < 0) || (n >= attach_fr_count)):
+			print(c"no frame ")
+			println(arg)
+			return;
+	at_frame_select(n)
+
+
 # --- symbolization calibration ---
 # The source was recompiled through the same ELF backend that built the
 # on-disk binary (wdbg_attach_compile), so code_offset is the load base
@@ -351,8 +554,12 @@ int at_read_exe_image(int pid, char* buf, int n):
 
 
 void at_calibrate():
-	if (word_size != 4):
-		return; /* symbolization is x86 (32-bit ELF) only for now */
+	# word_size always matches __word_size__ here: wdbg_attach_compile
+	# (debugger/wdbg.w) recompiles for whichever word size the running
+	# debugger binary itself was built for (passing the "x64" selector
+	# when __word_size__ == 8), so a 32-bit attach (bin/wdbg) always
+	# validates a 32-bit image and a 64-bit attach (bin/wdbg64) always
+	# validates a 64-bit one -- this needs no word-size branch itself.
 	attach_delta = 0
 	char* buf = malloc(codepos)
 	if (at_read_exe_image(attach_pid, buf, codepos) == 0):
@@ -440,44 +647,28 @@ void at_examine(int addr, int count):
 
 
 void at_print_stack():
-	at_getregs()
-	at_examine(at_reg(at_off_sp()), 16)
+	at_examine(dbg_reg_sp(), 16)
 
 
-# Heuristic backtrace: frame 0 is the current ip, then every stack word that
-# maps to a real statement boundary in the debuggee's code is reported as a
-# return address. Only meaningful when symbolized.
+# Backtrace over the precomputed frame list (at_frames_compute, kept fresh
+# at every stop by wdbg_attach_run/at_report_stop below), the same
+# call-site-decode heuristic wdbg.w's in-process dbg_backtrace uses,
+# generalized behind the register and memory seams. Only meaningful when
+# symbolized: raw mode has no line/stack_pos tables to walk with.
 void at_backtrace():
-	at_getregs()
-	int ip = at_reg(at_off_ip())
-	print(c"#0  ")
-	at_print_location(ip)
 	if (attach_symbolized == 0):
+		print(c"#0  ")
+		at_print_location(dbg_reg_pc())
 		println(c"(no source: raw backtrace unavailable; use st for a raw stack dump)")
 		return;
-	int sp = at_reg(at_off_sp())
-	int shown = 1
-	int i = 0
-	while ((i < 4096) && (shown < 32)):
-		int w = at_read_word(sp + i * __word_size__)
-		if (attach_read_ok == 0):
-			return;
-		if (at_in_code(w)):
-			int entry = dbg_find_line(at_to_v(w) - code_offset)
-			if (entry >= 0):
-				print(c"#")
-				char* d = itoa(shown)
-				print(d)
-				free(d)
-				print(c"  ")
-				at_print_location(w)
-				shown = shown + 1
-		i = i + 1
+	int k = 0
+	while (k < attach_fr_count):
+		at_frame_announce(k)
+		k = k + 1
 
 
 void at_where():
-	at_getregs()
-	at_print_location(at_reg(at_off_ip()))
+	at_print_location(at_sel_pc())
 
 
 void at_info(char* arg):
@@ -511,8 +702,18 @@ void at_info(char* arg):
 			i = i + 1
 		if (shown == 0):
 			println(c"no breakpoints set")
+	else if ((strcmp(arg, c"l") == 0) | (strcmp(arg, c"locals") == 0)):
+		if (attach_symbolized):
+			dbg_print_frame_vars(at_to_v(at_sel_pc()), at_sel_esp(), 'L')
+		else:
+			println(c"no source: locals unavailable")
+	else if ((strcmp(arg, c"a") == 0) | (strcmp(arg, c"args") == 0)):
+		if (attach_symbolized):
+			dbg_print_frame_vars(at_to_v(at_sel_pc()), at_sel_esp(), 'A')
+		else:
+			println(c"no source: args unavailable")
 	else:
-		println(c"info topics: registers breakpoints functions files")
+		println(c"info topics: registers breakpoints functions files locals args")
 
 
 void at_help():
@@ -520,8 +721,10 @@ void at_help():
 	println(c"  c/continue  si/step  detach  q/quit  kill")
 	println(c"  b/break <function | line | file:line | 0xADDR>   d/delete <n>")
 	println(c"  r/registers  x <0xADDR> [count]  st/stack  bt/backtrace")
+	println(c"  f/frame [n]  up  down  (select a backtrace frame)")
+	println(c"  p/print <name>  set <name> <value>  (locals, args or globals)")
 	println(c"  disas [addr | function] [count]   disas on|off (context at stops)")
-	println(c"  l/line (where)  list [line]  i registers | breakpoints | functions | files")
+	println(c"  l/line (where)  list [line]  i registers | breakpoints | functions | files | locals | args")
 
 
 # --- argument helpers (local: attach.w cannot import wdbg.w) ---
@@ -544,6 +747,69 @@ int at_number(char* s):
 	return atoi(s)
 
 
+# print <name>: a local, argument (at the selected frame) or a defined
+# global, by name. Attach mode has no expression compiler yet (phase 6 is
+# still open, docs/projects/debugger_attach.md) -- anything else is
+# reported as unsupported rather than silently doing nothing.
+void at_print_command(char* arg):
+	if (attach_symbolized == 0):
+		println(c"no source: print unavailable")
+		return;
+	if (arg[0] == 0):
+		println(c"usage: print <name>")
+		return;
+	int pc = at_to_v(at_sel_pc())
+	int esp = at_sel_esp()
+	int note = dbg_local_find(arg, pc)
+	if (note >= 0):
+		dbg_print_local(note, esp)
+		return;
+	int g = dbg_global_find(arg)
+	if (g >= 0):
+		if (dbg_sym_symtype(g) != 2):
+			print(arg)
+			print(c" = ")
+			dbg_print_typed_value(dbg_sym_address(g), dbg_sym_type(g))
+			put_char(10)
+			return;
+	println(c"unknown variable (attach mode cannot evaluate general expressions yet)")
+
+
+# set <name> <value>: writes a local, argument (at the selected frame) or
+# global word.
+void at_set_command(char* arg):
+	if (attach_symbolized == 0):
+		println(c"no source: set unavailable")
+		return;
+	char* value_text = at_split_word(arg)
+	if ((arg[0] == 0) || (value_text[0] == 0)):
+		println(c"usage: set <name> <value>")
+		return;
+	int v = at_number(value_text)
+	int pc = at_to_v(at_sel_pc())
+	int esp = at_sel_esp()
+	int note = dbg_local_find(arg, pc)
+	if (note >= 0):
+		int addr = dbg_local_runtime_addr(note, esp)
+		if (dbg_mem_readable(addr, __word_size__) == 0):
+			println(c"variable is not addressable here")
+			return;
+		dbg_mem_write_word(addr, v)
+		dbg_print_local(note, esp)
+		return;
+	int g = dbg_global_find(arg)
+	if (g >= 0):
+		if (dbg_sym_symtype(g) != 2):
+			dbg_mem_write_word(dbg_sym_address(g), v)
+			print(arg)
+			print(c" = ")
+			dbg_print_typed_value(dbg_sym_address(g), dbg_sym_type(g))
+			put_char(10)
+			return;
+	print(c"unknown variable: ")
+	println(arg)
+
+
 # Multi-line source listing centered on the stopped ip (or an explicit line
 # number), like wdbg.w's in-process 'list'. Only meaningful once symbolized:
 # a mismatched recompile's tables cannot be trusted for anything beyond raw
@@ -552,8 +818,7 @@ void at_list_command(char* arg):
 	if (attach_symbolized == 0):
 		println(c"no source: listing unavailable")
 		return;
-	at_getregs()
-	int target = at_reg(at_off_ip())
+	int target = at_sel_pc()
 	if (at_in_code(target) == 0):
 		println(c"no line info (address is outside the debuggee)")
 		return;
@@ -582,8 +847,9 @@ void at_break_command(char* arg):
 		if (attach_symbolized == 0):
 			println(c"no source: set breakpoints by address (0xADDR or *ADDR)")
 			return;
-		at_getregs()
-		int v = bp_resolve_target(arg, at_current_file(at_reg(at_off_ip())))
+		# A bare line number resolves against the actual stop, not the
+		# selected frame -- matches wdbg.w's dbg_current_file(stop_addr).
+		int v = bp_resolve_target(arg, at_current_file(dbg_reg_pc()))
 		if (v == 0):
 			return;
 		target = v + attach_delta
@@ -646,6 +912,10 @@ void at_report_stop(int status):
 		int bp = at_bp_find(ip - 1)
 		if (bp >= 0):
 			at_set_ip(ip - 1) /* rewind over the executed int3 */
+			# Keep the frame list (and so locals/frame selection) fresh at
+			# every stop, like wdbg.w's wdbg_command_loop does in-process.
+			if (attach_symbolized):
+				at_frames_compute(ip - 1)
 			print(c"hit breakpoint ")
 			char* d = itoa(bp + 1)
 			print(d)
@@ -655,11 +925,15 @@ void at_report_stop(int status):
 			if (dbg_disas_auto):
 				dbg_disas_show_context(ip - 1)
 			return;
+		if (attach_symbolized):
+			at_frames_compute(ip)
 		at_print_location(ip)
 		return;
 	# Any other signal is held pending and redelivered on the next resume.
 	if (sig != 19): /* not the initial/ordinary SIGSTOP */
 		attach_pending_sig = sig
+	if (attach_symbolized):
+		at_frames_compute(ip)
 	print(c"stopped by signal ")
 	char* d = itoa(sig)
 	println(d)
@@ -673,8 +947,7 @@ void at_continue():
 		return;
 	# If stopped on a breakpoint, single-step over the real instruction with
 	# the int3 removed, then re-arm before running at full speed.
-	at_getregs()
-	int bp = at_bp_find(at_reg(at_off_ip()))
+	int bp = at_bp_find(dbg_reg_pc())
 	if (bp >= 0):
 		at_bp_disarm(bp)
 		at_resume(at_SINGLESTEP())
@@ -691,8 +964,7 @@ void at_step():
 	if (attach_alive == 0):
 		println(c"process is not running")
 		return;
-	at_getregs()
-	int bp = at_bp_find(at_reg(at_off_ip()))
+	int bp = at_bp_find(dbg_reg_pc())
 	if (bp >= 0):
 		at_bp_disarm(bp)
 	at_resume(at_SINGLESTEP())
@@ -706,7 +978,7 @@ void at_step():
 	# Single-stepping is instruction-level work: always show the
 	# surrounding instructions, like the in-process debugger's 'si'.
 	if (attach_alive):
-		dbg_disas_show_context(at_reg(at_off_ip()))
+		dbg_disas_show_context(dbg_reg_pc())
 
 
 void at_detach():
@@ -765,9 +1037,28 @@ void at_command_loop():
 			at_delete_command(arg)
 		else if ((strcmp(command, c"bt") == 0) | (strcmp(command, c"backtrace") == 0)):
 			at_backtrace()
+		else if ((strcmp(command, c"f") == 0) | (strcmp(command, c"frame") == 0)):
+			at_frame_command(arg)
+		else if (strcmp(command, c"up") == 0):
+			if (attach_symbolized == 0):
+				println(c"no source: frame selection unavailable")
+			else if (attach_fr_sel + 1 >= attach_fr_count):
+				println(c"no caller frame")
+			else:
+				at_frame_select(attach_fr_sel + 1)
+		else if (strcmp(command, c"down") == 0):
+			if (attach_symbolized == 0):
+				println(c"no source: frame selection unavailable")
+			else if (attach_fr_sel <= 0):
+				println(c"already at the innermost frame")
+			else:
+				at_frame_select(attach_fr_sel - 1)
+		else if ((strcmp(command, c"p") == 0) | (strcmp(command, c"print") == 0)):
+			at_print_command(arg)
+		else if (strcmp(command, c"set") == 0):
+			at_set_command(arg)
 		else if ((strcmp(command, c"disas") == 0) | (strcmp(command, c"disassemble") == 0)):
-			at_getregs()
-			dbg_disas_command(at_reg(at_off_ip()), arg)
+			dbg_disas_command(at_sel_pc(), arg)
 		else if ((strcmp(command, c"l") == 0) | (strcmp(command, c"line") == 0) | (strcmp(command, c"where") == 0)):
 			at_where()
 		else if (strcmp(command, c"list") == 0):
@@ -808,11 +1099,21 @@ int wdbg_attach_run(int pid, int have_symbols):
 	attach_pending_sig = 0
 	attach_symbolized = 0
 
-	# Install this module's ptrace reads as the target-access seam's
-	# backend (debugger/memory.w), so at_examine and any future attach-mode
-	# consumer of the shared dbg_mem_* entry points read through ptrace.
+	# Install this module's ptrace reads (and, now that locals/set need it,
+	# write) as the target-access seam's backend (debugger/memory.w), so
+	# at_examine, at_set_command and any future attach-mode consumer of the
+	# shared dbg_mem_* entry points go through ptrace.
 	dbg_mem_readable_fn = cast(int, at_mem_readable)
 	dbg_mem_read_fn = cast(int, at_mem_read)
+	dbg_mem_write_fn = cast(int, at_mem_write)
+
+	# Install this module's ptrace GETREGS reads as the register seam's
+	# backend (debugger/registers.w, #123 phase 2 remainder), so frame
+	# walking and locals addressing (at_frames_compute, at_sel_pc/at_sel_esp)
+	# read the current pc/sp the same way the in-process debugger's
+	# sigcontext-backed seam does.
+	dbg_reg_pc_fn = cast(int, dbg_reg_pc_attach)
+	dbg_reg_sp_fn = cast(int, dbg_reg_sp_attach)
 
 	int r = sys_ptrace(at_ATTACH(), pid, 0, 0)
 	if ((r < 0) && (r >= -4095)):
@@ -851,8 +1152,10 @@ int wdbg_attach_run(int pid, int have_symbols):
 		println(c" (symbols loaded)")
 	else:
 		println(c" (raw mode: no symbols)")
-	at_getregs()
-	at_print_location(at_reg(at_off_ip()))
+	int start_ip = dbg_reg_pc()
+	if (attach_symbolized):
+		at_frames_compute(start_ip)
+	at_print_location(start_ip)
 
 	at_command_loop()
 	return 0

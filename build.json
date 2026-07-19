@@ -1300,10 +1300,11 @@
 		},
 		{
 			"name": "attach_test",
-			"deps": ["wdbg"],
+			"deps": ["wdbg", "wdbg_x64"],
 			"inputs": ["tools/attach_test.sh", "tests/attach_target_fixture.w", "tests/debug_fixture.w"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/attach_target_fixture.w", "-o", "bin/attach_target"]},
+				{"cmd": ["bin/wv2", "x64", "tests/attach_target_fixture.w", "-o", "bin/attach_target64"]},
 				{"cmd": ["sh", "tools/attach_test.sh"], "expect_stdout": "attach test OK"}
 			]
 		},

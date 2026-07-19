@@ -5,8 +5,17 @@ import lib.lib
 
 int attach_counter
 
+# A nested call with a local in each frame, so the attach test can exercise
+# args/locals inspection and frame selection (#123 phase 5) against a real
+# two-level call stack: a breakpoint in bump gives frame 0 = bump (arg n,
+# local inc), frame 1 = slow_step (arg n, local step), frame 2 = main.
+int bump(int n):
+	int inc = n + 1
+	return inc
+
 int slow_step(int n):
-	return n + 1
+	int step = bump(n)
+	return step
 
 int main(int argc, int argv):
 	# prctl(PR_SET_PTRACER=0x59616d61, PR_SET_PTRACER_ANY=-1). The syscall()

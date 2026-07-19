@@ -209,13 +209,15 @@ current state:
 				fatal-signal post-mortem stops (segv handler)
 				line editing and history at the prompt (lib/line_edit.w)
 				wdbg --attach <pid> [file.w]: out-of-process ptrace attach --
-					attach/detach/kill, registers/memory/stack (memory reads/writes
-					share a seam with the in-process debugger, debugger/memory.w),
-					x86 32-bit symbolization (recompiles the target and calibrates
-					against /proc/<pid>/exe) enabling list/where/bt/i functions/
-					i files, breakpoints and stepping (b/d/c/si); register seam
-					(sigcontext vs ptrace user_regs_struct) still unseamed;
-					design: docs/projects/debugger_attach.md
+					attach/detach/kill, registers/memory/stack (memory and register
+					reads/writes share a seam with the in-process debugger,
+					debugger/memory.w + debugger/registers.w), x86 and x86-64
+					symbolization (recompiles the target for whichever word size
+					the running debugger binary itself is, calibrates against
+					/proc/<pid>/exe) enabling list/where/bt/i functions/i files,
+					breakpoints and stepping (b/d/c/si), frame selection
+					(f/up/down) and locals/args/set by name (i locals/i args/p/set)
+					through the same seams; design: docs/projects/debugger_attach.md
 		library and data structures:
 			malloc/free/realloc as a library module (lib/memory.w)
 			list
@@ -371,10 +373,12 @@ current state:
 				#163-#168/#171) are done, including a randomized round-trip
 				fuzz harness; wiring `disas` into wdbg itself is the
 				epic's one remaining phase (issue #169)
-			wdbg --attach remaining work: register-seam unification,
-				locals/args/set/frames, restricted expression eval, hardware
-				watchpoints (DR0-DR7), and x86-64/dynamic-PIE symbolization
-				(docs/projects/debugger_attach.md, issue #123)
+			wdbg --attach remaining work: restricted expression eval
+				(p/set beyond a name lookup) and hardware watchpoints
+				(DR0-DR7) -- register-seam unification, locals/args/set/
+				frames and x86-64 symbolization landed; dynamic/PIE targets
+				stay out of scope (docs/projects/debugger_attach.md, issue
+				#123)
 		code generation:
 			webassembly stage 5 polish: json builtins on wasm, a browser
 				host shim, direct-call optimization
