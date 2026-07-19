@@ -106,11 +106,11 @@ out=$(bin/wtest changed --defhash scratch_lib.w)
 echo "$out" | grep -qx scratch_target || fail "real edit: --defhash did not select scratch_target"
 
 # Explicit-generics syntax ('T max[T](T a, T b):', docs/projects/
-# generics.md): --defhash must fall back even on a comment-only edit,
-# because a generic definition's body is invisible to 'bin/wv2 defhash'
-# (compiler/compiler.w's defhash_main doc comment) -- a plain name/hash
-# comparison of the OTHER (recorded) definitions would otherwise look
-# "unchanged" no matter what changed inside the generic one.
+# generics.md): wave plan C task 4f threaded defhash bookkeeping through
+# the generic scan-ahead machinery (grammar/generic.w), so a generic
+# definition's own span is now recorded (kind 'generic_function') and
+# hashed like any other definition -- a comment-only edit correctly
+# SKIPs, same as an ordinary function, instead of always falling back.
 git checkout -q -- scratch_lib.w
 cat > scratch_lib.w <<'EOF'
 int scratch_lib_add(int a, int b):
@@ -124,21 +124,86 @@ git add scratch_lib.w
 git commit -q -m "add an explicit-generics definition"
 printf '\n# comment only, generics still present\n' >> scratch_lib.w
 out=$(bin/wtest changed --defhash scratch_lib.w)
-echo "$out" | grep -qx scratch_target || fail "generic-shaped content: --defhash skipped scratch_target on a comment-only edit"
+echo "$out" | grep -qx scratch_target && fail "generic definition: comment-only edit still selected scratch_target"
 
-# 'operator' overload syntax: same fallback, via the plain word check
-# rather than the bracket check (wtest_defhash_risky_text, tools/test_map.w).
+# A REAL edit to the generic definition's body must still select the
+# target -- coverage means the change is now visible to 'bin/wv2
+# defhash', not that generics are exempt from selection.
 git checkout -q -- scratch_lib.w
 cat > scratch_lib.w <<'EOF'
 int scratch_lib_add(int a, int b):
 	return a + b
 
-# vec3 operator+(vec3 a, vec3 b): defined elsewhere in the real overload
+
+T scratch_lib_first[T](T a, T b):
+	return b
+EOF
+out=$(bin/wtest changed --defhash scratch_lib.w)
+echo "$out" | grep -qx scratch_target || fail "generic definition: real body edit did not select scratch_target"
+
+# 'operator' overload syntax (docs/projects/operator_overloading.md):
+# same story via grammar/operator_overload.w -- a real operator
+# definition is now recorded (kind 'operator', a synthetic
+# 'operator<spelling>(<types>)' name), so a comment-only edit SKIPs...
+git checkout -q -- scratch_lib.w
+cat > scratch_lib.w <<'EOF'
+int scratch_lib_add(int a, int b):
+	return a + b
+
+struct scratch_lib_point:
+	int x
+	int y
+
+scratch_lib_point operator+(scratch_lib_point a, scratch_lib_point b):
+	return scratch_lib_point(a.x + b.x, a.y + b.y)
 EOF
 git add scratch_lib.w
-git commit -q -m "mention an operator overload"
-printf '\n# another comment-only edit\n' >> scratch_lib.w
+git commit -q -m "add an operator overload"
+printf '\n# comment only, operator overload still present\n' >> scratch_lib.w
 out=$(bin/wtest changed --defhash scratch_lib.w)
-echo "$out" | grep -qx scratch_target || fail "operator-shaped content: --defhash skipped scratch_target on a comment-only edit"
+echo "$out" | grep -qx scratch_target && fail "operator overload: comment-only edit still selected scratch_target"
+
+# ...while a REAL edit to the operator's body still selects the target.
+git checkout -q -- scratch_lib.w
+cat > scratch_lib.w <<'EOF'
+int scratch_lib_add(int a, int b):
+	return a + b
+
+struct scratch_lib_point:
+	int x
+	int y
+
+scratch_lib_point operator+(scratch_lib_point a, scratch_lib_point b):
+	return scratch_lib_point(b.x + a.x, b.y + a.y)
+EOF
+out=$(bin/wtest changed --defhash scratch_lib.w)
+echo "$out" | grep -qx scratch_target || fail "operator overload: real body edit did not select scratch_target"
+
+# The coverage payoff (wave plan C task 4f): a file defining BOTH a
+# generic AND an operator overload alongside an ordinary function, only
+# comment-edited, now SKIPs -- before this task, the mere presence of
+# either shape (tools/test_map.w's wtest_defhash_risky_text, now
+# removed) forced a fallback on every such file regardless of what
+# actually changed.
+git checkout -q -- scratch_lib.w
+cat > scratch_lib.w <<'EOF'
+int scratch_lib_add(int a, int b):
+	return a + b
+
+struct scratch_lib_point:
+	int x
+	int y
+
+scratch_lib_point operator+(scratch_lib_point a, scratch_lib_point b):
+	return scratch_lib_point(a.x + b.x, a.y + b.y)
+
+T scratch_lib_first[T](T a, T b):
+	return a
+EOF
+git add scratch_lib.w
+git commit -q -m "add a generic definition and an operator overload"
+printf '\n# comment only, generic + operator overload still present\n' >> scratch_lib.w
+out=$(bin/wtest changed --defhash scratch_lib.w)
+echo "$out" | grep -qx scratch_target && fail "generic+operator coverage: comment-only edit still selected scratch_target"
 
 echo "wtest_defhash_scratch_test: OK"

@@ -107,21 +107,24 @@ Shipped from the next-steps backlog:
   `docs/projects/unix_primitives.md`.
 - **`wv2 defhash [--closure] <file.w>...`** (2026-07-18, issue #251
   D4a): emits one NDJSON record per top-level definition (function,
-  global, struct/union/enum, type alias) declared directly in the root
-  file(s) — `{"file", "name", "kind", "hash", "refs"}` — with `hash` a
-  sha256 over the definition's own token stream (whitespace/comments
-  excluded, so reformatting leaves it unchanged) and `refs` the other
-  recorded definitions it references; `--closure` widens scope to the
-  whole compiled program (matching `deps`'s closure). Known limitations:
+  global, struct/union/enum, type alias, generic function, generic
+  struct, operator overload) declared directly in the root file(s) —
+  `{"file", "name", "kind", "hash", "refs"}` — with `hash` a sha256 over
+  the definition's own token stream (whitespace/comments excluded, so
+  reformatting leaves it unchanged) and `refs` the other recorded
+  definitions it references; `--closure` widens scope to the whole
+  compiled program (matching `deps`'s closure). Generic and operator
+  coverage shipped 2026-07-19 (wave plan C task 4f) — see the
+  "Definition hashing" section below for the full writeup, including the
+  `--closure` name lookup's map-based rewrite and the coverage-completion
+  cleanup in `bin/wtest`'s `--defhash` consumer. Known limitations:
   `refs` is a token-text match against the definition-name set, not real
   scope resolution (a field/enum-constant name collision or a shadowing
   local reads as a false positive — documented in `defhash_main`'s doc
-  comment, accepted as out of D4a's scope); generic/operator-overload
-  definitions are invisible to it (the scan-ahead/re-parse machinery
-  never reaches `defhash_note`'s call sites); and `bin/wtest`'s
-  `changed`/`for` selection does not consume it yet, so a comment-only
-  edit to a `lib/` file still selects every importing target. See
-  `ai_tooling_next_steps.md` for the open wiring/coverage follow-ups.
+  comment, accepted as out of D4a's scope); an operator overload's
+  synthetic name is never itself a `refs` target (operators are invoked
+  through their token, `a + b`, not by name). See `ai_tooling_next_steps.md`
+  for the remaining open items.
 - **Compiler-wide silent-exit-1 audit (2026-07-18).** Every
   `error(...)` call site funnels through `warning()`/`error()` in
   `compiler/tokenizer.w`, which always prints before exiting; a

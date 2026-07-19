@@ -7,12 +7,32 @@
 # pointers keep pointer arithmetic and scalars never change meaning;
 # a struct-value operand with no matching definition is a compile
 # error instead of today's silent address arithmetic.
+#
+# defhash coverage (wave plan C task 4f, compiler/compiler.w's
+# defhash_main doc comment): unlike a generic definition, an operator
+# overload is compiled immediately (function_definition runs right
+# here, not deferred through a scan-ahead/re-parse registry), so there
+# is no separately recorded span to reuse -- operator_definition()
+# instead returns a freshly built synthetic defhash name and
+# grammar/program.w calls defhash_note() with it, using the same
+# defhash_start/token_start_offset span an ordinary function/global
+# declaration uses. Every overload of the same operator SPELLING
+# declares the same real symbol name ("operator", program.w's
+# operator branch) before mangling, so a plain "operator" defhash name
+# would collide across every overload in a file; operator_defhash_name()
+# instead builds "operator<spelling>(<left>, <right>)" from the same
+# operand-type spellings the real mangled name uses (operator_mangle_type_name),
+# which is unique within a file for exactly the same reason the real
+# mangled name is.
 
 void function_definition(int current_symbol); /* grammar/program.w */
 void check_call_argument(int callee, int signature_type, char* callee_name, int arg_index, int arg_type); /* grammar/postfix_expr.w */
 void coerce_call_argument(int param_type, int arg_type); /* grammar/postfix_expr.w */
 void push_call_argument(int arg_type); /* grammar/postfix_expr.w */
 int finish_call(int callee_type, int s, int expected_args, int callee_sym, char* callee_name, int declared_return, int passed_args, int has_return_buffer, int w_variadic_fixed); /* grammar/postfix_expr.w */
+# Forward declaration: defhash_note is defined in compiler/compiler.w,
+# which compiles after grammar/.
+void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
 
 
 # 1 when an operand of type t is a struct (or union) value: overloads
@@ -99,6 +119,34 @@ char* operator_mangled_name(int op, int left_type, int right_type):
 	return name
 
 
+# Synthetic defhash name for one operator overload: 'operator<spelling>
+# (<left>, <right>)', e.g. 'operator+(vec3, vec3)' -- built from the same
+# operand-type spellings the real mangled name uses (operator_mangle_type_name),
+# so it stays unique within a file for the same reason the mangled name
+# does, while reading like the source ('op$+$vec3$vec3''s '$' separators
+# are unreadable in defhash's plain-text 'name' field). Every overload of
+# a given SPELLING declares the same real symbol name ("operator",
+# grammar/program.w's operator branch) before mangling, so defhash needs
+# this instead of reusing that shared pre-mangling name.
+char* operator_defhash_name(int op, char* left_name, char* right_name):
+	char* spelling = malloc(2)
+	spelling[0] = op
+	spelling[1] = 0
+	char* with_prefix = strjoin(c"operator", spelling)
+	free(spelling)
+	char* with_paren = strjoin(with_prefix, c"(")
+	free(with_prefix)
+	char* with_left = strjoin(with_paren, left_name)
+	free(with_paren)
+	char* with_sep = strjoin(with_left, c", ")
+	free(with_left)
+	char* with_right = strjoin(with_sep, right_name)
+	free(with_sep)
+	char* name = strjoin(with_right, c")")
+	free(with_right)
+	return name
+
+
 # 1 when the token following 'operator' in declaration position looks
 # like an operator spelling, claiming the declaration for
 # operator_definition (which then validates the overloadable five and
@@ -121,8 +169,12 @@ int operator_definition_starts_here():
 # The definition becomes an ordinary function under the mangled name,
 # so prototypes, bodies, imports and call emission all reuse the
 # existing machinery (duplicate definitions fall out of the normal
-# symbol-redefinition error via the mangled name).
-void operator_definition(int decl_type):
+# symbol-redefinition error via the mangled name). Returns a freshly
+# built synthetic defhash name (operator_defhash_name) for the caller
+# (grammar/program.w) to pass to defhash_note -- unlike a generic
+# definition's registry entry, nothing else needs to remember this
+# name, so it is not stored anywhere here.
+char* operator_definition(int decl_type):
 	int op = token[0]
 	int overloadable = (op == '+') | (op == '-') | (op == '*') | (op == '/') | (op == '%')
 	if (token[1] != 0):
@@ -167,6 +219,12 @@ void operator_definition(int decl_type):
 	int current_symbol = sym_declare_global(name, decl_type, 1)
 	free(name)
 	function_definition(current_symbol)
+	char* left_name = operator_mangle_type_name(left_type)
+	char* right_name = operator_mangle_type_name(right_type)
+	char* defhash_name = operator_defhash_name(op, left_name, right_name)
+	free(left_name)
+	free(right_name)
+	return defhash_name
 
 
 # Dispatch + call emission for 'left <op> right' (op one of + - * / %).

@@ -468,9 +468,11 @@ void program():
 		if (decl_type < 0):
 			decl_type = type_name()
 		# defhash (docs/projects/build_system_next.md 4a): name/line/column
-		# of the plain declaration below, left null for the 'operator'
-		# overload branch (excluded on purpose -- every operator overload
-		# would otherwise share the same recorded name, "operator").
+		# of the plain declaration below; the 'operator' overload branch
+		# sets its own (wave plan C task 4f) since the real declared
+		# symbol name, "operator", is shared by every overload in the
+		# file and cannot be the recorded defhash name -- see
+		# operator_definition's synthetic name (grammar/operator_overload.w).
 		char* defhash_name = 0
 		int defhash_line = 0
 		int defhash_column = 0
@@ -478,9 +480,12 @@ void program():
 		# token it defines an overload (grammar/operator_overload.w);
 		# otherwise it stays an ordinary declared name.
 		if (peek(c"operator")):
+			defhash_line = diag_token_line
+			defhash_column = diag_token_column
 			get_token()
 			if (operator_definition_starts_here()):
-				operator_definition(decl_type)
+				char* defhash_op_name = operator_definition(decl_type)
+				defhash_note(defhash_op_name, c"operator", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 				continue;
 			current_symbol = sym_declare_global(c"operator", decl_type, 1)
 		else:

@@ -20,9 +20,9 @@ int struct_declaration():
 		int start_tab_level = tab_level
 		# 'struct name[T, ...]:' declares a generic struct: record the
 		# span and skip it; instantiations re-parse it (grammar/generic.w).
-		# Left out of defhash on purpose (docs/projects/build_system_next.md
-		# 4a): the span defhash_note would need is the unexpanded generic
-		# body, which this branch never reaches per-instantiation.
+		# generic_register_struct() records its own defhash entry (kind
+		# 'generic_struct', wave plan C task 4f) over that same span, so
+		# this branch does not call defhash_note itself.
 		if (nextc == '['):
 			generic_register_struct()
 			return 1
