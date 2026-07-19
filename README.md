@@ -394,6 +394,17 @@ seeds — is `docs/release.md`.
   first run after a build computes the closures (~90s with the per-arch
   twins); later runs validate the cache by content hash and finish in
   well under a second.
+- A file compiled under more than one arch (`tools/wexec.w`: default
+  `x86`, `win64`, `arm64_darwin`) can compile clean under the default
+  `w check` yet fail only one of its other targets — e.g. an import with
+  no `lib/__arch__/win64/` counterpart. `./bin/wtest archs file...` lists
+  every `(arch, root)` pair the file's closure is compiled under, one
+  line per pair with the owning target(s), reusing the same manifest
+  parsing and `bin/.wtest_deps_cache` closures as `wtest changed`;
+  `./bin/wtest archs file... --check` additionally runs
+  `bin/wv2 [arch] check <root>` per distinct pair (one per root, not per
+  target) and reports pass/fail, so the break is visible before that
+  target's next full build.
 - Agent-facing guidance is committed alongside the code: `.cursor/skills/`
   holds step-by-step skills (`w-check-diagnostics`, `w-select-tests`,
   `w-debug-wdbg`, `w-repl-explore`) and `.cursor/rules/` holds path-scoped

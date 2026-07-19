@@ -58,6 +58,14 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
    work); every existing `.w` change gets `parser_generator_w_test`; deleted
    `.w` files and `lib/`/`structures/`/`libs/` paths get `metadata_check`;
    docs map to nothing; paths nothing knows about fall back to `tests`.
+   **Editing a file compiled under more than one arch** (e.g.
+   `tools/wexec.w`: default `x86`, `win64`, `arm64_darwin`)? A plain
+   `w check` only proves the default target — `bin/wtest archs <file>`
+   lists every `(arch, root)` pair the file's closure is compiled under
+   (with the owning target(s)), and `bin/wtest archs <file> --check` runs
+   `bin/wv2 [arch] check <root>` per pair, so an arch-only import gap
+   (e.g. a `lib/__arch__/` module missing its `win64` counterpart) shows
+   up immediately instead of at that target's next full build.
 3. **Before declaring work done**, run the full suite: `./wbuild tests`.
 4. **Find declarations** with `./bin/wv2 symbols --json <file>` (functions,
    globals, types with file/line/column) instead of grepping, **answer

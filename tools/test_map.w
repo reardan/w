@@ -229,6 +229,7 @@ void wtest_usage():
 	wstream* err = stderr_writer()
 	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...] [--defhash]")
 	stream_write_line(err, c"       wtest for <file>... [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [--defhash]")
+	stream_write_line(err, c"       wtest archs <file>... [--check] [-f manifest.json]")
 	stream_flush(err)
 
 
@@ -497,6 +498,22 @@ char* wtest_root_id_path(char* id):
 	return 0
 
 
+# Program names whose argv this file knows how to read as a root
+# compile: the ordinary self-hosted compiler ('bin/wv2'), the seed
+# ('./w'), and the darwin-native compiler stage built by build_darwin/
+# wexec_darwin ('bin/wv2_darwin') -- the only place a target compiles
+# something other than w.w with the arm64_darwin selector via a program
+# other than plain 'bin/wv2' (see 'archs' below).
+int wtest_root_program(char* program):
+	if (strcmp(program, c"bin/wv2") == 0):
+		return 1
+	if (strcmp(program, c"./w") == 0):
+		return 1
+	if (strcmp(program, c"bin/wv2_darwin") == 0):
+		return 1
+	return 0
+
+
 # (arch, .w file) root ids named in this target's own compile steps
 # ('bin/wv2 [selector] [flags] file.w ... -o out', or seed './w'
 # compiles).
@@ -521,7 +538,7 @@ void wtest_collect_own_roots(char* name, list[char*] out):
 		json_value* program = json_array_get(cmd, 0)
 		if (program.type != json_type_string()):
 			continue
-		if ((strcmp(program.string_value, c"bin/wv2") != 0) && (strcmp(program.string_value, c"./w") != 0)):
+		if (wtest_root_program(program.string_value) == 0):
 			continue
 		int has_output = 0
 		int i = 1
@@ -600,6 +617,7 @@ void wtest_ensure_roots():
 			if (seen.get(root, 0) == 0):
 				seen[root] = 1
 				wtest_roots.push(root)
+
 
 
 /* Closure computation, memoized per run and cached across runs.
@@ -1987,6 +2005,287 @@ int wtest_run_selected():
 	return status
 
 
+/* 'wtest archs <file>...' (docs/projects/ai_tooling_next_steps.md, "No
+warning when an import breaks a different compile target"): enumerate
+every (arch, root) a file's closure is compiled under, so an agent
+editing a multi-target file (tools/wexec.w: default x86, win64,
+arm64_darwin) can see what it must not break, and optionally (--check)
+run 'bin/wv2 [arch] check <root>' per distinct pair right there instead
+of finding out at that target's next full build.
+
+The root set is a superset of wtest_roots/wtest_ensure_roots: it walks
+every target with steps, INCLUDING wtest_never_emit ones (wexec_darwin,
+build_darwin, verify_darwin, update, update_darwin). never-emit exists
+to keep 'changed'/'for' from recommending a target this host cannot
+run (a Mach-O binary on a Linux host, or a destructive seed-promotion
+step) -- a concern about running targets, not about which archs exist.
+wexec_darwin's own compile step is the ONLY place tools/wexec.w is ever
+compiled with the arm64_darwin selector via a real target (every other
+arm64_darwin-selected root in the manifest, e.g. tests/net_darwin_smoke_
+test.w, already goes through wtest_root_program's plain 'bin/wv2'
+case), so dropping never-emit here would silently make the darwin arch
+invisible to the one command whose whole point is "what must I not
+break" -- checking it needs no darwin host either: 'bin/wv2 arm64_darwin
+check <root>' cross-checks from this Linux host exactly like the
+existing arm64_darwin-selected test targets already do at compile time. */
+
+list[char*] wtest_archs_pair_roots
+list[char*] wtest_archs_pair_targets
+list[char*] wtest_archs_roots
+int wtest_archs_closures_ready
+
+
+void wtest_archs_ensure_roots():
+	if (wtest_archs_pair_roots != 0):
+		return
+	wtest_archs_pair_roots = new list[char*]
+	wtest_archs_pair_targets = new list[char*]
+	wtest_archs_roots = new list[char*]
+	map[char*, int] seen = new map[char*, int]
+	for char* name in wtest_target_names:
+		json_value* steps = wtest_target_steps(name)
+		if (steps == 0):
+			continue
+		if (json_array_length(steps) == 0):
+			continue
+		list[char*] roots = new list[char*]
+		wtest_collect_target_roots(name, roots)
+		map[char*, int] target_seen = new map[char*, int]
+		for char* root in roots:
+			if (target_seen.get(root, 0)):
+				continue
+			target_seen[root] = 1
+			wtest_archs_pair_roots.push(root)
+			wtest_archs_pair_targets.push(name)
+			if (seen.get(root, 0) == 0):
+				seen[root] = 1
+				wtest_archs_roots.push(root)
+
+
+# Shares its closure storage (wtest_closure_roots/blobs) and on-disk
+# cache (bin/.wtest_deps_cache, via wtest_closure_get/known/store and
+# wtest_cache_load/save) with the standard changed/for machinery: a
+# root both sides care about (almost all of them -- archs' root set is
+# a superset) is only ever run through 'bin/wv2 deps' once, whichever
+# command hits it first.
+void wtest_archs_ensure_closures():
+	if (wtest_archs_closures_ready):
+		return
+	wtest_archs_closures_ready = 1
+	wtest_archs_ensure_roots()
+	if (wtest_closure_roots == 0):
+		wtest_closure_roots = new list[char*]
+		wtest_closure_blobs = new list[char*]
+		wtest_cache_load()
+	int cold = 0
+	for char* root in wtest_archs_roots:
+		if (wtest_closure_known(root) == 0):
+			cold = 1
+	if (cold):
+		wstream* err = stderr_writer()
+		stream_write_line(err, c"wtest: building import-closure cache (first run after a build; this can take a minute)...")
+		stream_flush(err)
+	int recomputed = 0
+	for char* root in wtest_archs_roots:
+		if (wtest_closure_known(root) == 0):
+			wtest_closure_store(root, wtest_run_deps(root))
+			recomputed = 1
+	if (recomputed):
+		wtest_cache_save()
+
+
+# A root id matches 'path' either because 'path' IS that root's own
+# file (checked first, and independent of whether 'bin/wv2 deps'
+# succeeded for it -- the whole point of this command is surfacing an
+# arch whose compile is currently BROKEN, and deps necessarily fails
+# for a root that does not compile) or because the root's closure
+# contains 'path'.
+int wtest_archs_root_matches(char* root, char* path):
+	char* root_path = wtest_root_id_path(root)
+	if (root_path != 0):
+		if (strcmp(root_path, path) == 0):
+			return 1
+	return wtest_closure_contains(wtest_closure_get(root), path)
+
+
+# Distinct (dedup by root id) matching roots for 'path', in first-seen
+# (manifest) order.
+void wtest_archs_matches(char* path, list[char*] out_roots):
+	wtest_archs_ensure_closures()
+	map[char*, int] seen = new map[char*, int]
+	for char* root in wtest_archs_roots:
+		if (seen.get(root, 0)):
+			continue
+		if (wtest_archs_root_matches(root, path)):
+			seen[root] = 1
+			out_roots.push(root)
+
+
+# Comma-joined target names that own 'root' (context for the report --
+# a root several targets share, e.g. wexec + its dependants, is one
+# check, not one per target).
+char* wtest_archs_targets_for(char* root):
+	string_builder* s = string_new()
+	int i = 0
+	int first = 1
+	while (i < wtest_archs_pair_roots.length):
+		if (strcmp(wtest_archs_pair_roots[i], root) == 0):
+			if (first == 0):
+				string_append_char(s, ',')
+			string_append(s, wtest_archs_pair_targets[i])
+			first = 0
+		i = i + 1
+	char* result = s.data
+	free(s)
+	return result
+
+
+# Splits a "<arch> <root>" id into its two parts, mutating a clone of
+# the arch column to NUL-terminate it (mirrors wtest_run_deps's split).
+char* wtest_archs_split_arch(char* root):
+	char* arch = strclone(root)
+	int j = 0
+	while (arch[j] != 0):
+		if (arch[j] == ' '):
+			arch[j] = 0
+		j = j + 1
+	return arch
+
+
+void wtest_archs_no_match(char* path):
+	wstream* err = stderr_writer()
+	stream_write_cstr(err, c"wtest: archs: no compiled target's closure contains ")
+	stream_write_line(err, path)
+	stream_flush(err)
+
+
+# Plain report: one line per distinct (arch, root), with the owning
+# target(s) for context.
+void wtest_archs_report(char* path):
+	list[char*] matches = new list[char*]
+	wtest_archs_matches(path, matches)
+	if (matches.length == 0):
+		wtest_archs_no_match(path)
+		return
+	wstream* out = stdout_writer()
+	for char* root in matches:
+		char* arch = wtest_archs_split_arch(root)
+		char* rootfile = wtest_root_id_path(root)
+		stream_write_cstr(out, arch)
+		stream_write_byte(out, ' ')
+		stream_write_cstr(out, rootfile)
+		stream_write_cstr(out, c" -> ")
+		char* targets = wtest_archs_targets_for(root)
+		stream_write_line(out, targets)
+		free(targets)
+		free(arch)
+	stream_flush(out)
+
+
+# --check: run 'bin/wv2 [arch] check <root>' for each distinct (arch,
+# root) match and report pass/fail, surfacing an arch-incompatible
+# import (the win64 sys_socket shape from the module header) before
+# that target's next full build. Returns 1 if any check failed.
+int wtest_archs_check(char* path):
+	list[char*] matches = new list[char*]
+	wtest_archs_matches(path, matches)
+	if (matches.length == 0):
+		wtest_archs_no_match(path)
+		return 0
+	wstream* out = stdout_writer()
+	int failures = 0
+	for char* root in matches:
+		char* arch = wtest_archs_split_arch(root)
+		char* rootfile = wtest_root_id_path(root)
+		int is_default = strcmp(arch, c"x86") == 0
+		int count = 3
+		if (is_default == 0):
+			count = 4
+		char** argv = strv_new(count)
+		strv_set(argv, 0, c"bin/wv2")
+		if (is_default):
+			strv_set(argv, 1, c"check")
+			strv_set(argv, 2, rootfile)
+		else:
+			strv_set(argv, 1, arch)
+			strv_set(argv, 2, c"check")
+			strv_set(argv, 3, rootfile)
+		process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
+		free(cast(char*, argv))
+		stream_write_cstr(out, arch)
+		stream_write_byte(out, ' ')
+		stream_write_cstr(out, rootfile)
+		if ((result != 0) && (result.status == 0)):
+			stream_write_line(out, c": OK")
+		else:
+			stream_write_line(out, c": FAIL")
+			failures = failures + 1
+			if (result != 0):
+				string_builder* line = string_new()
+				int k = 0
+				while (result.stderr_text[k] != 0):
+					int ch = result.stderr_text[k]
+					if (ch == 10):
+						if (line.length > 0):
+							stream_write_cstr(out, c"  ")
+							stream_write_line(out, line.data)
+							string_clear(line)
+					else:
+						string_append_char(line, ch)
+					k = k + 1
+				if (line.length > 0):
+					stream_write_cstr(out, c"  ")
+					stream_write_line(out, line.data)
+				string_free(line)
+		if (result != 0):
+			process_result_free(result)
+		free(arch)
+	stream_flush(out)
+	if (failures > 0):
+		return 1
+	return 0
+
+
+# 'wtest archs <file>... [--check] [-f manifest.json]': its own small
+# argument loop rather than folding into the changed/for one below --
+# --run/--available/--defhash/--base-manifest are meaningless here (there
+# is no selection to run or refine), and unlike 'for', a bare 'wtest
+# archs' with no file is caught by the same "no path is a usage error"
+# rule without needing stdin fallback.
+int wtest_archs_main(int argc, int argv):
+	int check_flag = 0
+	list[char*] paths = new list[char*]
+	wtest_manifest_path = c"build.json"
+	int i = 2
+	while (i < argc):
+		char** arg = argv + i * __word_size__
+		if (strcmp(*arg, c"--check") == 0):
+			check_flag = 1
+		else if (strcmp(*arg, c"-f") == 0):
+			i = i + 1
+			if (i >= argc):
+				wtest_usage()
+				return 1
+			char** value = argv + i * __word_size__
+			wtest_manifest_path = *value
+		else:
+			paths.push(*arg)
+		i = i + 1
+	if (paths.length == 0):
+		wtest_usage()
+		return 1
+	if (wtest_load_manifest()):
+		return 1
+	int failures = 0
+	for char* path in paths:
+		if (check_flag):
+			if (wtest_archs_check(path)):
+				failures = 1
+		else:
+			wtest_archs_report(path)
+	return failures
+
+
 int main(int argc, int argv):
 	wtest_mask32 = wtest_mask32_value()
 	if (argc < 2):
@@ -1994,6 +2293,8 @@ int main(int argc, int argv):
 		return 1
 	char** command = argv + __word_size__
 	int for_mode = strcmp(*command, c"for") == 0
+	if (strcmp(*command, c"archs") == 0):
+		return wtest_archs_main(argc, argv)
 	if ((strcmp(*command, c"changed") != 0) && (for_mode == 0)):
 		wtest_usage()
 		return 1

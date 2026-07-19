@@ -840,6 +840,20 @@
 			]
 		},
 		{
+			"name": "wtest_archs_test",
+			"deps": ["wtest", "wv2"],
+			"data": ["tests/wtest/archs_fixture/", "tests/wtest/manifest_archs.json"],
+			"steps": [
+				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]"},
+				{"cmd": ["bin/wtest", "archs"], "expect_fail": true, "expect_stderr": "wtest archs <file>... [--check] [-f manifest.json]"},
+				{"cmd": ["bin/wtest", "archs", "-f", "tests/wtest/manifest_archs.json", "tests/wtest/archs_fixture/consumer.w"], "expect_stdout": ["x86 tests/wtest/archs_fixture/consumer.w -> archs_fixture_default,archs_fixture_default_run", "win64 tests/wtest/archs_fixture/consumer.w -> archs_fixture_win64", "arm64_darwin tests/wtest/archs_fixture/consumer.w -> archs_fixture_darwin"]},
+				{"cmd": ["bin/wtest", "archs", "-f", "tests/wtest/manifest_archs.json", "tests/wtest/archs_fixture/thinglib/__arch__/x86/thing.w"], "expect_stdout": "x86 tests/wtest/archs_fixture/consumer.w", "reject_stdout": "win64"},
+				{"cmd": ["bin/wtest", "archs", "-f", "tests/wtest/manifest_archs.json", "tests/wtest/archs_fixture/thinglib/__arch__/arm64_darwin/thing.w"], "expect_stdout": "arm64_darwin tests/wtest/archs_fixture/consumer.w", "reject_stdout": "win64"},
+				{"cmd": ["bin/wtest", "archs", "-f", "tests/wtest/manifest_archs.json", "docs/todo.txt"], "expect_stderr": "wtest: archs: no compiled target's closure contains docs/todo.txt"},
+				{"cmd": ["bin/wtest", "archs", "-f", "tests/wtest/manifest_archs.json", "tests/wtest/archs_fixture/consumer.w", "--check"], "expect_fail": true, "expect_stdout": ["x86 tests/wtest/archs_fixture/consumer.w: OK", "win64 tests/wtest/archs_fixture/consumer.w: FAIL", "arm64_darwin tests/wtest/archs_fixture/consumer.w: OK", "cannot locate 'tests/wtest/archs_fixture/thinglib/__arch__/win64/thing.w'"]}
+			]
+		},
+		{
 			"name": "wmeta",
 			"deps": ["wv2"],
 			"inputs": ["tools/wmeta.w"],
@@ -2147,6 +2161,7 @@
 				"wtest_map_test",
 				"wtest_run_test",
 				"wtest_defhash_test",
+				"wtest_archs_test",
 				"wexec_test",
 				"wexec_keep_going_test",
 				"wexec_ordered_output_test",
