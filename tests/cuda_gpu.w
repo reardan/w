@@ -7,11 +7,22 @@
 # this file with --ptx to assert the outlined kernel's PTX GPU-less.
 import lib.lib
 import lib.cuda
+import lib.fmath
 
 kernel saxpy(float32* y, float32* x, float32 a, int n):
 	int i = block_idx() * block_dim() + thread_idx()
 	if i < n:
 		y[i] = a * x[i] + y[i]
+
+
+# gpu_exp/gpu_log (docs/projects/torch.md Workstream E): device
+# transcendentals, cross-checked below against the host lib.fmath
+# fexp/flog implementations.
+kernel transcendental(float32* xe, float32* ye, float32* xl, float32* yl, int n):
+	int i = block_idx() * block_dim() + thread_idx()
+	if i < n:
+		ye[i] = gpu_exp(xe[i])
+		yl[i] = gpu_log(xl[i])
 
 
 int gpu_for_vector_add(int n):
@@ -206,6 +217,55 @@ int saxpy_launch(int n):
 	return ok
 
 
+# gpu_exp/gpu_log cross-checked against the host lib.fmath fexp/flog.
+# The PTX .approx variants (ex2.approx.f32/lg2.approx.f32) are the
+# ML-precision tradeoff CUDA's fast-math makes, not IEEE-correctly
+# rounded, so the tolerance is relative (falling back to an absolute
+# check near zero, where a relative one would be meaningless): 1e-4
+# relative over exp inputs in [-8, 8] and log inputs in [1e-3, 1e3].
+int transcendental_check(int n):
+	float32* xe = cast(float32*, gpu_alloc(n * 4))
+	float32* ye = cast(float32*, gpu_alloc(n * 4))
+	float32* xl = cast(float32*, gpu_alloc(n * 4))
+	float32* yl = cast(float32*, gpu_alloc(n * 4))
+	int i = 0
+	while (i < n):
+		float32 t = i
+		t = t / cast(float32, n - 1)
+		xe[i] = -8.0 + t * 16.0
+		xl[i] = 0.001 + t * 999.999
+		i = i + 1
+
+	int threads = 256
+	int blocks = (n + threads - 1) / threads
+	launch transcendental[blocks, threads](xe, ye, xl, yl, n)
+	gpu_sync()
+
+	int ok = 1
+	float32 rel_tol = 0.0001
+	float32 one = 1.0
+	i = 0
+	while (i < n):
+		float32 want_e = fexp(xe[i])
+		float32 err_e = fabs(ye[i] - want_e)
+		if (fabs(want_e) > one):
+			err_e = err_e / fabs(want_e)
+		if (err_e > rel_tol):
+			ok = 0
+		float32 want_l = flog(xl[i])
+		float32 err_l = fabs(yl[i] - want_l)
+		if (fabs(want_l) > one):
+			err_l = err_l / fabs(want_l)
+		if (err_l > rel_tol):
+			ok = 0
+		i = i + 1
+	gpu_free(cast(char*, xe))
+	gpu_free(cast(char*, ye))
+	gpu_free(cast(char*, xl))
+	gpu_free(cast(char*, yl))
+	return ok
+
+
 int main(int argc, int argv):
 	if (gpu_for_vector_add(1000) == 0):
 		println(c"cuda gpu: FAILED (gpu for wrong results)")
@@ -224,6 +284,9 @@ int main(int argc, int argv):
 		return 1
 	if (saxpy_launch(1024) == 0):
 		println(c"cuda gpu: FAILED (saxpy wrong results)")
+		return 1
+	if (transcendental_check(256) == 0):
+		println(c"cuda gpu: FAILED (gpu_exp/gpu_log wrong results)")
 		return 1
 	println(c"cuda gpu OK")
 	return 0

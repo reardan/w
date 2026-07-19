@@ -62,6 +62,16 @@ kernel accum(int* s, int* mn, int* mx, float32* f, int n):
 		atomic_add(f, 1.5)
 
 
+# gpu_exp/gpu_log device transcendentals (docs/projects/torch.md
+# Workstream E): exp via a log2(e) multiply then ex2.approx.f32; log
+# via lg2.approx.f32 then a ln(2) multiply.
+kernel transcendental(float32* a, float32* b, int n):
+	int i = block_idx() * block_dim() + thread_idx()
+	if i < n:
+		float32 x = a[i]
+		b[i] = gpu_exp(x) + gpu_log(x)
+
+
 int main(int argc, int argv):
 	print(__w_ptx_module())
 	return 0
