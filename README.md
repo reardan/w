@@ -342,7 +342,7 @@ seeds — is `docs/release.md`.
   be absent: `gdb`/`ddd` (hand-debugging a built binary), `radare2` (`rasm2`
   encoding lookups), `systemtap` with sudo (syscall-trace one-liners), an
   NVIDIA GPU + driver
-  (`cuda_smoke`, `cuda_test`). `threading_test` covers the raw x86 `thread_create`
+  (`cuda_smoke`, `cuda_test`, `tensor_gpu_test`). `threading_test` covers the raw x86 `thread_create`
   builtin; `lib/thread.w` (spawn/join/`parallel_for`, Linux x86/x64,
   docs/projects/threads.md) is covered on both targets by
   `thread_test`/`parallel_for_test` and their `_64` twins.
@@ -424,8 +424,12 @@ seeds — is `docs/release.md`.
   declarations, `launch` and `gpu for` outlining (`range(start, end)`
   included), gpu atomics, the device limb/bit intrinsics, and the
   `lib/cuda.w` runtime (managed + explicit memory, async launches,
-  `gpu_sync()`). Remaining: A2 virtual-register emission, shared memory,
-  recoverable CUresult errors, multi-GPU; see `docs/projects/cuda.md`.
+  `gpu_sync()`, `gpu_available()`). `lib/tensor.w` (GPU tensor:
+  elementwise ops, atomic sum, naive matmul, CPU fallbacks) landed via
+  `docs/projects/torch.md` Stages 1–3. Remaining: A2 virtual-register
+  emission, shared memory, recoverable CUresult errors, multi-GPU; see
+  `docs/projects/cuda.md` and torch.md Stages 4–6 (async ops, tiled
+  matmul, autograd/layers, safetensors interop).
 - Debugger: locals inside evaluated expressions, watchpoints, a web UI
   (stepping, breakpoints, variable inspection, expression evaluation at a
   breakpoint and `w --debug` are done).

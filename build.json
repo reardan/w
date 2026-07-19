@@ -2256,6 +2256,22 @@
 			]
 		},
 		{
+			"name": "tensor_compile_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/tensor_gpu.w", "-o", "bin/tensor_gpu_compile"]}
+			]
+		},
+		{
+			"name": "tensor_gpu_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/tensor_gpu.w", "-o", "bin/tensor_gpu"]},
+				{"cmd": ["bin/tensor_gpu"], "expect_stdout": ["tensor: gpu path", "tensor gpu OK"]},
+				{"cmd": ["sh", "-c", "CUDA_VISIBLE_DEVICES= bin/tensor_gpu"], "expect_stdout": ["tensor: cpu fallback", "tensor gpu OK"]}
+			]
+		},
+		{
 			"name": "elf",
 			"deps": ["wv2"],
 			"steps": [
@@ -2375,6 +2391,7 @@
 				"generator_test",
 				"gpu_ptx_emit_test",
 				"cuda_diagnostics_test",
+				"tensor_compile_test",
 				"defer_test",
 				"dynamic_var_test",
 				"generics_test",

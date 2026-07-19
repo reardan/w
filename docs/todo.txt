@@ -181,9 +181,15 @@ current state:
 			lib/cuda.w runtime: managed memory (gpu_alloc/gpu_free),
 				explicit memory (gpu_device_alloc + gpu_memcpy_to/from,
 				blocking copies ordered after launches), lazy driver
-				init, kernel-handle cache
-			./wbuild gpu_ptx_emit_test / cuda_diagnostics_test run GPU-less;
-				./wbuild cuda_test runs vector add + saxpy on a real GPU
+				init, kernel-handle cache, gpu_available() driver+device
+				probe (non-fatal, the CPU-fallback branch point)
+			lib/tensor.w (docs/projects/torch.md stages 2-3): GPU tensor on
+				managed memory, elementwise ops/relu/atomic sum/naive
+				matmul2, ndf round-trip copies, CPU fallback per op
+			./wbuild gpu_ptx_emit_test / cuda_diagnostics_test /
+				tensor_compile_test run GPU-less; ./wbuild cuda_test runs
+				vector add + saxpy and tensor_gpu_test the lib.tensor
+				surface (both paths) on a real GPU
 		c_import:
 			preprocesses C headers with macro expansion, conditionals and include resolution
 			importer builds typedefs, structs/unions, enum values, macro integer constants and function prototypes (fixed-arity and variadic)
