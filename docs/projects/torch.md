@@ -23,8 +23,12 @@ transposed variants, relu via the grad mask), finite-difference-tested;
 the Stage 6 F32 read/write at the `ndf` level; and device-only
 `gpu_exp`/`gpu_log` builtins (`ex2.approx.f32`/`lg2.approx.f32`,
 `grammar/gpu_math_builtin.w`) so softmax can later move on-device.
-Remaining for Stage 5: `lib/nn.w` (linear, softmax-cross-entropy, SGD)
-and the MNIST training loop; Stage 4 (perf/async) is still a sketch.
+`lib/nn.w` (linear layer, fused `ag_softmax_ce`, SGD) and the
+end-to-end training test (`tests/nn_train_gpu.w`: synthetic 4-class
+8-D clusters, MLP 8→32→4, asserts loss < 0.2 and accuracy > 0.95 on
+both the GPU and CPU-fallback paths) also landed in #347. Remaining
+for Stage 5: a real-MNIST-data training run via `lib/mnist.w`;
+Stage 4 (perf/async) is still a sketch.
 
 ## Where this builds from
 
