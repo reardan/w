@@ -1,0 +1,10 @@
+{
+	"targets": [
+		{
+			"name": "noop",
+			"steps": [
+				{"cmd": ["echo", "lock scratch target ran"], "expect_stdout": "lock scratch target ran"}
+			]
+		}
+	]
+}

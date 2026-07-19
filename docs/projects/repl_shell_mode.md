@@ -1,12 +1,14 @@
 # REPL shell mode: design (issue #335)
 
-Status: design (July 2026). Scopes issue #335 against the shipped `!`
-escape and `lib/shell.w` (issue #276 P0–P3, previous plan's waves 1–5)
-and against the Q4/Q5 reasoning in
+Status: design, stages 1 and 2 shipped (July 2026). Scopes issue #335
+against the shipped `!` escape and `lib/shell.w` (issue #276 P0–P3,
+previous plan's waves 1–5) and against the Q4/Q5 reasoning in
 `docs/projects/repl_improvements.md`, which this doc extends rather
-than revisits. No code; the staged plan in §11 has an intentionally
-small stage 1 that matches Wave 3 task 3b of
-`docs/projects/sonnet_wave_plan_2026_07b.md`.
+than revisits. The staged plan in §11 had an intentionally small
+stage 1 (Wave 3 task 3b of `docs/projects/sonnet_wave_plan_2026_07b.md`)
+and a stage 2 (task 3b of `docs/projects/sonnet_wave_plan_2026_07c.md`)
+that fills out the rest of the v1 tool subset; §11 records what
+shipped and what stays deferred.
 
 ## 1. The issue, verbatim
 
@@ -464,14 +466,50 @@ purpose:
    to shell-mode dispatch afterward; `cd`/`export` still working from
    inside shell mode.
 
-**Stage 2** (not yet scheduled): the rest of the v1 subset — `echo`,
-`mkdir`, `rm`, `cp`, `mv`, `head`, `tail`, `wc` (§6.2), each with the
-caveats already called out (`mv` as `cp`+`rm`, `-r`/`-p` as the
-simple recursive/loop cases, no `-l` yet).
+**Stage 2 == wave-plan-C task 3b, landed.** The rest of the v1 subset —
+`echo`, `mkdir`, `rm`, `cp`, `mv`, `head`, `tail`, `wc` — is now in
+`lib/shell_commands.w`, translated by `repl/shell_translate.w`, with
+`repl_test`/`repl_test_x64` cases and unit tests
+(`tests/shell_commands_test.w`) for each. Differences from this
+section's original sketch, both improvements rather than scope
+changes:
 
-**Stage 3+** (research-scale, no wave slot): a promoted general
-`lib/stat.w` (unblocks `ls -l`, later `touch`/`chmod`/`du`) once the
-"second consumer" test in §6.2 is met; `grep`/`find`/`sed` only if a
+- `mv` calls `lib.lib`'s `rename(2)` wrapper directly instead of
+  falling back to `cp`+`rm` — §6.2's addendum had already flagged this
+  as "not wired up yet" once a portable `rename` existed, so wiring it
+  directly (atomic within one filesystem) is strictly better than the
+  fallback originally sketched here.
+- The shell command "mkdir" is implemented as `mkdir_p`, not `mkdir`:
+  `lib/shell_commands.w` already imports `lib.lib`, whose transitive
+  `lib.linux` import declares a raw `mkdir(2)` syscall wrapper of that
+  exact name, and W's single flat symbol table rejects a second
+  top-level `mkdir` with a different signature. The translator still
+  recognizes the typed word `mkdir`; only the qualified spelling for a
+  direct W-mode call differs (`shell_commands.mkdir_p(...)`, not
+  `shell_commands.mkdir(...)`).
+- `rm -r`/`cp -r`'s recursive walk uses `lib/stat.w`'s
+  `file_lstat_path`/`file_is_dir` (landed via #343, after this doc was
+  first written) to classify each entry without following symlinks,
+  rather than the `getdents` `d_type` byte `libs/extras/vcs/tree.w`
+  uses for the same purpose — the "second consumer" promotion §6.2
+  anticipated for `lib/stat.w`.
+- `head`/`tail` add the valued flag `-n N`/`--lines N` (also accepting
+  `-n=N`/`--lines=N` inline) that §5.4 flagged as "v1 has no valued
+  flags... a future `head -n 5` would be the first" — that flag shape
+  is now general in `repl/shell_translate.w`, not head/tail-specific.
+- `ls -l`'s missing-stat-wrapper blocker is gone (`lib/stat.w` landed),
+  but implementing `-l` itself was out of this task's scope and stays
+  deferred, not because of the wrapper.
+
+Pipes/redirection (§10) were considered and explicitly deferred again,
+per this section's own original staging — the native tool set
+(11 tools) still doesn't obviously want piping between two of them
+enough to justify the void-return-convention rework §10 describes;
+revisit once it does.
+
+**Stage 3+** (research-scale, no wave slot): `ls -l` itself (the
+wrapper exists now; only the translator/tool work remains); `touch`/
+`chmod`/`du` on the same wrapper; `grep`/`find`/`sed` only if a
 reusable pattern-matching core ever exists; pipes/redirection (§10)
 once the native tool set has grown enough to want them; the `wsh`
 standalone extraction (§9) once two real front ends want

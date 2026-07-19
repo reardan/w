@@ -47,6 +47,36 @@ int defhash_mode
 # tells warning() below to stay silent while the replay is in progress.
 int defhash_rehash_mode
 
+# Recursive-descent nesting guards (docs/projects/ai_tooling_next_steps.md,
+# "No recursion-depth guard in the recursive-descent parser"): thousands
+# of nested parens, or thousands of nested statement blocks, recurse the
+# parser's own call stack until it SIGSEGVs with no diagnostic at all --
+# confirmed by direct measurement (a paren chain crashes native between
+# ~40000 and ~60000 levels deep). Each counter is incremented/checked/
+# decremented at its single recursive re-entry site: expr_nesting_depth
+# in grammar/primary_expr.w's '(' branch (the only place '(' -grouping
+# re-enters expression() -- the top of the expression grammar), and
+# stmt_nesting_depth wrapping the whole body of grammar/statement.w's
+# statement() (the single function every nested block/if/while/for/
+# switch body recurses back through, so guarding it once there covers
+# every statement-level recursion path without touching each caller).
+# stmt_nesting_depth's limit is far smaller than expr_nesting_depth's,
+# but still has to clear the tree's longest legitimate 'else if' dispatch
+# chain (lib/lib.w's errno-to-string table, 132 branches deep -- each
+# 'else if' recurses statement() once, same as true block nesting) --
+# see grammar/statement.w for the exact number and its relationship to
+# code_generator/x86.w's separate fixed-size int[256] ctrl_kind_stack/
+# ctrl_val_stack (a pre-existing, lower bound on *true* nested if/while/
+# for/switch specifically, already logged in
+# docs/projects/ai_tooling_next_steps.md rather than fixed here).
+# Reset to 0 at the start of every compile (compiler/compiler.w's
+# compile_attempt) and every REPL entry (repl/core.w's
+# repl_compile_entry) so a REPL error longjmp -- which unwinds past every
+# pending decrement below -- can never leave a stale count from a failed
+# entry poisoning the next one.
+int expr_nesting_depth
+int stmt_nesting_depth
+
 # file reading
 int file
 char* filename

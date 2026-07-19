@@ -1,7 +1,9 @@
 # 'gpu for' maps thread indexes onto [start, end) directly: the
 # one- and two-argument range forms are supported, but a step argument
-# is not (future work). Compiled with the x64 selector by the
-# cuda_diagnostics_test target.
+# is not (future work).
+# wfixture: x64
+# expect_fail
+# expect_stderr: 'gpu for' supports only range(end) and range(start, end)
 import lib.lib
 import lib.cuda
 

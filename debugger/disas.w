@@ -50,6 +50,16 @@ int dbg_disas_read_local(int addr):
 	return bp_read_byte(addr)
 
 
+# Read one byte at addr through the registered reader (0..255, or -1 when
+# unreadable). Exposed for callers outside this file that want the same
+# breakpoint-substituted byte access disassembly uses -- debugger/attach.w's
+# frame-walk call-site heuristic (#123 phase 5) reads through this instead
+# of a direct memory access, so it works against a ptrace-attached target.
+int dbg_disas_read_byte(int addr):
+	int* rd = cast(int*, dbg_disas_read_fn)
+	return rd(addr)
+
+
 # Read up to n bytes at addr through the registered reader; returns how
 # many were readable.
 int dbg_disas_fetch(int addr, char* buf, int n):

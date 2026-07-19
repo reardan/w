@@ -340,7 +340,10 @@ seeds — is `docs/release.md`.
   width by hand, the way `lib/sha256.w`'s `p + i * 4` does. The result
   keeps the pointer's type, so `*(p + n)` and `(p + n)[i]` read and
   write at the element's width (and indexing the result scales by it);
-  pointer minus pointer is a plain integer byte distance.
+  pointer minus pointer is a plain integer byte distance. `&p[n]` is
+  the recommended form in new code; `lib/ptr.w`'s `ptr_add(p, n)` (`&p[n]`
+  under the hood, for any `T`) reads better at a call site where writing
+  `&p[n]` inline would be awkward.
 - Loads of the fixed-width unsigned types (`uint8`/`uint16`/`uint32`)
   zero-extend into the word-sized register, so high-bit values compare,
   divide, shift and widen as unsigned; store-side arithmetic truncates
@@ -401,6 +404,32 @@ seeds — is `docs/release.md`.
   first run after a build computes the closures (~90s with the per-arch
   twins); later runs validate the cache by content hash and finish in
   well under a second.
+- `./bin/wtest changed <rev-range>` selects targets for the files changed
+  **between two commits** instead of a path list (issue #251 direction
+  4b): a single argument containing `..` is a git revision range instead
+  of a changed-file path (no tracked path in this repo ever contains
+  `..`, so the two never collide) — `A..B`, `A...B` (three-dot, diffed
+  against the real `git merge-base A B`), or an open `A..` for "`A`
+  versus the worktree". A bare single revision with no dots is not
+  auto-detected (indistinguishable from a path), so `A..` is the
+  spelling for that case. The changed-path list comes from
+  `git diff --no-renames --name-only`, so a rename shows up as an
+  ordinary delete-then-add pair rather than hiding the old path. Compose
+  with `--defhash` to compare `git show A:<path>` against `git show
+  B:<path>` (or the worktree, for an open range) instead of HEAD versus
+  the worktree. Without a range argument, `changed` behaves exactly as
+  above; `wtest for` never looks for one.
+- A file compiled under more than one arch (`tools/wexec.w`: default
+  `x86`, `win64`, `arm64_darwin`) can compile clean under the default
+  `w check` yet fail only one of its other targets — e.g. an import with
+  no `lib/__arch__/win64/` counterpart. `./bin/wtest archs file...` lists
+  every `(arch, root)` pair the file's closure is compiled under, one
+  line per pair with the owning target(s), reusing the same manifest
+  parsing and `bin/.wtest_deps_cache` closures as `wtest changed`;
+  `./bin/wtest archs file... --check` additionally runs
+  `bin/wv2 [arch] check <root>` per distinct pair (one per root, not per
+  target) and reports pass/fail, so the break is visible before that
+  target's next full build.
 - Agent-facing guidance is committed alongside the code: `.cursor/skills/`
   holds step-by-step skills (`w-check-diagnostics`, `w-select-tests`,
   `w-debug-wdbg`, `w-repl-explore`) and `.cursor/rules/` holds path-scoped

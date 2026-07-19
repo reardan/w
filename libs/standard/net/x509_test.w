@@ -1,3 +1,4 @@
+# wbuild: name=net_x509_test x64
 # Tests for libs/standard/net/x509.w. Fixtures live in
 # libs/standard/net/x509_fixtures/ (see the README there for provenance):
 # real Let's Encrypt / Google Trust Services / DigiCert certificates plus a

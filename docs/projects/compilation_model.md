@@ -381,7 +381,7 @@ that subset. Then shell out to an external `llc`/`clang` — gated on
 `command -v`, printing a "...OK (skipped: no llc on PATH)" success
 rather than a failure when absent, the exact pattern
 `docs/projects/compress.md` §8 uses for its optional zlib-interop
-target and `tools/openssl_interop_test.sh` uses today — to produce a
+target and `tests/openssl_tls_interop.w` uses today — to produce a
 native binary, and diff its runtime behavior against the same program
 compiled by `bin/wv2`. This:
 

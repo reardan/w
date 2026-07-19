@@ -1,3 +1,4 @@
+# wbuild: name=net_asn1_test x64
 # Tests for libs/standard/net/asn1.w: strict DER header handling (bounds,
 # minimal lengths, rejected indefinite/oversized forms) and the typed
 # helpers x509.w builds on. All inputs are hand-built byte buffers.

@@ -10,16 +10,29 @@ args_init(argc, argv) records the raw argument words; afterwards:
 	args_has_flag(name)      1 when -name, --name, -name=x or --name=x is present
 	args_value(name)         value from -name=x / --name=x, or the token
 	                         following a bare -name / --name; 0 when absent
+	args_declare_bool(name)  marks name (no dashes) a boolean flag: its bare
+	                         form never consumes the next token as a value
+	args_has_bool_flag(name) args_declare_bool(name) plus args_has_flag(name)
+	                         in one call
 
 A token starting with '-' is a flag; one or two leading dashes parse the
 same. A flag written without '=' takes the following token as its value
 when that token exists and is not itself a flag, so "-o output" and
-"-o=output" are equivalent. A boolean flag directly followed by a
-positional argument would swallow it, so keep boolean flags last or use
-the -flag=value spelling. Negative numbers are indistinguishable from
-flags to this helper.
+"-o=output" are equivalent.
+
+That default is wrong for a flag that only ever means present/absent: a
+bare boolean flag directly followed by a positional would swallow it as
+its "value" ("stat -f path" would read "path" as -f's value and
+args_positional(0) would never see it). Declare such names boolean with
+args_declare_bool(name) (or args_has_bool_flag(name), which declares and
+tests presence in one call) *before* reading positionals; a declared
+name's bare form then leaves the following token alone. Negative numbers
+are indistinguishable from flags to this helper.
 */
 import lib.lib
+
+
+list[char*] args_bool_names
 
 
 int args_argc
@@ -93,6 +106,40 @@ int args_has_flag(char* name):
 	return 0
 
 
+# Marks name (bare, no leading dashes, e.g. "f" or "nofollow") a boolean
+# flag: args_is_positional/args_value stop treating its bare form as
+# consuming the following token. Safe to call more than once for the
+# same name; declarations persist across args_init calls.
+void args_declare_bool(char* name):
+	if (args_bool_names == 0):
+		args_bool_names = new list[char*]
+	int i = 0
+	while (i < args_bool_names.length):
+		if (strcmp(args_bool_names[i], name) == 0):
+			return
+		i = i + 1
+	args_bool_names.push(name)
+
+
+int args_name_is_bool(char* name):
+	if (args_bool_names == 0):
+		return 0
+	int i = 0
+	while (i < args_bool_names.length):
+		if (strcmp(args_bool_names[i], name) == 0):
+			return 1
+		i = i + 1
+	return 0
+
+
+# args_declare_bool(name) followed by args_has_flag(name): use this for a
+# presence-only flag like -f/--nofollow so it never swallows the
+# positional that follows it.
+int args_has_bool_flag(char* name):
+	args_declare_bool(name)
+	return args_has_flag(name)
+
+
 char* args_value(char* name):
 	int i = 1
 	while (i < args_argc):
@@ -102,6 +149,8 @@ char* args_value(char* name):
 				int name_length = strlen(name)
 				if (body[name_length] == '='):
 					return body + name_length + 1
+				if (args_name_is_bool(name)):
+					return 0
 				# Bare flag: the next token is its value unless it is a flag
 				char* next = args_get(i + 1)
 				if (next != 0):
@@ -117,12 +166,14 @@ int args_is_positional(int i):
 		return 0
 	if (args_flag_body(args_get(i)) != 0):
 		return 0
-	# The token after a bare -flag (no inline =value) is that flag's value
+	# The token after a bare -flag (no inline =value) is that flag's value,
+	# unless the flag name was declared boolean (args_declare_bool)
 	if (i >= 2):
 		char* prev_body = args_flag_body(args_get(i - 1))
 		if (prev_body != 0):
 			if (args_body_has_value(prev_body) == 0):
-				return 0
+				if (args_name_is_bool(prev_body) == 0):
+					return 0
 	return 1
 
 

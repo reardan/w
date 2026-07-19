@@ -20,6 +20,16 @@ first non-comment line (later comments are not scanned):
 	                               (repeatable)
 	# expect_fail                  the compile must exit nonzero
 	                               (without it the compile must exit 0)
+	# wfixture: <selector>         insert <selector> into the compiler
+	                               argv, between the compiler path and
+	                               the fixture path (e.g. "x64" for a
+	                               fixture that only reproduces under
+	                               the x64 target). Optional, no
+	                               default, and does not itself count
+	                               as a directive (a fixture using it
+	                               still needs an expect_stderr/
+	                               reject_stderr/expect_fail to assert
+	                               anything).
 
 The needle is everything after ": " to the end of the line, verbatim,
 and matching is a plain byte-wise substring search — exactly the
@@ -40,7 +50,7 @@ change what the fixture tests.
 
 For each fixture wfixture runs
 
-	<compiler> <fixture> -o bin/<basename>
+	<compiler> [<selector>] <fixture> -o bin/<basename>
 
 as a child process via lib.process (basename = the fixture's filename
 without its ".w" suffix), checks the exit status and every directive
@@ -62,6 +72,7 @@ list[char*] wfixture_expects   # expect_stderr needles, in directive order
 list[char*] wfixture_rejects   # reject_stderr needles, in directive order
 int wfixture_expect_fail       # 1 when the compile must exit nonzero
 int wfixture_directives        # total directives parsed for this fixture
+char* wfixture_selector        # '# wfixture: <selector>' argv token, 0 = none
 
 
 void wfixture_usage():
@@ -120,7 +131,12 @@ int wfixture_parse_line(char* fixture, char* line):
 		wfixture_expect_fail = 1
 		wfixture_directives = wfixture_directives + 1
 		return 0
-	if (starts_with(line, c"# expect_") || starts_with(line, c"# reject_")):
+	if (starts_with(line, c"# wfixture: ")):
+		if (wfixture_selector != 0):
+			free(wfixture_selector)
+		wfixture_selector = strclone(line + strlen(c"# wfixture: "))
+		return 0
+	if (starts_with(line, c"# expect_") || starts_with(line, c"# reject_") || starts_with(line, c"# wfixture")):
 		wfixture_note2(fixture, c"malformed directive line: ", line)
 		return 1
 	return 0
@@ -166,6 +182,7 @@ int wfixture_load_directives(char* fixture):
 	wfixture_rejects = new list[char*]
 	wfixture_expect_fail = 0
 	wfixture_directives = 0
+	wfixture_selector = 0
 
 	string_builder* sidecar_path = string_new()
 	string_append(sidecar_path, fixture)
@@ -249,6 +266,9 @@ void wfixture_echo_command(char* compiler, char* fixture, char* out_path):
 	string_append(line, c"$ ")
 	string_append(line, compiler)
 	string_append(line, c" ")
+	if (wfixture_selector != 0):
+		string_append(line, wfixture_selector)
+		string_append(line, c" ")
 	string_append(line, fixture)
 	string_append(line, c" -o ")
 	string_append(line, out_path)
@@ -293,6 +313,9 @@ void wfixture_free_directives():
 		free(needle)
 	for char* needle in wfixture_rejects:
 		free(needle)
+	if (wfixture_selector != 0):
+		free(wfixture_selector)
+		wfixture_selector = 0
 
 
 void wfixture_verdict(char* verdict, char* fixture):
@@ -312,11 +335,19 @@ int wfixture_run(char* compiler, char* fixture):
 
 	char* out_path = wfixture_output_path(fixture)
 	wfixture_echo_command(compiler, fixture, out_path)
-	char** argv = strv_new(4)
-	strv_set(argv, 0, compiler)
-	strv_set(argv, 1, fixture)
-	strv_set(argv, 2, c"-o")
-	strv_set(argv, 3, out_path)
+	int has_selector = wfixture_selector != 0
+	char** argv = strv_new(4 + has_selector)
+	int a = 0
+	strv_set(argv, a, compiler)
+	a = a + 1
+	if (has_selector):
+		strv_set(argv, a, wfixture_selector)
+		a = a + 1
+	strv_set(argv, a, fixture)
+	a = a + 1
+	strv_set(argv, a, c"-o")
+	a = a + 1
+	strv_set(argv, a, out_path)
 	char* program = wfixture_resolve_program(compiler)
 	process_result* result = process_run(program, argv, 0, 0, 0)
 	free(cast(char*, argv))

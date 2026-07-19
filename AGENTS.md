@@ -58,6 +58,25 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
    work); every existing `.w` change gets `parser_generator_w_test`; deleted
    `.w` files and `lib/`/`structures/`/`libs/` paths get `metadata_check`;
    docs map to nothing; paths nothing knows about fall back to `tests`.
+   **Reviewing a commit range instead of the worktree?**
+   `bin/wtest changed A..B` (or `A...B`, or `A..` for "`A` versus the
+   worktree") takes a git revision range in place of the path list —
+   any single argument containing `..` is treated as one, since no
+   tracked path here ever contains `..`. The file list itself comes from
+   `git diff --no-renames --name-only`, so a rename reads as an ordinary
+   delete-then-add pair; add `--defhash` to compare `git show A:<path>`
+   against `git show B:<path>` (or the worktree) instead of HEAD versus
+   the worktree. A bare revision with no dots is never auto-detected
+   (indistinguishable from a path) — spell it `A..`. No range argument
+   is byte-identical to the plain path-list behavior above.
+   **Editing a file compiled under more than one arch** (e.g.
+   `tools/wexec.w`: default `x86`, `win64`, `arm64_darwin`)? A plain
+   `w check` only proves the default target — `bin/wtest archs <file>`
+   lists every `(arch, root)` pair the file's closure is compiled under
+   (with the owning target(s)), and `bin/wtest archs <file> --check` runs
+   `bin/wv2 [arch] check <root>` per pair, so an arch-only import gap
+   (e.g. a `lib/__arch__/` module missing its `win64` counterpart) shows
+   up immediately instead of at that target's next full build.
 3. **Before declaring work done**, run the full suite: `./wbuild tests`.
 4. **Find declarations** with `./bin/wv2 symbols --json <file>` (functions,
    globals, types with file/line/column) instead of grepping, **answer

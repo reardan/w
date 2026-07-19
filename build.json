@@ -238,41 +238,6 @@
 			]
 		},
 		{
-			"name": "buffer_field_assign_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/buffer_field_assign_test.w"]}
-			]
-		},
-		{
-			"name": "array_error_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/array_param_error_fixture.w", "tests/array_union_error_fixture.w", "tests/array_constructor_error_fixture.w"]}
-			]
-		},
-		{
-			"name": "syscall_arity_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/syscall_arity_error_fixture.w", "tests/syscall7_arity_error_fixture.w"]}
-			]
-		},
-		{
-			"name": "int_literal_width_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/int_literal_width_error_fixture.w", "tests/int_literal_width_binary_error_fixture.w", "tests/int_literal_width_decimal_error_fixture.w"]}
-			]
-		},
-		{
-			"name": "prefixed_string_literal_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/prefixed_string_unterminated_fixture.w"]}
-			]
-		},
-		{
 			"name": "increment_error_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -280,10 +245,10 @@
 			]
 		},
 		{
-			"name": "warning_test",
+			"name": "recursion_depth_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/warning_fixture.w", "tests/warning_clean_fixture.w", "tests/import_alias_warning_fixture.w", "tests/string_char_warning_fixture.w", "tests/limb_builtin_warning_fixture.w", "tests/bool_bitwise_warning_fixture.w", "tests/bool_bitwise_chain_fixture.w", "tests/bit31_literal_warning_fixture.w", "tests/cross_line_call_warning_fixture.w", "tests/cross_line_call_increment_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/expression_nesting_error_fixture.w", "tests/expression_nesting_clean_fixture.w", "tests/statement_nesting_error_fixture.w", "tests/statement_nesting_clean_fixture.w"]}
 			]
 		},
 		{
@@ -419,6 +384,15 @@
 			]
 		},
 		{
+			"name": "unrecognized_option_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "--bounds=xyz"], "expect_fail": true, "expect_stderr": "unrecognized option: '--bounds=xyz'", "reject_stderr": "no such file"},
+				{"cmd": ["bin/wv2", "check", "--bogus", "tests/simple.w"], "expect_fail": true, "expect_stderr": "unrecognized option: '--bogus'", "reject_stderr": "no such file"},
+				{"cmd": ["bin/wv2", "--bounds=off", "tests/simple.w", "-o", "/dev/null"]}
+			]
+		},
+		{
 			"name": "symbols_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -450,7 +424,18 @@
 				{"cmd": ["sh", "-c", "test $(wc -l < bin/defhash_fixture_closure.ndjson) -gt 7"]},
 				{"cmd": ["grep", "-qF", "\"name\": \"defhash_fixture_helper\"", "bin/defhash_fixture_closure.ndjson"]},
 				{"cmd": ["bin/wv2", "defhash"], "expect_fail": true, "expect_stderr": "usage: w defhash"},
-				{"cmd": ["bin/wv2", "defhash", "tests/type_system_error_fixture.w"], "expect_fail": true, "expect_stderr": "assignment to const"}
+				{"cmd": ["bin/wv2", "defhash", "tests/type_system_error_fixture.w"], "expect_fail": true, "expect_stderr": "assignment to const"},
+				{"cmd": ["bin/wv2", "defhash", "tests/defhash_generic_fixture.w"], "stdout_file": "bin/defhash_generic_fixture.ndjson", "expect_stdout": ["\"name\": \"defhash_generic_fixture_point\", \"kind\": \"struct\"", "\"name\": \"defhash_generic_fixture_max\", \"kind\": \"generic_function\"", "\"name\": \"defhash_generic_fixture_pair\", \"kind\": \"generic_struct\"", "\"name\": \"operator+(defhash_generic_fixture_point, defhash_generic_fixture_point)\", \"kind\": \"operator\"", "\"name\": \"defhash_generic_fixture_use_max\", \"kind\": \"function\"", "\"name\": \"main\", \"kind\": \"function\""]},
+				{"cmd": ["sh", "-c", "grep '\"name\": \"defhash_generic_fixture_use_max\"' bin/defhash_generic_fixture.ndjson | grep -qF '\"refs\": [\"defhash_generic_fixture_max\"]'"]},
+				{"cmd": ["bin/wv2", "defhash", "tests/defhash_generic_fixture_reformatted.w"], "stdout_file": "bin/defhash_generic_fixture_reformatted.ndjson"},
+				{"cmd": ["bin/wv2", "defhash", "tests/defhash_generic_fixture_edited.w"], "stdout_file": "bin/defhash_generic_fixture_edited.ndjson"},
+				{"cmd": ["bin/wv2", "defhash", "tests/defhash_generic_fixture_renamed.w"], "stdout_file": "bin/defhash_generic_fixture_renamed.ndjson"},
+				{"cmd": ["sh", "-c", "set -e; for n in defhash_generic_fixture_max defhash_generic_fixture_pair; do a=$(grep \"\\\"name\\\": \\\"$n\\\"\" bin/defhash_generic_fixture.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); r=$(grep \"\\\"name\\\": \\\"$n\\\"\" bin/defhash_generic_fixture_reformatted.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); test -n \"$a\"; test \"$a\" = \"$r\"; done"]},
+				{"cmd": ["sh", "-c", "set -e; a=$(grep -F '\"name\": \"operator+(defhash_generic_fixture_point, defhash_generic_fixture_point)\"' bin/defhash_generic_fixture.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); r=$(grep -F '\"name\": \"operator+(defhash_generic_fixture_point, defhash_generic_fixture_point)\"' bin/defhash_generic_fixture_reformatted.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); test -n \"$a\"; test \"$a\" = \"$r\""]},
+				{"cmd": ["sh", "-c", "set -e; a=$(grep '\"name\": \"defhash_generic_fixture_max\"' bin/defhash_generic_fixture.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); e=$(grep '\"name\": \"defhash_generic_fixture_max\"' bin/defhash_generic_fixture_edited.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); test -n \"$a\"; test \"$a\" != \"$e\""]},
+				{"cmd": ["sh", "-c", "set -e; a=$(grep -F '\"name\": \"operator+(defhash_generic_fixture_point, defhash_generic_fixture_point)\"' bin/defhash_generic_fixture.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); e=$(grep -F '\"name\": \"operator+(defhash_generic_fixture_point, defhash_generic_fixture_point)\"' bin/defhash_generic_fixture_edited.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); test -n \"$a\"; test \"$a\" != \"$e\""]},
+				{"cmd": ["sh", "-c", "set -e; a=$(grep '\"name\": \"defhash_generic_fixture_pair\"' bin/defhash_generic_fixture.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); e=$(grep '\"name\": \"defhash_generic_fixture_pair\"' bin/defhash_generic_fixture_edited.ndjson | grep -oE '\"hash\": \"[0-9a-f]+\"'); test -n \"$a\"; test \"$a\" = \"$e\""]},
+				{"cmd": ["sh", "-c", "set -e; grep -qF '\"name\": \"defhash_generic_fixture_max\"' bin/defhash_generic_fixture.ndjson; ! grep -qF '\"name\": \"defhash_generic_fixture_max\"' bin/defhash_generic_fixture_renamed.ndjson; grep -qF '\"name\": \"defhash_generic_fixture_maxval\"' bin/defhash_generic_fixture_renamed.ndjson; ! grep -qF '\"name\": \"defhash_generic_fixture_maxval\"' bin/defhash_generic_fixture.ndjson"]}
 			]
 		},
 		{
@@ -483,30 +468,6 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "repl.w", "-o", "bin/repl_warning_check"], "reject_stderr": "warning:"},
 				{"cmd": ["bin/wv2", "x64", "repl.w", "-o", "bin/repl_warning_check_64"], "reject_stderr": "warning:"}
-			]
-		},
-		{
-			"name": "float_abi_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/float_abi_test.w", "-o", "bin/float_abi_test"]},
-				{"cmd": ["bin/float_abi_test"], "expect_stdout": "float abi OK"}
-			]
-		},
-		{
-			"name": "varargs_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/varargs_test.w", "-o", "bin/varargs_test"]},
-				{"cmd": ["bin/varargs_test"], "expect_stdout": "varargs OK"}
-			]
-		},
-		{
-			"name": "extern_data_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/extern_data_test.w", "-o", "bin/extern_data_test"]},
-				{"cmd": ["bin/extern_data_test"], "expect_stdout": "extern data OK"}
 			]
 		},
 		{
@@ -577,34 +538,6 @@
 			]
 		},
 		{
-			"name": "int64_x86_error_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/x64_int64_test.w", "-o", "bin/int64_x86_error_test"], "expect_fail": true, "expect_stderr": "int64 requires the x64 target"}
-			]
-		},
-		{
-			"name": "type_system_error_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/type_system_error_fixture.w", "tests/type_system_const_pointer_error_fixture.w", "tests/type_system_cast_error_fixture.w", "tests/type_system_function_cast_error_fixture.w", "tests/method_chain_error_fixture.w"]}
-			]
-		},
-		{
-			"name": "type_system_warning_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/type_system_warning_fixture.w"]}
-			]
-		},
-		{
-			"name": "operator_overload_error_test",
-			"deps": ["wv2", "wfixture"],
-			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/operator_no_match_error_fixture.w", "tests/operator_token_error_fixture.w", "tests/operator_arity_error_fixture.w", "tests/operator_struct_param_error_fixture.w", "tests/operator_variadic_error_fixture.w"]}
-			]
-		},
-		{
 			"name": "compound_assign_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -632,60 +565,12 @@
 			]
 		},
 		{
-			"name": "print_builtin_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/print_builtin_test.w", "-o", "bin/print_builtin_test"]},
-				{"cmd": ["bin/print_builtin_test"], "expect_stdout": ["greeting str via f", "1.250000", "[5, -1, 12]", "[one, two]", "[]", "big"]}
-			]
-		},
-		{
 			"name": "script_mode_test",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/script_fixture.w", "-o", "bin/script_fixture"]},
 				{"cmd": ["bin/script_fixture"], "expect_stdout": ["20", "nonzero", "[1, 3, 4]", "total=20", "deferred ran last"]},
 				{"cmd": ["bin/wv2", "tests/script_error_fixture.w", "-o", "bin/script_error_fixture"], "expect_fail": true, "expect_stderr": "declarations must come before the first top-level statement"}
-			]
-		},
-		{
-			"name": "crypto_base64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_test"]},
-				{"cmd": ["bin/crypto_base64_test"]}
-			]
-		},
-		{
-			"name": "crypto_base64_64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_64_test"]},
-				{"cmd": ["bin/crypto_base64_64_test"]}
-			]
-		},
-		{
-			"name": "crypto_random_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_test"]},
-				{"cmd": ["bin/crypto_random_test"]}
-			]
-		},
-		{
-			"name": "crypto_random_64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_64_test"]},
-				{"cmd": ["bin/crypto_random_64_test"]}
-			]
-		},
-		{
-			"name": "x25519_iterated_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_iterated_test"]},
-				{"cmd": ["bin/x25519_iterated_test", "--iterated-1000"]}
 			]
 		},
 		{
@@ -696,64 +581,6 @@
 				{"cmd": ["bin/crypto_bignum_test"]},
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/bignum_test.w", "-o", "bin/crypto_bignum_test_x64"]},
 				{"cmd": ["bin/crypto_bignum_test_x64"]}
-			]
-		},
-		{
-			"name": "crypto_rsa_verify_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_test"]},
-				{"cmd": ["bin/crypto_rsa_verify_test"]},
-				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_test_x64"]},
-				{"cmd": ["bin/crypto_rsa_verify_test_x64"]}
-			]
-		},
-		{
-			"name": "crypto_ecdsa_p256_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/crypto/ecdsa_p256_test.w", "-o", "bin/crypto_ecdsa_p256_test"]},
-				{"cmd": ["bin/crypto_ecdsa_p256_test"]}
-			]
-		},
-		{
-			"name": "net_asn1_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_test"]},
-				{"cmd": ["bin/net_asn1_test"]},
-				{"cmd": ["bin/wv2", "x64", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_test_x64"]},
-				{"cmd": ["bin/net_asn1_test_x64"]}
-			]
-		},
-		{
-			"name": "net_x509_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_test"]},
-				{"cmd": ["bin/net_x509_test"]},
-				{"cmd": ["bin/wv2", "x64", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_test_x64"]},
-				{"cmd": ["bin/net_x509_test_x64"]}
-			]
-		},
-		{
-			"name": "net_tls_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_test"]},
-				{"cmd": ["bin/net_tls_test"]},
-				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_test_x64"]},
-				{"cmd": ["bin/net_tls_test_x64"]}
-			]
-		},
-		{
-			"name": "net_tls_server_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_test"]},
-				{"cmd": ["bin/net_tls_server_test"]},
-				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_test_x64"]},
-				{"cmd": ["bin/net_tls_server_test_x64"]}
 			]
 		},
 		{
@@ -771,23 +598,21 @@
 		{
 			"name": "openssl_interop_test",
 			"deps": ["wv2"],
-			"inputs": ["tools/openssl_interop_test.sh"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/openssl_tls_interop.w", "-o", "bin/openssl_tls_interop32"]},
 				{"cmd": ["bin/wv2", "x64", "tests/openssl_tls_interop.w", "-o", "bin/openssl_tls_interop64"]},
-				{"cmd": ["sh", "tools/openssl_interop_test.sh", "32"], "expect_stdout": "openssl interop OK", "timeout_ms": 120000},
-				{"cmd": ["sh", "tools/openssl_interop_test.sh", "64"], "expect_stdout": "openssl interop OK", "timeout_ms": 120000}
+				{"cmd": ["bin/openssl_tls_interop32"], "expect_stdout": "openssl interop OK", "timeout_ms": 120000},
+				{"cmd": ["bin/openssl_tls_interop64"], "expect_stdout": "openssl interop OK", "timeout_ms": 120000}
 			]
 		},
 		{
 			"name": "compress_zlib_interop_test",
 			"deps": ["wv2"],
-			"inputs": ["tools/compress_zlib_interop_test.sh"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/compress_zlib_interop.w", "-o", "bin/compress_zlib_interop32"]},
 				{"cmd": ["bin/wv2", "x64", "tests/compress_zlib_interop.w", "-o", "bin/compress_zlib_interop64"]},
-				{"cmd": ["sh", "tools/compress_zlib_interop_test.sh", "32"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000},
-				{"cmd": ["sh", "tools/compress_zlib_interop_test.sh", "64"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000}
+				{"cmd": ["bin/compress_zlib_interop32"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000},
+				{"cmd": ["bin/compress_zlib_interop64"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000}
 			]
 		},
 		{
@@ -930,6 +755,15 @@
 			]
 		},
 		{
+			"name": "parser_generator_actions_test",
+			"deps": ["parser_generator_test"],
+			"steps": [
+				{"cmd": ["bin/parser_generator", "tests/parser_generator/actions_sample.pg", "-o", "bin/generated_actions_parser.w"]},
+				{"cmd": ["bin/wv2", "tests/parser_generator/generated_actions_test.w", "-o", "bin/parser_generator_actions_test"]},
+				{"cmd": ["bin/parser_generator_actions_test"]}
+			]
+		},
+		{
 			"name": "wtest",
 			"deps": ["wv2"],
 			"inputs": ["tools/test_map.w"],
@@ -980,6 +814,15 @@
 			]
 		},
 		{
+			"name": "pac_flag_check",
+			"deps": ["wv2"],
+			"inputs": ["tools/pac_flag_check.w"],
+			"outputs": ["bin/pac_flag_check"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/pac_flag_check.w", "-o", "bin/pac_flag_check"]}
+			]
+		},
+		{
 			"name": "wtest_map_test",
 			"deps": ["wtest", "wtest_map_check"],
 			"data": ["tests/wtest/"],
@@ -1006,6 +849,34 @@
 				{"cmd": ["bin/wtest", "for", "-f", "tests/wtest/run_fixture.json", "wtest_run_boom_marker", "--run"], "expect_fail": true, "expect_stdout": "boom", "expect_stderr": "command failed with exit status"},
 				{"cmd": ["bin/wtest", "for"], "expect_fail": true, "expect_stderr": "wtest for <file>..."},
 				{"cmd": ["bin/wtest", "for", "-f", "tests/wtest/manifest_unavailable.json", "--available", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"}
+			]
+		},
+		{
+			"name": "wtest_defhash_test",
+			"deps": ["wtest"],
+			"steps": [
+				{"cmd": ["sh", "tools/wtest_defhash_scratch_test.sh"], "expect_stdout": "wtest_defhash_scratch_test: OK"}
+			]
+		},
+		{
+			"name": "wtest_range_test",
+			"deps": ["wtest"],
+			"steps": [
+				{"cmd": ["sh", "tools/wtest_range_scratch_test.sh"], "expect_stdout": "wtest_range_scratch_test: OK"}
+			]
+		},
+		{
+			"name": "wtest_archs_test",
+			"deps": ["wtest", "wv2"],
+			"data": ["tests/wtest/archs_fixture/", "tests/wtest/manifest_archs.json"],
+			"steps": [
+				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]"},
+				{"cmd": ["bin/wtest", "archs"], "expect_fail": true, "expect_stderr": "wtest archs <file>... [--check] [-f manifest.json]"},
+				{"cmd": ["bin/wtest", "archs", "-f", "tests/wtest/manifest_archs.json", "tests/wtest/archs_fixture/consumer.w"], "expect_stdout": ["x86 tests/wtest/archs_fixture/consumer.w -> archs_fixture_default,archs_fixture_default_run", "win64 tests/wtest/archs_fixture/consumer.w -> archs_fixture_win64", "arm64_darwin tests/wtest/archs_fixture/consumer.w -> archs_fixture_darwin"]},
+				{"cmd": ["bin/wtest", "archs", "-f", "tests/wtest/manifest_archs.json", "tests/wtest/archs_fixture/thinglib/__arch__/x86/thing.w"], "expect_stdout": "x86 tests/wtest/archs_fixture/consumer.w", "reject_stdout": "win64"},
+				{"cmd": ["bin/wtest", "archs", "-f", "tests/wtest/manifest_archs.json", "tests/wtest/archs_fixture/thinglib/__arch__/arm64_darwin/thing.w"], "expect_stdout": "arm64_darwin tests/wtest/archs_fixture/consumer.w", "reject_stdout": "win64"},
+				{"cmd": ["bin/wtest", "archs", "-f", "tests/wtest/manifest_archs.json", "docs/todo.txt"], "expect_stderr": "wtest: archs: no compiled target's closure contains docs/todo.txt"},
+				{"cmd": ["bin/wtest", "archs", "-f", "tests/wtest/manifest_archs.json", "tests/wtest/archs_fixture/consumer.w", "--check"], "expect_fail": true, "expect_stdout": ["x86 tests/wtest/archs_fixture/consumer.w: OK", "win64 tests/wtest/archs_fixture/consumer.w: FAIL", "arm64_darwin tests/wtest/archs_fixture/consumer.w: OK", "cannot locate 'tests/wtest/archs_fixture/thinglib/__arch__/win64/thing.w'"]}
 			]
 		},
 		{
@@ -1118,16 +989,6 @@
 			]
 		},
 		{
-			"name": "wvc_e2e_test",
-			"deps": ["wv2", "wvc"],
-			"inputs": ["tests/wvc_e2e_test.w"],
-			"outputs": ["bin/wvc_e2e_test"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/wvc_e2e_test.w", "-o", "bin/wvc_e2e_test"]},
-				{"cmd": ["bin/wvc_e2e_test"]}
-			]
-		},
-		{
 			"name": "wvc_sync_e2e_test",
 			"deps": ["wv2", "wvc"],
 			"inputs": ["tests/wvc_sync_e2e_test.w"],
@@ -1229,14 +1090,6 @@
 			]
 		},
 		{
-			"name": "wexec_remote_cache_test",
-			"deps": ["wv2", "wexec"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/wexec_remote_cache_test.w", "-o", "bin/wexec_remote_cache_test"]},
-				{"cmd": ["bin/wexec_remote_cache_test"]}
-			]
-		},
-		{
 			"name": "wexec_trace_test",
 			"deps": ["wv2", "wexec"],
 			"steps": [
@@ -1244,6 +1097,26 @@
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/trace.json", "--trace", "trace_target"], "expect_stdout": ["wexec: trace trace_target", "{\"file\": \"tests/wexec/trace_declared.txt\", \"declared\": true}", "{\"file\": \"tests/wexec/trace_undeclared.txt\", \"declared\": false}", "wexec: trace summary: 2 read, 1 undeclared"]},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/trace.json", "--trace", "trace_target", "--hermetic"], "expect_fail": true, "expect_stdout": "wexec: trace summary: 2 read, 1 undeclared"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/trace.json", "--trace", "no_such_target"], "expect_fail": true, "expect_stderr": "unknown target"}
+			]
+		},
+		{
+			"name": "wexec_lock_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["rm", "-f", "bin/.wexec_lock"]},
+				{"cmd": ["sh", "-c", "printf 1 > bin/.wexec_lock"]},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; exec bin/wexec -f tests/wexec/lock_scratch.json noop"], "expect_fail": true, "expect_stderr": "wexec: another build is running in this directory (pid 1); remove bin/.wexec_lock if stale"},
+				{"cmd": ["test", "-f", "bin/.wexec_lock"]},
+				{"cmd": ["rm", "-f", "bin/.wexec_lock"]},
+				{"cmd": ["sh", "-c", "( true & echo -n $! > bin/.wexec_lock; wait )"]},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; exec bin/wexec -f tests/wexec/lock_scratch.json noop"], "expect_stdout": ["lock scratch target ran", "wexec: OK (1 targets)"]},
+				{"cmd": ["sh", "-c", "test ! -f bin/.wexec_lock"]},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; exec bin/wexec -f tests/wexec/lock_scratch.json noop"], "expect_stdout": "wexec: OK (1 targets)"},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; exec bin/wexec -f tests/wexec/lock_scratch.json noop"], "expect_stdout": "wexec: OK (1 targets)"},
+				{"cmd": ["sh", "-c", "printf 1 > bin/.wexec_lock"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/lock_scratch.json", "noop"], "expect_stdout": "wexec: OK (1 targets)"},
+				{"cmd": ["sh", "-c", "test -f bin/.wexec_lock"]},
+				{"cmd": ["rm", "-f", "bin/.wexec_lock"]}
 			]
 		},
 		{
@@ -1467,10 +1340,13 @@
 		},
 		{
 			"name": "attach_test",
-			"deps": ["wdbg"],
-			"inputs": ["tools/attach_test.sh", "tests/attach_target_fixture.w", "tests/debug_fixture.w"],
+			"deps": ["wdbg", "wdbg_x64"],
+			"inputs": ["tools/attach_test.sh", "tests/attach_target_fixture.w", "tests/attach_finite_fixture.w", "tests/debug_fixture.w"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/attach_target_fixture.w", "-o", "bin/attach_target"]},
+				{"cmd": ["bin/wv2", "x64", "tests/attach_target_fixture.w", "-o", "bin/attach_target64"]},
+				{"cmd": ["bin/wv2", "tests/attach_finite_fixture.w", "-o", "bin/attach_finite_target"]},
+				{"cmd": ["bin/wv2", "x64", "tests/attach_finite_fixture.w", "-o", "bin/attach_finite_target64"]},
 				{"cmd": ["sh", "tools/attach_test.sh"], "expect_stdout": "attach test OK"}
 			]
 		},
@@ -1538,9 +1414,17 @@
 				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_lsdir3 && mkdir -p /tmp/w_repl_shell_lsdir3 && touch /tmp/w_repl_shell_lsdir3/alpha.txt\n:sh\nls -l /tmp/w_repl_shell_lsdir3\n:sh\n:quit\n", "expect_stdout": "alpha.txt"},
 				{"cmd": ["bin/repl"], "stdin": "!printf 'shell cat fixture content\\n' > /tmp/w_repl_shell_catfile.txt\n:sh\ncat /tmp/w_repl_shell_catfile.txt\n:sh\n:quit\n", "expect_stdout": "shell cat fixture content"},
 				{"cmd": ["bin/repl"], "stdin": ":sh\ncat /no/such/file_xyz_shell_test\n:sh\n:quit\n", "expect_stderr": "No such file or directory", "reject_stdout": "No such file or directory"},
-				{"cmd": ["bin/repl"], "stdin": ":sh\necho shell_mode_native_fallback_marker\n:sh\n:quit\n", "expect_stdout": "shell_mode_native_fallback_marker"},
+				{"cmd": ["bin/repl"], "stdin": ":sh\nprintf 'shell_mode_native_fallback_marker\\n'\n:sh\n:quit\n", "expect_stdout": "shell_mode_native_fallback_marker"},
 				{"cmd": ["bin/repl"], "stdin": ":sh\ncd /tmp\n!40 + 2\npwd\n:sh\n:quit\n", "expect_stdout": ["42", "/tmp"]},
 				{"cmd": ["bin/repl"], "stdin": ":sh\ncd /tmp\npwd\nexport W_REPL_SH_TEST=fortytwo\necho $W_REPL_SH_TEST\n:sh\n:quit\n", "expect_stdout": ["/tmp", "fortytwo"]},
+				{"cmd": ["bin/repl"], "stdin": ":sh\necho shell mode echo native tool\n:sh\n:quit\n", "expect_stdout": "shell mode echo native tool"},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'linealpha\\nlinebeta\\nlinegamma\\nlinedelta\\nlineepsilon\\n' > /tmp/w_repl_shell_headtail.txt\n:sh\nhead -n 2 /tmp/w_repl_shell_headtail.txt\n:sh\n:quit\n", "expect_stdout": ["linealpha", "linebeta"], "reject_stdout": "linegamma"},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'linealpha\\nlinebeta\\nlinegamma\\nlinedelta\\nlineepsilon\\n' > /tmp/w_repl_shell_headtail2.txt\n:sh\ntail -n 2 /tmp/w_repl_shell_headtail2.txt\n:sh\n:quit\n", "expect_stdout": ["linedelta", "lineepsilon"], "reject_stdout": "linealpha"},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'a b c\\nd e\\n' > /tmp/w_repl_shell_wcfile.txt\n:sh\nwc -l /tmp/w_repl_shell_wcfile.txt\n:sh\n:quit\n", "expect_stdout": "2 /tmp/w_repl_shell_wcfile.txt"},
+				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_mkdirtest\n:sh\nmkdir -p /tmp/w_repl_shell_mkdirtest/nested/deep\nls /tmp/w_repl_shell_mkdirtest\n:sh\n:quit\n", "expect_stdout": "nested"},
+				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_rmtest_parent && mkdir -p /tmp/w_repl_shell_rmtest_parent/child && touch /tmp/w_repl_shell_rmtest_parent/child/f.txt /tmp/w_repl_shell_rmtest_parent/keep.txt\n:sh\nrm -rf /tmp/w_repl_shell_rmtest_parent/child\nls /tmp/w_repl_shell_rmtest_parent\n:sh\n:quit\n", "expect_stdout": "keep.txt", "reject_stdout": "child"},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'cp shell mode content\\n' > /tmp/w_repl_shell_cpsrc.txt && rm -f /tmp/w_repl_shell_cpdst.txt\n:sh\ncp /tmp/w_repl_shell_cpsrc.txt /tmp/w_repl_shell_cpdst.txt\ncat /tmp/w_repl_shell_cpdst.txt\n:sh\n:quit\n", "expect_stdout": "cp shell mode content"},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'mv shell mode content\\n' > /tmp/w_repl_shell_mvsrc.txt && rm -f /tmp/w_repl_shell_mvdst.txt\n:sh\nmv /tmp/w_repl_shell_mvsrc.txt /tmp/w_repl_shell_mvdst.txt\ncat /tmp/w_repl_shell_mvdst.txt\n:sh\n:quit\n", "expect_stdout": "mv shell mode content"},
 				{"cmd": ["bin/repl", "-e", "40 + 2"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl", "-e", "int x = 5", "-e", "x + 37"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl", "-e", "this is not valid w"], "expect_fail": true},
@@ -1548,7 +1432,9 @@
 				{"cmd": ["bin/repl", "--json", "-e", "print(c\"hi\")"], "expect_stdout": ["\"output\":\"hi\"", "\"echo\":null"]},
 				{"cmd": ["bin/repl", "--json", "-e", "this is not valid w"], "expect_fail": true, "expect_stdout": "\"error\":\"compile error\""},
 				{"cmd": ["bin/repl"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "},
-				{"cmd": ["bin/repl", "--quiet"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "}
+				{"cmd": ["bin/repl", "--quiet"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "},
+				{"cmd": ["script", "-qc", "./bin/repl", "/dev/null"], "stdin": "int myvar_completion_probe = 42\nmyvar_completion_p\t + 1\n:quit\n", "expect_stdout": "43"},
+				{"cmd": ["script", "-qc", "./bin/repl", "/dev/null"], "stdin": "\u001b[200~int addp(int a, int b):\n\tint total = a + b\n\n\treturn total\n\u001b[201~\naddp(2, 3)\n:quit\n", "expect_stdout": "5"}
 			]
 		},
 		{
@@ -1606,9 +1492,17 @@
 				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_lsdir364 && mkdir -p /tmp/w_repl_shell_lsdir364 && touch /tmp/w_repl_shell_lsdir364/alpha.txt\n:sh\nls -l /tmp/w_repl_shell_lsdir364\n:sh\n:quit\n", "expect_stdout": "alpha.txt"},
 				{"cmd": ["bin/repl64"], "stdin": "!printf 'shell cat fixture content\\n' > /tmp/w_repl_shell_catfile64.txt\n:sh\ncat /tmp/w_repl_shell_catfile64.txt\n:sh\n:quit\n", "expect_stdout": "shell cat fixture content"},
 				{"cmd": ["bin/repl64"], "stdin": ":sh\ncat /no/such/file_xyz_shell_test64\n:sh\n:quit\n", "expect_stderr": "No such file or directory", "reject_stdout": "No such file or directory"},
-				{"cmd": ["bin/repl64"], "stdin": ":sh\necho shell_mode_native_fallback_marker\n:sh\n:quit\n", "expect_stdout": "shell_mode_native_fallback_marker"},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\nprintf 'shell_mode_native_fallback_marker\\n'\n:sh\n:quit\n", "expect_stdout": "shell_mode_native_fallback_marker"},
 				{"cmd": ["bin/repl64"], "stdin": ":sh\ncd /tmp\n!40 + 2\npwd\n:sh\n:quit\n", "expect_stdout": ["42", "/tmp"]},
 				{"cmd": ["bin/repl64"], "stdin": ":sh\ncd /tmp\npwd\nexport W_REPL_SH_TEST=fortytwo\necho $W_REPL_SH_TEST\n:sh\n:quit\n", "expect_stdout": ["/tmp", "fortytwo"]},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\necho shell mode echo native tool\n:sh\n:quit\n", "expect_stdout": "shell mode echo native tool"},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'linealpha\\nlinebeta\\nlinegamma\\nlinedelta\\nlineepsilon\\n' > /tmp/w_repl_shell_headtail64.txt\n:sh\nhead -n 2 /tmp/w_repl_shell_headtail64.txt\n:sh\n:quit\n", "expect_stdout": ["linealpha", "linebeta"], "reject_stdout": "linegamma"},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'linealpha\\nlinebeta\\nlinegamma\\nlinedelta\\nlineepsilon\\n' > /tmp/w_repl_shell_headtail264.txt\n:sh\ntail -n 2 /tmp/w_repl_shell_headtail264.txt\n:sh\n:quit\n", "expect_stdout": ["linedelta", "lineepsilon"], "reject_stdout": "linealpha"},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'a b c\\nd e\\n' > /tmp/w_repl_shell_wcfile64.txt\n:sh\nwc -l /tmp/w_repl_shell_wcfile64.txt\n:sh\n:quit\n", "expect_stdout": "2 /tmp/w_repl_shell_wcfile64.txt"},
+				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_mkdirtest64\n:sh\nmkdir -p /tmp/w_repl_shell_mkdirtest64/nested/deep\nls /tmp/w_repl_shell_mkdirtest64\n:sh\n:quit\n", "expect_stdout": "nested"},
+				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_rmtest_parent64 && mkdir -p /tmp/w_repl_shell_rmtest_parent64/child && touch /tmp/w_repl_shell_rmtest_parent64/child/f.txt /tmp/w_repl_shell_rmtest_parent64/keep.txt\n:sh\nrm -rf /tmp/w_repl_shell_rmtest_parent64/child\nls /tmp/w_repl_shell_rmtest_parent64\n:sh\n:quit\n", "expect_stdout": "keep.txt", "reject_stdout": "child"},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'cp shell mode content\\n' > /tmp/w_repl_shell_cpsrc64.txt && rm -f /tmp/w_repl_shell_cpdst64.txt\n:sh\ncp /tmp/w_repl_shell_cpsrc64.txt /tmp/w_repl_shell_cpdst64.txt\ncat /tmp/w_repl_shell_cpdst64.txt\n:sh\n:quit\n", "expect_stdout": "cp shell mode content"},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'mv shell mode content\\n' > /tmp/w_repl_shell_mvsrc64.txt && rm -f /tmp/w_repl_shell_mvdst64.txt\n:sh\nmv /tmp/w_repl_shell_mvsrc64.txt /tmp/w_repl_shell_mvdst64.txt\ncat /tmp/w_repl_shell_mvdst64.txt\n:sh\n:quit\n", "expect_stdout": "mv shell mode content"},
 				{"cmd": ["bin/repl64", "-e", "40 + 2"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "-e", "int x = 5", "-e", "x + 37"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "-e", "this is not valid w"], "expect_fail": true},
@@ -1616,15 +1510,9 @@
 				{"cmd": ["bin/repl64", "--json", "-e", "print(c\"hi\")"], "expect_stdout": ["\"output\":\"hi\"", "\"echo\":null"]},
 				{"cmd": ["bin/repl64", "--json", "-e", "this is not valid w"], "expect_fail": true, "expect_stdout": "\"error\":\"compile error\""},
 				{"cmd": ["bin/repl64"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "},
-				{"cmd": ["bin/repl64", "--quiet"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "}
-			]
-		},
-		{
-			"name": "dynamic_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/dynamic_test.w", "-o", "bin/dynamic_test"]},
-				{"cmd": ["bin/dynamic_test"], "expect_stdout": "dynamic linking OK"}
+				{"cmd": ["bin/repl64", "--quiet"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "},
+				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "int myvar_completion_probe64 = 42\nmyvar_completion_p\t + 1\n:quit\n", "expect_stdout": "43"},
+				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "\u001b[200~int addp64(int a, int b):\n\tint total = a + b\n\n\treturn total\n\u001b[201~\naddp64(2, 3)\n:quit\n", "expect_stdout": "5"}
 			]
 		},
 		{
@@ -1786,6 +1674,14 @@
 			]
 		},
 		{
+			"name": "x64_protobuf_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_protobuf_test.w", "-o", "bin/x64_protobuf_test"]},
+				{"cmd": ["bin/x64_protobuf_test"], "expect_stdout": "x64 protobuf wide-kind tests OK"}
+			]
+		},
+		{
 			"name": "x64_map_float64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1821,22 +1717,6 @@
 			]
 		},
 		{
-			"name": "graphics_math_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "graphics/math_test.w", "-o", "bin/graphics_math_test"]},
-				{"cmd": ["bin/graphics_math_test"]}
-			]
-		},
-		{
-			"name": "graphics_math_64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "graphics/math_test.w", "-o", "bin/graphics_math_64_test"]},
-				{"cmd": ["bin/graphics_math_64_test"]}
-			]
-		},
-		{
 			"name": "graphics_gl_smoke_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1855,9 +1735,14 @@
 		},
 		{
 			"name": "pac_flag_test",
-			"deps": ["wv2"],
+			"deps": ["wv2", "pac_flag_check"],
 			"steps": [
-				{"cmd": ["sh", "tools/pac_flag_check.sh", "bin/wv2"], "expect_stdout": "pac flag test OK"}
+				{"cmd": ["bin/wv2", "arm64", "tests/pac_full_test.w", "-o", "bin/pac_flag_ret"]},
+				{"cmd": ["bin/wv2", "arm64", "--pac=off", "tests/pac_full_test.w", "-o", "bin/pac_flag_off"]},
+				{"cmd": ["bin/wv2", "arm64", "--pac=full", "tests/pac_full_test.w", "-o", "bin/pac_flag_full"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "--pac=full", "tests/pac_full_test.w", "-o", "bin/pac_flag_arm64e"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/pac_full_test.w", "-o", "bin/pac_flag_darwin"]},
+				{"cmd": ["bin/pac_flag_check", "bin/pac_flag_ret", "bin/pac_flag_off", "bin/pac_flag_full", "bin/pac_flag_arm64e", "bin/pac_flag_darwin"], "expect_stdout": "pac flag test OK"}
 			]
 		},
 		{
@@ -1890,27 +1775,11 @@
 			]
 		},
 		{
-			"name": "dynamic_test_x64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/dynamic_test.w", "-o", "bin/dynamic_test_x64"]},
-				{"cmd": ["bin/dynamic_test_x64"], "expect_stdout": "dynamic linking OK"}
-			]
-		},
-		{
 			"name": "extern_alias_test_x64",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/extern_alias_test.w", "-o", "bin/extern_alias_test_x64"]},
 				{"cmd": ["bin/extern_alias_test_x64"], "expect_stdout": "extern alias OK"}
-			]
-		},
-		{
-			"name": "c_import_libc_test_x64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/c_import_libc_test.w", "-o", "bin/c_import_libc_test_x64"]},
-				{"cmd": ["bin/c_import_libc_test_x64"]}
 			]
 		},
 		{
@@ -1923,22 +1792,6 @@
 				{"cmd": ["bin/x64_float_abi_test"], "expect_stdout": "x64 float abi OK"},
 				{"cmd": ["bin/wv2", "x64", "tests/x64_c_import_float_test.w", "-o", "bin/x64_c_import_float_test"]},
 				{"cmd": ["bin/x64_c_import_float_test"], "expect_stdout": "x64 c_import float OK"}
-			]
-		},
-		{
-			"name": "varargs_test_x64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/varargs_test.w", "-o", "bin/varargs_test_x64"]},
-				{"cmd": ["bin/varargs_test_x64"], "expect_stdout": "varargs OK"}
-			]
-		},
-		{
-			"name": "extern_data_test_x64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/extern_data_test.w", "-o", "bin/extern_data_test_x64"]},
-				{"cmd": ["bin/extern_data_test_x64"], "expect_stdout": "extern data OK"}
 			]
 		},
 		{
@@ -1993,14 +1846,15 @@
 				"x64_fmath64_test",
 				"x64_ndarray64_test",
 				"x64_int64_test",
+				"x64_protobuf_test",
 				"x64_map_float64_test",
 				"x64_float64_conformance_test",
-				"dynamic_test_x64",
+				"dynamic_64_test",
 				"extern_alias_test_x64",
-				"c_import_libc_test_x64",
+				"c_import_libc_64_test",
 				"float_abi_test_x64",
-				"varargs_test_x64",
-				"extern_data_test_x64",
+				"varargs_64_test",
+				"extern_data_64_test",
 				"dynamic_var_64_test",
 				"json_rpc_64_test",
 				"task_io_64_test",
@@ -2029,6 +1883,7 @@
 				"compress_gzip_64_test",
 				"compress_inflate_64_test",
 				"compress_zlib_64_test",
+				"crypto_rsa_verify_64_test",
 				"cstr_64_test",
 				"default_args_64_test",
 				"defer_64_test",
@@ -2076,6 +1931,10 @@
 				"ndarray_64_test",
 				"nested_ctor_64_test",
 				"net_64_test",
+				"net_asn1_64_test",
+				"net_tls_64_test",
+				"net_tls_server_64_test",
+				"net_x509_64_test",
 				"operator_overload_64_test",
 				"parallel_for_64_test",
 				"passwd_64_test",
@@ -2085,6 +1944,8 @@
 				"poly1305_64_test",
 				"prng_64_test",
 				"process_64_test",
+				"protobuf_64_test",
+				"ptr_add_64_test",
 				"quorum_64_test",
 				"raft_64_test",
 				"raft_membership_restart_64_test",
@@ -2146,24 +2007,6 @@
 				{"cmd": ["bin/wv2", "x64", "tests/hello.w", "-o", "bin/asm_elf64_fixture"]},
 				{"cmd": ["bin/wv2", "tests/asm_foundations_test.w", "-o", "bin/asm_foundations_test"]},
 				{"cmd": ["bin/asm_foundations_test"]}
-			]
-		},
-		{
-			"name": "asm_x86_disasm_test",
-			"deps": ["wv2"],
-			"inputs": ["libs/asm/", "tests/asm/", "tests/asm_x86_disasm_test.w"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/asm_x86_disasm_test.w", "-o", "bin/asm_x86_disasm_test"]},
-				{"cmd": ["bin/asm_x86_disasm_test"]}
-			]
-		},
-		{
-			"name": "asm_x86_asm_test",
-			"deps": ["wv2"],
-			"inputs": ["libs/asm/", "tests/asm/", "tests/asm_x86_asm_test.w"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/asm_x86_asm_test.w", "-o", "bin/asm_x86_asm_test"]},
-				{"cmd": ["bin/asm_x86_asm_test"]}
 			]
 		},
 		{
@@ -2234,22 +2077,7 @@
 			"name": "cuda_diagnostics_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w"]},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_call_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu code cannot call functions"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_global_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "global variables are not accessible in gpu code"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_string_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "strings are not supported in gpu code"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/kernel_call_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "kernels cannot be called; use 'launch'"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_non_kernel_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'helper' is not a kernel"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_no_runtime_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu code requires 'import lib.cuda'"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/launch_arity_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "kernel 'add' expects 2 arguments, got 1"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_return_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'return' is not supported in 'gpu for'"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_no_runtime_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu code requires 'import lib.cuda'"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_for_range_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "'gpu for' supports only range(end) and range(start, end)"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_host_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "atomic_add/atomic_min/atomic_max are only available in gpu code"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_operand_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu atomics require an int* or float32* first argument"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/atomic_minmax_float_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "atomic_min/atomic_max require an int* first argument"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_math_host_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "gpu_exp/gpu_log are only available in gpu code"},
-				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/gpu_capture_write_error_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "assignment to const"}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w", "tests/gpu_call_error_fixture.w", "tests/gpu_global_error_fixture.w", "tests/gpu_string_error_fixture.w", "tests/kernel_call_error_fixture.w", "tests/launch_non_kernel_error_fixture.w", "tests/launch_no_runtime_error_fixture.w", "tests/launch_arity_error_fixture.w", "tests/gpu_for_return_error_fixture.w", "tests/gpu_for_no_runtime_error_fixture.w", "tests/gpu_for_range_error_fixture.w", "tests/atomic_host_error_fixture.w", "tests/atomic_operand_error_fixture.w", "tests/atomic_minmax_float_error_fixture.w", "tests/gpu_math_host_error_fixture.w", "tests/gpu_capture_write_error_fixture.w"]}
 			]
 		},
 		{
@@ -2382,6 +2210,7 @@
 				"int_literal_width_test",
 				"prefixed_string_literal_test",
 				"warning_test",
+				"recursion_depth_test",
 				"strict_mode_test",
 				"check_json_test",
 				"check_json_utf8_test",
@@ -2390,6 +2219,7 @@
 				"check_imports_test",
 				"check_bool_ops_test",
 				"missing_file_test",
+				"unrecognized_option_test",
 				"symbols_test",
 				"deps_test",
 				"defhash_test",
@@ -2442,13 +2272,18 @@
 				"parser_generator_w_test",
 				"parser_generator_c_test",
 				"parser_generator_streaming_test",
+				"parser_generator_actions_test",
 				"wtest_map_test",
 				"wtest_run_test",
+				"wtest_defhash_test",
+				"wtest_range_test",
+				"wtest_archs_test",
 				"wexec_test",
 				"wexec_keep_going_test",
 				"wexec_ordered_output_test",
 				"wexec_remote_cache_test",
 				"wexec_trace_test",
+				"wexec_lock_test",
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",
@@ -2540,6 +2375,7 @@
 				"lib_test",
 				"limb_builtin_shadow_test",
 				"limb_builtin_test",
+				"line_edit_completion_test",
 				"list_methods_test",
 				"lsm_test",
 				"malloc_churn_test",
@@ -2569,6 +2405,8 @@
 				"poly1305_test",
 				"prng_test",
 				"process_test",
+				"protobuf_test",
+				"ptr_add_test",
 				"quorum_test",
 				"raft_membership_restart_test",
 				"raft_membership_sim_test",
@@ -2663,6 +2501,13 @@
 			]
 		},
 		{
+			"name": "array_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/array_constructor_error_fixture.w", "tests/array_param_error_fixture.w", "tests/array_union_error_fixture.w"]}
+			]
+		},
+		{
 			"name": "array_list_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2716,6 +2561,24 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/asm_fuzz_x86_test.w", "-o", "bin/asm_fuzz_x86_test"]},
 				{"cmd": ["bin/asm_fuzz_x86_test"]}
+			]
+		},
+		{
+			"name": "asm_x86_asm_test",
+			"deps": ["wv2"],
+			"data": ["tests/asm/"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/asm_x86_asm_test.w", "-o", "bin/asm_x86_asm_test"]},
+				{"cmd": ["bin/asm_x86_asm_test"]}
+			]
+		},
+		{
+			"name": "asm_x86_disasm_test",
+			"deps": ["wv2"],
+			"data": ["tests/asm/"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/asm_x86_disasm_test.w", "-o", "bin/asm_x86_disasm_test"]},
+				{"cmd": ["bin/asm_x86_disasm_test"]}
 			]
 		},
 		{
@@ -2816,11 +2679,26 @@
 			]
 		},
 		{
+			"name": "buffer_field_assign_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/buffer_field_assign_test.w"]}
+			]
+		},
+		{
 			"name": "c_import_errno_test",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/c_import_errno_test.w", "-o", "bin/c_import_errno_test"]},
 				{"cmd": ["bin/c_import_errno_test"]}
+			]
+		},
+		{
+			"name": "c_import_libc_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/c_import_libc_test.w", "-o", "bin/c_import_libc_64_test"]},
+				{"cmd": ["bin/c_import_libc_64_test"]}
 			]
 		},
 		{
@@ -3016,6 +2894,62 @@
 			]
 		},
 		{
+			"name": "crypto_base64_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_64_test"]},
+				{"cmd": ["bin/crypto_base64_64_test"]}
+			]
+		},
+		{
+			"name": "crypto_base64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_test"]},
+				{"cmd": ["bin/crypto_base64_test"]}
+			]
+		},
+		{
+			"name": "crypto_ecdsa_p256_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/ecdsa_p256_test.w", "-o", "bin/crypto_ecdsa_p256_test"]},
+				{"cmd": ["bin/crypto_ecdsa_p256_test"]}
+			]
+		},
+		{
+			"name": "crypto_random_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_64_test"]},
+				{"cmd": ["bin/crypto_random_64_test"]}
+			]
+		},
+		{
+			"name": "crypto_random_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_test"]},
+				{"cmd": ["bin/crypto_random_test"]}
+			]
+		},
+		{
+			"name": "crypto_rsa_verify_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_64_test"]},
+				{"cmd": ["bin/crypto_rsa_verify_64_test"]}
+			]
+		},
+		{
+			"name": "crypto_rsa_verify_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_test"]},
+				{"cmd": ["bin/crypto_rsa_verify_test"]}
+			]
+		},
+		{
 			"name": "cstr_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3072,6 +3006,22 @@
 			]
 		},
 		{
+			"name": "dynamic_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/dynamic_test.w", "-o", "bin/dynamic_64_test"]},
+				{"cmd": ["bin/dynamic_64_test"], "expect_stdout": "dynamic linking OK"}
+			]
+		},
+		{
+			"name": "dynamic_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/dynamic_test.w", "-o", "bin/dynamic_test"]},
+				{"cmd": ["bin/dynamic_test"], "expect_stdout": "dynamic linking OK"}
+			]
+		},
+		{
 			"name": "dynamic_test_arm64",
 			"deps": ["wv2"],
 			"steps": [
@@ -3109,6 +3059,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/event_loop_test.w", "-o", "bin/event_loop_test"]},
 				{"cmd": ["bin/event_loop_test"]}
+			]
+		},
+		{
+			"name": "extern_data_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/extern_data_test.w", "-o", "bin/extern_data_64_test"]},
+				{"cmd": ["bin/extern_data_64_test"], "expect_stdout": "extern data OK"}
+			]
+		},
+		{
+			"name": "extern_data_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/extern_data_test.w", "-o", "bin/extern_data_test"]},
+				{"cmd": ["bin/extern_data_test"], "expect_stdout": "extern data OK"}
 			]
 		},
 		{
@@ -3181,6 +3147,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/float16_test.w", "-o", "bin/float16_test"]},
 				{"cmd": ["bin/float16_test"]}
+			]
+		},
+		{
+			"name": "float_abi_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/float_abi_test.w", "-o", "bin/float_abi_test"]},
+				{"cmd": ["bin/float_abi_test"], "expect_stdout": "float abi OK"}
 			]
 		},
 		{
@@ -3336,6 +3310,22 @@
 			]
 		},
 		{
+			"name": "graphics_math_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/math_test.w", "-o", "bin/graphics_math_64_test"]},
+				{"cmd": ["bin/graphics_math_64_test"]}
+			]
+		},
+		{
+			"name": "graphics_math_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "graphics/math_test.w", "-o", "bin/graphics_math_test"]},
+				{"cmd": ["bin/graphics_math_test"]}
+			]
+		},
+		{
 			"name": "hash_table_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3456,6 +3446,13 @@
 			]
 		},
 		{
+			"name": "int64_x86_error_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/int64_x86_error_test.w", "-o", "bin/int64_x86_error_test"], "expect_fail": true, "expect_stderr": "int64 requires the x64 target"}
+			]
+		},
+		{
 			"name": "int_literal_bounds_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3469,6 +3466,13 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/int_literal_bounds_test.w", "-o", "bin/int_literal_bounds_test"]},
 				{"cmd": ["bin/int_literal_bounds_test"]}
+			]
+		},
+		{
+			"name": "int_literal_width_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/int_literal_width_binary_error_fixture.w", "tests/int_literal_width_decimal_error_fixture.w", "tests/int_literal_width_error_fixture.w"]}
 			]
 		},
 		{
@@ -3597,6 +3601,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/limb_builtin_test.w", "-o", "bin/limb_builtin_test"]},
 				{"cmd": ["bin/limb_builtin_test"]}
+			]
+		},
+		{
+			"name": "line_edit_completion_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/line_edit_completion_test.w", "-o", "bin/line_edit_completion_test"]},
+				{"cmd": ["bin/line_edit_completion_test"]}
 			]
 		},
 		{
@@ -3856,6 +3868,22 @@
 			]
 		},
 		{
+			"name": "net_asn1_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_64_test"]},
+				{"cmd": ["bin/net_asn1_64_test"]}
+			]
+		},
+		{
+			"name": "net_asn1_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_test"]},
+				{"cmd": ["bin/net_asn1_test"]}
+			]
+		},
+		{
 			"name": "net_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3864,11 +3892,66 @@
 			]
 		},
 		{
+			"name": "net_tls_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_64_test"]},
+				{"cmd": ["bin/net_tls_64_test"]}
+			]
+		},
+		{
+			"name": "net_tls_server_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_64_test"]},
+				{"cmd": ["bin/net_tls_server_64_test"]}
+			]
+		},
+		{
+			"name": "net_tls_server_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_test"]},
+				{"cmd": ["bin/net_tls_server_test"]}
+			]
+		},
+		{
+			"name": "net_tls_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_test"]},
+				{"cmd": ["bin/net_tls_test"]}
+			]
+		},
+		{
+			"name": "net_x509_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_64_test"]},
+				{"cmd": ["bin/net_x509_64_test"]}
+			]
+		},
+		{
+			"name": "net_x509_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_test"]},
+				{"cmd": ["bin/net_x509_test"]}
+			]
+		},
+		{
 			"name": "operator_overload_64_test",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/operator_overload_test.w", "-o", "bin/operator_overload_64_test"]},
 				{"cmd": ["bin/operator_overload_64_test"]}
+			]
+		},
+		{
+			"name": "operator_overload_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/operator_arity_error_fixture.w", "tests/operator_no_match_error_fixture.w", "tests/operator_struct_param_error_fixture.w", "tests/operator_token_error_fixture.w", "tests/operator_variadic_error_fixture.w"]}
 			]
 		},
 		{
@@ -3984,11 +4067,26 @@
 			]
 		},
 		{
+			"name": "prefixed_string_literal_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/prefixed_string_unterminated_fixture.w"]}
+			]
+		},
+		{
 			"name": "prelude_test",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/prelude_test.w", "-o", "bin/prelude_test"]},
 				{"cmd": ["bin/prelude_test"], "stdin": "header line\n1 2 3\n-4 and x5\n", "expect_stdout": ["header line", "[1, 2, 3, -4, 5]", "7", "leftover:"]}
+			]
+		},
+		{
+			"name": "print_builtin_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/print_builtin_test.w", "-o", "bin/print_builtin_test"]},
+				{"cmd": ["bin/print_builtin_test"], "expect_stdout": ["greeting str via f", "1.250000", "[5, -1, 12]", "[one, two]", "[]", "big"]}
 			]
 		},
 		{
@@ -4021,6 +4119,38 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/process_test.w", "-o", "bin/process_test"]},
 				{"cmd": ["bin/process_test"]}
+			]
+		},
+		{
+			"name": "protobuf_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/protobuf_test.w", "-o", "bin/protobuf_64_test"]},
+				{"cmd": ["bin/protobuf_64_test"]}
+			]
+		},
+		{
+			"name": "protobuf_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/protobuf_test.w", "-o", "bin/protobuf_test"]},
+				{"cmd": ["bin/protobuf_test"]}
+			]
+		},
+		{
+			"name": "ptr_add_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/ptr_add_test.w", "-o", "bin/ptr_add_64_test"]},
+				{"cmd": ["bin/ptr_add_64_test"]}
+			]
+		},
+		{
+			"name": "ptr_add_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ptr_add_test.w", "-o", "bin/ptr_add_test"]},
+				{"cmd": ["bin/ptr_add_test"]}
 			]
 		},
 		{
@@ -4585,6 +4715,13 @@
 			]
 		},
 		{
+			"name": "syscall_arity_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/syscall7_arity_error_fixture.w", "tests/syscall_arity_error_fixture.w"]}
+			]
+		},
+		{
 			"name": "task_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -4657,11 +4794,25 @@
 			]
 		},
 		{
+			"name": "type_system_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/method_chain_error_fixture.w", "tests/type_system_cast_error_fixture.w", "tests/type_system_const_pointer_error_fixture.w", "tests/type_system_error_fixture.w", "tests/type_system_function_cast_error_fixture.w"]}
+			]
+		},
+		{
 			"name": "type_system_p0_test",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/type_system_p0_test.w", "-o", "bin/type_system_p0_test"]},
 				{"cmd": ["bin/type_system_p0_test"]}
+			]
+		},
+		{
+			"name": "type_system_warning_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/type_system_warning_fixture.w"]}
 			]
 		},
 		{
@@ -4726,6 +4877,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/utf8_source_test.w", "-o", "bin/utf8_source_test"]},
 				{"cmd": ["bin/utf8_source_test"]}
+			]
+		},
+		{
+			"name": "varargs_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/varargs_test.w", "-o", "bin/varargs_64_test"]},
+				{"cmd": ["bin/varargs_64_test"], "expect_stdout": "varargs OK"}
+			]
+		},
+		{
+			"name": "varargs_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/varargs_test.w", "-o", "bin/varargs_test"]},
+				{"cmd": ["bin/varargs_test"], "expect_stdout": "varargs OK"}
 			]
 		},
 		{
@@ -4889,6 +5056,13 @@
 			]
 		},
 		{
+			"name": "warning_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/bit31_literal_warning_fixture.w", "tests/bool_bitwise_chain_fixture.w", "tests/bool_bitwise_warning_fixture.w", "tests/cross_line_call_increment_fixture.w", "tests/cross_line_call_warning_fixture.w", "tests/import_alias_warning_fixture.w", "tests/imported_diagnostic_line_fixture.w", "tests/limb_builtin_warning_fixture.w", "tests/string_char_warning_fixture.w", "tests/warning_clean_fixture.w", "tests/warning_fixture.w"]}
+			]
+		},
+		{
 			"name": "wbuild_directive_64_test",
 			"deps": ["wv2"],
 			"data": ["tests/wbuild_directive_data.txt"],
@@ -4938,11 +5112,35 @@
 			]
 		},
 		{
+			"name": "wexec_remote_cache_test",
+			"deps": ["wv2", "wexec"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wexec_remote_cache_test.w", "-o", "bin/wexec_remote_cache_test"]},
+				{"cmd": ["bin/wexec_remote_cache_test"]}
+			]
+		},
+		{
+			"name": "wvc_e2e_test",
+			"deps": ["wv2", "wvc"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wvc_e2e_test.w", "-o", "bin/wvc_e2e_test"]},
+				{"cmd": ["bin/wvc_e2e_test"]}
+			]
+		},
+		{
 			"name": "x25519_64_test",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_64_test"]},
 				{"cmd": ["bin/x25519_64_test"]}
+			]
+		},
+		{
+			"name": "x25519_iterated_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_iterated_test"]},
+				{"cmd": ["bin/x25519_iterated_test", "--iterated-1000"]}
 			]
 		},
 		{

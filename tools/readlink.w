@@ -3,10 +3,12 @@ readlink: print the target of a symbolic link.
 
 Usage: readlink [-n] <path>
 
--n suppresses the trailing newline. Boolean flags are parsed by hand
-because lib/args.w would treat the path as the flag's value.
+-n suppresses the trailing newline. -n is a declared boolean flag
+(lib/args.w's args_has_bool_flag) so it doesn't swallow the path as its
+value.
 */
 import lib.lib
+import lib.args
 import lib.stat
 import lib.stream
 
@@ -17,30 +19,35 @@ void readlink_usage():
 	stream_flush(err)
 
 
+# 1 when body is one of readlink's own recognized flag names.
+int readlink_flag_recognized(char* body):
+	if (args_name_matches(body, c"h")):
+		return 1
+	if (args_name_matches(body, c"help")):
+		return 1
+	if (args_name_matches(body, c"n")):
+		return 1
+	return 0
+
+
 int main(int argc, int argv):
-	int no_newline = 0
-	char* path = 0
+	args_init(argc, argv)
+	if (args_has_flag(c"h") || args_has_flag(c"help")):
+		readlink_usage()
+		return 0
+	int no_newline = args_has_bool_flag(c"n")
 	int i = 1
-	while (i < argc):
-		char** slot = argv + i * __word_size__
-		char* arg = *slot
-		if ((strcmp(arg, c"-h") == 0) | (strcmp(arg, c"--help") == 0)):
-			readlink_usage()
-			return 0
-		if (strcmp(arg, c"-n") == 0):
-			no_newline = 1
-		else if (arg[0] == '-'):
-			readlink_usage()
-			return 1
-		else:
-			if (path != 0):
+	while (i < args_count()):
+		char* body = args_flag_body(args_get(i))
+		if (body != 0):
+			if (readlink_flag_recognized(body) == 0):
 				readlink_usage()
 				return 1
-			path = arg
 		i = i + 1
-	if (path == 0):
+	if (args_positional_count() != 1):
 		readlink_usage()
 		return 1
+	char* path = args_positional(0)
 	char* buf = malloc(4096)
 	int len = file_readlink(path, buf, 4096)
 	if (len < 0):
