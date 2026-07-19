@@ -286,8 +286,8 @@ int ci_lookup_type(char* name):
 		return type
 	if (strcmp(name, c"__builtin_va_list") == 0):
 		return type_push_alias(strclone(name), type_get_next_pointer(type_lookup(c"char")))
-	print_error(c"c_import: unsupported C type '")
-	print_error(name)
+	diag_part(c"c_import: unsupported C type '")
+	diag_part(name)
 	error(c"'")
 
 
@@ -1071,11 +1071,10 @@ int ci_params_are_old_style(pg_ast_node* params):
 
 void ci_skip_extern_function(char* name, char* reason):
 	if (verbosity >= 1):
-		print_error(c"warning: c_import skipped '")
-		print_error(name)
-		print_error(c"': ")
-		print_error(reason)
-		print_error(c"\x0a")
+		diag_part(c"warning: c_import skipped '")
+		diag_part(name)
+		diag_part(c"': ")
+		warning(reason)
 
 
 # Global constants are read with word-sized loads, so they must be emitted
