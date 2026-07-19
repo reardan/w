@@ -2829,6 +2829,14 @@ successful acquire in main(), so it fires on every return path taken
 after that point (grammar/defer.w, docs/projects/defer.md). */
 
 char* wexec_lock_file():
+	# Overridable so wexec_lock_test can exercise acquire/reclaim against
+	# a scratch path while an outer wexec (the one running the test
+	# suite) holds the real bin/.wexec_lock -- the test must never touch
+	# the live outer lock, or the single-writer guarantee is void for
+	# the rest of that run.
+	char* override = env_get(c"WEXEC_LOCK_FILE")
+	if (override != 0):
+		return override
 	return c"bin/.wexec_lock"
 
 
@@ -2902,9 +2910,28 @@ int wexec_lock_acquire():
 		return 0
 	# Stale: a dead pid (SIGKILL, crash, or an exit() bypassing defer --
 	# see the block comment above) means nobody is coming back to release
-	# this lock. Reclaim it and retry exactly once; a genuine winner of
-	# that retry race reports its own, unrelated failure below.
-	unlink(path)
+	# this lock. Reclaim by renaming the stale file to a per-contender
+	# name first: of two contenders reclaiming at once exactly one
+	# rename succeeds, and the loser (whose rename finds the name gone)
+	# falls through to the retry create below -- the previous
+	# unlink-then-recreate shape let the loser's unlink remove the
+	# WINNER's freshly created lock, leaving two live "exclusive"
+	# holders. If the rename instead captured a fresh lock (created by a
+	# faster reclaimer between our liveness read and the rename), its
+	# recorded pid is alive: put it back and report the conflict.
+	# Residual window (accepted): a lock captured between a winner's
+	# O_EXCL create and its pid write reads as empty -> pid 0 -> not
+	# alive, and is reclaimed as if stale.
+	char* reclaim = cstr(f"{path}.reclaim.{getpid()}")
+	if (rename(path, reclaim) >= 0):
+		int captured = wexec_lock_read_pid(reclaim)
+		if (wexec_pid_alive(captured)):
+			rename(reclaim, path)
+			free(reclaim)
+			wexec_lock_conflict(path, captured)
+			return 0
+		unlink(reclaim)
+	free(reclaim)
 	if (wexec_lock_try_create(path)):
 		wexec_lock_held = 1
 		wexec_lock_mark_children()

@@ -294,10 +294,21 @@ int at_bp_add(int addr):
 	if (at_bp_find(addr) >= 0):
 		println(c"a breakpoint is already set there")
 		return -1
+	# Reuse a freed slot (addr zeroed by delete / 'fin' temp cleanup)
+	# before growing: attach_bp_count never shrinks, so without reuse
+	# every 'fin' would permanently consume a slot until the table fills.
+	int i = 0
+	while (i < attach_bp_count):
+		if (at_bp_addr(i) == 0):
+			save_word(cast(char*, attach_bp_addrs + i * __word_size__), addr)
+			save_int(cast(char*, attach_bp_armed + i * 4), 0)
+			at_bp_arm(i)
+			return i
+		i = i + 1
 	if (attach_bp_count >= at_bp_max()):
 		println(c"too many breakpoints")
 		return -1
-	int i = attach_bp_count
+	i = attach_bp_count
 	attach_bp_count = i + 1
 	save_word(cast(char*, attach_bp_addrs + i * __word_size__), addr)
 	save_int(cast(char*, attach_bp_armed + i * 4), 0)
@@ -1004,6 +1015,14 @@ int attach_step_fstart /* enclosing function range at the step's start */
 int attach_step_fend
 
 
+# WORKAROUND: dbg_reg_pc() is deliberately re-called at each use site
+# below instead of cached in a local across the conditional. Caching it
+# ('int pcv = dbg_reg_pc()' + a later read past the if) reproducibly
+# crashes the x64-executing compiler's own heap while it compiles this
+# file (verify_x64's build_x64 step) -- a suspected context-dependent
+# x64 codegen bug documented in docs/projects/ai_tooling_next_steps.md.
+# Do not "clean this up" until that investigation lands. The tracee is
+# in ptrace-stop here, so repeated reads are idempotent.
 void at_step_prepare():
 	attach_step_esp = dbg_reg_sp()
 	attach_step_line = -1

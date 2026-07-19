@@ -559,6 +559,25 @@ void pg_report_unit_span(pg_choice_unit* unit):
 int pg_report_choice(pg_analysis* analysis, pg_rule* rule, list[pg_choice_unit*] units, int offset):
 	int conflicts = 0
 	int i = 0
+	# An unguarded, non-predicate unit anywhere but the trailing
+	# fallback position has no committed dispatch: it matches on every
+	# token (nullable head), yet a unit after it still expects a turn.
+	# The pairwise walk below can miss this when the only sibling is
+	# predicate-headed or an empty suffix (both exempt from the overlap
+	# check), and emission would then null-deref on the missing guard
+	# set -- report it as its own violation instead.
+	while (i < units.length - 1):
+		pg_choice_unit* unit = units[i]
+		if ((unit.predicate_code == 0) && (unit.guarded == 0)):
+			conflicts = conflicts + 1
+			print2(c"parser_generator: rule ")
+			print2(rule.name)
+			print2(c": alternative ")
+			pg_report_unit_span(unit)
+			print2(c" can match nothing and is not the trailing fallback (no committed dispatch)")
+			println2(c"")
+		i = i + 1
+	i = 0
 	while (i < units.length):
 		pg_choice_unit* left = units[i]
 		# A predicate-headed unit (issue #329 milestone 4) is exempt from
