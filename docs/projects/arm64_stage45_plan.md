@@ -229,7 +229,7 @@ execution notes"):
   list asserting death-by-signal instead of exact codes.
 
 New tests: `pac_flag_test` (byte-pattern artifact assertions via
-`tools/pac_flag_check.sh`; default `tests` aggregate), `pac_full_test_arm64`
+`tools/pac_flag_check.w`; default `tests` aggregate), `pac_full_test_arm64`
 and `pac_corrupt_test_arm64` (qemu, outside the `tests` umbrella), `pac_darwin`
 (compile-only arm64e guard; run natively via `run_darwin_tests.sh`).
 

@@ -335,7 +335,7 @@ the manifest rather than guessed. Counts below are exact for the tree at
 this commit; rerun the classification (structural, not prose) before
 trusting it against a later tree.
 
-### Shell scripts (12: 11 `tools/*.sh` + `archive.sh`)
+### Shell scripts (11: 10 `tools/*.sh` + `archive.sh`)
 
 | Script | Invoked by (`build.base.json`) | #323 blocker |
 |---|---|---|
@@ -345,7 +345,6 @@ trusting it against a later tree.
 | `tools/openssl_interop_test.sh` | `openssl_interop_test` | Shells out to the system `openssl` CLI for a TLS/crypto interop round-trip. Needs a W-side subprocess-diff harness (spawn `openssl` via `lib.process`, compare) before the script can retire — real porting work, not a directive gap. |
 | `tools/compress_zlib_interop_test.sh` | `compress_zlib_interop_test` | Same shape as `openssl_interop_test.sh`, against the system `zlib`/`gzip`. Same blocker. |
 | `tools/attach_test.sh` | `attach_test` | ptrace-based debugger-attach test. Needs porting onto the in-repo ptrace machinery (`debugger/`) as a W test harness — natural to revisit alongside #123's attach phases. |
-| `tools/pac_flag_check.sh` | `pac_flag_test` | Inspects `bin/wv2`'s own ELF/PAC flags from outside the compiler. Needs an ELF-flag-reading W tool (the compiler only *writes* ELF today). |
 | `tools/parser_generator_w_batches.sh` | `parser_generator_w_test` | Batches/diffs parser-generator output across the tracked `.w` corpus. Needs porting to a W batch-diff tool, or folding into `tools/parser_generator.w` itself. |
 | `tools/merge_manifest.sh` | *(not referenced — opt-in git merge driver, see its own header)* | Exists specifically to resolve `build.json` merge conflicts by regeneration; irrelevant once `build.json` is retired. Until then it's outside the wexec-driven graph entirely (local git config, not a manifest step). |
 | `tools/mac/run_darwin_tests.sh` | *(not referenced — invoked by hand per `AGENTS.md`/`CLAUDE.md`)* | Developer-invoked native Mach-O test runner; Mac-only, never a manifest target. Out of scope for #323's manifest-capture model. |
