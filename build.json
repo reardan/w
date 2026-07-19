@@ -2079,6 +2079,7 @@
 				"parallel_for_64_test",
 				"passwd_64_test",
 				"path_64_test",
+				"pointer_arith_type_64_test",
 				"poll_64_test",
 				"poly1305_64_test",
 				"prng_64_test",
@@ -2119,6 +2120,7 @@
 				"thread_64_test",
 				"time_64_test",
 				"u64_64_test",
+				"unsigned_load_64_test",
 				"urlparse_64_test",
 				"utf8_source_64_test",
 				"varargs_w_64_test",
@@ -2523,6 +2525,7 @@
 				"parallel_for_test",
 				"passwd_test",
 				"path_test",
+				"pointer_arith_type_test",
 				"pointer_test",
 				"poll_test",
 				"poly1305_test",
@@ -2570,6 +2573,7 @@
 				"time_test",
 				"type_system_p0_test",
 				"u64_test",
+				"unsigned_load_test",
 				"urlparse_test",
 				"utf8_source_test",
 				"vcs_cas_test",
@@ -3869,6 +3873,22 @@
 			]
 		},
 		{
+			"name": "pointer_arith_type_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/pointer_arith_type_test.w", "-o", "bin/pointer_arith_type_64_test"]},
+				{"cmd": ["bin/pointer_arith_type_64_test"]}
+			]
+		},
+		{
+			"name": "pointer_arith_type_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/pointer_arith_type_test.w", "-o", "bin/pointer_arith_type_test"]},
+				{"cmd": ["bin/pointer_arith_type_test"]}
+			]
+		},
+		{
 			"name": "pointer_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -4587,6 +4607,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/u64_test.w", "-o", "bin/u64_test"]},
 				{"cmd": ["bin/u64_test"]}
+			]
+		},
+		{
+			"name": "unsigned_load_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/unsigned_load_test.w", "-o", "bin/unsigned_load_64_test"]},
+				{"cmd": ["bin/unsigned_load_64_test"]}
+			]
+		},
+		{
+			"name": "unsigned_load_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/unsigned_load_test.w", "-o", "bin/unsigned_load_test"]},
+				{"cmd": ["bin/unsigned_load_test"]}
 			]
 		},
 		{

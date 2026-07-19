@@ -101,7 +101,10 @@ working in this repo.
  runtime — `lib/sha256.w`'s `sha256_mask32` pattern, header comment has the
  full discipline). `byte` is a built-in 1-byte type, so an identifier named
  `byte` breaks at statement position (`byte = 5` parses as a malformed
- declaration) — don't use it as a variable/field name.
+ declaration) — don't use it as a variable/field name. `T* + int` stays a
+ raw byte offset but keeps the pointer's type: `*(p + n)` / `(p + n)[i]`
+ read at the element's width, and assigning the result to an `int` needs
+ an explicit `cast(int, ...)`.
 - Built-in containers (`map[K, V]`, `set[K]`, `list[T]`) lower to runtime helpers in
  `structures/hash_table.w` and `structures/w_list.w`, which the compiler **auto-imports
  into every program** (`import_module` calls in `compiler/compiler.w`). Those runtime

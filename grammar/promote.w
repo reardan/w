@@ -149,8 +149,12 @@ int promote(int type):
 		return type
 
 	int size = type_get_size(type)
+	int unsigned_fixed = type_is_unsigned_fixed(type)
 	if (size == 1):
-		promote_int8_eax()
+		if (unsigned_fixed):
+			promote_uint8_eax()
+		else:
+			promote_int8_eax()
 	else if (size == 2):
 		if (type == float16_type):
 			promote_uint16_eax()
@@ -158,10 +162,15 @@ int promote(int type):
 			vcvtph2ps_xmm0()
 			movd_eax_xmm0()
 			return float32_value_type
+		else if (unsigned_fixed):
+			promote_uint16_eax()
 		else:
 			promote_int16_eax()
 	else if (size == 4):
-		promote_int32_eax()
+		if (unsigned_fixed):
+			promote_uint32_eax()
+		else:
+			promote_int32_eax()
 	else if (size >= 4):
 		promote_eax()
 	/* size 0 (void): nothing to load */
