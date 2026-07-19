@@ -2125,7 +2125,13 @@ list[int] pg_action_scan_refs(char* code):
 	int i = 0
 	while (i < length):
 		int c = code[i] & 255
-		if ((c == '"') || (c == 39)):
+		if (c == '#'):
+			# Comments are opaque: a stale "$9" in a comment must not
+			# reject the grammar, and a real-looking ref there is not a
+			# reference.
+			while ((i < length) && (code[i] != 10)):
+				i = i + 1
+		else if ((c == '"') || (c == 39)):
 			int quote = c
 			i = i + 1
 			while ((i < length) && (code[i] != quote)):
@@ -2177,7 +2183,13 @@ char* pg_action_substitute(char* code, int alt_index):
 	int i = 0
 	while (i < length):
 		int c = code[i] & 255
-		if ((c == '"') || (c == 39)):
+		if (c == '#'):
+			# Mirror pg_action_scan_refs: comments copy through verbatim,
+			# never rewritten.
+			while ((i < length) && (code[i] != 10)):
+				string_append_char(out, code[i])
+				i = i + 1
+		else if ((c == '"') || (c == 39)):
 			int quote = c
 			string_append_char(out, c)
 			i = i + 1
@@ -2659,6 +2671,18 @@ int pg_validate_action_bindings(pg_grammar* grammar):
 			while (t < alternative.terms.length):
 				if (alternative.terms[t].kind == pg_term_kind_action()):
 					violations = violations + pg_validate_action_term_bindings(grammar, rule, alternative, a, t)
+				else if (alternative.terms[t].kind == pg_term_kind_predicate()):
+					# Predicates run before any term has matched, so
+					# $n/text(n) can never bind there -- reject at
+					# generation time rather than splicing "$n" verbatim
+					# into the generated file as uncompilable W.
+					list[int] prefs = pg_action_scan_refs(alternative.terms[t].code)
+					if (prefs.length > 0):
+						print2(c"parser_generator: rule ")
+						print2(rule.name)
+						println2(c": $n/text(n) bindings are not available in a &{ } predicate (no term has matched yet)")
+						violations = violations + 1
+					list_free[int](prefs)
 				t = t + 1
 			a = a + 1
 		r = r + 1

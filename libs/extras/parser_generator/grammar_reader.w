@@ -281,6 +281,13 @@ char* pg_reader_read_brace_block(pg_grammar_reader* reader):
 					pg_reader_step(reader)
 			if (reader.input[reader.index] == quote):
 				pg_reader_step(reader)
+		else if (c == '#'):
+			# A '#' comment runs to end of line and is opaque W text: an
+			# apostrophe ("don't") or brace inside it must not start a
+			# literal skip or move the depth count, or the scan desyncs
+			# and swallows following grammar text.
+			while ((reader.input[reader.index] != 0) && (reader.input[reader.index] != 10)):
+				pg_reader_step(reader)
 		else if (c == '{'):
 			depth = depth + 1
 			pg_reader_step(reader)

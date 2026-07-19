@@ -1249,7 +1249,7 @@ int wbg_scan():
 			# (which all decorate or extend a generated compile+run
 			# target) do not apply here; catch a copy-paste mistake
 			# instead of silently ignoring it.
-			int forbidden = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_has_run_fields() | (wbg_dir_extra_compile.length > 0) | (wbg_dir_tool.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0)
+			int forbidden = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_compile_fail | wbg_dir_has_run_fields() | (wbg_dir_extra_compile.length > 0) | (wbg_dir_tool.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0)
 			if (forbidden):
 				wbg_error2(c"'fixture_group=' cannot combine with run/arch/tool/deps directives: ", src)
 				return 1
@@ -1343,6 +1343,16 @@ int wbg_scan():
 			# generated twin at all satisfies it.
 			if (gen_any == 0):
 				wbg_error2(c"'# wbuild:' directives have no generated target (build.base.json defines them all): ", src)
+				return 1
+			# stdin/expect_stdout/expect_stderr/timeout_ms decorate the
+			# compile step above, but a failed compile has no run step
+			# for 'argv=' to land on, 'expect_fail' is subsumed by
+			# compile_fail itself, and a name=/argv= variant target
+			# never carries compile_fail -- reject those combinations
+			# instead of silently dropping the directive (or generating
+			# a variant guaranteed to fail at build time).
+			if (wbg_dir_expect_fail | wbg_dir_argv_decorates_primary | ((n_names > 0) && (n_argv > 0))):
+				wbg_error2(c"'compile_fail' cannot combine with 'expect_fail', 'argv=', or variant directives (a failed compile never runs): ", src)
 				return 1
 		else if ((gen_run_capable == 0) && wbg_dir_has_run_fields()):
 			wbg_error2(c"'# wbuild:' run-step directives have no generated run-capable target (only compile-only twins, or build.base.json defines them all): ", src)

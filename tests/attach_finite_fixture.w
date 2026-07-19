@@ -23,8 +23,11 @@ int slow_step(int n):
 
 int main(int argc, int argv):
 	# See attach_target_fixture.w: lets a sibling tracer attach under YAMA
-	# ptrace_scope=1.
-	syscall(172, 0x59616d61, -1, 0)
+	# ptrace_scope=1. prctl is 172 on i386, 157 on x86-64 (172 = iopl).
+	int prctl_nr = 172
+	if (__word_size__ == 8):
+		prctl_nr = 157
+	syscall(prctl_nr, 0x59616d61, -1, 0)
 	attach_counter = 1000
 	int i = 0
 	while (i < 6):

@@ -72,6 +72,18 @@ kernel transcendental(float32* a, float32* b, int n):
 		b[i] = gpu_exp(x) + gpu_log(x)
 
 
+# gpu_shared_f32/gpu_barrier (docs/projects/torch.md Stage 4): a
+# .shared array declaration + cvta.shared generic address, and the
+# block-wide bar.sync.
+kernel stage(float32* a, int n):
+	float* buf = gpu_shared_f32(256)
+	int tid = thread_idx()
+	buf[tid] = 0.0
+	gpu_barrier()
+	if tid < n:
+		a[tid] = buf[tid]
+
+
 int main(int argc, int argv):
 	print(__w_ptx_module())
 	return 0

@@ -554,6 +554,61 @@ void test_message_repeated_packed():
 	free(buf)
 
 
+# Repeated packed bool, field 4 (same shape as pb_test_rep_desc with a
+# BOOL element): [1, 0, 1] packs to payload bytes 01 00 01. The decode
+# assertions pin the element's full 4-byte width -- repeated decode
+# stages each element in a reused stack slot, so a byte-0-only BOOL
+# write would leak the slot's stale high bytes into the list values.
+pb_value_desc pb_test_rep_bool_elem
+pb_field_desc[1] pb_test_rep_bool_fields
+pb_message_desc pb_test_rep_bool_desc
+
+
+void pb_test_rep_bool_desc_init():
+	pb_test_rep_msg rm
+	pb_test_rep_bool_elem.kind = PB_KIND_BOOL()
+	pb_test_rep_bool_elem.aux = 0
+	pb_test_rep_bool_fields[0].number = 4
+	pb_test_rep_bool_fields[0].kind = PB_KIND_REPEATED()
+	pb_test_rep_bool_fields[0].offset = cast(int, &rm.values) - cast(int, &rm)
+	pb_test_rep_bool_fields[0].aux = cast(int, &pb_test_rep_bool_elem)
+	pb_test_rep_bool_desc.field_count = 1
+	pb_test_rep_bool_desc.fields = pb_test_rep_bool_fields
+	pb_test_rep_bool_desc.struct_size = __word_size__
+
+
+void test_message_repeated_packed_bool():
+	pb_test_rep_bool_desc_init()
+	pb_test_rep_msg rm
+	rm.values = list[int32]{1, 0, 1}
+	int out_len = 0
+	char* out = pb_encode(&pb_test_rep_bool_desc, cast(char*, &rm), &out_len)
+	# tag(4,length)=0x22, payload length=3, one varint per element.
+	char[8] want
+	want[0] = 0x22
+	want[1] = 3
+	want[2] = 1
+	want[3] = 0
+	want[4] = 1
+	pb_expect_bytes(c"repeated packed bool", out, out_len, want, 5)
+
+	char* buf = malloc(pb_test_rep_bool_desc.struct_size)
+	int i = 0
+	while (i < pb_test_rep_bool_desc.struct_size):
+		buf[i] = 0
+		i = i + 1
+	wresult[char*]* r = pb_decode(&pb_test_rep_bool_desc, out, out_len, buf)
+	assert_equal(1, result_is_ok[char*](r))
+	pb_test_rep_msg* decoded = cast(pb_test_rep_msg*, buf)
+	assert_equal(3, decoded.values.length)
+	assert_equal(1, decoded.values[0])
+	assert_equal(0, decoded.values[1])
+	assert_equal(1, decoded.values[2])
+	result_free[char*](r)
+	free(out)
+	free(buf)
+
+
 # A decoder must accept both packed and unpacked encodings of the same
 # repeated scalar field (docs/projects/protobuf.md §2 -- proto2
 # producers default to unpacked). Hand-built unpacked form of the same

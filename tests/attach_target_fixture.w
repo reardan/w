@@ -22,7 +22,11 @@ int main(int argc, int argv):
 	# builtin lowers exactly nr + 3 register args; the padding 0 is required —
 	# with fewer args eax holds garbage and the kernel returns ENOSYS, so the
 	# Yama exemption never engages and attach fails under ptrace_scope=1.
-	syscall(172, 0x59616d61, -1, 0)
+	# prctl is 172 only on i386; on x86-64 172 is iopl — prctl is 157.
+	int prctl_nr = 172
+	if (__word_size__ == 8):
+		prctl_nr = 157
+	syscall(prctl_nr, 0x59616d61, -1, 0)
 	attach_counter = 1000
 	while (1):
 		attach_counter = slow_step(attach_counter)

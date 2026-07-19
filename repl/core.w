@@ -680,6 +680,12 @@ int repl_compile_entry(char* path):
 	# already "nested".
 	expr_nesting_depth = 0
 	stmt_nesting_depth = 0
+	# Same reset compile_attempt performs (compiler/compiler.w): a failed
+	# entry's longjmp can leave nextc holding its last lookahead -- a
+	# stale newline there makes the priming read below bump line_number
+	# 0 -> 1 before any byte of the new entry is read, shifting this
+	# entry's first-line diagnostics one line high.
+	nextc = 0
 	nextc = get_character()
 	get_token()
 
