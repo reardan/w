@@ -995,6 +995,13 @@
 			]
 		},
 		{
+			"name": "wtest_defhash_test",
+			"deps": ["wtest"],
+			"steps": [
+				{"cmd": ["sh", "tools/wtest_defhash_scratch_test.sh"], "expect_stdout": "wtest_defhash_scratch_test: OK"}
+			]
+		},
+		{
 			"name": "wmeta",
 			"deps": ["wv2"],
 			"inputs": ["tools/wmeta.w"],
@@ -2329,6 +2336,7 @@
 				"parser_generator_streaming_test",
 				"wtest_map_test",
 				"wtest_run_test",
+				"wtest_defhash_test",
 				"wexec_test",
 				"wexec_keep_going_test",
 				"wexec_ordered_output_test",

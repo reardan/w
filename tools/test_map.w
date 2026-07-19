@@ -32,7 +32,9 @@ build. For a changed path P the emitted targets are the union of:
       A root that fails to compile falls back to literal matching
       only. Closures are cached in bin/.wtest_deps_cache and re-used
       until the content hash of any file in the cached closure
-      changes.
+      changes. --defhash (opt-in, see below) further skips a path's
+      own closure additions when 'bin/wv2 defhash' proves its recorded
+      definitions did not change.
 
   (c) RESIDUE RULES for coupling the import graph cannot see:
       - w.w / grammar.w / codegen.w and compiler/ grammar/
@@ -156,6 +158,27 @@ unavailable target(s) (<reason>)' line per distinct reason is printed to
 stderr, plus a 'dropped N unavailable targets total' line when more than
 one reason fired. './wbuild test_changed' passes --available by default.
 
+--defhash (opt-in; 'changed' and 'for' both accept it) refines rule (b)
+per .w path: 'bin/wv2 defhash' is run on both the worktree copy and
+'git show HEAD:<path>' (staged to a scratch file under bin/), and when
+the recorded definition name set and every name's hash come back
+identical, that path's import-closure additions are skipped for this
+run — rule (a) literal matches and the rule (c) residue mappings still
+apply, so a comment/formatting-only edit stops recommending every
+importer without under-selecting the fixed rules. It fails OPEN: a path
+new to HEAD, a git or 'bin/wv2 defhash' error, an actual
+addition/removal/hash change in the recorded definitions, or a file
+whose text trips wtest_defhash_risky_text (the literal word 'operator',
+or an identifier immediately followed by a bracket whose
+comma-separated contents are all-uppercase-led names — this codebase's
+own type-parameter convention, 'T' / 'K, V' — a cheap textual stand-in
+for "this file may define an operator overload or explicit-generics
+function/struct invisible to defhash", docs/projects/
+ai_tooling_next_steps.md's defhash section) all fall back to the
+ordinary closure scan for that path instead. The risk scan is text, not
+a parse, so it may over-fire (safe: just less selective) but must never
+under-fire. Selection without --defhash is unchanged byte-for-byte.
+
 The first 'changed' invocation to touch an import closure (rule b) after
 a build, or after bin/.wtest_deps_cache is otherwise missing or fully
 stale, prints one 'wtest: building import-closure cache...' note to
@@ -194,6 +217,7 @@ map[char*, char*] wtest_file_hashes  # path -> content hash hex (memo)
 int wtest_verbose
 int wtest_run_flag
 int wtest_available_flag
+int wtest_defhash_flag
 char* wtest_manifest_path
 char* wtest_base_manifest_path       # 0 = no --base-manifest given
 json_value* wtest_base_manifest      # parsed baseline, 0 until loaded
@@ -203,8 +227,8 @@ int wtest_mask32
 
 void wtest_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]")
-	stream_write_line(err, c"       wtest for <file>... [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json]")
+	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...] [--defhash]")
+	stream_write_line(err, c"       wtest for <file>... [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [--defhash]")
 	stream_flush(err)
 
 
@@ -911,6 +935,321 @@ int wtest_closure_contains(char* blob, char* path):
 	return found
 
 
+/* --defhash (opt-in): refine rule (b) via 'bin/wv2 defhash' (header
+comment). Everything below is only ever consulted when wtest_defhash_flag
+is set, so the default (no --defhash) selection path never runs it. */
+
+# execve does no PATH lookup (lib/process.w), so a bare command name like
+# "git" must be resolved against PATH here first -- mirrors
+# tools/wexec.w's wexec_resolve_program (and this file's own
+# wtest_path_has), minus the Windows suffix handling: git is never one of
+# the runners --available checks for, and this codebase's git-based tools
+# already assume a POSIX host. Returns 'name' unresolved when it is not
+# found (or already contains a '/'), so the caller's spawn fails cleanly
+# instead of silently doing the wrong thing.
+char* wtest_resolve_program(char* name):
+	int i = 0
+	while (name[i] != 0):
+		if (name[i] == '/'):
+			return name
+		i = i + 1
+	char* path = env_get(c"PATH")
+	if (path == 0):
+		path = c"/usr/bin:/bin"
+	string_builder* candidate = string_new()
+	int p = 0
+	int at_end = 0
+	int found = 0
+	while ((at_end == 0) && (found == 0)):
+		string_clear(candidate)
+		while ((path[p] != ':') && (path[p] != 0)):
+			string_append_char(candidate, path[p])
+			p = p + 1
+		if (path[p] == 0):
+			at_end = 1
+		else:
+			p = p + 1
+		if (candidate.length > 0):
+			string_append_char(candidate, '/')
+			string_append(candidate, name)
+			if (wtest_file_exists(candidate.data)):
+				found = 1
+	char* result = name
+	if (found):
+		result = strclone(candidate.data)
+	string_free(candidate)
+	return result
+
+
+# 'git show HEAD:<path>' -- the committed version of a changed path, with
+# no working-tree edits applied. Returns 0 (fail open, header comment) on
+# any spawn failure or nonzero exit: a path new to HEAD (added, not yet
+# committed), a git error, or no repository at all.
+char* wtest_git_show_head(char* path):
+	char* git = wtest_resolve_program(c"git")
+	string_builder* spec = string_new()
+	string_append(spec, c"HEAD:")
+	string_append(spec, path)
+	char** argv = strv_new(3)
+	strv_set(argv, 0, git)
+	strv_set(argv, 1, c"show")
+	strv_set(argv, 2, spec.data)
+	process_result* result = process_run(git, argv, 0, 0, 30000)
+	free(cast(char*, argv))
+	string_free(spec)
+	if (result == 0):
+		return 0
+	if (result.status != 0):
+		process_result_free(result)
+		return 0
+	char* text = strclone(result.stdout_text)
+	process_result_free(result)
+	return text
+
+
+int wtest_defhash_ident_char(int c):
+	if ((c >= 'a') && (c <= 'z')):
+		return 1
+	if ((c >= 'A') && (c <= 'Z')):
+		return 1
+	if ((c >= '0') && (c <= '9')):
+		return 1
+	if (c == '_'):
+		return 1
+	return 0
+
+
+# Whole-word occurrence of 'word' in 'text' (bounded by non-identifier
+# characters or the string's edges) -- a plain substring search would also
+# match identifiers that merely CONTAIN the word (e.g. 'operator_name'),
+# which is not the signal we want.
+int wtest_defhash_word_present(char* text, char* word):
+	int wlen = strlen(word)
+	int i = 0
+	while (text[i] != 0):
+		int j = 0
+		while ((j < wlen) && (text[i + j] == word[j])):
+			j = j + 1
+		if (j == wlen):
+			int before_ok = 1
+			if (i > 0):
+				before_ok = wtest_defhash_ident_char(text[i - 1] & 255) == 0
+			int after_ok = wtest_defhash_ident_char(text[i + wlen] & 255) == 0
+			if (before_ok && after_ok):
+				return 1
+		i = i + 1
+	return 0
+
+
+# Does 'item' (optionally with one leading space, the '[K, V]' spacing
+# convention) look like a type-parameter name -- non-empty, first
+# character an uppercase ASCII letter, the rest identifier characters?
+# Every real type name in this codebase is lowercase snake_case (struct/
+# union/enum/alias names throughout lib/, structures/, compiler/, ...),
+# so this never matches an ordinary built-in-container instantiation
+# ('map[char*, int]', 'list[T_lowercase_alias]') or an array/list index
+# ('a[i]', 'argv[0]') -- only the documented type-parameter convention
+# used by explicit generics ('T', 'K', 'V', docs/projects/generics.md).
+int wtest_defhash_item_ok(char* item):
+	if (item[0] == ' '):
+		item = item + 1
+	int len = strlen(item)
+	if (len == 0):
+		return 0
+	int c0 = item[0] & 255
+	if ((c0 < 'A') || (c0 > 'Z')):
+		return 0
+	int i = 1
+	while (i < len):
+		if (wtest_defhash_ident_char(item[i] & 255) == 0):
+			return 0
+		i = i + 1
+	return 1
+
+
+# 'content' is the text strictly between one '[' and its matching ']'
+# (the caller has already excluded any nested bracket): true when every
+# comma-separated piece looks like a type-parameter name per
+# wtest_defhash_item_ok, e.g. "T" or "K, V".
+int wtest_defhash_bracket_all_type_params(char* content):
+	string_builder* item = string_new()
+	int i = 0
+	int ok = 1
+	while (content[i] != 0):
+		if (content[i] == ','):
+			if (wtest_defhash_item_ok(item.data) == 0):
+				ok = 0
+			string_clear(item)
+		else:
+			string_append_char(item, content[i])
+		i = i + 1
+	if (wtest_defhash_item_ok(item.data) == 0):
+		ok = 0
+	string_free(item)
+	return ok
+
+
+# Cheap textual scan for the explicit-generics bracket syntax
+# (docs/projects/generics.md: 'T max[T](T a, T b):', 'struct pair[T]:',
+# 'K pick_first[K, V](...)') -- an identifier immediately followed by '['
+# whose (unnested) bracket content is entirely type-parameter-shaped
+# pieces. Not a parse: nested brackets inside the pair bail out of that
+# one occurrence (treated as "not a match" for it, not an error), and nothing
+# distinguishes a real definition from an explicit instantiation
+# ('max[int](...)') that merely happens to spell its type argument with an
+# initial capital -- both are treated as risky alike, which only ever
+# causes an unnecessary (safe) fallback, never a missed one.
+int wtest_defhash_has_generic_brackets(char* text):
+	int i = 0
+	while (text[i] != 0):
+		if ((text[i] == '[') && (i > 0) && wtest_defhash_ident_char(text[i - 1] & 255)):
+			string_builder* content = string_new()
+			int j = i + 1
+			int stop = 0
+			int closed = 0
+			int nested = 0
+			while ((stop == 0) && (text[j] != 0)):
+				if (text[j] == ']'):
+					closed = 1
+					stop = 1
+				else if (text[j] == '['):
+					nested = 1
+					stop = 1
+				else:
+					string_append_char(content, text[j])
+					j = j + 1
+			if (closed && (nested == 0)):
+				if (wtest_defhash_bracket_all_type_params(content.data)):
+					string_free(content)
+					return 1
+			string_free(content)
+		i = i + 1
+	return 0
+
+
+# 1 when 'text' might contain an operator-overload or explicit-generics
+# definition -- both invisible to 'bin/wv2 defhash' by design
+# (compiler/compiler.w's defhash_main doc comment), so a real edit to one
+# could otherwise look like "no change" to the plain name/hash comparison
+# below. A cheap textual stand-in for a real check (header comment): may
+# over-fire (a comment merely mentioning "operator", an instantiation
+# whose type argument starts uppercase) but must never under-fire.
+int wtest_defhash_risky_text(char* text):
+	if (wtest_defhash_word_present(text, c"operator")):
+		return 1
+	if (wtest_defhash_has_generic_brackets(text)):
+		return 1
+	return 0
+
+
+# Runs 'bin/wv2 defhash <file_path>' and collects its NDJSON into a
+# name -> hash map (default, root-only scope -- exactly the definitions
+# declared directly in this file, matching what we are comparing). Returns
+# 0 (fail open) on a spawn failure, a nonzero exit (a compile error, most
+# likely an import that does not resolve for the HEAD-content temp file),
+# or any record that fails to parse as a JSON object with both fields.
+map[char*, char*] wtest_defhash_collect(char* file_path):
+	char** argv = strv_new(3)
+	strv_set(argv, 0, c"bin/wv2")
+	strv_set(argv, 1, c"defhash")
+	strv_set(argv, 2, file_path)
+	process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
+	free(cast(char*, argv))
+	if (result == 0):
+		return 0
+	if (result.status != 0):
+		process_result_free(result)
+		return 0
+	map[char*, char*] out = new map[char*, char*]
+	string_builder* line = string_new()
+	char* text = result.stdout_text
+	int i = 0
+	int at_end = 0
+	int failed = 0
+	while ((at_end == 0) && (failed == 0)):
+		int c = text[i]
+		if (c == 0):
+			at_end = 1
+		if ((c == 10) || (c == 0)):
+			if (line.length > 0):
+				json_value* rec = json_parse(line.data)
+				if (rec == 0):
+					failed = 1
+				else if (rec.type != json_type_object()):
+					failed = 1
+				else:
+					char* name = wtest_get_string(rec, c"name")
+					char* hash = wtest_get_string(rec, c"hash")
+					if ((name == 0) || (hash == 0)):
+						failed = 1
+					else:
+						out[name] = strclone(hash)
+			string_clear(line)
+		else:
+			string_append_char(line, c)
+		i = i + 1
+	string_free(line)
+	process_result_free(result)
+	if (failed):
+		return 0
+	return out
+
+
+# The --defhash decision for one changed .w path: 1 when it is safe to
+# skip this path's rule-(b) closure additions (its recorded definitions
+# are provably unchanged and it carries none of the defhash-invisible
+# shapes wtest_defhash_risky_text watches for), 0 otherwise -- fail open
+# in every other case, per the header comment. wtest_note calls make the
+# decision visible under --verbose without adding new output surface.
+int wtest_defhash_unchanged(char* path):
+	char* worktree_text = file_read_text(path)
+	if (worktree_text == 0):
+		return 0
+	if (wtest_defhash_risky_text(worktree_text)):
+		free(worktree_text)
+		wtest_note(path, c"defhash: fallback (operator/generic-shaped text)")
+		return 0
+	char* head_text = wtest_git_show_head(path)
+	if (head_text == 0):
+		free(worktree_text)
+		wtest_note(path, c"defhash: fallback (no HEAD version, or git error)")
+		return 0
+	if (wtest_defhash_risky_text(head_text)):
+		free(worktree_text)
+		free(head_text)
+		wtest_note(path, c"defhash: fallback (operator/generic-shaped text)")
+		return 0
+	free(worktree_text)
+	mkdir(c"bin", 493)
+	char* head_tmp = c"bin/.wtest_defhash_head.w"
+	file_write_text(head_tmp, head_text)
+	free(head_text)
+	map[char*, char*] head_defs = wtest_defhash_collect(head_tmp)
+	if (head_defs == 0):
+		wtest_note(path, c"defhash: fallback (defhash error on HEAD version)")
+		return 0
+	map[char*, char*] worktree_defs = wtest_defhash_collect(path)
+	if (worktree_defs == 0):
+		wtest_note(path, c"defhash: fallback (defhash error on worktree version)")
+		return 0
+	list[char*] head_keys = head_defs.keys()
+	list[char*] worktree_keys = worktree_defs.keys()
+	if (head_keys.length != worktree_keys.length):
+		wtest_note(path, c"defhash: fallback (definition set changed)")
+		return 0
+	for char* name in head_keys:
+		char* worktree_hash = worktree_defs.get(name, 0)
+		if (worktree_hash == 0):
+			wtest_note(path, c"defhash: fallback (definition set changed)")
+			return 0
+		char* head_hash = head_defs.get(name, 0)
+		if (strcmp(worktree_hash, head_hash) != 0):
+			wtest_note(path, c"defhash: fallback (definition hash changed)")
+			return 0
+	wtest_note(path, c"defhash: skip (definitions unchanged)")
+	return 1
+
+
 /* Residue rules and the selection driver. */
 
 int wtest_doc_only(char* path):
@@ -1409,15 +1748,22 @@ void wtest_map_path(char* path):
 
 	# (b) import closures — compiler-tree paths are covered by verify
 	# (see header), deleted files cannot appear in a computable closure,
-	# and only .w files ever appear in one.
+	# and only .w files ever appear in one. --defhash (opt-in) can skip
+	# this block entirely for a path proven unchanged (wtest_defhash_
+	# unchanged, fails open); without the flag wtest_defhash_flag is 0 and
+	# skip_closure stays 0, so this is exactly the prior unconditional scan.
 	if (is_w && exists && (wtest_compiler_tree(path) == 0)):
-		wtest_ensure_closures()
-		int i = 0
-		while (i < wtest_pair_roots.length):
-			if (wtest_closure_contains(wtest_closure_get(wtest_pair_roots[i]), path)):
-				wtest_add(path, wtest_pair_targets[i])
-				matched = 1
-			i = i + 1
+		int skip_closure = 0
+		if (wtest_defhash_flag):
+			skip_closure = wtest_defhash_unchanged(path)
+		if (skip_closure == 0):
+			wtest_ensure_closures()
+			int i = 0
+			while (i < wtest_pair_roots.length):
+				if (wtest_closure_contains(wtest_closure_get(wtest_pair_roots[i]), path)):
+					wtest_add(path, wtest_pair_targets[i])
+					matched = 1
+				i = i + 1
 
 	if (matched == 0):
 		wtest_add(path, c"tests")
@@ -1690,6 +2036,8 @@ int main(int argc, int argv):
 			wtest_run_flag = 1
 		else if (strcmp(*arg, c"--available") == 0):
 			wtest_available_flag = 1
+		else if (strcmp(*arg, c"--defhash") == 0):
+			wtest_defhash_flag = 1
 		else if (strcmp(*arg, c"-f") == 0):
 			i = i + 1   # value already consumed by the pre-scan above
 		else if (strcmp(*arg, c"--base-manifest") == 0):
