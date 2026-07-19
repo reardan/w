@@ -698,6 +698,38 @@ void ptx_gpu_log():
 	ptx_line(c"cvt.u64.u32 %ax, %w0;")
 
 
+############################ shared memory ###################################
+# gpu_shared_f32/gpu_barrier (grammar/gpu_shared_builtin.w).
+
+# Monotonic name counter for .shared arrays. Module-global (not reset
+# per kernel) so the emitter stays stateless across kernels, matching
+# ptx_label_count; each call site gets its own array.
+int ptx_shared_count
+
+# Declares an elements-long f32 .shared array in the current kernel
+# body (PTX allows declarations anywhere in a body before first use)
+# and leaves its generic address in %ax — cvta.shared folds the array
+# into the all-generic ld/st model, so ordinary W pointer indexing
+# reads and writes it from there on.
+void ptx_shared_f32(int elements):
+	ptx_emit(c".shared .align 4 .b8 __w_shared")
+	ptx_emit_int(ptx_shared_count)
+	ptx_emit(c"[")
+	ptx_emit_int(elements * 4)
+	ptx_line(c"];")
+	ptx_emit(c"mov.u64 %ax, __w_shared")
+	ptx_emit_int(ptx_shared_count)
+	ptx_line(c";")
+	ptx_line(c"cvta.shared.u64 %ax, %ax;")
+	ptx_shared_count = ptx_shared_count + 1
+
+
+# Block-wide barrier. The caller contract (all threads reach it) is
+# documented at the builtin; the emitter just names barrier 0.
+void ptx_barrier():
+	ptx_line(c"bar.sync 0;")
+
+
 ############################ special registers ###############################
 
 # thread_idx()/block_idx()/block_dim()/grid_dim() (x dimension), widened

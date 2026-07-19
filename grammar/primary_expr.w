@@ -200,6 +200,11 @@ int primary_expr():
 	else if (gpu_math_builtin_ready()):
 		type = gpu_math_builtin_expr()
 
+	# gpu_shared_f32/gpu_barrier shared-memory builtins, shadowed the
+	# same way by user symbols (grammar/gpu_shared_builtin.w)
+	else if (gpu_shared_builtin_ready()):
+		type = gpu_shared_builtin_expr()
+
 	# Generic function instantiation: 'max[int](...)'
 	else if (generic_call_ready()):
 		type = generic_call_expr()

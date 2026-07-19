@@ -217,6 +217,56 @@ int saxpy_launch(int n):
 	return ok
 
 
+# gpu_shared_f32 + gpu_barrier (docs/projects/torch.md Stage 4): each
+# 256-thread block stages its slice of p in shared memory, tree-halves
+# it with barriers, then adds one per-block partial into the global
+# accumulator. Data is exact-in-f32 quarters (i % 8 * 0.25), so every
+# partial sum is exact and the check needs no tolerance despite the
+# nondeterministic block order.
+kernel shared_reduce(float* p, float32* out, int n):
+	float* buf = gpu_shared_f32(256)
+	int tid = thread_idx()
+	int gid = block_idx() * block_dim() + tid
+	float v = 0.0
+	if (gid < n):
+		v = p[gid]
+	buf[tid] = v
+	gpu_barrier()
+	int s = 128
+	while (s > 0):
+		if (tid < s):
+			buf[tid] = buf[tid] + buf[tid + s]
+		gpu_barrier()
+		s = s / 2
+	if (tid == 0):
+		atomic_add(out, buf[0])
+
+
+int shared_reduce_check(int n):
+	float* p = cast(float*, gpu_alloc(n * 4))
+	float32* acc = cast(float32*, gpu_alloc(4))
+	float want = 0.0
+	int i = 0
+	while (i < n):
+		float v = cast(float, i % 8) * 0.25
+		p[i] = v
+		want = want + v
+		i = i + 1
+	acc[0] = 0.0
+
+	int threads = 256
+	int blocks = (n + threads - 1) / threads
+	launch shared_reduce[blocks, threads](p, acc, n)
+	gpu_sync()
+
+	int ok = 1
+	if (acc[0] != want):
+		ok = 0
+	gpu_free(cast(char*, p))
+	gpu_free(cast(char*, acc))
+	return ok
+
+
 # gpu_exp/gpu_log cross-checked against the host lib.fmath fexp/flog.
 # The PTX .approx variants (ex2.approx.f32/lg2.approx.f32) are the
 # ML-precision tradeoff CUDA's fast-math makes, not IEEE-correctly
@@ -287,6 +337,9 @@ int main(int argc, int argv):
 		return 1
 	if (transcendental_check(256) == 0):
 		println(c"cuda gpu: FAILED (gpu_exp/gpu_log wrong results)")
+		return 1
+	if (shared_reduce_check(100000) == 0):
+		println(c"cuda gpu: FAILED (shared-memory reduction wrong results)")
 		return 1
 	println(c"cuda gpu OK")
 	return 0
