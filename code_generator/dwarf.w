@@ -139,10 +139,15 @@ void debug_local_note(char* name, int slot, int kind, int type):
 		debug_local_types = malloc(debug_local_capacity * 4)
 		debug_local_addresses = malloc(debug_local_capacity * 4)
 	if (debug_local_count >= debug_local_capacity):
-		int old = debug_local_capacity * 4
+		# names are host pointer slots (__word_size__); the other
+		# parallel arrays are 4-byte ints. Mixing * 4 into the names
+		# realloc oldlen fatals under W_DEBUG_ALLOC on x64 (and
+		# silently truncates the copy under freelist).
+		int old_cap = debug_local_capacity
 		debug_local_capacity = debug_local_capacity * 2
+		debug_local_names = realloc(debug_local_names, old_cap * __word_size__, debug_local_capacity * __word_size__)
+		int old = old_cap * 4
 		int x = debug_local_capacity * 4
-		debug_local_names = realloc(debug_local_names, old, x)
 		debug_local_slots = realloc(debug_local_slots, old, x)
 		debug_local_kinds = realloc(debug_local_kinds, old, x)
 		debug_local_types = realloc(debug_local_types, old, x)
