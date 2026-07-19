@@ -70,11 +70,28 @@ follow-up):
   naive 1024³ matmul 59ms → 8.0ms — and the tiled matmul now beats
   naive at 4096³ (615ms vs 705ms) where L2 stops covering, exactly the
   memory-hierarchy win that was invisible pre-peephole (at 1024³
-  everything L2-caches and naive still edges tiled). Remaining gap to
-  hardware (~100x): declared locals still live in `[%sp+K]` `.local`
-  slots accessed through generic addresses — **A2 step 2 is promoting
-  never-address-taken slots to registers**, after which full A2
-  (grammar rules returning register names) may not even be needed.
+  everything L2-caches and naive still edges tiled).
+- **A2 step 2 landed — local promotion** (`ptx_promote` in
+  `code_generator/ptx.w`): a second post-pass, run before the
+  push/pop peephole, promotes every stack slot (declared local,
+  kernel-parameter spill, `gpu for` capture cell) whose every
+  appearance is a recognized load/store into a `%l<N>` register,
+  re-widening sub-word stores with the slot's load suffix so
+  truncate-then-reload semantics survive bit for bit. Escaped
+  addresses (`&local` into an intrinsic, aggregates) bail the kernel;
+  a written capture (pointer reassignment) or suffix-mismatched slot
+  just stays in memory. In the tensor kernels this empties the body of
+  `.local` traffic entirely. Measured on the same RTX 4080 SUPER
+  (vs the step-1 numbers): naive 1024³ matmul 7ms → 1ms, naive 4096³
+  466ms → 86ms, tiled 4096³ 604ms → 48ms (~2.9 TFLOP/s, ~12x), 4M
+  `tensor_sum` 410us → 320us; MNIST end-to-end barely moves
+  (3.0s → 2.9s) because at that size the loop is launch/host-bound,
+  and all GPU tests keep bit-identical numerics.
+  `tests/gpu_promote_gpu.w` pins the risky edges (sub-word locals,
+  reassigned captured pointer). With both steps in, full A2 (grammar
+  rules returning register names) looks unnecessary — the remaining
+  distance to peak is algorithmic (deeper tiling/vectorized loads) and
+  launch overhead, not the stack-machine encoding.
 
 ## Where this builds from
 
@@ -184,11 +201,11 @@ Deliberately not here:
   bounds guard it would be divergent.
 - ~~Remove per-op `gpu_sync()`~~ — done: ops enqueue; host boundaries
   sync (see the status section above for the exact sync-point list).
-- A2 virtual-register PTX emission (cuda.md Stage 4): **step 1
-  landed** — the push/pop peephole (~6–7x, see the status section
-  above). Step 2 is register promotion of never-address-taken
-  `[%sp+K]` locals; the full grammar-contract A2 stays speculative
-  until step 2's numbers say whether it is still needed.
+- ~~A2 virtual-register PTX emission (cuda.md Stage 4)~~ — done as
+  two text-level post-passes: the push/pop peephole (step 1, ~6–7x)
+  and local promotion (step 2, a further ~5–12x; see the status
+  section above). The full grammar-contract A2 is retired: kernel
+  bodies now carry no `.local` traffic to eliminate.
 - float16/bf16 storage (`.f16` loads widening to f32 math — W already
   has storage-only float16 on the host).
 
