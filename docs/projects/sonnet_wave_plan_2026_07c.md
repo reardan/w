@@ -25,6 +25,50 @@ it merges **last and alone** with `./wbuild verify` (+ `verify_x64`)
 green. Investigation tasks are timeboxed with a written diagnosis as the
 acceptable fallback deliverable.
 
+## Execution status
+
+**Wave 1 complete (2026-07-19): all 8 tasks merged.** Executed by
+parallel Sonnet 5 subagents in isolated worktrees, merged sequentially
+(1b last & alone), `verify` + `verify_x64` green at every seed-touching
+merge, full suite at wave close: 422/430 succeeded — the 7 failures are
+exactly this environment's missing-`libc6:i386` dynamic 32-bit targets
+(CI covers them), plus the dependent `tests` umbrella skip. Per-task:
+
+- **1a** doc/tracker sync: defhash/silent-exit/itoa/stream summaries
+  moved to `ai_tooling.md`, todo.txt refreshed (stale attach-phase claim
+  fixed), plan §0 updated for #344's merge.
+- **1b** imported-file diagnostic lines: the backlog's `compile_save
+  + 1` theory was HALF the story — paired defects (stale `nextc`
+  lookahead priming the imported file's line counter at 1, and
+  `compile_save` never saving `nextc`, which the `+ 1` mis-compensated).
+  Both fixed; 135/135 closure diagnostics shift to exact lines;
+  regression fixture pins importer + imported lines.
+- **1c** generator coroutine-stack mmap now checked
+  (`__w_gen_mmap_failed`, message + exit 1).
+- **1d** `# wfixture: <selector>` directive; all 13 x64-gated
+  `cuda_diagnostics_test` steps migrated into fixture headers (target
+  is now one wfixture invocation over 15 fixtures).
+- **1e** `lib/args.w` `args_declare_bool`/`args_has_bool_flag`
+  (declaration model, zero behavior change for undeclared callers);
+  stat/readlink migrated off hand-rolled argv walks.
+- **1f** wexec single-writer lock (`bin/.wexec_lock`, pid + liveness
+  via `kill(pid,0)` for darwin-compat, stale reclaim, `defer` release,
+  `WEXEC_LOCK_HELD` env reentrancy for nested wexec test invocations);
+  `wexec_lock_test`. Found+logged: `wexec_resolve_program` picks the
+  first *readable* (not executable) PATH candidate.
+- **1g** `unrecognized option: '<arg>'` diagnostic in `link_impl`'s
+  shared flag loop (covers link/check/deps/symbols/defhash);
+  `unrecognized_option_test` guards `--bounds=off` stays valid.
+- **1h** `lib/ptr.w` generic `ptr_add[T]`/`ptr_diff[T]` (grammar took
+  the generic on the first try); exemplar `&p[n]` conversions in
+  compress; README/CLAUDE.md rule updated.
+
+Process notes: agent worktrees cut from origin/main (not the program
+branch) — wave-2+ agents must fetch+reset onto the program branch tip
+first; the shared backlog file (`ai_tooling_next_steps.md`) conflicted
+on nearly every merge (1a's rewrite vs. per-task edits) — resolved by
+union, entries marked shipped.
+
 ## 0. In-flight work — keep clear
 
 **Update (2026-07-19): PR #344 has merged.** CUDA stage 4 (atomics,
