@@ -43,7 +43,10 @@ that is open, pasted bytes are inserted into the buffer verbatim
 (including tabs, so pasted source indentation is not re-auto-indented on
 top of), and an embedded newline ends just that one line for the caller
 exactly like a typed Enter -- it never triggers Ctrl-C-style discarding
-or any other special handling. Because a paste can span more than one
+or any other special handling. A CRLF pair counts as one newline (the
+pending LF is consumed with the CR instead of becoming a spurious empty
+line), and lines accepted while the paste is still open are not added
+to history -- see le_finish_line. Because a paste can span more than one
 line_edit_read call, line_edit_in_paste() reports whether the paste
 begun in an earlier call is still open (the end marker has not arrived
 yet); callers that assemble multi-line entries out of several reads
@@ -84,6 +87,16 @@ int le_prev_rows /* terminal rows the last le_render call occupied */
 # Bracketed paste (ESC[?2004h/l, ESC[200~/201~): see le_paste_consume.
 int le_paste_active /* 1 while a paste is open, possibly across calls */
 int le_seed_len /* length of the auto-indent seed this call started with */
+char* le_seed_text /* the seed's exact bytes (malloc'd), for le_paste_consume's drop test */
+
+# Pushback stack: bytes the editor consumed while probing a sequence but
+# has to un-read (LIFO; le_getchar drains it before real input). The
+# editor's own deepest use is le_paste_match_end's 5-byte end-marker
+# probe plus le_paste_consume's one-byte CRLF peek; the extra headroom
+# is for tests, which preload the stack to drive the tty-only paths
+# without a tty (see le_getchar).
+int[32] le_pushback_stack
+int le_pushback_len
 
 # Optional identifier-completion hook (Tab): see le_try_complete.
 int le_complete_hook
@@ -346,18 +359,45 @@ void le_browse_next(char* buf, int size):
 	le_set_line(buf, size, le_history_at(le_browse))
 
 
+# ---------------------------------------------------------------------------
+# Input with pushback. Every byte the editor reads comes through
+# le_getchar so a byte (or a whole probed run) can be un-read with
+# le_pushback and re-delivered in order. This is also the unit-test seam
+# for the tty-driven paths: canonical-mode keystrokes cannot be scripted
+# through a plain pipe (see ai_tooling_next_steps.md's REPL-surface
+# notes), but a test can preload the stack and let the code under test
+# consume it without a tty.
+
+# Un-read one byte: it becomes the next byte le_getchar returns. LIFO,
+# so a multi-byte run is pushed in reverse to pop back in reading order.
+# A full stack (unreachable through the editor's own bounded uses) drops
+# the byte, matching the old no-pushback behavior rather than corrupting
+# the stack.
+void le_pushback(int c):
+	if (le_pushback_len < 32):
+		le_pushback_stack[le_pushback_len] = c
+		le_pushback_len = le_pushback_len + 1
+
+
+int le_getchar():
+	if (le_pushback_len > 0):
+		le_pushback_len = le_pushback_len - 1
+		return le_pushback_stack[le_pushback_len]
+	return getchar(0)
+
+
 # Plain line read for non-tty input: prompt, then bytes to the newline.
 int le_read_plain(char* prompt, char* buf, int size):
 	le_write(prompt)
 	int len = 0
-	int c = getchar(0)
+	int c = le_getchar()
 	if (c == -1):
 		return -1
 	while ((c != 10) && (c != -1)):
 		if (len < size - 1):
 			buf[len] = c
 			len = len + 1
-		c = getchar(0)
+		c = le_getchar()
 	buf[len] = 0
 	return len
 
@@ -400,6 +440,8 @@ int le_candidates_common_len(char* out, int count):
 	return common
 
 
+# Starting candidate-buffer capacity; le_try_complete doubles it while
+# the hook reports a full buffer, so this is a first guess, not a cap.
 int le_complete_capacity():
 	return 64
 
@@ -462,6 +504,21 @@ int le_try_complete(char* buf, int size):
 	int capacity = le_complete_capacity()
 	char* out = malloc(capacity * __word_size__)
 	int count = le_complete_hook(prefix, out, capacity)
+	# A full buffer can mean truncation: unseen candidates would make the
+	# listing incomplete and can shrink the true common prefix, so the old
+	# fixed capacity both hid names and over-inserted bytes not actually
+	# shared by every match. Retry with doubled capacity until the hook
+	# has room to spare (the ceiling only guards against a hook that
+	# always claims a full buffer).
+	while ((count == capacity) && (capacity < 65536)):
+		int k = 0
+		while (k < count):
+			free(cast(char*, load_word(out + k * __word_size__)))
+			k = k + 1
+		free(out)
+		capacity = capacity * 2
+		out = malloc(capacity * __word_size__)
+		count = le_complete_hook(prefix, out, capacity)
 
 	if (count <= 0):
 		free(prefix)
@@ -500,20 +557,69 @@ void le_paste_mode_off():
 	le_write(c"\x1b[?2004l")
 
 
+# i'th byte (0-based) of the "[201~" tail every paste end marker carries
+# after its ESC; -1 past the end. Pure.
+int le_paste_end_marker(int i):
+	char* marker = c"[201~"
+	if ((i < 0) || (i >= 5)):
+		return -1
+	return marker[i]
+
+
 # Match the literal bytes "[201~" right after an ESC already consumed by
-# the caller. Real terminals always frame a paste exactly this way, so no
-# pushback is attempted for a mismatch: a stray escape mid-paste (not
-# itself expected from a compliant terminal) is simply dropped.
+# the caller. On a mismatch (or EOF mid-probe) every probed byte is
+# pushed back so it re-enters the input stream in its original order --
+# those bytes were real input (paste content that merely starts like the
+# marker), not the editor's to drop. Only the ESC itself stays consumed;
+# the caller decides what to do with the non-marker sequence.
 int le_paste_match_end():
-	if (getchar(0) != '['):
-		return 0
-	if (getchar(0) != '2'):
-		return 0
-	if (getchar(0) != '0'):
-		return 0
-	if (getchar(0) != '1'):
-		return 0
-	return getchar(0) == '~'
+	int n = 0
+	while (n < 5):
+		int c = le_getchar()
+		if (c == -1):
+			break
+		if (c != le_paste_end_marker(n)):
+			# Deepest-pushed pops first: push the mismatching byte, then
+			# the matched prefix right to left, so later reads re-deliver
+			# the probed bytes exactly as they arrived.
+			le_pushback(c)
+			while (n > 0):
+				n = n - 1
+				le_pushback(le_paste_end_marker(n))
+			return 0
+		n = n + 1
+	if (n == 5):
+		return 1
+	while (n > 0):
+		n = n - 1
+		le_pushback(le_paste_end_marker(n))
+	return 0
+
+
+# A pasted line just ended with byte c (13 or 10). CRLF endings arrive
+# as the pair 13 10, and the 13 already ended the line -- consume the
+# pending 10 too, or it becomes a spurious empty accept on the next
+# read. Any other byte after a lone 13 is real content: un-read it.
+void le_paste_eat_crlf(int c):
+	if (c != 13):
+		return;
+	int next = le_getchar()
+	if ((next != 10) && (next != -1)):
+		le_pushback(next)
+
+
+# 1 when buf[0..len) is exactly text's whole contents (text is
+# NUL-terminated; buf need not be). Pure; le_paste_consume uses it to
+# tell the untouched auto-indent seed from same-length typed text.
+int le_text_equals(char* buf, int len, char* text):
+	int i = 0
+	while (i < len):
+		if (text[i] == 0):
+			return 0
+		if (buf[i] != text[i]):
+			return 0
+		i = i + 1
+	return text[i] == 0
 
 
 # Consume a bracketed-paste block, already past "\x1b[200~" (or resuming
@@ -528,13 +634,16 @@ int le_paste_match_end():
 # to accept.
 int le_paste_consume(char* buf, int size):
 	# An auto-indent seed nobody has typed past yet would double up with
-	# the pasted text's own leading tabs -- drop it.
-	if ((le_seed_len > 0) && (le_len == le_seed_len) && (le_pos == le_len)):
-		le_len = 0
-		le_pos = 0
+	# the pasted text's own leading tabs -- drop it. Byte-exact: typed
+	# text that merely has the seed's length is the user's, not ours to
+	# discard.
+	if ((le_seed_len > 0) && (le_len == le_seed_len) && (le_pos == le_len) && (le_seed_text != 0)):
+		if (le_text_equals(buf, le_len, le_seed_text)):
+			le_len = 0
+			le_pos = 0
 	le_paste_active = 1
 	while (1):
-		int c = getchar(0)
+		int c = le_getchar()
 		if (c == -1):
 			le_paste_active = 0
 			return 0
@@ -542,8 +651,10 @@ int le_paste_consume(char* buf, int size):
 			if (le_paste_match_end()):
 				le_paste_active = 0
 				return 0
-			continue /* not the end marker: drop the lone ESC and keep going */
+			continue /* not the end marker: drop the lone ESC; its pushed-back
+				tail is re-read as ordinary paste content */
 		if ((c == 13) || (c == 10)):
+			le_paste_eat_crlf(c)
 			return 1
 		le_insert_char(buf, size, c)
 	return 0
@@ -668,14 +779,14 @@ int le_search_step(char* buf, int size, int c):
 			le_search_refine()
 		return 0
 	# Any other key ends the search and is re-delivered to the normal
-	# dispatch loop: the byte is still sitting in getchar's own buffer
-	# (this is the byte we just read from it), so stepping its read
-	# position back one un-reads it with no real seek() involved.
+	# dispatch loop through the editor's own pushback stack. (The old
+	# getchar_pos[0]-stepping trick assumed the byte came straight from
+	# getchar's buffer; now that reads can also come from the pushback
+	# stack, only le_pushback un-reads the right byte in every case.)
 	if (le_search_match >= 0):
 		le_set_line(buf, size, le_history_at(le_search_match))
 	le_search_end_state()
-	if (getchar_pos[0] > 0):
-		getchar_pos[0] = getchar_pos[0] - 1
+	le_pushback(c)
 	return 0
 
 
@@ -686,7 +797,7 @@ int le_search_step(char* buf, int size, int c):
 # markers. Returns 1 when a pasted embedded newline means the caller
 # should finish the line immediately, like Enter; 0 otherwise.
 int le_escape_bracket(char* buf, int size):
-	int c2 = getchar(0)
+	int c2 = le_getchar()
 	if (c2 == 'A'):
 		le_browse_prev(buf, size)
 	else if (c2 == 'B'):
@@ -703,10 +814,10 @@ int le_escape_bracket(char* buf, int size):
 		le_pos = le_len
 	else if ((c2 >= '0') && (c2 <= '9')):
 		int n = c2 - '0'
-		int c3 = getchar(0)
+		int c3 = le_getchar()
 		while ((c3 >= '0') && (c3 <= '9')):
 			n = n * 10 + (c3 - '0')
-			c3 = getchar(0)
+			c3 = le_getchar()
 		if (c3 == '~'):
 			if (n == 1): /* home */
 				le_pos = 0
@@ -724,11 +835,11 @@ int le_escape_bracket(char* buf, int size):
 
 
 int le_escape(char* buf, int size):
-	int c1 = getchar(0)
+	int c1 = le_getchar()
 	if (c1 == '['):
 		return le_escape_bracket(buf, size)
 	else if (c1 == 'O'): /* application-mode home/end */
-		int c2 = getchar(0)
+		int c2 = le_getchar()
 		if (c2 == 'H'):
 			le_pos = 0
 		else if (c2 == 'F'):
@@ -744,7 +855,16 @@ int le_finish_line(char* buf):
 	le_paste_mode_off()
 	term_restore()
 	put_char(10)
-	le_history_accept(buf)
+	# History stays strictly line-shaped (one entry per history-file row;
+	# arrow-key recall edits a single-line buffer), so a multi-line paste
+	# cannot become one entry without changing the model. Mid-paste line
+	# fragments -- accepted while the paste is still open -- are not
+	# recorded at all; only a line finished after the paste closed (the
+	# one the user actually submits with Enter, still visible and
+	# editable) is. That stops a paste from flooding history with lines
+	# nobody composed at the prompt.
+	if (le_paste_active == 0):
+		le_history_accept(buf)
 	return le_len
 
 
@@ -754,9 +874,13 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 
 	le_set_line(buf, size, c"")
 	le_seed_len = 0
+	if (le_seed_text != 0):
+		free(le_seed_text)
+		le_seed_text = 0
 	if (initial != 0):
 		le_set_line(buf, size, initial)
 		le_seed_len = le_len
+		le_seed_text = strclone(buf) /* le_set_line NUL-terminated buf at le_len */
 	le_browse = -1
 	le_prev_rows = 1
 	le_search_end_state()
@@ -774,7 +898,7 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 	le_render(prompt, buf)
 
 	while (1):
-		int c = getchar(0)
+		int c = le_getchar()
 		if (c == -1):
 			le_paste_mode_off()
 			term_restore()
