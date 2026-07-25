@@ -699,47 +699,26 @@ exist yet:
 
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
-- **(2026-07-19 review) A trailing action-only alternative is spuriously
-  rejected as an overlap** (`rule value = NUMBER | { emit_eps() }` errors
-  while the semantically identical bare trailing empty alternative is
-  accepted): `pg_report_unit_is_empty_suffix` counts raw `terms.length`,
-  predating transparent action terms. Safe direction (over-rejection),
-  but blocks the natural emit-default pattern.
-- **(2026-07-19 review) `$1` immediately followed by an identifier
-  character** pastes into `action_arg_X_0.textx` (broken member access in
-  the generated file) instead of being diagnosed at generation time.
+All three 2026-07 review findings here are resolved (trailing action-only
+alternative accepted as epsilon dispatch; `$1`-runs-into-identifier
+rejected at generation time; the shared-prefix nullable-suffix shape that
+once segfaulted the streaming emitter is a `pg_report_choice`
+generation-time rejection, regression-pinned by
+`tests/parser_generator/streaming_guard_reject.pg` and
+`generated_streaming_test.w`). One residual, deliberately-open
+ergonomic gap:
 
-- **A pre-existing (milestone 2/3, not milestone-4-specific) crash in the
-  streaming-mode emitter**: a rule with two alternatives sharing a
-  factorable leading term, where the *longer* alternative's suffix (after
-  the shared prefix) is nullable but non-empty and the *shorter*
-  alternative's suffix is the true empty/epsilon case, segfaults
-  `pg_generate_parser` instead of either generating correctly or being
-  rejected by `pg_streaming_check`. Root cause: `analysis.w`'s
-  `pg_report_choice` exempts a unit from the pairwise overlap check when
-  it is the *empty*-suffix unit (`pg_report_unit_is_empty_suffix`) — sound
-  on its own — but the *other* (nullable, non-empty) unit in the pair
-  never gets its own guard (`pg_plan_unit_guard` bails on any nullable
-  suffix, per `pg_analysis_terms_guardable`), so `pg_streaming_check`
-  reports 0 conflicts for the rule (the empty-suffix exemption hides the
-  only pairing that would have flagged it) while `pg_emit_streaming_choice`
-  still needs *some* guard condition for that now-"committed" nullable
-  unit and finds `guard_set == 0`, indexing through it in
-  `pg_emit_kind_set_test`. Minimal repro (no actions/predicates involved
-  at all — confirmed independent of this milestone's changes):
-  `parser edge_probe\nmode streaming\ntoken IDENT letters\ntoken WS
-  spaces\nstart value\nrule value = IDENT WS? | IDENT\n` segfaults
-  `pg_generate_parser`. Not hit by any grammar in the tree today (`w.pg`
-  stays AST mode; `streaming_sample.pg` and this milestone's
-  `actions_sample.pg` were deliberately checked against this shape and
-  avoid it), so it did not block milestone 4, but any future streaming
-  grammar with a shared prefix followed by a nullable (not flatly empty)
-  continuation on one side will hit it. Fix likely belongs in
-  `pg_plan_unit_guard`/`pg_report_choice`: either also require the
-  *nullable* side of such a pairing to be the trailing/last unit before
-  granting the empty-suffix exemption, or treat "nullable, non-empty,
-  unguardable" units as a `pg_streaming_check` violation in their own
-  right rather than silently falling through to codegen.
+- **A nullable, non-empty factored suffix is rejected, not compiled**:
+  `rule value = IDENT WS? | IDENT` (streaming) is refused with "can match
+  nothing and is not the trailing fallback (no committed dispatch)" even
+  though the shape is LL(1)-decidable — the nullable suffix could be
+  emitted as the choice's final fallback branch (its later siblings are
+  dead under ordered choice). Safe direction (over-rejection), but a
+  future streaming grammar wanting an optional continuation after a
+  shared prefix has to hand-rewrite as
+  `rule value = IDENT ws_opt` / `rule ws_opt = WS |`. Accepting it means
+  teaching `pg_plan_choice`/`pg_emit_streaming_choice` to treat a
+  trailing nullable unit like the empty-suffix fallback.
 
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 

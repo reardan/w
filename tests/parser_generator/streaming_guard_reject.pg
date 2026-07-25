@@ -1,0 +1,14 @@
+# Regression fixture (docs/projects/ai_tooling_next_steps.md): two
+# alternatives sharing a factorable leading term where the longer suffix
+# (WS?) is nullable but non-empty and the shorter is the true epsilon.
+# The nullable, non-empty suffix unit has no committed dispatch -- no
+# guard set can be planned for it -- and this shape used to fall through
+# to the streaming emitter and segfault on the missing guard set.
+# pg_report_choice must reject it at generation time instead; the build
+# step asserts the exact diagnostic.
+parser edge_probe
+mode streaming
+token IDENT letters
+token WS spaces
+start value
+rule value = IDENT WS? | IDENT
