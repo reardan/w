@@ -1945,6 +1945,7 @@
 				"prng_64_test",
 				"process_64_test",
 				"protobuf_64_test",
+				"protobuf_leak_64_test",
 				"ptr_add_64_test",
 				"quorum_64_test",
 				"raft_64_test",
@@ -2475,6 +2476,7 @@
 				"poly1305_test",
 				"prng_test",
 				"process_test",
+				"protobuf_leak_test",
 				"protobuf_test",
 				"ptr_add_test",
 				"quorum_test",
@@ -4197,6 +4199,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/protobuf_test.w", "-o", "bin/protobuf_64_test"]},
 				{"cmd": ["bin/protobuf_64_test"]}
+			]
+		},
+		{
+			"name": "protobuf_leak_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/protobuf_leak_test.w", "-o", "bin/protobuf_leak_64_test"]},
+				{"cmd": ["bin/protobuf_leak_64_test"]}
+			]
+		},
+		{
+			"name": "protobuf_leak_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/protobuf_leak_test.w", "-o", "bin/protobuf_leak_test"]},
+				{"cmd": ["bin/protobuf_leak_test"]}
 			]
 		},
 		{

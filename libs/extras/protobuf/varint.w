@@ -90,7 +90,11 @@ int varint_encode_parts(int lo, int hi, char* out):
 # (message.w's PB_ERR_TRUNCATED), or 0 if 10 bytes went by with no
 # terminator -- exceeding the maximum a 64-bit value can ever need, since
 # a well-formed encoder never emits an 11th continuation byte
-# (message.w's PB_ERR_BAD_VARINT). Both are falsy/non-positive, so a
+# (message.w's PB_ERR_BAD_VARINT). The 10-byte check is tested FIRST: an
+# input whose 10th byte still has its continuation bit set is provably
+# malformed no matter what bytes might follow, so a buffer that ends
+# exactly there reports 0 (malformed), never -1 (truncated) -- more
+# input could not have rescued it. Both are falsy/non-positive, so a
 # caller that only wants "did this succeed" can still test `<= 0`; one
 # that wants the distinction (message.w does) checks the sign.
 int varint_decode_parts(char* data, int length, int* lo_out, int* hi_out):
@@ -99,10 +103,10 @@ int varint_decode_parts(char* data, int length, int* lo_out, int* hi_out):
 	int shift = 0
 	int i = 0
 	while (1):
-		if (i >= length):
-			return -1
 		if (i >= 10):
 			return 0
+		if (i >= length):
+			return -1
 		int b = data[i] & 255
 		int payload = b & 127
 		if (shift < 32):

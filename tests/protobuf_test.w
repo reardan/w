@@ -763,6 +763,304 @@ void test_message_decode_error_paths():
 	result_free[char*](r6)
 
 
+/* ---- stage-1 hardening: duplicates, depth cap, error taxonomy -----
+   (docs/projects/ai_tooling_next_steps.md's protobuf hardening
+   backlog: proto3 duplicate-field semantics, submessage recursion
+   depth limit, truncated-vs-malformed varint classification, skip-path
+   error propagation, and error-path cleanup.) */
+
+
+# proto3 "last one wins" for a duplicated singular scalar: field 1
+# appears twice (1 then 150); only the final value survives.
+void test_message_duplicate_scalar_last_wins():
+	pb_test_simple_desc_init()
+	char* data = c"\x08\x01\x08\x96\x01"
+	wresult[char*]* r = pb_test_simple_decode(data, 5)
+	assert_equal(1, result_is_ok[char*](r))
+	pb_test_simple_msg* decoded = cast(pb_test_simple_msg*, result_value[char*](r))
+	assert_equal(150, decoded.a)
+	free(cast(char*, decoded))
+	result_free[char*](r)
+
+
+# proto3 "last one wins" for a duplicated string field: field 2 = "hi"
+# then field 2 = "world". The decoder must keep only "world" and free
+# the earlier copy (the leak itself is asserted under the debug
+# allocator in tests/protobuf_leak_test.w).
+void test_message_duplicate_string_last_wins():
+	pb_test_simple_desc_init()
+	char* data = c"\x12\x02\x68\x69\x12\x05\x77\x6f\x72\x6c\x64"
+	wresult[char*]* r = pb_test_simple_decode(data, 11)
+	assert_equal(1, result_is_ok[char*](r))
+	pb_test_simple_msg* decoded = cast(pb_test_simple_msg*, result_value[char*](r))
+	assert_equal(5, decoded.b.length)
+	assert_strings_equal(c"world", decoded.b.data)
+	free(decoded.b.data)
+	free(cast(char*, decoded))
+	result_free[char*](r)
+
+
+# Holder of one singular pb_test_pt submessage (field 3) for the
+# duplicate-message merge tests.
+struct pb_test_pt_holder:
+	pb_test_pt* pt
+
+
+pb_field_desc[1] pb_test_pt_holder_fields
+pb_message_desc pb_test_pt_holder_desc
+
+
+void pb_test_pt_holder_desc_init():
+	pb_test_poly_desc_init()
+	pb_test_pt_holder hm
+	pb_test_pt_holder_fields[0].number = 3
+	pb_test_pt_holder_fields[0].kind = PB_KIND_MESSAGE()
+	pb_test_pt_holder_fields[0].offset = cast(int, &hm.pt) - cast(int, &hm)
+	pb_test_pt_holder_fields[0].aux = cast(int, &pb_test_pt_desc)
+	pb_test_pt_holder_desc.field_count = 1
+	pb_test_pt_holder_desc.fields = pb_test_pt_holder_fields
+	pb_test_pt_holder_desc.struct_size = __word_size__
+
+
+# proto3 duplicate-message semantics: two occurrences of the same
+# singular message field MERGE -- fields the second occurrence sets
+# overwrite, fields it leaves unset survive from the first. A
+# replace-decoder would lose x here; a merging one keeps both.
+void test_message_duplicate_message_merges():
+	pb_test_pt_holder_desc_init()
+	# Occurrence 1 sets only x=1 (1a 02 08 01); occurrence 2 sets only
+	# y=2 (1a 02 10 02; tag(2,varint) = (2<<3)|0 = 0x10).
+	char* data = c"\x1a\x02\x08\x01\x1a\x02\x10\x02"
+	char* buf = malloc(pb_test_pt_holder_desc.struct_size)
+	int i = 0
+	while (i < pb_test_pt_holder_desc.struct_size):
+		buf[i] = 0
+		i = i + 1
+	wresult[char*]* r = pb_decode(&pb_test_pt_holder_desc, data, 8, buf)
+	assert_equal(1, result_is_ok[char*](r))
+	pb_test_pt_holder* decoded = cast(pb_test_pt_holder*, buf)
+	assert_equal(1, cast(int, decoded.pt) != 0)
+	assert_equal(1, decoded.pt.x)
+	assert_equal(2, decoded.pt.y)
+	result_free[char*](r)
+	pb_free_decoded(&pb_test_pt_holder_desc, buf)
+	assert_equal(0, cast(int, decoded.pt))
+	free(buf)
+
+	# Scalars inside the merge still follow last-one-wins: x=1, then
+	# the second occurrence rewrites x=3 and adds y=2.
+	char* data2 = c"\x1a\x02\x08\x01\x1a\x04\x08\x03\x10\x02"
+	char* buf2 = malloc(pb_test_pt_holder_desc.struct_size)
+	i = 0
+	while (i < pb_test_pt_holder_desc.struct_size):
+		buf2[i] = 0
+		i = i + 1
+	wresult[char*]* r2 = pb_decode(&pb_test_pt_holder_desc, data2, 10, buf2)
+	assert_equal(1, result_is_ok[char*](r2))
+	pb_test_pt_holder* decoded2 = cast(pb_test_pt_holder*, buf2)
+	assert_equal(3, decoded2.pt.x)
+	assert_equal(2, decoded2.pt.y)
+	result_free[char*](r2)
+	pb_free_decoded(&pb_test_pt_holder_desc, buf2)
+	free(buf2)
+
+
+# Self-recursive message: field 1 is a submessage of this same type
+# (the shape a depth-limit attack nests).
+struct pb_test_deep_msg:
+	char* child
+
+
+pb_field_desc[1] pb_test_deep_fields
+pb_message_desc pb_test_deep_desc
+
+
+void pb_test_deep_desc_init():
+	pb_test_deep_msg dm
+	pb_test_deep_fields[0].number = 1
+	pb_test_deep_fields[0].kind = PB_KIND_MESSAGE()
+	pb_test_deep_fields[0].offset = cast(int, &dm.child) - cast(int, &dm)
+	pb_test_deep_fields[0].aux = cast(int, &pb_test_deep_desc)
+	pb_test_deep_desc.field_count = 1
+	pb_test_deep_desc.fields = pb_test_deep_fields
+	pb_test_deep_desc.struct_size = __word_size__
+
+
+# Builds `levels` nested submessages in O(levels) bytes and time: every
+# level is a fixed 6-byte header -- tag 0x0a (field 1,
+# length-delimited) plus the remaining byte count as a NON-CANONICAL
+# 5-byte varint (padded with continuation bytes; protobuf decoders
+# accept non-minimal varints) -- so each level's length is computable
+# without knowing inner varint widths. The innermost level's payload is
+# the empty message.
+char* pb_test_build_deep(int levels, int* out_len):
+	int total = levels * 6
+	char* buf = malloc(total)
+	int i = 0
+	while (i < levels):
+		int pos = i * 6
+		int payload = total - pos - 6
+		buf[pos] = 0x0a
+		buf[pos + 1] = 128 | (payload & 127)
+		buf[pos + 2] = 128 | (shr(payload, 7) & 127)
+		buf[pos + 3] = 128 | (shr(payload, 14) & 127)
+		buf[pos + 4] = 128 | (shr(payload, 21) & 127)
+		buf[pos + 5] = shr(payload, 28) & 127
+		i = i + 1
+	out_len[0] = total
+	return buf
+
+
+# Crafted deeply-nested input must hit PB_MAX_DECODE_DEPTH()'s clean
+# PB_ERR_DEPTH_EXCEEDED error, never recurse once per level until the
+# stack overflows (the pre-hardening behavior).
+void test_message_depth_limit():
+	pb_test_deep_desc_init()
+
+	# Exactly at the limit: accepted, and the decoded chain really is
+	# PB_MAX_DECODE_DEPTH() submessages deep.
+	int len = 0
+	char* data = pb_test_build_deep(PB_MAX_DECODE_DEPTH(), &len)
+	char* buf = malloc(pb_test_deep_desc.struct_size)
+	int i = 0
+	while (i < pb_test_deep_desc.struct_size):
+		buf[i] = 0
+		i = i + 1
+	wresult[char*]* r = pb_decode(&pb_test_deep_desc, data, len, buf)
+	assert_equal(1, result_is_ok[char*](r))
+	int count = 0
+	pb_test_deep_msg* node = cast(pb_test_deep_msg*, buf)
+	while (cast(int, node.child) != 0):
+		count = count + 1
+		node = cast(pb_test_deep_msg*, node.child)
+	assert_equal(PB_MAX_DECODE_DEPTH(), count)
+	result_free[char*](r)
+	pb_free_decoded(&pb_test_deep_desc, buf)
+	free(buf)
+	free(data)
+
+	# One level past the limit: clean error, and the error-path sweep
+	# left the caller's buffer re-zeroed (no dangling partial chain).
+	int len2 = 0
+	char* data2 = pb_test_build_deep(PB_MAX_DECODE_DEPTH() + 1, &len2)
+	char* buf2 = malloc(pb_test_deep_desc.struct_size)
+	i = 0
+	while (i < pb_test_deep_desc.struct_size):
+		buf2[i] = 0
+		i = i + 1
+	wresult[char*]* r2 = pb_decode(&pb_test_deep_desc, data2, len2, buf2)
+	assert_equal(1, result_is_error[char*](r2))
+	assert_equal(PB_ERR_DEPTH_EXCEEDED(), result_code[char*](r2))
+	pb_test_deep_msg* root2 = cast(pb_test_deep_msg*, buf2)
+	assert_equal(0, cast(int, root2.child))
+	result_free[char*](r2)
+	free(buf2)
+	free(data2)
+
+	# 60000 levels -- roughly the "one field per few bytes" attack
+	# shape. Before the depth cap this recursed 60000 frames deep and
+	# smashed the stack; now it must fail with the same clean error.
+	int len3 = 0
+	char* data3 = pb_test_build_deep(60000, &len3)
+	char* buf3 = malloc(pb_test_deep_desc.struct_size)
+	i = 0
+	while (i < pb_test_deep_desc.struct_size):
+		buf3[i] = 0
+		i = i + 1
+	wresult[char*]* r3 = pb_decode(&pb_test_deep_desc, data3, len3, buf3)
+	assert_equal(1, result_is_error[char*](r3))
+	assert_equal(PB_ERR_DEPTH_EXCEEDED(), result_code[char*](r3))
+	result_free[char*](r3)
+	free(buf3)
+	free(data3)
+
+
+# A varint whose 10th byte still carries the continuation bit can never
+# be completed by more input (10 bytes is the 64-bit maximum), so a
+# buffer ending exactly there is malformed (PB_ERR_BAD_VARINT), not
+# truncated -- while any shorter all-continuation prefix genuinely is
+# truncation (PB_ERR_TRUNCATED).
+void test_message_varint_truncated_vs_malformed():
+	pb_test_simple_desc_init()
+
+	# Known field 1: exactly 10 continuation bytes, then end of buffer.
+	wresult[char*]* r1 = pb_test_simple_decode(c"\x08\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80", 11)
+	assert_equal(1, result_is_error[char*](r1))
+	assert_equal(PB_ERR_BAD_VARINT(), result_code[char*](r1))
+	result_free[char*](r1)
+
+	# Same shape one byte shorter (9 continuation bytes): a terminating
+	# 10th byte could still arrive, so this is truncation.
+	wresult[char*]* r2 = pb_test_simple_decode(c"\x08\x80\x80\x80\x80\x80\x80\x80\x80\x80", 10)
+	assert_equal(1, result_is_error[char*](r2))
+	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r2))
+	result_free[char*](r2)
+
+	# Unknown field 99 (varint; tag 0x98 0x06): the skip path must
+	# classify identically instead of folding everything to TRUNCATED.
+	wresult[char*]* r3 = pb_test_simple_decode(c"\x98\x06\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80", 12)
+	assert_equal(1, result_is_error[char*](r3))
+	assert_equal(PB_ERR_BAD_VARINT(), result_code[char*](r3))
+	result_free[char*](r3)
+
+	wresult[char*]* r4 = pb_test_simple_decode(c"\x98\x06\x80", 3)
+	assert_equal(1, result_is_error[char*](r4))
+	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r4))
+	result_free[char*](r4)
+
+	# The TAG varint itself over-long: 10 continuation bytes at the top
+	# of the message.
+	wresult[char*]* r5 = pb_test_simple_decode(c"\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80", 10)
+	assert_equal(1, result_is_error[char*](r5))
+	assert_equal(PB_ERR_BAD_VARINT(), result_code[char*](r5))
+	result_free[char*](r5)
+
+
+# pb_skip_or_error must propagate the underlying skip failure's kind,
+# not collapse every failure to PB_ERR_TRUNCATED.
+void test_message_unknown_field_skip_error_kinds():
+	pb_test_simple_desc_init()
+
+	# Unknown field 99, length-delimited (tag (99<<3)|2 = 794 = 0x9a
+	# 0x06): declared length 5 with only 2 payload bytes present.
+	wresult[char*]* r1 = pb_test_simple_decode(c"\x9a\x06\x05\x68\x69", 5)
+	assert_equal(1, result_is_error[char*](r1))
+	assert_equal(PB_ERR_LENGTH_OVERRUN(), result_code[char*](r1))
+	result_free[char*](r1)
+
+	# Unknown field 99, fixed32 (tag (99<<3)|5 = 797 = 0x9d 0x06) with
+	# only 2 of 4 payload bytes: genuinely truncated.
+	wresult[char*]* r2 = pb_test_simple_decode(c"\x9d\x06\x01\x02", 4)
+	assert_equal(1, result_is_error[char*](r2))
+	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r2))
+	result_free[char*](r2)
+
+
+# A failed decode must not leak what it had already stored:
+# pb_decode_into's error path frees every allocation reachable from
+# `out` and re-zeroes the pointer-bearing fields, handing back a clean
+# buffer (leak-freedom itself is asserted under the debug allocator in
+# tests/protobuf_leak_test.w).
+void test_message_error_path_resets_out():
+	pb_test_simple_desc_init()
+	# field 2 = "hi" decodes (and allocates) fine, then field 1's
+	# varint payload is missing entirely.
+	char* data = c"\x12\x02\x68\x69\x08"
+	char* buf = malloc(pb_test_simple_desc.struct_size)
+	int i = 0
+	while (i < pb_test_simple_desc.struct_size):
+		buf[i] = 0
+		i = i + 1
+	wresult[char*]* r = pb_decode(&pb_test_simple_desc, data, 5, buf)
+	assert_equal(1, result_is_error[char*](r))
+	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r))
+	pb_test_simple_msg* m = cast(pb_test_simple_msg*, buf)
+	assert_equal(0, cast(int, m.b.data))
+	assert_equal(0, m.b.length)
+	result_free[char*](r)
+	free(buf)
+
+
 /* ---- round-trip property: decode(encode(x)) == x ------------------ */
 
 
