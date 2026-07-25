@@ -188,6 +188,9 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+          # Only the published binaries (w-*). Excludes the internal
+          # wv2_darwin_bootstrap handoff artifact used by the macOS job.
+          pattern: w-*
 
       - name: Generate SHA256SUMS
         run: cd dist && sha256sum * > SHA256SUMS
