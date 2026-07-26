@@ -1917,6 +1917,7 @@
 				"lib_64_test",
 				"limb_builtin_64_test",
 				"limb_builtin_shadow_64_test",
+				"line_edit_paste_64_test",
 				"list_builtin_64_test",
 				"lsm_64_test",
 				"malloc_churn_64_test",
@@ -2446,6 +2447,7 @@
 				"limb_builtin_shadow_test",
 				"limb_builtin_test",
 				"line_edit_completion_test",
+				"line_edit_paste_test",
 				"list_methods_test",
 				"lsm_test",
 				"malloc_churn_test",
@@ -3679,6 +3681,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/line_edit_completion_test.w", "-o", "bin/line_edit_completion_test"]},
 				{"cmd": ["bin/line_edit_completion_test"]}
+			]
+		},
+		{
+			"name": "line_edit_paste_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/line_edit_paste_test.w", "-o", "bin/line_edit_paste_64_test"]},
+				{"cmd": ["bin/line_edit_paste_64_test"]}
+			]
+		},
+		{
+			"name": "line_edit_paste_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/line_edit_paste_test.w", "-o", "bin/line_edit_paste_test"]},
+				{"cmd": ["bin/line_edit_paste_test"]}
 			]
 		},
 		{

@@ -677,25 +677,40 @@ exist yet:
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 
 - **(2026-07-19 review) Paste/line-editor gaps found reviewing wave C's
-  bracketed-paste + Ctrl-R work** (none block the piped/agent path):
-  `le_paste_match_end` drops up to 5 already-consumed bytes on a partial
-  ESC-sequence mismatch, corrupting pasted content containing ESC;
-  pasted CRLF endings inject a spurious blank line per line ('\r' ends
-  the line, the '\n' left pending becomes an empty accept); every pasted
-  line is pushed into history (paste floods history) and multi-line
-  paste renders only bare newlines; an arrow key during Ctrl-R cancels
-  on ESC then inserts the residual "[A" as literal text (only the last
-  byte is pushed back); starting a search while the edited line wraps
-  leaves stale wrapped rows (`le_render_search` never climbs
-  `le_prev_rows`); completion candidates silently truncate at 64 and
-  the common prefix of a truncated set can over-insert;
-  `le_paste_consume`'s auto-indent-seed drop compares only lengths, so
-  typed text of the same length as the seed is silently discarded on
-  paste.
-- **(2026-07-19 review) shell-mode translator divergences**: `echo`
-  honors `-n` at any argv position (real echo: leading only);
-  `head`/`tail` accept `-n=5`/`--lines=5` forms native tools reject;
-  `mkdir`/`rm` translators leak a `list[char*]` per call.
+  bracketed-paste + Ctrl-R work** (none block the piped/agent path).
+  Fixed 2026-07-25 (`lib/line_edit.w`, unit-tested by
+  `tests/line_edit_paste_test.w`): `le_paste_match_end`'s partial
+  ESC-sequence mismatch now pushes every probed byte back through a new
+  editor-local pushback stack (`le_pushback`/`le_getchar`, which every
+  editor read goes through — the stack doubles as the unit-test input
+  seam for the tty-only paths a plain pipe cannot script); pasted CRLF
+  endings no longer inject a blank line per line (`le_paste_eat_crlf`
+  consumes the pending LF with the CR); mid-paste line fragments are no
+  longer pushed into history (`le_finish_line` skips accept while the
+  paste is open — history stays strictly line-shaped, so the one line
+  the user actually finishes with Enter after the paste closes is the
+  entry); completion candidates no longer truncate at 64 (le_try_complete
+  doubles the buffer while the hook reports it full, which also fixes the
+  truncated set's over-inserted common prefix); `le_paste_consume`'s
+  auto-indent-seed drop is byte-exact (`le_text_equals` against the
+  seed's snapshot), so same-length typed text survives a paste. Still
+  open: multi-line paste renders only bare newlines; an arrow key during
+  Ctrl-R cancels on ESC then inserts the residual "[A" as literal text
+  (the cancel consumes the ESC before the sequence is identified);
+  starting a search while the edited line wraps leaves stale wrapped
+  rows (`le_render_search` never climbs `le_prev_rows`).
+- **(2026-07-19 review) shell-mode translator divergences** — fixed
+  2026-07-25 (`repl/shell_translate.w`, pinned by
+  `tests/shell_commands_test.w`): `echo` now honors `-n` only as a
+  leading run (a later `-n` is literal text, matching real echo);
+  `head`/`tail` no longer accept the inline `-n=5`/`--lines=5`
+  spellings — those fail closed to native so the real tool's own
+  acceptance or diagnostic applies verbatim; `mkdir`/`rm` (and the
+  shared tokenizer teardown) free their `list[char*]` structs on every
+  path. `wc` also stopped deriving its counts via strlen, which
+  truncated all three figures at an embedded NUL byte
+  (`lib/shell_commands.w` now reads through a stream and uses the true
+  byte length).
 
 - **A `:save`d session transcript is not always a valid standalone `.w`
   file.** Found while adding `:save`/`:load`/`:type`/`:time`/`:reset`/
