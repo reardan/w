@@ -479,6 +479,13 @@ exist yet:
   target). Real fix: check the executable bit (or `access(path, X_OK)`)
   in the `PATH` search loop, and ideally have the exit-127 path name the
   resolved-but-unusable candidate instead of just "exit status 127".
+  Fixed (2026-07-25): `wexec_candidate_is_executable` (lib/stat.w's
+  statx wrapper, `mode & 0111`; a failed stat — the darwin/win64 stubs
+  return -1 — degrades to the old readable-only answer so those
+  platforms are unchanged) now filters the `PATH` loop, and the
+  shadowing scenario is a regression step in `wexec_test`
+  (tests/wexec/path_xok.json). The exit-127 diagnostic naming the
+  unusable candidate remains a nice-to-have.
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new
@@ -525,6 +532,13 @@ exist yet:
   content-hash caching on macOS, add per-arch dirent accessors
   (`reclen`/`name`/`kind`) next to each `getdents` shim in
   `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
+  Partially addressed (2026-07-25): the silent misparse is gone —
+  `tools/__arch__/*/wexec_platform.w`'s `wexec_dirents_supported()`
+  reports the layout gap per target, and `wexec_collect_dir` now warns
+  once ("directory inputs are not hashed on this platform") and treats
+  the directory as empty instead of parsing Darwin records with Linux
+  offsets. The full fix (per-arch dirent accessors, validated on a
+  Mac) is still open; the accessor plan above stands.
 - **`getchar()`/`getchar_unbuffered()` conflate a genuine `read()` error
   with EOF** (`lib/lib.w`). A mid-file I/O failure looks like silent
   truncation (or a misleadingly-positioned parse error) instead of a
