@@ -2,9 +2,7 @@
 	"dirs": ["bin"],
 	"generate": {
 		"exclude": [
-			"graphics/gl_smoke_test.w",
 			"tests/dynamic_darwin_test.w",
-			"tests/extern_alias_test.w",
 			"tests/net_darwin_smoke_test.w",
 			"tests/pac_corrupt_fnptr_test.w",
 			"tests/pac_corrupt_ret_test.w",
@@ -1666,59 +1664,11 @@
 			]
 		},
 		{
-			"name": "x64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_test.w", "-o", "bin/x64_test"]},
-				{"cmd": ["bin/x64_test"]}
-			]
-		},
-		{
-			"name": "x64_float_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_float_test.w", "-o", "bin/x64_float_test"]},
-				{"cmd": ["bin/x64_float_test"], "expect_stdout": "x64 float OK"}
-			]
-		},
-		{
-			"name": "x64_fmath64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_fmath64_test.w", "-o", "bin/x64_fmath64_test"]},
-				{"cmd": ["bin/x64_fmath64_test"], "expect_stdout": "x64 fmath64 OK"}
-			]
-		},
-		{
-			"name": "x64_ndarray64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_ndarray64_test.w", "-o", "bin/x64_ndarray64_test"]},
-				{"cmd": ["bin/x64_ndarray64_test"], "expect_stdout": "x64 ndarray64 OK"}
-			]
-		},
-		{
-			"name": "x64_int64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_int64_test.w", "-o", "bin/x64_int64_test"]},
-				{"cmd": ["bin/x64_int64_test"], "expect_stdout": "x64 int64 OK"}
-			]
-		},
-		{
 			"name": "x64_protobuf_test",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/x64_protobuf_test.w", "-o", "bin/x64_protobuf_test"]},
 				{"cmd": ["bin/x64_protobuf_test"], "expect_stdout": "x64 protobuf wide-kind tests OK"}
-			]
-		},
-		{
-			"name": "x64_map_float64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_map_float64_test.w", "-o", "bin/x64_map_float64_test"]},
-				{"cmd": ["bin/x64_map_float64_test"]}
 			]
 		},
 		{
@@ -1746,14 +1696,6 @@
 				{"cmd": ["bin/task_io_64_test"]},
 				{"cmd": ["bin/wv2", "x64", "examples/web/task_echo_server.w", "-o", "bin/task_echo_server_64"]},
 				{"cmd": ["bin/task_echo_server_64"], "expect_stdout": "demo: OK"}
-			]
-		},
-		{
-			"name": "graphics_gl_smoke_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_test"]},
-				{"cmd": ["bin/graphics_gl_smoke_test"], "expect_stdout": "graphics gl smoke"}
 			]
 		},
 		{
@@ -1804,14 +1746,6 @@
 				{"cmd": ["bin/wv2", "arm64", "tests/pac_corrupt_ret_test.w", "-o", "bin/pac_corrupt_ret_arm64_test"]},
 				{"cmd": ["sh", "-c", "sh tools/run_arm64.sh bin/pac_corrupt_ret_arm64_test; test $? -ge 128"], "reject_stdout": "NOT REACHED"},
 				{"cmd": ["echo", "pac corruption tests OK (both fixtures died)"]}
-			]
-		},
-		{
-			"name": "extern_alias_test_x64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/extern_alias_test.w", "-o", "bin/extern_alias_test_x64"]},
-				{"cmd": ["bin/extern_alias_test_x64"], "expect_stdout": "extern alias OK"}
 			]
 		},
 		{
@@ -1933,15 +1867,6 @@
 			"steps": [
 				{"cmd": ["./w", "tests/asm_seed_check.w", "-o", "bin/asm_seed_check"]},
 				{"cmd": ["bin/asm_seed_check"]}
-			]
-		},
-		{
-			"name": "asm_stubs_test",
-			"deps": ["wv2"],
-			"inputs": ["libs/asm/", "tests/asm/", "tests/asm_stubs_test.w", "code_generator/x86_asm.w", "code_generator/x64_asm.w", "code_generator/arm64_asm.w"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/asm_stubs_test.w", "-o", "bin/asm_stubs_test"]},
-				{"cmd": ["bin/asm_stubs_test"]}
 			]
 		},
 		{

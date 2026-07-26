@@ -220,43 +220,11 @@ is a queue, not an archive.
 ## Build manifest (`tools/wbuildgen.w`)
 
 Friction found migrating bucket D of `build_system_next.md`'s hand-written
-`build.base.json` inventory (wave plan C task 2a) — 11 of 21 targets
-migrated cleanly, 10 turned out to need directive vocabulary that doesn't
-exist yet:
+`build.base.json` inventory (wave plan C task 2a). Three of the four
+directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
+`deps=`, generated cache `"inputs"`/`"outputs"` — summarized in
+`ai_tooling.md`); what remains:
 
-- **No way to say "this basename is arch-only"**: a source like
-  `tests/x64_test.w` whose desired target name already equals its
-  basename-derived name (`x64_test`) but which must compile with the
-  `x64` selector (some use `float64`, rejected on 32-bit words) can't
-  migrate — `wbg_scan` unconditionally also generates a *default* 32-bit
-  twin under that same name (no directive suppresses or redirects it),
-  and `generate.exclude` skips the whole file, twins included, so it
-  can't be combined with a directive either. Blocks `x64_test`,
-  `x64_float_test`, `x64_fmath64_test`, `x64_ndarray64_test`,
-  `x64_int64_test`, `x64_map_float64_test`. Needs a `name=` override (or
-  an explicit "no default twin" flag) — natural to fold into task 2b's
-  `name=` directive work.
-- **`deps=` rejects any `.w`-suffixed value even when the file is
-  consumed as runtime text, not imported.** `asm_stubs_test.w` reads
-  `code_generator/{x86,x64,arm64}_asm.w` as data via
-  `asm_stub_check(path, path)`, not `import` — but `wbg_apply_directive`
-  hard-rejects any `deps=` value ending in `.w` on the assumption
-  "imports already track it". No directive can express this target's
-  real input set today; it stays hand-written.
-- **`deps=`'s "data" field is wtest-selection-only, not a cache-key
-  field** — easy to miss. Hand-written targets get real caching via a
-  separate `"inputs"` array (`tools/wexec.w`'s `wexec_cache_key`); the
-  generated-target path (`wbg_make_target`) never emits `"inputs"` at
-  all, `deps=` only populates `"data"` (consumed solely by
-  `tools/test_map.w`'s rule (a) for `wtest changed` selection). Migrating
-  a hand-written target that declared `"inputs"` for caching (e.g.
-  `asm_x86_disasm_test`/`asm_x86_asm_test`, which read `tests/asm/` at
-  runtime) silently turns it into a FORCE target (always reruns) with no
-  diagnostic — matches the existing behavior of ~430 other generated
-  targets that also lack `"inputs"`, so it's a minor loss, but worth a
-  generated-target `"inputs"`-equivalent (or at least a note in
-  `--explain-cache`) if build-time caching for generated targets is ever
-  wanted.
 - **No directive for a multi-program aggregate target, extra compiler
   flags on a generated compile step, or a `wasm` arch value.** Blocks
   `arm64_smoke_test`/`wasm_smoke_test` (each is 5-9 programs compiled,
@@ -266,7 +234,13 @@ exist yet:
   compile command, which no directive can add). `wasm_smoke_test` is
   additionally blocked because `wbg_apply_directive`'s `arch=` only
   recognizes `x64`/`arm64`/`win64`/`arm64_darwin` — no `wasm` value
-  exists at all.
+  exists at all. `float_abi_test_x64` is the same aggregate gap at x64:
+  it bundles three sources' compile+run pairs into one target, so it
+  stayed hand-written when the rest of the x64-only family migrated to
+  `arch_only=x64`. (`net_darwin`, `graphics_darwin`, `pac_darwin` are
+  the arm64_darwin analogues — `net_darwin` alone is single-source and
+  could now migrate via `name=net_darwin arch_only=arm64_darwin`; the
+  other two bundle multiple sources.)
 
 ## Definition hashing (`w defhash`)
 
@@ -342,13 +316,21 @@ exist yet:
 
 ## Build manifest (`wbuildgen`)
 
-- **(2026-07-19 review) A `*_fixture.w` carrying non-`fixture_group`
-  directives with no `fixture_group=` is silently skipped** (fixtures
-  are not tests, so `is_test == 0` bails before the unhonored-directive
-  errors); a `# wbuild: x64` line on such a fixture does nothing with no
-  diagnostic. Same class: when a `.w.wbuild` sidecar exists, inline
-  `# wbuild:` lines in the source are silently ignored (documented
-  "never both", but both present should be an error).
+- **(2026-07-25) `wtest changed` on a manifest-affecting diff selects
+  both `manifest` and `manifest_check`, and `./wbuild test_changed`
+  then races them.** The two targets share only the `wbuildgen` dep,
+  so wexec's parallel scheduler can run `manifest_check`'s
+  byte-compare while `manifest` is mid-rewrite of `build.json` —
+  observed as a spurious `manifest_check` failure during the
+  wbuildgen-directives PR's `test_changed` run, with both targets
+  green standalone and `build.json` byte-identical afterwards. The
+  failure also surfaces as the misleading "manifests differ in
+  formatting only" (`wbg_report_drift` folds a torn/unparseable
+  `build.json` into that message). Fix candidates: a `manifest` →
+  `manifest_check` dep edge, wtest dropping `manifest` from the pair
+  (`manifest_check` alone is the gate), or `manifest` writing via
+  temp-file + rename so readers never see a torn file — plus a
+  distinct drift message for "committed manifest failed to parse".
 
 - **Shipped (2026-07-19, wave plan C task 2d): path-based target deps.**
   `# wbuild: tool=<path>` resolves a tool's own `.w` source (e.g.

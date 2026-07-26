@@ -1,6 +1,7 @@
 # Extern alias test: '= "symbol"' binds a library symbol under a different
 # W name, so one C symbol can be declared once per call signature (the
 # pattern objc_msgSend needs on the darwin backend).
+# wbuild: name=extern_alias_test_x64 arch_only=x64 expect_stdout="extern alias OK"
 
 c_lib "libc.so.6"
 

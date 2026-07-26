@@ -1,9 +1,10 @@
+# wbuild: arch_only=x64 expect_stdout="x64 ndarray64 OK"
 # float64 twin of lib/ndarray_test.w's coverage, following
 # tests/x64_fmath64_test.w's house style: a plain main() with manual
 # assertions instead of lib.testing's test-registry discovery, which
 # doesn't work on the x64 backend yet. x64-only (docs/projects/ndarray.md
-# stage 2: lib/ndarray64.w has no wbuildgen directive of its own, so this
-# target is hand-written in build.base.json, modeled on x64_fmath64_test).
+# stage 2): the arch_only=x64 directive above generates the one
+# x64-compiled target, modeled on x64_fmath64_test.
 import lib.lib
 import lib.assert
 import lib.ndarray64

@@ -21,11 +21,12 @@ Generation rules:
   targets: `x64` also yields the X_64_test twin (the same file compiled
   with the `x64` argument), and the key=value vocabulary documented
   above wbg_parse_directives (timeout=, stdin=, expect_stdout=,
-  expect_stderr=, expect_fail, deps=, extra_compile=, arch=, name=,
-  argv=, compile_fail) adds run-step expectations, piped stdin,
-  timeouts, declared run-time data inputs, extra compile-only steps, a
-  target-name override and extra run-time arguments — the irregular
-  shapes that used to need hand-written base targets.
+  expect_stderr=, expect_fail, deps=, extra_compile=, arch=,
+  arch_only=, name=, argv=, compile_fail) adds run-step expectations,
+  piped stdin, timeouts, declared run-time data inputs, extra
+  compile-only steps, a target-name override, extra run-time arguments
+  and a single-arch mode — the irregular shapes that used to need
+  hand-written base targets.
 - `compile_fail` marks a source whose *compile step itself* must fail
   (int64_x86_error_test's class): no run step is generated at all —
   there is no binary to run — and `expect_stdout=`/`expect_stderr=`/
@@ -46,6 +47,29 @@ Generation rules:
   (expect_stdout= and friends) decorate every run-capable twin
   generated from the source and are rejected when the source only
   generates compile-only (arm64_darwin) twins.
+- `# wbuild: arch_only=<arch>` marks a source that exists for one
+  non-default arch only (tests/x64_test.w's class: float64 and int64
+  are rejected on 32-bit words, so the default 32-bit twin the scan
+  would otherwise always derive is unwanted): the single generated
+  target keeps the basename-derived name (or the name= override) but
+  compiles with <arch> instead of the default 32-bit target, and no
+  default twin exists at all. It replaces the default target rather
+  than adding twins, so combining it with `x64`/`arch=` (or with
+  name=/argv= variant pairs and `extra_compile=`, both defined as
+  default-arch shapes) is an error. Umbrella membership follows the
+  compiled arch (arch_only=x64 joins "tests_x64", arm64 none, ...).
+- Every generated compile+run target declares wexec cache "inputs"
+  (the source file plus any deps= run-time data) and, when the compile
+  is expected to succeed, "outputs" (the produced binary) — the same
+  shape wexec's own direct-file mode synthesizes. bin/wexec's
+  deps-driven cache keys (tools/wexec.w) replace the source file's
+  hash with its exact per-arch import closure at build time, so
+  nothing about the closure is baked into the manifest; before this,
+  generated targets declared no "inputs" and silently ran as
+  make-style FORCE targets on every request. Fixture-group targets
+  (below) stay FORCE: their members' import closures are invisible to
+  wexec's compile-root scan (wfixture invokes bin/wv2 itself at run
+  time), so a content key over member bytes alone could go stale.
 - Base wins by name: when build.base.json already defines X_test (or
   X_64_test, X_arm64, X_win64, X_darwin), that definition is kept and
   nothing is generated for the name. This is how a test with extra
@@ -341,17 +365,32 @@ vocabulary:
                            on Linux), compile-only — no run step, since
                            running needs a Mac (tools/mac/
                            run_darwin_tests.sh)
+  arch_only=<arch>         the source is <arch>-only (x64, arm64,
+                           win64, arm64_darwin): the one generated
+                           target keeps the basename-derived (or
+                           name=-overridden) name but compiles with
+                           <arch>, and no default 32-bit twin is
+                           generated at all. Cannot combine with the
+                           `x64`/`arch=` twin directives, name=/argv=
+                           variant pairs, or `extra_compile=` — all of
+                           which presuppose a default-arch target
   expect_fail              the run step must exit nonzero
   timeout=<ms>             "timeout_ms" on the run step
   stdin="text"             text piped to the run step's stdin
   expect_stdout="substr"   the run step's stdout must contain substr
   expect_stderr="substr"   same for stderr; both are repeatable, and
                            several values emit the array form
-  deps=<path>              declare a non-W run-time input (a data
-                           file, or a directory prefix ending in '/');
-                           emitted as the target-level "data" array,
-                           which bin/wtest matches changed paths
-                           against (tools/test_map.w, rule a)
+  deps=<path>              declare a run-time input the import graph
+                           cannot see (a data file, a directory prefix
+                           ending in '/', or a .w file the test reads
+                           as text at run time rather than importing —
+                           asm_stubs_test.w's class); emitted as the
+                           target-level "data" array, which bin/wtest
+                           matches changed paths against
+                           (tools/test_map.w, rule a), and as part of
+                           the target's cache "inputs". Imported .w
+                           files never need declaring — the import
+                           closure already tracks them
   extra_compile="args"     append one more 'bin/wv2 <args>' step
                            (whitespace-split, no shell) after the run
                            step, on the default-arch target only
@@ -445,6 +484,7 @@ int wbg_dir_x64
 int wbg_dir_arm64
 int wbg_dir_win64
 int wbg_dir_arm64_darwin
+int wbg_dir_arch_only            # arch code the single target compiles with; 0 = unset
 int wbg_dir_expect_fail
 int wbg_dir_compile_fail           # "compile_fail": the compile step, not the run step, must fail
 int wbg_dir_timeout_ms             # 0 = unset
@@ -469,6 +509,7 @@ void wbg_reset_directives():
 	wbg_dir_arm64 = 0
 	wbg_dir_win64 = 0
 	wbg_dir_arm64_darwin = 0
+	wbg_dir_arch_only = 0
 	wbg_dir_expect_fail = 0
 	wbg_dir_compile_fail = 0
 	wbg_dir_timeout_ms = 0
@@ -643,6 +684,26 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 			return 0
 		wbg_token_error(path, c"unsupported '# wbuild:' arch (x64, arm64, win64, arm64_darwin) ", value)
 		return 1
+	if (strcmp(key, c"arch_only") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (wbg_dir_arch_only != 0):
+			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
+			return 1
+		if (strcmp(value, c"x64") == 0):
+			wbg_dir_arch_only = wbg_arch_x64()
+			return 0
+		if (strcmp(value, c"arm64") == 0):
+			wbg_dir_arch_only = wbg_arch_arm64()
+			return 0
+		if (strcmp(value, c"win64") == 0):
+			wbg_dir_arch_only = wbg_arch_win64()
+			return 0
+		if (strcmp(value, c"arm64_darwin") == 0):
+			wbg_dir_arch_only = wbg_arch_arm64_darwin()
+			return 0
+		wbg_token_error(path, c"unsupported '# wbuild:' arch_only (x64, arm64, win64, arm64_darwin) ", value)
+		return 1
 	if (strcmp(key, c"timeout") == 0):
 		if (wbg_need_value(path, key, has_value)):
 			return 1
@@ -677,9 +738,10 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 	if (strcmp(key, c"deps") == 0):
 		if (wbg_need_value(path, key, has_value)):
 			return 1
-		if (ends_with(value, c".w")):
-			wbg_token_error(path, c"'deps=' is for non-W inputs, imports already track ", value)
-			return 1
+		# A .w value is allowed: it declares a W file the test consumes
+		# as run-time text rather than importing (asm_stubs_test.w reads
+		# code_generator/*_asm.w via asm_stub_check), which the import
+		# closure cannot see. Imported files never need declaring.
 		# A missing path usually means a typo or a deleted data file;
 		# fail loudly, like generate.exclude staleness.
 		int fd = open(value, 0, 0)
@@ -800,6 +862,19 @@ int wbg_parse_directive_token(char* text, int j, char* path):
 	return j
 
 
+# Whether text carries a "# wbuild:" directive at the start of any
+# line — the same line-start scan wbg_parse_directives itself walks.
+int wbg_has_inline_directive(char* text):
+	int at_line_start = 1
+	int i = 0
+	while (text[i] != 0):
+		if (at_line_start && starts_with(text + i, c"# wbuild:")):
+			return 1
+		at_line_start = text[i] == '\n'
+		i = i + 1
+	return 0
+
+
 # Parses every "# wbuild:" line of the source into the wbg_dir_*
 # state. Returns 0 on success, -1 after reporting errors.
 #
@@ -810,8 +885,10 @@ int wbg_parse_directive_token(char* text, int j, char* path):
 # inserted line would shift every reference below it, or a fixture that
 # deliberately ends without a trailing newline -- may put its
 # '# wbuild:' directive lines in a "<path>.wbuild" file next to it
-# instead. When the sidecar exists it is read instead of the source
-# (never both), so the source's own bytes stay untouched.
+# instead. When the sidecar exists it is read instead of the source,
+# never both: a source carrying inline '# wbuild:' lines alongside a
+# sidecar is a hard error (the inline lines used to be silently
+# ignored, so an edit to them changed nothing with no diagnostic).
 int wbg_parse_directives(char* path):
 	wbg_reset_directives()
 	string_builder* sidecar_path = string_new()
@@ -821,6 +898,15 @@ int wbg_parse_directives(char* path):
 	string_free(sidecar_path)
 	if (text == 0):
 		text = file_read_text(path)
+	else:
+		char* source_text = file_read_text(path)
+		if (source_text != 0):
+			int both = wbg_has_inline_directive(source_text)
+			free(source_text)
+			if (both):
+				free(text)
+				wbg_error2(c"'# wbuild:' lines in both the source and its '.wbuild' sidecar (keep exactly one): ", path)
+				return -1
 	if (text == 0):
 		wbg_error2(c"cannot read source ", path)
 		return -1
@@ -1007,6 +1093,22 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 		for char* entry in wbg_dir_data:
 			json_array_push(data, json_string(entry))
 		json_object_set(target, c"data", data)
+	# Cache "inputs" (tools/wexec.w's wexec_cache_key): the source file
+	# plus the declared run-time data — the shape wexec's direct-file
+	# mode synthesizes. wexec's deps-driven keys replace the source's
+	# own hash with its exact per-arch import closure at build time, so
+	# nothing about the closure is baked into the manifest. "outputs"
+	# makes a cache hit conditional on the binary still existing;
+	# compile_fail targets produce none, so they declare only inputs.
+	json_value* inputs = json_array()
+	json_array_push(inputs, json_string(src))
+	for char* input_entry in wbg_dir_data:
+		json_array_push(inputs, json_string(input_entry))
+	json_object_set(target, c"inputs", inputs)
+	if (wbg_dir_compile_fail == 0):
+		json_value* outputs = json_array()
+		json_array_push(outputs, json_string(binary))
+		json_object_set(target, c"outputs", outputs)
 	json_value* compile_cmd = json_array()
 	json_array_push(compile_cmd, json_string(c"bin/wv2"))
 	char* flag = wbg_arch_flag(arch)
@@ -1107,6 +1209,14 @@ json_value* wbg_make_variant_target(char* name, char* src, char* argv):
 	json_value* deps = json_array()
 	json_array_push(deps, json_string(c"wv2"))
 	json_object_set(target, c"deps", deps)
+	# Same cache "inputs"/"outputs" shape as wbg_make_target: the
+	# source's import closure comes from wexec's deps-driven keys.
+	json_value* inputs = json_array()
+	json_array_push(inputs, json_string(src))
+	json_object_set(target, c"inputs", inputs)
+	json_value* outputs = json_array()
+	json_array_push(outputs, json_string(binary))
+	json_object_set(target, c"outputs", outputs)
 	json_value* compile_cmd = json_array()
 	json_array_push(compile_cmd, json_string(c"bin/wv2"))
 	json_array_push(compile_cmd, json_string(src))
@@ -1249,7 +1359,7 @@ int wbg_scan():
 			# (which all decorate or extend a generated compile+run
 			# target) do not apply here; catch a copy-paste mistake
 			# instead of silently ignoring it.
-			int forbidden = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_compile_fail | wbg_dir_has_run_fields() | (wbg_dir_extra_compile.length > 0) | (wbg_dir_tool.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0)
+			int forbidden = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | (wbg_dir_arch_only != 0) | wbg_dir_compile_fail | wbg_dir_has_run_fields() | (wbg_dir_extra_compile.length > 0) | (wbg_dir_tool.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0)
 			if (forbidden):
 				wbg_error2(c"'fixture_group=' cannot combine with run/arch/tool/deps directives: ", src)
 				return 1
@@ -1259,6 +1369,15 @@ int wbg_scan():
 			fixture_groups[wbg_dir_fixture_group].push(strclone(src))
 			continue
 		if (is_test == 0):
+			# A fixture is not a test target, so a fixture carrying
+			# '# wbuild:' directives without 'fixture_group=' used to be
+			# skipped with the directives silently unhonored (e.g. a
+			# stray '# wbuild: x64' line doing nothing) — a hard error
+			# now, same as any other directive nothing generated honors.
+			int stray = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | (wbg_dir_arch_only != 0) | wbg_dir_expect_fail | wbg_dir_compile_fail | (wbg_dir_timeout_ms > 0) | (wbg_dir_stdin != 0) | (wbg_dir_expect_stdout.length > 0) | (wbg_dir_expect_stderr.length > 0) | (wbg_dir_extra_compile.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0) | (wbg_dir_tool.length > 0)
+			if (stray):
+				wbg_error2(c"'# wbuild:' directives on a fixture need 'fixture_group=' (a fixture is not a test target): ", src)
+				return 1
 			continue
 		# name=/argv= resolution (bucket G basename overrides + bucket H
 		# argv variants — see the module doc comment and
@@ -1282,6 +1401,22 @@ int wbg_scan():
 		else if ((n_names > 1) && (n_argv == 0)):
 			wbg_token_error(src, c"multiple 'name=' directives need an equal number of paired 'argv=' directives (variants), or exactly one 'name=' alone (rename): ", src)
 			return 1
+		int primary_arch = wbg_arch_default()
+		if (wbg_dir_arch_only != 0):
+			# arch_only=: the single target keeps name32 but compiles
+			# with the directive's arch, and no default twin exists. The
+			# twin/variant/extra_compile directives all presuppose a
+			# default-arch target, so combining them is an error.
+			if (wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin):
+				wbg_error2(c"'arch_only=' replaces the default target and cannot combine with 'x64'/'arch=' twin directives: ", src)
+				return 1
+			if ((n_names > 0) && (n_argv > 0)):
+				wbg_error2(c"'arch_only=' cannot combine with 'name='/'argv=' variant pairs (variants are default-arch targets): ", src)
+				return 1
+			if (wbg_dir_extra_compile.length > 0):
+				wbg_error2(c"'extra_compile=' needs a default-arch target, which 'arch_only=' replaces: ", src)
+				return 1
+			primary_arch = wbg_dir_arch_only
 		char* name32 = wbg_strip_suffix(wbg_basename(src), 2)
 		if (name_override != 0):
 			name32 = name_override
@@ -1291,9 +1426,22 @@ int wbg_scan():
 		int gen_win64 = 0
 		int gen_darwin = 0
 		if ((name32 in wbg_base_targets) == 0):
-			if (wbg_add_generated(name32, strclone(src), wbg_arch_default())):
+			if (wbg_add_generated(name32, strclone(src), primary_arch)):
 				return 1
-			gen32 = 1
+			# The gen* flag mirrors the arch actually compiled, so the
+			# no-target-honors-this-directive checks below stay exact
+			# under arch_only= (e.g. run-step directives on an
+			# arch_only=arm64_darwin source still error).
+			if (primary_arch == wbg_arch_x64()):
+				gen64 = 1
+			else if (primary_arch == wbg_arch_arm64()):
+				gen_arm64 = 1
+			else if (primary_arch == wbg_arch_win64()):
+				gen_win64 = 1
+			else if (primary_arch == wbg_arch_arm64_darwin()):
+				gen_darwin = 1
+			else:
+				gen32 = 1
 		if (wbg_dir_x64):
 			char* stem = wbg_strip_suffix(name32, 5)
 			char* name64 = wbg_concat(stem, c"_64_test")
