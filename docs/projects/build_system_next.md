@@ -502,6 +502,15 @@ optimistic for 7 of the 21; see below.**
     directive can add an arbitrary compiler flag to a generated compile
     step.
 
+  **Update (2026-07-25):** the first two deferrals are closed —
+  `# wbuild: arch_only=x64` migrated the six basename-equals-target
+  sources, and `deps=` accepting `.w` run-time-text values migrated
+  `asm_stubs_test` (generated targets now also declare cache
+  `"inputs"`/`"outputs"`, so that migration lost no caching — see
+  `ai_tooling.md`'s status entry). The aggregate/extra-flag/wasm
+  deferrals (`arm64_smoke_test`, `wasm_smoke_test`,
+  `pac_full_test_arm64`) remain open.
+
 **E. Shell-wrapped, bespoke logic — 13.** `missing_file_test`,
 `parser_generator_w_test`, `wtest_map_test`, `unsafe_import_test`,
 `debug_test`, `debug_test_x64`, `attach_test`, `repl_test`,
@@ -575,6 +584,16 @@ though single-source, would collide with the same unconditional-default
 problem above (`name=` would still generate an unwanted 32-bit
 `tests/net_darwin_smoke_test.w` compile under the override name). Logged
 as friction in `docs/projects/ai_tooling_next_steps.md`.
+
+**Update (2026-07-25):** `wbuildgen` grew `# wbuild: arch_only=<arch>`
+(the "this source is x64-only, skip the 32-bit default" directive
+hypothesized above): `graphics_gl_smoke_test` and
+`extern_alias_test_x64` migrated via `name=` + `arch_only=x64` and left
+`generate.exclude`. `float_abi_test_x64` stays hand-written (bucket L's
+multi-source gap, not this one), as do `net_darwin`/`graphics_darwin`/
+`pac_darwin` (single-source `net_darwin` could now migrate via
+`name=net_darwin arch_only=arm64_darwin`; the two darwin bundles
+cannot).
 
 **H. Argv variant of an already-generated target — 1.**
 `x25519_iterated_test` compiles the same source as the *also-generated*

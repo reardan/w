@@ -1,12 +1,13 @@
+# wbuild: arch_only=x64
 import lib.testing
 
 
 # issue #189, 64-bit half: map[K, float64] values round-tripping through
 # the word-based __w_map_set/__w_map_get path. float64 requires the x64
 # target (the compiler rejects it on 32-bit words), so unlike
-# tests/map_float_test.w this file is x64-only: its target is
-# hand-written in build.base.json (like x64_float_test), compiled with
-# the `x64` selector, and there is no 32-bit twin. Values are asserted
+# tests/map_float_test.w this file is x64-only: the arch_only=x64
+# directive above compiles the one generated target with the `x64`
+# selector, and there is no 32-bit twin. Values are asserted
 # bit-exactly, split into low/high 32-bit halves the same way
 # x64_float_test.w's assert_float64_bits does; 0.1 and 2^53 + 3 pin bits
 # that a float32 (or a 32-bit word) could not represent, proving the

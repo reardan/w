@@ -1,3 +1,4 @@
+# wbuild: arch_only=x64 expect_stdout="x64 int64 OK"
 import lib.lib
 import lib.assert
 

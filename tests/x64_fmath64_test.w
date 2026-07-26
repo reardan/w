@@ -1,3 +1,4 @@
+# wbuild: arch_only=x64 expect_stdout="x64 fmath64 OK"
 # float64 port of fmath_test's coverage (fmath_test itself doesn't exist
 # as a standalone file -- fmath is exercised indirectly -- so this follows
 # tests/x64_float_test.w's house style instead: exact bit-pattern

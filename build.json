@@ -1663,59 +1663,11 @@
 			]
 		},
 		{
-			"name": "x64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_test.w", "-o", "bin/x64_test"]},
-				{"cmd": ["bin/x64_test"]}
-			]
-		},
-		{
-			"name": "x64_float_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_float_test.w", "-o", "bin/x64_float_test"]},
-				{"cmd": ["bin/x64_float_test"], "expect_stdout": "x64 float OK"}
-			]
-		},
-		{
-			"name": "x64_fmath64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_fmath64_test.w", "-o", "bin/x64_fmath64_test"]},
-				{"cmd": ["bin/x64_fmath64_test"], "expect_stdout": "x64 fmath64 OK"}
-			]
-		},
-		{
-			"name": "x64_ndarray64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_ndarray64_test.w", "-o", "bin/x64_ndarray64_test"]},
-				{"cmd": ["bin/x64_ndarray64_test"], "expect_stdout": "x64 ndarray64 OK"}
-			]
-		},
-		{
-			"name": "x64_int64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_int64_test.w", "-o", "bin/x64_int64_test"]},
-				{"cmd": ["bin/x64_int64_test"], "expect_stdout": "x64 int64 OK"}
-			]
-		},
-		{
 			"name": "x64_protobuf_test",
 			"deps": ["wv2"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/x64_protobuf_test.w", "-o", "bin/x64_protobuf_test"]},
 				{"cmd": ["bin/x64_protobuf_test"], "expect_stdout": "x64 protobuf wide-kind tests OK"}
-			]
-		},
-		{
-			"name": "x64_map_float64_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/x64_map_float64_test.w", "-o", "bin/x64_map_float64_test"]},
-				{"cmd": ["bin/x64_map_float64_test"]}
 			]
 		},
 		{
@@ -1743,14 +1695,6 @@
 				{"cmd": ["bin/task_io_64_test"]},
 				{"cmd": ["bin/wv2", "x64", "examples/web/task_echo_server.w", "-o", "bin/task_echo_server_64"]},
 				{"cmd": ["bin/task_echo_server_64"], "expect_stdout": "demo: OK"}
-			]
-		},
-		{
-			"name": "graphics_gl_smoke_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_test"]},
-				{"cmd": ["bin/graphics_gl_smoke_test"], "expect_stdout": "graphics gl smoke"}
 			]
 		},
 		{
@@ -1801,14 +1745,6 @@
 				{"cmd": ["bin/wv2", "arm64", "tests/pac_corrupt_ret_test.w", "-o", "bin/pac_corrupt_ret_arm64_test"]},
 				{"cmd": ["sh", "-c", "sh tools/run_arm64.sh bin/pac_corrupt_ret_arm64_test; test $? -ge 128"], "reject_stdout": "NOT REACHED"},
 				{"cmd": ["echo", "pac corruption tests OK (both fixtures died)"]}
-			]
-		},
-		{
-			"name": "extern_alias_test_x64",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "x64", "tests/extern_alias_test.w", "-o", "bin/extern_alias_test_x64"]},
-				{"cmd": ["bin/extern_alias_test_x64"], "expect_stdout": "extern alias OK"}
 			]
 		},
 		{
@@ -2030,6 +1966,7 @@
 				"vcs_merge3_64_test",
 				"vcs_tree_64_test",
 				"wal_64_test",
+				"wbuild_arch_only_test",
 				"wbuild_directive_64_test"
 			]
 		},
@@ -2069,15 +2006,6 @@
 			"steps": [
 				{"cmd": ["./w", "tests/asm_seed_check.w", "-o", "bin/asm_seed_check"]},
 				{"cmd": ["bin/asm_seed_check"]}
-			]
-		},
-		{
-			"name": "asm_stubs_test",
-			"deps": ["wv2"],
-			"inputs": ["libs/asm/", "tests/asm/", "tests/asm_stubs_test.w", "code_generator/x86_asm.w", "code_generator/x64_asm.w", "code_generator/arm64_asm.w"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/asm_stubs_test.w", "-o", "bin/asm_stubs_test"]},
-				{"cmd": ["bin/asm_stubs_test"]}
 			]
 		},
 		{
@@ -2575,6 +2503,7 @@
 				"wal_test",
 				"wbuild_directive_test",
 				"wbuild_platform_test",
+				"wbuildgen_directive_errors_test",
 				"x25519_test",
 				"wbuild_platform_test_darwin"
 			]
@@ -2582,6 +2511,8 @@
 		{
 			"name": "args_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/args_test.w"],
+			"outputs": ["bin/args_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/args_test.w", "-o", "bin/args_64_test"]},
 				{"cmd": ["bin/args_64_test"]}
@@ -2590,6 +2521,8 @@
 		{
 			"name": "args_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/args_test.w"],
+			"outputs": ["bin/args_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/args_test.w", "-o", "bin/args_test"]},
 				{"cmd": ["bin/args_test"]}
@@ -2598,6 +2531,8 @@
 		{
 			"name": "array_decay_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/array_decay_test.w"],
+			"outputs": ["bin/array_decay_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/array_decay_test.w", "-o", "bin/array_decay_64_test"]},
 				{"cmd": ["bin/array_decay_64_test"]}
@@ -2606,6 +2541,8 @@
 		{
 			"name": "array_decay_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/array_decay_test.w"],
+			"outputs": ["bin/array_decay_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/array_decay_test.w", "-o", "bin/array_decay_test"]},
 				{"cmd": ["bin/array_decay_test"]}
@@ -2621,6 +2558,8 @@
 		{
 			"name": "array_list_64_test",
 			"deps": ["wv2"],
+			"inputs": ["structures/array_list_test.w"],
+			"outputs": ["bin/array_list_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "structures/array_list_test.w", "-o", "bin/array_list_64_test"]},
 				{"cmd": ["bin/array_list_64_test"]}
@@ -2629,6 +2568,8 @@
 		{
 			"name": "array_list_test",
 			"deps": ["wv2"],
+			"inputs": ["structures/array_list_test.w"],
+			"outputs": ["bin/array_list_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "structures/array_list_test.w", "-o", "bin/array_list_test"]},
 				{"cmd": ["bin/array_list_test"]}
@@ -2637,6 +2578,8 @@
 		{
 			"name": "array_slice_string_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/array_slice_string_test.w"],
+			"outputs": ["bin/array_slice_string_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/array_slice_string_test.w", "-o", "bin/array_slice_string_64_test"]},
 				{"cmd": ["bin/array_slice_string_64_test"]}
@@ -2645,6 +2588,8 @@
 		{
 			"name": "array_slice_string_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/array_slice_string_test.w"],
+			"outputs": ["bin/array_slice_string_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/array_slice_string_test.w", "-o", "bin/array_slice_string_test"]},
 				{"cmd": ["bin/array_slice_string_test"]}
@@ -2653,6 +2598,8 @@
 		{
 			"name": "asm_fuzz_arm64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/asm_fuzz_arm64_test.w"],
+			"outputs": ["bin/asm_fuzz_arm64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/asm_fuzz_arm64_test.w", "-o", "bin/asm_fuzz_arm64_test"]},
 				{"cmd": ["bin/asm_fuzz_arm64_test"]}
@@ -2661,6 +2608,8 @@
 		{
 			"name": "asm_fuzz_x64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/asm_fuzz_x64_test.w"],
+			"outputs": ["bin/asm_fuzz_x64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/asm_fuzz_x64_test.w", "-o", "bin/asm_fuzz_x64_test"]},
 				{"cmd": ["bin/asm_fuzz_x64_test"]}
@@ -2669,15 +2618,30 @@
 		{
 			"name": "asm_fuzz_x86_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/asm_fuzz_x86_test.w"],
+			"outputs": ["bin/asm_fuzz_x86_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/asm_fuzz_x86_test.w", "-o", "bin/asm_fuzz_x86_test"]},
 				{"cmd": ["bin/asm_fuzz_x86_test"]}
 			]
 		},
 		{
+			"name": "asm_stubs_test",
+			"deps": ["wv2"],
+			"data": ["tests/asm/", "code_generator/x86_asm.w", "code_generator/x64_asm.w", "code_generator/arm64_asm.w"],
+			"inputs": ["tests/asm_stubs_test.w", "tests/asm/", "code_generator/x86_asm.w", "code_generator/x64_asm.w", "code_generator/arm64_asm.w"],
+			"outputs": ["bin/asm_stubs_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/asm_stubs_test.w", "-o", "bin/asm_stubs_test"]},
+				{"cmd": ["bin/asm_stubs_test"]}
+			]
+		},
+		{
 			"name": "asm_x86_asm_test",
 			"deps": ["wv2"],
 			"data": ["tests/asm/"],
+			"inputs": ["tests/asm_x86_asm_test.w", "tests/asm/"],
+			"outputs": ["bin/asm_x86_asm_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/asm_x86_asm_test.w", "-o", "bin/asm_x86_asm_test"]},
 				{"cmd": ["bin/asm_x86_asm_test"]}
@@ -2687,6 +2651,8 @@
 			"name": "asm_x86_disasm_test",
 			"deps": ["wv2"],
 			"data": ["tests/asm/"],
+			"inputs": ["tests/asm_x86_disasm_test.w", "tests/asm/"],
+			"outputs": ["bin/asm_x86_disasm_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/asm_x86_disasm_test.w", "-o", "bin/asm_x86_disasm_test"]},
 				{"cmd": ["bin/asm_x86_disasm_test"]}
@@ -2695,6 +2661,8 @@
 		{
 			"name": "assert_standalone_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/assert_standalone_test.w"],
+			"outputs": ["bin/assert_standalone_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/assert_standalone_test.w", "-o", "bin/assert_standalone_test"]},
 				{"cmd": ["bin/assert_standalone_test"]}
@@ -2703,6 +2671,8 @@
 		{
 			"name": "binary_literal_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/binary_literal_test.w"],
+			"outputs": ["bin/binary_literal_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/binary_literal_test.w", "-o", "bin/binary_literal_64_test"]},
 				{"cmd": ["bin/binary_literal_64_test"]}
@@ -2711,6 +2681,8 @@
 		{
 			"name": "binary_literal_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/binary_literal_test.w"],
+			"outputs": ["bin/binary_literal_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/binary_literal_test.w", "-o", "bin/binary_literal_test"]},
 				{"cmd": ["bin/binary_literal_test"]}
@@ -2719,6 +2691,8 @@
 		{
 			"name": "bit_builtin_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/bit_builtin_test.w"],
+			"outputs": ["bin/bit_builtin_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/bit_builtin_test.w", "-o", "bin/bit_builtin_64_test"]},
 				{"cmd": ["bin/bit_builtin_64_test"]}
@@ -2727,6 +2701,8 @@
 		{
 			"name": "bit_builtin_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/bit_builtin_test.w"],
+			"outputs": ["bin/bit_builtin_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/bit_builtin_test.w", "-o", "bin/bit_builtin_test"]},
 				{"cmd": ["bin/bit_builtin_test"]}
@@ -2735,6 +2711,8 @@
 		{
 			"name": "bitset_64_test",
 			"deps": ["wv2"],
+			"inputs": ["structures/bitset_test.w"],
+			"outputs": ["bin/bitset_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "structures/bitset_test.w", "-o", "bin/bitset_64_test"]},
 				{"cmd": ["bin/bitset_64_test"]}
@@ -2743,6 +2721,8 @@
 		{
 			"name": "bitset_test",
 			"deps": ["wv2"],
+			"inputs": ["structures/bitset_test.w"],
+			"outputs": ["bin/bitset_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "structures/bitset_test.w", "-o", "bin/bitset_test"]},
 				{"cmd": ["bin/bitset_test"]}
@@ -2751,6 +2731,8 @@
 		{
 			"name": "bitwise_not_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/bitwise_not_test.w"],
+			"outputs": ["bin/bitwise_not_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/bitwise_not_test.w", "-o", "bin/bitwise_not_test"]},
 				{"cmd": ["bin/bitwise_not_test"]}
@@ -2759,6 +2741,8 @@
 		{
 			"name": "bitwise_xor_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/bitwise_xor_test.w"],
+			"outputs": ["bin/bitwise_xor_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/bitwise_xor_test.w", "-o", "bin/bitwise_xor_test"]},
 				{"cmd": ["bin/bitwise_xor_test"]}
@@ -2767,6 +2751,8 @@
 		{
 			"name": "bloom_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/bloom_test.w"],
+			"outputs": ["bin/bloom_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/bloom_test.w", "-o", "bin/bloom_64_test"]},
 				{"cmd": ["bin/bloom_64_test"]}
@@ -2775,6 +2761,8 @@
 		{
 			"name": "bloom_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/bloom_test.w"],
+			"outputs": ["bin/bloom_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/bloom_test.w", "-o", "bin/bloom_test"]},
 				{"cmd": ["bin/bloom_test"]}
@@ -2783,6 +2771,8 @@
 		{
 			"name": "bounds_trap_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/bounds_trap_test.w"],
+			"outputs": ["bin/bounds_trap_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/bounds_trap_test.w", "-o", "bin/bounds_trap_test"]},
 				{"cmd": ["bin/bounds_trap_test"], "expect_fail": true, "expect_stderr": ["index out of range: index 2, length 2", "stack trace (most recent call first):", "at main ("]},
@@ -2799,6 +2789,8 @@
 		{
 			"name": "c_import_errno_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/c_import_errno_test.w"],
+			"outputs": ["bin/c_import_errno_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/c_import_errno_test.w", "-o", "bin/c_import_errno_test"]},
 				{"cmd": ["bin/c_import_errno_test"]}
@@ -2807,6 +2799,8 @@
 		{
 			"name": "c_import_libc_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/c_import_libc_test.w"],
+			"outputs": ["bin/c_import_libc_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/c_import_libc_test.w", "-o", "bin/c_import_libc_64_test"]},
 				{"cmd": ["bin/c_import_libc_64_test"]}
@@ -2815,6 +2809,8 @@
 		{
 			"name": "c_import_libc_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/c_import_libc_test.w"],
+			"outputs": ["bin/c_import_libc_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/c_import_libc_test.w", "-o", "bin/c_import_libc_test"]},
 				{"cmd": ["bin/c_import_libc_test"]}
@@ -2823,6 +2819,8 @@
 		{
 			"name": "c_import_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/c_import_test.w"],
+			"outputs": ["bin/c_import_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/c_import_test.w", "-o", "bin/c_import_test"]},
 				{"cmd": ["bin/c_import_test"]}
@@ -2831,6 +2829,8 @@
 		{
 			"name": "c_preprocessor_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/c_preprocessor_test.w"],
+			"outputs": ["bin/c_preprocessor_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/c_preprocessor_test.w", "-o", "bin/c_preprocessor_test"]},
 				{"cmd": ["bin/c_preprocessor_test"]}
@@ -2839,6 +2839,8 @@
 		{
 			"name": "chacha20_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/chacha20_test.w"],
+			"outputs": ["bin/chacha20_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/chacha20_test.w", "-o", "bin/chacha20_64_test"]},
 				{"cmd": ["bin/chacha20_64_test"]}
@@ -2847,6 +2849,8 @@
 		{
 			"name": "chacha20_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/chacha20_test.w"],
+			"outputs": ["bin/chacha20_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/chacha20_test.w", "-o", "bin/chacha20_test"]},
 				{"cmd": ["bin/chacha20_test"]}
@@ -2855,6 +2859,8 @@
 		{
 			"name": "chacha20poly1305_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/chacha20poly1305_test.w"],
+			"outputs": ["bin/chacha20poly1305_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/chacha20poly1305_test.w", "-o", "bin/chacha20poly1305_64_test"]},
 				{"cmd": ["bin/chacha20poly1305_64_test"]}
@@ -2863,6 +2869,8 @@
 		{
 			"name": "chacha20poly1305_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/chacha20poly1305_test.w"],
+			"outputs": ["bin/chacha20poly1305_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/chacha20poly1305_test.w", "-o", "bin/chacha20poly1305_test"]},
 				{"cmd": ["bin/chacha20poly1305_test"]}
@@ -2871,6 +2879,8 @@
 		{
 			"name": "clock_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/clock_test.w"],
+			"outputs": ["bin/clock_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/clock_test.w", "-o", "bin/clock_64_test"]},
 				{"cmd": ["bin/clock_64_test"]}
@@ -2879,6 +2889,8 @@
 		{
 			"name": "clock_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/clock_test.w"],
+			"outputs": ["bin/clock_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/clock_test.w", "-o", "bin/clock_test"]},
 				{"cmd": ["bin/clock_test"]}
@@ -2887,6 +2899,8 @@
 		{
 			"name": "compound_assign_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compound_assign_test.w"],
+			"outputs": ["bin/compound_assign_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/compound_assign_test.w", "-o", "bin/compound_assign_64_test"]},
 				{"cmd": ["bin/compound_assign_64_test"]}
@@ -2895,6 +2909,8 @@
 		{
 			"name": "compress_adler32_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_adler32_test.w"],
+			"outputs": ["bin/compress_adler32_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/compress_adler32_test.w", "-o", "bin/compress_adler32_64_test"]},
 				{"cmd": ["bin/compress_adler32_64_test"]}
@@ -2903,6 +2919,8 @@
 		{
 			"name": "compress_adler32_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_adler32_test.w"],
+			"outputs": ["bin/compress_adler32_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/compress_adler32_test.w", "-o", "bin/compress_adler32_test"]},
 				{"cmd": ["bin/compress_adler32_test"]}
@@ -2911,6 +2929,8 @@
 		{
 			"name": "compress_corpus_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_corpus_test.w"],
+			"outputs": ["bin/compress_corpus_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/compress_corpus_test.w", "-o", "bin/compress_corpus_64_test"]},
 				{"cmd": ["bin/compress_corpus_64_test"]}
@@ -2919,6 +2939,8 @@
 		{
 			"name": "compress_corpus_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_corpus_test.w"],
+			"outputs": ["bin/compress_corpus_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/compress_corpus_test.w", "-o", "bin/compress_corpus_test"]},
 				{"cmd": ["bin/compress_corpus_test"]}
@@ -2927,6 +2949,8 @@
 		{
 			"name": "compress_crc32_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_crc32_test.w"],
+			"outputs": ["bin/compress_crc32_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/compress_crc32_test.w", "-o", "bin/compress_crc32_64_test"]},
 				{"cmd": ["bin/compress_crc32_64_test"]}
@@ -2935,6 +2959,8 @@
 		{
 			"name": "compress_crc32_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_crc32_test.w"],
+			"outputs": ["bin/compress_crc32_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/compress_crc32_test.w", "-o", "bin/compress_crc32_test"]},
 				{"cmd": ["bin/compress_crc32_test"]}
@@ -2943,6 +2969,8 @@
 		{
 			"name": "compress_deflate_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_deflate_test.w"],
+			"outputs": ["bin/compress_deflate_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/compress_deflate_test.w", "-o", "bin/compress_deflate_64_test"]},
 				{"cmd": ["bin/compress_deflate_64_test"]}
@@ -2951,6 +2979,8 @@
 		{
 			"name": "compress_deflate_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_deflate_test.w"],
+			"outputs": ["bin/compress_deflate_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/compress_deflate_test.w", "-o", "bin/compress_deflate_test"]},
 				{"cmd": ["bin/compress_deflate_test"]}
@@ -2959,6 +2989,8 @@
 		{
 			"name": "compress_gzip_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_gzip_test.w"],
+			"outputs": ["bin/compress_gzip_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/compress_gzip_test.w", "-o", "bin/compress_gzip_64_test"]},
 				{"cmd": ["bin/compress_gzip_64_test"]}
@@ -2967,6 +2999,8 @@
 		{
 			"name": "compress_gzip_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_gzip_test.w"],
+			"outputs": ["bin/compress_gzip_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/compress_gzip_test.w", "-o", "bin/compress_gzip_test"]},
 				{"cmd": ["bin/compress_gzip_test"]}
@@ -2975,6 +3009,8 @@
 		{
 			"name": "compress_inflate_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_inflate_test.w"],
+			"outputs": ["bin/compress_inflate_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/compress_inflate_test.w", "-o", "bin/compress_inflate_64_test"]},
 				{"cmd": ["bin/compress_inflate_64_test"]}
@@ -2983,6 +3019,8 @@
 		{
 			"name": "compress_inflate_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_inflate_test.w"],
+			"outputs": ["bin/compress_inflate_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/compress_inflate_test.w", "-o", "bin/compress_inflate_test"]},
 				{"cmd": ["bin/compress_inflate_test"]}
@@ -2991,6 +3029,8 @@
 		{
 			"name": "compress_zlib_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_zlib_test.w"],
+			"outputs": ["bin/compress_zlib_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/compress_zlib_test.w", "-o", "bin/compress_zlib_64_test"]},
 				{"cmd": ["bin/compress_zlib_64_test"]}
@@ -2999,6 +3039,8 @@
 		{
 			"name": "compress_zlib_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/compress_zlib_test.w"],
+			"outputs": ["bin/compress_zlib_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/compress_zlib_test.w", "-o", "bin/compress_zlib_test"]},
 				{"cmd": ["bin/compress_zlib_test"]}
@@ -3007,6 +3049,8 @@
 		{
 			"name": "crypto_base64_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/base64_test.w"],
+			"outputs": ["bin/crypto_base64_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_64_test"]},
 				{"cmd": ["bin/crypto_base64_64_test"]}
@@ -3015,6 +3059,8 @@
 		{
 			"name": "crypto_base64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/base64_test.w"],
+			"outputs": ["bin/crypto_base64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/base64_test.w", "-o", "bin/crypto_base64_test"]},
 				{"cmd": ["bin/crypto_base64_test"]}
@@ -3023,6 +3069,8 @@
 		{
 			"name": "crypto_ecdsa_p256_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/ecdsa_p256_test.w"],
+			"outputs": ["bin/crypto_ecdsa_p256_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/ecdsa_p256_test.w", "-o", "bin/crypto_ecdsa_p256_test"]},
 				{"cmd": ["bin/crypto_ecdsa_p256_test"]}
@@ -3031,6 +3079,8 @@
 		{
 			"name": "crypto_random_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/random_test.w"],
+			"outputs": ["bin/crypto_random_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_64_test"]},
 				{"cmd": ["bin/crypto_random_64_test"]}
@@ -3039,6 +3089,8 @@
 		{
 			"name": "crypto_random_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/random_test.w"],
+			"outputs": ["bin/crypto_random_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/random_test.w", "-o", "bin/crypto_random_test"]},
 				{"cmd": ["bin/crypto_random_test"]}
@@ -3047,6 +3099,8 @@
 		{
 			"name": "crypto_rsa_verify_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/rsa_verify_test.w"],
+			"outputs": ["bin/crypto_rsa_verify_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_64_test"]},
 				{"cmd": ["bin/crypto_rsa_verify_64_test"]}
@@ -3055,6 +3109,8 @@
 		{
 			"name": "crypto_rsa_verify_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/rsa_verify_test.w"],
+			"outputs": ["bin/crypto_rsa_verify_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/rsa_verify_test.w", "-o", "bin/crypto_rsa_verify_test"]},
 				{"cmd": ["bin/crypto_rsa_verify_test"]}
@@ -3063,6 +3119,8 @@
 		{
 			"name": "cstr_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/cstr_test.w"],
+			"outputs": ["bin/cstr_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/cstr_test.w", "-o", "bin/cstr_64_test"]},
 				{"cmd": ["bin/cstr_64_test"]}
@@ -3071,6 +3129,8 @@
 		{
 			"name": "cstr_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/cstr_test.w"],
+			"outputs": ["bin/cstr_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/cstr_test.w", "-o", "bin/cstr_test"]},
 				{"cmd": ["bin/cstr_test"]}
@@ -3079,6 +3139,8 @@
 		{
 			"name": "deep_nesting_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/deep_nesting_test.w"],
+			"outputs": ["bin/deep_nesting_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/deep_nesting_test.w", "-o", "bin/deep_nesting_64_test"]},
 				{"cmd": ["bin/deep_nesting_64_test"]}
@@ -3087,6 +3149,8 @@
 		{
 			"name": "deep_nesting_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/deep_nesting_test.w"],
+			"outputs": ["bin/deep_nesting_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/deep_nesting_test.w", "-o", "bin/deep_nesting_test"]},
 				{"cmd": ["bin/deep_nesting_test"]}
@@ -3095,6 +3159,8 @@
 		{
 			"name": "default_args_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/default_args_test.w"],
+			"outputs": ["bin/default_args_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/default_args_test.w", "-o", "bin/default_args_64_test"]},
 				{"cmd": ["bin/default_args_64_test"]}
@@ -3103,6 +3169,8 @@
 		{
 			"name": "defer_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/defer_test.w"],
+			"outputs": ["bin/defer_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/defer_test.w", "-o", "bin/defer_64_test"]},
 				{"cmd": ["bin/defer_64_test"]}
@@ -3111,6 +3179,8 @@
 		{
 			"name": "directory_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/directory_test.w"],
+			"outputs": ["bin/directory_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/directory_test.w", "-o", "bin/directory_test"]},
 				{"cmd": ["bin/directory_test"]}
@@ -3119,6 +3189,8 @@
 		{
 			"name": "dns_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/dns_test.w"],
+			"outputs": ["bin/dns_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/net/dns_test.w", "-o", "bin/dns_64_test"]},
 				{"cmd": ["bin/dns_64_test"]}
@@ -3127,6 +3199,8 @@
 		{
 			"name": "dns_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/dns_test.w"],
+			"outputs": ["bin/dns_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/net/dns_test.w", "-o", "bin/dns_test"]},
 				{"cmd": ["bin/dns_test"]}
@@ -3135,6 +3209,8 @@
 		{
 			"name": "dynamic_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/dynamic_test.w"],
+			"outputs": ["bin/dynamic_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/dynamic_test.w", "-o", "bin/dynamic_64_test"]},
 				{"cmd": ["bin/dynamic_64_test"], "expect_stdout": "dynamic linking OK"}
@@ -3143,6 +3219,8 @@
 		{
 			"name": "dynamic_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/dynamic_test.w"],
+			"outputs": ["bin/dynamic_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/dynamic_test.w", "-o", "bin/dynamic_test"]},
 				{"cmd": ["bin/dynamic_test"], "expect_stdout": "dynamic linking OK"}
@@ -3151,6 +3229,8 @@
 		{
 			"name": "dynamic_test_arm64",
 			"deps": ["wv2"],
+			"inputs": ["tests/dynamic_test.w"],
+			"outputs": ["bin/dynamic_test_arm64"],
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64", "tests/dynamic_test.w", "-o", "bin/dynamic_test_arm64"]},
 				{"cmd": ["sh", "tools/run_arm64.sh", "bin/dynamic_test_arm64"], "expect_stdout": "dynamic linking OK"}
@@ -3159,6 +3239,8 @@
 		{
 			"name": "env_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/env_test.w"],
+			"outputs": ["bin/env_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/env_test.w", "-o", "bin/env_64_test"]},
 				{"cmd": ["bin/env_64_test"]}
@@ -3167,6 +3249,8 @@
 		{
 			"name": "env_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/env_test.w"],
+			"outputs": ["bin/env_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/env_test.w", "-o", "bin/env_test"]},
 				{"cmd": ["bin/env_test"]}
@@ -3175,6 +3259,8 @@
 		{
 			"name": "event_loop_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/event_loop_test.w"],
+			"outputs": ["bin/event_loop_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/event_loop_test.w", "-o", "bin/event_loop_64_test"]},
 				{"cmd": ["bin/event_loop_64_test"]}
@@ -3183,14 +3269,28 @@
 		{
 			"name": "event_loop_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/event_loop_test.w"],
+			"outputs": ["bin/event_loop_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/event_loop_test.w", "-o", "bin/event_loop_test"]},
 				{"cmd": ["bin/event_loop_test"]}
 			]
 		},
 		{
+			"name": "extern_alias_test_x64",
+			"deps": ["wv2"],
+			"inputs": ["tests/extern_alias_test.w"],
+			"outputs": ["bin/extern_alias_test_x64"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/extern_alias_test.w", "-o", "bin/extern_alias_test_x64"]},
+				{"cmd": ["bin/extern_alias_test_x64"], "expect_stdout": "extern alias OK"}
+			]
+		},
+		{
 			"name": "extern_data_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/extern_data_test.w"],
+			"outputs": ["bin/extern_data_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/extern_data_test.w", "-o", "bin/extern_data_64_test"]},
 				{"cmd": ["bin/extern_data_64_test"], "expect_stdout": "extern data OK"}
@@ -3199,6 +3299,8 @@
 		{
 			"name": "extern_data_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/extern_data_test.w"],
+			"outputs": ["bin/extern_data_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/extern_data_test.w", "-o", "bin/extern_data_test"]},
 				{"cmd": ["bin/extern_data_test"], "expect_stdout": "extern data OK"}
@@ -3207,6 +3309,8 @@
 		{
 			"name": "failure_detector_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/failure_detector_test.w"],
+			"outputs": ["bin/failure_detector_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/failure_detector_test.w", "-o", "bin/failure_detector_64_test"]},
 				{"cmd": ["bin/failure_detector_64_test"]}
@@ -3215,6 +3319,8 @@
 		{
 			"name": "failure_detector_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/failure_detector_test.w"],
+			"outputs": ["bin/failure_detector_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/failure_detector_test.w", "-o", "bin/failure_detector_test"]},
 				{"cmd": ["bin/failure_detector_test"]}
@@ -3223,6 +3329,8 @@
 		{
 			"name": "feature_combo_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/feature_combo_test.w"],
+			"outputs": ["bin/feature_combo_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/feature_combo_test.w", "-o", "bin/feature_combo_64_test"]},
 				{"cmd": ["bin/feature_combo_64_test"]}
@@ -3231,6 +3339,8 @@
 		{
 			"name": "feature_combo_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/feature_combo_test.w"],
+			"outputs": ["bin/feature_combo_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/feature_combo_test.w", "-o", "bin/feature_combo_test"]},
 				{"cmd": ["bin/feature_combo_test"]}
@@ -3239,6 +3349,8 @@
 		{
 			"name": "feature_interaction_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/feature_interaction_test.w"],
+			"outputs": ["bin/feature_interaction_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/feature_interaction_test.w", "-o", "bin/feature_interaction_64_test"]},
 				{"cmd": ["bin/feature_interaction_64_test"]}
@@ -3247,6 +3359,8 @@
 		{
 			"name": "feature_interaction_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/feature_interaction_test.w"],
+			"outputs": ["bin/feature_interaction_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/feature_interaction_test.w", "-o", "bin/feature_interaction_test"]},
 				{"cmd": ["bin/feature_interaction_test"]}
@@ -3255,6 +3369,8 @@
 		{
 			"name": "file_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/file_test.w"],
+			"outputs": ["bin/file_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/file_test.w", "-o", "bin/file_test"]},
 				{"cmd": ["bin/file_test"]}
@@ -3263,6 +3379,8 @@
 		{
 			"name": "float16_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/float16_test.w"],
+			"outputs": ["bin/float16_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/float16_test.w", "-o", "bin/float16_64_test"]},
 				{"cmd": ["bin/float16_64_test"]}
@@ -3271,6 +3389,8 @@
 		{
 			"name": "float16_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/float16_test.w"],
+			"outputs": ["bin/float16_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/float16_test.w", "-o", "bin/float16_test"]},
 				{"cmd": ["bin/float16_test"]}
@@ -3279,6 +3399,8 @@
 		{
 			"name": "float_abi_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/float_abi_test.w"],
+			"outputs": ["bin/float_abi_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/float_abi_test.w", "-o", "bin/float_abi_test"]},
 				{"cmd": ["bin/float_abi_test"], "expect_stdout": "float abi OK"}
@@ -3287,6 +3409,8 @@
 		{
 			"name": "float_abi_test_arm64",
 			"deps": ["wv2"],
+			"inputs": ["tests/float_abi_test.w"],
+			"outputs": ["bin/float_abi_test_arm64"],
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64", "tests/float_abi_test.w", "-o", "bin/float_abi_test_arm64"]},
 				{"cmd": ["sh", "tools/run_arm64.sh", "bin/float_abi_test_arm64"], "expect_stdout": "float abi OK"}
@@ -3295,6 +3419,8 @@
 		{
 			"name": "float_conformance_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/float_conformance_test.w"],
+			"outputs": ["bin/float_conformance_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/float_conformance_test.w", "-o", "bin/float_conformance_64_test"]},
 				{"cmd": ["bin/float_conformance_64_test"]}
@@ -3303,6 +3429,8 @@
 		{
 			"name": "float_conformance_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/float_conformance_test.w"],
+			"outputs": ["bin/float_conformance_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/float_conformance_test.w", "-o", "bin/float_conformance_test"]},
 				{"cmd": ["bin/float_conformance_test"]}
@@ -3311,6 +3439,8 @@
 		{
 			"name": "float_literal_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/float_literal_test.w"],
+			"outputs": ["bin/float_literal_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/float_literal_test.w", "-o", "bin/float_literal_test"]},
 				{"cmd": ["bin/float_literal_test"]}
@@ -3319,6 +3449,8 @@
 		{
 			"name": "float_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/float_test.w"],
+			"outputs": ["bin/float_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/float_test.w", "-o", "bin/float_test"]},
 				{"cmd": ["bin/float_test"]}
@@ -3327,6 +3459,8 @@
 		{
 			"name": "fmath_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/fmath_test.w"],
+			"outputs": ["bin/fmath_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/fmath_test.w", "-o", "bin/fmath_64_test"]},
 				{"cmd": ["bin/fmath_64_test"]}
@@ -3335,6 +3469,8 @@
 		{
 			"name": "fmath_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/fmath_test.w"],
+			"outputs": ["bin/fmath_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/fmath_test.w", "-o", "bin/fmath_test"]},
 				{"cmd": ["bin/fmath_test"]}
@@ -3343,6 +3479,8 @@
 		{
 			"name": "for_container_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/for_container_test.w"],
+			"outputs": ["bin/for_container_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/for_container_test.w", "-o", "bin/for_container_64_test"]},
 				{"cmd": ["bin/for_container_64_test"]}
@@ -3351,6 +3489,8 @@
 		{
 			"name": "for_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/for_test.w"],
+			"outputs": ["bin/for_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/for_test.w", "-o", "bin/for_test"]},
 				{"cmd": ["bin/for_test"]}
@@ -3359,6 +3499,8 @@
 		{
 			"name": "format_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/format_test.w"],
+			"outputs": ["bin/format_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/format_test.w", "-o", "bin/format_64_test"]},
 				{"cmd": ["bin/format_64_test"]}
@@ -3367,6 +3509,8 @@
 		{
 			"name": "format_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/format_test.w"],
+			"outputs": ["bin/format_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/format_test.w", "-o", "bin/format_test"]},
 				{"cmd": ["bin/format_test"]}
@@ -3375,6 +3519,8 @@
 		{
 			"name": "framing_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/framing_test.w"],
+			"outputs": ["bin/framing_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/framing_test.w", "-o", "bin/framing_64_test"]},
 				{"cmd": ["bin/framing_64_test"]}
@@ -3383,6 +3529,8 @@
 		{
 			"name": "framing_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/framing_test.w"],
+			"outputs": ["bin/framing_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/framing_test.w", "-o", "bin/framing_test"]},
 				{"cmd": ["bin/framing_test"]}
@@ -3391,6 +3539,8 @@
 		{
 			"name": "generator_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/generator_test.w"],
+			"outputs": ["bin/generator_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/generator_test.w", "-o", "bin/generator_64_test"]},
 				{"cmd": ["bin/generator_64_test"]}
@@ -3399,6 +3549,8 @@
 		{
 			"name": "generator_return_free_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/generator_return_free_test.w"],
+			"outputs": ["bin/generator_return_free_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/generator_return_free_test.w", "-o", "bin/generator_return_free_64_test"]},
 				{"cmd": ["bin/generator_return_free_64_test"]}
@@ -3407,6 +3559,8 @@
 		{
 			"name": "generator_return_free_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/generator_return_free_test.w"],
+			"outputs": ["bin/generator_return_free_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/generator_return_free_test.w", "-o", "bin/generator_return_free_test"]},
 				{"cmd": ["bin/generator_return_free_test"]}
@@ -3415,6 +3569,8 @@
 		{
 			"name": "generics_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/generics_test.w"],
+			"outputs": ["bin/generics_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/generics_test.w", "-o", "bin/generics_64_test"]},
 				{"cmd": ["bin/generics_64_test"]}
@@ -3423,6 +3579,8 @@
 		{
 			"name": "generics_inference_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/generics_inference_test.w"],
+			"outputs": ["bin/generics_inference_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/generics_inference_test.w", "-o", "bin/generics_inference_64_test"]},
 				{"cmd": ["bin/generics_inference_64_test"]}
@@ -3431,6 +3589,8 @@
 		{
 			"name": "getchar_checked_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/getchar_checked_test.w"],
+			"outputs": ["bin/getchar_checked_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/getchar_checked_test.w", "-o", "bin/getchar_checked_64_test"]},
 				{"cmd": ["bin/getchar_checked_64_test"]}
@@ -3439,6 +3599,8 @@
 		{
 			"name": "getchar_checked_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/getchar_checked_test.w"],
+			"outputs": ["bin/getchar_checked_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/getchar_checked_test.w", "-o", "bin/getchar_checked_test"]},
 				{"cmd": ["bin/getchar_checked_test"]}
@@ -3447,14 +3609,28 @@
 		{
 			"name": "grapheme_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/grapheme_test.w"],
+			"outputs": ["bin/grapheme_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/grapheme_test.w", "-o", "bin/grapheme_test"]},
 				{"cmd": ["bin/grapheme_test"]}
 			]
 		},
 		{
+			"name": "graphics_gl_smoke_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/gl_smoke_test.w"],
+			"outputs": ["bin/graphics_gl_smoke_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_test"]},
+				{"cmd": ["bin/graphics_gl_smoke_test"], "expect_stdout": "graphics gl smoke"}
+			]
+		},
+		{
 			"name": "graphics_math_64_test",
 			"deps": ["wv2"],
+			"inputs": ["graphics/math_test.w"],
+			"outputs": ["bin/graphics_math_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "graphics/math_test.w", "-o", "bin/graphics_math_64_test"]},
 				{"cmd": ["bin/graphics_math_64_test"]}
@@ -3463,6 +3639,8 @@
 		{
 			"name": "graphics_math_test",
 			"deps": ["wv2"],
+			"inputs": ["graphics/math_test.w"],
+			"outputs": ["bin/graphics_math_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "graphics/math_test.w", "-o", "bin/graphics_math_test"]},
 				{"cmd": ["bin/graphics_math_test"]}
@@ -3471,6 +3649,8 @@
 		{
 			"name": "hash_table_64_test",
 			"deps": ["wv2"],
+			"inputs": ["structures/hash_table_test.w"],
+			"outputs": ["bin/hash_table_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "structures/hash_table_test.w", "-o", "bin/hash_table_64_test"]},
 				{"cmd": ["bin/hash_table_64_test"]}
@@ -3479,6 +3659,8 @@
 		{
 			"name": "hash_table_test",
 			"deps": ["wv2"],
+			"inputs": ["structures/hash_table_test.w"],
+			"outputs": ["bin/hash_table_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "structures/hash_table_test.w", "-o", "bin/hash_table_test"]},
 				{"cmd": ["bin/hash_table_test"]}
@@ -3487,6 +3669,8 @@
 		{
 			"name": "hkdf_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/hkdf_test.w"],
+			"outputs": ["bin/hkdf_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/hkdf_test.w", "-o", "bin/hkdf_64_test"]},
 				{"cmd": ["bin/hkdf_64_test"]}
@@ -3495,6 +3679,8 @@
 		{
 			"name": "hkdf_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/hkdf_test.w"],
+			"outputs": ["bin/hkdf_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/hkdf_test.w", "-o", "bin/hkdf_test"]},
 				{"cmd": ["bin/hkdf_test"]}
@@ -3503,6 +3689,8 @@
 		{
 			"name": "hmac_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/hmac_test.w"],
+			"outputs": ["bin/hmac_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/hmac_test.w", "-o", "bin/hmac_64_test"]},
 				{"cmd": ["bin/hmac_64_test"]}
@@ -3511,6 +3699,8 @@
 		{
 			"name": "hmac_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/hmac_test.w"],
+			"outputs": ["bin/hmac_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/hmac_test.w", "-o", "bin/hmac_test"]},
 				{"cmd": ["bin/hmac_test"]}
@@ -3519,6 +3709,8 @@
 		{
 			"name": "http_client_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http_client_test.w"],
+			"outputs": ["bin/http_client_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/web/http_client_test.w", "-o", "bin/http_client_64_test"]},
 				{"cmd": ["bin/http_client_64_test"]}
@@ -3527,6 +3719,8 @@
 		{
 			"name": "http_client_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http_client_test.w"],
+			"outputs": ["bin/http_client_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/http_client_test.w", "-o", "bin/http_client_test"]},
 				{"cmd": ["bin/http_client_test"]}
@@ -3535,6 +3729,8 @@
 		{
 			"name": "http_server_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http_server_test.w"],
+			"outputs": ["bin/http_server_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/web/http_server_test.w", "-o", "bin/http_server_64_test"]},
 				{"cmd": ["bin/http_server_64_test"]}
@@ -3543,6 +3739,8 @@
 		{
 			"name": "http_server_route_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http_server_route_test.w"],
+			"outputs": ["bin/http_server_route_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/web/http_server_route_test.w", "-o", "bin/http_server_route_64_test"]},
 				{"cmd": ["bin/http_server_route_64_test"]}
@@ -3551,6 +3749,8 @@
 		{
 			"name": "http_server_route_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http_server_route_test.w"],
+			"outputs": ["bin/http_server_route_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/http_server_route_test.w", "-o", "bin/http_server_route_test"]},
 				{"cmd": ["bin/http_server_route_test"]}
@@ -3559,6 +3759,8 @@
 		{
 			"name": "http_server_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http_server_test.w"],
+			"outputs": ["bin/http_server_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/http_server_test.w", "-o", "bin/http_server_test"]},
 				{"cmd": ["bin/http_server_test"]}
@@ -3567,6 +3769,8 @@
 		{
 			"name": "increment_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/increment_test.w"],
+			"outputs": ["bin/increment_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/increment_test.w", "-o", "bin/increment_64_test"]},
 				{"cmd": ["bin/increment_64_test"]}
@@ -3575,6 +3779,8 @@
 		{
 			"name": "increment_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/increment_test.w"],
+			"outputs": ["bin/increment_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/increment_test.w", "-o", "bin/increment_test"]},
 				{"cmd": ["bin/increment_test"]}
@@ -3583,6 +3789,8 @@
 		{
 			"name": "infer_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/infer_test.w"],
+			"outputs": ["bin/infer_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/infer_test.w", "-o", "bin/infer_test"]},
 				{"cmd": ["bin/infer_test"]}
@@ -3591,6 +3799,7 @@
 		{
 			"name": "int64_x86_error_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/int64_x86_error_test.w"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/int64_x86_error_test.w", "-o", "bin/int64_x86_error_test"], "expect_fail": true, "expect_stderr": "int64 requires the x64 target"}
 			]
@@ -3598,6 +3807,8 @@
 		{
 			"name": "int_literal_bounds_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/int_literal_bounds_test.w"],
+			"outputs": ["bin/int_literal_bounds_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/int_literal_bounds_test.w", "-o", "bin/int_literal_bounds_64_test"]},
 				{"cmd": ["bin/int_literal_bounds_64_test"]}
@@ -3606,6 +3817,8 @@
 		{
 			"name": "int_literal_bounds_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/int_literal_bounds_test.w"],
+			"outputs": ["bin/int_literal_bounds_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/int_literal_bounds_test.w", "-o", "bin/int_literal_bounds_test"]},
 				{"cmd": ["bin/int_literal_bounds_test"]}
@@ -3621,6 +3834,8 @@
 		{
 			"name": "json_64_test",
 			"deps": ["wv2"],
+			"inputs": ["structures/json_test.w"],
+			"outputs": ["bin/json_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "structures/json_test.w", "-o", "bin/json_64_test"]},
 				{"cmd": ["bin/json_64_test"]}
@@ -3629,6 +3844,8 @@
 		{
 			"name": "json_codec_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/json_codec_test.w"],
+			"outputs": ["bin/json_codec_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/json_codec_test.w", "-o", "bin/json_codec_64_test"]},
 				{"cmd": ["bin/json_codec_64_test"]}
@@ -3637,6 +3854,8 @@
 		{
 			"name": "json_codec_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/json_codec_test.w"],
+			"outputs": ["bin/json_codec_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/json_codec_test.w", "-o", "bin/json_codec_test"]},
 				{"cmd": ["bin/json_codec_test"]}
@@ -3645,6 +3864,8 @@
 		{
 			"name": "json_test",
 			"deps": ["wv2"],
+			"inputs": ["structures/json_test.w"],
+			"outputs": ["bin/json_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "structures/json_test.w", "-o", "bin/json_test"]},
 				{"cmd": ["bin/json_test"]}
@@ -3653,6 +3874,8 @@
 		{
 			"name": "kv_cluster_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/kv_cluster_test.w"],
+			"outputs": ["bin/kv_cluster_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/kv_cluster_test.w", "-o", "bin/kv_cluster_64_test"]},
 				{"cmd": ["bin/kv_cluster_64_test"]}
@@ -3661,6 +3884,8 @@
 		{
 			"name": "kv_cluster_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/kv_cluster_test.w"],
+			"outputs": ["bin/kv_cluster_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/kv_cluster_test.w", "-o", "bin/kv_cluster_test"]},
 				{"cmd": ["bin/kv_cluster_test"]}
@@ -3669,6 +3894,8 @@
 		{
 			"name": "kv_state_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/kv_state_test.w"],
+			"outputs": ["bin/kv_state_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/kv_state_test.w", "-o", "bin/kv_state_64_test"]},
 				{"cmd": ["bin/kv_state_64_test"]}
@@ -3677,6 +3904,8 @@
 		{
 			"name": "kv_state_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/kv_state_test.w"],
+			"outputs": ["bin/kv_state_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/kv_state_test.w", "-o", "bin/kv_state_test"]},
 				{"cmd": ["bin/kv_state_test"]}
@@ -3685,6 +3914,8 @@
 		{
 			"name": "lease_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/lease_test.w"],
+			"outputs": ["bin/lease_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/lease_test.w", "-o", "bin/lease_64_test"]},
 				{"cmd": ["bin/lease_64_test"]}
@@ -3693,6 +3924,8 @@
 		{
 			"name": "lease_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/lease_test.w"],
+			"outputs": ["bin/lease_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/lease_test.w", "-o", "bin/lease_test"]},
 				{"cmd": ["bin/lease_test"]}
@@ -3701,6 +3934,8 @@
 		{
 			"name": "lib_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/lib_test.w"],
+			"outputs": ["bin/lib_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/lib_test.w", "-o", "bin/lib_64_test"]},
 				{"cmd": ["bin/lib_64_test"]}
@@ -3709,6 +3944,8 @@
 		{
 			"name": "lib_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/lib_test.w"],
+			"outputs": ["bin/lib_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/lib_test.w", "-o", "bin/lib_test"]},
 				{"cmd": ["bin/lib_test"]}
@@ -3717,6 +3954,8 @@
 		{
 			"name": "limb_builtin_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/limb_builtin_test.w"],
+			"outputs": ["bin/limb_builtin_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/limb_builtin_test.w", "-o", "bin/limb_builtin_64_test"]},
 				{"cmd": ["bin/limb_builtin_64_test"]}
@@ -3725,6 +3964,8 @@
 		{
 			"name": "limb_builtin_shadow_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/limb_builtin_shadow_test.w"],
+			"outputs": ["bin/limb_builtin_shadow_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/limb_builtin_shadow_test.w", "-o", "bin/limb_builtin_shadow_64_test"]},
 				{"cmd": ["bin/limb_builtin_shadow_64_test"]}
@@ -3733,6 +3974,8 @@
 		{
 			"name": "limb_builtin_shadow_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/limb_builtin_shadow_test.w"],
+			"outputs": ["bin/limb_builtin_shadow_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/limb_builtin_shadow_test.w", "-o", "bin/limb_builtin_shadow_test"]},
 				{"cmd": ["bin/limb_builtin_shadow_test"]}
@@ -3741,6 +3984,8 @@
 		{
 			"name": "limb_builtin_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/limb_builtin_test.w"],
+			"outputs": ["bin/limb_builtin_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/limb_builtin_test.w", "-o", "bin/limb_builtin_test"]},
 				{"cmd": ["bin/limb_builtin_test"]}
@@ -3749,6 +3994,8 @@
 		{
 			"name": "line_edit_completion_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/line_edit_completion_test.w"],
+			"outputs": ["bin/line_edit_completion_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/line_edit_completion_test.w", "-o", "bin/line_edit_completion_test"]},
 				{"cmd": ["bin/line_edit_completion_test"]}
@@ -3757,6 +4004,8 @@
 		{
 			"name": "line_edit_paste_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/line_edit_paste_test.w"],
+			"outputs": ["bin/line_edit_paste_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/line_edit_paste_test.w", "-o", "bin/line_edit_paste_64_test"]},
 				{"cmd": ["bin/line_edit_paste_64_test"]}
@@ -3765,6 +4014,8 @@
 		{
 			"name": "line_edit_paste_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/line_edit_paste_test.w"],
+			"outputs": ["bin/line_edit_paste_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/line_edit_paste_test.w", "-o", "bin/line_edit_paste_test"]},
 				{"cmd": ["bin/line_edit_paste_test"]}
@@ -3773,6 +4024,8 @@
 		{
 			"name": "list_builtin_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/list_builtin_test.w"],
+			"outputs": ["bin/list_builtin_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/list_builtin_test.w", "-o", "bin/list_builtin_64_test"]},
 				{"cmd": ["bin/list_builtin_64_test"]}
@@ -3781,6 +4034,8 @@
 		{
 			"name": "list_methods_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/list_methods_test.w"],
+			"outputs": ["bin/list_methods_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/list_methods_test.w", "-o", "bin/list_methods_test"]},
 				{"cmd": ["bin/list_methods_test"]}
@@ -3789,6 +4044,8 @@
 		{
 			"name": "lsm_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/lsm_test.w"],
+			"outputs": ["bin/lsm_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/lsm_test.w", "-o", "bin/lsm_64_test"]},
 				{"cmd": ["bin/lsm_64_test"]}
@@ -3797,6 +4054,8 @@
 		{
 			"name": "lsm_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/lsm_test.w"],
+			"outputs": ["bin/lsm_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/lsm_test.w", "-o", "bin/lsm_test"]},
 				{"cmd": ["bin/lsm_test"]}
@@ -3805,6 +4064,8 @@
 		{
 			"name": "malloc_churn_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/malloc_churn_test.w"],
+			"outputs": ["bin/malloc_churn_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/malloc_churn_test.w", "-o", "bin/malloc_churn_64_test"]},
 				{"cmd": ["bin/malloc_churn_64_test"]}
@@ -3813,6 +4074,8 @@
 		{
 			"name": "malloc_churn_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/malloc_churn_test.w"],
+			"outputs": ["bin/malloc_churn_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/malloc_churn_test.w", "-o", "bin/malloc_churn_test"]},
 				{"cmd": ["bin/malloc_churn_test"]}
@@ -3821,6 +4084,8 @@
 		{
 			"name": "map_float_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/map_float_test.w"],
+			"outputs": ["bin/map_float_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/map_float_test.w", "-o", "bin/map_float_64_test"]},
 				{"cmd": ["bin/map_float_64_test"]}
@@ -3829,6 +4094,8 @@
 		{
 			"name": "map_float_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/map_float_test.w"],
+			"outputs": ["bin/map_float_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/map_float_test.w", "-o", "bin/map_float_test"]},
 				{"cmd": ["bin/map_float_test"]}
@@ -3837,6 +4104,8 @@
 		{
 			"name": "map_set_builtin_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/map_set_builtin_test.w"],
+			"outputs": ["bin/map_set_builtin_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/map_set_builtin_test.w", "-o", "bin/map_set_builtin_64_test"]},
 				{"cmd": ["bin/map_set_builtin_64_test"]}
@@ -3845,6 +4114,8 @@
 		{
 			"name": "math_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/math_test.w"],
+			"outputs": ["bin/math_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/math_test.w", "-o", "bin/math_test"]},
 				{"cmd": ["bin/math_test"]}
@@ -3853,6 +4124,8 @@
 		{
 			"name": "md5_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/x/unsafe/md5_test.w"],
+			"outputs": ["bin/md5_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/x/unsafe/md5_test.w", "-o", "bin/md5_64_test"]},
 				{"cmd": ["bin/md5_64_test"]}
@@ -3861,6 +4134,8 @@
 		{
 			"name": "md5_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/x/unsafe/md5_test.w"],
+			"outputs": ["bin/md5_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/x/unsafe/md5_test.w", "-o", "bin/md5_test"]},
 				{"cmd": ["bin/md5_test"]}
@@ -3869,6 +4144,8 @@
 		{
 			"name": "memory_debug_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/memory_debug_test.w"],
+			"outputs": ["bin/memory_debug_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/memory_debug_test.w", "-o", "bin/memory_debug_64_test"]},
 				{"cmd": ["bin/memory_debug_64_test"]}
@@ -3877,6 +4154,8 @@
 		{
 			"name": "memory_debug_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/memory_debug_test.w"],
+			"outputs": ["bin/memory_debug_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/memory_debug_test.w", "-o", "bin/memory_debug_test"]},
 				{"cmd": ["bin/memory_debug_test"]}
@@ -3885,6 +4164,8 @@
 		{
 			"name": "memtable_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/memtable_test.w"],
+			"outputs": ["bin/memtable_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/memtable_test.w", "-o", "bin/memtable_64_test"]},
 				{"cmd": ["bin/memtable_64_test"]}
@@ -3893,6 +4174,8 @@
 		{
 			"name": "memtable_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/memtable_test.w"],
+			"outputs": ["bin/memtable_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/memtable_test.w", "-o", "bin/memtable_test"]},
 				{"cmd": ["bin/memtable_test"]}
@@ -3901,6 +4184,8 @@
 		{
 			"name": "method_chaining_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/method_chaining_test.w"],
+			"outputs": ["bin/method_chaining_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/method_chaining_test.w", "-o", "bin/method_chaining_64_test"]},
 				{"cmd": ["bin/method_chaining_64_test"]}
@@ -3909,6 +4194,8 @@
 		{
 			"name": "method_chaining_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/method_chaining_test.w"],
+			"outputs": ["bin/method_chaining_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/method_chaining_test.w", "-o", "bin/method_chaining_test"]},
 				{"cmd": ["bin/method_chaining_test"]}
@@ -3917,6 +4204,8 @@
 		{
 			"name": "midline_tab_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/midline_tab_test.w"],
+			"outputs": ["bin/midline_tab_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/midline_tab_test.w", "-o", "bin/midline_tab_test"]},
 				{"cmd": ["bin/midline_tab_test"]}
@@ -3925,6 +4214,8 @@
 		{
 			"name": "mnist_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/mnist_test.w"],
+			"outputs": ["bin/mnist_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/mnist_test.w", "-o", "bin/mnist_64_test"]},
 				{"cmd": ["bin/mnist_64_test"]}
@@ -3933,6 +4224,8 @@
 		{
 			"name": "mnist_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/mnist_test.w"],
+			"outputs": ["bin/mnist_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/mnist_test.w", "-o", "bin/mnist_test"]},
 				{"cmd": ["bin/mnist_test"]}
@@ -3941,6 +4234,8 @@
 		{
 			"name": "monotime_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/monotime_test.w"],
+			"outputs": ["bin/monotime_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/monotime_test.w", "-o", "bin/monotime_64_test"]},
 				{"cmd": ["bin/monotime_64_test"]}
@@ -3949,6 +4244,8 @@
 		{
 			"name": "monotime_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/monotime_test.w"],
+			"outputs": ["bin/monotime_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/monotime_test.w", "-o", "bin/monotime_test"]},
 				{"cmd": ["bin/monotime_test"]}
@@ -3957,6 +4254,8 @@
 		{
 			"name": "multilayer_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/multilayer_test.w"],
+			"outputs": ["bin/multilayer_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/multilayer_test.w", "-o", "bin/multilayer_test"]},
 				{"cmd": ["bin/multilayer_test"]}
@@ -3965,6 +4264,8 @@
 		{
 			"name": "ndarray_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/ndarray_test.w"],
+			"outputs": ["bin/ndarray_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/ndarray_test.w", "-o", "bin/ndarray_64_test"]},
 				{"cmd": ["bin/ndarray_64_test"]}
@@ -3973,6 +4274,8 @@
 		{
 			"name": "ndarray_bounds_get_trap_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/ndarray_bounds_get_trap_test.w"],
+			"outputs": ["bin/ndarray_bounds_get_trap_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/ndarray_bounds_get_trap_test.w", "-o", "bin/ndarray_bounds_get_trap_test"]},
 				{"cmd": ["bin/ndarray_bounds_get_trap_test"], "expect_fail": true, "expect_stderr": ["ndf_at2: index out of range", "stack trace (most recent call first):", "at main ("]}
@@ -3981,6 +4284,8 @@
 		{
 			"name": "ndarray_bounds_set_trap_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/ndarray_bounds_set_trap_test.w"],
+			"outputs": ["bin/ndarray_bounds_set_trap_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/ndarray_bounds_set_trap_test.w", "-o", "bin/ndarray_bounds_set_trap_test"]},
 				{"cmd": ["bin/ndarray_bounds_set_trap_test"], "expect_fail": true, "expect_stderr": ["ndf_set2: index out of range", "stack trace (most recent call first):", "at main ("]}
@@ -3989,6 +4294,8 @@
 		{
 			"name": "ndarray_extent_trap_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/ndarray_extent_trap_test.w"],
+			"outputs": ["bin/ndarray_extent_trap_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/ndarray_extent_trap_test.w", "-o", "bin/ndarray_extent_trap_test"]},
 				{"cmd": ["bin/ndarray_extent_trap_test"], "expect_fail": true, "expect_stderr": ["ndarray: extents must be positive", "stack trace (most recent call first):", "at main ("]}
@@ -3997,6 +4304,8 @@
 		{
 			"name": "ndarray_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/ndarray_test.w"],
+			"outputs": ["bin/ndarray_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/ndarray_test.w", "-o", "bin/ndarray_test"]},
 				{"cmd": ["bin/ndarray_test"]}
@@ -4005,6 +4314,8 @@
 		{
 			"name": "nested_ctor_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/nested_ctor_test.w"],
+			"outputs": ["bin/nested_ctor_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/nested_ctor_test.w", "-o", "bin/nested_ctor_64_test"]},
 				{"cmd": ["bin/nested_ctor_64_test"]}
@@ -4013,6 +4324,8 @@
 		{
 			"name": "nested_ctor_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/nested_ctor_test.w"],
+			"outputs": ["bin/nested_ctor_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/nested_ctor_test.w", "-o", "bin/nested_ctor_test"]},
 				{"cmd": ["bin/nested_ctor_test"]}
@@ -4021,6 +4334,8 @@
 		{
 			"name": "net_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/net_test.w"],
+			"outputs": ["bin/net_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/net_test.w", "-o", "bin/net_64_test"]},
 				{"cmd": ["bin/net_64_test"]}
@@ -4029,6 +4344,8 @@
 		{
 			"name": "net_asn1_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/asn1_test.w"],
+			"outputs": ["bin/net_asn1_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_64_test"]},
 				{"cmd": ["bin/net_asn1_64_test"]}
@@ -4037,6 +4354,8 @@
 		{
 			"name": "net_asn1_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/asn1_test.w"],
+			"outputs": ["bin/net_asn1_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/net/asn1_test.w", "-o", "bin/net_asn1_test"]},
 				{"cmd": ["bin/net_asn1_test"]}
@@ -4045,6 +4364,8 @@
 		{
 			"name": "net_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/net_test.w"],
+			"outputs": ["bin/net_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/net_test.w", "-o", "bin/net_test"]},
 				{"cmd": ["bin/net_test"]}
@@ -4053,6 +4374,8 @@
 		{
 			"name": "net_tls_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/tls_test.w"],
+			"outputs": ["bin/net_tls_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_64_test"]},
 				{"cmd": ["bin/net_tls_64_test"]}
@@ -4061,6 +4384,8 @@
 		{
 			"name": "net_tls_server_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/tls_server_test.w"],
+			"outputs": ["bin/net_tls_server_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_64_test"]},
 				{"cmd": ["bin/net_tls_server_64_test"]}
@@ -4069,6 +4394,8 @@
 		{
 			"name": "net_tls_server_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/tls_server_test.w"],
+			"outputs": ["bin/net_tls_server_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/net/tls_server_test.w", "-o", "bin/net_tls_server_test"]},
 				{"cmd": ["bin/net_tls_server_test"]}
@@ -4077,6 +4404,8 @@
 		{
 			"name": "net_tls_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/tls_test.w"],
+			"outputs": ["bin/net_tls_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_test"]},
 				{"cmd": ["bin/net_tls_test"]}
@@ -4085,6 +4414,8 @@
 		{
 			"name": "net_x509_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/x509_test.w"],
+			"outputs": ["bin/net_x509_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_64_test"]},
 				{"cmd": ["bin/net_x509_64_test"]}
@@ -4093,6 +4424,8 @@
 		{
 			"name": "net_x509_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/x509_test.w"],
+			"outputs": ["bin/net_x509_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/net/x509_test.w", "-o", "bin/net_x509_test"]},
 				{"cmd": ["bin/net_x509_test"]}
@@ -4101,6 +4434,8 @@
 		{
 			"name": "operator_overload_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/operator_overload_test.w"],
+			"outputs": ["bin/operator_overload_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/operator_overload_test.w", "-o", "bin/operator_overload_64_test"]},
 				{"cmd": ["bin/operator_overload_64_test"]}
@@ -4116,6 +4451,8 @@
 		{
 			"name": "operator_overload_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/operator_overload_test.w"],
+			"outputs": ["bin/operator_overload_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/operator_overload_test.w", "-o", "bin/operator_overload_test"]},
 				{"cmd": ["bin/operator_overload_test"]}
@@ -4124,6 +4461,8 @@
 		{
 			"name": "parallel_for_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/parallel_for_test.w"],
+			"outputs": ["bin/parallel_for_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/parallel_for_test.w", "-o", "bin/parallel_for_64_test"]},
 				{"cmd": ["bin/parallel_for_64_test"]}
@@ -4132,6 +4471,8 @@
 		{
 			"name": "parallel_for_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/parallel_for_test.w"],
+			"outputs": ["bin/parallel_for_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/parallel_for_test.w", "-o", "bin/parallel_for_test"]},
 				{"cmd": ["bin/parallel_for_test"]}
@@ -4140,6 +4481,8 @@
 		{
 			"name": "passwd_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/passwd_test.w"],
+			"outputs": ["bin/passwd_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/passwd_test.w", "-o", "bin/passwd_64_test"]},
 				{"cmd": ["bin/passwd_64_test"]}
@@ -4148,6 +4491,8 @@
 		{
 			"name": "passwd_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/passwd_test.w"],
+			"outputs": ["bin/passwd_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/passwd_test.w", "-o", "bin/passwd_test"]},
 				{"cmd": ["bin/passwd_test"]}
@@ -4156,6 +4501,8 @@
 		{
 			"name": "path_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/path_test.w"],
+			"outputs": ["bin/path_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/path_test.w", "-o", "bin/path_64_test"]},
 				{"cmd": ["bin/path_64_test"]}
@@ -4164,6 +4511,8 @@
 		{
 			"name": "path_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/path_test.w"],
+			"outputs": ["bin/path_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/path_test.w", "-o", "bin/path_test"]},
 				{"cmd": ["bin/path_test"]}
@@ -4172,6 +4521,8 @@
 		{
 			"name": "pointer_arith_type_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/pointer_arith_type_test.w"],
+			"outputs": ["bin/pointer_arith_type_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/pointer_arith_type_test.w", "-o", "bin/pointer_arith_type_64_test"]},
 				{"cmd": ["bin/pointer_arith_type_64_test"]}
@@ -4180,6 +4531,8 @@
 		{
 			"name": "pointer_arith_type_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/pointer_arith_type_test.w"],
+			"outputs": ["bin/pointer_arith_type_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/pointer_arith_type_test.w", "-o", "bin/pointer_arith_type_test"]},
 				{"cmd": ["bin/pointer_arith_type_test"]}
@@ -4188,6 +4541,8 @@
 		{
 			"name": "pointer_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/pointer_test.w"],
+			"outputs": ["bin/pointer_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/pointer_test.w", "-o", "bin/pointer_test"]},
 				{"cmd": ["bin/pointer_test"]}
@@ -4196,6 +4551,8 @@
 		{
 			"name": "poll_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/poll_test.w"],
+			"outputs": ["bin/poll_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/poll_test.w", "-o", "bin/poll_64_test"]},
 				{"cmd": ["bin/poll_64_test"]}
@@ -4204,6 +4561,8 @@
 		{
 			"name": "poll_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/poll_test.w"],
+			"outputs": ["bin/poll_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/poll_test.w", "-o", "bin/poll_test"]},
 				{"cmd": ["bin/poll_test"]}
@@ -4212,6 +4571,8 @@
 		{
 			"name": "poly1305_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/poly1305_test.w"],
+			"outputs": ["bin/poly1305_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/poly1305_test.w", "-o", "bin/poly1305_64_test"]},
 				{"cmd": ["bin/poly1305_64_test"]}
@@ -4220,6 +4581,8 @@
 		{
 			"name": "poly1305_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/poly1305_test.w"],
+			"outputs": ["bin/poly1305_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/poly1305_test.w", "-o", "bin/poly1305_test"]},
 				{"cmd": ["bin/poly1305_test"]}
@@ -4235,6 +4598,8 @@
 		{
 			"name": "prelude_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/prelude_test.w"],
+			"outputs": ["bin/prelude_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/prelude_test.w", "-o", "bin/prelude_test"]},
 				{"cmd": ["bin/prelude_test"], "stdin": "header line\n1 2 3\n-4 and x5\n", "expect_stdout": ["header line", "[1, 2, 3, -4, 5]", "7", "leftover:"]}
@@ -4243,6 +4608,8 @@
 		{
 			"name": "print_builtin_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/print_builtin_test.w"],
+			"outputs": ["bin/print_builtin_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/print_builtin_test.w", "-o", "bin/print_builtin_test"]},
 				{"cmd": ["bin/print_builtin_test"], "expect_stdout": ["greeting str via f", "1.250000", "[5, -1, 12]", "[one, two]", "[]", "big"]}
@@ -4251,6 +4618,8 @@
 		{
 			"name": "prng_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/prng_test.w"],
+			"outputs": ["bin/prng_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/prng_test.w", "-o", "bin/prng_64_test"]},
 				{"cmd": ["bin/prng_64_test"]}
@@ -4259,6 +4628,8 @@
 		{
 			"name": "prng_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/prng_test.w"],
+			"outputs": ["bin/prng_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/prng_test.w", "-o", "bin/prng_test"]},
 				{"cmd": ["bin/prng_test"]}
@@ -4267,6 +4638,8 @@
 		{
 			"name": "process_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/process_test.w"],
+			"outputs": ["bin/process_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/process_test.w", "-o", "bin/process_64_test"]},
 				{"cmd": ["bin/process_64_test"]}
@@ -4275,6 +4648,8 @@
 		{
 			"name": "process_bytes_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/process_bytes_test.w"],
+			"outputs": ["bin/process_bytes_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/process_bytes_test.w", "-o", "bin/process_bytes_64_test"]},
 				{"cmd": ["bin/process_bytes_64_test"]}
@@ -4283,6 +4658,8 @@
 		{
 			"name": "process_bytes_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/process_bytes_test.w"],
+			"outputs": ["bin/process_bytes_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/process_bytes_test.w", "-o", "bin/process_bytes_test"]},
 				{"cmd": ["bin/process_bytes_test"]}
@@ -4291,6 +4668,8 @@
 		{
 			"name": "process_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/process_test.w"],
+			"outputs": ["bin/process_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/process_test.w", "-o", "bin/process_test"]},
 				{"cmd": ["bin/process_test"]}
@@ -4299,6 +4678,8 @@
 		{
 			"name": "protobuf_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/protobuf_test.w"],
+			"outputs": ["bin/protobuf_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/protobuf_test.w", "-o", "bin/protobuf_64_test"]},
 				{"cmd": ["bin/protobuf_64_test"]}
@@ -4307,6 +4688,8 @@
 		{
 			"name": "protobuf_leak_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/protobuf_leak_test.w"],
+			"outputs": ["bin/protobuf_leak_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/protobuf_leak_test.w", "-o", "bin/protobuf_leak_64_test"]},
 				{"cmd": ["bin/protobuf_leak_64_test"]}
@@ -4315,6 +4698,8 @@
 		{
 			"name": "protobuf_leak_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/protobuf_leak_test.w"],
+			"outputs": ["bin/protobuf_leak_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/protobuf_leak_test.w", "-o", "bin/protobuf_leak_test"]},
 				{"cmd": ["bin/protobuf_leak_test"]}
@@ -4323,6 +4708,8 @@
 		{
 			"name": "protobuf_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/protobuf_test.w"],
+			"outputs": ["bin/protobuf_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/protobuf_test.w", "-o", "bin/protobuf_test"]},
 				{"cmd": ["bin/protobuf_test"]}
@@ -4331,6 +4718,8 @@
 		{
 			"name": "ptr_add_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/ptr_add_test.w"],
+			"outputs": ["bin/ptr_add_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/ptr_add_test.w", "-o", "bin/ptr_add_64_test"]},
 				{"cmd": ["bin/ptr_add_64_test"]}
@@ -4339,6 +4728,8 @@
 		{
 			"name": "ptr_add_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/ptr_add_test.w"],
+			"outputs": ["bin/ptr_add_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/ptr_add_test.w", "-o", "bin/ptr_add_test"]},
 				{"cmd": ["bin/ptr_add_test"]}
@@ -4347,6 +4738,8 @@
 		{
 			"name": "quorum_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/quorum_test.w"],
+			"outputs": ["bin/quorum_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/quorum_test.w", "-o", "bin/quorum_64_test"]},
 				{"cmd": ["bin/quorum_64_test"]}
@@ -4355,6 +4748,8 @@
 		{
 			"name": "quorum_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/quorum_test.w"],
+			"outputs": ["bin/quorum_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/quorum_test.w", "-o", "bin/quorum_test"]},
 				{"cmd": ["bin/quorum_test"]}
@@ -4363,6 +4758,8 @@
 		{
 			"name": "raft_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_test.w"],
+			"outputs": ["bin/raft_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_test.w", "-o", "bin/raft_64_test"]},
 				{"cmd": ["bin/raft_64_test"]}
@@ -4371,6 +4768,8 @@
 		{
 			"name": "raft_membership_restart_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_membership_restart_test.w"],
+			"outputs": ["bin/raft_membership_restart_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_membership_restart_test.w", "-o", "bin/raft_membership_restart_64_test"]},
 				{"cmd": ["bin/raft_membership_restart_64_test"]}
@@ -4379,6 +4778,8 @@
 		{
 			"name": "raft_membership_restart_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_membership_restart_test.w"],
+			"outputs": ["bin/raft_membership_restart_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_membership_restart_test.w", "-o", "bin/raft_membership_restart_test"]},
 				{"cmd": ["bin/raft_membership_restart_test"]}
@@ -4387,6 +4788,8 @@
 		{
 			"name": "raft_membership_sim_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_membership_sim_test.w"],
+			"outputs": ["bin/raft_membership_sim_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_membership_sim_test.w", "-o", "bin/raft_membership_sim_64_test"]},
 				{"cmd": ["bin/raft_membership_sim_64_test"]}
@@ -4395,6 +4798,8 @@
 		{
 			"name": "raft_membership_sim_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_membership_sim_test.w"],
+			"outputs": ["bin/raft_membership_sim_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_membership_sim_test.w", "-o", "bin/raft_membership_sim_test"]},
 				{"cmd": ["bin/raft_membership_sim_test"]}
@@ -4403,6 +4808,8 @@
 		{
 			"name": "raft_ownership_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_ownership_test.w"],
+			"outputs": ["bin/raft_ownership_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_ownership_test.w", "-o", "bin/raft_ownership_64_test"]},
 				{"cmd": ["bin/raft_ownership_64_test"]}
@@ -4411,6 +4818,8 @@
 		{
 			"name": "raft_ownership_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_ownership_test.w"],
+			"outputs": ["bin/raft_ownership_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_ownership_test.w", "-o", "bin/raft_ownership_test"]},
 				{"cmd": ["bin/raft_ownership_test"]}
@@ -4419,6 +4828,8 @@
 		{
 			"name": "raft_restart_sim_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_restart_sim_test.w"],
+			"outputs": ["bin/raft_restart_sim_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_restart_sim_test.w", "-o", "bin/raft_restart_sim_64_test"]},
 				{"cmd": ["bin/raft_restart_sim_64_test"]}
@@ -4427,6 +4838,8 @@
 		{
 			"name": "raft_restart_sim_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_restart_sim_test.w"],
+			"outputs": ["bin/raft_restart_sim_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_restart_sim_test.w", "-o", "bin/raft_restart_sim_test"]},
 				{"cmd": ["bin/raft_restart_sim_test"]}
@@ -4435,6 +4848,8 @@
 		{
 			"name": "raft_sim_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_sim_test.w"],
+			"outputs": ["bin/raft_sim_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_sim_test.w", "-o", "bin/raft_sim_64_test"]},
 				{"cmd": ["bin/raft_sim_64_test"]}
@@ -4443,6 +4858,8 @@
 		{
 			"name": "raft_sim_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_sim_test.w"],
+			"outputs": ["bin/raft_sim_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_sim_test.w", "-o", "bin/raft_sim_test"]},
 				{"cmd": ["bin/raft_sim_test"]}
@@ -4451,6 +4868,8 @@
 		{
 			"name": "raft_sweep_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_sweep_test.w"],
+			"outputs": ["bin/raft_sweep_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_sweep_test.w", "-o", "bin/raft_sweep_64_test"]},
 				{"cmd": ["bin/raft_sweep_64_test"]}
@@ -4459,6 +4878,8 @@
 		{
 			"name": "raft_sweep_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_sweep_test.w"],
+			"outputs": ["bin/raft_sweep_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_sweep_test.w", "-o", "bin/raft_sweep_test"]},
 				{"cmd": ["bin/raft_sweep_test"]}
@@ -4467,6 +4888,8 @@
 		{
 			"name": "raft_tcp_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_tcp_test.w"],
+			"outputs": ["bin/raft_tcp_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_tcp_test.w", "-o", "bin/raft_tcp_64_test"]},
 				{"cmd": ["bin/raft_tcp_64_test"]}
@@ -4475,6 +4898,8 @@
 		{
 			"name": "raft_tcp_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_tcp_test.w"],
+			"outputs": ["bin/raft_tcp_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_tcp_test.w", "-o", "bin/raft_tcp_test"]},
 				{"cmd": ["bin/raft_tcp_test"]}
@@ -4483,6 +4908,8 @@
 		{
 			"name": "raft_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_test.w"],
+			"outputs": ["bin/raft_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_test.w", "-o", "bin/raft_test"]},
 				{"cmd": ["bin/raft_test"]}
@@ -4491,6 +4918,8 @@
 		{
 			"name": "raft_wal_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_wal_test.w"],
+			"outputs": ["bin/raft_wal_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_wal_test.w", "-o", "bin/raft_wal_64_test"]},
 				{"cmd": ["bin/raft_wal_64_test"]}
@@ -4499,6 +4928,8 @@
 		{
 			"name": "raft_wal_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_wal_test.w"],
+			"outputs": ["bin/raft_wal_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_wal_test.w", "-o", "bin/raft_wal_test"]},
 				{"cmd": ["bin/raft_wal_test"]}
@@ -4507,6 +4938,8 @@
 		{
 			"name": "raft_wire_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_wire_test.w"],
+			"outputs": ["bin/raft_wire_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/raft_wire_test.w", "-o", "bin/raft_wire_64_test"]},
 				{"cmd": ["bin/raft_wire_64_test"]}
@@ -4515,6 +4948,8 @@
 		{
 			"name": "raft_wire_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/raft_wire_test.w"],
+			"outputs": ["bin/raft_wire_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/raft_wire_test.w", "-o", "bin/raft_wire_test"]},
 				{"cmd": ["bin/raft_wire_test"]}
@@ -4523,6 +4958,8 @@
 		{
 			"name": "rand_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/rand_test.w"],
+			"outputs": ["bin/rand_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/rand_test.w", "-o", "bin/rand_64_test"]},
 				{"cmd": ["bin/rand_64_test"]}
@@ -4531,6 +4968,8 @@
 		{
 			"name": "rand_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/rand_test.w"],
+			"outputs": ["bin/rand_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/rand_test.w", "-o", "bin/rand_test"]},
 				{"cmd": ["bin/rand_test"]}
@@ -4539,6 +4978,8 @@
 		{
 			"name": "range_bounds_trap_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/range_bounds_trap_test.w"],
+			"outputs": ["bin/range_bounds_trap_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/range_bounds_trap_test.w", "-o", "bin/range_bounds_trap_test"]},
 				{"cmd": ["bin/range_bounds_trap_test"], "expect_fail": true, "expect_stderr": ["index out of range: index 3, length 2", "stack trace (most recent call first):", "at main ("]},
@@ -4548,6 +4989,8 @@
 		{
 			"name": "range_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/range_test.w"],
+			"outputs": ["bin/range_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/range_test.w", "-o", "bin/range_test"]},
 				{"cmd": ["bin/range_test"]}
@@ -4556,6 +4999,8 @@
 		{
 			"name": "rc4_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/x/unsafe/rc4_test.w"],
+			"outputs": ["bin/rc4_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/x/unsafe/rc4_test.w", "-o", "bin/rc4_64_test"]},
 				{"cmd": ["bin/rc4_64_test"]}
@@ -4564,6 +5009,8 @@
 		{
 			"name": "rc4_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/x/unsafe/rc4_test.w"],
+			"outputs": ["bin/rc4_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/x/unsafe/rc4_test.w", "-o", "bin/rc4_test"]},
 				{"cmd": ["bin/rc4_test"]}
@@ -4572,6 +5019,8 @@
 		{
 			"name": "result_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/result_test.w"],
+			"outputs": ["bin/result_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/result_test.w", "-o", "bin/result_64_test"]},
 				{"cmd": ["bin/result_64_test"]}
@@ -4580,6 +5029,8 @@
 		{
 			"name": "result_propagate_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/result_propagate_test.w"],
+			"outputs": ["bin/result_propagate_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/result_propagate_test.w", "-o", "bin/result_propagate_64_test"]},
 				{"cmd": ["bin/result_propagate_64_test"]}
@@ -4588,6 +5039,8 @@
 		{
 			"name": "result_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/result_test.w"],
+			"outputs": ["bin/result_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/result_test.w", "-o", "bin/result_test"]},
 				{"cmd": ["bin/result_test"]}
@@ -4596,6 +5049,8 @@
 		{
 			"name": "retry_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/retry_test.w"],
+			"outputs": ["bin/retry_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/web/retry_test.w", "-o", "bin/retry_64_test"]},
 				{"cmd": ["bin/retry_64_test"]}
@@ -4604,6 +5059,8 @@
 		{
 			"name": "retry_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/retry_test.w"],
+			"outputs": ["bin/retry_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/retry_test.w", "-o", "bin/retry_test"]},
 				{"cmd": ["bin/retry_test"]}
@@ -4612,6 +5069,8 @@
 		{
 			"name": "ring_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/ring_test.w"],
+			"outputs": ["bin/ring_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/ring_test.w", "-o", "bin/ring_64_test"]},
 				{"cmd": ["bin/ring_64_test"]}
@@ -4620,6 +5079,8 @@
 		{
 			"name": "ring_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/ring_test.w"],
+			"outputs": ["bin/ring_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/ring_test.w", "-o", "bin/ring_test"]},
 				{"cmd": ["bin/ring_test"]}
@@ -4628,6 +5089,8 @@
 		{
 			"name": "safetensors_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/safetensors_test.w"],
+			"outputs": ["bin/safetensors_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/safetensors_test.w", "-o", "bin/safetensors_64_test"]},
 				{"cmd": ["bin/safetensors_64_test"]}
@@ -4636,6 +5099,8 @@
 		{
 			"name": "safetensors_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/safetensors_test.w"],
+			"outputs": ["bin/safetensors_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/safetensors_test.w", "-o", "bin/safetensors_test"]},
 				{"cmd": ["bin/safetensors_test"]}
@@ -4644,6 +5109,8 @@
 		{
 			"name": "sha1_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/x/unsafe/sha1_test.w"],
+			"outputs": ["bin/sha1_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/x/unsafe/sha1_test.w", "-o", "bin/sha1_64_test"]},
 				{"cmd": ["bin/sha1_64_test"]}
@@ -4652,6 +5119,8 @@
 		{
 			"name": "sha1_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/x/unsafe/sha1_test.w"],
+			"outputs": ["bin/sha1_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/x/unsafe/sha1_test.w", "-o", "bin/sha1_test"]},
 				{"cmd": ["bin/sha1_test"]}
@@ -4660,6 +5129,8 @@
 		{
 			"name": "sha256_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/sha256_test.w"],
+			"outputs": ["bin/sha256_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/sha256_test.w", "-o", "bin/sha256_test"]},
 				{"cmd": ["bin/sha256_test"]}
@@ -4668,6 +5139,8 @@
 		{
 			"name": "sha2_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/sha2_test.w"],
+			"outputs": ["bin/sha2_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/sha2_test.w", "-o", "bin/sha2_64_test"]},
 				{"cmd": ["bin/sha2_64_test"]}
@@ -4676,6 +5149,8 @@
 		{
 			"name": "sha2_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/sha2_test.w"],
+			"outputs": ["bin/sha2_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/sha2_test.w", "-o", "bin/sha2_test"]},
 				{"cmd": ["bin/sha2_test"]}
@@ -4684,6 +5159,8 @@
 		{
 			"name": "shell_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/shell_test.w"],
+			"outputs": ["bin/shell_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/shell_test.w", "-o", "bin/shell_64_test"]},
 				{"cmd": ["bin/shell_64_test"]}
@@ -4692,6 +5169,8 @@
 		{
 			"name": "shell_commands_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/shell_commands_test.w"],
+			"outputs": ["bin/shell_commands_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/shell_commands_test.w", "-o", "bin/shell_commands_64_test"]},
 				{"cmd": ["bin/shell_commands_64_test"]}
@@ -4700,6 +5179,8 @@
 		{
 			"name": "shell_commands_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/shell_commands_test.w"],
+			"outputs": ["bin/shell_commands_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/shell_commands_test.w", "-o", "bin/shell_commands_test"]},
 				{"cmd": ["bin/shell_commands_test"]}
@@ -4708,6 +5189,8 @@
 		{
 			"name": "shell_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/shell_test.w"],
+			"outputs": ["bin/shell_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/shell_test.w", "-o", "bin/shell_test"]},
 				{"cmd": ["bin/shell_test"]}
@@ -4716,6 +5199,8 @@
 		{
 			"name": "sim_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/sim_test.w"],
+			"outputs": ["bin/sim_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/sim_test.w", "-o", "bin/sim_64_test"]},
 				{"cmd": ["bin/sim_64_test"]}
@@ -4724,6 +5209,8 @@
 		{
 			"name": "sim_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/sim_test.w"],
+			"outputs": ["bin/sim_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/sim_test.w", "-o", "bin/sim_test"]},
 				{"cmd": ["bin/sim_test"]}
@@ -4732,6 +5219,8 @@
 		{
 			"name": "sse_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/sse_test.w"],
+			"outputs": ["bin/sse_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/web/sse_test.w", "-o", "bin/sse_64_test"]},
 				{"cmd": ["bin/sse_64_test"]}
@@ -4740,6 +5229,8 @@
 		{
 			"name": "sse_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/sse_test.w"],
+			"outputs": ["bin/sse_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/sse_test.w", "-o", "bin/sse_test"]},
 				{"cmd": ["bin/sse_test"]}
@@ -4748,6 +5239,8 @@
 		{
 			"name": "sstable_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/sstable_test.w"],
+			"outputs": ["bin/sstable_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/sstable_test.w", "-o", "bin/sstable_64_test"]},
 				{"cmd": ["bin/sstable_64_test"]}
@@ -4756,6 +5249,8 @@
 		{
 			"name": "sstable_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/sstable_test.w"],
+			"outputs": ["bin/sstable_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/sstable_test.w", "-o", "bin/sstable_test"]},
 				{"cmd": ["bin/sstable_test"]}
@@ -4764,6 +5259,8 @@
 		{
 			"name": "stack_trace_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/stack_trace_test.w"],
+			"outputs": ["bin/stack_trace_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/stack_trace_test.w", "-o", "bin/stack_trace_64_test"]},
 				{"cmd": ["bin/stack_trace_64_test"]}
@@ -4772,6 +5269,8 @@
 		{
 			"name": "stack_trace_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/stack_trace_test.w"],
+			"outputs": ["bin/stack_trace_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/stack_trace_test.w", "-o", "bin/stack_trace_test"]},
 				{"cmd": ["bin/stack_trace_test"]}
@@ -4780,6 +5279,8 @@
 		{
 			"name": "stat_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/stat_test.w"],
+			"outputs": ["bin/stat_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/stat_test.w", "-o", "bin/stat_64_test"]},
 				{"cmd": ["bin/stat_64_test"]}
@@ -4788,6 +5289,8 @@
 		{
 			"name": "stat_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/stat_test.w"],
+			"outputs": ["bin/stat_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/stat_test.w", "-o", "bin/stat_test"]},
 				{"cmd": ["bin/stat_test"]}
@@ -4796,6 +5299,8 @@
 		{
 			"name": "stats_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/stats_test.w"],
+			"outputs": ["bin/stats_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/stats_test.w", "-o", "bin/stats_64_test"]},
 				{"cmd": ["bin/stats_64_test"]}
@@ -4804,6 +5309,8 @@
 		{
 			"name": "stats_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/stats_test.w"],
+			"outputs": ["bin/stats_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/stats_test.w", "-o", "bin/stats_test"]},
 				{"cmd": ["bin/stats_test"]}
@@ -4812,6 +5319,8 @@
 		{
 			"name": "str_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/str_test.w"],
+			"outputs": ["bin/str_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/str_test.w", "-o", "bin/str_test"]},
 				{"cmd": ["bin/str_test"]}
@@ -4820,6 +5329,8 @@
 		{
 			"name": "stream_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/stream_test.w"],
+			"outputs": ["bin/stream_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/stream_test.w", "-o", "bin/stream_64_test"]},
 				{"cmd": ["bin/stream_64_test"]}
@@ -4828,6 +5339,8 @@
 		{
 			"name": "stream_binary_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/stream_binary_test.w"],
+			"outputs": ["bin/stream_binary_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/stream_binary_test.w", "-o", "bin/stream_binary_64_test"]},
 				{"cmd": ["bin/stream_binary_64_test"]}
@@ -4836,6 +5349,8 @@
 		{
 			"name": "stream_binary_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/stream_binary_test.w"],
+			"outputs": ["bin/stream_binary_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/stream_binary_test.w", "-o", "bin/stream_binary_test"]},
 				{"cmd": ["bin/stream_binary_test"]}
@@ -4844,6 +5359,8 @@
 		{
 			"name": "stream_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/stream_test.w"],
+			"outputs": ["bin/stream_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/stream_test.w", "-o", "bin/stream_test"]},
 				{"cmd": ["bin/stream_test"]}
@@ -4852,6 +5369,8 @@
 		{
 			"name": "string_64_test",
 			"deps": ["wv2"],
+			"inputs": ["structures/string_test.w"],
+			"outputs": ["bin/string_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "structures/string_test.w", "-o", "bin/string_64_test"]},
 				{"cmd": ["bin/string_64_test"]}
@@ -4860,6 +5379,8 @@
 		{
 			"name": "string_test",
 			"deps": ["wv2"],
+			"inputs": ["structures/string_test.w"],
+			"outputs": ["bin/string_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "structures/string_test.w", "-o", "bin/string_test"]},
 				{"cmd": ["bin/string_test"]}
@@ -4868,6 +5389,8 @@
 		{
 			"name": "struct_method_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/struct_method_test.w"],
+			"outputs": ["bin/struct_method_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/struct_method_test.w", "-o", "bin/struct_method_test"]},
 				{"cmd": ["bin/struct_method_test"]}
@@ -4876,6 +5399,8 @@
 		{
 			"name": "struct_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/struct_test.w"],
+			"outputs": ["bin/struct_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/struct_test.w", "-o", "bin/struct_test"]},
 				{"cmd": ["bin/struct_test"]}
@@ -4884,6 +5409,8 @@
 		{
 			"name": "swim_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/swim_test.w"],
+			"outputs": ["bin/swim_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/swim_test.w", "-o", "bin/swim_64_test"]},
 				{"cmd": ["bin/swim_64_test"]}
@@ -4892,6 +5419,8 @@
 		{
 			"name": "swim_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/swim_test.w"],
+			"outputs": ["bin/swim_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/swim_test.w", "-o", "bin/swim_test"]},
 				{"cmd": ["bin/swim_test"]}
@@ -4900,6 +5429,8 @@
 		{
 			"name": "switch_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/switch_test.w"],
+			"outputs": ["bin/switch_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/switch_test.w", "-o", "bin/switch_64_test"]},
 				{"cmd": ["bin/switch_64_test"]}
@@ -4915,6 +5446,8 @@
 		{
 			"name": "task_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/task_test.w"],
+			"outputs": ["bin/task_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/task_test.w", "-o", "bin/task_64_test"]},
 				{"cmd": ["bin/task_64_test"]}
@@ -4923,6 +5456,8 @@
 		{
 			"name": "task_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/task_test.w"],
+			"outputs": ["bin/task_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/task_test.w", "-o", "bin/task_test"]},
 				{"cmd": ["bin/task_test"]}
@@ -4931,6 +5466,8 @@
 		{
 			"name": "template_string_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/template_string_test.w"],
+			"outputs": ["bin/template_string_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/template_string_test.w", "-o", "bin/template_string_64_test"]},
 				{"cmd": ["bin/template_string_64_test"]}
@@ -4939,6 +5476,8 @@
 		{
 			"name": "ternary_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/ternary_test.w"],
+			"outputs": ["bin/ternary_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/ternary_test.w", "-o", "bin/ternary_test"]},
 				{"cmd": ["bin/ternary_test"]}
@@ -4947,6 +5486,8 @@
 		{
 			"name": "thread_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/thread_test.w"],
+			"outputs": ["bin/thread_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/thread_test.w", "-o", "bin/thread_64_test"]},
 				{"cmd": ["bin/thread_64_test"]}
@@ -4955,6 +5496,8 @@
 		{
 			"name": "thread_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/thread_test.w"],
+			"outputs": ["bin/thread_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/thread_test.w", "-o", "bin/thread_test"]},
 				{"cmd": ["bin/thread_test"]}
@@ -4963,6 +5506,8 @@
 		{
 			"name": "threading_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/threading_test.w"],
+			"outputs": ["bin/threading_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/threading_test.w", "-o", "bin/threading_test"]},
 				{"cmd": ["bin/threading_test"]}
@@ -4971,6 +5516,8 @@
 		{
 			"name": "time_64_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/time_test.w"],
+			"outputs": ["bin/time_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/time_test.w", "-o", "bin/time_64_test"]},
 				{"cmd": ["bin/time_64_test"]}
@@ -4979,6 +5526,8 @@
 		{
 			"name": "time_test",
 			"deps": ["wv2"],
+			"inputs": ["lib/time_test.w"],
+			"outputs": ["bin/time_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/time_test.w", "-o", "bin/time_test"]},
 				{"cmd": ["bin/time_test"]}
@@ -4994,6 +5543,8 @@
 		{
 			"name": "type_system_p0_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/type_system_p0_test.w"],
+			"outputs": ["bin/type_system_p0_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/type_system_p0_test.w", "-o", "bin/type_system_p0_test"]},
 				{"cmd": ["bin/type_system_p0_test"]}
@@ -5009,6 +5560,8 @@
 		{
 			"name": "u64_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/u64_test.w"],
+			"outputs": ["bin/u64_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/u64_test.w", "-o", "bin/u64_64_test"]},
 				{"cmd": ["bin/u64_64_test"]}
@@ -5017,6 +5570,8 @@
 		{
 			"name": "u64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/u64_test.w"],
+			"outputs": ["bin/u64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/u64_test.w", "-o", "bin/u64_test"]},
 				{"cmd": ["bin/u64_test"]}
@@ -5025,6 +5580,8 @@
 		{
 			"name": "unsigned_load_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/unsigned_load_test.w"],
+			"outputs": ["bin/unsigned_load_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/unsigned_load_test.w", "-o", "bin/unsigned_load_64_test"]},
 				{"cmd": ["bin/unsigned_load_64_test"]}
@@ -5033,6 +5590,8 @@
 		{
 			"name": "unsigned_load_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/unsigned_load_test.w"],
+			"outputs": ["bin/unsigned_load_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/unsigned_load_test.w", "-o", "bin/unsigned_load_test"]},
 				{"cmd": ["bin/unsigned_load_test"]}
@@ -5041,6 +5600,8 @@
 		{
 			"name": "urlparse_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/urlparse_test.w"],
+			"outputs": ["bin/urlparse_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/web/urlparse_test.w", "-o", "bin/urlparse_64_test"]},
 				{"cmd": ["bin/urlparse_64_test"]}
@@ -5049,6 +5610,8 @@
 		{
 			"name": "urlparse_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/urlparse_test.w"],
+			"outputs": ["bin/urlparse_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/urlparse_test.w", "-o", "bin/urlparse_test"]},
 				{"cmd": ["bin/urlparse_test"]}
@@ -5057,6 +5620,8 @@
 		{
 			"name": "utf8_source_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/utf8_source_test.w"],
+			"outputs": ["bin/utf8_source_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/utf8_source_test.w", "-o", "bin/utf8_source_64_test"]},
 				{"cmd": ["bin/utf8_source_64_test"]}
@@ -5065,6 +5630,8 @@
 		{
 			"name": "utf8_source_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/utf8_source_test.w"],
+			"outputs": ["bin/utf8_source_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/utf8_source_test.w", "-o", "bin/utf8_source_test"]},
 				{"cmd": ["bin/utf8_source_test"]}
@@ -5073,6 +5640,8 @@
 		{
 			"name": "varargs_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/varargs_test.w"],
+			"outputs": ["bin/varargs_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/varargs_test.w", "-o", "bin/varargs_64_test"]},
 				{"cmd": ["bin/varargs_64_test"], "expect_stdout": "varargs OK"}
@@ -5081,6 +5650,8 @@
 		{
 			"name": "varargs_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/varargs_test.w"],
+			"outputs": ["bin/varargs_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/varargs_test.w", "-o", "bin/varargs_test"]},
 				{"cmd": ["bin/varargs_test"], "expect_stdout": "varargs OK"}
@@ -5089,6 +5660,8 @@
 		{
 			"name": "varargs_w_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/varargs_w_test.w"],
+			"outputs": ["bin/varargs_w_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/varargs_w_test.w", "-o", "bin/varargs_w_64_test"]},
 				{"cmd": ["bin/varargs_w_64_test"]}
@@ -5097,6 +5670,8 @@
 		{
 			"name": "vcs_cas_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_cas_test.w"],
+			"outputs": ["bin/vcs_cas_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/vcs_cas_test.w", "-o", "bin/vcs_cas_64_test"]},
 				{"cmd": ["bin/vcs_cas_64_test"]}
@@ -5105,6 +5680,8 @@
 		{
 			"name": "vcs_cas_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_cas_test.w"],
+			"outputs": ["bin/vcs_cas_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_cas_test.w", "-o", "bin/vcs_cas_test"]},
 				{"cmd": ["bin/vcs_cas_test"]}
@@ -5113,6 +5690,8 @@
 		{
 			"name": "vcs_cas_test_arm64",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_cas_test.w"],
+			"outputs": ["bin/vcs_cas_test_arm64"],
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64", "tests/vcs_cas_test.w", "-o", "bin/vcs_cas_test_arm64"]},
 				{"cmd": ["sh", "tools/run_arm64.sh", "bin/vcs_cas_test_arm64"]}
@@ -5121,6 +5700,8 @@
 		{
 			"name": "vcs_commit_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_commit_test.w"],
+			"outputs": ["bin/vcs_commit_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/vcs_commit_test.w", "-o", "bin/vcs_commit_64_test"]},
 				{"cmd": ["bin/vcs_commit_64_test"]}
@@ -5129,6 +5710,8 @@
 		{
 			"name": "vcs_commit_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_commit_test.w"],
+			"outputs": ["bin/vcs_commit_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_commit_test.w", "-o", "bin/vcs_commit_test"]},
 				{"cmd": ["bin/vcs_commit_test"]}
@@ -5137,6 +5720,8 @@
 		{
 			"name": "vcs_dag_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_dag_test.w"],
+			"outputs": ["bin/vcs_dag_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/vcs_dag_test.w", "-o", "bin/vcs_dag_64_test"]},
 				{"cmd": ["bin/vcs_dag_64_test"]}
@@ -5145,6 +5730,8 @@
 		{
 			"name": "vcs_dag_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_dag_test.w"],
+			"outputs": ["bin/vcs_dag_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_dag_test.w", "-o", "bin/vcs_dag_test"]},
 				{"cmd": ["bin/vcs_dag_test"]}
@@ -5153,6 +5740,8 @@
 		{
 			"name": "vcs_delta_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_delta_test.w"],
+			"outputs": ["bin/vcs_delta_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/vcs_delta_test.w", "-o", "bin/vcs_delta_64_test"]},
 				{"cmd": ["bin/vcs_delta_64_test"]}
@@ -5161,6 +5750,8 @@
 		{
 			"name": "vcs_delta_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_delta_test.w"],
+			"outputs": ["bin/vcs_delta_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_delta_test.w", "-o", "bin/vcs_delta_test"]},
 				{"cmd": ["bin/vcs_delta_test"]}
@@ -5169,6 +5760,8 @@
 		{
 			"name": "vcs_diff_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_diff_test.w"],
+			"outputs": ["bin/vcs_diff_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/vcs_diff_test.w", "-o", "bin/vcs_diff_64_test"]},
 				{"cmd": ["bin/vcs_diff_64_test"]}
@@ -5177,6 +5770,8 @@
 		{
 			"name": "vcs_diff_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_diff_test.w"],
+			"outputs": ["bin/vcs_diff_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_diff_test.w", "-o", "bin/vcs_diff_test"]},
 				{"cmd": ["bin/vcs_diff_test"]}
@@ -5185,6 +5780,8 @@
 		{
 			"name": "vcs_index_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_index_test.w"],
+			"outputs": ["bin/vcs_index_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/vcs_index_test.w", "-o", "bin/vcs_index_64_test"]},
 				{"cmd": ["bin/vcs_index_64_test"]}
@@ -5193,6 +5790,8 @@
 		{
 			"name": "vcs_index_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_index_test.w"],
+			"outputs": ["bin/vcs_index_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_index_test.w", "-o", "bin/vcs_index_test"]},
 				{"cmd": ["bin/vcs_index_test"]}
@@ -5201,6 +5800,8 @@
 		{
 			"name": "vcs_merge3_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_merge3_test.w"],
+			"outputs": ["bin/vcs_merge3_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/vcs_merge3_test.w", "-o", "bin/vcs_merge3_64_test"]},
 				{"cmd": ["bin/vcs_merge3_64_test"]}
@@ -5209,6 +5810,8 @@
 		{
 			"name": "vcs_merge3_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_merge3_test.w"],
+			"outputs": ["bin/vcs_merge3_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_merge3_test.w", "-o", "bin/vcs_merge3_test"]},
 				{"cmd": ["bin/vcs_merge3_test"]}
@@ -5217,6 +5820,8 @@
 		{
 			"name": "vcs_tree_64_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_tree_test.w"],
+			"outputs": ["bin/vcs_tree_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/vcs_tree_test.w", "-o", "bin/vcs_tree_64_test"]},
 				{"cmd": ["bin/vcs_tree_64_test"]}
@@ -5225,6 +5830,8 @@
 		{
 			"name": "vcs_tree_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/vcs_tree_test.w"],
+			"outputs": ["bin/vcs_tree_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/vcs_tree_test.w", "-o", "bin/vcs_tree_test"]},
 				{"cmd": ["bin/vcs_tree_test"]}
@@ -5233,6 +5840,8 @@
 		{
 			"name": "wal_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/wal_test.w"],
+			"outputs": ["bin/wal_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/distributed/wal_test.w", "-o", "bin/wal_64_test"]},
 				{"cmd": ["bin/wal_64_test"]}
@@ -5241,6 +5850,8 @@
 		{
 			"name": "wal_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/distributed/wal_test.w"],
+			"outputs": ["bin/wal_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/wal_test.w", "-o", "bin/wal_test"]},
 				{"cmd": ["bin/wal_test"]}
@@ -5254,9 +5865,21 @@
 			]
 		},
 		{
+			"name": "wbuild_arch_only_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/wbuild_arch_only_test.w"],
+			"outputs": ["bin/wbuild_arch_only_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/wbuild_arch_only_test.w", "-o", "bin/wbuild_arch_only_test"]},
+				{"cmd": ["bin/wbuild_arch_only_test"], "expect_stdout": "arch only OK"}
+			]
+		},
+		{
 			"name": "wbuild_directive_64_test",
 			"deps": ["wv2"],
 			"data": ["tests/wbuild_directive_data.txt"],
+			"inputs": ["tests/wbuild_directive_test.w", "tests/wbuild_directive_data.txt"],
+			"outputs": ["bin/wbuild_directive_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/wbuild_directive_test.w", "-o", "bin/wbuild_directive_64_test"]},
 				{"cmd": ["bin/wbuild_directive_64_test"], "stdin": "ping\n", "expect_stdout": "pong", "timeout_ms": 20000}
@@ -5266,6 +5889,8 @@
 			"name": "wbuild_directive_test",
 			"deps": ["wv2"],
 			"data": ["tests/wbuild_directive_data.txt"],
+			"inputs": ["tests/wbuild_directive_test.w", "tests/wbuild_directive_data.txt"],
+			"outputs": ["bin/wbuild_directive_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/wbuild_directive_test.w", "-o", "bin/wbuild_directive_test"]},
 				{"cmd": ["bin/wbuild_directive_test"], "stdin": "ping\n", "expect_stdout": "pong", "timeout_ms": 20000}
@@ -5274,6 +5899,8 @@
 		{
 			"name": "wbuild_platform_test",
 			"deps": ["wv2"],
+			"inputs": ["tests/wbuild_platform_test.w"],
+			"outputs": ["bin/wbuild_platform_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/wbuild_platform_test.w", "-o", "bin/wbuild_platform_test"]},
 				{"cmd": ["bin/wbuild_platform_test"], "expect_stdout": "platform axis OK"}
@@ -5282,6 +5909,8 @@
 		{
 			"name": "wbuild_platform_test_arm64",
 			"deps": ["wv2"],
+			"inputs": ["tests/wbuild_platform_test.w"],
+			"outputs": ["bin/wbuild_platform_test_arm64"],
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64", "tests/wbuild_platform_test.w", "-o", "bin/wbuild_platform_test_arm64"]},
 				{"cmd": ["sh", "tools/run_arm64.sh", "bin/wbuild_platform_test_arm64"], "expect_stdout": "platform axis OK"}
@@ -5290,6 +5919,8 @@
 		{
 			"name": "wbuild_platform_test_darwin",
 			"deps": ["wv2"],
+			"inputs": ["tests/wbuild_platform_test.w"],
+			"outputs": ["bin/wbuild_platform_test_darwin"],
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64_darwin", "tests/wbuild_platform_test.w", "-o", "bin/wbuild_platform_test_darwin"]}
 			]
@@ -5297,14 +5928,28 @@
 		{
 			"name": "wbuild_platform_test_win64",
 			"deps": ["wv2"],
+			"inputs": ["tests/wbuild_platform_test.w"],
+			"outputs": ["bin/wbuild_platform_test_win64.exe"],
 			"steps": [
 				{"cmd": ["bin/wv2", "win64", "tests/wbuild_platform_test.w", "-o", "bin/wbuild_platform_test_win64.exe"]},
 				{"cmd": ["wine", "bin/wbuild_platform_test_win64.exe"], "expect_stdout": "platform axis OK"}
 			]
 		},
 		{
+			"name": "wbuildgen_directive_errors_test",
+			"deps": ["wv2", "wbuildgen"],
+			"inputs": ["tests/wbuildgen_directive_errors_test.w"],
+			"outputs": ["bin/wbuildgen_directive_errors_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wbuildgen_directive_errors_test.w", "-o", "bin/wbuildgen_directive_errors_test"]},
+				{"cmd": ["bin/wbuildgen_directive_errors_test"]}
+			]
+		},
+		{
 			"name": "wexec_remote_cache_test",
 			"deps": ["wv2", "wexec"],
+			"inputs": ["tests/wexec_remote_cache_test.w"],
+			"outputs": ["bin/wexec_remote_cache_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/wexec_remote_cache_test.w", "-o", "bin/wexec_remote_cache_test"]},
 				{"cmd": ["bin/wexec_remote_cache_test"]}
@@ -5313,6 +5958,8 @@
 		{
 			"name": "wvc_e2e_test",
 			"deps": ["wv2", "wvc"],
+			"inputs": ["tests/wvc_e2e_test.w"],
+			"outputs": ["bin/wvc_e2e_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/wvc_e2e_test.w", "-o", "bin/wvc_e2e_test"]},
 				{"cmd": ["bin/wvc_e2e_test"]}
@@ -5321,6 +5968,8 @@
 		{
 			"name": "x25519_64_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/x25519_test.w"],
+			"outputs": ["bin/x25519_64_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_64_test"]},
 				{"cmd": ["bin/x25519_64_test"]}
@@ -5329,6 +5978,8 @@
 		{
 			"name": "x25519_iterated_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/x25519_test.w"],
+			"outputs": ["bin/x25519_iterated_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_iterated_test"]},
 				{"cmd": ["bin/x25519_iterated_test", "--iterated-1000"]}
@@ -5337,9 +5988,71 @@
 		{
 			"name": "x25519_test",
 			"deps": ["wv2"],
+			"inputs": ["libs/standard/crypto/x25519_test.w"],
+			"outputs": ["bin/x25519_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_test"]},
 				{"cmd": ["bin/x25519_test"]}
+			]
+		},
+		{
+			"name": "x64_float_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/x64_float_test.w"],
+			"outputs": ["bin/x64_float_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_float_test.w", "-o", "bin/x64_float_test"]},
+				{"cmd": ["bin/x64_float_test"], "expect_stdout": "x64 float OK"}
+			]
+		},
+		{
+			"name": "x64_fmath64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/x64_fmath64_test.w"],
+			"outputs": ["bin/x64_fmath64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_fmath64_test.w", "-o", "bin/x64_fmath64_test"]},
+				{"cmd": ["bin/x64_fmath64_test"], "expect_stdout": "x64 fmath64 OK"}
+			]
+		},
+		{
+			"name": "x64_int64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/x64_int64_test.w"],
+			"outputs": ["bin/x64_int64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_int64_test.w", "-o", "bin/x64_int64_test"]},
+				{"cmd": ["bin/x64_int64_test"], "expect_stdout": "x64 int64 OK"}
+			]
+		},
+		{
+			"name": "x64_map_float64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/x64_map_float64_test.w"],
+			"outputs": ["bin/x64_map_float64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_map_float64_test.w", "-o", "bin/x64_map_float64_test"]},
+				{"cmd": ["bin/x64_map_float64_test"]}
+			]
+		},
+		{
+			"name": "x64_ndarray64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/x64_ndarray64_test.w"],
+			"outputs": ["bin/x64_ndarray64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_ndarray64_test.w", "-o", "bin/x64_ndarray64_test"]},
+				{"cmd": ["bin/x64_ndarray64_test"], "expect_stdout": "x64 ndarray64 OK"}
+			]
+		},
+		{
+			"name": "x64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/x64_test.w"],
+			"outputs": ["bin/x64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_test.w", "-o", "bin/x64_test"]},
+				{"cmd": ["bin/x64_test"]}
 			]
 		}
 	]
