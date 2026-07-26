@@ -462,6 +462,56 @@ int getchar(int file):
 	return c
 
 
+# EOF/error-distinguishing getchar variants
+# (docs/projects/ai_tooling_next_steps.md): getchar() and
+# getchar_unbuffered() collapse end-of-file and a failed read() into the
+# same -1, so a mid-file I/O error looks like clean truncation. The
+# _checked twins return the byte 0..255, GETCHAR_EOF() at end of file, or
+# GETCHAR_READ_ERROR() when read() fails. The raw negative errno is not
+# forwarded because -EPERM (-1) would collide with the EOF sentinel.
+# getchar_checked shares the per-fd buffer state with getchar(), so calls
+# may interleave freely with the legacy functions on the same fd (an
+# error leaves that state untouched, exactly like getchar()).
+int GETCHAR_EOF():
+	return (-1)
+
+
+int GETCHAR_READ_ERROR():
+	return (-2)
+
+
+int getchar_unbuffered_checked(int file):
+	# Read one byte into a stack slot (see getchar_unbuffered on why not
+	# a c"" literal).
+	int c = 0
+	int result = read(file, cast(char*, &c), 1)
+	if (result == 0):
+		return GETCHAR_EOF()
+	if (result < 0):
+		return GETCHAR_READ_ERROR()
+	return c & 255
+
+
+int getchar_checked(int file):
+	if ((file < 0) | (file >= GETCHAR_MAX_FD())):
+		return getchar_unbuffered_checked(file)
+	if (getchar_pos[file] >= getchar_limit[file]):
+		if (getchar_buf_addr[file] == 0):
+			getchar_buf_addr[file] = cast(int, malloc(GETCHAR_BUF_CAPACITY()))
+		int count = read(file, cast(char*, getchar_buf_addr[file]), GETCHAR_BUF_CAPACITY())
+		if (count == 0):
+			return GETCHAR_EOF()
+		if (count < 0):
+			return GETCHAR_READ_ERROR()
+		getchar_pos[file] = 0
+		getchar_limit[file] = count
+		getchar_kernel_pos[file] = getchar_kernel_pos[file] + count
+	char* buffer = cast(char*, getchar_buf_addr[file])
+	int c = buffer[getchar_pos[file]] & 255
+	getchar_pos[file] = getchar_pos[file] + 1
+	return c
+
+
 void putc(int file, int c):
 	# Write the low byte of c straight from its stack slot. The older form
 	# mutated a c"" literal in place, which faults once the code segment is

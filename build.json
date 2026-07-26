@@ -1069,7 +1069,12 @@
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "x64", "tests/wexec/direct_file/sample_test.w"], "expect_stdout": ["wexec: target x64:tests/wexec/direct_file/sample_test.w", "direct file adhoc test ran"]},
 				{"cmd": ["test", "-x", "bin/sample_test"]},
 				{"cmd": ["test", "-x", "bin/sample_test_x64"]},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/does_not_exist.w"], "expect_fail": true, "expect_stderr": "no such file"}
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/does_not_exist.w"], "expect_fail": true, "expect_stderr": "no such file"},
+				{"cmd": ["rm", "-rf", "bin/wexec_xok"]},
+				{"cmd": ["mkdir", "-p", "bin/wexec_xok/shadow", "bin/wexec_xok/real"]},
+				{"cmd": ["sh", "-c", "printf 'not a program\\n' > bin/wexec_xok/shadow/wexec_xok_probe"]},
+				{"cmd": ["sh", "-c", "printf '#!/bin/sh\\necho xok probe: real executable ran\\n' > bin/wexec_xok/real/wexec_xok_probe && chmod 755 bin/wexec_xok/real/wexec_xok_probe"]},
+				{"cmd": ["sh", "-c", "PATH=\"bin/wexec_xok/shadow:bin/wexec_xok/real:$PATH\" bin/wexec -f tests/wexec/path_xok.json probe"], "expect_stdout": ["xok probe: real executable ran", "wexec: OK (1 targets)"]}
 			]
 		},
 		{
@@ -1887,6 +1892,7 @@
 				"compress_zlib_64_test",
 				"crypto_rsa_verify_64_test",
 				"cstr_64_test",
+				"deep_nesting_64_test",
 				"default_args_64_test",
 				"defer_64_test",
 				"dns_64_test",
@@ -1905,6 +1911,7 @@
 				"generator_return_free_64_test",
 				"generics_64_test",
 				"generics_inference_64_test",
+				"getchar_checked_64_test",
 				"hash_table_64_test",
 				"http_client_64_test",
 				"http_server_64_test",
@@ -1919,6 +1926,7 @@
 				"lib_64_test",
 				"limb_builtin_64_test",
 				"limb_builtin_shadow_64_test",
+				"line_edit_paste_64_test",
 				"list_builtin_64_test",
 				"lsm_64_test",
 				"malloc_churn_64_test",
@@ -1946,7 +1954,9 @@
 				"poly1305_64_test",
 				"prng_64_test",
 				"process_64_test",
+				"process_bytes_64_test",
 				"protobuf_64_test",
+				"protobuf_leak_64_test",
 				"ptr_add_64_test",
 				"quorum_64_test",
 				"raft_64_test",
@@ -2412,6 +2422,7 @@
 				"compress_inflate_test",
 				"compress_zlib_test",
 				"cstr_test",
+				"deep_nesting_test",
 				"directory_test",
 				"dns_test",
 				"env_test",
@@ -2429,6 +2440,7 @@
 				"format_test",
 				"framing_test",
 				"generator_return_free_test",
+				"getchar_checked_test",
 				"grapheme_test",
 				"hash_table_test",
 				"hkdf_test",
@@ -2448,6 +2460,7 @@
 				"limb_builtin_shadow_test",
 				"limb_builtin_test",
 				"line_edit_completion_test",
+				"line_edit_paste_test",
 				"list_methods_test",
 				"lsm_test",
 				"malloc_churn_test",
@@ -2476,7 +2489,9 @@
 				"poll_test",
 				"poly1305_test",
 				"prng_test",
+				"process_bytes_test",
 				"process_test",
+				"protobuf_leak_test",
 				"protobuf_test",
 				"ptr_add_test",
 				"quorum_test",
@@ -3038,6 +3053,22 @@
 			]
 		},
 		{
+			"name": "deep_nesting_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/deep_nesting_test.w", "-o", "bin/deep_nesting_64_test"]},
+				{"cmd": ["bin/deep_nesting_64_test"]}
+			]
+		},
+		{
+			"name": "deep_nesting_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/deep_nesting_test.w", "-o", "bin/deep_nesting_test"]},
+				{"cmd": ["bin/deep_nesting_test"]}
+			]
+		},
+		{
 			"name": "default_args_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3374,6 +3405,22 @@
 			]
 		},
 		{
+			"name": "getchar_checked_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/getchar_checked_test.w", "-o", "bin/getchar_checked_64_test"]},
+				{"cmd": ["bin/getchar_checked_64_test"]}
+			]
+		},
+		{
+			"name": "getchar_checked_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/getchar_checked_test.w", "-o", "bin/getchar_checked_test"]},
+				{"cmd": ["bin/getchar_checked_test"]}
+			]
+		},
+		{
 			"name": "grapheme_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -3681,6 +3728,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/line_edit_completion_test.w", "-o", "bin/line_edit_completion_test"]},
 				{"cmd": ["bin/line_edit_completion_test"]}
+			]
+		},
+		{
+			"name": "line_edit_paste_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/line_edit_paste_test.w", "-o", "bin/line_edit_paste_64_test"]},
+				{"cmd": ["bin/line_edit_paste_64_test"]}
+			]
+		},
+		{
+			"name": "line_edit_paste_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/line_edit_paste_test.w", "-o", "bin/line_edit_paste_test"]},
+				{"cmd": ["bin/line_edit_paste_test"]}
 			]
 		},
 		{
@@ -4186,6 +4249,22 @@
 			]
 		},
 		{
+			"name": "process_bytes_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/process_bytes_test.w", "-o", "bin/process_bytes_64_test"]},
+				{"cmd": ["bin/process_bytes_64_test"]}
+			]
+		},
+		{
+			"name": "process_bytes_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/process_bytes_test.w", "-o", "bin/process_bytes_test"]},
+				{"cmd": ["bin/process_bytes_test"]}
+			]
+		},
+		{
 			"name": "process_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -4199,6 +4278,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/protobuf_test.w", "-o", "bin/protobuf_64_test"]},
 				{"cmd": ["bin/protobuf_64_test"]}
+			]
+		},
+		{
+			"name": "protobuf_leak_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/protobuf_leak_test.w", "-o", "bin/protobuf_leak_64_test"]},
+				{"cmd": ["bin/protobuf_leak_64_test"]}
+			]
+		},
+		{
+			"name": "protobuf_leak_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/protobuf_leak_test.w", "-o", "bin/protobuf_leak_test"]},
+				{"cmd": ["bin/protobuf_leak_test"]}
 			]
 		},
 		{

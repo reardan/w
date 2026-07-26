@@ -167,11 +167,6 @@ is a queue, not an archive.
   The ranged form `wtest changed main..HEAD --defhash` is correct; the
   footgun combination is accepted silently — consider detecting a
   committed-clean worktree and warning.
-- **(2026-07-19 review) Only the first `..` argument is a range**; a
-  second range argument is silently treated as a changed-file path,
-  matches nothing, and falls to the `tests`-umbrella catch-all
-  (over-selection, but silent). Should be an argument error.
-
 - **First `wtest changed` after a build can take well over the
   documented ~35s.** Building `libs/extras/vcs/merge3.w` (issue #252
   wave 4), `git diff --name-only HEAD | ./bin/wtest changed` timed out
@@ -333,22 +328,17 @@ exist yet:
   `defhash_note` --
   the same string-set idiom `libs/extras/c_import/importer.w`'s
   `ci_imported_functions` already uses (both compile under the pinned
-  seed), so this introduces no new pattern. One real bug found along the
-  way, NOT fully root-caused: `return name in defhash_name_index` written
-  as a direct return-expression reproducibly segfaults `bin/wv2_64`
-  during `verify_x64`'s w.w self-host, even though
-  `defhash_is_known_definition` is never actually called in that build
-  (`defhash_mode` is off) — apparently a latent x64 codegen defect in
-  `in` as a direct return-expression that a minimal standalone repro of
-  the same shape does NOT reproduce, so it seems to depend on
-  `compiler.w`'s larger/denser surrounding context (register pressure,
-  code-size-dependent branch encoding, or similar). Splitting it into
-  `int found = name in defhash_name_index; return found` sidesteps it
-  entirely (shipped that way) and `verify`/`verify_x64` are green either
-  way, but the codegen defect itself remains open for whoever next hits
-  it — a `code_generator/`-focused HIGH-care task should scope a proper
-  repro (this file's `defhash_is_known_definition` plus its immediate
-  neighbors is the only known trigger so far).
+  seed), so this introduces no new pattern. The `return name in
+  defhash_name_index` direct-return segfault originally found here was
+  never an `in`/codegen defect at all: root cause was
+  `code_generator/dwarf.w`'s `debug_local_note` realloc'ing the
+  word-sized `debug_local_names` pointer array with 4-byte-int sizes
+  (fixed 2026-07-19, f13ab7f) — heap corruption gated on the compiled
+  tree crossing >4096 recorded locals, which is why source-shape
+  changes here appeared to matter and an isolated repro never
+  reproduced. The `int found = ...; return found` split was reverted
+  2026-07-25 (direct return restored); see `ai_tooling.md`'s status
+  entry for the full trio closure.
 
 ## Build manifest (`wbuildgen`)
 
@@ -402,18 +392,31 @@ exist yet:
 
 ## Cleanup observed while dogfooding
 
-- **(2026-07-19 review) arm64 self-host stage 2 regressed with the wave
-  C merge**: `bin/wv2_arm64` (under qemu) compiling `w.w` ends with
-  `Failed to find a _main() function` at EOF although `main` is defined
-  — `sym_address("main")` returns 0 at runtime inside the
-  arm64-executing compiler. Pre-merge main (717fa05) passes; the merge
-  touched no `code_generator/` file, so this is a latent arm64 codegen
-  defect triggered by new source patterns — the third sighting of the
-  context-dependent codegen bug family (with wave 4a's and 4f's x64
-  sightings). Small programs compile fine under `bin/wv2_arm64`; only
-  w.w-scale input trips it. Not CI-gated (the release workflow's arm64
-  leg is disabled for speed). File-level bisection findings recorded
-  below when available.
+- **(2026-07-25) `lib/format_test.w`'s 32/64-bit twins race on a fixed
+  temp path**: both `format_test` and `format_64_test` write and read
+  back `/tmp/w_format_test.txt` (O_TRUNC on open), so a parallel
+  `./wbuild tests` / `test_changed` run can interleave them —
+  observed as `test_hex_verb` asserting `wanted '0x000000ff' got ''`
+  in `format_64_test` while `format_test` ran concurrently; both pass
+  standalone. Fix is to pid-scope the path (the
+  `bin/<name>_test_<pid>` convention other tests use). Line 20's
+  `args[1] = c"abc"` also warns (`assignment type mismatch: expected
+  'int', got 'char*'`) on every compile of the test.
+- **arm64 self-host stage 2 regression ("Failed to find a _main()
+  function") — expected fixed by f13ab7f, UNCONFIRMED.** The third
+  sighting of the one bug behind the "context-dependent codegen"
+  family (see `ai_tooling.md`'s 2026-07-25 status entry): arm64, like
+  x64, is a 64-bit-pointer host, and `bin/wv2_arm64` (under qemu)
+  compiling `w.w` regressed exactly when the tree crossed
+  `debug_local_note`'s >4096-locals realloc-corruption threshold
+  (`code_generator/dwarf.w`, fixed 2026-07-19 in f13ab7f). Cannot be
+  confirmed closed from a host without `qemu-user-static`: only
+  `build_arm64`'s cross-compile step (`bin/wv2 arm64 w.w -o
+  bin/wv2_arm64`) was re-checked (green, 2026-07-25) — its stage-2
+  self-host step, like `verify_arm64`, needs qemu. Remaining action:
+  re-run `./wbuild verify_arm64` on a qemu-aarch64 host or CI, then
+  delete this entry. Not CI-gated today (the release workflow's arm64
+  leg is disabled for speed).
 - **(2026-07-19 review) protobuf stage 1 hardening backlog**: duplicate
   STRING/BYTES/MESSAGE occurrences of the same field leak the first
   allocation and diverge from proto3's merge-submessages rule
@@ -425,6 +428,25 @@ exist yet:
   bytes as TRUNCATED though it is already provably malformed, and
   `pb_skip_or_error` maps every skip failure to TRUNCATED (unknown-field
   11-byte varints misreport as truncation).
+  *(2026-07-25: all five addressed -- PB_MAX_DECODE_DEPTH()/
+  PB_ERR_DEPTH_EXCEEDED depth cap, proto3 last-one-wins for
+  strings/bytes + recursive MERGE for duplicate submessages,
+  pb_free_decoded error-path sweep, varint 10-continuation-byte
+  reclassification, pb_skip_or_error error-kind propagation; asserted
+  by tests/protobuf_test.w's hardening section and
+  tests/protobuf_leak_test.w's debug-allocator leak checks.)*
+- **(2026-07-25, protobuf hardening) casting a `T[N]` array to a
+  pointer type addresses the runtime header, not the data**:
+  `cast(pb_bytes*, slot)` on a `char[16]` local yields data-8 (the
+  2-word array header), while `cast(int, slot)`, indexing, and argument
+  decay all reach the data -- so a struct-view write through such a
+  cast silently clobbers the header and the next decay crashes far from
+  the bug. Cost a multi-step bisect to find; `w check` accepts the cast
+  with no diagnostic. A warning on casting an array-typed expression to
+  a pointer type (or making the cast decay like every other value
+  context) would remove the trap. Sibling of the known "T[N] struct
+  field is not flat storage" gotcha already noted in
+  tests/protobuf_test.w's header.
 - **(2026-07-19 review) attach-mode polish**: a non-SIGTRAP signal stop
   during the step-over-breakpoint single step (in both `at_continue` and
   `at_finish`) is silently discarded instead of stored in
@@ -447,58 +469,6 @@ exist yet:
   no diagnostic. The tokenizer.w block comment overstates coverage.
   `lib/shell_commands.w`'s `wc` derives counts from `strlen`, so a file
   containing NUL truncates its counts.
-
-- **Suspected x64 codegen/register-allocation bug: a local variable read
-  both inside and after a conditional block can come back corrupted when
-  the *compiler itself* is executing as an x86-64 process** (found wave
-  4a, #123 phase 4, adding `debugger/attach.w`'s `at_step_prepare`). Not a
-  "wrong value at runtime" symptom — it corrupted the compiler's own
-  `lib/memory_freelist.w` heap while `bin/wv2_64`/`bin/wv3_64` (an
-  x64-*executing* `wv2`/`wv3`, built via `bin/wv2 x64 w.w -o ...`) was
-  itself compiling `w.w`, crashing with SIGSEGV inside `malloc_load_word`/
-  `freelist_malloc` partway through `debugger/attach.w` — i.e. `./wbuild
-  verify_x64`'s `build_x64` step, not `verify_x64`'s cmp step, so it can
-  look like a self-hosting fixpoint break when it's really a crash before
-  any fixpoint comparison runs. Reproduced deterministically (~15 tries,
-  0 misses) by bisecting `at_step_prepare`'s body down to:
-  ```
-  int pcv = <anything — a call, a seam-indirected call, or a bare
-             arithmetic expression all reproduce it identically>
-  if (<any condition>):
-      int entry = 0        # body need not reference pcv at all
-      <use entry>
-  <global> = pcv            # pcv read again after the if
-  ```
-  compiled by any x64-executing `wv2`/`wv3` (both a "clean" one built
-  before this change and one built after reproduce it — this isn't a
-  self-hosting-quine artifact, any x64 compiler run against a source tree
-  containing the pattern crashes). Confirmed NOT a mere "total code size"
-  effect: padding the same file with 300-430 unrelated no-op functions
-  (in `debugger/attach.w` directly, and in an isolated ~15-line repro
-  file) never reproduces it, but the pattern reproduces it every time
-  inside `debugger/attach.w`'s existing context. The isolated repro file
-  alone (no padding, same shape) does *not* crash either — something about
-  `debugger/attach.w`'s surrounding declarations/imports is necessary,
-  which a short investigation could not narrow further (candidates:
-  register-allocator state carried across statements/functions within one
-  compilation unit, or a fixed-size table indexed by a count that this
-  file's total local/global/statement count happens to cross only under
-  x64's wider `int`). **Workaround applied in this PR** (`debugger/attach.w`'s
-  `at_step_prepare`): don't cache a value used both inside and after a
-  conditional in a local — call the accessor fresh at each use site
-  instead (`at_in_code(dbg_reg_pc())` / `at_to_v(dbg_reg_pc())` twice,
-  rather than `int pcv = dbg_reg_pc()` once). Note `debugger/attach.w`'s
-  existing `at_frames_compute` has a superficially similar shape (`int esp
-  = dbg_reg_sp()` read before an `if` and again after, in a `while` loop)
-  and does *not* trigger it, so the exact trigger conditions are narrower
-  than "any local live across a conditional" — a real, dedicated
-  bisection with a debug build of the compiler (not black-box source
-  bisection) is needed before attempting a fix. This is a
-  `code_generator/`/register-allocator concern, **HIGH** care, and should
-  land as its own gated PR (`./wbuild verify_x64` both before and after)
-  rather than folded into feature work — anyone hitting an inexplicable
-  `verify_x64` SIGSEGV during the `build_x64` compile step itself (not
-  the `cmp` step) should suspect this class of bug first.
 
 - **`wbuildgen` can't express "this source's default-arch target is
   x64-only, don't also generate an unwanted 32-bit twin"** (wave 2b,
@@ -538,6 +508,13 @@ exist yet:
   target). Real fix: check the executable bit (or `access(path, X_OK)`)
   in the `PATH` search loop, and ideally have the exit-127 path name the
   resolved-but-unusable candidate instead of just "exit status 127".
+  Fixed (2026-07-25): `wexec_candidate_is_executable` (lib/stat.w's
+  statx wrapper, `mode & 0111`; a failed stat — the darwin/win64 stubs
+  return -1 — degrades to the old readable-only answer so those
+  platforms are unchanged) now filters the `PATH` loop, and the
+  shadowing scenario is a regression step in `wexec_test`
+  (tests/wexec/path_xok.json). The exit-127 diagnostic naming the
+  unusable candidate remains a nice-to-have.
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new
@@ -547,14 +524,6 @@ exist yet:
   rewrites test sources en masse, grep the touched files for their own
   paths first; longer term, self-referential assertions should read a
   dedicated fixture instead of the test's own source.
-- **`lib/args.w` boolean flags swallow the next positional.** A bare
-  `-f` / `--nofollow` before a path is treated as a valued flag, so
-  `stat -f path` never sees `path` as positional (documented in
-  `lib/args.w`'s header). `tools/{stat,readlink}.w` work around this
-  with a hand-rolled argv walk; a real fix is either a
-  `args_has_bool_flag` that does not consume the next token, or a
-  convention/API for declaring boolean flag names up front. (scheduled:
-  wave plan C task 1e)
 - **A fixed-size array (`T[N]`) struct field is not flat inline
   storage — it carries a hidden runtime header before its data.**
   Found writing `libs/extras/protobuf/`'s generic, descriptor-driven
@@ -592,13 +561,26 @@ exist yet:
   content-hash caching on macOS, add per-arch dirent accessors
   (`reclen`/`name`/`kind`) next to each `getdents` shim in
   `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
+  Partially addressed (2026-07-25): the silent misparse is gone —
+  `tools/__arch__/*/wexec_platform.w`'s `wexec_dirents_supported()`
+  reports the layout gap per target, and `wexec_collect_dir` now warns
+  once ("directory inputs are not hashed on this platform") and treats
+  the directory as empty instead of parsing Darwin records with Linux
+  offsets. The full fix (per-arch dirent accessors, validated on a
+  Mac) is still open; the accessor plan above stands.
 - **`getchar()`/`getchar_unbuffered()` conflate a genuine `read()` error
   with EOF** (`lib/lib.w`). A mid-file I/O failure looks like silent
   truncation (or a misleadingly-positioned parse error) instead of a
   diagnostic; fixing needs a distinct "read error" sentinel plumbed
   through `get_character()`/`compile_attempt()`/etc. Rare in practice (a
   `read()` on an already-`open()`ed regular local file essentially never
-  fails) — documented, not scheduled.
+  fails) — documented, not scheduled. **Partially shipped (2026-07-25):
+  `getchar_checked`/`getchar_unbuffered_checked` in `lib/lib.w` return
+  `GETCHAR_EOF()` (-1) at end of file and `GETCHAR_READ_ERROR()` (-2)
+  when `read()` fails, sharing the per-fd buffer state with the (still
+  byte-identical) legacy functions; pinned by
+  `tests/getchar_checked_test.w`. Plumbing the sentinel through the
+  compiler's `get_character()` path remains open.**
 - **Shipped (2026-07-19, wave plan C task 1c): `lib/generator.w`'s
   `__w_gen_create` coroutine-stack `mmap()` is now checked** —
   `__w_gen_mmap_failed()` mirrors `debug_tbl_mmap_failed()`'s convention;
@@ -657,7 +639,22 @@ exist yet:
   so it is not the same class of bug 2h closes, just a related, narrower
   gap. Real fix: make `ctrl_kind_stack`/`ctrl_val_stack` grow dynamically
   (or move them off a fixed-size array entirely) instead of picking a
-  bigger constant.
+  bigger constant. **Fixed**: the stacks are now malloc'd `int*` buffers
+  (initial capacity 256, doubled on push by `ctrl_stack_reserve()` in
+  `code_generator/x86.w`; byte sizes computed with `__word_size__` since
+  the entries are word-sized ints — the f13ab7f lesson). One correction
+  to the analysis above, measured while writing the regression test: a
+  *genuinely* nested if/for level costs 2 `stmt_nesting_depth` units,
+  not 1 (the statement and its `:` block each recurse `statement()`), so
+  the 200-unit guard already fired at 100 pure nested ifs — before the
+  129-if array bound, which was in practice reachable only by `for`
+  nests (86, 3 slots each) and for-heavy mixed shapes. Post-fix the
+  guard is the only nesting bound: ~99 genuinely nested levels, 200
+  chain branches. `tests/deep_nesting_test.w` (a generated file) pins
+  95 nested fors (285 ctrl slots at peak), an 88-for/9-if mix (282,
+  with the if regions past slot 256), and a guard-max 97-if nest, all
+  asserted to execute correctly on x86 and x64; the first two trapped
+  at `index 256, length 256` on the pre-fix compiler.
 - **Found while shipping 2h: piping a very long single line (10000+
   characters) containing deeply nested parens into the interactive REPL
   (`bin/repl < file`, no PTY) does not reliably reach the second REPL
@@ -696,6 +693,12 @@ exist yet:
   any future harness needs to *pipe* binary data into a child process
   (a length-taking `process_run_bytes(path, argv, opts, char* stdin,
   int stdin_length, timeout_ms)` twin, or an overload, would cover it).
+  **Shipped (2026-07-25): `process_run_bytes` (and
+  `process_run_windows_bytes`) take that explicit `stdin_length`;
+  `process_run`/`process_run_windows` are unchanged strlen-measuring
+  delegates. Pinned by `tests/process_bytes_test.w` (embedded-NUL and
+  >4KB payloads round-tripped through `/bin/cat`, plus the legacy
+  truncation contract).**
 
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
@@ -723,25 +726,40 @@ ergonomic gap:
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 
 - **(2026-07-19 review) Paste/line-editor gaps found reviewing wave C's
-  bracketed-paste + Ctrl-R work** (none block the piped/agent path):
-  `le_paste_match_end` drops up to 5 already-consumed bytes on a partial
-  ESC-sequence mismatch, corrupting pasted content containing ESC;
-  pasted CRLF endings inject a spurious blank line per line ('\r' ends
-  the line, the '\n' left pending becomes an empty accept); every pasted
-  line is pushed into history (paste floods history) and multi-line
-  paste renders only bare newlines; an arrow key during Ctrl-R cancels
-  on ESC then inserts the residual "[A" as literal text (only the last
-  byte is pushed back); starting a search while the edited line wraps
-  leaves stale wrapped rows (`le_render_search` never climbs
-  `le_prev_rows`); completion candidates silently truncate at 64 and
-  the common prefix of a truncated set can over-insert;
-  `le_paste_consume`'s auto-indent-seed drop compares only lengths, so
-  typed text of the same length as the seed is silently discarded on
-  paste.
-- **(2026-07-19 review) shell-mode translator divergences**: `echo`
-  honors `-n` at any argv position (real echo: leading only);
-  `head`/`tail` accept `-n=5`/`--lines=5` forms native tools reject;
-  `mkdir`/`rm` translators leak a `list[char*]` per call.
+  bracketed-paste + Ctrl-R work** (none block the piped/agent path).
+  Fixed 2026-07-25 (`lib/line_edit.w`, unit-tested by
+  `tests/line_edit_paste_test.w`): `le_paste_match_end`'s partial
+  ESC-sequence mismatch now pushes every probed byte back through a new
+  editor-local pushback stack (`le_pushback`/`le_getchar`, which every
+  editor read goes through — the stack doubles as the unit-test input
+  seam for the tty-only paths a plain pipe cannot script); pasted CRLF
+  endings no longer inject a blank line per line (`le_paste_eat_crlf`
+  consumes the pending LF with the CR); mid-paste line fragments are no
+  longer pushed into history (`le_finish_line` skips accept while the
+  paste is open — history stays strictly line-shaped, so the one line
+  the user actually finishes with Enter after the paste closes is the
+  entry); completion candidates no longer truncate at 64 (le_try_complete
+  doubles the buffer while the hook reports it full, which also fixes the
+  truncated set's over-inserted common prefix); `le_paste_consume`'s
+  auto-indent-seed drop is byte-exact (`le_text_equals` against the
+  seed's snapshot), so same-length typed text survives a paste. Still
+  open: multi-line paste renders only bare newlines; an arrow key during
+  Ctrl-R cancels on ESC then inserts the residual "[A" as literal text
+  (the cancel consumes the ESC before the sequence is identified);
+  starting a search while the edited line wraps leaves stale wrapped
+  rows (`le_render_search` never climbs `le_prev_rows`).
+- **(2026-07-19 review) shell-mode translator divergences** — fixed
+  2026-07-25 (`repl/shell_translate.w`, pinned by
+  `tests/shell_commands_test.w`): `echo` now honors `-n` only as a
+  leading run (a later `-n` is literal text, matching real echo);
+  `head`/`tail` no longer accept the inline `-n=5`/`--lines=5`
+  spellings — those fail closed to native so the real tool's own
+  acceptance or diagnostic applies verbatim; `mkdir`/`rm` (and the
+  shared tokenizer teardown) free their `list[char*]` structs on every
+  path. `wc` also stopped deriving its counts via strlen, which
+  truncated all three figures at an embedded NUL byte
+  (`lib/shell_commands.w` now reads through a stream and uses the true
+  byte length).
 
 - **A `:save`d session transcript is not always a valid standalone `.w`
   file.** Found while adding `:save`/`:load`/`:type`/`:time`/`:reset`/
@@ -834,6 +852,17 @@ ergonomic gap:
   equivalent using a real `pty`/`fork` pair with an explicit "wait for
   marker text" step) would let future agents script this class of
   keystroke instead of falling back to manual verification each time.
+- **Minor: `bin/wtest changed`'s first-run import-closure cache build
+  can far exceed the documented ~35s.** Right after a full
+  `./wbuild build --no-cache` + `verify` + `verify_x64` cycle (ctrl
+  stack growth work, 2026-07-25), the first `wtest changed` run was
+  killed by a 2-minute caller timeout while still printing the "this
+  can take a minute" banner; the retry succeeded but took several
+  minutes total. Docs (CLAUDE.md and the wtest banner) set a ~35s/
+  "a minute" expectation, so agents pick too-small timeouts and kill
+  the build. Cheap fixes: progress output (one line per N modules) so
+  a caller can distinguish slow-but-alive from hung, and/or making an
+  interrupted cache build resume instead of restarting.
 
 ## Skills / rules upkeep
 
