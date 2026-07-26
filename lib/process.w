@@ -6,6 +6,9 @@ process_spawn forks and execs a program with per-stream stdio control
 optional environment vector (see lib/env.w). process_run is the
 convenience wrapper a test runner wants: pipe everything, feed stdin,
 drain stdout and stderr concurrently with poll, and enforce a timeout.
+process_run_bytes is the same wrapper with an explicit stdin byte count,
+so the input may contain embedded NUL bytes (process_run measures its
+stdin_text with strlen and stops at the first NUL).
 
 Status convention: process_wait and friends return the decoded status —
 the exit code 0..255 for a normal exit, 128 + signum when a signal killed
@@ -704,12 +707,16 @@ void process_result_free(process_result* result):
 # opts may be 0; only its env and cwd fields apply, the stdio modes are
 # forced to pipes. Returns 0 when the spawn itself failed.
 #
+# The _bytes variants take stdin's length explicitly, so the input may
+# contain embedded NUL bytes; process_run/process_run_windows measure
+# stdin_text with strlen and therefore stop at the first NUL.
+#
 # Windows variant: no poll for pipes here, so stdin is written up front
 # and stdout/stderr are drained with PeekNamedPipe. A child that fills
 # its output pipes before consuming a stdin_text larger than the pipe
 # buffer (4KB) can deadlock; build-system children read stdin first or
 # not at all, so this stays out of scope for now.
-process_result* process_run_windows(char* path, char** argv, spawn_options* opts, char* stdin_text, int timeout_ms):
+process_result* process_run_windows_bytes(char* path, char** argv, spawn_options* opts, char* stdin_text, int stdin_length, int timeout_ms):
 	spawn_options* run_opts = spawn_options_new()
 	if (opts != 0):
 		run_opts.env = opts.env
@@ -724,7 +731,6 @@ process_result* process_run_windows(char* path, char** argv, spawn_options* opts
 
 	# Write stdin all at once and close it so the child can see EOF.
 	if (stdin_text != 0):
-		int stdin_length = strlen(stdin_text)
 		int stdin_offset = 0
 		while (stdin_offset < stdin_length):
 			int chunk = stdin_length - stdin_offset
@@ -797,9 +803,16 @@ process_result* process_run_windows(char* path, char** argv, spawn_options* opts
 	return result
 
 
-process_result* process_run(char* path, char** argv, spawn_options* opts, char* stdin_text, int timeout_ms):
+process_result* process_run_windows(char* path, char** argv, spawn_options* opts, char* stdin_text, int timeout_ms):
+	int stdin_length = 0
+	if (stdin_text != 0):
+		stdin_length = strlen(stdin_text)
+	return process_run_windows_bytes(path, argv, opts, stdin_text, stdin_length, timeout_ms)
+
+
+process_result* process_run_bytes(char* path, char** argv, spawn_options* opts, char* stdin_text, int stdin_length, int timeout_ms):
 	if (os_windows()):
-		return process_run_windows(path, argv, opts, stdin_text, timeout_ms)
+		return process_run_windows_bytes(path, argv, opts, stdin_text, stdin_length, timeout_ms)
 	spawn_options* run_opts = spawn_options_new()
 	if (opts != 0):
 		run_opts.env = opts.env
@@ -812,11 +825,8 @@ process_result* process_run(char* path, char** argv, spawn_options* opts, char* 
 	if (p == 0):
 		return 0
 
-	int stdin_length = 0
 	int stdin_offset = 0
-	if (stdin_text != 0):
-		stdin_length = strlen(stdin_text)
-	else:
+	if (stdin_text == 0):
 		process_close_stdin(p)
 
 	process_capture out_buffer
@@ -912,3 +922,10 @@ process_result* process_run(char* path, char** argv, spawn_options* opts, char* 
 	result.stderr_text = process_capture_take(&err_buffer)
 	process_free(p)
 	return result
+
+
+process_result* process_run(char* path, char** argv, spawn_options* opts, char* stdin_text, int timeout_ms):
+	int stdin_length = 0
+	if (stdin_text != 0):
+		stdin_length = strlen(stdin_text)
+	return process_run_bytes(path, argv, opts, stdin_text, stdin_length, timeout_ms)

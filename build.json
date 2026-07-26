@@ -1909,6 +1909,7 @@
 				"generator_return_free_64_test",
 				"generics_64_test",
 				"generics_inference_64_test",
+				"getchar_checked_64_test",
 				"hash_table_64_test",
 				"http_client_64_test",
 				"http_server_64_test",
@@ -1951,6 +1952,7 @@
 				"poly1305_64_test",
 				"prng_64_test",
 				"process_64_test",
+				"process_bytes_64_test",
 				"protobuf_64_test",
 				"protobuf_leak_64_test",
 				"ptr_add_64_test",
@@ -2436,6 +2438,7 @@
 				"format_test",
 				"framing_test",
 				"generator_return_free_test",
+				"getchar_checked_test",
 				"grapheme_test",
 				"hash_table_test",
 				"hkdf_test",
@@ -2484,6 +2487,7 @@
 				"poll_test",
 				"poly1305_test",
 				"prng_test",
+				"process_bytes_test",
 				"process_test",
 				"protobuf_leak_test",
 				"protobuf_test",
@@ -3399,6 +3403,22 @@
 			]
 		},
 		{
+			"name": "getchar_checked_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/getchar_checked_test.w", "-o", "bin/getchar_checked_64_test"]},
+				{"cmd": ["bin/getchar_checked_64_test"]}
+			]
+		},
+		{
+			"name": "getchar_checked_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/getchar_checked_test.w", "-o", "bin/getchar_checked_test"]},
+				{"cmd": ["bin/getchar_checked_test"]}
+			]
+		},
+		{
 			"name": "grapheme_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -4224,6 +4244,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "lib/process_test.w", "-o", "bin/process_64_test"]},
 				{"cmd": ["bin/process_64_test"]}
+			]
+		},
+		{
+			"name": "process_bytes_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/process_bytes_test.w", "-o", "bin/process_bytes_64_test"]},
+				{"cmd": ["bin/process_bytes_64_test"]}
+			]
+		},
+		{
+			"name": "process_bytes_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/process_bytes_test.w", "-o", "bin/process_bytes_test"]},
+				{"cmd": ["bin/process_bytes_test"]}
 			]
 		},
 		{

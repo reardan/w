@@ -392,6 +392,16 @@ exist yet:
 
 ## Cleanup observed while dogfooding
 
+- **(2026-07-25) `lib/format_test.w`'s 32/64-bit twins race on a fixed
+  temp path**: both `format_test` and `format_64_test` write and read
+  back `/tmp/w_format_test.txt` (O_TRUNC on open), so a parallel
+  `./wbuild tests` / `test_changed` run can interleave them —
+  observed as `test_hex_verb` asserting `wanted '0x000000ff' got ''`
+  in `format_64_test` while `format_test` ran concurrently; both pass
+  standalone. Fix is to pid-scope the path (the
+  `bin/<name>_test_<pid>` convention other tests use). Line 20's
+  `args[1] = c"abc"` also warns (`assignment type mismatch: expected
+  'int', got 'char*'`) on every compile of the test.
 - **arm64 self-host stage 2 regression ("Failed to find a _main()
   function") — expected fixed by f13ab7f, UNCONFIRMED.** The third
   sighting of the one bug behind the "context-dependent codegen"
@@ -564,7 +574,13 @@ exist yet:
   diagnostic; fixing needs a distinct "read error" sentinel plumbed
   through `get_character()`/`compile_attempt()`/etc. Rare in practice (a
   `read()` on an already-`open()`ed regular local file essentially never
-  fails) — documented, not scheduled.
+  fails) — documented, not scheduled. **Partially shipped (2026-07-25):
+  `getchar_checked`/`getchar_unbuffered_checked` in `lib/lib.w` return
+  `GETCHAR_EOF()` (-1) at end of file and `GETCHAR_READ_ERROR()` (-2)
+  when `read()` fails, sharing the per-fd buffer state with the (still
+  byte-identical) legacy functions; pinned by
+  `tests/getchar_checked_test.w`. Plumbing the sentinel through the
+  compiler's `get_character()` path remains open.**
 - **Shipped (2026-07-19, wave plan C task 1c): `lib/generator.w`'s
   `__w_gen_create` coroutine-stack `mmap()` is now checked** —
   `__w_gen_mmap_failed()` mirrors `debug_tbl_mmap_failed()`'s convention;
@@ -677,6 +693,12 @@ exist yet:
   any future harness needs to *pipe* binary data into a child process
   (a length-taking `process_run_bytes(path, argv, opts, char* stdin,
   int stdin_length, timeout_ms)` twin, or an overload, would cover it).
+  **Shipped (2026-07-25): `process_run_bytes` (and
+  `process_run_windows_bytes`) take that explicit `stdin_length`;
+  `process_run`/`process_run_windows` are unchanged strlen-measuring
+  delegates. Pinned by `tests/process_bytes_test.w` (embedded-NUL and
+  >4KB payloads round-tripped through `/bin/cat`, plus the legacy
+  truncation contract).**
 
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
