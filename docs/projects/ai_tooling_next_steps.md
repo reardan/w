@@ -590,7 +590,22 @@ exist yet:
   so it is not the same class of bug 2h closes, just a related, narrower
   gap. Real fix: make `ctrl_kind_stack`/`ctrl_val_stack` grow dynamically
   (or move them off a fixed-size array entirely) instead of picking a
-  bigger constant.
+  bigger constant. **Fixed**: the stacks are now malloc'd `int*` buffers
+  (initial capacity 256, doubled on push by `ctrl_stack_reserve()` in
+  `code_generator/x86.w`; byte sizes computed with `__word_size__` since
+  the entries are word-sized ints — the f13ab7f lesson). One correction
+  to the analysis above, measured while writing the regression test: a
+  *genuinely* nested if/for level costs 2 `stmt_nesting_depth` units,
+  not 1 (the statement and its `:` block each recurse `statement()`), so
+  the 200-unit guard already fired at 100 pure nested ifs — before the
+  129-if array bound, which was in practice reachable only by `for`
+  nests (86, 3 slots each) and for-heavy mixed shapes. Post-fix the
+  guard is the only nesting bound: ~99 genuinely nested levels, 200
+  chain branches. `tests/deep_nesting_test.w` (a generated file) pins
+  95 nested fors (285 ctrl slots at peak), an 88-for/9-if mix (282,
+  with the if regions past slot 256), and a guard-max 97-if nest, all
+  asserted to execute correctly on x86 and x64; the first two trapped
+  at `index 256, length 256` on the pre-fix compiler.
 - **Found while shipping 2h: piping a very long single line (10000+
   characters) containing deeply nested parens into the interactive REPL
   (`bin/repl < file`, no PTY) does not reliably reach the second REPL
@@ -803,6 +818,17 @@ exist yet:
   equivalent using a real `pty`/`fork` pair with an explicit "wait for
   marker text" step) would let future agents script this class of
   keystroke instead of falling back to manual verification each time.
+- **Minor: `bin/wtest changed`'s first-run import-closure cache build
+  can far exceed the documented ~35s.** Right after a full
+  `./wbuild build --no-cache` + `verify` + `verify_x64` cycle (ctrl
+  stack growth work, 2026-07-25), the first `wtest changed` run was
+  killed by a 2-minute caller timeout while still printing the "this
+  can take a minute" banner; the retry succeeded but took several
+  minutes total. Docs (CLAUDE.md and the wtest banner) set a ~35s/
+  "a minute" expectation, so agents pick too-small timeouts and kill
+  the build. Cheap fixes: progress output (one line per N modules) so
+  a caller can distinguish slow-but-alive from hung, and/or making an
+  interrupted cache build resume instead of restarting.
 
 ## Skills / rules upkeep
 

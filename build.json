@@ -1885,6 +1885,7 @@
 				"compress_zlib_64_test",
 				"crypto_rsa_verify_64_test",
 				"cstr_64_test",
+				"deep_nesting_64_test",
 				"default_args_64_test",
 				"defer_64_test",
 				"dns_64_test",
@@ -2411,6 +2412,7 @@
 				"compress_inflate_test",
 				"compress_zlib_test",
 				"cstr_test",
+				"deep_nesting_test",
 				"directory_test",
 				"dns_test",
 				"env_test",
@@ -3035,6 +3037,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/cstr_test.w", "-o", "bin/cstr_test"]},
 				{"cmd": ["bin/cstr_test"]}
+			]
+		},
+		{
+			"name": "deep_nesting_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/deep_nesting_test.w", "-o", "bin/deep_nesting_64_test"]},
+				{"cmd": ["bin/deep_nesting_64_test"]}
+			]
+		},
+		{
+			"name": "deep_nesting_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/deep_nesting_test.w", "-o", "bin/deep_nesting_test"]},
+				{"cmd": ["bin/deep_nesting_test"]}
 			]
 		},
 		{
