@@ -14,8 +14,14 @@ int bump(int n):
 	return inc
 
 int slow_step(int n):
-	int step = bump(n)
-	return step
+	# The fixed 7000000 call-site offset makes bump's n distinguishable
+	# from slow_step's n at the same stop, so attach_test.sh's frame
+	# selection case can assert 'up; p n' really addresses the caller's
+	# slot (the two frames' n used to hold the same value, which hid
+	# frame-base regressions). Undone on return, so attach_counter still
+	# advances by exactly one per iteration.
+	int step = bump(n + 7000000)
+	return step - 7000000
 
 int main(int argc, int argv):
 	# prctl(PR_SET_PTRACER=0x59616d61, PR_SET_PTRACER_ANY=-1). The syscall()

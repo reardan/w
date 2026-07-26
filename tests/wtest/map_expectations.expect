@@ -290,6 +290,29 @@ forbid lib_test
 forbid lib_64_test
 forbid tests
 
+# The darwin syscall layer mirrors it: every arm64_darwin root's closure
+# contains it, so the native smoke mirror of arm64_smoke_test (#210) and
+# the other darwin cross-compiles are selected — never the qemu-path
+# arm64 targets or the x86 lib tests.
+case lib/__arch__/arm64_darwin/syscalls.w
+expect arm64_darwin_smoke_test
+expect net_darwin
+expect metadata_check
+forbid lib_test
+forbid arm64_smoke_test
+forbid tests
+
+# tools/mac/run_darwin_tests.sh is the Mac-side run leg for the darwin
+# cross-compile targets; no manifest argv names the script (unlike
+# tools/run_arm64.sh, which the qemu targets invoke directly), so a
+# residue rule in tools/test_map.w pins the coupling.
+case tools/mac/run_darwin_tests.sh
+expect arm64_darwin_smoke_test
+expect net_darwin
+expect graphics_darwin
+expect pac_darwin
+forbid tests
+
 # An arch module nothing compiles yet (no win64 target links lib/net.w)
 # keeps the always-on gates only; a future win64 net target's closure
 # will pick it up automatically.

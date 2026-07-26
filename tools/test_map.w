@@ -80,6 +80,13 @@ build. For a changed path P the emitted targets are the union of:
         the fixture path itself is a literal inside the test's source,
         passed to a bin/wexec subprocess as a "-f" argument at run
         time, so neither rule (a) nor rule (b) can see the coupling.
+      - tools/mac/run_darwin_tests.sh -> the darwin cross-compile
+        targets whose Mach-O binaries it executes on a Mac
+        (arm64_darwin_smoke_test, net_darwin, graphics_darwin,
+        pac_darwin): the run leg lives outside the manifest, so no
+        argv or import records the coupling. (Its arm64 counterpart
+        tools/run_arm64.sh needs no rule: the qemu targets invoke it
+        directly in their steps, which rule (a) sees.)
       - build.json / wbuild / build.base.json -> wexec_test + tests (the
         manifest drives every target); build.base.json additionally ->
         manifest_check (it feeds bin/wbuildgen). Exception: when
@@ -1889,6 +1896,12 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		matched = 1
 	if (strcmp(path, c"tools/gen_stubs.w") == 0):
 		wtest_add(path, c"asm_stubs_test")
+		matched = 1
+	if (strcmp(path, c"tools/mac/run_darwin_tests.sh") == 0):
+		wtest_add(path, c"arm64_darwin_smoke_test")
+		wtest_add(path, c"net_darwin")
+		wtest_add(path, c"graphics_darwin")
+		wtest_add(path, c"pac_darwin")
 		matched = 1
 	if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add(path, c"c_import_test")

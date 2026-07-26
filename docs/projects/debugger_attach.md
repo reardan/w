@@ -56,7 +56,10 @@ byte-identical). What works today:
   the disarm / single-step / re-arm dance around a breakpoint at the
   current pc; a non-`SIGTRAP` stop is held as `attach_pending_sig` and
   redelivered on the next resume (`PTRACE_CONT`/`SINGLESTEP` with the
-  signal), matching gdb's default forwarding. `s`/`step` and `n`/`next`
+  signal), matching gdb's default forwarding — including a stop taken
+  during the step-over-breakpoint single step itself (`at_hold_signal`,
+  used by both `at_continue` and `at_finish`; such a signal used to be
+  silently dropped). `s`/`step` and `n`/`next`
   (#123 phase 4's remainder) drive the same `PTRACE_SINGLESTEP`+`wait4`
   loop instruction-by-instruction, checking the stop condition after each
   one (`at_step_should_stop`) exactly like `debugger/wdbg.w`'s in-process
@@ -150,7 +153,24 @@ same capability. Phase 2 has since built that seam for both halves:
 
 - **Expression evaluation** (`p <expr>` beyond a name lookup): reads
   through ptrace; in-target calls stay out of scope.
-- **Hardware watchpoints** via `PTRACE_POKEUSER` on DR0–DR7.
+- **Hardware watchpoints** via `PTRACE_POKEUSER` on DR0–DR7. Concrete
+  scoping (2026-07-25, unstarted): the debug registers live in the
+  ptrace *user area*, not `user_regs_struct`, so this is new plumbing —
+  `PTRACE_PEEKUSER`/`POKEUSER` (requests 3/6) at
+  `offsetof(struct user, u_debugreg[i])` (i386: `252 + 4*i`; x86-64:
+  `848 + 8*i`). A `watch <name>` command would resolve the address
+  through the same `dbg_local_runtime_addr`/global lookup `set` already
+  uses, program DR0–DR3 with the address and DR7 with the local-enable +
+  rw/len bits (word-sized write watch: rw=01, len encoding 11 on x86 /
+  10-for-8-bytes on x86-64), and on each SIGTRAP stop read DR6 via
+  `PEEKUSER` to distinguish a watch hit (DR6 bits 0–3) from an int3 or
+  single-step, print old→new like `debugger/watchpoints.w`'s software
+  scan, and clear DR6 before resuming. Four registers max; beyond that
+  report "out of hardware watchpoints" rather than silently degrading
+  (the in-process software scan does not exist in attach mode). Note
+  `at_report_stop`, `at_step_line_mode` and `at_finish` all assume a
+  SIGTRAP stop is int3-or-step today, so the DR6 check must slot in
+  ahead of the `at_bp_find(ip - 1)` dispatch in each.
 - **Dynamic/PIE symbolization**: out of scope (see "Scope" below); raw
   mode works regardless.
 
@@ -357,6 +377,16 @@ and must not use syntax newer than the seed.
   the exit code — a regression that skipped the byte restore would show up
   here as a crash or a signal-terminated exit instead of the clean one. x64
   twin included.
+- Hardened (2026-07-25): every wdbg invocation in `tools/attach_test.sh`
+  runs under `timeout 30`, so an execution-control regression that
+  leaves wdbg blocked in `wait4` fails instead of hanging CI; the
+  breakpoint re-arm cases count TWO distinct `hit breakpoint 1` stops on
+  both arches (a single `grep -qF` was already satisfied by the first
+  stop, so a `continue` re-arm regression used to pass); the
+  frame-selection cases assert `p n` at frame 0 and after `up` differ by
+  exactly the fixture's fixed `7000000` call-site offset (both frames'
+  `n` used to hold the same value, hiding frame-base regressions); and a
+  `frame x` case freezes the new non-numeric-argument diagnostic.
 - Not covered end-to-end: recursion during `finish` (the fixture has no
   recursive call, so the "still-nested return to the same call site" path
   in `at_finish` is exercised by reasoning about the sp comparison, not by
