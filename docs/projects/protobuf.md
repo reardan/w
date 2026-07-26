@@ -591,7 +591,20 @@ wresult[char*]* pb_decode(pb_message_desc* desc, char* data,
     # what to do next") -- unlike json_codec's strict all-or-nothing
     # decode, a missing field here is NOT an error (§1.2, §7): the
     # wresult only reports genuine malformation (truncated varint,
-    # bad wire type, length that overruns the buffer).
+    # bad wire type, length that overruns the buffer, nesting past
+    # the recursion cap). On error, everything the partial decode
+    # already stored into `out` is freed and re-zeroed
+    # (pb_free_decoded), so a failed decode neither leaks nor leaves
+    # dangling pointers behind. Duplicate occurrences of a singular
+    # field follow proto3 semantics: last-one-wins for scalars and
+    # strings/bytes (the earlier copy is freed), MERGE for
+    # submessages (recursive; repeated fields concatenate).
+
+void pb_free_decoded(pb_message_desc* desc, char* out)
+    # frees every allocation a decode stored into out's fields
+    # (strings/bytes, submessages, repeated lists -- recursively) and
+    # re-zeroes them; the owner's teardown for a decoded message, and
+    # pb_decode's own error-path sweep.
 
 int PB_ERR_TRUNCATED()          # input ended mid-field
 int PB_ERR_BAD_WIRE_TYPE()      # wire_type not 0/1/2/5
@@ -599,6 +612,11 @@ int PB_ERR_BAD_VARINT()         # varint exceeds 10 bytes (no
                                  # terminating byte within the limit)
 int PB_ERR_LENGTH_OVERRUN()     # length-delimited field's declared
                                  # length exceeds the remaining buffer
+int PB_ERR_DEPTH_EXCEEDED()     # submessages nested deeper than
+                                 # PB_MAX_DECODE_DEPTH() (100,
+                                 # protoc's own default recursion
+                                 # limit -- crafted nesting must not
+                                 # overflow the stack)
 char* pb_error_string(int code)
 ```
 

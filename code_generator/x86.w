@@ -647,11 +647,31 @@ void jmp_int32(int v):
 # the chain) resolved at be_ctrl_end; loop regions record their start and
 # patch each branch immediately.
 
-int[256] ctrl_kind_stack    # 0 = forward merge (block), 1 = backward (loop)
-int[256] ctrl_val_stack     # block: patch-chain head; loop: start codepos
+int* ctrl_kind_stack    # 0 = forward merge (block), 1 = backward (loop)
+int* ctrl_val_stack     # block: patch-chain head; loop: start codepos
 int ctrl_stack_pos
+int ctrl_stack_capacity
+
+# Grown on demand so deeply nested control flow (an if whose body is
+# another if, ...) is bounded by the tokenizer's nesting guard, not by a
+# fixed array size. Entries are word-sized ints, so sizes use
+# __word_size__ (not 4) -- the f13ab7f lesson: int-array byte counts halve
+# a word-sized buffer on 64-bit hosts and corrupt the heap.
+void ctrl_stack_reserve():
+	if (ctrl_stack_capacity == 0):
+		ctrl_stack_capacity = 256
+		ctrl_kind_stack = cast(int*, malloc(ctrl_stack_capacity * __word_size__))
+		ctrl_val_stack = cast(int*, malloc(ctrl_stack_capacity * __word_size__))
+		return
+	if (ctrl_stack_pos >= ctrl_stack_capacity):
+		int old = ctrl_stack_capacity * __word_size__
+		ctrl_stack_capacity = ctrl_stack_capacity * 2
+		int x = ctrl_stack_capacity * __word_size__
+		ctrl_kind_stack = cast(int*, realloc(ctrl_kind_stack, old, x))
+		ctrl_val_stack = cast(int*, realloc(ctrl_val_stack, old, x))
 
 int be_ctrl_block():
+	ctrl_stack_reserve()
 	ctrl_kind_stack[ctrl_stack_pos] = 0
 	ctrl_val_stack[ctrl_stack_pos] = 0
 	ctrl_stack_pos = ctrl_stack_pos + 1
@@ -664,6 +684,7 @@ int be_ctrl_block():
 	return ctrl_stack_pos - 1
 
 int be_ctrl_loop():
+	ctrl_stack_reserve()
 	ctrl_kind_stack[ctrl_stack_pos] = 1
 	ctrl_val_stack[ctrl_stack_pos] = codepos
 	ctrl_stack_pos = ctrl_stack_pos + 1

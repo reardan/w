@@ -37,6 +37,22 @@ target this compiler emits for), so this file compiles unchanged on the
 default 32-bit target. Only x64-compiled programs can actually declare a
 struct field of a type wide enough to exercise those kinds (see
 tests/protobuf_test.w's companion x64-only supplementary target).
+
+Hardening invariants for untrusted input (the stage-1 backlog in
+docs/projects/ai_tooling_next_steps.md):
+
+- Submessage recursion is capped at PB_MAX_DECODE_DEPTH() nesting
+  levels (PB_ERR_DEPTH_EXCEEDED past it), so crafted input nesting one
+  length-delimited field per few bytes cannot overflow the stack.
+- Duplicate occurrences of the same singular field follow proto3
+  semantics: scalars and strings/bytes are last-one-wins (the earlier
+  string/bytes copy is freed, never leaked), submessages MERGE into
+  the already-decoded struct (recursively; repeated fields inside the
+  merge concatenate).
+- A decode error frees every allocation the partial decode already
+  stored into `out` and re-zeroes the pointer-bearing fields
+  (pb_free_decoded), so a failed pb_decode/pb_decode_into never leaks
+  and hands the caller back a clean, reusable buffer.
 */
 import lib.memory
 import lib.result
@@ -118,6 +134,19 @@ int PB_ERR_LENGTH_OVERRUN():
 	return 4
 
 
+int PB_ERR_DEPTH_EXCEEDED():
+	return 5
+
+
+# Maximum submessage nesting depth pb_decode accepts, matching protoc's
+# own default recursion limit (100). Without a cap, crafted input
+# nesting one length-delimited field per few bytes drives
+# pb_decode_message_field's recursion arbitrarily deep and overflows
+# the stack long before the buffer runs out.
+int PB_MAX_DECODE_DEPTH():
+	return 100
+
+
 char* pb_error_string(int code):
 	if (code == PB_ERR_TRUNCATED()):
 		return c"protobuf: input ended mid-field"
@@ -127,6 +156,8 @@ char* pb_error_string(int code):
 		return c"protobuf: varint exceeds 10 bytes"
 	if (code == PB_ERR_LENGTH_OVERRUN()):
 		return c"protobuf: length-delimited field overruns the buffer"
+	if (code == PB_ERR_DEPTH_EXCEEDED()):
+		return c"protobuf: message nesting exceeds depth limit"
 	return c"protobuf: unknown error"
 
 
@@ -219,14 +250,48 @@ int pb_wire_type_valid(int wire_type):
 # it as if the field number were unknown" fallback path: validates the
 # wire type before skipping so a genuinely unsupported wire type (group
 # start/end) reports PB_ERR_BAD_WIRE_TYPE rather than being folded into
-# PB_ERR_TRUNCATED.
+# PB_ERR_TRUNCATED. The skip itself is performed inline rather than via
+# wire_skip_field: that primitive's tolerant contract collapses every
+# failure to 0, and this is the layer that must tell a genuinely
+# truncated buffer (PB_ERR_TRUNCATED) from an over-long varint
+# (PB_ERR_BAD_VARINT -- e.g. an unknown field carrying an 11-byte
+# varint) or an overrunning declared length (PB_ERR_LENGTH_OVERRUN) --
+# the distinction wire.w's wire_tag_decode comment defers to here.
 int pb_skip_or_error(char* data, int length, int wire_type, int* consumed_out):
 	if (pb_wire_type_valid(wire_type) == 0):
 		return PB_ERR_BAD_WIRE_TYPE()
-	int sn = wire_skip_field(data, length, wire_type)
-	if (sn == 0):
+	if (wire_type == PB_WIRE_VARINT()):
+		int lo = 0
+		int hi = 0
+		int n = varint_decode_parts(data, length, &lo, &hi)
+		if (n < 0):
+			return PB_ERR_TRUNCATED()
+		if (n == 0):
+			return PB_ERR_BAD_VARINT()
+		consumed_out[0] = n
+		return 0
+	if (wire_type == PB_WIRE_FIXED64()):
+		if (length < 8):
+			return PB_ERR_TRUNCATED()
+		consumed_out[0] = 8
+		return 0
+	if (wire_type == PB_WIRE_FIXED32()):
+		if (length < 4):
+			return PB_ERR_TRUNCATED()
+		consumed_out[0] = 4
+		return 0
+	# PB_WIRE_LENGTH_DELIMITED -- the only remaining valid wire type.
+	int blen = 0
+	int n = varint_decode_u32(data, length, &blen)
+	if (n < 0):
 		return PB_ERR_TRUNCATED()
-	consumed_out[0] = sn
+	if (n == 0):
+		return PB_ERR_BAD_VARINT()
+	if (blen < 0):
+		return PB_ERR_LENGTH_OVERRUN()
+	if ((length - n) < blen):
+		return PB_ERR_LENGTH_OVERRUN()
+	consumed_out[0] = n + blen
 	return 0
 
 
@@ -526,17 +591,26 @@ int pb_decode_bytes_field(char* data, int length, char* out_addr, int* consumed_
 		copy[i] = data[n + i]
 		i = i + 1
 	copy[blen] = 0
+	# proto3 last-one-wins for duplicate string/bytes occurrences: free
+	# the copy an earlier occurrence of this field stored before
+	# replacing it. b.data here is only ever null (first occurrence into
+	# a zeroed struct, or the zeroed staging slot pb_decode_repeated
+	# passes) or a previous pb_decode_bytes_field allocation.
 	pb_bytes* b = cast(pb_bytes*, out_addr)
+	if (cast(int, b.data) != 0):
+		free(b.data)
 	b.data = copy
 	b.length = blen
 	consumed_out[0] = n + blen
 	return 0
 
 
-int pb_decode_into(pb_message_desc* desc, char* data, int length, char* out);
+int pb_decode_into_depth(pb_message_desc* desc, char* data, int length, char* out, int depth);
 
 
-int pb_decode_message_field(pb_message_desc* nested, char* data, int length, char* out_addr, int* consumed_out):
+# depth: nesting level of the message CONTAINING this field (0 for the
+# root), checked against PB_MAX_DECODE_DEPTH() before recursing.
+int pb_decode_message_field(pb_message_desc* nested, char* data, int length, char* out_addr, int* consumed_out, int depth):
 	int mlen = 0
 	int n = varint_decode_u32(data, length, &mlen)
 	if (n < 0):
@@ -547,16 +621,35 @@ int pb_decode_message_field(pb_message_desc* nested, char* data, int length, cha
 		return PB_ERR_LENGTH_OVERRUN()
 	if ((length - n) < mlen):
 		return PB_ERR_LENGTH_OVERRUN()
-	char* buf = malloc(nested.struct_size)
-	int i = 0
-	while (i < nested.struct_size):
-		buf[i] = 0
-		i = i + 1
-	int code = pb_decode_into(nested, data + n, mlen, buf)
+	if (depth >= PB_MAX_DECODE_DEPTH()):
+		return PB_ERR_DEPTH_EXCEEDED()
+	# proto3 duplicate-message semantics: a later occurrence of the same
+	# singular message field MERGES into the earlier one, not replaces
+	# it -- scalars last-one-wins, strings/bytes freed and replaced,
+	# repeated fields concatenated, nested submessages merged
+	# recursively. Decoding into the existing struct (instead of a
+	# fresh zeroed one, which also leaked the first allocation) gives
+	# exactly those semantics, since every field decode already
+	# overwrites, replaces, or appends in place.
+	int existing = pb_load_ptr(out_addr)
+	char* buf
+	if (existing != 0):
+		buf = cast(char*, existing)
+	else:
+		buf = malloc(nested.struct_size)
+		int i = 0
+		while (i < nested.struct_size):
+			buf[i] = 0
+			i = i + 1
+		# Attach before decoding: if the nested decode fails midway,
+		# the partially-filled submessage stays reachable from the
+		# caller's struct, so pb_decode_into's error-path
+		# pb_free_decoded sweep reclaims it (and everything it stored)
+		# instead of leaking it.
+		pb_store_ptr(out_addr, cast(int, buf))
+	int code = pb_decode_into_depth(nested, data + n, mlen, buf, depth + 1)
 	if (code != 0):
-		free(buf)
 		return code
-	pb_store_ptr(out_addr, cast(int, buf))
 	consumed_out[0] = n + mlen
 	return 0
 
@@ -570,6 +663,57 @@ pb_field_desc* pb_find_field(pb_message_desc* desc, int number):
 	return cast(pb_field_desc*, 0)
 
 
+# Frees every heap allocation a decode stored into a struct's fields --
+# string/bytes copies, submessage structs (recursively), repeated-field
+# lists and their elements' own allocations -- and resets those fields
+# to zero, leaving `out` as if freshly zeroed. Serves two callers: the
+# owner of a successfully decoded message tearing it down, and
+# pb_decode_into's error path, where it reclaims whatever a failed
+# decode had already stored (partial submessages included -- see
+# pb_decode_message_field's attach-before-decode note). Scalar fields
+# are left untouched; they own no memory.
+void pb_free_decoded(pb_message_desc* desc, char* out):
+	int i = 0
+	while (i < desc.field_count):
+		pb_field_desc* f = &desc.fields[i]
+		char* addr = out + f.offset
+		int kind = f.kind
+		if ((kind == PB_KIND_STRING()) || (kind == PB_KIND_BYTES())):
+			pb_bytes* b = cast(pb_bytes*, addr)
+			if (cast(int, b.data) != 0):
+				free(b.data)
+			b.data = cast(char*, 0)
+			b.length = 0
+		else if (kind == PB_KIND_MESSAGE()):
+			int raw = pb_load_ptr(addr)
+			if (raw != 0):
+				pb_free_decoded(cast(pb_message_desc*, f.aux), cast(char*, raw))
+				free(cast(char*, raw))
+				pb_store_ptr(addr, 0)
+		else if (kind == PB_KIND_REPEATED()):
+			int raw = pb_load_ptr(addr)
+			if (raw != 0):
+				__w_list* list = cast(__w_list*, raw)
+				pb_value_desc* elem = cast(pb_value_desc*, f.aux)
+				int ekind = elem.kind
+				int j = 0
+				while (j < list.length):
+					char* eaddr = list.items + j * list.element_size
+					if ((ekind == PB_KIND_STRING()) || (ekind == PB_KIND_BYTES())):
+						pb_bytes* eb = cast(pb_bytes*, eaddr)
+						if (cast(int, eb.data) != 0):
+							free(eb.data)
+					else if (ekind == PB_KIND_MESSAGE()):
+						# Message elements are stored by value inside
+						# list.items -- free their internals only, not
+						# the element storage itself.
+						pb_free_decoded(cast(pb_message_desc*, elem.aux), eaddr)
+					j = j + 1
+				__w_list_free(list)
+				pb_store_ptr(addr, 0)
+		i = i + 1
+
+
 # Decodes one occurrence of a repeated field: a packed blob (proto3's
 # default for packable scalar kinds), an unpacked single occurrence
 # (accepted regardless of dialect per docs/projects/protobuf.md §2 --
@@ -577,7 +721,7 @@ pb_field_desc* pb_find_field(pb_message_desc* desc, int number):
 # length-delimited message/string/bytes element. Any wire type matching
 # none of those shapes is treated as if the field number were unknown
 # (skipped, not an error) rather than risking a misinterpreted decode.
-int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, char* out_addr, int* consumed_out):
+int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, char* out_addr, int* consumed_out, int depth):
 	pb_value_desc* elem = cast(pb_value_desc*, f.aux)
 	int ekind = elem.kind
 	int packable = pb_kind_is_packable(ekind)
@@ -639,13 +783,19 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 			return PB_ERR_LENGTH_OVERRUN()
 		if ((length - n) < mlen):
 			return PB_ERR_LENGTH_OVERRUN()
+		if (depth >= PB_MAX_DECODE_DEPTH()):
+			return PB_ERR_DEPTH_EXCEEDED()
 		char* buf = malloc(nested.struct_size)
 		int i = 0
 		while (i < nested.struct_size):
 			buf[i] = 0
 			i = i + 1
-		int code = pb_decode_into(nested, data + n, mlen, buf)
+		int code = pb_decode_into_depth(nested, data + n, mlen, buf, depth + 1)
 		if (code != 0):
+			# The staging buffer is not yet reachable from `out`, so the
+			# top-level error sweep cannot find it -- release whatever
+			# the failed element decode stored into it here.
+			pb_free_decoded(nested, buf)
 			free(buf)
 			return code
 		__w_list_push_bytes(list, buf)
@@ -654,7 +804,18 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 		return 0
 
 	if ((ekind == PB_KIND_STRING()) || (ekind == PB_KIND_BYTES())):
+		# Zero the staging slot: pb_decode_bytes_field frees a non-null
+		# previous b.data (proto3 last-one-wins), which must never see
+		# this stack slot's stale bytes. Zeroed via indexed byte writes
+		# -- casting a T[N] local to a pointer type (cast(pb_bytes*,
+		# slot)) addresses the array's runtime header, NOT its data
+		# (only indexing and argument decay reach the data), so a
+		# struct-view write here would clobber the header instead.
 		char[16] slot
+		int zi = 0
+		while (zi < 16):
+			slot[zi] = 0
+			zi = zi + 1
 		int consumed = 0
 		int code = pb_decode_bytes_field(data, length, slot, &consumed)
 		if (code != 0):
@@ -673,14 +834,14 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 	return 0
 
 
-int pb_decode_one(pb_field_desc* f, int wire_type, char* data, int length, char* out_addr, int* consumed_out):
+int pb_decode_one(pb_field_desc* f, int wire_type, char* data, int length, char* out_addr, int* consumed_out, int depth):
 	int kind = f.kind
 	if (kind == PB_KIND_REPEATED()):
-		return pb_decode_repeated(f, wire_type, data, length, out_addr, consumed_out)
+		return pb_decode_repeated(f, wire_type, data, length, out_addr, consumed_out, depth)
 	if (kind == PB_KIND_MESSAGE()):
 		if (wire_type != PB_WIRE_LENGTH_DELIMITED()):
 			return pb_skip_or_error(data, length, wire_type, consumed_out)
-		return pb_decode_message_field(cast(pb_message_desc*, f.aux), data, length, out_addr, consumed_out)
+		return pb_decode_message_field(cast(pb_message_desc*, f.aux), data, length, out_addr, consumed_out, depth)
 	if ((kind == PB_KIND_STRING()) || (kind == PB_KIND_BYTES())):
 		if (wire_type != PB_WIRE_LENGTH_DELIMITED()):
 			return pb_skip_or_error(data, length, wire_type, consumed_out)
@@ -696,14 +857,23 @@ int pb_decode_one(pb_field_desc* f, int wire_type, char* data, int length, char*
 # `out` must already be a zeroed buffer of desc.struct_size bytes (the
 # caller's responsibility -- see pb_decode below), so any field this
 # message never mentions keeps its zero default (proto3 implicit
-# presence).
-int pb_decode_into(pb_message_desc* desc, char* data, int length, char* out):
+# presence). depth is this message's own nesting level (0 at the root);
+# each submessage recursion adds one, bounded by PB_MAX_DECODE_DEPTH().
+int pb_decode_into_depth(pb_message_desc* desc, char* data, int length, char* out, int depth):
 	int pos = 0
 	while (pos < length):
 		int field_number = 0
 		int wire_type = 0
 		int tn = wire_tag_decode(data + pos, length - pos, &field_number, &wire_type)
 		if (tn == 0):
+			# wire_tag_decode collapses "ran out of input" and "no
+			# terminator within 10 bytes" to 0; re-classify so an
+			# over-long tag varint reports PB_ERR_BAD_VARINT rather
+			# than masquerading as truncation.
+			int tlo = 0
+			int thi = 0
+			if (varint_decode_parts(data + pos, length - pos, &tlo, &thi) == 0):
+				return PB_ERR_BAD_VARINT()
 			return PB_ERR_TRUNCATED()
 		pos = pos + tn
 		pb_field_desc* f = pb_find_field(desc, field_number)
@@ -715,11 +885,23 @@ int pb_decode_into(pb_message_desc* desc, char* data, int length, char* out):
 			pos = pos + consumed
 		else:
 			int consumed = 0
-			int code = pb_decode_one(f, wire_type, data + pos, length - pos, out + f.offset, &consumed)
+			int code = pb_decode_one(f, wire_type, data + pos, length - pos, out + f.offset, &consumed, depth)
 			if (code != 0):
 				return code
 			pos = pos + consumed
 	return 0
+
+
+# Public whole-message decode into a caller-provided zeroed buffer. On
+# any decode error, every allocation the partial decode already stored
+# into `out` is freed and the pointer-bearing fields re-zeroed
+# (pb_free_decoded), so a failed decode never leaks and `out` comes
+# back as clean as the caller handed it in.
+int pb_decode_into(pb_message_desc* desc, char* data, int length, char* out):
+	int code = pb_decode_into_depth(desc, data, length, out, 0)
+	if (code != 0):
+		pb_free_decoded(desc, out)
+	return code
 
 
 # out: a pre-sized, zero-initialized buffer of desc.struct_size bytes

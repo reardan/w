@@ -134,10 +134,12 @@ import lib.env
 import lib.file
 import lib.process
 import lib.sha256
+import lib.stat
 import lib.stream
 import lib.utf8
 import structures.string
 import structures.json
+import tools.__arch__.wexec_platform
 import tools.__arch__.wexec_remote_http
 import tools.wexec_trace
 
@@ -373,11 +375,40 @@ int wexec_load_uint16(char* p):
 	return (p[0] & 255) + ((p[1] & 255) << 8)
 
 
+int wexec_dir_unhashed_warned
+
+
+# One warning line per process, the first time a directory input is
+# requested on a platform whose dirent record layout wexec_collect_dir
+# cannot parse (see tools/__arch__/arm64_darwin/wexec_platform.w);
+# silent after that, mirroring wexec_remote_warn.
+void wexec_warn_dir_unhashed(char* path):
+	if (wexec_dir_unhashed_warned):
+		return
+	wexec_dir_unhashed_warned = 1
+	wstream* err = stderr_writer()
+	stream_write_cstr(err, c"wexec: warning: directory inputs are not hashed on this platform (")
+	stream_write_cstr(err, path)
+	stream_write_line(err, c" treated as empty; cache keys will not track its contents)")
+	stream_flush(err)
+
+
 # Recursively collect every regular file under path. Uses the classic
-# getdents layout: d_reclen is 2 bytes after ino and off (one word each),
-# the name follows it, and d_type sits in the record's last byte
+# Linux getdents layout: d_reclen is 2 bytes after ino and off (one word
+# each), the name follows it, and d_type sits in the record's last byte
 # (4 = directory, 8 = regular file).
 # On Windows, FindFirstFileA/FindNextFileA are used instead.
+# On darwin the getdents shim returns raw getdirentries64 records in a
+# DIFFERENT layout (see the NOTE in lib/__arch__/arm64_darwin/
+# syscalls.w), which the offsets below would misparse into a silently
+# empty listing -- and so a stable-but-wrong cache key. Until per-arch
+# dirent accessors exist (docs/projects/ai_tooling_next_steps.md,
+# "wexec directory hashing is Linux-layout only"), that platform's
+# tools/__arch__/wexec_platform.w reports the layout unsupported and
+# this function warns once and returns no files instead of guessing:
+# same hash as before, but an honest diagnostic in the log. The darwin
+# build targets declare no directory "inputs" (FORCE-style), so nothing
+# relies on directory hashing there today.
 void wexec_collect_dir(char* path, list[char*] files):
 	if (os_windows()):
 		# WIN32_FIND_DATAA: dwFileAttributes(4)+3×FILETIME(24)+4×DWORD(16)+
@@ -409,6 +440,11 @@ void wexec_collect_dir(char* path, list[char*] files):
 					break
 			FindClose(handle)
 		free(find_data)
+		return
+	if (wexec_dirents_supported() == 0):
+		# Non-Linux dirent layout (darwin): warn once, hash as empty --
+		# see this function's header comment for why.
+		wexec_warn_dir_unhashed(path)
 		return
 	# 65536 = O_DIRECTORY
 	int fd = open(path, 65536, 0)
@@ -1297,9 +1333,31 @@ char* wexec_resolve_exe_suffix(char* name):
 	return name
 
 
+# execve accepts only files with an executable bit set, so a PATH
+# candidate that is merely readable must not win the search: a readable
+# non-executable file named like the command earlier on PATH (e.g. a
+# pyvenv-style ~/.local/bin/env config file) would shadow the real
+# binary and surface only as a bare "exit status 127"
+# (docs/projects/ai_tooling_next_steps.md, 2026-07-19). lib has no
+# access(2)/X_OK wrapper, so the bit comes from lib/stat.w's statx
+# wrapper instead. Where statx is a stub returning -1 (darwin, win64 --
+# lib/stat.w's header documents the arch stubs) every candidate would
+# fail this check and PATH resolution would break wholesale, so a
+# failed stat keeps the historical readable-implies-usable answer;
+# on those platforms behavior is unchanged.
+int wexec_candidate_is_executable(char* path):
+	file_stat st
+	if (file_stat_path(path, &st) != 0):
+		return 1
+	# 73 = 0111: executable by owner, group, or other.
+	return (st.mode & 73) != 0
+
+
 # execve does no PATH lookup, so commands like "cmp" or "grep" must be
 # resolved here. Anything with a slash is used as-is (on Windows, after
-# the ".exe" fallback).
+# the ".exe" fallback). A candidate must be readable AND executable
+# (wexec_candidate_is_executable above); a readable non-executable
+# match is skipped and the search continues down PATH.
 char* wexec_resolve_program(char* name):
 	int win = os_windows()
 	int i = 0
@@ -1340,7 +1398,8 @@ char* wexec_resolve_program(char* name):
 			int fd = open(candidate.data, 0, 0)
 			if (fd >= 0):
 				close(fd)
-				return candidate.data
+				if (wexec_candidate_is_executable(candidate.data)):
+					return candidate.data
 			if (win):
 				# Also try without .exe (script-style names)
 				candidate.data[candidate.length - 4] = 0
@@ -1348,7 +1407,8 @@ char* wexec_resolve_program(char* name):
 				fd = open(candidate.data, 0, 0)
 				if (fd >= 0):
 					close(fd)
-					return candidate.data
+					if (wexec_candidate_is_executable(candidate.data)):
+						return candidate.data
 	string_free(candidate)
 	return name
 
