@@ -224,7 +224,13 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   `arch_only=x64`. (`net_darwin`, `graphics_darwin`, `pac_darwin` are
   the arm64_darwin analogues — `net_darwin` alone is single-source and
   could now migrate via `name=net_darwin arch_only=arm64_darwin`; the
-  other two bundle multiple sources.)
+  other two bundle multiple sources.) `arm64_darwin_smoke_test`
+  (2026-07-25, issue #210) is one more instance: it mirrors
+  `arm64_smoke_test`'s six-program bundle for the native Mach-O path,
+  and `arch_only=` could not express it — its sources are shared with
+  the default-arch targets, so marking them arch-only would delete
+  those, and no directive groups several sources under one target.
+  It went into `build.base.json` by hand like its arm64 sibling.
 
 ## Definition hashing (`w defhash`)
 
@@ -422,6 +428,16 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   caller arg" case cannot detect a regression (both frames' `n` holds
   the same value) and run_case has no timeout (a re-arm regression hangs
   CI rather than failing).
+  *(2026-07-25: all four addressed -- `at_hold_signal` stores the
+  non-SIGTRAP stop for redelivery on the next resume in both paths; the
+  step bail-outs now say "stopped" and print the stop location; `frame
+  <non-number>` errors with `frame: not a number`; attach_test.sh wraps
+  every wdbg run in `timeout 30`, counts two distinct breakpoint stops
+  on both arches, and the fixture's fixed +7000000 call-site offset lets
+  the frame-selection cases assert the caller's `n` differs from frame
+  0's by exactly that delta. Hardware watchpoints -- the #123 remainder
+  -- stay open, concretely scoped in docs/projects/debugger_attach.md's
+  "Remaining" section.)*
 - **Shipped (2026-07-25): all three driver arg-loop notes from the
   2026-07-19 review** (up-front unrecognized-option detection, the
   NDJSON record under `--json`, and the `ci_skip_extern_function`

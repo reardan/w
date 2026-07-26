@@ -47,7 +47,7 @@ keeps the exact single-buffer scheme the ELF writers use:
 
 - `ImageBase` is fixed at 0x400000 and `code_offset = 0x400000`.
 - `SectionAlignment == FileAlignment == 0x1000`, headers padded to one
-  page, a single section at RVA 0x1000 — so **every RVA equals its file
+  page, `.text` at RVA 0x1000 — so **every `.text` RVA equals its file
   offset** and buffer position `p` lives at vaddr `code_offset + p`.
 - `IMAGE_FILE_RELOCS_STRIPPED` is set and `DllCharacteristics` has no
   `DYNAMIC_BASE`, so the loader never rebase the image (there is no
@@ -55,9 +55,17 @@ keeps the exact single-buffer scheme the ELF writers use:
 - Not `LARGE_ADDRESS_AWARE`: the loader keeps all user addresses below
   2GB, the same low-address world the fixed ELF base provides.
 
-The image is one RWX `.text` section, matching the single RWX `PT_LOAD`
-the Linux x86/x64 targets emit. `SizeOfStackCommit` equals the 8MB
-reserve, so large W frames never need `__chkstk` stack probes.
+The image is W^X (`docs/projects/wx_split.md` Stage A): a read-execute
+`.text` section (code + read-only import metadata) and a read-write
+`.data` section at ImageBase + 16MB holding the IAT slots and mutable
+globals via the `data_split` buffer, the same recipe as the arm64
+targets. `.text`'s `VirtualSize` spans up to `.data`'s fixed RVA
+(zero-fill, `.bss`-style) so the sections stay virtually adjacent while
+global vaddrs could be baked into code before the code size was known;
+`.data` is the one region whose RVA does not equal its file offset, and
+nothing addresses it by file offset. `DllCharacteristics` sets
+`NX_COMPAT`. `SizeOfStackCommit` equals the 8MB reserve, so large W
+frames never need `__chkstk` stack probes.
 
 ### Imports (the shared dynamic-linking layer)
 
@@ -168,9 +176,9 @@ not emitted on win64.
 
 - **win32 (PE32 / i386)**: same writer with 32-bit optional header and
   IAT entries; the x86 cdecl shims already exist.
-- **W^X sections**: split `.text` / `.data` using the arm64 `data_split`
-  mechanism; requires moving the IAT slots into the data section.
 - **`.reloc` + ASLR**, LARGE_ADDRESS_AWARE, and `__imp_` data imports.
+  (W^X `.text`/`.data` sections landed — `docs/projects/wx_split.md`
+  Stage A.)
 - **CodeView/PDB debug info** and a PE-aware `lib/testing.w` harness
   (PE export table or a custom symbol section).
 - **Threads, sockets, process spawning** over WinAPI

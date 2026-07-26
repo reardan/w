@@ -1,8 +1,35 @@
 # W^X Everywhere: Extending the Text/Data Split to x86, x64 and win64
 
-**Status: proposed.** No code changed yet; this document scopes the work.
-Motivated by a reproducible crash (below) rather than a hypothetical
-hardening exercise.
+**Status: Stage A landed (July 2026); Stages B and C remain.** The win64
+target now emits a two-section image (R+X `.text`, R+W `.data` at
+ImageBase + 16MB) exactly as planned below; `verify`/`verify_x64`/
+`verify_win` and `tests_win64` are green. x64 and x86 Linux still emit
+the single RWX segment. Motivated by a reproducible crash (below) rather
+than a hypothetical hardening exercise.
+
+Stage A implementation notes (choices made where the plan left room):
+
+- The optional NX_COMPAT nice-to-have was taken: DllCharacteristics is
+  now 0x0100, since no section is writable+executable anymore.
+- `dyn_emit_import_slot()` keeps emitting the zero terminator word after
+  each slot on the win64 target in the `data_split` branch too, so each
+  one-entry FirstThunk array stays null-terminated even with the next
+  import's slot packed right behind it — parity with the old inline
+  layout rather than relying on every loader walking only the ILT.
+- `.data`'s `VirtualSize` is the exact byte count and `SizeOfRawData`
+  the page-aligned size (standard layout); the entry stub's empty
+  argv/env block and all import metadata (hint/name, ILT, directory)
+  stay read-only in `.text`. Only FirstThunk slots and mutable globals
+  live in `.data`.
+- Besides the extended `win64_header_test` (objdump now also asserts
+  the R+X/R+W section pair), a new structural test
+  (`tests/win64_wx_section_test.w`, target `win64_wx_section_test`)
+  parses the emitted PE section table from W and asserts no section is
+  WRITE+EXECUTE, the entry point sits in R+X, and every import
+  descriptor's FirstThunk lies in a writable non-executable section —
+  it runs on plain Linux, needing neither wine nor objdump, closing
+  part of the "wine does not enforce HVCI" gap below. The manual
+  real-Windows HVCI smoke test is still pending.
 
 ## Problem
 
