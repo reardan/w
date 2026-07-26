@@ -173,6 +173,12 @@ working in this repo.
  prompt such as: "Install qemu-user-static via apt into the snapshot so ARM64
  W-compiler test binaries can run under qemu-aarch64, mirroring how libc6:i386 is
  baked in for dynamic_test."
+ **On a Mac, prefer the native darwin smoke path over qemu**:
+ `./wbuild arm64_darwin_smoke_test` cross-compiles the same programs as the
+ qemu-based `arm64_smoke_test` to `arm64_darwin` Mach-O (the compile leg works on
+ any host and runs in CI), and `tools/mac/run_darwin_tests.sh` executes them
+ natively on Apple Silicon — its default set includes them, and the compiler
+ self-signs its output, so no qemu or codesign step is needed (issue #210).
 - The win64 PE backend (`docs/projects/windows.md`) needs `wine` to run its test
  binaries (`./wbuild tests_win64`; the win64_header_test
  structural check works without it). Like qemu for ARM64, wine should be baked

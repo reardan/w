@@ -224,7 +224,13 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   `arch_only=x64`. (`net_darwin`, `graphics_darwin`, `pac_darwin` are
   the arm64_darwin analogues — `net_darwin` alone is single-source and
   could now migrate via `name=net_darwin arch_only=arm64_darwin`; the
-  other two bundle multiple sources.)
+  other two bundle multiple sources.) `arm64_darwin_smoke_test`
+  (2026-07-25, issue #210) is one more instance: it mirrors
+  `arm64_smoke_test`'s six-program bundle for the native Mach-O path,
+  and `arch_only=` could not express it — its sources are shared with
+  the default-arch targets, so marking them arch-only would delete
+  those, and no directive groups several sources under one target.
+  It went into `build.base.json` by hand like its arm64 sibling.
 
 ## Definition hashing (`w defhash`)
 
