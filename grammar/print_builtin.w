@@ -38,7 +38,7 @@ char* print_chains
 
 
 int print_helper_count():
-	return 9
+	return 13
 
 
 char* print_fn_name(int i):
@@ -58,7 +58,17 @@ char* print_fn_name(int i):
 		return c"input"
 	if (i == 7):
 		return c"read_all"
-	return c"ints"
+	if (i == 8):
+		return c"ints"
+	if (i == 9):
+		return c"__w_max"
+	if (i == 10):
+		return c"__w_min"
+	if (i == 11):
+		return c"__w_abs"
+	# len(char*) borrows lib/lib.w's strlen: the prelude import pulls
+	# lib.lib in, so the chain always resolves at patch time
+	return c"strlen"
 
 
 # Leave helper i's address in eax: directly when the runtime module is
@@ -265,6 +275,159 @@ int prelude_input_expr():
 	if (helper == 8):
 		return type_value(type_get_list(type_lookup(c"int")))
 	return type_value(type_lookup_pointer(c"char", 1))
+
+
+# Prelude math helper index for the current token, or -1: bare
+# max/min/abs call sites lower to the __w_ helpers in
+# structures/prelude.w when no user symbol shadows the name (issue
+# #360). len is handled separately below: it is a compile-time
+# polymorphic length read, not a runtime helper (except the char*
+# case, which borrows lib/lib.w's strlen).
+int prelude_math_helper():
+	if (peek(c"max")):
+		return 9
+	if (peek(c"min")):
+		return 10
+	if (peek(c"abs")):
+		return 11
+	return -1
+
+
+int prelude_math_ready():
+	if (nextc != '('):
+		return 0
+	if ((prelude_math_helper() < 0) && (peek(c"len") == 0)):
+		return 0
+	if (sym_lookup(token) >= 0):
+		return 0
+	# A user generic function of the same name shadows too: its bare
+	# call sites resolve through generic argument inference
+	if (generic_def_lookup(token, 0) >= 0):
+		return 0
+	return 1
+
+
+void prelude_math_unsupported(char* fn_name, int got):
+	diag_part(c"prelude '")
+	diag_part(fn_name)
+	diag_part(c"' argument must be an int-like value: '")
+	if (got == 4):
+		diag_part(c"function")
+	else:
+		print_error_type(got)
+	error(c"'")
+
+
+# Constants, enums, bool, char and the fixed-width ints all pass;
+# floats, pointers, containers and aggregates are rejected (import
+# lib.math or write the comparison out for anything wider).
+void prelude_math_require_int(char* fn_name, int got):
+	if (got == 3):
+		return;
+	if (got == 4):
+		prelude_math_unsupported(fn_name, got)
+	int t = type_unqualified(got)
+	if (type_float_kind(t)):
+		prelude_math_unsupported(fn_name, got)
+	if (type_get_pointer_level(t) > 0):
+		prelude_math_unsupported(fn_name, got)
+	if (type_num_args(t) > 0):
+		prelude_math_unsupported(fn_name, got)
+	if (type_is_map(t) | type_is_set(t) | type_is_list(t) | type_is_var(t)):
+		prelude_math_unsupported(fn_name, got)
+	if (type_is_buffer(t)):
+		prelude_math_unsupported(fn_name, got)
+	if (type_get_kind(t) == type_kind_enum):
+		return;
+	if (t == type_unqualified(bool_type)):
+		return;
+	int size = type_get_size(t)
+	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
+		return;
+	prelude_math_unsupported(fn_name, got)
+
+
+void prelude_len_unsupported(int got):
+	diag_part(c"unsupported len argument type: '")
+	if (got == 3):
+		diag_part(c"constant")
+	else if (got == 4):
+		diag_part(c"function")
+	else:
+		print_error_type(got)
+	error(c"'")
+
+
+# len(x): compile-time polymorphic length. list/map/set and the
+# buffers (string, slice, decayed fixed array) read their length word
+# at container + word_size (the '.length' rule); char* calls strlen
+# through the helper chain. Leaves ')' current for primary_expr's
+# trailing get_token(). Returns an int rvalue.
+int prelude_len_expr():
+	get_token()
+	expect(c"(")
+	int base_stack = stack_pos
+	int got = expression()
+	if (peek(c")") == 0):
+		error(c"')' expected in len")
+	got = promote(got)
+	if ((got == 3) || (got == 4)):
+		prelude_len_unsupported(got)
+	int t = type_unqualified(got)
+	if (type_is_char_pointer(t)):
+		push_eax()
+		stack_pos = stack_pos + 1
+		print_emit_call1(12, stack_pos)
+		be_pop(stack_pos - base_stack)
+		stack_pos = base_stack
+	else if (type_is_list(t) | type_is_map(t) | type_is_set(t) | type_is_buffer(t)):
+		add_eax_int32(word_size)
+		promote_eax()
+	else:
+		prelude_len_unsupported(got)
+	return type_value(type_lookup(c"int"))
+
+
+# max(a, b) / min(a, b) / abs(a) with no user symbol of that name in
+# scope: parse and validate the arguments and call the prelude helper.
+# Leaves ')' current for primary_expr's trailing get_token().
+int prelude_math_call_expr(int helper):
+	char* fn_name = strclone(token)
+	get_token()
+	expect(c"(")
+	int base_stack = stack_pos
+	print_builtin_needed = 1
+	print_emit_helper_address(helper)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int got = expression()
+	got = promote(got)
+	prelude_math_require_int(fn_name, got)
+	push_eax()
+	stack_pos = stack_pos + 1
+	if (helper != 11):
+		# max and min take a second argument; abs takes exactly one
+		expect(c",")
+		got = expression()
+		got = promote(got)
+		prelude_math_require_int(fn_name, got)
+		push_eax()
+		stack_pos = stack_pos + 1
+	if (peek(c")") == 0):
+		diag_part(c"')' expected in prelude '")
+		diag_part(fn_name)
+		error(c"'")
+	hash_call_finish(base_stack)
+	free(fn_name)
+	return type_value(type_lookup(c"int"))
+
+
+# Entry for the primary_expr branch: routes len separately from the
+# max/min/abs runtime helpers.
+int prelude_math_expr():
+	if (peek(c"len")):
+		return prelude_len_expr()
+	return prelude_math_call_expr(prelude_math_helper())
 
 
 void print_patch_chain(int i):

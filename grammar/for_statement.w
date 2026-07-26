@@ -477,15 +477,88 @@ void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 			0, -1, 0, -1)
 
 
+# Inferred loop variable, first half: 'for name in ...' with the type
+# omitted (docs/projects/golf_ergonomics.md). Consume the identifier and
+# reserve the variable's stack slot (eax holds the 0 default), but defer
+# the symbol declaration until the range/container fixes its type -- the
+# ':=' precedent, so the iterable expression cannot reference the new
+# name. Returns the cloned name; msg is the non-identifier diagnostic.
+char* for_infer_name(char* msg):
+	int c0 = token[0]
+	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	if (is_ident == 0):
+		error(msg)
+	char* name = strclone(token)
+	get_token()
+	push_eax()
+	stack_pos = stack_pos + 1
+	return name
+
+
+# Inferred loop variable, second half: declare the deferred name with
+# the type the container fixed, anchored to the slot for_infer_name
+# reserved (slot is the stack_pos anchor recorded after the push, so the
+# declared value is slot - 1, matching variable_declaration's layout).
+void for_infer_declare(char* name, int slot, int type):
+	pointer_indirection = 0
+	sym_declare(name, type, 'L', slot - 1, 1)
+	free(name)
+
+
+# Loop-variable type for 'for name in container' with the type omitted:
+# maps and sets yield their key type, lists their element type (struct
+# elements as element pointers, matching for_list_loop), slices their
+# element type, strings int code points. A custom cursor-protocol
+# container yields its value accessor's declared return type when one
+# is in scope; otherwise int (for_iter_require reports the real error).
+int for_infer_var_type(int container_type):
+	if (type_is_map(container_type)):
+		return type_map_key_type(container_type)
+	if (type_is_set(container_type)):
+		return type_set_key_type(container_type)
+	if (type_is_list(container_type)):
+		int element_type = type_list_element_type(container_type)
+		if (type_num_args(element_type) > 0):
+			return type_get_next_pointer(element_type)
+		return element_type
+	if (type_is_slice(container_type)):
+		return type_unqualified(type_get_element_type(container_type))
+	if (type_is_string(container_type)):
+		return type_lookup(c"int")
+	if (type_get_pointer_level(container_type) == 1):
+		char* value_name = strjoin(type_get_name(container_type), c"_iter_value")
+		int symbol = sym_lookup(value_name)
+		free(value_name)
+		if (symbol >= 0):
+			if (load_int(table + symbol + 10) == 2):
+				return load_int(table + symbol + 6)
+	return type_lookup(c"int")
+
+
 # The "in <container>" body of for_statement; "for", the loop variable(s)
 # and "in" have already been consumed. Emits the cursor-protocol loop
 # described in the header comment. value_var is 0 unless a second loop
 # variable was declared ("for K key, V value in map"), which only maps
-# support.
-void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int value_var, int value_var_type):
+# support. infer_name/infer_name2 carry the deferred names of loop
+# variables declared without a type (0 for the typed form): they are
+# declared here, right after the container expression fixes their types.
+void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int value_var, int value_var_type, char* infer_name, char* infer_name2):
 	# The iterable is evaluated exactly once, before the body
 	int container_type = promote(expression())
 	container_type = type_unqualified(container_type)
+	if (infer_name != 0):
+		loop_var_type = for_infer_var_type(container_type)
+		for_infer_declare(infer_name, for_var, loop_var_type)
+	if (infer_name2 != 0):
+		int inferred_value_type = type_lookup(c"int")
+		if (type_is_map(container_type)):
+			inferred_value_type = type_map_value_type(container_type)
+			# Struct values yield each stored value's address, matching
+			# for_hash_container_loop's __w_map_iter_value_addr path
+			if (type_num_args(inferred_value_type) > 0):
+				inferred_value_type = type_get_next_pointer(inferred_value_type)
+		value_var_type = inferred_value_type
+		for_infer_declare(infer_name2, value_var, inferred_value_type)
 	if (type_is_map(container_type) | type_is_set(container_type)):
 		for_hash_container_loop(for_var, for_tab_level, loop_var_type, container_type, value_var, value_var_type)
 		return;
@@ -539,10 +612,15 @@ int for_statement():
 	int for_tab_level = tab_level
 
 	mov_eax_int(0) /* default start value for the loop variable */
+	char* infer_name = 0
+	char* infer_name2 = 0
 	int type = variable_declaration()
 	if (type < 0):
-		error(c"type not found in for_statement loop variable")
-	if (type_stack_words(type) != 1):
+		# No type: 'for name in ...' infers the loop variable's type
+		# from the range/container (docs/projects/golf_ergonomics.md)
+		infer_name = for_infer_name(c"type not found in for_statement loop variable")
+		type = type_lookup(c"int")
+	else if (type_stack_words(type) != 1):
 		error(c"for loop variable must be a word-sized type")
 	int for_var = stack_pos
 
@@ -553,8 +631,9 @@ int for_statement():
 		mov_eax_int(0)
 		value_type = variable_declaration()
 		if (value_type < 0):
-			error(c"type not found in for_statement value variable")
-		if (type_stack_words(value_type) != 1):
+			infer_name2 = for_infer_name(c"type not found in for_statement value variable")
+			value_type = type_lookup(c"int")
+		else if (type_stack_words(value_type) != 1):
 			error(c"for loop value variable must be a word-sized type")
 		value_var = stack_pos
 
@@ -562,8 +641,11 @@ int for_statement():
 	if (accept(c"range")):
 		if (value_var != 0):
 			error(c"range iteration takes one loop variable")
+		# An inferred range loop variable is always int
+		if (infer_name != 0):
+			for_infer_declare(infer_name, for_var, type_lookup(c"int"))
 		for_range_loop(for_var, for_tab_level)
 	else:
-		for_container_loop(for_var, for_tab_level, type, value_var, value_type)
+		for_container_loop(for_var, for_tab_level, type, value_var, value_type, infer_name, infer_name2)
 
 	return 1

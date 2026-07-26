@@ -1,17 +1,41 @@
 # Storage type a 'name := expression' local declares for an initializer
 # expression type. Value pseudo-types map back to their declarable
 # storage types (the generic-inference rule); untyped constants default
-# to int; bare function names and void expressions have no storage type.
-int inferred_storage_type(int got):
+# to int (the word-sized type, so the same source infers the same
+# storage on every target); bare function names and void expressions
+# have no storage type, and the diagnostics name the variable.
+int inferred_storage_type(char* name, int got):
 	if (got == 3):
 		return type_lookup(c"int")
 	if (got == 4):
-		error(c"cannot infer a type for ':=' from a bare function name")
+		diag_part(c"cannot infer a type for '")
+		diag_part(name)
+		error(c"' from a bare function name")
 	int t = generic_infer_declarable(type_real(got))
 	t = type_unqualified(t)
 	if ((type_get_size(t) == 0) & (type_num_args(t) == 0)):
-		error(c"cannot infer a type for ':=' from a void expression")
+		diag_part(c"cannot infer a type for '")
+		diag_part(name)
+		error(c"' from a void expression")
 	return t
+
+
+# Safer ':=' (issue #360): ':=' always declares a NEW variable, so a
+# name still visible as a local or parameter is a redeclaration -- in
+# practice the writer meant '=' (the assignment), or wanted an explicit
+# typed declaration for a deliberate shadow. Locals in closed blocks do
+# not trigger this: scope exit truncates the symbol table, so only live
+# bindings are found. Globals stay silently shadowable, matching typed
+# declarations.
+void inferred_redeclaration_check(char* name):
+	int existing = sym_lookup(name)
+	if (existing < 0):
+		return;
+	int visibility = table[existing + 1]
+	if ((visibility == 'L') || (visibility == 'A')):
+		diag_part(c"':=' redeclares '")
+		diag_part(name)
+		error(c"'; use '=' to assign, or a typed declaration to shadow")
 
 
 /*
@@ -43,9 +67,10 @@ int inferred_declaration():
 	free(cast(char*, load_ptr(save + 11 * __word_size__)))
 	free(save)
 	get_token() /* consume ':=' */
+	inferred_redeclaration_check(name)
 	int got = expression()
 	got = promote(got)
-	int type = inferred_storage_type(got)
+	int type = inferred_storage_type(name, got)
 	# Unlike 'type name = expr' the symbol is declared after the
 	# initializer, so the initializer cannot reference the new name and
 	# the recorded slot index needs no post-expression fixup.

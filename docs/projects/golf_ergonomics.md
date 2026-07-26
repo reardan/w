@@ -134,6 +134,77 @@ lib/str.w: `substring` (clamping, half-open), `index_of`, `split`
 preserved), `replace` (multi-character), `join` over `list[char*]`.
 lib/math.w grows `abs`, `sign`, `gcd`, `pow` (integer, by squaring).
 
+## Wave 2 (issue #360)
+
+### Inferred for-loop variables (grammar/for_statement.w)
+
+`for x in ...` drops the loop-variable type when the range or container
+already fixes it. The name is consumed and its stack slot reserved up
+front, but the symbol is declared only after the iterable expression
+parses (the `:=` precedent), so the iterable cannot reference the new
+name. The inferred types mirror the typed form's coercion sources:
+range and `string` loops bind `int`; maps bind the key type, and the
+optional second variable the value type (struct values as stored-value
+addresses, the `__w_map_iter_value_addr` rule); sets the key type;
+lists and slices the element type (struct list elements as element
+pointers); custom cursor-protocol containers their `T_iter_value`
+return type, with `for_iter_require` still validating the protocol.
+Typed and inferred bindings mix freely in the two-variable map form.
+The parser-generator grammar's `for_binding` rule had accepted a bare
+`IDENT` binding since #42, so `w.pg` only gained a comment. One known
+rough edge: the debugger's local note is recorded at declaration with
+the final type, but wdbg's view of a struct-element pointer variable is
+only as good as `debug_local_note`'s type rendering.
+
+### Safer ':=' (grammar/variable_declaration.w)
+
+`:=` always declares a new variable, so using it on a name still
+visible as a local or parameter is now an error (":=' redeclares 'x';
+use '=' to assign, or a typed declaration to shadow"): the silent
+inner-scope shadow was the classic bug where `x := 2` inside a block
+left the outer `x` untouched. Scope exit truncates the symbol table,
+so a name whose previous binding lived in a closed block is free for
+reuse, and globals stay silently shadowable exactly like typed
+declarations. The REPL's persistent-variable path
+(`repl_infer_declaration`) is separate and still allows re-entering
+`x := ...` at the prompt. The inference diagnostics now name the
+variable ("cannot infer a type for 'x' from a void expression" / "...
+from a bare function name"; the list-reduce init reuses the same
+helper as "reduce init"), and all four errors are pinned by the
+`infer_safety_test` fixture group. The untyped-constant default is
+unchanged and now spelled out: constants infer `int`, the word-sized
+type, so the same source infers the same storage on every target
+(literals wider than 32 significant bits were already tokenizer
+errors). Inferred `for` variables deliberately do NOT get the
+redeclare error: sequential `for i in range(...)` loops in one
+function each declare their own `i`, matching the typed form.
+
+### Prelude math: max/min/abs/len (grammar/print_builtin.w)
+
+`max(a, b)`, `min(a, b)`, `abs(a)` and `len(x)` work with no import
+when no user symbol shadows the name -- the input()-helper rule:
+primary_expr resolves the bare name to the prelude only when
+sym_lookup misses, so imports of lib/math.w (or a user definition,
+including forward 'U' prototypes) win unchanged. A user GENERIC
+function of the same name also wins (generic_def_lookup): bare calls
+of 'T max[T](T a, T b)' keep resolving through generic argument
+inference, which tests/generics_inference_test.w pins. Like the stdin
+helpers this is single-pass: a call site textually before a
+same-file user definition binds the prelude, later sites bind the
+user function. max/min/abs are int-only (constants, enums, bool, char
+and the fixed-width ints; anything else is "prelude 'max' argument
+must be an int-like value: '...'") and lower to __w_max/__w_min/__w_abs
+in structures/prelude.w through the existing helper backpatch chains.
+len is compile-time polymorphic, not a runtime helper: list/map/set
+and the buffers (string, slice, decayed fixed array) read their length
+word at container + word_size (exactly the '.length' rule, so string
+lengths are byte counts), and char* borrows lib/lib.w's strlen through
+the chain (the prelude import always pulls lib.lib in). Unsupported
+argument types are "unsupported len argument type: '...'"; both
+diagnostics are pinned by the prelude_math_error_test fixture group.
+No new syntax: these are ordinary call sites, so the parser-generator
+grammar is untouched.
+
 ## Acceptance
 
 - `./wbuild verify` — self-host fixpoint (wv3 == wv4 == wv5) with every
