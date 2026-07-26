@@ -1911,6 +1911,7 @@
 				"pointer_arith_type_64_test",
 				"poll_64_test",
 				"poly1305_64_test",
+				"prelude_math_64_test",
 				"prng_64_test",
 				"process_64_test",
 				"process_bytes_64_test",
@@ -2442,6 +2443,7 @@
 				"pointer_test",
 				"poll_test",
 				"poly1305_test",
+				"prelude_math_test",
 				"prng_test",
 				"process_bytes_test",
 				"process_test",
@@ -4622,6 +4624,33 @@
 			"deps": ["wv2", "wfixture"],
 			"steps": [
 				{"cmd": ["bin/wfixture", "bin/wv2", "tests/prefixed_string_unterminated_fixture.w"]}
+			]
+		},
+		{
+			"name": "prelude_math_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/prelude_math_test.w"],
+			"outputs": ["bin/prelude_math_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/prelude_math_test.w", "-o", "bin/prelude_math_64_test"]},
+				{"cmd": ["bin/prelude_math_64_test"]}
+			]
+		},
+		{
+			"name": "prelude_math_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/prelude_len_error_fixture.w", "tests/prelude_math_float_error_fixture.w"]}
+			]
+		},
+		{
+			"name": "prelude_math_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/prelude_math_test.w"],
+			"outputs": ["bin/prelude_math_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/prelude_math_test.w", "-o", "bin/prelude_math_test"]},
+				{"cmd": ["bin/prelude_math_test"]}
 			]
 		},
 		{

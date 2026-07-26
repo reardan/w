@@ -83,6 +83,29 @@ void __w_print_list(__w_list* list, int kind):
 	__w_print_cstr(c"]")
 
 
+# Prelude math (issue #360): max/min/abs reachable without an import.
+# The compiler resolves bare max(a, b)/min(a, b)/abs(a) call sites to
+# these helpers only when no user symbol shadows the name
+# (grammar/print_builtin.w); lib/math.w keeps its own min/max/abs for
+# programs that import it, which then win the lookup.
+int __w_max(int a, int b):
+	if (a > b):
+		return a
+	return b
+
+
+int __w_min(int a, int b):
+	if (a < b):
+		return a
+	return b
+
+
+int __w_abs(int a):
+	if (a < 0):
+		return 0 - a
+	return a
+
+
 # One line from stdin with the newline stripped, or 0 at end of input.
 # The buffer is malloc'd and owned by the caller.
 char* input():
