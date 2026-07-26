@@ -657,7 +657,22 @@ exist yet:
   so it is not the same class of bug 2h closes, just a related, narrower
   gap. Real fix: make `ctrl_kind_stack`/`ctrl_val_stack` grow dynamically
   (or move them off a fixed-size array entirely) instead of picking a
-  bigger constant.
+  bigger constant. **Fixed**: the stacks are now malloc'd `int*` buffers
+  (initial capacity 256, doubled on push by `ctrl_stack_reserve()` in
+  `code_generator/x86.w`; byte sizes computed with `__word_size__` since
+  the entries are word-sized ints — the f13ab7f lesson). One correction
+  to the analysis above, measured while writing the regression test: a
+  *genuinely* nested if/for level costs 2 `stmt_nesting_depth` units,
+  not 1 (the statement and its `:` block each recurse `statement()`), so
+  the 200-unit guard already fired at 100 pure nested ifs — before the
+  129-if array bound, which was in practice reachable only by `for`
+  nests (86, 3 slots each) and for-heavy mixed shapes. Post-fix the
+  guard is the only nesting bound: ~99 genuinely nested levels, 200
+  chain branches. `tests/deep_nesting_test.w` (a generated file) pins
+  95 nested fors (285 ctrl slots at peak), an 88-for/9-if mix (282,
+  with the if regions past slot 256), and a guard-max 97-if nest, all
+  asserted to execute correctly on x86 and x64; the first two trapped
+  at `index 256, length 256` on the pre-fix compiler.
 - **Found while shipping 2h: piping a very long single line (10000+
   characters) containing deeply nested parens into the interactive REPL
   (`bin/repl < file`, no PTY) does not reliably reach the second REPL
