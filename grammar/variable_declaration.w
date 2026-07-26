@@ -89,7 +89,10 @@ int variable_declaration():
 			coerce(type, type2)
 			if (types_compatible_with_expression(type, type2) == 0):
 				warn_type_mismatch(c"initialization", type, type2)
-			if (verbosity >= 0):
+			# Level 1: this is a per-declaration developer trace like its
+			# siblings (promote(), sym_declare(), ...), not part of the
+			# user-facing -v level 0 output (which -v now reaches).
+			if (verbosity >= 1):
 				print2(c"variable declaration = expression() right side type: ")
 				type_print(type2)
 		save_int(table + last_declared_symbol + 2, stack_pos)

@@ -385,6 +385,89 @@ int repl_call_site_hook
 int gpu_sym_get_value(char* s);
 
 
+int sym_is_name_char(int c):
+	if (('a' <= c) && (c <= 'z')):
+		return 1
+	if (('A' <= c) && (c <= 'Z')):
+		return 1
+	if (('0' <= c) && (c <= '9')):
+		return 1
+	return c == '_'
+
+
+# Forward-call hint support: consume the rest of the current input file
+# looking for what can only be a top-level definition (or prototype) of
+# name -- the name as a whole word followed by '(' (spaces allowed
+# between), on a line whose first character is a name character, i.e. at
+# column 0. Function bodies are tab-indented, so a later CALL of the
+# name can never match; a later 'type name(params)' definition does.
+# Text behind a '#' on the line is ignored so a trailing comment cannot
+# fake a definition. The scan eats the remaining input, which is fine on
+# its only path: sym_not_found_error below, right before error() exits
+# the process.
+int sym_defined_later_in_file(char* name):
+	int c = nextc
+	int at_line_start = 1
+	int line_can_define = 0
+	int line_commented = 0
+	int prev_is_name = 0
+	int match_i = 0
+	while (c != -1):
+		if (at_line_start):
+			# The scan starts mid-line (right after the failed name), so
+			# the first "line" can never define: its true column 0 was
+			# consumed long ago. sym_is_name_char is false for every
+			# character that can directly follow an identifier token.
+			line_can_define = sym_is_name_char(c)
+			line_commented = 0
+			prev_is_name = 0
+			match_i = 0
+			at_line_start = 0
+		if (c == 10):
+			at_line_start = 1
+		else if (c == '#'):
+			line_commented = 1
+		else if (line_can_define && (line_commented == 0)):
+			if ((match_i > 0) && (name[match_i] == 0)):
+				# Whole name matched; only spaces may separate it from
+				# the '(' of a parameter list. Anything else (another
+				# name character, '[' of a generic definition, ...)
+				# resets the search.
+				if (c == '('):
+					return 1
+				if (c != ' '):
+					match_i = 0
+			else if ((c == name[match_i]) && ((match_i > 0) || (prev_is_name == 0))):
+				match_i = match_i + 1
+			else:
+				match_i = 0
+			prev_is_name = sym_is_name_char(c)
+		c = getchar(file)
+	return 0
+
+
+# Shared cannot-find-symbol error for sym_get_value and the device-mode
+# lookup (grammar/kernel_decl.w). The single-pass compiler registers a
+# function only once its definition (or a C-style prototype,
+# grammar/program.w's semicolon-terminated fix-up) has been parsed, so a
+# call to a function defined further down the same file used to fail
+# with a message indistinguishable from a typo; when the definition is
+# visibly later in the file, say so and point at the prototype fix-up
+# (docs/projects/ai_tooling.md). The lookahead scan consumes the rest of
+# the input file, so it only runs when error() is about to exit the
+# process -- under REPL recovery (error() longjmps back to a live
+# prompt) the plain message is kept.
+void sym_not_found_error(char* s):
+	diag_part(c"Cannot find symbol: '")
+	diag_part(token)
+	if (repl_recovery == 0):
+		if (sym_defined_later_in_file(s)):
+			diag_part(c"': declared later in this file -- forward-declare it with a prototype ('type ")
+			diag_part(s)
+			error(c"(params);') before this point")
+	error(c"'")
+
+
 # Emits code leaving the symbol's ADDRESS in eax and returns its type index.
 # Functions are the exception: their address is their value, so they return
 # the "function" type (4), which promote() leaves untouched.
@@ -395,9 +478,7 @@ int sym_get_value(char *s):
 	if (target_isa == 3):
 		return gpu_sym_get_value(s)
 	if ((t = sym_lookup(s)) < 0):
-		diag_part(c"Cannot find symbol: '")
-		diag_part(token)
-		error(c"'")
+		sym_not_found_error(s)
 	# A kernel's body lives in the PTX module, not at a host address:
 	# referencing its name as a value can only be a miscall.
 	if (sym_is_kernel(t)):

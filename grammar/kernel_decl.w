@@ -154,9 +154,7 @@ int gpu_capture_slot(int t, char* name):
 int gpu_sym_get_value(char* s):
 	int t
 	if ((t = sym_lookup(s)) < 0):
-		diag_part(c"Cannot find symbol: '")
-		diag_part(token)
-		error(c"'")
+		sym_not_found_error(s)
 	if (load_int(table + t + 10) == 2):
 		error(c"gpu code cannot call functions")
 	char scope_type = table[t + 1]
