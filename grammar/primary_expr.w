@@ -226,17 +226,15 @@ int primary_expr():
 	}
 	# ( expression )
 	else if (accept(c"(")) {
-		# Recursion-depth guard (compiler/tokenizer.w): re-entering
-		# expression() here is the only place '(' -grouping recurses back
-		# to the top of the expression grammar, so this is the single
-		# choke point that catches every deeply-parenthesized expression
-		# before the real call stack (thousands of frames per level, one
-		# full descent through the precedence chain) overflows it.
-		expr_nesting_depth = expr_nesting_depth + 1
-		if (expr_nesting_depth > 1000):
-			error(c"expression nesting too deep")
+		# Recursion-depth guard: '(' grouping re-enters expression() while
+		# this primary_expr and its enclosing operand frames are still on
+		# the native stack, and the descent back down to the nested
+		# operand passes through unary_expression() -- whose entry guard
+		# (grammar/unary_expression.w) counts it, one shared choke point
+		# for every operand-position recursion. No separate counter here:
+		# a second increment would double-count each paren level and halve
+		# the effective limit.
 		type = expression()
-		expr_nesting_depth = expr_nesting_depth - 1
 		if (peek(c")") == 0):
 			error(c"No closing parenthesis")
 	}

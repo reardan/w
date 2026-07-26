@@ -673,11 +673,11 @@ int repl_compile_entry(char* path):
 	byte_offset = 0
 	# A failed entry's error() longjmps straight back to the setjmp above,
 	# unwinding past every pending expr_nesting_depth/stmt_nesting_depth
-	# decrement in grammar/primary_expr.w and grammar/statement.w -- reset
-	# both here, at the start of every entry (the one after a failure and
-	# every ordinary one alike), so a nesting-guard trip (or any other
-	# error) inside one entry can never leave the next entry starting
-	# already "nested".
+	# decrement in grammar/unary_expression.w, grammar/conditional_expr.w,
+	# grammar/expression.w and grammar/statement.w -- reset both here, at
+	# the start of every entry (the one after a failure and every ordinary
+	# one alike), so a nesting-guard trip (or any other error) inside one
+	# entry can never leave the next entry starting already "nested".
 	expr_nesting_depth = 0
 	stmt_nesting_depth = 0
 	# Same reset compile_attempt performs (compiler/compiler.w): a failed

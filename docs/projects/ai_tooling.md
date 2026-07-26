@@ -82,6 +82,61 @@ Shipped from the next-steps backlog:
   manifest, and `tests/wbuildgen_directive_errors_test.w` driving
   `bin/wbuildgen` over throwaway scratch trees (the `wvc_e2e_test.w`
   pattern) for the error paths and generated-JSON shape.
+- **Same-file forward-call prototype hint** (2026-07-25): `Cannot find
+  symbol: 'callee'` on a call to a function defined further down the
+  same file now appends `: declared later in this file -- forward-
+  declare it with a prototype ('type callee(params);') before this
+  point`. The single-pass architecture has no pre-registered
+  signatures, so `sym_not_found_error` (`compiler/symbol_table.w`,
+  shared with the device-mode lookup in `grammar/kernel_decl.w`) runs a
+  cheap lookahead scan over the rest of the current input file for the
+  name as a whole word followed by `(` on a column-0 line — function
+  bodies are tab-indented, so only a top-level definition or prototype
+  can match, and a genuinely missing name (typo, missing import) keeps
+  the bare message. The scan consumes the remaining input, which is
+  safe because `error()` exits right after; under REPL recovery
+  (`error()` longjmps back to the prompt) the scan is skipped and the
+  plain message kept. A later *generic* definition (`name[T](...)`)
+  deliberately does not match: a prototype would not fix that call —
+  explicit `name[type](...)` instantiation is required. Fixtures:
+  `tests/forward_call_hint_fixture.w` /
+  `tests/forward_call_no_hint_fixture.w` (`forward_call_hint_test`,
+  `bin/wfixture`).
+- **`-v`/`--verbose` driver flag, and the c_import skip notice it
+  surfaces** (2026-07-25): `w [-v|--verbose] file.w` (also accepted by
+  `w check` among its leading flags, and anywhere in the argument list
+  — a pre-scan in `link_impl` applies it before any root compiles)
+  raises `verbosity` from its quiet `-1` default to 0: the per-import
+  `compiling`/`back to` banners plus the previously-unreachable
+  `ci_skip_extern_function` notice (`libs/extras/c_import/importer.w`),
+  which now prints `note: c_import skipped '<name>': <reason>` for
+  every extern declaration the FFI cannot represent. Severity decision:
+  the notice is a plain informational note on stderr, deliberately NOT
+  `warning()` (its pre-flag dead-code form) — skipping is expected
+  behavior, and a warning would make `-v --strict` fail every build
+  whose headers contain any unrepresentable declaration; it also stays
+  out of the `--json` NDJSON stream for the same reason. Repeated flags
+  (`-v -v`, ...) reach the developer debug-trace levels (1, 2). The
+  misplaced per-declaration trace in `grammar/variable_declaration.w`
+  moved from level 0 to level 1 with its siblings, and `compile_save`'s
+  cold-start "back to" banner no longer faults on the null `filename`
+  of the auto-import closure. Test: `c_import_verbose_note_test`
+  (`tests/c_import_skip_note_fixture.{w,h}`) asserts the note appears
+  under `-v`, is silent without it, and that `-v --strict` still
+  succeeds.
+- **Unrecognized options: detected up front, and a real NDJSON record
+  under `--json`** (2026-07-25): `link_impl` now validates the whole
+  argument list before compiling any root (`w huge.w --nope` used to
+  report the typo only after `huge.w` fully compiled), sharing one
+  recognizer (`link_option_recognized`) with the positional flag loop.
+  Under `check --json`, `unrecognized_option_error` emits the standard
+  diagnostic record shape — `{"file": "<command-line>", "line": 0,
+  "column": 0, "severity": "error", "message": "unrecognized option:
+  '<arg>'", "token": "<arg>", "arch": ...}` — instead of raw stderr, so
+  NDJSON consumers see the failure as data. `unrecognized_option_test`
+  pins both (a `reject_stderr: "compiling ..."` step proves the
+  pre-scan fires first).
+
 - **The "context-dependent codegen bug" trio: root-caused, fixed, and
   closed** (closed 2026-07-25; fix landed 2026-07-19 in f13ab7f, swept
   in 956660d). Three separately-logged HIGH-care sightings — wave 4a's

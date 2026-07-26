@@ -30,22 +30,10 @@ is a queue, not an archive.
   recovery, which stays a research project. Cheap partial win: after an
   error in file A, agents re-check to find errors behind it — nothing to
   build, just keep the limitation documented in skills.
-- **"Cannot find symbol" for a same-file forward call gives no hint that
-  a C-style prototype (`type name(params);`) would fix it.** Found while
-  reorganizing `debugger/attach.w` (wave plan C task 3c): moving a helper
-  function earlier in the file than a callee it needs (no pre-pass
-  registers signatures ahead of bodies; a name must already be in the
-  symbol table, `compiler/symbol_table.w`'s `sym_get_value`) errors with
-  a bare `Cannot find symbol: 'callee'` — indistinguishable from a typo
-  or a genuinely missing import. `grammar/program.w:183-185` shows the
-  existing fix-up (a semicolon-terminated prototype creates an `'U'`
-  undefined-global symbol that later resolution backpatches,
-  `sym_declare_global`/`sym_define_global`), but nothing in the
-  diagnostic suggests it. A `w check` improvement: when the unresolved
-  name is defined later in the same file (or its close-by-name
-  suggestion search already scans forward), append "declared later in
-  this file — forward-reference it with a prototype (`type
-  callee(...);`) before this point" to the existing message.
+- **Shipped (2026-07-25): the same-file forward-call prototype hint.**
+  See `ai_tooling.md`'s status section; `Cannot find symbol` now appends
+  the forward-declaration hint when the name is visibly defined later in
+  the current file (`compiler/symbol_table.w`'s `sym_not_found_error`).
 - **Shipped (2026-07-17, wave 2f): the bool-bitwise condition hint is
   now on by default for every call-free join.** See `ai_tooling.md`'s
   status section for the shipped description; `--bool-ops` survives as
@@ -137,15 +125,11 @@ is a queue, not an archive.
   writing `p + n` instead of reaching for `ptr_add`/`&p[n]`. The footgun
   is now avoidable, not eliminated.
 
-- **Two residues from the wave-3d c_import/preprocessor `diag_part`
+- **One residue from the wave-3d c_import/preprocessor `diag_part`
   migration (2026-07-19; shipped summary in `ai_tooling.md`'s status
-  section).** (1) `ci_skip_extern_function`'s (`libs/extras/c_import/
-  importer.w`) `if (verbosity >= 1)` guard is dead code — nothing in
-  the compiler, REPL, or `wdbg` ever raises `verbosity` above the `-1`
-  every entry point sets it to, so this warning path is unreachable
-  through any current CLI surface; a `-v`/`--verbose` flag would be
-  needed to exercise it (and to make the warning visible to users at
-  all — right now it can never fire). (2) `cpp_preprocess_file_into`'s
+  section).** (The other — `ci_skip_extern_function`'s dead
+  `verbosity` guard — shipped 2026-07-25 with the `-v`/`--verbose`
+  flag; see `ai_tooling.md`.) `cpp_preprocess_file_into`'s
   (`libs/extras/c_preprocessor/pp_directives.w`) "could not read" error
   only fires when `cpp_find_include`'s existence check (`path_exists`,
   its own `open()`+`close()`) succeeds but the subsequent real `open()`
@@ -438,19 +422,41 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   caller arg" case cannot detect a regression (both frames' `n` holds
   the same value) and run_case has no timeout (a re-arm regression hangs
   CI rather than failing).
-- **(2026-07-19 review) driver arg-loop notes**: unrecognized-option
-  detection is positional (flags after the roots are reported only after
-  the roots fully compile) and the new branch prints raw stderr with no
-  NDJSON record in `--json` mode; `ci_skip_extern_function` now routes
-  through `warning()`, so any future verbosity flag plus `--strict`
-  would turn every skipped extern into a build failure (latent — no CLI
-  path sets verbosity today).
+- **Shipped (2026-07-25): all three driver arg-loop notes from the
+  2026-07-19 review** (up-front unrecognized-option detection, the
+  NDJSON record under `--json`, and the `ci_skip_extern_function`
+  `warning()`/`--strict` interaction, resolved by demoting the skip
+  notice to a plain `-v`-gated note). See `ai_tooling.md`'s status
+  section. Residue: the `verbosity >= 1` internal debug traces
+  (`promote()`, `sym_declare()`, per-field type dumps, ...) are now
+  reachable from the CLI via `-v -v` — they run to completion (the
+  cold-start null-`filename` crash in `compile_save`'s "back to" banner
+  is fixed), but at ~45k lines for a hello-world they are a
+  developer-only firehose; nothing distinguishes trace lines from real
+  diagnostics, and several print to stdout. Fine for level >= 1; do not
+  move anything user-facing onto those levels without a sweep.
 - **(2026-07-19 review) recursion-guard coverage**: the expression guard
   triggers only on `(`-grouping re-entry; other deep shapes (60k nested
   calls, index/ternary/unary chains) still exhaust the real stack with
   no diagnostic. The tokenizer.w block comment overstates coverage.
-  `lib/shell_commands.w`'s `wc` derives counts from `strlen`, so a file
-  containing NUL truncates its counts.
+  **Fixed (2026-07-25)**: the `(`-site counter moved to the entry of
+  `grammar/unary_expression.w`'s `unary_expression()` — the one function
+  every operand-position recursion (parens, call arguments, index
+  subscripts, stacked unary operators, cast/constructor/literal
+  arguments) descends through per nesting level — plus two increments
+  for the cycles that recurse *above* the operand level, where each
+  level's operand has already returned before the recursion happens:
+  `grammar/conditional_expr.w`'s ternary branch (else-arm
+  `conditional_expr()` / then-arm `expression()`; unguarded SIGSEGV
+  measured by 2M levels) and `grammar/expression.w`'s `=`/compound
+  right-hand sides (`a = a = ... = 1`, same shape). Same shared
+  counter, 1000 limit and "expression nesting too deep" message at all
+  three sites, so the existing 900-paren clean / 1500-paren error
+  fixtures pass unchanged; call/index/ternary/unary/assignment chains
+  are pinned by the new `*_nesting_error_fixture.w` fixtures in
+  `recursion_depth_test` (plus a 900-level ternary clean companion).
+  Still uncovered (unchanged): `lib/shell_commands.w`'s `wc` derives
+  counts from `strlen`, so a file containing NUL truncates its counts.
 
 - **`wbuildgen` can't express "this source's default-arch target is
   x64-only, don't also generate an unwanted 32-bit twin"** (wave 2b,
@@ -655,6 +661,21 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   piped, non-PTY invocation `repl_test`'s `script -qc` fixtures don't
   exercise this exact shape either. Worth a closer look before relying on
   giant single-line REPL input in agent tooling.
+  **Fixed (2026-07-25)**: the culprit was `repl.w`'s `repl_read_plain`
+  (the piped/non-tty reader), whose fixed 4096-byte buffer consumed the
+  whole physical line but silently kept only the first 4095 characters
+  — a truncated deep-paren line left `repl_scan_depth` permanently
+  positive, so every later line was swallowed as a `..` continuation of
+  the same entry until EOF and the process exited 0 (exactly why the
+  ~2200-char deep line and the flat 3000-term line both "recovered":
+  one fit the buffer, the other truncated without unbalanced brackets).
+  `repl_read_plain` now appends straight into the `repl_line`
+  string_builder with no length cap; a 5000-deep 10001-char one-liner
+  gets the normal per-entry "expression nesting too deep" rollback and
+  the next entry runs, pinned by `tests/repl_giant_entry_fixture.txt`
+  in `repl_test`/`repl_test_x64`. The interactive raw-mode editor
+  (`lib/line_edit.w`) keeps its own 4096 buffer — typed/pasted lines at
+  a real prompt, deliberately untouched here.
 - **Shipped (2026-07-19, wave plan C task 1g): unrecognized CLI flags
   now get a real diagnostic.** `link_impl`'s flag loop (the common tail
   for link/check/deps/symbols/defhash) errors `unrecognized option:
