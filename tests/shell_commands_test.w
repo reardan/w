@@ -348,6 +348,40 @@ void test_wc_only_lines_when_only_l_flag_set():
 	free(f)
 
 
+void test_wc_counts_every_byte_past_an_embedded_nul():
+	# 6 bytes: 'a' NUL 'b' ' ' 'c' '\x0a' -> 1 line, 2 words ("a\0b" is
+	# one non-space run, NUL is not a separator, matching real wc), 6
+	# bytes. The old strlen-derived length stopped at the NUL and
+	# reported 0 1 1.
+	char* f = shtest_scratch_path(c"_wc_nul.bin")
+	int fd = create_file(f, 511)
+	char* data = malloc(8)
+	data[0] = 'a'
+	data[1] = 0
+	data[2] = 'b'
+	data[3] = ' '
+	data[4] = 'c'
+	data[5] = 10
+	write(fd, data, 6)
+	close(fd)
+	free(data)
+
+	char* cap = shtest_scratch_path(c"_wc_nul.out")
+	shtest_capture_stdout_start(cap)
+	wc(f, false, false, false)
+	char* got = shtest_capture_stdout_end(cap)
+
+	char* want = strjoin(c"1 2 6 ", f)
+	char* want2 = strjoin(want, c"\x0a")
+	assert_strings_equal(want2, got)
+	unlink(f)
+	free(want)
+	free(want2)
+	free(got)
+	free(cap)
+	free(f)
+
+
 void test_wc_missing_file_reports_error():
 	char* missing = c"/no/such/w_shell_commands_test_wc_xyz"
 	char* err_cap = shtest_scratch_path(c"_wc_missing.err")
@@ -692,6 +726,21 @@ void test_translate_echo_rejects_unknown_flag():
 	assert1(shell_translate_line(c"echo -x hi") == 0)
 
 
+void test_translate_echo_n_after_a_word_is_literal_text():
+	# Real echo only honors "-n" while it leads the argument list; after
+	# the first ordinary word it is plain text to print.
+	assert_strings_equal(c"shell_commands.echo(false, c\"hi\", c\"-n\")",
+		shell_translate_line(c"echo hi -n"))
+	assert_strings_equal(c"shell_commands.echo(false, c\"a\", c\"-n\", c\"b\")",
+		shell_translate_line(c"echo a -n b"))
+
+
+void test_translate_echo_repeated_leading_n_flags_all_consumed():
+	# Real echo consumes a whole leading run of "-n" flags.
+	assert_strings_equal(c"shell_commands.echo(true, c\"hi\")",
+		shell_translate_line(c"echo -n -n hi"))
+
+
 void test_translate_head_default_count():
 	assert_strings_equal(c"shell_commands.head(c\"a.txt\", 10)", shell_translate_line(c"head a.txt"))
 
@@ -700,8 +749,14 @@ void test_translate_head_n_flag_space_separated():
 	assert_strings_equal(c"shell_commands.head(c\"a.txt\", 5)", shell_translate_line(c"head -n 5 a.txt"))
 
 
-void test_translate_head_n_flag_inline_equals():
-	assert_strings_equal(c"shell_commands.head(c\"a.txt\", 5)", shell_translate_line(c"head -n=5 a.txt"))
+void test_translate_head_rejects_inline_equals_forms():
+	# "-n=5"/"--lines=5" are lib/args.w spellings, not head's ("head
+	# -n=5" is an "invalid number of lines: '=5'" error from the real
+	# tool) -- the line fails closed to native so the real tool's own
+	# acceptance or diagnostic applies, instead of the translator
+	# accepting a form the native tool would not.
+	assert1(shell_translate_line(c"head -n=5 a.txt") == 0)
+	assert1(shell_translate_line(c"head --lines=5 a.txt") == 0)
 
 
 void test_translate_head_long_lines_flag():
@@ -726,6 +781,12 @@ void test_translate_tail_default_count():
 
 void test_translate_tail_n_flag():
 	assert_strings_equal(c"shell_commands.tail(c\"a.txt\", 3)", shell_translate_line(c"tail -n 3 a.txt"))
+
+
+void test_translate_tail_rejects_inline_equals_forms():
+	# Same rationale as head's: not the real tools' forms.
+	assert1(shell_translate_line(c"tail -n=3 a.txt") == 0)
+	assert1(shell_translate_line(c"tail --lines=3 a.txt") == 0)
 
 
 void test_translate_wc_default_all_flags_false():

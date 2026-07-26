@@ -236,14 +236,24 @@ void tail(char* path, int n):
 # default. Lines are counted as '\x0a' bytes (real wc's definition, not
 # file_read_lines's line count, which can differ for a file with no
 # trailing newline); words are maximal runs of non-space/tab/newline
-# bytes.
+# bytes. Reads through a stream directly (not file_read_text) so the
+# true byte count is known: deriving it with strlen would stop at the
+# first NUL byte and truncate every figure for a binary file.
 void wc(char* path, bool count_lines, bool count_words, bool count_bytes):
-	char* text = file_read_text(path)
-	if (text == 0):
+	wstream* in = stream_open_read(path)
+	if (in == 0):
 		print_error(c"wc: ")
 		print_error(path)
 		println2(c": No such file or directory")
 		return
+	string_builder* contents = string_new()
+	stream_read_all(in, contents)
+	stream_close(in)
+	# Ownership transfer: take .data and .length, free only the wrapper
+	# (the string_builder_to_string idiom).
+	int length = contents.length
+	char* text = contents.data
+	free(contents)
 	int show_lines = count_lines
 	int show_words = count_words
 	int show_bytes = count_bytes
@@ -251,7 +261,6 @@ void wc(char* path, bool count_lines, bool count_words, bool count_bytes):
 		show_lines = 1
 		show_words = 1
 		show_bytes = 1
-	int length = strlen(text)
 	int lines = 0
 	int words = 0
 	int in_word = 0
