@@ -6,8 +6,11 @@ json_value* object tree; from_json(T, value) decodes a json_value* back
 into a freshly allocated T*, returning 0 when the value does not match.
 
 There is no runtime reflection: at the first use site per struct type the
-compiler walks the type table and emits a static descriptor blob into the
-code stream behind an unconditional jump, then lowers the builtin to
+compiler walks the type table and emits a static descriptor blob through
+a be_blob_begin/be_blob_end region (code_generator/x86.w): behind an
+unconditional jump in the code stream on the native targets, or into the
+data segment on wasm, where code is not readable memory. It then lowers
+the builtin to
 __w_json_encode(desc, addr) / __w_json_decode(desc, value) calls into
 structures/json_codec.w (see that file for the descriptor layout). The
 runtime module is only imported into programs that use the builtins: the
@@ -140,8 +143,9 @@ int json_codec_emit_value_desc(int t):
 
 
 # Emit (or reuse) the descriptor blob for a struct type and return its
-# absolute address. The blob sits in the instruction stream behind an
-# unconditional jump, so emitting mid-expression is safe.
+# absolute address. The be_blob region keeps the blob out of the executed
+# path (jumped over in the instruction stream on the native targets, in
+# the data segment on wasm), so emitting mid-expression is safe.
 int json_codec_descriptor(int struct_type):
 	struct_type = type_canonical(type_unqualified(struct_type))
 	int cached = json_codec_cache_lookup(struct_type)
@@ -156,10 +160,7 @@ int json_codec_descriptor(int struct_type):
 		json_codec_ensure_nested(type_get_field_type_at(struct_type, i))
 		i = i + 1
 
-	if (target_isa == 2):
-		error(c"to_json/from_json is not supported on the wasm target yet")
-	jmp_int32(1337030)
-	int p = codepos
+	int p = be_blob_begin()
 
 	# Field name strings
 	char* name_addresses = malloc(n * 4)
@@ -199,10 +200,7 @@ int json_codec_descriptor(int struct_type):
 		emit_target_word(load_int(aux_addresses + i * 4))
 		i = i + 1
 
-	# The descriptor blob holds unaligned strings; realign so the jump lands
-	# on an instruction boundary (a no-op on x86).
-	be_align_code()
-	be_branch_patch(p, codepos)
+	be_blob_end(p)
 	free(name_addresses)
 	free(aux_addresses)
 	json_codec_cache_store(struct_type, desc_address)

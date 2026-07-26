@@ -627,6 +627,34 @@ void jmp_int32(int v):
 	emit_int32(v)
 
 
+########################### inline data blob regions ##########################
+# A blob region wraps grammar-side emission of raw data words through the
+# ordinary code helpers (grammar/json_builtin.w's to_json/from_json
+# descriptor blobs). On the native targets the blob stays in the
+# instruction stream behind an unconditional jump — byte-identical to the
+# classic jmp_int32 + be_branch_patch pair. On wasm code is not readable
+# memory, so the region instead redirects the emission cursor into the RW
+# data buffer (code_generator/wasm.w) and no jump exists at all;
+# code_offset + codepos yields linear-memory addresses either way.
+
+int be_blob_begin():
+	if (target_isa == 2):
+		wasm_blob_begin()
+		return 0
+	jmp_int32(1337030)
+	return codepos
+
+
+void be_blob_end(int p):
+	if (target_isa == 2):
+		wasm_blob_end()
+		return
+	# The blob holds unaligned bytes; realign so the jump lands on an
+	# instruction boundary (a no-op on x86).
+	be_align_code()
+	be_branch_patch(p, codepos)
+
+
 ###################### structured control-flow regions ########################
 # The grammar's branch protocol (docs/projects/wasm_backend.md D3). Every
 # forward jump the grammar emits targets the end of an enclosing region

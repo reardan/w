@@ -7,7 +7,11 @@ playbook (`docs/projects/arm64.md` is the template): same grammar, a
 per-target instruction module, a per-target container writer, an `__arch__`
 runtime split, and a CLI target flag. Closes the placeholder issue #30.
 
-**Status: Stages 0–4 implemented.** `w wasm file.w -o out.wasm` compiles
+**Status: Stages 0–4 implemented; Stage 5 polish largely landed** (json
+builtins, direct-call optimization, browser host shim — see the 2026-07
+execution notes at the end; remaining: `# wbuild:` wasm twin-target
+support, wasm64, real-signature exports, the accumulator
+globals-vs-locals measurement). `w wasm file.w -o out.wasm` compiles
 to a wasm32 + WASI module that runs under wasmtime or Node's built-in
 WASI (`tools/run_wasm.sh` picks whichever is installed). The structured
 control-flow layer (D3) landed first as a byte-inert refactor across all
@@ -158,8 +162,10 @@ call arguments could not be re-read positionally. Rejected. Instead:
   imports* (D5's WASI shims) use function indices, and an import's index
   is fixed the moment it is declared.
 - Direct-call optimization (emit `call f` when the callee is already
-  defined and the call is not through a pointer) is deferred; it is a
-  pure backend change and `call_indirect` is correct from day one.
+  defined and the call is not through a pointer) was deferred to Stage 5
+  and has since landed as a pure backend change (see the execution
+  notes); `call_indirect` was correct from day one and remains the
+  fallback for every unmatched site.
 
 ### D3: Structured control flow — the crux
 
@@ -393,11 +399,17 @@ at any stage.
   `--dir .`) compiling `w.w` to `bin/wv3_wasm`; `cmp` byte-identical.
   As with `verify_x64`, the first comparison also proves the emitted
   bytes are independent of the host stage.
-- **Stage 5 — polish (each its own follow-up).** Name custom section;
-  direct-`call` optimization for defined callees; a browser host shim
-  (JS providing the WASI subset, or a wasi-polyfill) with a demo page;
+- **Stage 5 — polish (each its own follow-up).** Name custom section
+  (landed in Stage 2); direct-`call` optimization for defined callees
+  (landed, 2026-07); json builtins on wasm (landed, 2026-07 — not in the
+  original list, but the last whole-language gap); a browser host shim
+  (JS providing the WASI subset, or a wasi-polyfill) with a demo page
+  (landed with the WebGL work: `tools/web/index.html` +
+  `tools/web/wasi_lite.mjs`, docs/projects/wasm_webgl.md);
   `# wbuild: wasm` twin-target support in `tools/wbuildgen.w` if the
-  smoke slice outgrows hand-written targets; wasm64 when engines make
+  smoke slice outgrows hand-written targets (still open — wasm test
+  targets stay hand-written in `build.base.json`, and wbuildgen's
+  `arch_only=` explicitly rejects wasm); wasm64 when engines make
   it boring; exported W functions with real signatures for embedding.
 
 ## Testing / CI strategy
@@ -486,13 +498,54 @@ at any stage.
 - **`i32.const` address slots** are 1 opcode + 5 padded bytes + 
   `global.set $ax`; the slot cell convention (`codepos - 4`) is
   preserved, with the immediate at `[pos-3, pos+2)`.
-- **json builtins are rejected** on wasm for now (their descriptor blobs
-  still live in the code stream); generators, threads, REPL, wdbg, and
+- **json builtins were rejected** on wasm through Stage 4 (their
+  descriptor blobs lived in the code stream); Stage 5 moved them to the
+  data segment (see below). Generators, threads, REPL, wdbg, and
   `c_lib`/`extern`/`c_import` are absent or trap as planned (D7).
 - Runner: `tools/run_wasm.sh` (wasmtime, else `tools/run_wasm.mjs` on
   Node ≥ 20). Targets: `build_wasm`, `verify_wasm`, `wasm_smoke_test`
   in `build.base.json`, outside the default `tests` umbrella like the
   qemu-bound arm64 targets.
+
+## Execution notes (Stage 5 polish, 2026-07-25)
+
+- **json builtins.** The blocker was only ever the blob placement: the
+  descriptor writer in `grammar/json_builtin.w` streams raw words and
+  name strings through the ordinary code-emission helpers, jumped over
+  in the instruction stream — unreadable memory on wasm. The fix is a
+  tiny seam, `be_blob_begin`/`be_blob_end` (`code_generator/x86.w`):
+  byte-identical `jmp` + `be_branch_patch` on the native targets, and on
+  wasm a cursor swap (`wasm_blob_begin`/`end`) that points the emission
+  globals (`code`/`codepos`/`code_offset`) at the RW `data` buffer for
+  the blob's extent, so the unchanged grammar writer lands the blob in
+  the data segment and `code_offset + codepos` yields linear-memory
+  addresses `structures/json_codec.w` can `load_int`. No jump is emitted
+  on wasm at all. The runtime module needed nothing. Gate:
+  `wasm_json_test` runs `tests/json_codec_test.w` and
+  `structures/json_test.w` under the WASI runner.
+- **Direct-call optimization.** Grammar state is invisible to the
+  backend, so the lowering is pattern-driven (`code_generator/wasm.w`):
+  `sym_get_value` notes a DEFINED function's table index right after
+  materializing it; a push immediately after records "this W-stack slot
+  holds constant N" (candidate); `call_eax` immediately after a stack
+  reload of a candidate slot — or immediately after the materialization
+  itself — rewinds the dead load and emits `call` with a padded 5-byte
+  immediate. Immediates hold table indices until `wasm_finish` rebases
+  them by the then-final import count (function index =
+  imports + table index - 1). Candidates are keyed by a linear
+  push-depth counter fed from `wasm_sp_add` and are deliberately
+  short-lived: every control-flow emission (`block`/`loop`/`end`/`br`/
+  `br_if`) drops them all, because linear emission order only equals
+  runtime order in straight-line code; direct stores to a slot and
+  taking a slot's address (`lea`) also invalidate. Misses fall back to
+  `call_indirect` — the optimization may miss, never mistake. Calls to
+  not-yet-defined (chained) functions stay indirect. `verify_wasm`
+  (both cmp legs) is the regression gate; the self-compile exercises
+  the rewrite at scale.
+- **Browser host shim** — already landed with the WebGL work
+  (`tools/web/index.html` + `wasi_lite.mjs` + `webgl_env.mjs`; see
+  `tools/web/README.md` for the demo-page instructions). Nothing was
+  left to build here beyond recording that the Stage 5 item is done.
 
 ## References
 
