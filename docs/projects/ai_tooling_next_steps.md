@@ -418,6 +418,25 @@ exist yet:
   bytes as TRUNCATED though it is already provably malformed, and
   `pb_skip_or_error` maps every skip failure to TRUNCATED (unknown-field
   11-byte varints misreport as truncation).
+  *(2026-07-25: all five addressed -- PB_MAX_DECODE_DEPTH()/
+  PB_ERR_DEPTH_EXCEEDED depth cap, proto3 last-one-wins for
+  strings/bytes + recursive MERGE for duplicate submessages,
+  pb_free_decoded error-path sweep, varint 10-continuation-byte
+  reclassification, pb_skip_or_error error-kind propagation; asserted
+  by tests/protobuf_test.w's hardening section and
+  tests/protobuf_leak_test.w's debug-allocator leak checks.)*
+- **(2026-07-25, protobuf hardening) casting a `T[N]` array to a
+  pointer type addresses the runtime header, not the data**:
+  `cast(pb_bytes*, slot)` on a `char[16]` local yields data-8 (the
+  2-word array header), while `cast(int, slot)`, indexing, and argument
+  decay all reach the data -- so a struct-view write through such a
+  cast silently clobbers the header and the next decay crashes far from
+  the bug. Cost a multi-step bisect to find; `w check` accepts the cast
+  with no diagnostic. A warning on casting an array-typed expression to
+  a pointer type (or making the cast decay like every other value
+  context) would remove the trap. Sibling of the known "T[N] struct
+  field is not flat storage" gotcha already noted in
+  tests/protobuf_test.w's header.
 - **(2026-07-19 review) attach-mode polish**: a non-SIGTRAP signal stop
   during the step-over-breakpoint single step (in both `at_continue` and
   `at_finish`) is silently discarded instead of stored in
