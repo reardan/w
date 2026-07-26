@@ -539,10 +539,22 @@ char* pg_report_unit_set(pg_analysis* analysis, pg_choice_unit* unit):
 	return kinds
 
 
+# Action/predicate terms consume no tokens (see pg_analysis_term_nullable),
+# so an alternative whose suffix holds only such transparent terms is still
+# the epsilon case -- a trailing action-only alternative like
+# `rule value = NUMBER | { emit_default() }` is LL(1) epsilon dispatch with
+# a side effect at commit time, not an overlap. Counting raw terms.length
+# here predated transparent terms and spuriously rejected that shape.
 int pg_report_unit_is_empty_suffix(pg_rule* rule, pg_choice_unit* unit, int offset):
 	if (unit.member_count != 1):
 		return 0
-	return offset >= rule.alternatives[unit.alt_start].terms.length
+	pg_alternative* alternative = rule.alternatives[unit.alt_start]
+	int i = offset
+	while (i < alternative.terms.length):
+		if (alternative.terms[i].kind == pg_term_kind_normal()):
+			return 0
+		i = i + 1
+	return 1
 
 
 void pg_report_unit_span(pg_choice_unit* unit):

@@ -772,6 +772,7 @@
 			"deps": ["parser_generator_test"],
 			"steps": [
 				{"cmd": ["bin/parser_generator", "tests/parser_generator/streaming_sample.pg", "-o", "bin/generated_streaming_parser.w"]},
+				{"cmd": ["bin/parser_generator", "tests/parser_generator/streaming_guard_reject.pg", "-o", "bin/pg_streaming_guard_reject.w"], "expect_fail": true, "expect_stderr": "parser_generator: rule value: alternative 1 can match nothing and is not the trailing fallback (no committed dispatch)"},
 				{"cmd": ["bin/wv2", "tests/parser_generator/generated_streaming_test.w", "-o", "bin/parser_generator_streaming_test"]},
 				{"cmd": ["bin/parser_generator_streaming_test"]}
 			]
@@ -781,6 +782,7 @@
 			"deps": ["parser_generator_test"],
 			"steps": [
 				{"cmd": ["bin/parser_generator", "tests/parser_generator/actions_sample.pg", "-o", "bin/generated_actions_parser.w"]},
+				{"cmd": ["bin/parser_generator", "tests/parser_generator/action_paste_reject.pg", "-o", "bin/pg_action_paste_reject.w"], "expect_fail": true, "expect_stderr": "parser_generator: rule value: action binding $1 is immediately followed by an identifier character -- substitution would paste them into one identifier; separate them with whitespace"},
 				{"cmd": ["bin/wv2", "tests/parser_generator/generated_actions_test.w", "-o", "bin/parser_generator_actions_test"]},
 				{"cmd": ["bin/parser_generator_actions_test"]}
 			]

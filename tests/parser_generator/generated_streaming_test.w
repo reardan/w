@@ -227,3 +227,22 @@ void test_streaming_mode_rejects_rule_referenced_repeat():
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	char* generated = pg_generate_parser(grammar)
 	assert1(generated == 0)
+
+
+# Two alternatives sharing a factorable leading term where the longer
+# suffix (WS?) is nullable but non-empty and the shorter is the true
+# epsilon. The nullable, non-empty suffix unit is unguardable
+# (pg_analysis_terms_guardable refuses nullable sequences), so it has no
+# committed dispatch; this shape used to escape the overlap check -- the
+# empty-suffix exemption hid the only flagging pair -- and segfault the
+# streaming emitter on the unit's missing guard set (see
+# tests/parser_generator/streaming_guard_reject.pg for the CLI twin that
+# asserts the diagnostic text). It must be rejected at generation time.
+void test_streaming_mode_rejects_nullable_nonempty_factored_suffix():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	char* source = c"parser edge_probe\nmode streaming\ntoken IDENT letters\ntoken WS spaces\nstart value\nrule value = IDENT WS? | IDENT\n"
+	pg_grammar* grammar = pg_grammar_read(source, c"edge_probe.pg", diagnostics)
+	assert1(grammar != 0)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	char* generated = pg_generate_parser(grammar)
+	assert1(generated == 0)

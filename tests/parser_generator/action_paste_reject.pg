@@ -1,0 +1,11 @@
+# Regression fixture (docs/projects/ai_tooling_next_steps.md): a $n
+# binding whose digits run directly into an identifier character. Naive
+# substitution would paste `$1x` into `action_arg_0_0.textx` -- broken
+# member access in the generated file -- so pg_validate_action_bindings
+# must reject it at generation time; the build step asserts the exact
+# diagnostic.
+parser paste_probe
+mode streaming
+token IDENT letters
+start value
+rule value = IDENT { do_thing($1x) }

@@ -107,6 +107,49 @@ void test_actions_syntax_error_runs_no_partial_action():
 	assert_strings_equal(c"PUSH 1", actions_emitted[0])
 
 
+# A trailing action-only alternative (`... | { emit }`) is the epsilon
+# case with a side effect at commit time, not an overlap: its action
+# terms consume nothing. The guarded branch and the epsilon fallback both
+# run their action exactly once -- exercised against the generated parser
+# through opt_sign, a rule kept out of the start rule's reach so it can
+# be driven directly.
+void test_trailing_action_only_alternative_runs_on_match():
+	actions_reset()
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	actions_sample_listener* listener = make_actions_listener()
+	pg_token_stream* stream = actions_sample_lex(c"-", c"opt_sign.txt", diagnostics)
+	int ok = actions_sample_parse_opt_sign(stream, diagnostics, listener)
+	assert1(ok != 0)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	assert_equal(1, actions_emitted.length)
+	assert_strings_equal(c"NEG", actions_emitted[0])
+
+
+void test_trailing_action_only_alternative_runs_on_epsilon():
+	actions_reset()
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	actions_sample_listener* listener = make_actions_listener()
+	pg_token_stream* stream = actions_sample_lex(c"", c"opt_sign.txt", diagnostics)
+	int ok = actions_sample_parse_opt_sign(stream, diagnostics, listener)
+	assert1(ok != 0)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	assert_equal(1, actions_emitted.length)
+	assert_strings_equal(c"EPS", actions_emitted[0])
+
+
+# The same shape as a minimal inline grammar: generation must succeed
+# (pg_report_unit_is_empty_suffix treats action terms as transparent when
+# deciding whether a suffix is the epsilon case).
+void test_trailing_action_only_alternative_accepted():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	char* source = c"parser eps_action\nmode streaming\ntoken NUMBER digits\nstart value\nrule value = NUMBER | { emit_eps() }\n"
+	pg_grammar* grammar = pg_grammar_read(source, c"eps_action.pg", diagnostics)
+	assert1(grammar != 0)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	char* generated = pg_generate_parser(grammar)
+	assert1(generated != 0)
+
+
 # --- rejection tests: the action-safety analysis (analysis.w's
 # pg_action_safety_check) and $n/text(n) binding validation
 # (generator.w's pg_validate_action_bindings), both new generation-time
@@ -183,6 +226,35 @@ void test_action_binding_shared_prefix_rejected():
 	assert1(pg_validate_action_bindings(grammar) > 0)
 	char* generated = pg_generate_parser(grammar)
 	assert1(generated == 0)
+
+
+# A $n binding whose digits run directly into an identifier character
+# (`$1x`) would substitute into one pasted identifier
+# (`action_arg_0_0.textx` -- broken member access in the generated file);
+# it is a generation-time rejection instead. The $1 itself names a valid
+# earlier token term, so the paste is the only violation here.
+void test_action_binding_pasted_into_identifier_rejected():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	char* source = c"parser bad_paste\nmode streaming\ntoken IDENT letters\nstart value\nrule value = IDENT { do_thing($1x) }\n"
+	pg_grammar* grammar = pg_grammar_read(source, c"bad_paste.pg", diagnostics)
+	assert1(grammar != 0)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	assert1(pg_validate_action_bindings(grammar) > 0)
+	char* generated = pg_generate_parser(grammar)
+	assert1(generated == 0)
+
+
+# A $n reference inside a string or comment is not a binding, so the
+# adjacency rejection above must not fire there either.
+void test_action_binding_paste_in_string_or_comment_ignored():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	char* source = c"parser ok_paste\nmode streaming\ntoken IDENT letters\nstart value\nrule value = IDENT { do_thing(c\"$1x\") # $2y\n }\n"
+	pg_grammar* grammar = pg_grammar_read(source, c"ok_paste.pg", diagnostics)
+	assert1(grammar != 0)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	assert_equal(0, pg_validate_action_bindings(grammar))
+	char* generated = pg_generate_parser(grammar)
+	assert1(generated != 0)
 
 
 # A predicate must lead its alternative -- the grammar reader rejects one

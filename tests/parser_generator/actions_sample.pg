@@ -16,6 +16,12 @@ rule number = NUMBER { actions_emit_push(text(1)) }
 rule sum_tail = PLUS number { actions_emit_op(c"ADD") } sum_tail | MINUS number { actions_emit_op(c"SUB") } sum_tail |
 rule sum = number sum_tail
 rule primary = &{ actions_prefer_call() } IDENT { actions_emit_call(text(2)) } | IDENT { actions_emit_push_name(text(1)) }
+# Trailing action-only alternative: the emit-default pattern. The action
+# terms consume nothing, so the alternative is the epsilon case (LL(1)
+# fallback dispatch with a side effect at commit time), not an overlap.
+# Exercised directly by generated_actions_test.w via actions_sample_lex +
+# actions_sample_parse_opt_sign; unreferenced by the start rule on purpose.
+rule opt_sign = MINUS { actions_emit_op(c"NEG") } | { actions_emit_op(c"EPS") }
 rule statement = sum SEMI | primary SEMI
 rule statement_list = statement statement_list |
 rule program = statement_list EOF

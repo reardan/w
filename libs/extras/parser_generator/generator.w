@@ -2119,8 +2119,12 @@ int pg_action_matches_text_call(char* code, int i, int length):
 
 # Every $n/text(n) reference in an action's code, as the 1-based n values
 # referenced (duplicates allowed; order not significant to callers).
-list[int] pg_action_scan_refs(char* code):
-	list[int] refs = new list[int]
+# Additionally, every $n reference whose digits run directly into an
+# identifier character (e.g. `$1x`) is pushed to pasted: substituting it
+# would paste "action_arg_<alt>_<n-1>.text" and the following character
+# into one broken identifier (".textx"), so pg_validate_action_term_bindings
+# rejects the reference at generation time instead.
+void pg_action_scan_refs_pasted(char* code, list[int] refs, list[int] pasted):
 	int length = strlen(code)
 	int i = 0
 	while (i < length):
@@ -2153,6 +2157,8 @@ list[int] pg_action_scan_refs(char* code):
 				j = j + 1
 			if (has_digit):
 				refs.push(n)
+				if ((j < length) && pg_lexer_is_ident_part(code[j] & 255)):
+					pasted.push(n)
 				i = j
 			else:
 				i = i + 1
@@ -2171,6 +2177,15 @@ list[int] pg_action_scan_refs(char* code):
 				i = i + 1
 		else:
 			i = i + 1
+
+
+# pg_action_scan_refs_pasted for callers that only need the referenced n
+# values (capture planning, the predicate no-bindings check).
+list[int] pg_action_scan_refs(char* code):
+	list[int] refs = new list[int]
+	list[int] pasted = new list[int]
+	pg_action_scan_refs_pasted(code, refs, pasted)
+	list_free[int](pasted)
 	return refs
 
 
@@ -2624,8 +2639,24 @@ int pg_alt_shares_leading_term(pg_rule* rule, int alt_index):
 # rule.alternatives (needed only for the shared-leading-term check).
 int pg_validate_action_term_bindings(pg_grammar* grammar, pg_rule* rule, pg_alternative* alternative, int alt_index, int action_index):
 	pg_term* action = alternative.terms[action_index]
-	list[int] refs = pg_action_scan_refs(action.code)
+	list[int] refs = new list[int]
+	list[int] pasted = new list[int]
+	pg_action_scan_refs_pasted(action.code, refs, pasted)
 	int violations = 0
+	# A $n whose digits run directly into an identifier character would
+	# substitute into one pasted, uncompilable identifier (e.g. `$1x` ->
+	# `action_arg_0_0.textx`) -- reject it here instead of splicing broken
+	# member access into the generated file.
+	int p = 0
+	while (p < pasted.length):
+		print2(c"parser_generator: rule ")
+		print2(rule.name)
+		print2(c": action binding $")
+		print2(itoa(pasted[p]))
+		println2(c" is immediately followed by an identifier character -- substitution would paste them into one identifier; separate them with whitespace")
+		violations = violations + 1
+		p = p + 1
+	list_free[int](pasted)
 	if ((refs.length > 0) && pg_alt_shares_leading_term(rule, alt_index)):
 		print2(c"parser_generator: rule ")
 		print2(rule.name)
