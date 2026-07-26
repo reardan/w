@@ -190,8 +190,8 @@ needed for some future defhash blind spot).
 Commit-ranged selection (issue #251 direction 4b; 'changed' only, not
 'for'): a single positional argument containing '..' is a git revision
 range instead of a changed-file path — no tracked path in this tree
-ever contains '..', so the two are unambiguous, and only the first such
-argument is honored. Accepted spellings mirror 'git diff
+ever contains '..', so the two are unambiguous; a second range
+argument is an argument error. Accepted spellings mirror 'git diff
 --name-only's own argument: 'A..B' and 'A...B' (three-dot: wtest
 resolves the actual 'git merge-base A B' itself as the comparison's
 left endpoint, so the per-file --defhash comparison below diffs the
@@ -2565,10 +2565,11 @@ int main(int argc, int argv):
 	# may appear anywhere after "changed" (mirroring bin/wexec's own
 	# flag), so they are found ahead of the argument loop that does the
 	# real work. The same pass spots a commit-ranged argument (header
-	# comment, "Commit-ranged selection") -- 'changed' only, the first
-	# non-flag argument containing ".." -- so its index is known before
-	# the real loop below reaches it; no repo path ever contains "..",
-	# so this can never misfire against an ordinary changed-file path.
+	# comment, "Commit-ranged selection") -- 'changed' only, the non-flag
+	# argument containing ".." (a second one is an argument error) -- so
+	# its index is known before the real loop below reaches it; no repo
+	# path ever contains "..", so this can never misfire against an
+	# ordinary changed-file path.
 	int pre = 2
 	int range_index = 0
 	while (pre < argc):
@@ -2588,7 +2589,10 @@ int main(int argc, int argv):
 				return 1
 			char** base_value = argv + pre * __word_size__
 			wtest_base_manifest_path = *base_value
-		else if ((for_mode == 0) && (range_index == 0) && (argval[0] != '-') && wtest_str_contains(argval, c"..")):
+		else if ((for_mode == 0) && (argval[0] != '-') && wtest_str_contains(argval, c"..")):
+			if (range_index != 0):
+				wtest_error(c"only one revision range argument is allowed, got a second: ", argval)
+				return 1
 			range_index = pre
 		pre = pre + 1
 	if (wtest_load_manifest()):

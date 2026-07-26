@@ -152,28 +152,23 @@ void statement():
 	# point that catches every deeply nested statement before the real
 	# call stack overflows -- no per-caller instrumentation needed.
 	#
-	# The limit is far below expr_nesting_depth's, and boxed in on both
-	# sides by code_generator/x86.w's separate, pre-existing fixed-size
-	# int[256] ctrl_kind_stack/ctrl_val_stack (every open if/while/for/
-	# switch region holds one of its slots until closed): an 'else if'
-	# dispatch chain -- lib/lib.w's errno-to-string table is the deepest
-	# in-tree case, 132 branches, each recursing statement() through the
-	# 'else' arm exactly like true block nesting does -- needs the limit
-	# above 132 to keep compiling, but that same chain shape exhausts the
-	# 256-slot array at 256 branches (measured exactly: 255 compiles, 256
-	# hits the array's own bounds-trap instead of this diagnostic). 200
-	# clears the real chain with margin and still leaves 56 branches of
-	# headroom before that pre-existing array limit. It stays far short
-	# of the real call-stack limit either way (measured empirically at
-	# 40000-60000 nested parens; statement()'s bigger frame lowers its
-	# own native ceiling, but nowhere near 200). It does not, and
-	# structurally cannot, preempt the array for a *true* nested if/
-	# while/for/switch body specifically (2-3 slots consumed per level
-	# instead of an else-chain's 1, so those shapes hit the array's bound
-	# at 129 / 86 respectively -- below 200): that narrower pre-existing
-	# gap already produces a bounds-trap diagnostic (not a silent crash)
-	# and is logged separately in docs/projects/ai_tooling_next_steps.md
-	# as a follow-up (the real fix is making the array dynamic).
+	# The limit is far below expr_nesting_depth's. It has to clear the
+	# tree's deepest legitimate 'else if' dispatch chain -- lib/lib.w's
+	# errno-to-string table, 132 branches, each recursing statement()
+	# through the 'else' arm exactly like true block nesting does -- and
+	# 200 clears that real chain with margin. It stays far short of the
+	# real call-stack limit (measured empirically at 40000-60000 nested
+	# parens; statement()'s bigger frame lowers its own native ceiling,
+	# but nowhere near 200). Historical note: when this guard was added,
+	# code_generator/x86.w's ctrl_kind_stack/ctrl_val_stack were fixed
+	# int[256] arrays (every open if/while/for/switch region holds 1-3 of
+	# its slots until closed), which separately bounded 'else if' chains
+	# at 256 branches and for-nests at 86 levels with a bounds-trap; the
+	# stacks now grow dynamically (ctrl_stack_reserve), so this guard is
+	# the only nesting bound. A genuinely nested if/while/for level costs
+	# 2 units here, not 1 (the statement and its ':' block each recurse
+	# statement()), so 200 permits ~99 truly nested levels alongside 200
+	# chain branches; tests/deep_nesting_test.w pins the deep shapes.
 	stmt_nesting_depth = stmt_nesting_depth + 1
 	if (stmt_nesting_depth > 200):
 		error(c"statement nesting too deep")

@@ -1,0 +1,10 @@
+{
+	"targets": [
+		{
+			"name": "probe",
+			"steps": [
+				{"cmd": ["wexec_xok_probe"], "expect_stdout": "xok probe: real executable ran"}
+			]
+		}
+	]
+}

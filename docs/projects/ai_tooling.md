@@ -42,6 +42,48 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- **The "context-dependent codegen bug" trio: root-caused, fixed, and
+  closed** (closed 2026-07-25; fix landed 2026-07-19 in f13ab7f, swept
+  in 956660d). Three separately-logged HIGH-care sightings — wave 4a's
+  "a local cached across a conditional in `debugger/attach.w`'s
+  `at_step_prepare` corrupts the x64-executing compiler's heap during
+  `verify_x64`'s `build_x64` step", wave 4f's "`return name in
+  defhash_name_index` as a direct return-expression segfaults
+  `bin/wv2_64` self-hosting w.w", and the arm64 self-host stage-2
+  "Failed to find a _main() function" regression — were one bug, and
+  never a codegen/register-allocation defect at all:
+  `code_generator/dwarf.w`'s `debug_local_note` grew
+  `debug_local_names` (word-sized pointer slots) with the parallel
+  4-byte-int arrays' realloc sizes, so on a 64-bit-pointer host the
+  doubled buffer was half the needed length and `save_ptr` corrupted
+  the freelist heap once a single compile recorded more than 4096
+  locals. The trigger was that global locals-count threshold — which is
+  why the crashes tracked total source growth rather than local code
+  shape, why every isolated repro failed to reproduce, and why the
+  symptom was ASLR-sensitive. Found with `W_DEBUG_ALLOC=1` (reports the
+  realloc oldlen mismatch directly — the tool to reach for on any
+  future crash of this shape); 956660d swept the same width bug in
+  `code_generator/wasm.w`'s `wasm_func_names`. Both source workarounds
+  are now removed (2026-07-25): `at_step_prepare` caches
+  `int pcv = dbg_reg_pc()` again, and `defhash_is_known_definition`
+  (`compiler/compiler.w`) returns `name in defhash_name_index`
+  directly — gated by `./wbuild verify` plus five consecutive fresh
+  `./wbuild verify_x64` runs. The arm64 sighting is expected-fixed but
+  unconfirmed pending a qemu-aarch64 host (a short entry remains in
+  `ai_tooling_next_steps.md`).
+- **`wtest changed`: a second revision-range argument is an argument
+  error** (2026-07-25): it used to be silently treated as a
+  changed-file path, match nothing, and fall to the `tests`-umbrella
+  catch-all. Now `wtest: error: only one revision range argument is
+  allowed, got a second: <arg>` and exit 1, pinned by a
+  `tools/wtest_range_scratch_test.sh` case. `tools/test_map.w`.
+- **`lib/args.w` boolean flags no longer swallow the next positional**
+  (2026-07-19, wave plan C task 1e): `args_declare_bool(name)` marks a
+  flag presence-only so `args_is_positional`/`args_value` stop treating
+  its bare form as consuming the following token, and
+  `args_has_bool_flag(name)` declares-and-tests in one call;
+  `tools/stat.w` (`-f`/`--nofollow`) and `tools/readlink.w` (`-n`) use
+  it instead of their previous hand-rolled argv walks. `lib/args.w`.
 - **`bin/wfixture` arch-selector directive** (2026-07-19): a
   `# wfixture: <selector>` header line (e.g. `# wfixture: x64`) inserts
   `<selector>` into the compiler argv between the compiler path and the

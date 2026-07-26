@@ -37,12 +37,16 @@ resolved to an explicit literal right here.
 
 Stage 2 also adds head/tail's "-n N" -- the design doc's Sec 5.4 called
 out "v1 has no valued flags (-n 5); a future head -n 5 would be the
-first", and this is that first case: a flag that takes a value from
-either an inline "=value" or the following token, rather than a bare
-boolean. shell_translate_flag_named/shell_translate_flag_inline_value
-below are the small pieces that add, mirroring lib/args.w's
+first", and this is that first case: a flag that takes its value from
+the following token, rather than a bare boolean.
+shell_translate_flag_named/shell_translate_flag_inline_value below are
+the small pieces that add, mirroring lib/args.w's
 args_name_matches/args_flag_body shape for the same already-split-word
-input this file already tokenizes into.
+input this file already tokenizes into. Inline "=value" spellings
+("-n=5"/"--lines=5") are deliberately NOT accepted: they are lib/args.w
+conventions, not head/tail's ("head -n=5" is an error from the real
+tool), so those lines fail closed to native, whose own
+acceptance/diagnostic then applies verbatim.
 */
 import lib.lib
 import structures.string
@@ -104,11 +108,14 @@ list[char*] shell_translate_tokenize(char* line):
 	return words
 
 
+# Frees the tokenized words and the list holding them (the list struct
+# itself leaked per translated line before).
 void shell_translate_free_words(list[char*] words):
 	int i = 0
 	while (i < words.length):
 		free(words[i])
 		i = i + 1
+	__w_list_free(cast(__w_list*, words))
 
 
 # raw, as a c"..." literal with backslash and double-quote escaped
@@ -262,16 +269,23 @@ char* shell_translate_cat(list[char*] words):
 
 
 # echo: any number of word positionals (0 or more), "-n" is the only
-# known flag (suppress the trailing newline, matching real echo -- no
-# long form, matching real echo too). Any other '-' word is unknown and
-# fails the whole line closed to native.
+# known flag (suppress the trailing newline -- no long form, matching
+# real echo). Like the real tool, "-n" only counts as a flag while it
+# leads the argument list: after the first ordinary word, a later "-n"
+# is plain text to print ("echo a -n" prints "a -n"), never a flag. Any
+# other '-' word is unknown and fails the whole line closed to native
+# (which prints it literally too, so the output matches either way).
 char* shell_translate_echo(list[char*] words):
 	int no_newline = 0
-	int i = 1
+	int first_word = 1
+	while (first_word < words.length):
+		if (strcmp(words[first_word], c"-n") != 0):
+			break
+		no_newline = 1
+		first_word = first_word + 1
+	int i = first_word
 	while (i < words.length):
-		if (strcmp(words[i], c"-n") == 0):
-			no_newline = 1
-		else if (words[i][0] == '-'):
+		if ((words[i][0] == '-') && (strcmp(words[i], c"-n") != 0)):
 			return 0
 		i = i + 1
 	string_builder* out = string_new()
@@ -280,13 +294,12 @@ char* shell_translate_echo(list[char*] words):
 		string_append(out, c"true")
 	else:
 		string_append(out, c"false")
-	i = 1
+	i = first_word
 	while (i < words.length):
-		if (strcmp(words[i], c"-n") != 0):
-			string_append(out, c", ")
-			char* lit = shell_translate_string_literal(words[i])
-			string_append(out, lit)
-			free(lit)
+		string_append(out, c", ")
+		char* lit = shell_translate_string_literal(words[i])
+		string_append(out, lit)
+		free(lit)
 		i = i + 1
 	string_append(out, c")")
 	char* s = out.data
@@ -295,10 +308,14 @@ char* shell_translate_echo(list[char*] words):
 
 
 # head/tail share a shape: one required path positional and a single
-# valued flag ("-n N"/"--lines N"/"-n=N"/"--lines=N", Sec 5.4's "future
-# work: valued flags" case, now in v1) selecting the line count. callee
-# names which lib/shell_commands.w function to call; default_n is that
-# tool's default count (10, matching real head/tail).
+# valued flag ("-n N"/"--lines N", Sec 5.4's "future work: valued flags"
+# case, now in v1) selecting the line count. The inline "=value"
+# spellings ("-n=5"/"--lines=5") are rejected -- fail closed to native
+# so the real tool's own handling (an "invalid number of lines: '=5'"
+# error for "-n=5") applies, instead of this translator accepting a form
+# the native tool would not (see the module header). callee names which
+# lib/shell_commands.w function to call; default_n is that tool's
+# default count (10, matching real head/tail).
 char* shell_translate_head_tail(list[char*] words, char* callee, int default_n):
 	char* path = 0
 	int n = default_n
@@ -308,12 +325,12 @@ char* shell_translate_head_tail(list[char*] words, char* callee, int default_n):
 		if (w[0] == '-'):
 			if (shell_translate_flag_named(w, c"n", c"lines") == 0):
 				return 0 /* unknown flag */
-			char* value = shell_translate_flag_inline_value(w)
-			if (value == 0):
-				i = i + 1
-				if (i >= words.length):
-					return 0 /* "-n" with nothing after it */
-				value = words[i]
+			if (shell_translate_flag_inline_value(w) != 0):
+				return 0 /* "-n=5"/"--lines=5": not the real tools' forms */
+			i = i + 1
+			if (i >= words.length):
+				return 0 /* "-n" with nothing after it */
+			char* value = words[i]
 			if (shell_translate_all_digits(value) == 0):
 				return 0 /* never guess a partly-numeric value */
 			n = atoi(value)
@@ -413,28 +430,34 @@ char* shell_translate_wc(list[char*] words):
 # brings in).
 char* shell_translate_mkdir(list[char*] words):
 	int parents = 0
+	# dirs borrows words' strings, so only the list struct itself needs
+	# freeing -- on the fallback paths too, which used to leak it.
 	list[char*] dirs = new list[char*]
+	int fail = 0
 	int i = 1
-	while (i < words.length):
+	while ((i < words.length) && (fail == 0)):
 		char* w = words[i]
 		if (w[0] == '-'):
 			if (strcmp(w, c"--parents") == 0):
 				parents = 1
 			else if ((w[1] == '-') || (w[1] == 0)):
-				return 0
+				fail = 1
 			else:
 				int j = 1
-				while (w[j] != 0):
+				while ((w[j] != 0) && (fail == 0)):
 					if (w[j] == 'p'):
 						parents = 1
 					else:
-						return 0 /* unknown letter in the cluster */
+						fail = 1 /* unknown letter in the cluster */
 					j = j + 1
 		else:
 			dirs.push(w)
 		i = i + 1
 	if (dirs.length == 0):
-		return 0 /* mkdir requires at least one directory */
+		fail = 1 /* mkdir requires at least one directory */
+	if (fail):
+		__w_list_free(cast(__w_list*, dirs))
+		return 0
 	string_builder* out = string_new()
 	string_append(out, c"shell_commands.mkdir_p(")
 	if (parents):
@@ -449,6 +472,7 @@ char* shell_translate_mkdir(list[char*] words):
 		free(lit)
 		i = i + 1
 	string_append(out, c")")
+	__w_list_free(cast(__w_list*, dirs))
 	char* s = out.data
 	free(out)
 	return s
@@ -460,9 +484,12 @@ char* shell_translate_mkdir(list[char*] words):
 char* shell_translate_rm(list[char*] words):
 	int recursive = 0
 	int force = 0
+	# paths borrows words' strings, so only the list struct itself needs
+	# freeing -- on the fallback paths too, which used to leak it.
 	list[char*] paths = new list[char*]
+	int fail = 0
 	int i = 1
-	while (i < words.length):
+	while ((i < words.length) && (fail == 0)):
 		char* w = words[i]
 		if (w[0] == '-'):
 			if (strcmp(w, c"--recursive") == 0):
@@ -470,22 +497,25 @@ char* shell_translate_rm(list[char*] words):
 			else if (strcmp(w, c"--force") == 0):
 				force = 1
 			else if ((w[1] == '-') || (w[1] == 0)):
-				return 0
+				fail = 1
 			else:
 				int j = 1
-				while (w[j] != 0):
+				while ((w[j] != 0) && (fail == 0)):
 					if (w[j] == 'r'):
 						recursive = 1
 					else if (w[j] == 'f'):
 						force = 1
 					else:
-						return 0 /* unknown letter in the cluster */
+						fail = 1 /* unknown letter in the cluster */
 					j = j + 1
 		else:
 			paths.push(w)
 		i = i + 1
 	if (paths.length == 0):
-		return 0 /* rm requires at least one path */
+		fail = 1 /* rm requires at least one path */
+	if (fail):
+		__w_list_free(cast(__w_list*, paths))
+		return 0
 	string_builder* out = string_new()
 	string_append(out, c"shell_commands.rm(")
 	if (recursive):
@@ -504,6 +534,7 @@ char* shell_translate_rm(list[char*] words):
 		free(lit)
 		i = i + 1
 	string_append(out, c")")
+	__w_list_free(cast(__w_list*, paths))
 	char* s = out.data
 	free(out)
 	return s

@@ -1067,7 +1067,12 @@
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "x64", "tests/wexec/direct_file/sample_test.w"], "expect_stdout": ["wexec: target x64:tests/wexec/direct_file/sample_test.w", "direct file adhoc test ran"]},
 				{"cmd": ["test", "-x", "bin/sample_test"]},
 				{"cmd": ["test", "-x", "bin/sample_test_x64"]},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/does_not_exist.w"], "expect_fail": true, "expect_stderr": "no such file"}
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/does_not_exist.w"], "expect_fail": true, "expect_stderr": "no such file"},
+				{"cmd": ["rm", "-rf", "bin/wexec_xok"]},
+				{"cmd": ["mkdir", "-p", "bin/wexec_xok/shadow", "bin/wexec_xok/real"]},
+				{"cmd": ["sh", "-c", "printf 'not a program\\n' > bin/wexec_xok/shadow/wexec_xok_probe"]},
+				{"cmd": ["sh", "-c", "printf '#!/bin/sh\\necho xok probe: real executable ran\\n' > bin/wexec_xok/real/wexec_xok_probe && chmod 755 bin/wexec_xok/real/wexec_xok_probe"]},
+				{"cmd": ["sh", "-c", "PATH=\"bin/wexec_xok/shadow:bin/wexec_xok/real:$PATH\" bin/wexec -f tests/wexec/path_xok.json probe"], "expect_stdout": ["xok probe: real executable ran", "wexec: OK (1 targets)"]}
 			]
 		},
 		{
@@ -1885,6 +1890,7 @@
 				"compress_zlib_64_test",
 				"crypto_rsa_verify_64_test",
 				"cstr_64_test",
+				"deep_nesting_64_test",
 				"default_args_64_test",
 				"defer_64_test",
 				"dns_64_test",
@@ -1917,6 +1923,7 @@
 				"lib_64_test",
 				"limb_builtin_64_test",
 				"limb_builtin_shadow_64_test",
+				"line_edit_paste_64_test",
 				"list_builtin_64_test",
 				"lsm_64_test",
 				"malloc_churn_64_test",
@@ -2411,6 +2418,7 @@
 				"compress_inflate_test",
 				"compress_zlib_test",
 				"cstr_test",
+				"deep_nesting_test",
 				"directory_test",
 				"dns_test",
 				"env_test",
@@ -2447,6 +2455,7 @@
 				"limb_builtin_shadow_test",
 				"limb_builtin_test",
 				"line_edit_completion_test",
+				"line_edit_paste_test",
 				"list_methods_test",
 				"lsm_test",
 				"malloc_churn_test",
@@ -3035,6 +3044,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/cstr_test.w", "-o", "bin/cstr_test"]},
 				{"cmd": ["bin/cstr_test"]}
+			]
+		},
+		{
+			"name": "deep_nesting_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/deep_nesting_test.w", "-o", "bin/deep_nesting_64_test"]},
+				{"cmd": ["bin/deep_nesting_64_test"]}
+			]
+		},
+		{
+			"name": "deep_nesting_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/deep_nesting_test.w", "-o", "bin/deep_nesting_test"]},
+				{"cmd": ["bin/deep_nesting_test"]}
 			]
 		},
 		{
@@ -3681,6 +3706,22 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/line_edit_completion_test.w", "-o", "bin/line_edit_completion_test"]},
 				{"cmd": ["bin/line_edit_completion_test"]}
+			]
+		},
+		{
+			"name": "line_edit_paste_64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/line_edit_paste_test.w", "-o", "bin/line_edit_paste_64_test"]},
+				{"cmd": ["bin/line_edit_paste_64_test"]}
+			]
+		},
+		{
+			"name": "line_edit_paste_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/line_edit_paste_test.w", "-o", "bin/line_edit_paste_test"]},
+				{"cmd": ["bin/line_edit_paste_test"]}
 			]
 		},
 		{
