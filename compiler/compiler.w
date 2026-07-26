@@ -1056,24 +1056,10 @@ void defhash_refs_sort():
 # file by default, ~360 definitions for the whole lib.lib closure under
 # --closure), but a map lookup is O(1) regardless of scale, which matters
 # once --closure runs over a program an order of magnitude bigger.
-#
-# 'int found = ...; return found' rather than 'return name in
-# defhash_name_index' directly is NOT just style: the direct form
-# reproducibly segfaults bin/wv2_64 while self-hosting w.w for x64
-# (verify_x64) even though defhash_is_known_definition is never actually
-# CALLED during an ordinary (non-defhash) compile -- a minimal standalone
-# repro of the same shape (global map, 'if not-yet-created: return 0' /
-# 'return name in map') did NOT reproduce it, so this looks like a latent
-# x64 codegen bug in 'in' as a direct return-expression that only
-# surfaces in this file's larger/denser context (register pressure,
-# code-size-dependent branch encoding, or similar), not a defect in map
-# semantics themselves. Logged in ai_tooling_next_steps.md for follow-up;
-# splitting the expression across two statements sidesteps it entirely.
 int defhash_is_known_definition(char* name):
 	if (defhash_name_index == 0):
 		return 0
-	int found = name in defhash_name_index
-	return found
+	return name in defhash_name_index
 
 
 # Re-tokenize definition `idx`'s recorded [start, end) byte span, on a
