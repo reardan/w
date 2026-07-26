@@ -1015,14 +1015,6 @@ int attach_step_fstart /* enclosing function range at the step's start */
 int attach_step_fend
 
 
-# WORKAROUND: dbg_reg_pc() is deliberately re-called at each use site
-# below instead of cached in a local across the conditional. Caching it
-# ('int pcv = dbg_reg_pc()' + a later read past the if) reproducibly
-# crashes the x64-executing compiler's own heap while it compiles this
-# file (verify_x64's build_x64 step) -- a suspected context-dependent
-# x64 codegen bug documented in docs/projects/ai_tooling_next_steps.md.
-# Do not "clean this up" until that investigation lands. The tracee is
-# in ptrace-stop here, so repeated reads are idempotent.
 void at_step_prepare():
 	attach_step_esp = dbg_reg_sp()
 	attach_step_line = -1
@@ -1030,13 +1022,14 @@ void at_step_prepare():
 	attach_step_stack = -1
 	attach_step_fstart = 0
 	attach_step_fend = 0
-	if (at_in_code(dbg_reg_pc())):
-		int entry = dbg_find_line(at_to_v(dbg_reg_pc()) - code_offset)
+	int pcv = dbg_reg_pc()
+	if (at_in_code(pcv)):
+		int entry = dbg_find_line(at_to_v(pcv) - code_offset)
 		if (entry >= 0):
 			attach_step_line = dbg_line_line(entry)
 			attach_step_file = dbg_line_file(entry)
 			attach_step_stack = dbg_line_stack(entry)
-		int f = dbg_function_at(at_to_v(dbg_reg_pc()))
+		int f = dbg_function_at(at_to_v(pcv))
 		if (f >= 0):
 			attach_step_fstart = dbg_sym_address(f)
 			attach_step_fend = attach_step_fstart + dbg_sym_size(f)
