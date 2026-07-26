@@ -870,6 +870,17 @@ exist yet:
   equivalent using a real `pty`/`fork` pair with an explicit "wait for
   marker text" step) would let future agents script this class of
   keystroke instead of falling back to manual verification each time.
+- **Minor: `bin/wtest changed`'s first-run import-closure cache build
+  can far exceed the documented ~35s.** Right after a full
+  `./wbuild build --no-cache` + `verify` + `verify_x64` cycle (ctrl
+  stack growth work, 2026-07-25), the first `wtest changed` run was
+  killed by a 2-minute caller timeout while still printing the "this
+  can take a minute" banner; the retry succeeded but took several
+  minutes total. Docs (CLAUDE.md and the wtest banner) set a ~35s/
+  "a minute" expectation, so agents pick too-small timeouts and kill
+  the build. Cheap fixes: progress output (one line per N modules) so
+  a caller can distinguish slow-but-alive from hung, and/or making an
+  interrupted cache build resume instead of restarting.
 
 ## Skills / rules upkeep
 
