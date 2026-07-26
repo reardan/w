@@ -1778,7 +1778,17 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "win64", "tests/win64_hello.w", "-o", "bin/win64_hello.exe"]},
 				{"cmd": ["objdump", "-f", "bin/win64_hello.exe"], "expect_stdout": "pei-x86-64"},
-				{"cmd": ["objdump", "-p", "bin/win64_hello.exe"], "expect_stdout": ["ExitProcess", "kernel32.dll"]}
+				{"cmd": ["objdump", "-p", "bin/win64_hello.exe"], "expect_stdout": ["ExitProcess", "kernel32.dll"]},
+				{"cmd": ["objdump", "-h", "bin/win64_hello.exe"], "expect_stdout": ["READONLY, CODE", ".data"]}
+			]
+		},
+		{
+			"name": "win64_wx_section_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "win64", "tests/win64_hello.w", "-o", "bin/win64_wx_section_input.exe"]},
+				{"cmd": ["bin/wv2", "tests/win64_wx_section_test.w", "-o", "bin/win64_wx_section_test"]},
+				{"cmd": ["bin/win64_wx_section_test"]}
 			]
 		},
 		{
@@ -1809,6 +1819,7 @@
 			"name": "tests_win64",
 			"deps": [
 				"win64_header_test",
+				"win64_wx_section_test",
 				"win64_hello_test",
 				"win64_smoke_test",
 				"dynamic_test_win64",
@@ -2355,6 +2366,7 @@
 				"net_darwin",
 				"pac_flag_test",
 				"pac_darwin",
+				"win64_wx_section_test",
 				"arm64_darwin_smoke_test",
 				"test",
 				"hello",
