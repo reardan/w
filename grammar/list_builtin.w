@@ -12,7 +12,7 @@ The call emission reuses the callee-first stack layout helpers from
 grammar/hash_builtin.w (hash_push_stack_slot, hash_call_finish).
 */
 int expression();
-int inferred_storage_type(int got); /* defined in variable_declaration */
+int inferred_storage_type(char* name, int got); /* defined in variable_declaration */
 
 
 int list_literal_type
@@ -424,7 +424,7 @@ int list_reduce_suffix(int type):
 	expect(c",")
 	int got_init = expression()
 	got_init = promote(got_init)
-	int result_type = inferred_storage_type(got_init)
+	int result_type = inferred_storage_type(c"reduce init", got_init)
 	if (type_num_args(result_type) > 0):
 		error(c"list reduce init must be a scalar value")
 	expect(c")")

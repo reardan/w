@@ -156,6 +156,29 @@ rough edge: the debugger's local note is recorded at declaration with
 the final type, but wdbg's view of a struct-element pointer variable is
 only as good as `debug_local_note`'s type rendering.
 
+### Safer ':=' (grammar/variable_declaration.w)
+
+`:=` always declares a new variable, so using it on a name still
+visible as a local or parameter is now an error (":=' redeclares 'x';
+use '=' to assign, or a typed declaration to shadow"): the silent
+inner-scope shadow was the classic bug where `x := 2` inside a block
+left the outer `x` untouched. Scope exit truncates the symbol table,
+so a name whose previous binding lived in a closed block is free for
+reuse, and globals stay silently shadowable exactly like typed
+declarations. The REPL's persistent-variable path
+(`repl_infer_declaration`) is separate and still allows re-entering
+`x := ...` at the prompt. The inference diagnostics now name the
+variable ("cannot infer a type for 'x' from a void expression" / "...
+from a bare function name"; the list-reduce init reuses the same
+helper as "reduce init"), and all four errors are pinned by the
+`infer_safety_test` fixture group. The untyped-constant default is
+unchanged and now spelled out: constants infer `int`, the word-sized
+type, so the same source infers the same storage on every target
+(literals wider than 32 significant bits were already tokenizer
+errors). Inferred `for` variables deliberately do NOT get the
+redeclare error: sequential `for i in range(...)` loops in one
+function each declare their own `i`, matching the typed form.
+
 ## Acceptance
 
 - `./wbuild verify` — self-host fixpoint (wv3 == wv4 == wv5) with every

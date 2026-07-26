@@ -109,6 +109,43 @@ void test_infer_in_blocks_and_loops():
 		assert_equal(13, inner)
 
 
+int inf_shadowed_global
+
+
+int inf_read_shadowed_global():
+	return inf_shadowed_global
+
+
+# ':=' redeclaring a live local or parameter is an error (issue #360,
+# tests/infer_redeclare_error_fixture.w); globals stay shadowable,
+# matching typed declarations.
+void test_infer_global_shadow_allowed():
+	inf_shadowed_global = 3
+	inf_shadowed_global := 5
+	assert_equal(5, inf_shadowed_global)
+	assert_equal(3, inf_read_shadowed_global())
+
+
+# Scope exit truncates the symbol table, so a name whose previous ':='
+# binding lived in a closed block is free for reuse.
+void test_infer_reuse_after_scope_closed():
+	if (true):
+		tmp := 1
+		assert_equal(1, tmp)
+	tmp := 2
+	assert_equal(2, tmp)
+
+
+# Untyped constants default to int, the word-sized type: the full word
+# range stays assignable afterwards.
+void test_infer_constant_defaults_to_int():
+	n := 7
+	n = 0x7fffffff
+	assert_equal(0x7fffffff, n)
+	n = -1
+	assert_equal(-1, n)
+
+
 void test_infer_not_confused_with_statements():
 	# Plain assignments and calls still parse after the ':=' lookahead
 	int a = 1

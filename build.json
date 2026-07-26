@@ -3809,6 +3809,13 @@
 			]
 		},
 		{
+			"name": "infer_safety_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/infer_function_name_error_fixture.w", "tests/infer_redeclare_error_fixture.w", "tests/infer_shadow_param_error_fixture.w", "tests/infer_void_error_fixture.w"]}
+			]
+		},
+		{
 			"name": "infer_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/infer_test.w"],

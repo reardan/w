@@ -310,7 +310,7 @@ int repl_infer_declaration():
 	get_token() /* consume ':=' */
 	int got = expression()
 	got = promote(got)
-	int decl_type = inferred_storage_type(got)
+	int decl_type = inferred_storage_type(name, got)
 	expect_or_newline(c";")
 	int global_symbol = repl_declare_global(name, decl_type, 1)
 	int gskip = repl_skip_start()
