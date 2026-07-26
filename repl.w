@@ -116,27 +116,29 @@ int repl_shell_commands_imported
 
 
 # Plain, unbuffered-prompt line read used in scripted/agent mode
-# (repl_interactive == 0) instead of the raw-mode line editor: mirrors
-# lib/line_edit.w's le_read_plain exactly, except the prompt goes to
-# stderr (print_error) rather than stdout, so a piped consumer's stdout
-# carries only program output and echoes (issue #276 P3 / D5). Bypassing
-# line_edit_read entirely (rather than passing it an empty prompt) also
-# means --quiet/--json force this same plain path even when stdin is
-# genuinely a tty (e.g. a pty-wrapped agent harness): raw mode and its
-# ANSI rendering only make sense for a human at a real prompt.
-int repl_read_plain(char* prompt, char* buf, int size):
+# (repl_interactive == 0) instead of the raw-mode line editor: like
+# lib/line_edit.w's le_read_plain, except the prompt goes to stderr
+# (print_error) rather than stdout, so a piped consumer's stdout carries
+# only program output and echoes (issue #276 P3 / D5), and the line is
+# appended straight into repl_line with NO length cap: a fixed buffer
+# here once silently truncated a 10000+-character piped line, and a
+# truncated deep-paren line left repl_scan_depth permanently unbalanced,
+# so every later entry was swallowed as a continuation until EOF (see
+# docs/projects/ai_tooling_next_steps.md, "piping a very long single
+# line"). Bypassing line_edit_read entirely (rather than passing it an
+# empty prompt) also means --quiet/--json force this same plain path
+# even when stdin is genuinely a tty (e.g. a pty-wrapped agent harness):
+# raw mode and its ANSI rendering only make sense for a human at a real
+# prompt. Returns the line length, or -1 on end of input.
+int repl_read_plain(char* prompt):
 	print_error(prompt)
-	int len = 0
 	int c = getchar(0)
 	if (c == -1):
 		return -1
 	while ((c != 10) && (c != -1)):
-		if (len < size - 1):
-			buf[len] = c
-			len = len + 1
+		string_append_char(repl_line, c)
 		c = getchar(0)
-	buf[len] = 0
-	return len
+	return repl_line.length
 
 
 # Read one line into repl_line: the line editor (raw-mode editing and
@@ -147,15 +149,11 @@ int repl_read_plain(char* prompt, char* buf, int size):
 # Ctrl-C.
 int repl_prompt_line(char* prompt, int indent):
 	string_clear(repl_line)
+	if (repl_interactive == 0):
+		return repl_read_plain(prompt)
 	if (repl_read_buffer == 0):
 		repl_read_buffer = malloc(4096)
 	int n = 0
-	if (repl_interactive == 0):
-		n = repl_read_plain(prompt, repl_read_buffer, 4096)
-		if (n < 0):
-			return n
-		string_append(repl_line, repl_read_buffer)
-		return n
 	# A bracketed paste begun on an earlier physical line of this same
 	# entry is still open (line_edit_read has not seen its end marker
 	# yet): the pasted text supplies its own indentation, so seeding an

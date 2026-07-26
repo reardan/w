@@ -467,8 +467,24 @@ exist yet:
   triggers only on `(`-grouping re-entry; other deep shapes (60k nested
   calls, index/ternary/unary chains) still exhaust the real stack with
   no diagnostic. The tokenizer.w block comment overstates coverage.
-  `lib/shell_commands.w`'s `wc` derives counts from `strlen`, so a file
-  containing NUL truncates its counts.
+  **Fixed (2026-07-25)**: the `(`-site counter moved to the entry of
+  `grammar/unary_expression.w`'s `unary_expression()` — the one function
+  every operand-position recursion (parens, call arguments, index
+  subscripts, stacked unary operators, cast/constructor/literal
+  arguments) descends through per nesting level — plus two increments
+  for the cycles that recurse *above* the operand level, where each
+  level's operand has already returned before the recursion happens:
+  `grammar/conditional_expr.w`'s ternary branch (else-arm
+  `conditional_expr()` / then-arm `expression()`; unguarded SIGSEGV
+  measured by 2M levels) and `grammar/expression.w`'s `=`/compound
+  right-hand sides (`a = a = ... = 1`, same shape). Same shared
+  counter, 1000 limit and "expression nesting too deep" message at all
+  three sites, so the existing 900-paren clean / 1500-paren error
+  fixtures pass unchanged; call/index/ternary/unary/assignment chains
+  are pinned by the new `*_nesting_error_fixture.w` fixtures in
+  `recursion_depth_test` (plus a 900-level ternary clean companion).
+  Still uncovered (unchanged): `lib/shell_commands.w`'s `wc` derives
+  counts from `strlen`, so a file containing NUL truncates its counts.
 
 - **`wbuildgen` can't express "this source's default-arch target is
   x64-only, don't also generate an unwanted 32-bit twin"** (wave 2b,
@@ -673,6 +689,21 @@ exist yet:
   piped, non-PTY invocation `repl_test`'s `script -qc` fixtures don't
   exercise this exact shape either. Worth a closer look before relying on
   giant single-line REPL input in agent tooling.
+  **Fixed (2026-07-25)**: the culprit was `repl.w`'s `repl_read_plain`
+  (the piped/non-tty reader), whose fixed 4096-byte buffer consumed the
+  whole physical line but silently kept only the first 4095 characters
+  — a truncated deep-paren line left `repl_scan_depth` permanently
+  positive, so every later line was swallowed as a `..` continuation of
+  the same entry until EOF and the process exited 0 (exactly why the
+  ~2200-char deep line and the flat 3000-term line both "recovered":
+  one fit the buffer, the other truncated without unbalanced brackets).
+  `repl_read_plain` now appends straight into the `repl_line`
+  string_builder with no length cap; a 5000-deep 10001-char one-liner
+  gets the normal per-entry "expression nesting too deep" rollback and
+  the next entry runs, pinned by `tests/repl_giant_entry_fixture.txt`
+  in `repl_test`/`repl_test_x64`. The interactive raw-mode editor
+  (`lib/line_edit.w`) keeps its own 4096 buffer — typed/pasted lines at
+  a real prompt, deliberately untouched here.
 - **Shipped (2026-07-19, wave plan C task 1g): unrecognized CLI flags
   now get a real diagnostic.** `link_impl`'s flag loop (the common tail
   for link/check/deps/symbols/defhash) errors `unrecognized option:

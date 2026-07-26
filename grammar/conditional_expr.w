@@ -47,6 +47,15 @@ int conditional_expr():
 	if (peek(c"?") == 0):
 		return type
 	get_token() /* consume '?' */
+	# Recursion-depth guard (compiler/tokenizer.w): ternary chains recurse
+	# this layer directly -- the then arm through expression(), the else
+	# arm through conditional_expr() -- and each level's condition operand
+	# has already returned by this point, so unary_expression()'s entry
+	# guard never sees the chain grow. Count each open ternary here
+	# instead; same counter, limit and message as the operand-level guard.
+	expr_nesting_depth = expr_nesting_depth + 1
+	if (expr_nesting_depth > 1000):
+		error(c"expression nesting too deep")
 	promote(type)
 	# Three regions: h_join ends at the join point, h_stub ends where the
 	# then arm's code resumes (usually also the join, but a decay stub can
@@ -103,6 +112,7 @@ int conditional_expr():
 	if (arms_compatible == 0):
 		warn_type_mismatch(c"conditional arms", then_type, else_type)
 	be_ctrl_end(h_join)
+	expr_nesting_depth = expr_nesting_depth - 1
 	if (conditional_arm_is_value(result)):
 		return result
 	if (type_is_value(result)):
