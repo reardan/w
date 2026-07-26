@@ -456,6 +456,16 @@ exist yet:
   caller arg" case cannot detect a regression (both frames' `n` holds
   the same value) and run_case has no timeout (a re-arm regression hangs
   CI rather than failing).
+  *(2026-07-25: all four addressed -- `at_hold_signal` stores the
+  non-SIGTRAP stop for redelivery on the next resume in both paths; the
+  step bail-outs now say "stopped" and print the stop location; `frame
+  <non-number>` errors with `frame: not a number`; attach_test.sh wraps
+  every wdbg run in `timeout 30`, counts two distinct breakpoint stops
+  on both arches, and the fixture's fixed +7000000 call-site offset lets
+  the frame-selection cases assert the caller's `n` differs from frame
+  0's by exactly that delta. Hardware watchpoints -- the #123 remainder
+  -- stay open, concretely scoped in docs/projects/debugger_attach.md's
+  "Remaining" section.)*
 - **(2026-07-19 review) driver arg-loop notes**: unrecognized-option
   detection is positional (flags after the roots are reported only after
   the roots fully compile) and the new branch prints raw stderr with no
