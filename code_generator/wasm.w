@@ -123,6 +123,172 @@ int wasm_leb5_read(int pos):
 	v = v | ((code[pos + 4] & 0x0f) << 28)
 	return v
 
+########################### direct-call optimization ##########################
+# Every W call site is call_indirect through the funcref table (D2). When
+# the callee is a function that is ALREADY DEFINED at the call site, its
+# table index is a known constant, and the call can be a direct `call`
+# instead — better for engine inlining and validation-time typing.
+#
+# The backend cannot see grammar state, so the optimization is driven by
+# two exact emission patterns plus a conservative model of the shadow
+# stack:
+#
+# - sym_get_value (compiler/symbol_table.w) notes a defined function's
+#   table index right after materializing it (wasm_call_target_note).
+# - A wasm_push_eax immediately after the note records a CANDIDATE: "the
+#   W-stack slot just pushed holds constant table index N".
+# - wasm_call_eax immediately after that materialization (no push) or
+#   immediately after a stack reload (wasm_mov_eax_esp_plus) of a slot
+#   with a live candidate rewinds the dead materialization/reload and
+#   emits `call` with a padded 5-byte immediate holding the table index;
+#   wasm_finish rewrites each recorded site to the final function index
+#   (imports precede defined functions, and the import count is only
+#   final at finish).
+#
+# Slots are keyed by a linear push-depth counter fed by wasm_sp_add.
+# Linear emission order and runtime order agree only in straight-line
+# code, so ALL candidates are dropped at every control-flow emission
+# (block/loop/end/br/br_if): a candidate can only be consumed within the
+# branch-free window that created it, where the counter's arithmetic is
+# exact. Within a window, candidates die when their slot is popped
+# (depth decrease), directly overwritten (the stack-store helpers), or
+# has its address taken (wasm_lea_eax_esp_plus). Unmatched call sites
+# keep today's call_indirect — the optimization is allowed to miss, never
+# to mistake.
+
+int wasm_depth          # linear shadow-stack depth, in words
+int* wasm_cand_depth    # candidate slots: depth ...
+int* wasm_cand_index    # ... and the table index each holds
+int wasm_cand_count
+
+int wasm_note_index     # last materialized defined-function table index
+int wasm_note_pos       # codepos right after that materialization
+
+int wasm_reload_start   # extent of the last stack-slot reload ...
+int wasm_reload_pos
+int wasm_reload_words   # ... and the loaded slot's offset, in words
+
+int* wasm_dcall_sites   # padded call immediates to rebase at finish
+int wasm_dcall_count
+int wasm_dcall_cap
+
+int wasm_cand_max():
+	return 64
+
+void wasm_cand_reset():
+	wasm_cand_count = 0
+	wasm_note_pos = 0 - 1
+	wasm_reload_pos = 0 - 1
+
+void wasm_cand_drop_all():
+	wasm_cand_count = 0
+
+# Candidates are created in increasing depth order and dropped from the
+# top, so trimming after a depth decrease is a suffix cut.
+void wasm_cand_trim():
+	while (wasm_cand_count):
+		if (wasm_cand_depth[wasm_cand_count - 1] > wasm_depth):
+			wasm_cand_count = wasm_cand_count - 1
+		else:
+			return
+
+void wasm_cand_add(int depth, int table_index):
+	if (wasm_cand_depth == 0):
+		wasm_cand_depth = cast(int*, malloc(wasm_cand_max() * __word_size__))
+		wasm_cand_index = cast(int*, malloc(wasm_cand_max() * __word_size__))
+	if (wasm_cand_count >= wasm_cand_max()):
+		return
+	wasm_cand_depth[wasm_cand_count] = depth
+	wasm_cand_index[wasm_cand_count] = table_index
+	wasm_cand_count = wasm_cand_count + 1
+
+int wasm_cand_find(int depth):
+	int i = wasm_cand_count - 1
+	while (i >= 0):
+		if (wasm_cand_depth[i] == depth):
+			return i
+		i = i - 1
+	return 0 - 1
+
+# A direct store to the W-stack slot at byte offset v from $sp: any
+# candidate for that slot is stale.
+void wasm_cand_store_invalidate(int v):
+	int d = wasm_depth - (v >> 2)
+	int i = 0
+	while (i < wasm_cand_count):
+		if (wasm_cand_depth[i] == d):
+			while (i + 1 < wasm_cand_count):
+				wasm_cand_depth[i] = wasm_cand_depth[i + 1]
+				wasm_cand_index[i] = wasm_cand_index[i + 1]
+				i = i + 1
+			wasm_cand_count = wasm_cand_count - 1
+			return
+		i = i + 1
+
+# Called by sym_get_value right after it materializes a DEFINED function
+# on the wasm target: the address slot just emitted holds the final table
+# index (no backpatch chain threads through it).
+void wasm_call_target_note(int table_index):
+	wasm_note_index = table_index
+	wasm_note_pos = codepos
+
+void wasm_dcall_note(int pos):
+	if (wasm_dcall_count >= wasm_dcall_cap):
+		int new_cap = wasm_dcall_cap * 2
+		if (new_cap < 1024):
+			new_cap = 1024
+		wasm_dcall_sites = cast(int*, realloc(cast(char*, wasm_dcall_sites), wasm_dcall_cap * __word_size__, new_cap * __word_size__))
+		wasm_dcall_cap = new_cap
+	wasm_dcall_sites[wasm_dcall_count] = pos
+	wasm_dcall_count = wasm_dcall_count + 1
+
+########################## data-segment blob regions ##########################
+# grammar/json_builtin.w emits its to_json/from_json descriptor blobs
+# through the ordinary code-emission helpers (emit / emit_target_word /
+# code_offset + codepos), jumped over in the instruction stream on the
+# native targets. On wasm code is not readable memory, so be_blob_begin /
+# be_blob_end (code_generator/x86.w) call these twins instead: the
+# emission cursor is swapped onto the RW `data` buffer, so the unchanged
+# grammar-side writer streams the blob into the data segment and
+# code_offset + codepos yields linear-memory addresses the runtime
+# (structures/json_codec.w) can load. No code bytes and no jump are
+# emitted at all. Blob regions never nest (nested struct descriptors are
+# emitted in their own preceding regions) and nothing else emits while
+# one is open, so a plain save/restore of the cursor globals suffices.
+
+char* wasm_blob_saved_code
+int wasm_blob_saved_size
+int wasm_blob_saved_pos
+int wasm_blob_saved_offset
+
+void wasm_blob_begin():
+	# The cursor swap makes codepos jump around: retire any pending
+	# position-paired direct-call records first.
+	wasm_note_pos = 0 - 1
+	wasm_reload_pos = 0 - 1
+	wasm_blob_saved_code = code
+	wasm_blob_saved_size = code_size
+	wasm_blob_saved_pos = codepos
+	wasm_blob_saved_offset = code_offset
+	code = data
+	code_size = data_size
+	codepos = datapos
+	code_offset = data_offset
+
+void wasm_blob_end():
+	# Keep the data cursor word-aligned for the storage emitted after the
+	# blob (unaligned i32 accesses are legal on wasm, but tidy layout is
+	# free here).
+	while (codepos & 3):
+		emit_int8(0)
+	data = code
+	data_size = code_size
+	datapos = codepos
+	code = wasm_blob_saved_code
+	code_size = wasm_blob_saved_size
+	codepos = wasm_blob_saved_pos
+	code_offset = wasm_blob_saved_offset
+
 ############################ core emission helpers ############################
 
 void wasm_op(int opcode):
@@ -173,8 +339,13 @@ void wasm_set_bx():
 
 ########################### W-stack (shadow stack) ############################
 
-# $sp += bytes (negative to grow the stack).
+# $sp += bytes (negative to grow the stack). Also feeds the linear depth
+# counter of the direct-call optimizer; a depth decrease pops any
+# candidates whose slots just died.
 void wasm_sp_add(int bytes):
+	wasm_depth = wasm_depth - (bytes >> 2)
+	if (bytes > 0):
+		wasm_cand_trim()
 	wasm_global_get(0)
 	wasm_i32_const(bytes)
 	wasm_op(0x6a)   # i32.add
@@ -188,7 +359,16 @@ void wasm_push_global(int g):
 	wasm_load_op(0x36, 2, 0)   # i32.store
 
 void wasm_push_eax():
+	# Direct-call optimization: a push immediately after sym_get_value's
+	# defined-function note means the new W-stack slot holds that table
+	# index as a constant — record the candidate.
+	int noted = 0
+	if (wasm_note_pos == codepos):
+		noted = 1
 	wasm_push_global(1)
+	if (noted):
+		wasm_cand_add(wasm_depth, wasm_note_index)
+	wasm_note_pos = 0 - 1
 
 void wasm_push_ebx():
 	wasm_push_global(2)
@@ -315,18 +495,25 @@ void wasm_store_ebx_op(int store_opcode):
 		align = 1
 	wasm_load_op(store_opcode, align, 0)
 
-# $ax = $sp + v
+# $ax = $sp + v. Taking a W-stack slot's address means it can be written
+# through the pointer: drop any direct-call candidate for that slot.
 void wasm_lea_eax_esp_plus(int v):
+	wasm_cand_store_invalidate(v)
 	wasm_global_get(0)
 	wasm_i32_const(v)
 	wasm_op(0x6a)
 	wasm_set_ax()
 
-# $ax = [$sp + v]
+# $ax = [$sp + v]. Records the reload's extent and slot so a call_eax
+# immediately after it can become a direct call when the slot holds a
+# known table index (see the direct-call section above).
 void wasm_mov_eax_esp_plus(int v):
+	wasm_reload_start = codepos
+	wasm_reload_words = v >> 2
 	wasm_global_get(0)
 	wasm_load_op(0x28, 2, v)
 	wasm_set_ax()
+	wasm_reload_pos = codepos
 
 # $bx = [$sp] — the x86 helper is 'mov ebx,[esp]' (8b 1c 24), a LOAD of
 # the W stack top (always a pointer at its call sites), not the stack
@@ -345,18 +532,21 @@ void wasm_mov_ebx_esp_plus(int v):
 
 # [$sp + v] = $ax
 void wasm_store_stack_var(int v):
+	wasm_cand_store_invalidate(v)
 	wasm_global_get(0)
 	wasm_get_ax()
 	wasm_load_op(0x36, 2, v)
 
 # [$sp + v] = $bx
 void wasm_store_ebx_stack_var(int v):
+	wasm_cand_store_invalidate(v)
 	wasm_global_get(0)
 	wasm_get_bx()
 	wasm_load_op(0x36, 2, v)
 
 # [$sp + v] += 1
 void wasm_inc_dword_esp_plus(int v):
+	wasm_cand_store_invalidate(v)
 	wasm_global_get(0)
 	wasm_global_get(0)
 	wasm_load_op(0x28, 2, v)
@@ -366,6 +556,7 @@ void wasm_inc_dword_esp_plus(int v):
 
 # [$sp + v] += $ax
 void wasm_add_dword_esp_plus_eax(int v):
+	wasm_cand_store_invalidate(v)
 	wasm_global_get(0)
 	wasm_global_get(0)
 	wasm_load_op(0x28, 2, v)
@@ -375,6 +566,7 @@ void wasm_add_dword_esp_plus_eax(int v):
 
 # [$sp + offset] += v
 void wasm_add_stack_word_int32(int offset, int v):
+	wasm_cand_store_invalidate(offset)
 	wasm_global_get(0)
 	wasm_global_get(0)
 	wasm_load_op(0x28, 2, offset)
@@ -580,34 +772,41 @@ void wasm_cvttss2si():
 # out from the innermost one.
 
 void wasm_ctrl_block():
+	wasm_cand_drop_all()
 	emit_int8(0x02)
 	emit_int8(0x40)   # void block type
 
 void wasm_ctrl_loop():
+	wasm_cand_drop_all()
 	emit_int8(0x03)
 	emit_int8(0x40)
 
 void wasm_ctrl_end():
+	wasm_cand_drop_all()
 	emit_int8(0x0b)
 
 void wasm_br(int depth):
+	wasm_cand_drop_all()
 	emit_int8(0x0c)
 	wasm_leb(depth)
 
 # br_if on ($ax == 0) / ($ax != 0)
 void wasm_br_zero(int depth):
+	wasm_cand_drop_all()
 	wasm_get_ax()
 	wasm_op(0x45)   # i32.eqz
 	emit_int8(0x0d)
 	wasm_leb(depth)
 
 void wasm_br_nonzero(int depth):
+	wasm_cand_drop_all()
 	wasm_get_ax()
 	emit_int8(0x0d)
 	wasm_leb(depth)
 
 # Bounds checks: compare + br_if into region h at the given depth.
 void wasm_bounds_br_if(int depth):
+	wasm_cand_drop_all()
 	emit_int8(0x0d)
 	wasm_leb(depth)
 
@@ -659,6 +858,10 @@ void wasm_function_begin():
 	wasm_leb5(0)
 	emit_int8(0)   # no locals
 	wasm_sp_add(0 - 4)
+	# Fresh direct-call state per body: the depth counter restarts at the
+	# prologue's post-reserve level.
+	wasm_depth = 0
+	wasm_cand_reset()
 
 # Close the current function body: the final `end` opcode, then patch the
 # size prefix. Every W body ends in ret() (grammar/program.w emits one
@@ -674,7 +877,32 @@ void wasm_ret():
 
 # call through the accumulator: every W call site. The callee's "address"
 # in $ax is its table index; type 0 is the universal [] -> [] W type.
+# Direct-call optimization: when the immediately preceding emission
+# materialized a known table index into $ax — either a stack reload of a
+# candidate slot or sym_get_value's defined-function slot itself — the
+# dead materialization is rewound and the call becomes a direct `call`
+# (padded immediate, rebased to the function index space at finish).
 void wasm_call_eax():
+	int direct = 0 - 1
+	if (wasm_reload_pos == codepos):
+		int c = wasm_cand_find(wasm_depth - wasm_reload_words)
+		if (c >= 0):
+			codepos = wasm_reload_start
+			direct = wasm_cand_index[c]
+	if ((direct < 0) && (wasm_note_pos == codepos)):
+		# The 8-byte address slot (i32.const + 5-byte immediate +
+		# global.set $ax) sits directly before the call: rewind it.
+		codepos = codepos - 8
+		direct = wasm_note_index
+	# A call site ends the usefulness of any pending materialization or
+	# reload record either way.
+	wasm_note_pos = 0 - 1
+	wasm_reload_pos = 0 - 1
+	if (direct >= 0):
+		emit_int8(0x10)   # call
+		wasm_dcall_note(codepos)
+		wasm_leb5(direct)
+		return
 	wasm_get_ax()
 	emit_int8(0x11)   # call_indirect
 	wasm_leb(0)       # type index 0
@@ -695,6 +923,7 @@ int wasm_addr_slot_read(int pos):
 	return wasm_leb5_read(pos - 3)
 
 void wasm_int3():
+	wasm_cand_drop_all()
 	emit_int8(0x00)   # unreachable (a bare `debugger` dies, like int3 does)
 
 void wasm_nop():

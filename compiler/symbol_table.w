@@ -547,6 +547,14 @@ int sym_get_value(char *s):
 			# above, so the chain's codepos-4 cell stays the add
 			# instruction of the slot, not this extra word.
 			be_code_ptr_sign()
+			# wasm direct-call optimization: a DEFINED function's value is
+			# its final table index (no chain threads through the slot just
+			# emitted), so note it — an immediately following push or call
+			# can then lower the call site to a direct `call`
+			# (code_generator/wasm.w).
+			if (target_isa == 2):
+				if (scope_type == 'D'):
+					wasm_call_target_note(load_int(table + t + 2))
 			return 4 /* function */
 
 	return type

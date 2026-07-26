@@ -2,8 +2,9 @@
 Runtime for the compiler-generated to_json/from_json builtins.
 
 The compiler monomorphizes a codec per struct type: at the first use site
-it emits a static descriptor blob into the code stream (behind an
-unconditional jump) and lowers the builtin to a call into this module.
+it emits a static descriptor blob (behind an unconditional jump in the
+code stream; into the data segment on wasm) and lowers the builtin to a
+call into this module.
 This file is only imported into programs that actually use the builtins
 (the driver injects the import on demand), so ordinary programs pay
 nothing for it.

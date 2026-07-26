@@ -140,6 +140,19 @@
 			]
 		},
 		{
+			"name": "arm64_darwin_smoke_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64_darwin", "lib/lib_test.w", "-o", "bin/lib_darwin_test"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "structures/hash_table_test.w", "-o", "bin/hash_table_darwin_test"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/map_set_builtin_test.w", "-o", "bin/map_set_builtin_darwin_test"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/generator_test.w", "-o", "bin/generator_darwin_test"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/compound_assign_test.w", "-o", "bin/compound_assign_darwin_test"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/limb_builtin_test.w", "-o", "bin/limb_builtin_darwin_test"]},
+				{"cmd": ["echo", "arm64_darwin smoke binaries cross-compiled OK; run them on a Mac via tools/mac/run_darwin_tests.sh"]}
+			]
+		},
+		{
 			"name": "hello",
 			"deps": ["wv2"],
 			"steps": [
@@ -1663,6 +1676,17 @@
 			]
 		},
 		{
+			"name": "wasm_json_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "wasm", "tests/json_codec_test.w", "-o", "bin/json_codec_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/json_codec_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "structures/json_test.w", "-o", "bin/json_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/json_wasm_test"]},
+				{"cmd": ["echo", "wasm json test OK"]}
+			]
+		},
+		{
 			"name": "x64_protobuf_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1765,7 +1789,17 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "win64", "tests/win64_hello.w", "-o", "bin/win64_hello.exe"]},
 				{"cmd": ["objdump", "-f", "bin/win64_hello.exe"], "expect_stdout": "pei-x86-64"},
-				{"cmd": ["objdump", "-p", "bin/win64_hello.exe"], "expect_stdout": ["ExitProcess", "kernel32.dll"]}
+				{"cmd": ["objdump", "-p", "bin/win64_hello.exe"], "expect_stdout": ["ExitProcess", "kernel32.dll"]},
+				{"cmd": ["objdump", "-h", "bin/win64_hello.exe"], "expect_stdout": ["READONLY, CODE", ".data"]}
+			]
+		},
+		{
+			"name": "win64_wx_section_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "win64", "tests/win64_hello.w", "-o", "bin/win64_wx_section_input.exe"]},
+				{"cmd": ["bin/wv2", "tests/win64_wx_section_test.w", "-o", "bin/win64_wx_section_test"]},
+				{"cmd": ["bin/win64_wx_section_test"]}
 			]
 		},
 		{
@@ -1796,6 +1830,7 @@
 			"name": "tests_win64",
 			"deps": [
 				"win64_header_test",
+				"win64_wx_section_test",
 				"win64_hello_test",
 				"win64_smoke_test",
 				"dynamic_test_win64",
@@ -2344,6 +2379,8 @@
 				"net_darwin",
 				"pac_flag_test",
 				"pac_darwin",
+				"win64_wx_section_test",
+				"arm64_darwin_smoke_test",
 				"test",
 				"hello",
 				"tests_x64",
