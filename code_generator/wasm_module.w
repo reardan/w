@@ -514,6 +514,17 @@ void wasm_finish():
 	if (t != 0):
 		wasm_addr_slot_write(wasm_entry_slot_pos, t)
 
+	# Direct-call sites (code_generator/wasm.w): each padded `call`
+	# immediate still holds the callee's TABLE index. The function index
+	# space is only final now that every extern import is registered, so
+	# rebase each to import-count + table-index - 1, the inverse of the
+	# element segment's identity mapping below.
+	int dc = 0
+	while (dc < wasm_dcall_count):
+		int dcs = wasm_dcall_sites[dc]
+		wasm_leb5_patch(dcs, wasm_num_imports() + wasm_leb5_read(dcs) - 1)
+		dc = dc + 1
+
 	int code_end = codepos
 
 	# ---- everything before the code bodies, assembled into scratch ----

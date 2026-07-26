@@ -1686,6 +1686,17 @@
 			]
 		},
 		{
+			"name": "wasm_json_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "wasm", "tests/json_codec_test.w", "-o", "bin/json_codec_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/json_codec_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "structures/json_test.w", "-o", "bin/json_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/json_wasm_test"]},
+				{"cmd": ["echo", "wasm json test OK"]}
+			]
+		},
+		{
 			"name": "x64_protobuf_test",
 			"deps": ["wv2"],
 			"steps": [
