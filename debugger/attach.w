@@ -521,6 +521,15 @@ void at_frame_command(char* arg):
 		return;
 	int n = attach_fr_sel
 	if (arg[0] != 0):
+		# atoi returns 0 for junk, which used to silently select frame 0;
+		# require an all-digit argument instead.
+		int i = 0
+		while ((arg[i] >= '0') && (arg[i] <= '9')):
+			i = i + 1
+		if (arg[i] != 0):
+			print(c"frame: not a number: ")
+			println(arg)
+			return;
 		n = atoi(arg)
 		if ((n < 0) || (n >= attach_fr_count)):
 			print(c"no frame ")
@@ -900,6 +909,17 @@ void at_resume(int request):
 	attach_pending_sig = 0
 
 
+# Hold a non-SIGTRAP stop signal taken during a step-over-breakpoint
+# single step for redelivery on the resume that follows -- the same rule
+# at_report_stop applies at reported stops (19 = the initial/ordinary
+# SIGSTOP is swallowed, never re-injected). Without this, a signal landing
+# exactly during the disarm/step/re-arm dance was silently dropped.
+void at_hold_signal(int status):
+	int sig = at_status_stopsig(status)
+	if ((sig != 5) && (sig != 19)):
+		attach_pending_sig = sig
+
+
 # Decode and announce the stop the tracee just took; update attach_alive.
 void at_report_stop(int status):
 	if (at_status_exited(status)):
@@ -966,6 +986,7 @@ void at_continue():
 		if (at_status_exited(st) | at_status_signalled(st)):
 			at_report_stop(st)
 			return;
+		at_hold_signal(st)
 		at_bp_arm(bp)
 	at_resume(at_CONT())
 	at_report_stop(at_wait())
@@ -1112,12 +1133,22 @@ void at_step_line_mode(int mode):
 				dbg_disas_show_context(ip - 1)
 			return;
 		count = count + 1
+		# Bailing out of this loop returns to the prompt with the tracee
+		# still stopped -- unlike wdbg.w's in-process twin, which really
+		# does resume at full speed on these paths -- so say "stopped"
+		# and report where, rather than claiming to continue.
 		if (count > 500000):
-			println(c"step: no source boundary found: continuing")
+			if (attach_symbolized):
+				at_frames_compute(ip)
+			println(c"step: no source boundary found; stopped")
+			at_print_location(ip)
 			return;
 		if (at_in_code(ip) == 0):
 			if (dbg_reg_sp() > attach_step_esp):
-				println(c"(step left the debuggee: continuing)")
+				if (attach_symbolized):
+					at_frames_compute(ip)
+				println(c"(step left the debuggee; stopped)")
+				at_print_location(ip)
 				return;
 			continue
 		if (at_step_should_stop(mode, ip)):
@@ -1170,6 +1201,7 @@ void at_finish():
 			int st1 = at_wait()
 			if ((at_status_exited(st1) == 0) && (at_status_signalled(st1) == 0)):
 				at_bp_arm(bp)
+				at_hold_signal(st1)
 			if (at_status_exited(st1) | at_status_signalled(st1)):
 				at_report_stop(st1)
 				return;
