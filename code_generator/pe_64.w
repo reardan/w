@@ -3,20 +3,34 @@ PE32+ container for the win64 target (docs/projects/windows.md).
 
 Layout keeps W's absolute-address model intact: ImageBase is the fixed
 0x400000, relocations are stripped and ASLR stays off, and section
-alignment equals file alignment (0x1000), so every RVA equals its file
-offset and a buffer position p lives at vaddr code_offset + p -- the same
-single-buffer scheme the ELF writers use with 0x08048000.
+alignment equals file alignment (0x1000), so every .text RVA equals its
+file offset and a buffer position p lives at vaddr code_offset + p -- the
+same single-buffer scheme the ELF writers use with 0x08048000.
 
 Windows has no stable raw-syscall ABI, so even trivial programs need the
 import table: OS services arrive through kernel32.dll imports declared
-with c_lib/extern in lib/__arch__/win64/syscalls.w. Each import's inline
-slot (dyn_emit_import_slot) is its own one-entry IAT; pe_emit_imports()
+with c_lib/extern in lib/__arch__/win64/syscalls.w. Each import's slot
+(dyn_emit_import_slot) is its own one-entry IAT; pe_emit_imports()
 points one import descriptor per import at it, so the scattered slots
 never need to be contiguous.
 
-The image is a single RWX .text section, matching the single RWX PT_LOAD
-the Linux x86/x64 targets use. Stack commit equals the 8MB reserve so
-large W frames never need __chkstk-style stack probes.
+The image is W^X (docs/projects/wx_split.md Stage A): a read-execute
+.text section holds code plus the read-only import metadata (hint/name
+tables, ILT, import directory), and a read-write .data section at
+ImageBase + 16MB holds the loader-written IAT slots and mutable globals
+(the data_split buffer in code_emitter.w, same recipe as the arm64
+targets). Under Windows Memory Integrity (HVCI) the loader refuses to
+write into executable pages, so IAT binds into an RWX .text were
+silently dropped and every import stayed 0 -- the split is a
+correctness fix, not hardening. .data's RVA is fixed before code size
+is known (global/IAT vaddrs are baked into emitted code as they
+appear), so .text declares its VirtualSize as the whole span up to
+.data's RVA (zero-fill semantics, like .bss) while its SizeOfRawData
+stays the actual code size. Nothing addresses .data by file offset, so
+only .text keeps the RVA == file offset invariant.
+
+Stack commit equals the 8MB reserve so large W frames never need
+__chkstk-style stack probes.
 */
 import code_generator.code_emitter
 import code_generator.integer
@@ -29,11 +43,12 @@ int sym_address(char *s);  /* from symbol_table.w */
 void error(char *s);       /* from diagnostics.w */
 
 
-# File positions of the optional header and the .text section header,
-# recorded at start time so the finish pass can patch sizes and the
-# import directory without hardcoded offsets.
+# File positions of the optional header and the .text/.data section
+# headers, recorded at start time so the finish pass can patch sizes and
+# the import directory without hardcoded offsets.
 int pe_opt_header_pos
 int pe_section_header_pos
+int pe_data_section_header_pos
 
 # Vaddrs of the entry stub's support data: the empty argv/env block the
 # stub passes when no runtime startup takes over, and the ExitProcess
@@ -67,7 +82,7 @@ void pe_dos_header():
 void pe_coff_header():
 	emit(4, c"PE\x00\x00")
 	emit_int16(34404) /* machine: 0x8664 x86-64 */
-	emit_int16(1) /* number of sections */
+	emit_int16(2) /* number of sections: .text (R+X) and .data (R+W) */
 	emit_int32(0) /* time date stamp */
 	emit_int32(0) /* pointer to symbol table (deprecated) */
 	emit_int32(0) /* number of symbols (deprecated) */
@@ -103,7 +118,9 @@ void pe_optional_header():
 	emit_int32(4096) /* size of headers */
 	emit_int32(0) /* checksum (only required for drivers) */
 	emit_int16(3) /* subsystem: console */
-	emit_int16(0) /* dll characteristics: no dynamic base, image loads at ImageBase */
+	# dll characteristics: 0x100 NX_COMPAT (DEP-clean now that no section
+	# is writable+executable); no DYNAMIC_BASE, image loads at ImageBase.
+	emit_int16(256)
 	emit_int64(8388608) /* stack reserve: 8MB */
 	emit_int64(8388608) /* stack commit == reserve: no stack probes needed */
 	emit_int64(1048576) /* heap reserve */
@@ -115,8 +132,9 @@ void pe_optional_header():
 	emit_zeros(128)
 
 
-# IMAGE_SECTION_HEADER for the single RWX .text section covering
-# everything after the headers. Sizes are patched by pe_finish_64().
+# IMAGE_SECTION_HEADER for the read-execute .text section covering
+# everything after the headers up to .data's RVA. Sizes are patched by
+# pe_finish_64().
 void pe_section_header():
 	emit(6, c".text\x00")
 	emit_zeros(2) /* name padding to 8 bytes */
@@ -129,13 +147,43 @@ void pe_section_header():
 	emit_int16(0) /* number of relocations */
 	emit_int16(0) /* number of line numbers */
 	# characteristics: 0x20 CODE | 0x40 INITIALIZED_DATA
-	# | 0x20000000 EXECUTE | 0x40000000 READ | 0x80000000 WRITE
-	emit_int32(-536870816) /* 0xE0000060 as a signed 32-bit value */
+	# | 0x20000000 EXECUTE | 0x40000000 READ -- no WRITE (W^X)
+	emit_int32(1610612832) /* 0x60000060 */
+
+
+# IMAGE_SECTION_HEADER for the read-write .data section (IAT slots and
+# mutable globals). Its RVA is fixed at 16MB so global vaddrs can be
+# baked into code before the code size is known; sizes and the raw-data
+# pointer are patched by pe_finish_64().
+void pe_data_section_header():
+	emit(6, c".data\x00")
+	emit_zeros(2) /* name padding to 8 bytes */
+	emit_int32(0) /* virtual size OVERWRITTEN in pe_finish_64() */
+	emit_int32(16777216) /* virtual address (RVA): data_offset - ImageBase */
+	emit_int32(0) /* size of raw data OVERWRITTEN in pe_finish_64() */
+	emit_int32(0) /* pointer to raw data OVERWRITTEN in pe_finish_64() */
+	emit_int32(0) /* pointer to relocations */
+	emit_int32(0) /* pointer to line numbers */
+	emit_int16(0) /* number of relocations */
+	emit_int16(0) /* number of line numbers */
+	# characteristics: 0x40 INITIALIZED_DATA
+	# | 0x40000000 READ | 0x80000000 WRITE -- no EXECUTE (W^X)
+	emit_int32(-1073741760) /* 0xC0000040 as a signed 32-bit value */
 
 
 void pe_start_64():
 	base_code_offset = pe_image_base()
 	code_offset = base_code_offset
+
+	# The read-write data section loads 16 MB above the image base, clear
+	# of the code (same distance as the arm64 targets). IAT slots
+	# (dyn_emit_import_slot) and global-variable storage (grammar/program.w
+	# define_global_variable) are emitted here at data_offset + datapos;
+	# the win64 selector sets data_split (compiler/compiler.w).
+	data_offset = base_code_offset + 16777216 /* +0x1000000 */
+	datapos = 0
+	data_size = 4096
+	data = malloc(data_size)
 
 	pe_dos_header()
 	pe_coff_header()
@@ -143,6 +191,8 @@ void pe_start_64():
 	pe_optional_header()
 	pe_section_header_pos = codepos
 	pe_section_header()
+	pe_data_section_header_pos = codepos
+	pe_data_section_header()
 	pe_align(4096) /* headers occupy the first page; .text starts at RVA 0x1000 */
 
 	# Support data for the entry stub. The empty args block serves as
@@ -185,15 +235,18 @@ void pe_start_64():
 /*
 Import tables, drained from the shared dynamic registry at finish time.
 
-Every import already owns an 8-byte slot inside the code image (emitted
-inline next to its shim by dyn_emit_import_slot, followed by a zero
-terminator word), and all emitted code reaches the function through that
-slot. Those slots are scattered between shims, so instead of one
-descriptor per DLL with a contiguous IAT, one IMAGE_IMPORT_DESCRIPTOR is
-emitted per import whose FirstThunk points at the import's own slot and
-whose lookup table holds that single name. Loaders resolve duplicate DLL
-names from the module cache, so repeating kernel32.dll per import only
-costs a few bytes of directory.
+Every import already owns an 8-byte slot in the read-write .data section
+(emitted by dyn_emit_import_slot as its declaration is parsed, followed
+by a zero terminator word), and all emitted code reaches the function
+through that slot. The slots are scattered between globals, so instead
+of one descriptor per DLL with a contiguous IAT, one
+IMAGE_IMPORT_DESCRIPTOR is emitted per import whose FirstThunk points at
+the import's own slot and whose lookup table holds that single name.
+Loaders resolve duplicate DLL names from the module cache, so repeating
+kernel32.dll per import only costs a few bytes of directory. The
+metadata emitted here (hint/name entries, DLL names, ILTs, the
+directory) is read-only at load time and stays in .text; only the
+FirstThunk slots receive loader writes, which is what HVCI requires.
 */
 void pe_emit_imports():
 	if (dyn_import_count == 0):
@@ -277,15 +330,38 @@ void pe_finish_64():
 		t = t - code_offset - entry_call_disp_pos - 4
 		save_int32(code + entry_call_disp_pos, t)
 
-	# Pad the file to the alignment so SizeOfRawData is exact, then patch
-	# the size fields. RVA == file offset, so SizeOfImage is file size.
-	int text_virtual_size = codepos - 4096
+	# Pad the code stream to the alignment so .text's SizeOfRawData is
+	# exact. Its VIRTUAL size spans all the way to .data's fixed RVA (the
+	# loader zero-fills the gap, .bss-style), keeping the two sections
+	# virtually adjacent as the loader requires while .data's RVA stayed
+	# constant during code emission.
 	pe_align(pe_file_align())
 	int text_raw_size = codepos - 4096
+	int data_rva = data_offset - base_code_offset
+	int text_virtual_size = data_rva - 4096
+
+	# Pad the data buffer to the file alignment as well; its raw bytes
+	# follow the code stream in the file, so its PointerToRawData is the
+	# padded end of the code (RVA != file offset for .data; nothing
+	# addresses it by file offset).
+	int data_virtual_size = datapos
+	int data_pad = datapos % pe_file_align()
+	if (data_pad != 0):
+		emit_data_zeros(pe_file_align() - data_pad)
+	int data_raw_size = datapos
+
 	save_i(code + pe_opt_header_pos + 4, text_raw_size, 4) /* SizeOfCode */
-	save_i(code + pe_opt_header_pos + 56, codepos, 4) /* SizeOfImage */
+	save_i(code + pe_opt_header_pos + 8, data_raw_size, 4) /* SizeOfInitializedData */
+	save_i(code + pe_opt_header_pos + 56, data_rva + data_raw_size, 4) /* SizeOfImage */
 	save_i(code + pe_section_header_pos + 8, text_virtual_size, 4) /* VirtualSize */
 	save_i(code + pe_section_header_pos + 16, text_raw_size, 4) /* SizeOfRawData */
+	save_i(code + pe_data_section_header_pos + 8, data_virtual_size, 4) /* VirtualSize */
+	save_i(code + pe_data_section_header_pos + 16, data_raw_size, 4) /* SizeOfRawData */
+	save_i(code + pe_data_section_header_pos + 20, codepos, 4) /* PointerToRawData */
 
+	# Two write calls, one per section's raw bytes (same shape as
+	# elf_finish_arm64's two-PT_LOAD write).
 	if (write(output_fd, code, codepos) != codepos):
+		error(c"could not write output file")
+	if (write(output_fd, data, datapos) != datapos):
 		error(c"could not write output file")

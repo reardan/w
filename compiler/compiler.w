@@ -405,6 +405,11 @@ int target_selector_apply(char* arg):
 		word_size_log2 = 3
 		diag_word_size = word_size
 		target_os = 2
+		# W^X (docs/projects/wx_split.md Stage A): IAT slots and mutable
+		# globals go to a read-write .data section so the loader's IAT
+		# bind never targets an executable page -- under HVCI Windows
+		# drops such writes and every import stays unresolved.
+		data_split = 1
 		return 1
 	if (strcmp(arg, c"arm64_darwin") == 0):
 		if (quiet_mode == 0):
