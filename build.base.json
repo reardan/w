@@ -1089,7 +1089,12 @@
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "x64", "tests/wexec/direct_file/sample_test.w"], "expect_stdout": ["wexec: target x64:tests/wexec/direct_file/sample_test.w", "direct file adhoc test ran"]},
 				{"cmd": ["test", "-x", "bin/sample_test"]},
 				{"cmd": ["test", "-x", "bin/sample_test_x64"]},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/does_not_exist.w"], "expect_fail": true, "expect_stderr": "no such file"}
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/does_not_exist.w"], "expect_fail": true, "expect_stderr": "no such file"},
+				{"cmd": ["rm", "-rf", "bin/wexec_xok"]},
+				{"cmd": ["mkdir", "-p", "bin/wexec_xok/shadow", "bin/wexec_xok/real"]},
+				{"cmd": ["sh", "-c", "printf 'not a program\\n' > bin/wexec_xok/shadow/wexec_xok_probe"]},
+				{"cmd": ["sh", "-c", "printf '#!/bin/sh\\necho xok probe: real executable ran\\n' > bin/wexec_xok/real/wexec_xok_probe && chmod 755 bin/wexec_xok/real/wexec_xok_probe"]},
+				{"cmd": ["sh", "-c", "PATH=\"bin/wexec_xok/shadow:bin/wexec_xok/real:$PATH\" bin/wexec -f tests/wexec/path_xok.json probe"], "expect_stdout": ["xok probe: real executable ran", "wexec: OK (1 targets)"]}
 			]
 		},
 		{
