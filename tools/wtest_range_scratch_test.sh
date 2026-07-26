@@ -161,4 +161,10 @@ echo "$out" | grep -qx scratch_target || fail "no-range baseline: plain path sel
 err=$(bin/wtest changed "not_a_real_rev..$c3" 2>&1 >/dev/null) && fail "invalid range: wtest exited 0"
 echo "$err" | grep -qF "invalid revision in range" || fail "invalid range: wrong/missing error message"
 
+# ===== Second range argument: an argument error, not a silently ====
+# ignored changed-file path (it used to fall to the tests-umbrella
+# catch-all with no diagnostic).
+err=$(bin/wtest changed "$c0..$c1" "$c1..$c2" 2>&1 >/dev/null) && fail "second range argument: wtest exited 0"
+echo "$err" | grep -qF "only one revision range argument" || fail "second range argument: wrong/missing error message"
+
 echo "wtest_range_scratch_test: OK"
