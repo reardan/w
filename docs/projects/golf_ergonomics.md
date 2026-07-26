@@ -134,6 +134,28 @@ lib/str.w: `substring` (clamping, half-open), `index_of`, `split`
 preserved), `replace` (multi-character), `join` over `list[char*]`.
 lib/math.w grows `abs`, `sign`, `gcd`, `pow` (integer, by squaring).
 
+## Wave 2 (issue #360)
+
+### Inferred for-loop variables (grammar/for_statement.w)
+
+`for x in ...` drops the loop-variable type when the range or container
+already fixes it. The name is consumed and its stack slot reserved up
+front, but the symbol is declared only after the iterable expression
+parses (the `:=` precedent), so the iterable cannot reference the new
+name. The inferred types mirror the typed form's coercion sources:
+range and `string` loops bind `int`; maps bind the key type, and the
+optional second variable the value type (struct values as stored-value
+addresses, the `__w_map_iter_value_addr` rule); sets the key type;
+lists and slices the element type (struct list elements as element
+pointers); custom cursor-protocol containers their `T_iter_value`
+return type, with `for_iter_require` still validating the protocol.
+Typed and inferred bindings mix freely in the two-variable map form.
+The parser-generator grammar's `for_binding` rule had accepted a bare
+`IDENT` binding since #42, so `w.pg` only gained a comment. One known
+rough edge: the debugger's local note is recorded at declaration with
+the final type, but wdbg's view of a struct-element pointer variable is
+only as good as `debug_local_note`'s type rendering.
+
 ## Acceptance
 
 - `./wbuild verify` — self-host fixpoint (wv3 == wv4 == wv5) with every

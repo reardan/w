@@ -226,6 +226,8 @@ rule for_stmt = KW_FOR for_binding for_binding_tail KW_IN expression block
 # (docs/projects/cuda.md M2/M1)
 rule gpu_for_stmt = KW_GPU for_stmt
 rule launch_stmt = KW_LAUNCH name_token LBRACK expression COMMA expression RBRACK LPAREN arg_list RPAREN
+# The bare-IDENT alternative is the inferred loop variable
+# ('for x in ...', issue #360): the container fixes the type.
 rule for_binding = type_ref IDENT | IDENT
 rule for_binding_tail = COMMA for_binding | 
 rule return_stmt = KW_RETURN expression_opt

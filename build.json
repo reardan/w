@@ -1863,6 +1863,7 @@
 				"float_conformance_64_test",
 				"fmath_64_test",
 				"for_container_64_test",
+				"for_infer_64_test",
 				"format_64_test",
 				"framing_64_test",
 				"generator_64_test",
@@ -2388,6 +2389,7 @@
 				"float_literal_test",
 				"float_test",
 				"fmath_test",
+				"for_infer_test",
 				"for_test",
 				"format_test",
 				"framing_test",
@@ -3484,6 +3486,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/for_container_test.w", "-o", "bin/for_container_64_test"]},
 				{"cmd": ["bin/for_container_64_test"]}
+			]
+		},
+		{
+			"name": "for_infer_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/for_infer_test.w"],
+			"outputs": ["bin/for_infer_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/for_infer_test.w", "-o", "bin/for_infer_64_test"]},
+				{"cmd": ["bin/for_infer_64_test"]}
+			]
+		},
+		{
+			"name": "for_infer_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/for_infer_test.w"],
+			"outputs": ["bin/for_infer_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/for_infer_test.w", "-o", "bin/for_infer_test"]},
+				{"cmd": ["bin/for_infer_test"]}
 			]
 		},
 		{
