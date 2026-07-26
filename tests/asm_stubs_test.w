@@ -11,7 +11,15 @@ against its string's escape count, so a stub cannot silently emit stray
 NUL bytes (the pre-#170 store_context did exactly that).
 
 docs/projects/assembler_disassembler.md.
+
+The stub sources under tests/asm/ and the committed
+code_generator/*_asm.w files are read as run-time text (asm_stub_check
+takes paths), not imported, so the deps= directives below declare them
+— both for 'bin/wtest changed' selection and for the generated
+target's cache "inputs".
 */
+# wbuild: deps=tests/asm/ deps=code_generator/x86_asm.w
+# wbuild: deps=code_generator/x64_asm.w deps=code_generator/arm64_asm.w
 import lib.lib
 import libs.asm.stubgen
 

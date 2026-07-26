@@ -1069,12 +1069,19 @@ int ci_params_are_old_style(pg_ast_node* params):
 	return ci_find_ast(params, clang_ast_identifier_list()) != 0
 
 
+# Skipped-extern notice, surfaced by -v/--verbose (verbosity >= 0;
+# nothing prints by default). Deliberately a plain informational note on
+# stderr, NOT warning(): skipping a declaration the FFI cannot represent
+# is expected behavior, and routing it through warning() would bump
+# warning_count and turn every skipped extern into a build failure under
+# '-v --strict' (docs/projects/ai_tooling.md).
 void ci_skip_extern_function(char* name, char* reason):
-	if (verbosity >= 1):
-		diag_part(c"warning: c_import skipped '")
-		diag_part(name)
-		diag_part(c"': ")
-		warning(reason)
+	if (verbosity >= 0):
+		print_error(c"note: c_import skipped '")
+		print_error(name)
+		print_error(c"': ")
+		print_error(reason)
+		print_error(c"\x0a")
 
 
 # Global constants are read with word-sized loads, so they must be emitted

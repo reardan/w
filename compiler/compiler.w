@@ -324,7 +324,10 @@ void compile_save(char* fn):
 	import_plain_base = old_plain_base
 	import_plain_count = old_plain_count
 
-	if (verbosity >= 0):
+	# filename is still null when the importer was the cold-start
+	# auto-import (no file was open yet); print_string on a null string
+	# faults, and -v makes this level reachable now.
+	if ((verbosity >= 0) && (filename != 0)):
 		print_string(c"back to ", filename)
 
 
@@ -471,9 +474,68 @@ int root_is_compiler_internal(char* path):
 	return internal
 
 
+# -v/--verbose: raise the verbosity from its quiet default (-1, set by
+# main() in w.w). The first flag reaches level 0 -- the user-facing
+# verbose level: the per-import banners (compile_save) and the c_import
+# skip notes (libs/extras/c_import/importer.w). Levels 1 and up remain
+# the compiler-developer debug traces (per-expression promote() dumps,
+# per-symbol declarations, ...); each further flag adds one level.
+void verbosity_raise():
+	if (verbosity < 0):
+		verbosity = 0
+	else:
+		verbosity = verbosity + 1
+
+
+# Every dash-prefixed option link_impl understands. The pre-scan and the
+# positional flag loop below must agree on the set, so it lives in one
+# place; -o is excluded because its argument-consuming form needs
+# special handling at both call sites.
+int link_option_recognized(char* arg):
+	if (strcmp(arg, c"--bounds=on") == 0):
+		return 1
+	if (strcmp(arg, c"--bounds=trap") == 0):
+		return 1
+	if (strcmp(arg, c"--bounds=off") == 0):
+		return 1
+	if (strcmp(arg, c"--pac=off") == 0):
+		return 1
+	if (strcmp(arg, c"--pac=ret") == 0):
+		return 1
+	if (strcmp(arg, c"--pac=full") == 0):
+		return 1
+	if (strcmp(arg, c"--strict") == 0):
+		return 1
+	if (strcmp(arg, c"--quiet") == 0):
+		return 1
+	if (strcmp(arg, c"-v") == 0):
+		return 1
+	if (strcmp(arg, c"--verbose") == 0):
+		return 1
+	return starts_with(arg, c"--ptx=")
+
+
+# A dash-prefixed argument no flag branch recognizes is a typo or an
+# unsupported option, never an input file; fail fast with the option
+# text. Under --json ('w check --json f.w --nope') the failure is a
+# proper NDJSON record mirroring the diagnostic shape, so an agent
+# parsing the stream sees it instead of bare stderr; the option is not
+# in any source file, so file is the fixed "<command-line>" marker and
+# line/column are 0.
+void unrecognized_option_error(char* arg):
+	diag_part(c"unrecognized option: '")
+	diag_part(arg)
+	diag_part(c"'")
+	if (diag_json):
+		diag_emit(c"error", c"<command-line>", 0, 0, arg)
+	else:
+		print_error(c"\x0a")
+	exit(1)
+
+
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (argc <= start_index):
-		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [--version]")
+		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [-v|--verbose] [--version]")
 		exit(1)
 	int i = start_index
 	word_size = 4
@@ -517,6 +579,26 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			pac_level = 2
 		pac_scan = pac_scan + 1
 	arm64_pac = pac_level
+	# Option validation is up front, not positional: a typo'd flag after
+	# the file list used to be reported only after every earlier root had
+	# fully compiled (docs/projects/ai_tooling.md). -v/--verbose applies
+	# here too, so the flag covers the whole compile wherever it appears
+	# on the line; the loop below re-applies the pre-scanned level, like
+	# the --pac branches.
+	int flag_scan = i
+	while (flag_scan < argc):
+		char** flag_arg = argv + flag_scan * __word_size__
+		if (strcmp(*flag_arg, c"-o") == 0):
+			# -o consumes the next argument: an output path may start
+			# with '-' without being an option
+			flag_scan = flag_scan + 1
+		else if ((strcmp(*flag_arg, c"-v") == 0) || (strcmp(*flag_arg, c"--verbose") == 0)):
+			verbosity_raise()
+		else if (starts_with(*flag_arg, c"-")):
+			if (link_option_recognized(*flag_arg) == 0):
+				unrecognized_option_error(*flag_arg)
+		flag_scan = flag_scan + 1
+	int verbose_level = verbosity
 	push_basic_types()
 	pointer_indirection = 0
 	# No function body is being compiled yet: the '?' operator checks
@@ -581,6 +663,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			strict_mode = 1
 		else if (strcmp(*arg, c"--quiet") == 0):
 			quiet_mode = 1
+		else if (strcmp(*arg, c"-v") == 0):
+			verbosity = verbose_level
+		else if (strcmp(*arg, c"--verbose") == 0):
+			verbosity = verbose_level
 		else if (starts_with(*arg, c"--ptx=")):
 			# Debug dump of the embedded PTX module (kernels/'gpu for'),
 			# written by ptx_finish_module; ignored when no kernels exist.
@@ -592,12 +678,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# file named '-x' is vanishingly rare in this codebase, and
 			# treating it as a root instead produced a misleading "no
 			# such file: '--bounds=xyz'" (the fallthrough below tried to
-			# open it). Fail fast with the option text instead of
-			# silently compiling it as a root.
-			print_error(c"unrecognized option: '")
-			print_error(*arg)
-			print_error(c"'\x0a")
-			exit(1)
+			# open it). Normally unreachable: the pre-scan above already
+			# failed before any root compiled; kept as a safety net.
+			unrecognized_option_error(*arg)
 		else:
 			char* input = *arg
 			# A compiler-internal root cannot be checked standalone;
@@ -738,10 +821,16 @@ int check_main(int argc, int argv):
 			# call-free bool/comparison operands. Off by default.
 			check_bool_ops_mode = 1
 			i = i + 1
+		else if ((strcmp(*arg, c"-v") == 0) || (strcmp(*arg, c"--verbose") == 0)):
+			# Consumed here (link_impl's own pre-scan would also apply a
+			# trailing -v) so 'w check -v --json f.w' keeps scanning the
+			# leading flags after it instead of stopping.
+			verbosity_raise()
+			i = i + 1
 		else:
 			scanning = 0
 	if (argc <= i):
-		println2(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [-v|--verbose] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
 

@@ -11,6 +11,7 @@ tests/cuda_smoke.w does for missing GPUs; the build greps for the
 "graphics gl smoke" prefix so both outcomes keep the suite green while
 a real failure (bad pixels, shader errors) still fails the target.
 */
+# wbuild: name=graphics_gl_smoke_test arch_only=x64 expect_stdout="graphics gl smoke"
 import lib.lib
 import graphics.math
 import graphics.gl

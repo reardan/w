@@ -1,3 +1,4 @@
+# wbuild: arch_only=x64
 int _main():
 	char* s =  c"hello, 64 bit world!\x0a"
 	syscall(1, 1, s, 22) /* write */

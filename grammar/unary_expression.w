@@ -152,7 +152,31 @@ unary-expression
 Unary operators bind tighter than any binary operator, so -a * b
 means (-a) * b and unary operators can stack: !!a, -*p, *&x, ~-a.
 */
+int unary_expression_operand();
+
+
+# Recursion-depth guard (compiler/tokenizer.w): every operand-position
+# recursion in the expression grammar -- '(' grouping, call arguments,
+# index subscripts, stacked unary operators, cast/constructor/'new'
+# arguments, nested container and template-string literals -- descends
+# through unary_expression() once per source nesting level while its
+# enclosing frames are still on the native stack, so counting entry into
+# this one function bounds all of those shapes with a single choke
+# point. Ternary chains recurse ABOVE this level (each level's condition
+# operand returns before the arms recurse) and carry their own increment
+# in grammar/conditional_expr.w, as do flat assignment chains in
+# grammar/expression.w; all three sites share this counter, limit and
+# message.
 int unary_expression():
+	expr_nesting_depth = expr_nesting_depth + 1
+	if (expr_nesting_depth > 1000):
+		error(c"expression nesting too deep")
+	int type = unary_expression_operand()
+	expr_nesting_depth = expr_nesting_depth - 1
+	return type
+
+
+int unary_expression_operand():
 	int type
 	if (accept(c"&")):
 		type = unary_expression()

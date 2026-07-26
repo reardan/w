@@ -244,6 +244,13 @@ expect asm_fuzz_x64_test
 expect asm_fuzz_arm64_test
 forbid tests
 
+# tests/c_import_skip_note_fixture.h is read by c_import at compile
+# time (the -v skip-note fixture header), invisible to the import
+# graph; its residue rule pins it to its one consumer.
+case tests/c_import_skip_note_fixture.h
+expect c_import_verbose_note_test
+forbid tests
+
 # lib/__arch__/ modules select through the per-arch closures of rule
 # (b) — the old blanket residue rule is retired. Each arch's module
 # selects only targets that compile for that arch: the x86 socket ABI

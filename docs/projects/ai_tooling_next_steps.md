@@ -30,22 +30,10 @@ is a queue, not an archive.
   recovery, which stays a research project. Cheap partial win: after an
   error in file A, agents re-check to find errors behind it — nothing to
   build, just keep the limitation documented in skills.
-- **"Cannot find symbol" for a same-file forward call gives no hint that
-  a C-style prototype (`type name(params);`) would fix it.** Found while
-  reorganizing `debugger/attach.w` (wave plan C task 3c): moving a helper
-  function earlier in the file than a callee it needs (no pre-pass
-  registers signatures ahead of bodies; a name must already be in the
-  symbol table, `compiler/symbol_table.w`'s `sym_get_value`) errors with
-  a bare `Cannot find symbol: 'callee'` — indistinguishable from a typo
-  or a genuinely missing import. `grammar/program.w:183-185` shows the
-  existing fix-up (a semicolon-terminated prototype creates an `'U'`
-  undefined-global symbol that later resolution backpatches,
-  `sym_declare_global`/`sym_define_global`), but nothing in the
-  diagnostic suggests it. A `w check` improvement: when the unresolved
-  name is defined later in the same file (or its close-by-name
-  suggestion search already scans forward), append "declared later in
-  this file — forward-reference it with a prototype (`type
-  callee(...);`) before this point" to the existing message.
+- **Shipped (2026-07-25): the same-file forward-call prototype hint.**
+  See `ai_tooling.md`'s status section; `Cannot find symbol` now appends
+  the forward-declaration hint when the name is visibly defined later in
+  the current file (`compiler/symbol_table.w`'s `sym_not_found_error`).
 - **Shipped (2026-07-17, wave 2f): the bool-bitwise condition hint is
   now on by default for every call-free join.** See `ai_tooling.md`'s
   status section for the shipped description; `--bool-ops` survives as
@@ -137,15 +125,11 @@ is a queue, not an archive.
   writing `p + n` instead of reaching for `ptr_add`/`&p[n]`. The footgun
   is now avoidable, not eliminated.
 
-- **Two residues from the wave-3d c_import/preprocessor `diag_part`
+- **One residue from the wave-3d c_import/preprocessor `diag_part`
   migration (2026-07-19; shipped summary in `ai_tooling.md`'s status
-  section).** (1) `ci_skip_extern_function`'s (`libs/extras/c_import/
-  importer.w`) `if (verbosity >= 1)` guard is dead code — nothing in
-  the compiler, REPL, or `wdbg` ever raises `verbosity` above the `-1`
-  every entry point sets it to, so this warning path is unreachable
-  through any current CLI surface; a `-v`/`--verbose` flag would be
-  needed to exercise it (and to make the warning visible to users at
-  all — right now it can never fire). (2) `cpp_preprocess_file_into`'s
+  section).** (The other — `ci_skip_extern_function`'s dead
+  `verbosity` guard — shipped 2026-07-25 with the `-v`/`--verbose`
+  flag; see `ai_tooling.md`.) `cpp_preprocess_file_into`'s
   (`libs/extras/c_preprocessor/pp_directives.w`) "could not read" error
   only fires when `cpp_find_include`'s existence check (`path_exists`,
   its own `open()`+`close()`) succeeds but the subsequent real `open()`
@@ -220,43 +204,11 @@ is a queue, not an archive.
 ## Build manifest (`tools/wbuildgen.w`)
 
 Friction found migrating bucket D of `build_system_next.md`'s hand-written
-`build.base.json` inventory (wave plan C task 2a) — 11 of 21 targets
-migrated cleanly, 10 turned out to need directive vocabulary that doesn't
-exist yet:
+`build.base.json` inventory (wave plan C task 2a). Three of the four
+directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
+`deps=`, generated cache `"inputs"`/`"outputs"` — summarized in
+`ai_tooling.md`); what remains:
 
-- **No way to say "this basename is arch-only"**: a source like
-  `tests/x64_test.w` whose desired target name already equals its
-  basename-derived name (`x64_test`) but which must compile with the
-  `x64` selector (some use `float64`, rejected on 32-bit words) can't
-  migrate — `wbg_scan` unconditionally also generates a *default* 32-bit
-  twin under that same name (no directive suppresses or redirects it),
-  and `generate.exclude` skips the whole file, twins included, so it
-  can't be combined with a directive either. Blocks `x64_test`,
-  `x64_float_test`, `x64_fmath64_test`, `x64_ndarray64_test`,
-  `x64_int64_test`, `x64_map_float64_test`. Needs a `name=` override (or
-  an explicit "no default twin" flag) — natural to fold into task 2b's
-  `name=` directive work.
-- **`deps=` rejects any `.w`-suffixed value even when the file is
-  consumed as runtime text, not imported.** `asm_stubs_test.w` reads
-  `code_generator/{x86,x64,arm64}_asm.w` as data via
-  `asm_stub_check(path, path)`, not `import` — but `wbg_apply_directive`
-  hard-rejects any `deps=` value ending in `.w` on the assumption
-  "imports already track it". No directive can express this target's
-  real input set today; it stays hand-written.
-- **`deps=`'s "data" field is wtest-selection-only, not a cache-key
-  field** — easy to miss. Hand-written targets get real caching via a
-  separate `"inputs"` array (`tools/wexec.w`'s `wexec_cache_key`); the
-  generated-target path (`wbg_make_target`) never emits `"inputs"` at
-  all, `deps=` only populates `"data"` (consumed solely by
-  `tools/test_map.w`'s rule (a) for `wtest changed` selection). Migrating
-  a hand-written target that declared `"inputs"` for caching (e.g.
-  `asm_x86_disasm_test`/`asm_x86_asm_test`, which read `tests/asm/` at
-  runtime) silently turns it into a FORCE target (always reruns) with no
-  diagnostic — matches the existing behavior of ~430 other generated
-  targets that also lack `"inputs"`, so it's a minor loss, but worth a
-  generated-target `"inputs"`-equivalent (or at least a note in
-  `--explain-cache`) if build-time caching for generated targets is ever
-  wanted.
 - **No directive for a multi-program aggregate target, extra compiler
   flags on a generated compile step, or a `wasm` arch value.** Blocks
   `arm64_smoke_test`/`wasm_smoke_test` (each is 5-9 programs compiled,
@@ -266,7 +218,13 @@ exist yet:
   compile command, which no directive can add). `wasm_smoke_test` is
   additionally blocked because `wbg_apply_directive`'s `arch=` only
   recognizes `x64`/`arm64`/`win64`/`arm64_darwin` — no `wasm` value
-  exists at all.
+  exists at all. `float_abi_test_x64` is the same aggregate gap at x64:
+  it bundles three sources' compile+run pairs into one target, so it
+  stayed hand-written when the rest of the x64-only family migrated to
+  `arch_only=x64`. (`net_darwin`, `graphics_darwin`, `pac_darwin` are
+  the arm64_darwin analogues — `net_darwin` alone is single-source and
+  could now migrate via `name=net_darwin arch_only=arm64_darwin`; the
+  other two bundle multiple sources.)
 
 ## Definition hashing (`w defhash`)
 
@@ -342,13 +300,21 @@ exist yet:
 
 ## Build manifest (`wbuildgen`)
 
-- **(2026-07-19 review) A `*_fixture.w` carrying non-`fixture_group`
-  directives with no `fixture_group=` is silently skipped** (fixtures
-  are not tests, so `is_test == 0` bails before the unhonored-directive
-  errors); a `# wbuild: x64` line on such a fixture does nothing with no
-  diagnostic. Same class: when a `.w.wbuild` sidecar exists, inline
-  `# wbuild:` lines in the source are silently ignored (documented
-  "never both", but both present should be an error).
+- **(2026-07-25) `wtest changed` on a manifest-affecting diff selects
+  both `manifest` and `manifest_check`, and `./wbuild test_changed`
+  then races them.** The two targets share only the `wbuildgen` dep,
+  so wexec's parallel scheduler can run `manifest_check`'s
+  byte-compare while `manifest` is mid-rewrite of `build.json` —
+  observed as a spurious `manifest_check` failure during the
+  wbuildgen-directives PR's `test_changed` run, with both targets
+  green standalone and `build.json` byte-identical afterwards. The
+  failure also surfaces as the misleading "manifests differ in
+  formatting only" (`wbg_report_drift` folds a torn/unparseable
+  `build.json` into that message). Fix candidates: a `manifest` →
+  `manifest_check` dep edge, wtest dropping `manifest` from the pair
+  (`manifest_check` alone is the gate), or `manifest` writing via
+  temp-file + rename so readers never see a torn file — plus a
+  distinct drift message for "committed manifest failed to parse".
 
 - **Shipped (2026-07-19, wave plan C task 2d): path-based target deps.**
   `# wbuild: tool=<path>` resolves a tool's own `.w` source (e.g.
@@ -466,19 +432,41 @@ exist yet:
   0's by exactly that delta. Hardware watchpoints -- the #123 remainder
   -- stay open, concretely scoped in docs/projects/debugger_attach.md's
   "Remaining" section.)*
-- **(2026-07-19 review) driver arg-loop notes**: unrecognized-option
-  detection is positional (flags after the roots are reported only after
-  the roots fully compile) and the new branch prints raw stderr with no
-  NDJSON record in `--json` mode; `ci_skip_extern_function` now routes
-  through `warning()`, so any future verbosity flag plus `--strict`
-  would turn every skipped extern into a build failure (latent — no CLI
-  path sets verbosity today).
+- **Shipped (2026-07-25): all three driver arg-loop notes from the
+  2026-07-19 review** (up-front unrecognized-option detection, the
+  NDJSON record under `--json`, and the `ci_skip_extern_function`
+  `warning()`/`--strict` interaction, resolved by demoting the skip
+  notice to a plain `-v`-gated note). See `ai_tooling.md`'s status
+  section. Residue: the `verbosity >= 1` internal debug traces
+  (`promote()`, `sym_declare()`, per-field type dumps, ...) are now
+  reachable from the CLI via `-v -v` — they run to completion (the
+  cold-start null-`filename` crash in `compile_save`'s "back to" banner
+  is fixed), but at ~45k lines for a hello-world they are a
+  developer-only firehose; nothing distinguishes trace lines from real
+  diagnostics, and several print to stdout. Fine for level >= 1; do not
+  move anything user-facing onto those levels without a sweep.
 - **(2026-07-19 review) recursion-guard coverage**: the expression guard
   triggers only on `(`-grouping re-entry; other deep shapes (60k nested
   calls, index/ternary/unary chains) still exhaust the real stack with
   no diagnostic. The tokenizer.w block comment overstates coverage.
-  `lib/shell_commands.w`'s `wc` derives counts from `strlen`, so a file
-  containing NUL truncates its counts.
+  **Fixed (2026-07-25)**: the `(`-site counter moved to the entry of
+  `grammar/unary_expression.w`'s `unary_expression()` — the one function
+  every operand-position recursion (parens, call arguments, index
+  subscripts, stacked unary operators, cast/constructor/literal
+  arguments) descends through per nesting level — plus two increments
+  for the cycles that recurse *above* the operand level, where each
+  level's operand has already returned before the recursion happens:
+  `grammar/conditional_expr.w`'s ternary branch (else-arm
+  `conditional_expr()` / then-arm `expression()`; unguarded SIGSEGV
+  measured by 2M levels) and `grammar/expression.w`'s `=`/compound
+  right-hand sides (`a = a = ... = 1`, same shape). Same shared
+  counter, 1000 limit and "expression nesting too deep" message at all
+  three sites, so the existing 900-paren clean / 1500-paren error
+  fixtures pass unchanged; call/index/ternary/unary/assignment chains
+  are pinned by the new `*_nesting_error_fixture.w` fixtures in
+  `recursion_depth_test` (plus a 900-level ternary clean companion).
+  Still uncovered (unchanged): `lib/shell_commands.w`'s `wc` derives
+  counts from `strlen`, so a file containing NUL truncates its counts.
 
 - **`wbuildgen` can't express "this source's default-arch target is
   x64-only, don't also generate an unwanted 32-bit twin"** (wave 2b,
@@ -683,6 +671,21 @@ exist yet:
   piped, non-PTY invocation `repl_test`'s `script -qc` fixtures don't
   exercise this exact shape either. Worth a closer look before relying on
   giant single-line REPL input in agent tooling.
+  **Fixed (2026-07-25)**: the culprit was `repl.w`'s `repl_read_plain`
+  (the piped/non-tty reader), whose fixed 4096-byte buffer consumed the
+  whole physical line but silently kept only the first 4095 characters
+  — a truncated deep-paren line left `repl_scan_depth` permanently
+  positive, so every later line was swallowed as a `..` continuation of
+  the same entry until EOF and the process exited 0 (exactly why the
+  ~2200-char deep line and the flat 3000-term line both "recovered":
+  one fit the buffer, the other truncated without unbalanced brackets).
+  `repl_read_plain` now appends straight into the `repl_line`
+  string_builder with no length cap; a 5000-deep 10001-char one-liner
+  gets the normal per-entry "expression nesting too deep" rollback and
+  the next entry runs, pinned by `tests/repl_giant_entry_fixture.txt`
+  in `repl_test`/`repl_test_x64`. The interactive raw-mode editor
+  (`lib/line_edit.w`) keeps its own 4096 buffer — typed/pasted lines at
+  a real prompt, deliberately untouched here.
 - **Shipped (2026-07-19, wave plan C task 1g): unrecognized CLI flags
   now get a real diagnostic.** `link_impl`'s flag loop (the common tail
   for link/check/deps/symbols/defhash) errors `unrecognized option:

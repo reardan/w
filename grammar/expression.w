@@ -175,7 +175,15 @@ int expression():
 		int left_type = promote(type)  # eax still holds the address: load
 		push_eax()
 		stack_pos = stack_pos + 1
+		# Recursion-depth guard (compiler/tokenizer.w): 'a += b += ...'
+		# chains recurse this function directly, after the left operand's
+		# descent has already returned -- count them here like the plain
+		# '=' branch below does.
+		expr_nesting_depth = expr_nesting_depth + 1
+		if (expr_nesting_depth > 1000):
+			error(c"expression nesting too deep")
 		int right_type = promote(expression())
+		expr_nesting_depth = expr_nesting_depth - 1
 		if (var_binary_operands(left_type, right_type)):
 			error(c"compound assignment does not support var operands")
 		int result_type = compound_assign_apply(op, left_type, right_type)
@@ -198,7 +206,17 @@ int expression():
 		push_eax()
 		stack_pos = stack_pos + 1
 		int lhs_slot = stack_pos
+		# Recursion-depth guard (compiler/tokenizer.w): 'a = b = c = ...'
+		# chains recurse this function directly for each right-hand side,
+		# and each level's left operand has already returned by this point,
+		# so unary_expression()'s entry guard never sees the chain grow.
+		# Count each nested assignment here; same counter, limit and
+		# message as the operand-level guard.
+		expr_nesting_depth = expr_nesting_depth + 1
+		if (expr_nesting_depth > 1000):
+			error(c"expression nesting too deep")
 		int type2 = expression()
+		expr_nesting_depth = expr_nesting_depth - 1
 		if (verbosity >= 1):
 			print2(c"expression() type: ")
 			type_print(type)

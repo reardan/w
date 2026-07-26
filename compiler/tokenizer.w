@@ -49,17 +49,26 @@ int defhash_rehash_mode
 
 # Recursive-descent nesting guards (docs/projects/ai_tooling_next_steps.md,
 # "No recursion-depth guard in the recursive-descent parser"): thousands
-# of nested parens, or thousands of nested statement blocks, recurse the
-# parser's own call stack until it SIGSEGVs with no diagnostic at all --
-# confirmed by direct measurement (a paren chain crashes native between
-# ~40000 and ~60000 levels deep). Each counter is incremented/checked/
-# decremented at its single recursive re-entry site: expr_nesting_depth
-# in grammar/primary_expr.w's '(' branch (the only place '(' -grouping
-# re-enters expression() -- the top of the expression grammar), and
-# stmt_nesting_depth wrapping the whole body of grammar/statement.w's
-# statement() (the single function every nested block/if/while/for/
-# switch body recurses back through, so guarding it once there covers
-# every statement-level recursion path without touching each caller).
+# of nested parens, calls, subscripts, ternaries or statement blocks
+# recurse the parser's own call stack until it SIGSEGVs with no
+# diagnostic at all -- confirmed by direct measurement (a paren or call
+# chain crashes native between ~40000 and ~60000 levels deep; the
+# smaller-frame ternary/unary/assignment cycles by ~2 million).
+# expr_nesting_depth is incremented/checked/decremented at three sites
+# that together cover every expression-grammar cycle: the entry of
+# grammar/unary_expression.w's unary_expression() (the one function
+# every operand-position recursion -- '(' grouping, call arguments,
+# index subscripts, stacked unary operators, cast/constructor/literal
+# arguments -- descends through per nesting level while its enclosing
+# frames are still live), the ternary branch of
+# grammar/conditional_expr.w (ternary chains recurse above the operand
+# level, after each level's condition operand has returned), and the
+# assignment branches of grammar/expression.w ('a = b = ...' chains
+# recurse expression() directly the same way). stmt_nesting_depth wraps
+# the whole body of grammar/statement.w's statement() (the single
+# function every nested block/if/while/for/switch body recurses back
+# through, so guarding it once there covers every statement-level
+# recursion path without touching each caller).
 # stmt_nesting_depth's limit is far smaller than expr_nesting_depth's,
 # but still has to clear the tree's longest legitimate 'else if' dispatch
 # chain (lib/lib.w's errno-to-string table, 132 branches deep -- each
