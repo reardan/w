@@ -121,13 +121,14 @@ int CAS_ERR_CORRUPT():
 #
 # libs/extras/compress/zlib.w's zlib_compress always emits CMF=0x78
 # (CM=8 deflate, CINFO=7 the max 32K window) as byte 0, unconditionally
-# -- that part is fixed regardless of level or content. Byte 1 (FLG) is
-# currently always 0x01 too, because zlib_compress additionally hard-
-# codes FLEVEL=0 there; only CMF actually needs to be pinned for the
-# sniff below to work, but both bytes being fixed is what makes the
-# *legacy*-format side of the disambiguation airtight, worked through
-# here in full because "verify it's airtight" is exactly the kind of
-# claim that rots silently otherwise:
+# -- that part is fixed regardless of level or content. (Byte 1, FLG,
+# is NOT fixed: it carries the FLEVEL level hint, so it varies by the
+# deflate level -- 0x01/0x5e/0x9c for stored/fast/best; this module's
+# DEFLATE_LEVEL_BEST writes produce the classic "\x78\x9c" pair.) Only
+# CMF needs to be pinned for the sniff below to work; the *legacy*-
+# format side of the disambiguation is worked through here in full
+# because "verify it's airtight" is exactly the kind of claim that rots
+# silently otherwise:
 #
 #   Legacy (pre-compression) objects store the type tag's own first
 #   character as byte 0. cas_valid_tag_char allows any of 33..126
@@ -137,15 +138,12 @@ int CAS_ERR_CORRUPT():
 #   cas_valid_tag additionally refuses any tag starting with 'x': with
 #   that refusal in place, byte 0 == 0x78 can only ever mean "this is
 #   the zlib encoding", for every store this module has ever written,
-#   full stop -- no byte-1 reasoning is even required. (Byte 1 also
-#   happens to disambiguate on its own for the current fixed FLEVEL=0
-#   encoding -- 0x01 is neither a legal tag-continuation character
-#   (33..126) nor the ' ' separator (32) that would follow a legacy
-#   single-character tag -- but that argument depends on zlib.w's
-#   FLEVEL choice staying put, which is an implementation detail of a
-#   different file. The tag-prefix refusal is the actual invariant this
-#   module relies on; do not remove it without re-deriving this
-#   comment.)
+#   full stop -- no byte-1 reasoning is even required. (An earlier
+#   revision of this comment also derived byte-1-only disambiguation
+#   from zlib.w's then-fixed FLEVEL=0; that derivation died when FLEVEL
+#   became level-dependent, which is fine precisely because the
+#   tag-prefix refusal is the actual invariant this module relies on --
+#   do not remove it without re-deriving this comment.)
 int CAS_ZLIB_MAGIC0():
 	return 'x'
 

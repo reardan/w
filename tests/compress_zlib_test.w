@@ -83,6 +83,26 @@ void test_zlib_header_is_mod_31():
 	zlib_result_free(c)
 
 
+# FLEVEL (FLG's top two bits) is a decoder-ignored hint that tracks the
+# deflate level (0 fastest/stored, 1 fast, 2 default/best); the mod-31
+# FCHECK must hold for every variant.
+void test_zlib_header_flevel_tracks_level():
+	char* src = c"anything"
+	int len = strlen(src)
+	zlib_result* s = zlib_compress(src, len, DEFLATE_LEVEL_STORED())
+	zlib_result* f = zlib_compress(src, len, DEFLATE_LEVEL_FAST())
+	zlib_result* b = zlib_compress(src, len, DEFLATE_LEVEL_BEST())
+	assert_equal(0, (s.data[1] & 255) >> 6)
+	assert_equal(1, (f.data[1] & 255) >> 6)
+	assert_equal(2, (b.data[1] & 255) >> 6)
+	assert_equal(0, ((s.data[0] & 255) * 256 + (s.data[1] & 255)) % 31)
+	assert_equal(0, ((f.data[0] & 255) * 256 + (f.data[1] & 255)) % 31)
+	assert_equal(0, ((b.data[0] & 255) * 256 + (b.data[1] & 255)) % 31)
+	zlib_result_free(s)
+	zlib_result_free(f)
+	zlib_result_free(b)
+
+
 void test_zlib_decompress_real_zlib_output():
 	# python3: zlib.compress(b"zlib wrapper round trip test data 12345", 6)
 	wresult[zlib_result*]* r = zlib_decompress(c"\x78\x9c\xab\xca\xc9\x4c\x52\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\xca\x2c\x50\x28\x49\x2d\x2e\x51\x48\x49\x2c\x49\x54\x30\x34\x32\x36\x31\x05\x00\x27\xdb\x0d\xb3", 47, 0)

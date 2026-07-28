@@ -8,11 +8,13 @@ The intended consumer is HTTP `Content-Encoding: gzip`
 (docs/projects/compress.md §1, §7.2) -- the only content-coding besides
 `identity` any real HTTP peer sends in practice.
 
-gzip_compress emits a minimal single-member header (MTIME=0, XFL=0,
-OS=255 "unknown", no FNAME/FCOMMENT/FEXTRA) so output is deterministic
-byte-for-byte for the same input and level -- matters for the build
-cache (content-addressed by hash of the blob) and matches `gzip -n`'s
-reproducible-build convention (design doc §5.4).
+gzip_compress emits a minimal single-member header (MTIME=0, OS=255
+"unknown", no FNAME/FCOMMENT/FEXTRA; XFL is RFC 1952's decoder-ignored
+hint byte -- 4 "fastest" at DEFLATE_LEVEL_FAST, 2 "maximum compression"
+at BEST, 0 for stored) so output is deterministic byte-for-byte for the
+same input and level -- matters for the build cache (content-addressed
+by hash of the blob) and matches `gzip -n`'s reproducible-build
+convention (design doc §5.4).
 
 gzip_decompress parses and skips FEXTRA/FNAME/FCOMMENT/FHCRC (real gzip
 files from gzip(1)/git/browsers routinely set FNAME) but only reads a
@@ -94,7 +96,12 @@ gzip_result* gzip_compress(char* data, int length, int level):
 	string_append_char(out, 0)
 	string_append_char(out, 0)
 	string_append_char(out, 0)
-	string_append_char(out, 0)    # XFL
+	int xfl = 0
+	if (level >= DEFLATE_LEVEL_BEST()):
+		xfl = 2
+	else if (level >= DEFLATE_LEVEL_FAST()):
+		xfl = 4
+	string_append_char(out, xfl)  # XFL: level hint, see header comment
 	string_append_char(out, 255)  # OS: unknown
 	string_append_bytes(out, body.data, body.length)
 	int crc = crc32_of(data, length)
