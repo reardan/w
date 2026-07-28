@@ -38,7 +38,7 @@ char* print_chains
 
 
 int print_helper_count():
-	return 13
+	return 15
 
 
 char* print_fn_name(int i):
@@ -68,7 +68,11 @@ char* print_fn_name(int i):
 		return c"__w_abs"
 	# len(char*) borrows lib/lib.w's strlen: the prelude import pulls
 	# lib.lib in, so the chain always resolves at patch time
-	return c"strlen"
+	if (i == 12):
+		return c"strlen"
+	if (i == 13):
+		return c"__w_any"
+	return c"__w_all"
 
 
 # Leave helper i's address in eax: directly when the runtime module is
@@ -293,10 +297,22 @@ int prelude_math_helper():
 	return -1
 
 
+# Prelude sequence helper index for the current token, or -1: bare
+# any(l)/all(l) truthiness scans over a list of int-like elements
+# (issue #360), lowered to __w_any/__w_all in structures/prelude.w and
+# shadowed by user symbols exactly like max/min/abs.
+int prelude_seq_helper():
+	if (peek(c"any")):
+		return 13
+	if (peek(c"all")):
+		return 14
+	return -1
+
+
 int prelude_math_ready():
 	if (nextc != '('):
 		return 0
-	if ((prelude_math_helper() < 0) && (peek(c"len") == 0)):
+	if ((prelude_math_helper() < 0) && (prelude_seq_helper() < 0) && (peek(c"len") == 0)):
 		return 0
 	if (sym_lookup(token) >= 0):
 		return 0
@@ -388,6 +404,78 @@ int prelude_len_expr():
 	return type_value(type_lookup(c"int"))
 
 
+void prelude_seq_unsupported(char* fn_name, int got):
+	diag_part(c"prelude '")
+	diag_part(fn_name)
+	diag_part(c"' argument must be a list of int-like elements: '")
+	if (got == 3):
+		diag_part(c"constant")
+	else if (got == 4):
+		diag_part(c"function")
+	else:
+		print_error_type(got)
+	error(c"'")
+
+
+# any/all take one list[T] whose elements are int-like (constants,
+# enums, bool, char and the fixed-width ints): elements read as words
+# and test truthy. Floats, pointers, aggregates, nested containers and
+# the other container shapes (map/set, buffers) are rejected — spell
+# those loops out or use the list methods.
+void prelude_seq_require_int_list(char* fn_name, int got):
+	if ((got == 3) || (got == 4)):
+		prelude_seq_unsupported(fn_name, got)
+	int t = type_unqualified(got)
+	if (type_is_list(t) == 0):
+		prelude_seq_unsupported(fn_name, got)
+	int e = type_unqualified(type_list_element_type(t))
+	if (type_float_kind(e)):
+		prelude_seq_unsupported(fn_name, got)
+	if (type_get_pointer_level(e) > 0):
+		prelude_seq_unsupported(fn_name, got)
+	if (type_num_args(e) > 0):
+		prelude_seq_unsupported(fn_name, got)
+	if (type_is_map(e) | type_is_set(e) | type_is_list(e) | type_is_var(e)):
+		prelude_seq_unsupported(fn_name, got)
+	if (type_is_buffer(e)):
+		prelude_seq_unsupported(fn_name, got)
+	if (type_get_kind(e) == type_kind_enum):
+		return;
+	if (e == type_unqualified(bool_type)):
+		return;
+	int size = type_get_size(e)
+	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
+		return;
+	prelude_seq_unsupported(fn_name, got)
+
+
+# any(l) / all(l) with no user symbol of that name in scope: true when
+# any/every element is truthy (any([]) is false, all([]) is true, the
+# Python contract). Leaves ')' current for primary_expr's trailing
+# get_token().
+int prelude_seq_expr(int helper):
+	char* fn_name = strclone(token)
+	get_token()
+	expect(c"(")
+	int base_stack = stack_pos
+	print_builtin_needed = 1
+	print_emit_helper_address(helper)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int got = expression()
+	got = promote(got)
+	prelude_seq_require_int_list(fn_name, got)
+	push_eax()
+	stack_pos = stack_pos + 1
+	if (peek(c")") == 0):
+		diag_part(c"')' expected in prelude '")
+		diag_part(fn_name)
+		error(c"'")
+	hash_call_finish(base_stack)
+	free(fn_name)
+	return type_value(type_lookup(c"int"))
+
+
 # max(a, b) / min(a, b) / abs(a) with no user symbol of that name in
 # scope: parse and validate the arguments and call the prelude helper.
 # Leaves ')' current for primary_expr's trailing get_token().
@@ -422,11 +510,13 @@ int prelude_math_call_expr(int helper):
 	return type_value(type_lookup(c"int"))
 
 
-# Entry for the primary_expr branch: routes len separately from the
-# max/min/abs runtime helpers.
+# Entry for the primary_expr branch: routes len and any/all separately
+# from the max/min/abs runtime helpers.
 int prelude_math_expr():
 	if (peek(c"len")):
 		return prelude_len_expr()
+	if (prelude_seq_helper() >= 0):
+		return prelude_seq_expr(prelude_seq_helper())
 	return prelude_math_call_expr(prelude_math_helper())
 
 

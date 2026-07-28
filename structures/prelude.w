@@ -106,6 +106,29 @@ int __w_abs(int a):
 	return a
 
 
+# Prelude any/all (issue #360): truthiness scans over a list[T] of
+# int-like elements, reachable without an import. The compiler
+# validates the argument type at compile time
+# (grammar/print_builtin.w); the empty-list results follow the Python
+# contract (any([]) is false, all([]) is true).
+int __w_any(__w_list* list):
+	int i = 0
+	while (i < list.length):
+		if (__w_list_load_word(list.items + i * list.element_size, list.element_size)):
+			return 1
+		i = i + 1
+	return 0
+
+
+int __w_all(__w_list* list):
+	int i = 0
+	while (i < list.length):
+		if (__w_list_load_word(list.items + i * list.element_size, list.element_size) == 0):
+			return 0
+		i = i + 1
+	return 1
+
+
 # One line from stdin with the newline stripped, or 0 at end of input.
 # The buffer is malloc'd and owned by the caller.
 char* input():
