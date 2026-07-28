@@ -96,6 +96,24 @@ void test_gzip_compress_is_deterministic():
 	gzip_result_free(b)
 
 
+# XFL (header byte 8) is RFC 1952's decoder-ignored hint byte: 4
+# "fastest" at DEFLATE_LEVEL_FAST, 2 "maximum compression" at BEST, 0
+# for stored -- deterministic per (input, level), see gzip.w's header
+# comment.
+void test_gzip_header_xfl_tracks_level():
+	char* src = c"anything"
+	int len = strlen(src)
+	gzip_result* s = gzip_compress(src, len, DEFLATE_LEVEL_STORED())
+	gzip_result* f = gzip_compress(src, len, DEFLATE_LEVEL_FAST())
+	gzip_result* b = gzip_compress(src, len, DEFLATE_LEVEL_BEST())
+	assert_equal(0, s.data[8] & 255)
+	assert_equal(4, f.data[8] & 255)
+	assert_equal(2, b.data[8] & 255)
+	gzip_result_free(s)
+	gzip_result_free(f)
+	gzip_result_free(b)
+
+
 void test_gzip_decompress_real_gzip_output():
 	# python3: gzip.compress(b"gzip wrapper round trip test data 67890", 6, mtime=0)
 	wresult[gzip_result*]* r = gzip_decompress(c"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03\x4b\xaf\xca\x2c\x50\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\x02\x0a\x95\xa4\x16\x97\x28\xa4\x24\x96\x24\x2a\x98\x99\x5b\x58\x1a\x00\x00\xfb\x36\x52\xdf\x27\x00\x00\x00", 58, 0)

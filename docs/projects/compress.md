@@ -8,9 +8,19 @@ dynamic-Huffman + block-splitting `DEFLATE_LEVEL_BEST`) is implemented
 in `libs/extras/compress/deflate.w`, folding §3's originally-separate
 stage 2b (fixed Huffman + LZ77) and stage 3 (lazy matching + dynamic
 Huffman) into one PR rather than staging lazy matching behind dynamic
-Huffman as §3/§9 originally sketched; the optional zlib-interop
-cross-validation target from §8 remains unimplemented. Originally
-written as the design doc to satisfy issue
+Huffman as §3/§9 originally sketched. 2026-07-28: both compressive
+levels now pick each ~32KiB block's encoding by exact bit cost among
+stored/fixed(/dynamic at BEST) — zlib's `_tr_flush_block` strategy —
+so incompressible input can no longer expand past the stored framing
+(~5 bytes per block; asserted by `compress_deflate_test`'s torture
+cases), and the wrappers set the decoder-ignored level-hint header
+fields (zlib FLEVEL, gzip XFL) to match the level. The §8 zlib-interop
+cross-validation target is implemented (`compress_zlib_interop_test`,
+optional/manual, python3-gated) and cross-checks a torture payload set
+(empty/1-byte/run/repetitive/random/source-file) at every level in
+both directions. This closes the encoder half of the package; the
+`vcs/` object-packing consumer (§7.1) is tracked separately in
+`docs/todo.txt`. Originally written as the design doc to satisfy issue
 #252's own
 requirement before this package is picked up: "`libs/extras/compress/`
 — CRC32 + DEFLATE (inflate first): the largest single chunk (~1–2k
@@ -373,7 +383,7 @@ inflate_result_free(out)
 ```
 int DEFLATE_LEVEL_STORED()   # 0 -- stage 2a, always available
 int DEFLATE_LEVEL_FAST()     # 1 -- stage 2b, fixed Huffman + greedy LZ77 (v1 default)
-int DEFLATE_LEVEL_BEST()     # 2 -- stage 3, lazy matching + dynamic Huffman (not yet implemented; deflate() clamps to FAST until it lands, same "ship the symbol, grow the behavior" pattern the level constants exist to support)
+int DEFLATE_LEVEL_BEST()     # 2 -- stage 3, lazy matching + dynamic Huffman (implemented; see the status note at the top of this doc)
 
 struct deflate_result:
     char* data

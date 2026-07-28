@@ -521,8 +521,12 @@ void test_cas_write_new_is_compressed_on_disk():
 	string_builder* raw = cas_read_file(p.data)
 	assert1(raw != 0)
 	assert1(raw.length >= 2)
+	# CMF is pinned at 0x78; FLG carries zlib.w's level-dependent FLEVEL
+	# hint (0x9c for the DEFLATE_LEVEL_BEST writes this module does), so
+	# assert the level-independent invariant instead: the 16-bit header
+	# is a multiple of 31 (RFC 1950's FCHECK).
 	assert_equal('x', raw.data[0] & 255)
-	assert_equal(1, raw.data[1] & 255)
+	assert_equal(0, ((raw.data[0] & 255) * 256 + (raw.data[1] & 255)) % 31)
 	asserts(c"compressed on-disk bytes are smaller than the logical payload", raw.length < n)
 	string_free(raw)
 	string_free(p)

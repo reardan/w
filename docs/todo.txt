@@ -279,7 +279,10 @@ current state:
 				on top of lib/process.w/lib/env.w)
 			compression (libs/extras/compress/: CRC-32, Adler-32, a
 				conformant DEFLATE inflater (stored/fixed/dynamic Huffman),
-				gzip/zlib wrapping; encoder is fast-mode-only so far;
+				gzip/zlib wrapping; full encoder: LZ77 + fixed/dynamic
+				Huffman with a per-block stored fallback bounding
+				worst-case expansion, cross-validated against real zlib
+				(compress_zlib_interop_test, optional/python3-gated);
 				design: docs/projects/compress.md)
 		repl:
 			./bin/wv2 repl.w -o bin/repl && ./bin/repl builds and runs repl.w
@@ -332,8 +335,9 @@ current state:
 			wvc porcelain: status/snapshot/merge/serve/pull/push; push/pull
 				do have/want negotiation for loose objects over HTTP
 		remaining:
-			compress-based object packing (blocked on the DEFLATE encoder
-				growing past fast-mode-only)
+			compress-based object packing (unblocked: the DEFLATE encoder
+				now does real compression at every level -- the packing
+				work itself has not started)
 			git interop (non-goal for now; needs zlib + SHA-1 + pack format)
 
 	parser generator (libs/extras/parser_generator/; design: docs/projects/parser_generator.md, issue #329):
