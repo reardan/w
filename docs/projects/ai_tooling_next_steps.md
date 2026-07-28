@@ -991,6 +991,15 @@ Details in `docs/projects/parser_generator.md`.
   `./wbuild tests` (and `verify` — compiler closure touched)" would
   save agents from pasting hundreds of targets and from missing the
   verify gate.
+- **Minor: a flag before the arch selector turns the selector into the
+  input file, with a misleading error.** `bin/wv2 --strict x64 file.w
+  -o out` fails with `no such file: 'x64' in x64:1` after printing
+  `compiling 'x64'` — the arch token is consumed as the source path
+  once any flag precedes it. `bin/wv2 x64 --strict file.w -o out`
+  works. Found 2026-07-28 compiling a test's x64 twin by hand.
+  Cheap fix: recognize arch-selector tokens anywhere before the input
+  file (or error with "arch selector must come first"), so the
+  diagnostic names the real problem instead of a phantom file.
 
 ## Skills / rules upkeep
 

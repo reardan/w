@@ -2,9 +2,11 @@
 lib.stats: descriptive statistics over list[float].
 
 float32-only so every target is covered: float64 is a compile error on
-the default 32-bit target. Everything is stats_-prefixed because imports
-merge into one flat global namespace and lib/math.w already owns
-min/max/abs. Float helpers (fsqrt, fabs, bit casts) come from lib.fmath.
+the default 32-bit target. (stats_mode_int is the one int-domain
+helper — discrete data is the mode's natural habitat.) Everything is
+stats_-prefixed because imports merge into one flat global namespace
+and lib/math.w already owns min/max/abs. Float helpers (fsqrt, fabs,
+bit casts) come from lib.fmath.
 
 Domain errors (empty input, count <= ddof, quantile outside [0, 1]) are
 fatal asserts, matching the __w_list_min precedent: a silent 0.0 would be
@@ -252,6 +254,30 @@ float stats_quantile(list[float] xs, float q):
 
 float stats_median(list[float] xs):
 	return stats_quantile(xs, 0.5)
+
+
+# Most frequent value of a list[int]; the first-seen value wins ties.
+# Counting goes through a map[int, int], and map iteration replays
+# insertion order, so the scan meets tied candidates in order of first
+# appearance and only a strictly higher count replaces the best.
+# Deliberately different from stats_mode below, whose sorted-run scan
+# ties to the smallest value (floats stay out of maps because map keys
+# compare by raw bits).
+int stats_mode_int(list[int] xs):
+	asserts(c"stats: mode of empty list", xs.length > 0)
+	map[int, int] counts = new map[int, int]
+	int i = 0
+	while (i < xs.length):
+		counts.add(xs[i])
+		i = i + 1
+	int best = xs[0]
+	int best_count = 0
+	for int value, int seen in counts:
+		if (seen > best_count):
+			best_count = seen
+			best = value
+	map_free[int, int](counts)
+	return best
 
 
 # Most frequent value via a longest-run scan of a sorted copy; the

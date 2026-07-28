@@ -1858,6 +1858,7 @@
 				"defer_64_test",
 				"deque_64_test",
 				"dns_64_test",
+				"edit_distance_64_test",
 				"env_64_test",
 				"event_loop_64_test",
 				"failure_detector_64_test",
@@ -1976,7 +1977,8 @@
 				"vcs_tree_64_test",
 				"wal_64_test",
 				"wbuild_arch_only_test",
-				"wbuild_directive_64_test"
+				"wbuild_directive_64_test",
+				"window_64_test"
 			]
 		},
 		{
@@ -2394,6 +2396,7 @@
 				"deque_test",
 				"directory_test",
 				"dns_test",
+				"edit_distance_test",
 				"env_test",
 				"event_loop_test",
 				"failure_detector_test",
@@ -2526,6 +2529,7 @@
 				"wbuild_directive_test",
 				"wbuild_platform_test",
 				"wbuildgen_directive_errors_test",
+				"window_test",
 				"x25519_test",
 				"wbuild_platform_test_darwin"
 			]
@@ -3304,6 +3308,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64", "tests/dynamic_test.w", "-o", "bin/dynamic_test_arm64"]},
 				{"cmd": ["sh", "tools/run_arm64.sh", "bin/dynamic_test_arm64"], "expect_stdout": "dynamic linking OK"}
+			]
+		},
+		{
+			"name": "edit_distance_64_test",
+			"deps": ["wv2"],
+			"inputs": ["lib/edit_distance_test.w"],
+			"outputs": ["bin/edit_distance_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/edit_distance_test.w", "-o", "bin/edit_distance_64_test"]},
+				{"cmd": ["bin/edit_distance_64_test"]}
+			]
+		},
+		{
+			"name": "edit_distance_test",
+			"deps": ["wv2"],
+			"inputs": ["lib/edit_distance_test.w"],
+			"outputs": ["bin/edit_distance_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/edit_distance_test.w", "-o", "bin/edit_distance_test"]},
+				{"cmd": ["bin/edit_distance_test"]}
 			]
 		},
 		{
@@ -6218,6 +6242,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/wexec_remote_cache_test.w", "-o", "bin/wexec_remote_cache_test"]},
 				{"cmd": ["bin/wexec_remote_cache_test"]}
+			]
+		},
+		{
+			"name": "window_64_test",
+			"deps": ["wv2"],
+			"inputs": ["lib/window_test.w"],
+			"outputs": ["bin/window_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/window_test.w", "-o", "bin/window_64_test"]},
+				{"cmd": ["bin/window_64_test"]}
+			]
+		},
+		{
+			"name": "window_test",
+			"deps": ["wv2"],
+			"inputs": ["lib/window_test.w"],
+			"outputs": ["bin/window_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/window_test.w", "-o", "bin/window_test"]},
+				{"cmd": ["bin/window_test"]}
 			]
 		},
 		{
