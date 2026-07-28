@@ -1,3 +1,4 @@
+# wbuild: name=pac_full_test_arm64 arch_only=arm64 flags=--pac=full expect_stdout="pac full OK"
 # End-to-end fixture for --pac=full on arm64 targets: every W code
 # pointer is signed at materialization (paciza, IA key, zero
 # discriminator) and authenticated at the indirect call (blraaz), so

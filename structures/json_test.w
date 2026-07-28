@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: x64 group=wasm_json_test@wasm
 import lib.testing
 import structures.json
 import structures.string

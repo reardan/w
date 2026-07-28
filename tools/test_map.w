@@ -26,8 +26,8 @@ build. For a changed path P the emitted targets are the union of:
       tools/wexec.w from its 'wexec' dep and debug_test inherits
       debugger/debugger.w from 'wdbg'. Closures are per-arch: a root
       compiled with a target selector (x64, arm64, arm64_darwin,
-      win64) resolves lib/__arch__/ and other per-target imports for
-      that target, so arch-only modules (lib/__arch__/x64/,
+      win64, wasm) resolves lib/__arch__/ and other per-target imports
+      for that target, so arch-only modules (lib/__arch__/x64/,
       graphics/cocoa.w) select exactly the targets that compile them.
       A root that fails to compile falls back to literal matching
       only. Closures are cached in bin/.wtest_deps_cache and re-used
@@ -163,13 +163,15 @@ tests point it at fixture manifests, mirroring -f.
 --available drops, after normal selection, targets whose steps name a
 runner this host cannot execute — arm64 run targets (they shell through
 'sh tools/run_arm64.sh', which itself falls back to qemu-aarch64-static
-off an aarch64 host), win64 run targets ('wine'/'wine64'), or a
+off an aarch64 host), wasm run targets ('sh tools/run_wasm.sh', which
+needs wasmtime or node), win64 run targets ('wine'/'wine64'), or a
 tools/mac/ script — so the printed selection is runnable as-is instead
-of failing on a missing qemu/wine/Mac. Detection is mechanical and
-conservative: only a step whose argv[0] (or, for the arm64 wrapper,
-argv[1]) is one of those recognized shapes is checked for presence on
-PATH (or, for tools/mac/, as a file); anything else is left alone, so a
-target is only ever dropped on positive evidence. One 'wtest: dropped N
+of failing on a missing qemu/wasm-runtime/wine/Mac. Detection is
+mechanical and conservative: only a step whose argv[0] (or, for the
+arm64/wasm wrappers, argv[1]) is one of those recognized shapes is
+checked for presence on PATH (or, for tools/mac/, as a file); anything
+else is left alone, so a target is only ever dropped on positive
+evidence. One 'wtest: dropped N
 unavailable target(s) (<reason>)' line per distinct reason is printed to
 stderr, plus a 'dropped N unavailable targets total' line when more than
 one reason fired. './wbuild test_changed' passes --available by default.
@@ -581,6 +583,8 @@ int wtest_selector(char* word):
 	if (strcmp(word, c"arm64_darwin") == 0):
 		return 1
 	if (strcmp(word, c"win64") == 0):
+		return 1
+	if (strcmp(word, c"wasm") == 0):
 		return 1
 	return 0
 
@@ -2205,11 +2209,20 @@ int wtest_qemu_arm64_available():
 	return wtest_path_has(c"qemu-aarch64-static")
 
 
+# tools/run_wasm.sh execs wasmtime when installed and falls back to
+# node's built-in WASI (node >= 20); either one on PATH is positive
+# evidence a wasm run step can execute.
+int wtest_wasm_runtime_available():
+	if (wtest_path_has(c"wasmtime")):
+		return 1
+	return wtest_path_has(c"node")
+
+
 # The reason this step's runner is unavailable on this host, or 0 when it
 # is available, or when the step's program is not one of the recognized
-# runner shapes (wine/wine64, the arm64 qemu wrapper, a tools/mac/
-# script) — unrecognized programs are always left alone, per the
-# "positive evidence only" rule in the header comment.
+# runner shapes (wine/wine64, the arm64 qemu wrapper, the wasm runtime
+# wrapper, a tools/mac/ script) — unrecognized programs are always left
+# alone, per the "positive evidence only" rule in the header comment.
 char* wtest_step_unavailable_reason(json_value* step):
 	if (step.type != json_type_object()):
 		return 0
@@ -2244,6 +2257,9 @@ char* wtest_step_unavailable_reason(json_value* step):
 				if (strcmp(second.string_value, c"tools/run_arm64.sh") == 0):
 					if (wtest_qemu_arm64_available() == 0):
 						return c"qemu-aarch64-static not found"
+				if (strcmp(second.string_value, c"tools/run_wasm.sh") == 0):
+					if (wtest_wasm_runtime_available() == 0):
+						return c"no wasm runtime (wasmtime or node) found"
 		return 0
 	if (starts_with(program, c"tools/mac/")):
 		if (wtest_file_exists(program) == 0):

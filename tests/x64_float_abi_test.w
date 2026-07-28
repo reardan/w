@@ -1,3 +1,4 @@
+# wbuild: group_only group=float_abi_test_x64@x64 expect_stdout="x64 float abi OK"
 # Floating-point C ABI test for the x64 target: float64 arguments travel
 # in xmm0..xmm7 and float64 results come back in xmm0 through hand-written
 # extern declarations. The c_import path is covered separately in

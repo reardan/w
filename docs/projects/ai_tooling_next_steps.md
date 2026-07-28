@@ -168,6 +168,19 @@ is a queue, not an archive.
   `wtest_compiler_tree` to the three seed-graph `libs/extras/` trees, or
   better, derive the "compiler tree" set from `bin/wv2 deps w.w` instead
   of a hard-coded prefix list so it can never go stale again.
+- **(2026-07-28, noticed writing the `lib/__arch__/wasm/` fixture
+  case) an arch-runtime edit never selects that arch's self-host
+  gate.** Rule (b)'s root collection skips compiler-tree roots, so
+  `build_wasm`/`verify_wasm` (whose only root is `w.w`) are invisible
+  to a `lib/__arch__/wasm/syscalls.w` change — selection recommends the
+  leaf wasm tests but not the wasm fixpoint, and the compiler-tree
+  residue only ever maps to the 32-bit `verify`. The same holds for
+  every arch (`lib/__arch__/arm64/` edits never recommend
+  `verify_arm64`). Pre-existing, not introduced by the wasm selector
+  work; a residue rule mapping `lib/__arch__/<arch>/` (for the arches
+  whose runtime is in `w.w`'s closure) to that arch's verify pair
+  would close it.
+
 - **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
   commit-ranged selection MVP** (issue #251 direction 4b). `changed`
   (not `for`) now treats a single positional argument containing `..`
@@ -214,30 +227,50 @@ Friction found migrating bucket D of `build_system_next.md`'s hand-written
 `build.base.json` inventory (wave plan C task 2a). Three of the four
 directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
 `deps=`, generated cache `"inputs"`/`"outputs"` — summarized in
-`ai_tooling.md`); what remains:
+`ai_tooling.md`); the fourth shipped 2026-07-28:
 
-- **No directive for a multi-program aggregate target, extra compiler
-  flags on a generated compile step, or a `wasm` arch value.** Blocks
-  `arm64_smoke_test`/`wasm_smoke_test` (each is 5-9 programs compiled,
-  run, and summarized by one shared `echo "... OK"` epilogue — not the
-  single `(source, arch)` shape `wbg_make_target` ever produces) and
-  `pac_full_test_arm64` (needs `--pac=full` injected into the arm64
-  compile command, which no directive can add). `wasm_smoke_test` is
-  additionally blocked because `wbg_apply_directive`'s `arch=` only
-  recognizes `x64`/`arm64`/`win64`/`arm64_darwin` — no `wasm` value
-  exists at all. `float_abi_test_x64` is the same aggregate gap at x64:
-  it bundles three sources' compile+run pairs into one target, so it
-  stayed hand-written when the rest of the x64-only family migrated to
-  `arch_only=x64`. (`net_darwin`, `graphics_darwin`, `pac_darwin` are
-  the arm64_darwin analogues — `net_darwin` alone is single-source and
-  could now migrate via `name=net_darwin arch_only=arm64_darwin`; the
-  other two bundle multiple sources.) `arm64_darwin_smoke_test`
-  (2026-07-25, issue #210) is one more instance: it mirrors
-  `arm64_smoke_test`'s six-program bundle for the native Mach-O path,
-  and `arch_only=` could not express it — its sources are shared with
-  the default-arch targets, so marking them arch-only would delete
-  those, and no directive groups several sources under one target.
-  It went into `build.base.json` by hand like its arm64 sibling.
+- **Shipped (2026-07-28, wave plan P1.3): `wasm` arch value, `flags=`,
+  and `group=`/`group_only` aggregate directives.** `arch=wasm` /
+  `arch_only=wasm` generate the wasm compile+run shape (`bin/wv2 wasm
+  ... -o bin/X_wasm`, run via `sh tools/run_wasm.sh`; no umbrella, like
+  arm64), with the `wasm` selector word also taught to `bin/wexec`'s
+  compile-root scan (deps-driven cache keys now compute the *wasm*
+  closure for wasm roots), its direct-file mode, and `bin/wtest`'s rule
+  (b) closures + `--available` (a wasm run step needs wasmtime or
+  node) — `lib/__arch__/wasm/` edits used to fall through to the full
+  `tests` fallback and now select exactly the wasm targets
+  (`map_expectations.expect`). `flags=<args>` injects extra compiler
+  arguments between the arch selector and the source of every compile
+  command generated from the source. `group=<target>@<arch>` collects
+  several sources' compile+run pairs into one aggregate target with a
+  shared `echo <target> OK` epilogue (member run steps carry the
+  member's own run-field directives; member binaries follow the
+  hand-written smoke convention, `bin/lib_wasm_test`); `group_only`
+  suppresses a member's standalone targets. Migrated out of
+  `build.base.json`: `arm64_smoke_test`, `wasm_smoke_test`,
+  `wasm_json_test` (group), `float_abi_test_x64` (group at x64, its
+  two `x64_*` members via `group_only`), `pac_full_test_arm64`
+  (`arch_only=arm64 flags=--pac=full`; its cosmetic trailing echo step
+  is gone — the `expect_stdout` assertion remains), and `net_darwin`
+  (`name=net_darwin arch_only=arm64_darwin`; its binary is now
+  `bin/net_darwin`, `tools/mac/run_darwin_tests.sh` updated). All six
+  also gained cache `"inputs"`/`"outputs"` (they were FORCE targets).
+  Residue: the arm64_darwin multi-source bundles
+  (`arm64_darwin_smoke_test`, `graphics_darwin`, `pac_darwin`) stay
+  hand-written. `graphics_darwin` is structurally blocked: it compiles
+  non-`_test.w` sources (`graphics/demo.w`) the scan never sees, and
+  its member binaries (`bin/graphics_gl_smoke_darwin`,
+  `bin/dynamic_darwin_test`) do not follow the derived convention that
+  `tools/mac/run_darwin_tests.sh`'s Mac-side run leg has pinned.
+  `arm64_darwin_smoke_test` and `pac_darwin` are now *expressible* —
+  their member binaries (`bin/lib_darwin_test`,
+  `bin/pac_corrupt_fnptr_darwin_test`, ...) happen to match the
+  derived convention exactly, and `pac_full_test.w`'s new
+  `flags=--pac=full` would carry into a `pac_darwin` membership — but
+  their run leg executes only on a Mac, so that migration is deferred
+  until someone can run `run_darwin_tests.sh` while making it (the
+  `pac_corrupt_*` fixtures would move from `generate.exclude` to
+  `group_only` memberships in the same change).
 
 ## Definition hashing (`w defhash`)
 

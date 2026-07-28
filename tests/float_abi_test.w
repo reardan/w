@@ -4,7 +4,7 @@
 # xmm registers. float64 externs are x64-only and live in
 # x64_float_abi_test.w. Also builds and runs on arm64
 # (float_abi_test_arm64, under qemu via tools/run_arm64.sh).
-# wbuild: arch=arm64 expect_stdout="float abi OK"
+# wbuild: arch=arm64 expect_stdout="float abi OK" group=float_abi_test_x64@x64
 import lib.lib
 import lib.assert
 

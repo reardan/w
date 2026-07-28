@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: x64 group=wasm_smoke_test@wasm
 # Default parameter values: trailing parameters may declare a compile-time
 # constant default ("int times = 1") that direct call sites push when the
 # argument is omitted. See docs/projects/default_args_variadics.md.

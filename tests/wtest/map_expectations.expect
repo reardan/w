@@ -343,6 +343,20 @@ expect parser_generator_w_test
 forbid net_test
 forbid tests
 
+# The wasm syscall layer selects through wasm-arch closures now that
+# 'wasm' is a recognized selector word (it used to be invisible to rule
+# (b) and fell through to the full 'tests' fallback): every target
+# compiling a wasm root is selected, never the x86 lib tests. (The
+# build_wasm/verify_wasm self-host chain's only root is w.w, which is
+# compiler tree and routes through 'verify', so it is not selected
+# here — same as every other arch's self-host pair.)
+case lib/__arch__/wasm/syscalls.w
+expect wasm_smoke_test
+expect wasm_extern_test
+expect metadata_check
+forbid lib_test
+forbid tests
+
 # graphics/ selects through arch closures too (the second retired
 # residue rule): the darwin window backend is visible only to
 # arm64_darwin roots, the X11/GL path only to the x64 smoke target.

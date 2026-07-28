@@ -20,16 +20,16 @@ cd "$(dirname "$0")/../.."
 tests="$*"
 must_die=""
 if [ -z "$tests" ]; then
-	# bin/net_darwin_smoke_test comes from `./wbuild net_darwin` (issue
-	# #200): loopback socket + plaintext HTTP smoke for the Darwin
+	# bin/net_darwin comes from `./wbuild net_darwin` (issue #200):
+	# loopback socket + plaintext HTTP smoke for the Darwin
 	# sockaddr/socket-ABI fixes. Linux CI only cross-compiles it; this
 	# script is where it actually runs.
-	tests="bin/hello_darwin bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin bin/pac_full_darwin_test bin/net_darwin_smoke_test"
+	tests="bin/hello_darwin bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin bin/pac_full_darwin_test bin/net_darwin"
 	# The `./wbuild arm64_darwin_smoke_test` set (issue #210): the same
 	# programs as the qemu-based arm64_smoke_test, cross-compiled to
 	# Mach-O, so real-silicon smoke coverage does not need qemu. Like
-	# net_darwin_smoke_test, Linux only cross-compiles them; this script
-	# is their run leg.
+	# net_darwin, Linux only cross-compiles them; this script is their
+	# run leg.
 	tests="$tests bin/lib_darwin_test bin/hash_table_darwin_test bin/map_set_builtin_darwin_test bin/generator_darwin_test bin/compound_assign_darwin_test bin/limb_builtin_darwin_test"
 	# arm64e corruption fixtures (./wbuild pac_darwin): pointer authentication
 	# is enforced natively, so these MUST die by signal before reaching

@@ -389,13 +389,12 @@ current state:
 				stay out of scope (docs/projects/debugger_attach.md, issue
 				#123)
 		code generation:
-			webassembly stage 5 residue: '# wbuild:' wasm twin-target
-				support (wbuildgen's arch_only= rejects wasm, so wasm
-				test targets stay hand-written in build.base.json),
-				wasm64, real-signature exports, accumulator
-				globals-vs-locals measurement
+			webassembly stage 5 residue: wasm64, real-signature
+				exports, accumulator globals-vs-locals measurement
 				(stages 0-4 plus the stage-5 json builtins, direct-call
-				optimization and browser host shim landed:
+				optimization, browser host shim, and '# wbuild:'
+				wasm arch support — arch=/arch_only=/group=@wasm
+				generate the wasm targets now — landed:
 				docs/projects/wasm_backend.md)
 			W^X text/data split for x86, x64 and win64 (arm64/arm64_darwin
 				already split; win64's single RWX section makes the IAT

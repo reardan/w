@@ -1,3 +1,4 @@
+# wbuild: name=net_darwin arch_only=arm64_darwin
 # Darwin socket smoke test (plan 11 phase 2 darwin socket audit,
 # issue #200): exercises the per-arch socket ABI from
 # lib/__arch__/arm64_darwin/socket_abi.w end to end - sockaddr_in
@@ -9,7 +10,7 @@
 # TO RUN ON A MAC: compile with `./wbuild net_darwin` (Linux CI only
 # cross-compiles it as a build guard), then execute the binary
 # natively with:
-#     tools/mac/run_darwin_tests.sh bin/net_darwin_smoke_test
+#     tools/mac/run_darwin_tests.sh bin/net_darwin
 # It is part of that script's default set. The same source also runs
 # on Linux targets, so the logic itself stays CI-covered.
 import lib.testing
