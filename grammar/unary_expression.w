@@ -267,6 +267,10 @@ int unary_expression_operand():
 		if ((peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '['))):
 			int container_type = type_name()
 			hash_emit_new_container(container_type)
+			if (type_is_map(container_type)):
+				# new map[K, V](default): opt-in missing-key default
+				# (grammar/hash_builtin.w, issue #327)
+				hash_map_default_suffix(container_type)
 			return type_value(container_type)
 		if (peek(c"list") & (nextc == '[')):
 			int list_container_type = type_name()

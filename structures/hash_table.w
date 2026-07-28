@@ -59,6 +59,8 @@ struct __w_hash_table:
 	int* order_prev   # slot -> previous slot, -1 at the head
 	int order_head    # first inserted live slot, -1 when empty
 	int order_tail    # last inserted live slot, -1 when empty
+	int default_kind  # missing-key policy: __w_hash_default_* (0 = trap)
+	int default_value # stored word / factory address / container descriptor
 
 
 # Bytes per value slot. Scalar values (value_size <= word) keep the
@@ -91,6 +93,37 @@ int __w_hash_key_cstr():
 
 
 int __w_hash_key_string():
+	return 3
+
+
+# Missing-key policies for maps built with 'new map[K, V](...)' (issue
+# #327). 0 (none) keeps the documented trap; the other kinds make a
+# missing read INSERT a freshly-materialized default and return it.
+int __w_hash_default_none():
+	return 0
+
+
+# default_value is the value word itself, copied into every missing slot.
+int __w_hash_default_value():
+	return 1
+
+
+# default_value is a zero-argument factory's address, called per missing
+# key so vivified values never alias each other.
+int __w_hash_default_factory():
+	return 2
+
+
+# default_value is a packed descriptor for an empty inner container,
+# synthesized by the compiler for 'new map[K, container](...)' with the
+# argument omitted. Layout (mirrored by hash_default_container_descriptor
+# in grammar/hash_builtin.w):
+#   bits 0-1  container code: 1 = map, 2 = set, 3 = list
+#   bits 2-3  inner key kind (__w_hash_key_*; map and set only)
+#   bit 4     inner map's scalar values default to a zero word, so
+#             outer[a][b] += 1 works on a completely fresh 'a'
+#   bits 5+   inner value_size (map) / element slot size (list)
+int __w_hash_default_container():
 	return 3
 
 
@@ -206,11 +239,13 @@ void __w_hash_order_unlink(__w_hash_table* table, int i):
 __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	if (capacity < 16):
 		capacity = 16
-	__w_hash_table* table = malloc(11 * __word_size__)
+	__w_hash_table* table = malloc(13 * __word_size__)
 	table.capacity = capacity
 	table.count = 0
 	table.key_kind = key_kind
 	table.value_size = value_size
+	table.default_kind = __w_hash_default_none()
+	table.default_value = 0
 	int slot_size = __w_hash_slot_size(table)
 	table.keys = malloc(capacity * __word_size__)
 	table.values = malloc(capacity * slot_size)
@@ -351,10 +386,59 @@ int __w_map_contains(__w_hash_table* table, int key):
 	return table.states[i] == 1
 
 
+# Install the missing-key policy chosen at 'new map[K, V](...)' time.
+void __w_map_set_default(__w_hash_table* table, int kind, int value):
+	table.default_kind = kind
+	table.default_value = value
+
+
+# Build the empty inner container a __w_hash_default_container()
+# descriptor describes (layout above __w_hash_default_container).
+int __w_map_default_new_container(int desc):
+	int code = desc & 3
+	int kind = (desc >> 2) & 3
+	int size = desc >> 5
+	if (code == 3):
+		return cast(int, __w_list_new(size))
+	__w_hash_table* inner = __w_map_new(kind, size)
+	if (desc & 16):
+		inner.default_kind = __w_hash_default_value()
+		inner.default_value = 0
+	return cast(int, inner)
+
+
+# Materialize one default value per the table's policy. Called before
+# the slot is claimed so a factory that mutates this same map cannot
+# invalidate the slot index.
+int __w_map_default_materialize(__w_hash_table* table):
+	if (table.default_kind == __w_hash_default_factory()):
+		int factory = table.default_value
+		return factory()
+	if (table.default_kind == __w_hash_default_container()):
+		return __w_map_default_new_container(table.default_value)
+	return table.default_value
+
+
+# Auto-vivification (issue #327): insert the materialized default for a
+# missing key and return it. Only reachable when default_kind is not
+# __w_hash_default_none(), i.e. the map opted in at construction.
+int __w_map_vivify(__w_hash_table* table, int key):
+	int value = __w_map_default_materialize(table)
+	int i = __w_map_insert_slot(table, key)
+	int* slot = cast(int*, __w_hash_value_addr(table, i))
+	slot[0] = value
+	return value
+
+
+# Scalar read for m[key] and one-argument m.get(key). Maps built with a
+# 'new map[K, V](...)' default vivify missing keys instead of trapping;
+# every other map keeps the documented trap.
 int __w_map_get(__w_hash_table* table, int key):
 	int i = __w_hash_table_slot(table, key)
 	if (table.states[i] != 1):
-		__w_map_missing_key(table, key)
+		if (table.default_kind == __w_hash_default_none()):
+			__w_map_missing_key(table, key)
+		return __w_map_vivify(table, key)
 	int* slot = cast(int*, __w_hash_value_addr(table, i))
 	return slot[0]
 
