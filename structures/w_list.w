@@ -117,13 +117,18 @@ void __w_list_ensure(__w_list* list, int extra):
 
 
 # Address of element index; the compiler reads and writes elements through
-# this so l[i] is a normal lvalue of the element type.
+# this so l[i] is a normal lvalue of the element type. A negative index
+# counts from the end (l[-1] is the last element, l[-length] the first,
+# issue #360); out of range still traps reporting the index as written.
 char* __w_list_addr(__w_list* list, int index):
-	if (index < 0):
+	int i = index
+	if (i < 0):
+		i = i + list.length
+	if (i < 0):
 		__w_list_index_trap(c"list index out of range", index, list.length)
-	if (index >= list.length):
+	if (i >= list.length):
 		__w_list_index_trap(c"list index out of range", index, list.length)
-	return list.items + index * list.element_size
+	return list.items + i * list.element_size
 
 
 void __w_list_store_word(char* addr, int element_size, int value):
@@ -292,6 +297,41 @@ void __w_list_copy_bytes(char* dst, char* src, int n):
 	while (i < n):
 		dst[i] = src[i]
 		i = i + 1
+
+
+# l[start:end] copies the selected range into a NEW list (issue #360).
+# Copy semantics, like Python: a view would dangle when the source
+# reallocs on push. Negative bounds count from the end like l[-1];
+# has_end = 0 means the end was omitted (l[i:] / l[:]) and defaults to
+# the length. After normalization the range must satisfy
+# 0 <= start <= end <= length or the slice traps like buffer slicing
+# (the reported pair is the offending bound and the limit it violated;
+# for start > end both are reported normalized).
+__w_list* __w_list_slice(__w_list* list, int start, int end, int has_end):
+	int length = list.length
+	int s = start
+	if (s < 0):
+		s = s + length
+	int e = end
+	if (has_end == 0):
+		e = length
+	else if (e < 0):
+		e = e + length
+	if (s < 0):
+		__w_list_index_trap(c"list slice out of range", start, length)
+	if (e < 0):
+		__w_list_index_trap(c"list slice out of range", end, length)
+	if (e > length):
+		__w_list_index_trap(c"list slice out of range", end, length)
+	if (s > e):
+		__w_list_index_trap(c"list slice out of range", s, e)
+	__w_list* result = __w_list_new(list.element_size)
+	int count = e - s
+	if (count > 0):
+		__w_list_ensure(result, count)
+		__w_list_copy_bytes(result.items, list.items + s * list.element_size, count * list.element_size)
+		result.length = count
+	return result
 
 
 # Scalar ordering for sort/count/index: kind 1 compares words (signed),

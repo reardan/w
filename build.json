@@ -231,7 +231,13 @@
 				{"cmd": ["bin/wv2", "tests/list_trap_fixture.w", "-o", "bin/list_trap_fixture"]},
 				{"cmd": ["bin/list_trap_fixture"], "expect_fail": true, "expect_stderr": "list index out of range: index 5, length 2"},
 				{"cmd": ["bin/wv2", "tests/list_pop_trap_fixture.w", "-o", "bin/list_pop_trap_fixture"]},
-				{"cmd": ["bin/list_pop_trap_fixture"], "expect_fail": true, "expect_stderr": "pop on empty list"}
+				{"cmd": ["bin/list_pop_trap_fixture"], "expect_fail": true, "expect_stderr": "pop on empty list"},
+				{"cmd": ["bin/wv2", "tests/list_negative_index_trap_fixture.w", "-o", "bin/list_negative_index_trap_fixture"]},
+				{"cmd": ["bin/list_negative_index_trap_fixture"], "expect_fail": true, "expect_stderr": "list index out of range: index -4, length 3"},
+				{"cmd": ["bin/wv2", "tests/list_slice_trap_fixture.w", "-o", "bin/list_slice_trap_fixture"]},
+				{"cmd": ["bin/list_slice_trap_fixture"], "expect_fail": true, "expect_stderr": "list slice out of range: index 9, length 3"},
+				{"cmd": ["bin/wv2", "tests/list_slice_order_trap_fixture.w", "-o", "bin/list_slice_order_trap_fixture"]},
+				{"cmd": ["bin/list_slice_order_trap_fixture"], "expect_fail": true, "expect_stderr": "list slice out of range: index 2, length 1"}
 			]
 		},
 		{
@@ -1882,6 +1888,7 @@
 				"limb_builtin_shadow_64_test",
 				"line_edit_paste_64_test",
 				"list_builtin_64_test",
+				"list_index_slice_64_test",
 				"lsm_64_test",
 				"malloc_churn_64_test",
 				"map_float_64_test",
@@ -2417,6 +2424,7 @@
 				"limb_builtin_test",
 				"line_edit_completion_test",
 				"line_edit_paste_test",
+				"list_index_slice_test",
 				"list_methods_test",
 				"lsm_test",
 				"malloc_churn_test",
@@ -4104,6 +4112,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/list_builtin_test.w", "-o", "bin/list_builtin_64_test"]},
 				{"cmd": ["bin/list_builtin_64_test"]}
+			]
+		},
+		{
+			"name": "list_index_slice_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/list_index_slice_test.w"],
+			"outputs": ["bin/list_index_slice_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/list_index_slice_test.w", "-o", "bin/list_index_slice_64_test"]},
+				{"cmd": ["bin/list_index_slice_64_test"]}
+			]
+		},
+		{
+			"name": "list_index_slice_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/list_index_slice_test.w"],
+			"outputs": ["bin/list_index_slice_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/list_index_slice_test.w", "-o", "bin/list_index_slice_test"]},
+				{"cmd": ["bin/list_index_slice_test"]}
 			]
 		},
 		{
