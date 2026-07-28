@@ -144,6 +144,18 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
+- **(2026-07-28, issue #360 item 5) Editing an auto-imported runtime
+  file selects essentially the whole manifest.** `structures/w_list.w`
+  is in every program's import closure, so `git diff --name-only
+  origin/main | wtest changed` for the list-slice work printed ~450
+  targets — correct but useless as a *selection* (it includes every
+  platform-gated cuda/darwin/win64 target this host cannot run).
+  Suggested direction: when a changed file's closure covers more than
+  some large fraction of the manifest, collapse the selection to the
+  umbrella targets (`verify`, `verify_x64`, `tests`) plus the literal
+  step references, and say so in one line, instead of enumerating the
+  world; a `--runnable-here` filter (skip targets whose steps need
+  binaries/hosts this machine lacks) would compose well with that.
 - **(2026-07-19 review) `--defhash` outside a range always compares HEAD
   vs worktree**, even when the piped path list came from a ranged diff
   (`git diff --name-only main..HEAD | wtest changed --defhash` after

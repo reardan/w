@@ -103,6 +103,8 @@ current state:
 			for k, v in map two-variable iteration
 		built-in list:
 			list[T] typed lists with literals, indexing, push/pop and .length
+			negative indexing counts from the end (l[-1] is the last element)
+			l[i:j] copying slices with open and negative bounds (l[:j], l[i:], l[:])
 			l.insert(i, v), l.remove(i) and l.clear() pseudo-methods
 			x in l membership (content compare for char* elements)
 			runtime traps say what trapped on stderr before exit(1) (index echoes index and length; pop/min/max on empty say so)

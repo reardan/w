@@ -189,7 +189,9 @@ Implemented and covered by tests:
   `m.add(key)`/`m.add(key, delta)` accumulating integer map values from
   zero for missing keys, `m.keys()`/`m.values()`/`s.keys()`
   insertion-order list snapshots (compose with `list` methods:
-  `m.keys().sort()`), `list[T]` indexing,
+  `m.keys().sort()`), `list[T]` indexing (negative indexes count from
+  the end: `l[-1]`) and copying slices (`l[i:j]` with open and negative
+  bounds),
   `l.push(v)`/`l.pop()` and container `.length`, explicit `cast(T, expr)`,
   postfix `?` error propagation on the generic `wresult[T]` result type
   (unwrap the payload, or return the error to the caller; see
