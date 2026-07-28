@@ -133,7 +133,28 @@ void error(char *s):
 
 
 int getc():
-	int c = getchar(file)
+	int c = getchar_checked(file)
+	# A failed read() is not end of file: stopping here with a diagnostic
+	# beats silently truncating the source and reporting a misleadingly
+	# positioned parse error later (docs/projects/ai_tooling_next_steps.md).
+	# Every caller of get_character()/get_token() -- compile_attempt for
+	# the root and each import, the generic/defer reparses, the defhash
+	# rehash, the REPL entry loader -- points filename at the file it is
+	# reading before the first read, so the message names the right file.
+	# GETCHAR_EOF() keeps the legacy -1 value, so every nextc == -1 check
+	# downstream is unaffected.
+	if (c == GETCHAR_READ_ERROR()):
+		diag_token_line = line_number + 1
+		diag_token_column = column_number + 1
+		# The priming read of the very first file can fail before
+		# get_token() has ever allocated the token buffer; error() prints
+		# and emits token, so point it at something live (mirrors
+		# compiler/compiler.w's missing_file_reset, #190)
+		if (token == 0):
+			token = filename
+		diag_part(c"read error while reading '")
+		diag_part(filename)
+		error(c"'")
 	# EOF consumes nothing, so the offset only advances for real bytes
 	if (c != -1):
 		byte_offset = byte_offset + 1
