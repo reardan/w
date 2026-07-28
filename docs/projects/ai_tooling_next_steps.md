@@ -881,7 +881,19 @@ ergonomic gap:
   "a minute" expectation, so agents pick too-small timeouts and kill
   the build. Cheap fixes: progress output (one line per N modules) so
   a caller can distinguish slow-but-alive from hung, and/or making an
-  interrupted cache build resume instead of restarting.
+  interrupted cache build resume instead of restarting. (Reproduced
+  2026-07-28, stdlib-algorithms work: first `wtest changed` after a
+  fresh worktree `./wbuild build` blew a 3-minute timeout; the retry
+  succeeded.)
+- **Minor: a flag before the arch selector turns the selector into the
+  input file, with a misleading error.** `bin/wv2 --strict x64 file.w
+  -o out` fails with `no such file: 'x64' in x64:1` after printing
+  `compiling 'x64'` — the arch token is consumed as the source path
+  once any flag precedes it. `bin/wv2 x64 --strict file.w -o out`
+  works. Found 2026-07-28 compiling a test's x64 twin by hand.
+  Cheap fix: recognize arch-selector tokens anywhere before the input
+  file (or error with "arch selector must come first"), so the
+  diagnostic names the real problem instead of a phantom file.
 
 ## Skills / rules upkeep
 
