@@ -231,6 +231,52 @@ void test_median():
 	assert_near(2.5, stats_median(even))
 
 
+void test_mode_int():
+	list[int] xs = list[int]{1, 2, 2, 3}
+	assert_equal(2, stats_mode_int(xs))
+
+	# tie between 3 and 2 (two occurrences each): 3 was seen first
+	list[int] tie = list[int]{3, 2, 2, 3, 1}
+	assert_equal(3, stats_mode_int(tie))
+
+	# all distinct: every count is 1, the first element wins
+	list[int] distinct = list[int]{5, 1, 3}
+	assert_equal(5, stats_mode_int(distinct))
+
+	list[int] one = list[int]{4}
+	assert_equal(4, stats_mode_int(one))
+
+	# negative values count like any other key
+	list[int] negatives = list[int]{-7, 2, -7, 2, -7}
+	assert_equal(-7, stats_mode_int(negatives))
+
+	# a late surge beats an early tie: 9 only pulls ahead at the end
+	list[int] surge = list[int]{4, 9, 4, 9, 9}
+	assert_equal(9, stats_mode_int(surge))
+
+	# enough distinct keys to force map growth past the initial capacity
+	list[int] wide = new list[int]
+	int i = 0
+	while (i < 100):
+		wide.push(i % 37)
+		i = i + 1
+	# 0 through 25 appear three times, 26 through 36 twice: 0 is first
+	assert_equal(0, stats_mode_int(wide))
+	wide.push(17)
+	# 17 now appears four times, strictly the most frequent
+	assert_equal(17, stats_mode_int(wide))
+	list_free[int](wide)
+
+
+# stats_mode_int ties first-seen (map insertion order); stats_mode ties
+# to the smallest (sorted-run scan). The same data shows the contrast.
+void test_mode_tiebreak_contrast():
+	list[int] first_seen = list[int]{3, 2, 2, 3, 1}
+	assert_equal(3, stats_mode_int(first_seen))
+	list[float] smallest = list[float]{3.0, 2.0, 2.0, 3.0, 1.0}
+	assert_near(2.0, stats_mode(smallest))
+
+
 void test_mode():
 	list[float] xs = list[float]{1.0, 2.0, 2.0, 3.0}
 	assert_near(2.0, stats_mode(xs))
