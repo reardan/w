@@ -107,13 +107,18 @@ int type_name():
 	if (is_const):
 		type = type_push_const(type)
 
-	# Each '*' wraps the base type in a pointer type, created on demand
+	# Each '*' wraps the base type in a pointer type, created on demand.
+	# The new level stacks on the type's OWN pointer level, not the star
+	# count: a substituted type parameter may already be a pointer, so
+	# 'T*' with T = char* must build char**, not char* (pointer records
+	# store the base type's name, so base_name is stable across levels).
 	char* base_name = type_get_name(type)
 	while (accept(c"*")):
 		pointer_indirection = pointer_indirection + 1
-		int pointer_type = type_lookup_pointer(base_name, pointer_indirection)
+		int next_level = type_get_pointer_level(type) + 1
+		int pointer_type = type_lookup_pointer(base_name, next_level)
 		if (pointer_type < 0):
-			pointer_type = type_push_pointer(base_name, word_size, pointer_indirection)
+			pointer_type = type_push_pointer(base_name, word_size, next_level)
 		type = pointer_type
 
 	type = type_name_array_suffix(type)

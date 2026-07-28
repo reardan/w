@@ -139,6 +139,9 @@ current state:
 			for x in <container> cursor-protocol iteration
 				T_iter_begin/done/next/value over any struct pointer
 				array_list, linked_list, hash_map (keys) implement it
+				generic containers resolve the protocol as name_iter_*[arg]
+				instantiations (one type parameter); heap[T] and deque[T]
+				(structures/heap.w, structures/deque.w) implement it
 			for int cp in string codepoint iteration
 			break and continue
 			nested if/loop behavior covered by tests
