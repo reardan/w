@@ -23,13 +23,25 @@ API sketch (§5.3) already reserved symbols for:
     max_code_size and zlib's gen_bitlen both implement, just operating
     directly on the length histogram instead of walking the original
     tree). The code-length alphabet itself (RLE symbols 16/17/18, RFC
-    1951 §3.2.7) is Huffman-coded the same way. Blocks are split on a
-    simple size heuristic (every ~32KiB of *input* the tokenizer has
-    consumed starts a new block) so a large, heterogeneous input still
-    gets locally-adapted tables instead of one compromise table for the
-    whole stream -- docs/projects/compress.md doesn't mandate a specific
-    policy, just "a block-splitting heuristic" (§9's PR-C framing), and
-    this one is simple, deterministic, and cheap.
+    1951 §3.2.7) is Huffman-coded the same way.
+
+Both compressive levels split the token stream into blocks on a simple
+size heuristic (every ~32KiB of *input* the tokenizer has consumed
+starts a new block -- docs/projects/compress.md doesn't mandate a
+specific policy, just "a block-splitting heuristic", and this one is
+simple, deterministic, and cheap; a large, heterogeneous input still
+gets locally-adapted dynamic tables instead of one compromise table for
+the whole stream) and then pick the cheapest legal encoding PER BLOCK
+by exact bit cost, zlib's own _tr_flush_block strategy: a stored block
+whenever the Huffman encodings would expand past the raw bytes (so no
+input -- in particular incompressible random data -- ever grows by more
+than the ~5-bytes-per-32KiB stored framing plus one final byte of bit
+padding), a fixed-Huffman block when the spec's static tables beat the
+per-block table + its transmitted header, and a dynamic-Huffman block
+otherwise. Costs are computed from the block's symbol histogram before
+any bits are written, so no encode-then-throw-away pass exists; FAST
+skips building dynamic tables entirely (its candidates are just
+fixed/stored).
 
 Both compressive levels share one LZ77 tokenizer (docs/projects/
 compress.md §6.2's flat hash-chain design: one `head` array indexed by a
@@ -133,9 +145,12 @@ int dfl_max_chain_best():
 	return 256
 
 
-# Block-splitting heuristic for DEFLATE_LEVEL_BEST (see this file's
-# header comment): start a new dynamic-Huffman block roughly every this
-# many bytes of *input* the tokenizer has consumed.
+# Block-splitting heuristic for both compressive levels (see this
+# file's header comment): start a new block roughly every this many
+# bytes of *input* the tokenizer has consumed. Also the granularity of
+# the per-block stored fallback -- a block's input span can never
+# exceed this plus one final match (258 bytes), comfortably inside a
+# single stored block's 65535-byte LEN field.
 int dfl_block_input_bytes():
 	return 32768
 
@@ -672,14 +687,75 @@ void dfl_emit_body(dfl_bits* w, dfl_tokens* t, int start, int end, int* ll_codes
 	dfl_put_huffman(w, ll_codes[256], ll_lengths[256])
 
 
-# One BTYPE=01 block covering the whole token stream -- fixed Huffman
-# codes are spec-constant, so there's no benefit to splitting into
-# multiple blocks (unlike the dynamic path, no per-block header cost
-# varies with block count).
-void deflate_emit_fixed_block(dfl_bits* w, dfl_tokens* t, int is_last):
-	dfl_put_bits(w, is_last & 1, 1)
-	dfl_put_bits(w, 1, 2)
-	dfl_emit_body(w, t, 0, t.count, dfl_fixed_litlen_codes(), dfl_fixed_litlen_lengths(), dfl_fixed_dist_codes(), dfl_fixed_dist_lengths())
+# Exact bit cost of dfl_emit_body over tokens [start,end) under the
+# given code-length tables (code bits + extra bits + the EOB symbol) --
+# the encode side never has to write a byte to know what a block type
+# would cost, which is what makes the per-block stored/fixed/dynamic
+# choice in dfl_emit_block cheap.
+int dfl_body_cost_bits(dfl_tokens* t, int start, int end, int* ll_lengths, int* d_lengths):
+	int bits = 0
+	int i = start
+	while (i < end):
+		int len = t.len[i]
+		int dist = t.dist[i]
+		if (dist == 0):
+			bits = bits + ll_lengths[len]
+		else:
+			int sym = 0
+			int eb = 0
+			int ev = 0
+			dfl_length_symbol(len, &sym, &eb, &ev)
+			bits = bits + ll_lengths[sym] + eb
+			int dsym = 0
+			int deb = 0
+			int dev = 0
+			dfl_dist_symbol(dist, &dsym, &deb, &dev)
+			bits = bits + d_lengths[dsym] + deb
+		i = i + 1
+	return bits + ll_lengths[256]
+
+
+/* ---- Stored blocks as a mid-stream fallback ---- */
+
+
+# Bit cost of storing `len` raw input bytes starting from a bit writer
+# currently `cur_nbits` bits into a byte: per chunk (LEN caps a chunk
+# at 65535 bytes) a 3-bit header, padding to the next byte boundary,
+# and 4 bytes of LEN/NLEN; then the bytes themselves. Every chunk after
+# the first starts byte-aligned, so its header+padding is exactly 8
+# bits.
+int dfl_stored_cost_bits(int cur_nbits, int len):
+	int chunks = 1
+	if (len > 65535):
+		chunks = (len + 65534) / 65535
+	int first_pad = (8 - ((cur_nbits + 3) % 8)) % 8
+	return 3 + first_pad + (chunks - 1) * 8 + chunks * 32 + len * 8
+
+
+# Emits input bytes [offset, offset+len) as stored (BTYPE=00) blocks
+# through the bit writer, chunked at LEN's 65535-byte cap; only the
+# final chunk carries BFINAL when `is_last` is set.
+void dfl_emit_stored_range(dfl_bits* w, char* data, int offset, int len, int is_last):
+	int pos = 0
+	int first = 1
+	while ((pos < len) || first):
+		first = 0
+		int chunk = len - pos
+		if (chunk > 65535):
+			chunk = 65535
+		int final_bit = 0
+		if ((is_last) && (pos + chunk == len)):
+			final_bit = 1
+		dfl_put_bits(w, final_bit, 1)
+		dfl_put_bits(w, 0, 2)
+		dfl_align_byte(w)
+		string_append_char(w.out, chunk & 255)
+		string_append_char(w.out, shr(chunk, 8) & 255)
+		int nlen = (chunk ^ 65535) & 65535
+		string_append_char(w.out, nlen & 255)
+		string_append_char(w.out, shr(nlen, 8) & 255)
+		string_append_bytes(w.out, &data[offset + pos], chunk)
+		pos = pos + chunk
 
 
 /* ---- Dynamic Huffman blocks ---- */
@@ -798,16 +874,35 @@ dfl_cltoks* dfl_build_cl_tokens(int* lengths, int total):
 	return t
 
 
-# Builds and emits one dynamic-Huffman block (header + body) covering
-# tokens [start,end) of `t`. Forces a placeholder length-1 code at
-# distance symbol 0 when the block used no back-references at all (the
-# "single short code" case inflate.w's wh_build already tolerates,
-# needed because HDIST's declared count can never be zero -- RFC 1951
-# §3.2.7) and clamps HLIT/HDIST down to the smallest count that still
-# covers every nonzero-length symbol (always at least 257/1
-# respectively, since EOB is always present and HDIST's minimum
-# declared count is 1).
-void dfl_emit_dynamic_block(dfl_bits* w, dfl_tokens* t, int start, int end, int is_last):
+# Everything a dynamic-Huffman block needs beyond the shared token
+# stream: the two code tables, the code-length-alphabet layer that
+# transmits them, the clamped HLIT/HDIST/HCLEN counts, and the exact
+# bit cost of the whole block (header + body, including the 3 BFINAL/
+# BTYPE bits) so dfl_emit_block can compare it against the fixed and
+# stored candidates before writing anything.
+struct dfl_dyn:
+	int* ll_lengths
+	int* d_lengths
+	int* ll_codes
+	int* d_codes
+	dfl_cltoks* cl
+	int* cl_lengths
+	int* cl_codes
+	int hlit
+	int hdist
+	int hclen
+	int cost_bits
+
+
+# Builds the per-block tables for tokens [start,end) of `t`. Forces a
+# placeholder length-1 code at distance symbol 0 when the block used no
+# back-references at all (the "single short code" case inflate.w's
+# wh_build already tolerates, needed because HDIST's declared count can
+# never be zero -- RFC 1951 §3.2.7) and clamps HLIT/HDIST down to the
+# smallest count that still covers every nonzero-length symbol (always
+# at least 257/1 respectively, since EOB is always present and HDIST's
+# minimum declared count is 1).
+dfl_dyn* dfl_dyn_build(dfl_tokens* t, int start, int end):
 	int* freq_ll = cast(int*, malloc(288 * __word_size__))
 	int* freq_d = cast(int*, malloc(30 * __word_size__))
 	dfl_count_freqs(t, start, end, freq_ll, freq_d)
@@ -819,84 +914,134 @@ void dfl_emit_dynamic_block(dfl_bits* w, dfl_tokens* t, int start, int end, int 
 	if (total_d == 0):
 		freq_d[0] = 1
 
-	int* ll_lengths = dfl_build_lengths(freq_ll, 288, 15)
-	int* d_lengths = dfl_build_lengths(freq_d, 30, 15)
-	int* ll_codes = dfl_build_codes(ll_lengths, 288, 15)
-	int* d_codes = dfl_build_codes(d_lengths, 30, 15)
+	dfl_dyn* dy = new dfl_dyn
+	dy.ll_lengths = dfl_build_lengths(freq_ll, 288, 15)
+	dy.d_lengths = dfl_build_lengths(freq_d, 30, 15)
+	dy.ll_codes = dfl_build_codes(dy.ll_lengths, 288, 15)
+	dy.d_codes = dfl_build_codes(dy.d_lengths, 30, 15)
+	free(freq_ll)
+	free(freq_d)
 
 	int hlit = 257
 	int idx = 287
-	while ((idx >= 257) && (ll_lengths[idx] == 0)):
+	while ((idx >= 257) && (dy.ll_lengths[idx] == 0)):
 		idx = idx - 1
 	if (idx >= 257):
 		hlit = idx + 1
 	idx = 29
-	while ((idx > 0) && (d_lengths[idx] == 0)):
+	while ((idx > 0) && (dy.d_lengths[idx] == 0)):
 		idx = idx - 1
 	int hdist = idx + 1
+	dy.hlit = hlit
+	dy.hdist = hdist
 
 	int total = hlit + hdist
 	int* combined = cast(int*, malloc(total * __word_size__))
 	i = 0
 	while (i < hlit):
-		combined[i] = ll_lengths[i]
+		combined[i] = dy.ll_lengths[i]
 		i = i + 1
 	i = 0
 	while (i < hdist):
-		combined[hlit + i] = d_lengths[i]
+		combined[hlit + i] = dy.d_lengths[i]
 		i = i + 1
 
-	dfl_cltoks* cl = dfl_build_cl_tokens(combined, total)
+	dy.cl = dfl_build_cl_tokens(combined, total)
+	free(combined)
 	int* cl_freq = cast(int*, malloc(19 * __word_size__))
 	i = 0
 	while (i < 19):
 		cl_freq[i] = 0
 		i = i + 1
 	i = 0
-	while (i < cl.count):
-		cl_freq[cl.sym[i]] = cl_freq[cl.sym[i]] + 1
+	while (i < dy.cl.count):
+		cl_freq[dy.cl.sym[i]] = cl_freq[dy.cl.sym[i]] + 1
 		i = i + 1
-	int* cl_lengths = dfl_build_lengths(cl_freq, 19, 7)
-	int* cl_codes = dfl_build_codes(cl_lengths, 19, 7)
+	dy.cl_lengths = dfl_build_lengths(cl_freq, 19, 7)
+	dy.cl_codes = dfl_build_codes(dy.cl_lengths, 19, 7)
+	free(cl_freq)
 
 	int hclen_idx = 18
-	while ((hclen_idx > 3) && (cl_lengths[inf_clc_order(hclen_idx)] == 0)):
+	while ((hclen_idx > 3) && (dy.cl_lengths[inf_clc_order(hclen_idx)] == 0)):
 		hclen_idx = hclen_idx - 1
-	int hclen = hclen_idx + 1
+	dy.hclen = hclen_idx + 1
 
+	# 3 BFINAL/BTYPE bits + 14 HLIT/HDIST/HCLEN bits + 3 per transmitted
+	# code-length-alphabet length + the RLE-coded length arrays + body.
+	int header_bits = 3 + 14 + dy.hclen * 3
+	i = 0
+	while (i < dy.cl.count):
+		header_bits = header_bits + dy.cl_lengths[dy.cl.sym[i]] + dy.cl.extra_bits[i]
+		i = i + 1
+	dy.cost_bits = header_bits + dfl_body_cost_bits(t, start, end, dy.ll_lengths, dy.d_lengths)
+	return dy
+
+
+void dfl_dyn_free(dfl_dyn* dy):
+	free(dy.ll_lengths)
+	free(dy.d_lengths)
+	free(dy.ll_codes)
+	free(dy.d_codes)
+	free(dy.cl.sym)
+	free(dy.cl.extra_val)
+	free(dy.cl.extra_bits)
+	free(dy.cl)
+	free(dy.cl_lengths)
+	free(dy.cl_codes)
+	free(dy)
+
+
+# Emits one dynamic-Huffman block (header + body) from tables
+# dfl_dyn_build already constructed.
+void dfl_emit_dynamic_block(dfl_bits* w, dfl_tokens* t, int start, int end, dfl_dyn* dy, int is_last):
 	dfl_put_bits(w, is_last & 1, 1)
 	dfl_put_bits(w, 2, 2)
-	dfl_put_bits(w, hlit - 257, 5)
-	dfl_put_bits(w, hdist - 1, 5)
-	dfl_put_bits(w, hclen - 4, 4)
-	i = 0
-	while (i < hclen):
-		dfl_put_bits(w, cl_lengths[inf_clc_order(i)], 3)
+	dfl_put_bits(w, dy.hlit - 257, 5)
+	dfl_put_bits(w, dy.hdist - 1, 5)
+	dfl_put_bits(w, dy.hclen - 4, 4)
+	int i = 0
+	while (i < dy.hclen):
+		dfl_put_bits(w, dy.cl_lengths[inf_clc_order(i)], 3)
 		i = i + 1
 	i = 0
-	while (i < cl.count):
-		int sym = cl.sym[i]
-		dfl_put_huffman(w, cl_codes[sym], cl_lengths[sym])
-		if (cl.extra_bits[i] > 0):
-			dfl_put_bits(w, cl.extra_val[i], cl.extra_bits[i])
+	while (i < dy.cl.count):
+		int sym = dy.cl.sym[i]
+		dfl_put_huffman(w, dy.cl_codes[sym], dy.cl_lengths[sym])
+		if (dy.cl.extra_bits[i] > 0):
+			dfl_put_bits(w, dy.cl.extra_val[i], dy.cl.extra_bits[i])
 		i = i + 1
+	dfl_emit_body(w, t, start, end, dy.ll_codes, dy.ll_lengths, dy.d_codes, dy.d_lengths)
 
-	dfl_emit_body(w, t, start, end, ll_codes, ll_lengths, d_codes, d_lengths)
 
-	free(freq_ll)
-	free(freq_d)
-	free(ll_lengths)
-	free(d_lengths)
-	free(ll_codes)
-	free(d_codes)
-	free(combined)
-	free(cl.sym)
-	free(cl.extra_val)
-	free(cl.extra_bits)
-	free(cl)
-	free(cl_freq)
-	free(cl_lengths)
-	free(cl_codes)
+/* ---- Per-block encoding choice ---- */
+
+
+# Emits tokens [start,end) (covering input bytes [in_start,
+# in_start+in_len)) as whichever legal block encoding costs the fewest
+# bits from the writer's current position: stored, fixed Huffman, or
+# (at DEFLATE_LEVEL_BEST and above) dynamic Huffman. Ties prefer the
+# simpler encoding (stored, then fixed) -- zlib's _tr_flush_block makes
+# the same per-block comparison. The stored candidate is what bounds
+# worst-case expansion on incompressible input.
+void dfl_emit_block(dfl_bits* w, char* data, dfl_tokens* t, int start, int end, int in_start, int in_len, int level, int is_last):
+	int fixed_bits = 3 + dfl_body_cost_bits(t, start, end, dfl_fixed_litlen_lengths(), dfl_fixed_dist_lengths())
+	dfl_dyn* dy = cast(dfl_dyn*, 0)
+	int dyn_bits = fixed_bits + 1
+	if (level >= DEFLATE_LEVEL_BEST()):
+		dy = dfl_dyn_build(t, start, end)
+		dyn_bits = dy.cost_bits
+	int stored_bits = dfl_stored_cost_bits(w.cur_nbits, in_len)
+
+	if ((stored_bits <= fixed_bits) && (stored_bits <= dyn_bits)):
+		dfl_emit_stored_range(w, data, in_start, in_len, is_last)
+	else if (fixed_bits <= dyn_bits):
+		dfl_put_bits(w, is_last & 1, 1)
+		dfl_put_bits(w, 1, 2)
+		dfl_emit_body(w, t, start, end, dfl_fixed_litlen_codes(), dfl_fixed_litlen_lengths(), dfl_fixed_dist_codes(), dfl_fixed_dist_lengths())
+	else:
+		dfl_emit_dynamic_block(w, t, start, end, dy, is_last)
+	if (dy != 0):
+		dfl_dyn_free(dy)
 
 
 /* ---- Top level ---- */
@@ -943,26 +1088,30 @@ deflate_result* deflate(char* data, int length, int level):
 	dfl_tokens* t = dfl_tokenize(data, length, max_chain)
 	dfl_bits* w = dfl_bits_new()
 
-	if (level >= DEFLATE_LEVEL_BEST()):
-		if (t.count == 0):
-			dfl_emit_dynamic_block(w, t, 0, 0, 1)
-		else:
-			int pos = 0
-			while (pos < t.count):
-				int block_start = pos
-				int consumed = 0
-				while ((pos < t.count) && (consumed < dfl_block_input_bytes())):
-					if (t.dist[pos] == 0):
-						consumed = consumed + 1
-					else:
-						consumed = consumed + t.len[pos]
-					pos = pos + 1
-				int is_last = 0
-				if (pos >= t.count):
-					is_last = 1
-				dfl_emit_dynamic_block(w, t, block_start, pos, is_last)
-	else:
-		deflate_emit_fixed_block(w, t, 1)
+	# One pass over the token stream, cut into blocks every
+	# dfl_block_input_bytes() of input; each block independently picks
+	# its cheapest encoding (dfl_emit_block). The loop shape guarantees
+	# at least one block even for empty input (a decoder must see a
+	# BFINAL=1 block; for the empty token stream the fixed candidate --
+	# just an EOB symbol, 10 bits -- always wins).
+	int pos = 0
+	int in_pos = 0
+	int done = 0
+	while (done == 0):
+		int block_start = pos
+		int consumed = 0
+		while ((pos < t.count) && (consumed < dfl_block_input_bytes())):
+			if (t.dist[pos] == 0):
+				consumed = consumed + 1
+			else:
+				consumed = consumed + t.len[pos]
+			pos = pos + 1
+		int is_last = 0
+		if (pos >= t.count):
+			is_last = 1
+			done = 1
+		dfl_emit_block(w, data, t, block_start, pos, in_pos, consumed, level, is_last)
+		in_pos = in_pos + consumed
 
 	dfl_align_byte(w)
 	char* out_data = w.out.data
