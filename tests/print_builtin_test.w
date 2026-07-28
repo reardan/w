@@ -4,6 +4,8 @@
 # wbuild: expect_stdout="[one, two]"
 # wbuild: expect_stdout="[]"
 # wbuild: expect_stdout="big"
+# wbuild: expect_stdout="char:ww" expect_stdout="int:120"
+# wbuild: expect_stdout="idx:A" expect_stdout="byte:65" expect_stdout="97"
 # Exercises the polymorphic print/println builtin: the target compares
 # this program's stdout against the expected lines.
 import lib.lib
@@ -37,4 +39,20 @@ int main(int argc, int argv):
 	println(empty)
 	var v = 123
 	println(v)
+	# char-typed values render as characters; character literals are
+	# untyped constants ('a' above prints 97) and char arithmetic
+	# yields int, so both keep the numeric rendering
+	char letter = 'w'
+	print(c"char:")
+	print(letter)
+	println(letter)
+	print(c"int:")
+	println(letter + 1)
+	string word = s"Az"
+	print(c"idx:")
+	println(word[0])
+	# byte is a distinct 1-byte type and stays numeric
+	byte raw = 65
+	print(c"byte:")
+	println(raw)
 	return 0

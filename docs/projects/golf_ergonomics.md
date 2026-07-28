@@ -79,9 +79,10 @@ which would collide with programs that `c_import` libc's printf.
 
 Plain functions in the prelude, reachable without an import: primary
 expression parsing resolves the three names to the prelude only when no
-user symbol shadows them. `input()` returns one line (newline stripped,
-0 at EOF), `read_all()` the whole stream, `ints()` every integer in the
-input (signs included) as a `list[int]`.
+user symbol shadows them. `input()` returns one line as a UTF-8
+`string` (newline stripped; 0 at EOF — a null descriptor, false in a
+condition), `read_all()` the whole stream as a `char*`, `ints()` every
+integer in the input (signs included) as a `list[int]`.
 
 ## Script mode (grammar/program.w)
 
@@ -204,6 +205,48 @@ argument types are "unsupported len argument type: '...'"; both
 diagnostics are pinned by the prelude_math_error_test fixture group.
 No new syntax: these are ordinary call sites, so the parser-generator
 grammar is untouched.
+
+## Wave 3: better strings (issue #360 item 4)
+
+### char print (grammar/print_builtin.w, structures/prelude.w)
+
+print/println render a genuinely char-typed value as the character
+itself (one byte, via `__w_print_char`) instead of its numeric code.
+The boundary is the static type: character literals are untyped
+constants and char arithmetic yields int, so `println('a')` and
+`println(c + 1)` keep printing numerically, as do `byte`/`int8`/
+`uint8` values. `list[char]` elements and f-string `{c}`
+interpolations keep the numeric int-like rendering of the shared
+f-string helper-kind table — only the scalar print dispatch changed.
+`type_is_char` (compiler/type_table.w) is the level-0 sibling of
+`type_is_char_pointer`.
+
+### ASCII character classes (lib/str.w)
+
+`isdigit`, `isupper`, `islower`, `isalpha`, `isalnum`, `isspace`,
+`tolower`, `toupper` — the libc ctype names with byte-sized `char` in
+and out (predicates return 1/0 ints). ASCII semantics only: `char` is
+signed, so the bytes of a multi-byte UTF-8 sequence are negative,
+test false in every class and map to themselves. `tolower`/`toupper`
+return `char`, so their results print as characters through the new
+print dispatch. The names shadow libc's only for programs that import
+lib.str AND c_import ctype.h, where W symbols already win by the
+c_import skip rule.
+
+### input() returns a UTF-8 string (structures/prelude.w)
+
+`input()` now returns the line as a `string` descriptor instead of a
+`char*` (issue #360): `len(line)`, `line[i]` (a char, printing as a
+character), f-string interpolation and slicing all work directly, and
+the implicit-main echo loop stays one line. The EOF contract is
+unchanged — 0, now a null descriptor, still false in a condition.
+Tradeoff: the result no longer passes to `char*` consumers
+(`split(input(), ',')` was legal before); `cstr()`/`cstr_clone()`
+(lib/utf8.w) recover a C string, and `read_all()` deliberately stays
+`char*` so the whole-stream path keeps feeding the C-string stdlib.
+The compiler-side type lives in prelude_input_expr
+(grammar/print_builtin.w), which types `input()` exactly like an
+ordinary call to a string-returning function.
 
 ## Acceptance
 

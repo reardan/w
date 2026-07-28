@@ -77,3 +77,63 @@ void test_split_join_round_trip():
 	assert_equal(3, pieces.length)
 	char* rebuilt = join(pieces, c"-")
 	assert_strings_equal(original, rebuilt)
+
+
+void test_char_class_predicates():
+	assert_equal(1, isdigit('0'))
+	assert_equal(1, isdigit('9'))
+	assert_equal(0, isdigit('a'))
+	assert_equal(1, isupper('A'))
+	assert_equal(0, isupper('a'))
+	assert_equal(1, islower('z'))
+	assert_equal(0, islower('Z'))
+	assert_equal(1, isalpha('w'))
+	assert_equal(1, isalpha('W'))
+	assert_equal(0, isalpha('7'))
+	assert_equal(0, isalpha('_'))
+	assert_equal(1, isalnum('w'))
+	assert_equal(1, isalnum('7'))
+	assert_equal(0, isalnum(' '))
+	assert_equal(1, isspace(' '))
+	assert_equal(1, isspace(9))
+	assert_equal(1, isspace(10))
+	assert_equal(1, isspace(13))
+	assert_equal(0, isspace('x'))
+	assert_equal(0, isspace(0))
+
+
+void test_char_class_scans_a_string():
+	char* s = c"ab3 Z\x09"
+	int digits = 0
+	int letters = 0
+	int spaces = 0
+	int i = 0
+	while (s[i] != 0):
+		digits = digits + isdigit(s[i])
+		letters = letters + isalpha(s[i])
+		spaces = spaces + isspace(s[i])
+		i = i + 1
+	assert_equal(1, digits)
+	assert_equal(3, letters)
+	assert_equal(2, spaces)
+
+
+void test_char_class_non_ascii_bytes():
+	# UTF-8 continuation/lead bytes are never ASCII classes
+	char* s = c"caf\xc3\xa9"
+	assert_equal(0, isalpha(s[3]))
+	assert_equal(0, isalnum(s[4]))
+	assert_equal(0, isspace(s[3]))
+	assert_equal(s[3], tolower(s[3]))
+	assert_equal(s[4], toupper(s[4]))
+
+
+void test_case_mapping():
+	assert_equal('a', tolower('A'))
+	assert_equal('z', tolower('Z'))
+	assert_equal('a', tolower('a'))
+	assert_equal('7', tolower('7'))
+	assert_equal('A', toupper('a'))
+	assert_equal('Z', toupper('z'))
+	assert_equal('Z', toupper('Z'))
+	assert_equal(' ', toupper(' '))
