@@ -205,6 +205,72 @@ diagnostics are pinned by the prelude_math_error_test fixture group.
 No new syntax: these are ordinary call sites, so the parser-generator
 grammar is untouched.
 
+## Wave 4 (issue #360 item 9)
+
+### `elif` (grammar/statement.w)
+
+`elif cond:` is pure syntax sugar for `else if cond:`, mirroring
+Python's same-line form. The if branch of statement() moved into
+`if_statement_tail()`: condition, body, then an `elif`/`else`
+continuation bound by the same indent-level rule `else` always had.
+Each `elif` recurses into the tail with the same nesting-depth
+accounting a spelled-out `else if` chain gets from its statement()
+recursion, so the emitted control flow is identical and the depth
+guard still bounds pathological chains. A dangling `elif` falls
+through to expression parsing and dies with the same "Cannot find
+symbol" a dangling `else` produces (elif_error_test). Like the other
+statement keywords `elif` is not reserved: it is only claimed directly
+after an if branch at the same indent level (w.pg keeps KW_ELIF in
+name_token for the same reason).
+
+### Prelude any/all (grammar/print_builtin.w, structures/prelude.w)
+
+`any(l)` / `all(l)` are import-free truthiness scans following the
+max/min/abs pattern exactly: primary_expr claims the bare name only
+when sym_lookup and generic_def_lookup miss, and the call lowers to
+`__w_any`/`__w_all` in structures/prelude.w through the helper
+backpatch chains. The argument must be a `list[T]` of int-like
+elements (enums, bool, char and the fixed-width ints); maps, sets,
+buffers, floats, pointers and aggregates are rejected ("prelude 'any'
+argument must be a list of int-like elements: '...'", pinned in the
+prelude_math_error_test group). Maps and sets are deliberately out of
+v1 scope: their iteration lives in the always-imported hash runtime,
+but "any of a map" is ambiguous (keys? values?) and the loop is one
+line — revisit only with evidence. `any([])` is false, `all([])` is
+true (the Python contract).
+
+### enumerate / two-variable list iteration (grammar/for_statement.w)
+
+Decision: the core mechanism is `for i, x in l` — the second-variable
+machinery for_cursor_loop already had for maps binds the element index
+to the first variable and the element to the second. The cursor of a
+list loop already IS the index, so the first variable reads it through
+the trivial `__w_list_iter_index` accessor (structures/w_list.w) and
+everything else (struct elements as element addresses, inferred
+variable types, typed/inferred mixing) falls out of the existing
+paths. `for i, x in enumerate(l)` is accepted as explicit sugar for
+the same loop, but only in the for-in iterable position and only under
+the prelude resolve rule (a bare `enumerate(` with no user symbol or
+generic of that name; user definitions win at later call sites,
+single-pass). enumerate is NOT a general expression — W has no tuple
+type for it to produce, which is also why the one-variable
+`for x in enumerate(l)` is an error rather than a pair. Lists are the
+only enumerable shape in v1 (maps iterate key/value directly; slices
+and strings can grow the same second-variable treatment later if
+wanted). Both diagnostics live in the enumerate_error_test group.
+
+### Non-mutating sorted (grammar/list_builtin.w, structures/w_list.w)
+
+`l.sorted()` / `l.sorted_by(f)` are list methods (the list_methods
+convention — sort/sort_by are methods, and a method needs no shadowing
+rule), returning a NEW list with the source untouched. Same element
+and comparator story as sort: int-like elements compare as signed
+words, `char*` by contents, `sorted_by` passes scalar values or
+aggregate element addresses to a strcmp-style comparator. The runtime
+copies (`__w_list_copy`) and reuses the in-place sorts. Float lists
+stay with lib/stats.w's `stats_sorted`; the rejection message is
+pinned by list_sorted_error_test.
+
 ## Acceptance
 
 - `./wbuild verify` — self-host fixpoint (wv3 == wv4 == wv5) with every

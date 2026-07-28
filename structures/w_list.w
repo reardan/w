@@ -374,6 +374,36 @@ void __w_list_sort_by_addr(__w_list* list, int comparator):
 	free(temp)
 
 
+# Fresh list holding the same element bytes; staging for the
+# non-mutating sorts below.
+__w_list* __w_list_copy(__w_list* list):
+	__w_list* result = __w_list_new(list.element_size)
+	__w_list_ensure(result, list.length)
+	__w_list_copy_bytes(result.items, list.items, list.length * list.element_size)
+	result.length = list.length
+	return result
+
+
+# Non-mutating sorts (issue #360): copy the list, then reuse the
+# in-place sorts on the copy.
+__w_list* __w_list_sorted(__w_list* list, int kind):
+	__w_list* result = __w_list_copy(list)
+	__w_list_sort(result, kind)
+	return result
+
+
+__w_list* __w_list_sorted_by(__w_list* list, int comparator):
+	__w_list* result = __w_list_copy(list)
+	__w_list_sort_by(result, comparator)
+	return result
+
+
+__w_list* __w_list_sorted_by_addr(__w_list* list, int comparator):
+	__w_list* result = __w_list_copy(list)
+	__w_list_sort_by_addr(result, comparator)
+	return result
+
+
 # New list of f(x) for every x; the compiler passes the result element
 # size because f may map to a different scalar type.
 __w_list* __w_list_map(__w_list* list, int f, int result_element_size):

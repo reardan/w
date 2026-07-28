@@ -1924,6 +1924,7 @@
 				"limb_builtin_shadow_64_test",
 				"line_edit_paste_64_test",
 				"list_builtin_64_test",
+				"list_sorted_64_test",
 				"lsm_64_test",
 				"malloc_churn_64_test",
 				"map_float_64_test",
@@ -2459,6 +2460,7 @@
 				"line_edit_completion_test",
 				"line_edit_paste_test",
 				"list_methods_test",
+				"list_sorted_test",
 				"lsm_test",
 				"malloc_churn_test",
 				"map_float_test",
@@ -4167,6 +4169,33 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/list_methods_test.w", "-o", "bin/list_methods_test"]},
 				{"cmd": ["bin/list_methods_test"]}
+			]
+		},
+		{
+			"name": "list_sorted_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/list_sorted_test.w"],
+			"outputs": ["bin/list_sorted_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/list_sorted_test.w", "-o", "bin/list_sorted_64_test"]},
+				{"cmd": ["bin/list_sorted_64_test"]}
+			]
+		},
+		{
+			"name": "list_sorted_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/list_sorted_error_fixture.w"]}
+			]
+		},
+		{
+			"name": "list_sorted_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/list_sorted_test.w"],
+			"outputs": ["bin/list_sorted_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/list_sorted_test.w", "-o", "bin/list_sorted_test"]},
+				{"cmd": ["bin/list_sorted_test"]}
 			]
 		},
 		{
