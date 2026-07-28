@@ -188,7 +188,15 @@ is a queue, not an archive.
   runtime.w` (in the closure) gets the gate, `generator.w` (pg-tool
   code the compiler never links) does not —
   `tests/wtest/map_expectations.expect` pins both directions plus a
-  non-closure `lib/stats.w` negative.
+  non-closure `lib/stats.w` negative. Residue (inherited `X`-entry
+  semantics): a failed `deps w.w` run — e.g. `bin/wtest` invoked while
+  `bin/wv2` is missing — caches the failure against w.w's own content
+  hash, so the derived rule silently stays on the prefix floor until
+  w.w itself changes even after the compiler reappears; rule (b) has
+  always cached root failures this way (its literal matching covers
+  the gap there), but for the seed rule the only cover is the floor.
+  If that bites in practice, invalidate failure entries on `bin/wv2`'s
+  mtime/hash too.
 - **(2026-07-28, issue #360 item 5) Editing an auto-imported runtime
   file selects essentially the whole manifest.** `structures/w_list.w`
   is in every program's import closure, so `git diff --name-only
