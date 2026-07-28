@@ -5,6 +5,18 @@
 			"steps": [
 				{"cmd": ["wexec_xok_probe"], "expect_stdout": "xok probe: real executable ran"}
 			]
+		},
+		{
+			"name": "unusable",
+			"steps": [
+				{"cmd": ["wexec_xok_unusable"]}
+			]
+		},
+		{
+			"name": "missing",
+			"steps": [
+				{"cmd": ["wexec_xok_no_such_command"]}
+			]
 		}
 	]
 }
