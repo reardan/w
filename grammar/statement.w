@@ -6,6 +6,8 @@
  *     type-name identifier = expression;
  *     if expression statement                (parentheses optional)
  *     if expression statement else statement (parentheses optional)
+ *     if expression statement elif expression statement ...
+ *                                            ('elif' is sugar for 'else if')
  *     while expression statement             (parentheses optional)
  *     for type-name identifier in range args statement
  *     switch expression : case-clauses       (parentheses optional)
@@ -140,11 +142,43 @@ int result_propagate_suffix(int type):
 	return payload_type
 
 
-void statement():
-	int p1
-	int p2
-	int if_tab_level
+# 'if' has been consumed; parse the condition, the branch body and any
+# 'elif'/'else' continuation at the same indent level. 'elif cond:' is
+# pure sugar for 'else if cond:' (issue #360): each elif recurses here,
+# so the chain compiles exactly like the spelled-out nesting.
+void if_statement_tail():
+	int if_tab_level = tab_level
+	int outer_condition = condition_context
+	condition_context = 1
+	int p1 = be_ctrl_block() /* ends after the whole if/elif/else */
+	int p2 = be_ctrl_block() /* ends at the elif/else branch */
+	promote(expression())
+	condition_context = outer_condition
+	be_br_zero(p2)
+	enclosing_tab_level = if_tab_level
+	statement()
+	be_br(p1)
+	be_ctrl_end(p2)
+	# An 'elif'/'else' only binds to an 'if' at the same indent level
+	if (peek(c"elif") && (tab_level == if_tab_level)):
+		get_token()
+		# The recursion mirrors the statement() recursion a spelled-out
+		# 'else if' chain makes, so the nesting guard bounds elif chains
+		# the same way (see the comment in statement() below)
+		stmt_nesting_depth = stmt_nesting_depth + 1
+		if (stmt_nesting_depth > 200):
+			error(c"statement nesting too deep")
+		if_statement_tail()
+		stmt_nesting_depth = stmt_nesting_depth - 1
+	else if (peek(c"else")):
+		if (tab_level == if_tab_level):
+			get_token()
+			enclosing_tab_level = if_tab_level
+			statement()
+	be_ctrl_end(p1)
 
+
+void statement():
 	# Recursion-depth guard (compiler/tokenizer.w): every nested block body
 	# ('{...}', a tab-scoped ':' block, or an if/while/for/switch body)
 	# recurses back through this same function, so wrapping its one entry
@@ -229,27 +263,9 @@ void statement():
 	else if (variable_declaration() >= 0):
 		expect_or_newline(c";")
 
-	# if expression statement else statement (parentheses optional)
+	# if expression statement [elif/else ...] (parentheses optional)
 	else if (accept(c"if")):
-		if_tab_level = tab_level
-		int outer_condition = condition_context
-		condition_context = 1
-		p1 = be_ctrl_block() /* ends after the whole if/else */
-		p2 = be_ctrl_block() /* ends at the else branch */
-		promote(expression())
-		condition_context = outer_condition
-		be_br_zero(p2)
-		enclosing_tab_level = if_tab_level
-		statement()
-		be_br(p1)
-		be_ctrl_end(p2)
-		# An 'else' only binds to an 'if' at the same indent level
-		if (peek(c"else")):
-			if (tab_level == if_tab_level):
-				get_token()
-				enclosing_tab_level = if_tab_level
-				statement()
-		be_ctrl_end(p1)
+		if_statement_tail()
 
 	else if (while_statement()) {}
 	else if (gpu_for_statement()) {}

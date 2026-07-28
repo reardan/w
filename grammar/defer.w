@@ -91,7 +91,7 @@ void defer_check_form():
 		error(c"'return' is not allowed in a deferred statement")
 	if (peek(c"defer")):
 		error(c"'defer' cannot be nested in a deferred statement")
-	if (peek(c"if") | peek(c"else") | peek(c"while") | peek(c"for") |
+	if (peek(c"if") | peek(c"elif") | peek(c"else") | peek(c"while") | peek(c"for") |
 			peek(c"break") | peek(c"continue") | peek(c"yield") | peek(c"pass") |
 			peek(c"debugger") | peek(c"raw_asm") | peek(c"{") | peek(c":")):
 		error(c"deferred statement must be a simple expression statement")

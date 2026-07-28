@@ -291,6 +291,14 @@ int __w_list_iter_value(__w_list* list, int cursor):
 	return __w_list_load_word(list.items + cursor * list.element_size, list.element_size)
 
 
+# Two-variable list iteration ("for i, x in l", issue #360): the cursor
+# is the element index, exposed through the same accessor shape the
+# other iter helpers have so for_cursor_loop can bind it to the first
+# loop variable.
+int __w_list_iter_index(__w_list* list, int cursor):
+	return cursor
+
+
 # Copy n bytes; staging for aggregate sort_by and reverse.
 void __w_list_copy_bytes(char* dst, char* src, int n):
 	int i = 0
@@ -404,6 +412,36 @@ void __w_list_sort_by_addr(__w_list* list, int comparator):
 		__w_list_copy_bytes(list.items + (j + 1) * list.element_size, temp, list.element_size)
 		i = i + 1
 	free(temp)
+
+
+# Fresh list holding the same element bytes; staging for the
+# non-mutating sorts below.
+__w_list* __w_list_copy(__w_list* list):
+	__w_list* result = __w_list_new(list.element_size)
+	__w_list_ensure(result, list.length)
+	__w_list_copy_bytes(result.items, list.items, list.length * list.element_size)
+	result.length = list.length
+	return result
+
+
+# Non-mutating sorts (issue #360): copy the list, then reuse the
+# in-place sorts on the copy.
+__w_list* __w_list_sorted(__w_list* list, int kind):
+	__w_list* result = __w_list_copy(list)
+	__w_list_sort(result, kind)
+	return result
+
+
+__w_list* __w_list_sorted_by(__w_list* list, int comparator):
+	__w_list* result = __w_list_copy(list)
+	__w_list_sort_by(result, comparator)
+	return result
+
+
+__w_list* __w_list_sorted_by_addr(__w_list* list, int comparator):
+	__w_list* result = __w_list_copy(list)
+	__w_list_sort_by_addr(result, comparator)
+	return result
 
 
 # New list of f(x) for every x; the compiler passes the result element

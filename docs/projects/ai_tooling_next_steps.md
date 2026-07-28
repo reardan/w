@@ -209,6 +209,17 @@ is a queue, not an archive.
   step references, and say so in one line, instead of enumerating the
   world; a `--runnable-here` filter (skip targets whose steps need
   binaries/hosts this machine lacks) would compose well with that.
+- **(2026-07-28, wave 4a) invoking the compiler from outside a
+  checkout cannot resolve the auto-imported runtime.** With CWD in a
+  scratch directory, `/path/to/repo/bin/wv2 check snippet.w` fails
+  with "cannot locate 'structures/hash_table.w' (searched the current
+  directory and every parent)": runtime-import resolution walks up
+  from the CWD, ignoring where the compiler binary itself lives. Same
+  invocation from the repo root (absolute snippet path) works. Agents
+  compile throwaway snippets from scratch directories constantly;
+  falling back to the running binary's own directory (argv[0]) before
+  erroring would make that workflow just work. Workaround: always cd
+  to the checkout and pass the snippet's absolute path.
 - **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
   commit-ranged selection MVP** (issue #251 direction 4b). `changed`
   (not `for`) now treats a single positional argument containing `..`
