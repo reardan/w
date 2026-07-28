@@ -742,6 +742,32 @@ ergonomic gap:
   teaching `pg_plan_choice`/`pg_emit_streaming_choice` to treat a
   trailing nullable unit like the empty-suffix fallback.
 
+- **Minor: `parser_generator_w_test`'s batched failure output is hard
+  to attribute** (multi-assign work, 2026-07-28).
+  `tools/parser_generator_w_batches.sh` reruns the same binary once per
+  150-file slice, so a failing run interleaves dozens of
+  "test_parse_all_tracked_w_files() passed!" banners (the other
+  batches) around one batch's stack trace, and `wexec` reports only
+  "step 4: command failed" — an agent grepping for pass/fail sees both
+  and has to rerun with a hand-trimmed
+  `bin/parser_generator_w_files.txt` to isolate the culprit. The
+  decisive "file:line:col: syntax error" line IS printed but is easy
+  to lose in ~500 lines of per-test chatter. Cheap fix: have the batch
+  script echo "batch N (files X..Y) FAILED" on non-zero exit, or have
+  the manifest test print the failing path again right before exiting.
+
+- **w.pg gotcha for statement-level list productions**: `gap_many`'s
+  line continuation inside `binary_tail` means a line ending in an
+  expression absorbs a following line's leading `*` as a
+  multiplication (`int* p = &b` + `*q, ... = ...` reads as `&b * q`),
+  so any new statement-level tail production (the multi-assign comma
+  list) must also be reachable from every context that can end in an
+  expression, not just `expression_stmt` — `local_suffix` needed the
+  same `expr_stmt_tail*`. The compiler's tokenizer is newline-
+  sensitive and never joins those lines, so the mismatch only
+  surfaces as a `parser_generator_w_test` failure on the new test
+  file, one gate late.
+
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 
 - **(2026-07-19 review) Paste/line-editor gaps found reviewing wave C's
