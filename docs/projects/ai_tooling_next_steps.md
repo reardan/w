@@ -142,6 +142,21 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
+- **(2026-07-28, streaming nullable-fallback work) `wtest changed` never
+  selects `verify` for seed-graph `libs/extras/` edits.**
+  `tools/test_map.w`'s `wtest_compiler_tree` covers `w.w`/`grammar.w`/
+  `codegen.w` and `compiler/`/`grammar/`/`code_generator/`, but not
+  `libs/extras/parser_generator/`, `libs/extras/c_import/`, or
+  `libs/extras/c_preprocessor/` -- all in `w.w`'s transitive import
+  closure via the C-import feature, so an edit there rebuilds every
+  compiler stage and can corrupt self-hosting exactly like a `compiler/`
+  edit. Editing `libs/extras/parser_generator/analysis.w`+`generator.w`
+  printed the parser_generator suite, `manifest_check`, `metadata_check`,
+  and `wexec_test`, but not `verify` (CLAUDE.md and the wave plan both
+  name `verify` as the required gate for those files). Either extend
+  `wtest_compiler_tree` to the three seed-graph `libs/extras/` trees, or
+  better, derive the "compiler tree" set from `bin/wv2 deps w.w` instead
+  of a hard-coded prefix list so it can never go stale again.
 - **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
   commit-ranged selection MVP** (issue #251 direction 4b). `changed`
   (not `for`) now treats a single positional argument containing `..`
