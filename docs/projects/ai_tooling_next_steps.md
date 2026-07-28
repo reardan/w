@@ -364,16 +364,6 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
 
 ## Cleanup observed while dogfooding
 
-- **(2026-07-25) `lib/format_test.w`'s 32/64-bit twins race on a fixed
-  temp path**: both `format_test` and `format_64_test` write and read
-  back `/tmp/w_format_test.txt` (O_TRUNC on open), so a parallel
-  `./wbuild tests` / `test_changed` run can interleave them —
-  observed as `test_hex_verb` asserting `wanted '0x000000ff' got ''`
-  in `format_64_test` while `format_test` ran concurrently; both pass
-  standalone. Fix is to pid-scope the path (the
-  `bin/<name>_test_<pid>` convention other tests use). Line 20's
-  `args[1] = c"abc"` also warns (`assignment type mismatch: expected
-  'int', got 'char*'`) on every compile of the test.
 - **arm64 self-host stage 2 regression ("Failed to find a _main()
   function") — expected fixed by f13ab7f, UNCONFIRMED.** The third
   sighting of the one bug behind the "context-dependent codegen"
