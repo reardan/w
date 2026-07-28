@@ -439,7 +439,9 @@ current state:
 
 	net:
 		working:
-			basic socket/connect/server paths
+			basic socket/connect/server paths (direct socket syscalls on
+				every target incl. i386, Linux 4.3+; the socketcall(2)
+				multiplexer is retired from lib/__arch__/x86)
 			udp sendto/recvfrom helpers
 			poll, nonblocking sockets, monotonic clock and sleep_ms
 			Content-Length framing (lib/framing.w)
@@ -449,8 +451,6 @@ current state:
 			http/https server framework (libs/standard/web/connection.w +
 				http_server.w: ServerContext accept loop, RequestContext/
 				routing, keep-alive, HTTPS via tls_accept; issue #235)
-		remaining:
-			socketcall cleanup
 
 	web ui:
 		editor
