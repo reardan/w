@@ -1,0 +1,30 @@
+# Streaming-mode nullable-fallback sample (docs/projects/
+# ai_tooling_next_steps.md, ParserGenerator streaming codegen): a
+# nullable, non-empty factored suffix is legal when it is trailing-
+# fallback-equivalent -- every sibling after it is a strict epsilon,
+# dead under ordered choice because the nullable suffix always matches
+# first (pg_choice_unit_is_nullable_fallback in analysis.w). `value` is
+# the shape's minimal form: after factoring the shared IDENT, the WS?
+# suffix becomes the whole choice body and the dead epsilon is dropped.
+# `pair` puts the nullable suffix mid-alternatives: the guarded NUMBER
+# suffix still dispatches first on its first set, WS? is emitted as the
+# final else branch, and the trailing epsilon alternative is dropped as
+# dead. generated_streaming_fallback_test.w drives both rules over real
+# input; streaming_guard_reject.pg pins the sibling shape that stays
+# rejected.
+parser streaming_fallback
+mode streaming
+
+token IDENT letters
+token NUMBER digits
+token WS = [ \t]+
+literal SEMI ";"
+literal COMMA ","
+
+start document
+
+rule value = IDENT WS? | IDENT
+rule pair = IDENT NUMBER | IDENT WS? | IDENT
+rule statement = SEMI value | COMMA pair
+rule statement_list = statement statement_list |
+rule document = statement_list EOF
