@@ -245,10 +245,15 @@ void le_write_csi(int n, char* suffix):
 
 
 # Render the incremental reverse-search prompt in place of the ordinary
-# line: "(reverse-i-search)'query': matched-history-line". Kept as one
-# plain, unwrapped row (the minimal readline-style behavior the feature
-# asks for) rather than sharing le_render's multi-row wrap tracking.
+# line: "(reverse-i-search)'query': matched-history-line". The search row
+# itself is kept as one plain, unwrapped row (the minimal readline-style
+# behavior the feature asks for), but the edited line it replaces may
+# have wrapped: climb the rows the previous render occupied first, the
+# way le_render does, or the clear starts at the cursor's row and the
+# wrapped rows above it survive as stale text.
 void le_render_search():
+	if (le_prev_rows > 1):
+		le_write_csi(le_prev_rows - 1, c"A")
 	put_char(13)
 	le_write(c"\x1b[J")
 	le_write(c"(reverse-i-search)'")
@@ -758,7 +763,28 @@ int le_search_step(char* buf, int size, int c):
 	if (c == 18): /* Ctrl-R again: older match */
 		le_search_older()
 		return 0
-	if ((c == 3) || (c == 27)): /* Ctrl-C / Esc: cancel */
+	if (c == 3): /* Ctrl-C: cancel */
+		le_search_cancel(buf, size)
+		return 0
+	if (c == 27):
+		# Esc alone cancels, but an arrow/home/end/delete key arrives as
+		# ESC '[' (or ESC 'O') plus a tail -- identify which before
+		# acting, or the cancel consumes the ESC and the sequence's tail
+		# ("[A") lands in the buffer as literal text.
+		int c1 = le_getchar()
+		if ((c1 == '[') || (c1 == 'O')):
+			# A key sequence, not a cancel: end the search like any other
+			# non-search key (the current match becomes the live buffer)
+			# and re-deliver the whole sequence, ESC first, so the
+			# ordinary dispatch loop handles the key itself.
+			if (le_search_match >= 0):
+				le_set_line(buf, size, le_history_at(le_search_match))
+			le_search_end_state()
+			le_pushback(c1)
+			le_pushback(27)
+			return 0
+		if (c1 != -1):
+			le_pushback(c1) /* real input typed after the lone ESC */
 		le_search_cancel(buf, size)
 		return 0
 	if ((c == 13) || (c == 10)): /* Enter: accept the match */
@@ -868,6 +894,16 @@ int le_finish_line(char* buf):
 	return le_len
 
 
+# A pasted embedded newline accepts the line exactly like Enter, but the
+# bytes of that line inserted since the last render have never been
+# drawn -- finishing without a render used to leave one bare newline per
+# pasted line on screen. Render the completed line first, then finish as
+# usual (le_finish_line still keeps mid-paste fragments out of history).
+int le_paste_finish(char* prompt, char* buf):
+	le_render(prompt, buf)
+	return le_finish_line(buf)
+
+
 int line_edit_read(char* prompt, char* buf, int size, char* initial):
 	if (term_raw_mode(0) == 0):
 		return le_read_plain(prompt, buf, size)
@@ -893,7 +929,7 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 		# embedded blank line is handled the same way it would be if the
 		# whole paste had arrived inside one call.
 		if (le_paste_consume(buf, size)):
-			return le_finish_line(buf)
+			return le_paste_finish(prompt, buf)
 
 	le_render(prompt, buf)
 
@@ -975,8 +1011,8 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 		else if (c == 18): /* Ctrl-R: incremental reverse history search */
 			le_search_begin(buf)
 		else if (c == 27):
-			if (le_escape(buf, size)):
-				return le_finish_line(buf)
+			if (le_escape(buf, size)): /* a pasted embedded newline */
+				return le_paste_finish(prompt, buf)
 		else if (c == 9): /* Tab: complete, or insert if nothing matches */
 			if (le_try_complete(buf, size) == 0):
 				le_insert_char(buf, size, c)

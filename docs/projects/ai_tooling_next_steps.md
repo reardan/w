@@ -718,6 +718,12 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   delegates. Pinned by `tests/process_bytes_test.w` (embedded-NUL and
   >4KB payloads round-tripped through `/bin/cat`, plus the legacy
   truncation contract).**
+- **(2026-07-27) `attach_test` failed once under a cold 20-target
+  parallel run** (`sh tools/attach_test.sh` step, exit 1, right after
+  two `condition on breakpoint 1 failed to compile` lines); standalone
+  and warm-batch reruns are green. Plausibly a `timeout 30` wdbg
+  invocation exceeded under compile load — if it recurs, bump the
+  per-case timeout or serialize the script's x64 half.
 
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
@@ -761,12 +767,16 @@ ergonomic gap:
   doubles the buffer while the hook reports it full, which also fixes the
   truncated set's over-inserted common prefix); `le_paste_consume`'s
   auto-indent-seed drop is byte-exact (`le_text_equals` against the
-  seed's snapshot), so same-length typed text survives a paste. Still
-  open: multi-line paste renders only bare newlines; an arrow key during
-  Ctrl-R cancels on ESC then inserts the residual "[A" as literal text
-  (the cancel consumes the ESC before the sequence is identified);
-  starting a search while the edited line wraps leaves stale wrapped
-  rows (`le_render_search` never climbs `le_prev_rows`).
+  seed's snapshot), so same-length typed text survives a paste. The
+  remaining three gaps closed 2026-07-28: a pasted embedded newline now
+  renders the completed line before accepting it (`le_paste_finish`), so
+  a multi-line paste no longer shows one bare newline per line; an ESC
+  during Ctrl-R probes for a following `[`/`O` before acting, so an
+  arrow key ends the search (the match becomes the live buffer) and is
+  re-delivered whole to the ordinary dispatch loop instead of
+  half-cancelling and inserting a residual "[A"; and `le_render_search`
+  climbs `le_prev_rows` before clearing, the way `le_render` does, so
+  starting a search on a wrapped line repaints its stale wrapped rows.
 - **(2026-07-19 review) shell-mode translator divergences** — fixed
   2026-07-25 (`repl/shell_translate.w`, pinned by
   `tests/shell_commands_test.w`): `echo` now honors `-n` only as a
@@ -867,10 +877,15 @@ ergonomic gap:
   keystroke, and by unit-testing the pure search-state transitions
   (`le_search_begin`/`le_search_refine`/`le_search_older`/
   `le_search_backspace` in `tests/line_edit_completion_test.w`) directly,
-  bypassing `getchar()` entirely. A reusable `tools/pty_test.py` (or a W
-  equivalent using a real `pty`/`fork` pair with an explicit "wait for
-  marker text" step) would let future agents script this class of
-  keystroke instead of falling back to manual verification each time.
+  bypassing `getchar()` entirely. **Shipped (2026-07-28):
+  `tools/pty_test.py`** is that reusable harness — it spawns the command
+  under a real pty and waits for a marker (e.g. the "w> " prompt, proof
+  `term_raw_mode()` already ran) before writing each keystroke chunk,
+  driven by a simple expect/send script format with `\xHH` escapes;
+  `tests/repl_pty_ctrl_r.pty` scripts a Ctrl-R history search end to end
+  against a fresh repl build (build.base.json's `repl_pty_test` target),
+  so future agents can script this class of keystroke instead of
+  falling back to manual verification each time.
 - **Minor: `bin/wtest changed`'s first-run import-closure cache build
   can far exceed the documented ~35s.** Right after a full
   `./wbuild build --no-cache` + `verify` + `verify_x64` cycle (ctrl
