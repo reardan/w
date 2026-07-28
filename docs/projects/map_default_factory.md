@@ -1,9 +1,74 @@
 # Map default-value factory / nested auto-vivification (issue #327)
 
-Design pass for issue #327, a narrowed respawn of #152. This is a
-**design-only** document: it lays out the current state, the three
-candidate surfaces the issue names, a recommendation, and a test/
-diagnostics plan. No implementation lands here.
+Design pass for issue #327, a narrowed respawn of #152. Originally a
+design-only document; §3's recommendation has since been implemented —
+see Status directly below. §§1-6 are kept as written for the rationale
+record.
+
+## Status (2026-07, implemented)
+
+§3's recommendation landed: **Surface A with Surface C folded in**, as
+`new map[K, V](...)`:
+
+- `new map[K, V](value)` — stored scalar default; every missing `m[k]`,
+  `m[k] op= v`, and one-argument `m.get(k)` inserts and returns it.
+- `new map[K, V](factory)` — zero-argument factory (a named function or
+  an `fn() -> V` alias-pointer value), called per missing key.
+  **Required** for pointer and container value types (the §2 aliasing
+  footgun): a bare value there is
+  `map default for a container or pointer value type must be a factory
+  function`.
+- `new map[K, container]()` — argument omitted: the compiler synthesizes
+  the empty-container factory (Surface C's shape check gating *which*
+  factory, the parens gating *whether*). A synthesized inner **map**
+  whose value type is a plain arithmetic scalar also defaults those to
+  a zero word, so `outer[a][b] += 1` on a completely fresh `a` works
+  with no user factory. Deeper nesting than that one synthesized pair
+  chains through explicit factories
+  (`tests/map_default_test.w:test_three_level_nesting_with_factories`).
+
+Implementation shape: two new words on `__w_hash_table`
+(`default_kind`/`default_value`, `structures/hash_table.w`), applied
+inside `__w_map_get`'s miss path — so no read/compound lowering changed
+at all, and every map without the constructor argument keeps the
+byte-identical trap. Construction-side lowering is
+`hash_map_default_suffix()` in `grammar/hash_builtin.w`, hooked from
+`grammar/unary_expression.w`'s `new map` branch. No
+`tests/parser_generator/w.pg` change was needed: `new_tail` already
+accepted `LPAREN arg_list RPAREN` (the §1 coverage-gap note), confirmed
+by `parser_generator_w_test`.
+
+Resolved open questions (§6): (1) `new map[K, V](...)`, no separate
+`map_default` constructor; (2) yes — a defaulted read inserts
+(observable via `.length`/`.keys()`, pinned by
+`tests/map_default_test.w`); (3) recursion is carried by the factory's
+own return (a factory returning a defaulting map gives full nested
+behavior), plus the one-level scalar-zero synthesis above for the
+argument-omitted form; (4) no — `.add` stays orthogonal and accumulates
+from the zero slot, never the default (pinned by
+`test_add_stays_orthogonal_to_defaults`). Surface B (`setdefault`) did
+not land: `.get(k, default)` (read-only) plus defaulted construction
+covers its use cases; it can still be added later as a thin wrapper
+over `__w_map_vivify`.
+
+Narrowings vs. §2's sketch: struct value types are rejected in **both**
+forms (`map default does not support struct value types`) rather than
+allowing a by-value struct default — vivification stores a word, and
+the per-key-freshness acceptance test is covered by pointer factories
+(`test_pointer_factory_no_aliasing`); `.get(k, default)` keeps its
+non-inserting, per-call-default contract even on a defaulted map
+(pinned by `test_get_with_explicit_default_does_not_insert`); `in` and
+iteration never vivify.
+
+Tests: `tests/map_default_test.w` (+ x64 twin) for §4's acceptance
+list, `tests/map_default_trap_test.w` (+ x64 twin) for the unchanged
+trap on non-opted-in maps (compound path included; `container_trap_test`
+still pins the plain-read trap), and the
+`map_default_{empty,struct,factory_required}_error_fixture.w` /
+`map_default_warning_fixture.w` diagnostics under `map_set_builtin_test`
+in `build.base.json`.
+
+The original design-only text follows.
 
 ## Recap: what's already shipped, what's still missing
 

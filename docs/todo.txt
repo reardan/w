@@ -98,6 +98,7 @@ current state:
 			m.add(key) / m.add(key, delta) accumulation from zero (integer and float values; float64 on x64)
 			m[k] op= v compound assignment (key evaluated once, missing key traps; the trap names the key)
 			m.keys(), m.values() and s.keys() insertion-order list snapshots
+			new map[K, V](value|factory) / new map[K, container]() opt-in missing-key defaults with auto-vivification (issue #327; docs/projects/map_default_factory.md)
 			string keys compare by contents
 			for-in iteration over map keys and set members
 			for k, v in map two-variable iteration
@@ -424,7 +425,7 @@ current state:
 		global default values
 
 	future data structures:
-		dict (done: built-in map iterates in insertion order, issue #145)
+		dict (done: built-in map iterates in insertion order, issue #145; defaultdict-style opt-in defaults with auto-vivification, issue #327)
 		matrix / multi-dimensional arrays (v1 done: lib/ndarray.w/
 			ndarray64.w library substrate, issue #27; grammar-level
 			indexing sugar still future work; design: docs/projects/ndarray.md)

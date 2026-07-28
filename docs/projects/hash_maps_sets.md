@@ -25,8 +25,17 @@ container pointer, not the entries.
 - `map[K, V]` is a map from key type `K` to value type `V`.
 - `set[K]` is a set of keys of type `K`.
 - `new map[K, V]` and `new set[K]` allocate empty containers.
+- `new map[K, V](value)` / `new map[K, V](factory)` /
+  `new map[K, container]()` allocate a map with an **opt-in
+  missing-key default** (issue #327): `m[k]`, `m[k] op= v` and
+  one-argument `m.get(k)` on a missing key insert and return the
+  stored scalar `value`, the zero-argument `factory`'s fresh result,
+  or a synthesized empty inner container instead of trapping. Pointer
+  and container value types require the factory form; struct value
+  types take no default. See `docs/projects/map_default_factory.md`.
 - `map[K, V]{k: v, ...}` and `set[K]{v, ...}` allocate and populate literals.
-- `m[k]` returns the value for `k`; missing keys are an error.
+- `m[k]` returns the value for `k`; missing keys are an error unless
+  the map was built with a `new map[K, V](...)` default.
 - `m[k] = v` inserts or overwrites.
 - `k in m` and `k in s` test membership and return `bool`.
 - `.length` returns the number of live entries.
