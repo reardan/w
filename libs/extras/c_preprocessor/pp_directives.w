@@ -295,6 +295,25 @@ int cpp_eval_directive_expr(cpp_preprocessor* pp, cpp_token* directive, cpp_toke
 	return cpp_eval_if_expr(pp.macros, expr)
 
 
+# The rest of a directive line as display text: the tokens from 'token'
+# up to 'end', joined with a single space wherever the source had
+# whitespace (the same spacing rule as cpp_render_tokens). Returns a
+# heap string; empty when the directive carries no further tokens.
+# Used to echo an '#error' directive's own message in its diagnostic.
+char* cpp_directive_message_text(cpp_token* token, cpp_token* end):
+	string_builder* out = string_new()
+	while ((token != 0) && (token != end)):
+		if (token.kind == cpp_token_eof()):
+			break
+		if ((out.length > 0) && token.has_space):
+			string_append_char(out, ' ')
+		string_append(out, token.text)
+		token = token.next
+	char* result = strclone(out.data)
+	string_free(out)
+	return result
+
+
 void cpp_process_directive(cpp_preprocessor* pp, cpp_token* hash, cpp_token* end):
 	cpp_token* directive = hash.next
 	if (directive == 0):
@@ -333,6 +352,10 @@ void cpp_process_directive(cpp_preprocessor* pp, cpp_token* hash, cpp_token* end
 	else if (cpp_token_is_ident(directive, c"error")):
 		diag_part(c"c preprocessor: #error in ")
 		diag_part(pp.current_file)
+		char* message = cpp_directive_message_text(directive.next, end)
+		if (message[0] != 0):
+			diag_part(c": ")
+			diag_part(message)
 		error(c"")
 
 

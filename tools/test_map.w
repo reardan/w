@@ -71,8 +71,10 @@ build. For a changed path P the emitted targets are the union of:
         suite: the C-import machinery is loaded by the compiler itself,
         not through recorded imports.
         tests/c_import_skip_note_fixture.h additionally ->
-        c_import_verbose_note_test: the header is read by c_import at
-        compile time, invisible to the import graph.
+        c_import_verbose_note_test, and
+        tests/c_import_error_directive_fixture.h ->
+        c_import_error_directive_test: those headers are read by
+        c_import at compile time, invisible to the import graph.
       - libs/standard/net/x509_fixtures/ -> net_x509_test and
         tests/metadata/ -> metadata_test: run-time fixture data.
       - tests/wexec/remote_cache.json -> wexec_remote_cache_test: the
@@ -1909,9 +1911,13 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		wtest_add(path, c"c_import_errno_test")
 		wtest_add(path, c"c_import_libc_test")
 		wtest_add(path, c"c_import_verbose_note_test")
+		wtest_add(path, c"c_import_error_directive_test")
 		matched = 1
 	if (strcmp(path, c"tests/c_import_skip_note_fixture.h") == 0):
 		wtest_add(path, c"c_import_verbose_note_test")
+		matched = 1
+	if (strcmp(path, c"tests/c_import_error_directive_fixture.h") == 0):
+		wtest_add(path, c"c_import_error_directive_test")
 		matched = 1
 	if (starts_with(path, c"libs/standard/net/x509_fixtures/")):
 		wtest_add(path, c"net_x509_test")
