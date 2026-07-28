@@ -152,3 +152,35 @@ void test_cross_file_generic():
 	box[char] c
 	c.value = 'x'
 	assert_equal('x', unbox[char](&c))
+
+
+# A 'T*' field/local with a pointer type argument must STACK pointer
+# levels ('T*' with T = char* is char**), not collapse to the star
+# count: type_name() builds the new level from the substituted type's
+# own pointer level (grammar/type_name.w).
+struct pstore[T]:
+	int length
+	T* items
+
+
+int pstore_sum_first_chars[T](pstore[T]* s):
+	T* p = s.items
+	int sum = 0
+	int i = 0
+	while (i < s.length):
+		T element = p[i]
+		sum = sum + element[0]
+		i = i + 1
+	return sum
+
+
+void test_pointer_type_argument_stacks_levels():
+	char* words = 0
+	pstore[char*] s
+	s.length = 2
+	s.items = cast(char**, malloc(2 * __word_size__))
+	s.items[0] = c"apple"
+	s.items[1] = c"banana"
+	assert_equal('a' + 'b', pstore_sum_first_chars[char*](&s))
+	words = s.items[1]
+	assert_equal('b', words[0])
