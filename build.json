@@ -2005,7 +2005,8 @@
 				"vcs_tree_64_test",
 				"wal_64_test",
 				"wbuild_arch_only_test",
-				"wbuild_directive_64_test"
+				"wbuild_directive_64_test",
+				"window_64_test"
 			]
 		},
 		{
@@ -2547,6 +2548,7 @@
 				"wbuild_directive_test",
 				"wbuild_platform_test",
 				"wbuildgen_directive_errors_test",
+				"window_test",
 				"x25519_test",
 				"wbuild_platform_test_darwin"
 			]
@@ -6070,6 +6072,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/wexec_remote_cache_test.w", "-o", "bin/wexec_remote_cache_test"]},
 				{"cmd": ["bin/wexec_remote_cache_test"]}
+			]
+		},
+		{
+			"name": "window_64_test",
+			"deps": ["wv2"],
+			"inputs": ["lib/window_test.w"],
+			"outputs": ["bin/window_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/window_test.w", "-o", "bin/window_64_test"]},
+				{"cmd": ["bin/window_64_test"]}
+			]
+		},
+		{
+			"name": "window_test",
+			"deps": ["wv2"],
+			"inputs": ["lib/window_test.w"],
+			"outputs": ["bin/window_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/window_test.w", "-o", "bin/window_test"]},
+				{"cmd": ["bin/window_test"]}
 			]
 		},
 		{
