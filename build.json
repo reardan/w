@@ -1888,6 +1888,7 @@
 				"deep_nesting_64_test",
 				"default_args_64_test",
 				"defer_64_test",
+				"deque_64_test",
 				"dns_64_test",
 				"env_64_test",
 				"event_loop_64_test",
@@ -1907,6 +1908,7 @@
 				"generics_inference_64_test",
 				"getchar_checked_64_test",
 				"hash_table_64_test",
+				"heap_64_test",
 				"http_client_64_test",
 				"http_server_64_test",
 				"http_server_route_64_test",
@@ -2414,6 +2416,7 @@
 				"compress_zlib_test",
 				"cstr_test",
 				"deep_nesting_test",
+				"deque_test",
 				"directory_test",
 				"dns_test",
 				"env_test",
@@ -2435,6 +2438,7 @@
 				"getchar_checked_test",
 				"grapheme_test",
 				"hash_table_test",
+				"heap_test",
 				"hkdf_test",
 				"hmac_test",
 				"http_client_test",
@@ -3218,6 +3222,26 @@
 			]
 		},
 		{
+			"name": "deque_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/deque_test.w"],
+			"outputs": ["bin/deque_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/deque_test.w", "-o", "bin/deque_64_test"]},
+				{"cmd": ["bin/deque_64_test"]}
+			]
+		},
+		{
+			"name": "deque_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/deque_test.w"],
+			"outputs": ["bin/deque_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/deque_test.w", "-o", "bin/deque_test"]},
+				{"cmd": ["bin/deque_test"]}
+			]
+		},
+		{
 			"name": "directory_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/directory_test.w"],
@@ -3725,6 +3749,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "structures/hash_table_test.w", "-o", "bin/hash_table_test"]},
 				{"cmd": ["bin/hash_table_test"]}
+			]
+		},
+		{
+			"name": "heap_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/heap_test.w"],
+			"outputs": ["bin/heap_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/heap_test.w", "-o", "bin/heap_64_test"]},
+				{"cmd": ["bin/heap_64_test"]}
+			]
+		},
+		{
+			"name": "heap_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/heap_test.w"],
+			"outputs": ["bin/heap_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/heap_test.w", "-o", "bin/heap_test"]},
+				{"cmd": ["bin/heap_test"]}
 			]
 		},
 		{
