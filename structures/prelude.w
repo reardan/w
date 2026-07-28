@@ -112,16 +112,18 @@ int __w_abs(int a):
 	return a
 
 
-# One line from stdin with the newline stripped, or 0 at end of input.
-# The buffer is malloc'd and owned by the caller.
-char* input():
+# One line from stdin with the newline stripped, as a UTF-8 string
+# (issue #360), or 0 at end of input — a null descriptor, false in a
+# condition. The buffer and descriptor are malloc'd and owned by the
+# caller; cstr()/cstr_clone() (lib/utf8.w) recover a C string.
+string input():
 	int capacity = 64
 	char* buffer = malloc(capacity)
 	int length = 0
 	int c = getchar(0)
 	if (c < 0):
 		free(buffer)
-		return cast(char*, 0)
+		return cast(string, 0)
 	while ((c >= 0) && (c != 10)):
 		if (length + 2 > capacity):
 			int doubled = capacity << 1
@@ -131,7 +133,7 @@ char* input():
 		length = length + 1
 		c = getchar(0)
 	buffer[length] = 0
-	return buffer
+	return str_from_cstr(buffer)
 
 
 # All of stdin as one malloc'd C string.

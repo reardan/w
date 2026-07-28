@@ -286,6 +286,9 @@ int prelude_input_expr():
 	hash_call_finish(s)
 	if (helper == 8):
 		return type_value(type_get_list(type_lookup(c"int")))
+	if (helper == 6):
+		# input() returns the line as a UTF-8 string (issue #360)
+		return type_value(type_lookup(c"string"))
 	return type_value(type_lookup_pointer(c"char", 1))
 
 

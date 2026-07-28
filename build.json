@@ -4827,7 +4827,7 @@
 			"outputs": ["bin/prelude_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/prelude_test.w", "-o", "bin/prelude_test"]},
-				{"cmd": ["bin/prelude_test"], "stdin": "header line\n1 2 3\n-4 and x5\n", "expect_stdout": ["header line", "[1, 2, 3, -4, 5]", "7", "leftover:"]}
+				{"cmd": ["bin/prelude_test"], "stdin": "header line\n1 2 3\n-4 and x5\n", "expect_stdout": ["header line", "[1, 2, 3, -4, 5]", "7", "leftover:", "len:11", "first:h", "eof reached"]}
 			]
 		},
 		{
