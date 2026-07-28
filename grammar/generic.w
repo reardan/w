@@ -720,6 +720,24 @@ int generic_inst_signature(int inst):
 	return sig
 
 
+# Emit the instantiation's future address into eax: a mov-imm slot
+# (adrp+add pair on arm64) linked into the instantiation's backpatch
+# chain, patched by generic_instantiate_function() once the body is
+# compiled at the drain (the json_codec chain encoding). Used by every
+# call site emitted before the body exists — explicit, inferred, and
+# the cursor-protocol calls for_statement.w emits for generic
+# containers.
+void generic_inst_emit_callee(int inst):
+	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
+	int head = generic_inst_chain(inst)
+	if (head == 0):
+		head = code_offset
+	be_addr_slot_write(codepos - 4, head)
+	generic_inst_set_chain(inst, codepos + code_offset - 4)
+	# pac=full: sign the chain-materialized callee like sym_get_value does
+	be_code_ptr_sign()
+
+
 /*
 Type-argument inference (docs/projects/generics.md). When a registered
 generic FUNCTION name is followed directly by '(' instead of '[', the
@@ -1080,15 +1098,7 @@ int generic_call_infer_expr(int def):
 	if (sym_lookup(generic_inst_mangled(inst)) >= 0):
 		sym_get_value(generic_inst_mangled(inst))
 	else:
-		be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-		int head = generic_inst_chain(inst)
-		if (head == 0):
-			head = code_offset
-		be_addr_slot_write(codepos - 4, head)
-		generic_inst_set_chain(inst, codepos + code_offset - 4)
-		# pac=full: sign the chain-materialized callee like sym_get_value
-		# does (after the chain bookkeeping above)
-		be_code_ptr_sign()
+		generic_inst_emit_callee(inst)
 	call_eax()
 	be_pop(stack_pos - s)
 	stack_pos = s
@@ -1153,14 +1163,7 @@ int generic_call_expr():
 	generic_pending_call_signature = generic_inst_signature(inst)
 	generic_pending_call_name = generic_inst_mangled(inst)
 	# call target: a mov-imm slot on the instantiation's backpatch chain
-	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-	int head = generic_inst_chain(inst)
-	if (head == 0):
-		head = code_offset
-	be_addr_slot_write(codepos - 4, head)
-	generic_inst_set_chain(inst, codepos + code_offset - 4)
-	# pac=full: sign the chain-materialized callee like sym_get_value does
-	be_code_ptr_sign()
+	generic_inst_emit_callee(inst)
 	return 4
 
 
