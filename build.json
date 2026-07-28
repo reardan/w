@@ -1889,6 +1889,7 @@
 				"default_args_64_test",
 				"defer_64_test",
 				"dns_64_test",
+				"elif_64_test",
 				"env_64_test",
 				"event_loop_64_test",
 				"failure_detector_64_test",
@@ -2416,6 +2417,7 @@
 				"deep_nesting_test",
 				"directory_test",
 				"dns_test",
+				"elif_test",
 				"env_test",
 				"event_loop_test",
 				"failure_detector_test",
@@ -3275,6 +3277,33 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64", "tests/dynamic_test.w", "-o", "bin/dynamic_test_arm64"]},
 				{"cmd": ["sh", "tools/run_arm64.sh", "bin/dynamic_test_arm64"], "expect_stdout": "dynamic linking OK"}
+			]
+		},
+		{
+			"name": "elif_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/elif_test.w"],
+			"outputs": ["bin/elif_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/elif_test.w", "-o", "bin/elif_64_test"]},
+				{"cmd": ["bin/elif_64_test"]}
+			]
+		},
+		{
+			"name": "elif_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/elif_without_if_fixture.w"]}
+			]
+		},
+		{
+			"name": "elif_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/elif_test.w"],
+			"outputs": ["bin/elif_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/elif_test.w", "-o", "bin/elif_test"]},
+				{"cmd": ["bin/elif_test"]}
 			]
 		},
 		{
