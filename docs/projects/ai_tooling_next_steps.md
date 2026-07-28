@@ -572,19 +572,28 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   the directory as empty instead of parsing Darwin records with Linux
   offsets. The full fix (per-arch dirent accessors, validated on a
   Mac) is still open; the accessor plan above stands.
-- **`getchar()`/`getchar_unbuffered()` conflate a genuine `read()` error
-  with EOF** (`lib/lib.w`). A mid-file I/O failure looks like silent
-  truncation (or a misleadingly-positioned parse error) instead of a
-  diagnostic; fixing needs a distinct "read error" sentinel plumbed
-  through `get_character()`/`compile_attempt()`/etc. Rare in practice (a
-  `read()` on an already-`open()`ed regular local file essentially never
-  fails) — documented, not scheduled. **Partially shipped (2026-07-25):
+- **Shipped (2026-07-28): the compiler no longer conflates a genuine
+  `read()` error with EOF.** First half (2026-07-25):
   `getchar_checked`/`getchar_unbuffered_checked` in `lib/lib.w` return
   `GETCHAR_EOF()` (-1) at end of file and `GETCHAR_READ_ERROR()` (-2)
   when `read()` fails, sharing the per-fd buffer state with the (still
   byte-identical) legacy functions; pinned by
-  `tests/getchar_checked_test.w`. Plumbing the sentinel through the
-  compiler's `get_character()` path remains open.**
+  `tests/getchar_checked_test.w`. Second half: `compiler/tokenizer.w`'s
+  `getc()` — the single choke point every compiler source read flows
+  through (`compile_attempt` for the root and each import, the
+  generic/defer reparses, the defhash rehash, the REPL entry loader, all
+  of which point `filename` at the file before reading) — now reads via
+  `getchar_checked` and reports `read error while reading '<file>'`
+  through the normal `error()` path (positioned at the current
+  line/column, works under `--json`, REPL recovery unwinds it) instead
+  of treating the failure as EOF and silently truncating the source into
+  a clean-looking parse (or a misleadingly-positioned parse error).
+  Exercised for real, no root tricks needed, by the new
+  `read_error_test` (`build.base.json`): on Linux `open()` on a
+  directory succeeds and `read()` on its fd fails with `EISDIR`, so
+  compiling a directory path — which previously exited 0, parsing the
+  failed read as an empty file — now fails with the diagnostic, checked
+  as a root file (human and `--json` modes) and as an import.
 - **Shipped (2026-07-19, wave plan C task 1c): `lib/generator.w`'s
   `__w_gen_create` coroutine-stack `mmap()` is now checked** —
   `__w_gen_mmap_failed()` mirrors `debug_tbl_mmap_failed()`'s convention;
