@@ -406,6 +406,18 @@ two iteration shapes forever.
   gains generics or element-type metadata on the container struct, the
   cursor protocol can grow a `<type>_iter_value` return-type check; the
   syntax does not change.
+- **Generic containers (landed 2026-07-28).** An instantiated generic
+  struct's type name is mangled (`heap$int`), so the name convention
+  above can never resolve for it. `for_container_loop` instead resolves
+  the protocol for a `name$arg` container as the generic functions
+  `name_iter_begin[arg]` etc., instantiated with the container's own
+  type argument and called through the instantiation's backpatch chain
+  (`grammar/for_statement.w`, `for_iter_generic_require`). Inferred
+  loop variables take the `_iter_value` instantiation's return type, so
+  `for s in strings_deque` declares `s` as `char*`. One type parameter
+  only (a multi-parameter mangled suffix cannot be split back
+  unambiguously). `structures/heap.w` and `structures/deque.w` are the
+  library exemplars; tested in `tests/heap_test.w`/`tests/deque_test.w`.
 - **break/continue cleanup.** Designs 1-3 keep all loop state in hidden
   stack slots, so the existing `loop_stack_pos` unwinding just works.
   Designs 4-5 hold heap/mmap resources and need a cleanup hook on every
