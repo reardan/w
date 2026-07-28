@@ -883,6 +883,44 @@ ergonomic gap:
   a caller can distinguish slow-but-alive from hung, and/or making an
   interrupted cache build resume instead of restarting.
 
+- **A still-running test binary turns the next rebuild into a
+  misleading compiler assert.** While iterating on lib/thread.w join
+  reclamation (2026-07-28), a deadlocked `bin/thread_64_test` from a
+  killed `./wbuild` run kept running in the background; the next
+  `./wbuild thread_64_test` then failed with `could not open output
+  file` plus a compiler stack trace ending in `asserts` at
+  `compiler/compiler.w:768` — which reads like a compiler bug, not
+  like the actual ETXTBSY on an output path held by a live process.
+  Two cheap fixes: the linker's "could not open output file" assert
+  should include the path and errno (ETXTBSY strongly hints "old
+  binary still running"), and wexec could kill run-step children it
+  spawned when it is itself terminated so orphans don't linger.
+- **wexec has no per-run-step timeout, so a deadlocked test hangs the
+  whole `./wbuild` invocation silently.** The same lib/thread.w
+  session produced (twice) a test binary that futex-waited forever; the
+  `./wbuild thread_test ...` invocation produced zero output until the
+  caller's own 300s timeout killed it, and the hung child survived
+  that kill. A default (or per-step `build.json`) run timeout that
+  fails the target with "timed out after Ns" would turn a silent hang
+  into an actionable failure. Diagnosis that worked: `ps aux`, then
+  `/proc/PID/wchan` + `/proc/PID/syscall` to see the exact futex the
+  binary was parked on (op and expected-value arguments included),
+  which pinpointed both bugs (private-flag waiter vs the kernel's
+  shared CLEARTID wake; expected-value re-read racing the one-shot
+  clear) without a debugger.
+- **`wtest changed` selects the near-full suite for any
+  `lib/__arch__/*/syscalls.w` edit and says nothing about it.** The
+  socketcall cleanup (2026-07-28) made `git diff --name-only
+  origin/main | bin/wtest changed` print ~450 targets — correct
+  (syscalls.w is in every program's closure, including the compiler's,
+  so `verify` is also implied) but unhelpful as a "focused test" list,
+  and the residue rules did not surface `verify` for it. When the
+  selection exceeds some threshold (say half the manifest), a one-line
+  summary like "selection is effectively the `tests` umbrella; run
+  `./wbuild tests` (and `verify` — compiler closure touched)" would
+  save agents from pasting hundreds of targets and from missing the
+  verify gate.
+
 ## Skills / rules upkeep
 
 - Keep skill command examples in sync with CLI changes (they are
