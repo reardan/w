@@ -47,9 +47,38 @@ expect parser_generator_w_test
 forbid tests
 forbid update
 
+# The seed graph is DERIVED from 'bin/wv2 deps w.w', not a prefix
+# list: debugger/ is compiled into every compiler stage, so it gets
+# the self-host gate too — while KEEPING its closure-selected leaf
+# targets (rule b's skip stays keyed to the narrow prefix floor).
+case debugger/wdbg.w
+expect verify
+expect self_host_warning_test
+expect wdbg
+expect debug_test
+expect attach_test
+expect parser_generator_w_test
+forbid tests
+
+# A lib/ file OUTSIDE w.w's import closure must NOT get the self-host
+# gate: the derivation is file-accurate, not directory-sloppy. Its own
+# leaf tests and the lib/ residue still select.
+case lib/stats.w
+expect stats_test
+expect stats_64_test
+expect metadata_check
+expect parser_generator_w_test
+forbid verify
+forbid self_host_warning_test
+forbid tests
+
 # Import-closure selection (rule b) through a library file, plus the
-# structures/ -> metadata_check residue.
+# structures/ -> metadata_check residue. structures/json.w is also in
+# the compiler's own import graph ('deps w.w'), so the derived
+# seed-graph rule adds the self-host gate.
 case structures/json.w
+expect verify
+expect self_host_warning_test
 expect json_test
 expect json_64_test
 expect json_codec_test
@@ -75,10 +104,24 @@ expect parser_generator_w_test
 forbid tests
 
 # Closure selection through an extras library, plus libs/ ->
-# metadata_check residue.
+# metadata_check residue. generator.w is the parser generator's OWN
+# codegen — a pg-tool file, not one of the modules the compiler links
+# via its C-import feature — so it is outside 'deps w.w' and must not
+# get the self-host gate (the seed graph is file-accurate).
 case libs/extras/parser_generator/generator.w
 expect parser_generator_test
 expect parser_generator_c_test
+expect metadata_check
+forbid verify
+forbid tests
+
+# runtime.w IS in w.w's closure (the compiler's generated C parser
+# runs on it), so a seed-graph libs/extras/ edit selects the self-host
+# gate alongside its ordinary closure targets.
+case libs/extras/parser_generator/runtime.w
+expect verify
+expect self_host_warning_test
+expect parser_generator_test
 expect metadata_check
 forbid tests
 
@@ -197,16 +240,6 @@ expect wexec_test
 expect math_test
 expect tests
 
-# debugger/ is NOT compiler tree (no verify); wdbg roots are inherited
-# by the debug/attach test targets.
-case debugger/wdbg.w
-expect wdbg
-expect debug_test
-expect attach_test
-expect parser_generator_w_test
-forbid verify
-forbid tests
-
 # A conventional test selects itself + manifest_check (test sources are
 # wbuildgen inputs) and never an unrelated sibling test.
 case tests/sha256_test.w
@@ -302,11 +335,15 @@ forbid http_client_64_test
 forbid tests
 
 # arm64 modules select the targets that really compile for arm64,
-# instead of the old x86/x64 lib-test proxies that never read them.
+# instead of the old x86/x64 lib-test proxies that never read them —
+# plus the arm64 fixpoint, since the syscall layer is in
+# 'bin/wv2 arm64 deps w.w'.
 case lib/__arch__/arm64/syscalls.w
+expect verify_arm64
 expect arm64_smoke_test
 expect dynamic_test_arm64
 expect metadata_check
+forbid verify
 forbid lib_test
 forbid lib_64_test
 forbid tests
@@ -346,14 +383,18 @@ forbid tests
 # The wasm syscall layer selects through wasm-arch closures now that
 # 'wasm' is a recognized selector word (it used to be invisible to rule
 # (b) and fell through to the full 'tests' fallback): every target
-# compiling a wasm root is selected, never the x86 lib tests. (The
-# build_wasm/verify_wasm self-host chain's only root is w.w, which is
-# compiler tree and routes through 'verify', so it is not selected
-# here — same as every other arch's self-host pair.)
+# compiling a wasm root is selected, never the x86 lib tests. Being in
+# 'bin/wv2 wasm deps w.w' additionally selects the wasm self-host
+# fixpoint (the build_wasm/verify_wasm chain's only root is w.w, an
+# excluded closure root, so only the arch-verify residue rule can
+# reach it) — but never the 32-bit 'verify': the file is not in the
+# default-arch seed closure.
 case lib/__arch__/wasm/syscalls.w
+expect verify_wasm
 expect wasm_smoke_test
 expect wasm_extern_test
 expect metadata_check
+forbid verify
 forbid lib_test
 forbid tests
 
