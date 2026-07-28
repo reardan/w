@@ -37,15 +37,40 @@ build. For a changed path P the emitted targets are the union of:
       definitions did not change.
 
   (c) RESIDUE RULES for coupling the import graph cannot see:
-      - w.w / grammar.w / codegen.w and compiler/ grammar/
-        code_generator/ paths -> verify + self_host_warning_test. The
-        self-host fixpoint is the designed gate for compiler internals;
-        every program's closure contains the compiler-emitted runtime
-        and every target depends on bin/wv2, so closure selection for
-        compiler paths would degenerate to the full suite. w.w is
-        excluded as a closure root for the same reason, and
-        compiler-tree paths skip rule (b). *_asm.w runtime stubs also
-        -> asm_stubs_test (drift-checked against tests/asm/, #170).
+      - seed-graph paths -> verify + self_host_warning_test. The
+        self-host fixpoint is the designed gate for anything the
+        compiler itself is built from, and that set is DERIVED, not
+        hard-coded: a .w path counts as seed-graph when it appears in
+        'bin/wv2 deps w.w' (cached in bin/.wtest_deps_cache under the
+        root id "x86 w.w", exactly like a rule-(b) closure). That is
+        how debugger/, repl/, the seed libs/extras/ trees
+        (parser_generator, c_import, c_preprocessor), the auto-imported
+        container runtime (structures/hash_table.w, w_list.w,
+        prelude.w, ...) and the lib/ files the compiler imports get the
+        gate — an edit there rebuilds every compiler stage and can
+        corrupt self-hosting exactly like a compiler/ edit
+        (ai_tooling_next_steps.md, 3x 2026-07-28). When the closure is
+        unavailable (bin/wv2 missing or w.w mid-edit broken, deps
+        fails), the rule fails OPEN to the hard-coded prefix floor —
+        w.w / grammar.w / codegen.w and compiler/ grammar/
+        code_generator/ paths (wtest_compiler_tree) — never narrower
+        than the historical behavior. Only that prefix floor skips
+        rule (b) (closure selection for compiler internals would
+        degenerate; w.w is excluded as a closure root for the same
+        reason); the derived remainder keeps its closure selection, so
+        a debugger/ edit still recommends the wdbg/attach/repl targets
+        alongside verify. *_asm.w runtime stubs also -> asm_stubs_test
+        (drift-checked against tests/asm/, #170).
+      - lib/__arch__/<arch>/ paths in that arch's OWN seed closure
+        ('bin/wv2 <arch> deps w.w', cached as "<arch> w.w") -> the
+        arch's self-host fixpoint (verify_x64 / verify_arm64 /
+        verify_wasm / verify_win), when the manifest has that target —
+        verify_darwin is on the never-emit list, so arm64_darwin
+        runtime edits add nothing here. The default-arch rule above
+        cannot see these: lib/__arch__/x64/syscalls.w is not in the
+        x86 closure, yet an edit there can corrupt exactly the x64
+        fixpoint (the build_wasm/verify_wasm chain's only root is w.w,
+        invisible to rule (b) since w.w is an excluded root).
       - every changed .w file that exists -> parser_generator_w_test:
         that target parses every tracked .w file, so any .w change can
         break it (PR #151 escaped the old per-directory rule).
@@ -1080,9 +1105,14 @@ void wtest_ensure_closures():
 		return
 	wtest_closures_ready = 1
 	wtest_ensure_roots()
-	wtest_closure_roots = new list[char*]
-	wtest_closure_blobs = new list[char*]
-	wtest_cache_load()
+	# The store may already be initialized: the seed-graph residue rule
+	# (wtest_seed_closure) loads the cache lazily before rule (b) ever
+	# runs. Re-initializing here would leak its w.w entries and re-read
+	# the cache file for nothing (mirrors wtest_archs_ensure_closures).
+	if (wtest_closure_roots == 0):
+		wtest_closure_roots = new list[char*]
+		wtest_closure_blobs = new list[char*]
+		wtest_cache_load()
 	wtest_compute_closures(wtest_roots)
 
 
@@ -1578,6 +1608,14 @@ int wtest_doc_only(char* path):
 	return 0
 
 
+# The hard-coded compiler-tree prefix floor. Callers that gate BEHAVIOR
+# on "compiler internals" (rule b's closure-scan skip, and the root
+# exclusion of w.w/grammar.w/codegen.w) key off exactly this set, same
+# as always. The verify residue rule instead uses wtest_seed_graph
+# below, which widens this floor with the derived 'bin/wv2 deps w.w'
+# closure — debugger/, repl/, the seed libs/extras/ trees, the
+# auto-imported runtime — without ever narrowing it (header comment,
+# rule c).
 int wtest_compiler_tree(char* path):
 	if (strcmp(path, c"w.w") == 0):
 		return 1
@@ -1591,6 +1629,83 @@ int wtest_compiler_tree(char* path):
 		return 1
 	if (starts_with(path, c"code_generator/")):
 		return 1
+	return 0
+
+
+# The import closure blob of w.w compiled for 'arch' ("x86" for the
+# default target) — the seed graph, everything the compiler itself is
+# built from. Stored and cached exactly like a rule-(b) closure
+# (bin/.wtest_deps_cache, root id "<arch> w.w"; the store is the
+# memo), so a warm run costs one strcmp scan and a cold one costs a
+# single 'bin/wv2 deps [arch] w.w' shell-out, checkpointed
+# immediately. Returns 0 when deps fails (bin/wv2 missing, or w.w
+# mid-edit broken) — callers fail open to wtest_compiler_tree's
+# prefix floor, never silently narrower than the historical rule. A
+# failure is cached against w.w's own content hash (the existing 'X'
+# entry semantics), so it is retried once w.w changes.
+char* wtest_seed_closure(char* arch):
+	if (wtest_closure_roots == 0):
+		wtest_closure_roots = new list[char*]
+		wtest_closure_blobs = new list[char*]
+		wtest_cache_load()
+	char* id = wtest_root_id(arch, c"w.w")
+	if (wtest_closure_known(id)):
+		char* known = wtest_closure_get(id)
+		free(id)
+		return known
+	char* blob = wtest_run_deps(id)
+	wtest_closure_store(id, blob)
+	wtest_cache_save()
+	return blob
+
+
+# Whether 'path' is part of what the compiler is built from (header
+# comment, rule c): the hard-coded prefix floor first (free, and the
+# fail-open answer), then the derived default-arch seed closure. Only
+# .w paths consult the closure — it contains nothing else, and the
+# early-out keeps data/doc-file selection from ever paying the deps
+# shell-out.
+int wtest_seed_graph(char* path):
+	if (wtest_compiler_tree(path)):
+		return 1
+	if (ends_with(path, c".w") == 0):
+		return 0
+	return wtest_closure_contains(wtest_seed_closure(c"x86"), path)
+
+
+# The '<arch>' segment of a 'lib/__arch__/<arch>/...' path (cloned), or
+# 0 for any other shape (including a bare 'lib/__arch__/<arch>' with no
+# trailing component).
+char* wtest_arch_dir_selector(char* path):
+	if (starts_with(path, c"lib/__arch__/") == 0):
+		return 0
+	int i = strlen(c"lib/__arch__/")
+	string_builder* s = string_new()
+	while ((path[i] != 0) && (path[i] != '/')):
+		string_append_char(s, path[i])
+		i = i + 1
+	if ((path[i] != '/') || (s.length == 0)):
+		string_free(s)
+		return 0
+	char* arch = s.data
+	free(s)
+	return arch
+
+
+# An arch selector word -> its self-host fixpoint target. verify_darwin
+# is on the never-emit list (its steps execute Mach-O binaries), so
+# returning it is harmless: wtest_add drops never-emit names.
+char* wtest_arch_verify_target(char* arch):
+	if (strcmp(arch, c"x64") == 0):
+		return c"verify_x64"
+	if (strcmp(arch, c"arm64") == 0):
+		return c"verify_arm64"
+	if (strcmp(arch, c"wasm") == 0):
+		return c"verify_wasm"
+	if (strcmp(arch, c"win64") == 0):
+		return c"verify_win"
+	if (strcmp(arch, c"arm64_darwin") == 0):
+		return c"verify_darwin"
 	return 0
 
 
@@ -1961,12 +2076,29 @@ int wtest_manifest_leaf_diff(char* path):
 # matched, so the caller can skip the tests fallback.
 int wtest_map_residue(char* path, int is_w, int exists):
 	int matched = 0
-	if (wtest_compiler_tree(path)):
+	if (wtest_seed_graph(path)):
 		wtest_add(path, c"verify")
 		wtest_add(path, c"self_host_warning_test")
 		if (ends_with(path, c"_asm.w")):
 			wtest_add(path, c"asm_stubs_test")
 		matched = 1
+	# An arch runtime file in that arch's own seed closure gates that
+	# arch's fixpoint (header comment, rule c): the build/verify chain's
+	# only root is w.w, which rule (b) excludes, so no closure ever
+	# reaches the per-arch verify targets. The manifest lookup comes
+	# first so a fixture manifest (-f) without the target never pays the
+	# deps shell-out, and wtest_add's unknown-name 'tests' fallback is
+	# never triggered by a missing verify twin.
+	char* arch_dir = wtest_arch_dir_selector(path)
+	if (arch_dir != 0):
+		if (wtest_selector(arch_dir)):
+			char* arch_verify = wtest_arch_verify_target(arch_dir)
+			if (arch_verify != 0):
+				if (wtest_target_defs.get(arch_verify, 0) != 0):
+					if (wtest_closure_contains(wtest_seed_closure(arch_dir), path)):
+						wtest_add(path, arch_verify)
+						matched = 1
+		free(arch_dir)
 	if (is_w && exists):
 		wtest_add(path, c"parser_generator_w_test")
 		matched = 1
@@ -2075,9 +2207,13 @@ void wtest_map_path(char* path):
 				wtest_add(path, name)
 				matched = 1
 
-	# (b) import closures — compiler-tree paths are covered by verify
-	# (see header), deleted files cannot appear in a computable closure,
-	# and only .w files ever appear in one. --defhash (opt-in) can skip
+	# (b) import closures — compiler-tree PREFIX paths are covered by
+	# verify (see header; deliberately the narrow wtest_compiler_tree
+	# floor, not wtest_seed_graph: derived seed-graph files like
+	# debugger/ or lib/stream.w appear in real leaf closures — wdbg,
+	# repl, the stream tests — and must keep that selection alongside
+	# the verify residue), deleted files cannot appear in a computable
+	# closure, and only .w files ever appear in one. --defhash (opt-in) can skip
 	# this block entirely for a path proven unchanged (wtest_defhash_
 	# unchanged, fails open); without the flag wtest_defhash_flag is 0 and
 	# skip_closure stays 0, so this is exactly the prior unconditional scan.
