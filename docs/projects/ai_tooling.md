@@ -424,11 +424,25 @@ Shipped from the next-steps backlog:
   only, no longer a speed workaround.
 - **`wtest changed` cold-cache progress note** (2026-07-16): the first
   `changed` invocation to touch an import closure after a build (or a
-  large merge) prints one `wtest: building import-closure cache (first
-  run after a build; this can take a minute)...` line to stderr before
-  the `bin/wv2 deps` shell-outs that can otherwise take minutes on a big
-  tree with nothing printed — previously indistinguishable from a hang.
-  A warm cache stays silent. `tools/test_map.w`.
+  large merge) prints a `wtest: building import-closure cache...` line
+  to stderr before the `bin/wv2 deps` shell-outs that can otherwise
+  take minutes on a big tree with nothing printed — previously
+  indistinguishable from a hang. A warm cache stays silent.
+  `tools/test_map.w`. Extended (2026-07-28): the banner now carries the
+  outstanding root count and says "several minutes" (the old "~35s"/"a
+  minute" figures were stale for this tree — callers killed the build
+  at the default 2-minute tool timeout), one
+  `wtest: import-closure cache: K/N roots computed` progress line
+  follows every 20 roots, and `bin/.wtest_deps_cache` is checkpointed
+  at each progress line so an interrupted first run resumes from the
+  last checkpoint instead of restarting (cache entries validate
+  individually). Same date: `--defhash` on a stdin-piped path list now
+  warns on stderr when piped paths are committed-clean vs HEAD — the
+  `git diff --name-only main..HEAD | wtest changed --defhash`
+  after-committing footgun, where every path reads unchanged against
+  the worktree and closure selection silently skips — suggesting the
+  ranged form `wtest changed A..B --defhash`; stdout selection is
+  byte-identical, positional paths and ranged runs never warn.
 - **`./wbuild test_changed` flag forwarding + `wtest --available`**
   (2026-07-16): flags after `test_changed` (e.g. `--keep-going`) now
   reach the final `./wbuild` invocation instead of being swallowed by

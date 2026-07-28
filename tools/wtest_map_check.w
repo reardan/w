@@ -369,7 +369,9 @@ void check_run_case(check_case* c):
 		strv_set(argv, 2 + i, c.paths[i])
 		i = i + 1
 	# Generous timeout: the first run after a build recomputes the
-	# import-closure cache (bin/.wtest_deps_cache), which takes ~35s.
+	# import-closure cache (bin/.wtest_deps_cache), which can take
+	# several minutes cold (wtest prints progress and checkpoints the
+	# cache, so a timed-out run here resumes on the next attempt).
 	process_result* result = process_run(c"bin/wtest", argv, 0, 0, 300000)
 	free(cast(char*, argv))
 	if (result == 0):

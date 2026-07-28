@@ -52,8 +52,11 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
    Selection is manifest-driven: wtest parses `build.json` and unions targets
    whose steps name a changed path with targets whose compile roots
    transitively import a changed `.w` file (`bin/wv2 deps` closures, cached
-   in `bin/.wtest_deps_cache` — first run after a build ~35s, then
-   sub-second), plus residue rules documented in `tools/test_map.w`.
+   in `bin/.wtest_deps_cache` — the first run after a build can take
+   several minutes, printing progress to stderr and resuming from its
+   last checkpoint if interrupted, so budget for it instead of killing
+   it at two minutes; later runs are sub-second), plus residue rules
+   documented in `tools/test_map.w`.
    Compiler changes always get `verify` (+ `verify_x64` for codegen/word-size
    work); every existing `.w` change gets `parser_generator_w_test`; deleted
    `.w` files and `lib/`/`structures/`/`libs/` paths get `metadata_check`;

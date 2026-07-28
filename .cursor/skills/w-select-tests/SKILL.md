@@ -26,7 +26,9 @@ so a target is selected when (a) one of its steps names the changed path
 (fixtures, grammars, scripts, data files) or (b) one of its compile
 roots' transitive import closures contains the changed `.w` file
 (computed via `bin/wv2 deps`, cached in `bin/.wtest_deps_cache` — the
-first run after a build takes ~35s, later runs are sub-second). On top
+first run after a build can take several minutes, printing progress to
+stderr and resuming from a checkpoint if interrupted, so budget for it
+instead of killing it at two minutes; later runs are sub-second). On top
 of that, residue rules documented at the top of `tools/test_map.w`
 cover what the import graph cannot see:
 

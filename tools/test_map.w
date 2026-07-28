@@ -179,7 +179,13 @@ importer without under-selecting the fixed rules. It fails OPEN: a path
 new to HEAD, a git or 'bin/wv2 defhash' error, or an actual
 addition/removal/hash change in the recorded definitions all fall back
 to the ordinary closure scan for that path instead. Selection without
---defhash is unchanged byte-for-byte.
+--defhash is unchanged byte-for-byte. When the path list arrives on
+stdin and one or more paths compare byte-identical between HEAD and the
+worktree, a warning goes to stderr suggesting the ranged form: 'git
+diff --name-only main..HEAD | wtest changed --defhash' after committing
+is a footgun — every piped path reads unchanged against the worktree,
+so closure selection silently skips all of them
+(wtest_defhash_clean_warning; stdout selection is untouched).
 ('HEAD' above generalizes to the commit-ranged left endpoint below when
 a range is active; see wtest_range_left / wtest_range_right and
 wtest_defhash_unchanged's left_rev/right_is_worktree.)
@@ -253,10 +259,13 @@ behave byte-for-byte as before.
 
 The first 'changed' invocation to touch an import closure (rule b) after
 a build, or after bin/.wtest_deps_cache is otherwise missing or fully
-stale, prints one 'wtest: building import-closure cache...' note to
-stderr before shelling out to 'bin/wv2 deps' for every root — that pass
-can take minutes on a big tree with nothing printed otherwise. A warm
-cache prints nothing extra.
+stale, prints a 'wtest: building import-closure cache...' banner with
+the outstanding root count to stderr, then one progress line per 20
+computed roots — that pass can take several minutes on a big tree, and
+the progress lines distinguish slow-but-alive from hung. The cache file
+is checkpointed at every progress line (its entries validate
+individually), so an interrupted first run resumes from the last
+checkpoint instead of restarting. A warm cache prints nothing extra.
 */
 import lib.lib
 import lib.env
@@ -290,6 +299,10 @@ int wtest_verbose
 int wtest_run_flag
 int wtest_available_flag
 int wtest_defhash_flag
+# Paths whose --defhash comparison (outside a range) found HEAD and the
+# worktree byte-identical — committed-clean, the ranged-form footgun's
+# signature. Feeds wtest_defhash_clean_warning for stdin-piped runs.
+int wtest_defhash_clean_count
 char* wtest_manifest_path
 char* wtest_base_manifest_path       # 0 = no --base-manifest given
 json_value* wtest_base_manifest      # parsed baseline, 0 until loaded
@@ -996,6 +1009,54 @@ void wtest_cache_save():
 	string_free(out)
 
 
+# Cold/stale-cache closure computation shared by wtest_ensure_closures
+# and wtest_archs_ensure_closures: shell out to 'bin/wv2 deps' for every
+# root wtest_cache_load did not satisfy. Right after a build (or a large
+# merge) every root is outstanding and the pass can take several minutes
+# (docs/projects/ai_tooling.md), so the banner announces the outstanding
+# root count up front, a progress line follows every 20 computed roots,
+# and bin/.wtest_deps_cache is checkpointed at each progress line —
+# cache entries validate individually (wtest_cache_load), so an
+# interrupted first run resumes from the last checkpoint instead of
+# restarting. A warm cache (the common case) prints and writes nothing.
+void wtest_compute_closures(list[char*] roots):
+	int missing = 0
+	for char* root in roots:
+		if (wtest_closure_known(root) == 0):
+			missing = missing + 1
+	if (missing == 0):
+		return
+	wstream* err = stderr_writer()
+	string_builder* banner = string_new()
+	string_append(banner, c"wtest: building import-closure cache, ")
+	string_append_int(banner, missing)
+	string_append(banner, c" root")
+	if (missing != 1):
+		string_append_char(banner, 's')
+	string_append(banner, c" to compute (first run after a build; this can take several minutes)...")
+	stream_write_line(err, banner.data)
+	string_free(banner)
+	stream_flush(err)
+	int done = 0
+	for char* pending in roots:
+		if (wtest_closure_known(pending) == 0):
+			wtest_closure_store(pending, wtest_run_deps(pending))
+			done = done + 1
+			if ((done % 20) == 0):
+				wtest_cache_save()
+				string_builder* progress = string_new()
+				string_append(progress, c"wtest: import-closure cache: ")
+				string_append_int(progress, done)
+				string_append_char(progress, '/')
+				string_append_int(progress, missing)
+				string_append(progress, c" roots computed")
+				stream_write_line(err, progress.data)
+				string_free(progress)
+				stream_flush(err)
+	if ((done % 20) != 0):
+		wtest_cache_save()
+
+
 void wtest_ensure_closures():
 	if (wtest_closures_ready):
 		return
@@ -1004,26 +1065,7 @@ void wtest_ensure_closures():
 	wtest_closure_roots = new list[char*]
 	wtest_closure_blobs = new list[char*]
 	wtest_cache_load()
-	# Cold/stale cache: every root not already satisfied by wtest_cache_load
-	# needs a 'bin/wv2 deps' shell-out below, which can take minutes right
-	# after a build or a large merge (docs/projects/ai_tooling_next_steps.md,
-	# 2026-07-16) with nothing printed otherwise. A warm cache (the common
-	# case) skips this entirely.
-	int cold = 0
-	for char* root in wtest_roots:
-		if (wtest_closure_known(root) == 0):
-			cold = 1
-	if (cold):
-		wstream* err = stderr_writer()
-		stream_write_line(err, c"wtest: building import-closure cache (first run after a build; this can take a minute)...")
-		stream_flush(err)
-	int recomputed = 0
-	for char* root in wtest_roots:
-		if (wtest_closure_known(root) == 0):
-			wtest_closure_store(root, wtest_run_deps(root))
-			recomputed = 1
-	if (recomputed):
-		wtest_cache_save()
+	wtest_compute_closures(wtest_roots)
 
 
 int wtest_closure_contains(char* blob, char* path):
@@ -1411,6 +1453,14 @@ int wtest_defhash_unchanged(char* path):
 		free(right_text)
 		wtest_note(path, c"defhash: fallback (no left-hand version, or git error)")
 		return 0
+	# Committed-clean footgun bookkeeping (header comment, --defhash):
+	# outside a range this comparison is HEAD vs the worktree, so a
+	# byte-identical pair means the path carries no uncommitted edit at
+	# all — when the path list was piped in, it almost certainly came
+	# from a ranged diff and the caller wanted the ranged form. Counted
+	# here, warned about once in main; the decision below is unchanged.
+	if ((wtest_range_active == 0) && (strcmp(left_text, right_text) == 0)):
+		wtest_defhash_clean_count = wtest_defhash_clean_count + 1
 	# Import-only edits are invisible to the per-definition hashes (see
 	# wtest_import_signature) -- compare the import lines textually
 	# before trusting the hash comparison at all.
@@ -1464,6 +1514,33 @@ int wtest_defhash_unchanged(char* path):
 			return 0
 	wtest_note(path, c"defhash: skip (definitions unchanged)")
 	return 1
+
+
+# The committed-clean footgun warning (header comment, --defhash): one
+# or more stdin-piped paths compared byte-identical between HEAD and
+# the worktree under the un-ranged form, so their closure refinement
+# skipped silently — the signature of piping a ranged diff's path list
+# ('git diff --name-only main..HEAD') after committing. stderr only;
+# the selection on stdout is untouched.
+void wtest_defhash_clean_warning():
+	wstream* err = stderr_writer()
+	string_builder* line = string_new()
+	string_append(line, c"wtest: warning: --defhash without a range compares HEAD vs the worktree, and ")
+	string_append_int(line, wtest_defhash_clean_count)
+	string_append(line, c" piped path")
+	if (wtest_defhash_clean_count == 1):
+		string_append(line, c" is")
+	else:
+		string_append(line, c"s are")
+	string_append(line, c" committed-clean vs HEAD, so closure selection skipped ")
+	if (wtest_defhash_clean_count == 1):
+		string_append(line, c"it")
+	else:
+		string_append(line, c"them")
+	stream_write_line(err, line.data)
+	string_free(line)
+	stream_write_line(err, c"wtest: warning: for committed changes use the ranged form: wtest changed A..B --defhash")
+	stream_flush(err)
 
 
 /* Residue rules and the selection driver. */
@@ -2358,21 +2435,7 @@ void wtest_archs_ensure_closures():
 		wtest_closure_roots = new list[char*]
 		wtest_closure_blobs = new list[char*]
 		wtest_cache_load()
-	int cold = 0
-	for char* root in wtest_archs_roots:
-		if (wtest_closure_known(root) == 0):
-			cold = 1
-	if (cold):
-		wstream* err = stderr_writer()
-		stream_write_line(err, c"wtest: building import-closure cache (first run after a build; this can take a minute)...")
-		stream_flush(err)
-	int recomputed = 0
-	for char* root in wtest_archs_roots:
-		if (wtest_closure_known(root) == 0):
-			wtest_closure_store(root, wtest_run_deps(root))
-			recomputed = 1
-	if (recomputed):
-		wtest_cache_save()
+	wtest_compute_closures(wtest_archs_roots)
 
 
 # A root id matches 'path' either because 'path' IS that root's own
@@ -2656,6 +2719,12 @@ int main(int argc, int argv):
 		while (stream_read_line(in, line)):
 			wtest_map_path(line.data)
 		string_free(line)
+		# The committed-clean footgun (header comment, --defhash): only a
+		# stdin-piped path list can plausibly be a ranged diff's output,
+		# so the warning is scoped to this branch — positional paths were
+		# named deliberately, and a range argument never reads stdin.
+		if (wtest_defhash_clean_count > 0):
+			wtest_defhash_clean_warning()
 	if (wtest_available_flag):
 		wtest_apply_available_filter()
 	wtest_emit_targets()
