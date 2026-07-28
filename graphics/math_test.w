@@ -1,4 +1,4 @@
-# wbuild: name=graphics_math_test x64
+# wbuild: name=graphics_math_test x64 group=wasm_smoke_test@wasm
 import lib.testing
 import lib.format
 import graphics.math
