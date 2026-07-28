@@ -1,14 +1,15 @@
 # REPL shell mode: design (issue #335)
 
-Status: design, stages 1 and 2 shipped (July 2026). Scopes issue #335
+Status: design, stages 1–3 shipped (July 2026). Scopes issue #335
 against the shipped `!` escape and `lib/shell.w` (issue #276 P0–P3,
 previous plan's waves 1–5) and against the Q4/Q5 reasoning in
 `docs/projects/repl_improvements.md`, which this doc extends rather
 than revisits. The staged plan in §11 had an intentionally small
-stage 1 (Wave 3 task 3b of `docs/projects/sonnet_wave_plan_2026_07b.md`)
-and a stage 2 (task 3b of `docs/projects/sonnet_wave_plan_2026_07c.md`)
-that fills out the rest of the v1 tool subset; §11 records what
-shipped and what stays deferred.
+stage 1 (Wave 3 task 3b of `docs/projects/sonnet_wave_plan_2026_07b.md`),
+a stage 2 (task 3b of `docs/projects/sonnet_wave_plan_2026_07c.md`)
+that fills out the rest of the v1 tool subset, and a stage 3 (the
+metadata tools `lib/stat.w` unblocked: `ls -l`, `touch`, `chmod`,
+`du`); §11 records what shipped and what stays deferred.
 
 ## 1. The issue, verbatim
 
@@ -507,13 +508,50 @@ per this section's own original staging — the native tool set
 enough to justify the void-return-convention rework §10 describes;
 revisit once it does.
 
-**Stage 3+** (research-scale, no wave slot): `ls -l` itself (the
-wrapper exists now; only the translator/tool work remains); `touch`/
-`chmod`/`du` on the same wrapper; `grep`/`find`/`sed` only if a
-reusable pattern-matching core ever exists; pipes/redirection (§10)
-once the native tool set has grown enough to want them; the `wsh`
-standalone extraction (§9) once two real front ends want
-`repl/core.w`.
+**Stage 3, landed (July 2026): the metadata tools.** `ls -l`,
+`touch`, `chmod`, and `du` — the items the original stage 3+ list put
+first, all on `lib/stat.w`'s wrapper:
+
+- `ls -l` (alone or clustered: `-la`/`-al`) prints one metadata line
+  per entry from `file_lstat_path`: mode string, nlink, owner, group,
+  size, mtime, name, and `name -> target` for a symlink. Three
+  documented output simplifications, the same spirit as wc's
+  un-padded counts: single-space columns (no width alignment and no
+  `total` header line); owner/group names via `lib/passwd.w`'s
+  /etc/passwd–/etc/group parse with a numeric-id fallback; and UTC
+  `YYYY-MM-DD HH:MM` stamps (the `--time-style=long-iso` shape —
+  this tree has no timezone database). The setuid/setgid/sticky bits
+  are not rendered into the x positions.
+- `touch` (with `-c`/`--no-create`) wraps `lib/stat.w`'s `file_touch`
+  (utimensat(2), creating a missing file unless `-c`); a missing path
+  under `-c` is silent success, like the real tool. Real touch's
+  valued flags (`-t`/`-d`/`-r`) are unknown and fail closed to
+  native.
+- `chmod` takes an octal mode word only (1–4 digits of 0–7, resolved
+  to a decimal int literal in the generated call); the tool function
+  is named `chmod_octal` — the same flat-symbol-table collision with
+  the raw chmod(2) syscall wrapper that `mkdir_p` documents. Symbolic
+  modes (`u+x`) are not octal, so the line fails the recognition test
+  and runs the real chmod — the repl_test fixtures assert that path
+  actually executes (the file really gains `u+x`).
+- `du` (with `-s`/`--summarize`; one optional path defaulting to `.`)
+  sums statx `stx_blocks` — `file_stat` grew a `blocks` field
+  (512-byte units) for this — and prints 1024-byte units per
+  directory, post-order, like the real tool. Hard links count once
+  per link rather than once per inode: a documented v1
+  simplification.
+
+Pipes/redirection (§10): considered and deferred a third time, same
+reasoning — native piping wants the void-return rework and a
+stream-based tool contract (§10's own design pass), and the fallback
+keeps real pipelines working in the meantime.
+
+**Stage 4+** (research-scale, no wave slot): `ln` on the same wrapper
+(`file_symlink` already exists; only tool/translator work remains);
+`df`/`ps` (§6.4); `grep`/`find`/`sed` only if a reusable
+pattern-matching core ever exists; pipes/redirection (§10) once the
+native tool set has grown enough to want them; the `wsh` standalone
+extraction (§9) once two real front ends want `repl/core.w`.
 
 ## 12. Open questions for the maintainer
 

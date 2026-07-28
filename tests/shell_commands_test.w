@@ -15,6 +15,7 @@ import repl.shell_translate
 import lib.file
 import lib.path
 import lib.str
+import lib.stat
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +104,7 @@ void test_ls_bare_lists_sorted_and_hides_dotfiles():
 
 	char* cap = shtest_scratch_path(c"_ls_bare.out")
 	shtest_capture_stdout_start(cap)
-	ls(dir, false)
+	ls(dir, false, false)
 	char* got = shtest_capture_stdout_end(cap)
 
 	assert_strings_equal(c"alpha.txt\x0abeta.txt\x0a", got)
@@ -120,7 +121,7 @@ void test_ls_all_shows_dotfiles_sorted_first():
 
 	char* cap = shtest_scratch_path(c"_ls_all.out")
 	shtest_capture_stdout_start(cap)
-	ls(dir, true)
+	ls(dir, true, false)
 	char* got = shtest_capture_stdout_end(cap)
 
 	assert_strings_equal(c".hidden\x0aalpha.txt\x0a", got)
@@ -135,7 +136,7 @@ void test_ls_missing_directory_reports_cannot_access():
 	char* err_cap = shtest_scratch_path(c"_ls_missing.err")
 	shtest_capture_stdout_start(out_cap)
 	shtest_capture_stderr_start(err_cap)
-	ls(missing, false)
+	ls(missing, false, false)
 	char* err = shtest_capture_stderr_end(err_cap)
 	char* out = shtest_capture_stdout_end(out_cap)
 
@@ -607,6 +608,272 @@ void test_mv_missing_source_reports_error():
 
 
 # ---------------------------------------------------------------------------
+# lib/shell_commands.w: stage 3's tools (ls -l, touch, chmod, du).
+
+void test_ls_long_lists_mode_nlink_size_mtime_and_name():
+	char* dir = shtest_scratch_path(c"_ls_long_dir")
+	mkdir(dir, 493)
+	char* file_path = path_join(dir, c"alpha.txt")
+	file_write_text(file_path, c"abc")
+	# Pin the metadata the line prints so the assertion is exact: mode
+	# 0644, mtime 1700000000 = 2023-11-14 22:13:20 UTC.
+	assert_equal(0, file_chmod(file_path, 420))
+	assert_equal(0, file_utimens(file_path, 1700000000, 1700000000, 0))
+
+	char* cap = shtest_scratch_path(c"_ls_long.out")
+	shtest_capture_stdout_start(cap)
+	ls(dir, false, true)
+	char* got = shtest_capture_stdout_end(cap)
+
+	# "-rw-r--r-- 1 <owner> <group> 3 2023-11-14 22:13 alpha.txt\n" --
+	# owner/group names depend on the environment, so assert the exact
+	# prefix and the exact suffix around them.
+	assert_equal(0, index_of(got, c"-rw-r--r-- 1 "))
+	assert1(index_of(got, c" 3 2023-11-14 22:13 alpha.txt\x0a") >= 0)
+	unlink(file_path)
+	free(got)
+	free(cap)
+	free(file_path)
+	free(dir)
+
+
+void test_ls_long_marks_directories_and_symlinks():
+	char* dir = shtest_scratch_path(c"_ls_long_kinds_dir")
+	mkdir(dir, 493)
+	char* sub = path_join(dir, c"subdir")
+	mkdir(sub, 493)
+	char* plain = path_join(dir, c"plain.txt")
+	file_write_text(plain, c"p")
+	char* link_path = path_join(dir, c"slink")
+	assert_equal(0, file_symlink(c"plain.txt", link_path))
+
+	char* cap = shtest_scratch_path(c"_ls_long_kinds.out")
+	shtest_capture_stdout_start(cap)
+	ls(dir, false, true)
+	char* got = shtest_capture_stdout_end(cap)
+
+	# mkdir's 0755 is umask-clipped in group/other, so only assert the
+	# owner bits; a symlink's bits are always 0777.
+	assert1(index_of(got, c"drwx") >= 0)
+	assert1(index_of(got, c"lrwxrwxrwx") >= 0)
+	assert1(index_of(got, c"slink -> plain.txt") >= 0)
+	unlink(link_path)
+	unlink(plain)
+	rmdir(sub)
+	free(got)
+	free(cap)
+	free(link_path)
+	free(plain)
+	free(sub)
+	free(dir)
+
+
+void test_touch_creates_a_missing_file():
+	char* path = shtest_scratch_path(c"_touch_new.txt")
+	unlink(path)
+	touch(false, path)
+	assert1(path_exists(path))
+	file_stat st
+	assert_equal(0, file_stat_path(path, &st))
+	assert_equal(0, st.size)
+	unlink(path)
+	free(path)
+
+
+void test_touch_no_create_skips_missing_file_silently():
+	char* path = shtest_scratch_path(c"_touch_nc.txt")
+	unlink(path)
+	char* err_cap = shtest_scratch_path(c"_touch_nc.err")
+	shtest_capture_stderr_start(err_cap)
+	touch(true, path)
+	char* err = shtest_capture_stderr_end(err_cap)
+
+	# Real "touch -c missing" is silent success and creates nothing.
+	assert_strings_equal(c"", err)
+	assert_equal(0, path_exists(path))
+	free(err)
+	free(err_cap)
+	free(path)
+
+
+void test_touch_updates_mtime_of_an_existing_file():
+	char* path = shtest_scratch_path(c"_touch_stamp.txt")
+	file_write_text(path, c"x")
+	assert_equal(0, file_utimens(path, 1000000, 1000000, 0))
+	file_stat before
+	assert_equal(0, file_stat_path(path, &before))
+	assert_equal(1000000, before.mtime)
+	touch(false, path)
+	file_stat after
+	assert_equal(0, file_stat_path(path, &after))
+	assert1(after.mtime > 1000000)
+	unlink(path)
+	free(path)
+
+
+void test_touch_missing_parent_reports_cannot_touch():
+	char* path = c"/no/such/dir/w_shell_commands_touch_xyz.txt"
+	char* err_cap = shtest_scratch_path(c"_touch_missing.err")
+	shtest_capture_stderr_start(err_cap)
+	touch(false, path)
+	char* err = shtest_capture_stderr_end(err_cap)
+
+	assert1(index_of(err, c"touch: cannot touch '") >= 0)
+	assert1(index_of(err, c"No such file or directory") >= 0)
+	free(err)
+	free(err_cap)
+
+
+void test_chmod_octal_sets_permission_bits():
+	char* path = shtest_scratch_path(c"_chmod.txt")
+	file_write_text(path, c"c")
+	chmod_octal(384, path) /* 384 = 0600 */
+	file_stat st
+	assert_equal(0, file_stat_path(path, &st))
+	assert_equal(384, file_mode_perm(&st))
+	chmod_octal(493, path) /* 493 = 0755 */
+	assert_equal(0, file_stat_path(path, &st))
+	assert_equal(493, file_mode_perm(&st))
+	unlink(path)
+	free(path)
+
+
+void test_chmod_octal_missing_path_reports_error():
+	char* err_cap = shtest_scratch_path(c"_chmod_missing.err")
+	shtest_capture_stderr_start(err_cap)
+	chmod_octal(420, c"/no/such/w_shell_commands_chmod_xyz.txt")
+	char* err = shtest_capture_stderr_end(err_cap)
+
+	assert1(index_of(err, c"chmod: cannot access '") >= 0)
+	assert1(index_of(err, c"No such file or directory") >= 0)
+	free(err)
+	free(err_cap)
+
+
+int shtest_count_newlines(char* s):
+	int count = 0
+	int i = 0
+	while (s[i] != 0):
+		if (s[i] == 10):
+			count = count + 1
+		i = i + 1
+	return count
+
+
+# "<TAB>path<NL>" -- a du output line minus its leading count, precise
+# enough that a path which merely prefixes another (dir vs. dir/sub)
+# cannot satisfy the other's match.
+char* shtest_tabbed_line(char* path):
+	string_builder* out = string_new()
+	string_append_char(out, 9)
+	string_append(out, path)
+	string_append_char(out, 10)
+	char* s = out.data
+	free(out)
+	return s
+
+
+void test_du_summarize_prints_only_the_top_total():
+	char* dir = shtest_scratch_path(c"_du_s_dir")
+	mkdir(dir, 493)
+	char* sub = path_join(dir, c"sub")
+	mkdir(sub, 493)
+	char* f = path_join(sub, c"f.txt")
+	file_write_text(f, c"du summarize content\x0a")
+
+	char* cap = shtest_scratch_path(c"_du_s.out")
+	shtest_capture_stdout_start(cap)
+	du(true, dir)
+	char* got = shtest_capture_stdout_end(cap)
+
+	# Exactly one "N<TAB>dir" line; the child directory's own line is
+	# suppressed by -s, and the count is decimal digits (block counts
+	# are filesystem-dependent, so only the shape is asserted).
+	assert_equal(1, shtest_count_newlines(got))
+	assert1((got[0] >= '0') && (got[0] <= '9'))
+	char* dir_line = shtest_tabbed_line(dir)
+	assert1(index_of(got, dir_line) >= 0)
+	assert1(index_of(got, sub) < 0)
+	unlink(f)
+	rmdir(sub)
+	rmdir(dir)
+	free(got)
+	free(cap)
+	free(dir_line)
+	free(f)
+	free(sub)
+	free(dir)
+
+
+void test_du_default_prints_child_directories_before_parent():
+	char* dir = shtest_scratch_path(c"_du_walk_dir")
+	mkdir(dir, 493)
+	char* sub = path_join(dir, c"sub")
+	mkdir(sub, 493)
+	char* f = path_join(sub, c"f.txt")
+	file_write_text(f, c"du walk content\x0a")
+
+	char* cap = shtest_scratch_path(c"_du_walk.out")
+	shtest_capture_stdout_start(cap)
+	du(false, dir)
+	char* got = shtest_capture_stdout_end(cap)
+
+	# Post-order, real du's own order: the child directory's line
+	# prints before the parent's. The parent line is matched with its
+	# trailing newline so the child's (whose path extends past the
+	# parent prefix) cannot satisfy it.
+	assert_equal(2, shtest_count_newlines(got))
+	char* sub_line = shtest_tabbed_line(sub)
+	char* dir_line = shtest_tabbed_line(dir)
+	int sub_at = index_of(got, sub_line)
+	int dir_at = index_of(got, dir_line)
+	assert1(sub_at >= 0)
+	assert1(dir_at >= 0)
+	assert1(sub_at < dir_at)
+	unlink(f)
+	rmdir(sub)
+	rmdir(dir)
+	free(got)
+	free(cap)
+	free(sub_line)
+	free(dir_line)
+	free(f)
+	free(sub)
+	free(dir)
+
+
+void test_du_file_argument_prints_its_own_line():
+	char* path = shtest_scratch_path(c"_du_file.txt")
+	file_write_text(path, c"du file content\x0a")
+
+	char* cap = shtest_scratch_path(c"_du_file.out")
+	shtest_capture_stdout_start(cap)
+	du(false, path)
+	char* got = shtest_capture_stdout_end(cap)
+
+	assert_equal(1, shtest_count_newlines(got))
+	char* line = shtest_tabbed_line(path)
+	assert1(index_of(got, line) >= 0)
+	unlink(path)
+	free(got)
+	free(cap)
+	free(line)
+	free(path)
+
+
+void test_du_missing_path_reports_cannot_access():
+	char* err_cap = shtest_scratch_path(c"_du_missing.err")
+	shtest_capture_stderr_start(err_cap)
+	du(false, c"/no/such/w_shell_commands_du_dir_xyz")
+	char* err = shtest_capture_stderr_end(err_cap)
+
+	assert1(index_of(err, c"du: cannot access '") >= 0)
+	assert1(index_of(err, c"No such file or directory") >= 0)
+	free(err)
+	free(err_cap)
+
+
+# ---------------------------------------------------------------------------
 # repl/shell_translate.w: the argv/flag -> W call translator, pure logic.
 
 void test_translate_pwd():
@@ -618,28 +885,34 @@ void test_translate_pwd_rejects_extra_word():
 
 
 void test_translate_ls_bare_defaults_to_dot_and_all_false():
-	assert_strings_equal(c"shell_commands.ls(c\".\", false)", shell_translate_line(c"ls"))
+	assert_strings_equal(c"shell_commands.ls(c\".\", false, false)", shell_translate_line(c"ls"))
 
 
 void test_translate_ls_short_all_flag():
-	assert_strings_equal(c"shell_commands.ls(c\".\", true)", shell_translate_line(c"ls -a"))
+	assert_strings_equal(c"shell_commands.ls(c\".\", true, false)", shell_translate_line(c"ls -a"))
 
 
 void test_translate_ls_long_all_flag():
-	assert_strings_equal(c"shell_commands.ls(c\".\", true)", shell_translate_line(c"ls --all"))
+	assert_strings_equal(c"shell_commands.ls(c\".\", true, false)", shell_translate_line(c"ls --all"))
 
 
 void test_translate_ls_with_explicit_path():
-	assert_strings_equal(c"shell_commands.ls(c\"/tmp\", false)", shell_translate_line(c"ls /tmp"))
+	assert_strings_equal(c"shell_commands.ls(c\"/tmp\", false, false)", shell_translate_line(c"ls /tmp"))
 
 
-void test_translate_ls_rejects_l_flag():
-	# No portable stat/mode/size/mtime wrapper exists yet (design doc
-	# Sec 6.2), so "-l" -- alone or clustered into "-la" -- is not in
-	# ls's v1 flag table and must fall back to native, not a partial
-	# translation that silently drops it.
-	assert1(shell_translate_line(c"ls -l") == 0)
-	assert1(shell_translate_line(c"ls -la") == 0)
+void test_translate_ls_l_flag_selects_long_format():
+	# Stage 3: "-l" is now a known flag (lib/stat.w closed the
+	# stat-wrapper gap the stage 1 tests documented), alone or
+	# clustered with -a in either order.
+	assert_strings_equal(c"shell_commands.ls(c\".\", false, true)", shell_translate_line(c"ls -l"))
+	assert_strings_equal(c"shell_commands.ls(c\".\", true, true)", shell_translate_line(c"ls -la"))
+	assert_strings_equal(c"shell_commands.ls(c\"/tmp\", true, true)", shell_translate_line(c"ls -al /tmp"))
+
+
+void test_translate_ls_rejects_unknown_letter_in_l_cluster():
+	# "no partial credit" (Sec 5.4): one unknown letter fails the whole
+	# cluster even when 'l' and 'a' are both known.
+	assert1(shell_translate_line(c"ls -lah") == 0)
 
 
 void test_translate_ls_rejects_unknown_flag():
@@ -876,3 +1149,80 @@ void test_translate_mv_rejects_flag():
 
 void test_translate_mv_requires_two_paths():
 	assert1(shell_translate_line(c"mv a.txt") == 0)
+
+
+# ---------------------------------------------------------------------------
+# repl/shell_translate.w: stage 3's translator coverage (ls -l above,
+# touch, chmod, du).
+
+void test_translate_touch_bare():
+	assert_strings_equal(c"shell_commands.touch(false, c\"a.txt\")", shell_translate_line(c"touch a.txt"))
+
+
+void test_translate_touch_no_create_flag():
+	assert_strings_equal(c"shell_commands.touch(true, c\"a.txt\")", shell_translate_line(c"touch -c a.txt"))
+	assert_strings_equal(c"shell_commands.touch(true, c\"a.txt\")",
+		shell_translate_line(c"touch --no-create a.txt"))
+
+
+void test_translate_touch_multiple_paths():
+	assert_strings_equal(c"shell_commands.touch(false, c\"a\", c\"b\")", shell_translate_line(c"touch a b"))
+
+
+void test_translate_touch_requires_a_path():
+	assert1(shell_translate_line(c"touch") == 0)
+	assert1(shell_translate_line(c"touch -c") == 0)
+
+
+void test_translate_touch_rejects_unknown_flag():
+	# Real touch's valued flags (-t STAMP, -d DATE, -r FILE) are
+	# unknown here and fail the whole line closed to native.
+	assert1(shell_translate_line(c"touch -t 202601010000 a.txt") == 0)
+
+
+void test_translate_chmod_octal_mode():
+	assert_strings_equal(c"shell_commands.chmod_octal(420, c\"a.txt\")",
+		shell_translate_line(c"chmod 644 a.txt"))
+	assert_strings_equal(c"shell_commands.chmod_octal(493, c\"a\", c\"b\")",
+		shell_translate_line(c"chmod 0755 a b"))
+
+
+void test_translate_chmod_rejects_symbolic_modes():
+	# Symbolic modes are not octal digits; the whole line fails closed
+	# to the real chmod, whose full mode grammar then applies.
+	assert1(shell_translate_line(c"chmod u+x a.txt") == 0)
+	assert1(shell_translate_line(c"chmod a=r a.txt") == 0)
+
+
+void test_translate_chmod_rejects_bad_octal():
+	assert1(shell_translate_line(c"chmod 999 a.txt") == 0)
+	assert1(shell_translate_line(c"chmod 00644 a.txt") == 0)
+
+
+void test_translate_chmod_requires_mode_and_path():
+	assert1(shell_translate_line(c"chmod 644") == 0)
+	assert1(shell_translate_line(c"chmod") == 0)
+
+
+void test_translate_chmod_rejects_flags():
+	# No -R in v1; a '-' word anywhere fails the line.
+	assert1(shell_translate_line(c"chmod -R 755 dir") == 0)
+
+
+void test_translate_du_bare_defaults_to_dot():
+	assert_strings_equal(c"shell_commands.du(false, c\".\")", shell_translate_line(c"du"))
+
+
+void test_translate_du_summarize_flag():
+	assert_strings_equal(c"shell_commands.du(true, c\"/tmp\")", shell_translate_line(c"du -s /tmp"))
+	assert_strings_equal(c"shell_commands.du(true, c\"/tmp\")",
+		shell_translate_line(c"du --summarize /tmp"))
+
+
+void test_translate_du_rejects_unknown_flag():
+	assert1(shell_translate_line(c"du -h") == 0)
+	assert1(shell_translate_line(c"du -sh /tmp") == 0)
+
+
+void test_translate_du_rejects_two_paths():
+	assert1(shell_translate_line(c"du a b") == 0)

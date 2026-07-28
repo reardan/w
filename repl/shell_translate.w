@@ -13,8 +13,8 @@ to native; never a partial or best-guess translation:
      semantics: | < > ; & $ ` ~ * ? (pipe, redirection, chaining,
      backgrounding, variable/command/glob expansion);
   2. its first word names a tool this file knows (pwd, ls, cat, echo,
-     head, tail, wc, mkdir, rm, cp, mv -- design doc Sec 11's stage 1 +
-     stage 2 lists);
+     head, tail, wc, mkdir, rm, cp, mv, touch, chmod, du -- design doc
+     Sec 11's stage 1 + stage 2 lists plus stage 3's additions);
   3. every flag token (a word starting with '-') is one that tool's
      flag table knows, and the remaining positional count matches what
      the tool expects.
@@ -47,6 +47,15 @@ input this file already tokenizes into. Inline "=value" spellings
 conventions, not head/tail's ("head -n=5" is an error from the real
 tool), so those lines fail closed to native, whose own
 acceptance/diagnostic then applies verbatim.
+
+Stage 3 adds ls's -l, touch (-c/--no-create), chmod (a leading octal
+mode word, no flags -- symbolic modes like "u+x" are not octal, so
+they fail closed to the real chmod, whose full mode grammar then
+applies), and du (-s/--summarize, one optional path). chmod's mode
+word is the first non-flag positional whose spelling is validated
+rather than passed through: 1-4 octal digits, translated to a decimal
+int literal in the generated call ("chmod 644 f" ->
+"shell_commands.chmod_octal(420, c\"f\")").
 */
 import lib.lib
 import structures.string
@@ -196,15 +205,16 @@ char* shell_translate_pwd(list[char*] words):
 	return strclone(c"shell_commands.pwd()")
 
 
-# ls: bare or one path positional; -a/--all is the only known flag in
-# v1 (no "-l" -- lib/shell_commands.w's header explains the missing
-# stat-wrapper gap). A short cluster like "-la" splits into '-l' '-a';
-# per Sec 5.4's "no partial credit" rule, any letter in the cluster that
-# isn't 'a' fails the whole line (so "ls -la" falls back to the real ls,
-# not a half-translated call).
+# ls: bare or one path positional; -a/--all and -l (long listing,
+# stage 3 -- short form only, matching the real tool) are the known
+# flags. A short cluster like "-la" splits into '-l' '-a'; per Sec
+# 5.4's "no partial credit" rule, any other letter in the cluster
+# fails the whole line (so "ls -lah" falls back to the real ls, not a
+# half-translated call).
 char* shell_translate_ls(list[char*] words):
 	char* path = 0
 	int all = 0
+	int long_format = 0
 	int i = 1
 	while (i < words.length):
 		char* w = words[i]
@@ -218,6 +228,8 @@ char* shell_translate_ls(list[char*] words):
 				while (w[j] != 0):
 					if (w[j] == 'a'):
 						all = 1
+					else if (w[j] == 'l'):
+						long_format = 1
 					else:
 						return 0 /* unknown letter in the cluster */
 					j = j + 1
@@ -233,6 +245,10 @@ char* shell_translate_ls(list[char*] words):
 	string_append(out, c"shell_commands.ls(")
 	string_append(out, path_lit)
 	if (all):
+		string_append(out, c", true")
+	else:
+		string_append(out, c", false")
+	if (long_format):
 		string_append(out, c", true)")
 	else:
 		string_append(out, c", false)")
@@ -612,6 +628,159 @@ char* shell_translate_mv(list[char*] words):
 	return s
 
 
+# touch: one or more path positionals; -c/--no-create is the only
+# known flag (real touch's do-not-create). Valued forms (-t STAMP,
+# -d DATE, -r FILE) are unknown letters and fail the whole line closed
+# to native.
+char* shell_translate_touch(list[char*] words):
+	int no_create = 0
+	# paths borrows words' strings, so only the list struct itself
+	# needs freeing -- on the fallback paths too (mkdir/rm's pattern).
+	list[char*] paths = new list[char*]
+	int fail = 0
+	int i = 1
+	while ((i < words.length) && (fail == 0)):
+		char* w = words[i]
+		if (w[0] == '-'):
+			if (strcmp(w, c"--no-create") == 0):
+				no_create = 1
+			else if ((w[1] == '-') || (w[1] == 0)):
+				fail = 1
+			else:
+				int j = 1
+				while ((w[j] != 0) && (fail == 0)):
+					if (w[j] == 'c'):
+						no_create = 1
+					else:
+						fail = 1 /* unknown letter in the cluster */
+					j = j + 1
+		else:
+			paths.push(w)
+		i = i + 1
+	if (paths.length == 0):
+		fail = 1 /* touch requires at least one path */
+	if (fail):
+		__w_list_free(cast(__w_list*, paths))
+		return 0
+	string_builder* out = string_new()
+	string_append(out, c"shell_commands.touch(")
+	if (no_create):
+		string_append(out, c"true")
+	else:
+		string_append(out, c"false")
+	i = 0
+	while (i < paths.length):
+		string_append(out, c", ")
+		char* lit = shell_translate_string_literal(paths[i])
+		string_append(out, lit)
+		free(lit)
+		i = i + 1
+	string_append(out, c")")
+	__w_list_free(cast(__w_list*, paths))
+	char* s = out.data
+	free(out)
+	return s
+
+
+# s as an octal mode value: 1-4 digits of [0-7] ("644", "0755"), else
+# -1. Anything else -- a symbolic mode like "u+x", "a=r" -- is not
+# octal and makes the whole chmod line fail closed to native, where
+# the real chmod's full mode grammar applies.
+int shell_translate_octal_value(char* s):
+	if (s[0] == 0):
+		return -1
+	int value = 0
+	int i = 0
+	while (s[i] != 0):
+		if ((s[i] < '0') || (s[i] > '7')):
+			return -1
+		value = value * 8 + (s[i] - '0')
+		i = i + 1
+	if (i > 4):
+		return -1
+	return value
+
+
+# chmod: an octal mode word then one or more path positionals; no
+# flags in v1 (no -R -- a '-' word anywhere fails the line, so
+# "chmod -R 755 d" runs the real chmod). Generates a call to
+# lib/shell_commands.w's chmod_octal (the module header there explains
+# the name -- "chmod" itself collides with the raw chmod(2) syscall
+# wrapper, the same collision mkdir_p documents).
+char* shell_translate_chmod(list[char*] words):
+	if (words.length < 3):
+		return 0 /* a mode and at least one path */
+	int mode = shell_translate_octal_value(words[1])
+	if (mode < 0):
+		return 0 /* not an octal mode (symbolic, or a flag) */
+	int i = 2
+	while (i < words.length):
+		if (words[i][0] == '-'):
+			return 0 /* no flags in v1 */
+		i = i + 1
+	char* mode_str = itoa(mode)
+	string_builder* out = string_new()
+	string_append(out, c"shell_commands.chmod_octal(")
+	string_append(out, mode_str)
+	free(mode_str)
+	i = 2
+	while (i < words.length):
+		string_append(out, c", ")
+		char* lit = shell_translate_string_literal(words[i])
+		string_append(out, lit)
+		free(lit)
+		i = i + 1
+	string_append(out, c")")
+	char* s = out.data
+	free(out)
+	return s
+
+
+# du: at most one optional path (default ".", like ls's);
+# -s/--summarize is the only known flag. Everything else real du
+# accepts (-h, -a, -b, --max-depth, multiple paths) is unknown here
+# and fails the line closed to native.
+char* shell_translate_du(list[char*] words):
+	int summarize = 0
+	char* path = 0
+	int i = 1
+	while (i < words.length):
+		char* w = words[i]
+		if (w[0] == '-'):
+			if (strcmp(w, c"--summarize") == 0):
+				summarize = 1
+			else if ((w[1] == '-') || (w[1] == 0)):
+				return 0 /* unknown long flag, or a bare "-" */
+			else:
+				int j = 1
+				while (w[j] != 0):
+					if (w[j] == 's'):
+						summarize = 1
+					else:
+						return 0 /* unknown letter in the cluster */
+					j = j + 1
+		else:
+			if (path != 0):
+				return 0 /* du takes at most one path in v1 */
+			path = w
+		i = i + 1
+	if (path == 0):
+		path = c"."
+	char* path_lit = shell_translate_string_literal(path)
+	string_builder* out = string_new()
+	string_append(out, c"shell_commands.du(")
+	if (summarize):
+		string_append(out, c"true, ")
+	else:
+		string_append(out, c"false, ")
+	string_append(out, path_lit)
+	string_append(out, c")")
+	free(path_lit)
+	char* s = out.data
+	free(out)
+	return s
+
+
 # Translate one shell-mode line to a ready-to-eval "shell_commands...."
 # W call, or 0 when any part of the recognition test failed -- the
 # caller's cue (repl.w) to hand the whole line, untouched, to native
@@ -647,5 +816,11 @@ char* shell_translate_line(char* line):
 			result = shell_translate_cp(words)
 		else if (strcmp(words[0], c"mv") == 0):
 			result = shell_translate_mv(words)
+		else if (strcmp(words[0], c"touch") == 0):
+			result = shell_translate_touch(words)
+		else if (strcmp(words[0], c"chmod") == 0):
+			result = shell_translate_chmod(words)
+		else if (strcmp(words[0], c"du") == 0):
+			result = shell_translate_du(words)
 	shell_translate_free_words(words)
 	return result
