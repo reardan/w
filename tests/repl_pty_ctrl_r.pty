@@ -1,0 +1,34 @@
+# Scripted Ctrl-R incremental history search, end to end under a real
+# pty (tools/pty_test.py; the repl_pty_test target runs this against a
+# fresh bin/repl_pty build with HOME pointed at a scratch dir so
+# ~/.w_history stays untouched).
+#
+# Every send waits for a marker first, so the \x12 byte only goes out
+# after the "w> " prompt for that entry has rendered -- and the prompt
+# is only rendered after term_raw_mode() has run (line_edit_read), so
+# the canonical-mode VREPRINT swallowing that script -qc suffers is
+# impossible by construction. The raw-mode editor restores cooked mode
+# between entries (le_finish_line), which is why each entry re-waits for
+# its own prompt instead of bursting all input at once.
+
+# Startup: the banner, then the first raw-mode prompt.
+expect w>
+send int ctrlr_pty_probe = 33\r
+# The accepted line's newline separates this entry's keystroke echoes
+# (which also contain "w> ") from the next real prompt.
+expect \n
+expect w>
+send ctrlr_pty_probe + 9\r
+expect 42
+expect w>
+
+# Ctrl-R opens the search; typing "probe" refines it to the newest
+# matching history entry; Enter accepts that entry and evaluates it.
+send \x12
+expect (reverse-i-search)
+send probe
+expect 'probe': ctrlr_pty_probe + 9
+send \r
+expect 42
+expect w>
+send :quit\r

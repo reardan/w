@@ -1568,6 +1568,15 @@
 			]
 		},
 		{
+			"name": "repl_pty_test",
+			"deps": ["wv2"],
+			"data": ["tests/repl_pty_ctrl_r.pty", "tools/pty_test.py"],
+			"steps": [
+				{"cmd": ["bin/wv2", "repl.w", "-o", "bin/repl_pty"]},
+				{"cmd": ["sh", "-c", "rm -rf bin/repl_pty_home && mkdir -p bin/repl_pty_home && HOME=$PWD/bin/repl_pty_home python3 tools/pty_test.py --timeout 60 tests/repl_pty_ctrl_r.pty -- ./bin/repl_pty"], "expect_stdout": "pty script OK"}
+			]
+		},
+		{
 			"name": "build_x64",
 			"deps": ["wv2"],
 			"steps": [
@@ -2382,6 +2391,7 @@
 				"debug_test",
 				"attach_test",
 				"repl_test",
+				"repl_pty_test",
 				"dynamic_test",
 				"float_abi_test",
 				"varargs_test",

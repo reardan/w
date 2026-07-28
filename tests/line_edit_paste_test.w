@@ -8,8 +8,11 @@ normalization during a paste (le_paste_eat_crlf), the byte-exact
 auto-indent-seed comparison (le_text_equals, driven through
 le_paste_consume), history suppression for mid-paste line fragments
 (le_finish_line), completion capacity growth past the old 64-candidate
-truncation (le_try_complete), and le_search_step's pushback of a
-search-ending key.
+truncation (le_try_complete), le_search_step's pushback of a
+search-ending key, the ESC-sequence probe that keeps an arrow key
+during Ctrl-R from half-cancelling into literal "[A" text, and
+le_paste_finish's render of a pasted line before it is accepted (a
+multi-line paste used to show one bare newline per line).
 
 Canonical-mode terminal input cannot be scripted through a plain pipe
 (the documented script -qc limitation), so these tests drive the
@@ -20,7 +23,9 @@ stdin.
 */
 import lib.lib
 import lib.assert
+import lib.file
 import lib.line_edit
+import structures.string
 
 
 # Preload s so consecutive le_getchar() calls deliver its bytes front to
@@ -47,6 +52,38 @@ void letest_silence_stdout():
 void letest_restore_stdout():
 	dup2(letest_saved_stdout, 1)
 	close(letest_saved_stdout)
+
+
+# Capture stdout into a pid-scoped file under bin/ (pid-scoped so the
+# 32/64-bit twins can't race on it -- the format_test lesson) so a test
+# can assert on rendered escape-sequence output.
+char* letest_capture_path_cache
+
+char* letest_capture_path():
+	if (letest_capture_path_cache == 0):
+		mkdir(c"bin", 493)
+		string_builder* p = string_new()
+		string_append(p, c"bin/line_edit_paste_test_")
+		string_append_int(p, getpid())
+		string_append(p, c".txt")
+		letest_capture_path_cache = p.data
+		free(p)
+	return letest_capture_path_cache
+
+
+void letest_capture_start():
+	letest_saved_stdout = 90
+	dup2(1, letest_saved_stdout)
+	int fd = create_file(letest_capture_path(), 420)
+	dup2(fd, 1)
+	close(fd)
+
+
+# Restore stdout and return the captured bytes (malloc'd).
+char* letest_capture_stop():
+	dup2(letest_saved_stdout, 1)
+	close(letest_saved_stdout)
+	return file_read_text(letest_capture_path())
 
 
 void test_pushback_pops_in_reverse_push_order():
@@ -300,6 +337,81 @@ void test_search_step_pushes_back_the_search_ending_key():
 	free(buf)
 
 
+void test_paste_finish_renders_the_pasted_line():
+	char* buf = malloc(64)
+	le_set_line(buf, 64, c"")
+	le_seed_len = 0
+	le_paste_active = 0
+	le_prev_rows = 1
+	le_history_count = 0
+	# One pasted line ended by an embedded CR; the paste stays open (the
+	# end marker arrives later).
+	letest_preload(c"pasted()\x0d\x1b[201~")
+	assert_equal(1, le_paste_consume(buf, 64))
+	assert_equal(1, le_paste_active)
+	letest_capture_start()
+	int n = le_paste_finish(c"w> ", buf)
+	char* out = letest_capture_stop()
+	assert_equal(8, n)
+	# The completed line is drawn (prompt + pasted text) before the
+	# newline -- finishing without the render left only the bare newline.
+	assert_equal(1, le_str_contains(out, c"w> pasted()"))
+	assert_equal(10, out[strlen(out) - 1])
+	# le_finish_line's mid-paste history suppression still applies.
+	assert_equal(0, le_history_count)
+	free(out)
+	# Resume, as the next line_edit_read call would: only the end marker
+	# is left, closing the paste.
+	le_set_line(buf, 64, c"")
+	assert_equal(0, le_paste_consume(buf, 64))
+	assert_equal(0, le_paste_active)
+	assert_equal(0, le_pushback_len)
+	free(buf)
+
+
+void test_search_step_esc_sequence_ends_search_and_redelivers_it():
+	le_history_count = 0
+	le_history_add(c"int alpha = 1")
+	char* buf = malloc(64)
+	le_set_line(buf, 64, c"")
+	le_search_begin(buf)
+	assert_equal(0, le_search_match)
+	# An arrow key arrives as ESC then "[A". The old code cancelled on
+	# the bare ESC (restoring the pre-search line) and the residual "[A"
+	# was inserted as literal text.
+	letest_preload(c"[A")
+	assert_equal(0, le_search_step(buf, 64, 27))
+	assert_equal(0, le_search_active)
+	# Not a cancel: the current match became the live buffer...
+	buf[le_len] = 0
+	assert_strings_equal(c"int alpha = 1", buf)
+	# ...and the whole sequence is re-delivered, ESC first, for the
+	# ordinary dispatch loop to handle as one arrow key.
+	assert_equal(27, le_getchar())
+	assert_equal('[', le_getchar())
+	assert_equal('A', le_getchar())
+	assert_equal(0, le_pushback_len)
+	free(buf)
+
+
+void test_search_step_lone_esc_still_cancels():
+	le_history_count = 0
+	le_history_add(c"int alpha = 1")
+	char* buf = malloc(64)
+	le_set_line(buf, 64, c"typed")
+	le_search_begin(buf)
+	# ESC followed by ordinary typed input: a lone-ESC cancel. The byte
+	# probed to identify the sequence is real input, re-delivered intact.
+	letest_preload(c"x")
+	assert_equal(0, le_search_step(buf, 64, 27))
+	assert_equal(0, le_search_active)
+	buf[le_len] = 0
+	assert_strings_equal(c"typed", buf)
+	assert_equal('x', le_getchar())
+	assert_equal(0, le_pushback_len)
+	free(buf)
+
+
 int main():
 	test_pushback_pops_in_reverse_push_order()
 	test_preload_delivers_bytes_in_order()
@@ -316,5 +428,8 @@ int main():
 	test_completion_grows_past_64_candidates()
 	test_completion_single_candidate_still_completes_outright()
 	test_search_step_pushes_back_the_search_ending_key()
+	test_paste_finish_renders_the_pasted_line()
+	test_search_step_esc_sequence_ends_search_and_redelivers_it()
+	test_search_step_lone_esc_still_cancels()
 	println(c"line_edit_paste_test passed")
 	return 0

@@ -9,19 +9,24 @@ same everywhere.
 
 Bracketed paste and the actual keystroke-by-keystroke tty behavior of
 Tab/Ctrl-R are covered by the script(1)-driven repl_test/repl_test_x64
-cases in build.base.json; Ctrl-R specifically was also verified by hand
-with a timing-aware pty harness (see the wave 3a report) because
-script -qc delivers piped stdin in one burst, racing ahead of
+cases in build.base.json; Ctrl-R itself cannot be scripted that way
+because script -qc delivers piped stdin in one burst, racing ahead of
 repl_init()'s startup -- the kernel's still-canonical line discipline at
 that instant treats Ctrl-R as VREPRINT and silently drops the byte before
 the process ever sees it. That is a test-harness limitation, not a bug in
 the feature: this file's test_reverse_search_state below drives the exact
 same state transitions le_search_step performs per keystroke, and the
-manual pty transcript confirms the tty integration end to end.
+marker-synchronized pty harness (tools/pty_test.py running
+tests/repl_pty_ctrl_r.pty, build.base.json's repl_pty_test target)
+scripts the tty integration end to end. This file also asserts
+le_render_search's climb over a wrapped previous render, via a
+capture-stdout-to-file seam.
 */
 import lib.lib
 import lib.assert
+import lib.file
 import lib.line_edit
+import structures.string
 
 
 void test_ident_char():
@@ -67,6 +72,72 @@ void test_str_contains():
 	assert_equal(0, le_str_contains(c"int ctrlr_probe = 77", c"nope"))
 	assert_equal(1, le_str_contains(c"abc", c"abc"))
 	assert_equal(0, le_str_contains(c"ab", c"abc"))
+
+
+# Capture stdout into a pid-scoped file under bin/ (pid-scoped so the
+# 32/64-bit twins can't race on it) to assert on rendered escape output.
+char* lect_capture_path_cache
+int lect_saved_stdout
+
+char* lect_capture_path():
+	if (lect_capture_path_cache == 0):
+		mkdir(c"bin", 493)
+		string_builder* p = string_new()
+		string_append(p, c"bin/line_edit_completion_test_")
+		string_append_int(p, getpid())
+		string_append(p, c".txt")
+		lect_capture_path_cache = p.data
+		free(p)
+	return lect_capture_path_cache
+
+
+void lect_capture_start():
+	lect_saved_stdout = 90
+	dup2(1, lect_saved_stdout)
+	int fd = create_file(lect_capture_path(), 420)
+	dup2(fd, 1)
+	close(fd)
+
+
+char* lect_capture_stop():
+	dup2(lect_saved_stdout, 1)
+	close(lect_saved_stdout)
+	return file_read_text(lect_capture_path())
+
+
+# le_render_search used to repaint from the cursor's row only: starting
+# a search while the edited line wrapped left the wrapped rows above the
+# cursor on screen as stale text. It now climbs le_prev_rows first, the
+# way le_render does.
+void test_render_search_climbs_wrapped_rows():
+	le_history_count = 0
+	le_history_add(c"int wrapped = 1")
+	char* buf = malloc(64)
+	buf[0] = 0
+	le_search_begin(buf)
+	le_prev_rows = 3
+	lect_capture_start()
+	le_render_search()
+	char* out = lect_capture_stop()
+	# Climb the two extra rows the wrapped line occupied ("\x1b[2A"),
+	# then CR + clear-to-end-of-screen repaints the whole block.
+	assert_equal(27, out[0])
+	assert_equal('[', out[1])
+	assert_equal('2', out[2])
+	assert_equal('A', out[3])
+	assert_equal(13, out[4])
+	assert_equal(1, le_str_contains(out, c"(reverse-i-search)'': int wrapped = 1"))
+	assert_equal(1, le_prev_rows)
+	free(out)
+	# The search row itself stays single-row: a second render (or an
+	# unwrapped previous line) climbs nothing.
+	lect_capture_start()
+	le_render_search()
+	out = lect_capture_stop()
+	assert_equal(13, out[0])
+	le_search_end_state()
+	free(out)
+	free(buf)
 
 
 # Drives the same le_search_begin/le_search_refine/le_search_older/
@@ -121,6 +192,7 @@ int main():
 	test_ident_start()
 	test_candidates_common_len()
 	test_str_contains()
+	test_render_search_climbs_wrapped_rows()
 	test_reverse_search_state()
 	println(c"line_edit_completion_test passed")
 	return 0
