@@ -304,22 +304,6 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
 
 ## Build manifest (`wbuildgen`)
 
-- **(2026-07-25) `wtest changed` on a manifest-affecting diff selects
-  both `manifest` and `manifest_check`, and `./wbuild test_changed`
-  then races them.** The two targets share only the `wbuildgen` dep,
-  so wexec's parallel scheduler can run `manifest_check`'s
-  byte-compare while `manifest` is mid-rewrite of `build.json` —
-  observed as a spurious `manifest_check` failure during the
-  wbuildgen-directives PR's `test_changed` run, with both targets
-  green standalone and `build.json` byte-identical afterwards. The
-  failure also surfaces as the misleading "manifests differ in
-  formatting only" (`wbg_report_drift` folds a torn/unparseable
-  `build.json` into that message). Fix candidates: a `manifest` →
-  `manifest_check` dep edge, wtest dropping `manifest` from the pair
-  (`manifest_check` alone is the gate), or `manifest` writing via
-  temp-file + rename so readers never see a torn file — plus a
-  distinct drift message for "committed manifest failed to parse".
-
 - **Shipped (2026-07-19, wave plan C task 2d): path-based target deps.**
   `# wbuild: tool=<path>` resolves a tool's own `.w` source (e.g.
   "tools/wvc.w") to the name of the existing `build.base.json` target

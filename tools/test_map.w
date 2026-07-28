@@ -116,8 +116,12 @@ build. For a changed path P the emitted targets are the union of:
 
 Safety: update / update_darwin (seed promotion) and the darwin-native
 bootstrap targets (build_darwin, verify_darwin, wexec_darwin — their
-steps execute Mach-O binaries) are never emitted; step-less aggregate
-targets (tests, tests_x64, tests_win64) are never selected by (a)/(b).
+steps execute Mach-O binaries) are never emitted, and neither is
+manifest (it rewrites build.json in place, and running it in the same
+parallel selection as manifest_check raced the check's byte-compare
+against the mid-rewrite file — manifest_check alone is the drift gate);
+step-less aggregate targets (tests, tests_x64, tests_win64) are never
+selected by (a)/(b).
 
 Output: unique target names, one per line, in manifest order ('tests'
 is last in the manifest). --verbose prints 'path -> target' notes to
@@ -398,6 +402,14 @@ int wtest_load_manifest():
 	wtest_never_emit[c"build_darwin"] = 1
 	wtest_never_emit[c"verify_darwin"] = 1
 	wtest_never_emit[c"wexec_darwin"] = 1
+	# 'manifest' rewrites build.json in place — a worktree mutation, not
+	# a gate. Selecting it alongside manifest_check made './wbuild
+	# test_changed' race the two under bin/wexec's parallel scheduler
+	# (they share only the wbuildgen dep), and manifest_check's
+	# byte-compare could read build.json mid-rewrite. manifest_check
+	# alone is the drift gate; 'manifest' is the fix a failing gate tells
+	# the caller to run.
+	wtest_never_emit[c"manifest"] = 1
 	int i = 0
 	while (i < json_array_length(targets)):
 		json_value* target = json_array_get(targets, i)
