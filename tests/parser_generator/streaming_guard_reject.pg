@@ -1,14 +1,19 @@
-# Regression fixture (docs/projects/ai_tooling_next_steps.md): two
-# alternatives sharing a factorable leading term where the longer suffix
-# (WS?) is nullable but non-empty and the shorter is the true epsilon.
-# The nullable, non-empty suffix unit has no committed dispatch -- no
-# guard set can be planned for it -- and this shape used to fall through
-# to the streaming emitter and segfault on the missing guard set.
-# pg_report_choice must reject it at generation time instead; the build
-# step asserts the exact diagnostic.
+# Regression fixture (docs/projects/ai_tooling_next_steps.md): a factored
+# nullable, non-empty suffix (WS?) that is NOT trailing-fallback-
+# equivalent. The unit after it is a live guarded suffix (NUMBER), not a
+# dead strict epsilon, so pg_choice_unit_is_nullable_fallback does not
+# exempt it: the WS? unit has no committed dispatch (it matches on every
+# token while NUMBER still expects a turn), and emitting it anyway is the
+# shape that once segfaulted the streaming emitter on a missing guard
+# set. pg_report_choice must reject it at generation time; the build step
+# asserts both diagnostics (the no-committed-dispatch line and the
+# first-set overlap pair). The trailing-fallback-equivalent twin of this
+# grammar -- dead epsilon instead of the NUMBER suffix -- is accepted and
+# pinned by streaming_fallback_sample.pg.
 parser edge_probe
 mode streaming
 token IDENT letters
-token WS spaces
+token NUMBER digits
+token WS = [ \t]+
 start value
-rule value = IDENT WS? | IDENT
+rule value = IDENT WS? | IDENT NUMBER

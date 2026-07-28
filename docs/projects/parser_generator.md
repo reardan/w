@@ -209,6 +209,34 @@ rule, and right-recursive statement lists) exercising enter/exit/token
 callbacks over real input, a genuine syntax-error path, and the
 rule-referenced-repeat rejection.
 
+Since 2026-07-28 a **nullable, non-empty factored suffix** is accepted
+when it is trailing-fallback-equivalent: in
+`rule value = IDENT WS? | IDENT`, left-factoring the shared `IDENT`
+leaves a `WS?` suffix that can match empty (so no first-set guard can
+commit to it) next to the true epsilon — but under ordered choice that
+epsilon (and any further strict-epsilon sibling) is dead, since the
+nullable suffix always matches first. `pg_choice_unit_is_nullable_fallback`
+(`analysis.w`) recognizes the shape — a singleton, unguarded,
+non-predicate unit with a non-empty nullable suffix whose later siblings
+are all strict epsilons (no terms at all past the factoring offset) —
+and both `pg_report_choice` and the streaming emitter treat that unit
+exactly like the trailing empty-alternative fallback:
+`pg_emit_streaming_choice` emits it as the final `else` branch (or as
+the whole choice body when no guarded sibling precedes it) and drops the
+dead epsilons. The suffix may sit mid-alternatives
+(`rule pair = IDENT NUMBER | IDENT WS? | IDENT`): guarded siblings
+before it still dispatch first on their own first sets. A later sibling
+with any terms — even action-only — keeps the rejection: it is equally
+dead, but dropping it would silently discard grammar the author wrote,
+and an unguarded unit ahead of a *live* sibling is precisely the
+no-committed-dispatch shape that once segfaulted the emitter
+(`tests/parser_generator/streaming_guard_reject.pg` pins both
+diagnostics for `rule value = IDENT WS? | IDENT NUMBER`).
+`tests/parser_generator/streaming_fallback_sample.pg` /
+`generated_streaming_fallback_test.w` drive both accepted shapes over
+real input, covering optional-token-present, optional-token-absent, and
+guarded-sibling-wins paths.
+
 Since 2026-07 (issue #329 milestone 4, the last of the streaming-mode
 milestones) a rule alternative may contain `{ code }` action terms and
 lead with a `&{ expr }` semantic predicate. Both are **streaming-mode

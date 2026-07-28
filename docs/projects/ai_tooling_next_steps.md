@@ -689,22 +689,20 @@ All three 2026-07 review findings here are resolved (trailing action-only
 alternative accepted as epsilon dispatch; `$1`-runs-into-identifier
 rejected at generation time; the shared-prefix nullable-suffix shape that
 once segfaulted the streaming emitter is a `pg_report_choice`
-generation-time rejection, regression-pinned by
-`tests/parser_generator/streaming_guard_reject.pg` and
-`generated_streaming_test.w`). One residual, deliberately-open
-ergonomic gap:
-
-- **A nullable, non-empty factored suffix is rejected, not compiled**:
-  `rule value = IDENT WS? | IDENT` (streaming) is refused with "can match
-  nothing and is not the trailing fallback (no committed dispatch)" even
-  though the shape is LL(1)-decidable — the nullable suffix could be
-  emitted as the choice's final fallback branch (its later siblings are
-  dead under ordered choice). Safe direction (over-rejection), but a
-  future streaming grammar wanting an optional continuation after a
-  shared prefix has to hand-rewrite as
-  `rule value = IDENT ws_opt` / `rule ws_opt = WS |`. Accepting it means
-  teaching `pg_plan_choice`/`pg_emit_streaming_choice` to treat a
-  trailing nullable unit like the empty-suffix fallback.
+generation-time rejection). The one residual ergonomic gap — a nullable,
+non-empty factored suffix was rejected, not compiled — **shipped
+2026-07-28**: `rule value = IDENT WS? | IDENT` (streaming) now compiles,
+with the nullable suffix emitted as the choice's final fallback branch
+and its dead strict-epsilon siblings dropped
+(`pg_choice_unit_is_nullable_fallback` in `analysis.w`, live-unit trim in
+`pg_emit_streaming_choice`; the suffix may also sit mid-alternatives
+behind guarded siblings). A nullable suffix ahead of a *live* sibling —
+the shape whose emission used to segfault — stays a generation-time
+rejection, re-pinned by `tests/parser_generator/streaming_guard_reject.pg`
+(now `rule value = IDENT WS? | IDENT NUMBER`) and
+`generated_streaming_test.w`; the accepted shapes are pinned by
+`streaming_fallback_sample.pg` / `generated_streaming_fallback_test.w`.
+Details in `docs/projects/parser_generator.md`.
 
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 

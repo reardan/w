@@ -557,6 +557,44 @@ int pg_report_unit_is_empty_suffix(pg_rule* rule, pg_choice_unit* unit, int offs
 	return 1
 
 
+# A trailing-fallback-equivalent nullable unit: a singleton, unguarded,
+# non-predicate unit whose non-empty suffix can match empty, where every
+# later sibling is a strict epsilon (no terms at all past offset). Under
+# ordered choice the nullable suffix always matches before those epsilons
+# could ever run, so they are dead and the unit is the choice's real
+# fallback: pg_report_choice accepts the shape and pg_emit_streaming_choice
+# (generator.w) emits the unit as the final else branch, dropping the dead
+# epsilons. A later sibling with any terms -- even action-only -- keeps
+# the rejection: it is equally dead, but dropping it would silently
+# discard grammar the author wrote. At most one unit per choice can
+# qualify (every unit after a qualifying one is a strict epsilon, and a
+# strict epsilon never qualifies itself), so the report exemption below
+# and the emitter's live-unit trim always name the same unit.
+int pg_choice_unit_is_nullable_fallback(pg_analysis* analysis, pg_rule* rule, list[pg_choice_unit*] units, int index, int offset):
+	pg_choice_unit* unit = units[index]
+	if ((unit.predicate_code != 0) || unit.guarded):
+		return 0
+	if (unit.member_count != 1):
+		return 0
+	pg_alternative* alternative = rule.alternatives[unit.alt_start]
+	if (offset >= alternative.terms.length):
+		# The empty suffix is the existing trailing-epsilon fallback, not
+		# this exemption -- anywhere but last it stays flagged (a
+		# duplicate epsilon alternative is a grammar bug, not a fallback).
+		return 0
+	if (pg_analysis_alternative_nullable(analysis, alternative, offset) == 0):
+		return 0
+	int j = index + 1
+	while (j < units.length):
+		pg_choice_unit* later = units[j]
+		if ((later.predicate_code != 0) || (later.member_count != 1)):
+			return 0
+		if (offset < rule.alternatives[later.alt_start].terms.length):
+			return 0
+		j = j + 1
+	return 1
+
+
 void pg_report_unit_span(pg_choice_unit* unit):
 	print2(itoa(unit.alt_start + 1))
 	if (unit.member_count > 1):
@@ -567,7 +605,10 @@ void pg_report_unit_span(pg_choice_unit* unit):
 # Report every pair of units where the later one can attempt to consume
 # tokens the earlier one also accepts. A trailing empty alternative is
 # exempt: reaching it parses nothing, which is LL(1) epsilon dispatch,
-# not backtracking. Returns the number of colliding pairs.
+# not backtracking. So is a trailing-fallback-equivalent nullable unit
+# (pg_choice_unit_is_nullable_fallback above): it is the choice's real
+# fallback, reached only when every guarded sibling's first-set test
+# already missed. Returns the number of colliding pairs.
 int pg_report_choice(pg_analysis* analysis, pg_rule* rule, list[pg_choice_unit*] units, int offset):
 	int conflicts = 0
 	int i = 0
@@ -577,17 +618,21 @@ int pg_report_choice(pg_analysis* analysis, pg_rule* rule, list[pg_choice_unit*]
 	# The pairwise walk below can miss this when the only sibling is
 	# predicate-headed or an empty suffix (both exempt from the overlap
 	# check), and emission would then null-deref on the missing guard
-	# set -- report it as its own violation instead.
+	# set -- report it as its own violation instead. The one exception
+	# is a fallback-equivalent nullable unit: its only later siblings
+	# are dead strict epsilons, so the emitter demotes it to the actual
+	# trailing fallback and drops them.
 	while (i < units.length - 1):
 		pg_choice_unit* unit = units[i]
 		if ((unit.predicate_code == 0) && (unit.guarded == 0)):
-			conflicts = conflicts + 1
-			print2(c"parser_generator: rule ")
-			print2(rule.name)
-			print2(c": alternative ")
-			pg_report_unit_span(unit)
-			print2(c" can match nothing and is not the trailing fallback (no committed dispatch)")
-			println2(c"")
+			if (pg_choice_unit_is_nullable_fallback(analysis, rule, units, i, offset) == 0):
+				conflicts = conflicts + 1
+				print2(c"parser_generator: rule ")
+				print2(rule.name)
+				print2(c": alternative ")
+				pg_report_unit_span(unit)
+				print2(c" can match nothing and is not the trailing fallback (no committed dispatch)")
+				println2(c"")
 		i = i + 1
 	i = 0
 	while (i < units.length):
@@ -604,7 +649,7 @@ int pg_report_choice(pg_analysis* analysis, pg_rule* rule, list[pg_choice_unit*]
 			int j = i + 1
 			while (j < units.length):
 				pg_choice_unit* right = units[j]
-				if ((right.predicate_code == 0) && (pg_report_unit_is_empty_suffix(rule, right, offset) == 0)):
+				if ((right.predicate_code == 0) && (pg_report_unit_is_empty_suffix(rule, right, offset) == 0) && (pg_choice_unit_is_nullable_fallback(analysis, rule, units, j, offset) == 0)):
 					char* right_set = pg_report_unit_set(analysis, right)
 					if (pg_kind_set_intersects(analysis, left_set, right_set)):
 						conflicts = conflicts + 1
