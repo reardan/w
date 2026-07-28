@@ -249,9 +249,10 @@ current state:
 			float32 math helpers (lib/fmath.w: fsqrt, fabs, bit casts)
 			float32 transcendentals (lib/fmath.w: exp/log/pow/trig family,
 				measured ulp bounds, tested against glibc goldens on both targets)
-			float64 math helpers (lib/fmath64.w: fmath surface ported to float64
-				for 64-bit-word targets; transcendentals in progress,
-				docs/projects/engineering_math_baseline.md)
+			float64 math helpers (lib/fmath64.w: full fmath surface ported to
+				float64 for 64-bit-word targets, incl. exp/log/pow/trig
+				transcendentals with measured ulp bounds tested against
+				glibc goldens; docs/projects/engineering_math_baseline.md)
 			seeded deterministic PRNG (lib/rand.w: xorshift32, uniform
 				(rand_below, rand_float) and gaussian (rand_gaussian, Box-Muller)
 				sampling, bit-identical across targets)
