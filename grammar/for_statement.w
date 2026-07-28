@@ -428,7 +428,12 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 			value_var, value_var_type, value_call, loop_value_type)
 
 
-void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int container_type):
+# value_var is 0 for the one-variable form; otherwise "for i, x in l"
+# binds the element index to the first variable and the element to the
+# second (issue #360) — the list counterpart of the map key/value form.
+# The cursor already is the element index, so the first variable reads
+# it through __w_list_iter_index.
+void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int container_type, int value_var, int value_var_type):
 	int element_type = type_list_element_type(container_type)
 	# Struct elements cannot fit in the word-sized loop variable, so the
 	# loop yields each element's address instead: for point* p in l
@@ -437,6 +442,18 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 	if (type_num_args(element_type) > 0):
 		value_call = c"__w_list_addr"
 		loop_value_type = type_get_next_pointer(element_type)
+
+	if (value_var != 0):
+		if (types_compatible_with_expression(loop_var_type, type_lookup(c"int")) == 0):
+			warn_type_mismatch(c"for loop variable", loop_var_type, type_lookup(c"int"))
+		if (types_compatible_with_expression(value_var_type, loop_value_type) == 0):
+			warn_type_mismatch(c"for loop value variable", value_var_type, loop_value_type)
+		for_cursor_loop(for_var, for_tab_level, loop_var_type,
+				c"__w_list_iter_begin", c"__w_list_iter_done", c"__w_list_iter_index", c"__w_list_iter_next", 0,
+				-1, type_lookup(c"int"),
+				value_var, value_var_type, value_call, loop_value_type)
+		return;
+
 	if (types_compatible_with_expression(loop_var_type, loop_value_type) == 0):
 		warn_type_mismatch(c"for loop variable", loop_var_type, loop_value_type)
 
@@ -538,16 +555,41 @@ int for_infer_var_type(int container_type):
 # The "in <container>" body of for_statement; "for", the loop variable(s)
 # and "in" have already been consumed. Emits the cursor-protocol loop
 # described in the header comment. value_var is 0 unless a second loop
-# variable was declared ("for K key, V value in map"), which only maps
-# support. infer_name/infer_name2 carry the deferred names of loop
-# variables declared without a type (0 for the typed form): they are
-# declared here, right after the container expression fixes their types.
+# variable was declared: maps bind key and value ("for K key, V value
+# in map"), lists bind index and element ("for i, x in l", issue #360);
+# other containers reject it. infer_name/infer_name2 carry the deferred
+# names of loop variables declared without a type (0 for the typed
+# form): they are declared here, right after the container expression
+# fixes their types.
 void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int value_var, int value_var_type, char* infer_name, char* infer_name2):
+	# for i, x in enumerate(l): explicit index+element sugar in the
+	# iterable position (issue #360), equivalent to 'for i, x in l'.
+	# The prelude resolve rule applies: only a bare 'enumerate(' with no
+	# user symbol or generic of that name is claimed. Lists are the only
+	# enumerable shape and the two-variable form is required (W has no
+	# tuples for a one-variable form to bind).
+	int is_enumerate = 0
+	if (peek(c"enumerate") && (nextc == '(')):
+		if ((sym_lookup(token) < 0) && (generic_def_lookup(token, 0) < 0)):
+			is_enumerate = 1
+			get_token()
+			expect(c"(")
 	# The iterable is evaluated exactly once, before the body
 	int container_type = promote(expression())
 	container_type = type_unqualified(container_type)
+	if (is_enumerate):
+		expect(c")")
+		if (type_is_list(container_type) == 0):
+			diag_part(c"enumerate requires a list, got '")
+			print_error_type(container_type)
+			error(c"'")
+		if (value_var == 0):
+			error(c"enumerate requires two loop variables: for i, x in enumerate(l)")
 	if (infer_name != 0):
 		loop_var_type = for_infer_var_type(container_type)
+		# Two-variable list iteration binds the element index first
+		if (type_is_list(container_type) && (value_var != 0)):
+			loop_var_type = type_lookup(c"int")
 		for_infer_declare(infer_name, for_var, loop_var_type)
 	if (infer_name2 != 0):
 		int inferred_value_type = type_lookup(c"int")
@@ -557,16 +599,22 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 			# for_hash_container_loop's __w_map_iter_value_addr path
 			if (type_num_args(inferred_value_type) > 0):
 				inferred_value_type = type_get_next_pointer(inferred_value_type)
+		if (type_is_list(container_type)):
+			inferred_value_type = type_list_element_type(container_type)
+			# Struct elements yield element addresses, matching
+			# for_list_loop's __w_list_addr path
+			if (type_num_args(inferred_value_type) > 0):
+				inferred_value_type = type_get_next_pointer(inferred_value_type)
 		value_var_type = inferred_value_type
 		for_infer_declare(infer_name2, value_var, inferred_value_type)
 	if (type_is_map(container_type) | type_is_set(container_type)):
 		for_hash_container_loop(for_var, for_tab_level, loop_var_type, container_type, value_var, value_var_type)
 		return;
-	if (value_var != 0):
-		error(c"only maps support two loop variables")
 	if (type_is_list(container_type)):
-		for_list_loop(for_var, for_tab_level, loop_var_type, container_type)
+		for_list_loop(for_var, for_tab_level, loop_var_type, container_type, value_var, value_var_type)
 		return;
+	if (value_var != 0):
+		error(c"only maps and lists support two loop variables")
 	if (type_is_slice(container_type)):
 		for_slice_loop(for_var, for_tab_level, loop_var_type, container_type)
 		return;

@@ -286,6 +286,14 @@ int __w_list_iter_value(__w_list* list, int cursor):
 	return __w_list_load_word(list.items + cursor * list.element_size, list.element_size)
 
 
+# Two-variable list iteration ("for i, x in l", issue #360): the cursor
+# is the element index, exposed through the same accessor shape the
+# other iter helpers have so for_cursor_loop can bind it to the first
+# loop variable.
+int __w_list_iter_index(__w_list* list, int cursor):
+	return cursor
+
+
 # Copy n bytes; staging for aggregate sort_by and reverse.
 void __w_list_copy_bytes(char* dst, char* src, int n):
 	int i = 0

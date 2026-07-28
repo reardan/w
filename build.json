@@ -1890,6 +1890,7 @@
 				"defer_64_test",
 				"dns_64_test",
 				"elif_64_test",
+				"enumerate_64_test",
 				"env_64_test",
 				"event_loop_64_test",
 				"failure_detector_64_test",
@@ -2419,6 +2420,7 @@
 				"directory_test",
 				"dns_test",
 				"elif_test",
+				"enumerate_test",
 				"env_test",
 				"event_loop_test",
 				"failure_detector_test",
@@ -3306,6 +3308,33 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/elif_test.w", "-o", "bin/elif_test"]},
 				{"cmd": ["bin/elif_test"]}
+			]
+		},
+		{
+			"name": "enumerate_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/enumerate_test.w"],
+			"outputs": ["bin/enumerate_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/enumerate_test.w", "-o", "bin/enumerate_64_test"]},
+				{"cmd": ["bin/enumerate_64_test"]}
+			]
+		},
+		{
+			"name": "enumerate_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/enumerate_non_list_error_fixture.w", "tests/enumerate_one_var_error_fixture.w"]}
+			]
+		},
+		{
+			"name": "enumerate_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/enumerate_test.w"],
+			"outputs": ["bin/enumerate_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/enumerate_test.w", "-o", "bin/enumerate_test"]},
+				{"cmd": ["bin/enumerate_test"]}
 			]
 		},
 		{
