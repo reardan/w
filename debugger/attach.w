@@ -51,10 +51,17 @@ debugger/locals.w directly) are built on that register seam plus the
 memory seam above, so they work the same way against a ptrace-attached
 process that debugger/wdbg.w's equivalents do in-process.
 
+Expressions: print/set/watch go through the restricted out-of-process
+evaluator (debugger/attach_eval.w, #123 phase 6) -- name lookups plus
+field access, dereference, indexing and integer arithmetic, every memory
+read a ptrace peek through the seam. In-target function calls stay out
+of scope. Hardware watchpoints (watch, DR0-DR3 via
+PTRACE_PEEKUSER/POKEUSER on the user-area debug registers) are attach
+mode's replacement for the in-process software scan: four at most, DR6
+names the one that fired at each SIGTRAP stop.
+
 Scope: Linux, statically linked non-PIE x86/x86-64 ELF debuggees, attached
-locally. Expression evaluation (print/set are name lookups only, not a
-general evaluator) is not yet wired into attach mode; see
-docs/projects/debugger_attach.md.
+locally; see docs/projects/debugger_attach.md.
 */
 import lib.lib
 import lib.line_edit
@@ -65,13 +72,18 @@ import debugger.disas
 import debugger.memory
 import debugger.registers
 import debugger.locals
+import debugger.attach_eval
 
 
 # --- ptrace request numbers (classic ABI, identical on i386 and x86-64) ---
 int at_PEEKDATA():
 	return 2
+int at_PEEKUSER():
+	return 3
 int at_POKEDATA():
 	return 5
+int at_POKEUSER():
+	return 6
 int at_CONT():
 	return 7
 int at_SINGLESTEP():
@@ -329,6 +341,215 @@ int at_disas_read(int addr):
 	if (attach_read_ok == 0):
 		return -1
 	return v
+
+
+# --- hardware watchpoints (DR0-DR3 via PTRACE_PEEKUSER/POKEUSER) ---
+# The debug registers live in the ptrace *user area* (struct user), not
+# the user_regs_struct GETREGS reads, so they get their own peek/poke pair
+# on the u_debugreg byte offsets. Slot i maps 1:1 to DRi; DR7 carries the
+# local-enable and rw/len control bits, DR6 reports which watchpoint fired
+# at a SIGTRAP stop. This is attach-mode only: in-process wdbg keeps its
+# software scan (debugger/watchpoints.w), which needs no second process --
+# and conversely there is no software fallback here, so running out of the
+# four registers is a hard "no free debug register" error, never a silent
+# degradation.
+int at_hw_max():
+	return 4
+
+int attach_hw_addrs /* watched target address per DR slot, 0 = free (word slots) */
+int attach_hw_olds  /* last seen value (word slots) */
+int attach_hw_texts /* what the user typed (word slots, owned copies) */
+
+
+# Byte offset of u_debugreg[i] in struct user: i386 252 + 4*i, x86-64
+# 848 + 8*i (the docs/projects/debugger_attach.md scoping).
+int at_hw_dr_off(int i):
+	if (__word_size__ == 8):
+		return 848 + 8 * i
+	return 252 + 4 * i
+
+
+# PTRACE_PEEKUSER: like PEEKDATA, the raw syscall writes the word to
+# *data. Sets attach_read_ok like at_read_word.
+int at_hw_peek(int i):
+	int r = sys_ptrace(at_PEEKUSER(), attach_pid, at_hw_dr_off(i), attach_wordbuf)
+	if ((r < 0) && (r >= -4095)):
+		attach_read_ok = 0
+		return 0
+	attach_read_ok = 1
+	return load_word(cast(char*, attach_wordbuf))
+
+
+int at_hw_poke(int i, int value):
+	return sys_ptrace(at_POKEUSER(), attach_pid, at_hw_dr_off(i), value)
+
+
+int at_hw_addr(int i):
+	return load_word(cast(char*, attach_hw_addrs + i * __word_size__))
+
+
+int at_hw_old(int i):
+	return load_word(cast(char*, attach_hw_olds + i * __word_size__))
+
+
+char* at_hw_text(int i):
+	return cast(char*, load_word(cast(char*, attach_hw_texts + i * __word_size__)))
+
+
+int at_hw_live():
+	if (attach_hw_addrs == 0):
+		return 0
+	int n = 0
+	int i = 0
+	while (i < at_hw_max()):
+		if (at_hw_addr(i) != 0):
+			n = n + 1
+		i = i + 1
+	return n
+
+
+# DR7 for the currently armed slots: L_i (bit 2i) enables slot i, rw bits
+# (16+4i) = 01 for break-on-data-write, len bits (18+4i) = word-sized
+# (11 = 4 bytes on x86, 10 = 8 bytes in long mode).
+int at_hw_dr7():
+	int len = 3
+	if (__word_size__ == 8):
+		len = 2
+	int dr7 = 0
+	int i = 0
+	while (i < at_hw_max()):
+		if (at_hw_addr(i) != 0):
+			dr7 = dr7 | (1 << (2 * i))
+			dr7 = dr7 | (1 << (16 + 4 * i))
+			dr7 = dr7 | (len << (18 + 4 * i))
+		i = i + 1
+	return dr7
+
+
+# The word-aligned watch window containing addr. The kernel rejects an
+# unaligned debug-register address (hw_breakpoint requires bp_addr aligned
+# to bp_len), and W's globals are NOT word-aligned, so the register is
+# programmed with the aligned window holding the variable's first byte: a
+# data breakpoint fires when any accessed byte overlaps the watched range,
+# and W stores whole words at the variable's base, so real writes always
+# overlap it. (A write to a neighbour sharing the window also traps; the
+# report reads the watched address itself, so such a stop shows an
+# unchanged value rather than a wrong one.)
+int at_hw_aligned(int addr):
+	return addr - (addr & (__word_size__ - 1))
+
+
+# Push the slot table into the target's debug registers: each armed DRi's
+# aligned window, then DR7 (last, so a slot is never enabled before its
+# address is in place). Returns 0 when any poke fails (e.g. a kernel or
+# emulator without debug-register support).
+int at_hw_sync():
+	int i = 0
+	while (i < at_hw_max()):
+		if (at_hw_addr(i) != 0):
+			if (at_hw_poke(i, at_hw_aligned(at_hw_addr(i))) < 0):
+				return 0
+		i = i + 1
+	if (at_hw_poke(7, at_hw_dr7()) < 0):
+		return 0
+	return 1
+
+
+void at_hw_describe(int i):
+	print(c"watchpoint ")
+	char* digits = itoa(i + 1)
+	print(digits)
+	free(digits)
+	print(c": ")
+	print(at_hw_text(i))
+	print(c" at ")
+	char* ha = hex_word(at_hw_addr(i))
+	print(ha)
+	free(ha)
+	print(c", value ")
+	dbg_print_int_value(at_hw_old(i))
+
+
+# Which hardware watchpoint fired at this SIGTRAP, from DR6's low hit
+# bits, or -1 for an int3/single-step trap. Clears DR6 so a consumed hit
+# can never be re-reported at the next stop.
+int at_hw_check():
+	if (at_hw_live() == 0):
+		return -1
+	int dr6 = at_hw_peek(6)
+	if (attach_read_ok == 0):
+		return -1
+	if ((dr6 & 15) == 0):
+		return -1
+	at_hw_poke(6, 0)
+	int i = 0
+	while (i < at_hw_max()):
+		if ((dr6 & (1 << i)) && (at_hw_addr(i) != 0)):
+			return i
+		i = i + 1
+	return -1
+
+
+# Announce a hit as old -> new and remember the new value, the same shape
+# as the in-process software scan's dbg_watch_report.
+void at_hw_report(int i):
+	int now = dbg_mem_read_word(at_hw_addr(i))
+	print(c"watchpoint ")
+	char* digits = itoa(i + 1)
+	print(digits)
+	free(digits)
+	print(c": ")
+	print(at_hw_text(i))
+	print(c" changed: ")
+	dbg_print_int_value(at_hw_old(i))
+	print(c" -> ")
+	dbg_print_int_value(now)
+	put_char(10)
+	save_word(cast(char*, attach_hw_olds + i * __word_size__), now)
+
+
+void at_hw_delete(int i):
+	if (((i < 0) || (i >= at_hw_max())) | (attach_hw_addrs == 0)):
+		println(c"no such watchpoint")
+		return;
+	if (at_hw_addr(i) == 0):
+		println(c"no such watchpoint")
+		return;
+	free(at_hw_text(i))
+	save_word(cast(char*, attach_hw_addrs + i * __word_size__), 0)
+	at_hw_sync()
+	println(c"watchpoint deleted")
+
+
+void at_hw_delete_all():
+	if (attach_hw_addrs == 0):
+		return;
+	int any = 0
+	int i = 0
+	while (i < at_hw_max()):
+		if (at_hw_addr(i) != 0):
+			free(at_hw_text(i))
+			save_word(cast(char*, attach_hw_addrs + i * __word_size__), 0)
+			any = 1
+		i = i + 1
+	if (any):
+		at_hw_sync()
+
+
+void at_hw_list():
+	if (attach_hw_addrs == 0):
+		println(c"no watchpoints set")
+		return;
+	int shown = 0
+	int i = 0
+	while (i < at_hw_max()):
+		if (at_hw_addr(i) != 0):
+			at_hw_describe(i)
+			put_char(10)
+			shown = shown + 1
+		i = i + 1
+	if (shown == 0):
+		println(c"no watchpoints set")
 
 
 # --- address mapping and symbolization ---
@@ -732,19 +953,22 @@ void at_info(char* arg):
 			dbg_print_frame_vars(at_to_v(at_sel_pc()), at_sel_esp(), 'A')
 		else:
 			println(c"no source: args unavailable")
+	else if ((strcmp(arg, c"w") == 0) | (strcmp(arg, c"watchpoints") == 0)):
+		at_hw_list()
 	else:
-		println(c"info topics: registers breakpoints functions files locals args")
+		println(c"info topics: registers breakpoints watchpoints functions files locals args")
 
 
 void at_help():
 	println(c"attach-mode commands:")
 	println(c"  c/continue  s/step  n/next  si/stepi  fin/finish  detach  q/quit  kill")
-	println(c"  b/break <function | line | file:line | 0xADDR>   d/delete <n>")
+	println(c"  b/break <function | line | file:line | 0xADDR>   d/delete <n>   d w [n]")
+	println(c"  watch <expr | 0xADDR>  (hardware watchpoint, write, 4 max)")
 	println(c"  r/registers  x <0xADDR> [count]  st/stack  bt/backtrace")
 	println(c"  f/frame [n]  up  down  (select a backtrace frame)")
-	println(c"  p/print <name>  set <name> <value>  (locals, args or globals)")
+	println(c"  p/print <expr>  set <expr> <value>  (names, s.field, *ptr, a[i], + - * / %)")
 	println(c"  disas [addr | function] [count]   disas on|off (context at stops)")
-	println(c"  l/line (where)  list [line]  i registers | breakpoints | functions | files | locals | args")
+	println(c"  l/line (where)  list [line]  i registers | breakpoints | watchpoints | functions | files | locals | args")
 
 
 # --- argument helpers (local: attach.w cannot import wdbg.w) ---
@@ -767,67 +991,109 @@ int at_number(char* s):
 	return atoi(s)
 
 
-# print <name>: a local, argument (at the selected frame) or a defined
-# global, by name. Attach mode has no expression compiler yet (phase 6 is
-# still open, docs/projects/debugger_attach.md) -- anything else is
-# reported as unsupported rather than silently doing nothing.
+# print <expr>: the restricted out-of-process evaluator
+# (debugger/attach_eval.w, #123 phase 6) -- names resolve like the old
+# bare-name lookup (locals/args of the selected frame, then globals), plus
+# field access, dereference, indexing and integer arithmetic, all read
+# through the ptrace memory seam. In-target calls stay unsupported.
 void at_print_command(char* arg):
 	if (attach_symbolized == 0):
 		println(c"no source: print unavailable")
 		return;
 	if (arg[0] == 0):
-		println(c"usage: print <name>")
+		println(c"usage: print <expression>")
 		return;
-	int pc = at_to_v(at_sel_pc())
-	int esp = at_sel_esp()
-	int note = dbg_local_find(arg, pc)
-	if (note >= 0):
-		dbg_print_local(note, esp)
+	at_val v = at_eval_text(arg, at_to_v(at_sel_pc()), at_sel_esp())
+	if (v.ok == 0):
 		return;
-	int g = dbg_global_find(arg)
-	if (g >= 0):
-		if (dbg_sym_symtype(g) != 2):
-			print(arg)
-			print(c" = ")
-			dbg_print_typed_value(dbg_sym_address(g), dbg_sym_type(g))
-			put_char(10)
-			return;
-	println(c"unknown variable (attach mode cannot evaluate general expressions yet)")
+	print(arg)
+	print(c" = ")
+	aev_print_result(v)
+	put_char(10)
 
 
-# set <name> <value>: writes a local, argument (at the selected frame) or
-# global word.
+# set <expr> <value>: writes through any lvalue the restricted evaluator
+# resolves (a name, field, element or dereference). Narrow (sub-word)
+# lvalues merge into their containing word (aev_write) so a byte-sized
+# field's neighbours survive the ptrace word poke.
 void at_set_command(char* arg):
 	if (attach_symbolized == 0):
 		println(c"no source: set unavailable")
 		return;
 	char* value_text = at_split_word(arg)
 	if ((arg[0] == 0) || (value_text[0] == 0)):
-		println(c"usage: set <name> <value>")
+		println(c"usage: set <expression> <value>")
 		return;
-	int v = at_number(value_text)
-	int pc = at_to_v(at_sel_pc())
-	int esp = at_sel_esp()
-	int note = dbg_local_find(arg, pc)
-	if (note >= 0):
-		int addr = dbg_local_runtime_addr(note, esp)
-		if (dbg_mem_readable(addr, __word_size__) == 0):
-			println(c"variable is not addressable here")
-			return;
-		dbg_mem_write_word(addr, v)
-		dbg_print_local(note, esp)
+	int newv = at_number(value_text)
+	at_val v = at_eval_text(arg, at_to_v(at_sel_pc()), at_sel_esp())
+	if (v.ok == 0):
 		return;
-	int g = dbg_global_find(arg)
-	if (g >= 0):
-		if (dbg_sym_symtype(g) != 2):
-			dbg_mem_write_word(dbg_sym_address(g), v)
-			print(arg)
-			print(c" = ")
-			dbg_print_typed_value(dbg_sym_address(g), dbg_sym_type(g))
-			put_char(10)
+	if (v.is_lval == 0):
+		println(c"set needs a variable or memory location, not a computed value")
+		return;
+	if (aev_is_struct_value(v.vtype)):
+		println(c"cannot set a whole struct value; set one field")
+		return;
+	if (aev_write(v.addr, aev_width(v.vtype), newv) == 0):
+		println(c"variable is not addressable here")
+		return;
+	print(arg)
+	print(c" = ")
+	aev_print_result(v)
+	put_char(10)
+
+
+# watch <expr | 0xADDR>: hardware watchpoint (DR0-DR3) on the word at the
+# resolved address -- a restricted-eval lvalue (name, field, element,
+# dereference) in symbolized mode, or a raw address always. Stops the
+# tracee on any write to the watched word; at the stop DR6 names the
+# watchpoint that fired (at_hw_check) and the report is the same
+# old -> new shape as the in-process software scan.
+void at_watch_command(char* arg):
+	if (attach_alive == 0):
+		println(c"process is not running")
+		return;
+	if (arg[0] == 0):
+		println(c"usage: watch <expression | 0xADDR>")
+		return;
+	int addr = 0
+	if ((arg[0] >= '0') && (arg[0] <= '9')):
+		addr = at_number(arg)
+	else:
+		if (attach_symbolized == 0):
+			println(c"no source: watch by address (0xADDR)")
 			return;
-	print(c"unknown variable: ")
-	println(arg)
+		at_val v = at_eval_text(arg, at_to_v(at_sel_pc()), at_sel_esp())
+		if (v.ok == 0):
+			return;
+		if (v.is_lval == 0):
+			println(c"watch needs a variable or memory location, not a computed value")
+			return;
+		addr = v.addr
+	if (dbg_mem_readable(addr, __word_size__) == 0):
+		println(c"address is not readable")
+		return;
+	int slot = -1
+	int i = 0
+	while (i < at_hw_max()):
+		if ((slot < 0) && (at_hw_addr(i) == 0)):
+			slot = i
+		i = i + 1
+	if (slot < 0):
+		println(c"no free debug register (4 hardware watchpoints max)")
+		return;
+	save_word(cast(char*, attach_hw_addrs + slot * __word_size__), addr)
+	if (at_hw_sync() == 0):
+		save_word(cast(char*, attach_hw_addrs + slot * __word_size__), 0)
+		println(c"cannot program the debug registers (ptrace POKEUSER failed)")
+		return;
+	char* copy = malloc(strlen(arg) + 1)
+	strcpy(copy, arg)
+	save_word(cast(char*, attach_hw_texts + slot * __word_size__), cast(int, copy))
+	save_word(cast(char*, attach_hw_olds + slot * __word_size__), dbg_mem_read_word(addr))
+	at_hw_describe(slot)
+	put_char(10)
+	println(c"(hardware watchpoint: stops when the word is written)")
 
 
 # Multi-line source listing centered on the stopped ip (or an explicit line
@@ -891,7 +1157,17 @@ void at_delete_command(char* arg):
 				at_bp_disarm(i)
 				save_word(cast(char*, attach_bp_addrs + i * __word_size__), 0)
 			i = i + 1
-		println(c"all breakpoints deleted")
+		at_hw_delete_all()
+		println(c"all breakpoints and watchpoints deleted")
+		return;
+	# d w [n]: watchpoints, mirroring wdbg.w's in-process delete syntax.
+	char* wnum = at_split_word(arg)
+	if ((strcmp(arg, c"w") == 0) | (strcmp(arg, c"watch") == 0)):
+		if (wnum[0] == 0):
+			at_hw_delete_all()
+			println(c"all watchpoints deleted")
+		else:
+			at_hw_delete(atoi(wnum) - 1)
 		return;
 	int n = atoi(arg) - 1
 	if (((n < 0) || (n >= attach_bp_count)) | (at_bp_addr(n) == 0)):
@@ -939,7 +1215,20 @@ void at_report_stop(int status):
 	int sig = at_status_stopsig(status)
 	at_getregs()
 	int ip = at_reg(at_off_ip())
-	if (sig == 5): /* SIGTRAP: breakpoint or single-step */
+	if (sig == 5): /* SIGTRAP: watchpoint, breakpoint or single-step */
+		# DR6 first: a hardware watchpoint's trap arrives with ip already
+		# past the writing instruction (no int3 byte, no rewind), so it
+		# must be recognized before the at_bp_find(ip - 1) dispatch below
+		# misreads it as a plain stop.
+		int hw = at_hw_check()
+		if (hw >= 0):
+			at_hw_report(hw)
+			if (attach_symbolized):
+				at_frames_compute(ip)
+			at_print_location(ip)
+			if (dbg_disas_auto):
+				dbg_disas_show_context(ip)
+			return;
 		int bp = at_bp_find(ip - 1)
 		if (bp >= 0):
 			at_set_ip(ip - 1) /* rewind over the executed int3 */
@@ -988,6 +1277,16 @@ void at_continue():
 			return;
 		at_hold_signal(st)
 		at_bp_arm(bp)
+		# The stepped-over instruction itself may have written a watched
+		# word; stop here rather than silently running on (a held pending
+		# signal is redelivered on the next resume as usual).
+		int hw = at_hw_check()
+		if (hw >= 0):
+			at_hw_report(hw)
+			if (attach_symbolized):
+				at_frames_compute(dbg_reg_pc())
+			at_print_location(dbg_reg_pc())
+			return;
 	at_resume(at_CONT())
 	at_report_stop(at_wait())
 
@@ -1132,6 +1431,15 @@ void at_step_line_mode(int mode):
 			if (dbg_disas_auto):
 				dbg_disas_show_context(ip - 1)
 			return;
+		# A stepped instruction that wrote a watched word stops the step
+		# and reports the watchpoint, like a breakpoint hit mid-step.
+		int hwhit = at_hw_check()
+		if (hwhit >= 0):
+			at_hw_report(hwhit)
+			if (attach_symbolized):
+				at_frames_compute(ip)
+			at_print_location(ip)
+			return;
 		count = count + 1
 		# Bailing out of this loop returns to the prompt with the tracee
 		# still stopped -- unlike wdbg.w's in-process twin, which really
@@ -1205,6 +1513,17 @@ void at_finish():
 			if (at_status_exited(st1) | at_status_signalled(st1)):
 				at_report_stop(st1)
 				return;
+			# The stepped-over instruction may have hit a watchpoint.
+			int hwfin = at_hw_check()
+			if (hwfin >= 0):
+				if (temp_slot >= 0):
+					at_bp_disarm(temp_slot)
+					save_word(cast(char*, attach_bp_addrs + temp_slot * __word_size__), 0)
+				at_hw_report(hwfin)
+				if (attach_symbolized):
+					at_frames_compute(dbg_reg_pc())
+				at_print_location(dbg_reg_pc())
+				return;
 		at_resume(at_CONT())
 		int st = at_wait()
 		if (at_status_exited(st) | at_status_signalled(st)):
@@ -1266,6 +1585,9 @@ void at_detach():
 		if (at_bp_addr(i) != 0):
 			at_bp_disarm(i)
 		i = i + 1
+	# Disable any hardware watchpoints (DR7 = 0 via at_hw_sync) so the
+	# target runs on without stray debug traps after we let it go.
+	at_hw_delete_all()
 	sys_ptrace(at_DETACH(), attach_pid, 0, 0)
 	attach_alive = 0
 	println(c"detached; process continues")
@@ -1340,6 +1662,8 @@ void at_command_loop():
 			at_print_command(arg)
 		else if (strcmp(command, c"set") == 0):
 			at_set_command(arg)
+		else if (strcmp(command, c"watch") == 0):
+			at_watch_command(arg)
 		else if ((strcmp(command, c"disas") == 0) | (strcmp(command, c"disassemble") == 0)):
 			dbg_disas_command(at_sel_pc(), arg)
 		else if ((strcmp(command, c"l") == 0) | (strcmp(command, c"line") == 0) | (strcmp(command, c"where") == 0)):
@@ -1379,6 +1703,13 @@ int wdbg_attach_run(int pid, int have_symbols):
 	attach_bp_orig = cast(int, malloc(at_bp_max() * 4))
 	attach_bp_armed = cast(int, malloc(at_bp_max() * 4))
 	attach_bp_count = 0
+	attach_hw_addrs = cast(int, malloc(at_hw_max() * __word_size__))
+	attach_hw_olds = cast(int, malloc(at_hw_max() * __word_size__))
+	attach_hw_texts = cast(int, malloc(at_hw_max() * __word_size__))
+	int hwslot = 0
+	while (hwslot < at_hw_max()):
+		save_word(cast(char*, attach_hw_addrs + hwslot * __word_size__), 0)
+		hwslot = hwslot + 1
 	attach_pending_sig = 0
 	attach_symbolized = 0
 
