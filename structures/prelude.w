@@ -23,6 +23,12 @@ void __w_print_cstr(char* s):
 	write(1, s, strlen(s))
 
 
+# A char-typed print argument renders as the character itself, one byte
+# (grammar/print_builtin.w routes only genuine char values here).
+void __w_print_char(int c):
+	put_char(c)
+
+
 void __w_print_int(int value):
 	char* s = itoa(value)
 	write(1, s, strlen(s))

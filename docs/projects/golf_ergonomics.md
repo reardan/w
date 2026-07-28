@@ -205,6 +205,21 @@ diagnostics are pinned by the prelude_math_error_test fixture group.
 No new syntax: these are ordinary call sites, so the parser-generator
 grammar is untouched.
 
+## Wave 3: better strings (issue #360 item 4)
+
+### char print (grammar/print_builtin.w, structures/prelude.w)
+
+print/println render a genuinely char-typed value as the character
+itself (one byte, via `__w_print_char`) instead of its numeric code.
+The boundary is the static type: character literals are untyped
+constants and char arithmetic yields int, so `println('a')` and
+`println(c + 1)` keep printing numerically, as do `byte`/`int8`/
+`uint8` values. `list[char]` elements and f-string `{c}`
+interpolations keep the numeric int-like rendering of the shared
+f-string helper-kind table — only the scalar print dispatch changed.
+`type_is_char` (compiler/type_table.w) is the level-0 sibling of
+`type_is_char_pointer`.
+
 ## Acceptance
 
 - `./wbuild verify` — self-host fixpoint (wv3 == wv4 == wv5) with every

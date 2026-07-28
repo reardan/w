@@ -4837,7 +4837,7 @@
 			"outputs": ["bin/print_builtin_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/print_builtin_test.w", "-o", "bin/print_builtin_test"]},
-				{"cmd": ["bin/print_builtin_test"], "expect_stdout": ["greeting str via f", "1.250000", "[5, -1, 12]", "[one, two]", "[]", "big"]}
+				{"cmd": ["bin/print_builtin_test"], "expect_stdout": ["greeting str via f", "1.250000", "[5, -1, 12]", "[one, two]", "[]", "big", "char:ww", "int:120", "idx:A", "byte:65", "97"]}
 			]
 		},
 		{
