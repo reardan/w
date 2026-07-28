@@ -97,6 +97,49 @@ char* replace(char* s, char* needle, char* replacement):
 	return result
 
 
+# ASCII character classes and case mapping (issue #360), the libc ctype
+# names with byte-sized char in and out. ASCII semantics only: bytes of
+# a multi-byte UTF-8 sequence are never ASCII, so they test false and
+# map to themselves. Predicates return 1 or 0.
+int isdigit(char c):
+	return (c >= '0') & (c <= '9')
+
+
+int isupper(char c):
+	return (c >= 'A') & (c <= 'Z')
+
+
+int islower(char c):
+	return (c >= 'a') & (c <= 'z')
+
+
+int isalpha(char c):
+	return isupper(c) | islower(c)
+
+
+int isalnum(char c):
+	return isalpha(c) | isdigit(c)
+
+
+# Space, tab, newline, vertical tab, form feed, carriage return.
+int isspace(char c):
+	if (c == ' '):
+		return 1
+	return (c >= 9) & (c <= 13)
+
+
+char tolower(char c):
+	if (isupper(c)):
+		return c + ('a' - 'A')
+	return c
+
+
+char toupper(char c):
+	if (islower(c)):
+		return c - ('a' - 'A')
+	return c
+
+
 # The pieces joined with the delimiter between them, as a new C string.
 char* join(list[char*] pieces, char* delimiter):
 	int delimiter_length = strlen(delimiter)

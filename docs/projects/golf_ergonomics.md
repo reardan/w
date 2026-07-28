@@ -220,6 +220,18 @@ f-string helper-kind table — only the scalar print dispatch changed.
 `type_is_char` (compiler/type_table.w) is the level-0 sibling of
 `type_is_char_pointer`.
 
+### ASCII character classes (lib/str.w)
+
+`isdigit`, `isupper`, `islower`, `isalpha`, `isalnum`, `isspace`,
+`tolower`, `toupper` — the libc ctype names with byte-sized `char` in
+and out (predicates return 1/0 ints). ASCII semantics only: `char` is
+signed, so the bytes of a multi-byte UTF-8 sequence are negative,
+test false in every class and map to themselves. `tolower`/`toupper`
+return `char`, so their results print as characters through the new
+print dispatch. The names shadow libc's only for programs that import
+lib.str AND c_import ctype.h, where W symbols already win by the
+c_import skip rule.
+
 ## Acceptance
 
 - `./wbuild verify` — self-host fixpoint (wv3 == wv4 == wv5) with every
