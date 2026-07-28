@@ -144,6 +144,30 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
+- **(2026-07-28, wave 4a) a grammar/ or structures/w_list.w diff makes
+  `wtest changed` select essentially the whole manifest, including
+  targets this host can never run.** The elif/prelude batch touched
+  grammar/statement.w and the auto-imported list runtime, so the
+  import-closure rule correctly marked ~400 targets — but the printed
+  selection mixes in platform-gated targets (cuda_*, *_darwin, win64_*,
+  wasm_*, *_arm64, the libc6:i386-dependent dynamic tests) with no
+  indication of which subset is runnable here, and no umbrella-level
+  collapse ("this is >90% of `tests`; run `tests` instead"). An agent
+  has to hand-curate the list. Cheap fixes: a `--runnable-here` filter
+  (reuse wbuild's platform gating), and/or collapsing to the `tests`
+  umbrella plus the residue when the selection exceeds some fraction
+  of it.
+- **(2026-07-28, wave 4a) invoking the compiler from outside a
+  checkout cannot resolve the auto-imported runtime.** With CWD in a
+  scratch directory, `/path/to/repo/bin/wv2 check snippet.w` fails
+  with "cannot locate 'structures/hash_table.w' (searched the current
+  directory and every parent)": runtime-import resolution walks up
+  from the CWD, ignoring where the compiler binary itself lives. Same
+  invocation from the repo root (absolute snippet path) works. Agents
+  compile throwaway snippets from scratch directories constantly;
+  falling back to the running binary's own directory (argv[0]) before
+  erroring would make that workflow just work. Workaround: always cd
+  to the checkout and pass the snippet's absolute path.
 - **(2026-07-19 review) `--defhash` outside a range always compares HEAD
   vs worktree**, even when the piped path list came from a ranged diff
   (`git diff --name-only main..HEAD | wtest changed --defhash` after
