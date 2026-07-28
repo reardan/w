@@ -40,6 +40,29 @@ void test_file_stat_regular_file():
 	unlink(path)
 
 
+void test_file_stat_blocks_counts_allocated_space():
+	char* path = st_join(c"blocks.bin")
+	# 8192 bytes: past every filesystem's inline-storage threshold, so
+	# real blocks must be allocated. The bounds are deliberately loose
+	# (1..1024 512-byte units, i.e. up to 512 KiB) -- tight enough to
+	# catch a wrong statx offset (which would read a timestamp-sized
+	# garbage word), loose enough for any sane allocation policy.
+	char* content = malloc(8193)
+	int i = 0
+	while (i < 8192):
+		content[i] = 'x'
+		i = i + 1
+	content[8192] = 0
+	st_write(path, content)
+	free(content)
+	file_stat st
+	assert_equal(0, file_stat_path(path, &st))
+	assert_equal(8192, st.size)
+	assert_equal(1, st.blocks > 0)
+	assert_equal(1, st.blocks <= 1024)
+	unlink(path)
+
+
 void test_file_stat_directory():
 	char* path = st_join(c"subdir")
 	assert_equal(0, mkdir(path, 493))
