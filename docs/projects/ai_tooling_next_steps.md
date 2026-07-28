@@ -881,7 +881,11 @@ ergonomic gap:
   "a minute" expectation, so agents pick too-small timeouts and kill
   the build. Cheap fixes: progress output (one line per N modules) so
   a caller can distinguish slow-but-alive from hung, and/or making an
-  interrupted cache build resume instead of restarting.
+  interrupted cache build resume instead of restarting. Recurred
+  2026-07-28 (map default factory work, issue #327): first
+  `wtest changed` after `./wbuild build` + `verify` + `verify_x64` was
+  killed by a 3-minute caller timeout and the retry ran well past five
+  minutes before finishing, still with no progress output.
 
 ## Skills / rules upkeep
 
