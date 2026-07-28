@@ -167,33 +167,28 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
-- **(2026-07-28, streaming nullable-fallback work) `wtest changed` never
-  selects `verify` for seed-graph `libs/extras/` edits.**
-  `tools/test_map.w`'s `wtest_compiler_tree` covers `w.w`/`grammar.w`/
-  `codegen.w` and `compiler/`/`grammar/`/`code_generator/`, but not
-  `libs/extras/parser_generator/`, `libs/extras/c_import/`, or
-  `libs/extras/c_preprocessor/` -- all in `w.w`'s transitive import
-  closure via the C-import feature, so an edit there rebuilds every
-  compiler stage and can corrupt self-hosting exactly like a `compiler/`
-  edit. Editing `libs/extras/parser_generator/analysis.w`+`generator.w`
-  printed the parser_generator suite, `manifest_check`, `metadata_check`,
-  and `wexec_test`, but not `verify` (CLAUDE.md and the wave plan both
-  name `verify` as the required gate for those files). Either extend
-  `wtest_compiler_tree` to the three seed-graph `libs/extras/` trees, or
-  better, derive the "compiler tree" set from `bin/wv2 deps w.w` instead
-  of a hard-coded prefix list so it can never go stale again.
-- **(2026-07-28, noticed writing the `lib/__arch__/wasm/` fixture
-  case) an arch-runtime edit never selects that arch's self-host
-  gate.** Rule (b)'s root collection skips compiler-tree roots, so
-  `build_wasm`/`verify_wasm` (whose only root is `w.w`) are invisible
-  to a `lib/__arch__/wasm/syscalls.w` change — selection recommends the
-  leaf wasm tests but not the wasm fixpoint, and the compiler-tree
-  residue only ever maps to the 32-bit `verify`. The same holds for
-  every arch (`lib/__arch__/arm64/` edits never recommend
-  `verify_arm64`). Pre-existing, not introduced by the wasm selector
-  work; a residue rule mapping `lib/__arch__/<arch>/` (for the arches
-  whose runtime is in `w.w`'s closure) to that arch's verify pair
-  would close it.
+- **Shipped (2026-07-28, wave 4): the verify residue's compiler-tree
+  set is now DERIVED from `bin/wv2 deps w.w`** instead of the
+  hard-coded prefix list (three independent 2026-07-28 entries logged
+  the gap: seed-graph `libs/extras/` edits, `lib/__arch__/<arch>/`
+  runtime edits, and `debugger/`/`repl/` edits never selected the
+  self-host gate). `tools/test_map.w`'s `wtest_seed_graph` consults
+  the closure snapshot (cached in `bin/.wtest_deps_cache` under root
+  id `x86 w.w`, same entry format and validation as rule (b)'s
+  closures) and fails OPEN to the old prefix floor
+  (`wtest_compiler_tree`) when `deps` is unavailable — never narrower
+  than the historical behavior. `lib/__arch__/<arch>/` files found in
+  that arch's own `bin/wv2 <arch> deps w.w` closure additionally
+  select the arch's fixpoint (`verify_x64`/`verify_arm64`/
+  `verify_wasm`/`verify_win`; `verify_darwin` stays never-emit). Rule
+  (b)'s closure-scan skip stays keyed to the narrow prefix floor, so
+  derived seed-graph files (debugger/, lib/stream.w, ...) keep their
+  leaf-test closure selection alongside `verify`. The derivation is
+  file-accurate, not tree-sloppy: `libs/extras/parser_generator/
+  runtime.w` (in the closure) gets the gate, `generator.w` (pg-tool
+  code the compiler never links) does not —
+  `tests/wtest/map_expectations.expect` pins both directions plus a
+  non-closure `lib/stats.w` negative.
 - **(2026-07-28, issue #360 item 5) Editing an auto-imported runtime
   file selects essentially the whole manifest.** `structures/w_list.w`
   is in every program's import closure, so `git diff --name-only
@@ -206,22 +201,6 @@ is a queue, not an archive.
   step references, and say so in one line, instead of enumerating the
   world; a `--runnable-here` filter (skip targets whose steps need
   binaries/hosts this machine lacks) would compose well with that.
-- **(2026-07-28, #123 attach remainder) `wtest changed` does not select
-  `verify` for `debugger/` changes, though `debugger/` is seed-compiled
-  as part of `w.w`'s closure.** `tools/test_map.w`'s
-  `wtest_compiler_tree()` covers `w.w`/`grammar.w`/`codegen.w` and the
-  `compiler/`/`grammar/`/`code_generator/` trees, but not `debugger/`
-  (or `repl/`, also pulled into the compiler by the debugger's eval),
-  so a diff touching only `debugger/attach*.w` selects wdbg/debug/
-  attach/repl targets and `parser_generator_w_test` but not the
-  self-host fixpoint — the one gate CLAUDE.md calls REQUIRED for any
-  compiler(-binary) change. Agents currently have to know to run
-  `./wbuild verify`/`verify_x64` by hand (this task did). Either add
-  `debugger/` + `repl/` to the compiler-tree residue rule, or document
-  in `test_map.w` why the fixpoint is intentionally not selected for
-  them (they change the compiler binary's bytes but not the code it
-  emits, so wv3==wv4==wv5 still holds trivially — if that is the
-  reasoning, it should be written down where the rule lives).
 - **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
   commit-ranged selection MVP** (issue #251 direction 4b). `changed`
   (not `for`) now treats a single positional argument containing `..`
