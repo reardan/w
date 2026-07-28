@@ -507,8 +507,11 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   return -1 — degrades to the old readable-only answer so those
   platforms are unchanged) now filters the `PATH` loop, and the
   shadowing scenario is a regression step in `wexec_test`
-  (tests/wexec/path_xok.json). The exit-127 diagnostic naming the
-  unusable candidate remains a nice-to-have.
+  (tests/wexec/path_xok.json). The exit-127 diagnostic now names what
+  `PATH` resolution actually did (2026-07-28,
+  `wexec_status_127_message`): the readable-but-non-executable candidate
+  it skipped and/or the plain nothing-found case, asserted by further
+  `wexec_test` steps against the same fixture.
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new

@@ -1125,7 +1125,10 @@
 				{"cmd": ["mkdir", "-p", "bin/wexec_xok/shadow", "bin/wexec_xok/real"]},
 				{"cmd": ["sh", "-c", "printf 'not a program\\n' > bin/wexec_xok/shadow/wexec_xok_probe"]},
 				{"cmd": ["sh", "-c", "printf '#!/bin/sh\\necho xok probe: real executable ran\\n' > bin/wexec_xok/real/wexec_xok_probe && chmod 755 bin/wexec_xok/real/wexec_xok_probe"]},
-				{"cmd": ["sh", "-c", "PATH=\"bin/wexec_xok/shadow:bin/wexec_xok/real:$PATH\" bin/wexec -f tests/wexec/path_xok.json probe"], "expect_stdout": ["xok probe: real executable ran", "wexec: OK (1 targets)"]}
+				{"cmd": ["sh", "-c", "PATH=\"bin/wexec_xok/shadow:bin/wexec_xok/real:$PATH\" bin/wexec -f tests/wexec/path_xok.json probe"], "expect_stdout": ["xok probe: real executable ran", "wexec: OK (1 targets)"]},
+				{"cmd": ["sh", "-c", "printf 'not a program\\n' > bin/wexec_xok/shadow/wexec_xok_unusable"]},
+				{"cmd": ["sh", "-c", "PATH=\"bin/wexec_xok/shadow:bin/wexec_xok/real:$PATH\" bin/wexec -f tests/wexec/path_xok.json unusable"], "expect_fail": true, "expect_stderr": "command failed with exit status 127: no executable 'wexec_xok_unusable' on PATH; skipped readable but non-executable bin/wexec_xok/shadow/wexec_xok_unusable"},
+				{"cmd": ["sh", "-c", "PATH=\"bin/wexec_xok/shadow:bin/wexec_xok/real:$PATH\" bin/wexec -f tests/wexec/path_xok.json missing"], "expect_fail": true, "expect_stderr": "command failed with exit status 127: no executable 'wexec_xok_no_such_command' on PATH", "reject_stderr": "skipped readable"}
 			]
 		},
 		{
