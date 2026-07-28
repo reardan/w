@@ -249,9 +249,10 @@ current state:
 			float32 math helpers (lib/fmath.w: fsqrt, fabs, bit casts)
 			float32 transcendentals (lib/fmath.w: exp/log/pow/trig family,
 				measured ulp bounds, tested against glibc goldens on both targets)
-			float64 math helpers (lib/fmath64.w: fmath surface ported to float64
-				for 64-bit-word targets; transcendentals in progress,
-				docs/projects/engineering_math_baseline.md)
+			float64 math helpers (lib/fmath64.w: full fmath surface ported to
+				float64 for 64-bit-word targets, incl. exp/log/pow/trig
+				transcendentals with measured ulp bounds tested against
+				glibc goldens; docs/projects/engineering_math_baseline.md)
 			seeded deterministic PRNG (lib/rand.w: xorshift32, uniform
 				(rand_below, rand_float) and gaussian (rand_gaussian, Box-Muller)
 				sampling, bit-identical across targets)
@@ -354,7 +355,6 @@ current state:
 			lib/thread.w (spawn/join/parallel_for) is Linux x86/x64 only;
 				arm64/darwin/win64/wasm, mutexes/atomics and thread
 				pools are staged in docs/projects/threads.md
-			worker stacks (4MB) and handles are not reclaimed on join
 		webassembly:
 			json builtins, generators, c_import/extern FFI, REPL and wdbg
 				are not supported on the wasm target
@@ -439,7 +439,9 @@ current state:
 
 	net:
 		working:
-			basic socket/connect/server paths
+			basic socket/connect/server paths (direct socket syscalls on
+				every target incl. i386, Linux 4.3+; the socketcall(2)
+				multiplexer is retired from lib/__arch__/x86)
 			udp sendto/recvfrom helpers
 			poll, nonblocking sockets, monotonic clock and sleep_ms
 			Content-Length framing (lib/framing.w)
@@ -449,8 +451,6 @@ current state:
 			http/https server framework (libs/standard/web/connection.w +
 				http_server.w: ServerContext accept loop, RequestContext/
 				routing, keep-alive, HTTPS via tls_accept; issue #235)
-		remaining:
-			socketcall cleanup
 
 	web ui:
 		editor

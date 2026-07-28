@@ -153,6 +153,15 @@ int sys_clone(int flags, int child_stack):
 int sys_futex(int uaddr, int futex_op, int val, int timeout):
 	return syscall7(240, uaddr, futex_op, val, timeout, 0, 0)
 
+# set_tid_address (258): arms the calling thread's clear_child_tid
+# pointer. When the thread exits, the kernel writes 0 to the 32-bit
+# word at tidptr and futex-wakes one waiter on it - the same signal
+# CLONE_CHILD_CLEARTID would arm at clone time. lib/thread.w uses it
+# so a joiner can wait for the worker to be fully off its stack before
+# munmapping it. Returns the caller's tid.
+int sys_set_tid_address(int tidptr):
+	return syscall(258, tidptr, 0, 0)
+
 # poll (168): fds points at an array of 8-byte pollfd records.
 # timeout_ms < 0 blocks forever; 0 returns immediately.
 int sys_poll(int fds, int nfds, int timeout_ms):
@@ -310,179 +319,57 @@ int clock_gettime(int clock_id, int* out):
 	return syscall(265, clock_id, out, 0)
 
 
-/* Socket syscalls use the i386 socketcall(2) multiplexer. */
-struct sys_socket_args:
-	int family
-	int socket_type
-	int protocol
-
-
-struct sys_bind_args:
-	int sockfd
-	int addr
-	int addrlen
-
-
-struct sys_connect_args:
-	int sockfd
-	int addr
-	int addrlen
-
-
-struct sys_listen_args:
-	int sockfd
-	int backlog
-
-
-struct sys_accept_args:
-	int sockfd
-	int addr
-	int addrlen
-
-
-struct sys_getsockname_args:
-	int sockfd
-	int addr
-	int addrlen
-
-
-struct sys_socketpair_args:
-	int family
-	int socket_type
-	int protocol
-	int fds
-
-
-struct sys_sendto_args:
-	int sockfd
-	char* buf
-	int len
-	int flags
-	int addr
-	int addrlen
-
-
-struct sys_setsockopt_args:
-	int sockfd
-	int level
-	int optname
-	int optval
-	int optlen
-
-
-struct sys_recv_args:
-	int sockfd
-	char* buf
-	int len
-	int flags
-
-
-struct sys_recvfrom_args:
-	int sockfd
-	char* buf
-	int len
-	int flags
-	int addr
-	int addrlen
-
-
+/* Direct i386 socket syscalls (Linux 4.3+, 2015). These replace the
+legacy socketcall(2) multiplexer (nr 102 + an argument-block pointer),
+matching the x64 layer's shape one register-passed syscall per
+operation. i386 has no direct accept or recv: accept is accept4 with
+flags 0, recv is recvfrom with a null address, exactly as on x86-64. */
 int sys_socket(int family, int socket_type, int protocol):
-	sys_socket_args args
-	args.family = family
-	args.socket_type = socket_type
-	args.protocol = protocol
-	return syscall(102, 1, &args, 0)
+	return syscall(359, family, socket_type, protocol)
 
 
 int sys_bind(int sockfd, int addr, int addrlen):
-	sys_bind_args args
-	args.sockfd = sockfd
-	args.addr = addr
-	args.addrlen = addrlen
-	return syscall(102, 2, &args, 0)
+	return syscall(361, sockfd, addr, addrlen)
 
 
 int sys_connect(int sockfd, int addr, int addrlen):
-	sys_connect_args args
-	args.sockfd = sockfd
-	args.addr = addr
-	args.addrlen = addrlen
-	return syscall(102, 3, &args, 0)
+	return syscall(362, sockfd, addr, addrlen)
 
 
 int sys_listen(int sockfd, int backlog):
-	sys_listen_args args
-	args.sockfd = sockfd
-	args.backlog = backlog
-	return syscall(102, 4, &args, 0)
+	return syscall(363, sockfd, backlog, 0)
 
 
+# accept4 (364) with flags 0: i386 gained no plain accept syscall.
 int sys_accept(int sockfd, int addr, int addrlen):
-	sys_accept_args args
-	args.sockfd = sockfd
-	args.addr = addr
-	args.addrlen = addrlen
-	return syscall(102, 5, &args, 0)
+	return syscall7(364, sockfd, addr, addrlen, 0, 0, 0)
 
 
 int sys_getsockname(int sockfd, int addr, int addrlen):
-	sys_getsockname_args args
-	args.sockfd = sockfd
-	args.addr = addr
-	args.addrlen = addrlen
-	return syscall(102, 6, &args, 0)
+	return syscall(367, sockfd, addr, addrlen)
 
 
 int sys_socketpair(int family, int socket_type, int protocol, int fds):
-	sys_socketpair_args args
-	args.family = family
-	args.socket_type = socket_type
-	args.protocol = protocol
-	args.fds = fds
-	return syscall(102, 8, &args, 0)
+	return syscall7(360, family, socket_type, protocol, fds, 0, 0)
 
 
 int sys_sendto(int sockfd, char* buf, int len, int flags, int addr, int addrlen):
-	sys_sendto_args args
-	args.sockfd = sockfd
-	args.buf = buf
-	args.len = len
-	args.flags = flags
-	args.addr = addr
-	args.addrlen = addrlen
-	return syscall(102, 11, &args, 0)
+	return syscall7(369, sockfd, buf, len, flags, addr, addrlen)
 
 
+# recvfrom (371) with a null address doubles as recv, like on x86-64.
 int sys_recv(int sockfd, char* buf, int len, int flags):
-	sys_recv_args args
-	args.sockfd = sockfd
-	args.buf = buf
-	args.len = len
-	args.flags = flags
-	return syscall(102, 10, &args, 0)
+	return syscall7(371, sockfd, buf, len, flags, 0, 0)
 
 
 # addr/addrlen may be 0 to ignore the sender address; addrlen is an in/out
 # pointer to the address buffer size.
 int sys_recvfrom(int sockfd, char* buf, int len, int flags, int addr, int addrlen):
-	sys_recvfrom_args args
-	args.sockfd = sockfd
-	args.buf = buf
-	args.len = len
-	args.flags = flags
-	args.addr = addr
-	args.addrlen = addrlen
-	return syscall(102, 12, &args, 0)
+	return syscall7(371, sockfd, buf, len, flags, addr, addrlen)
 
 
 int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
-	sys_setsockopt_args args
-	args.sockfd = sockfd
-	args.level = level
-	args.optname = optname
-	args.optval = optval
-	args.optlen = optlen
-	return syscall(102, 14, &args, 0)
+	return syscall7(366, sockfd, level, optname, optval, optlen, 0)
 
 # getrandom (355): fills buf with up to buflen bytes from the kernel
 # CSPRNG. flags 0 blocks until the entropy pool is initialized.
