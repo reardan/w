@@ -145,6 +145,16 @@ int sys_clone(int flags, int child_stack):
 int sys_futex(int uaddr, int futex_op, int val, int timeout):
 	return syscall7(202, uaddr, futex_op, val, timeout, 0, 0)
 
+# set_tid_address (218): arms the calling thread's clear_child_tid
+# pointer. When the thread exits, the kernel writes 0 to the 32-bit
+# word at tidptr (the low half of a W word on this target) and
+# futex-wakes one waiter on it - the same signal CLONE_CHILD_CLEARTID
+# would arm at clone time. lib/thread.w uses it so a joiner can wait
+# for the worker to be fully off its stack before munmapping it.
+# Returns the caller's tid.
+int sys_set_tid_address(int tidptr):
+	return syscall(218, tidptr, 0, 0)
+
 # poll (7): fds points at an array of 8-byte pollfd records.
 # timeout_ms < 0 blocks forever; 0 returns immediately.
 int sys_poll(int fds, int nfds, int timeout_ms):
