@@ -329,21 +329,6 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
 
 ## Cleanup observed while dogfooding
 
-- **arm64 self-host stage 2 regression ("Failed to find a _main()
-  function") — expected fixed by f13ab7f, UNCONFIRMED.** The third
-  sighting of the one bug behind the "context-dependent codegen"
-  family (see `ai_tooling.md`'s 2026-07-25 status entry): arm64, like
-  x64, is a 64-bit-pointer host, and `bin/wv2_arm64` (under qemu)
-  compiling `w.w` regressed exactly when the tree crossed
-  `debug_local_note`'s >4096-locals realloc-corruption threshold
-  (`code_generator/dwarf.w`, fixed 2026-07-19 in f13ab7f). Cannot be
-  confirmed closed from a host without `qemu-user-static`: only
-  `build_arm64`'s cross-compile step (`bin/wv2 arm64 w.w -o
-  bin/wv2_arm64`) was re-checked (green, 2026-07-25) — its stage-2
-  self-host step, like `verify_arm64`, needs qemu. Remaining action:
-  re-run `./wbuild verify_arm64` on a qemu-aarch64 host or CI, then
-  delete this entry. Not CI-gated today (the release workflow's arm64
-  leg is disabled for speed).
 - **(2026-07-19 review) protobuf stage 1 hardening backlog**: duplicate
   STRING/BYTES/MESSAGE occurrences of the same field leak the first
   allocation and diverge from proto3's merge-submessages rule
