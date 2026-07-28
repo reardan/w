@@ -6,6 +6,10 @@ test_output.txt
 bin/
 log/*.core
 
+# ./wbuild manifest's atomic-rewrite staging file (tools/wbuildgen.w);
+# only left behind if wbuildgen dies between write and rename.
+/build.json.tmp
+
 # Seed binaries: downloaded from GitHub Releases per ./SEEDS, or locally
 # promoted by ./wbuild update / update_darwin / update_win.
 /w

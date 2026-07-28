@@ -1687,6 +1687,13 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 	json_value* committed = json_parse(current)
 	json_value* fresh = json_parse(rendered)
 	int reported = 0
+	if (committed == 0):
+		# A committed manifest that does not even parse (a torn write
+		# from before 'manifest' renamed atomically, or a hand edit) is
+		# its own failure mode; it used to fall through to the
+		# "formatting only" line below, which mislabeled it.
+		wbg_error2(c"committed manifest failed to parse: ", out_path)
+		reported = 1
 	if ((committed != 0) && (fresh != 0)):
 		json_value* old_targets = json_object_get(committed, c"targets")
 		json_value* new_targets = json_object_get(fresh, c"targets")
@@ -1803,9 +1810,28 @@ int main(int argc, int argv):
 			wbg_report_drift(out_path, current, rendered)
 		return 1
 
-	if (file_write_text(out_path, rendered) == 0):
-		wbg_error2(c"cannot write ", out_path)
+	# Atomic rewrite: a concurrent reader (manifest_check's byte-compare,
+	# bin/wexec parsing the manifest) must never see a torn file, so the
+	# rendered manifest lands in a sibling temp file first and rename(2)
+	# swaps it into place — every reader sees either the old bytes or the
+	# new bytes, never a mid-write prefix. The temp path is derived from
+	# out_path (not a fixed bin/ path) so it stays on out_path's
+	# filesystem and --out keeps working unchanged.
+	char* tmp_path = wbg_concat(out_path, c".tmp")
+	if (file_write_text(tmp_path, rendered) == 0):
+		wbg_error2(c"cannot write ", tmp_path)
+		free(tmp_path)
 		return 1
+	# stream_open_write creates 0755; the committed manifest is a plain
+	# 0644 text file, and rename(2) carries the temp file's mode over
+	# (the old in-place truncate kept the existing one), so reset it
+	# before the swap.
+	chmod(tmp_path, 420)
+	if (rename(tmp_path, out_path) != 0):
+		wbg_error2(c"cannot rename manifest into place: ", out_path)
+		free(tmp_path)
+		return 1
+	free(tmp_path)
 	stream_write_cstr(out, c"wbuildgen: wrote ")
 	stream_write_cstr(out, out_path)
 	stream_write_cstr(out, c" (")

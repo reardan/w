@@ -829,6 +829,13 @@
 			]
 		},
 		{
+			"name": "wbuildgen_scratch_test",
+			"deps": ["wbuildgen"],
+			"steps": [
+				{"cmd": ["sh", "tools/wbuildgen_scratch_test.sh"], "expect_stdout": "wbuildgen_scratch_test: OK"}
+			]
+		},
+		{
 			"name": "wfixture",
 			"deps": ["wv2"],
 			"inputs": ["tools/wfixture.w"],
@@ -2363,6 +2370,7 @@
 				"wvc_sync_e2e_test",
 				"unsafe_import_test",
 				"manifest_check",
+				"wbuildgen_scratch_test",
 				"result_propagate_test",
 				"task_io_test",
 				"json_rpc_test",

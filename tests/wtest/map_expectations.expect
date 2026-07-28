@@ -222,11 +222,15 @@ expect manifest_check
 forbid sha256_test
 forbid tests
 
-# The manifest generator toolchain.
+# The manifest generator toolchain. 'manifest' (the in-place build.json
+# rewrite) is never emitted: selecting it alongside manifest_check made
+# './wbuild test_changed' race the check's byte-compare against the
+# mid-rewrite manifest — manifest_check alone is the drift gate.
 case tools/wbuildgen.w
 expect wbuildgen
-expect manifest
+expect wbuildgen_scratch_test
 expect manifest_check
+forbid manifest
 forbid tests
 
 # tests/asm/*.txt are runtime fixtures, not docs (#268): the tests/asm/
