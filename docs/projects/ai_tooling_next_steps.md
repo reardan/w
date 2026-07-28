@@ -881,7 +881,11 @@ ergonomic gap:
   "a minute" expectation, so agents pick too-small timeouts and kill
   the build. Cheap fixes: progress output (one line per N modules) so
   a caller can distinguish slow-but-alive from hung, and/or making an
-  interrupted cache build resume instead of restarting.
+  interrupted cache build resume instead of restarting. Second data
+  point (2026-07-28, deflate-encoder work in an agent worktree): the
+  first `wtest changed` after `./wbuild build` was killed by a
+  5-minute caller timeout mid-banner; the immediate retry succeeded
+  in a few minutes and later runs were sub-second as documented.
 
 ## Skills / rules upkeep
 
