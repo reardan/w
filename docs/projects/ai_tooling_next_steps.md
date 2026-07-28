@@ -140,6 +140,17 @@ is a queue, not an archive.
   inspection/mechanical parallel with the other 5 sites, not a runtime
   repro.
 
+- **(2026-07-28, array-cast-warning work) a slash-and-extension import
+  spelling produces a mangled path in the error, with no syntax hint.**
+  `import lib/assert.w` — a natural guess, since that is the file's
+  on-disk path — fails with `cannot locate 'lib/assert/w.w' (searched
+  the current directory and every parent)`: the `.w` suffix is treated
+  as one more dotted segment and re-expanded to `/w.w`, so the
+  reported path matches nothing the author typed and nothing on disk.
+  The message should either echo the import as written or, better,
+  hint the dotted form (`import lib.assert`) when the spelling
+  contains `/` or ends in `.w`.
+
 ## Test selection (`bin/wtest`)
 
 - **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
@@ -347,18 +358,6 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   reclassification, pb_skip_or_error error-kind propagation; asserted
   by tests/protobuf_test.w's hardening section and
   tests/protobuf_leak_test.w's debug-allocator leak checks.)*
-- **(2026-07-25, protobuf hardening) casting a `T[N]` array to a
-  pointer type addresses the runtime header, not the data**:
-  `cast(pb_bytes*, slot)` on a `char[16]` local yields data-8 (the
-  2-word array header), while `cast(int, slot)`, indexing, and argument
-  decay all reach the data -- so a struct-view write through such a
-  cast silently clobbers the header and the next decay crashes far from
-  the bug. Cost a multi-step bisect to find; `w check` accepts the cast
-  with no diagnostic. A warning on casting an array-typed expression to
-  a pointer type (or making the cast decay like every other value
-  context) would remove the trap. Sibling of the known "T[N] struct
-  field is not flat storage" gotcha already noted in
-  tests/protobuf_test.w's header.
 - **(2026-07-19 review) attach-mode polish**: a non-SIGTRAP signal stop
   during the step-over-breakpoint single step (in both `at_continue` and
   `at_finish`) is silently discarded instead of stored in
@@ -493,11 +492,14 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   around in `tests/protobuf_test.w` by using plain scalar fields (two
   adjacent `int32`s) instead of a `char[N]` field wherever the test
   needed raw-byte-range access; not otherwise a live bug since ordinary
-  `s.field[i]` indexing is unaffected. Worth either documenting this
-  layout explicitly next to `type_push_array`/`type_get_size`, or adding
-  a `type_array_element_offset()`-style accessor for code that needs the
-  data start, so the next generic-codec author doesn't have to
-  rediscover it by binary-searching struct bytes.
+  `s.field[i]` indexing is unaffected.
+  *(2026-07-28: shipped -- `type_array_element_offset()` in
+  `compiler/type_table.w` returns the 2-word data offset, with the
+  header layout documented next to `type_push_array`'s size formula;
+  the sibling trap, casting an array/slice expression to a pointer
+  type the decay does not cover, now warns at the cast
+  (`grammar/unary_expression.w`, frozen by
+  `tests/array_cast_warning_fixture.w`).)*
 - **wexec directory hashing is Linux-layout only.** Found while porting
   the darwin triad: `wexec_collect_dir` (tools/wexec.w) parses the Linux
   getdents record layout, so on macOS — where the `getdents` shim
