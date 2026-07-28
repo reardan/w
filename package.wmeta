@@ -19,6 +19,7 @@ modules:
 	graphics.x11
 	lib.args
 	lib.assert
+	lib.edit_distance
 	lib.env
 	lib.event_loop
 	lib.file
