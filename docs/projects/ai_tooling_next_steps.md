@@ -144,6 +144,22 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
+- **(2026-07-28, #123 attach remainder) `wtest changed` does not select
+  `verify` for `debugger/` changes, though `debugger/` is seed-compiled
+  as part of `w.w`'s closure.** `tools/test_map.w`'s
+  `wtest_compiler_tree()` covers `w.w`/`grammar.w`/`codegen.w` and the
+  `compiler/`/`grammar/`/`code_generator/` trees, but not `debugger/`
+  (or `repl/`, also pulled into the compiler by the debugger's eval),
+  so a diff touching only `debugger/attach*.w` selects wdbg/debug/
+  attach/repl targets and `parser_generator_w_test` but not the
+  self-host fixpoint — the one gate CLAUDE.md calls REQUIRED for any
+  compiler(-binary) change. Agents currently have to know to run
+  `./wbuild verify`/`verify_x64` by hand (this task did). Either add
+  `debugger/` + `repl/` to the compiler-tree residue rule, or document
+  in `test_map.w` why the fixpoint is intentionally not selected for
+  them (they change the compiler binary's bytes but not the code it
+  emits, so wv3==wv4==wv5 still holds trivially — if that is the
+  reasoning, it should be written down where the rule lives).
 - **(2026-07-19 review) `--defhash` outside a range always compares HEAD
   vs worktree**, even when the piped path list came from a ranged diff
   (`git diff --name-only main..HEAD | wtest changed --defhash` after

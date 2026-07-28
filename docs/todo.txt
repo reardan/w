@@ -225,8 +225,16 @@ current state:
 					s/n drive PTRACE_SINGLESTEP to the next statement boundary
 					the same way wdbg.w's in-process stepping does, fin runs to
 					the caller's return via a temporary breakpoint from the
-					frame walk -- frame selection (f/up/down) and locals/args/
-					set by name (i locals/i args/p/set) through the same seams;
+					frame walk -- frame selection (f/up/down) and locals/args
+					(i locals/i args) through the same seams -- restricted
+					expression eval (debugger/attach_eval.w: p/set/watch take
+					fields, *deref, [index], unary -/& and + - * / %
+					arithmetic, interpreted out-of-process through the memory
+					seam; in-target calls rejected) -- hardware watchpoints
+					(watch <expr|0xADDR>, DR0-DR3 write watches via
+					PTRACE_PEEKUSER/POKEUSER, DR6 names the one that fired,
+					4 max with a hard "no free debug register" error,
+					d w/i w manage them);
 					design: docs/projects/debugger_attach.md
 		library and data structures:
 			malloc/free/realloc as a library module (lib/memory.w)
@@ -381,11 +389,11 @@ current state:
 				both wdbg and attach mode, debugger/disas.w, wired to the
 				x86/x64/arm64 assembler/disassembler libraries — issues
 				#163-#169/#171, docs/projects/assembler_disassembler.md)
-			wdbg --attach remaining work: restricted expression eval
-				(p/set beyond a name lookup) and hardware watchpoints
-				(DR0-DR7) -- register-seam unification, locals/args/set/
-				frames and x86-64 symbolization landed; dynamic/PIE targets
-				stay out of scope (docs/projects/debugger_attach.md, issue
+			wdbg --attach #123 remainder: done 2026-07-28 -- restricted
+				expression eval (debugger/attach_eval.w) and hardware
+				watchpoints (DR0-DR3) both landed; in-target calls
+				(gdb-style inferior calls) and dynamic/PIE targets stay
+				out of scope (docs/projects/debugger_attach.md, issue
 				#123)
 		code generation:
 			webassembly stage 5 residue: '# wbuild:' wasm twin-target
