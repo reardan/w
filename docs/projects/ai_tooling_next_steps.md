@@ -138,9 +138,7 @@ is a queue, not an archive.
   sandbox, and the two `open()` calls are microseconds apart with no
   yield point between them); the migration there was verified by
   inspection/mechanical parallel with the other 5 sites, not a runtime
-  repro. Also noted in passing, unrelated to the migration and left
-  as-is: the `#error` diagnostic never echoes the directive's own
-  message text, only `c preprocessor: #error in <file>`.
+  repro.
 
 ## Test selection (`bin/wtest`)
 

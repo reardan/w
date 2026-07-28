@@ -2168,6 +2168,7 @@
 				"unrecognized_option_test",
 				"forward_call_hint_test",
 				"c_import_verbose_note_test",
+				"c_import_error_directive_test",
 				"symbols_test",
 				"deps_test",
 				"defhash_test",
