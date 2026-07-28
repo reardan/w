@@ -67,8 +67,10 @@ prints the exact build targets for your diff (build wtest with `./wbuild wtest`)
 `./wbuild test_changed` runs them. Don't guess targets. Selection is
 manifest-driven: wtest parses `build.json` and combines literal step
 references with import closures from `bin/wv2 deps` (cached in
-`bin/.wtest_deps_cache`; the first run after a build takes ~35s, later
-runs are sub-second), plus documented residue rules in `tools/test_map.w`
+`bin/.wtest_deps_cache`; the first run after a build can take several
+minutes — it prints progress to stderr and resumes if interrupted, so
+budget for it rather than killing it at two minutes — later runs are
+sub-second), plus documented residue rules in `tools/test_map.w`
 (compiler tree → `verify`, any `.w` → `parser_generator_w_test`,
 deleted `.w`/library trees → `metadata_check`).
 

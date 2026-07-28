@@ -142,23 +142,6 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
-- **(2026-07-19 review) `--defhash` outside a range always compares HEAD
-  vs worktree**, even when the piped path list came from a ranged diff
-  (`git diff --name-only main..HEAD | wtest changed --defhash` after
-  committing marks everything unchanged and skips closure selection).
-  The ranged form `wtest changed main..HEAD --defhash` is correct; the
-  footgun combination is accepted silently — consider detecting a
-  committed-clean worktree and warning.
-- **First `wtest changed` after a build can take well over the
-  documented ~35s.** Building `libs/extras/vcs/merge3.w` (issue #252
-  wave 4), `git diff --name-only HEAD | ./bin/wtest changed` timed out
-  at the default 2-minute tool timeout on its first run (cold
-  `bin/.wtest_deps_cache`) against this tree's current size; a retry
-  with a longer timeout completed and printed the expected selection.
-  README/AGENTS.md's "~35s" figure is stale for a repo this size (or
-  this was host-specific slowness) -- agents should budget several
-  minutes (not the 2-minute tool default) for the FIRST post-build
-  `wtest changed` invocation, same as any other cold-cache step.
 - **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
   commit-ranged selection MVP** (issue #251 direction 4b). `changed`
   (not `for`) now treats a single positional argument containing `..`
@@ -861,17 +844,6 @@ ergonomic gap:
   against a fresh repl build (build.base.json's `repl_pty_test` target),
   so future agents can script this class of keystroke instead of
   falling back to manual verification each time.
-- **Minor: `bin/wtest changed`'s first-run import-closure cache build
-  can far exceed the documented ~35s.** Right after a full
-  `./wbuild build --no-cache` + `verify` + `verify_x64` cycle (ctrl
-  stack growth work, 2026-07-25), the first `wtest changed` run was
-  killed by a 2-minute caller timeout while still printing the "this
-  can take a minute" banner; the retry succeeded but took several
-  minutes total. Docs (CLAUDE.md and the wtest banner) set a ~35s/
-  "a minute" expectation, so agents pick too-small timeouts and kill
-  the build. Cheap fixes: progress output (one line per N modules) so
-  a caller can distinguish slow-but-alive from hung, and/or making an
-  interrupted cache build resume instead of restarting.
 
 ## Skills / rules upkeep
 
