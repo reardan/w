@@ -238,10 +238,22 @@ rule continue_stmt = KW_CONTINUE
 rule pass_stmt = KW_PASS
 rule debugger_stmt = KW_DEBUGGER
 rule local_decl = type_ref name_token decl_suffix local_suffix
-rule local_suffix = ASSIGN expression | 
+# The expr_stmt_tail* mirrors expression_stmt below: gap_many's line
+# continuation lets an initializer absorb a following line's leading
+# '*' as a binary operator ('int* p = &b' + '*q, ...' reads as
+# '&b * q'), so the parallel-assignment comma list after it must be
+# consumable here too. PG is syntax-only; the compiler's real
+# tokenizer is newline-sensitive and never joins those lines.
+rule local_suffix = ASSIGN expression expr_stmt_tail* |
 # 'name := expression' type-inferred local declaration
 rule infer_decl = name_token COLON_ASSIGN expression
-rule expression_stmt = expression
+# The comma tail is the parallel assignment 'a, b = b, a' (issue #360
+# item 6): each list element parses as an expression ('b = c, d' reads
+# as 'b = c' then ', d'), so one permissive tail rule covers the whole
+# statement. PG is syntax-only: the compiler enforces statement
+# position, lvalue targets and equal arity (grammar/multi_assign.w).
+rule expression_stmt = expression expr_stmt_tail*
+rule expr_stmt_tail = COMMA gap_many expression
 
 rule paren_expression_opt = LPAREN expression RPAREN | expression
 rule expression = assignment
