@@ -154,17 +154,6 @@ is a queue, not an archive.
   inspection/mechanical parallel with the other 5 sites, not a runtime
   repro.
 
-- **(2026-07-28, array-cast-warning work) a slash-and-extension import
-  spelling produces a mangled path in the error, with no syntax hint.**
-  `import lib/assert.w` — a natural guess, since that is the file's
-  on-disk path — fails with `cannot locate 'lib/assert/w.w' (searched
-  the current directory and every parent)`: the `.w` suffix is treated
-  as one more dotted segment and re-expanded to `/w.w`, so the
-  reported path matches nothing the author typed and nothing on disk.
-  The message should either echo the import as written or, better,
-  hint the dotted form (`import lib.assert`) when the spelling
-  contains `/` or ends in `.w`.
-
 ## Test selection (`bin/wtest`)
 
 - **Shipped (2026-07-28, wave 4): the verify residue's compiler-tree
