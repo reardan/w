@@ -129,9 +129,23 @@ forbid tests
 case docs/todo.txt
 empty
 
-# Agent guidance is not code under test.
-case .cursor/rules/w-source.mdc .cursor/skills/w-check-diagnostics/SKILL.md
+# Editor rules are not code under test.
+case .cursor/rules/w-source.mdc
 empty
+
+# Skill docs ARE under test: skills_test asserts every compiler flag
+# documented in AGENTS.md / README.md / .cursor/skills/*/SKILL.md appears
+# in `w --help`, and declares those files as target data, so editing one
+# selects the target that would catch the drift.
+case .cursor/skills/w-check-diagnostics/SKILL.md
+expect skills_test
+forbid tests
+
+case AGENTS.md
+expect skills_test
+
+case README.md
+expect skills_test
 
 # A deleted or unknown .w -> metadata_check + the full suite (closures
 # cannot be computed for importers of a missing module).
