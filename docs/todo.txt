@@ -103,6 +103,8 @@ current state:
 			for k, v in map two-variable iteration
 		built-in list:
 			list[T] typed lists with literals, indexing, push/pop and .length
+			negative indexing counts from the end (l[-1] is the last element)
+			l[i:j] copying slices with open and negative bounds (l[:j], l[i:], l[:])
 			l.insert(i, v), l.remove(i) and l.clear() pseudo-methods
 			x in l membership (content compare for char* elements)
 			runtime traps say what trapped on stderr before exit(1) (index echoes index and length; pop/min/max on empty say so)
@@ -137,6 +139,9 @@ current state:
 			for x in <container> cursor-protocol iteration
 				T_iter_begin/done/next/value over any struct pointer
 				array_list, linked_list, hash_map (keys) implement it
+				generic containers resolve the protocol as name_iter_*[arg]
+				instantiations (one type parameter); heap[T] and deque[T]
+				(structures/heap.w, structures/deque.w) implement it
 			for int cp in string codepoint iteration
 			break and continue
 			nested if/loop behavior covered by tests
@@ -225,8 +230,16 @@ current state:
 					s/n drive PTRACE_SINGLESTEP to the next statement boundary
 					the same way wdbg.w's in-process stepping does, fin runs to
 					the caller's return via a temporary breakpoint from the
-					frame walk -- frame selection (f/up/down) and locals/args/
-					set by name (i locals/i args/p/set) through the same seams;
+					frame walk -- frame selection (f/up/down) and locals/args
+					(i locals/i args) through the same seams -- restricted
+					expression eval (debugger/attach_eval.w: p/set/watch take
+					fields, *deref, [index], unary -/& and + - * / %
+					arithmetic, interpreted out-of-process through the memory
+					seam; in-target calls rejected) -- hardware watchpoints
+					(watch <expr|0xADDR>, DR0-DR3 write watches via
+					PTRACE_PEEKUSER/POKEUSER, DR6 names the one that fired,
+					4 max with a hard "no free debug register" error,
+					d w/i w manage them);
 					design: docs/projects/debugger_attach.md
 		library and data structures:
 			malloc/free/realloc as a library module (lib/memory.w)
@@ -382,11 +395,11 @@ current state:
 				both wdbg and attach mode, debugger/disas.w, wired to the
 				x86/x64/arm64 assembler/disassembler libraries — issues
 				#163-#169/#171, docs/projects/assembler_disassembler.md)
-			wdbg --attach remaining work: restricted expression eval
-				(p/set beyond a name lookup) and hardware watchpoints
-				(DR0-DR7) -- register-seam unification, locals/args/set/
-				frames and x86-64 symbolization landed; dynamic/PIE targets
-				stay out of scope (docs/projects/debugger_attach.md, issue
+			wdbg --attach #123 remainder: done 2026-07-28 -- restricted
+				expression eval (debugger/attach_eval.w) and hardware
+				watchpoints (DR0-DR3) both landed; in-target calls
+				(gdb-style inferior calls) and dynamic/PIE targets stay
+				out of scope (docs/projects/debugger_attach.md, issue
 				#123)
 		code generation:
 			webassembly stage 5 residue: wasm64, real-signature

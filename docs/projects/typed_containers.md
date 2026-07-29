@@ -65,7 +65,15 @@ list[list[int]] grid = new list[list[int]]
 - `list[T]` is a list with element type `T`.
 - `new list[T]` allocates an empty list.
 - `list[T]{a, b, c}` allocates and populates a literal.
-- `l[i]` reads or writes element `i`; out-of-range indexes abort.
+- `l[i]` reads or writes element `i`; a negative index counts from the
+  end (`l[-1]` is the last element, `l[-l.length]` the first);
+  out-of-range indexes abort.
+- `l[i:j]` copies the selected range into a NEW list of the same element
+  type (Python-style copy semantics — a view would dangle when the
+  source reallocs on push). `l[:j]`, `l[i:]` and `l[:]` default the
+  omitted bound to `0` / `l.length`, and negative bounds count from the
+  end; after normalization the range must satisfy
+  `0 <= start <= end <= length` or the slice aborts.
 - `l.push(v)` appends; `l.pop()` removes and returns the last element
   (aborts when empty).
 - `l.insert(i, v)` inserts `v` at index `i`; `l.remove(i)` removes and

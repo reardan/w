@@ -518,6 +518,15 @@ int type_is_string(int type_index):
 	return type_get_kind(type_index) == type_kind_string()
 
 
+int type_is_char(int type_index):
+	type_index = type_canonical(type_index)
+	if (type_index < 0):
+		return 0
+	if (type_get_pointer_level(type_index) != 0):
+		return 0
+	return strcmp(type_get_name(type_index), c"char") == 0
+
+
 int type_is_char_pointer(int type_index):
 	type_index = type_canonical(type_index)
 	if (type_index < 0):

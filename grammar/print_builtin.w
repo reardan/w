@@ -3,11 +3,15 @@ Compiler lowering for the built-in polymorphic print/println
 (docs/projects/golf_ergonomics.md).
 
 print(x) writes x to stdout formatted by its static type: int-likes
-(int, fixed-width ints, char, bool, enums) as decimals, char* and
-string as their bytes, float32 through ftoa, var through its runtime
-tag, and list[T] of scalar elements as '[a, b, c]'. println(x) appends
-a newline; println() writes just the newline. Anything else (maps,
-sets, structs, non-char pointers, float64) is a compile error.
+(int, fixed-width ints, bool, enums) as decimals, char as the
+character itself, char* and string as their bytes, float32 through
+ftoa, var through its runtime tag, and list[T] of scalar elements as
+'[a, b, c]'. println(x) appends a newline; println() writes just the
+newline. Anything else (maps, sets, structs, non-char pointers,
+float64) is a compile error. Only genuinely char-typed values print
+as characters: character literals are untyped constants and char
+arithmetic yields int, so both keep printing numerically; list[char]
+elements keep the numeric rendering of the f-string helper table.
 
 lib/lib.w keeps its print(string)/println(string) functions: the
 builtin intercepts direct 'print(' / 'println(' call sites in
@@ -38,7 +42,7 @@ char* print_chains
 
 
 int print_helper_count():
-	return 13
+	return 14
 
 
 char* print_fn_name(int i):
@@ -66,9 +70,11 @@ char* print_fn_name(int i):
 		return c"__w_min"
 	if (i == 11):
 		return c"__w_abs"
-	# len(char*) borrows lib/lib.w's strlen: the prelude import pulls
-	# lib.lib in, so the chain always resolves at patch time
-	return c"strlen"
+	if (i == 12):
+		# len(char*) borrows lib/lib.w's strlen: the prelude import
+		# pulls lib.lib in, so the chain always resolves at patch time
+		return c"strlen"
+	return c"__w_print_char"
 
 
 # Leave helper i's address in eax: directly when the runtime module is
@@ -106,7 +112,7 @@ void print_unsupported(int t):
 
 
 # Formatter for a scalar value: 0 int-like, 1 char*, 2 string,
-# 3 float32. -1 asks the caller to try the container path.
+# 3 float32, 13 char. -1 asks the caller to try the container path.
 int print_helper_for_type(int got):
 	if (got == 3): /* constant: an int-like value */
 		return 0
@@ -120,6 +126,12 @@ int print_helper_for_type(int got):
 	# var renders through __w_var_to_cstr, then prints as a char*
 	if (type_is_var(t)):
 		return 1
+	# A genuinely char-typed value prints as the character itself.
+	# Character literals are untyped constants (the got == 3 branch
+	# above) and char arithmetic yields int, so println('a') and
+	# println(c + 1) keep printing numerically.
+	if (type_is_char(t)):
+		return 13
 	if (type_float_kind(t) == 1):
 		return 3
 	if (type_float_kind(t) == 2):
@@ -274,6 +286,9 @@ int prelude_input_expr():
 	hash_call_finish(s)
 	if (helper == 8):
 		return type_value(type_get_list(type_lookup(c"int")))
+	if (helper == 6):
+		# input() returns the line as a UTF-8 string (issue #360)
+		return type_value(type_lookup(c"string"))
 	return type_value(type_lookup_pointer(c"char", 1))
 
 

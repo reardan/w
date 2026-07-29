@@ -17,6 +17,20 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **`w check` on a generic-only module validates almost nothing**
+  (observed 2026-07-28, heap/deque work). Uninstantiated generic
+  definitions are captured but never parsed past the header, so
+  `w check structures/heap.w` exits clean even when every body is
+  ill-typed; bugs only surface when a consumer instantiates the
+  functions (here: an undeclared local and a wrong-width field access
+  both sailed through the module's own check and appeared as warnings/
+  segfaults in the test binary). Cheap win: a `check` mode (or default)
+  that self-instantiates each generic definition with a synthetic
+  word-sized type argument (the inference placeholders in
+  `grammar/generic.w` already know how to do a header-only bind) so
+  module-local checks see the body at least once. Until then, agents
+  should check a generic module by checking a consumer that
+  instantiates it.
 - **Shipped (2026-07-17): cross-line call-tail absorption now warns.**
   `postfix_expr`'s call tail warns `call arguments continue from the
   previous line` when its `(` opens on a different line than the
@@ -180,7 +194,34 @@ is a queue, not an archive.
   work; a residue rule mapping `lib/__arch__/<arch>/` (for the arches
   whose runtime is in `w.w`'s closure) to that arch's verify pair
   would close it.
-
+- **(2026-07-28, issue #360 item 5) Editing an auto-imported runtime
+  file selects essentially the whole manifest.** `structures/w_list.w`
+  is in every program's import closure, so `git diff --name-only
+  origin/main | wtest changed` for the list-slice work printed ~450
+  targets — correct but useless as a *selection* (it includes every
+  platform-gated cuda/darwin/win64 target this host cannot run).
+  Suggested direction: when a changed file's closure covers more than
+  some large fraction of the manifest, collapse the selection to the
+  umbrella targets (`verify`, `verify_x64`, `tests`) plus the literal
+  step references, and say so in one line, instead of enumerating the
+  world; a `--runnable-here` filter (skip targets whose steps need
+  binaries/hosts this machine lacks) would compose well with that.
+- **(2026-07-28, #123 attach remainder) `wtest changed` does not select
+  `verify` for `debugger/` changes, though `debugger/` is seed-compiled
+  as part of `w.w`'s closure.** `tools/test_map.w`'s
+  `wtest_compiler_tree()` covers `w.w`/`grammar.w`/`codegen.w` and the
+  `compiler/`/`grammar/`/`code_generator/` trees, but not `debugger/`
+  (or `repl/`, also pulled into the compiler by the debugger's eval),
+  so a diff touching only `debugger/attach*.w` selects wdbg/debug/
+  attach/repl targets and `parser_generator_w_test` but not the
+  self-host fixpoint — the one gate CLAUDE.md calls REQUIRED for any
+  compiler(-binary) change. Agents currently have to know to run
+  `./wbuild verify`/`verify_x64` by hand (this task did). Either add
+  `debugger/` + `repl/` to the compiler-tree residue rule, or document
+  in `test_map.w` why the fixpoint is intentionally not selected for
+  them (they change the compiler binary's bytes but not the code it
+  emits, so wv3==wv4==wv5 still holds trivially — if that is the
+  reasoning, it should be written down where the rule lives).
 - **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
   commit-ranged selection MVP** (issue #251 direction 4b). `changed`
   (not `for`) now treats a single positional argument containing `..`
@@ -747,6 +788,32 @@ rejection, re-pinned by `tests/parser_generator/streaming_guard_reject.pg`
 `generated_streaming_test.w`; the accepted shapes are pinned by
 `streaming_fallback_sample.pg` / `generated_streaming_fallback_test.w`.
 Details in `docs/projects/parser_generator.md`.
+
+- **Minor: `parser_generator_w_test`'s batched failure output is hard
+  to attribute** (multi-assign work, 2026-07-28).
+  `tools/parser_generator_w_batches.sh` reruns the same binary once per
+  150-file slice, so a failing run interleaves dozens of
+  "test_parse_all_tracked_w_files() passed!" banners (the other
+  batches) around one batch's stack trace, and `wexec` reports only
+  "step 4: command failed" — an agent grepping for pass/fail sees both
+  and has to rerun with a hand-trimmed
+  `bin/parser_generator_w_files.txt` to isolate the culprit. The
+  decisive "file:line:col: syntax error" line IS printed but is easy
+  to lose in ~500 lines of per-test chatter. Cheap fix: have the batch
+  script echo "batch N (files X..Y) FAILED" on non-zero exit, or have
+  the manifest test print the failing path again right before exiting.
+
+- **w.pg gotcha for statement-level list productions**: `gap_many`'s
+  line continuation inside `binary_tail` means a line ending in an
+  expression absorbs a following line's leading `*` as a
+  multiplication (`int* p = &b` + `*q, ... = ...` reads as `&b * q`),
+  so any new statement-level tail production (the multi-assign comma
+  list) must also be reachable from every context that can end in an
+  expression, not just `expression_stmt` — `local_suffix` needed the
+  same `expr_stmt_tail*`. The compiler's tokenizer is newline-
+  sensitive and never joins those lines, so the mismatch only
+  surfaces as a `parser_generator_w_test` failure on the new test
+  file, one gate late.
 
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 

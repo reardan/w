@@ -1,13 +1,15 @@
 # Debugger: Attach to a Running Process (out-of-process ptrace mode)
 
-Status: **partially implemented** — read-only inspection and execution
-control landed (`debugger/attach.w`, `wdbg --attach <pid> [file.w]`, tests
-in `tools/attach_test.sh` / the `attach_test` build target). Phase 2's
-target-access seam is now complete for both memory (`debugger/memory.w`)
-and registers (`debugger/registers.w`); phase 5's locals/args/frame
-selection and phase 3's x86-64 symbolization have landed on top of it (see
-"Implemented" below). Expression evaluation and hardware watchpoints in
-attach mode are not yet wired; see "Remaining" below.
+Status: **implemented** (within scope) — read-only inspection, execution
+control, locals/frames, restricted expression evaluation and hardware
+watchpoints have all landed (`debugger/attach.w` + `debugger/attach_eval.w`,
+`wdbg --attach <pid> [file.w]`, tests in `tools/attach_test.sh` / the
+`attach_test` build target). Phase 2's target-access seam is complete for
+both memory (`debugger/memory.w`) and registers (`debugger/registers.w`);
+phase 5's locals/args/frame selection, phase 3's x86-64 symbolization,
+phase 6's restricted evaluator and the DR0–DR3 hardware watchpoints are
+built on top of it (see "Implemented" below). What remains is out-of-scope
+residue only; see "Remaining" below.
 
 Tracks [reardan/w#123](https://github.com/reardan/w/issues/123). This is
 the "out-of-process ptrace mode" design doc that
@@ -84,6 +86,22 @@ byte-identical). What works today:
   target resumes with every instruction back to its original bytes; target
   exit mid-session (from `continue`/step commands or between prompts) is
   reported cleanly via the `wait4` status rather than assumed.
+- **Restricted expression evaluation** (`debugger/attach_eval.w`, phase
+  6). `p`/`set`/`watch` accept fields, dereference, indexing, unary
+  `-`/`&` and `+ - * / %` arithmetic, interpreted out-of-process over
+  the recompiled tables with every access a ptrace peek/poke through the
+  seams; `set` writes through any resolved lvalue (read-modify-write for
+  sub-word fields, so a byte field's neighbours survive the word poke).
+  In-target calls are rejected. Grammar and semantics in "Remaining"
+  below.
+- **Hardware watchpoints** (`watch <expr | 0xADDR>`, DR0–DR3 via
+  `PTRACE_PEEKUSER`/`POKEUSER`; the split-off item from
+  `debugger_conditional_breakpoints.md`). Word-sized write watches, DR6
+  checked ahead of the int3 dispatch at every SIGTRAP stop and cleared
+  after, old→new reports like the software scan's, `d w [n]`/`i w`
+  management, DR7 cleared on detach, and a hard "no free debug register"
+  error past four. Details (including the unaligned-globals wrinkle) in
+  "Remaining" below.
 
 Design history: phase 1 initially shipped attach mode as a parallel
 implementation rather than threading a shared in-process/ptrace seam
@@ -151,26 +169,55 @@ same capability. Phase 2 has since built that seam for both halves:
 
 ## Remaining
 
-- **Expression evaluation** (`p <expr>` beyond a name lookup): reads
-  through ptrace; in-target calls stay out of scope.
-- **Hardware watchpoints** via `PTRACE_POKEUSER` on DR0–DR7. Concrete
-  scoping (2026-07-25, unstarted): the debug registers live in the
-  ptrace *user area*, not `user_regs_struct`, so this is new plumbing —
-  `PTRACE_PEEKUSER`/`POKEUSER` (requests 3/6) at
+- **Expression evaluation — done, restricted** (2026-07-28,
+  `debugger/attach_eval.w`). `p`/`set`/`watch` accept a small
+  interpreted expression grammar instead of a bare name:
+
+      expr    := term (('+' | '-') term)*
+      term    := unary (('*' | '/' | '%') unary)*
+      unary   := '*' unary | '&' unary | '-' unary | postfix
+      postfix := primary ('.' field | '[' expr ']')*
+      primary := '(' expr ')' | number | name
+
+  It is an interpreter over the tables the attach session already
+  reconstructed (symbol/type tables, `debug_local_*` notes), with every
+  memory read going through the target-access seam — a ptrace peek here —
+  so there is no in-process JIT eval and nothing executes in the target.
+  Semantics mirror compiled W where they overlap: `.` works on a struct
+  value or one level of struct pointer (same auto-deref as
+  `grammar/postfix_expr.w`), `[i]` scales by the element size, `*` reads
+  at the pointee's width, `T* + int` keeps the pointer's type but offsets
+  by raw bytes. Results carry an lvalue (address + type), so `set` writes
+  through any field/element/deref the walk resolves; sub-word lvalues are
+  written read-modify-write so a byte-sized field's neighbours survive
+  the word-sized poke. Deliberately out: function calls (rejected with a
+  clear diagnostic — an in-target call needs execution; gdb-style
+  inferior calls are a separate future project), array-typed lvalue
+  indexing (pointers only), floats, and comparison/bitwise operators.
+- **Hardware watchpoints — done** (2026-07-28) via
+  `PTRACE_PEEKUSER`/`POKEUSER` (requests 3/6) on
   `offsetof(struct user, u_debugreg[i])` (i386: `252 + 4*i`; x86-64:
-  `848 + 8*i`). A `watch <name>` command would resolve the address
-  through the same `dbg_local_runtime_addr`/global lookup `set` already
-  uses, program DR0–DR3 with the address and DR7 with the local-enable +
-  rw/len bits (word-sized write watch: rw=01, len encoding 11 on x86 /
-  10-for-8-bytes on x86-64), and on each SIGTRAP stop read DR6 via
-  `PEEKUSER` to distinguish a watch hit (DR6 bits 0–3) from an int3 or
-  single-step, print old→new like `debugger/watchpoints.w`'s software
-  scan, and clear DR6 before resuming. Four registers max; beyond that
-  report "out of hardware watchpoints" rather than silently degrading
-  (the in-process software scan does not exist in attach mode). Note
-  `at_report_stop`, `at_step_line_mode` and `at_finish` all assume a
-  SIGTRAP stop is int3-or-step today, so the DR6 check must slot in
-  ahead of the `at_bp_find(ip - 1)` dispatch in each.
+  `848 + 8*i`), exactly per the earlier scoping: `watch <expr | 0xADDR>`
+  resolves an address through the restricted evaluator (or takes it raw),
+  programs DR0–DR3 and DR7 with the local-enable + rw/len bits (word-sized
+  write watch: rw=01, len 11 on x86 / 10-for-8-bytes on x86-64), and each
+  SIGTRAP stop reads DR6 ahead of the `at_bp_find(ip - 1)` dispatch in
+  `at_report_stop`, `at_step_line_mode`, and `at_continue`/`at_finish`'s
+  step-over dances, prints old→new like `debugger/watchpoints.w`'s
+  software scan, and clears DR6 before resuming. Four registers max;
+  a fifth `watch` fails with "no free debug register (4 hardware
+  watchpoints max)" rather than silently degrading (the in-process
+  software scan does not exist in attach mode). `d w [n]` deletes,
+  `i w` lists, and detach clears DR7 so the target runs on clean.
+  One wrinkle discovered on landing: the kernel rejects an unaligned
+  `bp_addr` (hw_breakpoint requires alignment to the watch length) and
+  W's globals are *not* word-aligned, so the register is programmed with
+  the aligned word window containing the variable's first byte — a data
+  breakpoint fires when any accessed byte overlaps the watched range,
+  and W writes whole words at the variable's base, so real writes always
+  trap; a neighbour sharing the window can also trap, in which case the
+  report (which reads the watched address itself) shows an unchanged
+  value rather than a wrong one.
 - **Dynamic/PIE symbolization**: out of scope (see "Scope" below); raw
   mode works regardless.
 
@@ -213,7 +260,7 @@ below is mostly about giving each one a seam.
 | execution control | return-from-handler with TF set; re-armed int3 bytes | `PTRACE_CONT` / `PTRACE_SINGLESTEP` + a `wait4` stop loop — **done** (phase 1/4, `debugger/attach.w`'s `at_continue`/`at_step`/`at_step_line_mode`/`at_finish`) |
 | symbols/lines/stack slots (`debugger/symbols.w`, `debugger/lines.w`) | live compiler tables from the just-finished in-process compile; `debug_line_stack_pos` is **never emitted into the ELF** (`code_generator/dwarf.w`) | **done:** regenerated by recompiling the same source, now word-size-matched (phase 3) |
 | frames/locals (`debugger/locals.w`) | `dbg_frame_compute`/`dbg_local_runtime_addr`/`dbg_print_frame_vars` take a plain pc/esp pair, needing no seam awareness of their own | **done (phase 5):** attach's `at_frames_compute`/`at_sel_pc`/`at_sel_esp` supply that pair from the register + memory seams for any selected frame |
-| eval (`debugger/eval.w`) | compiles an expression and runs it in-process against debuggee globals | name lookups only (`p`/`set`) are wired through the seams; general expression evaluation is still out of scope (phase 6) |
+| eval (`debugger/eval.w`) | compiles an expression and runs it in-process against debuggee globals | **done (restricted, phase 6):** `debugger/attach_eval.w` interprets fields/deref/indexing/arithmetic over the recompiled tables through the seams; in-target calls stay out of scope |
 
 One thing does **not** need work: address translation. wdbg already
 works in debuggee-relative addresses (`rel = absolute - code_offset`)
@@ -317,19 +364,22 @@ and must not use syntax newer than the seed.
    forwarding. `q`/`detach` restores every patched byte before
    `PTRACE_DETACH`, including one at the current pc if stopped there;
    target exit mid-session is reported cleanly via the `wait4` status.
-5. **Locals, frames — done; hardware watchpoints remaining.** `i
-   locals|args`, `p`, `set` and frame selection (`f`/`up`/`down`) go
-   through the register + memory seams (`debugger/attach.w`'s
+5. **Locals, frames, hardware watchpoints — done.** `i locals|args`, `p`,
+   `set` and frame selection (`f`/`up`/`down`) go through the register +
+   memory seams (`debugger/attach.w`'s
    `at_frames_compute`/`at_sel_pc`/`at_sel_esp`), reusing
    `debugger/locals.w`'s stack-slot arithmetic unmodified. Hardware
-   watchpoints via `PTRACE_POKEUSER` on DR0-DR7 (4 max; fall back to the
-   software scan beyond that) are still open — closes the split-off item
-   from `debugger_conditional_breakpoints.md` once landed.
-6. **Eval, restricted.** `p <expr>`/`set <expr>` currently resolve a
-   local/arg/global by name only (`debugger/attach.w`'s `at_print_command`/
-   `at_set_command`); a general expression compiler where variable/global
-   loads go through the seam, with in-target calls rejected, is still
-   open. gdb-style inferior calls are a separate future project.
+   watchpoints via `PTRACE_PEEKUSER`/`POKEUSER` on DR0-DR7 (4 max; a
+   fifth is a hard "no free debug register" error, since the software
+   scan does not exist out-of-process) landed 2026-07-28 — closing the
+   split-off item from `debugger_conditional_breakpoints.md`; see
+   "Remaining" above for the full shape and the alignment wrinkle.
+6. **Eval, restricted — done.** `p <expr>`/`set <expr>`/`watch <expr>`
+   go through `debugger/attach_eval.w`, an interpreter (not a compiler:
+   nothing executes in the target) over the recompiled tables where every
+   variable/global/memory load goes through the seam, with in-target
+   calls rejected. gdb-style inferior calls are a separate future
+   project. See "Remaining" above for the grammar.
 
 ## Testing
 
@@ -387,6 +437,18 @@ and must not use syntax newer than the seed.
   exactly the fixture's fixed `7000000` call-site offset (both frames'
   `n` used to hold the same value, hiding frame-base regressions); and a
   `frame x` case freezes the new non-numeric-argument diagnostic.
+- Restricted eval + hardware watchpoints (2026-07-28): the fixture
+  initializes a struct value (`attach_pair`), a struct pointer to it and
+  a heap int array before its spin loop, so `tools/attach_test.sh` can
+  assert field reads (value and through the pointer), `*deref`, scaled
+  indexing, arithmetic combining two lvalue reads, `set` through a field
+  (verified by re-reading it), and the function-call rejection
+  diagnostic. The watchpoint cases watch the spinning counter, `c`, and
+  assert the stop names the watchpoint with the old→new report and a
+  symbolized location; a fifth `watch` must produce the "no free debug
+  register" error. x64 twins cover the representative eval cases and the
+  watch fire. Native x86/x86-64 only — qemu-user does not emulate the
+  debug registers, but this suite already requires native ptrace.
 - Not covered end-to-end: recursion during `finish` (the fixture has no
   recursive call, so the "still-nested return to the same call site" path
   in `at_finish` is exercised by reasoning about the sp comparison, not by

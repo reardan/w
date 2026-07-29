@@ -5,6 +5,17 @@ import lib.lib
 
 int attach_counter
 
+# Typed data for the restricted-eval cases (#123 phase 6): a struct value,
+# a pointer to it, and a heap int array, all initialized before the spin
+# loop so the attach test can read them through p/set at any stop.
+struct at_pair:
+	int first
+	int second
+
+at_pair attach_pair
+at_pair* attach_pair_ref
+int* attach_items
+
 # A nested call with a local in each frame, so the attach test can exercise
 # args/locals inspection and frame selection (#123 phase 5) against a real
 # two-level call stack: a breakpoint in bump gives frame 0 = bump (arg n,
@@ -33,6 +44,14 @@ int main(int argc, int argv):
 	if (__word_size__ == 8):
 		prctl_nr = 157
 	syscall(prctl_nr, 0x59616d61, -1, 0)
+	attach_pair.first = 1234
+	attach_pair.second = 5678
+	attach_pair_ref = &attach_pair
+	attach_items = cast(int*, malloc(4 * __word_size__))
+	attach_items[0] = 111
+	attach_items[1] = 222
+	attach_items[2] = 333
+	attach_items[3] = 444
 	attach_counter = 1000
 	while (1):
 		attach_counter = slow_step(attach_counter)

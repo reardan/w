@@ -37,9 +37,46 @@ void list_emit_new_container(int type):
 	hash_call_finish(s)
 
 
+# l[start:end] / l[start:] / l[:end] / l[:]: the ':' has been consumed
+# and the start value sits at start_slot (0 when the start was omitted).
+# Parses the optional end bound and lowers to
+# __w_list_slice(list, start, end, has_end), which copies the selected
+# range into a NEW list of the same element type (Python-style copy
+# semantics; a view would dangle when the source reallocs on push).
+# Negative bounds count from the end; the runtime traps when the
+# normalized range is not 0 <= start <= end <= length.
+int list_slice_suffix(int element_type, int base_stack, int list_slot, int start_slot):
+	int has_end = 0
+	if (peek(c"]")):
+		# l[start:]: the omitted end means the list's length
+		mov_eax_int(0)
+	else:
+		promote(expression())
+		has_end = 1
+	expect(c"]")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int end_slot = stack_pos
+	sym_get_value(c"__w_list_slice")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_push_stack_slot(start_slot)
+	hash_push_stack_slot(end_slot)
+	mov_eax_int(has_end)
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_get_list(type_canonical(element_type)))
+
+
 # l[index]: '[' has been consumed and the list lvalue or value is in eax.
 # Evaluates the index, calls __w_list_addr(list, index) and returns the
-# element type with the element's address in eax (a normal lvalue).
+# element type with the element's address in eax (a normal lvalue). A ':'
+# in place of (or after) the index hands off to list_slice_suffix.
 int list_index_suffix(int type):
 	int element_type = type_list_element_type(type_unqualified(type))
 	# promote before anchoring base_stack: finishing a pending map read
@@ -49,11 +86,19 @@ int list_index_suffix(int type):
 	push_eax()
 	stack_pos = stack_pos + 1
 	int list_slot = stack_pos
+	if (accept(c":")):
+		# l[:end] / l[:]: the omitted start is 0
+		mov_eax_int(0)
+		push_eax()
+		stack_pos = stack_pos + 1
+		return list_slice_suffix(element_type, base_stack, list_slot, stack_pos)
 	promote(expression())
-	expect(c"]")
 	push_eax()
 	stack_pos = stack_pos + 1
 	int index_slot = stack_pos
+	if (accept(c":")):
+		return list_slice_suffix(element_type, base_stack, list_slot, index_slot)
+	expect(c"]")
 	sym_get_value(c"__w_list_addr")
 	int s = stack_pos
 	push_eax()

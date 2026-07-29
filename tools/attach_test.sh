@@ -176,6 +176,49 @@ run_case "up then backtrace still names both frames" "$FIXTURE_SRC" 'b bump\nc\n
 # Memory examine reads the target's ELF magic at the fixed load base.
 run_case "examine memory" "$FIXTURE_SRC" 'x 0x8048000 1\ndetach\n' "0x464c457f"
 
+# --- restricted expression eval (#123 phase 6, debugger/attach_eval.w) ---
+# The fixture initializes attach_pair {first=1234, second=5678}, a struct
+# pointer to it and a 4-element heap int array {111,222,333,444} before
+# its spin loop, so these are stable at any stop.
+
+# Field access on a struct value.
+run_case "eval: struct field read" "$FIXTURE_SRC" 'p attach_pair.first\ndetach\n' "attach_pair.first = 1234"
+
+# Field access through a struct pointer (one auto-deref, like compiled '.').
+run_case "eval: field through a struct pointer" "$FIXTURE_SRC" 'p attach_pair_ref.second\ndetach\n' "attach_pair_ref.second = 5678"
+
+# Dereference reads at the pointee's width through the ptrace seam.
+run_case "eval: dereference" "$FIXTURE_SRC" 'p *attach_items\ndetach\n' "*attach_items = 111"
+
+# Indexing scales by the element size (never the raw byte offset).
+run_case "eval: indexing" "$FIXTURE_SRC" 'p attach_items[2]\ndetach\n' "attach_items[2] = 333"
+
+# Arithmetic combines evaluated results: 222 + 1234.
+run_case "eval: arithmetic on results" "$FIXTURE_SRC" 'p attach_items[1] + attach_pair.first\ndetach\n' "= 1456"
+
+# set writes through a field lvalue and echoes the new value.
+run_case "eval: set through a field" "$FIXTURE_SRC" 'set attach_pair.second 42\np attach_pair.second\ndetach\n' "attach_pair.second = 42"
+
+# In-target calls are rejected with a clear diagnostic, not silently 0.
+run_case "eval: function calls rejected" "$FIXTURE_SRC" 'p bump(3)\ndetach\n' "function calls are not supported in attach mode"
+
+# --- hardware watchpoints (DR0-DR3; #123's last remaining phase) ---
+# Native x86/x86-64 only: the debug registers are real hardware state
+# (PTRACE_PEEKUSER/POKEUSER on the user area), which qemu-user does not
+# emulate -- this suite already assumes a native host for ptrace itself.
+
+# A write watch on the spinning counter stops the tracee on the next
+# iteration's store and names the watchpoint that fired (DR6), with the
+# same old -> new report shape as the in-process software scan.
+run_case "hw watchpoint fires and names the watchpoint" "$FIXTURE_SRC" 'watch attach_counter\nc\nkill\n' "watchpoint 1: attach_counter changed: "
+
+# The stop reports where the write happened (back in the fixture source).
+run_case "hw watchpoint stop is located" "$FIXTURE_SRC" 'watch attach_counter\nc\nkill\n' "attach_target_fixture.w:"
+
+# Four debug registers exist; a fifth watch is a hard error, never a
+# silent degradation (attach mode has no software fallback scan).
+run_case "hw watchpoint exhaustion" "$FIXTURE_SRC" 'watch attach_counter\nwatch attach_pair.first\nwatch attach_pair.second\nwatch attach_items[0]\nwatch attach_items[1]\nkill\n' "no free debug register"
+
 # Raw mode (no source): attach still works, reporting no symbols.
 run_case "raw mode banner" "" 'detach\n' "raw mode: no symbols"
 
@@ -330,6 +373,12 @@ run_case_64 "x64: backtrace names main" "$FIXTURE_SRC" 'b bump\nc\nbt\nkill\n' "
 run_case_64 "x64: next steps over a call" "$FIXTURE_SRC" 'b slow_step\nc\nn\nkill\n' "return step"
 run_case_64 "x64: step steps into a call" "$FIXTURE_SRC" 'b slow_step\nc\ns\nkill\n' "bump ("
 run_case_64 "x64: finish reports the returned value" "$FIXTURE_SRC" 'b bump\nc\nfin\nkill\n' "value returned = "
+
+# x64: restricted eval + hardware watchpoint twins (#123 phase 6 / 5).
+run_case_64 "x64: eval field through a struct pointer" "$FIXTURE_SRC" 'p attach_pair_ref.second\ndetach\n' "attach_pair_ref.second = 5678"
+run_case_64 "x64: eval indexing" "$FIXTURE_SRC" 'p attach_items[2]\ndetach\n' "attach_items[2] = 333"
+run_case_64 "x64: eval set through a field" "$FIXTURE_SRC" 'set attach_pair.second 42\np attach_pair.second\ndetach\n' "attach_pair.second = 42"
+run_case_64 "x64: hw watchpoint fires and names the watchpoint" "$FIXTURE_SRC" 'watch attach_counter\nc\nkill\n' "watchpoint 1: attach_counter changed: "
 
 # x64: detach truly restores patched bytes, same shape as the 32-bit case
 # above (one subshell capturing both the fixture's stdout and its real

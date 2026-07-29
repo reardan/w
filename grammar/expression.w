@@ -145,6 +145,17 @@ int expression():
 		get_token()
 		expression_is_assignment = 1
 		return increment_apply(inc_op, type)
+	# 'lv1, lv2[, ...] = e1, e2[, ...]' parallel assignment
+	# (grammar/multi_assign.w) claims a ',' after the first lvalue only
+	# at true statement position — the same flag discipline as the
+	# postfix '++' above, so a ',' inside call arguments, case labels
+	# or conditions still belongs to the enclosing construct. Checked
+	# before the pending-map block so a map-element target gets multi-
+	# assign's own rejection instead of resolving into a read.
+	if (stmt_context && (token_newline == 0)):
+		if (peek(c",")):
+			expression_is_assignment = 1
+			return multi_assign(type)
 	if (hash_index_pending):
 		if (accept(c"=")):
 			expression_is_assignment = 1

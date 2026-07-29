@@ -34,11 +34,27 @@ slot and the cursor lives in a second one, mirroring the range lowering:
 */
 
 
+# Load the iterator function's address into eax: directly for an
+# ordinary symbol, through the generic instantiation's backpatch chain
+# (grammar/generic.w) when the container is generic and the
+# instantiation's body has not been compiled yet. The instantiation was
+# interned by for_iter_generic_require, so the lookup cannot miss.
+void for_iter_callee(char* fn_name):
+	if (sym_lookup(fn_name) >= 0):
+		sym_get_value(fn_name)
+		return;
+	int inst = generic_inst_lookup(fn_name)
+	if (inst < 0):
+		diag_part(fn_name)
+		error(c" is not defined")
+	generic_inst_emit_callee(inst)
+
+
 # Emit a call to fn_name(container) or, when cursor_slot is nonzero,
 # fn_name(container, cursor). The operands live in hidden stack slots
 # identified by their stack_pos anchors; the result is left in eax.
 void for_iter_call(char* fn_name, int container_slot, int cursor_slot):
-	sym_get_value(fn_name)
+	for_iter_callee(fn_name)
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -89,6 +105,147 @@ void for_iter_require(char* container_name, char* fn_name, int expected_args, in
 		if (type_unqualified(param_type) != type_lookup(c"int")):
 			for_iter_error_prefix(container_name, fn_name)
 			error(c" second parameter must be int")
+
+
+/*
+Generic containers. An instantiated generic struct's type name is
+'name$arg' (grammar/generic.w mangling), so the symbol the cursor
+protocol would need ('name$arg_iter_begin') can never exist. Instead a
+generic container provides the protocol as generic FUNCTIONS —
+heap_iter_begin[T](heap[T]* h) and friends — and the loop resolves
+each one to the instantiation with the container's own type argument
+('heap$int' iterates through 'heap_iter_begin$int'). The bodies are
+compiled by the end-of-compilation drain like any other instantiation;
+call sites emitted before that go through the backpatch chain
+(for_iter_callee). One type parameter only: a multi-parameter mangled
+suffix cannot be split back into its type arguments unambiguously.
+*/
+
+
+# Index of the first '$' in an instantiated generic struct's name, -1
+# for ordinary (non-generic) type names.
+int for_iter_generic_split(char* name):
+	int i = 0
+	while (name[i]):
+		if (name[i] == '$'):
+			return i
+		i = i + 1
+	return -1
+
+
+# Recover the type argument from the container's mangled name: the text
+# after the '$' is one canonical type name with one '*' per pointer
+# level ('heap$int' -> int, 'deque$char*' -> char*, 'box$pair$int' ->
+# the instantiated 'pair$int'). Returns the type index, -1 when the
+# name is not in the type table.
+int for_iter_generic_arg(char* container_name, int dollar):
+	char* arg_name = strclone(container_name + dollar + 1)
+	int n = 0
+	while (arg_name[n]):
+		n = n + 1
+	int stars = 0
+	while ((n > 0) && (arg_name[n - 1] == '*')):
+		n = n - 1
+		arg_name[n] = 0
+		stars = stars + 1
+	int arg_type = type_lookup(arg_name)
+	free(arg_name)
+	if (arg_type < 0):
+		return -1
+	while (stars > 0):
+		arg_type = type_get_next_pointer(arg_type)
+		stars = stars - 1
+	return arg_type
+
+
+# The generic counterpart of for_iter_require: resolve one
+# cursor-protocol function for an instantiated generic container
+# ('heap$int' + "begin" -> 'heap_iter_begin$int'), interning the
+# instantiation when its body has not been compiled yet, and mirror
+# for_iter_require's signature checks against the instantiation's
+# signature. Returns the mangled symbol name (caller frees).
+char* for_iter_generic_require(char* container_name, char* what, int expected_args, int container_type):
+	int dollar = for_iter_generic_split(container_name)
+	char* base = strclone(container_name)
+	base[dollar] = 0
+	char* prefix = strjoin(base, c"_iter_")
+	char* fn_base = strjoin(prefix, what)
+	free(prefix)
+	free(base)
+	int def = generic_def_lookup(fn_base, 0)
+	if (def < 0):
+		for_iter_error_prefix(container_name, fn_base)
+		error(c" not found")
+	if (generic_def_param_count(def) != 1):
+		for_iter_error_prefix(container_name, fn_base)
+		error(c" must take exactly one type parameter")
+	int arg_type = for_iter_generic_arg(container_name, dollar)
+	if (arg_type < 0):
+		for_iter_error_prefix(container_name, fn_base)
+		error(c" has an unknown type argument")
+	char* with_sep = strjoin(fn_base, c"$")
+	char* mangled = strjoin(with_sep, container_name + dollar + 1)
+	free(with_sep)
+	free(fn_base)
+	if (sym_lookup(mangled) >= 0):
+		# already compiled (a later loop after the drain, e.g. the REPL):
+		# the ordinary symbol checks apply
+		for_iter_require(container_name, mangled, expected_args, container_type)
+		return mangled
+	char* args = malloc(generic_max_params() * __word_size__)
+	save_ptr(args, arg_type)
+	int inst = generic_inst_intern(def, cast(int, args), 1, strclone(mangled))
+	int sig = generic_inst_signature(inst)
+	if (type_function_param_count(sig) != expected_args):
+		for_iter_error_prefix(container_name, mangled)
+		error(c" has wrong arity")
+	int return_type = type_function_return(sig)
+	if ((type_get_size(return_type) == 0) | (type_stack_words(return_type) != 1)):
+		for_iter_error_prefix(container_name, mangled)
+		error(c" must return a word-sized value")
+	if (type_unqualified(type_function_param_type(sig, 0)) != type_unqualified(container_type)):
+		for_iter_error_prefix(container_name, mangled)
+		error(c" first parameter must match the iterable type")
+	if (expected_args == 2):
+		if (type_unqualified(type_function_param_type(sig, 1)) != type_lookup(c"int")):
+			for_iter_error_prefix(container_name, mangled)
+			error(c" second parameter must be int")
+	return mangled
+
+
+# Loop-variable type for an inferred 'for x in <generic container>':
+# the declared return type of the container's '<base>_iter_value'
+# instantiation when one resolves; int otherwise (for_iter_require
+# reports the real error for a non-iterable type).
+int for_iter_generic_value_type(int container_type):
+	char* container_name = type_get_name(container_type)
+	int dollar = for_iter_generic_split(container_name)
+	char* base = strclone(container_name)
+	base[dollar] = 0
+	char* fn_base = strjoin(base, c"_iter_value")
+	free(base)
+	int def = generic_def_lookup(fn_base, 0)
+	if ((def < 0) || (generic_def_param_count(def) != 1)):
+		free(fn_base)
+		return type_lookup(c"int")
+	int arg_type = for_iter_generic_arg(container_name, dollar)
+	if (arg_type < 0):
+		free(fn_base)
+		return type_lookup(c"int")
+	char* with_sep = strjoin(fn_base, c"$")
+	char* mangled = strjoin(with_sep, container_name + dollar + 1)
+	free(with_sep)
+	free(fn_base)
+	int symbol = sym_lookup(mangled)
+	if (symbol >= 0):
+		free(mangled)
+		if (load_int(table + symbol + 10) == 2):
+			return load_int(table + symbol + 6)
+		return type_lookup(c"int")
+	char* args = malloc(generic_max_params() * __word_size__)
+	save_ptr(args, arg_type)
+	int inst = generic_inst_intern(def, cast(int, args), 1, mangled)
+	return type_unqualified(type_function_return(generic_inst_signature(inst)))
 
 
 void for_iter_require_struct_pointer(int container_type):
@@ -526,6 +683,8 @@ int for_infer_var_type(int container_type):
 	if (type_is_string(container_type)):
 		return type_lookup(c"int")
 	if (type_get_pointer_level(container_type) == 1):
+		if (for_iter_generic_split(type_get_name(container_type)) >= 0):
+			return for_iter_generic_value_type(container_type)
 		char* value_name = strjoin(type_get_name(container_type), c"_iter_value")
 		int symbol = sym_lookup(value_name)
 		free(value_name)
@@ -583,16 +742,29 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	char* free_name = 0
 	if (strcmp(container_name, c"generator") == 0):
 		free_name = c"gen_free"
-	char* iter_prefix = strjoin(container_name, c"_iter_")
-	char* begin_name = strjoin(iter_prefix, c"begin")
-	char* done_name = strjoin(iter_prefix, c"done")
-	char* next_name = strjoin(iter_prefix, c"next")
-	char* value_name = strjoin(iter_prefix, c"value")
-	free(iter_prefix)
-	for_iter_require(container_name, begin_name, 1, container_type)
-	for_iter_require(container_name, done_name, 2, container_type)
-	for_iter_require(container_name, next_name, 2, container_type)
-	for_iter_require(container_name, value_name, 2, container_type)
+	char* begin_name = 0
+	char* done_name = 0
+	char* next_name = 0
+	char* value_name = 0
+	if (for_iter_generic_split(container_name) >= 0):
+		# Instantiated generic container 'name$arg': the protocol
+		# functions are the generic 'name_iter_*' functions
+		# instantiated with the container's own type argument
+		begin_name = for_iter_generic_require(container_name, c"begin", 1, container_type)
+		done_name = for_iter_generic_require(container_name, c"done", 2, container_type)
+		next_name = for_iter_generic_require(container_name, c"next", 2, container_type)
+		value_name = for_iter_generic_require(container_name, c"value", 2, container_type)
+	else:
+		char* iter_prefix = strjoin(container_name, c"_iter_")
+		begin_name = strjoin(iter_prefix, c"begin")
+		done_name = strjoin(iter_prefix, c"done")
+		next_name = strjoin(iter_prefix, c"next")
+		value_name = strjoin(iter_prefix, c"value")
+		free(iter_prefix)
+		for_iter_require(container_name, begin_name, 1, container_type)
+		for_iter_require(container_name, done_name, 2, container_type)
+		for_iter_require(container_name, next_name, 2, container_type)
+		for_iter_require(container_name, value_name, 2, container_type)
 
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			begin_name, done_name, value_name, next_name, free_name,

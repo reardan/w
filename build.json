@@ -231,7 +231,13 @@
 				{"cmd": ["bin/wv2", "tests/list_trap_fixture.w", "-o", "bin/list_trap_fixture"]},
 				{"cmd": ["bin/list_trap_fixture"], "expect_fail": true, "expect_stderr": "list index out of range: index 5, length 2"},
 				{"cmd": ["bin/wv2", "tests/list_pop_trap_fixture.w", "-o", "bin/list_pop_trap_fixture"]},
-				{"cmd": ["bin/list_pop_trap_fixture"], "expect_fail": true, "expect_stderr": "pop on empty list"}
+				{"cmd": ["bin/list_pop_trap_fixture"], "expect_fail": true, "expect_stderr": "pop on empty list"},
+				{"cmd": ["bin/wv2", "tests/list_negative_index_trap_fixture.w", "-o", "bin/list_negative_index_trap_fixture"]},
+				{"cmd": ["bin/list_negative_index_trap_fixture"], "expect_fail": true, "expect_stderr": "list index out of range: index -4, length 3"},
+				{"cmd": ["bin/wv2", "tests/list_slice_trap_fixture.w", "-o", "bin/list_slice_trap_fixture"]},
+				{"cmd": ["bin/list_slice_trap_fixture"], "expect_fail": true, "expect_stderr": "list slice out of range: index 9, length 3"},
+				{"cmd": ["bin/wv2", "tests/list_slice_order_trap_fixture.w", "-o", "bin/list_slice_order_trap_fixture"]},
+				{"cmd": ["bin/list_slice_order_trap_fixture"], "expect_fail": true, "expect_stderr": "list slice out of range: index 2, length 1"}
 			]
 		},
 		{
@@ -1430,6 +1436,8 @@
 				{"cmd": ["bin/repl"], "stdin": "int f():\n\treturn 111\n\nint g():\n\treturn f()\n\nint f():\n\treturn 222\n\tqq_undefined\n\ng()\n:quit\n", "expect_stdout": "111", "reject_stdout": "222"},
 				{"cmd": ["bin/repl"], "stdin": "int f():\n\treturn 111\n\nint g():\n\treturn f()\n\nint f(): return 222; 1 / 0\ng()\n:quit\n", "expect_stdout": ["entry rolled back", "111"]},
 				{"cmd": ["bin/repl"], "stdin": "int y = 3\ny = 9\n:quit\n", "reject_stdout": "9"},
+				{"cmd": ["bin/repl"], "stdin": "int a = 1\nint b = 2\na, b = b, a + b\na * 10 + b\n:quit\n", "expect_stdout": "23"},
+				{"cmd": ["bin/repl"], "stdin": "int a = 1\nint b = 2\na, b = 1, 2, 3\nprint(c\"arity recovered\\x0a\")\n:quit\n", "expect_stdout": "arity recovered", "expect_stderr": "multi-assignment arity mismatch: 2 targets but 3 values"},
 				{"cmd": ["bin/repl"], "stdin": "struct pt:\n\tint x\n\tint y\n\npt* p = new pt(3, 4)\np.x + p.y\n:quit\n", "expect_stdout": "7"},
 				{"cmd": ["bin/repl"], "stdin": "struct pt:\n\tint x\n\tint y\n\nstruct pt:\n\tint x\n\tint y\n\tint z\n\npt* p = new pt(3, 4, 5)\np.z\n:quit\n", "expect_stdout": "5"},
 				{"cmd": ["bin/repl"], "stdin": "import tests.subfolder as sub\nsub.subfolder_value()\n:quit\n", "expect_stdout": "1337"},
@@ -1848,6 +1856,7 @@
 				"deep_nesting_64_test",
 				"default_args_64_test",
 				"defer_64_test",
+				"deque_64_test",
 				"dns_64_test",
 				"env_64_test",
 				"event_loop_64_test",
@@ -1867,6 +1876,7 @@
 				"generics_inference_64_test",
 				"getchar_checked_64_test",
 				"hash_table_64_test",
+				"heap_64_test",
 				"http_client_64_test",
 				"http_server_64_test",
 				"http_server_route_64_test",
@@ -1882,6 +1892,7 @@
 				"limb_builtin_shadow_64_test",
 				"line_edit_paste_64_test",
 				"list_builtin_64_test",
+				"list_index_slice_64_test",
 				"lsm_64_test",
 				"malloc_churn_64_test",
 				"map_float_64_test",
@@ -1892,6 +1903,7 @@
 				"method_chaining_64_test",
 				"mnist_64_test",
 				"monotime_64_test",
+				"multi_assign_64_test",
 				"ndarray_64_test",
 				"nested_ctor_64_test",
 				"net_64_test",
@@ -2260,6 +2272,7 @@
 				"operator_overload_error_test",
 				"compound_assign_test",
 				"increment_error_test",
+				"multi_assign_error_test",
 				"char_literal_test",
 				"print_builtin_test",
 				"script_mode_test",
@@ -2378,6 +2391,7 @@
 				"compress_zlib_test",
 				"cstr_test",
 				"deep_nesting_test",
+				"deque_test",
 				"directory_test",
 				"dns_test",
 				"env_test",
@@ -2399,6 +2413,7 @@
 				"getchar_checked_test",
 				"grapheme_test",
 				"hash_table_test",
+				"heap_test",
 				"hkdf_test",
 				"hmac_test",
 				"http_client_test",
@@ -2417,6 +2432,7 @@
 				"limb_builtin_test",
 				"line_edit_completion_test",
 				"line_edit_paste_test",
+				"list_index_slice_test",
 				"list_methods_test",
 				"lsm_test",
 				"malloc_churn_test",
@@ -2429,6 +2445,7 @@
 				"midline_tab_test",
 				"mnist_test",
 				"monotime_test",
+				"multi_assign_test",
 				"multilayer_test",
 				"ndarray_bounds_get_trap_test",
 				"ndarray_bounds_set_trap_test",
@@ -3210,6 +3227,26 @@
 			]
 		},
 		{
+			"name": "deque_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/deque_test.w"],
+			"outputs": ["bin/deque_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/deque_test.w", "-o", "bin/deque_64_test"]},
+				{"cmd": ["bin/deque_64_test"]}
+			]
+		},
+		{
+			"name": "deque_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/deque_test.w"],
+			"outputs": ["bin/deque_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/deque_test.w", "-o", "bin/deque_test"]},
+				{"cmd": ["bin/deque_test"]}
+			]
+		},
+		{
 			"name": "directory_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/directory_test.w"],
@@ -3735,6 +3772,26 @@
 			]
 		},
 		{
+			"name": "heap_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/heap_test.w"],
+			"outputs": ["bin/heap_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/heap_test.w", "-o", "bin/heap_64_test"]},
+				{"cmd": ["bin/heap_64_test"]}
+			]
+		},
+		{
+			"name": "heap_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/heap_test.w"],
+			"outputs": ["bin/heap_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/heap_test.w", "-o", "bin/heap_test"]},
+				{"cmd": ["bin/heap_test"]}
+			]
+		},
+		{
 			"name": "hkdf_64_test",
 			"deps": ["wv2"],
 			"inputs": ["libs/standard/crypto/hkdf_test.w"],
@@ -4107,6 +4164,26 @@
 			]
 		},
 		{
+			"name": "list_index_slice_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/list_index_slice_test.w"],
+			"outputs": ["bin/list_index_slice_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/list_index_slice_test.w", "-o", "bin/list_index_slice_64_test"]},
+				{"cmd": ["bin/list_index_slice_64_test"]}
+			]
+		},
+		{
+			"name": "list_index_slice_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/list_index_slice_test.w"],
+			"outputs": ["bin/list_index_slice_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/list_index_slice_test.w", "-o", "bin/list_index_slice_test"]},
+				{"cmd": ["bin/list_index_slice_test"]}
+			]
+		},
+		{
 			"name": "list_methods_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/list_methods_test.w"],
@@ -4324,6 +4401,33 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/monotime_test.w", "-o", "bin/monotime_test"]},
 				{"cmd": ["bin/monotime_test"]}
+			]
+		},
+		{
+			"name": "multi_assign_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/multi_assign_test.w"],
+			"outputs": ["bin/multi_assign_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/multi_assign_test.w", "-o", "bin/multi_assign_64_test"]},
+				{"cmd": ["bin/multi_assign_64_test"]}
+			]
+		},
+		{
+			"name": "multi_assign_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/multi_assign_arity_fewer_fixture.w", "tests/multi_assign_arity_more_fixture.w", "tests/multi_assign_bad_target_fixture.w", "tests/multi_assign_map_target_fixture.w", "tests/multi_assign_struct_target_fixture.w"]}
+			]
+		},
+		{
+			"name": "multi_assign_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/multi_assign_test.w"],
+			"outputs": ["bin/multi_assign_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/multi_assign_test.w", "-o", "bin/multi_assign_test"]},
+				{"cmd": ["bin/multi_assign_test"]}
 			]
 		},
 		{
@@ -4723,7 +4827,7 @@
 			"outputs": ["bin/prelude_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/prelude_test.w", "-o", "bin/prelude_test"]},
-				{"cmd": ["bin/prelude_test"], "stdin": "header line\n1 2 3\n-4 and x5\n", "expect_stdout": ["header line", "[1, 2, 3, -4, 5]", "7", "leftover:"]}
+				{"cmd": ["bin/prelude_test"], "stdin": "header line\n1 2 3\n-4 and x5\n", "expect_stdout": ["header line", "[1, 2, 3, -4, 5]", "7", "leftover:", "len:11", "first:h", "eof reached"]}
 			]
 		},
 		{
@@ -4733,7 +4837,7 @@
 			"outputs": ["bin/print_builtin_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/print_builtin_test.w", "-o", "bin/print_builtin_test"]},
-				{"cmd": ["bin/print_builtin_test"], "expect_stdout": ["greeting str via f", "1.250000", "[5, -1, 12]", "[one, two]", "[]", "big"]}
+				{"cmd": ["bin/print_builtin_test"], "expect_stdout": ["greeting str via f", "1.250000", "[5, -1, 12]", "[one, two]", "[]", "big", "char:ww", "int:120", "idx:A", "byte:65", "97"]}
 			]
 		},
 		{
