@@ -855,23 +855,30 @@ Details in `docs/projects/parser_generator.md`.
   (`lib/shell_commands.w` now reads through a stream and uses the true
   byte length).
 
-- **A `:save`d session transcript is not always a valid standalone `.w`
-  file.** Found while adding `:save`/`:load`/`:type`/`:time`/`:reset`/
-  `:symbols` colon-commands (issue #276 P2, 2026-07-16). `int x = 5` is
-  valid at the REPL (`repl_entry_item` in `repl/core.w` special-cases a
-  top-level "name = expression" into a declaration plus an assignment
-  compiled into the entry function) but the same line rejected standalone
-  — `./bin/wv2 check --json` on a file containing a bare `int x = 5;` at
-  file scope fails with `Could not find a valid primary expression, token:
-  =`, because ordinary top-level globals may only be declared, not
-  initialized inline (initialization has to happen inside a function).
-  Since almost every REPL session declares variables this way, `:save`ing
-  a typical session and then `:load`ing it back (or compiling it with
-  `bin/wv2`) does not round-trip. Either teach top-level declarations to
-  accept `= expr` as sugar for "declare, then assign in an implicit init
-  function" (mirroring what the REPL already does), or document the
-  asymmetry in `:help`/the REPL skill so agents don't rely on `:save`
-  output being directly compilable.
+- **Shipped (2026-07-28, wave 4): a top-level declaration may carry a
+  compile-time constant initializer, so a typical `:save`d session
+  round-trips.** `int x = 5` was valid at the REPL (`repl_entry_item`
+  in `repl/core.w` special-cases a top-level "name = expression") but
+  rejected standalone with `Could not find a valid primary expression,
+  token: =`, so `:save`ing a session and compiling it back did not
+  round-trip. `grammar/program.w`'s `global_initializer` now stores the
+  constant straight into the bytes `define_global_variable` reserved —
+  the C model, no init code before main, so nothing new enters the
+  entry path on any backend (a runtime hook was rejected: `lib/lib.w`'s
+  `_main` cannot call a driver-synthesized symbol the pinned seed does
+  not define). Integer/char/enum constants and the fixed-width int
+  types are supported; a value needing code to materialize (list, map,
+  set, string, slice, array, struct, float) is refused by name
+  (`cannot initialize global 'items' of type 'list[int]' at its
+  declaration; assign it inside a function`), as is a non-constant
+  initializer (`initializer for global 'computed' must be a
+  compile-time constant, got 'compute'`) — both an improvement on the
+  bare parse error. `tests/toplevel_init_test.w` plus the
+  `toplevel_init_error_test` fixtures; `tests/parser_generator/w.pg`
+  needed no change (its `global_suffix` already allowed `ASSIGN
+  expression`). Float initializers are the obvious next step (their bit
+  pattern is a compile-time constant too) and are deliberately not in
+  this pass.
 
 - **`string_free(b)` immediately followed by `free(b)` on the same
   `string_builder*` corrupted the heap, but only inside `repl.w`'s full

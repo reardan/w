@@ -20,11 +20,13 @@
 void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
 
 
-# Parse the compile-time constant after '=' in a parameter declaration:
-# an integer literal (decimal or hex, optionally negated), a char literal,
-# or a named enum constant (whose int32 value was already emitted into the
-# image at the constant's address). Anything else is rejected.
-int parse_constant_default():
+# Decode the compile-time constant at the current token: an integer
+# literal (decimal or hex, optionally negated), a char literal, or a
+# named enum constant (whose int32 value was already emitted into the
+# image at the constant's address). Anything else is rejected, with
+# `what` naming the construct in the diagnostic. Leaves the token after
+# the constant current.
+int parse_constant_literal(char* what, char* name):
 	int negative = 0
 	int value = 0
 	if (accept(c"-")):
@@ -51,7 +53,12 @@ int parse_constant_default():
 				if (type_get_kind(load_int(table + t + 6)) == type_kind_enum):
 					is_enum_constant = 1
 		if (is_enum_constant == 0):
-			diag_part(c"default value for parameter must be a compile-time constant, got '")
+			diag_part(what)
+			if (name):
+				diag_part(c" '")
+				diag_part(name)
+				diag_part(c"'")
+			diag_part(c" must be a compile-time constant, got '")
 			diag_part(token)
 			error(c"'")
 		if (target_isa == 2):
@@ -59,10 +66,16 @@ int parse_constant_default():
 		else:
 			value = load_int32(code + load_int(table + t + 2) - code_offset)
 	get_token()
-	if ((peek(c",") == 0) & (peek(c")") == 0)):
-		error(c"default value for parameter must be a single compile-time constant")
 	if (negative):
 		value = 0 - value
+	return value
+
+
+# Parse the compile-time constant after '=' in a parameter declaration.
+int parse_constant_default():
+	int value = parse_constant_literal(c"default value for parameter", 0)
+	if ((peek(c",") == 0) & (peek(c")") == 0)):
+		error(c"default value for parameter must be a single compile-time constant")
 	return value
 
 
@@ -230,6 +243,62 @@ void emit_data_global_storage(int type, int vaddr):
 		while (i < type_num_args(type)):
 			emit_data_global_storage(type_get_field_type_at(type, i), vaddr + type_get_field_offset_at(type, i))
 			i = i + 1
+
+
+# Store a top-level declaration's constant initializer into the storage
+# define_global_variable just reserved. The symbol's recorded address is
+# a vaddr in whichever segment holds it — the data segment under the W^X
+# split, the code image otherwise (the same two cases
+# parse_constant_literal reads an enum constant back from).
+void write_global_initial_value(int current_symbol, int type, int value):
+	int addr = load_int(table + current_symbol + 2)
+	int bytes = word_size
+	int declared_size = type_get_size(type)
+	if ((type_get_pointer_level(type) == 0) & (declared_size > 0) & (declared_size < word_size)):
+		bytes = declared_size
+	if (data_split):
+		save_i(data + (addr - data_offset), value, bytes)
+	else:
+		save_i(code + (addr - code_offset), value, bytes)
+
+
+# Reject value shapes whose storage is not a single scalar word: their
+# initializer would have to run code (descriptors, element copies), which
+# a top-level declaration has no place to run.
+void global_initializer_check_type(char* name, int type):
+	int t = type_canonical(type)
+	int ok = 1
+	if (type_num_args(t) > 0):
+		ok = 0
+	if (type_is_array(t) | type_is_slice(t)):
+		ok = 0
+	if (type_is_map(t) | type_is_set(t) | type_is_list(t)):
+		ok = 0
+	if (type_is_string(t)):
+		ok = 0
+	if (type_float_kind(t)):
+		ok = 0
+	if (ok):
+		return;
+	diag_part(c"cannot initialize global '")
+	diag_part(name)
+	diag_part(c"' of type '")
+	print_error_type(type)
+	error(c"' at its declaration; assign it inside a function")
+
+
+# 'int x = 5' at file scope: a global declaration carrying a compile-time
+# constant initializer, stored straight into the global's reserved bytes
+# (the C model — no init code runs before main). This exists so a REPL
+# session's own spelling round-trips: ':save' writes the entries verbatim
+# and the saved file has to compile standalone (docs/projects/repl.md).
+# Non-constant initializers are rejected here with a diagnostic naming
+# the global, instead of the bare "valid primary expression" parse error
+# the '=' used to produce.
+void global_initializer(char* name, int current_symbol, int decl_type):
+	global_initializer_check_type(name, decl_type)
+	int value = parse_constant_literal(c"initializer for global", name)
+	write_global_initial_value(current_symbol, decl_type, value)
 
 
 void emit_global_storage(int type):
@@ -503,6 +572,17 @@ void program():
 			function_definition(current_symbol)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"function", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
+
+		else if (accept(c"=")):
+			define_global_variable(current_symbol, decl_type)
+			# defhash_name is 0 only on the 'operator' branch above,
+			# which declared that literal name
+			char* init_name = defhash_name
+			if (init_name == 0):
+				init_name = c"operator"
+			global_initializer(init_name, current_symbol, decl_type)
+			if (defhash_name != 0):
+				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 		else:
 			/*error(8)*/

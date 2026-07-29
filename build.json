@@ -1972,6 +1972,7 @@
 				"template_string_64_test",
 				"thread_64_test",
 				"time_64_test",
+				"toplevel_init_64_test",
 				"u64_64_test",
 				"unsigned_load_64_test",
 				"urlparse_64_test",
@@ -2285,6 +2286,7 @@
 				"compound_assign_test",
 				"increment_error_test",
 				"multi_assign_error_test",
+				"toplevel_init_error_test",
 				"char_literal_test",
 				"print_builtin_test",
 				"script_mode_test",
@@ -2528,6 +2530,7 @@
 				"thread_test",
 				"threading_test",
 				"time_test",
+				"toplevel_init_test",
 				"type_system_p0_test",
 				"u64_test",
 				"unsigned_load_test",
@@ -5937,6 +5940,33 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/time_test.w", "-o", "bin/time_test"]},
 				{"cmd": ["bin/time_test"]}
+			]
+		},
+		{
+			"name": "toplevel_init_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/toplevel_init_test.w"],
+			"outputs": ["bin/toplevel_init_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/toplevel_init_test.w", "-o", "bin/toplevel_init_64_test"]},
+				{"cmd": ["bin/toplevel_init_64_test"]}
+			]
+		},
+		{
+			"name": "toplevel_init_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/toplevel_init_container_fixture.w", "tests/toplevel_init_nonconstant_fixture.w"]}
+			]
+		},
+		{
+			"name": "toplevel_init_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/toplevel_init_test.w"],
+			"outputs": ["bin/toplevel_init_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/toplevel_init_test.w", "-o", "bin/toplevel_init_test"]},
+				{"cmd": ["bin/toplevel_init_test"]}
 			]
 		},
 		{
