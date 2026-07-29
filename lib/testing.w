@@ -1,5 +1,6 @@
 import lib.lib
 import lib.assert
+import lib.crash
 
 
 # Synthesized by the compiler at the end of every batch compilation that
@@ -35,6 +36,10 @@ void execute_tests():
 
 
 int main(int argc, int argv):
+	# A test that dies of SIGSEGV/SIGBUS/SIGFPE/SIGILL reports a
+	# symbolized stack trace before the unchanged signal death
+	# (lib/crash.w; no-op off Linux x86/x64).
+	crash_handler_install()
 	execute_tests()
 	println(c"")
 	println(c"All tests passed!")

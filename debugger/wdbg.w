@@ -84,6 +84,7 @@ dispatches to it for --debug.
 import compiler.compiler
 import lib.args
 import lib.line_edit
+import lib.signal
 import structures.string
 import repl.core
 import repl.scan
@@ -1226,19 +1227,12 @@ void wdbg_fatal(int sig, int context):
 # ---------------------------------------------------------------------------
 # Signal delivery shims.
 #
-# i386: a non-SA_SIGINFO handler is called with the classic frame
-# [restorer][sig][sigcontext...] on the stack, so &sig + 4 is the
-# sigcontext, and the kernel's vdso trampoline performs sigreturn when
-# the handler returns. The *_entry wrappers compute the context and
-# forward to the real two-argument handlers.
-#
-# x86-64: the kernel always builds an rt frame and calls the handler
-# with sig in rdi and the ucontext pointer in rdx, and rt_sigaction
-# requires an SA_RESTORER trampoline. Neither matches a W function, so
-# wdbg emits tiny runtime thunks into an executable page: one per
-# handler converts the register convention into a W stack call of
-# handler(sig, ucontext + 40) - the sigcontext is the uc_mcontext field
-# at offset 40 - and a shared restorer performs rt_sigreturn.
+# The classic-frame (i386) and rt-thunk (x86-64) conversion into W
+# stack calls of handler(sig, sigcontext) lives in lib/signal.w
+# (signal_install_handler), shared with lib/crash.w. The *_entry
+# wrappers below are the i386 side: the kernel calls them with the
+# classic frame [restorer][sig][sigcontext...], so &sig + 4 is the
+# sigcontext.
 
 void wdbg_trap_entry(int sig):
 	wdbg_trap(sig, &sig + 4)
@@ -1246,67 +1240,6 @@ void wdbg_trap_entry(int sig):
 
 void wdbg_fatal_entry(int sig):
 	wdbg_fatal(sig, &sig + 4)
-
-
-int wdbg_thunk_page
-int wdbg_thunk_pos
-int wdbg_restorer
-
-
-void wdbg_thunk_emit(int n, char* bytes):
-	char* p = cast(char*, wdbg_thunk_page + wdbg_thunk_pos)
-	int i = 0
-	while (i < n):
-		p[i] = bytes[i]
-		i = i + 1
-	wdbg_thunk_pos = wdbg_thunk_pos + n
-
-
-void wdbg_thunk_init():
-	if (wdbg_thunk_page != 0):
-		return;
-	wdbg_thunk_page = mmap(0, 4096, 7, 34) /* RWX, PRIVATE|ANONYMOUS */
-	asserts(c"mmap of signal thunk page failed", (wdbg_thunk_page > 0) | (wdbg_thunk_page < -4095))
-	wdbg_restorer = wdbg_thunk_page
-	/* mov eax,15 ; syscall  (rt_sigreturn) */
-	wdbg_thunk_emit(7, c"\xb8\x0f\x00\x00\x00\x0f\x05")
-
-
-# Emit an x64 thunk calling handler(sig, &uc_mcontext) with the W stack
-# convention (first argument at the highest address). The handler
-# address fits an imm32: the wdbg image loads in the low 2GB.
-int wdbg_emit_handler_thunk(int handler):
-	int addr = wdbg_thunk_page + wdbg_thunk_pos
-	/* push rdi ; lea rax,[rdx+40] ; push rax ; mov eax,imm32 */
-	wdbg_thunk_emit(7, c"\x57\x48\x8d\x42\x28\x50\xb8")
-	save_int32(cast(char*, wdbg_thunk_page + wdbg_thunk_pos), handler)
-	wdbg_thunk_pos = wdbg_thunk_pos + 4
-	/* call rax ; add rsp,16 ; ret  (returns into the restorer) */
-	wdbg_thunk_emit(7, c"\xff\xd0\x48\x83\xc4\x10\xc3")
-	return addr
-
-
-# struct sigaction: on i386 {handler, flags, restorer, mask[2]} with
-# 4-byte fields, no SA_SIGINFO/SA_RESTORER (the vdso trampoline does
-# sigreturn); on x86-64 {handler, flags, restorer, mask} with 8-byte
-# fields, SA_SIGINFO (4) | SA_RESTORER (0x04000000) and the thunks.
-void wdbg_install_handler(int signum, int handler, int flags):
-	int* act = malloc(5 * __word_size__)
-	if (__word_size__ == 8):
-		wdbg_thunk_init()
-		act[0] = wdbg_emit_handler_thunk(handler)
-		act[1] = flags | 4 | 0x04000000
-		act[2] = wdbg_restorer
-		act[3] = 0
-	else:
-		act[0] = handler
-		act[1] = flags
-		act[2] = 0
-		act[3] = 0
-		act[4] = 0
-	int err = rt_sigaction(signum, act, 0)
-	asserts(c"rt_sigaction failed", err == 0)
-	free(act)
 
 
 # Rebuild the debuggee's symbol and line tables for attach mode by compiling
@@ -1466,11 +1399,11 @@ int wdbg_main(int argc, int argv):
 	if (__word_size__ == 8):
 		trap_handler = cast(int, wdbg_trap)
 		fatal_handler = cast(int, wdbg_fatal)
-	wdbg_install_handler(5, trap_handler, 1073741824) /* SIGTRAP */
-	wdbg_install_handler(4, fatal_handler, 1073741824) /* SIGILL */
-	wdbg_install_handler(7, fatal_handler, 1073741824) /* SIGBUS */
-	wdbg_install_handler(8, fatal_handler, 1073741824) /* SIGFPE */
-	wdbg_install_handler(11, fatal_handler, 1073741824) /* SIGSEGV */
+	signal_install_handler(5, trap_handler, 1073741824) /* SIGTRAP */
+	signal_install_handler(4, fatal_handler, 1073741824) /* SIGILL */
+	signal_install_handler(7, fatal_handler, 1073741824) /* SIGBUS */
+	signal_install_handler(8, fatal_handler, 1073741824) /* SIGFPE */
+	signal_install_handler(11, fatal_handler, 1073741824) /* SIGSEGV */
 
 	if (term_isatty(0)):
 		line_edit_history_load(c"~/.wdbg_history")
