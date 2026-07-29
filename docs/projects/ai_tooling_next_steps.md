@@ -260,6 +260,35 @@ is a queue, not an archive.
   comment-only commit, a real edit, and a file deletion, asserting
   two-dot/three-dot/open-range selection with and without `--defhash`
   for each, plus the no-range-argument path stays byte-identical.
+- **(2026-07-29, U5 tool-target migration) the documented deps-cache
+  failure-caching residue bit in practice.** A `./wbuild tests` run
+  killed mid-way through `bin/.wtest_deps_cache`'s first cold build
+  left cached failure entries, and the next `wtest_map_test` run then
+  failed exactly two arch-closure expectations ("missing expected
+  target: verify_arm64" / "verify_wasm" for `lib/__arch__/<arch>/
+  syscalls.w`) with nothing pointing at the cache; `rm
+  bin/.wtest_deps_cache` and a clean rebuild fixed both. This is the
+  seed-graph rule's known fail-open-to-prefix-floor residue (see the
+  2026-07-28 "verify residue derivation" entry) actually biting —
+  the suggested invalidation of failure entries on `bin/wv2`'s
+  mtime/hash (or on any interrupted run) is now motivated by a real
+  debugging detour, not hypothetically.
+- **(2026-07-29, U5 tool-target migration) `wtest_map_check`'s `-f`
+  fixture manifests silently encode build.json's *relative target
+  order*, and a manifest-layout change breaks them with a message
+  that doesn't point at the fixture.** Moving `manifest_check` from
+  build.base.json's hand-written section to wbuildgen's generated
+  (name-sorted, appended) section changed its position relative to
+  `wexec_test`, and five `map_expectations.expect` cases failed with
+  "selection out of manifest order (or duplicate): wexec_test" — the
+  real cause being that `tests/wtest/manifest_leaf_{base,add,retime}
+  .json` must list their real-name targets in build.json's relative
+  order (documented in `tools/wtest_map_check.w`'s header, but the
+  FAIL message names neither the fixture file nor the rule). Fixed
+  here by reordering the three fixtures; a cheap improvement would be
+  the checker hinting "-f fixture manifests must mirror build.json's
+  relative order (or add 'noorder')" when the case carries `-f`.
+
 ## Build manifest (`tools/wbuildgen.w`)
 
 Friction found migrating bucket D of `build_system_next.md`'s hand-written
@@ -406,24 +435,31 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   hand-picked order some base targets had; verified behavior-preserving
   (each fixture's pass/fail is independent, wfixture's exit status is
   an aggregate) by diffing generated vs. committed JSON before merging.
-- **Open: the rest of bucket C/K has no compile-and-run shape at all.**
-  `manifest`/`manifest_check` (invoke `bin/wbuildgen` directly),
-  `metadata_check` (`bin/wmeta check package.wmeta`), `wvdiff_test`
-  (`bin/wvdiff` over fixture text files), `wexec_keep_going_test`/
-  `wexec_ordered_output_test` (`bin/wexec` over fixture JSON manifests)
-  compile nothing themselves — there is no `*_test.w` source for a
-  directive to live on, so `tool=`/`fixture_group=` can't reach them.
-  Bucket C itself (the 11 tool binaries: `wtest`, `wbuildgen`,
-  `wfixture`, `wtest_map_check`, `wmeta`, `wvdiff`, `wvc`, `wdbg`,
-  `wdbg_x64`, `gen_stubs`, `rewrite_c_strings`) stays hand-written by
-  design — `wbg_find_target_by_source` resolves *against* these, it
-  doesn't generate them (they aren't `*_test.w`-shaped). `asm_seed_gate`
-  is a distinct mismatch (`deps: []`, compiles via the raw seed `./w`,
-  never `bin/wv2`) that a compiler-selector directive would fix, not a
-  tool-dependency one. Closing these would need a new "invoke a tool
-  as the whole target, no compile step" generation mode — a real design
-  decision (what source/marker would such a target even scan for?),
-  left open per the task's "enumerate, don't migrate" scope.
+- **Shipped (2026-07-29): the "invoke a tool as the whole target"
+  generation mode closes the bucket C/K residue.** `manifest`,
+  `manifest_check`, `metadata_check`, `wvdiff_test`,
+  `wexec_keep_going_test`, `wexec_ordered_output_test`, and
+  `asm_seed_gate` now generate from `build.base.json`'s new
+  `"generate": {"tool_targets": [...]}` array instead of living
+  hand-written in `"targets"`: each entry carries `name` + `steps`
+  (wexec's per-step JSON schema, verbatim — these targets' step lists
+  are per-step structured with `expect_status`/`reject_*`/multi-line
+  expectations, which is why a `# wbuild:` vocabulary extension lost
+  the design call; full rationale in `build_system_next.md`'s "Design
+  note: tool targets") plus optional `inputs`/`outputs`/`data`, and
+  wbuildgen DERIVES `"deps"` from the step commands
+  (`wbg_find_target_by_output` over base targets' declared outputs, so
+  the staged `bin/wexec` resolves; the entry's own earlier-step `-o`
+  products are self-satisfied, which is all `asm_seed_gate`'s
+  raw-seed shape needed — no compiler-selector directive after all).
+  Declaring `"deps"` by hand, an unknown entry key, a `bin/`-prefixed
+  command word nothing produces, or an entry name still present in
+  `"targets"` are all hard `./wbuild manifest` errors. Generated
+  `build.json` objects verified byte-identical to the hand-written
+  originals (only their array position moves to the generated,
+  name-sorted section). Bucket C (the tool binaries) stays
+  hand-written by design — it is what the deps derivation resolves
+  against.
 
 ## Cleanup observed while dogfooding
 
@@ -500,24 +536,6 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   Still uncovered (unchanged): `lib/shell_commands.w`'s `wc` derives
   counts from `strlen`, so a file containing NUL truncates its counts.
 
-- **`wbuildgen` can't express "this source's default-arch target is
-  x64-only, don't also generate an unwanted 32-bit twin"** (wave 2b,
-  bucket G migration). `wbg_scan`'s default-arch generation is
-  unconditional: it always emits a target under the source's
-  (`name=`-overridden or not) basename at the 32-bit default arch unless
-  `build.base.json` already claims that exact name — there is no
-  directive to opt a source *out* of the 32-bit default while still
-  generating an x64 twin under the plain (non-`_64_test`-suffixed) name.
-  Confirmed as a real behavior gap, not just redundant coverage: compiling
-  `tests/x64_test.w` (bucket D, hand-written today as x64-only under its
-  own basename) at the default arch builds clean but the binary silently
-  exits 1 with no output. Blocks migrating `graphics_gl_smoke_test`,
-  `extern_alias_test_x64`, `float_abi_test_x64` (bucket G) and bucket D's
-  whole `x64_test`/`x64_float_test`/... family the same way — left
-  hand-written, see `build_system_next.md`'s bucket G update. Fix would be
-  a directive like `arch_only=x64` (or reusing `arch=x64` to mean "this
-  IS the default" when no other arch is requested) that suppresses the
-  unconditional 32-bit generation for that source.
 - **`wexec_resolve_program` (tools/wexec.w) resolves a bare command name
   to the first *readable* file on `PATH`, not the first *executable*
   one — a manifest step naming `"env"` failed with a bare "command
