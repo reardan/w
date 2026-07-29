@@ -971,19 +971,6 @@ Details in `docs/projects/parser_generator.md`.
   should include the path and errno (ETXTBSY strongly hints "old
   binary still running"), and wexec could kill run-step children it
   spawned when it is itself terminated so orphans don't linger.
-- **wexec has no per-run-step timeout, so a deadlocked test hangs the
-  whole `./wbuild` invocation silently.** The same lib/thread.w
-  session produced (twice) a test binary that futex-waited forever; the
-  `./wbuild thread_test ...` invocation produced zero output until the
-  caller's own 300s timeout killed it, and the hung child survived
-  that kill. A default (or per-step `build.json`) run timeout that
-  fails the target with "timed out after Ns" would turn a silent hang
-  into an actionable failure. Diagnosis that worked: `ps aux`, then
-  `/proc/PID/wchan` + `/proc/PID/syscall` to see the exact futex the
-  binary was parked on (op and expected-value arguments included),
-  which pinpointed both bugs (private-flag waiter vs the kernel's
-  shared CLEARTID wake; expected-value re-read racing the one-shot
-  clear) without a debugger.
 - **`wtest changed` selects the near-full suite for any
   `lib/__arch__/*/syscalls.w` edit and says nothing about it.** The
   socketcall cleanup (2026-07-28) made `git diff --name-only
