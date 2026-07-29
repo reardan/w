@@ -829,6 +829,13 @@
 			]
 		},
 		{
+			"name": "wbuildgen_scratch_test",
+			"deps": ["wbuildgen"],
+			"steps": [
+				{"cmd": ["sh", "tools/wbuildgen_scratch_test.sh"], "expect_stdout": "wbuildgen_scratch_test: OK"}
+			]
+		},
+		{
 			"name": "wfixture",
 			"deps": ["wv2"],
 			"inputs": ["tools/wfixture.w"],
@@ -1105,7 +1112,10 @@
 				{"cmd": ["mkdir", "-p", "bin/wexec_xok/shadow", "bin/wexec_xok/real"]},
 				{"cmd": ["sh", "-c", "printf 'not a program\\n' > bin/wexec_xok/shadow/wexec_xok_probe"]},
 				{"cmd": ["sh", "-c", "printf '#!/bin/sh\\necho xok probe: real executable ran\\n' > bin/wexec_xok/real/wexec_xok_probe && chmod 755 bin/wexec_xok/real/wexec_xok_probe"]},
-				{"cmd": ["sh", "-c", "PATH=\"bin/wexec_xok/shadow:bin/wexec_xok/real:$PATH\" bin/wexec -f tests/wexec/path_xok.json probe"], "expect_stdout": ["xok probe: real executable ran", "wexec: OK (1 targets)"]}
+				{"cmd": ["sh", "-c", "PATH=\"bin/wexec_xok/shadow:bin/wexec_xok/real:$PATH\" bin/wexec -f tests/wexec/path_xok.json probe"], "expect_stdout": ["xok probe: real executable ran", "wexec: OK (1 targets)"]},
+				{"cmd": ["sh", "-c", "printf 'not a program\\n' > bin/wexec_xok/shadow/wexec_xok_unusable"]},
+				{"cmd": ["sh", "-c", "PATH=\"bin/wexec_xok/shadow:bin/wexec_xok/real:$PATH\" bin/wexec -f tests/wexec/path_xok.json unusable"], "expect_fail": true, "expect_stderr": "command failed with exit status 127: no executable 'wexec_xok_unusable' on PATH; skipped readable but non-executable bin/wexec_xok/shadow/wexec_xok_unusable"},
+				{"cmd": ["sh", "-c", "PATH=\"bin/wexec_xok/shadow:bin/wexec_xok/real:$PATH\" bin/wexec -f tests/wexec/path_xok.json missing"], "expect_fail": true, "expect_stderr": "command failed with exit status 127: no executable 'wexec_xok_no_such_command' on PATH", "reject_stderr": "skipped readable"}
 			]
 		},
 		{
@@ -1555,6 +1565,15 @@
 				{"cmd": ["bin/repl64", "--quiet"], "stdin": "40 + 2\n:quit\n", "expect_stdout": "42", "reject_stdout": "w> ", "expect_stderr": "w> "},
 				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "int myvar_completion_probe64 = 42\nmyvar_completion_p\t + 1\n:quit\n", "expect_stdout": "43"},
 				{"cmd": ["script", "-qc", "./bin/repl64", "/dev/null"], "stdin": "\u001b[200~int addp64(int a, int b):\n\tint total = a + b\n\n\treturn total\n\u001b[201~\naddp64(2, 3)\n:quit\n", "expect_stdout": "5"}
+			]
+		},
+		{
+			"name": "repl_pty_test",
+			"deps": ["wv2"],
+			"data": ["tests/repl_pty_ctrl_r.pty", "tools/pty_test.py"],
+			"steps": [
+				{"cmd": ["bin/wv2", "repl.w", "-o", "bin/repl_pty"]},
+				{"cmd": ["sh", "-c", "rm -rf bin/repl_pty_home && mkdir -p bin/repl_pty_home && HOME=$PWD/bin/repl_pty_home python3 tools/pty_test.py --timeout 60 tests/repl_pty_ctrl_r.pty -- ./bin/repl_pty"], "expect_stdout": "pty script OK"}
 			]
 		},
 		{
@@ -2287,6 +2306,7 @@
 				"unrecognized_option_test",
 				"forward_call_hint_test",
 				"c_import_verbose_note_test",
+				"c_import_error_directive_test",
 				"symbols_test",
 				"deps_test",
 				"defhash_test",
@@ -2363,6 +2383,7 @@
 				"wvc_sync_e2e_test",
 				"unsafe_import_test",
 				"manifest_check",
+				"wbuildgen_scratch_test",
 				"result_propagate_test",
 				"task_io_test",
 				"json_rpc_test",
@@ -2370,6 +2391,7 @@
 				"debug_test",
 				"attach_test",
 				"repl_test",
+				"repl_pty_test",
 				"dynamic_test",
 				"float_abi_test",
 				"varargs_test",
@@ -2835,6 +2857,13 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/c_import_errno_test.w", "-o", "bin/c_import_errno_test"]},
 				{"cmd": ["bin/c_import_errno_test"]}
+			]
+		},
+		{
+			"name": "c_import_error_directive_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/c_import_error_directive_fixture.w"]}
 			]
 		},
 		{

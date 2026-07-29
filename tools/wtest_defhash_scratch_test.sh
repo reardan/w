@@ -206,4 +206,41 @@ printf '\n# comment only, generic + operator overload still present\n' >> scratc
 out=$(bin/wtest changed --defhash scratch_lib.w)
 echo "$out" | grep -qx scratch_target && fail "generic+operator coverage: comment-only edit still selected scratch_target"
 
+# Committed-clean footgun warning (tools/test_map.w header comment,
+# --defhash): piping a ranged diff's path list into the un-ranged form
+# after committing ('git diff --name-only A..B | wtest changed
+# --defhash') compares HEAD vs a byte-identical worktree and silently
+# skips every path's closure selection -- wtest now warns on stderr,
+# suggesting the ranged form, without touching the stdout selection.
+git checkout -q -- scratch_lib.w
+err=$(git diff --name-only HEAD~1..HEAD | bin/wtest changed --defhash 2>&1 >/dev/null)
+echo "$err" | grep -qF "committed-clean vs HEAD" || fail "footgun combo (piped committed-clean path): warning did not fire"
+echo "$err" | grep -qF "wtest changed A..B --defhash" || fail "footgun combo: warning did not suggest the ranged form"
+
+# The stdout selection itself must stay byte-identical: only stderr
+# gains the warning.
+piped_out=$(git diff --name-only HEAD~1..HEAD | bin/wtest changed --defhash 2>/dev/null)
+positional_out=$(bin/wtest changed --defhash scratch_lib.w 2>/dev/null)
+[ "$piped_out" = "$positional_out" ] || fail "footgun combo: warning changed the stdout selection"
+
+# The ranged form is the correct spelling and must NOT warn (it
+# compares the range's own endpoints, not HEAD vs the worktree).
+err=$(bin/wtest changed "HEAD~1..HEAD" --defhash 2>&1 >/dev/null)
+echo "$err" | grep -qF "committed-clean" && fail "ranged form: warning fired"
+
+# A genuinely dirty worktree path piped in (the documented
+# 'git diff --name-only HEAD | wtest changed --defhash' workflow) must
+# NOT warn either: the path differs from HEAD, so the comparison is
+# meaningful.
+printf '\n# dirty worktree, comment only\n' >> scratch_lib.w
+err=$(git diff --name-only HEAD | bin/wtest changed --defhash 2>&1 >/dev/null)
+echo "$err" | grep -qF "committed-clean" && fail "dirty worktree: warning fired"
+
+# A committed-clean path named POSITIONALLY was asked about
+# deliberately (this script's own earlier cases do exactly that), so it
+# must not warn: the warning is scoped to stdin-piped lists.
+git checkout -q -- scratch_lib.w
+err=$(bin/wtest changed --defhash scratch_lib.w 2>&1 >/dev/null)
+echo "$err" | grep -qF "committed-clean" && fail "positional committed-clean path: warning fired"
+
 echo "wtest_defhash_scratch_test: OK"

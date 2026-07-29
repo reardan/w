@@ -401,8 +401,10 @@ seeds — is `docs/release.md`.
   existing `.w` change adds `parser_generator_w_test`, deleted `.w` files
   and library trees add `metadata_check` — and docs-only changes produce
   no targets; paths nothing knows about still fall back to `tests`. The
-  first run after a build computes the closures (~90s with the per-arch
-  twins); later runs validate the cache by content hash and finish in
+  first run after a build computes the closures, which can take several
+  minutes with the per-arch twins — a stderr banner and progress lines
+  show it is alive, and the cache is checkpointed so an interrupted run
+  resumes — later runs validate the cache by content hash and finish in
   well under a second.
 - `./bin/wtest changed <rev-range>` selects targets for the files changed
   **between two commits** instead of a path list (issue #251 direction

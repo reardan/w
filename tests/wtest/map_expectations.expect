@@ -222,11 +222,15 @@ expect manifest_check
 forbid sha256_test
 forbid tests
 
-# The manifest generator toolchain.
+# The manifest generator toolchain. 'manifest' (the in-place build.json
+# rewrite) is never emitted: selecting it alongside manifest_check made
+# './wbuild test_changed' race the check's byte-compare against the
+# mid-rewrite manifest — manifest_check alone is the drift gate.
 case tools/wbuildgen.w
 expect wbuildgen
-expect manifest
+expect wbuildgen_scratch_test
 expect manifest_check
+forbid manifest
 forbid tests
 
 # tests/asm/*.txt are runtime fixtures, not docs (#268): the tests/asm/
@@ -249,6 +253,23 @@ forbid tests
 # graph; its residue rule pins it to its one consumer.
 case tests/c_import_skip_note_fixture.h
 expect c_import_verbose_note_test
+forbid tests
+
+# tests/c_import_error_directive_fixture.h mirrors it for the '#error'
+# message-echo fixture: the header is read by the C preprocessor at
+# compile time, invisible to the import graph.
+case tests/c_import_error_directive_fixture.h
+expect c_import_error_directive_test
+forbid tests
+
+# The C-import machinery is loaded by the compiler itself, not through
+# recorded imports; its residue rule pins the c_import suite, including
+# the '#error' diagnostic fixture target.
+case libs/extras/c_preprocessor/pp_directives.w
+expect c_preprocessor_test
+expect c_import_test
+expect c_import_error_directive_test
+expect metadata_check
 forbid tests
 
 # lib/__arch__/ modules select through the per-arch closures of rule

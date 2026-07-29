@@ -1338,7 +1338,9 @@ char* wexec_resolve_exe_suffix(char* name):
 # non-executable file named like the command earlier on PATH (e.g. a
 # pyvenv-style ~/.local/bin/env config file) would shadow the real
 # binary and surface only as a bare "exit status 127"
-# (docs/projects/ai_tooling_next_steps.md, 2026-07-19). lib has no
+# (docs/projects/ai_tooling_next_steps.md, 2026-07-19; the 127
+# diagnostic itself names the skipped candidate via
+# wexec_status_127_message below). lib has no
 # access(2)/X_OK wrapper, so the bit comes from lib/stat.w's statx
 # wrapper instead. Where statx is a stub returning -1 (darwin, win64 --
 # lib/stat.w's header documents the arch stubs) every candidate would
@@ -1353,12 +1355,36 @@ int wexec_candidate_is_executable(char* path):
 	return (st.mode & 73) != 0
 
 
+# Breadcrumbs from the most recent wexec_resolve_program call, consulted
+# by wexec_status_127_message when the step then dies with exit status
+# 127 (lib.process's execve-failed convention): which argv[0] was being
+# resolved, the first readable but non-executable PATH candidate the
+# search had to skip, and whether it ended with no usable candidate at
+# all. A step resolves argv[0] immediately before spawning it, so these
+# always describe the command whose status is being checked.
+char* wexec_resolve_command    # argv[0] of the most recent resolution
+char* wexec_resolve_unusable   # first readable but non-executable candidate skipped, 0 when none
+int wexec_resolve_missed       # 1 when a PATH search ended with no usable candidate
+
+
+# Remember the first readable but non-executable candidate the PATH
+# search skipped, so a later exit-127 diagnostic can name it.
+void wexec_resolve_note_unusable(char* candidate):
+	if (wexec_resolve_unusable == 0):
+		wexec_resolve_unusable = strclone(candidate)
+
+
 # execve does no PATH lookup, so commands like "cmp" or "grep" must be
 # resolved here. Anything with a slash is used as-is (on Windows, after
 # the ".exe" fallback). A candidate must be readable AND executable
 # (wexec_candidate_is_executable above); a readable non-executable
 # match is skipped and the search continues down PATH.
 char* wexec_resolve_program(char* name):
+	wexec_resolve_command = name
+	if (wexec_resolve_unusable != 0):
+		free(wexec_resolve_unusable)
+		wexec_resolve_unusable = 0
+	wexec_resolve_missed = 0
 	int win = os_windows()
 	int i = 0
 	while (name[i] != 0):
@@ -1400,6 +1426,7 @@ char* wexec_resolve_program(char* name):
 				close(fd)
 				if (wexec_candidate_is_executable(candidate.data)):
 					return candidate.data
+				wexec_resolve_note_unusable(candidate.data)
 			if (win):
 				# Also try without .exe (script-style names)
 				candidate.data[candidate.length - 4] = 0
@@ -1409,7 +1436,9 @@ char* wexec_resolve_program(char* name):
 					close(fd)
 					if (wexec_candidate_is_executable(candidate.data)):
 						return candidate.data
+					wexec_resolve_note_unusable(candidate.data)
 	string_free(candidate)
+	wexec_resolve_missed = 1
 	return name
 
 
@@ -1470,6 +1499,24 @@ void wexec_note_expected_failure(process_result* result):
 	string_free(line)
 
 
+# 127 is both lib.process's execve-failed convention and the shell's
+# "command not found"; a bare "exit status 127" hides which one happened
+# and where (docs/projects/ai_tooling_next_steps.md, 2026-07-19). Say
+# what the most recent PATH resolution actually did: the readable but
+# non-executable candidate it skipped, the plain nothing-found case, or
+# — when resolution did produce a program (or argv[0] named a path
+# directly) — that the exec itself may still have failed.
+char* wexec_status_127_message():
+	char* base = c"command failed with exit status 127"
+	if (wexec_resolve_missed):
+		if (wexec_resolve_unusable != 0):
+			return cstr(f"{base}: no executable '{wexec_resolve_command}' on PATH; skipped readable but non-executable {wexec_resolve_unusable}")
+		return cstr(f"{base}: no executable '{wexec_resolve_command}' on PATH")
+	if (wexec_resolve_unusable != 0):
+		return cstr(f"{base}: PATH resolution skipped readable but non-executable {wexec_resolve_unusable}")
+	return cstr(f"{base} (127 is the exec-failure convention: the program may be missing, non-executable, or lack its script interpreter)")
+
+
 int wexec_check_status(char* target_name, int step_index, json_value* step, process_result* result):
 	if (result.status < 0):
 		wexec_step_error(target_name, step_index, c"command timed out or could not be waited on")
@@ -1489,7 +1536,10 @@ int wexec_check_status(char* target_name, int step_index, json_value* step, proc
 			return 1
 		return 0
 	if (result.status != 0):
-		wexec_step_error(target_name, step_index, cstr(f"command failed with exit status {result.status}"))
+		if (result.status == 127):
+			wexec_step_error(target_name, step_index, wexec_status_127_message())
+		else:
+			wexec_step_error(target_name, step_index, cstr(f"command failed with exit status {result.status}"))
 		return 1
 	return 0
 

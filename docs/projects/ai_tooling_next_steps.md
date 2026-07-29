@@ -138,29 +138,10 @@ is a queue, not an archive.
   sandbox, and the two `open()` calls are microseconds apart with no
   yield point between them); the migration there was verified by
   inspection/mechanical parallel with the other 5 sites, not a runtime
-  repro. Also noted in passing, unrelated to the migration and left
-  as-is: the `#error` diagnostic never echoes the directive's own
-  message text, only `c preprocessor: #error in <file>`.
+  repro.
 
 ## Test selection (`bin/wtest`)
 
-- **(2026-07-19 review) `--defhash` outside a range always compares HEAD
-  vs worktree**, even when the piped path list came from a ranged diff
-  (`git diff --name-only main..HEAD | wtest changed --defhash` after
-  committing marks everything unchanged and skips closure selection).
-  The ranged form `wtest changed main..HEAD --defhash` is correct; the
-  footgun combination is accepted silently — consider detecting a
-  committed-clean worktree and warning.
-- **First `wtest changed` after a build can take well over the
-  documented ~35s.** Building `libs/extras/vcs/merge3.w` (issue #252
-  wave 4), `git diff --name-only HEAD | ./bin/wtest changed` timed out
-  at the default 2-minute tool timeout on its first run (cold
-  `bin/.wtest_deps_cache`) against this tree's current size; a retry
-  with a longer timeout completed and printed the expected selection.
-  README/AGENTS.md's "~35s" figure is stale for a repo this size (or
-  this was host-specific slowness) -- agents should budget several
-  minutes (not the 2-minute tool default) for the FIRST post-build
-  `wtest changed` invocation, same as any other cold-cache step.
 - **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
   commit-ranged selection MVP** (issue #251 direction 4b). `changed`
   (not `for`) now treats a single positional argument containing `..`
@@ -306,22 +287,6 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
 
 ## Build manifest (`wbuildgen`)
 
-- **(2026-07-25) `wtest changed` on a manifest-affecting diff selects
-  both `manifest` and `manifest_check`, and `./wbuild test_changed`
-  then races them.** The two targets share only the `wbuildgen` dep,
-  so wexec's parallel scheduler can run `manifest_check`'s
-  byte-compare while `manifest` is mid-rewrite of `build.json` —
-  observed as a spurious `manifest_check` failure during the
-  wbuildgen-directives PR's `test_changed` run, with both targets
-  green standalone and `build.json` byte-identical afterwards. The
-  failure also surfaces as the misleading "manifests differ in
-  formatting only" (`wbg_report_drift` folds a torn/unparseable
-  `build.json` into that message). Fix candidates: a `manifest` →
-  `manifest_check` dep edge, wtest dropping `manifest` from the pair
-  (`manifest_check` alone is the gate), or `manifest` writing via
-  temp-file + rename so readers never see a torn file — plus a
-  distinct drift message for "committed manifest failed to parse".
-
 - **Shipped (2026-07-19, wave plan C task 2d): path-based target deps.**
   `# wbuild: tool=<path>` resolves a tool's own `.w` source (e.g.
   "tools/wvc.w") to the name of the existing `build.base.json` target
@@ -364,16 +329,6 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
 
 ## Cleanup observed while dogfooding
 
-- **(2026-07-25) `lib/format_test.w`'s 32/64-bit twins race on a fixed
-  temp path**: both `format_test` and `format_64_test` write and read
-  back `/tmp/w_format_test.txt` (O_TRUNC on open), so a parallel
-  `./wbuild tests` / `test_changed` run can interleave them —
-  observed as `test_hex_verb` asserting `wanted '0x000000ff' got ''`
-  in `format_64_test` while `format_test` ran concurrently; both pass
-  standalone. Fix is to pid-scope the path (the
-  `bin/<name>_test_<pid>` convention other tests use). Line 20's
-  `args[1] = c"abc"` also warns (`assignment type mismatch: expected
-  'int', got 'char*'`) on every compile of the test.
 - **arm64 self-host stage 2 regression ("Failed to find a _main()
   function") — expected fixed by f13ab7f, UNCONFIRMED.** The third
   sighting of the one bug behind the "context-dependent codegen"
@@ -517,8 +472,11 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   return -1 — degrades to the old readable-only answer so those
   platforms are unchanged) now filters the `PATH` loop, and the
   shadowing scenario is a regression step in `wexec_test`
-  (tests/wexec/path_xok.json). The exit-127 diagnostic naming the
-  unusable candidate remains a nice-to-have.
+  (tests/wexec/path_xok.json). The exit-127 diagnostic now names what
+  `PATH` resolution actually did (2026-07-28,
+  `wexec_status_127_message`): the readable-but-non-executable candidate
+  it skipped and/or the plain nothing-found case, asserted by further
+  `wexec_test` steps against the same fixture.
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new
@@ -718,6 +676,12 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   delegates. Pinned by `tests/process_bytes_test.w` (embedded-NUL and
   >4KB payloads round-tripped through `/bin/cat`, plus the legacy
   truncation contract).**
+- **(2026-07-27) `attach_test` failed once under a cold 20-target
+  parallel run** (`sh tools/attach_test.sh` step, exit 1, right after
+  two `condition on breakpoint 1 failed to compile` lines); standalone
+  and warm-batch reruns are green. Plausibly a `timeout 30` wdbg
+  invocation exceeded under compile load — if it recurs, bump the
+  per-case timeout or serialize the script's x64 half.
 
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
@@ -761,12 +725,16 @@ ergonomic gap:
   doubles the buffer while the hook reports it full, which also fixes the
   truncated set's over-inserted common prefix); `le_paste_consume`'s
   auto-indent-seed drop is byte-exact (`le_text_equals` against the
-  seed's snapshot), so same-length typed text survives a paste. Still
-  open: multi-line paste renders only bare newlines; an arrow key during
-  Ctrl-R cancels on ESC then inserts the residual "[A" as literal text
-  (the cancel consumes the ESC before the sequence is identified);
-  starting a search while the edited line wraps leaves stale wrapped
-  rows (`le_render_search` never climbs `le_prev_rows`).
+  seed's snapshot), so same-length typed text survives a paste. The
+  remaining three gaps closed 2026-07-28: a pasted embedded newline now
+  renders the completed line before accepting it (`le_paste_finish`), so
+  a multi-line paste no longer shows one bare newline per line; an ESC
+  during Ctrl-R probes for a following `[`/`O` before acting, so an
+  arrow key ends the search (the match becomes the live buffer) and is
+  re-delivered whole to the ordinary dispatch loop instead of
+  half-cancelling and inserting a residual "[A"; and `le_render_search`
+  climbs `le_prev_rows` before clearing, the way `le_render` does, so
+  starting a search on a wrapped line repaints its stale wrapped rows.
 - **(2026-07-19 review) shell-mode translator divergences** — fixed
   2026-07-25 (`repl/shell_translate.w`, pinned by
   `tests/shell_commands_test.w`): `echo` now honors `-n` only as a
@@ -867,21 +835,15 @@ ergonomic gap:
   keystroke, and by unit-testing the pure search-state transitions
   (`le_search_begin`/`le_search_refine`/`le_search_older`/
   `le_search_backspace` in `tests/line_edit_completion_test.w`) directly,
-  bypassing `getchar()` entirely. A reusable `tools/pty_test.py` (or a W
-  equivalent using a real `pty`/`fork` pair with an explicit "wait for
-  marker text" step) would let future agents script this class of
-  keystroke instead of falling back to manual verification each time.
-- **Minor: `bin/wtest changed`'s first-run import-closure cache build
-  can far exceed the documented ~35s.** Right after a full
-  `./wbuild build --no-cache` + `verify` + `verify_x64` cycle (ctrl
-  stack growth work, 2026-07-25), the first `wtest changed` run was
-  killed by a 2-minute caller timeout while still printing the "this
-  can take a minute" banner; the retry succeeded but took several
-  minutes total. Docs (CLAUDE.md and the wtest banner) set a ~35s/
-  "a minute" expectation, so agents pick too-small timeouts and kill
-  the build. Cheap fixes: progress output (one line per N modules) so
-  a caller can distinguish slow-but-alive from hung, and/or making an
-  interrupted cache build resume instead of restarting.
+  bypassing `getchar()` entirely. **Shipped (2026-07-28):
+  `tools/pty_test.py`** is that reusable harness — it spawns the command
+  under a real pty and waits for a marker (e.g. the "w> " prompt, proof
+  `term_raw_mode()` already ran) before writing each keystroke chunk,
+  driven by a simple expect/send script format with `\xHH` escapes;
+  `tests/repl_pty_ctrl_r.pty` scripts a Ctrl-R history search end to end
+  against a fresh repl build (build.base.json's `repl_pty_test` target),
+  so future agents can script this class of keystroke instead of
+  falling back to manual verification each time.
 
 ## Skills / rules upkeep
 
