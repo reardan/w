@@ -75,21 +75,6 @@ is a queue, not an archive.
   writing `p + n` instead of reaching for `ptr_add`/`&p[n]`. The footgun
   is now avoidable, not eliminated.
 
-- **One residue from the wave-3d c_import/preprocessor `diag_part`
-  migration (2026-07-19; shipped summary in `ai_tooling.md`'s status
-  section).** (The other — `ci_skip_extern_function`'s dead
-  `verbosity` guard — shipped 2026-07-25 with the `-v`/`--verbose`
-  flag; see `ai_tooling.md`.) `cpp_preprocess_file_into`'s
-  (`libs/extras/c_preprocessor/pp_directives.w`) "could not read" error
-  only fires when `cpp_find_include`'s existence check (`path_exists`,
-  its own `open()`+`close()`) succeeds but the subsequent real `open()`
-  in `pg_read_file_text` fails — a TOCTOU window with no reliable way
-  to hit deterministically (root bypasses permission bits in this
-  sandbox, and the two `open()` calls are microseconds apart with no
-  yield point between them); the migration there was verified by
-  inspection/mechanical parallel with the other 5 sites, not a runtime
-  repro.
-
 - **(2026-07-28, array-cast-warning work) a slash-and-extension import
   spelling produces a mangled path in the error, with no syntax hint.**
   `import lib/assert.w` — a natural guess, since that is the file's
@@ -184,6 +169,44 @@ is a queue, not an archive.
   the checker hinting "-f fixture manifests must mirror build.json's
   relative order (or add 'noorder')" when the case carries `-f`.
 
+- **(2026-07-29, U4 dogfooding-fixes) the X-entry residue above DID
+  bite, via a new route: `wtest_run_deps`'s 120s `process_run` timeout
+  under parallel load.** During a cold `bin/.wtest_deps_cache` build
+  while three sibling checkouts ran full `./wbuild tests` suites in the
+  same container, the non-default-arch `bin/wv2 deps <arch> w.w` runs
+  (a near-full compile each; ~23s standalone under moderate load)
+  exceeded the 120s `process_run` budget for x64, arm64, arm64_darwin
+  and win64 — all four were persisted as `X <arch> w.w` failure
+  records keyed to w.w's content hash, so every later warm-cache run
+  silently skipped the per-arch verify selection (no shell-out, no
+  diagnostic) even after the load vanished, and `wtest_map_test`
+  failed its `lib/__arch__/arm64/syscalls.w` case (`missing expected
+  target: verify_arm64`) deterministically until the stale `X` lines
+  were hand-deleted from the cache. A transient, timeout-shaped
+  failure should not be cached as permanent: either skip persisting
+  `X` records whose `deps` run timed out (persist only real nonzero
+  exits), retry them once on the next run, or at minimum have
+  `wtest_run_deps` print one stderr line when a closure shell-out
+  fails so the selection loss is visible instead of silent.
+- **(2026-07-29, U4 dogfooding-fixes) the four `http_server` targets
+  flake under concurrent load.** In a 20-unit parallel program every
+  unit's full `./wbuild tests` run failed `http_server_test` /
+  `http_server_route_test` and their `_64` twins (plus
+  `https_e2e_test` once), yet each target passes when run alone —
+  and `./wbuild http_server_test http_server_route_test ...` in one
+  invocation, where bin/wexec's scheduler runs all four server suites
+  (and their compiles) concurrently, fails again on the same box that
+  passes them serially minutes later. Not a port collision — the
+  fixtures already bind 127.0.0.1:0 and read the kernel-assigned port
+  back — so the suspect is timing under CPU contention (TLS handshake
+  / client read timeouts while 4+ compilers and servers share the
+  container; `test_https_request_context_round_trip`'s
+  `assert_equal(0, resp.error)` was one observed failure point).
+  Worth bounding: either raise the client/handshake timeouts the way
+  attach_test's wdbg timeout was raised for the same reason
+  (2026-07-29), or serialize the four targets behind a shared wexec
+  resource so a parallel `tests` run cannot self-contend.
+
 ## Build manifest (`tools/wbuildgen.w`)
 
 - **Shipped (2026-07-29): the "invoke a tool as the whole target"
@@ -240,12 +263,6 @@ is a queue, not an archive.
   the directory as empty instead of parsing Darwin records with Linux
   offsets. The full fix (per-arch dirent accessors, validated on a
   Mac) is still open; the accessor plan above stands.
-- **(2026-07-27) `attach_test` failed once under a cold 20-target
-  parallel run** (`sh tools/attach_test.sh` step, exit 1, right after
-  two `condition on breakpoint 1 failed to compile` lines); standalone
-  and warm-batch reruns are green. Plausibly a `timeout 30` wdbg
-  invocation exceeded under compile load — if it recurs, bump the
-  per-case timeout or serialize the script's x64 half.
 - **A still-running test binary turns the next rebuild into a
   misleading compiler assert.** While iterating on lib/thread.w join
   reclamation (2026-07-28), a deadlocked `bin/thread_64_test` from a
@@ -286,20 +303,6 @@ is a queue, not an archive.
 The 2026-07 review findings and the nullable-suffix fallback all
 shipped (last piece 2026-07-28) — see `ai_tooling.md`'s status section
 and `docs/projects/parser_generator.md` for the record.
-
-- **Minor: `parser_generator_w_test`'s batched failure output is hard
-  to attribute** (multi-assign work, 2026-07-28).
-  `tools/parser_generator_w_batches.sh` reruns the same binary once per
-  150-file slice, so a failing run interleaves dozens of
-  "test_parse_all_tracked_w_files() passed!" banners (the other
-  batches) around one batch's stack trace, and `wexec` reports only
-  "step 4: command failed" — an agent grepping for pass/fail sees both
-  and has to rerun with a hand-trimmed
-  `bin/parser_generator_w_files.txt` to isolate the culprit. The
-  decisive "file:line:col: syntax error" line IS printed but is easy
-  to lose in ~500 lines of per-test chatter. Cheap fix: have the batch
-  script echo "batch N (files X..Y) FAILED" on non-zero exit, or have
-  the manifest test print the failing path again right before exiting.
 
 - **w.pg gotcha for statement-level list productions**: `gap_many`'s
   line continuation inside `binary_tail` means a line ending in an
