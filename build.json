@@ -2890,6 +2890,13 @@
 			]
 		},
 		{
+			"name": "c_import_missing_header_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/c_import_missing_header_fixture.w"]}
+			]
+		},
+		{
 			"name": "c_import_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/c_import_test.w"],
