@@ -905,7 +905,7 @@
 		},
 		{
 			"name": "wtest_map_test",
-			"deps": ["wtest", "wtest_map_check"],
+			"deps": ["wtest", "wtest_map_check", "parser_generator_test"],
 			"data": ["tests/wtest/"],
 			"steps": [
 				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations.expect"], "expect_stdout": "wtest_map_check: OK"},
@@ -913,7 +913,11 @@
 				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read build.json"},
 				{"cmd": ["bin/wtest", "changed", "docs/todo.txt"], "expect_stderr": "wtest: 0 targets selected"},
 				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]"},
-				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_unavailable.json", "--available", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"}
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_unavailable.json", "--available", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_unavailable.json", "--runnable-here", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse.json", "widget/collapse_all.dat"], "expect_stdout": "collapse_all", "reject_stdout": "collapse_w1", "expect_stderr": "wtest: collapsed 4 targets into collapse_all (selection covered 4 of 5 selectable targets)"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse.json", "widget/collapse_two.dat"], "expect_stdout": ["collapse_w1", "collapse_w2"], "reject_stdout": "collapse_all", "reject_stderr": "wtest: collapsed"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse.json", "widget/collapse_mixed.dat"], "expect_stdout": ["collapse_w1", "collapse_w2", "collapse_loner"], "reject_stdout": "collapse_all", "reject_stderr": "wtest: collapsed"}
 			]
 		},
 		{
@@ -944,6 +948,22 @@
 			"deps": ["wtest"],
 			"steps": [
 				{"cmd": ["sh", "tools/wtest_range_scratch_test.sh"], "expect_stdout": "wtest_range_scratch_test: OK"}
+			]
+		},
+		{
+			"name": "wtest_runnable_test",
+			"deps": ["wtest"],
+			"data": ["tests/wtest/manifest_runnable.json", "tests/wtest/runnable_fixture/", "tools/wtest_runnable_scratch_test.sh"],
+			"steps": [
+				{"cmd": ["sh", "tools/wtest_runnable_scratch_test.sh"], "expect_stdout": "wtest_runnable_scratch_test: OK"}
+			]
+		},
+		{
+			"name": "wtest_nofailcache_test",
+			"deps": ["wtest", "wv2"],
+			"data": ["tools/wtest_nofailcache_scratch_test.sh"],
+			"steps": [
+				{"cmd": ["sh", "tools/wtest_nofailcache_scratch_test.sh"], "expect_stdout": "wtest_nofailcache_scratch_test: OK"}
 			]
 		},
 		{
@@ -2202,6 +2222,8 @@
 				"wtest_run_test",
 				"wtest_defhash_test",
 				"wtest_range_test",
+				"wtest_runnable_test",
+				"wtest_nofailcache_test",
 				"wtest_archs_test",
 				"wexec_test",
 				"wexec_keep_going_test",

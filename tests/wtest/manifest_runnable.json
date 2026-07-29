@@ -1,0 +1,43 @@
+{
+	"targets": [
+		{
+			"name": "rn_dyn32",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/dyn.w", "-o", "bin/rn_dyn32"]},
+				{"cmd": ["bin/rn_dyn32"]}
+			]
+		},
+		{
+			"name": "rn_dyn64",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wv2", "x64", "tests/wtest/runnable_fixture/dyn.w", "-o", "bin/rn_dyn64"]},
+				{"cmd": ["bin/rn_dyn64"]}
+			]
+		},
+		{
+			"name": "rn_gpu",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wv2", "x64", "tests/wtest/runnable_fixture/gpu.w", "-o", "bin/rn_gpu"]},
+				{"cmd": ["bin/rn_gpu"]}
+			]
+		},
+		{
+			"name": "rn_static",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/plain.w", "-o", "bin/rn_static"]},
+				{"cmd": ["bin/rn_static"]}
+			]
+		},
+		{
+			"name": "rn_compile_only",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/gpu.w", "-o", "bin/rn_ptx"]}
+			]
+		}
+	]
+}
