@@ -272,10 +272,11 @@ char* debug_realloc(void* old, int oldlen, int newlen):
 # there is no automatic exit hook, so callers (tests, or a program's own
 # shutdown path) call this explicitly.
 #
-# Snapshots the table length up front: st_write_dec/st_write_hex each
-# malloc and free a small scratch buffer internally, and without this
-# snapshot the resulting (immediately-freed, so not itself a leak)
-# table growth would let the loop chase its own tail.
+# Snapshots the table length up front. st_write_dec/st_write_hex print
+# through an mmap'd scratch page (lib/stack_trace.w st_scratch_ensure),
+# never malloc, so the walk cannot grow the table it is reporting on --
+# and, just as important for callers asserting exact leak-count deltas
+# (raft_ownership_test), reporting cannot change the leak count itself.
 int debug_alloc_report_leaks():
 	int leaked = 0
 	int leaked_bytes = 0

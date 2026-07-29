@@ -106,18 +106,26 @@ void st_write_cstr(char* s):
 	write(2, s, n)
 
 
-# The number writers share one preallocated scratch buffer so the
-# fatal-signal path (lib/crash.w) never allocates; crash_handler_install
-# warms it up front with st_scratch_ensure().
+# The number writers share one scratch page so the fatal-signal path
+# (lib/crash.w) never allocates; crash_handler_install warms it up
+# front with st_scratch_ensure(). The page comes from mmap, NOT malloc:
+# lib/memory_debug.w's leak accounting prints through these writers,
+# and a malloc'd scratch appearing between two debug_alloc_report_leaks()
+# calls would shift exact-leak-delta assertions (raft_ownership_test)
+# by one block.
 void st_scratch_ensure():
 	if (st_scratch == 0):
-		st_scratch = malloc(32)
+		int page = mmap(0, 4096, 3, 34) /* RW, PRIVATE|ANONYMOUS */
+		if ((page > 0) || (page < -4095)):
+			st_scratch = cast(char*, page)
 
 
 void st_write_dec(int v):
 	if (v < 0):
 		v = 0
 	st_scratch_ensure()
+	if (st_scratch == 0):
+		return;
 	char* buf = st_scratch
 	int i = 16
 	while (1):
@@ -132,6 +140,8 @@ void st_write_dec(int v):
 void st_write_hex(int v):
 	int digits = __word_size__ * 2
 	st_scratch_ensure()
+	if (st_scratch == 0):
+		return;
 	char* buf = st_scratch
 	buf[0] = '0'
 	buf[1] = 'x'
