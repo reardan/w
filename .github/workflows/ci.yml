@@ -34,4 +34,11 @@ jobs:
         run: sudo sysctl --write kernel.yama.ptrace_scope=0
 
       - name: Build and test
-        run: ./wbuild tests --keep-going
+        run: |
+          set +e
+          ./wbuild tests --keep-going > /tmp/full.log 2>&1
+          st=$?
+          echo '===== FAILURE SUMMARY ====='
+          grep -E '^wexec: (failed|error|keep-going)' /tmp/full.log || echo '(none)'
+          echo '===== END SUMMARY ====='
+          exit $st
