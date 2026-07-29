@@ -17,20 +17,6 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
-- **`w check` on a generic-only module validates almost nothing**
-  (observed 2026-07-28, heap/deque work). Uninstantiated generic
-  definitions are captured but never parsed past the header, so
-  `w check structures/heap.w` exits clean even when every body is
-  ill-typed; bugs only surface when a consumer instantiates the
-  functions (here: an undeclared local and a wrong-width field access
-  both sailed through the module's own check and appeared as warnings/
-  segfaults in the test binary). Cheap win: a `check` mode (or default)
-  that self-instantiates each generic definition with a synthetic
-  word-sized type argument (the inference placeholders in
-  `grammar/generic.w` already know how to do a header-only bind) so
-  module-local checks see the body at least once. Until then, agents
-  should check a generic module by checking a consumer that
-  instantiates it.
 - **Shipped (2026-07-17): cross-line call-tail absorption now warns.**
   `postfix_expr`'s call tail warns `call arguments continue from the
   previous line` when its `(` opens on a different line than the

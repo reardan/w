@@ -1409,3 +1409,92 @@ void generic_finish_instantiations():
 				generic_instantiate_function(generic_insts_compiled)
 				progress = 1
 			generic_insts_compiled = generic_insts_compiled + 1
+
+
+/*
+'w check' coverage for uninstantiated generics. A generic definition is
+captured but never parsed past its header, so before this a check of a
+generic-only module (structures/heap.w) exited clean even when every
+body was ill-typed - the bodies were only type-checked once a consumer
+instantiated them. In check mode (generic_check_mode, set by check_main
+in compiler/compiler.w and by nothing else - ordinary compilation and
+the deps/symbols/defhash subcommands that share link_impl's check_mode
+are unaffected), every definition that nothing instantiated is
+self-instantiated once with each type parameter bound to 'int': the
+canonical word-sized payload, the same binding inference gives untyped
+constants and the binding the containers' documented payload policy
+("keep T word-sized; put aggregates behind a pointer") assumes.
+
+The synthetic instantiation is an ordinary registry record: its mangled
+name ('max$int') is exactly a real [int] instantiation's, so
+generic_inst_intern dedupes against one, the body compiles at the usual
+generic_finish_instantiations drain (into the discarded check output),
+and diagnostics carry the definition's real source locations because
+the re-parse machinery reads the recorded span of the real file.
+
+A definition the user DID instantiate - explicitly, by inference, or
+through a still-pending forward call - is skipped: its body was already
+type-checked against the arguments it is really used with, and a body
+that is only meaningful for those arguments (say 'strlen(a)' on a T
+always bound to char*) must not produce false diagnostics against a
+type it is never used with. The same reasoning is why an unused
+definition's int-instantiation diagnostics are treated as true
+positives: a generic whose body cannot even be checked for the
+documented word-sized payload has no checkable instantiation at all,
+which is exactly what 'w check' should surface.
+*/
+int generic_check_mode
+
+
+# 1 when some function instantiation already covers this definition's
+# body: a recorded instantiation, or a pending forward call the drain
+# will turn into one. Struct instantiations live only in the type table
+# (no registry record), so struct defs always report unused here; the
+# caller dedupes them against the type table by mangled name instead,
+# and an extra [int] field-list re-parse next to a real [char*] one is
+# harmless anyway - field lists contain no expressions to mis-check.
+int generic_def_used(int def):
+	int i = 0
+	while (i < generic_inst_count()):
+		if (generic_inst_def(i) == def):
+			return 1
+		i = i + 1
+	if (generic_def_kind(def) == 0):
+		i = 0
+		while (i < generic_forward_count()):
+			if (strcmp(generic_forwards[i].name, generic_def_name(def)) == 0):
+				return 1
+			i = i + 1
+	return 0
+
+
+# Called by link_impl at the top-level boundary, after every user file
+# has compiled (so all definitions are registered and all symbols their
+# bodies may reference exist) and before the drain that compiles the
+# queued bodies. A no-op unless check_main armed generic_check_mode.
+void generic_check_instantiate_all():
+	if (generic_check_mode == 0):
+		return
+	int int_type = type_lookup(c"int")
+	int d = 0
+	while (d < generic_def_count()):
+		if (generic_def_used(d) == 0):
+			int n = generic_def_param_count(d)
+			int args = cast(int, malloc(generic_max_params() * __word_size__))
+			int i = 0
+			while (i < n):
+				save_ptr(args + i * __word_size__, int_type)
+				i = i + 1
+			char* mangled = generic_mangle(generic_def_name(d), args, n)
+			if (generic_def_kind(d) == 1):
+				# struct: instantiate eagerly (fills the type table only,
+				# no code) unless a real [int] instantiation already did
+				if (type_lookup(mangled) < 0):
+					generic_instantiate_struct(d, args, n, mangled)
+				else:
+					free(mangled)
+				free(cast(char*, args))
+			else:
+				# function: intern a record; the drain compiles the body
+				generic_inst_intern(d, args, n, mangled)
+		d = d + 1

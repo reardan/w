@@ -42,6 +42,24 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- **`w check` now type-checks uninstantiated generic bodies**
+  (2026-07-29, `grammar/generic.w` `generic_check_instantiate_all`,
+  armed only by `check_main`). A generic definition nothing
+  instantiates used to be captured but never parsed past its header, so
+  `w check structures/heap.w` exited clean even with an ill-typed body
+  (this let real bugs through twice during the heap/deque work). In
+  check mode every definition with no instantiation — explicit,
+  inferred, or pending-forward — is self-instantiated once with each
+  type parameter bound to `int` (the documented word-sized payload
+  policy) and its body compiled at the normal drain into the discarded
+  check output; diagnostics carry the definition's real source
+  locations via the existing span re-parse. Definitions the program
+  does instantiate are skipped, so a body that is only meaningful for
+  its real arguments (e.g. `strlen(a)` on a `T` always bound to
+  `char*`) produces no false diagnostics. Ordinary compilation and the
+  `deps`/`symbols`/`defhash` subcommands are unchanged. Asserted by
+  `check_generic_test` (`build.base.json`) over four
+  `tests/check_generic_*_fixture.w` files.
 - **wbuildgen directive gaps: arch-only targets, `.w` data deps, cache
   inputs, ambiguity errors** (2026-07-25, `tools/wbuildgen.w`). Four
   logged gaps closed at once. (1) `# wbuild: arch_only=<arch>` (x64,
