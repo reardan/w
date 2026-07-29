@@ -741,7 +741,11 @@
 				{"cmd": ["bin/map_set_builtin_test"]},
 				{"cmd": ["bin/wv2", "tests/map_add_error_fixture.w", "-o", "bin/map_add_error_fixture"], "expect_fail": true, "expect_stderr": "map add requires an integer or float value type"},
 				{"cmd": ["bin/wv2", "tests/map_add_float16_error_fixture.w", "-o", "bin/map_add_float16_error_fixture"], "expect_fail": true, "expect_stderr": "map add does not support float16 values"},
-				{"cmd": ["bin/wv2", "tests/map_value_array_error_fixture.w", "-o", "bin/map_value_array_error_fixture"], "expect_fail": true, "expect_stderr": "map value type cannot be a fixed-size array"}
+				{"cmd": ["bin/wv2", "tests/map_value_array_error_fixture.w", "-o", "bin/map_value_array_error_fixture"], "expect_fail": true, "expect_stderr": "map value type cannot be a fixed-size array"},
+				{"cmd": ["bin/wv2", "tests/map_default_empty_error_fixture.w", "-o", "bin/map_default_empty_error_fixture"], "expect_fail": true, "expect_stderr": "map default with no argument requires a container value type"},
+				{"cmd": ["bin/wv2", "tests/map_default_struct_error_fixture.w", "-o", "bin/map_default_struct_error_fixture"], "expect_fail": true, "expect_stderr": "map default does not support struct value types"},
+				{"cmd": ["bin/wv2", "tests/map_default_factory_required_error_fixture.w", "-o", "bin/map_default_factory_required_error_fixture"], "expect_fail": true, "expect_stderr": "map default for a container or pointer value type must be a factory function"},
+				{"cmd": ["bin/wv2", "tests/map_default_warning_fixture.w", "-o", "bin/map_default_warning_fixture"], "expect_stderr": ["warning: map default factory type mismatch: expected 'char*', got 'int'", "warning: map default type mismatch: expected 'int', got 'char*'"]}
 			]
 		},
 		{
@@ -1858,6 +1862,9 @@
 				"defer_64_test",
 				"deque_64_test",
 				"dns_64_test",
+				"edit_distance_64_test",
+				"elif_64_test",
+				"enumerate_64_test",
 				"env_64_test",
 				"event_loop_64_test",
 				"failure_detector_64_test",
@@ -1893,8 +1900,11 @@
 				"line_edit_paste_64_test",
 				"list_builtin_64_test",
 				"list_index_slice_64_test",
+				"list_sorted_64_test",
 				"lsm_64_test",
 				"malloc_churn_64_test",
+				"map_default_64_test",
+				"map_default_trap_64_test",
 				"map_float_64_test",
 				"map_set_builtin_64_test",
 				"md5_64_test",
@@ -1918,6 +1928,7 @@
 				"pointer_arith_type_64_test",
 				"poll_64_test",
 				"poly1305_64_test",
+				"prelude_any_all_64_test",
 				"prelude_math_64_test",
 				"prng_64_test",
 				"process_64_test",
@@ -1961,6 +1972,7 @@
 				"template_string_64_test",
 				"thread_64_test",
 				"time_64_test",
+				"toplevel_init_64_test",
 				"u64_64_test",
 				"unsigned_load_64_test",
 				"urlparse_64_test",
@@ -1976,7 +1988,8 @@
 				"vcs_tree_64_test",
 				"wal_64_test",
 				"wbuild_arch_only_test",
-				"wbuild_directive_64_test"
+				"wbuild_directive_64_test",
+				"window_64_test"
 			]
 		},
 		{
@@ -2273,6 +2286,7 @@
 				"compound_assign_test",
 				"increment_error_test",
 				"multi_assign_error_test",
+				"toplevel_init_error_test",
 				"char_literal_test",
 				"print_builtin_test",
 				"script_mode_test",
@@ -2394,6 +2408,9 @@
 				"deque_test",
 				"directory_test",
 				"dns_test",
+				"edit_distance_test",
+				"elif_test",
+				"enumerate_test",
 				"env_test",
 				"event_loop_test",
 				"failure_detector_test",
@@ -2434,8 +2451,11 @@
 				"line_edit_paste_test",
 				"list_index_slice_test",
 				"list_methods_test",
+				"list_sorted_test",
 				"lsm_test",
 				"malloc_churn_test",
+				"map_default_test",
+				"map_default_trap_test",
 				"map_float_test",
 				"math_test",
 				"md5_test",
@@ -2461,6 +2481,7 @@
 				"pointer_test",
 				"poll_test",
 				"poly1305_test",
+				"prelude_any_all_test",
 				"prelude_math_test",
 				"prng_test",
 				"process_bytes_test",
@@ -2509,6 +2530,7 @@
 				"thread_test",
 				"threading_test",
 				"time_test",
+				"toplevel_init_test",
 				"type_system_p0_test",
 				"u64_test",
 				"unsigned_load_test",
@@ -2526,6 +2548,7 @@
 				"wbuild_directive_test",
 				"wbuild_platform_test",
 				"wbuildgen_directive_errors_test",
+				"window_test",
 				"x25519_test",
 				"wbuild_platform_test_darwin"
 			]
@@ -3304,6 +3327,80 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64", "tests/dynamic_test.w", "-o", "bin/dynamic_test_arm64"]},
 				{"cmd": ["sh", "tools/run_arm64.sh", "bin/dynamic_test_arm64"], "expect_stdout": "dynamic linking OK"}
+			]
+		},
+		{
+			"name": "edit_distance_64_test",
+			"deps": ["wv2"],
+			"inputs": ["lib/edit_distance_test.w"],
+			"outputs": ["bin/edit_distance_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/edit_distance_test.w", "-o", "bin/edit_distance_64_test"]},
+				{"cmd": ["bin/edit_distance_64_test"]}
+			]
+		},
+		{
+			"name": "edit_distance_test",
+			"deps": ["wv2"],
+			"inputs": ["lib/edit_distance_test.w"],
+			"outputs": ["bin/edit_distance_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/edit_distance_test.w", "-o", "bin/edit_distance_test"]},
+				{"cmd": ["bin/edit_distance_test"]}
+			]
+		},
+		{
+			"name": "elif_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/elif_test.w"],
+			"outputs": ["bin/elif_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/elif_test.w", "-o", "bin/elif_64_test"]},
+				{"cmd": ["bin/elif_64_test"]}
+			]
+		},
+		{
+			"name": "elif_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/elif_without_if_fixture.w"]}
+			]
+		},
+		{
+			"name": "elif_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/elif_test.w"],
+			"outputs": ["bin/elif_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/elif_test.w", "-o", "bin/elif_test"]},
+				{"cmd": ["bin/elif_test"]}
+			]
+		},
+		{
+			"name": "enumerate_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/enumerate_test.w"],
+			"outputs": ["bin/enumerate_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/enumerate_test.w", "-o", "bin/enumerate_64_test"]},
+				{"cmd": ["bin/enumerate_64_test"]}
+			]
+		},
+		{
+			"name": "enumerate_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/enumerate_non_list_error_fixture.w", "tests/enumerate_one_var_error_fixture.w"]}
+			]
+		},
+		{
+			"name": "enumerate_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/enumerate_test.w"],
+			"outputs": ["bin/enumerate_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/enumerate_test.w", "-o", "bin/enumerate_test"]},
+				{"cmd": ["bin/enumerate_test"]}
 			]
 		},
 		{
@@ -4194,6 +4291,33 @@
 			]
 		},
 		{
+			"name": "list_sorted_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/list_sorted_test.w"],
+			"outputs": ["bin/list_sorted_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/list_sorted_test.w", "-o", "bin/list_sorted_64_test"]},
+				{"cmd": ["bin/list_sorted_64_test"]}
+			]
+		},
+		{
+			"name": "list_sorted_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/list_sorted_error_fixture.w"]}
+			]
+		},
+		{
+			"name": "list_sorted_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/list_sorted_test.w"],
+			"outputs": ["bin/list_sorted_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/list_sorted_test.w", "-o", "bin/list_sorted_test"]},
+				{"cmd": ["bin/list_sorted_test"]}
+			]
+		},
+		{
 			"name": "lsm_64_test",
 			"deps": ["wv2"],
 			"inputs": ["libs/standard/distributed/lsm_test.w"],
@@ -4231,6 +4355,46 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/malloc_churn_test.w", "-o", "bin/malloc_churn_test"]},
 				{"cmd": ["bin/malloc_churn_test"]}
+			]
+		},
+		{
+			"name": "map_default_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/map_default_test.w"],
+			"outputs": ["bin/map_default_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/map_default_test.w", "-o", "bin/map_default_64_test"]},
+				{"cmd": ["bin/map_default_64_test"]}
+			]
+		},
+		{
+			"name": "map_default_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/map_default_test.w"],
+			"outputs": ["bin/map_default_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/map_default_test.w", "-o", "bin/map_default_test"]},
+				{"cmd": ["bin/map_default_test"]}
+			]
+		},
+		{
+			"name": "map_default_trap_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/map_default_trap_test.w"],
+			"outputs": ["bin/map_default_trap_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/map_default_trap_test.w", "-o", "bin/map_default_trap_64_test"]},
+				{"cmd": ["bin/map_default_trap_64_test"], "expect_fail": true, "expect_stderr": ["map key not found: plain", "stack trace (most recent call first):", "at main ("]}
+			]
+		},
+		{
+			"name": "map_default_trap_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/map_default_trap_test.w"],
+			"outputs": ["bin/map_default_trap_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/map_default_trap_test.w", "-o", "bin/map_default_trap_test"]},
+				{"cmd": ["bin/map_default_trap_test"], "expect_fail": true, "expect_stderr": ["map key not found: plain", "stack trace (most recent call first):", "at main ("]}
 			]
 		},
 		{
@@ -4794,6 +4958,26 @@
 			]
 		},
 		{
+			"name": "prelude_any_all_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/prelude_any_all_test.w"],
+			"outputs": ["bin/prelude_any_all_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/prelude_any_all_test.w", "-o", "bin/prelude_any_all_64_test"]},
+				{"cmd": ["bin/prelude_any_all_64_test"]}
+			]
+		},
+		{
+			"name": "prelude_any_all_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/prelude_any_all_test.w"],
+			"outputs": ["bin/prelude_any_all_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/prelude_any_all_test.w", "-o", "bin/prelude_any_all_test"]},
+				{"cmd": ["bin/prelude_any_all_test"]}
+			]
+		},
+		{
 			"name": "prelude_math_64_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/prelude_math_test.w"],
@@ -4807,7 +4991,7 @@
 			"name": "prelude_math_error_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/prelude_len_error_fixture.w", "tests/prelude_math_float_error_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/prelude_all_error_fixture.w", "tests/prelude_any_error_fixture.w", "tests/prelude_len_error_fixture.w", "tests/prelude_math_float_error_fixture.w"]}
 			]
 		},
 		{
@@ -5759,6 +5943,33 @@
 			]
 		},
 		{
+			"name": "toplevel_init_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/toplevel_init_test.w"],
+			"outputs": ["bin/toplevel_init_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/toplevel_init_test.w", "-o", "bin/toplevel_init_64_test"]},
+				{"cmd": ["bin/toplevel_init_64_test"]}
+			]
+		},
+		{
+			"name": "toplevel_init_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/toplevel_init_container_fixture.w", "tests/toplevel_init_nonconstant_fixture.w"]}
+			]
+		},
+		{
+			"name": "toplevel_init_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/toplevel_init_test.w"],
+			"outputs": ["bin/toplevel_init_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/toplevel_init_test.w", "-o", "bin/toplevel_init_test"]},
+				{"cmd": ["bin/toplevel_init_test"]}
+			]
+		},
+		{
 			"name": "type_system_error_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
@@ -6218,6 +6429,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/wexec_remote_cache_test.w", "-o", "bin/wexec_remote_cache_test"]},
 				{"cmd": ["bin/wexec_remote_cache_test"]}
+			]
+		},
+		{
+			"name": "window_64_test",
+			"deps": ["wv2"],
+			"inputs": ["lib/window_test.w"],
+			"outputs": ["bin/window_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "lib/window_test.w", "-o", "bin/window_64_test"]},
+				{"cmd": ["bin/window_64_test"]}
+			]
+		},
+		{
+			"name": "window_test",
+			"deps": ["wv2"],
+			"inputs": ["lib/window_test.w"],
+			"outputs": ["bin/window_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "lib/window_test.w", "-o", "bin/window_test"]},
+				{"cmd": ["bin/window_test"]}
 			]
 		},
 		{

@@ -7,6 +7,7 @@ int compound_assign_apply(int op, int left_type, int right_type);
 int float_binary_arithmetic(int left_type, int right_type, int op);
 int var_binary_operands(int left_type, int right_type);
 int list_element_slot_size(int element_type);
+int list_callback_return_type(int got); /* defined in list_builtin */
 
 
 int hash_index_pending
@@ -59,6 +60,117 @@ void hash_emit_new_container(int type):
 		push_eax()
 		stack_pos = stack_pos + 1
 	hash_call_finish(s)
+
+
+# Whether a 'new map[K, V](...)' default argument is a factory: a named
+# function (type 4) or a value of fn-signature pointer type. Anything
+# else is a stored default value.
+int hash_default_is_factory(int got):
+	if (got == 4):
+		return 1
+	return type_function_pointer_signature(type_real(got)) >= 0
+
+
+# Whether the synthesized inner map of a 'new map[K, container]()' may
+# default its own missing keys to a zero word: plain arithmetic scalars
+# only. Pointer, string, var, struct and container values keep the trap
+# (a zero word is not a usable default for any of them).
+int hash_default_inner_zero(int value_type):
+	int t = type_unqualified(value_type)
+	if (type_is_map(t) | type_is_set(t) | type_is_list(t)):
+		return 0
+	if (type_num_args(t) > 0):
+		return 0
+	if (type_is_string(t)):
+		return 0
+	if (type_is_var(t)):
+		return 0
+	if (type_get_pointer_level(t) > 0):
+		return 0
+	return 1
+
+
+# Packed descriptor for the synthesized empty-container default of
+# 'new map[K, container]()'. The layout contract lives above
+# __w_hash_default_container() in structures/hash_table.w; the baked
+# constants mirror hash_emit_new_container/list_emit_new_container.
+int hash_default_container_descriptor(int value_type):
+	int t = type_unqualified(value_type)
+	if (type_is_list(t)):
+		return 3 | (list_element_slot_size(type_list_element_type(t)) << 5)
+	if (type_is_set(t)):
+		return 2 | (hash_key_kind_for_type(type_set_key_type(t)) << 2)
+	int desc = 1 | (hash_key_kind_for_type(type_map_key_type(t)) << 2)
+	desc = desc | (type_get_size(type_map_value_type(t)) << 5)
+	if (hash_default_inner_zero(type_map_value_type(t))):
+		desc = desc | 16
+	return desc
+
+
+# Optional default for missing keys (issue #327): new map[K, V](arg)
+# with the freshly-constructed map in eax and '(' not yet consumed. A
+# map built without the argument list keeps the documented m[k] trap.
+#   new map[K, V](value)     scalar V: every missing key reads as value
+#   new map[K, V](factory)   zero-argument factory called per missing
+#                            key (required for pointer/container V so
+#                            vivified values never alias)
+#   new map[K, container V]() synthesized empty-container factory; an
+#                            inner map with arithmetic scalar values
+#                            also defaults them to zero, so
+#                            outer[a][b] += 1 works on a fresh 'a'.
+#                            Deeper nesting needs explicit factories.
+# The expression's value stays the map itself either way.
+void hash_map_default_suffix(int type):
+	if (accept(c"(") == 0):
+		return;
+	int container_type = type_unqualified(type)
+	int value_type = type_map_value_type(container_type)
+	if (type_num_args(value_type) > 0):
+		error(c"map default does not support struct value types")
+	int value_canonical = type_unqualified(value_type)
+	int value_is_container = type_is_map(value_canonical) | type_is_set(value_canonical) | type_is_list(value_canonical)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int map_slot = stack_pos
+	int default_kind = 0
+	if (peek(c")")):
+		if (value_is_container == 0):
+			error(c"map default with no argument requires a container value type")
+		default_kind = 3
+		mov_eax_int(hash_default_container_descriptor(value_type))
+	else:
+		int got = expression()
+		got = promote(got)
+		if (hash_default_is_factory(got)):
+			default_kind = 2
+			int factory_return = list_callback_return_type(got)
+			if (types_compatible_with_expression(value_type, factory_return) == 0):
+				warn_type_mismatch(c"map default factory", value_type, factory_return)
+		else:
+			if (value_is_container | (type_get_pointer_level(value_canonical) > 0)):
+				error(c"map default for a container or pointer value type must be a factory function")
+			default_kind = 1
+			coerce(value_type, got)
+			if (types_compatible_with_expression(value_type, got) == 0):
+				warn_type_mismatch(c"map default", value_type, got)
+	expect(c")")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int value_slot = stack_pos
+	sym_get_value(c"__w_map_set_default")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(map_slot)
+	mov_eax_int(default_kind)
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(value_slot)
+	hash_call_finish(s)
+	mov_eax_esp_plus((stack_pos - map_slot) << word_size_log2)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
 
 
 int hash_finish_pending_read():
@@ -127,8 +239,10 @@ int hash_finish_pending_assignment():
 
 # m[key] op= rhs: the map and key already sit in the pending stack slots,
 # so the read and the write reuse them and the key is evaluated exactly
-# once. The read traps on a missing key, same as m[key]. 'op' is the
-# marker compound_assign_op() returned; the op token is still pending.
+# once. The read traps on a missing key, same as m[key] — unless the map
+# was built with a 'new map[K, V](...)' default, in which case both
+# vivify it (the policy lives inside __w_map_get, issue #327). 'op' is
+# the marker compound_assign_op() returned; the op token is still pending.
 int hash_finish_pending_compound(int op):
 	int saved_base_stack = hash_index_base_stack
 	int saved_map_slot = hash_index_map_slot

@@ -19,6 +19,7 @@ modules:
 	graphics.x11
 	lib.args
 	lib.assert
+	lib.edit_distance
 	lib.env
 	lib.event_loop
 	lib.file
@@ -45,6 +46,7 @@ modules:
 	lib.testing
 	lib.time
 	lib.utf8
+	lib.window
 	lib.wmeta
 	lib.__arch__.context
 	lib.__arch__.syscalls

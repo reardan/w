@@ -68,10 +68,11 @@ void zlib_result_free(zlib_result* r):
 # Encoding trusted, caller-owned bytes cannot fail (docs/projects/
 # compress.md §5.5), so this returns a plain value, never a wresult[T]*.
 # CMF=0x78 (CM=8 deflate, CINFO=7 for a 32K window) matches what zlib
-# itself emits; FLEVEL is fixed at 0 ("fastest") since deflate.w does not
-# yet vary its output by level (deflate.w's DEFLATE_LEVEL_FAST comment),
-# so a non-varying hint is the honest one. FCHECK is the 5-bit value
-# making (CMF*256 + FLG) a multiple of 31, RFC 1950 §2.2.
+# itself emits; FLEVEL (a decoder-ignored hint, RFC 1950 §2.2) tracks
+# the deflate level -- 0 "fastest" for stored, 1 "fast" for FAST, 2
+# "default" for BEST -- and stays deterministic per (input, level).
+# FCHECK is the 5-bit value making (CMF*256 + FLG) a multiple of 31,
+# RFC 1950 §2.2.
 zlib_result* zlib_compress(char* data, int length, int level):
 	if (length < 0):
 		length = 0
@@ -79,6 +80,10 @@ zlib_result* zlib_compress(char* data, int length, int level):
 	string_builder* out = string_new()
 	int cmf = 0x78
 	int flevel = 0
+	if (level >= DEFLATE_LEVEL_BEST()):
+		flevel = 2
+	else if (level >= DEFLATE_LEVEL_FAST()):
+		flevel = 1
 	int flg_partial = flevel << 6
 	int remainder = (cmf * 256 + flg_partial) % 31
 	int fcheck = (31 - remainder) % 31

@@ -382,6 +382,69 @@ int list_sort_by_suffix(int type):
 	return type_value(type_lookup(c"void"))
 
 
+# l.sorted(): 'sorted' has been consumed. Non-mutating sort (issue
+# #360): returns a NEW list holding the elements in ascending order,
+# with the same element rules as sort (int-like as signed words, char*
+# by contents). lib/stats.w's stats_sorted keeps covering float lists.
+int list_sorted_suffix(int type):
+	int element_type = type_list_element_type(type_unqualified(type))
+	int kind = list_scalar_kind(element_type, c"sorted")
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	expect(c")")
+	sym_get_value(c"__w_list_sorted")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	mov_eax_int(kind)
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_get_list(type_canonical(element_type)))
+
+
+# l.sorted_by(f): 'sorted_by' has been consumed. Non-mutating sort_by:
+# returns a NEW list ordered by the comparator (negative/zero/positive
+# like strcmp). Scalar elements pass values to f; aggregate elements
+# pass element addresses, exactly like sort_by.
+int list_sorted_by_suffix(int type):
+	int element_type = type_list_element_type(type_unqualified(type))
+	int is_aggregate = type_num_args(type_unqualified(element_type)) > 0
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	int got = expression()
+	got = promote(got)
+	list_check_callback(got, c"sorted_by")
+	expect(c")")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int fn_slot = stack_pos
+	if (is_aggregate):
+		sym_get_value(c"__w_list_sorted_by_addr")
+	else:
+		sym_get_value(c"__w_list_sorted_by")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_push_stack_slot(fn_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_get_list(type_canonical(element_type)))
+
+
 # l.map(f): 'map' has been consumed. Returns a NEW list whose element
 # type is f's declared return type.
 int list_map_suffix(int type):

@@ -733,6 +733,12 @@ int postfix_expr():
 				else if (peek(c"sort_by")):
 					get_token()
 					type = list_sort_by_suffix(type)
+				else if (peek(c"sorted")):
+					get_token()
+					type = list_sorted_suffix(type)
+				else if (peek(c"sorted_by")):
+					get_token()
+					type = list_sorted_by_suffix(type)
 				else if (peek(c"map")):
 					get_token()
 					type = list_map_suffix(type)

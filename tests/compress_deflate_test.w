@@ -207,6 +207,92 @@ void test_deflate_fast_and_best_roundtrip_incompressible_random_data():
 	free(buf)
 
 
+# Incompressible input must never expand pathologically: the per-block
+# stored fallback (deflate.w's dfl_emit_block) caps worst-case overhead
+# at the stored framing -- 5 bytes per ~32KiB block -- plus one final
+# byte of bit padding.
+void test_deflate_incompressible_does_not_expand():
+	int n = 100000
+	char* buf = malloc(n)
+	rand_state rs
+	rand_init(&rs, 4242)
+	int i = 0
+	while (i < n):
+		buf[i] = rand_next31(&rs) & 255
+		i = i + 1
+	# 100000 bytes of input splits into 4 blocks of at most ~32768 bytes
+	# each: allow 5 bytes of stored framing per block plus 1 byte slack.
+	int cap = n + 4 * 5 + 1
+	deflate_result* fast = deflate(buf, n, DEFLATE_LEVEL_FAST())
+	deflate_result* best = deflate(buf, n, DEFLATE_LEVEL_BEST())
+	asserts(c"fast must not expand incompressible data past stored framing", fast.length <= cap)
+	asserts(c"best must not expand incompressible data past stored framing", best.length <= cap)
+	dt_roundtrip_level(c"incompressible/fast", buf, n, DEFLATE_LEVEL_FAST())
+	dt_roundtrip_level(c"incompressible/best", buf, n, DEFLATE_LEVEL_BEST())
+	deflate_result_free(fast)
+	deflate_result_free(best)
+	free(buf)
+
+
+# An all-same-byte run is the extreme distance-1 overlapping-copy case
+# (RFC 1951 explicitly allows distance < length); it must collapse to
+# almost nothing at both compressive levels.
+void test_deflate_all_same_byte_run():
+	int n = 65536
+	char* buf = malloc(n)
+	int i = 0
+	while (i < n):
+		buf[i] = 'x'
+		i = i + 1
+	deflate_result* fast = deflate(buf, n, DEFLATE_LEVEL_FAST())
+	deflate_result* best = deflate(buf, n, DEFLATE_LEVEL_BEST())
+	asserts(c"fast must collapse an all-same-byte run below 1/100th", fast.length < n / 100)
+	asserts(c"best must collapse an all-same-byte run below 1/100th", best.length < n / 100)
+	dt_roundtrip_all_levels(c"all-same-byte", buf, n)
+	deflate_result_free(fast)
+	deflate_result_free(best)
+	free(buf)
+
+
+# The empty token stream's cheapest encoding is a fixed-Huffman block
+# holding just the EOB symbol: 3 header bits + the 7-bit EOB code = 10
+# bits = 2 bytes after padding -- pins dfl_emit_block's cost model on
+# the degenerate input (the stored candidate would be 5 bytes).
+void test_deflate_fast_empty_input_is_two_bytes():
+	deflate_result* d = deflate(c"", 0, DEFLATE_LEVEL_FAST())
+	assert_equal(2, d.length)
+	deflate_result_free(d)
+
+
+# A repetitive first half and a random second half force the per-block
+# chooser to mix block types inside one stream (Huffman blocks for the
+# compressible spans, stored fallback for the random ones), exercising
+# the byte-alignment transitions between them in both orders.
+void test_deflate_mixed_compressible_and_incompressible():
+	int n = 100000
+	char* buf = malloc(n)
+	rand_state rs
+	rand_init(&rs, 777)
+	int i = 0
+	while (i < n):
+		if (i < n / 2):
+			buf[i] = 'a' + (i % 7)
+		else:
+			buf[i] = rand_next31(&rs) & 255
+		i = i + 1
+	deflate_result* fast = deflate(buf, n, DEFLATE_LEVEL_FAST())
+	deflate_result* best = deflate(buf, n, DEFLATE_LEVEL_BEST())
+	# The repetitive half must shrink to almost nothing while the random
+	# half stays ~stored: total well under the all-stored size.
+	asserts(c"mixed/fast must beat all-stored", fast.length < n / 2 + n / 8)
+	asserts(c"mixed/best must beat all-stored", best.length < n / 2 + n / 8)
+	dt_roundtrip_level(c"mixed/fast", buf, n, DEFLATE_LEVEL_FAST())
+	dt_roundtrip_level(c"mixed/best", buf, n, DEFLATE_LEVEL_BEST())
+	deflate_result_free(fast)
+	deflate_result_free(best)
+	free(buf)
+
+
 void dt_boundary_case(int n, rand_state* rs):
 	char* buf = malloc(n)
 	int i = 0

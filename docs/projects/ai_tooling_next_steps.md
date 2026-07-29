@@ -167,33 +167,36 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
-- **(2026-07-28, streaming nullable-fallback work) `wtest changed` never
-  selects `verify` for seed-graph `libs/extras/` edits.**
-  `tools/test_map.w`'s `wtest_compiler_tree` covers `w.w`/`grammar.w`/
-  `codegen.w` and `compiler/`/`grammar/`/`code_generator/`, but not
-  `libs/extras/parser_generator/`, `libs/extras/c_import/`, or
-  `libs/extras/c_preprocessor/` -- all in `w.w`'s transitive import
-  closure via the C-import feature, so an edit there rebuilds every
-  compiler stage and can corrupt self-hosting exactly like a `compiler/`
-  edit. Editing `libs/extras/parser_generator/analysis.w`+`generator.w`
-  printed the parser_generator suite, `manifest_check`, `metadata_check`,
-  and `wexec_test`, but not `verify` (CLAUDE.md and the wave plan both
-  name `verify` as the required gate for those files). Either extend
-  `wtest_compiler_tree` to the three seed-graph `libs/extras/` trees, or
-  better, derive the "compiler tree" set from `bin/wv2 deps w.w` instead
-  of a hard-coded prefix list so it can never go stale again.
-- **(2026-07-28, noticed writing the `lib/__arch__/wasm/` fixture
-  case) an arch-runtime edit never selects that arch's self-host
-  gate.** Rule (b)'s root collection skips compiler-tree roots, so
-  `build_wasm`/`verify_wasm` (whose only root is `w.w`) are invisible
-  to a `lib/__arch__/wasm/syscalls.w` change — selection recommends the
-  leaf wasm tests but not the wasm fixpoint, and the compiler-tree
-  residue only ever maps to the 32-bit `verify`. The same holds for
-  every arch (`lib/__arch__/arm64/` edits never recommend
-  `verify_arm64`). Pre-existing, not introduced by the wasm selector
-  work; a residue rule mapping `lib/__arch__/<arch>/` (for the arches
-  whose runtime is in `w.w`'s closure) to that arch's verify pair
-  would close it.
+- **Shipped (2026-07-28, wave 4): the verify residue's compiler-tree
+  set is now DERIVED from `bin/wv2 deps w.w`** instead of the
+  hard-coded prefix list (three independent 2026-07-28 entries logged
+  the gap: seed-graph `libs/extras/` edits, `lib/__arch__/<arch>/`
+  runtime edits, and `debugger/`/`repl/` edits never selected the
+  self-host gate). `tools/test_map.w`'s `wtest_seed_graph` consults
+  the closure snapshot (cached in `bin/.wtest_deps_cache` under root
+  id `x86 w.w`, same entry format and validation as rule (b)'s
+  closures) and fails OPEN to the old prefix floor
+  (`wtest_compiler_tree`) when `deps` is unavailable — never narrower
+  than the historical behavior. `lib/__arch__/<arch>/` files found in
+  that arch's own `bin/wv2 <arch> deps w.w` closure additionally
+  select the arch's fixpoint (`verify_x64`/`verify_arm64`/
+  `verify_wasm`/`verify_win`; `verify_darwin` stays never-emit). Rule
+  (b)'s closure-scan skip stays keyed to the narrow prefix floor, so
+  derived seed-graph files (debugger/, lib/stream.w, ...) keep their
+  leaf-test closure selection alongside `verify`. The derivation is
+  file-accurate, not tree-sloppy: `libs/extras/parser_generator/
+  runtime.w` (in the closure) gets the gate, `generator.w` (pg-tool
+  code the compiler never links) does not —
+  `tests/wtest/map_expectations.expect` pins both directions plus a
+  non-closure `lib/stats.w` negative. Residue (inherited `X`-entry
+  semantics): a failed `deps w.w` run — e.g. `bin/wtest` invoked while
+  `bin/wv2` is missing — caches the failure against w.w's own content
+  hash, so the derived rule silently stays on the prefix floor until
+  w.w itself changes even after the compiler reappears; rule (b) has
+  always cached root failures this way (its literal matching covers
+  the gap there), but for the seed rule the only cover is the floor.
+  If that bites in practice, invalidate failure entries on `bin/wv2`'s
+  mtime/hash too.
 - **(2026-07-28, issue #360 item 5) Editing an auto-imported runtime
   file selects essentially the whole manifest.** `structures/w_list.w`
   is in every program's import closure, so `git diff --name-only
@@ -206,22 +209,17 @@ is a queue, not an archive.
   step references, and say so in one line, instead of enumerating the
   world; a `--runnable-here` filter (skip targets whose steps need
   binaries/hosts this machine lacks) would compose well with that.
-- **(2026-07-28, #123 attach remainder) `wtest changed` does not select
-  `verify` for `debugger/` changes, though `debugger/` is seed-compiled
-  as part of `w.w`'s closure.** `tools/test_map.w`'s
-  `wtest_compiler_tree()` covers `w.w`/`grammar.w`/`codegen.w` and the
-  `compiler/`/`grammar/`/`code_generator/` trees, but not `debugger/`
-  (or `repl/`, also pulled into the compiler by the debugger's eval),
-  so a diff touching only `debugger/attach*.w` selects wdbg/debug/
-  attach/repl targets and `parser_generator_w_test` but not the
-  self-host fixpoint — the one gate CLAUDE.md calls REQUIRED for any
-  compiler(-binary) change. Agents currently have to know to run
-  `./wbuild verify`/`verify_x64` by hand (this task did). Either add
-  `debugger/` + `repl/` to the compiler-tree residue rule, or document
-  in `test_map.w` why the fixpoint is intentionally not selected for
-  them (they change the compiler binary's bytes but not the code it
-  emits, so wv3==wv4==wv5 still holds trivially — if that is the
-  reasoning, it should be written down where the rule lives).
+- **(2026-07-28, wave 4a) invoking the compiler from outside a
+  checkout cannot resolve the auto-imported runtime.** With CWD in a
+  scratch directory, `/path/to/repo/bin/wv2 check snippet.w` fails
+  with "cannot locate 'structures/hash_table.w' (searched the current
+  directory and every parent)": runtime-import resolution walks up
+  from the CWD, ignoring where the compiler binary itself lives. Same
+  invocation from the repo root (absolute snippet path) works. Agents
+  compile throwaway snippets from scratch directories constantly;
+  falling back to the running binary's own directory (argv[0]) before
+  erroring would make that workflow just work. Workaround: always cd
+  to the checkout and pass the snippet's absolute path.
 - **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
   commit-ranged selection MVP** (issue #251 direction 4b). `changed`
   (not `for`) now treats a single positional argument containing `..`
@@ -857,23 +855,30 @@ Details in `docs/projects/parser_generator.md`.
   (`lib/shell_commands.w` now reads through a stream and uses the true
   byte length).
 
-- **A `:save`d session transcript is not always a valid standalone `.w`
-  file.** Found while adding `:save`/`:load`/`:type`/`:time`/`:reset`/
-  `:symbols` colon-commands (issue #276 P2, 2026-07-16). `int x = 5` is
-  valid at the REPL (`repl_entry_item` in `repl/core.w` special-cases a
-  top-level "name = expression" into a declaration plus an assignment
-  compiled into the entry function) but the same line rejected standalone
-  — `./bin/wv2 check --json` on a file containing a bare `int x = 5;` at
-  file scope fails with `Could not find a valid primary expression, token:
-  =`, because ordinary top-level globals may only be declared, not
-  initialized inline (initialization has to happen inside a function).
-  Since almost every REPL session declares variables this way, `:save`ing
-  a typical session and then `:load`ing it back (or compiling it with
-  `bin/wv2`) does not round-trip. Either teach top-level declarations to
-  accept `= expr` as sugar for "declare, then assign in an implicit init
-  function" (mirroring what the REPL already does), or document the
-  asymmetry in `:help`/the REPL skill so agents don't rely on `:save`
-  output being directly compilable.
+- **Shipped (2026-07-28, wave 4): a top-level declaration may carry a
+  compile-time constant initializer, so a typical `:save`d session
+  round-trips.** `int x = 5` was valid at the REPL (`repl_entry_item`
+  in `repl/core.w` special-cases a top-level "name = expression") but
+  rejected standalone with `Could not find a valid primary expression,
+  token: =`, so `:save`ing a session and compiling it back did not
+  round-trip. `grammar/program.w`'s `global_initializer` now stores the
+  constant straight into the bytes `define_global_variable` reserved —
+  the C model, no init code before main, so nothing new enters the
+  entry path on any backend (a runtime hook was rejected: `lib/lib.w`'s
+  `_main` cannot call a driver-synthesized symbol the pinned seed does
+  not define). Integer/char/enum constants and the fixed-width int
+  types are supported; a value needing code to materialize (list, map,
+  set, string, slice, array, struct, float) is refused by name
+  (`cannot initialize global 'items' of type 'list[int]' at its
+  declaration; assign it inside a function`), as is a non-constant
+  initializer (`initializer for global 'computed' must be a
+  compile-time constant, got 'compute'`) — both an improvement on the
+  bare parse error. `tests/toplevel_init_test.w` plus the
+  `toplevel_init_error_test` fixtures; `tests/parser_generator/w.pg`
+  needed no change (its `global_suffix` already allowed `ASSIGN
+  expression`). Float initializers are the obvious next step (their bit
+  pattern is a compile-time constant too) and are deliberately not in
+  this pass.
 
 - **`string_free(b)` immediately followed by `free(b)` on the same
   `string_builder*` corrupted the heap, but only inside `repl.w`'s full
@@ -991,6 +996,15 @@ Details in `docs/projects/parser_generator.md`.
   `./wbuild tests` (and `verify` — compiler closure touched)" would
   save agents from pasting hundreds of targets and from missing the
   verify gate.
+- **Minor: a flag before the arch selector turns the selector into the
+  input file, with a misleading error.** `bin/wv2 --strict x64 file.w
+  -o out` fails with `no such file: 'x64' in x64:1` after printing
+  `compiling 'x64'` — the arch token is consumed as the source path
+  once any flag precedes it. `bin/wv2 x64 --strict file.w -o out`
+  works. Found 2026-07-28 compiling a test's x64 twin by hand.
+  Cheap fix: recognize arch-selector tokens anywhere before the input
+  file (or error with "arch selector must come first"), so the
+  diagnostic names the real problem instead of a phantom file.
 
 ## Skills / rules upkeep
 
