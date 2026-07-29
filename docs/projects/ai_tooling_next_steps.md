@@ -103,28 +103,46 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
-- **Residue of the derived seed-graph `verify` rule (2026-07-28, wave 4;
-  the shipped derivation itself is summarized in `ai_tooling.md`): a
-  failed `deps w.w` run is cached against w.w's own content hash.** A
-  `deps` failure — e.g. `bin/wtest` invoked while `bin/wv2` is missing —
-  leaves the derived rule silently pinned to the old prefix floor
-  (`wtest_compiler_tree`) until w.w itself changes, even after the
-  compiler reappears. Rule (b) has always cached root failures this way
-  (its literal matching covers the gap there), but for the seed rule the
-  only cover is the floor. If that bites in practice, invalidate failure
-  entries on `bin/wv2`'s mtime/hash too. `tools/test_map.w`.
-- **(2026-07-28, issue #360 item 5) Editing an auto-imported runtime
-  file selects essentially the whole manifest.** `structures/w_list.w`
-  is in every program's import closure, so `git diff --name-only
-  origin/main | wtest changed` for the list-slice work printed ~450
-  targets — correct but useless as a *selection* (it includes every
-  platform-gated cuda/darwin/win64 target this host cannot run).
-  Suggested direction: when a changed file's closure covers more than
-  some large fraction of the manifest, collapse the selection to the
-  umbrella targets (`verify`, `verify_x64`, `tests`) plus the literal
-  step references, and say so in one line, instead of enumerating the
-  world; a `--runnable-here` filter (skip targets whose steps need
-  binaries/hosts this machine lacks) would compose well with that.
+- **Shipped (2026-07-28, wave 4): the verify residue's compiler-tree
+  set is now DERIVED from `bin/wv2 deps w.w`** instead of the
+  hard-coded prefix list (three independent 2026-07-28 entries logged
+  the gap: seed-graph `libs/extras/` edits, `lib/__arch__/<arch>/`
+  runtime edits, and `debugger/`/`repl/` edits never selected the
+  self-host gate). `tools/test_map.w`'s `wtest_seed_graph` consults
+  the closure snapshot (cached in `bin/.wtest_deps_cache` under root
+  id `x86 w.w`, same entry format and validation as rule (b)'s
+  closures) and fails OPEN to the old prefix floor
+  (`wtest_compiler_tree`) when `deps` is unavailable — never narrower
+  than the historical behavior. `lib/__arch__/<arch>/` files found in
+  that arch's own `bin/wv2 <arch> deps w.w` closure additionally
+  select the arch's fixpoint (`verify_x64`/`verify_arm64`/
+  `verify_wasm`/`verify_win`; `verify_darwin` stays never-emit). Rule
+  (b)'s closure-scan skip stays keyed to the narrow prefix floor, so
+  derived seed-graph files (debugger/, lib/stream.w, ...) keep their
+  leaf-test closure selection alongside `verify`. The derivation is
+  file-accurate, not tree-sloppy: `libs/extras/parser_generator/
+  runtime.w` (in the closure) gets the gate, `generator.w` (pg-tool
+  code the compiler never links) does not —
+  `tests/wtest/map_expectations.expect` pins both directions plus a
+  non-closure `lib/stats.w` negative. (The residue this entry used to
+  carry — a failed `deps w.w` run cached against w.w's content hash
+  silently pinning the rule to the prefix floor until w.w changed —
+  shipped 2026-07-29: deps failures are never cached while `bin/wv2`
+  is missing, a persisted compile failure is additionally keyed to
+  `bin/wv2`'s hash and to the reported missing import staying absent,
+  and the fallback announces itself on stderr; `wtest_nofailcache_test`.)
+- **(2026-07-29, --runnable-here work) the runnable-here needs scan is
+  root-level only.** `wtest changed --runnable-here` reads
+  `c_lib`/`c_import`/`import lib.cuda` off the ROOT source of each
+  compiled-and-run binary, so a directive buried in an imported module
+  is not attributed: `graphics_gl_smoke_test` (c_lib in
+  `graphics/gl_linux.w`) and the `tensor_gpu_test`/`nn_train_gpu_test`
+  family (libcuda via `lib/tensor.w`, deliberately CPU-fallback-capable
+  but still needing `libcuda.so.1` installed to load) are never dropped
+  on hosts that lack X11/libcuda. Closure-level attribution (scan every
+  file in the root's cached closure, fall back to root-only when the
+  closure is unknown) would close it using machinery rule (b) already
+  has.
 - **(2026-07-28, wave 4a) invoking the compiler from outside a
   checkout cannot resolve the auto-imported runtime.** With CWD in a
   scratch directory, `/path/to/repo/bin/wv2 check snippet.w` fails
@@ -235,18 +253,6 @@ is a queue, not an archive.
   which pinpointed both bugs (private-flag waiter vs the kernel's
   shared CLEARTID wake; expected-value re-read racing the one-shot
   clear) without a debugger.
-- **`wtest changed` selects the near-full suite for any
-  `lib/__arch__/*/syscalls.w` edit and says nothing about it.** The
-  socketcall cleanup (2026-07-28) made `git diff --name-only
-  origin/main | bin/wtest changed` print ~450 targets — correct
-  (syscalls.w is in every program's closure, including the compiler's,
-  so `verify` is also implied) but unhelpful as a "focused test" list,
-  and the residue rules did not surface `verify` for it. When the
-  selection exceeds some threshold (say half the manifest), a one-line
-  summary like "selection is effectively the `tests` umbrella; run
-  `./wbuild tests` (and `verify` — compiler closure touched)" would
-  save agents from pasting hundreds of targets and from missing the
-  verify gate.
 - **Minor: a flag before the arch selector turns the selector into the
   input file, with a misleading error.** `bin/wv2 --strict x64 file.w
   -o out` fails with `no such file: 'x64' in x64:1` after printing
