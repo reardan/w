@@ -467,110 +467,113 @@ int clang_ast_direct_abstract_declarator_tail():
 int clang_ast_function_definition():
 	return 64
 
-int clang_ast_compound_statement():
+int clang_ast_knr_declaration_list():
 	return 65
 
-int clang_ast_block_item():
+int clang_ast_compound_statement():
 	return 66
 
-int clang_ast_statement():
+int clang_ast_block_item():
 	return 67
 
-int clang_ast_if_statement():
+int clang_ast_statement():
 	return 68
 
-int clang_ast_else_part():
+int clang_ast_if_statement():
 	return 69
 
-int clang_ast_while_statement():
+int clang_ast_else_part():
 	return 70
 
-int clang_ast_do_statement():
+int clang_ast_while_statement():
 	return 71
 
-int clang_ast_for_statement():
+int clang_ast_do_statement():
 	return 72
 
-int clang_ast_for_init():
+int clang_ast_for_statement():
 	return 73
 
-int clang_ast_switch_statement():
+int clang_ast_for_init():
 	return 74
 
-int clang_ast_labeled_statement():
+int clang_ast_switch_statement():
 	return 75
 
-int clang_ast_break_statement():
+int clang_ast_labeled_statement():
 	return 76
 
-int clang_ast_continue_statement():
+int clang_ast_break_statement():
 	return 77
 
-int clang_ast_goto_statement():
+int clang_ast_continue_statement():
 	return 78
 
-int clang_ast_return_statement():
+int clang_ast_goto_statement():
 	return 79
 
-int clang_ast_expression_statement():
+int clang_ast_return_statement():
 	return 80
 
-int clang_ast_constant_expression():
+int clang_ast_expression_statement():
 	return 81
 
-int clang_ast_expression():
+int clang_ast_constant_expression():
 	return 82
 
-int clang_ast_expression_tail():
+int clang_ast_expression():
 	return 83
 
-int clang_ast_assignment_expression():
+int clang_ast_expression_tail():
 	return 84
 
-int clang_ast_assignment_operator():
+int clang_ast_assignment_expression():
 	return 85
 
-int clang_ast_conditional_expression():
+int clang_ast_assignment_operator():
 	return 86
 
-int clang_ast_conditional_tail():
+int clang_ast_conditional_expression():
 	return 87
 
-int clang_ast_binary_expression():
+int clang_ast_conditional_tail():
 	return 88
 
-int clang_ast_binary_tail():
+int clang_ast_binary_expression():
 	return 89
 
-int clang_ast_binary_operator():
+int clang_ast_binary_tail():
 	return 90
 
-int clang_ast_unary_expression():
+int clang_ast_binary_operator():
 	return 91
 
-int clang_ast_cast_expression():
+int clang_ast_unary_expression():
 	return 92
 
-int clang_ast_cast_type_name():
+int clang_ast_cast_expression():
 	return 93
 
-int clang_ast_unary_operator():
+int clang_ast_cast_type_name():
 	return 94
 
-int clang_ast_postfix_expression():
+int clang_ast_unary_operator():
 	return 95
 
-int clang_ast_postfix_tail():
+int clang_ast_postfix_expression():
 	return 96
 
-int clang_ast_argument_expression_list():
+int clang_ast_postfix_tail():
 	return 97
 
-int clang_ast_argument_tail():
+int clang_ast_argument_expression_list():
 	return 98
 
-int clang_ast_primary_expression():
+int clang_ast_argument_tail():
 	return 99
+
+int clang_ast_primary_expression():
+	return 100
 
 char* clang_token_name(int kind):
 	if (kind == 0):
@@ -824,6 +827,7 @@ pg_ast_node* clang_parse_abstract_declarator(pg_token_stream* stream, pg_diagnos
 pg_ast_node* clang_parse_direct_abstract_declarator(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_direct_abstract_declarator_tail(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_function_definition(pg_token_stream* stream, pg_diagnostics* diagnostics);
+pg_ast_node* clang_parse_knr_declaration_list(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_compound_statement(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_block_item(pg_token_stream* stream, pg_diagnostics* diagnostics);
 pg_ast_node* clang_parse_statement(pg_token_stream* stream, pg_diagnostics* diagnostics);
@@ -4274,11 +4278,20 @@ pg_ast_node* clang_parse_function_definition(pg_token_stream* stream, pg_diagnos
 			else:
 				pg_ast_add(node, child_0_1)
 		if (failed == 0):
-			pg_ast_node* child_0_2 = clang_parse_compound_statement(stream, diagnostics)
-			if (child_0_2 == 0):
+			int optional_kind_0_2 = pg_token_stream_peek(stream).kind
+			if (((optional_kind_0_2 >= clang_token_IDENT()) && (optional_kind_0_2 <= clang_token_KW_ENUM()))):
+				int optional_mark_0_2 = pg_token_stream_mark(stream)
+				pg_ast_node* child_0_2 = clang_parse_knr_declaration_list(stream, diagnostics)
+				if (child_0_2 == 0):
+					pg_token_stream_rewind(stream, optional_mark_0_2)
+				else:
+					pg_ast_add(node, child_0_2)
+		if (failed == 0):
+			pg_ast_node* child_0_3 = clang_parse_compound_statement(stream, diagnostics)
+			if (child_0_3 == 0):
 				failed = 1
 			else:
-				pg_ast_add(node, child_0_2)
+				pg_ast_add(node, child_0_3)
 		if (failed == 0):
 			return node
 		pg_token_stream_rewind(stream, mark)
@@ -4298,11 +4311,48 @@ pg_ast_node* clang_parse_function_definition(pg_token_stream* stream, pg_diagnos
 			else:
 				pg_ast_add(node, child_1_1)
 		if (failed == 0):
-			pg_ast_node* child_1_2 = clang_parse_compound_statement(stream, diagnostics)
-			if (child_1_2 == 0):
+			int optional_kind_1_2 = pg_token_stream_peek(stream).kind
+			if (((optional_kind_1_2 >= clang_token_IDENT()) && (optional_kind_1_2 <= clang_token_KW_ENUM()))):
+				int optional_mark_1_2 = pg_token_stream_mark(stream)
+				pg_ast_node* child_1_2 = clang_parse_knr_declaration_list(stream, diagnostics)
+				if (child_1_2 == 0):
+					pg_token_stream_rewind(stream, optional_mark_1_2)
+				else:
+					pg_ast_add(node, child_1_2)
+		if (failed == 0):
+			pg_ast_node* child_1_3 = clang_parse_compound_statement(stream, diagnostics)
+			if (child_1_3 == 0):
 				failed = 1
 			else:
-				pg_ast_add(node, child_1_2)
+				pg_ast_add(node, child_1_3)
+		if (failed == 0):
+			return node
+		pg_token_stream_rewind(stream, mark)
+	return 0
+
+pg_ast_node* clang_parse_knr_declaration_list(pg_token_stream* stream, pg_diagnostics* diagnostics):
+	int mark = pg_token_stream_mark(stream)
+	pg_ast_node* node = 0
+	int failed = 0
+	int first_kind = pg_token_stream_peek(stream).kind
+	if (((first_kind >= clang_token_IDENT()) && (first_kind <= clang_token_KW_ENUM()))):
+		node = pg_ast_new(clang_ast_knr_declaration_list(), 0, c"knr_declaration_list")
+		failed = 0
+		if (failed == 0):
+			int repeat_count_0_0 = 0
+			while (failed == 0):
+				int repeat_kind_0_0 = pg_token_stream_peek(stream).kind
+				if ((((repeat_kind_0_0 >= clang_token_IDENT()) && (repeat_kind_0_0 <= clang_token_KW_ENUM()))) == 0):
+					break
+				int repeat_mark_0_0 = pg_token_stream_mark(stream)
+				pg_ast_node* child_0_0 = clang_parse_declaration(stream, diagnostics)
+				if (child_0_0 == 0):
+					pg_token_stream_rewind(stream, repeat_mark_0_0)
+					break
+				pg_ast_add(node, child_0_0)
+				repeat_count_0_0 = repeat_count_0_0 + 1
+			if (repeat_count_0_0 == 0):
+				failed = 1
 		if (failed == 0):
 			return node
 		pg_token_stream_rewind(stream, mark)

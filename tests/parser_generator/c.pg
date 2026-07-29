@@ -167,7 +167,8 @@ rule abstract_declarator = pointer? direct_abstract_declarator | pointer
 rule direct_abstract_declarator = LPAREN abstract_declarator RPAREN direct_abstract_declarator_tail* | direct_abstract_declarator_tail+
 rule direct_abstract_declarator_tail = LBRACK constant_expression? RBRACK | LPAREN parameter_type_list? RPAREN
 
-rule function_definition = declaration_specifiers declarator compound_statement | typedef_name_declaration_specifiers declarator compound_statement
+rule function_definition = declaration_specifiers declarator knr_declaration_list? compound_statement | typedef_name_declaration_specifiers declarator knr_declaration_list? compound_statement
+rule knr_declaration_list = declaration+
 rule compound_statement = LBRACE block_item* RBRACE
 rule block_item = declaration | statement
 rule statement = compound_statement | if_statement | while_statement | do_statement | for_statement | switch_statement | return_statement | break_statement | continue_statement | goto_statement | labeled_statement | expression_statement

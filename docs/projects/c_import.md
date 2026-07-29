@@ -96,11 +96,35 @@ global. Hand-written form: `extern void* stdout`. Objects glibc fills in
 its own startup code (`environ`) stay at their static initial value
 because W's entry stub never runs `__libc_start_main`.
 
+`extern` arrays import by address instead: a COPY relocation cannot be
+sized for `extern char *tzname[];` (no extent), so the symbol becomes a
+pointer global whose word-sized slot the loader fills with the array's
+address (a GLOB_DAT fixup, the same slot shape function imports use).
+That matches C's array-to-pointer decay — `tzname[0]` indexes the
+library's own storage — and applies to known-length and multi-dimensional
+arrays too (the latter flatten to a pointer to the first element, indexed
+row-major by hand). Weak, so a missing export reads as a null pointer.
+
+## Old-style (K&R) declarations
+
+Unprototyped declarations — `int foo();` and the identifier-list form
+`int foo(a, b);` — import as variadic functions with zero fixed
+parameters: every call emits the C ABI conversion inline for the actual
+argument classes, which is exactly the default-argument-promotion
+contract K&R callers get in C. The identifier-list form parses as a list
+of bare typedef names (the grammar has no symbol table), so the importer
+recognizes it after the fact: a parameter list is old-style when every
+parameter is a lone identifier, without declarator or qualifiers, that
+names no known type; mixed lists still surface unknown typedef names as
+errors. K&R *definitions* (`int foo(a, b) int a; char *b; { ... }`)
+parse — the declaration list between declarator and body is a
+grammar-level `knr_declaration_list` — and are ignored like every other
+function definition in an imported header.
+
 ## Known limitations
 
-- Old-style declarations and `static inline` bodies are
-  declared-but-skipped.
-- Extern arrays of unknown length (`sys_errlist`) are skipped.
+- `static` / `inline` functions are declared-but-skipped (not exported
+  by the library).
 - Bit-field members are skipped (layout drift within the bit-field region
   of a struct).
 - A cast of a bare typedef name applied to a literal (`(size_t) 42`)

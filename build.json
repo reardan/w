@@ -435,8 +435,8 @@
 			"name": "c_import_verbose_note_test",
 			"deps": ["wv2"],
 			"steps": [
-				{"cmd": ["bin/wv2", "-v", "tests/c_import_skip_note_fixture.w", "-o", "/dev/null"], "expect_stderr": "note: c_import skipped 'ci_skip_note_fn': unspecified parameters"},
-				{"cmd": ["bin/wv2", "-v", "--strict", "tests/c_import_skip_note_fixture.w", "-o", "/dev/null"], "expect_stderr": "note: c_import skipped 'ci_skip_note_fn': unspecified parameters", "reject_stderr": "treated as errors"},
+				{"cmd": ["bin/wv2", "-v", "tests/c_import_skip_note_fixture.w", "-o", "/dev/null"], "expect_stderr": "note: c_import skipped 'ci_skip_note_fn': static/inline function"},
+				{"cmd": ["bin/wv2", "-v", "--strict", "tests/c_import_skip_note_fixture.w", "-o", "/dev/null"], "expect_stderr": "note: c_import skipped 'ci_skip_note_fn': static/inline function", "reject_stderr": "treated as errors"},
 				{"cmd": ["bin/wv2", "tests/c_import_skip_note_fixture.w", "-o", "/dev/null"], "reject_stderr": "c_import skipped"}
 			]
 		},
@@ -1959,7 +1959,8 @@
 				"wal_64_test",
 				"wbuild_arch_only_test",
 				"wbuild_directive_64_test",
-				"window_64_test"
+				"window_64_test",
+				"x64_c_import_knr_test"
 			]
 		},
 		{
@@ -2236,6 +2237,7 @@
 				"forward_call_hint_test",
 				"c_import_verbose_note_test",
 				"c_import_error_directive_test",
+				"c_import_torture_test",
 				"symbols_test",
 				"deps_test",
 				"defhash_test",
@@ -2876,6 +2878,13 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/c_import_test.w", "-o", "bin/c_import_test"]},
 				{"cmd": ["bin/c_import_test"]}
+			]
+		},
+		{
+			"name": "c_import_torture_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/c_import_extern_array_fixture.w", "tests/c_import_knr_fixture.w", "tests/c_import_torture_fixture.w"]}
 			]
 		},
 		{
@@ -6518,6 +6527,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_test"]},
 				{"cmd": ["bin/x25519_test"]}
+			]
+		},
+		{
+			"name": "x64_c_import_knr_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/x64_c_import_knr_test.w"],
+			"outputs": ["bin/x64_c_import_knr_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_c_import_knr_test.w", "-o", "bin/x64_c_import_knr_test"]},
+				{"cmd": ["bin/x64_c_import_knr_test"], "expect_stdout": "x64 c_import knr OK"}
 			]
 		},
 		{
