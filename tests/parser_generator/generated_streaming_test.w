@@ -229,18 +229,21 @@ void test_streaming_mode_rejects_rule_referenced_repeat():
 	assert1(generated == 0)
 
 
-# Two alternatives sharing a factorable leading term where the longer
-# suffix (WS?) is nullable but non-empty and the shorter is the true
-# epsilon. The nullable, non-empty suffix unit is unguardable
-# (pg_analysis_terms_guardable refuses nullable sequences), so it has no
-# committed dispatch; this shape used to escape the overlap check -- the
-# empty-suffix exemption hid the only flagging pair -- and segfault the
-# streaming emitter on the unit's missing guard set (see
+# A factored nullable, non-empty suffix (WS?) followed by a live guarded
+# sibling (NUMBER) is not trailing-fallback-equivalent: the nullable unit
+# matches on every token while NUMBER still expects a turn, so it has no
+# committed dispatch, and emitting it anyway is the shape that once
+# segfaulted the streaming emitter on the unit's missing guard set. It
+# must stay rejected at generation time (see
 # tests/parser_generator/streaming_guard_reject.pg for the CLI twin that
-# asserts the diagnostic text). It must be rejected at generation time.
-void test_streaming_mode_rejects_nullable_nonempty_factored_suffix():
+# asserts the diagnostic text). The trailing-fallback-equivalent twin --
+# `IDENT WS? | IDENT`, where the only later sibling is a dead strict
+# epsilon -- is accepted via the nullable-fallback exemption
+# (pg_choice_unit_is_nullable_fallback in analysis.w) and pinned by
+# streaming_fallback_sample.pg / generated_streaming_fallback_test.w.
+void test_streaming_mode_rejects_nullable_suffix_with_live_sibling():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
-	char* source = c"parser edge_probe\nmode streaming\ntoken IDENT letters\ntoken WS spaces\nstart value\nrule value = IDENT WS? | IDENT\n"
+	char* source = c"parser edge_probe\nmode streaming\ntoken IDENT letters\ntoken NUMBER digits\ntoken WS = [ \t]+\nstart value\nrule value = IDENT WS? | IDENT NUMBER\n"
 	pg_grammar* grammar = pg_grammar_read(source, c"edge_probe.pg", diagnostics)
 	assert1(grammar != 0)
 	assert_equal(0, pg_diagnostics_count(diagnostics))

@@ -233,6 +233,20 @@ char* type_make_list_name(int element_type):
 	return name
 
 
+# A T[N] array is NOT flat element storage: type_push_array's size
+# formula below, (2 * word_size) + (length * element_size), prepends a
+# 2-word runtime descriptor header -- a data-pointer word (doubling as
+# capacity bookkeeping) followed by a length word -- and only then the
+# N inline elements. The array's lvalue address (and any struct field's
+# offset for a T[N] field) is the HEADER's address; the element data
+# starts this many bytes later. Reflection-style code that walks struct
+# bytes via type_get_size/offset arithmetic must add this offset to
+# reach a T[N] field's elements (ordinary indexing and decay already
+# do).
+int type_array_element_offset():
+	return 2 * word_size
+
+
 int type_push_array(int element_type, int length):
 	char* new_type = type_alloc()
 	save_ptr(new_type, cast(int, type_make_array_name(element_type, length)))

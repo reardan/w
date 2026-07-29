@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: x64 group=arm64_smoke_test@arm64 group=wasm_smoke_test@wasm
 /*
 The 32-bit limb-arithmetic intrinsics (#213):
 

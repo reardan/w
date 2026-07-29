@@ -396,7 +396,7 @@ moved from bucket E to bucket L below, same reasoning as
 | Script | Invoked by (`build.base.json`) | #323 blocker |
 |---|---|---|
 | `tools/run_arm64.sh` | `build_arm64`, `arm64_smoke_test`, `pac_full_test_arm64`, `pac_corrupt_test_arm64`, plus every generated `arch=arm64` twin | qemu-user-static / native-exec wrapper — a cross-arch execution shim is likely permanent (Bazel/Buck2 keep an equivalent runner); revisit only if `lib.process` grows emulator-aware exec. |
-| `tools/run_wasm.sh` | `build_wasm`, `wasm_smoke_test`, plus every wasm run step | Wraps `wasmtime`/`node`; same "permanent execution shim" reasoning as `run_arm64.sh`. Also blocks bucket G below (wbuildgen's `arch=` vocabulary has no `wasm` value yet). |
+| `tools/run_wasm.sh` | `build_wasm`, `wasm_smoke_test`, plus every wasm run step | Wraps `wasmtime`/`node`; same "permanent execution shim" reasoning as `run_arm64.sh`. (The former bucket-G side blocker is gone: wbuildgen's `arch=`/`arch_only=`/`group=` all take `wasm` since 2026-07-28 and emit this wrapper.) |
 | `tools/web/run_node.sh` | `wasm_extern_test`, `wasm_webgl_test` | Wraps `node` to run `tools/web/*.mjs` harnesses; the harnesses themselves are non-W, so this sits outside the ".w sources" model regardless of the shell wrapper. |
 | `tools/attach_test.sh` | `attach_test` | ptrace-based debugger-attach test. Needs porting onto the in-repo ptrace machinery (`debugger/`) as a W test harness — natural to revisit alongside #123's attach phases. |
 | `tools/parser_generator_w_batches.sh` | `parser_generator_w_test` | Batches/diffs parser-generator output across the tracked `.w` corpus. Needs porting to a W batch-diff tool, or folding into `tools/parser_generator.w` itself. |
@@ -507,9 +507,19 @@ optimistic for 7 of the 21; see below.**
   sources, and `deps=` accepting `.w` run-time-text values migrated
   `asm_stubs_test` (generated targets now also declare cache
   `"inputs"`/`"outputs"`, so that migration lost no caching — see
-  `ai_tooling.md`'s status entry). The aggregate/extra-flag/wasm
-  deferrals (`arm64_smoke_test`, `wasm_smoke_test`,
-  `pac_full_test_arm64`) remain open.
+  `ai_tooling.md`'s status entry).
+
+  **Update (2026-07-28):** the aggregate/extra-flag/wasm deferrals are
+  closed too — `# wbuild: group=<target>@<arch>` (+ `group_only`)
+  generates multi-program aggregates with the shared echo epilogue,
+  `flags=<args>` injects extra compiler arguments into generated
+  compile commands, and `wasm` joined the arch vocabulary end to end
+  (wbuildgen, wexec's selector/closure scan, wtest's closures and
+  `--available`). `arm64_smoke_test`, `wasm_smoke_test`,
+  `wasm_json_test`, `float_abi_test_x64`, `pac_full_test_arm64` and
+  `net_darwin` all generate now; see
+  `ai_tooling_next_steps.md`'s Build-manifest entry for the exact
+  directive spellings and the arm64_darwin-bundle residue.
 
 **E. Shell-wrapped, bespoke logic — 13.** `missing_file_test`,
 `parser_generator_w_test`, `wtest_map_test`, `unsafe_import_test`,
@@ -594,6 +604,15 @@ multi-source gap, not this one), as do `net_darwin`/`graphics_darwin`/
 `pac_darwin` (single-source `net_darwin` could now migrate via
 `name=net_darwin arch_only=arm64_darwin`; the two darwin bundles
 cannot).
+
+**Update (2026-07-28):** `net_darwin` migrated exactly that way (its
+binary is now the name-derived `bin/net_darwin`;
+`tools/mac/run_darwin_tests.sh` updated), and `float_abi_test_x64`
+migrated via the new `group=float_abi_test_x64@x64` aggregate
+directive (its two `x64_*` member sources left `generate.exclude` as
+`group_only` members). `graphics_darwin`/`pac_darwin` remain
+hand-written — see `ai_tooling_next_steps.md`'s Build-manifest entry
+for the residue reasoning.
 
 **H. Argv variant of an already-generated target — 1.**
 `x25519_iterated_test` compiles the same source as the *also-generated*

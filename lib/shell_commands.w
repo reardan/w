@@ -28,11 +28,11 @@ in by repl/shell_translate.w itself) -- it only means calling e.g.
 "shell_commands.ls()" directly at the W prompt (bypassing translation
 entirely) needs an explicit path argument.
 
-Stage 1 scope (design doc Sec 11): pwd (zero-arg), ls (bare and -a; no
--l -- no portable stat/mode/size/mtime wrapper exists yet, Sec 6.2),
-cat (one or more paths, no flags). ls's directory walk uses the same
-getdents(2) record layout tools/wbuildgen.w and libs/extras/vcs/tree.w
-read -- x86/x64 only, matching repl.w's own arch scope (Sec 6.2).
+Stage 1 scope (design doc Sec 11): pwd (zero-arg), ls (bare and -a;
+-l arrived in stage 3 below once lib/stat.w existed), cat (one or more
+paths, no flags). ls's directory walk uses the same getdents(2) record
+layout tools/wbuildgen.w and libs/extras/vcs/tree.w read -- x86/x64
+only, matching repl.w's own arch scope (Sec 6.2).
 
 Stage 2 (this file's remaining functions; design doc Sec 11's "rest of
 the v1 subset"): echo, head, tail, wc, mkdir_p, rm, cp, mv. rm/cp's
@@ -62,12 +62,37 @@ following the symlink -- exactly the "second consumer" promotion Sec
     not special-case an existing-directory destination (real mv's
     "move into" behavior) -- a documented v1 simplification, the same
     shape as ls/cat not distinguishing every errno.
+
+Stage 3 (design doc Sec 11's "stage 3+" items the lib/stat.w wrapper
+unblocked): ls's -l long listing, touch, chmod, du. Notes:
+
+  - ls -l lines are single-space separated with no column padding (the
+    same v1 output simplification as wc's counts), print owner/group
+    names via lib/passwd.w's /etc/passwd//etc/group lookup (numeric
+    fallback when an id has no entry), stamp mtime as UTC
+    "YYYY-MM-DD HH:MM" (real ls prints local time; this tree has no
+    timezone database -- the shape matches "ls --time-style=long-iso"
+    under TZ=UTC), and print no "total" header line. The
+    setuid/setgid/sticky bits are not rendered into the x positions,
+    and non-dir/symlink specials (block/char/fifo/socket) all show '-'.
+  - The shell command "chmod" is implemented as chmod_octal, the same
+    flat-symbol-table collision mkdir_p documents above: lib.linux's
+    import closure already declares the raw chmod(2) syscall wrapper.
+    Octal modes only -- repl/shell_translate.w fails symbolic modes
+    ("u+x") closed to the real binary.
+  - du sums statx stx_blocks (512-byte units, the same figure real du
+    sums -- via lib/stat.w's file_stat.blocks, added for this) and
+    prints 1024-byte units, per-directory post-order like the real
+    tool. Hard links are counted once per link rather than once per
+    inode -- a documented v1 simplification.
 */
 import lib.lib
 import lib.stream
 import lib.file
 import lib.path
 import lib.stat
+import lib.time
+import lib.passwd
 
 
 # Print the process's current working directory, like the real pwd.
@@ -103,10 +128,104 @@ void shell_commands_sort_names(list[char*] names):
 		i = i + 1
 
 
+# st_mode -> the 10-character "drwxr-xr-x" display string (type char +
+# nine permission bits) written into out, which needs room for 11
+# bytes. Directories show 'd', symlinks 'l', everything else '-', and
+# the setuid/setgid/sticky bits are not rendered -- see the module
+# header.
+void shell_commands_mode_string(int mode, char* out):
+	int kind = mode & FILE_S_IFMT()
+	out[0] = '-'
+	if (kind == FILE_S_IFDIR()):
+		out[0] = 'd'
+	if (kind == FILE_S_IFLNK()):
+		out[0] = 'l'
+	char* letters = c"rwxrwxrwx"
+	int i = 0
+	while (i < 9):
+		if (mode & (256 >> i)):
+			out[i + 1] = letters[i]
+		else:
+			out[i + 1] = '-'
+		i = i + 1
+	out[10] = 0
+
+
+# Owner or group display name: the /etc/passwd//etc/group entry when
+# one exists (lib/passwd.w), else the numeric id -- the same fallback
+# real ls uses for an unmapped id. Always malloc'd; caller frees.
+char* shell_commands_id_name(char* name, int id):
+	if (name != 0):
+		return name
+	return itoa(id)
+
+
+# One "ls -l" line for entry_name inside dir: mode string, link count,
+# owner, group, size, UTC mtime to the minute, name, and " -> target"
+# for a symlink. Format notes (single-space columns, UTC long-iso
+# stamp, name-lookup fallback) are in the module header.
+void shell_commands_ls_long_entry(char* dir, char* entry_name):
+	char* full = path_join(dir, entry_name)
+	file_stat st
+	int err = file_lstat_path(full, &st)
+	if (err != 0):
+		print_error(c"ls: cannot access '")
+		print_error(full)
+		println2(c"': No such file or directory")
+		free(full)
+		return
+	char* mode_str = malloc(11)
+	shell_commands_mode_string(st.mode, mode_str)
+	print(mode_str)
+	free(mode_str)
+	print(c" ")
+	char* nlink_str = itoa(st.nlink)
+	print(nlink_str)
+	free(nlink_str)
+	print(c" ")
+	char* owner = shell_commands_id_name(passwd_uid_name(st.uid), st.uid)
+	print(owner)
+	free(owner)
+	print(c" ")
+	char* group = shell_commands_id_name(passwd_gid_name(st.gid), st.gid)
+	print(group)
+	free(group)
+	print(c" ")
+	char* size_str = itoa(st.size)
+	print(size_str)
+	free(size_str)
+	print(c" ")
+	# time_utc_from_unix asserts on negative stamps (i386's 32-bit
+	# time_t past 2038, or a deliberately bogus mtime); clamp to the
+	# epoch instead of taking the whole REPL session down.
+	int mtime = st.mtime
+	if (mtime < 0):
+		mtime = 0
+	char* stamp = time_format_unix_utc(mtime)
+	stamp[16] = 0 /* "YYYY-MM-DD HH:MM:SS" cut to the minute */
+	print(stamp)
+	free(stamp)
+	print(c" ")
+	print(entry_name)
+	if (file_is_lnk(&st)):
+		int target_size = 4096
+		char* target = malloc(target_size)
+		int n = file_readlink(full, target, target_size - 1)
+		if (n >= 0):
+			target[n] = 0
+			print(c" -> ")
+			print(target)
+		free(target)
+	println(c"")
+	free(full)
+
+
 # List path's entries, one name per line, sorted; "." and ".." are
 # always skipped, and every other dotfile is skipped too unless all is
-# set (bare "ls" vs. "ls -a"). No "-l" -- see the module header.
-void ls(char* path, bool all):
+# set (bare "ls" vs. "ls -a"). long_format is "-l": one metadata line
+# per entry (shell_commands_ls_long_entry above) instead of the bare
+# name, with no "total" header line -- see the module header.
+void ls(char* path, bool all, bool long_format):
 	# 65536 = O_DIRECTORY: fails with a negative errno on a non-directory
 	# path, same as a missing one -- both read as "cannot access" below.
 	int fd = open(path, 65536, 0)
@@ -135,7 +254,10 @@ void ls(char* path, bool all):
 	shell_commands_sort_names(names)
 	int i = 0
 	while (i < names.length):
-		println(names[i])
+		if (long_format):
+			shell_commands_ls_long_entry(path, names[i])
+		else:
+			println(names[i])
 		free(names[i])
 		i = i + 1
 
@@ -500,3 +622,97 @@ void mv(char* src, char* dst):
 		print_error(c"' to '")
 		print_error(dst)
 		println2(c"': No such file or directory")
+
+
+# Update one path's atime/mtime to now (lib/stat.w's file_touch,
+# utimensat(2) under the hood), creating a missing path as an empty
+# file unless no_create -- with no_create a missing path is silent
+# success, exactly like the real "touch -c".
+void shell_commands_touch_one(char* path, int no_create):
+	int create = 1
+	if (no_create):
+		create = 0
+	int err = file_touch(path, create)
+	if (err == 0):
+		return
+	if (no_create && (err == (0 - 2))): /* ENOENT under -c: silent */
+		return
+	print_error(c"touch: cannot touch '")
+	print_error(path)
+	println2(c"': No such file or directory")
+
+
+# Update timestamps of (or create) one or more paths, like the real
+# touch; no_create mirrors "-c".
+void touch(bool no_create, char*... paths):
+	int i = 0
+	while (i < paths.length):
+		shell_commands_touch_one(paths[i], no_create)
+		i = i + 1
+
+
+# Set each path's permission bits to mode, like "chmod OCTAL path...".
+# Octal modes only, and named chmod_octal rather than chmod -- see the
+# module header for both.
+void chmod_octal(int mode, char*... paths):
+	int i = 0
+	while (i < paths.length):
+		int err = file_chmod(paths[i], mode)
+		if (err != 0):
+			print_error(c"chmod: cannot access '")
+			print_error(paths[i])
+			println2(c"': No such file or directory")
+		i = i + 1
+
+
+# Cumulative allocated blocks (512-byte units, statx stx_blocks --
+# what real du sums) under path, printing "N<TAB>path" lines in
+# 1024-byte units on the way back up: every directory post-order
+# (children before parent, real du's own order) unless summarize,
+# plus always the top-level argument itself. Files below the top
+# contribute silently. Symlinks are never followed (file_lstat_path),
+# matching real du.
+int shell_commands_du_walk(char* path, int summarize, int top):
+	file_stat st
+	int err = file_lstat_path(path, &st)
+	if (err != 0):
+		print_error(c"du: cannot access '")
+		print_error(path)
+		println2(c"': No such file or directory")
+		return 0
+	int total = st.blocks
+	int is_dir = file_is_dir(&st)
+	if (is_dir):
+		int fd = open(path, 65536, 0) /* 65536 = O_DIRECTORY */
+		if (fd >= 0):
+			int buffer_size = 65536
+			char* buffer = malloc(buffer_size)
+			int n = getdents(fd, buffer, buffer_size)
+			while (n > 0):
+				int off = 0
+				while (off < n):
+					char* entry = buffer + off
+					int reclen = shell_commands_load_uint16(entry + 2 * __word_size__)
+					char* entry_name = entry + 2 * __word_size__ + 2
+					off = off + reclen
+					if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
+						char* child = path_join(path, entry_name)
+						total = total + shell_commands_du_walk(child, summarize, 0)
+						free(child)
+				n = getdents(fd, buffer, buffer_size)
+			free(buffer)
+			close(fd)
+	if ((top != 0) || ((is_dir != 0) && (summarize == 0))):
+		char* count = itoa((total + 1) / 2) /* 512 -> 1024-byte units, rounded up */
+		print(count)
+		free(count)
+		print(c"\x09")
+		println(path)
+	return total
+
+
+# Disk usage of path, like the real du: per-directory cumulative
+# 1K-unit totals, post-order; summarize mirrors "-s" (only path's own
+# total). Hard links count once per link -- see the module header.
+void du(bool summarize, char* path):
+	shell_commands_du_walk(path, summarize, 1)

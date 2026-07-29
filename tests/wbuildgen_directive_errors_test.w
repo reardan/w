@@ -5,7 +5,7 @@ way wvc_e2e_test.w drives bin/wvc: each case builds a pid-scoped
 directory under bin/ holding a minimal tests/ tree plus a base
 manifest, spawns bin/wbuildgen with cwd pointing at it (wbg_collect_dir
 walks tests/ etc. relative to the working directory), and asserts on
-the exit status, stderr, and generated JSON. Covers the four 2026-07
+the exit status, stderr, and generated JSON. Covers the 2026-07
 directive-gap closures:
 
 - arch_only=<arch> generates the single non-default-arch target and no
@@ -16,7 +16,18 @@ directive-gap closures:
   to be silent FORCE targets);
 - a source with both inline '# wbuild:' lines and a '.wbuild' sidecar,
   and a *_fixture.w carrying non-fixture_group directives with no
-  fixture_group=, are hard errors instead of silent no-ops.
+  fixture_group=, are hard errors instead of silent no-ops;
+- wasm is a recognized arch (compile with the wasm selector, run
+  through 'sh tools/run_wasm.sh');
+- flags= injects extra compiler arguments between the arch selector
+  and the source path of every generated compile command;
+- group=<target>@<arch> collects several sources' compile+run pairs
+  into one aggregate target closed by an 'echo <target> OK' epilogue,
+  with each member's own run-field directives on its own run step;
+  group_only suppresses a member's standalone targets, and the misuse
+  shapes (group_only with no group=, group_only with standalone
+  directives, members disagreeing on the group's arch, a value with no
+  '@<arch>') are hard errors.
 */
 # wbuild: tool=tools/wbuildgen.w
 import lib.testing
@@ -171,10 +182,112 @@ void test_arch_only_rejects_twin_flags():
 
 void test_arch_only_rejects_bad_value():
 	char* dir = wdet_case_dir(c"arch_only_value")
-	wdet_write(dir, c"tests/value_test.w", c"# wbuild: arch_only=wasm\nint main():\n\treturn 0\n")
+	wdet_write(dir, c"tests/value_test.w", c"# wbuild: arch_only=riscv\nint main():\n\treturn 0\n")
 	process_result* r = wdet_run(dir)
 	assert1(r.status != 0)
 	wdet_assert_contains(r.stderr_text, c"unsupported '# wbuild:' arch_only")
+	process_result_free(r)
+
+
+void test_wasm_arch_shape():
+	char* dir = wdet_case_dir(c"wasm_arch")
+	wdet_write(dir, c"tests/wasmy_test.w", c"# wbuild: arch_only=wasm\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	# Compiled with the wasm selector, run through the wasm runner
+	# wrapper, no default 32-bit twin.
+	wdet_assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"wasm\", \"tests/wasmy_test.w\", \"-o\", \"bin/wasmy_test\"]")
+	wdet_assert_contains(out, c"\"cmd\": [\"sh\", \"tools/run_wasm.sh\", \"bin/wasmy_test\"]")
+	wdet_assert_lacks(out, c"[\"bin/wv2\", \"tests/wasmy_test.w\"")
+	free(out)
+	free(out_path)
+
+
+void test_flags_in_compile_command():
+	char* dir = wdet_case_dir(c"flags")
+	wdet_write(dir, c"tests/flagy_test.w", c"# wbuild: arch_only=arm64 flags=--pac=full\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	# flags= lands between the arch selector and the source path.
+	wdet_assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"arm64\", \"--pac=full\", \"tests/flagy_test.w\", \"-o\", \"bin/flagy_test\"]")
+	wdet_assert_contains(out, c"\"cmd\": [\"sh\", \"tools/run_arm64.sh\", \"bin/flagy_test\"]")
+	free(out)
+	free(out_path)
+
+
+void test_group_aggregate():
+	char* dir = wdet_case_dir(c"group")
+	wdet_write(dir, c"tests/alpha_test.w", c"# wbuild: group=combo_test_x64@x64 expect_stdout=\"alpha OK\"\nint main():\n\treturn 0\n")
+	wdet_write(dir, c"tests/beta_test.w", c"# wbuild: group_only group=combo_test_x64@x64\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	# One aggregate holds both members' compile+run pairs (member
+	# binaries splice the arch in before _test), a member's own
+	# run-field directive decorates only its own run step, and the
+	# shared epilogue closes the target.
+	wdet_assert_contains(out, c"\"name\": \"combo_test_x64\"")
+	wdet_assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"x64\", \"tests/alpha_test.w\", \"-o\", \"bin/alpha_x64_test\"]")
+	wdet_assert_contains(out, c"{\"cmd\": [\"bin/alpha_x64_test\"], \"expect_stdout\": \"alpha OK\"}")
+	wdet_assert_contains(out, c"{\"cmd\": [\"bin/beta_x64_test\"]}")
+	wdet_assert_contains(out, c"\"cmd\": [\"echo\", \"combo_test_x64 OK\"]")
+	wdet_assert_contains(out, c"\"inputs\": [\"tests/alpha_test.w\", \"tests/beta_test.w\"]")
+	wdet_assert_contains(out, c"\"outputs\": [\"bin/alpha_x64_test\", \"bin/beta_x64_test\"]")
+	# alpha keeps its standalone default target; group_only beta does
+	# not get one.
+	wdet_assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"tests/alpha_test.w\", \"-o\", \"bin/alpha_test\"]")
+	wdet_assert_lacks(out, c"\"bin/wv2\", \"tests/beta_test.w\"")
+	# The x64 aggregate joins the x64 umbrella.
+	wdet_assert_contains(out, c"\"name\": \"tests_x64\",\n\t\t\t\"deps\": [\n\t\t\t\t\"combo_test_x64\"\n\t\t\t]")
+	free(out)
+	free(out_path)
+
+
+void test_group_only_needs_group():
+	char* dir = wdet_case_dir(c"group_only_alone")
+	wdet_write(dir, c"tests/lonely_test.w", c"# wbuild: group_only\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"'group_only' needs at least one 'group=' membership: tests/lonely_test.w")
+	process_result_free(r)
+
+
+void test_group_only_rejects_standalone_directives():
+	char* dir = wdet_case_dir(c"group_only_combo")
+	wdet_write(dir, c"tests/mixed_test.w", c"# wbuild: group_only group=combo_test_x64@x64 x64\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"'group_only' suppresses every standalone target")
+	process_result_free(r)
+
+
+void test_group_rejects_missing_arch():
+	char* dir = wdet_case_dir(c"group_value")
+	wdet_write(dir, c"tests/tagless_test.w", c"# wbuild: group=combo_test\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"'group=' needs '<target>@<arch>'")
+	process_result_free(r)
+
+
+void test_group_rejects_arch_mismatch():
+	char* dir = wdet_case_dir(c"group_arch_mismatch")
+	wdet_write(dir, c"tests/first_test.w", c"# wbuild: group=combo_smoke_test@arm64\nint main():\n\treturn 0\n")
+	wdet_write(dir, c"tests/second_test.w", c"# wbuild: group=combo_smoke_test@wasm\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"'group=' members disagree on the group's arch: tests/second_test.w")
 	process_result_free(r)
 
 

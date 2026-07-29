@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: x64 group=wasm_json_test@wasm
 /*
 Round-trip tests for the to_json/from_json builtins ("type <=> json").
 The compiler generates the codecs from its type table; the runtime lives

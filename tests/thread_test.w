@@ -9,6 +9,14 @@ worker through the handoff protocol, join blocks on the done-word futex
 instead of spinning, and CLONE_VM makes worker stores visible to the
 joiner. The slow worker sleeps before publishing so the joiner really
 parks in FUTEX_WAIT (a broken join would return early and read 0).
+
+test_join_reclaims_stacks covers join-time reclamation: joined worker
+stacks are munmapped (addresses get reused, address space stays flat)
+and every spawn keeps succeeding where leaked 4MB stacks would exhaust
+a 32-bit address space. The CLEARTID exit-wait is asserted by
+construction: join munmaps only after the kernel clears t.exited, and
+a premature munmap would segfault an exiting worker somewhere in the
+1100 iterations rather than pass silently.
 */
 
 int slow_result
@@ -60,3 +68,50 @@ void test_spawn_many_join_reverse():
 
 void test_join_null_handle():
 	assert_equal(0 - 1, thread_join(cast(wthread*, 0)))
+
+
+int reclaim_last
+
+
+void reclaim_worker(void* arg):
+	reclaim_last = cast(int, arg)
+
+
+# Join-time reclamation (lib/thread.w): two independent assertions.
+# - Every spawn succeeds: without the join-time munmap, 1100 4MB
+#   stacks are 4.4GB of address space, more than any 32-bit process
+#   has, so spawns would start failing partway through on the 32-bit
+#   twin of this test.
+# - The address space stays stable: freed stacks are reused, so the
+#   distinct stack bases seen across 1100 workers stay a handful; a
+#   leak would hand every worker a fresh base and overflow the table.
+#   This is the load-bearing assertion on x64, where address space is
+#   too plentiful for exhaustion to bite.
+void test_join_reclaims_stacks():
+	int[16] bases
+	int distinct = 0
+	int overflow = 0
+	reclaim_last = 0
+	int i = 0
+	while (i < 1100):
+		wthread* t = thread_spawn(reclaim_worker, cast(void*, i + 1))
+		asserts(c"thread_spawn failed (stack leak?)", cast(int, t) != 0)
+		int base = t.stack_base
+		asserts(c"worker did not record its stack base", base != 0)
+		int seen = 0
+		int j = 0
+		while (j < distinct):
+			if (bases[j] == base):
+				seen = 1
+			j = j + 1
+		if (seen == 0):
+			if (distinct < 16):
+				bases[distinct] = base
+				distinct = distinct + 1
+			else:
+				overflow = 1
+		assert_equal(0, thread_join(t))
+		i = i + 1
+	asserts(c"joined stacks were not reused", overflow == 0)
+	# the last worker really ran with its argument
+	assert_equal(1100, reclaim_last)

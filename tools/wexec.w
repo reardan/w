@@ -641,6 +641,8 @@ int wexec_selector_word(char* word):
 		return 1
 	if (strcmp(word, c"win64") == 0):
 		return 1
+	if (strcmp(word, c"wasm") == 0):
+		return 1
 	return 0
 
 
@@ -1021,6 +1023,9 @@ json_value* wexec_make_adhoc_target(char* name, char* arch, char* path, char* bi
 		if (strcmp(arch, c"arm64") == 0):
 			json_array_push(run_cmd, json_string(c"sh"))
 			json_array_push(run_cmd, json_string(c"tools/run_arm64.sh"))
+		else if (strcmp(arch, c"wasm") == 0):
+			json_array_push(run_cmd, json_string(c"sh"))
+			json_array_push(run_cmd, json_string(c"tools/run_wasm.sh"))
 		else if (strcmp(arch, c"win64") == 0):
 			json_array_push(run_cmd, json_string(c"wine"))
 		json_array_push(run_cmd, json_string(binary))

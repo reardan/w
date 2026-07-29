@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: x64 group=arm64_smoke_test@arm64
 import lib.testing
 import lib.generator
 

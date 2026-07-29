@@ -2460,19 +2460,33 @@ void pg_emit_streaming_factored_unit(pg_source_writer* writer, pg_grammar* gramm
 
 
 # Ordered choice, streaming mode. pg_streaming_check has already proven
-# every unit here is guarded, predicate-headed, or (possibly, only last)
-# an unguarded nullable "epsilon" fallback (mirrors pg_report_choice's
-# empty-suffix and predicate exemptions in analysis.w). Guarded and
-# predicate-headed units become an if/else-if chain, in declaration order,
-# on the current token kind or the predicate expression respectively; the
-# final branch is either that fallback's (empty) body or, when every unit
-# was guarded/predicated, a syntax error -- there is no other outcome left
-# once none of the branches match. A predicate-headed unit's body starts
-# one term past the predicate itself, since the predicate was already
-# consumed as this branch's condition rather than as a matched term.
+# every unit here is guarded, predicate-headed, or the fallback: either a
+# trailing unguarded nullable "epsilon" unit or a fallback-equivalent
+# nullable unit whose only later siblings are dead strict epsilons
+# (mirrors pg_report_choice's empty-suffix, predicate, and
+# nullable-fallback exemptions in analysis.w). The live-unit trim below
+# demotes a fallback-equivalent nullable unit to the actual trailing
+# position: the strict epsilons after it can never run under ordered
+# choice -- the nullable suffix always matches first -- so they are not
+# emitted. Guarded and predicate-headed units become an if/else-if chain,
+# in declaration order, on the current token kind or the predicate
+# expression respectively; the final branch is either the fallback's body
+# (empty for the epsilon case, the nullable suffix's terms otherwise) or,
+# when every unit was guarded/predicated, a syntax error -- there is no
+# other outcome left once none of the branches match. A predicate-headed
+# unit's body starts one term past the predicate itself, since the
+# predicate was already consumed as this branch's condition rather than
+# as a matched term.
 void pg_emit_streaming_choice(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule, int alt_start, int alt_count, int offset, char* kind_name):
 	list[pg_choice_unit*] units = pg_plan_choice(analysis, rule, alt_start, alt_count, offset)
-	if ((units.length == 1) && (units[0].predicate_code == 0)):
+	int live_length = units.length
+	int i = 0
+	while (i < units.length):
+		if (pg_choice_unit_is_nullable_fallback(analysis, rule, units, i, offset)):
+			live_length = i + 1
+			break
+		i = i + 1
+	if ((live_length == 1) && (units[0].predicate_code == 0)):
 		pg_choice_unit* unit = units[0]
 		if (unit.member_count == 1):
 			pg_emit_streaming_alternative_body(writer, grammar, rule, unit.alt_start, offset)
@@ -2480,20 +2494,20 @@ void pg_emit_streaming_choice(pg_source_writer* writer, pg_grammar* grammar, pg_
 			pg_emit_streaming_factored_unit(writer, grammar, analysis, rule, unit, offset)
 		pg_choice_units_free(units)
 		return
-	int has_fallback = (units[units.length - 1].guarded == 0) && (units[units.length - 1].predicate_code == 0)
+	int has_fallback = (units[live_length - 1].guarded == 0) && (units[live_length - 1].predicate_code == 0)
 	int needs_kind = 0
-	int i = 0
-	while (i < units.length):
-		int is_fallback = has_fallback && (i == units.length - 1)
+	i = 0
+	while (i < live_length):
+		int is_fallback = has_fallback && (i == live_length - 1)
 		if ((is_fallback == 0) && (units[i].predicate_code == 0)):
 			needs_kind = 1
 		i = i + 1
 	if (needs_kind):
 		pg_emit_peek_kind_line(writer, kind_name)
 	i = 0
-	while (i < units.length):
+	while (i < live_length):
 		pg_choice_unit* unit = units[i]
-		int is_fallback = has_fallback && (i == units.length - 1)
+		int is_fallback = has_fallback && (i == live_length - 1)
 		if (is_fallback == 0):
 			pg_emit_dynamic_line_start(writer)
 			if (i == 0):

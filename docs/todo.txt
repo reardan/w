@@ -249,9 +249,10 @@ current state:
 			float32 math helpers (lib/fmath.w: fsqrt, fabs, bit casts)
 			float32 transcendentals (lib/fmath.w: exp/log/pow/trig family,
 				measured ulp bounds, tested against glibc goldens on both targets)
-			float64 math helpers (lib/fmath64.w: fmath surface ported to float64
-				for 64-bit-word targets; transcendentals in progress,
-				docs/projects/engineering_math_baseline.md)
+			float64 math helpers (lib/fmath64.w: full fmath surface ported to
+				float64 for 64-bit-word targets, incl. exp/log/pow/trig
+				transcendentals with measured ulp bounds tested against
+				glibc goldens; docs/projects/engineering_math_baseline.md)
 			seeded deterministic PRNG (lib/rand.w: xorshift32, uniform
 				(rand_below, rand_float) and gaussian (rand_gaussian, Box-Muller)
 				sampling, bit-identical across targets)
@@ -294,13 +295,14 @@ current state:
 				entry, banner/prompts move to stderr off-tty (issue #276)
 			'!' shell escape: !cmd runs through lib/shell with inherited
 				stdio, !cd/!export intercepted (issue #276)
-			shell mode stage 1 (issue #335, design:
+			shell mode stages 1-3 (issue #335, design:
 				docs/projects/repl_shell_mode.md): ':sh' toggles a mode
 				where typed lines parse as shell commands and translate
 				(repl/shell_translate.w) to native lib/shell_commands.w calls
-				(pwd/ls/cat so far) or farm out to a real binary; remaining
-				stages (more coreutils-alike commands, pipes) are staged in
-				the design doc
+				(pwd, ls incl. -l long listings, cat, echo, head, tail, wc,
+				mkdir, rm, cp, mv, touch, chmod octal, du) or farm out to a
+				real binary; remaining stages (pipes, grep-alikes, standalone
+				wsh) are staged in the design doc
 
 	vcs (libs/extras/vcs/, tools/wvc.w; design: docs/projects/version_control.md, issue #252):
 		working:
@@ -353,7 +355,6 @@ current state:
 			lib/thread.w (spawn/join/parallel_for) is Linux x86/x64 only;
 				arm64/darwin/win64/wasm, mutexes/atomics and thread
 				pools are staged in docs/projects/threads.md
-			worker stacks (4MB) and handles are not reclaimed on join
 		webassembly:
 			json builtins, generators, c_import/extern FFI, REPL and wdbg
 				are not supported on the wasm target
@@ -388,13 +389,12 @@ current state:
 				stay out of scope (docs/projects/debugger_attach.md, issue
 				#123)
 		code generation:
-			webassembly stage 5 residue: '# wbuild:' wasm twin-target
-				support (wbuildgen's arch_only= rejects wasm, so wasm
-				test targets stay hand-written in build.base.json),
-				wasm64, real-signature exports, accumulator
-				globals-vs-locals measurement
+			webassembly stage 5 residue: wasm64, real-signature
+				exports, accumulator globals-vs-locals measurement
 				(stages 0-4 plus the stage-5 json builtins, direct-call
-				optimization and browser host shim landed:
+				optimization, browser host shim, and '# wbuild:'
+				wasm arch support — arch=/arch_only=/group=@wasm
+				generate the wasm targets now — landed:
 				docs/projects/wasm_backend.md)
 			W^X text/data split for x86, x64 and win64 (arm64/arm64_darwin
 				already split; win64's single RWX section makes the IAT
@@ -439,7 +439,9 @@ current state:
 
 	net:
 		working:
-			basic socket/connect/server paths
+			basic socket/connect/server paths (direct socket syscalls on
+				every target incl. i386, Linux 4.3+; the socketcall(2)
+				multiplexer is retired from lib/__arch__/x86)
 			udp sendto/recvfrom helpers
 			poll, nonblocking sockets, monotonic clock and sleep_ms
 			Content-Length framing (lib/framing.w)
@@ -449,8 +451,6 @@ current state:
 			http/https server framework (libs/standard/web/connection.w +
 				http_server.w: ServerContext accept loop, RequestContext/
 				routing, keep-alive, HTTPS via tls_accept; issue #235)
-		remaining:
-			socketcall cleanup
 
 	web ui:
 		editor

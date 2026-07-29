@@ -15,17 +15,30 @@ Other targets stay unsupported: arm64 has no thread_create stub yet and
 Darwin threads need bsdthread_create (see threads.md staging).
 
 Why plain word stores suffice (no atomics): every synchronization word
-here (`thread_spawn_ack`, each wthread's `done`) has exactly one writer
-and one waiter and makes a single one-shot 0 -> 1 transition. W's
-single-pass codegen emits a real load for every read and a real store
-for every write (nothing is cached in registers across statements), and
-x86-TSO makes stores visible in program order, so the worker's writes
-to user data are visible to a joiner that has observed done == 1. The
-futex syscall re-reads the word atomically in the kernel: FUTEX_WAIT
-with expected value 0 returns immediately if the word is already 1, so
-the wake cannot be lost. On x86-64 an int is 8 bytes while futex words
-are 32-bit; the kernel sees the low half (the first 4 bytes, little
-endian), which carries the full 0/1 value.
+here (`thread_spawn_ack`, each wthread's `done` and `exited`) has
+exactly one writer and one waiter and makes a single one-shot
+transition (0 -> 1 for ack/done, 1 -> 0 for the kernel-cleared
+exited). W's single-pass codegen emits a real load for every read and
+a real store for every write (nothing is cached in registers across
+statements), and x86-TSO makes stores visible in program order, so the
+worker's writes to user data are visible to a joiner that has observed
+done == 1. The futex syscall re-reads the word atomically in the
+kernel: FUTEX_WAIT with the stale expected value returns immediately
+if the word has already flipped, so the wake cannot be lost. On x86-64
+an int is 8 bytes while futex words are 32-bit; the kernel sees the
+low half (the first 4 bytes, little endian), which carries the full
+0/1 value.
+
+Reclamation: thread_join munmaps the worker's 4MB stack and frees the
+wthread handle. done == 1 only means the worker *function* returned -
+the worker still runs thread_wake_word/thread_exit on its stack after
+that - so the joiner additionally waits for the kernel's exit signal:
+each worker arms set_tid_address(&t.exited) on itself (the clone
+builtin predates CLONE_CHILD_CLEARTID plumbing), and the kernel clears
+that word and futex-wakes it only when the thread can never touch
+userspace again, making the munmap race-free. thread_create does not
+expose its mmap either, so the worker recovers the stack base itself
+from its own stack pointer (see thread_entry).
 
 Constraints (MVP; see threads.md for staging):
 - Only the main thread may call thread_spawn, thread_join and
@@ -33,16 +46,15 @@ Constraints (MVP; see threads.md for staging):
   unsynchronized.
 - Worker functions must not allocate (malloc/new/list/map/print
   formatting) or spawn; they compute into memory the caller provided.
-- Worker stacks (4MB each) and wthread handles are not reclaimed on
-  join: thread_create owns the mmap and does not expose it. A stack
-  cache / thread pool is staged work.
+- thread_join frees the handle: join each handle exactly once, and
+  read any wthread fields (tid, stack_base) before joining.
 
 API:
 	type thread_fn = fn(void*) -> void
 	type parallel_for_fn = fn(int, int, void*) -> void
 
 	wthread* thread_spawn(thread_fn* func, void* arg)  # 0 on failure
-	int thread_join(wthread* t)                        # 0, -1 on bad handle
+	int thread_join(wthread* t)  # 0, -1 on bad handle; reclaims stack + handle
 	void parallel_for(int start, int end, int nthreads,
 	                  parallel_for_fn* func, void* arg)
 
@@ -67,7 +79,9 @@ struct wthread:
 	int tid          # clone's child tid (informational)
 	thread_fn* func
 	void* arg
-	int done         # 0 running, 1 finished; futex wait/wake target
+	int done         # 0 running, 1 worker function returned; futex target
+	int stack_base   # mmap base of the worker's 4MB stack (worker-computed)
+	int exited       # 1 until the kernel's exit-time CLEARTID store zeroes it
 
 
 # Spawn handoff: the zero-argument clone entry reads its wthread* here.
@@ -103,11 +117,49 @@ void thread_wake_word(int* word):
 	sys_futex(cast(int, word), thread_futex_wake_op(), 1, 0)
 
 
+# Block until *word becomes zero: thread_wait_word in the other
+# direction, for the kernel's exit-time CLEARTID store. Deliberately a
+# plain (non-private) FUTEX_WAIT, op 0: the kernel's exit-time wake is
+# a shared FUTEX_WAKE, whose hash key never matches a
+# FUTEX_PRIVATE_FLAG waiter (glibc's join waits with LLL_SHARED for
+# the same reason). The expected value passed to FUTEX_WAIT must be
+# the same load the loop guard saw: with a fresh *word read in the
+# call, a clear landing between the two loads would hand the kernel
+# expected == 0 == current and sleep forever after the one-shot wake
+# has already fired. With the single observed value, a clear before
+# the syscall makes FUTEX_WAIT return EAGAIN immediately, so the wake
+# cannot be lost.
+void thread_wait_word_clear(int* word):
+	int observed = *word
+	while (observed != 0):
+		sys_futex(cast(int, word), 0, observed, 0)
+		observed = *word
+
+
+# Size of the stack thread_create mmaps for each worker
+# (code_generator/{x86,x64}_asm.w stack_create): 4MB.
+int thread_stack_size():
+	return 4194304
+
+
 # The zero-argument clone entry. Runs on the fresh 4MB stack; it must
 # never return (there is no return address above it), so it exits the
 # thread when the worker function comes back.
 void thread_entry():
 	wthread* t = thread_spawn_handoff
+	# Recover the stack mapping for the joiner's munmap: this frame sits
+	# within the first page of the fresh stack (the entry sp starts one
+	# word below stack_base + 0x3ffff0), so rounding a local's address
+	# up to the next page boundary is exactly the mapping's end. The
+	# base itself is only page-aligned, so only this top-relative
+	# computation recovers it.
+	int stack_end = (cast(int, &t) + 4095) & ~4095
+	t.stack_base = stack_end - thread_stack_size()
+	# Arm the kernel's exit signal before the ack so it is armed before
+	# thread_join can possibly run: on this thread's exit the kernel
+	# stores 0 to t.exited and futex-wakes it, after the thread's last
+	# userspace instruction.
+	sys_set_tid_address(cast(int, &t.exited))
 	thread_spawn_ack = 1
 	thread_wake_word(&thread_spawn_ack)
 	t.func(t.arg)
@@ -124,22 +176,33 @@ wthread* thread_spawn(thread_fn* func, void* arg):
 	t.func = func
 	t.arg = arg
 	t.done = 0
+	t.stack_base = 0
+	t.exited = 1
 	thread_spawn_handoff = t
 	thread_spawn_ack = 0
 	int tid = thread_create(thread_entry)
 	if (tid <= 0):
+		free(cast(void*, t))
 		return 0
 	t.tid = tid
 	thread_wait_word(&thread_spawn_ack)
 	return t
 
 
-# Block until t's worker function has returned. Futex-waits — no CPU
-# is burned while the worker runs. Returns 0, or -1 for a null handle.
+# Block until t's worker function has returned, then reclaim it:
+# munmap the worker's 4MB stack and free the handle. Futex-waits — no
+# CPU is burned while the worker runs. The munmap waits for the
+# kernel's CLEARTID exit signal (not just done == 1) so the worker is
+# provably off its stack first. t is dangling after a 0 return: join
+# each handle exactly once. Returns 0, or -1 for a null handle.
 int thread_join(wthread* t):
 	if (t == 0):
 		return 0 - 1
 	thread_wait_word(&t.done)
+	thread_wait_word_clear(&t.exited)
+	if (t.stack_base != 0):
+		munmap(t.stack_base, thread_stack_size())
+	free(cast(void*, t))
 	return 0
 
 
@@ -180,6 +243,7 @@ void parallel_for(int start, int end, int nthreads, parallel_for_fn* func, void*
 		func(start, end, arg)
 		return
 	list[wthread*] workers = new list[wthread*]
+	list[thread_chunk_task*] tasks = new list[thread_chunk_task*]
 	int k = 1
 	while (k < nthreads):
 		thread_chunk_task* task = new thread_chunk_task()
@@ -191,9 +255,16 @@ void parallel_for(int start, int end, int nthreads, parallel_for_fn* func, void*
 		if (t == 0):
 			# clone failed: run this chunk on the calling thread
 			func(task.chunk_start, task.chunk_end, arg)
+			free(cast(void*, task))
 		else:
 			workers.push(t)
+			tasks.push(task)
 		k = k + 1
 	func(start, start + thread_chunk_offset(len, nthreads, 1), arg)
 	for wthread* t in workers:
 		thread_join(t)
+	# joined workers are done reading their task boxes
+	for thread_chunk_task* task in tasks:
+		free(cast(void*, task))
+	__w_list_free(cast(__w_list*, workers))
+	__w_list_free(cast(__w_list*, tasks))

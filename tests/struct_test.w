@@ -1,3 +1,4 @@
+# wbuild: group=wasm_smoke_test@wasm
 import lib.testing
 
 

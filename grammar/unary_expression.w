@@ -257,6 +257,20 @@ int unary_expression_operand():
 		type = promote(type)
 		if (type_num_args(want) > 0):
 			error(c"cannot cast to a struct value")
+		# An array/slice operand promotes to a slice VALUE: eax holds the
+		# address of the {data, length} descriptor (a T[N] local's 2-word
+		# header), not the element data. Casting that to the element's own
+		# pointer, to void* or to a word-sized integer decays to the data
+		# pointer in coerce_explicit/coerce, but a MISMATCHED pointer
+		# target skips the decay and the cast silently addresses the
+		# header -- a store through it clobbers the descriptor and crashes
+		# far from the bug. Warn instead of changing codegen so the
+		# descriptor address keeps a spelling (issue: ai_tooling_next_steps
+		# 2026-07-25 protobuf hardening).
+		if ((type_get_kind(type_unqualified(type)) == type_kind_slice_value()) &
+				(type_get_pointer_level(type_unqualified(want)) > 0) &
+				(type_decays_to_pointer(want, type) == 0)):
+			warning(c"warning: cast of array to pointer addresses the array header, not its data; index or let it decay instead")
 		coerce_explicit(want, type)
 		expect(c")")
 		return type_value(want)

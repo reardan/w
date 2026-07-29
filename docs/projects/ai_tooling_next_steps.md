@@ -140,7 +140,46 @@ is a queue, not an archive.
   inspection/mechanical parallel with the other 5 sites, not a runtime
   repro.
 
+- **(2026-07-28, array-cast-warning work) a slash-and-extension import
+  spelling produces a mangled path in the error, with no syntax hint.**
+  `import lib/assert.w` — a natural guess, since that is the file's
+  on-disk path — fails with `cannot locate 'lib/assert/w.w' (searched
+  the current directory and every parent)`: the `.w` suffix is treated
+  as one more dotted segment and re-expanded to `/w.w`, so the
+  reported path matches nothing the author typed and nothing on disk.
+  The message should either echo the import as written or, better,
+  hint the dotted form (`import lib.assert`) when the spelling
+  contains `/` or ends in `.w`.
+
 ## Test selection (`bin/wtest`)
+
+- **(2026-07-28, streaming nullable-fallback work) `wtest changed` never
+  selects `verify` for seed-graph `libs/extras/` edits.**
+  `tools/test_map.w`'s `wtest_compiler_tree` covers `w.w`/`grammar.w`/
+  `codegen.w` and `compiler/`/`grammar/`/`code_generator/`, but not
+  `libs/extras/parser_generator/`, `libs/extras/c_import/`, or
+  `libs/extras/c_preprocessor/` -- all in `w.w`'s transitive import
+  closure via the C-import feature, so an edit there rebuilds every
+  compiler stage and can corrupt self-hosting exactly like a `compiler/`
+  edit. Editing `libs/extras/parser_generator/analysis.w`+`generator.w`
+  printed the parser_generator suite, `manifest_check`, `metadata_check`,
+  and `wexec_test`, but not `verify` (CLAUDE.md and the wave plan both
+  name `verify` as the required gate for those files). Either extend
+  `wtest_compiler_tree` to the three seed-graph `libs/extras/` trees, or
+  better, derive the "compiler tree" set from `bin/wv2 deps w.w` instead
+  of a hard-coded prefix list so it can never go stale again.
+- **(2026-07-28, noticed writing the `lib/__arch__/wasm/` fixture
+  case) an arch-runtime edit never selects that arch's self-host
+  gate.** Rule (b)'s root collection skips compiler-tree roots, so
+  `build_wasm`/`verify_wasm` (whose only root is `w.w`) are invisible
+  to a `lib/__arch__/wasm/syscalls.w` change — selection recommends the
+  leaf wasm tests but not the wasm fixpoint, and the compiler-tree
+  residue only ever maps to the 32-bit `verify`. The same holds for
+  every arch (`lib/__arch__/arm64/` edits never recommend
+  `verify_arm64`). Pre-existing, not introduced by the wasm selector
+  work; a residue rule mapping `lib/__arch__/<arch>/` (for the arches
+  whose runtime is in `w.w`'s closure) to that arch's verify pair
+  would close it.
 
 - **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
   commit-ranged selection MVP** (issue #251 direction 4b). `changed`
@@ -188,30 +227,50 @@ Friction found migrating bucket D of `build_system_next.md`'s hand-written
 `build.base.json` inventory (wave plan C task 2a). Three of the four
 directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
 `deps=`, generated cache `"inputs"`/`"outputs"` — summarized in
-`ai_tooling.md`); what remains:
+`ai_tooling.md`); the fourth shipped 2026-07-28:
 
-- **No directive for a multi-program aggregate target, extra compiler
-  flags on a generated compile step, or a `wasm` arch value.** Blocks
-  `arm64_smoke_test`/`wasm_smoke_test` (each is 5-9 programs compiled,
-  run, and summarized by one shared `echo "... OK"` epilogue — not the
-  single `(source, arch)` shape `wbg_make_target` ever produces) and
-  `pac_full_test_arm64` (needs `--pac=full` injected into the arm64
-  compile command, which no directive can add). `wasm_smoke_test` is
-  additionally blocked because `wbg_apply_directive`'s `arch=` only
-  recognizes `x64`/`arm64`/`win64`/`arm64_darwin` — no `wasm` value
-  exists at all. `float_abi_test_x64` is the same aggregate gap at x64:
-  it bundles three sources' compile+run pairs into one target, so it
-  stayed hand-written when the rest of the x64-only family migrated to
-  `arch_only=x64`. (`net_darwin`, `graphics_darwin`, `pac_darwin` are
-  the arm64_darwin analogues — `net_darwin` alone is single-source and
-  could now migrate via `name=net_darwin arch_only=arm64_darwin`; the
-  other two bundle multiple sources.) `arm64_darwin_smoke_test`
-  (2026-07-25, issue #210) is one more instance: it mirrors
-  `arm64_smoke_test`'s six-program bundle for the native Mach-O path,
-  and `arch_only=` could not express it — its sources are shared with
-  the default-arch targets, so marking them arch-only would delete
-  those, and no directive groups several sources under one target.
-  It went into `build.base.json` by hand like its arm64 sibling.
+- **Shipped (2026-07-28, wave plan P1.3): `wasm` arch value, `flags=`,
+  and `group=`/`group_only` aggregate directives.** `arch=wasm` /
+  `arch_only=wasm` generate the wasm compile+run shape (`bin/wv2 wasm
+  ... -o bin/X_wasm`, run via `sh tools/run_wasm.sh`; no umbrella, like
+  arm64), with the `wasm` selector word also taught to `bin/wexec`'s
+  compile-root scan (deps-driven cache keys now compute the *wasm*
+  closure for wasm roots), its direct-file mode, and `bin/wtest`'s rule
+  (b) closures + `--available` (a wasm run step needs wasmtime or
+  node) — `lib/__arch__/wasm/` edits used to fall through to the full
+  `tests` fallback and now select exactly the wasm targets
+  (`map_expectations.expect`). `flags=<args>` injects extra compiler
+  arguments between the arch selector and the source of every compile
+  command generated from the source. `group=<target>@<arch>` collects
+  several sources' compile+run pairs into one aggregate target with a
+  shared `echo <target> OK` epilogue (member run steps carry the
+  member's own run-field directives; member binaries follow the
+  hand-written smoke convention, `bin/lib_wasm_test`); `group_only`
+  suppresses a member's standalone targets. Migrated out of
+  `build.base.json`: `arm64_smoke_test`, `wasm_smoke_test`,
+  `wasm_json_test` (group), `float_abi_test_x64` (group at x64, its
+  two `x64_*` members via `group_only`), `pac_full_test_arm64`
+  (`arch_only=arm64 flags=--pac=full`; its cosmetic trailing echo step
+  is gone — the `expect_stdout` assertion remains), and `net_darwin`
+  (`name=net_darwin arch_only=arm64_darwin`; its binary is now
+  `bin/net_darwin`, `tools/mac/run_darwin_tests.sh` updated). All six
+  also gained cache `"inputs"`/`"outputs"` (they were FORCE targets).
+  Residue: the arm64_darwin multi-source bundles
+  (`arm64_darwin_smoke_test`, `graphics_darwin`, `pac_darwin`) stay
+  hand-written. `graphics_darwin` is structurally blocked: it compiles
+  non-`_test.w` sources (`graphics/demo.w`) the scan never sees, and
+  its member binaries (`bin/graphics_gl_smoke_darwin`,
+  `bin/dynamic_darwin_test`) do not follow the derived convention that
+  `tools/mac/run_darwin_tests.sh`'s Mac-side run leg has pinned.
+  `arm64_darwin_smoke_test` and `pac_darwin` are now *expressible* —
+  their member binaries (`bin/lib_darwin_test`,
+  `bin/pac_corrupt_fnptr_darwin_test`, ...) happen to match the
+  derived convention exactly, and `pac_full_test.w`'s new
+  `flags=--pac=full` would carry into a `pac_darwin` membership — but
+  their run leg executes only on a Mac, so that migration is deferred
+  until someone can run `run_darwin_tests.sh` while making it (the
+  `pac_corrupt_*` fixtures would move from `generate.exclude` to
+  `group_only` memberships in the same change).
 
 ## Definition hashing (`w defhash`)
 
@@ -329,21 +388,6 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
 
 ## Cleanup observed while dogfooding
 
-- **arm64 self-host stage 2 regression ("Failed to find a _main()
-  function") — expected fixed by f13ab7f, UNCONFIRMED.** The third
-  sighting of the one bug behind the "context-dependent codegen"
-  family (see `ai_tooling.md`'s 2026-07-25 status entry): arm64, like
-  x64, is a 64-bit-pointer host, and `bin/wv2_arm64` (under qemu)
-  compiling `w.w` regressed exactly when the tree crossed
-  `debug_local_note`'s >4096-locals realloc-corruption threshold
-  (`code_generator/dwarf.w`, fixed 2026-07-19 in f13ab7f). Cannot be
-  confirmed closed from a host without `qemu-user-static`: only
-  `build_arm64`'s cross-compile step (`bin/wv2 arm64 w.w -o
-  bin/wv2_arm64`) was re-checked (green, 2026-07-25) — its stage-2
-  self-host step, like `verify_arm64`, needs qemu. Remaining action:
-  re-run `./wbuild verify_arm64` on a qemu-aarch64 host or CI, then
-  delete this entry. Not CI-gated today (the release workflow's arm64
-  leg is disabled for speed).
 - **(2026-07-19 review) protobuf stage 1 hardening backlog**: duplicate
   STRING/BYTES/MESSAGE occurrences of the same field leak the first
   allocation and diverge from proto3's merge-submessages rule
@@ -362,18 +406,6 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   reclassification, pb_skip_or_error error-kind propagation; asserted
   by tests/protobuf_test.w's hardening section and
   tests/protobuf_leak_test.w's debug-allocator leak checks.)*
-- **(2026-07-25, protobuf hardening) casting a `T[N]` array to a
-  pointer type addresses the runtime header, not the data**:
-  `cast(pb_bytes*, slot)` on a `char[16]` local yields data-8 (the
-  2-word array header), while `cast(int, slot)`, indexing, and argument
-  decay all reach the data -- so a struct-view write through such a
-  cast silently clobbers the header and the next decay crashes far from
-  the bug. Cost a multi-step bisect to find; `w check` accepts the cast
-  with no diagnostic. A warning on casting an array-typed expression to
-  a pointer type (or making the cast decay like every other value
-  context) would remove the trap. Sibling of the known "T[N] struct
-  field is not flat storage" gotcha already noted in
-  tests/protobuf_test.w's header.
 - **(2026-07-19 review) attach-mode polish**: a non-SIGTRAP signal stop
   during the step-over-breakpoint single step (in both `at_continue` and
   `at_finish`) is silently discarded instead of stored in
@@ -508,11 +540,14 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   around in `tests/protobuf_test.w` by using plain scalar fields (two
   adjacent `int32`s) instead of a `char[N]` field wherever the test
   needed raw-byte-range access; not otherwise a live bug since ordinary
-  `s.field[i]` indexing is unaffected. Worth either documenting this
-  layout explicitly next to `type_push_array`/`type_get_size`, or adding
-  a `type_array_element_offset()`-style accessor for code that needs the
-  data start, so the next generic-codec author doesn't have to
-  rediscover it by binary-searching struct bytes.
+  `s.field[i]` indexing is unaffected.
+  *(2026-07-28: shipped -- `type_array_element_offset()` in
+  `compiler/type_table.w` returns the 2-word data offset, with the
+  header layout documented next to `type_push_array`'s size formula;
+  the sibling trap, casting an array/slice expression to a pointer
+  type the decay does not cover, now warns at the cast
+  (`grammar/unary_expression.w`, frozen by
+  `tests/array_cast_warning_fixture.w`).)*
 - **wexec directory hashing is Linux-layout only.** Found while porting
   the darwin triad: `wexec_collect_dir` (tools/wexec.w) parses the Linux
   getdents record layout, so on macOS — where the `getdents` shim
@@ -530,19 +565,28 @@ directive gaps logged here shipped 2026-07-25 (`arch_only=`, `.w`-valued
   the directory as empty instead of parsing Darwin records with Linux
   offsets. The full fix (per-arch dirent accessors, validated on a
   Mac) is still open; the accessor plan above stands.
-- **`getchar()`/`getchar_unbuffered()` conflate a genuine `read()` error
-  with EOF** (`lib/lib.w`). A mid-file I/O failure looks like silent
-  truncation (or a misleadingly-positioned parse error) instead of a
-  diagnostic; fixing needs a distinct "read error" sentinel plumbed
-  through `get_character()`/`compile_attempt()`/etc. Rare in practice (a
-  `read()` on an already-`open()`ed regular local file essentially never
-  fails) — documented, not scheduled. **Partially shipped (2026-07-25):
+- **Shipped (2026-07-28): the compiler no longer conflates a genuine
+  `read()` error with EOF.** First half (2026-07-25):
   `getchar_checked`/`getchar_unbuffered_checked` in `lib/lib.w` return
   `GETCHAR_EOF()` (-1) at end of file and `GETCHAR_READ_ERROR()` (-2)
   when `read()` fails, sharing the per-fd buffer state with the (still
   byte-identical) legacy functions; pinned by
-  `tests/getchar_checked_test.w`. Plumbing the sentinel through the
-  compiler's `get_character()` path remains open.**
+  `tests/getchar_checked_test.w`. Second half: `compiler/tokenizer.w`'s
+  `getc()` — the single choke point every compiler source read flows
+  through (`compile_attempt` for the root and each import, the
+  generic/defer reparses, the defhash rehash, the REPL entry loader, all
+  of which point `filename` at the file before reading) — now reads via
+  `getchar_checked` and reports `read error while reading '<file>'`
+  through the normal `error()` path (positioned at the current
+  line/column, works under `--json`, REPL recovery unwinds it) instead
+  of treating the failure as EOF and silently truncating the source into
+  a clean-looking parse (or a misleadingly-positioned parse error).
+  Exercised for real, no root tricks needed, by the new
+  `read_error_test` (`build.base.json`): on Linux `open()` on a
+  directory succeeds and `read()` on its fd fails with `EISDIR`, so
+  compiling a directory path — which previously exited 0, parsing the
+  failed read as an empty file — now fails with the diagnostic, checked
+  as a root file (human and `--json` modes) and as an import.
 - **Shipped (2026-07-19, wave plan C task 1c): `lib/generator.w`'s
   `__w_gen_create` coroutine-stack `mmap()` is now checked** —
   `__w_gen_mmap_failed()` mirrors `debug_tbl_mmap_failed()`'s convention;
@@ -689,22 +733,20 @@ All three 2026-07 review findings here are resolved (trailing action-only
 alternative accepted as epsilon dispatch; `$1`-runs-into-identifier
 rejected at generation time; the shared-prefix nullable-suffix shape that
 once segfaulted the streaming emitter is a `pg_report_choice`
-generation-time rejection, regression-pinned by
-`tests/parser_generator/streaming_guard_reject.pg` and
-`generated_streaming_test.w`). One residual, deliberately-open
-ergonomic gap:
-
-- **A nullable, non-empty factored suffix is rejected, not compiled**:
-  `rule value = IDENT WS? | IDENT` (streaming) is refused with "can match
-  nothing and is not the trailing fallback (no committed dispatch)" even
-  though the shape is LL(1)-decidable — the nullable suffix could be
-  emitted as the choice's final fallback branch (its later siblings are
-  dead under ordered choice). Safe direction (over-rejection), but a
-  future streaming grammar wanting an optional continuation after a
-  shared prefix has to hand-rewrite as
-  `rule value = IDENT ws_opt` / `rule ws_opt = WS |`. Accepting it means
-  teaching `pg_plan_choice`/`pg_emit_streaming_choice` to treat a
-  trailing nullable unit like the empty-suffix fallback.
+generation-time rejection). The one residual ergonomic gap — a nullable,
+non-empty factored suffix was rejected, not compiled — **shipped
+2026-07-28**: `rule value = IDENT WS? | IDENT` (streaming) now compiles,
+with the nullable suffix emitted as the choice's final fallback branch
+and its dead strict-epsilon siblings dropped
+(`pg_choice_unit_is_nullable_fallback` in `analysis.w`, live-unit trim in
+`pg_emit_streaming_choice`; the suffix may also sit mid-alternatives
+behind guarded siblings). A nullable suffix ahead of a *live* sibling —
+the shape whose emission used to segfault — stays a generation-time
+rejection, re-pinned by `tests/parser_generator/streaming_guard_reject.pg`
+(now `rule value = IDENT WS? | IDENT NUMBER`) and
+`generated_streaming_test.w`; the accepted shapes are pinned by
+`streaming_fallback_sample.pg` / `generated_streaming_fallback_test.w`.
+Details in `docs/projects/parser_generator.md`.
 
 ## REPL surface (`repl.w`, consumed by wtools' `repl_eval` and skills)
 
@@ -844,6 +886,44 @@ ergonomic gap:
   against a fresh repl build (build.base.json's `repl_pty_test` target),
   so future agents can script this class of keystroke instead of
   falling back to manual verification each time.
+
+- **A still-running test binary turns the next rebuild into a
+  misleading compiler assert.** While iterating on lib/thread.w join
+  reclamation (2026-07-28), a deadlocked `bin/thread_64_test` from a
+  killed `./wbuild` run kept running in the background; the next
+  `./wbuild thread_64_test` then failed with `could not open output
+  file` plus a compiler stack trace ending in `asserts` at
+  `compiler/compiler.w:768` — which reads like a compiler bug, not
+  like the actual ETXTBSY on an output path held by a live process.
+  Two cheap fixes: the linker's "could not open output file" assert
+  should include the path and errno (ETXTBSY strongly hints "old
+  binary still running"), and wexec could kill run-step children it
+  spawned when it is itself terminated so orphans don't linger.
+- **wexec has no per-run-step timeout, so a deadlocked test hangs the
+  whole `./wbuild` invocation silently.** The same lib/thread.w
+  session produced (twice) a test binary that futex-waited forever; the
+  `./wbuild thread_test ...` invocation produced zero output until the
+  caller's own 300s timeout killed it, and the hung child survived
+  that kill. A default (or per-step `build.json`) run timeout that
+  fails the target with "timed out after Ns" would turn a silent hang
+  into an actionable failure. Diagnosis that worked: `ps aux`, then
+  `/proc/PID/wchan` + `/proc/PID/syscall` to see the exact futex the
+  binary was parked on (op and expected-value arguments included),
+  which pinpointed both bugs (private-flag waiter vs the kernel's
+  shared CLEARTID wake; expected-value re-read racing the one-shot
+  clear) without a debugger.
+- **`wtest changed` selects the near-full suite for any
+  `lib/__arch__/*/syscalls.w` edit and says nothing about it.** The
+  socketcall cleanup (2026-07-28) made `git diff --name-only
+  origin/main | bin/wtest changed` print ~450 targets — correct
+  (syscalls.w is in every program's closure, including the compiler's,
+  so `verify` is also implied) but unhelpful as a "focused test" list,
+  and the residue rules did not surface `verify` for it. When the
+  selection exceeds some threshold (say half the manifest), a one-line
+  summary like "selection is effectively the `tests` umbrella; run
+  `./wbuild tests` (and `verify` — compiler closure touched)" would
+  save agents from pasting hundreds of targets and from missing the
+  verify gate.
 
 ## Skills / rules upkeep
 

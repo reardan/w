@@ -1,3 +1,4 @@
+# wbuild: group_only group=float_abi_test_x64@x64 expect_stdout="x64 c_import float OK"
 # Floating-point C ABI through c_import on the x64 target: math.h imports
 # with real float64 signatures and the generated shims follow the SysV
 # xmm register convention (c_import must precede other declarations, so

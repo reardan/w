@@ -22,6 +22,7 @@ import lib.lib
 struct file_stat:
 	int mode
 	int size
+	int blocks
 	int mtime
 	int atime
 	int ctime
@@ -63,6 +64,13 @@ int FILE_STATX_INO_OFFSET():
 
 int FILE_STATX_SIZE_OFFSET():
 	return 40
+
+
+# stx_blocks: allocated 512-byte blocks (the figure du(1) sums), u64 at
+# offset 48 -- read as the low word like size/ino, the same accepted
+# 32-bit limit the module header documents.
+int FILE_STATX_BLOCKS_OFFSET():
+	return 48
 
 
 int FILE_STATX_ATIME_OFFSET():
@@ -121,6 +129,7 @@ void file_stat_from_statx(char* buf, file_stat* out):
 	out.gid = load_int(buf + FILE_STATX_GID_OFFSET())
 	out.ino = load_word(buf + FILE_STATX_INO_OFFSET())
 	out.size = load_word(buf + FILE_STATX_SIZE_OFFSET())
+	out.blocks = load_word(buf + FILE_STATX_BLOCKS_OFFSET())
 	out.atime = load_word(buf + FILE_STATX_ATIME_OFFSET())
 	out.ctime = load_word(buf + FILE_STATX_CTIME_OFFSET())
 	out.mtime = load_word(buf + FILE_STATX_MTIME_OFFSET())
