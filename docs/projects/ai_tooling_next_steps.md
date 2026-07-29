@@ -209,17 +209,17 @@ is a queue, not an archive.
   step references, and say so in one line, instead of enumerating the
   world; a `--runnable-here` filter (skip targets whose steps need
   binaries/hosts this machine lacks) would compose well with that.
-- **(2026-07-28, wave 4a) invoking the compiler from outside a
-  checkout cannot resolve the auto-imported runtime.** With CWD in a
-  scratch directory, `/path/to/repo/bin/wv2 check snippet.w` fails
-  with "cannot locate 'structures/hash_table.w' (searched the current
-  directory and every parent)": runtime-import resolution walks up
-  from the CWD, ignoring where the compiler binary itself lives. Same
-  invocation from the repo root (absolute snippet path) works. Agents
-  compile throwaway snippets from scratch directories constantly;
-  falling back to the running binary's own directory (argv[0]) before
-  erroring would make that workflow just work. Workaround: always cd
-  to the checkout and pass the snippet's absolute path.
+- **(2026-07-29) the argv[0] runtime-resolution fallback does not
+  follow symlinks.** Compiling from a scratch directory now resolves
+  `structures/hash_table.w` and friends by walking up from the compiler
+  binary's own directory (derived from argv[0]) after the CWD walk
+  fails — but a SYMLINK to `bin/wv2` placed outside the checkout still
+  fails, because resolving it needs readlink and `lib/stat.w` is not in
+  the seed's import graph (pulling it in was out of scope for the
+  fallback change). If scratch-dir symlink layouts become a real agent
+  workflow, either move `file_readlink` somewhere seed-reachable or
+  hand-roll a readlink syscall in `compiler/compiler.w`'s
+  `compiler_binary_dir()`.
 - **Shipped (2026-07-19, wave plan C task 4b): `wtest changed A..B`
   commit-ranged selection MVP** (issue #251 direction 4b). `changed`
   (not `for`) now treats a single positional argument containing `..`
@@ -959,18 +959,6 @@ Details in `docs/projects/parser_generator.md`.
   so future agents can script this class of keystroke instead of
   falling back to manual verification each time.
 
-- **A still-running test binary turns the next rebuild into a
-  misleading compiler assert.** While iterating on lib/thread.w join
-  reclamation (2026-07-28), a deadlocked `bin/thread_64_test` from a
-  killed `./wbuild` run kept running in the background; the next
-  `./wbuild thread_64_test` then failed with `could not open output
-  file` plus a compiler stack trace ending in `asserts` at
-  `compiler/compiler.w:768` — which reads like a compiler bug, not
-  like the actual ETXTBSY on an output path held by a live process.
-  Two cheap fixes: the linker's "could not open output file" assert
-  should include the path and errno (ETXTBSY strongly hints "old
-  binary still running"), and wexec could kill run-step children it
-  spawned when it is itself terminated so orphans don't linger.
 - **wexec has no per-run-step timeout, so a deadlocked test hangs the
   whole `./wbuild` invocation silently.** The same lib/thread.w
   session produced (twice) a test binary that futex-waited forever; the
@@ -996,22 +984,15 @@ Details in `docs/projects/parser_generator.md`.
   `./wbuild tests` (and `verify` — compiler closure touched)" would
   save agents from pasting hundreds of targets and from missing the
   verify gate.
-- **Minor: a flag before the arch selector turns the selector into the
-  input file, with a misleading error.** `bin/wv2 --strict x64 file.w
-  -o out` fails with `no such file: 'x64' in x64:1` after printing
-  `compiling 'x64'` — the arch token is consumed as the source path
-  once any flag precedes it. `bin/wv2 x64 --strict file.w -o out`
-  works. Found 2026-07-28 compiling a test's x64 twin by hand.
-  Cheap fix: recognize arch-selector tokens anywhere before the input
-  file (or error with "arch selector must come first"), so the
-  diagnostic names the real problem instead of a phantom file.
 
 ## Skills / rules upkeep
 
-- Keep skill command examples in sync with CLI changes (they are
-  hand-verified snapshots, nothing asserts them). A cheap
-  `skills_test` that greps the documented flags against `--help` output
-  would catch drift once the compiler grows a help text.
+- Skill command examples are kept in sync with CLI changes by the
+  `skills_test` target (build.base.json): it asserts every compiler
+  flag documented in AGENTS.md, README.md and `.cursor/skills/`
+  appears in `w --help` / `w <subcommand> --help` output
+  (`tools/skills_check.w`). When adding a compiler flag, add its help
+  line in the same commit or `skills_test` fails.
 - Candidate new skills as workflows stabilize: ARM64 testing under
   `qemu-aarch64` (see `docs/projects/arm64.md`), seed updates
   (`./wbuild update` discipline), and C interop debugging (`c_import`).
