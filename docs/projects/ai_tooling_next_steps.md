@@ -170,6 +170,21 @@ is a queue, not an archive.
   attach_test's wdbg timeout was raised for the same reason
   (2026-07-29), or serialize the four targets behind a shared wexec
   resource so a parallel `tests` run cannot self-contend.
+- **(2026-07-29, U10 c_import work) a seed-graph diff's cold
+  `wtest changed` exceeded a 10-minute budget under parallel wave
+  load.** `libs/extras/c_import/importer.w` in the diff makes the
+  closure build walk essentially every root (370 here); the first
+  `wtest changed` run after `./wbuild build` was killed at the
+  documented "several minutes" budget (10 min wall) and needed a
+  second invocation to finish from the resumed cache — which worked
+  exactly as documented, plus one load-induced `bin/wv2 deps` failure
+  that correctly fell back to literal matching with a stderr warning
+  instead of being cached (the 2026-07-29 no-fail-cache fix doing its
+  job). Residue: seed-graph edits could prime the cache from the
+  umbrella end (the selection is going to include `tests`/`verify`
+  anyway) instead of computing all N root closures first, or
+  `./wbuild build` could warm the cache as a side effect so the first
+  selection is not the one paying the cold-walk cost.
 
 ## Build manifest (`tools/wbuildgen.w`)
 

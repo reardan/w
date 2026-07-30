@@ -205,7 +205,9 @@ current state:
 			preprocesses C headers with macro expansion, conditionals and include resolution
 			importer builds typedefs, structs/unions, enum values, macro integer constants and function prototypes (fixed-arity and variadic)
 			extern data objects (stdout, environ, optind) import as weak COPY relocations
-			broad libc/system headers are tested on both targets (stdio, stdlib, string, unistd, fcntl, errno, time, signal, ctype, math, dirent, locale, sys/stat)
+			extern arrays of known or unknown length (tzname, the sys_errlist shape) import by address as pointer globals (array decay through a loader-filled slot)
+			old-style (K&R) declarations import as variadic zero-fixed-parameter functions; K&R definitions parse and are ignored like other header definitions
+			broad libc/system headers are tested on both targets (stdio, stdlib, string, unistd, fcntl, errno, time, signal, ctype, math, dirent, locale, sys/stat); c_import_torture_test pins gnarly header shapes compile-only
 			imported C struct layout is checked against kernel-filled struct stat
 		debugging information:
 			debugger statement emits int3
@@ -398,10 +400,9 @@ current state:
 				and debug-location bookkeeping — not a hash_map call site to
 				migrate, see docs/projects/typed_containers.md)
 		c_import:
-			old-style (K&R) declarations
 			bit-field layout fidelity
-			extern arrays of unknown length (sys_errlist)
 			more system-header torture fixtures as regressions are found
+				(c_import_torture_test is the home for them)
 		debugger:
 			wdbg disassembly view (done: `disas`/`disassemble` command in
 				both wdbg and attach mode, debugger/disas.w, wired to the
