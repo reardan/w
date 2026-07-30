@@ -17,3 +17,34 @@
 # nothing on macOS relies on directory hashing today.
 int wexec_dirents_supported():
 	return 0
+
+
+/* Run-step process-group cleanup: conservatively reported unsupported
+on arm64_darwin. setpgid and kill(-pgid) do exist on Darwin, but the
+sweep is anchored on a SIGHUP/SIGINT/SIGTERM handler and plain W
+functions cannot be signal handlers on this target (no SA_RESTORER
+story like the one debugger/wdbg.w builds for x86-64 Linux), and the
+darwin executor's targets are compile-only cross builds today (see
+wexec_dirents_supported above for the same keep-the-status-quo
+reasoning). wexec only activates the cleanup when
+wexec_process_groups_supported() is 1, so behavior here is unchanged. */
+
+
+int wexec_process_groups_supported():
+	return 0
+
+
+int wexec_process_group_enter():
+	return -1
+
+
+void wexec_process_group_assign(int pid):
+	return
+
+
+void wexec_process_group_kill(int pid):
+	return
+
+
+void wexec_install_termination_handler(int handler):
+	return

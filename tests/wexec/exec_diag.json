@@ -1,0 +1,34 @@
+{
+	"targets": [
+		{
+			"name": "direct_missing",
+			"steps": [
+				{"cmd": ["bin/wexec_exec_diag/no_such_program"]}
+			]
+		},
+		{
+			"name": "direct_unusable",
+			"steps": [
+				{"cmd": ["bin/wexec_exec_diag/unusable"]}
+			]
+		},
+		{
+			"name": "bad_interp",
+			"steps": [
+				{"cmd": ["bin/wexec_exec_diag/bad_interp"]}
+			]
+		},
+		{
+			"name": "self_127",
+			"steps": [
+				{"cmd": ["bin/wexec_exec_diag/exits_127"]}
+			]
+		},
+		{
+			"name": "bad_elf_interp",
+			"steps": [
+				{"cmd": ["bin/wexec_exec_diag/bad_elf"]}
+			]
+		}
+	]
+}

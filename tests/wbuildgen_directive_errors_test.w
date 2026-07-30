@@ -27,7 +27,15 @@ directive-gap closures:
   group_only suppresses a member's standalone targets, and the misuse
   shapes (group_only with no group=, group_only with standalone
   directives, members disagreeing on the group's arch, a value with no
-  '@<arch>') are hard errors.
+  '@<arch>') are hard errors;
+- "generate": {"tool_targets": [...]} entries (the whole target is one
+  already-built tool invocation, no compile step) generate with "deps"
+  derived from the step commands via the base targets' declared
+  "outputs" (staged outputs resolve; an entry's own earlier-step -o
+  products are self-satisfied), and the misuse shapes (a hand-declared
+  "deps", an unknown entry key, a bin/-prefixed command word nothing
+  produces, an entry name still hand-written in "targets") are hard
+  errors.
 */
 # wbuild: tool=tools/wbuildgen.w
 import lib.testing
@@ -307,6 +315,90 @@ void test_fixture_stray_directives_are_an_error():
 	process_result* r = wdet_run(dir)
 	assert1(r.status != 0)
 	wdet_assert_contains(r.stderr_text, c"'# wbuild:' directives on a fixture need 'fixture_group=' (a fixture is not a test target): tests/stray_fixture.w")
+	process_result_free(r)
+
+
+# A base manifest with one staged tool target (compiles to a .stage
+# path, mv's it to the declared output — the bin/wexec shape) so the
+# tool_targets cases can exercise resolution by *declared* outputs.
+char* wdet_tool_base(char* tool_targets_json):
+	string_builder* s = string_new()
+	string_append(s, c"{\n\t\"targets\": [\n\t\t{\n\t\t\t\"name\": \"mytool\",\n\t\t\t\"outputs\": [\"bin/mytool\"],\n\t\t\t\"steps\": [\n\t\t\t\t{\"cmd\": [\"bin/wv2\", \"tools/mytool.w\", \"-o\", \"bin/mytool.stage\"]},\n\t\t\t\t{\"cmd\": [\"mv\", \"bin/mytool.stage\", \"bin/mytool\"]}\n\t\t\t]\n\t\t}\n\t],\n\t\"generate\": {\n\t\t\"tool_targets\": [\n")
+	string_append(s, tool_targets_json)
+	string_append(s, c"\n\t\t]\n\t}\n}\n")
+	char* out = s.data
+	free(s)
+	return out
+
+
+void test_tool_targets_generate():
+	char* dir = wdet_case_dir(c"tool_targets")
+	# mytool_check consumes the staged tool's declared output;
+	# gate compiles its own binary via a non-bin/ seed command and runs
+	# it (the asm_seed_gate shape: self-produced, so no deps at all).
+	char* base = wdet_tool_base(c"\t\t\t{\"name\": \"mytool_check\", \"steps\": [{\"cmd\": [\"bin/mytool\", \"--check\"], \"expect_stdout\": \"ok\"}]},\n\t\t\t{\"name\": \"gate\", \"inputs\": [\"w\"], \"steps\": [{\"cmd\": [\"./seed\", \"x.w\", \"-o\", \"bin/gate_bin\"]}, {\"cmd\": [\"bin/gate_bin\"]}]}")
+	wdet_write(dir, c"base.json", base)
+	free(base)
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	# "deps" is derived from the step command via the declared output
+	# (bin/mytool is produced as bin/mytool.stage + mv), inserted right
+	# after "name"; the step passes through verbatim.
+	wdet_assert_contains(out, c"\"name\": \"mytool_check\",\n\t\t\t\"deps\": [\"mytool\"],\n\t\t\t\"steps\"")
+	wdet_assert_contains(out, c"{\"cmd\": [\"bin/mytool\", \"--check\"], \"expect_stdout\": \"ok\"}")
+	# gate's own first step produces bin/gate_bin, so running it derives
+	# nothing: no "deps" key at all, and "inputs" passes through.
+	wdet_assert_contains(out, c"\"name\": \"gate\",\n\t\t\t\"inputs\": [\"w\"]")
+	wdet_assert_contains(out, c"{\"cmd\": [\"bin/gate_bin\"]}")
+	free(out)
+	free(out_path)
+
+
+void test_tool_targets_reject_declared_deps():
+	char* dir = wdet_case_dir(c"tool_targets_deps")
+	char* base = wdet_tool_base(c"\t\t\t{\"name\": \"declared\", \"deps\": [\"mytool\"], \"steps\": [{\"cmd\": [\"bin/mytool\"]}]}")
+	wdet_write(dir, c"base.json", base)
+	free(base)
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"\"tool_targets\" entries must not declare \"deps\" (derived from the step commands): declared")
+	process_result_free(r)
+
+
+void test_tool_targets_reject_unknown_key():
+	char* dir = wdet_case_dir(c"tool_targets_key")
+	char* base = wdet_tool_base(c"\t\t\t{\"name\": \"keyed\", \"extra\": 1, \"steps\": [{\"cmd\": [\"bin/mytool\"]}]}")
+	wdet_write(dir, c"base.json", base)
+	free(base)
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"unknown \"tool_targets\" entry key 'extra' in keyed")
+	process_result_free(r)
+
+
+void test_tool_targets_reject_unresolved_command():
+	char* dir = wdet_case_dir(c"tool_targets_typo")
+	char* base = wdet_tool_base(c"\t\t\t{\"name\": \"typo_check\", \"steps\": [{\"cmd\": [\"bin/nosuch\", \"--check\"]}]}")
+	wdet_write(dir, c"base.json", base)
+	free(base)
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"\"tool_targets\" entry 'typo_check': step command is not the output of any base target (or of an earlier step): bin/nosuch")
+	process_result_free(r)
+
+
+void test_tool_targets_reject_hand_written_duplicate():
+	char* dir = wdet_case_dir(c"tool_targets_dup")
+	char* base = wdet_tool_base(c"\t\t\t{\"name\": \"mytool\", \"steps\": [{\"cmd\": [\"bin/mytool\"]}]}")
+	wdet_write(dir, c"base.json", base)
+	free(base)
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"\"tool_targets\" entry is still hand-written in build.base.json's \"targets\" (delete the hand-written entry): mytool")
 	process_result_free(r)
 
 

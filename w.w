@@ -11,6 +11,13 @@ import debugger.wdbg
 
 int main(int argc, int argv):
 	verbosity = -1
+	# Record the raw argv[0] before any argument shifting below:
+	# compile_relative_path's last-resort search derives the compiler
+	# binary's own directory from it (compiler/compiler.w,
+	# compiler_argv0), so runs from outside the checkout still resolve
+	# the auto-imported runtime.
+	char** argv0_arg = cast(char**, argv)
+	compiler_argv0 = *argv0_arg
 	if (argc >= 3):
 		# 'w x64 check f.w': the target selector may precede the
 		# subcommand word. Record it for link_impl and dispatch on the
