@@ -380,6 +380,13 @@ void cpp_preprocess_file_into(cpp_preprocessor* pp, char* path, int include_inde
 		return
 	char* source = pg_read_file_text(path)
 	if (source == 0):
+		# Reachable through the top-level entry: cpp_preprocess_file
+		# passes a c_import statement's header path here with no
+		# existence pre-check, so a missing header lands on this
+		# diagnostic (pinned by tests/c_import_missing_header_fixture.w).
+		# On the #include route cpp_find_include has already
+		# path_exists-checked the path, so there this only fires in the
+		# stat-then-open TOCTOU window.
 		diag_part(c"c preprocessor: could not read ")
 		diag_part(path)
 		error(c"")

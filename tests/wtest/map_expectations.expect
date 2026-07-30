@@ -435,3 +435,56 @@ case -f tests/wtest/manifest_unavailable.json --available widget/marker.dat
 noorder
 expect custom_widget_ok
 forbid custom_widget_needs_mac
+
+# An auto-imported runtime file is in EVERY program's closure, so the
+# raw selection is essentially the whole manifest (~540 of ~560
+# targets). Above the half-of-the-manifest threshold the selection is
+# collapsed to the step-less umbrella targets that cover the selected
+# members (tests, tests_x64, ...) plus the uncovered leftovers, with a
+# one-line stderr summary (asserted by wtest_map_test's build.base.json
+# steps) — never hundreds of individual leaf tests. Targets no
+# umbrella covers (the arm64/wasm gates) survive individually.
+case structures/w_list.w
+expect tests
+expect tests_x64
+expect arm64_smoke_test
+expect wasm_smoke_test
+forbid math_test
+forbid lib_test
+forbid stream_test
+
+# The x86 syscall layer is in every x86 program's closure but no x64
+# one: the collapse is arch-accurate — the 'tests' umbrella stands in
+# for the x86 members, while tests_x64 (mostly unselected members)
+# must NOT be pulled in.
+case lib/__arch__/x86/syscalls.w
+expect tests
+forbid tests_x64
+forbid http_client_64_test
+
+# The collapse fixture (tests/wtest/manifest_collapse.json): selecting
+# all four members of the step-less 'collapse_all' umbrella (4 of 5
+# selectable targets, above the half threshold) emits the umbrella
+# instead of the members.
+case -f tests/wtest/manifest_collapse.json widget/collapse_all.dat
+noorder
+expect collapse_all
+forbid collapse_w1
+forbid collapse_w4
+
+# Below the threshold (2 of 5) nothing collapses.
+case -f tests/wtest/manifest_collapse.json widget/collapse_two.dat
+noorder
+expect collapse_w1
+expect collapse_w2
+forbid collapse_all
+
+# Above the global threshold (3 of 5) but with only a minority of the
+# umbrella's members selected (2 of 4), the umbrella must NOT swallow
+# the selection: members are emitted as themselves.
+case -f tests/wtest/manifest_collapse.json widget/collapse_mixed.dat
+noorder
+expect collapse_w1
+expect collapse_w2
+expect collapse_loner
+forbid collapse_all
