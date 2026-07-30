@@ -50,7 +50,7 @@ Compiler
 		Generic inference for forward calls, struct constructors and container shapes
 		Richer map/list ergonomics (delete/get/defaults, list insert/remove)
 		Float16 / bfloat16
-		C import old-style declarations and bit-field layout fidelity
+		C import bit-field layout fidelity
 		Formatter; LSP locals/parameters coverage and completion (need symbols --json to record them)
 
 Net

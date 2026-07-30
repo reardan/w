@@ -181,6 +181,81 @@ int compile_joined(char* cwd, char* filename):
 	return result
 
 
+# The raw argv[0] of this compiler process, recorded by main() (w.w)
+# before any argument shifting. compile_relative_path's last-resort
+# fallback derives the binary's own directory from it, so a compile
+# started from outside the checkout (an agent's scratch directory) can
+# still resolve the auto-imported container runtime that lives next to
+# the compiler. Stays 0 for embedders with their own main (the REPL),
+# which simply skips the fallback.
+char* compiler_argv0
+
+
+# Directory holding the compiler binary itself, derived from argv[0]:
+# separators normalized, the last path component stripped, and a
+# relative spelling ('./bin/wv2', 'bin/wv2') resolved against the
+# current directory (the process never chdirs, so cwd still matches the
+# invocation). Returns a fresh allocation the caller frees, or 0 when
+# the directory cannot be known — no argv[0] was recorded, or argv[0]
+# is a bare command name found via PATH.
+char* compiler_binary_dir():
+	if (compiler_argv0 == 0):
+		return 0
+	char* prog = strclone(compiler_argv0)
+	path_normalize_sep(prog)
+	int last_slash = 0 - 1
+	int i = 0
+	while (prog[i] != 0):
+		if (prog[i] == 47):
+			last_slash = i
+		i = i + 1
+	if (last_slash < 0):
+		free(prog)
+		return 0
+	if (last_slash == 0):
+		# '/wv2': keep the root itself as the directory
+		prog[1] = 0
+	else:
+		prog[last_slash] = 0
+	if (path_is_absolute(prog)):
+		return prog
+	int max_path_size = 4096
+	char* cwd = malloc(max_path_size)
+	getcwd(cwd, max_path_size)
+	path_normalize_sep(cwd)
+	char* joined = strjoin(cwd, c"/")
+	char* absolute = strjoin(joined, prog)
+	free(joined)
+	free(cwd)
+	free(prog)
+	return absolute
+
+
+# Walk 'dir' upward toward the filesystem root, attempting to compile
+# dir/fn at each level. Mutates dir in place (callers pass a scratch
+# copy). Returns 1 once a level compiled, 0 when every level failed.
+int compile_search_upward(char* dir, char* fn):
+	while (dir[0]):
+
+		# Attempt to compile with this path
+		int result = compile_joined(dir, fn)
+
+		# If successfull return
+		if (result == 1):
+			return 1
+
+		# Go back up one directory
+		int index = strlen(dir) - 1
+		while (index >= 0):
+			if (dir[index] == 47):
+				dir[index] = 0
+				index = 0 /* hacky way to break from loop */
+			index = index - 1
+		if (verbosity >= 1):
+			print_string(c"went up one directory: ", dir)
+	return 0
+
+
 # fn must not shadow the global filename: the search-exhausted branch
 # below reads and repoints the global.
 int compile_relative_path(char* fn):
@@ -191,33 +266,39 @@ int compile_relative_path(char* fn):
 	# Normalize backslashes from Windows GetCurrentDirectoryA to forward slashes
 	path_normalize_sep(cwd)
 
-	# While we still have path remaining:
-	while (cwd[0]):
-
-		# Attempt to compile with this path
-		int result = compile_joined(cwd, fn)
-
-		# If successfull return
-		if (result == 1):
-			free(cwd)
-			return 1
-
-		# Go back up one directory
-		int index = strlen(cwd) - 1
-		while (index >= 0):
-			if (cwd[index] == 47):
-				cwd[index] = 0
-				index = 0 /* hacky way to break from loop */
-			index = index - 1
-		if (verbosity >= 1):
-			print_string(c"went up one directory: ", cwd)
-
+	if (compile_search_upward(cwd, fn)):
+		free(cwd)
+		return 1
 	free(cwd)
+
+	# Last resort: the same upward walk from the compiler binary's own
+	# directory (argv[0]). With the CWD in a scratch directory outside
+	# the checkout, this is what lets '/repo/bin/wv2 check snippet.w'
+	# still resolve 'structures/hash_table.w' and the rest of the
+	# auto-imported runtime living next to the compiler.
+	char* bin_dir = compiler_binary_dir()
+	if (bin_dir != 0):
+		if (compile_search_upward(bin_dir, fn)):
+			free(bin_dir)
+			return 1
+		free(bin_dir)
+
 	# Point the diagnostic at the import statement when an importing
 	# file is current; at cold start (the auto-imported container
 	# runtime) fall back to the searched path itself.
 	if (filename == 0):
 		missing_file_reset(fn)
+	# A path-shaped spelling ('import lib/assert.w') mangles into a
+	# nonsense search path ('lib/assert/w.w') during dots-to-slashes
+	# resolution: echo the import line as the user wrote it and hint
+	# the dotted form instead (grammar/import_statement.w).
+	if ((import_current_spelling != 0) && import_spelling_path_shaped(import_current_spelling)):
+		diag_part(c"cannot locate '")
+		diag_part(import_current_spelling)
+		diag_part(c"': import paths are dotted module names, not file paths; try 'import ")
+		diag_part(import_spelling_dotted(import_current_spelling))
+		error(c"'")
+		return 0
 	diag_part(c"cannot locate '")
 	diag_part(fn)
 	# error() instead of exit() so a REPL entry importing a missing
@@ -520,6 +601,128 @@ int link_option_recognized(char* arg):
 	return starts_with(arg, c"--ptx=")
 
 
+# --help/-h: the full documented flag surface, one line per flag, on
+# stdout (explicitly requested output, unlike the bare stderr usage
+# lines printed when arguments are missing). skills_test asserts that
+# every compiler flag documented in AGENTS.md, README.md and
+# .cursor/skills/ appears in this output, so keep these lists complete
+# when adding a flag.
+void help_shared_options():
+	println(c"  -o <path>             write the executable to <path> (mode 0755)")
+	println(c"  --bounds=on|off|trap  array bounds checks: on (default), off, or trap")
+	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (default: ret)")
+	println(c"  --strict              treat warnings as errors and write no output")
+	println(c"  --quiet               suppress the non-diagnostic stderr banners")
+	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
+	println(c"  -v, --verbose         raise verbosity (repeat for compiler debug traces)")
+	println(c"  -h, --help            print this help and exit")
+
+
+void help_selectors():
+	println(c"target selectors (default: 32-bit x86 Linux ELF; may appear before")
+	println(c"the subcommand word or anywhere before the first input file):")
+	println(c"  x64           64-bit x86-64 Linux ELF")
+	println(c"  arm64         64-bit AArch64 Linux ELF")
+	println(c"  arm64_darwin  64-bit AArch64 macOS Mach-O (self-signed)")
+	println(c"  win64         64-bit x86-64 Windows PE")
+	println(c"  wasm          32-bit wasm32 + WASI module")
+
+
+void help_link():
+	println(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [-v|--verbose] [--version]")
+	println(c"")
+	println(c"Compile W source files into a native executable. Without -o the")
+	println(c"executable bytes are written to stdout.")
+	println(c"")
+	println(c"subcommands (run 'w <subcommand> --help' for their flags):")
+	println(c"  check         compile-only diagnostics; writes no executable")
+	println(c"  deps          print the transitive import closure")
+	println(c"  symbols       dump global symbols and user-declared types")
+	println(c"  defhash       per-definition content hashes and refs (NDJSON)")
+	println(c"")
+	help_selectors()
+	println(c"")
+	println(c"options:")
+	help_shared_options()
+	println(c"  --version             print the compiler version and exit")
+	println(c"")
+	println(c"debugger: 'w --debug <file.w> [args...]' compiles and runs the file")
+	println(c"under the in-process debugger, wdbg (see debugger/wdbg.w).")
+
+
+void help_check():
+	println(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+	println(c"")
+	println(c"Compile without writing an executable. Diagnostics go to stderr; with")
+	println(c"--json each becomes one NDJSON record on stdout. Empty output with")
+	println(c"exit status 0 means the file is clean.")
+	println(c"")
+	println(c"options:")
+	println(c"  --json                emit NDJSON diagnostic records on stdout")
+	println(c"  --imports             warn when an identifier resolves through a")
+	println(c"                        transitive import the file does not import directly")
+	println(c"  --bool-ops            also warn on '&'/'|' operands containing calls,")
+	println(c"                        where '&&'/'||' short-circuiting would skip them")
+	help_shared_options()
+	println(c"")
+	help_selectors()
+
+
+void help_deps():
+	println(c"usage: w deps [--json] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+	println(c"")
+	println(c"Compile like 'w check', then print the path of every file in the")
+	println(c"program's transitive import closure (the root, every import, and the")
+	println(c"auto-imported runtime), one per line, deduplicated, in first-open")
+	println(c"order. Paths under the invocation directory print relative to it.")
+	println(c"")
+	println(c"options:")
+	println(c"  --json                emit one NDJSON record per file on stdout")
+	help_shared_options()
+	println(c"")
+	help_selectors()
+
+
+void help_symbols():
+	println(c"usage: w symbols [--json] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+	println(c"")
+	println(c"Compile like 'w check', then dump the global symbol table and the")
+	println(c"user-declared types with their declaration locations.")
+	println(c"")
+	println(c"options:")
+	println(c"  --json                emit one NDJSON record per entry on stdout")
+	println(c"                        (default: human-readable file:line:column lines)")
+	help_shared_options()
+	println(c"")
+	help_selectors()
+
+
+void help_defhash():
+	println(c"usage: w defhash [--closure] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+	println(c"")
+	println(c"Compile like 'w check', then print one NDJSON record per top-level")
+	println(c"definition declared in the root file(s): file, name, kind, a sha256")
+	println(c"over the definition's own token stream, and the referenced names.")
+	println(c"")
+	println(c"options:")
+	println(c"  --closure             record every definition in the whole program,")
+	println(c"                        not just the command-line root file(s)")
+	help_shared_options()
+	println(c"")
+	help_selectors()
+
+
+# 1 when the argument spells a help request; shared by every argument
+# scanner so 'w --help', 'w check -h' and a --help anywhere in a compile
+# argument list all work.
+int arg_is_help(char* arg):
+	if (strcmp(arg, c"--help") == 0):
+		return 1
+	if (strcmp(arg, c"-h") == 0):
+		return 1
+	return 0
+
+
 # A dash-prefixed argument no flag branch recognizes is a typo or an
 # unsupported option, never an input file; fail fast with the option
 # text. Under --json ('w check --json f.w --nope') the failure is a
@@ -541,6 +744,7 @@ void unrecognized_option_error(char* arg):
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (argc <= start_index):
 		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [-v|--verbose] [--version]")
+		println2(c"run 'w --help' for details")
 		exit(1)
 	int i = start_index
 	word_size = 4
@@ -562,11 +766,31 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		# follow and wins.
 		target_selector_apply(target_pending)
 		target_pending = 0
+	# The target selector may appear anywhere before the first input
+	# file, so a leading flag does not turn the selector into a
+	# filename ('w --strict x64 f.w' used to fail with "no such file:
+	# 'x64'"): scan past flags (and -o's consumed argument) to the
+	# first positional word, and when that word is a selector apply it
+	# now — be_start below bakes the word size in — remembering its
+	# index so the positional loop skips it.
 	# argv strides by the HOST pointer size: __word_size__ was baked in
 	# when this compiler binary was itself compiled
-	char** first_arg = argv + i * __word_size__
-	if (target_selector_apply(*first_arg)):
+	int selector_index = 0 - 1
+	int sel_scan = i
+	int sel_scanning = 1
+	while (sel_scanning && (sel_scan < argc)):
+		char** sel_arg = argv + sel_scan * __word_size__
+		if (strcmp(*sel_arg, c"-o") == 0):
+			sel_scan = sel_scan + 2
+		else if (starts_with(*sel_arg, c"-")):
+			sel_scan = sel_scan + 1
+		else:
+			sel_scanning = 0
+			if (target_selector_apply(*sel_arg)):
+				selector_index = sel_scan
+	if (selector_index == i):
 		i = i + 1
+		selector_index = 0 - 1
 	# --pac is whole-program: signing at materialization and authenticating
 	# at the call site must agree across every compiled file (a mixed image
 	# would trap at runtime), and the Mach-O header consumes the level in
@@ -599,6 +823,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			flag_scan = flag_scan + 1
 		else if ((strcmp(*flag_arg, c"-v") == 0) || (strcmp(*flag_arg, c"--verbose") == 0)):
 			verbosity_raise()
+		else if (arg_is_help(*flag_arg)):
+			help_link()
+			exit(0)
 		else if (starts_with(*flag_arg, c"-")):
 			if (link_option_recognized(*flag_arg) == 0):
 				unrecognized_option_error(*flag_arg)
@@ -647,7 +874,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 
 	while (i < argc):
 		char** arg = argv + i * __word_size__
-		if (strcmp(*arg, c"-o") == 0):
+		if (i == selector_index):
+			# The target-selector pre-scan above already applied this
+			# word; it is not an input file.
+			selector_index = 0 - 1
+		else if (strcmp(*arg, c"-o") == 0):
 			i = i + 1
 			asserts(c"-o requires an output path", i < argc)
 			arg = argv + i * __word_size__
@@ -718,6 +949,13 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				compile_input_file(input)
 		i = i + 1
 
+	# 'w check' only (a no-op unless check_main armed generic_check_mode;
+	# deps/symbols/defhash share check_mode but never arm it): queue a
+	# synthetic [int] instantiation for every generic definition nothing
+	# instantiated, so the drain below type-checks its body too
+	# (grammar/generic.w, generic_check_instantiate_all).
+	generic_check_instantiate_all()
+
 	# Queued generic instantiations compile at this top-level boundary,
 	# before the runtime imports so instantiated bodies can rely on the
 	# to_json/template-string finishers below; a second drain afterwards
@@ -764,7 +1002,16 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (output_path != 0):
 		/* O_WRONLY|O_CREAT|O_TRUNC, mode 0755 so the result is executable */
 		output_fd = open(output_path, 577, 493)
-		asserts(c"could not open output file", output_fd >= 0)
+		if (output_fd < 0):
+			# Name the path and decode the errno instead of a bare
+			# assert: ETXTBSY here almost always means an old build of
+			# this very output is still running (issue #377;
+			# docs/projects/ai_tooling_next_steps.md).
+			print_error(c"error: could not open output file '")
+			print_error(output_path)
+			print_error(c"': ")
+			translate_syscall_failure(output_fd)
+			exit(1)
 	if (check_mode):
 		output_fd = open(c"/dev/null", 577, 493)
 		if (output_fd < 0):
@@ -798,6 +1045,9 @@ int check_main(int argc, int argv):
 	diag_json = 0
 	check_imports_mode = 0
 	check_bool_ops_mode = 0
+	# Type-check uninstantiated generic bodies too (grammar/generic.w,
+	# generic_check_instantiate_all): check only, never plain compilation
+	generic_check_mode = 1
 	# Leading flags in any order; --quiet must be consumed before
 	# link_impl sees the argument list so the x64/arm64 mode banner and
 	# the per-file banner are suppressed from the start.
@@ -832,10 +1082,14 @@ int check_main(int argc, int argv):
 			# leading flags after it instead of stopping.
 			verbosity_raise()
 			i = i + 1
+		else if (arg_is_help(*arg)):
+			help_check()
+			exit(0)
 		else:
 			scanning = 0
 	if (argc <= i):
-		println2(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [-v|--verbose] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"run 'w check --help' for details")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
 
@@ -904,8 +1158,12 @@ int deps_main(int argc, int argv):
 			json = 1
 			diag_json = 1
 			i = i + 1
+		else if (arg_is_help(*arg)):
+			help_deps()
+			exit(0)
 	if (argc <= i):
-		println2(c"usage: w deps [--json] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w deps [--json] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"run 'w deps --help' for details")
 		exit(1)
 	deps_mode = 1
 	link_impl(argc, argv, i, 1)
@@ -1282,10 +1540,14 @@ int defhash_main(int argc, int argv):
 		if (strcmp(*arg, c"--closure") == 0):
 			defhash_closure_mode = 1
 			i = i + 1
+		else if (arg_is_help(*arg)):
+			help_defhash()
+			exit(0)
 		else:
 			scanning = 0
 	if (argc <= i):
-		println2(c"usage: w defhash [--closure] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w defhash [--closure] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"run 'w defhash --help' for details")
 		exit(1)
 	defhash_mode = 1
 	defhash_depth = 0
@@ -1453,8 +1715,12 @@ int symbols_main(int argc, int argv):
 			json = 1
 			diag_json = 1
 			i = i + 1
+		else if (arg_is_help(*arg)):
+			help_symbols()
+			exit(0)
 	if (argc <= i):
-		println2(c"usage: w symbols [--json] [x64|arm64|arm64_darwin|win64] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w symbols [--json] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"run 'w symbols --help' for details")
 		exit(1)
 	link_impl(argc, argv, i, 1)
 	symbols_dump(json)

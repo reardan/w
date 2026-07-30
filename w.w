@@ -12,6 +12,13 @@ import lib.crash
 
 int main(int argc, int argv):
 	verbosity = -1
+	# Record the raw argv[0] before any argument shifting below:
+	# compile_relative_path's last-resort search derives the compiler
+	# binary's own directory from it (compiler/compiler.w,
+	# compiler_argv0), so runs from outside the checkout still resolve
+	# the auto-imported runtime.
+	char** argv0_arg = cast(char**, argv)
+	compiler_argv0 = *argv0_arg
 	# A compiler crash reports a symbolized stack trace (lib/crash.w).
 	# wdbg_main later replaces these handlers with its own post-mortem
 	# ones for the --debug path.

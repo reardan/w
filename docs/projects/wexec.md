@@ -54,7 +54,20 @@ and `"outputs"` described below. Each step:
 - `"stdout_file"` / `"stderr_file"` — save the captured stream to a
   path; replaces `> file` redirects and lets `grep -qE` regex checks
   and `diff -u` comparisons run as ordinary follow-up steps.
-- `"timeout_ms"` — per-step timeout, 0/absent = none.
+- `"timeout_ms"` — per-step timeout in milliseconds. Absent means the
+  default, 900000 (15 minutes); an explicit `0` (or a negative value)
+  disables the timeout for that step. The `WEXEC_STEP_TIMEOUT_MS`
+  environment variable replaces the default for every step that does
+  not set its own `"timeout_ms"` (0 disables the default entirely —
+  the escape hatch for pathologically slow hosts, e.g. builds under an
+  emulated seed); it is inherited by nested wexec runs. On expiry the
+  child is SIGKILLed and the step fails with a distinct
+  `command timed out after N ms and was killed` error naming the
+  target, the step and the limit, so a deadlocked test is an
+  actionable failure instead of a silent hang. The per-source front
+  end is the existing `# wbuild: timeout=<ms>` directive
+  (tools/wbuildgen.w), which stamps `"timeout_ms"` onto the generated
+  run step.
 
 Execution model: targets run at most once per invocation. Steps run
 sequentially within a target; the first failing target stops new
@@ -187,6 +200,38 @@ even through intermediate non-wexec programs like `bin/wtest`'s own
 `--run`); a nested wexec sees the marker and skips locking entirely,
 trusting the ancestor. See the block comment above `wexec_lock_file` in
 `tools/wexec.w` for the full design.
+
+## Run-step timeouts and child cleanup
+
+Two mechanisms keep a wedged or leaked run-step child from taking the
+build down with it (`docs/projects/ai_tooling_next_steps.md`,
+2026-07-28: a deadlocked test binary hung `./wbuild` silently, survived
+the caller's own kill, and then held `bin/` binaries open so the next
+compile died in a misleading `could not open output file` assert —
+ETXTBSY):
+
+- **Per-step timeout** — every step now has one (see `"timeout_ms"`
+  under Manifest format above; default 900000 ms, `WEXEC_STEP_TIMEOUT_MS`
+  replaces the default, explicit `0` opts a step out). `process_run`
+  SIGKILLs the direct child on expiry and the step fails with a
+  distinct timed-out error instead of a generic nonzero exit.
+- **Process-group sweep** — on platforms with Unix process groups
+  (the default x86 Linux build; the win64 and arm64_darwin builds
+  report unsupported through `tools/__arch__/wexec_platform.w` and
+  keep their pre-existing behavior) each forked worker leads a fresh
+  process group, entered from both sides of the fork to close the
+  race, so every step child *and grandchild* it spawns is sweepable
+  as one unit. The parent SIGKILLs the worker's group right after
+  reaping it — a hung or backgrounded descendant that survived its own
+  step (the direct-child kill cannot reach a `sh` wrapper's children)
+  dies there instead of lingering. A SIGHUP/SIGINT/SIGTERM to wexec
+  itself sweeps every live worker's group and releases the `bin/`
+  lock before exiting, so interrupting a build (Ctrl-C, a caller's
+  `timeout`) no longer leaves test binaries running. Only the
+  outermost invocation manages groups: a nested wexec (a test-harness
+  step of an outer run, recognized by the same `WEXEC_LOCK_HELD`
+  reentrancy marker the lock uses) leaves its workers in the outer
+  worker's group, so the outer sweep still covers everything below it.
 
 ## Lessons already encoded
 

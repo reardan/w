@@ -1,1 +1,1 @@
-extern int ci_skip_note_fn();
+static int ci_skip_note_fn(void);

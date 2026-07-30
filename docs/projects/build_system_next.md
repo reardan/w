@@ -707,6 +707,19 @@ itself is unaffected by design — `wbg_find_target_by_source` resolves
 (none of them are `*_test.w`-shaped, so wbuildgen's scan never reaches
 them either way).
 
+**Update (2026-07-29): the tool-invocation residue is closed** — the
+remaining 7 (`manifest`, `manifest_check`, `metadata_check`,
+`wvdiff_test`, `wexec_keep_going_test`, `wexec_ordered_output_test`,
+and `asm_seed_gate`, whose "raw-seed mismatch" turned out to need no
+compiler-selector fix at all under the new mode: a `./w` command word
+simply derives no dependency, which is exactly the deps-less shape its
+hand-written entry always had) now generate from `build.base.json`'s
+`"generate": {"tool_targets": [...]}` section. See the design note
+below for why that surface won over a directive-vocabulary extension.
+Bucket K is now empty; bucket C (the tool binaries themselves) stays
+hand-written by design, and is what the new mode's deps derivation
+resolves against.
+
 **L. Multi-step pipelines — 44.** `float_reference_test`,
 `string_utf8_test`, `container_trap_test`, `memory_debug_fault_test`,
 `strict_mode_test`, `check_json_test`, `check_roots_test`,
@@ -736,6 +749,70 @@ compiled and run in sequence (`generator_test`, `switch_test`, ...).
 (`extra_compile=`, default-arch only, always after the single run step);
 these need a genuine N-step / multiple-run-step directive vocabulary
 before they can generate — the highest-effort bucket to close after E.
+
+### Design note: tool targets (`"generate": {"tool_targets": [...]}`, 2026-07-29)
+
+The last bucket-K residue was a family of targets whose *whole body* is
+"invoke an already-built tool": `manifest`/`manifest_check` run
+`bin/wbuildgen`, `metadata_check` runs `bin/wmeta check package.wmeta`,
+`wvdiff_test` and `wexec_keep_going_test`/`wexec_ordered_output_test`
+drive `bin/wvdiff`/`bin/wexec` over fixture files, and `asm_seed_gate`
+compiles a check via the raw seed `./w`. Nothing about them is
+`*_test.w`-shaped — there is no compile step and no source file of
+their own — so the `# wbuild:` directive machinery could never reach
+them. Two description surfaces were considered:
+
+  (a) a new `"tool_targets"` array inside `build.base.json`'s existing
+      `"generate"` object: each entry is `{"name", "steps"[, "inputs",
+      "outputs", "data"]}` with the steps in wexec's own per-step JSON
+      schema, verbatim; wbuildgen derives the rest.
+  (b) extending the `# wbuild:` directive vocabulary and inventing a
+      carrier file for it (a standalone `.wbuild` description file, or
+      directives on the *fixture* files the tool reads).
+
+(a) won, for three reasons. First, the carrier-file problem: a
+directive line needs a source to live on, and these targets have none —
+(b)'s first move is inventing a new file type whose entire content
+would be a re-encoding of the step list. Second, the step lists are
+the irreducible content, and they are *per-step structured*: several
+commands, each with its own `expect_status`/`expect_fail`,
+`expect_stdout`/`expect_stderr` (scalar or array, some embedding
+multi-line `\n` text), and `reject_*` counterparts. wexec's per-step
+JSON schema already expresses exactly this; a key=value directive
+vocabulary would have to grow per-step scoping, ordering, and
+multi-line quoting — re-inventing JSON in comment syntax (bucket L's
+N-step problem) for zero information gain. Third, precedent: the
+`"generate"` object is already where generation policy lives
+(`exclude`), so the description sits on the surface that consumes it,
+the way the fixture-header precedent put per-source compile
+diagnostics next to their source.
+
+What generation *adds* over the hand-written entries (this is the #323
+point — the entries did not just move, their derivable half was
+deleted): `"deps"` is derived, never declared. Every string element of
+every step `cmd` that equals a base target's declared `"outputs"` entry
+pulls in that target's name (`wbg_find_target_by_output` — keyed on
+declared outputs rather than `-o` arguments so the staged `bin/wexec`,
+compiled to `bin/wexec.stage` then mv'd, still resolves); paths
+produced by the entry's own earlier steps are self-satisfied
+(`asm_seed_gate` running the binary its first step compiled); a command
+word under `bin/` that resolves to neither is a hard `./wbuild
+manifest` error, so a typoed tool path fails at manifest time instead
+of at build time; and a hand-declared `"deps"` is rejected outright, so
+the dependency list can never drift from the commands again. Entries
+keep wexec's step schema byte-for-byte, which made the migration
+mechanically diffable: the generated `build.json` objects are identical
+to the previously hand-written ones, only their position moves (base
+order → the generated section's name-sorted order). Umbrella
+membership is untouched — the hand-maintained `tests` deps already pin
+`manifest_check`/`metadata_check`/`wvdiff_test`/`wexec_*_test`/
+`asm_seed_gate` by name.
+
+No wexec-side schema change was needed; the mode is entirely a
+wbuildgen/manifest-layer feature. If a future tool target ever needs a
+dependency on a *generated* (non-base) target's output, the resolver
+would need to consult generated outputs too — deferred until a real
+entry wants it.
 
 ### Reading this inventory
 

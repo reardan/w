@@ -1,0 +1,38 @@
+{
+	"targets": [
+		{
+			"name": "collapse_w1",
+			"steps": [
+				{"cmd": ["true", "widget/collapse_all.dat", "widget/collapse_two.dat", "widget/collapse_mixed.dat"]}
+			]
+		},
+		{
+			"name": "collapse_w2",
+			"steps": [
+				{"cmd": ["true", "widget/collapse_all.dat", "widget/collapse_two.dat", "widget/collapse_mixed.dat"]}
+			]
+		},
+		{
+			"name": "collapse_w3",
+			"steps": [
+				{"cmd": ["true", "widget/collapse_all.dat"]}
+			]
+		},
+		{
+			"name": "collapse_w4",
+			"steps": [
+				{"cmd": ["true", "widget/collapse_all.dat"]}
+			]
+		},
+		{
+			"name": "collapse_loner",
+			"steps": [
+				{"cmd": ["true", "widget/collapse_loner.dat", "widget/collapse_mixed.dat"]}
+			]
+		},
+		{
+			"name": "collapse_all",
+			"deps": ["collapse_w1", "collapse_w2", "collapse_w3", "collapse_w4"]
+		}
+	]
+}

@@ -2,12 +2,6 @@
 	"dirs": ["bin"],
 	"targets": [
 		{
-			"name": "manifest_check",
-			"steps": [
-				{"cmd": ["true"]}
-			]
-		},
-		{
 			"name": "wexec_test",
 			"steps": [
 				{"cmd": ["true"]}
@@ -18,6 +12,12 @@
 			"deps": [
 				"math_test",
 				"sha256_test"
+			]
+		},
+		{
+			"name": "manifest_check",
+			"steps": [
+				{"cmd": ["true"]}
 			]
 		},
 		{

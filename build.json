@@ -366,6 +366,26 @@
 			]
 		},
 		{
+			"name": "check_generic_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/check_generic_error_fixture.w", "-o", "bin/check_generic_error_fixture_bin"]},
+				{"cmd": ["bin/check_generic_error_fixture_bin"]},
+				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "tests/check_generic_error_fixture.w"], "expect_fail": true, "expect_stdout": ["\"severity\": \"error\"", "\"message\": \"Cannot find symbol: 'undefined_symbol_in_generic_body'\"", "/tests/check_generic_error_fixture.w\"", "\"line\": 9"]},
+				{"cmd": ["bin/wv2", "tests/check_generic_struct_error_fixture.w", "-o", "bin/check_generic_struct_error_fixture_bin"]},
+				{"cmd": ["bin/check_generic_struct_error_fixture_bin"]},
+				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "tests/check_generic_struct_error_fixture.w"], "expect_fail": true, "expect_stdout": ["\"severity\": \"error\"", "\"message\": \"unknown type name: 'no_such_type_for_check_fixture'\"", "/tests/check_generic_struct_error_fixture.w\"", "\"line\": 8"]},
+				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "tests/check_generic_clean_fixture.w"], "stdout_file": "bin/check_generic_clean.ndjson"},
+				{"cmd": ["test", "!", "-s", "bin/check_generic_clean.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "--json", "x64", "--quiet", "tests/check_generic_clean_fixture.w"], "stdout_file": "bin/check_generic_clean_x64.ndjson"},
+				{"cmd": ["test", "!", "-s", "bin/check_generic_clean_x64.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "tests/check_generic_used_fixture.w"], "stdout_file": "bin/check_generic_used.ndjson"},
+				{"cmd": ["test", "!", "-s", "bin/check_generic_used.ndjson"]},
+				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "structures/heap.w"], "stdout_file": "bin/check_generic_heap.ndjson"},
+				{"cmd": ["test", "!", "-s", "bin/check_generic_heap.ndjson"]}
+			]
+		},
+		{
 			"name": "check_bool_ops_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -419,7 +439,21 @@
 				{"cmd": ["bin/wv2", "tests/no_such_file_typo.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "no such file: 'tests/no_such_file_typo.w'", "reject_stderr": ["went up one directory", "not found error"]},
 				{"cmd": ["bin/wv2", "check", "--json", "tests/no_such_file_typo.w"], "expect_fail": true, "expect_stdout": ["\"file\": \"tests/no_such_file_typo.w\"", "\"severity\": \"error\"", "\"message\": \"no such file: 'tests/no_such_file_typo.w'\""]},
 				{"cmd": ["bin/wfixture", "bin/wv2", "tests/missing_import_fixture.w"]},
-				{"cmd": ["sh", "-c", "wv2=$(pwd)/bin/wv2; tmp=$(mktemp -d); printf 'int main():\\n\\treturn 0\\n' > \"$tmp/prog.w\"; cd \"$tmp\"; \"$wv2\" prog.w -o /dev/null; status=$?; cd /; rm -rf \"$tmp\"; exit $status"], "expect_fail": true, "expect_stderr": "cannot locate 'structures/hash_table.w' (searched the current directory and every parent)", "reject_stderr": ["went up one directory", "not found error"]}
+				{"cmd": ["sh", "-c", "wv2=$(pwd)/bin/wv2; tmp=$(mktemp -d); printf 'int main():\\n\\treturn 0\\n' > \"$tmp/prog.w\"; cd \"$tmp\"; \"$wv2\" prog.w -o prog_out && ./prog_out; status=$?; cd /; rm -rf \"$tmp\"; exit $status"], "reject_stderr": ["cannot locate", "went up one directory", "not found error"]},
+				{"cmd": ["sh", "-c", "wv2=$(pwd)/bin/wv2; tmp=$(mktemp -d); printf 'int main():\\n\\treturn 0\\n' > \"$tmp/prog.w\"; cd \"$tmp\"; \"$wv2\" check --quiet prog.w; status=$?; cd /; rm -rf \"$tmp\"; exit $status"], "reject_stderr": ["cannot locate", "went up one directory", "not found error"]}
+			]
+		},
+		{
+			"name": "import_diagnostic_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["printf", "import lib/assert.w\nint main():\n\treturn 0\n"], "stdout_file": "bin/import_path_shaped_fixture.w"},
+				{"cmd": ["bin/wv2", "bin/import_path_shaped_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "cannot locate 'lib/assert.w': import paths are dotted module names, not file paths; try 'import lib.assert'", "reject_stderr": ["lib/assert/w.w"]},
+				{"cmd": ["bin/wv2", "check", "--json", "bin/import_path_shaped_fixture.w"], "expect_fail": true, "expect_stdout": ["\"severity\": \"error\"", "cannot locate 'lib/assert.w': import paths are dotted module names, not file paths; try 'import lib.assert'"]},
+				{"cmd": ["printf", "import lib/no_such_module\nint main():\n\treturn 0\n"], "stdout_file": "bin/import_slash_fixture.w"},
+				{"cmd": ["bin/wv2", "bin/import_slash_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "cannot locate 'lib/no_such_module': import paths are dotted module names, not file paths; try 'import lib.no_such_module'"},
+				{"cmd": ["printf", "import lib.assert.*\nint main():\n\treturn 0\n"], "stdout_file": "bin/import_wildcard_fixture.w"},
+				{"cmd": ["bin/wv2", "bin/import_wildcard_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "import wildcard '.*' is not supported (an import already makes the whole module visible); use 'import lib.assert'"}
 			]
 		},
 		{
@@ -455,8 +489,8 @@
 			"name": "c_import_verbose_note_test",
 			"deps": ["wv2"],
 			"steps": [
-				{"cmd": ["bin/wv2", "-v", "tests/c_import_skip_note_fixture.w", "-o", "/dev/null"], "expect_stderr": "note: c_import skipped 'ci_skip_note_fn': unspecified parameters"},
-				{"cmd": ["bin/wv2", "-v", "--strict", "tests/c_import_skip_note_fixture.w", "-o", "/dev/null"], "expect_stderr": "note: c_import skipped 'ci_skip_note_fn': unspecified parameters", "reject_stderr": "treated as errors"},
+				{"cmd": ["bin/wv2", "-v", "tests/c_import_skip_note_fixture.w", "-o", "/dev/null"], "expect_stderr": "note: c_import skipped 'ci_skip_note_fn': static/inline function"},
+				{"cmd": ["bin/wv2", "-v", "--strict", "tests/c_import_skip_note_fixture.w", "-o", "/dev/null"], "expect_stderr": "note: c_import skipped 'ci_skip_note_fn': static/inline function", "reject_stderr": "treated as errors"},
 				{"cmd": ["bin/wv2", "tests/c_import_skip_note_fixture.w", "-o", "/dev/null"], "reject_stderr": "c_import skipped"}
 			]
 		},
@@ -859,20 +893,6 @@
 			]
 		},
 		{
-			"name": "manifest",
-			"deps": ["wbuildgen"],
-			"steps": [
-				{"cmd": ["bin/wbuildgen"]}
-			]
-		},
-		{
-			"name": "manifest_check",
-			"deps": ["wbuildgen"],
-			"steps": [
-				{"cmd": ["bin/wbuildgen", "--check"], "expect_stdout": "wbuildgen: OK"}
-			]
-		},
-		{
 			"name": "wbuildgen_scratch_test",
 			"deps": ["wbuildgen"],
 			"steps": [
@@ -908,7 +928,7 @@
 		},
 		{
 			"name": "wtest_map_test",
-			"deps": ["wtest", "wtest_map_check"],
+			"deps": ["wtest", "wtest_map_check", "parser_generator_test"],
 			"data": ["tests/wtest/"],
 			"steps": [
 				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations.expect"], "expect_stdout": "wtest_map_check: OK"},
@@ -916,7 +936,11 @@
 				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read build.json"},
 				{"cmd": ["bin/wtest", "changed", "docs/todo.txt"], "expect_stderr": "wtest: 0 targets selected"},
 				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]"},
-				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_unavailable.json", "--available", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"}
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_unavailable.json", "--available", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_unavailable.json", "--runnable-here", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse.json", "widget/collapse_all.dat"], "expect_stdout": "collapse_all", "reject_stdout": "collapse_w1", "expect_stderr": "wtest: collapsed 4 targets into collapse_all (selection covered 4 of 5 selectable targets)"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse.json", "widget/collapse_two.dat"], "expect_stdout": ["collapse_w1", "collapse_w2"], "reject_stdout": "collapse_all", "reject_stderr": "wtest: collapsed"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse.json", "widget/collapse_mixed.dat"], "expect_stdout": ["collapse_w1", "collapse_w2", "collapse_loner"], "reject_stdout": "collapse_all", "reject_stderr": "wtest: collapsed"}
 			]
 		},
 		{
@@ -950,6 +974,22 @@
 			]
 		},
 		{
+			"name": "wtest_runnable_test",
+			"deps": ["wtest"],
+			"data": ["tests/wtest/manifest_runnable.json", "tests/wtest/runnable_fixture/", "tools/wtest_runnable_scratch_test.sh"],
+			"steps": [
+				{"cmd": ["sh", "tools/wtest_runnable_scratch_test.sh"], "expect_stdout": "wtest_runnable_scratch_test: OK"}
+			]
+		},
+		{
+			"name": "wtest_nofailcache_test",
+			"deps": ["wtest", "wv2"],
+			"data": ["tools/wtest_nofailcache_scratch_test.sh"],
+			"steps": [
+				{"cmd": ["sh", "tools/wtest_nofailcache_scratch_test.sh"], "expect_stdout": "wtest_nofailcache_scratch_test: OK"}
+			]
+		},
+		{
 			"name": "wtest_archs_test",
 			"deps": ["wtest", "wv2"],
 			"data": ["tests/wtest/archs_fixture/", "tests/wtest/manifest_archs.json"],
@@ -973,10 +1013,34 @@
 			]
 		},
 		{
-			"name": "metadata_check",
-			"deps": ["wmeta"],
+			"name": "skills_check",
+			"deps": ["wv2"],
+			"inputs": ["tools/skills_check.w"],
+			"outputs": ["bin/skills_check"],
 			"steps": [
-				{"cmd": ["bin/wmeta", "check", "package.wmeta"], "expect_stdout": "wmeta: OK"}
+				{"cmd": ["bin/wv2", "tools/skills_check.w", "-o", "bin/skills_check"]}
+			]
+		},
+		{
+			"name": "skills_test",
+			"deps": ["wv2", "skills_check"],
+			"data": ["AGENTS.md", "README.md", ".cursor/skills/w-check-diagnostics/SKILL.md", ".cursor/skills/w-debug-wdbg/SKILL.md", ".cursor/skills/w-repl-explore/SKILL.md", ".cursor/skills/w-select-tests/SKILL.md"],
+			"steps": [
+				{"cmd": ["bin/wv2", "--help"], "stdout_file": "bin/skills_help.txt", "expect_stdout": ["usage: w [x64|arm64|arm64_darwin|win64|wasm]", "-h, --help"]},
+				{"cmd": ["sh", "-c", "for s in check deps symbols defhash; do bin/wv2 $s --help || exit 1; done >> bin/skills_help.txt"]},
+				{"cmd": ["bin/wv2", "check", "-h"], "expect_stdout": "usage: w check [--json]"},
+				{"cmd": ["bin/skills_check", "bin/skills_help.txt", "AGENTS.md", "README.md", ".cursor/skills/w-check-diagnostics/SKILL.md", ".cursor/skills/w-debug-wdbg/SKILL.md", ".cursor/skills/w-repl-explore/SKILL.md", ".cursor/skills/w-select-tests/SKILL.md"], "expect_stdout": "skills_check: OK"}
+			]
+		},
+		{
+			"name": "arg_order_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "--strict", "x64", "tests/math_test.w", "-o", "bin/arg_order_m64"], "expect_stderr": "Compiling in x64 mode", "reject_stderr": "no such file: 'x64'"},
+				{"cmd": ["bin/arg_order_m64"], "expect_stdout": "All tests passed!"},
+				{"cmd": ["bin/wv2", "-o", "bin/arg_order_m64b", "--quiet", "x64", "tests/math_test.w"], "reject_stderr": "no such file: 'x64'"},
+				{"cmd": ["bin/arg_order_m64b"], "expect_stdout": "All tests passed!"},
+				{"cmd": ["bin/wv2", "check", "--quiet", "x64", "tests/math_test.w"], "reject_stderr": "no such file: 'x64'"}
 			]
 		},
 		{
@@ -1005,16 +1069,6 @@
 			"outputs": ["bin/wvdiff"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/wvdiff.w", "-o", "bin/wvdiff"]}
-			]
-		},
-		{
-			"name": "wvdiff_test",
-			"deps": ["wvdiff"],
-			"steps": [
-				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/wvdiff_old.txt"], "expect_status": 0},
-				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/wvdiff_new.txt"], "expect_status": 1, "expect_stdout": ["--- tests/vcs/wvdiff_old.txt", "+++ tests/vcs/wvdiff_new.txt", "@@ -1,4 +1,5 @@", "-beta", "+BETA", "+epsilon"]},
-				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/no_such_file.txt"], "expect_status": 2, "expect_stderr": "wvdiff: cannot read"},
-				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt"], "expect_status": 2, "expect_stderr": "usage: wvdiff <old> <new>"}
 			]
 		},
 		{
@@ -1163,25 +1217,6 @@
 			]
 		},
 		{
-			"name": "wexec_keep_going_test",
-			"deps": ["wexec"],
-			"steps": [
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": "standalone ran", "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "reject_stdout": "needs_boom ran", "expect_stderr": "wexec: stopped early after failure: 2 of 4 targets not attempted", "reject_stderr": "keep-going"},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "--keep-going", "standalone"], "expect_stdout": ["standalone ran", "wexec: OK (1 targets)"]},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "boom"], "expect_fail": true, "reject_stderr": "not attempted"}
-			]
-		},
-		{
-			"name": "wexec_ordered_output_test",
-			"deps": ["wexec"],
-			"steps": [
-				{"cmd": ["bin/wexec", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": "wexec: OK (2 targets)", "reject_stdout": "wexec: --- "},
-				{"cmd": ["bin/wexec", "--ordered-output", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": ["wexec: --- beta ---\nwexec: target beta\n$ sleep 0.1\n$ echo beta-line-1\nbeta-line-1\n$ echo beta-line-2\nbeta-line-2\nwexec: --- alpha ---\nwexec: target alpha\n$ echo alpha-line-1\nalpha-line-1\n$ sleep 0.6\n$ echo alpha-line-2\nalpha-line-2\n", "wexec: OK (2 targets)"]},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "--ordered-output", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": ["wexec: --- standalone ---\nwexec: target standalone\n$ echo standalone ran\nstandalone ran\n", "wexec: --- boom ---\nwexec: target boom\n$ false\n"], "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: error: target 'boom' step 1: command failed with exit status 1", "wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"}
-			]
-		},
-		{
 			"name": "wexec_trace_test",
 			"deps": ["wv2", "wexec"],
 			"steps": [
@@ -1209,6 +1244,46 @@
 				{"cmd": ["sh", "-c", "WEXEC_LOCK_FILE=bin/.wexec_lock_scratch exec bin/wexec -f tests/wexec/lock_scratch.json noop"], "expect_stdout": "wexec: OK (1 targets)"},
 				{"cmd": ["sh", "-c", "test -f bin/.wexec_lock_scratch"]},
 				{"cmd": ["rm", "-f", "bin/.wexec_lock_scratch"]}
+			]
+		},
+		{
+			"name": "wexec_timeout_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/timeout.json", "hangs"], "expect_fail": true, "expect_stderr": "target 'hangs' step 1: command timed out after 300 ms and was killed"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/timeout.json", "slow_ok"], "expect_stdout": "wexec: OK (1 targets)", "reject_stderr": "timed out"},
+				{"cmd": ["sh", "-c", "WEXEC_STEP_TIMEOUT_MS=300 exec bin/wexec -f tests/wexec/timeout.json hangs_default"], "expect_fail": true, "expect_stderr": "target 'hangs_default' step 1: command timed out after 300 ms and was killed"},
+				{"cmd": ["sh", "-c", "WEXEC_STEP_TIMEOUT_MS=300 exec bin/wexec -f tests/wexec/timeout.json slow_ok"], "expect_stdout": "wexec: OK (1 targets)", "reject_stderr": "timed out"},
+				{"cmd": ["sh", "-c", "WEXEC_STEP_TIMEOUT_MS=300 exec bin/wexec -f tests/wexec/timeout.json explicit_zero"], "expect_stdout": "wexec: OK (1 targets)", "reject_stderr": "timed out"}
+			]
+		},
+		{
+			"name": "wexec_group_kill_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["rm", "-f", "bin/wexec_group_leak_pid", "bin/wexec_group_term_pid", "bin/.wexec_group_lock", "bin/.wexec_group_lock2"]},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; WEXEC_LOCK_FILE=bin/.wexec_group_lock exec bin/wexec -f tests/wexec/timeout.json leaky"], "expect_fail": true, "expect_stderr": "target 'leaky' step 1: command timed out after 400 ms and was killed"},
+				{"cmd": ["sh", "-c", "sleep 0.5; pid=$(cat bin/wexec_group_leak_pid); ! test -r /proc/$pid/stat || test \"$(cut -d' ' -f3 /proc/$pid/stat)\" = Z"]},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; WEXEC_LOCK_FILE=bin/.wexec_group_lock2 timeout -s TERM 0.6 bin/wexec -f tests/wexec/timeout.json term_hang; test $? -eq 124"]},
+				{"cmd": ["sh", "-c", "sleep 0.5; pid=$(cat bin/wexec_group_term_pid); ! test -r /proc/$pid/stat || test \"$(cut -d' ' -f3 /proc/$pid/stat)\" = Z"]},
+				{"cmd": ["sh", "-c", "test ! -f bin/.wexec_group_lock2"]}
+			]
+		},
+		{
+			"name": "wexec_exec_diag_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["rm", "-rf", "bin/wexec_exec_diag"]},
+				{"cmd": ["mkdir", "-p", "bin/wexec_exec_diag"]},
+				{"cmd": ["sh", "-c", "printf 'not a program\\n' > bin/wexec_exec_diag/unusable"]},
+				{"cmd": ["sh", "-c", "printf '#!/no/such/interp\\n' > bin/wexec_exec_diag/bad_interp && chmod 755 bin/wexec_exec_diag/bad_interp"]},
+				{"cmd": ["sh", "-c", "printf '#!/bin/sh\\nexit 127\\n' > bin/wexec_exec_diag/exits_127 && chmod 755 bin/wexec_exec_diag/exits_127"]},
+				{"cmd": ["sh", "-c", "printf '\\177ELF\\001\\001\\001\\000\\000\\000\\000\\000\\000\\000\\000\\000\\002\\000\\003\\000\\001\\000\\000\\000\\000\\000\\000\\000\\064\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\064\\000\\040\\000\\001\\000\\000\\000\\000\\000\\000\\000\\003\\000\\000\\000\\124\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\024\\000\\000\\000\\024\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000/no/such/elf_interp\\000' > bin/wexec_exec_diag/bad_elf && chmod 755 bin/wexec_exec_diag/bad_elf"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "direct_missing"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/no_such_program, which does not exist"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "direct_unusable"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/unusable, which is not executable"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "bad_interp"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/bad_interp, whose interpreter /no/such/interp does not exist"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "bad_elf_interp"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/bad_elf, whose ELF interpreter /no/such/elf_interp does not exist"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "self_127"], "expect_fail": true, "expect_stderr": "127 is the exec-failure convention, but bin/wexec_exec_diag/exits_127 exists and is executable, so the command itself likely exited 127"}
 			]
 		},
 		{
@@ -2011,7 +2086,8 @@
 				"wal_64_test",
 				"wbuild_arch_only_test",
 				"wbuild_directive_64_test",
-				"window_64_test"
+				"window_64_test",
+				"x64_c_import_knr_test"
 			]
 		},
 		{
@@ -2042,14 +2118,6 @@
 				{"cmd": ["bin/wv2", "x64", "w.w", "-o", "bin/asm_x64_selfhost"]},
 				{"cmd": ["bin/wv2", "tests/asm_x64_test.w", "-o", "bin/asm_x64_test"]},
 				{"cmd": ["bin/asm_x64_test"]}
-			]
-		},
-		{
-			"name": "asm_seed_gate",
-			"inputs": ["libs/asm/", "tests/asm_seed_check.w", "w"],
-			"steps": [
-				{"cmd": ["./w", "tests/asm_seed_check.w", "-o", "bin/asm_seed_check"]},
-				{"cmd": ["bin/asm_seed_check"]}
 			]
 		},
 		{
@@ -2290,13 +2358,18 @@
 				"utf8_bom_test",
 				"check_roots_test",
 				"check_imports_test",
+				"check_generic_test",
 				"check_bool_ops_test",
 				"missing_file_test",
+				"import_diagnostic_test",
 				"read_error_test",
 				"unrecognized_option_test",
+				"skills_test",
+				"arg_order_test",
 				"forward_call_hint_test",
 				"c_import_verbose_note_test",
 				"c_import_error_directive_test",
+				"c_import_torture_test",
 				"symbols_test",
 				"deps_test",
 				"defhash_test",
@@ -2360,6 +2433,8 @@
 				"wtest_run_test",
 				"wtest_defhash_test",
 				"wtest_range_test",
+				"wtest_runnable_test",
+				"wtest_nofailcache_test",
 				"wtest_archs_test",
 				"wexec_test",
 				"wexec_keep_going_test",
@@ -2367,6 +2442,9 @@
 				"wexec_remote_cache_test",
 				"wexec_trace_test",
 				"wexec_lock_test",
+				"wexec_timeout_test",
+				"wexec_group_kill_test",
+				"wexec_exec_diag_test",
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",
@@ -2716,6 +2794,14 @@
 			]
 		},
 		{
+			"name": "asm_seed_gate",
+			"inputs": ["libs/asm/", "tests/asm_seed_check.w", "w"],
+			"steps": [
+				{"cmd": ["./w", "tests/asm_seed_check.w", "-o", "bin/asm_seed_check"]},
+				{"cmd": ["bin/asm_seed_check"]}
+			]
+		},
+		{
 			"name": "asm_stubs_test",
 			"deps": ["wv2"],
 			"data": ["tests/asm/", "code_generator/x86_asm.w", "code_generator/x64_asm.w", "code_generator/arm64_asm.w"],
@@ -2914,6 +3000,13 @@
 			]
 		},
 		{
+			"name": "c_import_missing_header_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/c_import_missing_header_fixture.w"]}
+			]
+		},
+		{
 			"name": "c_import_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/c_import_test.w"],
@@ -2921,6 +3014,13 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/c_import_test.w", "-o", "bin/c_import_test"]},
 				{"cmd": ["bin/c_import_test"]}
+			]
+		},
+		{
+			"name": "c_import_torture_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/c_import_extern_array_fixture.w", "tests/c_import_knr_fixture.w", "tests/c_import_torture_fixture.w"]}
 			]
 		},
 		{
@@ -4402,6 +4502,20 @@
 			]
 		},
 		{
+			"name": "manifest",
+			"deps": ["wbuildgen"],
+			"steps": [
+				{"cmd": ["bin/wbuildgen"]}
+			]
+		},
+		{
+			"name": "manifest_check",
+			"deps": ["wbuildgen"],
+			"steps": [
+				{"cmd": ["bin/wbuildgen", "--check"], "expect_stdout": "wbuildgen: OK"}
+			]
+		},
+		{
 			"name": "map_default_64_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/map_default_test.w"],
@@ -4539,6 +4653,13 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/memtable_test.w", "-o", "bin/memtable_test"]},
 				{"cmd": ["bin/memtable_test"]}
+			]
+		},
+		{
+			"name": "metadata_check",
+			"deps": ["wmeta"],
+			"steps": [
+				{"cmd": ["bin/wmeta", "check", "package.wmeta"], "expect_stdout": "wmeta: OK"}
 			]
 		},
 		{
@@ -6466,6 +6587,25 @@
 			]
 		},
 		{
+			"name": "wexec_keep_going_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": "standalone ran", "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "reject_stdout": "needs_boom ran", "expect_stderr": "wexec: stopped early after failure: 2 of 4 targets not attempted", "reject_stderr": "keep-going"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "--keep-going", "standalone"], "expect_stdout": ["standalone ran", "wexec: OK (1 targets)"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "boom"], "expect_fail": true, "reject_stderr": "not attempted"}
+			]
+		},
+		{
+			"name": "wexec_ordered_output_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["bin/wexec", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": "wexec: OK (2 targets)", "reject_stdout": "wexec: --- "},
+				{"cmd": ["bin/wexec", "--ordered-output", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": ["wexec: --- beta ---\nwexec: target beta\n$ sleep 0.1\n$ echo beta-line-1\nbeta-line-1\n$ echo beta-line-2\nbeta-line-2\nwexec: --- alpha ---\nwexec: target alpha\n$ echo alpha-line-1\nalpha-line-1\n$ sleep 0.6\n$ echo alpha-line-2\nalpha-line-2\n", "wexec: OK (2 targets)"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "--ordered-output", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": ["wexec: --- standalone ---\nwexec: target standalone\n$ echo standalone ran\nstandalone ran\n", "wexec: --- boom ---\nwexec: target boom\n$ false\n"], "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: error: target 'boom' step 1: command failed with exit status 1", "wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"}
+			]
+		},
+		{
 			"name": "wexec_remote_cache_test",
 			"deps": ["wv2", "wexec"],
 			"inputs": ["tests/wexec_remote_cache_test.w"],
@@ -6506,6 +6646,16 @@
 			]
 		},
 		{
+			"name": "wvdiff_test",
+			"deps": ["wvdiff"],
+			"steps": [
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/wvdiff_old.txt"], "expect_status": 0},
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/wvdiff_new.txt"], "expect_status": 1, "expect_stdout": ["--- tests/vcs/wvdiff_old.txt", "+++ tests/vcs/wvdiff_new.txt", "@@ -1,4 +1,5 @@", "-beta", "+BETA", "+epsilon"]},
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/no_such_file.txt"], "expect_status": 2, "expect_stderr": "wvdiff: cannot read"},
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt"], "expect_status": 2, "expect_stderr": "usage: wvdiff <old> <new>"}
+			]
+		},
+		{
 			"name": "x25519_64_test",
 			"deps": ["wv2"],
 			"inputs": ["libs/standard/crypto/x25519_test.w"],
@@ -6533,6 +6683,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_test"]},
 				{"cmd": ["bin/x25519_test"]}
+			]
+		},
+		{
+			"name": "x64_c_import_knr_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/x64_c_import_knr_test.w"],
+			"outputs": ["bin/x64_c_import_knr_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_c_import_knr_test.w", "-o", "bin/x64_c_import_knr_test"]},
+				{"cmd": ["bin/x64_c_import_knr_test"], "expect_stdout": "x64 c_import knr OK"}
 			]
 		},
 		{

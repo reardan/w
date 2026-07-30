@@ -24,6 +24,16 @@ char* import_plain_paths
 int import_plain_count
 int import_plain_base
 
+# The module path exactly as the user spelled it on the 'import' line
+# currently being resolved, for compile_relative_path's cannot-locate
+# diagnostic: a path-shaped spelling like 'lib/assert.w' mangles into
+# 'lib/assert/w.w' during dots-to-slashes resolution, so the resolved
+# search path is nonsense to echo back. Saved and restored around the
+# nested compile in import_module, so an importer's spelling survives
+# its own file's imports. 0 outside any import (top-level inputs go
+# through compile_input_file, which never consults it).
+char* import_current_spelling
+
 
 /*
 --imports (opt-in `w check --imports`): warn when an identifier resolves
@@ -342,7 +352,7 @@ int import_alias_member(int alias_index):
 
 /*
 import_statement:
-	'import' dotted_name ['.' '*'] ['as' NAME]
+	'import' dotted_name ['as' NAME]
 dotted_name:
 	| dotted_name '.' NAME
 	| NAME
@@ -350,13 +360,44 @@ dotted_name:
 examples:
 	import file
 	import directory.file
-	import directory.file.*
 	import directory.file as alias
+
+rejected with a hint (settled 2026-07, docs/todo.txt "directory and
+build cleanup"):
+	import directory/file.w    path-shaped spelling (on locate failure)
+	import directory.file.*    wildcard; it always compiled exactly the
+		same file as the plain import, because every import lands the
+		whole module in the one global symbol table
 
 not implemented (future):
 	import a, b comma lists
 	import directory.file.[func1, func2, var2] selective imports
 */
+# Was the module path spelled like a filesystem path ('lib/assert.w',
+# 'lib/assert') instead of a dotted module name ('lib.assert')?
+int import_spelling_path_shaped(char* spelling):
+	if (ends_with(spelling, c".w")):
+		return 1
+	int i = 0
+	while (spelling[i]):
+		if (spelling[i] == '/'):
+			return 1
+		i = i + 1
+	return 0
+
+
+# 'lib/assert.w' -> 'lib.assert': drop a trailing '.w' extension and
+# dot the slashes, recovering the spelling import_resolve expects.
+# Always returns a fresh allocation.
+char* import_spelling_dotted(char* spelling):
+	char* dotted = strclone(spelling)
+	if (ends_with(dotted, c".w")):
+		int len = strlen(dotted)
+		dotted[len - 2] = 0
+	str_replace(dotted, '/', '.')
+	return dotted
+
+
 # Dotted module path -> resolved filesystem path (dots to slashes plus the
 # __arch__ substitution). Always returns a fresh allocation.
 char* import_resolve(char* dotted):
@@ -388,7 +429,13 @@ int import_module(char* dotted):
 	# Add the ".w" extension
 	# Shouldnt this be done inside compile*??
 	char* with_path = strjoin(resolved, c".w")
+	# Bracket the nested compile with this import's spelling so a locate
+	# failure can echo the line as the user wrote it; nested imports set
+	# and restore their own spelling around their own compiles.
+	char* old_spelling = import_current_spelling
+	import_current_spelling = dotted
 	compile_save(with_path)
+	import_current_spelling = old_spelling
 	free(with_path)
 	return 1
 
@@ -453,10 +500,19 @@ int import_statement():
 		import_strip_comment(token)
 		char* alias = import_split_alias(token)
 
-		# Strip a trailing .* wildcard; the whole module is imported either way
+		# Settled (docs/todo.txt "directory and build cleanup"): a
+		# trailing .* wildcard never meant anything -- every import
+		# lands the whole module in the one global symbol table, so
+		# 'import grammar.*' compiled exactly the same file as
+		# 'import grammar' (grammar.w), and the reference grammar
+		# (tests/parser_generator/w.pg) never accepted the form. Reject
+		# it with the working spelling instead of stripping it silently.
 		if (ends_with(token, c".*")):
 			int len = strlen(token)
-			token[len-2] = 0
+			token[len - 2] = 0
+			diag_part(c"import wildcard '.*' is not supported (an import already makes the whole module visible); use 'import ")
+			diag_part(token)
+			error(c"'")
 
 		char* resolved = import_resolve(token)
 

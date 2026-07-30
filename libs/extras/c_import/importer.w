@@ -1065,8 +1065,51 @@ int ci_signature_needs_x64(int ret_type, pg_ast_node* params):
 	return ci_params_have_float64(params)
 
 
-int ci_params_are_old_style(pg_ast_node* params):
-	return ci_find_ast(params, clang_ast_identifier_list()) != 0
+# One parameter of `int foo(a, b)`: a K&R identifier-list entry. The PEG
+# tries typedef-name parameters before identifier lists, so an old-style
+# parameter parses as a bare typedef name; it is recognized after the
+# fact as a lone identifier with no declarator, no qualifiers, and no
+# known type of that name (typedefs are already registered by the time
+# declarations are imported).
+int ci_parameter_is_knr_ident(pg_ast_node* parameter):
+	if (ci_child_ast(parameter, clang_ast_parameter_declarator()) != 0):
+		return 0
+	pg_ast_node* specs = ci_child_ast(parameter, clang_ast_typedef_name_declaration_specifiers())
+	if (specs == 0):
+		return 0
+	if (pg_ast_child_count(specs) != 1):
+		return 0
+	char* name = ci_first_ident(specs)
+	if (name == 0):
+		return 0
+	return type_lookup(name) < 0
+
+
+# Counts parameters without descending into a parameter's own declarator,
+# so a nested function pointer's parameter list is not mistaken for the
+# outer function's.
+void ci_count_knr_params(pg_ast_node* params, int* total, int* knr):
+	int i = 0
+	while (i < pg_ast_child_count(params)):
+		pg_ast_node* parameter = pg_ast_child(params, i)
+		if (ci_is_ast(parameter, clang_ast_parameter_declaration())):
+			*total = *total + 1
+			if (ci_parameter_is_knr_ident(parameter)):
+				*knr = *knr + 1
+		else if (parameter.token == 0):
+			ci_count_knr_params(parameter, total, knr)
+		i = i + 1
+
+
+# Old-style (K&R) parameter list: every parameter is a bare unknown
+# identifier — `int foo(a, b)`. A mixed list is not treated as K&R, so a
+# genuinely unknown typedef name among prototyped parameters still
+# surfaces as an unsupported-type error instead of silently importing.
+int ci_params_are_knr(pg_ast_node* params):
+	int total = 0
+	int knr = 0
+	ci_count_knr_params(params, &total, &knr)
+	return (total > 0) && (total == knr)
 
 
 # Skipped-extern notice, surfaced by -v/--verbose (verbosity >= 0;
@@ -1107,6 +1150,25 @@ void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params, int
 		sym_set_got_vaddr(sym, got_vaddr)
 
 
+# Imported extern array, of known or unknown length (e.g. extern char
+# *tzname[]; or sys_errlist). A COPY relocation cannot be sized for an
+# unknown extent, so the array is imported by address instead: the symbol
+# becomes a pointer global whose word-sized slot the loader fills with
+# the array's address (a GLOB_DAT fixup, the same slot shape function
+# imports use — the import's .dynsym entry is typed like one, which the
+# loader's by-name lookup does not mind), matching C's array-to-pointer
+# decay: name[i] indexes the library's own storage directly. Weak, so a
+# missing export reads as a null pointer instead of failing at load
+# time. Multi-dimensional arrays flatten to a pointer to the first
+# element (row-major indexing by hand).
+void ci_import_data_array(ci_declarator_info* info):
+	int sym = sym_declare_global(info.name, type_get_next_pointer(info.type), 1)
+	int slot_vaddr = dyn_emit_import_slot()
+	sym_define_global_at(sym, slot_vaddr)
+	save_int(table + sym + 14, word_size)
+	dyn_add_import_weak(info.name, slot_vaddr)
+
+
 # Imported data object (e.g. extern FILE* stdout): reserve space in the
 # image and let the loader fill it through a COPY relocation, making the
 # symbol behave like a normal W global. Weak, so objects the library does
@@ -1121,7 +1183,7 @@ void ci_import_data_object(ci_declarator_info* info):
 		ci_skip_extern_function(info.name, c"symbol already defined")
 		return
 	if (info.has_array):
-		ci_skip_extern_function(info.name, c"extern array object")
+		ci_import_data_array(info)
 		return
 	int size = type_get_size(info.type)
 	if (size < 1):
@@ -1257,10 +1319,14 @@ void ci_import_init_declarators(ci_decl_info* decl, pg_ast_node* node):
 			else if (info.is_function):
 				if (decl.is_static | decl.is_inline):
 					ci_skip_extern_function(info.name, c"static/inline function")
-				else if (info.params == 0):
-					ci_skip_extern_function(info.name, c"unspecified parameters")
-				else if (ci_params_are_old_style(info.params)):
-					ci_skip_extern_function(info.name, c"old-style parameters")
+				else if ((info.params == 0) || ci_params_are_knr(info.params)):
+					# Unprototyped (K&R) declaration: `int foo()` or
+					# `int foo(a, b)`. Imported as a variadic function
+					# with zero fixed parameters, so every call emits
+					# the C ABI conversion inline for the actual
+					# argument classes — the default argument
+					# promotions K&R callers get in C.
+					ci_import_function(info.name, info.type, 0, 1)
 				else:
 					ci_import_function(info.name, info.type, info.params, ci_params_have_ellipsis(info.params))
 			else if (info.is_function_pointer == 0):
