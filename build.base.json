@@ -1236,6 +1236,46 @@
 			]
 		},
 		{
+			"name": "wexec_timeout_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/timeout.json", "hangs"], "expect_fail": true, "expect_stderr": "target 'hangs' step 1: command timed out after 300 ms and was killed"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/timeout.json", "slow_ok"], "expect_stdout": "wexec: OK (1 targets)", "reject_stderr": "timed out"},
+				{"cmd": ["sh", "-c", "WEXEC_STEP_TIMEOUT_MS=300 exec bin/wexec -f tests/wexec/timeout.json hangs_default"], "expect_fail": true, "expect_stderr": "target 'hangs_default' step 1: command timed out after 300 ms and was killed"},
+				{"cmd": ["sh", "-c", "WEXEC_STEP_TIMEOUT_MS=300 exec bin/wexec -f tests/wexec/timeout.json slow_ok"], "expect_stdout": "wexec: OK (1 targets)", "reject_stderr": "timed out"},
+				{"cmd": ["sh", "-c", "WEXEC_STEP_TIMEOUT_MS=300 exec bin/wexec -f tests/wexec/timeout.json explicit_zero"], "expect_stdout": "wexec: OK (1 targets)", "reject_stderr": "timed out"}
+			]
+		},
+		{
+			"name": "wexec_group_kill_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["rm", "-f", "bin/wexec_group_leak_pid", "bin/wexec_group_term_pid", "bin/.wexec_group_lock", "bin/.wexec_group_lock2"]},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; WEXEC_LOCK_FILE=bin/.wexec_group_lock exec bin/wexec -f tests/wexec/timeout.json leaky"], "expect_fail": true, "expect_stderr": "target 'leaky' step 1: command timed out after 400 ms and was killed"},
+				{"cmd": ["sh", "-c", "sleep 0.5; pid=$(cat bin/wexec_group_leak_pid); ! test -r /proc/$pid/stat || test \"$(cut -d' ' -f3 /proc/$pid/stat)\" = Z"]},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; WEXEC_LOCK_FILE=bin/.wexec_group_lock2 timeout -s TERM 0.6 bin/wexec -f tests/wexec/timeout.json term_hang; test $? -eq 124"]},
+				{"cmd": ["sh", "-c", "sleep 0.5; pid=$(cat bin/wexec_group_term_pid); ! test -r /proc/$pid/stat || test \"$(cut -d' ' -f3 /proc/$pid/stat)\" = Z"]},
+				{"cmd": ["sh", "-c", "test ! -f bin/.wexec_group_lock2"]}
+			]
+		},
+		{
+			"name": "wexec_exec_diag_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["rm", "-rf", "bin/wexec_exec_diag"]},
+				{"cmd": ["mkdir", "-p", "bin/wexec_exec_diag"]},
+				{"cmd": ["sh", "-c", "printf 'not a program\\n' > bin/wexec_exec_diag/unusable"]},
+				{"cmd": ["sh", "-c", "printf '#!/no/such/interp\\n' > bin/wexec_exec_diag/bad_interp && chmod 755 bin/wexec_exec_diag/bad_interp"]},
+				{"cmd": ["sh", "-c", "printf '#!/bin/sh\\nexit 127\\n' > bin/wexec_exec_diag/exits_127 && chmod 755 bin/wexec_exec_diag/exits_127"]},
+				{"cmd": ["sh", "-c", "printf '\\177ELF\\001\\001\\001\\000\\000\\000\\000\\000\\000\\000\\000\\000\\002\\000\\003\\000\\001\\000\\000\\000\\000\\000\\000\\000\\064\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\064\\000\\040\\000\\001\\000\\000\\000\\000\\000\\000\\000\\003\\000\\000\\000\\124\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\024\\000\\000\\000\\024\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000/no/such/elf_interp\\000' > bin/wexec_exec_diag/bad_elf && chmod 755 bin/wexec_exec_diag/bad_elf"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "direct_missing"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/no_such_program, which does not exist"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "direct_unusable"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/unusable, which is not executable"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "bad_interp"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/bad_interp, whose interpreter /no/such/interp does not exist"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "bad_elf_interp"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/bad_elf, whose ELF interpreter /no/such/elf_interp does not exist"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "self_127"], "expect_fail": true, "expect_stderr": "127 is the exec-failure convention, but bin/wexec_exec_diag/exits_127 exists and is executable, so the command itself likely exited 127"}
+			]
+		},
+		{
 			"name": "result_propagate_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2227,6 +2267,9 @@
 				"wexec_remote_cache_test",
 				"wexec_trace_test",
 				"wexec_lock_test",
+				"wexec_timeout_test",
+				"wexec_group_kill_test",
+				"wexec_exec_diag_test",
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",

@@ -275,19 +275,6 @@ is a queue, not an archive.
   should include the path and errno (ETXTBSY strongly hints "old
   binary still running"), and wexec could kill run-step children it
   spawned when it is itself terminated so orphans don't linger.
-- **wexec has no per-run-step timeout, so a deadlocked test hangs the
-  whole `./wbuild` invocation silently.** The same lib/thread.w
-  session produced (twice) a test binary that futex-waited forever; the
-  `./wbuild thread_test ...` invocation produced zero output until the
-  caller's own 300s timeout killed it, and the hung child survived
-  that kill. A default (or per-step `build.json`) run timeout that
-  fails the target with "timed out after Ns" would turn a silent hang
-  into an actionable failure. Diagnosis that worked: `ps aux`, then
-  `/proc/PID/wchan` + `/proc/PID/syscall` to see the exact futex the
-  binary was parked on (op and expected-value arguments included),
-  which pinpointed both bugs (private-flag waiter vs the kernel's
-  shared CLEARTID wake; expected-value re-read racing the one-shot
-  clear) without a debugger.
 - **Minor: a flag before the arch selector turns the selector into the
   input file, with a misleading error.** `bin/wv2 --strict x64 file.w
   -o out` fails with `no such file: 'x64' in x64:1` after printing
