@@ -949,6 +949,13 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				compile_input_file(input)
 		i = i + 1
 
+	# 'w check' only (a no-op unless check_main armed generic_check_mode;
+	# deps/symbols/defhash share check_mode but never arm it): queue a
+	# synthetic [int] instantiation for every generic definition nothing
+	# instantiated, so the drain below type-checks its body too
+	# (grammar/generic.w, generic_check_instantiate_all).
+	generic_check_instantiate_all()
+
 	# Queued generic instantiations compile at this top-level boundary,
 	# before the runtime imports so instantiated bodies can rely on the
 	# to_json/template-string finishers below; a second drain afterwards
@@ -1038,6 +1045,9 @@ int check_main(int argc, int argv):
 	diag_json = 0
 	check_imports_mode = 0
 	check_bool_ops_mode = 0
+	# Type-check uninstantiated generic bodies too (grammar/generic.w,
+	# generic_check_instantiate_all): check only, never plain compilation
+	generic_check_mode = 1
 	# Leading flags in any order; --quiet must be consumed before
 	# link_impl sees the argument list so the x64/arm64 mode banner and
 	# the per-file banner are suppressed from the start.
