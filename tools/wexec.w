@@ -33,7 +33,14 @@ version of "! grep -q"), "expect_fail" (the step must exit nonzero,
 the manifest's version of Make's "! cmd"), "expect_status" (an exact
 exit code), "stdout_file" / "stderr_file" (write the captured stream
 to a path, replacing shell "> file" redirects), and "timeout_ms"
-(0 = no timeout).
+(absent = the 900000 ms default, which the WEXEC_STEP_TIMEOUT_MS
+environment variable replaces; 0 or negative = no timeout; expiry
+SIGKILLs the child and fails the step with a distinct timed-out error).
+See docs/projects/wexec.md, "Run-step timeouts and child cleanup", for
+the cleanup half: on platforms with process groups each worker leads a
+fresh group, swept with SIGKILL right after the worker is reaped and
+again from the SIGHUP/SIGINT/SIGTERM handler, so step children and
+grandchildren never outlive the build.
 
 Every target runs at most once per invocation. Targets that declare
 "inputs" (a list of files and directory prefixes ending in "/") are
@@ -161,6 +168,10 @@ map[char*, int] wexec_broken    # name -> 1 once failed or skipped (--keep-going
 list[char*] wexec_failed_list   # failed targets, in completion order
 list[char*] wexec_skipped_list  # targets skipped behind a failed dependency
 int wexec_lock_held             # 1 once *this* process created (and must remove) bin/.wexec_lock
+int wexec_groups_active         # 1 when run-step process-group cleanup is on: the outermost invocation, on a platform with process groups
+int wexec_worker_group          # worker side: 1 once this worker leads its own process group
+int* wexec_live_worker_pids     # fixed slot table of live (unreaped) worker pids, swept by wexec_on_termination
+int wexec_live_worker_cap       # slots in wexec_live_worker_pids; 0 until groups are activated (and in workers)
 
 
 int wexec_collect_closure(char* name);
@@ -202,13 +213,40 @@ char* wexec_get_string(json_value* object, char* key):
 	return value.string_value
 
 
-int wexec_get_int(json_value* object, char* key, int missing):
-	json_value* value = json_object_get(object, key)
-	if (value == 0):
-		return missing
-	if (value.type != json_type_int()):
-		return missing
-	return value.int_value
+int wexec_step_timeout_loaded
+int wexec_step_timeout_default
+
+
+# Default per-step timeout: 900000 ms (15 minutes), generous enough for
+# the slowest legitimate steps (cold self-host compiles, cold
+# 'bin/wtest' deps-closure passes) while still turning a deadlocked
+# test into a bounded, actionable failure instead of a silent hang
+# (docs/projects/ai_tooling_next_steps.md, 2026-07-28). The
+# WEXEC_STEP_TIMEOUT_MS environment variable replaces the default for
+# every step without its own "timeout_ms" (0 or negative disables the
+# default entirely -- the escape hatch for pathologically slow hosts,
+# e.g. builds under an emulated seed); being an environment variable it
+# is inherited by nested wexec runs.
+int wexec_default_step_timeout_ms():
+	if (wexec_step_timeout_loaded == 0):
+		wexec_step_timeout_loaded = 1
+		wexec_step_timeout_default = 900000
+		char* raw = env_get(c"WEXEC_STEP_TIMEOUT_MS")
+		if (raw != 0):
+			if (raw[0] != 0):
+				wexec_step_timeout_default = atoi(raw)
+	return wexec_step_timeout_default
+
+
+# Effective timeout for one step: an explicit "timeout_ms" always wins
+# (0 or negative = this step opts out of timeouts entirely); an absent
+# field falls back to the default above.
+int wexec_step_timeout_ms(json_value* step):
+	json_value* value = json_object_get(step, c"timeout_ms")
+	if (value != 0):
+		if (value.type == json_type_int()):
+			return value.int_value
+	return wexec_default_step_timeout_ms()
 
 
 int wexec_get_flag(json_value* object, char* key):
@@ -1384,7 +1422,7 @@ void wexec_resolve_note_unusable(char* candidate):
 # the ".exe" fallback). A candidate must be readable AND executable
 # (wexec_candidate_is_executable above); a readable non-executable
 # match is skipped and the search continues down PATH.
-char* wexec_resolve_program(char* name):
+char* wexec_resolve_program_search(char* name):
 	wexec_resolve_command = name
 	if (wexec_resolve_unusable != 0):
 		free(wexec_resolve_unusable)
@@ -1447,6 +1485,17 @@ char* wexec_resolve_program(char* name):
 	return name
 
 
+char* wexec_resolve_program_path   # what the most recent resolution handed to execve
+
+
+# Records what the search produced, so a later exit-127 diagnostic can
+# name the file execve was actually pointed at
+# (wexec_status_127_message below).
+char* wexec_resolve_program(char* name):
+	wexec_resolve_program_path = wexec_resolve_program_search(name)
+	return wexec_resolve_program_path
+
+
 void wexec_echo_command(char** argv, int count):
 	string_builder* line = string_new()
 	string_append(line, c"$")
@@ -1504,13 +1553,113 @@ void wexec_note_expected_failure(process_result* result):
 	string_free(line)
 
 
+# The "#!" interpreter path from a script's first line, or 0 when the
+# file has none. Caller frees. Only the first 255 bytes are examined --
+# more than enough for any real interpreter path.
+char* wexec_shebang_interpreter(char* path):
+	int fd = open(path, 0, 0)
+	if (fd < 0):
+		return 0
+	char* buffer = malloc(256)
+	int n = read(fd, buffer, 255)
+	close(fd)
+	if ((n < 3) || (buffer[0] != '#') || (buffer[1] != '!')):
+		free(buffer)
+		return 0
+	buffer[n] = 0
+	int i = 2
+	while ((buffer[i] == ' ') || (buffer[i] == 9)):
+		i = i + 1
+	string_builder* s = string_new()
+	while ((i < n) && (buffer[i] != ' ') && (buffer[i] != 9) && (buffer[i] != 10) && (buffer[i] != 13)):
+		string_append_char(s, buffer[i])
+		i = i + 1
+	free(buffer)
+	if (s.length == 0):
+		string_free(s)
+		return 0
+	char* interp = s.data
+	free(s)
+	return interp
+
+
+# The PT_INTERP path of a dynamically linked ELF executable, or 0 when
+# the file is not an ELF or declares no interpreter. Caller frees. A
+# missing ELF interpreter fails execve exactly like a missing "#!"
+# interpreter and is this repo's most common mystery 127: the 32-bit
+# dynamic tests (dynamic_test, c_import_*...) on a host without
+# /lib/ld-linux.so.2 (CLAUDE.md's env-blocked list). Bounds are
+# defensive throughout -- any malformed header just returns 0 and the
+# caller falls back to the generic message.
+char* wexec_elf_interpreter(char* path):
+	int fd = open(path, 0, 0)
+	if (fd < 0):
+		return 0
+	char* header = malloc(64)
+	int n = read(fd, header, 64)
+	if ((n < 52) || (header[0] != 127) || (header[1] != 'E') || (header[2] != 'L') || (header[3] != 'F')):
+		free(header)
+		close(fd)
+		return 0
+	int is64 = header[4] == 2
+	int phoff = 0
+	int phentsize = 0
+	int phnum = 0
+	if (is64):
+		# e_phoff is 8 bytes at offset 32; real executables keep their
+		# program headers in the low 2GB, so the low word is enough.
+		phoff = load_int32(header + 32)
+		phentsize = wexec_load_uint16(header + 54)
+		phnum = wexec_load_uint16(header + 56)
+	else:
+		phoff = load_int32(header + 28)
+		phentsize = wexec_load_uint16(header + 42)
+		phnum = wexec_load_uint16(header + 44)
+	free(header)
+	if ((phoff <= 0) || (phentsize < 32) || (phentsize > 128) || (phnum <= 0) || (phnum > 64)):
+		close(fd)
+		return 0
+	char* ph = malloc(phentsize)
+	char* interp = 0
+	int p = 0
+	while ((p < phnum) && (interp == 0)):
+		seek(fd, phoff + p * phentsize, 0)
+		if (read(fd, ph, phentsize) == phentsize):
+			# p_type == 3 is PT_INTERP; offset/filesz sit at 4/16
+			# (ELF32) or 8/32 (ELF64, low words).
+			if (load_int32(ph) == 3):
+				int interp_off = load_int32(ph + 4)
+				int interp_len = load_int32(ph + 16)
+				if (is64):
+					interp_off = load_int32(ph + 8)
+					interp_len = load_int32(ph + 32)
+				if ((interp_len > 1) && (interp_len < 256) && (interp_off > 0)):
+					# p_filesz counts the trailing NUL; read and
+					# NUL-terminate defensively either way.
+					char* text = malloc(interp_len + 1)
+					seek(fd, interp_off, 0)
+					int got = read(fd, text, interp_len)
+					if ((got > 0) && (text[0] == '/')):
+						text[got] = 0
+						interp = text
+					else:
+						free(text)
+		p = p + 1
+	free(ph)
+	close(fd)
+	return interp
+
+
 # 127 is both lib.process's execve-failed convention and the shell's
 # "command not found"; a bare "exit status 127" hides which one happened
 # and where (docs/projects/ai_tooling_next_steps.md, 2026-07-19). Say
 # what the most recent PATH resolution actually did: the readable but
 # non-executable candidate it skipped, the plain nothing-found case, or
 # — when resolution did produce a program (or argv[0] named a path
-# directly) — that the exec itself may still have failed.
+# directly) — what is wrong with the file execve was actually pointed
+# at (missing, not executable, or a script whose "#!" interpreter is
+# missing; a file that passes all three checks points back at the
+# command itself).
 char* wexec_status_127_message():
 	char* base = c"command failed with exit status 127"
 	if (wexec_resolve_missed):
@@ -1519,12 +1668,48 @@ char* wexec_status_127_message():
 		return cstr(f"{base}: no executable '{wexec_resolve_command}' on PATH")
 	if (wexec_resolve_unusable != 0):
 		return cstr(f"{base}: PATH resolution skipped readable but non-executable {wexec_resolve_unusable}")
+	# Resolution produced a concrete program (or argv[0] named a path
+	# directly): examine that file and say why the exec plausibly
+	# failed, instead of leaving a bare 127.
+	char* program = wexec_resolve_program_path
+	if (program != 0):
+		int fd = open(program, 0, 0)
+		if (fd < 0):
+			return cstr(f"{base}: tried to exec {program}, which does not exist")
+		close(fd)
+		if (wexec_candidate_is_executable(program) == 0):
+			return cstr(f"{base}: tried to exec {program}, which is not executable")
+		char* interp = wexec_shebang_interpreter(program)
+		if (interp != 0):
+			int interp_fd = open(interp, 0, 0)
+			if (interp_fd < 0):
+				return cstr(f"{base}: tried to exec {program}, whose interpreter {interp} does not exist")
+			close(interp_fd)
+			free(interp)
+		char* elf_interp = wexec_elf_interpreter(program)
+		if (elf_interp != 0):
+			int elf_fd = open(elf_interp, 0, 0)
+			if (elf_fd < 0):
+				# The repo's most common mystery 127: a dynamically
+				# linked 32-bit test binary on a host without
+				# /lib/ld-linux.so.2 (CLAUDE.md's env-blocked list).
+				return cstr(f"{base}: tried to exec {program}, whose ELF interpreter {elf_interp} does not exist")
+			close(elf_fd)
+			free(elf_interp)
+		return cstr(f"{base} (127 is the exec-failure convention, but {program} exists and is executable, so the command itself likely exited 127)")
 	return cstr(f"{base} (127 is the exec-failure convention: the program may be missing, non-executable, or lack its script interpreter)")
 
 
-int wexec_check_status(char* target_name, int step_index, json_value* step, process_result* result):
+int wexec_check_status(char* target_name, int step_index, json_value* step, process_result* result, int timeout_ms):
+	if (result.status == process_status_timeout()):
+		# Distinct from a generic nonzero exit: names the limit (the
+		# target and step come from wexec_step_error), so a deadlocked
+		# test reads as exactly that instead of hanging the whole
+		# invocation silently.
+		wexec_step_error(target_name, step_index, cstr(f"command timed out after {timeout_ms} ms and was killed (a step's timeout_ms overrides the default; 0 disables)"))
+		return 1
 	if (result.status < 0):
-		wexec_step_error(target_name, step_index, c"command timed out or could not be waited on")
+		wexec_step_error(target_name, step_index, c"command could not be waited on")
 		return 1
 	json_value* wanted = json_object_get(step, c"expect_status")
 	if (wanted != 0):
@@ -1655,7 +1840,7 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 	wexec_echo_command(argv, count)
 	char* program = wexec_resolve_program(strv_get(argv, 0))
 	char* stdin_text = wexec_get_string(step, c"stdin")
-	int timeout_ms = wexec_get_int(step, c"timeout_ms", 0)
+	int timeout_ms = wexec_step_timeout_ms(step)
 	process_result* result = process_run(program, argv, 0, stdin_text, timeout_ms)
 	free(cast(char*, argv))
 	if (result == 0):
@@ -1673,7 +1858,7 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 	if (failed == 0):
 		failed = wexec_write_capture(target_name, step_index, step, c"stderr_file", result.stderr_text, result.stderr_length)
 	if (failed == 0):
-		failed = wexec_check_status(target_name, step_index, step, result)
+		failed = wexec_check_status(target_name, step_index, step, result, timeout_ms)
 	if (failed == 0):
 		failed = wexec_check_expectation(target_name, step_index, step, c"expect_stdout", c"stdout", result.stdout_text, 0)
 	if (failed == 0):
@@ -2189,6 +2374,27 @@ void wexec_cache_remote_push_if_enabled(char* name, char* key):
 	wexec_cache_remote_push(url, key, target)
 
 
+# Fixed-slot bookkeeping of live worker pids for wexec_on_termination's
+# sweep: plain word stores, so the async handler only ever reads a
+# consistent 0 or a real pid.
+void wexec_live_worker_add(int pid):
+	int i = 0
+	while (i < wexec_live_worker_cap):
+		if (wexec_live_worker_pids[i] == 0):
+			wexec_live_worker_pids[i] = pid
+			return
+		i = i + 1
+
+
+void wexec_live_worker_remove(int pid):
+	int i = 0
+	while (i < wexec_live_worker_cap):
+		if (wexec_live_worker_pids[i] == pid):
+			wexec_live_worker_pids[i] = 0
+			return
+		i = i + 1
+
+
 # Launch one target. Returns 0 when the target completed inline (cache
 # hit or no steps), 1 when a worker was forked, -1 on spawn failure.
 int wexec_launch(char* name, list[wexec_worker*] workers):
@@ -2237,10 +2443,27 @@ int wexec_launch(char* name, list[wexec_worker*] workers):
 		close(err_read)
 		process_redirect(out_write, 1)
 		process_redirect(err_write, 2)
+		if (wexec_groups_active):
+			# Lead a fresh process group so every step child (and its
+			# children) is sweepable as one unit; the parent makes the
+			# same setpgid call from its side of the fork (the shell
+			# job-control idiom), whichever runs first wins. The
+			# inherited live table is cleared so the termination
+			# handler, delivered to this worker directly, can never
+			# sweep sibling workers' groups -- and the inherited lock
+			# ownership is dropped so no worker exit path can ever
+			# unlink the parent's live bin/.wexec_lock.
+			wexec_live_worker_cap = 0
+			wexec_lock_held = 0
+			if (wexec_process_group_enter() == 0):
+				wexec_worker_group = 1
 		wexec_print_target_header(name, c"")
 		exit(wexec_run_steps(name, target))
 	close(out_write)
 	close(err_write)
+	if (wexec_groups_active):
+		wexec_process_group_assign(pid)
+		wexec_live_worker_add(pid)
 
 	wexec_worker* w = new wexec_worker()
 	w.name = name
@@ -2460,6 +2683,19 @@ int wexec_execute(list[char*] requested):
 				if ((w.stdout_fd < 0) && (w.stderr_fd < 0)):
 					int status = 0
 					int reaped = wait4(w.pid, &status, 0, 0)
+					if (wexec_groups_active):
+						# Sweep the worker's whole process group: a
+						# hung or backgrounded step descendant that
+						# survived its own step (process_run only
+						# SIGKILLs the direct child) dies here instead
+						# of holding bin/ binaries open -- the ETXTBSY
+						# "could not open output file" trap
+						# (docs/projects/wexec.md, "Run-step timeouts
+						# and child cleanup"). A pgid is not recycled
+						# while any member survives, so the sweep
+						# targets the right group or no group at all.
+						wexec_live_worker_remove(w.pid)
+						wexec_process_group_kill(w.pid)
 					w.done = 1
 					running = running - 1
 					finished = finished + 1
@@ -3066,6 +3302,36 @@ void wexec_lock_release():
 	unlink(wexec_lock_file())
 
 
+# SIGHUP/SIGINT/SIGTERM handler (installed in main, only for the
+# outermost invocation on a platform with process groups): SIGKILL every
+# live worker's process group -- taking their step children and
+# grandchildren with them -- release the bin/ lock, and exit with the
+# shell's 128+signum convention. Without this, interrupting wexec (a
+# Ctrl-C, a caller's `timeout`) left run-step children running; a hung
+# test binary then held bin/ paths open and the next compile died in a
+# misleading ETXTBSY assert (docs/projects/ai_tooling_next_steps.md,
+# 2026-07-28). Workers inherit the handler across fork: a worker
+# signaled directly takes down its own group (itself included), and its
+# cleared live table (wexec_launch) keeps it away from its siblings.
+# Async-signal caution: only word reads/writes and plain syscalls here,
+# no allocation.
+void wexec_on_termination(int sig):
+	if (wexec_worker_group):
+		wexec_process_group_kill(getpid())
+	int i = 0
+	while (i < wexec_live_worker_cap):
+		int pid = wexec_live_worker_pids[i]
+		if (pid > 0):
+			# The group first, then the leader directly -- covering the
+			# window where a just-forked worker has not entered its
+			# group yet.
+			wexec_process_group_kill(pid)
+			kill(pid, 9)
+		i = i + 1
+	wexec_lock_release()
+	exit(128 + sig)
+
+
 int main(int argc, int argv):
 	wexec_jobs = 0
 	char* manifest_path = c"build.json"
@@ -3172,6 +3438,23 @@ int main(int argc, int argv):
 	if (wexec_lock_acquire() == 0):
 		return 1
 	defer wexec_lock_release()
+
+	# Run-step child cleanup (docs/projects/wexec.md, "Run-step timeouts
+	# and child cleanup"): only the outermost invocation -- the one that
+	# actually created the lock -- manages process groups. A nested
+	# wexec (a test-harness step of an outer run) leaves its workers in
+	# the outer worker's group, so the outer sweep covers them; win64
+	# and arm64_darwin report unsupported and keep their pre-existing
+	# behavior (tools/__arch__/wexec_platform.w).
+	if (wexec_process_groups_supported() && wexec_lock_held):
+		wexec_groups_active = 1
+		wexec_live_worker_cap = wexec_jobs
+		wexec_live_worker_pids = cast(int*, malloc(wexec_jobs * __word_size__))
+		int slot = 0
+		while (slot < wexec_jobs):
+			wexec_live_worker_pids[slot] = 0
+			slot = slot + 1
+		wexec_install_termination_handler(cast(int, wexec_on_termination))
 
 	int failed = wexec_execute(requested)
 	# Cache keys (and any recomputed import closures) are computed in

@@ -23,12 +23,32 @@ FAILED=0
 # Every wdbg invocation runs under a timeout: an execution-control
 # regression (e.g. continue failing to re-arm a stepped-over breakpoint)
 # otherwise leaves wdbg blocked in wait4 forever and hangs CI instead of
-# failing. 30s is far above any passing case's ~1-2s runtime.
+# failing. A passing case takes ~1-2s standalone, but wdbg recompiles the
+# fixture source on attach, and under a cold parallel `./wbuild tests`
+# that compile competes with every other build job -- the old 30s was
+# exceeded once under a cold 20-target run (2026-07-27,
+# docs/projects/ai_tooling_next_steps.md), so the ceiling is 120s now:
+# still a hard hang stop, with compile-load headroom. Override with
+# ATTACH_TEST_TIMEOUT=<seconds> for slower machines. A timeout failure
+# is reported as its own "FAIL (wdbg timed out ...)" banner so it is
+# never misread as an assertion failure.
+TIMEOUT_SECS="${ATTACH_TEST_TIMEOUT:-120}"
 if command -v timeout >/dev/null 2>&1; then
-	TIMEOUT="timeout 30"
+	TIMEOUT="timeout $TIMEOUT_SECS"
 else
 	TIMEOUT=""
 fi
+
+# fail_banner <wdbg-exit-status> <description>
+# The FAIL line for a case, distinguishing "wdbg timed out" (timeout(1)
+# exits 124) from an ordinary assertion failure on wdbg's output.
+fail_banner() {
+	if [ "$1" -eq 124 ]; then
+		echo "FAIL (wdbg timed out after ${TIMEOUT_SECS}s): $2"
+	else
+		echo "FAIL: $2"
+	fi
+}
 
 # run_case <description> <wdbg-args-after-pid> <stdin> <expected-substring> [want_stderr]
 # Launches a fresh fixture, attaches, and checks the output contains the
@@ -49,10 +69,11 @@ run_case() {
 	# Let the fixture reach its spin loop before attaching.
 	sleep 0.4
 
+	status=0
 	if [ -n "$want_stderr" ]; then
-		out=$(printf '%b' "$commands" | $TIMEOUT "$WDBG" --attach "$pid" $extra 2>&1 || true)
+		out=$(printf '%b' "$commands" | $TIMEOUT "$WDBG" --attach "$pid" $extra 2>&1) || status=$?
 	else
-		out=$(printf '%b' "$commands" | $TIMEOUT "$WDBG" --attach "$pid" $extra 2>/dev/null || true)
+		out=$(printf '%b' "$commands" | $TIMEOUT "$WDBG" --attach "$pid" $extra 2>/dev/null) || status=$?
 	fi
 	kill -9 "$pid" 2>/dev/null || true
 	wait "$pid" 2>/dev/null || true
@@ -60,7 +81,7 @@ run_case() {
 	if printf '%s' "$out" | grep -qF "$expect"; then
 		echo "ok: $desc"
 	else
-		echo "FAIL: $desc"
+		fail_banner "$status" "$desc"
 		echo "  expected substring: $expect"
 		echo "  actual output:"
 		printf '%s\n' "$out" | sed 's/^/    /'
@@ -84,7 +105,8 @@ run_count_case() {
 	pid=$!
 	sleep 0.4
 
-	out=$(printf '%b' "$commands" | $TIMEOUT "$dbg" --attach "$pid" "$FIXTURE_SRC" 2>/dev/null || true)
+	status=0
+	out=$(printf '%b' "$commands" | $TIMEOUT "$dbg" --attach "$pid" "$FIXTURE_SRC" 2>/dev/null) || status=$?
 	kill -9 "$pid" 2>/dev/null || true
 	wait "$pid" 2>/dev/null || true
 
@@ -92,7 +114,7 @@ run_count_case() {
 	if [ "$got" -ge "$min" ]; then
 		echo "ok: $desc"
 	else
-		echo "FAIL: $desc"
+		fail_banner "$status" "$desc"
 		echo "  expected at least $min occurrences of: $expect (got $got)"
 		echo "  actual output:"
 		printf '%s\n' "$out" | sed 's/^/    /'
@@ -116,7 +138,8 @@ run_frame_delta_case() {
 	pid=$!
 	sleep 0.4
 
-	out=$(printf 'b bump\nc\np n\nup\np n\nkill\n' | $TIMEOUT "$dbg" --attach "$pid" "$FIXTURE_SRC" 2>/dev/null || true)
+	status=0
+	out=$(printf 'b bump\nc\np n\nup\np n\nkill\n' | $TIMEOUT "$dbg" --attach "$pid" "$FIXTURE_SRC" 2>/dev/null) || status=$?
 	kill -9 "$pid" 2>/dev/null || true
 	wait "$pid" 2>/dev/null || true
 
@@ -127,7 +150,7 @@ run_frame_delta_case() {
 	if [ -n "$n0" ] && [ -n "$n1" ] && [ "$((n0 - n1))" -eq 7000000 ]; then
 		echo "ok: $desc"
 	else
-		echo "FAIL: $desc"
+		fail_banner "$status" "$desc"
 		echo "  frame 0 n='$n0' caller n='$n1' (want delta 7000000)"
 		echo "  actual output:"
 		printf '%s\n' "$out" | sed 's/^/    /'
@@ -301,12 +324,16 @@ FINITE_SRC=tests/attach_finite_fixture.w
 
 # Runs entirely inside one subshell so the fixture's stdout (its final
 # println) and its real exit code (via 'wait' immediately after) are both
-# captured from the same process, in the same command substitution.
+# captured from the same process, in the same command substitution. The
+# wdbg exit status rides along as its own wdbg_status= line so a FAIL
+# below can tell a timed-out wdbg (124) from a detach regression.
 out=$(
 	"$FINITE_BIN" &
 	pid=$!
 	sleep 0.4
-	printf 'b bump\nc\ndetach\n' | $TIMEOUT "$WDBG" --attach "$pid" "$FINITE_SRC" >/dev/null 2>/dev/null
+	wdbg_status=0
+	printf 'b bump\nc\ndetach\n' | $TIMEOUT "$WDBG" --attach "$pid" "$FINITE_SRC" >/dev/null 2>/dev/null || wdbg_status=$?
+	echo "wdbg_status=$wdbg_status"
 	code=0
 	wait "$pid" || code=$?
 	echo "exit_code=$code"
@@ -314,7 +341,11 @@ out=$(
 if printf '%s' "$out" | grep -qF "attach_finite_done"; then
 	echo "ok: detach lets the target print its final output"
 else
-	echo "FAIL: detach lets the target print its final output"
+	if printf '%s' "$out" | grep -qF "wdbg_status=124"; then
+		echo "FAIL (wdbg timed out after ${TIMEOUT_SECS}s): detach lets the target print its final output"
+	else
+		echo "FAIL: detach lets the target print its final output"
+	fi
 	echo "  actual output:"
 	printf '%s\n' "$out" | sed 's/^/    /'
 	FAILED=1
@@ -322,7 +353,7 @@ fi
 if printf '%s' "$out" | grep -qF "exit_code=42"; then
 	echo "ok: detach lets the target exit naturally (code 42)"
 else
-	echo "FAIL: detach lets the target exit naturally: $out"
+	echo "FAIL: detach lets the target exit naturally (code 42): $out"
 	FAILED=1
 fi
 
@@ -345,14 +376,15 @@ run_case_64() {
 	pid=$!
 	sleep 0.4
 
-	out=$(printf '%b' "$commands" | $TIMEOUT "$WDBG64" --attach "$pid" $extra 2>/dev/null || true)
+	status=0
+	out=$(printf '%b' "$commands" | $TIMEOUT "$WDBG64" --attach "$pid" $extra 2>/dev/null) || status=$?
 	kill -9 "$pid" 2>/dev/null || true
 	wait "$pid" 2>/dev/null || true
 
 	if printf '%s' "$out" | grep -qF "$expect"; then
 		echo "ok: $desc"
 	else
-		echo "FAIL: $desc"
+		fail_banner "$status" "$desc"
 		echo "  expected substring: $expect"
 		echo "  actual output:"
 		printf '%s\n' "$out" | sed 's/^/    /'
@@ -389,7 +421,9 @@ out=$(
 	"$FINITE_BIN64" &
 	pid=$!
 	sleep 0.4
-	printf 'b bump\nc\ndetach\n' | $TIMEOUT "$WDBG64" --attach "$pid" "$FINITE_SRC" >/dev/null 2>/dev/null
+	wdbg_status=0
+	printf 'b bump\nc\ndetach\n' | $TIMEOUT "$WDBG64" --attach "$pid" "$FINITE_SRC" >/dev/null 2>/dev/null || wdbg_status=$?
+	echo "wdbg_status=$wdbg_status"
 	code=0
 	wait "$pid" || code=$?
 	echo "exit_code=$code"
@@ -397,7 +431,11 @@ out=$(
 if printf '%s' "$out" | grep -qF "attach_finite_done"; then
 	echo "ok: x64: detach lets the target print its final output"
 else
-	echo "FAIL: x64: detach lets the target print its final output"
+	if printf '%s' "$out" | grep -qF "wdbg_status=124"; then
+		echo "FAIL (wdbg timed out after ${TIMEOUT_SECS}s): x64: detach lets the target print its final output"
+	else
+		echo "FAIL: x64: detach lets the target print its final output"
+	fi
 	echo "  actual output:"
 	printf '%s\n' "$out" | sed 's/^/    /'
 	FAILED=1
@@ -405,7 +443,7 @@ fi
 if printf '%s' "$out" | grep -qF "exit_code=42"; then
 	echo "ok: x64: detach lets the target exit naturally (code 42)"
 else
-	echo "FAIL: x64: detach lets the target exit naturally: $out"
+	echo "FAIL: x64: detach lets the target exit naturally (code 42): $out"
 	FAILED=1
 fi
 
