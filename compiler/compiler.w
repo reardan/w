@@ -218,6 +218,17 @@ int compile_relative_path(char* fn):
 	# runtime) fall back to the searched path itself.
 	if (filename == 0):
 		missing_file_reset(fn)
+	# A path-shaped spelling ('import lib/assert.w') mangles into a
+	# nonsense search path ('lib/assert/w.w') during dots-to-slashes
+	# resolution: echo the import line as the user wrote it and hint
+	# the dotted form instead (grammar/import_statement.w).
+	if ((import_current_spelling != 0) && import_spelling_path_shaped(import_current_spelling)):
+		diag_part(c"cannot locate '")
+		diag_part(import_current_spelling)
+		diag_part(c"': import paths are dotted module names, not file paths; try 'import ")
+		diag_part(import_spelling_dotted(import_current_spelling))
+		error(c"'")
+		return 0
 	diag_part(c"cannot locate '")
 	diag_part(fn)
 	# error() instead of exit() so a REPL entry importing a missing

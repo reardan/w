@@ -474,6 +474,19 @@
 			]
 		},
 		{
+			"name": "import_diagnostic_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["printf", "import lib/assert.w\nint main():\n\treturn 0\n"], "stdout_file": "bin/import_path_shaped_fixture.w"},
+				{"cmd": ["bin/wv2", "bin/import_path_shaped_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "cannot locate 'lib/assert.w': import paths are dotted module names, not file paths; try 'import lib.assert'", "reject_stderr": ["lib/assert/w.w"]},
+				{"cmd": ["bin/wv2", "check", "--json", "bin/import_path_shaped_fixture.w"], "expect_fail": true, "expect_stdout": ["\"severity\": \"error\"", "cannot locate 'lib/assert.w': import paths are dotted module names, not file paths; try 'import lib.assert'"]},
+				{"cmd": ["printf", "import lib/no_such_module\nint main():\n\treturn 0\n"], "stdout_file": "bin/import_slash_fixture.w"},
+				{"cmd": ["bin/wv2", "bin/import_slash_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "cannot locate 'lib/no_such_module': import paths are dotted module names, not file paths; try 'import lib.no_such_module'"},
+				{"cmd": ["printf", "import lib.assert.*\nint main():\n\treturn 0\n"], "stdout_file": "bin/import_wildcard_fixture.w"},
+				{"cmd": ["bin/wv2", "bin/import_wildcard_fixture.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "import wildcard '.*' is not supported (an import already makes the whole module visible); use 'import lib.assert'"}
+			]
+		},
+		{
 			"name": "read_error_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2190,6 +2203,7 @@
 				"check_imports_test",
 				"check_bool_ops_test",
 				"missing_file_test",
+				"import_diagnostic_test",
 				"read_error_test",
 				"unrecognized_option_test",
 				"forward_call_hint_test",

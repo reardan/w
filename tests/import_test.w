@@ -20,7 +20,8 @@ import tests.import_alias_helper
 # Test importing invalid filename
 # Test folder does not exist
 # Test permission denied
-# Test import filename.*
+# import filename.* is rejected with a hint (settled 2026-07,
+# docs/todo.txt "directory and build cleanup"; import_diagnostic_test)
 # Test import filename.[file1, file2, file3]
 # Test import filename.symbol_name
 
