@@ -312,6 +312,26 @@
 			]
 		},
 		{
+			"name": "crash_trace_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/crash_null_deref_fixture.w", "-o", "bin/crash_null_deref_fixture"]},
+				{"cmd": ["bin/crash_null_deref_fixture"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGSEGV (invalid memory reference)", "faulting address 0x00000000", "stack trace (most recent call first):", "at crash_deep (", "at crash_mid (", "at main (", "crash_null_deref_fixture.w:", "terminating with the default action for signal 11"]},
+				{"cmd": ["bin/wv2", "tests/crash_div_zero_fixture.w", "-o", "bin/crash_div_zero_fixture"]},
+				{"cmd": ["bin/crash_div_zero_fixture"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGFPE (arithmetic exception)", "stack trace (most recent call first):", "at crash_divide (", "at main (", "crash_div_zero_fixture.w:", "terminating with the default action for signal 8"]}
+			]
+		},
+		{
+			"name": "crash_trace_x64_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/crash_null_deref_fixture.w", "-o", "bin/crash_null_deref_fixture64"]},
+				{"cmd": ["bin/crash_null_deref_fixture64"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGSEGV (invalid memory reference)", "faulting address 0x00000000", "stack trace (most recent call first):", "at crash_deep (", "at crash_mid (", "at main (", "crash_null_deref_fixture.w:", "terminating with the default action for signal 11"]},
+				{"cmd": ["bin/wv2", "x64", "tests/crash_div_zero_fixture.w", "-o", "bin/crash_div_zero_fixture64"]},
+				{"cmd": ["bin/crash_div_zero_fixture64"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGFPE (arithmetic exception)", "stack trace (most recent call first):", "at crash_divide (", "at main (", "crash_div_zero_fixture.w:", "terminating with the default action for signal 8"]}
+			]
+		},
+		{
 			"name": "memory_debug_fault_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1982,6 +2002,7 @@
 				"crypto_random_64_test",
 				"repl_test_x64",
 				"debug_test_x64",
+				"crash_trace_x64_test",
 				"graphics_math_64_test",
 				"graphics_gl_smoke_test"
 			]
@@ -2239,6 +2260,7 @@
 				"bounds_trap_test",
 				"range_bounds_trap_test",
 				"container_trap_test",
+				"crash_trace_test",
 				"memory_debug_fault_test",
 				"buffer_field_assign_test",
 				"array_error_test",

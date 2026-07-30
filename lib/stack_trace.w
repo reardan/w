@@ -53,6 +53,7 @@ int st_dline_lo       /* .debug_line payload, 0 when absent */
 int st_dline_size
 char* st_mincore_vec
 char* st_jmp_buf
+char* st_scratch      /* number-print scratch: no malloc on the print path */
 
 # DWARF line-program results (globals: no out parameters in W).
 int st_cursor
@@ -105,10 +106,27 @@ void st_write_cstr(char* s):
 	write(2, s, n)
 
 
+# The number writers share one scratch page so the fatal-signal path
+# (lib/crash.w) never allocates; crash_handler_install warms it up
+# front with st_scratch_ensure(). The page comes from mmap, NOT malloc:
+# lib/memory_debug.w's leak accounting prints through these writers,
+# and a malloc'd scratch appearing between two debug_alloc_report_leaks()
+# calls would shift exact-leak-delta assertions (raft_ownership_test)
+# by one block.
+void st_scratch_ensure():
+	if (st_scratch == 0):
+		int page = mmap(0, 4096, 3, 34) /* RW, PRIVATE|ANONYMOUS */
+		if ((page > 0) || (page < -4095)):
+			st_scratch = cast(char*, page)
+
+
 void st_write_dec(int v):
 	if (v < 0):
 		v = 0
-	char* buf = malloc(16)
+	st_scratch_ensure()
+	if (st_scratch == 0):
+		return;
+	char* buf = st_scratch
 	int i = 16
 	while (1):
 		i = i - 1
@@ -117,12 +135,14 @@ void st_write_dec(int v):
 		if (v == 0):
 			break
 	write(2, buf + i, 16 - i)
-	free(buf)
 
 
 void st_write_hex(int v):
 	int digits = __word_size__ * 2
-	char* buf = malloc(2 + digits)
+	st_scratch_ensure()
+	if (st_scratch == 0):
+		return;
+	char* buf = st_scratch
 	buf[0] = '0'
 	buf[1] = 'x'
 	int i = 0
@@ -134,7 +154,6 @@ void st_write_hex(int v):
 			buf[2 + i] = 'a' + nibble - 10
 		i = i + 1
 	write(2, buf, 2 + digits)
-	free(buf)
 
 
 int st_cstr_eq(int a, char* b):

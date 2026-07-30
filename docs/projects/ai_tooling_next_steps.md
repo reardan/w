@@ -64,6 +64,17 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
+- **Cold `bin/wtest changed` deps-cache builds can exceed 20 minutes
+  wall on a loaded 4-core container (2026-07-29, crash-trace unit):**
+  the first post-build run was killed at a 10-minute tool timeout and
+  needed a second run to finish from the resume point. The resume
+  behavior worked as documented — nothing was lost — but agents
+  operating under per-command timeouts pay two long runs. A
+  `--progress-eta` line (entries done / total, extrapolated wall) or a
+  manifest-driven pre-warm target (`./wbuild wtest_cache`) that CI
+  could publish as an artifact would make the cost predictable and
+  shareable instead of per-checkout.
+
 - **Shipped (2026-07-28, wave 4): the verify residue's compiler-tree
   set is now DERIVED from `bin/wv2 deps w.w`** instead of the
   hard-coded prefix list (three independent 2026-07-28 entries logged

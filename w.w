@@ -7,6 +7,7 @@ instead of compiling it to an ELF; see debugger/wdbg.w.
 */
 import compiler.compiler
 import debugger.wdbg
+import lib.crash
 
 
 int main(int argc, int argv):
@@ -18,6 +19,10 @@ int main(int argc, int argv):
 	# the auto-imported runtime.
 	char** argv0_arg = cast(char**, argv)
 	compiler_argv0 = *argv0_arg
+	# A compiler crash reports a symbolized stack trace (lib/crash.w).
+	# wdbg_main later replaces these handlers with its own post-mortem
+	# ones for the --debug path.
+	crash_handler_install()
 	if (argc >= 3):
 		# 'w x64 check f.w': the target selector may precede the
 		# subcommand word. Record it for link_impl and dispatch on the
