@@ -118,18 +118,6 @@ is a queue, not an archive.
   file in the root's cached closure, fall back to root-only when the
   closure is unknown) would close it using machinery rule (b) already
   has.
-- **(2026-07-28, wave 4a) invoking the compiler from outside a
-  checkout cannot resolve the auto-imported runtime.** With CWD in a
-  scratch directory, `/path/to/repo/bin/wv2 check snippet.w` fails
-  with "cannot locate 'structures/hash_table.w' (searched the current
-  directory and every parent)": runtime-import resolution walks up
-  from the CWD, ignoring where the compiler binary itself lives. Same
-  invocation from the repo root (absolute snippet path) works. Agents
-  compile throwaway snippets from scratch directories constantly;
-  falling back to the running binary's own directory (argv[0]) before
-  erroring would make that workflow just work. Workaround: always cd
-  to the checkout and pass the snippet's absolute path.
-
 - **(2026-07-29, U5 tool-target migration) the documented deps-cache
   failure-caching residue bit in practice.** A `./wbuild tests` run
   killed mid-way through `bin/.wtest_deps_cache`'s first cold build
@@ -253,28 +241,6 @@ is a queue, not an archive.
   the directory as empty instead of parsing Darwin records with Linux
   offsets. The full fix (per-arch dirent accessors, validated on a
   Mac) is still open; the accessor plan above stands.
-- **A still-running test binary turns the next rebuild into a
-  misleading compiler assert.** While iterating on lib/thread.w join
-  reclamation (2026-07-28), a deadlocked `bin/thread_64_test` from a
-  killed `./wbuild` run kept running in the background; the next
-  `./wbuild thread_64_test` then failed with `could not open output
-  file` plus a compiler stack trace ending in `asserts` at
-  `compiler/compiler.w:768` — which reads like a compiler bug, not
-  like the actual ETXTBSY on an output path held by a live process.
-  Two cheap fixes: the linker's "could not open output file" assert
-  should include the path and errno (ETXTBSY strongly hints "old
-  binary still running"), and wexec could kill run-step children it
-  spawned when it is itself terminated so orphans don't linger.
-- **Minor: a flag before the arch selector turns the selector into the
-  input file, with a misleading error.** `bin/wv2 --strict x64 file.w
-  -o out` fails with `no such file: 'x64' in x64:1` after printing
-  `compiling 'x64'` — the arch token is consumed as the source path
-  once any flag precedes it. `bin/wv2 x64 --strict file.w -o out`
-  works. Found 2026-07-28 compiling a test's x64 twin by hand.
-  Cheap fix: recognize arch-selector tokens anywhere before the input
-  file (or error with "arch selector must come first"), so the
-  diagnostic names the real problem instead of a phantom file.
-
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
 The 2026-07 review findings and the nullable-suffix fallback all
@@ -295,10 +261,12 @@ and `docs/projects/parser_generator.md` for the record.
 
 ## Skills / rules upkeep
 
-- Keep skill command examples in sync with CLI changes (they are
-  hand-verified snapshots, nothing asserts them). A cheap
-  `skills_test` that greps the documented flags against `--help` output
-  would catch drift once the compiler grows a help text.
+- Skill command examples are kept in sync with CLI changes by the
+  `skills_test` target (build.base.json): it asserts every compiler
+  flag documented in AGENTS.md, README.md and `.cursor/skills/`
+  appears in `w --help` / `w <subcommand> --help` output
+  (`tools/skills_check.w`). When adding a compiler flag, add its help
+  line in the same commit or `skills_test` fails.
 - Candidate new skills as workflows stabilize: ARM64 testing under
   `qemu-aarch64` (see `docs/projects/arm64.md`), seed updates
   (`./wbuild update` discipline), and C interop debugging (`c_import`).

@@ -470,7 +470,8 @@
 				{"cmd": ["bin/wv2", "tests/no_such_file_typo.w", "-o", "/dev/null"], "expect_fail": true, "expect_stderr": "no such file: 'tests/no_such_file_typo.w'", "reject_stderr": ["went up one directory", "not found error"]},
 				{"cmd": ["bin/wv2", "check", "--json", "tests/no_such_file_typo.w"], "expect_fail": true, "expect_stdout": ["\"file\": \"tests/no_such_file_typo.w\"", "\"severity\": \"error\"", "\"message\": \"no such file: 'tests/no_such_file_typo.w'\""]},
 				{"cmd": ["bin/wfixture", "bin/wv2", "tests/missing_import_fixture.w"]},
-				{"cmd": ["sh", "-c", "wv2=$(pwd)/bin/wv2; tmp=$(mktemp -d); printf 'int main():\\n\\treturn 0\\n' > \"$tmp/prog.w\"; cd \"$tmp\"; \"$wv2\" prog.w -o /dev/null; status=$?; cd /; rm -rf \"$tmp\"; exit $status"], "expect_fail": true, "expect_stderr": "cannot locate 'structures/hash_table.w' (searched the current directory and every parent)", "reject_stderr": ["went up one directory", "not found error"]}
+				{"cmd": ["sh", "-c", "wv2=$(pwd)/bin/wv2; tmp=$(mktemp -d); printf 'int main():\\n\\treturn 0\\n' > \"$tmp/prog.w\"; cd \"$tmp\"; \"$wv2\" prog.w -o prog_out && ./prog_out; status=$?; cd /; rm -rf \"$tmp\"; exit $status"], "reject_stderr": ["cannot locate", "went up one directory", "not found error"]},
+				{"cmd": ["sh", "-c", "wv2=$(pwd)/bin/wv2; tmp=$(mktemp -d); printf 'int main():\\n\\treturn 0\\n' > \"$tmp/prog.w\"; cd \"$tmp\"; \"$wv2\" check --quiet prog.w; status=$?; cd /; rm -rf \"$tmp\"; exit $status"], "reject_stderr": ["cannot locate", "went up one directory", "not found error"]}
 			]
 		},
 		{
@@ -1040,6 +1041,37 @@
 			"outputs": ["bin/wmeta"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/wmeta.w", "-o", "bin/wmeta"]}
+			]
+		},
+		{
+			"name": "skills_check",
+			"deps": ["wv2"],
+			"inputs": ["tools/skills_check.w"],
+			"outputs": ["bin/skills_check"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/skills_check.w", "-o", "bin/skills_check"]}
+			]
+		},
+		{
+			"name": "skills_test",
+			"deps": ["wv2", "skills_check"],
+			"data": ["AGENTS.md", "README.md", ".cursor/skills/w-check-diagnostics/SKILL.md", ".cursor/skills/w-debug-wdbg/SKILL.md", ".cursor/skills/w-repl-explore/SKILL.md", ".cursor/skills/w-select-tests/SKILL.md"],
+			"steps": [
+				{"cmd": ["bin/wv2", "--help"], "stdout_file": "bin/skills_help.txt", "expect_stdout": ["usage: w [x64|arm64|arm64_darwin|win64|wasm]", "-h, --help"]},
+				{"cmd": ["sh", "-c", "for s in check deps symbols defhash; do bin/wv2 $s --help || exit 1; done >> bin/skills_help.txt"]},
+				{"cmd": ["bin/wv2", "check", "-h"], "expect_stdout": "usage: w check [--json]"},
+				{"cmd": ["bin/skills_check", "bin/skills_help.txt", "AGENTS.md", "README.md", ".cursor/skills/w-check-diagnostics/SKILL.md", ".cursor/skills/w-debug-wdbg/SKILL.md", ".cursor/skills/w-repl-explore/SKILL.md", ".cursor/skills/w-select-tests/SKILL.md"], "expect_stdout": "skills_check: OK"}
+			]
+		},
+		{
+			"name": "arg_order_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "--strict", "x64", "tests/math_test.w", "-o", "bin/arg_order_m64"], "expect_stderr": "Compiling in x64 mode", "reject_stderr": "no such file: 'x64'"},
+				{"cmd": ["bin/arg_order_m64"], "expect_stdout": "All tests passed!"},
+				{"cmd": ["bin/wv2", "-o", "bin/arg_order_m64b", "--quiet", "x64", "tests/math_test.w"], "reject_stderr": "no such file: 'x64'"},
+				{"cmd": ["bin/arg_order_m64b"], "expect_stdout": "All tests passed!"},
+				{"cmd": ["bin/wv2", "check", "--quiet", "x64", "tests/math_test.w"], "reject_stderr": "no such file: 'x64'"}
 			]
 		},
 		{
@@ -2206,6 +2238,8 @@
 				"import_diagnostic_test",
 				"read_error_test",
 				"unrecognized_option_test",
+				"skills_test",
+				"arg_order_test",
 				"forward_call_hint_test",
 				"c_import_verbose_note_test",
 				"c_import_error_directive_test",
