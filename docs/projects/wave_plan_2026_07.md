@@ -217,3 +217,31 @@ After final integration on `claude/issue-prioritization-subagent-plan-4zsc5o`:
 `./wbuild build && ./wbuild verify && ./wbuild verify_x64 && ./wbuild tests`
 (plus `verify_arm64` if qemu installed, wasm gates via node), then push and open
 the draft PR. Any env-blocked targets are listed in the PR body as CI-covered.
+
+## Execution status / close-out (recorded 2026-07-29)
+
+This plan is **closed**. Outcome, verified against the merge history:
+
+- **Waves 1–4 all landed**, one PR per wave as designed:
+  - Wave 1 → PR **#381** (`claude/wave1-fixes`)
+  - Wave 2 → PR **#382** (`claude/wave2-diagnostics`)
+  - Wave 3 → PR **#383** (`claude/wave3-features`)
+  - Wave 4 → PR **#384** (`claude/wave4-features`)
+  (The plan document itself landed via PR #380 on
+  `claude/issue-prioritization-subagent-plan-4zsc5o`.)
+- **Wave 5 was never started** — no `claude/wave5-stretch` branch or PR
+  exists. Disposition of its five items:
+  - **W5a** (P3.1 second half, VCS object packing), **W5c** (P3.5
+    `--help` + `skills_test`), **W5d** (P3.4 ndarray index sugar), and
+    **W5e** (P3.3 W^X split x86/x64) are carried into the successor
+    program `docs/projects/wave_plan_2026_07b.md` as units **U12**,
+    **U6**, **U11**, and **U16** respectively.
+  - **W5b** (P3.2, issue #251 direction-1 deps-driven wexec cache keys)
+    needs no carry-over: it had **already landed** before this plan's
+    wave 5 was reachable, as consolidated-plan task **A3** (plus the
+    **D3-1** SHA-256 cache-key widening) — see
+    `docs/projects/consolidated_plan_2026_07.md`'s 2026-07-16 status
+    update ("A3 ... are all merged") and the implemented "Deps-driven
+    cache keys (issue #251 Direction 1)" section in `tools/wexec.w`.
+    The item was stale at plan-writing time; this plan double-counted
+    it.

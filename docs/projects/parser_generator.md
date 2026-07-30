@@ -313,9 +313,10 @@ primary expression" family in
 `paren_expression_opt`/`range_expr`/`postfix_tail`) is exactly the set of
 rules `--report` still lists as backtracking after milestone 2 — porting
 it to streaming mode with predicates is future work, not part of this
-milestone (see `docs/projects/ai_tooling_next_steps.md` for the
-known-unsound-shape caveat discovered while building the demonstration
-grammar above).
+milestone (the unsound shared-prefix shapes discovered while building
+the demonstration grammar above are now generation-time rejections —
+see the streaming-mode notes earlier in this document, pinned by
+`tests/parser_generator/streaming_guard_reject.pg`).
 
 ## W grammar
 

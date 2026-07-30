@@ -852,20 +852,6 @@
 			]
 		},
 		{
-			"name": "manifest",
-			"deps": ["wbuildgen"],
-			"steps": [
-				{"cmd": ["bin/wbuildgen"]}
-			]
-		},
-		{
-			"name": "manifest_check",
-			"deps": ["wbuildgen"],
-			"steps": [
-				{"cmd": ["bin/wbuildgen", "--check"], "expect_stdout": "wbuildgen: OK"}
-			]
-		},
-		{
 			"name": "wbuildgen_scratch_test",
 			"deps": ["wbuildgen"],
 			"steps": [
@@ -901,7 +887,7 @@
 		},
 		{
 			"name": "wtest_map_test",
-			"deps": ["wtest", "wtest_map_check"],
+			"deps": ["wtest", "wtest_map_check", "parser_generator_test"],
 			"data": ["tests/wtest/"],
 			"steps": [
 				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations.expect"], "expect_stdout": "wtest_map_check: OK"},
@@ -909,7 +895,11 @@
 				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read build.json"},
 				{"cmd": ["bin/wtest", "changed", "docs/todo.txt"], "expect_stderr": "wtest: 0 targets selected"},
 				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]"},
-				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_unavailable.json", "--available", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"}
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_unavailable.json", "--available", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_unavailable.json", "--runnable-here", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse.json", "widget/collapse_all.dat"], "expect_stdout": "collapse_all", "reject_stdout": "collapse_w1", "expect_stderr": "wtest: collapsed 4 targets into collapse_all (selection covered 4 of 5 selectable targets)"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse.json", "widget/collapse_two.dat"], "expect_stdout": ["collapse_w1", "collapse_w2"], "reject_stdout": "collapse_all", "reject_stderr": "wtest: collapsed"},
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse.json", "widget/collapse_mixed.dat"], "expect_stdout": ["collapse_w1", "collapse_w2", "collapse_loner"], "reject_stdout": "collapse_all", "reject_stderr": "wtest: collapsed"}
 			]
 		},
 		{
@@ -943,6 +933,22 @@
 			]
 		},
 		{
+			"name": "wtest_runnable_test",
+			"deps": ["wtest"],
+			"data": ["tests/wtest/manifest_runnable.json", "tests/wtest/runnable_fixture/", "tools/wtest_runnable_scratch_test.sh"],
+			"steps": [
+				{"cmd": ["sh", "tools/wtest_runnable_scratch_test.sh"], "expect_stdout": "wtest_runnable_scratch_test: OK"}
+			]
+		},
+		{
+			"name": "wtest_nofailcache_test",
+			"deps": ["wtest", "wv2"],
+			"data": ["tools/wtest_nofailcache_scratch_test.sh"],
+			"steps": [
+				{"cmd": ["sh", "tools/wtest_nofailcache_scratch_test.sh"], "expect_stdout": "wtest_nofailcache_scratch_test: OK"}
+			]
+		},
+		{
 			"name": "wtest_archs_test",
 			"deps": ["wtest", "wv2"],
 			"data": ["tests/wtest/archs_fixture/", "tests/wtest/manifest_archs.json"],
@@ -963,13 +969,6 @@
 			"outputs": ["bin/wmeta"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/wmeta.w", "-o", "bin/wmeta"]}
-			]
-		},
-		{
-			"name": "metadata_check",
-			"deps": ["wmeta"],
-			"steps": [
-				{"cmd": ["bin/wmeta", "check", "package.wmeta"], "expect_stdout": "wmeta: OK"}
 			]
 		},
 		{
@@ -998,16 +997,6 @@
 			"outputs": ["bin/wvdiff"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/wvdiff.w", "-o", "bin/wvdiff"]}
-			]
-		},
-		{
-			"name": "wvdiff_test",
-			"deps": ["wvdiff"],
-			"steps": [
-				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/wvdiff_old.txt"], "expect_status": 0},
-				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/wvdiff_new.txt"], "expect_status": 1, "expect_stdout": ["--- tests/vcs/wvdiff_old.txt", "+++ tests/vcs/wvdiff_new.txt", "@@ -1,4 +1,5 @@", "-beta", "+BETA", "+epsilon"]},
-				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/no_such_file.txt"], "expect_status": 2, "expect_stderr": "wvdiff: cannot read"},
-				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt"], "expect_status": 2, "expect_stderr": "usage: wvdiff <old> <new>"}
 			]
 		},
 		{
@@ -1156,25 +1145,6 @@
 			]
 		},
 		{
-			"name": "wexec_keep_going_test",
-			"deps": ["wexec"],
-			"steps": [
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": "standalone ran", "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "reject_stdout": "needs_boom ran", "expect_stderr": "wexec: stopped early after failure: 2 of 4 targets not attempted", "reject_stderr": "keep-going"},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "--keep-going", "standalone"], "expect_stdout": ["standalone ran", "wexec: OK (1 targets)"]},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "boom"], "expect_fail": true, "reject_stderr": "not attempted"}
-			]
-		},
-		{
-			"name": "wexec_ordered_output_test",
-			"deps": ["wexec"],
-			"steps": [
-				{"cmd": ["bin/wexec", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": "wexec: OK (2 targets)", "reject_stdout": "wexec: --- "},
-				{"cmd": ["bin/wexec", "--ordered-output", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": ["wexec: --- beta ---\nwexec: target beta\n$ sleep 0.1\n$ echo beta-line-1\nbeta-line-1\n$ echo beta-line-2\nbeta-line-2\nwexec: --- alpha ---\nwexec: target alpha\n$ echo alpha-line-1\nalpha-line-1\n$ sleep 0.6\n$ echo alpha-line-2\nalpha-line-2\n", "wexec: OK (2 targets)"]},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "--ordered-output", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": ["wexec: --- standalone ---\nwexec: target standalone\n$ echo standalone ran\nstandalone ran\n", "wexec: --- boom ---\nwexec: target boom\n$ false\n"], "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: error: target 'boom' step 1: command failed with exit status 1", "wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"}
-			]
-		},
-		{
 			"name": "wexec_trace_test",
 			"deps": ["wv2", "wexec"],
 			"steps": [
@@ -1202,6 +1172,46 @@
 				{"cmd": ["sh", "-c", "WEXEC_LOCK_FILE=bin/.wexec_lock_scratch exec bin/wexec -f tests/wexec/lock_scratch.json noop"], "expect_stdout": "wexec: OK (1 targets)"},
 				{"cmd": ["sh", "-c", "test -f bin/.wexec_lock_scratch"]},
 				{"cmd": ["rm", "-f", "bin/.wexec_lock_scratch"]}
+			]
+		},
+		{
+			"name": "wexec_timeout_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/timeout.json", "hangs"], "expect_fail": true, "expect_stderr": "target 'hangs' step 1: command timed out after 300 ms and was killed"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/timeout.json", "slow_ok"], "expect_stdout": "wexec: OK (1 targets)", "reject_stderr": "timed out"},
+				{"cmd": ["sh", "-c", "WEXEC_STEP_TIMEOUT_MS=300 exec bin/wexec -f tests/wexec/timeout.json hangs_default"], "expect_fail": true, "expect_stderr": "target 'hangs_default' step 1: command timed out after 300 ms and was killed"},
+				{"cmd": ["sh", "-c", "WEXEC_STEP_TIMEOUT_MS=300 exec bin/wexec -f tests/wexec/timeout.json slow_ok"], "expect_stdout": "wexec: OK (1 targets)", "reject_stderr": "timed out"},
+				{"cmd": ["sh", "-c", "WEXEC_STEP_TIMEOUT_MS=300 exec bin/wexec -f tests/wexec/timeout.json explicit_zero"], "expect_stdout": "wexec: OK (1 targets)", "reject_stderr": "timed out"}
+			]
+		},
+		{
+			"name": "wexec_group_kill_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["rm", "-f", "bin/wexec_group_leak_pid", "bin/wexec_group_term_pid", "bin/.wexec_group_lock", "bin/.wexec_group_lock2"]},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; WEXEC_LOCK_FILE=bin/.wexec_group_lock exec bin/wexec -f tests/wexec/timeout.json leaky"], "expect_fail": true, "expect_stderr": "target 'leaky' step 1: command timed out after 400 ms and was killed"},
+				{"cmd": ["sh", "-c", "sleep 0.5; pid=$(cat bin/wexec_group_leak_pid); ! test -r /proc/$pid/stat || test \"$(cut -d' ' -f3 /proc/$pid/stat)\" = Z"]},
+				{"cmd": ["sh", "-c", "unset WEXEC_LOCK_HELD; WEXEC_LOCK_FILE=bin/.wexec_group_lock2 timeout -s TERM 0.6 bin/wexec -f tests/wexec/timeout.json term_hang; test $? -eq 124"]},
+				{"cmd": ["sh", "-c", "sleep 0.5; pid=$(cat bin/wexec_group_term_pid); ! test -r /proc/$pid/stat || test \"$(cut -d' ' -f3 /proc/$pid/stat)\" = Z"]},
+				{"cmd": ["sh", "-c", "test ! -f bin/.wexec_group_lock2"]}
+			]
+		},
+		{
+			"name": "wexec_exec_diag_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["rm", "-rf", "bin/wexec_exec_diag"]},
+				{"cmd": ["mkdir", "-p", "bin/wexec_exec_diag"]},
+				{"cmd": ["sh", "-c", "printf 'not a program\\n' > bin/wexec_exec_diag/unusable"]},
+				{"cmd": ["sh", "-c", "printf '#!/no/such/interp\\n' > bin/wexec_exec_diag/bad_interp && chmod 755 bin/wexec_exec_diag/bad_interp"]},
+				{"cmd": ["sh", "-c", "printf '#!/bin/sh\\nexit 127\\n' > bin/wexec_exec_diag/exits_127 && chmod 755 bin/wexec_exec_diag/exits_127"]},
+				{"cmd": ["sh", "-c", "printf '\\177ELF\\001\\001\\001\\000\\000\\000\\000\\000\\000\\000\\000\\000\\002\\000\\003\\000\\001\\000\\000\\000\\000\\000\\000\\000\\064\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\064\\000\\040\\000\\001\\000\\000\\000\\000\\000\\000\\000\\003\\000\\000\\000\\124\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\024\\000\\000\\000\\024\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000/no/such/elf_interp\\000' > bin/wexec_exec_diag/bad_elf && chmod 755 bin/wexec_exec_diag/bad_elf"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "direct_missing"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/no_such_program, which does not exist"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "direct_unusable"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/unusable, which is not executable"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "bad_interp"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/bad_interp, whose interpreter /no/such/interp does not exist"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "bad_elf_interp"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/bad_elf, whose ELF interpreter /no/such/elf_interp does not exist"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "self_127"], "expect_fail": true, "expect_stderr": "127 is the exec-failure convention, but bin/wexec_exec_diag/exits_127 exists and is executable, so the command itself likely exited 127"}
 			]
 		},
 		{
@@ -2036,14 +2046,6 @@
 			]
 		},
 		{
-			"name": "asm_seed_gate",
-			"inputs": ["libs/asm/", "tests/asm_seed_check.w", "w"],
-			"steps": [
-				{"cmd": ["./w", "tests/asm_seed_check.w", "-o", "bin/asm_seed_check"]},
-				{"cmd": ["bin/asm_seed_check"]}
-			]
-		},
-		{
 			"name": "gen_stubs",
 			"deps": ["wv2"],
 			"inputs": ["libs/asm/", "tools/gen_stubs.w"],
@@ -2351,6 +2353,8 @@
 				"wtest_run_test",
 				"wtest_defhash_test",
 				"wtest_range_test",
+				"wtest_runnable_test",
+				"wtest_nofailcache_test",
 				"wtest_archs_test",
 				"wexec_test",
 				"wexec_keep_going_test",
@@ -2358,6 +2362,9 @@
 				"wexec_remote_cache_test",
 				"wexec_trace_test",
 				"wexec_lock_test",
+				"wexec_timeout_test",
+				"wexec_group_kill_test",
+				"wexec_exec_diag_test",
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",
@@ -2706,6 +2713,14 @@
 			]
 		},
 		{
+			"name": "asm_seed_gate",
+			"inputs": ["libs/asm/", "tests/asm_seed_check.w", "w"],
+			"steps": [
+				{"cmd": ["./w", "tests/asm_seed_check.w", "-o", "bin/asm_seed_check"]},
+				{"cmd": ["bin/asm_seed_check"]}
+			]
+		},
+		{
 			"name": "asm_stubs_test",
 			"deps": ["wv2"],
 			"data": ["tests/asm/", "code_generator/x86_asm.w", "code_generator/x64_asm.w", "code_generator/arm64_asm.w"],
@@ -2901,6 +2916,13 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/c_import_libc_test.w", "-o", "bin/c_import_libc_test"]},
 				{"cmd": ["bin/c_import_libc_test"]}
+			]
+		},
+		{
+			"name": "c_import_missing_header_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/c_import_missing_header_fixture.w"]}
 			]
 		},
 		{
@@ -4372,6 +4394,20 @@
 			]
 		},
 		{
+			"name": "manifest",
+			"deps": ["wbuildgen"],
+			"steps": [
+				{"cmd": ["bin/wbuildgen"]}
+			]
+		},
+		{
+			"name": "manifest_check",
+			"deps": ["wbuildgen"],
+			"steps": [
+				{"cmd": ["bin/wbuildgen", "--check"], "expect_stdout": "wbuildgen: OK"}
+			]
+		},
+		{
 			"name": "map_default_64_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/map_default_test.w"],
@@ -4509,6 +4545,13 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/memtable_test.w", "-o", "bin/memtable_test"]},
 				{"cmd": ["bin/memtable_test"]}
+			]
+		},
+		{
+			"name": "metadata_check",
+			"deps": ["wmeta"],
+			"steps": [
+				{"cmd": ["bin/wmeta", "check", "package.wmeta"], "expect_stdout": "wmeta: OK"}
 			]
 		},
 		{
@@ -6436,6 +6479,25 @@
 			]
 		},
 		{
+			"name": "wexec_keep_going_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": "standalone ran", "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "reject_stdout": "needs_boom ran", "expect_stderr": "wexec: stopped early after failure: 2 of 4 targets not attempted", "reject_stderr": "keep-going"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "--keep-going", "standalone"], "expect_stdout": ["standalone ran", "wexec: OK (1 targets)"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "boom"], "expect_fail": true, "reject_stderr": "not attempted"}
+			]
+		},
+		{
+			"name": "wexec_ordered_output_test",
+			"deps": ["wexec"],
+			"steps": [
+				{"cmd": ["bin/wexec", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": "wexec: OK (2 targets)", "reject_stdout": "wexec: --- "},
+				{"cmd": ["bin/wexec", "--ordered-output", "-j", "2", "-f", "tests/wexec/ordered_output.json", "alpha", "beta"], "expect_stdout": ["wexec: --- beta ---\nwexec: target beta\n$ sleep 0.1\n$ echo beta-line-1\nbeta-line-1\n$ echo beta-line-2\nbeta-line-2\nwexec: --- alpha ---\nwexec: target alpha\n$ echo alpha-line-1\nalpha-line-1\n$ sleep 0.6\n$ echo alpha-line-2\nalpha-line-2\n", "wexec: OK (2 targets)"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "--ordered-output", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": ["wexec: --- standalone ---\nwexec: target standalone\n$ echo standalone ran\nstandalone ran\n", "wexec: --- boom ---\nwexec: target boom\n$ false\n"], "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: error: target 'boom' step 1: command failed with exit status 1", "wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"}
+			]
+		},
+		{
 			"name": "wexec_remote_cache_test",
 			"deps": ["wv2", "wexec"],
 			"inputs": ["tests/wexec_remote_cache_test.w"],
@@ -6473,6 +6535,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/wvc_e2e_test.w", "-o", "bin/wvc_e2e_test"]},
 				{"cmd": ["bin/wvc_e2e_test"]}
+			]
+		},
+		{
+			"name": "wvdiff_test",
+			"deps": ["wvdiff"],
+			"steps": [
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/wvdiff_old.txt"], "expect_status": 0},
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/wvdiff_new.txt"], "expect_status": 1, "expect_stdout": ["--- tests/vcs/wvdiff_old.txt", "+++ tests/vcs/wvdiff_new.txt", "@@ -1,4 +1,5 @@", "-beta", "+BETA", "+epsilon"]},
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt", "tests/vcs/no_such_file.txt"], "expect_status": 2, "expect_stderr": "wvdiff: cannot read"},
+				{"cmd": ["bin/wvdiff", "tests/vcs/wvdiff_old.txt"], "expect_status": 2, "expect_stderr": "usage: wvdiff <old> <new>"}
 			]
 		},
 		{

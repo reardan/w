@@ -277,3 +277,35 @@ already landed via #253/#254).
 6. Any agent-tooling friction found en route → add to
    `ai_tooling_next_steps.md` in the same PR.
 7. Open the PR as draft; it merges only via the sequential protocol in §4.
+
+## 7. Post-plan re-verification (2026-07-29)
+
+Two items from §2 were scheduled (item 10 as W4a, item 23 as W3c) but
+their status was never re-recorded here. Both were re-checked against
+the current tree, including compiling and running probe programs on x86
+and x64:
+
+- **Item 10 — `for` loop `return` out of a generator leaks the
+  suspended generator stack: LANDED.** `grammar/for_statement.w` gives
+  generator iterables `gen_free` on the loop's normal-exit and break
+  edges, and `return` (and `?` error propagation) free through the
+  exit-cleanup registry (`for_cleanup_record`; `grammar/statement.w`
+  walks it and emits each free before unwinding the frame — see the
+  block comment above `for_cleanup_record`). Pinned by
+  `tests/generator_return_free_test.w` (+ its `_64` twin), which
+  leak-asserts against `/proc/self/statm`; design record in
+  `docs/projects/iteration.md`. Empirically re-confirmed: a probe
+  running 2000 early `return`s out of a loop over a suspended generator
+  grew `/proc/self/statm`'s total-pages figure by exactly 0 on both x86
+  and x64 (2000 leaked 64KB stacks would have added ~32000 pages).
+- **Item 23 — struct method chaining (`p.child().move(1,2)`): LANDED.**
+  `docs/projects/struct_methods.md`'s "Typed chaining through method
+  return values" section records that chaining through struct-pointer
+  and struct-value method returns works on all targets to arbitrary
+  depth, covered end to end by `tests/method_chaining_test.w` (+ x64
+  twin); chaining onto a non-struct call result is a frozen diagnostic
+  (`tests/method_chain_error_fixture.w`, `type_system_error_test`,
+  emitted from `grammar/postfix_expr.w`). Empirically re-confirmed: a
+  probe compiling and running exactly the audit's exemplar shape
+  (`p.child().move(1, 2).sum()`) produced the correct value on both x86
+  and x64.

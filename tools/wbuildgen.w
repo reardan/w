@@ -198,6 +198,53 @@ below it and breaks the fixture it decorates — caught by actually
 running the migrated fixture targets, not by inspection, which is why
 every fixture-group member in this migration uses the sidecar.
 
+Tool targets (2026-07, the last bucket C/K residue in
+docs/projects/build_system_next.md): a family of targets is "invoke an
+already-built tool as the whole target" — no compile step of its own,
+so there is no `*_test.w` source for a directive to live on
+(manifest_check runs `bin/wbuildgen --check`, metadata_check runs
+`bin/wmeta check package.wmeta`, wvdiff_test / wexec_keep_going_test /
+wexec_ordered_output_test drive `bin/wvdiff`/`bin/wexec` over fixture
+files, asm_seed_gate compiles via the raw seed `./w`). These are
+described in build.base.json's "generate": {"tool_targets": [...]}
+array instead of hand-written in "targets" (see
+docs/projects/build_system_next.md's "Tool targets" design note for
+why that surface won over a directive-vocabulary extension). Each
+entry is
+
+    {"name": <target>, "steps": [<wexec step objects, verbatim>],
+     "inputs": [...]?, "outputs": [...]?, "data": [...]?}
+
+and wbuildgen derives the rest (wbg_expand_tool_targets):
+
+- "deps" is DERIVED, never declared: every string element of every
+  step's "cmd" that equals a base target's declared "outputs" entry
+  adds that target's name (first-seen order, deduped) — so
+  `bin/wmeta ...` pulls in the "wmeta" tool target, and the staged
+  `bin/wexec` (compiled to bin/wexec.stage, then mv'd) still resolves
+  because the lookup key is the *declared* output, not a "-o"
+  argument. A path produced by an earlier step of the same entry (its
+  "-o" arguments and declared "outputs") is self-satisfied and never
+  a dep (asm_seed_gate's second step runs the binary its first step
+  compiled). A step whose *command word* (cmd[0]) starts with "bin/"
+  but resolves to neither is a hard error — a typoed tool path fails
+  `./wbuild manifest` instead of failing the target at build time.
+  Declaring "deps" by hand in an entry is an error, so the derived
+  list cannot drift from the commands.
+- "inputs"/"outputs"/"data" pass through verbatim when present (an
+  entry with no "inputs" stays a FORCE target, exactly like the
+  hand-written originals); every step field other than "cmd" (the
+  expect_* / reject_* / expect_status / timeout_ms / stdin
+  vocabulary) is wexec's schema and passes through untouched.
+- The generated target keeps the entry's own field order with "deps"
+  inserted right after "name" — byte-identical to the hand-written
+  originals, which is what made the migration diffable.
+- Tool targets join no umbrella automatically; the hand-maintained
+  umbrella deps in build.base.json keep listing them (manifest_check,
+  metadata_check, ... are pinned members of "tests" already).
+- Base wins is an *error* here, not a skip: an entry whose name is
+  still hand-written in "targets" means a half-finished migration.
+
 Usage: wbuildgen [--check] [--base build.base.json] [--out build.json]
 
 --check regenerates to bin/build.json.gen, byte-compares it with the
@@ -219,6 +266,7 @@ map[char*, json_value*] wbg_base_targets # name -> target object
 list[char*] wbg_base_names               # base manifest order
 map[char*, int] wbg_exclude              # source path -> 1
 map[char*, int] wbg_pinned               # names listed in step-less base deps
+json_value* wbg_tool_targets_json        # "generate".."tool_targets" array; 0 = absent
 list[json_value*] wbg_generated          # generated targets, sorted by name
 map[char*, int] wbg_gen_seen             # generated names, for collisions
 list[char*] wbg_gen32_names
@@ -736,6 +784,27 @@ json_value* wbg_find_target_by_source(char* src_path):
 	return 0
 
 
+# Finds the build.base.json target whose declared "outputs" array
+# contains binary — the tool-target deps resolver. Keyed on the
+# *declared* output rather than a "-o" compile argument so staged
+# builds resolve too (wexec compiles to bin/wexec.stage and mv's it;
+# its outputs entry is the final bin/wexec). Returns the target's
+# json_value, or 0 when no base target declares the path.
+json_value* wbg_find_target_by_output(char* binary):
+	for char* name in wbg_base_names:
+		json_value* target = wbg_base_targets[name]
+		json_value* outputs = json_object_get(target, c"outputs")
+		if ((outputs == 0) || (outputs.type != json_type_array())):
+			continue
+		int i = 0
+		while (i < json_array_length(outputs)):
+			json_value* element = json_array_get(outputs, i)
+			if ((element.type == json_type_string()) && (strcmp(element.string_value, binary) == 0)):
+				return target
+			i = i + 1
+	return 0
+
+
 # The target name for a 'tool=' (or fixture-group) path: wraps
 # wbg_find_target_by_source, returning just the resolved name. Returns
 # 0 if no base target compiles src_path.
@@ -1127,11 +1196,18 @@ int wbg_load_base(char* path):
 		i = i + 1
 
 	wbg_exclude = new map[char*, int]
+	wbg_tool_targets_json = 0
 	json_value* generate = json_object_get(wbg_base, c"generate")
 	if (generate != 0):
 		if (generate.type != json_type_object()):
 			wbg_error(c"\"generate\" must be an object")
 			return 1
+		json_value* tool_targets = json_object_get(generate, c"tool_targets")
+		if (tool_targets != 0):
+			if (tool_targets.type != json_type_array()):
+				wbg_error(c"\"generate\".\"tool_targets\" must be an array")
+				return 1
+			wbg_tool_targets_json = tool_targets
 		json_value* exclude = json_object_get(generate, c"exclude")
 		if (exclude != 0):
 			if (exclude.type != json_type_array()):
@@ -1641,6 +1717,183 @@ int wbg_add_group_target(wbg_group* g):
 	return 0
 
 
+/* Tool targets ("generate": {"tool_targets": [...]}, see the module
+doc comment): the whole target is one already-built tool invocation —
+no compile step of its own, so no *_test.w source exists for a
+directive to live on. The entry carries name/steps (plus optional
+inputs/outputs/data) verbatim; "deps" is derived from the step
+commands, so it can never drift from them. */
+
+# Whether an entry key is one tool_targets accepts. "deps" is singled
+# out by the caller (derived, never declared); anything else unknown
+# is a typo and fails the manifest run.
+int wbg_tool_entry_key_ok(char* key):
+	if (strcmp(key, c"name") == 0):
+		return 1
+	if (strcmp(key, c"steps") == 0):
+		return 1
+	if (strcmp(key, c"inputs") == 0):
+		return 1
+	if (strcmp(key, c"outputs") == 0):
+		return 1
+	if (strcmp(key, c"data") == 0):
+		return 1
+	return 0
+
+
+# Validates one entry's step list: a nonempty array of objects, each
+# with a nonempty "cmd" array of strings. Every other step field
+# (expect_*/reject_*/expect_status/timeout_ms/stdin/...) is wexec's
+# own per-step schema and passes through untouched. Returns 0 on
+# success, 1 after reporting an error against name.
+int wbg_tool_check_steps(char* name, json_value* steps):
+	if ((steps == 0) || (steps.type != json_type_array()) || (json_array_length(steps) == 0)):
+		wbg_error2(c"\"tool_targets\" entry needs a nonempty \"steps\" array: ", name)
+		return 1
+	int i = 0
+	while (i < json_array_length(steps)):
+		json_value* step = json_array_get(steps, i)
+		if (step.type != json_type_object()):
+			wbg_error2(c"\"tool_targets\" steps must be objects: ", name)
+			return 1
+		json_value* cmd = json_object_get(step, c"cmd")
+		if ((cmd == 0) || (cmd.type != json_type_array()) || (json_array_length(cmd) == 0)):
+			wbg_error2(c"\"tool_targets\" step needs a nonempty \"cmd\" array: ", name)
+			return 1
+		int j = 0
+		while (j < json_array_length(cmd)):
+			if (json_array_get(cmd, j).type != json_type_string()):
+				wbg_error2(c"\"tool_targets\" step \"cmd\" elements must be strings: ", name)
+				return 1
+			j = j + 1
+		i = i + 1
+	return 0
+
+
+# The paths an entry's own steps produce: every argument following a
+# "-o" in a step "cmd", plus the entry's declared "outputs" — a later
+# step consuming one of these (asm_seed_gate running the binary its
+# first step compiled) is self-satisfied, never a target dependency.
+void wbg_tool_self_outputs(json_value* entry, map[char*, int] produced):
+	json_value* outputs = json_object_get(entry, c"outputs")
+	if ((outputs != 0) && (outputs.type == json_type_array())):
+		int i = 0
+		while (i < json_array_length(outputs)):
+			json_value* element = json_array_get(outputs, i)
+			if (element.type == json_type_string()):
+				produced[element.string_value] = 1
+			i = i + 1
+	json_value* steps = json_object_get(entry, c"steps")
+	int s = 0
+	while (s < json_array_length(steps)):
+		json_value* cmd = json_object_get(json_array_get(steps, s), c"cmd")
+		int j = 0
+		while (j + 1 < json_array_length(cmd)):
+			json_value* element = json_array_get(cmd, j)
+			if ((element.type == json_type_string()) && (strcmp(element.string_value, c"-o") == 0)):
+				json_value* out = json_array_get(cmd, j + 1)
+				if (out.type == json_type_string()):
+					produced[out.string_value] = 1
+			j = j + 1
+		s = s + 1
+
+
+# Derives an entry's "deps" from its step commands: every cmd element
+# equal to a base target's declared output adds that target's name
+# (first-seen order, deduped); self-produced paths add nothing. A
+# command word (cmd[0]) under bin/ that resolves to neither is a hard
+# error — a typoed tool path fails the manifest run, not the build.
+# Non-command elements that resolve to nothing are fine (fixture
+# paths, flags, scratch outputs).
+int wbg_tool_derive_deps(char* name, json_value* steps, map[char*, int] produced, list[char*] dep_names):
+	map[char*, int] dep_seen = new map[char*, int]
+	int s = 0
+	while (s < json_array_length(steps)):
+		json_value* cmd = json_object_get(json_array_get(steps, s), c"cmd")
+		int j = 0
+		while (j < json_array_length(cmd)):
+			char* word = json_array_get(cmd, j).string_value
+			if ((word in produced) == 0):
+				json_value* producer = wbg_find_target_by_output(word)
+				if (producer != 0):
+					char* dep = wbg_get_string(producer, c"name")
+					if ((dep in dep_seen) == 0):
+						dep_seen[dep] = 1
+						dep_names.push(dep)
+				else if ((j == 0) && starts_with(word, c"bin/")):
+					string_builder* message = string_new()
+					string_append(message, c"\"tool_targets\" entry '")
+					string_append(message, name)
+					string_append(message, c"': step command is not the output of any base target (or of an earlier step): ")
+					string_append(message, word)
+					wbg_error(message.data)
+					string_free(message)
+					return 1
+			j = j + 1
+		s = s + 1
+	return 0
+
+
+int wbg_expand_tool_target(json_value* entry):
+	if (entry.type != json_type_object()):
+		wbg_error(c"\"tool_targets\" entries must be objects")
+		return 1
+	char* name = wbg_get_string(entry, c"name")
+	if (name == 0):
+		wbg_error(c"\"tool_targets\" entry without a \"name\" string")
+		return 1
+	for char* key, json_value* member in entry.object_values:
+		if (strcmp(key, c"deps") == 0):
+			wbg_error2(c"\"tool_targets\" entries must not declare \"deps\" (derived from the step commands): ", name)
+			return 1
+		if (wbg_tool_entry_key_ok(key) == 0):
+			wbg_token_error(name, c"unknown \"tool_targets\" entry key ", key)
+			return 1
+	json_value* steps = json_object_get(entry, c"steps")
+	if (wbg_tool_check_steps(name, steps)):
+		return 1
+	if (name in wbg_base_targets):
+		wbg_error2(c"\"tool_targets\" entry is still hand-written in build.base.json's \"targets\" (delete the hand-written entry): ", name)
+		return 1
+	if (name in wbg_gen_seen):
+		wbg_error2(c"generated target collides with \"tool_targets\" entry ", name)
+		return 1
+	map[char*, int] produced = new map[char*, int]
+	wbg_tool_self_outputs(entry, produced)
+	list[char*] dep_names = new list[char*]
+	if (wbg_tool_derive_deps(name, steps, produced, dep_names)):
+		return 1
+	# The generated target keeps the entry's own field order, with the
+	# derived "deps" inserted right after "name" (the field order every
+	# hand-written original had), so the migration diffs cleanly. Tool
+	# targets join no umbrella name list — the hand-maintained umbrella
+	# deps in build.base.json keep listing them.
+	json_value* target = json_object()
+	json_object_set(target, c"name", json_string(name))
+	if (dep_names.length > 0):
+		json_value* deps = json_array()
+		for char* dep in dep_names:
+			json_array_push(deps, json_string(dep))
+		json_object_set(target, c"deps", deps)
+	for char* key, json_value* member in entry.object_values:
+		if (strcmp(key, c"name") != 0):
+			json_object_set(target, key, member)
+	wbg_gen_seen[name] = 1
+	wbg_generated.push(target)
+	return 0
+
+
+int wbg_expand_tool_targets():
+	if (wbg_tool_targets_json == 0):
+		return 0
+	int i = 0
+	while (i < json_array_length(wbg_tool_targets_json)):
+		if (wbg_expand_tool_target(json_array_get(wbg_tool_targets_json, i))):
+			return 1
+		i = i + 1
+	return 0
+
+
 int wbg_scan():
 	wbg_generated = new list[json_value*]
 	wbg_gen_seen = new map[char*, int]
@@ -1926,6 +2179,11 @@ int wbg_scan():
 		for char* group_name in fixture_group_names:
 			if (wbg_add_fixture_group_target(group_name, fixture_groups[group_name], wfixture_name, wfixture_bin)):
 				return 1
+
+	# Tool targets ride the same generated list (and the same sorted
+	# output position) as scan-derived targets.
+	if (wbg_expand_tool_targets()):
+		return 1
 
 	wbg_sort_generated()
 	wbg_sort_strings(wbg_gen32_names)
