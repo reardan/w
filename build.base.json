@@ -1095,12 +1095,12 @@
 		{
 			"name": "skills_test",
 			"deps": ["wv2", "skills_check"],
-			"data": ["AGENTS.md", "README.md", ".cursor/skills/w-check-diagnostics/SKILL.md", ".cursor/skills/w-debug-wdbg/SKILL.md", ".cursor/skills/w-repl-explore/SKILL.md", ".cursor/skills/w-select-tests/SKILL.md"],
+			"data": ["AGENTS.md", "README.md", ".cursor/skills/w-arm64-qemu/SKILL.md", ".cursor/skills/w-c-import-debug/SKILL.md", ".cursor/skills/w-check-diagnostics/SKILL.md", ".cursor/skills/w-debug-wdbg/SKILL.md", ".cursor/skills/w-repl-explore/SKILL.md", ".cursor/skills/w-seed-update/SKILL.md", ".cursor/skills/w-select-tests/SKILL.md"],
 			"steps": [
 				{"cmd": ["bin/wv2", "--help"], "stdout_file": "bin/skills_help.txt", "expect_stdout": ["usage: w [x64|arm64|arm64_darwin|win64|wasm]", "-h, --help"]},
 				{"cmd": ["sh", "-c", "for s in check deps symbols defhash; do bin/wv2 $s --help || exit 1; done >> bin/skills_help.txt"]},
 				{"cmd": ["bin/wv2", "check", "-h"], "expect_stdout": "usage: w check [--json]"},
-				{"cmd": ["bin/skills_check", "bin/skills_help.txt", "AGENTS.md", "README.md", ".cursor/skills/w-check-diagnostics/SKILL.md", ".cursor/skills/w-debug-wdbg/SKILL.md", ".cursor/skills/w-repl-explore/SKILL.md", ".cursor/skills/w-select-tests/SKILL.md"], "expect_stdout": "skills_check: OK"}
+				{"cmd": ["bin/skills_check", "bin/skills_help.txt", "AGENTS.md", "README.md", ".cursor/skills/w-arm64-qemu/SKILL.md", ".cursor/skills/w-c-import-debug/SKILL.md", ".cursor/skills/w-check-diagnostics/SKILL.md", ".cursor/skills/w-debug-wdbg/SKILL.md", ".cursor/skills/w-repl-explore/SKILL.md", ".cursor/skills/w-seed-update/SKILL.md", ".cursor/skills/w-select-tests/SKILL.md"], "expect_stdout": "skills_check: OK"}
 			]
 		},
 		{
