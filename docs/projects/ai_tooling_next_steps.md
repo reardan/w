@@ -163,24 +163,6 @@ is a queue, not an archive.
   exits), retry them once on the next run, or at minimum have
   `wtest_run_deps` print one stderr line when a closure shell-out
   fails so the selection loss is visible instead of silent.
-- **(2026-07-29, U4 dogfooding-fixes) the four `http_server` targets
-  flake under concurrent load.** In a 20-unit parallel program every
-  unit's full `./wbuild tests` run failed `http_server_test` /
-  `http_server_route_test` and their `_64` twins (plus
-  `https_e2e_test` once), yet each target passes when run alone —
-  and `./wbuild http_server_test http_server_route_test ...` in one
-  invocation, where bin/wexec's scheduler runs all four server suites
-  (and their compiles) concurrently, fails again on the same box that
-  passes them serially minutes later. Not a port collision — the
-  fixtures already bind 127.0.0.1:0 and read the kernel-assigned port
-  back — so the suspect is timing under CPU contention (TLS handshake
-  / client read timeouts while 4+ compilers and servers share the
-  container; `test_https_request_context_round_trip`'s
-  `assert_equal(0, resp.error)` was one observed failure point).
-  Worth bounding: either raise the client/handshake timeouts the way
-  attach_test's wdbg timeout was raised for the same reason
-  (2026-07-29), or serialize the four targets behind a shared wexec
-  resource so a parallel `tests` run cannot self-contend.
 - **(2026-07-29, U10 c_import work) a seed-graph diff's cold
   `wtest changed` exceeded a 10-minute budget under parallel wave
   load.** `libs/extras/c_import/importer.w` in the diff makes the

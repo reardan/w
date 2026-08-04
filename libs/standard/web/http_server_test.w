@@ -55,9 +55,18 @@ int hst_contains(char* hay, char* needle):
 
 # Binds on 127.0.0.1 with a kernel-assigned port; the caller forks
 # afterwards so the child inherits the already-bound listener.
+# timeout_ms is a wedge guard, not pacing: accept_loop arms it on the
+# accepted socket (BEFORE tls_accept, so for the https test it bounds
+# the whole server-side handshake), and what it waits on is the OTHER
+# side's work -- the client's pure-W TLS handshake crypto costs seconds
+# of CPU, and the parallel test suite multiplies that wall time. A 5s
+# bound demonstrably lost that race under suite load (tls_accept aborts
+# mid-handshake and the client flakes with http_error_tls -- see
+# https_e2e_test.w's header note), so the bound sits far above the
+# worst legitimate slow path.
 ServerContext* hst_new_server(server_handler_fn* handler):
 	ServerContext* s = server_context_new(c"127.0.0.1", 0, handler, 0)
-	s.timeout_ms = 5000
+	s.timeout_ms = 60000
 	asserts(c"server bind", server_context_bind(s) != 0)
 	return s
 
@@ -179,8 +188,10 @@ void test_http_chunked_request_body():
 	int fd = socket_tcp_ipv4()
 	asserts(c"raw socket", fd >= 0)
 	asserts(c"raw connect", socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), port) == 0)
-	socket_set_recv_timeout(fd, 5000)
-	socket_set_send_timeout(fd, 5000)
+	# Wedge guards only (see hst_new_server's timeout note): the server
+	# child can sit descheduled for seconds under parallel suite load.
+	socket_set_recv_timeout(fd, 60000)
+	socket_set_send_timeout(fd, 60000)
 	string_builder* req_text = string_new()
 	string_append(req_text, c"POST /echo HTTP/1.1\x0d\x0a")
 	string_append(req_text, c"Host: 127.0.0.1\x0d\x0a")
@@ -257,7 +268,9 @@ void test_http_keep_alive_two_requests():
 # the client connects with tls_insecure_skip_verify).
 void test_https_get_round_trip():
 	ServerContext* s = server_context_new(c"127.0.0.1", 0, hst_handler_hello, 0)
-	s.timeout_ms = 5000
+	# 60s wedge guard -- see hst_new_server's timeout note (this server
+	# is built inline because set_tls must precede bind).
+	s.timeout_ms = 60000
 	server_context_set_tls(s, c"libs/standard/net/tls_fixtures/server_p256_cert.pem", c"libs/standard/net/tls_fixtures/server_p256_key.pem")
 	asserts(c"https server bind", server_context_bind(s) != 0)
 	int port = server_context_port(s)

@@ -12,9 +12,12 @@
 # the client connects with tls_insecure_skip_verify = 1: chain + hostname
 # checks are skipped, but the real X25519 + ChaCha20-Poly1305 handshake, the
 # server's ECDSA CertificateVerify signature, and the Finished MAC are all
-# still exercised. Every network wait on both sides is bounded (client:
-# req.timeout_ms via SO_RCVTIMEO; server: an explicit 60s recv/send timeout)
-# so a stalled peer can never wedge a test. The bounds are wedge guards, not
+# still exercised. Every network wait on both sides is bounded (client: an
+# explicit 60s tls_handshake_timeout_ms on every positive-path request --
+# the default falls back to the 30s timeout_ms, which suite load has beaten
+# -- plus req.timeout_ms via SO_RCVTIMEO for the post-handshake reads;
+# server: an explicit 60s recv/send timeout) so a stalled peer can never
+# wedge a test. The bounds are wedge guards, not
 # pacing: each side's wait covers the OTHER side's pure-W handshake crypto
 # (X25519 + ECDSA sign/verify cost seconds of CPU per side here, and the
 # parallel test suite multiplies that wall time), so every bound is set far
@@ -215,6 +218,9 @@ void test_https_loopback_get():
 	char* target = hs_url(port, c"/hi")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
+	# 60s handshake wedge guard (see the header): both sides' pure-W
+	# handshake crypto costs seconds of CPU, multiplied under suite load.
+	req.tls_handshake_timeout_ms = 60000
 	http_response* resp = http_request(req)
 	assert_equal(0, resp.error)
 	assert_equal(200, resp.status)
@@ -251,6 +257,7 @@ void test_https_keep_alive_reuse():
 	char* target = hs_url(port, c"/keep")
 	http_req* req1 = http_req_new(c"GET", target)
 	req1.tls_insecure_skip_verify = 1
+	req1.tls_handshake_timeout_ms = 60000
 	http_response* r1 = http_request(req1)
 	assert_equal(0, r1.error)
 	assert_equal(200, r1.status)
@@ -260,6 +267,7 @@ void test_https_keep_alive_reuse():
 
 	http_req* req2 = http_req_new(c"GET", target)
 	req2.tls_insecure_skip_verify = 1
+	req2.tls_handshake_timeout_ms = 60000
 	http_response* r2 = http_request(req2)
 	assert_equal(0, r2.error)
 	assert_equal(200, r2.status)
@@ -294,6 +302,7 @@ void test_https_sse_over_tls():
 	char* target = hs_url(port, c"/events")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
+	req.tls_handshake_timeout_ms = 60000
 	http_stream* st = http_open(req)
 	http_response* head = http_stream_headers(st)
 	assert_equal(0, head.error)
@@ -369,6 +378,7 @@ void test_https_cross_scheme_redirect():
 	char* target = hs_http_url(plain_port, c"/start")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
+	req.tls_handshake_timeout_ms = 60000
 	http_response* resp = http_request(req)
 	assert_equal(0, resp.error)
 	assert_equal(200, resp.status)
