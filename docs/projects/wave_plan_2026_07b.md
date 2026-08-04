@@ -196,15 +196,33 @@ git diff --name-only <pre-merge> | ./bin/wtest changed && ./wbuild test_changed
 Close-out: comment on #17, #27, #123, #251, #252, #276, #323, #377, #378 with what landed;
 update `docs/projects/wave_plan_2026_07b.md`'s execution-status section.
 
-## Execution status
+## Execution status (updated 2026-08-04)
+
+This program is **closed**. Waves 1–2 landed in full; waves 3–4 were never
+launched. The open residue (U11–U19) is carried into the successor program
+`docs/projects/wave_plan_2026_08.md` (units 2.1–2.4 and 3.1–3.5 there).
 
 | Wave | Unit | Status | PR |
 |---|---|---|---|
-| 1 | U1 doc/tracker truth sweep | launched | — |
-| 1 | U2 wexec robustness | launched | — |
-| 1 | U3 wtest selection UX | launched | — |
-| 1 | U4 small dogfooding fixes | launched | — |
-| 1 | U5 wbuildgen tool-target mode | launched | — |
-| 2 | U6–U10 | queued | — |
-| 3 | U11–U15 | queued | — |
-| 4 | U16–U20 | queued | — |
+| 1 | U1 doc/tracker truth sweep | merged | #386 |
+| 1 | U2 wexec robustness | merged | #394 |
+| 1 | U3 wtest selection UX | merged | #387 |
+| 1 | U4 small dogfooding fixes | merged | #389 |
+| 1 | U5 wbuildgen tool-target mode | merged | #388 |
+| 2 | U6 compiler --help + arg-loop fixes | merged | #390 |
+| 2 | U7 w check sees inside generics | merged | #395 |
+| 2 | U8 import diagnostics + grammar.* | merged | #391 |
+| 2 | U9 crash stack traces | merged | #393 |
+| 2 | U10 c_import gaps | merged | #392 |
+| 3 | U11 ndarray index sugar | never launched — carried to 2026-08 (3.1) | — |
+| 3 | U12 VCS object packing | never launched — carried to 2026-08 (1.4) | — |
+| 3 | U13 threads mutex/atomics | never launched — carried to 2026-08 (2.3) | — |
+| 3 | U14 x64 DWARF address_size | never launched — carried to 2026-08 (2.2) | — |
+| 3 | U15 json floats + map[string,V] | never launched — carried to 2026-08 (2.1) | — |
+| 4 | U16 W^X split B+C | never launched — carried to 2026-08 (3.5) | — |
+| 4 | U17 x64 codegen investigation | never launched — dropped (timeboxed research, low yield; see 2026-08 plan) | — |
+| 4 | U18 type-system next | never launched — carried to 2026-08 (3.2) | — |
+| 4 | U19 wasm stage-5 residue | never launched — carried to 2026-08 (3.3) | — |
+| 4 | U20 REPL fault recovery | **landed independently** (repl/core.w fault handlers + rollback) | — |
+
+(The program-branch PR #385 and unit PRs #386–#395 all merged 2026-07-30.)
