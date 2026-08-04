@@ -64,16 +64,21 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
-- **Cold `bin/wtest changed` deps-cache builds can exceed 20 minutes
-  wall on a loaded 4-core container (2026-07-29, crash-trace unit):**
-  the first post-build run was killed at a 10-minute tool timeout and
-  needed a second run to finish from the resume point. The resume
-  behavior worked as documented — nothing was lost — but agents
-  operating under per-command timeouts pay two long runs. A
-  `--progress-eta` line (entries done / total, extrapolated wall) or a
-  manifest-driven pre-warm target (`./wbuild wtest_cache`) that CI
-  could publish as an artifact would make the cost predictable and
-  shareable instead of per-checkout.
+- **Shipped (2026-08-04): cold deps-cache cost is now visible and
+  payable up front.** (Logged 2026-07-29, crash-trace unit: a cold
+  `bin/wtest changed` build exceeded 20 minutes wall on a loaded
+  4-core container and was killed at a 10-minute tool timeout; the
+  resume worked, but agents under per-command timeouts paid two long
+  runs blind.) The cold-build progress line now carries elapsed wall
+  time and an extrapolated time-left estimate ("20/370 roots
+  computed, 90s elapsed, ~26m left"), and a manifest-driven
+  `./wbuild wtest_cache` pre-warm target (`bin/wtest cache`, a
+  `tool_targets` entry) builds `bin/wtest` and warms
+  `bin/.wtest_deps_cache` for every root — the archs superset plus
+  the seed `w.w` roots per arch — so CI and fresh checkouts can pay
+  the cost once, deliberately (`wtest_cache_test`). Residue: the
+  warmed cache is still per-checkout; CI publishing it as an artifact
+  would make the cost shareable.
 
 - **Shipped (2026-07-28, wave 4): the verify residue's compiler-tree
   set is now DERIVED from `bin/wv2 deps w.w`** instead of the
@@ -115,19 +120,29 @@ is a queue, not an archive.
   file in the root's cached closure, fall back to root-only when the
   closure is unknown) would close it using machinery rule (b) already
   has.
-- **(2026-07-29, U5 tool-target migration) the documented deps-cache
-  failure-caching residue bit in practice.** A `./wbuild tests` run
-  killed mid-way through `bin/.wtest_deps_cache`'s first cold build
-  left cached failure entries, and the next `wtest_map_test` run then
-  failed exactly two arch-closure expectations ("missing expected
-  target: verify_arm64" / "verify_wasm" for `lib/__arch__/<arch>/
-  syscalls.w`) with nothing pointing at the cache; `rm
-  bin/.wtest_deps_cache` and a clean rebuild fixed both. This is the
-  seed-graph rule's known fail-open-to-prefix-floor residue (see the
-  2026-07-28 "verify residue derivation" entry) actually biting —
-  the suggested invalidation of failure entries on `bin/wv2`'s
-  mtime/hash (or on any interrupted run) is now motivated by a real
-  debugging detour, not hypothetically.
+- **Shipped (2026-08-04): timeout-shaped deps failures are never
+  persisted, and every failed closure shell-out warns.** This bit
+  twice for real on 2026-07-29: (U5 tool-target migration) a
+  `./wbuild tests` run killed mid-way through the first cold
+  `bin/.wtest_deps_cache` build left cached failure entries, and the
+  next `wtest_map_test` failed two arch-closure expectations
+  ("missing expected target: verify_arm64" / "verify_wasm") with
+  nothing pointing at the cache; and (U4 dogfooding-fixes) during a
+  cold build under three sibling checkouts' parallel `./wbuild tests`
+  load, the non-default-arch `bin/wv2 deps <arch> w.w` runs (a
+  near-full compile each, ~23s standalone) exceeded the 120s
+  `process_run` budget for x64/arm64/arm64_darwin/win64 and all four
+  were persisted as `X <arch> w.w` records keyed to w.w's content
+  hash — silently skipping per-arch verify selection even after the
+  load vanished, until the stale lines were hand-deleted. Now
+  (`tools/test_map.w`): a timed-out `deps` run is retried once
+  immediately, a still-timed-out root is a run-local memo that is
+  NEVER written to the cache (only real nonzero compile exits
+  persist, still keyed to `bin/wv2`'s hash), so the next run retries
+  it; and every failed shell-out — timeout, nonzero exit, or spawn
+  failure — prints one stderr line naming its root, so selection loss
+  is visible instead of silent (`wtest_timeout_test`;
+  `WTEST_DEPS_TIMEOUT_MS` shrinks the budget for tests).
 - **(2026-07-29, U5 tool-target migration) `wtest_map_check`'s `-f`
   fixture manifests silently encode build.json's *relative target
   order*, and a manifest-layout change breaks them with a message
@@ -144,25 +159,6 @@ is a queue, not an archive.
   the checker hinting "-f fixture manifests must mirror build.json's
   relative order (or add 'noorder')" when the case carries `-f`.
 
-- **(2026-07-29, U4 dogfooding-fixes) the X-entry residue above DID
-  bite, via a new route: `wtest_run_deps`'s 120s `process_run` timeout
-  under parallel load.** During a cold `bin/.wtest_deps_cache` build
-  while three sibling checkouts ran full `./wbuild tests` suites in the
-  same container, the non-default-arch `bin/wv2 deps <arch> w.w` runs
-  (a near-full compile each; ~23s standalone under moderate load)
-  exceeded the 120s `process_run` budget for x64, arm64, arm64_darwin
-  and win64 — all four were persisted as `X <arch> w.w` failure
-  records keyed to w.w's content hash, so every later warm-cache run
-  silently skipped the per-arch verify selection (no shell-out, no
-  diagnostic) even after the load vanished, and `wtest_map_test`
-  failed its `lib/__arch__/arm64/syscalls.w` case (`missing expected
-  target: verify_arm64`) deterministically until the stale `X` lines
-  were hand-deleted from the cache. A transient, timeout-shaped
-  failure should not be cached as permanent: either skip persisting
-  `X` records whose `deps` run timed out (persist only real nonzero
-  exits), retry them once on the next run, or at minimum have
-  `wtest_run_deps` print one stderr line when a closure shell-out
-  fails so the selection loss is visible instead of silent.
 - **(2026-07-29, U4 dogfooding-fixes) the four `http_server` targets
   flake under concurrent load.** In a 20-unit parallel program every
   unit's full `./wbuild tests` run failed `http_server_test` /
@@ -191,11 +187,15 @@ is a queue, not an archive.
   exactly as documented, plus one load-induced `bin/wv2 deps` failure
   that correctly fell back to literal matching with a stderr warning
   instead of being cached (the 2026-07-29 no-fail-cache fix doing its
-  job). Residue: seed-graph edits could prime the cache from the
-  umbrella end (the selection is going to include `tests`/`verify`
-  anyway) instead of computing all N root closures first, or
-  `./wbuild build` could warm the cache as a side effect so the first
-  selection is not the one paying the cold-walk cost.
+  job). Partly addressed 2026-08-04: `./wbuild wtest_cache` pays the
+  cold walk deliberately (run it right after `./wbuild build`), and
+  the progress lines now carry a time-left estimate, so the budget
+  decision is informed. Residue: seed-graph edits could still prime
+  the cache from the umbrella end (the selection is going to include
+  `tests`/`verify` anyway) instead of computing all N root closures
+  first, and `./wbuild build` could warm the cache automatically as a
+  side effect so the first selection never pays the cold-walk cost
+  unwarned.
 
 ## Build manifest (`tools/wbuildgen.w`)
 

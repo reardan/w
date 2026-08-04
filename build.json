@@ -990,6 +990,22 @@
 			]
 		},
 		{
+			"name": "wtest_timeout_test",
+			"deps": ["wtest"],
+			"data": ["tests/wtest/timeout_scratch_test.sh"],
+			"steps": [
+				{"cmd": ["sh", "tests/wtest/timeout_scratch_test.sh"], "expect_stdout": "wtest_timeout_scratch_test: OK"}
+			]
+		},
+		{
+			"name": "wtest_cache_test",
+			"deps": ["wtest"],
+			"data": ["tests/wtest/cache_scratch_test.sh"],
+			"steps": [
+				{"cmd": ["sh", "tests/wtest/cache_scratch_test.sh"], "expect_stdout": "wtest_cache_scratch_test: OK"}
+			]
+		},
+		{
 			"name": "wtest_archs_test",
 			"deps": ["wtest", "wv2"],
 			"data": ["tests/wtest/archs_fixture/", "tests/wtest/manifest_archs.json"],
@@ -2435,6 +2451,8 @@
 				"wtest_range_test",
 				"wtest_runnable_test",
 				"wtest_nofailcache_test",
+				"wtest_timeout_test",
+				"wtest_cache_test",
 				"wtest_archs_test",
 				"wexec_test",
 				"wexec_keep_going_test",
@@ -6633,6 +6651,13 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/window_test.w", "-o", "bin/window_test"]},
 				{"cmd": ["bin/window_test"]}
+			]
+		},
+		{
+			"name": "wtest_cache",
+			"deps": ["wtest"],
+			"steps": [
+				{"cmd": ["bin/wtest", "cache"], "expect_stdout": "wtest: deps cache ready"}
 			]
 		},
 		{

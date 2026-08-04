@@ -342,11 +342,45 @@ The first 'changed' invocation to touch an import closure (rule b) after
 a build, or after bin/.wtest_deps_cache is otherwise missing or fully
 stale, prints a 'wtest: building import-closure cache...' banner with
 the outstanding root count to stderr, then one progress line per 20
-computed roots — that pass can take several minutes on a big tree, and
-the progress lines distinguish slow-but-alive from hung. The cache file
-is checkpointed at every progress line (its entries validate
-individually), so an interrupted first run resumes from the last
-checkpoint instead of restarting. A warm cache prints nothing extra.
+computed roots carrying the elapsed wall time and an extrapolated
+time-left estimate — that pass can take several minutes on a big tree
+(over 20 under parallel load, ai_tooling_next_steps.md 2026-07-29),
+the progress lines distinguish slow-but-alive from hung, and the
+estimate lets a caller under a per-command timeout decide between
+waiting and re-invoking. The cache file is checkpointed at every
+progress line (its entries validate individually), so an interrupted
+first run resumes from the last checkpoint instead of restarting. A
+warm cache prints nothing extra.
+
+'wtest cache [-f manifest.json]' pays that cost deliberately, so CI or
+a fresh checkout can run './wbuild wtest_cache' once right after
+'./wbuild build' and every later selection starts warm instead of the
+first 'wtest changed' being the invocation that eats the cold walk. It
+warms every root any selection can consult: the archs superset of rule
+(b)'s compile roots plus the seed-graph w.w roots — "x86 w.w" always,
+"<arch> w.w" for each arch whose verify target the manifest carries,
+mirroring wtest_map_residue's own gate (the per-arch 'bin/wv2 deps
+<arch> w.w' runs are near-full compiles, the single most expensive
+entries). A warm rerun revalidates content hashes and computes
+nothing. It exits 1 only when warming is impossible (unreadable
+manifest, bin/wv2 missing); a root that fails to compile is an
+ordinary, reported state — the summary line counts it, selection falls
+back to literal matching for it — not a warming failure.
+
+Each 'bin/wv2 deps' shell-out runs under a 120-second timeout
+(WTEST_DEPS_TIMEOUT_MS overrides the budget, mainly so tests can
+shrink it). A shell-out that TIMES OUT is retried once immediately —
+under parallel load a 'deps <arch> w.w' near-full compile can
+transiently exceed the budget (ai_tooling_next_steps.md 2026-07-29,
+U4) — and when the retry also fails the root falls back exactly like
+any other deps failure for this run, but the failure is NEVER
+persisted to the cache file (only real nonzero compile exits are,
+under the conservative X-entry validation above wtest_cache_load), so
+the next run retries it instead of a stale entry silently pinning
+selection — per-arch verify selection included — until the root's
+content changes. Every failed shell-out (timeout, nonzero exit, spawn
+failure) prints one stderr line naming the root, so a lost closure is
+visible at the moment it is lost instead of silent.
 */
 import lib.lib
 import lib.env
@@ -404,6 +438,9 @@ char* wtest_base_manifest_path       # 0 = no --base-manifest given
 json_value* wtest_base_manifest      # parsed baseline, 0 until loaded
 int wtest_closures_ready
 int wtest_mask32
+# Resolved 'bin/wv2 deps' shell-out budget in ms; 0 until first read
+# (wtest_deps_budget_ms).
+int wtest_deps_budget
 
 # Commit-ranged selection (header comment, "Commit-ranged selection"):
 # wtest_range_active is 0 until a range argument is recognized and
@@ -424,6 +461,7 @@ void wtest_usage():
 	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...] [--defhash] [--runnable-here] [A..B | A...B | A..]")
 	stream_write_line(err, c"       wtest for <file>... [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [--defhash] [--runnable-here]")
 	stream_write_line(err, c"       wtest archs <file>... [--check] [-f manifest.json]")
+	stream_write_line(err, c"       wtest cache [-f manifest.json]")
 	stream_flush(err)
 
 
@@ -848,10 +886,15 @@ compiler binary (a rebuilt or restored bin/wv2 retries every failure),
 and — when the failure was a missing import, e.g. a bin/-generated
 parser source not built yet — that path still being absent, so the
 failure retries the moment the missing file appears. A failure with
-bin/wv2 missing (or a spawn failure) is never written at all: it is
-memoized for the current run only and retried next run. Entries
-without an arch column, or 'X' entries without a V line — caches
-written by older wtest builds — fail to parse and simply recompute. */
+bin/wv2 missing (or a spawn failure) is never written at all, and
+neither is a deps run that TIMED OUT (after its one immediate retry,
+see wtest_run_deps): a timeout says nothing about the root's content,
+only about this machine's load, so persisting it under the root's
+hash pinned per-arch verify selection until the root changed (the
+2026-07-29 U4/U5 residue). Both are memoized for the current run only
+and retried next run. Entries without an arch column, or 'X' entries
+without a V line — caches written by older wtest builds — fail to
+parse and simply recompute. */
 
 int wtest_mask32_value():
 	if (__word_size__ == 8):
@@ -1006,14 +1049,49 @@ char* wtest_missing_import(char* stderr_text):
 	return 0
 
 
+# The per-shell-out 'bin/wv2 deps' timeout budget in ms: 120000 unless
+# WTEST_DEPS_TIMEOUT_MS overrides it with a positive integer (mainly so
+# tests can exercise the timeout path in milliseconds instead of 120s).
+int wtest_deps_budget_ms():
+	if (wtest_deps_budget == 0):
+		wtest_deps_budget = 120000
+		char* override = env_get(c"WTEST_DEPS_TIMEOUT_MS")
+		if (override != 0):
+			int value = atoi(override)
+			if (value > 0):
+				wtest_deps_budget = value
+	return wtest_deps_budget
+
+
+# One stderr line per failed 'bin/wv2 deps' shell-out (header comment):
+# a lost closure must be visible the moment it is lost, not only in the
+# aggregate fallback counts wtest_compute_closures prints at the end.
+void wtest_deps_shellout_warn(char* what, char* id, char* tail):
+	wstream* err = stderr_writer()
+	string_builder* note = string_new()
+	string_append(note, c"wtest: warning: 'bin/wv2 deps' ")
+	string_append(note, what)
+	string_append(note, c" for root '")
+	string_append(note, id)
+	string_append(note, c"'")
+	string_append(note, tail)
+	stream_write_line(err, note.data)
+	string_free(note)
+	stream_flush(err)
+
+
 # Run 'bin/wv2 deps [selector] <root>' for one root id; returns a
 # newline-guarded closure blob or 0 when the root does not compile for
-# its target (literal matching still applies). On a failure that is
-# safe to cache (bin/wv2 was present, so this was a real compile
-# failure rather than a missing/broken toolchain),
-# wtest_last_failure_meta carries the extra validation lines the cache
-# entry needs (header comment above wtest_cache_load); otherwise it is
-# 0 and the failure must not be persisted.
+# its target (literal matching still applies). A run that exceeds the
+# timeout budget is retried once immediately (header comment: a
+# timeout is load, not content), and a still-timed-out root is a
+# NON-persistable failure. On a failure that is safe to cache (bin/wv2
+# was present and the compile really exited nonzero, rather than a
+# missing/broken toolchain or a timeout), wtest_last_failure_meta
+# carries the extra validation lines the cache entry needs (header
+# comment above wtest_cache_load); otherwise it is 0 and the failure
+# must not be persisted. Every failure path prints one stderr line
+# naming the root.
 char* wtest_run_deps(char* id):
 	wtest_last_failure_meta = 0
 	char* arch = strclone(id)
@@ -1039,12 +1117,26 @@ char* wtest_run_deps(char* id):
 	else:
 		strv_set(argv, 2, arch)
 		strv_set(argv, 3, root)
-	process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
+	int budget = wtest_deps_budget_ms()
+	process_result* result = process_run(c"bin/wv2", argv, 0, 0, budget)
+	if ((result != 0) && (result.status == process_status_timeout())):
+		wtest_deps_shellout_warn(c"timed out", id, c"; retrying once")
+		process_result_free(result)
+		result = process_run(c"bin/wv2", argv, 0, 0, budget)
 	free(cast(char*, argv))
 	free(arch)
 	if (result == 0):
+		wtest_deps_shellout_warn(c"failed", id, c" (could not run bin/wv2)")
+		return 0
+	if (result.status == process_status_timeout()):
+		# Never persisted (header comment above wtest_cache_load): a
+		# run-local memo only, so the next run retries instead of a
+		# stale cache entry pinning selection until the root changes.
+		wtest_deps_shellout_warn(c"timed out again", id, c"; giving up for this run (timeouts are never cached)")
+		process_result_free(result)
 		return 0
 	if (result.status != 0):
+		wtest_deps_shellout_warn(c"failed", id, c"")
 		# Persistable only when the compiler itself was there to fail:
 		# key the failure to bin/wv2's content (a restored/rebuilt
 		# compiler retries it) and, when the compile named a missing
@@ -1231,13 +1323,29 @@ void wtest_cache_save():
 	string_free(out)
 
 
-# Cold/stale-cache closure computation shared by wtest_ensure_closures
-# and wtest_archs_ensure_closures: shell out to 'bin/wv2 deps' for every
+# Append a duration in seconds as '<n>s', or '<n>m' from two minutes
+# up — cold-tree estimates run tens of minutes, where second precision
+# is noise.
+void wtest_append_duration(string_builder* s, int seconds):
+	if (seconds >= 120):
+		string_append_int(s, seconds / 60)
+		string_append_char(s, 'm')
+	else:
+		string_append_int(s, seconds)
+		string_append_char(s, 's')
+
+
+# Cold/stale-cache closure computation shared by wtest_ensure_closures,
+# wtest_archs_ensure_closures and wtest_cache_main: shell out to
+# 'bin/wv2 deps' for every
 # root wtest_cache_load did not satisfy. Right after a build (or a large
 # merge) every root is outstanding and the pass can take several minutes
 # (docs/projects/ai_tooling.md), so the banner announces the outstanding
-# root count up front, a progress line follows every 20 computed roots,
-# and bin/.wtest_deps_cache is checkpointed at each progress line —
+# root count up front, a progress line follows every 20 computed roots
+# with the elapsed wall time and an extrapolated time-left estimate
+# (header comment: a caller under a per-command timeout can tell
+# whether waiting will pay off), and bin/.wtest_deps_cache is
+# checkpointed at each progress line —
 # cache entries validate individually (wtest_cache_load), so an
 # interrupted first run resumes from the last checkpoint instead of
 # restarting. A warm cache (the common case) prints and writes nothing.
@@ -1261,6 +1369,7 @@ void wtest_compute_closures(list[char*] roots):
 	stream_flush(err)
 	int done = 0
 	int failed = 0
+	int start_ms = process_monotonic_ms()
 	for char* pending in roots:
 		if (wtest_closure_known(pending) == 0):
 			if (wtest_closure_compute(pending) == 0):
@@ -1268,12 +1377,22 @@ void wtest_compute_closures(list[char*] roots):
 			done = done + 1
 			if ((done % 20) == 0):
 				wtest_cache_save()
+				# Extrapolated wall estimate in whole seconds: cheap,
+				# and roots are similar enough in cost (one compiler
+				# front-end run each) for a linear projection to be
+				# honest.
+				int elapsed_s = (process_monotonic_ms() - start_ms) / 1000
+				int left_s = elapsed_s * (missing - done) / done
 				string_builder* progress = string_new()
 				string_append(progress, c"wtest: import-closure cache: ")
 				string_append_int(progress, done)
 				string_append_char(progress, '/')
 				string_append_int(progress, missing)
-				string_append(progress, c" roots computed")
+				string_append(progress, c" roots computed, ")
+				wtest_append_duration(progress, elapsed_s)
+				string_append(progress, c" elapsed, ~")
+				wtest_append_duration(progress, left_s)
+				string_append(progress, c" left")
 				stream_write_line(err, progress.data)
 				string_free(progress)
 				stream_flush(err)
@@ -3285,6 +3404,81 @@ int wtest_archs_main(int argc, int argv):
 	return failures
 
 
+# 'wtest cache [-f manifest.json]': pre-warm bin/.wtest_deps_cache for
+# every root any selection can consult (header comment) — the archs
+# superset of compile roots plus the seed w.w roots: "x86 w.w" always,
+# "<arch> w.w" for each arch whose verify target the manifest carries,
+# mirroring wtest_map_residue's own gate. './wbuild wtest_cache' runs
+# this right after a build so the first 'wtest changed' is not the
+# invocation paying the cold-walk cost (ai_tooling_next_steps.md
+# 2026-07-29). Exits 1 only when warming is impossible (unreadable
+# manifest, bin/wv2 missing); a root that fails to compile is an
+# ordinary, reported state — counted in the summary, selection falls
+# back to literal matching for it — not a warming failure.
+int wtest_cache_main(int argc, int argv):
+	wtest_manifest_path = c"build.json"
+	int i = 2
+	while (i < argc):
+		char** arg = argv + i * __word_size__
+		if (strcmp(*arg, c"-f") == 0):
+			i = i + 1
+			if (i >= argc):
+				wtest_usage()
+				return 1
+			char** value = argv + i * __word_size__
+			wtest_manifest_path = *value
+		else:
+			wtest_usage()
+			return 1
+		i = i + 1
+	if (wtest_load_manifest()):
+		return 1
+	if (wtest_file_exists(c"bin/wv2") == 0):
+		wtest_error(c"cannot warm the deps cache: ", c"bin/wv2 not found (run a build first)")
+		return 1
+	wtest_archs_ensure_roots()
+	if (wtest_closure_roots == 0):
+		wtest_closure_roots = new list[char*]
+		wtest_closure_blobs = new list[char*]
+		wtest_cache_load()
+	list[char*] roots = new list[char*]
+	roots.push(wtest_root_id(c"x86", c"w.w"))
+	list[char*] arch_words = new list[char*]
+	arch_words.push(c"x64")
+	arch_words.push(c"arm64")
+	arch_words.push(c"arm64_darwin")
+	arch_words.push(c"win64")
+	arch_words.push(c"wasm")
+	for char* arch in arch_words:
+		char* arch_verify = wtest_arch_verify_target(arch)
+		if (arch_verify != 0):
+			if (wtest_target_defs.get(arch_verify, 0) != 0):
+				roots.push(wtest_root_id(arch, c"w.w"))
+	# The archs superset never contains w.w (wtest_excluded_root), so
+	# the concatenation stays duplicate-free.
+	for char* archs_root in wtest_archs_roots:
+		roots.push(archs_root)
+	wtest_compute_closures(roots)
+	int failed = 0
+	for char* warmed in roots:
+		if (wtest_closure_get(warmed) == 0):
+			failed = failed + 1
+	wstream* out = stdout_writer()
+	string_builder* line = string_new()
+	string_append(line, c"wtest: deps cache ready (")
+	string_append_int(line, roots.length)
+	string_append(line, c" roots")
+	if (failed > 0):
+		string_append(line, c", ")
+		string_append_int(line, failed)
+		string_append(line, c" failed")
+	string_append_char(line, ')')
+	stream_write_line(out, line.data)
+	string_free(line)
+	stream_flush(out)
+	return 0
+
+
 int main(int argc, int argv):
 	wtest_mask32 = wtest_mask32_value()
 	if (argc < 2):
@@ -3294,6 +3488,8 @@ int main(int argc, int argv):
 	int for_mode = strcmp(*command, c"for") == 0
 	if (strcmp(*command, c"archs") == 0):
 		return wtest_archs_main(argc, argv)
+	if (strcmp(*command, c"cache") == 0):
+		return wtest_cache_main(argc, argv)
 	if ((strcmp(*command, c"changed") != 0) && (for_mode == 0)):
 		wtest_usage()
 		return 1
