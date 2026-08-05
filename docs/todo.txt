@@ -349,10 +349,13 @@ current state:
 				(merge3.w)
 			wvc porcelain: status/snapshot/merge/serve/pull/push; push/pull
 				do have/want negotiation for loose objects over HTTP
+			object packing (pack.w): loose objects repacked into one
+				deflate-compressed, indexed W-native .wpack file (wvc pack
+				[--prune] / wvc unpack); reads come back through cas.w's
+				fallback seam, so status/log/pull work against packed stores
 		remaining:
-			compress-based object packing (unblocked: the DEFLATE encoder
-				now does real compression at every level -- the packing
-				work itself has not started)
+			pack-internal re-deltification (delta.w objects pack as-is;
+				no cross-object delta compression inside a pack yet)
 			git interop (non-goal for now; needs zlib + SHA-1 + pack format)
 
 	parser generator (libs/extras/parser_generator/; design: docs/projects/parser_generator.md, issue #329):

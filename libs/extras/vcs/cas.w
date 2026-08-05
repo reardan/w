@@ -86,6 +86,15 @@ unconditional in cas_get because raw-put ids are names, not content
 hashes, and would always "fail". Callers that only ever use cas_put can
 treat cas_verify(id) == 1 as the fsck primitive.
 
+Layered read-through (VCS wave-3 remainder, issue #252 "object
+packing"): an open handle can carry an optional fallback layer --
+struct wcas's fallback_* fields, registered by libs/extras/vcs/pack.w's
+pack_attach -- that cas_get/cas_has/cas_verify consult whenever the
+loose object file is missing, so objects repacked into pack files (and
+possibly pruned from objects/) stay readable through the same three
+calls every consumer already uses. See the comment block above struct
+wcas for the exact contract.
+
 Error handling follows docs/error_results.txt: operations a caller can
 recover from (missing object = cache miss, unwritable store) return
 wresult[T]*, carrying negative Linux errno codes unchanged, -22
@@ -148,10 +157,40 @@ int CAS_ZLIB_MAGIC0():
 	return 'x'
 
 
+/*
+Read-through fallback seam (VCS wave-3 remainder, issue #252 "object
+packing"): a layered store -- libs/extras/vcs/pack.w's pack files today,
+conceivably a network object cache tomorrow -- can register itself on an
+open handle so cas_get/cas_has/cas_verify consult it whenever the loose
+object file is missing (or unreadable). The contract is deliberately
+tiny and encoding-free: the load hook returns the object's LOGICAL bytes
+("<type> <len>\0" + payload, exactly what cas_parse_framed consumes and
+cas_id_hex hashes) as a caller-owned string_builder, or 0 for "not
+found / not decodable" -- on-disk (or in-pack) encoding stays entirely
+the layer's concern, mirroring how cas_inflate_stored already keeps the
+loose files' own encoding out of every caller's sight. The loose file
+always wins when present; the fallback only ever widens what a read can
+see, so a store with no layer attached (all three fields 0, cas_open's
+default) behaves exactly as before. cas_close invokes the close hook so
+owners of long-lived handles (tools/wvc.w) need no separate teardown
+call.
+*/
+type cas_fallback_load_fn = fn(void*, char*) -> string_builder*
+type cas_fallback_has_fn = fn(void*, char*) -> int
+type cas_fallback_close_fn = fn(void*) -> void
+
+
 # An open store handle. Create with cas_open, release with cas_close.
+# The fallback_* fields are 0 unless a layered store registered itself
+# (see the comment above; libs/extras/vcs/pack.w's pack_attach is the
+# one registrar today).
 struct wcas:
 	char* root      # store root directory (owned clone)
 	char* objects   # "<root>/objects" (owned)
+	void* fallback_state
+	cas_fallback_load_fn* fallback_load
+	cas_fallback_has_fn* fallback_has
+	cas_fallback_close_fn* fallback_close
 
 
 # One object read back from the store: the caller-defined type tag and
@@ -331,10 +370,16 @@ wresult[wcas*]* cas_open(char* root):
 	wcas* s = new wcas
 	s.root = strclone(root)
 	s.objects = objects
+	s.fallback_state = 0
+	s.fallback_load = 0
+	s.fallback_has = 0
+	s.fallback_close = 0
 	return result_new_ok[wcas*](s)
 
 
 void cas_close(wcas* s):
+	if (s.fallback_close != 0):
+		s.fallback_close(s.fallback_state)
 	free(s.root)
 	free(s.objects)
 	free(s)
@@ -347,6 +392,11 @@ void cas_object_free(wcas_object* o):
 
 
 /* Writing */
+
+
+# Defined under "Reading" below; cas_put's dedup check needs it first
+# (single-pass define-before-use, hence the prototype).
+int cas_has(wcas* s, char* id);
 
 
 int cas_write_all(int fd, char* data, int n):
@@ -441,9 +491,11 @@ wresult[char*]* cas_put(wcas* s, char* object_type, char* data, int length):
 		return result_new_error[char*](-22)
 	string_builder* header = cas_make_header(object_type, length)
 	char* id = cas_id_from_header(header, data, length)
-	char* path = cas_object_path(s, id)
-	int present = path_exists(path)
-	free(path)
+	# cas_has, not a bare path_exists: an object that only lives in a
+	# pack (libs/extras/vcs/pack.w, via the fallback seam) is just as
+	# present as a loose one, so re-putting it must stay a dedup no-op
+	# rather than quietly re-growing a loose copy of every packed object.
+	int present = cas_has(s, id)
 	int err = 0
 	if (present == 0):
 		err = cas_store_bytes(s, id, header, data, length)
@@ -478,12 +530,16 @@ wresult[char*]* cas_put_raw(wcas* s, char* id, char* object_type, char* data, in
 
 
 # 1 when an object is stored under id, else 0 (including malformed ids).
+# A registered fallback layer (see struct wcas) is consulted when no
+# loose file exists, so a packed-away object still counts as present.
 int cas_has(wcas* s, char* id):
 	if (cas_valid_id(id) == 0):
 		return 0
 	char* path = cas_object_path(s, id)
 	int present = path_exists(path)
 	free(path)
+	if ((present == 0) && (s.fallback_has != 0)):
+		present = s.fallback_has(s.fallback_state, id)
 	return present
 
 
@@ -606,12 +662,22 @@ wresult[wcas_object*]* cas_get(wcas* s, char* id):
 	char* path = cas_object_path(s, id)
 	string_builder* contents = cas_read_file(path)
 	free(path)
+	string_builder* logical = 0
 	if (contents == 0):
-		return result_new_error[wcas_object*](cas_read_errno)
-	string_builder* logical = cas_inflate_stored(contents.data, contents.length)
-	string_free(contents)
-	if (logical == 0):
-		return result_new_error[wcas_object*](CAS_ERR_CORRUPT())
+		# No loose file: ask the registered fallback layer (packs) for
+		# the LOGICAL bytes before giving up. cas_read_errno is captured
+		# first -- the layer's own file reads go through cas_read_file
+		# too and would clobber the global.
+		int read_err = cas_read_errno
+		if (s.fallback_load != 0):
+			logical = s.fallback_load(s.fallback_state, id)
+		if (logical == 0):
+			return result_new_error[wcas_object*](read_err)
+	else:
+		logical = cas_inflate_stored(contents.data, contents.length)
+		string_free(contents)
+		if (logical == 0):
+			return result_new_error[wcas_object*](CAS_ERR_CORRUPT())
 	wresult[wcas_object*]* parsed = cas_parse_framed(logical.data, logical.length)
 	string_free(logical)
 	return parsed
@@ -631,12 +697,21 @@ int cas_verify(wcas* s, char* id):
 	char* path = cas_object_path(s, id)
 	string_builder* contents = cas_read_file(path)
 	free(path)
+	string_builder* logical = 0
 	if (contents == 0):
-		return cas_read_errno
-	string_builder* logical = cas_inflate_stored(contents.data, contents.length)
-	string_free(contents)
-	if (logical == 0):
-		return 0
+		# Same fallback consultation as cas_get: a packed-away object is
+		# still verifiable, its digest computed over the same logical
+		# bytes the loose encoding would have decoded to.
+		int read_err = cas_read_errno
+		if (s.fallback_load != 0):
+			logical = s.fallback_load(s.fallback_state, id)
+		if (logical == 0):
+			return read_err
+	else:
+		logical = cas_inflate_stored(contents.data, contents.length)
+		string_free(contents)
+		if (logical == 0):
+			return 0
 	char* digest = malloc(32)
 	whash_oneshot(WHASH_SHA256(), logical.data, logical.length, digest)
 	char* actual = cas_hex_encode(digest)

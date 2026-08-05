@@ -238,6 +238,23 @@ before the next begins. Modules are ordered so the build-system work
   chains with periodic snapshots (the revlog lesson). Lands as an
   alternative CAS object encoding, so history storage shrinks without
   touching any caller.
+- **`libs/extras/vcs/pack.w`** — pack files (landed 2026-08, the
+  wave-3 remainder, once `compress/` had a real DEFLATE encoder):
+  every loose object rewritten into one deflate-compressed, indexed
+  `<root>/packs/<sha256-of-file>.wpack` file in a minimal W-native
+  format — line-oriented header (`wpack 1`, `count N`, one
+  `<id> <offset> <clen> <ulen>` index line per object) over
+  back-to-back zlib streams of each object's logical
+  `"<type> <len>\0"+payload` bytes. Reads come back through a small
+  fallback seam added to `cas.w` (`cas_get`/`cas_has`/`cas_verify`
+  consult the packs whenever a loose file is missing), so
+  tree/commit/index/delta/sync consumers — and therefore `wvc
+  status`/`log`/`pull` — work against fully packed stores unchanged.
+  Porcelain: `wvc pack [--prune]` / `wvc unpack` (byte-identical
+  loose round-trip; the pack file itself is deterministic for a given
+  object set). Pack-internal re-deltification is deferred — delta.w
+  objects pack as-is, which already composes chain compression with
+  per-object deflate.
 - **`libs/extras/compress/`** — CRC32 plus DEFLATE (inflate first,
   deflate second). Its own package, deliberately outside `vcs/`:
   the web stack wants gzip anyway, and inflate+SHA-1 would be the
@@ -290,7 +307,9 @@ before the next begins. Modules are ordered so the build-system work
 - **Git interop is a non-goal for now**: it would force zlib + SHA-1 +
   exact pack formats from day one. Revisit after `compress/` lands;
   jj demonstrates that porcelain over a pluggable backend keeps that
-  door open.
+  door open. (Reaffirmed when `pack.w` landed: its `.wpack` format is
+  deliberately W-native — line-oriented header + zlib entries — and
+  neither reads nor writes git packfiles.)
 - **Conflicts and history-rewriting policy** (phases, obsolescence,
   op logs) are porcelain-tier concerns deferred until `wvc` has real
   users; the storage layer just needs to make them possible (immutable

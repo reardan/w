@@ -31,6 +31,8 @@ Subcommands
 	wvc serve --port N [--root dir]   default root: "."
 	wvc pull <url> [ref]              default ref: "main"
 	wvc push <url> [ref]              default ref: "main"
+	wvc pack [dir] [--prune]          default dir: "."
+	wvc unpack [dir]                  default dir: "."
 
 `log`, `diff`, `merge`, `pull` and `push` take no <dir>: unlike
 `init`/`snapshot`/`status`/`serve`, which name the working directory
@@ -47,6 +49,19 @@ ancestry-cap/error-handling design decisions. `serve` runs the HTTP
 object server forever (until killed) and prints "Listening on
 <ip>:<port>" on its first stdout line once bound, so a test or script
 launching it with `--port 0` can read the kernel-assigned port back.
+
+`pack`/`unpack` (VCS wave-3 remainder, issue #252 "object packing") are
+thin CLI wiring over libs/extras/vcs/pack.w -- see that file's header
+comment for the pack file format and its design decisions (W-native,
+NOT git's packfile format -- interop stays a non-goal). `pack` rewrites
+every loose object into one "<meta>/packs/<hash>.wpack" file (with
+`--prune` also deleting the loose copies once the pack is durable);
+`unpack` explodes every pack back into loose objects and removes the
+pack files. Every other subcommand works unchanged against a packed
+store because wvc_open_store below runs pack_attach on each handle it
+opens: cas.w's read path then consults the packs whenever a loose
+object is missing, which covers tree/commit/index/sync reads too since
+they all funnel through cas_get/cas_has.
 
 Exit status: 0 success, 1 an operation failed (I/O or a malformed VCS
 object -- wvc_fail prints "<errno>: <ECODE>: <description>" via
@@ -156,6 +171,7 @@ import libs.extras.vcs.index
 import libs.extras.vcs.dag
 import libs.extras.vcs.merge3
 import libs.extras.vcs.sync
+import libs.extras.vcs.pack
 import libs.standard.web.http_server
 
 
@@ -202,6 +218,8 @@ void wvc_usage():
 	stream_write_line(err, c"       wvc serve --port N [--root dir]")
 	stream_write_line(err, c"       wvc pull <url> [ref]")
 	stream_write_line(err, c"       wvc push <url> [ref]")
+	stream_write_line(err, c"       wvc pack [dir] [--prune]")
+	stream_write_line(err, c"       wvc unpack [dir]")
 	stream_flush(err)
 
 
@@ -236,7 +254,13 @@ T wvc_unwrap[T](wresult[T]* r, char* context):
 
 
 wcas* wvc_open_store(char* meta):
-	return wvc_unwrap[wcas*](cas_open(meta), c"cannot open object store (did you run 'wvc init'?)")
+	wcas* store = wvc_unwrap[wcas*](cas_open(meta), c"cannot open object store (did you run 'wvc init'?)")
+	# Pack read-through (libs/extras/vcs/pack.w): objects repacked by
+	# `wvc pack --prune` stay readable through every subcommand. Lazy --
+	# a store with no packs never touches the packs directory. cas_close
+	# tears the attached state down, so no per-command cleanup exists.
+	pack_attach(store)
+	return store
 
 
 wrefs* wvc_open_refs(char* meta):
@@ -1280,6 +1304,89 @@ int wvc_cmd_push(int argc, int argv):
 	return result
 
 
+# wvc pack [dir] [--prune]: repacks every loose object into one pack
+# file under <dir>/.wvc/packs/ (libs/extras/vcs/pack.w -- see the header
+# comment). --prune additionally deletes the loose copies, which only
+# happens after the pack file is durably in place.
+int wvc_cmd_pack(int argc, int argv):
+	char* dir = 0
+	int prune = 0
+	int i = 2
+	while (i < argc):
+		char** arg = argv + i * __word_size__
+		char* a = *arg
+		if (strcmp(a, c"--prune") == 0):
+			prune = 1
+		else if (dir == 0):
+			dir = a
+		else:
+			wvc_usage()
+			return 2
+		i = i + 1
+	if (dir == 0):
+		dir = c"."
+
+	char* meta = wvc_meta_dir(dir)
+	wcas* store = wvc_open_store(meta)
+	pack_stats* st = wvc_unwrap[pack_stats*](pack_store_loose(store, prune), c"pack failed")
+
+	wstream* out = stdout_writer()
+	if (st.objects == 0):
+		stream_write_line(out, c"nothing to pack (no loose objects)")
+	else:
+		stream_write_cstr(out, c"packed ")
+		char* count_text = itoa(st.objects)
+		stream_write_cstr(out, count_text)
+		free(count_text)
+		stream_write_cstr(out, c" objects into ")
+		stream_write_line(out, st.pack_path)
+		if (prune):
+			stream_write_line(out, c"pruned loose copies")
+	stream_flush(out)
+
+	pack_stats_free(st)
+	free(meta)
+	cas_close(store)
+	return 0
+
+
+# wvc unpack [dir]: explodes every pack file back into loose objects
+# and removes the pack files (each one only after all of its objects
+# are loose again -- pack.w's own ordering guarantee).
+int wvc_cmd_unpack(int argc, int argv):
+	char* dir = c"."
+	if (argc >= 4):
+		wvc_usage()
+		return 2
+	if (argc >= 3):
+		char** arg = argv + 2 * __word_size__
+		dir = *arg
+
+	char* meta = wvc_meta_dir(dir)
+	wcas* store = wvc_open_store(meta)
+	pack_stats* st = wvc_unwrap[pack_stats*](pack_unpack_all(store), c"unpack failed")
+
+	wstream* out = stdout_writer()
+	if (st.packs == 0):
+		stream_write_line(out, c"nothing to unpack (no pack files)")
+	else:
+		stream_write_cstr(out, c"unpacked ")
+		char* count_text = itoa(st.objects)
+		stream_write_cstr(out, count_text)
+		free(count_text)
+		stream_write_cstr(out, c" objects from ")
+		char* pack_text = itoa(st.packs)
+		stream_write_cstr(out, pack_text)
+		free(pack_text)
+		stream_write_line(out, c" pack(s)")
+	stream_flush(out)
+
+	pack_stats_free(st)
+	free(meta)
+	cas_close(store)
+	return 0
+
+
 int main(int argc, int argv):
 	if (argc < 2):
 		wvc_usage()
@@ -1304,5 +1411,9 @@ int main(int argc, int argv):
 		return wvc_cmd_pull(argc, argv)
 	if (strcmp(cmd, c"push") == 0):
 		return wvc_cmd_push(argc, argv)
+	if (strcmp(cmd, c"pack") == 0):
+		return wvc_cmd_pack(argc, argv)
+	if (strcmp(cmd, c"unpack") == 0):
+		return wvc_cmd_unpack(argc, argv)
 	wvc_usage()
 	return 2
