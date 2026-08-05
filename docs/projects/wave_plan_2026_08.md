@@ -116,11 +116,11 @@ status lives in the table below, updated as PRs open and land.
 | 2 | 2.2 x64 DWARF address_size | PR open | #403 |
 | 2 | 2.3 threads atomics/mutex | PR open | #405 |
 | 2 | 2.4 c_import bit-fields | PR open | #406 |
-| 3 | 3.1 ndarray index sugar | launched | — |
-| 3 | 3.2 type-system next | launched | — |
-| 3 | 3.3 wasm stage-5 residue | launched | — |
-| 3 | 3.4 container free() | launched | — |
-| 3 | 3.5 W^X split B+C (solo) | queued (after 3.1–3.4) | — |
+| 3 | 3.1 ndarray index sugar | PR open | #409 |
+| 3 | 3.2 type-system next | PR open | #407 |
+| 3 | 3.3 wasm stage-5 residue | PR open | #410 |
+| 3 | 3.4 container free() | PR open | #408 |
+| 3 | 3.5 W^X split B+C (solo) | launched | — |
 
 Note (2026-08-05): a container restart mid-wave-1 killed three in-flight suite
 runs; work survived in worktrees and was salvaged commit-first. Waves 2+ run
