@@ -617,7 +617,7 @@ void help_shared_options():
 	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (default: ret)")
 	println(c"  --strict              treat warnings as errors and write no output")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
-	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: globals)")
+	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
 	println(c"  -v, --verbose         raise verbosity (repeat for compiler debug traces)")
 	println(c"  -h, --help            print this help and exit")
@@ -816,9 +816,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# --wasm-acc is whole-program too (every wasm function body and call
 	# site must agree on the accumulator representation, and be_start
 	# below emits the entry/OS stubs), so pre-scan it the same way; the
-	# positional loop re-applies the level (docs/projects/wasm_backend.md,
-	# the stage-5 globals-vs-locals measurement).
-	int wasm_acc_level = 0
+	# positional loop re-applies the level. Default: locals — the stage-5
+	# measurement showed engines run them ~13% faster than module globals
+	# for ~4% larger modules (docs/projects/wasm_backend.md).
+	int wasm_acc_level = 1
 	int acc_scan = i
 	while (acc_scan < argc):
 		char** acc_arg = argv + acc_scan * __word_size__

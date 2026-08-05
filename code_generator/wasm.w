@@ -10,15 +10,17 @@ place of registers:
   global 2 = $bx  secondary operand      (ebx)
   global 3 = $cx  scratch                (ecx)
 
-Alternatively (--wasm-acc=locals, the stage-5 measurement knob) the
-accumulator registers live in per-function wasm LOCALS, which engines
-register-allocate more readily than globals: every function body
-declares local twins for $ax/$bx/$cx (+ the i64/f32 scratch), and the
-$ax module global remains only as the cross-call return channel — a
-ret publishes local $ax to it and every call site reloads from it, so
-the host-visible contract (the exported "ax" global) is unchanged.
-$sp always stays a module global (one W stack). All register access
-goes through wasm_reg_get/wasm_reg_set, which pick the representation.
+By default the accumulator registers instead live in per-function wasm
+LOCALS, which engines register-allocate more readily than globals
+(~13% faster on the self-compile benchmark, ~4% larger modules — the
+stage-5 measurement; --wasm-acc=globals selects the plain-globals
+form): every function body declares local twins for $ax/$bx/$cx (+ the
+i64/f32 scratch), and the $ax module global remains as the cross-call
+return channel — a ret publishes local $ax to it and every call site
+reloads from it, so the host-visible contract (the exported "ax"
+global) is unchanged. $sp always stays a module global (one W stack).
+All register access goes through wasm_reg_get/wasm_reg_set, which pick
+the representation.
 
 The W stack lives in linear memory (wasm locals cannot have their address
 taken, and W takes addresses of locals everywhere): pushes are
@@ -329,9 +331,10 @@ void wasm_global_set(int g):
 	wasm_leb(g)
 
 # Accumulator representation (docs/projects/wasm_backend.md, the stage-5
-# globals-vs-locals measurement): 0 = module globals (the default), 1 =
-# per-function locals (--wasm-acc=locals). Whole-program: every body and
-# call site must agree, so compiler.w pre-scans the flag before be_start.
+# globals-vs-locals measurement): 0 = module globals (--wasm-acc=globals),
+# 1 = per-function locals (the default — engines run locals ~13% faster
+# for ~4% larger modules). Whole-program: every body and call site must
+# agree, so compiler.w pre-scans the flag before be_start.
 int wasm_acc_locals
 
 # Read/write virtual register r (1 = $ax, 2 = $bx, 3 = $cx, 4 = $t64,
