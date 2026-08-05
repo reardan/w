@@ -20,31 +20,50 @@ struct descriptor:
 		kind    value kind, see below
 		size    int/bool: storage width in bytes (1/2/4/8)
 		        list: element slot size in bytes
+		        map: value size in bytes (what __w_map_new takes)
 		        otherwise unused
 		aux     struct: nested struct descriptor address
 		        list: element value-descriptor address
+		        map: map-descriptor address
 		        otherwise 0
 
 value descriptor (list elements): 3 words: kind, size, aux (same meaning).
 
-Kinds: 1 int (signed), 2 bool, 3 char*, 4 string, 5 struct, 6 list.
+map descriptor (map fields): 4 words: key kind (the __w_hash_key_*
+constant __w_map_new expects: 2 char*, 3 string), then value kind,
+value size, value aux with the same meaning as a value descriptor.
+
+Kinds: 1 int (signed), 2 bool, 3 char*, 4 string, 5 struct, 6 list,
+7 float (float32), 8 map (char* or string keys).
 
 Encoding notes:
-- null char*, string, and list fields encode as JSON null and decode
-  back to 0.
+- null char*, string, list, and map fields encode as JSON null and
+  decode back to 0 (an empty map encodes as {} and decodes to an empty
+  map).
 - string fields are copied through a NUL-terminated buffer, so embedded
-  NUL bytes truncate (structures/json.w strings are C strings).
+  NUL bytes truncate (structures/json.w strings are C strings). The
+  same applies to string-typed map keys.
+- float fields are float32; decode also accepts a JSON integer for a
+  float field (JavaScript's JSON.stringify writes whole doubles with no
+  fraction part) and converts it. float64/float16 fields are rejected
+  at compile time.
+- map fields encode as JSON objects in insertion order and decode in
+  the source object's member order.
 - decode is strict: a missing member or a type mismatch fails the whole
   decode and __w_json_decode returns 0 so callers can report bad input
   (e.g. respond with JSON-RPC -32602 invalid params). Interior
-  allocations made before the failing field are not individually freed.
+  allocations made before the failing field are not individually freed
+  (a failing map decode frees the map's own keys and storage, but not
+  values decoded into it before the failure).
 */
 import lib.lib
 import structures.json
-# The list codec walks __w_list directly. The compiler auto-imports this
-# module into every batch-compiled program (the import de-duplicates),
-# but the REPL does not preload it.
+# The list codec walks __w_list directly and the map codec walks
+# __w_hash_table. The compiler auto-imports both modules into every
+# batch-compiled program (the imports de-duplicate), but the REPL does
+# not preload them.
 import structures.w_list
+import structures.hash_table
 
 
 json_value* __w_json_encode_field(int kind, int size, int aux, char* addr);
@@ -84,10 +103,9 @@ json_value* __w_json_encode(int desc, char* addr):
 	return obj
 
 
-json_value* __w_json_encode_string(char* addr):
-	int s = __w_json_load_pointer(addr)
-	if (s == 0):
-		return json_null()
+# NUL-terminated copy of a length-prefixed string descriptor's bytes
+# (embedded NUL bytes truncate; the caller owns the copy).
+char* __w_json_cstr_from_string(int s):
 	char* descriptor = cast(char*, s)
 	char* data = cast(char*, __w_json_load_pointer(descriptor))
 	int length = __w_json_load_pointer(descriptor + __word_size__)
@@ -97,7 +115,14 @@ json_value* __w_json_encode_string(char* addr):
 		copy[i] = data[i]
 		i = i + 1
 	copy[length] = 0
-	return json_string_take(copy)
+	return copy
+
+
+json_value* __w_json_encode_string(char* addr):
+	int s = __w_json_load_pointer(addr)
+	if (s == 0):
+		return json_null()
+	return json_string_take(__w_json_cstr_from_string(s))
 
 
 json_value* __w_json_encode_list(int aux, char* addr):
@@ -116,6 +141,33 @@ json_value* __w_json_encode_list(int aux, char* addr):
 	return array
 
 
+# Encode a map field (key kind 2 or 3, see the map descriptor) as a
+# JSON object in insertion order. char* keys pass straight through
+# (json_object_set clones them); string keys go through a NUL-terminated
+# copy.
+json_value* __w_json_encode_map(int aux, char* addr):
+	int raw = __w_json_load_pointer(addr)
+	if (raw == 0):
+		return json_null()
+	__w_hash_table* table = cast(__w_hash_table*, raw)
+	int vkind = __w_json_desc_word(aux, 1)
+	int vsize = __w_json_desc_word(aux, 2)
+	int vaux = __w_json_desc_word(aux, 3)
+	json_value* obj = json_object()
+	int cursor = __w_map_iter_begin(table)
+	while (__w_map_iter_done(table, cursor) == 0):
+		int key = __w_map_iter_key(table, cursor)
+		json_value* member = __w_json_encode_field(vkind, vsize, vaux, __w_map_iter_value_addr(table, cursor))
+		if (table.key_kind == __w_hash_key_string()):
+			char* copy = __w_json_cstr_from_string(key)
+			json_object_set(obj, copy, member)
+			free(copy)
+		else:
+			json_object_set(obj, cast(char*, key), member)
+		cursor = __w_map_iter_next(table, cursor)
+	return obj
+
+
 json_value* __w_json_encode_field(int kind, int size, int aux, char* addr):
 	if (kind == 1):
 		return json_int(__w_list_load_word(addr, size))
@@ -132,6 +184,11 @@ json_value* __w_json_encode_field(int kind, int size, int aux, char* addr):
 		return __w_json_encode(aux, addr)
 	if (kind == 6):
 		return __w_json_encode_list(aux, addr)
+	if (kind == 7):
+		float* f = cast(float*, addr)
+		return json_float(f[0])
+	if (kind == 8):
+		return __w_json_encode_map(aux, addr)
 	return json_null()
 
 
@@ -206,6 +263,57 @@ int __w_json_decode_list(int size, int aux, json_value* v, char* addr):
 	return 1
 
 
+# Store a decoded value slot into a map. Scalar values live in the slot
+# as full words the way __w_map_set stores them (m[k] reads load the
+# whole word back), so narrow ints re-load sign-extended from the slot
+# the decoder narrowed them into; struct values copy their slot bytes.
+void __w_json_map_store(__w_hash_table* table, int key, int vkind, int vsize, char* slot):
+	if (vkind == 5):
+		__w_map_set_bytes(table, key, slot)
+	else if ((vkind == 1) || (vkind == 2) || (vkind == 7)):
+		__w_map_set(table, key, __w_list_load_word(slot, vsize))
+	else:
+		__w_map_set(table, key, __w_json_load_pointer(slot))
+
+
+int __w_json_decode_map(int size, int aux, json_value* v, char* addr):
+	if (v.type == json_type_null()):
+		__w_json_store_pointer(addr, 0)
+		return 1
+	if (v.type != json_type_object()):
+		return 0
+	int key_kind = __w_json_desc_word(aux, 0)
+	int vkind = __w_json_desc_word(aux, 1)
+	int vsize = __w_json_desc_word(aux, 2)
+	int vaux = __w_json_desc_word(aux, 3)
+	__w_hash_table* table = __w_map_new(key_kind, size)
+	int slot_size = __w_hash_slot_size(table)
+	char* slot = malloc(slot_size)
+	int ok = 1
+	for char* member_key, json_value* member in v.object_values:
+		if (ok):
+			int j = 0
+			while (j < slot_size):
+				slot[j] = 0
+				j = j + 1
+			if (__w_json_decode_field(vkind, vsize, vaux, member, slot) == 0):
+				ok = 0
+			else if (key_kind == __w_hash_key_string()):
+				# Temporary descriptor over the JSON key's bytes; the
+				# map clones descriptor and bytes on insert.
+				string skey = str_from_cstr(member_key)
+				__w_json_map_store(table, cast(int, skey), vkind, vsize, slot)
+				free(cast(char*, cast(int, skey)))
+			else:
+				__w_json_map_store(table, cast(int, member_key), vkind, vsize, slot)
+	free(slot)
+	if (ok == 0):
+		__w_map_free(table)
+		return 0
+	__w_json_store_pointer(addr, cast(int, table))
+	return 1
+
+
 int __w_json_decode_field(int kind, int size, int aux, json_value* v, char* addr):
 	if (v == 0):
 		return 0
@@ -241,4 +349,16 @@ int __w_json_decode_field(int kind, int size, int aux, json_value* v, char* addr
 		return __w_json_decode_into(aux, v, addr)
 	if (kind == 6):
 		return __w_json_decode_list(size, aux, v, addr)
+	if (kind == 7):
+		float* f = cast(float*, addr)
+		if (v.type == json_type_float()):
+			f[0] = v.float_value
+			return 1
+		if (v.type == json_type_int()):
+			float converted = v.int_value
+			f[0] = converted
+			return 1
+		return 0
+	if (kind == 8):
+		return __w_json_decode_map(size, aux, v, addr)
 	return 0
