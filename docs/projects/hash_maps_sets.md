@@ -157,10 +157,13 @@ types because their descriptors point into the enclosing object.
 ## Deferred work
 
 - Contextual bare literals.
-- Further pseudo-methods such as `discard` and `clear`, and a
-  `free()`/`destroy()` method — `lib/container.w`'s `map_free[K, V]`
-  (reaching into the auto-imported `__w_hash_table` runtime directly)
-  stands in for the latter where issue #120 needed it.
+- Further pseudo-methods such as `discard` and `clear`. `free()` landed
+  (2026-08 wave 3): `m.free()` / `s.free()` lower to `__w_map_free`,
+  which releases the table's arrays, its cloned keys and the header;
+  pointer values are not chased and post-free use is caller error (see
+  `typed_containers.md`'s remaining-work entry for the full contract).
+  `lib/container.w`'s `map_free[K, V]` is now a deprecated
+  compatibility wrapper.
 - Struct keys (values are done).
 - Migrating the compiler's symbol table to a built-in map: it was never
   actually backed by `structures/hash_map.w` to begin with (see
