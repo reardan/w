@@ -4,6 +4,11 @@ void init_array_field_descriptors(int type);
 void assign_store_struct(int type); /* defined in expression */
 int increment_op(); /* defined in increment */
 void increment_expression_error(); /* defined in increment */
+# Import-alias support lives in grammar/import_statement.w, which is
+# compiled after this file; see the definitions there.
+int import_alias_lookup(char* name);
+int import_alias_type_ahead(int require_call);
+int import_alias_type_member(int alias_index);
 
 
 # Store the constructor argument in eax into field field_index of the
@@ -66,12 +71,22 @@ void zero_stack_count_bytes():
 # declaration grammar, and function-signature types are excluded so an
 # alias like 'type cb = fn(int) -> int' never claims a call.
 int struct_value_ctor_ready():
-	if (nextc != '('):
-		return 0
 	int c = token[0]
 	if (((('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || (c == '_')) == 0):
 		return 0
-	int base = type_lookup(token)
+	int base = -1
+	if (nextc == '.'):
+		# 'alias.T(a, b)': the qualified constructor spelling. The
+		# lookahead only matches a member that names a type declared in
+		# the aliased module with '(' directly after it, so value
+		# accesses ('alias.name') fall through to identifier().
+		base = import_alias_type_ahead(1)
+		if (base < 0):
+			return 0
+	else:
+		if (nextc != '('):
+			return 0
+		base = type_lookup(token)
 	if (base < 0):
 		return 0
 	if (type_get_pointer_level(base) > 0):
@@ -91,6 +106,11 @@ int struct_value_ctor_ready():
 # closing ')' as the current token for primary_expr's trailing
 # get_token().
 int struct_value_ctor_expr():
+	# 'alias.T(a, b)': consume the alias qualifier so the type name is
+	# the current token (struct_value_ctor_ready validated the shape)
+	if (nextc == '.'):
+		get_token()
+		expect(c".")
 	int base = type_lookup(token)
 	get_token()
 	expect(c"(")
@@ -290,11 +310,19 @@ int unary_expression_operand():
 			int list_container_type = type_name()
 			list_emit_new_container(list_container_type)
 			return type_value(list_container_type)
-		int base = type_lookup(token)
+		int base = -1
+		# 'new alias.T': the qualified type spelling; the member must be
+		# a type declared in the aliased module (import_statement.w)
+		if (nextc == '.'):
+			int new_alias = import_alias_lookup(token)
+			if (new_alias >= 0):
+				base = import_alias_type_member(new_alias)
 		if (base < 0):
-			diag_part(c"unknown type after new: '")
-			diag_part(token)
-			error(c"'")
+			base = type_lookup(token)
+			if (base < 0):
+				diag_part(c"unknown type after new: '")
+				diag_part(token)
+				error(c"'")
 		get_token()
 		if (accept(c"[")):
 			int element_size = type_get_size(base)

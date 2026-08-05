@@ -1,3 +1,8 @@
+# Import-alias support lives in grammar/import_statement.w, which is
+# compiled after this file; see the definition there.
+int import_alias_type_ahead(int require_call);
+
+
 # Storage type a 'name := expression' local declares for an initializer
 # expression type. Value pseudo-types map back to their declarable
 # storage types (the generic-inference rule); untyped constants default
@@ -98,8 +103,11 @@ int inferred_declaration():
 
 
 int variable_declaration():
-	# type-name identifier
-	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here()):
+	# type-name identifier ('alias.TypeName' counts as a type name:
+	# import_alias_type_ahead only claims a member that names a type
+	# declared in the aliased module, so 'alias.value' stays an
+	# expression statement)
+	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here() | (import_alias_type_ahead(0) >= 0)):
 		# println2("variable_declaration()")
 		int type = typed_identifier()
 		int has_initializer = 0

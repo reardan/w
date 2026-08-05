@@ -404,11 +404,20 @@ current state:
 
 	next priorities:
 		type system:
-			finish type.fields usage for globals and imports
+			type.fields usage for globals and imports: verified complete
+				2026-08 -- struct-typed globals (own and imported,
+				nested/array fields, copies, by-value args) and
+				c_import/extern types all flow through the type table's
+				field metadata on both word sizes
 			use type.w as the language meta-type
 			support private imports (aliases + the unqualified-use warning
 				are done; hard hiding needs real module identity)
-			qualified type names through import aliases (f.SomeStruct)
+			qualified type names through import aliases (f.SomeStruct):
+				done 2026-08 -- resolved in type positions (locals,
+				globals, params, returns, fields, pointers, casts, 'new',
+				struct-constructor literals) with membership checked
+				against the aliased module like the value spelling;
+				import_alias_type_test / import_alias_type_error_test
 			type_table migrated to list[int] (issue #96/#119); symbol_table
 				stays a hand-packed byte blob on purpose (table offsets are
 				stable handles threaded through backpatch chains, GOT slots,
