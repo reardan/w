@@ -319,6 +319,96 @@ void import_warn_transitive(char* name):
 	warning(c"'); import it directly")
 
 
+# Type index of the type named `name` when it was declared in the
+# module aliased at alias_index, or -1 (not a type, or declared
+# elsewhere). Builtin types carry no declaration location, so they can
+# never resolve through an alias.
+int import_alias_module_type(int alias_index, char* name):
+	int t = type_lookup(name)
+	if (t < 0):
+		return -1
+	int file_index = type_decl_file_index(t)
+	if (file_index < 0):
+		return -1
+	if (import_path_matches_file(import_alias_path(alias_index), debug_file_name(file_index)) == 0):
+		return -1
+	return t
+
+
+# Non-consuming lookahead for the qualified type spelling
+# 'alias.TypeName': the type index when the current token is an import
+# alias, '.' follows immediately, and the member names a type declared
+# in the aliased module's file; -1 otherwise. With require_call set the
+# member must also be directly followed by '(' (the struct-constructor
+# shape, grammar/unary_expression.w). Scans ahead with the reparse
+# save/seek/restore trick and always rewinds, so declaration gates can
+# route 'alias.TypeName ...' to the type grammar while value accesses
+# ('alias.name') keep flowing through identifier().
+int import_alias_type_ahead(int require_call):
+	int c = token[0]
+	int is_name = (('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) | (c == '_')
+	if (is_name == 0):
+		return -1
+	if (nextc != '.'):
+		return -1
+	int alias_index = import_alias_lookup(token)
+	if (alias_index < 0):
+		return -1
+	char* save = generic_reparse_save()
+	get_token() /* consume the alias name; the next token is the '.' */
+	int found = -1
+	if (peek(c".")):
+		get_token() /* consume the '.'; the member is now current */
+		found = import_alias_module_type(alias_index, token)
+		if ((found >= 0) & require_call):
+			if (nextc != '('):
+				found = -1
+	getchar_seek(file, load_ptr(save + 7 * __word_size__))
+	generic_reparse_restore(save)
+	return found
+
+
+# Qualified TYPE reference through an import alias. The caller has just
+# seen the alias identifier with '.' as the next character. Consumes
+# ".TypeName", checks the member names a type declared in the aliased
+# module's file (the same checked membership import_alias_member applies
+# to values), and returns the type index. The type name stays the
+# current token, matching type_name()'s plain identifier branch.
+int import_alias_type_member(int alias_index):
+	get_token() /* consume the alias name; the next token is the '.' */
+	expect(c".")
+	int c = token[0]
+	int is_name = (('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) | (c == '_')
+	if (is_name == 0):
+		diag_part(c"identifier expected after import alias '")
+		diag_part(import_alias_name(alias_index))
+		error(c"'")
+	int t = import_alias_module_type(alias_index, token)
+	if (t >= 0):
+		return t
+	# A module value used where a type is required gets its own message;
+	# anything else is an unknown type in that module.
+	int sym = sym_lookup(token)
+	int is_value = 0
+	if (sym >= 0):
+		int file_index = sym_decl_file_index(sym)
+		if (file_index >= 0):
+			is_value = import_path_matches_file(import_alias_path(alias_index), debug_file_name(file_index))
+	if (is_value):
+		if (type_lookup(token) < 0):
+			diag_part(c"'")
+			diag_part(token)
+			diag_part(c"' is a value, not a type, in module imported as '")
+			diag_part(import_alias_name(alias_index))
+			error(c"'")
+	diag_part(c"type '")
+	diag_part(token)
+	diag_part(c"' is not defined in module imported as '")
+	diag_part(import_alias_name(alias_index))
+	error(c"'")
+	return -1
+
+
 # Qualified access through an import alias. The caller has just seen the
 # alias identifier with '.' as the next character. Consumes ".member",
 # checks the member was declared in the aliased module's file, and then

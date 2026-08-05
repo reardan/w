@@ -343,6 +343,10 @@ int script_statement_starts_here():
 		return 0
 	if (generic_type_starts_here()):
 		return 0
+	# 'alias.TypeName name' opens a declaration through the qualified
+	# type spelling (grammar/import_statement.w)
+	if (import_alias_type_ahead(0) >= 0):
+		return 0
 	if (peek(c"generator") & (nextc != '*')):
 		return 0
 	# Statement keywords are never declaration starts

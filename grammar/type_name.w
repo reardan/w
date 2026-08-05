@@ -1,3 +1,9 @@
+# Import-alias support lives in grammar/import_statement.w, which is
+# compiled after this file; see the definitions there.
+int import_alias_lookup(char* name);
+int import_alias_type_member(int alias_index);
+
+
 # Built-in list[T] elements are stored by value in byte-addressed slots.
 # Reject element types the runtime cannot copy: void, and fixed arrays
 # (their descriptors point into the enclosing object, so a byte copy
@@ -91,11 +97,20 @@ int type_name():
 		# count behind; reset so the instance's own stars count from 0
 		pointer_indirection = 0
 	else:
-		type = type_lookup(token)
+		type = -1
+		# Qualified type through an import alias: 'alias.TypeName'. The
+		# dot must follow immediately, and the alias shadows any type
+		# with the same name in this position (mirroring identifier()).
+		if (nextc == '.'):
+			int alias_index = import_alias_lookup(token)
+			if (alias_index >= 0):
+				type = import_alias_type_member(alias_index)
 		if (type < 0):
-			diag_part(c"unknown type name: '")
-			diag_part(token)
-			error(c"'")
+			type = type_lookup(token)
+			if (type < 0):
+				diag_part(c"unknown type name: '")
+				diag_part(token)
+				error(c"'")
 		int checked_type = type_unqualified(type)
 		if ((checked_type == float64_type) && (word_size != 8)):
 			error(c"float64 requires the x64 target")

@@ -212,7 +212,11 @@ rule set_type = KW_SET LBRACK type_ref RBRACK
 rule list_type = KW_LIST LBRACK type_ref RBRACK
 rule param_type_list = type_ref param_type_tail* |
 rule param_type_tail = COMMA type_ref
-rule type_atom = KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_BOOL | KW_UINT | KW_GENERATOR | KW_VAR | IDENT
+# The optional DOT tail is the alias-qualified type spelling
+# 'alias.TypeName' (import ... as); PG is syntax-only, the compiler
+# checks the member against the aliased module's declarations.
+rule type_atom = KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_BOOL | KW_UINT | KW_GENERATOR | KW_VAR | IDENT qualified_type_opt
+rule qualified_type_opt = DOT name_token |
 rule pointer_part = STAR
 rule array_part = LBRACK expression_opt RBRACK
 rule expression_opt = expression |

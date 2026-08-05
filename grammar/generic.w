@@ -616,6 +616,11 @@ int generic_declaration_scan():
 	# type_name) cannot start a generic function definition
 	if (peek(c"const") | peek(c"map") | peek(c"set") | peek(c"list")):
 		return 0
+	# An import alias's qualified type ('alias.T name') is never a
+	# generic definition; leave it for type_name()'s alias branch
+	if (nextc == '.'):
+		if (import_alias_lookup(token) >= 0):
+			return 0
 	if (nextc == '['):
 		return generic_declaration_scan_generic_return()
 	# scan ahead: type '*'* name, generic when '[' follows the name
