@@ -22,6 +22,9 @@ functions at instantiation.
 - `run_env_test.mjs` — Node runner for `tests/wasm_extern_test.w`
   (the `wasm_extern_test` build target): deterministic `env`/`wtest`
   import modules plus callback/`$ax` assertions.
+- `run_export_test.mjs` — Node runner for `tests/wasm_export_test.w`
+  (the `wasm_export_test` build target): calls `export`-marked W
+  functions through their real-signature exports.
 - `run_webgl_stub.mjs` — Node runner for headless graphics testing
   (the `wasm_webgl_test` build target): drives the frame loop over a
   recording fake WebGL2 context and asserts the GL call trace.
@@ -43,3 +46,14 @@ on wasm is an index into the module's exported `table`. The host calls
 returned — and reads the callback's result from the exported `ax`
 global (every W function has wasm type `[] -> []`; values return in
 `$ax`). A result of 0 stops the loop.
+
+## Real-signature exports
+
+A W function marked `export` (`export int add3(int a, int b, int c):`)
+also appears in the module's export section under its own name, bound
+to a wrapper with its real typed signature (`int`/pointers → `i32`,
+`float32` → `f32`, `void` → no result), so an embedder calls
+`instance.exports.add3(1, 2, 3)` directly — no `table.get`, no `ax`
+readback. The table/`ax` contract above still works unchanged for
+callbacks held as W function pointers. See
+`docs/projects/wasm_backend.md` (2026-08 execution notes).

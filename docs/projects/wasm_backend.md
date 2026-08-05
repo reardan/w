@@ -7,11 +7,14 @@ playbook (`docs/projects/arm64.md` is the template): same grammar, a
 per-target instruction module, a per-target container writer, an `__arch__`
 runtime split, and a CLI target flag. Closes the placeholder issue #30.
 
-**Status: Stages 0–4 implemented; Stage 5 polish largely landed** (json
-builtins, direct-call optimization, browser host shim — see the 2026-07
-execution notes at the end; remaining: `# wbuild:` wasm twin-target
-support, wasm64, real-signature exports, the accumulator
-globals-vs-locals measurement). `w wasm file.w -o out.wasm` compiles
+**Status: Stages 0–4 implemented; Stage 5 polish landed** (json
+builtins, direct-call optimization, browser host shim — the 2026-07
+execution notes; real-signature `export` declarations and the
+accumulator globals-vs-locals measurement, which flipped the default
+representation to per-function locals — the 2026-08 notes at the end;
+`# wbuild:` wasm twin-target support landed in tools/wbuildgen.w with
+the generated smoke slice. Remaining: wasm64, deferred until engines
+make it boring). `w wasm file.w -o out.wasm` compiles
 to a wasm32 + WASI module that runs under wasmtime or Node's built-in
 WASI (`tools/run_wasm.sh` picks whichever is installed). The structured
 control-flow layer (D3) landed first as a byte-inert refactor across all
@@ -128,21 +131,27 @@ call arguments could not be re-read positionally. Rejected. Instead:
   locals/args are loads/stores at `$sp + k`. `stack_pos` bookkeeping and
   `sym_get_value`'s offset math are untouched (still 4-byte words,
   `word_size_log2 = 2`). This is exactly the x28 move from arm64 D2.
-- **Registers become wasm globals**: `$ax` (accumulator), `$bx`
-  (secondary), `$cx` (shift/scratch), all `i32`. Each `x86.w` helper
-  gains a `target_isa == 2` dispatch to its wasm twin in
+- **Registers become wasm virtual registers**: `$ax` (accumulator),
+  `$bx` (secondary), `$cx` (shift/scratch), all `i32`. Each `x86.w`
+  helper gains a `target_isa == 2` dispatch to its wasm twin in
   `code_generator/wasm.w`, emitting short sequences like
-  `global.get $ax / global.get $bx / i32.add / global.set $ax` — the
-  same dispatch-inside-the-helper pattern D3 of the arm64 plan
-  established, keeping x86/x64/arm64 output byte-identical.
-  (Per-function locals for `$ax`/`$bx` might be faster — engines
-  register-allocate locals more readily than globals — but globals are
-  simpler and survive calls the way real registers do not have to here;
-  measure later, it is a backend-local change.)
+  `get $ax / get $bx / i32.add / set $ax` — the same
+  dispatch-inside-the-helper pattern D3 of the arm64 plan established,
+  keeping x86/x64/arm64 output byte-identical. Originally the registers
+  were module globals; the Stage-5 measurement (2026-08 notes) showed
+  engines run per-function locals ~13% faster for ~4% larger modules,
+  so locals are now the default (`--wasm-acc=globals` restores the
+  plain-global form): every body declares local twins, a `ret`
+  publishes the local `$ax` to the `$ax` module global (the cross-call
+  return channel and host-visible export), and every call site reloads
+  from it. All register access goes through `wasm_reg_get/set`, which
+  pick the representation; `$sp` is always a module global.
 - **Every W function has wasm type `[] -> []`.** Arguments travel on the
   shadow stack and the return value in `$ax`, exactly as today. No
   signature bookkeeping, no per-arity types, and validation can never
-  see an arity mismatch W's own type checker missed.
+  see an arity mismatch W's own type checker missed. (Host embedding
+  gets real typed signatures anyway, through the `export` wrappers —
+  2026-08 notes.)
 - **All functions live in one `funcref` table; a function's "address"
   is its table index.** `sym_get_value` on a function materializes the
   table index via the existing `be_addr_slot` seam (the slot is an
@@ -406,11 +415,12 @@ at any stage.
   (JS providing the WASI subset, or a wasi-polyfill) with a demo page
   (landed with the WebGL work: `tools/web/index.html` +
   `tools/web/wasi_lite.mjs`, docs/projects/wasm_webgl.md);
-  `# wbuild: wasm` twin-target support in `tools/wbuildgen.w` if the
-  smoke slice outgrows hand-written targets (still open — wasm test
-  targets stay hand-written in `build.base.json`, and wbuildgen's
-  `arch_only=` explicitly rejects wasm); wasm64 when engines make
-  it boring; exported W functions with real signatures for embedding.
+  `# wbuild: wasm` twin-target support in `tools/wbuildgen.w`
+  (landed: `arch=wasm`, `arch_only=wasm` and `group=X@wasm` all
+  generate node-runnable twins — the smoke slice is generated now);
+  wasm64 when engines make it boring (still deferred); exported W
+  functions with real signatures for embedding (landed, 2026-08 —
+  the `export` marker, see the notes at the end).
 
 ## Testing / CI strategy
 
@@ -433,9 +443,11 @@ at any stage.
 
 ## Open questions
 
-- Accumulator representation: module globals (planned) vs per-function
+- ~~Accumulator representation: module globals (planned) vs per-function
   locals — locals may JIT better; backend-local change, measure in
-  Stage 5.
+  Stage 5.~~ **Resolved (2026-08)**: measured; locals are ~13% faster
+  under node for ~4% larger modules and are now the default
+  (`--wasm-acc=globals|locals`; numbers + repro in the 2026-08 notes).
 - `$sp` overflow: the shadow stack region is fixed-size; is a check in
   the function prologue worth the cost, or is "reserve generously"
   (1 MiB default, flag to grow) enough for the MVP? (Native targets
@@ -546,6 +558,68 @@ at any stage.
   (`tools/web/index.html` + `wasi_lite.mjs` + `webgl_env.mjs`; see
   `tools/web/README.md` for the demo-page instructions). Nothing was
   left to build here beyond recording that the Stage 5 item is done.
+
+## Execution notes (Stage 5 residue, 2026-08-05)
+
+- **Real-signature exports.** A contextual `export` marker on a
+  top-level function definition (`export int add3(int a, int b, int c):`
+  — grammar/program.w, contextual like `kernel`: a type or symbol named
+  `export` keeps the identifier meaning; the native targets accept and
+  ignore the marker) puts the function in the module's export section
+  under its W name with its **real typed wasm signature**: `int` and
+  pointers → `i32`, `float32` → `f32`, `void` → no result. The host
+  calls `instance.exports.add3(1, 2, 3)` directly — no `table.get`, no
+  `$ax` readback. Mechanism: each export registers in
+  `code_generator/wasm_module.w` (name-collision checks against the
+  four fixed exports and each other); `wasm_finish` emits one typed
+  wrapper per export as the last code-section bodies (the only
+  functions whose type is not the universal `[] -> []`), which push the
+  wasm parameters onto the shadow stack (f32s reinterpreted to their
+  raw bits), `call` the target by its final function index, pop, and
+  return the value read from the `$ax` module global (mode-independent:
+  in locals mode the callee's ret published it). Rejected with
+  diagnostics: variadic functions, multi-word (by-value struct)
+  parameters, struct-by-value returns, >10 parameters, generic
+  functions, operator overloads, exporting a never-defined prototype.
+  The uniform `table` + `ax` callback contract is untouched — wrappers
+  are additive, and `tools/web/` needed no changes. Gate:
+  `wasm_export_test` (build.base.json) drives
+  `tools/web/run_export_test.mjs` over `tests/wasm_export_test.w` in
+  both accumulator modes plus the three rejection fixtures.
+- **Accumulator globals vs locals: measured, default flipped.** The
+  representations are switchable per compile (`--wasm-acc=globals|
+  locals`, pre-scanned like `--pac` because be_start emits stubs);
+  every register access funnels through `wasm_reg_get/set`
+  (code_generator/wasm.w). Locals mode declares i32 twins for
+  `$ax/$bx/$cx` plus the i64/f32 scratch in every body, keeps `$sp`
+  and the `$ax` global (the cross-call return channel: published at
+  `ret`, reloaded after every call — so the exported `ax` global and
+  the host-callback contract behave identically in both modes).
+  Correctness: the locals-mode-compiled compiler, run under node,
+  recompiles `w.w` to output **byte-identical** to the globals-mode
+  compiler's, and the whole wasm gate battery passes in both modes.
+  Numbers (Node v22, x86-64 Linux container, 2026-08-05):
+
+  | metric | globals | locals | delta |
+  |---|---|---|---|
+  | `w.w` module size (bytes) | 3,469,261 | 3,599,735 | +3.8% |
+  | smoke-battery modules total (bytes) | 2,939,743 | 3,045,899 | +3.6% |
+  | self-compile wall time under node, best of 3 | 74.8 s | 65.1 s | −13% |
+  | smoke battery wall time, best of 3 | 0.80 s | 0.71 s | −11% |
+
+  The ~13% win on the dominant workload (verify_wasm's node-hosted
+  self-compile) for a ~4% size cost justified switching the default to
+  locals; `--wasm-acc=globals` keeps the original form. Reproduce with:
+
+  ```sh
+  ./wbuild build
+  bin/wv2 --quiet wasm --wasm-acc=globals w.w -o bin/wv2_wasm_g
+  bin/wv2 --quiet wasm --wasm-acc=locals  w.w -o bin/wv2_wasm_l
+  wc -c bin/wv2_wasm_g bin/wv2_wasm_l
+  time sh tools/run_wasm.sh bin/wv2_wasm_g --quiet wasm w.w -o bin/out_g
+  time sh tools/run_wasm.sh bin/wv2_wasm_l --quiet wasm w.w -o bin/out_l
+  cmp bin/out_g bin/out_l   # host-mode-independent output, byte-identical
+  ```
 
 ## References
 
