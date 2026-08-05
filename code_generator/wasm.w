@@ -10,6 +10,16 @@ place of registers:
   global 2 = $bx  secondary operand      (ebx)
   global 3 = $cx  scratch                (ecx)
 
+Alternatively (--wasm-acc=locals, the stage-5 measurement knob) the
+accumulator registers live in per-function wasm LOCALS, which engines
+register-allocate more readily than globals: every function body
+declares local twins for $ax/$bx/$cx (+ the i64/f32 scratch), and the
+$ax module global remains only as the cross-call return channel — a
+ret publishes local $ax to it and every call site reloads from it, so
+the host-visible contract (the exported "ax" global) is unchanged.
+$sp always stays a module global (one W stack). All register access
+goes through wasm_reg_get/wasm_reg_set, which pick the representation.
+
 The W stack lives in linear memory (wasm locals cannot have their address
 taken, and W takes addresses of locals everywhere): pushes are
 "$sp -= 4; [$sp] = v", locals and arguments are loads/stores at [$sp + k],
@@ -318,6 +328,32 @@ void wasm_global_set(int g):
 	emit_int8(0x24)
 	wasm_leb(g)
 
+# Accumulator representation (docs/projects/wasm_backend.md, the stage-5
+# globals-vs-locals measurement): 0 = module globals (the default), 1 =
+# per-function locals (--wasm-acc=locals). Whole-program: every body and
+# call site must agree, so compiler.w pre-scans the flag before be_start.
+int wasm_acc_locals
+
+# Read/write virtual register r (1 = $ax, 2 = $bx, 3 = $cx, 4 = $t64,
+# 5 = $f0, 6 = $f1): the module global in globals mode, the function's
+# local twin (local r - 1, wasm_function_begin's declaration order) in
+# locals mode. $sp is always global 0 — use wasm_global_get for it.
+void wasm_reg_get(int r):
+	if (wasm_acc_locals):
+		emit_int8(0x20)   # local.get
+		wasm_leb(r - 1)
+		return
+	emit_int8(0x23)   # global.get
+	wasm_leb(r)
+
+void wasm_reg_set(int r):
+	if (wasm_acc_locals):
+		emit_int8(0x21)   # local.set
+		wasm_leb(r - 1)
+		return
+	emit_int8(0x24)   # global.set
+	wasm_leb(r)
+
 # Loads/stores: [opcode, align(log2), offset]. The align field is a hint;
 # unaligned addresses still work, so word accesses use align=2 safely.
 void wasm_load_op(int opcode, int align, int offset):
@@ -326,16 +362,16 @@ void wasm_load_op(int opcode, int align, int offset):
 	wasm_leb(offset)
 
 void wasm_get_ax():
-	wasm_global_get(1)
+	wasm_reg_get(1)
 
 void wasm_set_ax():
-	wasm_global_set(1)
+	wasm_reg_set(1)
 
 void wasm_get_bx():
-	wasm_global_get(2)
+	wasm_reg_get(2)
 
 void wasm_set_bx():
-	wasm_global_set(2)
+	wasm_reg_set(2)
 
 ########################### W-stack (shadow stack) ############################
 
@@ -351,11 +387,11 @@ void wasm_sp_add(int bytes):
 	wasm_op(0x6a)   # i32.add
 	wasm_global_set(0)
 
-# Push the value of global g onto the W stack.
-void wasm_push_global(int g):
+# Push the value of register r onto the W stack.
+void wasm_push_reg(int r):
 	wasm_sp_add(0 - 4)
 	wasm_global_get(0)
-	wasm_global_get(g)
+	wasm_reg_get(r)
 	wasm_load_op(0x36, 2, 0)   # i32.store
 
 void wasm_push_eax():
@@ -365,30 +401,30 @@ void wasm_push_eax():
 	int noted = 0
 	if (wasm_note_pos == codepos):
 		noted = 1
-	wasm_push_global(1)
+	wasm_push_reg(1)
 	if (noted):
 		wasm_cand_add(wasm_depth, wasm_note_index)
 	wasm_note_pos = 0 - 1
 
 void wasm_push_ebx():
-	wasm_push_global(2)
+	wasm_push_reg(2)
 
-# Pop the W stack top into global g.
-void wasm_pop_global(int g):
+# Pop the W stack top into register r.
+void wasm_pop_reg(int r):
 	wasm_global_get(0)
 	wasm_load_op(0x28, 2, 0)   # i32.load
-	wasm_global_set(g)
+	wasm_reg_set(r)
 	wasm_sp_add(4)
 
 void wasm_pop_eax():
-	wasm_pop_global(1)
+	wasm_pop_reg(1)
 
 void wasm_pop_ebx():
-	wasm_pop_global(2)
+	wasm_pop_reg(2)
 
 # Pop the W stack top into $cx (the left operand of pop-style ALU ops).
 void wasm_pop_ecx():
-	wasm_pop_global(3)
+	wasm_pop_reg(3)
 
 void wasm_push_const(int v):
 	wasm_sp_add(0 - 4)
@@ -419,7 +455,7 @@ void wasm_mov_eax_ebx():
 
 void wasm_mov_ecx_eax():
 	wasm_get_ax()
-	wasm_global_set(3)
+	wasm_reg_set(3)
 
 # $ax = $ax OP v for a binary opcode taking (ax, const)
 void wasm_ax_op_const(int opcode, int v):
@@ -445,7 +481,7 @@ void wasm_bx_op_ax(int opcode):
 # pop lhs into $cx, then $ax = $cx OP $ax (division/shift operand order)
 void wasm_pop_op_ax(int opcode):
 	wasm_pop_ecx()
-	wasm_global_get(3)
+	wasm_reg_get(3)
 	wasm_get_ax()
 	wasm_op(opcode)
 	wasm_set_ax()
@@ -633,7 +669,7 @@ void wasm_alu_mul_hi():
 
 # mul_wide: $ax = low half of unsigned $bx * $ax, high half stored to [$cx]
 # (the grammar moves the high-half pointer into $cx before the call, the
-# same convention as x86's ecx). Global 4 is the i64 scratch ($t64).
+# same convention as x86's ecx). Register 4 is the i64 scratch ($t64).
 void wasm_alu_mul_wide():
 	wasm_get_bx()
 	wasm_op(0xad)
@@ -641,15 +677,15 @@ void wasm_alu_mul_wide():
 	wasm_op(0xad)
 	wasm_op(0x7e)   # i64.mul -> full 64-bit product on the operand stack
 	# store high half: [cx] = wrap(product >> 32); keep product in $ax low
-	wasm_global_set(4)   # spill the product to $t64 (i64 scratch)
-	wasm_global_get(3)
-	wasm_global_get(4)
+	wasm_reg_set(4)   # spill the product to $t64 (i64 scratch)
+	wasm_reg_get(3)
+	wasm_reg_get(4)
 	wasm_i32_const(32)
 	wasm_op(0xac)
 	wasm_op(0x88)   # i64.shr_u
 	wasm_op(0xa7)   # i32.wrap
 	wasm_load_op(0x36, 2, 0)
-	wasm_global_get(4)
+	wasm_reg_get(4)
 	wasm_op(0xa7)   # i32.wrap: low half
 	wasm_set_ax()
 
@@ -660,15 +696,15 @@ void wasm_alu_add_carry():
 	wasm_get_ax()
 	wasm_op(0xad)
 	wasm_op(0x7c)   # i64.add
-	wasm_global_set(4)
-	wasm_global_get(3)
-	wasm_global_get(4)
+	wasm_reg_set(4)
+	wasm_reg_get(3)
+	wasm_reg_get(4)
 	wasm_i32_const(32)
 	wasm_op(0xac)
 	wasm_op(0x88)
 	wasm_op(0xa7)   # carry (0/1)
 	wasm_load_op(0x36, 2, 0)
-	wasm_global_get(4)
+	wasm_reg_get(4)
 	wasm_op(0xa7)
 	wasm_set_ax()
 
@@ -705,28 +741,28 @@ void wasm_alu_ctz32():
 
 ############################### float32 ######################################
 # Float bits ride the integer pipeline in $ax/$bx (docs/projects/float.md);
-# the virtual xmm0/xmm1 pair maps to the f32 globals 5/6 ($f0/$f1), with
+# the virtual xmm0/xmm1 pair maps to the f32 registers 5/6 ($f0/$f1), with
 # reinterpret casts as the movd transfers. Only the float32 family exists
 # here: float64 is rejected on word_size-4 targets before codegen.
 
 # $f<xmm> = f32.reinterpret_i32($ax or $bx)
 void wasm_movd_xmm(int xmm, int reg):
-	wasm_global_get(1 + reg)
+	wasm_reg_get(1 + reg)
 	wasm_op(0xbe)   # f32.reinterpret_i32
-	wasm_global_set(5 + xmm)
+	wasm_reg_set(5 + xmm)
 
 # $ax = i32.reinterpret_f32($f0)
 void wasm_movd_eax_xmm0():
-	wasm_global_get(5)
+	wasm_reg_get(5)
 	wasm_op(0xbc)   # i32.reinterpret_f32
 	wasm_set_ax()
 
 # $f0 = $f0 OP $f1
 void wasm_f32_arith(int opcode):
-	wasm_global_get(5)
-	wasm_global_get(6)
+	wasm_reg_get(5)
+	wasm_reg_get(6)
 	wasm_op(opcode)
-	wasm_global_set(5)
+	wasm_reg_set(5)
 
 # The x86 model splits compare (ucomiss: flags) from materialization
 # (setcc); wasm compares produce the 0/1 directly, so ucomiss emits
@@ -734,8 +770,8 @@ void wasm_f32_arith(int opcode):
 # map to the unordered-false wasm comparisons exactly (NaN yields 0 for
 # seta/setae/sete and 1 for setne, matching ucomiss flag semantics).
 void wasm_setcc_f32(int setcc_opcode):
-	wasm_global_get(5)
-	wasm_global_get(6)
+	wasm_reg_get(5)
+	wasm_reg_get(6)
 	if (setcc_opcode == 0x94):
 		wasm_op(0x5b)   # sete  -> f32.eq
 	else if (setcc_opcode == 0x95):
@@ -752,14 +788,14 @@ void wasm_setcc_f32(int setcc_opcode):
 
 # $f<xmm> = f32.convert_i32_s($ax or $bx)
 void wasm_cvtsi2ss(int xmm, int reg):
-	wasm_global_get(1 + reg)
+	wasm_reg_get(1 + reg)
 	wasm_op(0xb2)   # f32.convert_i32_s
-	wasm_global_set(5 + xmm)
+	wasm_reg_set(5 + xmm)
 
 # $ax = trunc($f0), saturating (x86 gives INT_MIN on overflow/NaN, the
 # saturating form clamps and maps NaN to 0 — the trap-free choice)
 void wasm_cvttss2si():
-	wasm_global_get(5)
+	wasm_reg_get(5)
 	emit_int8(0xfc)   # i32.trunc_sat_f32_s
 	wasm_leb(0)
 	wasm_set_ax()
@@ -849,14 +885,25 @@ void wasm_bounds_skip_eax_less_equal_int32(int limit, int depth):
 ########################## functions and address slots ########################
 
 # Begin a function body unit in the code section: a padded 5-byte body-size
-# placeholder (patched by wasm_function_end) and an empty local-declaration
+# placeholder (patched by wasm_function_end) and the local-declaration
 # vector, then the prologue that reserves the W-stack return-address slot
-# so argument offsets match the native targets.
+# so argument offsets match the native targets. In locals mode the vector
+# declares the register twins (after any wasm-level parameters, which only
+# the export wrappers have — and those never touch the register locals).
 void wasm_function_begin():
 	wasm_func_count = wasm_func_count + 1
 	wasm_body_size_pos = codepos
 	wasm_leb5(0)
-	emit_int8(0)   # no locals
+	if (wasm_acc_locals):
+		emit_int8(3)      # three local groups:
+		emit_int8(3)
+		emit_int8(0x7f)   # $ax, $bx, $cx (i32)
+		emit_int8(1)
+		emit_int8(0x7e)   # $t64 (i64)
+		emit_int8(2)
+		emit_int8(0x7d)   # $f0, $f1 (f32)
+	else:
+		emit_int8(0)   # no locals
 	wasm_sp_add(0 - 4)
 	# Fresh direct-call state per body: the depth counter restarts at the
 	# prologue's post-reserve level.
@@ -870,10 +917,27 @@ void wasm_function_end():
 	emit_int8(0x0b)
 	wasm_leb5_patch(wasm_body_size_pos, codepos - (wasm_body_size_pos + 5))
 
-# ret(): release the prologue's return-address slot and return.
+# ret(): release the prologue's return-address slot and return. In locals
+# mode the local $ax is first published to the $ax module global — the
+# cross-call return channel the caller (and the embedding host) reads.
 void wasm_ret():
+	if (wasm_acc_locals):
+		emit_int8(0x20)   # local.get $ax
+		wasm_leb(0)
+		emit_int8(0x24)   # global.set $ax
+		wasm_leb(1)
 	wasm_sp_add(4)
 	emit_int8(0x0f)   # return
+
+# In locals mode a call site reloads the local $ax from the $ax module
+# global — the cross-call return channel the callee's ret published to.
+# Nothing in globals mode (the callee set the global directly).
+void wasm_call_reload_ax():
+	if (wasm_acc_locals):
+		emit_int8(0x23)   # global.get $ax
+		wasm_leb(1)
+		emit_int8(0x21)   # local.set $ax
+		wasm_leb(0)
 
 # call through the accumulator: every W call site. The callee's "address"
 # in $ax is its table index; type 0 is the universal [] -> [] W type.
@@ -890,8 +954,8 @@ void wasm_call_eax():
 			codepos = wasm_reload_start
 			direct = wasm_cand_index[c]
 	if ((direct < 0) && (wasm_note_pos == codepos)):
-		# The 8-byte address slot (i32.const + 5-byte immediate +
-		# global.set $ax) sits directly before the call: rewind it.
+		# The 8-byte address slot (i32.const + 5-byte immediate + a
+		# 2-byte set of $ax) sits directly before the call: rewind it.
 		codepos = codepos - 8
 		direct = wasm_note_index
 	# A call site ends the usefulness of any pending materialization or
@@ -902,11 +966,13 @@ void wasm_call_eax():
 		emit_int8(0x10)   # call
 		wasm_dcall_note(codepos)
 		wasm_leb5(direct)
+		wasm_call_reload_ax()
 		return
 	wasm_get_ax()
 	emit_int8(0x11)   # call_indirect
 	wasm_leb(0)       # type index 0
 	wasm_leb(0)       # table index 0
+	wasm_call_reload_ax()
 
 # Address slot: i32.const with a padded immediate, then $ax = it. The
 # patchable cell convention matches the native targets: callers address the

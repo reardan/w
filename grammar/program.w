@@ -410,6 +410,43 @@ int script_function_definition_ahead():
 	return is_definition
 
 
+# An 'export'-marked definition on the wasm target: derive the wasm
+# signature classes from the declared parameter and return types (the
+# extern-statement conventions: word-sized scalars and pointers are i32,
+# float32 is f32) and register the function for the module's export
+# section, where it becomes a host-callable real-signature export
+# (code_generator/wasm_module.w). The native targets have no
+# per-function export surface, so the marker is a no-op there.
+void export_function_note(int t, char* name, int ret_type):
+	if (target_isa != 2):
+		return;
+	if (sym_w_variadic_fixed_args(t) >= 0):
+		error(c"cannot export a variadic function")
+	int n = sym_num_args(t)
+	if (n > sym_max_param_slots()):
+		error(c"exported functions support at most 10 parameters")
+	if ((type_num_args(ret_type) > 0) & (type_get_pointer_level(ret_type) == 0)):
+		error(c"cannot export a function returning a struct by value")
+	int ret_kind = 1
+	if (ffi_type_class(ret_type) == 1):
+		ret_kind = 2
+	if (type_get_pointer_level(ret_type) == 0):
+		if (strcmp(type_get_name(ret_type), c"void") == 0):
+			ret_kind = 0
+	char* classes = malloc(n + 1)
+	int i = 0
+	while (i < n):
+		int ptype = sym_param_type(t, i)
+		if (type_stack_words(ptype) != 1):
+			error(c"exported function parameters must be single words")
+		classes[i] = 0
+		if (ffi_type_class(ptype) == 1):
+			classes[i] = 1
+		i = i + 1
+	wasm_export_add(t, name, n, classes, ret_kind)
+	free(classes)
+
+
 /*
 Script mode: top-level statements compile into an implicit
 
@@ -488,6 +525,20 @@ void program():
 		if (token[0] == 0):
 			return;
 
+		# 'export' marks the next function definition as a host-callable
+		# module export with its real typed signature on the wasm target
+		# (export_function_note above); the native targets accept and
+		# ignore the marker, so one source compiles everywhere. Contextual
+		# like 'kernel': a type or symbol named 'export' keeps the
+		# identifier meaning.
+		int export_pending = 0
+		if (peek(c"export")):
+			if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
+				get_token()
+				export_pending = 1
+				if ((peek(c"const") | (type_lookup(token) >= 0)) == 0):
+					error(c"'export' must be followed by a function definition")
+
 		# Script mode: a token that cannot start a declaration begins
 		# the implicit main; it consumes the rest of the file
 		if (script_statement_starts_here()):
@@ -529,6 +580,8 @@ void program():
 		# scanned tokens are rebuilt into generic_scanned_type and the
 		# declared name is the current token (see grammar/generic.w).
 		if (generic_declaration_scan()):
+			if (export_pending):
+				error(c"'export' is not supported on generic functions")
 			continue;
 
 		# Now global variables + functions
@@ -553,6 +606,8 @@ void program():
 			defhash_column = diag_token_column
 			get_token()
 			if (operator_definition_starts_here()):
+				if (export_pending):
+					error(c"'export' is not supported on operator overloads")
 				char* defhash_op_name = operator_definition(decl_type)
 				defhash_note(defhash_op_name, c"operator", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 				continue;
@@ -564,16 +619,25 @@ void program():
 			current_symbol = sym_declare_global(token, decl_type, 1)
 			get_token()
 		if (accept(c";")):
+			if (export_pending):
+				error(c"only functions can be exported")
 			define_global_variable(current_symbol, decl_type)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 		else if (accept(c"(")):
 			function_definition(current_symbol)
+			if (export_pending):
+				char* export_name = defhash_name
+				if (export_name == 0):
+					export_name = c"operator"
+				export_function_note(current_symbol, export_name, decl_type)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"function", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 		else if (accept(c"=")):
+			if (export_pending):
+				error(c"only functions can be exported")
 			define_global_variable(current_symbol, decl_type)
 			# defhash_name is 0 only on the 'operator' branch above,
 			# which declared that literal name
@@ -586,6 +650,8 @@ void program():
 
 		else:
 			/*error(8)*/
+			if (export_pending):
+				error(c"only functions can be exported")
 			define_global_variable(current_symbol, decl_type)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)

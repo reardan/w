@@ -594,6 +594,10 @@ int link_option_recognized(char* arg):
 		return 1
 	if (strcmp(arg, c"--quiet") == 0):
 		return 1
+	if (strcmp(arg, c"--wasm-acc=globals") == 0):
+		return 1
+	if (strcmp(arg, c"--wasm-acc=locals") == 0):
+		return 1
 	if (strcmp(arg, c"-v") == 0):
 		return 1
 	if (strcmp(arg, c"--verbose") == 0):
@@ -613,6 +617,7 @@ void help_shared_options():
 	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (default: ret)")
 	println(c"  --strict              treat warnings as errors and write no output")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
+	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: globals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
 	println(c"  -v, --verbose         raise verbosity (repeat for compiler debug traces)")
 	println(c"  -h, --help            print this help and exit")
@@ -808,6 +813,21 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			pac_level = 2
 		pac_scan = pac_scan + 1
 	arm64_pac = pac_level
+	# --wasm-acc is whole-program too (every wasm function body and call
+	# site must agree on the accumulator representation, and be_start
+	# below emits the entry/OS stubs), so pre-scan it the same way; the
+	# positional loop re-applies the level (docs/projects/wasm_backend.md,
+	# the stage-5 globals-vs-locals measurement).
+	int wasm_acc_level = 0
+	int acc_scan = i
+	while (acc_scan < argc):
+		char** acc_arg = argv + acc_scan * __word_size__
+		if (strcmp(*acc_arg, c"--wasm-acc=globals") == 0):
+			wasm_acc_level = 0
+		else if (strcmp(*acc_arg, c"--wasm-acc=locals") == 0):
+			wasm_acc_level = 1
+		acc_scan = acc_scan + 1
+	wasm_acc_locals = wasm_acc_level
 	# Option validation is up front, not positional: a typo'd flag after
 	# the file list used to be reported only after every earlier root had
 	# fully compiled (docs/projects/ai_tooling.md). -v/--verbose applies
@@ -899,6 +919,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			strict_mode = 1
 		else if (strcmp(*arg, c"--quiet") == 0):
 			quiet_mode = 1
+		else if (strcmp(*arg, c"--wasm-acc=globals") == 0):
+			wasm_acc_locals = wasm_acc_level
+		else if (strcmp(*arg, c"--wasm-acc=locals") == 0):
+			wasm_acc_locals = wasm_acc_level
 		else if (strcmp(*arg, c"-v") == 0):
 			verbosity = verbose_level
 		else if (strcmp(*arg, c"--verbose") == 0):
