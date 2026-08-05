@@ -207,10 +207,11 @@ int global_storage_size(int type):
 
 
 # Define a mutable global variable's symbol and reserve its storage. With
-# the W^X split active (data_split, set for the arm64 file target), storage
+# the W^X split active (data_split, set for every file target), storage
 # goes into the RW data segment so the executable image stays read-execute;
-# otherwise it stays inline in the single image, as before. Read-only
-# globals (enum constants, string/JSON blobs) keep using the code segment.
+# otherwise (the in-process REPL/wdbg path) it stays inline in the single
+# executed buffer, as before. Read-only globals (enum constants,
+# string/JSON blobs) keep using the code segment.
 void define_global_variable(int current_symbol, int decl_type):
 	if (data_split == 0):
 		sym_define_global(current_symbol)
@@ -235,8 +236,9 @@ void emit_data_global_storage(int type, int vaddr):
 		save_i(data + (vaddr - data_offset), vaddr + 2 * word_size, word_size)
 		save_i(data + (vaddr - data_offset + word_size), type_get_array_length(type), word_size)
 		# The header's data pointer is an absolute vaddr in the RW data
-		# segment: record it so the entry stub slides it under PIE
-		# (data_split only runs for the arm64 targets).
+		# segment: record it so the entry stub slides it under PIE. Only
+		# the arm64 writers emit the table; for the fixed-base x86/x64/
+		# win64 splits the note is a harmless no-op (nothing walks it).
 		rebase_note(vaddr)
 	else if (type_num_args(type) > 0):
 		int i = 0

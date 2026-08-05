@@ -756,6 +756,12 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	diag_word_size = word_size
 	target_isa = 0
 	target_os = 0
+	# W^X (docs/projects/wx_split.md Stage C): every file target now
+	# splits read-execute text from read-write data, the default x86
+	# target included. The in-process REPL and wdbg never come through
+	# this reset (they compile into their own RWX mmap buffer), so
+	# data_split stays 0 on their paths.
+	data_split = 1
 	arm64_pac = 1
 	bounds_mode = 1
 	strict_mode = 0

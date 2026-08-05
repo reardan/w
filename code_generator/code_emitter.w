@@ -7,9 +7,10 @@ int codepos
 int base_code_offset
 int code_offset
 
-# W^X text/data split (Stage 3 of docs/projects/arm64.md). When data_split
-# is set, mutable global-variable storage is emitted into a separate RW
-# buffer (`data`) mapped at data_offset, so the executable segment stays
+# W^X text/data split (docs/projects/arm64.md Stage 3, extended to every
+# file target by docs/projects/wx_split.md). When data_split is set,
+# mutable global-variable storage is emitted into a separate RW buffer
+# (`data`) mapped at data_offset, so the executable segment stays
 # read-execute and the data segment read-write. The in-process REPL and
 # debugger leave data_split at 0, keeping globals inline in the single
 # executed buffer (their mmap is RWX), so nothing changes for them.

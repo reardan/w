@@ -249,3 +249,7 @@ void test_own_global_write():
 
 void test_x64_image():
 	wx_check_image(c"bin/elf_wx_segment_input64", 2)
+
+
+void test_x86_image():
+	wx_check_image(c"bin/elf_wx_segment_input32", 1)
