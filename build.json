@@ -2033,6 +2033,7 @@
 				"monotime_64_test",
 				"multi_assign_64_test",
 				"ndarray_64_test",
+				"ndarray_index_64_test",
 				"nested_ctor_64_test",
 				"net_64_test",
 				"net_asn1_64_test",
@@ -2112,7 +2113,8 @@
 				"wbuild_directive_64_test",
 				"window_64_test",
 				"x64_c_import_bitfield_test",
-				"x64_c_import_knr_test"
+				"x64_c_import_knr_test",
+				"x64_ndarray64_index_test"
 			]
 		},
 		{
@@ -2421,6 +2423,7 @@
 				"compound_assign_test",
 				"increment_error_test",
 				"multi_assign_error_test",
+				"ndarray_index_error_test",
 				"toplevel_init_error_test",
 				"char_literal_test",
 				"print_builtin_test",
@@ -2618,6 +2621,7 @@
 				"ndarray_bounds_get_trap_test",
 				"ndarray_bounds_set_trap_test",
 				"ndarray_extent_trap_test",
+				"ndarray_index_test",
 				"ndarray_test",
 				"nested_ctor_test",
 				"net_test",
@@ -4974,6 +4978,33 @@
 			]
 		},
 		{
+			"name": "ndarray_index_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/ndarray_index_test.w"],
+			"outputs": ["bin/ndarray_index_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/ndarray_index_test.w", "-o", "bin/ndarray_index_64_test"]},
+				{"cmd": ["bin/ndarray_index_64_test"]}
+			]
+		},
+		{
+			"name": "ndarray_index_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/ndarray_index_accessor_error_fixture.w", "tests/ndarray_index_arity_error_fixture.w", "tests/ndarray_index_increment_error_fixture.w", "tests/ndarray_index_multi_assign_error_fixture.w", "tests/ndarray_index_type_error_fixture.w", "tests/ndarray_index_warning_fixture.w"]}
+			]
+		},
+		{
+			"name": "ndarray_index_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/ndarray_index_test.w"],
+			"outputs": ["bin/ndarray_index_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ndarray_index_test.w", "-o", "bin/ndarray_index_test"]},
+				{"cmd": ["bin/ndarray_index_test"]}
+			]
+		},
+		{
 			"name": "ndarray_test",
 			"deps": ["wv2"],
 			"inputs": ["lib/ndarray_test.w"],
@@ -6984,6 +7015,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/x64_map_float64_test.w", "-o", "bin/x64_map_float64_test"]},
 				{"cmd": ["bin/x64_map_float64_test"]}
+			]
+		},
+		{
+			"name": "x64_ndarray64_index_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/x64_ndarray64_index_test.w"],
+			"outputs": ["bin/x64_ndarray64_index_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_ndarray64_index_test.w", "-o", "bin/x64_ndarray64_index_test"]},
+				{"cmd": ["bin/x64_ndarray64_index_test"], "expect_stdout": "x64 ndarray64 index OK"}
 			]
 		},
 		{

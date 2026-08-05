@@ -22,7 +22,9 @@ Excluded on purpose (v1, statement-level sugar only):
 - declaration forms: 'int a, b = 1, 2' and 'a, b := 1, 2' stay errors;
 - map/set elements on the left ('m[k], x = ...'): the pending-slot
   write path (grammar/hash_builtin.w) would need its own deferred
-  emission; spell them as separate statements;
+  emission; spell them as separate statements. ndarray elements
+  ('a[i, j], x = ...', grammar/ndarray_index.w) are rejected for the
+  same reason;
 - whole-struct targets: a struct's "value" is its address, so a parked
   address is no temporary at all and 's1, s2 = s2, s1' would alias
   instead of swap; scalar and pointer targets (fields included) work.
@@ -79,6 +81,8 @@ void multi_assign_reserve(int count):
 void multi_assign_check_target(int type):
 	if (hash_index_pending):
 		error(c"multi-assignment does not support map or set elements")
+	if (nd_index_pending):
+		error(c"multi-assignment does not support ndarray elements")
 	if (expression_lhs_readonly):
 		error(c"cannot assign to read-only buffer field")
 	if ((type_is_value(type)) || (type == 3) || (type == 4)):

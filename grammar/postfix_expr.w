@@ -570,6 +570,7 @@ int postfix_expr():
 						expression_lhs_readonly = 0
 			else:
 				binary1(type) /* load the base pointer and push it */
+				int nd_recv_slot = stack_pos
 				# The element type drives both index scaling and the load width
 				int element_type = 2 /* char: byte elements by default */
 				if (type_get_pointer_level(type) > 0):
@@ -577,15 +578,22 @@ int postfix_expr():
 					if (previous_type >= 0):
 						element_type = previous_type
 				int element_size = type_get_size(element_type)
-				promote(expression())
-				if (element_size > 1):
-					imul_eax_int32(element_size)
-				pop_ebx()
-				alu_add()
-				stack_pos = stack_pos - 1
-				expect(c"]")
-				type = element_type
-				expression_lhs_readonly = 0
+				int first_index_type = promote(expression())
+				if (peek(c",")):
+					# base[i, j(, ...)]: the ndarray comma-index sugar
+					# (grammar/ndarray_index.w). The word binary1 pushed
+					# above is the struct's address -- the accessors'
+					# ndX* receiver argument.
+					type = ndarray_index_suffix(type, nd_recv_slot, first_index_type)
+				else:
+					if (element_size > 1):
+						imul_eax_int32(element_size)
+					pop_ebx()
+					alu_add()
+					stack_pos = stack_pos - 1
+					expect(c"]")
+					type = element_type
+					expression_lhs_readonly = 0
 
 		else if (peek(c"(")):
 			# A '(' that opens a call tail on a DIFFERENT line than the
@@ -797,6 +805,9 @@ int postfix_expr():
 				# A pending map read whose value is a struct must emit the
 				# get call now so eax holds the stored struct's address.
 				type = hash_finalize_pending_read_if_needed(type)
+				# Same for a pending ndarray element (its value is always
+				# scalar, so '.' then reports the non-struct error).
+				type = nd_finalize_pending_read_if_needed(type)
 				int receiver_struct_value_words = 0
 				int receiver_was_value = type_is_value(type)
 				if (receiver_was_value):

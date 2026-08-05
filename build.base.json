@@ -2335,6 +2335,7 @@
 				"compound_assign_test",
 				"increment_error_test",
 				"multi_assign_error_test",
+				"ndarray_index_error_test",
 				"toplevel_init_error_test",
 				"char_literal_test",
 				"print_builtin_test",
