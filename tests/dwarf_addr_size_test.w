@@ -3,9 +3,9 @@ Structural regression test for DWARF address widths (the former
 docs/todo.txt x64 limitation "DWARF line info still declares
 address_size 4").
 
-The dwarf_addr_size_test build target compiles tests/hello.w for x86
-(bin/dwarf_addr_fixture_32) and x64 (bin/dwarf_addr_fixture_64), runs
-both, then runs this program, which parses each ELF from disk and
+The dwarf_addr_size_test build target compiles tests/dwarf_addr_fixture.w
+for x86 (bin/dwarf_addr_fixture_32) and x64 (bin/dwarf_addr_fixture_64),
+runs both, then runs this program, which parses each ELF from disk and
 asserts:
  - .debug_info's compile-unit header declares address_size equal to
    the target word size (4 / 8), and the DW_FORM_addr attribute pair
