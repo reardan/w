@@ -79,6 +79,8 @@ void multi_assign_reserve(int count):
 void multi_assign_check_target(int type):
 	if (hash_index_pending):
 		error(c"multi-assignment does not support map or set elements")
+	if (nd_index_pending):
+		error(c"multi-assignment does not support ndarray elements")
 	if (expression_lhs_readonly):
 		error(c"cannot assign to read-only buffer field")
 	if ((type_is_value(type)) || (type == 3) || (type == 4)):

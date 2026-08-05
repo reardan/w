@@ -1,4 +1,5 @@
 import grammar.hash_builtin
+import grammar.ndarray_index
 import grammar.promote
 import grammar.generic
 import grammar.defer

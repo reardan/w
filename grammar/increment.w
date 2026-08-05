@@ -76,6 +76,8 @@ void increment_expression_error():
 int increment_apply(int op, int type):
 	if (hash_index_pending):
 		error(c"'++' and '--' are not supported on map or set elements")
+	if (nd_index_pending):
+		error(c"'++' and '--' are not supported on ndarray elements")
 	if (expression_lhs_readonly):
 		error(c"cannot assign to read-only buffer field")
 	if ((type_is_value(type)) | (type == 3) | (type == 4)):

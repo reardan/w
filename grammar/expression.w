@@ -166,6 +166,19 @@ int expression():
 			expression_is_assignment = 1
 			return hash_finish_pending_compound(hash_op)
 		type = hash_finish_pending_read()
+	# A pending ndarray element (grammar/ndarray_index.w) follows the
+	# same discipline: '=' lowers to ndX_setN, a compound operator to
+	# the atN-read/setN-write pair, anything else to the ndX_atN read.
+	if (nd_index_pending):
+		if (accept(c"=")):
+			expression_is_assignment = 1
+			return nd_finish_pending_assignment()
+		int nd_op = compound_assign_op()
+		if (nd_op):
+			get_token()
+			expression_is_assignment = 1
+			return nd_finish_pending_compound(nd_op)
+		type = nd_finish_pending_read()
 	int op = compound_assign_op()
 	if (op):
 		get_token()

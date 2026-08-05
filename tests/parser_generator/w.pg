@@ -280,7 +280,14 @@ rule postfix_expr = primary_expr postfix_tail*
 # QUESTION expression COLON expression covers the C-style ternary
 # (syntax-only: the compiler gives it real precedence); a bare QUESTION
 # is the wresult '?' unwrap/propagate suffix.
-rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK | QUESTION gap_many expression COLON expression | QUESTION | PLUS_PLUS | MINUS_MINUS
+# LBRACK expression index_tail index_tail* RBRACK is the ndarray
+# comma-index sugar m[i, j(, k(, l))] (grammar/ndarray_index.w,
+# docs/projects/ndarray.md Stage 5). PG is syntax-only and permissive:
+# the compiler enforces the ndarray receiver type and the 2-4 index
+# arity. Ident-only index lists (m[i, j]) also match the generic
+# type_ref alternative before it -- either parse is fine.
+rule postfix_tail = LPAREN arg_list RPAREN | DOT name_token | LBRACK type_ref generic_arg_tail* RBRACK | LBRACK expression index_tail index_tail* RBRACK | LBRACK expression_opt slice_tail RBRACK | QUESTION gap_many expression COLON expression | QUESTION | PLUS_PLUS | MINUS_MINUS
+rule index_tail = COMMA gap_many expression
 rule slice_tail = COLON expression_opt |
 rule arg_list = expression arg_tail* |
 rule arg_tail = COMMA gap_many expression

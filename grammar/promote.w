@@ -107,6 +107,8 @@ are never loaded either.
 int promote(int type):
 	if (hash_index_pending):
 		return hash_finish_pending_read()
+	if (nd_index_pending):
+		return nd_finish_pending_read()
 	if (verbosity >= 1):
 		print2(itoa(line_number))
 		print2(c": promote(")
