@@ -120,7 +120,13 @@ status lives in the table below, updated as PRs open and land.
 | 3 | 3.2 type-system next | PR open | #407 |
 | 3 | 3.3 wasm stage-5 residue | PR open | #410 |
 | 3 | 3.4 container free() | PR open | #408 |
-| 3 | 3.5 W^X split B+C (solo) | launched | — |
+| 3 | 3.5 W^X split B+C (solo) | PR open | #411 |
+
+Program executed 2026-08-04/05: all 15 units delivered as draft PRs
+(#397–#411), each gated per the amended rules; 3.5 additionally ran the full
+suite solo (521 succeeded, 7 failures = exactly the env-blocked i386-loader
+set). Review + merge order is the maintainer's; build.json conflicts between
+sibling PRs resolve by re-running `./wbuild manifest` after each merge.
 
 Note (2026-08-05): a container restart mid-wave-1 killed three in-flight suite
 runs; work survived in worktrees and was salvaged commit-first. Waves 2+ run
