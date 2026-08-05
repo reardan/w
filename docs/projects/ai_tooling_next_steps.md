@@ -279,6 +279,7 @@ and `docs/projects/parser_generator.md` for the record.
   appears in `w --help` / `w <subcommand> --help` output
   (`tools/skills_check.w`). When adding a compiler flag, add its help
   line in the same commit or `skills_test` fails.
-- Candidate new skills as workflows stabilize: ARM64 testing under
-  `qemu-aarch64` (see `docs/projects/arm64.md`), seed updates
-  (`./wbuild update` discipline), and C interop debugging (`c_import`).
+- Candidate new skills as workflows stabilize: the first three shipped
+  2026-08-04 as `w-arm64-qemu`, `w-seed-update` and `w-c-import-debug`
+  (all registered with `skills_test`); add further candidates here as
+  they emerge.
