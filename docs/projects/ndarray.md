@@ -27,13 +27,18 @@ operator sugar. `ndi` intentionally has no elementwise/matmul surface
 `tests/x64_ndarray64_test.w`, and three bounds/shape-assert fixtures
 (`tests/ndarray_{bounds_get,bounds_set,extent}_trap_test.w`).
 
+Stage 5 grammar sugar shipped 2026-08 (issue #27 remainder): `m[i, j]`
+(and the rank-3/4 spellings) is a typed-builtin lowering to the
+accessor family — see "Indexing sugar (Stage 5, shipped)" below for
+the exact semantics and limits.
+
 Deferred, unchanged from the staging plan below: `ndf_free`/`ndi_free`
 (waits on the slice-level `array_free` helper), Stage 3 parallel_for
 integration (`lib/thread.w` now has `parallel_for` landed, so this is
-unblocked as follow-up), Stage 4 aligned allocation, and Stage 5 grammar
-sugar. No reshape or transpose helper was added: the doc does not list
-one for Stage 1, and a transpose remains "an explicit copy" left to
-callers, as this section already says.
+unblocked as follow-up), and Stage 4 aligned allocation. No reshape or
+transpose helper was added: the doc does not list one for Stage 1, and
+a transpose remains "an explicit copy" left to callers, as this
+section already says.
 
 ## Motivation and scope
 
@@ -205,6 +210,60 @@ justifies a built-in `ndarray[T]`. The accessor names (`at2`/`set2`)
 stay stable either way, so consumers migrate mechanically if sugar
 lands later.
 
+## Indexing sugar (Stage 5, shipped 2026-08)
+
+The revisit happened, with a third semantic vehicle neither (b) option
+needed: a **typed-builtin lowering to the existing accessors**,
+following the map/list builtin precedent (`grammar/hash_builtin.w`,
+`grammar/list_builtin.w`) instead of operator overloading or a new
+built-in container. A comma-separated index list on an expression
+whose static type is `ndf`, `ndi` or `ndf64` (value, lvalue or a
+single pointer — the accessors' `ndX*` receiver either way) parses in
+`grammar/postfix_expr.w`'s `[` handler and becomes a pending
+pseudo-lvalue (`grammar/ndarray_index.w`, the `hash_index_*`
+discipline):
+
+```w
+u[i, j]                 # read:      ndf_at2(u, i, j)
+u[i, j] = v             # assign:    ndf_set2(u, i, j, v)
+u[i, j] += dt * r       # compound:  ndf_set2(u, i, j, ndf_at2(u, i, j) + dt * r)
+```
+
+with the receiver and every index evaluated exactly once in the
+compound form. The emitted calls are exactly what the spelled-out
+accessor calls produce — same argument order, same unconditional
+per-axis asserts — so the sugar and the explicit `atN`/`setN` calls
+are interchangeable (asserted by `tests/ndarray_index_test.w` + the
+64-bit twin and `tests/x64_ndarray64_index_test.w`).
+
+Semantics and limits:
+
+- **The comma is the trigger.** 2-4 indices select `at2/set2` ..
+  `at4/set4` at compile time; a fifth index is a compile error. A
+  SINGLE index is never claimed: `p[i]` on `ndf*` keeps its raw
+  pointer-indexing meaning (the i-th struct), so rank-1 arrays spell
+  `at1`/`set1` out and no existing program changes meaning.
+- **Rank stays a run-time property.** The struct type does not carry
+  rank, so the compile-time check is the index count/arity only;
+  a rank mismatch hits the accessors' own per-axis extent asserts,
+  same as the explicit calls.
+- **Dispatch is by struct name, lowering by symbol lookup.** Indexing
+  a struct named `ndf`/`ndi`/`ndf64` without the matching `_atN`/
+  `_setN` in scope is a compile error naming the missing accessor.
+  Indices coerce/warn against `int`, assigned values against the
+  setter's value parameter (contexts "ndarray index" / "ndarray
+  assignment", frozen by the `ndarray_index_error_test` fixtures).
+- **Excluded like map elements:** `m[i, j]++` and multi-assignment
+  targets (`m[i, j], x = ...`) are compile errors; spell them
+  `+= 1` / separate statements.
+- `tests/parser_generator/w.pg` gained the `index_tail` production on
+  `postfix_tail` for the new spelling.
+
+The multi-assign comma-list collision the design feared does not
+materialize: inside brackets the parser is in expression context (a
+`,` only reaches multi-assign at statement position), so `[i, j]` is
+unambiguous.
+
 ## Views and slicing
 
 v1 supports exactly the views that are contiguous under row-major:
@@ -326,15 +385,20 @@ would have to undo.
 4. **Aligned allocation.** When the SIMD-builtins design exists: an
    aligned constructor mode via over-allocate + aligned sub-slice, and
    an alignment predicate next to `ndf_is_contiguous`. Library-only.
-5. **Grammar sugar `a[i, j]` (conditional).** Only if operator
-   overloading's `[]` stage or a built-in `ndarray[T]` is justified:
-   seed-closure implementation in `grammar/postfix_expr.w`, w.pg
-   index-list rule, diagnostics fixtures, and the full
-   `./wbuild verify` / `verify_x64` / `verify_arm64` cycle.
+5. **Grammar sugar `a[i, j]` — DONE (2026-08).** Shipped as the
+   typed-builtin lowering described in "Indexing sugar (Stage 5,
+   shipped)" above — neither operator overloading nor a built-in
+   `ndarray[T]` was needed. Seed-closure implementation in
+   `grammar/ndarray_index.w` + the `grammar/postfix_expr.w` hook, w.pg
+   `index_tail` rule, `ndarray_index_error_test` diagnostics fixtures,
+   verified through `./wbuild verify` / `verify_x64`.
 
 Stages 1-4 sit entirely outside the seed's import closure
 (`bin/wv2 deps w.w` lists nothing under lib/ndarray*), so none of them
-can disturb the self-host fixpoint.
+can disturb the self-host fixpoint; Stage 5's grammar code is inside
+it (and is therefore written in seed-understood syntax), while the
+`m[i, j]` spelling itself stays a tests/-only consumer until a SEEDS
+bump.
 
 ## Dependency and conflict map
 
@@ -347,9 +411,9 @@ can disturb the self-host fixpoint.
   test plan, not its design, is blocked.
 - Stage 4 depends on a SIMD-builtins design that does not exist yet;
   the constructor funnel is the only forward commitment.
-- Stage 5 is blocked on docs/projects/operator_overloading.md staging
-  (which excludes `[]` in v1) or a typed-containers-style builtin
-  decision; it conflicts with nothing landed.
+- Stage 5 shipped as a typed-builtin lowering (see "Indexing sugar"),
+  sidestepping both the operator-overloading `[]` stage and a
+  typed-containers-style builtin; it touched `grammar/` and w.pg only.
 - The downstream solver/mesh repo consumes the Stage 1-3 surface;
   nothing in this repo may depend on it
   (docs/projects/engineering_math_baseline.md).

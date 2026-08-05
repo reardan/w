@@ -107,6 +107,13 @@ current state:
 			string keys compare by contents
 			for-in iteration over map keys and set members
 			for k, v in map two-variable iteration
+			known bug (found 2026-08): a map read nested inside another
+				map's KEY ('m[h[k]]') miscompiles and crashes at runtime --
+				the hash_index_* pending slots (grammar/hash_builtin.w) are
+				clobbered by the nested index before the outer element
+				records its own; the ndarray index sugar commits its slots
+				only after the whole index list for exactly this reason
+				(grammar/ndarray_index.w)
 		built-in list:
 			list[T] typed lists with literals, indexing, push/pop and .length
 			negative indexing counts from the end (l[-1] is the last element)
@@ -288,7 +295,8 @@ current state:
 			descriptive statistics (lib/stats.w: accumulator, variance,
 				quantiles; design: docs/projects/stats.md)
 			dense multi-dimensional arrays (lib/ndarray.w/ndarray64.w v1:
-				ndf/ndi/ndf64, rank 1-4, matmul on 2-D; design/status:
+				ndf/ndi/ndf64, rank 1-4, matmul on 2-D, m[i, j] index
+				sugar lowering to the accessors; design/status:
 				docs/projects/ndarray.md, issue #27)
 			shell helpers (lib/shell.w: sh(cmd), run(argv), cd, env get/set
 				on top of lib/process.w/lib/env.w)
@@ -472,7 +480,9 @@ current state:
 		dict (done: built-in map iterates in insertion order, issue #145; defaultdict-style opt-in defaults with auto-vivification, issue #327)
 		matrix / multi-dimensional arrays (v1 done: lib/ndarray.w/
 			ndarray64.w library substrate, issue #27; grammar-level
-			indexing sugar still future work; design: docs/projects/ndarray.md)
+			indexing sugar m[i, j] done: comma index lists lower to the
+			atN/setN accessors, grammar/ndarray_index.w; design:
+			docs/projects/ndarray.md)
 		statistics (done: lib/stats.w, design: docs/projects/stats.md)
 
 	future platforms:
