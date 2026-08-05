@@ -4225,6 +4225,13 @@
 			]
 		},
 		{
+			"name": "json_codec_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/json_codec_float16_error_fixture.w", "tests/json_codec_map_key_error_fixture.w", "tests/json_codec_set_error_fixture.w"]}
+			]
+		},
+		{
 			"name": "json_codec_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/json_codec_test.w"],

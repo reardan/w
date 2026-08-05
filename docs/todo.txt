@@ -118,6 +118,7 @@ current state:
 			to_json(struct) / from_json(T, value) compiler-generated codecs
 			descriptors from the type table, runtime in structures/json_codec.w
 			imported on demand (design: docs/projects/protocol_ergonomics.md)
+			float fields (float32) and map[K, V] fields with char*/string keys
 		expressions:
 			&& and || short-circuit expressions
 			! unary operator
@@ -464,7 +465,7 @@ current state:
 		generic inference for forward calls, struct constructors and container shapes (pair[T]*, list[T])
 		inline asm functions
 		bfloat16; float16 on arm64/wasm (design: docs/projects/float.md)
-		type <=> json: floats and map[string, V] fields (base feature works)
+		type <=> json: float64 fields (needs float64 numbers in structures/json.w; float32 and map fields work)
 		type <=> protobuf
 		global default values
 
