@@ -227,6 +227,27 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
+- **wtest availability probes miss three shapes** (2026-08-05, found
+  running the container-free() gates on a Linux runner with no qemu, no
+  GPU and no 32-bit loader). (1) A runner wrapped in `sh -c`:
+  `pac_corrupt_test_arm64`'s run step is
+  `["sh", "-c", "sh tools/run_arm64.sh ...; test $? -ge 128"]`, so
+  `wtest_step_unavailable_reason`'s `["sh", "tools/run_arm64.sh", ...]`
+  argv-shape check never sees the runner and `./wbuild test_changed`
+  attempts it anyway (and without `--keep-going` that one failure
+  aborts the whole run with 500+ targets unattempted). Scanning the
+  `-c` string for the known runner paths would close it. (2)
+  `--runnable-here`'s GPU probe attributes `import lib.cuda` at the
+  root file only, so `tensor_gpu_test`/`autograd_gpu_test`/... (which
+  reach lib.cuda transitively) stay selected on GPU-less hosts. (3)
+  Umbrella collapse reintroduces dropped members: `--runnable-here`
+  drops `dynamic_test` et al. (no `/lib/ld-linux.so.2`), then collapses
+  the surviving selection into `tests`, which depends on the dropped
+  targets anyway — the drop and the collapse need to compose (don't
+  collapse into an umbrella whose member set includes an unavailable
+  target, or emit the umbrella's available members instead).
+  Workaround that worked: `./wbuild test_changed --keep-going`, then
+  eyeball that every failure in the summary is env-shaped.
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new
