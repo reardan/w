@@ -44,13 +44,16 @@ void test_char_lookup_hi():
 	assert_equal(0, char_ptr[2])
 
 
-# Milestone 1:
+# Milestone 1: writes go through a heap copy — string literals live in
+# the read-execute text segment (W^X, docs/projects/wx_split.md), so
+# writing one faults, exactly like C's read-only .rodata.
 void test_char_ptr_ms1():
-	char* char_ptr = c"hi"
+	char* char_ptr = strclone(c"hi")
 
 	assert_equal_hex('h', *char_ptr)
 	*char_ptr = 'a'
 	assert1(strcmp(c"ai", char_ptr) == 0)
+	free(char_ptr)
 
 
 # Milestone 2: ampersand operator

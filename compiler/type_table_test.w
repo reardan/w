@@ -60,7 +60,11 @@ void test_add_get_print_2_fields():
 void test_add_get_50_fields():
 	push_basic_types()
 	int type_index = type_push(c"massive_struct")
-	char* field = c"field\x00\x00\x00\x00\x00\x00\x00\x00"
+	# Build the field names in a heap buffer: string literals live in the
+	# read-execute text segment (W^X, docs/projects/wx_split.md), so
+	# writing into one faults.
+	char* field = malloc(16)
+	strcpy(field, c"field")
 	int i = 0
 	int count = 50
 	while (i < count):
@@ -68,6 +72,7 @@ void test_add_get_50_fields():
 		int int_type = type_lookup(c"int")
 		type_add_arg(type_index, strclone(field), int_type)
 		i = i + 1
+	free(field)
 
 	int t = cast(int, type_record(type_index))
 	assert_equal(count, load_int(t + 4))
