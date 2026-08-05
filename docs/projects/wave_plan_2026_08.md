@@ -106,27 +106,28 @@ status lives in the table below, updated as PRs open and land.
 
 | Wave | Unit | Status | PR |
 |---|---|---|---|
-| 1 | 1.1 wtest deps-cache robustness | PR open | #398 |
-| 1 | 1.2 wtest selection accuracy | PR open | #400 |
-| 1 | 1.3 http_server flake hardening | PR open | #399 |
-| 1 | 1.4 VCS object packing | PR open | #401 |
-| 1 | 1.5 wbuildd prerequisites | PR open | #402 |
-| 1 | 1.6 skills upkeep | PR open | #397 |
-| 2 | 2.1 json codec floats + map[string,V] | PR open | #404 |
-| 2 | 2.2 x64 DWARF address_size | PR open | #403 |
-| 2 | 2.3 threads atomics/mutex | PR open | #405 |
-| 2 | 2.4 c_import bit-fields | PR open | #406 |
-| 3 | 3.1 ndarray index sugar | PR open | #409 |
-| 3 | 3.2 type-system next | PR open | #407 |
-| 3 | 3.3 wasm stage-5 residue | PR open | #410 |
-| 3 | 3.4 container free() | PR open | #408 |
-| 3 | 3.5 W^X split B+C (solo) | PR open | #411 |
+| 1 | 1.1 wtest deps-cache robustness | merged | #398 |
+| 1 | 1.2 wtest selection accuracy | merged | #400 |
+| 1 | 1.3 http_server flake hardening | merged | #399 |
+| 1 | 1.4 VCS object packing | merged | #401 |
+| 1 | 1.5 wbuildd prerequisites | merged | #402 |
+| 1 | 1.6 skills upkeep | merged | #397 |
+| 2 | 2.1 json codec floats + map[string,V] | merged | #404 |
+| 2 | 2.2 x64 DWARF address_size | merged | #403 |
+| 2 | 2.3 threads atomics/mutex | merged | #405 |
+| 2 | 2.4 c_import bit-fields | merged | #406 |
+| 3 | 3.1 ndarray index sugar | merged | #409 |
+| 3 | 3.2 type-system next | merged | #407 |
+| 3 | 3.3 wasm stage-5 residue | merged | #410 |
+| 3 | 3.4 container free() | merged | #408 |
+| 3 | 3.5 W^X split B+C (solo) | merged | #411 |
 
 Program executed 2026-08-04/05: all 15 units delivered as draft PRs
-(#397–#411), each gated per the amended rules; 3.5 additionally ran the full
-suite solo (521 succeeded, 7 failures = exactly the env-blocked i386-loader
-set). Review + merge order is the maintainer's; build.json conflicts between
-sibling PRs resolve by re-running `./wbuild manifest` after each merge.
+(#397–#411) and, with the program doc (#396), **all 16 merged into main
+2026-08-05** by sequential local integration — per-merge gates (fixpoints +
+targeted tests), conflicts resolved by union-merge (docs) and manifest
+regeneration (build.json), full suite green on the integrated tip minus the
+documented env-blocked set.
 
 Note (2026-08-05): a container restart mid-wave-1 killed three in-flight suite
 runs; work survived in worktrees and was salvaged commit-first. Waves 2+ run
