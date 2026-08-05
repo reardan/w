@@ -53,9 +53,14 @@ ServerResponse* hrt_unused_handler(ServerRequest* req, void* context):
 	return server_response_new(500)
 
 
+# timeout_ms is a 60s wedge guard, not pacing: accept_loop arms it on
+# the accepted socket (before tls_accept, for the https test), and a
+# tighter 5s bound demonstrably lost the handshake race under parallel
+# suite load -- see http_server_test.w's hst_new_server note and
+# https_e2e_test.w's header.
 ServerContext* hrt_new_server():
 	ServerContext* s = server_context_new(c"127.0.0.1", 0, hrt_unused_handler, 0)
-	s.timeout_ms = 5000
+	s.timeout_ms = 60000
 	asserts(c"server bind", server_context_bind(s) != 0)
 	return s
 
@@ -509,7 +514,9 @@ void test_sse_streaming_handler():
 # test_https_get_round_trip, reusing the same synthetic P-256 fixture).
 void test_https_request_context_round_trip():
 	ServerContext* s = server_context_new(c"127.0.0.1", 0, hrt_unused_handler, 0)
-	s.timeout_ms = 5000
+	# 60s wedge guard -- see hrt_new_server's timeout note (this server
+	# is built inline because set_tls must precede bind).
+	s.timeout_ms = 60000
 	server_context_set_tls(s, c"libs/standard/net/tls_fixtures/server_p256_cert.pem", c"libs/standard/net/tls_fixtures/server_p256_key.pem")
 	asserts(c"https server bind", server_context_bind(s) != 0)
 	server_route(s, c"GET", c"/hi", hrt_handler_hello, 0)
