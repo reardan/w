@@ -106,16 +106,22 @@ status lives in the table below, updated as PRs open and land.
 
 | Wave | Unit | Status | PR |
 |---|---|---|---|
-| 1 | 1.1 wtest deps-cache robustness | planned | — |
-| 1 | 1.2 wtest selection accuracy | planned | — |
-| 1 | 1.3 http_server flake hardening | planned | — |
-| 1 | 1.4 VCS object packing | planned | — |
-| 1 | 1.5 wbuildd prerequisites | planned | — |
-| 1 | 1.6 skills upkeep | planned | — |
-| 2 | 2.1 json codec floats + map[string,V] | queued | — |
-| 2 | 2.2 x64 DWARF address_size | queued | — |
-| 2 | 2.3 threads atomics/mutex | queued | — |
-| 2 | 2.4 c_import bit-fields | queued | — |
+| 1 | 1.1 wtest deps-cache robustness | PR open | #398 |
+| 1 | 1.2 wtest selection accuracy | PR open | #400 |
+| 1 | 1.3 http_server flake hardening | PR open | #399 |
+| 1 | 1.4 VCS object packing | PR open | #401 |
+| 1 | 1.5 wbuildd prerequisites | PR open | #402 |
+| 1 | 1.6 skills upkeep | PR open | #397 |
+| 2 | 2.1 json codec floats + map[string,V] | launched | — |
+| 2 | 2.2 x64 DWARF address_size | launched | — |
+| 2 | 2.3 threads atomics/mutex | launched | — |
+| 2 | 2.4 c_import bit-fields | launched | — |
+
+Note (2026-08-05): a container restart mid-wave-1 killed three in-flight suite
+runs; work survived in worktrees and was salvaged commit-first. Waves 2+ run
+under amended rules: workers commit+push before any long run, per-worker gates
+exclude the full `tests` umbrella (coordinator/CI covers it), no parked waits,
+≤4 concurrent agents.
 | 3 | 3.1 ndarray index sugar | queued | — |
 | 3 | 3.2 type-system next | queued | — |
 | 3 | 3.3 wasm stage-5 residue | queued | — |
