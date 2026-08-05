@@ -112,18 +112,18 @@ status lives in the table below, updated as PRs open and land.
 | 1 | 1.4 VCS object packing | PR open | #401 |
 | 1 | 1.5 wbuildd prerequisites | PR open | #402 |
 | 1 | 1.6 skills upkeep | PR open | #397 |
-| 2 | 2.1 json codec floats + map[string,V] | launched | — |
-| 2 | 2.2 x64 DWARF address_size | launched | — |
-| 2 | 2.3 threads atomics/mutex | launched | — |
-| 2 | 2.4 c_import bit-fields | launched | — |
+| 2 | 2.1 json codec floats + map[string,V] | PR open | #404 |
+| 2 | 2.2 x64 DWARF address_size | PR open | #403 |
+| 2 | 2.3 threads atomics/mutex | PR open | #405 |
+| 2 | 2.4 c_import bit-fields | PR open | #406 |
+| 3 | 3.1 ndarray index sugar | launched | — |
+| 3 | 3.2 type-system next | launched | — |
+| 3 | 3.3 wasm stage-5 residue | launched | — |
+| 3 | 3.4 container free() | launched | — |
+| 3 | 3.5 W^X split B+C (solo) | queued (after 3.1–3.4) | — |
 
 Note (2026-08-05): a container restart mid-wave-1 killed three in-flight suite
 runs; work survived in worktrees and was salvaged commit-first. Waves 2+ run
 under amended rules: workers commit+push before any long run, per-worker gates
 exclude the full `tests` umbrella (coordinator/CI covers it), no parked waits,
 ≤4 concurrent agents.
-| 3 | 3.1 ndarray index sugar | queued | — |
-| 3 | 3.2 type-system next | queued | — |
-| 3 | 3.3 wasm stage-5 residue | queued | — |
-| 3 | 3.4 container free() | queued | — |
-| 3 | 3.5 W^X split B+C (solo) | queued | — |
