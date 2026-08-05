@@ -7,7 +7,15 @@ duplication and directions 1–4 for the manifest/cache layer) and
 §3). Follows the same survey → directions → staged-recommendation shape
 as `build_system_next.md`.
 
-Status: design only, 2026-07-16. No code changes ship with this file.
+Status: design 2026-07-16; stage-1 prerequisites (§5.1) landed
+2026-08-04 — `lib/inotify.w` (per-arch `sys_inotify_*` shims for
+x86/x64/arm64 Linux, stubs elsewhere, record parsing, mask constants;
+`tests/inotify_test.w`) and `lib/net.w`'s AF_UNIX surface
+(`sockaddr_un_init`, `socket_bind_unix`/`socket_connect_unix`,
+stale-file-aware `socket_bind_unix_replacing_stale`,
+`socket_listen_unix_path`/`socket_connect_unix_path`;
+`tests/unix_socket_test.w`). The daemon itself (§2) and the darwin
+dirent fix remain unimplemented.
 
 ## 0. Summary
 
@@ -195,7 +203,9 @@ method-dispatch envelope" — `lib/json_rpc.w:1`–`10` builds directly on
 
 ### 2.3 File watching on Linux
 
-**No inotify wrapper exists in `lib/` today** — confirmed by search
+**No inotify wrapper exists in `lib/` today** *(landed 2026-08-04 as
+`lib/inotify.w`, per the recommendation below; the paragraph is kept
+as the design rationale)* — confirmed by search
 (`inotify` matches nothing under `lib/`, `libs/`, or `tests/`). This is
 exactly the gap issue #231 flags as an open question ("inotify shim in
 `lib/__arch__/*/syscalls.w` (none exists today), or mtime polling
@@ -221,8 +231,10 @@ this repo's size — fine for one process, needs an explicit
 add-watch-on-new-directory hook for directories created after the
 daemon starts.
 
-**Second, smaller gap in the same neighborhood**: `lib/net.w` has no
-unix-domain-socket *bind*/*listen* helper. `af_unix()`
+**Second, smaller gap in the same neighborhood** *(landed 2026-08-04:
+`lib/net.w` grew the AF_UNIX helpers, including the §2.2 stale-socket
+unlink-and-retry as `socket_bind_unix_replacing_stale`)*: `lib/net.w`
+has no unix-domain-socket *bind*/*listen* helper. `af_unix()`
 (`lib/net.w:18`) exists and is used today only for `socket_pair`
 (`lib/net.w:143`, an anonymous connected pair via `sys_socketpair`),
 not for a path-bound listening socket — there is no `sockaddr_un`
@@ -529,7 +541,9 @@ either way; nothing here proposes a second protocol.
 
 ## 5. Staged recommendation
 
-1. **Stage 1 — prerequisites** (small, independent PRs, no daemon yet):
+1. **Stage 1 — prerequisites** (small, independent PRs, no daemon yet)
+   *(the first two landed 2026-08-04, issue #231; the dirent fix is
+   still open, Mac-gated)*:
    `lib/inotify.w` (§2.3), a unix-domain-socket bind/listen helper in
    `lib/net.w` (§2.3), and — if the daemon is meant to serve macOS
    agents too, not just Linux — the per-arch dirent accessor fix

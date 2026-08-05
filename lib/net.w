@@ -1,3 +1,4 @@
+import lib.lib
 import lib.linux
 import lib.memory
 import lib.__arch__.socket_abi
@@ -148,6 +149,135 @@ int socket_pair(int* fds):
 	fds[1] = load_int32(kernel_fds + 4)
 	free(kernel_fds)
 	return err
+
+
+/* AF_UNIX (unix-domain) stream sockets: the wbuildd stage-1
+prerequisite from issue #231 (docs/projects/wbuildd.md par. 2.3).
+
+Linux sockaddr_un is a 16-bit family word followed by a 108-byte
+NUL-padded sun_path (110 bytes total); Darwin prefixes a length byte
+but keeps sun_path at the same offset 2, and xnu overwrites sun_len
+from the syscall's addrlen argument on input, so writing the leading
+word with socket_abi_family_word keeps the family byte right on both
+layouts. W structs carry no fixed-size array fields (the lib/ndarray.w
+note), so the address is built in a raw SOCKADDR_UN_SIZE() buffer
+instead of a struct, and bind/connect pass the exact used length
+(2 + path + NUL) -- valid on every target. The helpers below wrap the
+buffer handling completely, so callers only ever pass a path; listen
+and accept need no unix variants (socket_listen /
+socket_accept_connection are address-family-agnostic already).
+
+A bound socket file is NOT removed by close(); servers should
+unlink(path) when shutting down, and socket_bind_unix_replacing_stale
+handles the crashed-predecessor case at startup. */
+
+int SOCKADDR_UN_SIZE():
+	return 110
+
+
+# Longest usable path (excluding its NUL): the tightest sun_path across
+# supported targets (Darwin's 104 bytes; Linux would allow 107).
+int SOCKADDR_UN_PATH_MAX():
+	return 103
+
+
+# Fills the SOCKADDR_UN_SIZE()-byte buffer at addr with an AF_UNIX
+# address for path. Returns the exact addrlen to pass to bind/connect
+# (family word + path + NUL), or -22 (-EINVAL) when path is too long.
+int sockaddr_un_init(char* addr, char* path):
+	int path_length = strlen(path)
+	if (path_length > SOCKADDR_UN_PATH_MAX()):
+		return 0 - 22
+	int i = 0
+	while (i < SOCKADDR_UN_SIZE()):
+		addr[i] = 0
+		i = i + 1
+	save_int16(addr, socket_abi_family_word(af_unix()))
+	i = 0
+	while (i < path_length):
+		addr[2 + i] = path[i]
+		i = i + 1
+	return 2 + path_length + 1
+
+
+int socket_unix_stream():
+	return sys_socket(af_unix(), sock_stream(), 0)
+
+
+int socket_bind_unix(int sockfd, char* path):
+	char* addr = malloc(SOCKADDR_UN_SIZE())
+	int addrlen = sockaddr_un_init(addr, path)
+	if (addrlen < 0):
+		free(addr)
+		return addrlen
+	int err = sys_bind(sockfd, cast(int, addr), addrlen)
+	free(addr)
+	return err
+
+
+int socket_connect_unix(int sockfd, char* path):
+	char* addr = malloc(SOCKADDR_UN_SIZE())
+	int addrlen = sockaddr_un_init(addr, path)
+	if (addrlen < 0):
+		free(addr)
+		return addrlen
+	int err = sys_connect(sockfd, cast(int, addr), addrlen)
+	free(addr)
+	return err
+
+
+# bind that survives a crashed predecessor's leftover socket file:
+# when the plain bind fails, a probe connect() decides whether a live
+# server still answers on path. If one does, its address is left alone
+# and the original bind error comes back; if nothing answers, the path
+# is treated as stale, unlinked, and claimed with one retry. Callers
+# own the path either way -- a non-socket file squatting on it is
+# removed too (errno values never need inspecting, so this stays free
+# of per-target errno tables).
+int socket_bind_unix_replacing_stale(int sockfd, char* path):
+	int err = socket_bind_unix(sockfd, path)
+	if (err >= 0):
+		return err
+	int probe = socket_unix_stream()
+	if (probe < 0):
+		return err
+	int connected = socket_connect_unix(probe, path)
+	close(probe)
+	if (connected >= 0):
+		return err
+	unlink(path)
+	return socket_bind_unix(sockfd, path)
+
+
+# Creates, binds (replacing a stale socket file), and listens a unix
+# stream socket at path. Returns the listening fd, or a negative
+# errno; accept clients with socket_accept_connection.
+int socket_listen_unix_path(char* path, int backlog):
+	int sockfd = socket_unix_stream()
+	if (sockfd < 0):
+		return sockfd
+	int err = socket_bind_unix_replacing_stale(sockfd, path)
+	if (err < 0):
+		close(sockfd)
+		return err
+	err = socket_listen(sockfd, backlog)
+	if (err < 0):
+		close(sockfd)
+		return err
+	return sockfd
+
+
+# Creates and connects a unix stream socket to the server listening at
+# path. Returns the connected fd, or a negative errno.
+int socket_connect_unix_path(char* path):
+	int sockfd = socket_unix_stream()
+	if (sockfd < 0):
+		return sockfd
+	int err = socket_connect_unix(sockfd, path)
+	if (err < 0):
+		close(sockfd)
+		return err
+	return sockfd
 
 
 int socket_send_to_ipv4(int sockfd, char* buf, int len, int flags, int ip_address, int port):

@@ -2001,6 +2001,7 @@
 				"http_server_64_test",
 				"http_server_route_64_test",
 				"increment_64_test",
+				"inotify_64_test",
 				"int_literal_bounds_64_test",
 				"json_64_test",
 				"json_codec_64_test",
@@ -2087,6 +2088,7 @@
 				"time_64_test",
 				"toplevel_init_64_test",
 				"u64_64_test",
+				"unix_socket_64_test",
 				"unsigned_load_64_test",
 				"urlparse_64_test",
 				"utf8_source_64_test",
@@ -2559,6 +2561,7 @@
 				"http_server_test",
 				"increment_test",
 				"infer_test",
+				"inotify_test",
 				"int_literal_bounds_test",
 				"json_codec_test",
 				"json_test",
@@ -2654,6 +2657,7 @@
 				"toplevel_init_test",
 				"type_system_p0_test",
 				"u64_test",
+				"unix_socket_test",
 				"unsigned_load_test",
 				"urlparse_test",
 				"utf8_source_test",
@@ -4188,6 +4192,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/infer_test.w", "-o", "bin/infer_test"]},
 				{"cmd": ["bin/infer_test"]}
+			]
+		},
+		{
+			"name": "inotify_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/inotify_test.w"],
+			"outputs": ["bin/inotify_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/inotify_test.w", "-o", "bin/inotify_64_test"]},
+				{"cmd": ["bin/inotify_64_test"]}
+			]
+		},
+		{
+			"name": "inotify_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/inotify_test.w"],
+			"outputs": ["bin/inotify_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/inotify_test.w", "-o", "bin/inotify_test"]},
+				{"cmd": ["bin/inotify_test"]}
 			]
 		},
 		{
@@ -6197,6 +6221,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/u64_test.w", "-o", "bin/u64_test"]},
 				{"cmd": ["bin/u64_test"]}
+			]
+		},
+		{
+			"name": "unix_socket_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/unix_socket_test.w"],
+			"outputs": ["bin/unix_socket_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/unix_socket_test.w", "-o", "bin/unix_socket_64_test"]},
+				{"cmd": ["bin/unix_socket_64_test"]}
+			]
+		},
+		{
+			"name": "unix_socket_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/unix_socket_test.w"],
+			"outputs": ["bin/unix_socket_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/unix_socket_test.w", "-o", "bin/unix_socket_test"]},
+				{"cmd": ["bin/unix_socket_test"]}
 			]
 		},
 		{

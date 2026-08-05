@@ -366,6 +366,24 @@ int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
 int sys_getrandom(char* buf, int buflen, int flags):
 	return syscall(278, buf, buflen, flags)
 
+/* inotify: filesystem change notification (see lib/inotify.w for the
+constants and the variable-length event-record parser). */
+
+# inotify_init1 (26): returns an inotify fd; flags is 0 or O_NONBLOCK
+# and/or O_CLOEXEC.
+int sys_inotify_init1(int flags):
+	return syscall(26, flags, 0, 0)
+
+# inotify_add_watch (27): returns a watch descriptor for path, or a
+# negative errno. Re-adding a watched path updates its mask in place.
+int sys_inotify_add_watch(int fd, char* path, int mask):
+	return syscall(27, fd, path, mask)
+
+# inotify_rm_watch (28): removes a watch; the kernel queues a final
+# IN_IGNORED event for it.
+int sys_inotify_rm_watch(int fd, int wd):
+	return syscall(28, fd, wd, 0)
+
 # exit_group: terminates every thread in the process, like libc exit().
 void exit(int error_code):
 	syscall(94, error_code, 0, 0)

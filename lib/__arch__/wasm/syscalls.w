@@ -176,6 +176,19 @@ int statx(char* path, int flags, int mask, char* buf):
 	return -1
 
 
+# inotify is Linux-only (lib/inotify.w).
+int sys_inotify_init1(int flags):
+	return -1
+
+
+int sys_inotify_add_watch(int fd, char* path, int mask):
+	return -1
+
+
+int sys_inotify_rm_watch(int fd, int wd):
+	return -1
+
+
 int chmod(char* path, int mode):
 	return -1
 

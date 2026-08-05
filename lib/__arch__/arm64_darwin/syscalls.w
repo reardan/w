@@ -429,6 +429,18 @@ int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
 int sys_getrandom(char* buf, int buflen, int flags):
 	return 0 - 38
 
+# Darwin has no inotify (file watching is kqueue/FSEvents territory);
+# ENOSYS-style stubs like sys_getrandom's, so lib/inotify.w callers see
+# a negative errno-style failure (the lib/stat.w statx convention).
+int sys_inotify_init1(int flags):
+	return 0 - 38
+
+int sys_inotify_add_watch(int fd, char* path, int mask):
+	return 0 - 38
+
+int sys_inotify_rm_watch(int fd, int wd):
+	return 0 - 38
+
 # exit (1): terminates the whole process, like libc exit().
 void exit(int error_code):
 	syscall(1, error_code, 0, 0)
