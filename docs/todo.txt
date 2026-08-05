@@ -188,6 +188,8 @@ current state:
 				sync point
 			atomic_add/atomic_min/atomic_max device intrinsics (int*;
 				atomic_add also float32*), returning the pre-update value
+				(atomic_add plus atomic_cas also lower host-side on
+				x86/x64 with the same contract — see threading)
 			the nine 32-bit limb/bit intrinsics work on device with the
 				host contract (cuda_test cross-checks against the host)
 			lib/cuda.w runtime: managed memory (gpu_alloc/gpu_free),
@@ -389,9 +391,11 @@ current state:
 			watchpoints are software (statement-granularity single-step
 				scan): large slowdown while any exist
 		threading:
-			lib/thread.w (spawn/join/parallel_for) is Linux x86/x64 only;
-				arm64/darwin/win64/wasm, mutexes/atomics and thread
-				pools are staged in docs/projects/threads.md
+			lib/thread.w (spawn/join/parallel_for with join-time stack
+				reclamation, wmutex/wcond, host atomic_add/atomic_cas
+				intrinsics) is Linux x86/x64 only; arm64/darwin/win64/
+				wasm ports and thread pools are staged in
+				docs/projects/threads.md
 		webassembly:
 			json builtins, generators, c_import/extern FFI, REPL and wdbg
 				are not supported on the wasm target

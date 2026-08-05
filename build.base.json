@@ -2103,7 +2103,7 @@
 			"name": "cuda_diagnostics_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w", "tests/gpu_call_error_fixture.w", "tests/gpu_global_error_fixture.w", "tests/gpu_string_error_fixture.w", "tests/kernel_call_error_fixture.w", "tests/launch_non_kernel_error_fixture.w", "tests/launch_no_runtime_error_fixture.w", "tests/launch_arity_error_fixture.w", "tests/gpu_for_return_error_fixture.w", "tests/gpu_for_no_runtime_error_fixture.w", "tests/gpu_for_range_error_fixture.w", "tests/atomic_host_error_fixture.w", "tests/atomic_operand_error_fixture.w", "tests/atomic_minmax_float_error_fixture.w", "tests/gpu_math_host_error_fixture.w", "tests/gpu_shared_host_error_fixture.w", "tests/gpu_capture_write_error_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w", "tests/gpu_call_error_fixture.w", "tests/gpu_global_error_fixture.w", "tests/gpu_string_error_fixture.w", "tests/kernel_call_error_fixture.w", "tests/launch_non_kernel_error_fixture.w", "tests/launch_no_runtime_error_fixture.w", "tests/launch_arity_error_fixture.w", "tests/gpu_for_return_error_fixture.w", "tests/gpu_for_no_runtime_error_fixture.w", "tests/gpu_for_range_error_fixture.w", "tests/atomic_host_error_fixture.w", "tests/atomic_host_operand_error_fixture.w", "tests/atomic_cas_gpu_error_fixture.w", "tests/atomic_operand_error_fixture.w", "tests/atomic_minmax_float_error_fixture.w", "tests/gpu_math_host_error_fixture.w", "tests/gpu_shared_host_error_fixture.w", "tests/gpu_capture_write_error_fixture.w"]}
 			]
 		},
 		{
