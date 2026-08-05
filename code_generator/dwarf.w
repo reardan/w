@@ -253,10 +253,13 @@ void debug_line_emit():
 		int cur_file = 1
 		int cur_line = 1
 		int cur_address = load_int(debug_line_addresses)
-		/* DW_LNE_set_address */
-		emit(2, c"\x00\x05")
+		/* DW_LNE_set_address: the extended-opcode length covers the
+		   opcode byte plus one address of the target's word size
+		   (5 on 32-bit targets, 9 on 64-bit ones) */
+		emit_int8(0)
+		emit_int8(1 + word_size)
 		emit_int8(2)
-		emit_int32(cur_address + code_offset)
+		emit_target_word(cur_address + code_offset)
 
 		i = 0
 		while (i < debug_line_count):
@@ -310,14 +313,15 @@ void debug_info_emit(int text_end):
 	emit_int32(0) /* unit_length, patched below */
 	emit_int16(2) /* DWARF version 2 */
 	emit_int32(0) /* offset into .debug_abbrev */
-	emit_int8(4) /* address size */
+	emit_int8(word_size) /* address_size: the target's word size */
 	emit_uleb(1) /* abbrev code 1: the compile unit */
 	char* unit_name = c"w"
 	if (debug_file_count > 0):
 		unit_name = cast(char*, load_ptr(debug_files))
 	emit_string(unit_name) /* DW_AT_name */
 	emit_int32(0) /* DW_AT_stmt_list: offset 0 in .debug_line */
-	emit_int32(code_offset) /* DW_AT_low_pc */
-	emit_int32(text_end + code_offset) /* DW_AT_high_pc */
+	/* DW_FORM_addr fields are address_size (= target word size) wide */
+	emit_target_word(code_offset) /* DW_AT_low_pc */
+	emit_target_word(text_end + code_offset) /* DW_AT_high_pc */
 	emit_uleb(0) /* end of children */
 	save_int(code + unit_start, codepos - unit_start - 4)

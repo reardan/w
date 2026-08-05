@@ -2120,6 +2120,19 @@
 			]
 		},
 		{
+			"name": "dwarf_addr_size_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/asm/", "code_generator/dwarf.w", "tests/dwarf_addr_size_test.w", "tests/dwarf_addr_fixture.w"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/dwarf_addr_fixture.w", "-o", "bin/dwarf_addr_fixture_32"]},
+				{"cmd": ["bin/wv2", "x64", "tests/dwarf_addr_fixture.w", "-o", "bin/dwarf_addr_fixture_64"]},
+				{"cmd": ["bin/dwarf_addr_fixture_32"], "expect_stdout": "hello from dwarf fixture"},
+				{"cmd": ["bin/dwarf_addr_fixture_64"], "expect_stdout": "hello from dwarf fixture"},
+				{"cmd": ["bin/wv2", "tests/dwarf_addr_size_test.w", "-o", "bin/dwarf_addr_size_test"]},
+				{"cmd": ["bin/dwarf_addr_size_test"], "expect_stdout": "dwarf_addr_size_test passed"}
+			]
+		},
+		{
 			"name": "asm_arm64_test",
 			"deps": ["wv2"],
 			"inputs": ["libs/asm/", "tests/asm/", "tests/asm_arm64_test.w", "w.w"],
@@ -2348,6 +2361,7 @@
 				"build",
 				"verify",
 				"asm_foundations_test",
+				"dwarf_addr_size_test",
 				"asm_x86_disasm_test",
 				"asm_x86_asm_test",
 				"asm_arm64_test",

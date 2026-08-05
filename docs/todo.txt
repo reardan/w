@@ -387,8 +387,6 @@ current state:
 				so an older frame's base can be unknown (locals unaddressable)
 			watchpoints are software (statement-granularity single-step
 				scan): large slowdown while any exist
-		x64:
-			DWARF line info still declares address_size 4 (gdb only)
 		threading:
 			lib/thread.w (spawn/join/parallel_for) is Linux x86/x64 only;
 				arm64/darwin/win64/wasm, mutexes/atomics and thread
