@@ -816,6 +816,16 @@ int postfix_expr():
 					get_token()
 
 					if (arg >= 0):
+						# Imported C bit-fields lay out correctly (their
+						# storage bytes are filler fields) but the named
+						# member is a zero-size marker registered only so
+						# access fails loudly instead of reading garbage
+						# (libs/extras/c_import/importer.w,
+						# ci_bit_field_marker_type).
+						if (strcmp(type_get_name(type_get_field_type(type, member_name)), c"__ci_bit_field") == 0):
+							diag_part(c"struct field '")
+							diag_part(member_name)
+							error(c"' is an imported C bit-field; bit-field member access is not supported")
 						# Return right side field type instead of struct pointer
 						add_eax_int32(type_get_field_offset(type, member_name))
 
