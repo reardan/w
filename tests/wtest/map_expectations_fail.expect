@@ -6,3 +6,17 @@
 # The real expectations live in tests/wtest/map_expectations.expect.
 case docs/todo.txt
 expect win64_hello_test
+
+# The -f order hint (tools/wtest_map_check.w header;
+# ai_tooling_next_steps.md 2026-07-29 U5 incident):
+# tests/wtest/manifest_order_fail.json lists two eternal real build.json
+# targets (tests, wv2) in the OPPOSITE of build.json's relative order,
+# so the implicit order property must fail — and, because the case
+# carries '-f', the FAIL detail must name the fixture manifest and the
+# "-f fixture manifests must mirror build.json's relative order (or add
+# 'noorder')" rule (asserted by wtest_map_test's expect_stderr in
+# build.base.json). The expects themselves hold; only the order
+# property fails.
+case -f tests/wtest/manifest_order_fail.json widget/order.dat
+expect wv2
+expect tests

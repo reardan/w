@@ -502,3 +502,36 @@ expect collapse_w1
 expect collapse_w2
 expect collapse_loner
 forbid collapse_all
+
+# --runnable-here closure-level needs attribution (tools/test_map.w;
+# ai_tooling_next_steps.md 2026-07-29): the needy directives live in
+# IMPORTED modules of the manifest_runnable.json fixture roots, never
+# in the roots themselves. WHICH needs are absent varies by host (CI
+# installs the i386 loader this container lacks; a GPU box has the
+# NVIDIA driver), so the dropped direction is asserted
+# host-conditionally in tools/wtest_runnable_scratch_test.sh — the
+# same lesson as manifest_unavailable.json's fictional tools/mac/
+# path. The two cases here pin the host-INDEPENDENT halves. First: a
+# changed path that is an imported fixture module selects its
+# importing root's target through rule (b) — which also computes the
+# fixture closures the filter then scans — and a clean import chain
+# (no directive anywhere in dep_plain.w's or plain_imp.w's closure)
+# must be KEPT everywhere: closure scanning must not invent needs.
+case -f tests/wtest/manifest_runnable.json --runnable-here tests/wtest/runnable_fixture/dep_plain.w
+noorder
+expect rn_plain_imp
+forbid rn_dyn32
+
+# Second: a root with no computable closure (broken_imp.w's second
+# import does not exist, so 'bin/wv2 deps' always fails) must fall
+# back to the ROOT text — no directives there, so rn_broken_imp is
+# kept on every host, even though its resolvable import (dep_dyn.w)
+# carries a c_lib directive that a partial closure would attribute.
+# The marker path co-selects rn_static and rn_plain_imp, kept
+# everywhere for the same host-independent reasons as above.
+case -f tests/wtest/manifest_runnable.json --runnable-here tests/wtest/runnable_fixture/broken_imp.w widget/runnable.dat
+noorder
+expect rn_broken_imp
+expect rn_plain_imp
+expect rn_static
+expect rn_compile_only

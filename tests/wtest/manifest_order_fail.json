@@ -1,0 +1,16 @@
+{
+	"targets": [
+		{
+			"name": "tests",
+			"steps": [
+				{"cmd": ["true", "widget/order.dat"]}
+			]
+		},
+		{
+			"name": "wv2",
+			"steps": [
+				{"cmd": ["true", "widget/order.dat"]}
+			]
+		}
+	]
+}
