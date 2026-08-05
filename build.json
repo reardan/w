@@ -1791,6 +1791,19 @@
 			]
 		},
 		{
+			"name": "wasm_export_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "wasm", "tests/wasm_export_test.w", "-o", "bin/wasm_export_test"]},
+				{"cmd": ["sh", "tools/web/run_node.sh", "tools/web/run_export_test.mjs", "bin/wasm_export_test"]},
+				{"cmd": ["bin/wv2", "wasm", "--wasm-acc=globals", "tests/wasm_export_test.w", "-o", "bin/wasm_export_test_globals"]},
+				{"cmd": ["sh", "tools/web/run_node.sh", "tools/web/run_export_test.mjs", "bin/wasm_export_test_globals"]},
+				{"cmd": ["bin/wv2", "wasm", "tests/wasm_export_variadic_fixture.w", "-o", "bin/wasm_export_variadic_fixture"], "expect_fail": true, "expect_stderr": "cannot export a variadic function"},
+				{"cmd": ["bin/wv2", "wasm", "tests/wasm_export_struct_fixture.w", "-o", "bin/wasm_export_struct_fixture"], "expect_fail": true, "expect_stderr": "exported function parameters must be single words"},
+				{"cmd": ["bin/wv2", "wasm", "tests/wasm_export_undefined_fixture.w", "-o", "bin/wasm_export_undefined_fixture"], "expect_fail": true, "expect_stderr": "exported function 'missing' is never defined"}
+			]
+		},
+		{
 			"name": "x64_protobuf_test",
 			"deps": ["wv2"],
 			"steps": [

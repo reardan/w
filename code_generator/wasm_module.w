@@ -45,7 +45,10 @@ import code_generator.wasm
 int sym_declare_global(char *s, int type, int symtype); /* symbol_table */
 void sym_define_global_at(int current_symbol, int v);   /* symbol_table */
 int sym_address(char* name);                            /* symbol_table */
+int sym_decl_visibility(int t);                         /* symbol_table */
+int sym_value_at(int t);                                /* symbol_table */
 void error(char *s);                                    /* tokenizer */
+void diag_part(char *s);                                /* tokenizer */
 
 # Import function indices: the fixed wasi_snapshot_preview1 set occupies
 # 0..9, user extern imports follow at 10.., and defined functions start at
@@ -78,9 +81,12 @@ char* wasm_extern_rets
 
 void wasm_extern_init():
 	if (wasm_extern_modules == 0):
-		wasm_extern_modules = malloc(wasm_extern_max() * word_size)
-		wasm_extern_names = malloc(wasm_extern_max() * word_size)
-		wasm_extern_classes = malloc(wasm_extern_max() * word_size)
+		# Host pointer arrays stride by __word_size__, not the target's
+		# word_size (an x64 host compiling wasm would truncate the
+		# pointers to 4 bytes otherwise — the wasm_func_names lesson).
+		wasm_extern_modules = malloc(wasm_extern_max() * __word_size__)
+		wasm_extern_names = malloc(wasm_extern_max() * __word_size__)
+		wasm_extern_classes = malloc(wasm_extern_max() * __word_size__)
 		wasm_extern_nparams = malloc(wasm_extern_max() * 4)
 		wasm_extern_rets = malloc(wasm_extern_max() * 4)
 
@@ -97,14 +103,145 @@ int wasm_extern_add(char* module, char* name, int n_params, char* classes, int r
 	while (i < n_params):
 		classes_copy[i] = classes[i]
 		i = i + 1
-	save_i(wasm_extern_modules + wasm_extern_count * word_size, cast(int, strclone(module)), word_size)
-	save_i(wasm_extern_names + wasm_extern_count * word_size, cast(int, strclone(name)), word_size)
-	save_i(wasm_extern_classes + wasm_extern_count * word_size, cast(int, classes_copy), word_size)
+	save_i(wasm_extern_modules + wasm_extern_count * __word_size__, cast(int, strclone(module)), __word_size__)
+	save_i(wasm_extern_names + wasm_extern_count * __word_size__, cast(int, strclone(name)), __word_size__)
+	save_i(wasm_extern_classes + wasm_extern_count * __word_size__, cast(int, classes_copy), __word_size__)
 	save_i(wasm_extern_nparams + wasm_extern_count * 4, n_params, 4)
 	save_i(wasm_extern_rets + wasm_extern_count * 4, ret_kind, 4)
 	int funcidx = 10 + wasm_extern_count
 	wasm_extern_count = wasm_extern_count + 1
 	return funcidx
+
+########################### real-signature exports ############################
+
+# Registry of 'export'-marked W functions (grammar/program.w), drained at
+# finish into typed wrapper functions and export-section entries — the
+# real-signature export surface for host embedding
+# (docs/projects/wasm_backend.md stage 5). Per entry: the function
+# symbol's table offset (resolved to its funcref table index at finish,
+# when every exported function must be defined), the export name, the
+# parameter class array and the result kind — the wasm_extern_add
+# conventions (classes: 0 = i32 word/pointer, 1 = f32; result kind:
+# 0 = none, 1 = i32, 2 = f32).
+
+int wasm_export_max():
+	return 1024
+
+char* wasm_export_syms
+char* wasm_export_names
+char* wasm_export_classes
+char* wasm_export_nparams
+char* wasm_export_rets
+int wasm_export_count
+
+void wasm_export_init():
+	if (wasm_export_syms == 0):
+		wasm_export_syms = malloc(wasm_export_max() * 4)
+		wasm_export_names = malloc(wasm_export_max() * __word_size__)
+		wasm_export_classes = malloc(wasm_export_max() * __word_size__)
+		wasm_export_nparams = malloc(wasm_export_max() * 4)
+		wasm_export_rets = malloc(wasm_export_max() * 4)
+
+# The four names wasm_finish always exports.
+int wasm_export_name_reserved(char* name):
+	if (strcmp(name, c"memory") == 0):
+		return 1
+	if (strcmp(name, c"_start") == 0):
+		return 1
+	if (strcmp(name, c"table") == 0):
+		return 1
+	if (strcmp(name, c"ax") == 0):
+		return 1
+	return 0
+
+# Register one 'export'-marked function, called by grammar/program.w
+# right after the definition parses (wasm target only). The signature
+# was validated there, where the type helpers live; name uniqueness is
+# checked here, where the registry lives.
+void wasm_export_add(int sym, char* name, int n_params, char* classes, int ret_kind):
+	wasm_export_init()
+	if (wasm_export_count >= wasm_export_max()):
+		error(c"too many exported functions")
+	if (wasm_export_name_reserved(name)):
+		diag_part(c"export name '")
+		diag_part(name)
+		error(c"' collides with a reserved module export")
+	int e = 0
+	while (e < wasm_export_count):
+		if (strcmp(cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__)), name) == 0):
+			diag_part(c"function '")
+			diag_part(name)
+			error(c"' is already exported")
+		e = e + 1
+	char* classes_copy = malloc(n_params + 1)
+	int i = 0
+	while (i < n_params):
+		classes_copy[i] = classes[i]
+		i = i + 1
+	save_i(wasm_export_syms + wasm_export_count * 4, sym, 4)
+	save_i(wasm_export_names + wasm_export_count * __word_size__, cast(int, strclone(name)), __word_size__)
+	save_i(wasm_export_classes + wasm_export_count * __word_size__, cast(int, classes_copy), __word_size__)
+	save_i(wasm_export_nparams + wasm_export_count * 4, n_params, 4)
+	save_i(wasm_export_rets + wasm_export_count * 4, ret_kind, 4)
+	wasm_export_count = wasm_export_count + 1
+
+# Funcref table index of each export's wrapper (recorded at emission,
+# read by the export section writer).
+char* wasm_export_wrapper_tables
+
+# Emit the typed export wrappers, one per registered export, as the LAST
+# defined functions (wasm_finish calls this before capturing the code
+# region's extent — the function section relies on the ordering).
+# Wrapper e carries its own real-signature function type (index
+# 9 + extern_count + e). The body walks the W calling convention from
+# the host's side: push each parameter word onto the W stack (f32
+# params as their raw bits — W floats ride the integer pipeline), call
+# the target directly by its final function index, release the
+# arguments, and return the value read from the $ax module global (the
+# cross-call return channel in both accumulator modes), reinterpreted
+# for f32 results. The uniform table + "ax" callback contract is
+# untouched: wrappers are additive.
+void wasm_emit_export_wrappers():
+	if (wasm_export_count == 0):
+		return
+	wasm_export_wrapper_tables = malloc(wasm_export_count * 4)
+	int e = 0
+	while (e < wasm_export_count):
+		int sym = load_i(wasm_export_syms + e * 4, 4)
+		char* name = cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__))
+		if (sym_decl_visibility(sym) != 'D'):
+			diag_part(c"exported function '")
+			diag_part(name)
+			error(c"' is never defined")
+		int callee = wasm_num_imports() + sym_value_at(sym) - 1
+		int n = load_i(wasm_export_nparams + e * 4, 4)
+		char* classes = cast(char*, load_i(wasm_export_classes + e * __word_size__, __word_size__))
+		wasm_function_begin()
+		save_i(wasm_export_wrapper_tables + e * 4, wasm_func_count, 4)
+		wasm_func_name_note(wasm_func_count, name)
+		int i = 0
+		while (i < n):
+			# push parameter i: $sp -= 4; [$sp] = its raw bits (wasm
+			# parameters are the function's first locals)
+			wasm_sp_add(0 - 4)
+			wasm_global_get(0)
+			emit_int8(0x20)   # local.get i
+			wasm_leb(i)
+			if (classes[i] == 1):
+				emit_int8(0xbc)   # i32.reinterpret_f32
+			wasm_load_op(0x36, 2, 0)
+			i = i + 1
+		emit_int8(0x10)   # call (the function index space is final here)
+		wasm_leb(callee)
+		# release the arguments and the prologue's reserved slot
+		wasm_sp_add((n + 1) << 2)
+		int ret_kind = load_i(wasm_export_rets + e * 4, 4)
+		if (ret_kind):
+			wasm_global_get(1)   # $ax: the cross-call return channel
+			if (ret_kind == 2):
+				emit_int8(0xbe)   # f32.reinterpret_i32
+		wasm_function_end()
+		e = e + 1
 
 # Buffer offset of the entry stub's callee address slot (patched in
 # wasm_finish once the entry symbol's table index is known).
@@ -265,23 +402,23 @@ void wasm_define_asm_functions():
 	# swap_endian(v): 32-bit byte swap (lib/sha256.w and friends)
 	wasm_stub_begin(c"swap_endian")
 	wasm_stub_arg(0, 1)
-	wasm_global_set(3)
-	wasm_global_get(3)
+	wasm_reg_set(3)
+	wasm_reg_get(3)
 	wasm_i32_const(24)
 	wasm_op(0x76)   # >>u 24
-	wasm_global_get(3)
+	wasm_reg_get(3)
 	wasm_i32_const(8)
 	wasm_op(0x76)
 	wasm_i32_const(65280)   # 0xff00
 	wasm_op(0x71)
 	wasm_op(0x72)   # or
-	wasm_global_get(3)
+	wasm_reg_get(3)
 	wasm_i32_const(65280)
 	wasm_op(0x71)
 	wasm_i32_const(8)
 	wasm_op(0x74)   # << 8
 	wasm_op(0x72)
-	wasm_global_get(3)
+	wasm_reg_get(3)
 	wasm_i32_const(24)
 	wasm_op(0x74)   # << 24
 	wasm_op(0x72)
@@ -291,13 +428,13 @@ void wasm_define_asm_functions():
 	# swap_endian16(v): 16-bit byte swap of the low half
 	wasm_stub_begin(c"swap_endian16")
 	wasm_stub_arg(0, 1)
-	wasm_global_set(3)
-	wasm_global_get(3)
+	wasm_reg_set(3)
+	wasm_reg_get(3)
 	wasm_i32_const(8)
 	wasm_op(0x76)
 	wasm_i32_const(255)
 	wasm_op(0x71)
-	wasm_global_get(3)
+	wasm_reg_get(3)
 	wasm_i32_const(255)
 	wasm_op(0x71)
 	wasm_i32_const(8)
@@ -410,6 +547,7 @@ void wasm_start():
 	data_offset = 1052672   # 0x101000: 4k reserved + 1 MiB W stack
 	wasm_func_count = 0
 	wasm_extern_count = 0
+	wasm_export_count = 0
 	wasm_emit_entry_stub()
 	wasm_define_asm_functions()
 
@@ -430,13 +568,11 @@ void wasm_import_entry_in(char* module, char* name, int type_index):
 void wasm_import_entry(char* name, int type_index):
 	wasm_import_entry_in(c"wasi_snapshot_preview1", name, type_index)
 
-# The function type of user extern e: i32/f32 params from its class
-# array, then a void, i32 or f32 result. Extern e gets its own type entry
-# at index 9 + e (duplicates are valid; dedup is not worth the code).
-void wasm_extern_type_entry(int e):
+# One function type entry from a signature in the extern/export registry
+# convention: param classes (0 = i32 word/pointer, 1 = f32) and result
+# kind (0 = none, 1 = i32, 2 = f32).
+void wasm_sig_type_entry(int n, char* classes, int ret_kind):
 	emit_int8(0x60)
-	int n = load_i(wasm_extern_nparams + e * 4, 4)
-	char* classes = cast(char*, load_i(wasm_extern_classes + e * word_size, word_size))
 	wasm_leb(n)
 	int i = 0
 	while (i < n):
@@ -445,7 +581,6 @@ void wasm_extern_type_entry(int e):
 		else:
 			emit_int8(0x7f)
 		i = i + 1
-	int ret_kind = load_i(wasm_extern_rets + e * 4, 4)
 	if (ret_kind == 0):
 		wasm_leb(0)
 	else:
@@ -454,6 +589,12 @@ void wasm_extern_type_entry(int e):
 			emit_int8(0x7d)
 		else:
 			emit_int8(0x7f)
+
+# The function type of user extern e: i32/f32 params from its class
+# array, then a void, i32 or f32 result. Extern e gets its own type entry
+# at index 9 + e (duplicates are valid; dedup is not worth the code).
+void wasm_extern_type_entry(int e):
+	wasm_sig_type_entry(load_i(wasm_extern_nparams + e * 4, 4), cast(char*, load_i(wasm_extern_classes + e * __word_size__, __word_size__)), load_i(wasm_extern_rets + e * 4, 4))
 
 # Begin section id with a padded size prefix; returns the size position.
 int wasm_section_begin(int id):
@@ -525,6 +666,10 @@ void wasm_finish():
 		wasm_leb5_patch(dcs, wasm_num_imports() + wasm_leb5_read(dcs) - 1)
 		dc = dc + 1
 
+	# Typed wrappers for the 'export'-marked functions: appended as the
+	# last code-section bodies, inside the streamed region.
+	wasm_emit_export_wrappers()
+
 	int code_end = codepos
 
 	# ---- everything before the code bodies, assembled into scratch ----
@@ -534,9 +679,10 @@ void wasm_finish():
 
 	# type section: 0 = the universal [] -> [] W type, the fixed import
 	# signatures (i64 positions as a bitmask over the parameter list),
-	# then one type per user extern import at 9 + e
+	# one type per user extern import at 9 + e, then one per export
+	# wrapper at 9 + extern_count + e
 	int p = wasm_section_begin(1)
-	wasm_leb(9 + wasm_extern_count)
+	wasm_leb(9 + wasm_extern_count + wasm_export_count)
 	wasm_type_entry(0, 0, 0)                # 0: [] -> []
 	wasm_type_entry(1, 0, 0)                # 1: proc_exit
 	wasm_type_entry(4, 0, 1)                # 2: fd_write / fd_read
@@ -549,6 +695,10 @@ void wasm_finish():
 	int e = 0
 	while (e < wasm_extern_count):
 		wasm_extern_type_entry(e)
+		e = e + 1
+	e = 0
+	while (e < wasm_export_count):
+		wasm_sig_type_entry(load_i(wasm_export_nparams + e * 4, 4), cast(char*, load_i(wasm_export_classes + e * __word_size__, __word_size__)), load_i(wasm_export_rets + e * 4, 4))
 		e = e + 1
 	wasm_section_end(p)
 
@@ -568,16 +718,22 @@ void wasm_finish():
 	wasm_import_entry(c"fd_seek", 8)
 	e = 0
 	while (e < wasm_extern_count):
-		wasm_import_entry_in(cast(char*, load_i(wasm_extern_modules + e * word_size, word_size)), cast(char*, load_i(wasm_extern_names + e * word_size, word_size)), 9 + e)
+		wasm_import_entry_in(cast(char*, load_i(wasm_extern_modules + e * __word_size__, __word_size__)), cast(char*, load_i(wasm_extern_names + e * __word_size__, __word_size__)), 9 + e)
 		e = e + 1
 	wasm_section_end(p)
 
-	# function section: every defined function has type 0
+	# function section: every defined function has the universal type 0,
+	# except the export wrappers — the last wasm_export_count bodies —
+	# which carry their real-signature types
 	p = wasm_section_begin(3)
 	wasm_leb(wasm_func_count)
 	int i = 0
-	while (i < wasm_func_count):
+	while (i < wasm_func_count - wasm_export_count):
 		wasm_leb(0)
+		i = i + 1
+	i = 0
+	while (i < wasm_export_count):
+		wasm_leb(9 + wasm_extern_count + i)
 		i = i + 1
 	wasm_section_end(p)
 
@@ -615,9 +771,11 @@ void wasm_finish():
 	# (a table index, e.g. the frame callback graphics/window_web.w hands
 	# to the browser glue) calls back through table.get(index)() — every
 	# W function has wasm type [] -> [], so the return value comes back in
-	# the exported $ax global, not as a wasm result.
+	# the exported $ax global, not as a wasm result. 'export'-marked
+	# functions additionally appear here under their own names, bound to
+	# their real-signature wrappers, so an embedder calls them directly.
 	p = wasm_section_begin(7)
-	wasm_leb(4)
+	wasm_leb(4 + wasm_export_count)
 	wasm_sec_name(c"memory")
 	emit_int8(2)
 	wasm_leb(0)
@@ -630,6 +788,12 @@ void wasm_finish():
 	wasm_sec_name(c"ax")
 	emit_int8(3)
 	wasm_leb(1)
+	e = 0
+	while (e < wasm_export_count):
+		wasm_sec_name(cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__)))
+		emit_int8(0)
+		wasm_leb(wasm_num_imports() + load_i(wasm_export_wrapper_tables + e * 4, 4) - 1)
+		e = e + 1
 	wasm_section_end(p)
 
 	# element: table[1 + i] = defined function i (identity mapping)

@@ -269,6 +269,14 @@ void sym_define_global(int current_symbol):
 
 int number_of_args
 
+# Recorded value of the symbol at table offset t: a code/data virtual
+# address on the native targets, a funcref table index for functions on
+# wasm. Only meaningful once the symbol is defined (sym_decl_visibility
+# reports 'D'); before that the cell holds the backpatch chain head.
+int sym_value_at(int t):
+	return load_int(table + t + 2)
+
+
 # Number of declared parameters for the function symbol at table offset t,
 # or -1 when unknown (e.g. asm runtime stubs without a parameter list).
 int sym_num_args(int t):
