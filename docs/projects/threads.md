@@ -45,7 +45,11 @@ Also in (landed after the original cut):
   both sides of a kernel launch; `atomic_min`/`atomic_max` stay
   device-only (a host lowering needs a cmpxchg loop) and `atomic_cas`
   host-only (no `atom.cas.b32` twin yet) — each direction is a
-  compile error with a fixture asserting it.
+  compile error with a fixture asserting it. The host pointer operand
+  is checked like an ordinary `int*` call argument (the limb-intrinsic
+  warn-on-mismatch rule) because `&x` — the natural host idiom — is
+  W's untyped address-of constant, which the GPU path's hard pointee
+  classification could never accept.
 - `wmutex` (`mutex_init/lock/unlock`, the Drepper three-state futex
   mutex: uncontended lock/unlock is one lock-prefixed instruction, no
   syscall) and `wcond` (`cond_init/wait/signal/broadcast`, a wakeup

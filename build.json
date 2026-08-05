@@ -1936,6 +1936,7 @@
 				"array_decay_64_test",
 				"array_list_64_test",
 				"array_slice_string_64_test",
+				"atomic_host_64_test",
 				"binary_literal_64_test",
 				"bit_builtin_64_test",
 				"bitset_64_test",
@@ -2068,6 +2069,7 @@
 				"task_64_test",
 				"template_string_64_test",
 				"thread_64_test",
+				"thread_mutex_64_test",
 				"time_64_test",
 				"toplevel_init_64_test",
 				"u64_64_test",
@@ -2151,7 +2153,7 @@
 			"name": "cuda_diagnostics_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w", "tests/gpu_call_error_fixture.w", "tests/gpu_global_error_fixture.w", "tests/gpu_string_error_fixture.w", "tests/kernel_call_error_fixture.w", "tests/launch_non_kernel_error_fixture.w", "tests/launch_no_runtime_error_fixture.w", "tests/launch_arity_error_fixture.w", "tests/gpu_for_return_error_fixture.w", "tests/gpu_for_no_runtime_error_fixture.w", "tests/gpu_for_range_error_fixture.w", "tests/atomic_host_error_fixture.w", "tests/atomic_operand_error_fixture.w", "tests/atomic_minmax_float_error_fixture.w", "tests/gpu_math_host_error_fixture.w", "tests/gpu_shared_host_error_fixture.w", "tests/gpu_capture_write_error_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/gpu_x64_required_fixture.w", "tests/gpu_call_error_fixture.w", "tests/gpu_global_error_fixture.w", "tests/gpu_string_error_fixture.w", "tests/kernel_call_error_fixture.w", "tests/launch_non_kernel_error_fixture.w", "tests/launch_no_runtime_error_fixture.w", "tests/launch_arity_error_fixture.w", "tests/gpu_for_return_error_fixture.w", "tests/gpu_for_no_runtime_error_fixture.w", "tests/gpu_for_range_error_fixture.w", "tests/atomic_host_error_fixture.w", "tests/atomic_host_operand_error_fixture.w", "tests/atomic_cas_gpu_error_fixture.w", "tests/atomic_operand_error_fixture.w", "tests/atomic_minmax_float_error_fixture.w", "tests/gpu_math_host_error_fixture.w", "tests/gpu_shared_host_error_fixture.w", "tests/gpu_capture_write_error_fixture.w"]}
 			]
 		},
 		{
@@ -2484,6 +2486,7 @@
 				"asm_fuzz_x64_test",
 				"asm_fuzz_x86_test",
 				"assert_standalone_test",
+				"atomic_host_test",
 				"binary_literal_test",
 				"bit_builtin_test",
 				"bitset_test",
@@ -2629,6 +2632,7 @@
 				"swim_test",
 				"task_test",
 				"ternary_test",
+				"thread_mutex_test",
 				"thread_test",
 				"threading_test",
 				"time_test",
@@ -2842,6 +2846,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/assert_standalone_test.w", "-o", "bin/assert_standalone_test"]},
 				{"cmd": ["bin/assert_standalone_test"]}
+			]
+		},
+		{
+			"name": "atomic_host_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/atomic_host_test.w"],
+			"outputs": ["bin/atomic_host_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/atomic_host_test.w", "-o", "bin/atomic_host_64_test"]},
+				{"cmd": ["bin/atomic_host_64_test"]}
+			]
+		},
+		{
+			"name": "atomic_host_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/atomic_host_test.w"],
+			"outputs": ["bin/atomic_host_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/atomic_host_test.w", "-o", "bin/atomic_host_test"]},
+				{"cmd": ["bin/atomic_host_test"]}
 			]
 		},
 		{
@@ -6065,6 +6089,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/thread_test.w", "-o", "bin/thread_64_test"]},
 				{"cmd": ["bin/thread_64_test"]}
+			]
+		},
+		{
+			"name": "thread_mutex_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/thread_mutex_test.w"],
+			"outputs": ["bin/thread_mutex_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/thread_mutex_test.w", "-o", "bin/thread_mutex_64_test"]},
+				{"cmd": ["bin/thread_mutex_64_test"]}
+			]
+		},
+		{
+			"name": "thread_mutex_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/thread_mutex_test.w"],
+			"outputs": ["bin/thread_mutex_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/thread_mutex_test.w", "-o", "bin/thread_mutex_test"]},
+				{"cmd": ["bin/thread_mutex_test"]}
 			]
 		},
 		{

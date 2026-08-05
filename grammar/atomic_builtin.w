@@ -89,27 +89,36 @@ int atomic_builtin_expr():
 	get_token()
 	expect(c"(")
 
-	# The target pointer: int* (all ops), or float32* for gpu atomic_add
+	# The target pointer: int* (all ops), or float32* for gpu atomic_add.
+	# The gpu path must classify the pointee hard (it picks the emitted
+	# atom instruction and rejects stack locals — '&x' is the untyped
+	# word-sized constant, which can never name device memory). The host
+	# path always emits the int form, so it checks like an ordinary int*
+	# call argument instead (the limb-intrinsic rule): a real type
+	# mismatch warns, and the untyped '&x' — the natural host idiom —
+	# passes.
 	int got = expression()
 	got = promote(got)
-	int pointer_type = type_unqualified(got)
-	int flavor = 0 /* 1 = int, 2 = float32 */
-	if (type_get_pointer_level(pointer_type) == 1):
-		int pointee = type_lookup_previous_pointer(pointer_type)
-		if (pointee >= 0):
-			int unqual = type_unqualified(pointee)
-			if (unqual == int_type):
-				flavor = 1
-			if (unqual == float32_type):
-				flavor = 2
+	int flavor = 1 /* 1 = int, 2 = float32 */
 	if (on_gpu):
+		int pointer_type = type_unqualified(got)
+		flavor = 0
+		if (type_get_pointer_level(pointer_type) == 1):
+			int pointee = type_lookup_previous_pointer(pointer_type)
+			if (pointee >= 0):
+				int unqual = type_unqualified(pointee)
+				if (unqual == int_type):
+					flavor = 1
+				if (unqual == float32_type):
+					flavor = 2
 		if (flavor == 0):
 			error(c"gpu atomics require an int* or float32* first argument")
 		if ((flavor == 2) && (kind != 1)):
 			error(c"atomic_min/atomic_max require an int* first argument")
 	else:
-		if (flavor != 1):
-			error(c"host atomics require an int* first argument")
+		int host_pointer_type = type_get_next_pointer(int_type)
+		limb_builtin_check_argument(name, 0, host_pointer_type, got)
+		coerce(host_pointer_type, got)
 	push_eax()
 	stack_pos = stack_pos + 1
 
