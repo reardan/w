@@ -49,6 +49,45 @@ struct jc_matrix:
 	list[list[int]] rows
 
 
+struct jc_reading:
+	char* sensor
+	float low
+	float high
+
+
+struct jc_counts:
+	map[char*, int] tally
+
+
+struct jc_titles:
+	map[string, string] names
+
+
+struct jc_places:
+	map[char*, jc_point] sites
+
+
+struct jc_graph:
+	map[char*, list[int]] edges
+
+
+struct jc_nested_map:
+	map[char*, map[string, float]] outer
+
+
+# jc_span appears only as a map value, so its descriptor is emitted by
+# the enclosing map's json_codec_ensure_nested walk
+struct jc_span:
+	int lo
+	int hi
+
+
+struct jc_layers:
+	list[map[char*, int]] layers
+	map[char*, jc_span] spans
+	map[char*, bool] flags
+
+
 void test_flat_struct_round_trip():
 	jc_point p
 	p.x = 3
@@ -269,6 +308,242 @@ void test_extra_members_are_ignored():
 	assert_equal(1, p.x)
 	assert_equal(2, p.y)
 	free(cast(char*, cast(int, p)))
+	json_free(v)
+
+
+void test_float_fields_round_trip():
+	jc_reading r
+	r.sensor = c"t0"
+	r.low = -0.25
+	r.high = 1.5
+	json_value* v = to_json(r)
+	char* text = json_stringify(v)
+	assert_strings_equal(c"{\x22sensor\x22:\x22t0\x22,\x22low\x22:-0.25,\x22high\x22:1.5}", text)
+	free(text)
+	jc_reading* q = from_json(jc_reading, v)
+	assert_equal(1, cast(int, q) != 0)
+	assert_equal(1, q.low == -0.25)
+	assert_equal(1, q.high == 1.5)
+	json_free(v)
+
+
+void test_float_whole_values_keep_a_fraction_part():
+	# Whole floats serialize with a trailing .0 so they re-parse as
+	# floats (structures/json.w), and the codec round-trips them
+	jc_reading r
+	r.sensor = c"t1"
+	r.low = 2.0
+	r.high = -100.0
+	json_value* v = to_json(r)
+	char* text = json_stringify(v)
+	assert_strings_equal(c"{\x22sensor\x22:\x22t1\x22,\x22low\x22:2.0,\x22high\x22:-100.0}", text)
+	free(text)
+	jc_reading* q = from_json(jc_reading, v)
+	assert_equal(1, q.low == 2.0)
+	assert_equal(1, q.high == -100.0)
+	json_free(v)
+
+
+void test_float_field_accepts_json_int():
+	# Other producers (e.g. JavaScript's JSON.stringify) write whole
+	# doubles with no fraction part, so a JSON integer converts into a
+	# float field
+	json_value* v = json_parse(c"{\x22sensor\x22: \x22t2\x22, \x22low\x22: 3, \x22high\x22: 2.5}")
+	jc_reading* q = from_json(jc_reading, v)
+	assert_equal(1, cast(int, q) != 0)
+	assert_equal(1, q.low == 3.0)
+	assert_equal(1, q.high == 2.5)
+	json_free(v)
+
+
+void test_float_field_wrong_type_fails():
+	json_value* v = json_parse(c"{\x22sensor\x22: \x22t3\x22, \x22low\x22: \x22cold\x22, \x22high\x22: 1.5}")
+	jc_reading* q = from_json(jc_reading, v)
+	assert_equal(0, cast(int, q))
+	json_free(v)
+
+
+void test_int_field_rejects_json_float():
+	# Decode stays strict in the other direction: 8.5 does not truncate
+	# into an int field
+	json_value* v = json_parse(c"{\x22x\x22: 8.5, \x22y\x22: 9}")
+	jc_point* p = from_json(jc_point, v)
+	assert_equal(0, cast(int, p))
+	json_free(v)
+
+
+void test_map_char_keys_round_trip():
+	jc_counts c
+	c.tally = new map[char*, int]
+	c.tally[c"a"] = 1
+	c.tally[c"b"] = -2
+	json_value* v = to_json(c)
+	char* text = json_stringify(v)
+	assert_strings_equal(c"{\x22tally\x22:{\x22a\x22:1,\x22b\x22:-2}}", text)
+	free(text)
+	jc_counts* q = from_json(jc_counts, v)
+	assert_equal(1, cast(int, q) != 0)
+	assert_equal(2, q.tally.length)
+	assert_equal(1, q.tally[c"a"])
+	assert_equal(-2, q.tally[c"b"])
+	json_free(v)
+
+
+void test_map_string_keys_round_trip():
+	jc_titles t
+	t.names = new map[string, string]
+	t.names[s"ada"] = s"countess"
+	t.names[s"grace"] = s"admiral"
+	json_value* v = to_json(t)
+	char* text = json_stringify(v)
+	assert_strings_equal(c"{\x22names\x22:{\x22ada\x22:\x22countess\x22,\x22grace\x22:\x22admiral\x22}}", text)
+	free(text)
+	jc_titles* q = from_json(jc_titles, v)
+	assert_equal(1, cast(int, q) != 0)
+	assert_equal(2, q.names.length)
+	assert_equal(1, utf8_equals(q.names[s"ada"], s"countess"))
+	assert_equal(1, utf8_equals(q.names[s"grace"], s"admiral"))
+	json_free(v)
+
+
+void test_map_struct_values_round_trip():
+	jc_places p
+	p.sites = new map[char*, jc_point]
+	jc_point site
+	site.x = 3
+	site.y = 4
+	p.sites[c"home"] = site
+	site.x = -1
+	site.y = 0
+	p.sites[c"work"] = site
+	json_value* v = to_json(p)
+	jc_places* q = from_json(jc_places, v)
+	assert_equal(1, cast(int, q) != 0)
+	assert_equal(2, q.sites.length)
+	jc_point got = q.sites[c"home"]
+	assert_equal(3, got.x)
+	assert_equal(4, got.y)
+	got = q.sites[c"work"]
+	assert_equal(-1, got.x)
+	assert_equal(0, got.y)
+	json_free(v)
+
+
+void test_map_list_values_round_trip():
+	jc_graph g
+	g.edges = new map[char*, list[int]]
+	g.edges[c"a"] = list[int]{1, 2}
+	g.edges[c"b"] = list[int]{3}
+	json_value* v = to_json(g)
+	char* text = json_stringify(v)
+	assert_strings_equal(c"{\x22edges\x22:{\x22a\x22:[1,2],\x22b\x22:[3]}}", text)
+	free(text)
+	jc_graph* q = from_json(jc_graph, v)
+	assert_equal(1, cast(int, q) != 0)
+	assert_equal(2, q.edges.length)
+	list[int] row = q.edges[c"a"]
+	assert_equal(2, row.length)
+	assert_equal(2, row[1])
+	row = q.edges[c"b"]
+	assert_equal(1, row.length)
+	assert_equal(3, row[0])
+	json_free(v)
+
+
+void test_nested_map_with_float_values_round_trip():
+	jc_nested_map n
+	n.outer = new map[char*, map[string, float]]
+	map[string, float] inner = new map[string, float]
+	inner[s"pi"] = 3.25
+	inner[s"e"] = 2.75
+	n.outer[c"consts"] = inner
+	json_value* v = to_json(n)
+	char* text = json_stringify(v)
+	assert_strings_equal(c"{\x22outer\x22:{\x22consts\x22:{\x22pi\x22:3.25,\x22e\x22:2.75}}}", text)
+	free(text)
+	jc_nested_map* q = from_json(jc_nested_map, v)
+	assert_equal(1, cast(int, q) != 0)
+	assert_equal(1, q.outer.length)
+	map[string, float] got = q.outer[c"consts"]
+	assert_equal(2, got.length)
+	assert_equal(1, got[s"pi"] == 3.25)
+	assert_equal(1, got[s"e"] == 2.75)
+	json_free(v)
+
+
+void test_null_map_round_trip():
+	jc_counts c
+	c.tally = cast(map[char*, int], 0)
+	json_value* v = to_json(c)
+	assert_equal(json_type_null(), json_object_get(v, c"tally").type)
+	jc_counts* q = from_json(jc_counts, v)
+	assert_equal(1, cast(int, q) != 0)
+	assert_equal(0, cast(int, q.tally))
+	free(cast(char*, cast(int, q)))
+	json_free(v)
+
+
+void test_empty_map_round_trip():
+	jc_counts c
+	c.tally = new map[char*, int]
+	json_value* v = to_json(c)
+	char* text = json_stringify(v)
+	assert_strings_equal(c"{\x22tally\x22:{}}", text)
+	free(text)
+	jc_counts* q = from_json(jc_counts, v)
+	assert_equal(1, cast(int, q) != 0)
+	assert_equal(1, cast(int, q.tally) != 0)
+	assert_equal(0, q.tally.length)
+	json_free(v)
+
+
+void test_list_of_maps_and_map_only_struct_round_trip():
+	jc_layers s
+	s.layers = new list[map[char*, int]]
+	map[char*, int] m0 = new map[char*, int]
+	m0[c"a"] = 1
+	s.layers.push(m0)
+	map[char*, int] m1 = new map[char*, int]
+	m1[c"b"] = 2
+	s.layers.push(m1)
+	s.spans = new map[char*, jc_span]
+	jc_span sp
+	sp.lo = -3
+	sp.hi = 7
+	s.spans[c"first"] = sp
+	s.flags = new map[char*, bool]
+	s.flags[c"on"] = true
+	s.flags[c"off"] = false
+	json_value* v = to_json(s)
+	char* text = json_stringify(v)
+	assert_strings_equal(c"{\x22layers\x22:[{\x22a\x22:1},{\x22b\x22:2}],\x22spans\x22:{\x22first\x22:{\x22lo\x22:-3,\x22hi\x22:7}},\x22flags\x22:{\x22on\x22:true,\x22off\x22:false}}", text)
+	free(text)
+	jc_layers* q = from_json(jc_layers, v)
+	assert_equal(1, cast(int, q) != 0)
+	assert_equal(2, q.layers.length)
+	map[char*, int] got = q.layers[0]
+	assert_equal(1, got[c"a"])
+	got = q.layers[1]
+	assert_equal(2, got[c"b"])
+	jc_span span = q.spans[c"first"]
+	assert_equal(-3, span.lo)
+	assert_equal(7, span.hi)
+	assert_equal(1, q.flags[c"on"])
+	assert_equal(0, q.flags[c"off"])
+	json_free(v)
+
+
+void test_map_decode_non_object_fails():
+	json_value* v = json_parse(c"{\x22tally\x22: [1, 2]}")
+	jc_counts* q = from_json(jc_counts, v)
+	assert_equal(0, cast(int, q))
+	json_free(v)
+
+
+void test_map_decode_bad_member_fails():
+	json_value* v = json_parse(c"{\x22tally\x22: {\x22a\x22: 1, \x22b\x22: \x22two\x22}}")
+	jc_counts* q = from_json(jc_counts, v)
+	assert_equal(0, cast(int, q))
 	json_free(v)
 
 

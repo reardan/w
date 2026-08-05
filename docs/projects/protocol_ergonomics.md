@@ -102,16 +102,27 @@ for list fields, for no measurable win.
 
 ### Supported field types
 
-`int` and fixed-width ints (signed), `bool`, `char*`, `string`, nested
-structs (by value, recursion is impossible because struct fields must be
-already-declared types), and `list[T]` of any supported type including
-nested lists and structs. Null `char*`/`string`/`list` fields encode as
-JSON null and decode back to 0.
+`int` and fixed-width ints (signed), `bool`, `char*`, `string`, `float`
+(float32 on every target — `structures/json.w` stores numbers as native
+ints and float32), nested structs (by value, recursion is impossible
+because struct fields must be already-declared types), `list[T]` of any
+supported type, and `map[K, V]` with `char*` or `string` keys and any
+supported value type — struct, list and map values nest arbitrarily.
+Null `char*`/`string`/`list`/`map` fields encode as JSON null and
+decode back to 0; an empty map encodes as `{}` and decodes to an empty
+map. Map fields encode as JSON objects in insertion order;
+string-typed keys pass through a NUL-terminated copy, so embedded NUL
+bytes truncate (the existing string-field caveat). Decode accepts a
+JSON integer for a float field, converting it to float32 — JavaScript's
+`JSON.stringify` writes whole doubles with no fraction part — while the
+reverse (a fractional number into an int field) stays a strict failure.
 
-Rejected at compile time with a diagnostic: floats (`structures/json.w`
-has no float support yet), `map`/`set` (JSON keys would constrain K to
-strings; deferred), arrays, slices, unions, enums-as-enums aside, and
-pointer fields other than `char*`.
+Rejected at compile time with a diagnostic: `float64` and `float16`
+(JSON numbers are float32, so a float64 field would silently lose
+precision, and float16 is storage-only), maps with non-string keys
+(JSON object keys are strings), `set` (JSON has no set shape), arrays,
+slices, unions, enums-as-enums aside, and pointer fields other than
+`char*`. The fixtures in `json_codec_error_test` pin the messages.
 
 Decode is strict: a missing member or a type mismatch fails the whole
 decode and returns 0, so a JSON-RPC handler can answer -32602 invalid
@@ -157,7 +168,10 @@ and `event_loop_64_test` run in `tests_x64` alongside `poll_64_test`,
 
 ## Out of scope / follow-ons
 
-General reflection (a `type.w` meta-type), epoll, floats in
-`structures/json.w` (blocks float fields in codecs), `map[string, V]`
-codec fields, and an HTTP client. The W-native MCP server this stack was
-built for has since landed as `tools/mcp/w_toolchain_mcp.w`.
+General reflection (a `type.w` meta-type), epoll, `float64` codec
+fields (needs float64 numbers in `structures/json.w` first — its
+numbers are float32 today, which is also why float64 fields are
+rejected rather than narrowed), and an HTTP client. Floats in
+`structures/json.w` and float/`map[K, V]` codec fields landed in
+August 2026. The W-native MCP server this stack was built for has
+since landed as `tools/mcp/w_toolchain_mcp.w`.

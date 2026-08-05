@@ -19,9 +19,13 @@ importing mid-expression would splice module code into the current
 function.
 
 Supported field types: int and fixed-width ints (signed), bool, char*,
-string, nested structs (by value), and list[T] of the above. Floats,
-maps, sets, arrays, slices, unions, and pointer fields are rejected at
-compile time (structures/json.w has no float support yet).
+string, float (float32 on every target), nested structs (by value),
+list[T] of the above, and map[K, V] with char* or string keys and any
+supported V (including nested structs, lists and maps). float64 and
+float16, sets, arrays, slices, unions, non-string map keys, and pointer
+fields are rejected at compile time (structures/json.w numbers are
+native ints and float32, so float64 fields would silently lose
+precision).
 
 Call sites must have 'import structures.json' in scope: the builtins
 produce and consume json_value*, and the struct type must exist at parse
@@ -29,6 +33,8 @@ time for the result type to be well formed.
 */
 int expression();
 int json_codec_descriptor(int struct_type);
+int json_codec_emit_value_desc(int t);
+int json_codec_emit_map_desc(int t);
 int import_module(char* dotted);
 
 
@@ -72,7 +78,8 @@ void json_codec_unsupported(int t):
 
 
 # Value kind for the descriptor; errors out on unsupported types.
-# 1 int (signed), 2 bool, 3 char*, 4 string, 5 struct, 6 list.
+# 1 int (signed), 2 bool, 3 char*, 4 string, 5 struct, 6 list, 7 float
+# (float32), 8 map (char* or string keys).
 int json_codec_kind(int t):
 	t = type_unqualified(t)
 	if (type_is_string(t)):
@@ -82,13 +89,27 @@ int json_codec_kind(int t):
 	if (type_is_list(t)):
 		json_codec_kind(type_list_element_type(t))
 		return 6
-	if (type_is_map(t) | type_is_set(t)):
+	if (type_is_map(t)):
+		# JSON object keys are strings, so K must be char* or string
+		# (hash key kinds 2 and 3); the value recursion validates V.
+		if (hash_key_kind_for_type(type_map_key_type(t)) == 1):
+			diag_part(c"to_json/from_json map fields need char* or string keys: '")
+			diag_part(type_get_name(t))
+			error(c"'")
+		json_codec_kind(type_map_value_type(t))
+		return 8
+	if (type_is_set(t)):
 		json_codec_unsupported(t)
 	if (type_is_array(t) | type_is_slice(t)):
 		json_codec_unsupported(t)
 	if (type_get_pointer_level(t) > 0):
 		json_codec_unsupported(t)
 	if (type_float_kind(t)):
+		# float32 only: structures/json.w floats are float32, so a
+		# float64 field would silently lose precision, and float16 is
+		# storage-only (docs/projects/float.md).
+		if ((type_float_kind(t) == 1) && (type_get_size(t) == 4)):
+			return 7
 		json_codec_unsupported(t)
 	if (type_get_kind(t) == type_kind_union):
 		json_codec_unsupported(t)
@@ -104,11 +125,15 @@ int json_codec_kind(int t):
 
 
 # Descriptor 'size' word: storage width for ints/bools, element slot size
-# for lists (mirrors list_element_slot_size so decode can rebuild lists).
+# for lists (mirrors list_element_slot_size so decode can rebuild lists),
+# value size for maps (what hash_emit_new_container passes __w_map_new so
+# decode can rebuild maps).
 int json_codec_size(int t, int kind):
 	t = type_unqualified(t)
 	if (kind == 6):
 		return list_element_slot_size(type_list_element_type(t))
+	if (kind == 8):
+		return type_get_size(type_map_value_type(t))
 	if ((kind == 3) || (kind == 4)):
 		return word_size
 	return type_get_size(t)
@@ -123,21 +148,50 @@ void json_codec_ensure_nested(int t):
 		json_codec_descriptor(t)
 	if (kind == 6):
 		json_codec_ensure_nested(type_list_element_type(t))
+	if (kind == 8):
+		json_codec_ensure_nested(type_map_value_type(t))
+
+
+# Descriptor 'aux' word for a field or element of type t: nested struct
+# descriptor address, list element value-descriptor address, or map
+# descriptor address (emitted into the current blob as needed).
+int json_codec_emit_aux(int t, int kind):
+	if (kind == 5):
+		return json_codec_cache_lookup(type_canonical(t))
+	if (kind == 6):
+		return json_codec_emit_value_desc(type_list_element_type(t))
+	if (kind == 8):
+		return json_codec_emit_map_desc(t)
+	return 0
 
 
 # Emit a 3-word value descriptor (kind, size, aux) inside the current
-# blob and return its absolute address. List elements recurse.
+# blob and return its absolute address. List elements and map values
+# recurse.
 int json_codec_emit_value_desc(int t):
 	t = type_unqualified(t)
 	int kind = json_codec_kind(t)
-	int aux = 0
-	if (kind == 5):
-		aux = json_codec_cache_lookup(type_canonical(t))
-	if (kind == 6):
-		aux = json_codec_emit_value_desc(type_list_element_type(t))
+	int aux = json_codec_emit_aux(t, kind)
 	int address = code_offset + codepos
 	emit_target_word(kind)
 	emit_target_word(json_codec_size(t, kind))
+	emit_target_word(aux)
+	return address
+
+
+# Emit a 4-word map descriptor (key kind, value kind, value size, value
+# aux) for a map type inside the current blob and return its absolute
+# address. The key kind is the __w_hash_key_* constant __w_map_new
+# expects (2 char*, 3 string; kind 1 keys were rejected upstream).
+int json_codec_emit_map_desc(int t):
+	t = type_unqualified(t)
+	int value_type = type_unqualified(type_map_value_type(t))
+	int kind = json_codec_kind(value_type)
+	int aux = json_codec_emit_aux(value_type, kind)
+	int address = code_offset + codepos
+	emit_target_word(hash_key_kind_for_type(type_map_key_type(t)))
+	emit_target_word(kind)
+	emit_target_word(json_codec_size(value_type, kind))
 	emit_target_word(aux)
 	return address
 
@@ -171,18 +225,13 @@ int json_codec_descriptor(int struct_type):
 		emit(strlen(name) + 1, name)
 		i = i + 1
 
-	# Value descriptors for list fields
+	# Value descriptors for list fields, map descriptors for map fields
 	char* aux_addresses = malloc(n * 4)
 	i = 0
 	while (i < n):
 		int field_type = type_unqualified(type_get_field_type_at(struct_type, i))
 		int kind = json_codec_kind(field_type)
-		int aux = 0
-		if (kind == 5):
-			aux = json_codec_cache_lookup(type_canonical(field_type))
-		if (kind == 6):
-			aux = json_codec_emit_value_desc(type_list_element_type(field_type))
-		save_int(aux_addresses + i * 4, aux)
+		save_int(aux_addresses + i * 4, json_codec_emit_aux(field_type, kind))
 		i = i + 1
 
 	# The struct descriptor itself
