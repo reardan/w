@@ -127,6 +127,22 @@ void test_nested_indices():
 	assert_feq(8.5, a[idx[0, 0], idx[1, 1]])
 
 
+void test_map_interplay():
+	# the nd pending slots are separate from the hash_index_* slots, so
+	# an ndarray element can feed a map key and a map read can feed an
+	# ndarray index without clobbering each other
+	ndi a = ndi_new2(2, 2)
+	a[1, 0] = 7
+	map[int, int] h = new map[int, int]
+	h[a[1, 0]] = 3
+	assert_equal(3, h[7])
+	h[7] = 1
+	ndf u = ndf_new2(3, 4)
+	u[h[7], 2] = 4.5
+	assert_feq(4.5, ndf_at2(&u, 1, 2))
+	assert_feq(4.5, u[h[7], 2])
+
+
 void test_view_receivers():
 	ndf a = ndf_new2(3, 4)
 	# an ndf value returned by a call is a valid receiver (a view over
