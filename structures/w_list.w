@@ -553,6 +553,18 @@ int __w_list_index(__w_list* list, int value, int kind):
 	return 0 - 1
 
 
+# Releases the backing storage and the header. Element POINTERS are not
+# chased: freeing pointed-to elements stays the caller's job. Using the
+# list after free() is caller error (the lib/memory.w free contract);
+# as a cheap best-effort safety the header is zeroed first — the
+# freelist backend only rewrites the block's own header words on free,
+# so until the block is reused a stale .length reads 0 and stale
+# indexing/pop traps instead of returning plausible garbage (the debug
+# backend unmaps the page, so any stale use faults outright).
 void __w_list_free(__w_list* list):
 	free(list.items)
+	list.capacity = 0
+	list.length = 0
+	list.element_size = 0
+	list.items = 0
 	free(list)

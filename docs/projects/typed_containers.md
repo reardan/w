@@ -154,15 +154,26 @@ existing behavior is unchanged.
 
 ## Deferred work
 
-- `l.insert(i, v)`, `l.remove(i)` and `l.clear()` have landed (see
-  `list[T]`'s Syntax section above); a `free()`/`destroy()` pseudo-method
-  for `list[T]`/`map[K, V]`/`set[K]` has not. `lib/container.w` papers
-  over that remaining gap for consumers migrated off the old generic
-  containers (issue #120): `list_free[T]`/`map_free[K, V]` reach into the
-  auto-imported `__w_list`/`__w_hash_table` runtime directly (the same
-  cast-and-call `compiler/type_table.w` already used for
-  `type_table_truncate()`) in place of a `free()` method. This is a
-  workaround, not a substitute for landing the pseudo-method properly.
+- `l.insert(i, v)`, `l.remove(i)`, `l.clear()` and the `free()`
+  pseudo-method have all landed (2026-08 wave 3 for the latter):
+  `l.free()` / `m.free()` / `s.free()` lower to the runtime's
+  `__w_list_free` / `__w_map_free` (sets share the map layout) and
+  release the container's OWNED storage — backing arrays, cloned
+  `char*`/`string` keys, and the header — through the same allocator
+  the runtime used. Element and value POINTERS are not chased: freeing
+  pointed-to elements stays the caller's job, matching what
+  `lib/container.w`'s `list_free[T]` always did. Using the variable
+  after `free()` is caller error, the same contract as `lib/memory.w`'s
+  `free()`; as a cheap best-effort safety the runtime zeroes the header
+  before releasing it, so under the freelist backend a stale `.length`
+  reads 0 and stale indexing/pop traps on the empty shape until the
+  block is reused (`tests/container_free_test.w` pins this;
+  `tests/container_free_debug_test.w` proves leak-freedom under
+  `lib/memory_debug.w` accounting). `lib/container.w`'s
+  `list_free[T]`/`map_free[K, V]` are now deprecated compatibility
+  wrappers; their bodies keep the direct runtime casts until the next
+  SEEDS bump because the pinned seed still parses them (via
+  `structures/json.w`'s instantiations) and predates the pseudo-method.
 - `in` membership for lists (linear scan) if a use case appears.
 - Multi-word scalar elements on x86 (e.g. `list[int64]`).
 - Struct keys for maps and sets (values are done; keys still hash words,

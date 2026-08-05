@@ -1968,6 +1968,8 @@
 				"compress_gzip_64_test",
 				"compress_inflate_64_test",
 				"compress_zlib_64_test",
+				"container_free_64_test",
+				"container_free_debug_64_test",
 				"crash_install_64_test",
 				"crypto_rsa_verify_64_test",
 				"cstr_64_test",
@@ -2544,6 +2546,8 @@
 				"compress_gzip_test",
 				"compress_inflate_test",
 				"compress_zlib_test",
+				"container_free_debug_test",
+				"container_free_test",
 				"crash_install_test",
 				"cstr_test",
 				"deep_nesting_test",
@@ -3307,6 +3311,46 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/compress_zlib_test.w", "-o", "bin/compress_zlib_test"]},
 				{"cmd": ["bin/compress_zlib_test"]}
+			]
+		},
+		{
+			"name": "container_free_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/container_free_test.w"],
+			"outputs": ["bin/container_free_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/container_free_test.w", "-o", "bin/container_free_64_test"]},
+				{"cmd": ["bin/container_free_64_test"]}
+			]
+		},
+		{
+			"name": "container_free_debug_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/container_free_debug_test.w"],
+			"outputs": ["bin/container_free_debug_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/container_free_debug_test.w", "-o", "bin/container_free_debug_64_test"]},
+				{"cmd": ["bin/container_free_debug_64_test"]}
+			]
+		},
+		{
+			"name": "container_free_debug_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/container_free_debug_test.w"],
+			"outputs": ["bin/container_free_debug_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/container_free_debug_test.w", "-o", "bin/container_free_debug_test"]},
+				{"cmd": ["bin/container_free_debug_test"]}
+			]
+		},
+		{
+			"name": "container_free_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/container_free_test.w"],
+			"outputs": ["bin/container_free_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/container_free_test.w", "-o", "bin/container_free_test"]},
+				{"cmd": ["bin/container_free_test"]}
 			]
 		},
 		{

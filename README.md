@@ -192,7 +192,10 @@ Implemented and covered by tests:
   `m.keys().sort()`), `list[T]` indexing (negative indexes count from
   the end: `l[-1]`) and copying slices (`l[i:j]` with open and negative
   bounds),
-  `l.push(v)`/`l.pop()` and container `.length`, explicit `cast(T, expr)`,
+  `l.push(v)`/`l.pop()` and container `.length`, container `.free()`
+  (releases the container's owned storage — element/value pointers are
+  not chased, and post-free use is caller error like `lib/memory.w`'s
+  `free()`), explicit `cast(T, expr)`,
   postfix `?` error propagation on the generic `wresult[T]` result type
   (unwrap the payload, or return the error to the caller; see
   `docs/error_results.txt`), hex literals (one with bit 31 set
