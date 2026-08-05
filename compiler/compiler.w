@@ -445,6 +445,10 @@ int target_selector_apply(char* arg):
 		word_size =  8
 		word_size_log2 = 3
 		diag_word_size = word_size
+		# W^X (docs/projects/wx_split.md Stage B): mutable globals, GOT
+		# slots and extern-data copy space go to a separate read-write
+		# data segment; the code segment is mapped read-execute.
+		data_split = 1
 		return 1
 	if (strcmp(arg, c"arm64") == 0):
 		if (quiet_mode == 0):
@@ -457,9 +461,9 @@ int target_selector_apply(char* arg):
 		diag_word_size = word_size
 		target_isa = 1
 		# W^X: arm64 executables get a read-execute code segment and a
-		# separate read-write data segment (Stage 3). x86/x64 keep the
-		# single RWX image so their output stays byte-identical and the
-		# dynamic-linker GOT stays writable.
+		# separate read-write data segment (docs/projects/arm64.md Stage
+		# 3; the split now covers every file target, see
+		# docs/projects/wx_split.md).
 		data_split = 1
 		return 1
 	if (strcmp(arg, c"wasm") == 0):
@@ -757,6 +761,12 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	diag_word_size = word_size
 	target_isa = 0
 	target_os = 0
+	# W^X (docs/projects/wx_split.md Stage C): every file target now
+	# splits read-execute text from read-write data, the default x86
+	# target included. The in-process REPL and wdbg never come through
+	# this reset (they compile into their own RWX mmap buffer), so
+	# data_split stays 0 on their paths.
+	data_split = 1
 	arm64_pac = 1
 	bounds_mode = 1
 	strict_mode = 0

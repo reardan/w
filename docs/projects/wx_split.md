@@ -1,11 +1,44 @@
 # W^X Everywhere: Extending the Text/Data Split to x86, x64 and win64
 
-**Status: Stage A landed (July 2026); Stages B and C remain.** The win64
-target now emits a two-section image (R+X `.text`, R+W `.data` at
-ImageBase + 16MB) exactly as planned below; `verify`/`verify_x64`/
-`verify_win` and `tests_win64` are green. x64 and x86 Linux still emit
-the single RWX segment. Motivated by a reproducible crash (below) rather
-than a hypothetical hardening exercise.
+**Status: all three stages landed — Stage A July 2026, Stages B and C
+August 2026. Every W file target is now W^X.** win64 emits a two-section
+image (R+X `.text`, R+W `.data` at ImageBase + 16MB); x64 and x86 Linux
+emit two `PT_LOAD` segments (R+X text, R+W data at base + 16MB),
+including the extern-data/COPY-relocation move Stage B introduced.
+`verify`/`verify_x64`/`verify_wasm`, the dynamic/c_import/extern-data
+batteries and the full `tests` umbrella are green; the structural
+layout gates are `win64_wx_section_test` (PE) and `elf_wx_segment_test`
+(both ELF widths). Motivated by a reproducible crash (below) rather
+than a hypothetical hardening exercise. Remaining loose ends: the
+manual real-Windows HVCI smoke test (below) and the optional arm64
+extern-data lift.
+
+Stage B/C implementation notes (choices made where the plan left room):
+
+- `elf_dynamic.w` now keys its reserved-slot choice on `data_split`
+  (slot 1 is the data load, so PT_INTERP/PT_DYNAMIC move to slots 2
+  and 3) instead of `target_isa == 1` — one rule for arm64/x64/x86.
+- The extern-data/COPY move landed exactly as planned: both emission
+  sites (`grammar/extern_statement.w`, `importer.w`'s
+  `ci_import_data_object`) branch on `data_split` and route the copy
+  space through `emit_data_zeros` + `sym_define_global_at`. The x64
+  proof is `extern_data_64_test` plus `elf_wx_segment_test`'s
+  relocation walk, which asserts every GOT/COPY `r_offset` lies inside
+  the R+W load.
+- A consequence worth knowing: **string literals are now read-only at
+  run time** on x86/x64, exactly like C's `.rodata` (they stay in the
+  text segment). Two tests that wrote into literals
+  (`tests/pointer_test.w`, `compiler/type_table_test.w`) were fixed to
+  use heap copies in the same PR.
+- `data_split = 1` for the default x86 target is set in `link_impl`'s
+  target reset, not a selector — the in-process REPL/wdbg never come
+  through that reset, so their single-RWX-mmap model is untouched
+  (wdbg's attach-mode recompile *does* come through `link_impl`, which
+  is correct: its tables must mirror the on-disk split binary).
+- The arm64 "extern data objects are not supported" error was kept for
+  now: the data-segment branch would give the copy space a
+  loader-writable home, but there is no arm64 loader in this CI to
+  prove it end-to-end, so lifting it stays a follow-up.
 
 Stage A implementation notes (choices made where the plan left room):
 
@@ -169,7 +202,7 @@ against old output).
   currently 0 (`pe_64.w:106`). Not required for correctness, but signals
   the loader this image is DEP-clean, which it now actually is.
 
-### Stage B — x64 Linux (`code_generator/elf_64.w`)
+### Stage B — x64 Linux (`code_generator/elf_64.w`) — LANDED 2026-08
 
 Mirrors `elf_arm64.w` almost exactly, minus the rebase table:
 
@@ -206,17 +239,17 @@ Mirrors `elf_arm64.w` almost exactly, minus the rebase table:
   follow-up — its blocker is this exact issue — but that's optional and
   not part of this plan's gates.
 
-### Stage C — x86 32-bit Linux (`code_generator/elf.w` / `elf_32.w`)
+### Stage C — x86 32-bit Linux (`code_generator/elf.w` / `elf_32.w`) — LANDED 2026-08
 
-Same shape as Stage B, adjusted for `Elf32_Phdr` (32-bit fields:
-`elf_program_header()` in `elf_32.w:36-44` takes `flags` as a plain arg
-already unlike the 64-bit header, so the R+W variant is a second call
-with `flags=6` instead of `7`). Stage B's extern-data/COPY fix carries
-over automatically — it branches on `data_split`, not on a target. **Highest blast radius of the three**:
-x86 is the *default* target (no selector keyword — `link_impl`'s initial
-reset, `compiler.w:362-370`) and is the seed/bootstrap chain root
-(`./w w.w -> wv2 -> wv3 -> wv4 -> wv5`). Do this last, after A and B have
-proven the pattern out in review and in CI, and give it its own PR.
+Same shape as Stage B, adjusted for `Elf32_Phdr` (both `elf_program_header()`
+and `elf_program_header_64()` gained an explicit `flags` argument, so the
+R+W variant is a second call with `flags=6` instead of `7`). Stage B's
+extern-data/COPY fix carries over automatically — it branches on
+`data_split`, not on a target. **Highest blast radius of the three**:
+x86 is the *default* target (no selector keyword — `data_split = 1` sits
+in `link_impl`'s initial target reset) and is the seed/bootstrap chain
+root (`./w w.w -> wv2 -> wv3 -> wv4 -> wv5`); the compiler now runs as a
+split image and still reproduces itself byte-identically.
 
 ### What deliberately does not change
 

@@ -455,11 +455,14 @@ current state:
 				wasm arch support — arch=/arch_only=/group=@wasm
 				generate the wasm targets now — landed:
 				docs/projects/wasm_backend.md)
-			W^X text/data split for x86, x64 and win64 (arm64/arm64_darwin
-				already split; win64's single RWX section makes the IAT
-				unwritable under Windows Memory Integrity/HVCI, a real
-				crash on real hardware, not just hardening; design +
-				repro: docs/projects/wx_split.md)
+			W^X text/data split: done 2026-08 — every file target now
+				emits R+X text / R+W data (win64 stage A landed July
+				2026 for the HVCI IAT crash; x64 stage B and x86 stage C
+				landed 2026-08 with the extern-data/COPY move and the
+				elf_wx_segment_test structural gate; arm64/arm64_darwin
+				were already split). Residue: manual real-Windows HVCI
+				smoke test, optional arm64 extern-data lift
+				(docs/projects/wx_split.md)
 		directory and build cleanup:
 			import grammar vs grammar.* -- settled 2026-07: they always
 				compiled exactly the same file (grammar.w) into the one

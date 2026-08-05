@@ -1980,6 +1980,16 @@
 			]
 		},
 		{
+			"name": "elf_wx_segment_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "--quiet", "tests/elf_wx_segment_input.w", "-o", "bin/elf_wx_segment_input32"]},
+				{"cmd": ["bin/wv2", "x64", "--quiet", "tests/elf_wx_segment_input.w", "-o", "bin/elf_wx_segment_input64"]},
+				{"cmd": ["bin/wv2", "tests/elf_wx_segment_test.w", "-o", "bin/elf_wx_segment_test"]},
+				{"cmd": ["bin/elf_wx_segment_test"]}
+			]
+		},
+		{
 			"name": "win64_hello_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -2442,6 +2452,7 @@
 				"pac_flag_test",
 				"pac_darwin",
 				"win64_wx_section_test",
+				"elf_wx_segment_test",
 				"arm64_darwin_smoke_test",
 				"test",
 				"hello",

@@ -68,9 +68,9 @@ int extern_statement():
 		# value; the library's own references rebind to this copy (symbol
 		# interposition), so it behaves like a normal W global.
 		if (accept(c"(") == 0):
-			# The copy space below is reserved in the code stream, which
-			# W^X arm64 targets map read-execute — the loader's COPY write
-			# would fault. Needs a data-segment home before enabling.
+			# The arm64 backends never emitted the copy space to a
+			# loader-writable home; the data-segment branch below could
+			# lift this, but stays unproven there (no arm64 loader in CI).
 			if (target_isa == 1):
 				error(c"extern data objects are not supported on arm64 targets yet")
 			# wasm has no loader and no COPY relocations; imported globals
@@ -81,12 +81,25 @@ int extern_statement():
 			int size = type_get_size(ret_type)
 			if (size < 1):
 				error(c"extern data object needs a sized type")
-			while ((codepos % word_size) != 0):
-				emit_int8(0)
-			sym_define_global(sym)
-			save_int(table + sym + 14, size)
-			dyn_add_import_data(name, code_offset + codepos, size, 0)
-			emit_zeros(size)
+			# W^X split (data_split): the loader's COPY relocation writes
+			# the library's initial value into this space, so it must live
+			# in the RW data segment — in the code stream it would target
+			# a read-execute page and fault (docs/projects/wx_split.md).
+			if (data_split):
+				int pad = datapos & (word_size - 1)
+				if (pad != 0):
+					emit_data_zeros(word_size - pad)
+				int copy_vaddr = emit_data_zeros(size)
+				sym_define_global_at(sym, copy_vaddr)
+				save_int(table + sym + 14, size)
+				dyn_add_import_data(name, copy_vaddr, size, 0)
+			else:
+				while ((codepos % word_size) != 0):
+					emit_int8(0)
+				sym_define_global(sym)
+				save_int(table + sym + 14, size)
+				dyn_add_import_data(name, code_offset + codepos, size, 0)
+				emit_zeros(size)
 			free(name)
 			return 1
 
