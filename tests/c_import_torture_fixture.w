@@ -1,11 +1,12 @@
 # Fixture for c_import_torture_test: system-header torture shapes —
 # forward-declared struct typedefs, nested unions, anonymous inner
-# structs, named and unnamed bit-fields (skipped members, layout
-# stays coarse within the bit-field region), array and function-pointer
-# fields, enum constant expressions, function typedefs, macro-sized
-# extern arrays, and K&R declarations mixed with prototyped variadic
-# ones. The body uses the imported types, constants, arrays and
-# functions, so an import regression fails this compile.
+# structs, named and unnamed bit-fields (laid out per the SysV ABI;
+# see tests/c_import_bitfield_fixture.w for the dedicated battery),
+# array and function-pointer fields, enum constant expressions,
+# function typedefs, macro-sized extern arrays, and K&R declarations
+# mixed with prototyped variadic ones. The body uses the imported
+# types, constants, arrays and functions, so an import regression
+# fails this compile.
 # reject_stderr: c_import:
 # reject_stderr: header parse failed
 # wbuild: fixture_group=c_import_torture_test

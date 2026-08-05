@@ -42,6 +42,20 @@ struct ci_declarator_info:
 	int array_length
 
 
+# Layout cursor for one struct/union body being imported. offset counts
+# bytes already materialized as type-table fields; bit_pos is the SysV
+# bit-field allocator's cursor in bits (always >= offset * 8) — the gap
+# between the two is pending bit-field storage, materialized as filler
+# by ci_layout_flush_bits before any byte-aligned member and at the end
+# of the struct.
+struct ci_struct_layout:
+	int type_index
+	int is_union
+	int offset
+	int bit_pos
+	int max_align
+
+
 int extern_max_params();
 
 
@@ -66,7 +80,7 @@ void ci_session_init():
 
 int ci_type_from_specs(pg_ast_node* specs);
 int ci_import_enumerators(pg_ast_node* node, int enum_type, int value);
-void ci_import_struct_declarator_list(int struct_type, int base_type, pg_ast_node* node, int* offset, int* max_align);
+void ci_import_struct_declarator_list(ci_struct_layout* layout, int base_type, pg_ast_node* node);
 ci_declarator_info* ci_read_declarator(int base_type, pg_ast_node* declarator);
 int ci_eval_const(pg_ast_node* node);
 
@@ -788,18 +802,98 @@ int ci_struct_has_field_room(int type_index):
 	return type_num_args(type_index) < 96
 
 
-void ci_struct_add_field(int type_index, char* name, int field_type, int* offset, int* max_align, int is_union):
+# Zero-size marker type for named C bit-field members. The member's
+# storage bytes are covered by filler fields, so the named field itself
+# contributes nothing to the layout, but member lookup still finds it —
+# grammar/postfix_expr.w recognizes the marker and reports a dedicated
+# "bit-field member access is not supported" diagnostic instead of
+# silently reading the whole storage unit.
+int ci_bit_field_marker_type():
+	int existing = type_lookup(c"__ci_bit_field")
+	if (existing >= 0):
+		return existing
+	int marker = type_push_size(c"__ci_bit_field", 0)
+	ci_set_type_alignment(marker, 1)
+	return marker
+
+
+int ci_round_up_bits(int bits, int align_bits):
+	int rem = bits % align_bits
+	if (rem == 0):
+		return bits
+	return bits + align_bits - rem
+
+
+# Materialize pending bit-field storage as filler bytes, so the byte
+# offset of the next member (cumulative type-table field sizes) matches
+# the bit cursor.
+void ci_layout_flush_bits(ci_struct_layout* layout):
+	int need = (layout.bit_pos + 7) / 8
+	if (need > layout.offset):
+		if (ci_struct_has_field_room(layout.type_index)):
+			type_add_arg(layout.type_index, ci_unique_name(c"__ci_pad_"), ci_filler_type(need - layout.offset))
+			layout.offset = need
+	layout.bit_pos = layout.offset * 8
+
+
+void ci_struct_add_field(ci_struct_layout* layout, char* name, int field_type):
 	int alignment = ci_type_alignment(field_type)
 	int size = type_get_size(field_type)
-	if (alignment > *max_align):
-		*max_align = alignment
-	if (ci_struct_has_field_room(type_index) == 0):
+	if (alignment > layout.max_align):
+		layout.max_align = alignment
+	if (ci_struct_has_field_room(layout.type_index) == 0):
 		return
-	if (is_union == 0):
-		ci_struct_pad_to(type_index, offset, alignment)
-	type_add_arg(type_index, name, field_type)
-	if (is_union == 0):
-		*offset = *offset + size
+	if (layout.is_union == 0):
+		ci_layout_flush_bits(layout)
+		ci_struct_pad_to(layout.type_index, &layout.offset, alignment)
+	type_add_arg(layout.type_index, name, field_type)
+	if (layout.is_union == 0):
+		layout.offset = layout.offset + size
+		layout.bit_pos = layout.offset * 8
+
+
+# One C bit-field member, System V i386/x86-64 rules: bits are packed
+# into storage units of the declared type. A field may not span more
+# alignment units than its declared type itself does (GCC's
+# excess_unit_span; with alignment == size, the usual case, this is the
+# classic "never straddles a boundary of its own type" — on x86 a long
+# long unit is 8 bytes but only 4-byte aligned, so a field may span its
+# two 4-byte units). A zero-width field closes the current unit of its
+# declared type. Named bit-fields raise the struct alignment like a
+# plain member of the declared type would; unnamed ones do not. Named
+# members register a zero-size marker field so access is diagnosed
+# (ci_bit_field_marker_type) — their storage comes from filler fields.
+void ci_layout_bit_field(ci_struct_layout* layout, char* name, int field_type, int width):
+	int alignment = ci_type_alignment(field_type)
+	if (alignment < 1):
+		alignment = 1
+	int align_bits = alignment * 8
+	int size_bits = type_get_size(field_type) * 8
+	if (size_bits < align_bits):
+		size_bits = align_bits
+	if (width < 0):
+		width = 0
+	if ((name != 0) && (width > 0)):
+		if (alignment > layout.max_align):
+			layout.max_align = alignment
+	if (layout.is_union):
+		# each union member starts at offset 0: the field contributes
+		# its occupied bytes to the union size (rounded up to the union
+		# alignment at the end, like every other member)
+		if ((width > 0) && ci_struct_has_field_room(layout.type_index)):
+			type_add_arg(layout.type_index, ci_unique_name(c"__ci_pad_"), ci_filler_type((width + 7) / 8))
+			if (name != 0):
+				type_add_arg(layout.type_index, strclone(name), ci_bit_field_marker_type())
+		return
+	if (width == 0):
+		layout.bit_pos = ci_round_up_bits(layout.bit_pos, align_bits)
+		return
+	int rem = layout.bit_pos % align_bits
+	if (((rem + width + align_bits - 1) / align_bits) > (size_bits / align_bits)):
+		layout.bit_pos = ci_round_up_bits(layout.bit_pos, align_bits)
+	layout.bit_pos = layout.bit_pos + width
+	if ((name != 0) && ci_struct_has_field_room(layout.type_index)):
+		type_add_arg(layout.type_index, strclone(name), ci_bit_field_marker_type())
 
 
 int ci_import_struct(pg_ast_node* specifier):
@@ -825,8 +919,12 @@ int ci_import_struct(pg_ast_node* specifier):
 	if (is_union):
 		type_set_kind(type_index, type_kind_union)
 	if (body != 0):
-		int offset = 0
-		int max_align = 1
+		ci_struct_layout* layout = new ci_struct_layout()
+		layout.type_index = type_index
+		layout.is_union = is_union
+		layout.offset = 0
+		layout.bit_pos = 0
+		layout.max_align = 1
 		int i = 0
 		while (i < pg_ast_child_count(body)):
 			pg_ast_node* field_decl = pg_ast_child(body, i)
@@ -836,23 +934,25 @@ int ci_import_struct(pg_ast_node* specifier):
 				pg_ast_node* list = ci_child_ast(field_decl, clang_ast_struct_declarator_list())
 				if (list == 0):
 					# anonymous member: embed the aggregate unnamed
-					ci_struct_add_field(type_index, ci_unique_name(c"__ci_anon_member_"), field_base, &offset, &max_align, is_union)
+					ci_struct_add_field(layout, ci_unique_name(c"__ci_anon_member_"), field_base)
 				else:
-					ci_import_struct_declarator_list(type_index, field_base, list, &offset, &max_align)
+					ci_import_struct_declarator_list(layout, field_base, list)
 			i = i + 1
 		# trailing padding so arrays of this struct lay out like C
 		if (is_union):
 			int union_size = type_get_size(type_index)
 			int rounded = union_size
-			if (max_align > 1):
-				int rem = union_size % max_align
+			if (layout.max_align > 1):
+				int rem = union_size % layout.max_align
 				if (rem != 0):
-					rounded = union_size + max_align - rem
+					rounded = union_size + layout.max_align - rem
 			if (rounded > union_size):
 				type_add_arg(type_index, ci_unique_name(c"__ci_pad_"), ci_filler_type(rounded))
 		else:
-			ci_struct_pad_to(type_index, &offset, max_align)
-		ci_set_type_alignment(type_index, max_align)
+			ci_layout_flush_bits(layout)
+			ci_struct_pad_to(type_index, &layout.offset, layout.max_align)
+		ci_set_type_alignment(type_index, layout.max_align)
+		free(layout)
 	return type_index
 
 
@@ -1243,47 +1343,51 @@ int ci_import_enumerators(pg_ast_node* node, int enum_type, int value):
 	return value
 
 
-void ci_import_struct_declarator_list(int struct_type, int base_type, pg_ast_node* node, int* offset, int* max_align):
+void ci_import_struct_declarator_list(ci_struct_layout* layout, int base_type, pg_ast_node* node):
 	if (node == 0):
 		return
 	if (ci_is_ast(node, clang_ast_struct_declarator())):
 		pg_ast_node* declarator = ci_child_ast(node, clang_ast_declarator())
+		pg_ast_node* bit_field = ci_child_ast(node, clang_ast_bit_field())
+		if (bit_field != 0):
+			# named or unnamed bit-field: bit-granular SysV allocation
+			char* field_name = 0
+			if (declarator != 0):
+				field_name = ci_first_ident(declarator)
+			ci_layout_bit_field(layout, field_name, base_type, ci_constant_int(bit_field))
+			return
 		if (declarator == 0):
-			# unnamed bit-field: layout-only, no field emitted
 			return
-		int is_union = type_get_kind(struct_type) == type_kind_union
 		ci_declarator_info* info = ci_read_declarator(base_type, declarator)
-		if (ci_child_ast(node, clang_ast_bit_field()) != 0):
-			ci_skip_extern_function(info.name, c"bit-field struct member")
-			free(info)
-			return
 		if (info.has_array):
 			int element = info.type
 			int element_size = type_get_size(element)
 			int total = info.array_length * element_size
 			if (total > 0):
 				int alignment = ci_type_alignment(element)
-				if (alignment > *max_align):
-					*max_align = alignment
-				if (ci_struct_has_field_room(struct_type)):
-					if (is_union == 0):
-						ci_struct_pad_to(struct_type, offset, alignment)
+				if (alignment > layout.max_align):
+					layout.max_align = alignment
+				if (ci_struct_has_field_room(layout.type_index)):
+					if (layout.is_union == 0):
+						ci_layout_flush_bits(layout)
+						ci_struct_pad_to(layout.type_index, &layout.offset, alignment)
 					if (total == element_size):
-						type_add_arg(struct_type, strclone(info.name), element)
-					else if (is_union):
-						type_add_arg(struct_type, strclone(info.name), ci_filler_type(total))
+						type_add_arg(layout.type_index, strclone(info.name), element)
+					else if (layout.is_union):
+						type_add_arg(layout.type_index, strclone(info.name), ci_filler_type(total))
 					else:
-						type_add_arg(struct_type, strclone(info.name), element)
-						type_add_arg(struct_type, ci_unique_name(c"__ci_pad_"), ci_filler_type(total - element_size))
-					if (is_union == 0):
-						*offset = *offset + total
+						type_add_arg(layout.type_index, strclone(info.name), element)
+						type_add_arg(layout.type_index, ci_unique_name(c"__ci_pad_"), ci_filler_type(total - element_size))
+					if (layout.is_union == 0):
+						layout.offset = layout.offset + total
+						layout.bit_pos = layout.offset * 8
 		else:
-			ci_struct_add_field(struct_type, strclone(info.name), info.type, offset, max_align, is_union)
+			ci_struct_add_field(layout, strclone(info.name), info.type)
 		free(info)
 		return
 	int i = 0
 	while (i < pg_ast_child_count(node)):
-		ci_import_struct_declarator_list(struct_type, base_type, pg_ast_child(node, i), offset, max_align)
+		ci_import_struct_declarator_list(layout, base_type, pg_ast_child(node, i))
 		i = i + 1
 
 
