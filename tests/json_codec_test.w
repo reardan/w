@@ -75,6 +75,19 @@ struct jc_nested_map:
 	map[char*, map[string, float]] outer
 
 
+# jc_span appears only as a map value, so its descriptor is emitted by
+# the enclosing map's json_codec_ensure_nested walk
+struct jc_span:
+	int lo
+	int hi
+
+
+struct jc_layers:
+	list[map[char*, int]] layers
+	map[char*, jc_span] spans
+	map[char*, bool] flags
+
+
 void test_flat_struct_round_trip():
 	jc_point p
 	p.x = 3
@@ -481,6 +494,42 @@ void test_empty_map_round_trip():
 	assert_equal(1, cast(int, q) != 0)
 	assert_equal(1, cast(int, q.tally) != 0)
 	assert_equal(0, q.tally.length)
+	json_free(v)
+
+
+void test_list_of_maps_and_map_only_struct_round_trip():
+	jc_layers s
+	s.layers = new list[map[char*, int]]
+	map[char*, int] m0 = new map[char*, int]
+	m0[c"a"] = 1
+	s.layers.push(m0)
+	map[char*, int] m1 = new map[char*, int]
+	m1[c"b"] = 2
+	s.layers.push(m1)
+	s.spans = new map[char*, jc_span]
+	jc_span sp
+	sp.lo = -3
+	sp.hi = 7
+	s.spans[c"first"] = sp
+	s.flags = new map[char*, bool]
+	s.flags[c"on"] = true
+	s.flags[c"off"] = false
+	json_value* v = to_json(s)
+	char* text = json_stringify(v)
+	assert_strings_equal(c"{\x22layers\x22:[{\x22a\x22:1},{\x22b\x22:2}],\x22spans\x22:{\x22first\x22:{\x22lo\x22:-3,\x22hi\x22:7}},\x22flags\x22:{\x22on\x22:true,\x22off\x22:false}}", text)
+	free(text)
+	jc_layers* q = from_json(jc_layers, v)
+	assert_equal(1, cast(int, q) != 0)
+	assert_equal(2, q.layers.length)
+	map[char*, int] got = q.layers[0]
+	assert_equal(1, got[c"a"])
+	got = q.layers[1]
+	assert_equal(2, got[c"b"])
+	jc_span span = q.spans[c"first"]
+	assert_equal(-3, span.lo)
+	assert_equal(7, span.hi)
+	assert_equal(1, q.flags[c"on"])
+	assert_equal(0, q.flags[c"off"])
 	json_free(v)
 
 
