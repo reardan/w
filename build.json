@@ -2082,6 +2082,7 @@
 				"vcs_diff_64_test",
 				"vcs_index_64_test",
 				"vcs_merge3_64_test",
+				"vcs_pack_64_test",
 				"vcs_tree_64_test",
 				"wal_64_test",
 				"wbuild_arch_only_test",
@@ -2645,12 +2646,14 @@
 				"vcs_diff_test",
 				"vcs_index_test",
 				"vcs_merge3_test",
+				"vcs_pack_test",
 				"vcs_tree_test",
 				"wal_test",
 				"wbuild_directive_test",
 				"wbuild_platform_test",
 				"wbuildgen_directive_errors_test",
 				"window_test",
+				"wvc_pack_e2e_test",
 				"x25519_test",
 				"wbuild_platform_test_darwin"
 			]
@@ -6419,6 +6422,26 @@
 			]
 		},
 		{
+			"name": "vcs_pack_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/vcs_pack_test.w"],
+			"outputs": ["bin/vcs_pack_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/vcs_pack_test.w", "-o", "bin/vcs_pack_64_test"]},
+				{"cmd": ["bin/vcs_pack_64_test"]}
+			]
+		},
+		{
+			"name": "vcs_pack_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/vcs_pack_test.w"],
+			"outputs": ["bin/vcs_pack_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/vcs_pack_test.w", "-o", "bin/vcs_pack_test"]},
+				{"cmd": ["bin/vcs_pack_test"]}
+			]
+		},
+		{
 			"name": "vcs_tree_64_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/vcs_tree_test.w"],
@@ -6643,6 +6666,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/wvc_e2e_test.w", "-o", "bin/wvc_e2e_test"]},
 				{"cmd": ["bin/wvc_e2e_test"]}
+			]
+		},
+		{
+			"name": "wvc_pack_e2e_test",
+			"deps": ["wv2", "wvc"],
+			"inputs": ["tests/wvc_pack_e2e_test.w"],
+			"outputs": ["bin/wvc_pack_e2e_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/wvc_pack_e2e_test.w", "-o", "bin/wvc_pack_e2e_test"]},
+				{"cmd": ["bin/wvc_pack_e2e_test"]}
 			]
 		},
 		{
