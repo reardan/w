@@ -1003,7 +1003,7 @@
 			"data": ["tests/wtest/"],
 			"steps": [
 				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations.expect"], "expect_stdout": "wtest_map_check: OK"},
-				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations_fail.expect"], "expect_fail": true, "expect_stderr": "wtest_map_check: FAIL"},
+				{"cmd": ["bin/wtest_map_check", "tests/wtest/map_expectations_fail.expect"], "expect_fail": true, "expect_stderr": ["wtest_map_check: FAIL", "selection out of manifest order (or duplicate): wv2 (-f fixture tests/wtest/manifest_order_fail.json: -f fixture manifests must mirror build.json's relative order (or add 'noorder'))"]},
 				{"cmd": ["sh", "-c", "cd bin && ./wtest changed lib/file.w"], "expect_fail": true, "expect_stderr": "wtest: error: cannot read build.json"},
 				{"cmd": ["bin/wtest", "changed", "docs/todo.txt"], "expect_stderr": "wtest: 0 targets selected"},
 				{"cmd": ["bin/wtest"], "expect_fail": true, "expect_stderr": "usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]"},

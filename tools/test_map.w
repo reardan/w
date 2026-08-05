@@ -232,22 +232,33 @@ the runner-shape checks above are not enough (ai_tooling_next_steps.md
 dynamically linked tests). Everything --available drops, it drops; in
 addition it pairs each run step with the compile step that produced its
 binary ('bin/wv2 [selector] ... src.w ... -o bin/X' followed by a step
-whose argv[0] is 'bin/X') and reads the needs off the ROOT SOURCE text:
-a column-0 'c_lib'/'c_import' directive means the produced binary is
+whose argv[0] is 'bin/X') and reads the needs off the source text of
+EVERY FILE in the root's cached import closure — rule (b)'s machinery
+(the run-local store when this selection already computed closures,
+else bin/.wtest_deps_cache loaded lazily and only ever READ: the filter
+never shells out to 'bin/wv2 deps' and never writes the cache file) —
+falling back to the root file alone when the closure is unknown (never
+computed, stale, or a recorded compile failure). So a directive buried
+in an imported module is attributed to every target that links it:
+graphics/gl_linux.w's c_lib reaches graphics_gl_smoke_test, lib/
+tensor.w's 'import lib.cuda' reaches the tensor_gpu_test family
+(ai_tooling_next_steps.md 2026-07-29). The needs themselves: a
+column-0 'c_lib'/'c_import' directive means the produced binary is
 dynamically linked and needs the target word size's ELF interpreter
 (/lib/ld-linux.so.2 for x86, /lib64/ld-linux-x86-64.so.2 for x64 —
 probed as files, not hardcoded per machine), and a column-0 'import
 lib.cuda' means it opens the NVIDIA driver (/dev/nvidiactl,
-/dev/nvidia0 or nvidia-smi on PATH). A tools/mac/ step additionally
+/dev/nvidia0 or nvidia-smi on PATH). Column-0 text inside a '#' line
+comment or a block comment is never a directive — closure scanning
+made that matter: lib/safetensors.w's header prose contains a column-0
+'import lib.cuda or ...' sentence that must not flag every
+safetensors importer as GPU-needing. A tools/mac/ step additionally
 requires an actual macOS host (/System/Library/CoreServices/
 SystemVersion.plist), not just the script existing in the checkout.
-Detection stays positive-evidence-only and root-level: a c_lib buried
-in an imported module (graphics/gl_linux.w) is not attributed to its
-importers — none of the env-gated targets are shaped that way today —
-and arm64/wasm/win64 run steps are already covered by --available's
-runner probes (qemu serves the loader role under emulation). Reporting
-reuses --available's 'dropped N unavailable target(s) (<reason>)'
-lines.
+Detection stays positive-evidence-only, and arm64/wasm/win64 run steps
+are already covered by --available's runner probes (qemu serves the
+loader role under emulation). Reporting reuses --available's 'dropped
+N unavailable target(s) (<reason>)' lines.
 
 --defhash (opt-in; 'changed' and 'for' both accept it) refines rule (b)
 per .w path: 'bin/wv2 defhash' is run on both the worktree copy and
@@ -381,8 +392,9 @@ int wtest_run_flag
 int wtest_available_flag
 int wtest_runnable_here_flag
 int wtest_defhash_flag
-# root source path -> needs bits + 1 (--runnable-here memo; bit 1 =
-# c_lib/c_import dynamic linking, bit 2 = lib.cuda GPU access).
+# source path -> needs bits + 1 (--runnable-here memo, per closure
+# FILE, not per root; bit 1 = c_lib/c_import dynamic linking, bit 2 =
+# lib.cuda GPU access).
 map[char*, int] wtest_source_needs_memo
 # root id -> extra cache lines ('V <bin/wv2 hash>' and optionally
 # 'M <missing import>') for a PERSISTABLE deps failure; a failed root
@@ -2587,12 +2599,16 @@ int wtest_wasm_runtime_available():
 runner shapes. All detection is positive evidence — a probe that
 cannot decide leaves the target alone. */
 
-# Needs bits of one compiled root, read off its source text (memoized):
-# bit 1 = a column-0 c_lib/c_import directive (the produced binary is
+# Needs bits of one source file, read off its text (memoized): bit 1 =
+# a column-0 c_lib/c_import directive (the produced binary is
 # dynamically linked), bit 2 = a column-0 'import lib.cuda' or a c_lib
 # line naming libcuda (either way the binary opens the NVIDIA driver).
-# Root-level only: a directive buried in an imported module is not
-# attributed (header comment).
+# Comment-aware: column-0 text inside a '#' line comment or a /* */
+# block comment is prose, not a directive — closure-level attribution
+# scans library files whose header comments legitimately contain
+# directive-shaped sentences (lib/safetensors.w's column-0 'import
+# lib.cuda or ...'), so the scan tracks both comment forms the
+# tokenizer knows before matching.
 int wtest_source_needs(char* path):
 	if (wtest_source_needs_memo == 0):
 		wtest_source_needs_memo = new map[char*, int]
@@ -2604,18 +2620,76 @@ int wtest_source_needs(char* path):
 	if (text != 0):
 		int i = 0
 		int bol = 1
+		int in_block = 0
 		while (text[i] != 0):
-			if (bol):
-				if (starts_with(&text[i], c"c_lib ") || starts_with(&text[i], c"c_import ")):
-					needs = needs | 1
-					if (starts_with(&text[i], c"c_lib \"libcuda")):
+			if (in_block):
+				if ((text[i] == '*') && (text[i + 1] == '/')):
+					in_block = 0
+					bol = 0
+					i = i + 2
+				else:
+					bol = (text[i] == 10)
+					i = i + 1
+			else if (text[i] == '#'):
+				# Line comment: skip to the newline (kept, so bol stays
+				# accurate for the next line).
+				while ((text[i] != 0) && (text[i] != 10)):
+					i = i + 1
+			else if ((text[i] == '/') && (text[i + 1] == '*')):
+				in_block = 1
+				i = i + 2
+			else:
+				if (bol):
+					if (starts_with(&text[i], c"c_lib ") || starts_with(&text[i], c"c_import ")):
+						needs = needs | 1
+						if (starts_with(&text[i], c"c_lib \"libcuda")):
+							needs = needs | 2
+					if (starts_with(&text[i], c"import lib.cuda")):
 						needs = needs | 2
-				if (starts_with(&text[i], c"import lib.cuda")):
-					needs = needs | 2
-			bol = (text[i] == 10)
-			i = i + 1
+				bol = (text[i] == 10)
+				i = i + 1
 		free(text)
 	wtest_source_needs_memo[path] = needs + 1
+	return needs
+
+
+# Needs bits of one compiled (arch, root) pair at CLOSURE level
+# (ai_tooling_next_steps.md 2026-07-29): the OR of wtest_source_needs
+# over every file in the root's cached import closure, so a directive
+# buried in an imported module (graphics/gl_linux.w's c_lib,
+# lib/tensor.w's 'import lib.cuda') is attributed to every target that
+# links it. The closure comes from rule (b)'s machinery — the run-local
+# store when this selection already computed it, else
+# bin/.wtest_deps_cache loaded lazily (mirroring wtest_seed_closure) —
+# and is only ever READ here: no 'bin/wv2 deps' shell-out, no cache
+# write, so a selection that skipped rule (b) stays as cheap as
+# before. A root whose closure is unknown (never computed, stale, or
+# recorded as a compile failure) falls back to the root file alone —
+# the pre-closure behavior, positive evidence only.
+int wtest_closure_needs(char* arch, char* root):
+	if (wtest_closure_roots == 0):
+		wtest_closure_roots = new list[char*]
+		wtest_closure_blobs = new list[char*]
+		wtest_cache_load()
+	char* id = wtest_root_id(arch, root)
+	char* blob = wtest_closure_get(id)
+	free(id)
+	if (blob == 0):
+		return wtest_source_needs(root)
+	int needs = 0
+	string_builder* line = string_new()
+	int i = 0
+	while (blob[i] != 0):
+		if (blob[i] == 10):
+			if (line.length > 0):
+				needs = needs | wtest_source_needs(line.data)
+				string_clear(line)
+		else:
+			string_append_char(line, blob[i])
+		i = i + 1
+	if (line.length > 0):
+		needs = needs | wtest_source_needs(line.data)
+	string_free(line)
 	return needs
 
 
@@ -2647,7 +2721,8 @@ int wtest_macos_host():
 # each run step with the compile step that produced its binary: a
 # compile step records '-o <out>' -> (arch, first .w argument), and a
 # later step whose argv[0] is that out path runs the binary, so the
-# root's needs (wtest_source_needs) are probed against this host.
+# root's closure-level needs (wtest_closure_needs) are probed against
+# this host.
 char* wtest_target_runnable_reason(char* name):
 	json_value* steps = wtest_target_steps(name)
 	if (steps == 0):
@@ -2705,7 +2780,7 @@ char* wtest_target_runnable_reason(char* name):
 		int k = 0
 		while (k < outs.length):
 			if (strcmp(outs[k], first.string_value) == 0):
-				int needs = wtest_source_needs(out_srcs[k])
+				int needs = wtest_closure_needs(out_archs[k], out_srcs[k])
 				if ((needs & 2) && (wtest_gpu_available() == 0)):
 					return c"no NVIDIA GPU (/dev/nvidiactl, /dev/nvidia0 and nvidia-smi all missing)"
 				if (needs & 1):

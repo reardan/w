@@ -45,7 +45,12 @@ skips both checks — for the selection itself, and (in validation) for
 that case's own expect/forbid names, which would otherwise fail the
 same "unknown target" check. Existing cases that select real build.json
 targets keep asserting the order property; 'noorder' is only for cases
-whose selection is fixture-only names.
+whose selection is fixture-only names. Because that relative-order
+contract is easy to break from a distance (regenerating build.json can
+reorder two real targets a fixture manifest lists, the 2026-07-29 U5
+incident), an order failure on a case that carries '-f' extends the
+FAIL detail with the fixture manifest's path and the rule: "-f fixture
+manifests must mirror build.json's relative order (or add 'noorder')".
 
 Every expect/forbid name must itself exist in build.json, so a renamed
 or deleted target makes the expectations file fail loudly ("unknown
@@ -345,6 +350,21 @@ int check_selected_contains(list[char*] selected, char* name):
 	return 0
 
 
+# The '-f <manifest>' fixture path among a case's words, or 0 when the
+# case runs against the real build.json. Used to point an
+# out-of-manifest-order failure at the file that encodes the order
+# (header comment): those fixture manifests silently mirror build.json's
+# RELATIVE target order, and the bare message named neither the fixture
+# nor the rule (ai_tooling_next_steps.md 2026-07-29).
+char* check_case_fixture(check_case* c):
+	int i = 0
+	while (i + 1 < c.paths.length):
+		if (strcmp(c.paths[i], c"-f") == 0):
+			return c.paths[i + 1]
+		i = i + 1
+	return 0
+
+
 int check_str_contains(char* haystack, char* needle):
 	int n = strlen(needle)
 	if (n == 0):
@@ -407,7 +427,20 @@ void check_run_case(check_case* c):
 				check_case_fail(c, c"selected name is not a build.json target: ", name, selected)
 			else:
 				if (index <= previous):
-					check_case_fail(c, c"selection out of manifest order (or duplicate): ", name, selected)
+					char* fixture = check_case_fixture(c)
+					if (fixture == 0):
+						check_case_fail(c, c"selection out of manifest order (or duplicate): ", name, selected)
+					else:
+						# Name the fixture manifest and the rule it broke:
+						# a '-f' manifest listing real targets encodes
+						# build.json's relative order (header comment).
+						string_builder* detail = string_new()
+						string_append(detail, name)
+						string_append(detail, c" (-f fixture ")
+						string_append(detail, fixture)
+						string_append(detail, c": -f fixture manifests must mirror build.json's relative order (or add 'noorder'))")
+						check_case_fail(c, c"selection out of manifest order (or duplicate): ", detail.data, selected)
+						string_free(detail)
 				previous = index
 
 	# Explicit assertions.

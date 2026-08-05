@@ -38,6 +38,38 @@
 				{"cmd": ["true", "widget/runnable.dat"]},
 				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/gpu.w", "-o", "bin/rn_ptx"]}
 			]
+		},
+		{
+			"name": "rn_dyn_imp",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/dyn_imp.w", "-o", "bin/rn_dyn_imp"]},
+				{"cmd": ["bin/rn_dyn_imp"]}
+			]
+		},
+		{
+			"name": "rn_gpu_imp",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wv2", "x64", "tests/wtest/runnable_fixture/gpu_imp.w", "-o", "bin/rn_gpu_imp"]},
+				{"cmd": ["bin/rn_gpu_imp"]}
+			]
+		},
+		{
+			"name": "rn_plain_imp",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/plain_imp.w", "-o", "bin/rn_plain_imp"]},
+				{"cmd": ["bin/rn_plain_imp"]}
+			]
+		},
+		{
+			"name": "rn_broken_imp",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/broken_imp.w", "-o", "bin/rn_broken_imp"]},
+				{"cmd": ["bin/rn_broken_imp"]}
+			]
 		}
 	]
 }

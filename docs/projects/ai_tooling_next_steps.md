@@ -103,18 +103,17 @@ is a queue, not an archive.
   is missing, a persisted compile failure is additionally keyed to
   `bin/wv2`'s hash and to the reported missing import staying absent,
   and the fallback announces itself on stderr; `wtest_nofailcache_test`.)
-- **(2026-07-29, --runnable-here work) the runnable-here needs scan is
-  root-level only.** `wtest changed --runnable-here` reads
-  `c_lib`/`c_import`/`import lib.cuda` off the ROOT source of each
-  compiled-and-run binary, so a directive buried in an imported module
-  is not attributed: `graphics_gl_smoke_test` (c_lib in
-  `graphics/gl_linux.w`) and the `tensor_gpu_test`/`nn_train_gpu_test`
-  family (libcuda via `lib/tensor.w`, deliberately CPU-fallback-capable
-  but still needing `libcuda.so.1` installed to load) are never dropped
-  on hosts that lack X11/libcuda. Closure-level attribution (scan every
-  file in the root's cached closure, fall back to root-only when the
-  closure is unknown) would close it using machinery rule (b) already
-  has.
+- **(2026-08-04, closure-needs work) the dynamically-linked needs
+  probe checks only the ELF interpreter, not the libraries a c_lib
+  names.** With closure-level attribution shipped, a c_lib buried in
+  an imported module now marks its importers dynamically linked — but
+  bit 1's probe is still just "is the target word size's loader
+  installed", so `graphics_gl_smoke_test` (libGL/libX11 via
+  `graphics/gl_linux.w`) stays selected on a host that has
+  `/lib64/ld-linux-x86-64.so.2` but no X11 libraries and fails at run
+  time. Probing the named `c_lib` sonames themselves (ldconfig -p, or
+  the standard lib dirs) would close the rest; the libcuda case is
+  already covered by its own GPU bit.
 - **(2026-07-29, U5 tool-target migration) the documented deps-cache
   failure-caching residue bit in practice.** A `./wbuild tests` run
   killed mid-way through `bin/.wtest_deps_cache`'s first cold build
@@ -128,22 +127,6 @@ is a queue, not an archive.
   the suggested invalidation of failure entries on `bin/wv2`'s
   mtime/hash (or on any interrupted run) is now motivated by a real
   debugging detour, not hypothetically.
-- **(2026-07-29, U5 tool-target migration) `wtest_map_check`'s `-f`
-  fixture manifests silently encode build.json's *relative target
-  order*, and a manifest-layout change breaks them with a message
-  that doesn't point at the fixture.** Moving `manifest_check` from
-  build.base.json's hand-written section to wbuildgen's generated
-  (name-sorted, appended) section changed its position relative to
-  `wexec_test`, and five `map_expectations.expect` cases failed with
-  "selection out of manifest order (or duplicate): wexec_test" — the
-  real cause being that `tests/wtest/manifest_leaf_{base,add,retime}
-  .json` must list their real-name targets in build.json's relative
-  order (documented in `tools/wtest_map_check.w`'s header, but the
-  FAIL message names neither the fixture file nor the rule). Fixed
-  here by reordering the three fixtures; a cheap improvement would be
-  the checker hinting "-f fixture manifests must mirror build.json's
-  relative order (or add 'noorder')" when the case carries `-f`.
-
 - **(2026-07-29, U4 dogfooding-fixes) the X-entry residue above DID
   bite, via a new route: `wtest_run_deps`'s 120s `process_run` timeout
   under parallel load.** During a cold `bin/.wtest_deps_cache` build
