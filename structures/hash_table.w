@@ -556,6 +556,15 @@ char* __w_map_iter_value_addr(__w_hash_table* table, int cursor):
 	return __w_hash_value_addr(table, cursor)
 
 
+# Releases the table's arrays, its cloned string keys and the header.
+# Pointer VALUES are not chased: freeing pointed-to values stays the
+# caller's job. Using the container after free() is caller error (the
+# lib/memory.w free contract); as a cheap best-effort safety the header
+# is zeroed first — the freelist backend only rewrites the block's own
+# header words on free, so until the block is reused a stale .length
+# reads 0 and stale iteration sees an empty chain instead of plausible
+# garbage (the debug backend unmaps the page, so any stale use faults
+# outright).
 void __w_map_free(__w_hash_table* table):
 	int i = 0
 	while (i < table.capacity):
@@ -567,6 +576,15 @@ void __w_map_free(__w_hash_table* table):
 	free(table.states)
 	free(table.order_next)
 	free(table.order_prev)
+	table.capacity = 0
+	table.count = 0
+	table.keys = 0
+	table.values = 0
+	table.states = 0
+	table.order_next = 0
+	table.order_prev = 0
+	table.order_head = -1
+	table.order_tail = -1
 	free(table)
 
 

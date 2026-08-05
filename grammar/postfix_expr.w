@@ -701,6 +701,9 @@ int postfix_expr():
 				else if (peek(c"get") & type_is_map(type)):
 					get_token()
 					type = hash_get_suffix(type)
+				else if (peek(c"free")):
+					get_token()
+					type = hash_free_suffix(type)
 				else:
 					diag_part(c"hash container field '")
 					diag_part(token)
@@ -727,6 +730,9 @@ int postfix_expr():
 				else if (peek(c"clear")):
 					get_token()
 					type = list_clear_suffix(type)
+				else if (peek(c"free")):
+					get_token()
+					type = list_free_suffix(type)
 				else if (peek(c"sort")):
 					get_token()
 					type = list_sort_suffix(type)

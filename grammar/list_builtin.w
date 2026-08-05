@@ -261,6 +261,31 @@ int list_clear_suffix(int type):
 	return type_value(type_lookup(c"void"))
 
 
+# l.free(): 'free' has been consumed. Lowers to __w_list_free(list),
+# which releases the backing storage and the header via the allocator
+# the runtime used (lib/memory.w). Element POINTERS are not chased:
+# freeing pointed-to elements stays the caller's job, exactly like
+# lib/container.w's list_free[T]. Using the variable after free() is
+# caller error, the same contract as lib/memory.w's free().
+int list_free_suffix(int type):
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	expect(c"(")
+	expect(c")")
+	sym_get_value(c"__w_list_free")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(list_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_lookup(c"void"))
+
+
 # Element comparison kind for sort/count/index: 1 signed word compare,
 # 2 char* contents (the map/set key rule). Aggregates, strings, floats
 # and containers have no built-in ordering and are rejected.

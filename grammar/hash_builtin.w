@@ -340,6 +340,32 @@ void hash_key_call_suffix(int type, char* fn_name, char* context):
 	stack_pos = base_stack
 
 
+# m.free() / s.free(): 'free' has been consumed. Lowers to
+# __w_map_free(container) — sets share the map layout, like remove.
+# Frees the table's arrays, its cloned string keys and the header via
+# the allocator the runtime used (lib/memory.w). Pointer VALUES are not
+# chased: freeing pointed-to values stays the caller's job, exactly
+# like lib/container.w's map_free[K, V]. Using the variable after
+# free() is caller error, the same contract as lib/memory.w's free().
+int hash_free_suffix(int type):
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int container_slot = stack_pos
+	expect(c"(")
+	expect(c")")
+	sym_get_value(c"__w_map_free")
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(container_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_lookup(c"void"))
+
+
 # m.remove(key) / s.remove(key): 'remove' has been consumed. Lowers to
 # __w_map_remove(container, key), which returns 1 when the key existed.
 int hash_remove_suffix(int type):
