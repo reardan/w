@@ -1984,6 +1984,7 @@
 				"http_client_64_test",
 				"http_server_64_test",
 				"http_server_route_64_test",
+				"import_alias_type_64_test",
 				"increment_64_test",
 				"int_literal_bounds_64_test",
 				"json_64_test",
@@ -2538,6 +2539,7 @@
 				"http_client_test",
 				"http_server_route_test",
 				"http_server_test",
+				"import_alias_type_test",
 				"increment_test",
 				"infer_test",
 				"int_literal_bounds_test",
@@ -4130,6 +4132,33 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/http_server_test.w", "-o", "bin/http_server_test"]},
 				{"cmd": ["bin/http_server_test"]}
+			]
+		},
+		{
+			"name": "import_alias_type_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/import_alias_type_test.w"],
+			"outputs": ["bin/import_alias_type_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/import_alias_type_test.w", "-o", "bin/import_alias_type_64_test"]},
+				{"cmd": ["bin/import_alias_type_64_test"]}
+			]
+		},
+		{
+			"name": "import_alias_type_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/import_alias_unknown_type_error_fixture.w", "tests/import_alias_value_as_type_error_fixture.w"]}
+			]
+		},
+		{
+			"name": "import_alias_type_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/import_alias_type_test.w"],
+			"outputs": ["bin/import_alias_type_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/import_alias_type_test.w", "-o", "bin/import_alias_type_test"]},
+				{"cmd": ["bin/import_alias_type_test"]}
 			]
 		},
 		{
