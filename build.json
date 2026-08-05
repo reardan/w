@@ -2087,6 +2087,7 @@
 				"wbuild_arch_only_test",
 				"wbuild_directive_64_test",
 				"window_64_test",
+				"x64_c_import_bitfield_test",
 				"x64_c_import_knr_test"
 			]
 		},
@@ -3020,7 +3021,7 @@
 			"name": "c_import_torture_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/c_import_extern_array_fixture.w", "tests/c_import_knr_fixture.w", "tests/c_import_torture_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/c_import_bitfield_access_fixture.w", "tests/c_import_bitfield_fixture.w", "tests/c_import_extern_array_fixture.w", "tests/c_import_knr_fixture.w", "tests/c_import_torture_fixture.w"]}
 			]
 		},
 		{
@@ -6683,6 +6684,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/x25519_test.w", "-o", "bin/x25519_test"]},
 				{"cmd": ["bin/x25519_test"]}
+			]
+		},
+		{
+			"name": "x64_c_import_bitfield_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/x64_c_import_bitfield_test.w"],
+			"outputs": ["bin/x64_c_import_bitfield_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_c_import_bitfield_test.w", "-o", "bin/x64_c_import_bitfield_test"]},
+				{"cmd": ["bin/x64_c_import_bitfield_test"], "expect_stdout": "x64 c_import bitfield OK"}
 			]
 		},
 		{

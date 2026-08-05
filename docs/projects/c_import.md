@@ -56,6 +56,24 @@ maps to a 32-bit type on both targets; C `long` follows the target word.
 `tests/c_import_libc_test.w` cross-checks the resulting layout against the
 kernel via `fstat` on both targets.
 
+Bit-fields lay out per the same ABIs (`ci_layout_bit_field`): bits pack
+into storage units of the declared type; a field may not span more
+alignment units than its declared type itself does (with alignment ==
+size, the usual case, it never straddles a boundary of its own type; an
+i386 `long long` unit is 8 bytes but 4-byte aligned, so a field may span
+its two 4-byte halves); `:0` closes the current unit of its declared
+type; unnamed bit-fields allocate bits without affecting the struct
+alignment, named ones raise it like a plain member would. The occupied
+bits are materialized as filler fields, so `sizeof` and every
+surrounding plain member offset are exact — asserted against
+gcc/clang-pinned values by `tests/x64_c_import_bitfield_test.w` (run,
+x86-64) and `tests/c_import_bitfield_fixture.w` (compile-only, i386).
+Reading or writing a bit-field *member itself* is not supported: the
+named member imports as a zero-size `__ci_bit_field` marker, and access
+fails with "bit-field member access is not supported"
+(`tests/c_import_bitfield_access_fixture.w`) instead of reading the
+storage unit.
+
 ## Symbol collisions
 
 Broad headers overlap each other and W's own library, so the importer is
@@ -125,8 +143,8 @@ function definition in an imported header.
 
 - `static` / `inline` functions are declared-but-skipped (not exported
   by the library).
-- Bit-field members are skipped (layout drift within the bit-field region
-  of a struct).
+- Bit-field members lay out exactly (see Layout) but cannot be read or
+  written; access is a compile error.
 - A cast of a bare typedef name applied to a literal (`(size_t) 42`)
   parses as a call shape; casts with keyword types or pointer/abstract
   declarators are fully supported.

@@ -209,6 +209,7 @@ current state:
 			old-style (K&R) declarations import as variadic zero-fixed-parameter functions; K&R definitions parse and are ignored like other header definitions
 			broad libc/system headers are tested on both targets (stdio, stdlib, string, unistd, fcntl, errno, time, signal, ctype, math, dirent, locale, sys/stat); c_import_torture_test pins gnarly header shapes compile-only
 			imported C struct layout is checked against kernel-filled struct stat
+			bit-fields lay out per the SysV i386/x86-64 rules (storage units, straddle, ':0', unnamed, unions); sizeof and neighbor offsets pinned against gcc (x64_c_import_bitfield_test runs, c_import_bitfield_fixture compile-only); member access itself is a dedicated compile error
 		debugging information:
 			debugger statement emits int3
 			DWARF line-number data is emitted for gdb source-line mapping
@@ -408,7 +409,8 @@ current state:
 				and debug-location bookkeeping — not a hash_map call site to
 				migrate, see docs/projects/typed_containers.md)
 		c_import:
-			bit-field layout fidelity
+			bit-field member read/write access (layout is exact; access is
+				a dedicated compile error today)
 			more system-header torture fixtures as regressions are found
 				(c_import_torture_test is the home for them)
 		debugger:
