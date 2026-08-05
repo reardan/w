@@ -14,7 +14,6 @@ import code_generator.elf_all
 
 int sym_address(char *s);            /* symbol_table.w */
 void elf_emit_dynamic();             /* elf_dynamic.w */
-void elf_program_header_64(int t);   /* elf_64.w */
 void define_asm_functions_arm64();   /* arm64_asm.w */
 void a64(int w);                     /* arm64.w */
 

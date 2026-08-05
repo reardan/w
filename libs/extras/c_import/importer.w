@@ -1190,12 +1190,24 @@ void ci_import_data_object(ci_declarator_info* info):
 		ci_skip_extern_function(info.name, c"extern data of unknown size")
 		return
 	int sym = sym_declare_global(info.name, info.type, 1)
-	while ((codepos % word_size) != 0):
-		emit_int8(0)
-	sym_define_global(sym)
-	save_int(table + sym + 14, size)
-	dyn_add_import_data(info.name, code_offset + codepos, size, 1)
-	emit_zeros(size)
+	# W^X split (data_split): the loader's COPY write must target the RW
+	# data segment, not the read-execute code stream — the same branch
+	# shape as grammar/extern_statement.w (docs/projects/wx_split.md).
+	if (data_split):
+		int pad = datapos & (word_size - 1)
+		if (pad != 0):
+			emit_data_zeros(word_size - pad)
+		int copy_vaddr = emit_data_zeros(size)
+		sym_define_global_at(sym, copy_vaddr)
+		save_int(table + sym + 14, size)
+		dyn_add_import_data(info.name, copy_vaddr, size, 1)
+	else:
+		while ((codepos % word_size) != 0):
+			emit_int8(0)
+		sym_define_global(sym)
+		save_int(table + sym + 14, size)
+		dyn_add_import_data(info.name, code_offset + codepos, size, 1)
+		emit_zeros(size)
 
 
 # Declared in headers but provided by the compiler, not exported by libc;
