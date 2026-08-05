@@ -40,14 +40,32 @@ userspace again, making the munmap race-free. thread_create does not
 expose its mmap either, so the worker recovers the stack base itself
 from its own stack pointer (see thread_entry).
 
+Mutex and condvar: wmutex is the classic three-state futex mutex
+(Drepper, "Futexes Are Tricky") built on the host atomic_add/atomic_cas
+intrinsics (lock xadd / lock cmpxchg, grammar/atomic_builtin.w) —
+uncontended lock and unlock are one atomic instruction with no syscall,
+contention futex-waits on the mutex word. wcond is a wakeup sequence
+counter: cond_wait snapshots it under the mutex and futex-waits while
+it still holds the snapshot, so a signal between the snapshot and the
+park flips the counter and the wait returns immediately — the wake
+cannot be lost. These are the multi-writer primitives: ANY thread may
+use them (unlike spawn/join), and the lock-prefixed atomics are full
+barriers, so a critical section's stores are visible to the next
+holder.
+
 Constraints (MVP; see threads.md for staging):
 - Only the main thread may call thread_spawn, thread_join and
   parallel_for: the handoff globals and the brk heap allocator are
   unsynchronized.
 - Worker functions must not allocate (malloc/new/list/map/print
   formatting) or spawn; they compute into memory the caller provided.
+  Allocate wmutex/wcond instances on the main thread too.
 - thread_join frees the handle: join each handle exactly once, and
   read any wthread fields (tid, stack_base) before joining.
+- cond_wait can wake spuriously (any bump wakes every parked
+  snapshot): wrap it in a while loop that re-checks the predicate —
+  the standard condvar contract. A signal with no waiter is lost, so
+  the predicate itself must live in shared state under the mutex.
 
 API:
 	type thread_fn = fn(void*) -> void
@@ -57,6 +75,14 @@ API:
 	int thread_join(wthread* t)  # 0, -1 on bad handle; reclaims stack + handle
 	void parallel_for(int start, int end, int nthreads,
 	                  parallel_for_fn* func, void* arg)
+
+	void mutex_init(wmutex* m)
+	void mutex_lock(wmutex* m)
+	void mutex_unlock(wmutex* m)   # only the locking thread may unlock
+	void cond_init(wcond* c)
+	void cond_wait(wcond* c, wmutex* m)  # call with m held, in a predicate loop
+	void cond_signal(wcond* c)     # wake one waiter
+	void cond_broadcast(wcond* c)  # wake all waiters
 
 parallel_for splits [start, end) into nthreads deterministic contiguous
 chunks (the first (end-start) % nthreads chunks get one extra element),
@@ -268,3 +294,78 @@ void parallel_for(int start, int end, int nthreads, parallel_for_fn* func, void*
 		free(cast(void*, task))
 	__w_list_free(cast(__w_list*, workers))
 	__w_list_free(cast(__w_list*, tasks))
+
+
+# Three-state futex mutex (Drepper, "Futexes Are Tricky"): word 0 =
+# unlocked, 1 = locked with no waiters, 2 = locked with possible
+# waiters. On x64 the kernel sees the low 32 bits of the 8-byte word;
+# the 0/1/2 values live entirely there (little endian).
+struct wmutex:
+	int word
+
+
+void mutex_init(wmutex* m):
+	m.word = 0
+
+
+void mutex_lock(wmutex* m):
+	# Fast path: 0 -> 1, one lock cmpxchg, no syscall.
+	int c = atomic_cas(&m.word, 0, 1)
+	while (c != 0):
+		# Mark the mutex contended (1 -> 2) unless it already is, then
+		# sleep while the word stays 2. An unlock between the mark and
+		# the wait rewrites the word, so FUTEX_WAIT's atomic re-check
+		# fails (EAGAIN) and the wake cannot be lost; a spurious wake
+		# just re-loops.
+		if ((c == 2) || (atomic_cas(&m.word, 1, 2) != 0)):
+			sys_futex(cast(int, &m.word), thread_futex_wait_op(), 2, 0)
+		# Retake as 0 -> 2, not 0 -> 1: other waiters may still be
+		# parked, and only state 2 makes the eventual unlock wake them.
+		c = atomic_cas(&m.word, 0, 2)
+
+
+void mutex_unlock(wmutex* m):
+	# 1 -> 0: nobody waits, done without a syscall. 2 -> 1: waiters may
+	# exist — release the word and wake one, which retakes it as 2 (see
+	# mutex_lock), keeping the wake chain alive for the rest.
+	if (atomic_add(&m.word, 0 - 1) != 1):
+		m.word = 0
+		thread_wake_word(&m.word)
+
+
+# Condition variable: a wakeup sequence counter (bumps are atomic —
+# concurrent signalers race on it). Wakes can be spurious and a signal
+# with no waiter is lost; see the header comment for the contract. A
+# waiter can only miss a wake if exactly 2^32 signals land between its
+# snapshot and its park (the futex compares 32 bits) — theoretical.
+struct wcond:
+	int seq
+
+
+void cond_init(wcond* c):
+	c.seq = 0
+
+
+# Atomically release m and wait for a signal, then retake m. Call with
+# m held, inside a while loop that re-checks the predicate. The
+# snapshot is taken under the mutex, so a signaler that flips the
+# predicate under the same mutex necessarily bumps seq after the
+# snapshot: either the bump lands before the park (FUTEX_WAIT returns
+# EAGAIN immediately) or the wake finds this waiter parked.
+void cond_wait(wcond* c, wmutex* m):
+	int observed = c.seq
+	mutex_unlock(m)
+	sys_futex(cast(int, &c.seq), thread_futex_wait_op(), observed, 0)
+	mutex_lock(m)
+
+
+# Wake one waiter.
+void cond_signal(wcond* c):
+	atomic_add(&c.seq, 1)
+	thread_wake_word(&c.seq)
+
+
+# Wake every waiter.
+void cond_broadcast(wcond* c):
+	atomic_add(&c.seq, 1)
+	sys_futex(cast(int, &c.seq), thread_futex_wake_op(), 0x7fffffff, 0)

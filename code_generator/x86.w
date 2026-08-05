@@ -1162,6 +1162,37 @@ void alu_add_carry():
 
 ####################### end of 32-bit limb intrinsics ######################
 
+########################### host atomic intrinsics ###########################
+# Lowering for the host-side atomic_add/atomic_cas forms
+# (grammar/atomic_builtin.w, docs/projects/threads.md): lock-prefixed
+# x86 read-modify-writes at the FULL word width. Unlike the limb
+# intrinsics above, these do take REX.W on x64 — an int is the word
+# size, and a 4-byte form would update only half the pointee. The LOCK
+# prefix (which precedes REX) makes each a full barrier on x86/x64.
+# Other ISAs never reach these emitters: the grammar rejects host
+# atomics for target_isa != 0 until the arm64 (LSE/ll-sc) and wasm
+# (threads proposal) ports land, at which point they grow the same
+# target_isa dispatch as the limb intrinsics.
+
+/* lock xadd [ebx],eax: eax = old *ebx, *ebx += eax's value; the
+   fetched pre-update value is the intrinsic's result */
+void alu_atomic_add():
+	emit(1, c"\xf0")
+	emit_x64_opcode()
+	emit(3, c"\x0f\xc1\x03")
+
+
+/* lock cmpxchg [ebx],ecx with eax = expected: *ebx == expected swaps
+   in ecx (desired); eax ends holding the pre-update *ebx value either
+   way (unchanged on success, reloaded on failure), which is the
+   intrinsic's result */
+void alu_atomic_cas():
+	emit(1, c"\xf0")
+	emit_x64_opcode()
+	emit(3, c"\x0f\xb1\x0b")
+
+####################### end of host atomic intrinsics ######################
+
 ######################## 32-bit bit-manipulation intrinsics ########################
 # Lowering for shr/rotl/rotr/popcount/clz/ctz (grammar/bit_builtin.w, #249).
 # All six read only the operands' low 32 bits, as unsigned, and produce
