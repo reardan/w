@@ -29,11 +29,24 @@ order they are defined):
   - corrupt packs: a garbage .wpack and a well-formed-header pack whose
     entry lies about its bounds both read as "object missing" through
     the fallback seam (no error channel there) but fail
-    pack_unpack_all loudly with PACK_ERR_MALFORMED.
+    pack_unpack_all loudly with PACK_ERR_MALFORMED;
+  - pack-internal re-deltification (the wpack 2 format, in a second
+    store of several similar-content blob versions): the v2 pack must
+    be SMALLER than the sum of the objects' independent loose deflates
+    (which is exactly what a v1 pack's body was made of), every object
+    must read back correctly through the fallback seam, unpack must
+    restore every loose file byte-identically, and re-packing must
+    reproduce the same pack file name (determinism);
+  - wpack 1 compatibility: a hand-assembled v1 pack file (built from
+    the same zlib streams the v1 writer would have emitted) must read
+    through the fallback seam and unpack byte-identically;
+  - a hand-assembled v2 pack whose two delta entries form a base CYCLE
+    parses (both ids are in the index) but reads as "object missing"
+    (the reader's hop budget) and fails pack_unpack_all loudly.
 
-The store root is pid- and word-size-scoped under bin/ so the 32- and
-64-bit twins can run in parallel; the final test removes everything the
-run created and asserts the directories rmdir cleanly, which doubles as
+The store roots are pid- and word-size-scoped under bin/ so the 32- and
+64-bit twins can run in parallel; the final tests remove everything the
+run created and assert the directories rmdir cleanly, which doubles as
 a check that no temp files leaked from the pack write path.
 */
 import lib.testing
@@ -387,6 +400,332 @@ void test_pack_corrupt_pack_handling():
 	free(liar_path)
 	free(packs_dir)
 	cas_close(s)
+
+
+/* ---- pack-internal re-deltification (the wpack 2 format) ---- */
+
+
+char* vcp2_root_cache
+char* vcp2_root():
+	if (vcp2_root_cache == 0):
+		string_builder* p = string_new()
+		string_append(p, c"bin/vcs_pack_v2_test_")
+		string_append_int(p, getpid())
+		string_append_char(p, '_')
+		string_append_int(p, __word_size__ * 8)
+		vcp2_root_cache = p.data
+		free(p)
+	return vcp2_root_cache
+
+
+wcas* vcp2_open():
+	wresult[wcas*]* r = cas_open(vcp2_root())
+	assert1(result_is_ok[wcas*](r))
+	wcas* s = result_value[wcas*](r)
+	result_free[wcas*](r)
+	return s
+
+
+int VCP2_VERSIONS():
+	return 6
+
+
+# 2 KiB of deterministic high-entropy printable noise (a tiny Lehmer
+# generator, mod 65537 so the arithmetic never overflows even on the
+# 32-bit twin): per-object deflate can barely compress it, while the
+# versions' shared prefix makes cross-object deltas tiny -- exactly the
+# corpus where re-deltification must win big.
+string_builder* vcp2_shared_noise():
+	string_builder* b = string_new()
+	int seed = 12345
+	int i = 0
+	while (i < 2048):
+		seed = (seed * 75 + 74) % 65537
+		string_append_char(b, 33 + (seed % 94))
+		i = i + 1
+	return b
+
+
+# Version k of the evolving content: the shared 2 KiB prefix plus a
+# small k-dependent trailer (the "edit").
+string_builder* vcp2_version_content(int k):
+	string_builder* b = vcp2_shared_noise()
+	string_append(b, c"\nversion ")
+	string_append_int(b, k)
+	string_append_char(b, 10)
+	int i = 0
+	while (i < 40):
+		string_append_char(b, 'a' + ((k * 7 + i * 3) % 26))
+		i = i + 1
+	return b
+
+
+list[char*] vcp2_ids
+list[string_builder*] vcp2_loose_bytes
+int vcp2_loose_total
+char* vcp2_pack_path
+
+
+int vcp2_index_of(char* hay, int hay_len, char* needle):
+	int nl = strlen(needle)
+	int i = 0
+	while ((i + nl) <= hay_len):
+		int j = 0
+		while ((j < nl) && (hay[i + j] == needle[j])):
+			j = j + 1
+		if (j == nl):
+			return i
+		i = i + 1
+	return -1
+
+
+void test_pack_v2_deltify_smaller_and_read_through():
+	wcas* s = vcp2_open()
+	pack_attach(s)
+	vcp2_ids = new list[char*]
+	vcp2_loose_bytes = new list[string_builder*]
+	vcp2_loose_total = 0
+
+	int k = 0
+	while (k < VCP2_VERSIONS()):
+		string_builder* content = vcp2_version_content(k)
+		vcp2_ids.push(vcpt_put_blob(s, content.data, content.length))
+		string_free(content)
+		k = k + 1
+	for char* id in vcp2_ids:
+		string_builder* loose = vcpt_read_loose(s, id)
+		vcp2_loose_total = vcp2_loose_total + loose.length
+		vcp2_loose_bytes.push(loose)
+
+	wresult[pack_stats*]* st_r = pack_store_loose(s, 1)
+	assert1(result_is_ok[pack_stats*](st_r))
+	pack_stats* st = result_value[pack_stats*](st_r)
+	result_free[pack_stats*](st_r)
+	assert_equal(VCP2_VERSIONS(), st.objects)
+	assert_equal(1, st.packs)
+	vcp2_pack_path = strclone(st.pack_path)
+	pack_stats_free(st)
+
+	# The whole point of v2: the pack file (header included) must be
+	# SMALLER than the sum of the objects' independent deflates -- and
+	# a v1 pack's body was exactly those deflated streams back to back,
+	# so this also proves "smaller than v1-style packing" (the loose
+	# encodings use the same deterministic encoder at the same level).
+	string_builder* pack_bytes = cas_read_file(vcp2_pack_path)
+	assert1(pack_bytes != 0)
+	assert1(pack_bytes.length < vcp2_loose_total)
+	# It really is the v2 format, and the header really contains delta
+	# entries (' d ' cannot occur in "<id> f <offset> <clen> <ulen>"
+	# lines; the search stops at the header-terminating blank line).
+	assert_equal(0, vcp2_index_of(pack_bytes.data, pack_bytes.length, c"wpack 2\n"))
+	int header_end = vcp2_index_of(pack_bytes.data, pack_bytes.length, c"\n\n")
+	assert1(header_end > 0)
+	assert1(vcp2_index_of(pack_bytes.data, header_end, c" d ") > 0)
+	string_free(pack_bytes)
+
+	# Every version reads back content-identically through the fallback
+	# seam, and content-hash verification survives the delta encoding.
+	k = 0
+	while (k < VCP2_VERSIONS()):
+		char* id = vcp2_ids[k]
+		assert_equal(0, vcpt_loose_exists(s, id))
+		assert_equal(1, cas_has(s, id))
+		string_builder* want = vcp2_version_content(k)
+		wresult[wcas_object*]* got = cas_get(s, id)
+		assert1(result_is_ok[wcas_object*](got))
+		wcas_object* obj = result_value[wcas_object*](got)
+		result_free[wcas_object*](got)
+		assert_strings_equal(c"blob", obj.object_type)
+		vcpt_assert_bytes_equal(want.data, want.length, obj.data, obj.length)
+		cas_object_free(obj)
+		string_free(want)
+		assert_equal(1, cas_verify(s, id))
+		k = k + 1
+	cas_close(s)
+
+
+void test_pack_v2_unpack_round_trip_and_determinism():
+	wcas* s = vcp2_open()
+	pack_attach(s)
+
+	wresult[pack_stats*]* st_r = pack_unpack_all(s)
+	assert1(result_is_ok[pack_stats*](st_r))
+	pack_stats* st = result_value[pack_stats*](st_r)
+	result_free[pack_stats*](st_r)
+	assert_equal(VCP2_VERSIONS(), st.objects)
+	assert_equal(1, st.packs)
+	pack_stats_free(st)
+	assert_equal(0, path_exists(vcp2_pack_path))
+
+	# Byte-identical loose restoration, straight through the delta
+	# entries.
+	int i = 0
+	while (i < vcp2_ids.length):
+		string_builder* restored = vcpt_read_loose(s, vcp2_ids[i])
+		string_builder* original = vcp2_loose_bytes[i]
+		vcpt_assert_bytes_equal(original.data, original.length, restored.data, restored.length)
+		string_free(restored)
+		i = i + 1
+
+	# Determinism: re-packing the identical object set reproduces the
+	# exact same pack file (name = sha256 of its own bytes), delta
+	# pairing included; a final unpack restores the loose store.
+	wresult[pack_stats*]* again_r = pack_store_loose(s, 0)
+	assert1(result_is_ok[pack_stats*](again_r))
+	pack_stats* again = result_value[pack_stats*](again_r)
+	result_free[pack_stats*](again_r)
+	assert_strings_equal(vcp2_pack_path, again.pack_path)
+	pack_stats_free(again)
+	wresult[pack_stats*]* redo_r = pack_unpack_all(s)
+	assert1(result_is_ok[pack_stats*](redo_r))
+	pack_stats_free(result_value[pack_stats*](redo_r))
+	result_free[pack_stats*](redo_r)
+	cas_close(s)
+
+
+char* vcp2_compat_id
+string_builder* vcp2_compat_loose
+
+
+# A wpack 1 file must keep reading (and unpacking) forever. Hand-build
+# one from the same zlib stream the v1 writer would have emitted -- a
+# loose object's on-disk bytes ARE that stream (same encoder, same
+# level), so the fixture is exact by construction.
+void test_pack_v1_read_compat():
+	wcas* s = vcp2_open()
+	pack_attach(s)
+
+	char* content = c"wpack 1 compatibility object: reads forever"
+	vcp2_compat_id = vcpt_put_blob(s, content, strlen(content))
+	vcp2_compat_loose = vcpt_read_loose(s, vcp2_compat_id)
+	string_builder* logical = cas_object_bytes(c"blob", content, strlen(content))
+
+	string_builder* v1 = string_new()
+	string_append(v1, c"wpack 1\ncount 1\n")
+	string_append(v1, vcp2_compat_id)
+	string_append(v1, c" 0 ")
+	string_append_int(v1, vcp2_compat_loose.length)
+	string_append_char(v1, ' ')
+	string_append_int(v1, logical.length)
+	string_append(v1, c"\n\n")
+	string_append_bytes(v1, vcp2_compat_loose.data, vcp2_compat_loose.length)
+	string_free(logical)
+	char* packs_dir = pack_dir_path(s.root)
+	char* v1_path = path_join(packs_dir, c"v1compat.wpack")
+	vcpt_write_file(v1_path, v1.data, v1.length)
+	string_free(v1)
+
+	# Remove the loose copy: reads must now come from the v1 pack. The
+	# handle's lazy scan already ran (cas_put's dedup check consulted
+	# the fallback), so re-arm it to see the just-written file.
+	pack_reset_attached(s)
+	char* obj_path = cas_object_path(s, vcp2_compat_id)
+	assert_equal(0, vcs_unlink(obj_path))
+	free(obj_path)
+	assert_equal(1, cas_has(s, vcp2_compat_id))
+	wresult[wcas_object*]* got = cas_get(s, vcp2_compat_id)
+	assert1(result_is_ok[wcas_object*](got))
+	wcas_object* obj = result_value[wcas_object*](got)
+	result_free[wcas_object*](got)
+	assert_strings_equal(c"blob", obj.object_type)
+	vcpt_assert_bytes_equal(content, strlen(content), obj.data, obj.length)
+	cas_object_free(obj)
+
+	# Unpack restores the identical loose file and removes the v1 pack.
+	wresult[pack_stats*]* st_r = pack_unpack_all(s)
+	assert1(result_is_ok[pack_stats*](st_r))
+	pack_stats* st = result_value[pack_stats*](st_r)
+	result_free[pack_stats*](st_r)
+	assert_equal(1, st.objects)
+	assert_equal(1, st.packs)
+	pack_stats_free(st)
+	assert_equal(0, path_exists(v1_path))
+	string_builder* restored = vcpt_read_loose(s, vcp2_compat_id)
+	vcpt_assert_bytes_equal(vcp2_compat_loose.data, vcp2_compat_loose.length, restored.data, restored.length)
+	string_free(restored)
+
+	free(v1_path)
+	free(packs_dir)
+	cas_close(s)
+
+
+# A hand-crafted v2 pack whose two delta entries name each other as
+# base parses (both ids ARE in the index -- pack_parse cannot see the
+# cycle) but must resolve as "object missing" via the reader's hop
+# budget, and must fail pack_unpack_all loudly.
+void test_pack_v2_cycle_pack_rejected():
+	wcas* s = vcp2_open()
+	pack_attach(s)
+
+	# "I0\n" is a valid (empty-insert) opcode stream, so only the cycle
+	# itself is wrong with this pack.
+	zlib_result* z = zlib_compress(c"I0\n", 3, DEFLATE_LEVEL_BEST())
+	char* id_a = c"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	char* id_b = c"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	string_builder* v2 = string_new()
+	string_append(v2, c"wpack 2\ncount 2\n")
+	string_append(v2, id_a)
+	string_append(v2, c" d 0 ")
+	string_append_int(v2, z.length)
+	string_append(v2, c" 3 0 ")
+	string_append(v2, id_b)
+	string_append_char(v2, 10)
+	string_append(v2, id_b)
+	string_append(v2, c" d 0 ")
+	string_append_int(v2, z.length)
+	string_append(v2, c" 3 0 ")
+	string_append(v2, id_a)
+	string_append(v2, c"\n\n")
+	string_append_bytes(v2, z.data, z.length)
+	zlib_result_free(z)
+	char* packs_dir = pack_dir_path(s.root)
+	char* cycle_path = path_join(packs_dir, c"cycle.wpack")
+	vcpt_write_file(cycle_path, v2.data, v2.length)
+	string_free(v2)
+
+	# The read path bottoms out cleanly: a miss, not a hang or a crash.
+	wresult[wcas_object*]* got = cas_get(s, id_a)
+	assert1(result_is_error[wcas_object*](got))
+	assert_equal(-2, result_code[wcas_object*](got))
+	result_free[wcas_object*](got)
+
+	# The unpack path reports it.
+	wresult[pack_stats*]* st_r = pack_unpack_all(s)
+	assert1(result_is_error[pack_stats*](st_r))
+	assert_equal(PACK_ERR_MALFORMED(), result_code[pack_stats*](st_r))
+	result_free[pack_stats*](st_r)
+	assert_equal(1, path_exists(cycle_path))
+
+	assert_equal(0, vcs_unlink(cycle_path))
+	free(cycle_path)
+	free(packs_dir)
+	cas_close(s)
+
+
+# Removes exactly what the v2 tests created in their own store root and
+# asserts every directory rmdirs cleanly (no leaked temp files).
+void test_pack_v2_cleanup_store():
+	wcas* s = vcp2_open()
+	vcp2_ids.push(vcp2_compat_id)
+	for char* id in vcp2_ids:
+		char* obj_path = cas_object_path(s, id)
+		vcs_unlink(obj_path)
+		free(obj_path)
+	for char* id in vcp2_ids:
+		char* fan_dir = cas_fanout_dir(s, id)
+		rmdir(fan_dir)   # shared fanouts return -2/-39 on repeats; ignored
+		free(fan_dir)
+	char* packs_dir = pack_dir_path(s.root)
+	assert_equal(0, rmdir(packs_dir))
+	free(packs_dir)
+	char* objects = path_join(vcp2_root(), c"objects")
+	assert_equal(0, rmdir(objects))
+	free(objects)
+	cas_close(s)
+	assert_equal(0, rmdir(vcp2_root()))
+	for string_builder* b in vcp2_loose_bytes:
+		string_free(b)
+	string_free(vcp2_compat_loose)
 
 
 # Runs last (tests execute in definition order): removes exactly what

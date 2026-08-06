@@ -365,9 +365,10 @@ current state:
 				deflate-compressed, indexed W-native .wpack file (wvc pack
 				[--prune] / wvc unpack); reads come back through cas.w's
 				fallback seam, so status/log/pull work against packed stores
+			pack-internal re-deltification (wpack 2): sliding-window
+				cross-object delta compression inside a pack, bounded-depth
+				same-pack base chains; wpack 1 files stay readable
 		remaining:
-			pack-internal re-deltification (delta.w objects pack as-is;
-				no cross-object delta compression inside a pack yet)
 			git interop (non-goal for now; needs zlib + SHA-1 + pack format)
 
 	parser generator (libs/extras/parser_generator/; design: docs/projects/parser_generator.md, issue #329):
