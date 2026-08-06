@@ -1619,6 +1619,26 @@
 			]
 		},
 		{
+			"name": "wcore",
+			"deps": ["wv2"],
+			"inputs": ["tools/wcore.w"],
+			"outputs": ["bin/wcore"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tools/wcore.w", "-o", "bin/wcore.stage"]},
+				{"cmd": ["mv", "bin/wcore.stage", "bin/wcore"]}
+			]
+		},
+		{
+			"name": "wcore_test",
+			"deps": ["wcore"],
+			"inputs": ["tools/wcore_test.sh", "tests/crash_null_deref_fixture.w"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/crash_null_deref_fixture.w", "-o", "bin/wcore_fixture32"]},
+				{"cmd": ["bin/wv2", "x64", "tests/crash_null_deref_fixture.w", "-o", "bin/wcore_fixture64"]},
+				{"cmd": ["sh", "tools/wcore_test.sh"], "expect_stdout": "wcore test OK"}
+			]
+		},
+		{
 			"name": "repl_test",
 			"deps": ["wv2"],
 			"data": ["tests/repl_giant_entry_fixture.txt"],
@@ -2451,6 +2471,7 @@
 				"net_basic",
 				"debug_test",
 				"attach_test",
+				"wcore_test",
 				"repl_test",
 				"repl_pty_test",
 				"dynamic_test",
