@@ -2094,6 +2094,7 @@
 				"raft_wire_64_test",
 				"rand_64_test",
 				"rc4_64_test",
+				"regex_64_test",
 				"result_64_test",
 				"result_propagate_64_test",
 				"retry_64_test",
@@ -2682,6 +2683,7 @@
 				"rand_test",
 				"range_test",
 				"rc4_test",
+				"regex_test",
 				"result_test",
 				"retry_test",
 				"ring_test",
@@ -5810,6 +5812,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/x/unsafe/rc4_test.w", "-o", "bin/rc4_test"]},
 				{"cmd": ["bin/rc4_test"]}
+			]
+		},
+		{
+			"name": "regex_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/regex_test.w"],
+			"outputs": ["bin/regex_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/regex_test.w", "-o", "bin/regex_64_test"]},
+				{"cmd": ["bin/regex_64_test"]}
+			]
+		},
+		{
+			"name": "regex_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/regex_test.w"],
+			"outputs": ["bin/regex_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/regex_test.w", "-o", "bin/regex_test"]},
+				{"cmd": ["bin/regex_test"]}
 			]
 		},
 		{

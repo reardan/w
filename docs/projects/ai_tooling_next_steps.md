@@ -200,6 +200,14 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
+- **`./wbuild -j 2 test_changed` misparses as a target lookup**
+  (2026-08-06, lib/regex.w run). `test_changed` is a wbuild script
+  mode dispatched only when it is literally `$1`, so leading flags
+  (`-j 2`) fall through to wexec, which dies with the misleading
+  `unknown target test_changed`. Trailing flags work
+  (`./wbuild test_changed -j 2`). Either scan past leading `-j`/
+  `--*` arguments when detecting the mode, or have wexec's unknown-
+  target error hint at the script modes (`test_changed`, `update`).
 - **No way to dump a struct's computed layout without running a
   binary.** Found 2026-08-05 validating imported C bit-field layout for
   the env-blocked i386 target: the only ways to see the field offsets
