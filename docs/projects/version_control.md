@@ -252,9 +252,17 @@ before the next begins. Modules are ordered so the build-system work
   status`/`log`/`pull` — work against fully packed stores unchanged.
   Porcelain: `wvc pack [--prune]` / `wvc unpack` (byte-identical
   loose round-trip; the pack file itself is deterministic for a given
-  object set). Pack-internal re-deltification is deferred — delta.w
-  objects pack as-is, which already composes chain compression with
-  per-object deflate.
+  object set). Pack-internal re-deltification landed as the `wpack 2`
+  format (2026-08, closing the issue #252 remainder): the writer
+  sorts objects by (type, size descending, id) and slides a bounded
+  window over that order, storing an object as a delta.w opcode
+  stream against a same-pack neighbor whenever that delta's deflate
+  is strictly smaller than the object's own deflate — full entries
+  otherwise, so a v2 pack never loses to v1 on the same objects. The
+  reader resolves base chains recursively with the same bounded hop
+  budget delta.w uses, `wpack 1` files stay readable unchanged, and
+  the deterministic-for-a-given-object-set and byte-identical-unpack
+  promises both carry over.
 - **`libs/extras/compress/`** — CRC32 plus DEFLATE (inflate first,
   deflate second). Its own package, deliberately outside `vcs/`:
   the web stack wants gzip anyway, and inflate+SHA-1 would be the

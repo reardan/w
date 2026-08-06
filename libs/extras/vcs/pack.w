@@ -17,28 +17,71 @@ encoding); nothing in this format is or pretends to be a git packfile.
 
 File format (one "<sha256 of the file's own bytes>.wpack" file under
 "<root>/packs/", written atomically via the same write-to-temp +
-rename protocol cas.w uses for objects/):
+rename protocol cas.w uses for objects/). The current writer emits
+version 2; version 1 (PR #401's format) stays readable forever -- see
+"Version 1 compatibility" below.
 
-	wpack 1\n
+	wpack 2\n
 	count <N>\n
-	<id> <offset> <clen> <ulen>\n      (exactly N lines, ids ascending)
+	<id> f <offset> <clen> <ulen>\n                       (full entry)
+	<id> d <offset> <clen> <ulen> <rlen> <base-id>\n      (delta entry)
 	\n
 	<body: the N entries' zlib streams, back to back>
 
 Header lines are ASCII text in the same package.wmeta-flavored
 "parseable without a general parser" spirit as commit.w/tree.w/delta.w:
 one forward pass, fixed field order, a blank line ends the header. Each
-index line names one object: its 64-hex id, the byte offset of its
-entry inside the body (relative to the first body byte, so the header's
-own size never shifts offsets), the entry's compressed length, and the
-length of the LOGICAL bytes it inflates back to. An entry's bytes are
-libs/extras/compress/zlib.w's zlib_compress, at DEFLATE_LEVEL_BEST, of
-the object's logical "<type> <len>\0" + payload sequence -- the same
-bytes a loose object's on-disk encoding compresses (cas.w's "On-disk
-encoding"), so packing and unpacking are pure re-encodings that can
-never change an object's identity, and unpacking an object written by
-this cas.w reproduces the loose file byte-for-byte (same deterministic
-zlib encoder, same level).
+index line names one object: its 64-hex id, a one-character encoding
+kind, the byte offset of its entry inside the body (relative to the
+first body byte, so the header's own size never shifts offsets), the
+entry's compressed length, and the length of the bytes its zlib stream
+inflates back to. An entry's bytes are libs/extras/compress/zlib.w's
+zlib_compress, at DEFLATE_LEVEL_BEST, of:
+
+  - kind 'f' (full): the object's logical "<type> <len>\0" + payload
+    sequence -- the same bytes a loose object's on-disk encoding
+    compresses (cas.w's "On-disk encoding"), so packing and unpacking
+    are pure re-encodings that can never change an object's identity,
+    and unpacking an object written by this cas.w reproduces the loose
+    file byte-for-byte (same deterministic zlib encoder, same level).
+  - kind 'd' (delta -- pack-internal re-deltification, issue #252's
+    last VCS remainder): a delta.w opcode stream (delta_encode_ops's
+    wire format, applied with delta_apply) whose BASE is the LOGICAL
+    bytes of the pack entry named by the line's trailing <base-id>,
+    and whose reconstruction is this object's own logical bytes. The
+    two extra fields are <rlen>, the reconstructed logical length
+    (checked after every apply), and the 64-hex base id, which MUST
+    name an entry in the SAME pack file (the parser rejects a base id
+    the index does not contain, so resolution never leaves the file).
+    Base entries may themselves be deltas; chains bottom out at a
+    full entry within DELTA_MAX_CHAIN_DEPTH() hops -- the reader
+    walks with its own hop budget exactly like delta.w's
+    cas_get_resolved, so a corrupt or hand-crafted pack with a base
+    cycle reads as "object missing" instead of recursing forever.
+
+Base selection (the writer's pairing heuristic, git's sliding-window
+scheme scaled down): objects are sorted by (logical type tag, size
+descending, id) so related objects -- successive versions of similar
+content -- land next to each other, then each object tries a delta
+against the up-to-PACK_DELTA_WINDOW() immediately preceding objects
+in that order (skipping candidates whose own chain depth is already
+at the bound). The smallest raw opcode stream that also beats the
+object's own size is the one candidate that gets deflated, and the
+entry is stored as a delta only when that deflated delta is STRICTLY
+smaller than the object's plain deflate -- so a v2 pack is never
+larger than the v1 pack of the same objects (modulo the few bytes of
+index-line tag), and objects with no similar neighbor degrade to
+exactly the v1 encoding. Everything in the pipeline (the sort, the
+window scan, delta_diff, zlib_compress) is deterministic, so the pack
+file's bytes -- and therefore its content-hash name -- remain a pure
+function of the object set, the same promise v1 made.
+
+Version 1 compatibility: the parser accepts "wpack 1" headers
+unchanged -- a v1 index line is exactly a v2 'f' line without the
+kind field ("<id> <offset> <clen> <ulen>"), and v1 bodies are all
+full entries. Reading, unpacking, and pruning mixed stores (old v1
+packs next to new v2 packs) all work; nothing ever rewrites a v1
+file in place (repacking naturally replaces it with a v2 one).
 
 Ids are treated as NAMES, not re-verified content hashes, on both the
 pack and unpack paths: a store legitimately contains objects whose id
@@ -46,13 +89,13 @@ is not the hash of their own logical bytes -- cas_put_raw build-cache
 entries keyed by input hashes (issue #251 direction 3), and delta.w
 chains, whose id is the hash of the RECONSTRUCTED object rather than
 the stored "delta" payload. Integrity inside a pack rests on the zlib
-streams' own adler32 checksums plus the recorded ulen; full digest
-verification stays cas_verify's job, exactly as for loose raw-put
-objects. Delta-encoded objects pack as-is (their "delta"-typed logical
-bytes), so a packed chain still resolves through delta.w's
-cas_get_resolved unchanged; pack-internal re-deltification is left out
-of this v1 on purpose (version_control.md notes plain per-object
-compression as the acceptable v1).
+streams' own adler32 checksums plus the recorded ulen (and rlen for
+delta entries); full digest verification stays cas_verify's job,
+exactly as for loose raw-put objects. delta.w CHAIN objects (the
+"delta"-typed CAS species) pack as ordinary entries of their stored
+logical bytes -- pack-internal deltification is a second, independent
+layer below them, invisible above pack_file_get, so a packed chain
+still resolves through delta.w's cas_get_resolved unchanged.
 
 Read path: pack_attach(s) registers this module on an open cas handle
 through cas.w's fallback seam (struct wcas's fallback_* fields), so
@@ -110,6 +153,7 @@ import libs.standard.crypto.sha2
 import libs.extras.compress.deflate
 import libs.extras.compress.zlib
 import libs.extras.vcs.cas
+import libs.extras.vcs.delta
 import libs.extras.vcs.__arch__.fsops
 
 
@@ -130,8 +174,34 @@ char* PACK_SUFFIX():
 	return c".wpack"
 
 
-char* PACK_MAGIC_LINE():
+# The two accepted header magic lines: v1 (PR #401's format, read-only
+# compatibility) and v2 (the current writer's format, adding per-entry
+# delta encoding -- see the header comment).
+char* PACK_MAGIC_V1():
 	return c"wpack 1"
+
+
+char* PACK_MAGIC_V2():
+	return c"wpack 2"
+
+
+# Index-line encoding kinds (v2): 'f' = full (the zlib stream inflates
+# to the object's logical bytes), 'd' = delta (it inflates to a delta.w
+# opcode stream against another entry of the same pack).
+int PACK_ENTRY_FULL():
+	return 'f'
+
+
+int PACK_ENTRY_DELTA():
+	return 'd'
+
+
+# How many immediately preceding objects (in the writer's sorted order)
+# are tried as delta bases for each object -- git's sliding window,
+# scaled to this store's size. Purely a write-time effort/ratio knob:
+# packs written under any window read back identically.
+int PACK_DELTA_WINDOW():
+	return 8
 
 
 # "<root>/packs" (owned by the caller).
@@ -143,12 +213,17 @@ char* pack_dir_path(char* root):
 
 
 # One indexed object inside a pack: where its zlib stream lives in the
-# body, how long that stream is, and how many logical bytes it inflates
-# back to.
+# body, how long that stream is, how many bytes it inflates back to,
+# and (for kind == PACK_ENTRY_DELTA()) which same-pack entry is its
+# base plus the reconstructed logical length. For full entries (every
+# v1 entry, and v2 'f' lines) rlen == ulen and base_id == 0.
 struct wpack_entry:
+	int kind
 	int offset
 	int clen
 	int ulen
+	int rlen
+	char* base_id     # owned; 0 for full entries
 
 
 # One loaded pack file, kept fully in memory (see the header comment's
@@ -180,10 +255,20 @@ struct pack_stats:
 	char* pack_path   # owned; 0 when no pack was created
 
 
+void pack_entry_free(wpack_entry* e):
+	if (e.base_id != 0):
+		free(e.base_id)
+	free(e)
+
+
+void pack_entries_free(map[char*, wpack_entry*] entries):
+	for char* id in entries:
+		pack_entry_free(entries[id])
+	map_free[char*, wpack_entry*](entries)
+
+
 void pack_file_free(wpack_file* p):
-	for char* id in p.entries:
-		free(p.entries[id])
-	map_free[char*, wpack_entry*](p.entries)
+	pack_entries_free(p.entries)
 	free(p.path)
 	free(p.data)
 	free(p)
@@ -254,16 +339,24 @@ int pack_expect_char(char* data, int length, int* pos, int ch):
 
 
 # Parses a whole pack file's bytes into a wpack_file, validating the
-# format end to end: magic/version line, count, every index line (valid
-# id, three in-range numeric fields, ids unique), the blank header
+# format end to end: magic/version line (v1 and v2 both accepted --
+# see the header comment's compatibility section), count, every index
+# line (valid id, kind for v2, in-range numeric fields, ids unique, a
+# valid same-pack base id on every delta line), the blank header
 # terminator, and every entry's [offset, offset+clen) staying inside
 # the body. On success the returned wpack_file OWNS `data` (and `path`
 # is cloned); on error the caller keeps ownership of `data`.
 wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 	int pos = 0
-	int valid = pack_starts_with(data, length, pos, PACK_MAGIC_LINE())
+	int version = 0
+	if (pack_starts_with(data, length, pos, PACK_MAGIC_V1())):
+		version = 1
+		pos = pos + strlen(PACK_MAGIC_V1())
+	else if (pack_starts_with(data, length, pos, PACK_MAGIC_V2())):
+		version = 2
+		pos = pos + strlen(PACK_MAGIC_V2())
+	int valid = version != 0
 	if (valid):
-		pos = pos + strlen(PACK_MAGIC_LINE())
 		valid = pack_expect_char(data, length, &pos, 10)
 	if (valid):
 		valid = pack_starts_with(data, length, pos, c"count ")
@@ -284,6 +377,15 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 			id = path_clone_range(data + pos, 64)
 			pos = pos + 64
 			valid = cas_valid_id(id) && ((id in entries) == 0)
+		int kind = PACK_ENTRY_FULL()
+		if (version == 2):
+			valid = valid && pack_expect_char(data, length, &pos, ' ')
+			if (valid && (pos < length)):
+				kind = data[pos] & 255
+				valid = (kind == PACK_ENTRY_FULL()) || (kind == PACK_ENTRY_DELTA())
+				pos = pos + 1
+			else:
+				valid = 0
 		int offset = -1
 		int clen = -1
 		int ulen = -1
@@ -296,13 +398,31 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 			valid = (clen >= 0) && pack_expect_char(data, length, &pos, ' ')
 		if (valid):
 			ulen = pack_parse_uint(data, length, &pos)
-			valid = (ulen >= 0) && pack_expect_char(data, length, &pos, 10)
+			valid = valid && (ulen >= 0)
+		int rlen = ulen
+		char* base_id = 0
+		if (valid && (kind == PACK_ENTRY_DELTA())):
+			valid = pack_expect_char(data, length, &pos, ' ')
+			if (valid):
+				rlen = pack_parse_uint(data, length, &pos)
+				valid = (rlen >= 0) && pack_expect_char(data, length, &pos, ' ')
+			valid = valid && ((pos + 64) <= length)
+			if (valid):
+				base_id = path_clone_range(data + pos, 64)
+				pos = pos + 64
+				valid = cas_valid_id(base_id)
+		valid = valid && pack_expect_char(data, length, &pos, 10)
 		if (valid):
 			wpack_entry* e = new wpack_entry
+			e.kind = kind
 			e.offset = offset
 			e.clen = clen
 			e.ulen = ulen
+			e.rlen = rlen
+			e.base_id = base_id
 			entries[id] = e
+		else if (base_id != 0):
+			free(base_id)
 		if (id != 0):
 			free(id)
 		i = i + 1
@@ -314,10 +434,13 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 			wpack_entry* e = entries[id]
 			if ((e.offset > body_len) || (e.clen > (body_len - e.offset))):
 				valid = 0
+			# Delta resolution never leaves the file: a base id that is
+			# not itself an entry of THIS pack is malformed by definition
+			# (the writer only ever pairs same-pack objects).
+			if ((e.base_id != 0) && ((e.base_id in entries) == 0)):
+				valid = 0
 	if (valid == 0):
-		for char* id in entries:
-			free(entries[id])
-		map_free[char*, wpack_entry*](entries)
+		pack_entries_free(entries)
 		return result_new_error[wpack_file*](PACK_ERR_MALFORMED())
 
 	wpack_file* p = new wpack_file
@@ -349,16 +472,11 @@ int pack_file_has(wpack_file* p, char* id):
 	return id in p.entries
 
 
-# The LOGICAL bytes ("<type> <len>\0" + payload) of the object stored
-# under `id` in this pack, or 0 when the pack has no such entry OR the
-# entry does not inflate back to exactly its recorded ulen (a corrupt
-# entry reads as missing here -- see the header comment; wvc unpack
-# reports the same condition as a hard error instead). Owned by the
+# Inflates one entry's zlib stream, or 0 when it does not inflate back
+# to exactly its recorded ulen. For a full entry these are the object's
+# logical bytes; for a delta entry, its opcode stream. Owned by the
 # caller (string_free).
-string_builder* pack_file_get(wpack_file* p, char* id):
-	if ((id in p.entries) == 0):
-		return 0
-	wpack_entry* e = p.entries[id]
+string_builder* pack_entry_inflate(wpack_file* p, wpack_entry* e):
 	wresult[zlib_result*]* z = zlib_decompress(&p.data[p.body_start + e.offset], e.clen, e.ulen)
 	if (result_is_error[zlib_result*](z)):
 		result_free[zlib_result*](z)
@@ -372,6 +490,59 @@ string_builder* pack_file_get(wpack_file* p, char* id):
 	string_append_bytes(out, body.data, body.length)
 	zlib_result_free(body)
 	return out
+
+
+# The recursive half of pack_file_get: resolves an entry to its logical
+# bytes, walking delta bases with an explicit hop budget -- decremented
+# once per delta link actually followed, independent of anything the
+# file claims, so a corrupt or hand-crafted pack with a base cycle
+# (which pack_parse cannot see: every id in the cycle IS in the index)
+# fails cleanly as "missing" after at most DELTA_MAX_CHAIN_DEPTH()
+# steps instead of recursing forever (the same discipline as delta.w's
+# delta_resolve).
+string_builder* pack_file_get_hops(wpack_file* p, char* id, int hops_remaining):
+	if ((id in p.entries) == 0):
+		return 0
+	wpack_entry* e = p.entries[id]
+	string_builder* stream = pack_entry_inflate(p, e)
+	if (stream == 0):
+		return 0
+	if (e.kind != PACK_ENTRY_DELTA()):
+		return stream
+	if (hops_remaining <= 0):
+		string_free(stream)
+		return 0
+	string_builder* base = pack_file_get_hops(p, e.base_id, hops_remaining - 1)
+	if (base == 0):
+		string_free(stream)
+		return 0
+	wresult[delta_apply_result*]* applied = delta_apply(base.data, base.length, stream.data, stream.length)
+	string_free(base)
+	string_free(stream)
+	if (result_is_error[delta_apply_result*](applied)):
+		result_free[delta_apply_result*](applied)
+		return 0
+	delta_apply_result* r = result_value[delta_apply_result*](applied)
+	result_free[delta_apply_result*](applied)
+	if (r.length != e.rlen):
+		delta_apply_result_free(r)
+		return 0
+	string_builder* out = string_new()
+	string_append_bytes(out, r.data, r.length)
+	delta_apply_result_free(r)
+	return out
+
+
+# The LOGICAL bytes ("<type> <len>\0" + payload) of the object stored
+# under `id` in this pack, or 0 when the pack has no such entry OR the
+# entry fails to resolve -- a stream that does not inflate back to its
+# recorded ulen, a delta whose apply fails or whose reconstruction
+# misses its recorded rlen, or a base chain deeper than
+# DELTA_MAX_CHAIN_DEPTH() (a corrupt entry reads as missing here -- see
+# the header comment; wvc unpack reports the same condition as a hard
+# error instead). Owned by the caller (string_free).
+string_builder* pack_file_get(wpack_file* p, char* id):
+	return pack_file_get_hops(p, id, DELTA_MAX_CHAIN_DEPTH())
 
 
 /* Directory listing (the getdents(2) pattern tree_snapshot uses) */
@@ -638,6 +809,90 @@ wresult[string_builder*]* pack_read_loose_logical(wcas* s, char* id):
 	return result_new_ok[string_builder*](logical)
 
 
+/* Delta base selection (the write-side pairing heuristic) */
+
+
+# One object staged for packing: its id (borrowed from the caller's id
+# list), its logical bytes and their leading type tag (both owned), and
+# the delta-chain depth it ended up stored at (0 = full entry; assigned
+# as entries are emitted, consulted when later objects consider this
+# one as a base).
+struct pack_plan:
+	char* id
+	string_builder* logical
+	char* type_tag    # owned
+	int depth
+
+
+void pack_plan_list_free(list[pack_plan*] plans):
+	for pack_plan* pl in plans:
+		string_free(pl.logical)
+		free(pl.type_tag)
+		free(pl)
+	list_free[pack_plan*](plans)
+
+
+# The leading type tag of already-validated logical bytes (framing was
+# checked by pack_read_loose_logical, so the scan always stops at the
+# header's ' '). Owned by the caller.
+char* pack_logical_tag(string_builder* logical):
+	int i = 0
+	while ((i < logical.length) && cas_valid_tag_char(logical.data[i] & 255)):
+		i = i + 1
+	return path_clone_range(logical.data, i)
+
+
+# Packing order: type tag, then size DESCENDING, then id -- so objects
+# likely to share content (several versions of similar payloads have
+# the same type and similar sizes) become window neighbors, and deltas
+# tend to point from smaller objects at larger bases. Ids are unique,
+# so this is a total (and therefore deterministic) order.
+int pack_plan_compare(pack_plan* a, pack_plan* b):
+	int t = strcmp(a.type_tag, b.type_tag)
+	if (t != 0):
+		return t
+	if (a.logical.length > b.logical.length):
+		return -1
+	if (a.logical.length < b.logical.length):
+		return 1
+	return strcmp(a.id, b.id)
+
+
+# Picks the best delta base for plans[i] among the up-to-
+# PACK_DELTA_WINDOW() preceding objects in packing order, skipping
+# candidates whose own chain is already DELTA_MAX_CHAIN_DEPTH() deep.
+# "Best" is the smallest RAW opcode stream that is also smaller than
+# the object's own logical bytes (a delta at least as large as the
+# content itself can never win after deflate); ties keep the earliest
+# candidate. Returns the winning candidate's index via *best_index and
+# the caller-owned opcode stream, or 0 when no candidate qualifies --
+# the final delta-vs-full call stays with the caller, which deflates
+# the one winner and compares COMPRESSED sizes.
+string_builder* pack_pick_delta(list[pack_plan*] plans, int i, int* best_index):
+	pack_plan* target = plans[i]
+	string_builder* best = 0
+	int j = i - PACK_DELTA_WINDOW()
+	if (j < 0):
+		j = 0
+	while (j < i):
+		pack_plan* cand = plans[j]
+		if ((cand.depth + 1) <= DELTA_MAX_CHAIN_DEPTH()):
+			delta_ops* ops = delta_diff(cand.logical.data, cand.logical.length, target.logical.data, target.logical.length)
+			string_builder* payload = delta_encode_ops(ops)
+			delta_ops_free(ops)
+			int better = payload.length < target.logical.length
+			better = better && ((best == 0) || (payload.length < best.length))
+			if (better):
+				if (best != 0):
+					string_free(best)
+				best = payload
+				*best_index = j
+			else:
+				string_free(payload)
+		j = j + 1
+	return best
+
+
 # Repacks every loose object into one new pack file (see the header
 # comment's write-path section). `prune` != 0 additionally removes the
 # loose copies -- only after the pack file's rename has made it durable,
@@ -663,8 +918,11 @@ wresult[pack_stats*]* pack_store_loose(wcas* s, int prune):
 		return result_new_ok[pack_stats*](st)
 	ids.sort_by(strcmp)
 
-	string_builder* index_lines = string_new()
-	string_builder* body = string_new()
+	# Load every object's logical bytes, then sort into packing order
+	# (pack_plan_compare) so the delta window sees related objects as
+	# neighbors. Whole-population-in-memory matches the read side's
+	# posture (a loaded pack keeps its file in memory too).
+	list[pack_plan*] plans = new list[pack_plan*]
 	int err = 0
 	for char* id in ids:
 		if (err == 0):
@@ -672,29 +930,74 @@ wresult[pack_stats*]* pack_store_loose(wcas* s, int prune):
 			if (result_is_error[string_builder*](logical_r)):
 				err = result_code[string_builder*](logical_r)
 			else:
-				string_builder* logical = result_value[string_builder*](logical_r)
-				zlib_result* z = zlib_compress(logical.data, logical.length, DEFLATE_LEVEL_BEST())
-				string_append(index_lines, id)
-				string_append_char(index_lines, ' ')
-				string_append_int(index_lines, body.length)
-				string_append_char(index_lines, ' ')
-				string_append_int(index_lines, z.length)
-				string_append_char(index_lines, ' ')
-				string_append_int(index_lines, logical.length)
-				string_append_char(index_lines, 10)
-				string_append_bytes(body, z.data, z.length)
-				zlib_result_free(z)
-				string_free(logical)
+				pack_plan* pl = new pack_plan
+				pl.id = id
+				pl.logical = result_value[string_builder*](logical_r)
+				pl.type_tag = pack_logical_tag(pl.logical)
+				pl.depth = 0
+				plans.push(pl)
 			result_free[string_builder*](logical_r)
 	if (err < 0):
-		string_free(index_lines)
-		string_free(body)
+		pack_plan_list_free(plans)
 		pack_free_names(ids)
 		free(st)
 		return result_new_error[pack_stats*](err)
+	plans.sort_by(pack_plan_compare)
+
+	# Emit: each object stores as a delta against its best window
+	# candidate when that delta's deflate is STRICTLY smaller than the
+	# object's own deflate, else as a full entry (exactly the v1
+	# encoding). Every step here is deterministic -- see the header
+	# comment's determinism paragraph.
+	string_builder* index_lines = string_new()
+	string_builder* body = string_new()
+	int i = 0
+	while (i < plans.length):
+		pack_plan* pl = plans[i]
+		zlib_result* full_z = zlib_compress(pl.logical.data, pl.logical.length, DEFLATE_LEVEL_BEST())
+		int best_index = -1
+		string_builder* payload = pack_pick_delta(plans, i, &best_index)
+		zlib_result* delta_z = 0
+		if (payload != 0):
+			delta_z = zlib_compress(payload.data, payload.length, DEFLATE_LEVEL_BEST())
+			if (delta_z.length >= full_z.length):
+				zlib_result_free(delta_z)
+				delta_z = 0
+		string_append(index_lines, pl.id)
+		string_append_char(index_lines, ' ')
+		if (delta_z != 0):
+			string_append_char(index_lines, PACK_ENTRY_DELTA())
+		else:
+			string_append_char(index_lines, PACK_ENTRY_FULL())
+		string_append_char(index_lines, ' ')
+		string_append_int(index_lines, body.length)
+		string_append_char(index_lines, ' ')
+		if (delta_z != 0):
+			string_append_int(index_lines, delta_z.length)
+			string_append_char(index_lines, ' ')
+			string_append_int(index_lines, payload.length)
+			string_append_char(index_lines, ' ')
+			string_append_int(index_lines, pl.logical.length)
+			string_append_char(index_lines, ' ')
+			string_append(index_lines, plans[best_index].id)
+			string_append_bytes(body, delta_z.data, delta_z.length)
+			pl.depth = plans[best_index].depth + 1
+			zlib_result_free(delta_z)
+		else:
+			string_append_int(index_lines, full_z.length)
+			string_append_char(index_lines, ' ')
+			string_append_int(index_lines, pl.logical.length)
+			string_append_bytes(body, full_z.data, full_z.length)
+			pl.depth = 0
+		string_append_char(index_lines, 10)
+		if (payload != 0):
+			string_free(payload)
+		zlib_result_free(full_z)
+		i = i + 1
+	pack_plan_list_free(plans)
 
 	string_builder* file_bytes = string_new()
-	string_append(file_bytes, PACK_MAGIC_LINE())
+	string_append(file_bytes, PACK_MAGIC_V2())
 	string_append_char(file_bytes, 10)
 	string_append(file_bytes, c"count ")
 	string_append_int(file_bytes, ids.length)
