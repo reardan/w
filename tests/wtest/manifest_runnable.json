@@ -70,6 +70,36 @@
 				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/broken_imp.w", "-o", "bin/rn_broken_imp"]},
 				{"cmd": ["bin/rn_broken_imp"]}
 			]
+		},
+		{
+			"name": "rn_dyn_missing",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wv2", "x64", "tests/wtest/runnable_fixture/dyn_missing.w", "-o", "bin/rn_dyn_missing"]},
+				{"cmd": ["bin/rn_dyn_missing"]}
+			]
+		},
+		{
+			"name": "rn_cuda_clib",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wv2", "x64", "tests/wtest/runnable_fixture/cuda_clib.w", "-o", "bin/rn_cuda_clib"]},
+				{"cmd": ["bin/rn_cuda_clib"]}
+			]
+		},
+		{
+			"name": "rn_shc_arm64",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["sh", "-c", "sh tools/run_arm64.sh bin/rn_shc_arm64; test $? -ge 128"]}
+			]
+		},
+		{
+			"name": "rn_shc_wasm",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["sh", "-c", "sh tools/run_wasm.sh bin/rn_shc_wasm.wasm"]}
+			]
 		}
 	]
 }
