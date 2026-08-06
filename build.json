@@ -951,7 +951,10 @@
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse.json", "widget/collapse_mixed.dat"], "expect_stdout": ["collapse_w1", "collapse_w2", "collapse_loner"], "reject_stdout": "collapse_all", "reject_stderr": "wtest: collapsed"},
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse_avail.json", "widget/ca_all.dat"], "expect_stdout": "ca_all", "reject_stdout": "ca_w1", "expect_stderr": "wtest: collapsed 4 targets into ca_all (selection covered 4 of 5 selectable targets)"},
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse_avail.json", "--available", "widget/ca_all.dat"], "expect_stdout": ["ca_w1", "ca_w2", "ca_w3"], "reject_stdout": "ca_all", "expect_stderr": ["wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)", "wtest: not collapsing into ca_all (its members include unavailable targets)"], "reject_stderr": "wtest: collapsed"},
-				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse_avail.json", "--available", "widget/ca_all.dat", "widget/ca_outer.dat"], "expect_stdout": ["ca_w1", "ca_loner"], "reject_stdout": ["ca_all", "ca_outer"], "expect_stderr": "wtest: not collapsing into ca_outer (its members include unavailable targets)", "reject_stderr": "wtest: collapsed"}
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse_avail.json", "--available", "widget/ca_all.dat", "widget/ca_outer.dat"], "expect_stdout": ["ca_w1", "ca_loner"], "reject_stdout": ["ca_all", "ca_outer"], "expect_stderr": "wtest: not collapsing into ca_outer (its members include unavailable targets)", "reject_stderr": "wtest: collapsed"},
+				{"cmd": ["bin/wtest", "why"], "expect_fail": true, "expect_stderr": "wtest why [<arch>] <file.w> [-f manifest.json]"},
+				{"cmd": ["bin/wtest", "why", "-f", "tests/wtest/manifest_archs.json", "tests/wtest/archs_fixture/consumer.w"], "expect_stdout": ["wtest: why root 'x86 tests/wtest/archs_fixture/consumer.w'", "root file: present", "compile root of: archs_fixture_default,archs_fixture_default_run", "archs_fixture_default (closure of root 'x86 tests/wtest/archs_fixture/consumer.w'; literal step reference)"]},
+				{"cmd": ["bin/wtest", "why", "-f", "tests/wtest/manifest_archs.json", "win64", "tests/wtest/archs_fixture/consumer.w"], "expect_stdout": ["wtest: why root 'win64 tests/wtest/archs_fixture/consumer.w'", "compile root of: archs_fixture_win64", "archs_fixture_win64 (literal step reference)"]}
 			]
 		},
 		{
@@ -1014,6 +1017,14 @@
 			"data": ["tests/wtest/cache_scratch_test.sh"],
 			"steps": [
 				{"cmd": ["sh", "tests/wtest/cache_scratch_test.sh"], "expect_stdout": "wtest_cache_scratch_test: OK"}
+			]
+		},
+		{
+			"name": "wtest_why_test",
+			"deps": ["wtest"],
+			"data": ["tests/wtest/why_scratch_test.sh"],
+			"steps": [
+				{"cmd": ["sh", "tests/wtest/why_scratch_test.sh"], "expect_stdout": "wtest_why_scratch_test: OK"}
 			]
 		},
 		{
@@ -2535,6 +2546,7 @@
 				"wtest_nofailcache_test",
 				"wtest_timeout_test",
 				"wtest_cache_test",
+				"wtest_why_test",
 				"wtest_archs_test",
 				"wexec_test",
 				"wexec_keep_going_test",
