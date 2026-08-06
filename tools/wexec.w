@@ -2709,6 +2709,24 @@ int wexec_execute(list[char*] requested):
 							# instead of waiting forever.
 							wexec_broken[w.name] = 1
 							wexec_failed_list.push(w.name)
+						else:
+							# Fail-fast: name the failing target at reap
+							# time. The stopped-early epilogue is silent
+							# when the failure is the last scheduled
+							# target, and a worker killed mid-step takes
+							# its captured step output with it, so
+							# without this line such a run exits 1 with
+							# an empty log.
+							string_builder* fail_line = string_new()
+							string_append(fail_line, c"wexec: failed: ")
+							string_append(fail_line, w.name)
+							string_append(fail_line, c" (exit status ")
+							string_append_int(fail_line, decoded)
+							string_append(fail_line, c")")
+							wstream* fail_err = stderr_writer()
+							stream_write_line(fail_err, fail_line.data)
+							stream_flush(fail_err)
+							string_free(fail_line)
 					else:
 						wexec_mark_finished(w.name, w.key)
 						wexec_cache_remote_push_if_enabled(w.name, w.key)
