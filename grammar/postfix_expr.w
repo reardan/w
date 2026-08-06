@@ -494,11 +494,13 @@ int postfix_expr():
 			expression_lhs_readonly = 0
 			if (type_is_map(type)):
 				int map_type = type_unqualified(type)
-				hash_index_base_stack = stack_pos
+				# promote before anchoring the slots: finishing a pending
+				# map read (chained h[k1][k2]) pops the read's hidden
+				# stack slots (list_index_suffix precedent)
 				type = promote(type)
 				push_eax()
 				stack_pos = stack_pos + 1
-				hash_index_map_slot = stack_pos
+				int map_elem_map_slot = stack_pos
 				int want_key_type = type_map_key_type(map_type)
 				int got_key_type = expression()
 				got_key_type = promote(got_key_type)
@@ -507,8 +509,16 @@ int postfix_expr():
 					warn_type_mismatch(c"map key", want_key_type, got_key_type)
 				push_eax()
 				stack_pos = stack_pos + 1
-				hash_index_key_slot = stack_pos
+				int map_elem_key_slot = stack_pos
 				expect(c"]")
+				# Commit the pending state only now: the key expression
+				# above may itself have parked and finalized a nested
+				# pending map element (m[h[k]]), and these globals must
+				# describe THIS element when the consumer reads them
+				# (grammar/ndarray_index.w precedent).
+				hash_index_base_stack = map_elem_map_slot - 1
+				hash_index_map_slot = map_elem_map_slot
+				hash_index_key_slot = map_elem_key_slot
 				hash_index_map_type = map_type
 				hash_index_pending = 1
 				type = type_map_value_type(map_type)
