@@ -693,7 +693,7 @@ void help_deps():
 
 
 void help_symbols():
-	println(c"usage: w symbols [--json] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+	println(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 	println(c"")
 	println(c"Compile like 'w check', then dump the global symbol table and the")
 	println(c"user-declared types with their declaration locations.")
@@ -701,6 +701,13 @@ void help_symbols():
 	println(c"options:")
 	println(c"  --json                emit one NDJSON record per entry on stdout")
 	println(c"                        (default: human-readable file:line:column lines)")
+	println(c"  --layout              struct layout view: only struct/union records,")
+	println(c"                        each with its total size and per-field byte")
+	println(c"                        offset/size for the selected target. Offsets are")
+	println(c"                        the compiler's packed layout (no native alignment")
+	println(c"                        padding; union fields sit at 0); c_import types")
+	println(c"                        carry real C ABI padding as explicit __ci_* filler")
+	println(c"                        fields and print with the <c_import> file marker")
 	help_shared_options()
 	println(c"")
 	help_selectors()
@@ -1592,13 +1599,27 @@ int defhash_main(int argc, int argv):
 
 
 /*
-w symbols [--json] [x64|arm64|arm64_darwin|win64] <file.w>...
+w symbols [--json] [--layout] [x64|arm64|arm64_darwin|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then dumps the global symbol
 table and user-declared types with their declaration locations. --json emits
 one NDJSON record per entry on stdout, mirroring 'w check --json'. Entries
 without a recorded location (runtime stubs declared before any source file)
 are skipped.
+
+--layout switches to the struct-layout view: only struct and union type
+records print, each with its total size and one line (or JSON object) per
+field carrying the field's byte offset and size as the compiler computed
+them for the selected target. Offsets are the compiler's packed layout
+(fields sum with no alignment padding; union fields all sit at 0) — the
+native type table has no alignment metadata. Structs imported via c_import
+DO carry real C ABI layout: the importer materializes alignment padding and
+bit-field storage as explicit __ci_pad_ and __ci_bytes filler fields, so the
+dump shows the true offsets. Imported types have no source location and are
+skipped by the default view; --layout includes them with the "<c_import>"
+file marker. Composes with the arch selectors in either spelling
+('w symbols --layout x64 f.w' or 'w x64 symbols --layout f.w'), so per-arch
+layouts are inspectable without running a binary.
 */
 
 
@@ -1641,8 +1662,9 @@ char* symbols_type_kind_name(int type_index):
 	return c"struct"
 
 
-# Struct/union field list as a JSON array: [{"name", "type", "offset"}...].
-# type_index must be a struct or union; callers check the kind first.
+# Struct/union field list as a JSON array:
+# [{"name", "type", "offset", "size"}...]. type_index must be a struct or
+# union; callers check the kind first.
 void symbols_emit_fields_json(int type_index):
 	diag_write_json_string(c"fields")
 	diag_write_cstr(c": [")
@@ -1651,26 +1673,48 @@ void symbols_emit_fields_json(int type_index):
 	while (i < n):
 		if (i > 0):
 			diag_write_cstr(c", ")
-		char* field_type = symbols_type_display(type_get_field_type_at(type_index, i))
+		int field_type = type_get_field_type_at(type_index, i)
+		char* field_display = symbols_type_display(field_type)
 		diag_write_cstr(c"{")
 		diag_write_json_field(c"name", type_get_field_name_at(type_index, i))
 		diag_write_cstr(c", ")
-		diag_write_json_field(c"type", field_type)
+		diag_write_json_field(c"type", field_display)
 		diag_write_cstr(c", ")
 		diag_write_json_int_field(c"offset", type_get_field_offset_at(type_index, i))
+		diag_write_cstr(c", ")
+		diag_write_json_int_field(c"size", type_get_size(field_type))
 		diag_write_cstr(c"}")
-		free(field_type)
+		free(field_display)
 		i = i + 1
 	diag_write_cstr(c"]")
+
+
+# Arch label for the emitted records. diag_word_size alone cannot tell the
+# 8-byte-word targets apart (x64, arm64, arm64_darwin and win64 all set it
+# to 8), so consult the ISA and OS the selector applied.
+char* symbols_arch_name():
+	if (target_isa == 1):
+		if (target_os == 1):
+			return c"arm64_darwin"
+		return c"arm64"
+	if (target_isa == 2):
+		return c"wasm"
+	if (target_os == 2):
+		return c"win64"
+	if (diag_word_size == 8):
+		return c"x64"
+	return c"x86"
 
 
 # type_index is the declared type's own index for a type-table entry (so
 # struct/union kinds can carry a "fields" array), or -1 for symbol-table
 # entries (functions, globals, enum constants), which have no fields.
+# file_index -1 marks a type with no source location (c_import types in the
+# --layout view); it prints with the "<c_import>" file marker.
 void symbols_emit_json(char* name, char* kind, char* type_name, int file_index, int line, int column, int type_index):
-	char* arch = c"x86"
-	if (diag_word_size == 8):
-		arch = c"x64"
+	char* file_name = debug_file_name(file_index)
+	if (file_index < 0):
+		file_name = c"<c_import>"
 	diag_write_cstr(c"{")
 	diag_write_json_field(c"name", name)
 	diag_write_cstr(c", ")
@@ -1678,15 +1722,17 @@ void symbols_emit_json(char* name, char* kind, char* type_name, int file_index, 
 	diag_write_cstr(c", ")
 	diag_write_json_field(c"type", type_name)
 	diag_write_cstr(c", ")
-	diag_write_json_field(c"file", debug_file_name(file_index))
+	diag_write_json_field(c"file", file_name)
 	diag_write_cstr(c", ")
 	diag_write_json_int_field(c"line", line)
 	diag_write_cstr(c", ")
 	diag_write_json_int_field(c"column", column)
 	diag_write_cstr(c", ")
-	diag_write_json_field(c"arch", arch)
+	diag_write_json_field(c"arch", symbols_arch_name())
 	if (type_index >= 0):
 		if ((strcmp(kind, c"struct") == 0) | (strcmp(kind, c"union") == 0)):
+			diag_write_cstr(c", ")
+			diag_write_json_int_field(c"total_size", type_get_size(type_index))
 			diag_write_cstr(c", ")
 			symbols_emit_fields_json(type_index)
 	diag_write_cstr(c"}\x0a")
@@ -1740,23 +1786,113 @@ void symbols_dump(int json):
 		i = i + 1
 
 
+# 1 when the type record belongs in the --layout view: a base (non-pointer)
+# struct or union record that is either user-declared (has a source
+# location) or field-carrying without one (c_import types). Built-in
+# scalars are kind-0 records too but have neither fields nor a location.
+int symbols_layout_wanted(int type_index):
+	if (type_get_pointer_level(type_index) != 0):
+		return 0
+	int t = cast(int, type_record(type_index))
+	int kind = load_ptr(t + 205 * __word_size__)
+	if ((kind != 0) && (kind != type_kind_union)):
+		return 0
+	if ((type_decl_file_index(type_index) < 0) && (type_num_args(type_index) == 0)):
+		return 0
+	return 1
+
+
+void symbols_write_int(int value):
+	char* digits = itoa(value)
+	diag_write_cstr(digits)
+	free(digits)
+
+
+# Human layout block: the symbols header line with the total size
+# appended, then one tab-indented line per field: offset, size, type,
+# name (tab-separated). file_index -1 prints the "<c_import>" marker.
+void symbols_emit_layout_human(int type_index, char* kind, int file_index, int line, int column):
+	if (file_index >= 0):
+		diag_write_cstr(debug_file_name(file_index))
+	else:
+		diag_write_cstr(c"<c_import>")
+	diag_write_cstr(c":")
+	symbols_write_int(line)
+	diag_write_cstr(c":")
+	symbols_write_int(column)
+	diag_write_cstr(c": ")
+	diag_write_cstr(kind)
+	diag_write_cstr(c" ")
+	diag_write_cstr(type_get_name(type_index))
+	diag_write_cstr(c": size ")
+	symbols_write_int(type_get_size(type_index))
+	diag_write_cstr(c"\x0a")
+	int n = type_num_args(type_index)
+	int i = 0
+	while (i < n):
+		int field_type = type_get_field_type_at(type_index, i)
+		char* field_display = symbols_type_display(field_type)
+		diag_write_cstr(c"\x09")
+		symbols_write_int(type_get_field_offset_at(type_index, i))
+		diag_write_cstr(c"\x09")
+		symbols_write_int(type_get_size(field_type))
+		diag_write_cstr(c"\x09")
+		diag_write_cstr(field_display)
+		diag_write_cstr(c" ")
+		diag_write_cstr(type_get_field_name_at(type_index, i))
+		diag_write_cstr(c"\x0a")
+		free(field_display)
+		i = i + 1
+	diag_flush()
+
+
+# The --layout view: struct/union type records only (symbol-table entries
+# and other type kinds are skipped), each with its total size and
+# per-field offset/size. Includes c_import types, which the default view
+# skips for lack of a source location.
+void symbols_dump_layout(int json):
+	int i = 0
+	while (i < type_count()):
+		if (symbols_layout_wanted(i)):
+			char* kind = symbols_type_kind_name(i)
+			int file_index = type_decl_file_index(i)
+			int line = type_decl_line(i)
+			int column = type_decl_column(i)
+			if (json):
+				symbols_emit_json(type_get_name(i), kind, type_get_name(i), file_index, line, column, i)
+			else:
+				symbols_emit_layout_human(i, kind, file_index, line, column)
+		i = i + 1
+
+
 int symbols_main(int argc, int argv):
 	int i = 2
 	int json = 0
+	int layout = 0
 	diag_json = 0
-	if (i < argc):
+	# Leading flags in any order, like 'w check'.
+	int scanning = 1
+	while (scanning & (i < argc)):
 		char** arg = argv + i * __word_size__
 		if (strcmp(*arg, c"--json") == 0):
 			json = 1
 			diag_json = 1
 			i = i + 1
+		else if (strcmp(*arg, c"--layout") == 0):
+			layout = 1
+			i = i + 1
 		else if (arg_is_help(*arg)):
 			help_symbols()
 			exit(0)
+		else:
+			scanning = 0
 	if (argc <= i):
-		println2(c"usage: w symbols [--json] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		println2(c"run 'w symbols --help' for details")
 		exit(1)
 	link_impl(argc, argv, i, 1)
-	symbols_dump(json)
+	if (layout):
+		symbols_dump_layout(json)
+	else:
+		symbols_dump(json)
 	return 0

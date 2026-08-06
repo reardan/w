@@ -222,17 +222,6 @@ is a queue, not an archive.
   (`./wbuild test_changed -j 2`). Either scan past leading `-j`/
   `--*` arguments when detecting the mode, or have wexec's unknown-
   target error hint at the script modes (`test_changed`, `update`).
-- **No way to dump a struct's computed layout without running a
-  binary.** Found 2026-08-05 validating imported C bit-field layout for
-  the env-blocked i386 target: the only ways to see the field offsets
-  and size the compiler computed are (a) compile-and-run an offset
-  printer (impossible for an arch whose binaries can't run here) or
-  (b) spelunk `-v -v` logs for `type_add_arg`'s "adding field" lines
-  and decode `__ci_bytes_N` filler names by hand. A
-  `w symbols --json`-style `--layout` view (per-field offset/size/
-  alignment for a named struct, composing with the arch selectors like
-  `check`/`deps` do) would make layout work assertable per target
-  without an execution environment.
 - **Shipped (2026-08-06): wtest availability probes cover all three
   missed shapes** (found 2026-08-05 running the container-free() gates
   on a Linux runner with no qemu, no GPU and no 32-bit loader). (1) A
@@ -252,6 +241,20 @@ is a queue, not an archive.
   members stay listed individually
   (`tests/wtest/manifest_collapse_avail.json` cases in
   `map_expectations.expect` + the wtest_map_test inline steps).
+- **Shipped (2026-08-06): `w symbols --layout` dumps computed struct
+  layout without running a binary.** (Found 2026-08-05 validating
+  imported C bit-field layout for the env-blocked i386 target.)
+  `w symbols --layout [--json]` prints struct/union records only, each
+  with its total size and per-field offset/size for the selected target,
+  composing with the arch selectors in both spellings; c_import types
+  (previously skipped for lack of a source location) are included with a
+  `<c_import>` marker, making their `__ci_pad_`/`__ci_bytes` filler
+  fields readable. The native type table still has no alignment
+  metadata, so native offsets are documented as the compiler's packed
+  layout; per-field *alignment* remains unexposed. `symbols --json` also
+  gained `total_size`, per-field `size`, and correct `arch` labels for
+  arm64/arm64_darwin/win64/wasm (previously all stamped from word size
+  alone).
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new
