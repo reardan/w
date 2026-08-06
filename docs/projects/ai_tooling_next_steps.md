@@ -192,17 +192,20 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
-- **No way to dump a struct's computed layout without running a
-  binary.** Found 2026-08-05 validating imported C bit-field layout for
-  the env-blocked i386 target: the only ways to see the field offsets
-  and size the compiler computed are (a) compile-and-run an offset
-  printer (impossible for an arch whose binaries can't run here) or
-  (b) spelunk `-v -v` logs for `type_add_arg`'s "adding field" lines
-  and decode `__ci_bytes_N` filler names by hand. A
-  `w symbols --json`-style `--layout` view (per-field offset/size/
-  alignment for a named struct, composing with the arch selectors like
-  `check`/`deps` do) would make layout work assertable per target
-  without an execution environment.
+- **Shipped (2026-08-06): `w symbols --layout` dumps computed struct
+  layout without running a binary.** (Found 2026-08-05 validating
+  imported C bit-field layout for the env-blocked i386 target.)
+  `w symbols --layout [--json]` prints struct/union records only, each
+  with its total size and per-field offset/size for the selected target,
+  composing with the arch selectors in both spellings; c_import types
+  (previously skipped for lack of a source location) are included with a
+  `<c_import>` marker, making their `__ci_pad_`/`__ci_bytes` filler
+  fields readable. The native type table still has no alignment
+  metadata, so native offsets are documented as the compiler's packed
+  layout; per-field *alignment* remains unexposed. `symbols --json` also
+  gained `total_size`, per-field `size`, and correct `arch` labels for
+  arm64/arm64_darwin/win64/wasm (previously all stamped from word size
+  alone).
 - **wtest availability probes miss three shapes** (2026-08-05, found
   running the container-free() gates on a Linux runner with no qemu, no
   GPU and no 32-bit loader). (1) A runner wrapped in `sh -c`:

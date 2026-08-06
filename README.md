@@ -380,9 +380,23 @@ seeds — is `docs/release.md`.
   go-to-definition and indexing: one NDJSON record per user-declared symbol
   (functions, globals, enum values) and type (structs, unions, enums, aliases)
   with `name`, `kind`, `type`, `file`, `line`, `column`, and `arch` (structs
-  and unions also carry a `fields` array of `{name, type, offset}`). Omit
-  `--json` for a human-readable `file:line:column: kind name: type` listing.
-  Compiler-internal declarations without a source location are skipped.
+  and unions also carry `total_size` and a `fields` array of
+  `{name, type, offset, size}`). Omit `--json` for a human-readable
+  `file:line:column: kind name: type` listing. Compiler-internal
+  declarations without a source location are skipped.
+- Use `./bin/wv2 symbols --layout file.w` to dump the struct layouts the
+  compiler computed for the selected target without running a binary: only
+  struct/union records print, each with its total size and one line (or,
+  with `--json`, one `fields` object) per field carrying the field's byte
+  offset and size. Offsets for native structs are the compiler's packed
+  layout (fields sum with no alignment padding; union fields all sit at
+  offset 0). Structs imported via `c_import` carry real C ABI layout — the
+  importer materializes padding and bit-field storage as explicit
+  `__ci_pad_`/`__ci_bytes` filler fields — and, having no source location,
+  print with the `<c_import>` file marker (the default view skips them).
+  Composes with the arch selectors in either spelling
+  (`symbols --layout x64 f.w` or `x64 symbols --layout f.w`), so
+  word-size-dependent layouts are assertable per target.
 - Use `./bin/wv2 deps file.w` to print the transitive import closure of a
   program — the root file, every import, and the auto-imported container
   runtime — one repo-relative path per line, deduplicated. `--json` emits

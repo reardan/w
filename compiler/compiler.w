@@ -1614,7 +1614,7 @@ them for the selected target. Offsets are the compiler's packed layout
 (fields sum with no alignment padding; union fields all sit at 0) — the
 native type table has no alignment metadata. Structs imported via c_import
 DO carry real C ABI layout: the importer materializes alignment padding and
-bit-field storage as explicit __ci_pad_*/__ci_bytes* filler fields, so the
+bit-field storage as explicit __ci_pad_ and __ci_bytes filler fields, so the
 dump shows the true offsets. Imported types have no source location and are
 skipped by the default view; --layout includes them with the "<c_import>"
 file marker. Composes with the arch selectors in either spelling

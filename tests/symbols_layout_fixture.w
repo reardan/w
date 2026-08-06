@@ -1,9 +1,10 @@
 # Fixture for symbols_test's --layout steps: native struct layout with a
 # nested struct field, a pointer field, an inline array field (whose size
-# includes the 2-word runtime descriptor header), an int64 field, and a
-# union. Offsets are the compiler's packed sums, and int/pointer widths
-# follow the word size, so the x64 selector steps see different numbers:
-# sym_layout_point.y sits at offset 4 on the default target and 8 on x64.
+# includes the 2-word runtime descriptor header), a fixed-width field,
+# and a union. Offsets are the compiler's packed sums, and int/pointer
+# widths follow the word size, so the x64 selector steps see different
+# numbers: sym_layout_point.y sits at offset 4 on the default target and
+# 8 on x64.
 
 struct sym_layout_point:
 	int x
@@ -18,11 +19,11 @@ struct sym_layout_outer:
 	sym_layout_inner inner
 	sym_layout_point* link
 	int[3] cells
-	int64 wide
+	uint16 tail_half
 
 union sym_layout_union:
 	int word
-	int64 big
+	uint32 big
 	char small
 
 int main():
