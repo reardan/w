@@ -162,6 +162,20 @@ is a queue, not an archive.
   side effect so the first selection never pays the cold-walk cost
   unwarned.
 
+- **(2026-08-06) a CI `./wbuild tests` run can fail with an empty log
+  when the failing target is the last one scheduled.** Observed twice on
+  PR runs (the docs-only #412 and #413): the job log ends at
+  `wexec: target wbuild_platform_test_darwin` + its compile command and
+  exits 1 with no diagnostic — the fail-fast reap path never named the
+  failing target (only `--keep-going`'s epilogue did), the stopped-early
+  epilogue is silent when nothing was left unattempted, and a worker
+  that dies mid-step takes its process_run-captured output with it. The
+  naming half is fixed (fail-fast now prints
+  `wexec: failed: <target> (exit status N)` at reap time); the
+  underlying flake — same last target, ~50% of runs that day, not
+  reproducible locally and gone on rerun — is still undiagnosed; if it
+  recurs the new line will say what actually died and how.
+
 ## Build manifest (`tools/wbuildgen.w`)
 
 - **Shipped (2026-07-29): the "invoke a tool as the whole target"
