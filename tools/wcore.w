@@ -498,14 +498,6 @@ char* wc_signal_desc(int sig):
 	return cast(char*, 0)
 
 
-int wc_have_fault():
-	if (wc_siginfo == 0):
-		return 0
-	if ((wc_sig == 4) || (wc_sig == 7) || (wc_sig == 8) || (wc_sig == 11)):
-		return 1
-	return 0
-
-
 # siginfo_t: si_signo +0, si_errno +4, si_code +8; the fault address
 # union member starts at +12 (32-bit) / +16 (64-bit, 8-byte aligned).
 int wc_fault_addr():
@@ -516,6 +508,18 @@ int wc_fault_addr():
 
 int wc_si_code():
 	return st_int32(wc_siginfo + 8)
+
+
+int wc_have_fault():
+	if (wc_siginfo == 0):
+		return 0
+	# si_code <= 0 means user-sent (SI_USER/SI_TKILL): the siginfo union
+	# holds the sender's pid/uid there, not a fault address.
+	if (wc_si_code() <= 0):
+		return 0
+	if ((wc_sig == 4) || (wc_sig == 7) || (wc_sig == 8) || (wc_sig == 11)):
+		return 1
+	return 0
 
 
 # --- backtrace: the live tracer's return-address scan over core memory ---

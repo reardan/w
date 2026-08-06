@@ -61,9 +61,12 @@ run_case() {
 	fi
 
 	out=$("$WCORE" "$core" "$fixture" 2>&1)
+	# The .debug_line file table records the path the compiler saw, which
+	# may be absolute: assert the basename, like crash_trace_test does.
 	expect "$desc" "$out" "SIGSEGV"
 	expect "$desc" "$out" "faulting address: 0x00000000"
-	expect "$desc" "$out" "crash_deep (tests/crash_null_deref_fixture.w:"
+	expect "$desc" "$out" "at crash_deep ("
+	expect "$desc" "$out" "crash_null_deref_fixture.w:"
 	expect "$desc" "$out" "at main ("
 	expect "$desc" "$out" "  $ipreg 0x"
 	expect "$desc" "$out" "stack trace (most recent call first):"
