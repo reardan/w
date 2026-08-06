@@ -252,16 +252,6 @@ is a queue, not an archive.
   the directory as empty instead of parsing Darwin records with Linux
   offsets. The full fix (per-arch dirent accessors, validated on a
   Mac) is still open; the accessor plan above stands.
-- **wtest's deps fallback warning is anonymous.** While computing the
-  import-closure cache, `wtest changed` printed "warning: 'bin/wv2
-  deps' failed for 72 roots; falling back to literal matching for
-  them" (2026-08-05, dwarf address_size work) without naming a single
-  root or the failure reason, so an agent cannot tell whether the
-  fallback lost selection coverage for its diff or which roots need
-  fixing. Print the failing roots (or the first few plus a count) and
-  the `deps` stderr for one of them, or record them in
-  `bin/.wtest_deps_cache` so a follow-up `wtest why <root>` can
-  explain.
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
 The 2026-07 review findings and the nullable-suffix fallback all
