@@ -108,17 +108,25 @@ is a queue, not an archive.
   is missing, a persisted compile failure is additionally keyed to
   `bin/wv2`'s hash and to the reported missing import staying absent,
   and the fallback announces itself on stderr; `wtest_nofailcache_test`.)
-- **(2026-08-04, closure-needs work) the dynamically-linked needs
-  probe checks only the ELF interpreter, not the libraries a c_lib
-  names.** With closure-level attribution shipped, a c_lib buried in
-  an imported module now marks its importers dynamically linked — but
-  bit 1's probe is still just "is the target word size's loader
-  installed", so `graphics_gl_smoke_test` (libGL/libX11 via
-  `graphics/gl_linux.w`) stays selected on a host that has
-  `/lib64/ld-linux-x86-64.so.2` but no X11 libraries and fails at run
-  time. Probing the named `c_lib` sonames themselves (ldconfig -p, or
-  the standard lib dirs) would close the rest; the libcuda case is
-  already covered by its own GPU bit.
+- **Shipped (2026-08-06): the dynamically-linked needs probe checks
+  the c_lib-named sonames, not just the ELF interpreter** (found
+  2026-08-04 during the closure-needs work). The c_lib/c_import scan
+  in `tools/test_map.w` now retains each directive's quoted soname
+  ('.so'-containing names only — wasm import modules and Mach-O/PE
+  paths are other runners' business — and libcuda* stays on its GPU
+  bit, since the driver installer puts libcuda.so.1 wherever it
+  likes), unions them over the root's cached import closure, and
+  `--runnable-here` probes each against the word size's standard
+  library directories plus /etc/ld.so.cache as a byte substring
+  (ldconfig's index knows libraries outside the standard dirs),
+  naming the missing soname in the drop reason — so
+  `graphics_gl_smoke_test` on a host with
+  `/lib64/ld-linux-x86-64.so.2` but no libGL now drops with a reason
+  naming libGL.so.1 instead of failing at run time. Asserted by the
+  rn_dyn_missing (fictional soname, dropped everywhere) and
+  rn_cuda_clib (GPU bit, never the soname probe) fixtures in
+  `tools/wtest_runnable_scratch_test.sh` +
+  `tests/wtest/map_expectations.expect`.
 - **Shipped (2026-08-04): timeout-shaped deps failures are never
   persisted, and every failed closure shell-out warns.** This bit
   twice for real on 2026-07-29: (U5 tool-target migration) a
@@ -203,29 +211,25 @@ is a queue, not an archive.
   alignment for a named struct, composing with the arch selectors like
   `check`/`deps` do) would make layout work assertable per target
   without an execution environment.
-- **wtest availability probes miss three shapes** (2026-08-05, found
-  running the container-free() gates on a Linux runner with no qemu, no
-  GPU and no 32-bit loader). (1) A runner wrapped in `sh -c`:
-  `pac_corrupt_test_arm64`'s run step is
-  `["sh", "-c", "sh tools/run_arm64.sh ...; test $? -ge 128"]`, so
-  `wtest_step_unavailable_reason`'s `["sh", "tools/run_arm64.sh", ...]`
-  argv-shape check never sees the runner and `./wbuild test_changed`
-  attempts it anyway (and without `--keep-going` that one failure
-  aborts the whole run with 500+ targets unattempted). Scanning the
-  `-c` string for the known runner paths would close it. (2)
-  `--runnable-here`'s GPU probe attributes `import lib.cuda` at the
-  root file only, so `tensor_gpu_test`/`autograd_gpu_test`/... (which
-  reach lib.cuda transitively) stay selected on GPU-less hosts. (3)
-  Umbrella collapse reintroduces dropped members: `--runnable-here`
-  drops `dynamic_test` et al. (no `/lib/ld-linux.so.2`), then collapses
-  the surviving selection into `tests`, which depends on the dropped
-  targets anyway — the drop and the collapse need to compose (don't
-  collapse into an umbrella whose member set includes an unavailable
-  target, or emit the umbrella's available members instead).
-  Workaround that worked: `./wbuild test_changed --keep-going`, then
-  eyeball that every failure in the summary is env-shaped.
-  (Point 2 was closed the same day by PR #400's closure-level
-  `--runnable-here` attribution; points 1 and 3 remain open.)
+- **Shipped (2026-08-06): wtest availability probes cover all three
+  missed shapes** (found 2026-08-05 running the container-free() gates
+  on a Linux runner with no qemu, no GPU and no 32-bit loader). (1) A
+  runner wrapped in `sh -c` (`pac_corrupt_test_arm64`'s
+  `["sh", "-c", "sh tools/run_arm64.sh ...; test $? -ge 128"]`, which
+  the argv[1]-shape check never saw): `wtest_step_unavailable_reason`
+  now scans a `-c` command string for the two known wrapper paths
+  (`tools/run_arm64.sh`, `tools/run_wasm.sh`) and applies the same
+  probes, still positive-evidence-only — asserted deterministically in
+  `tools/wtest_runnable_scratch_test.sh` by controlling PATH and
+  QEMU_ARM64. (2) Closure-level GPU attribution was closed the same
+  day by PR #400. (3) Umbrella collapse and the availability filter
+  now compose: an umbrella whose transitive dep closure (`tests` lists
+  `tests_x64`) contains a filter-dropped target is never collapsed
+  into — one stderr note names it — so `tests` no longer reintroduces
+  `dynamic_test` et al. through its deps; the umbrella's surviving
+  members stay listed individually
+  (`tests/wtest/manifest_collapse_avail.json` cases in
+  `map_expectations.expect` + the wtest_map_test inline steps).
 - **Test sources can assert on their own raw bytes.** `defer_test.w`'s
   `test_defer_closes_file_descriptor` asserts the first byte of
   `tests/defer_test.w` is the `'i'` of `import`, so prepending the new

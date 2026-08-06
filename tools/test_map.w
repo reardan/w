@@ -179,7 +179,16 @@ the collapsed output is still a complete, valid target list for
 './wbuild test_changed' / 'xargs -r ./wbuild'. The collapse is
 arch-accurate for free: an x86-only runtime edit selects few
 tests_x64 members, so only 'tests' collapses and the x64 umbrella is
-never pulled in. Below either threshold nothing changes.
+never pulled in. The collapse also COMPOSES with --available/
+--runnable-here (ai_tooling_next_steps.md 2026-08-05): an umbrella
+whose transitive dep closure ('tests' lists tests_x64 among its deps)
+contains a target the availability filter just dropped is never
+collapsed into — running the umbrella would run the dropped target
+anyway, silently reintroducing exactly what the filter removed — one
+stderr line ('wtest: not collapsing into <umbrella> (its members
+include unavailable targets)') says so, and that umbrella's surviving
+members stay listed individually. Below either threshold nothing
+changes.
 
 'wtest for <path>...' (issue #323 stage 1) is 'changed' with its path
 list required as positional args instead of optionally read from
@@ -219,7 +228,12 @@ tools/mac/ script — so the printed selection is runnable as-is instead
 of failing on a missing qemu/wasm-runtime/wine/Mac. Detection is
 mechanical and conservative: only a step whose argv[0] (or, for the
 arm64/wasm wrappers, argv[1]) is one of those recognized shapes is
-checked for presence on PATH (or, for tools/mac/, as a file); anything
+checked for presence on PATH (or, for tools/mac/, as a file); a step
+of the form 'sh -c <command>' additionally has its command STRING
+scanned for the two wrapper paths, so a runner wrapped in a shell
+one-liner (pac_corrupt_test_arm64's 'sh -c "sh tools/run_arm64.sh
+...; test $? -ge 128"') is probed exactly like the direct argv shape
+(ai_tooling_next_steps.md 2026-08-05); anything
 else is left alone, so a target is only ever dropped on positive
 evidence. One 'wtest: dropped N
 unavailable target(s) (<reason>)' line per distinct reason is printed to
@@ -246,7 +260,23 @@ tensor.w's 'import lib.cuda' reaches the tensor_gpu_test family
 column-0 'c_lib'/'c_import' directive means the produced binary is
 dynamically linked and needs the target word size's ELF interpreter
 (/lib/ld-linux.so.2 for x86, /lib64/ld-linux-x86-64.so.2 for x64 —
-probed as files, not hardcoded per machine), and a column-0 'import
+probed as files, not hardcoded per machine) PLUS every shared library
+those directives name (the directive's first quoted string): each
+retained soname is probed against the standard library directories
+for the word size (/lib/i386-linux-gnu, /usr/lib/i386-linux-gnu,
+/lib32, /usr/lib32 for x86; /lib/x86_64-linux-gnu,
+/usr/lib/x86_64-linux-gnu, /lib64, /usr/lib64 for x64; /lib and
+/usr/lib for both) and, failing those, as a byte substring of
+/etc/ld.so.cache — ldconfig's index, which knows libraries installed
+outside the standard dirs — so graphics_gl_smoke_test on a host with
+the 64-bit loader but no libGL is dropped with a reason naming
+libGL.so.1 (ai_tooling_next_steps.md 2026-08-04). Only names
+containing '.so' are retained (wasm import-module names like "env"
+and Mach-O/PE library paths belong to targets whose run legs
+--available's runner probes already cover), an absolute path is
+probed as that file directly, and libcuda* is excluded — the GPU bit
+below covers the NVIDIA driver, whose libcuda.so.1 lives wherever
+the driver installer put it. A column-0 'import
 lib.cuda' means it opens the NVIDIA driver (/dev/nvidiactl,
 /dev/nvidia0 or nvidia-smi on PATH). Column-0 text inside a '#' line
 comment or a block comment is never a directive — closure scanning
@@ -430,6 +460,24 @@ int wtest_defhash_flag
 # FILE, not per root; bit 1 = c_lib/c_import dynamic linking, bit 2 =
 # lib.cuda GPU access).
 map[char*, int] wtest_source_needs_memo
+# source path -> newline-joined sonames its column-0 c_lib/c_import
+# directives name (--runnable-here memo, filled by the same scan as
+# wtest_source_needs_memo; only '.so'-containing, non-libcuda names
+# are retained — header comment). No entry = none retained.
+map[char*, char*] wtest_source_sonames_memo
+# "<arch> <soname>" -> probe result + 1 (--runnable-here memo for
+# wtest_soname_available: the standard-dir walk plus the ld.so.cache
+# scan are repeated per run-step target otherwise).
+map[char*, int] wtest_soname_probe_memo
+# /etc/ld.so.cache, read at most once per run (0 until loaded; the
+# file is binary, so the length rides along for the byte search).
+int wtest_ldcache_loaded
+char* wtest_ldcache_text
+int wtest_ldcache_length
+# Targets removed by wtest_apply_available_filter, so the collapse can
+# refuse an umbrella that would reintroduce one (header comment); 0
+# until the filter drops something.
+map[char*, int] wtest_unavailable_dropped
 # root id -> extra cache lines ('V <bin/wv2 hash>' and optionally
 # 'M <missing import>') for a PERSISTABLE deps failure; a failed root
 # with no entry here (bin/wv2 missing, spawn failure) is memoized for
@@ -2718,10 +2766,48 @@ int wtest_wasm_runtime_available():
 runner shapes. All detection is positive evidence — a probe that
 cannot decide leaves the target alone. */
 
+# The first double-quoted string on the directive line starting at
+# text[i] — the soname a c_lib/c_import names ('c_lib "libGL.so.1"',
+# 'c_import "libc.so.6" c"stdio.h"') — copied out for the caller to
+# free, or 0 when the line has no complete quoted string.
+char* wtest_directive_soname(char* text, int i):
+	while ((text[i] != 0) && (text[i] != 10) && (text[i] != '"')):
+		i = i + 1
+	if (text[i] != '"'):
+		return 0
+	i = i + 1
+	string_builder* s = string_new()
+	while ((text[i] != 0) && (text[i] != 10) && (text[i] != '"')):
+		string_append_char(s, text[i])
+		i = i + 1
+	if (text[i] != '"'):
+		string_free(s)
+		return 0
+	char* soname = s.data
+	free(s)
+	return soname
+
+
+# Whether a c_lib/c_import-named soname should be probed on this host
+# (header comment): only '.so'-containing names are ELF sonames the
+# loader-dir probe can meaningfully look for (wasm import modules
+# ("env"), Mach-O and PE library names are other targets' runners'
+# business), and libcuda* is excluded — the GPU bit covers the NVIDIA
+# driver, whose libcuda.so.1 lives wherever the installer put it.
+int wtest_soname_retained(char* soname):
+	if (wtest_str_contains(soname, c".so") == 0):
+		return 0
+	return starts_with(soname, c"libcuda") == 0
+
+
 # Needs bits of one source file, read off its text (memoized): bit 1 =
 # a column-0 c_lib/c_import directive (the produced binary is
 # dynamically linked), bit 2 = a column-0 'import lib.cuda' or a c_lib
 # line naming libcuda (either way the binary opens the NVIDIA driver).
+# The same scan retains the sonames those directives name (see
+# wtest_soname_retained) into wtest_source_sonames_memo, so
+# --runnable-here can probe the named libraries themselves, not just
+# the ELF interpreter (ai_tooling_next_steps.md 2026-08-04).
 # Comment-aware: column-0 text inside a '#' line comment or a /* */
 # block comment is prose, not a directive — closure-level attribution
 # scans library files whose header comments legitimately contain
@@ -2735,6 +2821,7 @@ int wtest_source_needs(char* path):
 	if (memo != 0):
 		return memo - 1
 	int needs = 0
+	string_builder* sonames = string_new()
 	char* text = file_read_text(path)
 	if (text != 0):
 		int i = 0
@@ -2763,11 +2850,24 @@ int wtest_source_needs(char* path):
 						needs = needs | 1
 						if (starts_with(&text[i], c"c_lib \"libcuda")):
 							needs = needs | 2
+						char* soname = wtest_directive_soname(text, i)
+						if (soname != 0):
+							if (wtest_soname_retained(soname)):
+								string_append(sonames, soname)
+								string_append_char(sonames, 10)
+							free(soname)
 					if (starts_with(&text[i], c"import lib.cuda")):
 						needs = needs | 2
 				bol = (text[i] == 10)
 				i = i + 1
 		free(text)
+	if (sonames.length > 0):
+		if (wtest_source_sonames_memo == 0):
+			wtest_source_sonames_memo = new map[char*, char*]
+		wtest_source_sonames_memo[path] = sonames.data
+		free(sonames)
+	else:
+		string_free(sonames)
 	wtest_source_needs_memo[path] = needs + 1
 	return needs
 
@@ -2810,6 +2910,166 @@ int wtest_closure_needs(char* arch, char* root):
 		needs = needs | wtest_source_needs(line.data)
 	string_free(line)
 	return needs
+
+
+# The retained sonames of one scanned source file (newline-joined), or
+# 0. Scanning happens in wtest_source_needs; this only reads its memo.
+char* wtest_source_sonames(char* path):
+	wtest_source_needs(path)
+	if (wtest_source_sonames_memo == 0):
+		return 0
+	return wtest_source_sonames_memo.get(path, 0)
+
+
+void wtest_sonames_collect(char* path, map[char*, int] seen, list[char*] out):
+	char* sonames = wtest_source_sonames(path)
+	if (sonames == 0):
+		return
+	string_builder* line = string_new()
+	int i = 0
+	int at_end = 0
+	while (at_end == 0):
+		int ch = sonames[i]
+		if (ch == 0):
+			at_end = 1
+		if ((ch == 10) || (ch == 0)):
+			if (line.length > 0):
+				if (seen.get(line.data, 0) == 0):
+					seen[line.data] = 1
+					out.push(strclone(line.data))
+				string_clear(line)
+		else:
+			string_append_char(line, ch)
+		i = i + 1
+	string_free(line)
+
+
+# The distinct retained sonames named anywhere in (arch, root)'s cached
+# import closure — the same closure walk as wtest_closure_needs, with
+# the same root-file-only fallback when the closure is unknown. Only
+# called once the needs bits already said "dynamically linked" and the
+# arch's loader was found, so the common path stays as cheap as before.
+list[char*] wtest_closure_sonames(char* arch, char* root):
+	list[char*] out = new list[char*]
+	map[char*, int] seen = new map[char*, int]
+	if (wtest_closure_roots == 0):
+		wtest_closure_roots = new list[char*]
+		wtest_closure_blobs = new list[char*]
+		wtest_cache_load()
+	char* id = wtest_root_id(arch, root)
+	char* blob = wtest_closure_get(id)
+	free(id)
+	if (blob == 0):
+		wtest_sonames_collect(root, seen, out)
+		return out
+	string_builder* line = string_new()
+	int i = 0
+	while (blob[i] != 0):
+		if (blob[i] == 10):
+			if (line.length > 0):
+				wtest_sonames_collect(line.data, seen, out)
+				string_clear(line)
+		else:
+			string_append_char(line, blob[i])
+		i = i + 1
+	if (line.length > 0):
+		wtest_sonames_collect(line.data, seen, out)
+	string_free(line)
+	return out
+
+
+# Whether 'hay' (binary, hay_length bytes — NULs included) contains the
+# NUL-terminated 'needle' as a byte substring. strstr-shaped search is
+# useless on /etc/ld.so.cache, whose entries are NUL-separated.
+int wtest_bytes_contain(char* hay, int hay_length, char* needle):
+	int n = strlen(needle)
+	if (n == 0):
+		return 1
+	int i = 0
+	while (i + n <= hay_length):
+		int j = 0
+		while ((j < n) && (hay[i + j] == needle[j])):
+			j = j + 1
+		if (j == n):
+			return 1
+		i = i + 1
+	return 0
+
+
+# Read /etc/ld.so.cache once per run (binary — keep the length for the
+# byte search). A host without the file (musl, non-Linux) just leaves
+# wtest_ldcache_text at 0: the standard-dir walk is the whole probe
+# there.
+void wtest_ldcache_ensure():
+	if (wtest_ldcache_loaded):
+		return
+	wtest_ldcache_loaded = 1
+	wstream* in = stream_open_read(c"/etc/ld.so.cache")
+	if (in == 0):
+		return
+	string_builder* contents = string_new()
+	stream_read_all(in, contents)
+	stream_close(in)
+	wtest_ldcache_text = contents.data
+	wtest_ldcache_length = contents.length
+	free(contents)
+
+
+# Whether 'soname' exists as a file in one of the standard shared-
+# library directories for 'arch' (header comment): the multiarch dirs
+# for the word size first, then the /lib{32,64} variants, then the
+# shared /lib and /usr/lib.
+int wtest_soname_in_dirs(char* arch, char* soname):
+	list[char*] dirs = new list[char*]
+	if (strcmp(arch, c"x86") == 0):
+		dirs.push(c"/lib/i386-linux-gnu")
+		dirs.push(c"/usr/lib/i386-linux-gnu")
+		dirs.push(c"/lib32")
+		dirs.push(c"/usr/lib32")
+	if (strcmp(arch, c"x64") == 0):
+		dirs.push(c"/lib/x86_64-linux-gnu")
+		dirs.push(c"/usr/lib/x86_64-linux-gnu")
+		dirs.push(c"/lib64")
+		dirs.push(c"/usr/lib64")
+	dirs.push(c"/lib")
+	dirs.push(c"/usr/lib")
+	int found = 0
+	for char* dir in dirs:
+		if (found == 0):
+			string_builder* candidate = string_new()
+			string_append(candidate, dir)
+			string_append_char(candidate, '/')
+			string_append(candidate, soname)
+			if (wtest_file_exists(candidate.data)):
+				found = 1
+			string_free(candidate)
+	return found
+
+
+# Positive-evidence probe for one retained soname on this host
+# (memoized per arch): present in a standard lib dir for the word
+# size, or anywhere in ldconfig's /etc/ld.so.cache index (which knows
+# libraries installed outside the standard dirs; the cache mixes both
+# word sizes, which can only ever KEEP a target — the conservative
+# direction). An absolute c_lib path is probed as that file directly.
+int wtest_soname_available(char* arch, char* soname):
+	if (soname[0] == '/'):
+		return wtest_file_exists(soname)
+	if (wtest_soname_probe_memo == 0):
+		wtest_soname_probe_memo = new map[char*, int]
+	char* key = wtest_root_id(arch, soname)
+	int memo = wtest_soname_probe_memo.get(key, 0)
+	if (memo != 0):
+		free(key)
+		return memo - 1
+	int available = wtest_soname_in_dirs(arch, soname)
+	if (available == 0):
+		wtest_ldcache_ensure()
+		if (wtest_ldcache_text != 0):
+			available = wtest_bytes_contain(wtest_ldcache_text, wtest_ldcache_length, soname)
+	wtest_soname_probe_memo[key] = available + 1
+	free(key)
+	return available
 
 
 # The ELF interpreter a dynamically linked binary for 'arch' needs at
@@ -2904,15 +3164,30 @@ char* wtest_target_runnable_reason(char* name):
 					return c"no NVIDIA GPU (/dev/nvidiactl, /dev/nvidia0 and nvidia-smi all missing)"
 				if (needs & 1):
 					char* loader = wtest_arch_loader(out_archs[k])
-					if ((loader != 0) && (wtest_file_exists(loader) == 0)):
-						string_builder* reason = string_new()
-						string_append(reason, loader)
-						string_append(reason, c" not found (dynamically linked ")
-						string_append(reason, out_archs[k])
-						string_append(reason, c" binary)")
-						char* text = reason.data
-						free(reason)
-						return text
+					if (loader != 0):
+						if (wtest_file_exists(loader) == 0):
+							string_builder* reason = string_new()
+							string_append(reason, loader)
+							string_append(reason, c" not found (dynamically linked ")
+							string_append(reason, out_archs[k])
+							string_append(reason, c" binary)")
+							char* text = reason.data
+							free(reason)
+							return text
+						# Loader present: the named libraries themselves
+						# must be installed too (header comment;
+						# ai_tooling_next_steps.md 2026-08-04).
+						list[char*] sonames = wtest_closure_sonames(out_archs[k], out_srcs[k])
+						for char* soname in sonames:
+							if (wtest_soname_available(out_archs[k], soname) == 0):
+								string_builder* missing = string_new()
+								string_append(missing, soname)
+								string_append(missing, c" not found (c_lib shared library, ")
+								string_append(missing, out_archs[k])
+								string_append(missing, c" binary)")
+								char* missing_text = missing.data
+								free(missing)
+								return missing_text
 			k = k + 1
 	return 0
 
@@ -2959,6 +3234,22 @@ char* wtest_step_unavailable_reason(json_value* step):
 				if (strcmp(second.string_value, c"tools/run_wasm.sh") == 0):
 					if (wtest_wasm_runtime_available() == 0):
 						return c"no wasm runtime (wasmtime or node) found"
+				# 'sh -c' wraps its real command in one string, hiding the
+				# runner from the argv[1] shapes above (pac_corrupt_test_
+				# arm64's 'sh -c "sh tools/run_arm64.sh ...; test $? -ge
+				# 128"'): scan the command string for the two known
+				# wrapper paths and apply the same probes. Still positive
+				# evidence only — a '-c' string naming neither wrapper is
+				# left alone.
+				if ((strcmp(second.string_value, c"-c") == 0) && (n >= 3)):
+					json_value* script = json_array_get(cmd, 2)
+					if (script.type == json_type_string()):
+						if (wtest_str_contains(script.string_value, c"tools/run_arm64.sh")):
+							if (wtest_qemu_arm64_available() == 0):
+								return c"qemu-aarch64-static not found"
+						if (wtest_str_contains(script.string_value, c"tools/run_wasm.sh")):
+							if (wtest_wasm_runtime_available() == 0):
+								return c"no wasm runtime (wasmtime or node) found"
 		return 0
 	if (starts_with(program, c"tools/mac/")):
 		if (wtest_file_exists(program) == 0):
@@ -3029,6 +3320,9 @@ void wtest_apply_available_filter():
 			char* reason = wtest_target_unavailable_reason(name)
 			if (reason != 0):
 				wtest_enabled.remove(name)
+				if (wtest_unavailable_dropped == 0):
+					wtest_unavailable_dropped = new map[char*, int]
+				wtest_unavailable_dropped[name] = 1
 				total = total + 1
 				int index = -1
 				int i = 0
@@ -3074,6 +3368,61 @@ int wtest_umbrella_target(char* name):
 	return 1
 
 
+# Whether 'name' or anything in its transitive dep closure was dropped
+# by the availability filter (wtest_apply_available_filter). Transitive
+# because umbrellas nest — 'tests' lists tests_x64 among its deps — and
+# running an umbrella runs every transitive dep, dropped members
+# included. 'visited' guards cycles and reconvergence.
+int wtest_deps_cover_dropped(char* name, map[char*, int] visited):
+	if (visited.get(name, 0)):
+		return 0
+	visited[name] = 1
+	if (wtest_unavailable_dropped.get(name, 0)):
+		return 1
+	json_value* target = wtest_target_defs.get(name, 0)
+	if (target == 0):
+		return 0
+	json_value* deps = json_object_get(target, c"deps")
+	if (deps == 0):
+		return 0
+	if (deps.type != json_type_array()):
+		return 0
+	int i = 0
+	while (i < json_array_length(deps)):
+		json_value* dep = json_array_get(deps, i)
+		if (dep.type == json_type_string()):
+			if (wtest_deps_cover_dropped(dep.string_value, visited)):
+				return 1
+		i = i + 1
+	return 0
+
+
+# The availability filter and the collapse must COMPOSE (header
+# comment; ai_tooling_next_steps.md 2026-08-05): collapsing into an
+# umbrella whose dep closure includes a target the filter just dropped
+# would run that target anyway through the umbrella's deps, silently
+# reintroducing exactly what --available/--runnable-here removed.
+# Returns 1 (and prints one stderr note, so the uncollapsed member
+# list is explicable) when 'name' must stay uncollapsed. Only called
+# when the collapse thresholds already fired, so the note never prints
+# for an ordinary small selection.
+int wtest_collapse_blocked(char* name):
+	if (wtest_unavailable_dropped == 0):
+		return 0
+	map[char*, int] visited = new map[char*, int]
+	if (wtest_deps_cover_dropped(name, visited) == 0):
+		return 0
+	wstream* err = stderr_writer()
+	string_builder* line = string_new()
+	string_append(line, c"wtest: not collapsing into ")
+	string_append(line, name)
+	string_append(line, c" (its members include unavailable targets)")
+	stream_write_line(err, line.data)
+	string_free(line)
+	stream_flush(err)
+	return 1
+
+
 # Collapse an enormous selection to umbrella targets (header comment):
 # when more than half of the manifest's selectable targets are
 # selected, each umbrella with more than half of its own members
@@ -3115,6 +3464,8 @@ void wtest_collapse_selection():
 		if (member_enabled == 0):
 			continue
 		if (member_enabled * 2 <= member_total):
+			continue
+		if (wtest_collapse_blocked(name)):
 			continue
 		i = 0
 		while (i < json_array_length(deps)):

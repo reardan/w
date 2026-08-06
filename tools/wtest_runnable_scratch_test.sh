@@ -31,16 +31,19 @@ fail() {
 
 manifest=tests/wtest/manifest_runnable.json
 
-# --available alone must keep every fixture target: the loader/GPU
-# probes are part of --runnable-here, not of the older flag.
+# --available alone must keep every loader/GPU/soname fixture target:
+# those probes are part of --runnable-here, not of the older flag (the
+# rn_shc_* runner-wrapper targets are asserted separately below — their
+# --available probes legitimately vary by host).
 out=$(bin/wtest changed -f "$manifest" --available widget/runnable.dat)
-for t in rn_dyn32 rn_dyn64 rn_gpu rn_static rn_compile_only rn_dyn_imp rn_gpu_imp rn_plain_imp rn_broken_imp; do
+for t in rn_dyn32 rn_dyn64 rn_gpu rn_static rn_compile_only rn_dyn_imp rn_gpu_imp rn_plain_imp rn_broken_imp rn_dyn_missing rn_cuda_clib; do
 	echo "$out" | grep -qx "$t" || fail "--available dropped $t"
 done
 
 err_file=$(mktemp)
 err_file2=$(mktemp)
-trap 'rm -f "$err_file" "$err_file2"' EXIT
+empty_dir=$(mktemp -d)
+trap 'rm -rf "$err_file" "$err_file2" "$empty_dir"' EXIT
 out=$(bin/wtest changed -f "$manifest" --runnable-here widget/runnable.dat 2>"$err_file")
 
 # A statically linked run target and a compile-only target are runnable
@@ -71,6 +74,27 @@ if [ -e /dev/nvidiactl ] || [ -e /dev/nvidia0 ] || command -v nvidia-smi >/dev/n
 else
 	echo "$out" | grep -qx rn_gpu && fail "no NVIDIA GPU on this host but rn_gpu was kept"
 	grep -q "no NVIDIA GPU" "$err_file" || fail "drop reason did not name the missing GPU"
+fi
+
+# The soname probe (ai_tooling_next_steps.md 2026-08-04): dyn_missing.w
+# names a library NO host has, so rn_dyn_missing is dropped everywhere —
+# without the 64-bit loader the reason is the loader itself, with it the
+# reason must name the missing soname.
+echo "$out" | grep -qx rn_dyn_missing && fail "rn_dyn_missing was kept (missing c_lib soname not probed)"
+if [ -e /lib64/ld-linux-x86-64.so.2 ]; then
+	grep -q "libwtest_no_such_lib.so.9 not found" "$err_file" || fail "rn_dyn_missing's drop reason did not name the missing soname"
+fi
+
+# libcuda keeps its GPU-bit behavior: c_lib "libcuda.so.1" is probed
+# via the NVIDIA driver evidence, never via the standard-lib-dir soname
+# probe (libcuda lives wherever the driver installer put it).
+if [ -e /dev/nvidiactl ] || [ -e /dev/nvidia0 ] || command -v nvidia-smi >/dev/null 2>&1; then
+	if [ -e /lib64/ld-linux-x86-64.so.2 ]; then
+		echo "$out" | grep -qx rn_cuda_clib || fail "GPU host dropped rn_cuda_clib (libcuda must use the GPU bit, not the soname probe)"
+	fi
+else
+	echo "$out" | grep -qx rn_cuda_clib && fail "no NVIDIA GPU on this host but rn_cuda_clib was kept"
+	grep -q "libcuda.so.1 not found" "$err_file" && fail "rn_cuda_clib was dropped by a libcuda soname probe instead of the GPU bit"
 fi
 
 # Closure-level attribution (ai_tooling_next_steps.md 2026-07-29): the
@@ -104,5 +128,22 @@ else
 	echo "$out" | grep -qx rn_gpu_imp && fail "no NVIDIA GPU on this host but rn_gpu_imp was kept (imported lib.cuda not attributed)"
 	grep -q "no NVIDIA GPU" "$err_file2" || fail "rn_gpu_imp drop reason did not name the missing GPU"
 fi
+
+# 'sh -c'-wrapped runner steps (ai_tooling_next_steps.md 2026-08-05,
+# point 1): the runner path hides inside the '-c' command string —
+# pac_corrupt_test_arm64's shape — so --available must scan the string
+# for the known wrapper paths. Probed deterministically by controlling
+# the evidence the filter reads: an empty PATH removes qemu, wasmtime
+# and node (QEMU_ARM64 unset), while a set QEMU_ARM64 is itself
+# positive evidence the arm64 runner works.
+unset QEMU_ARM64 || true
+out=$(PATH="$empty_dir" bin/wtest changed -f "$manifest" --available widget/runnable.dat 2>"$err_file")
+echo "$out" | grep -qx rn_shc_arm64 && fail "no qemu on PATH but the sh -c arm64 runner target was kept"
+echo "$out" | grep -qx rn_shc_wasm && fail "no wasm runtime on PATH but the sh -c wasm runner target was kept"
+grep -q "qemu-aarch64-static not found" "$err_file" || fail "sh -c arm64 drop reason did not name qemu"
+grep -q "no wasm runtime (wasmtime or node) found" "$err_file" || fail "sh -c wasm drop reason did not name the wasm runtime"
+echo "$out" | grep -qx rn_static || fail "empty PATH dropped rn_static (only runner-shaped steps may be probed)"
+out=$(QEMU_ARM64=qemu-aarch64 PATH="$empty_dir" bin/wtest changed -f "$manifest" --available widget/runnable.dat)
+echo "$out" | grep -qx rn_shc_arm64 || fail "QEMU_ARM64 set but the sh -c arm64 runner target was dropped"
 
 echo "wtest_runnable_scratch_test: OK"

@@ -535,3 +535,51 @@ expect rn_broken_imp
 expect rn_plain_imp
 expect rn_static
 expect rn_compile_only
+
+# The soname probe's host-INVARIANT half: dyn_missing.w's c_lib names
+# a library no host has, so rn_dyn_missing is dropped on every machine
+# — either the 64-bit loader is missing (its reason) or the loader
+# exists and the probe reports the fictional soname. WHICH reason
+# fired is asserted host-conditionally in
+# tools/wtest_runnable_scratch_test.sh, like the loader/GPU cases.
+case -f tests/wtest/manifest_runnable.json --runnable-here widget/runnable.dat
+noorder
+expect rn_static
+expect rn_compile_only
+forbid rn_dyn_missing
+
+# The availability filter and the collapse compose (ai_tooling_next_
+# steps.md 2026-08-05 point 3). Control first: without a filter the
+# manifest_collapse_avail.json fixture collapses into its umbrella as
+# usual (4 of 5 selectable targets, all four ca_all members).
+case -f tests/wtest/manifest_collapse_avail.json widget/ca_all.dat
+noorder
+expect ca_all
+forbid ca_w1
+forbid ca_blocked
+
+# With --available, ca_blocked (a fictional tools/mac/ runner, the
+# deterministic drop) leaves 3 of ca_all's 4 members — still a
+# majority, but collapsing into ca_all would run the dropped member
+# through the umbrella's deps, so the members must be emitted
+# individually instead.
+case -f tests/wtest/manifest_collapse_avail.json --available widget/ca_all.dat
+noorder
+expect ca_w1
+expect ca_w2
+expect ca_w3
+forbid ca_all
+forbid ca_outer
+forbid ca_blocked
+
+# The dropped-member check is TRANSITIVE: ca_outer's only selectable
+# member (ca_loner) is fully selected, but its dep umbrella ca_all
+# reaches the dropped ca_blocked, so ca_outer must not swallow the
+# selection either.
+case -f tests/wtest/manifest_collapse_avail.json --available widget/ca_all.dat widget/ca_outer.dat
+noorder
+expect ca_w1
+expect ca_loner
+forbid ca_all
+forbid ca_outer
+forbid ca_blocked

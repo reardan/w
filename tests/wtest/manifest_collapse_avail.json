@@ -1,0 +1,42 @@
+{
+	"targets": [
+		{
+			"name": "ca_w1",
+			"steps": [
+				{"cmd": ["true", "widget/ca_all.dat"]}
+			]
+		},
+		{
+			"name": "ca_w2",
+			"steps": [
+				{"cmd": ["true", "widget/ca_all.dat"]}
+			]
+		},
+		{
+			"name": "ca_w3",
+			"steps": [
+				{"cmd": ["true", "widget/ca_all.dat"]}
+			]
+		},
+		{
+			"name": "ca_blocked",
+			"steps": [
+				{"cmd": ["tools/mac/does_not_exist.sh", "widget/ca_all.dat"]}
+			]
+		},
+		{
+			"name": "ca_loner",
+			"steps": [
+				{"cmd": ["true", "widget/ca_outer.dat"]}
+			]
+		},
+		{
+			"name": "ca_all",
+			"deps": ["ca_w1", "ca_w2", "ca_w3", "ca_blocked"]
+		},
+		{
+			"name": "ca_outer",
+			"deps": ["ca_all", "ca_loner"]
+		}
+	]
+}
