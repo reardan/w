@@ -1,8 +1,17 @@
 /*
 graphics.ui.widgets: the immediate-mode widget set over the batching
-renderer (docs/projects/ui_framework.md §3-4, stage 1: label, button,
-checkbox). Widgets are function calls made every frame; persistent
-state (a checkbox's value) is caller-owned, exactly like gfx_window.
+renderer (docs/projects/ui_framework.md §3-4; stage 1: label, button,
+checkbox; stage 2: textbox, radio, toggle, progress, dropdown).
+Widgets are function calls made every frame; persistent state (a
+checkbox's value, a textbox's buffer) is caller-owned, exactly like
+gfx_window.
+
+Keyboard input is context-routed: ui_feed_event queues the frame's
+CHAR/NAV events on the context, and the widget holding ctx.focus
+(claimed by clicking a textbox) consumes them. An open dropdown claims
+ctx.modal, which makes every other widget inert until it closes — its
+list draws through the renderer's overlay batch so it paints above
+widgets issued later in the frame.
 
 Interaction is event-queue-based (graphics.event), not snapshot-based:
 ui_feed_event turns MOUSE_DOWN/MOUSE_UP into per-frame pressed/
@@ -48,7 +57,15 @@ struct ui_context:
 	ui_input input
 	int32 hot              # widget under the pointer this frame (0 = none)
 	int32 active           # widget owning the current press (0 = none)
+	int32 focus            # widget owning keyboard input (persistent)
+	int32 modal            # open popup owning ALL input (a dropdown)
 	int32 next_id          # per-frame sequential id counter
+	# This frame's translated text input, drained by the focused
+	# widget; cleared in ui_end like the mouse edges.
+	int32[32] chars        # GFX_EVENT_CHAR codes in arrival order
+	int32 char_count
+	int32[8] navs          # GFX_EVENT_NAV codes in arrival order
+	int32 nav_count
 	float32 cursor_x
 	float32 cursor_y
 	float32 origin_x
@@ -69,7 +86,11 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.input.press_y = 0
 	ctx.hot = 0
 	ctx.active = 0
+	ctx.focus = 0
+	ctx.modal = 0
 	ctx.next_id = 1
+	ctx.char_count = 0
+	ctx.nav_count = 0
 	ctx.cursor_x = 0.0
 	ctx.cursor_y = 0.0
 	ctx.origin_x = 0.0
@@ -79,7 +100,7 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 
 
 # Fold one queued event into the per-frame input edges. Only button 1
-# drives widget interaction in stage 1.
+# drives pointer interaction; CHAR/NAV queue up for the focused widget.
 void ui_feed_event(ui_context* ctx, gfx_event* e):
 	if ((e.kind == GFX_EVENT_MOUSE_DOWN) && (e.code == 1)):
 		ctx.input.mouse_down = 1
@@ -93,6 +114,14 @@ void ui_feed_event(ui_context* ctx, gfx_event* e):
 		ctx.input.mouse_released = 1
 		ctx.input.mouse_x = e.x
 		ctx.input.mouse_y = e.y
+	else if (e.kind == GFX_EVENT_CHAR):
+		if (ctx.char_count < 32):
+			ctx.chars[ctx.char_count] = e.code
+			ctx.char_count = ctx.char_count + 1
+	else if (e.kind == GFX_EVENT_NAV):
+		if (ctx.nav_count < 8):
+			ctx.navs[ctx.nav_count] = e.code
+			ctx.nav_count = ctx.nav_count + 1
 
 
 # Start a frame: reset ids/hot/layout, start the render batch, clear
@@ -132,6 +161,8 @@ void ui_end(ui_context* ctx):
 		ctx.active = 0
 	ctx.input.mouse_pressed = 0
 	ctx.input.mouse_released = 0
+	ctx.char_count = 0
+	ctx.nav_count = 0
 
 
 # Place the next widget on the same row as the previous one.
@@ -158,8 +189,12 @@ ui_rect ui_layout_next(ui_context* ctx, float32 w, float32 h):
 
 # Shared press/release logic: claims hot when the pointer is over the
 # rect, active when this frame's press landed inside it; returns 1 on
-# the frame the release lands while still over it.
+# the frame the release lands while still over it. While a popup is
+# open (ctx.modal) every other widget is inert — the popup handles all
+# input itself.
 int ui_click_behavior(ui_context* ctx, int id, ui_rect r):
+	if ((ctx.modal != 0) && (ctx.modal != id)):
+		return 0
 	int over = ui_rect_contains(r, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))
 	if (over):
 		ctx.hot = id
@@ -198,6 +233,267 @@ int ui_button(ui_context* ctx, char* label):
 	ui_render_rect(ctx.rndr, r, ui_widget_fill(ctx, id))
 	ui_draw_text_centered(ctx.rndr, r, label, scale, ctx.theme.text)
 	return clicked
+
+
+# Caller-owned single-line text buffer for ui_textbox. text stays
+# NUL-terminated; caret is a byte index 0..length.
+struct ui_textbox_state:
+	char[128] text
+	int32 length
+	int32 caret
+
+
+int ui_textbox_capacity():
+	return 127
+
+
+void ui_textbox_init(ui_textbox_state* st):
+	st.text[0] = 0
+	st.length = 0
+	st.caret = 0
+
+
+void ui_textbox_set(ui_textbox_state* st, char* s):
+	int len = strlen(s)
+	if (len > ui_textbox_capacity()):
+		len = ui_textbox_capacity()
+	int i = 0
+	while (i < len):
+		st.text[i] = s[i]
+		i = i + 1
+	st.text[len] = 0
+	st.length = len
+	st.caret = len
+
+
+void ui_textbox_insert(ui_textbox_state* st, int ch):
+	if (st.length >= ui_textbox_capacity()):
+		return
+	int i = st.length
+	while (i > st.caret):
+		st.text[i] = st.text[i - 1]
+		i = i - 1
+	st.text[st.caret] = ch
+	st.length = st.length + 1
+	st.caret = st.caret + 1
+	st.text[st.length] = 0
+
+
+void ui_textbox_backspace(ui_textbox_state* st):
+	if (st.caret == 0):
+		return
+	int i = st.caret - 1
+	while (i < st.length - 1):
+		st.text[i] = st.text[i + 1]
+		i = i + 1
+	st.length = st.length - 1
+	st.caret = st.caret - 1
+	st.text[st.length] = 0
+
+
+# Single-line text input over caller-owned state. Clicking focuses it
+# (the caret lands at the nearest glyph boundary to the click); the
+# focused textbox consumes the frame's CHAR/NAV queues — printable
+# ASCII inserts at the caret, backspace deletes, left/right/home/end
+# move, escape drops focus. Returns 1 on the frame return is typed
+# (the submit edge). No horizontal scroll in stage 2: glyphs past the
+# field's width are not drawn.
+int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
+	int id = ctx.next_id
+	ctx.next_id = ctx.next_id + 1
+	int scale = ctx.theme.text_scale
+	int advance = 8 * scale
+	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
+	ui_click_behavior(ctx, id, r)
+
+	float32 text_x = r.x + cast(float32, ctx.theme.pad)
+	# Focus follows the press: inside claims it, any other press drops
+	# it. Inert while another widget holds a popup open.
+	if (ctx.input.mouse_pressed && (ctx.modal == 0)):
+		if (ui_rect_contains(r, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
+			ctx.focus = id
+			int pos = (ctx.input.press_x - cast(int, text_x) + advance / 2) / advance
+			if (pos < 0):
+				pos = 0
+			if (pos > st.length):
+				pos = st.length
+			st.caret = pos
+		else if (ctx.focus == id):
+			ctx.focus = 0
+
+	int submitted = 0
+	if (ctx.focus == id):
+		int i = 0
+		while (i < ctx.char_count):
+			int ch = ctx.chars[i]
+			if ((ch >= 32) && (ch <= 126)):
+				ui_textbox_insert(st, ch)
+			else if (ch == 8):
+				ui_textbox_backspace(st)
+			else if (ch == 13):
+				submitted = 1
+			else if (ch == 27):
+				ctx.focus = 0
+			i = i + 1
+		i = 0
+		while (i < ctx.nav_count):
+			int nav = ctx.navs[i]
+			if ((nav == GFX_NAV_LEFT) && (st.caret > 0)):
+				st.caret = st.caret - 1
+			else if ((nav == GFX_NAV_RIGHT) && (st.caret < st.length)):
+				st.caret = st.caret + 1
+			else if (nav == GFX_NAV_HOME):
+				st.caret = 0
+			else if (nav == GFX_NAV_END):
+				st.caret = st.length
+			i = i + 1
+
+	ui_color border_color = ctx.theme.border
+	if (ctx.focus == id):
+		border_color = ctx.theme.accent
+	ui_render_rect(ctx.rndr, r, border_color)
+	ui_render_rect(ctx.rndr, ui_rect_inset(r, 2.0), ctx.theme.surface)
+	int fit = (cast(int, r.w) - ctx.theme.pad * 2) / advance
+	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
+	int col = 0
+	while ((col < st.length) && (col < fit)):
+		ui_render_glyph(ctx.rndr, text_x + cast(float32, col * advance), ty, st.text[col] & 255, scale, ctx.theme.text)
+		col = col + 1
+	if (ctx.focus == id):
+		int caret_col = st.caret
+		if (caret_col > fit):
+			caret_col = fit
+		ui_render_rect(ctx.rndr, ui_rect_new(text_x + cast(float32, caret_col * advance) - 1.0, r.y + 6.0, 2.0, r.h - 12.0), ctx.theme.text)
+	return submitted
+
+
+# One radio option; clicking selects its index into the caller's group
+# variable. Returns 1 on the frame this option becomes selected.
+int ui_radio(ui_context* ctx, char* label, int index, int32* selected):
+	int id = ctx.next_id
+	ctx.next_id = ctx.next_id + 1
+	int scale = ctx.theme.text_scale
+	int box = ctx.theme.unit * 2
+	float32 w = cast(float32, box + ctx.theme.gap + ui_text_width(label, scale))
+	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
+	int clicked = ui_click_behavior(ctx, id, r)
+	int changed = 0
+	if (clicked && (selected[0] != index)):
+		selected[0] = index
+		changed = 1
+
+	ui_rect box_rect = ui_rect_new(r.x, r.y + (r.h - cast(float32, box)) * 0.5, cast(float32, box), cast(float32, box))
+	ui_render_rect(ctx.rndr, box_rect, ui_widget_fill(ctx, id))
+	ui_render_rect(ctx.rndr, ui_rect_inset(box_rect, 2.0), ctx.theme.surface)
+	if (selected[0] == index):
+		ui_render_rect(ctx.rndr, ui_rect_inset(box_rect, 5.0), ctx.theme.accent)
+	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
+	ui_draw_text(ctx.rndr, r.x + cast(float32, box + ctx.theme.gap), ty, label, scale, ctx.theme.text)
+	return changed
+
+
+# A switch: an accent track with the knob on the off (left) or on
+# (right) side. The whole row is clickable; returns 1 on the frame it
+# flips.
+int ui_toggle(ui_context* ctx, char* label, int32* on):
+	int id = ctx.next_id
+	ctx.next_id = ctx.next_id + 1
+	int scale = ctx.theme.text_scale
+	int track_w = ctx.theme.unit * 4
+	int track_h = ctx.theme.unit * 2
+	float32 w = cast(float32, track_w + ctx.theme.gap + ui_text_width(label, scale))
+	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
+	int flipped = ui_click_behavior(ctx, id, r)
+	if (flipped):
+		on[0] = 1 - on[0]
+
+	ui_rect track = ui_rect_new(r.x, r.y + (r.h - cast(float32, track_h)) * 0.5, cast(float32, track_w), cast(float32, track_h))
+	ui_color track_color = ctx.theme.widget
+	if (on[0]):
+		track_color = ctx.theme.accent
+	ui_render_rect(ctx.rndr, track, track_color)
+	float32 knob = cast(float32, track_h - 4)
+	float32 kx = track.x + 2.0
+	if (on[0]):
+		kx = track.x + track.w - knob - 2.0
+	ui_render_rect(ctx.rndr, ui_rect_new(kx, track.y + 2.0, knob, knob), ctx.theme.surface)
+	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
+	ui_draw_text(ctx.rndr, r.x + cast(float32, track_w + ctx.theme.gap), ty, label, scale, ctx.theme.text)
+	return flipped
+
+
+# Read-only progress bar; fraction clamps to 0..1.
+void ui_progress(ui_context* ctx, float32 w, float32 fraction):
+	if (fraction < 0.0):
+		fraction = 0.0
+	if (fraction > 1.0):
+		fraction = 1.0
+	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
+	float32 bar_h = cast(float32, ctx.theme.unit)
+	ui_rect track = ui_rect_new(r.x, r.y + (r.h - bar_h) * 0.5, r.w, bar_h)
+	ui_render_rect(ctx.rndr, track, ctx.theme.widget)
+	if (fraction > 0.0):
+		ui_render_rect(ctx.rndr, ui_rect_new(track.x, track.y, track.w * fraction, track.h), ctx.theme.accent)
+
+
+# Collapsed: a button-look header showing items[selected[0]] and a 'v'
+# marker; clicking opens the list. Open: the list draws through the
+# renderer's overlay batch (above everything else this frame) while
+# ctx.modal keeps every other widget inert; pressing an item selects
+# it and closes, pressing anywhere else just closes, and either press
+# is consumed so widgets after this call never see it. open is caller
+# state, like a checkbox's value. Returns 1 on the frame the selection
+# changes.
+int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32* selected, int32* open):
+	int id = ctx.next_id
+	ctx.next_id = ctx.next_id + 1
+	int scale = ctx.theme.text_scale
+	float32 row_h = cast(float32, ctx.theme.widget_height)
+	ui_rect r = ui_layout_next(ctx, w, row_h)
+	int changed = 0
+
+	if (open[0] == 0):
+		if (ui_click_behavior(ctx, id, r)):
+			open[0] = 1
+			ctx.modal = id
+	else:
+		ctx.modal = id
+		ctx.hot = id
+		ui_rect list = ui_rect_new(r.x, r.y + r.h, r.w, row_h * cast(float32, item_count))
+		if (ctx.input.mouse_pressed):
+			if (ui_rect_contains(list, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
+				int pick = (ctx.input.press_y - cast(int, list.y)) / ctx.theme.widget_height
+				if (pick >= item_count):
+					pick = item_count - 1
+				if (selected[0] != pick):
+					selected[0] = pick
+					changed = 1
+			open[0] = 0
+			ctx.modal = 0
+			ctx.input.mouse_pressed = 0
+
+	ui_render_rect(ctx.rndr, r, ui_widget_fill(ctx, id))
+	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
+	if ((selected[0] >= 0) && (selected[0] < item_count)):
+		ui_draw_text(ctx.rndr, r.x + cast(float32, ctx.theme.pad), ty, items[selected[0]], scale, ctx.theme.text)
+	ui_render_glyph(ctx.rndr, r.x + r.w - cast(float32, ctx.theme.pad + 8 * scale), ty, 'v', scale, ctx.theme.text_muted)
+
+	if (open[0]):
+		ui_rect list_rect = ui_rect_new(r.x, r.y + r.h, r.w, row_h * cast(float32, item_count))
+		ctx.rndr.to_overlay = 1
+		ui_render_rect(ctx.rndr, list_rect, ctx.theme.border)
+		ui_render_rect(ctx.rndr, ui_rect_inset(list_rect, 1.0), ctx.theme.surface)
+		int i = 0
+		while (i < item_count):
+			ui_rect row = ui_rect_new(list_rect.x, list_rect.y + row_h * cast(float32, i), list_rect.w, row_h)
+			if (ui_rect_contains(row, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))):
+				ui_render_rect(ctx.rndr, ui_rect_inset(row, 1.0), ctx.theme.widget_hot)
+			if (i == selected[0]):
+				ui_render_rect(ctx.rndr, ui_rect_new(row.x + 1.0, row.y + 1.0, 4.0, row.h - 2.0), ctx.theme.accent)
+			ui_draw_text(ctx.rndr, row.x + cast(float32, ctx.theme.pad), row.y + (row.h - cast(float32, ui_text_height(scale))) * 0.5, items[i], scale, ctx.theme.text)
+			i = i + 1
+		ctx.rndr.to_overlay = 0
+	return changed
 
 
 # Toggles *checked and returns 1 on the frame it flips. The whole

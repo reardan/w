@@ -42,6 +42,12 @@ struct ui_renderer:
 	int a_color
 	float32* verts
 	int vert_count
+	# Second batch drawn after the main one — popup/overlay geometry
+	# (an open dropdown's list) paints over widgets issued later in the
+	# frame. Routed by to_overlay, drawn by ui_render_end.
+	float32* overlay_verts
+	int overlay_count
+	int32 to_overlay
 	int32 vp_w
 	int32 vp_h
 
@@ -60,6 +66,9 @@ void ui_render_init_headless(ui_renderer* r):
 	r.a_color = 0
 	r.verts = cast(float32*, malloc(ui_render_max_verts() * 32))
 	r.vert_count = 0
+	r.overlay_verts = cast(float32*, malloc(ui_render_max_verts() * 32))
+	r.overlay_count = 0
+	r.to_overlay = 0
 	r.vp_w = 0
 	r.vp_h = 0
 
@@ -109,6 +118,8 @@ int ui_render_init(ui_renderer* r):
 # the current window size.
 void ui_render_begin(ui_renderer* r, int width, int height):
 	r.vert_count = 0
+	r.overlay_count = 0
+	r.to_overlay = 0
 	r.vp_w = width
 	r.vp_h = height
 	if (r.gl_ready == 0):
@@ -124,9 +135,14 @@ void ui_render_begin(ui_renderer* r, int width, int height):
 
 
 void ui_render_vertex(ui_renderer* r, float32 x, float32 y, float32 u, float32 v, ui_color color):
-	if (r.vert_count >= ui_render_max_verts()):
+	float32* batch = r.verts
+	int count = r.vert_count
+	if (r.to_overlay):
+		batch = r.overlay_verts
+		count = r.overlay_count
+	if (count >= ui_render_max_verts()):
 		return
-	float32* p = &r.verts[r.vert_count * 8]
+	float32* p = &batch[count * 8]
 	p[0] = x
 	p[1] = y
 	p[2] = u
@@ -135,7 +151,10 @@ void ui_render_vertex(ui_renderer* r, float32 x, float32 y, float32 u, float32 v
 	p[5] = color.g
 	p[6] = color.b
 	p[7] = color.a
-	r.vert_count = r.vert_count + 1
+	if (r.to_overlay):
+		r.overlay_count = count + 1
+	else:
+		r.vert_count = count + 1
 
 
 # Two triangles covering rect, sampling the atlas region u0,v0..u1,v1.
@@ -173,22 +192,33 @@ void ui_render_glyph(ui_renderer* r, float32 x, float32 y, int ch, int scale, ui
 	ui_render_quad(r, ui_rect_new(x, y, size, size), u0, v0, u1, v1, color)
 
 
-# End a frame: upload the batch once and draw it.
-void ui_render_end(ui_renderer* r):
-	if ((r.gl_ready == 0) || (r.vert_count == 0)):
+void ui_render_draw_batch(ui_renderer* r, float32* batch, int count):
+	if (count == 0):
 		return
 	glBindBuffer(GL_ARRAY_BUFFER, r.vbuf)
-	glBufferData(GL_ARRAY_BUFFER, r.vert_count * 32, r.verts, GL_DYNAMIC_DRAW)
+	glBufferData(GL_ARRAY_BUFFER, count * 32, batch, GL_DYNAMIC_DRAW)
 	glEnableVertexAttribArray(r.a_pos)
 	glVertexAttribPointer(r.a_pos, 2, GL_FLOAT, 0, 32, 0)
 	glEnableVertexAttribArray(r.a_uv)
 	glVertexAttribPointer(r.a_uv, 2, GL_FLOAT, 0, 32, 8)
 	glEnableVertexAttribArray(r.a_color)
 	glVertexAttribPointer(r.a_color, 4, GL_FLOAT, 0, 32, 16)
-	glDrawArrays(GL_TRIANGLES, 0, r.vert_count)
+	glDrawArrays(GL_TRIANGLES, 0, count)
+
+
+# End a frame: upload and draw the main batch, then the overlay batch
+# on top of it.
+void ui_render_end(ui_renderer* r):
+	if (r.gl_ready == 0):
+		return
+	ui_render_draw_batch(r, r.verts, r.vert_count)
+	ui_render_draw_batch(r, r.overlay_verts, r.overlay_count)
 
 
 void ui_render_destroy(ui_renderer* r):
 	free(cast(char*, r.verts))
 	r.verts = 0
 	r.vert_count = 0
+	free(cast(char*, r.overlay_verts))
+	r.overlay_verts = 0
+	r.overlay_count = 0
