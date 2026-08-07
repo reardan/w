@@ -21,10 +21,14 @@ scroll + nav-key events, textbox (context-routed focus consuming
 CHAR/NAV), radio, toggle, progress, dropdown (modal popup over a
 renderer overlay batch), all in the shared demo form (screenshots:
 `docs/images/ui_demo_light.png`, `ui_demo_dark.png`; captured via the
-native demo's `--screenshot` flag + `tools/ppm_to_png.py`). Still
-pending: Cocoa mouse + CHAR (needs a struct-return-free selector
-strategy — its own design note), stage 3 theming depth, TTF/SDF
-typography (#379).
+native demo's `--screenshot` flag + `tools/ppm_to_png.py`). Stage 3
+implemented 2026-08-07 — the full §5 token set (accent_hot,
+on_accent, focus, disabled_widget/disabled_text), a ui_disable scope,
+the demo's dropdown as a live theme picker, and the non-grayscale
+`ui_theme_ocean` proving "fully customizable"
+(`docs/images/ui_demo_ocean.png`). Still pending: Cocoa mouse + CHAR
+(needs a struct-return-free selector strategy — its own design note),
+TTF/SDF typography (#379), win64 backend, accessibility (§8 stage 4).
 
 ## 0. Where this framework would live, and what it does not replace
 

@@ -324,15 +324,21 @@ serve the repo, open
 
 ## Stage 2 and beyond (sketch — each its own PR, per design doc §8)
 
-- **Stage 2**: single-line text input (caller-owned
-  `ui_textbox_state` consuming `GFX_EVENT_CHAR` + backspace/arrows —
-  the PR 2 queue makes this widget-local), radio group, dropdown
-  (overlay list; `glScissor` already bound), progress bar, toggle;
-  scroll wheel (X11 buttons 4/5 → a new `GFX_EVENT_SCROLL`, a JS
-  `wheel` listener); Cocoa mouse + CHAR (needs a selector strategy
-  that avoids struct returns — flagged for its own note).
-- **Stage 3**: full theme token set, runtime dark/light demo, a
-  non-grayscale example theme.
+- **Stage 2** (implemented 2026-08-07): single-line text input
+  (caller-owned `ui_textbox_state` consuming `GFX_EVENT_CHAR` +
+  backspace/arrows — the PR 2 queue makes this widget-local; arrows
+  arrive as the portable `GFX_EVENT_NAV`, since raw keycodes are
+  backend-native), radio group, dropdown (overlay list via a renderer
+  overlay batch + a ctx.modal popup claim — `glScissor` turned out
+  unneeded), progress bar, toggle; scroll wheel (X11 buttons 4/5 →
+  `GFX_EVENT_SCROLL`, a JS `wheel` listener). Cocoa mouse + CHAR
+  stays deferred (needs a selector strategy that avoids struct
+  returns — flagged for its own note).
+- **Stage 3** (implemented 2026-08-07): full theme token set
+  (accent_hot, on_accent, focus, disabled_widget/disabled_text + a
+  `ui_disable` scope), the demo dropdown as a runtime light/dark/ocean
+  theme picker, and `ui_theme_ocean` as the non-grayscale example
+  theme.
 - **Stage 4+**: TTF/SDF fonts (issue #379), a win64 window backend,
   accessibility — each a future design doc.
 
