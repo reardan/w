@@ -251,7 +251,7 @@ void test_list_and_map_fields_round_trip():
 	s.table[c"half"] = 0.5
 	json_value* v = to_json(s)
 	char* text = json_stringify(v)
-	assert_strings_equal(c"{\x22values\x22:[0.1,-1e100,2.0],\x22table\x22:{\x22pi\x22:3.1415926535897932,\x22half\x22:0.5}}", text)
+	assert_strings_equal(c"{\x22values\x22:[0.1,-1e100,2.0],\x22table\x22:{\x22pi\x22:3.141592653589793,\x22half\x22:0.5}}", text)
 	json_free(v)
 	json_value* back = json_parse(text)
 	free(text)

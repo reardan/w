@@ -2181,6 +2181,7 @@
 				"window_64_test",
 				"x64_c_import_bitfield_test",
 				"x64_c_import_knr_test",
+				"x64_json_float64_test",
 				"x64_ndarray64_index_test"
 			]
 		},
@@ -4461,7 +4462,7 @@
 			"name": "json_codec_error_test",
 			"deps": ["wv2", "wfixture"],
 			"steps": [
-				{"cmd": ["bin/wfixture", "bin/wv2", "tests/json_codec_float16_error_fixture.w", "tests/json_codec_map_key_error_fixture.w", "tests/json_codec_set_error_fixture.w"]}
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/json_codec_float16_error_fixture.w", "tests/json_codec_float16_x64_error_fixture.w", "tests/json_codec_float64_x86_error_fixture.w", "tests/json_codec_map_key_error_fixture.w", "tests/json_codec_set_error_fixture.w"]}
 			]
 		},
 		{
@@ -7117,6 +7118,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/x64_int64_test.w", "-o", "bin/x64_int64_test"]},
 				{"cmd": ["bin/x64_int64_test"], "expect_stdout": "x64 int64 OK"}
+			]
+		},
+		{
+			"name": "x64_json_float64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/x64_json_float64_test.w"],
+			"outputs": ["bin/x64_json_float64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/x64_json_float64_test.w", "-o", "bin/x64_json_float64_test"]},
+				{"cmd": ["bin/x64_json_float64_test"]}
 			]
 		},
 		{

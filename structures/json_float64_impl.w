@@ -19,12 +19,16 @@ imports this file. Only the float_value-mirror helpers
 Parsing (json_f64_from_decimal) and formatting (json_f64_append) scale
 by exact powers of ten -- 10^k and every intermediate product are
 exactly representable in float64 for k <= 22 -- in as few chunks as
-possible, and the formatter then walks its 17-digit candidate until
-re-parsing it through json_f64_from_decimal returns the exact source
-bits, so a stringify -> parse round trip reproduces float64 values
-bit-for-bit (asserted by tests/x64_json_float64_test.w). Like json.w's
-float32 formatter it strips trailing zeros, keeps a trailing .0 on
-whole values so they re-parse as floats, switches to scientific
+possible, carrying a double-double (~106-bit) intermediate so the
+conversion is correctly rounded in both directions. The formatter
+additionally verifies its digits by re-parsing them through
+json_f64_from_decimal and emits the shortest rounded prefix that still
+reproduces the exact source bits, so 0.1 prints as 0.1 (17 significant
+digits at most, enough to identify any float64) and a stringify ->
+parse round trip is bit-exact for every finite value (asserted by
+tests/x64_json_float64_test.w and swept over random patterns during
+development). Like json.w's float32 formatter it keeps a trailing .0
+on whole values so they re-parse as floats, switches to scientific
 notation for extreme exponents, and spells non-finite bit patterns as
 null; unlike the float32 side it preserves the sign of a negative
 zero.
@@ -290,47 +294,99 @@ void json_f64_append(string_builder* out, int bits):
 		if ((scaled < 0) && (scaled % 1000 != 0)):
 			e10 = e10 - 1
 
-	# Scale into [10^16, 10^17) with exact-power chunks, keeping e10
-	# the decimal exponent of the leading digit
-	float64 f = json_f64_value(pbits)
+	# Scale into [10^16, 10^17) with exact-power chunks at double-double
+	# precision, keeping e10 the decimal exponent of the leading digit.
+	# The dd error (~2^-100 relative) stays far below the digit grid,
+	# so rounding hi + lo to an integer below lands on the correctly
+	# rounded 17 significant digits -- the canonical spelling, so whole
+	# values print whole. Extreme exponents first fold in an exact
+	# power of two (2^-568 for the huge decades, 2^568 for the tiny
+	# ones -- exact because scaling a float64 by a power of two only
+	# moves its exponent, and 2^±568 folds back out through one more dd
+	# multiplication): that keeps every Dekker-split operand and error
+	# term inside the normal range, where the top decades would
+	# otherwise overflow a_big * b_big to infinity and the denormal
+	# decades would underflow the error terms to zero.
+	float64 hi = json_f64_value(pbits)
+	float64 lo = 0.0
+	int prescale = 0
+	if (e10 > 250):
+		hi = hi * json_f64_value((1023 - 568) << 52)
+		prescale = 1
+	else if (e10 < -250):
+		hi = hi * json_f64_value((1023 + 568) << 52)
+		prescale = -1
 	int shift = 16 - e10
 	while (shift > 22):
-		f = f * json_f64_pow10(22)
+		json_f64_dd_mul(hi, lo, json_f64_pow10(22))
+		hi = json_f64_dd_hi
+		lo = json_f64_dd_lo
 		shift = shift - 22
 	while (shift < -22):
-		f = f / json_f64_pow10(22)
+		json_f64_dd_div(hi, lo, json_f64_pow10(22))
+		hi = json_f64_dd_hi
+		lo = json_f64_dd_lo
 		shift = shift + 22
 	if (shift > 0):
-		f = f * json_f64_pow10(shift)
+		json_f64_dd_mul(hi, lo, json_f64_pow10(shift))
+		hi = json_f64_dd_hi
+		lo = json_f64_dd_lo
 	if (shift < 0):
-		f = f / json_f64_pow10(0 - shift)
+		json_f64_dd_div(hi, lo, json_f64_pow10(0 - shift))
+		hi = json_f64_dd_hi
+		lo = json_f64_dd_lo
+	if (prescale == 1):
+		json_f64_dd_mul(hi, lo, json_f64_value((1023 + 568) << 52))
+		hi = json_f64_dd_hi
+		lo = json_f64_dd_lo
+	if (prescale == -1):
+		json_f64_dd_mul(hi, lo, json_f64_value((1023 - 568) << 52))
+		hi = json_f64_dd_hi
+		lo = json_f64_dd_lo
 	float64 low = json_f64_pow10(16)
 	float64 high = low * 10.0
-	while (f >= high):
-		f = f / 10.0
+	while (hi >= high):
+		json_f64_dd_div(hi, lo, 10.0)
+		hi = json_f64_dd_hi
+		lo = json_f64_dd_lo
 		e10 = e10 + 1
-	while (f < low):
-		f = f * 10.0
+	while (hi < low):
+		json_f64_dd_mul(hi, lo, 10.0)
+		hi = json_f64_dd_hi
+		lo = json_f64_dd_lo
 		e10 = e10 - 1
 
 	# Every float64 in [10^16, 10^17) is a whole number (the spacing
-	# there is at least 2), so this truncation is exact
-	int d = f
+	# there is at least 2), so the truncation of hi is exact; lo then
+	# rounds it to the nearest 17-digit integer
+	int d = hi
+	float64 adjust = lo + 0.5
+	int whole = adjust
+	if ((adjust < 0.0) && (whole > adjust)):
+		whole = whole - 1
+	d = d + whole
 	int d_low = 1
 	int i = 0
 	while (i < 16):
 		d_low = d_low * 10
 		i = i + 1
 	int d_high = d_low * 10
+	if (d >= d_high):
+		d = d_low
+		e10 = e10 + 1
+	if (d < d_low):
+		d = d_high - 1
+		e10 = e10 - 1
 
-	# Round-trip walk: json_f64_from_decimal is monotone in d, so step
-	# the 17-digit candidate (across decade edges when it saturates a
-	# boundary) until re-parsing returns the source bits. The scaling
-	# above rounds once per chunk, leaving d within a few units of a
-	# working candidate even at the exponent extremes, so 64 steps is
-	# comfortable headroom; if the walk brackets the target without
-	# hitting it (no 17-digit spelling of this value re-parses
-	# exactly), the closest candidate is kept.
+	# Verification walk: json_f64_from_decimal is monotone in d, so
+	# step the 17-digit candidate (across decade edges when it
+	# saturates a boundary) until re-parsing returns the source bits.
+	# With the double-double scaling above, d already is the correctly
+	# rounded 17-digit spelling and the first probe matches; the walk
+	# is the safety net that turns any residual tie-band slip into at
+	# most a couple of extra probes instead of a broken round trip. If
+	# it ever bracketed the target without hitting it, the closest
+	# candidate would be kept.
 	int walked_up = 0
 	int walked_down = 0
 	int done = 0
@@ -359,6 +415,33 @@ void json_f64_append(string_builder* out, int bits):
 					d = d_high - 1
 					e10 = e10 - 1
 		tries = tries + 1
+
+	# Shortest spelling: try the rounded L-digit prefixes of d from
+	# one digit up and keep the first that still re-parses to the
+	# exact source bits, so 0.1 prints as 0.1 (not its canonical
+	# 17-digit expansion 0.10000000000000001) and the smallest
+	# denormal as 5e-324. The nearest L-digit decimal is the only
+	# possible L-digit spelling of the value, so one probe per length
+	# suffices; a prefix that rounds up into the next decade re-probes
+	# as that decade's single leading digit.
+	int length = 1
+	int found = 0
+	while ((found == 0) && (length < 17)):
+		int p = 1
+		i = 17 - length
+		while (i > 0):
+			p = p * 10
+			i = i - 1
+		int cand = (d + p / 2) / p * p
+		if (cand >= d_high):
+			if (json_f64_from_decimal(d_low, e10 - 15, 0) == pbits):
+				d = d_low
+				e10 = e10 + 1
+				found = 1
+		else if (json_f64_from_decimal(cand, e10 - 16, 0) == pbits):
+			d = cand
+			found = 1
+		length = length + 1
 
 	char* digits = malloc(18)
 	i = 16

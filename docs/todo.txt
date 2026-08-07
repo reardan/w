@@ -124,6 +124,10 @@ current state:
 			descriptors from the type table, runtime in structures/json_codec.w
 			imported on demand (design: docs/projects/protocol_ergonomics.md)
 			float fields (float32) and map[K, V] fields with char*/string keys
+			float64 fields on 8-byte-word targets (bit-exact through text:
+				structures/json.w numbers carry float64 precision there via
+				structures/__arch__/<arch>/json_float64.w; still a compile
+				error on 4-byte words, where the type itself is)
 		expressions:
 			&& and || short-circuit expressions
 			! unary operator
@@ -506,7 +510,6 @@ current state:
 		generic inference for forward calls, struct constructors and container shapes (pair[T]*, list[T])
 		inline asm functions
 		bfloat16; float16 on arm64/wasm (design: docs/projects/float.md)
-		type <=> json: float64 fields (needs float64 numbers in structures/json.w; float32 and map fields work)
 		type <=> protobuf
 		global default values
 
