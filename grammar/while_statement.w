@@ -48,7 +48,7 @@ int while_statement():
 	condition_context = 1
 	promote(expression())
 	condition_context = outer_condition
-	be_br_zero(loop_break_chain)
+	be_br_zero_discard(loop_break_chain)
 
 	enclosing_tab_level = while_tab_level
 	statement()

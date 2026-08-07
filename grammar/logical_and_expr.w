@@ -8,7 +8,9 @@ int logical_and_expr():
 	if (peek(c"&&") == 0):
 		return type
 
-	# Short-circuit: a zero operand jumps to the booleanize step with eax=0
+	# Short-circuit: a zero operand jumps to the booleanize step with eax=0.
+	# Must stay be_br_zero, not the _discard twin: the taken edge carries
+	# the operand value in eax to the alu_test_set below.
 	promote(type)
 	int h = be_ctrl_block()
 	while (accept(c"&&")):

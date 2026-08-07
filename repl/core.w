@@ -513,6 +513,7 @@ void repl_checkpoint():
 
 void repl_rollback():
 	codepos = repl_saved_codepos
+	be_cmp_note_reset()
 	table_pos = repl_saved_table_pos
 	stack_pos = repl_saved_stack_pos
 	loop_depth = repl_saved_loop_depth
@@ -613,6 +614,7 @@ int repl_reset_to_genesis():
 	if (repl_genesis_taken == 0):
 		return 0
 	codepos = repl_genesis_codepos
+	be_cmp_note_reset()
 	table_pos = repl_genesis_table_pos
 	stack_pos = repl_genesis_stack_pos
 	loop_depth = repl_genesis_loop_depth
@@ -1050,6 +1052,7 @@ char* repl_echo_json(int type, int value):
 	if (repl_setjmp(repl_jump_buffer)):
 		repl_recovery = 0
 		codepos = saved_codepos
+		be_cmp_note_reset()
 		filename = saved_filename
 		line_number = saved_line
 		return 0
@@ -1156,6 +1159,7 @@ void repl_init():
 	code = buffer + 0
 	code_size = buffer_size
 	codepos = 0
+	be_cmp_note_reset()
 	code_offset = buffer
 
 	# Recoverable compile errors and staging directory (repl_engine_init),

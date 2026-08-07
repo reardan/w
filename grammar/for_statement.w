@@ -309,7 +309,7 @@ void for_range_loop(int for_var, int for_tab_level):
 	pop_ebx()
 	alu_cmp_set(0x9c) /* setl: loop var < end */
 	stack_pos = stack_pos - 1
-	be_br_zero(loop_break_chain)
+	be_br_zero_discard(loop_break_chain)
 
 	# Continue region: 'continue' in the body runs the increment first
 	loop_continue_chain = be_ctrl_block()
@@ -470,7 +470,7 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	# the index cursor reaches the length word
 	if (done_fn != 0):
 		for_iter_call(done_fn, container_slot, cursor_slot)
-		be_br_nonzero(loop_break_chain)
+		be_br_nonzero_discard(loop_break_chain)
 	else:
 		mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
 		push_eax()
@@ -481,7 +481,7 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		pop_ebx()
 		stack_pos = stack_pos - 1
 		alu_cmp_set(0x9c) /* setl: cursor < length */
-		be_br_zero(loop_break_chain)
+		be_br_zero_discard(loop_break_chain)
 
 	# Continue region: 'continue' in the body advances the cursor first
 	loop_continue_chain = be_ctrl_block()

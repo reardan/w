@@ -778,6 +778,67 @@ void be_br_nonzero(int h):
 	jmp_nonzero_int32(ctrl_val_stack[h])
 	be_ctrl_link(h)
 
+# Comparison-branch fusion (docs/projects/optimization.md §1.3):
+# alu_cmp_set notes where its setCC+movzx materialization begins and
+# ends; a discard-context branch emitted while the note is current
+# (nothing emitted in between) rolls the materialization back and
+# branches on the cmp's flags directly — cmp;jCC instead of
+# cmp;setCC;movzx;test;jCC. Only the x86 family sets the note today;
+# the other ISAs always take the plain path.
+int cmp_fuse_start
+int cmp_fuse_end
+int cmp_fuse_cc
+
+# Invalidate the fusion note. Must be called wherever codepos moves
+# backward (REPL/wdbg checkpoint rollback): a stale note aliasing a
+# later codepos would otherwise let a discard branch roll back over
+# bytes that are not a comparison.
+void be_cmp_note_reset():
+	cmp_fuse_end = 0
+
+# jCC rel32 threading region h's chain protocol (the two cases of
+# be_br_zero). x86 family only: callers have already checked target_isa.
+void be_br_cc(int jcc_opcode, int h):
+	emit_int8(15)
+	emit_int8(jcc_opcode)
+	if (ctrl_kind_stack[h]):
+		emit_int32(0)
+		be_branch_patch(codepos, ctrl_val_stack[h])
+		return
+	emit_int32(ctrl_val_stack[h])
+	be_ctrl_link(h)
+
+# jCC condition codes pair via the low bit (0x84 je <-> 0x85 jne, ...)
+int jcc_invert(int jcc_opcode):
+	if (jcc_opcode & 1):
+		return jcc_opcode - 1
+	return jcc_opcode + 1
+
+# Discard-context twins of be_br_zero/be_br_nonzero for callers that
+# never read the accumulator after the branch on either edge (if/while/
+# for/switch/ternary conditions) — NOT &&/||, whose short-circuit edge
+# carries the operand value in the accumulator to the booleanize step.
+# When the accumulator holds a comparison materialized by the
+# immediately preceding alu_cmp_set, drop the materialization and branch
+# on the cmp's flags; a setCC opcode maps to its jCC twin by
+# subtracting 0x10.
+void be_br_zero_discard(int h):
+	if ((target_isa == 0) && (cmp_fuse_end != 0) && (cmp_fuse_end == codepos)):
+		codepos = cmp_fuse_start
+		# this branch is taken when the condition is false: invert
+		be_br_cc(jcc_invert(cmp_fuse_cc - 0x10), h)
+		cmp_fuse_end = 0
+		return
+	be_br_zero(h)
+
+void be_br_nonzero_discard(int h):
+	if ((target_isa == 0) && (cmp_fuse_end != 0) && (cmp_fuse_end == codepos)):
+		codepos = cmp_fuse_start
+		be_br_cc(cmp_fuse_cc - 0x10, h)
+		cmp_fuse_end = 0
+		return
+	be_br_nonzero(h)
+
 # Close the most recently opened region. Block regions resolve their patch
 # chain to the current position (their merge point); loop regions have
 # nothing to patch.
@@ -1048,9 +1109,12 @@ void alu_cmp_set(int setcc_opcode):
 		return
 	emit_x64_opcode()
 	emit(2, c"\x39\xc3")
+	cmp_fuse_start = codepos
 	emit_int8(15)
 	emit_int8(setcc_opcode)
 	emit(4, c"\xc0\x0f\xb6\xc0")
+	cmp_fuse_end = codepos
+	cmp_fuse_cc = setcc_opcode
 
 
 /* booleanize: test %eax,%eax ; setCC %al ; movzbl %al,%eax

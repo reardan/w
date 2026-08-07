@@ -84,9 +84,9 @@ int switch_statement():
 				alu_cmp_set(0x94) /* sete: scrutinee == value */
 				more = accept(c",")
 				if (more):
-					be_br_nonzero(h_body)
+					be_br_nonzero_discard(h_body)
 				else:
-					be_br_zero(h_next_case)
+					be_br_zero_discard(h_next_case)
 			be_ctrl_end(h_body)
 		else if (accept(c"default")):
 			seen_default = 1
