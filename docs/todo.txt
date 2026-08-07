@@ -352,14 +352,17 @@ current state:
 				entry, banner/prompts move to stderr off-tty (issue #276)
 			'!' shell escape: !cmd runs through lib/shell with inherited
 				stdio, !cd/!export intercepted (issue #276)
-			shell mode stages 1-3 (issue #335, design:
+			shell mode stages 1-4 (issue #335, design:
 				docs/projects/repl_shell_mode.md): ':sh' toggles a mode
 				where typed lines parse as shell commands and translate
 				(repl/shell_translate.w) to native lib/shell_commands.w calls
 				(pwd, ls incl. -l long listings, cat, echo, head, tail, wc,
-				mkdir, rm, cp, mv, touch, chmod octal, du) or farm out to a
-				real binary; remaining stages (pipes, grep-alikes, standalone
-				wsh) are staged in the design doc
+				mkdir, rm, cp, mv, touch, chmod octal, du, ln -s, df, ps,
+				grep via lib/regex.w) or farm out to a real binary; the
+				metachar fallback scan is quote-aware ('*' etc. inside
+				quotes translate, like sh treats them); remaining stages
+				(pipes, find/sed, hard-link ln, standalone wsh) are staged
+				in the design doc
 
 	vcs (libs/extras/vcs/, tools/wvc.w; design: docs/projects/version_control.md, issue #252):
 		working:

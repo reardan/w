@@ -1,15 +1,17 @@
 # REPL shell mode: design (issue #335)
 
-Status: design, stages 1–3 shipped (July 2026). Scopes issue #335
-against the shipped `!` escape and `lib/shell.w` (issue #276 P0–P3,
-previous plan's waves 1–5) and against the Q4/Q5 reasoning in
+Status: design, stages 1–4 shipped (July–August 2026). Scopes issue
+#335 against the shipped `!` escape and `lib/shell.w` (issue #276
+P0–P3, previous plan's waves 1–5) and against the Q4/Q5 reasoning in
 `docs/projects/repl_improvements.md`, which this doc extends rather
 than revisits. The staged plan in §11 had an intentionally small
 stage 1 (Wave 3 task 3b of `docs/projects/sonnet_wave_plan_2026_07b.md`),
 a stage 2 (task 3b of `docs/projects/sonnet_wave_plan_2026_07c.md`)
-that fills out the rest of the v1 tool subset, and a stage 3 (the
+that fills out the rest of the v1 tool subset, a stage 3 (the
 metadata tools `lib/stat.w` unblocked: `ls -l`, `touch`, `chmod`,
-`du`); §11 records what shipped and what stays deferred.
+`du`), and a stage 4 (`ln -s`, `df`, `ps`, and — once `lib/regex.w`
+landed as the reusable pattern core §6.3 waited for — `grep`); §11
+records what shipped and what stays deferred.
 
 ## 1. The issue, verbatim
 
@@ -198,7 +200,14 @@ translation:
 
 1. it contains none of the characters that need real shell semantics
    — `| < > ; & $ ` ~ * ?` (pipe, redirection, chaining, backgrounding,
-   variable/command/glob expansion);
+   variable/command/glob expansion) — **in a position where sh would
+   honor them** (a stage-4 refinement: the scan is quote-aware, since
+   sh itself treats a quoted metacharacter as data exactly like the
+   tokenizer does — inside `'...'` nothing is special, inside `"..."`
+   only `$` and backtick still expand and keep forcing native, and a
+   backslash escapes what §5.3's tokenizer rules say it escapes;
+   before stage 4 the scan was position-blind, which sent every
+   quoted grep pattern like `grep 'a.*b' f` to native);
 2. its first whitespace-separated word names a tool the session's
    translation table knows;
 3. every flag token on the line (a word starting with `-`) is one
@@ -311,6 +320,11 @@ wrapper for most non-trivial predicates (`-newer`, `-size`, `-type`
 beyond dir/file). Farm all three to native indefinitely — the
 fallback (§7) already handles them for free, since they are simply
 unrecognized command names.
+
+*(Addendum, August 2026: the "if a reusable pattern-matching core
+ever exists" condition was met — `lib/regex.w` landed (PR #415) — and
+stage 4 promoted `grep` on top of it; §11's stage 4 entry records the
+scope. `find` and `sed` stay native.)*
 
 ### 6.4 Later, unscoped
 
@@ -546,12 +560,40 @@ reasoning — native piping wants the void-return rework and a
 stream-based tool contract (§10's own design pass), and the fallback
 keeps real pipelines working in the meantime.
 
-**Stage 4+** (research-scale, no wave slot): `ln` on the same wrapper
-(`file_symlink` already exists; only tool/translator work remains);
-`df`/`ps` (§6.4); `grep`/`find`/`sed` only if a reusable
-pattern-matching core ever exists; pipes/redirection (§10) once the
-native tool set has grown enough to want them; the `wsh` standalone
-extraction (§9) once two real front ends want `repl/core.w`.
+**Stage 4, landed (August 2026): ln -s, df, ps, grep.** The
+"stage 4+" items that had concrete runway: `ln` on `lib/stat.w`'s
+existing `file_symlink`, `df`/`ps` (§6.4), and `grep` — whose "only
+if a reusable pattern-matching core ever exists" condition (§6.3) was
+met when `lib/regex.w` merged (PR #415). Per-command scope, all
+following the fail-closed contract (anything outside these tables
+runs the real tool via §7):
+
+| Command | Flags known | Positionals | Notes |
+|---------|-------------|-------------|-------|
+| `ln` | `-s`/`--symbolic` (REQUIRED) | exactly `TARGET LINKPATH` | symlinks only, tool fn named `ln_s`; a bare `ln` is a hard link — no `link(2)` wrapper exists, so it stays native, as do `-f`/`-n`/`-r`/`-t`, the one-arg form and the N-targets-into-a-dir form |
+| `df` | none | zero or more paths | `statfs(2)` via `lib/stat.w`'s new `file_statfs` (per-arch parse in `lib/__arch__/*/statfs.w` — i386 `statfs64` vs the 64-bit generic layout — kept out of `syscalls.w` so nothing enters the seed closure). Output: `Filesystem 1K-blocks Used Available Mounted on` header then single-space-column lines; no args = every nonzero-block `/proc/mounts` entry; explicit paths resolve their mount by device-id match (first match wins; `-` when none). `\040`-style octal escapes in mount paths are not decoded |
+| `ps` | none | none | walks `/proc/[0-9]*/stat`; prints `PID PPID S COMM` sorted by pid, comm parsed between the first `(` and last `)`; `ps aux`/`ps -ef` fall to the real ps |
+| `grep` | `-n`/`--line-number` | `PATTERN FILE...` | matching via `lib/regex.w`'s documented subset (literals, `.`, classes, escapes, `^`/`$`, greedy `*`/`+`/`?` — deliberately NOT BRE: `+`/`?` quantify here where real grep's basic syntax reads them literally); `path:` prefix only for multi-file calls. The translator validates the pattern with `regex_valid` (chmod's validated-spelling precedent), so anything the engine cannot run (`\d`, `a**`, `[abc`) runs the real grep; a file-less `grep PATTERN` (stdin) and every other flag (`-i`/`-v`/`-r`/...) stay native too |
+
+Stage 4 also made §5.2's rule-1 metacharacter scan **quote-aware**
+(see the amended rule 1): grep is the tool that made position-blind
+scanning untenable — `grep 'a.*b' f` is exactly a quoted `*` sh would
+treat as data, and the tokenizer already handles quotes the way sh
+does, so the old unconditional fallback only bypassed the native
+engine without changing any output. `$`/backtick inside double quotes
+still force native (sh expands there); nothing is special inside
+single quotes.
+
+Pipes/redirection (§10): considered and deferred a fourth time, same
+reasoning as stages 2 and 3.
+
+**Stage 5+** (research-scale, no wave slot): hard-link `ln` if a
+`link(2)` wrapper ever earns its place in `lib/__arch__`;
+`find`/`sed` (the predicate language and the editing engine remain
+unbuilt; `lib/regex.w` now covers sed's pattern half);
+pipes/redirection (§10) once the native tool set has grown enough to
+want them; the `wsh` standalone extraction (§9) once two real front
+ends want `repl/core.w`.
 
 ## 12. Open questions for the maintainer
 
