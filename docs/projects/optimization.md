@@ -1,7 +1,31 @@
 # Optimization: v0 (generated-code peephole) vs. v2 (AST passes) — an assessment for #110
 
-Status: design assessment only, 2026-07-19. No code changes ship with this
-file. Answers issue #110 verbatim: "Optimization pass - either from the
+Status: design assessment, 2026-07-19; staged plan §6 now partially
+executed. **Update 2026-08-07**: §6 item 1 (the §1.1 dead address slot)
+landed as PR #427 (program 2026-08b unit 5.1, direct `sym_get_value`
+conditional; measurements in its commit). §6 item 2 (§1.3 comparison
+materialization) landed next — but not via the whole-function post-pass
+§3 sketched for it: a bare-comparison condition's branch turns out to be
+byte-adjacent to `alu_cmp_set`'s materialization at emission time, so an
+emission-time note plus discard-context branch twins
+(`be_br_zero_discard`/`be_br_nonzero_discard`, `code_generator/x86.w`)
+removes the `setCC;movzx;test` triple with no post-pass, no byte
+scanning, and no new invariants beyond "nothing emitted since the note"
+— §3's mechanism 1, not mechanism 2. `&&`/`||` keep the plain branches
+(their taken edge carries the operand in the accumulator to the
+booleanize step). Measured on top of #427: `bin/wv3` 1,780,068 →
+1,718,640 (−3.45%), x64 −2.9%; `setCC al` sites 8.5k → 3.4k; a
+branch-heavy trial-division benchmark ran ~13% faster; sha256
+(arithmetic-bound) and self-compile wall time unchanged — consistent
+with §2's prediction that the durable win is size and the dynamic win
+lands only where bare-comparison branches are hot. x86/x64 only; the
+other ISAs never set the note and emit as before (arm64/wasm fusion
+would be follow-ups with their own verification story). §1.2 (push/pop)
+is now the only item that still needs §3's post-pass machinery, since
+its in-between code embeds stack offsets computed from the push. v2
+remains gated on #231/#338 (§4), unchanged.
+
+Original assessment follows. Answers issue #110 verbatim: "Optimization pass - either from the
 generated code (v0), or additional passes of the AST (v2)." Companion to
 `docs/projects/compilation_model.md` (#338/#337 — the AST/artifact
 assessment whose "no AST, no IR" grounding is shared here) and
