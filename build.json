@@ -1900,6 +1900,7 @@
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_texture_test.w", "-o", "bin/graphics_gl_texture_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/render_test.w", "-o", "bin/graphics_ui_render_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets_test.w", "-o", "bin/graphics_ui_widgets_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
 			]
 		},
@@ -2081,6 +2082,7 @@
 				"graphics_gl_texture_test",
 				"graphics_ui_core_64_test",
 				"graphics_ui_render_test",
+				"graphics_ui_widgets_test",
 				"hash_table_64_test",
 				"heap_64_test",
 				"http_client_64_test",
@@ -4308,6 +4310,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "graphics/ui/render_test.w", "-o", "bin/graphics_ui_render_test"]},
 				{"cmd": ["bin/graphics_ui_render_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_widgets_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets_test.w"],
+			"outputs": ["bin/graphics_ui_widgets_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets_test.w", "-o", "bin/graphics_ui_widgets_test"]},
+				{"cmd": ["bin/graphics_ui_widgets_test"]}
 			]
 		},
 		{

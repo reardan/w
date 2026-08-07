@@ -1981,6 +1981,7 @@
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_texture_test.w", "-o", "bin/graphics_gl_texture_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/render_test.w", "-o", "bin/graphics_ui_render_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets_test.w", "-o", "bin/graphics_ui_widgets_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
 			]
 		},
