@@ -25,6 +25,155 @@ int cast_context
 
 void var_coerce(int want, int got);
 
+# Imported C bit-field member access (libs/extras/c_import/importer.w;
+# the importer compiles after the grammar, so the side-table accessors
+# are forward-declared here). A named bit-field member's field type is
+# a zero-size access type; the accessors return the storage unit's byte
+# offset (consumed by grammar/postfix_expr.w), the field's bit range
+# within the loaded unit, the declared type's signedness, and the load
+# width in bytes.
+int ci_is_bit_field_access(int type_index);
+int ci_bit_field_bit_offset(int type_index);
+int ci_bit_field_width(int type_index);
+int ci_bit_field_is_signed(int type_index);
+int ci_bit_field_unit_size(int type_index);
+
+
+# Load the storage unit whose address is in eax at the recorded width,
+# zero-extending sub-word units into the word register.
+void bit_field_load_unit(int unit_size):
+	if (unit_size == 1):
+		promote_uint8_eax()
+	else if (unit_size == 2):
+		promote_uint16_eax()
+	else if (unit_size == 4):
+		promote_uint32_eax()
+	else:
+		promote_eax()
+
+
+# eax = ((1 << width) - 1) << shift, with width < the word's bit count.
+# Built at run time: the compiler can be a 32-bit host targeting x64,
+# so wide masks must not be computed in host arithmetic (the CLAUDE.md
+# bit-31 literal gotcha, lib/sha256.w precedent).
+void bit_field_emit_mask(int width, int shift):
+	mov_eax_int(1)
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_int(width)
+	alu_shl()
+	stack_pos = stack_pos - 1
+	add_eax_int32(-1)
+	if (shift > 0):
+		push_eax()
+		stack_pos = stack_pos + 1
+		mov_eax_int(shift)
+		alu_shl()
+		stack_pos = stack_pos - 1
+
+
+# READ of an imported C bit-field member (the promote() branch): eax
+# holds the storage unit's address; leave the extracted field value in
+# eax. Signed fields sign-extend with the classic shift-left-then-
+# arithmetic-shift-right pair; unsigned fields shift the field down and
+# mask to width (the shift down may be arithmetic: any smeared sign
+# bits sit at or above bit width after the shift, so the mask clears
+# them, and a zero-extended sub-word unit has a clear top bit anyway).
+# The result is a word-sized int value.
+int bit_field_promote(int type):
+	int width = ci_bit_field_width(type)
+	int bit_offset = ci_bit_field_bit_offset(type)
+	int reg_bits = word_size * 8
+	bit_field_load_unit(ci_bit_field_unit_size(type))
+	if (ci_bit_field_is_signed(type)):
+		if (reg_bits - bit_offset - width > 0):
+			push_eax()
+			stack_pos = stack_pos + 1
+			mov_eax_int(reg_bits - bit_offset - width)
+			alu_shl()
+			stack_pos = stack_pos - 1
+		if (reg_bits - width > 0):
+			push_eax()
+			stack_pos = stack_pos + 1
+			mov_eax_int(reg_bits - width)
+			alu_sar()
+			stack_pos = stack_pos - 1
+	else:
+		if (bit_offset > 0):
+			push_eax()
+			stack_pos = stack_pos + 1
+			mov_eax_int(bit_offset)
+			alu_sar()
+			stack_pos = stack_pos - 1
+		if (width < reg_bits):
+			push_eax()
+			stack_pos = stack_pos + 1
+			bit_field_emit_mask(width, 0)
+			pop_ebx()
+			stack_pos = stack_pos - 1
+			alu_and()
+	return type_lookup(c"int")
+
+
+# WRITE of an imported C bit-field member (the assign_store() branch in
+# grammar/expression.w): ebx holds the storage unit's address, eax the
+# new value. Read-modify-write: truncate and position the value, clear
+# the field's bits in the loaded unit, OR the value in, store the unit
+# back. Leaves eax holding the incoming value, the result convention
+# assignment expressions expect.
+void bit_field_assign_store(int type):
+	int width = ci_bit_field_width(type)
+	int bit_offset = ci_bit_field_bit_offset(type)
+	int unit_size = ci_bit_field_unit_size(type)
+	int reg_bits = word_size * 8
+	if (width >= reg_bits):
+		# the field is the whole word-sized unit: a plain store
+		store_ebx_word()
+		return;
+	push_ebx()
+	stack_pos = stack_pos + 1
+	push_eax()
+	stack_pos = stack_pos + 1
+	if (bit_offset > 0):
+		push_eax()
+		stack_pos = stack_pos + 1
+		mov_eax_int(bit_offset)
+		alu_shl()
+		stack_pos = stack_pos - 1
+	push_eax()
+	stack_pos = stack_pos + 1
+	bit_field_emit_mask(width, bit_offset)
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	alu_and()  # eax = positioned field bits
+	push_eax()
+	stack_pos = stack_pos + 1
+	bit_field_emit_mask(width, bit_offset)
+	not_eax()  # eax = ~(mask << bit_offset)
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus(3 * word_size)  # the saved unit address
+	bit_field_load_unit(unit_size)
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	alu_and()  # unit with the field's bits cleared
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	alu_or()  # merged unit
+	mov_ebx_esp_plus(word_size)  # the saved unit address
+	if (unit_size == 1):
+		store_ebx_int8()
+	else if (unit_size == 2):
+		store_ebx_int16()
+	else if (unit_size == 4):
+		store_ebx_int32()
+	else:
+		store_ebx_word()
+	pop_eax()  # the incoming value: assignment's result
+	stack_pos = stack_pos - 1
+	pop_ebx()  # drop the saved address
+	stack_pos = stack_pos - 1
+
 
 # Print a type's name followed by its pointer stars, e.g. "char**"
 void print_error_type(int type_index):
@@ -66,6 +215,13 @@ int function_signature_matches_symbol(int signature_type, char* function_name):
 
 
 int types_compatible_with_expression(int want, int got):
+	# an imported C bit-field member reads and writes as a word int; on
+	# the got side its access type only survives promote() as the value
+	# an assignment expression yields ('x = (s.f = 3)')
+	if (ci_is_bit_field_access(want)):
+		want = type_lookup(c"int")
+	if (ci_is_bit_field_access(got)):
+		got = type_lookup(c"int")
 	if (got == 4):
 		int signature_type = type_function_pointer_signature(want)
 		if (signature_type >= 0):
@@ -149,6 +305,8 @@ int promote(int type):
 	if (type_get_pointer_level(type) > 0):
 		promote_eax()
 		return type
+	if (ci_is_bit_field_access(type)):
+		return bit_field_promote(type)
 
 	int size = type_get_size(type)
 	int unsigned_fixed = type_is_unsigned_fixed(type)

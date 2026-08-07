@@ -3,6 +3,9 @@ int expression_lhs_readonly
 int extern_max_params();
 int ffi_type_class(int type);
 int ffi_push_promoted_float32();
+int ci_is_bit_field_access(int type_index); /* defined in libs/extras/c_import/importer */
+int ci_bit_field_unit_offset(int type_index);
+int ci_bit_field_unit_size(int type_index);
 void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr);
 int generator_call_suffix(int callee_sym, char* callee_name, int expected_args); /* defined in generator_decl */
 int result_propagate_suffix(int type); /* defined in statement */
@@ -843,21 +846,29 @@ int postfix_expr():
 					get_token()
 
 					if (arg >= 0):
-						# Imported C bit-fields lay out correctly (their
-						# storage bytes are filler fields) but the named
-						# member is a zero-size marker registered only so
-						# access fails loudly instead of reading garbage
-						# (libs/extras/c_import/importer.w,
-						# ci_bit_field_marker_type).
-						if (strcmp(type_get_name(type_get_field_type(type, member_name)), c"__ci_bit_field") == 0):
-							diag_part(c"struct field '")
-							diag_part(member_name)
-							error(c"' is an imported C bit-field; bit-field member access is not supported")
-						# Return right side field type instead of struct pointer
-						add_eax_int32(type_get_field_offset(type, member_name))
+						int member_type = type_get_field_type(type, member_name)
+						# An imported C bit-field member: the field's type
+						# is a zero-size access type whose side table
+						# records the storage unit and bit range the SysV
+						# allocator computed (libs/extras/c_import/
+						# importer.w, ci_bit_field_access_type). Step eax
+						# to the storage unit; promote() extracts on read
+						# and assign_store() read-modify-writes. A unit
+						# size of 0 marks an i386 'long long' field no
+						# word-sized load covers: reject the access, not
+						# the import.
+						if (ci_is_bit_field_access(member_type)):
+							if (ci_bit_field_unit_size(member_type) == 0):
+								diag_part(c"struct field '")
+								diag_part(member_name)
+								error(c"' is an imported C bit-field that spans more than a word on this target; member access is not supported")
+							add_eax_int32(ci_bit_field_unit_offset(member_type))
+						else:
+							# Return right side field type instead of struct pointer
+							add_eax_int32(type_get_field_offset(type, member_name))
 
 						# Use child type insted of struct type:
-						type = type_get_field_type(type, member_name)
+						type = member_type
 						if (type < 0):
 							diag_part(c"child field not found: '")
 							diag_part(itoa(type))
