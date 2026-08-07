@@ -113,7 +113,7 @@ Disposition of its "future improvements" list, verified against head:
 | Struct redefinition handling | **Done** (`type_reset_for_redefinition`, tested in `repl_test`) |
 | Line-editor single-row redraw (added later) | **Done** (commit `04da059`) |
 | Late binding for redefined calls | **Split out** → #114 |
-| REPL/debugger integration at wdbg breakpoints | **Partial** — `dbg_eval` + locals binding landed (#71); full REPL entries at a breakpoint remain (Q6) |
+| REPL/debugger integration at wdbg breakpoints | **Done** — `dbg_eval` runs on `repl/core.w`'s engine with the locals binding as its pre-entry hook, and wdbg's `repl` subprompt takes full multi-line entries, definitions and imports at a stop (`debug_test`/`debug_test_x64`) |
 | `:load` and `:symbols` commands | Not done |
 | Bracketed-paste handling | Not done |
 

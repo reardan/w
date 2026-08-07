@@ -29,6 +29,21 @@ is a queue, not an archive.
   declares `main`, or at least say "consider checking these roots
   separately" in the diagnostic. Workaround: one `check` invocation
   per root program.
+- **Diagnostic position is the *reported* token, so the new caret can
+  point one line past the offending code.** Observed 2026-08-07 right
+  after the caret landed (#426): `int x = "hello"` on line 2 reports
+  `... in file.w:3` with the caret under line 3's `return 0`. The line
+  number itself is unchanged (fixtures have pinned `:3` all along) —
+  the caret just makes the pre-existing imprecision visible: the
+  single-pass compiler raises the diagnostic after the initializer's
+  value is complete, by which time the current token has advanced past
+  the newline. Direction: capture the token position at the START of
+  the construct being diagnosed (the tokenizer already tracks a token
+  start; `diag_token_line`/`diag_token_column` are set from the current
+  token) and report from that, at least for initializer/assignment
+  mismatches. Changing it moves pinned `file:line` needles in the
+  fixture battery, so it is its own unit, not a caret follow-up.
+
 - **Multi-error reporting.** The compiler stops at the first error
   (single-pass, no recovery). Documented limitation; real fix is parser
   recovery, which stays a research project. Cheap partial win: after an

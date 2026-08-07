@@ -148,7 +148,7 @@ Status comments (not closures) on #16, #27, #251, #252, #276, #335, #360, #377,
 | 3 | 3.2 json codec float64 | merged | #424 |
 | 3 | 3.3 ndarray stage 3 + frees | merged | #421 |
 | 3 | 3.4 shell mode stage 4 | merged | #422 |
-| 4 | 4.1 error caret/context | pending | — |
-| 4 | 4.2 REPL at wdbg breakpoints | pending | — |
-| 4 | 4.3 thread pool | pending | — |
+| 4 | 4.1 error caret/context | merged | #426 |
+| 4 | 4.2 REPL at wdbg breakpoints | already shipped at HEAD (wdbg `repl` subprompt; audit correction) | — |
+| 4 | 4.3 thread pool | merged | #425 |
 | 5 | 5.1 dead-mov removal (solo) | pending | — |
