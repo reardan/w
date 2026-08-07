@@ -491,12 +491,31 @@ int sym_get_value(char *s):
 	# referencing its name as a value can only be a miscall.
 	if (sym_is_kernel(t)):
 		error(c"kernels cannot be called; use 'launch'")
-	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-	be_addr_slot_write(codepos - 4, load_int(table + t + 2))
-
 	char scope_type = table[t + 1]
 	int type = load_int(table + t + 6)
 	int symtype = load_int(table + t + 10)
+
+	# Only the GLOBAL branches consume the address slot: 'D' materializes
+	# the symbol's address for the caller to use, 'U' additionally threads
+	# its backpatch chain through the slot's cell. A local or argument
+	# ('L'/'A') overwrites the accumulator with be_lea_acc_wstack below
+	# without ever reading it, so emitting the slot on those paths was a
+	# pure dead store -- 8.3% of the compiler's own emitted bytes on x86,
+	# 7.2% on x64, 10.7% on arm64 (an adrp+add pair, 8 bytes) and 7.0% on
+	# wasm (issue #110, docs/projects/optimization.md 1.1, implemented as
+	# its 6.1 option 1: a conditional here, not a peephole pass).
+	#
+	# No data-flow analysis is needed, because the slot's every reader is
+	# already reached only on the 'D'/'U' paths and addresses it as
+	# codepos-4 with nothing emitted in between: the 'U' chain link below,
+	# the REPL late-binding hook, be_code_ptr_sign (arm64 pac=full) and
+	# wasm_call_target_note. Nothing indexes backwards past the removed
+	# instruction on the 'L'/'A' path, and no already-emitted byte is
+	# rewritten -- fewer bytes are emitted instead, so every codepos
+	# bookmark (REPL rollback, wdbg line table) stays self-consistent.
+	if ((scope_type == 'D') || (scope_type == 'U')):
+		be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
+		be_addr_slot_write(codepos - 4, load_int(table + t + 2))
 
 	int k = 0
 	if (verbosity >= 2):
