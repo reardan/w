@@ -131,6 +131,19 @@ Status comments (not closures) on #16, #27, #251, #252, #276, #335, #360, #377,
 `docs/todo.txt`'s nested-map known-bug entry and the served
 `ai_tooling_next_steps.md` entries are updated by the owning units.
 
+Program executed 2026-08-06/07: 14 units delivered as draft PRs (#413-#427,
+plus the unscheduled #416 wexec diagnostics unit) and all merged into main by
+sequential per-wave integration — per-merge gates (self-host fixpoints on every
+affected target + the units' targeted suites + manifest_check), conflicts
+resolved by union-merge (docs, distant regions of tools/test_map.w) and manifest
+regeneration (build.json). Two scheduled units needed no PR: protobuf (1.4) and
+REPL-at-breakpoint (4.2) were already implemented at HEAD — trackers stale in the
+"not done" direction, corrected in status comments on #16 and #276.
+
+Final unit 5.1 (dead address-slot removal) measured: x86 -8.25%, x64 -7.23%,
+arm64 -10.72%, wasm -7.03% binary size; 32k dead mov+lea pairs to zero on both
+x86 targets; self-compile ~3% faster; x86/x64/wasm fixpoints all hold.
+
 ## Execution status
 
 | Wave | Unit | Status | PR |
@@ -151,4 +164,4 @@ Status comments (not closures) on #16, #27, #251, #252, #276, #335, #360, #377,
 | 4 | 4.1 error caret/context | merged | #426 |
 | 4 | 4.2 REPL at wdbg breakpoints | already shipped at HEAD (wdbg `repl` subprompt; audit correction) | — |
 | 4 | 4.3 thread pool | merged | #425 |
-| 5 | 5.1 dead-mov removal (solo) | pending | — |
+| 5 | 5.1 dead-mov removal (solo) | merged | #427 |
