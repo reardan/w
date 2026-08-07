@@ -215,9 +215,13 @@ int function_signature_matches_symbol(int signature_type, char* function_name):
 
 
 int types_compatible_with_expression(int want, int got):
+	# an imported C bit-field member reads and writes as a word int; on
+	# the got side its access type only survives promote() as the value
+	# an assignment expression yields ('x = (s.f = 3)')
 	if (ci_is_bit_field_access(want)):
-		# an imported C bit-field member reads and writes as a word int
 		want = type_lookup(c"int")
+	if (ci_is_bit_field_access(got)):
+		got = type_lookup(c"int")
 	if (got == 4):
 		int signature_type = type_function_pointer_signature(want)
 		if (signature_type >= 0):
