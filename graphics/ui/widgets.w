@@ -59,6 +59,7 @@ struct ui_context:
 	int32 active           # widget owning the current press (0 = none)
 	int32 focus            # widget owning keyboard input (persistent)
 	int32 modal            # open popup owning ALL input (a dropdown)
+	int32 disabled         # ui_disable scope: widgets render but are inert
 	int32 next_id          # per-frame sequential id counter
 	# This frame's translated text input, drained by the focused
 	# widget; cleared in ui_end like the mouse edges.
@@ -88,6 +89,7 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.active = 0
 	ctx.focus = 0
 	ctx.modal = 0
+	ctx.disabled = 0
 	ctx.next_id = 1
 	ctx.char_count = 0
 	ctx.nav_count = 0
@@ -187,12 +189,20 @@ ui_rect ui_layout_next(ui_context* ctx, float32 w, float32 h):
 	return r
 
 
+# Open/close a disabled scope: widgets inside render with the
+# disabled tokens and ignore all input.
+void ui_disable(ui_context* ctx, int on):
+	ctx.disabled = on
+
+
 # Shared press/release logic: claims hot when the pointer is over the
 # rect, active when this frame's press landed inside it; returns 1 on
 # the frame the release lands while still over it. While a popup is
 # open (ctx.modal) every other widget is inert — the popup handles all
-# input itself.
+# input itself — and so is everything inside a ui_disable scope.
 int ui_click_behavior(ui_context* ctx, int id, ui_rect r):
+	if (ctx.disabled):
+		return 0
 	if ((ctx.modal != 0) && (ctx.modal != id)):
 		return 0
 	int over = ui_rect_contains(r, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))
@@ -207,6 +217,8 @@ int ui_click_behavior(ui_context* ctx, int id, ui_rect r):
 
 
 ui_color ui_widget_fill(ui_context* ctx, int id):
+	if (ctx.disabled):
+		return ctx.theme.disabled_widget
 	if (ctx.active == id):
 		return ctx.theme.widget_active
 	if (ctx.hot == id):
@@ -214,12 +226,18 @@ ui_color ui_widget_fill(ui_context* ctx, int id):
 	return ctx.theme.widget
 
 
+ui_color ui_text_color(ui_context* ctx):
+	if (ctx.disabled):
+		return ctx.theme.disabled_text
+	return ctx.theme.text
+
+
 # Static text on the background; occupies one layout row.
 void ui_label(ui_context* ctx, char* text):
 	int scale = ctx.theme.text_scale
 	ui_rect r = ui_layout_next(ctx, cast(float32, ui_text_width(text, scale)), cast(float32, ctx.theme.widget_height))
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
-	ui_draw_text(ctx.rndr, r.x, ty, text, scale, ctx.theme.text)
+	ui_draw_text(ctx.rndr, r.x, ty, text, scale, ui_text_color(ctx))
 
 
 # Returns 1 on the frame the button is clicked.
@@ -231,7 +249,7 @@ int ui_button(ui_context* ctx, char* label):
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
 	int clicked = ui_click_behavior(ctx, id, r)
 	ui_render_rect(ctx.rndr, r, ui_widget_fill(ctx, id))
-	ui_draw_text_centered(ctx.rndr, r, label, scale, ctx.theme.text)
+	ui_draw_text_centered(ctx.rndr, r, label, scale, ui_text_color(ctx))
 	return clicked
 
 
@@ -308,8 +326,9 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 
 	float32 text_x = r.x + cast(float32, ctx.theme.pad)
 	# Focus follows the press: inside claims it, any other press drops
-	# it. Inert while another widget holds a popup open.
-	if (ctx.input.mouse_pressed && (ctx.modal == 0)):
+	# it. Inert while another widget holds a popup open or inside a
+	# disabled scope.
+	if (ctx.input.mouse_pressed && (ctx.modal == 0) && (ctx.disabled == 0)):
 		if (ui_rect_contains(r, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 			ctx.focus = id
 			int pos = (ctx.input.press_x - cast(int, text_x) + advance / 2) / advance
@@ -350,14 +369,16 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 
 	ui_color border_color = ctx.theme.border
 	if (ctx.focus == id):
-		border_color = ctx.theme.accent
+		border_color = ctx.theme.focus
+	if (ctx.disabled):
+		border_color = ctx.theme.disabled_widget
 	ui_render_rect(ctx.rndr, r, border_color)
 	ui_render_rect(ctx.rndr, ui_rect_inset(r, 2.0), ctx.theme.surface)
 	int fit = (cast(int, r.w) - ctx.theme.pad * 2) / advance
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	int col = 0
 	while ((col < st.length) && (col < fit)):
-		ui_render_glyph(ctx.rndr, text_x + cast(float32, col * advance), ty, st.text[col] & 255, scale, ctx.theme.text)
+		ui_render_glyph(ctx.rndr, text_x + cast(float32, col * advance), ty, st.text[col] & 255, scale, ui_text_color(ctx))
 		col = col + 1
 	if (ctx.focus == id):
 		int caret_col = st.caret
@@ -388,7 +409,7 @@ int ui_radio(ui_context* ctx, char* label, int index, int32* selected):
 	if (selected[0] == index):
 		ui_render_rect(ctx.rndr, ui_rect_inset(box_rect, 5.0), ctx.theme.accent)
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
-	ui_draw_text(ctx.rndr, r.x + cast(float32, box + ctx.theme.gap), ty, label, scale, ctx.theme.text)
+	ui_draw_text(ctx.rndr, r.x + cast(float32, box + ctx.theme.gap), ty, label, scale, ui_text_color(ctx))
 	return changed
 
 
@@ -409,16 +430,25 @@ int ui_toggle(ui_context* ctx, char* label, int32* on):
 
 	ui_rect track = ui_rect_new(r.x, r.y + (r.h - cast(float32, track_h)) * 0.5, cast(float32, track_w), cast(float32, track_h))
 	ui_color track_color = ctx.theme.widget
+	ui_color knob_color = ctx.theme.surface
 	if (on[0]):
 		track_color = ctx.theme.accent
+		if (ctx.hot == id):
+			track_color = ctx.theme.accent_hot
+		knob_color = ctx.theme.on_accent
+	else if (ctx.hot == id):
+		track_color = ctx.theme.widget_hot
+	if (ctx.disabled):
+		track_color = ctx.theme.disabled_widget
+		knob_color = ctx.theme.disabled_text
 	ui_render_rect(ctx.rndr, track, track_color)
 	float32 knob = cast(float32, track_h - 4)
 	float32 kx = track.x + 2.0
 	if (on[0]):
 		kx = track.x + track.w - knob - 2.0
-	ui_render_rect(ctx.rndr, ui_rect_new(kx, track.y + 2.0, knob, knob), ctx.theme.surface)
+	ui_render_rect(ctx.rndr, ui_rect_new(kx, track.y + 2.0, knob, knob), knob_color)
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
-	ui_draw_text(ctx.rndr, r.x + cast(float32, track_w + ctx.theme.gap), ty, label, scale, ctx.theme.text)
+	ui_draw_text(ctx.rndr, r.x + cast(float32, track_w + ctx.theme.gap), ty, label, scale, ui_text_color(ctx))
 	return flipped
 
 
@@ -475,7 +505,7 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 	ui_render_rect(ctx.rndr, r, ui_widget_fill(ctx, id))
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	if ((selected[0] >= 0) && (selected[0] < item_count)):
-		ui_draw_text(ctx.rndr, r.x + cast(float32, ctx.theme.pad), ty, items[selected[0]], scale, ctx.theme.text)
+		ui_draw_text(ctx.rndr, r.x + cast(float32, ctx.theme.pad), ty, items[selected[0]], scale, ui_text_color(ctx))
 	ui_render_glyph(ctx.rndr, r.x + r.w - cast(float32, ctx.theme.pad + 8 * scale), ty, 'v', scale, ctx.theme.text_muted)
 
 	if (open[0]):
@@ -514,5 +544,5 @@ int ui_checkbox(ui_context* ctx, char* label, int32* checked):
 	if (checked[0]):
 		ui_render_rect(ctx.rndr, ui_rect_inset(box_rect, 3.0), ctx.theme.accent)
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
-	ui_draw_text(ctx.rndr, r.x + cast(float32, box + ctx.theme.gap), ty, label, scale, ctx.theme.text)
+	ui_draw_text(ctx.rndr, r.x + cast(float32, box + ctx.theme.gap), ty, label, scale, ui_text_color(ctx))
 	return toggled

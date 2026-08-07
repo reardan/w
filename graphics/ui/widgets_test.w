@@ -400,6 +400,35 @@ void test_dropdown_opens_selects_and_blocks():
 	ui_render_destroy(&r)
 
 
+void test_disabled_scope_is_inert():
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_theme theme
+	ui_theme_light(&theme)
+	ui_context ctx
+	ui_context_init(&ctx, &r, &theme)
+	ui_textbox_state st
+	ui_textbox_init(&st)
+
+	# A click pair aimed at the button row does nothing while disabled.
+	feed_click(&ctx, 20, 20)
+	ui_begin(&ctx, 320, 240)
+	ui_disable(&ctx, 1)
+	assert_equal(0, ui_button(&ctx, c"Click"))
+	assert_equal(0, ui_textbox(&ctx, 200.0, &st))
+	ui_disable(&ctx, 0)
+	ui_end(&ctx)
+	assert_equal(0, ctx.active)
+	assert_equal(0, ctx.focus)
+
+	# The same click works once the scope is lifted.
+	feed_click(&ctx, 20, 20)
+	ui_begin(&ctx, 320, 240)
+	assert_equal(1, ui_button(&ctx, c"Click"))
+	ui_end(&ctx)
+	ui_render_destroy(&r)
+
+
 void test_same_line_layout():
 	ui_renderer r
 	ui_render_init_headless(&r)
