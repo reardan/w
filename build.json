@@ -1845,6 +1845,14 @@
 			]
 		},
 		{
+			"name": "wasm_ui_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "wasm", "graphics/ui/demo_web.w", "-o", "bin/graphics_ui_demo.wasm"]},
+				{"cmd": ["sh", "tools/web/run_node.sh", "tools/web/run_ui_stub.mjs", "bin/graphics_ui_demo.wasm", "--frames", "4"], "expect_stdout": "ui demo clicks: 1"}
+			]
+		},
+		{
 			"name": "wasm_export_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1898,6 +1906,11 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64_darwin", "tests/dynamic_darwin_test.w", "-o", "bin/dynamic_darwin_test"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_texture_test.w", "-o", "bin/graphics_gl_texture_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/render_test.w", "-o", "bin/graphics_ui_render_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets_test.w", "-o", "bin/graphics_ui_widgets_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/demo.w", "-o", "bin/graphics_ui_demo_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
 			]
 		},
@@ -2075,6 +2088,12 @@
 				"generics_64_test",
 				"generics_inference_64_test",
 				"getchar_checked_64_test",
+				"graphics_event_64_test",
+				"graphics_gl_texture_test",
+				"graphics_ui_core_64_test",
+				"graphics_ui_render_test",
+				"graphics_ui_smoke_test",
+				"graphics_ui_widgets_test",
 				"hash_table_64_test",
 				"heap_64_test",
 				"http_client_64_test",
@@ -2415,6 +2434,14 @@
 			]
 		},
 		{
+			"name": "ui_font_data",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/generate_ui_font.w", "-o", "bin/generate_ui_font"]},
+				{"cmd": ["bin/generate_ui_font"]}
+			]
+		},
+		{
 			"name": "net",
 			"deps": ["wv2"],
 			"steps": [
@@ -2666,6 +2693,8 @@
 				"generator_return_free_test",
 				"getchar_checked_test",
 				"grapheme_test",
+				"graphics_event_test",
+				"graphics_ui_core_test",
 				"hash_table_test",
 				"heap_test",
 				"hkdf_test",
@@ -2798,6 +2827,7 @@
 				"window_test",
 				"wvc_pack_e2e_test",
 				"x25519_test",
+				"ffi_darwin_spill_reject_test",
 				"wbuild_platform_test_darwin"
 			]
 		},
@@ -3911,6 +3941,14 @@
 			]
 		},
 		{
+			"name": "ffi_darwin_spill_reject_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/ffi_darwin_spill_reject_test.w"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/ffi_darwin_spill_reject_test.w", "-o", "bin/ffi_darwin_spill_reject_test"], "expect_fail": true, "expect_stderr": "arm64_darwin extern calls support at most 8 integer and 8 float arguments"}
+			]
+		},
+		{
 			"name": "file_test",
 			"deps": ["wv2"],
 			"inputs": ["lib/file_test.w"],
@@ -4196,6 +4234,26 @@
 			]
 		},
 		{
+			"name": "graphics_event_64_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/event_test.w"],
+			"outputs": ["bin/graphics_event_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/event_test.w", "-o", "bin/graphics_event_64_test"]},
+				{"cmd": ["bin/graphics_event_64_test"]}
+			]
+		},
+		{
+			"name": "graphics_event_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/event_test.w"],
+			"outputs": ["bin/graphics_event_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "graphics/event_test.w", "-o", "bin/graphics_event_test"]},
+				{"cmd": ["bin/graphics_event_test"]}
+			]
+		},
+		{
 			"name": "graphics_gl_smoke_test",
 			"deps": ["wv2"],
 			"inputs": ["graphics/gl_smoke_test.w"],
@@ -4203,6 +4261,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_test"]},
 				{"cmd": ["bin/graphics_gl_smoke_test"], "expect_stdout": "graphics gl smoke"}
+			]
+		},
+		{
+			"name": "graphics_gl_texture_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/gl_texture_test.w"],
+			"outputs": ["bin/graphics_gl_texture_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/gl_texture_test.w", "-o", "bin/graphics_gl_texture_test"]},
+				{"cmd": ["bin/graphics_gl_texture_test"], "expect_stdout": "graphics gl texture"}
 			]
 		},
 		{
@@ -4223,6 +4291,56 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "graphics/math_test.w", "-o", "bin/graphics_math_test"]},
 				{"cmd": ["bin/graphics_math_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_core_64_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/core_test.w"],
+			"outputs": ["bin/graphics_ui_core_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/core_test.w", "-o", "bin/graphics_ui_core_64_test"]},
+				{"cmd": ["bin/graphics_ui_core_64_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_core_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/core_test.w"],
+			"outputs": ["bin/graphics_ui_core_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "graphics/ui/core_test.w", "-o", "bin/graphics_ui_core_test"]},
+				{"cmd": ["bin/graphics_ui_core_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_render_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/render_test.w"],
+			"outputs": ["bin/graphics_ui_render_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/render_test.w", "-o", "bin/graphics_ui_render_test"]},
+				{"cmd": ["bin/graphics_ui_render_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_smoke_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/smoke_test.w"],
+			"outputs": ["bin/graphics_ui_smoke_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_test"]},
+				{"cmd": ["bin/graphics_ui_smoke_test"], "expect_stdout": "graphics ui smoke"}
+			]
+		},
+		{
+			"name": "graphics_ui_widgets_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets_test.w"],
+			"outputs": ["bin/graphics_ui_widgets_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets_test.w", "-o", "bin/graphics_ui_widgets_test"]},
+				{"cmd": ["bin/graphics_ui_widgets_test"]}
 			]
 		},
 		{
@@ -6935,11 +7053,15 @@
 		{
 			"name": "wasm_smoke_test",
 			"deps": ["wv2"],
-			"inputs": ["graphics/math_test.w", "lib/lib_test.w", "structures/hash_table_test.w", "tests/compound_assign_test.w", "tests/default_args_test.w", "tests/float_test.w", "tests/limb_builtin_test.w", "tests/map_set_builtin_test.w", "tests/struct_test.w"],
-			"outputs": ["bin/math_wasm_test", "bin/lib_wasm_test", "bin/hash_table_wasm_test", "bin/compound_assign_wasm_test", "bin/default_args_wasm_test", "bin/float_wasm_test", "bin/limb_builtin_wasm_test", "bin/map_set_builtin_wasm_test", "bin/struct_wasm_test"],
+			"inputs": ["graphics/event_test.w", "graphics/math_test.w", "graphics/ui/core_test.w", "lib/lib_test.w", "structures/hash_table_test.w", "tests/compound_assign_test.w", "tests/default_args_test.w", "tests/float_test.w", "tests/limb_builtin_test.w", "tests/map_set_builtin_test.w", "tests/struct_test.w"],
+			"outputs": ["bin/event_wasm_test", "bin/math_wasm_test", "bin/core_wasm_test", "bin/lib_wasm_test", "bin/hash_table_wasm_test", "bin/compound_assign_wasm_test", "bin/default_args_wasm_test", "bin/float_wasm_test", "bin/limb_builtin_wasm_test", "bin/map_set_builtin_wasm_test", "bin/struct_wasm_test"],
 			"steps": [
+				{"cmd": ["bin/wv2", "wasm", "graphics/event_test.w", "-o", "bin/event_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/event_wasm_test"]},
 				{"cmd": ["bin/wv2", "wasm", "graphics/math_test.w", "-o", "bin/math_wasm_test"]},
 				{"cmd": ["sh", "tools/run_wasm.sh", "bin/math_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "graphics/ui/core_test.w", "-o", "bin/core_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/core_wasm_test"]},
 				{"cmd": ["bin/wv2", "wasm", "lib/lib_test.w", "-o", "bin/lib_wasm_test"]},
 				{"cmd": ["sh", "tools/run_wasm.sh", "bin/lib_wasm_test"]},
 				{"cmd": ["bin/wv2", "wasm", "structures/hash_table_test.w", "-o", "bin/hash_table_wasm_test"]},

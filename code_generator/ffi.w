@@ -22,8 +22,10 @@ loader fills in before the entry point runs):
                  two words). Float results come back in st(0) and are
                  popped into eax.
   a64  AAPCS64:  integer args in x0..x7, float args in v0..v7, overflow in
-                 8-byte stack slots (Linux only; arm64_darwin packs stack
-                 args at natural size, so overflow is rejected there).
+                 8-byte stack slots (arm64_darwin packs stack args at
+                 natural size instead, so overflow there is limited to a
+                 single integer-class argument — the one case where an
+                 8-byte slot and natural packing coincide).
                  Float results come back in s0/d0 and are moved to x0.
                  Selected when target_isa is 1 (both arm64 targets).
 
@@ -362,6 +364,7 @@ void emit_c_abi_call_arm64(int n, char* classes, int ret_class, int got_vaddr):
 	int gp_count = 0
 	int fp_count = 0
 	int stack_count = 0
+	int spilled_float = 0
 	int i = 0
 	while (i < n):
 		int slot = 0 - 1
@@ -375,13 +378,22 @@ void emit_c_abi_call_arm64(int n, char* classes, int ret_class, int got_vaddr):
 				fp_count = fp_count + 1
 		if (slot < 0):
 			stack_count = stack_count + 1
+			if (ffi_arg_class(classes, i) != 0):
+				spilled_float = 1
 		save_int(slots + (i << 2), slot)
 		i = i + 1
 
 	# Darwin packs on-stack arguments at natural size instead of 8-byte
-	# slots, which the three-class model cannot express; no binding we
-	# author needs overflow arguments, so reject rather than guess.
-	if ((target_os == 1) && (stack_count > 0)):
+	# slots, which the three-class model cannot express in general. The
+	# one safe case is a single integer-class spill (glTexImage2D's 9th
+	# argument): the lone memory argument sits at [sp] under both
+	# schemes, a pointer or word int is naturally 8 bytes, and a
+	# narrower integer's high pad bytes fall in caller-owned scratch
+	# (little-endian), so the 8-byte-slot emission below is
+	# byte-identical to Darwin packing. Wider overflow would need the
+	# per-argument natural sizes the classifier does not carry, so it
+	# stays rejected.
+	if ((target_os == 1) && ((stack_count > 1) || ((stack_count == 1) && spilled_float))):
 		error(c"arm64_darwin extern calls support at most 8 integer and 8 float arguments")
 
 	a64(op(0x91, 0x0003e9))   # mov x9, sp        (the caller's sp)

@@ -1926,6 +1926,14 @@
 			]
 		},
 		{
+			"name": "wasm_ui_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "wasm", "graphics/ui/demo_web.w", "-o", "bin/graphics_ui_demo.wasm"]},
+				{"cmd": ["sh", "tools/web/run_node.sh", "tools/web/run_ui_stub.mjs", "bin/graphics_ui_demo.wasm", "--frames", "4"], "expect_stdout": "ui demo clicks: 1"}
+			]
+		},
+		{
 			"name": "wasm_export_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -1979,6 +1987,11 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64_darwin", "tests/dynamic_darwin_test.w", "-o", "bin/dynamic_darwin_test"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_texture_test.w", "-o", "bin/graphics_gl_texture_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/render_test.w", "-o", "bin/graphics_ui_render_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets_test.w", "-o", "bin/graphics_ui_widgets_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/demo.w", "-o", "bin/graphics_ui_demo_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
 			]
 		},
@@ -2320,6 +2333,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/generate_grapheme_data.w", "-o", "bin/generate_grapheme_data"]},
 				{"cmd": ["bin/generate_grapheme_data"]}
+			]
+		},
+		{
+			"name": "ui_font_data",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/generate_ui_font.w", "-o", "bin/generate_ui_font"]},
+				{"cmd": ["bin/generate_ui_font"]}
 			]
 		},
 		{

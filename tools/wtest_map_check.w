@@ -388,14 +388,26 @@ void check_run_case(check_case* c):
 	while (i < c.paths.length):
 		strv_set(argv, 2 + i, c.paths[i])
 		i = i + 1
-	# Generous timeout: the first run after a build recomputes the
-	# import-closure cache (bin/.wtest_deps_cache), which can take
-	# several minutes cold (wtest prints progress and checkpoints the
-	# cache, so a timed-out run here resumes on the next attempt).
+	# Generous timeout, resumed in-process: the first run after a build
+	# recomputes the import-closure cache (bin/.wtest_deps_cache),
+	# which cold now outlasts a single 5-minute window on CI hardware.
+	# wtest checkpoints the cache as it goes, so every timed-out
+	# attempt makes forward progress — retry on timeout (and only on
+	# timeout) until the run completes, instead of leaving the resume
+	# to a rerun that CI never makes.
 	process_result* result = process_run(c"bin/wtest", argv, 0, 0, 300000)
+	int attempt = 1
+	while ((result != 0) && (result.status == process_status_timeout()) && (attempt < 6)):
+		process_result_free(result)
+		result = process_run(c"bin/wtest", argv, 0, 0, 300000)
+		attempt = attempt + 1
 	free(cast(char*, argv))
 	if (result == 0):
 		check_case_fail(c, c"cannot run bin/wtest", c"", 0)
+		return
+	if (result.status == process_status_timeout()):
+		check_case_fail(c, c"bin/wtest timed out (6 attempts): ", result.stderr_text, 0)
+		process_result_free(result)
 		return
 	if (result.status != 0):
 		check_case_fail(c, c"bin/wtest failed: ", result.stderr_text, 0)

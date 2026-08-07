@@ -11,7 +11,13 @@ is this framework's web backend). Follows the same survey →
 options → staged-recommendation shape as `docs/projects/compress.md`
 and `docs/projects/wbuildd.md`.
 
-Status: design only, 2026-07-18. No code changes ship with this file.
+Status: design 2026-07-18; stage 1 implemented 2026-08-07 per
+`docs/projects/ui_framework_plan.md` — `graphics/ui/` (rect, theme,
+baked bitmap font, batching renderer, text, label/button/checkbox),
+the per-frame input event queue on every backend, the GL texture
+surface, and X11 + wasm demos from one shared form
+(`graphics/ui/demo_shared.w`). Stages 2+ (text input, scroll, Cocoa
+mouse, theming depth) pending.
 
 ## 0. Where this framework would live, and what it does not replace
 

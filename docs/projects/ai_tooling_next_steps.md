@@ -107,6 +107,24 @@ is a queue, not an archive.
   warmed cache is still per-checkout; CI publishing it as an artifact
   would make the cost shareable.
 
+- **Shipped (2026-08-07): `wtest_map_check` resumes wtest's cold
+  cache build across its own timeout.** The cold deps-cache build
+  crossed a new line: on the 4-core CI runner it now outlasts
+  `wtest_map_check`'s 5-minute per-invocation `process_run` timeout
+  (the log shows the progress estimate reaching "~3s left" before the
+  kill), so `wtest_map_test` — and with it the whole `tests` umbrella
+  — went red on main with a green local run. The harness's own
+  timeout was the failure, not wtest. `check_run_case`
+  (`tools/wtest_map_check.w`) now distinguishes
+  `process_status_timeout()` from a real wtest failure and re-runs
+  the case (up to 6 attempts), leaning on the cache's documented
+  checkpoint-resume property so each attempt makes forward progress;
+  any other nonzero status still fails immediately with the original
+  message. Residue: `wtest_map_test` could instead depend on the
+  `wtest_cache` pre-warm target so the first `bin/wtest changed` run
+  never pays the cold build — and the artifact-published cache above
+  would make both moot.
+
 - **Shipped (2026-07-28, wave 4): the verify residue's compiler-tree
   set is now DERIVED from `bin/wv2 deps w.w`** instead of the
   hard-coded prefix list (three independent 2026-07-28 entries logged
