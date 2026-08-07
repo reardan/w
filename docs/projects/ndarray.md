@@ -25,20 +25,34 @@ forms" the Explicit non-goals section names (`ndf_add_into`) rather than
 operator sugar. `ndi` intentionally has no elementwise/matmul surface
 (index maps, not a math type). Tests: `lib/ndarray_test.w` (+ x64 twin),
 `tests/x64_ndarray64_test.w`, and three bounds/shape-assert fixtures
-(`tests/ndarray_{bounds_get,bounds_set,extent}_trap_test.w`).
+(`tests/ndarray_{bounds_get,bounds_set,extent}_trap_test.w`); the
+Stage 3/freeing additions carry `tests/ndarray_stage3_test.w` (+ x64
+twin) and the `tests/array_free_{sub_slice,double_free}_trap_test.w`
+misuse fixtures.
 
 Stage 5 grammar sugar shipped 2026-08 (issue #27 remainder): `m[i, j]`
 (and the rank-3/4 spellings) is a typed-builtin lowering to the
 accessor family — see "Indexing sugar (Stage 5, shipped)" below for
 the exact semantics and limits.
 
-Deferred, unchanged from the staging plan below: `ndf_free`/`ndi_free`
-(waits on the slice-level `array_free` helper), Stage 3 parallel_for
-integration (`lib/thread.w` now has `parallel_for` landed, so this is
-unblocked as follow-up), and Stage 4 aligned allocation. No reshape or
-transpose helper was added: the doc does not list one for Stage 1, and
-a transpose remains "an explicit copy" left to callers, as this
-section already says.
+Shipped 2026-08 (program 2026-08b): the slice-level `array_free(T[]
+view)` helper landed as `lib/array.w` (generic wrapper over a
+byte-level core, per docs/projects/arrays_slices_strings.md Milestone
+5's staged shape — no grammar/builtin work was needed), and
+`ndf_free`/`ndi_free`/`ndf64_free` free through it (rank/extents are
+zeroed after the free so checked accessors trap; there is no is-view
+flag, so not freeing row/sub views is documented caller contract,
+backed by array_free's best-effort header assert). Stage 3
+parallel_for integration shipped as `lib/ndarray_par.w` (Linux
+x86/x64, like `lib/thread.w`): leading-axis-chunked
+`ndf_add_into_par`/`ndf_axpy_into_par` (with serial
+`ndf_axpy_into`/`ndf_sum` twins added to the base modules) plus the
+two-phase `ndf_sum_par`, asserted bit-identical against the serial
+loops by `tests/ndarray_stage3_test.w` (+ 64-bit twin, including a
+Jacobi-style stencil). Still deferred: Stage 4 aligned allocation. No
+reshape or transpose helper was added: the doc does not list one for
+Stage 1, and a transpose remains "an explicit copy" left to callers,
+as this section already says.
 
 ## Motivation and scope
 
@@ -163,11 +177,19 @@ extent product must not overflow the word-sized int — both are fatal
 asserts, matching lib/stats.w's domain-error policy (a silent garbage
 descriptor is indistinguishable from a real one).
 
-Freeing: heap slices have no landed free helper (the `array_free`
-family in docs/projects/arrays_slices_strings.md Milestone 5 remains
-unimplemented), so v1 ndarrays are allocate-and-keep, which matches
-solver lifetimes. An `ndf_free` lands together with the slice-level
-helper, not ahead of it.
+Freeing (shipped 2026-08): `ndf_free`/`ndi_free`/`ndf64_free` release
+the backing buffer through the slice-level `array_free` helper
+(`lib/array.w`, the docs/projects/arrays_slices_strings.md Milestone 5
+shape: a generic `array_free[T](T[] view)` over a byte-level core that
+recovers the `new T[n]` block from the view's data pointer). Only
+buffer-owning arrays may be freed — constructor results, or a `wrapN`
+of a full `new T[n]` slice; there is no is-view flag, so row/sub views
+are a documented must-not-free (array_free's header sanity assert
+refuses proper sub views and double frees best-effort, but cannot
+distinguish a full-length fixed `T[N]` array, which carries the same
+inline header). After the free the descriptor is dead: rank and
+extents are zeroed so every checked accessor traps instead of touching
+freed memory.
 
 ## Indexing
 
@@ -377,11 +399,21 @@ would have to undo.
    target in build.base.json (the serialization point —
    docs/projects/engineering_math_baseline.md), modeled on
    `x64_fmath64_test`.
-3. **parallel_for integration.** After the threads primitive lands: a
-   leading-axis-chunked axpy/Jacobi test asserting bit-identical
-   results against the serial loop, plus the two-phase reduction
-   pattern. Ordinary test targets; gated on the primitive's target
-   coverage (threading is x86-only today, docs/todo.txt).
+3. **parallel_for integration — DONE (2026-08).** Shipped as
+   `lib/ndarray_par.w`, a separate module (it imports `lib.thread`,
+   Linux x86/x64 only, so `lib/ndarray.w` stays importable
+   everywhere): leading-axis-chunked `ndf_add_into_par` and
+   `ndf_axpy_into_par` (contiguity is a fatal-assert precondition;
+   serial twins `ndf_axpy_into`/`ndf_sum` joined the base modules,
+   mirrored in `lib/ndarray64.w`), plus the two-phase `ndf_sum_par`
+   (per-chunk partials into a `float[nthreads]` scratch, combined
+   serially in chunk order — deterministic per (data, shape,
+   nthreads)). `tests/ndarray_stage3_test.w` (+ 64-bit twin) asserts
+   bit-identical results vs the serial loops on the raw float32 bit
+   patterns: uneven-split add, axpy (incl. in-place aliasing), a
+   Jacobi-style stencil sharing one row kernel between the serial and
+   chunked paths, the two-phase sum against the same chunking done
+   serially, and the degenerate single-thread/clamped-nthreads cases.
 4. **Aligned allocation.** When the SIMD-builtins design exists: an
    aligned constructor mode via over-allocate + aligned sub-slice, and
    an alignment predicate next to `ndf_is_contiguous`. Library-only.
@@ -407,8 +439,9 @@ bump.
   of the threads workstream.
 - Stage 2 depends on Stage 1 and touches build.base.json — coordinate
   with any other workstream editing it in the same wave.
-- Stage 3 depends on Stage 1 and on threads/parallel_for landing; its
-  test plan, not its design, is blocked.
+- Stage 3 (shipped) depends on Stage 1 and threads/parallel_for; its
+  module `lib/ndarray_par.w` inherits `lib/thread.w`'s Linux x86/x64
+  target gate and main-thread-only calling convention.
 - Stage 4 depends on a SIMD-builtins design that does not exist yet;
   the constructor funnel is the only forward commitment.
 - Stage 5 shipped as a typed-builtin lowering (see "Indexing sugar"),
