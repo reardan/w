@@ -2171,6 +2171,7 @@
 				"template_string_64_test",
 				"thread_64_test",
 				"thread_mutex_64_test",
+				"thread_pool_64_test",
 				"time_64_test",
 				"toplevel_init_64_test",
 				"u64_64_test",
@@ -2769,6 +2770,7 @@
 				"task_test",
 				"ternary_test",
 				"thread_mutex_test",
+				"thread_pool_test",
 				"thread_test",
 				"threading_test",
 				"time_test",
@@ -6449,6 +6451,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/thread_mutex_test.w", "-o", "bin/thread_mutex_test"]},
 				{"cmd": ["bin/thread_mutex_test"]}
+			]
+		},
+		{
+			"name": "thread_pool_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/thread_pool_test.w"],
+			"outputs": ["bin/thread_pool_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/thread_pool_test.w", "-o", "bin/thread_pool_64_test"]},
+				{"cmd": ["bin/thread_pool_64_test"]}
+			]
+		},
+		{
+			"name": "thread_pool_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/thread_pool_test.w"],
+			"outputs": ["bin/thread_pool_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/thread_pool_test.w", "-o", "bin/thread_pool_test"]},
+				{"cmd": ["bin/thread_pool_test"]}
 			]
 		},
 		{
