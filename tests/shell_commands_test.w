@@ -941,11 +941,12 @@ void test_translate_cat_rejects_any_flag():
 
 
 void test_translate_unrecognized_command_falls_back():
-	# grep is deliberately never native (design doc Sec 6.3: no reusable
-	# pattern-matching core exists), so it stays a stable example of an
-	# always-unrecognized command -- unlike "echo", which stage 2 below
-	# promotes to a native tool.
-	assert1(shell_translate_line(c"grep hi") == 0)
+	# sed and find stay unrecognized (design doc Sec 6.3) -- stable
+	# examples of always-native commands now that stage 4 promoted grep
+	# (the way stage 2 promoted this test's original "echo" example and
+	# stage 4 its "grep" one).
+	assert1(shell_translate_line(c"sed hi") == 0)
+	assert1(shell_translate_line(c"find .") == 0)
 
 
 void test_translate_single_quotes_preserve_spaces():
@@ -1226,3 +1227,374 @@ void test_translate_du_rejects_unknown_flag():
 
 void test_translate_du_rejects_two_paths():
 	assert1(shell_translate_line(c"du a b") == 0)
+
+
+# ---------------------------------------------------------------------------
+# lib/shell_commands.w: stage 4's tools (ln -s, df, ps, grep).
+
+void test_ln_s_creates_a_symlink():
+	char* dir = shtest_scratch_path(c"_ln_dir")
+	mkdir(dir, 493)
+	char* target = path_join(dir, c"target.txt")
+	file_write_text(target, c"ln target content\x0a")
+	char* link_path = path_join(dir, c"link.txt")
+
+	ln_s(c"target.txt", link_path)
+
+	file_stat st
+	assert_equal(0, file_lstat_path(link_path, &st))
+	assert1(file_is_lnk(&st))
+	char* got = file_read_text(link_path)
+	assert_strings_equal(c"ln target content\x0a", got)
+	free(got)
+	unlink(link_path)
+	unlink(target)
+	rmdir(dir)
+	free(link_path)
+	free(target)
+	free(dir)
+
+
+void test_ln_s_existing_destination_reports_file_exists():
+	char* path = shtest_scratch_path(c"_ln_exists.txt")
+	file_write_text(path, c"already here")
+
+	char* err_cap = shtest_scratch_path(c"_ln_exists.err")
+	shtest_capture_stderr_start(err_cap)
+	ln_s(c"anywhere", path)
+	char* err = shtest_capture_stderr_end(err_cap)
+
+	assert1(index_of(err, c"ln: failed to create symbolic link '") >= 0)
+	assert1(index_of(err, c"File exists") >= 0)
+	unlink(path)
+	free(err)
+	free(err_cap)
+	free(path)
+
+
+void test_ln_s_missing_parent_reports_error():
+	char* err_cap = shtest_scratch_path(c"_ln_missing.err")
+	shtest_capture_stderr_start(err_cap)
+	ln_s(c"anywhere", c"/no/such/dir/w_shell_commands_ln_xyz")
+	char* err = shtest_capture_stderr_end(err_cap)
+
+	assert1(index_of(err, c"ln: failed to create symbolic link '") >= 0)
+	assert1(index_of(err, c"No such file or directory") >= 0)
+	free(err)
+	free(err_cap)
+
+
+void test_df_prints_header_and_one_line_per_path():
+	char* cap = shtest_scratch_path(c"_df.out")
+	shtest_capture_stdout_start(cap)
+	df(c"/tmp")
+	char* got = shtest_capture_stdout_end(cap)
+
+	# Header plus exactly one mount line; the counts are filesystem
+	# state, so only the shape is asserted (du's precedent). The mount
+	# line always carries a "/"-rooted path -- the resolved mount point,
+	# or "/tmp" itself on the no-match fallback.
+	assert_equal(2, shtest_count_newlines(got))
+	assert_equal(0, index_of(got, c"Filesystem 1K-blocks Used Available Mounted on\x0a"))
+	assert1(index_of(got, c" /") >= 0)
+	free(got)
+	free(cap)
+
+
+void test_df_no_args_lists_mounts():
+	char* cap = shtest_scratch_path(c"_df_all.out")
+	shtest_capture_stdout_start(cap)
+	df()
+	char* got = shtest_capture_stdout_end(cap)
+
+	# At least the header and one real (nonzero-blocks) mount.
+	assert_equal(0, index_of(got, c"Filesystem 1K-blocks Used Available Mounted on\x0a"))
+	assert1(shtest_count_newlines(got) >= 2)
+	free(got)
+	free(cap)
+
+
+void test_df_missing_path_reports_error():
+	char* out_cap = shtest_scratch_path(c"_df_missing.out")
+	char* err_cap = shtest_scratch_path(c"_df_missing.err")
+	shtest_capture_stdout_start(out_cap)
+	shtest_capture_stderr_start(err_cap)
+	df(c"/no/such/w_shell_commands_df_xyz")
+	char* err = shtest_capture_stderr_end(err_cap)
+	char* out = shtest_capture_stdout_end(out_cap)
+
+	assert1(index_of(err, c"df: ") >= 0)
+	assert1(index_of(err, c"No such file or directory") >= 0)
+	assert_equal(1, shtest_count_newlines(out)) /* the header only */
+	free(out)
+	free(err)
+	free(out_cap)
+	free(err_cap)
+
+
+void test_ps_lists_this_process():
+	char* cap = shtest_scratch_path(c"_ps.out")
+	shtest_capture_stdout_start(cap)
+	ps()
+	char* got = shtest_capture_stdout_end(cap)
+
+	assert_equal(0, index_of(got, c"PID PPID S COMM\x0a"))
+	# Our own pid must be listed; anchor the match at a line start (the
+	# header is line one, so every pid line follows a newline) so pid
+	# 1234 cannot be satisfied by a line for pid 91234.
+	char* pid_str = itoa(getpid())
+	char* pid_line = strjoin(c"\x0a", pid_str)
+	char* pid_needle = strjoin(pid_line, c" ")
+	assert1(index_of(got, pid_needle) >= 0)
+	# comm of this test binary (shell_commands_test / its _64 twin) --
+	# the kernel truncates comm to 15 bytes, which both spell.
+	assert1(index_of(got, c"shell_commands_") >= 0)
+	free(pid_needle)
+	free(pid_line)
+	free(pid_str)
+	free(got)
+	free(cap)
+
+
+void test_grep_prints_matching_lines():
+	char* f = shtest_scratch_path(c"_grep.txt")
+	file_write_text(f, c"alpha one\x0abeta two\x0agamma three\x0a")
+
+	char* cap = shtest_scratch_path(c"_grep.out")
+	shtest_capture_stdout_start(cap)
+	grep(false, c"one", f)
+	char* got = shtest_capture_stdout_end(cap)
+
+	assert_strings_equal(c"alpha one\x0a", got)
+	unlink(f)
+	free(got)
+	free(cap)
+	free(f)
+
+
+void test_grep_quantifiers_and_anchors_use_the_regex_engine():
+	char* f = shtest_scratch_path(c"_grep_rx.txt")
+	file_write_text(f, c"alpha one\x0abeta two\x0agamma three\x0a")
+
+	char* cap = shtest_scratch_path(c"_grep_rx.out")
+	shtest_capture_stdout_start(cap)
+	grep(false, c"^g.m*a t", f)
+	char* got = shtest_capture_stdout_end(cap)
+
+	assert_strings_equal(c"gamma three\x0a", got)
+
+	# '+' quantifies here (lib/regex.w's subset), unlike real grep's
+	# BRE where it is a literal -- the documented divergence.
+	shtest_capture_stdout_start(cap)
+	grep(false, c"e+ta", f)
+	char* plus = shtest_capture_stdout_end(cap)
+
+	assert_strings_equal(c"beta two\x0a", plus)
+	unlink(f)
+	free(plus)
+	free(got)
+	free(cap)
+	free(f)
+
+
+void test_grep_line_numbers_flag():
+	char* f = shtest_scratch_path(c"_grep_n.txt")
+	file_write_text(f, c"alpha one\x0abeta two\x0agamma three\x0a")
+
+	char* cap = shtest_scratch_path(c"_grep_n.out")
+	shtest_capture_stdout_start(cap)
+	grep(true, c"t", f)
+	char* got = shtest_capture_stdout_end(cap)
+
+	assert_strings_equal(c"2:beta two\x0a3:gamma three\x0a", got)
+	unlink(f)
+	free(got)
+	free(cap)
+	free(f)
+
+
+void test_grep_multiple_files_prefix_names():
+	char* a = shtest_scratch_path(c"_grep_a.txt")
+	char* b = shtest_scratch_path(c"_grep_b.txt")
+	file_write_text(a, c"match here\x0a")
+	file_write_text(b, c"no\x0amatch there\x0a")
+
+	char* cap = shtest_scratch_path(c"_grep_multi.out")
+	shtest_capture_stdout_start(cap)
+	grep(false, c"match", a, b)
+	char* got = shtest_capture_stdout_end(cap)
+
+	char* want_a = strjoin(a, c":match here\x0a")
+	char* want_b = strjoin(b, c":match there\x0a")
+	char* want = strjoin(want_a, want_b)
+	assert_strings_equal(want, got)
+	unlink(a)
+	unlink(b)
+	free(want)
+	free(want_a)
+	free(want_b)
+	free(got)
+	free(cap)
+	free(a)
+	free(b)
+
+
+void test_grep_missing_file_reports_error_and_continues():
+	char* missing = c"/no/such/w_shell_commands_grep_xyz"
+	char* present = shtest_scratch_path(c"_grep_present.txt")
+	file_write_text(present, c"still greppable\x0a")
+
+	char* out_cap = shtest_scratch_path(c"_grep_missing.out")
+	char* err_cap = shtest_scratch_path(c"_grep_missing.err")
+	shtest_capture_stdout_start(out_cap)
+	shtest_capture_stderr_start(err_cap)
+	grep(false, c"greppable", missing, present)
+	char* err = shtest_capture_stderr_end(err_cap)
+	char* out = shtest_capture_stdout_end(out_cap)
+
+	assert1(index_of(err, missing) >= 0)
+	assert1(index_of(err, c"No such file or directory") >= 0)
+	char* want = strjoin(present, c":still greppable\x0a")
+	assert_strings_equal(want, out)
+	unlink(present)
+	free(want)
+	free(out)
+	free(err)
+	free(out_cap)
+	free(err_cap)
+	free(present)
+
+
+void test_grep_invalid_pattern_reports_error():
+	char* f = shtest_scratch_path(c"_grep_bad.txt")
+	file_write_text(f, c"anything\x0a")
+
+	char* out_cap = shtest_scratch_path(c"_grep_bad.out")
+	char* err_cap = shtest_scratch_path(c"_grep_bad.err")
+	shtest_capture_stdout_start(out_cap)
+	shtest_capture_stderr_start(err_cap)
+	grep(false, c"[abc", f)
+	char* err = shtest_capture_stderr_end(err_cap)
+	char* out = shtest_capture_stdout_end(out_cap)
+
+	assert1(index_of(err, c"grep: invalid pattern: '[abc'") >= 0)
+	assert_equal(0, strlen(out))
+	unlink(f)
+	free(out)
+	free(err)
+	free(out_cap)
+	free(err_cap)
+	free(f)
+
+
+# ---------------------------------------------------------------------------
+# repl/shell_translate.w: stage 4's translator coverage (ln, df, ps,
+# grep) and the quote-aware metacharacter scan.
+
+void test_translate_ln_s_flag_forms():
+	assert_strings_equal(c"shell_commands.ln_s(c\"target\", c\"link\")",
+		shell_translate_line(c"ln -s target link"))
+	assert_strings_equal(c"shell_commands.ln_s(c\"target\", c\"link\")",
+		shell_translate_line(c"ln --symbolic target link"))
+
+
+void test_translate_ln_without_s_falls_back():
+	# A bare "ln" is a hard link -- no native implementation, so the
+	# real tool handles it.
+	assert1(shell_translate_line(c"ln target link") == 0)
+
+
+void test_translate_ln_rejects_unknown_flag_and_arity():
+	assert1(shell_translate_line(c"ln -sf target link") == 0)
+	assert1(shell_translate_line(c"ln -s target") == 0)
+	assert1(shell_translate_line(c"ln -s a b c") == 0)
+
+
+void test_translate_df_bare():
+	assert_strings_equal(c"shell_commands.df()", shell_translate_line(c"df"))
+
+
+void test_translate_df_with_paths():
+	assert_strings_equal(c"shell_commands.df(c\"/tmp\")", shell_translate_line(c"df /tmp"))
+	assert_strings_equal(c"shell_commands.df(c\"a\", c\"b\")", shell_translate_line(c"df a b"))
+
+
+void test_translate_df_rejects_flags():
+	assert1(shell_translate_line(c"df -h") == 0)
+	assert1(shell_translate_line(c"df --total /tmp") == 0)
+
+
+void test_translate_ps_bare():
+	assert_strings_equal(c"shell_commands.ps()", shell_translate_line(c"ps"))
+
+
+void test_translate_ps_with_any_argument_falls_back():
+	assert1(shell_translate_line(c"ps aux") == 0)
+	assert1(shell_translate_line(c"ps -ef") == 0)
+
+
+void test_translate_grep_pattern_and_file():
+	assert_strings_equal(c"shell_commands.grep(false, c\"foo\", c\"/tmp/x\")",
+		shell_translate_line(c"grep foo /tmp/x"))
+
+
+void test_translate_grep_line_number_flag_and_multiple_files():
+	assert_strings_equal(c"shell_commands.grep(true, c\"foo\", c\"a\", c\"b\")",
+		shell_translate_line(c"grep -n foo a b"))
+	assert_strings_equal(c"shell_commands.grep(true, c\"foo\", c\"a\")",
+		shell_translate_line(c"grep --line-number foo a"))
+
+
+void test_translate_grep_quoted_pattern_with_quantifiers():
+	# The quote-aware rule-1 scan: '*'/'?'/'$' inside single quotes are
+	# not shell-special, so the line translates and lib/regex.w gets
+	# the pattern verbatim (the old position-blind scan sent every such
+	# line to native).
+	assert_strings_equal(c"shell_commands.grep(false, c\"a.*b\", c\"f\")",
+		shell_translate_line(c"grep 'a.*b' f"))
+	assert_strings_equal(c"shell_commands.grep(false, c\"foo$\", c\"f\")",
+		shell_translate_line(c"grep 'foo$' f"))
+
+
+void test_translate_grep_without_file_falls_back():
+	# A file-less grep reads stdin -- native territory.
+	assert1(shell_translate_line(c"grep foo") == 0)
+
+
+void test_translate_grep_rejects_unknown_flag():
+	assert1(shell_translate_line(c"grep -i foo f") == 0)
+	assert1(shell_translate_line(c"grep -rn foo f") == 0)
+
+
+void test_translate_grep_malformed_pattern_falls_back():
+	# Patterns lib/regex.w's regex_valid rejects run the real grep
+	# instead: reserved escapes, dangling quantifiers, unclosed
+	# classes.
+	assert1(shell_translate_line(c"grep 'a[b' f") == 0)
+	assert1(shell_translate_line(c"grep '\\d' f") == 0)
+	assert1(shell_translate_line(c"grep 'a**' f") == 0)
+
+
+void test_translate_quoted_metacharacters_translate():
+	# sh treats a single-quoted metacharacter as data, and so does the
+	# tokenizer -- both print the same bytes, so no native detour is
+	# needed. Double quotes keep $ and backtick active, so those still
+	# fall back.
+	assert_strings_equal(c"shell_commands.echo(false, c\"$HOME\")",
+		shell_translate_line(c"echo '$HOME'"))
+	assert_strings_equal(c"shell_commands.echo(false, c\"a|b\")",
+		shell_translate_line(c"echo 'a|b'"))
+	assert_strings_equal(c"shell_commands.echo(false, c\"a|b\")",
+		shell_translate_line(c"echo \"a|b\""))
+
+
+void test_translate_dollar_in_double_quotes_falls_back():
+	assert1(shell_translate_line(c"echo \"$HOME\"") == 0)
+	assert1(shell_translate_line(c"echo \"a\\$b\"") == 0)
+
+
+void test_translate_escaped_metacharacter_outside_quotes_translates():
+	# sh strips the backslash and passes the byte as data; so does the
+	# tokenizer.
+	assert_strings_equal(c"shell_commands.echo(false, c\"$HOME\")",
+		shell_translate_line(c"echo \\$HOME"))

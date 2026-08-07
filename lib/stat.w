@@ -17,6 +17,7 @@ Design notes: libs/standard/plans/05_filesystem.md (Phase 1 foundation),
 docs/projects/unix_primitives.md (explicit utimens / chown).
 */
 import lib.lib
+import lib.__arch__.statfs
 
 
 struct file_stat:
@@ -235,3 +236,36 @@ int file_readlink(char* path, char* buf, int size):
 
 int file_symlink(char* target, char* linkpath):
 	return symlink(target, linkpath)
+
+
+# statfs(2) view of the filesystem containing a path (what df(1)
+# reports). Unlike statx above, the raw struct layout differs between
+# i386's statfs64 and the 64-bit generic statfs, so the parse lives in
+# the per-arch lib/__arch__/statfs.w modules and this portable layer
+# only names the normalized fields. Counts are in f_bsize-byte blocks;
+# on i386 the kernel's 64-bit counters are read as their low word --
+# the same accepted limit the module header documents. Darwin / win64 /
+# wasm stub to -1 like the other wrappers.
+struct file_fs_stat:
+	int bsize
+	int blocks
+	int bfree
+	int bavail
+	int files
+	int ffree
+
+
+int file_statfs(char* path, file_fs_stat* out):
+	char* buf = malloc(STATFS_BUF_SIZE())
+	int* fields = cast(int*, malloc(6 * __word_size__))
+	int err = statfs_fill(path, buf, fields)
+	if (err == 0):
+		out.bsize = fields[0]
+		out.blocks = fields[1]
+		out.bfree = fields[2]
+		out.bavail = fields[3]
+		out.files = fields[4]
+		out.ffree = fields[5]
+	free(buf)
+	free(cast(char*, fields))
+	return err
