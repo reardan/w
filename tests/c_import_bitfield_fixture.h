@@ -95,3 +95,35 @@ union ci_bf_union {
 union ci_bf_union_wide {
 	unsigned long long b : 1;
 };
+
+/* Signed vs unsigned bit-fields: reads sign-extend per the declared
+   type; writes truncate to the width (gcc behavior on both ABIs). */
+struct ci_bf_signed {
+	int a : 3;
+	int b : 5;
+	unsigned int c : 3;
+	int d : 21;
+};
+
+/* Signed/unsigned long long fields sharing an 8-byte unit, plus an int
+   field opening the next unit. On i386 'a' (width 40) has no word-sized
+   load window, so member access stays a compile error there; 'b' and
+   'c' are accessible on both targets. */
+struct ci_bf_sll {
+	long long a : 40;
+	unsigned long long b : 24;
+	int c : 20;
+};
+
+/* Signed short bit-fields with negative values. */
+struct ci_bf_s16 {
+	short a : 9;
+	short b : 7;
+	unsigned short c : 10;
+};
+
+/* Signed and unsigned views of the same union bits. */
+union ci_bf_su {
+	int s : 5;
+	unsigned int u : 5;
+};

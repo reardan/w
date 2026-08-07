@@ -65,6 +65,23 @@ map[char*, int] ci_const_values
 map[int, int] ci_type_alignments
 int ci_anon_counter
 
+# Bit-field access side table. Every named C bit-field member gets its
+# own zero-size access type (ci_bit_field_access_type); these maps,
+# keyed by that type index, record the single load the SysV allocator
+# computed for the member on the current target: the storage unit's
+# byte offset inside the struct, the field's bit offset within the
+# loaded unit, its width in bits, the declared type's signedness, and
+# the unit's load width in bytes (0 when no single word-sized load
+# covers the field — only possible for i386 'long long' shapes, which
+# grammar/postfix_expr.w rejects on access). grammar/promote.w and
+# grammar/expression.w read these to emit the extract and
+# read-modify-write sequences.
+map[int, int] ci_bit_field_unit_offsets
+map[int, int] ci_bit_field_bit_offsets
+map[int, int] ci_bit_field_widths
+map[int, int] ci_bit_field_signs
+map[int, int] ci_bit_field_unit_sizes
+
 # ABI classes (see ffi_type_class) of the parameters most recently lowered
 # by ci_lower_params_from, one byte per parameter.
 char* ci_param_classes
@@ -75,6 +92,11 @@ void ci_session_init():
 		ci_imported_functions = new map[char*, int]
 		ci_const_values = new map[char*, int]
 		ci_type_alignments = new map[int, int]
+		ci_bit_field_unit_offsets = new map[int, int]
+		ci_bit_field_bit_offsets = new map[int, int]
+		ci_bit_field_widths = new map[int, int]
+		ci_bit_field_signs = new map[int, int]
+		ci_bit_field_unit_sizes = new map[int, int]
 		ci_param_classes = malloc(extern_max_params())
 
 
@@ -802,19 +824,107 @@ int ci_struct_has_field_room(int type_index):
 	return type_num_args(type_index) < 96
 
 
-# Zero-size marker type for named C bit-field members. The member's
-# storage bytes are covered by filler fields, so the named field itself
-# contributes nothing to the layout, but member lookup still finds it —
-# grammar/postfix_expr.w recognizes the marker and reports a dedicated
-# "bit-field member access is not supported" diagnostic instead of
-# silently reading the whole storage unit.
-int ci_bit_field_marker_type():
-	int existing = type_lookup(c"__ci_bit_field")
-	if (existing >= 0):
-		return existing
-	int marker = type_push_size(c"__ci_bit_field", 0)
-	ci_set_type_alignment(marker, 1)
-	return marker
+# Signedness of a bit-field's declared C type. SysV/gcc: plain 'int'
+# bit-fields are signed (the importer maps C 'int' to int32 already);
+# the unsigned W types mark unsigned C declarations. gcc represents an
+# enum bit-field without negative enumerators as unsigned; the importer
+# does not track enumerator signs, so enum-typed bit-fields count as
+# unsigned (the overwhelmingly common case).
+int ci_bit_field_type_is_signed(int field_type):
+	field_type = type_unqualified(field_type)
+	if (type_is_unsigned_fixed(field_type)):
+		return 0
+	if (field_type == uint64_type):
+		return 0
+	if (field_type == type_lookup(c"uint")):
+		return 0
+	if (type_get_kind(field_type) == type_kind_enum):
+		return 0
+	return 1
+
+
+# Zero-size access type for one named C bit-field member occupying bits
+# [bit_start, bit_start + width) of the struct. The member's storage
+# bytes are covered by filler fields, so the named field contributes
+# nothing to the layout, but member lookup still finds it and its type
+# index keys the ci_bit_field_* side table above, which is what
+# grammar/promote.w's read and grammar/expression.w's write sequences
+# consume. The load window: the declared type's storage unit when it
+# fits the target word; an i386 'long long' unit (8 bytes, word 4)
+# instead gets the word-sized window covering the field — aligned when
+# one exists, else the unaligned window from the field's first byte,
+# which the straddle rule keeps inside the declared unit — or no window
+# at all (unit size 0, access rejected) when the field spans more bytes
+# than a word can load.
+int ci_bit_field_access_type(int field_type, int bit_start, int width):
+	int alignment = ci_type_alignment(field_type)
+	if (alignment < 1):
+		alignment = 1
+	int unit_size = type_get_size(field_type)
+	if (unit_size < alignment):
+		unit_size = alignment
+	int unit_offset = 0
+	int bit_offset = 0
+	int bit_end = bit_start + width
+	int w_bits = word_size * 8
+	if (unit_size <= word_size):
+		unit_offset = (bit_start / (unit_size * 8)) * unit_size
+		bit_offset = bit_start - unit_offset * 8
+	else if (width > w_bits):
+		unit_size = 0
+	else if ((bit_start / w_bits) == ((bit_end - 1) / w_bits)):
+		unit_size = word_size
+		unit_offset = (bit_start / w_bits) * word_size
+		bit_offset = bit_start - unit_offset * 8
+	else if ((((bit_end + 7) / 8) - (bit_start / 8)) <= word_size):
+		unit_size = word_size
+		unit_offset = bit_start / 8
+		bit_offset = bit_start - unit_offset * 8
+	else:
+		unit_size = 0
+	int access = type_push_size(ci_unique_name(c"__ci_bit_field_"), 0)
+	ci_set_type_alignment(access, 1)
+	ci_bit_field_unit_offsets[access] = unit_offset
+	ci_bit_field_bit_offsets[access] = bit_offset
+	ci_bit_field_widths[access] = width
+	ci_bit_field_signs[access] = ci_bit_field_type_is_signed(field_type)
+	ci_bit_field_unit_sizes[access] = unit_size
+	return access
+
+
+# Accessors for the side table, consumed by grammar/postfix_expr.w,
+# grammar/promote.w and grammar/expression.w (forward-declared there:
+# the grammar compiles before this file). The maps stay null until the
+# first c_import statement, so programs without imports answer without
+# a hash lookup.
+int ci_is_bit_field_access(int type_index):
+	if (ci_bit_field_widths == 0):
+		return 0
+	if (type_index < 0):
+		return 0
+	if (type_unqualified(type_index) in ci_bit_field_widths):
+		return 1
+	return 0
+
+
+int ci_bit_field_unit_offset(int type_index):
+	return ci_bit_field_unit_offsets[type_unqualified(type_index)]
+
+
+int ci_bit_field_bit_offset(int type_index):
+	return ci_bit_field_bit_offsets[type_unqualified(type_index)]
+
+
+int ci_bit_field_width(int type_index):
+	return ci_bit_field_widths[type_unqualified(type_index)]
+
+
+int ci_bit_field_is_signed(int type_index):
+	return ci_bit_field_signs[type_unqualified(type_index)]
+
+
+int ci_bit_field_unit_size(int type_index):
+	return ci_bit_field_unit_sizes[type_unqualified(type_index)]
 
 
 int ci_round_up_bits(int bits, int align_bits):
@@ -861,8 +971,9 @@ void ci_struct_add_field(ci_struct_layout* layout, char* name, int field_type):
 # two 4-byte units). A zero-width field closes the current unit of its
 # declared type. Named bit-fields raise the struct alignment like a
 # plain member of the declared type would; unnamed ones do not. Named
-# members register a zero-size marker field so access is diagnosed
-# (ci_bit_field_marker_type) — their storage comes from filler fields.
+# members register a zero-size access type recording the storage unit
+# and bit range (ci_bit_field_access_type) — their storage comes from
+# filler fields.
 void ci_layout_bit_field(ci_struct_layout* layout, char* name, int field_type, int width):
 	int alignment = ci_type_alignment(field_type)
 	if (alignment < 1):
@@ -883,7 +994,7 @@ void ci_layout_bit_field(ci_struct_layout* layout, char* name, int field_type, i
 		if ((width > 0) && ci_struct_has_field_room(layout.type_index)):
 			type_add_arg(layout.type_index, ci_unique_name(c"__ci_pad_"), ci_filler_type((width + 7) / 8))
 			if (name != 0):
-				type_add_arg(layout.type_index, strclone(name), ci_bit_field_marker_type())
+				type_add_arg(layout.type_index, strclone(name), ci_bit_field_access_type(field_type, 0, width))
 		return
 	if (width == 0):
 		layout.bit_pos = ci_round_up_bits(layout.bit_pos, align_bits)
@@ -891,9 +1002,10 @@ void ci_layout_bit_field(ci_struct_layout* layout, char* name, int field_type, i
 	int rem = layout.bit_pos % align_bits
 	if (((rem + width + align_bits - 1) / align_bits) > (size_bits / align_bits)):
 		layout.bit_pos = ci_round_up_bits(layout.bit_pos, align_bits)
+	int bit_start = layout.bit_pos
 	layout.bit_pos = layout.bit_pos + width
 	if ((name != 0) && ci_struct_has_field_room(layout.type_index)):
-		type_add_arg(layout.type_index, strclone(name), ci_bit_field_marker_type())
+		type_add_arg(layout.type_index, strclone(name), ci_bit_field_access_type(field_type, bit_start, width))
 
 
 int ci_import_struct(pg_ast_node* specifier):

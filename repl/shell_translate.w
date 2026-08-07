@@ -13,8 +13,8 @@ to native; never a partial or best-guess translation:
      semantics: | < > ; & $ ` ~ * ? (pipe, redirection, chaining,
      backgrounding, variable/command/glob expansion);
   2. its first word names a tool this file knows (pwd, ls, cat, echo,
-     head, tail, wc, mkdir, rm, cp, mv, touch, chmod, du -- design doc
-     Sec 11's stage 1 + stage 2 lists plus stage 3's additions);
+     head, tail, wc, mkdir, rm, cp, mv, touch, chmod, du, ln, df, ps,
+     grep -- design doc Sec 11's stage 1-4 lists);
   3. every flag token (a word starting with '-') is one that tool's
      flag table knows, and the remaining positional count matches what
      the tool expects.
@@ -56,8 +56,33 @@ word is the first non-flag positional whose spelling is validated
 rather than passed through: 1-4 octal digits, translated to a decimal
 int literal in the generated call ("chmod 644 f" ->
 "shell_commands.chmod_octal(420, c\"f\")").
+
+Stage 4 adds ln (-s/--symbolic REQUIRED -- a bare "ln" is a hard
+link, which stays native), df (no flags, any number of paths), ps
+(bare only), and grep (-n/--line-number, then a pattern and one or
+more files) -- grep landing now that lib/regex.w exists as the
+reusable pattern core the design doc's Sec 6.3 deferred on. grep's
+pattern is the second positional-shaped word whose SPELLING is
+validated (chmod's octal-mode precedent): a pattern lib/regex.w's
+regex_valid rejects (\d, a**, an unclosed class) fails the whole line
+closed to native, where the real grep's own syntax applies verbatim.
+
+Stage 4 also makes rule 1's metacharacter scan QUOTE-AWARE
+(shell_translate_has_meta below): a metacharacter only forces native
+fallback where /bin/sh itself would treat it specially. Inside '...'
+nothing is special; inside "..." only $ and backtick still expand (so
+those two keep forcing native there); a backslash escapes exactly
+what the tokenizer's own rules say it escapes. Grep patterns are why
+position-blind scanning finally hurt: "grep 'a.*b' f" is precisely a
+quoted '*' the tokenizer already handles the way sh does, and the old
+scan sent every such line to native, bypassing the engine entirely.
+The refinement is strictly consistency-preserving for the other
+tools too: a quoted metacharacter was always passed through literally
+by both sh and this tokenizer ("echo '$HOME'" prints the same five
+bytes either way); it just no longer forces the native detour.
 */
 import lib.lib
+import lib.regex
 import structures.string
 
 
@@ -68,6 +93,48 @@ import structures.string
 int shell_translate_is_meta(char c):
 	return (c == '|') || (c == '<') || (c == '>') || (c == ';') || (c == '&') ||
 		(c == '$') || (c == 96) || (c == '~') || (c == '*') || (c == '?')
+
+
+# Quote-aware rule-1 scan (module header, stage 4): 1 when the line
+# carries a metacharacter in a position where sh would give it special
+# meaning. The quote and escape structure walked here is exactly the
+# tokenizer's (shell_translate_tokenize below), so a line this scan
+# clears is one the tokenizer splits the same way sh would: '...' is a
+# literal span; inside "..." only $ and backtick stay active, and only
+# \" and \\ are escapes (a backslash before anything else -- \$
+# included -- passes through as data here AND in sh, so a "\$" still
+# reads as an active $ and correctly forces native); outside quotes a
+# backslash escapes any following byte. An unterminated quote runs to
+# end of line, matching the tokenizer.
+int shell_translate_has_meta(char* line):
+	int i = 0
+	while (line[i] != 0):
+		if (line[i] == 39): /* '...': nothing is special inside */
+			i = i + 1
+			while ((line[i] != 0) && (line[i] != 39)):
+				i = i + 1
+			if (line[i] != 0):
+				i = i + 1
+		else if (line[i] == 34): /* "...": $ and backtick still expand */
+			i = i + 1
+			while ((line[i] != 0) && (line[i] != 34)):
+				if ((line[i] == 92) && ((line[i + 1] == 34) || (line[i + 1] == 92))):
+					i = i + 2
+				else:
+					if ((line[i] == '$') || (line[i] == 96)):
+						return 1
+					i = i + 1
+			if (line[i] != 0):
+				i = i + 1
+		else if (line[i] == 92): /* escape outside quotes covers any byte */
+			i = i + 1
+			if (line[i] != 0):
+				i = i + 1
+		else:
+			if (shell_translate_is_meta(line[i])):
+				return 1
+			i = i + 1
+	return 0
 
 
 # sh-like word splitting (Sec 5.3): only ever called on a line rule 1
@@ -781,16 +848,150 @@ char* shell_translate_du(list[char*] words):
 	return s
 
 
+# ln: -s/--symbolic is REQUIRED (stage 4 creates symlinks only -- a
+# bare "ln" is a hard link, left to the real tool), then exactly two
+# positionals: target, then linkpath. Real ln's one-argument form
+# ("ln -s target", linking into the cwd), its N-targets-into-a-
+# directory form, and -f/-n/-r/-t are all unknown shapes here and fail
+# the whole line closed to native. Generates a call to
+# lib/shell_commands.w's ln_s (the module header there explains the
+# restricted-scope name).
+char* shell_translate_ln(list[char*] words):
+	int symbolic = 0
+	char* target = 0
+	char* linkpath = 0
+	int i = 1
+	while (i < words.length):
+		char* w = words[i]
+		if (w[0] == '-'):
+			if (strcmp(w, c"--symbolic") == 0):
+				symbolic = 1
+			else if ((w[1] == '-') || (w[1] == 0)):
+				return 0 /* unknown long flag, or a bare "-" */
+			else:
+				int j = 1
+				while (w[j] != 0):
+					if (w[j] == 's'):
+						symbolic = 1
+					else:
+						return 0 /* unknown letter in the cluster */
+					j = j + 1
+		else:
+			if (target == 0):
+				target = w
+			else if (linkpath == 0):
+				linkpath = w
+			else:
+				return 0 /* ln -s takes exactly two positionals in v1 */
+		i = i + 1
+	if ((symbolic == 0) || (linkpath == 0)):
+		return 0 /* hard links and the one-arg form stay native */
+	char* target_lit = shell_translate_string_literal(target)
+	char* link_lit = shell_translate_string_literal(linkpath)
+	string_builder* out = string_new()
+	string_append(out, c"shell_commands.ln_s(")
+	string_append(out, target_lit)
+	string_append(out, c", ")
+	string_append(out, link_lit)
+	string_append(out, c")")
+	free(target_lit)
+	free(link_lit)
+	char* s = out.data
+	free(out)
+	return s
+
+
+# df: zero or more path positionals, no flags (real df's -h/-T/-i/-a
+# and the rest are unknown here and fail the line closed to native).
+char* shell_translate_df(list[char*] words):
+	int i = 1
+	while (i < words.length):
+		if (words[i][0] == '-'):
+			return 0 /* no flags in v1 */
+		i = i + 1
+	string_builder* out = string_new()
+	string_append(out, c"shell_commands.df(")
+	i = 1
+	while (i < words.length):
+		if (i > 1):
+			string_append(out, c", ")
+		char* lit = shell_translate_string_literal(words[i])
+		string_append(out, lit)
+		free(lit)
+		i = i + 1
+	string_append(out, c")")
+	char* s = out.data
+	free(out)
+	return s
+
+
+# ps: bare only -- any additional word ("ps aux", "ps -ef") is real-ps
+# territory and fails the line closed to native.
+char* shell_translate_ps(list[char*] words):
+	if (words.length != 1):
+		return 0
+	return strclone(c"shell_commands.ps()")
+
+
+# grep: -n/--line-number is the only known flag, then a pattern and
+# one or more file positionals. The pattern's spelling is validated
+# like chmod's octal mode word: lib/regex.w's regex_valid must accept
+# it, or the whole line fails closed to native and the real grep's own
+# pattern syntax applies. A file-less "grep PATTERN" (a stdin grep)
+# also stays native. A pattern starting with '-' reads as an unknown
+# flag and stays native too (the real tool needs -e/-- for those, both
+# unknown here).
+char* shell_translate_grep(list[char*] words):
+	int line_numbers = 0
+	# positionals borrows words' strings, so only the list struct
+	# itself needs freeing (mkdir/rm's pattern).
+	list[char*] positionals = new list[char*]
+	int fail = 0
+	int i = 1
+	while ((i < words.length) && (fail == 0)):
+		char* w = words[i]
+		if (w[0] == '-'):
+			if ((strcmp(w, c"-n") == 0) || (strcmp(w, c"--line-number") == 0)):
+				line_numbers = 1
+			else:
+				fail = 1 /* unknown flag, or a bare "-" (stdin) */
+		else:
+			positionals.push(w)
+		i = i + 1
+	if (positionals.length < 2):
+		fail = 1 /* a pattern and at least one file */
+	if ((fail == 0) && (regex_valid(positionals[0]) == 0)):
+		fail = 1 /* not runnable by lib/regex.w: the real grep's turf */
+	if (fail):
+		__w_list_free(cast(__w_list*, positionals))
+		return 0
+	string_builder* out = string_new()
+	string_append(out, c"shell_commands.grep(")
+	if (line_numbers):
+		string_append(out, c"true")
+	else:
+		string_append(out, c"false")
+	i = 0
+	while (i < positionals.length):
+		string_append(out, c", ")
+		char* lit = shell_translate_string_literal(positionals[i])
+		string_append(out, lit)
+		free(lit)
+		i = i + 1
+	string_append(out, c")")
+	__w_list_free(cast(__w_list*, positionals))
+	char* s = out.data
+	free(out)
+	return s
+
+
 # Translate one shell-mode line to a ready-to-eval "shell_commands...."
 # W call, or 0 when any part of the recognition test failed -- the
 # caller's cue (repl.w) to hand the whole line, untouched, to native
 # (Sec 5.2/Sec 7).
 char* shell_translate_line(char* line):
-	int i = 0
-	while (line[i] != 0):
-		if (shell_translate_is_meta(line[i])):
-			return 0
-		i = i + 1
+	if (shell_translate_has_meta(line)):
+		return 0
 	list[char*] words = shell_translate_tokenize(line)
 	char* result = 0
 	if (words.length > 0):
@@ -822,5 +1023,13 @@ char* shell_translate_line(char* line):
 			result = shell_translate_chmod(words)
 		else if (strcmp(words[0], c"du") == 0):
 			result = shell_translate_du(words)
+		else if (strcmp(words[0], c"ln") == 0):
+			result = shell_translate_ln(words)
+		else if (strcmp(words[0], c"df") == 0):
+			result = shell_translate_df(words)
+		else if (strcmp(words[0], c"ps") == 0):
+			result = shell_translate_ps(words)
+		else if (strcmp(words[0], c"grep") == 0):
+			result = shell_translate_grep(words)
 	shell_translate_free_words(words)
 	return result

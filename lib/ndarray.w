@@ -33,9 +33,21 @@ Bounds policy, per the doc:
    design (docs/projects/arrays_slices_strings.md keeps legacy `p[i]`
    outside the bounds machinery) -- not reproduced here, see the doc.
 
-Freeing: heap slices have no landed free helper yet
-(docs/projects/arrays_slices_strings.md Milestone 5), so v1 ndarrays are
-allocate-and-keep. An ndf_free/ndi_free lands together with that helper.
+Freeing: ndf_free/ndi_free release the backing buffer through the
+slice-level array_free helper (lib/array.w, the
+docs/projects/arrays_slices_strings.md Milestone 5 shape). Free only
+arrays that OWN their buffer (from ndX_newN/onesN/fullN, or a wrapN
+over a full `new T[n]` slice): there is no is-view flag, so freeing a
+row/sub view is on the caller -- array_free's header assert refuses
+proper sub views best-effort, but a full-range view frees the one
+shared buffer for every alias. See ndf_free below for the poisoned
+post-free state.
+
+Parallel variants: lib/ndarray_par.w (a separate module because it
+imports lib.thread, which is Linux x86/x64 only -- this file stays
+importable on every target) carries the parallel_for-chunked twins of
+the elementwise ops and the two-phase sum reduction, Stage 3 of the
+design doc.
 
 Naming: imports merge into one flat global namespace, so every symbol is
 prefixed ndf_/ndi_ (ndarray_ for the handful of shape-math helpers the
@@ -47,6 +59,7 @@ the doc's Explicit non-goals -- solvers want to control allocation.
 */
 import lib.lib
 import lib.assert
+import lib.array
 
 
 ########################## shared shape helpers ##########################
@@ -247,6 +260,29 @@ ndf ndf_wrap4(float[] data, int n0, int n1, int n2, int n3):
 	return a
 
 
+##### freeing #####
+#
+# Releases the backing buffer through lib/array.w's array_free (see
+# that file for exactly which buffers may be freed and which misuses
+# the header assert catches). The descriptor is dead afterwards: rank
+# and every extent are zeroed, so every checked atN/setN call on a
+# freed array fails its bounds assert instead of touching freed memory
+# (a.data itself is left dangling -- raw `.data` access after free is
+# use-after-free, same as any freed pointer). Views (ndf_row/ndf_sub
+# results) share the freed buffer and are dead too; there is no
+# is-view flag, so nothing stops a caller from freeing THROUGH a
+# full-range view -- it is the same one buffer either way.
+
+
+void ndf_free(ndf* a):
+	array_free[float](a.data)
+	a.rank = 0
+	a.n0 = 0
+	a.n1 = 0
+	a.n2 = 0
+	a.n3 = 0
+
+
 ##### accessors: per-axis bounds-checked, one pair per rank #####
 
 
@@ -377,6 +413,31 @@ void ndf_mul_scalar_into(ndf* out, ndf* a, float s):
 	while (i < a.data.length):
 		out.data[i] = a.data[i] * s
 		i = i + 1
+
+
+# out[i] = s * x[i] + y[i] (the axpy shape); out may alias x and/or y.
+# The serial reference for lib/ndarray_par.w's ndf_axpy_into_par, which
+# must produce bit-identical results.
+void ndf_axpy_into(ndf* out, float s, ndf* x, ndf* y):
+	ndf_assert_same_shape(x, y, c"ndf_axpy_into: shape mismatch")
+	ndf_assert_same_shape(x, out, c"ndf_axpy_into: output shape mismatch")
+	int i = 0
+	while (i < x.data.length):
+		out.data[i] = s * x.data[i] + y.data[i]
+		i = i + 1
+
+
+# Left-to-right sum of every element in flat (row-major) order. The
+# serial reference for lib/ndarray_par.w's two-phase ndf_sum_par, which
+# matches it bit-for-bit only in the single-chunk case (a different
+# chunking changes the float association, not correctness).
+float ndf_sum(ndf* a):
+	float total = 0.0
+	int i = 0
+	while (i < a.data.length):
+		total = total + a.data[i]
+		i = i + 1
+	return total
 
 
 type ndf_map_fn = fn(float) -> float
@@ -560,6 +621,16 @@ ndi ndi_wrap4(int[] data, int n0, int n1, int n2, int n3):
 	asserts(c"ndi_wrap4: buffer length does not match extents", data.length == n)
 	a.data = data
 	return a
+
+
+# ndf_free's int twin: same contract, see the freeing section above.
+void ndi_free(ndi* a):
+	array_free[int](a.data)
+	a.rank = 0
+	a.n0 = 0
+	a.n1 = 0
+	a.n2 = 0
+	a.n3 = 0
 
 
 int ndi_at1(ndi* a, int i):

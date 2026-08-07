@@ -512,7 +512,7 @@
 				{"cmd": ["bin/wv2", "x64", "symbols", "--layout", "--json", "tests/symbols_layout_fixture.w"], "stdout_file": "bin/symbols_layout_fixture_x64.ndjson", "expect_stdout": "\"arch\": \"x64\""},
 				{"cmd": ["grep", "-qE", "\"name\": \"sym_layout_point\".*\"arch\": \"x64\", \"total_size\": 16, \"fields\": \\[\\{\"name\": \"x\", \"type\": \"int\", \"offset\": 0, \"size\": 8\\}, \\{\"name\": \"y\", \"type\": \"int\", \"offset\": 8, \"size\": 8\\}\\]", "bin/symbols_layout_fixture_x64.ndjson"]},
 				{"cmd": ["bin/wv2", "symbols", "--layout", "x64", "tests/symbols_layout_fixture.w"], "expect_stdout": "struct sym_layout_point: size 16\n\t0\t8\tint x\n\t8\t8\tint y\n"},
-				{"cmd": ["bin/wv2", "symbols", "--layout", "tests/c_import_bitfield_fixture.w"], "expect_stdout": ["<c_import>:0:0: struct ci_bf_basic: size 4\n\t0\t1\tchar a\n\t1\t0\t__ci_bit_field b\n\t1\t0\t__ci_bit_field c\n\t1\t1\t__ci_bytes_1 __ci_pad_1\n\t2\t1\tchar d\n\t3\t1\t__ci_bytes_1 __ci_pad_2\n", "<c_import>:0:0: union ci_bf_union: size 4\n"]}
+				{"cmd": ["bin/wv2", "symbols", "--layout", "tests/c_import_bitfield_fixture.w"], "expect_stdout": ["<c_import>:0:0: struct ci_bf_basic: size 4\n\t0\t1\tchar a\n\t1\t0\t__ci_bit_field_1 b\n\t1\t0\t__ci_bit_field_2 c\n\t1\t1\t__ci_bytes_1 __ci_pad_3\n\t2\t1\tchar d\n\t3\t1\t__ci_bytes_1 __ci_pad_4\n", "<c_import>:0:0: union ci_bf_union: size 4\n"]}
 			]
 		},
 		{
@@ -1652,6 +1652,12 @@
 				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_chmodsym && mkdir -p /tmp/w_repl_shell_chmodsym && touch /tmp/w_repl_shell_chmodsym/g.txt && chmod 600 /tmp/w_repl_shell_chmodsym/g.txt\n:sh\nchmod u+x /tmp/w_repl_shell_chmodsym/g.txt\nls -l /tmp/w_repl_shell_chmodsym\n:sh\n:quit\n", "expect_stdout": ["-rwx------ 1 ", "g.txt"]},
 				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_dudir && mkdir -p /tmp/w_repl_shell_dudir/sub && printf 'du content\\n' > /tmp/w_repl_shell_dudir/sub/f.txt\n:sh\ndu -s /tmp/w_repl_shell_dudir\n:sh\n:quit\n", "expect_stdout": "\t/tmp/w_repl_shell_dudir", "reject_stdout": "/tmp/w_repl_shell_dudir/sub"},
 				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_dudir2 && mkdir -p /tmp/w_repl_shell_dudir2/sub && printf 'du content\\n' > /tmp/w_repl_shell_dudir2/sub/f.txt\n:sh\ndu /tmp/w_repl_shell_dudir2\n:sh\n:quit\n", "expect_stdout": "\t/tmp/w_repl_shell_dudir2/sub"},
+				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_lndir && mkdir -p /tmp/w_repl_shell_lndir && printf 'ln shell mode content\\n' > /tmp/w_repl_shell_lndir/target.txt\n:sh\nln -s target.txt /tmp/w_repl_shell_lndir/link.txt\ncat /tmp/w_repl_shell_lndir/link.txt\nls -l /tmp/w_repl_shell_lndir\n:sh\n:quit\n", "expect_stdout": ["ln shell mode content", "link.txt -> target.txt"]},
+				{"cmd": ["bin/repl"], "stdin": ":sh\ndf /tmp\n:sh\n:quit\n", "expect_stdout": "Filesystem 1K-blocks Used Available Mounted on"},
+				{"cmd": ["bin/repl"], "stdin": ":sh\nps\n:sh\n:quit\n", "expect_stdout": ["PID PPID S COMM", "repl"]},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'alpha one\\nbeta two\\ngamma three\\n' > /tmp/w_repl_shell_grepfile.txt\n:sh\ngrep -n beta /tmp/w_repl_shell_grepfile.txt\n:sh\n:quit\n", "expect_stdout": "2:beta two", "reject_stdout": "alpha one"},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'alpha one\\nbeta two\\ngamma three\\n' > /tmp/w_repl_shell_grepfile2.txt\n:sh\ngrep 'e+ta t.o' /tmp/w_repl_shell_grepfile2.txt\n:sh\n:quit\n", "expect_stdout": "beta two", "reject_stdout": "gamma"},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'alpha one\\nbeta two\\n' > /tmp/w_repl_shell_grepnative.txt\n:sh\ngrep -i ALPHA /tmp/w_repl_shell_grepnative.txt\n:sh\n:quit\n", "expect_stdout": "alpha one", "reject_stdout": "beta two"},
 				{"cmd": ["bin/repl", "-e", "40 + 2"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl", "-e", "int x = 5", "-e", "x + 37"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl", "-e", "this is not valid w"], "expect_fail": true},
@@ -1737,6 +1743,12 @@
 				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_chmodsym64 && mkdir -p /tmp/w_repl_shell_chmodsym64 && touch /tmp/w_repl_shell_chmodsym64/g.txt && chmod 600 /tmp/w_repl_shell_chmodsym64/g.txt\n:sh\nchmod u+x /tmp/w_repl_shell_chmodsym64/g.txt\nls -l /tmp/w_repl_shell_chmodsym64\n:sh\n:quit\n", "expect_stdout": ["-rwx------ 1 ", "g.txt"]},
 				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_dudir64 && mkdir -p /tmp/w_repl_shell_dudir64/sub && printf 'du content\\n' > /tmp/w_repl_shell_dudir64/sub/f.txt\n:sh\ndu -s /tmp/w_repl_shell_dudir64\n:sh\n:quit\n", "expect_stdout": "\t/tmp/w_repl_shell_dudir64", "reject_stdout": "/tmp/w_repl_shell_dudir64/sub"},
 				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_dudir264 && mkdir -p /tmp/w_repl_shell_dudir264/sub && printf 'du content\\n' > /tmp/w_repl_shell_dudir264/sub/f.txt\n:sh\ndu /tmp/w_repl_shell_dudir264\n:sh\n:quit\n", "expect_stdout": "\t/tmp/w_repl_shell_dudir264/sub"},
+				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_lndir64 && mkdir -p /tmp/w_repl_shell_lndir64 && printf 'ln shell mode content\\n' > /tmp/w_repl_shell_lndir64/target.txt\n:sh\nln -s target.txt /tmp/w_repl_shell_lndir64/link.txt\ncat /tmp/w_repl_shell_lndir64/link.txt\nls -l /tmp/w_repl_shell_lndir64\n:sh\n:quit\n", "expect_stdout": ["ln shell mode content", "link.txt -> target.txt"]},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\ndf /tmp\n:sh\n:quit\n", "expect_stdout": "Filesystem 1K-blocks Used Available Mounted on"},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\nps\n:sh\n:quit\n", "expect_stdout": ["PID PPID S COMM", "repl"]},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'alpha one\\nbeta two\\ngamma three\\n' > /tmp/w_repl_shell_grepfile64.txt\n:sh\ngrep -n beta /tmp/w_repl_shell_grepfile64.txt\n:sh\n:quit\n", "expect_stdout": "2:beta two", "reject_stdout": "alpha one"},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'alpha one\\nbeta two\\ngamma three\\n' > /tmp/w_repl_shell_grepfile264.txt\n:sh\ngrep 'e+ta t.o' /tmp/w_repl_shell_grepfile264.txt\n:sh\n:quit\n", "expect_stdout": "beta two", "reject_stdout": "gamma"},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'alpha one\\nbeta two\\n' > /tmp/w_repl_shell_grepnative64.txt\n:sh\ngrep -i ALPHA /tmp/w_repl_shell_grepnative64.txt\n:sh\n:quit\n", "expect_stdout": "alpha one", "reject_stdout": "beta two"},
 				{"cmd": ["bin/repl64", "-e", "40 + 2"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "-e", "int x = 5", "-e", "x + 37"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "-e", "this is not valid w"], "expect_fail": true},
@@ -2100,6 +2112,7 @@
 				"multi_assign_64_test",
 				"ndarray_64_test",
 				"ndarray_index_64_test",
+				"ndarray_stage3_64_test",
 				"nested_ctor_64_test",
 				"net_64_test",
 				"net_asn1_64_test",
@@ -2593,6 +2606,8 @@
 				"tests_x64",
 				"args_test",
 				"array_decay_test",
+				"array_free_double_free_trap_test",
+				"array_free_sub_slice_trap_test",
 				"array_list_test",
 				"array_slice_string_test",
 				"asm_fuzz_arm64_test",
@@ -2694,6 +2709,7 @@
 				"ndarray_bounds_set_trap_test",
 				"ndarray_extent_trap_test",
 				"ndarray_index_test",
+				"ndarray_stage3_test",
 				"ndarray_test",
 				"nested_ctor_test",
 				"net_test",
@@ -2848,6 +2864,26 @@
 			"deps": ["wv2", "wfixture"],
 			"steps": [
 				{"cmd": ["bin/wfixture", "bin/wv2", "tests/array_constructor_error_fixture.w", "tests/array_param_error_fixture.w", "tests/array_union_error_fixture.w"]}
+			]
+		},
+		{
+			"name": "array_free_double_free_trap_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/array_free_double_free_trap_test.w"],
+			"outputs": ["bin/array_free_double_free_trap_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/array_free_double_free_trap_test.w", "-o", "bin/array_free_double_free_trap_test"]},
+				{"cmd": ["bin/array_free_double_free_trap_test"], "expect_fail": true, "expect_stderr": "array_free: not an unsliced heap array"}
+			]
+		},
+		{
+			"name": "array_free_sub_slice_trap_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/array_free_sub_slice_trap_test.w"],
+			"outputs": ["bin/array_free_sub_slice_trap_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/array_free_sub_slice_trap_test.w", "-o", "bin/array_free_sub_slice_trap_test"]},
+				{"cmd": ["bin/array_free_sub_slice_trap_test"], "expect_fail": true, "expect_stderr": "array_free: not an unsliced heap array"}
 			]
 		},
 		{
@@ -5095,6 +5131,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/ndarray_index_test.w", "-o", "bin/ndarray_index_test"]},
 				{"cmd": ["bin/ndarray_index_test"]}
+			]
+		},
+		{
+			"name": "ndarray_stage3_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/ndarray_stage3_test.w"],
+			"outputs": ["bin/ndarray_stage3_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/ndarray_stage3_test.w", "-o", "bin/ndarray_stage3_64_test"]},
+				{"cmd": ["bin/ndarray_stage3_64_test"]}
+			]
+		},
+		{
+			"name": "ndarray_stage3_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/ndarray_stage3_test.w"],
+			"outputs": ["bin/ndarray_stage3_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ndarray_stage3_test.w", "-o", "bin/ndarray_stage3_test"]},
+				{"cmd": ["bin/ndarray_stage3_test"]}
 			]
 		},
 		{

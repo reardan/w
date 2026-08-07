@@ -17,6 +17,18 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **Multi-file `w check` shares one compilation unit, so two root
+  programs cannot be checked in one invocation.** Observed 2026-08-07
+  (shell-mode stage 4): `bin/wv2 x64 check --json
+  tests/shell_commands_test.w repl.w` fails with `symbol redefined:
+  'main'` — the second file's diagnostics are then wrong (the error
+  is an artifact of accumulation, not of either file). The
+  accumulation is what makes "skipping 'lib/x.w' (already compiled)"
+  work for a library list, so the fix is not to isolate every file;
+  cheap direction: reset (or fork) the unit at each ARGUMENT that
+  declares `main`, or at least say "consider checking these roots
+  separately" in the diagnostic. Workaround: one `check` invocation
+  per root program.
 - **Multi-error reporting.** The compiler stops at the first error
   (single-pass, no recovery). Documented limitation; real fix is parser
   recovery, which stays a research project. Cheap partial win: after an
