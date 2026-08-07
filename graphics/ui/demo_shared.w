@@ -6,15 +6,16 @@ source on every backend" claim, held literally
 (docs/projects/ui_framework.md §3, §8 stage 1).
 
 The layout below is fixed by the default theme metrics (pad 8, gap 8,
-widget_height 32, text_scale 2) in a 320x400 window, and the gates
-rely on it (graphics/ui/smoke_test.w probes pixels in its own 320x240
+widget_height 32) in a 320x400 window, and the gates rely on the ROW
+positions (proportional text makes widths font-derived; rows stay
+put): graphics/ui/smoke_test.w probes pixels in its own 320x240
 window — everything it samples sits above y=240,
-tools/web/run_ui_stub.mjs scripts clicks):
+tools/web/run_ui_stub.mjs scripts clicks:
 
-	label    "W UI demo"     rect (8,   8, 144, 32)
-	button   "Click me"      rect (8,  48, 144, 32)  — click point (20, 60)
+	title    "W UI demo"     row (8,   8, .., 32) — bold title strike
+	button   "Click me"      row (8,  48, .., 32) — click point (20, 60)
 	  + same_line disabled button "Locked" (stage-3 disabled tokens)
-	checkbox "dark mode"     rect (8,  88, 168, 32)
+	checkbox "dark mode"     row (8,  88, .., 32)
 	textbox                  rect (8, 128, 200, 32)
 	radio    "small"/"large" row  (8, 168, ..) — same_line pair
 	toggle   "sound"         rect (8, 208, ..)
@@ -72,7 +73,7 @@ void ui_demo_init(ui_demo_state* st):
 
 # One frame of the demo form. Call between ui_begin_window and ui_end.
 void ui_demo_body(ui_context* ctx, ui_demo_state* st):
-	ui_label(ctx, c"W UI demo")
+	ui_title(ctx, c"W UI demo")
 	if (ui_button(ctx, c"Click me")):
 		st.clicks = st.clicks + 1
 		print(c"ui demo clicks: ")

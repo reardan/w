@@ -240,16 +240,32 @@ void ui_label(ui_context* ctx, char* text):
 	ui_draw_text(ctx.rndr, r.x, ty, text, scale, ui_text_color(ctx))
 
 
-# Returns 1 on the frame the button is clicked.
+# Title text: the bold title strike (scale 3) on the background.
+void ui_title(ui_context* ctx, char* text):
+	int scale = 3
+	ui_rect r = ui_layout_next(ctx, cast(float32, ui_text_width(text, scale)), cast(float32, ctx.theme.widget_height))
+	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
+	ui_draw_text(ctx.rndr, r.x, ty, text, scale, ui_text_color(ctx))
+
+
+# Returns 1 on the frame the button is clicked. A filled accent pill:
+# on_accent label ink, the hover shade while hot or pressed.
 int ui_button(ui_context* ctx, char* label):
 	int id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
 	int scale = ctx.theme.text_scale
-	float32 w = cast(float32, ui_text_width(label, scale) + ctx.theme.pad * 2)
+	float32 w = cast(float32, ui_text_width(label, scale) + ctx.theme.pad * 3)
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
 	int clicked = ui_click_behavior(ctx, id, r)
-	ui_render_rect(ctx.rndr, r, ui_widget_fill(ctx, id))
-	ui_draw_text_centered(ctx.rndr, r, label, scale, ui_text_color(ctx))
+	ui_color fill = ctx.theme.accent
+	ui_color ink = ctx.theme.on_accent
+	if (ctx.disabled):
+		fill = ctx.theme.disabled_widget
+		ink = ctx.theme.disabled_text
+	else if ((ctx.active == id) || (ctx.hot == id)):
+		fill = ctx.theme.accent_hot
+	ui_draw_rrect(ctx.rndr, r, r.h * 0.5, fill)
+	ui_draw_text_centered(ctx.rndr, r, label, scale, ink)
 	return clicked
 
 
@@ -363,13 +379,17 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 				st.caret = st.length
 			i = i + 1
 
-	ui_color border_color = ctx.theme.border
+	# Material filled field: a rounded tonal fill with a 2px baseline
+	# that turns into the focus color while focused.
+	ui_color field_fill = ctx.theme.widget
+	ui_color line = ctx.theme.border
 	if (ctx.focus == id):
-		border_color = ctx.theme.focus
+		line = ctx.theme.focus
 	if (ctx.disabled):
-		border_color = ctx.theme.disabled_widget
-	ui_render_rect(ctx.rndr, r, border_color)
-	ui_render_rect(ctx.rndr, ui_rect_inset(r, 2.0), ctx.theme.surface)
+		field_fill = ctx.theme.disabled_widget
+		line = ctx.theme.disabled_widget
+	ui_draw_rrect(ctx.rndr, r, cast(float32, ctx.theme.radius), field_fill)
+	ui_render_rect(ctx.rndr, ui_rect_new(r.x + 4.0, r.y + r.h - 2.0, r.w - 8.0, 2.0), line)
 	# Proportional draw: advance per glyph, stop at the field's width
 	# (no horizontal scroll yet — glyphs past it are not drawn).
 	int fit_w = cast(int, r.w) - ctx.theme.pad * 2
@@ -407,11 +427,24 @@ int ui_radio(ui_context* ctx, char* label, int index, int32* selected):
 		selected[0] = index
 		changed = 1
 
+	# A circle: ring in the accent when selected (with a center dot),
+	# border gray otherwise.
 	ui_rect box_rect = ui_rect_new(r.x, r.y + (r.h - cast(float32, box)) * 0.5, cast(float32, box), cast(float32, box))
-	ui_render_rect(ctx.rndr, box_rect, ui_widget_fill(ctx, id))
-	ui_render_rect(ctx.rndr, ui_rect_inset(box_rect, 2.0), ctx.theme.surface)
 	if (selected[0] == index):
-		ui_render_rect(ctx.rndr, ui_rect_inset(box_rect, 5.0), ctx.theme.accent)
+		ui_color mark = ctx.theme.accent
+		if (ctx.disabled):
+			mark = ctx.theme.disabled_text
+		else if (ctx.hot == id):
+			mark = ctx.theme.accent_hot
+		ui_draw_ring(ctx.rndr, box_rect, mark)
+		ui_draw_disc(ctx.rndr, ui_rect_inset(box_rect, 4.0), mark)
+	else:
+		ui_color edge = ctx.theme.border
+		if (ctx.disabled):
+			edge = ctx.theme.disabled_widget
+		else if (ctx.hot == id):
+			edge = ctx.theme.text_muted
+		ui_draw_ring(ctx.rndr, box_rect, edge)
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	ui_draw_text(ctx.rndr, r.x + cast(float32, box + ctx.theme.gap), ty, label, scale, ui_text_color(ctx))
 	return changed
@@ -445,12 +478,13 @@ int ui_toggle(ui_context* ctx, char* label, int32* on):
 	if (ctx.disabled):
 		track_color = ctx.theme.disabled_widget
 		knob_color = ctx.theme.disabled_text
-	ui_render_rect(ctx.rndr, track, track_color)
+	# A pill track with a round sliding knob.
+	ui_draw_rrect(ctx.rndr, track, track.h * 0.5, track_color)
 	float32 knob = cast(float32, track_h - 4)
 	float32 kx = track.x + 2.0
 	if (on[0]):
 		kx = track.x + track.w - knob - 2.0
-	ui_render_rect(ctx.rndr, ui_rect_new(kx, track.y + 2.0, knob, knob), knob_color)
+	ui_draw_disc(ctx.rndr, ui_rect_new(kx, track.y + 2.0, knob, knob), knob_color)
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	ui_draw_text(ctx.rndr, r.x + cast(float32, track_w + ctx.theme.gap), ty, label, scale, ui_text_color(ctx))
 	return flipped
@@ -463,11 +497,12 @@ void ui_progress(ui_context* ctx, float32 w, float32 fraction):
 	if (fraction > 1.0):
 		fraction = 1.0
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
-	float32 bar_h = cast(float32, ctx.theme.unit)
+	# A thin fully-rounded track with a matching accent fill.
+	float32 bar_h = 6.0
 	ui_rect track = ui_rect_new(r.x, r.y + (r.h - bar_h) * 0.5, r.w, bar_h)
-	ui_render_rect(ctx.rndr, track, ctx.theme.widget)
+	ui_draw_rrect(ctx.rndr, track, bar_h * 0.5, ctx.theme.widget)
 	if (fraction > 0.0):
-		ui_render_rect(ctx.rndr, ui_rect_new(track.x, track.y, track.w * fraction, track.h), ctx.theme.accent)
+		ui_draw_rrect(ctx.rndr, ui_rect_new(track.x, track.y, track.w * fraction, track.h), bar_h * 0.5, ctx.theme.accent)
 
 
 # Collapsed: a button-look header showing items[selected[0]] and a 'v'
@@ -506,25 +541,29 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 			ctx.modal = 0
 			ctx.input.mouse_pressed = 0
 
-	ui_render_rect(ctx.rndr, r, ui_widget_fill(ctx, id))
+	# Header: a rounded tonal field with the selection and a chevron.
+	ui_draw_rrect(ctx.rndr, r, cast(float32, ctx.theme.radius), ui_widget_fill(ctx, id))
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	if ((selected[0] >= 0) && (selected[0] < item_count)):
 		ui_draw_text(ctx.rndr, r.x + cast(float32, ctx.theme.pad), ty, items[selected[0]], scale, ui_text_color(ctx))
-	ui_render_glyph(ctx.rndr, r.x + r.w - cast(float32, ctx.theme.pad + 8 * scale), ty, 'v', scale, ctx.theme.text_muted)
+	float32 chev = 12.0
+	ui_draw_chevron(ctx.rndr, ui_rect_new(r.x + r.w - cast(float32, ctx.theme.pad) - chev, r.y + (r.h - chev) * 0.5, chev, chev), ctx.theme.text_muted)
 
 	if (open[0]):
+		# The open menu: an elevated rounded surface (shadow first, all
+		# through the overlay batch so it paints above later widgets).
 		ui_rect list_rect = ui_rect_new(r.x, r.y + r.h, r.w, row_h * cast(float32, item_count))
 		ctx.rndr.to_overlay = 1
-		ui_render_rect(ctx.rndr, list_rect, ctx.theme.border)
-		ui_render_rect(ctx.rndr, ui_rect_inset(list_rect, 1.0), ctx.theme.surface)
+		ui_draw_shadow(ctx.rndr, list_rect, ctx.theme.shadow)
+		ui_draw_rrect(ctx.rndr, list_rect, cast(float32, ctx.theme.radius), ctx.theme.surface)
 		int i = 0
 		while (i < item_count):
 			ui_rect row = ui_rect_new(list_rect.x, list_rect.y + row_h * cast(float32, i), list_rect.w, row_h)
 			if (ui_rect_contains(row, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))):
-				ui_render_rect(ctx.rndr, ui_rect_inset(row, 1.0), ctx.theme.widget_hot)
+				ui_draw_rrect(ctx.rndr, ui_rect_inset(row, 2.0), cast(float32, ctx.theme.radius_small), ctx.theme.widget_hot)
 			if (i == selected[0]):
-				ui_render_rect(ctx.rndr, ui_rect_new(row.x + 1.0, row.y + 1.0, 4.0, row.h - 2.0), ctx.theme.accent)
-			ui_draw_text(ctx.rndr, row.x + cast(float32, ctx.theme.pad), row.y + (row.h - cast(float32, ui_text_height(scale))) * 0.5, items[i], scale, ctx.theme.text)
+				ui_draw_rrect(ctx.rndr, ui_rect_new(row.x + 3.0, row.y + 7.0, 4.0, row.h - 14.0), 2.0, ctx.theme.accent)
+			ui_draw_text(ctx.rndr, row.x + cast(float32, ctx.theme.pad + 4), row.y + (row.h - cast(float32, ui_text_height(scale))) * 0.5, items[i], scale, ctx.theme.text)
 			i = i + 1
 		ctx.rndr.to_overlay = 0
 	return changed
@@ -543,10 +582,26 @@ int ui_checkbox(ui_context* ctx, char* label, int32* checked):
 	if (toggled):
 		checked[0] = 1 - checked[0]
 
+	# Rounded box: an accent fill with a checkmark when checked, an
+	# outlined box otherwise.
 	ui_rect box_rect = ui_rect_new(r.x, r.y + (r.h - cast(float32, box)) * 0.5, cast(float32, box), cast(float32, box))
-	ui_render_rect(ctx.rndr, box_rect, ui_widget_fill(ctx, id))
+	float32 rad = cast(float32, ctx.theme.radius_small)
 	if (checked[0]):
-		ui_render_rect(ctx.rndr, ui_rect_inset(box_rect, 3.0), ctx.theme.accent)
+		ui_color fill = ctx.theme.accent
+		if (ctx.disabled):
+			fill = ctx.theme.disabled_widget
+		else if (ctx.hot == id):
+			fill = ctx.theme.accent_hot
+		ui_draw_rrect(ctx.rndr, box_rect, rad, fill)
+		ui_draw_check(ctx.rndr, ui_rect_inset(box_rect, 1.0), ctx.theme.on_accent)
+	else:
+		ui_color edge = ctx.theme.border
+		if (ctx.disabled):
+			edge = ctx.theme.disabled_widget
+		else if (ctx.hot == id):
+			edge = ctx.theme.text_muted
+		ui_draw_rrect(ctx.rndr, box_rect, rad, edge)
+		ui_draw_rrect(ctx.rndr, ui_rect_inset(box_rect, 2.0), rad - 2.0, ctx.theme.surface)
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	ui_draw_text(ctx.rndr, r.x + cast(float32, box + ctx.theme.gap), ty, label, scale, ui_text_color(ctx))
 	return toggled

@@ -161,12 +161,12 @@ void test_widgets_accumulate_vertices():
 	asserts(c"label drew glyphs", after_label == 7 * 6)
 	ui_button(&ctx, c"Click")
 	int after_button = r.vert_count
-	# button = 1 fill quad + 5 glyphs
-	assert_equal(after_label + 6 * 6, after_button)
+	# button = pill rrect (7 quads) + 5 glyphs
+	assert_equal(after_label + 12 * 6, after_button)
 	int32 checked = 1
 	ui_checkbox(&ctx, c"dark", &checked)
-	# checkbox = box quad + accent quad + 4 glyphs
-	assert_equal(after_button + 6 * 6, r.vert_count)
+	# checked box = accent rrect (7 quads) + checkmark + 4 glyphs
+	assert_equal(after_button + 12 * 6, r.vert_count)
 	ui_end(&ctx)
 	ui_render_destroy(&r)
 
@@ -329,19 +329,25 @@ void test_progress_vertices_and_clamp():
 	ui_context ctx
 	ui_context_init(&ctx, &r, &theme)
 
-	# Zero fraction: track only. Positive: track + fill. Over 1 clamps
-	# to the track width.
+	# Zero fraction: the track's rounded rect only (7 quads). Positive:
+	# track + fill (14 quads). Over 1 clamps to the track width.
 	ui_begin(&ctx, 320, 240)
 	ui_progress(&ctx, 100.0, 0.0)
-	assert_equal(6, r.vert_count)
+	assert_equal(42, r.vert_count)
 	ui_progress(&ctx, 100.0, 0.5)
-	assert_equal(18, r.vert_count)
+	assert_equal(126, r.vert_count)
 	ui_progress(&ctx, 100.0, 7.0)
-	assert_equal(30, r.vert_count)
-	# The clamped fill's right edge equals the track's right edge
-	# (third widget: track = vertices 18..23, fill = 24..29; vertex 25
-	# carries x1).
-	asserts(c"clamped fill width", r.verts[25 * 8] == 108.0)
+	assert_equal(210, r.vert_count)
+	# The clamped fill's right edge equals the track's right edge: no
+	# vertex of the third widget's fill (the last 42) reaches past
+	# x = 8 + 100.
+	float32 max_x = 0.0
+	int v = 168
+	while (v < 210):
+		if (r.verts[v * 8] > max_x):
+			max_x = r.verts[v * 8]
+		v = v + 1
+	asserts(c"clamped fill width", max_x == 108.0)
 	ui_end(&ctx)
 	ui_render_destroy(&r)
 

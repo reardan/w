@@ -70,13 +70,14 @@ int main(int argc, int argv):
 	ui_end(&ctx)
 	glFinish()
 
-	# Light theme: widget fill 0.87 -> 222, background 0.95 -> 242.
-	ui_smoke_check(c"button fill", 20, 60, 222, 8)
-	ui_smoke_check(c"background corner", 300, 220, 242, 8)
+	# Light theme: the button is a filled accent pill (accent red
+	# channel 0.404 -> 103); background 0.96 -> 245.
+	ui_smoke_check(c"button fill", 20, 60, 103, 10)
+	ui_smoke_check(c"background corner", 300, 220, 245, 8)
 
-	# Label row: "W UI demo" spans x 8..152 at y 8..40; text scale 2
-	# puts glyph rows around y 16..32. Any dark sample counts as ink
-	# (text 0.13 -> 33).
+	# Title row: "W UI demo" (bold title strike) starts at x=8 in row
+	# y 8..40 with glyph ink around y 16..32. Any dark sample counts
+	# as ink (text 0.11 -> 28).
 	int ink_found = 0
 	int x = 8
 	while (x < 152):

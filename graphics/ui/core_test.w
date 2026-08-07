@@ -47,6 +47,12 @@ void test_theme_presets_share_tokens_with_different_values():
 	asserts(c"light disabled text lighter", light.disabled_text.r > light.text.r)
 	asserts(c"dark disabled text dimmer", dark.disabled_text.r < dark.text.r)
 	asserts(c"light on_accent contrasts", light.on_accent.r != light.accent.r)
+	# stage-4 tokens: shared shape scale, translucent elevation shadow.
+	assert_equal(light.radius, dark.radius)
+	assert_equal(light.radius_small, dark.radius_small)
+	assert_equal(8, light.radius)
+	asserts(c"shadow translucent", (light.shadow.a > 0.0) && (light.shadow.a < 1.0))
+	asserts(c"dark shadow translucent", (dark.shadow.a > 0.0) && (dark.shadow.a < 1.0))
 
 
 void test_ocean_theme_is_not_grayscale():
@@ -59,11 +65,12 @@ void test_ocean_theme_is_not_grayscale():
 	asserts(c"text tinted", ocean.text.r != ocean.text.b)
 	# The focus ring is its own token, not the accent reused.
 	asserts(c"focus differs from accent", ocean.focus.r != ocean.accent.r)
-	# Metrics stay on the shared 8px scale.
+	# Metrics stay on the shared 8px scale and shape tokens.
 	ui_theme light
 	ui_theme_light(&light)
 	assert_equal(light.unit, ocean.unit)
 	assert_equal(light.widget_height, ocean.widget_height)
+	assert_equal(light.radius, ocean.radius)
 
 
 void test_glyph_metrics():
