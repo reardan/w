@@ -18,7 +18,9 @@ Maintainer decisions folded in (2026-08-07):
   stage 1 (design doc open question 1), drawn at 2x scale.
 
 PR sequence: 0 → 1 → 2/3 (independent of each other) → 4 → 5.
-PRs 0–1 ship together on the first branch; 2–5 are follow-ups.
+(As landed: all five stages shipped as one commit per stage on the
+`claude/ui-framework-plan-7t0l7o` branch, PR #428, each commit green
+on its own.)
 
 ## Why this order
 

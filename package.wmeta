@@ -13,8 +13,15 @@ modules:
 	grammar
 	repl
 	compiler.compiler
+	graphics.event
 	graphics.gl
 	graphics.math
+	graphics.ui.font
+	graphics.ui.rect
+	graphics.ui.render
+	graphics.ui.text
+	graphics.ui.theme
+	graphics.ui.widgets
 	graphics.window
 	graphics.x11
 	lib.args
