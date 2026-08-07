@@ -51,10 +51,43 @@ if (!gl) log('this browser has no WebGL2 context', 'err');
 const state = {
   shouldClose: 0, mouseX: 0, mouseY: 0, mouseButtons: 0, lastKeycode: 0,
 };
+
+// Input event queue drained by gfx_host_next_event. Kind numbers mirror
+// graphics/event.w's gfx_event_kind: 1 KEY_DOWN, 2 KEY_UP, 3 CHAR,
+// 4 MOUSE_DOWN, 5 MOUSE_UP. Buttons map from JS 0/1/2 to 1/2/3
+// (left/middle/right); CHAR carries ASCII 32..126 plus 8 BS, 9 TAB,
+// 13 CR, 27 ESC.
+const events = [];
+const pushEvent = (kind, code, x, y) => {
+  if (events.length < 256) events.push({ kind, code, x, y });
+};
+const buttonOf = (e) => (e.button === 0 ? 1 : e.button === 1 ? 2 : e.button === 2 ? 3 : 0);
+const charOf = (e) => {
+  if (e.key.length === 1) {
+    const c = e.key.charCodeAt(0);
+    return c >= 32 && c < 127 ? c : 0;
+  }
+  return { Backspace: 8, Tab: 9, Enter: 13, Escape: 27 }[e.key] ?? 0;
+};
+
 canvas.addEventListener('mousemove', (e) => { state.mouseX = e.offsetX; state.mouseY = e.offsetY; });
-canvas.addEventListener('mousedown', (e) => { state.mouseButtons |= 1 << e.button; });
-canvas.addEventListener('mouseup', (e) => { state.mouseButtons &= ~(1 << e.button); });
-canvas.addEventListener('keydown', (e) => { state.lastKeycode = e.keyCode; });
+canvas.addEventListener('mousedown', (e) => {
+  state.mouseButtons |= 1 << e.button;
+  const b = buttonOf(e);
+  if (b) pushEvent(4, b, e.offsetX, e.offsetY);
+});
+canvas.addEventListener('mouseup', (e) => {
+  state.mouseButtons &= ~(1 << e.button);
+  const b = buttonOf(e);
+  if (b) pushEvent(5, b, e.offsetX, e.offsetY);
+});
+canvas.addEventListener('keydown', (e) => {
+  state.lastKeycode = e.keyCode;
+  pushEvent(1, e.keyCode, state.mouseX, state.mouseY);
+  const c = charOf(e);
+  if (c) pushEvent(3, c, state.mouseX, state.mouseY);
+});
+canvas.addEventListener('keyup', (e) => { pushEvent(2, e.keyCode, state.mouseX, state.mouseY); });
 
 let frameCallback = 0;
 const host = {
@@ -72,6 +105,7 @@ const host = {
     mouseButtons: state.mouseButtons, lastKeycode: state.lastKeycode,
   }),
   setFrameCallback: (tableIndex) => { frameCallback = tableIndex; },
+  nextEvent: () => events.shift() ?? null,
 };
 
 // --------------------------------- run -----------------------------------

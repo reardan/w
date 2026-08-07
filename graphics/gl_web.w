@@ -42,6 +42,7 @@ extern void glGenBuffers(int count, int32* buffers)
 extern void glDeleteBuffers(int count, int32* buffers)
 extern void glBindBuffer(int target, int buffer)
 extern void glBufferData(int target, int size, void* data, int usage)
+extern void glBufferSubData(int target, int offset, int size, void* data)
 extern void glGenVertexArrays(int count, int32* arrays)
 extern void glBindVertexArray(int array)
 extern void glEnableVertexAttribArray(int index)
@@ -49,6 +50,17 @@ extern void glDisableVertexAttribArray(int index)
 extern void glVertexAttribPointer(int index, int size, int attrib_type, int normalized, int stride, int offset)
 extern void glDrawArrays(int mode, int first, int count)
 extern void glDrawElements(int mode, int count, int index_type, int offset)
+extern void glScissor(int x, int y, int width, int height)
+
+############################# textures ################################
+
+extern void glGenTextures(int count, int32* textures)
+extern void glDeleteTextures(int count, int32* textures)
+extern void glBindTexture(int target, int texture)
+extern void glTexImage2D(int target, int level, int internal_format, int width, int height, int border, int format, int pixel_type, char* pixels)
+extern void glTexSubImage2D(int target, int level, int x, int y, int width, int height, int format, int pixel_type, char* pixels)
+extern void glTexParameteri(int target, int pname, int param)
+extern void glActiveTexture(int texture_unit)
 
 ######################## shaders and programs #########################
 

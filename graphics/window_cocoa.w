@@ -19,6 +19,7 @@ as SKIP. Mouse fields stay 0 in v1 (last_keycode is tracked).
 import lib.lib
 import graphics.cocoa
 import graphics.gl
+import graphics.event
 
 
 struct gfx_window:
@@ -46,6 +47,12 @@ struct gfx_window:
 	int sel_is_visible
 	int sel_flush_buffer
 	int sel_close
+	# per-frame event ring (graphics.event); key events only in v1 —
+	# CHAR translation and mouse events land with the stage-2 input
+	# work (docs/projects/ui_framework_plan.md)
+	int32 event_head
+	int32 event_tail
+	int32[256] event_ring
 
 
 # The Mac backend hands out 3.2-core contexts, where GLSL 130 no longer
@@ -133,6 +140,8 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.sel_is_visible = sel_registerName(c"isVisible")
 	win.sel_flush_buffer = sel_registerName(c"flushBuffer")
 	win.sel_close = sel_registerName(c"close")
+	win.event_head = 0
+	win.event_tail = 0
 	return win
 
 
@@ -147,9 +156,14 @@ int gfx_window_poll(gfx_window* win):
 		int event = objc_msg4(win.app, win.sel_next_event, 0 - 1, win.distant_past, win.run_mode, 1)
 		if (event == 0):
 			break
-		# NSEventTypeKeyDown = 10; keyCode is an unsigned short.
-		if ((objc_msg0(event, win.sel_type) & 0xffff) == 10):
+		# NSEventTypeKeyDown = 10 / KeyUp = 11; keyCode is an unsigned
+		# short (a raw HID scancode, not a character).
+		int event_type = objc_msg0(event, win.sel_type) & 0xffff
+		if (event_type == 10):
 			win.last_keycode = objc_msg0(event, win.sel_key_code) & 0xffff
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_DOWN, win.last_keycode, 0, 0)
+		else if (event_type == 11):
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_UP, objc_msg0(event, win.sel_key_code) & 0xffff, 0, 0)
 		objc_msg1(win.app, win.sel_send_event, event)
 	# Track window moves (the GL surface follows the view).
 	objc_msg0(win.glctx, win.sel_update)
@@ -160,6 +174,12 @@ int gfx_window_poll(gfx_window* win):
 	if (win.should_close):
 		return 0
 	return 1
+
+
+# Pop the oldest queued input event (graphics.event); returns 1 while
+# events remain from the polls since the last drain.
+int gfx_window_next_event(gfx_window* win, gfx_event* out):
+	return gfx_event_ring_next(&win.event_ring[0], &win.event_head, &win.event_tail, out)
 
 
 void gfx_window_swap(gfx_window* win):

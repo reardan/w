@@ -22,7 +22,10 @@
 //   host    { canvasInit(title, w, h) -> 0|1,
 //             pollState() -> { width, height, shouldClose, mouseX,
 //                              mouseY, mouseButtons, lastKeycode },
-//             setFrameCallback(tableIndex) }
+//             setFrameCallback(tableIndex),
+//             nextEvent() -> { kind, code, x, y } | null (optional:
+//               the input event queue; kind numbers mirror
+//               graphics/event.w's gfx_event_kind) }
 //   log     optional diagnostic sink (defaults to console.error)
 
 const GL_STR_SCRATCH = 3072;
@@ -61,6 +64,13 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
 
   const shaderLog = (shader) => gl.getShaderInfoLog(objects[shader]) || '';
   const programLog = (program) => gl.getProgramInfoLog(objects[program]) || '';
+
+  // 0x1903 GL_RED / 0x1908 GL_RGBA at 0x1401 GL_UNSIGNED_BYTE.
+  const texBytesPerPixel = (format, type) => {
+    if (type !== 0x1401 || (format !== 0x1903 && format !== 0x1908))
+      throw new Error(`texture upload: unsupported format/type ${format}/${type}`);
+    return format === 0x1903 ? 1 : 4;
+  };
 
   const env = {
     // ------------------------------ core GL ------------------------------
@@ -119,6 +129,40 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
       gl.vertexAttribPointer(index, size, type, !!normalized, stride, offset),
     glDrawArrays: (mode, first, count) => gl.drawArrays(mode, first, count),
     glDrawElements: (mode, count, type, offset) => gl.drawElements(mode, count, type, offset),
+    glScissor: (x, y, w, h) => gl.scissor(x, y, w, h),
+    glBufferSubData: (target, offset, size, ptr) =>
+      gl.bufferSubData(target, offset, new Uint8Array(memory().buffer, ptr, size)),
+
+    // ------------------------------ textures ------------------------------
+    glGenTextures: (count, outPtr) => {
+      const dv = view();
+      for (let i = 0; i < count; i++)
+        dv.setInt32(outPtr + 4 * i, allocObject(gl.createTexture()), true);
+    },
+    glDeleteTextures: (count, idsPtr) => {
+      const dv = view();
+      for (let i = 0; i < count; i++) {
+        const id = dv.getInt32(idsPtr + 4 * i, true);
+        if (objects[id]) { gl.deleteTexture(objects[id]); objects[id] = null; }
+      }
+    },
+    glBindTexture: (target, id) => gl.bindTexture(target, id ? objects[id] : null),
+    glTexImage2D: (target, level, internalFormat, w, h, border, format, type, ptr) => {
+      // RED and RGBA at UNSIGNED_BYTE are the layouts the W surface
+      // uses; the sized view needs an explicit byte length, so reject
+      // anything else (the glReadPixels posture). WebGL2 accepts only
+      // sized internal formats here — W callers pass GL_R8/GL_RGBA8.
+      const bpp = texBytesPerPixel(format, type);
+      gl.texImage2D(target, level, internalFormat, w, h, border, format, type,
+                    ptr === 0 ? null : new Uint8Array(memory().buffer, ptr, w * h * bpp));
+    },
+    glTexSubImage2D: (target, level, x, y, w, h, format, type, ptr) => {
+      const bpp = texBytesPerPixel(format, type);
+      gl.texSubImage2D(target, level, x, y, w, h, format, type,
+                       new Uint8Array(memory().buffer, ptr, w * h * bpp));
+    },
+    glTexParameteri: (target, pname, param) => gl.texParameteri(target, pname, param),
+    glActiveTexture: (unit) => gl.activeTexture(unit),
 
     // ------------------------ shaders and programs ------------------------
     glCreateShader: (type) => allocObject(gl.createShader(type)),
@@ -197,6 +241,16 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
       dv.setInt32(ptr + 24, s.lastKeycode, true);
     },
     gfx_host_set_frame_callback: (tableIndex) => host.setFrameCallback(tableIndex),
+    gfx_host_next_event: (ptr) => {
+      const e = host.nextEvent ? host.nextEvent() : null;
+      if (!e) return 0;
+      const dv = view();
+      dv.setInt32(ptr, e.kind, true);
+      dv.setInt32(ptr + 4, e.code, true);
+      dv.setInt32(ptr + 8, e.x, true);
+      dv.setInt32(ptr + 12, e.y, true);
+      return 1;
+    },
   };
 
   return env;

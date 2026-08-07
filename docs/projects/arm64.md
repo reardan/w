@@ -422,8 +422,10 @@ there is no foreign ABI to be compatible with until the libSystem stage.
   data objects on arm64 — COPY space lives in the code stream);
   variadic externs work on arm64 Linux but are rejected on
   arm64_darwin (Darwin's variadic ABI packs the tail on the stack);
-  arm64_darwin extern calls take at most 8 integer + 8 float args
-  (Darwin packs stack args at natural size); imported function
+  arm64_darwin extern calls take at most 8 integer + 8 float register
+  args plus one integer-class stack spill (Darwin packs stack args at
+  natural size, which coincides with the 8-byte slot emission only for
+  a single integer spill — added for glTexImage2D); imported function
   pointers are unsigned (plain arm64, not arm64e).
 - **Deferred (own projects):** full `c_import` on macOS (header-driven
   bulk imports on top of the above); REPL on arm64

@@ -214,3 +214,9 @@ extern int XSetWMProtocols(int display, int window, int* protocols, int count)
 extern int XFree(int data)
 extern int XFlush(int display)
 extern int XSync(int display, int discard)
+# Translate a KeyPress through the server's keymap (shift/caps/layout
+# handled by the server, unlike a hardcoded keycode table). The first
+# parameter is an XKeyEvent*, which is the same address as the x_event
+# union; keysym_return is a KeySym* (word-sized), status_in_out an
+# XComposeStatus* (pass 0).
+extern int XLookupString(x_event* event, char* buffer_return, int bytes_buffer, int* keysym_return, int status_in_out)
