@@ -34,7 +34,8 @@ constant __w_map_new expects: 2 char*, 3 string), then value kind,
 value size, value aux with the same meaning as a value descriptor.
 
 Kinds: 1 int (signed), 2 bool, 3 char*, 4 string, 5 struct, 6 list,
-7 float (float32), 8 map (char* or string keys).
+7 float (float32), 8 map (char* or string keys), 9 float64
+(8-byte-word targets only; the compiler rejects the type elsewhere).
 
 Encoding notes:
 - null char*, string, list, and map fields encode as JSON null and
@@ -43,10 +44,15 @@ Encoding notes:
 - string fields are copied through a NUL-terminated buffer, so embedded
   NUL bytes truncate (structures/json.w strings are C strings). The
   same applies to string-typed map keys.
-- float fields are float32; decode also accepts a JSON integer for a
-  float field (JavaScript's JSON.stringify writes whole doubles with no
-  fraction part) and converts it. float64/float16 fields are rejected
-  at compile time.
+- float fields are float32 or, on 8-byte-word targets, float64 (their
+  json_value carries the raw float64 bits, see structures/json.w, so
+  encode -> decode round trips are bit-exact); decode also accepts a
+  JSON integer for either (JavaScript's JSON.stringify writes whole
+  doubles with no fraction part) and converts it, and a float64 field
+  additionally accepts a float32-only value (e.g. one built with
+  json_float) by widening. float16 fields — and float64 fields on
+  4-byte-word targets, where the type itself is a compile error — are
+  rejected at compile time.
 - map fields encode as JSON objects in insertion order and decode in
   the source object's member order.
 - decode is strict: a missing member or a type mismatch fails the whole
@@ -189,6 +195,10 @@ json_value* __w_json_encode_field(int kind, int size, int aux, char* addr):
 		return json_float(f[0])
 	if (kind == 8):
 		return __w_json_encode_map(aux, addr)
+	if (kind == 9):
+		# float64 (8-byte-word targets only): the slot word is the
+		# value's raw bit pattern, carried into the json_value as-is
+		return json_float64_from_bits(__w_list_load_word(addr, size))
 	return json_null()
 
 
@@ -270,7 +280,7 @@ int __w_json_decode_list(int size, int aux, json_value* v, char* addr):
 void __w_json_map_store(__w_hash_table* table, int key, int vkind, int vsize, char* slot):
 	if (vkind == 5):
 		__w_map_set_bytes(table, key, slot)
-	else if ((vkind == 1) || (vkind == 2) || (vkind == 7)):
+	else if ((vkind == 1) || (vkind == 2) || (vkind == 7) || (vkind == 9)):
 		__w_map_set(table, key, __w_list_load_word(slot, vsize))
 	else:
 		__w_map_set(table, key, __w_json_load_pointer(slot))
@@ -361,4 +371,18 @@ int __w_json_decode_field(int kind, int size, int aux, json_value* v, char* addr
 		return 0
 	if (kind == 8):
 		return __w_json_decode_map(size, aux, v, addr)
+	if (kind == 9):
+		# float64 (8-byte-word targets only): store the raw bit
+		# pattern; a float32-only value widens and a JSON integer
+		# converts, through the per-target helpers
+		if (v.type == json_type_float()):
+			if (v.has_float64):
+				__w_list_store_word(addr, size, v.float64_bits)
+			else:
+				__w_list_store_word(addr, size, json_f64_from_float32(v.float_value))
+			return 1
+		if (v.type == json_type_int()):
+			__w_list_store_word(addr, size, json_f64_from_int(v.int_value))
+			return 1
+		return 0
 	return 0

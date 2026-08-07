@@ -17,6 +17,18 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **Multi-file `w check` shares one compilation unit, so two root
+  programs cannot be checked in one invocation.** Observed 2026-08-07
+  (shell-mode stage 4): `bin/wv2 x64 check --json
+  tests/shell_commands_test.w repl.w` fails with `symbol redefined:
+  'main'` — the second file's diagnostics are then wrong (the error
+  is an artifact of accumulation, not of either file). The
+  accumulation is what makes "skipping 'lib/x.w' (already compiled)"
+  work for a library list, so the fix is not to isolate every file;
+  cheap direction: reset (or fork) the unit at each ARGUMENT that
+  declares `main`, or at least say "consider checking these roots
+  separately" in the diagnostic. Workaround: one `check` invocation
+  per root program.
 - **Multi-error reporting.** The compiler stops at the first error
   (single-pass, no recovery). Documented limitation; real fix is parser
   recovery, which stays a research project. Cheap partial win: after an
@@ -184,6 +196,22 @@ is a queue, not an archive.
   reproducible locally and gone on rerun — is still undiagnosed; if it
   recurs the new line will say what actually died and how.
 
+- **(2026-08-07) `./wbuild -j 2 test_changed` fails with "unknown
+  target test_changed".** The `test_changed` dispatcher in `wbuild`
+  only matches `$1`, so leading flags fall through to wexec, which
+  treats `test_changed` as a target name. Flags after the subcommand
+  (`./wbuild test_changed -j 2`) work — either accept flags before the
+  subcommand or say so in the error.
+
+- **(2026-08-07) `test_changed --available` still selects
+  libcuda-dependent GPU run targets.** `torch_infer_gpu_test` fails on
+  a GPU-less box with `libcuda.so.1: cannot open shared object file`;
+  the availability probe (post-#421 wave-1 1.1, which added c_lib
+  soname probes for libGL) doesn't cover the cuda runtime targets, so a
+  json-layer diff still pays — and fail-fast aborts on — a known-
+  unrunnable GPU target (`--keep-going` needed to see the real
+  selection through).
+
 ## Build manifest (`tools/wbuildgen.w`)
 
 - **Shipped (2026-07-29): the "invoke a tool as the whole target"
@@ -281,16 +309,6 @@ is a queue, not an archive.
   the directory as empty instead of parsing Darwin records with Linux
   offsets. The full fix (per-arch dirent accessors, validated on a
   Mac) is still open; the accessor plan above stands.
-- **wtest's deps fallback warning is anonymous.** While computing the
-  import-closure cache, `wtest changed` printed "warning: 'bin/wv2
-  deps' failed for 72 roots; falling back to literal matching for
-  them" (2026-08-05, dwarf address_size work) without naming a single
-  root or the failure reason, so an agent cannot tell whether the
-  fallback lost selection coverage for its diff or which roots need
-  fixing. Print the failing roots (or the first few plus a count) and
-  the `deps` stderr for one of them, or record them in
-  `bin/.wtest_deps_cache` so a follow-up `wtest why <root>` can
-  explain.
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
 The 2026-07 review findings and the nullable-suffix fallback all

@@ -590,7 +590,7 @@
 				{"cmd": ["bin/wv2", "x64", "symbols", "--layout", "--json", "tests/symbols_layout_fixture.w"], "stdout_file": "bin/symbols_layout_fixture_x64.ndjson", "expect_stdout": "\"arch\": \"x64\""},
 				{"cmd": ["grep", "-qE", "\"name\": \"sym_layout_point\".*\"arch\": \"x64\", \"total_size\": 16, \"fields\": \\[\\{\"name\": \"x\", \"type\": \"int\", \"offset\": 0, \"size\": 8\\}, \\{\"name\": \"y\", \"type\": \"int\", \"offset\": 8, \"size\": 8\\}\\]", "bin/symbols_layout_fixture_x64.ndjson"]},
 				{"cmd": ["bin/wv2", "symbols", "--layout", "x64", "tests/symbols_layout_fixture.w"], "expect_stdout": "struct sym_layout_point: size 16\n\t0\t8\tint x\n\t8\t8\tint y\n"},
-				{"cmd": ["bin/wv2", "symbols", "--layout", "tests/c_import_bitfield_fixture.w"], "expect_stdout": ["<c_import>:0:0: struct ci_bf_basic: size 4\n\t0\t1\tchar a\n\t1\t0\t__ci_bit_field b\n\t1\t0\t__ci_bit_field c\n\t1\t1\t__ci_bytes_1 __ci_pad_1\n\t2\t1\tchar d\n\t3\t1\t__ci_bytes_1 __ci_pad_2\n", "<c_import>:0:0: union ci_bf_union: size 4\n"]}
+				{"cmd": ["bin/wv2", "symbols", "--layout", "tests/c_import_bitfield_fixture.w"], "expect_stdout": ["<c_import>:0:0: struct ci_bf_basic: size 4\n\t0\t1\tchar a\n\t1\t0\t__ci_bit_field_1 b\n\t1\t0\t__ci_bit_field_2 c\n\t1\t1\t__ci_bytes_1 __ci_pad_3\n\t2\t1\tchar d\n\t3\t1\t__ci_bytes_1 __ci_pad_4\n", "<c_import>:0:0: union ci_bf_union: size 4\n"]}
 			]
 		},
 		{
@@ -1029,7 +1029,10 @@
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse.json", "widget/collapse_mixed.dat"], "expect_stdout": ["collapse_w1", "collapse_w2", "collapse_loner"], "reject_stdout": "collapse_all", "reject_stderr": "wtest: collapsed"},
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse_avail.json", "widget/ca_all.dat"], "expect_stdout": "ca_all", "reject_stdout": "ca_w1", "expect_stderr": "wtest: collapsed 4 targets into ca_all (selection covered 4 of 5 selectable targets)"},
 				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse_avail.json", "--available", "widget/ca_all.dat"], "expect_stdout": ["ca_w1", "ca_w2", "ca_w3"], "reject_stdout": "ca_all", "expect_stderr": ["wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)", "wtest: not collapsing into ca_all (its members include unavailable targets)"], "reject_stderr": "wtest: collapsed"},
-				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse_avail.json", "--available", "widget/ca_all.dat", "widget/ca_outer.dat"], "expect_stdout": ["ca_w1", "ca_loner"], "reject_stdout": ["ca_all", "ca_outer"], "expect_stderr": "wtest: not collapsing into ca_outer (its members include unavailable targets)", "reject_stderr": "wtest: collapsed"}
+				{"cmd": ["bin/wtest", "changed", "-f", "tests/wtest/manifest_collapse_avail.json", "--available", "widget/ca_all.dat", "widget/ca_outer.dat"], "expect_stdout": ["ca_w1", "ca_loner"], "reject_stdout": ["ca_all", "ca_outer"], "expect_stderr": "wtest: not collapsing into ca_outer (its members include unavailable targets)", "reject_stderr": "wtest: collapsed"},
+				{"cmd": ["bin/wtest", "why"], "expect_fail": true, "expect_stderr": "wtest why [<arch>] <file.w> [-f manifest.json]"},
+				{"cmd": ["bin/wtest", "why", "-f", "tests/wtest/manifest_archs.json", "tests/wtest/archs_fixture/consumer.w"], "expect_stdout": ["wtest: why root 'x86 tests/wtest/archs_fixture/consumer.w'", "root file: present", "compile root of: archs_fixture_default,archs_fixture_default_run", "archs_fixture_default (closure of root 'x86 tests/wtest/archs_fixture/consumer.w'; literal step reference)"]},
+				{"cmd": ["bin/wtest", "why", "-f", "tests/wtest/manifest_archs.json", "win64", "tests/wtest/archs_fixture/consumer.w"], "expect_stdout": ["wtest: why root 'win64 tests/wtest/archs_fixture/consumer.w'", "compile root of: archs_fixture_win64", "archs_fixture_win64 (literal step reference)"]}
 			]
 		},
 		{
@@ -1092,6 +1095,14 @@
 			"data": ["tests/wtest/cache_scratch_test.sh"],
 			"steps": [
 				{"cmd": ["sh", "tests/wtest/cache_scratch_test.sh"], "expect_stdout": "wtest_cache_scratch_test: OK"}
+			]
+		},
+		{
+			"name": "wtest_why_test",
+			"deps": ["wtest"],
+			"data": ["tests/wtest/why_scratch_test.sh"],
+			"steps": [
+				{"cmd": ["sh", "tests/wtest/why_scratch_test.sh"], "expect_stdout": "wtest_why_scratch_test: OK"}
 			]
 		},
 		{
@@ -1619,6 +1630,26 @@
 			]
 		},
 		{
+			"name": "wcore",
+			"deps": ["wv2"],
+			"inputs": ["tools/wcore.w"],
+			"outputs": ["bin/wcore"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tools/wcore.w", "-o", "bin/wcore.stage"]},
+				{"cmd": ["mv", "bin/wcore.stage", "bin/wcore"]}
+			]
+		},
+		{
+			"name": "wcore_test",
+			"deps": ["wcore"],
+			"inputs": ["tools/wcore_test.sh", "tests/crash_null_deref_fixture.w"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/crash_null_deref_fixture.w", "-o", "bin/wcore_fixture32"]},
+				{"cmd": ["bin/wv2", "x64", "tests/crash_null_deref_fixture.w", "-o", "bin/wcore_fixture64"]},
+				{"cmd": ["sh", "tools/wcore_test.sh"], "expect_stdout": "wcore test OK"}
+			]
+		},
+		{
 			"name": "repl_test",
 			"deps": ["wv2"],
 			"data": ["tests/repl_giant_entry_fixture.txt"],
@@ -1702,6 +1733,12 @@
 				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_chmodsym && mkdir -p /tmp/w_repl_shell_chmodsym && touch /tmp/w_repl_shell_chmodsym/g.txt && chmod 600 /tmp/w_repl_shell_chmodsym/g.txt\n:sh\nchmod u+x /tmp/w_repl_shell_chmodsym/g.txt\nls -l /tmp/w_repl_shell_chmodsym\n:sh\n:quit\n", "expect_stdout": ["-rwx------ 1 ", "g.txt"]},
 				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_dudir && mkdir -p /tmp/w_repl_shell_dudir/sub && printf 'du content\\n' > /tmp/w_repl_shell_dudir/sub/f.txt\n:sh\ndu -s /tmp/w_repl_shell_dudir\n:sh\n:quit\n", "expect_stdout": "\t/tmp/w_repl_shell_dudir", "reject_stdout": "/tmp/w_repl_shell_dudir/sub"},
 				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_dudir2 && mkdir -p /tmp/w_repl_shell_dudir2/sub && printf 'du content\\n' > /tmp/w_repl_shell_dudir2/sub/f.txt\n:sh\ndu /tmp/w_repl_shell_dudir2\n:sh\n:quit\n", "expect_stdout": "\t/tmp/w_repl_shell_dudir2/sub"},
+				{"cmd": ["bin/repl"], "stdin": "!rm -rf /tmp/w_repl_shell_lndir && mkdir -p /tmp/w_repl_shell_lndir && printf 'ln shell mode content\\n' > /tmp/w_repl_shell_lndir/target.txt\n:sh\nln -s target.txt /tmp/w_repl_shell_lndir/link.txt\ncat /tmp/w_repl_shell_lndir/link.txt\nls -l /tmp/w_repl_shell_lndir\n:sh\n:quit\n", "expect_stdout": ["ln shell mode content", "link.txt -> target.txt"]},
+				{"cmd": ["bin/repl"], "stdin": ":sh\ndf /tmp\n:sh\n:quit\n", "expect_stdout": "Filesystem 1K-blocks Used Available Mounted on"},
+				{"cmd": ["bin/repl"], "stdin": ":sh\nps\n:sh\n:quit\n", "expect_stdout": ["PID PPID S COMM", "repl"]},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'alpha one\\nbeta two\\ngamma three\\n' > /tmp/w_repl_shell_grepfile.txt\n:sh\ngrep -n beta /tmp/w_repl_shell_grepfile.txt\n:sh\n:quit\n", "expect_stdout": "2:beta two", "reject_stdout": "alpha one"},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'alpha one\\nbeta two\\ngamma three\\n' > /tmp/w_repl_shell_grepfile2.txt\n:sh\ngrep 'e+ta t.o' /tmp/w_repl_shell_grepfile2.txt\n:sh\n:quit\n", "expect_stdout": "beta two", "reject_stdout": "gamma"},
+				{"cmd": ["bin/repl"], "stdin": "!printf 'alpha one\\nbeta two\\n' > /tmp/w_repl_shell_grepnative.txt\n:sh\ngrep -i ALPHA /tmp/w_repl_shell_grepnative.txt\n:sh\n:quit\n", "expect_stdout": "alpha one", "reject_stdout": "beta two"},
 				{"cmd": ["bin/repl", "-e", "40 + 2"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl", "-e", "int x = 5", "-e", "x + 37"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl", "-e", "this is not valid w"], "expect_fail": true},
@@ -1787,6 +1824,12 @@
 				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_chmodsym64 && mkdir -p /tmp/w_repl_shell_chmodsym64 && touch /tmp/w_repl_shell_chmodsym64/g.txt && chmod 600 /tmp/w_repl_shell_chmodsym64/g.txt\n:sh\nchmod u+x /tmp/w_repl_shell_chmodsym64/g.txt\nls -l /tmp/w_repl_shell_chmodsym64\n:sh\n:quit\n", "expect_stdout": ["-rwx------ 1 ", "g.txt"]},
 				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_dudir64 && mkdir -p /tmp/w_repl_shell_dudir64/sub && printf 'du content\\n' > /tmp/w_repl_shell_dudir64/sub/f.txt\n:sh\ndu -s /tmp/w_repl_shell_dudir64\n:sh\n:quit\n", "expect_stdout": "\t/tmp/w_repl_shell_dudir64", "reject_stdout": "/tmp/w_repl_shell_dudir64/sub"},
 				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_dudir264 && mkdir -p /tmp/w_repl_shell_dudir264/sub && printf 'du content\\n' > /tmp/w_repl_shell_dudir264/sub/f.txt\n:sh\ndu /tmp/w_repl_shell_dudir264\n:sh\n:quit\n", "expect_stdout": "\t/tmp/w_repl_shell_dudir264/sub"},
+				{"cmd": ["bin/repl64"], "stdin": "!rm -rf /tmp/w_repl_shell_lndir64 && mkdir -p /tmp/w_repl_shell_lndir64 && printf 'ln shell mode content\\n' > /tmp/w_repl_shell_lndir64/target.txt\n:sh\nln -s target.txt /tmp/w_repl_shell_lndir64/link.txt\ncat /tmp/w_repl_shell_lndir64/link.txt\nls -l /tmp/w_repl_shell_lndir64\n:sh\n:quit\n", "expect_stdout": ["ln shell mode content", "link.txt -> target.txt"]},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\ndf /tmp\n:sh\n:quit\n", "expect_stdout": "Filesystem 1K-blocks Used Available Mounted on"},
+				{"cmd": ["bin/repl64"], "stdin": ":sh\nps\n:sh\n:quit\n", "expect_stdout": ["PID PPID S COMM", "repl"]},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'alpha one\\nbeta two\\ngamma three\\n' > /tmp/w_repl_shell_grepfile64.txt\n:sh\ngrep -n beta /tmp/w_repl_shell_grepfile64.txt\n:sh\n:quit\n", "expect_stdout": "2:beta two", "reject_stdout": "alpha one"},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'alpha one\\nbeta two\\ngamma three\\n' > /tmp/w_repl_shell_grepfile264.txt\n:sh\ngrep 'e+ta t.o' /tmp/w_repl_shell_grepfile264.txt\n:sh\n:quit\n", "expect_stdout": "beta two", "reject_stdout": "gamma"},
+				{"cmd": ["bin/repl64"], "stdin": "!printf 'alpha one\\nbeta two\\n' > /tmp/w_repl_shell_grepnative64.txt\n:sh\ngrep -i ALPHA /tmp/w_repl_shell_grepnative64.txt\n:sh\n:quit\n", "expect_stdout": "alpha one", "reject_stdout": "beta two"},
 				{"cmd": ["bin/repl64", "-e", "40 + 2"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "-e", "int x = 5", "-e", "x + 37"], "expect_stdout": "42"},
 				{"cmd": ["bin/repl64", "-e", "this is not valid w"], "expect_fail": true},
@@ -2366,6 +2409,7 @@
 				"int64_x86_error_test",
 				"type_system_error_test",
 				"type_system_warning_test",
+				"error_caret_test",
 				"operator_overload_error_test",
 				"compound_assign_test",
 				"increment_error_test",
@@ -2426,6 +2470,7 @@
 				"wtest_nofailcache_test",
 				"wtest_timeout_test",
 				"wtest_cache_test",
+				"wtest_why_test",
 				"wtest_archs_test",
 				"wexec_test",
 				"wexec_keep_going_test",
@@ -2451,6 +2496,7 @@
 				"net_basic",
 				"debug_test",
 				"attach_test",
+				"wcore_test",
 				"repl_test",
 				"repl_pty_test",
 				"dynamic_test",

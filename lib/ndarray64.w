@@ -26,6 +26,7 @@ arithmetic" stance are identical to the float32 module.
 */
 import lib.lib
 import lib.assert
+import lib.array
 
 
 # Row-major strides for extents (n0, n1, n2, n3), the float64-twin copy
@@ -196,6 +197,19 @@ ndf64 ndf64_wrap4(float64[] data, int n0, int n1, int n2, int n3):
 	return a
 
 
+# Free the heap buffer behind a (lib/ndarray.w ndf_free's float64
+# twin, through lib/array.w's array_free -- see both for the exact
+# contract). The descriptor is dead afterwards: rank/extents zeroed so
+# checked accessors trap; a.data is left dangling.
+void ndf64_free(ndf64* a):
+	array_free[float64](a.data)
+	a.rank = 0
+	a.n0 = 0
+	a.n1 = 0
+	a.n2 = 0
+	a.n3 = 0
+
+
 ##### accessors: per-axis bounds-checked, one pair per rank #####
 
 
@@ -310,6 +324,28 @@ void ndf64_mul_scalar_into(ndf64* out, ndf64* a, float64 s):
 	while (i < a.data.length):
 		out.data[i] = a.data[i] * s
 		i = i + 1
+
+
+# out[i] = s * x[i] + y[i] (the axpy shape); out may alias x and/or y.
+# lib/ndarray.w ndf_axpy_into's float64 twin.
+void ndf64_axpy_into(ndf64* out, float64 s, ndf64* x, ndf64* y):
+	ndf64_assert_same_shape(x, y, c"ndf64_axpy_into: shape mismatch")
+	ndf64_assert_same_shape(x, out, c"ndf64_axpy_into: output shape mismatch")
+	int i = 0
+	while (i < x.data.length):
+		out.data[i] = s * x.data[i] + y.data[i]
+		i = i + 1
+
+
+# Left-to-right sum of every element in flat (row-major) order.
+# lib/ndarray.w ndf_sum's float64 twin.
+float64 ndf64_sum(ndf64* a):
+	float64 total = 0.0
+	int i = 0
+	while (i < a.data.length):
+		total = total + a.data[i]
+		i = i + 1
+	return total
 
 
 type ndf64_map_fn = fn(float64) -> float64

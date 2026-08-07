@@ -56,7 +56,12 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
    several minutes, printing progress to stderr and resuming from its
    last checkpoint if interrupted, so budget for it instead of killing
    it at two minutes; later runs are sub-second), plus residue rules
-   documented in `tools/test_map.w`.
+   documented in `tools/test_map.w`. A root whose `bin/wv2 deps` run
+   fails falls back to literal matching — the warning names the failing
+   roots and one representative reason, and `bin/wtest why [<arch>]
+   <file.w>` explains a single root's story: what the deps cache
+   records for it, the live deps state, and which rule (closure /
+   literal / residue) selects each of its targets.
    Compiler changes always get `verify` (+ `verify_x64` for codegen/word-size
    work); every existing `.w` change gets `parser_generator_w_test`; deleted
    `.w` files and `lib/`/`structures/`/`libs/` paths get `metadata_check`;

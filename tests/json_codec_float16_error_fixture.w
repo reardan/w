@@ -1,10 +1,12 @@
 # expect_fail
 # expect_stderr: unsupported to_json/from_json field type: 'float16'
-# Codec float fields are float32 only: structures/json.w numbers are
-# float32, and float16 is a storage-only type (docs/projects/float.md).
-# float64 fields are rejected the same way, but that type is x64-only so
-# the fixture pins the message with float16, which both targets accept
-# in a struct declaration.
+# Codec float fields are float32 (everywhere) or float64 (8-byte-word
+# targets): float16 stays rejected as a storage-only type
+# (docs/projects/float.md). This fixture pins the message on the
+# default 32-bit target; tests/json_codec_float16_x64_error_fixture.w
+# pins the same rejection under x64, and
+# tests/json_codec_float64_x86_error_fixture.w the 32-bit float64
+# type-gate error.
 import structures.json
 
 

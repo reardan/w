@@ -7,6 +7,7 @@
 # x64-compiled target, modeled on x64_fmath64_test.
 import lib.lib
 import lib.assert
+import lib.array
 import lib.ndarray64
 
 
@@ -144,6 +145,39 @@ void test_matmul2():
 	assert_f64eq(154.0, ndf64_at2(&out, 1, 1))
 
 
+void test_axpy_and_sum():
+	ndf64 x = ndf64_new1(3)
+	ndf64 y = ndf64_new1(3)
+	ndf64 out = ndf64_new1(3)
+	int i = 0
+	while (i < 3):
+		ndf64_set1(&x, i, cast(float64, i + 1))         # 1 2 3
+		ndf64_set1(&y, i, cast(float64, (i + 1) * 10))  # 10 20 30
+		i = i + 1
+	ndf64_axpy_into(&out, 2.0, &x, &y)                  # 2x + y
+	assert_f64eq(12.0, ndf64_at1(&out, 0))
+	assert_f64eq(24.0, ndf64_at1(&out, 1))
+	assert_f64eq(36.0, ndf64_at1(&out, 2))
+	assert_f64eq(6.0, ndf64_sum(&x))
+	assert_f64eq(60.0, ndf64_sum(&y))
+
+
+# ndf64_free through lib/array.w's array_free: alloc -> free -> realloc
+# of the same shape reuses the block (default freelist LIFO bins) and
+# the recycled payload reads back zero.
+void test_free_and_realloc():
+	ndf64 a = ndf64_new2(3, 4)
+	ndf64_set2(&a, 2, 3, 5.0)
+	int addr = cast(int, a.data.data)
+	ndf64_free(&a)
+	assert_equal(0, a.rank)
+	assert_equal(0, a.n0)
+	ndf64 b = ndf64_new2(3, 4)
+	assert_equal(addr, cast(int, b.data.data))
+	assert_f64eq(0.0, ndf64_at2(&b, 2, 3))
+	ndf64_free(&b)
+
+
 int main(int argc, int argv):
 	test_shape()
 	test_construction_variants()
@@ -152,5 +186,7 @@ int main(int argc, int argv):
 	test_elementwise_and_map()
 	test_map()
 	test_matmul2()
+	test_axpy_and_sum()
+	test_free_and_realloc()
 	println(c"x64 ndarray64 OK")
 	return 0

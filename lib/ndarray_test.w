@@ -1,6 +1,7 @@
 # wbuild: x64
 import lib.testing
 import lib.format
+import lib.array
 import lib.ndarray
 
 
@@ -326,3 +327,132 @@ void test_ndi_ones_full_wrap():
 	buf[1] = 7
 	ndi wrapped = ndi_wrap1(buf, 3)
 	assert_equal(7, ndi_at1(&wrapped, 1))
+
+
+############################ serial axpy and sum ############################
+
+
+void test_axpy_into():
+	ndf x = ndf_new1(4)
+	ndf y = ndf_new1(4)
+	ndf out = ndf_new1(4)
+	int i = 0
+	while (i < 4):
+		ndf_set1(&x, i, cast(float, i + 1))         # x = 1 2 3 4
+		ndf_set1(&y, i, cast(float, (i + 1) * 10))  # y = 10 20 30 40
+		i = i + 1
+	ndf_axpy_into(&out, 2.0, &x, &y)         # out = 2x + y
+	assert_feq(12.0, ndf_at1(&out, 0))
+	assert_feq(24.0, ndf_at1(&out, 1))
+	assert_feq(36.0, ndf_at1(&out, 2))
+	assert_feq(48.0, ndf_at1(&out, 3))
+	# in-place: out aliases y
+	ndf_axpy_into(&y, 2.0, &x, &y)
+	assert_feq(12.0, ndf_at1(&y, 0))
+	assert_feq(48.0, ndf_at1(&y, 3))
+
+
+void test_sum():
+	ndf a = ndf_new2(2, 3)
+	int i = 0
+	while (i < 6):
+		a.data[i] = cast(float, i + 1)              # 1..6
+		i = i + 1
+	assert_feq(21.0, ndf_sum(&a))
+	ndf zero = ndf_new1(3)
+	assert_feq(0.0, ndf_sum(&zero))
+
+
+################################# freeing #################################
+#
+# The realloc-reuse assertions rely on the default freelist allocator's
+# LIFO size bins (lib/memory_freelist.w): freeing a block and then
+# allocating the same size pops the very same block back, which proves
+# array_free really returned the buffer to the allocator. ./wbuild runs
+# tests under that default backend (the reuse claim does not hold under
+# W_DEBUG_ALLOC's guard-page allocator, which never reuses a mapping).
+
+
+struct ndt_pair:
+	int lo
+	int hi
+
+
+void test_array_free_int_slice_reuse():
+	int[] a = new int[16]
+	a[0] = 42
+	a[15] = 7
+	int addr = cast(int, a.data)
+	array_free[int](a)
+	int[] b = new int[16]
+	assert_equal(addr, cast(int, b.data))
+	# new T[n] zeroes its payload, so the recycled block reads back zero
+	assert_equal(0, b[0])
+	assert_equal(0, b[15])
+	b[3] = 9
+	assert_equal(9, b[3])
+	array_free[int](b)
+
+
+void test_array_free_float_slice_reuse():
+	float[] a = new float[8]
+	a[2] = 1.5
+	int addr = cast(int, a.data)
+	array_free[float](a)
+	float[] b = new float[8]
+	assert_equal(addr, cast(int, b.data))
+	assert_feq(0.0, b[2])
+	array_free[float](b)
+
+
+void test_array_free_struct_slice_reuse():
+	ndt_pair[] a = new ndt_pair[4]
+	a[1].lo = 3
+	a[1].hi = 4
+	int addr = cast(int, a.data)
+	array_free[ndt_pair](a)
+	ndt_pair[] b = new ndt_pair[4]
+	assert_equal(addr, cast(int, b.data))
+	assert_equal(0, b[1].lo)
+	assert_equal(0, b[1].hi)
+	array_free[ndt_pair](b)
+
+
+# Freeing through a full-range copy releases the one shared buffer:
+# a[0:n] is the same {data, length} pair, just via a fresh descriptor.
+void test_array_free_through_full_range_copy():
+	int[] a = new int[6]
+	int addr = cast(int, a.data)
+	int[] full = a[0:6]
+	array_free[int](full)
+	int[] b = new int[6]
+	assert_equal(addr, cast(int, b.data))
+	array_free[int](b)
+
+
+void test_ndf_free_and_realloc():
+	ndf a = ndf_new2(3, 4)
+	ndf_set2(&a, 2, 3, 5.0)
+	int addr = cast(int, a.data.data)
+	ndf_free(&a)
+	# the descriptor is dead: rank and extents zeroed, accessors trap
+	assert_equal(0, a.rank)
+	assert_equal(0, a.n0)
+	assert_equal(0, a.n3)
+	ndf b = ndf_new2(3, 4)
+	assert_equal(addr, cast(int, b.data.data))
+	assert_feq(0.0, ndf_at2(&b, 2, 3))   # recycled buffer re-zeroed
+	ndf_free(&b)
+
+
+void test_ndi_free_and_realloc():
+	ndi a = ndi_new1(10)
+	ndi_set1(&a, 9, 12)
+	int addr = cast(int, a.data.data)
+	ndi_free(&a)
+	assert_equal(0, a.rank)
+	assert_equal(0, a.n0)
+	ndi b = ndi_new1(10)
+	assert_equal(addr, cast(int, b.data.data))
+	assert_equal(0, ndi_at1(&b, 9))
+	ndi_free(&b)

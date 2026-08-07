@@ -12,12 +12,21 @@ Supported JSON subset:
 Numbers: a plain integer parses as a signed int and saturates to
 json_int_max()/json_int_min() on overflow — the native int range, so
 int32 on the 32-bit target and int64 on x64. A number with a fraction
-or exponent part parses as a float — float32 on every target, because float64 is
-x64-only — so floats carry about 7 significant digits; overflow
-saturates to the largest finite float32 and underflow flushes to zero.
-Floats serialize with up to 9 significant digits, whole values with a
-trailing .0 so they re-parse as floats; non-finite values have no JSON
-spelling and serialize as null (like JavaScript's JSON.stringify).
+or exponent part parses as a float. float_value always holds its
+float32 reading (about 7 significant digits; overflow saturates to the
+largest finite float32 and underflow flushes to zero), and on
+8-byte-word targets the value additionally carries the full float64
+reading as raw bits in float64_bits (has_float64 == 1), kept to 17
+significant digits with the same saturate/flush behavior — float64 is
+a compile error on 4-byte words, so this file never spells the type
+and the float64 arithmetic lives in the per-target
+structures/__arch__/<arch>/json_float64.w twins. Serialization writes
+float64-carrying values from those bits (up to 17 significant digits,
+bit-exact through a stringify -> parse round trip) and everything else
+from float_value with up to 9 significant digits; either way whole
+values keep a trailing .0 so they re-parse as floats, and non-finite
+values have no JSON spelling and serialize as null (like JavaScript's
+JSON.stringify).
 
 Parsed trees own their children; call json_free() on the root. Objects are backed by the
 built-in map, which iterates in insertion order, so serialization preserves
@@ -28,12 +37,20 @@ import lib.lib
 import lib.assert
 import lib.container
 import structures.string
+import structures.__arch__.json_float64
 
 
 struct json_value:
 	int type
 	int int_value
 	float float_value
+	# Raw IEEE-754 float64 bits carrying a float number's full
+	# precision on 8-byte-word targets (has_float64 == 1 marks them
+	# valid; float_value then holds the narrowed float32 mirror).
+	# Always 0 on 4-byte-word targets, where the bits do not fit the
+	# word.
+	int float64_bits
+	int has_float64
 	char* string_value
 	map[char*, json_value*] object_values
 	list[json_value*] array_values
@@ -87,6 +104,8 @@ json_value* json_new(int type):
 	value.type = type
 	value.int_value = 0
 	value.float_value = 0.0
+	value.float64_bits = 0
+	value.has_float64 = 0
 	value.string_value = 0
 	value.object_values = 0
 	value.array_values = 0
@@ -106,6 +125,19 @@ json_value* json_int(int n):
 json_value* json_float(float f):
 	json_value* value = json_new(json_type_float())
 	value.float_value = f
+	return value
+
+
+# Float value carrying full float64 precision as raw IEEE-754 bits.
+# Meaningful on 8-byte-word targets only (float64 is a compile error on
+# 4-byte words and the bits do not fit their word; the stubbed
+# per-target helpers degrade the value to 0.0 there). float_value gets
+# the narrowed float32 mirror so float32-only readers keep working.
+json_value* json_float64_from_bits(int bits):
+	json_value* value = json_new(json_type_float())
+	value.float_value = json_f64_to_float32(bits)
+	value.float64_bits = bits
+	value.has_float64 = 1
 	return value
 
 
@@ -211,6 +243,8 @@ json_value* json_clone(json_value* value):
 	json_value* copy = json_new(value.type)
 	copy.int_value = value.int_value
 	copy.float_value = value.float_value
+	copy.float64_bits = value.float64_bits
+	copy.has_float64 = value.has_float64
 	return copy
 
 
@@ -456,11 +490,32 @@ float json_scale_pow10(float m, int t):
 	return m
 
 
+# 10^16 on 8-byte-word targets: the float64 mantissa accumulation
+# keeps digits below this, so it caps at 17 significant digits (enough
+# to identify any float64), mirroring the float32 path's 9-digit cap.
+# Built by multiplication because the tokenizer runs as a 32-bit
+# process and truncates wider literals (lib/fmath64.w's header). On
+# 4-byte-word targets — where the wide path is never consumed — this
+# stays the float32 cap so the accumulation cannot overflow the word.
+int json_float64_mant_limit():
+	if (__word_size__ != 8):
+		return 100000000
+	int limit = 100000000
+	int i = 0
+	while (i < 8):
+		limit = limit * 10
+		i = i + 1
+	return limit
+
+
 # Numbers follow the JSON grammar: -? int frac? exp?. A plain integer
 # parses as a signed int; a number with a fraction or exponent part
 # parses as a float, built from the first 9 significant digits (exact in
 # an int) scaled by the remaining decimal exponent — float32 keeps ~7 of
-# those digits anyway.
+# those digits anyway. On 8-byte-word targets a second accumulation
+# keeps the first 17 significant digits and hands them to the
+# per-target float64 helper, so the value also carries full float64
+# precision (see the header).
 json_value* json_parse_number(json_parser* p):
 	int negative = 0
 	if (p.input[p.index] == '-'):
@@ -476,6 +531,9 @@ json_value* json_parse_number(json_parser* p):
 	int overflow = 0
 	int mant = 0       # first 9 significant digits for the float path
 	int mant_exp = 0   # decimal exponent owed by dropped/fraction digits
+	int mant64 = 0     # first 17 significant digits (float64, 8-byte words)
+	int mant64_exp = 0
+	int mant64_limit = json_float64_mant_limit()
 	int is_float = 0
 
 	if (p.input[p.index] == '0'):
@@ -494,6 +552,10 @@ json_value* json_parse_number(json_parser* p):
 				mant = mant * 10 + digit
 			else:
 				mant_exp = mant_exp + 1
+			if (mant64 < mant64_limit):
+				mant64 = mant64 * 10 + digit
+			else:
+				mant64_exp = mant64_exp + 1
 			p.index = p.index + 1
 
 	if (p.input[p.index] == '.'):
@@ -506,6 +568,9 @@ json_value* json_parse_number(json_parser* p):
 			if (mant < 100000000):
 				mant = mant * 10 + p.input[p.index] - '0'
 				mant_exp = mant_exp - 1
+			if (mant64 < mant64_limit):
+				mant64 = mant64 * 10 + p.input[p.index] - '0'
+				mant64_exp = mant64_exp - 1
 			p.index = p.index + 1
 
 	if ((p.input[p.index] == 'e') || (p.input[p.index] == 'E')):
@@ -529,13 +594,18 @@ json_value* json_parse_number(json_parser* p):
 		if (exp_negative):
 			exp = 0 - exp
 		mant_exp = mant_exp + exp
+		mant64_exp = mant64_exp + exp
 
 	if (is_float):
 		float m = mant
 		m = json_scale_pow10(m, mant_exp)
 		if (negative):
 			m = -m
-		return json_float(m)
+		json_value* result = json_float(m)
+		if (__word_size__ == 8):
+			result.float64_bits = json_f64_from_decimal(mant64, mant64_exp, negative)
+			result.has_float64 = 1
+		return result
 
 	if (overflow):
 		if (negative):
@@ -694,11 +764,12 @@ void json_append_escaped_string(string_builder* out, char* text):
 	string_append_char(out, '"')
 
 
-# Serialize a float with up to 9 significant digits (enough to identify
-# any float32): plain decimal for moderate exponents — whole values get
-# a trailing .0 so they re-parse as floats — and scientific notation
-# outside that range. Non-finite values have no JSON spelling and
-# serialize as null.
+# Serialize a float32 with up to 9 significant digits (enough to
+# identify any float32): plain decimal for moderate exponents — whole
+# values get a trailing .0 so they re-parse as floats — and scientific
+# notation outside that range. Non-finite values have no JSON spelling
+# and serialize as null. Values carrying float64 bits never reach this:
+# json_append_value routes them to the per-target json_f64_append.
 void json_append_float(string_builder* out, float f):
 	int bits = json_float_bits(f)
 	if ((bits & 0x7f800000) == 0x7f800000):
@@ -812,7 +883,10 @@ void json_append_value(string_builder* out, json_value* value):
 	else if (value.type == json_type_int()):
 		string_append_int(out, value.int_value)
 	else if (value.type == json_type_float()):
-		json_append_float(out, value.float_value)
+		if (value.has_float64):
+			json_f64_append(out, value.float64_bits)
+		else:
+			json_append_float(out, value.float_value)
 	else if (value.type == json_type_string()):
 		json_append_escaped_string(out, value.string_value)
 	else if (value.type == json_type_bool()):

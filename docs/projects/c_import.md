@@ -68,11 +68,17 @@ bits are materialized as filler fields, so `sizeof` and every
 surrounding plain member offset are exact — asserted against
 gcc/clang-pinned values by `tests/x64_c_import_bitfield_test.w` (run,
 x86-64) and `tests/c_import_bitfield_fixture.w` (compile-only, i386).
-Reading or writing a bit-field *member itself* is not supported: the
-named member imports as a zero-size `__ci_bit_field` marker, and access
-fails with "bit-field member access is not supported"
-(`tests/c_import_bitfield_access_fixture.w`) instead of reading the
-storage unit.
+Bit-field *members* read and write directly: each named member imports
+as a zero-size access type whose side table (`ci_bit_field_access_type`
+in the importer) records the storage-unit offset, bit range, declared
+signedness and load width; `grammar/promote.w` emits the
+load/shift/mask (sign-extending) extract on read and
+`grammar/expression.w` a read-modify-write of the unit on assignment
+(plain, compound `op=`, and `++`/`--` included), with results pinned
+against gcc by the x64 run test. The one restriction: a field no single
+word-sized load covers — an i386 `long long` field wider than the
+4-byte word — keeps a dedicated compile error
+(`tests/c_import_bitfield_access_fixture.w`) instead of miscompiling.
 
 ## Symbol collisions
 
