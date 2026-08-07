@@ -95,6 +95,108 @@ char* filename
 int token_i
 
 
+/*
+Python-style source context under human-readable diagnostics (#377):
+after the frozen '<message> in <file>:<line>' line, warning() below also
+prints the offending source line and a caret aligned under the
+diagnostic's column. The compiler never holds a whole source file in
+memory -- the tokenizer streams bytes through lib/lib.w's buffered
+per-fd getchar -- so the line is re-read from the current fd: seek to
+the file start, count newlines up to diag_token_line, collect that line,
+and seek back to the tokenizer's own position (byte_offset is the fd's
+exact logical offset; every path that repositions the fd -- compile_
+attempt, compile_save, the generic reparse -- re-derives both together).
+The context block is skipped gracefully whenever the line cannot be
+trusted or delivered: the diagnostic does not point at the tokenizer's
+current line (diag_token_line was restored from a recorded span, or a
+failed open's missing_file_reset zeroed it -- the named file's bytes
+are not what the current fd would deliver), the fd cannot produce the
+line (closed, read error, EOF before the line), or the line overflows
+the collection buffer.
+*/
+int diag_context_capacity():
+	return 512
+
+
+char* diag_context_buffer
+
+
+# Re-read line diag_token_line of the current file into
+# diag_context_buffer (NUL-terminated, newline excluded). Returns its
+# length in bytes, or -1 when the line cannot be delivered. Reads
+# through getchar()/getchar_seek() directly, NOT getc(): a read failure
+# here must skip the context, never recurse into error().
+int diag_context_collect():
+	if (file < 0):
+		return (-1)
+	int saved_position = byte_offset
+	getchar_seek(file, 0)
+	int scan_line = 1
+	int c = getchar(file)
+	while ((scan_line < diag_token_line) && (c >= 0)):
+		if (c == 10):
+			scan_line = scan_line + 1
+		c = getchar(file)
+	if (diag_context_buffer == 0):
+		diag_context_buffer = malloc(diag_context_capacity() + 1)
+	int length = 0
+	int failed = 0
+	if (c < 0):
+		# EOF (or a read error) before the line's first character
+		failed = 1
+	while ((failed == 0) && (c >= 0) && (c != 10)):
+		if (length >= diag_context_capacity()):
+			failed = 1
+		else:
+			diag_context_buffer[length] = c
+			length = length + 1
+			c = getchar(file)
+	getchar_seek(file, saved_position)
+	if (failed):
+		return (-1)
+	diag_context_buffer[length] = 0
+	return length
+
+
+# The caret pad advances one character per CODEPOINT (diag_token_column
+# counts codepoints, not bytes -- #287), replaying the line's own tabs
+# verbatim so terminal tab stops keep the caret under the token; every
+# other codepoint pads as a single space (approximate for double-width
+# glyphs, exact everywhere else).
+void diag_context_print():
+	# Only when the diagnostic points at the tokenizer's current line
+	if (diag_token_line < 1):
+		return
+	if (diag_token_line != line_number + 1):
+		return
+	if (diag_token_column < 1):
+		return
+	int length = diag_context_collect()
+	if (length < 0):
+		return
+	int i = 0
+	while (i < length):
+		put_error(diag_context_buffer[i] & 255)
+		i = i + 1
+	put_error(10)
+	int column = 1
+	i = 0
+	while (column < diag_token_column):
+		if (i < length):
+			if (diag_context_buffer[i] == 9):
+				put_error(9)
+			else:
+				put_error(' ')
+			i = i + 1
+			while ((i < length) && ((diag_context_buffer[i] & 192) == 128)):
+				i = i + 1
+		else:
+			put_error(' ')
+		column = column + 1
+	put_error('^')
+	put_error(10)
+
+
 void warning(char *s):
 	if (defhash_rehash_mode):
 		return
@@ -109,6 +211,7 @@ void warning(char *s):
 		print_error(str_from_cstr(c":"))
 		print_error(str_from_cstr(itoa(line_number+1)))
 		put_error(10)
+		diag_context_print()
 
 
 # REPL error recovery: when repl_recovery is nonzero, error() reports the
