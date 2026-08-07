@@ -144,10 +144,10 @@ Status comments (not closures) on #16, #27, #251, #252, #276, #335, #360, #377,
 | 2 | 2.2 w symbols --layout | merged | #418 |
 | 2 | 2.3 core-dump processor | merged | #419 |
 | 2 | 2.4 wtest deps-failure diagnostics | merged | #420 |
-| 3 | 3.1 c_import bit-field access | pending | — |
-| 3 | 3.2 json codec float64 | pending | — |
-| 3 | 3.3 ndarray stage 3 + frees | pending | — |
-| 3 | 3.4 shell mode stage 4 | pending | — |
+| 3 | 3.1 c_import bit-field access | merged | #423 |
+| 3 | 3.2 json codec float64 | merged | #424 |
+| 3 | 3.3 ndarray stage 3 + frees | merged | #421 |
+| 3 | 3.4 shell mode stage 4 | merged | #422 |
 | 4 | 4.1 error caret/context | pending | — |
 | 4 | 4.2 REPL at wdbg breakpoints | pending | — |
 | 4 | 4.3 thread pool | pending | — |
