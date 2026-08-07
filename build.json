@@ -1898,6 +1898,7 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "arm64_darwin", "tests/dynamic_darwin_test.w", "-o", "bin/dynamic_darwin_test"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_texture_test.w", "-o", "bin/graphics_gl_texture_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
 			]
 		},
@@ -2075,6 +2076,7 @@
 				"generics_64_test",
 				"generics_inference_64_test",
 				"getchar_checked_64_test",
+				"graphics_gl_texture_test",
 				"hash_table_64_test",
 				"heap_64_test",
 				"http_client_64_test",
@@ -4212,6 +4214,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "graphics/gl_smoke_test.w", "-o", "bin/graphics_gl_smoke_test"]},
 				{"cmd": ["bin/graphics_gl_smoke_test"], "expect_stdout": "graphics gl smoke"}
+			]
+		},
+		{
+			"name": "graphics_gl_texture_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/gl_texture_test.w"],
+			"outputs": ["bin/graphics_gl_texture_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/gl_texture_test.w", "-o", "bin/graphics_gl_texture_test"]},
+				{"cmd": ["bin/graphics_gl_texture_test"], "expect_stdout": "graphics gl texture"}
 			]
 		},
 		{
