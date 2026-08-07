@@ -2798,6 +2798,7 @@
 				"window_test",
 				"wvc_pack_e2e_test",
 				"x25519_test",
+				"ffi_darwin_spill_reject_test",
 				"wbuild_platform_test_darwin"
 			]
 		},
@@ -3908,6 +3909,14 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/feature_interaction_test.w", "-o", "bin/feature_interaction_test"]},
 				{"cmd": ["bin/feature_interaction_test"]}
+			]
+		},
+		{
+			"name": "ffi_darwin_spill_reject_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/ffi_darwin_spill_reject_test.w"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64_darwin", "tests/ffi_darwin_spill_reject_test.w", "-o", "bin/ffi_darwin_spill_reject_test"], "expect_fail": true, "expect_stderr": "arm64_darwin extern calls support at most 8 integer and 8 float arguments"}
 			]
 		},
 		{
