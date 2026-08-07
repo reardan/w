@@ -22,7 +22,10 @@
 //   host    { canvasInit(title, w, h) -> 0|1,
 //             pollState() -> { width, height, shouldClose, mouseX,
 //                              mouseY, mouseButtons, lastKeycode },
-//             setFrameCallback(tableIndex) }
+//             setFrameCallback(tableIndex),
+//             nextEvent() -> { kind, code, x, y } | null (optional:
+//               the input event queue; kind numbers mirror
+//               graphics/event.w's gfx_event_kind) }
 //   log     optional diagnostic sink (defaults to console.error)
 
 const GL_STR_SCRATCH = 3072;
@@ -238,6 +241,16 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
       dv.setInt32(ptr + 24, s.lastKeycode, true);
     },
     gfx_host_set_frame_callback: (tableIndex) => host.setFrameCallback(tableIndex),
+    gfx_host_next_event: (ptr) => {
+      const e = host.nextEvent ? host.nextEvent() : null;
+      if (!e) return 0;
+      const dv = view();
+      dv.setInt32(ptr, e.kind, true);
+      dv.setInt32(ptr + 4, e.code, true);
+      dv.setInt32(ptr + 8, e.x, true);
+      dv.setInt32(ptr + 12, e.y, true);
+      return 1;
+    },
   };
 
   return env;

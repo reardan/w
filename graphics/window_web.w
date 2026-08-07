@@ -33,6 +33,7 @@ Design notes: docs/projects/wasm_webgl.md
 */
 import lib.lib
 import graphics.gl
+import graphics.event
 
 
 struct gfx_window:
@@ -58,8 +59,15 @@ c_lib "env"
 extern int gfx_host_canvas_init(char* title, int width, int height)
 # Writes the 7 int32 gfx_window fields (width, height, should_close,
 # mouse_x, mouse_y, mouse_buttons, last_keycode) at the given pointer.
+# The struct layout is frozen: the host writes these by byte offset.
 extern void gfx_host_poll_state(gfx_window* win)
 extern void gfx_host_set_frame_callback(int table_index)
+# Pops the oldest event from the host-side queue into four int32s
+# (kind, code, x, y — the gfx_event_kind numbers from graphics.event,
+# mirrored in tools/web/index.html); returns 0 when the queue is
+# empty. The queue lives host-side so the frozen snapshot struct needs
+# no ring appended, unlike the native backends.
+extern int gfx_host_next_event(int32* out)
 
 
 # "#version" line for shader sources that should compile on every
@@ -95,6 +103,19 @@ int gfx_window_poll(gfx_window* win):
 	gfx_host_poll_state(win)
 	if (win.should_close):
 		return 0
+	return 1
+
+
+# Pop the oldest queued input event from the host; returns 1 while
+# events remain. Same contract as the native backends' ring drain.
+int gfx_window_next_event(gfx_window* win, gfx_event* out):
+	int32[4] fields
+	if (gfx_host_next_event(&fields[0]) == 0):
+		return 0
+	out.kind = fields[0]
+	out.code = fields[1]
+	out.x = fields[2]
+	out.y = fields[3]
 	return 1
 
 

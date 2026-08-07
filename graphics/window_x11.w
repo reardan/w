@@ -10,6 +10,7 @@ docs/projects/graphics.md
 import lib.lib
 import graphics.x11
 import graphics.gl
+import graphics.event
 
 
 struct gfx_window:
@@ -26,6 +27,11 @@ struct gfx_window:
 	int32 mouse_y
 	int32 mouse_buttons
 	int32 last_keycode
+	# per-frame event ring (graphics.event); drained by
+	# gfx_window_next_event
+	int32 event_head
+	int32 event_tail
+	int32[256] event_ring
 
 
 # "#version" line for shader sources that should compile on every
@@ -95,6 +101,8 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.mouse_y = 0
 	win.mouse_buttons = 0
 	win.last_keycode = 0
+	win.event_head = 0
+	win.event_tail = 0
 	glViewport(0, 0, width, height)
 	return win
 
@@ -112,6 +120,17 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 		win.should_close = 1
 	else if (event_type == KeyPress):
 		win.last_keycode = event.input.detail
+		gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_DOWN, event.input.detail, event.input.x, event.input.y)
+		# Server-keymap translation to a character; only the ASCII set
+		# the CHAR contract defines is forwarded (graphics.event).
+		char[8] text
+		int keysym = 0
+		if (XLookupString(event, &text[0], 4, &keysym, 0) == 1):
+			int ch = text[0] & 255
+			if (((ch >= 32) && (ch <= 126)) || (ch == 8) || (ch == 9) || (ch == 13) || (ch == 27)):
+				gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_CHAR, ch, event.input.x, event.input.y)
+	else if (event_type == KeyRelease):
+		gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_UP, event.input.detail, event.input.x, event.input.y)
 	else if (event_type == MotionNotify):
 		win.mouse_x = event.input.x
 		win.mouse_y = event.input.y
@@ -119,11 +138,20 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 		int button = event.input.detail
 		if ((button >= 1) && (button <= 3)):
 			win.mouse_buttons = win.mouse_buttons | (1 << (button - 1))
+			# Button events carry their own coordinates: update the
+			# snapshot too, so a click without prior motion is not
+			# attributed to a stale position.
+			win.mouse_x = event.input.x
+			win.mouse_y = event.input.y
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_MOUSE_DOWN, button, event.input.x, event.input.y)
 	else if (event_type == ButtonRelease):
 		int released = event.input.detail
 		if ((released >= 1) && (released <= 3)):
 			# no bitwise-not operator: -1 - mask == ~mask
 			win.mouse_buttons = win.mouse_buttons & (0 - 1 - (1 << (released - 1)))
+			win.mouse_x = event.input.x
+			win.mouse_y = event.input.y
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_MOUSE_UP, released, event.input.x, event.input.y)
 
 
 # Drain pending X events. Returns 1 while the window should stay open.
@@ -135,6 +163,12 @@ int gfx_window_poll(gfx_window* win):
 	if (win.should_close):
 		return 0
 	return 1
+
+
+# Pop the oldest queued input event (graphics.event); returns 1 while
+# events remain from the polls since the last drain.
+int gfx_window_next_event(gfx_window* win, gfx_event* out):
+	return gfx_event_ring_next(&win.event_ring[0], &win.event_head, &win.event_tail, out)
 
 
 void gfx_window_swap(gfx_window* win):

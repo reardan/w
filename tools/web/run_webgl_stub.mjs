@@ -99,6 +99,7 @@ const host = {
     lastKeycode: 0,
   }),
   setFrameCallback: (tableIndex) => { frameCallback = tableIndex; },
+  nextEvent: () => null,
 };
 
 // -------------------------------- run ---------------------------------------

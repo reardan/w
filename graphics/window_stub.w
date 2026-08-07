@@ -6,6 +6,7 @@ gap and returns 0, which consumers already treat as "no display" (the
 gl smoke test SKIPs, the demo exits).
 */
 import lib.lib
+import graphics.event
 
 
 struct gfx_window:
@@ -28,6 +29,10 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 
 
 int gfx_window_poll(gfx_window* win):
+	return 0
+
+
+int gfx_window_next_event(gfx_window* win, gfx_event* out):
 	return 0
 
 
