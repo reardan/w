@@ -61,6 +61,46 @@ void test_wraparound_past_capacity():
 	assert_equal(0, gfx_event_ring_next(&ring[0], &head, &tail, &out))
 
 
+void test_scroll_event_fields():
+	int32[256] ring
+	int32 head = 0
+	int32 tail = 0
+	# The kind value is part of the JS-host contract
+	# (tools/web/index.html mirrors these numbers).
+	assert_equal(6, GFX_EVENT_SCROLL)
+	gfx_event_ring_push(&ring[0], &head, &tail, GFX_EVENT_SCROLL, 1, 30, 40)
+	gfx_event_ring_push(&ring[0], &head, &tail, GFX_EVENT_SCROLL, 0 - 1, 31, 41)
+
+	gfx_event out
+	assert_equal(1, gfx_event_ring_next(&ring[0], &head, &tail, &out))
+	assert_equal(GFX_EVENT_SCROLL, out.kind)
+	assert_equal(1, out.code)
+	assert_equal(30, out.x)
+	assert_equal(40, out.y)
+	assert_equal(1, gfx_event_ring_next(&ring[0], &head, &tail, &out))
+	assert_equal(0 - 1, out.code)
+	assert_equal(0, gfx_event_ring_next(&ring[0], &head, &tail, &out))
+
+
+void test_nav_event_contract():
+	# Kind and code values are part of the JS-host contract
+	# (tools/web/index.html mirrors these numbers).
+	assert_equal(7, GFX_EVENT_NAV)
+	assert_equal(1, GFX_NAV_LEFT)
+	assert_equal(2, GFX_NAV_RIGHT)
+	assert_equal(3, GFX_NAV_HOME)
+	assert_equal(4, GFX_NAV_END)
+
+	int32[256] ring
+	int32 head = 0
+	int32 tail = 0
+	gfx_event out
+	gfx_event_ring_push(&ring[0], &head, &tail, GFX_EVENT_NAV, GFX_NAV_END, 5, 6)
+	assert_equal(1, gfx_event_ring_next(&ring[0], &head, &tail, &out))
+	assert_equal(GFX_EVENT_NAV, out.kind)
+	assert_equal(GFX_NAV_END, out.code)
+
+
 void test_overflow_drops_newest():
 	int32[256] ring
 	int32 head = 0

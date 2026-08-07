@@ -129,6 +129,17 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 			int ch = text[0] & 255
 			if (((ch >= 32) && (ch <= 126)) || (ch == 8) || (ch == 9) || (ch == 13) || (ch == 27)):
 				gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_CHAR, ch, event.input.x, event.input.y)
+		# Navigation keysyms have no character; translate the portable
+		# set (XK_Home 0xff50, XK_Left 0xff51, XK_Right 0xff53,
+		# XK_End 0xff57) to NAV codes.
+		if (keysym == 0xff51):
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_NAV, GFX_NAV_LEFT, event.input.x, event.input.y)
+		else if (keysym == 0xff53):
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_NAV, GFX_NAV_RIGHT, event.input.x, event.input.y)
+		else if (keysym == 0xff50):
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_NAV, GFX_NAV_HOME, event.input.x, event.input.y)
+		else if (keysym == 0xff57):
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_NAV, GFX_NAV_END, event.input.x, event.input.y)
 	else if (event_type == KeyRelease):
 		gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_UP, event.input.detail, event.input.x, event.input.y)
 	else if (event_type == MotionNotify):
@@ -144,6 +155,12 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 			win.mouse_x = event.input.x
 			win.mouse_y = event.input.y
 			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_MOUSE_DOWN, button, event.input.x, event.input.y)
+		else if (button == 4):
+			# Wheel notches arrive as button 4 (up) / 5 (down) press+
+			# release pairs; one SCROLL per press, releases ignored.
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_SCROLL, 1, event.input.x, event.input.y)
+		else if (button == 5):
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_SCROLL, 0 - 1, event.input.x, event.input.y)
 	else if (event_type == ButtonRelease):
 		int released = event.input.detail
 		if ((released >= 1) && (released <= 3)):

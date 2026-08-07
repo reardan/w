@@ -37,6 +37,23 @@ enum gfx_event_kind:
 	# position at event time
 	GFX_EVENT_MOUSE_DOWN = 4
 	GFX_EVENT_MOUSE_UP = 5
+	# code = +1 (wheel away from the user / scroll up) or -1 (toward /
+	# down), one event per notch; x,y = pointer position. X11 buttons
+	# 4/5 and the JS wheel listener both land here; wheel buttons never
+	# appear as MOUSE_DOWN/MOUSE_UP.
+	GFX_EVENT_SCROLL = 6
+	# code = a gfx_nav_code: caret/selection movement keys, which have
+	# no ASCII form so GFX_EVENT_CHAR cannot carry them. Translated
+	# per-backend (X11 keysyms, JS e.key) into portable codes, unlike
+	# the raw keycodes on KEY_DOWN/KEY_UP.
+	GFX_EVENT_NAV = 7
+
+
+enum gfx_nav_code:
+	GFX_NAV_LEFT = 1
+	GFX_NAV_RIGHT = 2
+	GFX_NAV_HOME = 3
+	GFX_NAV_END = 4
 
 
 struct gfx_event:
