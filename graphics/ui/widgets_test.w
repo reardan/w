@@ -9,7 +9,6 @@
 # which link libGL/libX11 on the 64-bit Linux targets.
 # wbuild: name=graphics_ui_widgets_test arch_only=x64
 import lib.testing
-import lib.process
 import graphics.event
 import graphics.ui.rect
 import graphics.ui.theme
@@ -353,10 +352,10 @@ void test_dropdown_opens_selects_and_blocks():
 	ui_theme_light(&theme)
 	ui_context ctx
 	ui_context_init(&ctx, &r, &theme)
-	char** items = strv_new(3)
-	strv_set(items, 0, c"alpha")
-	strv_set(items, 1, c"beta")
-	strv_set(items, 2, c"gamma")
+	char** items = cast(char**, malloc(3 * __word_size__))
+	items[0] = c"alpha"
+	items[1] = c"beta"
+	items[2] = c"gamma"
 	int32 selected = 0
 	int32 open = 0
 
