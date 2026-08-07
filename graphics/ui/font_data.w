@@ -9,7 +9,7 @@
 # ppem, ASCII 32..126. Pixels are run-length encoded (tag 0: zero
 # run, tag 1: 255 run, tag 2: literal run); records are 9-byte
 # entries x_lo, x_hi, y_lo, y_hi, w, h, advance, bearing_x+8,
-# bearing_top, decoded by graphics/ui/font.w.
+# bearing_top+8, decoded by graphics/ui/font.w.
 
 
 int ui_font_atlas_w():
