@@ -2100,6 +2100,7 @@
 				"multi_assign_64_test",
 				"ndarray_64_test",
 				"ndarray_index_64_test",
+				"ndarray_stage3_64_test",
 				"nested_ctor_64_test",
 				"net_64_test",
 				"net_asn1_64_test",
@@ -2592,6 +2593,8 @@
 				"tests_x64",
 				"args_test",
 				"array_decay_test",
+				"array_free_double_free_trap_test",
+				"array_free_sub_slice_trap_test",
 				"array_list_test",
 				"array_slice_string_test",
 				"asm_fuzz_arm64_test",
@@ -2693,6 +2696,7 @@
 				"ndarray_bounds_set_trap_test",
 				"ndarray_extent_trap_test",
 				"ndarray_index_test",
+				"ndarray_stage3_test",
 				"ndarray_test",
 				"nested_ctor_test",
 				"net_test",
@@ -2847,6 +2851,26 @@
 			"deps": ["wv2", "wfixture"],
 			"steps": [
 				{"cmd": ["bin/wfixture", "bin/wv2", "tests/array_constructor_error_fixture.w", "tests/array_param_error_fixture.w", "tests/array_union_error_fixture.w"]}
+			]
+		},
+		{
+			"name": "array_free_double_free_trap_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/array_free_double_free_trap_test.w"],
+			"outputs": ["bin/array_free_double_free_trap_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/array_free_double_free_trap_test.w", "-o", "bin/array_free_double_free_trap_test"]},
+				{"cmd": ["bin/array_free_double_free_trap_test"], "expect_fail": true, "expect_stderr": "array_free: not an unsliced heap array"}
+			]
+		},
+		{
+			"name": "array_free_sub_slice_trap_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/array_free_sub_slice_trap_test.w"],
+			"outputs": ["bin/array_free_sub_slice_trap_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/array_free_sub_slice_trap_test.w", "-o", "bin/array_free_sub_slice_trap_test"]},
+				{"cmd": ["bin/array_free_sub_slice_trap_test"], "expect_fail": true, "expect_stderr": "array_free: not an unsliced heap array"}
 			]
 		},
 		{
@@ -5094,6 +5118,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/ndarray_index_test.w", "-o", "bin/ndarray_index_test"]},
 				{"cmd": ["bin/ndarray_index_test"]}
+			]
+		},
+		{
+			"name": "ndarray_stage3_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/ndarray_stage3_test.w"],
+			"outputs": ["bin/ndarray_stage3_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/ndarray_stage3_test.w", "-o", "bin/ndarray_stage3_64_test"]},
+				{"cmd": ["bin/ndarray_stage3_64_test"]}
+			]
+		},
+		{
+			"name": "ndarray_stage3_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/ndarray_stage3_test.w"],
+			"outputs": ["bin/ndarray_stage3_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ndarray_stage3_test.w", "-o", "bin/ndarray_stage3_test"]},
+				{"cmd": ["bin/ndarray_stage3_test"]}
 			]
 		},
 		{

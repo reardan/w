@@ -268,10 +268,16 @@ Add `new T[n]`:
 - Call `malloc`, set descriptor fields, zero payload, and return a `T[]`
   descriptor.
 - Add `lib/array.w` helpers:
-  - `array_free(T[] view)` shape via byte-level implementation first,
+  - `array_free(T[] view)` shape via byte-level implementation first —
+    landed 2026-08 (`lib/array.w`): a generic `array_free[T](T[] view)`
+    wrapper over the byte-level `array_free_data`, which recovers the
+    `new T[n]` block as `view.data - 2 * __word_size__` and releases it
+    through lib/memory.w's free, with best-effort header sanity asserts
+    against sub-slice frees and double frees (see the file header for
+    exactly what is and is not caught),
   - `array_clone`,
   - `array_copy`,
-  - `array_fill_zero`.
+  - `array_fill_zero` (the latter three remain unimplemented).
 
 Because W has no generics, the first library helpers can operate on `byte[]`
 plus element size, while compiler-generated `new T[n]` remains typed.

@@ -313,8 +313,10 @@ current state:
 				quantiles; design: docs/projects/stats.md)
 			dense multi-dimensional arrays (lib/ndarray.w/ndarray64.w v1:
 				ndf/ndi/ndf64, rank 1-4, matmul on 2-D, m[i, j] index
-				sugar lowering to the accessors; design/status:
-				docs/projects/ndarray.md, issue #27)
+				sugar lowering to the accessors; freeing via the
+				slice-level array_free (lib/array.w) and parallel_for
+				twins (lib/ndarray_par.w, Linux x86/x64);
+				design/status: docs/projects/ndarray.md, issue #27)
 			shell helpers (lib/shell.w: sh(cmd), run(argv), cd, env get/set
 				on top of lib/process.w/lib/env.w)
 			compression (libs/extras/compress/: CRC-32, Adler-32, a
