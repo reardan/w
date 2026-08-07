@@ -196,6 +196,22 @@ is a queue, not an archive.
   reproducible locally and gone on rerun — is still undiagnosed; if it
   recurs the new line will say what actually died and how.
 
+- **(2026-08-07) `./wbuild -j 2 test_changed` fails with "unknown
+  target test_changed".** The `test_changed` dispatcher in `wbuild`
+  only matches `$1`, so leading flags fall through to wexec, which
+  treats `test_changed` as a target name. Flags after the subcommand
+  (`./wbuild test_changed -j 2`) work — either accept flags before the
+  subcommand or say so in the error.
+
+- **(2026-08-07) `test_changed --available` still selects
+  libcuda-dependent GPU run targets.** `torch_infer_gpu_test` fails on
+  a GPU-less box with `libcuda.so.1: cannot open shared object file`;
+  the availability probe (post-#421 wave-1 1.1, which added c_lib
+  soname probes for libGL) doesn't cover the cuda runtime targets, so a
+  json-layer diff still pays — and fail-fast aborts on — a known-
+  unrunnable GPU target (`--keep-going` needed to see the real
+  selection through).
+
 ## Build manifest (`tools/wbuildgen.w`)
 
 - **Shipped (2026-07-29): the "invoke a tool as the whole target"

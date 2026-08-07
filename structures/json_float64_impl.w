@@ -113,9 +113,10 @@ float64 json_f64_dd_lo
 
 # a * b exactly as json_f64_dd_hi (the rounded product) plus
 # json_f64_dd_lo (the rounding error), via 26-bit Dekker splits. Valid
-# while no intermediate overflows: |a * b| and the split constant
-# 2^27 + 1 times |a| or |b| must stay finite, which the scaling loop's
-# 2^±600 rescale guarantees.
+# while no intermediate overflows or underflows: |a * b| and the split
+# constant 2^27 + 1 times |a| or |b| must stay finite, and the error
+# terms normal — which the callers' power-of-two rescales guarantee
+# (2^±600 in json_f64_from_decimal, 2^±568 in json_f64_append).
 void json_f64_two_prod(float64 a, float64 b):
 	float64 p = a * b
 	float64 ca = a * 134217729.0
