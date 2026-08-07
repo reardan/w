@@ -157,7 +157,8 @@ void test_widgets_accumulate_vertices():
 	ui_begin(&ctx, 320, 240)
 	ui_label(&ctx, c"W UI demo")
 	int after_label = r.vert_count
-	asserts(c"label drew glyphs", after_label == 9 * 6)
+	# 9 characters, 2 inkless spaces -> 7 glyph quads.
+	asserts(c"label drew glyphs", after_label == 7 * 6)
 	ui_button(&ctx, c"Click")
 	int after_button = r.vert_count
 	# button = 1 fill quad + 5 glyphs
@@ -199,7 +200,7 @@ void test_textbox_state_editing():
 
 
 # Default metrics: a 200-wide textbox claims row (8,8,200,32); its
-# text starts at x=16, glyphs advance 16px.
+# text starts at x=16 and advances per glyph (proportional).
 void test_textbox_focus_typing_and_submit():
 	ui_renderer r
 	ui_render_init_headless(&r)
@@ -220,8 +221,9 @@ void test_textbox_focus_typing_and_submit():
 	assert_equal(0, ctx.focus)
 	assert_equal(3, st.length)
 
-	# Click at x=40 focuses and places the caret at glyph boundary 2.
-	feed_click(&ctx, 40, 20)
+	# A click just left of glyph boundary 2 focuses and snaps the
+	# caret there (positions computed from the live metrics).
+	feed_click(&ctx, 16 + ui_text_prefix_width(c"abc", 2, 2) - 1, 20)
 	ui_begin(&ctx, 320, 240)
 	ui_textbox(&ctx, 200.0, &st)
 	ui_end(&ctx)

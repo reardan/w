@@ -2438,8 +2438,8 @@
 			"name": "ui_font_data",
 			"deps": ["wv2"],
 			"steps": [
-				{"cmd": ["bin/wv2", "tools/generate_ui_font.w", "-o", "bin/generate_ui_font"]},
-				{"cmd": ["bin/generate_ui_font"]}
+				{"cmd": ["bin/wv2", "tools/generate_ui_atlas.w", "-o", "bin/generate_ui_atlas"]},
+				{"cmd": ["bin/generate_ui_atlas"]}
 			]
 		},
 		{

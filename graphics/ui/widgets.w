@@ -320,7 +320,6 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	int id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
 	int scale = ctx.theme.text_scale
-	int advance = 8 * scale
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
 	ui_click_behavior(ctx, id, r)
 
@@ -331,12 +330,9 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	if (ctx.input.mouse_pressed && (ctx.modal == 0) && (ctx.disabled == 0)):
 		if (ui_rect_contains(r, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 			ctx.focus = id
-			int pos = (ctx.input.press_x - cast(int, text_x) + advance / 2) / advance
-			if (pos < 0):
-				pos = 0
-			if (pos > st.length):
-				pos = st.length
-			st.caret = pos
+			# Proportional caret: the nearest glyph boundary to the
+			# click.
+			st.caret = ui_text_caret_from_x(&st.text[0], scale, ctx.input.press_x - cast(int, text_x))
 		else if (ctx.focus == id):
 			ctx.focus = 0
 
@@ -374,17 +370,25 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		border_color = ctx.theme.disabled_widget
 	ui_render_rect(ctx.rndr, r, border_color)
 	ui_render_rect(ctx.rndr, ui_rect_inset(r, 2.0), ctx.theme.surface)
-	int fit = (cast(int, r.w) - ctx.theme.pad * 2) / advance
+	# Proportional draw: advance per glyph, stop at the field's width
+	# (no horizontal scroll yet — glyphs past it are not drawn).
+	int fit_w = cast(int, r.w) - ctx.theme.pad * 2
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
+	int strike = ui_font_strike_from_scale(scale)
+	int pen = 0
 	int col = 0
-	while ((col < st.length) && (col < fit)):
-		ui_render_glyph(ctx.rndr, text_x + cast(float32, col * advance), ty, st.text[col] & 255, scale, ui_text_color(ctx))
+	while (col < st.length):
+		ui_glyph g = ui_font_glyph(strike, st.text[col] & 255)
+		if (pen + g.advance > fit_w):
+			break
+		ui_render_glyph(ctx.rndr, text_x + cast(float32, pen), ty, st.text[col] & 255, scale, ui_text_color(ctx))
+		pen = pen + g.advance
 		col = col + 1
 	if (ctx.focus == id):
-		int caret_col = st.caret
-		if (caret_col > fit):
-			caret_col = fit
-		ui_render_rect(ctx.rndr, ui_rect_new(text_x + cast(float32, caret_col * advance) - 1.0, r.y + 6.0, 2.0, r.h - 12.0), ctx.theme.text)
+		int caret_w = ui_text_prefix_width(&st.text[0], st.caret, scale)
+		if (caret_w > fit_w):
+			caret_w = fit_w
+		ui_render_rect(ctx.rndr, ui_rect_new(text_x + cast(float32, caret_w) - 1.0, r.y + 6.0, 2.0, r.h - 12.0), ctx.theme.text)
 	return submitted
 
 
