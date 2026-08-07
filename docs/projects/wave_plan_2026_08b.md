@@ -115,6 +115,14 @@ E2E recipe per worker: `./wbuild -j 2 build` → `w check --json` per edit →
 `verify`/`verify_x64` when seed-graph files changed → compile-and-run new tests on
 both word sizes.
 
+Note (2026-08-06): GitHub Actions had a major outage during waves 1–2 (runs killed
+at exactly 15:01 or failing silently mid-run — including on a docs-only diff and on
+main itself). Per-merge local gates were the merge bar throughout, per the execution
+rules; main's CI is re-run after recovery as the authoritative full-suite check.
+The outage also restarted this session's container mid-wave-2: both in-flight
+workers had committed and pushed first (per the amended rules), so no work was lost —
+unit 2.4's PR was opened by the coordinator from the pushed branch.
+
 ## Close-out
 
 Status comments (not closures) on #16, #27, #251, #252, #276, #335, #360, #377,
@@ -127,14 +135,15 @@ Status comments (not closures) on #16, #27, #251, #252, #276, #335, #360, #377,
 
 | Wave | Unit | Status | PR |
 |---|---|---|---|
-| 1 | 1.1 wtest availability probes | pending | — |
-| 1 | 1.2 VCS pack re-deltification | pending | — |
-| 1 | 1.3 lib/regex.w pattern core | pending | — |
-| 1 | 1.4 protobuf wire codec | pending | — |
-| 2 | 2.1 nested-map-key miscompile fix | pending | — |
-| 2 | 2.2 w symbols --layout | pending | — |
-| 2 | 2.3 core-dump processor | pending | — |
-| 2 | 2.4 wtest deps-failure diagnostics | pending | — |
+| 0 | 0.1 wexec fail-fast diagnostics (unscheduled; found investigating CI) | merged | #416 |
+| 1 | 1.1 wtest availability probes | merged | #414 |
+| 1 | 1.2 VCS pack re-deltification | merged | #413 |
+| 1 | 1.3 lib/regex.w pattern core | merged | #415 |
+| 1 | 1.4 protobuf wire codec | already shipped at HEAD (wave 4d + PR #364; audit correction) | — |
+| 2 | 2.1 nested-map-key miscompile fix | merged | #417 |
+| 2 | 2.2 w symbols --layout | merged | #418 |
+| 2 | 2.3 core-dump processor | merged | #419 |
+| 2 | 2.4 wtest deps-failure diagnostics | merged | #420 |
 | 3 | 3.1 c_import bit-field access | pending | — |
 | 3 | 3.2 json codec float64 | pending | — |
 | 3 | 3.3 ndarray stage 3 + frees | pending | — |
