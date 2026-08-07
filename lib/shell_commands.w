@@ -116,7 +116,8 @@ waited for -- grep. Notes:
     "ps aux"/"ps -ef" are real-ps territory and fail closed to native.
   - grep matches with lib/regex.w's documented subset (see that
     module's header): literals, '.', [...] classes, backslash escapes,
-    ^/$ anchors, greedy */+/? quantifiers -- NOT the real grep's BRE
+    ^ and $ anchors, and the greedy '*', '+', '?' quantifiers -- NOT
+    the real grep's BRE
     (where + and ? are literals), a deliberate divergence the design
     doc records. Output mirrors the real tool: matching lines, a
     "path:" prefix only for multi-file invocations, "-n" line numbers.
