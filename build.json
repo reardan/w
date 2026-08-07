@@ -2807,6 +2807,7 @@
 				"threading_test",
 				"time_test",
 				"toplevel_init_test",
+				"ttf_test",
 				"type_system_p0_test",
 				"u64_test",
 				"unix_socket_test",
@@ -6686,6 +6687,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/toplevel_init_test.w", "-o", "bin/toplevel_init_test"]},
 				{"cmd": ["bin/toplevel_init_test"]}
+			]
+		},
+		{
+			"name": "ttf_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/ttf_test.w"],
+			"outputs": ["bin/ttf_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/ttf_test.w", "-o", "bin/ttf_test"]},
+				{"cmd": ["bin/ttf_test"]}
 			]
 		},
 		{
