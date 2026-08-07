@@ -6,6 +6,11 @@ int expression_is_assignment
 # Store eax through the address in ebx, sized by the left-hand side's type.
 void assign_store(int type):
 	type = type_canonical(type)
+	# An imported C bit-field member: ebx addresses its storage unit;
+	# read-modify-write it (grammar/promote.w, bit_field_assign_store)
+	if (ci_is_bit_field_access(type)):
+		bit_field_assign_store(type)
+		return;
 	int lhs_size = word_size
 	if ((type_get_pointer_level(type) == 0) & (type != 3) & (type != 4)):
 		int declared_size = type_get_size(type)

@@ -1,13 +1,16 @@
 # wbuild: arch_only=x64 expect_stdout="x64 c_import bitfield OK"
-# True end-to-end for imported C bit-field layout on x86-64 SysV: every
-# sizeof (via &p[1] on a null struct pointer) and neighboring plain
-# member offset (via &p.member) below is pinned against gcc/clang for
-# the battery in tests/c_import_bitfield_fixture.h — storage-unit
-# packing, the straddle rule, ':0', unnamed bit-fields, typedef/enum
-# bit-field types, plain members sharing the storage unit, tail
-# padding, and union bit-fields. x64-only: the 32-bit twin would need
-# the i386 loader (see the env-blocked c_import_test family); the i386
-# shapes stay covered compile-only by c_import_bitfield_fixture.w.
+# True end-to-end for imported C bit-field layout AND member access on
+# x86-64 SysV: every sizeof (via &p[1] on a null struct pointer),
+# neighboring plain member offset (via &p.member) and bit-field
+# read/write result below is pinned against gcc for the battery in
+# tests/c_import_bitfield_fixture.h — storage-unit packing, the
+# straddle rule, ':0', unnamed bit-fields, typedef/enum bit-field
+# types, plain members sharing the storage unit, tail padding, union
+# bit-fields, signed sign-extension (negative values), unsigned
+# masking, write truncation to width, and read-modify-write leaving
+# the neighbors intact. x64-only: the 32-bit twin would need the i386
+# loader (see the env-blocked c_import_test family); the i386 shapes
+# stay covered compile-only by c_import_bitfield_fixture.w.
 import lib.lib
 import lib.assert
 
@@ -109,6 +112,181 @@ int main(int argc, int argv):
 	b.d = 9
 	assert_equal(7, b.a)
 	assert_equal(9, b.d)
+
+	# ---- bit-field member access, all values pinned against gcc ----
+
+	# basic: unsigned fields packing into one int unit with plain chars
+	# on both sides; writes leave every neighbor intact
+	ci_bf_basic bb
+	bb.a = 7
+	bb.b = 5
+	bb.c = 19
+	bb.d = 9
+	assert_equal(7, bb.a)
+	assert_equal(5, bb.b)
+	assert_equal(19, bb.c)
+	assert_equal(9, bb.d)
+	bb.b += 2
+	assert_equal(7, bb.b)
+	assert_equal(19, bb.c)
+	bb.b = 13  # truncates to width: 13 & 7
+	assert_equal(5, bb.b)
+	# access through a struct pointer takes the same path
+	ci_bf_basic* pb = &bb
+	pb.c = 21
+	assert_equal(21, pb.c)
+	assert_equal(21, bb.c)
+
+	# straddle: a 30-bit field filling most of its unit, b in the next
+	ci_bf_straddle st
+	st.a = (1 << 30) - 5
+	st.b = 11
+	st.c = 33
+	assert_equal((1 << 30) - 5, st.a)
+	assert_equal(11, st.b)
+	assert_equal(33, st.c)
+
+	# unnamed :24 region between the plain members stays untouched
+	ci_bf_unnamed un
+	un.a = 1
+	un.b = 2
+	assert_equal(1, un.a)
+	assert_equal(2, un.b)
+
+	# short storage units
+	ci_bf_short sh
+	sh.a = 5
+	sh.b = 300
+	sh.c = 77
+	assert_equal(5, sh.a)
+	assert_equal(300, sh.b)
+	assert_equal(77, sh.c)
+
+	# unsigned long long fields above 32 bits
+	ci_bf_wide wd
+	wd.a = (1 << 33) - 3
+	wd.b = 44
+	assert_equal((1 << 33) - 3, wd.a)
+	assert_equal(44, wd.b)
+	ci_bf_span sp
+	sp.a = 12345
+	sp.b = (1 << 40) - 7
+	sp.c = 21
+	assert_equal(12345, sp.a)
+	assert_equal((1 << 40) - 7, sp.b)
+	assert_equal(21, sp.c)
+	ci_bf_pack pk
+	pk.c = 3
+	pk.b = (1 << 39) + 123
+	assert_equal(3, pk.c)
+	assert_equal((1 << 39) + 123, pk.b)
+
+	# signed int:24 sign-extends on read; neighbors survive the RMW
+	ci_bf_mixed mx
+	mx.s = 1234
+	mx.c = 56
+	mx.b = -1
+	assert_equal(-1, mx.b)
+	mx.b = (1 << 23) - 1
+	assert_equal((1 << 23) - 1, mx.b)
+	mx.b = -4096
+	assert_equal(-4096, mx.b)
+	assert_equal(1234, mx.s)
+	assert_equal(56, mx.c)
+
+	# typedef'd unsigned short fields
+	ci_bf_typedef td
+	td.a = 9
+	td.b = 4321
+	td.c = 65
+	assert_equal(9, td.a)
+	assert_equal(4321, td.b)
+	assert_equal(65, td.c)
+
+	# enum-typed bit-field reads unsigned (gcc: no negative enumerators)
+	ci_bf_enum en
+	en.mode = CI_BF_M2
+	en.rest = (1 << 30) - 1
+	en.v = -321
+	assert_equal(2, en.mode)
+	assert_equal((1 << 30) - 1, en.rest)
+	assert_equal(-321, en.v)
+
+	# trailing bit-field unit
+	ci_bf_tail tl
+	tl.a = 99
+	tl.b = 6
+	assert_equal(99, tl.a)
+	assert_equal(6, tl.b)
+
+	# union bit-fields: b aliases the low bits of c
+	ci_bf_union ub
+	ub.b = 5
+	assert_equal(5, ub.b)
+	ub.c = 65
+	assert_equal(1, ub.b)  # 65 & 7
+	ci_bf_union_wide uwb
+	uwb.b = 1
+	assert_equal(1, uwb.b)
+	uwb.b = 2  # truncates to the single bit
+	assert_equal(0, uwb.b)
+
+	# signed vs unsigned: sign extension per the declared type
+	ci_bf_signed sg
+	sg.a = -4
+	assert_equal(-4, sg.a)
+	sg.a = 3
+	assert_equal(3, sg.a)
+	sg.b = -16
+	sg.c = 7
+	sg.d = -1000000
+	assert_equal(-16, sg.b)
+	assert_equal(7, sg.c)
+	assert_equal(-1000000, sg.d)
+	sg.c = -1  # unsigned :3 keeps the low bits
+	assert_equal(7, sg.c)
+	sg.a = 7  # signed :3 reads 0b111 back as -1
+	assert_equal(-1, sg.a)
+	sg.a++
+	assert_equal(0, sg.a)
+	assert_equal(-16, sg.b)
+	assert_equal(7, sg.c)
+	assert_equal(-1000000, sg.d)
+
+	# signed long long :40 with negative values; unsigned :24 sharing
+	# the unit; signed int :20 opening the next unit
+	ci_bf_sll sl
+	sl.a = -(1 << 39)
+	sl.b = (1 << 24) - 2
+	sl.c = -500000
+	assert_equal(-(1 << 39), sl.a)
+	assert_equal((1 << 24) - 2, sl.b)
+	assert_equal(-500000, sl.c)
+	sl.a = (1 << 39) - 1
+	assert_equal((1 << 39) - 1, sl.a)
+	assert_equal((1 << 24) - 2, sl.b)
+	assert_equal(-500000, sl.c)
+
+	# signed shorts with negative values; 511 is 9 ones, reads as -1
+	ci_bf_s16 s6
+	s6.a = -200
+	s6.b = -64
+	s6.c = 1000
+	assert_equal(-200, s6.a)
+	assert_equal(-64, s6.b)
+	assert_equal(1000, s6.c)
+	s6.a = 511
+	assert_equal(-1, s6.a)
+
+	# same union bits through a signed and an unsigned view
+	ci_bf_su su1
+	su1.u = 31
+	assert_equal(-1, su1.s)
+	su1.s = -6
+	assert_equal(26, su1.u)
+
+	# bit-field reads compose in larger expressions
+	assert_equal(-1004096, sg.d + mx.b)
 
 	println(c"x64 c_import bitfield OK")
 	return 0
