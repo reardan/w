@@ -2409,6 +2409,7 @@
 				"int64_x86_error_test",
 				"type_system_error_test",
 				"type_system_warning_test",
+				"error_caret_test",
 				"operator_overload_error_test",
 				"compound_assign_test",
 				"increment_error_test",
