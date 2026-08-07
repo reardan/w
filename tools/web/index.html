@@ -54,9 +54,10 @@ const state = {
 
 // Input event queue drained by gfx_host_next_event. Kind numbers mirror
 // graphics/event.w's gfx_event_kind: 1 KEY_DOWN, 2 KEY_UP, 3 CHAR,
-// 4 MOUSE_DOWN, 5 MOUSE_UP. Buttons map from JS 0/1/2 to 1/2/3
-// (left/middle/right); CHAR carries ASCII 32..126 plus 8 BS, 9 TAB,
-// 13 CR, 27 ESC.
+// 4 MOUSE_DOWN, 5 MOUSE_UP, 6 SCROLL, 7 NAV. Buttons map from JS 0/1/2
+// to 1/2/3 (left/middle/right); CHAR carries ASCII 32..126 plus 8 BS,
+// 9 TAB, 13 CR, 27 ESC; SCROLL carries +1 up / -1 down per notch; NAV
+// carries gfx_nav_code (1 left, 2 right, 3 home, 4 end).
 const events = [];
 const pushEvent = (kind, code, x, y) => {
   if (events.length < 256) events.push({ kind, code, x, y });
@@ -86,8 +87,16 @@ canvas.addEventListener('keydown', (e) => {
   pushEvent(1, e.keyCode, state.mouseX, state.mouseY);
   const c = charOf(e);
   if (c) pushEvent(3, c, state.mouseX, state.mouseY);
+  const nav = { ArrowLeft: 1, ArrowRight: 2, Home: 3, End: 4 }[e.key];
+  if (nav) pushEvent(7, nav, state.mouseX, state.mouseY);
 });
 canvas.addEventListener('keyup', (e) => { pushEvent(2, e.keyCode, state.mouseX, state.mouseY); });
+canvas.addEventListener('wheel', (e) => {
+  // deltaY < 0 is wheel-away/up = +1, matching X11 button 4; one
+  // event per wheel notch regardless of delta magnitude.
+  if (e.deltaY) pushEvent(6, e.deltaY < 0 ? 1 : -1, e.offsetX, e.offsetY);
+  e.preventDefault();
+}, { passive: false });
 
 let frameCallback = 0;
 const host = {

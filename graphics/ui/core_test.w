@@ -42,6 +42,28 @@ void test_theme_presets_share_tokens_with_different_values():
 	assert_equal(light.unit, dark.unit)
 	assert_equal(light.widget_height, dark.widget_height)
 	assert_equal(8, light.unit)
+	# stage-3 tokens: disabled reads dimmer than the live pair, and
+	# on_accent contrasts with the accent it sits on.
+	asserts(c"light disabled text lighter", light.disabled_text.r > light.text.r)
+	asserts(c"dark disabled text dimmer", dark.disabled_text.r < dark.text.r)
+	asserts(c"light on_accent contrasts", light.on_accent.r != light.accent.r)
+
+
+void test_ocean_theme_is_not_grayscale():
+	ui_theme ocean
+	ui_theme_ocean(&ocean)
+	# The §5 "fully customizable" proof: every channel family diverges
+	# (a gray token has r == g == b).
+	asserts(c"bg tinted", ocean.background.r != ocean.background.b)
+	asserts(c"widget tinted", ocean.widget.r != ocean.widget.b)
+	asserts(c"text tinted", ocean.text.r != ocean.text.b)
+	# The focus ring is its own token, not the accent reused.
+	asserts(c"focus differs from accent", ocean.focus.r != ocean.accent.r)
+	# Metrics stay on the shared 8px scale.
+	ui_theme light
+	ui_theme_light(&light)
+	assert_equal(light.unit, ocean.unit)
+	assert_equal(light.widget_height, ocean.widget_height)
 
 
 void test_glyph_bits():

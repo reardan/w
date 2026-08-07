@@ -3,6 +3,8 @@
 # release-inside clicks; release-outside does not; a press+release in
 # ONE frame still clicks (the event queue's whole point); checkbox
 # toggles caller state; drawing accumulates vertices without GL.
+# Stage 2: textbox focus/typing/caret, radio groups, toggle, progress,
+# dropdown modality + overlay batch.
 # x64-only: the widget module imports graphics.gl/graphics.window,
 # which link libGL/libX11 on the 64-bit Linux targets.
 # wbuild: name=graphics_ui_widgets_test arch_only=x64
@@ -33,6 +35,24 @@ gfx_event make_event(int kind, int x, int y):
 	e.x = x
 	e.y = y
 	return e
+
+
+# A keyboard event: CHAR or NAV, position irrelevant.
+gfx_event make_key(int kind, int code):
+	gfx_event e
+	e.kind = kind
+	e.code = code
+	e.x = 0
+	e.y = 0
+	return e
+
+
+# Click helper: feed a press+release pair at x,y before the next frame.
+void feed_click(ui_context* ctx, int x, int y):
+	gfx_event press = make_event(GFX_EVENT_MOUSE_DOWN, x, y)
+	ui_feed_event(ctx, &press)
+	gfx_event release = make_event(GFX_EVENT_MOUSE_UP, x, y)
+	ui_feed_event(ctx, &release)
 
 
 # Default metrics put the first widget row at (8,8); the "Click"
@@ -146,6 +166,265 @@ void test_widgets_accumulate_vertices():
 	ui_checkbox(&ctx, c"dark", &checked)
 	# checkbox = box quad + accent quad + 4 glyphs
 	assert_equal(after_button + 6 * 6, r.vert_count)
+	ui_end(&ctx)
+	ui_render_destroy(&r)
+
+
+# Textbox state helpers, no frame needed.
+void test_textbox_state_editing():
+	ui_textbox_state st
+	ui_textbox_init(&st)
+	assert_equal(0, st.length)
+	ui_textbox_set(&st, c"abc")
+	assert_equal(3, st.length)
+	assert_equal(3, st.caret)
+
+	# Insert mid-string.
+	st.caret = 1
+	ui_textbox_insert(&st, 'X')
+	asserts(c"insert", strcmp(&st.text[0], c"aXbc") == 0)
+	assert_equal(2, st.caret)
+
+	# Backspace removes before the caret.
+	ui_textbox_backspace(&st)
+	asserts(c"backspace", strcmp(&st.text[0], c"abc") == 0)
+	assert_equal(1, st.caret)
+
+	# The buffer caps at capacity; inserts past it are dropped.
+	int i = 0
+	while (i < 200):
+		ui_textbox_insert(&st, 'z')
+		i = i + 1
+	assert_equal(ui_textbox_capacity(), st.length)
+
+
+# Default metrics: a 200-wide textbox claims row (8,8,200,32); its
+# text starts at x=16, glyphs advance 16px.
+void test_textbox_focus_typing_and_submit():
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_theme theme
+	ui_theme_light(&theme)
+	ui_context ctx
+	ui_context_init(&ctx, &r, &theme)
+	ui_textbox_state st
+	ui_textbox_init(&st)
+	ui_textbox_set(&st, c"abc")
+
+	# Unfocused: typing goes nowhere.
+	gfx_event stray = make_key(GFX_EVENT_CHAR, 'q')
+	ui_feed_event(&ctx, &stray)
+	ui_begin(&ctx, 320, 240)
+	assert_equal(0, ui_textbox(&ctx, 200.0, &st))
+	ui_end(&ctx)
+	assert_equal(0, ctx.focus)
+	assert_equal(3, st.length)
+
+	# Click at x=40 focuses and places the caret at glyph boundary 2.
+	feed_click(&ctx, 40, 20)
+	ui_begin(&ctx, 320, 240)
+	ui_textbox(&ctx, 200.0, &st)
+	ui_end(&ctx)
+	asserts(c"focused", ctx.focus != 0)
+	assert_equal(2, st.caret)
+
+	# Typing inserts at the caret; nav keys move it.
+	gfx_event ch = make_key(GFX_EVENT_CHAR, 'X')
+	ui_feed_event(&ctx, &ch)
+	gfx_event nav_end = make_key(GFX_EVENT_NAV, GFX_NAV_END)
+	ui_feed_event(&ctx, &nav_end)
+	ui_begin(&ctx, 320, 240)
+	ui_textbox(&ctx, 200.0, &st)
+	ui_end(&ctx)
+	asserts(c"insert at caret", strcmp(&st.text[0], c"abXc") == 0)
+	assert_equal(4, st.caret)
+
+	# Backspace deletes; home/left clamp at 0.
+	gfx_event bs = make_key(GFX_EVENT_CHAR, 8)
+	ui_feed_event(&ctx, &bs)
+	gfx_event nav_home = make_key(GFX_EVENT_NAV, GFX_NAV_HOME)
+	ui_feed_event(&ctx, &nav_home)
+	gfx_event nav_left = make_key(GFX_EVENT_NAV, GFX_NAV_LEFT)
+	ui_feed_event(&ctx, &nav_left)
+	ui_begin(&ctx, 320, 240)
+	ui_textbox(&ctx, 200.0, &st)
+	ui_end(&ctx)
+	asserts(c"backspace end", strcmp(&st.text[0], c"abX") == 0)
+	assert_equal(0, st.caret)
+
+	# Return submits without changing the buffer.
+	gfx_event cr = make_key(GFX_EVENT_CHAR, 13)
+	ui_feed_event(&ctx, &cr)
+	ui_begin(&ctx, 320, 240)
+	assert_equal(1, ui_textbox(&ctx, 200.0, &st))
+	ui_end(&ctx)
+	asserts(c"submit keeps text", strcmp(&st.text[0], c"abX") == 0)
+
+	# Escape drops focus; a click outside also would.
+	gfx_event esc = make_key(GFX_EVENT_CHAR, 27)
+	ui_feed_event(&ctx, &esc)
+	ui_begin(&ctx, 320, 240)
+	ui_textbox(&ctx, 200.0, &st)
+	ui_end(&ctx)
+	assert_equal(0, ctx.focus)
+	ui_render_destroy(&r)
+
+
+void test_radio_group_selects():
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_theme theme
+	ui_theme_light(&theme)
+	ui_context ctx
+	ui_context_init(&ctx, &r, &theme)
+	int32 selected = 0
+
+	# Rows at y=8 and y=48; each radio box is 16px starting at x=8.
+	feed_click(&ctx, 12, 60)
+	ui_begin(&ctx, 320, 240)
+	assert_equal(0, ui_radio(&ctx, c"first", 0, &selected))
+	assert_equal(1, ui_radio(&ctx, c"second", 1, &selected))
+	ui_end(&ctx)
+	assert_equal(1, selected)
+
+	# Clicking the already-selected option reports no change.
+	feed_click(&ctx, 12, 60)
+	ui_begin(&ctx, 320, 240)
+	assert_equal(0, ui_radio(&ctx, c"first", 0, &selected))
+	assert_equal(0, ui_radio(&ctx, c"second", 1, &selected))
+	ui_end(&ctx)
+	assert_equal(1, selected)
+	ui_render_destroy(&r)
+
+
+void test_toggle_flips():
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_theme theme
+	ui_theme_light(&theme)
+	ui_context ctx
+	ui_context_init(&ctx, &r, &theme)
+	int32 on = 0
+
+	feed_click(&ctx, 20, 20)
+	ui_begin(&ctx, 320, 240)
+	assert_equal(1, ui_toggle(&ctx, c"wifi", &on))
+	ui_end(&ctx)
+	assert_equal(1, on)
+
+	ui_begin(&ctx, 320, 240)
+	assert_equal(0, ui_toggle(&ctx, c"wifi", &on))
+	ui_end(&ctx)
+	assert_equal(1, on)
+	ui_render_destroy(&r)
+
+
+void test_progress_vertices_and_clamp():
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_theme theme
+	ui_theme_light(&theme)
+	ui_context ctx
+	ui_context_init(&ctx, &r, &theme)
+
+	# Zero fraction: track only. Positive: track + fill. Over 1 clamps
+	# to the track width.
+	ui_begin(&ctx, 320, 240)
+	ui_progress(&ctx, 100.0, 0.0)
+	assert_equal(6, r.vert_count)
+	ui_progress(&ctx, 100.0, 0.5)
+	assert_equal(18, r.vert_count)
+	ui_progress(&ctx, 100.0, 7.0)
+	assert_equal(30, r.vert_count)
+	# The clamped fill's right edge equals the track's right edge
+	# (third widget: track = vertices 18..23, fill = 24..29; vertex 25
+	# carries x1).
+	asserts(c"clamped fill width", r.verts[25 * 8] == 108.0)
+	ui_end(&ctx)
+	ui_render_destroy(&r)
+
+
+# Dropdown: header row (8,8,160,32); open list rows at y=40,72,104.
+void test_dropdown_opens_selects_and_blocks():
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_theme theme
+	ui_theme_light(&theme)
+	ui_context ctx
+	ui_context_init(&ctx, &r, &theme)
+	char** items = cast(char**, malloc(3 * __word_size__))
+	items[0] = c"alpha"
+	items[1] = c"beta"
+	items[2] = c"gamma"
+	int32 selected = 0
+	int32 open = 0
+
+	# Click the header: opens, claims modal, draws the overlay list.
+	feed_click(&ctx, 20, 20)
+	ui_begin(&ctx, 320, 240)
+	assert_equal(0, ui_dropdown(&ctx, 160.0, items, 3, &selected, &open))
+	ui_end(&ctx)
+	assert_equal(1, open)
+	asserts(c"modal claimed", ctx.modal != 0)
+	asserts(c"overlay drawn", r.overlay_count > 0)
+
+	# While open, a button under the pointer is inert — and the press
+	# that picks an item is consumed before later widgets run.
+	feed_click(&ctx, 20, 77)
+	ui_begin(&ctx, 320, 240)
+	assert_equal(1, ui_dropdown(&ctx, 160.0, items, 3, &selected, &open))
+	assert_equal(0, ui_button(&ctx, c"under"))
+	ui_end(&ctx)
+	assert_equal(1, selected)
+	assert_equal(0, open)
+	assert_equal(0, ctx.modal)
+
+	# Reopen, then click away: closes with no selection change.
+	feed_click(&ctx, 20, 20)
+	ui_begin(&ctx, 320, 240)
+	ui_dropdown(&ctx, 160.0, items, 3, &selected, &open)
+	ui_end(&ctx)
+	assert_equal(1, open)
+	feed_click(&ctx, 300, 200)
+	ui_begin(&ctx, 320, 240)
+	assert_equal(0, ui_dropdown(&ctx, 160.0, items, 3, &selected, &open))
+	ui_end(&ctx)
+	assert_equal(0, open)
+	assert_equal(1, selected)
+
+	# Closed again: no overlay geometry.
+	ui_begin(&ctx, 320, 240)
+	ui_dropdown(&ctx, 160.0, items, 3, &selected, &open)
+	ui_end(&ctx)
+	assert_equal(0, r.overlay_count)
+	ui_render_destroy(&r)
+
+
+void test_disabled_scope_is_inert():
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_theme theme
+	ui_theme_light(&theme)
+	ui_context ctx
+	ui_context_init(&ctx, &r, &theme)
+	ui_textbox_state st
+	ui_textbox_init(&st)
+
+	# A click pair aimed at the button row does nothing while disabled.
+	feed_click(&ctx, 20, 20)
+	ui_begin(&ctx, 320, 240)
+	ui_disable(&ctx, 1)
+	assert_equal(0, ui_button(&ctx, c"Click"))
+	assert_equal(0, ui_textbox(&ctx, 200.0, &st))
+	ui_disable(&ctx, 0)
+	ui_end(&ctx)
+	assert_equal(0, ctx.active)
+	assert_equal(0, ctx.focus)
+
+	# The same click works once the scope is lifted.
+	feed_click(&ctx, 20, 20)
+	ui_begin(&ctx, 320, 240)
+	assert_equal(1, ui_button(&ctx, c"Click"))
 	ui_end(&ctx)
 	ui_render_destroy(&r)
 

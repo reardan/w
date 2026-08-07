@@ -16,8 +16,19 @@ Status: design 2026-07-18; stage 1 implemented 2026-08-07 per
 baked bitmap font, batching renderer, text, label/button/checkbox),
 the per-frame input event queue on every backend, the GL texture
 surface, and X11 + wasm demos from one shared form
-(`graphics/ui/demo_shared.w`). Stages 2+ (text input, scroll, Cocoa
-mouse, theming depth) pending.
+(`graphics/ui/demo_shared.w`). Stage 2 implemented 2026-08-07 —
+scroll + nav-key events, textbox (context-routed focus consuming
+CHAR/NAV), radio, toggle, progress, dropdown (modal popup over a
+renderer overlay batch), all in the shared demo form (screenshots:
+`docs/images/ui_demo_light.png`, `ui_demo_dark.png`; captured via the
+native demo's `--screenshot` flag + `tools/ppm_to_png.py`). Stage 3
+implemented 2026-08-07 — the full §5 token set (accent_hot,
+on_accent, focus, disabled_widget/disabled_text), a ui_disable scope,
+the demo's dropdown as a live theme picker, and the non-grayscale
+`ui_theme_ocean` proving "fully customizable"
+(`docs/images/ui_demo_ocean.png`). Still pending: Cocoa mouse + CHAR
+(needs a struct-return-free selector strategy — its own design note),
+TTF/SDF typography (#379), win64 backend, accessibility (§8 stage 4).
 
 ## 0. Where this framework would live, and what it does not replace
 
