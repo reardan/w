@@ -2050,6 +2050,7 @@
 				"chacha20_64_test",
 				"chacha20poly1305_64_test",
 				"clock_64_test",
+				"comparison_branch_64_test",
 				"compound_assign_64_test",
 				"compress_adler32_64_test",
 				"compress_corpus_64_test",
@@ -2657,6 +2658,7 @@
 				"chacha20_test",
 				"chacha20poly1305_test",
 				"clock_test",
+				"comparison_branch_test",
 				"compress_adler32_test",
 				"compress_corpus_test",
 				"compress_crc32_test",
@@ -3307,6 +3309,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/clock_test.w", "-o", "bin/clock_test"]},
 				{"cmd": ["bin/clock_test"]}
+			]
+		},
+		{
+			"name": "comparison_branch_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/comparison_branch_test.w"],
+			"outputs": ["bin/comparison_branch_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/comparison_branch_test.w", "-o", "bin/comparison_branch_64_test"]},
+				{"cmd": ["bin/comparison_branch_64_test"]}
+			]
+		},
+		{
+			"name": "comparison_branch_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/comparison_branch_test.w"],
+			"outputs": ["bin/comparison_branch_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/comparison_branch_test.w", "-o", "bin/comparison_branch_test"]},
+				{"cmd": ["bin/comparison_branch_test"]}
 			]
 		},
 		{

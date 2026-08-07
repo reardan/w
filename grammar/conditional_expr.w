@@ -64,7 +64,7 @@ int conditional_expr():
 	int h_join = be_ctrl_block()
 	int h_stub = be_ctrl_block()
 	int h_else = be_ctrl_block()
-	be_br_zero(h_else)
+	be_br_zero_discard(h_else)
 	int then_type = expression()
 	then_type = promote(then_type)
 	expect(c":")

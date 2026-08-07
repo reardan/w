@@ -8,7 +8,9 @@ int logical_or_expr():
 	if (peek(c"||") == 0):
 		return type
 
-	# Short-circuit: a nonzero operand jumps to the booleanize step
+	# Short-circuit: a nonzero operand jumps to the booleanize step.
+	# Must stay be_br_nonzero, not the _discard twin: the taken edge
+	# carries the operand value in eax to the alu_test_set below.
 	promote(type)
 	int h = be_ctrl_block()
 	while (accept(c"||")):

@@ -154,7 +154,7 @@ void if_statement_tail():
 	int p2 = be_ctrl_block() /* ends at the elif/else branch */
 	promote(expression())
 	condition_context = outer_condition
-	be_br_zero(p2)
+	be_br_zero_discard(p2)
 	enclosing_tab_level = if_tab_level
 	statement()
 	be_br(p1)
