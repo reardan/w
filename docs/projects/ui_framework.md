@@ -11,7 +11,9 @@ is this framework's web backend). Follows the same survey →
 options → staged-recommendation shape as `docs/projects/compress.md`
 and `docs/projects/wbuildd.md`.
 
-Status: design only, 2026-07-18. No code changes ship with this file.
+Status: design 2026-07-18; implementation staged in
+`docs/projects/ui_framework_plan.md` (2026-08-07), starting with the
+arm64_darwin FFI fix and the GL texture surface.
 
 ## 0. Where this framework would live, and what it does not replace
 
