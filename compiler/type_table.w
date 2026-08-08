@@ -1,18 +1,35 @@
-/*
-struct type:
+# One type-table record. Every slot is a full host word: pointers must
+# be, since the heap sits above 4 GB on arm64 macOS, and keeping the rest
+# uniform costs nothing. Records are allocated individually (type_alloc)
+# and never moved -- type_records holds their addresses as untyped words,
+# which is the one word -> pointer boundary in this file.
+#
+# The array fields carry W's 2-word {data, length} descriptors, which
+# point into the record itself. That is why type_alloc uses 'new' rather
+# than malloc (only 'new' initializes them) and why a record must never
+# be byte-copied or stored in a list[type_rec] -- the copy's descriptors
+# would still address the original. Copying happens field by field, in
+# type_alias_record and type_const_record.
+#
+# Named 'type_rec' rather than 'type_record' because type_record() below
+# is the accessor function external callers use.
+struct type_rec:
 	char* name
 	int num_fields
 	int total_size
 	int pointer_level
-	field[100]
-		char* field1
-		int type1
-	...
-	...
-	x 100 total for 100 * 8 = 800 bytes
+	int alias_target        # alias/const/element/key type
+	int kind                # type_kind_*; 0 for a plain struct
+	int fn_return_type      # also the map value type
+	int fn_param_count      # also the array length
+	int decl_file_index     # -1 when unrecorded (dwarf.w debug_files)
+	int decl_line           # 1-based
+	int decl_column         # 1-based
+	char*[100] field_names
+	int[100] field_types
+	int[10] fn_param_types
 
-	should we add total_size + field_size??
-*/
+
 list[int] type_records
 
 # Name -> index of the FIRST record carrying that name, which is what
@@ -74,17 +91,12 @@ int type_get_field_type_at(int type_index, int i);
 int type_float_kind(int t);
 
 
-# Uniform pointer-sized slots (pointers must be full host words: the
-# heap sits above 4 GB on arm64 macOS): 4-slot header + 100 fields * 2
-# slots + 14 extended metadata slots + 3 declaration-location slots.
-int type_size():
-	return 221 * __word_size__
-
-
-# Raw bytes of a type-table record; the list stores record pointers as
-# untyped words, so this is the one word -> pointer boundary.
-char* type_record(int type_index):
-	return cast(char*, type_records[type_index])
+# A type-table record by index; the list stores record addresses as
+# untyped words, so this is the one word -> pointer boundary. Callers
+# inside this file inline the cast instead, to save the call on paths the
+# compiler walks millions of times per build.
+type_rec* type_record(int type_index):
+	return cast(type_rec*, type_records[type_index])
 
 
 # Number of live type-table records, for callers outside this file that
@@ -107,63 +119,63 @@ void type_table_truncate(int n):
 # Allocate a record with the declaration-location fields cleared; the
 # type_push_* constructors fill in everything else. Locations are recorded
 # by the grammar for user-declared types via type_set_decl_location().
-char* type_alloc():
-	char* new_type = malloc(type_size())
-	save_ptr(new_type + 218 * __word_size__, -1) /* declaration file index (dwarf.w debug_files) */
-	save_ptr(new_type + 219 * __word_size__, 0) /* declaration line (1-based) */
-	save_ptr(new_type + 220 * __word_size__, 0) /* declaration column (1-based) */
+type_rec* type_alloc():
+	# 'new' (not malloc) because the record's array fields carry
+	# descriptors that only 'new' initializes; it also zeroes the record.
+	type_rec* new_type = new type_rec
+	new_type.decl_file_index = -1
 	return new_type
 
 
 # These take plain (non-negative) type-table indexes, as returned by the
 # type_push_* constructors.
 void type_set_decl_location(int type_index, int file_index, int line, int column):
-	int t = type_records[type_index]
-	save_ptr(t + 218 * __word_size__, file_index)
-	save_ptr(t + 219 * __word_size__, line)
-	save_ptr(t + 220 * __word_size__, column)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	t.decl_file_index = file_index
+	t.decl_line = line
+	t.decl_column = column
 
 
 int type_decl_file_index(int type_index):
-	int t = type_records[type_index]
-	return load_ptr(t + 218 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.decl_file_index
 
 
 int type_decl_line(int type_index):
-	int t = type_records[type_index]
-	return load_ptr(t + 219 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.decl_line
 
 
 int type_decl_column(int type_index):
-	int t = type_records[type_index]
-	return load_ptr(t + 220 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.decl_column
 
 
 int type_push_pointer(char* name, int size, int pointer_level):
-	char* new_type = type_alloc()
-	save_ptr(new_type, cast(int, name)) /* name */
-	save_ptr(new_type + 1 * __word_size__, 0) /* num_fields */
-	save_ptr(new_type + 2 * __word_size__, size) /* size */
-	save_ptr(new_type + 3 * __word_size__, pointer_level) /* pointer level */
-	save_ptr(new_type + 204 * __word_size__, -1) /* alias target */
-	save_ptr(new_type + 205 * __word_size__, 0) /* reserved kind/flags */
-	save_ptr(new_type + 206 * __word_size__, -1) /* function return type */
-	save_ptr(new_type + 207 * __word_size__, -1) /* function parameter count */
+	type_rec* new_type = type_alloc()
+	new_type.name = name
+	new_type.num_fields = 0
+	new_type.total_size = size
+	new_type.pointer_level = pointer_level
+	new_type.alias_target = -1
+	new_type.kind = 0
+	new_type.fn_return_type = -1
+	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
 
 
 int type_push_size(char* name, int size):
-	char* new_type = type_alloc()
-	save_ptr(new_type, cast(int, name)) /* name */
-	save_ptr(new_type + 1 * __word_size__, 0) /* num_fields */
-	save_ptr(new_type + 2 * __word_size__, size) /* size */
-	save_ptr(new_type + 3 * __word_size__, 0) /* pointer level */
-	save_ptr(new_type + 204 * __word_size__, -1) /* alias target */
-	save_ptr(new_type + 205 * __word_size__, 0) /* reserved kind/flags */
-	save_ptr(new_type + 206 * __word_size__, -1) /* function return type */
-	save_ptr(new_type + 207 * __word_size__, -1) /* function parameter count */
+	type_rec* new_type = type_alloc()
+	new_type.name = name
+	new_type.num_fields = 0
+	new_type.total_size = size
+	new_type.pointer_level = 0
+	new_type.alias_target = -1
+	new_type.kind = 0
+	new_type.fn_return_type = -1
+	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
@@ -264,93 +276,93 @@ int type_array_element_offset():
 
 
 int type_push_array(int element_type, int length):
-	char* new_type = type_alloc()
-	save_ptr(new_type, cast(int, type_make_array_name(element_type, length)))
-	save_ptr(new_type + 1 * __word_size__, 0)
-	save_ptr(new_type + 2 * __word_size__, (2 * word_size) + (length * type_get_size(element_type)))
-	save_ptr(new_type + 3 * __word_size__, 0)
-	save_ptr(new_type + 204 * __word_size__, element_type)
-	save_ptr(new_type + 205 * __word_size__, type_kind_array())
-	save_ptr(new_type + 206 * __word_size__, length)
-	save_ptr(new_type + 207 * __word_size__, -1)
+	type_rec* new_type = type_alloc()
+	new_type.name = type_make_array_name(element_type, length)
+	new_type.num_fields = 0
+	new_type.total_size = (2 * word_size) + (length * type_get_size(element_type))
+	new_type.pointer_level = 0
+	new_type.alias_target = element_type
+	new_type.kind = type_kind_array()
+	new_type.fn_return_type = length
+	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
 
 
 int type_push_slice(int element_type):
-	char* new_type = type_alloc()
-	save_ptr(new_type, cast(int, type_make_slice_name(element_type)))
-	save_ptr(new_type + 1 * __word_size__, 0)
-	save_ptr(new_type + 2 * __word_size__, word_size)
-	save_ptr(new_type + 3 * __word_size__, 0)
-	save_ptr(new_type + 204 * __word_size__, element_type)
-	save_ptr(new_type + 205 * __word_size__, type_kind_slice())
-	save_ptr(new_type + 206 * __word_size__, -1)
-	save_ptr(new_type + 207 * __word_size__, -1)
+	type_rec* new_type = type_alloc()
+	new_type.name = type_make_slice_name(element_type)
+	new_type.num_fields = 0
+	new_type.total_size = word_size
+	new_type.pointer_level = 0
+	new_type.alias_target = element_type
+	new_type.kind = type_kind_slice()
+	new_type.fn_return_type = -1
+	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
 
 
 int type_push_slice_value(int element_type):
-	char* new_type = type_alloc()
+	type_rec* new_type = type_alloc()
 	char* storage_name = type_make_slice_name(element_type)
 	char* name = strjoin(storage_name, c" value")
 	free(storage_name)
-	save_ptr(new_type, cast(int, name))
-	save_ptr(new_type + 1 * __word_size__, 0)
-	save_ptr(new_type + 2 * __word_size__, 0)
-	save_ptr(new_type + 3 * __word_size__, 0)
-	save_ptr(new_type + 204 * __word_size__, element_type)
-	save_ptr(new_type + 205 * __word_size__, type_kind_slice_value())
-	save_ptr(new_type + 206 * __word_size__, -1)
-	save_ptr(new_type + 207 * __word_size__, -1)
+	new_type.name = name
+	new_type.num_fields = 0
+	new_type.total_size = 0
+	new_type.pointer_level = 0
+	new_type.alias_target = element_type
+	new_type.kind = type_kind_slice_value()
+	new_type.fn_return_type = -1
+	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
 
 
 int type_push_map(int key_type, int value_type):
-	char* new_type = type_alloc()
-	save_ptr(new_type, cast(int, type_make_map_name(key_type, value_type)))
-	save_ptr(new_type + 1 * __word_size__, 0)
-	save_ptr(new_type + 2 * __word_size__, word_size)
-	save_ptr(new_type + 3 * __word_size__, 0)
-	save_ptr(new_type + 204 * __word_size__, type_canonical(key_type))
-	save_ptr(new_type + 205 * __word_size__, type_kind_map())
-	save_ptr(new_type + 206 * __word_size__, type_canonical(value_type))
-	save_ptr(new_type + 207 * __word_size__, -1)
+	type_rec* new_type = type_alloc()
+	new_type.name = type_make_map_name(key_type, value_type)
+	new_type.num_fields = 0
+	new_type.total_size = word_size
+	new_type.pointer_level = 0
+	new_type.alias_target = type_canonical(key_type)
+	new_type.kind = type_kind_map()
+	new_type.fn_return_type = type_canonical(value_type)
+	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
 
 
 int type_push_set(int key_type):
-	char* new_type = type_alloc()
-	save_ptr(new_type, cast(int, type_make_set_name(key_type)))
-	save_ptr(new_type + 1 * __word_size__, 0)
-	save_ptr(new_type + 2 * __word_size__, word_size)
-	save_ptr(new_type + 3 * __word_size__, 0)
-	save_ptr(new_type + 204 * __word_size__, type_canonical(key_type))
-	save_ptr(new_type + 205 * __word_size__, type_kind_set())
-	save_ptr(new_type + 206 * __word_size__, -1)
-	save_ptr(new_type + 207 * __word_size__, -1)
+	type_rec* new_type = type_alloc()
+	new_type.name = type_make_set_name(key_type)
+	new_type.num_fields = 0
+	new_type.total_size = word_size
+	new_type.pointer_level = 0
+	new_type.alias_target = type_canonical(key_type)
+	new_type.kind = type_kind_set()
+	new_type.fn_return_type = -1
+	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
 
 
 int type_push_list(int element_type):
-	char* new_type = type_alloc()
-	save_ptr(new_type, cast(int, type_make_list_name(element_type)))
-	save_ptr(new_type + 1 * __word_size__, 0)
-	save_ptr(new_type + 2 * __word_size__, word_size)
-	save_ptr(new_type + 3 * __word_size__, 0)
-	save_ptr(new_type + 204 * __word_size__, type_canonical(element_type))
-	save_ptr(new_type + 205 * __word_size__, type_kind_list())
-	save_ptr(new_type + 206 * __word_size__, -1)
-	save_ptr(new_type + 207 * __word_size__, -1)
+	type_rec* new_type = type_alloc()
+	new_type.name = type_make_list_name(element_type)
+	new_type.num_fields = 0
+	new_type.total_size = word_size
+	new_type.pointer_level = 0
+	new_type.alias_target = type_canonical(element_type)
+	new_type.kind = type_kind_list()
+	new_type.fn_return_type = -1
+	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
@@ -373,7 +385,7 @@ int type_lookup(char* name):
 	while (type_index_indexed < type_records.length):
 		# load_ptr, not *type: the name pointer occupies one pointer slot; a
 		# wider load would drag in the neighboring num_fields field
-		char* pushed = cast(char*, load_ptr(type_record(type_index_indexed)))
+		char* pushed = cast(char*, type_record(type_index_indexed).name)
 		# First writer wins, so the map answers with the oldest record
 		# carrying the name -- what the linear scan this replaced did by
 		# returning on its first hit.
@@ -405,10 +417,10 @@ int type_get_alias_target(int type_index):
 	type_index = type_real(type_index)
 	if (type_index < 0):
 		return -1
-	int t = type_records[type_index]
-	if (load_ptr(t + 205 * __word_size__) != type_kind_alias):
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	if (t.kind != type_kind_alias):
 		return -1
-	return load_ptr(t + 204 * __word_size__)
+	return t.alias_target
 
 
 int type_canonical(int type_index):
@@ -430,10 +442,10 @@ int type_get_const_target(int type_index):
 	type_index = type_real(type_index)
 	if (type_index < 0):
 		return -1
-	int t = type_records[type_index]
-	if (load_ptr(t + 205 * __word_size__) != type_kind_const):
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	if (t.kind != type_kind_const):
 		return -1
-	return load_ptr(t + 204 * __word_size__)
+	return t.alias_target
 
 
 int type_unqualified(int type_index):
@@ -455,21 +467,21 @@ int type_unqualified(int type_index):
 
 int type_push_alias(char* name, int target):
 	int real_target = type_canonical(target)
-	char* new_type = type_alloc()
-	char* target_record = type_record(real_target)
-	save_ptr(new_type, cast(int, name)) /* name */
-	save_ptr(new_type + 1 * __word_size__, load_ptr(target_record + 1 * __word_size__)) /* num_fields */
-	save_ptr(new_type + 2 * __word_size__, load_ptr(target_record + 2 * __word_size__)) /* size */
-	save_ptr(new_type + 3 * __word_size__, load_ptr(target_record + 3 * __word_size__)) /* pointer level */
+	type_rec* new_type = type_alloc()
+	type_rec* target_record = type_record(real_target)
+	new_type.name = name
+	new_type.num_fields = target_record.num_fields
+	new_type.total_size = target_record.total_size
+	new_type.pointer_level = target_record.pointer_level
 	int i = 0
 	while (i < 100):
-		save_ptr(new_type + 4 * __word_size__ + 2 * __word_size__ * i, load_ptr(target_record + 4 * __word_size__ + 2 * __word_size__ * i))
-		save_ptr(new_type + 5 * __word_size__ + 2 * __word_size__ * i, load_ptr(target_record + 5 * __word_size__ + 2 * __word_size__ * i))
+		new_type.field_names[i] = target_record.field_names[i]
+		new_type.field_types[i] = target_record.field_types[i]
 		i = i + 1
-	save_ptr(new_type + 204 * __word_size__, real_target) /* alias target */
-	save_ptr(new_type + 205 * __word_size__, type_kind_alias)
-	save_ptr(new_type + 206 * __word_size__, -1)
-	save_ptr(new_type + 207 * __word_size__, -1)
+	new_type.alias_target = real_target
+	new_type.kind = type_kind_alias
+	new_type.fn_return_type = -1
+	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
@@ -478,21 +490,21 @@ int type_push_alias(char* name, int target):
 int type_push_const(int target):
 	int real_target = type_canonical(target)
 	char* name = strjoin(c"const ", type_get_name(real_target))
-	char* new_type = type_alloc()
-	char* target_record = type_record(real_target)
-	save_ptr(new_type, cast(int, name))
-	save_ptr(new_type + 1 * __word_size__, load_ptr(target_record + 1 * __word_size__))
-	save_ptr(new_type + 2 * __word_size__, load_ptr(target_record + 2 * __word_size__))
-	save_ptr(new_type + 3 * __word_size__, load_ptr(target_record + 3 * __word_size__))
+	type_rec* new_type = type_alloc()
+	type_rec* target_record = type_record(real_target)
+	new_type.name = name
+	new_type.num_fields = target_record.num_fields
+	new_type.total_size = target_record.total_size
+	new_type.pointer_level = target_record.pointer_level
 	int i = 0
 	while (i < 100):
-		save_ptr(new_type + 4 * __word_size__ + 2 * __word_size__ * i, load_ptr(target_record + 4 * __word_size__ + 2 * __word_size__ * i))
-		save_ptr(new_type + 5 * __word_size__ + 2 * __word_size__ * i, load_ptr(target_record + 5 * __word_size__ + 2 * __word_size__ * i))
+		new_type.field_names[i] = target_record.field_names[i]
+		new_type.field_types[i] = target_record.field_types[i]
 		i = i + 1
-	save_ptr(new_type + 204 * __word_size__, real_target)
-	save_ptr(new_type + 205 * __word_size__, type_kind_const)
-	save_ptr(new_type + 206 * __word_size__, -1)
-	save_ptr(new_type + 207 * __word_size__, -1)
+	new_type.alias_target = real_target
+	new_type.kind = type_kind_const
+	new_type.fn_return_type = -1
+	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
@@ -505,9 +517,9 @@ int type_lookup_const(int target):
 	int real_target = type_canonical(target)
 	int i = 0
 	while (i < type_records.length):
-		int t = type_records[i]
-		if (load_ptr(t + 205 * __word_size__) == type_kind_const):
-			if (load_ptr(t + 204 * __word_size__) == real_target):
+		type_rec* t = cast(type_rec*, type_records[i])
+		if (t.kind == type_kind_const):
+			if (t.alias_target == real_target):
 				return i
 		i = i + 1
 	return -1
@@ -517,28 +529,28 @@ int type_get_kind(int type_index):
 	type_index = type_canonical(type_index)
 	if (type_index < 0):
 		return 0
-	int t = type_records[type_index]
-	return load_ptr(t + 205 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.kind
 
 
 void type_set_kind(int type_index, int kind):
 	type_index = type_real(type_index)
-	int t = type_records[type_index]
-	save_ptr(t + 205 * __word_size__, kind)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	t.kind = kind
 
 
 int type_get_element_type(int type_index):
 	type_index = type_canonical(type_index)
 	if (type_index < 0):
 		return -1
-	int t = type_records[type_index]
-	return load_ptr(t + 204 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.alias_target
 
 
 int type_get_array_length(int type_index):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return load_ptr(t + 206 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.fn_return_type
 
 
 int type_is_array(int type_index):
@@ -641,21 +653,21 @@ int type_is_const(int type_index):
 
 
 int type_push_function(char* name, int return_type, int param_count, int param_types):
-	char* new_type = type_alloc()
-	save_ptr(new_type, cast(int, name))
-	save_ptr(new_type + 1 * __word_size__, 0)
-	save_ptr(new_type + 2 * __word_size__, word_size)
-	save_ptr(new_type + 3 * __word_size__, 0)
-	save_ptr(new_type + 204 * __word_size__, -1)
-	save_ptr(new_type + 205 * __word_size__, type_kind_function)
-	save_ptr(new_type + 206 * __word_size__, return_type)
-	save_ptr(new_type + 207 * __word_size__, param_count)
+	type_rec* new_type = type_alloc()
+	new_type.name = name
+	new_type.num_fields = 0
+	new_type.total_size = word_size
+	new_type.pointer_level = 0
+	new_type.alias_target = -1
+	new_type.kind = type_kind_function
+	new_type.fn_return_type = return_type
+	new_type.fn_param_count = param_count
 	int i = 0
 	while (i < 10):
 		int param_type = -1
 		if (i < param_count):
 			param_type = load_ptr(param_types + i * __word_size__)
-		save_ptr(new_type + 208 * __word_size__ + i * __word_size__, param_type)
+		new_type.fn_param_types[i] = param_type
 		i = i + 1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
@@ -664,14 +676,14 @@ int type_push_function(char* name, int return_type, int param_count, int param_t
 
 int type_function_return(int type_index):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return load_ptr(t + 206 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.fn_return_type
 
 
 int type_function_param_count(int type_index):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return load_ptr(t + 207 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.fn_param_count
 
 
 int type_function_param_type(int type_index, int i):
@@ -680,22 +692,22 @@ int type_function_param_type(int type_index, int i):
 		return -1
 	if (i >= 10):
 		return -1
-	int t = type_records[type_index]
-	return load_ptr(t + 208 * __word_size__ + i * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.fn_param_types[i]
 
 
 int type_lookup_array(int element_type, int array_length):
 	element_type = type_canonical(element_type)
 	int i = 0
 	while (i < type_records.length):
-		int t = type_records[i]
+		type_rec* t = cast(type_rec*, type_records[i])
 		# Kind first, in its own test, exactly as type_lookup_slice below
 		# explains: '&' does not short-circuit, so the original reached
 		# type_canonical() with slot 204 of every record whatever its
 		# kind -- the very thing that comment warns must never happen.
-		if (load_ptr(t + 205 * __word_size__) == type_kind_array()):
-			if (load_ptr(t + 206 * __word_size__) == array_length):
-				if (type_canonical(load_ptr(t + 204 * __word_size__)) == element_type):
+		if (t.kind == type_kind_array()):
+			if (t.fn_return_type == array_length):
+				if (type_canonical(t.alias_target) == element_type):
 					return i
 		i = i + 1
 	return -1
@@ -705,13 +717,13 @@ int type_lookup_slice(int element_type):
 	element_type = type_canonical(element_type)
 	int i = 0
 	while (i < type_records.length):
-		int t = type_records[i]
+		type_rec* t = cast(type_rec*, type_records[i])
 		# Check the kind alone first: '&' does not short-circuit, and for
 		# other kinds slot 204/206 may hold a non-type value (an array
 		# entry keeps its length in slot 206), which must never reach
 		# type_canonical() as a type index.
-		if (load_ptr(t + 205 * __word_size__) == type_kind_slice()):
-			if (type_canonical(load_ptr(t + 204 * __word_size__)) == element_type):
+		if (t.kind == type_kind_slice()):
+			if (type_canonical(t.alias_target) == element_type):
 				return i
 		i = i + 1
 	return -1
@@ -721,9 +733,9 @@ int type_lookup_slice_value(int element_type):
 	element_type = type_canonical(element_type)
 	int i = 0
 	while (i < type_records.length):
-		int t = type_records[i]
-		if (load_ptr(t + 205 * __word_size__) == type_kind_slice_value()):
-			if (type_canonical(load_ptr(t + 204 * __word_size__)) == element_type):
+		type_rec* t = cast(type_rec*, type_records[i])
+		if (t.kind == type_kind_slice_value()):
+			if (type_canonical(t.alias_target) == element_type):
 				return i
 		i = i + 1
 	return -1
@@ -734,10 +746,10 @@ int type_lookup_map(int key_type, int value_type):
 	value_type = type_canonical(value_type)
 	int i = 0
 	while (i < type_records.length):
-		int t = type_records[i]
-		if (load_ptr(t + 205 * __word_size__) == type_kind_map()):
-			if ((type_canonical(load_ptr(t + 204 * __word_size__)) == key_type) &
-					(type_canonical(load_ptr(t + 206 * __word_size__)) == value_type)):
+		type_rec* t = cast(type_rec*, type_records[i])
+		if (t.kind == type_kind_map()):
+			if ((type_canonical(t.alias_target) == key_type) &
+					(type_canonical(t.fn_return_type) == value_type)):
 				return i
 		i = i + 1
 	return -1
@@ -747,9 +759,9 @@ int type_lookup_set(int key_type):
 	key_type = type_canonical(key_type)
 	int i = 0
 	while (i < type_records.length):
-		int t = type_records[i]
-		if (load_ptr(t + 205 * __word_size__) == type_kind_set()):
-			if (type_canonical(load_ptr(t + 204 * __word_size__)) == key_type):
+		type_rec* t = cast(type_rec*, type_records[i])
+		if (t.kind == type_kind_set()):
+			if (type_canonical(t.alias_target) == key_type):
 				return i
 		i = i + 1
 	return -1
@@ -759,9 +771,9 @@ int type_lookup_list(int element_type):
 	element_type = type_canonical(element_type)
 	int i = 0
 	while (i < type_records.length):
-		int t = type_records[i]
-		if (load_ptr(t + 205 * __word_size__) == type_kind_list()):
-			if (type_canonical(load_ptr(t + 204 * __word_size__)) == element_type):
+		type_rec* t = cast(type_rec*, type_records[i])
+		if (t.kind == type_kind_list()):
+			if (type_canonical(t.alias_target) == element_type):
 				return i
 		i = i + 1
 	return -1
@@ -804,65 +816,65 @@ int type_get_list(int element_type):
 
 int type_map_key_type(int type_index):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return load_ptr(t + 204 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.alias_target
 
 
 int type_map_value_type(int type_index):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return load_ptr(t + 206 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.fn_return_type
 
 
 int type_set_key_type(int type_index):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return load_ptr(t + 204 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.alias_target
 
 
 int type_list_element_type(int type_index):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return load_ptr(t + 204 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.alias_target
 
 
 char* type_get_name(int type_index):
 	type_index = type_real(type_index)
-	char* t = type_record(type_index)
-	return cast(char*, load_ptr(t))
+	type_rec* t = type_record(type_index)
+	return t.name
 
 
 int type_num_args(int type_index):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return load_ptr(t + 1 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.num_fields
 
 
 int type_get_size(int type_index):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return load_ptr(t + 2 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.total_size
 
 
 int type_get_pointer_level(int type_index):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return load_ptr(t + 3 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.pointer_level
 
 
 int type_lookup_pointer(char* name, int pointer_level):
 	int i = 0
 	int trace = verbosity >= 1
 	while (i < type_records.length):
-		char* t = type_record(i)
+		type_rec* t = type_record(i)
 		if (trace):
 			print_hex(c"type_lookup_pointer t: ", cast(int, t))
 		# Pointer level first, and as a nested test rather than one '&'
 		# chain: '&' does not short-circuit, so the original ran a strcmp
 		# against every record in the table on every call. The level is a
 		# word compare and rejects almost all of them.
-		if (pointer_level == load_ptr(t + 3 * __word_size__)):
-			if (strcmp(name, cast(char*, load_ptr(t))) == 0):
+		if (pointer_level == t.pointer_level):
+			if (strcmp(name, t.name) == 0):
 				return i
 		i = i + 1
 	return -1
@@ -1081,16 +1093,16 @@ int type_lookup_previous_pointer(int type_index):
 # pointer/array records, rely on that), so redefinition reuses the
 # existing record in place rather than changing that scan order.
 void type_reset_for_redefinition(int type_index, int size):
-	int t = type_records[type_index]
-	save_ptr(t + 1 * __word_size__, 0) /* num_fields */
-	save_ptr(t + 2 * __word_size__, size) /* total_size */
-	save_ptr(t + 3 * __word_size__, 0) /* pointer level */
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	t.num_fields = 0
+	t.total_size = size
+	t.pointer_level = 0
 
 
 int type_add_arg(int type_index, char* field, int field_type):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	int num_fields = load_ptr(t + 1 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	int num_fields = t.num_fields
 	int max_fields = 100
 	assert1(num_fields < max_fields)
 	if (verbosity > 0):
@@ -1100,16 +1112,16 @@ int type_add_arg(int type_index, char* field, int field_type):
 		print2(c"(")
 		print2(itoa(field_type))
 		println2(c")")
-	save_ptr(t + 4 * __word_size__ + 2 * __word_size__ * num_fields, cast(int, field))
-	save_ptr(t + 5 * __word_size__ + 2 * __word_size__ * num_fields, field_type)
-	save_ptr(t + 1 * __word_size__, num_fields + 1)
+	t.field_names[num_fields] = field
+	t.field_types[num_fields] = field_type
+	t.num_fields = num_fields + 1
 	# Update total size. Structs sum fields; unions take the largest field.
 	int field_size = type_get_size(field_type)
 	if (type_get_kind(type_index) == type_kind_union):
-		if (field_size > load_ptr(t + 2 * __word_size__)):
-			save_ptr(t + 2 * __word_size__, field_size)
+		if (field_size > t.total_size):
+			t.total_size = field_size
 	else:
-		save_ptr(t + 2 * __word_size__, load_ptr(t + 2 * __word_size__) + field_size)
+		t.total_size = t.total_size + field_size
 
 
 int type_get_arg(int type_index, char* field):
@@ -1120,13 +1132,13 @@ int type_get_arg(int type_index, char* field):
 		print2(c", '")
 		print2(field)
 		println2(c"')")
-	int t = type_records[type_index]
-	int num_fields = load_ptr(t + 1 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	int num_fields = t.num_fields
 	if (verbosity > 0):
 		print_int(c"num_fields: ", num_fields)
 	int i = 0
 	while (i < num_fields):
-		char* f = cast(char*, load_ptr(t + 4 * __word_size__ + 2 * __word_size__ * i))
+		char* f = t.field_names[i]
 		if (verbosity > 0):
 			print2(itoa(i))
 			print2(c": ")
@@ -1143,15 +1155,15 @@ int type_get_arg(int type_index, char* field):
 # from type_index, return the offset of the field
 int type_get_field_offset(int type_index, char* field):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	int num_fields = load_ptr(t + 1 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	int num_fields = t.num_fields
 	int offset = 0
 	int i = 0
 	while (i < num_fields):
-		char* f = cast(char*, load_ptr(t + 4 * __word_size__ + 2 * __word_size__ * i))
+		char* f = t.field_names[i]
 		if (strcmp(field, f) == 0):
 			return offset
-		int field_type = load_ptr(t + 5 * __word_size__ + 2 * __word_size__ * i)
+		int field_type = t.field_types[i]
 		int field_size = type_get_size(field_type)
 		if (type_get_kind(type_index) != type_kind_union):
 			offset = offset + field_size
@@ -1162,27 +1174,27 @@ int type_get_field_offset(int type_index, char* field):
 # Field name by 0-based field index
 char* type_get_field_name_at(int type_index, int i):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return cast(char*, load_ptr(t + 4 * __word_size__ + 2 * __word_size__ * i))
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.field_names[i]
 
 
 # Field type by 0-based field index
 int type_get_field_type_at(int type_index, int i):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	return load_ptr(t + 5 * __word_size__ + 2 * __word_size__ * i)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.field_types[i]
 
 
 # Byte offset of the field at 0-based index i
 int type_get_field_offset_at(int type_index, int i):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
+	type_rec* t = cast(type_rec*, type_records[type_index])
 	int offset = 0
 	int j = 0
 	if (type_get_kind(type_index) == type_kind_union):
 		return 0
 	while (j < i):
-		offset = offset + type_get_size(load_ptr(t + 5 * __word_size__ + 2 * __word_size__ * j))
+		offset = offset + type_get_size(t.field_types[j])
 		j = j + 1
 	return offset
 
@@ -1190,12 +1202,12 @@ int type_get_field_offset_at(int type_index, int i):
 # return type.field.type
 int type_get_field_type(int type_index, char* field):
 	type_index = type_canonical(type_index)
-	int t = type_records[type_index]
-	int num_fields = load_ptr(t + 1 * __word_size__)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	int num_fields = t.num_fields
 	int i = 0
 	while (i < num_fields):
-		char* f = cast(char*, load_ptr(t + 4 * __word_size__ + 2 * __word_size__ * i))
-		int field_type = load_ptr(t + 5 * __word_size__ + 2 * __word_size__ * i)
+		char* f = t.field_names[i]
+		int field_type = t.field_types[i]
 		if (strcmp(field, f) == 0):
 			return field_type
 		i = i + 1
@@ -1205,18 +1217,18 @@ int type_get_field_type(int type_index, char* field):
 void type_print(int type_index):
 	type_index = type_real(type_index)
 	# print_int("type_print: ", type_index)
-	char* t = type_record(type_index)
+	type_rec* t = type_record(type_index)
 	int i = 0
-	int num_fields = load_ptr(t + 1 * __word_size__)
+	int num_fields = t.num_fields
 	print2((itoa(type_index)))
 	print2(c":")
 	if (num_fields > 0):
 		print2(c"struct ")
-		char* type_name = cast(char*, load_ptr(t))
+		char* type_name = t.name
 		print_n(type_name, strlen(type_name))
 		print2(c": ")
 	else:
-		char* type_name = cast(char*, load_ptr(t))
+		char* type_name = t.name
 		print_n(type_name, strlen(type_name))
 	# print_int("num_fields: ", num_fields)
 	if (num_fields <= 0):
@@ -1224,14 +1236,14 @@ void type_print(int type_index):
 		return;
 	print2(c"(")
 	while (i < num_fields):
-		char* field_name = cast(char*, load_ptr(t + 4 * __word_size__ + 2 * __word_size__ * i))
-		int field_type = load_ptr(t + 5 * __word_size__ + 2 * __word_size__ * i)
-		char* field_type_name = type_record(field_type)
+		char* field_name = t.field_names[i]
+		int field_type = t.field_types[i]
+		type_rec* field_type_name = type_record(field_type)
 
 		if (i > 0):
 			print2(c"; ")
 
-		char* printed_field_type = cast(char*, load_ptr(field_type_name))
+		char* printed_field_type = field_type_name.name
 		print_n(printed_field_type, strlen(printed_field_type))
 		print2(c" ")
 		print_n(field_name, strlen(field_name))
@@ -1245,10 +1257,10 @@ void type_print_all():
 	println2(c"all types:")
 	int i = 0
 	while (i < type_records.length):
-		char* type = type_record(i)
+		type_rec* type = type_record(i)
 		print_error(itoa(i))
 		print_error(c": ")
-		print_error(str_from_cstr(cast(char*, load_ptr(type))))
+		print_error(str_from_cstr(type.name))
 		for int j in range(type_get_pointer_level(i)):
 			print_error(c"*")
 		print_error(c"\x0a")

@@ -9,10 +9,6 @@ and it changes the directory then backs out
 import compiler.type_table
 
 
-void test_type_size():
-	assert_equal(884, type_size())
-
-
 void push_advanced_types():
 	# these pointer types are deprecated, use * instead
 	type_push(c"void*")
@@ -74,8 +70,8 @@ void test_add_get_50_fields():
 		i = i + 1
 	free(field)
 
-	int t = cast(int, type_record(type_index))
-	assert_equal(count, load_int(t + 4))
+	type_rec* t = type_record(type_index)
+	assert_equal(count, t.num_fields)
 
 
 void test_type_push_size():

@@ -529,3 +529,162 @@ for a three-instruction body. Two follow-ups, in order of value:
    and still emits a runtime `imul` (both operands materialized and
    pushed), because there is no constant folding — a general win beyond
    these tables, and squarely `optimization.md`'s v0 territory.
+
+**Both done — see §11 and §12.** Item 1's proposed spelling turned out
+not to parse, and a struct beat it anyway.
+
+## 11. The record tables (2026-08-08)
+
+§10's item 1, with one correction to its premise: **`cast(int*, t)[218]`
+does not parse.** `cast` is handled in `grammar/unary_expression.w` and
+returns without entering `postfix_expr`'s `[` suffix loop, so a cast
+result takes no postfix suffix. Making it parse would be new syntax, and
+`type_table.w` is compiled by the pinned seed, so it could not use it
+until a `SEEDS` bump anyway.
+
+A struct is the better answer regardless. Member access emits
+`add_eax_int32(type_get_field_offset(...))` — one add against a constant
+offset — where indexing would still emit a `mov` for the index and an
+`imul` for the scale, and would therefore *depend on* §12 to become
+optimal. Measured on this checkout, instructions to read one slot:
+
+| form | caller | call | total |
+| --- | --- | --- | --- |
+| `load_ptr(t + 5*ws + 2*ws*i)` (was) | 24 | +6 | ~31 |
+| `r.field_types[i]` | 22 | — | **22** |
+| `load_ptr(t + 205*ws)` (was) | ~15 | +6 | ~21 |
+| `r.kind` | 4 | — | **4** |
+
+So the record is `struct type_rec` now, with **array fields for the two
+runtime-strided regions** rather than a hand-indexed tail. The array
+field wins including its bounds check (~9 of those 22 instructions), and
+the bounds check is a correctness gain — a bad field index read garbage
+before. An earlier draft of this work rejected array fields on a guessed
+cost; the measurement said otherwise, which is the only reason the
+numbers above are in this doc.
+
+`type_alloc` uses `new` rather than `malloc`, because only `new`
+initializes the array descriptors — and those descriptors point into the
+record itself, which is also why a record must never be byte-copied or
+stored in a `list[type_rec]`. `type_size()` is gone: the compiler
+computes the size instead of a constant duplicating the declaration.
+
+Two latent word-size bugs fell out of the sweep, both hand-computed
+offsets that were correct only on a 32-bit host: `debugger/locals.w`
+spelled the field-name slot `load_int(t + 16 + 8 * i)` (right at 4-byte
+words, wrong at 8), and `type_table_test.w` read `num_fields` as
+`load_int(t + 4)`. Both go through the accessors now.
+
+### Measured
+
+Callgrind `Ir`, `--quiet w.w`, matched input — both compilers given the
+*same* source tree, which matters once a change alters the compiler's own
+line count:
+
+| | before | after |
+| --- | --- | --- |
+| whole self-compile | 3,524,504,479 | **3,440,550,863** (−2.38%) |
+| `load_ptr` | 27,468,280 | 914,790 (−96.7%) |
+| `type_get_alias_target` | 115,232,670 | 93,283,590 |
+| `type_lookup_pointer` | 77,672,508 | 61,920,680 |
+| `type_get_const_target` | 47,667,249 | 38,587,773 |
+| `type_get_kind` | 24,188,010 | 18,910,626 |
+
+The largest *increase* is `type_alloc`, 0 → 1.2 M, which is `new`
+zeroing the record where `malloc` did not.
+
+`bin/wbench` self, interleaved best-of-7 over three rounds: 309/307/305
+ms before, 311/308/306 after — flat. The instructions removed were the
+cheap ones (a call, a `ret`, an `imul` on constants), which is worth
+stating plainly rather than quoting a wall-clock win that is not there.
+A first non-interleaved pair read 299 → 316 ms and was pure noise.
+
+## 12. Constant folding (2026-08-08)
+
+§10's item 2. The mechanism is the one already shipped for
+comparison-branch fusion (`optimization.md` §1.3): a note of
+`(start, end, value)`, valid only while nothing has been emitted since
+(`note_end == codepos`), consumed by rolling `codepos` back and
+re-emitting.
+
+`mov_eax_int` sets the note; `push_eax` carries it across a push;
+`pop_ebx` arms a two-operand fold when the pushed constant and the
+accumulator constant are adjacent; the ALU op consumes it.
+`imul_eax_int32` and `add_eax_int32` fold their own immediate straight
+into a current note, which is what collapses a constant array index and
+its scale into a single `mov`.
+
+**Only `mov_eax_int` sets the note, and that is the safety argument.**
+The other producer of a `mov $imm32,%eax` is `be_addr_slot_emit`, whose
+immediate is a backpatch slot rewritten later — and it emits its own
+bytes without coming through here. Everything else is fail-closed: any
+emission the fold did not expect advances `codepos` and the `==` check
+stops matching. `be_imm_note_reset()` joins `be_cmp_note_reset()` at all
+five sites where `codepos` moves backward.
+
+A fold that overflows the compiler's own word is declined, because the
+constant must come out the same whether this compiler is the 32-bit or
+the 64-bit self-host or `verify` and `verify_x64` stop agreeing. `-1`
+operands are declined rather than probed: the division check would have
+to evaluate `INT_MIN / -1`, which traps on x86 rather than wrapping.
+
+### Measured
+
+**Matched input is not optional here.** Comparing each compiler against
+its own tree charges this change for its own ~120 lines of new source and
+reports roughly ten times its real cost (+0.26% instead of +0.045%) — the
+extra source is more tokens, so `peek`, `strcmp` and `getchar_checked`
+all rise about 0.25% while their machine code is byte-identical.
+
+| | before | after |
+| --- | --- | --- |
+| compile cost (same `w.w`) | 3,440,698,982 | 3,442,231,944 (+0.045%) |
+| `repl.w` emitted instructions | 436,927 | 436,001 (−0.21%) |
+| `tools/wexec.w` emitted instructions | 163,494 | 162,837 (−0.40%) |
+| `imul` with immediate in `bin/wv3` | 2,206 | 2,131 |
+
+The compiler pays about a twentieth of a percent to take a fifth to two
+fifths of a percent of the instructions out of everything it emits, once,
+for every later run of that program.
+
+Note the ordering interaction: §11 removed essentially every
+`N * __word_size__` from the compiler's own source, so the `alu_imul`
+fold no longer fires much on `w.w` itself. Most of what it now earns
+comes from `imul_eax_int32` folding constant index scales — which is the
+shape §11 introduced.
+
+### Checking it
+
+`verify`, `verify_x64` and `verify_wasm` hold for both sections.
+`tests/const_fold_test.w` pins the fold behaviorally, in the shape of
+`tests/comparison_branch_test.w`: every folded operator, `__word_size__`
+operands, negative and `-1` operands, constant array and word-strided
+pointer indices, products that overflow 32 bits (which must decline and
+let the runtime instruction define the answer), and side-effect
+preservation. **It passes identically under the pinned seed, which has
+no folding at all** — an unfolded oracle for every assertion in it.
+
+### What is next
+
+- **`alu_add`/`alu_sub`/`alu_and`/`alu_or`/`alu_xor` are folded too**,
+  but division and modulo are not: they pop their own operand rather
+  than going through `pop_ebx`, so arming them needs a second protocol.
+  Low value, non-zero risk.
+- **The fold is x86-family only**, like `cmp_fuse`. arm64 and wasm
+  materialize constants through variable-length or stateful sequences
+  that a byte rollback would not undo cleanly. arm64 is the one worth
+  revisiting: its constant materialization is up to four instructions.
+- **The other word-strided tables are untouched** — `grammar/generic.w`
+  (68 sites), `compiler/compiler.w` (24),
+  `grammar/import_statement.w` (12), `structures/hash_table.w` (10),
+  `code_generator/dwarf.w` (7). All are flat `char**` vectors rather
+  than fixed-slot records, so they want a different treatment than §11's.
+  `compiler/symbol_table.w` is deliberately excluded: its fields are
+  4-byte packed at odd offsets, and word-scaled access would silently
+  widen them on the 64-bit targets.
+- **The 100-field cap** (`assert1(num_fields < max_fields)`) is still
+  there, and still exists only because the field region is a fixed-size
+  inline array — every type, including `int`, pays the whole record. A
+  growable field vector would lift the cap and shrink the average
+  record, but it changes allocation on a hot path and wants its own
+  measurement.

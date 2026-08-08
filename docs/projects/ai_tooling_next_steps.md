@@ -325,6 +325,29 @@ is a queue, not an archive.
 
 ## Cleanup observed while dogfooding
 
+- **A `cast(T*, x)` result takes no postfix suffix, so
+  `cast(int*, t)[218]` and `cast(rec*, p).field` do not parse.**
+  Observed 2026-08-08 (record-table indexing): `compiler_performance.md`
+  §10 proposed `cast(int*, t)[218]` as the replacement for
+  `load_ptr(t + 218 * __word_size__)` and it does not compile —
+  `grammar/unary_expression.w:269` handles `cast`, `expect(c")")`s and
+  returns `type_value(want)` immediately, never reaching
+  `postfix_expr`'s `[`/`.` suffix loop, which is only entered through
+  `unary_expression_operand`'s final fallthrough. What you actually get
+  for `return cast(int*, p)[0]` is a red herring first — `warning:
+  return type mismatch: expected 'int', got 'int*'`, because the cast
+  alone was taken as the whole expression — and only then `';' expected,
+  found '['`. Neither says a cast takes no suffix. Two spellings do
+  work, both already house style: an intermediate typed local
+  (`int* p = cast(int*, t)` then `p[218]`), or parenthesizing
+  (`(cast(int*, t))[218]`, the `(t - 1)[0]` shape from
+  `tests/pointer_arith_type_test.w:20`). Direction: let the `cast` arm
+  fall into the suffix loop rather than returning — it is the one
+  primary-shaped construct that does not, and the asymmetry is
+  invisible until you hit it. Cheap alternative: name it in the error.
+  Cost here was a planning round, since the proposed spelling was in a
+  committed design doc and read as known-good.
+
 - **`./wbuild -j 2 test_changed` misparses as a target lookup**
   (2026-08-06, lib/regex.w run). `test_changed` is a wbuild script
   mode dispatched only when it is literally `$1`, so leading flags

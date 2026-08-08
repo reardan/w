@@ -1342,6 +1342,7 @@ int wdbg_main(int argc, int argv):
 	code_size = buffer_size
 	codepos = 0
 	be_cmp_note_reset()
+	be_imm_note_reset()
 	code_offset = buffer
 
 	# The shared eval engine (repl/core.w) behind the print/eval and repl

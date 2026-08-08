@@ -149,13 +149,15 @@ void dbg_print_typed_value(int addr, int type):
 		return;
 	if ((type_get_pointer_level(type) == 0) & (type_num_args(type) > 0)):
 		print(c"{")
-		char* t = type_record(type)
 		int n = type_num_args(type)
 		int i = 0
 		while (i < n):
 			if (i > 0):
 				print(c", ")
-			print(str_from_cstr(cast(char*, load_int(t + 16 + 8 * i)))) /* field name */
+			# Through the accessor, not a hand-computed offset: the old
+			# 'load_int(t + 16 + 8 * i)' spelled the field-name slot with
+			# 4-byte strides, so it only landed correctly on a 32-bit host.
+			print(str_from_cstr(type_get_field_name_at(type, i)))
 			print(c" = ")
 			int field_type = type_get_field_type_at(type, i)
 			int width = type_get_size(field_type)

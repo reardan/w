@@ -25,6 +25,31 @@ is now the only item that still needs §3's post-pass machinery, since
 its in-between code embeds stack offsets computed from the push. v2
 remains gated on #231/#338 (§4), unchanged.
 
+**Update 2026-08-08**: **constant folding landed**, on the same
+mechanism 1 — a third v0 item, not one this doc originally listed. It
+came out of `compiler_performance.md` §10, which noticed that
+`218 * __word_size__` is two compile-time constants and still emitted a
+runtime `imul` with both operands materialized and pushed. `mov_eax_int`
+notes its immediate; `push_eax` carries the note across a push;
+`pop_ebx` arms a two-operand fold when the pushed and accumulator
+constants are adjacent; `alu_imul`/`alu_add`/`alu_sub`/`alu_and`/
+`alu_or`/`alu_xor` consume it, and `imul_eax_int32`/`add_eax_int32` fold
+an immediate straight into a current note (which is what collapses a
+constant array index and its scale). Division and modulo are not folded:
+they pop their own operand instead of going through `pop_ebx`.
+
+That §1.2's push/pop shuttle is exactly what disappears here is not a
+contradiction of the paragraph above — with two literals there *is* no
+in-between code, so no stack offset can be embedded in it, which is
+precisely the case §1.2 is hard for. Folding sidesteps the post-pass
+rather than needing it.
+
+Cost/benefit, matched input (`compiler_performance.md` §12): +0.045% at
+compile time, −0.21% to −0.40% of the static instructions in everything
+the compiler emits. x86/x64 only, like §1.3. `tests/const_fold_test.w`
+pins it, and passes identically under the pinned seed, which does no
+folding — an unfolded oracle for every assertion.
+
 Original assessment follows. Answers issue #110 verbatim: "Optimization pass - either from the
 generated code (v0), or additional passes of the AST (v2)." Companion to
 `docs/projects/compilation_model.md` (#338/#337 — the AST/artifact
