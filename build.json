@@ -2068,6 +2068,7 @@
 				"compress_gzip_64_test",
 				"compress_inflate_64_test",
 				"compress_zlib_64_test",
+				"const_fold_64_test",
 				"container_free_64_test",
 				"container_free_debug_64_test",
 				"crash_install_64_test",
@@ -2676,6 +2677,7 @@
 				"compress_gzip_test",
 				"compress_inflate_test",
 				"compress_zlib_test",
+				"const_fold_test",
 				"container_free_debug_test",
 				"container_free_test",
 				"crash_install_test",
@@ -3491,6 +3493,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/compress_zlib_test.w", "-o", "bin/compress_zlib_test"]},
 				{"cmd": ["bin/compress_zlib_test"]}
+			]
+		},
+		{
+			"name": "const_fold_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/const_fold_test.w"],
+			"outputs": ["bin/const_fold_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/const_fold_test.w", "-o", "bin/const_fold_64_test"]},
+				{"cmd": ["bin/const_fold_64_test"]}
+			]
+		},
+		{
+			"name": "const_fold_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/const_fold_test.w"],
+			"outputs": ["bin/const_fold_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/const_fold_test.w", "-o", "bin/const_fold_test"]},
+				{"cmd": ["bin/const_fold_test"]}
 			]
 		},
 		{

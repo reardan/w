@@ -180,6 +180,101 @@ void store_ebx_int8():
 	emit(2, c"\x88\x03")
 
 
+# Constant folding (docs/projects/optimization.md's v0 window, same shape
+# as the cmp_fuse_* note further down). mov_eax_int notes where it put an
+# immediate and what the value was; a consumer running while the note is
+# still CURRENT -- nothing emitted since, so imm_note_end == codepos --
+# rolls the materialization back and folds its own operand into it.
+#
+# Only mov_eax_int sets the note, which is what makes this safe: the other
+# producer of a 'mov $imm32,%eax' is be_addr_slot_emit (code_generator/
+# arm64.w), whose immediate is a backpatch slot rewritten later, and it
+# emits its own bytes without coming through here. No mov_eax_int caller
+# patches its immediate.
+#
+# Everything is fail-closed. Any emission the fold did not expect advances
+# codepos, the == check stops matching, and the plain path runs.
+#
+# x86 family only, like cmp_fuse: arm64 and wasm materialize constants
+# through variable-length or stateful sequences that a byte rollback would
+# not undo cleanly.
+int imm_note_start
+int imm_note_end
+int imm_note_value
+
+# The same note for a constant push_eax has already pushed, so a
+# two-operand ALU op can fold both sides. push_imm_start is the constant's
+# own start rather than the push's, so rolling back to it removes the mov
+# and the push together.
+int push_imm_start
+int push_imm_end
+int push_imm_value
+
+# Armed by pop_ebx when the pushed constant and the accumulator constant
+# are both current and adjacent; consumed by the ALU op that follows.
+int binfold_end
+int binfold_start
+int binfold_left
+int binfold_right
+
+# Invalidate every note. Must be called wherever codepos moves backward
+# (REPL/wdbg checkpoint rollback), exactly like be_cmp_note_reset: a stale
+# note aliasing a later codepos would let a fold roll back over bytes that
+# are not a constant materialization.
+void be_imm_note_reset():
+	imm_note_end = 0
+	push_imm_end = 0
+	binfold_end = 0
+
+# True when a * b does not overflow the compiler's own word. The fold has
+# to produce the same constant whether this compiler is the 32-bit or the
+# 64-bit self-host, or verify and verify_x64 stop agreeing, so a product
+# that wraps here must fall back to the runtime imul. A target narrower
+# than the host is not a hazard: mov_eax_int32 writes the low 32 bits,
+# which is what a 32-bit imul would have produced anyway.
+#
+# -1 is rejected rather than checked: the division probe would have to
+# evaluate INT_MIN / -1, which traps on x86 rather than wrapping.
+int fold_mul_fits(int a, int b):
+	if ((a == 0) || (b == 0)):
+		return 1
+	if ((a == -1) || (b == -1)):
+		return 0
+	int p = a * b
+	if (p / b != a):
+		return 0
+	return p / a == b
+
+# True when a + b does not overflow the compiler's own word, same reason.
+int fold_add_fits(int a, int b):
+	int sum = a + b
+	if ((b > 0) && (sum < a)):
+		return 0
+	if ((b < 0) && (sum > a)):
+		return 0
+	return 1
+
+# True when a - b does not overflow the compiler's own word, same reason.
+int fold_sub_fits(int a, int b):
+	int diff = a - b
+	if ((b < 0) && (diff < a)):
+		return 0
+	if ((b > 0) && (diff > a)):
+		return 0
+	return 1
+
+void mov_eax_int(int v);
+
+# Consume an armed two-operand fold: roll back over the left constant, the
+# push and the right constant, and put the result there instead. Callers
+# test binfold_end themselves, so the common unarmed path costs two global
+# reads and no call.
+void binfold_emit(int folded):
+	codepos = binfold_start
+	binfold_end = 0
+	mov_eax_int(folded)
+
+
 /* mov eax, op(0x12, 0x345678) */
 void mov_eax_int32(int v):
 	if (target_isa == 3):
@@ -301,10 +396,19 @@ void mov_eax_int(int v):
 	if (target_isa == 1):
 		arm64_mov_rax_int64(v)
 		return
+	int start = codepos
 	if (word_size == 8):
 		mov_rax_int64(v)
 	else:
 		mov_eax_int32(v)
+	# PTX also reaches here (it has no early return above) but does not
+	# advance codepos, so note it only for the x86 family. Every consumer
+	# already early-returns on the other ISAs; this keeps the invariant
+	# true where it is stated rather than only where it is enforced.
+	if (target_isa == 0):
+		imm_note_start = start
+		imm_note_end = codepos
+		imm_note_value = v
 
 
 void add_eax_int32(int v):
@@ -317,6 +421,12 @@ void add_eax_int32(int v):
 	if (target_isa == 1):
 		arm64_add_eax_int32(v)
 		return
+	if ((imm_note_end != 0) && (imm_note_end == codepos)):
+		if (fold_add_fits(imm_note_value, v)):
+			int folded = imm_note_value + v
+			codepos = imm_note_start
+			mov_eax_int(folded)
+			return
 	emit_x64_opcode()
 	emit(1, c"\x05") /* \x2d add eax,... */
 	emit_int32(v)
@@ -333,6 +443,12 @@ void imul_eax_int32(int v):
 	if (target_isa == 1):
 		arm64_imul_eax_int32(v)
 		return
+	if ((imm_note_end != 0) && (imm_note_end == codepos)):
+		if (fold_mul_fits(imm_note_value, v)):
+			int folded = imm_note_value * v
+			codepos = imm_note_start
+			mov_eax_int(folded)
+			return
 	emit_x64_opcode()
 	emit(2, c"\x69\xc0")
 	emit_int32(v)
@@ -402,7 +518,20 @@ void push_eax():
 	if (target_isa == 1):
 		a64(op(0xf8, 0x1f8f80))   # str x0,[x28,#-8]!
 		return
+	# Inlined rather than calling imm_note_current(): W has no inliner and
+	# this is one of the hottest emitters in the compiler. target_isa == 0
+	# is already established by the early returns above.
+	int carried = 0
+	if ((imm_note_end != 0) && (imm_note_end == codepos)):
+		carried = 1
+	int start = imm_note_start
+	int value = imm_note_value
 	emit(1, c"\x50")
+	push_imm_end = 0
+	if (carried):
+		push_imm_start = start
+		push_imm_end = codepos
+		push_imm_value = value
 
 
 void push_ebx():
@@ -428,7 +557,26 @@ void pop_ebx():
 	if (target_isa == 1):
 		a64(op(0xf8, 0x408781))   # ldr x1,[x28],#8
 		return
+	# Both operands constant, and the right one emitted EXACTLY one mov
+	# directly after the push (push_imm_end == imm_note_start) -- so the
+	# span from the left constant to here is mov, push, mov, and nothing
+	# else can be hiding in it.
+	int armed = 0
+	if ((imm_note_end != 0) && (imm_note_end == codepos)):
+		if ((push_imm_end != 0) && (push_imm_end == imm_note_start)):
+			armed = 1
+	int left = push_imm_value
+	int right = imm_note_value
+	int start = push_imm_start
 	emit(1, c"\x5b")
+	imm_note_end = 0
+	push_imm_end = 0
+	binfold_end = 0
+	if (armed):
+		binfold_start = start
+		binfold_end = codepos
+		binfold_left = left
+		binfold_right = right
 
 
 void pop_eax():
@@ -938,6 +1086,10 @@ void alu_add():
 	if (target_isa == 1):
 		a64(op(0x8b, 0x010000))   # add x0,x0,x1
 		return
+	if ((binfold_end != 0) && (binfold_end == codepos)):
+		if (fold_add_fits(binfold_left, binfold_right)):
+			binfold_emit(binfold_left + binfold_right)
+			return
 	emit_x64_opcode()
 	emit(2, c"\x01\xd8")
 
@@ -953,6 +1105,10 @@ void alu_sub():
 	if (target_isa == 1):
 		a64(op(0xcb, 0x000020))   # sub x0,x1,x0
 		return
+	if ((binfold_end != 0) && (binfold_end == codepos)):
+		if (fold_sub_fits(binfold_left, binfold_right)):
+			binfold_emit(binfold_left - binfold_right)
+			return
 	emit_x64_opcode()
 	emit(2, c"\x29\xc3")
 	emit_x64_opcode()
@@ -970,6 +1126,10 @@ void alu_imul():
 	if (target_isa == 1):
 		a64(op(0x9b, 0x017c00))   # mul x0,x0,x1
 		return
+	if ((binfold_end != 0) && (binfold_end == codepos)):
+		if (fold_mul_fits(binfold_left, binfold_right)):
+			binfold_emit(binfold_left * binfold_right)
+			return
 	emit_x64_opcode()
 	emit(3, c"\x0f\xaf\xc3")
 
@@ -1060,6 +1220,9 @@ void alu_and():
 	if (target_isa == 1):
 		a64(op(0x8a, 0x010000))   # and x0,x0,x1
 		return
+	if ((binfold_end != 0) && (binfold_end == codepos)):
+		binfold_emit(binfold_left & binfold_right)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x21\xd8")
 
@@ -1075,6 +1238,9 @@ void alu_or():
 	if (target_isa == 1):
 		a64(op(0xaa, 0x010000))   # orr x0,x0,x1
 		return
+	if ((binfold_end != 0) && (binfold_end == codepos)):
+		binfold_emit(binfold_left | binfold_right)
+		return
 	emit_x64_opcode()
 	emit(2, c"\x09\xd8")
 
@@ -1089,6 +1255,9 @@ void alu_xor():
 		return
 	if (target_isa == 1):
 		a64(op(0xca, 0x010000))   # eor x0,x0,x1
+		return
+	if ((binfold_end != 0) && (binfold_end == codepos)):
+		binfold_emit(binfold_left ^ binfold_right)
 		return
 	emit_x64_opcode()
 	emit(2, c"\x31\xd8")
