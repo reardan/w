@@ -82,6 +82,12 @@ int sym_lookup(char *s):
 	int t = 0
 	int current_symbol = -1
 	int visited = 0
+	# Hoisted out of the loop below: this is the hottest loop in the
+	# compiler, and stepping with next_token(t) cost two calls per record
+	# visited -- next_token itself, plus the symbol_data_size() call it
+	# makes to obtain a constant. Read once here instead of duplicating
+	# the literal, so the stride still lives in exactly one place.
+	int stride = symbol_data_size()
 	while (t <= table_pos - 1):
 		int i = 0
 		while ((s[i] == table[t]) && (s[i] != 0)):
@@ -94,7 +100,7 @@ int sym_lookup(char *s):
 		while (table[t] != 0):
 			t = t + 1
 
-		t = next_token(t)
+		t = t + stride
 		visited = visited + 1
 
 	sym_lookup_calls = sym_lookup_calls + 1
