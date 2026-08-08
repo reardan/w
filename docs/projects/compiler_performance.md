@@ -8,6 +8,8 @@ code faster; this one is about making the *compiler* faster.
 a 19.2× speedup, and the quadratic is gone. See §8 for what landed and
 what the profile looks like now.** The report below is left as written
 so the before-picture and the reasoning stay legible; §8 is the after.
+**§10 is the round after that**: `load_i`/`save_i`, the 35% §9 pointed
+at, replaced with native-width loads and stores.
 
 Every number below was taken on one machine, one checkout: a 4-core
 Intel Xeon @ 2.80GHz, 16 GB RAM, x86_64 Linux container, seed `v0.1.0`
@@ -383,7 +385,8 @@ them. They are written that way to be byte-order- and width-portable
 across five backends, so the fix is not free — either unrolling the
 common widths, or exposing a native word load/store the codegen can emit
 directly. Nothing here has attempted it; the 35% figure is the case for
-looking.
+looking. **Done — see §10**: the native-width route, −31.8% off the
+whole self-compile.
 
 Two things deliberately *not* done:
 
@@ -400,3 +403,129 @@ Two things deliberately *not* done:
   closure in the tree is `w.w`'s own 154 paths, so it does ~12,000 short
   `strcmp`s — microseconds inside an 850 ms run. Changing it would be
   unmeasurable.
+
+## 10. The integer accessors (2026-08-08)
+
+§9 named `load_i` as the next thing to look at, at 35% of the profile.
+This is what happened when it was looked at.
+
+`code_generator/integer.w` serialized every integer a byte at a time:
+
+```
+int load_i(char* p, int n):
+	int result = 0
+	while (n > 0):
+		result = (result << 8) + (p[n - 1] & 255)
+		n = n - 1
+	return result
+```
+
+Every symbol-table field, every type-record slot and every code-emitter
+patch went through that loop and its `save_i` counterpart, so a 4-byte
+field read cost a call plus four iterations of shift/mask/add. It is
+now a single machine load:
+
+```
+int load_i(char* p, int n):
+	if (n == __word_size__):
+		return *cast(int*, p)
+	if (n == 4):
+		return *cast(uint32*, p)
+	...
+```
+
+with the same treatment for the sized wrappers (`load_int32`,
+`save_ptr`, and the rest), which now deref directly instead of
+delegating down two more calls.
+
+### Why this is allowed
+
+The loops encoded three things, and only the first one was portability:
+
+- **Byte order.** Every target is little-endian, so an n-byte field is
+  by definition what a width-n machine load reads. The loop was not
+  buying portability the language did not already have.
+- **Extension.** The loop zero-extends (it builds the value up from
+  zero), except `load_int32`, which explicitly sign-extended on a 64-bit
+  host. The replacements match slot for slot: `int32*` where the loop
+  sign-extended, `uint32*`/`uint16*`/`uint8*` where it did not.
+- **Width.** A store must touch exactly n bytes and no neighbours —
+  the symbol table packs 4-byte fields at offset 2 (see the record
+  layout in `compiler/symbol_table.w`), so anything wider corrupts the
+  next field. The sized pointer types store exactly their width.
+
+Two widths keep the loop, and both matter on a 32-bit host: 3/5/6/7
+have no machine type, and `save_int64` on a 32-bit host must sign-fill
+the upper four bytes the way `v >> 8` did, which a 4-byte store would
+not reproduce.
+
+**Unaligned access is a hard requirement here, not an accident** — the
+symbol table's fields start at offsets 2, 6, 10, ... x86, x64 and arm64
+all take unaligned normal loads, and wasm treats the encoded alignment
+as a hint rather than a constraint. `verify_wasm` is the interesting
+gate for this: it self-compiles *under* the wasm engine, so a full
+compile's worth of unaligned sized accesses runs there.
+
+### Measured
+
+Callgrind `Ir`, `bin/wv3 --strict w.w`, at commit `d50ccc0`, same
+machine as §1. The two compilers differ only in `integer.w`.
+
+| | before | after |
+| --- | --- | --- |
+| whole self-compile | 5,138,561,073 | **3,506,425,167** (−31.8%) |
+| all of `integer.w` | 1,681,861,567 | 49,725,661 (−97.0%) |
+| `load_i` | 1,396,499,377 | below threshold |
+| `save_i` | 169,066,033 | 10,915,427 |
+| `load_ptr` | 64,585,392 | 26,910,580 |
+
+`bin/wbench`, best of 15:
+
+| workload | before | after |
+| --- | --- | --- |
+| prelude | 19 ms | 18 ms |
+| sym1000 | 36 ms | 27 ms |
+| sym4000 | 86 ms | 70 ms |
+| self | 404 ms | **294 ms** |
+
+Symbol-lookup counters are unchanged in every workload, as they should
+be — this touches no lookup logic.
+
+(§9's absolute total, 8.36 G`Ir`, does not reproduce as the "before" of
+this table; the pair above was taken as a matched before/after in one
+sitting on one machine, which is the comparison that carries the claim.
+The share it attributes to `load_i` does reproduce: 27.2% of the
+before-total here, plus 3.3% for `save_i`.)
+
+### Checking it
+
+`verify`, `verify_x64` and `verify_wasm` all hold, which is the real
+gate: every field these accessors read feeds addresses, types and
+backpatch chains straight into codegen, so a byte-identical fixpoint
+means every access in a full self-compile returned exactly what it used
+to. `build_arm64`'s cross-compile step passes; its run step needs
+`qemu-user-static`, absent on this box, so the arm64 fixpoint is
+unverified here.
+
+`tests/integer_accessor_test.w` is the unit-level guard: it keeps the
+original byte loops as an oracle and checks all eight accessors against
+them over 4,000 pseudo-random trials, at every width and at eight
+offsets each, comparing whole 64-byte buffers so an over-wide store
+fails as a neighbour mismatch rather than passing unnoticed.
+
+### What is next
+
+The accessors are no longer the top of the profile, but the *call* to
+them is now most of what is left of them — `load_ptr` costs 26.9 M`Ir`
+for a three-instruction body. Two follow-ups, in order of value:
+
+1. **Index the record tables instead of calling an accessor.**
+   `type_get_*` and friends spell a slot as
+   `load_ptr(t + 218 * __word_size__)`. Written as
+   `cast(int*, t)[218]` it is one scaled load with no call, and
+   `type_table.w` has 169 such sites. Mechanical, and it also sidesteps
+   the next item.
+2. **Fold literal × literal.** `218 * __word_size__` is two constants
+   and still emits a runtime `imul` (both operands materialized and
+   pushed), because there is no constant folding — a general win beyond
+   these tables, and squarely `optimization.md`'s v0 territory.
