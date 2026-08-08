@@ -607,6 +607,8 @@ int link_option_recognized(char* arg):
 		return 1
 	if (strcmp(arg, c"--stats") == 0):
 		return 1
+	if (strcmp(arg, c"--stats-selfcheck") == 0):
+		return 1
 	if (strcmp(arg, c"--wasm-acc=globals") == 0):
 		return 1
 	if (strcmp(arg, c"--wasm-acc=locals") == 0):
@@ -631,6 +633,7 @@ void help_shared_options():
 	println(c"  --strict              treat warnings as errors and write no output")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
+	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
 	println(c"  -v, --verbose         raise verbosity (repeat for compiler debug traces)")
@@ -949,6 +952,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			quiet_mode = 1
 		else if (strcmp(*arg, c"--stats") == 0):
 			stats_mode = 1
+		else if (strcmp(*arg, c"--stats-selfcheck") == 0):
+			sym_index_selfcheck = 1
 		else if (strcmp(*arg, c"--wasm-acc=globals") == 0):
 			wasm_acc_locals = wasm_acc_level
 		else if (strcmp(*arg, c"--wasm-acc=locals") == 0):
