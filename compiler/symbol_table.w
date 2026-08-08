@@ -36,6 +36,32 @@ int stack_pos
 int sym_lookup_calls
 int sym_lookup_steps
 
+# --- symbol lookup index -------------------------------------------------
+# sym_index_offsets[i] is the table offset of the NUL of the i-th live
+# record -- exactly the value sym_lookup returns for it. The array exists
+# because the records themselves are variable-length and packed forward,
+# so the blob cannot be walked backwards; with the offsets to hand,
+# sym_lookup can scan newest-first and stop at the first match, which is
+# by construction the innermost declaration.
+#
+# Mirroring the blob is sound because the blob is append-only: table_pos
+# is only ever INCREASED by sym_declare below, and every other assignment
+# to it restores a previously saved, smaller value --
+# grammar/statement.w:226,257, grammar/program.w:193,499,
+# grammar/extern_statement.w:140, grammar/generator_decl.w:150,
+# grammar/gpu_for.w:195, grammar/kernel_decl.w:249,
+# repl/core.w:434,517,618. Records are never moved or reordered, so a
+# position is stable for as long as it is live. Scope exit therefore
+# needs no cooperation from any of those sites: sym_index_sync() below
+# discards the records they truncated, lazily, on the next use.
+#
+# Entries are 4-byte ints read with load_int/save_int, not an int* --
+# W scales int* indexing by __word_size__, which would silently make
+# these 8-byte entries on the 64-bit targets.
+char* sym_index_offsets
+int sym_index_count
+int sym_index_capacity
+
 
 void sym_stats_dump():
 	print_int0(c"sym_lookup calls: ", sym_lookup_calls)
@@ -49,6 +75,61 @@ int symbol_data_size():
 
 int next_token(int t):
 	return t + symbol_data_size()
+
+
+int sym_index_offset(int i):
+	return load_int(sym_index_offsets + i * 4)
+
+
+# Records are contiguous, so record i's name begins where record i-1's
+# data block ends. sym_declare writes the name at table_pos and leaves
+# table_pos at next_token(nul), so the blob has no gaps and this is exact.
+int sym_index_name_start(int i):
+	if (i == 0):
+		return 0
+	return next_token(sym_index_offset(i - 1))
+
+
+# Grow to hold at least n entries. Never shrinks -- that is what makes
+# scope truncation free. The oldlen handed to realloc is always exactly
+# what this block was last allocated with, which lib/memory_debug.w
+# checks and aborts on. Growing from a null pointer at capacity 0 is
+# realloc(0, 0, n), the same call the symbol blob itself makes on the
+# first sym_declare.
+void sym_index_reserve(int n):
+	if (n <= sym_index_capacity):
+		return
+	int x = sym_index_capacity
+	if (x == 0):
+		x = 1024
+	while (x < n):
+		x = x << 1
+	sym_index_offsets = realloc(sym_index_offsets, sym_index_capacity * 4, x * 4)
+	sym_index_capacity = x
+
+
+# The top live record must end exactly at table_pos. One comparison,
+# always on: it catches a table_pos left off a record boundary, a
+# table_pos restored to a LARGER value than the index knows about (which
+# would resurrect popped records and make lookups silently miss them),
+# and any future append path that bypasses sym_declare.
+void sym_index_check():
+	if (sym_index_count == 0):
+		if (table_pos != 0):
+			error(c"symbol index desync: empty index, non-empty table")
+		return
+	if (next_token(sym_index_offset(sym_index_count - 1)) != table_pos):
+		error(c"symbol index desync: top record does not end at table_pos")
+
+
+# Bring the index back in step with table_pos after a scope truncation.
+# Lazy by design: the truncating sites listed above just move table_pos,
+# and the next declare or lookup pays for it. Idempotent, so an error()
+# longjmp between a truncation and the next sync is harmless.
+void sym_index_sync():
+	while ((sym_index_count > 0) && (sym_index_offset(sym_index_count - 1) >= table_pos)):
+		sym_index_count = sym_index_count - 1
+	sym_index_check()
 
 
 void sym_table_info():
@@ -79,33 +160,32 @@ void sym_last_info():
 # Returns the table offset of the symbol's data block, or -1 when not found.
 # 0 is a valid offset (the first declared symbol), so callers must test for < 0.
 int sym_lookup(char *s):
-	int t = 0
-	int current_symbol = -1
+	sym_index_sync()
 	int visited = 0
-	# Hoisted out of the loop below: this is the hottest loop in the
-	# compiler, and stepping with next_token(t) cost two calls per record
-	# visited -- next_token itself, plus the symbol_data_size() call it
-	# makes to obtain a constant. Read once here instead of duplicating
-	# the literal, so the stride still lives in exactly one place.
-	int stride = symbol_data_size()
-	while (t <= table_pos - 1):
-		int i = 0
-		while ((s[i] == table[t]) && (s[i] != 0)):
-			i = i + 1
-			t = t + 1
-
-		if (s[i] == table[t]):
-			current_symbol = t
-
-		while (table[t] != 0):
-			t = t + 1
-
-		t = t + stride
+	int i = sym_index_count
+	while (i > 0):
+		i = i - 1
 		visited = visited + 1
+		int t = sym_index_name_start(i)
+		int j = 0
+		# Character-identical to the forward scan this replaced, so the
+		# matching rule cannot have drifted; only the direction and the
+		# early exit are new.
+		while ((s[j] == table[t]) && (s[j] != 0)):
+			j = j + 1
+			t = t + 1
+
+		if (s[j] == table[t]):
+			# Newest-first, so the first match is the innermost
+			# declaration -- the same record the old forward scan
+			# returned by running to the end and keeping the last one.
+			sym_lookup_calls = sym_lookup_calls + 1
+			sym_lookup_steps = sym_lookup_steps + visited
+			return sym_index_offset(i)
 
 	sym_lookup_calls = sym_lookup_calls + 1
 	sym_lookup_steps = sym_lookup_steps + visited
-	return current_symbol
+	return -1
 
 
 int sym_address(char *s):
@@ -198,6 +278,11 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 		print_int0(c", symtype=", symtype)
 		println2(c")")
 
+	# Discard anything a scope exit truncated, and make room, before the
+	# blob and the index start moving: after this point nothing between
+	# writing the record and recording its offset can allocate or fail.
+	sym_index_sync()
+	sym_index_reserve(sym_index_count + 1)
 	int t = table_pos
 	int i = 0
 	while (s[i] != 0):
@@ -228,6 +313,10 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
 	save_int(table + t + 74, diag_token_column)
+	# t is the record's NUL offset -- exactly what sym_lookup returns for
+	# it. Index and table_pos move together.
+	save_int(sym_index_offsets + sym_index_count * 4, t)
+	sym_index_count = sym_index_count + 1
 	table_pos = next_token(t)
 
 	# Record where locals and arguments live so the in-process debugger
