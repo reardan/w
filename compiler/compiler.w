@@ -26,6 +26,13 @@ void file_not_found_error():
 int quiet_mode
 
 
+# --stats: print the symbol-lookup counters (compiler/symbol_table.w) to
+# stderr once the compile finishes. Records visited is deterministic for a
+# given input, so it is the figure to compare when changing lookup, and
+# the one a test can assert; wall time is too noisy to gate on.
+int stats_mode
+
+
 # 'w deps' recording: while deps_mode is set, every file the compiler
 # successfully opens for compilation (the root, every import, and the
 # auto-imported runtime modules) is recorded here so deps_dump() can
@@ -598,6 +605,8 @@ int link_option_recognized(char* arg):
 		return 1
 	if (strcmp(arg, c"--quiet") == 0):
 		return 1
+	if (strcmp(arg, c"--stats") == 0):
+		return 1
 	if (strcmp(arg, c"--wasm-acc=globals") == 0):
 		return 1
 	if (strcmp(arg, c"--wasm-acc=locals") == 0):
@@ -621,6 +630,7 @@ void help_shared_options():
 	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (default: ret)")
 	println(c"  --strict              treat warnings as errors and write no output")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
+	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
 	println(c"  -v, --verbose         raise verbosity (repeat for compiler debug traces)")
@@ -937,6 +947,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			strict_mode = 1
 		else if (strcmp(*arg, c"--quiet") == 0):
 			quiet_mode = 1
+		else if (strcmp(*arg, c"--stats") == 0):
+			stats_mode = 1
 		else if (strcmp(*arg, c"--wasm-acc=globals") == 0):
 			wasm_acc_locals = wasm_acc_level
 		else if (strcmp(*arg, c"--wasm-acc=locals") == 0):
@@ -1074,6 +1086,12 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 
 	if ((output_path != 0) | check_mode):
 		close(output_fd)
+
+	# Every subcommand routes through link_impl (link, check_main,
+	# deps_main, symbols_main, defhash_main), so one call here covers
+	# them all.
+	if (stats_mode):
+		sym_stats_dump()
 
 	return 0
 

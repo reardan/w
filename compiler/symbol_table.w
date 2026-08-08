@@ -27,6 +27,21 @@ int table_size
 int table_pos
 int stack_pos
 
+# Lookup cost counters, printed by 'w --stats'. sym_lookup_steps counts
+# symbol records visited, which is the metric that actually matters here:
+# it is deterministic for a given input, so it can be compared across
+# machines and asserted in a test, where wall time cannot.
+# sym_lookup_calls is incremented once per call, so the counting itself
+# never shows up in a profile.
+int sym_lookup_calls
+int sym_lookup_steps
+
+
+void sym_stats_dump():
+	print_int0(c"sym_lookup calls: ", sym_lookup_calls)
+	print_int0(c" records visited: ", sym_lookup_steps)
+	print_error(c"\x0a")
+
 
 int symbol_data_size():
 	return 142
@@ -66,6 +81,7 @@ void sym_last_info():
 int sym_lookup(char *s):
 	int t = 0
 	int current_symbol = -1
+	int visited = 0
 	while (t <= table_pos - 1):
 		int i = 0
 		while ((s[i] == table[t]) && (s[i] != 0)):
@@ -79,7 +95,10 @@ int sym_lookup(char *s):
 			t = t + 1
 
 		t = next_token(t)
+		visited = visited + 1
 
+	sym_lookup_calls = sym_lookup_calls + 1
+	sym_lookup_steps = sym_lookup_steps + visited
 	return current_symbol
 
 

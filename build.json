@@ -917,6 +917,15 @@
 			]
 		},
 		{
+			"name": "wbench",
+			"deps": ["wv2"],
+			"inputs": ["tools/wbench.w"],
+			"outputs": ["bin/wbench"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/wbench.w", "-o", "bin/wbench"]}
+			]
+		},
+		{
 			"name": "wtest_map_check",
 			"deps": ["wv2"],
 			"inputs": ["tools/wtest_map_check.w"],
