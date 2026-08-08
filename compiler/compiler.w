@@ -1672,8 +1672,8 @@ char* symbols_kind_name(int symtype):
 # follow alias targets). Only struct/union/enum/alias/fn declarations record
 # locations, so the default is "struct".
 char* symbols_type_kind_name(int type_index):
-	int t = cast(int, type_record(type_index))
-	int kind = load_ptr(t + 205 * __word_size__)
+	type_rec* t = type_record(type_index)
+	int kind = t.kind
 	if (kind == type_kind_alias):
 		return c"alias"
 	if (kind == type_kind_union):
@@ -1816,8 +1816,8 @@ void symbols_dump(int json):
 int symbols_layout_wanted(int type_index):
 	if (type_get_pointer_level(type_index) != 0):
 		return 0
-	int t = cast(int, type_record(type_index))
-	int kind = load_ptr(t + 205 * __word_size__)
+	type_rec* t = type_record(type_index)
+	int kind = t.kind
 	if ((kind != 0) && (kind != type_kind_union)):
 		return 0
 	if ((type_decl_file_index(type_index) < 0) && (type_num_args(type_index) == 0)):
