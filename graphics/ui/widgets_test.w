@@ -157,15 +157,16 @@ void test_widgets_accumulate_vertices():
 	ui_begin(&ctx, 320, 240)
 	ui_label(&ctx, c"W UI demo")
 	int after_label = r.vert_count
-	asserts(c"label drew glyphs", after_label == 9 * 6)
+	# 9 characters, 2 inkless spaces -> 7 glyph quads.
+	asserts(c"label drew glyphs", after_label == 7 * 6)
 	ui_button(&ctx, c"Click")
 	int after_button = r.vert_count
-	# button = 1 fill quad + 5 glyphs
-	assert_equal(after_label + 6 * 6, after_button)
+	# button = pill rrect (7 quads) + 5 glyphs
+	assert_equal(after_label + 12 * 6, after_button)
 	int32 checked = 1
 	ui_checkbox(&ctx, c"dark", &checked)
-	# checkbox = box quad + accent quad + 4 glyphs
-	assert_equal(after_button + 6 * 6, r.vert_count)
+	# checked box = accent rrect (7 quads) + checkmark + 4 glyphs
+	assert_equal(after_button + 12 * 6, r.vert_count)
 	ui_end(&ctx)
 	ui_render_destroy(&r)
 
@@ -199,7 +200,7 @@ void test_textbox_state_editing():
 
 
 # Default metrics: a 200-wide textbox claims row (8,8,200,32); its
-# text starts at x=16, glyphs advance 16px.
+# text starts at x=16 and advances per glyph (proportional).
 void test_textbox_focus_typing_and_submit():
 	ui_renderer r
 	ui_render_init_headless(&r)
@@ -220,8 +221,9 @@ void test_textbox_focus_typing_and_submit():
 	assert_equal(0, ctx.focus)
 	assert_equal(3, st.length)
 
-	# Click at x=40 focuses and places the caret at glyph boundary 2.
-	feed_click(&ctx, 40, 20)
+	# A click just left of glyph boundary 2 focuses and snaps the
+	# caret there (positions computed from the live metrics).
+	feed_click(&ctx, 16 + ui_text_prefix_width(c"abc", 2, 2) - 1, 20)
 	ui_begin(&ctx, 320, 240)
 	ui_textbox(&ctx, 200.0, &st)
 	ui_end(&ctx)
@@ -327,19 +329,25 @@ void test_progress_vertices_and_clamp():
 	ui_context ctx
 	ui_context_init(&ctx, &r, &theme)
 
-	# Zero fraction: track only. Positive: track + fill. Over 1 clamps
-	# to the track width.
+	# Zero fraction: the track's rounded rect only (7 quads). Positive:
+	# track + fill (14 quads). Over 1 clamps to the track width.
 	ui_begin(&ctx, 320, 240)
 	ui_progress(&ctx, 100.0, 0.0)
-	assert_equal(6, r.vert_count)
+	assert_equal(42, r.vert_count)
 	ui_progress(&ctx, 100.0, 0.5)
-	assert_equal(18, r.vert_count)
+	assert_equal(126, r.vert_count)
 	ui_progress(&ctx, 100.0, 7.0)
-	assert_equal(30, r.vert_count)
-	# The clamped fill's right edge equals the track's right edge
-	# (third widget: track = vertices 18..23, fill = 24..29; vertex 25
-	# carries x1).
-	asserts(c"clamped fill width", r.verts[25 * 8] == 108.0)
+	assert_equal(210, r.vert_count)
+	# The clamped fill's right edge equals the track's right edge: no
+	# vertex of the third widget's fill (the last 42) reaches past
+	# x = 8 + 100.
+	float32 max_x = 0.0
+	int v = 168
+	while (v < 210):
+		if (r.verts[v * 8] > max_x):
+			max_x = r.verts[v * 8]
+		v = v + 1
+	asserts(c"clamped fill width", max_x == 108.0)
 	ui_end(&ctx)
 	ui_render_destroy(&r)
 

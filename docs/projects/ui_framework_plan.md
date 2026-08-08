@@ -339,8 +339,59 @@ serve the repo, open
   `ui_disable` scope), the demo dropdown as a runtime light/dark/ocean
   theme picker, and `ui_theme_ocean` as the non-grayscale example
   theme.
-- **Stage 4+**: TTF/SDF fonts (issue #379), a win64 window backend,
-  accessibility — each a future design doc.
+- **Stage 4** (implemented 2026-08-07, see the section below): real
+  typography + the Material-style visual refresh.
+- **Stage 5+**: SDF/dynamic-size text and full #379 typography, a
+  win64 window backend, accessibility — each a future design doc.
+
+## Stage 4 — typography + Material visual refresh
+
+Goal: replace the 8x8 bitmap placeholder with real antialiased
+proportional type, and move the widget look from flat rectangles to a
+modern, minimal, Material-style shape language — without changing the
+renderer's one-shader/one-atlas design or the frozen metric scale
+(pad 8, gap 8, widget_height 32), which the wasm click gate and the
+smoke test's sample points build on.
+
+- **Font source**: Liberation Sans Regular (SIL OFL 1.1), committed at
+  `tools/ui/LiberationSans-Regular.ttf` with the license alongside —
+  the font8x8.txt provenance precedent, upgraded from asset text to
+  the actual TTF so regeneration is byte-reproducible offline.
+- **`tools/ttf.w`**: a minimal TrueType reader/rasterizer for the
+  baker (not a runtime module): head/cmap4/loca/glyf/hhea/hmtx,
+  simple + offset-composite glyphs, quadratic contours flattened and
+  filled by non-zero winding over 4x4 subsamples. Loud failure on any
+  table/flag outside that envelope. `ttf_test` asserts metrics and
+  coverage against the committed font.
+- **`tools/generate_ui_atlas.w`** (replaces `generate_ui_font.w`, keeps
+  the `ui_font_data` target name): bakes two strikes (body ppem 16,
+  small ppem 12; ASCII 32..126) plus procedural AA masks — solid
+  cell, quarter-disc (rounded corners via UV-mirrored quads),
+  disc (radio dot, switch knob), ring (radio outline), checkmark,
+  chevron, and a blurred shadow corner tile (drawn 9-patch) — into
+  one R8 atlas emitted as byte-string chunks in
+  `graphics/ui/font_data.w` with per-glyph metric tables
+  (rect, advance, bearings).
+- **Runtime**: `font.w` decodes the atlas and exposes glyph metrics;
+  `ui_text_width`/`ui_text_height` become strike-indexed and
+  proportional (the `text_scale` token now selects the strike);
+  `text.w` advances per glyph on integer pens; `render.w` gains
+  `ui_draw_rrect`/`ui_draw_disc`/`ui_draw_ring`/`ui_draw_shadow` and
+  switches the atlas to GL_LINEAR (masks scale, glyphs draw 1:1 on
+  integer positions so text stays crisp). Textbox caret math walks
+  prefix widths instead of multiplying a fixed advance.
+- **Material widgets**: filled rounded (radius token) accent button
+  with on_accent ink, circular radio (ring + dot), pill-track switch
+  with round knob, rounded filled textbox with a 2px focus underline
+  (Material filled-field style; replaces the border-box look),
+  4px-tall fully-rounded progress, dropdown as an elevated surface
+  menu (shadow + rounded corners). New theme tokens: `radius`,
+  `radius_small`, `shadow` color — mirrored across all four presets
+  and the core-test parity assertions.
+- **Updated gates**: core/render/widgets tests re-pin counts and UVs
+  against the new atlas API; the smoke test re-pins the button sample
+  to the accent fill; the wasm stub's click point and one-draw-per-
+  frame assertion hold unchanged by construction.
 
 ## Risks
 

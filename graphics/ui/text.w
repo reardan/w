@@ -1,9 +1,10 @@
 /*
-graphics.ui.text: string drawing over the batching renderer. Monospace
-8x8 glyphs at an integer scale; ASCII 32..126 (anything else draws as
-space, per graphics.ui.font_data). char* + strlen/s[i] like the rest
-of graphics/ — no UTF-8 shaping in stage 1
-(docs/projects/ui_framework.md §9).
+graphics.ui.text: string drawing over the batching renderer.
+Proportional Liberation Sans strikes from the baked atlas (body or
+title via the scale value, graphics.ui.font); pens round to integer
+pixels so 1:1 LINEAR sampling stays on texel centers and text renders
+crisp. char* + s[i] like the rest of graphics/ — no UTF-8 shaping yet
+(issue #379).
 */
 import lib.lib
 import graphics.ui.rect
@@ -12,14 +13,14 @@ import graphics.ui.font
 import graphics.ui.render
 
 
+# Draw s with the line box's top-left at x,y. y positions the box
+# (ascent + descent tall), not the glyph ink.
 void ui_draw_text(ui_renderer* r, float32 x, float32 y, char* s, int scale, ui_color color):
-	float32 advance = cast(float32, 8 * scale)
-	float32 pen = x
-	int len = strlen(s)
+	int pen = cast(int, x + 0.5)
+	int top = cast(int, y + 0.5)
 	int i = 0
-	while (i < len):
-		ui_render_glyph(r, pen, y, s[i] & 255, scale, color)
-		pen = pen + advance
+	while (s[i] != 0):
+		pen = pen + ui_render_glyph(r, cast(float32, pen), cast(float32, top), s[i] & 255, scale, color)
 		i = i + 1
 
 

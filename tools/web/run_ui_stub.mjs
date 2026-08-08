@@ -158,8 +158,13 @@ if (!calls.shaderSources[0].startsWith('#version 300 es'))
   fail(`vertex shader missing the GLSL ES header: ${calls.shaderSources[0].slice(0, 40)}`);
 assertEq(1, calls.linkCount, 'programs linked');
 assertEq(1, calls.texImages.length, 'glyph-atlas uploads');
-// GL_R8 = 0x8229; the atlas is 128x48 single-channel.
-assertEq('33321,128,48,6144', calls.texImages[0].join(','), 'atlas internalformat/size/bytes');
+// GL_R8 = 0x8229; a single-channel atlas whose byte length matches its
+// dimensions (the exact height is font-bake-derived — see
+// tools/generate_ui_atlas.w — so only the shape is pinned).
+const [atlasFormat, atlasW, atlasH, atlasBytes] = calls.texImages[0];
+assertEq(33321, atlasFormat, 'atlas internalformat');
+if (atlasW < 128 || atlasH < 64 || atlasBytes !== atlasW * atlasH)
+  fail(`implausible atlas upload: ${atlasW}x${atlasH}, ${atlasBytes} bytes`);
 if (calls.texParameters < 4) fail(`expected 4 texture parameters, got ${calls.texParameters}`);
 assertEq(maxFrames, calls.drawArrays.length, 'drawArrays calls (one batch per frame)');
 for (const [mode, first, count] of calls.drawArrays) {

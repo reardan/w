@@ -7,10 +7,17 @@ ui_render_end via glBufferData + GL_DYNAMIC_DRAW (the per-frame
 orphaning idiom; no glBufferSubData needed).
 
 Vertex layout: x, y, u, v, r, g, b, a — 8 float32s, 32 bytes. One
-shader draws both text and solid fills: glyphs sample the R8 atlas's
-coverage in .r, solid rects sample the atlas's solid-white cell, so
-the fragment path never branches. Pixel-space y-down coordinates via
-mat4_ortho(0, w, h, 0, ...), matching mouse coordinates.
+shader draws text, solid fills and every shape: glyphs and the baked
+AA masks sample the R8 atlas's coverage in .r, solid rects sample the
+solid-white mask's center, so the fragment path never branches.
+Rounded rects, discs, rings, the checkmark/chevron and the shadow
+9-patch are all mask quads (graphics.ui.font documents the mask ids)
+— no extra draw calls, no shader changes. The atlas samples LINEAR:
+masks scale smoothly and glyphs draw 1:1 at integer pens, where
+LINEAR lands exactly on texel centers and stays crisp.
+
+Pixel-space y-down coordinates via mat4_ortho(0, w, h, 0, ...),
+matching mouse coordinates.
 
 ui_render_init_headless builds only the CPU batch state — unit tests
 assert on the accumulated vertices with no GL context or display.
@@ -24,10 +31,11 @@ import graphics.ui.theme
 import graphics.ui.font
 
 
-# Max vertices per frame: 682 quads, far beyond a stage-1 form. Pushes
-# past the cap are dropped.
+# Max vertices per frame: 1365 quads, far beyond the demo form even
+# with every widget rounded and shadowed. Pushes past the cap are
+# dropped.
 int ui_render_max_verts():
-	return 4096
+	return 8192
 
 
 struct ui_renderer:
@@ -97,14 +105,14 @@ int ui_render_init(ui_renderer* r):
 	glGenBuffers(1, &r.vbuf)
 
 	char* pixels = ui_font_build_atlas()
-	# 2- and 8-byte-wide R8 rows are not 4-aligned.
+	# 2- and odd-width R8 rows are not 4-aligned.
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
 	glGenTextures(1, &r.atlas_tex)
 	glActiveTexture(GL_TEXTURE0)
 	glBindTexture(GL_TEXTURE_2D, r.atlas_tex)
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, ui_font_atlas_w(), ui_font_atlas_h(), 0, GL_RED, GL_UNSIGNED_BYTE, pixels)
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 	free(pixels)
@@ -157,7 +165,8 @@ void ui_render_vertex(ui_renderer* r, float32 x, float32 y, float32 u, float32 v
 		r.vert_count = count + 1
 
 
-# Two triangles covering rect, sampling the atlas region u0,v0..u1,v1.
+# Two triangles covering rect, sampling the atlas region u0,v0..u1,v1
+# (u0 > u1 or v0 > v1 mirrors — the mask primitives lean on that).
 void ui_render_quad(ui_renderer* r, ui_rect rect, float32 u0, float32 v0, float32 u1, float32 v1, ui_color color):
 	float32 x1 = rect.x + rect.w
 	float32 y1 = rect.y + rect.h
@@ -169,27 +178,131 @@ void ui_render_quad(ui_renderer* r, ui_rect rect, float32 u0, float32 v0, float3
 	ui_render_vertex(r, rect.x, y1, u0, v1, color)
 
 
-# Solid fill: sample the center of the atlas's solid-white cell.
+# The atlas-space UV of a glyph/mask rect edge.
+float32 ui_render_u(int x):
+	return cast(float32, x) / cast(float32, ui_font_atlas_w())
+
+
+float32 ui_render_v(int y):
+	return cast(float32, y) / cast(float32, ui_font_atlas_h())
+
+
+# Solid fill: sample the center of the solid-white mask.
 void ui_render_rect(ui_renderer* r, ui_rect rect, ui_color color):
-	float32 u = (cast(float32, (ui_font_white_cell() % ui_font_atlas_cols()) * 8) + 4.0) / cast(float32, ui_font_atlas_w())
-	float32 v = (cast(float32, (ui_font_white_cell() / ui_font_atlas_cols()) * 8) + 4.0) / cast(float32, ui_font_atlas_h())
+	ui_glyph m = ui_font_mask(ui_mask_white())
+	float32 u = ui_render_u(m.x * 2 + m.w) * 0.5
+	float32 v = ui_render_v(m.y * 2 + m.h) * 0.5
 	ui_render_quad(r, rect, u, v, u, v, color)
 
 
-# One glyph quad at pixel position x,y, cell-aligned in the atlas.
-# Atlas rows and screen y both run top-down, so v maps directly.
-void ui_render_glyph(ui_renderer* r, float32 x, float32 y, int ch, int scale, ui_color color):
-	int cell = ch - ui_font_first_char()
-	if ((cell < 0) || (cell >= ui_font_char_count())):
-		cell = 0
-	int cell_x = (cell % ui_font_atlas_cols()) * 8
-	int cell_y = (cell / ui_font_atlas_cols()) * 8
-	float32 u0 = cast(float32, cell_x) / cast(float32, ui_font_atlas_w())
-	float32 v0 = cast(float32, cell_y) / cast(float32, ui_font_atlas_h())
-	float32 u1 = cast(float32, cell_x + 8) / cast(float32, ui_font_atlas_w())
-	float32 v1 = cast(float32, cell_y + 8) / cast(float32, ui_font_atlas_h())
-	float32 size = cast(float32, 8 * scale)
-	ui_render_quad(r, ui_rect_new(x, y, size, size), u0, v0, u1, v1, color)
+# One mask stretched over rect; flip_x/flip_y mirror the sample.
+void ui_render_mask(ui_renderer* r, ui_rect rect, int mask, int flip_x, int flip_y, ui_color color):
+	ui_glyph m = ui_font_mask(mask)
+	float32 u0 = ui_render_u(m.x)
+	float32 u1 = ui_render_u(m.x + m.w)
+	float32 v0 = ui_render_v(m.y)
+	float32 v1 = ui_render_v(m.y + m.h)
+	if (flip_x):
+		float32 tu = u0
+		u0 = u1
+		u1 = tu
+	if (flip_y):
+		float32 tv = v0
+		v0 = v1
+		v1 = tv
+	ui_render_quad(r, rect, u0, v0, u1, v1, color)
+
+
+# One glyph at pen x with the line box's top at y_top; returns the pen
+# advance. Inkless glyphs (space) advance without pushing a quad.
+int ui_render_glyph(ui_renderer* r, float32 x, float32 y_top, int ch, int scale, ui_color color):
+	int strike = ui_font_strike_from_scale(scale)
+	ui_glyph g = ui_font_glyph(strike, ch)
+	if (g.w > 0):
+		float32 gx = x + cast(float32, g.bearing_x)
+		float32 gy = y_top + cast(float32, ui_font_ascent(strike) - g.bearing_top)
+		float32 u0 = ui_render_u(g.x)
+		float32 v0 = ui_render_v(g.y)
+		float32 u1 = ui_render_u(g.x + g.w)
+		float32 v1 = ui_render_v(g.y + g.h)
+		ui_render_quad(r, ui_rect_new(gx, gy, cast(float32, g.w), cast(float32, g.h)), u0, v0, u1, v1, color)
+	return g.advance
+
+
+# Rounded rect: four mirrored corner-mask quads plus three fills.
+# radius clamps to half the shorter side; radius 0 is a plain rect.
+void ui_draw_rrect(ui_renderer* r, ui_rect rect, float32 radius, ui_color color):
+	float32 half = rect.w * 0.5
+	if (rect.h * 0.5 < half):
+		half = rect.h * 0.5
+	if (radius > half):
+		radius = half
+	if (radius < 1.0):
+		ui_render_rect(r, rect, color)
+		return
+	float32 x1 = rect.x + rect.w
+	float32 y1 = rect.y + rect.h
+	ui_render_mask(r, ui_rect_new(rect.x, rect.y, radius, radius), ui_mask_corner(), 0, 0, color)
+	ui_render_mask(r, ui_rect_new(x1 - radius, rect.y, radius, radius), ui_mask_corner(), 1, 0, color)
+	ui_render_mask(r, ui_rect_new(rect.x, y1 - radius, radius, radius), ui_mask_corner(), 0, 1, color)
+	ui_render_mask(r, ui_rect_new(x1 - radius, y1 - radius, radius, radius), ui_mask_corner(), 1, 1, color)
+	ui_render_rect(r, ui_rect_new(rect.x + radius, rect.y, rect.w - radius * 2.0, rect.h), color)
+	ui_render_rect(r, ui_rect_new(rect.x, rect.y + radius, radius, rect.h - radius * 2.0), color)
+	ui_render_rect(r, ui_rect_new(x1 - radius, rect.y + radius, radius, rect.h - radius * 2.0), color)
+
+
+void ui_draw_disc(ui_renderer* r, ui_rect rect, ui_color color):
+	ui_render_mask(r, rect, ui_mask_disc(), 0, 0, color)
+
+
+void ui_draw_ring(ui_renderer* r, ui_rect rect, ui_color color):
+	ui_render_mask(r, rect, ui_mask_ring(), 0, 0, color)
+
+
+void ui_draw_check(ui_renderer* r, ui_rect rect, ui_color color):
+	ui_render_mask(r, rect, ui_mask_check(), 0, 0, color)
+
+
+void ui_draw_chevron(ui_renderer* r, ui_rect rect, ui_color color):
+	ui_render_mask(r, rect, ui_mask_chevron(), 0, 0, color)
+
+
+# Soft drop shadow behind rect: a 9-patch of the baked shadow corner
+# tile, offset 2px down. Corners sample the whole tile; edge strips
+# sample the tile's last row/column (the straight falloff profile);
+# the center samples the fully-dark inner texel. 9 quads total.
+void ui_draw_shadow(ui_renderer* r, ui_rect rect, ui_color color):
+	ui_glyph m = ui_font_mask(ui_mask_shadow())
+	float32 grow = 10.0
+	ui_rect s = ui_rect_new(rect.x - grow, rect.y - grow + 2.0, rect.w + grow * 2.0, rect.h + grow * 2.0)
+	float32 cs = 24.0
+	if (s.w * 0.5 < cs):
+		cs = s.w * 0.5
+	if (s.h * 0.5 < cs):
+		cs = s.h * 0.5
+	float32 u0 = ui_render_u(m.x)
+	float32 u1 = ui_render_u(m.x + m.w)
+	float32 v0 = ui_render_v(m.y)
+	float32 v1 = ui_render_v(m.y + m.h)
+	# Inner sample points: the last column/row center, and the dark
+	# bottom-right texel for edges and center.
+	float32 uc = ui_render_u(m.x * 2 + m.w * 2 - 1) * 0.5
+	float32 vc = ui_render_v(m.y * 2 + m.h * 2 - 1) * 0.5
+	float32 sx1 = s.x + s.w
+	float32 sy1 = s.y + s.h
+	# corners
+	ui_render_quad(r, ui_rect_new(s.x, s.y, cs, cs), u0, v0, u1, v1, color)
+	ui_render_quad(r, ui_rect_new(sx1 - cs, s.y, cs, cs), u1, v0, u0, v1, color)
+	ui_render_quad(r, ui_rect_new(s.x, sy1 - cs, cs, cs), u0, v1, u1, v0, color)
+	ui_render_quad(r, ui_rect_new(sx1 - cs, sy1 - cs, cs, cs), u1, v1, u0, v0, color)
+	# edges: top/bottom use the last-column profile, left/right the
+	# last-row profile
+	ui_render_quad(r, ui_rect_new(s.x + cs, s.y, s.w - cs * 2.0, cs), uc, v0, uc, v1, color)
+	ui_render_quad(r, ui_rect_new(s.x + cs, sy1 - cs, s.w - cs * 2.0, cs), uc, v1, uc, v0, color)
+	ui_render_quad(r, ui_rect_new(s.x, s.y + cs, cs, s.h - cs * 2.0), u0, vc, u1, vc, color)
+	ui_render_quad(r, ui_rect_new(sx1 - cs, s.y + cs, cs, s.h - cs * 2.0), u1, vc, u0, vc, color)
+	# center
+	ui_render_quad(r, ui_rect_new(s.x + cs, s.y + cs, s.w - cs * 2.0, s.h - cs * 2.0), uc, vc, uc, vc, color)
 
 
 void ui_render_draw_batch(ui_renderer* r, float32* batch, int count):

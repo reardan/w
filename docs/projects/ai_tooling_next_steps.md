@@ -107,6 +107,16 @@ is a queue, not an archive.
   warmed cache is still per-checkout; CI publishing it as an artifact
   would make the cost shareable.
 
+- **Manifest churn pays the full cold cache again** (2026-08-07,
+  stage-4 UI work): after a `./wbuild manifest` regeneration (one
+  build.base.json target edited), the next `bin/wtest changed` rebuilt
+  the import-closure cache for all ~680 roots even though no import
+  graph had changed — a two-minute-plus stall mid-edit-loop on this
+  container (`./wbuild wtest_cache` in the background was the
+  workaround). If the invalidation is keyed on manifest content
+  rather than each root's own inputs, keying it on the root list +
+  per-root content would keep warm caches across manifest-only churn.
+
 - **Shipped (2026-08-07): `wtest_map_check` resumes wtest's cold
   cache build across its own timeout.** The cold deps-cache build
   crossed a new line: on the 4-core CI runner it now outlasts
