@@ -267,20 +267,21 @@ is a queue, not an archive.
   unrunnable GPU target (`--keep-going` needed to see the real
   selection through).
 
-- **(2026-08-08) The deps-cache cost is quadratic at its root, not
-  merely large.** Measured while profiling the compiler
-  (`docs/projects/compiler_performance.md`): `w deps` runs the entire
-  compiler and just records each path as it is opened
-  (`deps_mode`/`deps_record`, `compiler/compiler.w:83`), so it costs a
-  *full compile* per root — 14.8 s for `w.w`, within noise of
-  `wv3 w.w -o out` (14.7 s). That is why populating
-  `bin/.wtest_deps_cache` takes minutes: it is paying compile time,
-  dominated by `sym_lookup`'s O(symbols²) scan, to learn a fact that
-  lives in the import lines. Two independent directions, either of
-  which helps: make `deps` a tokenizer-level import scan (linear in
-  source bytes, and it needs nothing else), or fix the scan itself
-  (that report's §6). The progress line and resume shipped 2026-08-04
-  made the cost visible and payable; this would remove it.
+- **Shipped (2026-08-08): the deps-cache cost is gone at its root.**
+  (Logged 2026-08-08 while profiling the compiler.) `w deps` runs the
+  whole compiler and just records each path as it opens it
+  (`deps_mode`/`deps_record`, `compiler/compiler.w:83`), so it cost a
+  *full compile* per root — 14.8 s for `w.w`. That was `sym_lookup`'s
+  O(symbols^2) scan, not anything about deps, and fixing the scan took
+  `w deps w.w` to **0.85 s** (17x). Populating
+  `bin/.wtest_deps_cache` is no longer a multi-minute wait, and the
+  tokenizer-only import scanner floated as the fix is explicitly not
+  worth building: it would have to duplicate `__arch__` resolution, the
+  upward directory search and its `argv[0]` fallback, two layers of
+  import dedup, the compiler-internal root substitution rule, and the
+  four use-triggered deferred runtime imports the grammar decides — a
+  second resolver free to diverge from the real one. See
+  `docs/projects/compiler_performance.md` sections 8 and 9.
 
 ## Build manifest (`tools/wbuildgen.w`)
 

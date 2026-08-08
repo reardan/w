@@ -2,8 +2,12 @@
 
 Status: measurement report, 2026-08-08. Companion to
 `docs/projects/optimization.md`, which is about making the *emitted*
-code faster; this one is about making the *compiler* faster. Nothing
-here is implemented — it is the measurement and the case for a fix.
+code faster; this one is about making the *compiler* faster.
+
+**Update 2026-08-08: §6 is implemented — self-compile 14.7 s → 0.82 s,
+a 19.2× speedup, and the quadratic is gone. See §8 for what landed and
+what the profile looks like now.** The report below is left as written
+so the before-picture and the reasoning stay legible; §8 is the after.
 
 Every number below was taken on one machine, one checkout: a 4-core
 Intel Xeon @ 2.80GHz, 16 GB RAM, x86_64 Linux container, seed `v0.1.0`
@@ -277,3 +281,122 @@ Note the flag-order trap when scripting this: `w --quiet check f.w`
 does not work. Selectors may precede a subcommand but option flags may
 not, so `check` is taken as a filename and the run dies with
 `no such file: 'check' in check:1`.
+
+## 8. What shipped (2026-08-08)
+
+Five commits, in the order they landed. Each was gated on `verify` and
+measured with `bin/wbench`, which this work added.
+
+| | self-compile | records visited |
+| --- | --- | --- |
+| before | 15,811 ms | 169,820,252 |
+| stride hoisted out of the scan loop | 14,943 ms | unchanged |
+| offset array + newest-first scan | 3,228 ms | 40,871,895 |
+| name index | 1,060 ms | 82,901 |
+| type table | **823 ms** | 82,922 |
+
+**19.2× on the self-compile, and 2,048× fewer records visited.** The
+quadratic is gone: 4× the symbols cost 9.3× the time before and 4.4×
+now (net of the prelude floor).
+
+Downstream, all measured on the same machine as §1:
+
+| | before | after |
+| --- | --- | --- |
+| `./wbuild build` (5 self-compiles, cold) | 100.5 s | 36.7 s |
+| `./wbuild tests -j 4` (cold) | 625 s | 151 s |
+| `check_roots_test` (the §5 long pole) | 63.0 s | 5.3 s |
+| `w deps w.w` | 14.8 s | 0.85 s |
+| trivial 2-line program (the §4 floor) | 91 ms | 42 ms |
+
+### How it works
+
+The symbol table is still the same packed blob of variable-length
+records — `t` offsets are stable handles threaded through backpatch
+chains, GOT slots and debug bookkeeping, so the blob itself could not
+move (`docs/projects/typed_containers.md:190-200` anticipated exactly
+this constraint). What changed is that it now carries an index beside
+it: an array of record offsets, a same-name chain, and a
+`map[char*, int]` from name to newest live record.
+
+The part worth remembering is that **scope exit needed no cooperation
+from anything**. `table_pos` is only ever raised by `sym_declare`, and
+all eleven other assignments restore a smaller saved value, so the index
+can discard truncated records lazily on next use. Not one of the eleven
+truncation sites in `grammar/` and `repl/` changed, and neither did any
+of the direct table walkers.
+
+Two hazards drove the design and are worth not re-discovering:
+
+- `debugger/eval.w` retires a wdbg scratch binding by corrupting the
+  first byte of its name *in place*, because the bindings cannot be
+  popped (persistent definitions from the same entry live above them).
+  A name-keyed index keeps resolving those names unless told not to, and
+  popping such a record later would read a name that is now a lie and
+  repair the wrong map entry. Hence `sym_index_unbind()` and the `-2`
+  chain sentinel.
+- That same path had a latent bug predating this work: after a REPL
+  rollback the recorded offset can belong to an unrelated live symbol,
+  and the old code corrupted it anyway. `sym_index_unbind()` now reports
+  whether a live record really starts there, and the caller only writes
+  the sentinel byte if so.
+
+### Checking it
+
+`verify` is the load-bearing gate — lookup results feed addresses, types
+and backpatch chains straight into codegen, so byte-identical
+wv3/wv4/wv5 means every lookup in a full self-compile resolved exactly
+as before. It does not cover the REPL and debugger, so:
+
+- `w --stats-selfcheck` computes every lookup both through the index and
+  through a linear scan and aborts on disagreement. A self-compile under
+  it is an exhaustive equivalence proof over all 87,255 lookups.
+- The wdbg bind/unbind paths were diffed directly against a build from
+  the previous commit — `p` at a stop, `repl` mode with a definition
+  persisting above the bindings, and re-eval after both — byte-identical.
+
+`w --stats` prints the counters. Records visited is deterministic for a
+given input, so it is the figure to quote and the one a test can assert;
+wall time is not.
+
+## 9. Where the time goes now
+
+Re-profiled after the above (callgrind, `w.w` self-compile). Total
+instructions fell from 95,446,254,617 to **8,359,097,015** — 11.4×.
+`sym_lookup` is no longer in the profile at all.
+
+| share | function |
+| --- | --- |
+| 35.26% | `load_i` (`code_generator/integer.w:57`) |
+| 7.59% | `strcmp` (`lib/lib.w:336`) |
+| 6.68% | `__w_list_addr` (`structures/w_list.w:125`) |
+| 5.08% | `peek` (`compiler/tokenizer.w:549`) |
+| 4.09% | `getchar_checked` (`lib/lib.w:497`) |
+| 3.39% | `type_lookup` (`compiler/type_table.w:349`) |
+
+**`load_i` is the next thing to look at, and it is a big one.** It and
+its counterpart `save_i` read and write integers a byte at a time in a
+loop (`while (n > 0): result = (result << 8) + (p[n - 1] & 255)`), and
+between them they are ~38% of the compiler. Every symbol-table field
+access, every type-record slot, every code-emitter patch goes through
+them. They are written that way to be byte-order- and width-portable
+across five backends, so the fix is not free — either unrolling the
+common widths, or exposing a native word load/store the codegen can emit
+directly. Nothing here has attempted it; the 35% figure is the case for
+looking.
+
+Two things deliberately *not* done:
+
+- **`w deps` was not rewritten as a tokenizer-level import scan**, which
+  §6 item 4 proposed. It is expensive because it *is* a full compile, so
+  the work above took it from 14.8 s to 0.85 s and the `bin/.wtest_deps_cache`
+  pain it caused is gone. A standalone scanner would have to duplicate
+  `__arch__` resolution, the upward directory search and its `argv[0]`
+  fallback, two layers of import dedup, the compiler-internal root
+  substitution rule, and the four *use-triggered* deferred runtime
+  imports that the grammar decides — a second resolver that can silently
+  diverge from the real one, for a benefit that has already evaporated.
+- **`deps_dump`'s O(n²) dedupe was left alone.** The largest import
+  closure in the tree is `w.w`'s own 154 paths, so it does ~12,000 short
+  `strcmp`s — microseconds inside an 850 ms run. Changing it would be
+  unmeasurable.
