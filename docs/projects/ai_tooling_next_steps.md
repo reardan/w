@@ -87,6 +87,18 @@ is a queue, not an archive.
   unrealizable statically in general, and nothing stops new code from
   writing `p + n` instead of reaching for `ptr_add`/`&p[n]`. The footgun
   is now avoidable, not eliminated.
+- **An option flag before a subcommand is silently read as a source
+  file.** Observed 2026-08-08 (compiler-performance measurement):
+  `bin/wv3 --quiet check f.w` does not check anything — it dies with
+  `no such file: 'check' in check:1` and exit 1, having compiled the
+  auto-imported prelude first. Target selectors may precede the
+  subcommand word (`w x64 check f.w`, handled in `w.w`'s `main`), so
+  the asymmetry is easy to walk into when scripting, and the
+  diagnostic names the subcommand as if it were a path rather than
+  saying the flag came too early. It cost a whole batch of scripted
+  measurements that silently reported prelude-only timings. Either
+  accept global flags before the subcommand, or special-case a
+  known-subcommand word appearing after a flag and say so.
 
 
 ## Test selection (`bin/wtest`)
@@ -254,6 +266,22 @@ is a queue, not an archive.
   json-layer diff still pays — and fail-fast aborts on — a known-
   unrunnable GPU target (`--keep-going` needed to see the real
   selection through).
+
+- **Shipped (2026-08-08): the deps-cache cost is gone at its root.**
+  (Logged 2026-08-08 while profiling the compiler.) `w deps` runs the
+  whole compiler and just records each path as it opens it
+  (`deps_mode`/`deps_record`, `compiler/compiler.w:83`), so it cost a
+  *full compile* per root — 14.8 s for `w.w`. That was `sym_lookup`'s
+  O(symbols^2) scan, not anything about deps, and fixing the scan took
+  `w deps w.w` to **0.85 s** (17x). Populating
+  `bin/.wtest_deps_cache` is no longer a multi-minute wait, and the
+  tokenizer-only import scanner floated as the fix is explicitly not
+  worth building: it would have to duplicate `__arch__` resolution, the
+  upward directory search and its `argv[0]` fallback, two layers of
+  import dedup, the compiler-internal root substitution rule, and the
+  four use-triggered deferred runtime imports the grammar decides — a
+  second resolver free to diverge from the real one. See
+  `docs/projects/compiler_performance.md` sections 8 and 9.
 
 ## Build manifest (`tools/wbuildgen.w`)
 

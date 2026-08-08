@@ -27,6 +27,62 @@ int table_size
 int table_pos
 int stack_pos
 
+# Lookup cost counters, printed by 'w --stats'. sym_lookup_steps counts
+# symbol records visited, which is the metric that actually matters here:
+# it is deterministic for a given input, so it can be compared across
+# machines and asserted in a test, where wall time cannot.
+# sym_lookup_calls is incremented once per call, so the counting itself
+# never shows up in a profile.
+int sym_lookup_calls
+int sym_lookup_steps
+
+# --- symbol lookup index -------------------------------------------------
+# sym_index_offsets[i] is the table offset of the NUL of the i-th live
+# record -- exactly the value sym_lookup returns for it. The array exists
+# because the records themselves are variable-length and packed forward,
+# so the blob cannot be walked backwards; with the offsets to hand,
+# sym_lookup can scan newest-first and stop at the first match, which is
+# by construction the innermost declaration.
+#
+# Mirroring the blob is sound because the blob is append-only: table_pos
+# is only ever INCREASED by sym_declare below, and every other assignment
+# to it restores a previously saved, smaller value --
+# grammar/statement.w:226,257, grammar/program.w:193,499,
+# grammar/extern_statement.w:140, grammar/generator_decl.w:150,
+# grammar/gpu_for.w:195, grammar/kernel_decl.w:249,
+# repl/core.w:434,517,618. Records are never moved or reordered, so a
+# position is stable for as long as it is live. Scope exit therefore
+# needs no cooperation from any of those sites: sym_index_sync() below
+# discards the records they truncated, lazily, on the next use.
+#
+# Entries are 4-byte ints read with load_int/save_int, not an int* --
+# W scales int* indexing by __word_size__, which would silently make
+# these 8-byte entries on the 64-bit targets.
+#
+# sym_index_prev[i] is the position of the previous live record with the
+# SAME name as record i (-1: none, -2: retracted, see sym_index_unbind),
+# and sym_name_index maps a name to the position of the newest live
+# record with that name, or -1 once the name has no live record left.
+# Together they turn lookup from a scan into a map read: the map finds
+# the newest declaration, and the chain is only walked when that one has
+# been truncated away by a scope exit.
+#
+# The chain is what makes truncation cheap. Popping a record hands its
+# name's map entry back to its predecessor, which is O(1) because the
+# popped record is the newest live record overall and therefore the head
+# of its own name's chain.
+char* sym_index_offsets
+char* sym_index_prev
+int sym_index_count
+int sym_index_capacity
+map[char*, int] sym_name_index
+
+
+void sym_stats_dump():
+	print_int0(c"sym_lookup calls: ", sym_lookup_calls)
+	print_int0(c" records visited: ", sym_lookup_steps)
+	print_error(c"\x0a")
+
 
 int symbol_data_size():
 	return 142
@@ -34,6 +90,146 @@ int symbol_data_size():
 
 int next_token(int t):
 	return t + symbol_data_size()
+
+
+int sym_index_offset(int i):
+	return load_int(sym_index_offsets + i * 4)
+
+
+# Records are contiguous, so record i's name begins where record i-1's
+# data block ends. sym_declare writes the name at table_pos and leaves
+# table_pos at next_token(nul), so the blob has no gaps and this is exact.
+int sym_index_name_start(int i):
+	if (i == 0):
+		return 0
+	return next_token(sym_index_offset(i - 1))
+
+
+# Grow to hold at least n entries. Never shrinks -- that is what makes
+# scope truncation free. The oldlen handed to realloc is always exactly
+# what this block was last allocated with, which lib/memory_debug.w
+# checks and aborts on. Growing from a null pointer at capacity 0 is
+# realloc(0, 0, n), the same call the symbol blob itself makes on the
+# first sym_declare.
+void sym_index_reserve(int n):
+	if (n <= sym_index_capacity):
+		return
+	int x = sym_index_capacity
+	if (x == 0):
+		x = 1024
+	while (x < n):
+		x = x << 1
+	sym_index_offsets = realloc(sym_index_offsets, sym_index_capacity * 4, x * 4)
+	sym_index_prev = realloc(sym_index_prev, sym_index_capacity * 4, x * 4)
+	sym_index_capacity = x
+
+
+# The top live record must end exactly at table_pos. One comparison,
+# always on: it catches a table_pos left off a record boundary, a
+# table_pos restored to a LARGER value than the index knows about (which
+# would resurrect popped records and make lookups silently miss them),
+# and any future append path that bypasses sym_declare.
+void sym_index_check():
+	if (sym_index_count == 0):
+		if (table_pos != 0):
+			error(c"symbol index desync: empty index, non-empty table")
+		return
+	if (next_token(sym_index_offset(sym_index_count - 1)) != table_pos):
+		error(c"symbol index desync: top record does not end at table_pos")
+
+
+# Bring the index back in step with table_pos after a scope truncation.
+# Lazy by design: the truncating sites listed above just move table_pos,
+# and the next declare or lookup pays for it. Idempotent, so an error()
+# longjmp between a truncation and the next sync is harmless.
+# Drop the top live record. It is the newest live record overall, so it
+# is the head of its own name's chain: handing the head back to its
+# predecessor is the whole repair, and no other name can be affected
+# because a map entry only ever holds a position of a record carrying
+# that name.
+#
+# prev == -2 marks a record already retracted by sym_index_unbind: it is
+# in no chain and no map entry points at it, and -- the reason this test
+# is not merely an optimization -- its name bytes in the blob have been
+# deliberately corrupted, so reading a name here would repair the wrong
+# key and orphan the real one.
+void sym_index_pop():
+	int p = sym_index_count - 1
+	int previous = load_int(sym_index_prev + p * 4)
+	if (previous != -2):
+		sym_name_index[&table[sym_index_name_start(p)]] = previous
+	sym_index_count = p
+
+
+void sym_index_sync():
+	while ((sym_index_count > 0) && (sym_index_offset(sym_index_count - 1) >= table_pos)):
+		sym_index_pop()
+	sym_index_check()
+
+
+# Position holding the record whose NUL sits at off, or -1. Offsets are
+# strictly increasing, so this is a binary search.
+int sym_index_find(int off):
+	int lo = 0
+	int hi = sym_index_count - 1
+	while (lo <= hi):
+		int mid = (lo + hi) >> 1
+		int v = sym_index_offset(mid)
+		if (v == off):
+			return mid
+		if (v < off):
+			lo = mid + 1
+		else:
+			hi = mid - 1
+	return -1
+
+
+# Retract the record whose name starts at name_start from the name index,
+# so later lookups can no longer reach it, while the record itself stays
+# in the blob and stays visible to the direct table walkers.
+#
+# wdbg's expression evaluator retires a scratch binding by overwriting the
+# first byte of its name in place (debugger/eval.w): the bindings cannot
+# be popped, because persistent definitions the same entry made live above
+# them. A name-keyed index would keep resolving those names, so the
+# retraction has to be explicit.
+#
+# Returns 1 when a live record really starts at name_start and the caller
+# may go on to corrupt the name, 0 when it does not. The 0 case is real: a
+# REPL rollback (repl/core.w) can truncate below a recorded binding, after
+# which those bytes belong to a different record or to nothing, and
+# corrupting them would damage an unrelated live symbol.
+int sym_index_unbind(int name_start):
+	sym_index_sync()
+	char* name = &table[name_start]
+	int p = sym_index_find(name_start + strlen(name))
+	if (p < 0):
+		return 0
+	if (sym_index_name_start(p) != name_start):
+		return 0
+	int previous = load_int(sym_index_prev + p * 4)
+	if (previous == -2):
+		return 1
+	# Unlink p from its name's chain. It is usually the head -- the
+	# bindings are the newest records when the eval starts -- but the
+	# entry may have redeclared the same name above them, so the interior
+	# case has to work too.
+	int head = -1
+	if (name in sym_name_index):
+		head = sym_name_index[name]
+	if (head == p):
+		sym_name_index[name] = previous
+	else:
+		int q = head
+		while (q > p):
+			int r = load_int(sym_index_prev + q * 4)
+			if (r == p):
+				save_int(sym_index_prev + q * 4, previous)
+				q = -1
+			else:
+				q = r
+	save_int(sym_index_prev + p * 4, -2)
+	return 1
 
 
 void sym_table_info():
@@ -63,24 +259,50 @@ void sym_last_info():
 
 # Returns the table offset of the symbol's data block, or -1 when not found.
 # 0 is a valid offset (the first declared symbol), so callers must test for < 0.
+# Newest-first scan of the offset index. Superseded by the name index in
+# sym_lookup below, but kept as the reference implementation that
+# sym_index_selfcheck compares against: it depends on nothing but the
+# blob and the offsets, so it is the thing to trust when the two
+# disagree.
+int sym_index_scan(char *s):
+	int i = sym_index_count
+	while (i > 0):
+		i = i - 1
+		int t = sym_index_name_start(i)
+		int j = 0
+		# Character-identical to the original forward scan, so the
+		# matching rule cannot have drifted.
+		while ((s[j] == table[t]) && (s[j] != 0)):
+			j = j + 1
+			t = t + 1
+
+		if (s[j] == table[t]):
+			return sym_index_offset(i)
+
+	return -1
+
+
+# Set by 'w --stats-selfcheck': compute the lookup both ways and abort on
+# any disagreement. One self-compile with this on compares every lookup
+# against the scan, which is the exhaustive equivalence check the fixpoint
+# cannot give for the REPL and debugger paths.
+int sym_index_selfcheck
+
+
 int sym_lookup(char *s):
-	int t = 0
-	int current_symbol = -1
-	while (t <= table_pos - 1):
-		int i = 0
-		while ((s[i] == table[t]) && (s[i] != 0)):
-			i = i + 1
-			t = t + 1
-
-		if (s[i] == table[t]):
-			current_symbol = t
-
-		while (table[t] != 0):
-			t = t + 1
-
-		t = next_token(t)
-
-	return current_symbol
+	sym_index_sync()
+	sym_lookup_calls = sym_lookup_calls + 1
+	int found = -1
+	if (sym_name_index != 0):
+		if (s in sym_name_index):
+			int p = sym_name_index[s]
+			if (p >= 0):
+				sym_lookup_steps = sym_lookup_steps + 1
+				found = sym_index_offset(p)
+	if (sym_index_selfcheck):
+		if (found != sym_index_scan(s)):
+			error(c"symbol index: name index and scan disagree")
+	return found
 
 
 int sym_address(char *s):
@@ -173,6 +395,11 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 		print_int0(c", symtype=", symtype)
 		println2(c")")
 
+	# Discard anything a scope exit truncated, and make room, before the
+	# blob and the index start moving: after this point nothing between
+	# writing the record and recording its offset can allocate or fail.
+	sym_index_sync()
+	sym_index_reserve(sym_index_count + 1)
 	int t = table_pos
 	int i = 0
 	while (s[i] != 0):
@@ -203,6 +430,21 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
 	save_int(table + t + 74, diag_token_column)
+	# t is the record's NUL offset -- exactly what sym_lookup returns for
+	# it. Index and table_pos move together.
+	int p = sym_index_count
+	save_int(sym_index_offsets + p * 4, t)
+	# Read the name's current head before overwriting it: under the
+	# invariant that is already the newest LIVE record of this name,
+	# which is exactly what this record's chain link should be.
+	int previous = -1
+	if (sym_name_index == 0):
+		sym_name_index = new map[char*, int]
+	else if (s in sym_name_index):
+		previous = sym_name_index[s]
+	save_int(sym_index_prev + p * 4, previous)
+	sym_name_index[s] = p
+	sym_index_count = p + 1
 	table_pos = next_token(t)
 
 	# Record where locals and arguments live so the in-process debugger

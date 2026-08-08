@@ -15,6 +15,22 @@ struct type:
 */
 list[int] type_records
 
+# Name -> index of the FIRST record carrying that name, which is what
+# type_lookup returns. Names are not unique here: pointer records store
+# their base type's name, 'const T' is pushed unconditionally, and an
+# alias can collide with an existing type, so oldest-wins is load-bearing
+# -- type_reset_for_redefinition's comment records that derived and
+# memoized type records depend on it.
+#
+# Filled lazily from type_index_indexed up to type_records.length at
+# lookup time, rather than at each of the eleven push sites: the table is
+# append-only during a compile, so one watermark covers all of them.
+# type_table_truncate (wdbg/REPL rollback) and a re-run of
+# push_basic_types both leave the watermark above the live length, which
+# is the rebuild signal.
+map[char*, int] type_name_index
+int type_index_indexed
+
 
 # Float type indices, set by push_basic_types(). The two "value"
 # pseudo-types follow the constant(3)/function(4) convention: eax already
@@ -345,14 +361,27 @@ int type_push(char* name):
 
 
 int type_lookup(char* name):
-	int i = 0
-	while (i < type_records.length):
-		char* type = type_record(i)
+	if (type_name_index == 0):
+		type_name_index = new map[char*, int]
+	if (type_index_indexed > type_records.length):
+		# Records were discarded (type_table_truncate) or the whole list
+		# replaced (push_basic_types re-run). Indices below the new
+		# length keep their meaning, but entries above it are stale and
+		# there is no cheap way to tell which, so start over.
+		type_name_index = new map[char*, int]
+		type_index_indexed = 0
+	while (type_index_indexed < type_records.length):
 		# load_ptr, not *type: the name pointer occupies one pointer slot; a
 		# wider load would drag in the neighboring num_fields field
-		if (strcmp(name, cast(char*, load_ptr(type))) == 0):
-			return i
-		i = i + 1
+		char* pushed = cast(char*, load_ptr(type_record(type_index_indexed)))
+		# First writer wins, so the map answers with the oldest record
+		# carrying the name -- what the linear scan this replaced did by
+		# returning on its first hit.
+		if ((pushed in type_name_index) == 0):
+			type_name_index[pushed] = type_index_indexed
+		type_index_indexed = type_index_indexed + 1
+	if (name in type_name_index):
+		return type_name_index[name]
 	return -1
 
 
@@ -387,8 +416,12 @@ int type_canonical(int type_index):
 	if (type_index < 0):
 		return type_index
 	int guard = 0
-	while ((type_index >= 0) & (type_get_alias_target(type_index) >= 0) & (guard < 100)):
-		type_index = type_get_alias_target(type_index)
+	# One type_get_alias_target() per hop: the condition used to call it
+	# and then the body called it again for the same index.
+	int target = type_get_alias_target(type_index)
+	while ((target >= 0) && (guard < 100)):
+		type_index = target
+		target = type_get_alias_target(type_index)
 		guard = guard + 1
 	return type_index
 
@@ -408,11 +441,14 @@ int type_unqualified(int type_index):
 	if (type_index < 0):
 		return type_index
 	int guard = 0
-	while ((type_index >= 0) & (type_get_const_target(type_index) >= 0) & (guard < 100)):
-		type_index = type_get_const_target(type_index)
-		type_index = type_canonical(type_index)
+	# As in type_canonical: one type_get_const_target() per hop instead
+	# of one in the condition and another in the body.
+	int target = type_get_const_target(type_index)
+	while ((target >= 0) && (guard < 100)):
+		type_index = type_canonical(target)
 		if (type_index < 0):
 			return type_index
+		target = type_get_const_target(type_index)
 		guard = guard + 1
 	return type_index
 
@@ -653,10 +689,14 @@ int type_lookup_array(int element_type, int array_length):
 	int i = 0
 	while (i < type_records.length):
 		int t = type_records[i]
-		if ((load_ptr(t + 205 * __word_size__) == type_kind_array()) &
-				(type_canonical(load_ptr(t + 204 * __word_size__)) == element_type) &
-				(load_ptr(t + 206 * __word_size__) == array_length)):
-			return i
+		# Kind first, in its own test, exactly as type_lookup_slice below
+		# explains: '&' does not short-circuit, so the original reached
+		# type_canonical() with slot 204 of every record whatever its
+		# kind -- the very thing that comment warns must never happen.
+		if (load_ptr(t + 205 * __word_size__) == type_kind_array()):
+			if (load_ptr(t + 206 * __word_size__) == array_length):
+				if (type_canonical(load_ptr(t + 204 * __word_size__)) == element_type):
+					return i
 		i = i + 1
 	return -1
 
@@ -812,12 +852,18 @@ int type_get_pointer_level(int type_index):
 
 int type_lookup_pointer(char* name, int pointer_level):
 	int i = 0
+	int trace = verbosity >= 1
 	while (i < type_records.length):
 		char* t = type_record(i)
-		if (verbosity >= 1):
+		if (trace):
 			print_hex(c"type_lookup_pointer t: ", cast(int, t))
-		if ((strcmp(name, cast(char*, load_ptr(t))) == 0) & (pointer_level==load_ptr(t + 3 * __word_size__))):
-			return i
+		# Pointer level first, and as a nested test rather than one '&'
+		# chain: '&' does not short-circuit, so the original ran a strcmp
+		# against every record in the table on every call. The level is a
+		# word compare and rejects almost all of them.
+		if (pointer_level == load_ptr(t + 3 * __word_size__)):
+			if (strcmp(name, cast(char*, load_ptr(t))) == 0):
+				return i
 		i = i + 1
 	return -1
 

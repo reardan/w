@@ -142,7 +142,14 @@ void dbg_eval_writeback():
 void dbg_eval_unbind():
 	int b = 0
 	while (b < dbg_eval_bound_count):
-		table[load_int(dbg_eval_bound_sym + b * 4)] = 1
+		int name_start = load_int(dbg_eval_bound_sym + b * 4)
+		# Retract from the name index first, while the name is still
+		# readable, and only corrupt the bytes once the index confirms a
+		# live record really starts there -- a rollback may have
+		# truncated the binding away and handed those bytes to an
+		# unrelated symbol (compiler/symbol_table.w, sym_index_unbind).
+		if (sym_index_unbind(name_start)):
+			table[name_start] = 1
 		b = b + 1
 
 
