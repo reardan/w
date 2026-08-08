@@ -2113,6 +2113,7 @@
 				"increment_64_test",
 				"inotify_64_test",
 				"int_literal_bounds_64_test",
+				"integer_accessor_64_test",
 				"json_64_test",
 				"json_codec_64_test",
 				"kv_cluster_64_test",
@@ -2718,6 +2719,7 @@
 				"infer_test",
 				"inotify_test",
 				"int_literal_bounds_test",
+				"integer_accessor_test",
 				"json_codec_test",
 				"json_test",
 				"kv_cluster_test",
@@ -4632,6 +4634,26 @@
 			"deps": ["wv2", "wfixture"],
 			"steps": [
 				{"cmd": ["bin/wfixture", "bin/wv2", "tests/int_literal_width_binary_error_fixture.w", "tests/int_literal_width_decimal_error_fixture.w", "tests/int_literal_width_error_fixture.w"]}
+			]
+		},
+		{
+			"name": "integer_accessor_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/integer_accessor_test.w"],
+			"outputs": ["bin/integer_accessor_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/integer_accessor_test.w", "-o", "bin/integer_accessor_64_test"]},
+				{"cmd": ["bin/integer_accessor_64_test"]}
+			]
+		},
+		{
+			"name": "integer_accessor_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/integer_accessor_test.w"],
+			"outputs": ["bin/integer_accessor_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/integer_accessor_test.w", "-o", "bin/integer_accessor_test"]},
+				{"cmd": ["bin/integer_accessor_test"]}
 			]
 		},
 		{

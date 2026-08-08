@@ -100,6 +100,18 @@ is a queue, not an archive.
   accept global flags before the subcommand, or special-case a
   known-subcommand word appearing after a flag and say so.
 
+- **`symbol redefined: 'X'` does not say where the first definition
+  is.** Writing a new test with a plain `int main()` — the shape every
+  non-test program uses — gets `symbol redefined: 'main'` pointing at
+  the *new* one, with nothing to say the winner came from
+  `lib/testing.w`, which supplies `main` and dispatches to `test_*`
+  functions. The fix is a grep away once you suspect an import, but the
+  message is one clause short of not needing the grep: it already has
+  the previous record (that is how it detected the clash), so it could
+  append `(first defined at <file>:<line>)` the way the
+  declaration-location fields in `compiler/symbol_table.w` already
+  allow. Worth doing for every redefinition, not just `main`.
+
 
 ## Test selection (`bin/wtest`)
 
