@@ -87,6 +87,18 @@ is a queue, not an archive.
   unrealizable statically in general, and nothing stops new code from
   writing `p + n` instead of reaching for `ptr_add`/`&p[n]`. The footgun
   is now avoidable, not eliminated.
+- **An option flag before a subcommand is silently read as a source
+  file.** Observed 2026-08-08 (compiler-performance measurement):
+  `bin/wv3 --quiet check f.w` does not check anything — it dies with
+  `no such file: 'check' in check:1` and exit 1, having compiled the
+  auto-imported prelude first. Target selectors may precede the
+  subcommand word (`w x64 check f.w`, handled in `w.w`'s `main`), so
+  the asymmetry is easy to walk into when scripting, and the
+  diagnostic names the subcommand as if it were a path rather than
+  saying the flag came too early. It cost a whole batch of scripted
+  measurements that silently reported prelude-only timings. Either
+  accept global flags before the subcommand, or special-case a
+  known-subcommand word appearing after a flag and say so.
 
 
 ## Test selection (`bin/wtest`)
@@ -254,6 +266,21 @@ is a queue, not an archive.
   json-layer diff still pays — and fail-fast aborts on — a known-
   unrunnable GPU target (`--keep-going` needed to see the real
   selection through).
+
+- **(2026-08-08) The deps-cache cost is quadratic at its root, not
+  merely large.** Measured while profiling the compiler
+  (`docs/projects/compiler_performance.md`): `w deps` runs the entire
+  compiler and just records each path as it is opened
+  (`deps_mode`/`deps_record`, `compiler/compiler.w:83`), so it costs a
+  *full compile* per root — 14.8 s for `w.w`, within noise of
+  `wv3 w.w -o out` (14.7 s). That is why populating
+  `bin/.wtest_deps_cache` takes minutes: it is paying compile time,
+  dominated by `sym_lookup`'s O(symbols²) scan, to learn a fact that
+  lives in the import lines. Two independent directions, either of
+  which helps: make `deps` a tokenizer-level import scan (linear in
+  source bytes, and it needs nothing else), or fix the scan itself
+  (that report's §6). The progress line and resume shipped 2026-08-04
+  made the cost visible and payable; this would remove it.
 
 ## Build manifest (`tools/wbuildgen.w`)
 
