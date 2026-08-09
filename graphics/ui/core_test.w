@@ -28,6 +28,55 @@ void test_rect_inset():
 	asserts(c"inset h", r.h == 12.0)
 
 
+void test_rect_is_empty():
+	assert_equal(0, ui_rect_is_empty(ui_rect_new(0.0, 0.0, 1.0, 1.0)))
+	assert_equal(1, ui_rect_is_empty(ui_rect_new(0.0, 0.0, 0.0, 10.0)))
+	assert_equal(1, ui_rect_is_empty(ui_rect_new(0.0, 0.0, 10.0, 0.0)))
+	# A negative extent is empty too, not "inside out".
+	assert_equal(1, ui_rect_is_empty(ui_rect_new(5.0, 5.0, 0.0 - 2.0, 4.0)))
+
+
+void test_rect_intersect_overlapping():
+	ui_rect a = ui_rect_new(0.0, 0.0, 100.0, 50.0)
+	ui_rect b = ui_rect_new(40.0, 10.0, 100.0, 100.0)
+	ui_rect hit = ui_rect_intersect(a, b)
+	asserts(c"x", hit.x == 40.0)
+	asserts(c"y", hit.y == 10.0)
+	asserts(c"w", hit.w == 60.0)
+	asserts(c"h", hit.h == 40.0)
+	assert_equal(0, ui_rect_is_empty(hit))
+	# Commutative.
+	ui_rect flip = ui_rect_intersect(b, a)
+	asserts(c"flip w", flip.w == hit.w)
+	asserts(c"flip h", flip.h == hit.h)
+
+
+void test_rect_intersect_containment_and_identity():
+	ui_rect outer = ui_rect_new(0.0, 0.0, 100.0, 100.0)
+	ui_rect inner = ui_rect_new(20.0, 20.0, 10.0, 10.0)
+	ui_rect hit = ui_rect_intersect(outer, inner)
+	asserts(c"contained x", hit.x == 20.0)
+	asserts(c"contained w", hit.w == 10.0)
+	asserts(c"contained h", hit.h == 10.0)
+	ui_rect same = ui_rect_intersect(outer, outer)
+	asserts(c"identity w", same.w == 100.0)
+	asserts(c"identity h", same.h == 100.0)
+
+
+void test_rect_intersect_disjoint_is_empty_not_negative():
+	ui_rect a = ui_rect_new(0.0, 0.0, 10.0, 10.0)
+	ui_rect b = ui_rect_new(50.0, 50.0, 10.0, 10.0)
+	ui_rect miss = ui_rect_intersect(a, b)
+	assert_equal(1, ui_rect_is_empty(miss))
+	# Never a negative extent: clip math downstream divides by these.
+	asserts(c"w not negative", miss.w == 0.0)
+	asserts(c"h not negative", miss.h == 0.0)
+	# Edge-adjacent rects share no pixels, matching ui_rect_contains's
+	# exclusive right/bottom edges.
+	ui_rect touch = ui_rect_intersect(a, ui_rect_new(10.0, 0.0, 10.0, 10.0))
+	assert_equal(1, ui_rect_is_empty(touch))
+
+
 void test_theme_presets_share_tokens_with_different_values():
 	ui_theme light
 	ui_theme dark

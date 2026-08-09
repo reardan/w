@@ -2101,6 +2101,7 @@
 				"getchar_checked_64_test",
 				"graphics_event_64_test",
 				"graphics_gl_texture_test",
+				"graphics_ui_clip_test",
 				"graphics_ui_core_64_test",
 				"graphics_ui_render_test",
 				"graphics_ui_smoke_test",
@@ -4347,6 +4348,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "graphics/math_test.w", "-o", "bin/graphics_math_test"]},
 				{"cmd": ["bin/graphics_math_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_clip_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/clip_test.w"],
+			"outputs": ["bin/graphics_ui_clip_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/clip_test.w", "-o", "bin/graphics_ui_clip_test"]},
+				{"cmd": ["bin/graphics_ui_clip_test"]}
 			]
 		},
 		{

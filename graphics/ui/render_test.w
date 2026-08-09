@@ -111,7 +111,7 @@ void test_disc_and_shadow_counts():
 	ui_render_destroy(&r)
 
 
-void test_begin_resets_and_cap_holds():
+void test_begin_resets_and_batch_grows():
 	ui_renderer r
 	ui_render_init_headless(&r)
 	ui_render_begin(&r, 320, 240)
@@ -119,9 +119,17 @@ void test_begin_resets_and_cap_holds():
 	while (i < 1600):
 		ui_render_rect(&r, ui_rect_new(0.0, 0.0, 1.0, 1.0), ui_gray(1.0))
 		i = i + 1
-	# 1600 rects want 9600 vertices; the cap drops whole pushes past
-	# ui_render_max_verts.
-	asserts(c"cap", r.vert_count <= ui_render_max_verts())
+	# 1600 rects want 9600 vertices, past the 8192 the batch starts
+	# with: it doubles instead of dropping the tail, so every vertex
+	# pushed is a vertex kept.
+	assert_equal(9600, r.vert_count)
+	asserts(c"grew", r.vert_cap > ui_render_max_verts())
+	# Growth preserves what was already written: the last rect's first
+	# vertex is intact past the old cap.
+	asserts(c"last vertex kept", r.verts[9594 * 8 + 7] == 1.0)
 	ui_render_begin(&r, 320, 240)
 	assert_equal(0, r.vert_count)
+	# The grown capacity survives the frame reset — it is the batch,
+	# not the frame, that grew.
+	asserts(c"cap kept", r.vert_cap > ui_render_max_verts())
 	ui_render_destroy(&r)
