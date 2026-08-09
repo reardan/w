@@ -31,7 +31,7 @@ struct gfx_window:
 	# gfx_window_next_event
 	int32 event_head
 	int32 event_tail
-	int32[256] event_ring
+	int32[320] event_ring
 
 
 # "#version" line for shader sources that should compile on every
@@ -107,6 +107,23 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	return win
 
 
+# Translate an X modifier state mask (KeyPress/ButtonPress carry it in
+# event.input.state) into gfx_mod bits: ShiftMask 1, ControlMask 4,
+# Mod1Mask 8 (alt), Mod4Mask 64 (super). LockMask and the pointer-button
+# bits are not modifiers as far as widget code is concerned.
+int gfx_x11_mods(int state):
+	int mods = 0
+	if (state & 1):
+		mods = mods | GFX_MOD_SHIFT
+	if (state & 4):
+		mods = mods | GFX_MOD_CTRL
+	if (state & 8):
+		mods = mods | GFX_MOD_ALT
+	if (state & 64):
+		mods = mods | GFX_MOD_SUPER
+	return mods
+
+
 void gfx_window_handle_event(gfx_window* win, x_event* event):
 	int event_type = event.event_type
 	if (event_type == ClientMessage):
@@ -119,8 +136,9 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 	else if (event_type == DestroyNotify):
 		win.should_close = 1
 	else if (event_type == KeyPress):
+		int mods = gfx_x11_mods(event.input.state)
 		win.last_keycode = event.input.detail
-		gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_DOWN, event.input.detail, event.input.x, event.input.y)
+		gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_DOWN, event.input.detail, event.input.x, event.input.y, mods)
 		# Server-keymap translation to a character; only the ASCII set
 		# the CHAR contract defines is forwarded (graphics.event).
 		char[8] text
@@ -128,25 +146,41 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 		if (XLookupString(event, &text[0], 4, &keysym, 0) == 1):
 			int ch = text[0] & 255
 			if (((ch >= 32) && (ch <= 126)) || (ch == 8) || (ch == 9) || (ch == 13) || (ch == 27)):
-				gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_CHAR, ch, event.input.x, event.input.y)
+				gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_CHAR, ch, event.input.x, event.input.y, mods)
 		# Navigation keysyms have no character; translate the portable
-		# set (XK_Home 0xff50, XK_Left 0xff51, XK_Right 0xff53,
-		# XK_End 0xff57) to NAV codes.
+		# set (XK_Home 0xff50, XK_Left 0xff51, XK_Up 0xff52,
+		# XK_Right 0xff53, XK_Down 0xff54, XK_Page_Up 0xff55,
+		# XK_Page_Down 0xff56, XK_End 0xff57, XK_Delete 0xffff) to NAV
+		# codes.
+		int nav = 0
 		if (keysym == 0xff51):
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_NAV, GFX_NAV_LEFT, event.input.x, event.input.y)
+			nav = GFX_NAV_LEFT
 		else if (keysym == 0xff53):
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_NAV, GFX_NAV_RIGHT, event.input.x, event.input.y)
+			nav = GFX_NAV_RIGHT
 		else if (keysym == 0xff50):
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_NAV, GFX_NAV_HOME, event.input.x, event.input.y)
+			nav = GFX_NAV_HOME
 		else if (keysym == 0xff57):
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_NAV, GFX_NAV_END, event.input.x, event.input.y)
+			nav = GFX_NAV_END
+		else if (keysym == 0xff52):
+			nav = GFX_NAV_UP
+		else if (keysym == 0xff54):
+			nav = GFX_NAV_DOWN
+		else if (keysym == 0xff55):
+			nav = GFX_NAV_PAGE_UP
+		else if (keysym == 0xff56):
+			nav = GFX_NAV_PAGE_DOWN
+		else if (keysym == 0xffff):
+			nav = GFX_NAV_DELETE
+		if (nav != 0):
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_NAV, nav, event.input.x, event.input.y, mods)
 	else if (event_type == KeyRelease):
-		gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_UP, event.input.detail, event.input.x, event.input.y)
+		gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_UP, event.input.detail, event.input.x, event.input.y, gfx_x11_mods(event.input.state))
 	else if (event_type == MotionNotify):
 		win.mouse_x = event.input.x
 		win.mouse_y = event.input.y
 	else if (event_type == ButtonPress):
 		int button = event.input.detail
+		int button_mods = gfx_x11_mods(event.input.state)
 		if ((button >= 1) && (button <= 3)):
 			win.mouse_buttons = win.mouse_buttons | (1 << (button - 1))
 			# Button events carry their own coordinates: update the
@@ -154,13 +188,13 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 			# attributed to a stale position.
 			win.mouse_x = event.input.x
 			win.mouse_y = event.input.y
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_MOUSE_DOWN, button, event.input.x, event.input.y)
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_MOUSE_DOWN, button, event.input.x, event.input.y, button_mods)
 		else if (button == 4):
 			# Wheel notches arrive as button 4 (up) / 5 (down) press+
 			# release pairs; one SCROLL per press, releases ignored.
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_SCROLL, 1, event.input.x, event.input.y)
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_SCROLL, 1, event.input.x, event.input.y, button_mods)
 		else if (button == 5):
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_SCROLL, 0 - 1, event.input.x, event.input.y)
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_SCROLL, 0 - 1, event.input.x, event.input.y, button_mods)
 	else if (event_type == ButtonRelease):
 		int released = event.input.detail
 		if ((released >= 1) && (released <= 3)):
@@ -168,7 +202,7 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 			win.mouse_buttons = win.mouse_buttons & (0 - 1 - (1 << (released - 1)))
 			win.mouse_x = event.input.x
 			win.mouse_y = event.input.y
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_MOUSE_UP, released, event.input.x, event.input.y)
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_MOUSE_UP, released, event.input.x, event.input.y, gfx_x11_mods(event.input.state))
 
 
 # Drain pending X events. Returns 1 while the window should stay open.

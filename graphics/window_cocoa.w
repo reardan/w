@@ -43,6 +43,7 @@ struct gfx_window:
 	int sel_send_event
 	int sel_type
 	int sel_key_code
+	int sel_modifier_flags
 	int sel_update
 	int sel_is_visible
 	int sel_flush_buffer
@@ -52,7 +53,7 @@ struct gfx_window:
 	# work (docs/projects/ui_framework_plan.md)
 	int32 event_head
 	int32 event_tail
-	int32[256] event_ring
+	int32[320] event_ring
 
 
 # The Mac backend hands out 3.2-core contexts, where GLSL 130 no longer
@@ -136,6 +137,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.sel_send_event = sel_registerName(c"sendEvent:")
 	win.sel_type = sel_registerName(c"type")
 	win.sel_key_code = sel_registerName(c"keyCode")
+	win.sel_modifier_flags = sel_registerName(c"modifierFlags")
 	win.sel_update = sel_registerName(c"update")
 	win.sel_is_visible = sel_registerName(c"isVisible")
 	win.sel_flush_buffer = sel_registerName(c"flushBuffer")
@@ -143,6 +145,22 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.event_head = 0
 	win.event_tail = 0
 	return win
+
+
+# Translate an NSEvent modifierFlags mask into gfx_mod bits:
+# NSEventModifierFlagShift 1<<17, Control 1<<18, Option 1<<19,
+# Command 1<<20. Command maps to SUPER, matching the JS host's metaKey.
+int gfx_cocoa_mods(int flags):
+	int mods = 0
+	if (flags & 0x20000):
+		mods = mods | GFX_MOD_SHIFT
+	if (flags & 0x40000):
+		mods = mods | GFX_MOD_CTRL
+	if (flags & 0x80000):
+		mods = mods | GFX_MOD_ALT
+	if (flags & 0x100000):
+		mods = mods | GFX_MOD_SUPER
+	return mods
 
 
 # Drain pending AppKit events. Returns 1 while the window should stay
@@ -161,9 +179,9 @@ int gfx_window_poll(gfx_window* win):
 		int event_type = objc_msg0(event, win.sel_type) & 0xffff
 		if (event_type == 10):
 			win.last_keycode = objc_msg0(event, win.sel_key_code) & 0xffff
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_DOWN, win.last_keycode, 0, 0)
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_DOWN, win.last_keycode, 0, 0, gfx_cocoa_mods(objc_msg0(event, win.sel_modifier_flags)))
 		else if (event_type == 11):
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_UP, objc_msg0(event, win.sel_key_code) & 0xffff, 0, 0)
+			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_UP, objc_msg0(event, win.sel_key_code) & 0xffff, 0, 0, gfx_cocoa_mods(objc_msg0(event, win.sel_modifier_flags)))
 		objc_msg1(win.app, win.sel_send_event, event)
 	# Track window moves (the GL surface follows the view).
 	objc_msg0(win.glctx, win.sel_update)

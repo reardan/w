@@ -34,6 +34,7 @@ gfx_event make_event(int kind, int x, int y):
 	e.code = 1
 	e.x = x
 	e.y = y
+	e.mods = 0
 	return e
 
 
@@ -44,6 +45,7 @@ gfx_event make_key(int kind, int code):
 	e.code = code
 	e.x = 0
 	e.y = 0
+	e.mods = 0
 	return e
 
 
