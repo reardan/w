@@ -28,8 +28,10 @@ modules:
 	graphics.ui.widgets.context
 	graphics.ui.widgets.dropdown
 	graphics.ui.widgets.layout
+	graphics.ui.widgets.menu
 	graphics.ui.widgets.modal
 	graphics.ui.widgets.overlay
+	graphics.ui.widgets.popover
 	graphics.ui.widgets.progress
 	graphics.ui.widgets.scroll
 	graphics.ui.widgets.splitter
