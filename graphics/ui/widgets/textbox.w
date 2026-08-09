@@ -90,7 +90,7 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	# Focus follows the press: inside claims it, any other press drops
 	# it. Inert while another widget holds a popup open or inside a
 	# disabled scope.
-	if (ctx.input.mouse_pressed && (ctx.modal == 0) && (ctx.disabled == 0)):
+	if (ctx.input.mouse_pressed && (ui_scope_blocked(ctx) == 0) && (ctx.disabled == 0)):
 		if (ui_rect_contains(r, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 			ctx.focus = id
 			# Proportional caret: the nearest glyph boundary to the

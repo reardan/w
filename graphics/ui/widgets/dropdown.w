@@ -10,16 +10,16 @@ import graphics.ui.text
 import graphics.ui.widgets.state
 import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
+import graphics.ui.widgets.overlay
 
 
 # Collapsed: a button-look header showing items[selected[0]] and a 'v'
-# marker; clicking opens the list. Open: the list draws through the
-# renderer's overlay batch (above everything else this frame) while
-# ctx.modal keeps every other widget inert; pressing an item selects
-# it and closes, pressing anywhere else just closes, and either press
-# is consumed so widgets after this call never see it. open is caller
-# state, like a checkbox's value. Returns 1 on the frame the selection
-# changes.
+# marker; clicking opens the list. Open: the list draws on the popup
+# layer (above everything else this frame) while the popup scope keeps
+# every other widget inert; pressing an item selects it and closes,
+# pressing anywhere else just closes, and either press is consumed so
+# widgets after this call never see it. open is caller state, like a
+# checkbox's value. Returns 1 on the frame the selection changes.
 int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32* selected, int32* open):
 	int id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
@@ -31,9 +31,9 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 	if (open[0] == 0):
 		if (ui_click_behavior(ctx, id, r)):
 			open[0] = 1
-			ctx.modal = id
+			ui_popup_open(ctx, id)
 	else:
-		ctx.modal = id
+		ui_popup_open(ctx, id)
 		ctx.hot = id
 		ui_rect list = ui_rect_new(r.x, r.y + r.h, r.w, row_h * cast(float32, item_count))
 		if (ctx.input.mouse_pressed):
@@ -45,7 +45,7 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 					selected[0] = pick
 					changed = 1
 			open[0] = 0
-			ctx.modal = 0
+			ui_popup_dismiss(ctx, id)
 			ctx.input.mouse_pressed = 0
 
 	# Header: a rounded tonal field with the selection and a chevron.
@@ -58,9 +58,9 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 
 	if (open[0]):
 		# The open menu: an elevated rounded surface (shadow first, all
-		# through the overlay batch so it paints above later widgets).
+		# on the popup layer so it paints above later widgets).
 		ui_rect list_rect = ui_rect_new(r.x, r.y + r.h, r.w, row_h * cast(float32, item_count))
-		ctx.rndr.to_overlay = 1
+		ui_popup_begin(ctx, id, list_rect, UI_LAYER_POPUP)
 		ui_draw_shadow(ctx.rndr, list_rect, ctx.theme.shadow)
 		ui_draw_rrect(ctx.rndr, list_rect, cast(float32, ctx.theme.radius), ctx.theme.surface)
 		int i = 0
@@ -72,5 +72,5 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 				ui_draw_rrect(ctx.rndr, ui_rect_new(row.x + 3.0, row.y + 7.0, 4.0, row.h - 14.0), 2.0, ctx.theme.accent)
 			ui_draw_text(ctx.rndr, row.x + cast(float32, ctx.theme.pad + 4), row.y + (row.h - cast(float32, ui_text_height(scale))) * 0.5, items[i], scale, ctx.theme.text)
 			i = i + 1
-		ctx.rndr.to_overlay = 0
+		ui_popup_end(ctx)
 	return changed

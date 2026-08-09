@@ -2103,6 +2103,8 @@
 				"graphics_gl_texture_test",
 				"graphics_ui_clip_test",
 				"graphics_ui_core_64_test",
+				"graphics_ui_layout_test",
+				"graphics_ui_overlay_test",
 				"graphics_ui_render_test",
 				"graphics_ui_smoke_test",
 				"graphics_ui_widgets_test",
@@ -4378,6 +4380,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "graphics/ui/core_test.w", "-o", "bin/graphics_ui_core_test"]},
 				{"cmd": ["bin/graphics_ui_core_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_layout_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/layout_test.w"],
+			"outputs": ["bin/graphics_ui_layout_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/layout_test.w", "-o", "bin/graphics_ui_layout_test"]},
+				{"cmd": ["bin/graphics_ui_layout_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_overlay_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/overlay_test.w"],
+			"outputs": ["bin/graphics_ui_overlay_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/overlay_test.w", "-o", "bin/graphics_ui_overlay_test"]},
+				{"cmd": ["bin/graphics_ui_overlay_test"]}
 			]
 		},
 		{

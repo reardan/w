@@ -12,6 +12,7 @@ import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.render
 import graphics.ui.widgets.state
+import graphics.ui.widgets.layout
 
 
 void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
@@ -27,17 +28,15 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.hot = 0
 	ctx.active = 0
 	ctx.focus = 0
-	ctx.modal = 0
 	ctx.disabled = 0
 	ctx.next_id = 1
 	ctx.char_count = 0
 	ctx.nav_count = 0
-	ctx.cursor_x = 0.0
-	ctx.cursor_y = 0.0
-	ctx.origin_x = 0.0
-	ctx.last_right = 0.0
-	ctx.last_top = 0.0
-	ctx.pending_same_line = 0
+	ctx.popup_depth = 0
+	ctx.scope = 0
+	ctx.bracket_depth = 0
+	ui_layout_reset(&ctx.layout_stack[0], ui_rect_new(0.0, 0.0, 0.0, 0.0))
+	ctx.layout_depth = 1
 
 
 # Fold one queued event into the per-frame input edges. Only button 1
@@ -70,12 +69,15 @@ void ui_feed_event(ui_context* ctx, gfx_event* e):
 void ui_begin(ui_context* ctx, int width, int height):
 	ctx.hot = 0
 	ctx.next_id = 1
-	ctx.cursor_x = cast(float32, ctx.theme.pad)
-	ctx.cursor_y = cast(float32, ctx.theme.pad)
-	ctx.origin_x = ctx.cursor_x
-	ctx.last_right = ctx.cursor_x
-	ctx.last_top = ctx.cursor_y
-	ctx.pending_same_line = 0
+	# The root region is the window inset by the theme pad, so the
+	# plain vertical stack is just the depth-1 case of a region.
+	float32 pad = cast(float32, ctx.theme.pad)
+	ui_layout_reset(&ctx.layout_stack[0], ui_rect_new(pad, pad, cast(float32, width) - pad * 2.0, cast(float32, height) - pad * 2.0))
+	ctx.layout_depth = 1
+	# Scope is per-frame; the open-popup stack is not (it has to outlive
+	# the frame that opened it to make earlier widgets inert).
+	ctx.scope = 0
+	ctx.bracket_depth = 0
 	ui_render_begin(ctx.rndr, width, height)
 	if (ctx.rndr.gl_ready):
 		glClearColor(ctx.theme.background.r, ctx.theme.background.g, ctx.theme.background.b, 1.0)
@@ -112,15 +114,27 @@ void ui_disable(ui_context* ctx, int on):
 	ctx.disabled = on
 
 
+# 1 when the code being issued is outside the innermost open popup.
+# Everything else on screen is inert while a popup is open — the popup
+# handles all input itself — and that has to hold for widgets issued
+# BEFORE the popup in the frame as well, which is why the open-popup
+# stack persists across frames instead of being a frame-scoped bracket.
+int ui_scope_blocked(ui_context* ctx):
+	if (ctx.popup_depth == 0):
+		return 0
+	if (ctx.scope == ctx.popup_stack[ctx.popup_depth - 1]):
+		return 0
+	return 1
+
+
 # Shared press/release logic: claims hot when the pointer is over the
 # rect, active when this frame's press landed inside it; returns 1 on
-# the frame the release lands while still over it. While a popup is
-# open (ctx.modal) every other widget is inert — the popup handles all
-# input itself — and so is everything inside a ui_disable scope.
+# the frame the release lands while still over it. Inert inside a
+# ui_disable scope, or outside the innermost open popup.
 int ui_click_behavior(ui_context* ctx, int id, ui_rect r):
 	if (ctx.disabled):
 		return 0
-	if ((ctx.modal != 0) && (ctx.modal != id)):
+	if (ui_scope_blocked(ctx)):
 		return 0
 	int over = ui_rect_contains(r, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))
 	if (over):

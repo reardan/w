@@ -8,10 +8,10 @@ gfx_window.
 
 Keyboard input is context-routed: ui_feed_event queues the frame's
 CHAR/NAV events on the context, and the widget holding ctx.focus
-(claimed by clicking a textbox) consumes them. An open dropdown claims
-ctx.modal, which makes every other widget inert until it closes — its
-list draws through the renderer's overlay batch so it paints above
-widgets issued later in the frame.
+(claimed by clicking a textbox) consumes them. An open dropdown opens a
+popup scope, which makes every other widget inert until it closes — its
+list draws on the popup layer so it paints above widgets issued later
+in the frame.
 
 Interaction is event-queue-based (graphics.event), not snapshot-based:
 ui_feed_event turns MOUSE_DOWN/MOUSE_UP into per-frame pressed/
@@ -25,14 +25,18 @@ Widget ids are sequential per frame in call order — stable for the
 static forms of stage 1; hash-based ids are the flagged stage-2
 refinement for dynamic layouts.
 
-Layout is a vertical stack cursor: each widget takes the next row
-(theme.widget_height tall, theme.gap between rows) starting at
-theme.pad; ui_same_line places the next widget to the right of the
-previous one instead.
+Layout is a vertical stack cursor over a stack of regions: each widget
+takes the next row (theme.widget_height tall, theme.gap between rows)
+in the innermost region, and ui_same_line places the next widget to the
+right of the previous one instead. ui_begin seeds the root region with
+the window inset by theme.pad, so the plain stack is the depth-1 case;
+ui_region_push nests a sub-area for a modal body, a table cell or a
+scrolled viewport.
 */
 import graphics.ui.widgets.state
 import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
+import graphics.ui.widgets.overlay
 import graphics.ui.widgets.basic
 import graphics.ui.widgets.choice
 import graphics.ui.widgets.progress
