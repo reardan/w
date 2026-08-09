@@ -25,6 +25,11 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.input.mouse_released = 0
 	ctx.input.press_x = 0
 	ctx.input.press_y = 0
+	ctx.input.scroll_x = 0
+	ctx.input.scroll_y = 0
+	ctx.input.scroll_at_x = 0
+	ctx.input.scroll_at_y = 0
+	ctx.input.mods = 0
 	ctx.hot = 0
 	ctx.active = 0
 	ctx.focus = 0
@@ -54,14 +59,23 @@ void ui_feed_event(ui_context* ctx, gfx_event* e):
 		ctx.input.mouse_released = 1
 		ctx.input.mouse_x = e.x
 		ctx.input.mouse_y = e.y
+	else if (e.kind == GFX_EVENT_SCROLL):
+		# Wheel notches accumulate over the frame; the scroll region
+		# under the pointer claims and zeroes them.
+		ctx.input.scroll_y = ctx.input.scroll_y + e.code
+		ctx.input.scroll_at_x = e.x
+		ctx.input.scroll_at_y = e.y
 	else if (e.kind == GFX_EVENT_CHAR):
 		if (ctx.char_count < 32):
 			ctx.chars[ctx.char_count] = e.code
+			ctx.char_mods[ctx.char_count] = e.mods
 			ctx.char_count = ctx.char_count + 1
 	else if (e.kind == GFX_EVENT_NAV):
 		if (ctx.nav_count < 8):
 			ctx.navs[ctx.nav_count] = e.code
+			ctx.nav_mods[ctx.nav_count] = e.mods
 			ctx.nav_count = ctx.nav_count + 1
+	ctx.input.mods = e.mods
 
 
 # Start a frame: reset ids/hot/layout, start the render batch, clear
@@ -104,6 +118,8 @@ void ui_end(ui_context* ctx):
 		ctx.active = 0
 	ctx.input.mouse_pressed = 0
 	ctx.input.mouse_released = 0
+	ctx.input.scroll_x = 0
+	ctx.input.scroll_y = 0
 	ctx.char_count = 0
 	ctx.nav_count = 0
 

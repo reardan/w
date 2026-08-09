@@ -2106,6 +2106,7 @@
 				"graphics_ui_layout_test",
 				"graphics_ui_overlay_test",
 				"graphics_ui_render_test",
+				"graphics_ui_scroll_test",
 				"graphics_ui_smoke_test",
 				"graphics_ui_widgets_test",
 				"hash_table_64_test",
@@ -4410,6 +4411,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "graphics/ui/render_test.w", "-o", "bin/graphics_ui_render_test"]},
 				{"cmd": ["bin/graphics_ui_render_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_scroll_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/scroll_test.w"],
+			"outputs": ["bin/graphics_ui_scroll_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/scroll_test.w", "-o", "bin/graphics_ui_scroll_test"]},
+				{"cmd": ["bin/graphics_ui_scroll_test"]}
 			]
 		},
 		{

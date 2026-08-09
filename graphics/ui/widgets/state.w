@@ -18,6 +18,14 @@ struct ui_input:
 	int32 mouse_released   # a button-1 MOUSE_UP arrived this frame
 	int32 press_x          # where this frame's press landed
 	int32 press_y
+	# Wheel notches accumulated this frame, +1 per notch away from the
+	# user. Claimed by the scroll region under the pointer and zeroed by
+	# it, so one wheel event does not scroll two nested regions.
+	int32 scroll_x
+	int32 scroll_y
+	int32 scroll_at_x      # pointer position when the wheel turned
+	int32 scroll_at_y
+	int32 mods             # gfx_mod bits on the most recent event
 
 
 # Where widgets are placed. One of these is the whole window (seeded by
@@ -59,8 +67,10 @@ struct ui_context:
 	# This frame's translated text input, drained by the focused
 	# widget; cleared in ui_end like the mouse edges.
 	int32[32] chars        # GFX_EVENT_CHAR codes in arrival order
+	int32[32] char_mods    # gfx_mod bits held for chars[i]
 	int32 char_count
 	int32[8] navs          # GFX_EVENT_NAV codes in arrival order
+	int32[8] nav_mods      # gfx_mod bits held for navs[i]
 	int32 nav_count
 	# Layout regions, innermost at layout_depth - 1. ui_begin seeds
 	# depth 1 with the window, so the plain vertical stack is the

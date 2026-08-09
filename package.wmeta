@@ -29,6 +29,7 @@ modules:
 	graphics.ui.widgets.layout
 	graphics.ui.widgets.overlay
 	graphics.ui.widgets.progress
+	graphics.ui.widgets.scroll
 	graphics.ui.widgets.state
 	graphics.ui.widgets.textbox
 	graphics.window

@@ -37,6 +37,7 @@ import graphics.ui.widgets.state
 import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
 import graphics.ui.widgets.overlay
+import graphics.ui.widgets.scroll
 import graphics.ui.widgets.basic
 import graphics.ui.widgets.choice
 import graphics.ui.widgets.progress
