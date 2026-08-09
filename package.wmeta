@@ -32,6 +32,7 @@ modules:
 	graphics.ui.widgets.overlay
 	graphics.ui.widgets.progress
 	graphics.ui.widgets.scroll
+	graphics.ui.widgets.splitter
 	graphics.ui.widgets.state
 	graphics.ui.widgets.table
 	graphics.ui.widgets.textarea
