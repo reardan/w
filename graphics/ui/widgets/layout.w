@@ -57,6 +57,20 @@ ui_rect ui_region_content(ui_context* ctx):
 	return ui_rect_new(lo.bounds.x, lo.bounds.y, lo.content_w, lo.content_h)
 
 
+# Record that content covers rect, without moving the cursor. Widgets
+# that place their own geometry — a table's rows, an editor's lines —
+# still need the region's extent measured, or a scroll viewport around
+# them would think there was nothing to scroll.
+void ui_region_claim(ui_context* ctx, ui_rect r):
+	ui_layout* lo = ui_layout_top(ctx)
+	float32 right = r.x + r.w - lo.bounds.x
+	if (right > lo.content_w):
+		lo.content_w = right
+	float32 bottom = r.y + r.h - lo.bounds.y
+	if (bottom > lo.content_h):
+		lo.content_h = bottom
+
+
 # Place the next widget on the same row as the previous one.
 void ui_same_line(ui_context* ctx):
 	ui_layout* lo = ui_layout_top(ctx)
@@ -80,10 +94,5 @@ ui_rect ui_layout_next(ui_context* ctx, float32 w, float32 h):
 	lo.cursor_y = r.y + r.h + cast(float32, ctx.theme.gap)
 	# Measured from the region's origin, so a caller can size a
 	# scrollable viewport from what was placed in it.
-	float32 right = r.x + r.w - lo.bounds.x
-	if (right > lo.content_w):
-		lo.content_w = right
-	float32 bottom = r.y + r.h - lo.bounds.y
-	if (bottom > lo.content_h):
-		lo.content_h = bottom
+	ui_region_claim(ctx, r)
 	return r

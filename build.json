@@ -2105,10 +2105,13 @@
 				"graphics_ui_clip_test",
 				"graphics_ui_core_64_test",
 				"graphics_ui_layout_test",
+				"graphics_ui_modal_test",
 				"graphics_ui_overlay_test",
 				"graphics_ui_render_test",
 				"graphics_ui_scroll_test",
 				"graphics_ui_smoke_test",
+				"graphics_ui_table_test",
+				"graphics_ui_textarea_test",
 				"graphics_ui_widgets_test",
 				"hash_table_64_test",
 				"heap_64_test",
@@ -4416,6 +4419,16 @@
 			]
 		},
 		{
+			"name": "graphics_ui_modal_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/modal_test.w"],
+			"outputs": ["bin/graphics_ui_modal_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/modal_test.w", "-o", "bin/graphics_ui_modal_test"]},
+				{"cmd": ["bin/graphics_ui_modal_test"]}
+			]
+		},
+		{
 			"name": "graphics_ui_overlay_test",
 			"deps": ["wv2"],
 			"inputs": ["graphics/ui/widgets/overlay_test.w"],
@@ -4453,6 +4466,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_test"]},
 				{"cmd": ["bin/graphics_ui_smoke_test"], "expect_stdout": "graphics ui smoke"}
+			]
+		},
+		{
+			"name": "graphics_ui_table_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/table_test.w"],
+			"outputs": ["bin/graphics_ui_table_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/table_test.w", "-o", "bin/graphics_ui_table_test"]},
+				{"cmd": ["bin/graphics_ui_table_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_textarea_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/textarea_test.w"],
+			"outputs": ["bin/graphics_ui_textarea_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/textarea_test.w", "-o", "bin/graphics_ui_textarea_test"]},
+				{"cmd": ["bin/graphics_ui_textarea_test"]}
 			]
 		},
 		{

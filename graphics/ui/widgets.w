@@ -44,3 +44,6 @@ import graphics.ui.widgets.choice
 import graphics.ui.widgets.progress
 import graphics.ui.widgets.textbox
 import graphics.ui.widgets.dropdown
+import graphics.ui.widgets.modal
+import graphics.ui.widgets.table
+import graphics.ui.widgets.textarea
