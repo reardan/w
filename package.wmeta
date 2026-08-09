@@ -37,6 +37,7 @@ modules:
 	graphics.ui.widgets.table
 	graphics.ui.widgets.textarea
 	graphics.ui.widgets.textbox
+	graphics.ui.widgets.tree
 	graphics.window
 	graphics.x11
 	lib.args

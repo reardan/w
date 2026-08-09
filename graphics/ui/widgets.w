@@ -48,3 +48,4 @@ import graphics.ui.widgets.modal
 import graphics.ui.widgets.table
 import graphics.ui.widgets.textarea
 import graphics.ui.widgets.splitter
+import graphics.ui.widgets.tree

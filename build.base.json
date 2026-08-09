@@ -2008,6 +2008,7 @@
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/table_test.w", "-o", "bin/graphics_ui_table_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/textarea_test.w", "-o", "bin/graphics_ui_textarea_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/splitter_test.w", "-o", "bin/graphics_ui_splitter_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/tree_test.w", "-o", "bin/graphics_ui_tree_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/demo.w", "-o", "bin/graphics_ui_demo_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
