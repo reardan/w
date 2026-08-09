@@ -1926,6 +1926,12 @@
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/modal_test.w", "-o", "bin/graphics_ui_modal_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/table_test.w", "-o", "bin/graphics_ui_table_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/textarea_test.w", "-o", "bin/graphics_ui_textarea_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/splitter_test.w", "-o", "bin/graphics_ui_splitter_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/tree_test.w", "-o", "bin/graphics_ui_tree_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/tabs_test.w", "-o", "bin/graphics_ui_tabs_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/popover_test.w", "-o", "bin/graphics_ui_popover_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/menu_test.w", "-o", "bin/graphics_ui_menu_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/toast_test.w", "-o", "bin/graphics_ui_toast_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/demo.w", "-o", "bin/graphics_ui_demo_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
@@ -2113,13 +2119,19 @@
 				"graphics_ui_clip_test",
 				"graphics_ui_core_64_test",
 				"graphics_ui_layout_test",
+				"graphics_ui_menu_test",
 				"graphics_ui_modal_test",
 				"graphics_ui_overlay_test",
+				"graphics_ui_popover_test",
 				"graphics_ui_render_test",
 				"graphics_ui_scroll_test",
 				"graphics_ui_smoke_test",
+				"graphics_ui_splitter_test",
 				"graphics_ui_table_test",
+				"graphics_ui_tabs_test",
 				"graphics_ui_textarea_test",
+				"graphics_ui_toast_test",
+				"graphics_ui_tree_test",
 				"graphics_ui_widgets_test",
 				"hash_table_64_test",
 				"heap_64_test",
@@ -4427,6 +4439,16 @@
 			]
 		},
 		{
+			"name": "graphics_ui_menu_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/menu_test.w"],
+			"outputs": ["bin/graphics_ui_menu_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/menu_test.w", "-o", "bin/graphics_ui_menu_test"]},
+				{"cmd": ["bin/graphics_ui_menu_test"]}
+			]
+		},
+		{
 			"name": "graphics_ui_modal_test",
 			"deps": ["wv2"],
 			"inputs": ["graphics/ui/widgets/modal_test.w"],
@@ -4444,6 +4466,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/overlay_test.w", "-o", "bin/graphics_ui_overlay_test"]},
 				{"cmd": ["bin/graphics_ui_overlay_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_popover_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/popover_test.w"],
+			"outputs": ["bin/graphics_ui_popover_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/popover_test.w", "-o", "bin/graphics_ui_popover_test"]},
+				{"cmd": ["bin/graphics_ui_popover_test"]}
 			]
 		},
 		{
@@ -4477,6 +4509,16 @@
 			]
 		},
 		{
+			"name": "graphics_ui_splitter_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/splitter_test.w"],
+			"outputs": ["bin/graphics_ui_splitter_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/splitter_test.w", "-o", "bin/graphics_ui_splitter_test"]},
+				{"cmd": ["bin/graphics_ui_splitter_test"]}
+			]
+		},
+		{
 			"name": "graphics_ui_table_test",
 			"deps": ["wv2"],
 			"inputs": ["graphics/ui/widgets/table_test.w"],
@@ -4487,6 +4529,16 @@
 			]
 		},
 		{
+			"name": "graphics_ui_tabs_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/tabs_test.w"],
+			"outputs": ["bin/graphics_ui_tabs_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/tabs_test.w", "-o", "bin/graphics_ui_tabs_test"]},
+				{"cmd": ["bin/graphics_ui_tabs_test"]}
+			]
+		},
+		{
 			"name": "graphics_ui_textarea_test",
 			"deps": ["wv2"],
 			"inputs": ["graphics/ui/widgets/textarea_test.w"],
@@ -4494,6 +4546,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/textarea_test.w", "-o", "bin/graphics_ui_textarea_test"]},
 				{"cmd": ["bin/graphics_ui_textarea_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_toast_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/toast_test.w"],
+			"outputs": ["bin/graphics_ui_toast_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/toast_test.w", "-o", "bin/graphics_ui_toast_test"]},
+				{"cmd": ["bin/graphics_ui_toast_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_tree_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/tree_test.w"],
+			"outputs": ["bin/graphics_ui_tree_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/tree_test.w", "-o", "bin/graphics_ui_tree_test"]},
+				{"cmd": ["bin/graphics_ui_tree_test"]}
 			]
 		},
 		{

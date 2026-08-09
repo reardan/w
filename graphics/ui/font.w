@@ -42,6 +42,17 @@ int ui_mask_shadow():
 	return 6
 
 
+# ui_render_mask mirrors but never rotates, so the 'v' chevron above
+# cannot supply the right-pointing form a collapsed tree node needs.
+# flip_x on this one gives the left-pointing form.
+int ui_mask_chevron_right():
+	return 7
+
+
+int ui_mask_cross():
+	return 8
+
+
 # One glyph's (or mask's) atlas rect and pixel metrics. bearing_x is
 # the pen-to-bitmap x offset; bearing_top is rows above the baseline
 # (negative for below-baseline ink like '_').

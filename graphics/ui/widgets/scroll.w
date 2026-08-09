@@ -139,6 +139,14 @@ void ui_scroll_end(ui_context* ctx, ui_scroll_state* st):
 				ctx.input.scroll_y = 0
 	ui_scroll_clamp(st)
 
+	# The thumb's id is taken whether or not there is a thumb. Widget ids
+	# are sequential in call order, so allocating it only on the overflow
+	# path would shift every later widget's id the moment content grows
+	# past the viewport — and ctx.focus persists across frames, so a
+	# focused field after a growing region would silently lose focus.
+	int id = ctx.next_id
+	ctx.next_id = ctx.next_id + 1
+
 	if (ui_scroll_overflows(st) == 0):
 		st.drag_id = 0
 		return
@@ -162,8 +170,6 @@ void ui_scroll_end(ui_context* ctx, ui_scroll_state* st):
 	# Dragging the thumb, on the same press/active model as every other
 	# widget — but tracked on the scroll state, since a viewport is not
 	# issued through ui_layout_next and has no widget id of its own.
-	int id = ctx.next_id
-	ctx.next_id = ctx.next_id + 1
 	if (ctx.disabled == 0):
 		if (ui_scope_blocked(ctx) == 0):
 			if (ctx.input.mouse_pressed):

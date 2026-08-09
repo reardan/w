@@ -404,6 +404,17 @@ void ui_draw_chevron(ui_renderer* r, ui_rect rect, ui_color color):
 	ui_render_mask(r, rect, ui_mask_chevron(), 0, 0, color)
 
 
+# The tree view's disclosure marker: right when collapsed, and the
+# plain down chevron above when expanded.
+void ui_draw_chevron_right(ui_renderer* r, ui_rect rect, ui_color color):
+	ui_render_mask(r, rect, ui_mask_chevron_right(), 0, 0, color)
+
+
+# The tab strip's close affordance.
+void ui_draw_cross(ui_renderer* r, ui_rect rect, ui_color color):
+	ui_render_mask(r, rect, ui_mask_cross(), 0, 0, color)
+
+
 # Soft drop shadow behind rect: a 9-patch of the baked shadow corner
 # tile, offset 2px down. Corners sample the whole tile; edge strips
 # sample the tile's last row/column (the straight falloff profile);

@@ -4,9 +4,10 @@
 # draw with (docs/projects/ui_framework_plan.md stage 4).
 #
 # Atlas contents, packed on 256-wide shelves with a 1px gap:
-#   masks 0..6  — 0 solid white (untextured fills), 1 rounded-corner
+#   masks 0..8  — 0 solid white (untextured fills), 1 rounded-corner
 #                 quarter disc, 2 disc, 3 ring, 4 checkmark,
-#                 5 chevron, 6 blurred shadow corner tile
+#                 5 chevron, 6 blurred shadow corner tile,
+#                 7 right-pointing chevron, 8 cross
 #   strike 0    — Liberation Sans Regular at 16 ppem (body text)
 #   strike 1    — Liberation Sans Bold at 20 ppem (titles)
 #
@@ -33,7 +34,7 @@ int gen_char_count():
 
 
 int gen_mask_count():
-	return 7
+	return 9
 
 
 # ---- atlas packing ----------------------------------------------------
@@ -229,6 +230,53 @@ char* gen_mask_chevron(int size):
 			float32 py = cast(float32, y) + 0.5
 			float32 d1 = gen_capsule_dist(px, py, 5.0 * s, 9.0 * s, 12.0 * s, 16.0 * s)
 			float32 d2 = gen_capsule_dist(px, py, 12.0 * s, 16.0 * s, 19.0 * s, 9.0 * s)
+			float32 d = d1
+			if (d2 < d):
+				d = d2
+			p[y * size + x] = gen_coverage(1.8 * s - d + 0.5)
+			x = x + 1
+		y = y + 1
+	return p
+
+
+# Chevron pointing right: the tree view's collapsed-node marker, and
+# the one direction gen_mask_chevron cannot supply — ui_render_mask
+# mirrors but never rotates, so a 'v' can be flipped to a '^' and no
+# further. flip_x on this one gives the left-pointing form.
+char* gen_mask_chevron_right(int size):
+	char* p = malloc(size * size)
+	float32 s = cast(float32, size) / 24.0
+	int y = 0
+	while (y < size):
+		int x = 0
+		while (x < size):
+			float32 px = cast(float32, x) + 0.5
+			float32 py = cast(float32, y) + 0.5
+			float32 d1 = gen_capsule_dist(px, py, 9.0 * s, 5.0 * s, 16.0 * s, 12.0 * s)
+			float32 d2 = gen_capsule_dist(px, py, 16.0 * s, 12.0 * s, 9.0 * s, 19.0 * s)
+			float32 d = d1
+			if (d2 < d):
+				d = d2
+			p[y * size + x] = gen_coverage(1.8 * s - d + 0.5)
+			x = x + 1
+		y = y + 1
+	return p
+
+
+# Cross: the tab strip's close affordance. Two round-capped diagonals
+# across a 24px tile, the same stroke weight as the chevrons so the
+# two read as one icon family.
+char* gen_mask_cross(int size):
+	char* p = malloc(size * size)
+	float32 s = cast(float32, size) / 24.0
+	int y = 0
+	while (y < size):
+		int x = 0
+		while (x < size):
+			float32 px = cast(float32, x) + 0.5
+			float32 py = cast(float32, y) + 0.5
+			float32 d1 = gen_capsule_dist(px, py, 7.0 * s, 7.0 * s, 17.0 * s, 17.0 * s)
+			float32 d2 = gen_capsule_dist(px, py, 17.0 * s, 7.0 * s, 7.0 * s, 17.0 * s)
 			float32 d = d1
 			if (d2 < d):
 				d = d2
@@ -475,6 +523,8 @@ int main(int argc, int argv):
 	mask_sizes[4] = 30
 	mask_sizes[5] = 24
 	mask_sizes[6] = 48
+	mask_sizes[7] = 24
+	mask_sizes[8] = 24
 	int m = 0
 	while (m < gen_mask_count()):
 		int size = mask_sizes[m]
@@ -491,8 +541,12 @@ int main(int argc, int argv):
 			bitmap = gen_mask_check(size)
 		else if (m == 5):
 			bitmap = gen_mask_chevron(size)
-		else:
+		else if (m == 6):
 			bitmap = gen_mask_shadow(size)
+		else if (m == 7):
+			bitmap = gen_mask_chevron_right(size)
+		else:
+			bitmap = gen_mask_cross(size)
 		int x = 0
 		int y = 0
 		gen_atlas_place(&a, bitmap, size, size, &x, &y)
@@ -527,8 +581,9 @@ int main(int argc, int argv):
 	stream_write_line(out, c"# tools/ui/LiberationSans-LICENSE.txt) — do not edit by hand; run")
 	stream_write_line(out, c"# ./wbuild ui_font_data to regenerate.")
 	stream_write_line(out, c"#")
-	stream_write_line(out, c"# One R8 atlas: masks 0..6 (white, corner, disc, ring, check,")
-	stream_write_line(out, c"# chevron, shadow — graphics/ui/font.w documents the drawing), then")
+	stream_write_line(out, c"# One R8 atlas: masks 0..8 (white, corner, disc, ring, check,")
+	stream_write_line(out, c"# chevron, shadow, chevron_right, cross — graphics/ui/font.w")
+	stream_write_line(out, c"# documents the drawing), then")
 	stream_write_line(out, c"# strike 0 = Liberation Sans Regular 16 ppem, strike 1 = Bold 20")
 	stream_write_line(out, c"# ppem, ASCII 32..126. Pixels are run-length encoded (tag 0: zero")
 	stream_write_line(out, c"# run, tag 1: 255 run, tag 2: literal run); records are 9-byte")
@@ -573,9 +628,15 @@ int main(int argc, int argv):
 	free(mask_packed)
 	stream_write_line(out, c"")
 	stream_write_line(out, c"")
-	stream_write_line(out, c"# 9-byte record for mask id 0..6.")
+	# Bound and comment both come from gen_mask_count(), so adding a mask
+	# cannot leave a stale clamp behind that silently maps it to 0.
+	stream_write_cstr(out, c"# 9-byte record for mask id 0..")
+	stream_write_int(out, gen_mask_count() - 1)
+	stream_write_line(out, c".")
 	stream_write_line(out, c"char* ui_font_mask_record(int mask):")
-	stream_write_line(out, c"\tif ((mask < 0) || (mask >= 7)):")
+	stream_write_cstr(out, c"\tif ((mask < 0) || (mask >= ")
+	stream_write_int(out, gen_mask_count())
+	stream_write_line(out, c")):")
 	stream_write_line(out, c"\t\tmask = 0")
 	stream_write_line(out, c"\tchar* data = ui_font_mask_records()")
 	stream_write_line(out, c"\treturn &data[mask * 9]")
