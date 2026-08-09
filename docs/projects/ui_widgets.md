@@ -24,7 +24,11 @@ in §8 stand except where round 1 answered them — noted inline there.
 **Round 2 is designed in §9 and executed by `ui_widgets_plan.md`'s
 stages 9-16**: the *editor shell* — Tree View, Splitter, Tabs, Popover,
 context menu and Toast, assembled into an editor-shaped demo. It
-departs from §6's ordering on purpose, and §9 says why.
+departs from §6's ordering on purpose, and §9 says why. Implemented
+2026-08-09; all six widgets ship, the three foundation gaps in §9.1 are
+closed, and §9.3 answers the open question 3 below
+(`docs/images/ui_demo_shell.png`, `ui_demo_shell_menu.png`, both
+reproducible via `graphics/ui/demo.w --shell [--menu]`).
 
 ## 0. The finding, up front
 
@@ -491,7 +495,10 @@ sizing policy (question 2 stays open for a policy on top of them).
 3. **Toast timing.** Toasts need a clock. Frame counting is
    dependency-free but wrong under a variable frame rate;
    `time_monotonic_ms()` is correct but is a syscall the wasm backend
-   would need an equivalent for. Preference?
+   would need an equivalent for. Preference? — **Answered by round 2
+   (§9.3): neither. The widget takes `now_ms` as an argument and reads
+   no clock at all**, which keeps it headless-testable and sidesteps
+   the wasm clock being outright broken.
 4. **Editor buffer ownership.** `ui_text_buffer` is proposed inside
    `graphics/ui/widgets/`. If the editor will want it without the
    widget layer (headless file processing, tests), it may belong in

@@ -45,8 +45,15 @@ editor nav codes, `widgets.w` is an umbrella over
 batch and three draw layers. On that foundation sit layout regions,
 the popup scope, scroll viewports, `ui_text_buffer`, and the three
 widgets that prove them — Modal, Table and Textarea
-(`docs/images/ui_demo_modal.png`). The remaining fourteen items in
-#441 keep the staged roadmap in `ui_widgets.md` §6.
+(`docs/images/ui_demo_modal.png`). Round 2 implemented 2026-08-09
+(`ui_widgets.md` §9): the *editor shell* — a Tree View, a draggable
+Splitter, a Tab strip, an anchored Popover with a right-click context
+menu on it, and a Toast — assembled by `graphics/ui/demo_shell.w`
+behind `demo.w --shell` into a sidebar-and-tabs editor window
+(`docs/images/ui_demo_shell.png`, `ui_demo_shell_menu.png`). The
+remaining items in #441 — Form, Chips, Email, Dropdown
+multi-select/search and the date/time family — keep the staged roadmap
+in `ui_widgets.md` §6.
 
 ## 0. Where this framework would live, and what it does not replace
 

@@ -21,6 +21,7 @@ import graphics.ui.render
 import graphics.ui.text
 import graphics.ui.widgets
 import graphics.ui.demo_shared
+import graphics.ui.demo_shell
 
 
 # Write the just-drawn frame as a binary PPM (P6): glReadPixels is
@@ -71,6 +72,16 @@ int main(int argc, int argv):
 	# --dialog opens the modal on the first frame, so the one round-1
 	# widget that is not on the default screen is capturable too.
 	int dialog = args_has_flag(c"dialog")
+	# --shell swaps the stage-1..3 form for the round-2 editor shell in a
+	# wide window. The form's row coordinates are load-bearing for
+	# graphics/ui/smoke_test.w and tools/web/run_ui_stub.mjs, so the
+	# shell is a separate screen rather than more rows on the same one.
+	int shell = args_has_flag(c"shell")
+	# --menu opens the shell's context menu and raises a toast on the
+	# first frame, so the two round-2 overlays that are not on the
+	# default screen are capturable without clicking — the same reason
+	# --dialog exists for the modal.
+	int menu = args_has_flag(c"menu")
 	int theme_choice = 0
 	char* theme_value = args_value(c"theme")
 	if (theme_value != 0):
@@ -82,12 +93,32 @@ int main(int argc, int argv):
 			print_error(c"demo: unknown --theme (want light, dark or ocean)\n")
 			return 1
 
-	gfx_window* win = gfx_window_open(c"W ui demo", 320, 680)
+	int win_w = 320
+	int win_h = 680
+	if (shell):
+		win_w = 900
+		win_h = 600
+	gfx_window* win = gfx_window_open(c"W ui demo", win_w, win_h)
 	if (win == 0):
 		return 1
 	ui_renderer rndr
 	if (ui_render_init(&rndr) == 0):
 		return 1
+	ui_shell_state shell_state
+	ui_shell_init(&shell_state)
+	if (shell):
+		if (theme_choice == 0):
+			ui_theme_light(&shell_state.theme)
+		else if (theme_choice == 2):
+			ui_theme_ocean(&shell_state.theme)
+		# The shell opens with one document already up, so the editor
+		# pane is not empty in a screenshot.
+		ui_shell_open_doc(&shell_state, 0)
+		if (menu):
+			ui_shell_pin_menu(&shell_state, 60.0, 150.0)
+			# Started from the same clock the loop feeds ui_shell_body,
+			# or it would already have expired by the first frame.
+			ui_toast_show(&shell_state.toast, c"Collapsed every folder", time_monotonic_ms(), 1000000)
 	ui_demo_state state
 	ui_demo_init(&state)
 	# Same single source of truth the checkbox and dropdown drive.
@@ -98,11 +129,19 @@ int main(int argc, int argv):
 	state.dialog_open = dialog
 	ui_context ctx
 	ui_context_init(&ctx, &rndr, &state.light_theme)
+	if (shell):
+		ctx.theme = &shell_state.theme
 
 	int frame = 0
 	while (gfx_window_poll(win)):
 		ui_begin_window(&ctx, win)
-		ui_demo_body(&ctx, &state)
+		if (shell):
+			# The shell's toast is the one time-dependent thing on screen,
+			# and the widget layer reads no clocks — so the driver
+			# supplies the time (docs/projects/ui_widgets.md §9.3).
+			ui_shell_body(&ctx, &shell_state, time_monotonic_ms())
+		else:
+			ui_demo_body(&ctx, &state)
 		ui_end(&ctx)
 		frame = frame + 1
 		int last = (max_frames > 0) && (frame >= max_frames)

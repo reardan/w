@@ -30,9 +30,9 @@ stage's own section under *Landed*; the plan text itself is left as
 written so the two can be compared.
 
 **Round 2 — the editor shell — is stages 9-16, at the end of this
-file.** It implements `ui_widgets.md` §9 and follows the same
-convention: the plan text stays as written and each stage records what
-actually landed.
+file, and all eight landed 2026-08-09.** It implements `ui_widgets.md`
+§9 and follows the same convention: the plan text stays as written and
+each stage records what actually landed.
 
 ## Why this order
 
@@ -573,6 +573,14 @@ Regenerate with `./wbuild ui_font_data` and commit `font_data.w` in the
 same commit — that target sits outside `tests`, so nothing would catch
 a stale atlas.
 
+**Landed**, plus one thing the plan did not anticipate: the generator
+emitted the mask-record bound as a hardcoded `mask >= 7`, which would
+silently have clamped both new masks to 0. It and its comment now
+derive from `gen_mask_count()`, so adding a mask can never again leave
+a stale clamp behind. The regenerated atlas moved every glyph's UVs, as
+expected — and no test needed updating, because they all pin vertex
+counts rather than coordinates.
+
 ## Stage 11 — Splitter
 
 ```
@@ -595,6 +603,14 @@ window resize can never strand the divider off-screen.
 Test `splitter_test.w`: panes tile the area exactly and never overlap;
 a drag moves `pos` by the pointer delta; the clamp holds at both ends;
 a press outside the divider starts no drag.
+
+**Landed**, with the clamp taking two attempts to get right. An area
+too small to honour both minimums inverts the range, and a naive clamp
+turns that into a negative pane width — first for pane b, then, after
+the obvious fix, for pane a. The order the three constraints are
+applied in decides the answer: the divider-stays-inside-the-area bound
+is the only one always satisfiable, so it is applied first and the
+other two are taken against it. The test caught both attempts.
 
 ## Stage 12 — Tree View
 
@@ -634,6 +650,17 @@ exactly once; a node click toggles `open`; Down/Up move and clamp;
 Right expands then descends, Left collapses then ascends to the exact
 parent; Enter activates; nav is ignored without focus.
 
+**Landed**, with one deliberate departure from `ui_table_row`: every
+row in the walk takes a widget id, including rows scrolled out of
+view — only the drawing and hit-testing are skipped. Virtualization is
+about not measuring text and not emitting vertices, and an integer
+increment is not worth saving; whereas skipping ids would shift every
+later widget's id as the tree SCROLLED, which is far more frequent than
+expanding. The table skips them and should probably be changed to
+match. Home and End were added alongside up/down for free. Enter is
+drained from the CHAR queue, not the NAV queue — there is no
+`GFX_NAV_ENTER`.
+
 ## Stage 13 — Tabs
 
 ```
@@ -662,6 +689,11 @@ also selects.
 Test `tabs_test.w`: a tab click moves `active` and returns 1 once; a
 close click returns the index without changing `active`; labels clip;
 an overflowing strip scrolls.
+
+**Landed** as planned. Tabs take their ids on screen or not, the same
+bargain the tree's rows make, and the close affordance brightens on its
+own hover rather than the tab's so it is obvious which of the two a
+click is about to hit.
 
 ## Stage 14 — Popover and the context menu
 
@@ -699,6 +731,20 @@ closing restores scope, layer, clip and region depth; a right-click
 inside opens at the pointer and one outside does not; an item click
 returns once and closes; Escape closes.
 
+**Landed**, with placement split out as the pure function
+`ui_popover_place` so it can be tested directly rather than inferred
+from emitted geometry. It flips above the anchor only when above is
+genuinely better: near the top of a short viewport both directions
+overflow, and below is the friendlier of the two.
+
+The menu's height is the one awkward part. Items are a walk, so the
+height is whatever the caller issues — but the popover needs it one
+call earlier to place the surface. `ui_menu_begin` sizes from the
+previous frame's measurement, which is invisible because a menu is
+pinned at its top-left corner, so only the bottom edge moves while it
+settles. `ui_menu_item` closes the menu by clearing `open` mid-bracket;
+`ui_menu_end` still runs, which is what keeps the bracket balanced.
+
 ## Stage 15 — Toast
 
 ```
@@ -719,6 +765,13 @@ input: it is not a popup scope and makes nothing inert.
 Test `toast_test.w`: visible until `shown_at_ms + duration_ms` and not
 after; geometry on `UI_LAYER_TOP`; re-showing restarts the timer; a
 background button still clicks through.
+
+**Landed** as planned. Elapsed time is computed as a difference, so a
+monotonic source that wraps a 32-bit int still measures short intervals
+correctly — there is a test that shows a toast surviving the wrap. The
+toast saves and restores the render layer around itself rather than
+bracketing through `ui_popup_begin`, precisely so it never becomes the
+input scope.
 
 ## Stage 16 — the shell demo
 
@@ -741,6 +794,14 @@ Wiring the shell into `demo_web.w` is **not** in this round:
 `wasm_ui_test` scripts a click at the existing form's button and
 asserts its stdout, so switching the wasm entry point would break that
 gate for no round-2 benefit.
+
+**Landed**, with a `--menu` flag alongside `--shell` for the same
+reason `--dialog` exists: it pins the context menu and raises a toast on
+the first frame, so the two round-2 overlays that are not on the default
+screen are capturable without clicking. Both images
+(`docs/images/ui_demo_shell.png`, `ui_demo_shell_menu.png`) were
+rendered under `Xvfb :99 -screen 0 1280x1024x24` with Mesa's llvmpipe,
+the same way round 1's four were.
 
 ## Round-2 risks
 
