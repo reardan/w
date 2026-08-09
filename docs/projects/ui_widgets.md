@@ -14,8 +14,12 @@ on, issue #334, stages 1-4 landed 2026-08-07) and its execution plan
 `docs/projects/ui_framework_plan.md`. Same survey → options → staged
 recommendation shape.
 
-Status: design 2026-08-09. Execution plan for the first round:
-`docs/projects/ui_widgets_plan.md`.
+Status: design 2026-08-09; round 1 implemented 2026-08-09 across
+stages 1-8 of `docs/projects/ui_widgets_plan.md` (the execution plan,
+which records what each stage actually landed). All four foundation
+gaps in §0 are closed and the three proving widgets in §5 ship. The
+fourteen deferred items keep the staging in §6, and the open questions
+in §8 stand except where round 1 answered them — noted inline there.
 
 ## 0. The finding, up front
 
@@ -464,6 +468,12 @@ extension, then Calendar, Calendar Picker, Date Range, Time Range).
   matching `ui_textbox` today.
 
 ## 8. Open questions for the maintainer
+
+Round 1 answered two of these in passing, noted where they appear
+below: the popup mechanism gained an explicit layer argument rather
+than an elevation token (question 1 stays open for the *visual* token
+set), and Table takes explicit `int32*` column widths rather than a
+sizing policy (question 2 stays open for a policy on top of them).
 
 1. **Elevation tokens.** Three layers currently share one `shadow`
    token. Should the theme grow `shadow_low` / `shadow_high` so a

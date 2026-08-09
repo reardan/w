@@ -445,3 +445,26 @@ and `docs/projects/parser_generator.md` for the record.
   2026-08-04 as `w-arm64-qemu`, `w-seed-update` and `w-c-import-debug`
   (all registered with `skills_test`); add further candidates here as
   they emerge.
+
+## `w check` on multiple files (2026-08-09, #441 round 1)
+
+`bin/wv2 check --json a.w b.w` compiles the arguments as ONE
+translation unit rather than checking each in turn, so passing two
+files that legitimately define the same symbol — say
+`graphics/window_web.w` and `graphics/window_stub.w`, two backends
+behind the same `graphics.window` surface — reports
+`symbol redefined: 'gfx_shader_header'` and exits 1. Nothing is wrong
+with either file.
+
+The failure mode is bad for an agent specifically: batching the files
+in a diff into one `check` invocation is the obvious thing to do, it
+"works" whenever the files happen not to collide, and when it does
+collide the diagnostic points at real source with a real-sounding
+error. The workaround is a shell loop, one file per invocation.
+
+Options, cheapest first: (a) reject more than one positional argument
+for `check` with a message naming the loop; (b) check each argument in
+a fresh symbol table and merge the diagnostics, which is what the flag
+reads as promising. (b) is the useful one — a single invocation over a
+diff's worth of files is exactly the ergonomic win `check --json`
+exists for.

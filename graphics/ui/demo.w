@@ -66,7 +66,7 @@ int main(int argc, int argv):
 	# --screenshot out.ppm captures the final frame (needs --frames).
 	char* shot_path = args_value(c"screenshot")
 
-	gfx_window* win = gfx_window_open(c"W ui demo", 320, 400)
+	gfx_window* win = gfx_window_open(c"W ui demo", 320, 680)
 	if (win == 0):
 		return 1
 	ui_renderer rndr

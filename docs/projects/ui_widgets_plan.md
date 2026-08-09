@@ -24,6 +24,11 @@ Maintainer decisions folded in (2026-08-09):
 
 Commit sequence: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8.
 
+**Status: all nine stages landed 2026-08-09.** Where the shipped code
+diverged from the plan below, the divergence is recorded in the
+stage's own section under *Landed*; the plan text itself is left as
+written so the two can be compared.
+
 ## Why this order
 
 Stage 1 is first because it is the only change to already-shipped,
@@ -99,6 +104,14 @@ Gates: `./wbuild tests`; `graphics_event_test` / `graphics_event_64_test`;
 `wasm_ui_test` and `wasm_webgl_test` locally (Node-bound, outside the
 `tests` umbrella).
 
+**Landed** as planned. Two notes: `window_stub.w` needed no change
+(it has no ring at all, not just a narrower one), and the scripted
+hosts in `tools/web/` needed none either — `webgl_env.mjs` writes
+`e.mods ?? 0`, so a host that omits the field reports no modifiers
+rather than breaking. The X11 keysym if-chain became a `nav` variable
+plus one push, which keeps five new keys from doubling the branch
+count.
+
 ## Stage 2 — the `graphics/ui/widgets/` split (pure code move)
 
 `graphics/ui/widgets.w` becomes a pure umbrella of imports plus the
@@ -131,6 +144,11 @@ the house `/* */` header naming its role and citing
 Gates: `./wbuild tests`; the four UI targets above must be byte-for-byte
 behaviorally identical.
 
+**Landed** as planned: the 501 non-blank body lines are identical to
+the ones they moved from, only regrouped, and the four UI targets
+passed unmodified. The umbrella needed no dummy declaration (it
+follows `graphics/window.w`, not `grammar.w`).
+
 ## Stage 3 — clipping and batch growth
 
 - `graphics/ui/rect.w` (pure): `ui_rect ui_rect_intersect(ui_rect a,
@@ -158,6 +176,13 @@ Tests:
   only the outside glyphs.
 - `graphics/ui/render_test.w`'s batch-cap assertion changes to assert
   growth. Expected churn, called out in the commit message.
+
+**Landed**, with one design point the plan did not anticipate: an
+empty clip stack is a *fast path*, not a viewport clip. Treating the
+viewport as a clip would drop the zero-extent side fills a
+pill-shaped rrect legitimately emits — which the pinned 42-vertex
+rrect count would have caught. `ui_render_clip_depth()` is 8 per
+layer once stage 4 lands.
 
 ## Stage 4 — layout regions and the layer/popup stack
 
@@ -215,6 +240,19 @@ Tests:
 - `graphics/ui/widgets_test.w`'s dropdown assertions (`:377`, `:407`)
   and `render_test.w`'s overlay-batch assertions move to the layer API.
 
+**Landed**, with the popup API split in two lifetimes rather than one.
+`ui_popup_begin`/`ui_popup_end` bracket the *issuing* of a popup
+within a frame (scope, layer, clip, region — the four the plan names);
+`ui_popup_open`/`ui_popup_dismiss` register *open-ness*, which has to
+outlive the frame, because a popup opened on frame N must make the
+widgets issued BEFORE it on frame N+1 inert too. `ctx.modal` had that
+property by accident of never being reset; a bracket alone cannot
+express it. The clip stack is per layer (`ui_rect[24]`,
+`int32[3] clip_depth`), so entering a popup layer starts from a clean
+clip, and `ui_popup_begin` inflates its clip by `ui_shadow_margin()`
+since elevation draws outside the surface it belongs to. `ui_layout`
+gained `content_w`/`content_h` here rather than in stage 5.
+
 ## Stage 5 — scroll
 
 - `context.w`: `ui_feed_event` consumes `GFX_EVENT_SCROLL`. `ui_input`
@@ -244,6 +282,13 @@ Tests: new `graphics/ui/widgets/scroll_test.w`
 the offset clamps at both ends; content shorter than the view draws no
 bar and never scrolls; a widget scrolled out of view emits zero
 vertices (clip and scroll composing).
+
+**Landed**, with `ui_scroll_end(ctx, st)` taking no `area`: the
+viewport is stored on the state at `ui_scroll_begin`, which keeps the
+two calls from disagreeing about it. The wheel is *claimed* (the
+viewport that ends first zeroes the notch) so nested regions never
+both scroll — tested directly. `ui_scroll_reveal` was added here, not
+in stage 7, because both Table and Textarea need it.
 
 ## Stage 6 — the text buffer
 
@@ -283,6 +328,12 @@ Tests: new `graphics/ui/widgets/buffer_test.w`
 — insert and delete at every boundary, growth past the initial
 capacity, line index after a multi-line set, offset ↔ line/col round
 trips, empty-buffer edges, free leaving a reusable zeroed struct.
+
+**Landed** as planned. One invariant worth stating that the plan left
+implicit: a buffer always has at least one line, so an empty buffer is
+one empty line rather than zero — every caret position is on a line and
+no caller needs a zero-line special case. Every offset-taking entry
+point clamps rather than trusting its caller.
 
 ## Stage 7 — Modal, Table, Textarea
 
@@ -352,6 +403,24 @@ scrolls, selection edge. Textarea: typing, newline, arrow and page
 motion, goal-column behavior across short lines, shift-selection
 extent, delete-selection.
 
+**Landed**, and the tests earned their keep — they caught two bugs
+review would not have:
+
+- Delete is an edit, not a motion. Routed through the motion path it
+  cleared the selection anchor before it could delete the selection,
+  so shift-select + Delete removed one character. It runs ahead of the
+  anchor handling now.
+- A modal closed from inside its own body (a Close button) left the
+  popup registered, because `ui_modal_begin` returned early on the
+  next frame without unregistering — the whole page would have stayed
+  inert forever. `ui_modal_begin` now dismisses unconditionally when
+  closed.
+
+`ui_table_end` returns the selected row on a change and -1 otherwise.
+`layout.w` gained `ui_region_claim` so widgets that place their own
+geometry (table rows, editor lines) still get their extent measured
+for the scroll region around them.
+
 ## Stage 8 — demo and gates
 
 - `graphics/ui/demo_shared.w` gains a Modal opened by a button and a
@@ -370,6 +439,13 @@ extent, delete-selection.
   default screen changed.
 - Any friction hit in `w check` / `wtest` during the work gets an entry
   in `docs/projects/ai_tooling_next_steps.md` (repo rule).
+
+**Landed**, with the demo window grown 320x400 → 320x680 to fit the
+three new widgets below the existing rows, whose coordinates are
+unchanged as required. `docs/images/ui_demo_*.png` were NOT refreshed:
+capturing them needs a display, which this checkout does not have —
+the screenshots still show the stage-3 form. Flagged rather than
+silently skipped.
 
 ## Gates, per commit
 

@@ -53,6 +53,11 @@ int ui_modal_begin(ui_context* ctx, char* title, float32 w, float32 h, int32* op
 	int id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
 	if (open[0] == 0):
+		# Unregister unconditionally: the caller may have closed the
+		# dialog from inside its own body (a Close button), which
+		# leaves the popup registered until the next frame gets here.
+		# Without this the whole page stays inert forever.
+		ui_popup_dismiss(ctx, id)
 		return 0
 	ui_popup_open(ctx, id)
 

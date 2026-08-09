@@ -171,6 +171,32 @@ void test_escape_closes():
 	ui_render_destroy(&r)
 
 
+void test_closing_from_inside_the_body_releases_the_page():
+	ui_renderer r
+	ui_theme theme
+	ui_context ctx
+	setup(&r, &theme, &ctx)
+	int32 open = 1
+	int32 bg = 0
+	int32 body = 0
+
+	# A body button that closes the dialog — the common case, and the
+	# one that leaves the popup registered a frame longer than the
+	# caller's `open` flag says.
+	modal_frame(&ctx, &open, &bg, &body)
+	assert_equal(1, ctx.popup_depth)
+	open = 0
+	modal_frame(&ctx, &open, &bg, &body)
+	assert_equal(0, ctx.popup_depth)
+
+	# The page takes input again; without the unregister it would stay
+	# inert forever.
+	feed_click(&ctx, 20, 20)
+	modal_frame(&ctx, &open, &bg, &body)
+	assert_equal(1, bg)
+	ui_render_destroy(&r)
+
+
 void test_scrim_click_is_consumed():
 	ui_renderer r
 	ui_theme theme
