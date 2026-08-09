@@ -23,6 +23,7 @@ modules:
 	graphics.ui.theme
 	graphics.ui.widgets
 	graphics.ui.widgets.basic
+	graphics.ui.widgets.buffer
 	graphics.ui.widgets.choice
 	graphics.ui.widgets.context
 	graphics.ui.widgets.dropdown

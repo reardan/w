@@ -34,6 +34,7 @@ ui_region_push nests a sub-area for a modal body, a table cell or a
 scrolled viewport.
 */
 import graphics.ui.widgets.state
+import graphics.ui.widgets.buffer
 import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
 import graphics.ui.widgets.overlay
