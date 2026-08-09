@@ -65,6 +65,22 @@ int main(int argc, int argv):
 		max_frames = atoi(frames_value)
 	# --screenshot out.ppm captures the final frame (needs --frames).
 	char* shot_path = args_value(c"screenshot")
+	# --theme light|dark|ocean preselects the theme the picker would set,
+	# so all three docs/images/ui_demo_*.png are reproducible from the
+	# CLI instead of by clicking the dropdown before capturing.
+	# --dialog opens the modal on the first frame, so the one round-1
+	# widget that is not on the default screen is capturable too.
+	int dialog = args_has_flag(c"dialog")
+	int theme_choice = 0
+	char* theme_value = args_value(c"theme")
+	if (theme_value != 0):
+		if (strcmp(theme_value, c"dark") == 0):
+			theme_choice = 1
+		else if (strcmp(theme_value, c"ocean") == 0):
+			theme_choice = 2
+		else if (strcmp(theme_value, c"light") != 0):
+			print_error(c"demo: unknown --theme (want light, dark or ocean)\n")
+			return 1
 
 	gfx_window* win = gfx_window_open(c"W ui demo", 320, 680)
 	if (win == 0):
@@ -74,6 +90,12 @@ int main(int argc, int argv):
 		return 1
 	ui_demo_state state
 	ui_demo_init(&state)
+	# Same single source of truth the checkbox and dropdown drive.
+	state.choice = theme_choice
+	state.dark = 0
+	if (theme_choice == 1):
+		state.dark = 1
+	state.dialog_open = dialog
 	ui_context ctx
 	ui_context_init(&ctx, &rndr, &state.light_theme)
 

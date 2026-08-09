@@ -442,10 +442,18 @@ for the scroll region around them.
 
 **Landed**, with the demo window grown 320x400 → 320x680 to fit the
 three new widgets below the existing rows, whose coordinates are
-unchanged as required. `docs/images/ui_demo_*.png` were NOT refreshed:
-capturing them needs a display, which this checkout does not have —
-the screenshots still show the stage-3 form. Flagged rather than
-silently skipped.
+unchanged as required.
+
+`docs/images/ui_demo_*.png` were refreshed, and a fourth
+(`ui_demo_modal.png`) added for the one round-1 widget not on the
+default screen. Capturing them needs a display, which a headless
+checkout can supply: `Xvfb :99 -screen 0 1280x1024x24` plus Mesa's
+llvmpipe renders the demo (and lets `graphics_ui_smoke_test` actually
+run its pixel readback instead of SKIPping). `demo.w` gained
+`--theme light|dark|ocean` and `--dialog` so every image is
+reproducible from the CLI rather than by clicking the picker before
+capturing — which is what made the refresh worth doing rather than a
+manual ritual.
 
 ## Gates, per commit
 

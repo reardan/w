@@ -468,3 +468,27 @@ a fresh symbol table and merge the diagnostics, which is what the flag
 reads as promising. (b) is the useful one — a single invocation over a
 diff's worth of files is exactly the ergonomic win `check --json`
 exists for.
+
+## Display-dependent gates are runnable headlessly (2026-08-09, #441 round 1)
+
+`graphics_ui_smoke_test` and `graphics_gl_smoke_test` SKIP with exit 0
+when no display is reachable, which is the right default but means a
+headless CI box or agent container silently never exercises the pixel
+readback — the strongest end-to-end check the graphics tree has.
+
+Both run fine under a software stack:
+
+	apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0
+	Xvfb :99 -screen 0 1280x1024x24 &
+	DISPLAY=:99 ./wbuild graphics_ui_smoke_test
+
+Mesa's llvmpipe reports `direct rendering: Yes`, and the smoke tests
+pass their pixel checks unmodified. The same setup captures
+`docs/images/ui_demo_*.png` via `graphics/ui/demo.w --screenshot`.
+
+Worth considering: a `wbuild` target (or a CI job) that starts Xvfb
+around the display-dependent targets, so "SKIP (no display)" stops
+being the normal result everywhere except a maintainer's desktop. The
+SKIP path should stay — it is what makes the suite runnable anywhere —
+but it currently hides a whole class of regression from every
+automated run.
