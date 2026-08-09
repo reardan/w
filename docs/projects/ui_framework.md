@@ -30,6 +30,12 @@ the demo's dropdown as a live theme picker, and the non-grayscale
 (needs a struct-return-free selector strategy — its own design note),
 TTF/SDF typography (#379), win64 backend, accessibility (§8 stage 4).
 
+The widget set's expansion past stage 3 is issue #441 and has its own
+pair of docs: `docs/projects/ui_widgets.md` (design — the
+`graphics/ui/widgets/` tree, clipping, layered popups, layout regions,
+scroll, and a growable text buffer, in preparation for a text editor
+and IDE) and `docs/projects/ui_widgets_plan.md` (execution).
+
 ## 0. Where this framework would live, and what it does not replace
 
 `graphics.md`'s own "Next steps" section already names this project in
