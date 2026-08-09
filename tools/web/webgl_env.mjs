@@ -23,9 +23,11 @@
 //             pollState() -> { width, height, shouldClose, mouseX,
 //                              mouseY, mouseButtons, lastKeycode },
 //             setFrameCallback(tableIndex),
-//             nextEvent() -> { kind, code, x, y } | null (optional:
-//               the input event queue; kind numbers mirror
-//               graphics/event.w's gfx_event_kind) }
+//             nextEvent() -> { kind, code, x, y, mods } | null
+//               (optional: the input event queue; kind numbers mirror
+//               graphics/event.w's gfx_event_kind, mods its gfx_mod
+//               bits — 1 shift, 2 ctrl, 4 alt, 8 super. A host that
+//               omits mods reports no modifiers held.) }
 //   log     optional diagnostic sink (defaults to console.error)
 
 const GL_STR_SCRATCH = 3072;
@@ -249,6 +251,7 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
       dv.setInt32(ptr + 4, e.code, true);
       dv.setInt32(ptr + 8, e.x, true);
       dv.setInt32(ptr + 12, e.y, true);
+      dv.setInt32(ptr + 16, e.mods ?? 0, true);
       return 1;
     },
   };

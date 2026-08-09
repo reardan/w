@@ -4,7 +4,7 @@
 # ONE frame still clicks (the event queue's whole point); checkbox
 # toggles caller state; drawing accumulates vertices without GL.
 # Stage 2: textbox focus/typing/caret, radio groups, toggle, progress,
-# dropdown modality + overlay batch.
+# dropdown popup scope + layer routing.
 # x64-only: the widget module imports graphics.gl/graphics.window,
 # which link libGL/libX11 on the 64-bit Linux targets.
 # wbuild: name=graphics_ui_widgets_test arch_only=x64
@@ -34,6 +34,7 @@ gfx_event make_event(int kind, int x, int y):
 	e.code = 1
 	e.x = x
 	e.y = y
+	e.mods = 0
 	return e
 
 
@@ -44,6 +45,7 @@ gfx_event make_key(int kind, int code):
 	e.code = code
 	e.x = 0
 	e.y = 0
+	e.mods = 0
 	return e
 
 
@@ -156,17 +158,17 @@ void test_widgets_accumulate_vertices():
 
 	ui_begin(&ctx, 320, 240)
 	ui_label(&ctx, c"W UI demo")
-	int after_label = r.vert_count
+	int after_label = r.layer_vert_count[UI_LAYER_BASE]
 	# 9 characters, 2 inkless spaces -> 7 glyph quads.
 	asserts(c"label drew glyphs", after_label == 7 * 6)
 	ui_button(&ctx, c"Click")
-	int after_button = r.vert_count
+	int after_button = r.layer_vert_count[UI_LAYER_BASE]
 	# button = pill rrect (7 quads) + 5 glyphs
 	assert_equal(after_label + 12 * 6, after_button)
 	int32 checked = 1
 	ui_checkbox(&ctx, c"dark", &checked)
 	# checked box = accent rrect (7 quads) + checkmark + 4 glyphs
-	assert_equal(after_button + 12 * 6, r.vert_count)
+	assert_equal(after_button + 12 * 6, r.layer_vert_count[UI_LAYER_BASE])
 	ui_end(&ctx)
 	ui_render_destroy(&r)
 
@@ -333,19 +335,19 @@ void test_progress_vertices_and_clamp():
 	# track + fill (14 quads). Over 1 clamps to the track width.
 	ui_begin(&ctx, 320, 240)
 	ui_progress(&ctx, 100.0, 0.0)
-	assert_equal(42, r.vert_count)
+	assert_equal(42, r.layer_vert_count[UI_LAYER_BASE])
 	ui_progress(&ctx, 100.0, 0.5)
-	assert_equal(126, r.vert_count)
+	assert_equal(126, r.layer_vert_count[UI_LAYER_BASE])
 	ui_progress(&ctx, 100.0, 7.0)
-	assert_equal(210, r.vert_count)
+	assert_equal(210, r.layer_vert_count[UI_LAYER_BASE])
 	# The clamped fill's right edge equals the track's right edge: no
 	# vertex of the third widget's fill (the last 42) reaches past
 	# x = 8 + 100.
 	float32 max_x = 0.0
 	int v = 168
 	while (v < 210):
-		if (r.verts[v * 8] > max_x):
-			max_x = r.verts[v * 8]
+		if (r.layer_verts[UI_LAYER_BASE][v * 8] > max_x):
+			max_x = r.layer_verts[UI_LAYER_BASE][v * 8]
 		v = v + 1
 	asserts(c"clamped fill width", max_x == 108.0)
 	ui_end(&ctx)
@@ -367,14 +369,15 @@ void test_dropdown_opens_selects_and_blocks():
 	int32 selected = 0
 	int32 open = 0
 
-	# Click the header: opens, claims modal, draws the overlay list.
+	# Click the header: opens, claims the popup scope, draws the list on
+	# the popup layer.
 	feed_click(&ctx, 20, 20)
 	ui_begin(&ctx, 320, 240)
 	assert_equal(0, ui_dropdown(&ctx, 160.0, items, 3, &selected, &open))
 	ui_end(&ctx)
 	assert_equal(1, open)
-	asserts(c"modal claimed", ctx.modal != 0)
-	asserts(c"overlay drawn", r.overlay_count > 0)
+	asserts(c"popup claimed", ctx.popup_depth == 1)
+	asserts(c"popup layer drawn", r.layer_vert_count[UI_LAYER_POPUP] > 0)
 
 	# While open, a button under the pointer is inert — and the press
 	# that picks an item is consumed before later widgets run.
@@ -385,7 +388,7 @@ void test_dropdown_opens_selects_and_blocks():
 	ui_end(&ctx)
 	assert_equal(1, selected)
 	assert_equal(0, open)
-	assert_equal(0, ctx.modal)
+	assert_equal(0, ctx.popup_depth)
 
 	# Reopen, then click away: closes with no selection change.
 	feed_click(&ctx, 20, 20)
@@ -400,11 +403,11 @@ void test_dropdown_opens_selects_and_blocks():
 	assert_equal(0, open)
 	assert_equal(1, selected)
 
-	# Closed again: no overlay geometry.
+	# Closed again: no popup-layer geometry.
 	ui_begin(&ctx, 320, 240)
 	ui_dropdown(&ctx, 160.0, items, 3, &selected, &open)
 	ui_end(&ctx)
-	assert_equal(0, r.overlay_count)
+	assert_equal(0, r.layer_vert_count[UI_LAYER_POPUP])
 	ui_render_destroy(&r)
 
 
@@ -447,14 +450,15 @@ void test_same_line_layout():
 
 	ui_begin(&ctx, 320, 240)
 	ui_button(&ctx, c"a")
-	float32 first_right = ctx.last_right
+	ui_layout* lo = ui_layout_top(&ctx)
+	float32 first_right = lo.last_right
 	ui_same_line(&ctx)
 	ui_button(&ctx, c"b")
 	# second button starts right of the first, on the same row
-	asserts(c"same row", ctx.last_top == 8.0)
-	asserts(c"to the right", ctx.last_right > first_right)
+	asserts(c"same row", lo.last_top == 8.0)
+	asserts(c"to the right", lo.last_right > first_right)
 	ui_button(&ctx, c"c")
 	# back to the stack: below both, at the left origin
-	asserts(c"next row", ctx.last_top > 8.0)
+	asserts(c"next row", lo.last_top > 8.0)
 	ui_end(&ctx)
 	ui_render_destroy(&r)

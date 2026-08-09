@@ -57,11 +57,15 @@ const state = {
 // 4 MOUSE_DOWN, 5 MOUSE_UP, 6 SCROLL, 7 NAV. Buttons map from JS 0/1/2
 // to 1/2/3 (left/middle/right); CHAR carries ASCII 32..126 plus 8 BS,
 // 9 TAB, 13 CR, 27 ESC; SCROLL carries +1 up / -1 down per notch; NAV
-// carries gfx_nav_code (1 left, 2 right, 3 home, 4 end).
+// carries gfx_nav_code (1 left, 2 right, 3 home, 4 end, 5 up, 6 down,
+// 7 page up, 8 page down, 9 delete). Every event carries gfx_mod bits
+// in mods: 1 shift, 2 ctrl, 4 alt, 8 super.
 const events = [];
-const pushEvent = (kind, code, x, y) => {
-  if (events.length < 256) events.push({ kind, code, x, y });
+const pushEvent = (kind, code, x, y, mods) => {
+  if (events.length < 256) events.push({ kind, code, x, y, mods });
 };
+const modsOf = (e) =>
+  (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
 const buttonOf = (e) => (e.button === 0 ? 1 : e.button === 1 ? 2 : e.button === 2 ? 3 : 0);
 const charOf = (e) => {
   if (e.key.length === 1) {
@@ -75,26 +79,30 @@ canvas.addEventListener('mousemove', (e) => { state.mouseX = e.offsetX; state.mo
 canvas.addEventListener('mousedown', (e) => {
   state.mouseButtons |= 1 << e.button;
   const b = buttonOf(e);
-  if (b) pushEvent(4, b, e.offsetX, e.offsetY);
+  if (b) pushEvent(4, b, e.offsetX, e.offsetY, modsOf(e));
 });
 canvas.addEventListener('mouseup', (e) => {
   state.mouseButtons &= ~(1 << e.button);
   const b = buttonOf(e);
-  if (b) pushEvent(5, b, e.offsetX, e.offsetY);
+  if (b) pushEvent(5, b, e.offsetX, e.offsetY, modsOf(e));
 });
 canvas.addEventListener('keydown', (e) => {
   state.lastKeycode = e.keyCode;
-  pushEvent(1, e.keyCode, state.mouseX, state.mouseY);
+  const mods = modsOf(e);
+  pushEvent(1, e.keyCode, state.mouseX, state.mouseY, mods);
   const c = charOf(e);
-  if (c) pushEvent(3, c, state.mouseX, state.mouseY);
-  const nav = { ArrowLeft: 1, ArrowRight: 2, Home: 3, End: 4 }[e.key];
-  if (nav) pushEvent(7, nav, state.mouseX, state.mouseY);
+  if (c) pushEvent(3, c, state.mouseX, state.mouseY, mods);
+  const nav = {
+    ArrowLeft: 1, ArrowRight: 2, Home: 3, End: 4,
+    ArrowUp: 5, ArrowDown: 6, PageUp: 7, PageDown: 8, Delete: 9,
+  }[e.key];
+  if (nav) pushEvent(7, nav, state.mouseX, state.mouseY, mods);
 });
-canvas.addEventListener('keyup', (e) => { pushEvent(2, e.keyCode, state.mouseX, state.mouseY); });
+canvas.addEventListener('keyup', (e) => { pushEvent(2, e.keyCode, state.mouseX, state.mouseY, modsOf(e)); });
 canvas.addEventListener('wheel', (e) => {
   // deltaY < 0 is wheel-away/up = +1, matching X11 button 4; one
   // event per wheel notch regardless of delta magnitude.
-  if (e.deltaY) pushEvent(6, e.deltaY < 0 ? 1 : -1, e.offsetX, e.offsetY);
+  if (e.deltaY) pushEvent(6, e.deltaY < 0 ? 1 : -1, e.offsetX, e.offsetY, modsOf(e));
   e.preventDefault();
 }, { passive: false });
 

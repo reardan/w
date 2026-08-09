@@ -18,10 +18,14 @@ the per-frame input event queue on every backend, the GL texture
 surface, and X11 + wasm demos from one shared form
 (`graphics/ui/demo_shared.w`). Stage 2 implemented 2026-08-07 —
 scroll + nav-key events, textbox (context-routed focus consuming
-CHAR/NAV), radio, toggle, progress, dropdown (modal popup over a
-renderer overlay batch), all in the shared demo form (screenshots:
+CHAR/NAV), radio, toggle, progress, dropdown (a popup scope over the
+renderer's popup layer since round 1; a single overlay batch before
+that), all in the shared demo form (screenshots:
 `docs/images/ui_demo_light.png`, `ui_demo_dark.png`; captured via the
-native demo's `--screenshot` flag + `tools/ppm_to_png.py`). Stage 3
+native demo's `--screenshot` flag + `tools/ppm_to_png.py`, with
+`--theme light|dark|ocean` and `--dialog` selecting what is on screen —
+all four images are reproducible from the CLI, and render under Xvfb +
+Mesa llvmpipe when no GPU is around). Stage 3
 implemented 2026-08-07 — the full §5 token set (accent_hot,
 on_accent, focus, disabled_widget/disabled_text), a ui_disable scope,
 the demo's dropdown as a live theme picker, and the non-grayscale
@@ -34,7 +38,15 @@ The widget set's expansion past stage 3 is issue #441 and has its own
 pair of docs: `docs/projects/ui_widgets.md` (design — the
 `graphics/ui/widgets/` tree, clipping, layered popups, layout regions,
 scroll, and a growable text buffer, in preparation for a text editor
-and IDE) and `docs/projects/ui_widgets_plan.md` (execution).
+and IDE) and `docs/projects/ui_widgets_plan.md` (execution). Round 1
+implemented 2026-08-09: `gfx_event` carries modifier flags and the
+editor nav codes, `widgets.w` is an umbrella over
+`graphics/ui/widgets/`, and the renderer has a clip stack, a growing
+batch and three draw layers. On that foundation sit layout regions,
+the popup scope, scroll viewports, `ui_text_buffer`, and the three
+widgets that prove them — Modal, Table and Textarea
+(`docs/images/ui_demo_modal.png`). The remaining fourteen items in
+#441 keep the staged roadmap in `ui_widgets.md` §6.
 
 ## 0. Where this framework would live, and what it does not replace
 

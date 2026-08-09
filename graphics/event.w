@@ -54,6 +54,22 @@ enum gfx_nav_code:
 	GFX_NAV_RIGHT = 2
 	GFX_NAV_HOME = 3
 	GFX_NAV_END = 4
+	GFX_NAV_UP = 5
+	GFX_NAV_DOWN = 6
+	GFX_NAV_PAGE_UP = 7
+	GFX_NAV_PAGE_DOWN = 8
+	GFX_NAV_DELETE = 9
+
+
+# Modifier keys held when an event was produced, or-ed into gfx_event.mods.
+# Backend-independent: X11 translates its own state mask, the JS hosts
+# their shiftKey/ctrlKey/altKey/metaKey booleans. Bit values are part of
+# the JS-host contract (tools/web/index.html mirrors them).
+enum gfx_mod:
+	GFX_MOD_SHIFT = 1
+	GFX_MOD_CTRL = 2
+	GFX_MOD_ALT = 4
+	GFX_MOD_SUPER = 8
 
 
 struct gfx_event:
@@ -61,6 +77,7 @@ struct gfx_event:
 	int32 code
 	int32 x
 	int32 y
+	int32 mods
 
 
 # Events the ring can hold minus one (tail == head means empty).
@@ -68,23 +85,24 @@ int gfx_event_ring_capacity():
 	return 64
 
 
-# int32 slots a backend's ring array needs: capacity events x 4 fields.
+# int32 slots a backend's ring array needs: capacity events x 5 fields.
 int gfx_event_ring_ints():
-	return 256
+	return 320
 
 
 # Append one event. A full ring drops the newest event rather than
 # overwrite unread ones: 63 pending events in a single frame already
 # means the consumer is not draining.
-void gfx_event_ring_push(int32* ring, int32* head, int32* tail, int kind, int code, int x, int y):
+void gfx_event_ring_push(int32* ring, int32* head, int32* tail, int kind, int code, int x, int y, int mods):
 	int slot = tail[0]
 	int next = (slot + 1) & 63
 	if (next == head[0]):
 		return
-	ring[slot * 4] = kind
-	ring[slot * 4 + 1] = code
-	ring[slot * 4 + 2] = x
-	ring[slot * 4 + 3] = y
+	ring[slot * 5] = kind
+	ring[slot * 5 + 1] = code
+	ring[slot * 5 + 2] = x
+	ring[slot * 5 + 3] = y
+	ring[slot * 5 + 4] = mods
 	tail[0] = next
 
 
@@ -94,9 +112,10 @@ int gfx_event_ring_next(int32* ring, int32* head, int32* tail, gfx_event* out):
 	int slot = head[0]
 	if (slot == tail[0]):
 		return 0
-	out.kind = ring[slot * 4]
-	out.code = ring[slot * 4 + 1]
-	out.x = ring[slot * 4 + 2]
-	out.y = ring[slot * 4 + 3]
+	out.kind = ring[slot * 5]
+	out.code = ring[slot * 5 + 1]
+	out.x = ring[slot * 5 + 2]
+	out.y = ring[slot * 5 + 3]
+	out.mods = ring[slot * 5 + 4]
 	head[0] = (slot + 1) & 63
 	return 1

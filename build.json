@@ -1918,6 +1918,14 @@
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/gl_texture_test.w", "-o", "bin/graphics_gl_texture_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/render_test.w", "-o", "bin/graphics_ui_render_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets_test.w", "-o", "bin/graphics_ui_widgets_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/clip_test.w", "-o", "bin/graphics_ui_clip_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/layout_test.w", "-o", "bin/graphics_ui_layout_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/overlay_test.w", "-o", "bin/graphics_ui_overlay_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/scroll_test.w", "-o", "bin/graphics_ui_scroll_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/buffer_test.w", "-o", "bin/graphics_ui_buffer_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/modal_test.w", "-o", "bin/graphics_ui_modal_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/table_test.w", "-o", "bin/graphics_ui_table_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/textarea_test.w", "-o", "bin/graphics_ui_textarea_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/demo.w", "-o", "bin/graphics_ui_demo_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
@@ -2101,9 +2109,17 @@
 				"getchar_checked_64_test",
 				"graphics_event_64_test",
 				"graphics_gl_texture_test",
+				"graphics_ui_buffer_64_test",
+				"graphics_ui_clip_test",
 				"graphics_ui_core_64_test",
+				"graphics_ui_layout_test",
+				"graphics_ui_modal_test",
+				"graphics_ui_overlay_test",
 				"graphics_ui_render_test",
+				"graphics_ui_scroll_test",
 				"graphics_ui_smoke_test",
+				"graphics_ui_table_test",
+				"graphics_ui_textarea_test",
 				"graphics_ui_widgets_test",
 				"hash_table_64_test",
 				"heap_64_test",
@@ -2708,6 +2724,7 @@
 				"getchar_checked_test",
 				"grapheme_test",
 				"graphics_event_test",
+				"graphics_ui_buffer_test",
 				"graphics_ui_core_test",
 				"hash_table_test",
 				"heap_test",
@@ -4350,6 +4367,36 @@
 			]
 		},
 		{
+			"name": "graphics_ui_buffer_64_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/buffer_test.w"],
+			"outputs": ["bin/graphics_ui_buffer_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/buffer_test.w", "-o", "bin/graphics_ui_buffer_64_test"]},
+				{"cmd": ["bin/graphics_ui_buffer_64_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_buffer_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/buffer_test.w"],
+			"outputs": ["bin/graphics_ui_buffer_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "graphics/ui/widgets/buffer_test.w", "-o", "bin/graphics_ui_buffer_test"]},
+				{"cmd": ["bin/graphics_ui_buffer_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_clip_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/clip_test.w"],
+			"outputs": ["bin/graphics_ui_clip_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/clip_test.w", "-o", "bin/graphics_ui_clip_test"]},
+				{"cmd": ["bin/graphics_ui_clip_test"]}
+			]
+		},
+		{
 			"name": "graphics_ui_core_64_test",
 			"deps": ["wv2"],
 			"inputs": ["graphics/ui/core_test.w"],
@@ -4370,6 +4417,36 @@
 			]
 		},
 		{
+			"name": "graphics_ui_layout_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/layout_test.w"],
+			"outputs": ["bin/graphics_ui_layout_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/layout_test.w", "-o", "bin/graphics_ui_layout_test"]},
+				{"cmd": ["bin/graphics_ui_layout_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_modal_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/modal_test.w"],
+			"outputs": ["bin/graphics_ui_modal_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/modal_test.w", "-o", "bin/graphics_ui_modal_test"]},
+				{"cmd": ["bin/graphics_ui_modal_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_overlay_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/overlay_test.w"],
+			"outputs": ["bin/graphics_ui_overlay_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/overlay_test.w", "-o", "bin/graphics_ui_overlay_test"]},
+				{"cmd": ["bin/graphics_ui_overlay_test"]}
+			]
+		},
+		{
 			"name": "graphics_ui_render_test",
 			"deps": ["wv2"],
 			"inputs": ["graphics/ui/render_test.w"],
@@ -4380,6 +4457,16 @@
 			]
 		},
 		{
+			"name": "graphics_ui_scroll_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/scroll_test.w"],
+			"outputs": ["bin/graphics_ui_scroll_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/scroll_test.w", "-o", "bin/graphics_ui_scroll_test"]},
+				{"cmd": ["bin/graphics_ui_scroll_test"]}
+			]
+		},
+		{
 			"name": "graphics_ui_smoke_test",
 			"deps": ["wv2"],
 			"inputs": ["graphics/ui/smoke_test.w"],
@@ -4387,6 +4474,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_test"]},
 				{"cmd": ["bin/graphics_ui_smoke_test"], "expect_stdout": "graphics ui smoke"}
+			]
+		},
+		{
+			"name": "graphics_ui_table_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/table_test.w"],
+			"outputs": ["bin/graphics_ui_table_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/table_test.w", "-o", "bin/graphics_ui_table_test"]},
+				{"cmd": ["bin/graphics_ui_table_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_textarea_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/textarea_test.w"],
+			"outputs": ["bin/graphics_ui_textarea_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/textarea_test.w", "-o", "bin/graphics_ui_textarea_test"]},
+				{"cmd": ["bin/graphics_ui_textarea_test"]}
 			]
 		},
 		{
@@ -7139,8 +7246,8 @@
 		{
 			"name": "wasm_smoke_test",
 			"deps": ["wv2"],
-			"inputs": ["graphics/event_test.w", "graphics/math_test.w", "graphics/ui/core_test.w", "lib/lib_test.w", "structures/hash_table_test.w", "tests/compound_assign_test.w", "tests/default_args_test.w", "tests/float_test.w", "tests/limb_builtin_test.w", "tests/map_set_builtin_test.w", "tests/struct_test.w"],
-			"outputs": ["bin/event_wasm_test", "bin/math_wasm_test", "bin/core_wasm_test", "bin/lib_wasm_test", "bin/hash_table_wasm_test", "bin/compound_assign_wasm_test", "bin/default_args_wasm_test", "bin/float_wasm_test", "bin/limb_builtin_wasm_test", "bin/map_set_builtin_wasm_test", "bin/struct_wasm_test"],
+			"inputs": ["graphics/event_test.w", "graphics/math_test.w", "graphics/ui/core_test.w", "graphics/ui/widgets/buffer_test.w", "lib/lib_test.w", "structures/hash_table_test.w", "tests/compound_assign_test.w", "tests/default_args_test.w", "tests/float_test.w", "tests/limb_builtin_test.w", "tests/map_set_builtin_test.w", "tests/struct_test.w"],
+			"outputs": ["bin/event_wasm_test", "bin/math_wasm_test", "bin/core_wasm_test", "bin/buffer_wasm_test", "bin/lib_wasm_test", "bin/hash_table_wasm_test", "bin/compound_assign_wasm_test", "bin/default_args_wasm_test", "bin/float_wasm_test", "bin/limb_builtin_wasm_test", "bin/map_set_builtin_wasm_test", "bin/struct_wasm_test"],
 			"steps": [
 				{"cmd": ["bin/wv2", "wasm", "graphics/event_test.w", "-o", "bin/event_wasm_test"]},
 				{"cmd": ["sh", "tools/run_wasm.sh", "bin/event_wasm_test"]},
@@ -7148,6 +7255,8 @@
 				{"cmd": ["sh", "tools/run_wasm.sh", "bin/math_wasm_test"]},
 				{"cmd": ["bin/wv2", "wasm", "graphics/ui/core_test.w", "-o", "bin/core_wasm_test"]},
 				{"cmd": ["sh", "tools/run_wasm.sh", "bin/core_wasm_test"]},
+				{"cmd": ["bin/wv2", "wasm", "graphics/ui/widgets/buffer_test.w", "-o", "bin/buffer_wasm_test"]},
+				{"cmd": ["sh", "tools/run_wasm.sh", "bin/buffer_wasm_test"]},
 				{"cmd": ["bin/wv2", "wasm", "lib/lib_test.w", "-o", "bin/lib_wasm_test"]},
 				{"cmd": ["sh", "tools/run_wasm.sh", "bin/lib_wasm_test"]},
 				{"cmd": ["bin/wv2", "wasm", "structures/hash_table_test.w", "-o", "bin/hash_table_wasm_test"]},

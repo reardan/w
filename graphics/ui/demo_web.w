@@ -53,7 +53,7 @@ int main(int argc, int argv):
 	if (frames_value != 0):
 		ui_demo_max_frames = atoi(frames_value)
 
-	ui_demo_win = gfx_window_open(c"W ui demo", 320, 400)
+	ui_demo_win = gfx_window_open(c"W ui demo", 320, 680)
 	if (ui_demo_win == 0):
 		return 1
 	ui_demo_rndr = new ui_renderer()

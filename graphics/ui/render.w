@@ -31,11 +31,48 @@ import graphics.ui.theme
 import graphics.ui.font
 
 
-# Max vertices per frame: 1365 quads, far beyond the demo form even
-# with every widget rounded and shadowed. Pushes past the cap are
-# dropped.
+# Initial vertices per frame: 1365 quads. A batch that fills up doubles
+# through realloc rather than dropping geometry — a scrolled list or an
+# edit surface can exceed any fixed cap, and silently losing its tail is
+# the wrong failure mode for content the user is looking at.
 int ui_render_max_verts():
 	return 8192
+
+
+# Initial vertices for the two overlay layers: popup geometry is a
+# small fraction of a frame's, and these batches double on demand like
+# the base one.
+int ui_render_overlay_verts():
+	return 1024
+
+
+# Clip-stack depth, per layer. Deep enough for a scroll region inside a
+# table inside a modal, with room to spare; pushes past it are dropped
+# rather than growing the renderer struct without bound.
+int ui_render_clip_depth():
+	return 8
+
+
+# Draw layers, painted in this order by ui_render_end. One flag and one
+# overlay batch could not express a popover inside a modal, or a toast
+# above both — every widget that stacks needs to name where it draws
+# rather than just "over" (docs/projects/ui_widgets.md §4).
+enum ui_layer:
+	UI_LAYER_BASE = 0
+	UI_LAYER_POPUP = 1
+	UI_LAYER_TOP = 2
+
+
+int ui_render_layer_count():
+	return 3
+
+
+# How far ui_draw_shadow reaches outside the rect it sits behind: the
+# 9-patch grows 10px and is offset 2px down. A popup's clip has to
+# include this margin, or elevation would be clipped off the very
+# surface it belongs to.
+float32 ui_shadow_margin():
+	return 12.0
 
 
 struct ui_renderer:
@@ -48,14 +85,27 @@ struct ui_renderer:
 	int a_pos
 	int a_uv
 	int a_color
-	float32* verts
-	int vert_count
-	# Second batch drawn after the main one — popup/overlay geometry
-	# (an open dropdown's list) paints over widgets issued later in the
-	# frame. Routed by to_overlay, drawn by ui_render_end.
-	float32* overlay_verts
-	int overlay_count
-	int32 to_overlay
+	# One vertex batch per layer, each with its own count and capacity.
+	# Vertices go to layer_verts[layer]; ui_render_end uploads and draws
+	# them base-first.
+	float32*[3] layer_verts
+	int32[3] layer_vert_count
+	int32[3] layer_vert_cap
+	int32 layer
+	# Clip rects, per layer: ui_render_clip_depth() slots each, the
+	# innermost at clip_depth[layer] - 1, depth 0 meaning unclipped. Per
+	# layer so entering a popup layer starts from a clean clip — a
+	# dropdown opened inside a scrolled region must not be trimmed by
+	# that region's viewport.
+	#
+	# ui_render_quad trims geometry against the top of this stack, which
+	# is what lets anything scroll or mask. Kept on the CPU rather than
+	# in glScissor: scissoring would split the one-glBufferData-per-batch
+	# upload into a draw-call list, and does nothing under
+	# ui_render_init_headless, the GL-free seam the widget tests are
+	# built on (docs/projects/ui_widgets.md §4).
+	ui_rect[24] clip_stack
+	int32[3] clip_depth
 	int32 vp_w
 	int32 vp_h
 
@@ -72,11 +122,19 @@ void ui_render_init_headless(ui_renderer* r):
 	r.a_pos = 0
 	r.a_uv = 0
 	r.a_color = 0
-	r.verts = cast(float32*, malloc(ui_render_max_verts() * 32))
-	r.vert_count = 0
-	r.overlay_verts = cast(float32*, malloc(ui_render_max_verts() * 32))
-	r.overlay_count = 0
-	r.to_overlay = 0
+	r.layer_verts[UI_LAYER_BASE] = cast(float32*, malloc(ui_render_max_verts() * 32))
+	r.layer_vert_cap[UI_LAYER_BASE] = ui_render_max_verts()
+	int i = UI_LAYER_POPUP
+	while (i < ui_render_layer_count()):
+		r.layer_verts[i] = cast(float32*, malloc(ui_render_overlay_verts() * 32))
+		r.layer_vert_cap[i] = ui_render_overlay_verts()
+		i = i + 1
+	i = 0
+	while (i < ui_render_layer_count()):
+		r.layer_vert_count[i] = 0
+		r.clip_depth[i] = 0
+		i = i + 1
+	r.layer = UI_LAYER_BASE
 	r.vp_w = 0
 	r.vp_h = 0
 
@@ -125,9 +183,12 @@ int ui_render_init(ui_renderer* r):
 # Start a frame: reset the batch, set the pixel-space projection for
 # the current window size.
 void ui_render_begin(ui_renderer* r, int width, int height):
-	r.vert_count = 0
-	r.overlay_count = 0
-	r.to_overlay = 0
+	int i = 0
+	while (i < ui_render_layer_count()):
+		r.layer_vert_count[i] = 0
+		r.clip_depth[i] = 0
+		i = i + 1
+	r.layer = UI_LAYER_BASE
 	r.vp_w = width
 	r.vp_h = height
 	if (r.gl_ready == 0):
@@ -142,14 +203,68 @@ void ui_render_begin(ui_renderer* r, int width, int height):
 	glUniformMatrix4fv(r.u_proj, 1, 0, &proj.m[0])
 
 
-void ui_render_vertex(ui_renderer* r, float32 x, float32 y, float32 u, float32 v, ui_color color):
-	float32* batch = r.verts
-	int count = r.vert_count
-	if (r.to_overlay):
-		batch = r.overlay_verts
-		count = r.overlay_count
-	if (count >= ui_render_max_verts()):
+# Route subsequent geometry to a layer. Out-of-range layers are
+# ignored rather than corrupting the batch pointers.
+void ui_render_layer(ui_renderer* r, int layer):
+	if ((layer < 0) || (layer >= ui_render_layer_count())):
 		return
+	r.layer = layer
+
+
+# The clip rect in force on the current layer, or the whole viewport
+# when that layer's stack is empty. Nothing outside it reaches the batch.
+ui_rect ui_clip_current(ui_renderer* r):
+	int depth = r.clip_depth[r.layer]
+	if (depth == 0):
+		return ui_rect_new(0.0, 0.0, cast(float32, r.vp_w), cast(float32, r.vp_h))
+	return r.clip_stack[r.layer * 8 + depth - 1]
+
+
+# Narrow the current layer's clip to rect. Always intersects with the
+# clip already in force, so a region can never draw outside its parent.
+# A push past ui_render_clip_depth is dropped; a pop at depth 0 is a
+# no-op, so a dropped push and its matching pop still balance.
+void ui_clip_push(ui_renderer* r, ui_rect rect):
+	int depth = r.clip_depth[r.layer]
+	if (depth >= ui_render_clip_depth()):
+		return
+	r.clip_stack[r.layer * 8 + depth] = ui_rect_intersect(ui_clip_current(r), rect)
+	r.clip_depth[r.layer] = depth + 1
+
+
+void ui_clip_pop(ui_renderer* r):
+	int depth = r.clip_depth[r.layer]
+	if (depth == 0):
+		return
+	r.clip_depth[r.layer] = depth - 1
+
+
+# Double a batch that has filled up. Returns the (possibly moved) base
+# pointer; a failed grow returns the old one and the caller drops the
+# vertex, so overflow degrades to the old drop-on-full behavior instead
+# of writing past the end.
+float32* ui_render_grow(float32* batch, int cap, int32* new_cap):
+	int next = cap * 2
+	float32* moved = cast(float32*, realloc(cast(char*, batch), cap * 32, next * 32))
+	if (moved == 0):
+		new_cap[0] = cap
+		return batch
+	new_cap[0] = next
+	return moved
+
+
+void ui_render_vertex(ui_renderer* r, float32 x, float32 y, float32 u, float32 v, ui_color color):
+	int layer = r.layer
+	float32* batch = r.layer_verts[layer]
+	int count = r.layer_vert_count[layer]
+	int cap = r.layer_vert_cap[layer]
+	if (count >= cap):
+		int32 grown = 0
+		batch = ui_render_grow(batch, cap, &grown)
+		if (grown == cap):
+			return
+		r.layer_verts[layer] = batch
+		r.layer_vert_cap[layer] = grown
 	float32* p = &batch[count * 8]
 	p[0] = x
 	p[1] = y
@@ -159,15 +274,37 @@ void ui_render_vertex(ui_renderer* r, float32 x, float32 y, float32 u, float32 v
 	p[5] = color.g
 	p[6] = color.b
 	p[7] = color.a
-	if (r.to_overlay):
-		r.overlay_count = count + 1
-	else:
-		r.vert_count = count + 1
+	r.layer_vert_count[layer] = count + 1
 
 
 # Two triangles covering rect, sampling the atlas region u0,v0..u1,v1
 # (u0 > u1 or v0 > v1 mirrors — the mask primitives lean on that).
+#
+# With a clip in force the rect is trimmed and the UVs are lerped by the
+# same fractions, so the visible part samples exactly the texels it
+# would have: mirrored ranges follow, since the lerp is on the range as
+# given. A fully clipped quad emits nothing. With an empty clip stack
+# the geometry passes through untouched — the viewport is not a clip
+# (the GPU already bounds it), and treating it as one would drop the
+# zero-extent fills that pill-shaped rrects legitimately emit.
 void ui_render_quad(ui_renderer* r, ui_rect rect, float32 u0, float32 v0, float32 u1, float32 v1, ui_color color):
+	if (r.clip_depth[r.layer] > 0):
+		ui_rect clip = ui_clip_current(r)
+		ui_rect vis = ui_rect_intersect(rect, clip)
+		if (ui_rect_is_empty(vis)):
+			return
+		if ((rect.w > 0.0) && (rect.h > 0.0)):
+			float32 fu0 = (vis.x - rect.x) / rect.w
+			float32 fu1 = (vis.x + vis.w - rect.x) / rect.w
+			float32 fv0 = (vis.y - rect.y) / rect.h
+			float32 fv1 = (vis.y + vis.h - rect.y) / rect.h
+			float32 du = u1 - u0
+			float32 dv = v1 - v0
+			u1 = u0 + du * fu1
+			u0 = u0 + du * fu0
+			v1 = v0 + dv * fv1
+			v0 = v0 + dv * fv0
+		rect = vis
 	float32 x1 = rect.x + rect.w
 	float32 y1 = rect.y + rect.h
 	ui_render_vertex(r, rect.x, rect.y, u0, v0, color)
@@ -319,19 +456,23 @@ void ui_render_draw_batch(ui_renderer* r, float32* batch, int count):
 	glDrawArrays(GL_TRIANGLES, 0, count)
 
 
-# End a frame: upload and draw the main batch, then the overlay batch
-# on top of it.
+# End a frame: upload and draw each layer's batch in order, so popup
+# geometry paints over widgets issued later in the frame and the top
+# layer over both.
 void ui_render_end(ui_renderer* r):
 	if (r.gl_ready == 0):
 		return
-	ui_render_draw_batch(r, r.verts, r.vert_count)
-	ui_render_draw_batch(r, r.overlay_verts, r.overlay_count)
+	int i = 0
+	while (i < ui_render_layer_count()):
+		ui_render_draw_batch(r, r.layer_verts[i], r.layer_vert_count[i])
+		i = i + 1
 
 
 void ui_render_destroy(ui_renderer* r):
-	free(cast(char*, r.verts))
-	r.verts = 0
-	r.vert_count = 0
-	free(cast(char*, r.overlay_verts))
-	r.overlay_verts = 0
-	r.overlay_count = 0
+	int i = 0
+	while (i < ui_render_layer_count()):
+		free(cast(char*, r.layer_verts[i]))
+		r.layer_verts[i] = 0
+		r.layer_vert_count[i] = 0
+		r.layer_vert_cap[i] = 0
+		i = i + 1
