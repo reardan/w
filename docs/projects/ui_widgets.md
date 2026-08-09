@@ -21,6 +21,11 @@ gaps in §0 are closed and the three proving widgets in §5 ship. The
 fourteen deferred items keep the staging in §6, and the open questions
 in §8 stand except where round 1 answered them — noted inline there.
 
+**Round 2 is designed in §9 and executed by `ui_widgets_plan.md`'s
+stages 9-16**: the *editor shell* — Tree View, Splitter, Tabs, Popover,
+context menu and Toast, assembled into an editor-shaped demo. It
+departs from §6's ordering on purpose, and §9 says why.
+
 ## 0. The finding, up front
 
 Almost none of the eighteen items in the issue are blocked on widget
@@ -492,3 +497,171 @@ sizing policy (question 2 stays open for a policy on top of them).
    widget layer (headless file processing, tests), it may belong in
    `lib/` instead. It is pure and has no graphics dependency either
    way — this is a placement call, not a technical one.
+
+## 9. Round 2: the editor shell
+
+Design for the second round, 2026-08-09. Round 1 built foundation and
+proved it with a dialog, a grid and an edit surface. What it does not
+give is a **shell**, and the shell is what the issue is ultimately for:
+the maintainer's MVP target is a Sublime-Text-like editor, and an
+editor window is a sidebar file tree, a tab strip, a draggable divider
+between panes, right-click context menus and transient notifications.
+
+So round 2 departs from §6's grouping. §6 would have done overlays
+(Popover, Toast) and then containers (Tabs, Form, Chips); instead this
+round takes the *editor-shaped subset* of those — Popover, Toast,
+Tabs — and adds two widgets that are not in the issue's list at all:
+
+- **Tree View**, which the maintainer called out directly ("we'll need
+  at least a Tree View for the Side Bar"), and
+- **Splitter**, because a sidebar without a draggable divider is a
+  fixed-width sidebar, and because every pane layout in the shell is
+  built out of it.
+
+Form, Chips, Email, Dropdown multi-select/search and the whole
+date/time family keep their §6 staging untouched. They are form
+widgets; none of them is on the path to an editor.
+
+### 9.1 What was missing, again in three pieces
+
+Round 1's §0 finding repeats in miniature. Three things block the
+shell, and none of them is widget code:
+
+1. **No right mouse button.** `ui_feed_event` folds only button 1
+   (`graphics/ui/widgets/context.w:49`), so a right-click never reaches
+   a widget and a context menu cannot be written. The events already
+   arrive — X11 and both JS hosts produce `MOUSE_DOWN` with code 3
+   (`graphics/event.w:36`) — and are silently dropped, exactly the
+   shape of round 1's `GFX_EVENT_SCROLL` gap.
+2. **A scroll viewport's widget id is conditional.** `ui_scroll_end`
+   returns before allocating its thumb id when the content does not
+   overflow (`scroll.w:142-144` vs `:165`), so every widget issued
+   after a scroll region shifts by one id the moment that region's
+   content grows past its viewport. `ctx.hot`/`ctx.active` are
+   recomputed per frame from geometry and shrug it off, but `ctx.focus`
+   persists across frames — so a focused field after a growing table
+   silently loses focus, or inherits someone else's. It is a real bug,
+   found while planning the tree, and it matters more here because the
+   tree is the most dynamic widget in the set.
+3. **No right-pointing chevron, no cross.** `ui_render_mask`
+   (`render.w:336`) mirrors but does not rotate, and the one
+   directional mask is a *down*-chevron (`font.w:38`). A collapsed
+   tree node's disclosure marker and a tab's close affordance are
+   therefore both unavailable. The atlas generator exists for exactly
+   this (`tools/generate_ui_atlas.w`), so the answer is two more baked
+   masks rather than a rotation path through the clip-lerp code in
+   `ui_render_quad`.
+
+### 9.2 The Tree View, and why it is caller-recursive
+
+The interesting design question of the round. A tree is the first
+widget whose *shape* is caller data rather than a flat count, and
+there are two ways to express that immediate-mode:
+
+- the widget owns a flat array of `{label, depth, is_leaf}` nodes and
+  the caller populates it, or
+- the caller recurses over its own data and the widget only sees the
+  walk.
+
+**Recursive wins**, and the deciding argument is not style but cost: a
+collapsed subtree must cost nothing, and with a recursive walk that
+falls out for free — `ui_tree_node` returns 0 and the caller simply
+does not recurse. The flat model would have the caller flattening the
+whole tree every frame, including the parts nobody can see, which is
+precisely the work virtualization exists to avoid. It also keeps the
+house convention intact: expansion is caller-owned `int32*` state, the
+same as `ui_dropdown`'s and `ui_modal_begin`'s `open`.
+
+```
+ui_tree_begin(ctx, sidebar, &st)
+while (i < dir_count):
+	if (ui_tree_node(ctx, &st, dir_name(i), &dir_open[i])):
+		while (f < file_count(i)):
+			if (ui_tree_leaf(ctx, &st, file_name(i, f))):
+				open_file(i, f)
+		ui_tree_node_end(ctx, &st)
+ui_tree_end(ctx, &st)
+```
+
+`ui_tree_leaf` returning "activated this frame" is what keeps the API
+honest: the caller acts at the call site and never has to map a row
+index back to its own data. Activation is a **single click**, which is
+what Sublime's sidebar does, and which conveniently means the widget
+needs no double-click and therefore no clock.
+
+Row geometry, `ui_region_claim` and the viewport test are `ui_table_row`
+(`table.w:115-145`) verbatim — index arithmetic in content space, claim
+unconditionally so the scroll region learns the full height, draw only
+what is visible.
+
+The one genuinely new problem is **keyboard navigation against a walk
+the widget cannot see ahead of**. The widget never holds the tree, so
+it cannot answer "what is the next visible row" before the caller
+issues it. The resolution is to answer *during* the walk: up/down move
+a walk-index cursor using the previous frame's row count (the same
+one-frame lag §4.4 already documents for scroll extent), while
+left/right are queued and resolved inside `ui_tree_node` at the moment
+the focused node's own `int32* open` is in hand. A `parent_of_depth`
+array maintained by the walk makes "left collapses, then ascends to
+the parent" exact rather than inferred.
+
+And the keyboard cursor is a **walk index, not a widget id**. Ids are
+sequential per frame in call order (`widgets.w:24-26`); expanding a
+node shifts every id after it. A persistent `ctx.focus` keyed on a row
+id would drift on every expand. The tree container takes one id and
+holds focus; rows are addressed by their position in the walk.
+
+### 9.3 Toast, and the clock that isn't there
+
+A toast needs to expire, which needs a clock — §8's open question 3.
+`time_monotonic_ms()` (`lib/time.w:41`) looks like the answer and is
+documented as wrap-safe for exactly this kind of relative measurement.
+It is also **wrong on wasm**: `lib/__arch__/wasm/syscalls.w:242` takes
+WASI's `clock_time_get` result — a single u64 nanosecond count — and
+stores it straight into a `{seconds, nanoseconds}` timespec without
+converting, so the "seconds" field is the low 32 bits of a nanosecond
+count. `time_now()` is wrong there for the same reason.
+
+Rather than block a widget on a 64-by-32 division helper, `ui_toast`
+takes `now_ms` from its caller and holds no clock at all. The widget
+layer stays pure and its test just passes increasing integers; the
+native demo passes `time_monotonic_ms()`; a web caller passes a
+frame-derived count. The wasm clock bug is worth fixing on its own
+merits and is filed separately.
+
+That is the answer to open question 3, and it generalizes: **UI code
+should not read clocks.** Anything time-dependent takes the time as an
+argument, which is also the only way it stays headless-testable.
+
+### 9.4 Staging
+
+1. **Foundation** — right-button input, the scroll id fix, the two
+   atlas masks (§9.1).
+2. **Splitter** — the simplest, and what the shell layout is made of.
+3. **Tree View** — the centerpiece (§9.2).
+4. **Tabs**.
+5. **Popover**, then the context menu on top of it.
+6. **Toast** (§9.3).
+7. **The shell demo** — a new `graphics/ui/demo_shell.w` behind
+   `demo.w --shell`, not an extension of the existing form, whose row
+   coordinates are load-bearing for two gates.
+
+### 9.5 Not in this round
+
+- **A filesystem-backed file tree.** The tree takes caller-supplied
+  labels; the demo supplies a static tree. `getdents` is Linux-only in
+  this tree (`lib/stat.w:13-14` says so explicitly, and every call site
+  open-codes the record decode), so a `readdir` adapter inside
+  `graphics/ui/` would not run under the wasm gate. It belongs to the
+  editor project, as its first commit.
+- **Clipboard.** Still the §7 non-goal, but now with a design note of
+  its own (`docs/projects/ui_clipboard.md`) since the editor cannot
+  ship without it.
+- **Textarea mouse drag-selection and double-click word-select.** A
+  click sets the caret (`textarea.w:245-264`) and that is all. Round 3,
+  with the gutter, line numbers and a find bar.
+- **`ui_dropdown` rewritten onto `ui_popover_begin`.** It predates the
+  popover and hand-rolls the same bracket (`dropdown.w:59-75`). It
+  works; rewriting it would churn its tests for no behavior change.
+- **Hash-based widget ids.** Still the right fix for dynamic layouts,
+  still out of scope.
