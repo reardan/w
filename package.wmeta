@@ -35,6 +35,7 @@ modules:
 	graphics.ui.widgets.splitter
 	graphics.ui.widgets.state
 	graphics.ui.widgets.table
+	graphics.ui.widgets.tabs
 	graphics.ui.widgets.textarea
 	graphics.ui.widgets.textbox
 	graphics.ui.widgets.tree
