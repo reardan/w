@@ -1931,6 +1931,7 @@
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/tabs_test.w", "-o", "bin/graphics_ui_tabs_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/popover_test.w", "-o", "bin/graphics_ui_popover_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/menu_test.w", "-o", "bin/graphics_ui_menu_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/toast_test.w", "-o", "bin/graphics_ui_toast_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/demo.w", "-o", "bin/graphics_ui_demo_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
@@ -2129,6 +2130,7 @@
 				"graphics_ui_table_test",
 				"graphics_ui_tabs_test",
 				"graphics_ui_textarea_test",
+				"graphics_ui_toast_test",
 				"graphics_ui_tree_test",
 				"graphics_ui_widgets_test",
 				"hash_table_64_test",
@@ -4544,6 +4546,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/textarea_test.w", "-o", "bin/graphics_ui_textarea_test"]},
 				{"cmd": ["bin/graphics_ui_textarea_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_toast_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/toast_test.w"],
+			"outputs": ["bin/graphics_ui_toast_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/toast_test.w", "-o", "bin/graphics_ui_toast_test"]},
+				{"cmd": ["bin/graphics_ui_toast_test"]}
 			]
 		},
 		{
