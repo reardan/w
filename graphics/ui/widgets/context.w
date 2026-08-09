@@ -25,6 +25,9 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.input.mouse_released = 0
 	ctx.input.press_x = 0
 	ctx.input.press_y = 0
+	ctx.input.mouse_right_pressed = 0
+	ctx.input.right_x = 0
+	ctx.input.right_y = 0
 	ctx.input.scroll_x = 0
 	ctx.input.scroll_y = 0
 	ctx.input.scroll_at_x = 0
@@ -45,13 +48,20 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 
 
 # Fold one queued event into the per-frame input edges. Only button 1
-# drives pointer interaction; CHAR/NAV queue up for the focused widget.
+# drives pointer interaction — button 3 is a bare edge for context
+# menus; CHAR/NAV queue up for the focused widget.
 void ui_feed_event(ui_context* ctx, gfx_event* e):
 	if ((e.kind == GFX_EVENT_MOUSE_DOWN) && (e.code == 1)):
 		ctx.input.mouse_down = 1
 		ctx.input.mouse_pressed = 1
 		ctx.input.press_x = e.x
 		ctx.input.press_y = e.y
+		ctx.input.mouse_x = e.x
+		ctx.input.mouse_y = e.y
+	else if ((e.kind == GFX_EVENT_MOUSE_DOWN) && (e.code == 3)):
+		ctx.input.mouse_right_pressed = 1
+		ctx.input.right_x = e.x
+		ctx.input.right_y = e.y
 		ctx.input.mouse_x = e.x
 		ctx.input.mouse_y = e.y
 	else if ((e.kind == GFX_EVENT_MOUSE_UP) && (e.code == 1)):
@@ -118,6 +128,7 @@ void ui_end(ui_context* ctx):
 		ctx.active = 0
 	ctx.input.mouse_pressed = 0
 	ctx.input.mouse_released = 0
+	ctx.input.mouse_right_pressed = 0
 	ctx.input.scroll_x = 0
 	ctx.input.scroll_y = 0
 	ctx.char_count = 0

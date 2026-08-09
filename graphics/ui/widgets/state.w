@@ -18,6 +18,13 @@ struct ui_input:
 	int32 mouse_released   # a button-1 MOUSE_UP arrived this frame
 	int32 press_x          # where this frame's press landed
 	int32 press_y
+	# Button 3, tracked only as a per-frame edge: a right-click opens a
+	# context menu and nothing drags with it, so there is no held or
+	# released state to keep. Claimed by the widget that opens a menu,
+	# the way the wheel is claimed by a scroll region.
+	int32 mouse_right_pressed
+	int32 right_x
+	int32 right_y
 	# Wheel notches accumulated this frame, +1 per notch away from the
 	# user. Claimed by the scroll region under the pointer and zeroed by
 	# it, so one wheel event does not scroll two nested regions.

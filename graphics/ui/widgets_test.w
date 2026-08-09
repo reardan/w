@@ -462,3 +462,39 @@ void test_same_line_layout():
 	asserts(c"next row", lo.last_top > 8.0)
 	ui_end(&ctx)
 	ui_render_destroy(&r)
+
+
+# Button 3 reaches widget code as a bare per-frame edge. The events have
+# always arrived — X11 and both JS hosts produce MOUSE_DOWN with code 3
+# — and ui_feed_event simply dropped them, the same shape as the
+# GFX_EVENT_SCROLL gap round 1 closed. Nothing drags with the right
+# button, so there is no held or released state to keep.
+void test_right_click_is_a_bare_edge():
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_theme theme
+	ui_theme_light(&theme)
+	ui_context ctx
+	ui_context_init(&ctx, &r, &theme)
+
+	gfx_event press
+	press.kind = GFX_EVENT_MOUSE_DOWN
+	press.code = 3
+	press.x = 40
+	press.y = 60
+	press.mods = 0
+	ui_feed_event(&ctx, &press)
+
+	assert_equal(1, ctx.input.mouse_right_pressed)
+	assert_equal(40, ctx.input.right_x)
+	assert_equal(60, ctx.input.right_y)
+	# Button 1's state is untouched: a right-click must not make a
+	# button think it was pressed.
+	assert_equal(0, ctx.input.mouse_pressed)
+	assert_equal(0, ctx.input.mouse_down)
+
+	# And the edge lasts exactly one frame, like the others.
+	ui_begin(&ctx, 320, 240)
+	ui_end(&ctx)
+	assert_equal(0, ctx.input.mouse_right_pressed)
+	ui_render_destroy(&r)

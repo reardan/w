@@ -292,3 +292,33 @@ void test_nested_viewports_do_not_share_a_notch():
 	asserts(c"inner scrolled", inner.offset_y > 0.0)
 	asserts(c"outer did not", outer.offset_y == 0.0)
 	ui_render_destroy(&r)
+
+
+# A viewport takes exactly one widget id whether or not it has a thumb.
+# Ids are sequential in call order, so allocating the thumb's id only on
+# the overflow path would shift every later widget by one the moment the
+# content grew past the viewport — and ctx.focus persists across frames,
+# so a focused field issued after a growing region would silently lose
+# focus to its neighbour.
+void test_viewport_id_cost_does_not_depend_on_overflow():
+	ui_renderer r
+	ui_theme theme
+	ui_context ctx
+	setup(&r, &theme, &ctx)
+
+	# Same three rows either way; only the viewport's height differs, so
+	# the sole possible difference in id count is the thumb's.
+	ui_scroll_state roomy
+	ui_scroll_init(&roomy)
+	scroll_frame(&ctx, ui_rect_new(10.0, 10.0, 120.0, 200.0), &roomy, 3)
+	int ids_without_thumb = ctx.next_id
+
+	ui_scroll_state cramped
+	ui_scroll_init(&cramped)
+	scroll_frame(&ctx, ui_rect_new(10.0, 10.0, 120.0, 40.0), &cramped, 3)
+	int ids_with_thumb = ctx.next_id
+
+	asserts(c"the roomy viewport did not overflow", ui_scroll_overflows(&roomy) == 0)
+	asserts(c"the cramped one did", ui_scroll_overflows(&cramped))
+	assert_equal(ids_without_thumb, ids_with_thumb)
+	ui_render_destroy(&r)
