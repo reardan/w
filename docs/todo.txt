@@ -321,6 +321,10 @@ current state:
 				slice-level array_free (lib/array.w) and parallel_for
 				twins (lib/ndarray_par.w, Linux x86/x64);
 				design/status: docs/projects/ndarray.md, issue #27)
+			matrix type (lib/matrix.w, issue #27: 2-D float matrix on
+				the ndarray layout with + - * / operators, methods,
+				m[i, j] sugar, transpose/pow/det/inverse/solve, zero-copy
+				matrix_as_ndf)
 			shell helpers (lib/shell.w: sh(cmd), run(argv), cd, env get/set
 				on top of lib/process.w/lib/env.w)
 			compression (libs/extras/compress/: CRC-32, Adler-32, a
@@ -525,7 +529,8 @@ current state:
 			ndarray64.w library substrate, issue #27; grammar-level
 			indexing sugar m[i, j] done: comma index lists lower to the
 			atN/setN accessors, grammar/ndarray_index.w; design:
-			docs/projects/ndarray.md)
+			docs/projects/ndarray.md; dedicated matrix type with
+			operator arithmetic done: lib/matrix.w)
 		statistics (done: lib/stats.w, design: docs/projects/stats.md)
 
 	future platforms:

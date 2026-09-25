@@ -2,7 +2,7 @@
 # (grammar/ndarray_index.w): on any other type it is a compile error
 # naming the offending type, not a silent extra-index parse.
 # expect_fail
-# expect_stderr: comma-separated indexing requires an ndarray (ndf, ndi or ndf64), got 'int*'
+# expect_stderr: comma-separated indexing requires an ndarray or matrix (ndf, ndi, ndf64 or matrix), got 'int*'
 int main():
 	int[4] buf
 	int* p = &buf[0]
