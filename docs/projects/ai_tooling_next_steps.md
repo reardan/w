@@ -566,6 +566,10 @@ is cheap and catches the case that bit here.
 
 ## Darwin bootstrap from a clean checkout is broken with the pinned seeds (2026-09-25)
 
+**Update (2026-09-25):** `SEEDS` now pins v0.3.0. Its `w-arm64-macos` is the
+release workflow's native darwin fixpoint of current sources, which should
+clear this. It has not yet been checked from a clean checkout on a Mac.
+
 Both released darwin seeds miscompile current main: v0.1.0's
 `w_darwin` segfaults compiling `w.w` (first bad commit 2a9c034, July
 19), and v0.2.0's compiles it but writes a corrupt Mach-O magic, so
