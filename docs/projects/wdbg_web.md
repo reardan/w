@@ -72,6 +72,12 @@ browser  --https/JSON-->  bin/wdbg_web (x64)  --pipes-->  bin/wdbg prog.w
   WebSocket (libs/standard/web/websocket.w) would push it, but a
   long-lived socket needs the server loop to multiplex frames, not just
   requests.
+- **Task-based async server.** lib/task.w's stackful tasks can suspend
+  at any call depth, so making tls.w's and connection.w's reads call
+  `task_await_fd` on EAGAIN inside a task would let http_server.w run a
+  task per connection and replace this tool's hand-rolled poll loop.
+  It would not speed up the TLS handshake, which is CPU-bound pure-W
+  P-256/X25519 math, not I/O.
 - **A W/wasm UI.** The page is plain HTML/JS. The wasm + UI framework
   path (tools/web/) could replace it on top of the same API.
 - **Structured wdbg output.** Parsing text is adequate for the panes;
