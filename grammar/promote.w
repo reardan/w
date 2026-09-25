@@ -57,16 +57,13 @@ void bit_field_load_unit(int unit_size):
 # so wide masks must not be computed in host arithmetic (the CLAUDE.md
 # bit-31 literal gotcha, lib/sha256.w precedent).
 void bit_field_emit_mask(int width, int shift):
-	mov_eax_int(1)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot_int(1)
 	mov_eax_int(width)
 	alu_shl()
 	stack_pos = stack_pos - 1
 	add_eax_int32(-1)
 	if (shift > 0):
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		mov_eax_int(shift)
 		alu_shl()
 		stack_pos = stack_pos - 1
@@ -87,30 +84,25 @@ int bit_field_promote(int type):
 	bit_field_load_unit(ci_bit_field_unit_size(type))
 	if (ci_bit_field_is_signed(type)):
 		if (reg_bits - bit_offset - width > 0):
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			mov_eax_int(reg_bits - bit_offset - width)
 			alu_shl()
 			stack_pos = stack_pos - 1
 		if (reg_bits - width > 0):
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			mov_eax_int(reg_bits - width)
 			alu_sar()
 			stack_pos = stack_pos - 1
 	else:
 		if (bit_offset > 0):
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			mov_eax_int(bit_offset)
 			alu_sar()
 			stack_pos = stack_pos - 1
 		if (width < reg_bits):
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			bit_field_emit_mask(width, 0)
-			pop_ebx()
-			stack_pos = stack_pos - 1
+			pop_ebx_slot()
 			alu_and()
 	return type_lookup(c"int")
 
@@ -132,33 +124,25 @@ void bit_field_assign_store(int type):
 		return;
 	push_ebx()
 	stack_pos = stack_pos + 1
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	if (bit_offset > 0):
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		mov_eax_int(bit_offset)
 		alu_shl()
 		stack_pos = stack_pos - 1
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	bit_field_emit_mask(width, bit_offset)
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	alu_and()  # eax = positioned field bits
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	bit_field_emit_mask(width, bit_offset)
 	not_eax()  # eax = ~(mask << bit_offset)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(3 * word_size)  # the saved unit address
 	bit_field_load_unit(unit_size)
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	alu_and()  # unit with the field's bits cleared
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	alu_or()  # merged unit
 	mov_ebx_esp_plus(word_size)  # the saved unit address
 	if (unit_size == 1):
@@ -169,10 +153,8 @@ void bit_field_assign_store(int type):
 		store_ebx_int32()
 	else:
 		store_ebx_word()
-	pop_eax()  # the incoming value: assignment's result
-	stack_pos = stack_pos - 1
-	pop_ebx()  # drop the saved address
-	stack_pos = stack_pos - 1
+	pop_eax_slot()  # the incoming value: assignment's result
+	pop_ebx_slot()  # drop the saved address
 
 
 # Print a type's name followed by its pointer stars, e.g. "char**"
@@ -272,20 +254,15 @@ int types_compatible_with_expression(int want, int got):
 
 
 void coerce_cstr_to_string():
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	sym_get_value(c"str_from_cstr")
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(word_size)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(word_size)
 	call_eax()
-	be_pop(2)
-	stack_pos = stack_pos - 2
-	be_pop(1)
-	stack_pos = stack_pos - 1
+	drop_slots(2)
+	drop_slots(1)
 
 
 void coerce_cstr_to_string_call_arg():

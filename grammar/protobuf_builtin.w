@@ -584,18 +584,13 @@ void protobuf_emit_call(char* fn_name, int desc_address, int arg_slot, int arg_c
 		diag_part(c"protobuf runtime function '")
 		diag_part(fn_name)
 		error(c"' is not defined; import libs.extras.protobuf.message")
-	sym_get_value(fn_name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_int(desc_address)
-	push_eax()
-	stack_pos = stack_pos + 1
+	int s = rt_call_begin(fn_name)
+	push_slot_int(desc_address)
 	int i = 0
 	while (i < arg_count):
-		hash_push_stack_slot(arg_slot + i)
+		push_slot_copy(arg_slot + i)
 		i = i + 1
-	hash_call_finish(s)
+	rt_call_end(s)
 
 
 # The message type named by a message value or single-level pointer
@@ -625,13 +620,10 @@ int protobuf_to_proto_expr():
 	got = promote(got)
 	int t = protobuf_message_of_expression(got)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int arg_slot = stack_pos
+	int arg_slot = push_slot()
 	int desc_address = protobuf_descriptor(t)
 	protobuf_emit_call(c"pb_to_bytes", desc_address, arg_slot, 1)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	pop_to(base_stack)
 	return type_value(type_get_next_pointer(bytes_type))
 
 
@@ -650,9 +642,7 @@ int protobuf_from_proto_expr():
 	int desc_address = protobuf_descriptor(t)
 	int base_stack = stack_pos
 	int got = promote(expression())
-	push_eax()
-	stack_pos = stack_pos + 1
-	int arg_slot = stack_pos
+	int arg_slot = push_slot()
 	char* fn_name = c"pb_from_bytes"
 	int arg_count = 1
 	if (accept(c",")):
@@ -660,8 +650,7 @@ int protobuf_from_proto_expr():
 		if (types_compatible_with_expression(want_data, got) == 0):
 			warn_type_mismatch(c"from_proto data", want_data, got)
 		promote(expression())
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		fn_name = c"pb_from_data"
 		arg_count = 2
 	else:
@@ -671,8 +660,7 @@ int protobuf_from_proto_expr():
 	if (peek(c")") == 0):
 		error(c"')' expected in from_proto")
 	protobuf_emit_call(fn_name, desc_address, arg_slot, arg_count)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	pop_to(base_stack)
 	return type_value(type_get_next_pointer(t))
 
 

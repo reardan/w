@@ -297,28 +297,22 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 			stack_pos = stack_pos + buf_words
 			has_return_buffer = 1
 	# Save the right operand's word while materializing the callee
-	push_eax()
-	stack_pos = stack_pos + 1
-	int right_slot = stack_pos
-	sym_get_value(name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
+	int right_slot = push_slot()
+	int s = rt_call_begin(name)
 	if (has_return_buffer):
 		# Hidden return-buffer argument: the buffer starts past the
 		# callee word and the right-operand save
 		lea_eax_esp_plus(2 << word_size_log2)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 	# Left operand: reload its saved word and push it as argument 0
-	mov_eax_esp_plus((stack_pos - left_slot) << word_size_log2)
+	load_slot(left_slot)
 	check_call_argument(callee, -1, name, 0, left_type)
 	int param0 = sym_param_type(callee, 0)
 	if (param0 >= 0):
 		coerce_call_argument(param0, left_type)
 	push_call_argument(left_type)
 	# Right operand: reload its save and push it as argument 1
-	mov_eax_esp_plus((stack_pos - right_slot) << word_size_log2)
+	load_slot(right_slot)
 	check_call_argument(callee, -1, name, 1, right_type)
 	int param1 = sym_param_type(callee, 1)
 	if (param1 >= 0):
@@ -333,14 +327,12 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 	int base = left_slot - 1
 	if (has_return_buffer == 0):
 		# Scalar result: pop all of it in one go (be_pop preserves eax)
-		be_pop(stack_pos - base)
-		stack_pos = base
+		pop_to(base)
 		return result
 	# Struct result: drop the right-operand save, then slide the buffer
 	# down over the junk words below it -- highest word first, the
 	# overlap-safe order push_call_argument_compact uses
-	be_pop(1)
-	stack_pos = stack_pos - 1
+	drop_slots(1)
 	int excess = stack_pos - buf_words - base
 	if (excess > 0):
 		int i = buf_words - 1
@@ -348,8 +340,7 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 			mov_eax_esp_plus(i << word_size_log2)
 			store_stack_var((i + excess) << word_size_log2)
 			i = i - 1
-		be_pop(excess)
-		stack_pos = stack_pos - excess
+		drop_slots(excess)
 	# finish_call's return-buffer lea ran before the compaction; redo
 	# it now that the buffer sits at the top of the stack
 	lea_eax_esp_plus(0)

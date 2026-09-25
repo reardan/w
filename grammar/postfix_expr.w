@@ -51,13 +51,11 @@ void buffer_bounds_check():
 	# eax = index, stack top = the buffer descriptor. Load the length
 	# first so the trap block can report both values; the descriptor is
 	# valid whatever the index is.
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(word_size)
 	add_eax_int32(word_size)
 	promote_eax()
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	# ebx = index, eax = length: trap unless 0 <= index < length
 	int h_in_bounds = be_ctrl_block()
 	int h_trap = be_ctrl_block()
@@ -99,18 +97,13 @@ void buffer_push_range_descriptor(int base_type, int start_was_omitted):
 	int element_size = type_get_size(element_type)
 	# stack top before this helper: end, start, descriptor
 	sym_get_value(c"malloc")
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_int(2 * word_size)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
+	push_slot_int(2 * word_size)
 	mov_eax_esp_plus(word_size)
 	call_eax()
-	be_pop(2)
-	stack_pos = stack_pos - 2
+	drop_slots(2)
 
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(2 * word_size)
 	mov_ebx_esp_plus(word_size)
 	alu_sub()
@@ -127,10 +120,8 @@ void buffer_push_range_descriptor(int base_type, int start_was_omitted):
 	mov_ebx_esp()
 	store_ebx_word()
 
-	pop_eax()
-	stack_pos = stack_pos - 1
-	be_pop(3)
-	stack_pos = stack_pos - 3
+	pop_eax_slot()
+	drop_slots(3)
 
 
 # Warn when a call argument's type conflicts with the callee's declared
@@ -208,8 +199,7 @@ void push_call_argument_compact(int arg_type, int leaked_words):
 			mov_eax_esp_plus(i << word_size_log2)
 			store_stack_var((i + leaked_words) << word_size_log2)
 			i = i - 1
-		be_pop(leaked_words)
-		stack_pos = stack_pos - leaked_words
+		drop_slots(leaked_words)
 	if (is_struct):
 		if (type_has_array_field(arg_type)):
 			lea_eax_esp_plus(0)
@@ -259,8 +249,7 @@ void parse_variadic_element_argument(char* callee_name, int element_type, int ar
 		print_error_type(arg_type)
 		warning(c"'")
 	coerce_call_argument(element_type, arg_type)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 
 
 # Finish a call whose callee and arguments are already pushed: the arity
@@ -294,14 +283,13 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 	if (callee_name != 0):
 		free(callee_name)
 
-	mov_eax_esp_plus((stack_pos - s - 1) << word_size_log2)
+	load_slot(s + 1)
 
 	# A function's address is its value; other callees hold a pointer
 	if (callee_type != 4):
 		promote(callee_type)
 	call_eax()
-	be_pop(stack_pos - s)
-	stack_pos = s
+	pop_to(s)
 	int type = 3  # call results are plain values
 	last_call_return_type = declared_return
 	last_call_end = codepos
@@ -361,13 +349,9 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 			store_ebx_stack_var(i << word_size_log2)
 			i = i + 1
 		# Push the {data, length} slice descriptor just below the values
-		mov_eax_int(variadic_values)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot_int(variadic_values)
 		lea_eax_esp_plus(word_size)
-		push_eax()
-		stack_pos = stack_pos + 1
-		int descriptor_slot = stack_pos
+		int descriptor_slot = push_slot()
 		# The values and descriptor sit between the fixed arguments and
 		# the slice argument, but the callee addresses its parameters as
 		# one contiguous block above the return address: re-push copies
@@ -375,14 +359,11 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 		int fixed_words = fixed_words_end - s - 1
 		int j = 1
 		while (j <= fixed_words):
-			mov_eax_esp_plus((stack_pos - (s + 1 + j)) << word_size_log2)
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot_copy(s + 1 + j)
 			j = j + 1
 		# The variadic slice parameter: a pointer to the descriptor
 		lea_eax_esp_plus((stack_pos - descriptor_slot) << word_size_log2)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 
 	# Missing trailing arguments whose parameters all carry defaults are
 	# filled in with the recorded constants (direct calls only: indirect
@@ -422,8 +403,7 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 		if (param_type >= 0):
 			coerce_call_argument(param_type, arg_type)
 			arg_class = ffi_type_class(param_type)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		return arg_class
 	# Variadic tail: C default argument promotions
 	if (type_get_kind(type_unqualified(arg_type)) == type_kind_slice_value()):
@@ -431,16 +411,14 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 		# exactly like C: load the descriptor's first word so the callee
 		# receives the data pointer, not the descriptor's address.
 		promote_eax()
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		return 0
 	int kind = type_float_kind(arg_type)
 	if (kind == 1):
 		# The promoted float64 spans two 32-bit stack words on x86
 		stack_pos = stack_pos + ffi_push_promoted_float32()
 		return 2
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	if (kind == 2):
 		return 2
 	return 0
@@ -475,8 +453,7 @@ int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int dec
 
 	emit_ffi_call_inline(passed_args, arg_classes, ffi_type_class(declared_return), sym_got_vaddr(callee_sym))
 	free(arg_classes)
-	be_pop(stack_pos - s)
-	stack_pos = s
+	pop_to(s)
 	int type = 3  # call results are plain values
 	last_call_return_type = declared_return
 	last_call_end = codepos
@@ -539,11 +516,8 @@ int postfix_expr():
 			else if (type_is_buffer(type)):
 				type = promote(type)
 				if (accept(c":")):
-					push_eax()
-					stack_pos = stack_pos + 1
-					mov_eax_int(0)
-					push_eax()
-					stack_pos = stack_pos + 1
+					push_slot()
+					push_slot_int(0)
 					if (accept(c"]")):
 						mov_eax_esp_plus(word_size)
 						add_eax_int32(word_size)
@@ -551,21 +525,18 @@ int postfix_expr():
 					else:
 						promote(expression())
 						expect(c"]")
-					push_eax()
-					stack_pos = stack_pos + 1
+					push_slot()
 					buffer_range_bounds_check()
 					buffer_push_range_descriptor(type, 1)
 					type = buffer_result_type(type)
 					expression_lhs_readonly = 1
 				else:
-					push_eax()
-					stack_pos = stack_pos + 1
+					push_slot()
 					int element_type = buffer_element_type(type)
 					int element_size = type_get_size(element_type)
 					promote(expression())
 					if (accept(c":")):
-						push_eax()
-						stack_pos = stack_pos + 1
+						push_slot()
 						if (accept(c"]")):
 							mov_eax_esp_plus(word_size)
 							add_eax_int32(word_size)
@@ -573,8 +544,7 @@ int postfix_expr():
 						else:
 							promote(expression())
 							expect(c"]")
-						push_eax()
-						stack_pos = stack_pos + 1
+						push_slot()
 						buffer_range_bounds_check()
 						buffer_push_range_descriptor(type, 0)
 						type = buffer_result_type(type)
@@ -696,12 +666,10 @@ int postfix_expr():
 						stack_pos = stack_pos + words
 						s = stack_pos
 						has_return_buffer = 1
-				push_eax()
-				stack_pos = stack_pos + 1
+				push_slot()
 				if (has_return_buffer):
 					lea_eax_esp_plus(word_size)
-					push_eax()
-					stack_pos = stack_pos + 1
+					push_slot()
 				type = parse_call_suffix(type, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 0, has_return_buffer, w_variadic_fixed)
 
 		else if (accept(c".")):
@@ -904,8 +872,7 @@ int postfix_expr():
 						if (receiver_struct_value_words > 0):
 							if (type_num_args(type) == 0):
 								type = promote(type)
-								be_pop(receiver_struct_value_words)
-								stack_pos = stack_pos - receiver_struct_value_words
+								drop_slots(receiver_struct_value_words)
 								type = type_value(type)
 					else if (peek(c"(")):
 						char* prefix = strjoin(type_get_name(type), c"_")
@@ -946,16 +913,11 @@ int postfix_expr():
 
 						# Save the receiver address while resolving the method
 						# symbol, then push it as the hidden first source argument.
-						push_eax()
-						stack_pos = stack_pos + 1
-						sym_get_value(method_symbol)
-						int s = stack_pos
-						push_eax()
-						stack_pos = stack_pos + 1
+						push_slot()
+						int s = rt_call_begin(method_symbol)
 						if (has_return_buffer):
 							lea_eax_esp_plus(2 << word_size_log2)
-							push_eax()
-							stack_pos = stack_pos + 1
+							push_slot()
 						if (has_return_buffer):
 							mov_eax_esp_plus(2 << word_size_log2)
 						else:
@@ -971,8 +933,7 @@ int postfix_expr():
 
 						accept(c"(")
 						type = parse_call_suffix(4, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 1, has_return_buffer, w_variadic_fixed)
-						be_pop(1)
-						stack_pos = stack_pos - 1
+						drop_slots(1)
 						if (has_return_buffer):
 							lea_eax_esp_plus(0)
 							type = type_value(declared_return)

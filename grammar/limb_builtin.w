@@ -91,17 +91,14 @@ int limb_builtin_expr():
 	get_token()
 	expect(c"(")
 	limb_builtin_int_argument(name, 0, int_type)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	expect(c",")
 	limb_builtin_int_argument(name, 1, int_type)
 	if (kind == 1):
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		pop_ebx_slot()
 		alu_mul_hi()
 	else:
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		expect(c",")
 		int pointer_type = type_get_next_pointer(int_type)
 		int got = expression()

@@ -89,19 +89,16 @@ int increment_apply(int op, int type):
 	if (type_is_buffer(type_canonical(type))):
 		error(c"compound assignment is not supported on string, array or slice values")
 	expression_lhs_readonly = 0
-	push_eax()  # lhs address, kept for the final store
-	stack_pos = stack_pos + 1
+	push_slot()  # lhs address, kept for the final store
 	int left_type = promote(type)  # eax still holds the address: load
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_int(1)  # the implicit right-hand side
 	int right_type = 3  # constant, exactly like a parsed '1' literal
 	if (var_binary_operands(left_type, right_type)):
 		error(c"compound assignment does not support var operands")
 	int result_type = compound_assign_apply(op, left_type, right_type)
 	coerce(type, result_type)
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	if (types_compatible_with_expression(type, result_type) == 0):
 		warn_type_mismatch(c"assignment", type, result_type)
 	assign_store(type)

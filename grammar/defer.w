@@ -167,8 +167,6 @@ void defer_emit_all():
 void defer_emit_returning():
 	if (defer_count() == 0):
 		return;
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	defer_emit_all()
-	pop_eax()
-	stack_pos = stack_pos - 1
+	pop_eax_slot()

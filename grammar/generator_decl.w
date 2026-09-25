@@ -43,38 +43,30 @@ int generator_object_pointer_type():
 # body never executes a plain ret.
 void emit_generator_finish_call():
 	sym_get_value(c"__w_gen_return")
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	sym_get_value(c"__w_gen_self")
 	promote_eax()
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(1 << word_size_log2)
 	call_eax()
-	be_pop(2)
-	stack_pos = stack_pos - 2
+	drop_slots(2)
 
 
 # Emit __w_gen_yield(__w_gen_self, value) with the yield value in eax:
 # store it into the object and switch back to the consumer until the
 # next gen_next.
 void emit_generator_yield_call():
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	sym_get_value(c"__w_gen_yield")
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	sym_get_value(c"__w_gen_self")
 	promote_eax()
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(2 << word_size_log2)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(2 << word_size_log2)
 	call_eax()
-	be_pop(4)
-	stack_pos = stack_pos - 4
+	drop_slots(4)
 
 
 # Parses "parameter-list ) [; | body]" for the generator symbol at
@@ -177,8 +169,7 @@ void generator_declaration():
 int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 	int result_type = generator_object_pointer_type()
 	int s = stack_pos
-	push_eax() /* the generator function's address */
-	stack_pos = stack_pos + 1
+	push_slot() /* the generator function's address */
 	int passed_args = 0
 	if (accept(c")") == 0):
 		int arg_type = expression()
@@ -189,8 +180,7 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 		int param_type = sym_param_type(callee_sym, passed_args)
 		if (param_type >= 0):
 			coerce_call_argument(param_type, arg_type)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		passed_args = passed_args + 1
 		while (accept(c",")):
 			arg_type = expression()
@@ -201,8 +191,7 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 			int loop_param_type = sym_param_type(callee_sym, passed_args)
 			if (loop_param_type >= 0):
 				coerce_call_argument(loop_param_type, arg_type)
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			passed_args = passed_args + 1
 		expect(c")")
 
@@ -221,8 +210,7 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 				int default_param_type = sym_param_type(callee_sym, passed_args)
 				if (default_param_type >= 0):
 					coerce(default_param_type, 3)
-				push_eax()
-				stack_pos = stack_pos + 1
+				push_slot()
 				passed_args = passed_args + 1
 
 	if (expected_args >= 0):
@@ -239,21 +227,16 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 	# Stack: argN .. arg1, fn. Call __w_gen_create(fn, argv, argc)
 	# where argv points at argN (the copy loop walks upwards).
 	sym_get_value(c"__w_gen_create")
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus((passed_args + 1) << word_size_log2)
-	push_eax() /* arg 1: fn */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 1: fn */
 	lea_eax_esp_plus(2 << word_size_log2)
-	push_eax() /* arg 2: argv */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 2: argv */
 	mov_eax_int(passed_args)
-	push_eax() /* arg 3: argc */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 3: argc */
 	mov_eax_esp_plus(3 << word_size_log2)
 	call_eax()
-	be_pop(stack_pos - s)
-	stack_pos = s
+	pop_to(s)
 	last_call_return_type = result_type
 	last_call_end = codepos
 	return type_value(result_type)

@@ -231,8 +231,7 @@ void kernel_function_definition(int current_symbol, char* kernel_name):
 			get_token()
 		if (accept(c"=")):
 			error(c"kernel parameters cannot have default values")
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		accept(c",") /* ignore trailing comma */
 
 	save_int(table + current_symbol + 22, param_count)
@@ -282,23 +281,17 @@ that uses them is in flight).
 # cell, so argument i lives at vals + (count-1-i)*8.
 void launch_emit_runtime_call(char* kernel_name, int base, int passed):
 	sym_get_value(c"__w_gpu_launch_raw")
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	be_emit_inline_cstr(strlen(kernel_name), kernel_name)
-	push_eax() /* arg 1: name */
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - (base + 1)) << word_size_log2)
-	push_eax() /* arg 2: grid */
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - (base + 2)) << word_size_log2)
-	push_eax() /* arg 3: block */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 1: name */
+	load_slot(base + 1)
+	push_slot() /* arg 2: grid */
+	load_slot(base + 2)
+	push_slot() /* arg 3: block */
 	lea_eax_esp_plus((stack_pos - (base + 2 + passed)) << word_size_log2)
-	push_eax() /* arg 4: vals (the last argument cell) */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 4: vals (the last argument cell) */
 	mov_eax_int(passed)
-	push_eax() /* arg 5: count */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 5: count */
 	mov_eax_esp_plus(5 << word_size_log2)
 	call_eax()
 
@@ -340,12 +333,10 @@ int launch_statement():
 	expect(c"[")
 	int int_type = type_lookup(c"int")
 	coerce(int_type, promote(expression()))
-	push_eax() /* grid */
-	stack_pos = stack_pos + 1
+	push_slot() /* grid */
 	expect(c",")
 	coerce(int_type, promote(expression()))
-	push_eax() /* block */
-	stack_pos = stack_pos + 1
+	push_slot() /* block */
 	expect(c"]")
 
 	expect(c"(")
@@ -358,8 +349,7 @@ int launch_statement():
 		int param_type = sym_param_type(kernel_sym, passed)
 		if (param_type >= 0):
 			coerce_call_argument(param_type, arg_type)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		passed = passed + 1
 		while (accept(c",")):
 			arg_type = promote(expression())
@@ -369,8 +359,7 @@ int launch_statement():
 			int loop_param_type = sym_param_type(kernel_sym, passed)
 			if (loop_param_type >= 0):
 				coerce_call_argument(loop_param_type, arg_type)
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			passed = passed + 1
 		expect(c")")
 
@@ -386,7 +375,6 @@ int launch_statement():
 		error(itoa(passed))
 
 	launch_emit_runtime_call(kernel_name, base, passed)
-	be_pop(stack_pos - base)
-	stack_pos = base
+	pop_to(base)
 	free(kernel_name)
 	return 1

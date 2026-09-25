@@ -141,13 +141,13 @@ void ndarray_check_index(int got_type):
 # Push the parked receiver and index slots as call arguments, oldest
 # first (the accessors' parameter order).
 void nd_push_index_args(int recv_slot, int slot0, int slot1, int slot2, int slot3, int count):
-	hash_push_stack_slot(recv_slot)
-	hash_push_stack_slot(slot0)
-	hash_push_stack_slot(slot1)
+	push_slot_copy(recv_slot)
+	push_slot_copy(slot0)
+	push_slot_copy(slot1)
 	if (count >= 3):
-		hash_push_stack_slot(slot2)
+		push_slot_copy(slot2)
 	if (count >= 4):
-		hash_push_stack_slot(slot3)
+		push_slot_copy(slot3)
 
 
 # base[i, j(, k(, l))]: entered from the '[' handler in
@@ -162,9 +162,7 @@ int ndarray_index_suffix(int type, int recv_slot, int first_index_type):
 		print_error_type(type)
 		error(c"'")
 	ndarray_check_index(first_index_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int slot0 = stack_pos
+	int slot0 = push_slot()
 	int slot1 = 0
 	int slot2 = 0
 	int slot3 = 0
@@ -174,8 +172,7 @@ int ndarray_index_suffix(int type, int recv_slot, int first_index_type):
 			error(c"ndarray index supports at most 4 indices")
 		int got = promote(expression())
 		ndarray_check_index(got)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		if (count == 1):
 			slot1 = stack_pos
 		else if (count == 2):
@@ -213,12 +210,10 @@ int nd_finish_pending_read():
 	sym_get_value(at_name)
 	free(at_name)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	nd_push_index_args(nd_index_recv_slot, nd_index_slot0, nd_index_slot1, nd_index_slot2, nd_index_slot3, nd_index_count)
-	hash_call_finish(s)
-	be_pop(stack_pos - nd_index_base_stack)
-	stack_pos = nd_index_base_stack
+	rt_call_end(s)
+	pop_to(nd_index_base_stack)
 	return type_value(declared_return)
 
 
@@ -243,20 +238,16 @@ int nd_finish_pending_assignment():
 		coerce(value_type, got_type)
 		if (types_compatible_with_expression(value_type, got_type) == 0):
 			warn_type_mismatch(c"ndarray assignment", value_type, got_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
+	int value_slot = push_slot()
 	sym_get_value(set_name)
 	free(set_name)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	nd_push_index_args(saved_recv, saved_slot0, saved_slot1, saved_slot2, saved_slot3, saved_count)
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
-	mov_eax_esp_plus((stack_pos - value_slot) << word_size_log2)
-	be_pop(stack_pos - saved_base)
-	stack_pos = saved_base
+	push_slot_copy(value_slot)
+	rt_call_end(s)
+	load_slot(value_slot)
+	pop_to(saved_base)
 	return type_value(value_type)
 
 
@@ -283,16 +274,14 @@ int nd_finish_pending_compound(int op):
 	sym_get_value(at_name)
 	free(at_name)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	nd_push_index_args(saved_recv, saved_slot0, saved_slot1, saved_slot2, saved_slot3, saved_count)
-	hash_call_finish(s)
+	rt_call_end(s)
 
 	# Same shape the scalar path feeds compound_assign_apply: loaded
 	# left value on top of the stack, promoted right value in eax.
 	int left_type = type_value(value_type)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	int right_type = promote(expression())
 	if (var_binary_operands(left_type, right_type)):
 		error(c"compound assignment does not support var operands")
@@ -302,22 +291,18 @@ int nd_finish_pending_compound(int op):
 		warn_type_mismatch(c"ndarray assignment", value_type, result_type)
 
 	# Store back through the same receiver/index slots.
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
+	int value_slot = push_slot()
 	sym_get_value(set_name)
 	free(set_name)
 	s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	nd_push_index_args(saved_recv, saved_slot0, saved_slot1, saved_slot2, saved_slot3, saved_count)
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
+	push_slot_copy(value_slot)
+	rt_call_end(s)
 
 	# Like '=', the expression yields the stored value.
-	mov_eax_esp_plus((stack_pos - value_slot) << word_size_log2)
-	be_pop(stack_pos - saved_base)
-	stack_pos = saved_base
+	load_slot(value_slot)
+	pop_to(saved_base)
 	return type_value(value_type)
 
 

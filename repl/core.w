@@ -320,15 +320,11 @@ int repl_infer_declaration():
 	pointer_indirection = 0
 	# The value (or struct address) is in eax; fetch the storage address
 	# and store through it
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	sym_get_value(name)
-	push_eax()
-	stack_pos = stack_pos + 1
-	pop_ebx()
-	stack_pos = stack_pos - 1
-	pop_eax()
-	stack_pos = stack_pos - 1
+	push_slot()
+	pop_ebx_slot()
+	pop_eax_slot()
 	if (type_num_args(decl_type) > 0):
 		assign_store_struct(decl_type)
 	else:
@@ -406,8 +402,7 @@ void repl_entry_item(int entry_symbol):
 		if (accept(c"=")):
 			# compile "name = expression" into the entry function
 			sym_get_value(decl_name) /* address into eax */
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			int value_type = expression()
 			value_type = promote(value_type)
 			# Conversions the compiler's variable_declaration also

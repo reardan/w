@@ -83,8 +83,7 @@ void warn_bool_bitwise_at(char* message, int op_line_number, int op_diag_token_l
 
 int binary1(int type):
 	type = promote(type)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	return type
 
 
@@ -101,15 +100,13 @@ int binary2_finish(int type):
 # the right operand and pop the left one first.
 int binary2_finish_pop(int type):
 	promote(type)
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	return 3
 
 
 int binary2_promote_pop(int type):
 	type = promote(type)
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	return type
 
 

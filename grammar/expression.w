@@ -39,8 +39,7 @@ void assign_store_struct(int type):
 	int words = (type_get_size(type) + word_size - 1) >> word_size_log2
 	push_ebx()
 	stack_pos = stack_pos + 1
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	int i = 0
 	while (i < words):
 		mov_eax_esp_plus(0)
@@ -51,10 +50,8 @@ void assign_store_struct(int type):
 			add_ebx_int32(word_size)
 		store_ebx_word()
 		i = i + 1
-	pop_eax()
-	stack_pos = stack_pos - 1
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_eax_slot()
+	pop_ebx_slot()
 	if (type_has_array_field(type)):
 		mov_eax_ebx()
 		init_array_field_descriptors(type)
@@ -95,8 +92,7 @@ int compound_assign_apply(int op, int left_type, int right_type):
 	if ((op == '/') || (op == '%') || (op == 'l') || (op == 'r')):
 		if (binary_float_kind(left_type, right_type)):
 			if (op == '/'):
-				pop_ebx()
-				stack_pos = stack_pos - 1
+				pop_ebx_slot()
 				return float_binary_arithmetic(left_type, right_type, '/')
 			error(c"float operands only support += -= *= /=")
 		if (op == '/'):
@@ -109,8 +105,7 @@ int compound_assign_apply(int op, int left_type, int right_type):
 			alu_sar()
 		stack_pos = stack_pos - 1
 		return 3
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	if ((op == '+') || (op == '-') || (op == '*')):
 		int result_type = float_binary_arithmetic(left_type, right_type, op)
 		if (result_type):
@@ -214,11 +209,9 @@ int expression():
 			error(c"compound assignment is not supported on string, array or slice values")
 		expression_is_assignment = 1
 		expression_lhs_readonly = 0
-		push_eax()  # lhs address, kept for the final store
-		stack_pos = stack_pos + 1
+		push_slot()  # lhs address, kept for the final store
 		int left_type = promote(type)  # eax still holds the address: load
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		# Recursion-depth guard (compiler/tokenizer.w): 'a += b += ...'
 		# chains recurse this function directly, after the left operand's
 		# descent has already returned -- count them here like the plain
@@ -232,8 +225,7 @@ int expression():
 			error(c"compound assignment does not support var operands")
 		int result_type = compound_assign_apply(op, left_type, right_type)
 		coerce(type, result_type)
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		pop_ebx_slot()
 		if (types_compatible_with_expression(type, result_type) == 0):
 			warn_type_mismatch(c"assignment", type, result_type)
 		assign_store(type)
@@ -250,9 +242,7 @@ int expression():
 		lint_check_condition_assign(eq_line, eq_column)
 		char* self_name = lint_self_assign_begin(lhs_tokens, last_identifier)
 		int rhs_serial = token_serial
-		push_eax()
-		stack_pos = stack_pos + 1
-		int lhs_slot = stack_pos
+		int lhs_slot = push_slot()
 		# Recursion-depth guard (compiler/tokenizer.w): 'a = b = c = ...'
 		# chains recurse this function directly for each right-hand side,
 		# and each level's left operand has already returned by this point,

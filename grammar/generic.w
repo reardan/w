@@ -1111,8 +1111,7 @@ int generic_call_infer_expr(int def):
 	else:
 		generic_inst_emit_callee(inst)
 	call_eax()
-	be_pop(stack_pos - s)
-	stack_pos = s
+	pop_to(s)
 	last_call_return_type = return_type
 	last_call_end = codepos
 	return type_value(return_type)

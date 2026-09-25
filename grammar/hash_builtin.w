@@ -29,37 +29,17 @@ int hash_key_kind_for_type(int type):
 	return 1
 
 
-void hash_call_finish(int s):
-	mov_eax_esp_plus((stack_pos - s - 1) << word_size_log2)
-	call_eax()
-	be_pop(stack_pos - s)
-	stack_pos = s
-
-
-void hash_push_stack_slot(int slot):
-	mov_eax_esp_plus((stack_pos - slot) << word_size_log2)
-	push_eax()
-	stack_pos = stack_pos + 1
-
-
 void hash_emit_new_container(int type):
 	int key_type = type_set_key_type(type)
 	char* fn_name = c"__w_set_new"
 	if (type_is_map(type)):
 		key_type = type_map_key_type(type)
 		fn_name = c"__w_map_new"
-	sym_get_value(fn_name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_int(hash_key_kind_for_type(key_type))
-	push_eax()
-	stack_pos = stack_pos + 1
+	int s = rt_call_begin(fn_name)
+	push_slot_int(hash_key_kind_for_type(key_type))
 	if (type_is_map(type)):
-		mov_eax_int(type_get_size(type_map_value_type(type)))
-		push_eax()
-		stack_pos = stack_pos + 1
-	hash_call_finish(s)
+		push_slot_int(type_get_size(type_map_value_type(type)))
+	rt_call_end(s)
 
 
 # Whether a 'new map[K, V](...)' default argument is a factory: a named
@@ -130,9 +110,7 @@ void hash_map_default_suffix(int type):
 	int value_canonical = type_unqualified(value_type)
 	int value_is_container = type_is_map(value_canonical) | type_is_set(value_canonical) | type_is_list(value_canonical)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int map_slot = stack_pos
+	int map_slot = push_slot()
 	int default_kind = 0
 	if (peek(c")")):
 		if (value_is_container == 0):
@@ -155,22 +133,14 @@ void hash_map_default_suffix(int type):
 			if (types_compatible_with_expression(value_type, got) == 0):
 				warn_type_mismatch(c"map default", value_type, got)
 	expect(c")")
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
-	sym_get_value(c"__w_map_set_default")
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(map_slot)
-	mov_eax_int(default_kind)
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
-	mov_eax_esp_plus((stack_pos - map_slot) << word_size_log2)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	int value_slot = push_slot()
+	int s = rt_call_begin(c"__w_map_set_default")
+	push_slot_copy(map_slot)
+	push_slot_int(default_kind)
+	push_slot_copy(value_slot)
+	rt_call_end(s)
+	load_slot(map_slot)
+	pop_to(base_stack)
 
 
 int hash_finish_pending_read():
@@ -185,13 +155,11 @@ int hash_finish_pending_read():
 	else:
 		sym_get_value(c"__w_map_get")
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(hash_index_map_slot)
-	hash_push_stack_slot(hash_index_key_slot)
-	hash_call_finish(s)
-	be_pop(stack_pos - hash_index_base_stack)
-	stack_pos = hash_index_base_stack
+	push_slot()
+	push_slot_copy(hash_index_map_slot)
+	push_slot_copy(hash_index_key_slot)
+	rt_call_end(s)
+	pop_to(hash_index_base_stack)
 	hash_index_pending = 0
 	if (value_is_struct):
 		return type_canonical(value_type)
@@ -210,9 +178,7 @@ int hash_finish_pending_assignment():
 	coerce(value_type, got_type)
 	if (types_compatible_with_expression(value_type, got_type) == 0):
 		warn_type_mismatch(c"map assignment", value_type, got_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
+	int value_slot = push_slot()
 	hash_index_base_stack = saved_base_stack
 	hash_index_map_slot = saved_map_slot
 	hash_index_key_slot = saved_key_slot
@@ -224,16 +190,14 @@ int hash_finish_pending_assignment():
 	else:
 		sym_get_value(c"__w_map_set")
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(hash_index_map_slot)
-	hash_push_stack_slot(hash_index_key_slot)
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
+	push_slot()
+	push_slot_copy(hash_index_map_slot)
+	push_slot_copy(hash_index_key_slot)
+	push_slot_copy(value_slot)
+	rt_call_end(s)
 
-	mov_eax_esp_plus((stack_pos - value_slot) << word_size_log2)
-	be_pop(stack_pos - hash_index_base_stack)
-	stack_pos = hash_index_base_stack
+	load_slot(value_slot)
+	pop_to(hash_index_base_stack)
 	return type_value(value_type)
 
 
@@ -255,19 +219,15 @@ int hash_finish_pending_compound(int op):
 		error(c"compound assignment is not supported on string, array or slice values")
 
 	# Load the current value; keep the parked slots for the store.
-	sym_get_value(c"__w_map_get")
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(saved_map_slot)
-	hash_push_stack_slot(saved_key_slot)
-	hash_call_finish(s)
+	int s = rt_call_begin(c"__w_map_get")
+	push_slot_copy(saved_map_slot)
+	push_slot_copy(saved_key_slot)
+	rt_call_end(s)
 
 	# Same shape the scalar path feeds compound_assign_apply: loaded left
 	# value on top of the stack, promoted right value in eax.
 	int left_type = type_value(value_type)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	int right_type = promote(expression())
 	if (var_binary_operands(left_type, right_type)):
 		error(c"compound assignment does not support var operands")
@@ -277,22 +237,16 @@ int hash_finish_pending_compound(int op):
 		warn_type_mismatch(c"map assignment", value_type, result_type)
 
 	# Store back through the same map/key slots.
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
-	sym_get_value(c"__w_map_set")
-	s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(saved_map_slot)
-	hash_push_stack_slot(saved_key_slot)
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
+	int value_slot = push_slot()
+	s = rt_call_begin(c"__w_map_set")
+	push_slot_copy(saved_map_slot)
+	push_slot_copy(saved_key_slot)
+	push_slot_copy(value_slot)
+	rt_call_end(s)
 
 	# Like '=', the expression yields the stored value.
-	mov_eax_esp_plus((stack_pos - value_slot) << word_size_log2)
-	be_pop(stack_pos - saved_base_stack)
-	stack_pos = saved_base_stack
+	load_slot(value_slot)
+	pop_to(saved_base_stack)
 	return type_value(value_type)
 
 
@@ -316,9 +270,7 @@ void hash_key_call_suffix(int type, char* fn_name, char* context):
 	int key_type = hash_container_key_type(container_type)
 	promote(type)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
+	int container_slot = push_slot()
 	expect(c"(")
 	int got_type = expression()
 	got_type = promote(got_type)
@@ -326,18 +278,12 @@ void hash_key_call_suffix(int type, char* fn_name, char* context):
 	if (types_compatible_with_expression(key_type, got_type) == 0):
 		warn_type_mismatch(context, key_type, got_type)
 	expect(c")")
-	push_eax()
-	stack_pos = stack_pos + 1
-	int key_slot = stack_pos
-	sym_get_value(fn_name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(container_slot)
-	hash_push_stack_slot(key_slot)
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	int key_slot = push_slot()
+	int s = rt_call_begin(fn_name)
+	push_slot_copy(container_slot)
+	push_slot_copy(key_slot)
+	rt_call_end(s)
+	pop_to(base_stack)
 
 
 # m.free() / s.free(): 'free' has been consumed. Lowers to
@@ -350,19 +296,13 @@ void hash_key_call_suffix(int type, char* fn_name, char* context):
 int hash_free_suffix(int type):
 	promote(type)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
+	int container_slot = push_slot()
 	expect(c"(")
 	expect(c")")
-	sym_get_value(c"__w_map_free")
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(container_slot)
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	int s = rt_call_begin(c"__w_map_free")
+	push_slot_copy(container_slot)
+	rt_call_end(s)
+	pop_to(base_stack)
 	return type_value(type_lookup(c"void"))
 
 
@@ -404,18 +344,14 @@ int hash_map_add_suffix(int type):
 	int value_kind = type_float_kind(type_value(value_type))
 	promote(type)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
+	int container_slot = push_slot()
 	expect(c"(")
 	int got_type = expression()
 	got_type = promote(got_type)
 	coerce(key_type, got_type)
 	if (types_compatible_with_expression(key_type, got_type) == 0):
 		warn_type_mismatch(c"map add key", key_type, got_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int key_slot = stack_pos
+	int key_slot = push_slot()
 	if (accept(c",")):
 		int delta_got = expression()
 		delta_got = promote(delta_got)
@@ -427,54 +363,36 @@ int hash_map_add_suffix(int type):
 		if (value_kind):
 			coerce(value_type, 3)
 	expect(c")")
-	push_eax()
-	stack_pos = stack_pos + 1
-	int delta_slot = stack_pos
+	int delta_slot = push_slot()
 	int s = 0
 	if (value_kind):
 		# current = __w_map_get_or(map, key, 0): 0.0 when key is missing
-		sym_get_value(c"__w_map_get_or")
-		s = stack_pos
-		push_eax()
-		stack_pos = stack_pos + 1
-		hash_push_stack_slot(container_slot)
-		hash_push_stack_slot(key_slot)
-		mov_eax_int(0)
-		push_eax()
-		stack_pos = stack_pos + 1
-		hash_call_finish(s)
+		s = rt_call_begin(c"__w_map_get_or")
+		push_slot_copy(container_slot)
+		push_slot_copy(key_slot)
+		push_slot_int(0)
+		rt_call_end(s)
 		# current + delta, same operand shape as compound_assign_apply:
 		# left (current) into ebx, right (delta) reloaded into eax
-		push_eax()
-		stack_pos = stack_pos + 1
-		mov_eax_esp_plus((stack_pos - delta_slot) << word_size_log2)
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		push_slot()
+		load_slot(delta_slot)
+		pop_ebx_slot()
 		float_binary_arithmetic(type_value(value_type), type_value(value_type), '+')
 		# store the sum back through the parked slots and yield it
-		push_eax()
-		stack_pos = stack_pos + 1
-		int sum_slot = stack_pos
-		sym_get_value(c"__w_map_set")
-		s = stack_pos
-		push_eax()
-		stack_pos = stack_pos + 1
-		hash_push_stack_slot(container_slot)
-		hash_push_stack_slot(key_slot)
-		hash_push_stack_slot(sum_slot)
-		hash_call_finish(s)
-		mov_eax_esp_plus((stack_pos - sum_slot) << word_size_log2)
+		int sum_slot = push_slot()
+		s = rt_call_begin(c"__w_map_set")
+		push_slot_copy(container_slot)
+		push_slot_copy(key_slot)
+		push_slot_copy(sum_slot)
+		rt_call_end(s)
+		load_slot(sum_slot)
 	else:
-		sym_get_value(c"__w_map_add")
-		s = stack_pos
-		push_eax()
-		stack_pos = stack_pos + 1
-		hash_push_stack_slot(container_slot)
-		hash_push_stack_slot(key_slot)
-		hash_push_stack_slot(delta_slot)
-		hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+		s = rt_call_begin(c"__w_map_add")
+		push_slot_copy(container_slot)
+		push_slot_copy(key_slot)
+		push_slot_copy(delta_slot)
+		rt_call_end(s)
+	pop_to(base_stack)
 	return type_value(value_type)
 
 
@@ -484,22 +402,14 @@ int hash_map_add_suffix(int type):
 int hash_snapshot_list_suffix(int type, char* fn_name, int element_type):
 	promote(type)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
+	int container_slot = push_slot()
 	expect(c"(")
 	expect(c")")
-	sym_get_value(fn_name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(container_slot)
-	mov_eax_int(list_element_slot_size(type_canonical(element_type)))
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	int s = rt_call_begin(fn_name)
+	push_slot_copy(container_slot)
+	push_slot_int(list_element_slot_size(type_canonical(element_type)))
+	rt_call_end(s)
+	pop_to(base_stack)
 	return type_value(type_get_list(type_canonical(element_type)))
 
 
@@ -527,18 +437,14 @@ int hash_get_suffix(int type):
 	int value_is_struct = type_num_args(value_type) > 0
 	promote(type)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
+	int container_slot = push_slot()
 	expect(c"(")
 	int got_type = expression()
 	got_type = promote(got_type)
 	coerce(key_type, got_type)
 	if (types_compatible_with_expression(key_type, got_type) == 0):
 		warn_type_mismatch(c"map get key", key_type, got_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int key_slot = stack_pos
+	int key_slot = push_slot()
 	int has_default = 0
 	int default_slot = 0
 	if (accept(c",")):
@@ -548,9 +454,7 @@ int hash_get_suffix(int type):
 		coerce(value_type, default_got)
 		if (types_compatible_with_expression(value_type, default_got) == 0):
 			warn_type_mismatch(c"map get default", value_type, default_got)
-		push_eax()
-		stack_pos = stack_pos + 1
-		default_slot = stack_pos
+		default_slot = push_slot()
 	expect(c")")
 
 	char* fn_name = c"__w_map_get"
@@ -560,18 +464,14 @@ int hash_get_suffix(int type):
 			fn_name = c"__w_map_get_or_addr"
 	else if (value_is_struct):
 		fn_name = c"__w_map_get_addr"
-	sym_get_value(fn_name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(container_slot)
-	hash_push_stack_slot(key_slot)
+	int s = rt_call_begin(fn_name)
+	push_slot_copy(container_slot)
+	push_slot_copy(key_slot)
 	if (has_default):
-		hash_push_stack_slot(default_slot)
-	hash_call_finish(s)
+		push_slot_copy(default_slot)
+	rt_call_end(s)
 
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	pop_to(base_stack)
 	if (value_is_struct):
 		return type_canonical(value_type)
 	return type_value(value_type)

@@ -81,12 +81,10 @@ int bit_builtin_expr():
 	expect(c"(")
 	limb_builtin_int_argument(name, 0, int_type)
 	if (kind <= 3):
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		expect(c",")
 		limb_builtin_int_argument(name, 1, int_type)
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		pop_ebx_slot()
 		if (kind == 1):
 			alu_shr32()
 		else if (kind == 2):
