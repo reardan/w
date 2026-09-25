@@ -47,6 +47,7 @@ modules:
 	graphics.ui.widgets.tabs
 	graphics.ui.widgets.textarea
 	graphics.ui.widgets.textbox
+	graphics.ui.widgets.time_picker
 	graphics.ui.widgets.toast
 	graphics.ui.widgets.tree
 	graphics.window
