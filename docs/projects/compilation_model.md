@@ -9,8 +9,7 @@ prior art for adding a new output *shape*), `docs/projects/wbuildd.md`
 directly informs #337's AST-availability question), and
 `docs/projects/parser_generator.md` (the PG's AST/streaming modes,
 milestone 3 of which just landed). Also carries short scoping notes for
-two "Future:" issues, #332 (streaming types) and #333 (type operators),
-per wave 4 task 4e (`docs/projects/sonnet_wave_plan_2026_07b.md`).
+two "Future:" issues, #332 (streaming types) and #333 (type operators).
 
 ## 0. Why one doc for two issues
 
@@ -239,8 +238,7 @@ warm-state builds) without touching the compilation model at all.
    `wbuildgen.w`, matching the `cas.w`/`wvc.w` split already proven in
    `libs/extras/vcs/`. This closes claim 2 honestly where it is not
    already true, at essentially zero risk.
-2. **Ride `wbuildd`** (already gated on maintainer answers,
-   `sonnet_wave_plan_2026_07b.md` §6) for the performance motivation
+2. **Ride `wbuildd`** (already gated on maintainer answers) for the performance motivation
    most likely hiding inside #338 — no new scheduling needed here, just
    note the overlap so nobody re-derives it under this issue's name.
 3. **If claim 1 is truly wanted literally**, schedule (c) — shared
@@ -542,7 +540,7 @@ should compile to. No design is attempted here pending that answer.
 |---|---|---|
 | #338 claim 2 (thin CLI wrappers) | Already proven achievable (`wvc.w`/`cas.w`); several tools (`wexec.w`, `test_map.w`, `wbuildgen.w`) are the counter-example | Refactor those three into a library + porcelain split, no new compiler work |
 | #338 claim 1 (compiled library format) | No relocatable/archive format exists; a "static library" has nothing to match today | Don't schedule the archive+linker option (b) without an explicit maintainer sizing call; shared-library production (c) is the more tractable literal reading if wanted |
-| #338 performance motivation | Likely the same complaint `wbuildd` already solves | Ride `wbuildd`'s existing schedule, already gated in `sonnet_wave_plan_2026_07b.md` §6 |
+| #338 performance motivation | Likely the same complaint `wbuildd` already solves | Ride `wbuildd`'s existing schedule |
 | #337 | AST exists (PG, syntax-only) but the new streaming mode is the wrong half of it; a real backend needs an external LLVM toolchain, in tension with the project's zero-dependency identity | Run the bounded, seed-safe `bin/wllvm`-style experiment (§3.6); do not commit to a full backend before it reports back |
 | #332 | Real primitives exist (`lib/stream.w`, PG listener mode, `lib/task.w`) but nothing composes them into a pipeline today | Scope a dedicated design doc once the push-vs-pull and #338/#333 dependencies are answered |
 | #333 | Generics and typed containers already cover much of the underlying capability; the operator spelling and the `*` examples are unresolved | Get worked examples from the maintainer before any design work starts |
