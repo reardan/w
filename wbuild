@@ -3,7 +3,8 @@
 #
 # This is the only shell in the W-native build path: the pinned seed ./w
 # compiles the compiler, the compiler compiles the executor, and everything
-# after that is described by build.json and run by bin/wexec.
+# after that is described by build.base.json plus the source tree (the
+# manifest bin/wexec generates in memory at startup) and run by bin/wexec.
 #
 # The seed compiles only happen when bin/wexec does not exist yet. A warm
 # tree instead runs the manifest's cached 'wv2' and 'wexec' targets, which
@@ -13,7 +14,7 @@
 #
 #   ./wbuild tests            run the ported test suite
 #   ./wbuild verify           self-host fixpoint check
-#   ./wbuild --list           show every target in build.json
+#   ./wbuild --list           show every target in the manifest
 #   ./wbuild -f m.json name   use another manifest
 #   ./wbuild test_changed     build/run the targets touched by the
 #                             working tree's diff against HEAD
@@ -73,7 +74,7 @@ ensure_seed() {
 # every stage self-sign via macho_sign.w; fresh inodes (cp + mv) avoid
 # the vnode signature-cache gotcha. A warm tree refreshes through the
 # manifest's cached 'wexec_darwin' target, then runs bin/wexec_darwin;
-# only the darwin targets work here — everything else in build.json
+# only the darwin targets work here — everything else in the manifest
 # runs Linux binaries.
 if [ "$(uname -s)" = "Darwin" ]; then
 	ensure_seed w_darwin
@@ -116,16 +117,13 @@ if [ "$1" = "test_changed" ]; then
 		base="$base_commit"
 		changed="$(git diff --name-only "$base" HEAD)"
 	fi
-	# The baseline build.json lets bin/wtest scope a manifest diff that
-	# only adds/removes generated leaf test targets to those targets
-	# instead of the whole 'tests' umbrella (tools/test_map.w). --available
-	# drops targets this environment cannot run (missing qemu/wine/...) so
-	# 'test_changed's selection is always runnable as printed.
-	if git show "$base:build.json" >bin/.wtest_base_manifest.json 2>/dev/null; then
-		printf '%s\n' "$changed" | ./bin/wtest changed --available --base-manifest bin/.wtest_base_manifest.json | xargs -r ./wbuild "$@"
-	else
-		printf '%s\n' "$changed" | ./bin/wtest changed --available | xargs -r ./wbuild "$@"
-	fi
+	# --available drops targets this environment cannot run (missing
+	# qemu/wine/...) so 'test_changed's selection is always runnable as
+	# printed. The manifest itself is generated in memory by bin/wtest
+	# and bin/wexec from build.base.json, so there is no committed
+	# baseline to diff: a new or edited test file selects its own target
+	# through the import-closure rules.
+	printf '%s\n' "$changed" | ./bin/wtest changed --available | xargs -r ./wbuild "$@"
 	exit 0
 fi
 ./bin/wexec wv2 wexec >/dev/null

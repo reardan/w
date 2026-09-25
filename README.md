@@ -83,20 +83,20 @@ their expected messages as `# expect_stderr:` / `# reject_stderr:` /
 `bin/wfixture` (`tools/wfixture.w`) compiles each fixture and asserts
 the directives against the captured stderr and exit status, so the
 frozen message text lives next to the code that provokes it instead of
-in `build.json`. (A `<fixture>.w.expect` sidecar with the same
+in `build.base.json`. (A `<fixture>.w.expect` sidecar with the same
 directive lines is the fallback for a fixture whose exact bytes are the
 test; none needs it today.)
 
 `./wbuild` bootstraps `tools/wexec.w` (a manifest-driven executor written
-in W) and runs targets from `build.json` — `./wbuild --list` shows them
+in W) and runs targets from the build manifest — `./wbuild --list` shows them
 all. Targets run in parallel (`-j N` to override the CPU-count default)
 and toolchain targets are skipped via content-hash caching when their
-sources are unchanged (`--no-cache` forces reruns). `build.json` itself
-is generated (but committed): `./wbuild manifest` rebuilds it from the
+sources are unchanged (`--no-cache` forces reruns). The manifest is not
+committed: bin/wexec generates it in memory on every run from the
 hand-maintained `build.base.json` plus every conventional `*_test.w`
-source in the tree, and `./wbuild manifest_check` (part of `tests`)
-fails when the committed file has drifted — never edit `build.json` by
-hand. Design notes in `docs/projects/wexec.md`.
+source in the tree (`./wbuild manifest` writes a copy to `bin/build.json`
+for reading; `./wbuild manifest_check`, part of `tests`, fails when
+generation fails). Design notes in `docs/projects/wexec.md`.
 
 wexec captures each step's stdout/stderr to check expectations, so it
 cannot host a live prompt, a full-screen debugger, or a
@@ -143,7 +143,7 @@ stock x86-64 system.
 | `debugger/` | `wdbg`, an in-process SIGTRAP debugger driven by `debugger` statements |
 | `tests/` | End-to-end test programs and compile-only warning fixtures |
 | `docs/` | Design notes; `docs/projects/` holds larger design docs |
-| `wbuild`, `build.json`, `build.base.json`, `tools/wexec.w`, `tools/wbuildgen.w` | The build system: W-native manifest-driven executor; `build.json` is generated from `build.base.json` + the tree by `./wbuild manifest` |
+| `wbuild`, `build.base.json`, `tools/wexec.w`, `tools/wbuildgen_lib.w`, `tools/wbuildgen.w` | The build system: W-native manifest-driven executor; the manifest is generated in memory from `build.base.json` + the tree on every run |
 | `archive.sh` | Backs up a seed before `./wbuild update` / `update_darwin` promotes a new one |
 
 ## Language snapshot
@@ -342,11 +342,11 @@ seeds — is `docs/release.md`.
 - To add a plain end-to-end test, create `dir/foo_test.w` (under `tests/`,
   `lib/`, `structures/`, `graphics/`, `libs/`, or `tools/`), optionally put
   a `# wbuild: x64` directive line in it for a 64-bit `foo_64_test` twin,
-  and run `./wbuild manifest`: `tools/wbuildgen.w` regenerates `build.json`
-  with the conventional compile+run target and its `tests`/`tests_x64`
-  membership. Only tests needing extra steps, `expect_*` assertions,
+  and that's it: the generated manifest picks up the conventional
+  compile+run target and its `tests`/`tests_x64` membership on the next
+  run. Only tests needing extra steps, `expect_*` assertions,
   stdin, or timeouts get a hand-written target in `build.base.json`.
-  `./wbuild manifest_check` gates a stale `build.json` in CI.
+  `./wbuild manifest_check` fails CI when generation fails.
 - Because codegen is single-pass with no IR, grammar modules both parse and
   emit; changes to expression/statement handling usually live in
   `grammar/*.w`, while instruction encoding and ELF layout live in
@@ -421,7 +421,7 @@ seeds — is `docs/release.md`.
 - Use `./wbuild test_changed` to run focused tests for files changed from
   `HEAD`, or call `./bin/wtest changed file...` to list the selected build
   targets without running them. Selection is manifest-driven: `bin/wtest`
-  parses `build.json` at runtime and emits every target whose steps name a
+  generates the manifest at runtime and emits every target whose steps name a
   changed path (fixtures, grammars, scripts) plus every target one of whose
   compile roots transitively imports a changed `.w` file (per-arch
   closures come from `bin/wv2 deps [selector]`, cached in

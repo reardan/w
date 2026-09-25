@@ -1,0 +1,2439 @@
+/*
+wbuildgen: generates the build manifest from build.base.json plus the
+source tree.
+
+The manifest is never committed (issue #323). bin/wexec and bin/wtest
+import this module and call wbg_generate() at startup, so the manifest
+they run is always the one the working tree describes; the wbuildgen
+CLI (tools/wbuildgen.w) only writes a copy to bin/build.json for
+inspection, or validates generation for `./wbuild manifest_check`.
+
+build.base.json is the hand-maintained manifest: toolchain targets,
+fixture targets, anything with expectations, stdin, timeouts, or an
+unconventional shape. Conventional test targets are not written by hand;
+wbuildgen derives them from the tree and appends them, so adding a plain
+test is just creating the source file.
+
+Generation rules:
+
+- Every `*_test.w` file under tests/, lib/, structures/, graphics/,
+  libs/ and tools/ (walked recursively, like wexec's input hashing) is a
+  candidate. A source dir/X_test.w yields the target
+
+      {"name": "X_test", "deps": ["wv2"],
+       "steps": [{"cmd": ["bin/wv2", "dir/X_test.w", "-o", "bin/X_test"]},
+                 {"cmd": ["bin/X_test"]}]}
+
+- `# wbuild:` directive lines in the source refine the generated
+  targets: `x64` also yields the X_64_test twin (the same file compiled
+  with the `x64` argument), and the key=value vocabulary documented
+  above wbg_parse_directives (timeout=, stdin=, expect_stdout=,
+  expect_stderr=, expect_fail, deps=, extra_compile=, arch=,
+  arch_only=, name=, argv=, compile_fail, flags=, group=, group_only)
+  adds run-step expectations, piped stdin, timeouts, declared run-time
+  data inputs, extra compile-only steps, a target-name override, extra
+  run-time arguments, a single-arch mode, extra compiler flags and
+  multi-program aggregate membership — the irregular shapes that used
+  to need hand-written base targets.
+- `compile_fail` marks a source whose *compile step itself* must fail
+  (int64_x86_error_test's class): no run step is generated at all —
+  there is no binary to run — and `expect_stdout=`/`expect_stderr=`/
+  `timeout=`/`stdin=` decorate the compile step in its place instead of
+  a run step. Design note below the directive vocabulary explains why
+  this reuses wbuildgen's own directive machinery instead of routing
+  through `bin/wfixture`.
+- The platform axis: `arch=arm64` and `arch=win64` yield run-capable
+  twins X_arm64 / X_win64 (repeatable — e.g. `x64 arch=arm64` yields
+  three targets from one source), mirroring the existing hand-written
+  arm64/win64 test idiom byte for byte: `bin/wv2 arm64|win64
+  dir/X_test.w -o bin/X_arm64|bin/X_win64.exe`, then `sh
+  tools/run_arm64.sh bin/X_arm64` or `wine bin/X_win64.exe`.
+  `arch=wasm` yields the run-capable twin X_wasm: compiled with the
+  `wasm` selector, run wrapped in `sh tools/run_wasm.sh` (wasmtime, or
+  node's built-in WASI — see tools/run_wasm.sh). `arch=arm64_darwin`
+  yields a compile-only twin X_darwin (Mach-O cross-compiled on Linux,
+  matching graphics_darwin/pac_darwin — no run step; execution rides
+  tools/mac/run_darwin_tests.sh on a Mac). Run-step directives
+  (expect_stdout= and friends) decorate every run-capable twin
+  generated from the source and are rejected when the source only
+  generates compile-only (arm64_darwin) twins.
+- `# wbuild: arch_only=<arch>` marks a source that exists for one
+  non-default arch only (tests/x64_test.w's class: float64 and int64
+  are rejected on 32-bit words, so the default 32-bit twin the scan
+  would otherwise always derive is unwanted): the single generated
+  target keeps the basename-derived name (or the name= override) but
+  compiles with <arch> instead of the default 32-bit target, and no
+  default twin exists at all. It replaces the default target rather
+  than adding twins, so combining it with `x64`/`arch=` (or with
+  name=/argv= variant pairs and `extra_compile=`, both defined as
+  default-arch shapes) is an error. Umbrella membership follows the
+  compiled arch (arch_only=x64 joins "tests_x64", arm64 none, ...).
+- `# wbuild: flags=<args>` injects extra compiler arguments into every
+  compile command generated from the source — the primary target, each
+  twin, name=/argv= variants, and group memberships alike — between
+  the arch selector and the source path (`bin/wv2 arm64 --pac=full
+  tests/pac_full_test.w -o ...`, the position the hand-written
+  --pac=full targets used). Repeatable; values are whitespace-split
+  with the same quoting as `extra_compile=` (whose own verbatim steps
+  it never touches).
+- `# wbuild: group=<target>@<arch>` makes the source one member of the
+  multi-program aggregate target <target> (arm64_smoke_test's class:
+  several programs compiled and run under one name, with one shared
+  success epilogue). Every member sharing the group name contributes,
+  in alphabetical path order, a compile step at the group's arch plus
+  a run step (except compile-only arm64_darwin), followed by a single
+  `echo <target> OK` epilogue; a member's run-field directives
+  decorate its own run step in the group, exactly as they decorate its
+  twins. Membership is additive — the source's standalone targets
+  still generate — unless the source also says `group_only`, which
+  suppresses them (the x64_float_abi_test.w class: a source whose only
+  reason to exist is its group). Member binaries splice the arch in
+  before the trailing _test (lib/lib_test.w in a wasm group compiles
+  to bin/lib_wasm_test), the hand-written smoke-bundle convention,
+  which never collides with the twin convention's appended suffix
+  (bin/lib_test_wasm). Umbrella membership follows the group's arch,
+  like arch_only=.
+- Every generated compile+run target declares wexec cache "inputs"
+  (the source file plus any deps= run-time data) and, when the compile
+  is expected to succeed, "outputs" (the produced binary) — the same
+  shape wexec's own direct-file mode synthesizes. bin/wexec's
+  deps-driven cache keys (tools/wexec.w) replace the source file's
+  hash with its exact per-arch import closure at build time, so
+  nothing about the closure is baked into the manifest; before this,
+  generated targets declared no "inputs" and silently ran as
+  make-style FORCE targets on every request. Fixture-group targets
+  (below) stay FORCE: their members' import closures are invisible to
+  wexec's compile-root scan (wfixture invokes bin/wv2 itself at run
+  time), so a content key over member bytes alone could go stale.
+- Base wins by name: when build.base.json already defines X_test (or
+  X_64_test, X_arm64, X_win64, X_darwin), that definition is kept and
+  nothing is generated for the name. This is how a test with extra
+  hand-written steps keeps its 32-bit target in base while still
+  generating its conventional twin.
+- `# wbuild: name=<target>` overrides the basename-derived name for
+  every twin from that source: the x64/arm64/win64/darwin suffix rules
+  above apply to the override instead of to the literal basename
+  (`name=crypto_base64_test` on `base64_test.w` plus `x64` yields
+  `crypto_base64_test` and `crypto_base64_64_test`, not
+  `base64_test`/`base64_64_test`). `# wbuild: argv=<args>` used alone
+  appends `<args>` (whitespace-split, quoted values escaped like
+  `extra_compile=`) to every run-capable twin's run step. `name=` and
+  `argv=` used *together*, an equal number of times, instead define
+  that many extra default-arch-only targets from the same source —
+  each pair is one more generated target (name=<n>'s value, run with
+  that argv=<a>'s value) alongside whatever the source's other
+  directives already generate, e.g. `# wbuild: name=x25519_iterated_test
+  argv=--iterated-1000` on `x25519_test.w` (which also has its own
+  plain `x25519_test` target) yields a second binary from the same
+  source differing only in its run arguments. See wbg_apply_directive's
+  comment for the exact pairing rule.
+- Sources listed in build.base.json's "generate": {"exclude": [...]}
+  are skipped entirely; that list holds sources whose targets live in
+  base under unconventional names (crypto_base64_test for
+  base64_test.w, the pac/darwin fixtures, the parser-generator outputs
+  that cannot carry directives because they are regenerated and
+  diffed). The "generate" key is not copied into build.json.
+- Umbrellas: generated 32-bit and arm64_darwin (compile-only) targets
+  are appended to "tests", and generated x64 / win64 twins to
+  "tests_x64" / "tests_win64", each sorted by name, except names
+  already pinned by an explicit mention in a step-less base target's
+  deps (that is how sha2/hmac/hkdf/x25519's twins stay members of
+  "tests" instead). Generated arm64 and wasm twins join no umbrella:
+  like the hand-written arm64/wasm run targets they mirror
+  (build_arm64, dynamic_test_arm64, build_wasm, ...), they need qemu
+  or a wasm runtime and stay individually invoked.
+- Output is deterministic: base targets keep their order and field
+  order, generated targets are appended sorted by name, and the same
+  tree always serializes to byte-identical build.json.
+
+Path-based target dependencies (2026-07, wave 2d — the bucket C/K gap
+in docs/projects/build_system_next.md): before this, a generated
+target's "deps" was always exactly ["wv2"] — a test whose compiled
+binary shells out to another tool binary at runtime (wvc_e2e_test ->
+bin/wvc, wexec_remote_cache_test -> bin/wexec) had no way to add that
+tool to "deps" except by moving the whole target into build.base.json
+by hand, and a family of wfixture-driven "run a list of *_fixture.w
+files through wfixture" targets (warning_test, type_system_error_test,
+...) had no single-source shape to hang a directive on at all. Two
+additive mechanisms close both gaps without touching the existing
+per-source generation rules above:
+
+- `# wbuild: tool=<path>` (repeatable) on an ordinary generated
+  `*_test.w` source resolves <path> — a tool's own .w source, e.g.
+  "tools/wvc.w" — to the name of the *existing* build.base.json target
+  that compiles it (wbg_find_target_by_source scans base targets for
+  the "bin/wv2 [arch] <path> -o <binary>" shape every bucket-C tool
+  target already has: single step, first arg "bin/wv2", <path>
+  present verbatim), and appends that resolved name to the generated
+  target's "deps" alongside "wv2". The tool target itself stays
+  hand-written in build.base.json (it is not `*_test.w`-shaped, so
+  wbuildgen's scan never touches it) — only the *dependent* stops
+  needing a hand-written entry.
+- Fixture-group targets, layered on the same resolver: a file (usually
+  `tests/*_fixture.w`, but any scanned source works) carrying
+  `# wbuild: fixture_group=<name>` is not compiled-and-run itself — it
+  is one member of a single wfixture invocation named <name>, gathered
+  from every file sharing that group name (alphabetical path order,
+  since the scan already walks the tree in sorted order) into
+
+      {"name": <name>, "deps": ["wv2", <wfixture's resolved name>],
+       "steps": [{"cmd": [<wfixture's resolved binary>, "bin/wv2",
+                  <member>, <member>, ...]}]}
+
+  — exactly the shape every hand-written wfixture-driven bucket-K
+  target already has. `wfixture`'s own target name and output binary
+  path are looked up via the same wbg_find_target_by_source resolver
+  the `tool=` directive uses (currently always "wfixture" /
+  "bin/wfixture", but derived rather than hardcoded, so a rename keeps
+  working). A fixture-group member cannot also carry a run/arch/tool/
+  deps directive — it has no compile-and-run shape of its own, only a
+  place in its group's wfixture invocation. Order note: a hand-written
+  target's fixture list was sometimes in an intentional (non-
+  alphabetical) order; the generated list is always alphabetical by
+  path. This is a behavior-preserving reordering — each fixture's
+  pass/fail is independent and wfixture's own exit status is an
+  aggregate over all of them, so no target's assertions depend on
+  invocation order (verified by diffing old vs. new build.json for
+  every migrated target when this landed).
+
+`fixture_group=` almost always needs the sidecar form
+(`<fixture>.w.wbuild`, see wbg_parse_directives) rather than an inline
+header line: a compile-diagnostic fixture's own `# expect_stderr:`
+routinely embeds this file's exact line numbers (e.g. "got 3 bits at
+<file>.w:10"), so inserting a header line shifts every line reference
+below it and breaks the fixture it decorates — caught by actually
+running the migrated fixture targets, not by inspection, which is why
+every fixture-group member in this migration uses the sidecar.
+
+Tool targets (2026-07, the last bucket C/K residue in
+docs/projects/build_system_next.md): a family of targets is "invoke an
+already-built tool as the whole target" — no compile step of its own,
+so there is no `*_test.w` source for a directive to live on
+(manifest_check runs `bin/wbuildgen --check`, metadata_check runs
+`bin/wmeta check package.wmeta`, wvdiff_test / wexec_keep_going_test /
+wexec_ordered_output_test drive `bin/wvdiff`/`bin/wexec` over fixture
+files, asm_seed_gate compiles via the raw seed `./w`). These are
+described in build.base.json's "generate": {"tool_targets": [...]}
+array instead of hand-written in "targets" (see
+docs/projects/build_system_next.md's "Tool targets" design note for
+why that surface won over a directive-vocabulary extension). Each
+entry is
+
+    {"name": <target>, "steps": [<wexec step objects, verbatim>],
+     "inputs": [...]?, "outputs": [...]?, "data": [...]?}
+
+and wbuildgen derives the rest (wbg_expand_tool_targets):
+
+- "deps" is DERIVED, never declared: every string element of every
+  step's "cmd" that equals a base target's declared "outputs" entry
+  adds that target's name (first-seen order, deduped) — so
+  `bin/wmeta ...` pulls in the "wmeta" tool target, and the staged
+  `bin/wexec` (compiled to bin/wexec.stage, then mv'd) still resolves
+  because the lookup key is the *declared* output, not a "-o"
+  argument. A path produced by an earlier step of the same entry (its
+  "-o" arguments and declared "outputs") is self-satisfied and never
+  a dep (asm_seed_gate's second step runs the binary its first step
+  compiled). A step whose *command word* (cmd[0]) starts with "bin/"
+  but resolves to neither is a hard error — a typoed tool path fails
+  `./wbuild manifest` instead of failing the target at build time.
+  Declaring "deps" by hand in an entry is an error, so the derived
+  list cannot drift from the commands.
+- "inputs"/"outputs"/"data" pass through verbatim when present (an
+  entry with no "inputs" stays a FORCE target, exactly like the
+  hand-written originals); every step field other than "cmd" (the
+  expect_* / reject_* / expect_status / timeout_ms / stdin
+  vocabulary) is wexec's schema and passes through untouched.
+- The generated target keeps the entry's own field order with "deps"
+  inserted right after "name" — byte-identical to the hand-written
+  originals, which is what made the migration diffable.
+- Tool targets join no umbrella automatically; the hand-maintained
+  umbrella deps in build.base.json keep listing them (manifest_check,
+  metadata_check, ... are pinned members of "tests" already).
+- Base wins is an *error* here, not a skip: an entry whose name is
+  still hand-written in "targets" means a half-finished migration.
+
+Usage: wbuildgen [--check] [--base build.base.json] [--out build.json]
+
+--check regenerates to bin/build.json.gen, byte-compares it with the
+committed build.json, and exits 1 with a per-target drift summary when
+they differ (the CI gate: `./wbuild manifest_check`). Without --check
+the manifest is rewritten in place (`./wbuild manifest`).
+
+Design notes: docs/projects/wexec.md (manifest generation section).
+*/
+import lib.lib
+import lib.file
+import lib.stream
+import structures.string
+import structures.json
+
+
+json_value* wbg_base                     # parsed build.base.json
+int wbg_scan_tree                        # 0 = base targets only (wbg_generate)
+char* wbg_summary                        # "N targets, M generated)" after wbg_generate
+map[char*, json_value*] wbg_base_targets # name -> target object
+list[char*] wbg_base_names               # base manifest order
+map[char*, int] wbg_exclude              # source path -> 1
+map[char*, int] wbg_pinned               # names listed in step-less base deps
+json_value* wbg_tool_targets_json        # "generate".."tool_targets" array; 0 = absent
+list[json_value*] wbg_generated          # generated targets, sorted by name
+map[char*, int] wbg_gen_seen             # generated names, for collisions
+list[char*] wbg_gen32_names
+list[char*] wbg_gen64_names
+list[char*] wbg_gen_arm64_names
+list[char*] wbg_gen_win64_names
+list[char*] wbg_gen_darwin_names
+list[char*] wbg_gen_wasm_names
+
+
+# Arch codes for wbg_make_target/wbg_add_generated (functions, not
+# global variables, so they read as constants like json_type_*()).
+int wbg_arch_default():
+	return 0
+
+
+int wbg_arch_x64():
+	return 1
+
+
+int wbg_arch_arm64():
+	return 2
+
+
+int wbg_arch_win64():
+	return 3
+
+
+int wbg_arch_arm64_darwin():
+	return 4
+
+
+int wbg_arch_wasm():
+	return 5
+
+
+void wbg_error(char* message):
+	wstream* err = stderr_writer()
+	stream_write_cstr(err, c"wbuildgen: error: ")
+	stream_write_line(err, message)
+	stream_flush(err)
+
+
+void wbg_error2(char* message, char* detail):
+	string_builder* s = string_new()
+	string_append(s, message)
+	string_append(s, detail)
+	wbg_error(s.data)
+	string_free(s)
+
+
+void wbg_usage():
+	wstream* err = stderr_writer()
+	stream_write_line(err, c"usage: wbuildgen [--check] [--base build.base.json] [--out build.json]")
+	stream_flush(err)
+
+
+char* wbg_get_string(json_value* object, char* key):
+	json_value* value = json_object_get(object, key)
+	if (value == 0):
+		return 0
+	if (value.type != json_type_string()):
+		return 0
+	return value.string_value
+
+
+int wbg_load_uint16(char* p):
+	return (p[0] & 255) + ((p[1] & 255) << 8)
+
+
+# Recursively collect every regular file under path, the same getdents
+# walk wexec uses for directory inputs (d_reclen 2 bytes after the two
+# word-sized ino/off fields, d_type in the record's last byte).
+void wbg_collect_dir(char* path, list[char*] files):
+	if (wbg_scan_tree == 0):
+		return
+	# 65536 = O_DIRECTORY
+	int fd = open(path, 65536, 0)
+	if (fd < 0):
+		return
+	int buffer_size = 65536
+	char* buffer = malloc(buffer_size)
+	int n = getdents(fd, buffer, buffer_size)
+	while (n > 0):
+		int off = 0
+		while (off < n):
+			char* entry = buffer + off
+			int reclen = wbg_load_uint16(entry + 2 * __word_size__)
+			char* entry_name = entry + 2 * __word_size__ + 2
+			int kind = entry[reclen - 1] & 255
+			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
+				string_builder* child = string_new()
+				string_append(child, path)
+				string_append(child, c"/")
+				string_append(child, entry_name)
+				if (kind == 4):
+					wbg_collect_dir(child.data, files)
+					string_free(child)
+				else if (kind == 8):
+					char* owned = child.data
+					free(child)
+					files.push(owned)
+				else:
+					string_free(child)
+			off = off + reclen
+		n = getdents(fd, buffer, buffer_size)
+	free(buffer)
+	close(fd)
+
+
+# Insertion sort: getdents order depends on filesystem state, and the
+# output must not.
+void wbg_sort_strings(list[char*] names):
+	int i = 1
+	while (i < names.length):
+		char* value = names[i]
+		int j = i - 1
+		while ((j >= 0) && (strcmp(names[j], value) > 0)):
+			names[j + 1] = names[j]
+			j = j - 1
+		names[j + 1] = value
+		i = i + 1
+
+
+char* wbg_basename(char* path):
+	int i = 0
+	int last = 0
+	while (path[i] != 0):
+		if (path[i] == '/'):
+			last = i + 1
+		i = i + 1
+	return path + last
+
+
+# The first (length - n) characters of text, as a fresh string.
+char* wbg_strip_suffix(char* text, int n):
+	int keep = strlen(text) - n
+	string_builder* s = string_new()
+	int i = 0
+	while (i < keep):
+		string_append_char(s, text[i])
+		i = i + 1
+	char* out = s.data
+	free(s)
+	return out
+
+
+char* wbg_concat(char* left, char* right):
+	string_builder* s = string_new()
+	string_append(s, left)
+	string_append(s, right)
+	char* out = s.data
+	free(s)
+	return out
+
+
+/* Directive parsing.
+
+A directive is a source line starting with "# wbuild:" followed by
+whitespace-separated tokens; a source may carry several such lines.
+Bare tokens are flags; key=value tokens carry a value, either a bare
+word or a double-quoted string with \n, \t, \", \\ escapes. The
+vocabulary:
+
+  x64                      also generate the X_64_test twin
+  arch=x64                 keyed spelling of the same flag
+  arch=arm64               also generate the X_arm64 twin: compiled
+                           with `arm64`, run wrapped in `sh
+                           tools/run_arm64.sh` (qemu, or native on an
+                           arm64 Linux host — see tools/run_arm64.sh)
+  arch=win64               also generate the X_win64 twin: compiled
+                           with `win64` to bin/X_win64.exe, run wrapped
+                           in `wine` (present or not, the target's
+                           shape is identical; it just fails to spawn
+                           without wine, same as the hand-written win64
+                           targets)
+  arch=arm64_darwin        also generate the X_darwin twin: compiled
+                           with `arm64_darwin` (Mach-O, cross-compiled
+                           on Linux), compile-only — no run step, since
+                           running needs a Mac (tools/mac/
+                           run_darwin_tests.sh)
+  arch=wasm                also generate the X_wasm twin: compiled
+                           with `wasm`, run wrapped in `sh
+                           tools/run_wasm.sh` (wasmtime, or node's
+                           built-in WASI — see tools/run_wasm.sh)
+  arch_only=<arch>         the source is <arch>-only (x64, arm64,
+                           win64, arm64_darwin, wasm): the one
+                           generated target keeps the basename-derived
+                           (or name=-overridden) name but compiles
+                           with <arch>, and no default 32-bit twin is
+                           generated at all. Cannot combine with the
+                           `x64`/`arch=` twin directives, name=/argv=
+                           variant pairs, or `extra_compile=` — all of
+                           which presuppose a default-arch target
+  flags=<args>             inject <args> (whitespace-split, quoted
+                           values escaped like extra_compile=) into
+                           every compile command generated from the
+                           source — primary, twins, variants and group
+                           memberships alike — between the arch
+                           selector and the source path (`bin/wv2
+                           arm64 --pac=full <src> -o ...`). Repeatable;
+                           never touches extra_compile='s own verbatim
+                           steps
+  group=<target>@<arch>    the source is one member of the
+                           multi-program aggregate <target>: every
+                           member sharing the group name contributes,
+                           in alphabetical path order, a compile step
+                           at <arch> (x64, arm64, win64, arm64_darwin,
+                           wasm — all members must agree) plus a run
+                           step (except compile-only arm64_darwin),
+                           and the target ends with one shared `echo
+                           <target> OK` epilogue. Run-field directives
+                           decorate the member's own run step in the
+                           group; deps=/tool=/flags= contribute to the
+                           group the same way they would to a twin.
+                           Member binaries splice the arch in before
+                           the trailing _test (bin/lib_wasm_test), the
+                           hand-written smoke-bundle convention.
+                           Repeatable — one token per membership
+  group_only               generate no standalone targets from this
+                           source, only its group= memberships (the
+                           x64_float_abi_test.w class: the source
+                           exists solely for its group, and its
+                           default 32-bit twin would be wrong).
+                           Requires at least one group=; cannot
+                           combine with `x64`/`arch=`/`arch_only=`/
+                           `name=`/`extra_compile=`/`compile_fail`,
+                           which all shape standalone targets
+  expect_fail              the run step must exit nonzero
+  timeout=<ms>             "timeout_ms" on the run step
+  stdin="text"             text piped to the run step's stdin
+  expect_stdout="substr"   the run step's stdout must contain substr
+  expect_stderr="substr"   same for stderr; both are repeatable, and
+                           several values emit the array form
+  deps=<path>              declare a run-time input the import graph
+                           cannot see (a data file, a directory prefix
+                           ending in '/', or a .w file the test reads
+                           as text at run time rather than importing —
+                           asm_stubs_test.w's class); emitted as the
+                           target-level "data" array, which bin/wtest
+                           matches changed paths against
+                           (tools/test_map.w, rule a), and as part of
+                           the target's cache "inputs". Imported .w
+                           files never need declaring — the import
+                           closure already tracks them
+  extra_compile="args"     append one more 'bin/wv2 <args>' step
+                           (whitespace-split, no shell) after the run
+                           step, on the default-arch target only
+  name=<target>            override the basename-derived name for this
+                           source and every twin generated from it (the
+                           x64/arm64/win64/darwin suffix rules apply to
+                           the override, not the literal basename) —
+                           used alone, exactly once
+  argv="args"              used alone: append <args> (whitespace-split,
+                           same quoting as extra_compile=) to every
+                           run-capable twin's run step. Used together
+                           with name= (repeatable, in equal counts):
+                           each name=/argv= pair instead defines one
+                           more default-arch-only target compiled from
+                           the same source, run with that pair's argv,
+                           alongside (not instead of) whatever the
+                           source's other directives already generate —
+                           this is how a second binary differing only
+                           in run arguments is expressed (e.g.
+                           `# wbuild: name=x25519_iterated_test
+                           argv=--iterated-1000` next to x25519_test.w's
+                           own plain target). An unequal, nonzero count
+                           of name= and argv= directives is an error.
+  compile_fail             the *compile* step itself must exit nonzero;
+                           no run step is generated (there is no binary
+                           to run) for any twin the source requests.
+                           expect_stdout=/expect_stderr=/timeout=/
+                           stdin= decorate the compile step instead of
+                           a run step when this flag is set.
+  tool=<path>              resolve <path> (another tool's own .w
+                           source, e.g. "tools/wvc.w") to the name of
+                           the build.base.json target that compiles
+                           it, and append that name to the generated
+                           target's "deps" alongside "wv2" (repeatable;
+                           see wbg_find_target_by_source below).
+                           Applies to every twin the source generates,
+                           run-capable or not — a build-order
+                           dependency, not a run-step decoration.
+
+A separate, fixture-group-only directive is documented above
+wbg_dir_fixture_group below: `# wbuild: fixture_group=<name>` does not
+belong to a generated *_test.w run target at all, so it is parsed by
+the same wbg_parse_directives/wbg_apply_directive machinery but handled
+by its own code path in wbg_scan rather than by wbg_make_target.
+
+Run-step fields apply to every run-capable target generated from the
+source (32-bit, x64, arm64, win64 twins alike — arm64_darwin has no run
+step to decorate) — unless `compile_fail` is set, in which case they
+decorate the compile step of every twin instead (including arm64_darwin,
+whose only step already is the compile step). Unknown tokens, malformed
+values, and directives that no generated target can honor are errors, so
+typos fail the manifest run instead of silently generating nothing.
+
+Design note (bucket I, docs/projects/build_system_next.md): before this,
+no directive could express "this source must fail to compile" — only
+run steps could be decorated with expect_fail/expect_stderr, so
+int64_x86_error_test (which asserts the *compile* itself fails with
+"int64 requires the x64 target") stayed hand-written in
+build.base.json. Two ways to close that gap were considered:
+
+  (a) teach wbuildgen the `compile_fail` flag above, redirecting the
+      existing expect_fail/expect_stdout/expect_stderr/timeout=/stdin=
+      machinery from the run step to the compile step and skipping run
+      step generation entirely.
+  (b) give the source wfixture-style header directives (the
+      `# expect_stderr:`/`# expect_fail` convention `bin/wfixture`
+      already implements, `# wfixture: <selector>` for the arch case
+      since wave 1d) and have wbuildgen emit a target whose one step
+      invokes `bin/wfixture bin/wv2 <src>` instead of `bin/wv2 <src>
+      -o <out>` directly.
+
+(a) won: it reuses machinery wbuildgen and wexec already have working
+end to end (expect_fail/expect_stderr are already generic per-step
+wexec fields, not run-step-specific — see tools/wexec.w's
+wexec_run_step) behind one new bare flag, so the change is additive and
+localized to wbg_make_target/wbg_scan. (b) would stand up a second,
+structurally different generation path — a wfixture-invoking step shape
+needing its own name/collision/umbrella handling alongside the existing
+one, plus either duplicating wfixture's header-comment parser inside
+wbuildgen or leaving directive validation to wfixture at build time
+instead of at manifest time (typos would fail a test run instead of
+`./wbuild manifest`). (a) also generalizes to arch twins for free —
+`compile_fail` combined with `arch=x64`/`arm64`/`win64`/`arm64_darwin`
+falls out of the same wbg_make_target code path that bucket I's single
+default-arch case exercises — where (b) would need to teach wfixture's
+single-selector-per-fixture convention an analogous per-arch-twin story
+from scratch. */
+
+
+int wbg_dir_x64
+int wbg_dir_arm64
+int wbg_dir_win64
+int wbg_dir_arm64_darwin
+int wbg_dir_wasm
+int wbg_dir_arch_only            # arch code the single target compiles with; 0 = unset
+int wbg_dir_expect_fail
+int wbg_dir_compile_fail           # "compile_fail": the compile step, not the run step, must fail
+int wbg_dir_timeout_ms             # 0 = unset
+char* wbg_dir_stdin                # 0 = unset
+list[char*] wbg_dir_expect_stdout
+list[char*] wbg_dir_expect_stderr
+list[char*] wbg_dir_extra_compile
+list[char*] wbg_dir_data
+list[char*] wbg_dir_names          # raw name= values, encounter order
+list[char*] wbg_dir_argvs          # raw argv= values, encounter order
+int wbg_dir_argv_decorates_primary # 1 when argv= applies with no name=
+list[char*] wbg_dir_tool           # resolved target names from 'tool=' directives
+list[char*] wbg_dir_flags          # raw flags= values, encounter order
+list[char*] wbg_dir_group_names    # group= target names, encounter order
+list[int] wbg_dir_group_archs      # parallel arch codes for group=
+int wbg_dir_group_only             # 1: only group memberships, no standalone targets
+
+# '# wbuild: fixture_group=<name>' (fixture files only — see wbg_scan's
+# fixture-group pass): the file is not compiled/run itself, it is one
+# member of the single wfixture invocation named <name>. 0 = unset.
+char* wbg_dir_fixture_group
+
+
+void wbg_reset_directives():
+	wbg_dir_x64 = 0
+	wbg_dir_arm64 = 0
+	wbg_dir_win64 = 0
+	wbg_dir_arm64_darwin = 0
+	wbg_dir_wasm = 0
+	wbg_dir_arch_only = 0
+	wbg_dir_expect_fail = 0
+	wbg_dir_compile_fail = 0
+	wbg_dir_timeout_ms = 0
+	wbg_dir_stdin = 0
+	wbg_dir_expect_stdout = new list[char*]
+	wbg_dir_expect_stderr = new list[char*]
+	wbg_dir_extra_compile = new list[char*]
+	wbg_dir_data = new list[char*]
+	wbg_dir_names = new list[char*]
+	wbg_dir_argvs = new list[char*]
+	wbg_dir_argv_decorates_primary = 0
+	wbg_dir_tool = new list[char*]
+	wbg_dir_flags = new list[char*]
+	wbg_dir_group_names = new list[char*]
+	wbg_dir_group_archs = new list[int]
+	wbg_dir_group_only = 0
+	wbg_dir_fixture_group = 0
+
+
+# Directives that decorate the generated run step (as opposed to the
+# x64 flag, which chooses what to generate).
+int wbg_dir_has_run_fields():
+	if (wbg_dir_expect_fail | (wbg_dir_timeout_ms > 0)):
+		return 1
+	if (wbg_dir_stdin != 0):
+		return 1
+	if ((wbg_dir_expect_stdout.length > 0) || (wbg_dir_expect_stderr.length > 0)):
+		return 1
+	if (wbg_dir_argv_decorates_primary):
+		return 1
+	return 0
+
+
+void wbg_token_error(char* path, char* message, char* token):
+	string_builder* s = string_new()
+	string_append(s, message)
+	string_append(s, c"'")
+	string_append(s, token)
+	string_append(s, c"' in ")
+	string_append(s, path)
+	wbg_error(s.data)
+	string_free(s)
+
+
+# Strictly-digits millisecond count; -1 on anything else.
+int wbg_parse_ms(char* text):
+	if (text[0] == 0):
+		return -1
+	int value = 0
+	int i = 0
+	while (text[i] != 0):
+		if ((text[i] < '0') || (text[i] > '9')):
+			return -1
+		value = value * 10 + (text[i] - '0')
+		i = i + 1
+	return value
+
+
+int wbg_need_value(char* path, char* key, int has_value):
+	if (has_value):
+		return 0
+	wbg_token_error(path, c"missing value for '# wbuild:' directive ", key)
+	return 1
+
+
+# The arch code for a non-default target selector word, or -1 when the
+# word is not one — shared by the arch_only= and group= value parsers.
+int wbg_arch_word(char* word):
+	if (strcmp(word, c"x64") == 0):
+		return wbg_arch_x64()
+	if (strcmp(word, c"arm64") == 0):
+		return wbg_arch_arm64()
+	if (strcmp(word, c"win64") == 0):
+		return wbg_arch_win64()
+	if (strcmp(word, c"arm64_darwin") == 0):
+		return wbg_arch_arm64_darwin()
+	if (strcmp(word, c"wasm") == 0):
+		return wbg_arch_wasm()
+	return -1
+
+
+int wbg_no_value(char* path, char* key, int has_value):
+	if (has_value == 0):
+		return 0
+	wbg_token_error(path, c"'# wbuild:' flag takes no value: ", key)
+	return 1
+
+
+/* Path-based tool-dependency resolution (wave 2d).
+
+wbg_find_target_by_source is the one mechanism both new directives
+build on: given a tool's own .w source path, find the existing
+build.base.json target that compiles it, so a generated target's
+"deps" (or a fixture-group target's "deps" and step "cmd") can
+reference that target by its *resolved* name/binary instead of the
+generator hardcoding it. */
+
+# The output path a base target's first compile step produces: the
+# argument immediately following "-o" in that step's "cmd" array.
+# Returns 0 if the shape doesn't match (defensive — every bucket-C
+# tool target and every generated _test.w target has this shape).
+char* wbg_target_binary_path(json_value* target):
+	json_value* steps = json_object_get(target, c"steps")
+	if ((steps == 0) || (steps.type != json_type_array()) || (json_array_length(steps) == 0)):
+		return 0
+	json_value* first = json_array_get(steps, 0)
+	json_value* cmd = json_object_get(first, c"cmd")
+	if ((cmd == 0) || (cmd.type != json_type_array())):
+		return 0
+	int i = 0
+	while (i < json_array_length(cmd)):
+		json_value* element = json_array_get(cmd, i)
+		if ((element.type == json_type_string()) && (strcmp(element.string_value, c"-o") == 0) && (i + 1 < json_array_length(cmd))):
+			json_value* out = json_array_get(cmd, i + 1)
+			if (out.type == json_type_string()):
+				return out.string_value
+		i = i + 1
+	return 0
+
+
+# Finds the build.base.json target whose first step compiles src_path
+# directly: "bin/wv2 [arch] <src_path> -o <binary>" — the shape every
+# bucket-C tool target (wfixture, wvc, wexec, ...) already has by hand.
+# Returns the target's json_value, or 0 if no base target matches.
+json_value* wbg_find_target_by_source(char* src_path):
+	for char* name in wbg_base_names:
+		json_value* target = wbg_base_targets[name]
+		json_value* steps = json_object_get(target, c"steps")
+		if ((steps == 0) || (steps.type != json_type_array()) || (json_array_length(steps) == 0)):
+			continue
+		json_value* first = json_array_get(steps, 0)
+		json_value* cmd = json_object_get(first, c"cmd")
+		if ((cmd == 0) || (cmd.type != json_type_array()) || (json_array_length(cmd) < 1)):
+			continue
+		json_value* head = json_array_get(cmd, 0)
+		if ((head.type != json_type_string()) || (strcmp(head.string_value, c"bin/wv2") != 0)):
+			continue
+		int i = 1
+		int matched = 0
+		while ((i < json_array_length(cmd)) && (matched == 0)):
+			json_value* element = json_array_get(cmd, i)
+			if ((element.type == json_type_string()) && (strcmp(element.string_value, src_path) == 0)):
+				matched = 1
+			i = i + 1
+		if (matched):
+			return target
+	return 0
+
+
+# Finds the build.base.json target whose declared "outputs" array
+# contains binary — the tool-target deps resolver. Keyed on the
+# *declared* output rather than a "-o" compile argument so staged
+# builds resolve too (wexec compiles to bin/wexec.stage and mv's it;
+# its outputs entry is the final bin/wexec). Returns the target's
+# json_value, or 0 when no base target declares the path.
+json_value* wbg_find_target_by_output(char* binary):
+	for char* name in wbg_base_names:
+		json_value* target = wbg_base_targets[name]
+		json_value* outputs = json_object_get(target, c"outputs")
+		if ((outputs == 0) || (outputs.type != json_type_array())):
+			continue
+		int i = 0
+		while (i < json_array_length(outputs)):
+			json_value* element = json_array_get(outputs, i)
+			if ((element.type == json_type_string()) && (strcmp(element.string_value, binary) == 0)):
+				return target
+			i = i + 1
+	return 0
+
+
+# The target name for a 'tool=' (or fixture-group) path: wraps
+# wbg_find_target_by_source, returning just the resolved name. Returns
+# 0 if no base target compiles src_path.
+char* wbg_resolve_tool_name(char* src_path):
+	json_value* target = wbg_find_target_by_source(src_path)
+	if (target == 0):
+		return 0
+	return wbg_get_string(target, c"name")
+
+
+# Applies one parsed key[=value] token to the wbg_dir_* state.
+# Returns 0 on success, 1 after reporting an error.
+int wbg_apply_directive(char* path, char* key, int has_value, char* value):
+	if (strcmp(key, c"x64") == 0):
+		if (wbg_no_value(path, key, has_value)):
+			return 1
+		wbg_dir_x64 = 1
+		return 0
+	if (strcmp(key, c"expect_fail") == 0):
+		if (wbg_no_value(path, key, has_value)):
+			return 1
+		wbg_dir_expect_fail = 1
+		return 0
+	if (strcmp(key, c"compile_fail") == 0):
+		if (wbg_no_value(path, key, has_value)):
+			return 1
+		wbg_dir_compile_fail = 1
+		return 0
+	if (strcmp(key, c"arch") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (strcmp(value, c"x64") == 0):
+			wbg_dir_x64 = 1
+			return 0
+		if (strcmp(value, c"arm64") == 0):
+			wbg_dir_arm64 = 1
+			return 0
+		if (strcmp(value, c"win64") == 0):
+			wbg_dir_win64 = 1
+			return 0
+		if (strcmp(value, c"arm64_darwin") == 0):
+			wbg_dir_arm64_darwin = 1
+			return 0
+		if (strcmp(value, c"wasm") == 0):
+			wbg_dir_wasm = 1
+			return 0
+		wbg_token_error(path, c"unsupported '# wbuild:' arch (x64, arm64, win64, arm64_darwin, wasm) ", value)
+		return 1
+	if (strcmp(key, c"arch_only") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (wbg_dir_arch_only != 0):
+			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
+			return 1
+		int only_arch = wbg_arch_word(value)
+		if (only_arch < 0):
+			wbg_token_error(path, c"unsupported '# wbuild:' arch_only (x64, arm64, win64, arm64_darwin, wasm) ", value)
+			return 1
+		wbg_dir_arch_only = only_arch
+		return 0
+	if (strcmp(key, c"timeout") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (wbg_dir_timeout_ms != 0):
+			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
+			return 1
+		int ms = wbg_parse_ms(value)
+		if (ms <= 0):
+			wbg_token_error(path, c"'# wbuild:' timeout needs a positive millisecond count, got ", value)
+			return 1
+		wbg_dir_timeout_ms = ms
+		return 0
+	if (strcmp(key, c"stdin") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (wbg_dir_stdin != 0):
+			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
+			return 1
+		wbg_dir_stdin = strclone(value)
+		return 0
+	if ((strcmp(key, c"expect_stdout") == 0) | (strcmp(key, c"expect_stderr") == 0)):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (value[0] == 0):
+			wbg_token_error(path, c"empty '# wbuild:' expectation ", key)
+			return 1
+		if (strcmp(key, c"expect_stdout") == 0):
+			wbg_dir_expect_stdout.push(strclone(value))
+		else:
+			wbg_dir_expect_stderr.push(strclone(value))
+		return 0
+	if (strcmp(key, c"deps") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		# A .w value is allowed: it declares a W file the test consumes
+		# as run-time text rather than importing (asm_stubs_test.w reads
+		# code_generator/*_asm.w via asm_stub_check), which the import
+		# closure cannot see. Imported files never need declaring.
+		# A missing path usually means a typo or a deleted data file;
+		# fail loudly, like generate.exclude staleness.
+		int fd = open(value, 0, 0)
+		if (fd < 0):
+			wbg_token_error(path, c"'# wbuild:' deps path does not exist: ", value)
+			return 1
+		close(fd)
+		wbg_dir_data.push(strclone(value))
+		return 0
+	if (strcmp(key, c"extra_compile") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (value[0] == 0):
+			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
+			return 1
+		wbg_dir_extra_compile.push(strclone(value))
+		return 0
+	if ((strcmp(key, c"name") == 0) | (strcmp(key, c"argv") == 0)):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (value[0] == 0):
+			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
+			return 1
+		# Repeatable; the pairing rule (name= alone, argv= alone, or an
+		# equal, nonzero count of both as variants) is resolved once the
+		# whole source has been parsed — see wbg_scan.
+		if (strcmp(key, c"name") == 0):
+			wbg_dir_names.push(strclone(value))
+		else:
+			wbg_dir_argvs.push(strclone(value))
+		return 0
+	if (strcmp(key, c"tool") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (ends_with(value, c".w") == 0):
+			wbg_token_error(path, c"'tool=' expects a tool's '.w' source path, got ", value)
+			return 1
+		# A missing path usually means a typo; fail loudly, like deps=.
+		int fd = open(value, 0, 0)
+		if (fd < 0):
+			wbg_token_error(path, c"'# wbuild:' tool path does not exist: ", value)
+			return 1
+		close(fd)
+		char* tool_name = wbg_resolve_tool_name(value)
+		if (tool_name == 0):
+			wbg_token_error(path, c"'tool=' path has no matching build.base.json compile target (want 'bin/wv2 <path> -o bin/<name>'): ", value)
+			return 1
+		wbg_dir_tool.push(strclone(tool_name))
+		return 0
+	if (strcmp(key, c"flags") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (value[0] == 0):
+			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
+			return 1
+		wbg_dir_flags.push(strclone(value))
+		return 0
+	if (strcmp(key, c"group") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		# '<target>@<arch>': the aggregate's name plus the arch every
+		# member compiles with. The arch rides in the value because one
+		# source can belong to several groups at different arches
+		# (lib/lib_test.w is in both the arm64 and the wasm smoke
+		# bundle), and the default arch is deliberately inexpressible —
+		# a default-arch member binary would collide with the source's
+		# own standalone binary.
+		int at = -1
+		int gi = 0
+		while (value[gi] != 0):
+			if (value[gi] == '@'):
+				at = gi
+			gi = gi + 1
+		if ((at <= 0) || (value[at + 1] == 0)):
+			wbg_token_error(path, c"'group=' needs '<target>@<arch>' (arch one of x64, arm64, win64, arm64_darwin, wasm), got ", value)
+			return 1
+		int group_arch = wbg_arch_word(value + at + 1)
+		if (group_arch < 0):
+			wbg_token_error(path, c"unsupported '# wbuild:' group arch (x64, arm64, win64, arm64_darwin, wasm) ", value + at + 1)
+			return 1
+		string_builder* group_name = string_new()
+		int ni = 0
+		while (ni < at):
+			string_append_char(group_name, value[ni])
+			ni = ni + 1
+		wbg_dir_group_names.push(group_name.data)
+		wbg_dir_group_archs.push(group_arch)
+		free(group_name)
+		return 0
+	if (strcmp(key, c"group_only") == 0):
+		if (wbg_no_value(path, key, has_value)):
+			return 1
+		wbg_dir_group_only = 1
+		return 0
+	if (strcmp(key, c"fixture_group") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (wbg_dir_fixture_group != 0):
+			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
+			return 1
+		if (value[0] == 0):
+			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
+			return 1
+		wbg_dir_fixture_group = strclone(value)
+		return 0
+	wbg_token_error(path, c"unknown '# wbuild:' directive ", key)
+	return 1
+
+
+# Parses a directive value at text[j]: a bare word, or a double-quoted
+# string with \n \t \" \\ escapes. Appends the decoded value to out;
+# returns the index just past the value, or -1 on a malformed value.
+int wbg_parse_value(char* text, int j, string_builder* out):
+	if (text[j] != '"'):
+		while ((text[j] != 0) && (text[j] != '\n') && (text[j] != ' ') && (text[j] != '\t')):
+			string_append_char(out, text[j])
+			j = j + 1
+		return j
+	j = j + 1
+	while (text[j] != '"'):
+		if ((text[j] == 0) || (text[j] == '\n')):
+			return -1
+		if (text[j] == 92):
+			j = j + 1
+			if (text[j] == 'n'):
+				string_append_char(out, '\n')
+			else if (text[j] == 't'):
+				string_append_char(out, '\t')
+			else if (text[j] == '"'):
+				string_append_char(out, '"')
+			else if (text[j] == 92):
+				string_append_char(out, 92)
+			else:
+				return -1
+		else:
+			string_append_char(out, text[j])
+		j = j + 1
+	return j + 1
+
+
+# One whitespace-delimited key[=value] token starting at text[j].
+# Returns the index just past the token, or -1 after reporting an
+# error against path.
+int wbg_parse_directive_token(char* text, int j, char* path):
+	string_builder* key = string_new()
+	while ((text[j] != 0) && (text[j] != '\n') && (text[j] != ' ') && (text[j] != '\t') && (text[j] != '=')):
+		string_append_char(key, text[j])
+		j = j + 1
+	int has_value = text[j] == '='
+	string_builder* value = string_new()
+	if (has_value):
+		j = wbg_parse_value(text, j + 1, value)
+		if (j < 0):
+			wbg_token_error(path, c"malformed '# wbuild:' value for ", key.data)
+			string_free(key)
+			string_free(value)
+			return -1
+	int failed = wbg_apply_directive(path, key.data, has_value, value.data)
+	string_free(key)
+	string_free(value)
+	if (failed):
+		return -1
+	return j
+
+
+# Whether text carries a "# wbuild:" directive at the start of any
+# line — the same line-start scan wbg_parse_directives itself walks.
+int wbg_has_inline_directive(char* text):
+	int at_line_start = 1
+	int i = 0
+	while (text[i] != 0):
+		if (at_line_start && starts_with(text + i, c"# wbuild:")):
+			return 1
+		at_line_start = text[i] == '\n'
+		i = i + 1
+	return 0
+
+
+# Parses every "# wbuild:" line of the source into the wbg_dir_*
+# state. Returns 0 on success, -1 after reporting errors.
+#
+# Sidecar fallback (mirrors wfixture's own "<fixture>.expect" fallback,
+# tools/wfixture.w): a source whose byte content cannot safely carry an
+# extra header line -- a compile-diagnostic fixture whose own
+# expect_stderr text embeds this file's exact line numbers, so any
+# inserted line would shift every reference below it, or a fixture that
+# deliberately ends without a trailing newline -- may put its
+# '# wbuild:' directive lines in a "<path>.wbuild" file next to it
+# instead. When the sidecar exists it is read instead of the source,
+# never both: a source carrying inline '# wbuild:' lines alongside a
+# sidecar is a hard error (the inline lines used to be silently
+# ignored, so an edit to them changed nothing with no diagnostic).
+int wbg_parse_directives(char* path):
+	wbg_reset_directives()
+	string_builder* sidecar_path = string_new()
+	string_append(sidecar_path, path)
+	string_append(sidecar_path, c".wbuild")
+	char* text = file_read_text(sidecar_path.data)
+	string_free(sidecar_path)
+	if (text == 0):
+		text = file_read_text(path)
+	else:
+		char* source_text = file_read_text(path)
+		if (source_text != 0):
+			int both = wbg_has_inline_directive(source_text)
+			free(source_text)
+			if (both):
+				free(text)
+				wbg_error2(c"'# wbuild:' lines in both the source and its '.wbuild' sidecar (keep exactly one): ", path)
+				return -1
+	if (text == 0):
+		wbg_error2(c"cannot read source ", path)
+		return -1
+	int failed = 0
+	int at_line_start = 1
+	int i = 0
+	while (text[i] != 0):
+		if (at_line_start && starts_with(text + i, c"# wbuild:")):
+			int j = i + 9
+			int at_end = 0
+			while (at_end == 0):
+				while ((text[j] == ' ') || (text[j] == '\t')):
+					j = j + 1
+				if ((text[j] == 0) || (text[j] == '\n')):
+					at_end = 1
+				else:
+					j = wbg_parse_directive_token(text, j, path)
+					if (j < 0):
+						failed = 1
+						at_end = 1
+		at_line_start = text[i] == '\n'
+		i = i + 1
+	free(text)
+	if (failed):
+		return -1
+	return 0
+
+
+int wbg_load_base(char* path):
+	char* text = file_read_text(path)
+	if (text == 0):
+		wbg_error2(c"cannot read base manifest ", path)
+		return 1
+	wbg_base = json_parse(text)
+	free(text)
+	if (wbg_base == 0):
+		wbg_error2(c"base manifest is not valid JSON: ", path)
+		return 1
+	if (wbg_base.type != json_type_object()):
+		wbg_error2(c"base manifest root must be a JSON object: ", path)
+		return 1
+	json_value* targets = json_object_get(wbg_base, c"targets")
+	if (targets == 0):
+		wbg_error2(c"base manifest has no \"targets\" array: ", path)
+		return 1
+	if (targets.type != json_type_array()):
+		wbg_error2(c"\"targets\" must be an array: ", path)
+		return 1
+
+	wbg_base_targets = new map[char*, json_value*]
+	wbg_base_names = new list[char*]
+	wbg_pinned = new map[char*, int]
+	int i = 0
+	while (i < json_array_length(targets)):
+		json_value* target = json_array_get(targets, i)
+		if (target.type != json_type_object()):
+			wbg_error2(c"every target must be a JSON object: ", path)
+			return 1
+		char* name = wbg_get_string(target, c"name")
+		if (name == 0):
+			wbg_error2(c"target without a \"name\" string: ", path)
+			return 1
+		if (name in wbg_base_targets):
+			wbg_error2(c"duplicate base target ", name)
+			return 1
+		wbg_base_targets[name] = target
+		wbg_base_names.push(name)
+		# Deps of step-less (umbrella) targets pin their members: a
+		# generated name listed there keeps that hand-chosen placement
+		# instead of being auto-appended to its conventional umbrella.
+		if (json_object_has(target, c"steps") == 0):
+			json_value* deps = json_object_get(target, c"deps")
+			if (deps != 0):
+				if (deps.type == json_type_array()):
+					int d = 0
+					while (d < json_array_length(deps)):
+						json_value* dep = json_array_get(deps, d)
+						if (dep.type == json_type_string()):
+							wbg_pinned[dep.string_value] = 1
+						d = d + 1
+		i = i + 1
+
+	wbg_exclude = new map[char*, int]
+	wbg_tool_targets_json = 0
+	json_value* generate = json_object_get(wbg_base, c"generate")
+	if (generate != 0):
+		if (generate.type != json_type_object()):
+			wbg_error(c"\"generate\" must be an object")
+			return 1
+		json_value* tool_targets = json_object_get(generate, c"tool_targets")
+		if (tool_targets != 0):
+			if (tool_targets.type != json_type_array()):
+				wbg_error(c"\"generate\".\"tool_targets\" must be an array")
+				return 1
+			wbg_tool_targets_json = tool_targets
+		json_value* exclude = json_object_get(generate, c"exclude")
+		if (exclude != 0):
+			if (exclude.type != json_type_array()):
+				wbg_error(c"\"generate\".\"exclude\" must be an array")
+				return 1
+			int e = 0
+			while (e < json_array_length(exclude)):
+				json_value* entry = json_array_get(exclude, e)
+				if (entry.type != json_type_string()):
+					wbg_error(c"\"generate\".\"exclude\" entries must be strings")
+					return 1
+				# A stale entry usually means a test was deleted without
+				# updating the base manifest; fail loudly.
+				int fd = open(entry.string_value, 0, 0)
+				if (fd < 0):
+					wbg_error2(c"generate.exclude entry does not exist: ", entry.string_value)
+					return 1
+				close(fd)
+				wbg_exclude[entry.string_value] = 1
+				e = e + 1
+	return 0
+
+
+# The manifest form of repeated expect_* directives: a bare string
+# for one value, the array form for several (both accepted by wexec).
+json_value* wbg_expectation(list[char*] values):
+	if (values.length == 1):
+		return json_string(values[0])
+	json_value* out = json_array()
+	for char* value in values:
+		json_array_push(out, json_string(value))
+	return out
+
+
+# Appends args, whitespace-split (no shell), as string elements of cmd
+# — shared by "extra_compile=" and the argv= decoration/variant paths.
+void wbg_push_split_args(json_value* cmd, char* args):
+	string_builder* token = string_new()
+	int i = 0
+	int at_end = 0
+	while (at_end == 0):
+		int c = args[i]
+		if ((c == ' ') || (c == '\t') || (c == 0)):
+			if (token.length > 0):
+				json_array_push(cmd, json_string(token.data))
+				string_clear(token)
+			if (c == 0):
+				at_end = 1
+		else:
+			string_append_char(token, c)
+		i = i + 1
+	string_free(token)
+
+
+# An "extra_compile=" step: 'bin/wv2' plus the directive's args,
+# whitespace-split (no shell).
+json_value* wbg_extra_compile_step(char* args):
+	json_value* cmd = json_array()
+	json_array_push(cmd, json_string(c"bin/wv2"))
+	wbg_push_split_args(cmd, args)
+	json_value* step = json_object()
+	json_object_set(step, c"cmd", cmd)
+	return step
+
+
+# The arch flag token passed to bin/wv2 for a non-default arch, or 0
+# for the default (32-bit x86) arch.
+char* wbg_arch_flag(int arch):
+	if (arch == wbg_arch_x64()):
+		return c"x64"
+	if (arch == wbg_arch_arm64()):
+		return c"arm64"
+	if (arch == wbg_arch_win64()):
+		return c"win64"
+	if (arch == wbg_arch_arm64_darwin()):
+		return c"arm64_darwin"
+	if (arch == wbg_arch_wasm()):
+		return c"wasm"
+	return 0
+
+
+# The compile command for one generated step: 'bin/wv2 [arch]
+# [flags=...] <src> -o <binary>' — flags= values land between the arch
+# selector and the source path, the position the hand-written
+# --pac=full targets used.
+json_value* wbg_compile_cmd(char* src, int arch, char* binary):
+	json_value* cmd = json_array()
+	json_array_push(cmd, json_string(c"bin/wv2"))
+	char* flag = wbg_arch_flag(arch)
+	if (flag != 0):
+		json_array_push(cmd, json_string(flag))
+	for char* args in wbg_dir_flags:
+		wbg_push_split_args(cmd, args)
+	json_array_push(cmd, json_string(src))
+	json_array_push(cmd, json_string(c"-o"))
+	json_array_push(cmd, json_string(binary))
+	return cmd
+
+
+# The runner prefix of a run-capable arch's run step: arm64 and wasm
+# shell through their runner scripts, win64 through wine; x64 and the
+# default arch run the binary directly.
+void wbg_run_wrapper(json_value* run_cmd, int arch):
+	if (arch == wbg_arch_arm64()):
+		json_array_push(run_cmd, json_string(c"sh"))
+		json_array_push(run_cmd, json_string(c"tools/run_arm64.sh"))
+	else if (arch == wbg_arch_wasm()):
+		json_array_push(run_cmd, json_string(c"sh"))
+		json_array_push(run_cmd, json_string(c"tools/run_wasm.sh"))
+	else if (arch == wbg_arch_win64()):
+		json_array_push(run_cmd, json_string(c"wine"))
+
+
+# stdin/expect/timeout decoration from the current directive state,
+# shared by single-target run steps and group-member run steps alike.
+void wbg_decorate_run_step(json_value* run_step):
+	if (wbg_dir_stdin != 0):
+		json_object_set(run_step, c"stdin", json_string(wbg_dir_stdin))
+	if (wbg_dir_expect_fail):
+		json_object_set(run_step, c"expect_fail", json_bool(1))
+	if (wbg_dir_expect_stdout.length > 0):
+		json_object_set(run_step, c"expect_stdout", wbg_expectation(wbg_dir_expect_stdout))
+	if (wbg_dir_expect_stderr.length > 0):
+		json_object_set(run_step, c"expect_stderr", wbg_expectation(wbg_dir_expect_stderr))
+	if (wbg_dir_timeout_ms > 0):
+		json_object_set(run_step, c"timeout_ms", json_int(wbg_dir_timeout_ms))
+
+
+json_value* wbg_make_target(char* name, char* src, int arch):
+	char* ext = c""
+	if (arch == wbg_arch_win64()):
+		ext = c".exe"
+	char* stem = wbg_concat(c"bin/", name)
+	char* binary = wbg_concat(stem, ext)
+	free(stem)
+	json_value* target = json_object()
+	json_object_set(target, c"name", json_string(name))
+	json_value* deps = json_array()
+	json_array_push(deps, json_string(c"wv2"))
+	for char* tool_name in wbg_dir_tool:
+		json_array_push(deps, json_string(tool_name))
+	json_object_set(target, c"deps", deps)
+	if (wbg_dir_data.length > 0):
+		json_value* data = json_array()
+		for char* entry in wbg_dir_data:
+			json_array_push(data, json_string(entry))
+		json_object_set(target, c"data", data)
+	# Cache "inputs" (tools/wexec.w's wexec_cache_key): the source file
+	# plus the declared run-time data — the shape wexec's direct-file
+	# mode synthesizes. wexec's deps-driven keys replace the source's
+	# own hash with its exact per-arch import closure at build time, so
+	# nothing about the closure is baked into the manifest. "outputs"
+	# makes a cache hit conditional on the binary still existing;
+	# compile_fail targets produce none, so they declare only inputs.
+	json_value* inputs = json_array()
+	json_array_push(inputs, json_string(src))
+	for char* input_entry in wbg_dir_data:
+		json_array_push(inputs, json_string(input_entry))
+	json_object_set(target, c"inputs", inputs)
+	if (wbg_dir_compile_fail == 0):
+		json_value* outputs = json_array()
+		json_array_push(outputs, json_string(binary))
+		json_object_set(target, c"outputs", outputs)
+	json_value* compile_step = json_object()
+	json_object_set(compile_step, c"cmd", wbg_compile_cmd(src, arch, binary))
+	# compile_fail: the compile itself is the assertion, so it is the
+	# compile step (not a run step, which would need a binary that a
+	# failed compile never produces) that gets decorated, and no run
+	# step (or extra_compile step, which only ever follows a run step)
+	# is generated at all.
+	if (wbg_dir_compile_fail):
+		json_object_set(compile_step, c"expect_fail", json_bool(1))
+		if (wbg_dir_stdin != 0):
+			json_object_set(compile_step, c"stdin", json_string(wbg_dir_stdin))
+		if (wbg_dir_expect_stdout.length > 0):
+			json_object_set(compile_step, c"expect_stdout", wbg_expectation(wbg_dir_expect_stdout))
+		if (wbg_dir_expect_stderr.length > 0):
+			json_object_set(compile_step, c"expect_stderr", wbg_expectation(wbg_dir_expect_stderr))
+		if (wbg_dir_timeout_ms > 0):
+			json_object_set(compile_step, c"timeout_ms", json_int(wbg_dir_timeout_ms))
+	json_value* steps = json_array()
+	json_array_push(steps, compile_step)
+	# arm64_darwin is compile-only: no runner runs Mach-O on Linux, so
+	# there is no run step to decorate or append to.
+	if ((arch != wbg_arch_arm64_darwin()) && (wbg_dir_compile_fail == 0)):
+		json_value* run_cmd = json_array()
+		wbg_run_wrapper(run_cmd, arch)
+		json_array_push(run_cmd, json_string(binary))
+		if (wbg_dir_argv_decorates_primary):
+			for char* value in wbg_dir_argvs:
+				wbg_push_split_args(run_cmd, value)
+		json_value* run_step = json_object()
+		json_object_set(run_step, c"cmd", run_cmd)
+		wbg_decorate_run_step(run_step)
+		json_array_push(steps, run_step)
+		if (arch == wbg_arch_default()):
+			for char* args in wbg_dir_extra_compile:
+				json_array_push(steps, wbg_extra_compile_step(args))
+	json_object_set(target, c"steps", steps)
+	free(binary)
+	return target
+
+
+int wbg_add_generated(char* name, char* src, int arch):
+	if (name in wbg_gen_seen):
+		string_builder* s = string_new()
+		string_append(s, c"generated target '")
+		string_append(s, name)
+		string_append(s, c"' collides (from ")
+		string_append(s, src)
+		string_append(s, c")")
+		wbg_error(s.data)
+		string_free(s)
+		return 1
+	wbg_gen_seen[name] = 1
+	wbg_generated.push(wbg_make_target(name, src, arch))
+	if (arch == wbg_arch_x64()):
+		wbg_gen64_names.push(name)
+	else if (arch == wbg_arch_arm64()):
+		wbg_gen_arm64_names.push(name)
+	else if (arch == wbg_arch_win64()):
+		wbg_gen_win64_names.push(name)
+	else if (arch == wbg_arch_arm64_darwin()):
+		wbg_gen_darwin_names.push(name)
+	else if (arch == wbg_arch_wasm()):
+		wbg_gen_wasm_names.push(name)
+	else:
+		wbg_gen32_names.push(name)
+	return 0
+
+
+# A name=/argv= variant target (see the module doc comment): the same
+# source recompiled at the default arch only under a different name,
+# whose run step passes argv (whitespace-split) to the binary. No other
+# run-step decoration (expect_*, stdin, timeout, data) composes with a
+# variant — it exists purely to express "one more binary from this
+# source, differing only in its run arguments".
+json_value* wbg_make_variant_target(char* name, char* src, char* argv):
+	char* binary = wbg_concat(c"bin/", name)
+	json_value* target = json_object()
+	json_object_set(target, c"name", json_string(name))
+	json_value* deps = json_array()
+	json_array_push(deps, json_string(c"wv2"))
+	json_object_set(target, c"deps", deps)
+	# Same cache "inputs"/"outputs" shape as wbg_make_target: the
+	# source's import closure comes from wexec's deps-driven keys.
+	json_value* inputs = json_array()
+	json_array_push(inputs, json_string(src))
+	json_object_set(target, c"inputs", inputs)
+	json_value* outputs = json_array()
+	json_array_push(outputs, json_string(binary))
+	json_object_set(target, c"outputs", outputs)
+	json_value* compile_step = json_object()
+	json_object_set(compile_step, c"cmd", wbg_compile_cmd(src, wbg_arch_default(), binary))
+	json_value* run_cmd = json_array()
+	json_array_push(run_cmd, json_string(binary))
+	wbg_push_split_args(run_cmd, argv)
+	json_value* run_step = json_object()
+	json_object_set(run_step, c"cmd", run_cmd)
+	json_value* steps = json_array()
+	json_array_push(steps, compile_step)
+	json_array_push(steps, run_step)
+	json_object_set(target, c"steps", steps)
+	free(binary)
+	return target
+
+
+# Like wbg_add_generated, but for a name=/argv= variant: base still wins
+# by name (silently skipped, not an error — same rule as every other
+# generated name), and a variant joins wbg_gen32_names since it is a
+# plain default-arch run-capable target for umbrella purposes.
+int wbg_add_variant(char* name, char* src, char* argv):
+	if (name in wbg_base_targets):
+		return 0
+	if (name in wbg_gen_seen):
+		string_builder* s = string_new()
+		string_append(s, c"generated target '")
+		string_append(s, name)
+		string_append(s, c"' collides (from ")
+		string_append(s, src)
+		string_append(s, c")")
+		wbg_error(s.data)
+		string_free(s)
+		return 1
+	wbg_gen_seen[name] = 1
+	wbg_generated.push(wbg_make_variant_target(name, src, argv))
+	wbg_gen32_names.push(name)
+	return 0
+
+
+void wbg_sort_generated():
+	int i = 1
+	while (i < wbg_generated.length):
+		json_value* value = wbg_generated[i]
+		char* name = wbg_get_string(value, c"name")
+		int j = i - 1
+		while ((j >= 0) && (strcmp(wbg_get_string(wbg_generated[j], c"name"), name) > 0)):
+			wbg_generated[j + 1] = wbg_generated[j]
+			j = j - 1
+		wbg_generated[j + 1] = value
+		i = i + 1
+
+
+# The single wfixture invocation for one fixture-group: the shape
+# every hand-written wfixture-driven bucket-K target (warning_test and
+# friends) already has by hand —
+#   {"name": name, "deps": ["wv2", wfixture_name],
+#    "steps": [{"cmd": [wfixture_bin, "bin/wv2", <member>, ...]}]}
+# wfixture_name/wfixture_bin come from wbg_find_target_by_source
+# resolving "tools/wfixture.w", not a hardcoded "wfixture" — see
+# wbg_scan's fixture-group pass.
+json_value* wbg_make_fixture_group_target(char* name, list[char*] members, char* wfixture_name, char* wfixture_bin):
+	json_value* target = json_object()
+	json_object_set(target, c"name", json_string(name))
+	json_value* deps = json_array()
+	json_array_push(deps, json_string(c"wv2"))
+	json_array_push(deps, json_string(wfixture_name))
+	json_object_set(target, c"deps", deps)
+	json_value* cmd = json_array()
+	json_array_push(cmd, json_string(wfixture_bin))
+	json_array_push(cmd, json_string(c"bin/wv2"))
+	for char* member in members:
+		json_array_push(cmd, json_string(member))
+	json_value* step = json_object()
+	json_object_set(step, c"cmd", cmd)
+	json_value* steps = json_array()
+	json_array_push(steps, step)
+	json_object_set(target, c"steps", steps)
+	return target
+
+
+int wbg_add_fixture_group_target(char* name, list[char*] members, char* wfixture_name, char* wfixture_bin):
+	if (name in wbg_base_targets):
+		wbg_error2(c"'fixture_group=' target is still hand-written in build.base.json (migration incomplete): ", name)
+		return 1
+	if (name in wbg_gen_seen):
+		string_builder* s = string_new()
+		string_append(s, c"generated target '")
+		string_append(s, name)
+		string_append(s, c"' collides (fixture group)")
+		wbg_error(s.data)
+		string_free(s)
+		return 1
+	wbg_gen_seen[name] = 1
+	wbg_generated.push(wbg_make_fixture_group_target(name, members, wfixture_name, wfixture_bin))
+	return 0
+
+
+/* Multi-program aggregate targets ('# wbuild: group=<target>@<arch>',
+see the module doc comment): one wbg_group accumulates every member's
+compile(+run) steps while that member's own wbg_dir_* state is live, so
+per-member run decorations (expect_stdout= and friends) land on the
+member's own run step exactly as they would on its twins. */
+
+struct wbg_group:
+	char* name
+	int arch
+	json_value* steps          # member compile/run steps, scan order
+	list[char*] inputs         # member sources + their deps= data
+	list[char*] data           # member deps= data files
+	list[char*] outputs        # member binaries
+	list[char*] tools          # resolved tool= target names, deduped
+	map[char*, int] tool_seen
+	map[char*, int] binary_seen
+
+
+# A group member's compiled binary: the member basename with the
+# group's arch spliced in before the trailing '_test' (lib/lib_test.w
+# in a wasm group compiles to bin/lib_wasm_test), the hand-written
+# smoke-bundle convention — and never colliding with a twin binary,
+# which appends its suffix instead (bin/lib_test_wasm).
+char* wbg_group_member_binary(char* src, int arch):
+	char* tag = c"x64"
+	if (arch == wbg_arch_arm64()):
+		tag = c"arm64"
+	else if (arch == wbg_arch_win64()):
+		tag = c"win64"
+	else if (arch == wbg_arch_arm64_darwin()):
+		tag = c"darwin"
+	else if (arch == wbg_arch_wasm()):
+		tag = c"wasm"
+	char* stem = wbg_strip_suffix(wbg_basename(src), 2)
+	int is_test = ends_with(stem, c"_test")
+	string_builder* s = string_new()
+	string_append(s, c"bin/")
+	if (is_test):
+		char* base = wbg_strip_suffix(stem, 5)
+		string_append(s, base)
+		free(base)
+	else:
+		string_append(s, stem)
+	string_append(s, c"_")
+	string_append(s, tag)
+	if (is_test):
+		string_append(s, c"_test")
+	if (arch == wbg_arch_win64()):
+		string_append(s, c".exe")
+	free(stem)
+	char* out = s.data
+	free(s)
+	return out
+
+
+# Appends one member's compile(+run) steps and cache/data bookkeeping
+# to its group, from the member's live wbg_dir_* state. Returns 0 on
+# success, 1 after reporting an error.
+int wbg_group_add_member(wbg_group* g, char* src):
+	char* binary = wbg_group_member_binary(src, g.arch)
+	if (binary in g.binary_seen):
+		wbg_error2(c"two 'group=' members of one group share a compiled binary name (rename one source): ", src)
+		return 1
+	g.binary_seen[binary] = 1
+	json_value* compile_step = json_object()
+	json_object_set(compile_step, c"cmd", wbg_compile_cmd(src, g.arch, binary))
+	json_array_push(g.steps, compile_step)
+	# arm64_darwin members are compile-only, same as the X_darwin twins.
+	if (g.arch != wbg_arch_arm64_darwin()):
+		json_value* run_cmd = json_array()
+		wbg_run_wrapper(run_cmd, g.arch)
+		json_array_push(run_cmd, json_string(binary))
+		if (wbg_dir_argv_decorates_primary):
+			for char* value in wbg_dir_argvs:
+				wbg_push_split_args(run_cmd, value)
+		json_value* run_step = json_object()
+		json_object_set(run_step, c"cmd", run_cmd)
+		wbg_decorate_run_step(run_step)
+		json_array_push(g.steps, run_step)
+	g.inputs.push(strclone(src))
+	for char* entry in wbg_dir_data:
+		g.inputs.push(strclone(entry))
+		g.data.push(strclone(entry))
+	g.outputs.push(binary)
+	for char* tool_name in wbg_dir_tool:
+		if ((tool_name in g.tool_seen) == 0):
+			g.tool_seen[strclone(tool_name)] = 1
+			g.tools.push(strclone(tool_name))
+	return 0
+
+
+# One finished aggregate: the members' accumulated steps under the
+# group's name, closed by the shared success epilogue. Same field shape
+# as wbg_make_target — the cache "inputs" list every member's source
+# (wexec's deps-driven keys expand each compile root's per-arch import
+# closure) and "outputs" every member binary.
+json_value* wbg_make_group_target(wbg_group* g):
+	json_value* target = json_object()
+	json_object_set(target, c"name", json_string(g.name))
+	json_value* deps = json_array()
+	json_array_push(deps, json_string(c"wv2"))
+	for char* tool_name in g.tools:
+		json_array_push(deps, json_string(tool_name))
+	json_object_set(target, c"deps", deps)
+	if (g.data.length > 0):
+		json_value* data = json_array()
+		for char* data_entry in g.data:
+			json_array_push(data, json_string(data_entry))
+		json_object_set(target, c"data", data)
+	json_value* inputs = json_array()
+	for char* input_entry in g.inputs:
+		json_array_push(inputs, json_string(input_entry))
+	json_object_set(target, c"inputs", inputs)
+	json_value* outputs = json_array()
+	for char* output_entry in g.outputs:
+		json_array_push(outputs, json_string(output_entry))
+	json_object_set(target, c"outputs", outputs)
+	# The shared epilogue: a long multi-program target ends with one
+	# visible line saying the whole bundle passed.
+	json_value* echo_cmd = json_array()
+	json_array_push(echo_cmd, json_string(c"echo"))
+	char* text = wbg_concat(g.name, c" OK")
+	json_array_push(echo_cmd, json_string(text))
+	free(text)
+	json_value* echo_step = json_object()
+	json_object_set(echo_step, c"cmd", echo_cmd)
+	json_array_push(g.steps, echo_step)
+	json_object_set(target, c"steps", g.steps)
+	return target
+
+
+int wbg_add_group_target(wbg_group* g):
+	if (g.name in wbg_base_targets):
+		wbg_error2(c"'group=' target is still hand-written in build.base.json (migration incomplete): ", g.name)
+		return 1
+	if (g.name in wbg_gen_seen):
+		string_builder* s = string_new()
+		string_append(s, c"generated target '")
+		string_append(s, g.name)
+		string_append(s, c"' collides (group)")
+		wbg_error(s.data)
+		string_free(s)
+		return 1
+	wbg_gen_seen[g.name] = 1
+	wbg_generated.push(wbg_make_group_target(g))
+	# Umbrella membership follows the group's arch, like arch_only=:
+	# x64 joins "tests_x64", win64 "tests_win64", compile-only darwin
+	# "tests"; arm64 and wasm join none (qemu / wasm-runtime hosts).
+	if (g.arch == wbg_arch_x64()):
+		wbg_gen64_names.push(g.name)
+	else if (g.arch == wbg_arch_arm64()):
+		wbg_gen_arm64_names.push(g.name)
+	else if (g.arch == wbg_arch_win64()):
+		wbg_gen_win64_names.push(g.name)
+	else if (g.arch == wbg_arch_arm64_darwin()):
+		wbg_gen_darwin_names.push(g.name)
+	else if (g.arch == wbg_arch_wasm()):
+		wbg_gen_wasm_names.push(g.name)
+	return 0
+
+
+/* Tool targets ("generate": {"tool_targets": [...]}, see the module
+doc comment): the whole target is one already-built tool invocation —
+no compile step of its own, so no *_test.w source exists for a
+directive to live on. The entry carries name/steps (plus optional
+inputs/outputs/data) verbatim; "deps" is derived from the step
+commands, so it can never drift from them. */
+
+# Whether an entry key is one tool_targets accepts. "deps" is singled
+# out by the caller (derived, never declared); anything else unknown
+# is a typo and fails the manifest run.
+int wbg_tool_entry_key_ok(char* key):
+	if (strcmp(key, c"name") == 0):
+		return 1
+	if (strcmp(key, c"steps") == 0):
+		return 1
+	if (strcmp(key, c"inputs") == 0):
+		return 1
+	if (strcmp(key, c"outputs") == 0):
+		return 1
+	if (strcmp(key, c"data") == 0):
+		return 1
+	return 0
+
+
+# Validates one entry's step list: a nonempty array of objects, each
+# with a nonempty "cmd" array of strings. Every other step field
+# (expect_*/reject_*/expect_status/timeout_ms/stdin/...) is wexec's
+# own per-step schema and passes through untouched. Returns 0 on
+# success, 1 after reporting an error against name.
+int wbg_tool_check_steps(char* name, json_value* steps):
+	if ((steps == 0) || (steps.type != json_type_array()) || (json_array_length(steps) == 0)):
+		wbg_error2(c"\"tool_targets\" entry needs a nonempty \"steps\" array: ", name)
+		return 1
+	int i = 0
+	while (i < json_array_length(steps)):
+		json_value* step = json_array_get(steps, i)
+		if (step.type != json_type_object()):
+			wbg_error2(c"\"tool_targets\" steps must be objects: ", name)
+			return 1
+		json_value* cmd = json_object_get(step, c"cmd")
+		if ((cmd == 0) || (cmd.type != json_type_array()) || (json_array_length(cmd) == 0)):
+			wbg_error2(c"\"tool_targets\" step needs a nonempty \"cmd\" array: ", name)
+			return 1
+		int j = 0
+		while (j < json_array_length(cmd)):
+			if (json_array_get(cmd, j).type != json_type_string()):
+				wbg_error2(c"\"tool_targets\" step \"cmd\" elements must be strings: ", name)
+				return 1
+			j = j + 1
+		i = i + 1
+	return 0
+
+
+# The paths an entry's own steps produce: every argument following a
+# "-o" in a step "cmd", plus the entry's declared "outputs" — a later
+# step consuming one of these (asm_seed_gate running the binary its
+# first step compiled) is self-satisfied, never a target dependency.
+void wbg_tool_self_outputs(json_value* entry, map[char*, int] produced):
+	json_value* outputs = json_object_get(entry, c"outputs")
+	if ((outputs != 0) && (outputs.type == json_type_array())):
+		int i = 0
+		while (i < json_array_length(outputs)):
+			json_value* element = json_array_get(outputs, i)
+			if (element.type == json_type_string()):
+				produced[element.string_value] = 1
+			i = i + 1
+	json_value* steps = json_object_get(entry, c"steps")
+	int s = 0
+	while (s < json_array_length(steps)):
+		json_value* cmd = json_object_get(json_array_get(steps, s), c"cmd")
+		int j = 0
+		while (j + 1 < json_array_length(cmd)):
+			json_value* element = json_array_get(cmd, j)
+			if ((element.type == json_type_string()) && (strcmp(element.string_value, c"-o") == 0)):
+				json_value* out = json_array_get(cmd, j + 1)
+				if (out.type == json_type_string()):
+					produced[out.string_value] = 1
+			j = j + 1
+		s = s + 1
+
+
+# Derives an entry's "deps" from its step commands: every cmd element
+# equal to a base target's declared output adds that target's name
+# (first-seen order, deduped); self-produced paths add nothing. A
+# command word (cmd[0]) under bin/ that resolves to neither is a hard
+# error — a typoed tool path fails the manifest run, not the build.
+# Non-command elements that resolve to nothing are fine (fixture
+# paths, flags, scratch outputs).
+int wbg_tool_derive_deps(char* name, json_value* steps, map[char*, int] produced, list[char*] dep_names):
+	map[char*, int] dep_seen = new map[char*, int]
+	int s = 0
+	while (s < json_array_length(steps)):
+		json_value* cmd = json_object_get(json_array_get(steps, s), c"cmd")
+		int j = 0
+		while (j < json_array_length(cmd)):
+			char* word = json_array_get(cmd, j).string_value
+			if ((word in produced) == 0):
+				json_value* producer = wbg_find_target_by_output(word)
+				if (producer != 0):
+					char* dep = wbg_get_string(producer, c"name")
+					if ((dep in dep_seen) == 0):
+						dep_seen[dep] = 1
+						dep_names.push(dep)
+				else if ((j == 0) && starts_with(word, c"bin/")):
+					string_builder* message = string_new()
+					string_append(message, c"\"tool_targets\" entry '")
+					string_append(message, name)
+					string_append(message, c"': step command is not the output of any base target (or of an earlier step): ")
+					string_append(message, word)
+					wbg_error(message.data)
+					string_free(message)
+					return 1
+			j = j + 1
+		s = s + 1
+	return 0
+
+
+int wbg_expand_tool_target(json_value* entry):
+	if (entry.type != json_type_object()):
+		wbg_error(c"\"tool_targets\" entries must be objects")
+		return 1
+	char* name = wbg_get_string(entry, c"name")
+	if (name == 0):
+		wbg_error(c"\"tool_targets\" entry without a \"name\" string")
+		return 1
+	for char* key, json_value* member in entry.object_values:
+		if (strcmp(key, c"deps") == 0):
+			wbg_error2(c"\"tool_targets\" entries must not declare \"deps\" (derived from the step commands): ", name)
+			return 1
+		if (wbg_tool_entry_key_ok(key) == 0):
+			wbg_token_error(name, c"unknown \"tool_targets\" entry key ", key)
+			return 1
+	json_value* steps = json_object_get(entry, c"steps")
+	if (wbg_tool_check_steps(name, steps)):
+		return 1
+	if (name in wbg_base_targets):
+		wbg_error2(c"\"tool_targets\" entry is still hand-written in build.base.json's \"targets\" (delete the hand-written entry): ", name)
+		return 1
+	if (name in wbg_gen_seen):
+		wbg_error2(c"generated target collides with \"tool_targets\" entry ", name)
+		return 1
+	map[char*, int] produced = new map[char*, int]
+	wbg_tool_self_outputs(entry, produced)
+	list[char*] dep_names = new list[char*]
+	if (wbg_tool_derive_deps(name, steps, produced, dep_names)):
+		return 1
+	# The generated target keeps the entry's own field order, with the
+	# derived "deps" inserted right after "name" (the field order every
+	# hand-written original had), so the migration diffs cleanly. Tool
+	# targets join no umbrella name list — the hand-maintained umbrella
+	# deps in build.base.json keep listing them.
+	json_value* target = json_object()
+	json_object_set(target, c"name", json_string(name))
+	if (dep_names.length > 0):
+		json_value* deps = json_array()
+		for char* dep in dep_names:
+			json_array_push(deps, json_string(dep))
+		json_object_set(target, c"deps", deps)
+	for char* key, json_value* member in entry.object_values:
+		if (strcmp(key, c"name") != 0):
+			json_object_set(target, key, member)
+	wbg_gen_seen[name] = 1
+	wbg_generated.push(target)
+	return 0
+
+
+int wbg_expand_tool_targets():
+	if (wbg_tool_targets_json == 0):
+		return 0
+	int i = 0
+	while (i < json_array_length(wbg_tool_targets_json)):
+		if (wbg_expand_tool_target(json_array_get(wbg_tool_targets_json, i))):
+			return 1
+		i = i + 1
+	return 0
+
+
+int wbg_scan():
+	wbg_generated = new list[json_value*]
+	wbg_gen_seen = new map[char*, int]
+	wbg_gen32_names = new list[char*]
+	wbg_gen64_names = new list[char*]
+	wbg_gen_arm64_names = new list[char*]
+	wbg_gen_win64_names = new list[char*]
+	wbg_gen_darwin_names = new list[char*]
+	wbg_gen_wasm_names = new list[char*]
+
+	list[char*] files = new list[char*]
+	wbg_collect_dir(c"tests", files)
+	wbg_collect_dir(c"lib", files)
+	wbg_collect_dir(c"structures", files)
+	wbg_collect_dir(c"graphics", files)
+	wbg_collect_dir(c"libs", files)
+	wbg_collect_dir(c"tools", files)
+	wbg_sort_strings(files)
+
+	# Fixture-group accumulation (wave 2d): members are collected here,
+	# in the same alphabetical path order 'files' already has, and
+	# turned into one generated target per group name after the main
+	# loop (see below wbg_sort_generated()).
+	map[char*, list[char*]] fixture_groups = new map[char*, list[char*]]
+	list[char*] fixture_group_names = new list[char*]
+
+	# 'group=' aggregates accumulate the same way: members contribute
+	# their steps in alphabetical path order, and each group becomes one
+	# generated target after the main loop.
+	map[char*, wbg_group*] groups = new map[char*, wbg_group*]
+	list[char*] group_order = new list[char*]
+
+	for char* src in files:
+		int is_test = ends_with(src, c"_test.w")
+		int is_fixture = ends_with(src, c"_fixture.w")
+		if ((is_test == 0) && (is_fixture == 0)):
+			continue
+		if (src in wbg_exclude):
+			continue
+		if (wbg_parse_directives(src)):
+			return 1
+		if (wbg_dir_fixture_group != 0):
+			# A fixture-group member has no compile-and-run shape of its
+			# own — it is one line in its group's single wfixture
+			# invocation — so run/arch/tool/deps/name/argv directives
+			# (which all decorate or extend a generated compile+run
+			# target) do not apply here; catch a copy-paste mistake
+			# instead of silently ignoring it.
+			int forbidden = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_wasm | (wbg_dir_arch_only != 0) | wbg_dir_compile_fail | wbg_dir_has_run_fields() | (wbg_dir_extra_compile.length > 0) | (wbg_dir_tool.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0) | (wbg_dir_flags.length > 0) | (wbg_dir_group_names.length > 0) | wbg_dir_group_only
+			if (forbidden):
+				wbg_error2(c"'fixture_group=' cannot combine with run/arch/tool/deps directives: ", src)
+				return 1
+			if ((wbg_dir_fixture_group in fixture_groups) == 0):
+				fixture_groups[wbg_dir_fixture_group] = new list[char*]
+				fixture_group_names.push(wbg_dir_fixture_group)
+			fixture_groups[wbg_dir_fixture_group].push(strclone(src))
+			continue
+		if (is_test == 0):
+			# A fixture is not a test target, so a fixture carrying
+			# '# wbuild:' directives without 'fixture_group=' used to be
+			# skipped with the directives silently unhonored (e.g. a
+			# stray '# wbuild: x64' line doing nothing) — a hard error
+			# now, same as any other directive nothing generated honors.
+			int stray = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_wasm | (wbg_dir_arch_only != 0) | wbg_dir_expect_fail | wbg_dir_compile_fail | (wbg_dir_timeout_ms > 0) | (wbg_dir_stdin != 0) | (wbg_dir_expect_stdout.length > 0) | (wbg_dir_expect_stderr.length > 0) | (wbg_dir_extra_compile.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0) | (wbg_dir_tool.length > 0) | (wbg_dir_flags.length > 0) | (wbg_dir_group_names.length > 0) | wbg_dir_group_only
+			if (stray):
+				wbg_error2(c"'# wbuild:' directives on a fixture need 'fixture_group=' (a fixture is not a test target): ", src)
+				return 1
+			continue
+		# name=/argv= resolution (bucket G basename overrides + bucket H
+		# argv variants — see the module doc comment and
+		# wbg_apply_directive's comment for the pairing rule):
+		#   name= alone (exactly one)      overrides name32 below
+		#   argv= alone (one or more)      decorates every twin's run step
+		#   name=/argv=, equal counts > 0  each pair is an extra variant
+		#                                  target, generated further down;
+		#                                  name32 is left untouched
+		#   anything else nonzero          a directive error
+		int n_names = wbg_dir_names.length
+		int n_argv = wbg_dir_argvs.length
+		char* name_override = 0
+		if ((n_names == 1) && (n_argv == 0)):
+			name_override = wbg_dir_names[0]
+		else if ((n_names == 0) && (n_argv > 0)):
+			wbg_dir_argv_decorates_primary = 1
+		else if ((n_names > 0) && (n_argv > 0) && (n_names != n_argv)):
+			wbg_token_error(src, c"'name=' and 'argv=' directive counts must match to pair as variants (or use exactly one 'name=' alone to rename, or 'argv=' alone to decorate): ", src)
+			return 1
+		else if ((n_names > 1) && (n_argv == 0)):
+			wbg_token_error(src, c"multiple 'name=' directives need an equal number of paired 'argv=' directives (variants), or exactly one 'name=' alone (rename): ", src)
+			return 1
+		# group=/group_only resolution (see the module doc comment):
+		# each group= token adds this source to one aggregate target,
+		# and group_only additionally suppresses every standalone
+		# target the source would otherwise generate — so the
+		# standalone-shaping directives cannot combine with it.
+		if (wbg_dir_group_only && (wbg_dir_group_names.length == 0)):
+			wbg_error2(c"'group_only' needs at least one 'group=' membership: ", src)
+			return 1
+		if (wbg_dir_group_only):
+			int standalone = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_wasm | (wbg_dir_arch_only != 0) | (wbg_dir_names.length > 0) | (wbg_dir_extra_compile.length > 0) | wbg_dir_compile_fail
+			if (standalone):
+				wbg_error2(c"'group_only' suppresses every standalone target, so 'x64'/'arch='/'arch_only='/'name='/'extra_compile='/'compile_fail' cannot combine with it: ", src)
+				return 1
+		if (wbg_dir_compile_fail && (wbg_dir_group_names.length > 0)):
+			wbg_error2(c"'compile_fail' cannot combine with 'group=' (a group member is compiled and run): ", src)
+			return 1
+		int primary_arch = wbg_arch_default()
+		if (wbg_dir_arch_only != 0):
+			# arch_only=: the single target keeps name32 but compiles
+			# with the directive's arch, and no default twin exists. The
+			# twin/variant/extra_compile directives all presuppose a
+			# default-arch target, so combining them is an error.
+			if (wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_wasm):
+				wbg_error2(c"'arch_only=' replaces the default target and cannot combine with 'x64'/'arch=' twin directives: ", src)
+				return 1
+			if ((n_names > 0) && (n_argv > 0)):
+				wbg_error2(c"'arch_only=' cannot combine with 'name='/'argv=' variant pairs (variants are default-arch targets): ", src)
+				return 1
+			if (wbg_dir_extra_compile.length > 0):
+				wbg_error2(c"'extra_compile=' needs a default-arch target, which 'arch_only=' replaces: ", src)
+				return 1
+			primary_arch = wbg_dir_arch_only
+		char* name32 = wbg_strip_suffix(wbg_basename(src), 2)
+		if (name_override != 0):
+			name32 = name_override
+		int gen32 = 0
+		int gen64 = 0
+		int gen_arm64 = 0
+		int gen_win64 = 0
+		int gen_darwin = 0
+		int gen_wasm = 0
+		# group_only: no standalone target at all — the twin/variant
+		# blocks below cannot fire either, since every directive that
+		# would feed them was rejected above.
+		if ((wbg_dir_group_only == 0) && ((name32 in wbg_base_targets) == 0)):
+			if (wbg_add_generated(name32, strclone(src), primary_arch)):
+				return 1
+			# The gen* flag mirrors the arch actually compiled, so the
+			# no-target-honors-this-directive checks below stay exact
+			# under arch_only= (e.g. run-step directives on an
+			# arch_only=arm64_darwin source still error).
+			if (primary_arch == wbg_arch_x64()):
+				gen64 = 1
+			else if (primary_arch == wbg_arch_arm64()):
+				gen_arm64 = 1
+			else if (primary_arch == wbg_arch_win64()):
+				gen_win64 = 1
+			else if (primary_arch == wbg_arch_arm64_darwin()):
+				gen_darwin = 1
+			else if (primary_arch == wbg_arch_wasm()):
+				gen_wasm = 1
+			else:
+				gen32 = 1
+		if (wbg_dir_x64):
+			char* stem = wbg_strip_suffix(name32, 5)
+			char* name64 = wbg_concat(stem, c"_64_test")
+			free(stem)
+			if ((name64 in wbg_base_targets) == 0):
+				if (wbg_add_generated(name64, strclone(src), wbg_arch_x64())):
+					return 1
+				gen64 = 1
+		if (wbg_dir_arm64):
+			char* name_arm64 = wbg_concat(name32, c"_arm64")
+			if ((name_arm64 in wbg_base_targets) == 0):
+				if (wbg_add_generated(name_arm64, strclone(src), wbg_arch_arm64())):
+					return 1
+				gen_arm64 = 1
+		if (wbg_dir_win64):
+			char* name_win64 = wbg_concat(name32, c"_win64")
+			if ((name_win64 in wbg_base_targets) == 0):
+				if (wbg_add_generated(name_win64, strclone(src), wbg_arch_win64())):
+					return 1
+				gen_win64 = 1
+		if (wbg_dir_arm64_darwin):
+			char* name_darwin = wbg_concat(name32, c"_darwin")
+			if ((name_darwin in wbg_base_targets) == 0):
+				if (wbg_add_generated(name_darwin, strclone(src), wbg_arch_arm64_darwin())):
+					return 1
+				gen_darwin = 1
+		if (wbg_dir_wasm):
+			char* name_wasm = wbg_concat(name32, c"_wasm")
+			if ((name_wasm in wbg_base_targets) == 0):
+				if (wbg_add_generated(name_wasm, strclone(src), wbg_arch_wasm())):
+					return 1
+				gen_wasm = 1
+		if ((n_names > 0) && (n_argv > 0) && (n_names == n_argv)):
+			int vi = 0
+			while (vi < n_names):
+				if (wbg_add_variant(wbg_dir_names[vi], strclone(src), wbg_dir_argvs[vi])):
+					return 1
+				vi = vi + 1
+		# Group memberships: each group= token contributes this source's
+		# compile(+run) steps to its aggregate, with the member's own
+		# run-field directives decorating its run step (built here,
+		# while this member's wbg_dir_* state is still live).
+		int member_run_capable = 0
+		int member_any = 0
+		int mi = 0
+		while (mi < wbg_dir_group_names.length):
+			char* member_group = wbg_dir_group_names[mi]
+			int member_arch = wbg_dir_group_archs[mi]
+			wbg_group* g = groups.get(member_group, 0)
+			if (g == 0):
+				g = new wbg_group()
+				g.name = strclone(member_group)
+				g.arch = member_arch
+				g.steps = json_array()
+				g.inputs = new list[char*]
+				g.data = new list[char*]
+				g.outputs = new list[char*]
+				g.tools = new list[char*]
+				g.tool_seen = new map[char*, int]
+				g.binary_seen = new map[char*, int]
+				groups[g.name] = g
+				group_order.push(g.name)
+			else if (g.arch != member_arch):
+				wbg_error2(c"'group=' members disagree on the group's arch: ", src)
+				return 1
+			if (wbg_group_add_member(g, src)):
+				return 1
+			member_any = 1
+			if (member_arch != wbg_arch_arm64_darwin()):
+				member_run_capable = 1
+			mi = mi + 1
+		# Directives that nothing generated can honor are as fatal as
+		# typos: they mean the target moved to build.base.json without
+		# the source shedding its directive lines (or vice versa).
+		int gen_run_capable = gen32 | gen64 | gen_arm64 | gen_win64 | gen_wasm | member_run_capable
+		int gen_any = gen_run_capable | gen_darwin | member_any
+		if ((gen32 == 0) && (wbg_dir_extra_compile.length > 0)):
+			wbg_error2(c"'extra_compile=' needs a generated default target, but build.base.json defines it: ", src)
+			return 1
+		if (wbg_dir_compile_fail && (wbg_dir_extra_compile.length > 0)):
+			wbg_error2(c"'compile_fail' cannot combine with 'extra_compile=' (a failed compile has no successful step to extend): ", src)
+			return 1
+		if (wbg_dir_compile_fail):
+			# compile_fail's fields decorate the compile step of every
+			# twin the source requests, arm64_darwin included, so any
+			# generated twin at all satisfies it.
+			if (gen_any == 0):
+				wbg_error2(c"'# wbuild:' directives have no generated target (build.base.json defines them all): ", src)
+				return 1
+			# stdin/expect_stdout/expect_stderr/timeout_ms decorate the
+			# compile step above, but a failed compile has no run step
+			# for 'argv=' to land on, 'expect_fail' is subsumed by
+			# compile_fail itself, and a name=/argv= variant target
+			# never carries compile_fail -- reject those combinations
+			# instead of silently dropping the directive (or generating
+			# a variant guaranteed to fail at build time).
+			if (wbg_dir_expect_fail | wbg_dir_argv_decorates_primary | ((n_names > 0) && (n_argv > 0))):
+				wbg_error2(c"'compile_fail' cannot combine with 'expect_fail', 'argv=', or variant directives (a failed compile never runs): ", src)
+				return 1
+		else if ((gen_run_capable == 0) && wbg_dir_has_run_fields()):
+			wbg_error2(c"'# wbuild:' run-step directives have no generated run-capable target (only compile-only twins, or build.base.json defines them all): ", src)
+			return 1
+		if ((gen_any == 0) && (wbg_dir_data.length > 0)):
+			wbg_error2(c"'# wbuild:' directives have no generated target (build.base.json defines them all): ", src)
+			return 1
+		if ((gen_any == 0) && (wbg_dir_tool.length > 0)):
+			wbg_error2(c"'tool=' directive has no generated target (build.base.json defines them all): ", src)
+			return 1
+
+	# One aggregate target per 'group=' name, members in the order the
+	# (sorted) scan encountered them.
+	for char* group_name in group_order:
+		if (wbg_add_group_target(groups[group_name])):
+			return 1
+
+	# One wfixture invocation per fixture-group name, resolved via the
+	# same wbg_find_target_by_source path-based lookup 'tool=' uses —
+	# see the module doc comment's "Path-based target dependencies"
+	# section.
+	if (fixture_group_names.length > 0):
+		json_value* wfixture_target = wbg_find_target_by_source(c"tools/wfixture.w")
+		if (wfixture_target == 0):
+			wbg_error(c"'fixture_group=' targets need a build.base.json target compiling tools/wfixture.w")
+			return 1
+		char* wfixture_name = wbg_get_string(wfixture_target, c"name")
+		char* wfixture_bin = wbg_target_binary_path(wfixture_target)
+		if (wfixture_bin == 0):
+			wbg_error2(c"cannot determine wfixture's output binary from target ", wfixture_name)
+			return 1
+		for char* group_name in fixture_group_names:
+			if (wbg_add_fixture_group_target(group_name, fixture_groups[group_name], wfixture_name, wfixture_bin)):
+				return 1
+
+	# Tool targets ride the same generated list (and the same sorted
+	# output position) as scan-derived targets.
+	if (wbg_expand_tool_targets()):
+		return 1
+
+	wbg_sort_generated()
+	wbg_sort_strings(wbg_gen32_names)
+	wbg_sort_strings(wbg_gen64_names)
+	wbg_sort_strings(wbg_gen_arm64_names)
+	wbg_sort_strings(wbg_gen_win64_names)
+	wbg_sort_strings(wbg_gen_darwin_names)
+	wbg_sort_strings(wbg_gen_wasm_names)
+	return 0
+
+
+# Append the generated members of one umbrella (already sorted), minus
+# the pinned names, to the umbrella target's deps.
+int wbg_extend_umbrella(char* umbrella, list[char*] names):
+	list[char*] wanted = new list[char*]
+	for char* name in names:
+		if ((name in wbg_pinned) == 0):
+			wanted.push(name)
+	if (wanted.length == 0):
+		return 0
+	json_value* target = wbg_base_targets.get(umbrella, 0)
+	if (target == 0):
+		wbg_error2(c"missing umbrella target ", umbrella)
+		return 1
+	json_value* deps = json_object_get(target, c"deps")
+	if (deps == 0):
+		wbg_error2(c"umbrella target has no \"deps\": ", umbrella)
+		return 1
+	if (deps.type != json_type_array()):
+		wbg_error2(c"umbrella \"deps\" is not an array: ", umbrella)
+		return 1
+	for char* name in wanted:
+		json_array_push(deps, json_string(name))
+	return 0
+
+
+/* Serialization.
+
+The manifest layout is fixed so regeneration is reproducible:
+- scalar and array fields print compact on one line with ", " and ": "
+  separators;
+- each step prints on its own line;
+- the deps of step-less (umbrella) targets print one per line;
+- base targets keep their parse order, field order included. */
+
+void wbg_append_compact(string_builder* out, json_value* value):
+	if (value.type == json_type_string()):
+		json_append_escaped_string(out, value.string_value)
+	else if (value.type == json_type_int()):
+		string_append_int(out, value.int_value)
+	else if (value.type == json_type_bool()):
+		if (value.int_value):
+			string_append(out, c"true")
+		else:
+			string_append(out, c"false")
+	else if (value.type == json_type_array()):
+		string_append_char(out, '[')
+		int i = 0
+		while (i < json_array_length(value)):
+			if (i > 0):
+				string_append(out, c", ")
+			wbg_append_compact(out, json_array_get(value, i))
+			i = i + 1
+		string_append_char(out, ']')
+	else if (value.type == json_type_object()):
+		string_append_char(out, '{')
+		int first = 1
+		for char* key, json_value* member in value.object_values:
+			if (first == 0):
+				string_append(out, c", ")
+			first = 0
+			json_append_escaped_string(out, key)
+			string_append(out, c": ")
+			wbg_append_compact(out, member)
+		string_append_char(out, '}')
+	else:
+		string_append(out, c"null")
+
+
+# One array element per line, indented with four tabs.
+void wbg_append_element_lines(string_builder* out, json_value* array):
+	int i = 0
+	while (i < json_array_length(array)):
+		string_append(out, c"\t\t\t\t")
+		wbg_append_compact(out, json_array_get(array, i))
+		if (i + 1 < json_array_length(array)):
+			string_append_char(out, ',')
+		string_append_char(out, '\n')
+		i = i + 1
+
+
+void wbg_append_target(string_builder* out, json_value* target):
+	string_append(out, c"\t\t{\n")
+	int has_steps = json_object_has(target, c"steps")
+	int first = 1
+	for char* key, json_value* member in target.object_values:
+		if (first == 0):
+			string_append(out, c",\n")
+		first = 0
+		int multiline = 0
+		if (member.type == json_type_array()):
+			if (strcmp(key, c"steps") == 0):
+				multiline = 1
+			if ((strcmp(key, c"deps") == 0) && (has_steps == 0)):
+				multiline = 1
+		if (multiline):
+			string_append(out, c"\t\t\t")
+			json_append_escaped_string(out, key)
+			string_append(out, c": [\n")
+			wbg_append_element_lines(out, member)
+			string_append(out, c"\t\t\t]")
+		else:
+			string_append(out, c"\t\t\t")
+			json_append_escaped_string(out, key)
+			string_append(out, c": ")
+			wbg_append_compact(out, member)
+	string_append(out, c"\n\t\t}")
+
+
+# The whole manifest: root members in base order minus "generate",
+# targets expanded one object at a time.
+char* wbg_render():
+	string_builder* out = string_new()
+	string_append(out, c"{\n")
+	int first = 1
+	for char* key, json_value* member in wbg_base.object_values:
+		if (strcmp(key, c"generate") == 0):
+			continue
+		if (first == 0):
+			string_append(out, c",\n")
+		first = 0
+		if (strcmp(key, c"targets") == 0):
+			string_append(out, c"\t\"targets\": [\n")
+			int i = 0
+			while (i < json_array_length(member)):
+				if (i > 0):
+					string_append(out, c",\n")
+				wbg_append_target(out, json_array_get(member, i))
+				i = i + 1
+			string_append(out, c"\n\t]")
+		else:
+			string_append(out, c"\t")
+			json_append_escaped_string(out, key)
+			string_append(out, c": ")
+			wbg_append_compact(out, member)
+	string_append(out, c"\n}\n")
+	char* text = out.data
+	free(out)
+	return text
+
+
+/* --check drift summary: name-level triage between the committed
+manifest and the regenerated one, so the failure says which target to
+look at instead of just "bytes differ". */
+
+void wbg_report_drift(char* out_path, char* current, char* rendered):
+	json_value* committed = json_parse(current)
+	json_value* fresh = json_parse(rendered)
+	int reported = 0
+	if (committed == 0):
+		# A committed manifest that does not even parse (a torn write
+		# from before 'manifest' renamed atomically, or a hand edit) is
+		# its own failure mode; it used to fall through to the
+		# "formatting only" line below, which mislabeled it.
+		wbg_error2(c"committed manifest failed to parse: ", out_path)
+		reported = 1
+	if ((committed != 0) && (fresh != 0)):
+		json_value* old_targets = json_object_get(committed, c"targets")
+		json_value* new_targets = json_object_get(fresh, c"targets")
+		map[char*, char*] old_defs = new map[char*, char*]
+		int i = 0
+		while (i < json_array_length(old_targets)):
+			json_value* target = json_array_get(old_targets, i)
+			char* name = wbg_get_string(target, c"name")
+			if (name != 0):
+				old_defs[name] = json_stringify(target)
+			i = i + 1
+		map[char*, int] new_names = new map[char*, int]
+		i = 0
+		while (i < json_array_length(new_targets)):
+			json_value* target = json_array_get(new_targets, i)
+			char* name = wbg_get_string(target, c"name")
+			if (name != 0):
+				new_names[name] = 1
+				char* old_def = old_defs.get(name, 0)
+				if (old_def == 0):
+					wbg_error2(c"target missing from committed manifest: ", name)
+					reported = 1
+				else:
+					char* new_def = json_stringify(target)
+					if (strcmp(old_def, new_def) != 0):
+						wbg_error2(c"target definition drifted: ", name)
+						reported = 1
+					free(new_def)
+			i = i + 1
+		for char* name, char* def in old_defs:
+			if ((name in new_names) == 0):
+				wbg_error2(c"committed target no longer generated: ", name)
+				reported = 1
+	if (reported == 0):
+		wbg_error(c"manifests differ in formatting only")
+	wbg_error2(c"stale manifest: ", out_path)
+
+
+/* Generate the manifest in memory and return its rendered JSON text, or
+0 after printing an error. scan_tree = 0 skips the source-tree walk, so
+only build.base.json's own targets and its tool_targets come out: the
+executors on hosts whose directory listing this module cannot parse
+(wbg_collect_dir is Linux getdents only; see wexec_dirents_supported)
+still run the hand-written darwin/win64 toolchain targets. Call it once
+per process: the wbg_* tables are global. */
+char* wbg_generate(char* base_path, int scan_tree):
+	wbg_scan_tree = scan_tree
+	if (wbg_load_base(base_path)):
+		return 0
+	if (wbg_scan()):
+		return 0
+	if (wbg_extend_umbrella(c"tests", wbg_gen32_names)):
+		return 0
+	# Compile-only darwin twins are cheap to verify on Linux (no qemu,
+	# no wine), so they join "tests" the way graphics_darwin/pac_darwin
+	# already do. Generated arm64 and wasm twins join no umbrella (see
+	# the module doc comment); win64 twins join "tests_win64" like
+	# their hand-written counterparts.
+	if (wbg_extend_umbrella(c"tests", wbg_gen_darwin_names)):
+		return 0
+	if (wbg_extend_umbrella(c"tests_x64", wbg_gen64_names)):
+		return 0
+	if (wbg_extend_umbrella(c"tests_win64", wbg_gen_win64_names)):
+		return 0
+
+	json_value* targets = json_object_get(wbg_base, c"targets")
+	for json_value* target in wbg_generated:
+		json_array_push(targets, target)
+
+	string_builder* summary = string_new()
+	string_append_int(summary, json_array_length(targets))
+	string_append(summary, c" targets, ")
+	string_append_int(summary, wbg_generated.length)
+	string_append(summary, c" generated)")
+	wbg_summary = summary.data
+	return wbg_render()

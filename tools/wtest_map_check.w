@@ -78,6 +78,7 @@ import lib.process
 import lib.stream
 import structures.string
 import structures.json
+import tools.manifest_source
 
 
 struct check_case:
@@ -153,22 +154,25 @@ void check_case_fail(check_case* c, char* message, char* detail, list[char*] sel
 
 /* Manifest: target names in order, for the implicit properties. */
 
+# The real manifest, generated in memory like bin/wtest's
+# (tools/manifest_source.w).
 int check_load_manifest():
-	char* text = file_read_text(c"build.json")
+	char* text = manifest_source_text(0, 1)
+	char* label = manifest_source_label
 	if (text == 0):
-		check_error(c"cannot read ", c"build.json")
+		check_error(c"cannot read ", label)
 		return 1
 	json_value* manifest = json_parse(text)
 	free(text)
 	if (manifest == 0):
-		check_error(c"manifest is not valid JSON: ", c"build.json")
+		check_error(c"manifest is not valid JSON: ", label)
 		return 1
 	json_value* targets = json_object_get(manifest, c"targets")
 	if (targets == 0):
-		check_error(c"manifest has no targets array: ", c"build.json")
+		check_error(c"manifest has no targets array: ", label)
 		return 1
 	if (targets.type != json_type_array()):
-		check_error(c"manifest targets is not an array: ", c"build.json")
+		check_error(c"manifest targets is not an array: ", label)
 		return 1
 	check_target_names = new list[char*]
 	check_target_index = new map[char*, int]

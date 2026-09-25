@@ -54,7 +54,8 @@ natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 ./bin/wv2 repl.w -o bin/repl && ./bin/repl   # interactive REPL
 ```
 
-`./wbuild` runs targets from `build.json` (`./wbuild --list`; parallel +
+`./wbuild` runs targets from the build manifest, which bin/wexec generates in
+memory from `build.base.json` plus the source tree on every run (`./wbuild --list`; parallel +
 content-hash cached, `--no-cache` to force, `rm -rf bin` resets). On this
 Mac it bootstraps a native Mach-O executor from `./w_darwin`; only the
 darwin targets run here — everything else needs Linux.
@@ -65,7 +66,7 @@ Compile and run one program: `./bin/wv2 file.w -o out && ./out`
 **Run a single/focused test**: `git diff --name-only HEAD | ./bin/wtest changed`
 prints the exact build targets for your diff (build wtest with `./wbuild wtest`);
 `./wbuild test_changed` runs them. Don't guess targets. Selection is
-manifest-driven: wtest parses `build.json` and combines literal step
+manifest-driven: wtest generates the same manifest and combines literal step
 references with import closures from `bin/wv2 deps` (cached in
 `bin/.wtest_deps_cache`; the first run after a build can take several
 minutes — it prints progress to stderr and resumes if interrupted, so
@@ -155,16 +156,19 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
   (`tools/wfixture.w`; a `<fixture>.w.expect` sidecar is the fallback
   for a fixture whose exact bytes are the test). Targets that also run
   the produced binary keep `expect_stderr`/`expect_fail` fields on their
-  `build.json` steps.
+  manifest steps.
 - A new end-to-end test is just the source file: create `tests/foo_test.w`
   (use `lib/assert.w` / `lib/testing.w`), add a `# wbuild: x64` directive
-  line if it should also run as a 64-bit `foo_64_test` twin, and run
-  `./wbuild manifest`. `build.json` is GENERATED (but committed):
-  `tools/wbuildgen.w` derives every conventional compile+run test target
-  from the tree and merges it with the hand-maintained `build.base.json`
-  (toolchain, fixture, and irregular targets), including `tests` /
-  `tests_x64` umbrella membership; `./wbuild manifest_check` (part of
-  `tests`) fails CI on drift, so never edit `build.json` by hand. A test
+  line if it should also run as a 64-bit `foo_64_test` twin. That is all:
+  there is no committed `build.json` (issue #323). bin/wexec and bin/wtest
+  generate the manifest in memory at startup (`tools/wbuildgen_lib.w`),
+  deriving every conventional compile+run test target from the tree and
+  merging it with the hand-maintained `build.base.json` (toolchain,
+  fixture, and irregular targets), including `tests` / `tests_x64`
+  umbrella membership. `./wbuild manifest` writes a copy to
+  `bin/build.json` for reading; `./wbuild manifest_check` (part of
+  `tests`) fails when generation itself fails (bad directive, name
+  collision, unknown tool path). A test
   needing extra steps or `expect_*` assertions gets a hand-written target
   in `build.base.json` instead. `bin/wtest` picks targets up automatically
   from the manifest (literal step references + import closures); a

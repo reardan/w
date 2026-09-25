@@ -17,13 +17,13 @@ alwaysApply: false
   `bin/wfixture` (`tools/wfixture.w` documents the syntax and the
   `<fixture>.w.expect` sidecar fallback). Targets that also run the
   produced binary (trap tests, `check_json_test`, ...) still assert via
-  `expect_stderr`/`reject_stderr` step fields in `build.json`. Editing a
+  `expect_stderr`/`reject_stderr` step fields in `build.base.json`. Editing a
   fixture usually requires updating the asserted message text in the
   same commit. The automatic edit-check hook deliberately skips fixture
   paths.
 - A new end-to-end test needs: the `tests/foo_test.w` program (use
-  `lib/assert.w` / `lib/testing.w` helpers), a target in `build.json`,
-  and membership in the `tests` umbrella target. `bin/wtest` picks the
+  `lib/assert.w` / `lib/testing.w` helpers); the generated manifest gives it a target
+  and `tests` umbrella membership. `bin/wtest` picks the
   target up from the manifest automatically (literal step references +
   `bin/wv2 deps` import closures); a residue rule in `tools/test_map.w`
   is only needed for coupling the import graph cannot see (run-time
