@@ -197,6 +197,41 @@ void test_types_compatible_strictness():
 	assert_equal(0, types_compatible(char_ptr, int_ptr))
 	assert_equal(0, types_compatible(void_ptr, char_ptr_ptr))
 
+
+# The 'gpu' pointer qualifier: 'gpu float32*' points at a gpu-object
+# record that canonicalizes to float32 (sizes, float kind, element
+# lookup unchanged) while pointer compatibility keeps the host and
+# device domains apart.
+void test_gpu_qualifier_types():
+	push_basic_types()
+	int f32 = type_lookup(c"float32")
+	int g = type_get_gpu(f32)
+	assert_equal(g, type_get_gpu(f32))
+	assert1(type_is_gpu_object(g))
+	assert_equal(0, type_is_gpu_object(f32))
+	assert_equal(f32, type_canonical(g))
+	assert_equal(f32, type_strip_gpu(g))
+	assert_equal(4, type_get_size(g))
+	assert_equal(1, type_float_kind(g))
+	int gptr = type_push_pointer(type_get_name(g), word_size, 1)
+	assert_equal(g, type_lookup_previous_pointer(gptr))
+	assert1(type_is_gpu_pointer(gptr))
+	int hptr = type_lookup_pointer(c"float32", 1)
+	assert_equal(0, type_is_gpu_pointer(hptr))
+	assert_equal(hptr, type_gpu_pointer_host_twin(gptr))
+	assert_equal(0, types_compatible(hptr, gptr))
+	assert_equal(0, types_compatible(gptr, hptr))
+	assert1(types_gpu_domain_mismatch(hptr, gptr))
+	assert_equal(0, types_gpu_domain_mismatch(hptr, 3))
+	assert_equal(1, types_compatible(gptr, gptr))
+	assert_equal(1, types_compatible(gptr, 3))
+	int void_ptr = type_lookup_pointer(c"void", 1)
+	assert_equal(0, types_compatible(void_ptr, gptr))
+	int gvoid = type_get_gpu(type_lookup(c"void"))
+	int gvoid_ptr = type_push_pointer(type_get_name(gvoid), word_size, 1)
+	assert_equal(1, types_compatible(gvoid_ptr, gptr))
+	assert_equal(1, types_compatible(gptr, gvoid_ptr))
+
 # wbuild: target=type_table_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 compiler/type_table_test.w -o bin/type_table_test"
 # wbuild: step="bin/type_table_test"

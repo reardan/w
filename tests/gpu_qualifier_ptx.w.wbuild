@@ -1,0 +1,7 @@
+# wbuild: target=gpu_qualifier_ptx_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 x64 tests/gpu_qualifier_ptx.w -o bin/gpu_qualifier_ptx"
+# wbuild: step="bin/gpu_qualifier_ptx" expect_stdout=".visible .entry gq_saxpy(" expect_stdout="cvta.to.global.u64 %cx, %ax;" expect_stdout="ld.global.s32 %ax, [%cx];" expect_stdout="cvta.to.global.u64 %cx, %bx;" expect_stdout="st.global.u32 [%cx], %ax;" expect_stdout=".visible .entry gq_widths(" expect_stdout="ld.global.u64 %ax, [%cx];" expect_stdout="st.global.u64 [%cx], %ax;" expect_stdout="ld.global.u8 %ax, [%cx];" expect_stdout="ld.global.s8 %ax, [%cx];" expect_stdout="st.global.u8 [%cx], %ax;" expect_stdout="st.global.u16 [%cx], %ax;" expect_stdout=".visible .entry gq_fields(" expect_stdout=".visible .entry gq_plain(" expect_stdout="ld.s32 %ax, [%ax];" expect_stdout="st.u32 [%bx], %ax;"
+# wbuild: step="bin/wv2 x64 --quiet tests/gpu_qualifier_gpu.w -o bin/gpu_qualifier_ptxcheck --ptx=bin/gpu_qualifier_gpu.ptx"
+# wbuild: step="grep -q ^ld.global.u8 bin/gpu_qualifier_gpu.ptx"
+# wbuild: step="grep -q ^st.global.u8 bin/gpu_qualifier_gpu.ptx"
+# wbuild: step="grep -q ^st.global.u64 bin/gpu_qualifier_gpu.ptx"

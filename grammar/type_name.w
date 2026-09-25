@@ -58,12 +58,37 @@ int type_name_array_suffix(int type):
 	return type
 
 
+# 1 when the current token is the 'gpu' pointer qualifier ('gpu float32*
+# p'): 'gpu' directly followed by a type name. 'gpu for' and a user type
+# or symbol named 'gpu' keep their meaning. The one-token lookahead uses
+# the reparse save/seek/restore trick (grammar/gpu_for.w precedent).
+int gpu_qualifier_ahead():
+	if (peek(c"gpu") == 0):
+		return 0
+	if ((type_lookup(c"gpu") >= 0) || (sym_lookup(c"gpu") >= 0)):
+		return 0
+	char* save = generic_reparse_save()
+	get_token()
+	int is_type = 0
+	if (peek(c"const") || (type_lookup(token) >= 0) || (generic_subst_lookup(token) >= 0)):
+		is_type = 1
+	getchar_seek(file, load_ptr(save + 7 * __word_size__))
+	generic_reparse_restore(save)
+	return is_type
+
+
 int type_name():
 	int type = 0
 	int is_const = 0
+	int is_gpu = 0
 	pointer_indirection = 0
 	if (accept(c"const")):
 		is_const = 1
+	if (gpu_qualifier_ahead()):
+		get_token()
+		is_gpu = 1
+		if (accept(c"const")):
+			is_const = 1
 	if (peek(c"map") & (nextc == '[')):
 		get_token()
 		expect(c"[")
@@ -122,6 +147,16 @@ int type_name():
 
 	if (is_const):
 		type = type_push_const(type)
+
+	# 'gpu T*': the stars below build pointers over the gpu-object
+	# record G(T) (compiler/type_table.w, type_get_gpu), so the element
+	# lvalue of the pointer carries the device-memory qualifier.
+	if (is_gpu):
+		if (type_get_pointer_level(type) > 0):
+			error(c"the gpu qualifier applies to the pointee type: write 'gpu T*' with a non-pointer T")
+		if (peek(c"*") == 0):
+			error(c"the gpu qualifier requires a pointer type: 'gpu T*'")
+		type = type_get_gpu(type)
 
 	# Each '*' wraps the base type in a pointer type, created on demand.
 	# The new level stacks on the type's OWN pointer level, not the star
