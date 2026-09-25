@@ -440,7 +440,8 @@ void wbd_handle_event(inotify_event* ev):
 		free(sub)
 		if (ev.mask & changing):
 			wbd_clear_all()
-			wbd_prewarm_schedule(1500)
+			if (wbd_in_bin(dir) == 0):
+				wbd_prewarm_schedule(1500)
 		return
 	int bin = wbd_in_bin(dir)
 	if (ends_with(ev.name, c".w")):
@@ -453,7 +454,10 @@ void wbd_handle_event(inotify_event* ev):
 		else:
 			wbd_invalidate_path(path)
 		free(path)
-		wbd_prewarm_schedule(1500)
+		# Sources under bin/ are scratch files of tests and tools,
+		# never manifest roots worth re-warming bin/wtest for.
+		if (bin == 0):
+			wbd_prewarm_schedule(1500)
 		return
 	if (bin):
 		if (strcmp(dir, c"bin") == 0):
@@ -611,7 +615,25 @@ list[char*] wbd_clone_list(list[char*] items):
 	return copy
 
 
+int wbd_cache_limit():
+	return 256
+
+
+# Bounded memo: past the limit the oldest answer goes (it is only
+# recomputed if asked for again).
+void wbd_evict_oldest():
+	list[wbd_entry*] kept = new list[wbd_entry*]
+	int i = 1
+	while (i < wbd_cache.length):
+		kept.push(wbd_cache[i])
+		i = i + 1
+	wbd_entry_free(wbd_cache[0])
+	wbd_cache = kept
+
+
 void wbd_store(char* key, process_result* result, list[char*] closure):
+	if (wbd_cache.length >= wbd_cache_limit()):
+		wbd_evict_oldest()
 	wbd_entry* e = new wbd_entry()
 	e.key = key
 	e.stdout_text = strclone(result.stdout_text)
@@ -637,8 +659,10 @@ int wbd_closure_has_path(list[char*] closure, char* path):
 
 # The import closure pinning a request's answer: the memoized (or
 # freshly run) 'bin/wv2 deps [arch] <root>' for its single root file.
-# Returns an owned list, or 0 when the request cannot be cached.
-list[char*] wbd_closure_for(list[char*] args):
+# Returns an owned list, or 0 when the request cannot be cached. When
+# the request IS that plain deps query, its own (request_key,
+# request_result) answer is reused instead of running deps twice.
+list[char*] wbd_closure_for(list[char*] args, char* request_key, process_result* request_result):
 	char* arch = 0
 	char* root = 0
 	int roots = 0
@@ -661,25 +685,32 @@ list[char*] wbd_closure_for(list[char*] args):
 	if (e != 0):
 		free(key)
 		return wbd_clone_list(e.closure)
-	process_result* result = wbd_run_tool(c"bin/wv2", c"deps", deps_args, 0, 600000)
+	process_result* result = 0
+	int owned = 1
+	if (strcmp(key, request_key) == 0):
+		result = request_result
+		owned = 0
+	else:
+		result = wbd_run_tool(c"bin/wv2", c"deps", deps_args, 0, 600000)
 	if (result == 0):
 		free(key)
 		return 0
 	list[char*] closure = 0
 	if (result.status == 0):
 		closure = wbd_parse_closure(result.stdout_text)
-	if (closure == 0):
-		process_result_free(result)
-		free(key)
-		return 0
 	# The root itself must be in its own closure, or a path spelling
 	# mismatch would make edits to it invisible.
-	if (wbd_closure_has_path(closure, wbd_strip_dot(root)) == 0):
-		process_result_free(result)
+	if (closure != 0):
+		if (wbd_closure_has_path(closure, wbd_strip_dot(root)) == 0):
+			closure = 0
+	if (closure == 0):
+		if (owned):
+			process_result_free(result)
 		free(key)
 		return 0
 	wbd_store(key, result, closure)
-	process_result_free(result)
+	if (owned):
+		process_result_free(result)
 	return wbd_clone_list(closure)
 
 
@@ -714,7 +745,7 @@ json_value* wbd_serve_wv2(char* sub, json_value* params):
 	# The deps run may itself be the closure entry this request needs.
 	wbd_entry* again = wbd_lookup(key)
 	if (again == 0):
-		list[char*] closure = wbd_closure_for(args)
+		list[char*] closure = wbd_closure_for(args, key, result)
 		again = wbd_lookup(key)
 		if ((closure != 0) && (again == 0)):
 			wbd_store(key, result, closure)

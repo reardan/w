@@ -247,6 +247,24 @@ void wbt_compare_all():
 	wbt_compare(c"bin/wtest", manifest_flag, strjoin(wbt_path(c"helper.w"), c"\n"))
 
 
+# A repeated query must be answered from the memo. Under a parallel
+# './wbuild tests' another target creating a .w file anywhere in the
+# tree legitimately clears the whole memo between two queries, so a
+# miss is retried a few times before it counts as a failure.
+void wbt_expect_memo_hit():
+	char* args = strjoin(c"--require-daemon ", wbt_args2(c"check --json ", c"a.w"))
+	int attempt = 0
+	while (attempt < 10):
+		process_result_free(wbt_client_run(args))
+		int before = wbt_status_int(c"hits")
+		process_result_free(wbt_client_run(args))
+		if (wbt_status_int(c"hits") > before):
+			assert1(wbt_status_int(c"cached_entries") > 0)
+			return
+		attempt = attempt + 1
+	asserts(c"a repeated query was never answered from the memo", 0)
+
+
 char* wbt_a_importing():
 	string_builder* s = string_new()
 	string_append(s, c"import ")
@@ -322,9 +340,7 @@ void test_wbuildd_matches_one_shot():
 	wbt_compare_all()
 	int hits_after = wbt_status_int(c"hits")
 	print_int(c"memo hits in round 2: ", hits_after - hits_before)
-	assert1(hits_after > hits_before)
-	int cached = wbt_status_int(c"cached_entries")
-	assert1(cached > 0)
+	wbt_expect_memo_hit()
 
 	# Edit a module in a.w's closure: the memoized check of a.w must be
 	# invalidated (it now carries the helper's new warning).

@@ -703,11 +703,13 @@ how the gate proves an answer came from the daemon.
   path, a root whose `deps` fails (syntax errors) — are never cached,
   so they always run the compiler. Every request first drains pending
   inotify events, so an edit that finished before the request was sent
-  is always seen.
+  is always seen. The memo is bounded (256 answers, oldest evicted
+  first).
 - *test_changed:* runs `bin/wtest changed` per request (fast whenever
   `bin/.wtest_deps_cache` is warm). The daemon keeps that cache warm:
-  at startup and, debounced by 1.5s, after any `.w` edit, directory
-  change or compiler rebuild it runs `bin/wtest cache [-f manifest]` in
+  at startup and, debounced by 1.5s, after any `.w` edit or directory
+  change outside `bin/` (scratch sources there are never manifest
+  roots) or a compiler rebuild, it runs `bin/wtest cache [-f manifest]` in
   the background, so the cold closure walk (§1.2's ~143s) is paid off
   the agent's critical path. A query arriving mid-prewarm waits for it,
   keeping one writer of the cache file. Replacing the subprocess with
