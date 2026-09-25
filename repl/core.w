@@ -457,90 +457,114 @@ void repl_entry_item(int entry_symbol):
 # fault long-jumps out of the entry's execution (repl_fault below), which
 # discards the faulted entry's definitions exactly like a compile error.
 
-int repl_saved_codepos
-int repl_saved_table_pos
-int repl_saved_stack_pos
-int repl_saved_loop_depth
-int repl_saved_loop_break_chain
-int repl_saved_loop_continue_chain
-int repl_saved_loop_stack_pos
-int repl_saved_switch_depth
-int repl_saved_switch_break_chain
-int repl_saved_switch_stack_pos
-int repl_saved_break_in_switch
-int repl_saved_defer_count
-int repl_saved_for_cleanup_count
-int repl_saved_number_of_args
-int repl_saved_type_count
-int repl_saved_imported_count
-int repl_saved_alias_base
-int repl_saved_alias_count
-int repl_saved_plain_base
-int repl_saved_plain_count
-int repl_saved_function_symbol
-int repl_saved_sites_count
+struct repl_state:
+	int codepos
+	int table_pos
+	int stack_pos
+	int loop_depth
+	int loop_break_chain
+	int loop_continue_chain
+	int loop_stack_pos
+	int switch_depth
+	int switch_break_chain
+	int switch_stack_pos
+	int break_in_switch
+	int defer_count
+	int for_cleanup_count
+	int number_of_args
+	int type_count
+	int imported_count
+	int alias_base
+	int alias_count
+	int plain_base
+	int plain_count
+	int function_symbol
+	int sites_count
+
+
+# The per-entry checkpoint (nested evaluations swap in their own, see
+# repl_nest_save) and the :reset snapshot below (0 until taken).
+repl_state* repl_saved
+repl_state* repl_genesis
+
+
+void repl_state_capture(repl_state* st):
+	st.codepos = codepos
+	st.table_pos = table_pos
+	st.stack_pos = stack_pos
+	st.loop_depth = loop_depth
+	st.loop_break_chain = loop_break_chain
+	st.loop_continue_chain = loop_continue_chain
+	st.loop_stack_pos = loop_stack_pos
+	st.switch_depth = switch_depth
+	st.switch_break_chain = switch_break_chain
+	st.switch_stack_pos = switch_stack_pos
+	st.break_in_switch = break_in_switch
+	st.defer_count = defer_count()
+	st.for_cleanup_count = for_cleanup_count()
+	st.number_of_args = number_of_args
+	st.type_count = type_count()
+	st.imported_count = imported_count
+	st.alias_base = import_alias_base
+	st.alias_count = import_alias_count
+	st.plain_base = import_plain_base
+	st.plain_count = import_plain_count
+	st.function_symbol = current_function_symbol
+	st.sites_count = repl_sites_count
+
+
+# Everything but current_function_symbol, which only the per-entry
+# rollback restores.
+void repl_state_restore(repl_state* st):
+	codepos = st.codepos
+	be_cmp_note_reset()
+	be_imm_note_reset()
+	table_pos = st.table_pos
+	stack_pos = st.stack_pos
+	loop_depth = st.loop_depth
+	loop_break_chain = st.loop_break_chain
+	loop_continue_chain = st.loop_continue_chain
+	loop_stack_pos = st.loop_stack_pos
+	switch_depth = st.switch_depth
+	switch_break_chain = st.switch_break_chain
+	switch_stack_pos = st.switch_stack_pos
+	break_in_switch = st.break_in_switch
+	defer_truncate(st.defer_count)
+	for_cleanup_truncate(st.for_cleanup_count)
+	number_of_args = st.number_of_args
+	type_table_truncate(st.type_count)
+	imported_count = st.imported_count
+	import_alias_base = st.alias_base
+	import_alias_count = st.alias_count
+	import_plain_base = st.plain_base
+	import_plain_count = st.plain_count
+
+
+# The parse-context flags error() can leave set when it jumps out from
+# inside a condition or cast() operand, cleared so later entries warn
+# correctly, and the pending diagnostic.
+void repl_state_clear_context():
+	pointer_indirection = 0
+	condition_context = 0
+	cast_context = 0
+	diag_clear()
 
 
 void repl_checkpoint():
-	repl_saved_codepos = codepos
-	repl_saved_table_pos = table_pos
-	repl_saved_stack_pos = stack_pos
-	repl_saved_loop_depth = loop_depth
-	repl_saved_loop_break_chain = loop_break_chain
-	repl_saved_loop_continue_chain = loop_continue_chain
-	repl_saved_loop_stack_pos = loop_stack_pos
-	repl_saved_switch_depth = switch_depth
-	repl_saved_switch_break_chain = switch_break_chain
-	repl_saved_switch_stack_pos = switch_stack_pos
-	repl_saved_break_in_switch = break_in_switch
-	repl_saved_defer_count = defer_count()
-	repl_saved_for_cleanup_count = for_cleanup_count()
-	repl_saved_number_of_args = number_of_args
-	repl_saved_type_count = type_count()
-	repl_saved_imported_count = imported_count
-	repl_saved_alias_base = import_alias_base
-	repl_saved_alias_count = import_alias_count
-	repl_saved_plain_base = import_plain_base
-	repl_saved_plain_count = import_plain_count
-	repl_saved_function_symbol = current_function_symbol
-	repl_saved_sites_count = repl_sites_count
+	if (repl_saved == 0):
+		repl_saved = new repl_state
+	repl_state_capture(repl_saved)
 
 
 void repl_rollback():
-	codepos = repl_saved_codepos
-	be_cmp_note_reset()
-	be_imm_note_reset()
-	table_pos = repl_saved_table_pos
-	stack_pos = repl_saved_stack_pos
-	loop_depth = repl_saved_loop_depth
-	loop_break_chain = repl_saved_loop_break_chain
-	loop_continue_chain = repl_saved_loop_continue_chain
-	loop_stack_pos = repl_saved_loop_stack_pos
-	switch_depth = repl_saved_switch_depth
-	switch_break_chain = repl_saved_switch_break_chain
-	switch_stack_pos = repl_saved_switch_stack_pos
-	break_in_switch = repl_saved_break_in_switch
-	defer_truncate(repl_saved_defer_count)
-	for_cleanup_truncate(repl_saved_for_cleanup_count)
-	number_of_args = repl_saved_number_of_args
-	type_table_truncate(repl_saved_type_count)
-	imported_count = repl_saved_imported_count
-	import_alias_base = repl_saved_alias_base
-	import_alias_count = repl_saved_alias_count
-	import_plain_base = repl_saved_plain_base
-	import_plain_count = repl_saved_plain_count
-	current_function_symbol = repl_saved_function_symbol
+	repl_state_restore(repl_saved)
+	current_function_symbol = repl_saved.function_symbol
 	# Late binding (#114): the failed entry's queued patches must never
 	# apply (its definitions just rolled back), and its registered call
 	# sites sit at code offsets later entries will reuse
 	repl_discard_late_bind()
-	repl_sites_truncate(repl_saved_sites_count)
-	pointer_indirection = 0
-	# error() can jump out from inside a condition or cast() operand;
-	# clear the parse-context flags so later entries warn correctly
-	condition_context = 0
-	cast_context = 0
-	diag_clear()
+	repl_sites_truncate(repl_saved.sites_count)
+	repl_state_clear_context()
 
 
 # ---------------------------------------------------------------------------
@@ -551,54 +575,9 @@ void repl_rollback():
 # whole session back to that snapshot the same way a failed entry rolls
 # back to its pre-entry one -- just spanning every entry (and any :load)
 # since startup instead of one.
-
-int repl_genesis_codepos
-int repl_genesis_table_pos
-int repl_genesis_stack_pos
-int repl_genesis_loop_depth
-int repl_genesis_loop_break_chain
-int repl_genesis_loop_continue_chain
-int repl_genesis_loop_stack_pos
-int repl_genesis_switch_depth
-int repl_genesis_switch_break_chain
-int repl_genesis_switch_stack_pos
-int repl_genesis_break_in_switch
-int repl_genesis_defer_count
-int repl_genesis_for_cleanup_count
-int repl_genesis_number_of_args
-int repl_genesis_type_count
-int repl_genesis_imported_count
-int repl_genesis_alias_base
-int repl_genesis_alias_count
-int repl_genesis_plain_base
-int repl_genesis_plain_count
-int repl_genesis_sites_count
-int repl_genesis_taken
-
-
 void repl_genesis_checkpoint():
-	repl_genesis_codepos = codepos
-	repl_genesis_table_pos = table_pos
-	repl_genesis_stack_pos = stack_pos
-	repl_genesis_loop_depth = loop_depth
-	repl_genesis_loop_break_chain = loop_break_chain
-	repl_genesis_loop_continue_chain = loop_continue_chain
-	repl_genesis_loop_stack_pos = loop_stack_pos
-	repl_genesis_switch_depth = switch_depth
-	repl_genesis_switch_break_chain = switch_break_chain
-	repl_genesis_switch_stack_pos = switch_stack_pos
-	repl_genesis_break_in_switch = break_in_switch
-	repl_genesis_defer_count = defer_count()
-	repl_genesis_for_cleanup_count = for_cleanup_count()
-	repl_genesis_number_of_args = number_of_args
-	repl_genesis_type_count = type_count()
-	repl_genesis_imported_count = imported_count
-	repl_genesis_alias_base = import_alias_base
-	repl_genesis_alias_count = import_alias_count
-	repl_genesis_plain_base = import_plain_base
-	repl_genesis_plain_count = import_plain_count
-	repl_genesis_sites_count = repl_sites_count
-	repl_genesis_taken = 1
+	repl_genesis = new repl_state
+	repl_state_capture(repl_genesis)
 
 
 # Roll every declaration, import and late-bind site added since the
@@ -607,35 +586,11 @@ void repl_genesis_checkpoint():
 # called (nothing to reset to). Only safe between entries: no entry may
 # be mid-compile or mid-execution.
 int repl_reset_to_genesis():
-	if (repl_genesis_taken == 0):
+	if (repl_genesis == 0):
 		return 0
-	codepos = repl_genesis_codepos
-	be_cmp_note_reset()
-	be_imm_note_reset()
-	table_pos = repl_genesis_table_pos
-	stack_pos = repl_genesis_stack_pos
-	loop_depth = repl_genesis_loop_depth
-	loop_break_chain = repl_genesis_loop_break_chain
-	loop_continue_chain = repl_genesis_loop_continue_chain
-	loop_stack_pos = repl_genesis_loop_stack_pos
-	switch_depth = repl_genesis_switch_depth
-	switch_break_chain = repl_genesis_switch_break_chain
-	switch_stack_pos = repl_genesis_switch_stack_pos
-	break_in_switch = repl_genesis_break_in_switch
-	defer_truncate(repl_genesis_defer_count)
-	for_cleanup_truncate(repl_genesis_for_cleanup_count)
-	number_of_args = repl_genesis_number_of_args
-	type_table_truncate(repl_genesis_type_count)
-	imported_count = repl_genesis_imported_count
-	import_alias_base = repl_genesis_alias_base
-	import_alias_count = repl_genesis_alias_count
-	import_plain_base = repl_genesis_plain_base
-	import_plain_count = repl_genesis_plain_count
-	repl_sites_truncate(repl_genesis_sites_count)
-	pointer_indirection = 0
-	condition_context = 0
-	cast_context = 0
-	diag_clear()
+	repl_state_restore(repl_genesis)
+	repl_sites_truncate(repl_genesis.sites_count)
+	repl_state_clear_context()
 	return 1
 
 
@@ -958,71 +913,30 @@ void repl_fault_install_handlers():
 # an earlier eval is already executing.
 
 int repl_nest_size():
-	return 27 * __word_size__
+	return 7 * __word_size__
 
 
 char* repl_nest_save():
 	char* s = malloc(repl_nest_size())
-	save_word(s + 0 * __word_size__, repl_saved_codepos)
-	save_word(s + 1 * __word_size__, repl_saved_table_pos)
-	save_word(s + 2 * __word_size__, repl_saved_stack_pos)
-	save_word(s + 3 * __word_size__, repl_saved_loop_depth)
-	save_word(s + 4 * __word_size__, repl_saved_loop_break_chain)
-	save_word(s + 5 * __word_size__, repl_saved_loop_continue_chain)
-	save_word(s + 6 * __word_size__, repl_saved_loop_stack_pos)
-	save_word(s + 7 * __word_size__, repl_saved_switch_depth)
-	save_word(s + 8 * __word_size__, repl_saved_switch_break_chain)
-	save_word(s + 9 * __word_size__, repl_saved_switch_stack_pos)
-	save_word(s + 10 * __word_size__, repl_saved_break_in_switch)
-	save_word(s + 11 * __word_size__, repl_saved_defer_count)
-	save_word(s + 12 * __word_size__, repl_saved_for_cleanup_count)
-	save_word(s + 13 * __word_size__, repl_saved_number_of_args)
-	save_word(s + 14 * __word_size__, repl_saved_type_count)
-	save_word(s + 15 * __word_size__, repl_saved_imported_count)
-	save_word(s + 16 * __word_size__, repl_saved_alias_base)
-	save_word(s + 17 * __word_size__, repl_saved_alias_count)
-	save_word(s + 18 * __word_size__, repl_saved_plain_base)
-	save_word(s + 19 * __word_size__, repl_saved_plain_count)
-	save_word(s + 20 * __word_size__, repl_saved_function_symbol)
-	save_word(s + 21 * __word_size__, repl_fault_active)
-	save_word(s + 22 * __word_size__, repl_result_type)
-	save_word(s + 23 * __word_size__, repl_entry_file)
-	int i = 0
-	while (i < 3):
-		save_word(s + (24 + i) * __word_size__, load_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__))
-		i = i + 1
+	# The outer checkpoint stays put; the nested call checkpoints into its own
+	save_word(s + 0 * __word_size__, cast(int, repl_saved))
+	repl_saved = new repl_state
+	save_word(s + 1 * __word_size__, repl_fault_active)
+	save_word(s + 2 * __word_size__, repl_result_type)
+	save_word(s + 3 * __word_size__, repl_entry_file)
+	for i in range(3):
+		save_word(s + (4 + i) * __word_size__, load_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__))
 	return s
 
 
 void repl_nest_restore(char* s):
-	repl_saved_codepos = load_word(s + 0 * __word_size__)
-	repl_saved_table_pos = load_word(s + 1 * __word_size__)
-	repl_saved_stack_pos = load_word(s + 2 * __word_size__)
-	repl_saved_loop_depth = load_word(s + 3 * __word_size__)
-	repl_saved_loop_break_chain = load_word(s + 4 * __word_size__)
-	repl_saved_loop_continue_chain = load_word(s + 5 * __word_size__)
-	repl_saved_loop_stack_pos = load_word(s + 6 * __word_size__)
-	repl_saved_switch_depth = load_word(s + 7 * __word_size__)
-	repl_saved_switch_break_chain = load_word(s + 8 * __word_size__)
-	repl_saved_switch_stack_pos = load_word(s + 9 * __word_size__)
-	repl_saved_break_in_switch = load_word(s + 10 * __word_size__)
-	repl_saved_defer_count = load_word(s + 11 * __word_size__)
-	repl_saved_for_cleanup_count = load_word(s + 12 * __word_size__)
-	repl_saved_number_of_args = load_word(s + 13 * __word_size__)
-	repl_saved_type_count = load_word(s + 14 * __word_size__)
-	repl_saved_imported_count = load_word(s + 15 * __word_size__)
-	repl_saved_alias_base = load_word(s + 16 * __word_size__)
-	repl_saved_alias_count = load_word(s + 17 * __word_size__)
-	repl_saved_plain_base = load_word(s + 18 * __word_size__)
-	repl_saved_plain_count = load_word(s + 19 * __word_size__)
-	repl_saved_function_symbol = load_word(s + 20 * __word_size__)
-	repl_fault_active = load_word(s + 21 * __word_size__)
-	repl_result_type = load_word(s + 22 * __word_size__)
-	repl_entry_file = load_word(s + 23 * __word_size__)
-	int i = 0
-	while (i < 3):
-		save_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__, load_word(s + (24 + i) * __word_size__))
-		i = i + 1
+	free(repl_saved)
+	repl_saved = cast(repl_state*, load_word(s + 0 * __word_size__))
+	repl_fault_active = load_word(s + 1 * __word_size__)
+	repl_result_type = load_word(s + 2 * __word_size__)
+	repl_entry_file = load_word(s + 3 * __word_size__)
+	for i in range(3):
+		save_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__, load_word(s + (4 + i) * __word_size__))
 	free(s)
 
 
