@@ -13,7 +13,13 @@ This module deliberately knows nothing about tasks: lib/task.w installs
 io_wait_hook the first time a scheduler is created. That keeps the
 dependency one-way, so the protocol libraries can call io_wait without
 importing the scheduler, generators or the event loop.
+
+io_poll is the drop-in for lib/poll.w's poll_single in code that runs
+both inside and outside tasks (http_client.w, dns.w): same return
+convention (revents, 0 on timeout, negative errno), but inside a task
+it parks the task instead of the thread.
 */
+import lib.poll
 
 
 # fd, poll events, timeout_ms (-1 = none) -> revents or a negative errno
@@ -45,3 +51,15 @@ int io_wait_available():
 	if (cast(int, io_wait_active_hook) == 0):
 		return 0
 	return io_wait_active_hook()
+
+
+# poll_single that parks the calling task when there is one. Returns
+# the revents mask, 0 on timeout (including the task's deadline), or a
+# negative errno (-ECANCELED once the task is cancelled).
+int io_poll(int fd, int events, int timeout_ms):
+	if (io_wait_available() == 0):
+		return poll_single(fd, events, timeout_ms)
+	int r = io_wait(fd, events, timeout_ms)
+	if (r == -110): /* ETIMEDOUT: this wait's own timeout */
+		return 0
+	return r

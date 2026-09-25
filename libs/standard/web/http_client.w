@@ -59,6 +59,7 @@ import lib.lib
 import lib.str
 import lib.net
 import lib.poll
+import lib.io_wait
 import lib.stream
 import lib.container
 import structures.string
@@ -661,7 +662,7 @@ int http_conn_fill(http_conn* c):
 			# Hard receive error (EINTR, -4, retries instead).
 			c.error = http_error_recv()
 			return (-1)
-		int ready = poll_single(c.fd, poll_in(), c.timeout_ms)
+		int ready = io_poll(c.fd, poll_in(), c.timeout_ms)
 		if (ready == 0):
 			c.error = http_error_timeout()
 			return (-1)
@@ -749,7 +750,7 @@ int http_conn_write_all(http_conn* c, char* data, int n):
 			c.error = http_error_send()
 			return 0
 		else if ((count == (0 - net_eagain())) | (count == (0 - 4))):
-			int ready = poll_single(c.fd, poll_out(), c.timeout_ms)
+			int ready = io_poll(c.fd, poll_out(), c.timeout_ms)
 			if (ready == 0):
 				c.error = http_error_timeout()
 				return 0
@@ -779,7 +780,7 @@ int http_connect_fd(int ip, int port, int timeout_ms):
 		if (rc != (0 - net_einprogress())):
 			close(fd)
 			return 0 - http_error_connect()
-		int ready = poll_single(fd, poll_out(), timeout_ms)
+		int ready = io_poll(fd, poll_out(), timeout_ms)
 		if (ready == 0):
 			close(fd)
 			return 0 - http_error_timeout()
@@ -1383,6 +1384,13 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 			from_cache = 1
 			tls = http_cache_last_tls
 			tls_cfg = http_cache_last_tls_cfg
+			if (tls != 0):
+				# The connection may have been cached from the other
+				# context (task vs plain); match its mode to this caller.
+				if (io_wait_available()):
+					socket_set_nonblocking(fd)
+				else:
+					socket_set_blocking(fd)
 	if (fd < 0):
 		int ip = 0
 		if (dns_resolve_ipv4(u.host, &ip) == 0):
@@ -1393,27 +1401,32 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 			http_stream_fail(s, 0 - fd)
 			return 0
 		if (is_tls != 0):
-			# net/tls.w uses blocking socket I/O: switch off O_NONBLOCK and
-			# arm SO_RCVTIMEO/SO_SNDTIMEO so the handshake and every later
-			# read/write is bounded. The handshake gets its own budget
-			# (tls_handshake_timeout_ms, else timeout_ms); the socket is then
-			# re-armed to timeout_ms for the header/body/idle reads.
-			if (socket_set_blocking(fd) < 0):
-				close(fd)
-				http_stream_fail(s, http_error_connect())
-				return 0
+			# Outside a task net/tls.w uses blocking socket I/O: switch off
+			# O_NONBLOCK and arm SO_RCVTIMEO/SO_SNDTIMEO so the handshake and
+			# every later read/write is bounded. Inside a task
+			# (lib/io_wait.w) the socket stays non-blocking and each wait
+			# parks the task with the same bounds instead. The handshake
+			# gets its own budget (tls_handshake_timeout_ms, else
+			# timeout_ms); later reads/writes get timeout_ms.
+			int in_task = io_wait_available()
+			if (in_task == 0):
+				if (socket_set_blocking(fd) < 0):
+					close(fd)
+					http_stream_fail(s, http_error_connect())
+					return 0
 			int hs_timeout = timeout
 			if (req.tls_handshake_timeout_ms > 0):
 				hs_timeout = req.tls_handshake_timeout_ms
 			socket_set_recv_timeout(fd, hs_timeout)
 			socket_set_send_timeout(fd, hs_timeout)
 			tls_cfg = http_build_tls_config(req)
-			tls = tls_connect(fd, u.host, tls_cfg)
+			tls = tls_connect_timeout(fd, u.host, tls_cfg, hs_timeout)
 			if (tls == 0):
 				tls_config_free(tls_cfg)
 				close(fd)
 				http_stream_fail(s, http_error_tls())
 				return 0
+			tls.io_timeout_ms = timeout
 			socket_set_recv_timeout(fd, timeout)
 			socket_set_send_timeout(fd, timeout)
 	http_conn* c = http_conn_new(fd, timeout)

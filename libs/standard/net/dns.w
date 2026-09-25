@@ -30,6 +30,7 @@
 import lib.lib
 import lib.net
 import lib.poll
+import lib.io_wait
 import lib.file
 import lib.time
 
@@ -536,7 +537,7 @@ int dns_tcp_recv_exact(int sock, char* buf, int want, int deadline_ms):
 		int remaining = deadline_ms - time_monotonic_ms()
 		if (remaining <= 0):
 			return 0
-		int ready = poll_single(sock, poll_in(), remaining)
+		int ready = io_poll(sock, poll_in(), remaining)
 		if (ready <= 0):
 			return 0
 		int count = socket_recv(sock, buf + got, want - got, 0)
@@ -580,7 +581,7 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 			close(sock)
 			free(query)
 			return 0
-		int ready = poll_single(sock, poll_out(), timeout_ms)
+		int ready = io_poll(sock, poll_out(), timeout_ms)
 		if (ready <= 0):
 			close(sock)
 			free(query)
@@ -639,7 +640,7 @@ int dns_query_server(int server_ip, int server_port, char* hostname, int timeout
 	if (sent != query_len):
 		close(sock)
 		return 0
-	int ready = poll_single(sock, poll_in(), timeout_ms)
+	int ready = io_poll(sock, poll_in(), timeout_ms)
 	if (ready <= 0):
 		close(sock)
 		return 0

@@ -76,6 +76,20 @@ int task_accept(int listen_fd):
 			return fd
 
 
+# task_accept that also reports the peer address through peer.
+int task_accept_from(int listen_fd, sockaddr_in* peer):
+	while (1):
+		int fd = socket_accept_connection_from(listen_fd, peer)
+		if (fd == -11): /* EAGAIN */
+			int revents = task_await_fd(listen_fd, poll_in())
+			if (revents < 0):
+				return revents
+		else:
+			if (fd >= 0):
+				socket_set_nonblocking(fd)
+			return fd
+
+
 # Connect fd (made non-blocking here) to ip:port, suspending during
 # connection establishment. Returns 0 or a negative errno.
 int task_connect_ipv4(int fd, int ip_address, int port):

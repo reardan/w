@@ -40,6 +40,7 @@ Public API:
   void        tls_config_free(tls_config* cfg)
   char*       tls_last_error(tls_config* cfg)
   tls_conn*   tls_connect(int sockfd, char* server_name, tls_config* cfg)
+  tls_conn*   tls_connect_timeout(int sockfd, char* server_name, tls_config* cfg, int io_timeout_ms)
   int         tls_read(tls_conn* c, char* buf, int len)   0=EOF, -1=error
   int         tls_write(tls_conn* c, char* buf, int len)  -1=error
   void        tls_close(tls_conn* c)
@@ -79,6 +80,8 @@ CertificateVerify signing and drives the same record/transcript/schedule.
 import lib.memory
 import lib.time
 import lib.net
+import lib.poll
+import lib.io_wait
 import lib.file
 import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
@@ -700,12 +703,17 @@ struct tls_conn:
 	tls_server_config* scfg
 	# Negotiated ALPN protocol (malloc'd NUL-terminated copy), 0 when none.
 	char* alpn
+	# Per-wait timeout for a non-blocking fd inside a task (lib/io_wait.w),
+	# -1 for none (the task's deadline still applies). Blocking fds keep
+	# using SO_RCVTIMEO/SO_SNDTIMEO.
+	int io_timeout_ms
 
 
 tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	tls_conn* c = new tls_conn()
 	c.fd = fd
 	c.use_mem = use_mem
+	c.io_timeout_ms = 0 - 1
 	c.mem_in = 0
 	c.mem_in_pos = 0
 	c.mem_out = 0
@@ -831,6 +839,12 @@ int tls_io_recv_full(tls_conn* c, char* buf, int n):
 			got = got + r
 		else if (r == 0):
 			return 0
+		else if (r == 0 - net_eagain()):
+			# Non-blocking fd inside a task: park until readable. Outside a
+			# task io_wait fails at once, so a blocking fd's SO_RCVTIMEO
+			# expiry still ends the read.
+			if (io_wait(c.fd, poll_in(), c.io_timeout_ms) < 0):
+				return 0
 		else if (r != 0 - 4):
 			# any error other than EINTR
 			return 0
@@ -849,6 +863,9 @@ int tls_io_send_all(tls_conn* c, char* buf, int n):
 		int r = socket_send(c.fd, buf + sent, n - sent, msg_nosignal())
 		if (r > 0):
 			sent = sent + r
+		else if (r == 0 - net_eagain()):
+			if (io_wait(c.fd, poll_out(), c.io_timeout_ms) < 0):
+				return 0
 		else if (r != 0 - 4):
 			# error other than EINTR
 			return 0
@@ -1854,14 +1871,22 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 
 # ---- public API ---------------------------------------------------------------
 
-# Handshake over an already-connected TCP socket. Returns an owned tls_conn*
-# on success, 0 on failure (reason in tls_last_error(cfg)).
-tls_conn* tls_connect(int sockfd, char* server_name, tls_config* cfg):
+# tls_connect with a per-wait bound for a non-blocking socket inside a task
+# (lib/io_wait.w): every wait during the handshake and afterwards is
+# bounded by io_timeout_ms (-1: only the task's deadline).
+tls_conn* tls_connect_timeout(int sockfd, char* server_name, tls_config* cfg, int io_timeout_ms):
 	tls_conn* c = tls_conn_new(sockfd, 0, cfg)
+	c.io_timeout_ms = io_timeout_ms
 	if (tls_do_handshake(c, server_name) == 0):
 		tls_conn_free(c)
 		return 0
 	return c
+
+
+# Handshake over an already-connected TCP socket. Returns an owned tls_conn*
+# on success, 0 on failure (reason in tls_last_error(cfg)).
+tls_conn* tls_connect(int sockfd, char* server_name, tls_config* cfg):
+	return tls_connect_timeout(sockfd, server_name, cfg, 0 - 1)
 
 
 # In-memory handshake harness (tests): server bytes preloaded, client output
