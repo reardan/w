@@ -18,6 +18,47 @@ direction 4b and the cross-commit queries built on it — is therefore
 is directions 1, 4a, and 3, all of which key purely off the current
 working tree's content and need no versioning story at all.
 
+## Status, 2026-09-25 (issue #323 stage 2, PR #467)
+
+What changed since the survey below, in the order it landed:
+
+- **No committed manifest.** `build.json` is gone. bin/wexec, bin/wtest
+  and bin/wtest_map_check import the generator
+  (`tools/wbuildgen_lib.w`, through `tools/manifest_source.w`) and
+  build the manifest in memory at startup, which takes about 0.2s.
+  `./wbuild manifest` writes a copy to `bin/build.json` for reading;
+  `./wbuild manifest_check` fails when generation fails.
+  `tools/merge_manifest.sh` is deleted, and `./wbuild test_changed` no
+  longer diffs a baseline manifest. The darwin and win64 executors,
+  whose directory walk the generator cannot parse, load
+  `build.base.json`'s own targets. If generation fails, wexec falls
+  back to those targets too, so an old binary can always rebuild
+  itself. wbuild reseeds an executor that cannot load the manifest at
+  all.
+- **Multi-step tests as directives.** `# wbuild: step="cmd args"`
+  appends a step after the run step, and the fields after it on the
+  line (`expect_fail`, `expect_stdout=`/`expect_stderr=`,
+  `reject_stdout=`/`reject_stderr=`, `timeout=`, `stdin=`,
+  `stdout_file=`) decorate that step. Twenty bucket-L targets moved
+  into their sources, and the generated manifest was byte-identical
+  target for target.
+- **Umbrellas are tags.** Hand-written targets and tool targets say
+  `"tags": ["tests"]`, and umbrellas list only other umbrellas. Fixture
+  groups now join `tests` automatically. The hand-kept lists had
+  dropped nine fixture-group suites, which never ran until this change.
+- **Shell scripts.** `parser_generator_w_batches.sh` is now
+  `tools/parser_generator_w_batches.w`. The `attach_test.sh` port has
+  its own entry in the table below.
+
+Still hand-written in `build.base.json`: the bootstrap chain (bucket
+A), the tool binaries (C), and the multi-step targets whose primary
+step is not a scan-directory `*_test.w` compile+run. That last group
+includes diagnostics suites driven from fixtures (`check_json_test`,
+`symbols_test`, ...), x64-only step sequences, and compiler/ and
+grammar/ unit tests. Extending `step=` to those needs either a source
+to carry the directives (a fixture, via its `.wbuild` sidecar) or
+scanning compiler/ and grammar/.
+
 ## Where the system stands today
 
 The shape is already good — a Ninja-like two-layer split that most
@@ -399,8 +440,8 @@ moved from bucket E to bucket L below, same reasoning as
 | `tools/run_wasm.sh` | `build_wasm`, `wasm_smoke_test`, plus every wasm run step | Wraps `wasmtime`/`node`; same "permanent execution shim" reasoning as `run_arm64.sh`. (The former bucket-G side blocker is gone: wbuildgen's `arch=`/`arch_only=`/`group=` all take `wasm` since 2026-07-28 and emit this wrapper.) |
 | `tools/web/run_node.sh` | `wasm_extern_test`, `wasm_webgl_test` | Wraps `node` to run `tools/web/*.mjs` harnesses; the harnesses themselves are non-W, so this sits outside the ".w sources" model regardless of the shell wrapper. |
 | `tools/attach_test.sh` | `attach_test` | ptrace-based debugger-attach test. Needs porting onto the in-repo ptrace machinery (`debugger/`) as a W test harness — natural to revisit alongside #123's attach phases. |
-| `tools/parser_generator_w_batches.sh` | `parser_generator_w_test` | Batches/diffs parser-generator output across the tracked `.w` corpus. Needs porting to a W batch-diff tool, or folding into `tools/parser_generator.w` itself. |
-| `tools/merge_manifest.sh` | *(not referenced — opt-in git merge driver, see its own header)* | Exists specifically to resolve `build.json` merge conflicts by regeneration; irrelevant once `build.json` is retired. Until then it's outside the wexec-driven graph entirely (local git config, not a manifest step). |
+| ~~`tools/parser_generator_w_batches.sh`~~ | `parser_generator_w_test` | Ported to `tools/parser_generator_w_batches.w` (2026-09-25). |
+| ~~`tools/merge_manifest.sh`~~ | *(not referenced)* | Deleted with `build.json` (2026-09-25): there is no committed manifest left to conflict. |
 | `tools/mac/run_darwin_tests.sh` | *(not referenced — invoked by hand per `AGENTS.md`/`CLAUDE.md`)* | Developer-invoked native Mach-O test runner; Mac-only, never a manifest target. Out of scope for #323's manifest-capture model. |
 | `tools/mac/wdev.sh` | *(not referenced — invoked by hand)* | Docker `w-dev` container wrapper for the agent/dev workflow. Same "out of scope" reasoning as `run_darwin_tests.sh`. |
 | `archive.sh` (repo root) | `update`, `update_win`, `update_darwin` | Archives the current seed before promotion (`docs/release.md`). Tightly coupled to seed bootstrap (inventory bucket A below); runs before any freshly-built compiler is trustworthy, so it is unlikely to become a W program before the bootstrap chain itself is redesigned. |
