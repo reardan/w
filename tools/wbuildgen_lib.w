@@ -1524,8 +1524,41 @@ int wbg_has_inline_directive(char* text):
 # never both: a source carrying inline '# wbuild:' lines alongside a
 # sidecar is a hard error (the inline lines used to be silently
 # ignored, so an edit to them changed nothing with no diagnostic).
+# Just the '# wbuild:' lines of a source, each newline-terminated: all
+# wbg_parse_directives ever looks at. Generation parses every tracked .w
+# file twice (the source-owned-target pass, then the scan), and every
+# wexec/wtest launch generates the manifest, so re-reading and
+# re-scanning ~9 MB of source for a few hundred directive lines was most
+# of a launch's cost.
+char* wbg_directive_lines(char* text):
+	string_builder* out = string_new()
+	int i = 0
+	while (text[i] != 0):
+		# i is at a line start here.
+		int start = i
+		while ((text[i] != '\n') && (text[i] != 0)):
+			i = i + 1
+		if ((text[start] == '#') && starts_with(text + start, c"# wbuild:")):
+			stream_append_bytes(out, text + start, i - start)
+			string_append_char(out, '\n')
+		if (text[i] == '\n'):
+			i = i + 1
+	char* lines = out.data
+	free(out)
+	return lines
+
+
+map[char*, char*] wbg_directive_cache   # source path -> wbg_directive_lines
+int wbg_parse_directive_text(char* path, char* text);
+
+
 int wbg_parse_directives(char* path):
 	wbg_reset_directives()
+	if (wbg_directive_cache == 0):
+		wbg_directive_cache = new map[char*, char*]
+	char* cached = wbg_directive_cache.get(path, 0)
+	if (cached != 0):
+		return wbg_parse_directive_text(path, strclone(cached))
 	string_builder* sidecar_path = string_new()
 	string_append(sidecar_path, path)
 	string_append(sidecar_path, c".wbuild")
@@ -1545,6 +1578,14 @@ int wbg_parse_directives(char* path):
 	if (text == 0):
 		wbg_error2(c"cannot read source ", path)
 		return -1
+	char* lines = wbg_directive_lines(text)
+	free(text)
+	wbg_directive_cache[strclone(path)] = strclone(lines)
+	return wbg_parse_directive_text(path, lines)
+
+
+# Parses the directive lines in text (freed here) for path.
+int wbg_parse_directive_text(char* path, char* text):
 	int failed = 0
 	int at_line_start = 1
 	int i = 0
