@@ -22,6 +22,11 @@ int byte_offset
 # span later with type parameters bound.
 int token_start_offset
 
+# Number of get_token() calls so far. 'w check --lint' (compiler/lint.w)
+# diffs it around a subexpression to tell whether that subexpression was
+# a single token.
+int token_serial
+
 # --strict: count warnings during compilation; link_impl() fails the build
 # when any fired. The count is advisory outside strict mode.
 int strict_mode
@@ -522,6 +527,7 @@ void get_token_template_chunk():
 
 
 void get_token():
+	token_serial = token_serial + 1
 	if (token_size == 0):
 		token_size = 20
 		token = malloc(token_size)

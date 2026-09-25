@@ -77,6 +77,12 @@ int sym_index_count
 int sym_index_capacity
 map[char*, int] sym_name_index
 
+# sym_index_lint[i] is one byte per index entry for the unused-local and
+# shadow rules of 'w check --lint' (compiler/lint.w): 0 untracked, 1 a
+# tracked local nothing has referenced yet, 2 a tracked local sym_lookup
+# has resolved, 3 a loop variable (never tracked, never shadowed).
+char* sym_index_lint
+
 
 void sym_stats_dump():
 	print_int0(c"sym_lookup calls: ", sym_lookup_calls)
@@ -121,6 +127,7 @@ void sym_index_reserve(int n):
 		x = x << 1
 	sym_index_offsets = realloc(sym_index_offsets, sym_index_capacity * 4, x * 4)
 	sym_index_prev = realloc(sym_index_prev, sym_index_capacity * 4, x * 4)
+	sym_index_lint = realloc(sym_index_lint, sym_index_capacity, x)
 	sym_index_capacity = x
 
 
@@ -299,6 +306,8 @@ int sym_lookup(char *s):
 			if (p >= 0):
 				sym_lookup_steps = sym_lookup_steps + 1
 				found = sym_index_offset(p)
+				if (sym_index_lint[p] == 1):
+					sym_index_lint[p] = 2
 	if (sym_index_selfcheck):
 		if (found != sym_index_scan(s)):
 			error(c"symbol index: name index and scan disagree")
@@ -443,6 +452,7 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	else if (s in sym_name_index):
 		previous = sym_name_index[s]
 	save_int(sym_index_prev + p * 4, previous)
+	sym_index_lint[p] = 0
 	sym_name_index[s] = p
 	sym_index_count = p + 1
 	table_pos = next_token(t)

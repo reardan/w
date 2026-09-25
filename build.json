@@ -398,6 +398,23 @@
 			]
 		},
 		{
+			"name": "lint_test",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "check", "--quiet", "tests/lint_warn_fixture.w"], "reject_stderr": "warning:"},
+				{"cmd": ["bin/wv2", "check", "--lint", "--quiet", "tests/lint_warn_fixture.w"], "expect_stderr": ["warning: module 'lib.lib' is already imported [duplicate-import]", "warning: local variable 'never_read' is never used [unused-local]", "warning: unreachable code after return/break/continue/goto [unreachable]", "warning: declaration of 'total' shadows a local declared on line 20 [shadow]", "warning: declaration of 'a' shadows a parameter [shadow]", "warning: assignment used as a condition; use '==' to compare, or wrap it in extra parentheses [assign-in-condition]", "warning: 'a' is assigned to itself [self-assign]"]},
+				{"cmd": ["bin/wv2", "check", "--lint", "--strict", "--quiet", "tests/lint_warn_fixture.w"], "expect_fail": true, "expect_stderr": "warning(s) treated as errors (--strict)"},
+				{"cmd": ["bin/wv2", "check", "--lint", "--json", "--quiet", "tests/lint_warn_fixture.w"], "stdout_file": "bin/lint_warn.ndjson", "expect_stdout": ["\"line\": 10", "\"column\": 6", "is never used [unused-local]"]},
+				{"cmd": ["bin/wv2", "check", "--lint", "--quiet", "tests/lint_clean_fixture.w"], "reject_stderr": "warning:"},
+				{"cmd": ["sh", "-c", "printf '\\nimport lib.lib\\n# carriage return\\r\\n\\n\\n\\n\\n# a comment that runs past forty columns wide\\nint main():   \\n    return 0\\n\\n\\n' > bin/lint_text_input.w"]},
+				{"cmd": ["bin/wv2", "check", "--lint", "--quiet", "--line-length=40", "bin/lint_text_input.w"], "expect_fail": true, "expect_stderr": ["warning: blank line at start of file [leading-blank-lines]", "warning: file uses CRLF line endings [crlf]", "warning: more than two consecutive blank lines [blank-lines]", "warning: line is 45 columns wide (limit 40) [line-too-long]", "warning: trailing whitespace [trailing-whitespace]", "warning: blank lines at end of file [trailing-blank-lines]", "warning: line indented with spaces instead of tabs"]},
+				{"cmd": ["cp", "bin/lint_text_input.w", "bin/lint_fix_input.w"]},
+				{"cmd": ["bin/wv2", "check", "--fix", "bin/lint_fix_input.w"], "expect_stderr": "fixed 6 issue(s) in 'bin/lint_fix_input.w'"},
+				{"cmd": ["cmp", "bin/lint_fix_input.w", "tests/lint_fix_expected.txt"]},
+				{"cmd": ["bin/wv2", "check", "--lint", "--fix", "bin/lint_fix_input.w"], "reject_stderr": ["warning:", "fixed"]}
+			]
+		},
+		{
 			"name": "ndjson_utf8_validator",
 			"deps": ["wv2"],
 			"inputs": ["tests/ndjson_utf8_validator.w"],
@@ -2596,6 +2613,7 @@
 				"check_imports_test",
 				"check_generic_test",
 				"check_bool_ops_test",
+				"lint_test",
 				"missing_file_test",
 				"import_diagnostic_test",
 				"read_error_test",

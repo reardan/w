@@ -133,7 +133,13 @@ int expression():
 	int stmt_context = increment_statement_context
 	increment_statement_context = 0
 	expression_lhs_readonly = 0
+	# 'w check --lint' (compiler/lint.w): a single-token left side and
+	# where its '=' sits, for self-assign and assign-in-condition
+	int lhs_serial = token_serial
 	int type = conditional_expr()
+	int lhs_tokens = token_serial - lhs_serial
+	int eq_line = diag_token_line
+	int eq_column = diag_token_column
 	int inc_op = increment_op()
 	if (token_newline):
 		# A '++'/'--' on the NEXT line is that statement's own prefix
@@ -232,6 +238,9 @@ int expression():
 			error(c"assignment to const")
 		expression_is_assignment = 1
 		expression_lhs_readonly = 0
+		lint_check_condition_assign(eq_line, eq_column)
+		char* self_name = lint_self_assign_begin(lhs_tokens, last_identifier)
+		int rhs_serial = token_serial
 		push_eax()
 		stack_pos = stack_pos + 1
 		int lhs_slot = stack_pos
@@ -246,6 +255,7 @@ int expression():
 			error(c"expression nesting too deep")
 		int type2 = expression()
 		expr_nesting_depth = expr_nesting_depth - 1
+		lint_self_assign_end(self_name, token_serial - rhs_serial, eq_line, eq_column)
 		if (verbosity >= 1):
 			print2(c"expression() type: ")
 			type_print(type)

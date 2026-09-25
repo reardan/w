@@ -4,6 +4,7 @@ import codegen
 import lib.assert
 import compiler.type_table
 import compiler.symbol_table
+import compiler.lint
 import grammar
 import compiler.test_registry
 import lib.sha256
@@ -89,6 +90,7 @@ int compile_attempt(char* fn):
 		return 0
 	if (deps_mode):
 		deps_record(filename)
+	lint_note_open(filename)
 	getchar_reset(file)
 	line_number = 0
 	column_number = 0
@@ -394,8 +396,10 @@ void compile_save(char* fn):
 	# transitive (including the auto-imported container-runtime closure,
 	# which reaches this same path through import_module).
 	defhash_depth = defhash_depth + 1
+	lint_depth = lint_depth + 1
 	compile_file(fn)
 	close(file)
+	lint_depth = lint_depth - 1
 	defhash_depth = defhash_depth - 1
 
 	filename = old_filename
@@ -673,7 +677,7 @@ void help_link():
 
 
 void help_check():
-	println(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+	println(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 	println(c"")
 	println(c"Compile without writing an executable. Diagnostics go to stderr; with")
 	println(c"--json each becomes one NDJSON record on stdout. Empty output with")
@@ -685,6 +689,14 @@ void help_check():
 	println(c"                        transitive import the file does not import directly")
 	println(c"  --bool-ops            also warn on '&'/'|' operands containing calls,")
 	println(c"                        where '&&'/'||' short-circuiting would skip them")
+	println(c"  --lint                run the lint rules on the named files (unused locals,")
+	println(c"                        unreachable code, shadowing, whitespace, ...);")
+	println(c"                        'nolint' on a line silences it")
+	println(c"  --line-length=N       --lint's line width limit in columns, tabs")
+	println(c"                        counted as 4 (default 120; 0 turns it off)")
+	println(c"  --fix                 rewrite the named files' fixable whitespace issues in")
+	println(c"                        place (indentation, trailing space, blank lines, CRLF,")
+	println(c"                        final newline) before checking them")
 	help_shared_options()
 	println(c"")
 	help_selectors()
@@ -978,6 +990,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			unrecognized_option_error(*arg)
 		else:
 			char* input = *arg
+			int lint_text_done = 0
 			# A compiler-internal root cannot be checked standalone;
 			# check w.w in its place (rule: root_is_compiler_internal)
 			if (check_mode && root_is_compiler_internal(input)):
@@ -985,6 +998,13 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 					print_error(c"check: ")
 					print_error(input)
 					print_error(c" is compiler-internal; checking w.w\x0a")
+				# --lint/--fix still cover the named file, not w.w
+				if (lint_mode || lint_fix_mode):
+					lint_quiet = quiet_mode
+					lint_text_file(input)
+					lint_note_internal_root(input)
+					lint_skip_root_open = 1
+					lint_text_done = 1
 				input = c"w.w"
 			# Roots dedupe against the import registry in both
 			# directions: a root already compiled — as an earlier
@@ -1001,11 +1021,17 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				free(canonical)
 			else:
 				import_register(canonical)
+				# --lint/--fix text pass over the raw root (compiler/lint.w);
+				# under --fix the root is rewritten before it compiles
+				if ((lint_mode || lint_fix_mode) && (lint_text_done == 0)):
+					lint_quiet = quiet_mode
+					lint_text_file(input)
 				if (quiet_mode == 0):
 					print_error(c"compiling '")
 					print_error(input)
 					print_error(c"'\x0a")
 				compile_input_file(input)
+				lint_skip_root_open = 0
 		i = i + 1
 
 	# 'w check' only (a no-op unless check_main armed generic_check_mode;
@@ -1110,6 +1136,9 @@ int check_main(int argc, int argv):
 	diag_json = 0
 	check_imports_mode = 0
 	check_bool_ops_mode = 0
+	lint_mode = 0
+	lint_fix_mode = 0
+	lint_line_limit = 120
 	# Type-check uninstantiated generic bodies too (grammar/generic.w,
 	# generic_check_instantiate_all): check only, never plain compilation
 	generic_check_mode = 1
@@ -1141,6 +1170,19 @@ int check_main(int argc, int argv):
 			# call-free bool/comparison operands. Off by default.
 			check_bool_ops_mode = 1
 			i = i + 1
+		else if (strcmp(*arg, c"--lint") == 0):
+			# Opt-in lint rules for the command-line roots
+			# (compiler/lint.w)
+			lint_mode = 1
+			i = i + 1
+		else if (strcmp(*arg, c"--fix") == 0):
+			# Rewrite the roots' fixable text issues in place before
+			# checking them (compiler/lint.w, lint_text_file)
+			lint_fix_mode = 1
+			i = i + 1
+		else if (starts_with(*arg, c"--line-length=")):
+			lint_line_limit = atoi(*arg + 14)
+			i = i + 1
 		else if ((strcmp(*arg, c"-v") == 0) || (strcmp(*arg, c"--verbose") == 0)):
 			# Consumed here (link_impl's own pre-scan would also apply a
 			# trailing -v) so 'w check -v --json f.w' keeps scanning the
@@ -1153,7 +1195,7 @@ int check_main(int argc, int argv):
 		else:
 			scanning = 0
 	if (argc <= i):
-		println2(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		println2(c"run 'w check --help' for details")
 		exit(1)
 	return link_impl(argc, argv, i, 1)

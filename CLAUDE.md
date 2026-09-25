@@ -77,8 +77,11 @@ deleted `.w`/library trees → `metadata_check`).
 **Check without compiling to a binary**: `./bin/wv2 check --json file.w`
 (NDJSON diagnostics; empty stdout + exit 0 = clean). Fix warnings, not just
 errors — self-host stages build with `--strict`, so any warning fails
-`./wbuild build`. There is no separate linter; the compiler's warnings are the
-lint, asserted by `./wbuild warning_test`.
+`./wbuild build`. There is no separate linter binary; the compiler's warnings are
+the always-on lint, asserted by `./wbuild warning_test`. `./bin/wv2 check --lint
+file.w` adds opt-in rules (unused locals, unreachable code, shadowing, ...) for
+the named files, and `check --fix` rewrites their whitespace issues in place
+(docs/projects/lint.md, `./wbuild lint_test`).
 
 **Find declarations**: `./bin/wv2 symbols --json file.w` instead of grepping.
 

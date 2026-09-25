@@ -1,0 +1,7 @@
+import lib.lib
+# carriage return
+
+
+# a comment that runs past forty columns wide
+int main():
+	return 0
