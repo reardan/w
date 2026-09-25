@@ -47,6 +47,7 @@ syntax here.
 # Defined later in the grammar / compiler; the single-pass compiler
 # needs the declarations up front.
 int type_name();
+int gpu_qualifier_ahead();   /* grammar/type_name.w */
 int type_name_array_suffix(int type);
 void function_definition(int current_symbol);
 int import_alias_lookup(char* name);
@@ -613,8 +614,11 @@ int generic_declaration_scan():
 	if (is_ident == 0):
 		return 0
 	# const/container types (and generic struct types, handled by
-	# type_name) cannot start a generic function definition
+	# type_name) cannot start a generic function definition; neither can
+	# a 'gpu'-qualified pointer type (grammar/type_name.w)
 	if (peek(c"const") | peek(c"map") | peek(c"set") | peek(c"list")):
+		return 0
+	if (gpu_qualifier_ahead()):
 		return 0
 	# An import alias's qualified type ('alias.T name') is never a
 	# generic definition; leave it for type_name()'s alias branch
@@ -990,6 +994,7 @@ void generic_infer_bind(int def, char* bound, int param, int depth, int arg_type
 # an ordinary call argument gets (check_call_argument's message).
 void generic_infer_check_concrete(int def, int param_type, int arg_index, int arg_type):
 	if (types_compatible_with_expression(param_type, arg_type) == 0):
+		gpu_domain_check_argument(generic_def_name(def), arg_index, param_type, arg_type)
 		diag_part(c"warning: function '")
 		diag_part(generic_def_name(def))
 		diag_part(c"' argument ")

@@ -177,9 +177,27 @@ void ptx_mov_ax_int64_halves(int lo, int hi):
 	ptx_line(c";")
 
 
+# Set by the grammar around exactly one load (promote) or store
+# (assign_store) whose lvalue is a 'gpu T*' element — an address known
+# to be in device global memory (docs/projects/cuda.md "Execution notes
+# (gpu pointer qualifier)"). The access then uses the global state space
+# instead of a generic one: the address is converted with cvta.to.global
+# into the %cx scratch, so %ax/%bx keep their generic values. The line
+# shapes deliberately match none of ptx_promote's/ptx_peephole's
+# recognized stack patterns, and the address never came from a stack
+# lea, so both passes leave these lines alone.
+int ptx_global_access
+
+
 # Widening loads through the address in %ax (the promote_* family).
 # suffix is the PTX type: ".u64", ".s32", ".s16", ".u16" or ".s8".
 void ptx_ld_ax(char* suffix):
+	if (ptx_global_access):
+		ptx_line(c"cvta.to.global.u64 %cx, %ax;")
+		ptx_emit(c"ld.global")
+		ptx_emit(suffix)
+		ptx_line(c" %ax, [%cx];")
+		return;
 	ptx_emit(c"ld")
 	ptx_emit(suffix)
 	ptx_line(c" %ax, [%ax];")
@@ -192,6 +210,12 @@ void ptx_promote_bx():
 
 # Truncating stores through the address in %bx (the store_ebx_* family).
 void ptx_st_bx(char* suffix):
+	if (ptx_global_access):
+		ptx_line(c"cvta.to.global.u64 %cx, %bx;")
+		ptx_emit(c"st.global")
+		ptx_emit(suffix)
+		ptx_line(c" [%cx], %ax;")
+		return;
 	ptx_emit(c"st")
 	ptx_emit(suffix)
 	ptx_line(c" [%bx], %ax;")

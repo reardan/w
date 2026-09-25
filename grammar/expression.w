@@ -5,6 +5,14 @@ int expression_is_assignment
 
 # Store eax through the address in ebx, sized by the left-hand side's type.
 void assign_store(int type):
+	# A 'gpu T*' element: rejected in host code, st.global on device
+	# (the promote() twin in grammar/promote.w)
+	if (type_is_gpu_object(type)):
+		gpu_host_access_check(type)
+		ptx_global_access = 1
+		assign_store(type_strip_gpu(type))
+		ptx_global_access = 0
+		return;
 	type = type_canonical(type)
 	# An imported C bit-field member: ebx addresses its storage unit;
 	# read-modify-write it (grammar/promote.w, bit_field_assign_store)
@@ -27,6 +35,7 @@ void assign_store(int type):
 
 
 void assign_store_struct(int type):
+	gpu_host_access_check(type)
 	int words = (type_get_size(type) + word_size - 1) >> word_size_log2
 	push_ebx()
 	stack_pos = stack_pos + 1
@@ -289,6 +298,6 @@ int expression():
 		if (lhs_buried == 0):
 			stack_pos = stack_pos - 1
 
-		type = type_value(type)  # assignment yields the stored value
+		type = type_value(type_strip_gpu(type))  # assignment yields the stored value
 
 	return type

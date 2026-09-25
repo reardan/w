@@ -144,7 +144,15 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 		param_type = sym_param_type(callee, arg_index)
 	if (param_type < 0):
 		return;
+	# A kernel's plain pointer parameter means "any device-accessible
+	# pointer" (managed or gpu_device_alloc memory), so launching with a
+	# 'gpu T*' checks against its host twin; the reverse direction (a
+	# plain pointer for a 'gpu T*' parameter) still needs a cast.
+	if (callee >= 0):
+		if (sym_is_kernel(callee) && (type_is_gpu_pointer(param_type) == 0)):
+			arg_type = type_gpu_pointer_host_twin(arg_type)
 	if (types_compatible_with_expression(param_type, arg_type) == 0):
+		gpu_domain_check_argument(callee_name, arg_index, param_type, arg_type)
 		diag_part(c"warning: function '")
 		diag_part(callee_name)
 		diag_part(c"' argument ")
@@ -240,6 +248,7 @@ void parse_variadic_element_argument(char* callee_name, int element_type, int ar
 	int arg_type = expression()
 	arg_type = promote(arg_type)
 	if (types_compatible_with_expression(element_type, arg_type) == 0):
+		gpu_domain_check_argument(callee_name, arg_index, element_type, arg_type)
 		diag_part(c"warning: function '")
 		diag_part(callee_name)
 		diag_part(c"' argument ")
@@ -853,6 +862,15 @@ int postfix_expr():
 
 					if (arg >= 0):
 						int member_type = type_get_field_type(type, member_name)
+						# A scalar field of a struct in device memory
+						# ('gpu vec*' receiver) is itself a device lvalue:
+						# re-wrap it so the load/store stays global and
+						# host derefs are diagnosed. Pointer fields keep
+						# their record (a gpu-object record over a pointer
+						# would collide with the name-keyed pointer records).
+						if (type_is_gpu_object(type) && (ci_is_bit_field_access(member_type) == 0)):
+							if ((type_get_pointer_level(member_type) == 0) && (type_num_args(member_type) == 0) && (type_is_buffer(member_type) == 0)):
+								member_type = type_get_gpu(member_type)
 						# An imported C bit-field member: the field's type
 						# is a zero-size access type whose side table
 						# records the storage unit and bit range the SysV

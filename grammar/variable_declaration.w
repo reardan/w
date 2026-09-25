@@ -108,7 +108,7 @@ int variable_declaration():
 	# import_alias_type_ahead only claims a member that names a type
 	# declared in the aliased module, so 'alias.value' stays an
 	# expression statement)
-	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here() | (import_alias_type_ahead(0) >= 0)):
+	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here() | (import_alias_type_ahead(0) >= 0) | gpu_qualifier_ahead()):
 		# println2("variable_declaration()")
 		int type = typed_identifier()
 		lint_track_local(last_declared_symbol)

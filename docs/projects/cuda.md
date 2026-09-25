@@ -401,6 +401,75 @@ performance-oriented API.
   path needs no `gpu_sync()`. A program with no kernels (memory API only)
   gets an empty embedded module and the runtime skips `cuModuleLoadData`.
 
+## Execution notes (gpu pointer qualifier)
+
+- **Syntax and representation.** `gpu T* p` (also `gpu T**`, `gpu void*`,
+  `const` in either order) marks a pointer into device memory. The
+  qualifier sits on the POINTEE: `type_name` wraps `T` in a gpu-object
+  record `G(T)` (kind 20, named `"gpu T"`, `type_get_gpu` in
+  `compiler/type_table.w`) and the stars build ordinary name-keyed pointer
+  records over it. That sidesteps the Stage 4 const-wrapping problem:
+  `type_lookup_previous_pointer` finds `G(T)` by name, and because
+  `type_canonical` strips `G` exactly like an alias, element size, index
+  scaling, field lookup and the float pipeline (`type_float_kind`) all
+  see plain `T`. Only the qualifier-aware checks read the raw record.
+  `gpu` directly followed by a type name is the qualifier; `gpu for` and
+  a user type/symbol named `gpu` keep their meaning. `gpu T` without a
+  star and `gpu` over an already-pointer `T` (a generic substitution)
+  are errors.
+- **Domains, not subtyping.** Pointers split into host and device
+  domains; `types_compatible` refuses any crossing, and the mismatch
+  sites report it as an ERROR (frozen in `cuda_diagnostics_test`):
+  `initialization mixes gpu and host pointers: expected 'float32*',
+  got 'gpu float32*'; use cast() to cross the host/device boundary`
+  (call arguments read `function 'f' argument N mixes ...`). Error
+  rather than the usual mismatch warning because the qualifier is new
+  (no legacy code to keep compiling) and every silent crossing is a
+  latent fault. `void*` does not launder the crossing; `gpu void*` is
+  the device domain's untyped pointer. Untyped constants (`0`, `&d[i]`)
+  convert freely. `cast()` is the escape hatch both ways.
+- **Kernel parameters.** A plain pointer kernel parameter keeps meaning
+  "any device-accessible pointer", so `launch k[...](d)` accepts a
+  `gpu T*` for a plain `T*` parameter (checked against its host twin);
+  a `gpu T*` parameter still rejects a plain pointer argument.
+- **Host dereference.** A load or store whose lvalue is `G(T)` in host
+  code (`target_isa != 3`) is an error: `cannot dereference a gpu pointer
+  in host code; copy the data with gpu_memcpy_from, or cast() to a host
+  pointer for managed memory`. Indexing, unary `*` and scalar struct
+  fields (`p.x`, `p[i].x`, re-wrapped as `G(field)`) are covered;
+  address arithmetic (`&d[i]`, `d + n`) stays legal. Caveat: pointer
+  and nested-struct fields reached through a `gpu` struct pointer are
+  not re-wrapped (a `G` over a pointer record would collide with the
+  name-keyed pointer records), so those loads are neither diagnosed on
+  the host nor global on device.
+- **Memory API fit.** `gpu_device_alloc` memory is the natural `gpu T*`
+  (`cast(gpu float32*, gpu_device_alloc(bytes))`); managed memory
+  (`gpu_alloc`) stays plain, since it is valid on both sides and plain
+  pointers already work in device code. `lib/cuda.w` signatures are
+  unchanged for now (casts at the call sites, as before); the natural
+  follow-up is `gpu void* gpu_device_alloc(int)`,
+  `gpu_memcpy_to(gpu void* dst, char* src, int)`,
+  `gpu_memcpy_from(char* dst, gpu void* src, int)` (and
+  `gpu_free(gpu void*)` or a twin) — lib/cuda.w is a leaf compiled by
+  `bin/wv2`, so no SEEDS bump is needed, but the change breaks every
+  existing caller that keeps device memory in plain pointers
+  (`cast(char*, dev)` would become a crossing error), so it wants a
+  sweep of `lib/tensor.w` and the tests in the same PR.
+- **Codegen payoff.** Inside `kernel`/`gpu for` bodies, `promote()` and
+  `assign_store()` set `ptx_global_access` around exactly the one load
+  or store of a `G(T)` lvalue; `ptx_ld_ax`/`ptx_st_bx` then emit
+  `cvta.to.global.u64 %cx, <addr>` + `ld.global.SFX %ax, [%cx]` /
+  `st.global.SFX [%cx], %ax` instead of the generic forms. The `%cx`
+  scratch keeps `%ax`/`%bx` generic, and the new line shapes match none
+  of the A2 passes' stack patterns (their addresses never come from a
+  stack lea), so `ptx_promote`/`ptx_peephole` leave them untouched.
+  Plain pointers keep generic accesses. Atomics stay generic `atom`.
+  `gpu_qualifier_ptx_test` (default umbrella) asserts the text at every
+  width; `gpu_qualifier_test` (opt-in, like `cuda_test`) runs
+  device-only buffers through a raw kernel, a plain-parameter kernel
+  and a `gpu for` on real hardware. Compiler sources only implement the
+  syntax (seed constraint); it is used in `tests/` alone.
+
 ## Open questions
 
 - CI on machines without an NVIDIA GPU: `./wbuild cuda_smoke` needs a driver and a
