@@ -635,14 +635,14 @@ int repl_call_site_hook
 int gpu_sym_get_value(char* s);
 
 
+# Identifier byte class for the forward-call hint scan below; UTF-8
+# lead and continuation bytes count as name characters so a whole UTF-8
+# name is one word (#287).
 int sym_is_name_char(int c):
-	if (('a' <= c) && (c <= 'z')):
+	if (is_ident_part_byte(c)):
 		return 1
-	if (('A' <= c) && (c <= 'Z')):
-		return 1
-	if (('0' <= c) && (c <= '9')):
-		return 1
-	return c == '_'
+	c = c & 255
+	return (c >= 128) & (c <= 191)
 
 
 # Forward-call hint support: consume the rest of the current input file

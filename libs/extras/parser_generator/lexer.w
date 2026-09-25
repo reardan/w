@@ -24,12 +24,27 @@ int pg_lexer_is_alnum(int c):
 	return pg_lexer_is_alpha(c) | pg_lexer_is_digit(c)
 
 
+# Identifiers accept raw UTF-8 (#287 stage 2) the way compiler/
+# tokenizer.w does: a lead byte (0xC2-0xF4) starts or continues a name
+# and continuation bytes (0x80-0xBF) continue it. The generated lexers
+# do not validate the sequence or the compiler's codepoint blocklist;
+# the compiler is the authority and rejects those sources itself.
+int pg_lexer_is_utf8_lead(int c):
+	c = c & 255
+	return (c >= 194) & (c <= 244)
+
+
+int pg_lexer_is_utf8_continuation(int c):
+	c = c & 255
+	return (c >= 128) & (c <= 191)
+
+
 int pg_lexer_is_ident_start(int c):
-	return pg_lexer_is_alpha(c)
+	return pg_lexer_is_alpha(c) | pg_lexer_is_utf8_lead(c)
 
 
 int pg_lexer_is_ident_part(int c):
-	return pg_lexer_is_alnum(c)
+	return pg_lexer_is_alnum(c) | pg_lexer_is_utf8_lead(c) | pg_lexer_is_utf8_continuation(c)
 
 
 int pg_lexer_matcher_letters(char* input, int index):

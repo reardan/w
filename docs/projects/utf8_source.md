@@ -1,8 +1,9 @@
 # UTF-8 source support (issue #287)
 
 Status: audit + staged design proposal (2026-07-16). **Stage 1
-implemented (2026-07-16)**; stage 2 (identifiers) remains
-decision-gated on §6 and is untouched. Stage 1 choices, as landed:
+implemented (2026-07-16)**; **stage 2 (identifiers) implemented
+(2026-09-25)**, see §7 for the choices as landed and the deliberately
+open follow-ups. Stage 1 choices, as landed:
 
 - **JSON escaper** (§2.1 item 3): `diag_write_json_string`
   (`compiler/diagnostics.w`) now passes bytes >= 0x80 through raw only
@@ -420,3 +421,82 @@ codepoint iteration), `tests/char_literal_test.w:37`
    is purely a feature for user programs, and the compiler is not
    expected to dogfood it)? Affects nothing about the implementation,
    but is worth stating explicitly so it doesn't get relitigated per-PR.
+
+## 7. Stage 2 as landed (2026-09-25)
+
+Decisions taken on the §6 questions, and what they mean in code:
+
+- **Q4, charset (§2's narrow floor, not `XID_*` tables).** An
+  identifier is ASCII letters, digits and `_` as before, plus any
+  well-formed UTF-8 sequence whose codepoint is not on the security
+  floor in `compiler/tokenizer.w`'s `ident_codepoint_rejection`: C1
+  controls, Unicode whitespace (NBSP, U+2000-U+200A, U+2028/9, U+202F,
+  U+205F, U+3000, Ogham space), invisible characters (soft hyphen,
+  U+200B-U+200F, U+2060-U+206F, U+FEFF, variation selectors, interlinear
+  annotations, tag characters, Mongolian vowel separator, ALM), the bidi
+  embeddings/overrides/isolates (U+202A-U+202E, U+2066-U+2069, U+061C,
+  the Trojan Source floor from §2), the noncharacters U+FFFE/U+FFFF,
+  and the plain punctuation of Latin-1 (U+00A1-U+00BF minus the letters
+  ª µ º, plus × ÷), General Punctuation (U+2000-U+206F) and CJK
+  (U+3000-U+3003, U+3008-U+3011, U+3014-U+301F). Everything else above
+  U+007F is a name character: letters of every script, digits of every
+  script, symbols, emoji. No Unicode category tables enter the seed-
+  compiled closure; widening to `XID_Start`/`XID_Continue` later would
+  be a generated table file and is still open.
+- **Q5, normalization: none, but generic combining diacritics are
+  rejected.** Symbol lookup stays byte-for-byte `strcmp`. Instead of
+  NFC tables, the tokenizer refuses the generic combining blocks
+  (U+0300-U+036F, U+1AB0-U+1AFF, U+1DC0-U+1DFF, U+20D0-U+20FF,
+  U+FE20-U+FE2F) with `identifier '...' contains a combining mark (use
+  the precomposed spelling): U+0301`, so the NFD spelling of `café`
+  (`e` + U+0301) is a compile error rather than a silently different
+  symbol from the NFC one. Script-native marks that live inside their
+  script's block (Devanagari matras, Arabic harakat, Thai vowels) are
+  accepted unchanged, so no script that needs marks is locked out. The
+  trap this closes is the Latin/Greek/Cyrillic one, which is where
+  editors and keyboards actually disagree on normalization.
+- **Opt-in: none.** Always on; the security floor is the guard.
+- **Q3, `c"..."`:** unchanged, still raw.
+- **Q2, dual byte/codepoint columns:** not added; `column` stays
+  codepoint-based, `byte_offset` byte-exact.
+- **Seed:** the change is additive on bytes the old tokenizer rejected,
+  so `./wbuild verify` / `verify_x64` fixpoint unchanged; the seed
+  closure keeps ASCII names until the next `SEEDS` bump (§4).
+
+Where it lives:
+
+- `compiler/tokenizer.w`: `is_utf8_lead_byte`, `is_ident_start_byte`,
+  `is_ident_part_byte` (the shared byte classes), `take_ident_run`
+  (the identifier loop) and `take_utf8_ident_char` (decode one
+  sequence, validate the encoding with the same rules as
+  `validate_utf8_literal`, apply the floor). Encoding errors are
+  `invalid UTF-8 sequence in identifier`.
+- Every grammar gate that used to test `token[0]` against `a-z A-Z _`
+  by hand (`grammar/identifier.w`, `unary_expression.w`,
+  `import_statement.w`, `variable_declaration.w`, `program.w`,
+  `for_statement.w`, `generic.w`, `kernel_decl.w`,
+  `compiler/compiler.w`'s defhash token kind, `symbol_table.w`'s
+  forward-call hint scan) now calls `is_ident_start_byte` /
+  `is_ident_part_byte`, so a UTF-8 name is an identifier everywhere the
+  tokenizer accepts it (declarations, `:=`, calls, struct constructors,
+  import-alias members, generics, `launch`, ...).
+- `libs/extras/parser_generator/lexer.w`: `pg_lexer_is_ident_start` /
+  `_part` accept UTF-8 lead and continuation bytes, so
+  `parser_generator_w_test` parses the new fixtures. The generated
+  lexers do not apply the floor; the compiler is the authority.
+- Tests: `tests/utf8_identifier_test.w` (+ x64 twin) covers variables,
+  parameters, functions, structs and fields, enums, type aliases,
+  generics, `:=`, loops and containers, and that `caf`/`café` are
+  distinct whole names. `utf8_identifier_error_test` (fixture group)
+  covers the bidi override, zero-width space, combining mark, NBSP and
+  a truncated sequence.
+
+Still open, deliberately:
+
+- Cross-script confusables (Cyrillic `а` vs Latin `a`): not detected,
+  same posture as Go. A `--strict` warning would be the natural home.
+- Trojan Source in comments and string literals: bidi controls are
+  rejected in identifiers only. A warning for U+202A-U+202E /
+  U+2066-U+2069 anywhere in a source file is a small, separate change.
+- The debugger's expression reader (`debugger/attach_eval.w`,
+  `debugger/wdbg.w`) still reads ASCII names only.

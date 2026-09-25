@@ -1221,7 +1221,7 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 										best_kind = clang_token_IDENT()
 										best_skip = 0
 		else:
-			if (first_byte < 105):
+			if (first_byte < 106):
 				if (first_byte < 98):
 					if (first_byte < 93):
 						if (first_byte < 86):
@@ -1300,22 +1300,22 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_kind = clang_token_KW_AUTO()
 												best_skip = 0
 				else:
-					if (first_byte < 101):
-						if (first_byte < 99):
-							if (first_byte == 98):
-								length = pg_lexer_matcher_identifier(input, index)
-								if (length > best_length):
-									best_length = length
-									best_kind = clang_token_IDENT()
-									best_skip = 0
-								if (length == 5):
-									if (starts_with(input + index, c"break")):
-										if (length >= best_length):
-											best_length = length
-											best_kind = clang_token_KW_BREAK()
-											best_skip = 0
-						else:
-							if (first_byte < 100):
+					if (first_byte < 102):
+						if (first_byte < 100):
+							if (first_byte < 99):
+								if (first_byte == 98):
+									length = pg_lexer_matcher_identifier(input, index)
+									if (length > best_length):
+										best_length = length
+										best_kind = clang_token_IDENT()
+										best_skip = 0
+									if (length == 5):
+										if (starts_with(input + index, c"break")):
+											if (length >= best_length):
+												best_length = length
+												best_kind = clang_token_KW_BREAK()
+												best_skip = 0
+							else:
 								if (first_byte == 99):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
@@ -1345,7 +1345,8 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_CONTINUE()
 												best_skip = 0
-							else:
+						else:
+							if (first_byte < 101):
 								if (first_byte == 100):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
@@ -1370,9 +1371,7 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_DEFAULT()
 												best_skip = 0
-					else:
-						if (first_byte < 103):
-							if (first_byte < 102):
+							else:
 								if (first_byte == 101):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
@@ -1396,7 +1395,9 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_EXTERN()
 												best_skip = 0
-							else:
+					else:
+						if (first_byte < 104):
+							if (first_byte < 103):
 								if (first_byte == 102):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
@@ -1415,8 +1416,7 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_FLOAT()
 												best_skip = 0
-						else:
-							if (first_byte < 104):
+							else:
 								if (first_byte == 103):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
@@ -1429,50 +1429,51 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_GOTO()
 												best_skip = 0
-							else:
+						else:
+							if (first_byte < 105):
 								if (first_byte == 104):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
 										best_length = length
 										best_kind = clang_token_IDENT()
 										best_skip = 0
-			else:
-				if (first_byte < 117):
-					if (first_byte < 109):
-						if (first_byte < 106):
-							if (first_byte == 105):
-								length = pg_lexer_matcher_identifier(input, index)
-								if (length > best_length):
-									best_length = length
-									best_kind = clang_token_IDENT()
-									best_skip = 0
-								if (length == 2):
-									if (starts_with(input + index, c"if")):
-										if (length >= best_length):
-											best_length = length
-											best_kind = clang_token_KW_IF()
-											best_skip = 0
-								else if (length == 3):
-									if (starts_with(input + index, c"int")):
-										if (length >= best_length):
-											best_length = length
-											best_kind = clang_token_KW_INT()
-											best_skip = 0
-								else if (length == 6):
-									if (starts_with(input + index, c"inline")):
-										if (length >= best_length):
-											best_length = length
-											best_kind = clang_token_KW_INLINE()
-											best_skip = 0
-						else:
-							if (first_byte < 108):
-								if ((first_byte >= 106) && (first_byte <= 107)):
+							else:
+								if (first_byte == 105):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
 										best_length = length
 										best_kind = clang_token_IDENT()
 										best_skip = 0
-							else:
+									if (length == 2):
+										if (starts_with(input + index, c"if")):
+											if (length >= best_length):
+												best_length = length
+												best_kind = clang_token_KW_IF()
+												best_skip = 0
+									else if (length == 3):
+										if (starts_with(input + index, c"int")):
+											if (length >= best_length):
+												best_length = length
+												best_kind = clang_token_KW_INT()
+												best_skip = 0
+									else if (length == 6):
+										if (starts_with(input + index, c"inline")):
+											if (length >= best_length):
+												best_length = length
+												best_kind = clang_token_KW_INLINE()
+												best_skip = 0
+			else:
+				if (first_byte < 118):
+					if (first_byte < 114):
+						if (first_byte < 108):
+							if ((first_byte >= 106) && (first_byte <= 107)):
+								length = pg_lexer_matcher_identifier(input, index)
+								if (length > best_length):
+									best_length = length
+									best_kind = clang_token_IDENT()
+									best_skip = 0
+						else:
+							if (first_byte < 109):
 								if (first_byte == 108):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
@@ -1485,16 +1486,16 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_LONG()
 												best_skip = 0
-					else:
-						if (first_byte < 115):
-							if (first_byte < 114):
+							else:
 								if ((first_byte >= 109) && (first_byte <= 113)):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
 										best_length = length
 										best_kind = clang_token_IDENT()
 										best_skip = 0
-							else:
+					else:
+						if (first_byte < 116):
+							if (first_byte < 115):
 								if (first_byte == 114):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
@@ -1518,8 +1519,7 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_RESTRICT()
 												best_skip = 0
-						else:
-							if (first_byte < 116):
+							else:
 								if (first_byte == 115):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
@@ -1558,7 +1558,8 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_SWITCH()
 												best_skip = 0
-							else:
+						else:
+							if (first_byte < 117):
 								if (first_byte == 116):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
@@ -1571,10 +1572,7 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_TYPEDEF()
 												best_skip = 0
-				else:
-					if (first_byte < 123):
-						if (first_byte < 119):
-							if (first_byte < 118):
+							else:
 								if (first_byte == 117):
 									length = pg_lexer_matcher_c_string(input, index)
 									if (length > best_length):
@@ -1603,7 +1601,10 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_UNSIGNED()
 												best_skip = 0
-							else:
+				else:
+					if (first_byte < 124):
+						if (first_byte < 120):
+							if (first_byte < 119):
 								if (first_byte == 118):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
@@ -1622,8 +1623,7 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_VOLATILE()
 												best_skip = 0
-						else:
-							if (first_byte < 120):
+							else:
 								if (first_byte == 119):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
@@ -1636,16 +1636,15 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 												best_length = length
 												best_kind = clang_token_KW_WHILE()
 												best_skip = 0
-							else:
+						else:
+							if (first_byte < 123):
 								if ((first_byte >= 120) && (first_byte <= 122)):
 									length = pg_lexer_matcher_identifier(input, index)
 									if (length > best_length):
 										best_length = length
 										best_kind = clang_token_IDENT()
 										best_skip = 0
-					else:
-						if (first_byte < 125):
-							if (first_byte < 124):
+							else:
 								if (first_byte == 123):
 									length = 1
 									literal_kind = clang_token_LBRACE()
@@ -1653,7 +1652,9 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 										best_length = length
 										best_kind = literal_kind
 										best_skip = 0
-							else:
+					else:
+						if (first_byte < 126):
+							if (first_byte < 125):
 								if (first_byte == 124):
 									length = 1
 									literal_kind = clang_token_PIPE()
@@ -1667,8 +1668,7 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 										best_length = length
 										best_kind = literal_kind
 										best_skip = 0
-						else:
-							if (first_byte < 126):
+							else:
 								if (first_byte == 125):
 									length = 1
 									literal_kind = clang_token_RBRACE()
@@ -1676,13 +1676,21 @@ pg_token_stream* clang_lex(char* input, char* filename, pg_diagnostics* diagnost
 										best_length = length
 										best_kind = literal_kind
 										best_skip = 0
-							else:
+						else:
+							if (first_byte < 194):
 								if (first_byte == 126):
 									length = 1
 									literal_kind = clang_token_TILDE()
 									if ((length > 0) && (length >= best_length)):
 										best_length = length
 										best_kind = literal_kind
+										best_skip = 0
+							else:
+								if ((first_byte >= 194) && (first_byte <= 244)):
+									length = pg_lexer_matcher_identifier(input, index)
+									if (length > best_length):
+										best_length = length
+										best_kind = clang_token_IDENT()
 										best_skip = 0
 		if (best_length > 0):
 			if (best_skip == 0):

@@ -55,7 +55,7 @@ rewind and reparse normally. Returns 1 when a declaration was parsed.
 */
 int inferred_declaration():
 	int c0 = token[0]
-	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	int is_ident = is_ident_start_byte(c0)
 	if (is_ident == 0):
 		return 0
 	# ':=' can only follow directly (nextc is its ':') or after blanks

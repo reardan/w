@@ -2255,6 +2255,7 @@
 				"unix_socket_64_test",
 				"unsigned_load_64_test",
 				"urlparse_64_test",
+				"utf8_identifier_64_test",
 				"utf8_source_64_test",
 				"varargs_w_64_test",
 				"vcs_cas_64_test",
@@ -2881,6 +2882,7 @@
 				"unix_socket_test",
 				"unsigned_load_test",
 				"urlparse_test",
+				"utf8_identifier_test",
 				"utf8_source_test",
 				"vcs_cas_test",
 				"vcs_commit_test",
@@ -7236,6 +7238,33 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/urlparse_test.w", "-o", "bin/urlparse_test"]},
 				{"cmd": ["bin/urlparse_test"]}
+			]
+		},
+		{
+			"name": "utf8_identifier_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/utf8_identifier_test.w"],
+			"outputs": ["bin/utf8_identifier_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/utf8_identifier_test.w", "-o", "bin/utf8_identifier_64_test"]},
+				{"cmd": ["bin/utf8_identifier_64_test"]}
+			]
+		},
+		{
+			"name": "utf8_identifier_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/utf8_identifier_bidi_fixture.w", "tests/utf8_identifier_combining_fixture.w", "tests/utf8_identifier_invalid_fixture.w", "tests/utf8_identifier_nbsp_fixture.w", "tests/utf8_identifier_zero_width_fixture.w"]}
+			]
+		},
+		{
+			"name": "utf8_identifier_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/utf8_identifier_test.w"],
+			"outputs": ["bin/utf8_identifier_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/utf8_identifier_test.w", "-o", "bin/utf8_identifier_test"]},
+				{"cmd": ["bin/utf8_identifier_test"]}
 			]
 		},
 		{

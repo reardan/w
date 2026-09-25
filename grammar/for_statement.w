@@ -659,7 +659,7 @@ void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 # name. Returns the cloned name; msg is the non-identifier diagnostic.
 char* for_infer_name(char* msg):
 	int c0 = token[0]
-	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	int is_ident = is_ident_start_byte(c0)
 	if (is_ident == 0):
 		error(msg)
 	char* name = strclone(token)
