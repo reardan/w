@@ -13,11 +13,13 @@ REM Usage: wbuild.cmd [target ...]
 REM   wbuild.cmd verify_win   self-host fixpoint (wv3_win==wv4_win==wv5_win)
 REM   wbuild.cmd --list       show every target in the manifest
 REM
-REM Only the win64 chain (wv2_win, wexec_win, build_win, verify_win,
-REM update_win) works here: wexec drops the manifest's "wine" prefix when
-REM running on Windows, and "bin/wv2" in manifest steps resolves to
-REM bin\wv2.exe. Targets that run ELF binaries (build, verify, tests, ...)
-REM are Linux-only.
+REM The win64 chain (wv2_win, wexec_win, build_win, verify_win,
+REM update_win), the generated sources and the win64 tests work here:
+REM wexec runs targets serially (no fork), drops the manifest's "wine"
+REM prefix, resolves "bin/wv2" to bin\wv2.exe, compiles untargeted
+REM "bin/wv2 f.w -o bin/tool" host tools for win64 (bin\tool.exe), and
+REM supplies echo/cmp when PATH lacks them. Targets that run ELF binaries
+REM (build, verify, tests, ...) are Linux-only.
 
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
@@ -68,12 +70,18 @@ if not exist bin\wexec.exe (
 )
 
 REM Warm: let wexec rebuild its own toolchain dependencies when sources
-REM changed (stdout suppressed like the Unix wrapper; errors stay visible).
+REM changed (stdout suppressed like the Unix wrapper; errors stay visible),
+REM then promote them: the manifest's "wv2" target runs the Linux seed, so
+REM on Windows bin\wv2.exe and bin\wexec.exe are the previous build's
+REM wv2_win / wexec_win outputs (wexec treats "wv2" as satisfied by
+REM bin\wv2.exe and compiles untargeted host tools for win64).
 bin\wexec.exe wv2_win wexec_win >nul
 if errorlevel 1 (
     echo Error: failed to refresh wv2_win / wexec_win
     exit /b 1
 )
+fc /b bin\wv2_win.exe bin\wv2.exe >nul 2>nul || copy /y bin\wv2_win.exe bin\wv2.exe >nul
+fc /b bin\wexec_win.exe bin\wexec.exe >nul 2>nul || copy /y bin\wexec_win.exe bin\wexec.exe >nul
 
 REM Forward all arguments to the executor.
 bin\wexec.exe %*

@@ -568,3 +568,25 @@ release from current main, bump every `SEEDS` line). Worth adding
 either way: a darwin smoke of the pinned seed against `w.w` in CI, so
 the next divergence shows up the day it happens instead of two months
 later.
+
+## Native Windows build loop was never exercised end to end (2026-09-24)
+
+On a real Windows 11 host (HVCI on), `wbuild.cmd verify_win` failed at
+every layer before reaching a compile: the pinned v0.1.0 `w.exe` seed
+and every current-main win64 binary crashed at the first kernel32 call
+(zero-filled IAT slots, which Wine binds but Windows does not); wexec
+forked workers (no fork on Windows); the manifest's `wv2` target ran
+the Linux seed; `CreateProcessA` rejected `bin/wv2.exe` spelled with
+`/`; `cmp`/`echo` are not programs on a plain Windows PATH; the
+manifest generator's getdents-only tree walk dropped every
+source-derived target (including the `generated` umbrella every run
+builds first); and `open()` of a directory failed. A win64-hosted
+compiler also hung forever on a missing import (the upward search never
+terminates at `C:`) and evaluated `0xc0400000` as positive (literals
+wrapped only because the Linux self-host is 32-bit). All fixed in the
+same change; `win64_header_test` also stopped depending on binutils
+`objdump`. What would have caught this: one CI job on a real Windows
+runner running `wbuild.cmd verify_win tests_win64` (GitHub's
+windows-latest has no Wine dependency and exercises the strict loader).
+The pinned seed still needs a release after this fix before a cold
+bootstrap works on such hosts.

@@ -1,12 +1,7 @@
-# wbuild: target=win64_header_test tag=tests_win64 dep=wv2
-# wbuild: step="bin/wv2 win64 tests/win64_hello.w -o bin/win64_hello.exe"
-# wbuild: step="objdump -f bin/win64_hello.exe" expect_stdout="pei-x86-64"
-# wbuild: step="objdump -p bin/win64_hello.exe" expect_stdout="ExitProcess" expect_stdout="kernel32.dll"
-# wbuild: step="objdump -h bin/win64_hello.exe" expect_stdout="READONLY, CODE" expect_stdout=".data"
-# wbuild: target=win64_wx_section_test tag=tests_win64 tag=tests dep=wv2
-# wbuild: step="bin/wv2 win64 tests/win64_hello.w -o bin/win64_wx_section_input.exe"
-# wbuild: step="bin/wv2 tests/win64_wx_section_test.w -o bin/win64_wx_section_test"
-# wbuild: step="bin/win64_wx_section_test"
+# wbuild: target=win64_header_test tag=tests_win64 tag=tests dep=wv2
+# wbuild: step="bin/wv2 win64 tests/win64_hello.w -o bin/win64_header_input.exe"
+# wbuild: step="bin/wv2 tests/win64_header_test.w -o bin/win64_header_test"
+# wbuild: step="bin/win64_header_test"
 # wbuild: target=win64_hello_test tag=tests_win64 dep=wv2
 # wbuild: step="bin/wv2 win64 tests/win64_hello.w -o bin/win64_hello.exe"
 # wbuild: step="wine bin/win64_hello.exe" expect_stdout="hello from win64!"

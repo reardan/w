@@ -36,6 +36,7 @@ import code_generator.code_emitter
 import code_generator.integer
 import code_generator.x64_asm
 import code_generator.dynamic_registry
+import code_generator.elf_all
 import lib.lib
 
 
@@ -195,6 +196,29 @@ void pe_start_64():
 	pe_data_section_header()
 	pe_align(4096) /* headers occupy the first page; .text starts at RVA 0x1000 */
 
+	# Stand-in ELF64 header for the debugging symbols: PE has no section
+	# the runtime can read symbols from, so compiler.w appends the ELF
+	# .symtab/.debug_line layout (emit_debugging_symbols) to .text and
+	# patches e_shoff/e_shnum/e_shstrndx here. Sitting page-aligned at the
+	# start of .text, it is the first header lib/stack_trace.w meets
+	# walking down from any code address, which is how crash reports and
+	# print_stack_trace symbolize win64 frames.
+	debug_elf_origin = codepos
+	elf_header(2)
+	emit_int16(0) /* e_type: none, this is not a loadable ELF */
+	emit_int16(62) /* e_machine: x86-64 */
+	emit_int32(1) /* e_version */
+	emit_int64(0) /* e_entry */
+	emit_int64(0) /* e_phoff */
+	emit_int64(0) /* e_shoff OVERWRITTEN by elf_save_section_info_64 */
+	emit_int32(0) /* e_flags */
+	emit_int16(64) /* e_ehsize */
+	emit_int16(0) /* e_phentsize */
+	emit_int16(0) /* e_phnum */
+	emit_int16(64) /* e_shentsize */
+	emit_int16(0) /* e_shnum OVERWRITTEN */
+	emit_int16(0) /* e_shstrndx OVERWRITTEN */
+
 	# Support data for the entry stub. The empty args block serves as
 	# argv when no runtime startup takes over: argv[0] = 0 terminates the
 	# argument vector and the following zero word is an empty environment
@@ -279,6 +303,20 @@ void pe_emit_imports():
 		save_int(ilt_rvas + i * 4, codepos)
 		emit_int64(load_int(hint_rvas + i * 4))
 		emit_int64(0)
+		i = i + 1
+
+	# The on-disk IAT mirrors the lookup table: each FirstThunk slot holds
+	# its hint/name RVA until the loader overwrites it with the resolved
+	# address. Windows walks the IAT itself and stops at the first zero
+	# entry, so a zero-filled slot is silently never bound (every import
+	# call then jumps to address 0).
+	i = 0
+	while (i < dyn_import_count):
+		int slot = dyn_import_got_vaddr(i)
+		if (slot >= data_offset):
+			save_i(data + slot - data_offset, load_int(hint_rvas + i * 4), 8)
+		else:
+			save_i(code + slot - code_offset, load_int(hint_rvas + i * 4), 8)
 		i = i + 1
 
 	# Import directory table: one descriptor per import plus the all-zero

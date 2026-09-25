@@ -74,6 +74,18 @@ void int_literal_decimal_check():
 			error(c"integer literal has more than 32 significant bits; assemble wide constants at runtime from 32-bit pieces")
 
 
+# Wrap a decoded literal to a signed 32-bit value in the compiler's own
+# word-sized int. The literal semantics above (bit 31 sign-extends on
+# every target) were defined by the 32-bit self-host, whose accumulator
+# wraps on its own; a 64-bit-hosted compiler (win64 wv2.exe, the
+# arm64_darwin and x64 self-hosts) would otherwise keep 0xc0400000
+# positive and emit different code from the same source. The shift
+# pair is a no-op on a 4-byte host.
+int int_literal_wrap32(int n):
+	int spare = __word_size__ * 8 - 32
+	return (n << spare) >> spare
+
+
 # Attempt to decode an int literal
 int int_literal():
 	int negative = 0
@@ -91,7 +103,7 @@ int int_literal():
 		int_literal_bit31_check(n)
 		if (negative):
 			n = 0-n
-		mov_eax_int(n)
+		mov_eax_int(int_literal_wrap32(n))
 		return 1
 
 	# Binary literal e.g. 0b1010, mirroring the hex path ('_' digit
@@ -105,7 +117,7 @@ int int_literal():
 		int_literal_bit31_check(n)
 		if (negative):
 			n = 0-n
-		mov_eax_int(n)
+		mov_eax_int(int_literal_wrap32(n))
 		return 1
 
 	# Check for digits 0-9
@@ -123,5 +135,5 @@ int int_literal():
 	if (negative):
 		n = 0-n
 	# Put int literal into eax
-	mov_eax_int(n)
+	mov_eax_int(int_literal_wrap32(n))
 	return 1

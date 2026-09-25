@@ -13,6 +13,7 @@ import code_generator.macho_64
 
 void be_start(int word_size):
 	build_id_note_pos = 0   /* set again by the ELF writers that emit the note */
+	debug_elf_origin = 0
 	if (target_os == 3):
 		wasm_start()
 	else if (target_os == 2):
@@ -90,6 +91,7 @@ void elf_section_set_addr(int header, int v):
 
 
 void elf_section_set_offset(int header, int v):
+	v = v - debug_elf_origin
 	if (word_size == 8):
 		save_i(code + header + 24, v, 8)
 	else:

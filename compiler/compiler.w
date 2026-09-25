@@ -253,13 +253,19 @@ int compile_search_upward(char* dir, char* fn):
 		if (result == 1):
 			return 1
 
-		# Go back up one directory
+		# Go back up one directory. A directory with no '/' left (the
+		# Windows drive root "C:") ends the walk: Unix paths reach ""
+		# at "/", but "C:" would otherwise be retried forever.
 		int index = strlen(dir) - 1
+		int went_up = 0
 		while (index >= 0):
 			if (dir[index] == 47):
 				dir[index] = 0
+				went_up = 1
 				index = 0 /* hacky way to break from loop */
 			index = index - 1
+		if (went_up == 0):
+			dir[0] = 0
 		if (verbosity >= 1):
 			print_string(c"went up one directory: ", dir)
 	return 0
@@ -1120,9 +1126,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# The debugging symbols are ELF section headers plus DWARF, and
 	# elf_save_section_info patches the section-header offset into the ELF
 	# header at fixed positions — bytes that belong to load commands in a
-	# Mach-O and to the COFF header in a PE. Only the ELF (Linux) targets
-	# get them; Mach-O and PE debug info are later stages.
-	if (target_os == 0):
+	# Mach-O and to the COFF header in a PE. The ELF (Linux) targets get
+	# them in place; the PE writer embeds a stand-in ELF header at the
+	# start of .text for them (debug_elf_origin, code_generator/pe_64.w).
+	# Mach-O debug info is a later stage.
+	if ((target_os == 0) || (target_os == 2)):
 		emit_debugging_symbols(word_size)
 	be_finish(word_size)
 

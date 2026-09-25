@@ -7,7 +7,7 @@ emit two `PT_LOAD` segments (R+X text, R+W data at base + 16MB),
 including the extern-data/COPY-relocation move Stage B introduced.
 `verify`/`verify_x64`/`verify_wasm`, the dynamic/c_import/extern-data
 batteries and the full `tests` umbrella are green; the structural
-layout gates are `win64_wx_section_test` (PE) and `elf_wx_segment_test`
+layout gates are `win64_header_test` (PE) and `elf_wx_segment_test`
 (both ELF widths). Motivated by a reproducible crash (below) rather
 than a hypothetical hardening exercise. Remaining loose ends: the
 manual real-Windows HVCI smoke test (below) and the optional arm64
@@ -54,10 +54,9 @@ Stage A implementation notes (choices made where the plan left room):
   argv/env block and all import metadata (hint/name, ILT, directory)
   stay read-only in `.text`. Only FirstThunk slots and mutable globals
   live in `.data`.
-- Besides the extended `win64_header_test` (objdump now also asserts
-  the R+X/R+W section pair), a new structural test
-  (`tests/win64_wx_section_test.w`, target `win64_wx_section_test`)
-  parses the emitted PE section table from W and asserts no section is
+- A structural test (`tests/win64_header_test.w`, target
+  `win64_header_test`, which also replaced the old objdump header
+  check) parses the emitted PE section table from W and asserts no section is
   WRITE+EXECUTE, the entry point sits in R+X, and every import
   descriptor's FirstThunk lies in a writable non-executable section —
   it runs on plain Linux, needing neither wine nor objdump, closing
@@ -278,9 +277,9 @@ property doesn't — `verify`/`verify_x64`/`verify_win` still just check
 `wv3==wv4==wv5`, self-consistency, not old-vs-new equality). Per the
 existing process (`docs/release.md`), a normal release cut after each
 stage lands republishes that target's seed; no new process needed, just
-noting it happens. `win64_header_test` (the `objdump` structural check
-in `docs/projects/windows.md`'s testing section) needs updating for the
-two-section layout in the same PR as Stage A.
+noting it happens. `win64_header_test` (now a plain-W structural
+check, see `docs/projects/windows.md`'s testing section) covers the
+two-section layout.
 
 ## Testing gap this doc doesn't close
 

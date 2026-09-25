@@ -168,6 +168,15 @@ void process_cmdline_append_arg(string_builder* s, char* arg):
 char* process_build_cmdline(char* path, char** argv):
 	string_builder* s = string_new()
 	process_cmdline_append_arg(s, path)
+	# CreateProcessA's command-line search does not accept '/' in the
+	# program token ("bin/wv2.exe" fails to spawn), unlike the file APIs;
+	# flip the separators in the program token only (arguments stay as
+	# given: W tools accept either).
+	int p = 0
+	while (p < s.length):
+		if (s.data[p] == '/'):
+			s.data[p] = 92
+		p = p + 1
 	int i = 1
 	if (strv_get(argv, 0) == 0):
 		i = 0

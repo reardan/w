@@ -29,10 +29,10 @@ int enum_declaration():
 			if (accept(c"=")):
 				if ((token[0] == '0') && (token[1] == 'x')):
 					int_literal_width_check()
-					value = from_hex(token + 2)
+					value = int_literal_wrap32(from_hex(token + 2))
 				else:
 					int_literal_decimal_check()
-					value = atoi(token)
+					value = int_literal_wrap32(atoi(token))
 				get_token()
 			int current_symbol = sym_declare_global(value_name, type_index, 1)
 			sym_set_decl_location(current_symbol, decl_file_index(), value_line, value_column)

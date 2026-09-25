@@ -233,6 +233,16 @@ int os_windows():
 	return 0
 
 
+# The win64 module's C -> W callback thunks and unhandled-exception
+# filter (lib/crash.w); Windows-only, so the stubs report failure.
+int win_callback(int fn, int nargs):
+	return 0
+
+
+int win_crash_filter_install(int handler):
+	return 0
+
+
 # Win32 API surface used by the os_windows()-guarded paths in shared
 # modules (lib/process.w's CreateProcessA spawning, tools/wexec.w's
 # FindFirstFileA directory walk). Those paths never run on this target;

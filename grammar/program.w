@@ -37,10 +37,10 @@ int parse_constant_literal(char* what, char* name):
 		value = char_literal_value()
 	else if ((token[0] == '0') && (token[1] == 'x')):
 		int_literal_width_check()
-		value = from_hex(token + 2)
+		value = int_literal_wrap32(from_hex(token + 2))
 	else if (('0' <= token[0]) && (token[0] <= '9')):
 		int_literal_decimal_check()
-		value = atoi(token)
+		value = int_literal_wrap32(atoi(token))
 	else:
 		# A named enum constant: a defined global object of an enum type.
 		# Its value is the int32 the enum declaration emitted at its address
@@ -548,8 +548,15 @@ void program():
 			while(message_declaration()):
 				parsed_declaration = 1
 
-		# Shared-library declarations (c_lib / extern)
-		while (extern_statement()) {}
+		# Shared-library declarations (c_lib / extern). Anything may follow
+		# an extern block, so go around again: a type alias or struct right
+		# after the last extern would otherwise reach the function/global
+		# declaration parser below ("unknown type name: 'type'").
+		int parsed_extern = 0
+		while (extern_statement()):
+			parsed_extern = 1
+		if (parsed_extern):
+			continue
 
 		# Imports/structs may have consumed the rest of the file
 		if (token[0] == 0):

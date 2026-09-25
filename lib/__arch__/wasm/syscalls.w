@@ -346,6 +346,16 @@ int os_windows():
 	return 0
 
 
+# The win64 module's C -> W callback thunks and unhandled-exception
+# filter (lib/crash.w); Windows-only, so the stubs report failure.
+int win_callback(int fn, int nargs):
+	return 0
+
+
+int win_crash_filter_install(int handler):
+	return 0
+
+
 int sys_ptrace(int request, int pid, int addr, int data):
 	return -1
 

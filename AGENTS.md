@@ -205,7 +205,8 @@ working in this repo.
  self-signs its output, so no qemu or codesign step is needed (issue #210).
 - The win64 PE backend (`docs/projects/windows.md`) needs `wine` to run its test
  binaries (`./wbuild tests_win64`; the win64_header_test
- structural check works without it). Like qemu for ARM64, wine should be baked
+ structural check, plain W, works without it). On a Windows host,
+ `wbuild.cmd tests_win64` / `verify_win` run natively. Like qemu for ARM64, wine should be baked
  into the Cursor Cloud VM snapshot rather than installed ad hoc; if it is missing,
  run an env setup agent from Cursor web at https://cursor.com/onboard with a
  prompt such as: "Install wine (wine64) via apt into the snapshot so win64

@@ -606,7 +606,10 @@ current state:
 		statistics (done: lib/stats.w, design: docs/projects/stats.md)
 
 	future platforms:
-		windows
+		windows (win64: native self-host via wbuild.cmd verify_win, symbolized
+			stack traces and crash reports, Win32/WGL graphics window; remaining:
+			threads, sockets, signals, CodeView/PDB, a seed release after the
+			IAT pre-fill fix -- docs/projects/windows.md)
 		arm
 		gpu (kernels/'gpu for'/atomics/explicit memory work — see the
 			gpu inventory above; remaining: A2 virtual-register emission,

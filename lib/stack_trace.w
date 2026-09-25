@@ -41,10 +41,13 @@ range, and the nlist symbol table the Mach-O writer puts in __LINKEDIT,
 which dyld maps too. Mach-O has no line table yet, so darwin frames
 carry function names only. arm64 keeps no frame chain, so its traces
 always come from the scan; return addresses signed by pointer
-authentication are stripped to their address bits first. On targets
-without symbols (PE), collection returns no frames and
-print_stack_trace() is a silent no-op, so the trap paths that call it
-stay safe everywhere.
+authentication are stripped to their address bits first. PE images
+(win64) carry the same ELF section table and DWARF behind a stand-in
+ELF64 header at the start of .text (code_generator/pe_64.w), which this
+walk meets before the "MZ" page, so win64 frames symbolize like Linux
+ones; mincore is emulated there with VirtualQuery. On targets without
+symbols, collection returns no frames and print_stack_trace() is a
+silent no-op, so the trap paths that call it stay safe everywhere.
 
 Every probe of not-known-mapped memory goes through mincore() first
 (the trick from debugger/memory.w), so scanning past the top of the
@@ -704,6 +707,10 @@ int st_line_lookup(int pc):
 		return 0
 	if (st_dline_lo == 0):
 		return 0
+	# A pc outside our own code (a system DLL frame, a JIT thunk) must
+	# not borrow the line of the last row below it.
+	if ((pc < st_base) || (pc >= st_text_hi)):
+		return 0
 	int unit_length = st_int32(st_dline_lo)
 	if ((unit_length < 16) || (unit_length + 4 > st_dline_size)):
 		return 0
@@ -823,7 +830,7 @@ int st_collect_from(int pc, int sp, int fp, char* out, int max):
 # recent call first, starting with the caller of this function. Each
 # value points inside the calling statement, ready for
 # stack_trace_symbol/line/file. Returns the number collected: 0 when
-# the binary carries no readable symbols (Mach-O, PE) or the stack
+# the binary carries no readable symbols or the stack
 # cannot be unwound.
 int stack_trace_collect(char* out, int max):
 	if (st_jmp_buf == 0):
