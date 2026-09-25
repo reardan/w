@@ -140,7 +140,11 @@ void generator_function_definition(int current_symbol):
 		in_generator_body = 1
 		enclosing_tab_level = 0
 		debug_func_note(function_start, number_of_args)
+		int outer_label_base = goto_label_base
+		int outer_pending_base = goto_pending_base
+		goto_scope_begin()
 		statement()
+		goto_scope_end(outer_label_base, outer_pending_base)
 		# Falling off the end finishes the generator; __w_gen_return
 		# switches back to the consumer and never returns
 		emit_generator_finish_call()

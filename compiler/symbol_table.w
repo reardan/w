@@ -833,6 +833,15 @@ void sym_define_declare_global_function(char* name):
 	sym_define_global(sym_declare_global(name, 4, 2))
 
 
+# A second name for the asm runtime stub about to be emitted (declared
+# right after the stub's own sym_define_declare_global_function, so both
+# resolve to the same bytes). A separate helper so libs/asm/stubgen's
+# drift check, which splits stubs at every sym_define_declare_global_
+# function call, still sees one stub.
+void sym_stub_alias(char* name):
+	sym_define_global(sym_declare_global(name, 4, 2))
+
+
 # Asm runtime stubs have no parsed parameter list, so their calls are
 # normally unchecked (parameter count -1). A stub that loads a fixed
 # number of caller stack slots (syscall, syscall7) records that arity

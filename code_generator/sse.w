@@ -247,8 +247,9 @@ void ucomisd():
 /* setCC %al ; movzbl %al,%eax (the compare itself is emitted separately)
    setcc_opcode is the second setCC byte: 0x97 seta, 0x93 setae, 0x94
    sete, 0x95 setne. On AArch64 the fcmp already set the flags, so this is
-   just a cset; the unsigned condition codes map to ordered float results
-   for non-NaN operands. */
+   just a cset. An unordered fcmp sets NZCV to 0011, which the unsigned
+   hi/hs conditions read as true, so seta/setae use the signed gt/ge
+   conditions instead: identical for ordered operands, false for NaN. */
 void setcc_movzx_eax(int setcc_opcode):
 	if (target_isa == 3):
 		ptx_setcc_fcmp(setcc_opcode)
@@ -257,7 +258,12 @@ void setcc_movzx_eax(int setcc_opcode):
 		wasm_setcc_f32(setcc_opcode)
 		return
 	if (target_isa == 1):
-		arm64_cset(arm64_setcc_cond(setcc_opcode))
+		if (setcc_opcode == 0x97):
+			arm64_cset(12)   # gt
+		else if (setcc_opcode == 0x93):
+			arm64_cset(10)   # ge
+		else:
+			arm64_cset(arm64_setcc_cond(setcc_opcode))
 		return
 	emit_int8(15)
 	emit_int8(setcc_opcode)

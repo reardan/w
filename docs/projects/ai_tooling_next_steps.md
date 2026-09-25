@@ -112,6 +112,16 @@ is a queue, not an archive.
   declaration-location fields in `compiler/symbol_table.w` already
   allow. Worth doing for every redefinition, not just `main`.
 
+- **`int32*` passes silently where `int*` is expected.** Observed
+  2026-09-25 (#379 runtime fonts): `int32 gx; place(..., &gx)` with
+  `int place(..., int* x)` checks clean on every arch, and on x64 the
+  callee's 8-byte store overruns the 4-byte local into its stack
+  neighbours. Found by review, not by `check` or the tests (the
+  neighbour happened to be dead). Direction: a warning for passing or
+  assigning a pointer whose pointee width differs from the target's
+  (`int32*` vs `int*`, `char*` vs `int*`), at least where the pointer
+  is `&local`; `cast(...)` stays the explicit opt-out.
+
 
 ## Test selection (`bin/wtest`)
 

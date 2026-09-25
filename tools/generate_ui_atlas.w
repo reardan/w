@@ -1,6 +1,6 @@
 # Emits graphics/ui/font_data.w — the UI's one R8 atlas — from the
 # committed Liberation Sans faces (tools/ui/*.ttf, SIL OFL 1.1) via
-# tools/ttf.w, plus the procedural AA masks the Material-style widgets
+# lib/ttf.w, plus the procedural AA masks the Material-style widgets
 # draw with (docs/projects/ui_framework_plan.md stage 4).
 #
 # Atlas contents, packed on 256-wide shelves with a 1px gap:
@@ -22,7 +22,7 @@ import lib.lib
 import lib.stream
 import structures.string
 import graphics.math
-import tools.ttf
+import lib.ttf
 
 
 int gen_atlas_w():
@@ -326,20 +326,20 @@ struct gen_glyph:
 	int bearing_top
 
 
-# Mild darkening of antialiased coverage so unhinted small text reads
-# crisply on light backgrounds (255 and 0 stay fixed).
-int gen_boost(int v):
-	return v + ((255 - v) * v * 2) / 765
-
-
 # Rasterize and place one strike; fills records[0..94] and the strike's
-# ascent/descent (pixels) via out params.
-void gen_bake_strike(gen_atlas* a, char* path, int ppem, gen_glyph* records, int* out_ascent, int* out_descent):
+# ascent/descent (pixels) via out params, and its decoration lines in
+# deco[0..3]: underline top, underline thickness, strikeout top,
+# strikeout thickness (lib/ttf.w's pixel conventions).
+void gen_bake_strike(gen_atlas* a, char* path, int ppem, gen_glyph* records, int* out_ascent, int* out_descent, int* deco):
 	ttf_font font
 	if (ttf_load(&font, path) == 0):
 		exit(1)
 	out_ascent[0] = ttf_scale_round(&font, ppem, font.ascent)
 	out_descent[0] = ttf_scale_round(&font, ppem, font.descent)
+	deco[0] = ttf_underline_top(&font, ppem)
+	deco[1] = ttf_underline_thickness(&font, ppem)
+	deco[2] = ttf_strikeout_top(&font, ppem)
+	deco[3] = ttf_strikeout_thickness(&font, ppem)
 
 	gen_atlas_break(a)
 	int ch = 32
@@ -351,7 +351,7 @@ void gen_bake_strike(gen_atlas* a, char* path, int ppem, gen_glyph* records, int
 			exit(1)
 		int i = 0
 		while (i < bm.w * bm.h):
-			bm.pixels[i] = gen_boost(bm.pixels[i] & 255)
+			bm.pixels[i] = ttf_boost_coverage(bm.pixels[i] & 255)
 			i = i + 1
 		int x = 0
 		int y = 0
@@ -466,6 +466,22 @@ void gen_emit_int_func(wstream* out, char* name, int value):
 	stream_write_line(out, c"")
 
 
+# A per-strike int function: body for strike 0, title otherwise.
+void gen_emit_strike_func(wstream* out, char* name, int body, int title):
+	stream_write_line(out, c"")
+	stream_write_line(out, c"")
+	stream_write_cstr(out, c"int ")
+	stream_write_cstr(out, name)
+	stream_write_line(out, c"(int strike):")
+	stream_write_line(out, c"\tif (strike <= 0):")
+	stream_write_cstr(out, c"\t\treturn ")
+	stream_write_int(out, body)
+	stream_write_line(out, c"")
+	stream_write_cstr(out, c"\treturn ")
+	stream_write_int(out, title)
+	stream_write_line(out, c"")
+
+
 int gen_record_byte(int value):
 	if ((value < 0) || (value > 255)):
 		print_error(c"generate_ui_atlas: record field out of byte range: ")
@@ -566,8 +582,10 @@ int main(int argc, int argv):
 	int body_descent = 0
 	int title_ascent = 0
 	int title_descent = 0
-	gen_bake_strike(&a, c"tools/ui/LiberationSans-Regular.ttf", 16, body, &body_ascent, &body_descent)
-	gen_bake_strike(&a, c"tools/ui/LiberationSans-Bold.ttf", 20, title, &title_ascent, &title_descent)
+	int* body_deco = cast(int*, malloc(4 * __word_size__))
+	int* title_deco = cast(int*, malloc(4 * __word_size__))
+	gen_bake_strike(&a, c"tools/ui/LiberationSans-Regular.ttf", 16, body, &body_ascent, &body_descent, body_deco)
+	gen_bake_strike(&a, c"tools/ui/LiberationSans-Bold.ttf", 20, title, &title_ascent, &title_descent, title_deco)
 
 	# Trim to the used height, rounded up to a multiple of 4.
 	int atlas_h = (a.used_h + 3) / 4 * 4
@@ -588,7 +606,10 @@ int main(int argc, int argv):
 	stream_write_line(out, c"# ppem, ASCII 32..126. Pixels are run-length encoded (tag 0: zero")
 	stream_write_line(out, c"# run, tag 1: 255 run, tag 2: literal run); records are 9-byte")
 	stream_write_line(out, c"# entries x_lo, x_hi, y_lo, y_hi, w, h, advance, bearing_x+8,")
-	stream_write_line(out, c"# bearing_top+8, decoded by graphics/ui/font.w.")
+	stream_write_line(out, c"# bearing_top+8, decoded by graphics/ui/font.w. The per-strike")
+	stream_write_line(out, c"# underline/strikeout functions give each decoration line's top row")
+	stream_write_line(out, c"# (y-down from the baseline) and thickness in pixels, from the")
+	stream_write_line(out, c"# faces' post and OS/2 tables.")
 	gen_emit_int_func(out, c"ui_font_atlas_w", a.w)
 	gen_emit_int_func(out, c"ui_font_atlas_h", atlas_h)
 	gen_emit_int_func(out, c"ui_font_first_char", 32)
@@ -617,6 +638,10 @@ int main(int argc, int argv):
 	stream_write_cstr(out, c"\treturn ")
 	stream_write_int(out, title_descent)
 	stream_write_line(out, c"")
+	gen_emit_strike_func(out, c"ui_font_baked_underline_top", body_deco[0], title_deco[0])
+	gen_emit_strike_func(out, c"ui_font_baked_underline_thickness", body_deco[1], title_deco[1])
+	gen_emit_strike_func(out, c"ui_font_baked_strikeout_top", body_deco[2], title_deco[2])
+	gen_emit_strike_func(out, c"ui_font_baked_strikeout_thickness", body_deco[3], title_deco[3])
 
 	# Mask records: one 63-byte chunk.
 	char* mask_packed = malloc(gen_mask_count() * 9)
