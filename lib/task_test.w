@@ -6,6 +6,8 @@ import lib.testing
 import lib.net
 import lib.task
 import lib.container
+import lib.time
+import lib.io_wait
 
 
 /* A task completes and delivers its result. */
@@ -367,4 +369,369 @@ void test_join_cycle_reports_deadlock():
 	assert_equal(0, task_done(pair.a))
 	assert_equal(0, task_done(pair.b))
 	free(cast(void*, pair))
+	task_scheduler_free(s)
+
+
+/* Several tasks may join the same target; all get its result. */
+
+generator int join_into(task* target, list[int] out):
+	out.push(task_join(target))
+
+
+void test_many_joiners_share_result():
+	task_scheduler* s = task_scheduler_new()
+	list[int] out = new list[int]
+	task* target = task_spawn(s, sleep_fifty_finish_seven())
+	task_spawn(s, join_into(target, out))
+	task_spawn(s, join_into(target, out))
+	task_spawn(s, join_into(target, out))
+	assert_equal(0, task_run(s))
+	assert_equal(3, out.length)
+	assert_equal(7, out[0])
+	assert_equal(7, out[2])
+	list_free[int](out)
+	task_scheduler_free(s)
+
+
+generator int join_with_timeout(task* target, int ms):
+	task_finish(task_join_timeout(target, ms))
+
+
+void test_join_timeout_expires():
+	task_scheduler* s = task_scheduler_new()
+	task* target = task_spawn(s, sleep_fifty_finish_seven())
+	task* joiner = task_spawn(s, join_with_timeout(target, 5))
+	assert_equal(0, task_run(s))
+	assert_equal(task_err_timed_out(), task_result(joiner))
+	assert_equal(7, task_result(target))
+	task_scheduler_free(s)
+
+
+/* Deadlines bound every await in scope, however deep. */
+
+int sleep_deep(int ms):
+	return task_sleep_ms(ms)
+
+
+generator int sleep_under_deadline(int deadline_ms, int sleep_ms):
+	task_deadline_scope scope
+	task_deadline_enter(&scope, deadline_ms)
+	int r = sleep_deep(sleep_ms)
+	# Once expired, every later await fails at once without parking.
+	int again = task_yield_now()
+	task_deadline_exit(&scope)
+	# Outside the scope awaits work again.
+	int after = task_yield_now()
+	task_finish(r * 1000 + again * 10 + after)
+
+
+void test_deadline_scope_bounds_awaits():
+	task_scheduler* s = task_scheduler_new()
+	task* t = task_spawn(s, sleep_under_deadline(5, 5000))
+	int start = time_monotonic_ms()
+	assert_equal(0, task_run(s))
+	asserts(c"deadline did not cut the sleep short", (time_monotonic_ms() - start) < 1000)
+	int e = task_err_timed_out()
+	assert_equal(e * 1000 + e * 10, task_result(t))
+	task_scheduler_free(s)
+
+
+generator int nested_deadlines():
+	task_deadline_scope outer
+	task_deadline_scope inner
+	task_deadline_enter(&outer, 10)
+	# A later, longer inner scope cannot extend the outer deadline.
+	task_deadline_enter(&inner, 10000)
+	asserts(c"inner scope extended the deadline", task_deadline_remaining() <= 10)
+	task_deadline_exit(&inner)
+	task_deadline_exit(&outer)
+	assert_equal(-1, task_deadline_remaining())
+	# A sleep that ends before the deadline is unaffected.
+	task_deadline_enter(&outer, 5000)
+	int r = task_sleep_ms(1)
+	task_deadline_exit(&outer)
+	task_finish(r + 1)
+
+
+void test_nested_deadlines():
+	task_scheduler* s = task_scheduler_new()
+	task* t = task_spawn(s, nested_deadlines())
+	assert_equal(0, task_run(s))
+	assert_equal(1, task_result(t))
+	task_scheduler_free(s)
+
+
+generator int child_sleeps_long():
+	task_finish(task_sleep_ms(5000))
+
+
+generator int parent_with_deadline(list[int] out):
+	task_deadline_scope scope
+	task_deadline_enter(&scope, 5)
+	task* child = task_go(child_sleeps_long())
+	task_deadline_exit(&scope)
+	out.push(task_join(child))
+
+
+void test_task_go_inherits_deadline():
+	task_scheduler* s = task_scheduler_new()
+	list[int] out = new list[int]
+	task_spawn(s, parent_with_deadline(out))
+	assert_equal(0, task_run(s))
+	assert_equal(1, out.length)
+	assert_equal(task_err_timed_out(), out[0])
+	list_free[int](out)
+	task_scheduler_free(s)
+
+
+/* Task groups. */
+
+generator int group_child(list[int] log, int id, int ms, int result):
+	int r = task_sleep_ms(ms)
+	if (r < 0):
+		log.push(0 - id)
+		task_finish(r)
+		return
+	log.push(id)
+	task_finish(result)
+
+
+generator int group_parent(list[int] log, int fail):
+	task_group* g = task_group_here()
+	task_group_spawn(g, group_child(log, 1, 30, 0))
+	task_group_spawn(g, group_child(log, 2, 5, fail))
+	task_group_spawn(g, group_child(log, 3, 10, 0))
+	int r = task_group_wait(g)
+	log.push(100)
+	task_group_free(g)
+	task_finish(r)
+
+
+void test_group_waits_for_all_children():
+	task_scheduler* s = task_scheduler_new()
+	list[int] log = new list[int]
+	task* parent = task_spawn(s, group_parent(log, 0))
+	assert_equal(0, task_run(s))
+	assert_equal(0, task_result(parent))
+	assert_equal(4, log.length)
+	assert_equal(2, log[0])
+	assert_equal(3, log[1])
+	assert_equal(1, log[2])
+	assert_equal(100, log[3])
+	# Group children are reclaimed as they finish.
+	assert_equal(1, s.tasks.length)
+	list_free[int](log)
+	task_scheduler_free(s)
+
+
+void test_group_first_error_cancels_siblings():
+	task_scheduler* s = task_scheduler_new()
+	list[int] log = new list[int]
+	task* parent = task_spawn(s, group_parent(log, -5))
+	int start = time_monotonic_ms()
+	assert_equal(0, task_run(s))
+	assert_equal(-5, task_result(parent))
+	asserts(c"siblings were not cancelled", (time_monotonic_ms() - start) < 25)
+	assert_equal(4, log.length)
+	assert_equal(2, log[0])
+	# Siblings saw cancellation (negative ids), in spawn order.
+	assert_equal(-1, log[1])
+	assert_equal(-3, log[2])
+	assert_equal(100, log[3])
+	list_free[int](log)
+	task_scheduler_free(s)
+
+
+generator int cancel_later(task* victim, int ms):
+	task_sleep_ms(ms)
+	task_cancel(victim)
+
+
+void test_cancelling_group_waiter_cancels_children():
+	task_scheduler* s = task_scheduler_new()
+	list[int] log = new list[int]
+	task* parent = task_spawn(s, group_parent(log, 0))
+	task_spawn(s, cancel_later(parent, 7))
+	assert_equal(0, task_run(s))
+	assert_equal(task_err_cancelled(), task_result(parent))
+	# Child 2 finished at 5ms; 3 and 1 were cancelled; the parent's
+	# wait returned only after they unwound.
+	assert_equal(4, log.length)
+	assert_equal(2, log[0])
+	assert_equal(-1, log[1])
+	assert_equal(-3, log[2])
+	assert_equal(100, log[3])
+	list_free[int](log)
+	task_scheduler_free(s)
+
+
+generator int group_under_deadline(list[int] log):
+	task_deadline_scope scope
+	task_deadline_enter(&scope, 7)
+	task_group* g = task_group_here()
+	task_group_spawn(g, group_child(log, 1, 30, 0))
+	task_group_spawn(g, group_child(log, 2, 5, 0))
+	int r = task_group_wait(g)
+	task_deadline_exit(&scope)
+	task_group_free(g)
+	task_finish(r)
+
+
+void test_group_deadline_applies_to_children():
+	task_scheduler* s = task_scheduler_new()
+	list[int] log = new list[int]
+	task* parent = task_spawn(s, group_under_deadline(log))
+	assert_equal(0, task_run(s))
+	assert_equal(task_err_timed_out(), task_result(parent))
+	assert_equal(2, log.length)
+	assert_equal(2, log[0])
+	assert_equal(-1, log[1])
+	list_free[int](log)
+	task_scheduler_free(s)
+
+
+/* Detached tasks are reclaimed when they finish. */
+
+void test_detach_reclaims_task():
+	task_scheduler* s = task_scheduler_new()
+	task* a = task_spawn(s, finish_forty_two())
+	task* b = task_spawn(s, sleep_fifty_finish_seven())
+	task_detach(a)
+	assert_equal(0, task_run(s))
+	assert_equal(1, s.tasks.length)
+	assert_equal(7, task_result(b))
+	task_detach(b)
+	assert_equal(0, s.tasks.length)
+	task_scheduler_free(s)
+
+
+/* A reader and a writer task can wait on the same descriptor. */
+
+generator int read_n(int fd, int n):
+	char* buf = malloc(n)
+	int got = 0
+	while (got < n):
+		int r = read(fd, buf + got, n - got)
+		if (r == -11):
+			task_await_fd(fd, poll_in())
+		else if (r <= 0):
+			break
+		else:
+			got = got + r
+	free(buf)
+	task_finish(got)
+
+
+generator int write_n(int fd, int n):
+	char* buf = malloc(n)
+	int sent = 0
+	while (sent < n):
+		int r = write(fd, buf + sent, n - sent)
+		if (r == -11):
+			task_await_fd(fd, poll_out())
+		else if (r < 0):
+			break
+		else:
+			sent = sent + r
+	free(buf)
+	task_finish(sent)
+
+
+generator int echo_n(int fd, int n):
+	char* buf = malloc(4096)
+	int moved = 0
+	while (moved < n):
+		int r = read(fd, buf, 4096)
+		if (r == -11):
+			task_await_fd(fd, poll_in())
+		else if (r <= 0):
+			break
+		else:
+			int off = 0
+			while (off < r):
+				int w = write(fd, buf + off, r - off)
+				if (w == -11):
+					task_await_fd(fd, poll_out())
+				else:
+					off = off + w
+			moved = moved + r
+	free(buf)
+
+
+void test_reader_and_writer_share_fd():
+	int* fds = malloc(__word_size__ * 2)
+	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
+	socket_set_nonblocking(fds[0])
+	socket_set_nonblocking(fds[1])
+	int n = 1 << 20
+	task_scheduler* s = task_scheduler_new()
+	task* r = task_spawn(s, read_n(fds[0], n))
+	task* w = task_spawn(s, write_n(fds[0], n))
+	task_spawn(s, echo_n(fds[1], n))
+	assert_equal(0, task_run(s))
+	assert_equal(n, task_result(w))
+	assert_equal(n, task_result(r))
+	task_scheduler_free(s)
+	close(fds[0])
+	close(fds[1])
+	free(fds)
+
+
+/* Sized stacks: a recursion far deeper than the default 64KB. */
+
+int burn_stack(int depth):
+	char[256] pad
+	pad[0] = 1
+	pad[255] = 0
+	if (depth == 0):
+		task_yield_now()
+		return 0
+	return burn_stack(depth - 1) + pad[0] + pad[255]
+
+
+generator int deep_recursion(int depth):
+	task_finish(burn_stack(depth))
+
+
+void test_spawn_sized_runs_deep_recursion():
+	task_scheduler* s = task_scheduler_new()
+	# ~1000 frames of 256+ bytes: well past 64KB, inside 1MB.
+	task* t = task_spawn_sized(s, deep_recursion(1000), 1 << 20)
+	assert_equal(0, task_run(s))
+	assert_equal(1000, task_result(t))
+	task_scheduler_free(s)
+
+
+/* io_wait (lib/io_wait.w) suspends inside tasks, fails outside. */
+
+generator int io_wait_reader(int fd):
+	task_finish(io_wait(fd, poll_in(), 1000))
+
+
+void test_io_wait_follows_context():
+	int* fds = malloc(__word_size__ * 2)
+	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
+	task_scheduler* s = task_scheduler_new()
+	assert_equal(-11, io_wait(fds[1], poll_in(), 1000))
+	assert_equal(0, io_wait_available())
+	task* t = task_spawn(s, io_wait_reader(fds[1]))
+	task_spawn(s, sleep_then_write(fds[0]))
+	assert_equal(0, task_run(s))
+	asserts(c"io_wait did not report POLLIN", (task_result(t) & poll_in()) != 0)
+	task_scheduler_free(s)
+	close(fds[0])
+	close(fds[1])
+	free(fds)
+
+
+/* task_dump lists live tasks. */
+
+void test_task_dump_smoke():
+	task_scheduler* s = task_scheduler_new()
+	task* t = task_spawn(s, sleep_fifty_finish_seven())
+	task_set_name(t, c"sleeper")
+	int fd = open(c"/dev/null", 1, 0)
+	task_dump_fd(s, fd)
+	close(fd)
+	assert_equal(0, task_run(s))
 	task_scheduler_free(s)

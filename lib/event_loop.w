@@ -82,7 +82,10 @@ event_watch* event_loop_find_watch(event_loop* loop, int fd):
 	return 0
 
 
-void event_loop_add_fd(event_loop* loop, int fd, int events, event_fd_cb* callback, void* context):
+# Adds a watch and returns its handle. Several watches may share one fd
+# (a reader and a writer task on the same socket); remove them by
+# handle with event_loop_remove_watch.
+event_watch* event_loop_add_watch(event_loop* loop, int fd, int events, event_fd_cb* callback, void* context):
 	event_watch* watch = new event_watch()
 	watch.fd = fd
 	watch.events = events
@@ -90,6 +93,17 @@ void event_loop_add_fd(event_loop* loop, int fd, int events, event_fd_cb* callba
 	watch.context = context
 	watch.active = 1
 	loop.watches.push(watch)
+	return watch
+
+
+void event_loop_add_fd(event_loop* loop, int fd, int events, event_fd_cb* callback, void* context):
+	event_loop_add_watch(loop, fd, events, callback, context)
+
+
+# Removes one watch by handle; safe inside callbacks like
+# event_loop_remove_fd. The handle must not be used afterwards.
+void event_loop_remove_watch(event_loop* loop, event_watch* watch):
+	watch.active = 0
 
 
 # Changes the interest mask of an existing watch.
