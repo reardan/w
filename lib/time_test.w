@@ -106,3 +106,94 @@ void test_sleep_ms():
 	sleep_ms(20)
 	int elapsed = time_monotonic_ms() - start
 	asserts(c"sleep_ms returned too early", elapsed >= 15)
+
+
+void test_time_days_from_civil_known_dates():
+	assert_equal(0, time_days_from_civil(1970, 1, 1))
+	assert_equal(1, time_days_from_civil(1970, 1, 2))
+	assert_equal(-1, time_days_from_civil(1969, 12, 31))
+	assert_equal(10957, time_days_from_civil(2000, 1, 1))
+	assert_equal(11016, time_days_from_civil(2000, 2, 29))
+	assert_equal(19782, time_days_from_civil(2024, 2, 29))
+	assert_equal(24855, time_days_from_civil(2038, 1, 19))
+
+
+# Before 1970, and before year 0, where truncating division would put
+# the era off by one without the floor.
+void test_time_days_from_civil_before_the_epoch():
+	assert_equal(-365, time_days_from_civil(1969, 1, 1))
+	assert_equal(-25567, time_days_from_civil(1900, 1, 1))
+	assert_equal(-719468, time_days_from_civil(0, 3, 1))
+	assert_equal(-719528, time_days_from_civil(0, 1, 1))
+	assert_equal(-719529, time_days_from_civil(-1, 12, 31))
+	# 1900 was not a leap year: Feb 28 and Mar 1 are adjacent.
+	assert_equal(1, time_days_from_civil(1900, 3, 1) - time_days_from_civil(1900, 2, 28))
+	# 2000 was: there is a Feb 29 between them.
+	assert_equal(2, time_days_from_civil(2000, 3, 1) - time_days_from_civil(2000, 2, 28))
+
+
+# Out-of-range days count on linearly across month ends.
+void test_time_days_from_civil_overflowing_days():
+	assert_equal(time_days_from_civil(2023, 12, 31), time_days_from_civil(2024, 1, 0))
+	assert_equal(time_days_from_civil(2024, 2, 1), time_days_from_civil(2024, 1, 32))
+
+
+void test_time_weekday_from_civil():
+	assert_equal(4, time_weekday_from_civil(1970, 1, 1))
+	assert_equal(3, time_weekday_from_civil(1969, 12, 31))
+	assert_equal(6, time_weekday_from_civil(2000, 1, 1))
+	assert_equal(2, time_weekday_from_civil(2000, 2, 29))
+	assert_equal(4, time_weekday_from_civil(2024, 2, 29))
+	assert_equal(0, time_weekday_from_civil(2023, 12, 31))
+	assert_equal(1, time_weekday_from_civil(1900, 1, 1))
+	assert_equal(4, time_weekday_from_civil(1776, 7, 4))
+	assert_equal(6, time_weekday_from_civil(0, 1, 1))
+	# Every weekday in a row, across the epoch.
+	int d = -10
+	while (d < 10):
+		assert_equal((time_weekday_from_days(d) + 1) % 7, time_weekday_from_days(d + 1))
+		d = d + 1
+
+
+# Every day from 1970 to 2038-01-19 (the 32-bit limit) round-trips through
+# time_utc_from_unix, weekday and year_day included.
+void test_time_days_from_civil_round_trips():
+	date_time dt
+	int days = 0
+	while (days < 24856):
+		time_utc_from_unix(days * 86400, &dt)
+		assert_equal(days, time_days_from_civil(dt.year, dt.month, dt.day))
+		assert_equal(dt.weekday, time_weekday_from_civil(dt.year, dt.month, dt.day))
+		assert_equal(dt.year_day, time_days_from_civil(dt.year, dt.month, dt.day) - time_days_from_civil(dt.year, 1, 1) + 1)
+		days = days + 1
+
+
+void test_time_unix_from_utc():
+	date_time dt
+	time_utc_from_unix(1709251199, &dt)
+	assert_equal(1709251199, time_unix_from_utc(&dt))
+	time_utc_from_unix(0, &dt)
+	assert_equal(0, time_unix_from_utc(&dt))
+	time_utc_from_unix(2147483647, &dt)
+	assert_equal(2147483647, time_unix_from_utc(&dt))
+	int t = 0
+	while (t < 2000000000):
+		time_utc_from_unix(t, &dt)
+		assert_equal(t, time_unix_from_utc(&dt))
+		t = t + 12345677
+
+	# Before the epoch: 1969-12-31 23:59:59 is one second short of it.
+	dt.year = 1969
+	dt.month = 12
+	dt.day = 31
+	dt.hour = 23
+	dt.minute = 59
+	dt.second = 59
+	assert_equal(-1, time_unix_from_utc(&dt))
+	dt.year = 1901
+	dt.month = 12
+	dt.day = 13
+	dt.hour = 20
+	dt.minute = 45
+	dt.second = 52
+	assert_equal(0 - 2147483647 - 1, time_unix_from_utc(&dt))

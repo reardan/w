@@ -156,3 +156,52 @@ char* time_format_unix_utc(int timestamp):
 	char* result = time_format_utc(dt)
 	free(dt)
 	return result
+
+
+# Civil-date math, the inverse of time_utc_from_unix
+# (docs/projects/ui_widgets.md §4.7). Howard Hinnant's days_from_civil:
+# shifting the year to start on March 1st puts the leap day last, so a
+# day-of-year is a closed formula and a 400-year era is a fixed 146097
+# days. Division here truncates toward zero, so the era is floored by
+# hand for years before 0; everything else stays non-negative.
+#
+# Proleptic Gregorian. month is 1..12; day is not range-checked, and
+# out-of-range days count on linearly (day 0 is the last day of the
+# previous month, day 32 of January is February 1st).
+
+
+# Days since 1970-01-01 (negative before it) of year-month-day.
+int time_days_from_civil(int year, int month, int day):
+	int y = year
+	if (month <= 2):
+		y = y - 1
+	int era = y / 400
+	if (y < 0):
+		era = (y - 399) / 400
+	int yoe = y - era * 400
+	int mp = month - 3
+	if (month <= 2):
+		mp = month + 9
+	int doy = (153 * mp + 2) / 5 + day - 1
+	int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+	return era * 146097 + doe - 719468
+
+
+# Weekday of a day count from time_days_from_civil: 0 = Sunday through
+# 6 = Saturday, the same numbering as date_time.weekday. 1970-01-01 was
+# a Thursday; the remainder is floored so days before 1970 work too.
+int time_weekday_from_days(int days):
+	return ((days % 7) + 11) % 7
+
+
+# Weekday of year-month-day: 0 = Sunday through 6 = Saturday.
+int time_weekday_from_civil(int year, int month, int day):
+	return time_weekday_from_days(time_days_from_civil(year, month, day))
+
+
+# Unix timestamp of a UTC date_time (reads year..second; weekday and
+# year_day are ignored). Negative before 1970. On the 32-bit target the
+# result overflows past 2038-01-19 03:14:07, like time_now.
+int time_unix_from_utc(date_time* dt):
+	int days = time_days_from_civil(dt.year, dt.month, dt.day)
+	return days * 86400 + dt.hour * 3600 + dt.minute * 60 + dt.second
