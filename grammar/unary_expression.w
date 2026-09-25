@@ -353,8 +353,8 @@ int unary_expression_operand():
 				int alloc_limit = 1073741823 / element_size
 				int h_in_bounds = be_ctrl_block()
 				int h_trap = be_ctrl_block()
-				bounds_branch_eax_negative(h_trap)
-				bounds_skip_eax_less_equal_int32(alloc_limit, h_in_bounds)
+				be_bounds_branch(BOUNDS_EAX_NEG, 0, h_trap)
+				be_bounds_branch(BOUNDS_EAX_LE_LIMIT, alloc_limit, h_in_bounds)
 				be_ctrl_end(h_trap)
 				push_eax()
 				mov_eax_int(alloc_limit)

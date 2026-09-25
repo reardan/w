@@ -189,3 +189,22 @@ void emit_zeros(int num):
 	while (num > 0):
 		emit_int8(0)
 		num = num - 1
+
+
+# Bounds-check kinds for be_bounds_branch (code_generator/x86.w, issue
+# #228): the index is in ebx, the length or bound in eax, and
+# BOUNDS_EAX_LE_LIMIT compares eax against an immediate limit. Each
+# branches to its region when the condition holds.
+enum BoundsKind:
+	BOUNDS_EAX_NEG        # eax < 0
+	BOUNDS_EBX_NEG        # ebx < 0
+	BOUNDS_EBX_GT_EAX     # ebx > eax
+	BOUNDS_EBX_LT_EAX     # ebx < eax
+	BOUNDS_EBX_LE_EAX     # ebx <= eax
+	BOUNDS_EAX_LE_LIMIT   # eax <= limit
+
+# The signed relation a kind tests: 0 less, 1 greater, 2 less-or-equal.
+int bounds_relation(int kind):
+	if (kind == BOUNDS_EBX_GT_EAX): return 1
+	if (kind >= BOUNDS_EBX_LE_EAX): return 2
+	return 0

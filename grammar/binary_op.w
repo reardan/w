@@ -144,26 +144,9 @@ int float_binary_arithmetic(int left_type, int right_type, int op):
 		return 0
 	float_load_xmm(0, 1, left_type, kind)
 	float_load_xmm(1, 0, right_type, kind)
-	if (kind == 2):
-		if (op == '+'):
-			addsd()
-		else if (op == '-'):
-			subsd()
-		else if (op == '*'):
-			mulsd()
-		else if (op == '/'):
-			divsd()
-		movq_rax_xmm0()
-	else:
-		if (op == '+'):
-			addss()
-		else if (op == '-'):
-			subss()
-		else if (op == '*'):
-			mulss()
-		else if (op == '/'):
-			divss()
-		movd_eax_xmm0()
+	float_arith(op, kind == 2)
+	if (kind == 2): movq_rax_xmm0()
+	else: movd_eax_xmm0()
 	return float_binary_result_type(kind)
 
 

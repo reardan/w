@@ -824,23 +824,14 @@ void wasm_ctrl_end():
 	wasm_cand_drop_all()
 	emit_int8(0x0b)
 
-void wasm_br(int depth):
+# br (cond 0), or br_if on ($ax == 0) (cond 1) / ($ax != 0) (cond 2)
+void wasm_br_on(int cond, int depth):
 	wasm_cand_drop_all()
-	emit_int8(0x0c)
-	wasm_leb(depth)
-
-# br_if on ($ax == 0) / ($ax != 0)
-void wasm_br_zero(int depth):
-	wasm_cand_drop_all()
-	wasm_get_ax()
-	wasm_op(0x45)   # i32.eqz
-	emit_int8(0x0d)
-	wasm_leb(depth)
-
-void wasm_br_nonzero(int depth):
-	wasm_cand_drop_all()
-	wasm_get_ax()
-	emit_int8(0x0d)
+	if (cond == 0): emit_int8(0x0c)
+	else:
+		wasm_get_ax()
+		if (cond == 1): wasm_op(0x45)   # i32.eqz
+		emit_int8(0x0d)
 	wasm_leb(depth)
 
 # Bounds checks: compare + br_if into region h at the given depth.
@@ -849,40 +840,14 @@ void wasm_bounds_br_if(int depth):
 	emit_int8(0x0d)
 	wasm_leb(depth)
 
-void wasm_bounds_branch_eax_negative(int depth):
-	wasm_get_ax()
-	wasm_i32_const(0)
-	wasm_op(0x48)   # i32.lt_s
-	wasm_bounds_br_if(depth)
-
-void wasm_bounds_branch_ebx_negative(int depth):
-	wasm_get_bx()
-	wasm_i32_const(0)
-	wasm_op(0x48)
-	wasm_bounds_br_if(depth)
-
-void wasm_bounds_branch_ebx_greater_eax(int depth):
-	wasm_get_bx()
-	wasm_get_ax()
-	wasm_op(0x4a)   # i32.gt_s
-	wasm_bounds_br_if(depth)
-
-void wasm_bounds_skip_ebx_less_eax(int depth):
-	wasm_get_bx()
-	wasm_get_ax()
-	wasm_op(0x48)   # i32.lt_s
-	wasm_bounds_br_if(depth)
-
-void wasm_bounds_skip_ebx_less_equal_eax(int depth):
-	wasm_get_bx()
-	wasm_get_ax()
-	wasm_op(0x4c)   # i32.le_s
-	wasm_bounds_br_if(depth)
-
-void wasm_bounds_skip_eax_less_equal_int32(int limit, int depth):
-	wasm_get_ax()
-	wasm_i32_const(limit)
-	wasm_op(0x4c)   # i32.le_s
+# Operands and signed compare of a be_bounds_branch kind (x86.w).
+void wasm_bounds_branch(int kind, int limit, int depth):
+	if ((kind == BOUNDS_EAX_NEG) || (kind == BOUNDS_EAX_LE_LIMIT)): wasm_get_ax()
+	else: wasm_get_bx()
+	if (kind <= BOUNDS_EBX_NEG): wasm_i32_const(0)
+	elif (kind == BOUNDS_EAX_LE_LIMIT): wasm_i32_const(limit)
+	else: wasm_get_ax()
+	wasm_op(0x48 + 2 * bounds_relation(kind))   # i32.lt_s / gt_s / le_s
 	wasm_bounds_br_if(depth)
 
 ########################## functions and address slots ########################
