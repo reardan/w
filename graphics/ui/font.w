@@ -25,6 +25,7 @@ kerning from the face's GPOS or kern table. Pure CPU code — the GL
 upload lives in graphics.ui.render.
 */
 import lib.lib
+import lib.utf8
 import lib.ttf
 import lib.rle
 import lib.mem
@@ -800,41 +801,11 @@ char* ui_font_build_atlas():
 # and surrogates read as U+FFFD and consume one byte, so every byte
 # offset still reaches the terminator.
 int ui_utf8_next(char* s, int i, int* cp):
-	int c = s[i] & 255
-	if (c < 128):
-		cp[0] = c
-		return i + 1
-	int need = 0
-	int value = 0
-	int min = 0
-	if ((c >= 194) && (c <= 223)):
-		need = 1
-		value = c & 31
-		min = 128
-	else if ((c >= 224) && (c <= 239)):
-		need = 2
-		value = c & 15
-		min = 2048
-	else if ((c >= 240) && (c <= 244)):
-		need = 3
-		value = c & 7
-		min = 65536
-	else:
+	int n = utf8_scan(s + i, 4, cp)
+	if (n == 0):
 		cp[0] = 65533
 		return i + 1
-	int j = 1
-	while (j <= need):
-		int d = s[i + j] & 255
-		if ((d < 128) || (d > 191)):
-			cp[0] = 65533
-			return i + 1
-		value = (value << 6) | (d & 63)
-		j = j + 1
-	if ((value < min) || (value > 1114111) || ((value >= 55296) && (value <= 57343))):
-		cp[0] = 65533
-		return i + 1
-	cp[0] = value
-	return i + need + 1
+	return i + n
 
 
 # Encode cp as UTF-8 into out (room for 4 bytes). Returns the byte
@@ -842,23 +813,7 @@ int ui_utf8_next(char* s, int i, int* cp):
 int ui_utf8_encode(char* out, int cp):
 	if ((cp < 0) || (cp > 1114111) || ((cp >= 55296) && (cp <= 57343))):
 		cp = 65533
-	if (cp < 128):
-		out[0] = cp
-		return 1
-	if (cp < 2048):
-		out[0] = 192 | (cp >> 6)
-		out[1] = 128 | (cp & 63)
-		return 2
-	if (cp < 65536):
-		out[0] = 224 | (cp >> 12)
-		out[1] = 128 | ((cp >> 6) & 63)
-		out[2] = 128 | (cp & 63)
-		return 3
-	out[0] = 240 | (cp >> 18)
-	out[1] = 128 | ((cp >> 12) & 63)
-	out[2] = 128 | ((cp >> 6) & 63)
-	out[3] = 128 | (cp & 63)
-	return 4
+	return utf8_encode(out, cp)
 
 
 # A typed codepoint a text field should insert: printable ASCII or any

@@ -54,44 +54,57 @@ void cstr_invalid_utf8():
 	exit(1)
 
 
+# The one strict UTF-8 decoder (lib/utf8.w, graphics/ui/font.w and the
+# Cocoa text input build on it): decodes the sequence at s[0], reading
+# at most avail bytes (NUL is never a continuation byte, so a
+# NUL-terminated caller may pass 4). Stores the codepoint in *cp and
+# returns the sequence length 1..4, or 0 for a malformed, overlong,
+# surrogate, out-of-range or truncated sequence (*cp is then unset).
+int utf8_scan(char* s, int avail, int* cp):
+	int c = s[0] & 255
+	if (c < 128):
+		*cp = c
+		return 1
+	int need = 0
+	int value = 0
+	int min = 0
+	if ((c >= 194) && (c <= 223)):
+		need = 1
+		value = c & 31
+		min = 128
+	else if ((c >= 224) && (c <= 239)):
+		need = 2
+		value = c & 15
+		min = 2048
+	else if ((c >= 240) && (c <= 244)):
+		need = 3
+		value = c & 7
+		min = 65536
+	else:
+		return 0
+	if (need >= avail):
+		return 0
+	int j = 1
+	while (j <= need):
+		int d = s[j] & 255
+		if ((d < 128) || (d > 191)):
+			return 0
+		value = (value << 6) | (d & 63)
+		j = j + 1
+	if ((value < min) || (value > 1114111) || ((value >= 55296) && (value <= 57343))):
+		return 0
+	*cp = value
+	return need + 1
+
+
 int cstr_utf8_length_or_die(char* s):
 	int i = 0
+	int cp = 0
 	while (s[i] != 0):
-		int c = s[i] & 255
-		int need = 0
-		int codepoint = 0
-		if (c < 128):
-			i = i + 1
-		else if ((c >= 194) && (c <= 223)):
-			need = 1
-			codepoint = c & 31
-		else if ((c >= 224) && (c <= 239)):
-			need = 2
-			codepoint = c & 15
-		else if ((c >= 240) && (c <= 244)):
-			need = 3
-			codepoint = c & 7
-		else:
+		int n = utf8_scan(s + i, 4, &cp)
+		if (n == 0):
 			cstr_invalid_utf8()
-		if (need > 0):
-			int j = 1
-			while (j <= need):
-				int d = s[i + j] & 255
-				if ((d == 0) || (d < 128) || (d > 191)):
-					cstr_invalid_utf8()
-				codepoint = (codepoint << 6) | (d & 63)
-				j = j + 1
-			if ((need == 1) && (codepoint < 128)):
-				cstr_invalid_utf8()
-			if ((need == 2) && (codepoint < 2048)):
-				cstr_invalid_utf8()
-			if ((need == 3) && (codepoint < 65536)):
-				cstr_invalid_utf8()
-			if ((codepoint >= 55296) && (codepoint <= 57343)):
-				cstr_invalid_utf8()
-			if (codepoint > 1114111):
-				cstr_invalid_utf8()
-			i = i + need + 1
+		i = i + n
 	return i
 
 

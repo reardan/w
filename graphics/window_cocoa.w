@@ -243,28 +243,11 @@ int gfx_cocoa_char(int cp):
 # Decode the UTF-8 codepoint at s[i] into cp[0]; returns the index of the
 # next one. Malformed bytes decode as themselves, one byte at a time.
 int gfx_cocoa_utf8_next(char* s, int i, int* cp):
-	int b = s[i] & 255
-	int n = 0
-	int value = b
-	if ((b & 0xe0) == 0xc0):
-		n = 1
-		value = b & 0x1f
-	else if ((b & 0xf0) == 0xe0):
-		n = 2
-		value = b & 0x0f
-	else if ((b & 0xf8) == 0xf0):
-		n = 3
-		value = b & 0x07
-	int k = 1
-	while (k <= n):
-		int c = s[i + k] & 255
-		if ((c & 0xc0) != 0x80):
-			cp[0] = b
-			return i + 1
-		value = (value << 6) | (c & 0x3f)
-		k = k + 1
-	cp[0] = value
-	return i + n + 1
+	int n = utf8_scan(s + i, 4, cp)
+	if (n == 0):
+		cp[0] = s[i] & 255
+		return i + 1
+	return i + n
 
 
 # Fold one scroll delta (hundredths of a line, or of a point when the
