@@ -259,6 +259,27 @@ warm-state builds) without touching the compilation model at all.
    dedicated design doc at the scale of `arm64.md`'s original staged
    plan, not a subsection of this one.
 
+### 2.5 Status (September 2026)
+
+The first round of (a) landed as the PR that closed #338. It moved
+reusable logic out of these CLIs into source libraries, each with its
+own unit test, without changing any tool's output:
+
+| Tool | Library | What moved |
+| --- | --- | --- |
+| `tools/wcore.w` | `lib/core_file.w` | ELF core loading, notes, build-id checks, registers, frame-pointer and scan unwinding |
+| `tools/wvc.w` | `libs/extras/vcs/repo.w` | repo layout, blob lookup by path, merge path union, content/binary checks, working-tree writes, modified-file diff |
+| `tools/generate_ui_atlas.w`, `graphics/ui/font.w` | `lib/rle.w` (+ `libs/standard/crypto/base64.w`) | the atlas RLE encoder and decoder as one codec; the generator's private base64 |
+| `tools/wcloc.w` | `lib/cloc.w` | per-argument row grouping (`cloc_count_path`) |
+| `tools/stat.w`, `tools/chmod.w` | `lib/stat.w` | octal mode formatting/parsing, file type names |
+| `tools/pac_flag_check.w` | `libs/asm/binary_reader.w` | byte-pattern search, ELF / Mach-O magic checks |
+
+The largest remaining non-thin tools are the build system's:
+`tools/wexec.w`, `tools/wbuildgen_lib.w` and `tools/test_map.w` (wtest).
+They were left for a follow-up because the build-system work in #323 was
+changing them at the same time. Item 1 above is still open for them.
+Items 2 through 4 are unchanged.
+
 ## 3. #337 "LLVM Offload"
 
 Issue text, verbatim: "Have a listener or visitor parse the AST into an
