@@ -775,7 +775,8 @@ runs do.
   import-closure checks of the deps-driven cache keys): each child
   reports the hashes it computed; the daemon keeps one unless an event
   touched that path after the fork. An event drops a path's hash (a
-  directory event, or a queue overflow, drops them all), and before
+  directory created, deleted or moved drops every hash under it, a
+  queue overflow all of them), and before
   every fork each kept hash is re-checked against the file's size,
   inode, mtime and ctime, so a write inotify cannot see still rehashes.
 - *Import closures* stay in `bin/.wexec_deps_cache`, which each child

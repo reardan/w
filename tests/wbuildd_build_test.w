@@ -292,6 +292,33 @@ char* vw_manifest():
 	return text
 
 
+int vw_contains(char* text, char* needle):
+	int i = 0
+	while (text[i] != 0):
+		if (starts_with(&text[i], needle)):
+			return 1
+		i = i + 1
+	return 0
+
+
+# After the --list runs the daemon holds a warm manifest and warm
+# hashes. Under a parallel './wbuild tests' another target editing a
+# source outside bin/ legitimately drops the manifest in between, so a
+# cold answer is retried a few times before it counts as a failure.
+void vw_expect_warm():
+	int attempt = 0
+	while (attempt < 10):
+		json_value* status = vw_status()
+		int warm = json_object_get(status, c"warm_manifest").int_value && (json_object_get(status, c"warm_hashes").int_value > 0)
+		json_free(status)
+		if (warm):
+			return
+		process_result_free(vw_run(vw_client(c"--no-autostart --require-daemon", strjoin(strjoin(c"build -f ", vw_path(c"manifest.json")), c" -j 1 vw_a"))))
+		process_result_free(vw_run(vw_client(c"--no-autostart --require-daemon", c"build --list")))
+		attempt = attempt + 1
+	asserts(c"the daemon never kept a warm manifest and warm hashes", 0)
+
+
 void vw_cleanup():
 	char* names = c"a.w bad.w helper.w manifest.json log d.sock d.sock.log a a64 wv_self bad a.cold a64.cold wv_self.cold"
 	for char* name in vw_words(names):
@@ -349,10 +376,7 @@ void test_verify_warm():
 	# then served warm.
 	process_result_free(vw_compare(c"--list"))
 	process_result_free(vw_compare(c"--list"))
-	json_value* status = vw_status()
-	assert1(json_object_get(status, c"warm_manifest").int_value)
-	json_free(status)
-	assert1(vw_status_int(c"warm_hashes") > 0)
+	vw_expect_warm()
 
 	# An edit inside a.w's closure: the daemon's warm hashes must not
 	# hide it -- vw_a and vw_a64 rebuild, and match a cold build of the
@@ -360,7 +384,9 @@ void test_verify_warm():
 	vw_write(c"helper.w", c"char* helper():\n\treturn c\"helped again\"\n")
 	process_result* edited = vw_run(vw_client(c"--no-autostart --require-daemon", strjoin(strjoin(c"build ", m), c" -j 1 vw_all")))
 	assert_equal(0, edited.status)
-	assert1(strcmp(edited.stdout_text, one.stdout_text) != 0)
+	assert1(vw_contains(edited.stdout_text, c"wexec: target vw_a\n"))
+	assert1(vw_contains(edited.stdout_text, c"wexec: target vw_a64\n"))
+	assert1(vw_contains(edited.stdout_text, c"wexec: target vw_self (cached)"))
 	process_result* recheck = vw_compare(strjoin(m, c" -j 1 vw_all"))
 	assert_equal(0, recheck.status)
 	process_result* cold_edit = vw_run(vw_oneshot(strjoin(m, c" --no-cache -j 1 vw_all")))

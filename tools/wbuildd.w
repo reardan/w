@@ -307,6 +307,8 @@ int wbd_seq
 int wbd_clear_seq                  # last event that dropped every hash
 int wbd_manifest_seq               # last event that dropped the manifest
 map[char*, int] wbd_touched        # path -> seq of its last event (while builds run)
+list[char*] wbd_touched_dirs       # directories whose whole subtree was dropped (while builds run)
+list[int] wbd_touched_dir_seqs     # ... and the seq of each drop
 map[char*, char*] wbd_hash_sig     # path -> stat signature its warm hash was taken under
 char* wbd_manifest_stderr          # what generating the warm manifest printed
 
@@ -413,6 +415,36 @@ void wbd_hash_forget(char* path):
 	wbd_hash_sig.remove(path)
 	if (wbd_builds_active > 0):
 		wbd_touched[strclone(path)] = wbd_seq
+
+
+# A directory appeared, vanished or moved: every warm hash under it goes.
+void wbd_hashes_forget_under(char* dir):
+	wbd_seq = wbd_seq + 1
+	char* prefix = strjoin(dir, c"/")
+	if (dir[0] == 0):
+		prefix = strclone(c"")
+	list[char*] paths = wexec_file_hashes.keys()
+	for char* path in paths:
+		if (starts_with(path, prefix)):
+			wexec_file_hashes.remove(path)
+			wbd_hash_sig.remove(path)
+	if (wbd_builds_active > 0):
+		wbd_touched_dirs.push(prefix)
+		wbd_touched_dir_seqs.push(wbd_seq)
+	else:
+		free(prefix)
+
+
+# Did an event since seq drop path (itself, or a directory above it)?
+int wbd_touched_since(char* path, int seq):
+	if (wbd_touched.get(path, 0) > seq):
+		return 1
+	int i = 0
+	while (i < wbd_touched_dirs.length):
+		if ((wbd_touched_dir_seqs[i] > seq) && starts_with(path, wbd_touched_dirs[i])):
+			return 1
+		i = i + 1
+	return 0
 
 
 void wbd_manifest_drop():
@@ -594,19 +626,22 @@ void wbd_handle_event(inotify_event* ev):
 			if (ev.mask & IN_MOVE_SELF()):
 				wbd_rewatch_pending = 1
 			wbd_clear_all()
-			wbd_hashes_clear()
-			wbd_manifest_drop()
+			wbd_hashes_forget_under(dir)
+			if (wbd_in_bin(dir) == 0):
+				wbd_manifest_drop()
 		return
 	int changing = IN_CREATE() | IN_DELETE() | IN_MOVED_FROM() | IN_MOVED_TO()
 	if (ev.mask & IN_ISDIR()):
 		if (ev.name[0] == '.'):
 			return
+		char* sub = wbd_join(dir, ev.name)
 		if (ev.mask & changing):
-			# Any path under it may have appeared or vanished.
-			wbd_hashes_clear()
+			# Any path under it may have appeared or vanished (a file
+			# created in a new directory before its watch exists sends
+			# no event of its own).
+			wbd_hashes_forget_under(sub)
 			if (wbd_in_bin(dir) == 0):
 				wbd_manifest_drop()
-		char* sub = wbd_join(dir, ev.name)
 		if (ev.mask & IN_CREATE()):
 			wbd_watch_tree(sub)
 		if (ev.mask & (IN_MOVED_FROM() | IN_MOVED_TO())):
@@ -1379,7 +1414,7 @@ void wbd_merge_report(wbd_build* b, json_value* report):
 		for char* path, json_value* digest in hashes.object_values:
 			if ((digest.type != json_type_string()) || (wbd_hash_path_ok(path) == 0)):
 				continue
-			if (wbd_touched.get(path, 0) > b.fork_seq):
+			if (wbd_touched_since(path, b.fork_seq)):
 				continue
 			if (path in wexec_file_hashes):
 				continue
@@ -1429,6 +1464,8 @@ void wbd_on_build_report(int fd, int revents, void* ctx):
 	wbd_builds_done = wbd_builds_done + 1
 	if (wbd_builds_active == 0):
 		wbd_touched = new map[char*, int]
+		wbd_touched_dirs = new list[char*]
+		wbd_touched_dir_seqs = new list[int]
 	json_value* result = json_object()
 	json_object_set(result, c"status", json_int(status))
 	wbd_build_reply(b.conn, b.id, result)
@@ -1499,6 +1536,8 @@ int wbd_serve(wbd_serve_options* o):
 	wbd_cache = new list[wbd_entry*]
 	wbd_conns = new list[wbd_conn*]
 	wbd_touched = new map[char*, int]
+	wbd_touched_dirs = new list[char*]
+	wbd_touched_dir_seqs = new list[int]
 	wbd_hashes_clear()
 	wbd_prewarm_enabled = o.prewarm
 	wbd_prewarm_manifest = o.prewarm_manifest
