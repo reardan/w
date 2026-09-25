@@ -1,5 +1,10 @@
 import lib.testing
 # wbuild: x64
+# wbuild: step="bin/wv2 tests/defer_generator_error_fixture.w -o bin/defer_generator_error_fixture" expect_fail expect_stderr="'defer' is not supported in generator bodies"
+# wbuild: step="bin/wv2 tests/defer_declaration_error_fixture.w -o bin/defer_declaration_error_fixture" expect_fail expect_stderr="deferred statement cannot declare a variable"
+# wbuild: step="bin/wv2 tests/defer_return_error_fixture.w -o bin/defer_return_error_fixture" expect_fail expect_stderr="'return' is not allowed in a deferred statement"
+# wbuild: step="bin/wv2 tests/defer_nested_error_fixture.w -o bin/defer_nested_error_fixture" expect_fail expect_stderr="'defer' cannot be nested in a deferred statement"
+# wbuild: step="bin/wv2 tests/defer_top_level_error_fixture.w -o bin/defer_top_level_error_fixture" expect_fail expect_stderr="declarations must come before the first top-level statement"
 
 /*
 Go-style 'defer' statements (docs/projects/defer.md): deferred simple

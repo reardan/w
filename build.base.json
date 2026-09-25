@@ -304,19 +304,6 @@
 			]
 		},
 		{
-			"name": "string_utf8_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/string_utf8_test.w", "-o", "bin/string_utf8_test"]},
-				{"cmd": ["bin/string_utf8_test"]},
-				{"cmd": ["bin/wv2", "tests/string_utf8_invalid_fixture.w", "-o", "bin/string_utf8_invalid_fixture"], "expect_fail": true, "expect_stderr": "invalid UTF-8 string literal"},
-				{"cmd": ["bin/wv2", "tests/string_utf8_invalid_cstr_fixture.w", "-o", "bin/string_utf8_invalid_cstr_fixture"]},
-				{"cmd": ["bin/string_utf8_invalid_cstr_fixture"], "expect_fail": true, "expect_stderr": "invalid UTF-8 c string"},
-				{"cmd": ["bin/wv2", "tests/string_utf8_invalid_cstr_arg_fixture.w", "-o", "bin/string_utf8_invalid_cstr_arg_fixture"]},
-				{"cmd": ["bin/string_utf8_invalid_cstr_arg_fixture"], "expect_fail": true, "expect_stderr": "invalid UTF-8 c string"}
-			]
-		},
-		{
 			"name": "container_trap_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -677,41 +664,6 @@
 			]
 		},
 		{
-			"name": "default_args_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/default_args_test.w", "-o", "bin/default_args_test"]},
-				{"cmd": ["bin/default_args_test"]},
-				{"cmd": ["bin/wv2", "tests/default_args_nontrailing_error_fixture.w", "-o", "bin/default_args_nontrailing_error_fixture"], "expect_fail": true, "expect_stderr": "parameter without a default follows a parameter with a default"},
-				{"cmd": ["bin/wv2", "tests/default_args_nonconstant_error_fixture.w", "-o", "bin/default_args_nonconstant_error_fixture"], "expect_fail": true, "expect_stderr": "default value for parameter must be a compile-time constant"},
-				{"cmd": ["bin/wv2", "tests/default_args_missing_warning_fixture.w", "-o", "bin/default_args_missing_warning_fixture"], "expect_stderr": "warning: function 'da_no_defaults' expects 2 arguments, got 1"}
-			]
-		},
-		{
-			"name": "varargs_w_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/varargs_w_test.w", "-o", "bin/varargs_w_test"]},
-				{"cmd": ["bin/varargs_w_test"]},
-				{"cmd": ["bin/wv2", "tests/varargs_w_not_last_error_fixture.w", "-o", "bin/varargs_w_not_last_error_fixture"], "expect_fail": true, "expect_stderr": "variadic parameter must be the last parameter"},
-				{"cmd": ["bin/wv2", "tests/varargs_w_default_error_fixture.w", "-o", "bin/varargs_w_default_error_fixture"], "expect_fail": true, "expect_stderr": "a variadic parameter cannot follow parameters with default values"}
-			]
-		},
-		{
-			"name": "dynamic_var_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/dynamic_var_test.w", "-o", "bin/dynamic_var_test"]},
-				{"cmd": ["bin/dynamic_var_test"]},
-				{"cmd": ["bin/wv2", "tests/dynamic_var_trap_fixture.w", "-o", "bin/dynamic_var_trap_fixture"]},
-				{"cmd": ["bin/dynamic_var_trap_fixture"], "expect_fail": true, "expect_stderr": "var runtime error: expected int, got char*"},
-				{"cmd": ["bin/wv2", "tests/dynamic_var_float_error_fixture.w", "-o", "bin/dynamic_var_float_error_fixture"], "expect_fail": true, "expect_stderr": "cannot convert 'float32' to var"},
-				{"cmd": ["bin/wv2", "tests/dynamic_var_mod_error_fixture.w", "-o", "bin/dynamic_var_mod_error_fixture"], "expect_fail": true, "expect_stderr": "var operands do not support %"},
-				{"cmd": ["bin/wv2", "tests/dynamic_var_variadic_error_fixture.w", "-o", "bin/dynamic_var_variadic_error_fixture"], "expect_fail": true, "expect_stderr": "variadic parameter element type cannot be var"},
-				{"cmd": ["bin/wv2", "tests/dynamic_var_default_error_fixture.w", "-o", "bin/dynamic_var_default_error_fixture"], "expect_fail": true, "expect_stderr": "default values are not supported on var parameters"}
-			]
-		},
-		{
 			"name": "dynamic_var_64_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -719,55 +671,6 @@
 				{"cmd": ["bin/dynamic_var_64_test"]},
 				{"cmd": ["bin/wv2", "x64", "tests/dynamic_var_trap_fixture.w", "-o", "bin/dynamic_var_trap_fixture_64"]},
 				{"cmd": ["bin/dynamic_var_trap_fixture_64"], "expect_fail": true, "expect_stderr": "var runtime error: expected int, got char*"}
-			]
-		},
-		{
-			"name": "generics_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/generics_test.w", "-o", "bin/generics_test"]},
-				{"cmd": ["bin/generics_test"]},
-				{"cmd": ["bin/wv2", "tests/generics_unknown_param_error_fixture.w", "-o", "bin/generics_unknown_param_error_fixture"], "expect_fail": true, "expect_stderr": "unknown type name: 'U'"},
-				{"cmd": ["bin/wv2", "tests/generics_arg_count_error_fixture.w", "-o", "bin/generics_arg_count_error_fixture"], "expect_fail": true, "expect_stderr": "wrong number of type arguments for generic 'pick': expected 1, got 2"},
-				{"cmd": ["bin/wv2", "tests/generics_missing_args_error_fixture.w", "-o", "bin/generics_missing_args_error_fixture"], "expect_fail": true, "expect_stderr": "generic function 'make': cannot infer type argument 'T'"}
-			]
-		},
-		{
-			"name": "generics_inference_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/generics_inference_test.w", "-o", "bin/generics_inference_test"]},
-				{"cmd": ["bin/generics_inference_test"]},
-				{"cmd": ["bin/wv2", "tests/generics_infer_conflict_error_fixture.w", "-o", "bin/generics_infer_conflict_error_fixture"], "expect_fail": true, "expect_stderr": "conflicting types inferred for type parameter 'T': 'int' vs 'char*'"},
-				{"cmd": ["bin/wv2", "tests/generics_infer_struct_shape_error_fixture.w", "-o", "bin/generics_infer_struct_shape_error_fixture"], "expect_fail": true, "expect_stderr": "generic function 'sum_first': cannot infer type argument 'T'"},
-				{"cmd": ["bin/wv2", "tests/generics_infer_forward_error_fixture.w", "-o", "bin/generics_infer_forward_error_fixture"], "expect_fail": true, "expect_stderr": "Cannot find symbol: 'later_pick'"}
-			]
-		},
-		{
-			"name": "compound_assign_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/compound_assign_test.w", "-o", "bin/compound_assign_test"]},
-				{"cmd": ["bin/compound_assign_test"]},
-				{"cmd": ["bin/wv2", "tests/compound_assign_map_error_fixture.w", "-o", "bin/compound_assign_map_error_fixture"], "expect_fail": true, "expect_stderr": "compound assignment is not supported on struct values"},
-				{"cmd": ["bin/wv2", "tests/compound_assign_struct_error_fixture.w", "-o", "bin/compound_assign_struct_error_fixture"], "expect_fail": true, "expect_stderr": "compound assignment is not supported on struct values"}
-			]
-		},
-		{
-			"name": "char_literal_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/char_literal_test.w", "-o", "bin/char_literal_test"]},
-				{"cmd": ["bin/char_literal_test"]},
-				{"cmd": ["bin/wv2", "x64", "tests/char_literal_test.w", "-o", "bin/char_literal_test_64"]},
-				{"cmd": ["bin/char_literal_test_64"]},
-				{"cmd": ["bin/wv2", "tests/char_literal_unknown_escape_fixture.w", "-o", "bin/char_literal_unknown_escape_fixture"], "expect_fail": true, "expect_stderr": "unknown escape in char literal"},
-				{"cmd": ["bin/wv2", "tests/char_literal_multichar_fixture.w", "-o", "bin/char_literal_multichar_fixture"], "expect_fail": true, "expect_stderr": "multi-character char literal"},
-				{"cmd": ["bin/wv2", "tests/char_literal_empty_fixture.w", "-o", "bin/char_literal_empty_fixture"], "expect_fail": true, "expect_stderr": "empty char literal"},
-				{"cmd": ["cat"], "stdin": "int main():\n\tint a = 'x\n", "stdout_file": "bin/char_literal_unterminated_fixture.w"},
-				{"cmd": ["bin/wv2", "bin/char_literal_unterminated_fixture.w", "-o", "bin/char_literal_unterminated_fixture"], "expect_fail": true, "expect_stderr": "unterminated char literal", "timeout_ms": 20000},
-				{"cmd": ["cat"], "stdin": "int main():\n\tchar* s = \"x\n", "stdout_file": "bin/string_unterminated_fixture.w"},
-				{"cmd": ["bin/wv2", "bin/string_unterminated_fixture.w", "-o", "bin/string_unterminated_fixture"], "expect_fail": true, "expect_stderr": "unterminated string literal", "timeout_ms": 20000}
 			]
 		},
 		{
@@ -790,18 +693,6 @@
 			]
 		},
 		{
-			"name": "https_e2e_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "libs/standard/web/https_e2e_test.w", "-o", "bin/https_e2e_test"]},
-				{"cmd": ["bin/https_e2e_test"]},
-				{"cmd": ["bin/wv2", "x64", "libs/standard/web/https_e2e_test.w", "-o", "bin/https_e2e_test_x64"]},
-				{"cmd": ["bin/https_e2e_test_x64"]},
-				{"cmd": ["bin/wv2", "examples/web/https_get.w", "-o", "bin/https_get_example"]},
-				{"cmd": ["bin/wv2", "examples/web/https_server.w", "-o", "bin/https_server_example"]}
-			]
-		},
-		{
 			"name": "openssl_interop_test",
 			"deps": ["wv2"],
 			"steps": [
@@ -819,107 +710,6 @@
 				{"cmd": ["bin/wv2", "x64", "tests/compress_zlib_interop.w", "-o", "bin/compress_zlib_interop64"]},
 				{"cmd": ["bin/compress_zlib_interop32"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000},
 				{"cmd": ["bin/compress_zlib_interop64"], "expect_stdout": "zlib interop OK", "timeout_ms": 60000}
-			]
-		},
-		{
-			"name": "switch_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/switch_test.w", "-o", "bin/switch_test"]},
-				{"cmd": ["bin/switch_test"]},
-				{"cmd": ["bin/wv2", "tests/switch_default_not_last_error_fixture.w", "-o", "bin/switch_default_not_last_error_fixture"], "expect_fail": true, "expect_stderr": "'default' must be the last clause in a switch"},
-				{"cmd": ["bin/wv2", "tests/switch_body_error_fixture.w", "-o", "bin/switch_body_error_fixture"], "expect_fail": true, "expect_stderr": "'case' or 'default' expected in switch body"},
-				{"cmd": ["bin/wv2", "tests/switch_float_error_fixture.w", "-o", "bin/switch_float_error_fixture"], "expect_fail": true, "expect_stderr": "switch on a float value is not supported"}
-			]
-		},
-		{
-			"name": "template_string_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/template_string_test.w", "-o", "bin/template_string_test"]},
-				{"cmd": ["bin/template_string_test"]},
-				{"cmd": ["bin/wv2", "tests/template_string_error_fixture.w", "-o", "bin/template_string_error_fixture"], "expect_fail": true, "expect_stderr": "unsupported template string expression type: 'int*'"},
-				{"cmd": ["bin/wv2", "tests/template_string_unterminated_fixture.w", "-o", "bin/template_string_unterminated_fixture"], "expect_fail": true, "expect_stderr": "unterminated template string literal"},
-				{"cmd": ["bin/wv2", "tests/template_string_unterminated_expr_fixture.w", "-o", "bin/template_string_unterminated_expr_fixture"], "expect_fail": true, "expect_stderr": "'}' expected in template string expression"},
-				{"cmd": ["bin/wv2", "tests/template_string_stray_brace_fixture.w", "-o", "bin/template_string_stray_brace_fixture"], "expect_fail": true, "expect_stderr": "single '}' in template string; use '}}'"}
-			]
-		},
-		{
-			"name": "for_container_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/for_container_test.w", "-o", "bin/for_container_test"]},
-				{"cmd": ["bin/for_container_test"]},
-				{"cmd": ["bin/wv2", "tests/for_container_error_fixture.w", "-o", "bin/for_container_error_fixture"], "expect_fail": true, "expect_stderr": "type 'point' is not iterable: point_iter_begin not found"},
-				{"cmd": ["bin/wv2", "tests/for_container_raw_pointer_error_fixture.w", "-o", "bin/for_container_raw_pointer_error_fixture"], "expect_fail": true, "expect_stderr": "type 'int*' is not iterable: expected a pointer to a container struct"},
-				{"cmd": ["bin/wv2", "tests/for_container_non_function_error_fixture.w", "-o", "bin/for_container_non_function_error_fixture"], "expect_fail": true, "expect_stderr": "type 'bad_iter_symbol' is not iterable: bad_iter_symbol_iter_begin is not a function"},
-				{"cmd": ["bin/wv2", "tests/for_container_wrong_arity_error_fixture.w", "-o", "bin/for_container_wrong_arity_error_fixture"], "expect_fail": true, "expect_stderr": "type 'bad_iter_arity' is not iterable: bad_iter_arity_iter_begin has wrong arity"},
-				{"cmd": ["bin/wv2", "tests/for_container_void_return_error_fixture.w", "-o", "bin/for_container_void_return_error_fixture"], "expect_fail": true, "expect_stderr": "type 'bad_iter_return' is not iterable: bad_iter_return_iter_begin must return a word-sized value"},
-				{"cmd": ["bin/wv2", "tests/for_container_wrong_param_error_fixture.w", "-o", "bin/for_container_wrong_param_error_fixture"], "expect_fail": true, "expect_stderr": "type 'bad_iter_param' is not iterable: bad_iter_param_iter_begin first parameter must match the iterable type"}
-			]
-		},
-		{
-			"name": "generator_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/generator_test.w", "-o", "bin/generator_test"]},
-				{"cmd": ["bin/generator_test"]},
-				{"cmd": ["bin/wv2", "tests/yield_outside_generator_error_fixture.w", "-o", "bin/yield_outside_generator_error_fixture"], "expect_fail": true, "expect_stderr": "'yield' outside of a generator body"},
-				{"cmd": ["bin/wv2", "tests/generator_return_value_error_fixture.w", "-o", "bin/generator_return_value_error_fixture"], "expect_fail": true, "expect_stderr": "generators cannot return a value; use yield"}
-			]
-		},
-		{
-			"name": "defer_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/defer_test.w", "-o", "bin/defer_test"]},
-				{"cmd": ["bin/defer_test"]},
-				{"cmd": ["bin/wv2", "tests/defer_generator_error_fixture.w", "-o", "bin/defer_generator_error_fixture"], "expect_fail": true, "expect_stderr": "'defer' is not supported in generator bodies"},
-				{"cmd": ["bin/wv2", "tests/defer_declaration_error_fixture.w", "-o", "bin/defer_declaration_error_fixture"], "expect_fail": true, "expect_stderr": "deferred statement cannot declare a variable"},
-				{"cmd": ["bin/wv2", "tests/defer_return_error_fixture.w", "-o", "bin/defer_return_error_fixture"], "expect_fail": true, "expect_stderr": "'return' is not allowed in a deferred statement"},
-				{"cmd": ["bin/wv2", "tests/defer_nested_error_fixture.w", "-o", "bin/defer_nested_error_fixture"], "expect_fail": true, "expect_stderr": "'defer' cannot be nested in a deferred statement"},
-				{"cmd": ["bin/wv2", "tests/defer_top_level_error_fixture.w", "-o", "bin/defer_top_level_error_fixture"], "expect_fail": true, "expect_stderr": "declarations must come before the first top-level statement"}
-			]
-		},
-		{
-			"name": "import_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/import_test.w", "-o", "bin/import_test"]},
-				{"cmd": ["bin/import_test"]},
-				{"cmd": ["bin/wv2", "tests/import_alias_wrong_module_error_fixture.w", "-o", "bin/import_alias_wrong_module_error_fixture"], "expect_fail": true, "expect_stderr": "symbol 'local_helper' is not defined in module imported as 'sub'"},
-				{"cmd": ["bin/wv2", "tests/import_alias_duplicate_error_fixture.w", "-o", "bin/import_alias_duplicate_error_fixture"], "expect_fail": true, "expect_stderr": "duplicate import alias: 'sub'"}
-			]
-		},
-		{
-			"name": "map_set_builtin_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/map_set_builtin_test.w", "-o", "bin/map_set_builtin_test"]},
-				{"cmd": ["bin/map_set_builtin_test"]},
-				{"cmd": ["bin/wv2", "tests/map_add_error_fixture.w", "-o", "bin/map_add_error_fixture"], "expect_fail": true, "expect_stderr": "map add requires an integer or float value type"},
-				{"cmd": ["bin/wv2", "tests/map_add_float16_error_fixture.w", "-o", "bin/map_add_float16_error_fixture"], "expect_fail": true, "expect_stderr": "map add does not support float16 values"},
-				{"cmd": ["bin/wv2", "tests/map_value_array_error_fixture.w", "-o", "bin/map_value_array_error_fixture"], "expect_fail": true, "expect_stderr": "map value type cannot be a fixed-size array"},
-				{"cmd": ["bin/wv2", "tests/map_default_empty_error_fixture.w", "-o", "bin/map_default_empty_error_fixture"], "expect_fail": true, "expect_stderr": "map default with no argument requires a container value type"},
-				{"cmd": ["bin/wv2", "tests/map_default_struct_error_fixture.w", "-o", "bin/map_default_struct_error_fixture"], "expect_fail": true, "expect_stderr": "map default does not support struct value types"},
-				{"cmd": ["bin/wv2", "tests/map_default_factory_required_error_fixture.w", "-o", "bin/map_default_factory_required_error_fixture"], "expect_fail": true, "expect_stderr": "map default for a container or pointer value type must be a factory function"},
-				{"cmd": ["bin/wv2", "tests/map_default_warning_fixture.w", "-o", "bin/map_default_warning_fixture"], "expect_stderr": ["warning: map default factory type mismatch: expected 'char*', got 'int'", "warning: map default type mismatch: expected 'int', got 'char*'"]}
-			]
-		},
-		{
-			"name": "list_builtin_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/list_builtin_test.w", "-o", "bin/list_builtin_test"]},
-				{"cmd": ["bin/list_builtin_test"]},
-				{"cmd": ["bin/wv2", "tests/list_builtin_warning_fixture.w", "-o", "bin/list_builtin_warning_fixture"], "expect_stderr": ["warning: list push type mismatch: expected 'int', got 'char*'", "warning: assignment type mismatch: expected 'int', got 'char*'", "warning: initialization type mismatch: expected 'list[int]', got 'list[char*]'", "warning: for loop variable type mismatch: expected 'char*', got 'int'", "warning: list literal element type mismatch: expected 'char*', got 'int'"]},
-				{"cmd": ["bin/wv2", "tests/list_array_element_error_fixture.w", "-o", "bin/list_array_element_error_fixture"], "expect_fail": true, "expect_stderr": "list element type cannot be a fixed-size array"},
-				{"cmd": ["bin/wv2", "tests/list_array_field_error_fixture.w", "-o", "bin/list_array_field_error_fixture"], "expect_fail": true, "expect_stderr": "list element type cannot contain fixed-size array fields"},
-				{"cmd": ["bin/wv2", "tests/list_field_error_fixture.w", "-o", "bin/list_field_error_fixture"], "expect_fail": true, "expect_stderr": "list field 'append' not found"},
-				{"cmd": ["bin/wv2", "tests/list_pop_empty_fixture.w", "-o", "bin/list_pop_empty_fixture"]},
-				{"cmd": ["bin/list_pop_empty_fixture"], "expect_fail": true},
-				{"cmd": ["bin/wv2", "tests/list_index_bounds_fixture.w", "-o", "bin/list_index_bounds_fixture"]},
-				{"cmd": ["bin/list_index_bounds_fixture"], "expect_fail": true}
 			]
 		},
 		{
@@ -1439,35 +1229,6 @@
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "bad_interp"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/bad_interp, whose interpreter /no/such/interp does not exist"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "bad_elf_interp"], "expect_fail": true, "expect_stderr": "exit status 127: tried to exec bin/wexec_exec_diag/bad_elf, whose ELF interpreter /no/such/elf_interp does not exist"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/exec_diag.json", "self_127"], "expect_fail": true, "expect_stderr": "127 is the exec-failure convention, but bin/wexec_exec_diag/exits_127 exists and is executable, so the command itself likely exited 127"}
-			]
-		},
-		{
-			"name": "result_propagate_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "tests/result_propagate_test.w", "-o", "bin/result_propagate_test"]},
-				{"cmd": ["bin/result_propagate_test"]},
-				{"cmd": ["bin/wv2", "tests/result_propagate_int_operand_error_fixture.w", "-o", "bin/result_propagate_int_operand_error_fixture"], "expect_fail": true, "expect_stderr": "Could not find a valid primary expression"},
-				{"cmd": ["bin/wv2", "tests/result_propagate_return_type_error_fixture.w", "-o", "bin/result_propagate_return_type_error_fixture"], "expect_fail": true, "expect_stderr": "'?' requires the enclosing function to return a wresult[...]*"}
-			]
-		},
-		{
-			"name": "task_io_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "lib/task_io_test.w", "-o", "bin/task_io_test"]},
-				{"cmd": ["bin/task_io_test"]},
-				{"cmd": ["bin/wv2", "examples/web/task_echo_server.w", "-o", "bin/task_echo_server"]},
-				{"cmd": ["bin/task_echo_server"], "expect_stdout": "demo: OK"}
-			]
-		},
-		{
-			"name": "json_rpc_test",
-			"deps": ["wv2"],
-			"steps": [
-				{"cmd": ["bin/wv2", "lib/json_rpc_test.w", "-o", "bin/json_rpc_test"]},
-				{"cmd": ["bin/json_rpc_test"]},
-				{"cmd": ["bin/wv2", "examples/web/json_rpc_server.w", "-o", "bin/json_rpc_server"]}
 			]
 		},
 		{
@@ -2460,7 +2221,6 @@
 				"type_table_test",
 				"bignum_test",
 				"float_reference_test",
-				"string_utf8_test",
 				"bounds_trap_test",
 				"range_bounds_trap_test",
 				"container_trap_test",
@@ -2502,12 +2262,10 @@
 				"type_system_warning_test",
 				"error_caret_test",
 				"operator_overload_error_test",
-				"compound_assign_test",
 				"increment_error_test",
 				"multi_assign_error_test",
 				"ndarray_index_error_test",
 				"toplevel_init_error_test",
-				"char_literal_test",
 				"print_builtin_test",
 				"script_mode_test",
 				"prelude_test",
@@ -2525,13 +2283,6 @@
 				"net_x509_test",
 				"net_tls_test",
 				"net_tls_server_test",
-				"https_e2e_test",
-				"switch_test",
-				"for_container_test",
-				"default_args_test",
-				"varargs_w_test",
-				"template_string_test",
-				"generator_test",
 				"gpu_ptx_emit_test",
 				"cuda_diagnostics_test",
 				"gpu_promote_compile_test",
@@ -2541,13 +2292,6 @@
 				"mnist_train_compile_test",
 				"gpt_train_compile_test",
 				"torch_infer_compile_test",
-				"defer_test",
-				"dynamic_var_test",
-				"generics_test",
-				"generics_inference_test",
-				"import_test",
-				"map_set_builtin_test",
-				"list_builtin_test",
 				"parser_generator_test",
 				"parser_generator_w_test",
 				"parser_generator_c_test",
@@ -2582,9 +2326,6 @@
 				"unsafe_import_test",
 				"manifest_check",
 				"wbuildgen_scratch_test",
-				"result_propagate_test",
-				"task_io_test",
-				"json_rpc_test",
 				"net_basic",
 				"debug_test",
 				"attach_test",

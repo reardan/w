@@ -1,4 +1,7 @@
 # wbuild: x64 group=wasm_smoke_test@wasm
+# wbuild: step="bin/wv2 tests/default_args_nontrailing_error_fixture.w -o bin/default_args_nontrailing_error_fixture" expect_fail expect_stderr="parameter without a default follows a parameter with a default"
+# wbuild: step="bin/wv2 tests/default_args_nonconstant_error_fixture.w -o bin/default_args_nonconstant_error_fixture" expect_fail expect_stderr="default value for parameter must be a compile-time constant"
+# wbuild: step="bin/wv2 tests/default_args_missing_warning_fixture.w -o bin/default_args_missing_warning_fixture" expect_stderr="warning: function 'da_no_defaults' expects 2 arguments, got 1"
 # Default parameter values: trailing parameters may declare a compile-time
 # constant default ("int times = 1") that direct call sites push when the
 # argument is omitted. See docs/projects/default_args_variadics.md.

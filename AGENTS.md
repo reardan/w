@@ -26,9 +26,11 @@ from the hand-maintained `build.base.json` plus every conventional
 `*_test.w` source (a `# wbuild: x64` directive in the source adds the
 64-bit twin). `./wbuild manifest` writes a copy to `bin/build.json` for
 reading, and `./wbuild manifest_check` (in `tests`) fails when generation
-fails. To add a plain test: create the `_test.w` file; only tests
-with irregular steps or expectations get hand-written targets in
-`build.base.json`. Interactive
+fails. To add a test: create the `_test.w` file; expectations and extra
+steps are `# wbuild:` directives in it (`expect_stdout=`,
+`step="cmd args" expect_fail ...`; vocabulary in `tools/wbuildgen_lib.w`),
+so hand-written `build.base.json` targets are only for shapes no source
+owns (toolchain, bootstrap). Interactive
 conveniences (debuggers, `stap` traces, hand-testing servers) are manual
 one-liners, listed in README's "Build, verify, test" section — wexec
 captures step stdio, so it cannot host a live prompt or a

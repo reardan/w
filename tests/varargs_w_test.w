@@ -1,4 +1,6 @@
 # wbuild: x64
+# wbuild: step="bin/wv2 tests/varargs_w_not_last_error_fixture.w -o bin/varargs_w_not_last_error_fixture" expect_fail expect_stderr="variadic parameter must be the last parameter"
+# wbuild: step="bin/wv2 tests/varargs_w_default_error_fixture.w -o bin/varargs_w_default_error_fixture" expect_fail expect_stderr="a variadic parameter cannot follow parameters with default values"
 # W-native variadic functions: "T... name" as the last parameter collects
 # the trailing arguments into a T[] slice built on the caller's stack.
 # Distinct from variadic C imports (tests/varargs_test.w), which go through

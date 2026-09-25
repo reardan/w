@@ -94,6 +94,16 @@ if [ ! -x bin/wexec ]; then
 	./w w.w -o bin/wv2
 	./bin/wv2 tools/wexec.w -o bin/wexec
 fi
+# An executor older than the tree may not be able to load its manifest
+# at all (one built before the manifest stopped being committed); rebuild
+# it from the seed as on a cold tree. A current executor always loads at
+# least build.base.json's targets, so this only fires across that change.
+if ! ./bin/wexec --list >/dev/null 2>&1; then
+	echo "wbuild: bin/wexec cannot load the manifest; rebuilding it from the seed" >&2
+	./w w.w -o bin/wv2
+	./bin/wv2 tools/wexec.w -o bin/wexec
+fi
+./bin/wexec wv2 wexec >/dev/null
 if [ "$1" = "test_changed" ]; then
 	shift
 	# Flags left over after 'test_changed' (e.g. --keep-going) are kept in
@@ -104,7 +114,7 @@ if [ "$1" = "test_changed" ]; then
 	# regardless of where they fall in argv, so they reach wexec either
 	# way. With no extra flags "$@" expands to nothing and this is exactly
 	# the previous pipeline.
-	./bin/wexec wv2 wexec wtest >/dev/null
+	./bin/wexec wtest >/dev/null
 	# Selection baseline: the working tree's diff against HEAD. After a
 	# commit that diff is empty, which used to select nothing and exit 0
 	# silently; fall back to the branch's diff against its merge-base
@@ -126,5 +136,4 @@ if [ "$1" = "test_changed" ]; then
 	printf '%s\n' "$changed" | ./bin/wtest changed --available | xargs -r ./wbuild "$@"
 	exit 0
 fi
-./bin/wexec wv2 wexec >/dev/null
 exec ./bin/wexec "$@"

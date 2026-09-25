@@ -2783,6 +2783,15 @@ void wexec_make_dirs():
 int wexec_load_manifest(char* path):
 	int scan_tree = wexec_dirents_supported() && (os_windows() == 0)
 	char* text = manifest_source_text(path, scan_tree)
+	if ((text == 0) && (path == 0) && scan_tree && (strcmp(manifest_source_label, c"build.base.json") == 0)):
+		# A source-tree directive this binary's generator predates (the
+		# tree grew new '# wbuild:' vocabulary since bin/wexec was
+		# built) must not stop wbuild from rebuilding wexec itself, so
+		# fall back to build.base.json's own targets, where wv2, wexec
+		# and the rest of the toolchain live. Test targets are then
+		# unknown, next to the generator's error printed above.
+		wexec_error(c"manifest generation failed; loading build.base.json's targets only")
+		text = manifest_source_text(path, 0)
 	path = manifest_source_label
 	if (text == 0):
 		if (strcmp(path, c"build.base.json") == 0):

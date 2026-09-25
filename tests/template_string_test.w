@@ -1,4 +1,8 @@
 # wbuild: x64
+# wbuild: step="bin/wv2 tests/template_string_error_fixture.w -o bin/template_string_error_fixture" expect_fail expect_stderr="unsupported template string expression type: 'int*'"
+# wbuild: step="bin/wv2 tests/template_string_unterminated_fixture.w -o bin/template_string_unterminated_fixture" expect_fail expect_stderr="unterminated template string literal"
+# wbuild: step="bin/wv2 tests/template_string_unterminated_expr_fixture.w -o bin/template_string_unterminated_expr_fixture" expect_fail expect_stderr="'}' expected in template string expression"
+# wbuild: step="bin/wv2 tests/template_string_stray_brace_fixture.w -o bin/template_string_stray_brace_fixture" expect_fail expect_stderr="single '}' in template string; use '}}'"
 import lib.testing
 
 

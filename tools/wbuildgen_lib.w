@@ -29,7 +29,8 @@ Generation rules:
   with the `x64` argument), and the key=value vocabulary documented
   above wbg_parse_directives (timeout=, stdin=, expect_stdout=,
   expect_stderr=, expect_fail, deps=, extra_compile=, arch=,
-  arch_only=, name=, argv=, compile_fail, flags=, group=, group_only)
+  arch_only=, name=, argv=, compile_fail, flags=, group=, group_only,
+  step=)
   adds run-step expectations, piped stdin, timeouts, declared run-time
   data inputs, extra compile-only steps, a target-name override, extra
   run-time arguments, a single-arch mode, extra compiler flags and
@@ -550,6 +551,25 @@ vocabulary:
                            expect_stdout=/expect_stderr=/timeout=/
                            stdin= decorate the compile step instead of
                            a run step when this flag is set.
+  step="cmd args"          append one more step, running <cmd args>
+                           (whitespace-split, no shell, same quoting as
+                           extra_compile=), after the run step of the
+                           default-arch target. Repeatable, one per
+                           line; the tokens AFTER step= on the same
+                           line decorate that step instead of the run
+                           step: expect_fail, expect_stdout=,
+                           expect_stderr=, reject_stdout=,
+                           reject_stderr= (the last four repeatable),
+                           timeout=<ms>, stdin="text" and
+                           stdout_file=<path>, with wexec's own
+                           per-step meanings. This is the multi-step
+                           shape (a test plus the diagnostic fixtures
+                           it drives) that used to need a hand-written
+                           build.base.json target. A target with step=
+                           lines declares no cache "inputs": its extra
+                           steps can read anything, so like the
+                           hand-written targets it replaces it reruns
+                           on every request
   tool=<path>              resolve <path> (another tool's own .w
                            source, e.g. "tools/wvc.w") to the name of
                            the build.base.json target that compiles
@@ -633,6 +653,23 @@ list[char*] wbg_dir_group_names    # group= target names, encounter order
 list[int] wbg_dir_group_archs      # parallel arch codes for group=
 int wbg_dir_group_only             # 1: only group memberships, no standalone targets
 
+
+# One 'step=' directive (see the vocabulary above): the step object
+# being built plus its repeatable expectation lists, folded into the
+# object by wbg_step_json once the whole source has been parsed.
+struct wbg_step_dir:
+	json_value* step
+	list[char*] expect_stdout
+	list[char*] expect_stderr
+	list[char*] reject_stdout
+	list[char*] reject_stderr
+
+list[wbg_step_dir*] wbg_dir_steps  # step= directives, encounter order
+wbg_step_dir* wbg_dir_cur_step     # this line's step=, 0 until one appears
+
+json_value* wbg_expectation(list[char*] values);
+void wbg_push_split_args(json_value* cmd, char* args);
+
 # '# wbuild: fixture_group=<name>' (fixture files only — see wbg_scan's
 # fixture-group pass): the file is not compiled/run itself, it is one
 # member of the single wfixture invocation named <name>. 0 = unset.
@@ -662,6 +699,8 @@ void wbg_reset_directives():
 	wbg_dir_group_names = new list[char*]
 	wbg_dir_group_archs = new list[int]
 	wbg_dir_group_only = 0
+	wbg_dir_steps = new list[wbg_step_dir*]
+	wbg_dir_cur_step = 0
 	wbg_dir_fixture_group = 0
 
 
@@ -826,9 +865,96 @@ char* wbg_resolve_tool_name(char* src_path):
 	return wbg_get_string(target, c"name")
 
 
+# A token after 'step=' on the same line: one of the step's own fields.
+int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
+	wbg_step_dir* sd = wbg_dir_cur_step
+	if (strcmp(key, c"expect_fail") == 0):
+		if (wbg_no_value(path, key, has_value)):
+			return 1
+		json_object_set(sd.step, c"expect_fail", json_bool(1))
+		return 0
+	int is_expect_out = strcmp(key, c"expect_stdout") == 0
+	int is_expect_err = strcmp(key, c"expect_stderr") == 0
+	int is_reject_out = strcmp(key, c"reject_stdout") == 0
+	int is_reject_err = strcmp(key, c"reject_stderr") == 0
+	if (is_expect_out | is_expect_err | is_reject_out | is_reject_err):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (value[0] == 0):
+			wbg_token_error(path, c"empty '# wbuild:' expectation ", key)
+			return 1
+		if (is_expect_out):
+			sd.expect_stdout.push(strclone(value))
+		else if (is_expect_err):
+			sd.expect_stderr.push(strclone(value))
+		else if (is_reject_out):
+			sd.reject_stdout.push(strclone(value))
+		else:
+			sd.reject_stderr.push(strclone(value))
+		return 0
+	if (strcmp(key, c"timeout") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		int ms = wbg_parse_ms(value)
+		if (ms <= 0):
+			wbg_token_error(path, c"'# wbuild:' timeout needs a positive millisecond count, got ", value)
+			return 1
+		json_object_set(sd.step, c"timeout_ms", json_int(ms))
+		return 0
+	if ((strcmp(key, c"stdin") == 0) | (strcmp(key, c"stdout_file") == 0)):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if ((value[0] == 0) && (strcmp(key, c"stdout_file") == 0)):
+			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
+			return 1
+		json_object_set(sd.step, key, json_string(value))
+		return 0
+	wbg_token_error(path, c"not a 'step=' field (expect_fail, expect_stdout=, expect_stderr=, reject_stdout=, reject_stderr=, timeout=, stdin=, stdout_file=): ", key)
+	return 1
+
+
+# The finished JSON for one step= directive: a fresh copy of the step
+# object with its expectation lists folded in (single value = string,
+# several = array, the same forms the run-step directives emit).
+json_value* wbg_step_json(wbg_step_dir* sd):
+	json_value* step = json_clone(sd.step)
+	if (sd.expect_stdout.length > 0):
+		json_object_set(step, c"expect_stdout", wbg_expectation(sd.expect_stdout))
+	if (sd.reject_stdout.length > 0):
+		json_object_set(step, c"reject_stdout", wbg_expectation(sd.reject_stdout))
+	if (sd.expect_stderr.length > 0):
+		json_object_set(step, c"expect_stderr", wbg_expectation(sd.expect_stderr))
+	if (sd.reject_stderr.length > 0):
+		json_object_set(step, c"reject_stderr", wbg_expectation(sd.reject_stderr))
+	return step
+
+
 # Applies one parsed key[=value] token to the wbg_dir_* state.
 # Returns 0 on success, 1 after reporting an error.
 int wbg_apply_directive(char* path, char* key, int has_value, char* value):
+	if (strcmp(key, c"step") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if (value[0] == 0):
+			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
+			return 1
+		if (wbg_dir_cur_step != 0):
+			wbg_token_error(path, c"one 'step=' per '# wbuild:' line (its fields follow it on the line): ", value)
+			return 1
+		wbg_step_dir* sd = new wbg_step_dir()
+		json_value* cmd = json_array()
+		wbg_push_split_args(cmd, value)
+		sd.step = json_object()
+		json_object_set(sd.step, c"cmd", cmd)
+		sd.expect_stdout = new list[char*]
+		sd.expect_stderr = new list[char*]
+		sd.reject_stdout = new list[char*]
+		sd.reject_stderr = new list[char*]
+		wbg_dir_steps.push(sd)
+		wbg_dir_cur_step = sd
+		return 0
+	if (wbg_dir_cur_step != 0):
+		return wbg_apply_step_field(path, key, has_value, value)
 	if (strcmp(key, c"x64") == 0):
 		if (wbg_no_value(path, key, has_value)):
 			return 1
@@ -1134,6 +1260,9 @@ int wbg_parse_directives(char* path):
 		if (at_line_start && starts_with(text + i, c"# wbuild:")):
 			int j = i + 9
 			int at_end = 0
+			# step= scopes the tokens after it to its own step, up to
+			# the end of this line.
+			wbg_dir_cur_step = 0
 			while (at_end == 0):
 				while ((text[j] == ' ') || (text[j] == '\t')):
 					j = j + 1
@@ -1373,12 +1502,17 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 	# nothing about the closure is baked into the manifest. "outputs"
 	# makes a cache hit conditional on the binary still existing;
 	# compile_fail targets produce none, so they declare only inputs.
-	json_value* inputs = json_array()
-	json_array_push(inputs, json_string(src))
-	for char* input_entry in wbg_dir_data:
-		json_array_push(inputs, json_string(input_entry))
-	json_object_set(target, c"inputs", inputs)
-	if (wbg_dir_compile_fail == 0):
+	# step= targets declare neither: their extra steps can read any
+	# file, so they stay make-style FORCE targets like the hand-written
+	# ones they replace (see the step= vocabulary entry).
+	int force = (arch == wbg_arch_default()) && (wbg_dir_steps.length > 0)
+	if (force == 0):
+		json_value* inputs = json_array()
+		json_array_push(inputs, json_string(src))
+		for char* input_entry in wbg_dir_data:
+			json_array_push(inputs, json_string(input_entry))
+		json_object_set(target, c"inputs", inputs)
+	if ((wbg_dir_compile_fail == 0) && (force == 0)):
 		json_value* outputs = json_array()
 		json_array_push(outputs, json_string(binary))
 		json_object_set(target, c"outputs", outputs)
@@ -1415,6 +1549,8 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 		wbg_decorate_run_step(run_step)
 		json_array_push(steps, run_step)
 		if (arch == wbg_arch_default()):
+			for wbg_step_dir* sd in wbg_dir_steps:
+				json_array_push(steps, wbg_step_json(sd))
 			for char* args in wbg_dir_extra_compile:
 				json_array_push(steps, wbg_extra_compile_step(args))
 	json_object_set(target, c"steps", steps)
@@ -1968,7 +2104,7 @@ int wbg_scan():
 			# skipped with the directives silently unhonored (e.g. a
 			# stray '# wbuild: x64' line doing nothing) — a hard error
 			# now, same as any other directive nothing generated honors.
-			int stray = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_wasm | (wbg_dir_arch_only != 0) | wbg_dir_expect_fail | wbg_dir_compile_fail | (wbg_dir_timeout_ms > 0) | (wbg_dir_stdin != 0) | (wbg_dir_expect_stdout.length > 0) | (wbg_dir_expect_stderr.length > 0) | (wbg_dir_extra_compile.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0) | (wbg_dir_tool.length > 0) | (wbg_dir_flags.length > 0) | (wbg_dir_group_names.length > 0) | wbg_dir_group_only
+			int stray = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_wasm | (wbg_dir_arch_only != 0) | wbg_dir_expect_fail | wbg_dir_compile_fail | (wbg_dir_timeout_ms > 0) | (wbg_dir_stdin != 0) | (wbg_dir_expect_stdout.length > 0) | (wbg_dir_expect_stderr.length > 0) | (wbg_dir_extra_compile.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0) | (wbg_dir_tool.length > 0) | (wbg_dir_flags.length > 0) | (wbg_dir_group_names.length > 0) | wbg_dir_group_only | (wbg_dir_steps.length > 0)
 			if (stray):
 				wbg_error2(c"'# wbuild:' directives on a fixture need 'fixture_group=' (a fixture is not a test target): ", src)
 				return 1
@@ -2134,6 +2270,12 @@ int wbg_scan():
 		# the source shedding its directive lines (or vice versa).
 		int gen_run_capable = gen32 | gen64 | gen_arm64 | gen_win64 | gen_wasm | member_run_capable
 		int gen_any = gen_run_capable | gen_darwin | member_any
+		if ((gen32 == 0) && (wbg_dir_steps.length > 0)):
+			wbg_error2(c"'step=' needs a generated default-arch target (not arch_only=/group_only, and not defined in build.base.json): ", src)
+			return 1
+		if (wbg_dir_compile_fail && (wbg_dir_steps.length > 0)):
+			wbg_error2(c"'compile_fail' cannot combine with 'step=' (a failed compile has no run step to follow): ", src)
+			return 1
 		if ((gen32 == 0) && (wbg_dir_extra_compile.length > 0)):
 			wbg_error2(c"'extra_compile=' needs a generated default target, but build.base.json defines it: ", src)
 			return 1
@@ -2397,6 +2539,8 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 	if (reported == 0):
 		wbg_error(c"manifests differ in formatting only")
 	wbg_error2(c"stale manifest: ", out_path)
+
+
 
 
 /* Generate the manifest in memory and return its rendered JSON text, or

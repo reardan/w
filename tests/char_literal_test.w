@@ -1,3 +1,12 @@
+# wbuild: step="bin/wv2 x64 tests/char_literal_test.w -o bin/char_literal_test_64"
+# wbuild: step="bin/char_literal_test_64"
+# wbuild: step="bin/wv2 tests/char_literal_unknown_escape_fixture.w -o bin/char_literal_unknown_escape_fixture" expect_fail expect_stderr="unknown escape in char literal"
+# wbuild: step="bin/wv2 tests/char_literal_multichar_fixture.w -o bin/char_literal_multichar_fixture" expect_fail expect_stderr="multi-character char literal"
+# wbuild: step="bin/wv2 tests/char_literal_empty_fixture.w -o bin/char_literal_empty_fixture" expect_fail expect_stderr="empty char literal"
+# wbuild: step="cat" stdin="int main():\n\tint a = 'x\n" stdout_file="bin/char_literal_unterminated_fixture.w"
+# wbuild: step="bin/wv2 bin/char_literal_unterminated_fixture.w -o bin/char_literal_unterminated_fixture" expect_fail expect_stderr="unterminated char literal" timeout=20000
+# wbuild: step="cat" stdin="int main():\n\tchar* s = \"x\n" stdout_file="bin/string_unterminated_fixture.w"
+# wbuild: step="bin/wv2 bin/string_unterminated_fixture.w -o bin/string_unterminated_fixture" expect_fail expect_stderr="unterminated string literal" timeout=20000
 import lib.testing
 
 

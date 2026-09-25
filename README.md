@@ -344,8 +344,10 @@ seeds — is `docs/release.md`.
   a `# wbuild: x64` directive line in it for a 64-bit `foo_64_test` twin,
   and that's it: the generated manifest picks up the conventional
   compile+run target and its `tests`/`tests_x64` membership on the next
-  run. Only tests needing extra steps, `expect_*` assertions,
-  stdin, or timeouts get a hand-written target in `build.base.json`.
+  run. Expectations, stdin, timeouts and extra steps are `# wbuild:`
+  directives in the source as well (`step="cmd args"` appends a step,
+  decorated by the fields after it on its line), so `build.base.json`
+  is only for targets no single source owns.
   `./wbuild manifest_check` fails CI when generation fails.
 - Because codegen is single-pass with no IR, grammar modules both parse and
   emit; changes to expression/statement handling usually live in

@@ -1,4 +1,7 @@
 # wbuild: x64
+# wbuild: step="bin/wv2 tests/generics_unknown_param_error_fixture.w -o bin/generics_unknown_param_error_fixture" expect_fail expect_stderr="unknown type name: 'U'"
+# wbuild: step="bin/wv2 tests/generics_arg_count_error_fixture.w -o bin/generics_arg_count_error_fixture" expect_fail expect_stderr="wrong number of type arguments for generic 'pick': expected 1, got 2"
+# wbuild: step="bin/wv2 tests/generics_missing_args_error_fixture.w -o bin/generics_missing_args_error_fixture" expect_fail expect_stderr="generic function 'make': cannot infer type argument 'T'"
 import lib.testing
 import tests.generics_helper
 

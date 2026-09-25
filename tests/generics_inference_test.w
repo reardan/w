@@ -1,4 +1,7 @@
 # wbuild: x64
+# wbuild: step="bin/wv2 tests/generics_infer_conflict_error_fixture.w -o bin/generics_infer_conflict_error_fixture" expect_fail expect_stderr="conflicting types inferred for type parameter 'T': 'int' vs 'char*'"
+# wbuild: step="bin/wv2 tests/generics_infer_struct_shape_error_fixture.w -o bin/generics_infer_struct_shape_error_fixture" expect_fail expect_stderr="generic function 'sum_first': cannot infer type argument 'T'"
+# wbuild: step="bin/wv2 tests/generics_infer_forward_error_fixture.w -o bin/generics_infer_forward_error_fixture" expect_fail expect_stderr="Cannot find symbol: 'later_pick'"
 import lib.testing
 
 # Generic type-argument inference (docs/projects/generics.md): a call

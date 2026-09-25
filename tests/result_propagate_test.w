@@ -1,4 +1,6 @@
 # wbuild: x64
+# wbuild: step="bin/wv2 tests/result_propagate_int_operand_error_fixture.w -o bin/result_propagate_int_operand_error_fixture" expect_fail expect_stderr="Could not find a valid primary expression"
+# wbuild: step="bin/wv2 tests/result_propagate_return_type_error_fixture.w -o bin/result_propagate_return_type_error_fixture" expect_fail expect_stderr="'?' requires the enclosing function to return a wresult[...]*"
 import lib.testing
 import lib.result
 

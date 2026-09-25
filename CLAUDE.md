@@ -168,9 +168,12 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
   umbrella membership. `./wbuild manifest` writes a copy to
   `bin/build.json` for reading; `./wbuild manifest_check` (part of
   `tests`) fails when generation itself fails (bad directive, name
-  collision, unknown tool path). A test
-  needing extra steps or `expect_*` assertions gets a hand-written target
-  in `build.base.json` instead. `bin/wtest` picks targets up automatically
+  collision, unknown tool path). Expectations, stdin, timeouts and extra
+  steps are `# wbuild:` directives in the source too (`expect_stdout=`,
+  `timeout=`, and `step="cmd args"` with its own fields after it on the
+  line; vocabulary in `tools/wbuildgen_lib.w`), so a hand-written
+  `build.base.json` target is only for toolchain and other shapes no
+  source owns. `bin/wtest` picks targets up automatically
   from the manifest (literal step references + import closures); a
   `tools/test_map.w` residue rule is only needed for coupling the import
   graph cannot see (run-time data files, non-default-arch modules).
