@@ -58,7 +58,7 @@ int main(int argc, int argv):
 		if (strcmp(*first_arg, c"--version") == 0):
 			# Keep in sync with package.wmeta; release.yml fails a tag
 			# that disagrees with either.
-			println(c"w 0.3.0")
+			println(c"w 0.3.1")
 			return 0
 	link(argc, argv)
 	return 0
